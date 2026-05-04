@@ -19,96 +19,140 @@ ControlMonkey manages stacks through its provider:
 
 terraform {
   required_providers {
-    controlmonkey = {
-      source  = "control-monkey/controlmonkey"
+    cm = {
+      source  = "control-monkey/cm"
       version = "~> 1.0"
     }
   }
 }
 
-provider "controlmonkey" {
-  # Token set via CONTROLMONKEY_TOKEN environment variable
+provider "cm" {
+  # Token set via CONTROL_MONKEY_TOKEN environment variable
 }
 
 # Create a namespace (maps to a team or business unit)
-resource "controlmonkey_namespace" "platform" {
+resource "cm_namespace" "platform" {
   name = "platform-team"
 }
 
 # Create a stack backed by OpenTofu
-resource "controlmonkey_stack" "networking" {
+resource "cm_stack" "networking" {
   name         = "aws-networking"
-  namespace_id = controlmonkey_namespace.platform.id
+  namespace_id = cm_namespace.platform.id
+  iac_type     = "opentofu"
 
-  iac_config {
-    iac_type       = "openTofu"
+  iac_config = {
     opentofu_version = "1.9.0"
   }
 
-  vcs_info {
-    provider_id  = "vcs-github-connection-id"
-    repo_name    = "my-org/infra-repo"
-    branch       = "main"
-    working_directory = "stacks/networking"
+  deployment_behavior = {
+    deploy_on_push = true
+  }
+
+  vcs_info = {
+    provider_id = "vcs-github-connection-id"
+    repo_name   = "my-org/infra-repo"
+    branch      = "main"
+    path        = "stacks/networking"
   }
 }
 ```
 
 ## Enabling Drift Detection
 
-ControlMonkey continuously monitors deployed resources and compares them to the OpenTofu state. Configure remediation behavior per stack:
+ControlMonkey continuously monitors deployed resources and compares them to the OpenTofu state. Enable the drift detection capability and choose whether to remediate automatically:
 
 ```hcl
-resource "controlmonkey_stack" "networking" {
+resource "cm_stack" "networking" {
   name         = "aws-networking"
-  namespace_id = controlmonkey_namespace.platform.id
+  namespace_id = cm_namespace.platform.id
+  iac_type     = "opentofu"
 
-  iac_config {
-    iac_type         = "openTofu"
+  iac_config = {
     opentofu_version = "1.9.0"
   }
 
-  drift_detection {
-    # How often to check for drift (in minutes)
-    cron            = "0 */6 * * *"
-    # Automatically create a plan when drift is detected
-    auto_remediate  = false
+  deployment_behavior = {
+    deploy_on_push = true
   }
 
-  deployment_approval {
-    # Require a human to approve before applying drift remediation
-    require_approval = true
+  vcs_info = {
+    provider_id = "vcs-github-connection-id"
+    repo_name   = "my-org/infra-repo"
+    path        = "stacks/networking"
+  }
+
+  capabilities = {
+    drift_detection = {
+      status = "enabled"
+    }
+  }
+
+  # When drift is detected, leave deploy_when_drift_detected = false
+  # to surface drift for manual review instead of auto-remediating.
+  auto_sync = {
+    deploy_when_drift_detected = false
+  }
+
+  # Require a human to approve before applying any deployment.
+  deployment_approval_policy = {
+    rules = [
+      {
+        type = "requireApproval"
+      }
+    ]
   }
 }
 ```
 
 ## Self-Service Blueprint Example
 
-A blueprint is a pre-approved, parameterized OpenTofu module that developers can deploy without infrastructure knowledge:
+A blueprint is a pre-approved, parameterized OpenTofu module that developers can launch new stacks from without writing infrastructure code:
 
 ```hcl
-resource "controlmonkey_blueprint" "web_app" {
+resource "cm_blueprint" "web_app" {
   name        = "Standard Web Application"
   description = "Deploys an EC2 instance, ALB, and RDS in a standard configuration"
 
-  iac_config {
-    iac_type         = "openTofu"
-    opentofu_version = "1.9.0"
-    working_directory = "blueprints/web-app"
-    repo_name        = "my-org/infra-blueprints"
-    branch           = "main"
+  # Where the blueprint source code lives.
+  blueprint_vcs_info = {
+    provider_id = "vcs-github-connection-id"
+    repo_name   = "my-org/infra-blueprints"
+    path        = "blueprints/web-app"
+    branch      = "main"
   }
 
-  # Variables exposed to developers in the self-service form
-  variable_overrides = [
+  # How stacks launched from this blueprint should be created.
+  stack_configuration = {
+    name_pattern = "web-app-{env}-{service}"
+    iac_type     = "opentofu"
+
+    iac_config = {
+      opentofu_version = "1.9.0"
+    }
+
+    vcs_info_with_patterns = {
+      provider_id  = "vcs-github-connection-id"
+      repo_name    = "my-org/infra-repo"
+      path_pattern = "stacks/{env}/{service}"
+    }
+  }
+
+  # Dynamic placeholders the developer fills in when launching the stack.
+  substitute_parameters = [
     {
-      name          = "environment"
-      is_overridable = true
+      key         = "env"
+      description = "Target environment, e.g. dev, stage, prod"
+      value_conditions = [
+        {
+          operator = "in"
+          values   = ["dev", "stage", "prod"]
+        }
+      ]
     },
     {
-      name          = "instance_type"
-      is_overridable = true
-      allowed_values = ["t3.micro", "t3.small", "t3.medium"]
+      key         = "service"
+      description = "Service name used in resource naming"
     }
   ]
 }
@@ -116,38 +160,57 @@ resource "controlmonkey_blueprint" "web_app" {
 
 ## Policy as Code Integration
 
-ControlMonkey evaluates OPA policies during plan:
+ControlMonkey ships with a library of typed control policies (for example, `aws_required_tags`) that are evaluated against the plan output. Policies are grouped and then mapped onto namespaces or stacks:
 
 ```hcl
-resource "controlmonkey_policy_group" "security_baseline" {
-  name = "security-baseline"
-
-  policy {
-    name              = "require-encryption"
-    rego_code         = file("policies/require_encryption.rego")
-    enforcement_level = "MANDATORY"
-  }
+resource "cm_control_policy" "require_env_tag" {
+  name        = "AWS resources must have an Env tag"
+  description = "All AWS resources must be tagged with Env = dev/stage/prod."
+  type        = "aws_required_tags"
+  parameters = jsonencode({
+    tags = [
+      {
+        key           = "Env"
+        allowedValues = ["dev", "stage", "prod"]
+      }
+    ]
+  })
 }
 
-resource "controlmonkey_policy_group_assignment" "networking_policies" {
-  policy_group_id = controlmonkey_policy_group.security_baseline.id
-  scope_type      = "NAMESPACE"
-  scope_id        = controlmonkey_namespace.platform.id
+resource "cm_control_policy_group" "security_baseline" {
+  name        = "security-baseline"
+  description = "Mandatory baseline policies for all platform stacks"
+
+  control_policies = [
+    {
+      control_policy_id = cm_control_policy.require_env_tag.id
+      severity          = "high"
+    }
+  ]
+}
+
+resource "cm_control_policy_group_mappings" "networking_policies" {
+  control_policy_group_id = cm_control_policy_group.security_baseline.id
+
+  targets = [
+    {
+      target_id         = cm_namespace.platform.id
+      target_type       = "namespace"
+      enforcement_level = "hardMandatory"
+    }
+  ]
 }
 ```
 
 ## Importing Existing Resources
 
-ControlMonkey can scan your cloud account and generate OpenTofu code for unmanaged resources:
+ControlMonkey continuously scans connected cloud accounts and flags resources that are not managed by IaC. From the ControlMonkey console, the **IaC Import** wizard generates both the OpenTofu/Terraform code and the matching state file for the selected resources, so you can place them under a stack without re-provisioning. The flow is:
 
-```bash
-# From the ControlMonkey CLI
-controlmonkey scan --cloud aws --region us-east-1 --output ./imported
-
-# Review generated code, then import into a stack
-controlmonkey import --stack-id stack-abc123 --path ./imported
-```
+1. Connect the cloud account in **Cloud Accounts**.
+2. Open the **Inventory** view and filter for resources tagged as *Unmanaged*.
+3. Select the resources to import and launch the **IaC Import** wizard.
+4. Review the generated code, open the suggested pull request to your repo, and attach the resulting files to a `cm_stack`.
 
 ## Conclusion
 
-ControlMonkey extends OpenTofu with continuous drift detection, self-service infrastructure blueprints, and OPA policy enforcement. Teams that want to move beyond reactive drift remediation toward proactive governance - where drift is detected and triaged automatically - will find ControlMonkey a compelling complement to a standard OpenTofu workflow.
+ControlMonkey extends OpenTofu with continuous drift detection, self-service infrastructure blueprints, and a typed control-policy engine. Teams that want to move beyond reactive drift remediation toward proactive governance - where drift is detected and triaged automatically - will find ControlMonkey a compelling complement to a standard OpenTofu workflow.
