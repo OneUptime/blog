@@ -8,13 +8,13 @@ Description: Configure the correct MTU on VXLAN interfaces and bridge devices to
 
 ## Introduction
 
-VXLAN adds significant overhead to each packet: outer IP header (20 bytes) + outer UDP header (8 bytes) + VXLAN header (8 bytes) = 50 bytes total overhead. This reduces the effective MTU for the overlay payload from 1500 bytes to 1450 bytes. Setting the correct MTU prevents fragmentation and improves overlay network performance.
+VXLAN adds significant overhead to each packet: outer IP header (20 bytes) + outer UDP header (8 bytes) + VXLAN header (8 bytes) + inner Ethernet header (14 bytes) = 50 bytes total overhead. This reduces the effective MTU for the overlay payload from 1500 bytes to 1450 bytes. Setting the correct MTU prevents fragmentation and improves overlay network performance.
 
 ## VXLAN MTU Calculation
 
 ```text
 Physical MTU:        1500 bytes
-VXLAN overhead:       -50 bytes (14 outer Ethernet + 20 outer IP + 8 UDP + 8 VXLAN)
+VXLAN overhead:       -50 bytes (14 inner Ethernet + 20 outer IP + 8 UDP + 8 VXLAN)
 VXLAN payload MTU:   1450 bytes
 
 Note: The 50-byte overhead accounts for the outer encapsulation headers.
