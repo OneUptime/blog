@@ -180,9 +180,9 @@ tofu workspace new production
 # List OpenTofu state secrets
 kubectl get secrets -n opentofu-state | grep tfstate
 
-# Decode and view state
+# Decode and view state (data is gzipped before base64 encoding)
 kubectl get secret tfstate-default-prod -n opentofu-state \
-  -o jsonpath='{.data.tfstate}' | base64 -d | python3 -m json.tool
+  -o jsonpath='{.data.tfstate}' | base64 -d | gunzip | python3 -m json.tool
 ```
 
 ## Locking via Kubernetes Leases
