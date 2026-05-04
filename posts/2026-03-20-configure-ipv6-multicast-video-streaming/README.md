@@ -57,9 +57,9 @@ class IPv6MulticastSender:
         """Send a video frame to the multicast group"""
         self.sock.sendto(data, (self.group_addr, self.port))
 
-# Usage: stream to group ff3e::iptv:channel1
+# Usage: stream to an SSM group in the ff3e::/32 range
 sender = IPv6MulticastSender(
-    group_addr='ff3e::db8:iptv:1',
+    group_addr='ff3e::db8:abcd:1',
     port=5004,
     interface='eth0',
     ttl=64
@@ -81,6 +81,10 @@ while True:
 import socket
 import struct
 
+# MCAST_JOIN_SOURCE_GROUP is not exposed by Python's socket module;
+# use the Linux kernel value directly.
+MCAST_JOIN_SOURCE_GROUP = 46
+
 class IPv6MulticastReceiver:
     def __init__(self, group_addr, source_addr, port, interface):
         self.sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
@@ -94,17 +98,19 @@ class IPv6MulticastReceiver:
         group_bytes = socket.inet_pton(socket.AF_INET6, group_addr)
         source_bytes = socket.inet_pton(socket.AF_INET6, source_addr)
 
-        # struct sockaddr_in6
-        def make_sa_in6(addr):
-            return struct.pack('HHI16sI', socket.AF_INET6, 0, 0, addr, 0)
+        # struct sockaddr_in6 padded to sockaddr_storage size (128 bytes)
+        def make_sockaddr_storage_in6(addr):
+            sa = struct.pack('HHI16sI', socket.AF_INET6, 0, 0, addr, 0)
+            return sa + b'\x00' * (128 - len(sa))
 
-        # struct group_source_req
-        mreq = struct.pack('II', ifindex, 0)
-        mreq += make_sa_in6(group_bytes)
-        mreq += make_sa_in6(source_bytes)
+        # struct group_source_req: uint32_t gsr_interface + 4 bytes pad
+        # + sockaddr_storage gsr_group + sockaddr_storage gsr_source
+        mreq = struct.pack('I4x', ifindex)
+        mreq += make_sockaddr_storage_in6(group_bytes)
+        mreq += make_sockaddr_storage_in6(source_bytes)
 
         self.sock.setsockopt(socket.IPPROTO_IPV6,
-                             socket.MCAST_JOIN_SOURCE_GROUP, mreq)
+                             MCAST_JOIN_SOURCE_GROUP, mreq)
 
         print(f"Joined SSM group ({source_addr}, {group_addr})")
 
@@ -114,8 +120,8 @@ class IPv6MulticastReceiver:
 
 # Usage: receive IPTV channel 1 from authorized source
 receiver = IPv6MulticastReceiver(
-    group_addr='ff3e::db8:iptv:1',
-    source_addr='2001:db8::stream-server',  # SSM: specify source
+    group_addr='ff3e::db8:abcd:1',
+    source_addr='2001:db8::1',  # SSM: specify source
     port=5004,
     interface='eth0'
 )
@@ -150,7 +156,7 @@ interface eth0
 end
 
 # Verify multicast route for the stream
-vtysh -c "show ipv6 mroute ff3e::db8:iptv:1"
+vtysh -c "show ipv6 mroute ff3e::db8:abcd:1"
 ```
 
 ## Setting MTU for Video Streams
@@ -164,10 +170,10 @@ ip link set eth0 mtu 9000  # Jumbo frames for high-bandwidth video (if supported
 
 # Or reduce video packet size to avoid fragmentation
 # MPEG-TS natural size: 7 packets × 188 bytes = 1316 bytes
-# Well under 1480 (IPv6 MTU for GigE with 20-byte header headroom)
+# Well under 1452 (1500 MTU - 40-byte IPv6 header - 8-byte UDP header)
 
 # Test if large packets reach destination without fragmentation
-ping6 -M do -s 1400 2001:db8::receiver
+ping6 -M do -s 1400 2001:db8::1
 ```
 
 ## Quality Monitoring for IPv6 Multicast Video
@@ -176,7 +182,7 @@ ping6 -M do -s 1400 2001:db8::receiver
 #!/bin/bash
 # monitor_stream.sh - Monitor multicast video stream quality
 
-MCAST_GROUP="ff3e::db8:iptv:1"
+MCAST_GROUP="ff3e::db8:abcd:1"
 INTERFACE="eth0"
 INTERVAL=10
 
@@ -184,9 +190,10 @@ echo "Monitoring $MCAST_GROUP on $INTERFACE every ${INTERVAL}s"
 
 while true; do
     # Count packets received in the interval
-    PACKETS_START=$(cat /proc/net/ip6_mr_cache | grep "$MCAST_GROUP" | awk '{print $7}')
+    # /proc/net/ip6_mr_cache columns: Group Origin Iif Pkts Bytes Wrong Oifs
+    PACKETS_START=$(cat /proc/net/ip6_mr_cache | grep "$MCAST_GROUP" | awk '{print $4}')
     sleep $INTERVAL
-    PACKETS_END=$(cat /proc/net/ip6_mr_cache | grep "$MCAST_GROUP" | awk '{print $7}')
+    PACKETS_END=$(cat /proc/net/ip6_mr_cache | grep "$MCAST_GROUP" | awk '{print $4}')
 
     if [ -n "$PACKETS_START" ] && [ -n "$PACKETS_END" ]; then
         RATE=$(( (PACKETS_END - PACKETS_START) / INTERVAL ))
