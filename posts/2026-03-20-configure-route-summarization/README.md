@@ -83,7 +83,7 @@ vtysh -c "show ip ospf route" | grep "10.1.0.0/22"
 vtysh -c "show ip bgp" | grep "10.1"
 
 # Check neighbor's routing table received routes
-vtysh -c "show ip bgp neighbor 10.0.0.2 received-routes"
+vtysh -c "show ip bgp neighbors 10.0.0.2 received-routes"
 ```
 
 ## When NOT to Summarize
