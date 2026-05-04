@@ -18,7 +18,7 @@ KrakenD is a stateless, high-performance API Gateway written in Go. Like other G
 
 ## Step 1: Configure the Listener Address
 
-KrakenD uses the `port` key for its HTTP listener. To bind to a specific IPv6 address or all interfaces, use the `bind_to` key available in newer versions.
+KrakenD uses the `port` key for its TCP listener and the `listen_ip` key to choose which interface (IPv4 or IPv6) the server binds to. An empty string listens on all interfaces.
 
 ```json
 {
@@ -26,8 +26,7 @@ KrakenD uses the `port` key for its HTTP listener. To bind to a specific IPv6 ad
   "version": 3,
   "name": "KrakenD IPv6 Gateway",
   "port": 8080,
-  // Bind to all IPv6 and IPv4 interfaces (dual-stack)
-  "bind_to": ":8080",
+  "listen_ip": "",
   "timeout": "3000ms",
   "cache_ttl": "300s",
   "extra_config": {
@@ -39,11 +38,21 @@ KrakenD uses the `port` key for its HTTP listener. To bind to a specific IPv6 ad
 }
 ```
 
-To bind exclusively to IPv6:
+To bind exclusively to all IPv6 interfaces, set `listen_ip` to `::` (no brackets, port is configured separately):
 
 ```json
 {
-  "bind_to": "[::]:8080"
+  "port": 8080,
+  "listen_ip": "::"
+}
+```
+
+To bind to a single IPv6 address:
+
+```json
+{
+  "port": 8080,
+  "listen_ip": "2001:db8::68"
 }
 ```
 
@@ -103,11 +112,11 @@ krakend check -c krakend.json
 # Run the gateway
 krakend run -c krakend.json
 
-# Or with Docker, exposing IPv6
+# Or with the official Docker image, exposing IPv6
 docker run -d --name krakend \
   -v $(pwd)/krakend.json:/etc/krakend/krakend.json \
   -p 8080:8080 \
-  devopsfaith/krakend run -c /etc/krakend/krakend.json
+  krakend run -c /etc/krakend/krakend.json
 ```
 
 ## Step 4: Verify IPv6 Connectivity
@@ -144,9 +153,9 @@ KrakenD exposes a metrics endpoint that you can scrape over IPv6.
 
 ```bash
 # Scrape metrics over IPv6
-curl -6 http://[::1]:8090/__stats
+curl -6 http://[::1]:8090/__stats/
 ```
 
 ## Conclusion
 
-KrakenD's JSON-driven configuration makes IPv6 enablement straightforward. The key changes are updating `bind_to` for the listener and wrapping backend IPv6 addresses in square brackets. Track your KrakenD gateway performance across both IP stacks with OneUptime.
+KrakenD's JSON-driven configuration makes IPv6 enablement straightforward. The key changes are setting `listen_ip` for the listener and wrapping backend IPv6 addresses in square brackets. Track your KrakenD gateway performance across both IP stacks with OneUptime.
