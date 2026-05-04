@@ -12,7 +12,7 @@ The PostgreSQL backend stores OpenTofu state in a PostgreSQL database. It's well
 
 ## Prerequisites
 
-- PostgreSQL 9.5 or later
+- PostgreSQL 10 or later
 - A database and user with appropriate permissions
 - Network access from OpenTofu to the PostgreSQL server
 
@@ -46,8 +46,8 @@ terraform {
   backend "pg" {
     conn_str = "postgresql://opentofu_user:secure_password@db.example.com/opentofu_state"
 
-    # Optional: schema for workspace isolation (default: "terraform_remote_state")
-    schema_prefix = "opentofu_state"
+    # Optional: PostgreSQL schema name (default: "terraform_remote_state")
+    schema_name = "opentofu_state"
 
     # Optional: skip schema creation (if pre-created)
     # skip_schema_creation = false
@@ -75,7 +75,7 @@ export PG_CONN_STR="postgresql://opentofu_user:secure_password@db.example.com/op
 terraform {
   backend "pg" {
     # conn_str loaded from PG_CONN_STR environment variable
-    schema_prefix = "opentofu"
+    schema_name = "opentofu"
   }
 }
 ```
@@ -99,20 +99,19 @@ Common parameters:
 
 ## Database Schema
 
-OpenTofu creates these tables automatically:
+OpenTofu creates a PostgreSQL schema (named by `schema_name`) containing a `states` table:
 
 ```sql
--- Main state table (created by OpenTofu)
+-- Main state table (created by OpenTofu inside schema_name)
 -- one row per workspace
-CREATE TABLE IF NOT EXISTS "${schema_prefix}_states" (
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    state BYTEA,
-    lock_info TEXT
+CREATE TABLE IF NOT EXISTS "${schema_name}"."states" (
+    id SERIAL PRIMARY KEY,
+    name TEXT UNIQUE,
+    data TEXT
 );
 ```
 
-Each workspace corresponds to a row in this table.
+Each workspace corresponds to a row in this table. State locking is handled via PostgreSQL advisory locks keyed on the row `id`, not via a column.
 
 ## Workspace Configuration
 
@@ -122,27 +121,27 @@ tofu workspace new production
 tofu workspace new staging
 
 # Each workspace stores state in a separate row
-# in the opentofu_states table
+# in the states table inside the configured schema
 ```
 
 ## Schema-Based Isolation
 
-Use `schema_prefix` to isolate different configurations:
+Use `schema_name` to isolate different configurations into separate PostgreSQL schemas:
 
 ```hcl
 # networking configuration
 terraform {
   backend "pg" {
-    conn_str      = "postgresql://..."
-    schema_prefix = "networking"  # Creates networking_states table
+    conn_str    = "postgresql://..."
+    schema_name = "networking"  # Creates "networking" schema with a "states" table
   }
 }
 
 # compute configuration
 terraform {
   backend "pg" {
-    conn_str      = "postgresql://..."
-    schema_prefix = "compute"  # Creates compute_states table
+    conn_str    = "postgresql://..."
+    schema_name = "compute"  # Creates "compute" schema with a "states" table
   }
 }
 ```
@@ -177,17 +176,15 @@ resource "aws_db_instance" "opentofu_state" {
 ## Monitoring and Maintenance
 
 ```sql
--- List all state entries
-SELECT id, name, octet_length(state) as state_size
-FROM opentofu_states;
+-- List all state entries (replace terraform_remote_state with your schema_name)
+SELECT id, name, octet_length(data) as state_size
+FROM terraform_remote_state.states;
 
--- Check for active locks
-SELECT id, lock_info
-FROM opentofu_states
-WHERE lock_info IS NOT NULL;
+-- Check for active state locks (advisory locks)
+SELECT * FROM pg_locks WHERE locktype = 'advisory';
 
 -- Vacuum the table regularly
-VACUUM ANALYZE opentofu_states;
+VACUUM ANALYZE terraform_remote_state.states;
 ```
 
 ## Conclusion
