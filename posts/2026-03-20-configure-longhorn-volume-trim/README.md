@@ -120,21 +120,7 @@ kubectl logs -l job-name=manual-trim-test
 
 ## Enabling Automatic Periodic Trim in Longhorn
 
-Longhorn can be configured to automatically trim volumes on a schedule:
-
-### Via kubectl Settings
-
-```bash
-# Check current trim settings
-kubectl get settings.longhorn.io -n longhorn-system | grep -i trim
-
-# Set the trim interval (in hours, 0 = disabled)
-# This triggers automatic trim for all volumes
-kubectl patch settings.longhorn.io recurring-job-max-retention \
-  -n longhorn-system \
-  --type merge \
-  -p '{"value": "100"}'
-```
+Longhorn can be configured to automatically trim volumes on a schedule. There is no built-in global setting for trim cadence; automatic periodic trim is configured by creating a `RecurringJob` with the `filesystem-trim` task.
 
 ### Via Recurring Job
 
@@ -150,7 +136,7 @@ spec:
   cron: "0 0 * * 0"
   # Filesystem trim task
   task: "filesystem-trim"
-  retain: 0   # No snapshots to retain for trim operations
+  retain: 1   # Trim does not create snapshots; minimum allowed value is 1
   concurrency: 5
   labels:
     schedule: weekly-trim
