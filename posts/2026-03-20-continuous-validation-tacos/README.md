@@ -48,19 +48,23 @@ With Atlantis, every PR automatically generates a `tofu plan`. Collaborators com
 
 ## Spacelift: Managed TACOS with Drift Detection
 
-```yaml
-# .spacelift/config.yml
-version: "1"
+Stacks and drift detection in Spacelift are configured via the Spacelift Terraform provider (or the UI/API), not a YAML file:
 
-stacks:
-  networking:
-    project_root: infrastructure/networking
-    terraform_version: "1.7.0"
-    autodeploy: false
-    drift_detection:
-      enabled: true
-      schedule: "0 */6 * * *"   # Every 6 hours
-      reconcile: false           # Alert only, don't auto-remediate
+```hcl
+resource "spacelift_stack" "networking" {
+  name              = "networking"
+  repository        = "infrastructure"
+  branch            = "main"
+  project_root      = "infrastructure/networking"
+  terraform_version = "1.7.0"
+  autodeploy        = false
+}
+
+resource "spacelift_drift_detection" "networking" {
+  stack_id  = spacelift_stack.networking.id
+  schedule  = ["0 */6 * * *"]   # Every 6 hours
+  reconcile = false              # Alert only, don't auto-remediate
+}
 ```
 
 ---
