@@ -49,26 +49,23 @@ for e in envs:
 
 ## Installing the Portainer Agent (for Cloud K8s)
 
-For EKS, AKS, and GKE environments, deploy the agent via Helm:
+For EKS, AKS, and GKE environments, deploy the standard Portainer Agent using the official YAML manifest. Match the manifest version to your Portainer Server version (replace `2-21` with the major.minor of your install):
 
 ```bash
-# Add the Portainer Helm repository
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
-
-# Install the Portainer Agent
-helm install portainer-agent portainer/portainer-agent \
-  -n portainer \
-  --create-namespace \
-  --set env.serverAddress="wss://portainer.example.com" \
-  --set env.edgeId="<your-edge-id>" \
-  --set env.edgeKey="<your-edge-key>"
+# Create the namespace and apply the Load Balancer agent manifest (CE)
+kubectl create namespace portainer
+kubectl apply -n portainer \
+  -f https://downloads.portainer.io/ce2-21/portainer-agent-k8s-lb.yaml
 ```
+
+This deploys the agent and exposes it via a cloud Load Balancer on port 9001. On GKE this provisions an external TCP Load Balancer automatically. Once the service has an external IP, add the environment in the Portainer Server UI under **Environments → Add environment → Kubernetes → Agent**, using the Load Balancer IP and port 9001.
+
+If you prefer a node-port deployment instead of a Load Balancer, use `portainer-agent-k8s-nodeport.yaml` from the same path.
 
 ## Best Practices
 
 - Use descriptive names for environments (include location and type)
-- Apply consistent tags for filtering (e.g., , )
+- Apply consistent tags for filtering (e.g., `env:prod`, `region:us-central1`)
 - Group related environments together for bulk operations
 - Review environment list quarterly and remove decommissioned environments
 
