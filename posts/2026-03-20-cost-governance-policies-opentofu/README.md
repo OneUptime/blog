@@ -150,7 +150,7 @@ resource "aws_organizations_policy_attachment" "deny_expensive" {
 resource "aws_config_remediation_configuration" "missing_tags" {
   config_rule_name = aws_config_config_rule.required_tags.name
   target_type      = "SSM_DOCUMENT"
-  target_id        = "AWS-AddTagsToResource"
+  target_id        = "AWSConfigRemediation-AddTagsToResource"
   automatic        = true
   maximum_automatic_attempts = 3
   retry_attempt_seconds      = 60
