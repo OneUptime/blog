@@ -201,7 +201,8 @@ spec:
     fsType: ext4
     volumeHandle: dr-my-critical-volume
     volumeAttributes:
-      storage.kubernetes.io/csiProvisionerIdentity: driver.longhorn.io
+      numberOfReplicas: "2"
+      staleReplicaTimeout: "2880"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
