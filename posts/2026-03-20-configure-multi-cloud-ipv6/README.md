@@ -30,6 +30,10 @@ Option 3: Overlay Network (WireGuard/IPsec)
 
 ## Site-to-Site VPN: AWS to Azure with IPv6
 
+AWS Site-to-Site VPN supports IPv6 inside the tunnel only when the VPN attaches
+to an EC2 Transit Gateway, not to a Virtual Private Gateway. The outer tunnel
+endpoints remain IPv4.
+
 ```hcl
 # AWS side
 
@@ -40,19 +44,19 @@ resource "aws_customer_gateway" "azure_gw" {
   tags       = { Name = "azure-gateway" }
 }
 
-resource "aws_vpn_gateway" "main" {
-  vpc_id           = aws_vpc.main.id
-  amazon_side_asn  = 64512
-  tags             = { Name = "aws-vpn-gw" }
+resource "aws_ec2_transit_gateway" "main" {
+  amazon_side_asn = 64512
+  tags            = { Name = "aws-tgw" }
 }
 
 resource "aws_vpn_connection" "to_azure" {
-  vpn_gateway_id          = aws_vpn_gateway.main.id
-  customer_gateway_id     = aws_customer_gateway.azure_gw.id
-  type                    = "ipsec.1"
-  static_routes_only      = false
-  local_ipv6_network_cidr = "2001:db8:aws::/48"
-  remote_ipv6_network_cidr = "2001:db8:azure::/48"
+  transit_gateway_id       = aws_ec2_transit_gateway.main.id
+  customer_gateway_id      = aws_customer_gateway.azure_gw.id
+  type                     = "ipsec.1"
+  static_routes_only       = false
+  tunnel_inside_ip_version = "ipv6"
+  local_ipv6_network_cidr  = "2001:db8:a::/48"
+  remote_ipv6_network_cidr = "2001:db8:b::/48"
 }
 
 # Azure side
@@ -85,7 +89,7 @@ wg genkey | tee azure_private | wg pubkey > azure_public
 # AWS WireGuard config
 cat > /etc/wireguard/wg0.conf << 'EOF'
 [Interface]
-Address = fd00:wg::aws/64
+Address = fd00:dead::1/64
 ListenPort = 51820
 PrivateKey = <aws_private>
 
@@ -93,7 +97,7 @@ PrivateKey = <aws_private>
 # Azure
 PublicKey = <azure_public>
 Endpoint = <azure-public-ipv4>:51820
-AllowedIPs = fd00:wg::azure/128, 10.2.0.0/16, fd00:azure::/48
+AllowedIPs = fd00:dead::2/128, 10.2.0.0/16, fd00:b::/48
 PersistentKeepalive = 25
 EOF
 
@@ -108,14 +112,14 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 
 CLOUD_ENDPOINTS = {
-    "aws_us_east": "2001:db8:aws::health",
-    "azure_east": "2001:db8:azure::health",
-    "gcp_us_central": "2001:db8:gcp::health",
+    "aws_us_east": "2001:db8:a::1",
+    "azure_east": "2001:db8:b::1",
+    "gcp_us_central": "2001:db8:c::1",
 }
 
 def check_ipv6_reachability(name: str, addr: str) -> dict:
     result = subprocess.run(
-        ["ping6", "-c", "3", "-W", "2", addr],
+        ["ping", "-6", "-c", "3", "-W", "2", addr],
         capture_output=True, text=True
     )
     return {
