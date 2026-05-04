@@ -29,12 +29,13 @@ docker run -d \
   myimage:latest
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Devices**
+In Portainer UI: **Advanced settings > Runtime & resources > Devices**
 
 ## Sysctls Configuration
 
 ```bash
 # Equivalent docker run for sysctl settings
+# Requires host kernel 4.10+ for net.core.somaxconn to be per-namespace
 docker run -d \
   --sysctl net.core.somaxconn=65535 \
   --sysctl net.ipv4.tcp_tw_reuse=1 \
@@ -42,7 +43,18 @@ docker run -d \
   nginx:latest
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Sysctls**
+Portainer's standard container creation form does not expose a dedicated **Sysctls** field, so set sysctls by deploying the container via a **Stack** (Docker Compose) using the `sysctls:` key, or by editing the stack's compose file:
+
+```yaml
+services:
+  high-connection-server:
+    image: nginx:latest
+    sysctls:
+      net.core.somaxconn: 65535
+      net.ipv4.tcp_tw_reuse: 1
+```
+
+Docker only allows sysctls in the `kernel.*` (IPC) and `net.*` (network) namespaces; non-namespaced sysctls are rejected. Sysctls are also disallowed when sharing the corresponding host namespace (e.g. `--network=host` blocks `net.*` sysctls).
 
 ## GPU Configuration (NVIDIA)
 
@@ -58,7 +70,7 @@ docker run -d \
   python train.py
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > GPUs**
+In Portainer UI: **Advanced settings > Runtime & resources > GPU** (the GPU control only appears once GPU support has been enabled for the environment under **Environments > [endpoint] > Setup > GPU**).
 
 ## Linux Capabilities
 
@@ -71,6 +83,8 @@ docker run -d \
   --name secure-nginx \
   nginx:latest
 ```
+
+In Portainer UI: **Advanced settings > Capabilities** (a top-level tab, not nested under Runtime & resources).
 
 ## Shared Memory Size
 
