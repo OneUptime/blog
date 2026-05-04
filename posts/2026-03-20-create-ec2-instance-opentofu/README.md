@@ -21,7 +21,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-22.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 
   filter {
@@ -135,7 +135,8 @@ resource "aws_instance" "web" {
   }
 
   lifecycle {
-    # Replace the instance if AMI or user data changes
+    # When the instance is replaced (e.g. on AMI or user_data change),
+    # create the new instance before destroying the old one.
     create_before_destroy = true
   }
 }
@@ -174,8 +175,14 @@ variable "instance_type" {
   }
 }
 
-variable "environment"      { type = string }
-variable "allowed_ssh_cidr" { type = string; default = "0.0.0.0/0" }
+variable "environment" {
+  type = string
+}
+
+variable "allowed_ssh_cidr" {
+  type    = string
+  default = "0.0.0.0/0"
+}
 ```
 
 ## Conclusion
