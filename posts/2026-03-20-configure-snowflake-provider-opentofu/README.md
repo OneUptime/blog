@@ -15,10 +15,9 @@ The Snowflake provider for OpenTofu enables managing Snowflake resources with th
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    snowflake = {
+      source  = "snowflakedb/snowflake"
+      version = "~> 2.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,33 +26,34 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Snowflake provider reads credentials from environment variables:
 
 ```bash
-# Set provider credentials via environment variables
+# Set Snowflake credentials via environment variables
 
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export SNOWFLAKE_ORGANIZATION_NAME="your-org"
+export SNOWFLAKE_ACCOUNT_NAME="your-account"
+export SNOWFLAKE_USER="your-user"
+export SNOWFLAKE_PASSWORD="your-password"
 ```
 
 ```hcl
-provider "provider_name" {
+provider "snowflake" {
   # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+  role = "ACCOUNTADMIN"
+  # password = var.snowflake_password  # Alternative: inline (not recommended)
 }
 ```
+
+For production deployments, prefer key-pair authentication with `authenticator = "SNOWFLAKE_JWT"` and a `private_key`, which avoids storing passwords altogether.
 
 ## Example Resource
 
 ```hcl
 # Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+resource "snowflake_database" "main" {
+  name    = upper("${var.name}_${var.environment}")
+  comment = "Managed by OpenTofu"
 }
 ```
 
@@ -67,7 +67,7 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "database_name" { value = snowflake_database.main.name }
 ```
 
 ## Best Practices
