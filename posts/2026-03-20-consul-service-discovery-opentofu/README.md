@@ -51,9 +51,12 @@ curl -Lo /tmp/consul.zip \
   "https://releases.hashicorp.com/consul/${consul_version}/consul_${consul_version}_linux_amd64.zip"
 unzip /tmp/consul.zip -d /usr/local/bin/
 
+mkdir -p /etc/consul.d /opt/consul
+
 # Write configuration
 cat > /etc/consul.d/config.hcl <<EOF
 datacenter        = "${datacenter}"
+data_dir          = "/opt/consul"
 server            = true
 bootstrap_expect  = ${expected_count}
 bind_addr         = "{{ GetInterfaceIP \"eth0\" }}"
