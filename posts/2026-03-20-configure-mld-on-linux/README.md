@@ -69,7 +69,7 @@ def join_ipv6_multicast(group_addr, interface):
     finally:
         sock.close()
 
-join_ipv6_multicast('ff3e::db8:test', 'eth0')
+join_ipv6_multicast('ff3e::1', 'eth0')
 ```
 
 ## Tuning MLD via sysctl
@@ -105,7 +105,10 @@ lsmod | grep ip6_mr
 
 # Enable IPv6 forwarding (required for multicast routing)
 sysctl -w net.ipv6.conf.all.forwarding=1
-sysctl -w net.ipv6.conf.all.mc_forwarding=1
+
+# Note: net.ipv6.conf.*.mc_forwarding is read-only - the kernel sets it
+# automatically when a multicast routing daemon (e.g., smcroute, pim6sd)
+# opens an MRT6_INIT socket on AF_INET6/SOCK_RAW.
 ```
 
 ## Installing and Configuring smcroute
@@ -123,14 +126,13 @@ cat > /etc/smcroute.conf << 'EOF'
 mroute from eth0 group ff3e::db8:1 to eth1 eth2
 
 # Forward all multicast from a source
-mroute from eth0 source 2001:db8::source group ff3e::db8:stream to eth1
+mroute from eth0 source 2001:db8::1 group ff3e::db8:2 to eth1
 EOF
 
 # Start smcroute
 systemctl start smcroute
 
-# Verify routes
-smcrouted -n -s /var/run/smcroute.sock
+# Verify routes (smcroutectl is the client used to query the running daemon)
 smcroutectl show routes
 ```
 
@@ -140,10 +142,7 @@ smcroutectl show routes
 # Show the IPv6 multicast routing table
 ip -6 mroute show
 
-# View multicast interface table (VIFs)
-ip -6 mroute show vif
-
-# Show multicast stats
+# Show multicast interface table (VIFs) and cache via procfs
 cat /proc/net/ip6_mr_vif
 cat /proc/net/ip6_mr_cache
 ```
@@ -152,13 +151,15 @@ cat /proc/net/ip6_mr_cache
 
 ```bash
 # Capture all MLD messages on eth0
-tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 130 or ip6[40] == 131 or ip6[40] == 132 or ip6[40] == 143)'
+# Note: MLD packets carry an IPv6 Hop-by-Hop Router Alert option, so use
+# icmp6[icmptype] rather than a fixed ip6[40] offset to read the ICMPv6 type.
+tcpdump -i eth0 -n 'icmp6 and (icmp6[icmptype] == 130 or icmp6[icmptype] == 131 or icmp6[icmptype] == 132 or icmp6[icmptype] == 143)'
 
-# Verbose MLD capture
-tcpdump -i eth0 -vvn 'icmp6 and ip6[40] == 130'
+# Verbose MLD query capture
+tcpdump -i eth0 -vvn 'icmp6 and icmp6[icmptype] == 130'
 
-# Watch for MLD membership changes
-tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 131 or ip6[40] == 143)' -l | \
+# Watch for MLD membership changes (v1 reports and v2 reports)
+tcpdump -i eth0 -n 'icmp6 and (icmp6[icmptype] == 131 or icmp6[icmptype] == 143)' -l | \
     while read line; do echo "$(date): $line"; done
 ```
 
@@ -170,12 +171,12 @@ tcpdump -i eth0 -n 'icmp6 and (ip6[40] == 131 or ip6[40] == 143)' -l | \
 python3 join_mcast.py &  # runs join_mcast.py from above
 
 # On another host or router, send traffic to the group
-ping6 ff3e::db8:test%eth0
+ping6 ff3e::1%eth0
 
 # Capture the MLD report on the switch/router interface
-tcpdump -i eth0 -n -vv 'icmp6 and ip6[40] == 143'
+tcpdump -i eth0 -n -vv 'icmp6 and icmp6[icmptype] == 143'
 ```
 
 ## Summary
 
-Linux handles MLD automatically for any multicast group a socket joins. Use `ip -6 maddr show` to view current group memberships. Tune MLD version with `net.ipv6.conf.<iface>.force_mld_version`. For multicast routing, load `ip6_mr` and use `smcroute` for static routing or deploy a full PIM daemon. Monitor MLD messages with `tcpdump -n 'icmp6 and ip6[40] == 130'`.
+Linux handles MLD automatically for any multicast group a socket joins. Use `ip -6 maddr show` to view current group memberships. Tune MLD version with `net.ipv6.conf.<iface>.force_mld_version`. For multicast routing, load `ip6_mr` and use `smcroute` for static routing or deploy a full PIM daemon. Monitor MLD messages with `tcpdump -n 'icmp6 and icmp6[icmptype] == 130'`.
