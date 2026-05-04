@@ -76,11 +76,12 @@ Get-DnsServerResourceRecord `
 
 ```powershell
 # Create ip6.arpa reverse zone for 2001:db8::/32
+# (auto-generates the zone name 8.b.d.0.1.0.0.2.ip6.arpa)
 Add-DnsServerPrimaryZone `
     -NetworkId "2001:db8::/32" `
     -ZoneFile "2001.db8.ip6.arpa.dns"
 
-# Or create manually
+# Or create a more specific /64 reverse zone manually
 Add-DnsServerPrimaryZone `
     -Name "0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa" `
     -ZoneFile "rev.2001.db8.dns"
@@ -139,7 +140,7 @@ foreach ($r in $records) {
         -Name $r.Name `
         -AAAA `
         -IPv6Address $r.IPv6Address `
-        -TimeToLive (New-TimeSpan -Seconds [int]$r.TTL)
+        -TimeToLive (New-TimeSpan -Seconds ([int]$r.TTL))
 }
 ```
 
