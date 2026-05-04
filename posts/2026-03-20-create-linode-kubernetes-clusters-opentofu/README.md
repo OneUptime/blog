@@ -46,7 +46,7 @@ resource "linode_lke_cluster" "ha" {
 
   # High-memory pool for memory-intensive workloads
   pool {
-    type  = "g6-highmem-1"
+    type  = "g7-highmem-1"
     count = 2
   }
 }
@@ -113,9 +113,9 @@ output "api_endpoint" {
 ## Using the Cluster in CI/CD
 
 ```bash
-# Decode and save kubeconfig from Terraform output
+# Save kubeconfig from OpenTofu output (already base64-decoded by the output)
 
-tofu output -raw kubeconfig | base64 -d > /tmp/kubeconfig.yaml
+tofu output -raw kubeconfig > /tmp/kubeconfig.yaml
 
 # Deploy to the cluster
 kubectl --kubeconfig=/tmp/kubeconfig.yaml apply -f k8s/
