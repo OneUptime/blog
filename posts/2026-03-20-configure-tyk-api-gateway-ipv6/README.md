@@ -100,15 +100,14 @@ curl -6 http://[::1]:8080/ipv6-api/health
 
 ## Step 4: Configure Health Checks over IPv6
 
-Tyk's health check endpoint is available on the control port. Set up external monitoring to probe it over IPv6.
+Tyk's `/hello` liveness endpoint is exposed on the gateway listener and does not require authentication. Set up external monitoring to probe it over IPv6.
 
 ```bash
-# Health check endpoint (returns uptime and load)
-curl -6 http://[::1]:9696/hello \
-  -H "X-Tyk-Authorization: your-api-secret"
+# Health check endpoint (returns gateway and component status)
+curl -6 http://[::1]:8080/hello
 
 # Example response
-# {"status":"pass","version":"5.3.0","description":"Tyk GW"}
+# {"status":"pass","version":"5.3.0","description":"Tyk GW","details":{"redis":{"status":"pass","componentType":"datastore","time":"..."}}}
 ```
 
 ## Step 5: Update Redis for IPv6
