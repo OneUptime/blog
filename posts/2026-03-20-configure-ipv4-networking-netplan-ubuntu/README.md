@@ -8,7 +8,7 @@ Description: Configure static and DHCP IPv4 addresses, custom routes, and DNS se
 
 ## Introduction
 
-Netplan is Ubuntu's default network configuration abstraction layer since 18.04. It reads YAML configuration files and generates the appropriate configuration for either `systemd-networkd` or `NetworkManager` as the renderer.
+Netplan is Ubuntu's default network configuration abstraction layer since 17.10. It reads YAML configuration files and generates the appropriate configuration for either `systemd-networkd` or `NetworkManager` as the renderer.
 
 ## Configuration File Location
 
@@ -81,7 +81,7 @@ network:
           via: 192.168.1.1
           metric: 100
     eth1:
-      addresses: [10.0.0.5/30]
+      addresses: [10.0.0.5/24]
       routes:
         - to: 172.16.0.0/12
           via: 10.0.0.1
