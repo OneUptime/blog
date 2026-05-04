@@ -114,7 +114,7 @@ tofu state show 'aws_instance.app[0]'  # Should error: not found
 tofu state show 'aws_instance.app["server-1"]'  # Should show the resource
 ```
 
-## Using moved Blocks (OpenTofu 1.1+)
+## Using moved Blocks
 
 For team environments, document the state moves as `moved` blocks so all team members get the migration automatically.
 
