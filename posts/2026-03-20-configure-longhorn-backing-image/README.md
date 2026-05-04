@@ -102,7 +102,7 @@ parameters:
   numberOfReplicas: "3"
   fsType: "ext4"
   # Reference the backing image to use for new volumes
-  backingImage: "ubuntu-22.04-cloud"
+  backingImageName: "ubuntu-22.04-cloud"
   # Minimum disk space needed (must be >= image size)
   backingImageDataSourceType: "download"
   backingImageDataSourceParameters: ""
@@ -173,14 +173,25 @@ kubectl get backingimages.longhorn.io ubuntu-22.04-cloud \
 
 ## Backing Image Cleanup
 
-Longhorn manages disk copies of backing images automatically, ensuring each node that needs it has a local copy. Configure the minimum number of copies:
+Longhorn manages disk copies of backing images automatically, ensuring each node that needs it has a local copy. Configure how long Longhorn waits before cleaning up an unused backing image file from a disk (in minutes):
 
 ```bash
-# Set minimum copies of backing images to maintain
+# Wait 60 minutes after a backing image is no longer used by any replica
+# on a disk before deleting the local copy
 kubectl patch settings.longhorn.io backing-image-cleanup-wait-interval \
   -n longhorn-system \
   --type merge \
   -p '{"value": "60"}'
+```
+
+To configure the default minimum number of disk copies Longhorn maintains for each backing image, use:
+
+```bash
+# Maintain at least 1 copy of each backing image across the cluster
+kubectl patch settings.longhorn.io default-min-number-of-backing-image-copies \
+  -n longhorn-system \
+  --type merge \
+  -p '{"value": "1"}'
 ```
 
 ## Deleting a Backing Image
