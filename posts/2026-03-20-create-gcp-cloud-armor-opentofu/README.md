@@ -119,7 +119,7 @@ resource "google_compute_security_policy" "with_ip_rules" {
 resource "google_compute_security_policy" "waf_policy" {
   name = "waf-managed-policy"
 
-  # Enable Cloud Armor Advanced Network DDoS Protection
+  # Enable Cloud Armor Adaptive Protection (Layer 7 DDoS defense)
   adaptive_protection_config {
     layer_7_ddos_defense_config {
       enable          = true
@@ -155,10 +155,10 @@ resource "google_compute_security_policy" "waf_policy" {
     description = "Cross-site scripting protection"
   }
 
-  # Rate limiting
+  # Rate limiting (evaluated after WAF rules so malicious requests are blocked first)
   rule {
     action   = "throttle"
-    priority = 100
+    priority = 2000
 
     match {
       versioned_expr = "SRC_IPS_V1"
