@@ -109,7 +109,7 @@ Get-NetIPInterface -AddressFamily IPv6 | Select-Object InterfaceAlias, Forwardin
 
 ```powershell
 # Create a startup script for IPv6 configuration
-# This is useful if Netplan/NetworkManager is not available
+# Run via Task Scheduler at boot or with Group Policy startup scripts
 
 $script = @'
 # IPv6 static configuration script
