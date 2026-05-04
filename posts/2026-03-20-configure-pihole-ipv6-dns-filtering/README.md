@@ -41,12 +41,15 @@ listen-address=2001:db8::1  # Your server's IPv6 address
 ## Step 2: Set IPv6 Upstream DNS
 
 ```bash
-# Via admin UI: Settings → DNS
-# Or via command line:
-pihole -a setdns 2606:4700:4700::1111,2606:4700:4700::1001
+# Via admin UI: Settings → DNS (add Cloudflare IPv6 upstreams):
+#   2606:4700:4700::1111
+#   2606:4700:4700::1001
+# After applying, the Pi-hole FTL service is reloaded automatically.
 
-# Verify
+# Verify (Pi-hole v5)
 grep "^server=" /etc/dnsmasq.d/01-pihole.conf
+# Verify (Pi-hole v6)
+grep upstreams /etc/pihole/pihole.toml
 ```
 
 ## Step 3: Configure Router/DHCPv6
@@ -82,13 +85,13 @@ systemctl restart pihole-FTL
 ```bash
 # Test that ads are blocked for IPv6 clients
 dig AAAA ads.google.com @2001:db8::1
-# Returns: 0.0.0.0 (blocked) or NXDOMAIN
+# In default NULL blocking mode, AAAA returns :: (or NXDOMAIN in NXDOMAIN mode)
 
 # Check Pi-hole query log
 pihole -t  # tail live query log
 
-# Check statistics
-pihole -c  # chronometer
+# Check statistics (use PADD for live stats; chronometer was removed)
+# https://github.com/pi-hole/PADD
 pihole status
 
 # Web admin
@@ -109,13 +112,13 @@ pihole -q doubleclick.net
 ## Whitelist/Blacklist for IPv6
 
 ```bash
-# Whitelist a domain
-pihole -w good-ipv6-service.com
+# Allow (whitelist) a domain
+pihole allow good-ipv6-service.com
 
-# Blacklist additional domain
-pihole -b tracking-domain.com
+# Deny (blacklist) an additional domain
+pihole deny tracking-domain.com
 
-# Regex blacklist
+# Regex deny
 pihole --regex ".*ads.*\.example\.com"
 ```
 
