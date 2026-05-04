@@ -101,10 +101,10 @@ kubectl get events -n <namespace> --sort-by='.lastTimestamp'
 ## Isolate a Suspicious Pod
 
 ```bash
-# Remove pod from service load balancing by patching labels
+# Remove pod from service load balancing by removing the label the service selector uses
+# (e.g., if the service selector is app=myapp, remove the app label from the pod)
 kubectl label pod <pod-name> quarantine=true --overwrite
-kubectl patch service <svc-name> -p '{"spec":{"selector":{"app":"myapp"}}}'
-# Remove the label that the service selector uses
+kubectl label pod <pod-name> app- --overwrite
 ```
 
 ---
