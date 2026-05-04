@@ -17,15 +17,15 @@ Many organizations are required by policy or regulation to display a warning or 
 
 ## Configure Login Banner via the UI
 
-### Step 1: Go to Authentication Settings
+### Step 1: Go to General Settings
 
 1. Log in as an administrator
-2. Navigate to **Settings > Authentication**
-3. Scroll to find the **Login Notice** or **Banner** section
+2. Navigate to **Settings > General**
+3. Scroll to find the **Login screen banner** section
 
 ### Step 2: Enter Your Banner Text
 
-Enter the message you want displayed on the login screen. This typically includes:
+Toggle **Login screen banner** on, then enter the message you want displayed on the login screen in the **Details** box. This typically includes:
 - Authorized access only notice
 - Legal disclaimer
 - Contact information for access requests
