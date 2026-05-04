@@ -6,7 +6,7 @@ Tags: OpenTofu, Hetzner Cloud, Block Storage, Volumes, Infrastructure as Code
 
 Description: Learn how to create Hetzner Cloud block storage volumes with OpenTofu and attach them to servers for persistent, resizable storage.
 
-Hetzner Cloud Volumes are persistent NVMe SSD block storage devices that can be attached to servers. They persist independently of server lifecycle and can be resized at any time. OpenTofu lets you create volumes, attach them to servers, and manage their lifecycle as code.
+Hetzner Cloud Volumes are persistent SSD-based block storage devices that can be attached to servers. They persist independently of server lifecycle and can be resized at any time. OpenTofu lets you create volumes, attach them to servers, and manage their lifecycle as code.
 
 ## Creating a Volume
 
@@ -124,4 +124,4 @@ resource "hcloud_volume" "critical" {
 
 ## Conclusion
 
-Hetzner Cloud Volumes provide affordable NVMe SSD block storage starting at €0.0119/GB/month. Create volumes with OpenTofu, use `automount` for automatic mounting, and protect critical volumes with `prevent_destroy`. Volumes can be detached from one server and reattached to another, making them useful for stateful workload migrations.
+Hetzner Cloud Volumes provide affordable SSD-based block storage at around €0.0572/GB/month. Create volumes with OpenTofu, use `automount` for automatic mounting, and protect critical volumes with `prevent_destroy`. Volumes can be detached from one server and reattached to another, making them useful for stateful workload migrations.
