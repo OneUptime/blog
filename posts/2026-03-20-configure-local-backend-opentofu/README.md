@@ -78,29 +78,34 @@ tofu workspace new development
 #       └── terraform.tfstate
 ```
 
-With a custom path, workspaces use a similar pattern:
+With a custom `path`, only the *default* workspace uses that path. Non-default workspace states are stored under `workspace_dir`, which defaults to `terraform.tfstate.d` relative to the current working directory regardless of `path`. To keep all workspace states alongside the default state, set `workspace_dir` explicitly:
 
 ```hcl
 terraform {
   backend "local" {
-    path = "/var/terraform/states/terraform.tfstate"
+    path          = "/var/terraform/states/terraform.tfstate"
+    workspace_dir = "/var/terraform/states/terraform.tfstate.d"
   }
 }
 
 # Workspace states:
-# /var/terraform/states/terraform.tfstate              ← default
+# /var/terraform/states/terraform.tfstate              ← default (uses `path`)
 # /var/terraform/states/terraform.tfstate.d/
 #   ├── production/terraform.tfstate
 #   └── staging/terraform.tfstate
 ```
 
+Note that for non-default workspaces, the state file is always named `terraform.tfstate` (the basename of `path` is not reused).
+
 ## Workspace-Aware Path Configuration
+
+`workspace_dir` controls where non-default workspace state files live. Set it explicitly when you want workspace states to live somewhere other than `./terraform.tfstate.d`:
 
 ```hcl
 terraform {
   backend "local" {
-    # Workspaces will create subdirectories automatically
-    path = "states/terraform.tfstate"
+    path          = "states/terraform.tfstate"
+    workspace_dir = "states/terraform.tfstate.d"
   }
 }
 ```
@@ -145,7 +150,7 @@ Use local backend for:
 
 Avoid for:
 - Team environments (no collaboration support)
-- Production infrastructure (no versioning, no locking with remote backends)
+- Production infrastructure (no versioning; file locking only protects same-machine concurrency)
 - Any setup where state needs to survive beyond the local machine
 
 ## Migrating from Local to Remote
