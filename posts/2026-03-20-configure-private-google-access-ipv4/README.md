@@ -53,12 +53,13 @@ curl -s -o /dev/null -w "%{http_code}" \
 
 ## Private Google Access DNS Resolution
 
-When Private Google Access is enabled, VMs resolve `*.googleapis.com` to the private address range `199.36.153.8/30` (restricted.googleapis.com) or `199.36.153.4/30` (private.googleapis.com).
+By default, enabling Private Google Access does not change DNS resolution: `*.googleapis.com` still resolves to its public IP addresses, but the traffic is routed over Google's internal network. If you want DNS to resolve to the private VIP ranges instead, configure Cloud DNS private zones that map `*.googleapis.com` to `private.googleapis.com` (`199.36.153.8/30`) or `restricted.googleapis.com` (`199.36.153.4/30`).
 
 ```bash
 # Verify DNS resolution from the VM
 nslookup storage.googleapis.com
-# Should return 199.36.153.x addresses
+# By default returns public Google IPs
+# With Cloud DNS mapped to private.googleapis.com, returns 199.36.153.8-11
 ```
 
 ## Creating Firewall Rules for Google API Traffic
