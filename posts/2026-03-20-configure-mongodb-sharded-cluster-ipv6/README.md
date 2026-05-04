@@ -26,6 +26,8 @@ Config Servers (CSRS)    Shard 1 (Replica Set)    mongos (Router)
 
 net:
   port: 27019
+  # Enable IPv6 support (required; mongod does not accept IPv6 by default)
+  ipv6: true
   # Bind to IPv6 address (accepts comma-separated list)
   bindIp: "2001:db8::c1,::1"
   # Or bind to all interfaces:
@@ -39,8 +41,6 @@ replication:
 
 storage:
   dbPath: /var/lib/mongodb/config
-  journal:
-    enabled: true
 
 systemLog:
   destination: file
@@ -56,7 +56,7 @@ systemLog:
 mongod --config /etc/mongod-config.conf --fork
 
 # Initialize config server replica set
-mongo --host "[2001:db8::c1]:27019" << 'EOF'
+mongosh --ipv6 --host "[2001:db8::c1]:27019" << 'EOF'
 rs.initiate({
   _id: "configReplSet",
   configsvr: true,
@@ -76,6 +76,7 @@ EOF
 
 net:
   port: 27018
+  ipv6: true
   bindIp: "2001:db8::s1,::1"
 
 sharding:
@@ -93,7 +94,7 @@ storage:
 mongod --config /etc/mongod-shard1.conf --fork
 
 # Initialize shard replica set
-mongo --host "[2001:db8::s1]:27018" << 'EOF'
+mongosh --ipv6 --host "[2001:db8::s1]:27018" << 'EOF'
 rs.initiate({
   _id: "shard1ReplSet",
   members: [
@@ -112,6 +113,7 @@ EOF
 
 net:
   port: 27017
+  ipv6: true
   bindIp: "2001:db8::r1,::1"
 
 sharding:
@@ -133,7 +135,7 @@ mongos --config /etc/mongos.conf --fork
 
 ```bash
 # Connect to mongos
-mongo --host "[2001:db8::r1]:27017"
+mongosh --ipv6 --host "[2001:db8::r1]:27017"
 
 # Add shard to cluster
 db.adminCommand({
