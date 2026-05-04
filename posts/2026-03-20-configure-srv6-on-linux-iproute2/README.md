@@ -47,10 +47,9 @@ ip -6 route add 5f00:1:1:0:e001::/128 \
   dev eth0
 
 # End.DT6 - decapsulate and IPv6 table lookup (L3VPN)
-# Create VRF first
-ip netns add vrf-customer-a 2>/dev/null || true
-ip vrf add CUSTOMER_A
-ip link set dev lo master CUSTOMER_A 2>/dev/null || true
+# Create VRF bound to table 100 first (vrftable requires a real VRF device)
+ip link add CUSTOMER_A type vrf table 100
+ip link set dev CUSTOMER_A up
 
 ip -6 route add 5f00:1:1:0:e000::/128 \
   encap seg6local action End.DT6 \
@@ -99,16 +98,13 @@ ip -6 route add 2001:db8:dest::/48 \
 
 ```bash
 # Show all seg6local routes
-ip -6 route show | grep seg6local
+ip -6 route show encap seg6local
 
 # Show all seg6 encap routes
-ip -6 route show | grep "encap seg6"
+ip -6 route show encap seg6
 
-# Check SRv6 statistics
-cat /proc/net/ipv6_route | grep "seg6"
-
-# Or use ss for connection-level view
-ss -6 -t -i | grep "seg6"
+# Resolve a destination to see which encap will be applied
+ip -6 route get 2001:db8:dest::1
 
 # Test SRv6 encapsulation with a packet
 # (Requires the destination to have seg6local End.DT6 configured)
@@ -124,9 +120,11 @@ traceroute6 2001:db8:dest::1
 # Enable HMAC for SRv6 packet authentication
 # (Kernel must be compiled with CONFIG_IPV6_SEG6_HMAC=y)
 
-# Add HMAC key
-ip sr hmac set 1 SHA256 \
-  aabbccddeeff00112233445566778899
+# Add HMAC key (passphrase is read from stdin, not from the command line)
+# Supported algorithms: sha1, sha256
+ip sr hmac set 1 sha256
+# (enter the secret passphrase at the prompt, terminated by newline;
+#  an empty passphrase removes the mapping)
 
 # Verify key
 ip sr hmac show
@@ -151,7 +149,9 @@ ip -6 addr add 5f00:1:1:0:e001::/128 dev lo
 # Endpoint: End (plain forwarding)
 ip -6 route add 5f00:1:1::1/128 encap seg6local action End dev lo
 
-# Endpoint: End.DT6 (L3VPN)
+# Endpoint: End.DT6 (L3VPN) - requires a VRF bound to the chosen table id
+ip link add CUSTOMER_A type vrf table 254
+ip link set dev CUSTOMER_A up
 ip -6 route add 5f00:1:1:0:e000::/128 \
   encap seg6local action End.DT6 vrftable 254 dev lo
 
