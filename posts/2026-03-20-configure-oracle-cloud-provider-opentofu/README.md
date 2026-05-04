@@ -15,10 +15,9 @@ The Oracle Cloud provider for OpenTofu enables managing Oracle Cloud resources w
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    oci = {
+      source  = "oracle/oci"
+      version = "~> 6.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,30 +26,38 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The OCI provider authenticates with an API signing key pair. Generate the key pair and upload the public key in the OCI Console under **Profile -> User Settings -> API Keys**, then collect your tenancy OCID, user OCID, and key fingerprint.
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+# Set OCI credentials via TF_VAR_* environment variables
+export TF_VAR_tenancy_ocid="ocid1.tenancy.oc1..exampleuniqueID"
+export TF_VAR_user_ocid="ocid1.user.oc1..exampleuniqueID"
+export TF_VAR_fingerprint="aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+export TF_VAR_private_key_path="~/.oci/oci_api_key.pem"
+export TF_VAR_region="us-ashburn-1"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "oci" {
+  tenancy_ocid     = var.tenancy_ocid
+  user_ocid        = var.user_ocid
+  fingerprint      = var.fingerprint
+  private_key_path = var.private_key_path
+  region           = var.region
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+# Create a Virtual Cloud Network (VCN) in a compartment
+resource "oci_core_vcn" "main" {
+  compartment_id = var.compartment_ocid
+  cidr_blocks    = ["10.0.0.0/16"]
+  display_name   = "${var.name}-${var.environment}-vcn"
+  dns_label      = var.environment
 
-  tags = {
+  freeform_tags = {
     environment = var.environment
     managed_by  = "opentofu"
   }
@@ -60,14 +67,20 @@ resource "provider_example_resource" "main" {
 ## Variables
 
 ```hcl
-variable "name"        { type = string }
-variable "environment" { type = string }
+variable "name"             { type = string }
+variable "environment"      { type = string }
+variable "tenancy_ocid"     { type = string }
+variable "user_ocid"        { type = string }
+variable "fingerprint"      { type = string }
+variable "private_key_path" { type = string }
+variable "region"           { type = string }
+variable "compartment_ocid" { type = string }
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "vcn_id" { value = oci_core_vcn.main.id }
 ```
 
 ## Best Practices
