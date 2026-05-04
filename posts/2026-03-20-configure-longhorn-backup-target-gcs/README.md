@@ -8,7 +8,7 @@ Description: Configure Longhorn to use Google Cloud Storage (GCS) as a backup ta
 
 ## Introduction
 
-Google Cloud Storage (GCS) is Google's object storage service, providing high durability, scalability, and integration with the Google Cloud ecosystem. GCS is the natural choice for Longhorn backups on GKE clusters or in environments already using Google Cloud Platform. This guide covers the complete configuration process.
+Google Cloud Storage (GCS) is Google's object storage service, providing high durability, scalability, and integration with the Google Cloud ecosystem. GCS is the natural choice for Longhorn backups on GKE clusters or in environments already using Google Cloud Platform. Longhorn does not support a native `gs://` backup target scheme; instead, GCS is used through its S3 interoperability mode with HMAC keys, and Longhorn talks to it as an S3-compatible endpoint. This guide covers the complete configuration process.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ Google Cloud Storage (GCS) is Google's object storage service, providing high du
 # Set your project and bucket configuration
 
 PROJECT_ID="your-gcp-project-id"
-BUCKET_NAME="longhorn-backups-$(echo $PROJECT_ID | tr -d -)"
+BUCKET_NAME="longhorn-backups-$(echo $PROJECT_ID | tr -d '-')"
 REGION="us-central1"
 
 # Create the GCS bucket
@@ -35,8 +35,8 @@ gsutil mb -p $PROJECT_ID \
 # Enable uniform bucket-level access (recommended)
 gsutil uniformbucketlevelaccess set on gs://$BUCKET_NAME
 
-# Block public access
-gsutil policyonly set gs://$BUCKET_NAME
+# Enforce public access prevention
+gsutil pap set enforced gs://$BUCKET_NAME
 
 echo "Bucket created: gs://$BUCKET_NAME"
 ```
@@ -57,29 +57,38 @@ echo "Service account: $SA_EMAIL"
 gsutil iam ch serviceAccount:${SA_EMAIL}:roles/storage.objectAdmin gs://$BUCKET_NAME
 ```
 
-## Step 3: Create and Download Service Account Key
+## Step 3: Create HMAC Keys for the Service Account
+
+Longhorn talks to GCS through its S3-compatible interoperability API, which is authenticated with HMAC keys (an access key ID and a secret) rather than service account JSON keys.
 
 ```bash
-# Create a JSON key file for the service account
-gcloud iam service-accounts keys create longhorn-backup-key.json \
-  --iam-account=$SA_EMAIL \
-  --project=$PROJECT_ID
+# Create an HMAC key tied to the service account
+gcloud storage hmac create $SA_EMAIL --project=$PROJECT_ID
 
-echo "Key saved to longhorn-backup-key.json"
+# The output contains accessId and secret. Capture them, e.g.:
+#   accessId: GOOG1E...
+#   secret:   abc123...
+# Export them for the next step:
+export GCS_ACCESS_KEY="GOOG1E..."
+export GCS_SECRET_KEY="abc123..."
 ```
 
-> **Security Note:** Keep the key file secure. Delete it after creating the Kubernetes secret.
+> **Security Note:** Treat the HMAC secret like any long-lived credential. Store it only in the Kubernetes secret created below and rotate it periodically with `gcloud storage hmac update` / `gcloud storage hmac delete`.
 
 ## Step 4: Create Kubernetes Secret
 
-Longhorn uses S3-compatible credentials for GCS access via the `GOOGLE_APPLICATION_CREDENTIALS` environment variable or by treating GCS as S3-compatible:
+Longhorn reads S3-style credentials from a Kubernetes secret. For GCS, point the `AWS_ENDPOINTS` field at `https://storage.googleapis.com` and use the HMAC access ID and secret as the AWS-style credentials:
 
 ```bash
-# Method 1: Using service account JSON key
+# Create the secret directly from the HMAC values
 kubectl create secret generic longhorn-backup-gcs \
   -n longhorn-system \
-  --from-file=GOOGLE_APPLICATION_CREDENTIALS=longhorn-backup-key.json
+  --from-literal=AWS_ACCESS_KEY_ID="$GCS_ACCESS_KEY" \
+  --from-literal=AWS_SECRET_ACCESS_KEY="$GCS_SECRET_KEY" \
+  --from-literal=AWS_ENDPOINTS="https://storage.googleapis.com"
 ```
+
+Or declaratively (values must be base64-encoded for `data`, or use `stringData` as below):
 
 ```yaml
 # longhorn-gcs-secret.yaml - GCS credentials for Longhorn
@@ -90,38 +99,28 @@ metadata:
   namespace: longhorn-system
 type: Opaque
 stringData:
-  # The entire service account JSON key content
-  GOOGLE_APPLICATION_CREDENTIALS: |
-    {
-      "type": "service_account",
-      "project_id": "your-project-id",
-      "private_key_id": "key-id",
-      "private_key": "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----\n",
-      "client_email": "longhorn-backup-sa@your-project.iam.gserviceaccount.com",
-      "client_id": "123456789",
-      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-      "token_uri": "https://oauth2.googleapis.com/token"
-    }
+  AWS_ACCESS_KEY_ID: "GOOG1E..."
+  AWS_SECRET_ACCESS_KEY: "abc123..."
+  AWS_ENDPOINTS: "https://storage.googleapis.com"
 ```
 
 ```bash
 kubectl apply -f longhorn-gcs-secret.yaml
-
-# Delete the local key file after creating the secret
-rm longhorn-backup-key.json
 ```
 
 ## Step 5: Configure Longhorn Backup Target
 
+Longhorn uses the `s3://` scheme even for GCS, with the bucket name and the bucket's location encoded as `s3://BUCKET_NAME@REGION/`. The endpoint override in the secret is what redirects S3 calls to GCS.
+
 ### Via kubectl
 
 ```bash
-# Set GCS as the backup target
-# Format: gs://bucket-name/optional-prefix
+# Set GCS (via S3 interop) as the backup target
+# Format: s3://bucket-name@region/optional-prefix
 kubectl patch settings.longhorn.io backup-target \
   -n longhorn-system \
   --type merge \
-  -p "{\"value\": \"gs://${BUCKET_NAME}/\"}"
+  -p "{\"value\": \"s3://${BUCKET_NAME}@${REGION}/\"}"
 
 # Set the credentials secret
 kubectl patch settings.longhorn.io backup-target-credential-secret \
@@ -134,27 +133,12 @@ kubectl patch settings.longhorn.io backup-target-credential-secret \
 
 1. Navigate to **Setting** → **General**
 2. Find **Backup Target**
-3. Enter: `gs://your-bucket-name/`
+3. Enter: `s3://your-bucket-name@us-central1/`
 4. Find **Backup Target Credential Secret**
 5. Enter: `longhorn-backup-gcs`
 6. Click **Save**
 
-## Using Workload Identity on GKE
-
-For GKE clusters with Workload Identity enabled, you can avoid managing service account keys:
-
-```bash
-# Bind the Kubernetes service account to the GCP service account
-gcloud iam service-accounts add-iam-policy-binding \
-  "longhorn-backup-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
-  --role roles/iam.workloadIdentityUser \
-  --member "serviceAccount:${PROJECT_ID}.svc.id.goog[longhorn-system/longhorn-service-account]"
-
-# Annotate the Kubernetes service account
-kubectl annotate serviceaccount longhorn-service-account \
-  -n longhorn-system \
-  iam.gke.io/gcp-service-account="longhorn-backup-sa@${PROJECT_ID}.iam.gserviceaccount.com"
-```
+> **Note on Workload Identity:** Longhorn's backup target reads static credentials from the referenced Kubernetes secret and does not exchange GKE Workload Identity tokens for backup access. HMAC keys stored in a secret remain the supported path; rotate them on a schedule and store the secret only in the `longhorn-system` namespace.
 
 ## Verify the Connection
 
@@ -231,4 +215,4 @@ kubectl apply -f recurring-gcs-backup.yaml
 
 ## Conclusion
 
-Google Cloud Storage provides an excellent backup target for Longhorn, especially in GCP-based Kubernetes environments. The combination of Workload Identity federation for authentication, GCS lifecycle policies for cost management, and Longhorn's recurring backup system creates a robust, automated backup solution. Always verify your backup restoration process periodically to ensure your backup data is valid and accessible.
+Google Cloud Storage provides an excellent backup target for Longhorn, especially in GCP-based Kubernetes environments. The combination of GCS S3 interoperability with rotated HMAC keys, GCS lifecycle policies for cost management, and Longhorn's recurring backup system creates a robust, automated backup solution. Always verify your backup restoration process periodically to ensure your backup data is valid and accessible.
