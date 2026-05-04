@@ -43,7 +43,7 @@ restrict 127.0.0.1
 restrict ::1
 
 # Allow your IPv6 client subnet
-restrict 2001:db8::/32 nomodify notrap nopeer
+restrict 2001:db8:: mask ffff:ffff:: nomodify notrap nopeer
 
 # Allow a specific IPv6 host
 restrict 2001:db8::100 nomodify notrap
@@ -117,7 +117,7 @@ sudo ip6tables -A INPUT -p udp --dport 123 -j ACCEPT
 sudo ip6tables -A INPUT -p udp -s 2001:db8::/32 --dport 123 -j ACCEPT
 
 # Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 
 # Using firewalld
 sudo firewall-cmd --zone=public --add-service=ntp --permanent
@@ -167,7 +167,7 @@ NTP_SERVER="2001:db8::1"
 response=$(ntpdate -q $NTP_SERVER 2>&1)
 if echo "$response" | grep -q "offset"; then
   offset=$(echo "$response" | grep -oP 'offset \K[\d.-]+')
-  echo "NTP server $NTP_SERVER - Offset: ${offset}ms"
+  echo "NTP server $NTP_SERVER - Offset: ${offset}s"
 else
   echo "ERROR: NTP server $NTP_SERVER not responding"
 fi
