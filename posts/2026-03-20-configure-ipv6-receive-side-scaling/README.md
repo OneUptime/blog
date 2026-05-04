@@ -80,12 +80,12 @@ for queue in /sys/class/net/eth0/queues/rx-*; do
     echo "Set RPS on $queue"
 done
 
-# Set RPS flow table size (entries per CPU)
+# Set per-queue RFS flow table size (entries per receive queue)
 for queue in /sys/class/net/eth0/queues/rx-*; do
     echo 4096 > "$queue/rps_flow_cnt"
 done
 
-# Set global RPS flow table size
+# Set global RFS flow table size
 echo 32768 > /proc/sys/net/core/rps_sock_flow_entries
 ```
 
