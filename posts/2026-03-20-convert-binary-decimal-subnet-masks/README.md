@@ -22,11 +22,11 @@ For the octet value **224**:
 224 ≥ 128? Yes → 1, remainder 96
  96 ≥  64? Yes → 1, remainder 32
  32 ≥  32? Yes → 1, remainder  0
-  0 <  16? No  → 0
-  0 <   8? No  → 0
-  0 <   4? No  → 0
-  0 <   2? No  → 0
-  0 <   1? No  → 0
+  0 ≥  16? No  → 0
+  0 ≥   8? No  → 0
+  0 ≥   4? No  → 0
+  0 ≥   2? No  → 0
+  0 ≥   1? No  → 0
 = 11100000
 ```
 
@@ -73,7 +73,7 @@ def is_valid_mask(mask: str) -> bool:
     """Return True if the mask has contiguous leading 1s."""
     packed = socket.inet_aton(mask)
     mask_int = struct.unpack("!I", packed)[0]
-    b = bin(mask_int)[2:]  # binary string without '0b'
+    b = bin(mask_int)[2:].zfill(32)  # 32-bit binary string without '0b'
     # Find the first '0' and check no '1' follows it
     found_zero = False
     for bit in b:
