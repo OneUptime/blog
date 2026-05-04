@@ -91,23 +91,25 @@ resource "aws_budgets_budget" "rds_budget" {
 }
 ```
 
-## Budget with Automatic Action (Stop EC2 instances)
+## Budget with Automatic Action (Apply restrictive IAM policy)
 
 ```hcl
 resource "aws_budgets_budget_action" "stop_nonprod" {
   budget_name        = aws_budgets_budget.monthly_total.name
-  action_type        = "STOP_EC2_INSTANCES"
+  action_type        = "APPLY_IAM_POLICY"
   approval_model     = "AUTOMATIC"  # or MANUAL
+  notification_type  = "ACTUAL"
+  execution_role_arn = aws_iam_role.budget_action.arn
 
   action_threshold {
     action_threshold_type  = "ABSOLUTE_VALUE"
-    action_threshold_value = 12000  # USD - stop instances when spend reaches $12k
+    action_threshold_value = 12000  # USD - apply policy when spend reaches $12k
   }
 
   definition {
     iam_action_definition {
       policy_arn = aws_iam_policy.stop_instances.arn
-      roles      = [aws_iam_role.budget_action.arn]
+      roles      = [aws_iam_role.budget_action.name]
     }
   }
 
