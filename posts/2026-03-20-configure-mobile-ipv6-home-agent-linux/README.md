@@ -28,7 +28,7 @@ sudo apt-get install umip
 git clone https://github.com/openairinterface/umip.git
 cd umip
 ./autogen.sh
-./configure --enable-ha
+./configure --enable-ha --enable-vt
 make
 sudo make install
 ```
@@ -59,64 +59,70 @@ sudo sysctl -p /etc/sysctl.d/99-mipv6.conf
 # Role: Home Agent
 NodeConfig HA;
 
+# Debug level (0-10)
+DebugLevel 3;
+
 # HA interface - must be on the home network
-Interface "eth0" {
-    # HA address on the home link
-    HaRestartAfterReboot enabled;
-}
+Interface "eth0";
 
 # Home network prefix served by this HA
 # All MNs with HoAs in this prefix register here
-HomeAgentAddress 2001:db8:home::1;
-HomeAgentPreference 10;  # Higher = preferred HA
-HomeAgentLifetime 300;   # Seconds advertised to MNs
+HaServedPrefix 2001:db8:1::/64;
+
+# Accept Mobile Router registrations (NEMO support)
+HaAcceptMobRtr enabled;
+
+# Send Mobile Prefix Advertisements to MNs
+SendMobPfxAdvs enabled;
+
+# Allow specific MNs to register; deny all others by default
+DefaultBindingAclPolicy deny;
+BindingAclPolicy 2001:db8:1::1234 allow;
 
 # IPsec configuration for BU authentication
 # Using manual keys (for testing - use IKEv2 in production)
 UseMnHaIPsec enabled;
 
 IPsecPolicySet {
-    HomeAgentAddress 2001:db8:home::1;
+    HomeAgentAddress 2001:db8:1::1;
+    HomeAddress 2001:db8:1::1234/64;
 
-    # Policy for MN1
-    IPsecPolicy {
-        MnAddress 2001:db8:home::100;
-        Direction out;
-        IPsecType ESP;
-        ReqID 1;
-    }
-    IPsecPolicy {
-        MnAddress 2001:db8:home::100;
-        Direction in;
-        IPsecType ESP;
-        ReqID 2;
-    }
+    # Policies for MN-HA signaling and tunneled data
+    # Syntax: IPsecPolicy <type> UseESP <reqid MN->HA> <reqid HA->MN>
+    IPsecPolicy Mh UseESP 1 2;
+    IPsecPolicy ICMP UseESP 3 4;
+    IPsecPolicy MobPfxDisc UseESP 5 6;
+    IPsecPolicy TunnelMh UseESP 7 8;
+    IPsecPolicy TunnelPayload UseESP 9 10;
 }
 ```
+
+Note: `HomeAgentPreference` and `HomeAgentLifetime` are not mip6d.conf options — they are advertised in Router Advertisements and configured in `radvd.conf` via `HomeAgentPreference` and `HomeAgentLifetime` under an `interface` block with `AdvHomeAgentFlag on;` and `AdvHomeAgentInfo on;`.
 
 ## Step 4: Configure IPsec Security Associations
 
 For testing with manual keys (use IKEv2/strongSwan in production):
 
 ```bash
-# /etc/ipsec.conf - manual SA for MN-HA authentication
+# Manual SA for MN-HA authentication (transport mode, RFC 3776)
 ip xfrm state add \
-  src 2001:db8:home::100 \
-  dst 2001:db8:home::1 \
+  src 2001:db8:1::1234 \
+  dst 2001:db8:1::1 \
   proto esp \
   spi 0x1001 \
   mode transport \
-  auth hmac\(sha256\) 0x$(openssl rand -hex 32) \
-  enc aes 0x$(openssl rand -hex 16)
+  auth 'hmac(sha256)' 0x$(openssl rand -hex 32) \
+  enc 'cbc(aes)' 0x$(openssl rand -hex 16)
 
+# Policy: protect Mobility Header (proto 135) packets
 ip xfrm policy add \
-  src 2001:db8:home::100/128 \
-  dst 2001:db8:home::1/128 \
-  proto 135 \
+  src 2001:db8:1::1234/128 \
+  dst 2001:db8:1::1/128 \
+  proto mh \
   dir in \
   tmpl \
-    src 2001:db8:home::100 \
-    dst 2001:db8:home::1 \
+    src 2001:db8:1::1234 \
+    dst 2001:db8:1::1 \
     proto esp \
     mode transport
 ```
@@ -137,38 +143,46 @@ sudo systemctl status mip6d
 
 ## Step 6: Verify Home Agent Operation
 
+UMIP exposes runtime state through a virtual terminal (compile with
+`--enable-vt`). Connect with telnet to the configured port (default 7777) to
+inspect the binding cache:
+
 ```bash
-# View active bindings (MN registrations)
-sudo mip6d -n
+# Connect to the mip6d virtual terminal
+telnet ::1 7777
 
+# At the mip6d> prompt, dump the binding cache:
+# mip6d> bc
+#
 # Expected output:
-# Home Agent Binding Cache:
-# HoA: 2001:db8:home::100
-# CoA: 2001:db8:foreign::50
-# Lifetime: 587
-# Flags: R (registered)
+# == BC entries ==
+#  hoa 2001:db8:1::1234 coa 2001:db8:2::50
+#   lifetime 587 / 600 seq 12 flags AH--
+#   local 2001:db8:1::1
 
-# Check proxy NDP entries (HA creates one per registered MN)
+# Exit with: quit
+
+# Check proxy NDP entries (HA creates one per registered MN HoA)
 ip -6 neigh show proxy dev eth0
 
-# Verify tunnel interfaces created by UMIP
-ip tunnel show | grep mip
+# Verify tunnel interfaces created by UMIP (typically ip6tnl*)
+ip -6 tunnel show
 
 # Test by pinging the MN's HoA from the home network
-ping6 -c 5 2001:db8:home::100
+ping6 -c 5 2001:db8:1::1234
 ```
 
 ## Monitoring Home Agent Health
 
 ```bash
-# Watch binding cache updates in real-time
-watch -n5 "sudo mip6d -n"
+# Watch binding cache updates in real-time via the VT
+watch -n5 'echo bc | nc -q1 ::1 7777'
 
 # Monitor UMIP logs
 journalctl -u mip6d -f
 
-# Check for expired bindings
-sudo mip6d -n | grep "Lifetime: 0"
+# Trigger a state dump to syslog with SIGUSR1
+sudo pkill -USR1 mip6d
 ```
 
 ## Conclusion
