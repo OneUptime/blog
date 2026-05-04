@@ -32,7 +32,7 @@ Groups define the security level and MIB views:
 Router(config)# snmp-server group NetOpsGroup v3 priv
 
 ! Create a read-only group
-Router(config)# snmp-server group NetOpsRO v3 priv read iso write iso
+Router(config)# snmp-server group NetOpsRO v3 priv read iso
 
 ! The 'iso' view includes the entire MIB tree
 ! You can restrict to specific OIDs with a custom view
@@ -77,8 +77,7 @@ Password requirements: minimum 8 characters for auth, minimum 8 for priv.
 Router(config)# snmp-server host 192.168.1.100 version 3 priv nmsuser
 
 ! Enable trap types
-Router(config)# snmp-server enable traps linkdown
-Router(config)# snmp-server enable traps linkup
+Router(config)# snmp-server enable traps snmp linkdown linkup
 Router(config)# snmp-server enable traps bgp
 ```
 
