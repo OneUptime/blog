@@ -37,9 +37,9 @@ tofu workspace new production
 
 # Verify all workspaces exist
 tofu workspace list
-# * development
 #   default
-#   production
+#   development
+# * production
 #   staging
 ```
 
