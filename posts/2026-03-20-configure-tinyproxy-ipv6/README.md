@@ -23,13 +23,13 @@ apt-get install -y tinyproxy
 
 # Listen on all IPv6 interfaces
 
-BindIPv6 ::
+Listen ::
 
 # Port
 Port 8888
 
-# Or bind to specific IPv6 address
-# BindIPv6 2001:db8::proxy
+# Or listen on a specific IPv6 address
+# Listen 2001:db8::1
 
 # User and group
 User tinyproxy
@@ -69,14 +69,14 @@ Allow fe80::/10
 ```nginx
 # /etc/tinyproxy/tinyproxy.conf
 
-# Upstream HTTP proxy over IPv6
-Upstream http 2001:db8::squid:3128
+# Upstream HTTP proxy over IPv6 (IPv6 hosts must be in brackets)
+Upstream http [2001:db8::1]:3128
 
 # Upstream for specific domains
-Upstream http 2001:db8::corporate-proxy:8080 ".internal.example.com"
+Upstream http [2001:db8::2]:8080 ".internal.example.com"
 
-# No upstream for local addresses
-# Upstream none 192.168.0.0/16
+# No upstream for a specific domain
+# Upstream none ".example.com"
 ```
 
 ## Step 4: Anonymous Headers
@@ -104,7 +104,7 @@ ss -lntp | grep :8888
 
 # Test with IPv6 client
 curl -6 -x http://[::1]:8888 http://example.com/
-curl -6 -x http://[2001:db8::proxy]:8888 https://ipv6.google.com/
+curl -6 -x http://[2001:db8::1]:8888 https://ipv6.google.com/
 
 # Check logs
 tail -f /var/log/tinyproxy/tinyproxy.log
@@ -112,4 +112,4 @@ tail -f /var/log/tinyproxy/tinyproxy.log
 
 ## Conclusion
 
-tinyproxy supports IPv6 via `BindIPv6` in the configuration file. The `Allow` directive accepts IPv6 CIDR notation for access control. It is ideal for containers and resource-constrained environments where Squid is too heavy. Monitor tinyproxy with OneUptime's HTTP connectivity checks.
+tinyproxy supports IPv6 via the `Listen` directive in the configuration file. The `Allow` directive accepts IPv6 CIDR notation for access control, and IPv6 hosts in `Upstream` must be enclosed in square brackets. It is ideal for containers and resource-constrained environments where Squid is too heavy. Monitor tinyproxy with OneUptime's HTTP connectivity checks.
