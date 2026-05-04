@@ -95,11 +95,9 @@ resource "azurerm_eventgrid_event_subscription" "to_queue" {
     event_time_to_live    = 1440  # Minutes (24 hours)
   }
 
-  dead_letter_destination {
-    storage_blob_container_endpoint {
-      storage_account_id = azurerm_storage_account.events.id
-      container_name     = "deadletter"
-    }
+  storage_blob_dead_letter_destination {
+    storage_account_id          = azurerm_storage_account.events.id
+    storage_blob_container_name = "deadletter"
   }
 }
 ```
