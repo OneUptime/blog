@@ -64,10 +64,8 @@ resource "kubernetes_config_map_v1" "coredns" {
           max_concurrent 1000
         }
 
-        # Stub zone for a specific internal domain
-        stub internal.example.com {
-          forward . 192.168.1.1
-        }
+        # Forward a specific internal domain to its resolver
+        forward internal.example.com 192.168.1.1
 
         prometheus :9153
         forward . /etc/resolv.conf {
