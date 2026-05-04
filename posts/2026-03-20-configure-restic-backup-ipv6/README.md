@@ -20,10 +20,12 @@ sudo apt install restic -y
 # RHEL/CentOS
 sudo dnf install restic -y
 
-# Or download binary directly
-wget https://github.com/restic/restic/releases/latest/download/restic_linux_amd64.bz2
-bunzip2 restic_linux_amd64.bz2
-sudo mv restic_linux_amd64 /usr/local/bin/restic
+# Or download binary directly (replace VERSION with the latest from
+# https://github.com/restic/restic/releases)
+VERSION=0.18.1
+wget "https://github.com/restic/restic/releases/download/v${VERSION}/restic_${VERSION}_linux_amd64.bz2"
+bunzip2 "restic_${VERSION}_linux_amd64.bz2"
+sudo mv "restic_${VERSION}_linux_amd64" /usr/local/bin/restic
 sudo chmod +x /usr/local/bin/restic
 
 restic version
@@ -35,16 +37,18 @@ For SFTP-based remote backup repositories:
 
 ```bash
 # Initialize repository using SFTP over IPv6
-# Use -e "ssh -6" option to force IPv6
+# Bracketed IPv6 requires URL syntax; double slash before an absolute path.
+# To force IPv6 at the SSH level, use SSH config (AddressFamily inet6) or
+# pass extra args via: -o sftp.args="-6"
 restic -r \
-  "sftp://backupuser@[2001:db8::backup]:/data/backups/myhost" \
+  "sftp://backupuser@[2001:db8::1]:22//data/backups/myhost" \
   --password-file /etc/restic/password \
   init
 
 # Alternative with SSH config alias
 # ~/.ssh/config entry:
 # Host backup-server
-#     HostName 2001:db8::backup
+#     HostName 2001:db8::1
 #     User backupuser
 #     AddressFamily inet6
 
@@ -58,10 +62,12 @@ restic -r "sftp:backup-server:/data/backups/myhost" \
 Run the restic REST server on an IPv6 host:
 
 ```bash
-# Install rest-server
-wget https://github.com/restic/rest-server/releases/latest/download/rest-server_linux_amd64.tar.gz
-tar xvf rest-server_linux_amd64.tar.gz
-sudo mv rest-server /usr/local/bin/
+# Install rest-server (replace VERSION with the latest from
+# https://github.com/restic/rest-server/releases)
+VERSION=0.14.0
+wget "https://github.com/restic/rest-server/releases/download/v${VERSION}/rest-server_${VERSION}_linux_amd64.tar.gz"
+tar xvf "rest-server_${VERSION}_linux_amd64.tar.gz"
+sudo mv "rest-server_${VERSION}_linux_amd64/rest-server" /usr/local/bin/
 
 # Run REST server listening on IPv6
 rest-server \
@@ -96,7 +102,7 @@ For MinIO or other S3-compatible storage on IPv6:
 # Set environment variables for IPv6 S3 endpoint
 export AWS_ACCESS_KEY_ID="minio_access_key"
 export AWS_SECRET_ACCESS_KEY="minio_secret_key"
-export RESTIC_REPOSITORY="s3:http://[2001:db8::storage]:9000/restic-bucket"
+export RESTIC_REPOSITORY="s3:http://[2001:db8::2]:9000/restic-bucket"
 export RESTIC_PASSWORD="backuppassword"
 
 # Initialize the repository
