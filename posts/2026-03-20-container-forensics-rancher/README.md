@@ -35,7 +35,7 @@ How to Set Up Container Forensics in Rancher addresses these challenges by addin
 kubectl get pods --all-namespaces -o json | jq -r '
   .items[] | 
   select(
-    .spec.containers[].securityContext.runAsRoot == true or
+    .spec.containers[].securityContext.runAsUser == 0 or
     .spec.containers[].securityContext.privileged == true
   ) |
   [.metadata.namespace, .metadata.name] |
