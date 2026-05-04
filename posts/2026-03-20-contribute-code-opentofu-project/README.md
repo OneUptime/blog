@@ -8,12 +8,12 @@ Description: Learn how to set up a development environment, find issues, write c
 
 ## Introduction
 
-OpenTofu is an open source Terraform fork maintained by the Linux Foundation. Contributions are welcome from the community - bug fixes, new features, documentation improvements, and test coverage. This guide walks through the contribution process from setup to merged PR.
+OpenTofu is an open source Terraform fork hosted by the Linux Foundation and governed by an independent Technical Steering Committee. Contributions are welcome from the community - bug fixes, new features, documentation improvements, and test coverage. This guide walks through the contribution process from setup to merged PR.
 
 ## Setting Up the Development Environment
 
 ```bash
-# Prerequisites: Go 1.22+, Git, Make
+# Prerequisites: Go (matching the version in go.mod, e.g. 1.26+), Git, Make
 
 # 1. Fork the repository on GitHub
 
@@ -42,12 +42,13 @@ go test ./internal/command/... -v -run TestApply
 # Run all unit tests (fast)
 go test ./...
 
-# Run acceptance tests (requires cloud credentials)
-# These test against real cloud APIs
-TF_ACC=1 go test ./internal/provider/... -v -run TestAcc -timeout 120m
+# Run acceptance tests for a backend (requires cloud credentials)
+# These test against real cloud APIs. Each backend has its own env var
+# (for example TF_S3_TEST for the S3 remote state backend).
+TF_S3_TEST=1 go test ./internal/backend/remote-state/s3/... -v -timeout 120m
 
-# Run a specific acceptance test
-TF_ACC=1 go test ./internal/provider/aws/... -run TestAccS3Bucket_basic -v
+# Run a specific backend acceptance test
+TF_S3_TEST=1 go test ./internal/backend/remote-state/s3/... -run TestBackend_basic -v
 ```
 
 ## Finding Issues to Work On
@@ -73,13 +74,13 @@ git checkout -b fix/issue-1234-describe-change
 go test ./internal/... -run TestAffected
 
 # 4. Run the linter
-make lint
+make golangci-lint
 
 # 5. Format code
 gofmt -l -w .
 
-# 6. Commit with a descriptive message
-git commit -m "fix: resolve nil pointer in tofu plan with complex for_each
+# 6. Commit with a descriptive message and a DCO sign-off (-s)
+git commit -s -m "resolve nil pointer in tofu plan with complex for_each
 
 Fixes #1234
 
@@ -91,7 +92,9 @@ check before accessing the nested attribute."
 ## Writing a Bug Fix with Test
 
 ```go
-// internal/lang/eval_test.go – add a regression test
+// internal/tofu/context_plan_test.go – add a regression test
+// The OpenTofu core engine package is named `tofu` (it was renamed
+// from `terraform` after the fork).
 func TestEvalForEachWithNullValues(t *testing.T) {
     // Test that for_each with null values doesn't panic
     config := `
@@ -128,10 +131,11 @@ git push origin fix/issue-1234-describe-change
 # Body: Describe what the problem was and how you fixed it
 # Reference: Fixes #1234
 
-# 3. Sign the Contributor License Agreement (CLA) if prompted
+# 3. Make sure each commit is signed off for the DCO (use `git commit -s`)
+#    OpenTofu uses the Developer Certificate of Origin, not a CLA.
 
 # 4. Respond to reviewer feedback
-git commit -m "address review comments: add additional test case"
+git commit -s -m "address review comments: add additional test case"
 git push
 ```
 
@@ -139,10 +143,10 @@ git push
 
 - Code follows Go conventions and passes `go vet`
 - Tests are added for the change (unit and/or acceptance)
-- `make lint` passes without errors
+- `make golangci-lint` passes without errors
 - CHANGELOG entry added if applicable
 - Documentation updated if behavior changes
-- Commit message follows conventional commits format
+- Each commit is signed off for the DCO (`git commit -s`)
 
 ## Summary
 
