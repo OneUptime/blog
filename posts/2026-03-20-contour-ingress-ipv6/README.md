@@ -34,10 +34,10 @@ contour:
 ```
 
 ```bash
-# Install Contour via Helm
+# Install Contour via Helm (official Project Contour chart)
 
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm install contour bitnami/contour \
+helm repo add projectcontour https://projectcontour.github.io/helm-charts
+helm install contour projectcontour/contour \
     -n projectcontour \
     --create-namespace \
     -f contour-values.yaml
@@ -64,15 +64,12 @@ metadata:
   name: contour
   namespace: projectcontour
 spec:
-  # Network configuration
-  network:
-    # Allow X-Forwarded-For from trusted IPv4 and IPv6 proxies
-    numTrustedHops: 1   # Skip cloud LB hop
-
   # Envoy configuration
   envoy:
     network:
-      # Envoy stats address (IPv6)
+      # Allow X-Forwarded-For from trusted IPv4 and IPv6 proxies
+      numTrustedHops: 1   # Skip cloud LB hop
+      # Envoy admin interface port
       adminPort: 9001
 ```
 
@@ -163,6 +160,8 @@ spec:
 
 ## HTTPProxy with Rate Limiting for IPv6
 
+Note: the `global` rate limit policy below requires a Rate Limit Service (RLS) extension service plus `spec.rateLimitService` configured in `ContourConfiguration` pointing at it. The `local` policy enforces per-Envoy-pod limits and needs no external service.
+
 ```yaml
 # httpproxy-rate-limit.yaml
 
@@ -199,7 +198,7 @@ spec:
 ```bash
 # Check Envoy listeners (should include IPv6)
 kubectl exec -n projectcontour deployment/envoy -- \
-    curl -s http://localhost:9001/listeners | \
+    curl -s 'http://localhost:9001/listeners?format=json' | \
     python3 -m json.tool | grep -i address
 
 # Should show entries with "::" addresses:
