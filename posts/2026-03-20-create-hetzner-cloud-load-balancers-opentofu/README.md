@@ -103,10 +103,7 @@ resource "hcloud_load_balancer_target" "web" {
 resource "hcloud_load_balancer_target" "web_label" {
   load_balancer_id = hcloud_load_balancer.web.id
   type             = "label_selector"
-
-  label_selector {
-    selector = "role=web"
-  }
+  label_selector   = "role=web"
 }
 ```
 
