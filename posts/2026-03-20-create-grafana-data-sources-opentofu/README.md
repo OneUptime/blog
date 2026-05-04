@@ -62,7 +62,7 @@ resource "grafana_data_source" "loki" {
     derivedFields = [{
       name          = "TraceID"
       matcherRegex  = "traceID=(\\w+)"
-      url           = "${grafana_data_source.tempo.uid}/$${__value.raw}"
+      url           = "$${__value.raw}"
       datasourceUid = grafana_data_source.tempo.uid
     }]
   })
@@ -114,10 +114,10 @@ resource "grafana_data_source" "cloudwatch_explicit" {
   json_data_encoded = jsonencode({
     authType      = "keys"
     defaultRegion = "us-east-1"
-    accessKey     = var.aws_access_key_id
   })
 
   secure_json_data_encoded = jsonencode({
+    accessKey = var.aws_access_key_id
     secretKey = var.aws_secret_access_key
   })
 }
