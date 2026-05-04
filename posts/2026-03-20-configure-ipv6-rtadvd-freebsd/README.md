@@ -36,15 +36,13 @@ cat > /etc/rtadvd.conf << 'EOF'
 # em1: downstream LAN interface
 em1:\
     :addrs#1:\
-    :addr="2001:db8:lan::":\
+    :addr="2001:db8:1::":\
     :prefixlen#64:\
     :pinfoflags="la":\
     :rltime#1800:\
-    :AdvDefaultLifetime#1800:\
-    :AdvReachableTime#0:\
-    :AdvRetransTimer#0:\
-    :AdvCurHopLimit#64:\
-    :AdvLinkMTU#1500:\
+    :rtime#0:\
+    :retrans#0:\
+    :chlim#64:\
     :mtu#1500:
 EOF
 ```
@@ -54,12 +52,12 @@ EOF
 ```text
 em1:                    Interface name
 :addrs#1:               Number of prefix entries
-:addr="2001:db8:lan::": Prefix to advertise (::= unspecified last 64 bits)
+:addr="2001:db8:1::":   Prefix to advertise (zero-compressed last 64 bits)
 :prefixlen#64:          Prefix length
 :pinfoflags="la":       l=on-link flag, a=autonomous (SLAAC) flag
 :rltime#1800:           Router lifetime (seconds, 0=not default router)
-:AdvDefaultLifetime#1800: Default router lifetime
-:AdvLinkMTU#1500:       MTU to advertise
+:chlim#64:              Cur Hop Limit advertised to clients
+:mtu#1500:              MTU to advertise
 ```
 
 ## Configure DNS in Router Advertisements (RDNSS)
@@ -69,14 +67,14 @@ em1:                    Interface name
 cat > /etc/rtadvd.conf << 'EOF'
 em1:\
     :addrs#1:\
-    :addr="2001:db8:lan::":\
+    :addr="2001:db8:1::":\
     :prefixlen#64:\
     :pinfoflags="la":\
     :rltime#1800:\
     :rdnss="2001:db8::1":\
-    :rdnss_lifetime#3600:\
+    :rdnssltime#3600:\
     :dnssl="example.com":\
-    :dnssl_lifetime#3600:
+    :dnsslltime#3600:
 EOF
 ```
 
@@ -86,12 +84,12 @@ EOF
 cat > /etc/rtadvd.conf << 'EOF'
 em1:\
     :addrs#2:\
-    :addr="2001:db8:lan::":\
+    :addr="2001:db8:1::":\
     :prefixlen#64:\
     :pinfoflags="la":\
-    :addr="fd00:db8:lan::":\
-    :prefixlen#64:\
-    :pinfoflags="la":\
+    :addr2="fd00:db8:1::":\
+    :prefixlen2#64:\
+    :pinfoflags2="la":\
     :rltime#1800:
 EOF
 
@@ -105,8 +103,11 @@ service rtadvd restart
 service rtadvd status
 pgrep rtadvd
 
-# Send an immediate RA (SIGUSR1)
+# Dump rtadvd internal state to /var/run/rtadvd.dump (SIGUSR1)
 kill -USR1 $(pgrep rtadvd)
+
+# Reload rtadvd.conf without restarting (SIGHUP)
+kill -HUP $(pgrep rtadvd)
 
 # Capture RAs being sent
 tcpdump -i em1 -n 'icmp6 and ip6[40] == 134'
@@ -122,17 +123,20 @@ ifconfig em0 | grep inet6
 ```bash
 # O flag: clients should get options from DHCPv6 (DNS, etc.)
 # M flag: clients should get addresses from DHCPv6 (stateful)
+# Both M and O flags are encoded as a single raflags string:
+#   raflags="o"  -> only Other-config flag (SLAAC addrs + DHCPv6 options)
+#   raflags="m"  -> only Managed flag (stateful DHCPv6 addresses)
+#   raflags="mo" -> both flags
 cat > /etc/rtadvd.conf << 'EOF'
 em1:\
     :addrs#1:\
-    :addr="2001:db8:lan::":\
+    :addr="2001:db8:1::":\
     :prefixlen#64:\
     :pinfoflags="la":\
     :rltime#1800:\
-    :mflag#0:\
-    :oflag#1:
+    :raflags="o":
 EOF
-# mflag=0, oflag=1: SLAAC addresses + DHCPv6 for DNS options
+# raflags="o": SLAAC addresses + DHCPv6 for DNS options
 ```
 
 ## Summary
