@@ -15,10 +15,9 @@ The Tls provider for OpenTofu enables managing Tls resources with the same plan/
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,33 +26,37 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
-
-```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
-```
+The TLS provider runs entirely locally and does not require any credentials, API keys, or remote endpoints. The provider block can be empty (or omitted entirely):
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
-}
+provider "tls" {}
 ```
 
 ## Example Resource
 
-```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+Generate a private key and a self-signed certificate:
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
+```hcl
+resource "tls_private_key" "main" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "tls_self_signed_cert" "main" {
+  private_key_pem = tls_private_key.main.private_key_pem
+
+  subject {
+    common_name  = "${var.name}.${var.environment}.example.com"
+    organization = "ACME, Inc"
   }
+
+  validity_period_hours = 8760
+
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
 }
 ```
 
@@ -67,12 +70,20 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "certificate_pem" {
+  value     = tls_self_signed_cert.main.cert_pem
+  sensitive = true
+}
+
+output "private_key_pem" {
+  value     = tls_private_key.main.private_key_pem
+  sensitive = true
+}
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- Treat generated private keys as secrets — they are stored in plaintext in OpenTofu state, so use a remote backend with encryption and strict access controls
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
 - Use separate provider configurations per environment using aliases or workspaces
