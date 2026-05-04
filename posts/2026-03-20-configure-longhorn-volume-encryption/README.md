@@ -58,13 +58,12 @@ stringData:
   CRYPTO_KEY_PROVIDER: "secret"
   # LUKS cipher (aes-xts-plain64 is recommended)
   CRYPTO_KEY_CIPHER: "aes-xts-plain64"
-  # Key size in bits (256 or 512)
+  # Passphrase hash algorithm
   CRYPTO_KEY_HASH: "sha256"
-  # PBKDF algorithm
-  CRYPTO_KEY_ITERATIONS: "4096"
-  CRYPTO_LUKS_CIPHER: "aes-xts-plain64"
-  CRYPTO_LUKS_KEY_SIZE: "256"
-  CRYPTO_LUKS_HASH: "sha256"
+  # Key size in bits (must be a multiple of 8; default is 256)
+  CRYPTO_KEY_SIZE: "256"
+  # PBKDF algorithm (default is argon2i)
+  CRYPTO_PBKDF: "argon2i"
 ```
 
 ```bash
