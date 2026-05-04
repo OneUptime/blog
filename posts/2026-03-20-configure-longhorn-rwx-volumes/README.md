@@ -78,7 +78,7 @@ parameters:
   numberOfReplicas: "3"
   staleReplicaTimeout: "30"
   fsType: "ext4"
-  # Enable NFS over IP (required for RWX)
+  # Optional: customize NFS mount options for the RWX share-manager
   nfsOptions: "vers=4.1,noresvport"
 ```
 
@@ -182,10 +182,10 @@ spec:
 
 ```bash
 # Check the share manager pods (one per RWX volume)
-kubectl get pods -n longhorn-system -l app=longhorn-share-manager
+kubectl get pods -n longhorn-system -l longhorn.io/component=share-manager
 
 # View share manager logs
-kubectl logs -n longhorn-system -l app=longhorn-share-manager --tail=50
+kubectl logs -n longhorn-system -l longhorn.io/component=share-manager --tail=50
 
 # Check the NFS service for an RWX volume
 kubectl get service -n longhorn-system | grep share-manager
@@ -216,8 +216,8 @@ kubectl get pods -n longhorn-system | grep share-manager
 # Describe the pod for error details
 kubectl describe pod -n longhorn-system <share-manager-pod>
 
-# Check if nfs-kernel-server (server-side) package is missing
-# The share manager needs the nfs-ganesha or kernel NFS server inside the pod
+# The share manager pod runs an NFS-Ganesha (userspace) server internally;
+# it does not require a host-side NFS server package on cluster nodes.
 ```
 
 ### NFS Mount Failing on Nodes
