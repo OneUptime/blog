@@ -42,8 +42,10 @@ server {
     ssl_certificate_key /etc/ssl/private/example.key;
 
     # Route /portainer/ to Portainer container
+    # The trailing slash on proxy_pass strips the /portainer/ prefix before
+    # forwarding, as required when Portainer is started with --base-url.
     location /portainer/ {
-        proxy_pass https://localhost:9443/portainer/;
+        proxy_pass https://localhost:9443/;
         proxy_ssl_verify off;
 
         proxy_http_version 1.1;
