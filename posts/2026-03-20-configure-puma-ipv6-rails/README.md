@@ -144,7 +144,7 @@ server {
 after "deploy:published", "puma:phased_restart"
 
 # SSH to deploy server over IPv6
-server "2001:db8::deploy",
+server "2001:db8::1",
     user: "deploy",
     roles: %w[app web db],
     ssh_options: {
