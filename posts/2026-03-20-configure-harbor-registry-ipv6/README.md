@@ -190,7 +190,7 @@ sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
 
 # Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 Harbor's flexible Nginx proxy configuration makes it straightforward to enable IPv6 access, providing a full-featured private container registry accessible over both IPv4 and IPv6 networks.
