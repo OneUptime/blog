@@ -12,7 +12,7 @@ Kerberos is the primary authentication protocol for enterprise environments. Ena
 
 ## MIT Kerberos IPv6 Support
 
-MIT Kerberos (krb5) has supported IPv6 since version 1.7. The KDC listens on all interfaces by default, including IPv6, when IPv6 is enabled on the system.
+MIT Kerberos (krb5) has supported IPv6 client-to-KDC requests since version 1.3, with kadmin and GSSRPC IPv6 support added in 1.9. The KDC listens on all interfaces by default, including IPv6, when IPv6 is enabled on the system.
 
 ## Installing Kerberos KDC
 
@@ -116,8 +116,8 @@ sudo kadmin.local -q "addprinc testuser@EXAMPLE.COM"
 # Test kinit (acquire a Kerberos ticket)
 kinit testuser@EXAMPLE.COM
 
-# Verify the ticket
-klist -v
+# Verify the ticket (show enctypes and flags)
+klist -e -f
 
 # Check which KDC was contacted
 kinit -V testuser@EXAMPLE.COM 2>&1 | grep "KDC\|TCP\|UDP"
