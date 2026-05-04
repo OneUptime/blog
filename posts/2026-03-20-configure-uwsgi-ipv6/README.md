@@ -8,7 +8,7 @@ Description: Configure uWSGI to bind to IPv6 addresses, configure dual-stack lis
 
 ## Introduction
 
-uWSGI is a feature-rich application server supporting Python WSGI, Python ASGI, and multiple protocol modes. IPv6 support requires specific socket notation and configuration to avoid common binding failures.
+uWSGI is a feature-rich application server supporting Python WSGI (along with PSGI, Rack, and other language plugins) and multiple protocol modes. IPv6 support requires specific socket notation and configuration to avoid common binding failures.
 
 ## Step 1: IPv6 Socket Configuration
 
@@ -92,7 +92,6 @@ chmod-socket = 660
 # /etc/uwsgi/emperor.ini
 [uwsgi]
 emperor = /etc/uwsgi/apps-enabled
-vassal-friendly-exception = true
 emperor-procname = uwsgi-emperor
 
 # Each vassal binds its own IPv6 port
