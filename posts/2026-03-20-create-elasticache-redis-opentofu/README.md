@@ -116,7 +116,7 @@ resource "aws_elasticache_replication_group" "cluster" {
 }
 
 resource "aws_elasticache_parameter_group" "redis7_cluster" {
-  family = "redis7.cluster.on"  # Note: cluster mode uses different family
+  family = "redis7"  # Redis 7 uses the same family for cluster mode enabled and disabled
   name   = "myapp-redis7-cluster"
 
   parameter {
