@@ -33,22 +33,20 @@ The router has:
 - `eth0`: upstream interface connected to a multicast source or ISP
 - `eth1`: downstream interface facing the LAN
 
-## Enabling IP Forwarding and Multicast Routing
+## Enabling IP Forwarding
 
 ```bash
 # Enable general IP forwarding
 echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
 
-# Enable multicast routing (required for igmpproxy)
-echo 1 | sudo tee /proc/sys/net/ipv4/conf/all/mc_forwarding
-
 # Make permanent in /etc/sysctl.d/
 sudo tee /etc/sysctl.d/99-multicast.conf << 'EOF'
 net.ipv4.ip_forward = 1
-net.ipv4.conf.all.mc_forwarding = 1
 EOF
 sudo sysctl --system
 ```
+
+The kernel `mc_forwarding` flag is enabled automatically by igmpproxy when it opens its multicast routing socket (`MRT_INIT`); it does not need to be set manually via `/proc` or `sysctl`.
 
 ## Configuring igmpproxy
 
@@ -117,12 +115,15 @@ sudo iptables -A FORWARD -s 224.0.0.0/4 -j ACCEPT
 
 ## Restricting Forwarded Groups
 
-To limit which multicast groups are proxied, add `altnet` entries scoped to specific ranges:
+To limit which multicast groups are proxied, add `whitelist` entries on the upstream interface. Only IGMP membership reports for whitelisted groups will be sent upstream:
 
 ```ini
 phyint eth0 upstream  ratelimit 0  threshold 1
-    altnet 239.0.0.0/8    # Only proxy administratively-scoped multicast
+    altnet 0.0.0.0/0
+    whitelist 239.0.0.0/8    # Only proxy administratively-scoped multicast
 ```
+
+Note that `altnet` defines additional valid *source* networks for the interface, while `whitelist` restricts the *destination* multicast groups that are accepted.
 
 ## Conclusion
 
