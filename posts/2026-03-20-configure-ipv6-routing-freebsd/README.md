@@ -19,8 +19,8 @@ netstat -rn -f inet6 | grep default
 # Show specific routes
 netstat -rn -f inet6 | grep 2001:db8
 
-# Alternative with route command
-route -6 show
+# Look up the route to a specific destination
+route -6 get 2001:4860:4860::8888
 ```
 
 ## Add and Remove Static Routes
@@ -80,8 +80,8 @@ service routing restart
 
 ```bash
 # FreeBSD supports policy routing via setfib
-# Create a routing table (FIB)
-# Configure in /etc/rc.conf:
+# Create additional routing tables (FIBs) via /boot/loader.conf
+# (loader.conf is read at boot; reboot required to apply)
 echo 'net.fibs=2' >> /boot/loader.conf   # 2 FIBs (0 and 1)
 
 # Add routes to a specific FIB
@@ -100,9 +100,14 @@ pkg install frr
 # Basic FRR OSPFv3 configuration for IPv6
 cat > /usr/local/etc/frr/ospf6d.conf << 'EOF'
 router ospf6
-  area 0.0.0.0
-    interface em0 area 0.0.0.0
-    interface em1 area 0.0.0.0
+ ospf6 router-id 1.1.1.1
+!
+interface em0
+ ipv6 ospf6 area 0.0.0.0
+!
+interface em1
+ ipv6 ospf6 area 0.0.0.0
+!
 EOF
 
 # Enable FRR services
