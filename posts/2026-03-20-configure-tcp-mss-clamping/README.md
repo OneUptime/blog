@@ -42,13 +42,12 @@ iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
 iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN \
   -j TCPMSS --clamp-mss-to-pmtu
 
-# Apply to locally-generated traffic (this host as client):
+# Apply to locally-generated traffic (this host as client and server SYN-ACKs):
 iptables -t mangle -A OUTPUT -p tcp --tcp-flags SYN,RST SYN \
   -j TCPMSS --clamp-mss-to-pmtu
 
-# Apply to incoming connections (this host as server):
-iptables -t mangle -A INPUT -p tcp --tcp-flags SYN,RST SYN \
-  -j TCPMSS --clamp-mss-to-pmtu
+# Note: --clamp-mss-to-pmtu is only valid in FORWARD, OUTPUT and POSTROUTING
+# chains. Use --set-mss <value> if you need to mangle MSS in PREROUTING/INPUT.
 ```
 
 ## Set Specific MSS Value
