@@ -13,6 +13,7 @@ Description: Learn how to configure a MongoDB replica set with IPv6 node address
 
 net:
   port: 27017
+  ipv6: true  # Required: mongod disables IPv6 support by default
   # Each node binds to its own IPv6 address + loopback
   bindIp: "::1,127.0.0.1,2001:db8::node1"  # Adjust per node
 
@@ -140,7 +141,7 @@ rs.remove("[2001:db8::node4]:27017")
 
 // Reconfigure member priority
 var cfg = rs.conf()
-cfg.members[1].priority = 0  // Set secondary as non-votable
+cfg.members[1].priority = 0  // Make secondary non-electable (still votes)
 rs.reconfig(cfg)
 ```
 
