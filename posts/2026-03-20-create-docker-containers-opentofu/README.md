@@ -79,11 +79,27 @@ resource "docker_volume" "data" {
 ```hcl
 variable "app_name"       { type = string }
 variable "image_name"     { type = string }
-variable "image_tag"      { type = string; default = "latest" }
 variable "container_name" { type = string }
-variable "container_port" { type = number; default = 8080 }
-variable "host_port"      { type = number; default = 8080 }
-variable "environment"    { type = string; default = "development" }
+
+variable "image_tag" {
+  type    = string
+  default = "latest"
+}
+
+variable "container_port" {
+  type    = number
+  default = 8080
+}
+
+variable "host_port" {
+  type    = number
+  default = 8080
+}
+
+variable "environment" {
+  type    = string
+  default = "development"
+}
 ```
 
 ## Conclusion
