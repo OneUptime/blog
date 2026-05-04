@@ -40,10 +40,13 @@ network:
       addresses:
         - 192.168.1.10/24          # IPv4 address
         - 2001:db8::10/64          # IPv6 address
-      gateway4: 192.168.1.1
 
-      # Default IPv6 gateway
-      gateway6: 2001:db8::1
+      # Default routes (gateway4/gateway6 are deprecated since Netplan 0.103 / Ubuntu 22.04)
+      routes:
+        - to: default              # IPv4 default route (0.0.0.0/0)
+          via: 192.168.1.1
+        - to: default              # IPv6 default route (::/0)
+          via: 2001:db8::1
 
       # DNS servers (both IPv4 and IPv6)
       nameservers:
