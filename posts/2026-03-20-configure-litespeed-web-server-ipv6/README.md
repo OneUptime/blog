@@ -22,7 +22,7 @@ wget -O - https://rpms.litespeedtech.com/debian/enable_lst_debian_repo.sh | bash
 sudo apt update && sudo apt install openlitespeed -y
 
 # Start LiteSpeed
-sudo systemctl enable --now lshttpd
+sudo systemctl enable --now lsws
 
 # Access WebAdmin console
 # Default: https://server-ip:7080
@@ -47,27 +47,22 @@ https://[2001:db8::1]:7080/
 
 ## Direct Configuration File Approach
 
-```xml
-<!-- /usr/local/lsws/conf/httpd_config.conf -->
+```
+# /usr/local/lsws/conf/httpd_config.conf
 
-<listener IPv6HTTPS>
+listener IPv6HTTPS {
   address                 [::]:443
   secure                  1
   keyFile                 /etc/letsencrypt/live/yourdomain.com/privkey.pem
   certFile                /etc/letsencrypt/live/yourdomain.com/fullchain.pem
   certChain               1
   ciphers                 ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256
-  enableSpdy              15  # SPDY, HTTP/2, HTTP/3 flags
-  sslProtocol             24  # TLS 1.2 + 1.3
-</listener>
+  enableSpdy              15   # SPDY, HTTP/2, HTTP/3 flags
+  sslProtocol             24   # TLS 1.2 + 1.3
 
-<!-- Map listener to virtual host -->
-<listenerVhost>
-  <vhostMap>
-    <vhost>         yourVirtualHost </vhost>
-    <domains>       yourdomain.com </domains>
-  </vhostMap>
-</listenerVhost>
+  # Map listener to virtual host (vhost name + domain list)
+  map                     yourVirtualHost yourdomain.com
+}
 ```
 
 ## Enabling HTTP/3 (QUIC) on IPv6
@@ -88,20 +83,34 @@ The Alt-Svc header is automatically added when HTTP/3 is enabled.
 
 ## Virtual Host Configuration for IPv6
 
-```xml
-<!-- /usr/local/lsws/conf/vhosts/yourdomain/vhconf.conf -->
+In `httpd_config.conf`, declare the virtual host and point it at its per-vhost config file:
 
-<virtualHost>
-  vhRoot                  /var/www/yourdomain
+```
+# /usr/local/lsws/conf/httpd_config.conf
+
+virtualHost yourVirtualHost {
+  vhRoot                  /var/www/yourdomain/
   configFile              $SERVER_ROOT/conf/vhosts/yourdomain/vhconf.conf
   allowSymbolLink         1
   enableScript            1
   restrained              0
-</virtualHost>
+}
+```
 
-<vhTemplate>
-  <!-- Virtual host accessible over IPv6 via the listener -->
-</vhTemplate>
+Then put the per-vhost directives directly (no wrapper) in `vhconf.conf`:
+
+```
+# /usr/local/lsws/conf/vhosts/yourdomain/vhconf.conf
+
+docRoot                   $VH_ROOT/public_html
+enableGzip                1
+
+index  {
+  useServer               0
+  indexFiles              index.html, index.php
+}
+
+# This vhost is accessible over IPv6 via the [::]:443 listener mapped above.
 ```
 
 ## Testing LiteSpeed over IPv6
@@ -126,11 +135,12 @@ ss -tlnp | grep lshttpd
 
 ## LiteSpeed PHP with IPv6
 
-```bash
-# LiteSpeed LSPHP listener on IPv6
+LSPHP runs as a separate `extprocessor` over a Unix domain socket — connections to the vhost over IPv6 are proxied to it locally:
+
+```
 # /usr/local/lsws/conf/httpd_config.conf
 
-<extprocessor PHPProcess>
+extprocessor lsphp {
   type                    lsapi
   address                 uds://tmp/lshttpd/lsphp.sock
   maxConns                35
@@ -138,20 +148,25 @@ ss -tlnp | grep lshttpd
   initTimeout             60
   retryTimeout            0
   persistConn             1
-</extprocessor>
+  autoStart               1
+  path                    fcgi-bin/lsphp
+}
 ```
 
 ## Monitoring LiteSpeed with IPv6
 
 ```bash
-# LiteSpeed real-time statistics (WebAdmin)
-curl -6 https://[2001:db8::1]:7080/ExtApp/PHP_LSAPI_CHILDREN
+# Real-time stats are written by the server to a status file
+cat /tmp/lshttpd/.rtreport
 
 # Check access logs for protocol info
 tail -f /usr/local/lsws/logs/access.log | grep "HTTP/[23]"
 
-# LiteSpeed server status
-curl -6 http://[::1]:7080/server-status
+# Confirm the daemon is listening on IPv6
+ss -tlnp | grep lshttpd
+
+# Real-time stats and graphs are also available via the WebAdmin GUI:
+# https://[2001:db8::1]:7080/ -> Dashboard / Real-Time Stats
 ```
 
 LiteSpeed's native HTTP/3 implementation and IPv6 listener support make it an excellent choice for high-performance web serving on modern IPv6 infrastructure, with significantly lower resource usage than Apache for the same workload.
