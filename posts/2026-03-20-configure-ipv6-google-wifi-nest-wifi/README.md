@@ -43,8 +43,8 @@ Google Wifi operates differently from traditional routers:
 - Applies prefix delegation if ISP provides it
 
 **What you cannot configure directly:**
-- IPv6 connection type (Google chooses automatically)
-- Firewall rules for IPv6 (handled by Google)
+- IPv6 connection type (Google chooses automatically; only dual-stack is supported - no IPv6-only or transition protocols like 6to4/6rd)
+- The default deny-inbound IPv6 firewall policy (Google manages this; you can only punch holes via Port Opening)
 - Static IPv6 assignments to devices
 
 ## Step 3: Verify IPv6 From a Connected Device
@@ -77,15 +77,16 @@ To change DNS in the Google Home app:
 2. Go to **Advanced Networking → DNS**
 3. Select **Custom** and enter your preferred IPv6 DNS
 
-Note: Custom DNS in Google Home only accepts IPv4 addresses in some app versions. For IPv6-only DNS, use your ISP's DNS if Google Home doesn't accept IPv6 format.
+Note: Google Home's Custom DNS supports separate primary/secondary entries for both IPv4 and IPv6. If your app version only exposes IPv4 fields, update the Google Home app to the latest version.
 
 ## Step 5: IPv6 Firewall on Google Wifi
 
-Google Wifi blocks all unsolicited inbound IPv6 connections by default - this is the firewall you can't configure directly. This behavior is intentional and appropriate for a home router.
+Google Wifi blocks all unsolicited inbound IPv6 connections by default. This behavior is intentional and appropriate for a home router.
 
 To allow inbound IPv6 connections (for home servers, gaming, etc.):
-- Use the **Port Forwarding** feature in Google Home app (this works for both IPv4 and IPv6 in newer firmware)
-- Or use the device's own firewall to allow specific traffic
+- In the Google Home app, go to **Wifi → Settings → Advanced Networking → Port management**
+- Google distinguishes **Port forwarding (IPv4)** from **Port opening (IPv6)** - select the IPv6 tab and enter the port range to open for the target device
+- Note: IPv6 doesn't use NAT, so this is a firewall pinhole rather than a NAT translation
 
 ## Nest Wifi Pro (WiFi 6E) IPv6
 
