@@ -82,20 +82,13 @@ Metric=100
 MultiPathRoute=10.0.1.1
 ```
 
-For true ECMP in systemd-networkd, define routes on each interface:
+`MultiPathRoute=` accepts an optional interface and weight as `address[@name] [weight]`, and may be repeated to add more nexthops:
 
 ```ini
-# eth0.network
 [Route]
 Destination=192.168.2.0/24
 Gateway=10.0.0.1
-```
-
-```ini
-# eth1.network
-[Route]
-Destination=192.168.2.0/24
-Gateway=10.0.1.1
+MultiPathRoute=10.0.1.1@eth1 1
 ```
 
 ## Monitor ECMP Traffic Distribution
