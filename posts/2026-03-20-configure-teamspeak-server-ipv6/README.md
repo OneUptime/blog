@@ -34,25 +34,25 @@ echo "I accept the terms of the license agreement." > /home/teamspeak/teamspeak/
 
 # Bind to all IPv6 and IPv4 interfaces
 default_voice_port=9987
-voice_ip=0.0.0.0,[::],::
+voice_ip=0.0.0.0,::
 
 # For IPv6-only binding:
-# voice_ip=[::]
+# voice_ip=::
 
 # For specific IPv6 address:
-# voice_ip=0.0.0.0,[2001:db8::1]
+# voice_ip=0.0.0.0,2001:db8::1
 
 # File transfer
 filetransfer_port=30033
-filetransfer_ip=0.0.0.0,[::]
+filetransfer_ip=0.0.0.0,::
 
 # Server query (TELNET)
 query_port=10011
-query_ip=127.0.0.1,[::1]
+query_ip=127.0.0.1,::1
 
 # Query SSH
 query_ssh_port=10022
-query_ssh_ip=127.0.0.1,[::1]
+query_ssh_ip=127.0.0.1,::1
 ```
 
 ## Starting TeamSpeak Server
@@ -110,9 +110,9 @@ sudo ip6tables -A INPUT -p tcp --dport 30033 -j ACCEPT
 
 # Server query (restrict to local/admin)
 sudo ip6tables -A INPUT -p tcp -s ::1 --dport 10011 -j ACCEPT
-sudo ip6tables -A INPUT -p tcp -s 2001:db8::admin --dport 10011 -j ACCEPT
+sudo ip6tables -A INPUT -p tcp -s 2001:db8::a --dport 10011 -j ACCEPT
 
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo ip6tables-save > /etc/iptables/rules.v6
 ```
 
 ## Verifying IPv6 Connectivity
@@ -123,20 +123,20 @@ ss -6 -ulnp | grep 9987
 ss -6 -tlnp | grep 30033
 
 # Test UDP connectivity over IPv6
-nmap -6 -sU -p 9987 2001:db8::ts3
+nmap -6 -sU -p 9987 2001:db8::1
 
 # Check logs
 tail -f /home/teamspeak/teamspeak/logs/ts3server*.log
 
 # Query server via telnet over IPv6
-telnet 2001:db8::ts3 10011
+telnet 2001:db8::1 10011
 ```
 
 ## DNS Setup for IPv6 TeamSpeak
 
 ```bash
 # Add AAAA record
-# ts3.example.com. IN AAAA 2001:db8::ts3
+# ts3.example.com. IN AAAA 2001:db8::1
 
 # Clients connect with:
 # ts3.example.com
@@ -145,4 +145,4 @@ telnet 2001:db8::ts3 10011
 # _ts3._udp.example.com. IN SRV 0 5 9987 ts3.example.com.
 ```
 
-TeamSpeak 3's native IPv6 support via the `voice_ip` configuration directive enables gaming communities to host voice servers accessible to players on IPv6 networks, with bracket notation for IPv6 address specification distinguishing it from the standard IPv4 format.
+TeamSpeak 3's native IPv6 support via the `voice_ip` configuration directive enables gaming communities to host voice servers accessible to players on IPv6 networks, with comma-separated address lists allowing simultaneous binding to both IPv4 and IPv6 interfaces.
