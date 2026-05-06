@@ -8,7 +8,7 @@ Description: Learn how to detect and block IPv6-in-IPv4 tunneling mechanisms (6t
 
 ## Overview
 
-Even on networks that have not deployed IPv6, IPv6 traffic can flow through IPv4 infrastructure via automatic tunneling mechanisms: 6to4 (protocol 41), Teredo (UDP port 3544), ISATAP, and GRE. If these are not blocked, users or attackers can create unmonitored IPv6 channels that bypass IPv4 security controls.
+Even on networks that have not deployed IPv6, IPv6 traffic can flow through IPv4 infrastructure via tunneling mechanisms such as 6to4 (protocol 41), Teredo (UDP port 3544), ISATAP, 6rd, manual 6in4, and GRE. If these are not blocked, users or attackers can create unmonitored IPv6 channels that bypass IPv4 security controls.
 
 ## Tunneling Mechanisms to Block
 
@@ -16,8 +16,8 @@ Even on networks that have not deployed IPv6, IPv6 traffic can flow through IPv4
 |-----------|-----------|------------|-----|
 | 6in4 (manual) | IP protocol 41 | Any IPv4 pair | RFC 4213 |
 | 6to4 | IP protocol 41 | 192.88.99.1 anycast relay | RFC 3056 (deprecated) |
-| Teredo | UDP port 3544 | teredo.ipv6.microsoft.com | RFC 4380 |
-| ISATAP | IP protocol 41 | Multicast group 239.0.0.x | RFC 5214 |
+| Teredo | UDP port 3544 | Teredo server (IPv4 address varies) | RFC 4380 |
+| ISATAP | IP protocol 41 | ISATAP router / `isatap.<localdomain>` | RFC 5214 |
 | 6rd | IP protocol 41 | ISP-specific relay | RFC 5969 |
 | GRE | IP protocol 47 | Any IPv4 pair | RFC 2784 |
 
@@ -32,7 +32,7 @@ iptables -A INPUT   -p 41 -j DROP
 iptables -A OUTPUT  -p 41 -j DROP
 iptables -A FORWARD -p 41 -j DROP
 
-# Save rules
+# Save rules (Debian/Ubuntu with iptables-persistent)
 iptables-save > /etc/iptables/rules.v4
 ```
 
@@ -56,10 +56,10 @@ iptables -A INPUT   -p udp --dport 3544 -j DROP
 iptables -A INPUT   -p udp --sport 3544 -j DROP
 iptables -A OUTPUT  -p udp --dport 3544 -j DROP
 iptables -A FORWARD -p udp --dport 3544 -j DROP
+iptables -A FORWARD -p udp --sport 3544 -j DROP
 
-# Block specific Teredo servers
-iptables -A OUTPUT -d teredo.ipv6.microsoft.com -j DROP
-# DNS-resolved - better to block by IP range or use DNS RPZ
+# If you also block specific Teredo servers, block their current IPv4 addresses.
+# iptables resolves hostnames only once when the rule is added.
 ```
 
 ## Blocking GRE (Protocol 47)
@@ -78,9 +78,9 @@ iptables -A FORWARD -p 47 -j DROP
 ```bash
 # nftables: Block all IPv6 tunnel mechanisms
 nft add table ip filter
-nft add chain ip filter input   { type filter hook input priority 0\; policy accept\; }
-nft add chain ip filter output  { type filter hook output priority 0\; policy accept\; }
-nft add chain ip filter forward { type filter hook forward priority 0\; policy accept\; }
+nft 'add chain ip filter input { type filter hook input priority 0; policy accept; }'
+nft 'add chain ip filter output { type filter hook output priority 0; policy accept; }'
+nft 'add chain ip filter forward { type filter hook forward priority 0; policy accept; }'
 
 # Block protocol 41 (6in4, 6to4, ISATAP, 6rd)
 nft add rule ip filter input   ip protocol 41 drop
@@ -88,12 +88,16 @@ nft add rule ip filter output  ip protocol 41 drop
 nft add rule ip filter forward ip protocol 41 drop
 
 # Block Teredo (UDP 3544)
-nft add rule ip filter input   ip protocol udp udp dport 3544 drop
-nft add rule ip filter output  ip protocol udp udp dport 3544 drop
+nft add rule ip filter input   udp dport 3544 drop
+nft add rule ip filter input   udp sport 3544 drop
+nft add rule ip filter output  udp dport 3544 drop
+nft add rule ip filter forward udp dport 3544 drop
+nft add rule ip filter forward udp sport 3544 drop
 
 # Block GRE (protocol 47)
 nft add rule ip filter input   ip protocol 47 drop
 nft add rule ip filter output  ip protocol 47 drop
+nft add rule ip filter forward ip protocol 47 drop
 ```
 
 ## Cisco IOS ACL
@@ -103,8 +107,10 @@ nft add rule ip filter output  ip protocol 47 drop
 ip access-list extended BLOCK-IPV6-TUNNELS
   deny  41  any any        ! 6in4, 6to4, ISATAP (protocol 41)
   deny  47  any any        ! GRE tunnels
-  deny  udp any any eq 3544 ! Teredo
+  deny  udp any any eq 3544 ! Teredo to server
+  deny  udp any eq 3544 any ! Teredo from server
   deny  ip  any 192.88.99.0 0.0.0.255   ! 6to4 relay
+  deny  ip  192.88.99.0 0.0.0.255 any   ! 6to4 relay
   permit ip any any
 
 interface GigabitEthernet0/0
@@ -158,9 +164,8 @@ tcpdump -i eth0 'ip[9] == 41'
 # Wireshark/tshark: Find tunnel traffic
 tshark -i eth0 -Y 'ip.proto == 41' -T fields -e ip.src -e ip.dst
 
-# Check if 6to4 anycast is reachable (shouldn't be if blocked)
-ping 192.88.99.1
-# Should be blocked - if it responds, your filter is not working
+# Check for attempted 6to4 relay traffic
+tshark -i eth0 -Y 'ip.proto == 41 && ip.addr == 192.88.99.1' -T fields -e ip.src -e ip.dst
 ```
 
 ## Summary
