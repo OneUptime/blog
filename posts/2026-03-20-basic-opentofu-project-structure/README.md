@@ -36,10 +36,10 @@ my-infrastructure/
 ├── versions.tf          # required_providers and required_version
 ├── locals.tf            # Local value computations
 ├── data.tf              # Data source definitions
-├── terraform.tfvars     # Default variable values
-├── dev.tfvars           # Dev environment variables
-├── staging.tfvars       # Staging environment variables
-├── prod.tfvars          # Production environment variables
+├── terraform.tfvars     # Automatically loaded shared variable values
+├── dev.tfvars           # Dev values (pass with -var-file)
+├── staging.tfvars       # Staging values (pass with -var-file)
+├── prod.tfvars          # Prod values (pass with -var-file)
 ├── .terraform.lock.hcl  # Provider version lock (commit this!)
 ├── .gitignore
 └── README.md
@@ -192,13 +192,22 @@ output "vpc_id" {
 .terraform/
 *.tfstate
 *.tfstate.backup
+terraform.tfstate.d/
 *.tfplan
 .terraform.tfstate.lock.info
-*.auto.tfvars  # Be careful with auto.tfvars containing secrets
+# Be careful with auto-loaded tfvars files containing secrets
+*.auto.tfvars
+*.auto.tfvars.json
 override.tf
 override.tf.json
+override.tofu
+override.tofu.json
 *_override.tf
 *_override.tf.json
+.tofurc
+tofu.rc
+*_override.tofu
+*_override.tofu.json
 .terraformrc
 terraform.rc
 ```
