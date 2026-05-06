@@ -22,13 +22,13 @@ configure terminal
 
 router bgp 65001
  bgp router-id 1.1.1.1
- neighbor 2001:db8:link::2 remote-as 65002
- neighbor 2001:db8:link::2 description "eBGP Peer via global address"
+ neighbor 2001:db8:0:12::2 remote-as 65002
+ neighbor 2001:db8:0:12::2 description "eBGP Peer via global address"
 
  address-family ipv6 unicast
-  neighbor 2001:db8:link::2 activate
-  neighbor 2001:db8:link::2 soft-reconfiguration inbound
-  network 2001:db8:myprefix::/48
+  neighbor 2001:db8:0:12::2 activate
+  neighbor 2001:db8:0:12::2 soft-reconfiguration inbound
+  network 2001:db8:100::/48
  exit-address-family
 
 end
@@ -53,7 +53,6 @@ router bgp 65001
  ! iBGP peer using remote loopback
  neighbor 2001:db8::2 remote-as 65001
  neighbor 2001:db8::2 update-source lo     ! Source from local loopback
- neighbor 2001:db8::2 ebgp-multihop 2      ! Allow multi-hop if needed
 
  address-family ipv6 unicast
   neighbor 2001:db8::2 activate
@@ -70,11 +69,11 @@ write memory
 ! Configure eBGP session using IPv6 global address
 Router(config)# router bgp 65001
 Router(config-router)# bgp router-id 1.1.1.1
-Router(config-router)# neighbor 2001:db8:link::2 remote-as 65002
+Router(config-router)# neighbor 2001:db8:0:12::2 remote-as 65002
 
 Router(config-router)# address-family ipv6 unicast
-Router(config-router-af)# neighbor 2001:db8:link::2 activate
-Router(config-router-af)# network 2001:db8:myprefix::/48
+Router(config-router-af)# neighbor 2001:db8:0:12::2 activate
+Router(config-router-af)# network 2001:db8:100::/48
 Router(config-router-af)# exit-address-family
 ```
 
@@ -85,39 +84,39 @@ When the BGP peer is not directly connected, use `ebgp-multihop`:
 ```bash
 # FRRouting - multi-hop eBGP over global address
 router bgp 65001
- neighbor 2001:db8:remote::peer remote-as 65003
- neighbor 2001:db8:remote::peer ebgp-multihop 5   ! Up to 5 hops away
- neighbor 2001:db8:remote::peer update-source lo
+ neighbor 2001:db8:10::3 remote-as 65003
+ neighbor 2001:db8:10::3 ebgp-multihop 5   ! Up to 5 hops away
+ neighbor 2001:db8:10::3 update-source lo
 
  address-family ipv6 unicast
-  neighbor 2001:db8:remote::peer activate
+  neighbor 2001:db8:10::3 activate
  exit-address-family
 ```
 
 ## Next-Hop Propagation
 
-In eBGP, the next hop in the BGP UPDATE is the peer's interface address. In iBGP, the next hop is preserved from the original eBGP advertisement unless `next-hop-self` is configured:
+In eBGP, the next hop in the BGP UPDATE is typically the advertising peer's global interface address. On a shared subnet, the UPDATE may also include a link-local next hop. In iBGP, the next hop is preserved from the original eBGP advertisement unless `next-hop-self` is configured:
 
 ```bash
 # Check next-hop in BGP table
-vtysh -c "show bgp ipv6 unicast 2001:db8:remote::/48"
+vtysh -c "show bgp ipv6 unicast 2001:db8:200::/48"
 
 # Output:
-# BGP routing table entry for 2001:db8:remote::/48
+# BGP routing table entry for 2001:db8:200::/48
 #   ...
-#   Nexthop: 2001:db8:link::2          ← eBGP next hop (external interface)
+#   Nexthop: 2001:db8:0:12::2          ← Typical eBGP next hop
 ```
 
 ## Filtering Received Prefixes
 
 ```bash
 # Accept only the peer's announced space
-ipv6 prefix-list PEER_PREFIXES seq 10 permit 2001:db8:peer::/48
+ipv6 prefix-list PEER_PREFIXES seq 10 permit 2001:db8:300::/48
 ipv6 prefix-list PEER_PREFIXES seq 99 deny ::/0 le 128
 
 router bgp 65001
  address-family ipv6 unicast
-  neighbor 2001:db8:link::2 prefix-list PEER_PREFIXES in
+  neighbor 2001:db8:0:12::2 prefix-list PEER_PREFIXES in
  exit-address-family
 ```
 
