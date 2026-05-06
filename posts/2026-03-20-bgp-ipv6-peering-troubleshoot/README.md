@@ -41,9 +41,9 @@ BGP uses TCP port 179:
 
 ```bash
 # Test if the peer's BGP port is reachable
-nc -6 -z -w 5 2001:db8:peer::2 179
+nc -6 -z -w 5 2001:db8::2 179
 echo "Exit code: $?"
-# 0 = port open, non-zero = blocked
+# 0 = TCP connect succeeded, non-zero = connect failed
 
 # Check if BGP is listening locally
 ss -6 -tlnp | grep 179
@@ -53,13 +53,13 @@ ss -6 -tlnp | grep 179
 
 ```bash
 # Ping the peer address
-ping6 2001:db8:peer::2
+ping6 2001:db8::2
 
 # Trace the route
-traceroute6 2001:db8:peer::2
+traceroute6 2001:db8::2
 
 # Verify a route to the peer exists
-ip -6 route get 2001:db8:peer::2
+ip -6 route get 2001:db8::2
 ```
 
 ## Step 4: Check Firewall Rules
@@ -68,10 +68,10 @@ BGP requires port 179 to be open bidirectionally:
 
 ```bash
 # Allow BGP traffic
-sudo ip6tables -A INPUT  -p tcp --sport 179 -s 2001:db8:peer::2 -j ACCEPT
-sudo ip6tables -A INPUT  -p tcp --dport 179 -s 2001:db8:peer::2 -j ACCEPT
-sudo ip6tables -A OUTPUT -p tcp --sport 179 -d 2001:db8:peer::2 -j ACCEPT
-sudo ip6tables -A OUTPUT -p tcp --dport 179 -d 2001:db8:peer::2 -j ACCEPT
+sudo ip6tables -A INPUT  -p tcp --sport 179 -s 2001:db8::2 -j ACCEPT
+sudo ip6tables -A INPUT  -p tcp --dport 179 -s 2001:db8::2 -j ACCEPT
+sudo ip6tables -A OUTPUT -p tcp --sport 179 -d 2001:db8::2 -j ACCEPT
+sudo ip6tables -A OUTPUT -p tcp --dport 179 -d 2001:db8::2 -j ACCEPT
 
 # Check current rules
 sudo ip6tables -L -n | grep 179
@@ -83,15 +83,14 @@ If the session is Established but no IPv6 routes are exchanged:
 
 ```bash
 # FRRouting: check if IPv6 AF is activated for the neighbor
-vtysh -c "show bgp neighbors 2001:db8:peer::2"
-# Look for: "Address family IPv6 Unicast: advertised and received"
-
-# If "advertised but not received": peer doesn't support IPv6 AF
-# Check peer configuration
+vtysh -c "show bgp neighbors 2001:db8::2"
+# Confirm that IPv6 unicast is negotiated and activated for the neighbor.
+# If the session is Established but routes are still missing, check peer policy,
+# filtering, and whether the peer is actually advertising IPv6 prefixes.
 
 # If "not activated": add to config:
 # address-family ipv6 unicast
-#  neighbor 2001:db8:peer::2 activate
+#  neighbor 2001:db8::2 activate
 ```
 
 ## Step 6: Check Authentication
@@ -99,22 +98,23 @@ vtysh -c "show bgp neighbors 2001:db8:peer::2"
 If MD5 authentication is configured, both sides must have matching keys:
 
 ```bash
-# FRRouting: check if auth is configured
-vtysh -c "show bgp neighbors 2001:db8:peer::2" | grep "auth"
+# FRRouting: inspect whether TCP MD5 is configured for the neighbor
+vtysh -c "show bgp neighbors 2001:db8::2"
 
-# If one side has auth and the other doesn't, TCP will fail silently
-# Check for TCP RST packets in tcpdump:
-sudo tcpdump -i eth0 -n "tcp port 179 and tcp[13] & 4 != 0"  # RST packets
+# If the TCP MD5 keys do not match, the TCP session usually fails before the
+# BGP OPEN exchange. Per RFC 2385, connection attempts may time out rather
+# than return a clean refusal.
+sudo tcpdump -i eth0 -n "tcp port 179 and host 2001:db8::2"
 ```
 
 ## Step 7: Capture BGP OPEN Messages
 
 ```bash
 # Capture BGP session establishment
-sudo tcpdump -i eth0 -n -w /tmp/bgp.pcap "tcp port 179 and host 2001:db8:peer::2"
+sudo tcpdump -i eth0 -n -w /tmp/bgp.pcap "tcp port 179 and host 2001:db8::2"
 
 # Analyze with tshark
-tshark -r /tmp/bgp.pcap -Y bgp -V | grep -A 5 "OPEN\|NOTIFICATION"
+tshark -r /tmp/bgp.pcap -Y bgp -V | grep -E -A 5 "OPEN|NOTIFICATION"
 
 # BGP NOTIFICATION messages contain error codes explaining session drops
 ```
@@ -126,7 +126,7 @@ tshark -r /tmp/bgp.pcap -Y bgp -V | grep -A 5 "OPEN\|NOTIFICATION"
 | Stuck in Active | No route to peer, firewall blocking 179 | Add route, open port 179 |
 | Established but no routes | IPv6 AF not activated | Add `neighbor X activate` in IPv6 AF |
 | Session resets frequently | MD5 key mismatch, timer mismatch | Match keys and timers |
-| Routes received but not installed | Firewall/RPF issue, next-hop unreachable | Check `ip -6 route get <next-hop>` |
+| Routes received but not installed | Next-hop unreachable, RIB failure | Check `ip -6 route get <next-hop>` |
 | Hold timer expired | High latency or CPU overload | Increase hold timer or fix latency |
 
 ## Summary
