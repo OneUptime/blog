@@ -34,13 +34,21 @@ Router(config-if)# no shutdown
 
 ```text
 ! Static route example
-Router(config)# ipv6 route 2001:db8:remote::/48 2001:db8:wan::254
+Router(config)# ipv6 route 2001:db8:100::/48 2001:db8::254
 
 ! ACL example
-Router(config)# ipv6 access-list BLOCK-BOGONS
+Router(config)# ipv6 access-list V6-FILTER
 Router(config-ipv6-acl)# deny ipv6 ::/8 any
-Router(config-ipv6-acl)# deny ipv6 2001:db8::/32 any
+Router(config-ipv6-acl)# deny ipv6 2001:db8:bad::/48 any
 Router(config-ipv6-acl)# permit ipv6 any any
+
+! Apply ACL to interface
+Router(config)# interface GigabitEthernet0/0
+Router(config-if)# ipv6 traffic-filter V6-FILTER in
+
+! Apply ACL to VTY lines
+Router(config)# line vty 0 4
+Router(config-line)# ipv6 access-class V6-FILTER in
 
 ! DHCPv6 server pool
 Router(config)# ipv6 dhcp pool IPV6-POOL
@@ -50,7 +58,10 @@ Router(config-dhcpv6)# domain-name example.com
 
 ! Apply DHCPv6 to interface
 Router(config)# interface GigabitEthernet0/1
+Router(config-if)# ipv6 address 2001:db8:1::1/64
+Router(config-if)# ipv6 nd managed-config-flag
 Router(config-if)# ipv6 dhcp server IPV6-POOL
+Router(config-if)# no shutdown
 ```
 
 ## Verification Commands
@@ -58,6 +69,9 @@ Router(config-if)# ipv6 dhcp server IPV6-POOL
 ```text
 ! Show IPv6 addresses
 Router# show ipv6 interface brief
+
+! Show configured IPv6 ACLs
+Router# show ipv6 access-list
 
 ! Show IPv6 routing table
 Router# show ipv6 route
@@ -72,7 +86,7 @@ Router# show ipv6 dhcp binding
 Router# ping ipv6 2001:db8::1
 
 ! Traceroute over IPv6
-Router# traceroute ipv6 2001:db8::1 source GigabitEthernet0/1
+Router# traceroute ipv6 2001:db8::1
 ```
 
 ## Debug Commands
@@ -97,4 +111,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your Cisco router's IPv6 conne
 
 ## Conclusion
 
-How to Configure IPv6 ACLs on Cisco IOS follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before any interface IPv6 configuration will work. Always verify with `show ipv6` commands after making changes.
+How to Configure IPv6 ACLs on Cisco IOS follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before the router will forward IPv6 traffic. Always verify with `show ipv6` commands after making changes.
