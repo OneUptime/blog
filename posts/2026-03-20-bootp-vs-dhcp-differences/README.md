@@ -17,11 +17,11 @@ Description: BOOTP was the predecessor to DHCP, providing static IP assignment b
 |---------|-------|------|
 | RFC | 951 | 2131 |
 | Address assignment | Static (MAC-to-IP table) | Dynamic pools + reservations |
-| Lease concept | Permanent | Time-limited, renewable |
-| Option support | Limited (8 fixed fields) | Extensive (options 1-255) |
+| Lease concept | No standard lease/renewal mechanism | Time-limited, renewable |
+| Option support | Vendor extensions in 64-byte `vend` field | Extensive tagged options in `options` field |
 | Configuration update | Manual (server table) | Automatic (pool management) |
 | Protocol | UDP 67/68 | UDP 67/68 (same ports) |
-| Packet format | Compatible | Extends BOOTP header |
+| Packet format | Base BOOTP message format | Reuses BOOTP format with DHCP options |
 
 ## BOOTP Packet Format (Shared with DHCP)
 
@@ -33,7 +33,7 @@ Description: BOOTP was the predecessor to DHCP, providing static IP assignment b
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                            xid (4)                            |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|          secs (2)             |          flags (2)            |
+|          secs (2)             |      flags/unused (2)         |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                          ciaddr (4)                           |
 |                          yiaddr (4)                           |
@@ -42,31 +42,31 @@ Description: BOOTP was the predecessor to DHCP, providing static IP assignment b
 |                          chaddr (16)                          |
 |                          sname (64)                           |
 |                          file (128)                           |
-|                          options (var, 312 in DHCP)           |
+|            vend (64 in BOOTP) / options (variable in DHCP)   |
 ```
 
 ## How DHCP Extends BOOTP
 
 DHCP uses the same packet format as BOOTP but adds:
-1. **Magic cookie** (0x63825363) at the start of the options field, signaling DHCP format.
-2. **Option 53** (DHCP message type) to distinguish DHCPDISCOVER, DHCPOFFER, etc.
-3. **Option 51** (lease time) - absent in BOOTP (permanent assignments).
+1. **Magic cookie** (0x63825363) at the start of the options field, marking RFC 1048/RFC 1497-style options.
+2. **Option 53** (DHCP message type) to identify DHCPDISCOVER, DHCPOFFER, and other DHCP messages.
+3. **Option 51** (lease time) for DHCP leases - BOOTP did not define DHCP-style renewable leases.
 4. **Dynamic pools** - server can assign any available IP from a range.
 
 ## BOOTP Relay and DHCP
 
-DHCP relay agents (like `ip helper-address` on Cisco) were originally designed for BOOTP and work identically for DHCP because they share the same packet format.
+DHCP relay agents reuse the BOOTP relay model. RFC 2131 explicitly says DHCP captures BOOTP relay-agent behavior, so the same basic relay mechanism is used for both protocols.
 
 ## Is BOOTP Still Used?
 
 BOOTP itself is largely obsolete - modern systems use DHCP. However:
 - DHCP servers often support BOOTP requests for legacy compatibility.
-- The packet format remains identical, so DHCP and BOOTP traffic is captured by the same `port 67 or port 68` filter.
-- ISC dhcpd handles BOOTP requests automatically if `allow bootp` is in the subnet declaration.
+- Because BOOTP and DHCP use the same UDP ports, the same `port 67 or port 68` filter commonly captures both kinds of traffic.
+- ISC `dhcpd` can serve BOOTP clients; `allow bootp;` controls BOOTP replies, and BOOTP queries are allowed by default.
 
 ## Key Takeaways
 
-- DHCP is a superset of BOOTP sharing the same UDP ports and base packet structure.
-- BOOTP used static MAC-to-IP tables; DHCP introduced dynamic address pools with lease times.
-- The DHCP magic cookie (0x63825363) distinguishes DHCP from plain BOOTP packets.
-- Relay agents handle both BOOTP and DHCP transparently since they use the same format.
+- DHCP is built on BOOTP, sharing the same UDP ports and base message structure.
+- BOOTP typically used static MAC-to-IP tables; DHCP introduced dynamic address pools with lease times.
+- The 0x63825363 magic cookie marks the RFC 1048-style options area; DHCP packets are identified by the DHCP message type option.
+- Relay agents handle both because DHCP reuses BOOTP relay behavior.
