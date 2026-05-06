@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, GRE, IPIP, SIT, Tunnel, Comparison, Networking
 
-Description: Compare the three main Linux tunnel types - GRE, IPIP, and SIT - to choose the right encapsulation protocol based on your use case, overhead, and protocol requirements.
+Description: Compare three common Linux tunnel types - GRE, IPIP, and SIT - to choose the right encapsulation protocol based on your use case, overhead, and protocol requirements.
 
 ## Introduction
 
-Linux supports three primary IP tunneling protocols: GRE (Generic Routing Encapsulation), IPIP (IP-in-IP), and SIT (Simple Internet Transition). Each serves different purposes and has different overhead. Choosing the right one depends on what traffic you need to tunnel and what features you need.
+Linux supports several IP tunnel modes. Three common ones for IPv4-based encapsulation are GRE (Generic Routing Encapsulation), IPIP (IP-in-IP), and SIT (Simple Internet Transition). Each serves different purposes and has different overhead. Choosing the right one depends on what traffic you need to tunnel and what features you need.
 
 ## Comparison Table
 
@@ -18,9 +18,9 @@ Linux supports three primary IP tunneling protocols: GRE (Generic Routing Encaps
 | IPv4 payload | Yes | Yes | No |
 | IPv6 payload | Yes | No | Yes |
 | Multicast support | Yes | No | No |
-| Overhead | 24 bytes | 20 bytes | 20 bytes |
+| Overhead | 24-36 bytes | 20 bytes | 20 bytes |
 | Complexity | Medium | Low | Low |
-| Common use | Site-to-site VPN | Simple IP routing | IPv6-over-IPv4 |
+| Common use | Site-to-site routed tunnel | Simple IP routing | IPv6-over-IPv4 |
 
 ## When to Use GRE
 
@@ -31,8 +31,9 @@ GRE is the most versatile. Use it when you need:
 - Bridging-over-GRE (GRETAP)
 
 ```bash
-ip tunnel add gre0 mode gre local 10.0.0.1 remote 10.0.0.2 ttl 255
-ip addr add 172.16.0.1/30 dev gre0
+ip tunnel add gre1 mode gre local 10.0.0.1 remote 10.0.0.2 ttl 255
+ip addr add 172.16.0.1/30 dev gre1
+ip link set gre1 up
 ```
 
 ## When to Use IPIP
@@ -43,8 +44,9 @@ IPIP is the lightest option. Use it when you need:
 - Maximum performance (smallest header)
 
 ```bash
-ip tunnel add ipip0 mode ipip local 10.0.0.1 remote 10.0.0.2 ttl 255
-ip addr add 172.16.0.1/30 dev ipip0
+ip tunnel add ipip1 mode ipip local 10.0.0.1 remote 10.0.0.2 ttl 255
+ip addr add 172.16.0.1/30 dev ipip1
+ip link set ipip1 up
 ```
 
 ## When to Use SIT
@@ -55,8 +57,9 @@ SIT is specifically for IPv6 transition. Use it when you need:
 - IPv6-over-IPv4 encapsulation
 
 ```bash
-ip tunnel add sit0 mode sit local <public-ipv4> remote <broker-ipv4> ttl 255
-ip addr add <your-ipv6>/64 dev sit0
+ip tunnel add sit1 mode sit local <public-ipv4> remote <broker-ipv4> ttl 255
+ip addr add <your-ipv6>/64 dev sit1
+ip link set sit1 up
 ```
 
 ## Overhead Comparison
@@ -96,4 +99,4 @@ ip tunnel add <name> mode sit local <local-ipv4> remote <remote-ipv4> ttl 255
 
 ## Conclusion
 
-GRE is the most capable but has the most overhead. IPIP is the fastest for pure IPv4 tunneling but lacks multicast and IPv6 support. SIT is purpose-built for IPv6 over IPv4 transition. For most site-to-site VPN scenarios, GRE is the natural choice. For performance-sensitive IPv4-only tunnels, IPIP is better. For IPv6 connectivity in an IPv4 environment, use SIT.
+GRE is the most capable but has the most overhead. IPIP is the fastest for pure IPv4 tunneling but lacks multicast and IPv6 support. SIT is purpose-built for IPv6 over IPv4 transition. For most site-to-site routed tunnel scenarios, GRE is the natural choice. For performance-sensitive IPv4-only tunnels, IPIP is better. For IPv6 connectivity in an IPv4 environment, use SIT.
