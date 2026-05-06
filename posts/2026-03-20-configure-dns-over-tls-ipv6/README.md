@@ -46,8 +46,8 @@ kdig @2001:db8::1 AAAA google.com +tls
 # Output: ;; TLS session (TLS1.3)-(ECDHE-...)
 
 # Test with openssl
-echo -e '\x00\x1c\x00\x00\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x06google\x03com\x00\x00\x1c\x00\x01' \
-    | openssl s_client -connect [2001:db8::1]:853 -quiet 2>/dev/null | xxd | head
+printf '\x00\x1c\x00\x00\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x06google\x03com\x00\x00\x1c\x00\x01' \
+    | openssl s_client -connect [2001:db8::1]:853 -servername dns.example.com -quiet 2>/dev/null | xxd | head
 ```
 
 ## Option 2: stunnel as DoT Wrapper
@@ -60,14 +60,14 @@ accept  = [2001:db8::1]:853
 connect = [::1]:53
 cert    = /etc/ssl/certs/dns.example.com.crt
 key     = /etc/ssl/private/dns.example.com.key
-sslVersion = TLSv1.2
+sslVersionMin = TLSv1.2
 ```
 
 ```bash
 systemctl restart stunnel4
 
 # Verify
-ss -lnp | grep :853
+ss -ltnp | grep :853
 ```
 
 ## Option 3: CoreDNS with DoT
@@ -88,8 +88,8 @@ tls://.:853 {
 ```bash
 # Self-signed (for testing)
 openssl req -x509 -newkey rsa:4096 \
-    -keyout /etc/ssl/private/dns.key \
-    -out /etc/ssl/certs/dns.crt \
+    -keyout /etc/ssl/private/dns.example.com.key \
+    -out /etc/ssl/certs/dns.example.com.crt \
     -days 365 -nodes \
     -subj "/CN=dns.example.com" \
     -addext "subjectAltName=IP:2001:db8::1,DNS:dns.example.com"
@@ -97,6 +97,9 @@ openssl req -x509 -newkey rsa:4096 \
 # Let's Encrypt
 certbot certonly --standalone -d dns.example.com \
     --http-01-address 2001:db8::1
+
+# Update your server config to use
+# /etc/letsencrypt/live/dns.example.com/privkey.pem and fullchain.pem
 ```
 
 ## Configure Clients for DoT over IPv6
@@ -106,7 +109,7 @@ certbot certonly --standalone -d dns.example.com \
 # /etc/systemd/resolved.conf
 
 [Resolve]
-DNS=2001:db8::1
+DNS=2001:db8::1#dns.example.com
 DNSOverTLS=yes
 DNSSEC=yes
 
@@ -114,11 +117,12 @@ DNSSEC=yes
 systemctl restart systemd-resolved
 
 # Verify
-resolvectl status | grep "DNS over TLS"
+resolvectl status
 ```
 
 ```python
 # Python test using dns.query
+import dns.message
 import dns.query
 import ssl
 
@@ -128,18 +132,18 @@ context.check_hostname = False
 context.verify_mode = ssl.CERT_NONE  # For testing only
 
 q = dns.message.make_query("google.com", "AAAA")
-r = dns.query.tls(q, "2001:db8::1", port=853, ssl_context=context)
+r = dns.query.tls(q, "2001:db8::1", port=853, ssl_context=context,
+                  server_hostname="dns.example.com")
 print(r.answer)
 ```
 
 ## Firewall
 
 ```bash
-# Allow DoT port 853 on IPv6
+# Allow DoT port 853/TCP on IPv6
 ip6tables -A INPUT -p tcp --dport 853 -j ACCEPT
-ip6tables -A INPUT -p udp --dport 853 -j ACCEPT
 ```
 
 ## Conclusion
 
-DNS over TLS on IPv6 is straightforward with Unbound: add the IPv6 address with port 853 to `interface:` and provide TLS certificates. Clients using systemd-resolved, Android 9+, or iOS 14+ can enable DoT natively. Monitor DoT endpoint health and certificate expiry with OneUptime's TLS certificate checks.
+DNS over TLS on IPv6 is straightforward with Unbound: add the IPv6 address with port 853 to `interface:` and provide TLS certificates. Clients using systemd-resolved or Android 9+ can enable DoT natively, and Apple platforms can use encrypted DNS through DNS settings profiles or apps. Monitor DoT endpoint health and certificate expiry with OneUptime's TLS certificate checks.
