@@ -19,7 +19,7 @@ sudo python3 your_script.py
 ## Building a Basic IPv4 Packet
 
 ```python
-from scapy.all import IP, TCP, UDP, ICMP, Raw, show_bytes
+from scapy.all import IP, TCP, UDP, ICMP, Raw
 
 # Create an IPv4/TCP packet
 pkt = IP(
@@ -66,11 +66,17 @@ sendp(Ether() / IP(dst="192.168.1.1") / ICMP(), iface="eth0", verbose=False)
 from scapy.all import IP, UDP, Raw, send
 
 # Build a DNS-like query packet (simplified)
-payload = b'\x12\x34'          # Transaction ID
-payload += b'\x01\x00'          # Flags: standard query
-payload += b'\x00\x01' * 4      # QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT
+payload = b'\x12\x34'                # Transaction ID
+payload += b'\x01\x00'               # Flags: standard query with RD set
+payload += b'\x00\x01'               # QDCOUNT: one question
+payload += b'\x00\x00'               # ANCOUNT: no answers
+payload += b'\x00\x00'               # NSCOUNT: no authority records
+payload += b'\x00\x00'               # ARCOUNT: no additional records
+payload += b'\x07example\x03com\x00' # QNAME: example.com
+payload += b'\x00\x01'               # QTYPE: A
+payload += b'\x00\x01'               # QCLASS: IN
 
-pkt = IP(dst="8.8.8.8") / UDP(dport=53) / Raw(load=payload)
+pkt = IP(dst="8.8.8.8") / UDP(sport=12345, dport=53) / Raw(load=payload)
 pkt.show2()  # show2() resolves fields like checksums before display
 ```
 
@@ -81,7 +87,7 @@ from scapy.all import IP, UDP, Raw, fragment, send
 
 # Create a large datagram and fragment it to fit 800-byte MTU
 big_pkt = IP(dst="10.0.0.1") / UDP(dport=9999) / Raw(b"Z" * 3000)
-frags = fragment(big_pkt, fragsize=780)  # 780 bytes payload per fragment
+frags = fragment(big_pkt, fragsize=776)  # 776-byte fragment payloads (8-byte aligned)
 
 for frag in frags:
     print(f"ID={frag.id} offset={frag.frag*8} MF={frag.flags.MF}")
