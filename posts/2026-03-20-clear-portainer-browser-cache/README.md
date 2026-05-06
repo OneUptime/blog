@@ -31,12 +31,11 @@ This bypasses the browser cache for the current page. Try this first.
 
 ## Step 2: Clear Site Data via DevTools
 
-Open DevTools (`F12`) and go to the **Application** tab:
+Open DevTools (`F12`) in **Chrome or Edge** and go to the **Application** tab:
 
-1. Expand **Storage** in the left sidebar.
-2. Click **Clear site data** at the bottom.
-3. Check all boxes (Local Storage, Session Storage, Cache Storage, Service Workers).
-4. Click **Clear site data**.
+1. Click **Storage** in the left sidebar.
+2. Select the storage and cache data you want to remove for the Portainer origin.
+3. Click **Clear site data**.
 
 Reload the page.
 
@@ -46,16 +45,17 @@ Reload the page.
 1. Press `Ctrl+Shift+Delete`
 2. Set time range to **All time**
 3. Check **Cached images and files** and **Cookies and other site data**
-4. Click **Clear data**
+4. Confirm the deletion
 
 **Firefox:**
 1. Press `Ctrl+Shift+Delete`
-2. Select **Cache** and **Cookies**
-3. Click **Clear Now**
+2. Set **When** to **Everything**
+3. Ensure **Cookies and site data** and **Temporary cached files and pages** are checked
+4. Click **Clear**
 
 ## Step 4: Use Incognito/Private Mode
 
-Test in a fresh incognito window which has no cached data:
+Test in a fresh incognito/private window with a separate session:
 
 ```text
 Chrome:  Ctrl+Shift+N
@@ -63,28 +63,16 @@ Firefox: Ctrl+Shift+P
 Edge:    Ctrl+Shift+N
 ```
 
-If Portainer works in incognito, the issue is definitely the browser cache.
+If Portainer works in incognito, the issue is almost certainly cached browser data.
 
-## Step 5: Add Cache-Busting Headers to Portainer
+## Step 5: Check Reverse Proxy or CDN Caching
 
-For teams where browser cache is a recurring problem after updates, add cache-control headers via a reverse proxy:
+Portainer already sends cache-control headers for its UI: HTML is served with `no-cache, no-store, must-revalidate`, while non-HTML assets are served with a long `max-age`.
 
-```nginx
-location / {
-    proxy_pass http://portainer:9000;
-    # Force browsers to revalidate the main HTML page on every request
-    add_header Cache-Control "no-cache" always;
-}
-
-# But cache static assets normally (JS/CSS have content hashes in filenames)
-location ~* \.(js|css|png|woff2)$ {
-    proxy_pass http://portainer:9000;
-    add_header Cache-Control "public, max-age=31536000, immutable";
-}
-```
+If you run Portainer behind a reverse proxy or CDN, make sure it preserves Portainer's upstream `Cache-Control` headers instead of overriding them with blanket caching rules.
 
 ## Step 6: Check Service Worker Cache
 
-Portainer may register a service worker that caches assets independently:
+A service worker registered on the Portainer origin can cache assets independently:
 
 In Chrome DevTools: **Application > Service Workers** → click **Unregister** if one is listed for the Portainer origin.
