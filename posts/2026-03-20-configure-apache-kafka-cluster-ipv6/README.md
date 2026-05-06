@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kafka, IPv6, Message Broker, Streaming, Cluster, KRaft, ZooKeeper
 
-Description: Configure an Apache Kafka broker cluster to use IPv6 for listeners, inter-broker communication, and client connections in both ZooKeeper and KRaft modes.
+Description: Configure an Apache Kafka broker cluster to use IPv6 for listeners, inter-broker communication, and client connections in KRaft mode, and in ZooKeeper-based deployments on Kafka 3.x and earlier.
 
 ---
 
-Apache Kafka is the dominant distributed streaming platform. Configuring Kafka for IPv6 requires updating listener addresses in `server.properties` and ensuring ZooKeeper connections use IPv6 if applicable.
+Apache Kafka is the dominant distributed streaming platform. Configuring Kafka for IPv6 requires updating listener addresses in `server.properties`. On Kafka 3.x and earlier, ZooKeeper-based deployments also need an IPv6-capable `zookeeper.connect` setting.
 
 ## Kafka IPv6 Listener Configuration
 
@@ -20,7 +20,7 @@ Apache Kafka is the dominant distributed streaming platform. Configuring Kafka f
 broker.id=1
 
 # Listeners - what Kafka binds to
-# Use :: to listen on all interfaces (IPv4 + IPv6)
+# Use :: to listen on the IPv6 wildcard address
 listeners=PLAINTEXT://[::]:9092
 
 # For specific IPv6 address:
@@ -33,8 +33,8 @@ advertised.listeners=PLAINTEXT://[2001:db8::1]:9092
 # Inter-broker listener
 inter.broker.listener.name=PLAINTEXT
 
-# ZooKeeper connection (if not using KRaft)
-zookeeper.connect=[2001:db8::zk1]:2181,[2001:db8::zk2]:2181,[2001:db8::zk3]:2181/kafka
+# ZooKeeper connection (Kafka 3.x and earlier; use hostnames with AAAA records)
+zookeeper.connect=zk1.example.com:2181,zk2.example.com:2181,zk3.example.com:2181/kafka
 
 # Log directories
 log.dirs=/var/lib/kafka/logs
@@ -91,7 +91,7 @@ ss -tlnp | grep "9092\|9093"
 
 ## Multi-Broker Configuration
 
-For a 3-broker cluster, configure each with a different broker ID and advertised address:
+For a 3-broker ZooKeeper-based cluster, configure each with a different broker ID and advertised address:
 
 ```bash
 # Broker 2 /etc/kafka/server.properties
