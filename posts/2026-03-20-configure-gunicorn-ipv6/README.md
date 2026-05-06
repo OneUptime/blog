@@ -13,7 +13,8 @@ Gunicorn (Green Unicorn) is the most popular WSGI server for Python applications
 ## Step 1: Basic IPv6 Binding
 
 ```bash
-# Bind to all IPv6 interfaces (dual-stack on Linux)
+# Bind to all IPv6 interfaces
+# On Linux, this also accepts IPv4 if net.ipv6.bindv6only=0.
 
 gunicorn --bind "[::]:8000" app:application
 
@@ -23,10 +24,10 @@ gunicorn --bind "[::1]:8000" app:application
 # Bind to specific IPv6 address
 gunicorn --bind "[2001:db8::1]:8000" app:application
 
-# Dual-stack: bind to both IPv4 and IPv6
+# Bind both IPv4 and IPv6 loopback addresses
 gunicorn \
-    --bind "0.0.0.0:8000" \
-    --bind "[::]:8000" \
+    --bind "127.0.0.1:8000" \
+    --bind "[::1]:8000" \
     app:application
 ```
 
@@ -35,17 +36,17 @@ gunicorn \
 ```python
 # gunicorn.conf.py
 
-# IPv6 binding
+# IPv4 + IPv6 loopback binding
 bind = [
-    "[::]:8000",      # All IPv6 interfaces
-    "0.0.0.0:8000",   # All IPv4 interfaces
+    "[::1]:8000",      # IPv6 loopback
+    "127.0.0.1:8000",  # IPv4 loopback
 ]
 
 # Worker configuration
 workers = 4
-worker_class = "sync"   # or "gevent", "uvicorn.workers.UvicornWorker"
-threads = 2
-worker_connections = 1000
+worker_class = "gthread"   # or "sync", "gevent", "uvicorn_worker.UvicornWorker"
+threads = 2                # Used by gthread
+worker_connections = 1000  # Used by gthread/gevent
 
 # Timeouts
 timeout = 30
@@ -56,9 +57,9 @@ accesslog = "/var/log/gunicorn/access.log"
 errorlog  = "/var/log/gunicorn/error.log"
 loglevel  = "info"
 
-# Log client IPv6 addresses
-access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
-# %(h)s = client IP - shows the IPv6 address
+# Log client IPs behind a reverse proxy
+access_log_format = '%({x-forwarded-for}i)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
+# %{x-forwarded-for}i = client IP chain passed by the reverse proxy
 
 # Process naming
 proc_name = "myapp"
@@ -72,11 +73,10 @@ forwarded_allow_ips = "::1,127.0.0.1,2001:db8::1"
 ```python
 # gunicorn.conf.py
 
-# Trust these IPv6 addresses for X-Forwarded-For
-# (Gunicorn will use the header's IP as client address for logging)
+# Trust these proxy IPs for forwarded secure headers such as X-Forwarded-Proto
 forwarded_allow_ips = "::1,127.0.0.1"
 
-# Or trust a subnet
+# Or trust a subnet of proxy IPs
 forwarded_allow_ips = "::1,127.0.0.0/8,2001:db8::/32"
 
 # Trust all (dangerous - only in trusted networks)
@@ -115,7 +115,7 @@ systemctl status gunicorn
 
 # Verify IPv6 listening
 ss -lntp | grep :8000
-# tcp  LISTEN  0  2048  [::]:8000  [::]:*  users:(("gunicorn",...))
+# tcp  LISTEN  0  2048  [::1]:8000  [::]:*  users:(("gunicorn",...))
 ```
 
 ## Step 5: NGINX + Gunicorn IPv6
@@ -147,9 +147,9 @@ server {
 ## Step 6: Async Workers (Uvicorn) for ASGI
 
 ```bash
-# For FastAPI / Django ASGI / Starlette
+# For FastAPI / Django ASGI / Starlette (install uvicorn-worker first)
 gunicorn myapp.asgi:application \
-    --worker-class uvicorn.workers.UvicornWorker \
+    --worker-class uvicorn_worker.UvicornWorker \
     --bind "[::]:8000" \
     --workers 4
 ```
@@ -157,8 +157,7 @@ gunicorn myapp.asgi:application \
 ## Troubleshooting
 
 ```bash
-# Error: Invalid address '[::]:8000'
-# Fix: Ensure brackets are included
+# If you omit brackets around an IPv6 address, Gunicorn will not parse it correctly
 # Wrong:  --bind ":::8000"
 # Right:  --bind "[::]:8000"
 
@@ -173,4 +172,4 @@ curl -6 http://[::1]:8000/health
 
 ## Conclusion
 
-Gunicorn binds to IPv6 with bracket notation: `--bind "[::]:8000"`. Use `gunicorn.conf.py` for production configuration including `forwarded_allow_ips` for IPv6 proxy trust. Run Gunicorn behind NGINX with `proxy_pass http://[::1]:8000` for best performance. Monitor Gunicorn worker health and response times with OneUptime.
+Gunicorn binds to IPv6 with bracket notation: `--bind "[::]:8000"`. Use `gunicorn.conf.py` for production configuration including `forwarded_allow_ips` to trust IPv4 and IPv6 proxy addresses for forwarded secure headers. Run Gunicorn behind NGINX with `proxy_pass http://[::1]:8000` for best performance. Monitor Gunicorn worker health and response times with OneUptime.
