@@ -4,12 +4,12 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, etcd, Key-Value Store, Kubernetes, Distributed
 
-Description: Learn how to configure etcd to listen on IPv6 addresses for client and peer communication, including single-node and cluster configurations with IPv6 endpoints.
+Description: Learn how to configure etcd to listen on IPv6 addresses for client and peer communication, including cluster configurations and etcdctl connectivity over IPv6 endpoints.
 
 ## etcd IPv6 Configuration Flags
 
 ```bash
-# Start etcd on a specific IPv6 address
+# Start node1 in a three-node cluster on a specific IPv6 address
 
 etcd \
     --name node1 \
@@ -55,11 +55,14 @@ listen-peer-urls: "https://[2001:db8::10]:2380"
 initial-advertise-peer-urls: "https://[2001:db8::10]:2380"
 
 # TLS certificates
+# Certificates must include the IPv6 address in their SANs
 cert-file: /etc/etcd/ssl/server.crt
 key-file: /etc/etcd/ssl/server.key
+client-cert-auth: true
 trusted-ca-file: /etc/etcd/ssl/ca.crt
 peer-cert-file: /etc/etcd/ssl/peer.crt
 peer-key-file: /etc/etcd/ssl/peer.key
+peer-client-cert-auth: true
 peer-trusted-ca-file: /etc/etcd/ssl/ca.crt
 ```
 
@@ -101,4 +104,4 @@ etcdctl member list --write-out=table
 
 ## Summary
 
-Configure etcd for IPv6 with `--listen-client-urls http://[2001:db8::10]:2379` and `--advertise-client-urls http://[2001:db8::10]:2379`. For clusters, set `--initial-cluster` with all member IPv6 addresses in bracket notation. Use HTTPS URLs with TLS certificates for production. Connect with `etcdctl --endpoints=http://[2001:db8::10]:2379`. etcd is commonly used in Kubernetes clusters - dual-stack Kubernetes requires IPv6-capable etcd.
+Configure etcd for IPv6 with `--listen-client-urls http://[2001:db8::10]:2379` and `--advertise-client-urls http://[2001:db8::10]:2379`. For clusters, set `--initial-cluster` with all member IPv6 addresses in bracket notation. Use HTTPS URLs with TLS certificates and client/peer certificate authentication for production. Connect with `etcdctl --endpoints=http://[2001:db8::10]:2379`. etcd is commonly used in Kubernetes clusters; if Kubernetes components connect to etcd over IPv6, ensure the etcd URLs and TLS certificate SANs include the IPv6 addresses in use.
