@@ -8,7 +8,7 @@ Description: Learn how to configure Google Cloud Data Loss Prevention (DLP) with
 
 ## Overview
 
-Cloud DLP automatically discovers and classifies sensitive data (PII, PHI, financial data) across Cloud Storage, BigQuery, and Datastore. OpenTofu manages DLP inspect templates, de-identify templates, and job triggers for automated data scanning.
+Cloud DLP, part of Sensitive Data Protection, can inspect and classify sensitive data (PII, PHI, financial data) across Cloud Storage, BigQuery, and Datastore. OpenTofu manages DLP inspect templates, de-identify templates, and job triggers for recurring data scans.
 
 ## Step 1: Enable DLP API
 
@@ -16,6 +16,7 @@ Cloud DLP automatically discovers and classifies sensitive data (PII, PHI, finan
 # main.tf - Enable Cloud DLP API
 
 resource "google_project_service" "dlp" {
+  project = var.project_id
   service = "dlp.googleapis.com"
 }
 ```
@@ -89,7 +90,7 @@ resource "google_data_loss_prevention_deidentify_template" "deidentify" {
         }
       }
 
-      # Hash email addresses
+      # Pseudonymize email addresses with a transient crypto key
       transformations {
         info_types {
           name = "EMAIL_ADDRESS"
@@ -146,7 +147,10 @@ resource "google_data_loss_prevention_job_trigger" "gcs_scan" {
     storage_config {
       cloud_storage_options {
         file_set {
-          url = "gs://${google_storage_bucket.data_bucket.name}/**"
+          regex_file_set {
+            bucket_name   = var.bucket_name
+            include_regex = [".*"]
+          }
         }
         file_types = ["TEXT_FILE", "IMAGE", "CSV", "TSV"]
         bytes_limit_per_file = 10485760  # 10 MB per file
@@ -154,8 +158,10 @@ resource "google_data_loss_prevention_job_trigger" "gcs_scan" {
     }
 
     actions {
+      # Publish a notification when the scan job completes
       pub_sub {
-        topic = google_pubsub_topic.dlp_findings.id
+        # The Sensitive Data Protection service agent needs publish access to this topic
+        topic = "projects/${var.project_id}/topics/${var.dlp_notifications_topic}"
       }
     }
   }
@@ -164,4 +170,4 @@ resource "google_data_loss_prevention_job_trigger" "gcs_scan" {
 
 ## Summary
 
-Cloud DLP with OpenTofu automates sensitive data discovery and classification across GCP storage. Inspect templates define what to find, de-identify templates define how to protect it, and job triggers automate recurring scans. Findings published to Pub/Sub enable real-time alerting when new PII is discovered in unexpected locations.
+Cloud DLP with OpenTofu automates sensitive data inspection and classification across GCP storage. Inspect templates define what to find, de-identify templates define how to protect it, and job triggers automate recurring scans. Pub/Sub notifications on job completion can trigger downstream alerting or follow-up processing after each scheduled scan.
