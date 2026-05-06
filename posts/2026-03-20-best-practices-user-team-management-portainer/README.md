@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, RBAC, User Management, Team, Security, Access Control, Best Practice
 
-Description: Establish secure and scalable user and team management in Portainer with RBAC, SSO integration, least-privilege access policies, and user lifecycle management.
+Description: Establish secure and scalable user and team management in Portainer with RBAC, external authentication, least-privilege access policies, and user lifecycle management.
 
 ---
 
@@ -17,10 +17,10 @@ Grant users only the access they need:
 | Role | Who Gets It | What They Can Do |
 |------|-------------|-----------------|
 | Administrator | Platform engineers only | Full access everywhere |
-| Environment Admin | Team leads | Full access to their environment |
-| Helpdesk | Support staff | Read-only + logs/console |
-| Standard User | Developers | Deploy in their namespace |
-| Read-Only | Auditors, stakeholders | View only |
+| Environment Administrator | Team leads | Full access within their environment |
+| Helpdesk | Support staff | Read-only access, no console |
+| Standard User | Developers | Manage resources they or their team deploy |
+| Read-Only User | Auditors, stakeholders | View resources they are entitled to see |
 
 Never grant Administrator to regular developers.
 
@@ -30,35 +30,36 @@ Create teams that mirror your organizational structure:
 
 ```text
 Teams:
-- platform-engineers    → Environment Admin on all environments
+- platform-engineers    → Environment Administrator on all environments
 - backend-team          → Standard User on backend environments
 - frontend-team         → Standard User on frontend environments
 - ml-team               → Standard User on ML environments
-- security-auditors     → Read-Only on all environments
+- security-auditors     → Read-Only User on all environments
 ```
 
-## LDAP/SSO Integration
+## LDAP/AD Integration
 
-For organizations with Active Directory or LDAP, configure SSO to avoid manual user management:
+For organizations with Active Directory or LDAP, configure external authentication to avoid manual user management:
 
-In Portainer BE, go to **Settings > Authentication > LDAP**:
+In Portainer BE, go to **Settings > Authentication** and choose **LDAP Authentication** or **Microsoft Active Directory**:
 
 ```text
+Example LDAP configuration:
 Server: ldap.company.com:389
 Reader DN: cn=portainer-reader,ou=service-accounts,dc=company,dc=com
 Base DN: dc=company,dc=com
 Username attribute: sAMAccountName
 Group base DN: ou=groups,dc=company,dc=com
-Group membership: member
-Auto-create users: true
+Group membership attribute: member
+Automatic user provisioning: true
 
-Group mappings:
-  CN=Container-Admins  → Administrator
-  CN=Container-Devs    → Standard User
-  CN=Container-Auditors → Read-Only User
+Portainer team names should match your directory groups:
+- Container-Admins
+- Container-Devs
+- Container-Auditors
 ```
 
-With LDAP sync, users are automatically added and removed as they join/leave AD groups.
+With automatic user provisioning and group search configured, users can be created automatically and placed into matching Portainer teams based on their directory group membership.
 
 ## User Lifecycle Management
 
@@ -72,22 +73,22 @@ With LDAP sync, users are automatically added and removed as they join/leave AD 
 2. Review any active sessions
 3. Rotate any shared credentials the user had access to
 
-## Audit Logging (BE Feature)
+## Authentication and Activity Logs (BE Feature)
 
-Enable audit logging to track all user actions:
+Use Portainer's authentication and activity logs to track user actions:
 
 - User logins and logouts
 - Container start/stop/delete operations
 - Stack deployments and updates
 - Registry configuration changes
 
-Review audit logs regularly, especially after incidents.
+Review these logs regularly, especially after incidents.
 
 ## Service Accounts for Automation
 
 For CI/CD pipelines and automation scripts, use dedicated service accounts:
 
-1. Create a dedicated user: `ci-deploy-service`
+1. Create a dedicated user: `ci-deploy`
 2. Assign only the permissions needed (e.g., stack deployment on specific environments)
 3. Generate an API token for this user (not your personal account)
 4. Store the token in your secrets manager (Vault, AWS Secrets Manager, etc.)
@@ -96,12 +97,20 @@ For CI/CD pipelines and automation scripts, use dedicated service accounts:
 # Create service account via Portainer API
 
 curl -X POST "https://portainer.example.com/api/users" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{"username": "ci-deploy", "password": "generated-strong-password", "role": 2}'
+  -H "Authorization: Bearer $ADMIN_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"Username":"ci-deploy","Password":"generated-strong-password","Role":2}'
+
+# Authenticate as the service account to get a JWT
+curl -X POST "https://portainer.example.com/api/auth" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"ci-deploy","password":"generated-strong-password"}'
 
 # Generate API token for service account
-curl -X POST "https://portainer.example.com/api/auth" \
-  -d '{"username": "ci-deploy", "password": "generated-strong-password"}'
+curl -X POST "https://portainer.example.com/api/users/<SERVICE_USER_ID>/tokens" \
+  -H "Authorization: Bearer <SERVICE_ACCOUNT_JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"description":"ci-deploy-token","password":"generated-strong-password"}'
 ```
 
 ## Regular Access Reviews
@@ -114,4 +123,4 @@ Schedule quarterly access reviews:
 
 ## Summary
 
-User and team management in Portainer requires deliberate structure. Use LDAP/SSO to eliminate manual user management, apply least-privilege roles, use service accounts for automation, and review access regularly. These practices reduce the blast radius of compromised accounts and prevent accidental access to production environments.
+User and team management in Portainer requires deliberate structure. Use external authentication to reduce manual user management, apply least-privilege roles, use service accounts for automation, and review access regularly. These practices reduce the blast radius of compromised accounts and prevent accidental access to production environments.
