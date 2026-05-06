@@ -18,18 +18,21 @@ ModSecurity is a Web Application Firewall (WAF) that protects against SQL inject
 sudo apt install libapache2-mod-security2 -y
 sudo a2enmod security2
 sudo a2enmod headers
+sudo cp /etc/modsecurity/modsecurity.conf-recommended /etc/modsecurity/modsecurity.conf
+sudo systemctl restart apache2
 
 # RHEL/CentOS
 sudo dnf install mod_security -y
+sudo systemctl restart httpd
 
-# Check version
+# Check that the module is loaded
 sudo apachectl -M | grep "security2"
 ```
 
 ## Basic ModSecurity Configuration for IPv6
 
 ```apache
-# /etc/modsecurity/modsecurity.conf
+# /etc/modsecurity/modsecurity.conf (Debian/Ubuntu example)
 
 # Enable ModSecurity
 SecRuleEngine On
@@ -66,7 +69,7 @@ SecRule REMOTE_ADDR "@ipMatch 2001:db8::1" \
 
 # Whitelist an entire IPv6 subnet
 # Note: ModSecurity uses CIDR notation for IPv6
-SecRule REMOTE_ADDR "@ipMatch 2001:db8:office::/48" \
+SecRule REMOTE_ADDR "@ipMatch 2001:db8:1000::/48" \
     "id:1002,phase:1,pass,nolog,ctl:ruleEngine=Off,\
      msg:'Whitelisted IPv6 office subnet'"
 
@@ -82,13 +85,13 @@ SecRule REMOTE_ADDR "@ipMatch ::1" \
 # /etc/modsecurity/custom_ipv6_rules.conf
 
 # Detect IPv6 clients and log them
-SecRule REMOTE_ADDR "@rx ^[0-9a-fA-F:]+" \
+SecRule REMOTE_ADDR "@ipMatch ::/0" \
     "id:2001,phase:1,pass,log,\
      msg:'IPv6 client detected',\
      logdata:'Client IP: %{REMOTE_ADDR}'"
 
 # Block known malicious IPv6 ranges
-SecRule REMOTE_ADDR "@ipMatch 2001:db8:badactors::/48" \
+SecRule REMOTE_ADDR "@ipMatch 2001:db8:dead::/48" \
     "id:2002,phase:1,deny,status:403,\
      msg:'Blocked malicious IPv6 range',\
      logdata:'Blocked: %{REMOTE_ADDR}'"
@@ -96,13 +99,14 @@ SecRule REMOTE_ADDR "@ipMatch 2001:db8:badactors::/48" \
 # Rate limiting for IPv6 clients
 # (ModSecurity can track IPv6 address patterns)
 SecRule REMOTE_ADDR "@ipMatch ::/0" \
-    "id:2003,phase:1,pass,setvar:ip.access_count=+1,\
-     expirevar:ip.access_count=60,nolog"
+    "id:2003,phase:1,pass,nolog,initcol:ip=%{REMOTE_ADDR},\
+     setvar:ip.access_count=+1,expirevar:ip.access_count=60"
 
-SecRule IP:ACCESS_COUNT "@gt 100" \
-    "id:2004,phase:1,deny,status:429,\
+SecRule REMOTE_ADDR "@ipMatch ::/0" \
+    "id:2004,phase:1,chain,deny,status:429,\
      msg:'Rate limit exceeded for IPv6 client',\
      logdata:'IP: %{REMOTE_ADDR}, Count: %{ip.access_count}'"
+    SecRule IP:ACCESS_COUNT "@gt 100"
 ```
 
 ## OWASP Core Rule Set with IPv6
@@ -113,37 +117,44 @@ git clone https://github.com/coreruleset/coreruleset.git /etc/modsecurity/coreru
 cp /etc/modsecurity/coreruleset/crs-setup.conf.example \
    /etc/modsecurity/coreruleset/crs-setup.conf
 
-# Enable CRS in Apache
-cat >> /etc/apache2/conf-available/modsecurity.conf << 'EOF'
+# Enable CRS in Apache (Debian/Ubuntu example)
+cat >> /etc/apache2/mods-available/security2.conf << 'EOF'
 # Include OWASP CRS
-Include /etc/modsecurity/coreruleset/crs-setup.conf
-Include /etc/modsecurity/coreruleset/rules/*.conf
+IncludeOptional /etc/modsecurity/coreruleset/crs-setup.conf
+IncludeOptional /etc/modsecurity/coreruleset/plugins/*-config.conf
+IncludeOptional /etc/modsecurity/coreruleset/plugins/*-before.conf
+IncludeOptional /etc/modsecurity/coreruleset/rules/*.conf
+IncludeOptional /etc/modsecurity/coreruleset/plugins/*-after.conf
 EOF
+
+sudo apachectl configtest
+sudo systemctl reload apache2
 ```
 
 ## Testing ModSecurity with IPv6
 
 ```bash
 # Test that ModSecurity blocks attack patterns from IPv6
-curl -6 -v "http://yourdomain.com/?id=1;SELECT 1" 2>&1 | grep "403\|blocked"
+curl -6 -i "http://yourdomain.com/?foo=/etc/passwd&bar=/bin/sh" 2>&1 | grep "403"
 
 # Test SQLi detection
-curl -6 "http://yourdomain.com/?id=1' OR '1'='1" -v 2>&1 | grep "403"
+curl -6 -i "http://yourdomain.com/?id=1%27%20OR%20%271%27=%271" 2>&1 | grep "403"
 
 # Test XSS detection
-curl -6 "http://yourdomain.com/?q=<script>alert(1)</script>" 2>&1 | grep "403"
+curl -6 -i "http://yourdomain.com/?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E" 2>&1 | grep "403"
 
 # Check ModSecurity audit log for IPv6 entries
-sudo tail -50 /var/log/apache2/modsec_audit.log | grep "REMOTE_ADDR"
+sudo tail -50 /var/log/apache2/modsec_audit.log
 
 # Check if IPv6 addresses appear in logs correctly
-sudo grep "2001:" /var/log/apache2/modsec_audit.log | head -5
+sudo grep "Client IP:" /var/log/apache2/modsec_audit.log | tail -5
 ```
 
 ## Virtual Host Integration
 
 ```apache
 # /etc/apache2/sites-available/yourdomain.conf
+# Make sure Apache is also listening on IPv6, for example with Listen [::]:80
 
 <VirtualHost [::]:80>
     ServerName yourdomain.com
