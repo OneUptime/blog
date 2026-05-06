@@ -8,9 +8,9 @@ Description: Configure network interface bonding using nmcli, including creating
 
 ## Introduction
 
-NetworkManager supports bonding through nmcli. The process involves creating a bond master connection, adding slave (member) connections for each physical interface, and activating them. This provides persistent bonding managed by NetworkManager.
+NetworkManager supports bonding through nmcli. The process involves creating a bond controller connection, adding member (port) connections for each physical interface, and activating them. This provides persistent bonding managed by NetworkManager.
 
-## Step 1: Create the Bond Master
+## Step 1: Create the Bond Controller
 
 ```bash
 # Create a bond interface with active-backup mode
@@ -28,7 +28,7 @@ nmcli connection modify "bond0" \
     ipv4.gateway "192.168.1.1"
 ```
 
-## Step 2: Add Member Interfaces (Slaves)
+## Step 2: Add Member Interfaces
 
 ```bash
 # Add eth0 as a bond member
@@ -36,20 +36,20 @@ nmcli connection add \
     type ethernet \
     con-name "bond0-slave-eth0" \
     ifname eth0 \
-    master bond0
+    controller bond0
 
 # Add eth1 as a bond member
 nmcli connection add \
     type ethernet \
     con-name "bond0-slave-eth1" \
     ifname eth1 \
-    master bond0
+    controller bond0
 ```
 
 ## Step 3: Activate the Bond
 
 ```bash
-# Bring up the slaves first, then the master
+# Bring up the member connections first, then the bond
 nmcli connection up "bond0-slave-eth0"
 nmcli connection up "bond0-slave-eth1"
 nmcli connection up "bond0"
@@ -71,20 +71,22 @@ nmcli device status
 ## Configure LACP (802.3ad) Bonding
 
 ```bash
+# Requires switch ports configured for IEEE 802.3ad (LACP)
 nmcli connection add \
     type bond \
     con-name "bond-lacp" \
-    ifname bond0 \
+    ifname bond1 \
     bond.options "mode=802.3ad,miimon=100,lacp_rate=fast,xmit_hash_policy=layer3+4"
 ```
 
 ## Configure Round-Robin Bonding
 
 ```bash
+# Requires all member interfaces on the same switch and the switch configured for port-channel/trunking
 nmcli connection add \
     type bond \
     con-name "bond-rr" \
-    ifname bond0 \
+    ifname bond2 \
     bond.options "mode=balance-rr,miimon=100"
 ```
 
@@ -107,4 +109,4 @@ nmcli connection delete "bond0"
 
 ## Conclusion
 
-nmcli bond setup requires a master connection (`type bond`) and slave connections (`type ethernet master bond0`). Bonding options like mode and MII monitor interval are set in `bond.options`. Verify with `cat /proc/net/bonding/bond0` to see active/backup state and member interface status.
+nmcli bond setup requires a controller connection (`type bond`) and member connections (`type ethernet controller bond0`). Bonding options like mode and MII monitor interval are set in `bond.options`. Verify with `cat /proc/net/bonding/bond0` to see active/backup state and member interface status.
