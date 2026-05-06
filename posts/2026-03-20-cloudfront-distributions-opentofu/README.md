@@ -25,7 +25,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"  # CloudFront resources must be in us-east-1
+  region = "us-east-1"  # ACM certificates for CloudFront aliases must be in us-east-1
 }
 
 # S3 bucket for the static site
@@ -78,18 +78,43 @@ data "aws_acm_certificate" "site" {
   statuses = ["ISSUED"]
 }
 
+# AWS-managed policies
+data "aws_cloudfront_cache_policy" "managed_caching" {
+  name = "Managed-CachingOptimized"
+}
+
+data "aws_cloudfront_cache_policy" "managed_disabled" {
+  name = "Managed-CachingDisabled"
+}
+
+data "aws_cloudfront_origin_request_policy" "all_viewer" {
+  name = "Managed-AllViewer"
+}
+
 # The CloudFront distribution
 resource "aws_cloudfront_distribution" "main" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
-  price_class         = "PriceClass_100"  # US, Canada, Europe only
+  price_class         = "PriceClass_100"  # US, Canada, Europe, and Israel
   aliases             = [var.domain_name]
 
   origin {
     domain_name              = aws_s3_bucket.site.bucket_regional_domain_name
     origin_id                = "S3Origin"
     origin_access_control_id = aws_cloudfront_origin_access_control.main.id
+  }
+
+  origin {
+    domain_name = var.api_domain_name
+    origin_id   = "APIOrigin"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
   }
 
   default_cache_behavior {
@@ -168,6 +193,6 @@ resource "aws_cloudfront_function" "spa_router" {
 
 - Use Origin Access Control (OAC) instead of the deprecated Origin Access Identity (OAI) for new distributions.
 - Set `minimum_protocol_version = "TLSv1.2_2021"` to enforce modern TLS - older versions have known vulnerabilities.
-- Use managed cache policies rather than custom TTL settings - they're maintained by AWS and work correctly with origin cache headers.
+- Use managed cache policies where they fit your workload, and review their TTL behavior against your origin cache headers.
 - Enable `compress = true` to reduce bandwidth costs and improve load times for compressible content.
 - Attach a WAF Web ACL to protect against common web attacks without changes to your origin.
