@@ -4,109 +4,110 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, IPv6, Blackhole, DDoS, Security
 
-Description: Configure BGP blackhole community (65535:666) for IPv6 prefixes to trigger upstream DDoS mitigation at provider networks.
+Description: Configure the BLACKHOLE BGP community (65535:666) on IPv6 prefixes so upstreams that honor RFC 7999 can discard traffic during a DDoS event.
 
 ## Overview
 
-Configure BGP blackhole community (65535:666) for IPv6 prefixes to trigger upstream DDoS mitigation at provider networks.
+Configure the BLACKHOLE BGP community (65535:666) on IPv6 prefixes so upstreams that honor RFC 7999 can discard traffic during a DDoS event.
 
 ## BGP Communities and IPv6
 
-BGP communities are attributes attached to route announcements that carry policy signaling information. They work identically for IPv4 and IPv6 prefixes.
+BGP communities are attributes attached to route announcements that carry policy signaling information. The same standard community attribute is used for both IPv4 and IPv6 prefixes. RFC 7999 defines the well-known `BLACKHOLE` community as `65535:666`.
 
 ## Standard Community Format
 
 Standard BGP communities (RFC 1997) are 32-bit values written as two 16-bit numbers:
 ```text
 ASN:value
-65000:100    # Well-known community
-65001:200    # Custom community
+65535:666    # BLACKHOLE well-known community (RFC 7999)
+65001:200    # Example private-use community
 ```
 
 ## BIRD2 Configuration Example
 
-```javascript
+```text
 # /etc/bird/bird.conf
 
-# Define community functions
-
-function set_local_pref(int pref) {
-    bgp_local_pref = pref;
+protocol static blackhole_v6 {
+    ipv6;
+    route 2001:db8:dead:beef::1/128 blackhole;
 }
 
-# Filter for IPv6 routes with communities
-filter ipv6_community_policy {
-    # Honor upstream community signals for local preference
-    if (65001, 100) ~ bgp_community then {
-        set_local_pref(200);  # High preference
+# Export only the host route being blackholed and attach RFC 7999
+filter ipv6_blackhole_export {
+    if net ~ [ 2001:db8:dead:beef::1/128 ] then {
+        bgp_community.add((65535, 666));
         accept;
     }
-    if (65001, 200) ~ bgp_community then {
-        set_local_pref(50);   # Low preference
-        accept;
-    }
-    accept;
+    reject;
 }
 
 protocol bgp upstream {
-    neighbor 2001:db8:peer::1 as 65001;
+    local as 64496;
+    neighbor 2001:db8:100::1 as 65001;
     ipv6 {
-        import filter ipv6_community_policy;
-        export filter { accept; };
+        import all;
+        export filter ipv6_blackhole_export;
     };
 }
 ```
 
 ## FRRouting Community Configuration
 
-```bash
+```text
 # FRR vtysh configuration
+
+# Ensure 2001:db8:dead:beef::1/128 already exists in the RIB
+ipv6 prefix-list BLACKHOLE-V6 seq 10 permit 2001:db8:dead:beef::1/128
+
+# Route map that tags the IPv6 host route with RFC 7999 BLACKHOLE
+route-map BLACKHOLE-V6 permit 10
+  match ipv6 address prefix-list BLACKHOLE-V6
+  set community 65535:666 additive
+
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:db8:100::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 activate
-
-# Route map with community matching
-route-map COMMUNITY-POLICY permit 10
-  match community MY-COMMUNITIES
-  set local-preference 200
-
-# Define community list
-ip community-list standard MY-COMMUNITIES permit 65001:100
+    neighbor 2001:db8:100::1 activate
+    neighbor 2001:db8:100::1 route-map BLACKHOLE-V6 out
+    network 2001:db8:dead:beef::1/128
 ```
 
 ## Cisco IOS Community Configuration
 
 ```text
 ! Configure community for IPv6 BGP
+! Ensure 2001:db8:dead:beef::1/128 exists in the routing table
+ipv6 prefix-list BLACKHOLE-V6 permit 2001:db8:dead:beef::1/128
+
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:db8:100::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 route-map COMMUNITY-INBOUND in
+    neighbor 2001:db8:100::1 activate
+    neighbor 2001:db8:100::1 send-community
+    neighbor 2001:db8:100::1 route-map BLACKHOLE-OUT out
+    network 2001:db8:dead:beef::1/128
 
 ! Route map
-route-map COMMUNITY-INBOUND permit 10
-  match community 100
-  set local-preference 200
-
-! Community list
-ip community-list 100 permit 65001:100
+route-map BLACKHOLE-OUT permit 10
+  match ipv6 address prefix-list BLACKHOLE-V6
+  set community 65535:666 additive
 ```
 
 ## Testing Community Propagation
 
 ```bash
 # Check if communities are present on IPv6 routes in BIRD
-birdc "show route for 2001:db8::/32 all"
+birdc "show route 2001:db8:dead:beef::1/128 all"
 
 # In FRR
-vtysh -c "show bgp ipv6 unicast 2001:db8::/32"
+vtysh -c "show bgp ipv6 community 65535:666"
 
 # Look for community attribute in output
-# Example: Community: 65001:100 65001:200
+# Example: Community: 65535:666
 
-# Use RIPE looking glass for external verification
-curl "https://stat.ripe.net/data/bgp-state/data.json?resource=2001:db8::/32" | jq '.data.routes[].attrs.communities'
+# Replace the example prefix with a live announced /128 before querying RIPEstat
+curl "https://stat.ripe.net/data/bgp-state/data.json?resource=2001:db8:dead:beef::1/128" | jq '.data.bgp_state[].community'
 ```
 
 ## Monitoring with OneUptime
@@ -115,4 +116,4 @@ Use [OneUptime](https://oneuptime.com) to monitor BGP session health for your IP
 
 ## Conclusion
 
-BGP communities work identically for IPv6 prefixes - you configure them in the same route maps and community lists. Always verify community propagation using BGP looking glasses and test policy changes in a lab environment before applying to production IPv6 BGP sessions.
+The BLACKHOLE community is carried on IPv6 routes the same way it is on IPv4 routes, but the receiving network must explicitly choose to honor it. Always verify community propagation with your router CLI and external route visibility tools, and test policy changes in a lab environment before applying them to production IPv6 BGP sessions.
