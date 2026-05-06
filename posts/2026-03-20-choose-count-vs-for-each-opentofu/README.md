@@ -16,7 +16,7 @@ Both `count` and `for_each` create multiple resource instances, but they have di
 |---------|-------|----------|
 | Addressing | By index [0], [1], [2] | By key ["name"] |
 | Stability | Shifting index on insertion | Stable keys |
-| Input type | Number | Map or Set |
+| Input type | Whole number | Map or Set of strings |
 | Best for | Identical resources | Named resources |
 
 ## When to Use count
@@ -69,19 +69,18 @@ resource "aws_iam_user" "team" {
   # aws_iam_user.team["alice"] - meaningful reference
 }
 
-resource "aws_security_group_rule" "ports" {
+resource "aws_vpc_security_group_ingress_rule" "ports" {
   for_each = {
     http  = 80
     https = 443
     api   = 8080
   }
 
-  type              = "ingress"
   security_group_id = aws_security_group.web.id
+  cidr_ipv4         = "0.0.0.0/0"
   from_port         = each.value
+  ip_protocol       = "tcp"
   to_port           = each.value
-  protocol          = "tcp"
-  cidr_blocks       = ["0.0.0.0/0"]
 }
 ```
 
@@ -94,19 +93,31 @@ variable "server_names" {
 }
 
 resource "aws_instance" "web" {
-  count = length(var.server_names)
-  name  = var.server_names[count.index]
-  # [0]="web-1", [1]="web-2", [2]="web-3"
+  count         = length(var.server_names)
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t3.micro"
+
+  tags = {
+    Name = var.server_names[count.index]
+  }
+  # [0] has Name=web-1, [1] has Name=web-2, [2] has Name=web-3
 }
 
 # After: insert "web-0" at position 0:
 # server_names = ["web-0", "web-1", "web-2", "web-3"]
-# OpenTofu: [0]="web-0" (rename from web-1), [1]="web-1" (rename), etc.
-# This causes UNWANTED recreations!
+# OpenTofu: [0] now wants Name=web-0, [1] wants Name=web-1, etc.
+# This causes UNWANTED changes to multiple instances and may force
+# replacement, depending on which arguments use count.index.
 
 # for_each solution: stable by key
 resource "aws_instance" "web" {
-  for_each = toset(var.server_names)
+  for_each      = toset(var.server_names)
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t3.micro"
+
+  tags = {
+    Name = each.key
+  }
   # Adding "web-0" only creates that resource
   # Other resources are unchanged
 }
@@ -115,9 +126,9 @@ resource "aws_instance" "web" {
 ## Practical Decision Guide
 
 ```hcl
-# Question 1: Is the count a simple number or a complex collection?
-# Number -> count
-# Collection -> for_each
+# Question 1: Is the input a simple number or a keyed collection?
+# Whole number -> count
+# Map or set of strings -> for_each
 
 # Question 2: Are resources interchangeable or named?
 # Interchangeable -> count
