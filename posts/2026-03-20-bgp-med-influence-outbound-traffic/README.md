@@ -67,11 +67,28 @@ route-map R1_OUT permit 20
  set metric 200
 
 route-map R1_OUT permit 30
+
+router bgp 65001
+ neighbor 203.0.113.1 route-map R1_OUT out
+
+! R2 preferred for Site B (low MED for Site B prefix)
+route-map R2_OUT permit 10
+ match ip address prefix-list SITE_A_PREFIX
+ set metric 200
+
+route-map R2_OUT permit 20
+ match ip address prefix-list SITE_B_PREFIX
+ set metric 50
+
+route-map R2_OUT permit 30
+
+router bgp 65001
+ neighbor 198.51.100.1 route-map R2_OUT out
 ```
 
 ## Step 3: Allow MED Comparison Across Different Peers
 
-By default, Cisco IOS only compares MED between routes from the same neighboring AS. Enable `always-compare-med` to compare MED regardless of origin:
+By default, Cisco IOS only compares MED between routes from the same neighboring AS. Enable `always-compare-med` to compare MED regardless of neighboring AS:
 
 ```text
 router bgp 65001
@@ -87,18 +104,19 @@ Use `always-compare-med` carefully-it changes path selection behavior globally.
 ## Step 4: Verify MED Values in BGP Table
 
 ```text
-! View routes sent to a neighbor
+! On the advertising router, view routes sent to a neighbor
 Router# show ip bgp neighbors 203.0.113.1 advertised-routes
 
    Network          Next Hop            Metric LocPrf Weight Path
 *> 192.168.0.0/24   0.0.0.0              100         32768 i
-                    ^^^ Metric column = MED value
+                    ^^^ Metric column = MED value sent to this neighbor
 
-! Check MED in detail for a specific prefix
-Router# show ip bgp 192.168.0.0/24
+! On the receiving router, check MED in detail for a specific prefix
+Router# show ip bgp 192.168.0.0 255.255.255.0
 
-  Path: Local
-    metric 100, localpref 100, weight 32768
+  65001
+    203.0.113.2 from 203.0.113.2 (203.0.113.2)
+      Origin IGP, metric 100, localpref 100, valid, external, best
 ```
 
 ## Step 5: Limitations of MED
