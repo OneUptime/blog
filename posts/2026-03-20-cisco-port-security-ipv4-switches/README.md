@@ -8,7 +8,7 @@ Description: Configure Cisco IOS port security to restrict switch access ports t
 
 ## Introduction
 
-Port security limits which MAC addresses can communicate on a switch port. It prevents rogue devices from plugging into your network and forces MAC address registration, complementing IPv4 access control at Layer 2.
+Port security limits which MAC addresses can communicate on a switch port. It prevents rogue devices from plugging into your network and can learn or enforce secure MAC addresses, complementing IPv4 protections such as DHCP snooping and IP Source Guard on access ports.
 
 ## Basic Port Security
 
@@ -20,7 +20,7 @@ interface GigabitEthernet0/1
  !
  switchport port-security
  switchport port-security maximum 1            ! Only 1 MAC allowed
- switchport port-security mac-address sticky   ! Learn and remember MAC
+ switchport port-security mac-address sticky   ! Learn and add MAC to running config
  switchport port-security violation shutdown   ! Disable port on violation
 ```
 
@@ -33,7 +33,7 @@ interface GigabitEthernet0/2
  !
  switchport port-security
  switchport port-security maximum 1
- switchport port-security mac-address 00:1A:2B:3C:4D:5E  ! Static MAC
+ switchport port-security mac-address 001A.2B3C.4D5E     ! Static MAC
  switchport port-security violation restrict  ! Drop + log, don't shut port
 ```
 
@@ -41,8 +41,8 @@ interface GigabitEthernet0/2
 
 | Mode | Action | Port State |
 |------|--------|-----------|
-| `shutdown` | Disables port, sends SNMP trap | err-disabled |
-| `restrict` | Drops frames, increments counter | Still up |
+| `shutdown` | Disables port, logs, increments counter, sends SNMP trap | err-disabled |
+| `restrict` | Drops frames, logs, increments counter, sends SNMP trap | Still up |
 | `protect` | Drops frames silently | Still up |
 
 ## Multiple MACs (e.g., IP phone + PC)
@@ -54,7 +54,7 @@ interface GigabitEthernet0/3
  switchport voice vlan 20
  !
  switchport port-security
- switchport port-security maximum 3     ! 1 phone + 1 PC + 1 spare
+ switchport port-security maximum 2     ! 1 phone + 1 PC
  switchport port-security mac-address sticky
  switchport port-security violation restrict
 ```
@@ -108,4 +108,4 @@ interface GigabitEthernet0/1
 
 ## Conclusion
 
-Port security restricts which MAC addresses can use a switch port, preventing unauthorized device connections. Use `sticky` MAC learning to automatically capture the first connected device, `shutdown` mode for high-security ports, and `restrict` mode where automatic recovery is preferred. Combine with DHCP snooping for full Layer 2 IPv4 security.
+Port security restricts which MAC addresses can use a switch port, preventing unauthorized device connections. Use `sticky` MAC learning to automatically capture the first connected device, `shutdown` mode for high-security ports, and `restrict` mode when you want violations logged without error-disabling the port. Combine with DHCP snooping and IP Source Guard for stronger IPv4 access-port security.
