@@ -8,7 +8,7 @@ Description: Learn how to enable DNS64 in the Unbound recursive resolver to synt
 
 ## Prerequisites
 
-- Unbound 1.5.4 or later (DNS64 support added in 1.5.4)
+- Unbound 1.5.0 or later (DNS64 support added in 1.5.0)
 - Root access on the DNS server
 - A configured NAT64 gateway using the same prefix
 
@@ -28,9 +28,9 @@ unbound -V | grep Version
 
 ## Unbound Configuration for DNS64
 
-Unbound's DNS64 configuration is done in the `module-config` directive and a dedicated `dns64` section in `unbound.conf`:
+Unbound's DNS64 configuration is done in the `module-config` directive and DNS64 options in the `server:` section of `unbound.conf`:
 
-```yaml
+```text
 # /etc/unbound/unbound.conf
 
 server:
@@ -50,32 +50,29 @@ server:
     # Module configuration: dns64 must come before validator and iterator
     module-config: "dns64 validator iterator"
 
-# DNS64 configuration block
-dns64:
     # The NAT64 prefix to use for synthesis
     # Must match your NAT64 gateway's prefix
-    prefix: 64:ff9b::/96
+    dns64-prefix: 64:ff9b::/96
 
-    # Exclude these IPv4 ranges from synthesis (RFC 1918 and loopback)
-    # These will not get synthesized AAAA records
-    # dns64-synthall is off by default, only domains without AAAA get synthesized
+    # dns64-synthall is off by default, so only names without AAAA
+    # records get synthesized answers
 ```
 
 ## Advanced DNS64 Configuration Options
 
-```yaml
-dns64:
+```text
+server:
     # The NAT64 prefix
-    prefix: 64:ff9b::/96
+    dns64-prefix: 64:ff9b::/96
 
-    # If set to yes, synthesize records even when AAAA exists
-    # Default: no (only synthesize when no native AAAA exists)
-    # dns64-synthall: no
+    # Debugging feature: synthesize records even when AAAA exists
+    # Default: no
+    # dns64-synthall: yes
 ```
 
 ## Restricting DNS64 to Specific Clients
 
-Unbound does not natively support per-client DNS64 prefixes in the same way BIND does, but you can run multiple Unbound instances on different ports or use views. For most deployments, DNS64 applies globally to all clients querying that resolver.
+Unbound does not natively support per-client DNS64 prefixes in the same way BIND does. Because the DNS64 options live in the global `server:` section, DNS64 applies to all clients querying that resolver. If you need different behavior for different clients, run multiple Unbound instances on different ports or addresses.
 
 For fine-grained control, use a separate DNS64-enabled Unbound instance for IPv6-only clients:
 
@@ -103,25 +100,27 @@ systemctl status unbound
 ## Testing DNS64 with dig
 
 ```bash
-# Query the Unbound DNS64 resolver for a domain with only an A record
+# Query the Unbound DNS64 resolver for ipv4only.arpa,
+# a special-use name that has only A records
 # Replace 127.0.0.1 with the Unbound server's address if remote
-dig AAAA example.com @127.0.0.1
+dig +short AAAA ipv4only.arpa @127.0.0.1
 
-# Expected output (example.com has IPv4 93.184.216.34)
-# example.com. 60 IN AAAA 64:ff9b::5db8:d822
+# Expected output with dns64-prefix: 64:ff9b::/96
+# 64:ff9b::c000:aa
+# 64:ff9b::c000:ab
 
 # Confirm that real AAAA records pass through unchanged
-dig AAAA google.com @127.0.0.1
+dig +short AAAA google.com @127.0.0.1
 
-# Test with a domain known to have only A records
-dig AAAA ipv4only.arpa @127.0.0.1
+# Compare with the original A records
+dig +short A ipv4only.arpa @127.0.0.1
 ```
 
 ## Verifying Module Order
 
 The module order in `module-config` is critical. DNS64 must process queries before validation:
 
-```yaml
+```text
 # Correct order for DNS64 + DNSSEC validation
 module-config: "dns64 validator iterator"
 
@@ -136,9 +135,13 @@ module-config: "dns64 iterator"
 # server:
 #     statistics-interval: 60
 #     extended-statistics: yes
+# remote-control:
+#     control-enable: yes
+# ...and create the control keys with unbound-control-setup
 
-# View live statistics
-unbound-control stats_noreset | grep -i dns64
+# Unbound does not expose dedicated DNS64 counters,
+# so inspect AAAA and answer statistics instead
+unbound-control stats_noreset | grep -E 'num.query.type.AAAA|num.answer.rcode.nodata|num.answer.secure'
 
 # Check query counts
 unbound-control stats | grep num.queries
@@ -151,12 +154,13 @@ unbound-control stats | grep num.queries
 - Confirm prefix matches NAT64 gateway
 
 **Issue**: DNSSEC validation failures for synthesized records
-- Unbound handles this correctly by not synthesizing DNSSEC-signed responses when validation is enabled
+- With validation enabled, Unbound validates the negative AAAA response and the A response before synthesizing
+- Clients that perform their own end-to-end DNSSEC validation cannot validate synthesized AAAA records, so use a non-DNS64 resolver for those clients
 
 **Issue**: Unbound crashes after adding dns64
-- Ensure Unbound version is 1.5.4 or newer
+- Ensure Unbound version is 1.5.0 or newer
 - Check logs: `journalctl -u unbound`
 
 ## Summary
 
-Enabling DNS64 in Unbound requires adding the `dns64` module to `module-config` (before `validator`) and configuring the NAT64 prefix in the `dns64` section. The configuration is simpler than BIND's but equally effective for synthesizing AAAA records for IPv4-only domains.
+Enabling DNS64 in Unbound requires adding the `dns64` module to `module-config` (before `validator`) and setting the NAT64 prefix with `dns64-prefix` in the `server:` section. The configuration is simpler than BIND's but equally effective for synthesizing AAAA records for IPv4-only domains.
