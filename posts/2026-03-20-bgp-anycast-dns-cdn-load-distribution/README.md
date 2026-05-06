@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, Anycast, DNS, CDN, Load Distribution, Networking
 
-Description: Learn how to implement BGP anycast to route clients to the nearest server automatically, enabling geographic load distribution for DNS resolvers and CDN edge nodes.
+Description: Learn how to implement BGP anycast to route clients to the best available site automatically, enabling geographic load distribution for DNS resolvers and CDN edge nodes.
 
 ## What Is BGP Anycast?
 
-In anycast routing, multiple servers in different locations share the same IP address or prefix. BGP advertises this prefix from each location, and clients are automatically routed to the topologically nearest instance based on BGP path selection. This is how large DNS providers (1.1.1.1, 8.8.8.8) and CDNs achieve global reach from a single IP.
+In anycast routing, multiple servers in different locations share the same IP address or prefix. BGP advertises this prefix from each location, and clients are automatically routed to the instance that routing policy selects as best, which is often the topologically nearest instance. This is how large DNS providers (1.1.1.1, 8.8.8.8) and CDNs achieve global reach from a single IP.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ graph TD
     BGP_Net --> DC3
 ```
 
-Each data center advertises the same `192.0.2.0/24` prefix. A client in Europe reaches DC2; a client in Asia reaches DC3.
+In this example, each data center advertises the same `192.0.2.0/24` prefix. A client in Europe may reach DC2; a client in Asia may reach DC3. Replace the TEST-NET example addresses in this post with address space you control in production.
 
 ## Step 1: Configure the Anycast IP on Each Server
 
@@ -67,76 +67,44 @@ router bgp 65001
  exit-address-family
 ```
 
-Create a static null route to ensure the prefix stays in the routing table:
+If your BGP implementation requires the prefix to exist in the routing table for `network` origination, create a static discard route:
 
 ```text
-! Keep the prefix in the routing table even if no servers are active
+! Back the network statement with a discard route
 ip route 192.0.2.0 255.255.255.0 Null0
 ```
 
+Install or remove this route as part of your health-state automation; leaving it in place when the local service is down will blackhole traffic.
+
 ## Step 3: Use Health Checks to Withdraw the Prefix
 
-The key to safe anycast is withdrawing the prefix when local servers are unhealthy. Use a script with ExaBGP or a routing daemon:
+The key to safe anycast is withdrawing the prefix when local servers are unhealthy. Start with a local health check that exits successfully only when the service is healthy:
 
 ```bash
 #!/bin/bash
-# anycast_healthcheck.sh - Withdraw BGP prefix if service is unhealthy
-
-ANYCAST_PREFIX="192.0.2.0/24"
+# anycast_healthcheck.sh - Exit 0 only when the local DNS service is healthy
 DNS_IP="192.0.2.1"
 
-# Check if DNS service is responding
-if dig +time=2 +tries=1 @${DNS_IP} health.example.com A > /dev/null 2>&1; then
-    # Service is healthy - ensure prefix is advertised
-    # (add static route to ensure network statement works)
-    ip route add ${ANYCAST_PREFIX} via 127.0.0.1 dev lo 2>/dev/null || true
-    logger "Anycast: Service healthy, prefix ${ANYCAST_PREFIX} advertised"
+# Check that the local DNS service returns an answer
+if dig +timeout=2 +tries=1 +short @${DNS_IP} health.example.com A | grep -q .; then
+    logger "Anycast: Service healthy"
+    exit 0
 else
-    # Service is unhealthy - remove static route to withdraw prefix
-    ip route del ${ANYCAST_PREFIX} via 127.0.0.1 dev lo 2>/dev/null || true
-    logger "Anycast: Service UNHEALTHY, prefix ${ANYCAST_PREFIX} WITHDRAWN"
+    logger "Anycast: Service UNHEALTHY"
+    exit 1
 fi
 ```
 
-Run this check every 30 seconds with a cron job or systemd timer.
+Use the result to remove the route that backs your `network` statement, or to withdraw the prefix directly from a BGP speaker such as ExaBGP. If you are not using ExaBGP's built-in healthcheck, run this check every 30 seconds with a cron job or systemd timer.
 
 ## Step 4: Use ExaBGP for Dynamic Prefix Injection
 
-ExaBGP allows programmatic BGP prefix injection from a Python/shell script:
+ExaBGP allows programmatic BGP prefix injection, and its built-in `healthcheck` helper is safer than a custom announce/withdraw loop:
 
-```python
-# exabgp_announce.py - ExaBGP process script
-import sys
-import time
-import subprocess
-
-def is_healthy():
-    """Check if the local service is healthy."""
-    result = subprocess.run(
-        ["dig", "+time=2", "+tries=1", "@192.0.2.1", "health.example.com"],
-        capture_output=True, timeout=5
-    )
-    return result.returncode == 0
-
-PREFIX = "192.0.2.0/24"
-announced = False
-
-while True:
-    healthy = is_healthy()
-
-    if healthy and not announced:
-        # Announce the prefix to neighbors
-        print(f"announce route {PREFIX} next-hop self")
-        sys.stdout.flush()
-        announced = True
-
-    elif not healthy and announced:
-        # Withdraw the prefix
-        print(f"withdraw route {PREFIX}")
-        sys.stdout.flush()
-        announced = False
-
-    time.sleep(30)
+```text
+process anycast-dns {
+    run python3 -m exabgp healthcheck --cmd "/usr/local/bin/anycast_healthcheck.sh" --ip 192.0.2.0/24 --no-ip-setup --withdraw-on-down --debounce --interval 30;
+}
 ```
 
 ## Step 5: Test Anycast Routing
@@ -144,15 +112,15 @@ while True:
 From clients in different locations, trace the route to the anycast IP:
 
 ```bash
-# From a US client
+# From a US client - replace with your production anycast IP
 traceroute 192.0.2.1
 # Should reach the US data center
 
-# From a European client
+# From a European client - replace with your production anycast IP
 traceroute 192.0.2.1
 # Should reach the EU data center
 ```
 
 ## Conclusion
 
-BGP anycast is a powerful mechanism for geographic load distribution and automatic failover. Assign the anycast IP to server loopbacks, advertise the prefix via BGP from each location, and implement health checks that withdraw the prefix when services are degraded. Used correctly, anycast provides sub-second failover and optimal routing for global services.
+BGP anycast is a powerful mechanism for geographic load distribution and automatic failover. Assign the anycast IP to server loopbacks, advertise the prefix via BGP from each location, and implement health checks that withdraw the prefix when services are degraded. Used correctly, anycast provides automatic failover and efficient global distribution, subject to BGP convergence and routing policy.
