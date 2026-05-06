@@ -1,14 +1,14 @@
-# How to Configure DNS for Docker Networks in Portainer
+# How to Configure Docker Networks in Portainer
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, DNS, Network, Networking
+Tags: Portainer, Docker, Network, Networking
 
-Description: Set custom DNS servers and options for Docker networks in Portainer to control container name resolution.
+Description: Create and manage Docker networks in Portainer, with Docker CLI examples for network configuration and troubleshooting.
 
 ---
 
-Docker networking is fundamental to container communication. Portainer provides a visual interface for creating and managing all Docker network types.
+Docker networking is fundamental to container communication. Portainer provides a visual interface for creating and managing bridge, macvlan, ipvlan, and overlay networks.
 
 ## Docker Network Types
 
@@ -18,8 +18,6 @@ Docker networking is fundamental to container communication. Portainer provides 
 | Macvlan | Containers need a real MAC on the physical network |
 | IPvlan | IP-level network access, shared MAC |
 | Overlay | Multi-host communication in Docker Swarm |
-| Host | Container shares host network stack |
-| None | No networking (fully isolated) |
 
 ## Create Networks via CLI
 
@@ -50,7 +48,7 @@ docker network create \
   -o ipvlan_mode=l2 \
   ipvlan-network
 
-# Overlay network (Swarm)
+# Overlay network (Swarm; requires swarm mode)
 docker network create \
   --driver overlay \
   --attachable \
