@@ -8,12 +8,12 @@ Description: Configure RPKI-based BGP origin validation for IPv6 prefixes on Cis
 
 ## Overview
 
-Cisco IOS-XE (15.2+) and IOS-XR support BGP origin validation via RPKI. Routers connect to an RPKI cache server using the RTR protocol and use ROA data to validate incoming IPv6 BGP prefixes.
+Supported Cisco IOS-XE and IOS-XR releases can perform BGP origin validation via RPKI. Routers connect to an RPKI cache server using the RTR protocol and use ROA data to validate incoming IPv6 BGP prefixes.
 
 ## Prerequisites
 
-- Cisco IOS-XE 15.2+ or IOS-XR 5.3+
-- An RPKI validator (Routinator, RIPE Validator) accessible from the router
+- Cisco IOS-XE or IOS-XR with RPKI origin validation support
+- An RPKI validator (for example, Routinator or FORT) accessible from the router
 - IPv6 BGP sessions already configured
 
 ## Step 1: Configure the RPKI Cache Server
@@ -24,33 +24,29 @@ router bgp 64496
  bgp rpki server tcp 192.0.2.100 port 3323 refresh 600
  !
  ! If validator is reachable via IPv6
- bgp rpki server tcp 2001:db8:validator::1 port 3323 refresh 600
+ bgp rpki server tcp 2001:db8:100::1 port 3323 refresh 600
 ```
 
 ## Step 2: Verify RPKI Cache Connection
 
 ```text
 ! Check RPKI cache server status
-show bgp rpki server
+show ip bgp rpki servers
 
 ! Expected output:
-! BGP RPKI cache servers:
-! Server: 2001:db8:validator::1:3323
-!   State: Connected
-!   Uptime: 00:15:43
-!   ROAs: 300000 IPv4, 85000 IPv6
+! Look for an established RTR session and received ROA data
 ```
 
 ## Step 3: Enable BGP Origin Validation
 
 ```text
-! Enable origin validation for BGP
+! Origin validation starts once bgp rpki server is configured
+! Optionally signal validation state to iBGP neighbors
 router bgp 64496
- bgp origin-validation signal ibgp
- !
- ! Enable for IPv6 address family
+ neighbor 2001:db8:300::1 remote-as 64496
  address-family ipv6 unicast
-  bgp origin-validation signal ibgp
+  neighbor 2001:db8:300::1 send-community extended
+  neighbor 2001:db8:300::1 announce rpki state
  exit-address-family
 ```
 
@@ -74,9 +70,9 @@ route-map RPKI-POLICY permit 40
 
 ! Apply to BGP neighbor
 router bgp 64496
- neighbor 2001:db8:peer::1 remote-as 65001
+ neighbor 2001:db8:200::1 remote-as 65001
  address-family ipv6 unicast
-  neighbor 2001:db8:peer::1 route-map RPKI-POLICY in
+  neighbor 2001:db8:200::1 route-map RPKI-POLICY in
  exit-address-family
 ```
 
@@ -86,16 +82,13 @@ router bgp 64496
 ! Show BGP IPv6 table with OV (Origin Validation) status
 show bgp ipv6 unicast
 
-! Look for columns: Status codes include 'V' (Valid), 'I' (Invalid), '?' (Not found)
+! Look for RPKI validation codes: 'V' (Valid), 'I' (Invalid), 'N' (Not found)
 
 ! Check a specific prefix
 show bgp ipv6 unicast 2001:db8::/32
 
-! Show all INVALID IPv6 routes
-show bgp ipv6 unicast rpki invalid
-
-! Show all VALID IPv6 routes
-show bgp ipv6 unicast rpki valid
+! Show IPv6 ROAs learned from the cache
+show ip bgp ipv6 unicast rpki table
 ```
 
 ## Step 6: IOS-XR Configuration
@@ -105,9 +98,13 @@ On Cisco IOS-XR, the configuration syntax differs:
 ```text
 ! IOS-XR RPKI configuration
 router bgp 64496
- rpki server 2001:db8:validator::1
+ rpki server 2001:db8:100::1
   transport tcp port 3323
   refresh-time 600
+ !
+
+ address-family ipv6 unicast
+  bgp origin-as validation enable
  !
 
  ! Apply validation in routing policy
@@ -121,7 +118,7 @@ router bgp 64496
    endif
  end-policy
 
- neighbor 2001:db8:peer::1
+ neighbor 2001:db8:200::1
   remote-as 65001
   address-family ipv6 unicast
    route-policy RPKI-VALIDATION in
@@ -134,4 +131,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your Cisco routers' BGP sessio
 
 ## Conclusion
 
-BGP origin validation on Cisco involves connecting to an RPKI cache server, enabling validation for IPv6 address families, and applying route-maps to act on VALID/INVALID/NOT-FOUND states. Start with preferring valid routes before dropping invalid ones to minimize disruption.
+BGP origin validation on Cisco involves connecting to an RPKI cache server, validating IPv6 routes against ROA data, and applying route-maps or route-policies to act on VALID/INVALID/NOT-FOUND states. Start with preferring valid routes before dropping invalid ones to minimize disruption.
