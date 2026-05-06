@@ -37,10 +37,10 @@ Executives need business impact, risk, and timeline - not technical details:
 # Subject: IPv6 Migration Program Update - Q1 2026
 
 ## Why We're Doing This
-IPv6 migration is required for continued growth. IPv4 address exhaustion
-means new cloud regions and IoT devices increasingly operate on IPv6-only
-networks. Without IPv6, our services will be unreachable to a growing
-segment of users.
+IPv6 migration is required for continued growth. Public IPv4 address exhaustion
+means some cloud, mobile, and IoT environments increasingly rely on IPv6 or
+IPv6-only networks. Without IPv6, users on those networks may depend on
+translation mechanisms to reach our services.
 
 ## Investment Required
 - Total budget: $350,000 (12-month program)
@@ -64,30 +64,35 @@ segment of users.
 
 Developers need specific action items and technical context:
 
-```markdown
+````markdown
 # Subject: IPv6 Migration - Developer Action Required by [DATE]
 
 ## What You Need to Do
 
 Your team owns these services that require changes:
 - **payment-service**: Remove hardcoded IP 203.0.113.5 (line 142 in config.py)
-- **user-auth**: Bind server to `::` instead of `0.0.0.0` (see example below)
+- **user-auth**: Use an `AF_INET6` listener on `::` instead of an IPv4-only bind to `0.0.0.0` (see example below)
 - **admin-api**: Database VARCHAR(15) field too short for IPv6 (migrate to VARCHAR(45))
 
 ## Code Changes Required
 
 ### Socket Binding
 ```python
+import socket
+
 # BEFORE
 
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.bind(('0.0.0.0', 8080))
 
 # AFTER
-server.bind(('::', 8080))
+
+server = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
 server.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+server.bind(('::', 8080))
 ```
 
-### Database
+### Database (PostgreSQL example)
 ```sql
 ALTER TABLE sessions ALTER COLUMN client_ip TYPE VARCHAR(45);
 ```
@@ -96,13 +101,13 @@ ALTER TABLE sessions ALTER COLUMN client_ip TYPE VARCHAR(45);
 - Changes due in your service: by 2026-04-30
 - Testing window: 2026-05-01 to 2026-05-15
 - Questions: #ipv6-migration Slack channel
-```text
+````
 
 ## Operations Team Communication
 
 Operations needs runbook updates and escalation paths:
 
-```markdown
+````markdown
 # IPv6 Migration: Operations Runbook Update
 
 ## New Monitoring Checks
@@ -115,14 +120,14 @@ We've added IPv6 monitoring to Prometheus. New alerts:
 
 ### Check if service is listening on IPv6
 ```bash
-ss -tlnp | grep '::'
-# Should show [::]:80, [::]:443 for web services
+ss -tlpn -6
+# Should show IPv6 listeners such as [::]:80 or a specific IPv6 address/port
 ```
 
 ### Test IPv6 connectivity
 ```bash
-ping6 2001:db8::1
-curl -6 https://www.example.com
+ping -6 <known-ipv6-host>
+curl -6 https://<your-service-hostname>
 ```
 
 ### Rollback (if needed)
@@ -131,7 +136,7 @@ See runbook: /wiki/IPv6-Rollback-Procedures
 ## Escalation
 IPv6 incidents: page network team + application team
 Rollback decision authority: on-call engineer can rollback DNS immediately
-```text
+````
 
 ## End User Communication
 
