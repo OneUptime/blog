@@ -8,7 +8,7 @@ Description: Learn how to back up the Portainer data volume containing the datab
 
 ---
 
-The Portainer data volume contains everything: the BoltDB database (users, stacks, registries, settings), TLS certificates, and agent keys. Backing it up regularly ensures you can recover from hardware failures, corruption, or accidental resets.
+The Portainer data volume contains Portainer's own configuration data: the BoltDB database (users, stacks, registries, settings), TLS certificates, stack files, and agent keys. It does not include your managed containers or their application data. Backing it up regularly ensures you can recover from hardware failures, corruption, or accidental resets.
 
 ## What Is in the Portainer Data Volume
 
@@ -30,7 +30,7 @@ docker run --rm -v portainer_data:/data alpine ls -la /data
 # Stop Portainer for a consistent backup
 docker stop portainer
 
-# Create a backup archive preserving ownership
+# Create a compressed backup archive
 docker run --rm \
   -v portainer_data:/data \
   -v /backup:/backup \
@@ -49,12 +49,15 @@ ls -lh /backup/portainer-backup-*.tar.gz
 Portainer provides a built-in backup endpoint that creates a consistent snapshot while running:
 
 ```bash
-TOKEN="ptr_xxxx"
+TOKEN="your_admin_api_key_here"
 
 # Trigger backup via API (creates a downloadable tar.gz)
-curl -X POST \
+curl --insecure --fail --silent --show-error \
+  -X POST \
   -H "X-API-Key: $TOKEN" \
-  http://localhost:9000/api/backup \
+  -H "Content-Type: application/json" \
+  --data '{}' \
+  https://localhost:9443/api/backup \
   --output portainer-backup-$(date +%Y%m%d).tar.gz
 
 ls -lh portainer-backup-*.tar.gz
@@ -62,15 +65,17 @@ ls -lh portainer-backup-*.tar.gz
 
 ## Method 3: Using Portainer UI
 
-1. Log in to Portainer.
-2. Go to **Settings > Backup Portainer**.
-3. Click **Download backup** to get a `.tar.gz` of the database.
+1. Log in to Portainer as an admin user.
+2. Go to **Settings** and scroll down to **Back up Portainer**.
+3. Click **Download backup** to get a `.tar.gz` backup of Portainer's configuration.
 4. Store the file in a safe location (external drive, S3, NFS share).
 
 ## Automating Backups
 
 ```bash
 #!/bin/bash
+set -euo pipefail
+
 # /usr/local/bin/portainer-backup.sh
 # Add to crontab: 0 2 * * * /usr/local/bin/portainer-backup.sh
 
@@ -79,6 +84,10 @@ DATE=$(date +%Y%m%d-%H%M%S)
 RETENTION_DAYS=30
 
 mkdir -p "$BACKUP_DIR"
+
+# Stop Portainer for a consistent backup and start it again when the script exits
+docker stop portainer >/dev/null
+trap 'docker start portainer >/dev/null' EXIT
 
 # Backup the volume
 docker run --rm \
@@ -99,6 +108,6 @@ echo "Backup completed: portainer-$DATE.tar.gz"
 # Test that the backup is a valid tar.gz
 tar tzf /backup/portainer-20260320.tar.gz | head -10
 
-# Check that portainer.db is present
-tar tzf /backup/portainer-20260320.tar.gz | grep portainer.db
+# Check that the Portainer database is present
+tar tzf /backup/portainer-20260320.tar.gz | grep -E '(^|/)portainer\.(e)?db$'
 ```
