@@ -14,10 +14,10 @@ Stacks (Docker Compose definitions) are the primary deployment unit in Portainer
 
 Store your stack definitions in Git and deploy from repositories:
 
-In Portainer, go to **Stacks > Add Stack > Repository** and provide:
+In Portainer, go to **Stacks > Add stack > Git Repository** and provide:
 - Git repository URL
-- Branch name
-- Path to the compose file
+- Repository reference (for example, a branch)
+- Compose path
 
 This means your stack definitions are:
 - Version-controlled
@@ -34,21 +34,22 @@ Never hardcode environment-specific values in the compose file:
 
 services:
   app:
-    image: myapp:latest
+    image: myapp:1.2.3
     environment:
       - DATABASE_URL=postgres://prod-db:5432/mydb
       - API_KEY=abc123secret
+---
 
 # Good - use Portainer environment variables
 services:
   app:
-    image: myapp:${APP_VERSION:-latest}
+    image: myapp:1.2.3
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - API_KEY=${API_KEY}
 ```
 
-Set `APP_VERSION`, `DATABASE_URL`, and `API_KEY` as Portainer stack environment variables - different values per environment.
+Set `DATABASE_URL` and `API_KEY` as Portainer stack environment variables - different values per environment.
 
 ## 3. Pin Image Versions
 
@@ -56,13 +57,15 @@ Never use `latest` in production stacks:
 
 ```yaml
 # Bad - unpredictable
-image: nginx:latest
+image: ubuntu:latest
+---
 
 # Good - pinned version
-image: nginx:1.25.4
+image: ubuntu:24.04
+---
 
 # Even better - pinned by digest for full reproducibility
-image: nginx@sha256:3b4b1b2b1b2b1b2b1b2b1b2b1b2b1b2b1b2b1b2b
+image: ubuntu@sha256:2e863c44b718727c860746568e1d54afd13b2fa71b160f5cd9058fc436217b30
 ```
 
 Use a tool like Dependabot or Renovate to automate version updates via pull requests.
@@ -106,9 +109,11 @@ services:
 ```yaml
 # Production services - always restart
 restart: unless-stopped
+---
 
 # One-off jobs - don't restart
 restart: "no"
+---
 
 # Services that should restart only on failure
 restart: on-failure:3  # Max 3 retries
@@ -120,14 +125,25 @@ Use named volumes for portability:
 
 ```yaml
 # Prefer named volumes
+services:
+  db:
+    image: postgres:18
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
 volumes:
-  db-data:/var/lib/postgresql/data
+  db-data:
+---
 
 # Over bind mounts (host-dependent)
-# - /opt/myapp/db-data:/var/lib/postgresql/data
+services:
+  db:
+    image: postgres:18
+    volumes:
+      - /opt/myapp/db-data:/var/lib/postgresql/data
 ```
 
-Named volumes are managed by Docker and portable across environments.
+Named volumes are managed by Docker and avoid hard-coding host-specific paths in your Compose file.
 
 ## 8. Stack Naming Convention
 
