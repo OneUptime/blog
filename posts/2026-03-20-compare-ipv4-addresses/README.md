@@ -75,7 +75,7 @@ ips.sort((a, b) => ipToInt(a) - ipToInt(b));
 console.log(ips);  // ['10.0.0.9', '10.0.0.10', '10.0.0.200', '192.168.1.1']
 ```
 
-## Go: Comparison via net.IP.Equal and bytes.Compare
+## Go: Comparison via net.ParseIP().To4() and bytes.Compare
 
 ```go
 package main
