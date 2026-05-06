@@ -12,7 +12,7 @@ Configure Cisco IOS as a DHCPv6-PD client or server for delegating IPv6 prefixes
 
 ## Prerequisites
 
-- Cisco IOS 12.4(6)T or later
+- Cisco IOS with DHCPv6 Prefix Delegation support (for example, Cisco IOS 12.4T or later, depending on platform)
 - Global IPv6 routing enabled: `ipv6 unicast-routing`
 - Console or SSH access to the router
 
@@ -33,46 +33,60 @@ Router(config-if)# no shutdown
 ### Feature-Specific Configuration
 
 ```text
-! Static route example
-Router(config)# ipv6 route 2001:db8:remote::/48 2001:db8:wan::254
-
-! ACL example
-Router(config)# ipv6 access-list BLOCK-BOGONS
-Router(config-ipv6-acl)# deny ipv6 ::/8 any
-Router(config-ipv6-acl)# deny ipv6 2001:db8::/32 any
-Router(config-ipv6-acl)# permit ipv6 any any
-
-! DHCPv6 server pool
-Router(config)# ipv6 dhcp pool IPV6-POOL
-Router(config-dhcpv6)# address prefix 2001:db8:1::/64
+! On the delegating router (DHCPv6-PD server)
+Router(config)# ipv6 dhcp pool PD-POOL
+Router(config-dhcpv6)# prefix-delegation pool CUSTOMER-PREFIXES lifetime 1800 600
 Router(config-dhcpv6)# dns-server 2001:4860:4860::8888
 Router(config-dhcpv6)# domain-name example.com
 
-! Apply DHCPv6 to interface
+! Local pool from which /48 prefixes are delegated
+Router(config)# ipv6 local pool CUSTOMER-PREFIXES 2001:db8:1200::/40 48
+
+! Apply the DHCPv6-PD server to the interface facing the requesting router
+Router(config)# interface GigabitEthernet0/0
+Router(config-if)# ipv6 address 2001:db8:0:1::1/64
+Router(config-if)# ipv6 dhcp server PD-POOL
+
+! On the requesting router (DHCPv6-PD client)
+Router(config)# interface GigabitEthernet0/0
+Router(config-if)# ipv6 address autoconfig default
+Router(config-if)# ipv6 enable
+Router(config-if)# ipv6 dhcp client pd WAN-PREFIX
+
+! Use the delegated prefix on a downstream interface
 Router(config)# interface GigabitEthernet0/1
-Router(config-if)# ipv6 dhcp server IPV6-POOL
+Router(config-if)# ipv6 address WAN-PREFIX ::1/64
 ```
 
 ## Verification Commands
 
 ```text
+! Show DHCPv6 process information and DUID
+Router# show ipv6 dhcp
+
+! Show DHCPv6 mode on each interface
+Router# show ipv6 dhcp interface
+
+! Show DHCPv6 pool details on the server
+Router# show ipv6 dhcp pool
+
+! Show delegated-prefix bindings on the server
+Router# show ipv6 dhcp binding
+
+! Show the delegated prefix learned by the client
+Router# show ipv6 general-prefix
+
 ! Show IPv6 addresses
 Router# show ipv6 interface brief
 
 ! Show IPv6 routing table
 Router# show ipv6 route
 
-! Show NDP neighbor cache
-Router# show ipv6 neighbors
-
-! Show DHCP bindings
-Router# show ipv6 dhcp binding
-
-! Ping IPv6 address
-Router# ping ipv6 2001:db8::1
+! Ping an address from the delegated prefix
+Router# ping ipv6 2001:db8:1200::1
 
 ! Traceroute over IPv6
-Router# traceroute ipv6 2001:db8::1 source GigabitEthernet0/1
+Router# traceroute ipv6 2001:db8:1200::1
 ```
 
 ## Debug Commands
@@ -85,7 +99,7 @@ Router# debug ipv6 packet
 Router# debug ipv6 nd
 
 ! Debug DHCPv6
-Router# debug ipv6 dhcp
+Router# debug ipv6 dhcp detail
 
 ! Always disable debug when done
 Router# undebug all
@@ -97,4 +111,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your Cisco router's IPv6 conne
 
 ## Conclusion
 
-How to Configure IPv6 Prefix Delegation on Cisco follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before any interface IPv6 configuration will work. Always verify with `show ipv6` commands after making changes.
+How to Configure IPv6 Prefix Delegation on Cisco follows standard Cisco IOS DHCPv6-PD configuration patterns. Use `prefix-delegation pool` together with `ipv6 local pool` on the delegating router, and `ipv6 dhcp client pd` on the requesting router. Enable `ipv6 unicast-routing` globally so the router can forward IPv6 traffic and use delegated prefixes correctly. Always verify with `show ipv6 dhcp`, `show ipv6 general-prefix`, and related `show ipv6` commands after making changes.
