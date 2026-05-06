@@ -14,7 +14,7 @@ Cloudflare Tunnel (formerly Argo Tunnel) creates an outbound-only encrypted conn
 
 ## Prerequisites
 
-- A Cloudflare account with a domain
+- A Cloudflare account with a domain added to Cloudflare
 - Docker installed on the Portainer host
 - `cloudflared` CLI or Docker image
 
@@ -42,17 +42,20 @@ cloudflared tunnel create portainer-tunnel
 ## Configure the Tunnel
 
 ```yaml
-# ~/.cloudflared/config.yml
+# ~/.cloudflared/config.yml on the Portainer host,
+# mounted into /home/nonroot/.cloudflared in the container below
 tunnel: <TUNNEL-UUID>
-credentials-file: /root/.cloudflared/<TUNNEL-UUID>.json
+credentials-file: /home/nonroot/.cloudflared/<TUNNEL-UUID>.json
 
 ingress:
   - hostname: portainer.example.com
-    service: https://localhost:9443
+    service: https://<PORTAINER-HOST-IP>:9443
     originRequest:
       noTLSVerify: true  # For self-signed Portainer cert
   - service: http_status:404
 ```
+
+Because `cloudflared` runs in its own container below, do not use `localhost` here unless the container shares the host network. Use the Portainer host IP address or another address the container can actually reach.
 
 ---
 
@@ -72,19 +75,19 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    command: tunnel --no-autoupdate run portainer-tunnel
+    volumes:
+      - /root/.cloudflared:/home/nonroot/.cloudflared:ro
 ```
 
-Get the tunnel token from the Cloudflare Zero Trust dashboard and set it as a Portainer environment variable.
+Mount the locally-managed tunnel directory into the container so `cloudflared` can read `config.yml` and the tunnel credentials file you created earlier.
 
 ---
 
 ## Enable Zero Trust Access (Optional)
 
 In Cloudflare Zero Trust dashboard:
-1. Go to **Access** → **Applications** → **Add application**.
+1. Go to **Access controls** → **Applications** → **Add an application**.
 2. Select **Self-hosted**, enter `portainer.example.com`.
 3. Add an **Access Policy** requiring your email or Google SSO.
 
@@ -94,4 +97,4 @@ This adds an authentication layer in front of Portainer itself.
 
 ## Summary
 
-Create a Cloudflare Tunnel and configure it to forward traffic from `portainer.example.com` to `https://localhost:9443`. Deploy `cloudflared` as a Docker container in a Portainer stack with `TUNNEL_TOKEN`. No inbound firewall ports are required - all traffic flows outbound through Cloudflare's network. Add Cloudflare Access policies for additional authentication before reaching Portainer.
+Create a Cloudflare Tunnel and configure it to forward traffic from `portainer.example.com` to `https://<PORTAINER-HOST-IP>:9443`. Deploy `cloudflared` as a Docker container in a Portainer stack by mounting the tunnel config and credentials files into the container. No inbound firewall ports are required - all traffic flows outbound through Cloudflare's network. Add Cloudflare Access policies for additional authentication before reaching Portainer.
