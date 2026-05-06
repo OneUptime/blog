@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, API Gateway, IPv6, Cloud, Dualstack, Terraform
 
-Description: Enable IPv6 access for AWS API Gateway HTTP and REST APIs using dualstack endpoints, custom domains, and CloudFront integration.
+Description: Enable IPv6 access for AWS API Gateway HTTP and REST APIs using dualstack endpoints, custom domains, and Terraform.
 
 ## Introduction
 
-AWS API Gateway supports IPv6 through its dualstack endpoint mode introduced for HTTP APIs. REST APIs gain IPv6 access via custom domain names backed by CloudFront, which has been dualstack-enabled since 2021.
+AWS API Gateway supports IPv6 through dualstack IP address types for HTTP APIs, REST APIs, and custom domain names. For edge-optimized REST API custom domains, API Gateway manages the underlying CloudFront distribution for you, so you configure IPv6 in API Gateway rather than by editing CloudFront directly.
 
 ## HTTP API - Enable Dualstack Endpoint
 
@@ -32,44 +32,41 @@ aws apigatewayv2 update-api \
 
 After enabling dualstack, the default execute-api endpoint resolves both A and AAAA records.
 
-## REST API - IPv6 via CloudFront Custom Domain
+## REST API - Enable Dualstack Endpoint
 
-REST APIs do not have a native dualstack toggle, but a custom domain backed by CloudFront provides IPv6 access.
+REST APIs support a native dualstack IP address type. Enable dualstack on the REST API itself, and if you use a public custom domain name, set the custom domain name to dualstack too.
 
-### Step 1: Create a Custom Domain in API Gateway
+### Step 1: Enable Dualstack on the REST API
 
 ```bash
-# Create a custom domain name with ACM certificate
-aws apigateway create-domain-name \
-  --domain-name api.example.com \
-  --endpoint-configuration types=EDGE \
-  --certificate-arn arn:aws:acm:us-east-1:123456789:certificate/abc-123
+# Create a new REST API with dualstack enabled
+aws apigateway create-rest-api \
+  --name "MyIPv6RestAPI" \
+  --endpoint-configuration types=REGIONAL,ipAddressType=dualstack \
+  --region us-east-1
+
+# Update an existing REST API to dualstack
+aws apigateway update-rest-api \
+  --rest-api-id "abc123def" \
+  --patch-operations "op='replace',path='/endpointConfiguration/ipAddressType',value='dualstack'" \
+  --region us-east-1
 ```
 
-### Step 2: Enable Dualstack on the CloudFront Distribution
+### Step 2: Enable Dualstack on the Custom Domain Name
 
-When API Gateway creates a CloudFront distribution for an EDGE endpoint, enable dualstack (IPv6) on it.
+If you use a custom domain, configure the domain name for dualstack as well. For edge-optimized custom domains, API Gateway manages the CloudFront distribution, so update the domain name in API Gateway instead of editing CloudFront directly.
 
 ```bash
-# Get the CloudFront distribution ID from the domain name
-DIST_ID=$(aws apigateway get-domain-name \
+# Create a public custom domain name with dualstack enabled
+aws apigateway create-domain-name \
   --domain-name api.example.com \
-  --query 'distributionDomainName' \
-  --output text | \
-  xargs -I{} aws cloudfront list-distributions \
-  --query "DistributionList.Items[?DomainName=='{}'].Id" \
-  --output text)
+  --endpoint-configuration types=EDGE,ipAddressType=dualstack \
+  --certificate-arn arn:aws:acm:us-east-1:123456789:certificate/abc-123
 
-# Enable IPv6 on the CloudFront distribution
-aws cloudfront get-distribution-config \
-  --id "$DIST_ID" > dist-config.json
-
-# Edit dist-config.json to set "IsIPV6Enabled": true under DistributionConfig
-# Then update:
-aws cloudfront update-distribution \
-  --id "$DIST_ID" \
-  --distribution-config file://dist-config.json \
-  --if-match $(jq -r '.ETag' dist-config.json)
+# Update an existing custom domain name to dualstack
+aws apigateway update-domain-name \
+  --domain-name api.example.com \
+  --patch-operations "op='replace',path='/endpointConfiguration/ipAddressType',value='dualstack'"
 ```
 
 ## Terraform Example - HTTP API with Dualstack
@@ -103,6 +100,7 @@ output "api_endpoint" {
 dig AAAA abc123def.execute-api.us-east-1.amazonaws.com
 
 # Test the API over IPv6
+# For REST APIs, include the deployed stage in the path, for example /prod/health
 curl -6 https://abc123def.execute-api.us-east-1.amazonaws.com/health
 
 # Test custom domain over IPv6
@@ -111,12 +109,15 @@ curl -6 https://api.example.com/health
 
 ## Lambda Integration - Handle IPv6 Client IPs
 
-When clients connect over IPv6, API Gateway passes the client address in `requestContext.identity.sourceIp`. Your Lambda function receives it correctly without changes.
+When clients connect over IPv6, API Gateway passes the client address in the request context. HTTP APIs with payload format version 2.0 use `requestContext.http.sourceIp`, while REST APIs and payload format version 1.0 use `requestContext.identity.sourceIp`.
 
 ```python
-# Lambda handler - IPv6 source IP is in the event automatically
 def handler(event, context):
-    source_ip = event['requestContext']['identity']['sourceIp']
+    request_context = event.get("requestContext", {})
+    source_ip = (
+        request_context.get("http", {}).get("sourceIp")
+        or request_context.get("identity", {}).get("sourceIp")
+    )
     # source_ip may be e.g. "2001:db8::1" for IPv6 clients
     print(f"Request from: {source_ip}")
     return {"statusCode": 200, "body": "OK"}
@@ -124,4 +125,4 @@ def handler(event, context):
 
 ## Conclusion
 
-AWS HTTP APIs have first-class dualstack support via `ip_address_type: dualstack`. REST APIs require a CloudFront-backed custom domain with IPv6 enabled on the distribution. Monitor your API Gateway endpoints from both IPv4 and IPv6 perspectives using OneUptime to ensure parity.
+AWS HTTP APIs and REST APIs both support dualstack IP address types. If you use a custom domain name, configure the domain name for dualstack as well. Monitor your API Gateway endpoints from both IPv4 and IPv6 perspectives using OneUptime to ensure parity.
