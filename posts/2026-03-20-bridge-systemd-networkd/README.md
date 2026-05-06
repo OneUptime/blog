@@ -20,10 +20,8 @@ Name=br0
 Kind=bridge
 
 [Bridge]
-# Disable STP for KVM/container environments (no loops)
+# Disable STP when the topology has no Layer 2 loops
 STP=no
-# Set forward delay to 0 for instant forwarding
-ForwardDelaySec=0
 ```
 
 ## Step 2: Create the Bridge .network File
@@ -79,7 +77,7 @@ Name=br0
 [Network]
 DHCP=ipv4
 
-[DHCP]
+[DHCPv4]
 UseDNS=true
 UseNTP=true
 ```
