@@ -8,7 +8,7 @@ Description: Configure the default gateway on Ubuntu and Debian systems using Ne
 
 ## Introduction
 
-In Netplan, the default gateway is set under `routes` using `to: default` (or `to: 0.0.0.0/0`) with a `via` pointing to the gateway IP. This replaces the older `gateway4` key which was deprecated in Netplan 0.104+.
+In Netplan, the default gateway is set under `routes` using `to: default` (or `to: 0.0.0.0/0`) with a `via` pointing to the gateway IP. This replaces the older `gateway4` key which was deprecated in Netplan 0.103+.
 
 ## Set Default Gateway (Recommended Method)
 
@@ -118,4 +118,4 @@ netplan apply
 
 ## Conclusion
 
-Set the default gateway in Netplan using `routes: - to: default via: <gateway-ip>`. Add a `metric` to control priority when multiple default routes exist. Avoid the deprecated `gateway4` key. Apply with `netplan apply` and verify with `ip route show default`.
+Set the default gateway in Netplan using `routes` with `to: default` and `via: <gateway-ip>`. Add a `metric` to control priority when multiple default routes exist. Avoid the deprecated `gateway4` key. Apply with `netplan apply` and verify with `ip route show default`.
