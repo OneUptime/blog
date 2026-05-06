@@ -23,8 +23,6 @@ Linkwarden preserves full page archives (PDF + screenshots) alongside your bookm
 ```yaml
 # docker-compose.yml - Linkwarden with PostgreSQL
 
-version: "3.8"
-
 networks:
   bookmarks_network:
     driver: bridge
@@ -36,7 +34,7 @@ volumes:
 services:
   # PostgreSQL database
   linkwarden_db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: linkwarden_db
     restart: unless-stopped
     environment:
@@ -68,7 +66,7 @@ services:
 
       # NextAuth secret (generate with: openssl rand -base64 32)
       - NEXTAUTH_SECRET=your_random_secret_here
-      - NEXTAUTH_URL=https://bookmarks.yourdomain.com
+      - NEXTAUTH_URL=https://bookmarks.yourdomain.com/api/v1/auth
 
       # Disable registration after setup
       - NEXT_PUBLIC_DISABLE_REGISTRATION=false
@@ -78,9 +76,6 @@ services:
 
       # Storage for archives
       - STORAGE_FOLDER=/data/data
-
-      # Allow new users to register
-      - DISABLE_REGISTRATION=false
     volumes:
       - linkwarden_data:/data/data
     networks:
@@ -116,7 +111,6 @@ Shiori is a simple, lightweight bookmark manager with CLI and web interface.
 
 ```yaml
 # docker-compose.yml - Shiori
-version: "3.8"
 
 networks:
   bookmarks_network:
@@ -133,14 +127,10 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - SHIORI_HTTP_SECRET_KEY=replace_with_a_long_random_string
       - SHIORI_DIR=/data
       # Optional: Use PostgreSQL instead of SQLite
-      # - SHIORI_DBMS=postgresql
-      # - SHIORI_PG_USER=shiori
-      # - SHIORI_PG_PASS=secure_password
-      # - SHIORI_PG_NAME=shiori
-      # - SHIORI_PG_HOST=shiori_db
-      # - SHIORI_PG_PORT=5432
+      # - SHIORI_DATABASE_URL=postgres://shiori:secure_password@shiori_db/shiori?sslmode=disable
     volumes:
       - shiori_data:/data
     networks:
@@ -156,7 +146,7 @@ docker exec shiori shiori add https://example.com \
   --tags tech,reference
 
 # Search bookmarks
-docker exec shiori shiori search "docker tutorial"
+docker exec shiori shiori print -s "docker tutorial"
 
 # Update bookmark metadata
 docker exec shiori shiori update 1 --title "New Title"
@@ -172,7 +162,6 @@ docker exec shiori shiori export /data/bookmarks.html
 
 ```yaml
 # docker-compose.yml - Wallabag
-version: "3.8"
 
 networks:
   bookmarks_network:
@@ -209,14 +198,13 @@ services:
       - SYMFONY__ENV__DATABASE_NAME=wallabag
       - SYMFONY__ENV__DATABASE_USER=wallabag
       - SYMFONY__ENV__DATABASE_PASSWORD=wallabag_password
-      - SYMFONY__ENV__MAILER_HOST=smtp.gmail.com
-      - SYMFONY__ENV__MAILER_USER=your-email@gmail.com
-      - SYMFONY__ENV__MAILER_PASSWORD=your-app-password
+      - SYMFONY__ENV__DATABASE_CHARSET=utf8mb4
+      - SYMFONY__ENV__MAILER_DSN=smtp://smtp-user:smtp-password@smtp.gmail.com
       - SYMFONY__ENV__FROM_EMAIL=noreply@yourdomain.com
       - SYMFONY__ENV__DOMAIN_NAME=https://read.yourdomain.com
       - SYMFONY__ENV__SERVER_NAME="Wallabag"
     volumes:
-      - wallabag_data:/var/www/wallabag/data
+      - wallabag_data:/var/www/wallabag/web/assets/images
     depends_on:
       - wallabag_db
     networks:
@@ -228,14 +216,14 @@ services:
 Install browser extensions for one-click bookmarking:
 
 ### Linkwarden Extension
-- Chrome/Firefox: Install "Linkwarden" extension from the browser store
-- Configure: Extension options > Server URL > `https://bookmarks.yourdomain.com`
-- API key: Linkwarden settings > API keys > Generate
+- Chrome/Firefox: Install the official "Linkwarden" extension from the browser store
+- Configure: Extension options > Cloud instance address > `https://bookmarks.yourdomain.com`
+- Sign in with your Linkwarden username/email and password
 
 ### Shiori Extension
 ```bash
-# Install the browser extension
-# https://github.com/nicholasgasior/shiori-firefox-extension
+# Install the official browser extension
+# https://github.com/go-shiori/shiori-web-ext/releases
 
 # Configure with your server URL:
 # Server URL: http://server-ip:8080
