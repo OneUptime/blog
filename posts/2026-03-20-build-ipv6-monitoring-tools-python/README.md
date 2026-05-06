@@ -25,7 +25,7 @@ class PingResult:
 def ping6(host: str, count: int = 3) -> PingResult:
     """Ping an IPv6 host and return structured results."""
     result = subprocess.run(
-        ["ping6", "-c", str(count), "-W", "2", host],
+        ["ping", "-6", "-c", str(count), "-W", "2", host],
         capture_output=True, text=True
     )
 
@@ -49,13 +49,13 @@ def ping6(host: str, count: int = 3) -> PingResult:
 targets = [
     "2001:4860:4860::8888",   # Google DNS
     "2606:4700:4700::1111",   # Cloudflare DNS
-    "2001:db8::1",            # Your gateway
+    "2001:db8::1",            # Replace with your IPv6 gateway
 ]
 
 for target in targets:
     result = ping6(target)
     status = "UP" if result.reachable else "DOWN"
-    rtt = f"{result.rtt_ms:.1f}ms" if result.rtt_ms else "N/A"
+    rtt = f"{result.rtt_ms:.1f}ms" if result.rtt_ms is not None else "N/A"
     print(f"[{status}] {target} RTT={rtt} Loss={result.packet_loss_pct:.0f}%")
 ```
 
@@ -100,6 +100,8 @@ def monitor_loop(targets: list[str], interval: int = 30):
 
             if result.rtt_ms is not None:
                 ipv6_rtt_ms.labels(host=target).set(result.rtt_ms)
+            else:
+                ipv6_rtt_ms.remove(target)
 
         time.sleep(interval)
 
@@ -110,12 +112,12 @@ start_http_server(9100)
 targets = ["2001:4860:4860::8888", "2606:4700:4700::1111"]
 monitor_thread = threading.Thread(
     target=monitor_loop,
-    args=(targets,),
-    daemon=True
+    args=(targets,)
 )
 monitor_thread.start()
 
-print("Metrics available at http://[::1]:9100/metrics")
+print("Metrics available at http://127.0.0.1:9100/metrics")
+monitor_thread.join()
 ```
 
 ## IPv6 BGP Route Monitor
@@ -143,10 +145,11 @@ def get_ipv6_bgp_routes() -> list[dict]:
 
     for prefix, data in bgp_data.get("routes", {}).items():
         for path in data:
+            as_path = path.get("aspath", "")
             routes.append({
                 "prefix": prefix,
                 "nexthop": path.get("nexthops", [{}])[0].get("ip", ""),
-                "as_path": path.get("aspath", ""),
+                "as_path": as_path.get("string", "") if isinstance(as_path, dict) else as_path,
                 "valid": path.get("valid", False),
                 "best": path.get("bestpath", {}).get("overall", False)
             })
@@ -194,8 +197,8 @@ def check_ipv6_http(url: str, timeout: int = 10) -> HTTPCheckResult:
 
 # Monitor IPv6 HTTP endpoints
 endpoints = [
-    "https://[2001:db8::web]/health",
-    "http://[2001:db8::api]:8080/status",
+    "https://[2001:db8::10]/health",
+    "http://[2001:db8::20]:8080/status",
 ]
 
 for endpoint in endpoints:
@@ -208,4 +211,4 @@ for endpoint in endpoints:
 
 ## Conclusion
 
-Python is well-suited for building IPv6 monitoring tools. Combine ping6 subprocess calls for ICMP monitoring, Prometheus client for metrics export, and requests for HTTP health checks. Expose metrics via Prometheus and visualize with Grafana for a complete IPv6 monitoring stack that integrates with OneUptime or other alerting platforms.
+Python is well-suited for building IPv6 monitoring tools. Combine `ping -6` subprocess calls for ICMP monitoring, Prometheus client for metrics export, and requests for HTTP health checks. Expose metrics via Prometheus and visualize with Grafana for a complete IPv6 monitoring stack that integrates with OneUptime or other alerting platforms.
