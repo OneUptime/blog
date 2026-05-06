@@ -8,7 +8,7 @@ Description: Enable IPv6 access for GCP API Gateway by routing traffic through a
 
 ## Introduction
 
-GCP API Gateway itself does not expose a native IPv6 endpoint - it operates via a managed service URL. To serve IPv6 clients, you route API Gateway traffic through a Global External HTTPS Load Balancer, which supports IPv6 frontends natively.
+GCP API Gateway itself does not expose a native IPv6 endpoint - it operates via a managed service URL. To serve IPv6 clients, you route API Gateway traffic through a global external Application Load Balancer, which supports IPv6 frontends natively. API Gateway integration through serverless NEGs is currently a Preview feature.
 
 ## Architecture Overview
 
@@ -44,19 +44,11 @@ gcloud api-gateway gateways create my-gateway \
 A Network Endpoint Group (NEG) of type `serverless` points the Load Balancer to API Gateway.
 
 ```bash
-# Get the API Gateway default hostname
-GW_HOST=$(gcloud api-gateway gateways describe my-gateway \
-  --location=us-central1 \
-  --format='value(defaultHostname)')
-
-# Create a serverless NEG targeting the API Gateway FQDN
-gcloud compute network-endpoint-groups create apigw-neg \
+# Create a serverless NEG targeting the API Gateway
+gcloud beta compute network-endpoint-groups create apigw-neg \
   --region=us-central1 \
   --network-endpoint-type=serverless \
-  --cloud-run-service="" \
-  --cloud-function-name="" \
-  --app-engine-app="" \
-  --serverless-deployment-platform=apigateway \
+  --serverless-deployment-platform=apigateway.googleapis.com \
   --serverless-deployment-resource=my-gateway
 ```
 
@@ -66,7 +58,7 @@ gcloud compute network-endpoint-groups create apigw-neg \
 # Create a backend service
 gcloud compute backend-services create apigw-backend \
   --global \
-  --load-balancing-scheme=EXTERNAL
+  --load-balancing-scheme=EXTERNAL_MANAGED
 
 # Add the NEG to the backend service
 gcloud compute backend-services add-backend apigw-backend \
@@ -91,6 +83,7 @@ gcloud compute target-https-proxies create apigw-https-proxy \
 # Create the IPv6 forwarding rule (frontend)
 gcloud compute forwarding-rules create apigw-ipv6-rule \
   --global \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
   --target-https-proxy=apigw-https-proxy \
   --address=apigw-ipv6 \
   --ports=443 \
@@ -108,11 +101,12 @@ resource "google_compute_global_address" "apigw_ipv6" {
 
 # Forwarding rule for IPv6
 resource "google_compute_global_forwarding_rule" "apigw_ipv6" {
-  name        = "apigw-ipv6-rule"
-  target      = google_compute_target_https_proxy.apigw.self_link
-  ip_address  = google_compute_global_address.apigw_ipv6.address
-  port_range  = "443"
-  ip_version  = "IPV6"
+  name                  = "apigw-ipv6-rule"
+  target                = google_compute_target_https_proxy.apigw.self_link
+  ip_address            = google_compute_global_address.apigw_ipv6.id
+  port_range            = "443"
+  ip_version            = "IPV6"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 ```
 
@@ -123,9 +117,9 @@ resource "google_compute_global_forwarding_rule" "apigw_ipv6" {
 IPV6=$(gcloud compute addresses describe apigw-ipv6 \
   --global --format='value(address)')
 
-# Test over IPv6
-curl -6 -v "https://[$IPV6]/" \
-  -H "Host: api.example.com"
+# Test over IPv6 while preserving the hostname for TLS and routing
+curl -6 -v --resolve "api.example.com:443:[$IPV6]" \
+  "https://api.example.com/"
 
 # Check DNS AAAA records after DNS propagation
 dig AAAA api.example.com
