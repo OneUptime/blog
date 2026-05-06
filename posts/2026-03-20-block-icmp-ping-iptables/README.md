@@ -6,7 +6,7 @@ Tags: iptables, ICMP, Linux, Security, Firewall, Ping
 
 Description: Block or selectively allow ICMP ping requests using iptables to reduce reconnaissance exposure while maintaining necessary network diagnostics.
 
-Blocking ICMP ping requests prevents attackers from discovering your server via network scans, while selectively allowing ICMP from trusted sources preserves your own diagnostic ability.
+Blocking ICMP ping requests can reduce your server's visibility to simple ICMP-based host discovery, while selectively allowing ICMP from trusted sources preserves your own diagnostic ability.
 
 ## Understanding ICMP Types
 
@@ -66,11 +66,11 @@ sudo iptables -A INPUT -p icmp --icmp-type time-exceeded -j ACCEPT
 # Allow parameter problem
 sudo iptables -A INPUT -p icmp --icmp-type parameter-problem -j ACCEPT
 
+# Allow echo-reply so this host can still ping other systems
+sudo iptables -A INPUT -p icmp --icmp-type echo-reply -j ACCEPT
+
 # Drop only echo-request (ping)
 sudo iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
-
-# Drop any other ICMP types not explicitly allowed
-sudo iptables -A INPUT -p icmp -j DROP
 ```
 
 ## Rate Limit Instead of Blocking
@@ -86,10 +86,10 @@ sudo iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
 
 ## Block ICMP Outbound (Echo Replies)
 
-To prevent your server from responding even when pinged internally:
+To prevent your server from responding to IPv4 pings even if another rule accepts echo-request:
 
 ```bash
-# Drop outbound echo-reply (your server won't respond to pings)
+# Drop outbound echo-reply (your server won't answer IPv4 pings)
 sudo iptables -A OUTPUT -p icmp --icmp-type echo-reply -j DROP
 ```
 
@@ -99,7 +99,7 @@ sudo iptables -A OUTPUT -p icmp --icmp-type echo-reply -j DROP
 # List current ICMP rules
 sudo iptables -L INPUT -n -v | grep icmp
 
-# Test from another host (should time out if blocked)
+# Test from another host (DROP should time out; REJECT should fail immediately)
 ping -c 3 your-server-ip
 
 # Test from an allowed host (should succeed)
@@ -108,10 +108,10 @@ ping -c 3 your-server-ip  # from trusted IP range
 
 ## Kernel sysctl Alternative
 
-You can also block ping at the kernel level without iptables:
+You can also block IPv4 ping at the kernel level without iptables:
 
 ```bash
-# Ignore all ICMP echo requests via sysctl
+# Ignore all IPv4 ICMP echo requests via sysctl
 echo 1 | sudo tee /proc/sys/net/ipv4/icmp_echo_ignore_all
 
 # Make it permanent
