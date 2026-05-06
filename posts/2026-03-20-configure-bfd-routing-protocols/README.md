@@ -8,11 +8,11 @@ Description: Configure Bidirectional Forwarding Detection (BFD) to enable sub-se
 
 ## Introduction
 
-BFD is a lightweight protocol that detects link or path failures between two forwarding engines in milliseconds - far faster than OSPF's default dead interval (40 seconds) or BGP's keepalive timeout (90 seconds). BFD operates independently of the routing protocol and notifies it immediately when a path fails.
+BFD is a lightweight protocol that detects link or path failures between two forwarding engines in milliseconds - far faster than OSPF's default dead interval (40 seconds) or BGP's default hold timer. BFD operates independently of the routing protocol and notifies it immediately when a path fails.
 
 ## How BFD Works
 
-BFD creates a control session between two endpoints. Both send Hello packets at a configured interval (e.g., every 300ms). If packets are missed for a configured multiplier (e.g., 3), the session is declared down and the routing protocol is notified immediately.
+BFD creates a control session between two endpoints. Both send BFD control packets at a configured interval (e.g., every 300ms). If packets are missed for a configured multiplier (e.g., 3), the session is declared down and the routing protocol is notified immediately.
 
 ## Installing and Enabling BFD in FRR
 
@@ -57,7 +57,8 @@ router bgp 65001
   neighbor 10.0.0.2 bfd
   # BFD now monitors the BGP session to 10.0.0.2
 
-  # Use a specific profile for tighter timing
+# Or use a specific profile for tighter timing
+router bgp 65001
   neighbor 10.0.0.2 bfd profile FAST-DETECT
 ```
 
@@ -67,12 +68,12 @@ router bgp 65001
 # Show all BFD peers and their state
 vtysh -c "show bfd peers"
 
-# Show detailed BFD session info
-vtysh -c "show bfd peers detail"
+# Show detailed BFD session info for one peer
+vtysh -c "show bfd peer 10.0.0.2"
 
 # Expected output for a healthy session:
-# BFD Peers:
-#     peer 10.0.0.2 vrf default
+# BFD Peer:
+#     peer 10.0.0.2
 #       ID: 1
 #       Remote ID: 1
 #       Status: up
@@ -80,11 +81,17 @@ vtysh -c "show bfd peers detail"
 #       Diagnostics: ok
 #       Remote diagnostics: ok
 #       Peer Type: dynamic
-#       RTT min/avg/max: 0/0/0 usec
 #       Local timers:
 #         Detect-multiplier: 3
-#         Receive interval: 300ms
-#         Transmission interval: 300ms
+#         Receive interval: 300 ms
+#         Transmission interval: 300 ms
+#         Echo receive interval: 50 ms
+#         Echo transmission interval: disabled
+#       Remote timers:
+#         Detect-multiplier: 3
+#         Receive interval: 300 ms
+#         Transmission interval: 300 ms
+#         Echo receive interval: 50 ms
 ```
 
 ## Testing BFD Failover
@@ -93,7 +100,8 @@ vtysh -c "show bfd peers detail"
 # Simulate link failure by shutting down the interface
 ip link set eth0 down
 
-# BFD should detect the failure within ~900ms and notify OSPF/BGP
+# On directly connected peers, the kernel may report interface-down before BFD expires.
+# To validate BFD timing specifically, test a path failure where the interface stays up.
 # Watch for BGP/OSPF convergence
 watch -n 0.5 "vtysh -c 'show ip bgp summary' | grep -E 'Neighbor|10.0.0'"
 ```
