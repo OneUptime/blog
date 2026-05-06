@@ -24,11 +24,11 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
     google-beta = {
       source  = "hashicorp/google-beta"
-      version = "~> 5.0"
+      version = "~> 7.0"
     }
   }
 }
@@ -55,16 +55,32 @@ provider "google" {
   alias   = "europe"
 }
 
-# Use specific region provider
+# Use specific region providers with a regional resource
 
-resource "google_compute_network" "vpc_us" {
-  provider = google.us_central
-  name     = "vpc-us"
+resource "google_compute_network" "shared" {
+  provider                = google.us_central
+  name                    = "multi-region-vpc"
+  auto_create_subnetworks = false
 }
 
-resource "google_compute_network" "vpc_eu" {
+resource "google_compute_router" "router_us" {
+  provider = google.us_central
+  name     = "router-us"
+  network  = google_compute_network.shared.name
+
+  bgp {
+    asn = 64514
+  }
+}
+
+resource "google_compute_router" "router_eu" {
   provider = google.europe
-  name     = "vpc-eu"
+  name     = "router-eu"
+  network  = google_compute_network.shared.name
+
+  bgp {
+    asn = 64515
+  }
 }
 ```
 
@@ -87,11 +103,24 @@ variable "zone" {
   type        = string
   default     = "us-central1-a"
 }
+
+variable "environment" {
+  description = "Environment label"
+  type        = string
+  default     = "dev"
+}
+
+variable "team" {
+  description = "Team label"
+  type        = string
+  default     = "platform"
+}
 ```
 
 ## Step 4: Enable Required APIs
 
 ```hcl
+# The Service Usage API must already be enabled in the project.
 # Enable required Google Cloud APIs
 resource "google_project_service" "compute" {
   project            = var.project_id
@@ -140,4 +169,4 @@ tofu apply
 
 ## Conclusion
 
-You have successfully configured the Google Cloud provider in OpenTofu with multi-region support, default labels, and API enablement. Enable only the GCP APIs you need to reduce the attack surface. Use the `google-beta` provider alias for features not yet in the GA provider.
+You have successfully configured the Google Cloud provider in OpenTofu with multi-region support, default labels, and API enablement. Enable only the GCP APIs you need to reduce the attack surface. Use a separate `google-beta` provider block and set `provider = google-beta` on resources that need beta-only features.
