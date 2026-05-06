@@ -34,30 +34,31 @@ configure terminal
 
 ! Sub-AS 65010 configuration
 router bgp 65010
+ no bgp default ipv4-unicast
 
  ! Declare the confederation identifier (visible to external peers)
  bgp confederation identifier 65001
 
  ! Declare the other sub-ASes in the confederation
- bgp confederation peers 65020 65030
+ bgp confederation peers 65020
 
  bgp router-id 1.1.1.1
 
  ! iBGP within Sub-AS 65010 (full mesh or RR)
- neighbor 2001:db8::r2 remote-as 65010
- neighbor 2001:db8::r2 update-source lo
+ neighbor 2001:db8:10::2 remote-as 65010
+ neighbor 2001:db8:10::2 update-source lo
 
  ! eBGP-confederation to Sub-AS 65020
- neighbor 2001:db8::r3 remote-as 65020
+ neighbor 2001:db8:12::2 remote-as 65020
 
  ! External eBGP to AS 12345
- neighbor 2001:db8::external remote-as 12345
+ neighbor 2001:db8:ff::1 remote-as 12345
 
  address-family ipv6 unicast
-  neighbor 2001:db8::r2 activate
-  neighbor 2001:db8::r3 activate
-  neighbor 2001:db8::external activate
-  network 2001:db8:myorg::/48
+  neighbor 2001:db8:10::2 activate
+  neighbor 2001:db8:12::2 activate
+  neighbor 2001:db8:ff::1 activate
+  network 2001:db8:100::/48
  exit-address-family
 
 end
@@ -72,22 +73,23 @@ configure terminal
 
 ! Sub-AS 65020 configuration
 router bgp 65020
+ no bgp default ipv4-unicast
 
  bgp confederation identifier 65001
- bgp confederation peers 65010 65030
+ bgp confederation peers 65010
 
  bgp router-id 2.2.2.2
 
  ! iBGP within Sub-AS 65020
- neighbor 2001:db8::r4 remote-as 65020
- neighbor 2001:db8::r4 update-source lo
+ neighbor 2001:db8:20::2 remote-as 65020
+ neighbor 2001:db8:20::2 update-source lo
 
  ! eBGP-confederation to Sub-AS 65010
- neighbor 2001:db8::r1 remote-as 65010
+ neighbor 2001:db8:12::1 remote-as 65010
 
  address-family ipv6 unicast
-  neighbor 2001:db8::r4 activate
-  neighbor 2001:db8::r1 activate
+  neighbor 2001:db8:20::2 activate
+  neighbor 2001:db8:12::1 activate
  exit-address-family
 
 end
@@ -98,14 +100,15 @@ write memory
 
 ```text
 Router(config)# router bgp 65010
+Router(config-router)# no bgp default ipv4-unicast
 Router(config-router)# bgp confederation identifier 65001
 Router(config-router)# bgp confederation peers 65020
 Router(config-router)# bgp router-id 1.1.1.1
 
-Router(config-router)# neighbor 2001:db8::r3 remote-as 65020    ! Confederation peer
+Router(config-router)# neighbor 2001:DB8:12::2 remote-as 65020    ! Confederation peer
 
 Router(config-router)# address-family ipv6 unicast
-Router(config-router-af)# neighbor 2001:db8::r3 activate
+Router(config-router-af)# neighbor 2001:DB8:12::2 activate
 ```
 
 ## AS_CONFED_SEQUENCE and AS_CONFED_SET
@@ -119,18 +122,18 @@ External peers see the confederation identifier without the internal sub-AS deta
 ## Verifying Confederation Configuration
 
 ```bash
-# Show BGP confederation configuration
+# Show BGP IPv6 routes and AS paths
 
 vtysh -c "show bgp ipv6 unicast"
-# Routes from confederation peers have AS path with (65020) notation
+# Routes learned across confederation member-ASes can show AS path segments such as (65020)
 
-# Verify the confederation identifier
-vtysh -c "show bgp ipv6 unicast summary"
-# Should show: Local AS is 65010, Confederation ID is 65001
+# Verify peer state for the IPv6 AFI/SAFI
+vtysh -c "show bgp ipv6 unicast summary wide"
+# Should show the local AS and established peer state for the IPv6 address family
 
 # Check that external routes don't show sub-AS numbers
-vtysh -c "show bgp ipv6 unicast neighbors 2001:db8::external advertised-routes"
-# AS path should show only 65001, not 65010 or 65020
+vtysh -c "show bgp ipv6 unicast neighbors 2001:db8:ff::1 advertised-routes"
+# AS path should show only 65001, not the internal member-AS numbers
 ```
 
 ## Confederations vs Route Reflectors
@@ -139,9 +142,9 @@ vtysh -c "show bgp ipv6 unicast neighbors 2001:db8::external advertised-routes"
 |---------|---------------|-----------------|
 | Complexity | Higher | Lower |
 | Loop prevention | AS_CONFED attributes | ORIGINATOR_ID, CLUSTER_LIST |
-| Next-hop behavior | Preserved naturally | May need next-hop-self |
+| Next-hop behavior | Usually unchanged between member-ASes; policy may still be needed | May need next-hop-self |
 | Deployment | Large enterprise/ISP | Most environments |
 
 ## Summary
 
-BGP IPv6 confederations divide a large AS into sub-ASes for iBGP scaling. Each router's local AS is a sub-AS; `bgp confederation identifier` sets the visible AS. `bgp confederation peers` lists other sub-ASes. Confederation sessions behave like eBGP internally but like iBGP externally. Verify that external advertisements show only the confederation identifier, not sub-AS numbers.
+BGP IPv6 confederations divide a large AS into sub-ASes for iBGP scaling. Each router's local AS is a sub-AS; `bgp confederation identifier` sets the visible AS. `bgp confederation peers` lists the other member-ASes in the confederation. Sessions between member-ASes use those internal AS numbers, while external peers see only the confederation identifier. Verify that external advertisements show only the confederation identifier, not sub-AS numbers.
