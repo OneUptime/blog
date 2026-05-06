@@ -8,9 +8,9 @@ Description: Configure a Linux network bridge using nmcli, including creating th
 
 ## Introduction
 
-NetworkManager supports bridge creation through nmcli. A bridge requires a master connection for the bridge device and slave connections for each physical interface member. This is commonly used for KVM virtual machine networking.
+NetworkManager supports bridge creation through nmcli. A bridge requires a controller connection for the bridge device and port connections for each physical interface member. This is commonly used for KVM virtual machine networking.
 
-## Step 1: Create the Bridge Master
+## Step 1: Create the Bridge Controller
 
 ```bash
 # Create a bridge connection
@@ -28,22 +28,22 @@ nmcli connection modify "br0" \
     ipv4.dns "8.8.8.8"
 ```
 
-## Step 2: Add a Physical Interface as a Slave
+## Step 2: Add a Physical Interface as a Bridge Port
 
 ```bash
-# Add eth0 as a bridge member
+# Add eth0 as a bridge port
 nmcli connection add \
     type ethernet \
-    con-name "br0-slave-eth0" \
+    con-name "br0-port-eth0" \
     ifname eth0 \
-    master br0
+    controller br0
 ```
 
 ## Step 3: Activate the Bridge
 
 ```bash
-# Bring up the slave, then the bridge
-nmcli connection up "br0-slave-eth0"
+# Bring up the port, then the bridge
+nmcli connection up "br0-port-eth0"
 nmcli connection up "br0"
 ```
 
@@ -79,6 +79,8 @@ nmcli connection up "br0"
 
 ## Bridge with DHCP
 
+If you want DHCP instead of the static IPv4 settings above, create the bridge like this:
+
 ```bash
 nmcli connection add \
     type bridge \
@@ -87,27 +89,28 @@ nmcli connection add \
     ipv4.method auto
 ```
 
-## Add Multiple Slaves
+## Add Multiple Bridge Ports
 
 ```bash
-# Add second physical interface as bridge member
+# Add second physical interface as a bridge port
 nmcli connection add \
     type ethernet \
-    con-name "br0-slave-eth1" \
+    con-name "br0-port-eth1" \
     ifname eth1 \
-    master br0
+    controller br0
 
-nmcli connection up "br0-slave-eth1"
+nmcli connection up "br0-port-eth1"
 ```
 
 ## Delete a Bridge
 
 ```bash
 nmcli connection down "br0"
-nmcli connection delete "br0-slave-eth0"
+nmcli connection delete "br0-port-eth0"
+# If you added more bridge ports, delete those too.
 nmcli connection delete "br0"
 ```
 
 ## Conclusion
 
-nmcli bridge setup requires a master connection (`type bridge`) and slave connections for each member physical interface (`master br0`). IP configuration goes on the bridge master. STP settings are configured with `bridge.stp` and `bridge.forward-delay`. Verify with `bridge link show` and `ip addr show br0`.
+nmcli bridge setup requires a controller connection (`type bridge`) and port connections for each member physical interface (`controller br0`). IP configuration goes on the bridge controller. STP settings are configured with `bridge.stp` and `bridge.forward-delay`. Verify with `bridge link show` and `ip addr show br0`.
