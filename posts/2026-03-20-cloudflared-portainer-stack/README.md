@@ -19,9 +19,10 @@ Deploying cloudflared as a Portainer stack lets you manage your Cloudflare Tunne
 ## Getting Your Tunnel Token
 
 1. Go to [Cloudflare Zero Trust](https://one.dash.cloudflare.com)
-2. **Networks → Tunnels → Create a Tunnel**
-3. Select **Cloudflared** connector type
-4. Copy the token from the install command shown:
+2. Open **Networks → Connectors → Cloudflare Tunnels**
+3. Select your tunnel
+4. Click **Add a replica**
+5. Copy the token from the install command shown:
 
 ```bash
 cloudflared service install eyJhY...  # This is your token
@@ -32,8 +33,6 @@ cloudflared service install eyJhY...  # This is your token
 If cloudflared is a standalone stack separate from your services:
 
 ```yaml
-version: "3.8"
-
 services:
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -56,8 +55,6 @@ In Portainer's stack environment variables, set `TUNNEL_TOKEN` to your tunnel to
 Deploy both in one stack for a self-contained setup:
 
 ```yaml
-version: "3.8"
-
 services:
   portainer:
     image: portainer/portainer-ce:latest
@@ -107,7 +104,7 @@ From Portainer:
 2026-03-20T10:00:01Z INF Connection registered with Cloudflare
 ```
 
-Also check in the Cloudflare Zero Trust dashboard under **Networks → Tunnels** - status should show **Healthy**.
+Also check in the Cloudflare Zero Trust dashboard under **Networks → Connectors → Cloudflare Tunnels** - status should show **Healthy**.
 
 ## Updating cloudflared
 
@@ -120,7 +117,7 @@ Cloudflare periodically releases new versions. To update via Portainer:
 Or pin a specific version for stability:
 
 ```yaml
-image: cloudflare/cloudflared:2024.12.0
+image: cloudflare/cloudflared:2026.3.0
 ```
 
 ## Multiple Tunnels for Different Environments
@@ -129,11 +126,15 @@ image: cloudflare/cloudflared:2024.12.0
 services:
   cloudflared-prod:
     image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN_PROD}
 
   cloudflared-staging:
     image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN_STAGING}
 ```
