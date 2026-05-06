@@ -8,12 +8,12 @@ Description: Learn how to bind REST API servers to specific IPv4 addresses in Py
 
 ## Why Bind to a Specific Address?
 
-Binding to `0.0.0.0` accepts connections on all interfaces. Binding to a specific IP restricts the server to one interface - useful to keep an admin API private (`127.0.0.1`) while exposing a public API on the machine's public IP.
+Binding to `0.0.0.0` accepts connections on all IPv4 interfaces. Binding to a specific IP restricts the server to that local address - useful to keep an admin API private (`127.0.0.1`) while exposing a public API on the machine's public IP.
 
 ```text
-Bind 0.0.0.0:8080  → accepts on all interfaces (eth0, lo, vpn0, ...)
+Bind 0.0.0.0:8080  → accepts on all IPv4 interfaces (eth0, lo, vpn0, ...)
 Bind 127.0.0.1:8080 → localhost only
-Bind 192.168.1.10:8080 → one specific interface
+Bind 192.168.1.10:8080 → one specific local address
 ```
 
 ## Python: Flask
@@ -28,9 +28,9 @@ def health():
     return {"status": "ok"}
 
 if __name__ == "__main__":
-    # Bind only to internal network interface
+    # Bind only to one internal IPv4 address
     app.run(host="192.168.1.10", port=8080, debug=False)
-    # Use host="0.0.0.0" to accept on all interfaces
+    # Use host="0.0.0.0" to accept on all IPv4 interfaces
 ```
 
 ## Python: FastAPI with uvicorn
@@ -87,7 +87,7 @@ func main() {
     mux := http.NewServeMux()
     mux.HandleFunc("/health", healthHandler)
 
-    // Bind to specific IPv4 interface
+    // Bind to a specific IPv4 address
     addr := "192.168.1.10:8080"
     fmt.Printf("Listening on %s\n", addr)
     if err := http.ListenAndServe(addr, mux); err != nil {
@@ -107,13 +107,18 @@ server.port=8080
 
 ```java
 // Or programmatically
+import java.util.Map;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
 @SpringBootApplication
 public class ApiApplication {
     public static void main(String[] args) {
         SpringApplication app = new SpringApplication(ApiApplication.class);
-        app.setDefaultProperties(Map.of(
+        app.setDefaultProperties(Map.<String, Object>of(
             "server.address", "192.168.1.10",
-            "server.port",    "8080"
+            "server.port",    8080
         ));
         app.run(args);
     }
@@ -122,4 +127,4 @@ public class ApiApplication {
 
 ## Conclusion
 
-All major web frameworks accept a host/address parameter alongside the port. Use `127.0.0.1` for loopback-only (admin APIs, metrics endpoints), the machine's LAN IP for internal-only exposure, and `0.0.0.0` when the service should be reachable on any interface. Document the chosen bind address in deployment configuration alongside firewall rules so the intent is explicit and auditable.
+The frameworks shown here accept a host/address parameter alongside the port. Use `127.0.0.1` for loopback-only (admin APIs, metrics endpoints), the machine's LAN IP for internal-only exposure, and `0.0.0.0` when the service should be reachable on any IPv4 interface. Document the chosen bind address in deployment configuration alongside firewall rules so the intent is explicit and auditable.
