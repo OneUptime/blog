@@ -6,14 +6,14 @@ Tags: DHCP, Backup, Restore, Linux, Sysadmin, Network Management
 
 Description: Regularly backing up the DHCP configuration file and lease database ensures you can quickly restore service after a server failure, with automated scripts to schedule backups and validate restores.
 
-## Files to Back Up (Linux ISC dhcpd)
+## Files to Back Up (Debian/Ubuntu ISC dhcpd)
 
 | File | Purpose |
 |------|---------|
 | `/etc/dhcp/dhcpd.conf` | Scope and option configuration |
 | `/etc/default/isc-dhcp-server` | Interface binding |
 | `/var/lib/dhcp/dhcpd.leases` | Active lease database |
-| `/var/lib/dhcp/dhcpd.leases~` | Backup lease file |
+| `/var/lib/dhcp/dhcpd.leases~` | Previous lease file created during lease database rewrite (optional) |
 
 ## Manual Backup Script
 
@@ -30,10 +30,13 @@ mkdir -p "$BACKUP_DIR"
 
 # sudo systemctl stop isc-dhcp-server
 
-tar czf "$BACKUP_DIR/dhcp-backup-$DATE.tar.gz" \
+if ! tar czf "$BACKUP_DIR/dhcp-backup-$DATE.tar.gz" \
     /etc/dhcp/dhcpd.conf \
     /etc/default/isc-dhcp-server \
-    /var/lib/dhcp/dhcpd.leases 2>/dev/null
+    /var/lib/dhcp/dhcpd.leases; then
+    echo "DHCP backup failed"
+    exit 1
+fi
 
 # sudo systemctl start isc-dhcp-server
 
@@ -66,11 +69,13 @@ fi
 sudo systemctl stop isc-dhcp-server
 
 # Extract backup
-sudo tar xzf "$BACKUP_FILE" -C /
+if ! sudo tar xzf "$BACKUP_FILE" -C /; then
+    echo "Restore failed: unable to extract $BACKUP_FILE"
+    exit 1
+fi
 
 # Validate configuration
-sudo dhcpd -t -cf /etc/dhcp/dhcpd.conf
-if [ $? -ne 0 ]; then
+if ! sudo dhcpd -t -cf /etc/dhcp/dhcpd.conf; then
     echo "Configuration error! Please check dhcpd.conf"
     exit 1
 fi
@@ -91,7 +96,7 @@ Export-DhcpServer -File "C:\Backup\DHCP\dhcp-$(Get-Date -Format 'yyyyMMdd').xml"
 # Restore (on same or new server)
 Stop-Service -Name DHCPServer
 Import-DhcpServer -File "C:\Backup\DHCP\dhcp-20260320.xml" `
-    -BackupPath "C:\Backup\DHCP\restore-tmp" -Leases -Force
+    -BackupPath "C:\Backup\DHCP\restore-tmp" -Leases -ScopeOverwrite -Force
 Start-Service -Name DHCPServer
 ```
 
