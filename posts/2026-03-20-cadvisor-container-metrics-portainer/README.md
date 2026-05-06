@@ -17,11 +17,9 @@ cAdvisor (Container Advisor) is an open-source daemon that collects, aggregates,
 In Portainer, go to **Stacks** → **Add stack** and paste:
 
 ```yaml
-version: "3.8"
-
 services:
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    image: ghcr.io/google/cadvisor:v0.55.1
     container_name: cadvisor
     restart: unless-stopped
     privileged: true
