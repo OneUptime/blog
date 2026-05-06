@@ -8,7 +8,7 @@ Description: Bind server applications to the IPv6 wildcard address (::) to liste
 
 ## Introduction
 
-The IPv6 wildcard address `::` is the equivalent of IPv4's `0.0.0.0` - it instructs the kernel to accept connections on all available network interfaces. Binding to `::` is the standard way to make an IPv6 server accessible from any interface, and with `IPV6_V6ONLY=0`, also from IPv4 clients through IPv4-mapped addresses.
+The IPv6 wildcard address `::` is the equivalent of IPv4's `0.0.0.0` - it instructs the kernel to accept connections on all available network interfaces. Binding to `::` is the standard way to make an IPv6 server accessible from any interface, and with `IPV6_V6ONLY=0`, also from IPv4 clients through IPv4-mapped addresses on platforms that support dual-stack sockets.
 
 ## The IPv6 Wildcard Address
 
@@ -38,7 +38,7 @@ int bind_ipv6_wildcard(int port, int dual_stack) {
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
     /* Dual-stack control:
-     * IPV6_V6ONLY=0: Accept IPv4 AND IPv6 (dual-stack)
+     * IPV6_V6ONLY=0: Accept IPv4-mapped AND IPv6 connections (dual-stack)
      * IPV6_V6ONLY=1: Accept IPv6 ONLY
      */
     int v6only = dual_stack ? 0 : 1;
@@ -64,7 +64,7 @@ int bind_ipv6_wildcard(int port, int dual_stack) {
         return -1;
     }
 
-    printf("Listening on [::]:5%d (dual-stack=%s)\n", port,
+    printf("Listening on [::]:%d (dual-stack=%s)\n", port,
            dual_stack ? "yes" : "no");
     return sockfd;
 }
@@ -79,8 +79,8 @@ int main(void) {
     /* Accept loop */
     /* ... */
 
-    close(dual);
-    close(v6only);
+    if (dual >= 0) close(dual);
+    if (v6only >= 0) close(v6only);
     return 0;
 }
 ```
@@ -88,7 +88,7 @@ int main(void) {
 ## Using in6addr_any vs IN6ADDR_ANY_INIT
 
 ```c
-/* Three equivalent ways to set the wildcard address */
+/* Four equivalent ways to set the wildcard address */
 
 /* Method 1: in6addr_any (global constant, most common) */
 addr.sin6_addr = in6addr_any;
@@ -117,13 +117,13 @@ def create_ipv6_server(port: int, dual_stack: bool = True) -> socket.socket:
     sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    # IPV6_V6ONLY: 0 = dual-stack, 1 = IPv6 only
+    # IPV6_V6ONLY: 0 = dual-stack on platforms that support it, 1 = IPv6 only
     sock.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0 if dual_stack else 1)
 
     # '::'  is the IPv6 wildcard address
     sock.bind(('::', port, 0, 0))
     sock.listen(5)
-    print(f"Listening on [::]:{ port} (dual_stack={dual_stack})")
+    print(f"Listening on [::]:{port} (dual_stack={dual_stack})")
     return sock
 
 server = create_ipv6_server(8080, dual_stack=True)
@@ -141,8 +141,8 @@ import (
 
 func bindWildcard(port int) (net.Listener, error) {
     // "[::]:port" binds to IPv6 wildcard
-    // "tcp" on Linux = dual-stack with IPV6_V6ONLY=0 by default
-    return net.Listen("tcp", fmt.Sprintf("[::]:% d", port))
+    // Whether the listener also accepts IPv4 depends on the OS
+    return net.Listen("tcp", fmt.Sprintf("[::]:%d", port))
 }
 
 func main() {
@@ -160,14 +160,16 @@ func main() {
 ```bash
 # After starting your server, verify it's bound to :: (IPv6 wildcard)
 
-ss -tlnp | grep <port>
+ss -tlnp | grep ':8080'
 
 # Expected output for dual-stack on Linux:
 # LISTEN  0  128  *:8080  *:*  (single entry, handles both)
 
-# Or two entries on BSD/macOS:
-# LISTEN  0  128  0.0.0.0:8080  0.0.0.0:*
-# LISTEN  0  128  [::]:8080     [::]:*
+# Expected output for IPv6-only on Linux:
+# LISTEN  0  128  [::]:8080  [::]:*
+
+# On BSD/macOS, use the equivalent socket inspection tool for your OS;
+# output formatting differs from ss.
 
 # Test IPv6 connection
 nc -6 ::1 8080
@@ -185,9 +187,9 @@ nc -4 127.0.0.1 8080
  * 3. Security: isolate service to a specific network
  */
 inet_pton(AF_INET6, "2001:db8::10", &addr.sin6_addr);
-/* Now only accepts connections to/from 2001:db8::10 */
+/* Now only accepts connections to 2001:db8::10 */
 ```
 
 ## Conclusion
 
-Binding to `::` (`in6addr_any`) creates a server that listens on all IPv6 interfaces. With `IPV6_V6ONLY=0`, this becomes a single dual-stack socket that also accepts IPv4 via IPv4-mapped addresses. Set `IPV6_V6ONLY=1` explicitly when you need IPv6-only behavior. Always verify with `ss -tlnp` that the server is actually bound to `:::port` (IPv6) after starting.
+Binding to `::` (`in6addr_any`) creates a server that listens on all IPv6 interfaces. With `IPV6_V6ONLY=0`, this becomes a single dual-stack socket that also accepts IPv4 via IPv4-mapped addresses on platforms that support dual-stack sockets. Set `IPV6_V6ONLY=1` explicitly when you need IPv6-only behavior. Always verify with `ss -tlnp` on Linux that the server is actually listening on `[::]:port` (IPv6-only) or as a single dual-stack `*:port` entry after starting.
