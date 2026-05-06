@@ -15,10 +15,9 @@ The Digitalocean provider for OpenTofu enables managing Digitalocean resources w
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    digitalocean = {
+      source  = "digitalocean/digitalocean"
+      version = "~> 2.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,53 +26,56 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Digitalocean provider can read credentials from environment variables:
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export DIGITALOCEAN_TOKEN="your-api-token"
+# Alternatively:
+# export DIGITALOCEAN_ACCESS_TOKEN="your-api-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "digitalocean" {
+  # Credentials are read from DIGITALOCEAN_TOKEN or DIGITALOCEAN_ACCESS_TOKEN
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+resource "digitalocean_project" "main" {
+  name        = "${var.name}-${var.environment}"
+  description = "Managed by OpenTofu"
+  purpose     = "Web Application"
+  environment = var.environment
 }
 ```
 
 ## Variables
 
 ```hcl
-variable "name"        { type = string }
-variable "environment" { type = string }
+variable "name" { type = string }
+
+variable "environment" {
+  type = string
+
+  validation {
+    condition     = contains(["Development", "Staging", "Production"], var.environment)
+    error_message = "environment must be Development, Staging, or Production."
+  }
+}
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "resource_id" { value = digitalocean_project.main.id }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
-- Pin provider versions in `required_providers` to prevent unexpected updates
+- Store the API token in environment variables or a secrets manager, never in `.tf` files
+- Constrain provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
 - Use separate provider configurations per environment using aliases or workspaces
 
