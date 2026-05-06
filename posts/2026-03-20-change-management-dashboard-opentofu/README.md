@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Change Management, Dashboard, Observability, GitOps, Infrastructure as Code
 
-Description: Learn how to build a change management dashboard for OpenTofu that tracks infrastructure changes, approvals, and deployment history using Git and CI/CD data.
+Description: Learn how to build a change management dashboard for OpenTofu that tracks infrastructure changes and deployment history using Git metadata, CI/CD run data, and plan outputs.
 
 ## Introduction
 
-Understanding what changed, when, who approved it, and what the impact was is critical for infrastructure change management. This guide shows how to build a lightweight dashboard by collecting change data from Git history, CI/CD pipelines, and OpenTofu plan outputs.
+Understanding what changed, when, who made the change, and what the high-level impact was is critical for infrastructure change management. This guide shows how to build a lightweight dashboard by collecting change data from Git history, CI/CD runs, and OpenTofu plan outputs.
 
 ## Change Event Collection Script
 
@@ -32,36 +32,58 @@ ENVIRONMENT="${ENVIRONMENT:-unknown}"
 
 # Parse the plan output for change counts
 PLAN_OUTPUT="${1:-plan_output.txt}"
-ADDED=$(grep -E "^\s+[0-9]+ to add" "$PLAN_OUTPUT" | awk '{print $1}' || echo "0")
-CHANGED=$(grep -E "^\s+[0-9]+ to change" "$PLAN_OUTPUT" | awk '{print $1}' || echo "0")
-DESTROYED=$(grep -E "^\s+[0-9]+ to destroy" "$PLAN_OUTPUT" | awk '{print $1}' || echo "0")
+PLAN_SUMMARY=$(grep -E '^Plan: [0-9]+ to add, [0-9]+ to change, [0-9]+ to destroy\.$' "$PLAN_OUTPUT" | tail -n1 || true)
+ADDED=0
+CHANGED=0
+DESTROYED=0
 
-# Build change event JSON
-CHANGE_EVENT=$(cat <<EOF
-{
-  "id": "$(uuidgen | tr '[:upper:]' '[:lower:]')",
-  "timestamp": "${APPLY_DATE}",
-  "environment": "${ENVIRONMENT}",
-  "commit": "${APPLY_COMMIT}",
-  "author": "${APPLY_AUTHOR}",
-  "message": "${APPLY_MESSAGE}",
-  "changes": {
-    "added": ${ADDED:-0},
-    "changed": ${CHANGED:-0},
-    "destroyed": ${DESTROYED:-0}
-  },
-  "ci_run_url": "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}",
-  "status": "applied"
-}
-EOF
+if [[ "$PLAN_SUMMARY" =~ ^Plan:\ ([0-9]+)\ to\ add,\ ([0-9]+)\ to\ change,\ ([0-9]+)\ to\ destroy\.$ ]]; then
+  ADDED="${BASH_REMATCH[1]}"
+  CHANGED="${BASH_REMATCH[2]}"
+  DESTROYED="${BASH_REMATCH[3]}"
+fi
+
+CI_RUN_URL=""
+if [[ -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_RUN_ID:-}" ]]; then
+  CI_RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+fi
+
+# Build change event JSON safely
+CHANGE_EVENT=$(jq -n \
+  --arg id "$(uuidgen | tr '[:upper:]' '[:lower:]')" \
+  --arg timestamp "${APPLY_DATE}" \
+  --arg environment "${ENVIRONMENT}" \
+  --arg commit "${APPLY_COMMIT}" \
+  --arg author "${APPLY_AUTHOR}" \
+  --arg message "${APPLY_MESSAGE}" \
+  --arg ci_run_url "${CI_RUN_URL}" \
+  --argjson added "${ADDED}" \
+  --argjson changed "${CHANGED}" \
+  --argjson destroyed "${DESTROYED}" \
+  '{
+    id: $id,
+    timestamp: $timestamp,
+    environment: $environment,
+    commit: $commit,
+    author: $author,
+    message: $message,
+    changes: {
+      added: $added,
+      changed: $changed,
+      destroyed: $destroyed
+    },
+    ci_run_url: $ci_run_url,
+    status: "applied"
+  }'
 )
 
 # Append to changes history (create if doesn't exist)
 if [[ -f "$CHANGES_DB" ]]; then
-  jq ". + [$CHANGE_EVENT]" "$CHANGES_DB" > /tmp/history_tmp.json
-  mv /tmp/history_tmp.json "$CHANGES_DB"
+  TMP_FILE=$(mktemp)
+  jq --argjson event "$CHANGE_EVENT" '. + [$event]' "$CHANGES_DB" > "$TMP_FILE"
+  mv "$TMP_FILE" "$CHANGES_DB"
 else
-  echo "[$CHANGE_EVENT]" > "$CHANGES_DB"
+  jq -n --argjson event "$CHANGE_EVENT" '[$event]' > "$CHANGES_DB"
 fi
 
 echo "Change event recorded: ${APPLY_DATE}"
@@ -71,6 +93,10 @@ echo "Change event recorded: ${APPLY_DATE}"
 
 ```yaml
 # .github/workflows/opentofu.yml (additions)
+# Assumes the OpenTofu apply step uses `id: apply`.
+# Also set workflow or job permissions:
+# permissions:
+#   contents: write
 - name: Record change event
   if: steps.apply.outcome == 'success'
   run: |
@@ -82,7 +108,6 @@ echo "Change event recorded: ${APPLY_DATE}"
     git push
   env:
     ENVIRONMENT: ${{ matrix.environment }}
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## Generating an HTML Dashboard
@@ -91,11 +116,12 @@ echo "Change event recorded: ${APPLY_DATE}"
 #!/usr/bin/env python3
 # scripts/generate_dashboard.py
 
+import html
 import json
 from datetime import datetime
 
 def generate_dashboard(history_file: str, output_file: str):
-    with open(history_file) as f:
+    with open(history_file, encoding="utf-8") as f:
         events = json.load(f)
 
     # Sort by timestamp descending
@@ -109,16 +135,20 @@ def generate_dashboard(history_file: str, output_file: str):
     rows = ""
     for event in events[:50]:  # last 50 changes
         ts = datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00"))
+        environment = html.escape(event["environment"])
+        author = html.escape(event["author"])
+        message = html.escape(event["message"][:60])
+        ci_run_url = html.escape(event.get("ci_run_url", "#"), quote=True)
         rows += f"""
         <tr>
           <td>{ts.strftime('%Y-%m-%d %H:%M')}</td>
-          <td><code>{event['environment']}</code></td>
-          <td>{event['author']}</td>
-          <td>{event['message'][:60]}</td>
+          <td><code>{environment}</code></td>
+          <td>{author}</td>
+          <td>{message}</td>
           <td class="add">+{event['changes']['added']}</td>
           <td class="change">~{event['changes']['changed']}</td>
           <td class="destroy">-{event['changes']['destroyed']}</td>
-          <td><a href="{event.get('ci_run_url','#')}">View</a></td>
+          <td><a href="{ci_run_url}">View</a></td>
         </tr>"""
 
     html = f"""<!DOCTYPE html>
@@ -144,7 +174,7 @@ def generate_dashboard(history_file: str, output_file: str):
 </tr>{rows}</table>
 </body></html>"""
 
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"Dashboard generated: {output_file}")
 
@@ -154,4 +184,4 @@ if __name__ == "__main__":
 
 ## Summary
 
-A change management dashboard built from Git history, CI/CD events, and plan outputs provides full visibility into infrastructure changes. OpenTofu generates the change data; scripts collect and visualize it - giving teams a lightweight, audit-ready change management solution without dedicated tooling.
+A change management dashboard built from Git metadata, CI/CD run data, and plan outputs provides visibility into infrastructure changes. OpenTofu generates the change data; scripts collect and visualize it - giving teams a lightweight audit trail without dedicated tooling.
