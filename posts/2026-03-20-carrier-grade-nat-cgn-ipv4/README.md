@@ -22,8 +22,8 @@ This allows one public IP to serve hundreds of customers, extending IPv4 address
 
 IANA assigned 100.64.0.0/10 specifically for CGN use:
 - Range: 100.64.0.0 – 100.127.255.255
-- 4 million addresses
-- Cannot be used on public internet
+- 4,194,304 addresses
+- Not globally routable
 - Distinct from RFC 1918 to avoid conflicts with customer networks
 
 ## Step 1: Configure CGN on Linux (iptables)
@@ -37,14 +37,15 @@ sysctl -w net.ipv4.ip_forward=1
 
 # Configure CGN NAT:
 # Inside interface (toward customers): eth0 (100.64.0.0/10)
-# Outside interface (toward internet): eth1 (public IP)
+# Outside interface (toward internet): eth1 (dynamically assigned public IP)
 
 # NAT all customer traffic to the public IP
+# MASQUERADE is appropriate when the outside address is assigned dynamically
 iptables -t nat -A POSTROUTING -s 100.64.0.0/10 -o eth1 -j MASQUERADE
 
 # Allow forwarding
 iptables -A FORWARD -i eth0 -o eth1 -j ACCEPT
-iptables -A FORWARD -i eth1 -o eth0 -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -i eth1 -o eth0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Assign CGN addresses to customers via DHCP
 # ISP DHCP server assigns 100.64.x.x to customer CPE WAN interfaces
@@ -56,7 +57,7 @@ iptables -A FORWARD -i eth1 -o eth0 -m state --state ESTABLISHED,RELATED -j ACCE
 # /etc/dhcp/dhcpd.conf - CGN DHCP for customer CPE devices
 
 subnet 100.64.0.0 netmask 255.192.0.0 {
-    range 100.64.0.1 100.127.255.254;   # Full RFC 6598 pool
+    range 100.64.0.2 100.127.255.254;   # Full RFC 6598 pool, excluding the gateway
     option routers 100.64.0.1;           # CGN gateway
     option domain-name-servers 8.8.8.8, 8.8.4.4;
     default-lease-time 86400;
@@ -69,7 +70,7 @@ subnet 100.64.0.0 netmask 255.192.0.0 {
 CGN requires a large session/conntrack table for thousands of customers:
 
 ```bash
-# Check current conntrack table size
+# Check current conntrack table limit
 sysctl net.netfilter.nf_conntrack_max
 
 # Increase for high-capacity CGN
@@ -88,33 +89,35 @@ echo "Conntrack usage: $CURRENT/$MAX ($PCTUSED%)"
 
 ## Step 4: Port Allocation for CGN
 
-CGN must track port mappings to allow return traffic:
+CGN must track port mappings to allow return traffic, and capacity planning depends on the translated source ports available per public IP:
 
 ```bash
-# Increase port range for CGN to have more ports per public IP
-sysctl -w net.ipv4.ip_local_port_range="1024 65535"
+# Constrain translated source ports for TCP and UDP if you want a defined NAT port pool
+iptables -t nat -I POSTROUTING 1 -s 100.64.0.0/10 -p tcp -o eth1 -j MASQUERADE --to-ports 1024-65535
+iptables -t nat -I POSTROUTING 2 -s 100.64.0.0/10 -p udp -o eth1 -j MASQUERADE --to-ports 1024-65535
 
 # Calculate capacity:
-# Ports per public IP: ~64K (1024-65535)
-# Reserved per customer: 512 ports (generous but manageable)
-# Customers per public IP: 64000 / 512 = 125 customers
+# Ports per public IP: 64512 (1024-65535)
+# Port budget per customer: 512 ports (example planning assumption)
+# Customers per public IP: 64512 / 512 = 126 customers
 
 # For 1000 customers at 512 ports each:
-# Public IPs needed: 1000 * 512 / 64000 = 8 public IPs
+# Public IPs needed: 1000 * 512 / 64512 = 7.94, so 8 public IPs
 ```
 
 ## Step 5: CGN Logging for Law Enforcement Compliance
 
-ISPs must log CGN translations for law enforcement requests:
+ISPs often need to log CGN translations for abuse handling and law enforcement requests:
 
 ```bash
-# Log all NAT translations (source IP:port → public IP:port)
-iptables -t nat -A POSTROUTING -s 100.64.0.0/10 -j LOG \
-  --log-prefix "CGN-NAT: " --log-level 6
-
-# Or use conntrack for more efficient logging
-conntrack -E -p tcp --event-mask=NEW | while read event; do
-    echo "$(date -Iseconds) $event" >> /var/log/cgn-translations.log
+# Packet logging alone does not record a full CGN mapping
+# Requires conntrack-tools
+conntrack -E | while IFS= read -r event; do
+    case "$event" in
+        *"[NEW]"*)
+            echo "$(date -Iseconds) $event" >> /var/log/cgn-translations.log
+            ;;
+    esac
 done
 
 # Log format should include:
@@ -130,9 +133,9 @@ done
 | P2P applications | Often broken | Works fine |
 | Port forwarding | Complex/impossible | Simple |
 | Gaming/VPN | May have issues | Works fine |
-| Law enforcement | Logging required | Direct customer |
+| Law enforcement | Translation logging often needed | Direct customer mapping |
 | IPv6 readiness | Delays IPv6 need | Better to use IPv6 directly |
 
 ## Conclusion
 
-CGN uses RFC 6598 (100.64.0.0/10) shared address space to NAT many customers to few public IPs. Configure with iptables MASQUERADE, increase the conntrack table for high customer counts, and implement translation logging for compliance. CGN is a stopgap that delays IPv6 adoption - for long-term scalability, deploy IPv6 natively with NAT64 for IPv4 internet access rather than adding CGN complexity.
+CGN uses RFC 6598 (100.64.0.0/10) shared address space to NAT many customers to few public IPs. Configure with iptables NAT rules, increase the conntrack table for high customer counts, and implement translation logging for compliance. CGN is a stopgap that delays IPv6 adoption - for long-term scalability, deploy IPv6 natively and use transition mechanisms such as NAT64/DNS64 where appropriate for IPv4 internet access rather than adding CGN complexity.
