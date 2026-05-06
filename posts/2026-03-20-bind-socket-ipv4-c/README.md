@@ -10,6 +10,8 @@ Description: Learn how to bind a TCP or UDP socket to a specific IPv4 address an
 
 ```c
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <stdint.h>
 #include <sys/socket.h>
 #include <string.h>
 #include <stdio.h>
@@ -51,7 +53,7 @@ int main(void) {
     /* Bind to localhost only */
     int fd2 = bind_socket("127.0.0.1", 9001);
 
-    /* Bind to specific NIC */
+    /* Bind to a specific local IPv4 address (must exist on this host) */
     int fd3 = bind_socket("192.168.1.10", 9002);
 
     close(fd1); close(fd2); close(fd3);
@@ -63,19 +65,23 @@ int main(void) {
 
 ```c
 int opt = 1;
-/* Must call before bind() */
+/* Must call before bind().
+   On Linux, this can allow rebinding a recently used local address,
+   but it does not let you bind over an active listener. */
 if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
     perror("setsockopt SO_REUSEADDR");
 }
-/* Now bind() will succeed even if port is in TIME_WAIT */
+/* Now attempt bind() */
 bind(fd, (struct sockaddr *)&addr, sizeof(addr));
 ```
 
 ## SO_REUSEPORT - Multiple Sockets on Same Port
 
 ```c
-/* Linux 3.9+: allows multiple processes/threads to bind the same port
-   Kernel distributes incoming connections round-robin */
+/* Linux 3.9+: if each socket sets SO_REUSEPORT before bind(),
+   multiple sockets with the same effective UID can bind the same
+   address/port. The kernel load-balances incoming connections or
+   datagrams across them. */
 int opt = 1;
 setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
 bind(fd, (struct sockaddr *)&addr, sizeof(addr));
@@ -118,4 +124,4 @@ bind(udp_fd, (struct sockaddr *)&addr, sizeof(addr));
 
 ## Conclusion
 
-`bind()` takes a `sockaddr_in` with the address family, port in network byte order (`htons()`), and either `INADDR_ANY` for all interfaces or a specific IPv4 address converted with `inet_pton()`. Always set `SO_REUSEADDR` before `bind()` to allow fast server restart without waiting for the previous socket's `TIME_WAIT` to expire. Use port 0 for client sockets that need a specific source port or for test servers that need dynamic port assignment. Call `getsockname()` after binding to port 0 to find the assigned port.
+`bind()` takes a `sockaddr_in` with the address family, port in network byte order (`htons()`), and either `INADDR_ANY` for all interfaces or a specific IPv4 address converted with `inet_pton()`. If you want quicker restarts, set `SO_REUSEADDR` before `bind()`; on Linux this can allow rebinding a recently used local address, but it does not override an active listener. Use port 0 for client sockets that do not need a fixed source port or for test servers that need dynamic port assignment. Call `getsockname()` after binding to port 0 to find the assigned port.
