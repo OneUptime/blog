@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Performance, Provider Cache, Initialization, Infrastructure as Code, DevOps
 
-Description: Learn how to configure OpenTofu's plugin cache directory to avoid re-downloading providers on every tofu init, significantly speeding up CI/CD pipelines.
+Description: Learn how to configure OpenTofu's plugin cache directory to avoid re-downloading providers in fresh working directories, significantly speeding up CI/CD pipelines.
 
 ## Introduction
 
-Every `tofu init` downloads provider binaries from the registry unless a cache is configured. In CI/CD pipelines that run init on every PR, this download adds 30-120 seconds per run. A shared plugin cache makes init nearly instant for already-downloaded providers.
+In fresh working directories, `tofu init` downloads provider binaries from the registry unless a cache is configured. In CI/CD pipelines that run init on every PR, this download adds 30-120 seconds per run. A shared plugin cache makes init nearly instant for already-downloaded providers.
 
 ## Configuring the Plugin Cache Directory
 
@@ -22,19 +22,19 @@ mkdir -p "$TF_PLUGIN_CACHE_DIR"
 echo "$TF_PLUGIN_CACHE_DIR"
 ```
 
-Or configure it in `~/.terraformrc`:
+Or configure it in `~/.tofurc`:
 
 ```hcl
-# ~/.terraformrc
+# ~/.tofurc
 plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"
 ```
 
 ## How the Cache Works
 
 When `tofu init` runs:
-1. OpenTofu checks the cache directory for the required provider version
-2. If found and checksum matches → uses the cached binary (no download)
-3. If not found → downloads from registry and stores in cache for future use
+1. OpenTofu uses the configured or implied installation methods to resolve the required provider version
+2. Before downloading the selected package, it checks the cache directory for that provider package
+3. If found and checksum matches → uses the cached binary; if not found → downloads it and stores it in the cache for future use
 
 ## CI/CD: Persistent Cache with GitHub Actions
 
@@ -52,12 +52,10 @@ When `tofu init` runs:
 - name: Configure provider cache
   run: |
     mkdir -p ~/.terraform.d/plugin-cache
-    echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > ~/.terraformrc
+    echo 'plugin_cache_dir = "$HOME/.terraform.d/plugin-cache"' > ~/.tofurc
 
 - name: OpenTofu Init
   run: tofu init
-  env:
-    TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
 ```
 
 ## CI/CD: Persistent Cache with GitLab CI
@@ -84,18 +82,19 @@ init:
 
 ## Pre-Populating the Cache
 
-For air-gapped environments or very fast CI, pre-populate the cache:
+For very fast CI, pre-populate the cache from a connected environment:
 
 ```bash
-# Pre-download all providers from the lock file
+# Optional: add checksums for the platforms you use to the lock file
 tofu providers lock \
   -platform=linux_amd64 \
   -platform=darwin_arm64
 
-# Run init once to populate the cache
+# Create the cache directory and run init once to populate it
+mkdir -p /shared/tofu-cache
 TF_PLUGIN_CACHE_DIR=/shared/tofu-cache tofu init
 
-# The cache is now ready for all subsequent inits
+# The cache is now ready for subsequent inits on matching platforms
 ```
 
 ## Cache Directory Structure
@@ -116,4 +115,4 @@ TF_PLUGIN_CACHE_DIR=/shared/tofu-cache tofu init
 
 ## Conclusion
 
-Configuring `TF_PLUGIN_CACHE_DIR` is one of the easiest OpenTofu optimizations. In CI/CD, combine it with a cache action keyed on the lock file to make `tofu init` nearly instantaneous on repeat runs. For monorepos with multiple configurations, a shared cache directory eliminates provider downloads entirely after the first pipeline run.
+Configuring `TF_PLUGIN_CACHE_DIR` is one of the easiest OpenTofu optimizations. In CI/CD, combine it with a cache action keyed on the lock file to make `tofu init` nearly instantaneous on repeat runs. For monorepos with multiple configurations, a shared cache directory eliminates repeated provider downloads after the first pipeline run.
