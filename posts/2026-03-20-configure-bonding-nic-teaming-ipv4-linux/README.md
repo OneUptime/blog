@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Networking, Bonding, NIC Teaming, IPv4, High Availability
 
-Description: Configure Linux NIC bonding to aggregate or failover multiple physical interfaces into a single logical bond interface with an IPv4 address for redundancy or increased throughput.
+Description: Configure Linux NIC bonding to aggregate or failover multiple physical interfaces into a single logical bond interface with an IPv4 address for redundancy or higher aggregate throughput.
 
 ## Introduction
 
-Linux bonding combines multiple physical NICs into a single logical interface. Common modes include `active-backup` (failover) and `802.3ad` (LACP, for both redundancy and throughput). The bond interface holds the IP address while member NICs operate at Layer 2.
+Linux bonding combines multiple physical NICs into a single logical interface. Common modes include `active-backup` (failover) and `802.3ad` (LACP, for redundancy and higher aggregate throughput across multiple flows). The bond interface holds the IP address while member NICs operate at Layer 2.
 
 ## Common Bonding Modes
 
@@ -24,9 +24,9 @@ Linux bonding combines multiple physical NICs into a single logical interface. C
 ## Creating a Bond Interface (Runtime)
 
 ```bash
-# Load the bonding module
+# Load the bonding module without pre-creating bond devices
 
-sudo modprobe bonding
+sudo modprobe bonding max_bonds=0
 
 # Create bond0 in active-backup mode
 sudo ip link add bond0 type bond mode active-backup
@@ -51,7 +51,7 @@ sudo ip link set eth1 up
 
 # Assign IP to the bond
 sudo ip addr add 192.168.1.100/24 dev bond0
-sudo ip route add default via 192.168.1.1
+sudo ip route replace default via 192.168.1.1 dev bond0
 ```
 
 ## Verifying Bond Status
@@ -116,9 +116,9 @@ bonds:
       mode: 802.3ad
       lacp-rate: fast
       mii-monitor-interval: 100
-      transmit-hash-policy: layer3+4
+      transmit-hash-policy: layer2+3
 ```
 
 ## Conclusion
 
-Linux bonding provides redundancy (active-backup) or increased throughput (LACP) by combining multiple NICs. Assign the IP to the bond interface, not the member NICs, and use Netplan for persistent configuration on Ubuntu.
+Linux bonding provides redundancy (active-backup) or higher aggregate throughput across multiple flows (LACP) by combining multiple NICs. Assign the IP to the bond interface, not the member NICs, and use Netplan for persistent configuration on Ubuntu.
