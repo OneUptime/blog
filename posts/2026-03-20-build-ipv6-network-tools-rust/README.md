@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rust, IPv6, Network Tools, DNS, Port Scanner, Ping, CLI
+Tags: Rust, IPv6, Network Tools, DNS, Port Scanner, CLI
 
-Description: Build practical IPv6 network tools in Rust including ping utilities, port scanners, DNS lookup tools, and subnet calculators.
+Description: Build practical IPv6 network tools in Rust including reachability checkers, port scanners, DNS lookup helpers, and subnet calculators.
 
 ## IPv6 Reachability Checker
 
@@ -97,28 +97,28 @@ tokio = { version = "1", features = ["full"] }
 ```
 
 ```rust
-use std::net::IpAddr;
+use std::net::{Ipv6Addr, SocketAddr};
 
-async fn lookup_aaaa(hostname: &str) -> Vec<IpAddr> {
+async fn lookup_ipv6_addrs(hostname: &str) -> Vec<Ipv6Addr> {
     tokio::net::lookup_host(format!("{}:0", hostname))
         .await
         .map(|iter| {
-            iter.filter_map(|sa| {
-                if sa.is_ipv6() { Some(sa.ip()) } else { None }
+            iter.filter_map(|sa| match sa {
+                SocketAddr::V6(v6) => Some(*v6.ip()),
+                SocketAddr::V4(_) => None,
             })
             .collect()
         })
         .unwrap_or_default()
 }
 
-async fn lookup_ptr(addr: &str) -> String {
-    // Reverse the IPv6 address for PTR lookup
+fn reverse_ip6_arpa_name(addr: &str) -> String {
     let ipv6: std::net::Ipv6Addr = match addr.parse() {
         Ok(a) => a,
         Err(_) => return "invalid address".to_string(),
     };
 
-    // Build ip6.arpa name
+    // Build the ip6.arpa name used for PTR lookups.
     let nibbles: String = ipv6.octets()
         .iter()
         .rev()
@@ -140,22 +140,27 @@ async fn lookup_ptr(addr: &str) -> String {
 #[tokio::main]
 async fn main() {
     let host = "ipv6.google.com";
-    println!("AAAA records for {}:", host);
-    for ip in lookup_aaaa(host).await {
+    println!("IPv6 addresses for {}:", host);
+    for ip in lookup_ipv6_addrs(host).await {
         println!("  {}", ip);
     }
 
     let addr = "2001:4860:4860::8888";
-    println!("\nPTR name for {}:", addr);
-    println!("  {}", lookup_ptr(addr).await);
+    println!("\nReverse lookup name for {}:", addr);
+    println!("  {}", reverse_ip6_arpa_name(addr));
 }
 ```
 
 ## IPv6 Subnet Calculator
 
+```toml
+# Cargo.toml
+[dependencies]
+ipnet = "2"
+```
+
 ```rust
 use ipnet::Ipv6Net;
-use std::net::Ipv6Addr;
 
 fn subnet_info(prefix: &str) {
     let net: Ipv6Net = match prefix.parse() {
@@ -168,12 +173,12 @@ fn subnet_info(prefix: &str) {
 
     println!("Prefix:       {}", net);
     println!("Network addr: {}", net.network());
-    println!("Broadcast:    {}", net.broadcast());
+    println!("Last addr:    {}", net.broadcast());
     println!("Prefix len:   /{}", net.prefix_len());
     println!("Host bits:    {}", 128 - net.prefix_len());
     println!("Addresses:    2^{}", 128 - net.prefix_len());
 
-    // Show first 4 subnets if we split into /48s (for a /32)
+    // Show first 4 child subnets by extending the prefix by 2 bits.
     if net.prefix_len() <= 46 {
         let subnets: Vec<Ipv6Net> = net.subnets(net.prefix_len() + 2)
             .unwrap()
@@ -193,10 +198,32 @@ fn main() {
 }
 ```
 
-## Network Interface Lister
+## Network Interface Lister (Unix)
+
+```toml
+# Cargo.toml
+[dependencies]
+nix = { version = "0.31", features = ["net"] }
+```
 
 ```rust
-use std::net::{IpAddr, Ipv6Addr};
+use std::net::Ipv6Addr;
+
+fn ipv6_addr_type(ip: Ipv6Addr) -> &'static str {
+    if ip.is_loopback() {
+        "loopback"
+    } else if ip.is_unicast_link_local() {
+        "link-local"
+    } else if ip.is_unique_local() {
+        "unique-local"
+    } else if ip.is_multicast() {
+        "multicast"
+    } else if ip.is_unspecified() {
+        "unspecified"
+    } else {
+        "global-or-other"
+    }
+}
 
 fn list_ipv6_interfaces() {
     let interfaces = match nix::ifaddrs::getifaddrs() {
@@ -213,12 +240,8 @@ fn list_ipv6_interfaces() {
     for iface in interfaces {
         if let Some(addr) = iface.address {
             if let Some(sa) = addr.as_sockaddr_in6() {
-                let ip = Ipv6Addr::from(sa.ip());
-                let addr_type = if ip.is_loopback() { "loopback" }
-                    else if ip.is_unicast_link_local() { "link-local" }
-                    else if ip.is_unicast_global() { "global" }
-                    else { "other" };
-                println!("{:<15} {:<40} {}", iface.interface_name, ip, addr_type);
+                let ip = sa.ip();
+                println!("{:<15} {:<40} {}", iface.interface_name, ip, ipv6_addr_type(ip));
             }
         }
     }
@@ -231,4 +254,4 @@ fn main() {
 
 ## Conclusion
 
-Rust's combination of zero-cost abstractions and Tokio async runtime makes it excellent for IPv6 network tooling. `TcpStream::connect_timeout` handles synchronous reachability checks. Async port scanners use `tokio::spawn` to parallelize probe tasks. The `ipnet` crate provides subnet arithmetic. DNS resolution works through `tokio::net::lookup_host`. These building blocks combine into production-quality network diagnostic utilities.
+Rust's combination of zero-cost abstractions and Tokio async runtime makes it excellent for IPv6 network tooling. `TcpStream::connect_timeout` handles synchronous reachability checks. Async port scanners use `tokio::spawn` to parallelize probe tasks. The `ipnet` crate provides subnet arithmetic. Basic hostname resolution works through `tokio::net::lookup_host`, and reverse IPv6 lookup names follow the nibble-reversed `ip6.arpa` format from RFC 3596. These building blocks combine into production-quality network diagnostic utilities.
