@@ -46,14 +46,27 @@ resource "aws_s3_bucket_versioning" "this" {
 }
 
 # Azure Blob Storage
+resource "azurerm_resource_group" "this" {
+  count    = var.cloud_provider == "azure" ? 1 : 0
+  name     = "${var.bucket_name}-${var.environment}-rg"
+  location = var.region
+}
+
 resource "azurerm_storage_account" "this" {
   count                    = var.cloud_provider == "azure" ? 1 : 0
-  name                     = replace("${var.bucket_name}${var.environment}", "-", "")
-  resource_group_name      = var.azure_resource_group
-  location                 = var.region
+  name                     = lower(replace("${var.bucket_name}${var.environment}", "-", ""))
+  resource_group_name      = azurerm_resource_group.this[0].name
+  location                 = azurerm_resource_group.this[0].location
   account_tier             = "Standard"
   account_replication_type = "LRS"
   tags                     = { Environment = var.environment }
+}
+
+resource "azurerm_storage_container" "this" {
+  count                 = var.cloud_provider == "azure" ? 1 : 0
+  name                  = "${var.bucket_name}-${var.environment}"
+  storage_account_id    = azurerm_storage_account.this[0].id
+  container_access_type = "private"
 }
 
 # GCP Cloud Storage
@@ -70,7 +83,7 @@ resource "google_storage_bucket" "this" {
 output "bucket_name" {
   value = (
     var.cloud_provider == "aws"   ? aws_s3_bucket.this[0].id :
-    var.cloud_provider == "azure" ? azurerm_storage_account.this[0].name :
+    var.cloud_provider == "azure" ? azurerm_storage_container.this[0].name :
     google_storage_bucket.this[0].name
   )
 }
@@ -78,7 +91,7 @@ output "bucket_name" {
 output "bucket_arn_or_id" {
   value = (
     var.cloud_provider == "aws"   ? aws_s3_bucket.this[0].arn :
-    var.cloud_provider == "azure" ? azurerm_storage_account.this[0].id :
+    var.cloud_provider == "azure" ? azurerm_storage_container.this[0].id :
     google_storage_bucket.this[0].self_link
   )
 }
@@ -95,7 +108,7 @@ modules/
     variables.tf # shared interface
     outputs.tf   # bucket_name, bucket_arn_or_id
   object-storage-azure/
-    main.tf      # azurerm_storage_account
+    main.tf      # azurerm_storage_account + azurerm_storage_container
     variables.tf # same interface
     outputs.tf   # bucket_name, bucket_arn_or_id
   object-storage-gcp/
