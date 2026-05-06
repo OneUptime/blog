@@ -8,7 +8,7 @@ Description: Learn how to use the coalescelist function in OpenTofu to return th
 
 ---
 
-`coalescelist()` takes multiple list arguments and returns the first one that is non-empty. This is the list equivalent of `coalesce()` for strings and scalars.
+`coalescelist()` takes multiple list arguments and returns the first one that is non-empty. This is the list counterpart to `coalesce()` when you're working with list values.
 
 ---
 
@@ -125,7 +125,7 @@ locals {
 
 | Function | For | Returns First |
 |---|---|---|
-| `coalesce(val1, val2, ...)` | Scalars/strings | Non-null, non-empty string |
+| `coalesce(val1, val2, ...)` | Scalars/strings | First value that isn't null, or first non-empty string |
 | `coalescelist(list1, list2, ...)` | Lists | Non-empty list |
 
 ```hcl
@@ -140,7 +140,7 @@ locals {
 
 ---
 
-## Avoiding Empty List Errors in for_each
+## Providing a Fallback Collection for for_each
 
 ```hcl
 variable "optional_resources" {
@@ -149,9 +149,8 @@ variable "optional_resources" {
 }
 
 locals {
-  # Ensure there's always at least one item for for_each
-  # (or handle empty case separately with count = 0)
-  resources = coalescelist(var.optional_resources, ["placeholder"])
+  # If you want a fallback value for for_each, convert the chosen list to a set
+  resources = toset(coalescelist(var.optional_resources, ["placeholder"]))
   # Don't use "placeholder" as a real resource - this is for illustration
 }
 ```
@@ -160,4 +159,4 @@ locals {
 
 ## Summary
 
-`coalescelist(list1, list2, ...)` returns the first non-empty list from its arguments. Use it to implement fallback logic for list-type variables - if a user doesn't provide subnets, fall back to defaults; if custom security groups aren't specified, use the default ones. It's the list counterpart to `coalesce()` for scalar values. All arguments must be lists of the same element type.
+`coalescelist(list1, list2, ...)` returns the first non-empty list from its arguments. Use it to implement fallback logic for list-type variables - if a user doesn't provide subnets, fall back to defaults; if custom security groups aren't specified, use the default ones. It's the list counterpart to `coalesce()` when you're working with list values.
