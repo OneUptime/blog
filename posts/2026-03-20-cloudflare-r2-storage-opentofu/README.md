@@ -8,7 +8,7 @@ Description: Learn how to create and configure Cloudflare R2 storage buckets usi
 
 ---
 
-Cloudflare R2 is S3-compatible object storage with no egress fees, making it ideal for serving large files globally. OpenTofu's Cloudflare provider lets you manage R2 buckets, CORS rules, and custom domain bindings as reproducible infrastructure code.
+Cloudflare R2 is S3-compatible object storage with no egress fees, making it ideal for serving large files globally. Cloudflare's provider for OpenTofu lets you manage R2 buckets, CORS rules, lifecycle rules, and custom domain bindings as reproducible infrastructure code.
 
 ## Provider Configuration
 
@@ -19,7 +19,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.23"
+      version = "~> 5.19"
     }
   }
 }
@@ -37,7 +37,7 @@ provider "cloudflare" {
 resource "cloudflare_r2_bucket" "media" {
   account_id = var.cloudflare_account_id
   name       = "${var.project_name}-media-${var.environment}"
-  location   = "WNAM"  # Western North America - EEUR, ENAM, APAC, WEUR, WNAM, OC
+  location   = "wnam"  # Western North America - apac, eeur, enam, weur, wnam, oc
 
   lifecycle {
     # Prevent accidental bucket deletion
@@ -49,7 +49,7 @@ resource "cloudflare_r2_bucket" "media" {
 resource "cloudflare_r2_bucket" "static" {
   account_id = var.cloudflare_account_id
   name       = "${var.project_name}-static-${var.environment}"
-  location   = "WNAM"
+  location   = "wnam"
 }
 ```
 
@@ -57,49 +57,13 @@ resource "cloudflare_r2_bucket" "static" {
 
 ```hcl
 # custom_domain.tf
-# Create a Worker to serve R2 content on a custom domain
-resource "cloudflare_worker_script" "r2_server" {
-  account_id = var.cloudflare_account_id
-  name       = "r2-media-server"
-
-  content = <<-JS
-    export default {
-      async fetch(request, env) {
-        const url = new URL(request.url);
-        const key = url.pathname.slice(1); // Remove leading /
-
-        if (!key) {
-          return new Response('Not Found', { status: 404 });
-        }
-
-        const object = await env.R2_BUCKET.get(key);
-
-        if (!object) {
-          return new Response('Not Found', { status: 404 });
-        }
-
-        const headers = new Headers();
-        object.writeHttpMetadata(headers);
-        headers.set('etag', object.httpEtag);
-        // Cache for 1 year for immutable content
-        headers.set('cache-control', 'public, max-age=31536000, immutable');
-
-        return new Response(object.body, { headers });
-      },
-    };
-  JS
-
-  r2_bucket_binding {
-    name        = "R2_BUCKET"
-    bucket_name = cloudflare_r2_bucket.media.name
-  }
-}
-
-# Route the custom domain to the Worker
-resource "cloudflare_worker_route" "r2_route" {
+# Bind the R2 bucket directly to a custom domain
+resource "cloudflare_r2_custom_domain" "media" {
+  account_id  = var.cloudflare_account_id
+  bucket_name = cloudflare_r2_bucket.media.name
+  domain      = "media.${var.domain_name}"
   zone_id     = var.cloudflare_zone_id
-  pattern     = "media.${var.domain_name}/*"
-  script_name = cloudflare_worker_script.r2_server.name
+  enabled     = true
 }
 ```
 
@@ -107,33 +71,46 @@ resource "cloudflare_worker_route" "r2_route" {
 
 ```hcl
 # api_tokens.tf
-# Create an API token scoped to R2 operations
-resource "cloudflare_api_token" "r2_access" {
-  name = "r2-application-token"
+# Look up the permission group for bucket-scoped object read/write access
+data "cloudflare_account_api_token_permission_groups_list" "r2_bucket_item_write" {
+  account_id = var.cloudflare_account_id
+  name       = "Workers%20R2%20Storage%20Bucket%20Item%20Write"
+  scope      = "com.cloudflare.edge.r2.bucket"
+}
 
-  policy {
+# Create an account token scoped to object operations on the media bucket
+resource "cloudflare_account_token" "r2_access" {
+  account_id = var.cloudflare_account_id
+  name       = "r2-application-token"
+
+  policies = [{
+    effect = "allow"
     permission_groups = [
-      data.cloudflare_api_token_permission_groups.all.object_read_and_write["Workers R2 Storage:Edit"],
+      { id = data.cloudflare_account_api_token_permission_groups_list.r2_bucket_item_write.result[0].id },
     ]
 
     resources = {
-      "com.cloudflare.api.account.${var.cloudflare_account_id}" = "*"
+      "com.cloudflare.edge.r2.bucket.${var.cloudflare_account_id}_default_${cloudflare_r2_bucket.media.name}" = "*"
     }
-  }
+  }]
 }
 
-data "cloudflare_api_token_permission_groups" "all" {}
+# For S3-compatible clients, use the token ID as the Access Key ID
+# and the SHA-256 hash of the token value as the Secret Access Key.
+output "r2_access_key_id" {
+  value = cloudflare_account_token.r2_access.id
+}
 
-output "r2_api_token" {
-  value     = cloudflare_api_token.r2_access.value
+output "r2_secret_access_key" {
+  value     = sha256(cloudflare_account_token.r2_access.value)
   sensitive = true
 }
 ```
 
 ## Best Practices
 
-- Use Workers to serve R2 content on custom domains - R2 doesn't have built-in public URL support without Workers or the R2 public bucket feature.
-- Set `Cache-Control: immutable` headers for content-addressed (hash-named) assets to maximize CDN caching.
+- Use `cloudflare_r2_custom_domain` for straightforward public bucket access on your domain. Use Workers when you need authentication, URL rewriting, custom headers, or other request logic in front of R2.
+- Set `Cache-Control: immutable` metadata on content-addressed (hash-named) objects to maximize CDN caching.
 - Use location hints when creating buckets to place storage closer to your primary user base.
-- Create scoped API tokens for each application rather than using your account-level API token.
-- Enable lifecycle rules once Cloudflare R2 supports them - monitor bucket growth to control storage costs.
+- Create bucket-scoped API tokens for each application rather than using a broad account-level token.
+- Use lifecycle rules to transition or expire objects you no longer need, and monitor bucket growth to control storage costs.
