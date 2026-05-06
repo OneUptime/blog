@@ -15,10 +15,9 @@ The Cloudflare provider for OpenTofu enables managing Cloudflare resources with 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,55 +26,51 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Cloudflare provider supports authentication through environment variables. API tokens are the recommended option:
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export CLOUDFLARE_API_TOKEN="your-api-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "cloudflare" {
+  # api_token is read from CLOUDFLARE_API_TOKEN
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+resource "cloudflare_dns_record" "main" {
+  zone_id = var.zone_id
+  name    = "www"
+  content = var.origin_ip
+  type    = "A"
+  ttl     = 1
+  proxied = true
+  comment = "Managed by OpenTofu"
 }
 ```
 
 ## Variables
 
 ```hcl
-variable "name"        { type = string }
-variable "environment" { type = string }
+variable "zone_id"   { type = string }
+variable "origin_ip" { type = string }
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "resource_id" { value = cloudflare_dns_record.main.id }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- Store API tokens in environment variables or a secrets manager, never in `.tf` files
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
-- Use separate provider configurations per environment using aliases or workspaces
+- Use separate OpenTofu configurations per environment when you need isolated credentials and state; use provider aliases when you need multiple Cloudflare configurations in one root module
 
 ## Conclusion
 
