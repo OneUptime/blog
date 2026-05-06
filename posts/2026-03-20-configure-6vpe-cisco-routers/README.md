@@ -8,11 +8,13 @@ Description: Configure 6VPE (IPv6 VPN Provider Edge) on Cisco IOS and IOS XE rou
 
 ---
 
-6VPE adds VRF-based customer isolation to 6PE, enabling multiple enterprise customers to use separate IPv6 VPNs over the same MPLS backbone. Configuration requires VRF definitions with RD/RT for IPv6, VPNv6 address family in MP-BGP, and CE-facing IPv6 interfaces associated with VRFs.
+6VPE adds VRF-based customer isolation to 6PE, enabling multiple enterprise customers to use separate IPv6 VPNs over the same MPLS backbone. Configuration requires VRF definitions with RD/RT for IPv6, VPNv6 address family in MP-BGP, CE-facing IPv6 interfaces associated with VRFs, and a working MPLS IPv4-signaled core between PE routers.
 
 ## 6VPE Configuration on PE Router
 
 ```bash
+ipv6 unicast-routing
+
 ! PE1 - VRF Definition for Customer A (IPv6 VPN)
 vrf definition CUSTOMER-A
  rd 65000:100
@@ -44,7 +46,7 @@ vrf definition CUSTOMER-B
 interface GigabitEthernet0/1
  description Customer-A-CE-Site1
  vrf forwarding CUSTOMER-A
- ipv6 address 2001:db8:pe1-cea::1/64
+ ipv6 address 2001:db8:0:1::1/64
  ipv6 enable
  no shutdown
 
@@ -52,7 +54,7 @@ interface GigabitEthernet0/1
 interface GigabitEthernet0/2
  description Customer-B-CE-Site1
  vrf forwarding CUSTOMER-B
- ipv6 address 2001:db8:pe1-ceb::1/64
+ ipv6 address 2001:db8:0:2::1/64
  ipv6 enable
  no shutdown
 ```
@@ -78,16 +80,16 @@ router bgp 65000
 
  ! Customer A VRF BGP - eBGP with CE1
  address-family ipv6 vrf CUSTOMER-A
-  neighbor 2001:db8:pe1-cea::2 remote-as 65001
-  neighbor 2001:db8:pe1-cea::2 activate
-  neighbor 2001:db8:pe1-cea::2 description CE-A-Site1
+  neighbor 2001:db8:0:1::2 remote-as 65001
+  neighbor 2001:db8:0:1::2 activate
+  neighbor 2001:db8:0:1::2 description CE-A-Site1
   redistribute connected
  exit-address-family
 
  ! Customer B VRF BGP
  address-family ipv6 vrf CUSTOMER-B
-  neighbor 2001:db8:pe1-ceb::2 remote-as 65002
-  neighbor 2001:db8:pe1-ceb::2 activate
+  neighbor 2001:db8:0:2::2 remote-as 65002
+  neighbor 2001:db8:0:2::2 activate
   redistribute connected
  exit-address-family
 ```
@@ -96,22 +98,24 @@ router bgp 65000
 
 ```text
 ! Customer A CE1 Router
+ipv6 unicast-routing
+
 interface GigabitEthernet0/0
  description To PE1
- ipv6 address 2001:db8:pe1-cea::2/64
+ ipv6 address 2001:db8:0:1::2/64
 
 ! Add static summary route for BGP advertisement
-ipv6 route 2001:db8:cust-a-site1::/48 Null0
+ipv6 route 2001:db8:100::/48 Null0
 
 ! CE BGP to PE
 router bgp 65001
  no bgp default ipv4-unicast
 
  address-family ipv6
-  neighbor 2001:db8:pe1-cea::1 remote-as 65000
-  neighbor 2001:db8:pe1-cea::1 activate
-  neighbor 2001:db8:pe1-cea::1 description PE1
-  network 2001:db8:cust-a-site1::/48
+  neighbor 2001:db8:0:1::1 remote-as 65000
+  neighbor 2001:db8:0:1::1 activate
+  neighbor 2001:db8:0:1::1 description PE1
+  network 2001:db8:100::/48
  exit-address-family
 ```
 
@@ -138,13 +142,13 @@ show mpls forwarding-table vrf CUSTOMER-A
 ! Shows: incoming label, outgoing label, interface
 
 ! Test connectivity (Customer A VPN)
-ping vrf CUSTOMER-A ipv6 2001:db8:cust-a-site2::10
+ping vrf CUSTOMER-A 2001:db8:100:2::10
 
 ! Traceroute through VPN
-traceroute vrf CUSTOMER-A ipv6 2001:db8:cust-a-site2::10
+traceroute vrf CUSTOMER-A 2001:db8:100:2::10
 
 ! Verify customer isolation (Customer A cannot reach B)
-ping vrf CUSTOMER-A ipv6 2001:db8:cust-b-site1::10
+ping vrf CUSTOMER-A 2001:db8:200:1::10
 ! Should fail (different VRF = isolated)
 ```
 
@@ -165,8 +169,8 @@ Strategy 2: IP:VPN-id
 
 Strategy 3: IP:0 with different RTs for communities
   RD: 10.0.0.1:0
-  RT export: 65000:100 65000:shared (multiple RTs)
+  RT export: 65000:100 65000:300 (multiple RTs)
   Use for hub-and-spoke or shared services VPNs
 ```
 
-6VPE on Cisco requires VRF definitions with both IPv4 and IPv6 address families, VPNv6 address family in MP-BGP for inter-PE route exchange using extended communities, and per-VRF BGP peering with customer CEs, resulting in complete IPv6 routing isolation between customers while sharing the same MPLS backbone infrastructure.
+6VPE on Cisco requires VRF definitions with an RD and IPv6 route-target policies, a VPNv6 address family in MP-BGP for inter-PE route exchange using extended communities, and per-VRF peering with customer CEs, resulting in complete IPv6 routing isolation between customers while sharing the same MPLS backbone infrastructure.
