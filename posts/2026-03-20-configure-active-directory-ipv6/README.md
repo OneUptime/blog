@@ -20,10 +20,10 @@ Get-NetIPAddress -AddressFamily IPv6
 # Verify IPv6 is enabled on the network adapter
 Get-NetAdapterBinding -ComponentID ms_tcpip6
 
-# Check if IPv6 is enabled (1 = disabled, 0 = enabled)
+# Check whether DisabledComponents is configured
 Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters" `
   -Name DisabledComponents -ErrorAction SilentlyContinue
-# If value is 0xFF (255), IPv6 is disabled - do NOT disable IPv6 on DC
+# DisabledComponents is a bitmask; 0xFF (255) disables IPv6 - do NOT do this on a DC
 ```
 
 ## Configuring Static IPv6 Address on Domain Controller
@@ -31,13 +31,13 @@ Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6\Parameter
 ```powershell
 # Set a static IPv6 address on the Domain Controller
 New-NetIPAddress -InterfaceAlias "Ethernet" `
-  -IPAddress "2001:db8:corp::10" `
+  -IPAddress "2001:db8:100:10::10" `
   -PrefixLength 64 `
-  -DefaultGateway "2001:db8:corp::1"
+  -DefaultGateway "2001:db8:100:10::1"
 
 # Configure IPv6 DNS servers
 Set-DnsClientServerAddress -InterfaceAlias "Ethernet" `
-  -ServerAddresses ("2001:db8:corp::10", "2001:db8:corp::11")
+  -ServerAddresses ("2001:db8:100:10::10", "2001:db8:100:10::11")
 
 # Verify the configuration
 Get-NetIPAddress -InterfaceAlias "Ethernet"
@@ -68,12 +68,12 @@ Get-DnsServerResourceRecord -ZoneName "corp.example.com" `
 # Add AAAA record for domain controller manually if needed
 Add-DnsServerResourceRecordAAAA -ZoneName "corp.example.com" `
   -Name "dc1" `
-  -IPv6Address "2001:db8:corp::10"
+  -IPv6Address "2001:db8:100:10::10"
 
-# Add AAAA record for the domain itself
+# Add AAAA record for another domain controller manually if needed
 Add-DnsServerResourceRecordAAAA -ZoneName "corp.example.com" `
-  -Name "@" `
-  -IPv6Address "2001:db8:corp::10"
+  -Name "dc2" `
+  -IPv6Address "2001:db8:100:10::11"
 
 # Verify records
 Get-DnsServerResourceRecord -ZoneName "corp.example.com" -RRType AAAA
@@ -85,7 +85,7 @@ AD Sites and Services uses subnets for site assignment, including IPv6:
 
 ```powershell
 # Create an IPv6 subnet in AD Sites and Services
-New-ADReplicationSubnet -Name "2001:db8:corp::/48" `
+New-ADReplicationSubnet -Name "2001:db8:100:10::/64" `
   -Site "Default-First-Site-Name" `
   -Location "HQ"
 
@@ -97,7 +97,7 @@ Get-ADReplicationSubnet -Filter *
 
 ```bash
 # From a Linux client, test LDAP over IPv6
-ldapsearch -H ldap://[2001:db8:corp::10]:389 \
+ldapsearch -x -H ldap://[2001:db8:100:10::10]:389 \
   -D "cn=Administrator,cn=Users,dc=corp,dc=example,dc=com" \
   -w "YourPassword" \
   -b "dc=corp,dc=example,dc=com" \
@@ -105,10 +105,10 @@ ldapsearch -H ldap://[2001:db8:corp::10]:389 \
 ```
 
 ```powershell
-# From Windows, test LDAP over IPv6
+# From Windows, test LDAP over IPv6 using the DC FQDN
 $searcher = New-Object System.DirectoryServices.DirectorySearcher
 $searcher.SearchRoot = New-Object System.DirectoryServices.DirectoryEntry(
-    "LDAP://[2001:db8:corp::10]/DC=corp,DC=example,DC=com"
+    "LDAP://dc1.corp.example.com/DC=corp,DC=example,DC=com"
 )
 $searcher.FindAll()
 ```
@@ -122,31 +122,32 @@ Kerberos in AD uses DNS to locate KDCs. Ensure AAAA records exist and are resolv
 # First, confirm the DC's AAAA record is accessible
 nslookup -type=AAAA dc1.corp.example.com
 
-# Run klist to see current tickets (should work regardless of IP version)
-klist
+# Request a Kerberos service ticket for the DC
+klist get host/dc1.corp.example.com
 
-# Test a Kerberos-authenticated connection to the DC
-Test-ComputerSecureChannel -Server "dc1.corp.example.com" -Verbose
+# View cached tickets
+klist
 ```
 
-## Firewall Rules for AD over IPv6
+## Firewall Rules for Common AD Services over IPv6
 
 ```powershell
-# Create Windows Firewall rules for AD over IPv6
-# LDAP
+# Create example Windows Firewall rules for common TCP services over IPv6
+# Full AD DS connectivity also requires additional ports such as DNS, RPC, SMB, Global Catalog, and dynamic RPC
+# LDAP (TCP)
 New-NetFirewallRule -DisplayName "AD LDAP IPv6" `
   -Direction Inbound -Protocol TCP -LocalPort 389 `
-  -AddressFamily IPv6 -Action Allow
+  -RemoteAddress Any6 -Action Allow
 
-# LDAPS
+# LDAPS (TCP)
 New-NetFirewallRule -DisplayName "AD LDAPS IPv6" `
   -Direction Inbound -Protocol TCP -LocalPort 636 `
-  -AddressFamily IPv6 -Action Allow
+  -RemoteAddress Any6 -Action Allow
 
-# Kerberos
+# Kerberos (TCP)
 New-NetFirewallRule -DisplayName "AD Kerberos IPv6" `
   -Direction Inbound -Protocol TCP -LocalPort 88 `
-  -AddressFamily IPv6 -Action Allow
+  -RemoteAddress Any6 -Action Allow
 ```
 
 Active Directory's native IPv6 support makes it straightforward to deploy in dual-stack environments - the key steps are assigning static IPv6 addresses, registering AAAA DNS records, and defining IPv6 subnets in AD Sites and Services.
