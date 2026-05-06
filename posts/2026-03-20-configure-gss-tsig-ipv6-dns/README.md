@@ -18,9 +18,9 @@ GSS-TSIG (RFC 3645) uses Kerberos (via GSSAPI) to authenticate dynamic DNS updat
 apt-get install -y bind9 krb5-user libgssapi-krb5-2 \
     winbind samba-common-bin
 
-# Verify BIND was compiled with GSS-TSIG support
-named -V | grep gss
-# Should show: +GSS_TSIG
+# Verify BIND was built with GSSAPI support
+named -V
+# Inspect the reported build options for GSSAPI support
 ```
 
 ## Step 1: Configure Kerberos
@@ -31,14 +31,12 @@ named -V | grep gss
 [libdefaults]
     default_realm = EXAMPLE.COM
     dns_lookup_realm = false
-    dns_lookup_kdc = true
-    # Force IPv6 KDC contact
-    kdc_address = 2001:db8::kdc.example.com
+    dns_lookup_kdc = false
 
 [realms]
     EXAMPLE.COM = {
-        kdc = kdc.example.com
-        kdc = [2001:db8::kdc]
+        # Use an explicit IPv6 KDC entry
+        kdc = [2001:db8::88]
         admin_server = kdc.example.com
     }
 
@@ -50,15 +48,17 @@ named -V | grep gss
 ## Step 2: Create DNS Service Principal
 
 ```bash
-# On the Kerberos KDC (or AD domain controller)
-# Create service principal for BIND
-net ads keytab create
+# On an AD domain controller, map the DNS SPN to a service account
+# and export a keytab for BIND
+ktpass /out named.keytab /princ DNS/ns1.example.com@EXAMPLE.COM \
+    /mapuser named-svc /pass * /crypto all \
+    /ptype KRB5_NT_PRINCIPAL /mapop set
 
 # Or with kadmin
 kadmin -p admin/admin -q "addprinc -randkey DNS/ns1.example.com@EXAMPLE.COM"
 kadmin -p admin/admin -q "ktadd -k /etc/named.keytab DNS/ns1.example.com@EXAMPLE.COM"
 
-# Set ownership
+# After copying the keytab to the BIND host, set ownership
 chown bind:bind /etc/named.keytab
 chmod 640 /etc/named.keytab
 
@@ -78,7 +78,7 @@ options {
     # Path to Kerberos keytab
     tkey-gssapi-keytab "/etc/named.keytab";
 
-    # Or use credential file
+    # Or explicitly pin the server principal
     # tkey-gssapi-credential "DNS/ns1.example.com@EXAMPLE.COM";
 };
 ```
@@ -90,10 +90,11 @@ zone "example.com" {
     type master;
     file "/var/lib/bind/db.example.com";
 
-    # Allow GSS-TSIG authenticated updates
-    allow-update {
-        # Any Kerberos-authenticated principal
-        key gss.*@EXAMPLE.COM;
+    # Allow joined Linux hosts and Windows machines
+    # to update their own address records
+    update-policy {
+        grant EXAMPLE.COM krb5-self . A AAAA;
+        grant EXAMPLE.COM ms-self . A AAAA;
     };
 };
 ```
@@ -105,10 +106,8 @@ zone "example.com" {
 kinit -k -t /etc/krb5.keytab host/myhost.example.com@EXAMPLE.COM
 
 # Update AAAA record using GSS-TSIG
-nsupdate -g << EOF
-server 2001:db8::53
+nsupdate -g -6 << EOF
 zone example.com
-gsstsig
 realm EXAMPLE.COM
 update delete myhost.example.com. AAAA
 update add myhost.example.com. 300 AAAA 2001:db8::100
@@ -129,8 +128,8 @@ ipconfig /registerdns
 Resolve-DnsName -Name "myhost.example.com" -Type AAAA
 
 # Check event log for DNS registration
-Get-EventLog -LogName System -Source "Tcpip" | 
-    Where-Object { $_.Message -like "*DNS*" } | 
+Get-WinEvent -LogName "Microsoft-Windows-DNS-Client/Operational" |
+    Where-Object { $_.Message -like "*myhost.example.com*" } |
     Select-Object -First 5
 ```
 
@@ -142,11 +141,10 @@ kinit user@EXAMPLE.COM
 klist
 
 # Test GSS-TSIG update
-nsupdate -d -g << EOF
-server 2001:db8::53
-gsstsig
+nsupdate -d -g -6 << EOF
+zone example.com
 realm EXAMPLE.COM
-update add testhost.example.com. 60 AAAA 2001:db8::test
+update add testhost.example.com. 60 AAAA 2001:db8::123
 send
 EOF
 
@@ -154,9 +152,9 @@ EOF
 journalctl -u bind9 | grep -i gss
 
 # Verify record
-dig AAAA testhost.example.com @2001:db8::53
+dig -6 AAAA testhost.example.com @ns1.example.com
 ```
 
 ## Conclusion
 
-GSS-TSIG for IPv6 DNS updates requires BIND compiled with GSSAPI support, a Kerberos keytab for the DNS service principal, and `tkey-gssapi-keytab` in `named.conf`. Windows and Linux clients in the domain can then register AAAA records securely. Monitor DNS registration failures with OneUptime to detect Kerberos ticket expiry or KDC reachability issues.
+GSS-TSIG for IPv6 DNS updates requires BIND with GSSAPI support, a Kerberos keytab for the DNS service principal, `tkey-gssapi-keytab` in `named.conf`, and a zone `update-policy` that matches the Kerberos identities allowed to update records. Windows and Linux clients in the domain can then register AAAA records securely. Monitor DNS registration failures with OneUptime to detect Kerberos ticket expiry or KDC reachability issues.
