@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Docker, Container, Infrastructure as Code, DevOps
 
-Description: Learn how to build docker images with OpenTofu using the Docker provider for local and remote container management.
+Description: Learn how to build docker images with OpenTofu using the Docker provider to build images and run containers on local and remote Docker hosts.
 
 ## Introduction
 
-The OpenTofu Docker provider manages Docker resources declaratively. This is useful for local development environments, testing infrastructure, and managing Docker hosts in production.
+OpenTofu can use the Docker provider to build Docker images and manage containers declaratively. This is useful for local development environments, testing infrastructure, and managing Docker hosts in production.
 
 ## Provider Setup
 
@@ -17,7 +17,7 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -30,10 +30,15 @@ provider "docker" {
 Resource Configuration
 
 ```hcl
-# Pull the image
+# Build the image
 
 resource "docker_image" "app" {
   name         = "${var.image_name}:${var.image_tag}"
+
+  build {
+    context = "."
+  }
+
   keep_locally = false
 }
 
