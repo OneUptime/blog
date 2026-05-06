@@ -45,28 +45,40 @@ bridge link show
 ## Bridge with DHCP
 
 ```yaml
-bridges:
-  br0:
-    interfaces:
-      - eth0
-    dhcp4: true
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: false
+
+  bridges:
+    br0:
+      interfaces:
+        - eth0
+      dhcp4: true
 ```
 
 ## Bridge with STP Enabled
 
 ```yaml
-bridges:
-  br0:
-    interfaces:
-      - eth0
-    dhcp4: false
-    addresses:
-      - 192.168.1.10/24
-    parameters:
-      stp: true
-      forward-delay: 4
-      hello-time: 2
-      max-age: 20
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: false
+
+  bridges:
+    br0:
+      interfaces:
+        - eth0
+      dhcp4: false
+      addresses:
+        - 192.168.1.10/24
+      parameters:
+        stp: true
+        forward-delay: 4
+        hello-time: 2
+        max-age: 20
 ```
 
 ## Bridge with Multiple Interfaces
@@ -106,7 +118,7 @@ network:
     br0:
       interfaces:
         - eth0
-      # No IP - VMs get IPs directly
+      # No IP on br0; the host will not be addressable on this network
       dhcp4: false
       parameters:
         stp: false
@@ -127,4 +139,4 @@ bridge fdb show br br0
 
 ## Conclusion
 
-Netplan bridges use the `bridges` section with `interfaces` listing member physical interfaces. IP configuration goes on the bridge device. Member interfaces must have `dhcp4: false` and no IP. STP is configured in `parameters`. Apply with `netplan apply` and verify with `bridge link show`.
+Netplan bridges use the `bridges` section with `interfaces` listing member physical interfaces. The member interfaces must also be defined in the Netplan configuration, and IP configuration goes on the bridge device instead of on those member interfaces. STP is configured in `parameters`. Apply with `netplan apply` and verify with `bridge link show`.
