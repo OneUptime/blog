@@ -8,7 +8,7 @@ Description: Create and manage GCP VPC firewall rules to allow or deny IPv4 traf
 
 ## Introduction
 
-GCP firewall rules are stateful and applied at the VPC level. Rules use priority numbers (0–65535, lower = higher priority). Target instances are selected using network tags or service accounts. Ingress rules filter incoming traffic; egress rules filter outgoing traffic. The default implicit rule denies all ingress and allows all egress.
+GCP firewall rules are stateful and applied at the VPC level. Rules use priority numbers (0–65535, lower = higher priority). Target instances are selected using network tags or service accounts. Ingress rules filter incoming traffic; egress rules filter outgoing traffic. The default implied rules deny all ingress and allow all egress.
 
 ## Creating an Ingress Allow Rule
 
@@ -101,7 +101,7 @@ gcloud compute firewall-rules create allow-egress-http \
 
 ## Using Service Accounts as Targets
 
-More secure than tags - service accounts cannot be spoofed:
+More secure than tags - service accounts are identity-based and more tightly controlled by IAM:
 
 ```bash
 # Allow internal traffic to instances running a specific service account
@@ -121,7 +121,7 @@ gcloud compute firewall-rules create allow-sa-to-sa \
 # List all rules for the VPC
 gcloud compute firewall-rules list \
   --project=$PROJECT_ID \
-  --filter="network:prod-vpc" \
+  --filter="network=prod-vpc" \
   --format="table(name, direction, priority, sourceRanges.list(), allowed[].map().firewall_rule().list(), targetTags.list())"
 
 # Describe a specific rule
@@ -140,4 +140,4 @@ gcloud compute instances add-tags web-vm-01 \
 
 ## Conclusion
 
-GCP firewall rules use priority-based matching with tags or service accounts as instance selectors. Lower priority numbers win. Use `--target-tags` for simple targeting and `--target-service-accounts` for secure service-to-service rules. Allow specific traffic before adding a broad deny rule at high priority (65000+).
+GCP firewall rules use priority-based matching with tags or service accounts as instance selectors. Lower priority numbers win. Use `--target-tags` for simple targeting and `--target-service-accounts` for secure service-to-service rules. Allow specific traffic before adding a broad deny rule at a higher number (65000+) so lower-numbered rules take precedence.
