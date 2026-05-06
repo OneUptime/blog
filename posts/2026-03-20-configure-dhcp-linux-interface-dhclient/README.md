@@ -89,17 +89,17 @@ sudo dhclient -4 eth0
 
 ## Using dhclient with Specific Scripts
 
-dhclient runs hooks when it enters/exits bound state. Add custom scripts in `/etc/dhcp/dhclient-enter-hooks.d/`:
+dhclient runs hooks when it enters/exits bound state. Add a custom enter hook in `/etc/dhcp/dhclient-enter-hooks`:
 
 ```bash
-# Create a hook that sets a custom hostname on each DHCP renewal
-sudo tee /etc/dhcp/dhclient-enter-hooks.d/hostname << 'EOF'
-#!/bin/bash
+# Create an enter hook that sets a custom hostname on each DHCP renewal
+sudo tee /etc/dhcp/dhclient-enter-hooks << 'EOF'
+#!/bin/sh
 if [ "$reason" = "BOUND" ] || [ "$reason" = "RENEW" ]; then
     hostname my-linux-host
 fi
 EOF
-sudo chmod +x /etc/dhcp/dhclient-enter-hooks.d/hostname
+sudo chmod +x /etc/dhcp/dhclient-enter-hooks
 ```
 
 ## Using systemd-networkd Instead
