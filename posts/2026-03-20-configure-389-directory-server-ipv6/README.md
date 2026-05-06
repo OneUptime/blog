@@ -17,8 +17,8 @@ Description: Configure 389 Directory Server (Red Hat Directory Server) to listen
 
 sudo dnf install 389-ds-base -y
 
-# Ubuntu (if available)
-sudo apt install 389-ds -y
+# Ubuntu/Debian (if available)
+sudo apt install 389-ds-base -y
 
 # Verify installation
 dsconf --version
@@ -40,7 +40,7 @@ instance_name = myldap
 
 # Root DN and password
 root_dn = cn=Directory Manager
-root_dn_password = SecurePassword123
+root_password = SecurePassword123
 
 # Port configuration
 port = 389
@@ -63,19 +63,18 @@ sudo systemctl enable --now dirsrv@myldap
 
 ## Configuring 389 DS to Listen on IPv6
 
-389 DS binds to all interfaces by default. To explicitly configure IPv6:
+389 DS listens on all interfaces by default when `nsslapd-listenhost` is unset. To verify the current settings or bind to a specific IPv6 address assigned to the host:
 
 ```bash
 # Check current listening configuration
 dsconf myldap config get nsslapd-listenhost
 dsconf myldap config get nsslapd-securelistenhost
 
-# Set to listen on all interfaces (including IPv6)
-# Empty value or "0.0.0.0" may only bind IPv4 on some systems
-dsconf myldap config replace nsslapd-listenhost="::"
+# Replace with an IPv6 address that exists on this host
+dsconf myldap config replace nsslapd-listenhost="2001:db8::10"
 
-# For LDAPS on IPv6
-dsconf myldap config replace nsslapd-securelistenhost="::"
+# For LDAPS on a specific IPv6 address
+dsconf myldap config replace nsslapd-securelistenhost="2001:db8::10"
 
 # Restart the instance
 sudo systemctl restart dirsrv@myldap
@@ -90,8 +89,8 @@ ss -tlnp | grep :636
 Add ACI (Access Control Instructions) for IPv6 clients:
 
 ```bash
-# Allow read access from IPv6 subnet
-ldapmodify -H ldap://[::1] \
+# Allow read access from a specific IPv6 client
+ldapmodify -x -H ldap://[::1] \
   -D "cn=Directory Manager" \
   -w SecurePassword123 << 'EOF'
 dn: dc=example,dc=com
@@ -100,7 +99,7 @@ add: aci
 aci: (targetattr="*")(version 3.0; acl "IPv6 read access";
   allow (read, search, compare)
   userdn="ldap:///anyone" and
-  ip="2001:db8::/32";)
+  ip="2001:db8::10";)
 EOF
 ```
 
@@ -108,21 +107,22 @@ EOF
 
 ```bash
 # Test LDAP search over IPv6
-ldapsearch -H ldap://[2001:db8::1]:389 \
+ldapsearch -x -H ldap://[2001:db8::1]:389 \
   -D "cn=Directory Manager" \
   -w SecurePassword123 \
   -b "dc=example,dc=com" \
   "(objectClass=*)" dn | head -20
 
 # Test from localhost IPv6
-ldapsearch -H ldap://[::1]:389 \
+ldapsearch -x -H ldap://[::1]:389 \
   -D "cn=Directory Manager" \
   -w SecurePassword123 \
   -b "dc=example,dc=com" \
   "(objectClass=domain)"
 
-# Test LDAPS over IPv6
-ldapsearch -H ldaps://[2001:db8::1]:636 \
+# Test LDAPS over IPv6 using a hostname that matches the certificate
+LDAPTLS_CACERT=/etc/dirsrv/slapd-myldap/ca.crt \
+ldapsearch -x -H ldaps://ldap.example.com:636 \
   -D "cn=Directory Manager" \
   -w SecurePassword123 \
   -b "dc=example,dc=com" \
@@ -133,7 +133,7 @@ ldapsearch -H ldaps://[2001:db8::1]:636 \
 
 ```bash
 # Add a test user via IPv6
-ldapadd -H ldap://[2001:db8::1]:389 \
+ldapadd -x -H ldap://[2001:db8::1]:389 \
   -D "cn=Directory Manager" \
   -w SecurePassword123 << 'EOF'
 dn: uid=testuser,ou=People,dc=example,dc=com
@@ -154,20 +154,19 @@ EOF
 ## Configuring TLS for IPv6 LDAPS
 
 ```bash
-# Check current TLS certificate configuration
-dsconf myldap config get nsslapd-security
+# Check current TLS configuration
+dsconf myldap security get
 
-# Enable security
-dsconf myldap config replace nsslapd-security=on
+# Show the certificate LDAPS is presenting
+dsctl myldap tls show-server-cert
 
-# View certificate database
-dsctl myldap tls show-cert
+# Import a PEM server certificate and matching private key
+dsctl myldap tls import-server-key-cert /path/to/server-cert.pem /path/to/server-key.pem
 
-# Import a certificate from Let's Encrypt or internal CA
-dsconf myldap config replace \
-  nsslapd-certdir=/etc/dirsrv/slapd-myldap
+# Enable LDAPS with the imported certificate
+dsconf myldap security enable --cert-name Server-Cert
 
-# Restart with TLS enabled
+# Restart with the updated certificate
 sudo systemctl restart dirsrv@myldap
 ```
 
@@ -175,10 +174,10 @@ sudo systemctl restart dirsrv@myldap
 
 ```bash
 # Monitor connection activity
-dsconf myldap monitor server | grep -i "conn\|ipv6"
+dsconf myldap monitor server | grep -i "currentconnections\|totalconnections"
 
 # View access log for IPv6 client connections
-sudo tail -f /var/log/dirsrv/slapd-myldap/access | grep "conn="
+sudo tail -f /var/log/dirsrv/slapd-myldap/access | grep "connection from"
 
 # Check error log
 sudo tail -50 /var/log/dirsrv/slapd-myldap/errors
