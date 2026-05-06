@@ -12,14 +12,18 @@ Description: Learn how to configure Apache Cassandra to use IPv6 addresses for n
 # /etc/cassandra/cassandra.yaml
 
 # Address for inter-node communication (seeds, gossip)
-
-listen_address: ""            # Empty = use listen_interface
-listen_interface: eth0        # Use interface name
+# Use either listen_address or listen_interface, not both.
+# If you use an interface name, prefer the IPv6 address on that interface.
+# listen_interface: eth0
+# listen_interface_prefer_ipv6: true
 
 # Or specify IPv6 address directly
 listen_address: "2001:db8::10"
 
 # RPC/Native transport (client connections)
+# Use either rpc_address or rpc_interface, not both.
+# rpc_interface: eth0
+# rpc_interface_prefer_ipv6: true
 rpc_address: "2001:db8::10"
 
 # Broadcast address (what other nodes see as your address)
@@ -37,7 +41,8 @@ seed_provider:
 
 ```bash
 # Cassandra runs on JVM - configure it to prefer IPv6
-# /etc/cassandra/jvm.options or /etc/cassandra/jvm-server.options
+# /etc/cassandra/jvm-server.options
+# For older installs or dynamically computed JVM flags, use /etc/cassandra/cassandra-env.sh
 
 # Add to JVM options:
 -Djava.net.preferIPv6Addresses=true
@@ -68,11 +73,11 @@ endpoint_snitch: GossipingPropertyFileSnitch
 ## Start and Verify
 
 ```bash
-# Start Cassandra
-systemctl start cassandra
+# Restart Cassandra after changing config
+systemctl restart cassandra
 
 # Verify listening on IPv6
-ss -6 -tlnp | grep cassandra
+ss -6 -tln | grep -E ':(7000|7199|9042)[[:space:]]'
 # Port 9042 = native transport (clients)
 # Port 7000 = inter-node
 # Port 7199 = JMX
@@ -114,4 +119,4 @@ cluster.shutdown()
 
 ## Summary
 
-Configure Cassandra for IPv6 by setting `listen_address`, `broadcast_address`, `rpc_address`, and `broadcast_rpc_address` to the node's IPv6 address in `cassandra.yaml`. List IPv6 addresses in `seeds`. Add `-Djava.net.preferIPv6Addresses=true` to JVM options. Restart with `systemctl restart cassandra`. Check cluster status with `nodetool status`. Connect with `cqlsh 2001:db8::10 9042`.
+Configure Cassandra for IPv6 by setting `listen_address`, `broadcast_address`, `rpc_address`, and `broadcast_rpc_address` to the node's IPv6 address in `cassandra.yaml`, or by using `listen_interface` and `rpc_interface` with the IPv6 preference flags. List IPv6 addresses in `seeds`. Add `-Djava.net.preferIPv6Addresses=true` to JVM options. Restart with `systemctl restart cassandra`. Check cluster status with `nodetool status`. Connect with `cqlsh 2001:db8::10 9042`.
