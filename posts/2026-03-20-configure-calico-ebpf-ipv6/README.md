@@ -8,90 +8,95 @@ Description: Configure Calico in eBPF mode for IPv6 Kubernetes workloads, replac
 
 ## Introduction
 
-Calico eBPF mode uses the Linux eBPF subsystem instead of iptables for packet processing, providing lower latency and better performance. It supports IPv6 natively and can replace kube-proxy for IPv6 service routing.
+Calico eBPF mode uses the Linux eBPF subsystem instead of iptables for packet processing, providing lower latency and better performance. It supports IPv6 natively and can replace kube-proxy for Kubernetes service routing.
 
 ## Prerequisites and Installation
 
 ```bash
 # Requirements for eBPF mode:
 
-# - Linux kernel >= 5.3
-# - Calico >= 3.13
-# - Kubernetes >= 1.16
-# - kube-proxy NOT running (it will be replaced by Calico eBPF)
+# - A Kubernetes cluster that is already configured for IPv6-only or dual-stack
+# - Calico installed with the Kubernetes datastore and Calico IPAM
+# - x86-64 or arm64 nodes on a supported distribution/kernel
+#   (for example: Ubuntu 22.04, RHEL 8.4 with kernel 4.18.0-305+,
+#   or another supported distro with Linux kernel >= 5.10)
+# - Nodes have IPv6 forwarding enabled: net.ipv6.conf.all.forwarding=1
+# - If kube-proxy is running in IPVS mode, switch it to iptables mode first
 
-# First, install Calico with IPv6 enabled
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
-
-# Or via Helm with IPv6
+# Install Calico with the Tigera Operator
+helm repo add projectcalico https://docs.tigera.io/calico/charts
+kubectl create namespace tigera-operator
+helm template calico-crds projectcalico/crd.projectcalico.org.v1 --version v3.32.0 | \
+  kubectl apply --server-side -f -
 helm install calico projectcalico/tigera-operator \
-  --namespace tigera-operator \
-  --create-namespace
+  --version v3.32.0 \
+  --namespace tigera-operator
 ```
 
 ## Enable eBPF Mode
 
 ```bash
-# 1. Disable kube-proxy (before enabling Calico eBPF)
-kubectl patch ds kube-proxy -n kube-system \
-  -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico": "true"}}}}}'
-
-# 2. Configure Calico to use eBPF
-kubectl patch installation default --type merge \
-  -p '{"spec": {"calicoNetwork": {"linuxDataplane": "BPF"}}}'
+# Recommended for self-managed kubeadm-style clusters where kube-proxy
+# is not managed by Helm or ArgoCD: enable eBPF and let the operator
+# bootstrap API access and disable kube-proxy.
+kubectl patch installation.operator.tigera.io default --type merge -p '{
+  "spec": {
+    "calicoNetwork": {
+      "linuxDataplane": "BPF",
+      "bpfNetworkBootstrap": "Enabled",
+      "kubeProxyManagement": "Enabled"
+    }
+  }
+}'
 
 # Wait for rollout
 kubectl rollout status ds/calico-node -n calico-system
 
 # 3. Verify eBPF mode
-kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -felix-live 2>/dev/null | grep "BPF"
+kubectl logs -n calico-system ds/calico-node -c calico-node | \
+  grep "BPF enabled, starting BPF endpoint manager and map manager."
 ```
 
 ## Calico eBPF with IPv6 IPPools
 
-```yaml
-# Dual-stack IPPools for eBPF mode
-apiVersion: projectcalico.org/v3
-kind: IPPool
-metadata:
-  name: ipv6-pool
-spec:
-  cidr: fd00:10:244::/48
-  blockSize: 122   # /122 per node (64 IPs each)
-  ipipMode: Never   # eBPF mode doesn't use IPIP
-  vxlanMode: Never  # eBPF uses native routing
-  natOutgoing: false
-  nodeSelector: all()
-```
-
 ```bash
-# Apply the pool
-kubectl apply -f ipv6-pool.yaml
+# Replace the default pool with an IPv6-only pool for an operator-managed install
+kubectl patch installation.operator.tigera.io default --type merge -p '{
+  "spec": {
+    "calicoNetwork": {
+      "ipPools": [
+        {
+          "cidr": "fd00:10:244::/48",
+          "blockSize": 122,
+          "encapsulation": "VXLAN",
+          "natOutgoing": "Enabled",
+          "nodeSelector": "all()"
+        }
+      ]
+    }
+  }
+}'
 
 # Verify
-kubectl exec -n calico-system ds/calico-node -- \
-  calicoctl get ippool ipv6-pool -o yaml
+kubectl get ippools -o yaml
 ```
 
 ## kube-proxy Replacement in eBPF Mode
 
 ```bash
-# Configure BPF kube-proxy replacement
-kubectl patch configmap calico-config -n kube-system --type merge \
-  -p '{"data": {"bpf-kube-proxy-iptables-cleanup-enabled": "true"}}'
-
-# Set the API server address for kube-proxy replacement
-kubectl patch felixconfiguration default --type merge -p '{
+# If your platform does not allow kube-proxy to be disabled,
+# stop Felix from removing kube-proxy's iptables rules and move
+# Calico's health endpoint away from kube-proxy's default port.
+kubectl patch felixconfiguration default --type merge --patch='{
   "spec": {
-    "bpfKubeProxyIptablesCleanupEnabled": true,
-    "bpfLogLevel": "off"
+    "bpfKubeProxyIptablesCleanupEnabled": false,
+    "bpfKubeProxyHealthzPort": 10258
   }
 }'
 
 # Verify services are handled by eBPF
 kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -bpf-dump-maps service 2>/dev/null | head -20
+  calico-node -bpf nat dump | head -20
 ```
 
 ## Troubleshooting eBPF Mode
@@ -99,18 +104,22 @@ kubectl exec -n calico-system ds/calico-node -- \
 ```bash
 # Check Felix eBPF status
 kubectl logs -n calico-system ds/calico-node -c calico-node | \
-  grep -i "bpf\|ebpf"
+  grep -iE "bpf enabled|bpf data plane"
 
 # List loaded eBPF programs
-bpftool prog list | grep calico | head -20
+kubectl exec -n calico-system ds/calico-node -- \
+  bpftool prog list | grep calico | head -20
 
 # Check eBPF maps
-bpftool map list | grep calico | head -20
-
-# Verify IPv6 routing in eBPF
-# On a node, check that pod IPv6 addresses are in eBPF route map
 kubectl exec -n calico-system ds/calico-node -- \
-  calico-node -bpf-dump-maps route 2>/dev/null | \
+  bpftool map list | grep calico | head -20
+
+# Inspect service and conntrack state from the embedded BPF tool
+kubectl exec -n calico-system ds/calico-node -- \
+  calico-node -bpf nat dump | head -20
+
+kubectl exec -n calico-system ds/calico-node -- \
+  calico-node -bpf conntrack dump | \
   grep "fd00:10:244"
 
 # Felix logs for debugging
@@ -128,14 +137,14 @@ kubectl logs -n calico-system ds/calico-node -c calico-node --follow | \
 kubectl exec server-pod -- iperf3 -s -6
 
 # Test pod 2 (client)
-kubectl exec client-pod -- iperf3 -c [fd00:10:244::server] -6 -t 30
+# Replace fd00:10:244::10 with the actual IPv6 address of the server pod.
+kubectl exec client-pod -- iperf3 -c fd00:10:244::10 -6 -t 30
 
-# Expected improvement with eBPF:
-# iptables mode: ~9 Gbps (10GbE)
-# eBPF mode: ~9.8 Gbps (less overhead)
-# XDP mode: line-rate improvement for NodePort
+# Actual throughput depends on the kernel, NIC, MTU, and whether
+# workloads use an overlay. For best pod-to-pod performance, use
+# underlay routing when possible; if an overlay is required, use VXLAN.
 ```
 
 ## Conclusion
 
-Calico eBPF mode improves IPv6 performance by replacing iptables with efficient eBPF programs. Disable kube-proxy before enabling eBPF, and configure `/122` IPv6 block sizes for efficient IPAM. Use `calico-node -bpf-dump-maps` to inspect runtime state. Monitor node-to-node latency and pod connectivity with OneUptime to verify that eBPF mode is performing as expected.
+Calico eBPF mode improves IPv6 performance by replacing iptables with efficient eBPF programs. Let the operator disable kube-proxy for self-managed clusters or explicitly avoid kube-proxy conflicts on managed platforms, and configure `/122` IPv6 block sizes for efficient IPAM. Use the `calico-node -bpf` tool to inspect runtime state. Monitor node-to-node latency and pod connectivity with OneUptime to verify that eBPF mode is performing as expected.
