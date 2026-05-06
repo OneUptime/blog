@@ -17,13 +17,13 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5"
     }
   }
 }
 
 provider "cloudflare" {
-  # Set CLOUDFLARE_API_TOKEN env var or use api_token attribute
+  # Or omit this attribute and set CLOUDFLARE_API_TOKEN in the environment
   api_token = var.cloudflare_api_token
 }
 
@@ -38,7 +38,9 @@ variable "cloudflare_api_token" {
 ```hcl
 # zone.tf - Look up the Cloudflare zone by domain name
 data "cloudflare_zone" "main" {
-  name = "example.com"
+  filter = {
+    name = "example.com"
+  }
 }
 
 output "zone_id" {
@@ -50,13 +52,13 @@ output "zone_id" {
 
 ```hcl
 # aaaa-record.tf - A single AAAA record for the root domain
-resource "cloudflare_record" "root_aaaa" {
+resource "cloudflare_dns_record" "root_aaaa" {
   zone_id = data.cloudflare_zone.main.id
-  name    = "@"        # @ means the root domain (example.com)
+  name    = "example.com"   # root domain
   type    = "AAAA"
-  value   = "2001:db8::1"  # The IPv6 address of your server
-  ttl     = 300
-  proxied = true     # Route through Cloudflare's IPv6 proxy/CDN
+  content = "2001:db8::1"   # The IPv6 address of your server
+  ttl     = 1               # Auto
+  proxied = true            # Proxy HTTP/HTTPS traffic through Cloudflare
 }
 ```
 
@@ -68,34 +70,34 @@ locals {
   ipv6_records = {
     "www"    = "2001:db8::1"
     "api"    = "2001:db8::2"
-    "mail"   = "2001:db8::3"
+    "blog"   = "2001:db8::3"
     "cdn"    = "2001:db8::4"
   }
 }
 
-resource "cloudflare_record" "aaaa_subdomains" {
+resource "cloudflare_dns_record" "aaaa_subdomains" {
   for_each = local.ipv6_records
 
   zone_id = data.cloudflare_zone.main.id
   name    = each.key         # subdomain name
   type    = "AAAA"
-  value   = each.value       # IPv6 address
-  ttl     = 1                # TTL of 1 = Auto when proxied
+  content = each.value       # IPv6 address
+  ttl     = 1                # 1 = Auto
   proxied = true
 }
 ```
 
 ## Step 5: Create Unproxied AAAA Records (DNS-Only)
 
-For services that need direct IPv6 connectivity without Cloudflare's proxy:
+For services that need direct IPv6 connectivity or do not serve HTTP/HTTPS traffic:
 
 ```hcl
 # dns-only-aaaa.tf - AAAA record bypassing Cloudflare proxy (DNS only)
-resource "cloudflare_record" "mx_server_aaaa" {
+resource "cloudflare_dns_record" "mx_server_aaaa" {
   zone_id = data.cloudflare_zone.main.id
   name    = "mail"
   type    = "AAAA"
-  value   = "2001:db8::10"
+  content = "2001:db8::10"
 
   # proxied = false means DNS-only (orange cloud off)
   proxied = false
@@ -109,13 +111,13 @@ Combine with AWS/GCP/Azure outputs to automatically set AAAA records:
 
 ```hcl
 # dynamic-aaaa.tf - Use IPv6 from a GCP load balancer output as AAAA record
-resource "cloudflare_record" "app_aaaa" {
+resource "cloudflare_dns_record" "app_aaaa" {
   zone_id = data.cloudflare_zone.main.id
   name    = "app"
   type    = "AAAA"
 
   # Reference the IPv6 output from the GCP load balancer
-  value   = google_compute_global_forwarding_rule.ipv6.ip_address
+  content = google_compute_global_forwarding_rule.ipv6.ip_address
 
   proxied = false
   ttl     = 300
@@ -129,10 +131,10 @@ terraform apply
 
 # Verify the AAAA record in Cloudflare
 curl -X GET "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?type=AAAA" \
-  -H "Authorization: Bearer ${CF_API_TOKEN}" | jq '.result[].name,.result[].content'
+  -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" | jq '.result[].name,.result[].content'
 
 # Test DNS resolution
-dig AAAA www.example.com @1.1.1.1
+dig @1.1.1.1 www.example.com AAAA
 ```
 
 Managing Cloudflare AAAA records with Terraform ensures your IPv6 DNS configuration is consistent, auditable, and automatically updated whenever your underlying IPv6 infrastructure changes.
