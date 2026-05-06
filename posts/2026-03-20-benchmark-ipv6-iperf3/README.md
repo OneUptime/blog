@@ -18,9 +18,9 @@ iperf3 is the de facto standard for active network throughput measurement. It na
 iperf3 -s -6 -p 5201
 
 # Client side: TCP test from client to server
-iperf3 -c 2001:db8::server -6 -t 30 -P 4
+iperf3 -c 2001:db8::1 -6 -t 30 -P 4
 # -t 30: run for 30 seconds
-# -P 4: 4 parallel streams (better utilizes multi-core NICs)
+# -P 4: 4 parallel streams (may increase throughput on CPU-limited paths)
 
 # Expected output:
 # [SUM] 0.00-30.00 sec  33.6 GBytes  9.62 Gbits/sec  sender
@@ -35,10 +35,10 @@ iperf3 -c 2001:db8::server -6 -t 30 -P 4
 iperf3 -s -6
 
 # Client: 1Gbps UDP for 10 seconds
-iperf3 -c 2001:db8::server -6 -u -b 1G -t 10 -l 1400
+iperf3 -c 2001:db8::1 -6 -u -b 1G -t 10 -l 1400
 # -u: UDP mode
 # -b 1G: target bandwidth
-# -l 1400: datagram size (below IPv6 MTU of 1500 minus headers)
+# -l 1400: 1400-byte payload, leaving room for IPv6 and UDP headers on a 1500-byte path MTU
 
 # Output includes:
 # Jitter: 0.045 ms
@@ -49,31 +49,31 @@ iperf3 -c 2001:db8::server -6 -u -b 1G -t 10 -l 1400
 
 ```bash
 # Reverse: measure server-to-client throughput
-iperf3 -c 2001:db8::server -6 -R -t 20
+iperf3 -c 2001:db8::1 -6 -R -t 20
 
 # Bidirectional simultaneous test
-iperf3 -c 2001:db8::server -6 --bidir -t 20
+iperf3 -c 2001:db8::1 -6 --bidir -t 20
 ```
 
 ## Testing with Different Socket Buffer Sizes
 
 ```bash
 # Override socket buffer to test TCP performance tuning
-# Small buffer (default ~128KB)
-iperf3 -c 2001:db8::server -6 -w 128K -t 10
+# 128KB socket buffer
+iperf3 -c 2001:db8::1 -6 -w 128K -t 10
 
 # Large buffer (test BDP-optimized tuning)
-iperf3 -c 2001:db8::server -6 -w 16M -t 10
+iperf3 -c 2001:db8::1 -6 -w 16M -t 10
 
-# Validate effective window size in output:
-# [  5] local 2001:db8::client port 34567 connected to 2001:db8::server
+# -w sets send and receive socket buffer sizes on both sides.
+# On Linux, the effective maximum window may be about 2x the requested value.
 ```
 
 ## Scripted Benchmark Suite
 
 ```bash
 #!/bin/bash
-SERVER="2001:db8::server"
+SERVER="2001:db8::1"
 LOG="/tmp/iperf3_ipv6_results.json"
 
 echo "[" > "$LOG"
@@ -92,7 +92,7 @@ iperf3 -c "$SERVER" -6 -u -b 100M -t 15 -J >> "$LOG"
 echo "]" >> "$LOG"
 
 # Parse results with jq
-jq '.[].end.sum_received.bits_per_second / 1e9' "$LOG" | \
+jq '.[].end | (.sum_received.bits_per_second // .sum.bits_per_second) / 1e9' "$LOG" | \
   awk '{printf "Throughput: %.2f Gbps\n", $1}'
 ```
 
