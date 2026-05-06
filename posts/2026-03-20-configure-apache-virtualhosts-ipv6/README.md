@@ -11,15 +11,15 @@ Description: Learn how to configure Apache VirtualHost directives for IPv6 addre
 ```apache
 # IPv6 addresses in VirtualHost directives must be in brackets
 
-# IPv6-only virtual host
+# IPv6-specific virtual host
 
 <VirtualHost [2001:db8::10]:80>
     ServerName example.com
     DocumentRoot /var/www/example
 </VirtualHost>
 
-# All IPv6 interfaces
-<VirtualHost [::]:80>
+# Wildcard virtual host for any address Apache is listening on
+<VirtualHost *:80>
     ServerName default.example.com
     DocumentRoot /var/www/default
 </VirtualHost>
@@ -29,19 +29,18 @@ Description: Learn how to configure Apache VirtualHost directives for IPv6 addre
 
 ```apache
 # /etc/apache2/ports.conf
-Listen [::]:80
-Listen 80
+Listen [2001:db8::10]:80
 
 # /etc/apache2/sites-available/ipv6-vhosts.conf
 
-# Default/catch-all for all IPv4 and IPv6 requests
-<VirtualHost *:80>
+# Default/catch-all for requests to this IPv6 address
+<VirtualHost [2001:db8::10]:80>
     ServerName default.example.com
     DocumentRoot /var/www/default
 </VirtualHost>
 
-# Specific site for IPv6 clients
-<VirtualHost [::]:80>
+# Additional name-based site on the same IPv6 address
+<VirtualHost [2001:db8::10]:80>
     ServerName www.example.com
     ServerAlias example.com
     DocumentRoot /var/www/example
@@ -71,18 +70,18 @@ Listen 80
 ## Multiple Sites on a Single IPv6 Address
 
 ```apache
-# Name-based virtual hosting (most common for multiple sites)
-<VirtualHost [::]:80>
+# Name-based virtual hosting (most common for multiple sites on one IPv6 address)
+<VirtualHost [2001:db8::10]:80>
     ServerName site1.example.com
     DocumentRoot /var/www/site1
 </VirtualHost>
 
-<VirtualHost [::]:80>
+<VirtualHost [2001:db8::10]:80>
     ServerName site2.example.com
     DocumentRoot /var/www/site2
 </VirtualHost>
 
-<VirtualHost [::]:80>
+<VirtualHost [2001:db8::10]:80>
     ServerName site3.example.com
     DocumentRoot /var/www/site3
 </VirtualHost>
@@ -91,7 +90,7 @@ Listen 80
 ## IPv6 HTTPS VirtualHost
 
 ```apache
-<VirtualHost [::]:443>
+<VirtualHost [2001:db8::10]:443>
     ServerName secure.example.com
 
     SSLEngine on
@@ -120,14 +119,14 @@ systemctl reload apache2
 apache2ctl -S
 # Shows list of virtual hosts with their addresses
 
-# Test IPv6 virtual host
-curl -6 -H "Host: www.example.com" http://[::1]/
+# Test the IPv6 listener and default virtual host
 curl -6 http://[2001:db8::10]/
 
-# Check which virtual host is serving a request
-curl -6 -v http://[2001:db8::10]/ 2>&1 | grep Server
+# Check name-based virtual host matching explicitly
+curl -6 -H "Host: default.example.com" http://[2001:db8::10]/
+curl -6 -H "Host: www.example.com" http://[2001:db8::10]/
 ```
 
 ## Summary
 
-Configure Apache IPv6 VirtualHosts with `<VirtualHost [::]:80>` (all IPv6) or `<VirtualHost [2001:db8::10]:80>` (specific address). IPv6 addresses must be in brackets. Use `<VirtualHost *:80>` to match both IPv4 and IPv6 Listen directives. For dual-stack, create two VirtualHost blocks - one for IPv4 and one for IPv6 - pointing to the same DocumentRoot. Verify with `apache2ctl -S` and test with `curl -6`.
+Configure Apache IPv6 VirtualHosts with `<VirtualHost [2001:db8::10]:80>` for a specific IPv6 address, or `<VirtualHost *:80>` as a wildcard for any address Apache is listening on. IPv6 addresses must be in brackets. For name-based hosting on a single IPv6 address, repeat the same IPv6 address in multiple `VirtualHost` blocks and let `ServerName` or `ServerAlias` select the site. For dual-stack, create two VirtualHost blocks - one for IPv4 and one for IPv6 - pointing to the same DocumentRoot. Verify with `apache2ctl -S` and test with `curl -6`.
