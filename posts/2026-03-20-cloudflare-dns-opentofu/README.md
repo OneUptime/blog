@@ -29,7 +29,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
 }
@@ -43,16 +43,16 @@ provider "cloudflare" {
 
 ```hcl
 # dns.tf
-data "cloudflare_zone" "main" {
+data "cloudflare_zones" "main" {
   name = var.domain_name
 }
 
 # Proxied A record - goes through Cloudflare CDN and DDoS protection
-resource "cloudflare_record" "root" {
-  zone_id = data.cloudflare_zone.main.id
+resource "cloudflare_dns_record" "root" {
+  zone_id = data.cloudflare_zones.main.result[0].id
   name    = var.domain_name
   type    = "A"
-  value   = var.origin_ip
+  content = var.origin_ip
   proxied = true  # Route through Cloudflare
   ttl     = 1     # TTL 1 = Auto when proxied
 
@@ -62,49 +62,65 @@ resource "cloudflare_record" "root" {
   }
 }
 
-resource "cloudflare_record" "www" {
-  zone_id = data.cloudflare_zone.main.id
-  name    = "www"
+resource "cloudflare_dns_record" "www" {
+  zone_id = data.cloudflare_zones.main.result[0].id
+  name    = "www.${var.domain_name}"
   type    = "CNAME"
-  value   = var.domain_name
+  content = var.domain_name
+  proxied = true
+  ttl     = 1
+}
+
+resource "cloudflare_dns_record" "api" {
+  zone_id = data.cloudflare_zones.main.result[0].id
+  name    = "api.${var.domain_name}"
+  type    = "CNAME"
+  content = var.domain_name
   proxied = true
   ttl     = 1
 }
 
 # Non-proxied record for services that don't need CDN
-resource "cloudflare_record" "mail" {
-  zone_id = data.cloudflare_zone.main.id
-  name    = "mail"
+resource "cloudflare_dns_record" "mail" {
+  zone_id = data.cloudflare_zones.main.result[0].id
+  name    = "mail.${var.domain_name}"
   type    = "A"
-  value   = var.mail_server_ip
+  content = var.mail_server_ip
   proxied = false  # Direct DNS - email servers can't use CDN proxy
   ttl     = 300
 }
 
+resource "cloudflare_dns_record" "mail2" {
+  zone_id = data.cloudflare_zones.main.result[0].id
+  name    = "mail2.${var.domain_name}"
+  type    = "A"
+  content = var.mail_server_ip
+  proxied = false
+  ttl     = 300
+}
+
 # MX records
-resource "cloudflare_record" "mx" {
+resource "cloudflare_dns_record" "mx" {
   for_each = {
     "10" = "mail.${var.domain_name}"
     "20" = "mail2.${var.domain_name}"
   }
 
-  zone_id  = data.cloudflare_zone.main.id
+  zone_id  = data.cloudflare_zones.main.result[0].id
   name     = var.domain_name
   type     = "MX"
-  value    = each.value
+  content  = each.value
   priority = tonumber(each.key)
-  proxied  = false
   ttl      = 300
 }
 
 # SPF, DKIM, DMARC
-resource "cloudflare_record" "spf" {
-  zone_id = data.cloudflare_zone.main.id
+resource "cloudflare_dns_record" "spf" {
+  zone_id = data.cloudflare_zones.main.result[0].id
   name    = var.domain_name
   type    = "TXT"
-  value   = "v=spf1 include:_spf.google.com ~all"
+  content = "v=spf1 include:_spf.google.com ~all"
   ttl     = 300
-  proxied = false
 }
 ```
 
@@ -112,21 +128,64 @@ resource "cloudflare_record" "spf" {
 
 ```hcl
 # zone_settings.tf
-resource "cloudflare_zone_settings_override" "main" {
-  zone_id = data.cloudflare_zone.main.id
+resource "cloudflare_zone_setting" "ssl" {
+  zone_id    = data.cloudflare_zones.main.result[0].id
+  setting_id = "ssl"
+  value      = "strict"
+}
 
-  settings {
-    ssl                      = "full_strict"
-    min_tls_version          = "1.2"
-    tls_1_3                  = "on"
-    always_use_https         = "on"
-    automatic_https_rewrites = "on"
-    brotli                   = "on"
-    http2                    = "on"
-    http3                    = "on"
-    security_level           = var.environment == "production" ? "medium" : "essentially_off"
-    browser_cache_ttl        = 14400
-  }
+resource "cloudflare_zone_setting" "min_tls_version" {
+  zone_id    = data.cloudflare_zones.main.result[0].id
+  setting_id = "min_tls_version"
+  value      = "1.2"
+}
+
+resource "cloudflare_zone_setting" "tls_1_3" {
+  zone_id    = data.cloudflare_zones.main.result[0].id
+  setting_id = "tls_1_3"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "always_use_https" {
+  zone_id    = data.cloudflare_zones.main.result[0].id
+  setting_id = "always_use_https"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "automatic_https_rewrites" {
+  zone_id    = data.cloudflare_zones.main.result[0].id
+  setting_id = "automatic_https_rewrites"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "brotli" {
+  zone_id    = data.cloudflare_zones.main.result[0].id
+  setting_id = "brotli"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "http2" {
+  zone_id    = data.cloudflare_zones.main.result[0].id
+  setting_id = "http2"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "http3" {
+  zone_id    = data.cloudflare_zones.main.result[0].id
+  setting_id = "http3"
+  value      = "on"
+}
+
+resource "cloudflare_zone_setting" "security_level" {
+  zone_id    = data.cloudflare_zones.main.result[0].id
+  setting_id = "security_level"
+  value      = var.environment == "production" ? "medium" : "essentially_off"
+}
+
+resource "cloudflare_zone_setting" "browser_cache_ttl" {
+  zone_id    = data.cloudflare_zones.main.result[0].id
+  setting_id = "browser_cache_ttl"
+  value      = 14400
 }
 ```
 
@@ -134,24 +193,47 @@ resource "cloudflare_zone_settings_override" "main" {
 
 ```hcl
 resource "cloudflare_page_rule" "cache_assets" {
-  zone_id  = data.cloudflare_zone.main.id
-  target   = "https://${var.domain_name}/assets/*"
+  zone_id  = data.cloudflare_zones.main.result[0].id
   priority = 1
+  status   = "active"
 
-  actions {
-    cache_level = "cache_everything"
-    edge_cache_ttl = 86400  # 1 day
-  }
+  targets = [{
+    target = "url"
+    constraint = {
+      operator = "matches"
+      value    = "https://${var.domain_name}/assets/*"
+    }
+  }]
+
+  actions = [
+    {
+      id    = "cache_level"
+      value = "cache_everything"
+    },
+    {
+      id    = "edge_cache_ttl"
+      value = 86400  # 1 day
+    }
+  ]
 }
 
 resource "cloudflare_page_rule" "no_cache_api" {
-  zone_id  = data.cloudflare_zone.main.id
-  target   = "https://api.${var.domain_name}/*"
+  zone_id  = data.cloudflare_zones.main.result[0].id
   priority = 2
+  status   = "active"
 
-  actions {
-    cache_level = "bypass"
-  }
+  targets = [{
+    target = "url"
+    constraint = {
+      operator = "matches"
+      value    = "https://api.${var.domain_name}/*"
+    }
+  }]
+
+  actions = [{
+    id    = "cache_level"
+    value = "bypass"
+  }]
 }
 ```
 
@@ -160,5 +242,5 @@ resource "cloudflare_page_rule" "no_cache_api" {
 - Use `proxied = true` for HTTP/HTTPS records to get Cloudflare DDoS protection and CDN without additional configuration.
 - Never proxy non-HTTP services (mail, FTP, VPN) - use `proxied = false` for those records.
 - Set `min_tls_version = "1.2"` and `always_use_https = "on"` for all production zones.
-- Use the Cloudflare API token (not Global API Key) with minimal scopes - `Zone:DNS:Edit` for DNS management only.
+- Use the Cloudflare API token (not Global API Key) with minimal scopes required by your configuration - for this example, `Zone Read`, `DNS Write`, `Page Rules Write`, and `Zone Settings Write`.
 - Add `prevent_destroy = true` lifecycle rules on critical DNS records in production zones.
