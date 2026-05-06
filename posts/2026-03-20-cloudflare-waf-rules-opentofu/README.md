@@ -4,21 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Cloudflare Waf Rules provider in OpenTofu to manage Cloudflare Waf Rules resources as code.
+Description: Learn how to configure Cloudflare WAF custom rules in OpenTofu using the Cloudflare provider and the `cloudflare_ruleset` resource.
 
 ## Introduction
 
-The Cloudflare Waf Rules provider for OpenTofu enables managing Cloudflare Waf Rules resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
+Cloudflare WAF custom rules in OpenTofu are managed through the Cloudflare provider using the `cloudflare_ruleset` resource in the `http_request_firewall_custom` phase. This guide covers authentication, a basic zone-level custom rule, and production best practices.
 
 ## Provider Installation
 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.19"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,56 +26,59 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Cloudflare provider prefers API tokens and can read them from environment variables:
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+# Token should include the permissions needed for your rules.
+# For zone-level custom rules, use a token with Zone WAF Write.
+export CLOUDFLARE_API_TOKEN="your-api-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "cloudflare" {
+  # Credentials are read from CLOUDFLARE_API_TOKEN
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+resource "cloudflare_ruleset" "zone_custom_firewall" {
+  zone_id     = var.zone_id
+  name        = "Phase entry point ruleset for custom rules in my zone"
+  description = ""
+  kind        = "zone"
+  phase       = "http_request_firewall_custom"
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+  rules = [{
+    ref         = "block_non_default_ports"
+    description = "Block ports other than 80 and 443"
+    expression  = "(not cf.edge.server_port in {80 443})"
+    action      = "block"
+  }]
 }
 ```
 
 ## Variables
 
 ```hcl
-variable "name"        { type = string }
-variable "environment" { type = string }
+variable "zone_id" { type = string }
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "resource_id" { value = cloudflare_ruleset.zone_custom_firewall.id }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- Use a scoped API token with the minimum permissions required; zone-level custom rules need `Zone WAF Write`
+- Store API tokens in environment variables or a secrets manager-never in `.tf` files
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
-- Use separate provider configurations per environment using aliases or workspaces
+- Use stable `ref` values for rules to preserve rule IDs across updates
 
 ## Conclusion
 
-Managing Cloudflare Waf Rules resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
+Managing Cloudflare WAF custom rules with OpenTofu brings the same consistency and auditability to edge security configuration as the rest of your infrastructure. Start with zone-level custom rules in `cloudflare_ruleset` and expand coverage over time.
