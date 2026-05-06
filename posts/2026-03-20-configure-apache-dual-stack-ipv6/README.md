@@ -11,17 +11,13 @@ Description: Learn how to configure Apache HTTP Server to simultaneously serve b
 ```apache
 # /etc/apache2/ports.conf
 
-# Listen on IPv4
-
-Listen 0.0.0.0:80
-
-# Listen on IPv6
-Listen [::]:80
+# Listen on all interfaces.
+# On IPv6-capable builds, Apache will handle IPv4 and IPv6 here.
+Listen 80
 
 # HTTPS dual-stack
 <IfModule ssl_module>
-    Listen 0.0.0.0:443
-    Listen [::]:443
+    Listen 443
 </IfModule>
 ```
 
@@ -73,13 +69,14 @@ Listen [::]:80
 ## Detecting IPv6 Clients in Apache
 
 ```apache
-# Use SetEnvIf to detect IPv6 connections
+# Use SetEnvIfExpr to detect IPv6 connections
 <VirtualHost *:80>
     ServerName example.com
     DocumentRoot /var/www/example
 
-    # Set variable for IPv6 clients (address contains colons)
-    SetEnvIf Remote_Addr ":" IS_IPV6
+    # Set a variable for native IPv6 clients.
+    # Exclude IPv4-mapped IPv6 addresses used on some platforms/builds.
+    SetEnvIfExpr "%{IPV6} == 'on' && ! -R '::ffff:0:0/96'" IS_IPV6
 
     # Different log for IPv4 vs IPv6
     CustomLog ${APACHE_LOG_DIR}/ipv4-access.log combined env=!IS_IPV6
@@ -92,9 +89,8 @@ Listen [::]:80
 ```bash
 # Verify Apache listens on both
 ss -tlnp | grep apache
-# Should show:
-# tcp  LISTEN  0  128  0.0.0.0:80  0.0.0.0:*  users:(("apache2"...))
-# tcp  LISTEN  0  128  [::]:80     [::]:*      users:(("apache2"...))
+# Depending on the platform/build, you may see a single [::]:80 listener
+# that also accepts IPv4, or separate 0.0.0.0:80 and [::]:80 listeners.
 
 # Test IPv4 access
 curl -4 http://example.com
@@ -106,7 +102,7 @@ curl -6 http://example.com
 curl http://192.168.1.10/ -H "Host: example.com"
 curl -6 http://[2001:db8::10]/ -H "Host: example.com"
 
-# Check server-status for both connection types
+# Check server-status for both connection types, if mod_status is enabled
 curl -6 http://[::1]/server-status
 ```
 
@@ -114,10 +110,10 @@ curl -6 http://[::1]/server-status
 
 ```apache
 # Custom log format indicating IP version
-LogFormat "%{REMOTE_ADDR}e %h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined_v6
-# $h shows the client IP (IPv4 or IPv6 as appropriate)
+LogFormat "%a %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined_v6
+# %a shows the client IP in IPv4 or IPv6 form
 ```
 
 ## Summary
 
-Configure Apache dual-stack by adding `Listen 80` and `Listen [::]:80` to `ports.conf`. Use `<VirtualHost *:80>` to match all Listen addresses (both IPv4 and IPv6) in a single block, or use explicit `<VirtualHost 192.168.1.10:80>` and `<VirtualHost [2001:db8::10]:80>` pairs. Verify with `ss -tlnp | grep apache` and test with `curl -4` and `curl -6`. Use `SetEnvIf Remote_Addr ":"` to detect and differentiate IPv6 clients.
+Configure Apache dual-stack by adding `Listen 80` and `Listen 443` to `ports.conf`. Use `<VirtualHost *:80>` to match all Listen addresses (both IPv4 and IPv6) in a single block, or use explicit `<VirtualHost 192.168.1.10:80>` and `<VirtualHost [2001:db8::10]:80>` pairs. Verify with `ss -tlnp | grep apache` and test with `curl -4` and `curl -6`. Use `SetEnvIfExpr` to detect and differentiate native IPv6 clients without matching IPv4-mapped addresses.
