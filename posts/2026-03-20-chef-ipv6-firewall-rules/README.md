@@ -6,7 +6,7 @@ Tags: Chef, IPv6, Firewall, Ip6tables, Automation, Security
 
 Description: A guide to automating IPv6 firewall rule management with Chef using the firewall cookbook and custom resources for consistent ip6tables deployment.
 
-Chef provides the `firewall` community cookbook for managing ip6tables rules declaratively. This guide covers implementing a comprehensive IPv6 firewall policy using Chef resources, with support for different server roles.
+The community `firewall` cookbook on Chef Supermarket can manage firewall rules declaratively. This guide covers implementing a comprehensive IPv6 firewall policy using Chef resources, with support for different server roles.
 
 ## Setup: Installing the firewall Cookbook
 
@@ -14,7 +14,7 @@ Chef provides the `firewall` community cookbook for managing ip6tables rules dec
 # Berksfile
 
 source 'https://supermarket.chef.io'
-cookbook 'firewall', '~> 2.7'
+cookbook 'firewall', '~> 7.0'
 ```
 
 ```bash
@@ -26,14 +26,14 @@ berks install && berks upload
 ```ruby
 # cookbooks/ipv6_firewall/recipes/base.rb
 
+# Use the iptables provider rather than the platform default firewall.
+node.default['firewall']['solution'] = 'iptables'
+
+# We'll define the IPv6 established rule explicitly below.
+node.default['firewall']['allow_established'] = false
+
 # Include the firewall cookbook
 include_recipe 'firewall'
-
-# Enable ip6tables
-firewall 'default' do
-  ipv6_enabled true
-  action [:install, :save]
-end
 
 # Allow loopback interface
 firewall_rule 'ipv6_loopback' do
@@ -52,7 +52,7 @@ end
 # CRITICAL: Allow ICMPv6 (breaks IPv6 if blocked)
 # Packet Too Big, NDP, Router Discovery all require ICMPv6
 firewall_rule 'ipv6_icmpv6_all' do
-  protocol :icmpv6
+  protocol :icmp
   source '::/0'
   command :allow
   position 3
@@ -62,7 +62,7 @@ end
 firewall_rule 'ipv6_drop_all' do
   command :deny
   direction :in
-  position 9999
+  position 99
 end
 ```
 
@@ -79,7 +79,7 @@ firewall_rule 'ipv6_http' do
   protocol :tcp
   source '::/0'
   command :allow
-  position 100
+  position 10
 end
 
 firewall_rule 'ipv6_https' do
@@ -87,7 +87,7 @@ firewall_rule 'ipv6_https' do
   protocol :tcp
   source '::/0'
   command :allow
-  position 101
+  position 11
 end
 ```
 
@@ -100,17 +100,17 @@ include_recipe 'ipv6_firewall::base'
 firewall_rule 'ipv6_postgres' do
   port 5432
   protocol :tcp
-  source '2001:db8:app::/48'    # App server IPv6 subnet
+  source '2001:db8:100::/48'    # App server IPv6 subnet
   command :allow
-  position 100
+  position 10
 end
 
 firewall_rule 'ipv6_redis' do
   port 6379
   protocol :tcp
-  source '2001:db8:app::/48'
+  source '2001:db8:100::/48'
   command :allow
-  position 101
+  position 11
 end
 ```
 
@@ -119,14 +119,13 @@ end
 ```ruby
 # cookbooks/ipv6_firewall/resources/rule.rb
 
-resource_name :ipv6_rule
 provides :ipv6_rule
 
-property :port, [Integer, Array]
+property :port, [Integer, Array, Range]
 property :source, String, default: '::/0'
-property :protocol, Symbol, default: :tcp
+property :protocol, [Integer, Symbol], default: :tcp
 property :command, Symbol, default: :allow
-property :position, Integer, default: 100
+property :position, Integer, default: 50
 
 action :create do
   firewall_rule new_resource.name do
@@ -161,12 +160,15 @@ include_recipe 'ipv6_firewall::base'
 
 # Apply rules from attributes
 node['ipv6_firewall']['rules'].each do |name, config|
+  protocol_value = config.fetch('protocol', :tcp)
+  protocol_value = protocol_value.to_sym if protocol_value.is_a?(String)
+
   firewall_rule "ipv6_#{name}" do
     port      config['port']
     source    config.fetch('source', '::/0')
-    protocol  config.fetch('protocol', :tcp).to_sym
+    protocol  protocol_value
     command   config.fetch('command', :allow).to_sym
-    position  config.fetch('position', 100)
+    position  config.fetch('position', 50)
   end
 end
 ```
@@ -176,12 +178,22 @@ end
 ```ruby
 # recipes/ip6tables_direct.rb
 
-# Manage ip6tables rules without the firewall cookbook
+# Debian/Ubuntu example: manage persistent ip6tables rules without the firewall cookbook
 package 'iptables-persistent' do
   action :install
 end
 
-file '/etc/ip6tables.rules' do
+service 'netfilter-persistent' do
+  action :enable
+end
+
+rules = node['ipv6_firewall']['rules'].map do |_, config|
+  protocol = config.fetch('protocol', 'tcp').to_s
+  source = config.fetch('source', '::/0')
+  "-A INPUT -p #{protocol} -s #{source} --dport #{config['port']} -j ACCEPT"
+end
+
+file '/etc/iptables/rules.v6' do
   content <<~RULES
     # Managed by Chef
     *filter
@@ -189,17 +201,16 @@ file '/etc/ip6tables.rules' do
     :FORWARD DROP [0:0]
     :OUTPUT ACCEPT [0:0]
     -A INPUT -i lo -j ACCEPT
-    -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-    -A INPUT -p ipv6-icmp -j ACCEPT
-    -A INPUT -p tcp --dport 22 -j ACCEPT
-    #{node['ipv6_firewall']['rules'].map { |n, c| "-A INPUT -p tcp --dport #{c['port']} -j ACCEPT" }.join("\n")}
+    -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    -A INPUT -p icmpv6 -j ACCEPT
+    #{rules.join("\n")}
     COMMIT
   RULES
-  notifies :run, 'execute[reload_ip6tables]', :immediately
+  notifies :run, 'execute[reload_netfilter_persistent]', :immediately
 end
 
-execute 'reload_ip6tables' do
-  command 'ip6tables-restore < /etc/ip6tables.rules'
+execute 'reload_netfilter_persistent' do
+  command 'netfilter-persistent reload'
   action :nothing
 end
 ```
@@ -207,30 +218,24 @@ end
 ## Testing IPv6 Firewall with InSpec
 
 ```ruby
-# test/integration/default/firewall_test.rb
+# test/integration/default/controls/firewall.rb
 
-describe 'IPv6 Firewall' do
-  # Test that ip6tables is running
-  describe service('netfilter-persistent') do
-    it { should be_running }
-    it { should be_enabled }
-  end
+control 'ipv6-firewall-1' do
+  impact 1.0
+  title 'IPv6 firewall rules are present'
+  desc 'Ensure the expected IPv6 input policy and allow rules exist.'
 
-  # Test ICMPv6 is allowed
-  describe command('ip6tables -L INPUT -n') do
-    its('stdout') { should match /ACCEPT.*ipv6-icmp/ }
-  end
-
-  # Test HTTP is allowed
-  describe command('ip6tables -L INPUT -n') do
-    its('stdout') { should match /ACCEPT.*tcp.*dpt:443/ }
-  end
-
-  # Test default policy is DROP
-  describe command('ip6tables -L INPUT -n') do
-    its('stdout') { should match /Chain INPUT \(policy DROP\)/ }
+  describe command('ip6tables -S INPUT') do
+    its('exit_status') { should eq 0 }
+    its('stdout') { should match(/-P INPUT DROP/) }
+    its('stdout') { should match(/-A INPUT -i lo -j ACCEPT/) }
+    its('stdout') { should match(/ESTABLISHED/) }
+    its('stdout') { should match(/RELATED/) }
+    its('stdout') { should match(/(icmpv6|ipv6-icmp)/) }
+    its('stdout') { should match(/--dport 80\b/) }
+    its('stdout') { should match(/--dport 443\b/) }
   end
 end
 ```
 
-Chef's firewall cookbook and resource model makes IPv6 firewall management declarative and testable, ensuring consistent security policies across all managed nodes with role-based rule customization through attributes and recipes.
+The `firewall` cookbook and Chef's resource model make IPv6 firewall management declarative and testable, ensuring consistent security policies across all managed nodes with role-based rule customization through attributes and recipes.
