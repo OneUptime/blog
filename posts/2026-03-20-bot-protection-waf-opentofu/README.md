@@ -6,7 +6,7 @@ Tags: OpenTofu, WAF, Bot Protection, AWS, Infrastructure as Code
 
 Description: Learn how to configure bot protection using AWS WAFv2 bot control and managed rule groups with OpenTofu to block malicious bots while allowing legitimate ones.
 
-Bot traffic makes up over 40% of internet traffic. AWS WAFv2's Bot Control managed rule group classifies bots and enables selective blocking of malicious scrapers, credential stuffers, and DDoS bots while allowing Google, Bing, and other legitimate crawlers.
+Bot traffic makes up over 40% of internet traffic. AWS WAFv2's Bot Control managed rule group labels bot traffic, verifies generally desirable bots, and enables selective blocking or monitoring of categories like scrapers, scanners, status monitors, and search engines. With targeted inspection, it can also challenge more sophisticated bots that do not self-identify.
 
 ## Bot Control Managed Rule Group
 
@@ -38,30 +38,6 @@ resource "aws_wafv2_web_acl" "bot_protected" {
             inspection_level = "COMMON"  # COMMON or TARGETED
           }
         }
-
-        # Allow verified Google and Bing bots
-        rule_action_override {
-          name = "CategorySearchEngine"
-          action_to_use {
-            allow {}
-          }
-        }
-
-        # Allow verified monitoring bots
-        rule_action_override {
-          name = "CategoryMonitoring"
-          action_to_use {
-            allow {}
-          }
-        }
-
-        # Block scrapers
-        rule_action_override {
-          name = "CategoryScraper"
-          action_to_use {
-            block {}
-          }
-        }
       }
     }
 
@@ -89,7 +65,7 @@ resource "aws_wafv2_web_acl" "custom_bot" {
 
   default_action { allow {} }
 
-  # Block requests without User-Agent header (common bots skip this)
+  # Block requests without a User-Agent value
   rule {
     name     = "BlockMissingUserAgent"
     priority = 1
@@ -99,12 +75,12 @@ resource "aws_wafv2_web_acl" "custom_bot" {
     statement {
       not_statement {
         statement {
-          byte_match_statement {
+          size_constraint_statement {
             field_to_match {
               single_header { name = "user-agent" }
             }
-            positional_constraint = "EXISTS"
-            search_string         = ""
+            comparison_operator = "GT"
+            size                = 0
             text_transformation {
               priority = 0
               type     = "NONE"
@@ -175,11 +151,11 @@ resource "aws_cloudwatch_metric_alarm" "bot_traffic_spike" {
   dimensions = {
     WebACL = aws_wafv2_web_acl.bot_protected.name
     Region = var.region
-    Rule   = "AWSManagedRulesBotControlRuleSet"
+    Rule   = "BotControlRules"
   }
 }
 ```
 
 ## Conclusion
 
-Bot protection with AWS WAFv2 in OpenTofu combines managed Bot Control rules with custom detection for comprehensive coverage. Use the Bot Control managed rule group with COMMON inspection level as a baseline, override rule actions to allow verified search engine and monitoring bots, and add custom rules to catch bots that bypass UA string checks. Monitor blocked request spikes to detect coordinated bot campaigns.
+Bot protection with AWS WAFv2 in OpenTofu combines managed Bot Control rules with custom detection for comprehensive coverage. Use the Bot Control managed rule group with COMMON inspection level as a baseline, rely on Bot Control's built-in handling for verified bots, and add custom rules to catch requests that omit or spoof common bot identifiers. Monitor blocked request spikes to detect sustained bot attacks.
