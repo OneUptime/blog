@@ -4,42 +4,41 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, DMVPN, Phase 2, IPv4, IOS, VPN, Spoke-to-Spoke, NHRP
 
-Description: Configure DMVPN Phase 2 on Cisco IOS to enable direct spoke-to-spoke IPv4 tunnels after initial hub routing, reducing hub bandwidth requirements in large deployments.
+Description: Configure DMVPN Phase 2 on Cisco IOS to enable direct spoke-to-spoke IPv4 tunnels by preserving spoke next-hops in routing updates, reducing hub bandwidth requirements in large deployments.
 
 ## Introduction
 
-DMVPN Phase 2 extends Phase 1 by allowing spokes to build direct tunnels to each other. When Spoke A needs to reach Spoke B, it queries the NHRP hub for Spoke B's public IP, then establishes a direct IPsec/GRE tunnel - bypassing the hub for subsequent traffic.
+DMVPN Phase 2 extends Phase 1 by allowing spokes to build direct tunnels to each other. When Spoke A needs to reach Spoke B, the routing protocol must point to Spoke B's tunnel IP as the next hop. If no NHRP mapping exists yet, Spoke A queries the NHRP hub for Spoke B's public IP and then encapsulates traffic directly to Spoke B.
 
 ## Key Differences from Phase 1
 
 ```text
 Phase 1: Spoke → Hub → Spoke (all traffic via hub)
-Phase 2: Spoke → Hub (first packet) → Spoke-to-Spoke tunnel (subsequent)
+Phase 2: Spoke → Spoke direct tunnel (routing next-hop points to remote spoke)
 
 Configuration changes from Phase 1:
-  Hub:   Add "ip nhrp redirect" (already done in Phase 1 if following that guide)
-  Spoke: Add "ip nhrp shortcut"
-  Both:  EIGRP split-horizon must be disabled on hub
-         Hub must NOT set next-hop-self (spoke must see real spoke next-hops)
+  Hub:   Disable EIGRP split-horizon on the tunnel
+         Disable EIGRP next-hop-self on the tunnel
+  Spoke: No additional Phase 2-specific NHRP command is required
+  Both:  Spokes must learn remote spoke prefixes with the real spoke next-hop
 ```
 
 ## Hub Configuration (additions to Phase 1)
 
 ```cisco
 interface Tunnel0
- ip nhrp redirect        ! Inform spoke of better next-hop
- ! Already configured from Phase 1:
- ! no ip split-horizon eigrp 100
- ! no ip next-hop-self eigrp 100
+ no ip split-horizon eigrp 100   ! Advertise spoke routes back out the tunnel
+ no ip next-hop-self eigrp 100   ! Preserve the original spoke next-hop
 ```
 
 ## Spoke Configuration (additions to Phase 1)
 
 ```cisco
 interface Tunnel0
- ip nhrp shortcut       ! Use NHRP-resolved shortcut route
+ ! No additional Phase 2-specific NHRP command is required here
+ ! Spoke-to-spoke works when routing points to the remote spoke tunnel IP
 
-! Do NOT use default route via hub for spoke-to-spoke traffic
+! Do NOT use only a default route via hub for spoke-to-spoke traffic
 ! Instead, use specific routes or EIGRP to learn spoke prefixes
 ```
 
@@ -67,10 +66,10 @@ router eigrp 100
 ```text
 1. Spoke A sends packet to Spoke B's LAN (192.168.2.0)
 2. EIGRP route shows 192.168.2.0 via 10.100.0.3 (Spoke B tunnel IP)
-3. ARP/NHRP lookup: "what is the public IP of 10.100.0.3?"
-4. Hub responds with NHRP redirect: "go directly to 203.0.113.3"
-5. Spoke A builds direct IPsec/GRE tunnel to Spoke B's public IP
-6. Subsequent packets flow Spoke A → Spoke B directly
+3. Spoke A checks NHRP for a mapping for 10.100.0.3
+4. If no mapping exists, Spoke A sends an NHRP resolution request to the hub/NHS
+5. The hub replies with Spoke B's NBMA/public IP, for example 203.0.113.3
+6. Spoke A encapsulates traffic directly to Spoke B; subsequent packets use the same direct path
 ```
 
 ## Verify Spoke-to-Spoke Tunnels
@@ -80,7 +79,7 @@ router eigrp 100
 show ip nhrp
 
 ! Show dynamic spoke-to-spoke entries
-show ip nhrp type dynamic
+show ip nhrp dynamic
 
 ! Show active tunnels (should see spoke-to-spoke after traffic)
 show dmvpn
@@ -95,4 +94,4 @@ show dmvpn
 
 ## Conclusion
 
-DMVPN Phase 2 enables direct spoke-to-spoke tunnels that form on demand. Add `ip nhrp shortcut` on spokes and ensure the hub does not advertise itself as the next-hop for spoke prefixes (use `no ip next-hop-self eigrp`). The first packet between spokes traverses the hub; NHRP resolution then creates a direct tunnel for subsequent packets.
+DMVPN Phase 2 enables direct spoke-to-spoke tunnels by preserving the remote spoke as the routing next hop. Ensure the hub does not advertise itself as the next hop for spoke prefixes (`no ip next-hop-self eigrp`) and disables EIGRP split horizon on the tunnel. When a spoke needs a mapping for that remote tunnel IP, NHRP resolves the remote NBMA address so traffic can flow directly.
