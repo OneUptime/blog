@@ -18,7 +18,7 @@ DNSSEC cryptographically signs DNS records, preventing attackers from injecting 
 - **DNSKEY**: Public keys published in the zone
 - **DS**: Delegation Signer record in the parent zone (establishes chain of trust)
 
-## Signing a Zone with BIND dnssec-keygen
+## Signing a Zone with BIND DNSSEC Tools
 
 ### Step 1: Generate Keys
 
@@ -46,6 +46,8 @@ ls -la
 
 Modern BIND (9.16+) supports automatic DNSSEC signing:
 
+If you use `dnssec-policy default`, BIND can generate and manage the signing keys automatically, so the manual key-generation step above is only needed for the manual-signing workflow below.
+
 ```named
 // /etc/named.conf
 
@@ -54,10 +56,9 @@ zone "example.com" {
     file "/var/named/example.com.zone";
 
     // Enable automatic DNSSEC signing
-    dnssec-policy "default";
+    dnssec-policy default;
 
-    // Or use inline signing (simpler)
-    auto-dnssec maintain;
+    // Keep an unsigned master file and let named maintain the signed copy
     inline-signing yes;
 
     // Key directory
@@ -68,16 +69,14 @@ zone "example.com" {
 ### Step 3: Sign the Zone Manually (if not using auto-signing)
 
 ```bash
-# Sign the zone file with the ZSK and KSK
+# Sign the zone file using the keys in the key directory
 dnssec-signzone \
-    -A \
-    -3 $(head -c 1000 /dev/urandom | sha1sum | cut -b 1-16) \
+    -S \
+    -K /etc/named/keys/example.com \
     -N INCREMENT \
     -o example.com \
     -t \
-    /var/named/example.com.zone \
-    /etc/named/keys/example.com/Kexample.com.+013+12345.key \
-    /etc/named/keys/example.com/Kexample.com.+013+67890.key
+    /var/named/example.com.zone
 
 # This creates: example.com.zone.signed
 # Update named.conf to use the signed zone file
@@ -87,17 +86,17 @@ dnssec-signzone \
 
 ```bash
 # Check that AAAA records are signed (RRSIG present)
-dig AAAA example.com @127.0.0.1 +dnssec
+dig @127.0.0.1 example.com AAAA +dnssec
 
 # Expected output includes:
 # example.com. 3600 IN AAAA 2001:db8::1
 # example.com. 3600 IN RRSIG AAAA 13 2 3600 ... (signature)
 
 # Check DNSKEY records are present
-dig DNSKEY example.com @127.0.0.1
+dig @127.0.0.1 example.com DNSKEY +dnssec
 
-# Verify with delv (DNS lookup and validation tool)
-delv @127.0.0.1 AAAA example.com
+# After the DS record is published, verify with a validating resolver
+delv @8.8.8.8 example.com AAAA
 # Should show: ; fully validated
 ```
 
@@ -113,17 +112,19 @@ dnssec-dsfromkey /etc/named/keys/example.com/Kexample.com.+013+67890.key
 # example.com. IN DS 67890 13 2 <hash>
 
 # Or use dig to view DS after publication
-dig DS example.com @parent-ns
+dig @parent-ns example.com DS
 ```
 
 ## DNSSEC for IPv6 Reverse DNS Zones
+
+As with forward zones, `dnssec-policy default` can generate and manage the signing keys automatically; generate keys manually only if you are following a manual-signing workflow.
 
 ```named
 // Sign the reverse zone for IPv6
 zone "8.b.d.0.1.0.0.2.ip6.arpa" {
     type master;
     file "/var/named/ip6-reverse.zone";
-    dnssec-policy "default";
+    dnssec-policy default;
     inline-signing yes;
     key-directory "/etc/named/keys/ip6-reverse";
 };
@@ -141,28 +142,25 @@ dnssec-keygen -a ECDSAP256SHA256 -f KSK -n ZONE 8.b.d.0.1.0.0.2.ip6.arpa
 
 ```bash
 # Test that a validating resolver correctly validates the signed zone
-dig AAAA www.example.com +dnssec +adflag @8.8.8.8
+dig @8.8.8.8 example.com AAAA +dnssec
 
 # The "ad" flag in the response means "authenticated data" (DNSSEC validated)
 # ;; flags: qr rd ra ad;  ← "ad" flag confirms DNSSEC validation
 
-# Check for validation failures
-dig AAAA www.example.com @8.8.8.8 | grep "SERVFAIL\|NOERROR"
+# delv performs its own validation and explains failures directly
+delv @8.8.8.8 example.com AAAA
 ```
 
 ## DNSSEC Monitoring
 
 ```bash
-# Check key expiration dates
-for key in /etc/named/keys/example.com/*.key; do
-    EXPIRE=$(dnssec-checkds -d $(dig +short DS example.com @parent) -f $key 2>/dev/null)
-    echo "$key: $EXPIRE"
-done
+# Show BIND's current DNSSEC state for the zone
+rndc dnssec -status example.com
 
-# Monitor with BIND's built-in key management
-rndc dnssec -checkds example.com
+# List active signing operations for the zone
+rndc signing -list example.com
 ```
 
 ## Summary
 
-DNSSEC for IPv6 zones protects AAAA records from spoofing by cryptographically signing them. Generate ZSK and KSK keys with `dnssec-keygen`, configure BIND with `dnssec-policy` for automatic signing, verify with `dig AAAA <domain> +dnssec` that RRSIG records appear, and submit the DS record to your registrar to complete the chain of trust. Sign both forward and reverse IPv6 zones for complete DNSSEC coverage.
+DNSSEC for IPv6 zones protects AAAA records from spoofing by cryptographically signing them. For manual signing, generate ZSK and KSK keys with `dnssec-keygen` and sign the zone with `dnssec-signzone`. For automatic signing, configure BIND with `dnssec-policy` and `inline-signing` so BIND manages keys and signatures. Verify the resulting `RRSIG` and `DNSKEY` records, then submit the DS record to your registrar to complete the chain of trust. Sign both forward and reverse IPv6 zones for complete DNSSEC coverage.
