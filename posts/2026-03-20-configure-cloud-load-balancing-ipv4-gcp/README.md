@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Cloud Load Balancing, IPv4, HTTP, Networking, Compute Engine
 
-Description: Configure GCP external HTTP(S) Load Balancing with global anycast IPv4 frontend, URL map, backend service, and health checks to distribute traffic across Compute Engine instances.
+Description: Configure GCP global external HTTP(S) Load Balancing with global anycast IPv4 frontend, URL map, backend service, and health checks to distribute traffic across Compute Engine instances.
 
 ## Introduction
 
-GCP Cloud Load Balancing is global and anycast-based. An HTTP(S) load balancer uses a global static IP, distributes traffic to backend services across multiple regions, and provides SSL termination, CDN integration, and Cloud Armor security policies.
+Global external HTTP(S) load balancing in GCP is global and anycast-based. A global external HTTP(S) load balancer uses a global static IP, can distribute traffic to backends across multiple regions, and provides SSL termination, CDN integration, and Cloud Armor security policies.
 
 ## Architecture
 
@@ -23,7 +23,7 @@ URL Map (routing rules)
   ↓
 Backend Service
   ↓
-Instance Group (VMs in us-central1, us-east1, etc.)
+Instance Groups (VMs in multiple zones or regions)
 ```
 
 ## Step 1: Create Instance Group Backends
@@ -46,6 +46,8 @@ gcloud compute instance-groups managed set-named-ports web-ig \
   --named-ports=http:80
 ```
 
+Make sure your backend VMs allow ingress from `35.191.0.0/16` and `130.211.0.0/22` to TCP port `80`, or health checks and GFE proxy traffic won't reach the backends.
+
 ## Step 2: Create a Health Check
 
 ```bash
@@ -53,10 +55,11 @@ gcloud compute health-checks create http http-health-check \
   --project=$PROJECT_ID \
   --port=80 \
   --request-path=/health \
-  --check-interval=10 \
-  --timeout=5 \
+  --check-interval=10s \
+  --timeout=5s \
   --healthy-threshold=2 \
-  --unhealthy-threshold=3
+  --unhealthy-threshold=3 \
+  --global
 ```
 
 ## Step 3: Create the Backend Service
@@ -64,6 +67,7 @@ gcloud compute health-checks create http http-health-check \
 ```bash
 gcloud compute backend-services create web-backend \
   --project=$PROJECT_ID \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
   --protocol=HTTP \
   --port-name=http \
   --health-checks=http-health-check \
@@ -84,7 +88,8 @@ gcloud compute backend-services add-backend web-backend \
 ```bash
 gcloud compute url-maps create web-url-map \
   --project=$PROJECT_ID \
-  --default-service=web-backend
+  --default-service=web-backend \
+  --global
 ```
 
 ## Step 5: Create HTTP Target Proxy
@@ -92,7 +97,8 @@ gcloud compute url-maps create web-url-map \
 ```bash
 gcloud compute target-http-proxies create web-http-proxy \
   --project=$PROJECT_ID \
-  --url-map=web-url-map
+  --url-map=web-url-map \
+  --global
 ```
 
 ## Step 6: Reserve Global Static IP and Create Forwarding Rule
@@ -101,11 +107,15 @@ gcloud compute target-http-proxies create web-http-proxy \
 # Reserve global static IP
 gcloud compute addresses create web-lb-ip \
   --project=$PROJECT_ID \
+  --ip-version=IPV4 \
+  --network-tier=PREMIUM \
   --global
 
 # Create forwarding rule
 gcloud compute forwarding-rules create web-forwarding-rule \
   --project=$PROJECT_ID \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
   --address=web-lb-ip \
   --global \
   --target-http-proxy=web-http-proxy \
@@ -121,6 +131,8 @@ gcloud compute addresses describe web-lb-ip \
 ## Adding HTTPS with SSL Certificate
 
 ```bash
+# Public DNS A record for www.example.com must point to web-lb-ip for the managed certificate to become ACTIVE
+
 # Create managed SSL certificate (auto-renews)
 gcloud compute ssl-certificates create web-ssl-cert \
   --project=$PROJECT_ID \
@@ -131,11 +143,14 @@ gcloud compute ssl-certificates create web-ssl-cert \
 gcloud compute target-https-proxies create web-https-proxy \
   --project=$PROJECT_ID \
   --url-map=web-url-map \
-  --ssl-certificates=web-ssl-cert
+  --ssl-certificates=web-ssl-cert \
+  --global
 
 # Add HTTPS forwarding rule
 gcloud compute forwarding-rules create web-https-rule \
   --project=$PROJECT_ID \
+  --load-balancing-scheme=EXTERNAL_MANAGED \
+  --network-tier=PREMIUM \
   --address=web-lb-ip \
   --global \
   --target-https-proxy=web-https-proxy \
@@ -152,4 +167,4 @@ gcloud compute backend-services get-health web-backend \
 
 ## Conclusion
 
-GCP HTTP(S) Load Balancing is global - a single anycast IP routes to the nearest healthy backend. Build the chain: health check → backend service → instance groups → URL map → target proxy → forwarding rule. Use managed SSL certificates for automatic HTTPS. Add Cloud Armor security policies to the backend service for DDoS protection and WAF rules.
+Global external HTTP(S) Load Balancing uses a single anycast IP to route traffic to healthy backends. Build the chain: health check → backend service → instance groups → URL map → target proxy → forwarding rule. Use managed SSL certificates for automatic certificate provisioning and renewal. Add Cloud Armor security policies to the backend service for DDoS protection and WAF rules.
