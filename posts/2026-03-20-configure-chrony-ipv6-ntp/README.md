@@ -8,7 +8,7 @@ Description: Configure chronyd (chrony) to synchronize time over IPv6, serve NTP
 
 ---
 
-chrony is the modern NTP implementation used by default on RHEL, CentOS, Fedora, and newer Ubuntu systems. It has excellent IPv6 support and is more accurate than the traditional ntpd implementation.
+chrony is a modern NTP implementation widely used on Linux systems. It supports IPv6 and can synchronize time as both an NTP client and server.
 
 ## Installing chrony
 
@@ -20,31 +20,31 @@ sudo dnf install chrony -y
 # Ubuntu/Debian
 sudo apt install chrony -y
 
-# Check version and verify IPv6 support
+# Check installed version
 chronyc --version
 ```
 
 ## Basic chrony IPv6 Configuration
 
 ```bash
-# /etc/chrony.conf
+# /etc/chrony.conf (RHEL-family) or /etc/chrony/chrony.conf (Debian/Ubuntu)
 
-# Use NTP pool servers (these support IPv6)
-pool pool.ntp.org iburst maxsources 4
+# Use an NTP Pool zone that can return IPv6 addresses
+pool 2.pool.ntp.org iburst maxsources 4
 
 # Or use specific IPv6 NTP servers
-server 2001:db8:ntp::1 iburst
-server time.google.com iburst    # Has AAAA record
-server time.cloudflare.com iburst # Has AAAA record
+server 2001:db8:1234::1 iburst
+server 2606:4700:f1::1 iburst
+server time.cloudflare.com iburst
 
 # Prefer IPv6 for time sources
-# chrony automatically uses IPv6 when available via DNS AAAA records
+# chronyd can use IPv6 addresses returned by DNS AAAA records
 ```
 
 ## Configuring chrony to Serve NTP to IPv6 Clients
 
 ```bash
-# /etc/chrony.conf
+# /etc/chrony.conf (RHEL-family) or /etc/chrony/chrony.conf (Debian/Ubuntu)
 
 # Allow IPv6 clients from your subnet
 allow 2001:db8::/32
@@ -53,7 +53,7 @@ allow 2001:db8::/32
 # allow ::/0
 
 # Allow specific IPv6 host
-allow 2001:db8::100
+allow 2001:db8::100/128
 
 # Combine with IPv4 access
 allow 10.0.0.0/8
@@ -62,87 +62,83 @@ allow 192.168.0.0/16
 # Bind to a specific IPv6 address for serving NTP
 bindaddress 2001:db8::1
 
-# Or listen on all interfaces (default)
-# bindaddress ::
+# Or omit bindaddress to listen on all interfaces (default)
 ```
 
 ## Forcing IPv6 or IPv6-Only Operation
 
 ```bash
-# /etc/chrony.conf
+# /etc/chrony.conf (RHEL-family) or /etc/chrony/chrony.conf (Debian/Ubuntu)
 
-# Force chrony to only use IPv6 for NTP sources
-# Use -6 flag in the server/pool directive
-server ipv6.time.example.com iburst version 4
+# Force a source to use IPv6 addresses only
+server time.cloudflare.com iburst ipv6
 
-# For the chronyc command, force IPv6
-chronyc -6 sources
+# Or do the same for an NTP pool source
+pool 2.pool.ntp.org iburst maxsources 4 ipv6
+
+# When chronyc connects to a named chronyd host, resolve it to IPv6 only
+chronyc -6 -h localhost tracking
 
 # To restrict chronyd to IPv6 only at daemon level,
-# add to /etc/sysconfig/chronyd or systemd override:
-# OPTIONS="-6"
+# add -6 to the service options for your distribution
 ```
 
 Create a systemd override to force IPv6:
 
 ```bash
-# Create override directory
-sudo mkdir -p /etc/systemd/system/chronyd.service.d/
+# The exact unit name and ExecStart vary by distribution
+systemctl cat chronyd 2>/dev/null || systemctl cat chrony
 
-# Create override file
-cat > /etc/systemd/system/chronyd.service.d/ipv6.conf << 'EOF'
-[Service]
-# Force chrony to use only IPv6 for NTP
-ExecStart=
-ExecStart=/usr/sbin/chronyd $OPTIONS -6
-EOF
+# Create a drop-in for the installed service
+sudo systemctl edit chronyd    # Or chrony on Debian/Ubuntu
+
+# In the editor, copy the current ExecStart and append -6
 
 sudo systemctl daemon-reload
-sudo systemctl restart chronyd
+sudo systemctl restart chronyd # Or chrony on Debian/Ubuntu
 ```
 
 ## Verifying chrony IPv6 Operation
 
 ```bash
 # Check chrony sources (should show IPv6 addresses)
-chronyc sources -v
+chronyc -n sources -v
 
 # Check tracking information
 chronyc tracking
 
 # Check if chronyd is listening on IPv6
-ss -ulnp | grep :123
+sudo ss -ulnp | grep ':123'
 # Look for [::]:123 in the output
 
-# Query a specific IPv6 NTP server
-chronyc -h 2001:db8::1 sources
+# Query a remote chronyd instance over IPv6 (requires monitoring access)
+chronyc -h 2001:db8::100 tracking
 
 # Check NTP activity on network interface
-tcpdump -i eth0 -n ip6 and udp port 123
+sudo tcpdump -i eth0 -n ip6 and udp port 123
 ```
 
 ## chrony Access Control and Security
 
 ```bash
-# /etc/chrony.conf - Security hardened configuration
+# /etc/chrony.conf (RHEL-family) or /etc/chrony/chrony.conf (Debian/Ubuntu)
+# Security hardened configuration
 
 # Upstream sources
-pool pool.ntp.org iburst maxsources 4
+pool 2.pool.ntp.org iburst maxsources 4
 
 # Only allow NTP queries from trusted IPv6 subnets
-allow 2001:db8:internal::/48
+allow 2001:db8:100::/48
 
-# Deny queries from all other IPv6 addresses (explicit)
-deny ::/0
+# All other clients are denied by default
 
-# Require NTP authentication from clients
-# (see NTP authentication guide for key setup)
+# Load symmetric keys if you use authenticated NTP sources or peers
 # keyfile /etc/chrony.keys
 
 # Rate limit clients to prevent amplification attacks
 ratelimit interval 3 burst 8
 
-# Log client access
+# Log tracking and measurement data
 logdir /var/log/chrony
 log tracking measurements statistics
 ```
@@ -154,13 +150,13 @@ log tracking measurements statistics
 chronyc -n sources
 
 # Check server clients (who is using this server)
-chronyc clients
+sudo chronyc clients
 
 # Manually trigger time step
 sudo chronyc makestep
 
 # Add a new NTP source at runtime
-sudo chronyc add server 2001:db8::ntp1 iburst
+sudo chronyc add server 2001:db8:1234::10 iburst
 
 # Check activity statistics
 chronyc activity
@@ -173,20 +169,20 @@ chronyc -n tracking | grep "System time"
 
 ```bash
 # Check chrony log for errors
-sudo journalctl -u chronyd -f
+sudo journalctl -u chronyd -f   # Use chrony on Debian/Ubuntu
 
 # Look for IPv6-specific issues
-sudo journalctl -u chronyd | grep -i "ipv6\|inet6\|resolve\|unreachable"
+sudo journalctl -u chronyd | grep -i "ipv6\|inet6\|resolve\|unreachable"  # Use chrony on Debian/Ubuntu
 
 # Test DNS resolution of NTP pool to IPv6
-dig AAAA pool.ntp.org +short
+dig AAAA 2.pool.ntp.org +short
 
 # Manually test NTP response from an IPv6 server
-ntpdate -q 2001:db8::1
+chronyd -Q -t 10 'server 2001:db8:1234::1 iburst'
 
-# Check kernel NTP status
+# Check system time synchronization status
 timedatectl status
-timedatectl show-timesync --all
+chronyc tracking
 ```
 
-chrony is the recommended NTP implementation for modern Linux systems, offering precise time synchronization over IPv6 with better accuracy, lower latency detection, and more robust handling of variable network conditions than legacy ntpd.
+chrony is widely used on modern Linux systems and provides precise time synchronization over IPv6 for both NTP clients and servers.
