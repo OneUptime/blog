@@ -53,21 +53,18 @@ variable "create_bastion" {
   default = false
 }
 
-# count = 1 creates the resource, count = 0 skips it
-resource "aws_instance" "bastion" {
-  count = var.create_bastion ? 1 : 0
+# In OpenTofu 1.11+, enabled is cleaner than count for single resources
+resource "terraform_data" "bastion" {
+  input = "bastion-host"
 
-  ami           = "ami-0c55b159cbfafe1f0"
-  instance_type = "t3.micro"
-
-  tags = {
-    Name = "bastion-host"
+  lifecycle {
+    enabled = var.create_bastion
   }
 }
 
-# Access conditional resource (returns list, index with [0])
-output "bastion_ip" {
-  value = var.create_bastion ? aws_instance.bastion[0].public_ip : null
+# Disabled resources evaluate to null, so guard access with a condition
+output "bastion_name" {
+  value = terraform_data.bastion != null ? terraform_data.bastion.output : null
 }
 ```
 
@@ -89,14 +86,28 @@ variable "enable_access_logs" {
   default = true
 }
 
-resource "aws_cloudfront_distribution" "cdn" {
-  count = var.enable_cdn ? 1 : 0
-  # ... CDN configuration
+resource "terraform_data" "cdn" {
+  input = "cdn"
+
+  lifecycle {
+    enabled = var.enable_cdn
+  }
 }
 
-resource "aws_wafv2_web_acl_association" "cdn_waf" {
-  count = var.enable_cdn && var.enable_waf ? 1 : 0
-  # ... WAF association
+resource "terraform_data" "cdn_waf" {
+  input = "waf"
+
+  lifecycle {
+    enabled = var.enable_cdn && var.enable_waf
+  }
+}
+
+resource "terraform_data" "access_logs" {
+  input = "access-logs"
+
+  lifecycle {
+    enabled = var.enable_cdn && var.enable_access_logs
+  }
 }
 ```
 
@@ -115,10 +126,13 @@ locals {
   enable_multi_az     = local.is_production
 }
 
-resource "aws_rds_cluster" "main" {
-  # ...
-  backup_retention_period = local.enable_backup ? 7 : 1
-  deletion_protection     = local.is_production
+resource "terraform_data" "database_settings" {
+  input = {
+    monitoring_enabled      = local.enable_monitoring
+    backup_retention_period = local.enable_backup ? 7 : 1
+    multi_az                = local.enable_multi_az
+    deletion_protection     = local.is_production
+  }
 }
 ```
 
@@ -130,7 +144,9 @@ enable_monitoring         = false
 enable_deletion_protection = false
 multi_az                  = false
 create_bastion            = true
+```
 
+```hcl
 # prod.tfvars
 enable_monitoring         = true
 enable_deletion_protection = true
@@ -147,9 +163,18 @@ tofu apply -var="enable_monitoring=true" -var="multi_az=true"
 ## Boolean Type Conversion
 
 ```hcl
-# Convert string to bool
+variable "feature_flag_string" {
+  type    = string
+  default = "true"
+}
+
+variable "some_number" {
+  type    = number
+  default = 1
+}
+
 locals {
-  # tobool("true") = true, tobool("false") = false
+  # Only the exact strings "true" and "false" convert to bool
   from_env = tobool(var.feature_flag_string)
 
   # Convert bool to string
@@ -163,4 +188,4 @@ locals {
 
 ## Conclusion
 
-Boolean variables are the simplest and most direct way to implement feature flags and conditional configurations in OpenTofu. Using `count = var.feature_flag ? 1 : 0` is the idiomatic way to conditionally create resources. Combined with locals derived from environment variables, boolean flags make it easy to configure infrastructure differently for development, staging, and production with minimal duplication.
+Boolean variables are the simplest and most direct way to implement feature flags and conditional configurations in OpenTofu. For single resources or modules, OpenTofu 1.11+ offers `lifecycle { enabled = var.feature_flag }`; `count = var.feature_flag ? 1 : 0` remains a common pattern when you need counted instances. Combined with locals derived from environment variables, boolean flags make it easy to configure infrastructure differently for development, staging, and production with minimal duplication.
