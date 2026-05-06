@@ -81,7 +81,7 @@ locals {
 # Get the 5th host in the first subnet
 cidrhost(cidrsubnet("10.0.0.0/16", 8, 0), 5)  # → "10.0.0.5"
 
-# Get the gateway address
+# Get the first usable host address
 cidrhost("10.0.1.0/24", 1)  # → "10.0.1.1"
 ```
 
