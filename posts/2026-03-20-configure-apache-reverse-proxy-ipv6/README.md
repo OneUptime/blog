@@ -4,14 +4,14 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Apache, Reverse Proxy, mod_proxy, Backend
 
-Description: Learn how to configure Apache as a reverse proxy forwarding requests to IPv6 backend servers using mod_proxy, including HTTP and HTTPS backends.
+Description: Learn how to configure Apache as a reverse proxy forwarding requests to IPv6 backend servers using mod_proxy, including HTTP backends, HTTPS frontends, and WebSocket proxying.
 
 ## Enable Required Modules
 
 ```bash
-# Enable mod_proxy and related modules
+# Debian/Ubuntu: enable mod_proxy and related modules used below
 
-a2enmod proxy proxy_http proxy_balancer lbmethod_byrequests headers
+a2enmod proxy proxy_http proxy_balancer lbmethod_byrequests headers ssl proxy_wstunnel
 systemctl restart apache2
 ```
 
@@ -30,8 +30,7 @@ systemctl restart apache2
     ProxyPassReverse / http://[2001:db8::10]:8080/
 
     # Pass client IP to backend
-    RequestHeader set X-Real-IP "%{REMOTE_ADDR}e"
-    RequestHeader set X-Forwarded-For "%{REMOTE_ADDR}e"
+    RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"
     RequestHeader set X-Forwarded-Proto "http"
 </VirtualHost>
 ```
@@ -55,7 +54,7 @@ systemctl restart apache2
     # Tell backend the connection was HTTPS
     RequestHeader set X-Forwarded-Proto "https"
     RequestHeader set X-Forwarded-Port "443"
-    RequestHeader set X-Real-IP "%{REMOTE_ADDR}e"
+    RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"
 </VirtualHost>
 ```
 
@@ -92,12 +91,12 @@ systemctl restart apache2
     DocumentRoot /var/www/static
 
     # Proxy /api/ to IPv6 backend
-    ProxyPass        /api/ http://[2001:db8::api]:3000/
-    ProxyPassReverse /api/ http://[2001:db8::api]:3000/
+    ProxyPass        /api/ http://[2001:db8::20]:3000/
+    ProxyPassReverse /api/ http://[2001:db8::20]:3000/
 
     # Proxy /ws/ for WebSocket
-    ProxyPass        /ws/  ws://[2001:db8::ws]:8080/
-    ProxyPassReverse /ws/  ws://[2001:db8::ws]:8080/
+    ProxyPass        /ws/  ws://[2001:db8::30]:8080/
+    ProxyPassReverse /ws/  ws://[2001:db8::30]:8080/
 
     # Serve static files locally
     <Directory /var/www/static>
@@ -109,16 +108,16 @@ systemctl restart apache2
 ## Test Reverse Proxy
 
 ```bash
-# Test proxy to IPv6 backend
-curl -v http://example.com/api/health
+# Test proxy through Apache
+curl -v http://example.com/
 
-# Test with IPv6 client
-curl -6 http://[2001:db8::10]/
+# If the frontend has an AAAA record, force an IPv6 client connection
+curl -6 http://example.com/
 
-# Check proxy headers are forwarded
-curl -v http://example.com/ 2>&1 | grep -i 'x-forwarded\|x-real'
+# If the backend exposes a header-echo endpoint, verify forwarded headers
+curl -s http://example.com/headers
 
-# Check backend is responding
+# Check backend is responding over IPv6
 curl http://[2001:db8::10]:8080/health
 
 # View proxy errors
@@ -127,4 +126,4 @@ tail -f /var/log/apache2/error.log | grep proxy
 
 ## Summary
 
-Configure Apache reverse proxy to IPv6 backends with `ProxyPass / http://[2001:db8::10]:8080/` - brackets are required around IPv6 addresses. Enable `mod_proxy` and `mod_proxy_http` with `a2enmod`. Use `RequestHeader set X-Real-IP "%{REMOTE_ADDR}e"` to pass client IP to backend. For load balancing, use `<Proxy "balancer://name">` with multiple `BalancerMember http://[2001:db8::N]:PORT` entries.
+Configure Apache reverse proxy to IPv6 backends with `ProxyPass / http://[2001:db8::10]:8080/` - brackets are required around IPv6 addresses. On Debian/Ubuntu, enable the required modules with `a2enmod`. Use `RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"` to pass the client address to the backend, and `mod_proxy_http` adds `X-Forwarded-For` by default. For load balancing, use `<Proxy "balancer://name">` with multiple `BalancerMember http://[2001:db8::N]:PORT` entries.
