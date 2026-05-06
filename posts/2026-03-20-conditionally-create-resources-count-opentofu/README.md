@@ -8,7 +8,7 @@ Description: Learn how to use the count meta-argument in OpenTofu to conditional
 
 ## Introduction
 
-The `count` meta-argument is the most straightforward way to conditionally create a resource in OpenTofu. Setting `count = 1` creates the resource; `count = 0` skips it. This pattern enables feature flags, environment-specific resources, and optional infrastructure components.
+The `count` meta-argument is a straightforward way to conditionally create a resource in OpenTofu. Setting `count = 1` creates the resource; `count = 0` skips it. This pattern enables feature flags, environment-specific resources, and optional infrastructure components.
 
 ## Basic Conditional Resource Creation
 
@@ -35,7 +35,7 @@ resource "aws_instance" "bastion" {
   }
 }
 
-# Reference the bastion conditionally with try or one-based indexing
+# Reference the bastion conditionally with a conditional expression or try()
 output "bastion_public_ip" {
   value = var.create_bastion ? aws_instance.bastion[0].public_ip : null
 }
@@ -170,4 +170,4 @@ resource "aws_sns_topic" "alerts" {
 
 ## Conclusion
 
-The `count = condition ? 1 : 0` pattern is the simplest way to toggle resources on and off. Use `one()` or index access with `[0]` to safely reference outputs from conditional resources. For resources that need unique identifiers (not just numbers), prefer `for_each` with a filtered set.
+The `count = condition ? 1 : 0` pattern is a common way to toggle resources on and off. Use `one()` or guard index access with `[0]` behind the same condition to safely reference outputs from conditional resources. For resources that need unique identifiers (not just numbers), prefer `for_each` with a filtered set.
