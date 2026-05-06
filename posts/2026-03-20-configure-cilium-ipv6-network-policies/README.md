@@ -35,9 +35,11 @@ spec:
             - port: "8080"
               protocol: TCP
 
-    # Allow health checks from any pod in cluster (IPv6 pod CIDR)
-    - fromCIDR:
-        - "fd00:10::/104"  # Pod CIDR
+    # Allow requests from any Cilium-managed pod in cluster
+    - fromEndpoints:
+        - matchExpressions:
+            - key: "k8s:io.kubernetes.pod.namespace"
+              operator: "Exists"
       toPorts:
         - ports:
             - port: "8080"
@@ -52,7 +54,10 @@ spec:
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 ```
 
 ## CIDR-Based Policy for External IPv6
@@ -72,8 +77,8 @@ spec:
   ingress:
     # Allow from trusted IPv6 ranges
     - fromCIDR:
-        - "2001:db8:trusted::/48"   # Corporate network
-        - "fd00:vpn::/64"           # VPN clients
+        - "2001:db8:100::/48"       # Corporate network
+        - "fd00:100::/64"           # VPN clients
       toPorts:
         - ports:
             - port: "443"
@@ -109,7 +114,7 @@ spec:
               - method: GET
                 path: "/api/v1/.*"
               - method: POST
-                path: "/api/v1/data"
+                path: "/api/v1/data$"
               # Block DELETE and admin endpoints
 ```
 
@@ -136,7 +141,10 @@ spec:
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 
     # Allow HTTPS to specific external domains
     - toFQDNs:
@@ -155,18 +163,18 @@ spec:
 kubectl get ciliumnetworkpolicies -A
 
 # Check policy status on a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list | grep "backend" | awk '{print $1}')
-cilium endpoint get "$ENDPOINT_ID" | jq '.spec.policy'
+kubectl get ciliumendpoint backend-pod -n production -o json | jq '.status.policy'
 
-# Monitor policy drops
-hubble observe --verdict DROPPED --ip-version ipv6 --follow
+# Monitor IPv6 policy drops
+hubble observe --verdict DROPPED --ipv6 --follow
 
-# Test connectivity between pods
+# Test connectivity over IPv6 using the Service DNS name
 kubectl exec -n production frontend-pod -- \
-  curl -6 http://[fd00:10::backend]:8080/api/v1/health
+  curl -6 http://backend.production.svc.cluster.local:8080/api/v1/health
 
 # Check policy enforcement mode
-cilium endpoint list | grep -E "ID|Enabled"
+kubectl get ciliumendpoint backend-pod -n production -o json | \
+  jq -r '.status.policy.realized["policy-enabled"]'
 ```
 
 ## Namespace-Wide Default Deny
