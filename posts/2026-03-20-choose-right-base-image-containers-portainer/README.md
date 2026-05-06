@@ -14,15 +14,15 @@ Choosing the right base image is one of the most impactful decisions in containe
 
 ## Common Base Image Options
 
-| Image              | Size    | Best For                               |
-|--------------------|---------|----------------------------------------|
-| `ubuntu:22.04`     | ~77 MB  | General purpose, familiar tooling      |
-| `debian:bookworm`  | ~117 MB | Broad package availability             |
-| `alpine:3.19`      | ~7 MB   | Minimal footprint, security-conscious  |
-| `distroless`       | ~2 MB   | Production runtimes, minimal attack surface|
-| `scratch`          | 0 bytes | Static binaries only                   |
-| `node:20-alpine`   | ~60 MB  | Node.js apps on Alpine                 |
-| `python:3.12-slim` | ~45 MB  | Python apps, minimal Debian            |
+| Image                             | Typical Size (amd64) | Best For                               |
+|-----------------------------------|----------------------|----------------------------------------|
+| `ubuntu:22.04`                    | ~30 MB               | General purpose, familiar tooling      |
+| `debian:bookworm`                 | ~46 MB               | Broad package availability             |
+| `alpine:3.23`                     | ~4 MB                | Minimal footprint, security-conscious  |
+| `gcr.io/distroless/base-debian12` | ~8 MB                | Production runtimes, minimal attack surface |
+| `scratch`                         | 0 bytes              | Static binaries only                   |
+| `node:24-alpine`                  | ~54 MB               | Node.js apps on Alpine                 |
+| `python:3.12-slim`                | ~41 MB               | Python apps, minimal Debian            |
 
 ---
 
@@ -35,7 +35,7 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y python3 curl jq
 
 # Alpine - small but uses musl libc
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache python3 curl jq
 
 # Python slim - balance of features and size
@@ -49,29 +49,35 @@ RUN pip install requests
 
 ```dockerfile
 # Build stage
-FROM python:3.12 AS builder
+FROM debian:12-slim AS build
+RUN apt-get update && \
+    apt-get install --no-install-suggests --no-install-recommends --yes python3-venv gcc libpython3-dev
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --user -r requirements.txt
+RUN python3 -m venv /venv && \
+    /venv/bin/pip install --upgrade pip setuptools wheel && \
+    /venv/bin/pip install -r requirements.txt
+COPY app.py /app/
 
 # Distroless runtime - no shell, minimal attack surface
 FROM gcr.io/distroless/python3-debian12
-COPY --from=builder /root/.local/lib /root/.local/lib
-COPY app.py /app/
-CMD ["/app/app.py"]
+COPY --from=build /venv /venv
+COPY --from=build /app /app
+WORKDIR /app
+ENTRYPOINT ["/venv/bin/python3", "app.py"]
 ```
 
 ---
 
-## Security Scanning in Portainer
+## Security Scanning for Images Used in Portainer
 
 1. In Portainer, go to **Images**.
-2. Click on an image and select **Scan** (if integrated with a scanner like Trivy).
-3. Review CVE counts by severity.
+2. Note the exact image name and tag you are deploying.
+3. Scan that image with Trivy and review CVE counts by severity.
 
 ```bash
 # Scan locally with Trivy
-trivy image alpine:3.19
+trivy image alpine:3.23
 trivy image ubuntu:22.04
 # Compare CVE counts
 ```
@@ -80,9 +86,9 @@ trivy image ubuntu:22.04
 
 ## Key Selection Criteria
 
-1. **Language/runtime match** - use official language images (`python:3.12-slim`, `node:20-alpine`)
+1. **Language/runtime match** - use official language images (`python:3.12-slim`, `node:24-alpine`)
 2. **Minimal footprint** - prefer Alpine or slim variants
-3. **Active maintenance** - check Docker Hub for recent updates
+3. **Active maintenance** - check Docker Hub or the image publisher's registry for recent updates
 4. **CVE count** - scan before committing to a base
 5. **glibc vs musl** - some compiled libraries require glibc (use Debian/Ubuntu, not Alpine)
 
@@ -90,4 +96,4 @@ trivy image ubuntu:22.04
 
 ## Summary
 
-For production workloads, start with official slim or Alpine variants of your language runtime. Use distroless images for maximum security when you don't need shell access. Avoid pulling `ubuntu:latest` or `debian:latest` as base images - they're large and change frequently. Scan your images with Trivy regularly and rebuild when base images receive security patches.
+For production workloads, start with official slim or Alpine variants of your language runtime. Use distroless images for maximum security when you don't need shell access. Avoid pulling `ubuntu:latest` or `debian:latest` as base images - they are larger than slim or Alpine variants, and the `latest` tag changes over time. Scan your images with Trivy regularly and rebuild when base images receive security patches.
