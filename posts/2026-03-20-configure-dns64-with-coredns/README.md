@@ -12,7 +12,7 @@ CoreDNS is the default DNS server in Kubernetes and a popular choice for cloud-n
 
 ## Installing CoreDNS
 
-CoreDNS ships with the DNS64 plugin built in since version 1.7.0. No additional installation is needed:
+The standard CoreDNS release binaries ship with the DNS64 plugin built in since version 1.7.0. No additional plugin installation is needed:
 
 ```bash
 # Check CoreDNS version
@@ -21,8 +21,8 @@ coredns --version
 
 # Download CoreDNS binary if not installed
 # Visit https://github.com/coredns/coredns/releases
-wget https://github.com/coredns/coredns/releases/download/v1.11.1/coredns_1.11.1_linux_amd64.tgz
-tar -xzf coredns_1.11.1_linux_amd64.tgz
+wget https://github.com/coredns/coredns/releases/download/v1.14.2/coredns_1.14.2_linux_amd64.tgz
+tar -xzf coredns_1.14.2_linux_amd64.tgz
 mv coredns /usr/local/bin/
 ```
 
@@ -40,8 +40,8 @@ CoreDNS is configured via a `Corefile`. Add the `dns64` plugin to a server block
         # The NAT64 prefix to embed IPv4 addresses into
         prefix 64:ff9b::/96
 
-        # translate-all: also synthesize when AAAA exists (default: false)
-        # translate_all false
+        # translate_all: also synthesize when AAAA records already exist
+        # translate_all
     }
 
     # Forward unresolved queries to upstream DNS resolvers
@@ -55,7 +55,7 @@ CoreDNS is configured via a `Corefile`. Add the `dns64` plugin to a server block
     # Log queries for debugging
     log
 
-    # Return SERVFAIL on errors
+    # Log errors to standard output
     errors
 }
 ```
@@ -66,12 +66,16 @@ The CoreDNS DNS64 plugin supports these directives:
 
 ```corefile
 dns64 {
-    # NAT64 prefix (required) - default is 64:ff9b::/96
+    # NAT64 prefix (optional) - default is 64:ff9b::/96
     prefix 64:ff9b::/96
 
-    # If true, synthesize AAAA even when native AAAA exists
+    # Synthesize AAAA even when native AAAA exists
     # Useful for testing; not recommended for production
-    translate_all false
+    translate_all
+
+    # Also synthesize for queries received over IPv4
+    # Default behavior is to synthesize only for queries received over IPv6
+    # allow_ipv4
 }
 ```
 
@@ -131,16 +135,16 @@ kubectl get pods -n kube-system -l k8s-app=kube-dns
 
 ```bash
 # Test from a pod in an IPv6-only subnet
-kubectl run test-dns64 --image=busybox --rm -it -- sh
+kubectl run test-dns64 --image=busybox --restart=Never --rm -it -- sh
 
-# Inside the pod: query for a domain with only A records
-nslookup example.com
-# Should return an address in 64:ff9b::/96
+# Inside the pod: query AAAA for a domain that only has A records
+nslookup -type=AAAA ipv4only.arpa
+# Should return synthesized addresses in 64:ff9b::/96
 
-# Using dig from the host against the CoreDNS service
-dig AAAA example.com @<coredns-service-ip>
+# Using dig from an IPv6-capable client against the CoreDNS service
+dig AAAA ipv4only.arpa @<coredns-service-ipv6>
 
-# Expected: 64:ff9b::5db8:d822 (for example.com's 93.184.216.34)
+# Expected with the well-known prefix: 64:ff9b::c000:aa and 64:ff9b::c000:ab
 ```
 
 ## Standalone CoreDNS Deployment
@@ -173,14 +177,14 @@ systemctl status coredns
 
 ## Monitoring CoreDNS DNS64
 
-CoreDNS exposes Prometheus metrics on port 9153 by default. Key metrics for DNS64:
+With the `prometheus` plugin enabled, CoreDNS can expose Prometheus metrics. In the Kubernetes example above, metrics are exposed on port 9153. Key DNS64 metric:
 
 ```promql
 # Total DNS64 synthesis requests
-coredns_dns64_requests_total
+coredns_dns64_requests_translated_total
 
 # Rate of synthesis over 5 minutes
-rate(coredns_dns64_requests_total[5m])
+rate(coredns_dns64_requests_translated_total[5m])
 ```
 
 ## Summary
