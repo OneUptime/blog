@@ -96,9 +96,9 @@ resource "aws_nat_gateway" "main" {
 ## Avoid Conditional Anti-Patterns
 
 ```hcl
-# DON'T: This causes a plan error if the resource doesn't exist
+# DON'T: This causes a plan error if count = 0
 output "bad_output" {
-  value = aws_instance.bastion.public_ip  # Will fail if count = 0
+  value = aws_instance.bastion[0].public_ip  # Will fail if count = 0
 }
 
 # DO: Use one-element tuple access with conditional
