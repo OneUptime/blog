@@ -47,10 +47,10 @@ ip nat inside source list NAT-INSIDE pool PUBLIC-POOL overload
 ## Static NAT for Server (DMZ)
 
 ```cisco
-! Allow inbound access to a specific server
+! 1:1 static NAT for a specific server (use this or the port-forwarding example below)
 ip nat inside source static 10.1.10.100 203.0.113.5
 
-! Port forwarding (static port translation)
+! Port forwarding (static port translation) for specific services
 ip nat inside source static tcp 10.1.10.100 80 203.0.113.5 80
 ip nat inside source static tcp 10.1.10.100 443 203.0.113.5 443
 ```
@@ -77,7 +77,7 @@ show ip nat statistics
 clear ip nat translation *
 
 ! Clear specific translation
-clear ip nat translation inside 10.1.0.10 outside 8.8.8.8
+clear ip nat translation inside 203.0.113.2 10.1.0.10 outside 8.8.8.8 8.8.8.8
 ```
 
 ## NAT with Multiple Inside VLANs
