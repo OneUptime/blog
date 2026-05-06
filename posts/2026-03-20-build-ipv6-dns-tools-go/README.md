@@ -18,7 +18,6 @@ go get github.com/miekg/dns
 package main
 
 import (
-    "fmt"
     "net"
 )
 
@@ -226,9 +225,7 @@ func main() {
 package main
 
 import (
-    "fmt"
     "sync"
-    "time"
 )
 
 func checkAAAABulk(hostnames []string) map[string][]string {
@@ -244,7 +241,7 @@ func checkAAAABulk(hostnames []string) map[string][]string {
             sem <- struct{}{}
             defer func() { <-sem }()
 
-            addrs, err := queryAAAA(h, "2001:4860:4860::8888:53")
+            addrs, err := queryAAAA(h, "[2001:4860:4860::8888]:53")
             mu.Lock()
             if err == nil {
                 results[h] = addrs
