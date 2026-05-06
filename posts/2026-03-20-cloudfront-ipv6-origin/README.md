@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CloudFront, AWS, IPv6, CDN, Origin, Cloud
 
-Description: A guide to configuring AWS CloudFront to accept IPv6 requests from clients and connect to IPv6-capable origins, enabling end-to-end IPv6 content delivery.
+Description: A guide to configuring AWS CloudFront to accept IPv6 requests from clients and connect to IPv6-capable custom origins, enabling end-to-end IPv6 content delivery.
 
-AWS CloudFront supports IPv6 in two ways: accepting connections from IPv6 clients (viewer-facing) and connecting to IPv6 origins (origin-facing). This guide covers both configurations.
+AWS CloudFront supports IPv6 in two ways: accepting connections from IPv6 clients (viewer-facing) and, for custom origins except Amazon S3 and VPC origins, connecting to origins over IPv6 (origin-facing). This guide covers both configurations.
 
 ## CloudFront IPv6 for Viewers (Client-Facing)
 
-When you enable IPv6 on a CloudFront distribution, it receives a AAAA DNS record and accepts connections from IPv6 clients:
+When you enable IPv6 on a CloudFront distribution, its DNS name returns a AAAA record and accepts connections from IPv6 clients:
 
 ### Terraform
 
@@ -68,7 +68,7 @@ aws cloudfront update-distribution \
   --distribution-config file://dist-config.json
 
 # In dist-config.json:
-# "IsIPv6Enabled": true
+# "IsIPV6Enabled": true
 ```
 
 ## Verifying CloudFront IPv6 for Viewers
@@ -86,9 +86,11 @@ curl -6 -v https://your-distribution.cloudfront.net/ 2>&1 | grep "Connected to"
 
 ## CloudFront to IPv6 Origins
 
-For CloudFront to connect to your origin using IPv6, the origin must:
-1. Have an IPv6 address (AAAA record)
-2. Accept connections on IPv6
+Origin-facing IPv6 applies to custom origins, excluding Amazon S3 and VPC origins.
+
+For CloudFront to connect to a custom origin using IPv6, the origin must:
+1. Resolve to an IPv6 address (AAAA record)
+2. Accept connections over IPv6
 
 ```hcl
 resource "aws_cloudfront_distribution" "ipv6_origin" {
@@ -96,13 +98,14 @@ resource "aws_cloudfront_distribution" "ipv6_origin" {
   is_ipv6_enabled = true
 
   origin {
-    # Use a hostname that has both A and AAAA records
+    # Use a hostname that resolves to an AAAA record
     domain_name = "origin.example.com"
     origin_id   = "CustomOrigin"
 
     custom_origin_config {
       http_port              = 80
       https_port             = 443
+      ip_address_type        = "ipv6"
       origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
     }
@@ -116,14 +119,11 @@ resource "aws_cloudfront_distribution" "ipv6_origin" {
 
     forwarded_values {
       query_string = true
-      headers      = ["Host"]
       cookies {
         forward = "all"
       }
     }
   }
-
-  is_ipv6_enabled = true
 
   viewer_certificate {
     acm_certificate_arn = aws_acm_certificate.main.arn
@@ -140,16 +140,17 @@ resource "aws_cloudfront_distribution" "ipv6_origin" {
 
 ## Real Client IPv6 in CloudFront
 
-CloudFront forwards the original viewer IPv6 in `CloudFront-Viewer-Address` and `X-Forwarded-For`:
+CloudFront always adds or appends the viewer IP to `X-Forwarded-For`. If you include `CloudFront-Viewer-Address` in an origin request policy, your origin also receives the viewer IP and source port:
 
 ```bash
-# At your origin, read viewer's IPv6:
-# X-Forwarded-For: 2001:db8::viewer
-# CloudFront-Viewer-Address: 2001:db8::viewer:12345
+# At your origin:
+# X-Forwarded-For: 2001:db8::1
+# CloudFront-Viewer-Address: viewer IP + source port (when included by an origin request policy)
 
-# Configure nginx to use X-Forwarded-For
+# If your custom origin is IPv6-only, trust CloudFront's current origin-facing IPv6 ranges
 real_ip_header X-Forwarded-For;
-set_real_ip_from 2600:9000::/24;    # CloudFront IPv6 ranges
+set_real_ip_from 2600:9000:1000::/36;
+set_real_ip_from 2600:9000:5200::/40;
 ```
 
 ## Route 53 Alias Records for IPv6 CloudFront
@@ -180,4 +181,4 @@ resource "aws_route53_record" "cdn_ipv4" {
 }
 ```
 
-Enabling CloudFront IPv6 with `is_ipv6_enabled = true` is a single configuration change that immediately enables IPv6 viewer connections, making it one of the easiest ways to add IPv6 support to AWS-hosted content.
+Enabling CloudFront IPv6 with `is_ipv6_enabled = true` is a single configuration change that enables IPv6 viewer connections after the distribution deploys, making it one of the easiest ways to add IPv6 support to AWS-hosted content.
