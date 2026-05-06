@@ -143,8 +143,8 @@ resource "aws_cloudwatch_log_metric_filter" "error_count" {
     namespace = "App/${var.service_name}"
     value     = "1"
 
-    # Default value 0 ensures the metric is emitted even when no errors occur
-    default_value = 0
+    # Default value 0 publishes a zero when logs are ingested but no events match
+    default_value = "0"
   }
 }
 
@@ -170,13 +170,24 @@ Route logs to Lambda or Kinesis for processing.
 
 ```hcl
 # subscription_filter.tf
+# Allow CloudWatch Logs to invoke the processor Lambda
+resource "aws_lambda_permission" "allow_cloudwatch_logs" {
+  statement_id   = "AllowExecutionFromCloudWatchLogs"
+  action         = "lambda:InvokeFunction"
+  function_name  = aws_lambda_function.log_processor.function_name
+  principal      = "logs.amazonaws.com"
+  source_account = data.aws_caller_identity.current.account_id
+  source_arn     = "${aws_cloudwatch_log_group.app.arn}:*"
+}
+
 # Send all logs matching a pattern to a Lambda function for processing
 resource "aws_cloudwatch_log_subscription_filter" "to_lambda" {
   name            = "forward-errors-to-processor"
   log_group_name  = aws_cloudwatch_log_group.app.name
   filter_pattern  = "ERROR"
   destination_arn = aws_lambda_function.log_processor.arn
-  distribution    = "ByLogStream"
+
+  depends_on = [aws_lambda_permission.allow_cloudwatch_logs]
 }
 ```
 
