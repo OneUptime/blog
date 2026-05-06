@@ -19,8 +19,8 @@ BGP communities are attributes attached to route announcements that carry policy
 Standard BGP communities (RFC 1997) are 32-bit values written as two 16-bit numbers:
 ```text
 ASN:value
-65000:100    # Well-known community
-65001:200    # Custom community
+65000:100    # Example standard community
+65001:200    # Another example community
 ```
 
 ## BIRD2 Configuration Example
@@ -49,7 +49,8 @@ filter ipv6_community_policy {
 }
 
 protocol bgp upstream {
-    neighbor 2001:db8:peer::1 as 65001;
+    local as 64496;
+    neighbor 2001:db8:1::1 as 65001;
     ipv6 {
         import filter ipv6_community_policy;
         export filter { accept; };
@@ -62,9 +63,11 @@ protocol bgp upstream {
 ```bash
 # FRR vtysh configuration
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:db8:1::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 activate
+    neighbor 2001:db8:1::1 activate
+    neighbor 2001:db8:1::1 route-map COMMUNITY-POLICY in
+  exit-address-family
 
 # Route map with community matching
 route-map COMMUNITY-POLICY permit 10
@@ -80,24 +83,26 @@ ip community-list standard MY-COMMUNITIES permit 65001:100
 ```text
 ! Configure community for IPv6 BGP
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:db8:1::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 route-map COMMUNITY-INBOUND in
+    neighbor 2001:db8:1::1 activate
+    neighbor 2001:db8:1::1 route-map COMMUNITY-INBOUND in
+  exit-address-family
 
 ! Route map
 route-map COMMUNITY-INBOUND permit 10
-  match community 100
+  match community IPV6-LOCALPREF
   set local-preference 200
 
 ! Community list
-ip community-list 100 permit 65001:100
+ip community-list standard IPV6-LOCALPREF permit 65001:100
 ```
 
 ## Testing Community Propagation
 
 ```bash
 # Check if communities are present on IPv6 routes in BIRD
-birdc "show route for 2001:db8::/32 all"
+birdc "show route 2001:db8::/32 all"
 
 # In FRR
 vtysh -c "show bgp ipv6 unicast 2001:db8::/32"
@@ -105,8 +110,8 @@ vtysh -c "show bgp ipv6 unicast 2001:db8::/32"
 # Look for community attribute in output
 # Example: Community: 65001:100 65001:200
 
-# Use RIPE looking glass for external verification
-curl "https://stat.ripe.net/data/bgp-state/data.json?resource=2001:db8::/32" | jq '.data.routes[].attrs.communities'
+# Use the RIPEstat Data API for external verification with your announced prefix
+curl "https://stat.ripe.net/data/bgp-state/data.json?resource=<your-announced-ipv6-prefix>" | jq '.data.bgp_state[].community'
 ```
 
 ## Monitoring with OneUptime
