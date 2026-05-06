@@ -34,7 +34,7 @@ Router(config-if)# no shutdown
 
 ```text
 ! Static route example
-Router(config)# ipv6 route 2001:db8:remote::/48 2001:db8:wan::254
+Router(config)# ipv6 route 2001:db8:2::/48 2001:db8::254
 
 ! ACL example
 Router(config)# ipv6 access-list BLOCK-BOGONS
@@ -50,7 +50,10 @@ Router(config-dhcpv6)# domain-name example.com
 
 ! Apply DHCPv6 to interface
 Router(config)# interface GigabitEthernet0/1
+Router(config-if)# ipv6 address 2001:db8:1::1/64
+Router(config-if)# ipv6 nd managed-config-flag
 Router(config-if)# ipv6 dhcp server IPV6-POOL
+Router(config-if)# no shutdown
 ```
 
 ## Verification Commands
@@ -69,10 +72,10 @@ Router# show ipv6 neighbors
 Router# show ipv6 dhcp binding
 
 ! Ping IPv6 address
-Router# ping ipv6 2001:db8::1
+Router# ping ipv6 2001:db8::254
 
 ! Traceroute over IPv6
-Router# traceroute ipv6 2001:db8::1 source GigabitEthernet0/1
+Router# traceroute ipv6 2001:db8:2::1 source 2001:db8:1::1
 ```
 
 ## Debug Commands
@@ -97,4 +100,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your Cisco router's IPv6 conne
 
 ## Conclusion
 
-How to Verify IPv6 Configuration on Cisco with show Commands follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before any interface IPv6 configuration will work. Always verify with `show ipv6` commands after making changes.
+How to Verify IPv6 Configuration on Cisco with show Commands follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before the router will forward IPv6 traffic or use IPv6 routing features. Always verify with `show ipv6` commands after making changes.
