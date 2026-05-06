@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, IPv6, Networking, Header Structure, TCP/IP, Protocol Comparison
 
-Description: IPv6 simplified the IP header compared to IPv4 by removing fragmentation fields, replacing the checksum, and using a fixed 40-byte base header with extension headers for optional features.
+Description: IPv6 simplified the IP header compared to IPv4 by removing fragmentation fields from the base header, eliminating the header checksum, and using a fixed 40-byte base header with extension headers for optional features.
 
 ## Side-by-Side Header Comparison
 
@@ -14,7 +14,7 @@ Description: IPv6 simplified the IP header compared to IPv4 by removing fragment
 | Header length | 4-bit IHL | Fixed 40 bytes (no field needed) |
 | ToS/Traffic Class | 8-bit | 8-bit Traffic Class (same DSCP/ECN) |
 | Total Length | 16-bit | 16-bit Payload Length (excl. header) |
-| Identification | 16-bit | Removed (in Fragment extension header) |
+| Identification | 16-bit | Only in Fragment extension header |
 | Flags | 3-bit | Removed |
 | Fragment Offset | 13-bit | Removed |
 | TTL | 8-bit | 8-bit Hop Limit (same purpose) |
@@ -27,10 +27,10 @@ Description: IPv6 simplified the IP header compared to IPv4 by removing fragment
 
 ## IPv6 Header Improvements
 
-1. **No checksum**: Upper layers (TCP, UDP) already have checksums. Removing the IP checksum eliminates per-hop recalculation, speeding up routers.
+1. **No checksum**: Upper-layer protocols such as TCP, UDP, and ICMPv6 provide checksums. Removing the IP header checksum eliminates per-hop recalculation, speeding up routers.
 2. **Fixed size**: The 40-byte base header is always the same size, enabling hardware parsing at line rate.
-3. **No router fragmentation**: Routers no longer fragment packets; hosts use PMTUD. The Fragmentation Header is an extension header added only when needed.
-4. **Flow Label**: A 20-bit field allows routers to identify packet flows for QoS without inspecting upper-layer headers.
+3. **No router fragmentation**: Routers no longer fragment packets; hosts typically use PMTUD. The Fragment header is an extension header added by the source only when needed.
+4. **Flow Label**: A 20-bit field lets a source label packets that belong to the same flow, allowing flow-specific handling without inspecting upper-layer headers.
 5. **Extension Headers**: Options are moved to chained extension headers (Routing, Fragment, Authentication, etc.) appended only when needed.
 
 ## Parsing Both Headers with Python
@@ -63,6 +63,6 @@ def parse_ipv6(raw: bytes):
 ## Key Takeaways
 
 - IPv6 has a fixed 40-byte header vs IPv4's variable 20-60 bytes.
-- IPv6 removed fragmentation, identification, and header checksum fields.
-- IPv6 adds a 20-bit Flow Label for per-flow QoS identification.
+- IPv6 removed fragmentation-related and header checksum fields from the base header.
+- IPv6 adds a 20-bit Flow Label to mark packets that belong to the same flow.
 - Options in IPv6 are extension headers chained via the Next Header field, keeping the base header clean.
