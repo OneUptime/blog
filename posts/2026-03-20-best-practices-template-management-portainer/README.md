@@ -13,18 +13,19 @@ Portainer templates (App Templates) allow teams to define pre-configured applica
 ## Types of Portainer Templates
 
 - **Container templates** - single container deployments with pre-set configuration
-- **Stack templates** - Docker Compose-based multi-service deployments
-- **Edge stack templates** - Compose stacks for Edge Agent deployments
+- **Stack templates** - multi-service deployments; in app template JSON, `type: 2` is Swarm and `type: 3` is Compose
+- **Edge stack templates** - templates used for Edge Stack deployments
 
 ## Building a Custom Template Library
 
-Create a `templates.json` file and host it on a web server or Git repository:
+Create a `templates.json` file and host it somewhere Portainer can reach over HTTP, such as a web server or GitHub raw URL:
 
 ```json
 {
   "version": "3",
   "templates": [
     {
+      "id": 1,
       "type": 1,
       "title": "PostgreSQL Database",
       "description": "Standard PostgreSQL 16 database with persistent storage",
@@ -46,21 +47,20 @@ Create a `templates.json` file and host it on a web server or Git repository:
         {
           "name": "POSTGRES_PASSWORD",
           "label": "Database Password",
-          "description": "Secure password for the database user",
-          "preset": false
+          "description": "Secure password for the database user"
         }
       ],
       "volumes": [
         {
-          "container": "/var/lib/postgresql/data",
-          "description": "PostgreSQL data directory"
+          "container": "/var/lib/postgresql/data"
         }
       ],
       "restart_policy": "unless-stopped",
       "ports": ["5432:5432/tcp"]
     },
     {
-      "type": 2,
+      "id": 2,
+      "type": 3,
       "title": "WordPress + MySQL",
       "description": "WordPress CMS with MySQL database backend",
       "categories": ["cms", "blog"],
@@ -72,13 +72,9 @@ Create a `templates.json` file and host it on a web server or Git repository:
       },
       "env": [
         {
-          "name": "MYSQL_ROOT_PASSWORD",
+          "name": "MYSQL_DATABASE_PASSWORD",
           "label": "MySQL Root Password",
-          "preset": false
-        },
-        {
-          "name": "WORDPRESS_ADMIN_EMAIL",
-          "label": "Admin Email"
+          "description": "Password used by the MySQL root user"
         }
       ]
     }
@@ -88,20 +84,19 @@ Create a `templates.json` file and host it on a web server or Git repository:
 
 ## Configuring Custom Templates in Portainer
 
-1. Host your `templates.json` on a web server or GitHub raw URL
-2. In Portainer, go to **Settings > App Templates**
+1. Host your `templates.json` somewhere Portainer can reach over HTTP, such as a web server or GitHub raw URL
+2. In Portainer, go to **Settings** and scroll to **App Templates**
 3. Set **URL**: `https://raw.githubusercontent.com/yourorg/portainer-templates/main/templates.json`
 
 ## Template Design Principles
 
-**Make required fields visible:**
+**Leave sensitive fields without defaults:**
 
 ```json
 {
   "name": "ADMIN_PASSWORD",
   "label": "Admin Password",
-  "description": "At least 16 characters",
-  "preset": false    // User must set this value - no default
+  "description": "At least 16 characters"
 }
 ```
 
@@ -153,4 +148,4 @@ Before publishing templates:
 
 ## Summary
 
-Well-managed Portainer templates accelerate deployments, enforce standards, and reduce configuration errors. Keep templates in version control, make required fields explicit, use categories for discoverability, and test templates before publishing. A good template library is a force multiplier for developer productivity.
+Well-managed Portainer templates accelerate deployments, enforce standards, and reduce configuration errors. Keep templates in version control, leave sensitive fields without defaults, use categories for discoverability, and test templates before publishing. A good template library is a force multiplier for developer productivity.
