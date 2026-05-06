@@ -15,13 +15,13 @@ Blocking specific IPv6 addresses and prefixes is a common security task - blocki
 ```bash
 # Block a single IPv6 address
 
-ip6tables -A INPUT -s 2001:db8:attacker::1 -j DROP
+ip6tables -A INPUT -s 2001:db8:dead:beef::1 -j DROP
 
 # Block a /48 prefix
 ip6tables -A INPUT -s 2001:db8:bad::/48 -j DROP
 
 # Block outbound to a specific destination
-ip6tables -A OUTPUT -d 2001:db8:malicious::1 -j DROP
+ip6tables -A OUTPUT -d 2001:db8:cafe::1 -j DROP
 
 # Block with logging
 ip6tables -A INPUT -s 2001:db8:bad::/48 \
@@ -43,8 +43,8 @@ ipset create ipv6-blocklist hash:net family inet6
 
 # Add prefixes to the set
 ipset add ipv6-blocklist 2001:db8:bad1::/48
-ipset add ipv6-blocklist 2001:db8:bad2::/32
-ipset add ipv6-blocklist 2001:db8:attacker::1/128
+ipset add ipv6-blocklist 2001:db8:b200::/40
+ipset add ipv6-blocklist 2001:db8:dead:beef::1/128
 
 # Use with ip6tables
 ip6tables -A INPUT -m set --match-set ipv6-blocklist src -j DROP
@@ -70,19 +70,19 @@ nftables sets are more efficient and natively integrated:
 ```bash
 # Static set (compiled at ruleset load time)
 table ip6 blocklist {
-    set bad-addrs {
+    set bad_addrs {
         type ipv6_addr
         flags interval        # Allow CIDR prefixes
         elements = {
             2001:db8:bad1::/48,
-            2001:db8:bad2::/32,
-            2001:db8:attacker::1/128
+            2001:db8:b200::/40,
+            2001:db8:dead:beef::1/128
         }
     }
 
     chain input {
         type filter hook input priority -100;   # Check before main filter
-        ip6 saddr @bad-addrs \
+        ip6 saddr @bad_addrs \
             log prefix "BLOCKLIST-DROP: " level warn drop
     }
 }
@@ -93,21 +93,21 @@ table ip6 blocklist {
 nft -f /etc/nftables.d/blocklist.nft
 
 # Add to set at runtime
-nft add element ip6 blocklist bad-addrs { 2001:db8:new-bad::/48 }
+nft add element ip6 blocklist bad_addrs { 2001:db8:bead::/48 }
 
 # Remove from set
-nft delete element ip6 blocklist bad-addrs { 2001:db8:bad1::/48 }
+nft delete element ip6 blocklist bad_addrs { 2001:db8:bad1::/48 }
 
 # List current set contents
-nft list set ip6 blocklist bad-addrs
+nft list set ip6 blocklist bad_addrs
 ```
 
 ## nftables: Dynamic Blocklist with Timeout
 
 ```bash
 # Dynamic set: entries auto-expire after timeout
-table ip6 dynamic-block {
-    set temp-block {
+table ip6 dynamic_block {
+    set temp_block {
         type ipv6_addr
         flags dynamic, timeout
         timeout 1h            # Auto-expire entries after 1 hour
@@ -116,15 +116,15 @@ table ip6 dynamic-block {
 
     chain input {
         type filter hook input priority -100;
-        ip6 saddr @temp-block drop   # Drop if in blocklist
+        ip6 saddr @temp_block drop   # Drop if in blocklist
     }
 }
 
 # Add address to temporary block
-nft add element ip6 dynamic-block temp-block { 2001:db8:scanner::1 }
+nft add element ip6 dynamic_block temp_block { 2001:db8:feed::1 }
 
 # View current dynamic blocks
-nft list set ip6 dynamic-block temp-block
+nft list set ip6 dynamic_block temp_block
 ```
 
 ## Automated Blocking from Logs
@@ -140,12 +140,12 @@ BLOCK_TIME="1h"   # Block for 1 hour
 # Parse journald for SSH failures (IPv6 addresses)
 journalctl -u ssh --since "$WINDOW seconds ago" | \
   grep "Failed password" | \
-  grep -oP 'from \K[2f][0-9a-f:]+' | \
+  grep -oP 'from \K(?=[0-9A-Fa-f:]*:)[0-9A-Fa-f:]+' | \
   sort | uniq -c | \
   awk -v t="$THRESHOLD" '$1 >= t {print $2}' | \
   while read ip; do
     echo "Auto-blocking: $ip"
-    nft add element ip6 dynamic-block temp-block { "$ip" }
+    nft add element ip6 dynamic_block temp_block { $ip timeout $BLOCK_TIME }
   done
 ```
 
@@ -159,9 +159,9 @@ For blocking entire autonomous systems or ISPs:
 # First, get their IPv6 prefixes from a BGP looking glass or RIPE
 
 # Then add to blocklist
-PREFIXES=("2001:db8:asn1::/32" "2001:db8:asn2::/48")
+PREFIXES=("2001:db8:1000::/36" "2001:db8:1234::/48")
 for PREFIX in "${PREFIXES[@]}"; do
-    nft add element ip6 blocklist bad-addrs { "$PREFIX" }
+    nft add element ip6 blocklist bad_addrs { "$PREFIX" }
 done
 ```
 
@@ -192,10 +192,10 @@ ip6tables -A INPUT -m set --match-set country-block src -j DROP
 ip6tables -L INPUT -n | grep DROP
 
 # List nftables blocklist
-nft list set ip6 blocklist bad-addrs
+nft list set ip6 blocklist bad_addrs
 
 # Check if specific address is in nftables set
-nft list set ip6 blocklist bad-addrs | grep "2001:db8:attacker"
+nft get element ip6 blocklist bad_addrs { 2001:db8:dead:beef::1 }
 
 # View ipset
 ipset list ipv6-blocklist
