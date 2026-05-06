@@ -52,7 +52,7 @@ proxy -6 -p8080 -i::
 socks -6 -p1080 -i::
 
 # Or bind to specific IPv6 address
-# proxy -6 -p8080 -i2001:db8::proxy
+# proxy -6 -p8080 -i2001:db8::10
 ```
 
 ## Step 2: Authentication
@@ -78,11 +78,14 @@ proxy -6 -p8080 -i:: -a
 ```nginx
 # /etc/3proxy/3proxy.cfg
 
-# Chain through upstream SOCKS5 on IPv6
-parent 1000 socks5 2001:db8::upstream 1080 username password
+# Apply parent rule to allowed traffic
+allow *
 
-# Or chain HTTP CONNECT proxy
-parent 1000 http 2001:db8::squid 3128
+# Chain through upstream SOCKS5 on IPv6
+parent 1000 socks5 2001:db8::20 1080 username password
+
+# Or replace the parent line above with an HTTP CONNECT parent
+# parent 1000 connect 2001:db8::30 3128
 
 # proxy
 proxy -6 -p8080 -i::
@@ -94,14 +97,16 @@ proxy -6 -p8080 -i::
 # /etc/3proxy/3proxy.cfg
 
 # Define ACL for IPv6 clients
+auth iponly
+
 # Allow only from internal IPv6
-allow * * 2001:db8::/32
+allow * 2001:db8::/32
 
 # Deny everything else
 deny *
 
 # Listen on specific interface
-proxy -6 -p8080 -i2001:db8::proxy
+proxy -6 -p8080 -i2001:db8::10
 ```
 
 ## Step 5: Systemd Service
@@ -137,4 +142,4 @@ curl -6 --socks5 [::1]:1080 http://example.com/
 
 ## Conclusion
 
-3proxy listens on IPv6 by using the `-6` flag and `-i::` (all interfaces) or a specific address. Both HTTP and SOCKS5 proxies can listen on IPv6 in the same configuration file. Use upstream parent proxy chaining for multi-hop IPv6 proxy architectures. Monitor 3proxy availability with OneUptime's TCP connectivity checks on port 1080 and 8080.
+3proxy listens on IPv6 by binding an IPv6 address with `-i::` (all interfaces) or a specific address. The `-6` flag makes 3proxy resolve upstream destinations as IPv6-only. Both HTTP and SOCKS5 proxies can listen on IPv6 in the same configuration file. Use upstream parent proxy chaining for multi-hop IPv6 proxy architectures. Monitor 3proxy availability with OneUptime's TCP connectivity checks on port 1080 and 8080.
