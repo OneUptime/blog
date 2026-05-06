@@ -41,12 +41,10 @@ zone "example.com" {
     type master;
     file "/var/lib/bind/db.example.com";
 
-    # Allow dynamic updates from specific IPv6 subnet
-    # authenticated with the TSIG key
+    # Allow dynamic updates authenticated with the TSIG key.
+    # For finer-grained restrictions, prefer update-policy.
     allow-update {
         key "ddns-key.example.com";
-        # Or restrict by source address:
-        # 2001:db8:internal::/48;
     };
 
     # Notify secondaries on dynamic update
@@ -55,7 +53,7 @@ zone "example.com" {
 };
 
 # Dynamic IPv6 reverse zone
-zone "0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa" {
+zone "8.b.d.0.1.0.0.2.ip6.arpa" {
     type master;
     file "/var/lib/bind/db.2001.db8.rev";
     allow-update {
@@ -76,10 +74,10 @@ update add host1.example.com. 300 AAAA 2001:db8::42
 send
 EOF
 
-# Update PTR record simultaneously
+# Update the corresponding PTR record
 nsupdate -k /etc/bind/ddns-key.example.com << 'EOF'
 server 2001:db8::53
-zone 0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa
+zone 8.b.d.0.1.0.0.2.ip6.arpa
 update delete 2.4.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa. PTR
 update add 2.4.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa. 300 PTR host1.example.com.
 send
@@ -94,15 +92,21 @@ EOF
 # Run from NetworkManager dispatcher or systemd
 
 INTERFACE=${1:-eth0}
+ACTION=${2:-manual}
 HOSTNAME=$(hostname -f)
 ZONE="example.com"
 DNS_SERVER="2001:db8::53"
 TSIG_KEY="/etc/bind/ddns-key.example.com"
 TTL=300
 
-# Get current SLAAC global IPv6 address
-IPV6=$(ip -6 addr show dev $INTERFACE scope global \
-    | grep -v mngtmpaddr | grep -v temporary \
+# Only act on relevant NetworkManager events; manual runs skip this guard.
+case "$ACTION" in
+    up|dhcp6-change|manual) ;;
+    *) exit 0 ;;
+esac
+
+# Get current global, non-temporary IPv6 address
+IPV6=$(ip -6 addr show dev "$INTERFACE" scope global primary \
     | awk '/inet6/ {print $2}' | cut -d/ -f1 | head -1)
 
 if [[ -z "$IPV6" ]]; then
