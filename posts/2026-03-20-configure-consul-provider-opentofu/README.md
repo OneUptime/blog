@@ -8,17 +8,16 @@ Description: Learn how to configure and use the Consul provider in OpenTofu to m
 
 ## Introduction
 
-The Consul provider for OpenTofu enables managing Consul resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
+The Consul provider for OpenTofu enables managing Consul resources with the same plan/apply workflow as your cloud infrastructure. This guide covers provider configuration, authentication, and production best practices.
 
 ## Provider Installation
 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    consul = {
+      source  = "hashicorp/consul"
+      version = "~> 2.23"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,32 +26,28 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Consul provider can read connection settings and ACL tokens from Consul environment variables:
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export CONSUL_HTTP_ADDR="https://consul.example.com:8501"
+export CONSUL_HTTP_TOKEN="your-consul-acl-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "consul" {
+  datacenter = "dc1"
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+resource "consul_key_prefix" "main" {
+  path_prefix = "${var.name}/${var.environment}/"
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
+  subkeys = {
+    "service_url" = "https://api.internal.example"
+    "log_level"   = "info"
   }
 }
 ```
@@ -67,16 +62,16 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "resource_id" { value = consul_key_prefix.main.id }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- Store Consul ACL tokens in environment variables or a secrets manager, never in `.tf` files
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
-- Use separate provider configurations per environment using aliases or workspaces
+- Use separate provider configurations per datacenter or environment using aliases or workspaces
 
 ## Conclusion
 
-Managing Consul resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
+Managing Consul resources with OpenTofu brings the same consistency and auditability to service discovery and configuration data that you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
