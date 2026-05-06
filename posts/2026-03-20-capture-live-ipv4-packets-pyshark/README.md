@@ -8,7 +8,7 @@ Description: Learn how to capture live IPv4 network packets using PyShark, Pytho
 
 ## What Is PyShark?
 
-PyShark is a Python wrapper for TShark (the command-line Wireshark). It provides rich dissection of protocols using Wireshark's dissection engine, offering more protocol support than Scapy or dpkt.
+PyShark is a Python wrapper for TShark (the command-line Wireshark). It provides rich protocol dissection using Wireshark's dissection engine.
 
 ## Installation
 
@@ -29,8 +29,8 @@ brew install wireshark
 ```python
 import pyshark
 
-# Capture 20 packets on the default interface
-cap = pyshark.LiveCapture(interface="eth0", display_filter="ip")
+# Capture 20 IPv4 packets on a chosen interface
+cap = pyshark.LiveCapture(interface="your_capture_interface", display_filter="ip")
 
 print("Capturing packets... (press Ctrl+C to stop)")
 
@@ -51,8 +51,8 @@ import pyshark
 
 # Capture only TCP traffic on ports 80 and 443
 cap = pyshark.LiveCapture(
-    interface="eth0",
-    display_filter="tcp.port == 80 or tcp.port == 443"
+    interface="your_capture_interface",
+    display_filter="ip and (tcp.port == 80 or tcp.port == 443)"
 )
 
 for packet in cap.sniff_continuously(packet_count=30):
@@ -68,7 +68,7 @@ for packet in cap.sniff_continuously(packet_count=30):
 ```python
 import pyshark
 
-cap = pyshark.LiveCapture(interface="eth0", display_filter="ip")
+cap = pyshark.LiveCapture(interface="your_capture_interface", display_filter="ip")
 cap.sniff(packet_count=10)
 
 for packet in cap:
@@ -101,33 +101,33 @@ for packet in cap:
 import asyncio
 import pyshark
 
+async def print_packet(packet):
+    if hasattr(packet, "ip"):
+        print(f"{packet.ip.src} -> {packet.ip.dst}")
+
 async def capture_async():
-    cap = pyshark.LiveCapture(interface="eth0", display_filter="ip")
-
-    async for packet in cap.sniff_continuously():
-        if hasattr(packet, "ip"):
-            print(f"{packet.ip.src} -> {packet.ip.dst}")
-
-        # Stop after processing 50 packets
-        if int(packet.number) >= 50:
-            break
+    async with pyshark.LiveCapture(
+        interface="your_capture_interface",
+        display_filter="ip"
+    ) as cap:
+        await cap.packets_from_tshark(print_packet, packet_count=50)
 
 asyncio.run(capture_async())
 ```
 
-## Capturing to a PCAP File
+## Capturing to a PCAPNG File
 
 ```python
 import pyshark
 
 # Capture and save to file simultaneously
 cap = pyshark.LiveCapture(
-    interface="eth0",
-    display_filter="ip",
-    output_file="/tmp/capture.pcap"
+    interface="your_capture_interface",
+    bpf_filter="ip",
+    output_file="/tmp/capture.pcapng"
 )
 cap.sniff(packet_count=100, timeout=30)
-print(f"Saved {len(cap)} packets to /tmp/capture.pcap")
+print(f"Saved {len(cap)} packets to /tmp/capture.pcapng")
 ```
 
 ## PyShark vs Scapy vs dpkt
@@ -135,9 +135,9 @@ print(f"Saved {len(cap)} packets to /tmp/capture.pcap")
 | Feature | PyShark | Scapy | dpkt |
 |---------|---------|-------|------|
 | Protocol dissection | Excellent (Wireshark) | Good | Basic |
-| Packet crafting | No | Yes | Limited |
+| Packet crafting | No | Yes | Basic/manual |
 | Speed | Slower (subprocess) | Medium | Fast |
-| Protocol coverage | Widest | Wide | Narrow |
+| Protocol coverage | Very broad | Wide | Basic TCP/IP |
 
 ## Conclusion
 
