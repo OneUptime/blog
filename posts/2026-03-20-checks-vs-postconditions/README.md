@@ -8,13 +8,13 @@ Description: Learn the difference between OpenTofu check blocks and postconditio
 
 ---
 
-OpenTofu provides two mechanisms for validating infrastructure state: `postcondition` blocks inside resource `lifecycle` and standalone `check` blocks. They serve different purposes and run at different points in the workflow.
+OpenTofu provides two mechanisms for validating infrastructure state: `postcondition` blocks inside `lifecycle` blocks and standalone `check` blocks. They serve different purposes and run at different points in the workflow.
 
 ---
 
 ## Postconditions
 
-`postcondition` blocks validate resource attributes after a resource is created or updated. If the condition fails, the entire apply is aborted.
+`postcondition` blocks validate resources or data sources after OpenTofu evaluates them. If the condition fails, OpenTofu raises an error and blocks the operation.
 
 ```hcl
 resource "aws_lb" "main" {
@@ -32,9 +32,9 @@ resource "aws_lb" "main" {
 ```
 
 Key characteristics:
-- Runs during `apply`, after the resource is created/updated
-- Failure aborts the apply with an error
-- Has access to `self` (the resource's own attributes)
+- Runs after the object is evaluated; if values are unknown during `plan`, the check is deferred to `apply`
+- Failure raises an error and blocks the operation
+- Has access to `self` (the object's own attributes)
 - Suitable for validating that cloud-assigned values meet requirements
 
 ---
@@ -69,10 +69,10 @@ Key characteristics:
 | Feature              | `postcondition`           | `check` block              |
 |----------------------|---------------------------|----------------------------|
 | Placement            | Inside `lifecycle`        | Top-level block             |
-| Runs during          | Apply (after create/update)| Plan and apply             |
-| On failure           | Aborts apply              | Warns, continues apply      |
+| Runs during          | Plan or apply, after evaluation | Plan and apply        |
+| On failure           | Errors and blocks the operation | Warns, continues apply |
 | Access to `self`     | Yes                       | No                          |
-| Can use data sources | No                        | Yes                         |
+| Can use data sources | Yes                       | Yes                         |
 | Use case             | Hard resource requirements | Soft health/compliance checks|
 
 ---
@@ -86,10 +86,10 @@ Use `postcondition` when:
 Use `check` blocks when:
 - You want visibility into external health without blocking deploys
 - Implementing compliance assertions that should warn but not break CI/CD
-- Running `tofu plan` in continuous validation mode
+- Using continuous validation in TACOS or a cloud backend
 
 ---
 
 ## Summary
 
-`postcondition` is a hard gate inside a resource's `lifecycle` that aborts apply on failure. `check` blocks are soft assertions that run at plan/apply time and warn without aborting. Use postconditions to enforce hard requirements on resource attributes, and check blocks for ongoing health and compliance monitoring.
+`postcondition` is a hard validation inside `lifecycle` that raises an error when a resource or data source does not meet expectations. `check` blocks are soft assertions that run at plan/apply time and warn without aborting. Use postconditions to enforce hard guarantees on specific resources or data sources, and check blocks for ongoing health and compliance monitoring.
