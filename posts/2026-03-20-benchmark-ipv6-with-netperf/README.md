@@ -14,32 +14,32 @@ netperf is a network benchmarking tool developed by HP that complements iperf3. 
 
 ```bash
 # Install netperf
+# Package availability varies by distro release; upstream also ships source tarballs.
 
 sudo apt-get install netperf   # Debian/Ubuntu
-sudo yum install netperf       # RHEL/CentOS
+sudo dnf install netperf       # RHEL/CentOS with EPEL enabled
 
-# Start the netserver on the remote host
+# Start netserver on the remote host, listening on IPv6
 netserver -6 -p 12865
 ```
 
 ## Step 1: TCP Stream Throughput (IPv6)
 
 ```bash
-# Basic TCP bulk throughput test - IPv6
-# -H specifies host with address family
+# Basic TCP bulk throughput test over IPv6
 netperf -6 -H 2001:db8::1 -t TCP_STREAM -l 30
 
 # With explicit port and test duration
+# -H sets the remote host; ",6" explicitly requests AF_INET6
 netperf -6 \
-  -H 2001:db8::1,6 \  # ,6 = AF_INET6
+  -H 2001:db8::1,6 \
   -p 12865 \
   -t TCP_STREAM \
-  -l 30 \             # 30 seconds
+  -l 30 \
   -- \
-  -m 16384            # 16KB send message size
+  -m 16384
 
-# Output:
-# MIGRATED TCP STREAM TEST from 0.0.0.0 (0.0.0.0) to 2001:db8::1 () ...
+# Example output:
 # Recv   Send    Send
 # Socket Socket  Message  Elapsed
 # Size   Size    Size     Time    Throughput
@@ -49,7 +49,7 @@ netperf -6 \
 
 ## Step 2: TCP Request/Response (Transaction Rate)
 
-This test measures how many short request-response cycles per second the network supports - crucial for microservices.
+This test measures how many short request-response cycles per second the network supports - a useful proxy for small synchronous service calls.
 
 ```bash
 # TCP_RR - request/response test (measures transaction rate)
@@ -58,9 +58,13 @@ netperf -6 -H 2001:db8::1 -t TCP_RR -l 30 \
   -r 64,64    # 64-byte request, 64-byte response
 
 # Output shows transactions/second:
-# Trans. Rate   Latency
-# Trans/sec     usec/trans
-# 85234.12      11.73
+# Socket Size   Request  Resp.   Elapsed  Trans.
+# Send   Recv   Size     Size    Time     Rate
+# bytes  Bytes  bytes    bytes   secs.    per sec
+# 16384  87380  64       64      30.00    85234.12
+#
+# Approximate average round-trip latency:
+# 1000000 / 85234.12 ~= 11.73 usec/transaction
 
 # Variable request sizes
 netperf -6 -H 2001:db8::1 -t TCP_RR -l 30 \
@@ -71,7 +75,7 @@ netperf -6 -H 2001:db8::1 -t TCP_RR -l 30 \
 
 ```bash
 # TCP_CRR - each transaction uses a new connection
-# Measures the overhead of connection setup + request
+# Measures the overhead of connection setup + one request/response exchange
 netperf -6 -H 2001:db8::1 -t TCP_CRR -l 30 \
   -- -r 64,64
 
@@ -86,11 +90,12 @@ netperf -6 -H 2001:db8::1 -t TCP_CRR -l 15 -- -r 64,64
 ## Step 4: UDP Unidirectional Throughput
 
 ```bash
-# UDP_STREAM - measure maximum UDP throughput
+# UDP_STREAM - measure UDP send/receive throughput
 netperf -6 -H 2001:db8::1 -t UDP_STREAM -l 30 \
   -- -m 1400    # 1400-byte datagrams
 
-# UDP_RR - UDP request/response (measures round-trip)
+# UDP_RR - UDP request/response transaction rate
+# Approximate RTT with: 1000000 / Trans/sec
 netperf -6 -H 2001:db8::1 -t UDP_RR -l 30 \
   -- -r 160,160  # VoIP-sized packets
 ```
@@ -105,32 +110,30 @@ SERVER="2001:db8::1"
 DURATION=30
 
 echo "=== IPv6 netperf Benchmark Suite ==="
-printf "%-30s %15s %15s\n" "Test" "Throughput" "Latency"
-printf "%-30s %15s %15s\n" "----" "----------" "-------"
+printf "%-30s %15s %15s\n" "Test" "Metric" "Approx RTT"
+printf "%-30s %15s %15s\n" "----" "------" "----------"
 
 # TCP Stream
-RESULT=$(netperf -6 -H "$SERVER" -t TCP_STREAM -l $DURATION 2>/dev/null | tail -1)
-THROUGHPUT=$(echo "$RESULT" | awk '{print $NF}')
+THROUGHPUT=$(netperf -6 -H "$SERVER" -P 0 -v 0 -t TCP_STREAM -l "$DURATION" 2>/dev/null)
 printf "%-30s %12s Mbps %15s\n" "TCP Stream" "$THROUGHPUT" "N/A"
 
 # TCP RR
-RESULT=$(netperf -6 -H "$SERVER" -t TCP_RR -l $DURATION -- -r 64,64 2>/dev/null | tail -1)
-TPS=$(echo "$RESULT" | awk '{print $1}')
-LAT=$(echo "$RESULT" | awk '{print $2}')
+TPS=$(netperf -6 -H "$SERVER" -P 0 -v 0 -t TCP_RR -l "$DURATION" -- -r 64,64 2>/dev/null)
+LAT=$(awk -v tps="$TPS" 'BEGIN { if (tps > 0) printf "%.2f", 1000000 / tps; else print "N/A" }')
 printf "%-30s %11s TPS %12s usec\n" "TCP RR (64B)" "$TPS" "$LAT"
 
 # TCP CRR
-RESULT=$(netperf -6 -H "$SERVER" -t TCP_CRR -l $DURATION -- -r 64,64 2>/dev/null | tail -1)
-TPS=$(echo "$RESULT" | awk '{print $1}')
-LAT=$(echo "$RESULT" | awk '{print $2}')
+TPS=$(netperf -6 -H "$SERVER" -P 0 -v 0 -t TCP_CRR -l "$DURATION" -- -r 64,64 2>/dev/null)
+LAT=$(awk -v tps="$TPS" 'BEGIN { if (tps > 0) printf "%.2f", 1000000 / tps; else print "N/A" }')
 printf "%-30s %11s TPS %12s usec\n" "TCP CRR (64B)" "$TPS" "$LAT"
 
 # UDP Stream
-RESULT=$(netperf -6 -H "$SERVER" -t UDP_STREAM -l $DURATION -- -m 1400 2>/dev/null | tail -1)
+# UDP_STREAM prints sender and receiver lines; use the final line for receiver throughput.
+RESULT=$(netperf -6 -H "$SERVER" -t UDP_STREAM -l "$DURATION" -- -m 1400 2>/dev/null | tail -1)
 THROUGHPUT=$(echo "$RESULT" | awk '{print $NF}')
-printf "%-30s %12s Mbps %15s\n" "UDP Stream (1400B)" "$THROUGHPUT" "N/A"
+printf "%-30s %12s Mbps %15s\n" "UDP Stream (1400B recv)" "$THROUGHPUT" "N/A"
 ```
 
 ## Conclusion
 
-netperf's request/response tests provide insight into IPv6 latency characteristics that pure throughput tests miss. TCP_RR transaction rates directly correlate with microservice call performance. Use these baselines alongside OneUptime's synthetic monitoring to establish and maintain IPv6 performance SLOs.
+netperf's request/response tests provide insight into IPv6 latency characteristics that pure throughput tests miss. TCP_RR transaction rates provide a useful proxy for small synchronous microservice call performance, and you can approximate average round-trip latency by inverting the transaction rate. Use these baselines alongside OneUptime's synthetic monitoring to establish and maintain IPv6 performance SLOs.
