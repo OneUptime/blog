@@ -8,7 +8,7 @@ Description: Deploy code-server to run VS Code in your browser from anywhere usi
 
 ## Introduction
 
-code-server is VS Code running on a remote server, accessible through a web browser. It means you can code from any device - a tablet, Chromebook, or thin client - with a full VS Code experience. This guide covers deploying a secure, persistent code-server instance using Portainer.
+code-server is VS Code running on a remote server, accessible through a web browser. It means you can code from any device - a tablet, Chromebook, or thin client - with a browser-based VS Code environment. This guide covers deploying a secure, persistent code-server instance using Portainer.
 
 ## Prerequisites
 
@@ -27,6 +27,9 @@ version: "3.8"
 networks:
   dev_network:
     driver: bridge
+  # Shared network that your reverse proxy is also attached to
+  proxy:
+    external: true
 
 volumes:
   codeserver_config:
@@ -45,13 +48,14 @@ services:
       - TZ=America/New_York
       # Password for the IDE (or use HASHED_PASSWORD)
       - PASSWORD=your_secure_password
-      # Or use hashed password: echo -n "password" | npx argon2-cli -e
+      # Or use a hashed password: echo -n "password" | npx argon2-cli -e
+      # In Compose/Portainer stacks, escape each $ as $$ in HASHED_PASSWORD
       # - HASHED_PASSWORD=
       # Sudo password for installing packages
       - SUDO_PASSWORD=sudo_password
       # Default workspace
       - DEFAULT_WORKSPACE=/workspace
-      # Proxy domain for CSP headers
+      # Proxy domain for code-server subdomain proxying
       - PROXY_DOMAIN=code.yourdomain.com
     volumes:
       # code-server configuration (extensions, settings)
@@ -62,8 +66,10 @@ services:
       - /opt/projects:/workspace/projects
     networks:
       - dev_network
+      - proxy
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
       - "traefik.http.routers.code-server.rule=Host(`code.yourdomain.com`)"
       - "traefik.http.routers.code-server.entrypoints=websecure"
       - "traefik.http.routers.code-server.tls.certresolver=letsencrypt"
@@ -72,7 +78,7 @@ services:
 
 ## Step 2: Custom code-server with Development Tools
 
-Build a custom image with your preferred development tools:
+Build a custom image with your preferred development tools. In Portainer, build the image first under **Images** or outside Portainer, then reference that image from your stack:
 
 ```dockerfile
 # Dockerfile - code-server with dev tools
@@ -91,8 +97,6 @@ RUN apt-get update && apt-get install -y \
     # Programming languages
     python3 \
     python3-pip \
-    nodejs \
-    npm \
     golang \
     # Container tools
     docker.io \
@@ -103,7 +107,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     jq \
-    netcat \
+    netcat-openbsd \
     # Editor utilities
     vim \
     tmux \
@@ -116,7 +120,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs
 
 # Install Python packages
-RUN pip3 install \
+RUN pip3 install --break-system-packages \
     black \
     pylint \
     mypy \
@@ -141,6 +145,7 @@ ENV PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
 USER abc
 RUN code-server \
     --install-extension ms-python.python \
+    --install-extension ms-python.black-formatter \
     --install-extension golang.go \
     --install-extension ms-azuretools.vscode-docker \
     --install-extension dbaeumer.vscode-eslint \
@@ -153,9 +158,6 @@ RUN code-server \
 # Updated docker-compose to use custom image
 services:
   code-server:
-    build:
-      context: /opt/code-server
-      dockerfile: Dockerfile
     image: my-code-server:latest
     container_name: code-server
     # ... rest of config
@@ -163,7 +165,7 @@ services:
 
 ## Step 3: Configure VS Code Settings
 
-```json
+```jsonc
 // Default user settings (place in /config/data/User/settings.json)
 {
   "editor.fontSize": 14,
@@ -175,7 +177,6 @@ services:
   "files.autoSaveDelay": 1000,
   "git.autofetch": true,
   "git.confirmSync": false,
-  "python.defaultInterpreterPath": "/usr/bin/python3",
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter"
   },
@@ -183,7 +184,7 @@ services:
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "workbench.colorTheme": "Default Dark Modern",
-  "workbench.iconTheme": "material-icon-theme"
+  "workbench.iconTheme": "vs-seti"
 }
 ```
 
@@ -216,7 +217,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Install docker CLI in the container
     group_add:
-      - "999"  # docker group GID
+      - "999"  # Replace 999 with your host docker group GID
 ```
 
 ## Step 6: Configure Multiple Users
@@ -249,13 +250,20 @@ services:
       - PASSWORD=user2_password
 ```
 
-## Step 7: Enable Workspace Sharing via Gitpod Protocol
+## Step 7: Open a Workspace via URL
 
-```bash
-# In code-server, open a workspace from git
-# URL format: https://code.yourdomain.com/#https://github.com/user/repo
+Use code-server's query parameters to open a folder or `.code-workspace` file directly:
 
-# Enable gitpod-compatible workspace URLs in settings.json
+```text
+# Open a folder
+https://code.yourdomain.com/?folder=/workspace/projects
+
+# Open a .code-workspace file
+https://code.yourdomain.com/?workspace=/workspace/projects/your-project.code-workspace
+```
+
+```jsonc
+// Optional settings.json additions
 {
   "workbench.startupEditor": "readme",
   "git.openRepositoryInParentFolders": "always"
@@ -275,4 +283,4 @@ labels:
 
 ## Conclusion
 
-You now have a full VS Code development environment accessible from any browser, deployed through Portainer. code-server is ideal for coding on devices you don't own, working from tablets, or standardizing your development environment across a team. Use Portainer to manage updates, monitor resource usage, and restart the container if needed. The persistent volumes ensure your settings, extensions, and code survive container restarts.
+You now have a browser-based VS Code development environment accessible from any browser, deployed through Portainer. code-server is ideal for coding on devices you don't own, working from tablets, or standardizing your development environment across a team. Use Portainer to manage updates, monitor resource usage, and restart the container if needed. The persistent volumes ensure your settings, extensions, and code survive container restarts.
