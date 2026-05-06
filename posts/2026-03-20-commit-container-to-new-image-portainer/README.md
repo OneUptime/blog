@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Image Management, Container Commit, DevOps, Container
 
-Description: Use docker commit via Portainer's console to snapshot a running container's state into a new Docker image for debugging, migration, or creating a reproducible base image.
+Description: Use Portainer's option to create an image from a deployed container or docker commit on the Docker host to snapshot a container's writable layer into a new Docker image for debugging, migration, or creating a reusable base image.
 
 ---
 
-`docker commit` creates a new image from a container's current state, including any files modified since the container started. This is useful for capturing a working configuration, creating a debug snapshot, or migrating a configured container to a new host.
+`docker commit` creates a new image from a container's current writable layer, including filesystem changes since the container was created. It does not include data stored in mounted volumes. This is useful for capturing a working configuration, creating a debug snapshot, or migrating a configured container's writable-layer changes to a new host.
 
 ## When to Use docker commit
 
@@ -23,10 +23,10 @@ Description: Use docker commit via Portainer's console to snapshot a running con
 
 ## Committing a Container via Portainer
 
-Use Portainer's container console or exec feature to run the commit:
+In Portainer, open the container's details page and use the option to create an image from the container. If you want the equivalent CLI, run it from a shell on the Docker host that Portainer manages, not inside the container console:
 
 ```bash
-# From the Portainer host shell, or via Portainer's container exec
+# Run this on the Docker host connected to Portainer
 
 docker commit \
   --author "engineer@example.com" \
@@ -37,6 +37,8 @@ docker commit \
 # The new image will appear in your local Docker images
 docker images myregistry/nginx-custom
 ```
+
+Portainer's container console runs inside the container, so it will not normally have access to the host Docker CLI needed for `docker commit`.
 
 ## Capturing Container State with Metadata
 
@@ -59,10 +61,13 @@ docker commit \
 After committing, push to your registry so it's available on other hosts:
 
 ```bash
+# If your registry requires authentication
+docker login your-registry.example.com
+
 # Tag for your registry
 docker tag myregistry/nginx-custom:v1.0.0 your-registry.example.com/nginx-custom:v1.0.0
 
-# Push to registry (Portainer's console)
+# Push from the Docker host shell
 docker push your-registry.example.com/nginx-custom:v1.0.0
 ```
 
@@ -70,14 +75,15 @@ You can then deploy this image via Portainer on any environment.
 
 ## Diff Check Before Committing
 
-Before committing, review what changes will be captured:
+Before committing, review the writable-layer filesystem changes that will be captured:
 
 ```bash
-# See all filesystem changes that will be included in the commit
+# See writable-layer filesystem changes since the container was created
 docker diff container_name
 
 # A = Added, C = Changed, D = Deleted
 # Review for any sensitive files (logs, temp credentials, etc.)
+# Mounted volume data is not shown here and is not included in the commit
 ```
 
 ## The Right Way: Convert Committed Changes to a Dockerfile
@@ -99,4 +105,4 @@ Build and push this Dockerfile version as your canonical production image. The c
 
 ## Summary
 
-`docker commit` is a useful tool for capturing container state in emergency situations or during initial exploration. For production use, always convert committed changes into a proper Dockerfile. Use Portainer's image browser to view committed images and its registry integration to push them to your private registry.
+`docker commit` is a useful tool for capturing container writable-layer changes in emergency situations or during initial exploration, but it does not include mounted volume data. For production use, always convert committed changes into a proper Dockerfile. Use Portainer's image browser to view committed images and its registry integration to push them to your private registry.
