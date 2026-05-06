@@ -12,7 +12,7 @@ Description: Learn how to extract the real client IPv4 address when your applica
 Client (1.2.3.4) → Nginx (10.0.0.1) → App Server
 ```
 
-Without configuration the app sees `10.0.0.1` (the proxy) as `REMOTE_ADDR`. The real client IP is forwarded in `X-Forwarded-For`.
+Without configuration the app sees `10.0.0.1` (the proxy) as `REMOTE_ADDR`. To preserve the real client IP, the proxy forwards it in `X-Forwarded-For`.
 
 ## Nginx: Setting Headers Correctly
 
@@ -47,8 +47,8 @@ from flask import Flask, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
-# x_for=1: trust one proxy hop in XFF chain
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+# x_for=1 / x_proto=1: trust one proxy hop for these headers
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 @app.route("/whoami")
 def whoami():
@@ -65,7 +65,7 @@ def whoami():
 const express = require("express");
 const app = express();
 
-// trust proxy = 1: unwrap one level of XFF
+// trust proxy = 1: trust one reverse-proxy hop
 app.set("trust proxy", 1);
 
 app.get("/whoami", (req, res) => {
@@ -107,23 +107,24 @@ def extract_real_ip(xff: str | None, remote_addr: str, hops: int = 1) -> str:
 ## RFC 7239 Forwarded Header
 
 ```nginx
-# Modern alternative to X-Forwarded-For
+# Simple single-hop RFC 7239 example
 proxy_set_header Forwarded "for=$remote_addr;proto=$scheme;host=$host";
 ```
 
 ```python
-# Parse RFC 7239 Forwarded header
-def parse_forwarded(header: str) -> dict:
+# Parse a single RFC 7239 Forwarded element
+def parse_forwarded_element(header: str) -> dict:
     result = {}
     for part in header.split(";"):
         k, _, v = part.strip().partition("=")
-        result[k.lower()] = v.strip('"')
+        if k:
+            result[k.lower()] = v.strip('"')
     return result
 
-fwd = parse_forwarded('for=1.2.3.4;proto=https;host=example.com')
+fwd = parse_forwarded_element('for=1.2.3.4;proto=https;host=example.com')
 print(fwd["for"])  # 1.2.3.4
 ```
 
 ## Conclusion
 
-Always configure Nginx to forward `X-Forwarded-For` and `X-Real-IP`, and configure your application to trust exactly the right number of proxy hops - no more, no less. Trusting too many hops lets attackers spoof their IP by injecting fake XFF values. Libraries like `ProxyFix` (Python/werkzeug) and `trust proxy` (Express) implement the correct stripping logic. For new deployments, consider the RFC 7239 `Forwarded` header as a standardized alternative.
+Always configure Nginx to forward `X-Forwarded-For` and `X-Real-IP`, and configure your application to trust exactly the right number of proxy hops - no more, no less. Trusting too many hops lets attackers spoof their IP by injecting fake XFF values. Libraries like `ProxyFix` (Python/werkzeug) and `trust proxy` (Express) implement the correct stripping logic. For new deployments, consider the RFC 7239 `Forwarded` header as a standardized alternative, but remember that its syntax and multi-hop parsing rules are stricter than `X-Forwarded-For`.
