@@ -16,7 +16,7 @@ On Android, this is built into the OS. On Linux, you can configure it manually o
 
 - IPv6-only network connectivity (device has IPv6 address, no IPv4)
 - A PLAT (NAT64/PLAT) in your network using prefix `64:ff9b::/96` or similar
-- Linux with `ip6tables`, `iproute2`, and optionally `clatd`
+- Linux with `iproute2` and either `clatd` or Jool SIIT
 
 ## Method 1: Using clatd (Recommended)
 
@@ -29,8 +29,7 @@ apt install clatd
 
 # Or install from source
 git clone https://github.com/toreanderson/clatd
-cd clatd
-make install
+make -C clatd install installdeps
 ```
 
 Configure `clatd` in `/etc/clatd.conf`:
@@ -38,20 +37,24 @@ Configure `clatd` in `/etc/clatd.conf`:
 ```ini
 # /etc/clatd.conf
 
-# The network interface with IPv6 connectivity (your IPv6-only uplink)
+# The CLAT interface name (defaults to clat)
 clat-dev=clat
 
+# Optional: override the PLAT-facing uplink if auto-detection is not correct
+# plat-dev=eth0
+
 # IPv4 address to assign to the CLAT interface
-# RFC 7335 recommends 192.0.0.2/29 for CLAT
-ipv4-addr=192.0.0.2
+# RFC 7335 reserves 192.0.0.0/29 for IPv4 service continuity;
+# clatd defaults to 192.0.0.1 on the CLAT device
+clat-v4-addr=192.0.0.1
 
 # The PLAT NAT64 prefix (auto-discovered via RFC 7050 by default)
 # Uncomment to override automatic discovery:
 # plat-prefix=64:ff9b::/96
 
-# The IPv6 source address to use for translated packets
-# Usually auto-configured from the uplink IPv6 address
-# v6-addr=auto
+# The IPv6 address mode for translated packets
+# 'shared' reuses the host's IPv6 address; 'derived' creates a dedicated one
+# clat-v6-addr=shared
 ```
 
 ```bash
@@ -61,50 +64,47 @@ systemctl start clatd
 
 # Verify CLAT interface is created
 ip addr show clat
-# Expected: 192.0.0.2/29
+# Expected: 192.0.0.1/32
 
 # Test IPv4 connectivity through CLAT
 ping -4 8.8.8.8
 ```
 
-## Method 2: Manual CLAT Configuration with TUN and Jool SIIT
+## Method 2: Manual CLAT Configuration with Jool SIIT
 
-For manual configuration, use Jool in SIIT mode (stateless translation):
+For manual configuration, use Jool in SIIT mode (stateless translation). If the CLAT runs on the same Linux host as the application, Jool's documented host-local design uses a separate network namespace and veth pair; the Jool-specific CLAT configuration is:
 
 ```bash
 # Load Jool SIIT kernel module
 modprobe jool_siit
 
-# Create a Jool SIIT instance for CLAT
-jool_siit instance add --netfilter
+# Enable forwarding if the CLAT is running on a router/CPE
+sysctl -w net.ipv4.conf.all.forwarding=1
+sysctl -w net.ipv6.conf.all.forwarding=1
+
+# Create a Jool SIIT instance for CLAT and set the PLAT prefix
+jool_siit instance add --netfilter --pool6 64:ff9b::/96
 
 # Configure the EAMT (Explicit Address Mapping Table)
-# Map local IPv4 address 192.0.0.2 to device's IPv6 address
-# Replace 2001:db8::device with your actual IPv6 address
-jool_siit eamt add 192.0.0.2/32 2001:db8::device/128
-
-# Set pool6 to the PLAT prefix
-jool_siit pool6 add 64:ff9b::/96
-
-# Configure iptables to intercept IPv4 packets for CLAT
-iptables -t mangle -A OUTPUT -s 192.0.0.2 -j JOOL_SIIT --instance default
-ip6tables -t mangle -A PREROUTING -d 2001:db8::device -j JOOL_SIIT --instance default
+# Map the client-side IPv4 address to the CLAT-side IPv6 address
+# Replace 192.0.0.1 and 2001:db8::1 with the actual addresses in your deployment
+jool_siit eamt add 192.0.0.1 2001:db8::1
 ```
 
 ## Configuring the CLAT Interface Routing
 
-After the CLAT interface is up, ensure IPv4 traffic routes through it:
+After the CLAT interface is up, `clatd` normally installs the IPv4 default route automatically. If you disable that behavior with `v4-defaultroute-enable=no`, add it manually:
 
 ```bash
 # Verify CLAT interface is up with IPv4 address
 ip addr show clat
 
 # Add default IPv4 route through CLAT interface
-# This makes all IPv4 traffic go through the CLAT translator
-ip route add default dev clat
+# This makes IPv4 traffic go through the CLAT translator
+ip route add default dev clat metric 2048
 
-# For more specific routing, route only specific IPv4 subnets through CLAT
-ip route add 0.0.0.0/0 dev clat metric 100
+# Verify the route is present
+ip route show default
 ```
 
 ## Automatic PLAT Prefix Discovery
@@ -116,8 +116,8 @@ The CLAT discovers the PLAT's NAT64 prefix automatically using RFC 7050. This in
 dig AAAA ipv4only.arpa @<dns64-resolver>
 
 # Example output when DNS64 synthesizes the record:
-# ipv4only.arpa. 60 IN AAAA 64:ff9b::c000:0001
-# (192.0.0.1 embedded in prefix 64:ff9b::/96)
+# ipv4only.arpa. 60 IN AAAA 64:ff9b::c000:00aa
+# (192.0.0.170 embedded in prefix 64:ff9b::/96)
 
 # clatd does this automatically during startup
 # Check discovered prefix in clatd logs
@@ -134,7 +134,7 @@ ip addr show clat
 ping -4 -c 5 8.8.8.8
 
 # 3. Capture to see CLAT translating IPv4 to IPv6
-tcpdump -i eth0 -n 'proto 41 or ip6' &
+tcpdump -i eth0 -n ip6 &
 ping -4 -c 3 8.8.8.8
 fg  # and Ctrl+C
 
@@ -146,15 +146,15 @@ ip addr show eth0 | grep 'inet '
 
 ```bash
 # Test that IPv4-literal connections work through CLAT
-curl -4 http://93.184.216.34/
+curl -4 -I http://1.1.1.1/
 
 # Test hostname-based connections
-curl http://example.com
+curl -I http://example.com
 
-# Test an IPv4-only application
-wget -4 http://8.8.8.8/
+# Test another client over IPv4
+wget -4 --spider http://1.1.1.1/
 ```
 
 ## Summary
 
-CLAT is the device-side component of 464XLAT that creates a local IPv4 interface backed by IPv6 translation. The easiest way to deploy it on Linux is with `clatd`, which handles PLAT prefix discovery automatically. CLAT makes all IPv4 applications work transparently on IPv6-only networks by translating their traffic to IPv6 before it leaves the device.
+CLAT is the device-side component of 464XLAT that creates a local IPv4 interface backed by IPv6 translation. The easiest way to deploy it on Linux is with `clatd`, which handles PLAT prefix discovery automatically. CLAT lets many IPv4 applications, including ones that expect an IPv4 socket API, keep working on IPv6-only networks by translating their traffic to IPv6 before it leaves the device.
