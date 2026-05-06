@@ -8,7 +8,7 @@ Description: Learn how to configure Calico's BGP capabilities in Kubernetes to a
 
 ---
 
-Calico uses BGP to distribute routing information across Kubernetes nodes and optionally peers with external routers. This eliminates the need for overlay networks (VXLAN/IPIP), giving pods routable IPv4 addresses on your physical network.
+Calico uses BGP to distribute routing information across Kubernetes nodes and optionally peers with external routers. This eliminates the need for overlay networks (VXLAN/IPIP), allowing pod IPv4 addresses to be routed on your physical network when upstream routers learn the pod CIDRs over BGP.
 
 ## Calico BGP Architecture
 
@@ -16,8 +16,8 @@ Calico uses BGP to distribute routing information across Kubernetes nodes and op
 graph TD
     R[Physical Router\n10.0.0.1/ASN 65000] -->|BGP Peer| N1[Node 1\n10.0.0.10]
     R -->|BGP Peer| N2[Node 2\n10.0.0.11]
-    N1 --- P1[Pod 192.168.1.0/24]
-    N2 --- P2[Pod 192.168.2.0/24]
+    N1 --- P1[Pod block\n192.168.0.0/26]
+    N2 --- P2[Pod block\n192.168.0.64/26]
 ```
 
 ## Installing Calico
@@ -40,7 +40,7 @@ spec:
     - blockSize: 26
       cidr: 192.168.0.0/16    # Pod IPv4 CIDR
       encapsulation: None     # No VXLAN/IPIP; use native BGP routing
-      natOutgoing: Enabled
+      natOutgoing: Disabled   # Preserve pod source IPs on the routed network
 EOF
 ```
 
@@ -74,7 +74,7 @@ metadata:
   name: node1-router-peer
 spec:
   # Apply only to the specific node
-  nodeSelector: kubernetes.io/hostname == 'node1'
+  nodeSelector: "kubernetes.io/hostname == 'node1'"
   peerIP: 10.0.0.1
   asNumber: 65000
 ```
@@ -93,11 +93,11 @@ spec:
 
   # Advertise service ClusterIPs to the upstream router
   serviceClusterIPs:
-    - cidr: 10.96.0.0/12    # Kubernetes service CIDR
+    - cidr: 10.96.0.0/12    # Replace with your cluster's service CIDR
 
   # Advertise external IPs
   serviceExternalIPs:
-    - cidr: 203.0.113.0/24
+    - cidr: 203.0.113.0/24  # Replace with the ExternalIP range you want advertised
 ```
 
 ```bash
@@ -107,7 +107,7 @@ kubectl apply -f bgp-config.yaml
 ## Checking BGP Session Status
 
 ```bash
-# Check BGP peer status (run on a node or via calicoctl)
+# Check BGP peer status directly on a Kubernetes node running calico/node
 calicoctl node status
 
 # Expected output:
@@ -122,7 +122,7 @@ calicoctl node status
 
 ## Key Takeaways
 
-- `encapsulation: None` in the IP pool disables overlay networking, requiring BGP routes on the physical fabric.
+- `encapsulation: None` disables overlay networking, and `natOutgoing: Disabled` preserves pod source IPs when your physical fabric routes the pod CIDRs.
 - A `BGPPeer` resource defines the upstream router to peer with; use `nodeSelector` for per-node peering.
 - `serviceClusterIPs` in `BGPConfiguration` advertises Kubernetes service IPs externally via BGP.
 - Use `calicoctl node status` to verify BGP sessions are `Established`.
