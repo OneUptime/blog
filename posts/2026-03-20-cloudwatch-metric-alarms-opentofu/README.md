@@ -14,7 +14,7 @@ CloudWatch Metric Alarms watch a single metric or a math expression based on met
 
 - OpenTofu v1.6+
 - An SNS topic for notifications
-- AWS credentials with CloudWatch permissions
+- AWS credentials with CloudWatch and SNS permissions
 
 ## Step 1: Create SNS Topic for Alarm Notifications
 
@@ -34,7 +34,9 @@ resource "aws_sns_topic_subscription" "email" {
 }
 ```
 
-## Step 2: Create Lambda Error Rate Alarm
+After `tofu apply`, confirm the subscription from the verification email before CloudWatch notifications can be delivered.
+
+## Step 2: Create Lambda Error Count Alarm
 
 ```hcl
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
@@ -51,7 +53,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
     FunctionName = var.lambda_function_name
   }
 
-  alarm_description = "Lambda function error rate is elevated"
+  alarm_description = "Lambda function error count is elevated"
   alarm_actions     = [aws_sns_topic.alarms.arn]
   ok_actions        = [aws_sns_topic.alarms.arn]
 
@@ -101,7 +103,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_rate" {
 
   metric_query {
     id          = "error_rate"
-    expression  = "(errors / MAX([errors, invocations])) * 100"
+    expression  = "(errors / invocations) * 100"
     label       = "Error Rate %"
     return_data = true
   }
@@ -132,7 +134,9 @@ resource "aws_cloudwatch_metric_alarm" "lambda_error_rate" {
     }
   }
 
+  alarm_description  = "Lambda function error rate exceeded 5%"
   alarm_actions = [aws_sns_topic.alarms.arn]
+  treat_missing_data = "notBreaching"  # Missing data = OK when the function is idle
 }
 ```
 
@@ -173,4 +177,4 @@ aws cloudwatch set-alarm-state \
 
 ## Conclusion
 
-CloudWatch alarms are the foundation of AWS monitoring. Set `treat_missing_data` appropriately: use `notBreaching` for metrics that naturally have no data during quiet periods (like Lambda when not invoked), and `breaching` for metrics that should always be reporting (like EC2 CPU). Metric math alarms enable alerting on derived metrics like error rates rather than raw counts, reducing false positives during low-traffic periods.
+CloudWatch alarms are the foundation of AWS monitoring. Set `treat_missing_data` appropriately: use `notBreaching` for metrics that naturally have no data during quiet periods (like Lambda when not invoked), and use `breaching` only when missing data itself should indicate a problem. Metric math alarms enable alerting on derived metrics like error rates rather than raw counts, and with `treat_missing_data = "notBreaching"` they can reduce false positives during low-traffic periods.
