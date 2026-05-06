@@ -36,7 +36,7 @@ BACKUP_DIR=/opt/backups/portainer
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 mkdir -p "$BACKUP_DIR"
 
-# Stop Portainer for a consistent backup (or use the API to export)
+# Stop Portainer for a consistent backup
 
 docker stop portainer
 
@@ -44,7 +44,7 @@ docker stop portainer
 docker run --rm \
   -v portainer_data:/data:ro \
   -v "$BACKUP_DIR":/backups \
-  alpine tar czf "/backups/portainer-data-$TIMESTAMP.tar.gz" /data
+  alpine sh -c "cd /data && tar czf /backups/portainer-data-$TIMESTAMP.tar.gz ."
 
 # Restart Portainer
 docker start portainer
@@ -80,38 +80,44 @@ for VOLUME in "${VOLUMES[@]}"; do
   docker run --rm \
     -v "$VOLUME":/data:ro \
     -v "$BACKUP_DIR":/backups \
-    alpine tar czf "/backups/$VOLUME-$TIMESTAMP.tar.gz" /data
+    alpine sh -c "cd /data && tar czf /backups/$VOLUME-$TIMESTAMP.tar.gz ."
 done
 
 echo "All volume backups complete"
 ```
 
-## Use Portainer's Built-In Backup (BE)
+## Use Portainer's Built-In Backup
 
-Portainer Business Edition has a built-in backup feature:
+Portainer includes a built-in backup feature for configuration backups. Business Edition adds S3 storage and scheduled backups:
 
-1. Go to **Settings > Backup Portainer**
-2. Enable scheduled backups
-3. Set backup interval (daily recommended)
-4. Configure S3 or local storage destination
+1. Go to **Settings > Back up Portainer**
+2. For a local backup, click **Download backup**
+3. In BE, select **Store in S3** to configure an S3 destination
+4. In BE, enable scheduled backups and set a cron rule
 
-This backs up the entire Portainer database including environments, stacks, users, and access policies.
+This backs up Portainer's configuration database and stack files deployed through Portainer, but not your environment's containers or their data.
 
 ## Offsite Backup with Restic
 
-Use Restic to back up volumes to S3/B2/Wasabi:
+Use Restic to back up volumes to Amazon S3 or another S3-compatible object store:
 
 ```bash
 #!/bin/bash
 # restic-backup.sh
 
-export RESTIC_REPOSITORY="s3:s3.amazonaws.com/my-backup-bucket/portainer"
+export RESTIC_REPOSITORY="s3:s3.us-east-1.amazonaws.com/my-backup-bucket/portainer"
 export AWS_ACCESS_KEY_ID="your-access-key"
 export AWS_SECRET_ACCESS_KEY="your-secret-key"
 export RESTIC_PASSWORD="your-restic-password"
 
 # Initialize repository (first run only)
-# restic init
+# docker run --rm \
+#   -e RESTIC_REPOSITORY \
+#   -e AWS_ACCESS_KEY_ID \
+#   -e AWS_SECRET_ACCESS_KEY \
+#   -e RESTIC_PASSWORD \
+#   restic/restic:latest \
+#   init
 
 # Back up all critical volumes
 docker run --rm \
@@ -125,7 +131,12 @@ docker run --rm \
   backup /backup --tag "daily"
 
 # Prune old backups
-docker run --rm restic/restic:latest \
+docker run --rm \
+  -e RESTIC_REPOSITORY \
+  -e AWS_ACCESS_KEY_ID \
+  -e AWS_SECRET_ACCESS_KEY \
+  -e RESTIC_PASSWORD \
+  restic/restic:latest \
   forget --keep-daily 7 --keep-weekly 4 --keep-monthly 3 --prune
 ```
 
@@ -143,18 +154,21 @@ if [ -z "$BACKUP_FILE" ]; then
   exit 1
 fi
 
+BACKUP_BASENAME=$(basename "$BACKUP_FILE")
+
 # Stop existing Portainer
 docker stop portainer
 
-# Remove old volume (WARNING: this deletes all Portainer config)
-docker volume rm portainer_data
-docker volume create portainer_data
+# Clear existing data from the volume (WARNING: this deletes all Portainer config)
+docker run --rm \
+  -v portainer_data:/data \
+  alpine sh -c 'rm -rf /data/* /data/.[!.]* /data/..?*'
 
 # Restore from backup
 docker run --rm \
   -v portainer_data:/data \
-  -v "$(dirname $BACKUP_FILE)":/backups:ro \
-  alpine sh -c "cd / && tar xzf /backups/$(basename $BACKUP_FILE)"
+  -v "$(dirname "$BACKUP_FILE")":/backups:ro \
+  alpine sh -c "cd /data && tar xzf \"/backups/$BACKUP_BASENAME\""
 
 # Restart Portainer
 docker start portainer
