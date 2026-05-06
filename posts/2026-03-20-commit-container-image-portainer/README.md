@@ -4,16 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Image, Container, DevOps
 
-Description: Create a new Docker image from a running or stopped container's current state using Portainer.
+Description: Create a new Docker image from a deployed container using Portainer.
 
 ## Introduction
 
-Create a new Docker image from a running or stopped container's current state using Portainer. This guide walks you through the process step by step with practical examples.
+Create a new Docker image from a deployed container using Portainer. This guide walks you through the process step by step with practical examples.
 
 ## Prerequisites
 
 - Portainer installed (CE or BE)
-- At least one Docker or Kubernetes environment connected
+- At least one Docker, Swarm, or Podman environment connected
+- Permissions to view the target container and manage images
 - Basic familiarity with Docker concepts
 
 ## Using the Portainer UI
@@ -21,8 +22,8 @@ Create a new Docker image from a running or stopped container's current state us
 ### Step 1: Navigate to the Relevant Section
 
 1. Log in to your Portainer instance
-2. Select your environment from the home screen
-3. Navigate to **Containers** (or **Stacks** for compose-based tasks)
+2. Select your Docker, Swarm, or Podman environment from the home screen
+3. Navigate to **Containers**
 
 ### Step 2: Locate Your Container
 
@@ -35,91 +36,67 @@ Use the search and filter options in Portainer:
 
 ## Step-by-Step Instructions
 
-### View Container Details
+### Create the Image
+
+1. Open the container details page in Portainer
+2. Use the option to create an image from the deployed container
+3. Save the image, then verify it from Portainer's **Images** view
 
 ```bash
 # Using Docker CLI equivalent
 
-docker inspect container-name
+docker container commit container-name your-image:snapshot
 
-# View formatted output
-docker inspect container-name | jq '.[0].Config'
+# Add metadata when needed
+docker container commit \
+  --author "Your Name <you@example.com>" \
+  --message "Snapshot before upgrade" \
+  container-name your-image:snapshot
 
-# Via Portainer: Containers > container-name > Inspect
+# Mounted volumes are not included in the new image
+# Running containers are paused during commit by default
 ```
 
 ### Key Configuration Options
 
-```yaml
-# docker-compose.yml example
-version: "3.8"
-
-services:
-  app:
-    image: your-app:latest
-    container_name: my-app
-    restart: always
-    # Resource constraints
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-    # Health check
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    # Environment
-    environment:
-      - NODE_ENV=production
-    # Volumes
-    volumes:
-      - app-data:/data
-    # Network
-    networks:
-      - app-net
-
-volumes:
-  app-data:
-
-networks:
-  app-net:
-    driver: bridge
-```
+- Use a new repository name and tag for the committed image
+- Expect the image to capture the container's current filesystem state
+- Mounted volumes and bind-mounted data are not included in the committed image
+- If you need to apply `ENV`, `CMD`, or `LABEL` changes while committing, use the CLI `--change` option or the API `changes` parameter
 
 ## Command Line Examples
 
 Useful Docker commands for this task:
 
 ```bash
-# Basic inspection commands
-docker ps -a                              # List all containers
-docker stats container-name               # View resource usage
-docker logs container-name --tail 100     # View recent logs
-docker inspect container-name             # Full container config
-docker exec -it container-name /bin/sh   # Access container shell
+# Find the container you want to capture
+docker ps -a
 
-# Advanced filtering
-docker ps --filter "status=running" \
-           --filter "label=env=production" \
-           --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+# Inspect the container before committing it
+docker inspect container-name
 
-# File operations
-docker cp /host/path container-name:/container/path
-docker cp container-name:/container/path /host/path
+# Commit the container to a new image
+docker container commit container-name your-image:snapshot
+
+# Commit the container and apply Dockerfile-style changes
+docker container commit \
+  --change 'ENV APP_ENV=production' \
+  --change 'LABEL snapshot=true' \
+  container-name your-image:snapshot
+
+# Verify the new image exists
+docker image ls your-image
 ```
 
 ## Portainer-Specific Features
 
 Portainer provides several UI conveniences for this task:
 
-1. **Visual Stats Dashboard**: Click any container > Stats for real-time graphs
-2. **Log Streaming**: Click Logs for real-time log output with search
-3. **Container Console**: Click Console for direct shell access
-4. **Quick Actions**: Stop, restart, kill from the container list
-5. **Inspect View**: Formatted JSON view of container configuration
+1. **Container Details**: Open a container and create an image from the deployed container
+2. **Inspect View**: Review the container configuration in a tree view or raw JSON
+3. **Log View**: Check the container logs before committing a snapshot
+4. **Stats View**: Review CPU, memory, network, I/O, and running processes
+5. **Console Access**: Open a shell in the container when you need to inspect the live filesystem
 
 ## Troubleshooting Common Issues
 
@@ -128,23 +105,24 @@ Portainer provides several UI conveniences for this task:
 # Check all containers including stopped ones
 docker ps -a
 
-# Refresh Portainer's environment
-# Settings > Environments > Re-sync
+# Make sure you selected the correct Docker, Swarm, or Podman environment
 ```
 
-**Issue: Permission denied errors**
+**Issue: Expected data missing from the committed image**
 ```bash
-# Check container user
-docker inspect container-name | jq '.[0].Config.User'
+# Check whether the data lives in a mounted volume or bind mount
+docker inspect container-name | jq '.[0].Mounts'
 
-# Run container with specific user
-docker run --user 1000:1000 your-image
+# docker container commit does not include mounted volume data
 ```
 
-**Issue: Resource limits not applying**
+**Issue: Need to control pause behavior during commit**
 ```bash
-# Verify limits are applied
-docker inspect container-name | jq '.[0].HostConfig | {Memory, CpuShares, CpuQuota}'
+# Docker pauses a running container during commit by default
+docker container commit container-name your-image:snapshot
+
+# Disable the pause only if you accept the consistency tradeoff
+docker container commit --no-pause container-name your-image:snapshot
 ```
 
 ## Automating with the Portainer API
@@ -152,18 +130,17 @@ docker inspect container-name | jq '.[0].HostConfig | {Memory, CpuShares, CpuQuo
 Automate this task via the Portainer API:
 
 ```bash
-# Authenticate and get JWT token
-TOKEN=$(curl -s -X POST \
-  "https://portainer.example.com/api/auth" \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"password"}' | jq -r .jwt)
+# Create an image from a container through Portainer's Docker API gateway
+curl -s -X POST \
+  "https://portainer.example.com/api/endpoints/1/docker/commit?container=container-name&repo=your-image&tag=snapshot&comment=Snapshot%20before%20upgrade&pause=true" \
+  -H "X-API-Key: YOUR_PORTAINER_ACCESS_TOKEN" | jq
 
-# List containers
-curl -s -X GET \
-  "https://portainer.example.com/api/endpoints/1/docker/containers/json" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | {Names, Status, Image}'
+# Verify the image is now available
+curl -s \
+  "https://portainer.example.com/api/endpoints/1/docker/images/json" \
+  -H "X-API-Key: YOUR_PORTAINER_ACCESS_TOKEN" | jq '.[] | .RepoTags'
 ```
 
 ## Conclusion
 
-Understanding how to Commit a Container to a New Image in Portainer gives you greater control over your containerized infrastructure. Portainer's visual interface makes these operations accessible to team members who may not be comfortable with the Docker CLI, while also providing quick access to underlying Docker capabilities. Regular use of these features helps maintain healthy, well-monitored container environments.
+Understanding how to Commit a Container to a New Image in Portainer gives you a quick way to capture a container's current state for reuse. Portainer's visual interface makes this accessible to team members who may not be comfortable with the Docker CLI, while still giving you access to the underlying Docker API when you need automation. Remember that committed images do not include mounted volume data, and for repeatable builds a Dockerfile is still the better long-term option.
