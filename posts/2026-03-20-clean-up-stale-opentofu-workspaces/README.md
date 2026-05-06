@@ -36,7 +36,8 @@ Check when each workspace's state was last modified using your backend's metadat
 # Finds workspaces whose state hasn't changed in more than 14 days
 
 BUCKET="mycompany-opentofu-state"
-PREFIX="env:/"
+PREFIX="env:/"                # Match backend workspace_key_prefix + trailing slash
+STATE_KEY="terraform.tfstate" # Match backend key
 STALE_DAYS=14
 CUTOFF=$(date -d "-${STALE_DAYS} days" +%s 2>/dev/null || date -v-${STALE_DAYS}d +%s)
 
@@ -45,13 +46,18 @@ echo "Workspaces not modified in the last ${STALE_DAYS} days:"
 aws s3api list-objects-v2 \
   --bucket "$BUCKET" \
   --prefix "$PREFIX" \
-  --query "Contents[*].{Key:Key,LastModified:LastModified}" \
   --output json | \
-jq -r '.[] | select(.Key | endswith("terraform.tfstate")) | "\(.LastModified) \(.Key)"' | \
-while read -r modified key; do
-  mod_epoch=$(date -d "$modified" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "$modified" +%s)
+jq -r --arg state_key "$STATE_KEY" '
+  .Contents[]?
+  | select(.Key | endswith("/" + $state_key))
+  | [.LastModified, .Key]
+  | @tsv
+' | \
+while IFS=$'\t' read -r modified key; do
+  mod_epoch=$(jq -nr --arg ts "$modified" '$ts | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601')
   if [[ $mod_epoch -lt $CUTOFF ]]; then
-    workspace=$(echo "$key" | sed 's|env:/||;s|/terraform.tfstate||')
+    workspace="${key#${PREFIX}}"
+    workspace="${workspace%/$STATE_KEY}"
     echo "  STALE: $workspace (last modified: $modified)"
   fi
 done
@@ -66,7 +72,7 @@ Before deleting a workspace, destroy all its resources to avoid orphans:
 # cleanup-workspace.sh
 set -euo pipefail
 
-WORKSPACE="${1}"
+WORKSPACE="${1:-}"
 
 if [[ -z "$WORKSPACE" || "$WORKSPACE" == "default" ]]; then
   echo "Error: provide a non-default workspace name."
@@ -98,7 +104,7 @@ chmod +x cleanup-workspace.sh
 
 ## Automating Cleanup in CI/CD
 
-Add a scheduled pipeline job to run the cleanup script weekly:
+Add a scheduled pipeline job to run the detection script weekly:
 
 ```yaml
 # .github/workflows/cleanup-workspaces.yml
@@ -114,15 +120,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install OpenTofu
-        run: |
-          curl -Lo tofu.tar.gz https://github.com/opentofu/opentofu/releases/latest/download/tofu_linux_amd64.tar.gz
-          tar -xzf tofu.tar.gz && sudo mv tofu /usr/local/bin/
+      - uses: opentofu/setup-opentofu@v2
 
-      - name: Find and Destroy Stale Workspaces
+      - name: Find Stale Workspaces
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
         run: bash scripts/find-stale-workspaces.sh | tee stale.txt
 ```
 
@@ -135,7 +139,7 @@ jobs:
 ```bash
 # Allowlist check before destruction
 PROTECTED=("default" "staging" "production")
-if [[ " ${PROTECTED[*]} " =~ " ${WORKSPACE} " ]]; then
+if [[ " ${PROTECTED[*]} " == *" ${WORKSPACE} "* ]]; then
   echo "ERROR: $WORKSPACE is protected and cannot be deleted."
   exit 1
 fi
