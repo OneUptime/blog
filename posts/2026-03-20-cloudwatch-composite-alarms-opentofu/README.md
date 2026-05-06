@@ -45,7 +45,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_duration" {
   metric_name         = "Duration"
   namespace           = "AWS/Lambda"
   period              = 60
-  statistic           = "p99"
+  extended_statistic  = "p99"
   threshold           = 10000  # 10 seconds
 
   dimensions = {
