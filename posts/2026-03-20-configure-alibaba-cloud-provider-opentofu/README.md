@@ -8,17 +8,16 @@ Description: Learn how to configure and use the Alibaba Cloud provider in OpenTo
 
 ## Introduction
 
-The Alibaba Cloud provider for OpenTofu enables managing Alibaba Cloud resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
+The Alibaba Cloud provider for OpenTofu enables managing Alibaba Cloud resources with the same plan/apply workflow as the rest of your infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
 
 ## Provider Installation
 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    alicloud = {
+      source  = "aliyun/alicloud"
+      version = ">= 1.119.0, < 2.0.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,28 +26,26 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Alicloud provider can read credentials from environment variables:
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export ALIBABA_CLOUD_ACCESS_KEY_ID="your-access-key-id"
+export ALIBABA_CLOUD_ACCESS_KEY_SECRET="your-access-key-secret"
+export ALIBABA_CLOUD_REGION="cn-hangzhou"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "alicloud" {
+  # Credentials and region are read from environment variables
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+resource "alicloud_vpc" "main" {
+  vpc_name   = "${var.name}-${var.environment}"
+  cidr_block = "10.0.0.0/8"
 
   tags = {
     environment = var.environment
@@ -67,16 +64,16 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "vpc_id" { value = alicloud_vpc.main.id }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- Store access keys in environment variables or a secrets manager, never in `.tf` files
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
 - Use separate provider configurations per environment using aliases or workspaces
 
 ## Conclusion
 
-Managing Alibaba Cloud resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
+Managing Alibaba Cloud resources with OpenTofu brings the same consistency and auditability to cloud infrastructure as other infrastructure-as-code workflows. Start by codifying your most critical resources and gradually expand coverage over time.
