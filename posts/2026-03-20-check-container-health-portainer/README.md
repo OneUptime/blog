@@ -13,7 +13,7 @@ Monitor container health status, view health check logs, and troubleshoot unheal
 ## Prerequisites
 
 - Portainer installed (CE or BE)
-- At least one Docker or Kubernetes environment connected
+- At least one Docker environment connected
 - Basic familiarity with Docker concepts
 
 ## Using the Portainer UI
@@ -22,7 +22,7 @@ Monitor container health status, view health check logs, and troubleshoot unheal
 
 1. Log in to your Portainer instance
 2. Select your environment from the home screen
-3. Navigate to **Containers** (or **Stacks** for compose-based tasks)
+3. Navigate to **Containers**
 
 ### Step 2: Locate Your Container
 
@@ -30,7 +30,7 @@ Use the search and filter options in Portainer:
 
 1. Click the **Containers** menu item
 2. Use the search box to find your container
-3. Filter by status (running, stopped, unhealthy)
+3. Use the available status filters if needed
 4. Click on the container name for details
 
 ## Step-by-Step Instructions
@@ -40,20 +40,19 @@ Use the search and filter options in Portainer:
 ```bash
 # Using Docker CLI equivalent
 
-docker inspect container-name
+docker inspect --format '{{.State.Health.Status}}' container-name
 
-# View formatted output
-docker inspect container-name | jq '.[0].Config'
+# View detailed health check output and logs
+docker inspect --format '{{json .State.Health}}' container-name | jq
 
-# Via Portainer: Containers > container-name > Inspect
+# Via Portainer: Containers > container-name > Inspect > Text
+# Look under State > Health for Status, FailingStreak, and Log
 ```
 
 ### Key Configuration Options
 
 ```yaml
 # docker-compose.yml example
-version: "3.8"
-
 services:
   app:
     image: your-app:latest
@@ -96,14 +95,15 @@ Useful Docker commands for this task:
 ```bash
 # Basic inspection commands
 docker ps -a                              # List all containers
+docker inspect --format '{{.State.Health.Status}}' container-name  # Health status
+docker inspect --format '{{json .State.Health.Log}}' container-name | jq  # Health check logs
 docker stats container-name               # View resource usage
 docker logs container-name --tail 100     # View recent logs
-docker inspect container-name             # Full container config
 docker exec -it container-name /bin/sh   # Access container shell
 
 # Advanced filtering
 docker ps --filter "status=running" \
-           --filter "label=env=production" \
+           --filter "health=healthy" \
            --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 # File operations
@@ -116,10 +116,10 @@ docker cp container-name:/container/path /host/path
 Portainer provides several UI conveniences for this task:
 
 1. **Visual Stats Dashboard**: Click any container > Stats for real-time graphs
-2. **Log Streaming**: Click Logs for real-time log output with search
-3. **Container Console**: Click Console for direct shell access
-4. **Quick Actions**: Stop, restart, kill from the container list
-5. **Inspect View**: Formatted JSON view of container configuration
+2. **Log Viewer**: Click Logs for log output with search and auto-refresh
+3. **Container Console**: Click Console for shell access when the image includes a shell
+4. **Container Actions**: Start, stop, and remove from the container details page
+5. **Inspect View**: Tree view and raw JSON view of container configuration and state
 
 ## Troubleshooting Common Issues
 
@@ -128,8 +128,8 @@ Portainer provides several UI conveniences for this task:
 # Check all containers including stopped ones
 docker ps -a
 
-# Refresh Portainer's environment
-# Settings > Environments > Re-sync
+# In Portainer, confirm you selected the correct Docker environment
+# then refresh the Containers view
 ```
 
 **Issue: Permission denied errors**
@@ -141,10 +141,13 @@ docker inspect container-name | jq '.[0].Config.User'
 docker run --user 1000:1000 your-image
 ```
 
-**Issue: Resource limits not applying**
+**Issue: Health status is missing or always "starting"**
 ```bash
-# Verify limits are applied
-docker inspect container-name | jq '.[0].HostConfig | {Memory, CpuShares, CpuQuota}'
+# Check whether the image or container defines a health check
+docker inspect container-name | jq '.[0].Config.Healthcheck'
+
+# Review the current health state and probe output
+docker inspect --format '{{json .State.Health}}' container-name | jq
 ```
 
 ## Automating with the Portainer API
@@ -152,16 +155,11 @@ docker inspect container-name | jq '.[0].HostConfig | {Memory, CpuShares, CpuQuo
 Automate this task via the Portainer API:
 
 ```bash
-# Authenticate and get JWT token
-TOKEN=$(curl -s -X POST \
-  "https://portainer.example.com/api/auth" \
-  -H "Content-Type: application/json" \
-  -d '{"Username":"admin","Password":"password"}' | jq -r .jwt)
-
-# List containers
+# Create an access token in Portainer first: My account > Access tokens
+# List containers through the Portainer API gateway
 curl -s -X GET \
-  "https://portainer.example.com/api/endpoints/1/docker/containers/json" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | {Names, Status, Image}'
+  "https://portainer.example.com/api/endpoints/1/docker/containers/json?all=true" \
+  -H "X-API-Key: YOUR_ACCESS_TOKEN" | jq '.[] | {Names, Status, Image}'
 ```
 
 ## Conclusion
