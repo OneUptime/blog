@@ -8,7 +8,7 @@ Description: Learn how to use OpenTofu's check blocks to define post-deployment 
 
 ## Introduction
 
-OpenTofu's `check` block (introduced in 1.5) lets you define custom assertions about your infrastructure that are evaluated during every plan and apply. Unlike `validation` blocks (which check input variables), `check` blocks verify the actual state of deployed resources - making them a powerful drift detection tool.
+OpenTofu's `check` block lets you define custom assertions about your infrastructure that are evaluated during every plan and apply. Unlike `validation` blocks (which check input variables), `check` blocks verify the actual state of deployed resources - making them a powerful drift detection tool.
 
 ## Basic Check Block Syntax
 
@@ -32,25 +32,29 @@ check "web_instance_running" {
 ## Checking Security Group Rules
 
 ```hcl
-# Detect if someone removed a critical security group rule
+# Detect if someone removed or changed a managed HTTPS ingress rule
 check "https_ingress_present" {
-  data "aws_security_group" "web_check" {
-    id = aws_security_group.web.id
+  data "aws_vpc_security_group_rule" "https_check" {
+    security_group_rule_id = aws_vpc_security_group_ingress_rule.https.security_group_rule_id
   }
 
   assert {
-    condition = anytrue([
-      for rule in data.aws_security_group.web_check.ingress : rule.from_port == 443
-    ])
-    error_message = "DRIFT DETECTED: HTTPS ingress rule missing from web security group. Someone may have removed it manually."
+    condition = (
+      data.aws_vpc_security_group_rule.https_check.security_group_id == aws_security_group.web.id &&
+      data.aws_vpc_security_group_rule.https_check.from_port == 443 &&
+      data.aws_vpc_security_group_rule.https_check.to_port == 443 &&
+      data.aws_vpc_security_group_rule.https_check.ip_protocol == "tcp" &&
+      !data.aws_vpc_security_group_rule.https_check.is_egress
+    )
+    error_message = "DRIFT DETECTED: Managed HTTPS ingress rule missing or changed on the web security group."
   }
 }
 ```
 
-## Checking S3 Bucket Encryption
+## Checking S3 Bucket Availability
 
 ```hcl
-check "s3_encryption_enabled" {
+check "s3_bucket_present" {
   data "aws_s3_bucket" "app_check" {
     bucket = aws_s3_bucket.app.id
   }
@@ -60,31 +64,15 @@ check "s3_encryption_enabled" {
     error_message = "S3 bucket check failed - bucket may have been deleted externally."
   }
 }
-
-# More specific: check server-side encryption
-check "s3_sse_active" {
-  data "aws_s3_bucket_server_side_encryption_configuration" "app" {
-    bucket = aws_s3_bucket.app.id
-  }
-
-  assert {
-    condition = length(data.aws_s3_bucket_server_side_encryption_configuration.app.rule) > 0
-    error_message = "DRIFT: S3 bucket encryption was disabled externally."
-  }
-}
 ```
 
 ## Checking RDS Instance Status
 
 ```hcl
 check "rds_instance_available" {
-  data "aws_db_instance" "main_check" {
-    db_instance_identifier = aws_db_instance.main.identifier
-  }
-
   assert {
-    condition     = data.aws_db_instance.main_check.db_instance_status == "available"
-    error_message = "RDS instance ${aws_db_instance.main.identifier} is not in available state - current: ${data.aws_db_instance.main_check.db_instance_status}"
+    condition     = aws_db_instance.main.status == "available"
+    error_message = "RDS instance ${aws_db_instance.main.identifier} is not in available state - current: ${aws_db_instance.main.status}"
   }
 }
 ```
@@ -111,15 +99,17 @@ check "api_dns_resolves" {
 - **Plan time**: Checks run during `tofu plan` and `tofu apply`
 - **Scope**: Each check block can include one `data` source and multiple `assert` blocks
 
-## Converting Warning to Error (using -compact-warnings)
+## Failing CI on Check Warnings
 
 ```bash
 # Check warnings are visible but not blocking by default
 tofu plan 2>&1 | grep -A 3 "Warning:"
 
-# To treat check warnings as errors in CI:
-tofu plan 2>&1 | tee plan.log
-if grep -q "check block assertions failed" plan.log; then
+# To fail CI when a check reports fail or error:
+tofu plan -out=plan.tfplan >/dev/null
+if tofu show -json plan.tfplan | jq -e '
+  [.checks[]? | select(.status == "fail" or .status == "error")] | length > 0
+' >/dev/null; then
   echo "ERROR: Check assertions failed - drift detected!"
   exit 1
 fi
