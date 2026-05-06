@@ -13,7 +13,7 @@ Self-hosted chat servers give your organization complete control over communicat
 ## Prerequisites
 
 - Portainer installed and running
-- At least 2GB RAM (4GB recommended for Rocket.Chat)
+- At least 4GB RAM if you plan to run Rocket.Chat
 - A domain name with SSL certificate
 - Reverse proxy (Traefik or Nginx)
 
@@ -37,7 +37,7 @@ volumes:
 services:
   # MongoDB database
   mongodb:
-    image: mongo:6.0
+    image: mongo:8.0
     container_name: rocketchat_db
     restart: unless-stopped
     command: >
@@ -56,10 +56,11 @@ services:
 
   # MongoDB replica set initialization
   mongo_init:
-    image: mongo:6.0
+    image: mongo:8.0
     restart: "no"
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     command: >
       mongosh --host mongodb:27017 --eval
       "rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]})"
@@ -68,7 +69,7 @@ services:
 
   # Rocket.Chat application
   rocketchat:
-    image: registry.rocket.chat/rocketchat/rocket.chat:latest
+    image: registry.rocket.chat/rocketchat/rocket.chat:8.2
     container_name: rocketchat
     restart: unless-stopped
     depends_on:
@@ -78,11 +79,12 @@ services:
       - "3000:3000"
     environment:
       - MONGO_URL=mongodb://mongodb:27017/rocketchat?replicaSet=rs0
-      - MONGO_OPLOG_URL=mongodb://mongodb:27017/local?replicaSet=rs0
       - ROOT_URL=https://chat.yourdomain.com
       - PORT=3000
       # Admin account setup
+      - INITIAL_USER=yes
       - ADMIN_USERNAME=admin
+      - ADMIN_NAME=Admin
       - ADMIN_PASS=change_this_password
       - ADMIN_EMAIL=admin@yourdomain.com
       # Disable registration after setup
@@ -112,9 +114,7 @@ networks:
     driver: bridge
 
 volumes:
-  synapse_data:
   synapse_db:
-  element_config:
 
 services:
   # PostgreSQL for Synapse
@@ -146,7 +146,6 @@ services:
       synapse_db:
         condition: service_healthy
     ports:
-      - "8448:8448"   # Federation port
       - "8008:8008"   # Client API
     environment:
       - SYNAPSE_CONFIG_DIR=/data
@@ -154,9 +153,15 @@ services:
       - SYNAPSE_DATA_DIR=/data
       - TZ=America/New_York
     volumes:
-      - synapse_data:/data
+      - /opt/synapse:/data
     networks:
       - matrix_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.synapse.rule=Host(`matrix.yourdomain.com`)"
+      - "traefik.http.routers.synapse.entrypoints=websecure"
+      - "traefik.http.routers.synapse.tls.certresolver=letsencrypt"
+      - "traefik.http.services.synapse.loadbalancer.server.port=8008"
 
   # Element Web client
   element:
@@ -166,7 +171,7 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - element_config:/app/config.json
+      - /opt/element/config.json:/app/config.json:ro
     networks:
       - matrix_network
     labels:
@@ -179,13 +184,35 @@ services:
 
 ### Generate Synapse Configuration
 
+Run this before deploying the Synapse service so the bind-mounted config exists.
+
 ```bash
 # Generate the initial Synapse homeserver.yaml
 docker run -it --rm \
   -v /opt/synapse:/data \
-  -e SYNAPSE_SERVER_NAME=yourdomain.com \
+  -e SYNAPSE_SERVER_NAME=matrix.yourdomain.com \
   -e SYNAPSE_REPORT_STATS=no \
   matrixdotorg/synapse:latest generate
+```
+
+```yaml
+# Update /opt/synapse/homeserver.yaml before starting Synapse
+database:
+  name: psycopg2
+  args:
+    user: synapse
+    password: secure_synapse_password
+    dbname: synapse
+    host: synapse_db
+    cp_min: 5
+    cp_max: 10
+
+registration_shared_secret: "generate-a-long-random-value"
+```
+
+```bash
+# If Synapse is already running, restart it after editing the config
+docker restart synapse
 
 # Create first admin user
 docker exec -it synapse register_new_matrix_user \
@@ -198,13 +225,13 @@ docker exec -it synapse register_new_matrix_user \
 
 ## Step 3: Configure Element Web Client
 
+Create `/opt/element/config.json` before deploying Element:
+
 ```json
-// /opt/element/config.json
 {
   "default_server_config": {
     "m.homeserver": {
-      "base_url": "https://matrix.yourdomain.com",
-      "server_name": "yourdomain.com"
+      "base_url": "https://matrix.yourdomain.com"
     },
     "m.identity_server": {
       "base_url": "https://vector.im"
@@ -213,7 +240,13 @@ docker exec -it synapse register_new_matrix_user \
   "brand": "Element",
   "integrations_ui_url": "https://scalar.vector.im/",
   "integrations_rest_url": "https://scalar.vector.im/api",
-  "bug_report_endpoint_url": "https://element.io/bugreports/submit",
+  "integrations_widgets_urls": [
+    "https://scalar.vector.im/_matrix/integrations/v1",
+    "https://scalar.vector.im/api",
+    "https://scalar-staging.vector.im/_matrix/integrations/v1",
+    "https://scalar-staging.vector.im/api"
+  ],
+  "bug_report_endpoint_url": "https://rageshakes.element.io/api/submit",
   "show_labs_settings": true
 }
 ```
@@ -221,8 +254,10 @@ docker exec -it synapse register_new_matrix_user \
 ## Step 4: Set Up Push Notifications
 
 ```yaml
-# Add to Synapse environment for push notifications
-- SYNAPSE_PUSHER_ENABLED=true
+# Push notifications are enabled by default in Synapse.
+# Add to homeserver.yaml only if you want to tune push payloads.
+push:
+  include_content: false
 ```
 
 ## Backup Strategy
