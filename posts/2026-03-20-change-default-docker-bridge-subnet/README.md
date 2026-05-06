@@ -45,8 +45,7 @@ ip addr show docker0
 Expected output:
 
 ```text
-3: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500
-    inet 192.168.90.1/24 brd 192.168.90.255 scope global docker0
+inet 192.168.90.1/24 brd 192.168.90.255 scope global docker0
 ```
 
 ## Verifying the Default Network IPAM
@@ -68,17 +67,24 @@ Output should show the new subnet:
 
 ## Impact on Running Containers
 
-**Warning:** Changing the default bridge subnet requires stopping all containers using the default bridge network. Containers on custom user-defined networks are not affected.
+**Warning:** Changing the default bridge subnet requires stopping containers attached to the default bridge network. Containers attached only to custom user-defined networks are not affected.
 
 ```bash
-# Stop all containers on the default bridge
-docker stop $(docker ps -q)
+# Save the IDs of running containers on the default bridge
+bridge_containers="$(docker ps -q --filter network=bridge)"
+
+# Stop those containers before applying the change
+if [ -n "$bridge_containers" ]; then
+  docker stop $bridge_containers
+fi
 
 # Apply the change
 sudo systemctl restart docker
 
-# Restart containers
-docker start $(docker ps -aq)
+# Start the same containers again
+if [ -n "$bridge_containers" ]; then
+  docker start $bridge_containers
+fi
 ```
 
 ## Choosing a Safe Subnet
@@ -91,7 +97,7 @@ Choose a subnet that does not overlap with:
 Safe choices for `docker0`:
 - `192.168.90.0/24`
 - `10.200.0.0/24`
-- `100.64.0.0/24` (CGNAT range, unlikely to be used by other systems)
+- `192.168.240.0/24`
 
 ## Conclusion
 
