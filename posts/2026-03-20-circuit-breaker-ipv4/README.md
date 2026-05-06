@@ -13,7 +13,7 @@ stateDiagram-v2
     [*] --> CLOSED
     CLOSED --> OPEN : failures >= threshold
     OPEN --> HALF_OPEN : timeout elapsed
-    HALF_OPEN --> CLOSED : probe succeeds
+    HALF_OPEN --> CLOSED : successes >= success_threshold
     HALF_OPEN --> OPEN : probe fails
 ```
 
@@ -120,7 +120,6 @@ for i in range(10):
 
 ```python
 import asyncio
-import time
 
 class AsyncCircuitBreaker(CircuitBreaker):
     async def call_async(self, coro_func, *args, **kwargs):
@@ -137,12 +136,16 @@ class AsyncCircuitBreaker(CircuitBreaker):
 cb = AsyncCircuitBreaker(failure_threshold=3, recovery_timeout=10.0)
 
 async def fetch(host: str, port: int) -> bytes:
-    reader, writer = await asyncio.open_connection(host, port)
-    writer.write(b"ping\n")
-    await writer.drain()
-    data = await asyncio.wait_for(reader.readline(), timeout=2.0)
-    writer.close()
-    return data
+    reader, writer = await asyncio.wait_for(
+        asyncio.open_connection(host, port), timeout=3.0
+    )
+    try:
+        writer.write(b"ping")
+        await writer.drain()
+        return await asyncio.wait_for(reader.read(4096), timeout=2.0)
+    finally:
+        writer.close()
+        await writer.wait_closed()
 
 async def safe_fetch() -> bytes:
     return await cb.call_async(fetch, "192.168.1.10", 9000)
@@ -150,4 +153,4 @@ async def safe_fetch() -> bytes:
 
 ## Conclusion
 
-The circuit breaker transitions through CLOSED (normal), OPEN (failing fast), and HALF_OPEN (probing recovery). Set `failure_threshold` based on your acceptable error rate and `recovery_timeout` based on the downstream service's typical recovery time. In HALF_OPEN state, allow a limited number of probe requests before closing the circuit - `success_threshold=2` guards against flapping. Use circuit breakers around any network I/O that calls an external service, and expose the breaker state in health check endpoints so operators can see when services are degraded.
+The circuit breaker transitions through CLOSED (normal), OPEN (failing fast), and HALF_OPEN (probing recovery). Set `failure_threshold` based on your acceptable error rate and `recovery_timeout` based on the downstream service's typical recovery time. In HALF_OPEN state, count consecutive successful probe calls before closing the circuit - `success_threshold=2` requires two successful probes before the breaker closes and helps guard against flapping. Use circuit breakers around any network I/O that calls an external service, and expose the breaker state in health check endpoints so operators can see when services are degraded.
