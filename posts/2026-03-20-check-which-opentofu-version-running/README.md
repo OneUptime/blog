@@ -25,7 +25,7 @@ tofu version
 tofu version | head -1 | awk '{print $2}'
 # v1.9.0
 
-# Or using JSON output (OpenTofu 1.7+)
+# Or using JSON output
 tofu version -json
 ```
 
@@ -35,8 +35,7 @@ The JSON output provides structured version information:
 {
   "terraform_version": "1.9.0",
   "platform": "linux_amd64",
-  "provider_selections": {},
-  "terraform_outdated": false
+  "provider_selections": {}
 }
 ```
 
@@ -47,12 +46,12 @@ The JSON output provides structured version information:
 ```bash
 # Find where the tofu binary is located
 which tofu
-# /home/user/.tofuenv/shims/tofu  (if using tofuenv)
-# /usr/local/bin/tofu              (if installed directly)
+# /home/user/.tofuenv/bin/tofu  (if using tofuenv)
+# /usr/local/bin/tofu           (if installed directly)
 
-# Get the full resolved path (follow symlinks)
+# On Linux, get the full resolved path (follow symlinks)
 readlink -f $(which tofu)
-# /home/user/.tofuenv/versions/1.9.0/bin/tofu
+# /home/user/.tofuenv/versions/1.9.0/tofu
 ```
 
 ---
@@ -62,20 +61,24 @@ readlink -f $(which tofu)
 With tofuenv:
 
 ```bash
-# Show which version file is controlling the current version
+# Show the version selected for the current directory
 tofuenv version-name
 # 1.9.0
 
 # tofuenv searches for version in this order:
 # 1. TOFUENV_TOFU_VERSION environment variable
 # 2. .opentofu-version file (current directory, then parents)
-# 3. ~/.tofuenv/version (global default)
+# 3. ~/.opentofu-version file (if not already found above)
+# 4. ~/.tofuenv/version (global default)
 
 # Check for a local .opentofu-version file
 cat .opentofu-version 2>/dev/null || echo "No local .opentofu-version file"
 
-# Check the global tofuenv default
-cat ~/.tofuenv/version
+# Check for a home-level .opentofu-version file
+cat ~/.opentofu-version 2>/dev/null || echo "No ~/.opentofu-version file"
+
+# Check the global tofuenv default fallback
+cat ~/.tofuenv/version 2>/dev/null || echo "No ~/.tofuenv/version file"
 ```
 
 With asdf:
@@ -158,4 +161,4 @@ done
 
 ## Summary
 
-The canonical way to check your OpenTofu version is `tofu version` or `tofu version -json` for scripts. Use `which tofu` and `readlink -f $(which tofu)` to find the actual binary. With tofuenv, `tofuenv list` shows all installed versions with an asterisk on the active one. With asdf, `asdf current opentofu` tells you both the version and which configuration file selected it.
+The canonical way to check your OpenTofu version is `tofu version` or `tofu version -json` for scripts. Use `which tofu` and, on Linux, `readlink -f $(which tofu)` to find the actual binary. With tofuenv, `tofuenv list` shows all installed versions with an asterisk on the active one. With asdf, `asdf current opentofu` tells you both the version and which configuration file selected it.
