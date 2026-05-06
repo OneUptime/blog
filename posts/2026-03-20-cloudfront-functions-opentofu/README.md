@@ -37,7 +37,7 @@ function handler(event) {
 
 ```javascript
 // functions/security-headers.js
-// Add security headers to all responses
+// Add security headers during viewer-response events
 function handler(event) {
   var response = event.response;
   var headers = response.headers;
@@ -72,7 +72,7 @@ resource "aws_cloudfront_function" "url_rewrite" {
 resource "aws_cloudfront_function" "security_headers" {
   name    = "${var.app_name}-security-headers"
   runtime = "cloudfront-js-2.0"
-  comment = "Add security headers to all responses"
+  comment = "Add security headers during viewer-response events"
   publish = true
 
   code = file("${path.module}/functions/security-headers.js")
@@ -82,6 +82,10 @@ resource "aws_cloudfront_function" "security_headers" {
 ## Associating Functions with a Distribution
 
 ```hcl
+data "aws_cloudfront_cache_policy" "caching_optimized" {
+  name = "Managed-CachingOptimized"
+}
+
 resource "aws_cloudfront_distribution" "website" {
   enabled         = true
   default_root_object = "index.html"
@@ -98,11 +102,7 @@ resource "aws_cloudfront_distribution" "website" {
     target_origin_id       = "S3"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
-
-    forwarded_values {
-      query_string = false
-      cookies { forward = "none" }
-    }
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
 
     # Viewer request function for URL rewriting
     function_association {
