@@ -14,6 +14,8 @@ Amazon EventBridge (formerly CloudWatch Events) provides event-driven automation
 
 ## Create a Scheduled Rule
 
+Scheduled EventBridge rules still work, but AWS treats them as a legacy feature, recommends EventBridge Scheduler for new scheduled workloads, and only supports scheduled rules on the default event bus.
+
 ```hcl
 resource "aws_cloudwatch_event_rule" "daily_cleanup" {
   name                = "daily-cleanup"
@@ -115,4 +117,4 @@ resource "aws_cloudwatch_event_rule" "app_order" {
 
 ## Summary
 
-Create `aws_cloudwatch_event_rule` resources with either a `schedule_expression` for cron/rate triggers or an `event_pattern` for service events. Attach targets with `aws_cloudwatch_event_target` and grant invocation permissions with `aws_lambda_permission` or queue policies. Use custom event buses to decouple application event routing from AWS service events.
+Create `aws_cloudwatch_event_rule` resources with either a `schedule_expression` for legacy cron/rate triggers on the default event bus or an `event_pattern` for service events. For new scheduled workloads, AWS recommends EventBridge Scheduler. Attach targets with `aws_cloudwatch_event_target` and grant invocation permissions with `aws_lambda_permission` or queue policies. Use custom event buses to decouple application event routing from AWS service events.
