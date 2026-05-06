@@ -8,7 +8,7 @@ Description: Learn how to configure BGP multihoming with two ISPs to achieve red
 
 ## What Is BGP Multihoming?
 
-BGP multihoming connects your network to two or more ISPs simultaneously. This provides redundancy (if one ISP fails, traffic flows through the other) and optionally load balancing. You need your own public AS number and at least a /24 prefix allocation from a Regional Internet Registry (RIR).
+BGP multihoming connects your network to two or more ISPs simultaneously. This provides redundancy (if one ISP fails, traffic flows through the other) and optionally load sharing. For public IPv4 multihoming, you typically need your own public AS number and a prefix large enough to be accepted globally; in practice, /24 is the common minimum announced size.
 
 ## Topology
 
@@ -49,7 +49,7 @@ router bgp 65001
 
 ## Step 2: Control Outbound Traffic (Primary/Backup)
 
-Use Local Preference to prefer ISP1 for all outbound traffic. Higher local-preference wins:
+Use Local Preference to prefer ISP1 for outbound traffic when both ISPs advertise the same destinations. Higher local-preference wins:
 
 ```text
 ! Set high local-pref for routes received from ISP1 (preferred)
@@ -65,13 +65,15 @@ router bgp 65001
  neighbor 198.51.100.1 route-map ISP2_IN in
 ```
 
-With local-preference 200 from ISP1, all outbound traffic uses ISP1. If ISP1 fails and those routes are withdrawn, local-preference 100 routes from ISP2 take over automatically.
+When both ISPs advertise a route to the same destination, local-preference 200 makes ISP1 the preferred outbound path. If ISP1 fails and those routes are withdrawn, the local-preference 100 routes from ISP2 take over automatically.
 
 ## Step 3: Control Inbound Traffic (AS-Path Prepending)
 
-To influence which ISP external traffic prefers to enter your network, use AS-path prepending. Prepending your AS number multiple times on ISP2 makes that path appear longer and less preferred:
+To influence which ISP external traffic prefers to enter your network, use AS-path prepending. Prepending your AS number multiple times on ISP2 makes that path appear longer and less preferred to many networks:
 
 ```text
+ip prefix-list OUR_PREFIX permit 192.0.2.0/24
+
 ! Prepend AS on advertisements to ISP2 to make it less preferred
 route-map TO_ISP2_OUT permit 10
  match ip address prefix-list OUR_PREFIX
@@ -80,7 +82,7 @@ route-map TO_ISP2_OUT permit 10
 
 route-map TO_ISP1_OUT permit 10
  match ip address prefix-list OUR_PREFIX
- ! No prepending - ISP1 is the preferred inbound path
+ ! No prepending - makes ISP1 more attractive as an inbound path
 
 router bgp 65001
  neighbor 203.0.113.1 route-map TO_ISP1_OUT out
@@ -106,21 +108,17 @@ Simulate ISP1 failure by shutting down the interface or clearing the BGP session
 Router# clear ip bgp 203.0.113.1
 
 ! Verify ISP2 routes are now active
-Router# show ip route bgp | head -20
+Router# show ip route bgp
 ```
 
 ## Step 6: Advertise a Default Route Internally
 
-Redistribute a default route from BGP into your IGP so internal routers know to exit via the CE router:
+If the CE router already has a default route in its routing table, advertise it into your IGP so internal routers know to exit via the CE router:
 
 ```text
-router bgp 65001
- ! Generate a default route into BGP (requires a default in the RIB)
- default-information originate
-
 router ospf 1
- ! Redistribute BGP into OSPF with a high metric for the backup
- redistribute bgp 65001 metric 100 metric-type 2 subnets
+ ! Originate a default route into OSPF when a default exists in the RIB
+ default-information originate
 ```
 
 ## Conclusion
