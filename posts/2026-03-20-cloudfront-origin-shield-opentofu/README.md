@@ -4,23 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, CloudFront, Origin Shield, CDN, Infrastructure as Code, Performance
 
-Description: Learn how to enable CloudFront Origin Shield using OpenTofu to reduce load on your origin servers by adding an additional caching layer between edge locations and your origin.
+Description: Learn how to enable CloudFront Origin Shield using OpenTofu to reduce load on your origin servers by adding an additional caching layer between regional edge caches and your origin.
 
 ---
 
-CloudFront Origin Shield is an optional additional caching layer that sits between CloudFront's regional edge caches and your origin. It consolidates requests from all edge locations through a single point, dramatically reducing the number of requests that reach your origin. This is especially valuable for origins with limited capacity or high data transfer costs.
+CloudFront Origin Shield is an optional additional caching layer that sits between CloudFront's regional edge caches and your origin. It consolidates requests from all regional edge caches through a single point, dramatically reducing the number of requests that reach your origin. This is especially valuable for origins with limited capacity or high data transfer costs.
 
 ## How Origin Shield Works
 
 ```mermaid
 graph LR
-    A[Edge Location<br/>US-West] --> C[Origin Shield<br/>us-west-2]
-    B[Edge Location<br/>US-East] --> C
-    D[Edge Location<br/>EU] --> C
+    A[Regional Edge Cache<br/>US-West] --> C[Origin Shield<br/>us-west-2]
+    B[Regional Edge Cache<br/>US-East] --> C
+    D[Regional Edge Cache<br/>EU] --> C
     C -->|Cache Miss Only| E[Your Origin]
 ```
 
-Without Origin Shield, each edge location makes its own request to the origin on cache misses. With Origin Shield, all edge locations check Origin Shield first, and only one request reaches the origin per unique object.
+Without Origin Shield, each regional edge cache makes its own request to the origin on cache misses. With Origin Shield, cache misses from all regional edge caches flow through Origin Shield first, and only one request reaches the origin per unique object.
 
 ## Enabling Origin Shield on a Distribution
 
@@ -37,7 +37,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"  # CloudFront is a global service, provider must be us-east-1
+  region = "us-east-1"  # CloudFront viewer certificates and CloudFront metrics are handled in us-east-1
 }
 
 resource "aws_cloudfront_distribution" "with_origin_shield" {
@@ -112,16 +112,18 @@ variable "origin_shield_region" {
   description = "Origin Shield region - pick the AWS region closest to your origin"
   type        = string
 
-  # Valid values: us-east-1, us-east-2, us-west-2, ap-south-1,
-  # ap-northeast-1, ap-southeast-1, ap-southeast-2,
-  # eu-central-1, eu-west-1, eu-west-2, sa-east-1
+  # Valid values currently include: us-east-2, us-east-1, us-west-2,
+  # ap-south-1, ap-northeast-2, ap-southeast-1, ap-southeast-2,
+  # ap-northeast-1, eu-central-1, eu-west-1, eu-west-2,
+  # sa-east-1, me-central-1
   default = "us-east-1"
 
   validation {
     condition = contains([
-      "us-east-1", "us-east-2", "us-west-2",
-      "ap-south-1", "ap-northeast-1", "ap-southeast-1", "ap-southeast-2",
-      "eu-central-1", "eu-west-1", "eu-west-2", "sa-east-1"
+      "us-east-2", "us-east-1", "us-west-2",
+      "ap-south-1", "ap-northeast-2", "ap-southeast-1", "ap-southeast-2",
+      "ap-northeast-1", "eu-central-1", "eu-west-1", "eu-west-2",
+      "sa-east-1", "me-central-1"
     ], var.origin_shield_region)
     error_message = "Must be a valid Origin Shield region."
   }
@@ -132,23 +134,34 @@ variable "origin_shield_region" {
 
 ```hcl
 # monitoring.tf
-# Alert when Origin Shield cache hit rate drops significantly
-resource "aws_cloudwatch_metric_alarm" "origin_shield_requests" {
-  alarm_name          = "high-origin-requests"
-  comparison_operator = "GreaterThanThreshold"
+# Enable additional CloudFront metrics, then alert when cache hit rate drops significantly.
+# For Origin Shield-specific hits, use CloudFront logs and look for OriginShieldHit.
+resource "aws_cloudfront_monitoring_subscription" "with_origin_shield" {
+  distribution_id = aws_cloudfront_distribution.with_origin_shield.id
+
+  monitoring_subscription {
+    realtime_metrics_subscription_config {
+      realtime_metrics_subscription_status = "Enabled"
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "cache_hit_rate_low" {
+  alarm_name          = "low-cloudfront-cache-hit-rate"
+  comparison_operator = "LessThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "Requests"
+  metric_name         = "CacheHitRate"
   namespace           = "AWS/CloudFront"
   period              = 300
-  statistic           = "Sum"
-  threshold           = var.origin_requests_threshold
+  statistic           = "Average"
+  threshold           = var.cache_hit_rate_threshold
 
   dimensions = {
     DistributionId = aws_cloudfront_distribution.with_origin_shield.id
     Region         = "Global"
   }
 
-  alarm_description = "More requests than expected are reaching the origin - check Origin Shield cache hit rate"
+  alarm_description = "CloudFront cache hit rate dropped - review cache behavior and Origin Shield effectiveness"
   alarm_actions     = [var.alert_sns_topic_arn]
 }
 ```
@@ -156,7 +169,7 @@ resource "aws_cloudwatch_metric_alarm" "origin_shield_requests" {
 ## Best Practices
 
 - Choose the Origin Shield region closest to your origin, not to your users - the goal is to minimize origin-to-Shield latency.
-- Origin Shield adds cost ($0.0080/10,000 HTTP requests) - calculate break-even point based on your origin egress cost savings.
-- Monitor the `OriginShieldHit` metric to measure Shield effectiveness - aim for a hit rate above 70%.
+- Origin Shield adds additional request charges when it acts as an incremental layer - calculate the break-even point based on your origin cost savings and current CloudFront pricing.
+- Use CloudFront standard or real-time logs to see `OriginShieldHit`, and use the `CacheHitRate` metric for distribution-level trending.
 - Use Origin Shield with high-traffic, slow-changing content (product images, documentation) for maximum benefit.
 - Combine Origin Shield with a long TTL cache policy - Shield only helps when content is actually cached.
