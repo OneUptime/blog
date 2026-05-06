@@ -13,8 +13,8 @@ CloudWatch Log Metric Filters parse log entries and turn them into custom CloudW
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An existing CloudWatch Log Group
-- AWS credentials with CloudWatch Logs permissions
+- An existing CloudWatch Log Group in the Standard log class
+- AWS credentials with CloudWatch Logs and CloudWatch permissions, plus access to an SNS topic if you use alarm actions
 
 ## Step 1: Count Error Log Entries
 
@@ -32,7 +32,7 @@ resource "aws_cloudwatch_log_metric_filter" "error_count" {
     name          = "ErrorCount"
     namespace     = "${var.project_name}/Application"
     value         = "1"          # Increment by 1 for each matching log entry
-    default_value = "0"          # Emit 0 when no matches in the period
+    default_value = "0"          # Emit 0 when logs are ingested but no entries match in the minute
     unit          = "Count"
   }
 }
@@ -47,6 +47,7 @@ resource "aws_cloudwatch_metric_alarm" "high_error_count" {
   period              = 300
   statistic           = "Sum"
   threshold           = 10
+  treat_missing_data  = "notBreaching"
 
   alarm_actions = [var.sns_topic_arn]
 }
@@ -82,6 +83,7 @@ resource "aws_cloudwatch_metric_alarm" "p99_latency" {
   namespace           = "${var.project_name}/Application"
   period              = 300
   threshold           = 3000  # Alert if p99 > 3 seconds
+  treat_missing_data  = "notBreaching"
 
   alarm_actions = [var.sns_topic_arn]
 }
@@ -116,6 +118,7 @@ resource "aws_cloudwatch_metric_alarm" "brute_force" {
   period              = 300  # 5-minute window
   statistic           = "Sum"
   threshold           = 50   # Alert on 50+ failures in 5 minutes
+  treat_missing_data  = "notBreaching"
 
   alarm_actions = [var.security_sns_topic_arn]
 }
@@ -148,12 +151,12 @@ tofu apply
 aws cloudwatch get-metric-statistics \
   --namespace my-project/Application \
   --metric-name ErrorCount \
-  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --period 300 \
   --statistics Sum
 ```
 
 ## Conclusion
 
-Log Metric Filters are a zero-code approach to creating operational metrics from existing log output. Use `default_value = "0"` to ensure metrics are emitted even when no log events match-this prevents CloudWatch alarms from going into `INSUFFICIENT_DATA` state during quiet periods. For JSON-structured logs, reference field values directly in the `value` field to extract numeric measurements like latency, status codes, or payload sizes.
+Log Metric Filters are a zero-code approach to creating operational metrics from existing log output. Use `default_value = "0"` to publish zeroes for minutes where logs are ingested but no log events match. If no logs are ingested at all, CloudWatch does not emit a data point for that minute, so configure `treat_missing_data` on your alarms if you want quiet periods handled as OK instead of `INSUFFICIENT_DATA`. For JSON-structured logs, reference field values directly in the `value` field to extract numeric measurements like latency, status codes, or payload sizes.
