@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, TLS, Certificate, Rotation, ACM, Key Vault, Security, Infrastructure as Code
+Tags: OpenTofu, TLS, Certificate, Rotation, ACM, Kubernetes, Security, Infrastructure as Code
 
-Description: Learn how to implement zero-downtime TLS certificate rotation using OpenTofu with create_before_destroy lifecycle, automated rotation workflows, and expiry monitoring for ACM, Key Vault, and...
+Description: Learn how to implement TLS certificate rotation using OpenTofu with create_before_destroy where supported, automated rotation workflows, and expiry monitoring for ACM, Secrets Manager, and Kubernetes.
 
 ---
 
-Certificate rotation is a security requirement - certificates expire, keys may be compromised, and compliance frameworks mandate regular rotation. OpenTofu manages rotation using `create_before_destroy` lifecycle rules to ensure zero-downtime transitions.
+Certificate rotation is a security requirement - certificates expire, keys may be compromised, and compliance frameworks mandate regular rotation. OpenTofu can coordinate rotation using `create_before_destroy` lifecycle rules where the target resource supports parallel replacements, helping avoid downtime during certificate updates.
 
 ## Certificate Rotation Workflow
 
@@ -41,7 +41,6 @@ resource "aws_acm_certificate" "main" {
 
   tags = {
     Environment = var.environment
-    RotatedAt   = timestamp()
     ManagedBy   = "opentofu"
   }
 }
@@ -79,17 +78,20 @@ variable "cert_version" {
   default     = "v1"
 }
 
-# Certificate is recreated when cert_version changes
+# Use terraform_data to turn cert_version into a replacement trigger
+resource "terraform_data" "cert_rotation" {
+  input = var.cert_version
+}
+
+# Key pair and certificate are recreated when cert_version changes
 resource "tls_private_key" "server" {
   algorithm = "RSA"
   rsa_bits  = 4096
 
-  # Changing any argument triggers resource replacement
-  # Use cert_version in a keepers-style pattern via local
-}
-
-locals {
-  cert_name = "${var.service_name}-cert-${var.cert_version}"
+  # tls_private_key stores the private key in state; prefer external key generation for production.
+  lifecycle {
+    replace_triggered_by = [terraform_data.cert_rotation]
+  }
 }
 
 resource "tls_self_signed_cert" "server" {
@@ -107,12 +109,13 @@ resource "tls_self_signed_cert" "server" {
 
   lifecycle {
     create_before_destroy = true
+    replace_triggered_by  = [terraform_data.cert_rotation]
   }
 }
 
-# Store with version in secret name for audit trail
+# Store rotated material in a stable secret; Secrets Manager versions provide the audit trail
 resource "aws_secretsmanager_secret" "cert" {
-  name = "${var.environment}/certs/${var.service_name}/${var.cert_version}"
+  name = "${var.environment}/certs/${var.service_name}"
 }
 
 resource "aws_secretsmanager_secret_version" "cert" {
@@ -120,7 +123,6 @@ resource "aws_secretsmanager_secret_version" "cert" {
   secret_string = jsonencode({
     certificate = tls_self_signed_cert.server.cert_pem
     private_key = tls_private_key.server.private_key_pem
-    rotated_at  = timestamp()
     version     = var.cert_version
   })
 }
@@ -128,8 +130,10 @@ resource "aws_secretsmanager_secret_version" "cert" {
 
 ## Kubernetes Certificate Rotation
 
+With a fixed Secret name, Kubernetes updates the Secret in place; zero downtime depends on how your workloads reload the updated Secret data.
+
 ```hcl
-# kubernetes_secret rotation with zero downtime
+# kubernetes_secret update with a stable secret name
 resource "kubernetes_secret" "tls" {
   metadata {
     name      = "${var.service_name}-tls"
@@ -137,8 +141,7 @@ resource "kubernetes_secret" "tls" {
 
     # Annotation helps track rotation history
     annotations = {
-      "cert-rotation/version"    = var.cert_version
-      "cert-rotation/rotated-at" = timestamp()
+      "cert-rotation/version" = var.cert_version
     }
   }
 
@@ -147,10 +150,6 @@ resource "kubernetes_secret" "tls" {
   data = {
     "tls.crt" = tls_self_signed_cert.server.cert_pem
     "tls.key" = tls_private_key.server.private_key_pem
-  }
-
-  lifecycle {
-    create_before_destroy = true
   }
 }
 ```
@@ -211,8 +210,8 @@ output "certificate_expiry" {
 
 ## Best Practices
 
-- Always use `create_before_destroy = true` on certificate resources - without it, OpenTofu will destroy the old certificate before the new one is attached, causing downtime.
+- Use `create_before_destroy = true` only on resources that support old and new objects existing at the same time - fixed-name resources such as Kubernetes Secrets usually need in-place updates or versioned names instead.
 - Use `allow_overwrite = true` on Route 53 validation records so rotation doesn't fail when the validation record already exists from the previous certificate.
-- Track certificate versions in secret names or annotations - this creates an audit trail of when rotations occurred.
+- Track certificate versions in secret payloads or annotations - Secrets Manager version history and Kubernetes annotations provide an audit trail for rotations.
 - Set two alarms: a 30-day warning and a 14-day critical alert - 30 days gives time for planned rotation, 14 days triggers emergency procedures.
-- For ACM certificates, rotation is usually automatic via DNS validation - but monitor anyway because validation can silently fail if DNS records are misconfigured.
+- For ACM certificates, rotation is usually automatic via DNS validation - but monitor anyway because renewal will fail if the required DNS records are missing or inaccessible.
