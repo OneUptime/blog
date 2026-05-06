@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, Dynamic ARP Inspection, DAI, IPv4, Security, ARP Spoofing, IOS
 
-Description: Configure Dynamic ARP Inspection (DAI) on Cisco IOS switches to prevent ARP spoofing and poisoning attacks by validating ARP packets against the DHCP snooping binding table.
+Description: Configure Dynamic ARP Inspection (DAI) on Cisco IOS switches to prevent ARP spoofing and poisoning attacks by validating ARP packets against the DHCP snooping binding table and ARP ACLs for static hosts.
 
 ## Introduction
 
-Dynamic ARP Inspection intercepts ARP requests and replies on untrusted ports and validates them against the DHCP snooping binding table. An ARP message claiming a MAC-to-IP mapping not in the binding table is dropped, preventing ARP spoofing and man-in-the-middle attacks.
+Dynamic ARP Inspection intercepts ARP requests and replies on untrusted ports and validates them against the DHCP snooping binding table or configured ARP ACLs. An ARP message claiming an IP-to-MAC mapping that does not match the binding table or an ARP ACL is dropped, preventing ARP spoofing and man-in-the-middle attacks.
 
 ## Prerequisites
 
-DHCP snooping must be enabled and have a populated binding table before DAI is effective.
+In DHCP environments, DHCP snooping must be enabled and have a populated binding table before DAI can validate DHCP-learned hosts.
 
 ## Enable DAI
 
@@ -24,9 +24,10 @@ ip dhcp snooping vlan 10,20
 ! Enable DAI per VLAN
 ip arp inspection vlan 10,20
 
-! Trust the uplink - ARP from trusted ports is not validated
+! Trust the uplink for DHCP snooping and DAI
 interface GigabitEthernet0/24
  description Uplink-to-Distribution
+ ip dhcp snooping trust
  ip arp inspection trust
 
 ! Access ports are untrusted by default
@@ -48,8 +49,8 @@ interface range GigabitEthernet0/1 - 20
 ! Use an ARP ACL to explicitly permit their ARP messages
 
 arp access-list STATIC-SERVERS
- permit ip host 10.1.20.10 mac host 00:1a:2b:3c:4d:5e
- permit ip host 10.1.20.11 mac host 00:aa:bb:cc:dd:ee
+ permit ip host 10.1.20.10 mac host 001a.2b3c.4d5e
+ permit ip host 10.1.20.11 mac host 00aa.bbcc.ddee
 
 ip arp inspection filter STATIC-SERVERS vlan 20
 ```
@@ -98,4 +99,4 @@ interface GigabitEthernet0/5
 
 ## Conclusion
 
-Dynamic ARP Inspection stops ARP spoofing by cross-referencing ARP messages against the DHCP snooping binding table. Trust uplink ports, rate-limit access ports to prevent ARP floods, and add static ARP ACLs for hosts with manual IP configurations. Enable `ip arp inspection validate src-mac dst-mac ip` for the most thorough validation.
+Dynamic ARP Inspection stops ARP spoofing by cross-referencing ARP messages against the DHCP snooping binding table or ARP ACLs for statically addressed hosts. Trust uplink ports, rate-limit access ports to prevent ARP floods, and add static ARP ACLs for hosts with manual IP configurations. Enable `ip arp inspection validate src-mac dst-mac ip` for the most thorough validation.
