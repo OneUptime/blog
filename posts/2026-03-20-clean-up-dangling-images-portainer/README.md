@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Image, Cleanup, Dangling
 
-Description: Remove dangling Docker images (untagged, unreferenced layers) in Portainer to free up disk space.
+Description: Remove dangling Docker images (untagged images not referenced by any container) in Portainer to free up disk space.
 
 ---
 
@@ -30,7 +30,7 @@ docker login registry.example.com
 docker pull registry.example.com/private/image:tag
 ```
 
-In Portainer: **Images > Pull image** - enter the image name and tag, optionally select a registry.
+In Portainer: **Images** - select the registry, enter the image name and tag, and click **Pull the image**.
 
 ## Build Images
 
@@ -45,7 +45,7 @@ docker build -f Dockerfile.prod -t myapp:prod .
 docker build --build-arg NODE_ENV=production -t myapp:prod .
 ```
 
-In Portainer: **Images > Build image** - paste Dockerfile content or upload a file.
+In Portainer: **Images > Build a new image** - use the web editor for the Dockerfile or upload a Dockerfile.
 
 ## Import/Export Images
 
@@ -76,7 +76,7 @@ docker push registry.example.com/myapp:v2.0.0
 # Remove a specific image
 docker rmi myapp:old
 
-# Remove all dangling images (untagged layers)
+# Remove all dangling images (untagged images not referenced by any container)
 docker image prune
 
 # Remove all unused images (not referenced by any container)
@@ -89,8 +89,11 @@ docker system df
 ## Identify Outdated Images
 
 ```bash
-# Check if a newer digest exists for an image
-docker pull nginx:latest 2>&1 | grep -E "Pull complete|up to date"
+# Pull the tag and let Docker report whether it downloaded a newer image
+docker pull nginx:latest
+
+# View the pulled image digest
+docker inspect nginx:latest --format '{{index .RepoDigests 0}}'
 
 # View image creation date
 docker inspect nginx:latest --format '{{.Created}}'
