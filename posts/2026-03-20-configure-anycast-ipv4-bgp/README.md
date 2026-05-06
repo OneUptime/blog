@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Anycast, BGP, IPv4, Networking, High Availability, DNS
 
-Description: Anycast assigns the same IP address to multiple servers in different locations, and BGP routing ensures clients are directed to the nearest instance, enabling high availability and geographic load...
+Description: Anycast assigns the same IP address to multiple servers in different locations, and BGP routing helps direct clients to the topologically closest available instance, enabling high availability and geographic distribution...
 
 ## What Is Anycast?
 
-In anycast, multiple nodes share the same IP address. BGP advertises the same prefix from multiple points of presence (PoPs). Routers use BGP best-path selection (preferring shorter AS paths, lower MED, etc.) to route each client to the nearest or best-performing instance.
+In anycast, multiple nodes share the same IP address. BGP advertises the same prefix from multiple points of presence (PoPs). Routers use BGP best-path selection and routing policy to send each client to the topologically preferred instance.
 
 ```mermaid
 flowchart TB
@@ -20,7 +20,7 @@ flowchart TB
 
 ## How Cloudflare, Google DNS Use Anycast
 
-DNS resolvers like `8.8.8.8` (Google) and `1.1.1.1` (Cloudflare) are anycast addresses. Hundreds of servers globally share these IPs; BGP routing sends each DNS query to the geographically closest server.
+DNS resolvers like `8.8.8.8` (Google) and `1.1.1.1` (Cloudflare) are anycast addresses. Multiple servers globally share these IPs; BGP routing sends each DNS query to the nearest location advertising the anycast address, subject to routing policy and network conditions.
 
 ## Setting Up a Simple Anycast with FRRouting
 
@@ -36,16 +36,17 @@ sudo ip addr add 203.0.113.10/32 dev lo
 ip addr show lo | grep 203.0.113.10
 ```
 
-Configure BGP on each node using FRRouting to advertise the /32:
+Configure BGP on each node using FRRouting to advertise the /32 in a lab or controlled network. On the public Internet, operators typically announce a covering IPv4 prefix such as a /24 because longer prefixes are commonly filtered:
 
 ```nginx
 # /etc/frr/frr.conf on each PoP node
 router bgp 65001
   bgp router-id 10.0.1.1       ! unique per node
+  no bgp ebgp-requires-policy  ! lab example; otherwise define inbound/outbound policy
   neighbor 10.0.0.1 remote-as 65000   ! upstream BGP peer
 
   address-family ipv4 unicast
-    network 203.0.113.10/32     ! advertise anycast IP
+    network 203.0.113.10/32     ! advertise anycast IP when it exists in the RIB
   exit-address-family
 !
 ```
@@ -53,16 +54,16 @@ router bgp 65001
 ```bash
 # Apply FRRouting config
 sudo systemctl restart frr
-vtysh -c "show ip bgp 203.0.113.10/32"
+vtysh -c "show bgp ipv4 unicast 203.0.113.10/32"
 ```
 
 ## Health Check Integration
 
-Anycast requires withdrawing the route if the service is unhealthy:
+A simple anycast design can withdraw the route if the service is unhealthy:
 
 ```bash
 #!/bin/bash
-# health_check.sh - run every 30s via cron or systemd timer
+# health_check.sh - run every 30s via a systemd timer
 ANYCAST_IP="203.0.113.10"
 IFACE="lo"
 
@@ -82,14 +83,14 @@ fi
 
 | Property | Anycast | Traditional Load Balancer |
 |----------|---------|--------------------------|
-| Geographic distribution | Yes (BGP) | No (single location) |
+| Geographic distribution | Yes (via routing across multiple sites) | Usually single-site or regional unless paired with global traffic steering |
 | Failover mechanism | BGP route withdrawal | Health checks |
-| Session stickiness | No (same-session may hit different PoP) | Yes (configurable) |
-| DDoS mitigation | Yes (absorbs traffic at PoP) | Limited |
+| Session stickiness | Limited; it can change if routing changes | Yes (configurable) |
+| DDoS mitigation | Can help spread traffic across PoPs | Depends on deployment and capacity |
 
 ## Key Takeaways
 
-- Anycast assigns one IP to multiple locations; BGP routes each client to the nearest instance.
-- Assign the anycast IP to loopback as a /32 and advertise via BGP.
+- Anycast assigns one IP to multiple locations; BGP routes each client to a topologically preferred instance.
+- Assign the anycast IP to loopback as a /32 and advertise it via BGP in a lab or controlled network; public Internet deployments typically announce a covering /24.
 - Withdraw the BGP route when service is unhealthy to redirect traffic to other PoPs.
 - Anycast is not suitable for stateful sessions without additional session-sharing mechanisms.
