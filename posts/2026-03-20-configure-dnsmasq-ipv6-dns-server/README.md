@@ -31,7 +31,7 @@ listen-address=2001:db8::1
 # Or listen on a specific interface
 interface=eth0
 
-# Bind only to specified addresses (prevent wildcards)
+# Bind only to specified interfaces/addresses (prevent wildcards)
 bind-interfaces
 
 # Allow queries from IPv6 subnet
@@ -46,14 +46,13 @@ bind-interfaces
 # Use IPv6 upstream resolvers
 server=2606:4700:4700::1111
 server=2606:4700:4700::1001
-server=8.8.8.8
+server=2001:4860:4860::8888
 
 # Forward specific domain to internal IPv6 resolver
 server=/internal.example.com/2001:db8:1::53
 
-# No forward for local-only domains
+# No forward for locally served home.arpa names
 local=/home.arpa/
-local=/local/
 ```
 
 ## Step 3: Static AAAA Records
@@ -62,17 +61,17 @@ local=/local/
 # /etc/dnsmasq.conf
 
 # Static AAAA for local hostnames
-address=/router.local/2001:db8::1
-address=/server.local/2001:db8::10
-address=/nas.local/2001:db8::20
+host-record=router.home.arpa,2001:db8::1
+host-record=server.home.arpa,2001:db8::10
+host-record=nas.home.arpa,2001:db8::20
 
 # Or add to /etc/hosts (dnsmasq reads /etc/hosts by default)
 ```
 
 ```text
 # /etc/hosts additions
-2001:db8::1    router router.local
-2001:db8::10   server server.local
+2001:db8::1    router router.home.arpa
+2001:db8::10   server server.home.arpa
 ```
 
 ## Step 4: DHCPv6 and RA
@@ -80,18 +79,20 @@ address=/nas.local/2001:db8::20
 ```ini
 # /etc/dnsmasq.conf
 
-# Enable Router Advertisements on eth0
+# Enable Router Advertisements
 enable-ra
+
+# Example: dynamic DHCPv6 pool plus SLAAC on the prefix assigned to eth0
 dhcp-range=::1,::400,constructor:eth0,slaac,64,12h
 
-# DHCPv6 stateful (assign from pool)
+# Or, for a fixed /64, use an explicit stateful pool
 dhcp-range=2001:db8::100,2001:db8::200,64,12h
 
 # Static DHCPv6 assignment by DUID
-dhcp-host=id:00:01:00:01:12:34:56:78:aa:bb:cc:dd:ee:ff,2001:db8::50
+dhcp-host=id:00:01:00:01:12:34:56:78:aa:bb:cc:dd:ee:ff,[2001:db8::50]
 
 # DNS search domain pushed to clients
-dhcp-option=option6:domain-search,example.local
+dhcp-option=option6:domain-search,home.arpa
 dhcp-option=option6:dns-server,[2001:db8::1]
 ```
 
@@ -105,8 +106,8 @@ dnssec
 dnssec-check-unsigned
 ```
 
-```bash
-# Download and configure root trust anchors
+```ini
+# Add the current root trust anchor to /etc/dnsmasq.conf
 trust-anchor=.,20326,8,2,E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
 ```
 
@@ -120,11 +121,11 @@ dnsmasq --test
 systemctl enable --now dnsmasq
 
 # Verify listening
-ss -lnup | grep :53
+ss -lnutp | grep :53
 
 # Test
 dig AAAA google.com @::1
-dig AAAA router.local @::1
+dig AAAA router.home.arpa @::1
 
 # Check leases
 cat /var/lib/misc/dnsmasq.leases
@@ -141,4 +142,4 @@ log-dhcp
 
 ## Conclusion
 
-dnsmasq provides simple IPv6 DNS forwarding and DHCPv6/RA in a single lightweight daemon, ideal for home labs and edge devices. Configure `listen-address` for IPv6, add static `address=` entries, and point upstream `server=` lines to IPv6 resolvers. Monitor local DNS availability with OneUptime's synthetic checks.
+dnsmasq provides simple IPv6 DNS forwarding and DHCPv6/RA in a single lightweight daemon, ideal for home labs and edge devices. Configure `listen-address` for IPv6, add static `host-record=` or `/etc/hosts` entries, and point upstream `server=` lines to IPv6 resolvers. Monitor local DNS availability with OneUptime's synthetic checks.
