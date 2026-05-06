@@ -8,7 +8,7 @@ Description: Configure custom DNS servers, search domains, and DNS options for D
 
 ## Introduction
 
-By default, Docker containers use the Docker daemon's DNS settings, which typically point to `8.8.8.8` or the host's resolver. Customizing DNS per container or daemon-wide is essential in corporate environments with internal DNS servers or split-horizon DNS.
+By default, Docker containers use the host's DNS settings. Containers on the default `bridge` network receive a copy of the host's `/etc/resolv.conf`, while containers on user-defined networks use Docker's embedded DNS server (`127.0.0.11`), which forwards queries to the host's configured resolvers. Customizing DNS per container or daemon-wide is essential in corporate environments with internal DNS servers or split-horizon DNS.
 
 ## Setting DNS for a Single Container
 
@@ -20,19 +20,19 @@ docker run -d \
   --dns 192.168.1.10 \
   --dns 192.168.1.11 \
   --dns-search corp.example.com \
-  --dns-opt ndots:5 \
+  --dns-option ndots:5 \
   nginx:alpine
 
 # Verify from inside the container
 docker exec my-app cat /etc/resolv.conf
 ```
 
-Expected `/etc/resolv.conf` in the container:
+Relevant `/etc/resolv.conf` entries in the container:
 
 ```text
-search corp.example.com
 nameserver 192.168.1.10
 nameserver 192.168.1.11
+search corp.example.com
 options ndots:5
 ```
 
@@ -56,8 +56,6 @@ sudo systemctl restart docker
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   web:
     image: nginx:alpine
@@ -77,8 +75,8 @@ services:
 # Test resolution from inside a container
 docker exec my-app nslookup internal-server.corp.example.com
 
-# Or with dig
-docker exec my-app dig +short internal-server.corp.example.com
+# Or verify IPv4 answers only
+docker exec my-app getent ahostsv4 internal-server.corp.example.com
 
 # Test with a specific server
 docker exec my-app nslookup internal-server.corp.example.com 192.168.1.10
@@ -93,11 +91,11 @@ By default, Docker containers on user-defined networks use Docker's internal DNS
 docker exec my-app cat /etc/resolv.conf
 # nameserver 127.0.0.11
 
-# Resolves other containers by name
+# Resolves other containers by name on the same user-defined network
 docker exec my-app ping db-service
 ```
 
-When you set `--dns`, Docker adds those servers after `127.0.0.11`, so container name resolution still works.
+When you set `--dns` for a container on a user-defined network, Docker's embedded DNS still listens on `127.0.0.11` inside the container and forwards external lookups to the configured upstream DNS servers, so container name resolution still works.
 
 ## Troubleshooting DNS in Containers
 
