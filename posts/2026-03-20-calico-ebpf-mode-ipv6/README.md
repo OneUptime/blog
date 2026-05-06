@@ -4,115 +4,94 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Calico, eBPF, IPv6, Kubernetes, XDP, Kube-proxy Replacement, Performance
 
-Description: Configure Calico in eBPF mode for high-performance IPv6 packet forwarding, replacing kube-proxy with eBPF-native service load balancing.
+Description: Configure Calico in eBPF mode on an IPv6-capable self-managed Kubernetes cluster, replacing kube-proxy with Calico's eBPF-native service handling.
 
 ## Introduction
 
-Configure Calico in eBPF mode for high-performance IPv6 packet forwarding, replacing kube-proxy with eBPF-native service load balancing. This guide covers the essential configuration, code patterns, and verification steps.
+Configure Calico in eBPF mode on an IPv6-capable self-managed Kubernetes cluster, replacing kube-proxy with eBPF-native service handling. This guide uses the Tigera Operator workflow, assumes Calico IPAM, and covers the essential prerequisites, configuration, and verification steps.
 
 ## Step 1: Prerequisites and Setup
 
 ```bash
-# Ensure IPv6 is enabled and functional
+# Check the kernel version. Calico eBPF requires Linux 5.10+,
+# or RHEL 8.4 with kernel 4.18.0-305 or later.
+uname -rv
 
-ip -6 addr show
-ping6 -c 3 ::1
+# Ensure IPv6 forwarding is enabled and a default IPv6 route exists.
+sysctl net.ipv6.conf.all.forwarding
+ip -6 route show default
 
-# Install required dependencies
-pip install ipaddress netaddr  # Python
-# or
-npm install ipaddr.js          # JavaScript
+# Confirm kube-proxy is running as a DaemonSet in kube-system.
+kubectl -n kube-system get ds kube-proxy
 ```
 
 ## Step 2: Core Implementation
 
-```python
-import ipaddress
-from typing import Optional
+For an IPv6-only cluster, edit the operator `custom-resources.yaml` so the `Installation` resource includes a single IPv6 pool that matches the Kubernetes pod CIDR and enables the BPF dataplane:
 
-def check_ipv6_subnet(client_ip: str, allowed_prefix: str) -> bool:
-    """Check if an IPv6 address is within an allowed subnet."""
-    try:
-        addr = ipaddress.ip_address(client_ip)
-        network = ipaddress.ip_network(allowed_prefix, strict=False)
-        return addr in network
-    except ValueError:
-        return False
-
-# Example usage
-allowed_networks = [
-    "2001:db8:trusted::/48",
-    "::1/128",
-    "fe80::/10",
-]
-
-def is_allowed(client_ip: str) -> bool:
-    """Check if client IP is in any allowed network."""
-    for network in allowed_networks:
-        if check_ipv6_subnet(client_ip, network):
-            return True
-    return False
-
-# Tests
-print(is_allowed("2001:db8:trusted::1"))   # True
-print(is_allowed("2001:db8:unknown::1"))   # False
-print(is_allowed("::1"))                   # True
+```yaml
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  variant: Calico
+  calicoNetwork:
+    linuxDataplane: BPF
+    bpfNetworkBootstrap: Enabled
+    kubeProxyManagement: Enabled
+    nodeAddressAutodetectionV6:
+      kubernetes: NodeInternalIP
+    ipPools:
+      - cidr: 2001:db8:100::/64
+        blockSize: 122
+        encapsulation: None
+        natOutgoing: Enabled
+        nodeSelector: all()
 ```
 
 ## Step 3: Configuration
 
-```yaml
-# Configuration example for Calico eBPF Mode with IPv6
-ipv6:
-  enabled: true
-  networks:
-    - prefix: "2001:db8::/32"
-      description: "Internal network"
-      action: allow
-    - prefix: "::/0"
-      description: "Default"
-      action: deny
+If Calico is already installed with the Tigera Operator and the cluster is already configured for IPv6, switch the existing `Installation` resource to eBPF mode with:
+
+```bash
+kubectl patch installation.operator.tigera.io default --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","bpfNetworkBootstrap":"Enabled","kubeProxyManagement":"Enabled"}}}'
 ```
 
 ## Step 4: Apply and Verify
 
 ```bash
-# Apply configuration
-python3 configure.py --config config.yaml
+# Apply the edited operator custom resources for a new cluster.
+kubectl create -f custom-resources.yaml
 
-# Verify functionality
-python3 -c "
-import ipaddress
-addr = ipaddress.IPv6Address('2001:db8::1')
-net = ipaddress.IPv6Network('2001:db8::/32')
-print(f'{addr} in {net}: {addr in net}')
-"
+# Monitor the rollout.
+watch kubectl get tigerastatus
 
-# Test connectivity
-curl -6 http://[::1]:8080/health
+# Confirm the IPv6 pool exists.
+kubectl get ippools
+
+# Find a calico-node pod for BPF inspection.
+kubectl get pod -o wide -n calico-system
+
+# Verify that the eBPF service tables are programmed.
+kubectl exec -n calico-system <calico-node-name> -- calico-node -bpf nat dump
 ```
 
 ## Step 5: Monitoring
 
-```python
-import logging
+If your environment requires an overlay, use `VXLAN` in the IP pool. Do not use `IPIP` in eBPF mode.
 
-logger = logging.getLogger(__name__)
+```bash
+# Show the available eBPF inspection commands.
+kubectl exec -n calico-system <calico-node-name> -- calico-node -bpf help
 
-def log_ipv6_access(client_ip: str, allowed: bool):
-    """Log IPv6 access attempts."""
-    try:
-        addr = ipaddress.ip_address(client_ip)
-        logger.info({
-            "client_ip": client_ip,
-            "ip_version": addr.version,
-            "allowed": allowed,
-            "is_private": addr.is_private,
-        })
-    except ValueError:
-        logger.warning(f"Invalid IP: {client_ip}")
+# Inspect connection tracking state in the eBPF dataplane.
+kubectl exec -n calico-system <calico-node-name> -- calico-node -bpf conntrack dump
+
+# Inspect packet counters on the relevant host interface.
+kubectl exec -n calico-system <calico-node-name> -- calico-node -bpf counters dump --iface=eth0
 ```
 
 ## Conclusion
 
-Calico eBPF Mode with IPv6 requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's  module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
+Calico eBPF mode with IPv6 depends on correct Kubernetes pod and service CIDRs, a working IPv6 node address, and an operator-managed BPF configuration. Use the `Installation` resource to enable the BPF dataplane and manage IPv6 pools, and use `tigerastatus` plus `calico-node -bpf` to verify service handling and rollout health.
