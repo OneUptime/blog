@@ -18,20 +18,20 @@ Cilium uses eBPF programs attached to network interfaces to implement the Kubern
 helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium \
   --namespace kube-system \
+  --set ipv4.enabled=false \
   --set ipv6.enabled=true \
   --set ipam.mode=kubernetes \
+  --set k8s.requireIPv6PodCIDR=true \
+  --set routingMode=native \
   --set kubeProxyReplacement=true \
   --set k8sServiceHost=api.example.com \
   --set k8sServicePort=6443 \
   --set ipv6NativeRoutingCIDR="fd00:10::/104" \
-  --set clusterPoolIPv6PodCIDRList[0]="fd00:10::/104" \
-  --set bpf.masquerade=true \
-  --set enableIPv6Masquerade=false \
   --set autoDirectNodeRoutes=true
 
 # Verify eBPF programs loaded
 cilium status --verbose
-cilium bpf endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf endpoint list
 ```
 
 ## Cilium eBPF Datapath Internals
@@ -40,26 +40,26 @@ cilium bpf endpoint list
 # Show eBPF programs loaded on a node
 bpftool prog list | grep cilium
 
-# Show eBPF maps related to IPv6
-bpftool map list | grep -E "cilium|6"
+# Show Cilium eBPF maps; IPv6-related maps commonly include lb6/ct6 entries
+bpftool map list | grep cilium
 
-# Inspect the IPv6 neighbor table (eBPF map)
-cilium bpf ipv6 list
+# Inspect IPv6 IP-to-identity mappings in the eBPF IPCache
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ipcache list | grep ':'
 
 # Show per-endpoint eBPF program attachment
-# Each pod gets a tc ingress/egress program on its veth
+# Cilium attaches endpoint programs via tc/tcx on pod-facing interfaces
 ip link show type veth | grep lxc
 bpftool net show dev lxc1234abcd
 
 # Trace eBPF execution for debugging
-cilium monitor --type trace --from-ip "fd00:10::1" --to-ip "fd00:10::2"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type trace
 ```
 
 ## XDP Acceleration for IPv6
 
 ```bash
 # Enable XDP acceleration (requires supported NIC)
-# XDP runs before the kernel network stack - fastest possible path
+# XDP accelerates Cilium's service handling on supported NICs
 
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
@@ -67,31 +67,31 @@ helm upgrade cilium cilium/cilium \
   --set loadBalancer.acceleration=native  # XDP native mode
 
 # Verify XDP is enabled
-cilium status | grep XDP
-# Should show: XDP Acceleration:  NATIVE
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep XDP
+# Should show: XDP Acceleration:    Native
 
 # Check XDP program on physical interface
 bpftool net show dev eth0
-# xdp: id X  name bpf_xdp_entry
+# Look for an xdp attachment on the direct-routing device
 ```
 
 ## IPv6 Kube-Proxy Replacement
 
 ```bash
 # Verify kube-proxy replacement is active
-cilium status | grep KubeProxyReplacement
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep KubeProxyReplacement
 # KubeProxyReplacement: True
 
 # Check IPv6 service entries in eBPF
-cilium service list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg service list
 # Shows ClusterIP, NodePort, LoadBalancer services
 # Each IPv6 service has eBPF LB rules
 
 # Inspect a specific IPv6 service
 kubectl get svc my-service -o jsonpath='{.spec.clusterIPs}'
-# e.g.: ["10.96.0.10", "fd00:10:96::10"]
+# e.g.: ["fd00:10:96::10"]
 
-cilium bpf lb list | grep "fd00:10:96"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf lb list --frontends | grep "fd00:10:96"
 ```
 
 ## eBPF-Based Network Policy for IPv6
@@ -114,33 +114,34 @@ spec:
         - ports:
             - port: "8080"
               protocol: TCP
-    - fromCIDR:
-        - "fd00:10::/104"  # Allow all pod traffic
+    - fromEndpoints:
+        - {}  # Allow all Cilium-managed endpoints
 ```
 
 ```bash
 # Verify policy is enforced via eBPF
-cilium endpoint list | grep -E "backend|frontend"
-cilium bpf policy get <endpoint-id>
-# Shows eBPF policy map entries
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -E "backend|frontend"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf policy list
+# Dumps realized eBPF policy maps for local endpoints
 ```
 
 ## Monitoring Cilium IPv6 Performance
 
 ```bash
-# Hubble flow monitoring for IPv6
-hubble observe --type l3-l4 --ip-version ipv6
+# Hubble flow monitoring
+hubble observe --since 1m
 
-# Per-endpoint IPv6 packet counts
-cilium bpf endpoint list | head -20
+# BPF datapath traffic metrics
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf metrics list | head -20
 
 # Network policy drop counters
-cilium bpf policy get <endpoint-id> | grep "denied"
+hubble observe --since 1m --verdict DROPPED
 
 # Hubble metrics for Prometheus
-# cilium_drop_count_total{reason="POLICY_DENIED", direction="INGRESS"} 42
+# Prometheus exports metrics such as cilium_drop_count_total
+# and cilium_forward_count_total
 ```
 
 ## Conclusion
 
-Cilium's eBPF datapath provides the most efficient IPv6 networking for Kubernetes, with optional XDP acceleration for line-rate performance. kube-proxy replacement eliminates iptables overhead for IPv6 service routing. Use `cilium monitor` and Hubble for real-time flow visibility. Monitor pod connectivity and network policy effectiveness with OneUptime synthetic checks.
+Cilium's eBPF datapath provides efficient IPv6 networking for Kubernetes, with optional XDP acceleration on supported NICs. kube-proxy replacement eliminates iptables overhead for IPv6 service routing. Use `cilium-dbg monitor` and Hubble for real-time flow visibility. Monitor pod connectivity and network policy effectiveness with OneUptime synthetic checks.
