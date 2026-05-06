@@ -4,21 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Cloudflare Workers provider in OpenTofu to manage Cloudflare Workers resources as code.
+Description: Learn how to configure and use the Cloudflare provider in OpenTofu to manage Cloudflare Workers resources as code.
 
 ## Introduction
 
-The Cloudflare Workers provider for OpenTofu enables managing Cloudflare Workers resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
+The Cloudflare provider works with OpenTofu to manage Cloudflare Workers resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
 
 ## Provider Installation
 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.19.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,52 +26,53 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Cloudflare provider can read credentials from environment variables:
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export CLOUDFLARE_API_TOKEN="your-api-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
-}
+provider "cloudflare" {}
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+resource "cloudflare_workers_script" "main" {
+  account_id  = var.account_id
+  script_name = "${var.name}-${var.environment}"
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+  content = <<-EOT
+    export default {
+      async fetch(request) {
+        return new Response("Hello from Cloudflare Workers");
+      },
+    }
+  EOT
+
+  main_module        = "worker.mjs"
+  compatibility_date = "2026-03-20"
 }
 ```
 
 ## Variables
 
 ```hcl
-variable "name"        { type = string }
-variable "environment" { type = string }
+variable "account_id"   { type = string }
+variable "name"         { type = string }
+variable "environment"  { type = string }
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "script_name" { value = cloudflare_workers_script.main.script_name }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- Store API tokens in environment variables or a secrets manager, never in `.tf` files
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
 - Use separate provider configurations per environment using aliases or workspaces
