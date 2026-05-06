@@ -9,7 +9,7 @@ Description: Learn practical methods to expose services to the internet when beh
 ## The CGNAT Challenge
 
 When behind CGNAT, you cannot directly accept inbound connections because:
-- Your router's WAN IP is a shared private address (100.64.0.0/10)
+- Your router's WAN IP is often from the shared address space 100.64.0.0/10
 - Port forwarding on your router doesn't expose you to the internet
 - The ISP controls the outer NAT and won't forward ports to you
 
@@ -29,6 +29,7 @@ frp is a fast reverse proxy for exposing local services behind NAT/firewalls.
 # Download frp
 wget https://github.com/fatedier/frp/releases/latest/download/frp_linux_amd64.tar.gz
 tar -xzf frp_linux_amd64.tar.gz
+cd frp_*_linux_amd64
 
 # frps.toml (server config on VPS)
 cat > frps.toml << 'CONF'
@@ -41,6 +42,11 @@ CONF
 
 ```bash
 # On your home machine (behind CGNAT):
+# Download frp
+wget https://github.com/fatedier/frp/releases/latest/download/frp_linux_amd64.tar.gz
+tar -xzf frp_linux_amd64.tar.gz
+cd frp_*_linux_amd64
+
 # frpc.toml (client config)
 cat > frpc.toml << 'CONF'
 serverAddr = "203.0.113.1"
@@ -63,8 +69,9 @@ CONF
 
 ```bash
 # Install ngrok
-curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
-echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+echo "deb https://ngrok-agent.s3.amazonaws.com bookworm main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+sudo apt update
 sudo apt install ngrok
 
 # Authenticate
@@ -73,7 +80,7 @@ ngrok config add-authtoken YOUR_TOKEN
 # Expose local port 80
 ngrok http 80
 
-# ngrok provides a public URL like: https://abc123.ngrok.io
+# ngrok provides a public URL like: https://random-subdomain.ngrok-free.app
 ```
 
 ## Solution 4: SSH Reverse Tunnel via VPS
@@ -112,9 +119,14 @@ autossh -M 0 -N -f \
 # Forward ports through the VPN tunnel
 
 # After WireGuard is set up on VPS (10.0.0.1):
+# Enable IPv4 forwarding on the VPS
+sysctl -w net.ipv4.ip_forward=1
+
 # Forward VPS:8080 → client tunnel IP 10.0.0.2:80
 iptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 10.0.0.2:80
-iptables -A FORWARD -i wg0 -p tcp -d 10.0.0.2 --dport 80 -j ACCEPT
+iptables -A FORWARD -p tcp -d 10.0.0.2 --dport 80 -j ACCEPT
+iptables -A FORWARD -i wg0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -t nat -A POSTROUTING -o wg0 -p tcp -d 10.0.0.2 --dport 80 -j SNAT --to-source 10.0.0.1
 ```
 
 ## Solution 6: Cloudflare Tunnel (Free)
@@ -122,24 +134,36 @@ iptables -A FORWARD -i wg0 -p tcp -d 10.0.0.2 --dport 80 -j ACCEPT
 ```bash
 # Install cloudflared
 wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-dpkg -i cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared-linux-amd64.deb
 
 # Authenticate with Cloudflare
+# Requires a domain on Cloudflare for myservice.example.com
 cloudflared tunnel login
 
 # Create tunnel
 cloudflared tunnel create home-tunnel
 
 # Configure
+# Replace <TUNNEL-UUID> and /path/to with values from your system
+cat > ~/.cloudflared/config.yml << 'CONF'
+tunnel: <TUNNEL-UUID>
+credentials-file: /path/to/.cloudflared/<TUNNEL-UUID>.json
+
+ingress:
+  - hostname: myservice.example.com
+    service: http://localhost:80
+  - service: http_status:404
+CONF
+
 cloudflared tunnel route dns home-tunnel myservice.example.com
-cloudflared tunnel run --url http://localhost:80 home-tunnel
+cloudflared tunnel run home-tunnel
 ```
 
 ## Comparison
 
 | Solution | Cost | Setup | HTTPS | Custom Domain |
 |----------|------|-------|-------|---------------|
-| ISP Public IP | Varies | Easy | No | Yes |
+| ISP Public IP | Varies | Easy | Manual | Yes |
 | frp + VPS | VPS cost | Medium | Manual | Yes |
 | ngrok | Free/Paid | Very Easy | Yes | Paid |
 | SSH Reverse | VPS cost | Easy | Manual | Yes |
@@ -148,7 +172,7 @@ cloudflared tunnel run --url http://localhost:80 home-tunnel
 ## Key Takeaways
 
 - CGNAT blocks direct inbound connections; use relay/tunnel solutions.
-- frp and ngrok are the most popular self-hosted/SaaS tunnel options.
+- frp is a popular self-hosted option, and ngrok is a popular SaaS tunnel option.
 - SSH reverse tunnels work with any VPS without extra software.
 - Cloudflare Tunnel is free and provides HTTPS for web services.
 
