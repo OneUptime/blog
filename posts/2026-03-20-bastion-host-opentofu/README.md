@@ -13,11 +13,11 @@ A bastion host (jump server) provides controlled SSH access to private EC2 insta
 ## Bastion Security Group
 
 ```hcl
-# Security group for bastion - allow SSH only from corporate IP ranges
+# Security group for bastion - allow SSH from trusted CIDRs and only required egress
 
 resource "aws_security_group" "bastion" {
   name        = "${var.environment}-bastion-sg"
-  description = "Security group for bastion host - SSH access only"
+  description = "Security group for bastion host - restricted SSH access"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -29,11 +29,19 @@ resource "aws_security_group" "bastion" {
   }
 
   egress {
-    description = "All outbound to VPC"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "SSH to private instances in the VPC"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
     cidr_blocks = [aws_vpc.main.cidr_block]
+  }
+
+  egress {
+    description = "HTTPS for package installs and AWS APIs"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
@@ -89,7 +97,7 @@ resource "aws_instance" "bastion" {
     encrypted   = true
   }
 
-  user_data = base64encode(<<-EOF
+  user_data = <<-EOF
     #!/bin/bash
     # Harden SSH configuration
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
@@ -102,9 +110,8 @@ resource "aws_instance" "bastion" {
     # Install CloudWatch agent for connection logging
     yum install -y amazon-cloudwatch-agent
     /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-      -a fetch-config -m ec2 -c ssm:/${var.environment}/cloudwatch-config -s
+      -a fetch-config -m ec2 -c ssm:AmazonCloudWatch-${var.environment} -s
   EOF
-  )
 
   tags = {
     Name        = "${var.environment}-bastion"
@@ -144,6 +151,12 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# Required for the CloudWatch agent to publish logs and read its SSM-stored config
+resource "aws_iam_role_policy_attachment" "cloudwatch_agent" {
+  role       = aws_iam_role.bastion.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
 # Allows Session Manager sessions on private instances
 resource "aws_iam_role_policy_attachment" "ssm_private" {
   role       = aws_iam_role.private_instance.name
@@ -159,7 +172,7 @@ resource "aws_iam_instance_profile" "bastion" {
 ## Session Manager VPC Endpoints (for Private Instances)
 
 ```hcl
-# Allows Session Manager to reach private instances without internet
+# Allows Systems Manager traffic to reach private instances without internet
 resource "aws_vpc_endpoint" "ssm" {
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.region}.ssm"
@@ -178,14 +191,8 @@ resource "aws_vpc_endpoint" "ssm_messages" {
   private_dns_enabled = true
 }
 
-resource "aws_vpc_endpoint" "ec2_messages" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.region}.ec2messages"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.endpoints.id]
-  private_dns_enabled = true
-}
+# In AWS Regions launched before 2024, older SSM Agent setups may also use ec2messages.
+# Current SSM Agent prefers ssmmessages, and Regions launched in 2024 or later support only ssmmessages.
 ```
 
 ## Outputs
@@ -204,4 +211,4 @@ output "bastion_ssh_command" {
 
 ## Conclusion
 
-Bastion hosts with OpenTofu restrict private instance SSH access to a single hardened entry point. For higher security, replace the SSH bastion with AWS Systems Manager Session Manager - no inbound ports required, all sessions logged to CloudTrail, no key management. Use VPC endpoints for Session Manager to keep all traffic within the VPC. The `ProxyJump` SSH pattern (`ssh -J bastion private-instance`) avoids copying private keys to the bastion host.
+Bastion hosts with OpenTofu restrict private instance SSH access to a single hardened entry point. For higher security, replace the SSH bastion with AWS Systems Manager Session Manager - no inbound ports required, Session Manager API activity logged to CloudTrail, and shell session data sent to CloudWatch Logs or Amazon S3 when session logging is enabled, with no key management. Use VPC endpoints for Session Manager to keep Systems Manager traffic within the VPC. The `ProxyJump` SSH pattern (`ssh -J bastion private-instance`) avoids copying private keys to the bastion host.
