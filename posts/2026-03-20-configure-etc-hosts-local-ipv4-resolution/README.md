@@ -8,7 +8,7 @@ Description: Configure /etc/hosts on Linux to resolve hostnames to IPv4 addresse
 
 ## Introduction
 
-`/etc/hosts` is the simplest name resolution mechanism - a flat text file mapping hostnames to IP addresses. The kernel checks it before querying DNS (by default), making it useful for local development, testing, and overriding specific DNS entries.
+`/etc/hosts` is the simplest name resolution mechanism - a flat text file mapping hostnames to IP addresses. The system resolver usually checks it before querying DNS according to `/etc/nsswitch.conf`, making it useful for local development, testing, and overriding specific DNS entries.
 
 ## /etc/hosts Format
 
@@ -44,7 +44,7 @@ sudo nano /etc/hosts
 echo "192.168.1.50 mydevserver" | sudo tee -a /etc/hosts
 ```
 
-Changes take effect immediately - no service restart needed.
+Changes normally take effect immediately, though some applications may cache lookups.
 
 ## Verifying Resolution
 
@@ -68,7 +68,7 @@ grep ^hosts /etc/nsswitch.conf
 ```
 
 - `files` = `/etc/hosts` (checked first)
-- `dns` = DNS servers in `/etc/resolv.conf`
+- `dns` = the DNS resolver using servers configured in `/etc/resolv.conf`
 - `mdns4_minimal` = mDNS for `.local` names
 
 To check DNS first and only fall back to hosts:
@@ -104,7 +104,7 @@ All four names resolve to the same IP.
 ```text
 # Block malicious or tracking domains
 127.0.0.1    malware.example.com
-0.0.0.0      tracking.thirdparty.com   # 0.0.0.0 fails faster than 127.0.0.1
+0.0.0.0      tracking.thirdparty.com
 ```
 
 ## /etc/hosts on Different Platforms
@@ -117,4 +117,4 @@ All four names resolve to the same IP.
 
 ## Conclusion
 
-`/etc/hosts` provides instant, DNS-independent name resolution that is ideal for local development, static infrastructure mapping, and overriding DNS. Changes take effect immediately and entries persist as long as they are in the file. For anything beyond a handful of entries, use a proper DNS server.
+`/etc/hosts` provides instant, DNS-independent name resolution that is ideal for local development, static infrastructure mapping, and overriding DNS. Changes normally take effect immediately, and entries persist as long as they are in the file. For anything beyond a handful of entries, use a proper DNS server.
