@@ -18,30 +18,35 @@ Caddy is a modern web server and reverse proxy that automatically obtains and re
 # Caddy automatically listens on both IPv4 and IPv6
 
 app.example.com {
-    # Automatic HTTPS with Let's Encrypt
+    # Automatic HTTPS
     reverse_proxy backend:8080
 }
 ```
 
-By default, Caddy binds to `0.0.0.0` and `::` for all interfaces. No special IPv6 configuration is needed for dual-stack operation.
+By default, Caddy binds to all interfaces. No special IPv6 configuration is needed for dual-stack operation.
 
 ## Explicit IPv6 Binding
 
 ```caddyfile
 # Bind only to a specific IPv6 address
 {
-    # Bind to specific IPv6 interface
-    default_bind 2001:db8::1
+    # Bind Caddyfile-generated servers to a specific IPv6 interface
+    default_bind [2001:db8::1]
 }
 
 app.example.com {
-    bind 2001:db8::1
+    bind [2001:db8::1]
     reverse_proxy backend:8080
+}
+
+# If you want Automatic HTTPS redirects/challenges to use the same bind address,
+# declare the HTTP site explicitly so default_bind applies to it too.
+http://app.example.com {
 }
 
 # Or bind to all IPv6 only
 :443 {
-    bind ::
+    bind [::]
     tls /etc/ssl/certs/cert.pem /etc/ssl/private/key.pem
     reverse_proxy backend:8080
 }
@@ -62,10 +67,6 @@ api.example.com {
         # Health checks
         health_uri    /health
         health_interval 30s
-
-        # Pass client IP headers
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Real-IP {remote_host}
     }
 }
 ```
@@ -90,15 +91,14 @@ backend.example.com {
 {
     # Global trusted proxy CIDRs
     servers {
-        trusted_proxies static 10.0.0.0/8 fd00::/8 2001:db8:lb::/48
+        trusted_proxies static 10.0.0.0/8 fd00::/8 2001:db8:100::/48
     }
 }
 
 app.example.com {
-    # After trusted_proxies is set, {remote_host} contains real client IP
+    # After trusted_proxies is set, {client_ip} contains the real client IP
     reverse_proxy backend:8080 {
-        header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {client_ip}
     }
 
     # Log with real IPv6 client address
@@ -115,7 +115,11 @@ app.example.com {
 # Rate limiting with Caddy (requires caddy-ratelimit plugin)
 app.example.com {
     rate_limit {
-        zone dynamic {remote_host} 100r/m
+        zone per_ip {
+            key {remote_host}
+            events 100
+            window 1m
+        }
     }
     reverse_proxy backend:8080
 }
@@ -131,7 +135,7 @@ For dynamic configuration via Caddy's API:
     "http": {
       "servers": {
         "main": {
-          "listen": ["[::]:443", "0.0.0.0:443"],
+          "listen": [":443"],
           "routes": [{
             "match": [{"host": ["app.example.com"]}],
             "handle": [{
@@ -139,15 +143,7 @@ For dynamic configuration via Caddy's API:
               "upstreams": [
                 {"dial": "[2001:db8::10]:8080"},
                 {"dial": "[2001:db8::11]:8080"}
-              ],
-              "headers": {
-                "request": {
-                  "set": {
-                    "X-Forwarded-For": ["{http.request.remote.host}"],
-                    "X-Real-IP": ["{http.request.remote.host}"]
-                  }
-                }
-              }
+              ]
             }]
           }]
         }
@@ -169,15 +165,15 @@ curl -X POST "http://[::1]:2019/load" \
 ```bash
 # Check Caddy listens on IPv6
 ss -tlnp | grep caddy
-# Should show [::]:443 and [::]:80
+# Should show an IPv6 listener such as [::]:443 or equivalent
 
 # Test IPv6 connectivity
 curl -6 https://app.example.com/health
 
 # Check access logs for IPv6 addresses
-tail -f /var/log/caddy/access.log | grep -E '"[0-9a-fA-F:]{3,39}"'
+tail -f /var/log/caddy/access.log | grep -E '"(remote_ip|client_ip)":"[0-9a-fA-F:]+"'
 ```
 
 ## Conclusion
 
-Caddy handles IPv6 automatically - it listens on both `0.0.0.0` and `::` by default, and the `{remote_host}` placeholder captures IPv6 client addresses correctly without special configuration. For IPv6 backend proxying, use bracket notation for addresses in `to` directives. Configure `trusted_proxies` in the global block to enable correct client IP extraction from `X-Forwarded-For` when Caddy sits behind another proxy. Caddy is the easiest reverse proxy to make dual-stack since it requires no IPv6-specific configuration for basic operation.
+Caddy handles IPv6 automatically - sites bind on all interfaces by default, and `{remote_host}` captures the direct peer address correctly without special configuration. For IPv6 backend proxying, use bracket notation for addresses in `to` directives. Configure `trusted_proxies` in the global block to enable correct client IP extraction from `X-Forwarded-For`, then use `{client_ip}` if your upstream needs the parsed real client IP. Caddy is an easy reverse proxy to make dual-stack since it requires no IPv6-specific configuration for basic operation.
