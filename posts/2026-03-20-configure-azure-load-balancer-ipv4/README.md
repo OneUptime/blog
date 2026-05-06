@@ -8,7 +8,7 @@ Description: Configure an Azure Standard Load Balancer with IPv4 frontend, backe
 
 ## Introduction
 
-Azure Load Balancer operates at Layer 4 (TCP/UDP). The Standard SKU supports availability zones, high-port rules, and backend pools with any resource. A load balancer consists of a frontend IP, a backend pool, health probes, and load balancing rules.
+Azure Load Balancer operates at Layer 4 (TCP/UDP). The Standard SKU supports availability zones, HA port rules, and backend pools that can contain NIC IP configurations or IP addresses. A load balancer consists of a frontend IP, a backend pool, health probes, and load balancing rules. For Standard Load Balancer, ensure the backend NICs are associated with a network security group and that the probe and application ports are allowed.
 
 ## Step 1: Create a Public IP for the Frontend
 
@@ -18,6 +18,7 @@ RESOURCE_GROUP="my-network-rg"
 az network public-ip create \
   --resource-group $RESOURCE_GROUP \
   --name lb-pip \
+  --version IPv4 \
   --sku Standard \
   --allocation-method Static \
   --location eastus
@@ -77,20 +78,20 @@ NIC1="web-vm-01-nic"
 NIC2="web-vm-02-nic"
 
 # Add VM 1 to backend pool
-az network nic ip-config update \
+az network nic ip-config address-pool add \
+  --address-pool lb-backend \
   --resource-group $RESOURCE_GROUP \
   --nic-name $NIC1 \
-  --name ipconfig1 \
-  --lb-name my-lb \
-  --lb-address-pools lb-backend
+  --ip-config-name ipconfig1 \
+  --lb-name my-lb
 
 # Add VM 2 to backend pool
-az network nic ip-config update \
+az network nic ip-config address-pool add \
+  --address-pool lb-backend \
   --resource-group $RESOURCE_GROUP \
   --nic-name $NIC2 \
-  --name ipconfig1 \
-  --lb-name my-lb \
-  --lb-address-pools lb-backend
+  --ip-config-name ipconfig1 \
+  --lb-name my-lb
 ```
 
 ## Creating an Internal (Private) Load Balancer
@@ -104,6 +105,7 @@ az network lb create \
   --sku Standard \
   --frontend-ip-name lb-frontend \
   --private-ip-address 10.100.2.100 \
+  --private-ip-address-version IPv4 \
   --vnet-name prod-vnet \
   --subnet app-subnet \
   --backend-pool-name lb-backend \
@@ -113,6 +115,8 @@ az network lb create \
 ## Inbound NAT Rules for Direct VM Access
 
 ```bash
+NIC1="web-vm-01-nic"
+
 # Create NAT rule to reach VM 1 directly on port 50001
 az network lb inbound-nat-rule create \
   --resource-group $RESOURCE_GROUP \
@@ -122,16 +126,31 @@ az network lb inbound-nat-rule create \
   --frontend-port 50001 \
   --backend-port 22 \
   --protocol Tcp
+
+# Associate the NAT rule with VM 1's NIC IP configuration
+az network nic ip-config inbound-nat-rule add \
+  --resource-group $RESOURCE_GROUP \
+  --nic-name $NIC1 \
+  --ip-config-name ipconfig1 \
+  --lb-name my-lb \
+  --inbound-nat-rule ssh-to-vm1
 ```
 
 ## Viewing Load Balancer Health
 
 ```bash
-# Show backend pool health
-az network lb show \
+# Get the load balancer resource ID
+LB_ID=$(az network lb show \
   --resource-group $RESOURCE_GROUP \
   --name my-lb \
-  --query 'backendAddressPools[0].backendIPConfigurations[].id'
+  --query id \
+  --output tsv)
+
+# Show the health probe status metric
+az monitor metrics list \
+  --resource $LB_ID \
+  --metric DipAvailability \
+  --aggregation Average
 
 # Get the frontend public IP
 az network public-ip show \
@@ -143,4 +162,4 @@ az network public-ip show \
 
 ## Conclusion
 
-Azure Load Balancer requires a frontend IP, backend pool, health probe, and load balancing rule. Use Standard SKU for zone-redundancy and more features. Add VMs via their NIC IP configurations to the backend pool. For private load balancing, omit the public IP and specify a private IP with subnet.
+Azure Load Balancer requires a frontend IP, backend pool, health probe, and load balancing rule. Use Standard SKU when you need availability-zone support and the current feature set. Add VMs via their NIC IP configurations to the backend pool. For private load balancing, omit the public IP and specify a private IP with subnet.
