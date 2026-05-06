@@ -40,7 +40,7 @@ provider "github" {
 # Set the token via environment variable
 
 export GITHUB_TOKEN="ghp_your_token_here"
-export GITHUB_OWNER="my-organisation"
+export TF_VAR_github_org="my-organisation"
 ```
 
 ### GitHub App (Recommended for Production)
@@ -78,18 +78,17 @@ resource "github_repository" "app" {
   has_projects  = false
   has_wiki      = false
 
-  auto_init            = true
-  gitignore_template   = "Node"
-  license_template     = "mit"
-
   topics = ["application", "backend", "api"]
-
-  vulnerability_alerts = true
 
   template {
     owner      = var.github_org
     repository = "service-template"
   }
+}
+
+resource "github_repository_vulnerability_alerts" "app" {
+  repository = github_repository.app.name
+  enabled    = true
 }
 ```
 
