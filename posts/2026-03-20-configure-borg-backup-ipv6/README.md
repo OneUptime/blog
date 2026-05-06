@@ -17,7 +17,7 @@ BorgBackup (borg) is a deduplicating, encrypting backup tool. It uses SSH for re
 
 sudo apt install borgbackup -y
 
-# RHEL/CentOS
+# RHEL/CentOS (with EPEL enabled)
 sudo dnf install borgbackup -y
 
 # Verify installation
@@ -31,7 +31,7 @@ Borg uses SSH for remote connections. Configure SSH for easier IPv6 access:
 ```bash
 # ~/.ssh/config
 Host borg-server
-    HostName 2001:db8::backup
+    HostName 2001:db8::1
     User borguser
     IdentityFile ~/.ssh/borg_key
     AddressFamily inet6      # Force IPv6
@@ -45,18 +45,18 @@ Host borg-server
 # Initialize repository using hostname alias (from SSH config)
 borg init \
   --encryption=repokey \
-  borguser@borg-server:/backups/myhost
+  ssh://borguser@borg-server/backups/myhost
 
 # Initialize using IPv6 address directly
-# Note: brackets around IPv6 address in the SSH path
+# Note: brackets around the IPv6 address in the repository URL
 borg init \
   --encryption=repokey \
-  ssh://borguser@[2001:db8::backup]:22/backups/myhost
+  ssh://borguser@[2001:db8::1]:22/backups/myhost
 
-# Or using standard SSH host format
+# Or using the default SSH port
 borg init \
   --encryption=repokey \
-  "borguser@'[2001:db8::backup]':/backups/myhost"
+  ssh://borguser@[2001:db8::1]/backups/myhost
 ```
 
 ## Creating Backups over IPv6
@@ -73,7 +73,7 @@ BORG_PASSPHRASE="YourPassphrase" borg create \
   --exclude-caches \
   --exclude '/home/*/.cache' \
   --exclude '/var/tmp' \
-  borguser@borg-server:/backups/myhost::'{hostname}-{now}' \
+  ssh://borguser@borg-server/backups/myhost::'{hostname}-{now}' \
   /etc \
   /home \
   /var/www
@@ -82,7 +82,7 @@ BORG_PASSPHRASE="YourPassphrase" borg create \
 BORG_PASSPHRASE="YourPassphrase" borg create \
   --verbose \
   --compression lz4 \
-  "ssh://borguser@[2001:db8::backup]/backups/myhost::$(hostname)-$(date +%Y%m%d)" \
+  "ssh://borguser@[2001:db8::1]/backups/myhost::$(hostname)-$(date +%Y%m%d)" \
   /etc /home
 ```
 
@@ -91,15 +91,15 @@ BORG_PASSPHRASE="YourPassphrase" borg create \
 ```bash
 # List all backups in the repository
 BORG_PASSPHRASE="YourPassphrase" borg list \
-  borguser@borg-server:/backups/myhost
+  ssh://borguser@borg-server/backups/myhost
 
 # Show details of a specific archive
 BORG_PASSPHRASE="YourPassphrase" borg info \
-  borguser@borg-server:/backups/myhost::myhost-20260320
+  ssh://borguser@borg-server/backups/myhost::myhost-20260320
 
 # Verify archive integrity
 BORG_PASSPHRASE="YourPassphrase" borg check \
-  borguser@borg-server:/backups/myhost
+  ssh://borguser@borg-server/backups/myhost
 ```
 
 ## Restoring Data over IPv6
@@ -107,16 +107,16 @@ BORG_PASSPHRASE="YourPassphrase" borg check \
 ```bash
 # Extract all files from an archive
 BORG_PASSPHRASE="YourPassphrase" borg extract \
-  borguser@borg-server:/backups/myhost::myhost-20260320
+  ssh://borguser@borg-server/backups/myhost::myhost-20260320
 
 # Extract specific path
 BORG_PASSPHRASE="YourPassphrase" borg extract \
-  borguser@borg-server:/backups/myhost::myhost-20260320 \
+  ssh://borguser@borg-server/backups/myhost::myhost-20260320 \
   etc/nginx
 
 # Mount archive for file browsing
 BORG_PASSPHRASE="YourPassphrase" borg mount \
-  borguser@borg-server:/backups/myhost::myhost-20260320 \
+  ssh://borguser@borg-server/backups/myhost::myhost-20260320 \
   /mnt/borg
 ```
 
@@ -128,7 +128,7 @@ BORG_PASSPHRASE="YourPassphrase" borg mount \
 
 # Configuration
 export BORG_PASSPHRASE="YourPassphrase"
-BORG_REPO="borguser@borg-server:/backups/myhost"
+BORG_REPO="ssh://borguser@borg-server/backups/myhost"
 LOG="/var/log/borg-backup.log"
 
 # Archive name with timestamp
@@ -153,7 +153,7 @@ BACKUP_EXIT=$?
 # Prune old backups
 borg prune \
   --list \
-  --prefix "$(hostname)-" \
+  --glob-archives "$(hostname)-*" \
   --keep-daily 7 \
   --keep-weekly 4 \
   --keep-monthly 12 \
