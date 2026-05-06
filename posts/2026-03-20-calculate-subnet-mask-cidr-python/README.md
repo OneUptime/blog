@@ -54,7 +54,18 @@ def network_info(ip: str, prefix: int) -> dict:
     iface = ipaddress.IPv4Interface(f"{ip}/{prefix}")
     net   = iface.network
 
-    hosts = list(net.hosts())
+    if net.prefixlen == 32:
+        usable_hosts = 1
+        first_host = last_host = str(net.network_address)
+    elif net.prefixlen == 31:
+        usable_hosts = 2
+        first_host = str(net.network_address)
+        last_host = str(net.broadcast_address)
+    else:
+        usable_hosts = net.num_addresses - 2
+        first_host = str(net.network_address + 1)
+        last_host = str(net.broadcast_address - 1)
+
     return {
         "host_address":    str(iface.ip),
         "network_address": str(net.network_address),
@@ -63,9 +74,9 @@ def network_info(ip: str, prefix: int) -> dict:
         "wildcard":        str(net.hostmask),
         "prefix_length":   net.prefixlen,
         "num_addresses":   net.num_addresses,
-        "usable_hosts":    len(hosts),
-        "first_host":      str(hosts[0])  if hosts else "N/A",
-        "last_host":       str(hosts[-1]) if hosts else "N/A",
+        "usable_hosts":    usable_hosts,
+        "first_host":      first_host,
+        "last_host":       last_host,
     }
 
 info = network_info("192.168.1.50", 24)
