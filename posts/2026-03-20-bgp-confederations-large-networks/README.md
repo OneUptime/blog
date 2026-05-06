@@ -35,6 +35,8 @@ graph TD
 
 Each router in sub-AS 65001 specifies the confederation identifier (the public AS) and the list of peer sub-ASes:
 
+These examples assume an IGP or static routes already provide reachability to the loopback addresses used for BGP peering.
+
 ```text
 ! R1 configuration - sub-AS 65001, public AS 65000
 R1(config)# router bgp 65001
@@ -84,6 +86,17 @@ R3(config-router)# neighbor 2.2.2.2 update-source Loopback0
 R3(config-router)# neighbor 2.2.2.2 ebgp-multihop 2
 ```
 
+```text
+! R4 configuration - sub-AS 65002
+R4(config)# router bgp 65002
+R4(config-router)# bgp confederation identifier 65000
+R4(config-router)# bgp confederation peers 65001
+
+! iBGP peer within sub-AS 65002
+R4(config-router)# neighbor 3.3.3.3 remote-as 65002
+R4(config-router)# neighbor 3.3.3.3 update-source Loopback0
+```
+
 ## Step 3: Verify Confederation Sessions
 
 ```text
@@ -98,13 +111,13 @@ Notice that R3 shows as AS 65002-this is the sub-AS, not the confederation ID.
 
 ## Step 4: Verify External AS View
 
-From an external router peering with R1, the confederation looks like a single AS:
+From an external router peering with R1, a route originated inside the confederation looks like it came from a single AS:
 
 ```text
 ! On external router
 External# show ip bgp 172.16.0.0/24
 
-! AS path will show only 65000, not 65001 or 65002
+! For a route originated inside the confederation, the AS path will show only 65000, not 65001 or 65002
 ! (confederation sub-AS numbers are stripped at the border)
 BGP routing table entry for 172.16.0.0/24
   Paths: (1 available)
@@ -118,7 +131,7 @@ BGP routing table entry for 172.16.0.0/24
 |---|---|---|
 | Complexity | Lower | Higher |
 | Sub-AS path visibility | N/A | Internal only |
-| Next-hop behavior | Unchanged by default | Same as eBGP between sub-ASes |
+| Next-hop behavior | Unchanged by default | Preserved by default across member-ASes |
 | Preferred for | Most networks | Very large ISP cores |
 
 ## Conclusion
