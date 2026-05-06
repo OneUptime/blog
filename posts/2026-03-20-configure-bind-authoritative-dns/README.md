@@ -8,14 +8,14 @@ Description: Configure BIND9 as an authoritative DNS server for a domain, includ
 
 ## Introduction
 
-BIND9 (Berkeley Internet Name Domain) is the most widely deployed DNS server. As an authoritative server, it holds the definitive records for a domain - other resolvers query it for the ground truth. This guide covers setting up BIND9 for a domain, creating zone files, configuring SOA and NS records, and restricting BIND to authoritative-only mode (not recursive).
+BIND9 (Berkeley Internet Name Domain) is the most widely deployed DNS server. As an authoritative server, it holds the definitive records for a domain - other resolvers query it for the ground truth. This guide covers setting up BIND9 for a domain, creating zone files, configuring SOA and NS records, and restricting BIND to authoritative-only mode (not recursive). The examples below use Debian/Ubuntu file paths and service names; on RHEL/CentOS, apply the same settings in `/etc/named.conf` and typically store zone files under `/var/named/`.
 
 ## Installation
 
 ```bash
 # Ubuntu/Debian:
 
-apt-get install bind9 bind9-utils bind9-doc -y
+apt-get install bind9 bind9-utils bind9-doc bind9-dnsutils -y
 
 # CentOS/RHEL:
 dnf install bind bind-utils -y
@@ -27,10 +27,11 @@ named -v
 ## Main Configuration
 
 ```bash
-# /etc/bind/named.conf (or /etc/named.conf on RHEL):
+# Debian/Ubuntu example: /etc/bind/named.conf.options
+# On RHEL/CentOS, make the equivalent changes in /etc/named.conf.
 cat > /etc/bind/named.conf.options << 'EOF'
 options {
-    directory "/var/cache/bind";
+    directory "/var/cache/bind";  # RHEL/CentOS commonly use "/var/named"
 
     # Listen on specific IP or all:
     listen-on { any; };
@@ -49,8 +50,8 @@ options {
     # Hide BIND version:
     version "not available";
 
-    # DNSSEC validation for any recursive queries this server makes:
-    dnssec-validation auto;
+    # Authoritative-only servers do not need resolver DNSSEC validation:
+    dnssec-validation no;
 };
 EOF
 ```
@@ -58,12 +59,13 @@ EOF
 ## Create Zone Files
 
 ```bash
-# /etc/bind/named.conf.local - declare zones:
+# Debian/Ubuntu example: /etc/bind/named.conf.local
+# On RHEL/CentOS, declare the same zones in /etc/named.conf or an included file.
 cat > /etc/bind/named.conf.local << 'EOF'
 // Forward zone (domain → IP):
 zone "example.com" {
     type master;
-    file "/etc/bind/zones/db.example.com";
+    file "/etc/bind/zones/db.example.com";  # RHEL/CentOS: /var/named/db.example.com
     allow-transfer { 10.20.0.2; };  # Secondary nameserver
     notify yes;
 };
@@ -71,7 +73,7 @@ zone "example.com" {
 // Reverse zone (IP → domain):
 zone "0.20.10.in-addr.arpa" {
     type master;
-    file "/etc/bind/zones/db.10.20.0";
+    file "/etc/bind/zones/db.10.20.0";     # RHEL/CentOS: /var/named/db.10.20.0
     allow-transfer { 10.20.0.2; };
     notify yes;
 };
@@ -81,6 +83,8 @@ EOF
 ## Zone File - Forward Zone
 
 ```bash
+# Debian/Ubuntu example path:
+# On RHEL/CentOS, use /var/named instead.
 mkdir -p /etc/bind/zones
 
 cat > /etc/bind/zones/db.example.com << 'EOF'
@@ -153,22 +157,27 @@ named-checkconf
 named-checkzone example.com /etc/bind/zones/db.example.com
 named-checkzone 0.20.10.in-addr.arpa /etc/bind/zones/db.10.20.0
 
-# Set correct permissions:
+# Set correct permissions (Debian/Ubuntu):
 chown -R bind:bind /etc/bind/zones
+# On RHEL/CentOS, use: chown -R named:named /var/named
 
-# Start/restart BIND:
+# Start/restart BIND (Debian/Ubuntu):
 systemctl restart bind9
 systemctl enable bind9
+# On RHEL/CentOS:
+# systemctl restart named
+# systemctl enable named
 
 # Test queries against your server:
 dig @localhost example.com A
 dig @localhost www.example.com
 dig @localhost -x 10.20.0.1  # Reverse lookup
 
-# Check BIND logs for errors:
+# Check BIND logs for errors (Debian/Ubuntu):
 journalctl -u bind9 --since "5 minutes ago"
+# On RHEL/CentOS: journalctl -u named --since "5 minutes ago"
 ```
 
 ## Conclusion
 
-BIND9 authoritative configuration requires three parts: `named.conf.options` (global settings), `named.conf.local` (zone declarations), and zone files with SOA, NS, and resource records. Always validate configuration with `named-checkconf` and `named-checkzone` before restarting. For the authoritative server, disable recursion to prevent DNS amplification attacks. Increment the SOA serial number (format YYYYMMDDNN) every time you change a zone file so secondary servers pick up the update.
+On Debian/Ubuntu, BIND9 authoritative configuration requires three parts: `named.conf.options` (global settings), `named.conf.local` (zone declarations), and zone files with SOA, NS, and resource records. On RHEL/CentOS, make the equivalent changes in `/etc/named.conf` or included files and store the zone files under `/var/named/`. Always validate configuration with `named-checkconf` and `named-checkzone` before restarting. For an authoritative-only server, disable recursion and resolver DNSSEC validation so the server does not behave like a public recursive resolver or perform unnecessary trust-anchor maintenance. Increment the SOA serial number (format YYYYMMDDNN) every time you change a zone file so secondary servers pick up the update.
