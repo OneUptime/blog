@@ -19,14 +19,14 @@ BGP (Border Gateway Protocol) is the internet's routing protocol. It:
 ```bash
 # Ubuntu/Debian
 
-curl -s https://deb.frrouting.org/frr/keys.asc | sudo apt-key add -
-echo "deb https://deb.frrouting.org/frr $(lsb_release -s -c) frr-stable" | \
+curl -s https://deb.frrouting.org/frr/keys.gpg | sudo tee /usr/share/keyrings/frrouting.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/frrouting.gpg] https://deb.frrouting.org/frr $(lsb_release -s -c) frr-stable" | \
     sudo tee /etc/apt/sources.list.d/frr.list
-apt update && apt install frr frr-pythontools
+sudo apt update && sudo apt install frr frr-pythontools
 
 # Enable BGP daemon
-sed -i 's/bgpd=no/bgpd=yes/' /etc/frr/daemons
-systemctl restart frr
+sudo sed -i 's/bgpd=no/bgpd=yes/' /etc/frr/daemons
+sudo systemctl restart frr
 ```
 
 ## Basic eBGP Configuration
@@ -49,7 +49,7 @@ router bgp 65001
  neighbor 10.0.0.2 remote-as 65002
  neighbor 10.0.0.2 description "Peer AS 65002"
 
- ! Advertise our prefix
+ ! Advertise our prefix (must exist in the local routing table)
  address-family ipv4 unicast
   network 192.168.1.0/24
   neighbor 10.0.0.2 activate
@@ -68,7 +68,7 @@ router bgp 65001
 
  ! iBGP neighbor (same AS)
  neighbor 2.2.2.2 remote-as 65001
- neighbor 2.2.2.2 update-source lo0   ! Use loopback for stability
+ neighbor 2.2.2.2 update-source lo    ! Use loopback for stability
 
  address-family ipv4 unicast
   neighbor 2.2.2.2 activate
@@ -156,7 +156,7 @@ exit
 - Enable BGP with `bgpd=yes` in `/etc/frr/daemons`.
 - eBGP connects different ASes; iBGP connects routers within the same AS.
 - `neighbor IP remote-as ASN` defines a BGP peer.
-- `network PREFIX` advertises a prefix from your AS.
+- `network PREFIX` advertises a prefix from your AS when that prefix exists in the local routing table.
 - Use prefix lists and route maps for filtering and policy.
 
 **Related Reading:**
