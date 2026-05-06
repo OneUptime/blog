@@ -20,9 +20,9 @@ router bgp 65001
  ! Session tears down if exceeded
  neighbor 10.0.0.1 maximum-prefix 500
 
- ! For an ISP full-table peer, allow up to 900,000 routes
+ ! For an ISP full-table peer, allow up to 1.3 million routes
  ! (set warning threshold at 80%, tear down at 100%)
- neighbor 203.0.113.1 maximum-prefix 900000 80
+ neighbor 203.0.113.1 maximum-prefix 1300000 80
 
  ! Warning only - log but don't tear down the session
  neighbor 198.51.100.1 maximum-prefix 500 warning-only
@@ -49,8 +49,8 @@ This prevents a permanently broken session while still protecting against route 
 | Customer (/24 only) | 10–50 | 80% |
 | Customer (small ISP) | 500–5000 | 75% |
 | Regional ISP partial table | 50,000 | 75% |
-| Tier-1 ISP full table | 950,000 | 80% |
-| iBGP peer (route reflector) | 1,000,000 | 80% |
+| Tier-1 ISP full table | 1,300,000 | 80% |
+| iBGP peer (route reflector) | 1,300,000 | 80% |
 
 Always set the limit 20–25% above the expected prefix count to accommodate normal growth.
 
@@ -63,20 +63,20 @@ Router# show ip bgp summary
 
 Neighbor        V     AS   MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd
 10.0.0.1        4  65100       100     100       50    0    0 01:00:00       45
-203.0.113.1     4  65200     50000   50000     9000    0    0 5d00h       820000
+203.0.113.1     4  65200     50000   50000     9000    0    0 5d00h      1052261
 
 ! PfxRcd column shows current prefix count from each neighbor
 ```
 
-Set limits approximately 25% above the `PfxRcd` value.
+Set limits approximately 20-25% above the `PfxRcd` value.
 
 ## Step 5: Handle a Tripped Maximum-Prefix Session
 
 When a session trips the maximum-prefix limit, the log shows:
 
 ```text
-%BGP-3-MAXPFX: No. of prefix received from 10.0.0.1 (afi 0) reaches 500, max 500
-%BGP-5-ADJCHANGE: neighbor 10.0.0.1 Down MAXPFX reached
+%BGP-4-MAXPFX: No. of prefix received from 10.0.0.1 (afi 0) reaches 500, max 500
+%BGP-3-MAXPFXEXCEED: No. of prefix received from 10.0.0.1 (afi 0): 501 exceed limit 500
 ```
 
 To restore the session after the peer has corrected their announcements:
@@ -95,6 +95,7 @@ For routers using address-family model, configure maximum-prefix within the addr
 ```text
 router bgp 65001
  address-family ipv4 unicast
+  neighbor 10.0.0.1 activate
   neighbor 10.0.0.1 maximum-prefix 500 80 warning-only
  exit-address-family
 ```
