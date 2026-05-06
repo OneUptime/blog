@@ -8,11 +8,11 @@ Description: Learn how to configure BIND (named) to accept DNS queries over IPv6
 
 ## Default BIND Behavior
 
-By default, BIND may only listen on IPv4 depending on the distribution and version. To accept DNS queries from IPv6 clients, you must explicitly configure `listen-on-v6` in `named.conf`.
+On current BIND releases, `named` listens for standard DNS queries on port 53 of all IPv6 interfaces by default. On BIND versions prior to 9.10, you must explicitly configure `listen-on-v6 { any; };` to accept DNS queries from IPv6 clients.
 
 ## Configuring listen-on-v6
 
-Edit `/etc/named.conf` or `/etc/bind/named.conf.options` and add or modify the `listen-on-v6` directive:
+Edit `/etc/named.conf` or `/etc/bind/named.conf.options` and add or modify the `listen-on-v6` directive if you want to make IPv6 listening explicit or restrict it to specific addresses:
 
 ```named
 // /etc/named.conf or /etc/bind/named.conf.options
@@ -73,11 +73,10 @@ named-checkconf /etc/named.conf
 # or
 named-checkconf /etc/bind/named.conf
 
-# Restart BIND to apply listen-on-v6 changes
-# (reload is not sufficient for listen address changes)
-systemctl restart named
-# or on Ubuntu/Debian
-systemctl restart bind9
+# Apply listen-on-v6 changes
+rndc reconfig
+# or
+rndc reload
 
 # Verify BIND is listening on IPv6
 ss -6 -tlnp | grep named
@@ -88,13 +87,13 @@ ss -6 -tlnp | grep named
 
 ## Allowing Queries from IPv6 Clients
 
-In addition to listening on IPv6, you need to allow queries from IPv6 client addresses:
+If `allow-query` is restricted, you also need to include the IPv6 client addresses you want to serve:
 
 ```named
 options {
     listen-on-v6 { any; };
 
-    // Allow queries from any IPv6 address (for a public resolver)
+    // Allow queries from any address
     allow-query { any; };
 
     // Or restrict to specific IPv6 subnets
@@ -142,8 +141,8 @@ ip6tables -A INPUT -p tcp --dport 53 -j ACCEPT
 ```
 
 **Issue: BIND listens on IPv6 but not all addresses**
-- Ensure `listen-on-v6 { any; }` (not just `listen-on-v6 port 53 { any; }`)
+- Ensure the `listen-on-v6` address match list includes the IPv6 addresses you want BIND to bind to, for example `listen-on-v6 { any; };`
 
 ## Summary
 
-Configuring BIND to listen on IPv6 requires adding `listen-on-v6 { any; };` to the `options` block in `named.conf`, ensuring `allow-query` includes IPv6 address ranges, and restarting (not just reloading) named. Verify with `ss -6 -tlnp | grep named` and test with `dig A example.com @::1`.
+On current BIND releases, BIND already listens on IPv6 by default. Use `listen-on-v6` when you want to make that explicit or restrict which IPv6 addresses `named` binds to, ensure `allow-query` includes the IPv6 client ranges you want to serve when it is restricted, and apply the change with `rndc reconfig` or `rndc reload`. Verify with `ss -6 -tlnp | grep named` and test with `dig A example.com @::1`.
