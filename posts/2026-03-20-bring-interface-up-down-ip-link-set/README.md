@@ -8,7 +8,7 @@ Description: Use ip link set to bring a Linux network interface up or down, chan
 
 ## Introduction
 
-The `ip link set` command controls the link-layer state of network interfaces. Bringing an interface up activates it for traffic; taking it down disables it completely. This is essential for applying configuration changes, troubleshooting, and simulating link failures in testing.
+The `ip link set` command controls the administrative link state of network interfaces. Bringing an interface up marks it administratively up; whether it can pass traffic depends on carrier and operational state. Taking it down administratively disables the interface. This is essential for applying configuration changes, troubleshooting, and simulating link failures in testing.
 
 ## Bringing an Interface Up
 
@@ -17,9 +17,9 @@ The `ip link set` command controls the link-layer state of network interfaces. B
 
 sudo ip link set eth0 up
 
-# Verify the state
-ip link show eth0 | grep "state"
-# Expected: state UP
+# Verify
+ip link show eth0
+# Look for the UP flag; operational state may still vary depending on carrier
 ```
 
 ## Bringing an Interface Down
@@ -29,8 +29,8 @@ ip link show eth0 | grep "state"
 sudo ip link set eth0 down
 
 # Verify
-ip link show eth0 | grep "state"
-# Expected: state DOWN
+ip link show eth0
+# The UP flag should be absent; state is typically DOWN
 ```
 
 ## Toggling an Interface (Down + Up)
@@ -42,7 +42,7 @@ A common operation to apply changes or reset the link:
 sudo ip link set eth0 down && sudo ip link set eth0 up
 ```
 
-This re-triggers DHCP if `dhclient` is configured, re-sends IGMP reports, and resets the link negotiation.
+This administratively resets the interface. Whether it renews DHCP, re-sends multicast membership reports, or renegotiates link depends on the driver and network-management software in use.
 
 ## Enabling/Disabling Promiscuous Mode
 
@@ -67,7 +67,7 @@ sudo ip link set eth0 mtu 1500
 ## Changing the MAC Address
 
 ```bash
-# Interface must be down to change MAC
+# Some drivers require taking the interface down before changing the MAC
 sudo ip link set eth0 down
 sudo ip link set eth0 address 02:00:00:00:00:01
 sudo ip link set eth0 up
@@ -92,7 +92,7 @@ sudo ip link set eth0 arp on
 # Show state for all interfaces in one view
 ip link show | grep -E "^[0-9]+:|state"
 
-# Show only UP interfaces
+# Show only administratively UP interfaces
 ip link show up
 ```
 
@@ -110,4 +110,4 @@ sudo ip link set eth1 down
 
 ## Conclusion
 
-`ip link set <interface> up|down` is the core command for controlling interface availability. Combine it with `ip addr`, `ip route`, and `ip link set mtu` to fully manage interface configuration from the command line. Remember to update persistent config files to make changes survive reboots.
+`ip link set <interface> up|down` is the core command for controlling administrative interface state. Combine it with `ip addr`, `ip route`, and `ip link set mtu` to fully manage interface configuration from the command line. Remember to update persistent config files to make changes survive reboots.
