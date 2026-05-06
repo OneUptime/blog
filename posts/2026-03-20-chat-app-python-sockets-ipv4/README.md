@@ -8,7 +8,7 @@ Description: Learn how to build a multi-client chat application in Python using 
 
 ## Architecture
 
-The chat server maintains a list of connected clients and broadcasts every received message to all other clients. Each client runs two threads: one for receiving messages and one for sending user input.
+The chat server maintains a list of connected clients and broadcasts each received line to all other clients. Because TCP is a byte stream, the client and server use newline-delimited messages so each chat message can be parsed reliably. Each client runs two threads: one for receiving messages and one for sending user input.
 
 ## Chat Server
 
@@ -38,30 +38,29 @@ def broadcast(message: bytes, sender: socket.socket = None) -> None:
 
 def handle_client(conn: socket.socket, addr: tuple) -> None:
     """Handle a single client: register, relay messages, cleanup on disconnect."""
-    # First message from client is their username
+    username = "anonymous"
+
     try:
-        username = conn.recv(64).decode("utf-8").strip() or "anonymous"
+        with conn.makefile("r", encoding="utf-8", errors="replace", newline="\n") as reader:
+            # First line from the client is their username
+            username = reader.readline().strip() or "anonymous"
+
+            with lock:
+                clients[conn] = username
+
+            broadcast(f"[Server] {username} has joined the chat!\n".encode(), sender=conn)
+            print(f"[+] {username} connected from {addr}")
+
+            while True:
+                line = reader.readline()
+                if not line:
+                    break   # Client disconnected
+
+                msg = f"[{username}] {line}"
+                print(msg.strip())
+                broadcast(msg.encode("utf-8"), sender=conn)
+
     except OSError:
-        conn.close()
-        return
-
-    with lock:
-        clients[conn] = username
-
-    broadcast(f"[Server] {username} has joined the chat!\n".encode(), sender=conn)
-    print(f"[+] {username} connected from {addr}")
-
-    try:
-        while True:
-            data = conn.recv(1024)
-            if not data:
-                break   # Client disconnected
-
-            msg = f"[{username}] {data.decode('utf-8', errors='replace')}"
-            print(msg.strip())
-            broadcast(msg.encode(), sender=conn)
-
-    except (ConnectionResetError, BrokenPipeError):
         pass
     finally:
         with lock:
@@ -97,48 +96,65 @@ if __name__ == "__main__":
 ```python
 import socket
 import threading
-import sys
 
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 9006
 
 
-def receive_messages(sock: socket.socket) -> None:
-    """Background thread: print messages from the server."""
-    while True:
-        try:
-            data = sock.recv(1024)
-            if not data:
-                print("\n[Disconnected from server]")
-                sys.exit(0)
-            print(data.decode("utf-8", errors="replace"), end="")
-        except OSError:
-            break
+def receive_messages(sock: socket.socket, stop_event: threading.Event) -> None:
+    """Background thread: print newline-delimited messages from the server."""
+    try:
+        with sock.makefile("r", encoding="utf-8", errors="replace", newline="\n") as reader:
+            while not stop_event.is_set():
+                line = reader.readline()
+                if not line:
+                    print("\n[Disconnected from server]")
+                    stop_event.set()
+                    break
+                print(line, end="")
+    except OSError:
+        stop_event.set()
+
+
+def send_messages(sock: socket.socket, stop_event: threading.Event) -> None:
+    """Background thread: read user input and send it to the server."""
+    try:
+        while not stop_event.is_set():
+            msg = input()
+            if msg.lower() == "/quit":
+                stop_event.set()
+                break
+            sock.sendall(f"{msg}\n".encode("utf-8"))
+    except (EOFError, KeyboardInterrupt, OSError):
+        stop_event.set()
 
 
 def run_client():
-    username = input("Enter your username: ").strip()
+    username = input("Enter your username: ").strip() or "anonymous"
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
         client.connect((SERVER_HOST, SERVER_PORT))
 
-        # Send username as the first message
-        client.sendall(username.encode("utf-8"))
+        # Send username as the first newline-delimited message
+        client.sendall(f"{username}\n".encode("utf-8"))
 
-        # Start receive thread
-        recv_thread = threading.Thread(target=receive_messages, args=(client,), daemon=True)
+        stop_event = threading.Event()
+
+        recv_thread = threading.Thread(target=receive_messages, args=(client, stop_event), daemon=True)
+        send_thread = threading.Thread(target=send_messages, args=(client, stop_event), daemon=True)
         recv_thread.start()
+        send_thread.start()
 
         print(f"Connected as '{username}'. Type messages and press Enter.")
 
         try:
-            while True:
-                msg = input()
-                if msg.lower() == "/quit":
-                    break
-                client.sendall(f"{msg}\n".encode("utf-8"))
-        except (KeyboardInterrupt, EOFError):
-            pass
+            while not stop_event.is_set():
+                recv_thread.join(timeout=0.1)
+                send_thread.join(timeout=0.1)
+                if not recv_thread.is_alive() or not send_thread.is_alive():
+                    stop_event.set()
+        except KeyboardInterrupt:
+            stop_event.set()
 
     print("Goodbye!")
 
@@ -162,4 +178,4 @@ python3 chat_client.py
 
 ## Conclusion
 
-A multi-client chat server requires a shared client registry, thread-safe broadcasting with a lock, and per-client handler threads. The client uses a background receive thread so input and output can run simultaneously. This pattern is the foundation for any real-time messaging system over TCP.
+A multi-client chat server requires a shared client registry, thread-safe broadcasting with a lock, and a simple framing rule because TCP is a byte stream. The client uses separate send and receive threads so input and output can run simultaneously. This pattern is the foundation for any real-time messaging system over TCP.
