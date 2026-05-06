@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Go, IPv6, Network Tools, CLI, Ping, Traceroute
+Tags: Go, IPv6, Network Tools, CLI, Ping, DNS
 
-Description: Build practical IPv6 network tools in Go including ping6, traceroute6, and port scanner as command-line utilities.
+Description: Build practical IPv6 network tools in Go including a ping utility, port scanner, and DNS lookup CLI.
 
 ## IPv6 Ping Tool
 
@@ -12,7 +12,6 @@ Description: Build practical IPv6 network tools in Go including ping6, tracerout
 package main
 
 import (
-    "context"
     "fmt"
     "net"
     "os"
@@ -40,14 +39,15 @@ func ping6(host string, count int) error {
         return fmt.Errorf("no IPv6 address for %s", host)
     }
 
-    // Create ICMPv6 socket (requires root/CAP_NET_RAW)
+    // Create a privileged raw ICMPv6 socket
     conn, err := icmp.ListenPacket("ip6:ipv6-icmp", "::")
     if err != nil {
         return fmt.Errorf("listen: %w", err)
     }
     defer conn.Close()
 
-    fmt.Printf("PING6 %s (%s): 56 data bytes\n", host, targetIP)
+    payload := make([]byte, 56)
+    fmt.Printf("PING6 %s (%s): %d data bytes\n", host, targetIP, len(payload))
 
     for i := 0; i < count; i++ {
         // Build ICMPv6 Echo Request
@@ -57,7 +57,7 @@ func ping6(host string, count int) error {
             Body: &icmp.Echo{
                 ID:   os.Getpid() & 0xffff,
                 Seq:  i,
-                Data: []byte("PING6-GOTEST"),
+                Data: payload,
             },
         }
 
@@ -77,16 +77,20 @@ func ping6(host string, count int) error {
         // Wait for reply
         conn.SetReadDeadline(time.Now().Add(3 * time.Second))
         reply := make([]byte, 1500)
-        n, _, readErr := conn.ReadFrom(reply)
+        n, peer, readErr := conn.ReadFrom(reply)
         elapsed := time.Since(start)
 
         if readErr != nil {
             fmt.Printf("Request timeout for icmp_seq=%d\n", i)
         } else {
-            rm, _ := icmp.ParseMessage(58, reply[:n])
+            rm, parseErr := icmp.ParseMessage(58, reply[:n])
+            if parseErr != nil {
+                fmt.Printf("Parse error: %v\n", parseErr)
+                continue
+            }
             if rm.Type == ipv6.ICMPTypeEchoReply {
-                fmt.Printf("64 bytes from %s: icmp_seq=%d time=%.3f ms\n",
-                    targetIP, i, float64(elapsed.Nanoseconds())/1e6)
+                fmt.Printf("%d bytes from %s: icmp_seq=%d time=%.3f ms\n",
+                    n, peer, i, float64(elapsed.Nanoseconds())/1e6)
             }
         }
 
@@ -209,7 +213,7 @@ func lookupIPv6(hostname string) {
     ctx := context.Background()
 
     // AAAA records
-    addrs, err := resolver.LookupIPAddr(ctx, hostname)
+    addrs, err := resolver.LookupIP(ctx, "ip6", hostname)
     if err != nil {
         fmt.Printf("Error: %v\n", err)
         return
@@ -217,21 +221,17 @@ func lookupIPv6(hostname string) {
 
     fmt.Printf("IPv6 addresses for %s:\n", hostname)
     for _, addr := range addrs {
-        if addr.IP.To4() == nil {
-            fmt.Printf("  %s\n", addr.IP)
-        }
+        fmt.Printf("  %s\n", addr)
     }
 
     // Reverse lookup for IPv6
     // Try PTR for the first IPv6 address
     for _, addr := range addrs {
-        if addr.IP.To4() == nil {
-            names, err := resolver.LookupAddr(ctx, addr.IP.String())
-            if err == nil {
-                fmt.Printf("PTR records: %v\n", names)
-            }
-            break
+        names, err := resolver.LookupAddr(ctx, addr.String())
+        if err == nil {
+            fmt.Printf("PTR records: %v\n", names)
         }
+        break
     }
 }
 
@@ -246,4 +246,4 @@ func main() {
 
 ## Conclusion
 
-Go is well-suited for building IPv6 network tools due to its built-in `net` package and concurrency primitives. The `golang.org/x/net/icmp` and `ipv6` packages enable raw ICMPv6 operations for ping-like tools. For port scanners, goroutine-based concurrent scanning with `context.Context` cancellation provides fast, controlled scanning with proper resource cleanup.
+Go is well-suited for building IPv6 network tools due to its built-in `net` package and concurrency primitives. The `golang.org/x/net/icmp` and `ipv6` packages enable raw ICMPv6 operations for ping-like tools. For port scanners, goroutine-based concurrent scanning with `net.Dialer` timeouts provides fast IPv6-only checks, while `net.Resolver` can be used for AAAA and reverse-DNS lookups.
