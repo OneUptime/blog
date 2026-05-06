@@ -25,7 +25,7 @@ nameserver 1.1.1.1
 # Optional: search domain (appended when resolving short names)
 search example.com corp.internal
 
-# Optional: override search/domain order
+# Optional: control when the search list is used
 options ndots:5
 ```
 
@@ -52,9 +52,11 @@ EOF
 
 sudo systemctl restart NetworkManager
 
-# Now edit /etc/resolv.conf directly
+# If /etc/resolv.conf is now a regular file, edit it directly
 sudo nano /etc/resolv.conf
 ```
+
+If `/etc/resolv.conf` is still a symlink to a `systemd-resolved` file, direct edits will still be overwritten; use `/etc/systemd/resolved.conf` instead.
 
 ## Making resolv.conf Immutable
 
@@ -73,6 +75,8 @@ To edit it again:
 sudo chattr -i /etc/resolv.conf
 ```
 
+This only works when `/etc/resolv.conf` is a regular file on a filesystem that supports the immutable attribute.
+
 ## Using systemd-resolved (Modern Ubuntu)
 
 ```bash
@@ -90,18 +94,19 @@ sudo systemctl restart systemd-resolved
 resolvectl status
 ```
 
-The stub resolver at `127.0.0.53` handles queries; `/etc/resolv.conf` should point to it:
+On modern Ubuntu systems, the stub resolver at `127.0.0.53` handles queries; `/etc/resolv.conf` typically points to it:
 
 ```bash
 ls -la /etc/resolv.conf
-# Should be a symlink to /run/systemd/resolve/stub-resolv.conf
+# On Ubuntu, this is typically a symlink to /run/systemd/resolve/stub-resolv.conf
 ```
 
 ## Setting DNS per Interface with NetworkManager
 
 ```bash
-# Set DNS servers for a specific connection
-nmcli con mod "Wired connection 1" ipv4.dns "8.8.8.8,1.1.1.1"
+# Set DNS servers for a specific connection and ignore DHCP-provided DNS
+nmcli con mod "Wired connection 1" ipv4.dns "8.8.8.8 1.1.1.1"
+nmcli con mod "Wired connection 1" ipv4.ignore-auto-dns yes
 nmcli con up "Wired connection 1"
 ```
 
@@ -109,8 +114,10 @@ nmcli con up "Wired connection 1"
 
 ```bash
 # Add search domains so "server" resolves to "server.example.com"
-nmcli con mod "Wired connection 1" ipv4.dns-search "example.com,corp.local"
+nmcli con mod "Wired connection 1" ipv4.dns-search "example.com corp.local"
 ```
+
+On DHCP connections, these search domains are merged with the automatic search list unless `ipv4.ignore-auto-dns yes` is set.
 
 Or in `/etc/resolv.conf`:
 
@@ -125,10 +132,10 @@ search example.com corp.local
 dig google.com @8.8.8.8
 nslookup google.com 8.8.8.8
 
-# Check what resolver is being used
+# Ask a public service which upstream recursive resolver your query used
 dig +short TXT whoami.resolver.cymru.com
 ```
 
 ## Conclusion
 
-On modern Linux, DNS is best managed through systemd-resolved or NetworkManager rather than editing `/etc/resolv.conf` directly. If direct editing is required, prevent overwrites with `chattr +i` or by disabling DNS management in NetworkManager.
+On modern Linux, DNS is best managed through systemd-resolved or NetworkManager rather than editing `/etc/resolv.conf` directly. If direct editing is required, first make sure `/etc/resolv.conf` is not still managed by NetworkManager or systemd-resolved, then prevent overwrites with `chattr +i` or by disabling DNS management in NetworkManager.
