@@ -13,7 +13,7 @@ Description: DHCP options are additional configuration parameters delivered to c
 | Subnet Mask | 1 | Client subnet mask |
 | Router (Gateway) | 3 | Default gateway |
 | DNS Servers | 6 | Name server IPs |
-| Domain Name | 15 | DNS search domain |
+| Domain Name | 15 | Client DNS suffix |
 | NTP Servers | 42 | Time synchronization |
 | TFTP Server | 66 | Boot file server |
 | Boot Filename | 67 | PXE boot filename |
@@ -36,7 +36,7 @@ default-lease-time 86400;
 subnet 192.168.1.0 netmask 255.255.255.0 {
     range 192.168.1.100 192.168.1.200;
 
-    # Required: default gateway
+    # Common: default gateway for routed networks
     option routers 192.168.1.1;
 
     # DNS - overrides global for this subnet
@@ -57,13 +57,17 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 domain=corp.example.com
 dhcp-option=option:ntp-server,10.0.0.123
 
-# Per-interface options (when using multiple scopes)
-dhcp-option=tag:eth0.10,option:router,10.0.10.1
-dhcp-option=tag:eth0.10,option:dns-server,10.0.0.53
-dhcp-option=tag:eth0.10,option:domain-name,office.example.com
+# Define ranges and set tags for each scope
+dhcp-range=set:branch10,10.0.10.100,10.0.10.200,255.255.255.0
+dhcp-range=set:branch20,10.0.20.100,10.0.20.200,255.255.255.0
 
-dhcp-option=tag:eth0.20,option:router,10.0.20.1
-dhcp-option=tag:eth0.20,option:dns-server,10.0.0.53
+# Per-range options (match the tags set above)
+dhcp-option=tag:branch10,option:router,10.0.10.1
+dhcp-option=tag:branch10,option:dns-server,10.0.0.53
+dhcp-option=tag:branch10,option:domain-name,office.example.com
+
+dhcp-option=tag:branch20,option:router,10.0.20.1
+dhcp-option=tag:branch20,option:dns-server,10.0.0.53
 ```
 
 ## Windows Server PowerShell
@@ -88,13 +92,13 @@ Get-DhcpServerv4OptionValue -ScopeId 192.168.1.0
 ## Verifying Options on a Client
 
 ```bash
-# Linux: view all DHCP options received
-dhclient -v eth0
-# Or check the lease file
+# Linux: renew once with verbose logging (ISC dhclient)
+dhclient -1 -v eth0
+# Or check the lease file (often /var/lib/dhcp/dhclient.leases)
 cat /var/lib/dhcp/dhclient.leases
 
 # Windows
-ipconfig /all | findstr -i "gateway\|dns\|domain"
+ipconfig /all | findstr /i /c:"Default Gateway" /c:"DNS Servers" /c:"Connection-specific DNS Suffix"
 
 # macOS
 ipconfig getpacket en0
@@ -116,7 +120,7 @@ class "MY-DEVICE" {
 
 ## Key Takeaways
 
-- Always configure options 3 (router) and 6 (DNS) at minimum for internet connectivity.
+- For normal internet access, clients need a subnet mask plus option 3 (router) and option 6 (DNS).
 - Scope-level options override global options in ISC dhcpd.
-- Use option 15 (domain name) to enable short-name DNS resolution within the corporate domain.
-- Test delivered options from a client with `dhclient -v` or `ipconfig getpacket en0`.
+- Use option 15 (domain name) to set the client DNS suffix for short-name resolution within the corporate domain.
+- Test delivered options from a client by renewing with `dhclient -1 -v`, checking the lease data, or using `ipconfig getpacket en0` on macOS.
