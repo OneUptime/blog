@@ -8,9 +8,9 @@ Description: Learn how to configure dynamic NAT using a pool of public IP addres
 
 ## What Is Dynamic NAT?
 
-Dynamic NAT translates private IP addresses to a pool of public IP addresses. Unlike static NAT (fixed 1:1), dynamic NAT assigns pool addresses on demand. When the pool is exhausted, new connections are dropped.
+Dynamic NAT translates private IP addresses to a pool of public IP addresses. Unlike static NAT (fixed 1:1), dynamic NAT assigns pool addresses on demand. When the pool is exhausted, new hosts that need a fresh translation cannot be translated until an existing binding ages out.
 
-**Key difference from PAT**: Dynamic NAT is one-to-one (one private → one public at a time), but the mapping is not fixed. PAT maps many private IPs to one public IP using port numbers.
+**Key difference from PAT**: Dynamic NAT is one-to-one (one private host → one public IP at a time), but the mapping is not fixed. PAT maps many private IPs to one public IP using port numbers.
 
 ## Configuring Dynamic NAT on Cisco IOS
 
@@ -34,10 +34,7 @@ interface GigabitEthernet0/1
 
 ### Pool with Rotary Option
 
-```cisco
-! Round-robin assignment from the pool (for load balancing)
-ip nat pool LB_POOL 203.0.113.10 203.0.113.20 prefix-length 24 type rotary
-```
+`type rotary` is not used for standard inside-source dynamic NAT. On Cisco IOS, a rotary pool is used with `ip nat inside destination` for TCP load distribution to a pool of real inside hosts.
 
 ## Verifying Dynamic NAT on Cisco
 
@@ -71,23 +68,23 @@ iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o eth1 \
     -j SNAT --to-source 203.0.113.10-203.0.113.20
 ```
 
-Linux will distribute source IPs across the pool.
+Linux selects the least-used address in the range for new connections, which provides primitive load balancing. Source ports are preserved when possible and remapped only if needed.
 
 ## Dynamic NAT vs PAT Comparison
 
 | Feature | Dynamic NAT | PAT (NAT Overload) |
 |---------|-------------|-------------------|
-| IP pool | Required (multiple IPs) | Single IP sufficient |
+| IP pool | Required (one or more IPs) | Single IP sufficient |
 | Port translation | No | Yes |
-| Concurrent connections | Limited by pool size | Very large (65535/IP) |
-| Use case | Server farms | Home/office internet sharing |
+| Concurrent translated hosts | Limited by pool size | Many hosts can share one IP |
+| Use case | Outbound clients needing temporary 1:1 public IPs | Home/office internet sharing |
 
 ## Key Takeaways
 
 - Dynamic NAT assigns pool addresses on demand; no fixed mappings.
-- The pool must have enough IPs to support concurrent connections.
-- Exhausted pools silently drop new connections - use PAT for better scalability.
-- On Linux, `--to-source IP1-IP2` specifies an IP range for dynamic SNAT.
+- The pool must have enough IPs to support concurrent translated hosts.
+- When the pool is exhausted, new hosts that need a fresh translation cannot be translated until a binding ages out; PAT scales better because many hosts can share one public IP.
+- On Linux, `--to-source IP1-IP2` specifies an IP range for SNAT.
 
 **Related Reading:**
 
