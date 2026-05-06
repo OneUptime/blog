@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Bogon, IPv4, Security, iptables, Firewall, Linux
 
-Description: Implement bogon filtering on Linux to drop packets with source IP addresses that should never appear on the public internet, including private, reserved, and unallocated ranges.
+Description: Implement bogon filtering on Linux to drop packets with source IP addresses from common IPv4 special-use ranges that should never appear on the public internet.
 
-Bogon addresses are IP ranges that should never appear as packet sources on the public internet. Packets with these source IPs are either spoofed or misconfigured, and filtering them is a fast, effective way to drop attack traffic before it reaches applications.
+For a static filter, bogon filtering typically starts with IPv4 special-use ranges that should never appear as packet sources on the public internet. Packets with these source IPs are usually spoofed or misconfigured, and filtering them is a fast, effective way to drop obvious garbage traffic before it reaches applications.
 
 ## What Are Bogon Addresses?
 
@@ -19,7 +19,7 @@ Range               Type            Reason
 127.0.0.0/8         Loopback        Local loopback
 169.254.0.0/16      Link-local      APIPA - not routable
 172.16.0.0/12       RFC 1918        Private
-192.0.0.0/24        IETF protocol   Reserved
+192.0.2.0/24        Documentation   Example docs only
 192.168.0.0/16      RFC 1918        Private
 198.18.0.0/15       Benchmarking    Test ranges
 198.51.100.0/24     Documentation   Example docs only
@@ -31,7 +31,7 @@ Range               Type            Reason
 
 ## Apply Bogon Filtering with iptables
 
-Drop these ranges arriving on your external interface:
+Drop these common special-use ranges arriving on your external interface:
 
 ```bash
 #!/bin/bash
@@ -46,7 +46,7 @@ BOGONS=(
     "127.0.0.0/8"
     "169.254.0.0/16"
     "172.16.0.0/12"
-    "192.0.0.0/24"
+    "192.0.2.0/24"
     "192.168.0.0/16"
     "198.18.0.0/15"
     "198.51.100.0/24"
@@ -73,9 +73,9 @@ Individual iptables rules for each range work, but ipset is faster:
 
 sudo ipset create bogons hash:net family inet
 
-# Add all bogon ranges
+# Add the same ranges
 BOGONS=("0.0.0.0/8" "10.0.0.0/8" "100.64.0.0/10" "127.0.0.0/8"
-        "169.254.0.0/16" "172.16.0.0/12" "192.0.0.0/24" "192.168.0.0/16"
+        "169.254.0.0/16" "172.16.0.0/12" "192.0.2.0/24" "192.168.0.0/16"
         "198.18.0.0/15" "198.51.100.0/24" "203.0.113.0/24"
         "224.0.0.0/4" "240.0.0.0/4" "255.255.255.255/32")
 
@@ -96,13 +96,13 @@ sudo iptables -A INPUT -i eth0 -m set --match-set bogons src \
 sudo iptables -A INPUT -i eth0 -m set --match-set bogons src -j DROP
 
 # Analyze logged bogons
-sudo grep "BOGON-DROP" /var/log/syslog | grep -oP 'SRC=\S+' \
+sudo dmesg | grep "BOGON-DROP" | grep -oE 'SRC=[^ ]+' \
   | sort | uniq -c | sort -rn | head -10
 ```
 
 ## Enable Kernel Martian Logging
 
-The kernel can also detect and log bogon-sourced packets (martians):
+The kernel can also log packets with impossible addresses (martians):
 
 ```bash
 # Log martian packets (spoofed/impossible source addresses)
@@ -114,8 +114,6 @@ echo "net.ipv4.conf.all.log_martians = 1" | sudo tee -a /etc/sysctl.conf
 
 # View martian log entries
 sudo dmesg | grep "martian"
-# or
-sudo grep "martian" /var/log/kern.log
 ```
 
 ## Verify the Filter Is Working
@@ -129,4 +127,4 @@ sudo iptables -L INPUT -n -v | grep bogons
 # The packets/bytes column should increment if attacks are hitting the rule
 ```
 
-Bogon filtering is cheap to implement and delivers immediate security benefits - the vast majority of internet attack traffic originates from spoofed bogon addresses.
+Bogon filtering is cheap to implement and can drop obviously spoofed or misrouted traffic before it reaches your applications.
