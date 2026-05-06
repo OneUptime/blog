@@ -10,6 +10,8 @@ Description: Block all inbound and outbound traffic to and from a specific IPv4 
 
 Blocking a specific IPv4 address in Windows Defender Firewall is useful for isolating a compromised or suspicious host, blocking known malicious IPs, or enforcing network segmentation policies. Rules can block both inbound and outbound directions.
 
+Run Command Prompt or PowerShell as Administrator before creating or deleting firewall rules.
+
 ## Block All Inbound Traffic from a Specific IP
 
 ```cmd
@@ -85,12 +87,18 @@ New-NetFirewallRule `
 ## Verifying the Block
 
 ```cmd
-:: Confirm the rule exists
+:: Confirm the rules exist
 netsh advfirewall firewall show rule name="Block Inbound 203.0.113.100"
+netsh advfirewall firewall show rule name="Block Outbound 203.0.113.100"
 
-:: Test connectivity - should fail (timeout or unreachable)
-ping 203.0.113.100
-tracert 203.0.113.100
+:: If you created the outbound rule, test against the real reachable IP you blocked.
+:: Do not use 203.0.113.100 here because 203.0.113.0/24 is reserved for documentation.
+set BLOCK_IP=BLOCKED_IP_HERE
+
+ping %BLOCK_IP%
+tracert %BLOCK_IP%
+
+:: To validate the inbound rule specifically, test from %BLOCK_IP% back to this machine.
 ```
 
 ## Removing the Block
@@ -107,4 +115,4 @@ Remove-NetFirewallRule -Name "Block 203.0.113.100 OUT"
 
 ## Conclusion
 
-Create paired inbound and outbound block rules to fully isolate a specific IP address. Name rules descriptively so they are easy to audit and remove later. For bulk blocking (many IPs), consider using a Windows Firewall address set or a third-party firewall management tool.
+Create paired inbound and outbound block rules to fully isolate a specific IP address. Name rules descriptively so they are easy to audit and remove later. For bulk blocking (many IPs), consider using Windows Firewall dynamic keywords or a third-party firewall management tool.
