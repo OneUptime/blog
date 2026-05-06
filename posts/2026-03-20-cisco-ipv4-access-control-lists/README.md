@@ -27,20 +27,17 @@ line vty 0 4
 
 ```cisco
 ip access-list extended EDGE-FILTER
- ! Allow established TCP (return traffic)
- permit tcp any any established
- ! Allow ICMP ping
- permit icmp 10.0.0.0 0.255.255.255 any
- ! Allow DNS queries to internal DNS
- permit udp any host 10.1.1.10 eq 53
- ! Allow HTTP and HTTPS outbound
- permit tcp 10.0.0.0 0.255.255.255 any eq 80
- permit tcp 10.0.0.0 0.255.255.255 any eq 443
  ! Block RFC 1918 sourced traffic from outside
  deny ip 10.0.0.0 0.255.255.255 any
  deny ip 172.16.0.0 0.15.255.255 any
  deny ip 192.168.0.0 0.0.255.255 any
- ! Implicit deny all
+ ! Allow TCP return traffic (ACK/RST set)
+ permit tcp any 10.0.0.0 0.255.255.255 established
+ ! Allow ICMP ping replies to internal hosts
+ permit icmp any 10.0.0.0 0.255.255.255 echo-reply
+ ! Allow DNS queries to internal DNS
+ permit udp any host 10.1.1.10 eq 53
+ ! Explicit final deny with logging
  deny ip any any log
 
 ! Apply inbound on WAN interface
@@ -103,4 +100,4 @@ ip access-list extended TIME-BASED
 
 ## Conclusion
 
-Standard ACLs filter by source IP and are ideal for VTY protection; extended ACLs offer full 5-tuple matching for granular policies. Always apply ACLs as close to the source as possible (inbound), log denied traffic with the `log` keyword, and verify match counters with `show ip access-lists` after deployment.
+Standard ACLs filter by source IP and are ideal for VTY protection; extended ACLs can also match destination, protocol, and TCP/UDP ports for granular policies. Place standard ACLs near the destination and extended ACLs near the source, use the `log` keyword selectively on deny entries, and verify match counters with `show ip access-lists` after deployment.
