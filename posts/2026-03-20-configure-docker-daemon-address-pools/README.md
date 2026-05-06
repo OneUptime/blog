@@ -32,7 +32,7 @@ EOF
 - `base`: the parent range from which Docker will carve subnets
 - `size`: the prefix length of each allocated subnet (24 = /24)
 
-With this config, when you run `docker network create mynet`, Docker will pick `10.200.0.0/24`, then `10.200.1.0/24`, and so on.
+With this config, new networks are allocated from these pools in `/24` blocks. For example, `docker network create mynet` can allocate `10.200.0.0/24`, then `10.200.1.0/24`, and so on.
 
 ## Applying the Configuration
 
@@ -42,8 +42,8 @@ sudo systemctl restart docker
 # Verify by creating a network without specifying a subnet
 
 docker network create test-pool
-docker network inspect test-pool | grep '"Subnet"'
-# Should show: "Subnet": "10.200.0.0/24"
+docker network inspect test-pool --format '{{(index .IPAM.Config 0).Subnet}}'
+# Example output: 10.200.0.0/24
 ```
 
 ## Combining bip and address pools
@@ -60,8 +60,8 @@ docker network inspect test-pool | grep '"Subnet"'
 }
 ```
 
-- `bip`: controls the `docker0` (default bridge) subnet
-- `default-address-pools`: controls all new user-defined bridge networks
+- `bip`: sets the IPv4 address and subnet for the default `docker0` bridge
+- `default-address-pools`: supplies subnets for new bridge networks when you do not set `--subnet`
 
 ## Multiple Pools for Different Purposes
 
@@ -80,7 +80,7 @@ docker network inspect test-pool | grep '"Subnet"'
 }
 ```
 
-Docker exhausts the first pool before moving to the second. Use `/28` subnets for tiny networks (14 hosts max) to conserve address space.
+Docker allocates subnets from the configured pools. Use `/28` subnets for tiny networks to conserve address space, but remember Docker also assigns a gateway address inside that subnet.
 
 ## Viewing Current Address Pool Allocation
 
