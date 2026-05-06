@@ -57,7 +57,7 @@ resource "aws_instance" "app" {
   ami           = var.ami_id
   instance_type = local.is_prod ? "t3.large" : "t3.micro"
 
-  # Multi-AZ only in production
+  # Pin non-production to a specific AZ
   availability_zone = local.is_prod ? null : "us-east-1a"
 }
 ```
