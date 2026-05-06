@@ -8,38 +8,32 @@ Description: Configure DNS for IPv6 on home networks including RDNSS/DHCPv6 DNS 
 
 ## DNS and IPv6: What's Different?
 
-IPv6 uses `AAAA` (quad-A) DNS records instead of `A` records. The DNS resolution process is the same, but you need DNS servers that are reachable over IPv6 and can return AAAA records.
+IPv6 addresses use `AAAA` (quad-A) DNS records instead of IPv4 `A` records. The DNS resolution process is the same, but if you want clients to reach the DNS server over IPv6, that server needs an IPv6 address.
 
 ## DNS Delivery Methods in IPv6
 
 There are two ways your home devices learn the DNS server address:
 
-1. **RDNSS (RFC 6106)**: DNS server included in Router Advertisement messages
-2. **DHCPv6 Stateless**: DNS server delivered via DHCPv6 option (when M=0, O=1)
+1. **RDNSS (RFC 8106)**: DNS server included in Router Advertisement messages
+2. **DHCPv6**: DNS server delivered via DHCPv6 options, commonly in stateless mode on home networks (M=0, O=1)
 
-Most modern devices support both. Configure both for maximum compatibility.
+Client support varies. RDNSS is especially important for clients that do not use DHCPv6 for DNS, so configuring both is a good compatibility choice.
 
 ## Configuring RDNSS on Your Router
 
 RDNSS embeds DNS server addresses in RA messages. Configure this on your router:
 
-**OpenWRT example:**
+**OpenWrt example:**
 ```text
-# /etc/config/network
+# /etc/config/dhcp
 
-config interface 'lan'
-    option proto 'static'
-    option ip6assign '64'
+config dhcp 'lan'
+    option interface 'lan'
+    option ra 'server'
+    option dhcpv6 'server'
+    list ra_flags 'other-config'
     list dns '2001:4860:4860::8888'
     list dns '2606:4700:4700::1111'
-
-# /etc/config/radvd (or radvd.conf)
-
-config interface
-    option interface 'br-lan'
-    list rdnss '2001:4860:4860::8888'
-    list rdnss '2606:4700:4700::1111'
-    option rdnss_lifetime '300'
 ```
 
 ## IPv6 Public DNS Servers
@@ -61,22 +55,21 @@ Pi-hole can serve as a local DNS resolver with IPv6 support:
 # Install Pi-hole (follow official installer)
 curl -sSL https://install.pi-hole.net | bash
 
-# During installation, provide an IPv6 DNS upstream server:
-# Upstream DNS: 2001:4860:4860::8888
+# During installation, select at least one IPv6-capable upstream DNS server
+# Example upstream DNS: 2001:4860:4860::8888
 
-# After install, configure Pi-hole to listen on IPv6
-# Edit /etc/pihole/setupVars.conf
-IPV6_ADDRESS=2001:db8:home::2
+# Give the Pi-hole host a stable IPv6 address on your LAN
+# Example: 2001:db8::2
 
-# Restart Pi-hole DNS
-pihole restartdns
+# Restart Pi-hole's DNS service after config changes
+sudo systemctl restart pihole-FTL.service
 ```
 
 Configure your router to advertise the Pi-hole as the DNS server:
 
 ```text
-# In router RDNSS/DHCPv6 config, point to Pi-hole:
-dns_server = 2001:db8:home::2   # Pi-hole's IPv6 address
+# In router RDNSS/DHCPv6 config, advertise the Pi-hole:
+list dns '2001:db8::2'   # Pi-hole's IPv6 address
 ```
 
 ## Local DNS for Home IPv6 Hosts
@@ -88,16 +81,14 @@ For resolving local hostnames over IPv6, use a simple DNS server like `dnsmasq`:
 
 # Listen on IPv6
 listen-address=::1
-listen-address=2001:db8:home::1
+listen-address=2001:db8::1
 
 # IPv6 AAAA records for local hosts
-aaaa-record=server.home.lan,2001:db8:home::10
-aaaa-record=nas.home.lan,2001:db8:home::20
-aaaa-record=pi.home.lan,2001:db8:home::30
+host-record=server.home.lan,2001:db8::10
+host-record=nas.home.lan,2001:db8::20
+host-record=pi.home.lan,2001:db8::30
 
-# DNS for reverse lookups (ip6.arpa)
-# Reverse lookup for home prefix
-rev-server=2001:db8:home::/64,127.0.0.1#5353
+# host-record also creates matching PTR records for reverse lookups
 ```
 
 ## Testing DNS Over IPv6
@@ -106,14 +97,14 @@ Verify DNS resolution is using IPv6:
 
 ```bash
 # Check if DNS queries are sent over IPv6
-dig AAAA google.com @2001:4860:4860::8888
+dig -6 AAAA google.com @2001:4860:4860::8888
 
 # Verify local hostname resolves correctly
-dig AAAA server.home.lan @2001:db8:home::1
+dig AAAA server.home.lan @2001:db8::1
 
 # Check which DNS server your device is using
 # Linux:
-systemd-resolve --status | grep "DNS Servers"
+resolvectl status | grep "DNS Servers"
 # Mac:
 scutil --dns | grep nameserver
 ```
@@ -130,6 +121,7 @@ Or configure in Unbound (a more advanced DNS resolver):
 ```text
 # /etc/unbound/unbound.conf
 server:
+    interface: 0.0.0.0
     interface: ::0
     do-ip6: yes
     do-ip4: yes
