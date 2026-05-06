@@ -69,7 +69,8 @@ show ip nat statistics
 debug ip nat
 
 ! Filtered debug for a specific host
-debug ip nat 10.1.0.10
+access-list 10 permit host 10.1.0.10
+debug ip nat 10
 
 ! Stop debug
 no debug ip nat
@@ -88,10 +89,10 @@ undebug all
 clear ip nat translation *
 
 ! Clear specific entry
-clear ip nat translation inside 10.1.0.10 outside 8.8.8.8
+clear ip nat translation inside 203.0.113.2 10.1.0.10 forced
 
 ! Clear by protocol and port
-clear ip nat translation tcp inside 203.0.113.2 1024 outside 8.8.8.8 80
+clear ip nat translation tcp inside 203.0.113.2 1024 10.1.0.10 45678 outside 8.8.8.8 53 8.8.8.8 53
 ```
 
 ## Troubleshooting Checklist
@@ -104,15 +105,15 @@ clear ip nat translation tcp inside 203.0.113.2 1024 outside 8.8.8.8 80
     show ip access-lists NAT-INSIDE
 
 [ ] Does the routing table have a default route toward the NAT outside interface?
-    show ip route 0.0.0.0
+    show ip route 0.0.0.0 0.0.0.0
 
 [ ] Are translations being created (hits incrementing)?
     show ip nat statistics
 
-[ ] Is CEF enabled? (required for hardware-assisted NAT)
+[ ] Is CEF enabled on the platform? (useful for confirming the expected forwarding path)
     show ip cef
 ```
 
 ## Conclusion
 
-Use `show ip nat translations` to confirm active mappings and `show ip nat statistics` to verify hit counts and identify drops. Use `debug ip nat` briefly on production (it generates high CPU) and always filter to a specific host IP to limit output. Clear the translation table when troubleshooting or after configuration changes.
+Use `show ip nat translations` to confirm active mappings and `show ip nat statistics` to verify hit counts and identify drops. Use `debug ip nat` briefly on production (it generates high CPU) and, if possible, filter it with a standard ACL that matches the host you are testing to limit output. Clear the translation table when troubleshooting or after configuration changes.
