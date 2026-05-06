@@ -14,7 +14,7 @@ Cluster-level policies establish guardrails that apply to every workload in a cl
 
 ## 1. Resource Quotas via Rancher Projects
 
-Rancher Projects wrap namespaces and allow you to set cluster-level resource quotas that cascade to all namespaces in the project:
+Rancher Projects wrap namespaces and allow you to set project-wide resource quotas that propagate to namespaces in the project:
 
 ```yaml
 # Applied via Rancher management API or UI
@@ -25,6 +25,7 @@ metadata:
   name: team-alpha
   namespace: c-xxxxx   # cluster namespace
 spec:
+  clusterName: c-xxxxx
   resourceQuota:
     limit:
       # Maximum resources for the entire project
@@ -45,16 +46,16 @@ spec:
 
 ## 2. Pod Security Standards
 
-Enforce Pod Security Standards at the namespace level (Kubernetes 1.25+):
+Pod Security Standards are enforced at the namespace level (Kubernetes 1.25+). To label existing namespaces:
 
 ```bash
-# Set the entire cluster's default PSS to baseline
-kubectl label namespace --all \
+# Label all existing namespaces with baseline enforcement
+kubectl label --overwrite ns --all \
   pod-security.kubernetes.io/enforce=baseline \
   pod-security.kubernetes.io/enforce-version=latest
 
-# Set production namespaces to restricted
-kubectl label namespace production \
+# Set the production namespace to restricted
+kubectl label --overwrite ns production \
   pod-security.kubernetes.io/enforce=restricted \
   pod-security.kubernetes.io/warn=restricted
 ```
@@ -63,14 +64,15 @@ kubectl label namespace production \
 
 ## 3. Network Policies for Cluster-Wide Default Deny
 
-Apply a default-deny NetworkPolicy to every namespace to implement zero-trust networking:
+Because NetworkPolicies are namespaced, apply a default-deny policy in each namespace to implement zero-trust networking:
 
 ```yaml
-# default-deny.yaml (apply via Fleet to all clusters)
+# default-deny.yaml (create one copy per namespace, for example via Fleet)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
+  namespace: app-namespace
 spec:
   podSelector: {}   # applies to all pods
   policyTypes:
@@ -85,11 +87,34 @@ Then add explicit allow rules per service:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-frontend-to-backend
+  name: allow-frontend-egress-to-backend
+  namespace: app-namespace
+spec:
+  podSelector:
+    matchLabels:
+      tier: frontend
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              tier: backend
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-ingress-from-frontend
+  namespace: app-namespace
 spec:
   podSelector:
     matchLabels:
       tier: backend
+  policyTypes:
+    - Ingress
   ingress:
     - from:
         - podSelector:
@@ -113,7 +138,7 @@ helm install gatekeeper gatekeeper/gatekeeper \
   --create-namespace
 ```
 
-Create a constraint template that requires resource limits on all containers:
+Create a constraint template that requires `limits.cpu` on each Pod container:
 
 ```yaml
 # constrainttemplate-require-limits.yaml
@@ -126,6 +151,9 @@ spec:
     spec:
       names:
         kind: RequireResourceLimits
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -158,4 +186,4 @@ spec:
 
 - Distribute policies via **Rancher Fleet** so they are applied consistently and tracked in Git.
 - Start with `warn` enforcement for new policies before switching to `deny` to avoid breaking existing workloads.
-- Use Rancher's built-in **CIS benchmark scanner** to validate cluster hardening posture after policy changes.
+- Use Rancher's built-in **compliance scans** to validate CIS benchmark posture after policy changes.
