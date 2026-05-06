@@ -89,8 +89,8 @@ docker system df
 ## Identify Outdated Images
 
 ```bash
-# Check if a newer digest exists for an image
-docker pull nginx:latest 2>&1 | grep -E "Pull complete|up to date"
+# Check whether pulling updates the tagged image
+docker pull nginx:latest 2>&1 | grep -E "Downloaded newer image|Image is up to date"
 
 # View image creation date
 docker inspect nginx:latest --format '{{.Created}}'
