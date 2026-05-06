@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Subnetting, Broadcast, IPv4, CIDR, Network Fundamentals
 
-Description: Calculate the directed broadcast address for any IPv4 subnet using binary math, Python, and Linux command-line tools, with worked examples for common CIDR prefixes.
+Description: Calculate the IPv4 subnet broadcast address using binary math, Python, and Linux command-line tools, with worked examples for common CIDR prefixes.
 
 ## Introduction
 
-The broadcast address of a subnet is the last address in the range - all host bits set to 1. Every device on that subnet receives a packet sent to this address. Calculating it correctly is essential for network configuration, firewall rules, and troubleshooting.
+For standard IPv4 subnets, the broadcast address is the last address in the range - all host bits set to 1. On a local subnet, packets sent to this address are intended for all hosts on that subnet. Routers typically do not forward directed broadcasts unless explicitly configured, and /31 point-to-point links do not use a directed broadcast address.
 
 ## The Formula
 
@@ -51,14 +51,27 @@ import sys
 def subnet_info(cidr: str):
     """Print network, broadcast, range, and host count for a subnet."""
     net = ipaddress.IPv4Network(cidr, strict=False)
+    # /31 and /32 do not follow the usual "subtract 2" host rule.
+    if net.prefixlen == 32:
+        first_host = last_host = net.network_address
+        usable_hosts = 1
+    elif net.prefixlen == 31:
+        first_host = net.network_address
+        last_host = net.broadcast_address
+        usable_hosts = 2
+    else:
+        first_host = net.network_address + 1
+        last_host = net.broadcast_address - 1
+        usable_hosts = net.num_addresses - 2
+
     print(f"CIDR:             {net}")
     print(f"Network:          {net.network_address}")
     print(f"Broadcast:        {net.broadcast_address}")
     print(f"Subnet Mask:      {net.netmask}")
     print(f"Wildcard Mask:    {net.hostmask}")
-    print(f"First Host:       {net.network_address + 1}")
-    print(f"Last Host:        {net.broadcast_address - 1}")
-    print(f"Usable Hosts:     {net.num_addresses - 2}")
+    print(f"First Host:       {first_host}")
+    print(f"Last Host:        {last_host}")
+    print(f"Usable Hosts:     {usable_hosts}")
 
 # Run from command line: python3 script.py 192.168.5.64/27
 
@@ -74,7 +87,7 @@ else:
 ## Using ipcalc on Linux
 
 ```bash
-# Install ipcalc
+# Install ipcalc on Debian/Ubuntu
 sudo apt install ipcalc
 
 # Calculate broadcast and other fields
@@ -108,4 +121,4 @@ Hosts/Net: 30
 
 ## Conclusion
 
-The broadcast address is always the bitwise OR of the network address and the wildcard mask. Use Python's `ipaddress` module or `ipcalc` for instant calculations, and keep the pattern - all host bits set to 1 - in mind when manually verifying subnet boundaries.
+For standard IPv4 subnets, the broadcast address is the bitwise OR of the network address and the wildcard mask. Use Python's `ipaddress` module or `ipcalc` for instant calculations, and keep the pattern - all host bits set to 1 - in mind when manually verifying subnet boundaries.
