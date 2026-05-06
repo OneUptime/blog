@@ -29,7 +29,7 @@ Avoid Docker's auto-generated random names - they're impossible to audit.
 ## Named Volumes Over Anonymous Volumes
 
 ```yaml
-# Bad: Anonymous volume - Docker assigns a random UUID name
+# Bad: Anonymous volume - Docker assigns a random unique name
 
 services:
   db:
@@ -58,7 +58,7 @@ volumes:
 | Cache | Ephemeral data | Don't backup |
 | Logs | Log files | Use log driver instead |
 
-## Read-Only Volumes for Configuration
+## Read-Only Mounts for Configuration
 
 Mount configuration files as read-only to prevent containers from modifying them:
 
@@ -66,7 +66,7 @@ Mount configuration files as read-only to prevent containers from modifying them
 services:
   nginx:
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro    # Read-only
+      - /srv/nginx/nginx.conf:/etc/nginx/nginx.conf:ro  # Read-only bind mount
       - nginx-cache:/var/cache/nginx              # Read-write for cache
 ```
 
@@ -111,14 +111,14 @@ Regularly prune orphaned volumes:
 
 ```bash
 #!/bin/bash
-# volume-cleanup.sh - schedule this as a Portainer job
+# volume-cleanup.sh - schedule this with cron, or as a Portainer Edge Job on supported environments
 
 # List volumes before cleanup
 echo "Volumes before cleanup:"
 docker volume ls
 
-# Remove volumes not attached to any container
-docker volume prune -f
+# Remove unused volumes not attached to any container
+docker volume prune --all -f
 
 echo "Volumes after cleanup:"
 docker volume ls
@@ -141,4 +141,4 @@ df -h / | awk 'NR==2 {print $5}' | sed 's/%//' | xargs -I {} test {} -gt 80 && \
 
 ## Summary
 
-Volume management requires consistent naming, explicit backup policies, read-only mounts for configuration, and regular cleanup of orphaned volumes. Portainer's volume browser gives you visibility into all volumes and their connected containers, making it easy to identify and clean up orphaned volumes before they exhaust disk space.
+Volume management requires consistent naming, explicit backup policies, read-only mounts for configuration, and regular cleanup of orphaned volumes. Portainer's volumes view gives you visibility into existing volumes, and if you're using Docker Swarm or the Portainer Agent, the volume browser lets you inspect their contents, making it easier to identify and clean up unused volumes before they exhaust disk space.
