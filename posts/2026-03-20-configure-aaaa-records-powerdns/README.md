@@ -8,7 +8,7 @@ Description: A guide to adding IPv6 AAAA records in PowerDNS using the pdnsutil 
 
 ## PowerDNS Overview
 
-PowerDNS Authoritative Server stores DNS records in a database backend (SQLite, MySQL, PostgreSQL) and exposes management via the `pdnsutil` command-line tool and an HTTP REST API. Adding AAAA records can be done through either interface.
+PowerDNS Authoritative Server can store DNS records in several backends, including SQLite, MySQL, PostgreSQL, and BIND zone files, and exposes management via the `pdnsutil` command-line tool and an HTTP REST API. Adding AAAA records can be done through either interface.
 
 ## Method 1: Using pdnsutil
 
@@ -17,32 +17,32 @@ PowerDNS Authoritative Server stores DNS records in a database backend (SQLite, 
 ```bash
 # List existing records in a zone
 
-pdnsutil list-zone example.com
+pdnsutil zone list example.com
 
 # Add an AAAA record for www.example.com
-# Format: pdnsutil add-record ZONE NAME TYPE TTL CONTENT
-pdnsutil add-record example.com www AAAA 3600 2001:db8::1
+# Format: pdnsutil rrset add ZONE NAME TYPE TTL CONTENT
+pdnsutil rrset add example.com www.example.com AAAA 3600 2001:db8::1
 
 # Add multiple AAAA records (round-robin)
-pdnsutil add-record example.com www AAAA 3600 2001:db8::2
-pdnsutil add-record example.com www AAAA 3600 2001:db8::3
+pdnsutil rrset add example.com www.example.com AAAA 3600 2001:db8::2
+pdnsutil rrset add example.com www.example.com AAAA 3600 2001:db8::3
 
-# Add AAAA for the zone apex (@)
-pdnsutil add-record example.com @ AAAA 3600 2001:db8::1
+# Add AAAA for the zone apex
+pdnsutil rrset add example.com example.com AAAA 3600 2001:db8::1
 
 # Add AAAA for a subdomain
-pdnsutil add-record example.com mail AAAA 3600 2001:db8::100
+pdnsutil rrset add example.com mail.example.com AAAA 3600 2001:db8::100
 
 # Verify the records were added
-pdnsutil list-zone example.com | grep AAAA
+pdnsutil zone list example.com | grep AAAA
 
 # Increment the SOA serial after changes
-pdnsutil increase-serial example.com
+pdnsutil zone increase-serial example.com
 ```
 
 ## Method 2: Direct Database Manipulation (MySQL/PostgreSQL)
 
-If you need to batch-import AAAA records, you can insert directly into the PowerDNS database:
+PowerDNS recommends using `pdnsutil` or the REST API instead of raw SQL, but if you need to batch-import AAAA records you can insert directly into the PowerDNS database:
 
 ```sql
 -- First, find the domain_id for the zone
@@ -51,15 +51,21 @@ SELECT id FROM domains WHERE name = 'example.com';
 
 -- Insert an AAAA record
 INSERT INTO records (domain_id, name, type, content, ttl, prio, disabled)
-VALUES (1, 'www.example.com', 'AAAA', '2001:db8::1', 3600, 0, 0);
+VALUES (1, 'www.example.com', 'AAAA', '2001:db8::1', 3600, NULL, false);
 
 -- Insert AAAA for the apex
 INSERT INTO records (domain_id, name, type, content, ttl, prio, disabled)
-VALUES (1, 'example.com', 'AAAA', '2001:db8::1', 3600, 0, 0);
+VALUES (1, 'example.com', 'AAAA', '2001:db8::1', 3600, NULL, false);
 
 -- Verify
 SELECT name, type, content, ttl FROM records
 WHERE domain_id = 1 AND type = 'AAAA';
+```
+
+If DNSSEC is enabled for the backend or zone, rectify the zone after direct SQL changes:
+
+```bash
+pdnsutil zone rectify example.com
 ```
 
 ## Method 3: Using the PowerDNS REST API
@@ -112,34 +118,35 @@ www IN  AAAA 2001:db8::1
 EOF
 
 # Load the zone file into PowerDNS
-pdnsutil load-zone example.com /tmp/example.com.zone
+pdnsutil zone load example.com /tmp/example.com.zone
 
-# Or create the zone from the file (new zone)
-pdnsutil create-zone example.com
-pdnsutil load-zone example.com /tmp/example.com.zone
+# Or create the zone first, then load the file
+pdnsutil zone create example.com
+pdnsutil zone load example.com /tmp/example.com.zone
 ```
 
 ## Verifying AAAA Records in PowerDNS
 
 ```bash
 # List all records in the zone
-pdnsutil list-zone example.com
+pdnsutil zone list example.com
 
 # Test resolution directly against PowerDNS
 dig AAAA www.example.com @127.0.0.1
 
-# Check zone DNSSEC status if applicable
-pdnsutil check-zone example.com
+# Check zone correctness
+pdnsutil zone check example.com
 
-# Rectify the zone (updates NSEC records after changes)
-pdnsutil rectify-zone example.com
+# If you changed records directly in the backend on a DNSSEC-capable setup,
+# rectify the zone to recalculate DNSSEC metadata
+pdnsutil zone rectify example.com
 ```
 
 ## Removing AAAA Records
 
 ```bash
 # Delete a specific AAAA record
-pdnsutil delete-rrset example.com www AAAA
+pdnsutil rrset delete example.com www.example.com AAAA
 
 # To remove only one record when multiple exist, use the API
 # with a REPLACE changetype specifying only the records to keep
@@ -147,4 +154,4 @@ pdnsutil delete-rrset example.com www AAAA
 
 ## Summary
 
-PowerDNS offers multiple ways to add AAAA records: `pdnsutil add-record` for interactive use, direct SQL inserts for bulk operations, the REST API for programmatic management, and zone file imports for initial setup. After adding records, increment the SOA serial with `pdnsutil increase-serial` and verify with `dig AAAA`.
+PowerDNS offers multiple ways to add AAAA records: `pdnsutil rrset add` for interactive use, direct SQL inserts for bulk operations, the REST API for programmatic management, and zone file imports for initial setup. After adding records with `pdnsutil` or direct SQL, increment the SOA serial with `pdnsutil zone increase-serial` and verify with `dig AAAA`. API changes follow the zone's `SOA-EDIT-API` rules.
