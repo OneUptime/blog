@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Default Gateway, Routing, iproute2, Networking, Network Configuration
 
-Description: Change the existing default gateway on Linux using ip route commands to redirect all outbound traffic through a new gateway without disrupting active connections.
+Description: Change the existing default gateway on Linux using ip route commands to redirect outbound traffic through a new gateway.
 
 ## Introduction
 
-Changing the default gateway requires removing the old route and adding a new one. On production systems, this should be done carefully to minimize disruption. The `ip route replace` command provides an atomic operation that changes the gateway in one step.
+Changing the default gateway can be done either by replacing the existing route or by removing the old route and adding a new one. On production systems, this should be done carefully to minimize disruption. The `ip route replace` command changes the gateway in one step.
 
-## Method 1: Replace (Atomic, Preferred)
+## Method 1: Replace (Preferred)
 
 ```bash
-# Replace replaces an existing route atomically
+# Replace changes an existing default route in one command
 
-# This is the safest method - no gap in connectivity
+# This avoids separate delete and add commands
 ip route replace default via 192.168.1.254
 ```
 
@@ -36,27 +36,33 @@ ip route add default via 192.168.1.254
 ip route show default
 ```
 
-## Method 3: Add with Lower Metric (Non-Disruptive Testing)
+## Method 3: Add with Lower Metric (Alternate Route Testing)
 
 ```bash
-# Add new gateway with a lower metric (preferred over existing)
+# First check the current default-route metrics
+ip route show default
+
+# Add new gateway with a lower metric value than the existing default route
 ip route add default via 192.168.1.254 metric 50
 
-# Existing gateway stays but new one has priority (metric 100 default)
+# The new route is preferred only if the existing default route has a higher metric value
 ip route show default
 
 # If new gateway works, remove the old one
-ip route del default via 192.168.1.1 metric 100
+ip route del default via 192.168.1.1
 ```
 
-## Change Gateway via nmcli (RHEL, Persistent)
+## Change Gateway via nmcli (RHEL, Persistent, Manual IPv4)
 
 ```bash
+# List connection profiles to find the connection name
+nmcli connection show
+
 # Modify the gateway in the connection profile
-nmcli connection modify eth0 ipv4.gateway "192.168.1.254"
+nmcli connection modify "<connection-name>" ipv4.gateway "192.168.1.254"
 
 # Apply the change
-nmcli connection up eth0
+nmcli connection up id "<connection-name>"
 
 # Verify
 ip route show default
@@ -86,7 +92,7 @@ netplan apply
 # Check the routing table
 ip route show default
 
-# Test connectivity through the new gateway
+# Test connectivity to the new gateway
 ping -c 3 192.168.1.254
 
 # Test internet access
@@ -109,4 +115,4 @@ ip route show 0.0.0.0/0
 
 ## Conclusion
 
-Use `ip route replace default via <new-gateway>` for the safest and most atomic gateway change. This command replaces the existing route without a gap in connectivity. For persistent changes, update the gateway in your distribution's network configuration tool (nmcli, Netplan, systemd-networkd). Always verify with `ping` through the new gateway before assuming the change is successful.
+Use `ip route replace default via <new-gateway>` for the simplest gateway change in a single command. This avoids separate delete and add steps. For persistent changes, update the gateway in your distribution's network configuration tool (nmcli, Netplan, systemd-networkd). Always verify with `ip route show default`, `ping` to the new gateway, and a test to an external host before assuming the change is successful.
