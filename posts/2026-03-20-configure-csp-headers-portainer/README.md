@@ -21,7 +21,8 @@ Portainer is a web application. Without proper HTTP security headers, it's vulne
 # /etc/nginx/conf.d/portainer.conf
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name portainer.mycompany.com;
 
     ssl_certificate /etc/ssl/certs/portainer.crt;
@@ -32,11 +33,13 @@ server {
     # Security Headers
     add_header Content-Security-Policy
         "default-src 'self';
-         script-src 'self' 'unsafe-inline' 'unsafe-eval';
+         script-src 'self' https://js.hsforms.net https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/;
          style-src 'self' 'unsafe-inline';
          img-src 'self' data: blob:;
          font-src 'self' data:;
          connect-src 'self' wss://portainer.mycompany.com;
+         object-src 'none';
+         frame-src https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/;
          frame-ancestors 'none';
          form-action 'self';"
         always;
@@ -47,10 +50,7 @@ server {
     # Stop MIME type sniffing
     add_header X-Content-Type-Options "nosniff" always;
 
-    # Enable XSS filter (older browsers)
-    add_header X-XSS-Protection "1; mode=block" always;
-
-    # Only send referrer for same-origin requests
+    # Send full referrer on same-origin requests, origin only cross-origin
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     # HTTP Strict Transport Security (force HTTPS for 1 year)
@@ -89,14 +89,15 @@ spec:
   headers:
     contentSecurityPolicy: >
       default-src 'self';
-      script-src 'self' 'unsafe-inline' 'unsafe-eval';
+      script-src 'self' https://js.hsforms.net https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/;
       style-src 'self' 'unsafe-inline';
       img-src 'self' data: blob:;
       connect-src 'self' wss:;
+      object-src 'none';
+      frame-src https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/;
       frame-ancestors 'none'
     frameDeny: true
     contentTypeNosniff: true
-    browserXssFilter: true
     stsSeconds: 31536000
     stsIncludeSubdomains: true
     referrerPolicy: strict-origin-when-cross-origin
@@ -115,9 +116,11 @@ curl -I "https://portainer.mycompany.com" | grep -E "Content-Security|X-Frame|X-
 
 ## CSP Note for Portainer
 
-Portainer uses inline scripts and WebSocket connections, so the CSP must include:
-- `'unsafe-inline'` for scripts and styles (required by Portainer's angular.js frontend).
-- `wss://` for WebSocket connections (required for container log streaming).
+Portainer already sends a default Content-Security-Policy header. If you want your reverse proxy to define the CSP instead, start Portainer with `--no-csp`; otherwise browsers will enforce both policies.
+
+When defining your own CSP for Portainer, make sure it includes:
+- `https://js.hsforms.net`, `https://www.google.com/recaptcha/`, and `https://www.gstatic.com/recaptcha/` in `script-src` and `frame-src` to preserve the allowances in Portainer's built-in CSP.
+- `wss://` in `connect-src` for WebSocket connections used by features such as container log streaming.
 
 ## Conclusion
 
