@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, IPv6, Static Routes, IOS, Routing
 
-Description: Configure IPv6 static and summary routes on Cisco IOS routers including recursive and directly connected static routes.
+Description: Configure IPv6 static routes on Cisco IOS routers and verify them with standard show and debug commands.
 
 ## Overview
 
-Configure IPv6 static and summary routes on Cisco IOS routers including recursive and directly connected static routes.
+Configure IPv6 static routes on Cisco IOS routers and verify them with standard show and debug commands.
 
 ## Prerequisites
 
-- Cisco IOS 12.4(6)T or later
+- Cisco IOS 12.4(24)T or later
 - Global IPv6 routing enabled: `ipv6 unicast-routing`
 - Console or SSH access to the router
 
@@ -34,7 +34,7 @@ Router(config-if)# no shutdown
 
 ```text
 ! Static route example
-Router(config)# ipv6 route 2001:db8:remote::/48 2001:db8:wan::254
+Router(config)# ipv6 route 2001:db8:100::/48 2001:db8::254
 
 ! ACL example
 Router(config)# ipv6 access-list BLOCK-BOGONS
@@ -51,6 +51,7 @@ Router(config-dhcpv6)# domain-name example.com
 ! Apply DHCPv6 to interface
 Router(config)# interface GigabitEthernet0/1
 Router(config-if)# ipv6 dhcp server IPV6-POOL
+Router(config-if)# ipv6 nd managed-config-flag
 ```
 
 ## Verification Commands
@@ -72,7 +73,7 @@ Router# show ipv6 dhcp binding
 Router# ping ipv6 2001:db8::1
 
 ! Traceroute over IPv6
-Router# traceroute ipv6 2001:db8::1 source GigabitEthernet0/1
+Router# traceroute ipv6 2001:db8::1
 ```
 
 ## Debug Commands
@@ -97,4 +98,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your Cisco router's IPv6 conne
 
 ## Conclusion
 
-How to Configure IPv6 Static Routes on Cisco follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before any interface IPv6 configuration will work. Always verify with `show ipv6` commands after making changes.
+How to Configure IPv6 Static Routes on Cisco follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before IPv6 forwarding will work. Always verify with `show ipv6` commands after making changes.
