@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv4, Network Planning, Subnetting, Office Networks, DHCP
 
-Description: Calculate how many IPv4 addresses a new office needs by inventorying device types, applying growth and DHCP overhead factors, and selecting appropriately sized subnets.
+Description: Calculate how many IPv4 addresses a new office needs by inventorying device types, applying a growth buffer, and leaving DHCP/admin reserve inside each subnet.
 
 ## Introduction
 
@@ -19,27 +19,28 @@ Workstations (wired)     50     DHCP
 Workstations (wireless)  80     DHCP
 Laptops (wireless)       60     DHCP
 VoIP phones              50     Separate VLAN
-Printers / MFPs          10     Static
-Servers / NAS             5     Static
-Network devices           8     Static (switches, APs, router)
+Printers / MFPs          10     Static (Corporate VLAN)
+Servers / NAS             5     Static (Infrastructure VLAN)
+Network devices           8     Static (Infrastructure VLAN)
 Guest Wi-Fi             100     Separate VLAN, dynamic
 IoT devices              20     Separate VLAN
 ─────────────────────────────────────────────────
 Totals per VLAN:
-  Corporate wired+wireless: 190 devices
-  VoIP:                      50
-  Guest:                    100
-  IoT:                       20
-  Infrastructure:            13
+  Corporate (clients + printers): 200 devices
+  VoIP:                               50
+  Guest:                             100
+  IoT:                                20
+  Infrastructure:                     13
 ```
 
 ## Subnet Sizing Formula
 
 ```text
-Required addresses = devices × 1.3 (30% growth buffer)
-                     + DHCP pool reserve (10-15% of pool)
+Required usable addresses = ceil(devices × 1.3)
+                            (30% growth buffer)
 
-Round up to next power-of-2 subnet.
+Choose the next subnet that provides at least that many usable addresses.
+Then leave 10-15% of the chosen subnet unassigned for DHCP/admin reserve.
 ```
 
 ## Python Calculator
@@ -49,47 +50,47 @@ import ipaddress
 import math
 
 def required_prefix(device_count: int, growth_pct: float = 0.30) -> int:
-    """Return the smallest CIDR prefix that fits the device count."""
-    needed = int(device_count * (1 + growth_pct)) + 2  # +2 for network/bcast
-    bits = math.ceil(math.log2(needed))
-    prefix = 32 - bits
-    return max(prefix, 1)   # clamp
+    """Return the smallest CIDR prefix that fits the planned host count."""
+    if device_count < 1:
+        raise ValueError("device_count must be positive")
+
+    required_usable = math.ceil(device_count * (1 + growth_pct))
+    host_bits = math.ceil(math.log2(required_usable + 2))
+    return 32 - host_bits
 
 segments = {
-    "Corporate":      190,
+    "Corporate":      200,
     "VoIP":            50,
     "Guest":          100,
     "IoT":             20,
     "Infrastructure":  13,
 }
 
-base = ipaddress.IPv4Network("10.50.0.0/20")
-subnets = list(base.subnets(new_prefix=24))  # pre-allocate /24s
-
-for i, (name, count) in enumerate(segments.items()):
+for name, count in segments.items():
     prefix = required_prefix(count)
-    needed_hosts = int(count * 1.3)
+    usable_hosts = ipaddress.IPv4Network(f"0.0.0.0/{prefix}").num_addresses - 2
+    planned_hosts = math.ceil(count * 1.3)
     print(f"{name:<18} devices={count:3d}  "
           f"recommended=/{prefix}  "
-          f"({2**(32-prefix)-2} usable)  "
-          f"growth headroom={2**(32-prefix)-2-needed_hosts}")
+          f"({usable_hosts:3d} usable)  "
+          f"headroom={usable_hosts - planned_hosts:3d}")
 ```
 
 ## Sample Output and Subnet Selection
 
 ```text
-Corporate         devices=190  recommended=/24  (254 usable)  headroom=7
-VoIP              devices= 50  recommended=/26  ( 62 usable)  headroom=  7
-Guest             devices=100  recommended=/25  (126 usable)  headroom= 2
-IoT               devices= 20  recommended=/27  ( 30 usable)  headroom= 4
-Infrastructure    devices= 13  recommended=/28  ( 14 usable)  headroom= 1 → use /27
+Corporate          devices=200  recommended=/23  (510 usable)  headroom=250
+VoIP               devices= 50  recommended=/25  (126 usable)  headroom= 61
+Guest              devices=100  recommended=/24  (254 usable)  headroom=124
+IoT                devices= 20  recommended=/27  ( 30 usable)  headroom=  4
+Infrastructure     devices= 13  recommended=/27  ( 30 usable)  headroom= 13
 ```
 
 ## DHCP Scope Sizing
 
 ```text
 For a /24 (254 usable):
-  Static reservations:  10  (servers, printers)
+  Static reservations:  10  (printers)
   DHCP pool:           220  (lease entries)
   Admin/growth reserve: 24
   ─────────────────────────
@@ -100,13 +101,13 @@ For a /24 (254 usable):
 
 ```text
 10.50.0.0/22   - Office total allocation
-  10.50.0.0/24   VLAN 10  Corporate
-  10.50.1.0/25   VLAN 20  VoIP
-  10.50.1.128/25 VLAN 30  Guest
-  10.50.2.0/27   VLAN 40  IoT
-  10.50.2.32/27  VLAN 99  Infrastructure
+  10.50.0.0/23   VLAN 10  Corporate
+  10.50.2.0/25   VLAN 20  VoIP
+  10.50.3.0/24   VLAN 30  Guest
+  10.50.2.128/27 VLAN 40  IoT
+  10.50.2.160/27 VLAN 99  Infrastructure
 ```
 
 ## Conclusion
 
-Start with a device inventory, apply a 30% growth buffer, add DHCP overhead, and choose the next power-of-two subnet. Segment VoIP, guest, IoT, and corporate traffic into separate VLANs. Allocate a parent block large enough to summarize all office subnets into a single route advertisement.
+Start with a device inventory, apply a 30% growth buffer, and choose the next subnet that provides enough usable addresses. Segment VoIP, guest, IoT, and corporate traffic into separate VLANs, then leave some DHCP/admin reserve inside each VLAN where practical. Allocate a parent block large enough to summarize all office subnets into a single route advertisement.
