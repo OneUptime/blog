@@ -13,13 +13,13 @@ Juniper Junos supports RPKI origin validation natively. Routers connect to an RP
 ## Step 1: Configure the RPKI Cache Session
 
 ```text
-# /etc/juniper config - set RPKI cache server
+# Junos configuration mode commands to set the RPKI cache server
 
-set routing-options validation group rpki-validator session 2001:db8:validator::1
-set routing-options validation group rpki-validator session 2001:db8:validator::1 port 3323
-set routing-options validation group rpki-validator session 2001:db8:validator::1 refresh-time 600
-set routing-options validation group rpki-validator session 2001:db8:validator::1 hold-time 1200
-set routing-options validation group rpki-validator session 2001:db8:validator::1 record-lifetime 172800
+set routing-options validation group rpki-validator session 2001:db8:100::1
+set routing-options validation group rpki-validator session 2001:db8:100::1 port 3323
+set routing-options validation group rpki-validator session 2001:db8:100::1 refresh-time 600
+set routing-options validation group rpki-validator session 2001:db8:100::1 hold-time 1200
+set routing-options validation group rpki-validator session 2001:db8:100::1 record-lifetime 172800
 ```
 
 Or in curly-brace syntax:
@@ -27,8 +27,8 @@ Or in curly-brace syntax:
 ```text
 routing-options {
     validation {
-        group rpki-validators {
-            session 2001:db8:validator::1 {
+        group rpki-validator {
+            session 2001:db8:100::1 {
                 port 3323;
                 refresh-time 600;
                 hold-time 1200;
@@ -47,15 +47,18 @@ show validation session
 
 # Expected output:
 # Session               State   Flaps  Uptime       #IPv4/IPv6 records
-# 2001:db8:validator::1 Up      0      2d 00:15:43  300000/85000
+# 2001:db8:100::1       up      0      2d 00:15:43  300000/85000
 
-# Check ROA table for IPv6
-show validation database inet6
+# Check RV database entries and IPv6 record counts
+show validation database detail
+
+# Query a specific IPv6 RV record
+show validation database record 2001:db8::/32
 ```
 
 ## Step 3: Create Routing Policies Based on Validation State
 
-```python
+```text
 policy-options {
     policy-statement RPKI-IMPORT {
         # Prefer valid routes
@@ -112,7 +115,7 @@ protocols {
             # Apply RPKI policy on import
             import RPKI-IMPORT;
 
-            neighbor 2001:db8:peer::1 {
+            neighbor 2001:db8:200::1 {
                 family inet6 {
                     unicast;
                 }
@@ -126,25 +129,25 @@ protocols {
 
 ```text
 # Show BGP routes with validation status
-show route validation-state valid table inet6.0
-show route validation-state invalid table inet6.0
-show route validation-state unknown table inet6.0
+show route validation-state valid
+show route validation-state invalid
+show route validation-state unknown
 
 # Show a specific prefix with validation detail
-show route 2001:db8::/32 detail table inet6.0
+show route 2001:db8::/32 detail
 
 # Count invalid routes received
-show route validation-state invalid table inet6.0 | count
+show route validation-state invalid | count
 ```
 
-## Step 6: Configure Logging for Invalid Routes
+## Step 6: Configure Tracing for Validation Events
 
 ```text
 routing-options {
-    # Log invalid route events using syslog
+    # Trace RPKI validation events
     validation {
         traceoptions {
-            file rpki-log size 100m;
+            file "rpki-log" size 100m;
             flag state;
             flag update;
         }
