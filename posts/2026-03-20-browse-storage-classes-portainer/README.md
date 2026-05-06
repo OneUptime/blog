@@ -10,34 +10,33 @@ Description: Learn how to view and understand Kubernetes Storage Classes in Port
 
 A StorageClass defines how Kubernetes should provision persistent storage. When a PVC requests storage with a specific `storageClassName`, the StorageClass's provisioner automatically creates a matching Persistent Volume.
 
-Different storage classes offer different performance characteristics:
-- **Standard**: General-purpose HDD-backed storage.
-- **SSD**: High-performance NVMe/SSD storage.
-- **NFS**: Network-shared storage for ReadWriteMany workloads.
+Different storage classes offer different performance and access characteristics, depending on how your cluster administrator or cloud provider configured them:
+- **Standard/general-purpose**: Balanced storage for typical workloads.
+- **SSD-backed**: Higher-performance storage for low-latency or high-IOPS workloads.
+- **NFS or other shared file storage**: Network-shared storage for `ReadWriteMany` workloads.
 
 ## Viewing Storage Classes in Portainer
 
 1. Select your Kubernetes environment.
-2. In the sidebar, go to **Storage** or **Volumes**.
-3. Click **Storage Classes**.
+2. In the sidebar, go to **Volumes**.
+3. Click the **Storage** tab.
 
-Portainer lists all available StorageClasses with their provisioner, reclaim policy, and binding mode.
+Portainer lists the storage classes available in your cluster along with the disk space used by each volume. You can expand a storage class to see the volumes it contains.
 
 ## Storage Class Details Explained
 
 | Field | Description |
 |-------|-------------|
-| **Provisioner** | The plugin that creates volumes (e.g., `kubernetes.io/aws-ebs`) |
-| **Reclaim Policy** | What happens when PVCs are deleted (`Retain` or `Delete`) |
-| **Volume Binding Mode** | `Immediate` (bind immediately) or `WaitForFirstConsumer` (bind when pod is scheduled) |
-| **Allow Volume Expansion** | Whether PVCs using this class can be resized |
+| **Provisioner** | The driver or provisioner that creates volumes (e.g., `ebs.csi.aws.com`) |
+| **Reclaim Policy** | What happens to dynamically provisioned PVs after their PVCs are deleted (`Retain` or `Delete`) |
+| **Volume Binding Mode** | `Immediate` provisions or binds when the PVC is created; `WaitForFirstConsumer` delays this until a Pod using the PVC is created |
+| **Allow Volume Expansion** | Whether PVCs using this class can be resized, if the driver supports expansion |
 
 ## Viewing Storage Classes via CLI
 
 ```bash
 # List all storage classes
-
-kubectl get storageclasses
+kubectl get storageclass
 
 # Get detailed information about a storage class
 kubectl describe storageclass standard
@@ -66,7 +65,7 @@ volumeBindingMode: WaitForFirstConsumer  # Avoid cross-AZ issues
 ```
 
 ```yaml
-# GKE Standard Storage Class
+# GKE SSD Storage Class
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -76,6 +75,7 @@ parameters:
   type: pd-ssd           # GCP SSD persistent disk
 reclaimPolicy: Delete
 allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
 ```
 
 ## Setting a Default Storage Class
@@ -95,12 +95,12 @@ kubectl patch storageclass old-default \
 ```mermaid
 graph TD
     A[What does your app need?] --> B{Multiple pods need write access?}
-    B -->|Yes| C[Use NFS or Ceph RWX storage class]
+    B -->|Yes| C[Use NFS or CephFS RWX storage class]
     B -->|No| D{Database or high IOPS?}
-    D -->|Yes| E[Use SSD storage class]
-    D -->|No| F[Use Standard HDD storage class]
+    D -->|Yes| E[Use an SSD-backed storage class]
+    D -->|No| F[Use a general-purpose storage class]
 ```
 
 ## Conclusion
 
-Storage classes are the foundation of dynamic storage provisioning in Kubernetes. Portainer's storage class browser gives you a clear view of available options, helping you choose the right class when creating PVCs for your applications.
+Storage classes are the foundation of dynamic storage provisioning in Kubernetes. Portainer's storage view gives you a clear view of the storage classes available in your cluster, helping you choose the right class when creating PVCs for your applications.
