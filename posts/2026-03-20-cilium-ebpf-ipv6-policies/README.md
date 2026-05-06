@@ -1,20 +1,20 @@
-# How to Use Cilium eBPF for IPv6 Network Policies
+# How to Inspect IPv6 Traffic with eBPF XDP Programs
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Cilium, eBPF, IPv6, Network Policy, Kubernetes
+Tags: eBPF, XDP, IPv6, Linux, Networking
 
-Description: Configure Cilium's eBPF-based network policies for IPv6 traffic in Kubernetes clusters, including L3, L4, and L7 policies.
+Description: Inspect IPv6 traffic with an XDP eBPF program, including header parsing, loading, tracing, and bpftool inspection.
 
 ## Overview
 
-Configure Cilium's eBPF-based network policies for IPv6 traffic in Kubernetes clusters, including L3, L4, and L7 policies.
+Inspect IPv6 traffic with an XDP eBPF program, including header parsing, loading, tracing, and bpftool inspection.
 
 ## Prerequisites
 
-- Linux kernel 5.6+ (for BTF and full eBPF feature support)
+- Linux kernel with eBPF/XDP support
 - Clang/LLVM for compiling eBPF C programs
-- Root access or CAP_BPF capability
+- Root access, or the capabilities needed to load BPF programs and configure interfaces (typically CAP_BPF and CAP_NET_ADMIN; older kernels may use CAP_SYS_ADMIN)
 
 ## IPv6 in eBPF Programs
 
@@ -27,6 +27,7 @@ eBPF programs process IPv6 packets using kernel headers. The IPv6 header is 40 b
 #include <linux/if_ether.h>
 #include <linux/ipv6.h>
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_endian.h>
 
 SEC("xdp")
 int process_ipv6(struct xdp_md *ctx) {
@@ -66,10 +67,10 @@ char LICENSE[] SEC("license") = "GPL";
 clang -O2 -target bpf -c program.c -o program.o
 
 # Load XDP program on interface
-sudo ip link set dev eth0 xdp obj program.o sec xdp
+sudo ip link set dev eth0 xdp object program.o section xdp
 
 # Verify
-sudo ip link show dev eth0
+sudo ip -details link show dev eth0
 
 # Remove XDP program
 sudo ip link set dev eth0 xdp off
@@ -81,17 +82,17 @@ sudo ip link set dev eth0 xdp off
 # List loaded eBPF programs
 sudo bpftool prog list
 
-# Show program details (BTF info)
+# Show program details
 sudo bpftool prog show id <PROG_ID>
 
 # Dump program instructions
 sudo bpftool prog dump xlated id <PROG_ID>
 
-# Inspect maps
+# Inspect maps, if your program defines any
 sudo bpftool map list
 sudo bpftool map dump id <MAP_ID>
 
-# Show map entries (useful for IPv6 address tables)
+# Show map entries for programs that use maps
 sudo bpftool map dump id <MAP_ID> | grep -A 3 "key"
 ```
 
@@ -99,16 +100,13 @@ sudo bpftool map dump id <MAP_ID> | grep -A 3 "key"
 
 ```bash
 # Generate IPv6 test traffic
-ping6 -c 10 2001:db8::1
-
-# Use hping3 for IPv6 packet generation
-hping3 --ipv6 -S -p 80 2001:db8::1
+ping -6 -c 10 <REACHABLE_IPV6>
 
 # Watch bpf_printk output (kernel trace pipe)
-sudo cat /sys/kernel/debug/tracing/trace_pipe
+sudo cat /sys/kernel/tracing/trace_pipe
 
 # Use trace-cmd for structured tracing
-sudo trace-cmd record -e "bpf:*" ping6 -c 5 2001:db8::1
+sudo trace-cmd record -e "bpf:*" ping -6 -c 5 <REACHABLE_IPV6>
 sudo trace-cmd report
 ```
 
@@ -118,4 +116,4 @@ Use [OneUptime](https://oneuptime.com) to monitor the network performance metric
 
 ## Conclusion
 
-How to Use Cilium eBPF for IPv6 Network Policies requires understanding IPv6 header structure in C, using XDP or TC hooks for packet interception, and leveraging BPF maps to store IPv6 address state. Always validate packet bounds before accessing headers to avoid eBPF verifier rejections.
+Inspecting IPv6 traffic with eBPF XDP programs requires understanding IPv6 header structure in C, using XDP hooks for packet interception, and validating packet bounds before accessing headers to avoid eBPF verifier rejections.
