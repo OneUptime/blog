@@ -8,7 +8,7 @@ Description: Configure Hot Standby Router Protocol (HSRP) on Cisco IOS routers t
 
 ## Introduction
 
-HSRP creates a virtual IP gateway shared between two or more routers. End hosts point to the virtual IP as their default gateway. If the active router fails, the standby takes over immediately with the same virtual IP, providing seamless failover.
+HSRP creates a virtual IP gateway shared between two or more routers. End hosts point to the virtual IP as their default gateway. If the active router fails, the standby takes over with the same virtual IP after HSRP detects the failure, providing transparent failover.
 
 ## Basic HSRP Configuration (Two Routers)
 
@@ -23,7 +23,7 @@ interface GigabitEthernet0/0
  standby 1 priority 110           ! Higher than default (100)
  standby 1 preempt                ! Reclaim Active role after recovery
  standby 1 authentication md5 key-string MyHSRPKey
- standby 1 track GigabitEthernet0/1 20  ! Decrement priority if WAN fails
+ standby 1 track GigabitEthernet0/1 decrement 20  ! Decrement priority if WAN fails
 
 ! === Router 2 (Standby) ===
 interface GigabitEthernet0/0
@@ -73,9 +73,17 @@ interface GigabitEthernet0/0.20
 
 ! Router 2 - mirror priorities (Active for VLAN 20)
 interface GigabitEthernet0/0.10
+ encapsulation dot1Q 10
+ ip address 10.1.10.3 255.255.255.0
+ standby 10 ip 10.1.10.1
  standby 10 priority 90
+ standby 10 preempt
 interface GigabitEthernet0/0.20
+ encapsulation dot1Q 20
+ ip address 10.1.20.3 255.255.255.0
+ standby 20 ip 10.1.20.1
  standby 20 priority 110
+ standby 20 preempt
 ```
 
 ## HSRP Timers
@@ -84,8 +92,9 @@ interface GigabitEthernet0/0.20
 ! Aggressive timers for faster failover (default: hello=3s, hold=10s)
 standby 1 timers msec 200 msec 750
 
-! BFD for sub-second failure detection
-standby 1 bfd
+! With BFD configured on the router or interface, HSRP BFD peering is enabled by default.
+! Use this command only if HSRP BFD peering was disabled on the interface.
+standby bfd
 ```
 
 ## HSRP Version Differences
@@ -99,4 +108,4 @@ standby 1 bfd
 
 ## Conclusion
 
-HSRP provides transparent IPv4 gateway redundancy by advertising a virtual IP shared between an active and standby router. Use `standby preempt` so the higher-priority router reclaims active status after recovery, configure interface tracking to degrade priority when uplinks fail, and use HSRPv2 for new deployments.
+HSRP provides transparent IPv4 gateway redundancy by advertising a virtual IP shared between an active and standby router. Use `standby <group> preempt` so the higher-priority router reclaims active status after recovery, configure interface tracking to degrade priority when uplinks fail, and use HSRPv2 for new deployments.
