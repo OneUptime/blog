@@ -14,6 +14,7 @@ package main
 import (
     "context"
     "fmt"
+    "io"
     "net"
     "net/http"
     "sync"
@@ -81,7 +82,13 @@ func RunIPv6LoadTest(cfg LoadTestConfig) LoadTestResult {
                     return
                 default:
                     reqStart := time.Now()
-                    resp, err := client.Get(cfg.TargetURL)
+                    req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.TargetURL, nil)
+                    if err != nil {
+                        atomic.AddInt64(&errorCount, 1)
+                        return
+                    }
+
+                    resp, err := client.Do(req)
                     latency := time.Since(reqStart).Milliseconds()
 
                     atomic.AddInt64(&totalRequests, 1)
@@ -90,6 +97,7 @@ func RunIPv6LoadTest(cfg LoadTestConfig) LoadTestResult {
                     if err != nil {
                         atomic.AddInt64(&errorCount, 1)
                     } else {
+                        _, _ = io.Copy(io.Discard, resp.Body)
                         resp.Body.Close()
                         if resp.StatusCode < 400 {
                             atomic.AddInt64(&successCount, 1)
@@ -151,6 +159,7 @@ package main
 import (
     "fmt"
     "net"
+    "sync"
     "sync/atomic"
     "time"
 )
@@ -162,20 +171,25 @@ func measureIPv6ConnectRate(host string, port int, duration time.Duration, worke
     start := time.Now()
 
     sem := make(chan struct{}, workers)
+    var wg sync.WaitGroup
 
     for {
         select {
         case <-stop:
+            wg.Wait()
             elapsed := time.Since(start)
-            total := atomic.LoadInt64(&connected) + atomic.LoadInt64(&failed)
+            success := atomic.LoadInt64(&connected)
+            failures := atomic.LoadInt64(&failed)
+            total := success + failures
             fmt.Printf("TCP Connect Rate to [%s]:%d\n", host, port)
             fmt.Printf("  Connections: %d in %.1fs\n", total, elapsed.Seconds())
             fmt.Printf("  Rate: %.0f conn/sec\n", float64(total)/elapsed.Seconds())
-            fmt.Printf("  Success: %d, Failed: %d\n", connected, failed)
+            fmt.Printf("  Success: %d, Failed: %d\n", success, failures)
             return
-        default:
-            sem <- struct{}{}
+        case sem <- struct{}{}:
+            wg.Add(1)
             go func() {
+                defer wg.Done()
                 defer func() { <-sem }()
                 conn, err := net.DialTimeout("tcp6", target, 5*time.Second)
                 if err != nil {
@@ -194,7 +208,7 @@ func main() {
 }
 ```
 
-## Latency Histogram
+## Latency Statistics
 
 ```go
 package main
@@ -206,7 +220,7 @@ import (
     "time"
 )
 
-func printLatencyHistogram(latencies []time.Duration) {
+func printLatencyStats(latencies []time.Duration) {
     if len(latencies) == 0 {
         fmt.Println("No data")
         return
@@ -217,7 +231,7 @@ func printLatencyHistogram(latencies []time.Duration) {
     })
 
     n := len(latencies)
-    p50 := latencies[n/2]
+    p50 := latencies[int(math.Ceil(float64(n)*0.50))-1]
     p95 := latencies[int(math.Ceil(float64(n)*0.95))-1]
     p99 := latencies[int(math.Ceil(float64(n)*0.99))-1]
 
@@ -239,4 +253,4 @@ func printLatencyHistogram(latencies []time.Duration) {
 
 ## Conclusion
 
-Building IPv6 load testers in Go leverages its excellent concurrency model. The `sync/atomic` package provides lock-free counters for concurrent request tracking. By customizing the `http.Transport.DialContext` to use `"tcp6"`, all connections are forced over IPv6. This enables accurate performance testing of IPv6-only or dual-stack services.
+Building IPv6 load testers in Go leverages its excellent concurrency model. The `sync/atomic` package provides atomic operations for concurrent request tracking. By customizing the `http.Transport.DialContext` to use `"tcp6"`, outbound TCP dials use IPv6. This enables accurate performance testing of IPv6-only or dual-stack services.
