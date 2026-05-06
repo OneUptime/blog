@@ -4,17 +4,18 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Celery, Redis, Python, Task Queue
 
-Description: Deploy Celery distributed task queue with Redis as the message broker using Portainer stacks.
+Description: Deploy Celery workers with Redis as the message broker using Portainer stacks.
 
 ## Introduction
 
-Deploy Celery distributed task queue with Redis as the message broker using Portainer stacks. This guide provides step-by-step instructions for deploying and configuring this service in your containerized infrastructure.
+Deploy Celery workers with Redis as the message broker using Portainer stacks. This guide provides step-by-step instructions for deploying and configuring this service in your containerized infrastructure.
 
 ## Prerequisites
 
-- Portainer installed with Docker
+- Portainer connected to a Docker environment
+- A container image for your Celery application with Celery and your task module installed
 - At least 2 GB RAM available
-- Basic understanding of messaging/caching concepts
+- Basic understanding of Celery and Redis
 
 ## Step 1: Create the Stack in Portainer
 
@@ -26,154 +27,160 @@ Navigate to **Stacks** > **Add Stack** and use the following configuration:
 version: "3.8"
 
 services:
-  # Main service
-  service:
-    image: service-image:latest
-    container_name: service
+  redis:
+    image: redis:7-alpine
     restart: always
-    ports:
-      - "service-port:service-port"
-    volumes:
-      - service-data:/data
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD}
     environment:
-      - CONFIG_KEY=config-value
+      - REDISCLI_AUTH=${REDIS_PASSWORD}
+    volumes:
+      - redis-data:/data
     healthcheck:
-      test: ["CMD", "service-healthcheck"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     logging:
       driver: json-file
       options:
         max-size: "100m"
         max-file: "3"
     networks:
-      - service-net
+      - celery-net
 
-  # Application using the service
-  app:
-    image: my-app:latest
-    container_name: app
+  worker:
+    image: my-celery-app:latest # Replace with your Celery app image
     restart: always
+    command: celery -A tasks worker --loglevel=INFO -E # Replace tasks with your Celery app module
     depends_on:
-      service:
+      redis:
         condition: service_healthy
     environment:
-      - SERVICE_URL=service://service:port
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/1
     networks:
-      - service-net
+      - celery-net
 
 volumes:
-  service-data:
+  redis-data:
 
 networks:
-  service-net:
+  celery-net:
     driver: bridge
 ```
 
 ## Step 2: Configure the Service
 
-Create configuration files via Portainer's Configs section:
+In Portainer, add the required stack environment variables before deploying:
 
-```yaml
-# Service configuration
-server:
-  host: 0.0.0.0
-  port: 6379
-  
-logging:
-  level: INFO
-  
-persistence:
-  enabled: true
-  directory: /data
-  
-security:
-  # Enable authentication in production
-  authentication: true
-  password: ${SERVICE_PASSWORD}
+```dotenv
+REDIS_PASSWORD=change-this-in-production
+FLOWER_BASIC_AUTH=admin:change-this-too
 ```
+
+For Docker Standalone environments, Portainer stack environment variables are the simplest way to inject these values into the Compose file. Portainer's Configs section is only available for Docker Swarm environments.
 
 ## Step 3: Test the Connection
 
 After deployment, test from Portainer's container console:
 
 ```bash
-# Access the application container
-# Portainer > Containers > app > Console
+# Portainer > Containers > redis > Console
+redis-cli PING
 
-# Test connection to service
-curl http://service:port/health
-
-# Or use service-specific CLI
-service-cli ping
-service-cli info
-
-# View service logs
-docker logs service --tail 50 -f
+# Portainer > Containers > worker > Console
+celery -A tasks inspect ping
+celery -A tasks inspect stats
 ```
 
 ## Step 4: Production Configuration
 
-For production deployments, enhance security and reliability:
+For Docker Swarm deployments, enhance security and reliability:
 
 ```yaml
 services:
-  service:
-    image: service-image:latest
-    restart: always
-    # Resource limits
+  redis:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --port
+      - "0"
+      - --tls-port
+      - "6379"
+      - --tls-cert-file
+      - /certs/redis.crt
+      - --tls-key-file
+      - /certs/redis.key
+      - --tls-ca-cert-file
+      - /certs/ca.crt
     deploy:
       resources:
         limits:
-          cpus: '2.0'
+          cpus: "2.0"
           memory: 2G
         reservations:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 512M
-    # TLS configuration
-    environment:
-      - TLS_ENABLED=true
-      - TLS_CERT_FILE=/certs/service.crt
-      - TLS_KEY_FILE=/certs/service.key
-      - PASSWORD=${SERVICE_PASSWORD}
     secrets:
-      - service-tls-cert
-      - service-tls-key
-    
+      - source: redis-tls-cert
+        target: /certs/redis.crt
+      - source: redis-tls-key
+        target: /certs/redis.key
+      - source: redis-tls-ca
+        target: /certs/ca.crt
+
 secrets:
-  service-tls-cert:
+  redis-tls-cert:
     external: true
-  service-tls-key:
+  redis-tls-key:
+    external: true
+  redis-tls-ca:
     external: true
 ```
+
+If you enable Redis TLS, update the Celery broker and result backend URLs to use the `rediss://` scheme and mount the same CA bundle into the worker container.
 
 ## Step 5: Set Up Monitoring
 
-Monitor service performance through Portainer:
+Monitor Celery workers through Portainer and Flower:
 
 ```yaml
-  # Prometheus exporter for metrics
-  service-exporter:
-    image: service/exporter:latest
-    container_name: service-exporter
+  flower:
+    image: mher/flower:2.0
     restart: always
-    environment:
-      - SERVICE_ADDR=service:port
+    command:
+      - celery
+      - --broker=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - flower
+      - --port=5555
+      - --basic-auth=${FLOWER_BASIC_AUTH}
     ports:
-      - "9999:9999"
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
-      - service-net
+      - celery-net
 ```
 
-Configure Prometheus to scrape metrics:
+Configure Prometheus to scrape Flower metrics:
 
 ```yaml
 # prometheus.yml
 scrape_configs:
-  - job_name: 'service'
+  - job_name: "flower"
     static_configs:
-      - targets: ['service-exporter:9999']
+      - targets: ["flower:5555"]
 ```
 
 ## Step 6: Configure Persistence and Backups
@@ -183,28 +190,43 @@ Set up data persistence and automated backups:
 ```bash
 #!/bin/bash
 # backup.sh
-BACKUP_DIR="/backups/service"
+STACK_NAME="celery-redis"
+REDIS_PASSWORD="change-this-in-production"
+BACKUP_DIR="/backups/redis"
 DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
+REDIS_CONTAINER=$(docker ps -q \
+  --filter "label=com.docker.compose.project=${STACK_NAME}" \
+  --filter "label=com.docker.compose.service=redis")
 
-# Create backup
-docker exec service service-cli dump /tmp/backup.rdb
-docker cp service:/tmp/backup.rdb $BACKUP_DIR/backup-$DATE.rdb
+if [ -z "$REDIS_CONTAINER" ]; then
+  echo "Redis container not found for stack ${STACK_NAME}" >&2
+  exit 1
+fi
+
+mkdir -p "$BACKUP_DIR"
+
+docker exec -e REDISCLI_AUTH="$REDIS_PASSWORD" "$REDIS_CONTAINER" \
+  redis-cli --rdb /tmp/backup.rdb
+docker cp "$REDIS_CONTAINER":/tmp/backup.rdb "$BACKUP_DIR/backup-$DATE.rdb"
+docker exec "$REDIS_CONTAINER" rm -f /tmp/backup.rdb
 
 # Retain 7 days of backups
-find $BACKUP_DIR -name "*.rdb" -mtime +7 -delete
+find "$BACKUP_DIR" -name "*.rdb" -mtime +7 -delete
 
 echo "Backup complete: $BACKUP_DIR/backup-$DATE.rdb"
 ```
 
+If you run Redis in TLS-only mode, add `redis-cli` TLS flags such as `--tls` and the appropriate certificate options to the backup command.
+
 ## Step 7: Scale and High Availability
 
-For high availability, use multiple instances:
+For Docker Swarm deployments, scale the Celery workers by increasing the worker replica count:
 
 ```yaml
 services:
-  service:
-    image: service-image:latest
+  worker:
+    image: my-celery-app:latest # Replace with your Celery app image
+    command: celery -A tasks worker --loglevel=INFO -E # Replace tasks with your Celery app module
     deploy:
       replicas: 3
       update_config:
@@ -217,28 +239,32 @@ services:
         max_attempts: 3
 ```
 
+For Redis broker failover, use Redis Sentinel rather than running multiple independent Redis replicas behind the same service name.
+
 ## Client Application Integration
 
 Example integration code:
 
 ```python
-# Python client example
-import service_client
+from celery import Celery
 
-client = service_client.connect(
-    host='localhost',
-    port=port,
-    password='your-password'
+app = Celery(
+    "tasks",
+    broker="redis://:your-password@redis:6379/0",
+    backend="redis://:your-password@redis:6379/1",
 )
 
-# Test connection
-client.ping()
 
-# Use the service
-result = client.execute("operation", "key", "value")
-print(f"Result: {result}")
+@app.task
+def add(x, y):
+    return x + y
+
+
+result = add.delay(4, 4)
+print(result.id)
+print(result.get(timeout=10))
 ```
 
 ## Conclusion
 
-Deploying Celery Workers with Redis Broker via Portainer provides a managed, production-ready service that integrates seamlessly with your containerized infrastructure. Portainer's stack management simplifies configuration, updates, and monitoring while the persistent volume configuration ensures your data survives container restarts. Following the production configuration recommendations ensures your deployment is secure and reliable.
+Deploying Celery workers with Redis as the message broker via Portainer provides a manageable way to run asynchronous Python workloads in containerized infrastructure. Portainer's stack management simplifies configuration, updates, and monitoring, while Redis persistence ensures broker data survives container restarts. Following the production configuration recommendations helps keep the deployment secure and reliable.
