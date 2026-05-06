@@ -27,7 +27,7 @@ The `fullchain.pem` file from Let's Encrypt already contains the complete chain.
 Combine your server certificate with intermediate certificates in the correct order:
 
 ```bash
-# Order is important: your cert FIRST, then intermediates in order
+# Use PEM-encoded certificate files. Order is important: your cert FIRST, then intermediates in order
 
 # DO NOT include the root CA (it's pre-trusted by clients)
 
@@ -45,9 +45,11 @@ chmod 600 /opt/portainer/certs/portainer.key
 Always verify the chain before deploying:
 
 ```bash
-# Verify the certificate chain is correct
-openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt \
-  /opt/portainer/certs/portainer.crt
+# Verify the leaf certificate against the system trust store using the assembled chain
+openssl verify -show_chain -purpose sslserver \
+  -CAfile /etc/ssl/certs/ca-certificates.crt \
+  -untrusted /opt/portainer/certs/portainer.crt \
+  your_domain.crt
 
 # Check the chain contents
 openssl crl2pkcs7 -nocrl -certfile /opt/portainer/certs/portainer.crt | \
@@ -62,6 +64,7 @@ openssl x509 -in /opt/portainer/certs/portainer.crt -noout -text | \
 
 ```bash
 # Start Portainer with the assembled certificate chain
+# /certs/portainer.crt must contain the full chain
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
@@ -70,9 +73,8 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   -v /opt/portainer/certs:/certs:ro \
-  portainer/portainer-ce:latest \
-  --ssl \
-  --sslcert /certs/portainer.crt \    # Full chain file
+  portainer/portainer-ce:sts \
+  --sslcert /certs/portainer.crt \
   --sslkey /certs/portainer.key
 ```
 
@@ -80,7 +82,8 @@ docker run -d \
 
 ```bash
 # Test the full chain is presented correctly
-openssl s_client -connect portainer.example.com:9443 -showcerts </dev/null 2>/dev/null
+openssl s_client -connect portainer.example.com:9443 \
+  -servername portainer.example.com -showcerts </dev/null 2>/dev/null
 
 # Check for chain validation errors
 curl https://portainer.example.com:9443/api/status
@@ -103,9 +106,13 @@ If you don't have the intermediate certificate:
 ```bash
 # Download the intermediate CA cert from the URL in your certificate's AIA extension
 AIA_URL=$(openssl x509 -in your_domain.crt -noout -text | \
-  grep "CA Issuers" | awk '{print $3}')
+  awk -F'URI:' '/CA Issuers/ {print $2}')
 
-curl -o intermediate.crt "$AIA_URL"
+curl -L -o intermediate.cer "$AIA_URL"
+
+# Convert to PEM if the CA serves the intermediate in DER format
+openssl x509 -in intermediate.cer -out intermediate.crt 2>/dev/null || \
+  openssl x509 -inform DER -in intermediate.cer -out intermediate.crt
 ```
 
 ---
