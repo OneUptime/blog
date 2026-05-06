@@ -12,8 +12,8 @@ Configure static, EUI-64, and link-local IPv6 addresses on Cisco IOS interfaces 
 
 ## Prerequisites
 
-- Cisco IOS 12.4(6)T or later
-- Global IPv6 routing enabled: `ipv6 unicast-routing`
+- Cisco IOS 12.4(24)T or later
+- For routed IPv6 interfaces, enable global IPv6 routing: `ipv6 unicast-routing`
 - Console or SSH access to the router
 
 ## Configuration
@@ -21,12 +21,14 @@ Configure static, EUI-64, and link-local IPv6 addresses on Cisco IOS interfaces 
 ### Basic IPv6 Setup
 
 ```text
-! Always start with enabling IPv6 routing globally
+! Enable IPv6 routing globally when the router will forward IPv6 traffic
 Router(config)# ipv6 unicast-routing
 
-! Configure interface with IPv6
+! Configure interface with static, EUI-64, and link-local IPv6 addresses
 Router(config)# interface GigabitEthernet0/0
-Router(config-if)# ipv6 address 2001:db8::1/64
+Router(config-if)# ipv6 address 2001:db8:1::1/64
+Router(config-if)# ipv6 address 2001:db8:1::/64 eui-64
+Router(config-if)# ipv6 address fe80::1 link-local
 Router(config-if)# no shutdown
 ```
 
@@ -34,7 +36,7 @@ Router(config-if)# no shutdown
 
 ```text
 ! Static route example
-Router(config)# ipv6 route 2001:db8:remote::/48 2001:db8:wan::254
+Router(config)# ipv6 route 2001:db8:2::/64 2001:db8:1::254
 
 ! ACL example
 Router(config)# ipv6 access-list BLOCK-BOGONS
@@ -44,12 +46,14 @@ Router(config-ipv6-acl)# permit ipv6 any any
 
 ! DHCPv6 server pool
 Router(config)# ipv6 dhcp pool IPV6-POOL
-Router(config-dhcpv6)# address prefix 2001:db8:1::/64
+Router(config-dhcpv6)# address prefix 2001:db8:10::/64
 Router(config-dhcpv6)# dns-server 2001:4860:4860::8888
 Router(config-dhcpv6)# domain-name example.com
 
 ! Apply DHCPv6 to interface
 Router(config)# interface GigabitEthernet0/1
+Router(config-if)# ipv6 address 2001:db8:10::1/64
+Router(config-if)# ipv6 nd managed-config-flag
 Router(config-if)# ipv6 dhcp server IPV6-POOL
 ```
 
@@ -69,10 +73,10 @@ Router# show ipv6 neighbors
 Router# show ipv6 dhcp binding
 
 ! Ping IPv6 address
-Router# ping ipv6 2001:db8::1
+Router# ping ipv6 2001:db8:2::1
 
 ! Traceroute over IPv6
-Router# traceroute ipv6 2001:db8::1 source GigabitEthernet0/1
+Router# traceroute ipv6 2001:db8:2::1
 ```
 
 ## Debug Commands
@@ -97,4 +101,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your Cisco router's IPv6 conne
 
 ## Conclusion
 
-How to Configure IPv6 Addresses on Cisco Interfaces follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before any interface IPv6 configuration will work. Always verify with `show ipv6` commands after making changes.
+How to Configure IPv6 Addresses on Cisco Interfaces follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before expecting the router to forward IPv6 traffic between interfaces. Always verify with `show ipv6` commands after making changes.
