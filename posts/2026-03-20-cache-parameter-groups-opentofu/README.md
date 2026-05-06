@@ -67,7 +67,7 @@ resource "aws_elasticache_parameter_group" "redis7" {
 resource "aws_elasticache_parameter_group" "session_store" {
   family      = "redis7"
   name        = "session-store-redis7"
-  description = "For session storage - only evict expired keys"
+  description = "For session storage - only evict keys with TTL set"
 
   parameter {
     name  = "maxmemory-policy"
