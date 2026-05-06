@@ -17,7 +17,9 @@ CockroachDB is a distributed SQL database with PostgreSQL compatibility. It supp
 
 wget https://binaries.cockroachdb.com/cockroach-latest.linux-amd64.tgz
 tar xvf cockroach-latest.linux-amd64.tgz
-sudo cp cockroach-latest.linux-amd64/cockroach /usr/local/bin/
+sudo cp cockroach-*.linux-amd64/cockroach /usr/local/bin/
+sudo mkdir -p /usr/local/lib/cockroach
+sudo cp cockroach-*.linux-amd64/lib/libgeos*.so /usr/local/lib/cockroach/
 
 cockroach version
 ```
@@ -81,11 +83,9 @@ cockroach cert create-ca \
   --certs-dir=/etc/cockroach/certs \
   --ca-key=/etc/cockroach/certs/ca.key
 
-# Node certificates with IPv6 addresses
+# Node certificate for the first node (repeat for each node with its own IPv6 address)
 cockroach cert create-node \
   2001:db8::1 \
-  2001:db8::2 \
-  2001:db8::3 \
   localhost \
   ::1 \
   --certs-dir=/etc/cockroach/certs \
@@ -97,7 +97,7 @@ cockroach cert create-client \
   --certs-dir=/etc/cockroach/certs \
   --ca-key=/etc/cockroach/certs/ca.key
 
-# Start secure cluster
+# Start first secure node
 cockroach start \
   --certs-dir=/etc/cockroach/certs \
   --advertise-addr=[2001:db8::1]:26257 \
@@ -106,6 +106,11 @@ cockroach start \
   --join=[2001:db8::1]:26257,[2001:db8::2]:26257,[2001:db8::3]:26257 \
   --store=path=/var/lib/cockroach \
   --background
+
+# Initialize the secure cluster (run once)
+cockroach init \
+  --certs-dir=/etc/cockroach/certs \
+  --host=[2001:db8::1]:26257
 ```
 
 ## Connecting to CockroachDB over IPv6
@@ -175,14 +180,15 @@ cockroach node status \
   --host=[2001:db8::1]:26257 \
   --all
 
-# View cluster ranges
-cockroach debug range-data \
+# View cluster ranges and replicas
+cockroach node status \
   --insecure \
-  --host=[2001:db8::1]:26257
+  --host=[2001:db8::1]:26257 \
+  --ranges
 
 # Access Admin UI
-# https://[2001:db8::1]:8080
-# (Replace brackets with your IPv6 address in browser)
+# http://[2001:db8::1]:8080
+# (Use https:// on secure clusters, and keep brackets around IPv6 literals in URLs.)
 curl -6 http://[2001:db8::1]:8080/_status/vars
 ```
 
