@@ -21,15 +21,22 @@ Manages jobs             Stores backups         Runs on clients
 ## Installing Bareos
 
 ```bash
-# RHEL/CentOS
+# Director/Storage server on RHEL/CentOS
 
-sudo dnf install bareos bareos-director bareos-storage bareos-filedaemon -y
+sudo dnf install bareos bareos-database-postgresql -y
 
-# Ubuntu/Debian
-sudo apt install bareos bareos-director bareos-storage bareos-filedaemon -y
+# Director/Storage server on Ubuntu/Debian
+sudo apt install bareos bareos-database-postgresql -y
 
-# Initial setup
-sudo bareos-dbinit  # Initialize catalog database
+# Remote client machines
+sudo dnf install bareos-filedaemon -y
+sudo apt install bareos-filedaemon -y
+
+# Debian/Ubuntu can initialize the catalog during package install via dbconfig-common.
+# If the catalog was not created during install, initialize PostgreSQL manually:
+su postgres -c /usr/lib/bareos/scripts/create_bareos_database
+su postgres -c /usr/lib/bareos/scripts/make_bareos_tables
+su postgres -c /usr/lib/bareos/scripts/grant_bareos_privileges
 ```
 
 ## Configuring Bareos Director for IPv6
@@ -39,15 +46,25 @@ sudo bareos-dbinit  # Initialize catalog database
 
 Director {
   Name = bareos-dir
-  # Bind to specific IPv6 address
+  # Bind to specific IPv6 address for console connections
   DirAddress = 2001:db8::1
   DIRPort = 9101
   QueryFile = "/usr/lib/bareos/scripts/query.sql"
   WorkingDirectory = /var/lib/bareos
   PidDirectory = /run/bareos
   Maximum Concurrent Jobs = 100
-  Password = "DirectorPassword"
+  Password = "DirectorPassword"  # Must match bconsole.conf or a Console resource
   Messages = Daemon
+}
+
+# /etc/bareos/bareos-dir.d/storage/File.conf
+Storage {
+  Name = File
+  Address = 2001:db8::2
+  Port = 9103
+  Password = "StoragePassword"
+  Device = FileStorage
+  Media Type = File
 }
 ```
 
@@ -63,12 +80,19 @@ Storage {
   SDPort = 9103
   WorkingDirectory = /var/lib/bareos
   PidDirectory = /run/bareos
-  Plugin Directory = /usr/lib/bareos/plugins
 }
 
+# /etc/bareos/bareos-sd.d/director/bareos-dir.conf
+Director {
+  Name = bareos-dir
+  Password = "StoragePassword"
+}
+
+# /etc/bareos/bareos-sd.d/device/FileStorage.conf
 Device {
   Name = FileStorage
   Device Type = File
+  Media Type = File
   Archive Device = /var/lib/bareos/storage
   LabelMedia = yes
   Random Access = Yes
@@ -90,7 +114,6 @@ FileDaemon {
   FDPort = 9102
   WorkingDirectory = /var/lib/bareos
   PidDirectory = /run/bareos
-  Plugin Directory = /usr/lib/bareos/plugins
 }
 
 # Allow the Director to connect
@@ -159,17 +182,26 @@ FileSet {
 ## Starting Bareos Services
 
 ```bash
-# Start all Bareos daemons
+# Debian/Ubuntu: Director and Storage host
 sudo systemctl enable --now bareos-director
 sudo systemctl enable --now bareos-storage
+
+# Debian/Ubuntu: each client
 sudo systemctl enable --now bareos-filedaemon
 
-# Check each daemon is listening on IPv6
-ss -tlnp | grep "9101\|9102\|9103"
+# RPM-based distributions: Director and Storage host
+sudo systemctl enable --now bareos-dir
+sudo systemctl enable --now bareos-sd
+
+# RPM-based distributions: each client
+sudo systemctl enable --now bareos-fd
+
+# Check the listening IPv6 sockets on each host
+sudo ss -tlpn6 | grep -E ':9101|:9102|:9103'
 
 # Verify director can communicate with storage and client
-echo "status" | sudo bconsole
 echo "status dir" | sudo bconsole
+echo "status storage=File" | sudo bconsole
 echo "status client=webserver-fd" | sudo bconsole
 ```
 
@@ -201,6 +233,7 @@ sudo ip6tables -A INPUT -p tcp --dport 9103 -j ACCEPT
 # On each client
 sudo ip6tables -A INPUT -p tcp --dport 9102 -j ACCEPT
 
+# Persist on Debian/Ubuntu systems using iptables-persistent
 sudo ip6tables-save > /etc/ip6tables/rules.v6
 ```
 
