@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Shell, Console, Bash
 
-Description: Select the appropriate shell (bash, sh, or custom) for container console access in Portainer based on the container's available shells.
+Description: Select the appropriate shell (bash, sh, /bin/ash, or custom) for container console access in Portainer based on the container's available shells.
 
 ---
 
-Portainer provides powerful tools for container observability including real-time statistics, log streaming, and interactive console access from the browser.
+Portainer provides powerful tools for container observability including real-time statistics, live log access, and interactive console access from the browser.
 
 ## Container Stats in Portainer
 
@@ -16,7 +16,7 @@ Navigate to **Containers > [Container Name] > Stats** to view:
 - Real-time CPU usage (%)
 - Memory usage and limits
 - Network I/O (bytes in/out)
-- Disk I/O (read/write)
+- I/O usage (read/write)
 
 ## Viewing Logs
 
@@ -43,12 +43,17 @@ docker logs my-container > /tmp/my-container.log 2>&1
 
 ## Container Console Access
 
+Portainer's Console feature requires the container image to include a shell. In Portainer, choose the shell the image actually provides: `/bin/bash`, `/bin/sh`, `/bin/ash` for Alpine-based images, or use a custom command when needed.
+
 ```bash
 # Open bash in a container
 docker exec -it my-container bash
 
 # If bash isn't available, try sh
 docker exec -it my-container sh
+
+# Alpine-based containers typically use ash
+docker exec -it my-container /bin/ash
 
 # Run as a specific user
 docker exec -it --user www-data my-container bash
@@ -71,20 +76,19 @@ docker top my-container aux
 ## Fix Nginx Reverse Proxy Log Buffering
 
 ```nginx
-# Disable proxy buffering for Portainer log streaming
+# Disable proxy buffering for Portainer live log output
 location / {
     proxy_pass https://localhost:9443;
-    proxy_buffering off;           # Critical for log streaming
+    proxy_buffering off;           # Prevent response buffering for live output
     proxy_cache off;
-    proxy_set_header X-Accel-Buffering no;  # Disable nginx buffering
     
     # WebSocket support for console
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
+    proxy_read_timeout 3600;
+    proxy_send_timeout 3600;
 }
 ```
 
@@ -98,7 +102,7 @@ location / {
     
     proxy_http_version 1.1;
     proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
     
     # Increase timeout for long console sessions
