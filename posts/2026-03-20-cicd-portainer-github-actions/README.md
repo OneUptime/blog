@@ -25,8 +25,10 @@ In your GitHub repository, go to **Settings > Secrets and variables > Actions** 
 REGISTRY_URL=registry.mycompany.com
 REGISTRY_USERNAME=myuser
 REGISTRY_PASSWORD=mypassword
-PORTAINER_WEBHOOK_URL=https://portainer.mycompany.com/api/webhooks/abc123...
+PORTAINER_WEBHOOK_URL=https://portainer.mycompany.com/api/stacks/webhooks/abc123...
 ```
+
+Portainer stack webhooks are available only in Portainer Business Edition on non-Edge environments.
 
 ## Step 2: Create the GitHub Actions Workflow
 
@@ -48,7 +50,7 @@ jobs:
     name: Run Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run tests
         run: |
           # Add your test commands here
@@ -62,10 +64,10 @@ jobs:
       image-tag: ${{ steps.meta.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Log in to registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ secrets.REGISTRY_URL }}
           username: ${{ secrets.REGISTRY_USERNAME }}
@@ -73,17 +75,17 @@ jobs:
 
       - name: Extract metadata for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            # Tag with git SHA for exact traceability
-            type=sha,prefix=,format=short
+            # Tag with git SHA for exact traceability and expose it as the version output
+            type=sha,prefix=,format=short,priority=1000
             # Also tag as 'latest' for the main branch
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -97,19 +99,14 @@ jobs:
     name: Deploy via Portainer
     needs: build-and-push
     runs-on: ubuntu-latest
-    environment: production  # Requires approval for production
+    environment: production  # Configure environment protection rules in GitHub if you want approvals
 
     steps:
       - name: Trigger Portainer redeploy
         run: |
-          # Trigger the webhook with the specific image tag
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}?tag=${{ needs.build-and-push.outputs.image-tag }}")
-
-          if [ "$HTTP_STATUS" -ne 204 ]; then
-            echo "Deployment failed with status: $HTTP_STATUS"
-            exit 1
-          fi
+          # Pass IMAGE_TAG through the webhook so the stack uses the pushed SHA tag
+          curl --fail --silent --show-error \
+            -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}?IMAGE_TAG=${{ needs.build-and-push.outputs.image-tag }}"
 
           echo "Successfully triggered deployment of tag: ${{ needs.build-and-push.outputs.image-tag }}"
 ```
@@ -134,9 +131,9 @@ services:
       - "80:8080"
 ```
 
-## Step 4: Set IMAGE_TAG in Portainer
+## Step 4: Pass IMAGE_TAG to Portainer
 
-In Portainer, set the `IMAGE_TAG` environment variable on the stack. The GitHub Actions webhook will update this to the specific SHA tag.
+Because the Compose file uses `${IMAGE_TAG:-latest}`, the webhook can pass `IMAGE_TAG` in the query string at deploy time to deploy the specific SHA tag.
 
 ## Adding Deployment Notifications
 
