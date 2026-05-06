@@ -40,7 +40,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"  # CloudFront is global but ACM certs must be in us-east-1
+  region = "us-east-1"  # Example region for origin resources; CloudFront viewer ACM certs must be in us-east-1
 }
 ```
 
@@ -117,6 +117,13 @@ resource "aws_cloudfront_distribution" "main" {
   }
 
   # Custom error pages for SPA routing
+  custom_error_response {
+    error_code            = 403
+    response_code         = 200
+    response_page_path    = "/index.html"
+    error_caching_min_ttl = 300
+  }
+
   custom_error_response {
     error_code            = 404
     response_code         = 200
