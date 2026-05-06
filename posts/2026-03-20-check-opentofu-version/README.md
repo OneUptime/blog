@@ -20,9 +20,6 @@ tofu version
 # Example output:
 # OpenTofu v1.9.0
 # on linux_amd64
-#
-# Your version of OpenTofu is out of date! The latest version
-# is 1.10.0. You can update by downloading from https://opentofu.org/
 ```
 
 ## Version with JSON Output
@@ -35,8 +32,7 @@ tofu version -json
 # {
 #   "terraform_version": "1.9.0",
 #   "platform": "linux_amd64",
-#   "provider_selections": {},
-#   "terraform_outdated": false
+#   "provider_selections": {}
 # }
 ```
 
@@ -59,19 +55,20 @@ tofu version -json | jq -r '.terraform_version'
 ## Check Binary Location
 
 ```bash
-# Find where the tofu binary is installed
-which tofu
+# Find where the tofu command resolves
+command -v tofu
 # /usr/local/bin/tofu (manual install)
 # /usr/bin/tofu (package manager)
 # /opt/homebrew/bin/tofu (Homebrew on macOS)
-# /home/user/.tofuenv/versions/1.9.0/tofu (tofuenv)
+# /home/user/.tofuenv/bin/tofu (tofuenv shim)
+# /home/user/.asdf/shims/tofu (asdf shim)
 
-# Get full path
+# Show all tofu commands on your PATH
 type -a tofu
 
-# Check binary metadata
-ls -la $(which tofu)
-file $(which tofu)
+# Check the resolved command metadata
+ls -la "$(command -v tofu)"
+file "$(command -v tofu)"
 ```
 
 ## Check Version with tofuenv
@@ -114,7 +111,8 @@ echo "==============================="
 ## Checking Provider Versions
 
 ```bash
-# After running tofu init, see provider versions
+# If a dependency lock file is present (for example after tofu init),
+# tofu version can also show provider versions
 tofu version
 
 # Output includes providers:
@@ -134,28 +132,29 @@ terraform {
 ```
 
 ```bash
-# OpenTofu tells you if the version doesn't match
-# Error: OpenTofu v1.8.5 does not satisfy the required version constraint ">= 1.9.0"
+# OpenTofu returns an error if the running version doesn't match
+# Error: Incompatible module
+# This module is not compatible with OpenTofu v1.8.5.
 ```
 
-## Script to Check Version Compliance
+## Script to Check Exact Version Match
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 # check-tofu-version.sh
 
-REQUIRED_VERSION="${1:-1.9.0}"
+EXPECTED_VERSION="${1:-1.9.0}"
 CURRENT_VERSION=$(tofu version -json | jq -r '.terraform_version')
 
-echo "Required: $REQUIRED_VERSION"
+echo "Expected: $EXPECTED_VERSION"
 echo "Current:  $CURRENT_VERSION"
 
-if [ "$CURRENT_VERSION" = "$REQUIRED_VERSION" ]; then
-  echo "Version check PASSED"
+if [ "$CURRENT_VERSION" = "$EXPECTED_VERSION" ]; then
+  echo "Exact version check PASSED"
   exit 0
 else
-  echo "Version check FAILED"
-  echo "Please install OpenTofu $REQUIRED_VERSION"
+  echo "Exact version check FAILED"
+  echo "Please install OpenTofu $EXPECTED_VERSION"
   exit 1
 fi
 ```
