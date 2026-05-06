@@ -78,7 +78,7 @@ R1# show ip bgp summary
 ! 10.0.0.2        4  65002        12      12        3    0    0 00:05:23        1
 ```
 
-A `State/PfxRcd` value showing a number (rather than a state name like `Active`) means the session is established and prefixes are being received.
+A `State/PfxRcd` value showing a number (rather than a state name like `Active`) means the session is established; the number is the count of prefixes received.
 
 ## Step 4: Check Received BGP Routes
 
@@ -92,7 +92,7 @@ R1# show ip bgp
 ! *> 172.16.0.0/16  10.0.0.2              0              0 65002 i
 ```
 
-The `i` at the end indicates the prefix was learned via an IGP network statement (internal origin).
+The `i` at the end is the BGP ORIGIN code `IGP`, indicating the prefix is considered interior to the originating AS (for example, when it is originated with the BGP `network` command).
 
 ## Step 5: Verify the Route Is in the Routing Table
 
