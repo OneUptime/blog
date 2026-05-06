@@ -107,7 +107,7 @@ router bgp 65001
  neighbor 10.1.5.1 maximum-prefix 500   ! Overrides group's 100 limit
 ```
 
-Most per-neighbor settings override peer group defaults.
+Per-neighbor settings that do not affect outbound updates can override peer group defaults.
 
 ## Step 6: Verify Peer Group Configuration
 
@@ -119,12 +119,12 @@ BGP peer-group is CUSTOMERS, remote AS 65100
   BGP version 4
   Default minimum time between advertisement runs is 30 seconds
   For address family: IPv4 Unicast
-    BGP neighbor is CUSTOMERS, peer-group internal, members:
+    BGP neighbor is CUSTOMERS, peer-group external, members:
       10.1.1.1  10.1.2.1  10.1.3.1  10.1.4.1
 
 ! Verify a specific member's configuration
 Router# show ip bgp neighbors 10.1.1.1 | include peer-group
-! Member of peer-group CUSTOMERS, for session parameters
+Member of peer-group CUSTOMERS for session parameters
 ```
 
 ## Step 7: Apply Peer Groups in the Address Family
@@ -138,7 +138,7 @@ router bgp 65001
 
  address-family ipv4 unicast
   neighbor CUSTOMERS activate
-  neighbor CUSTOMERS prefix-list CUSTOMER_IN in
+  neighbor CUSTOMERS prefix-list CUSTOMER_PREFIXES in
   neighbor 10.1.1.1 peer-group CUSTOMERS
   neighbor 10.1.2.1 peer-group CUSTOMERS
  exit-address-family
