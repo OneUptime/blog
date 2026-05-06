@@ -49,17 +49,22 @@ resource "google_dataproc_cluster" "spark_cluster" {
 
     # Cluster software components
     software_config {
-      image_version = "2.1-debian11"
+      image_version = "2.2-debian12"
 
       optional_components = [
         "JUPYTER",    # Jupyter notebooks
         "ZEPPELIN",   # Zeppelin notebooks
       ]
 
-      properties = {
+      override_properties = {
         "spark:spark.executor.memory" = "4g"
         "spark:spark.driver.memory"   = "2g"
       }
+    }
+
+    # Component Gateway is required when installing Jupyter
+    endpoint_config {
+      enable_http_port_access = true
     }
 
     # Initialization action to install additional packages
@@ -68,8 +73,7 @@ resource "google_dataproc_cluster" "spark_cluster" {
       timeout_sec = 500
     }
 
-    # GCS bucket for staging job files
-    staging_bucket = google_storage_bucket.dataproc_staging.name
+    # If omitted, Dataproc auto-creates a staging bucket
   }
 
   labels = {
@@ -132,7 +136,7 @@ resource "google_dataproc_cluster" "autoscaling_cluster" {
     }
 
     software_config {
-      image_version = "2.1-debian11"
+      image_version = "2.2-debian12"
     }
   }
 }
@@ -140,4 +144,4 @@ resource "google_dataproc_cluster" "autoscaling_cluster" {
 
 ## Summary
 
-Cloud Dataproc clusters with OpenTofu provide managed Spark and Hadoop environments. Autoscaling policies dynamically adjust worker count based on YARN queue utilization, reducing costs during idle periods. Use preemptible workers for additional cost savings on fault-tolerant batch jobs.
+Cloud Dataproc clusters with OpenTofu provide managed Spark and Hadoop environments. Autoscaling policies dynamically adjust worker count based on YARN pending and available resources, and Dataproc 2.2 images evaluate both YARN memory and cores. Use preemptible workers for additional cost savings on fault-tolerant batch jobs.
