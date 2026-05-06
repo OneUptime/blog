@@ -11,7 +11,7 @@ Description: DHCP Option 82 allows relay agents to insert circuit-ID and remote-
 Option 82 (Relay Agent Information Option, RFC 3046) lets the relay agent add metadata to DHCP requests:
 
 - **Sub-option 1 (Circuit-ID)**: Identifies the relay agent port/circuit (e.g., `GigabitEthernet0/1`)
-- **Sub-option 2 (Remote-ID)**: Identifies the relay agent itself (e.g., switch MAC or hostname)
+- **Sub-option 2 (Remote-ID)**: Identifies the remote host/circuit end or another relay-defined identifier (e.g., a modem ID or MAC address)
 
 The DHCP server can use this metadata to assign IPs from specific pools or apply policies per port.
 
@@ -59,14 +59,16 @@ subnet 10.0.10.0 netmask 255.255.255.0 {
 }
 ```
 
-## dnsmasq: Logging Option 82 Data
+## dnsmasq: Matching Option 82 Data
 
-dnsmasq logs the relay agent info when Option 82 is present:
+dnsmasq can match relay agent info and set tags when Option 82 is present:
 
 ```text
 # /etc/dnsmasq.conf
+dhcp-circuitid=set:floor-1,GigabitEthernet0/1
+dhcp-remoteid=set:access-node-1,00:11:22:33:44:55
 log-dhcp
-# Option 82 data appears in DHCP logs with "relay-agent-info" tag
+# With dhcp-script, dnsmasq also exports DNSMASQ_CIRCUIT_ID and DNSMASQ_REMOTE_ID
 ```
 
 ## Capturing Option 82 with tcpdump/tshark
@@ -77,19 +79,19 @@ sudo tcpdump -i eth0 'port 67' -w /tmp/dhcp_relay.pcap
 
 # Decode Option 82 in tshark
 tshark -r /tmp/dhcp_relay.pcap -Y "bootp.option.type == 82" \
-  -T fields -e bootp.option.agent_info_circuit_id \
-             -e bootp.option.agent_info_remote_id
+  -T fields -e bootp.option.agent_information_option.agent_circuit_id \
+             -e bootp.option.agent_information_option.agent_remote_id
 ```
 
 ## Security Uses of Option 82
 
-- **DHCP snooping integration**: Switches insert Option 82 on trusted uplinks; DHCP server can verify.
+- **DHCP snooping integration**: Access switches can insert Option 82 for client-facing traffic, and upstream DHCP infrastructure can validate or use it.
 - **IP-to-port tracking**: Know exactly which switch port a leased IP is connected to.
 - **Policy enforcement**: Different VLANs or floor policies based on circuit location.
 
 ## Key Takeaways
 
-- Option 82 adds circuit-ID (port) and remote-ID (switch) metadata to DHCP requests.
+- Option 82 adds circuit-ID and remote-ID metadata to DHCP requests.
 - Configure `ip dhcp relay information option` on Cisco relay agents.
 - ISC dhcpd uses `option agent.circuit-id` in class match statements.
 - Option 82 enables per-port IP pool assignment and enhances DHCP audit trails.
