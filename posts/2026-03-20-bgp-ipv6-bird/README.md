@@ -8,7 +8,7 @@ Description: Learn how to configure BGP IPv6 routing on Linux using the BIRD rou
 
 ## Overview
 
-BIRD2 (version 2.x) provides a unified configuration for BGP IPv6. It is lightweight, widely used in IXP and hosting environments, and supports full BGP feature set including communities, route maps, and filtering.
+BIRD2 (version 2.x) provides a unified configuration for BGP IPv6. It is lightweight, widely used in IXP and hosting environments, and supports BGP features including communities and filtering.
 
 ## Basic eBGP IPv6 Configuration
 
@@ -31,8 +31,8 @@ protocol kernel {
 # BGP eBGP peer
 
 protocol bgp EBGP_PEER {
-    local 2001:db8:peer::1 as 65001;
-    neighbor 2001:db8:peer::2 as 65002;
+    local 2001:db8:0:1::1 as 65001;
+    neighbor 2001:db8:0:1::2 as 65002;
     ipv6 {
         import all;
         export where proto = "static_v6";
@@ -51,7 +51,7 @@ protocol static static_v6 {
 ```bash
 # Peer using link-local address (interface must be specified)
 protocol bgp EBGP_LL {
-    local fe80::1 as 65001;
+    local as 65001;
     neighbor fe80::2%eth0 as 65002;  # % specifies interface
     ipv6 {
         import all;
@@ -67,21 +67,21 @@ protocol bgp EBGP_LL {
 protocol bgp IBGP_PEER {
     local 2001:db8::1 as 65001;
     neighbor 2001:db8::2 as 65001;
-    next hop self;    # Replace external next hop for iBGP
     ipv6 {
+        next hop self;    # Replace external next hop for iBGP
         import all;
         export all;
     };
 }
 ```
 
-## Filtering with Prefix Lists (BIRD filter language)
+## Filtering with Prefix Sets (BIRD filter language)
 
 ```python
 # Define a filter for inbound routes from peer
 filter ACCEPT_PEER_ROUTES {
     # Accept only specific prefixes from the peer
-    if net ~ [ 2001:db8:remote::/48{48,64} ] then accept;
+    if net ~ [ 2001:db8:200::/48{48,64} ] then accept;
     reject;
 }
 
@@ -92,8 +92,8 @@ filter EXPORT_OWN_ROUTES {
 }
 
 protocol bgp EBGP_PEER {
-    local 2001:db8:peer::1 as 65001;
-    neighbor 2001:db8:peer::2 as 65002;
+    local 2001:db8:0:1::1 as 65001;
+    neighbor 2001:db8:0:1::2 as 65002;
     ipv6 {
         import filter ACCEPT_PEER_ROUTES;
         export filter EXPORT_OWN_ROUTES;
@@ -134,16 +134,16 @@ sudo birdc
 # Show BGP session summary
 show protocols all EBGP_PEER
 
-# Show received routes from a peer
+# Show accepted routes received from a peer
 show route protocol EBGP_PEER
 
 # Show advertised routes to a peer
 show route export EBGP_PEER
 
 # Show specific route
-show route for 2001:db8:remote::/48
+show route 2001:db8:200::/48
 ```
 
 ## Summary
 
-BIRD2 BGP IPv6 uses the `protocol bgp` block with `ipv6 { import ...; export ...; }`. Use `fe80::<addr>%<iface>` notation for link-local peers, `next hop self` for iBGP, and BIRD's filter language for prefix-based filtering. Reload configuration with `birdc configure` and verify with `show protocols all`.
+BIRD2 BGP IPv6 uses the `protocol bgp` block with `ipv6 { import ...; export ...; }`. Use `fe80::<addr>%<iface>` notation for link-local peers, `next hop self` inside the `ipv6 {}` channel for iBGP, and BIRD's filter language for prefix-based filtering. Reload configuration with `birdc configure` and verify with `show protocols all`.
