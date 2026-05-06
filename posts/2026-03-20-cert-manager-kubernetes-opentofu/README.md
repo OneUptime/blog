@@ -8,7 +8,7 @@ Description: Learn how to deploy cert-manager on Kubernetes using OpenTofu and H
 
 ## Overview
 
-cert-manager automates TLS certificate management in Kubernetes. It integrates with Let's Encrypt, HashiCorp Vault, and other certificate authorities to issue and renew certificates automatically. OpenTofu deploys cert-manager via Helm and configures ClusterIssuers declaratively.
+cert-manager automates TLS certificate management in Kubernetes. It integrates with Let's Encrypt, HashiCorp Vault, and other certificate authorities to issue and renew certificates automatically. OpenTofu deploys cert-manager via Helm and configures ClusterIssuers declaratively. Because `ClusterIssuer` and `Certificate` are custom resources, apply them only after cert-manager is installed and its CRDs exist in the cluster.
 
 ## Step 1: Deploy cert-manager with Helm
 
@@ -33,12 +33,12 @@ resource "helm_release" "cert_manager" {
   name             = "cert-manager"
   repository       = "https://charts.jetstack.io"
   chart            = "cert-manager"
-  version          = "v1.14.0"
+  version          = "v1.20.2"
   namespace        = "cert-manager"
   create_namespace = true
 
   set {
-    name  = "installCRDs"
+    name  = "crds.enabled"
     value = "true"
   }
 
@@ -69,7 +69,7 @@ resource "helm_release" "cert_manager" {
 ## Step 2: Configure Let's Encrypt ClusterIssuers
 
 ```hcl
-# Wait for cert-manager to be ready before creating issuers
+# Apply these manifests in a second OpenTofu run, after cert-manager is installed and its CRDs exist
 resource "kubernetes_manifest" "cluster_issuer_staging" {
   depends_on = [helm_release.cert_manager]
 
@@ -132,6 +132,7 @@ resource "kubernetes_manifest" "cluster_issuer_production" {
 
 ```hcl
 # DNS-01 challenge for wildcard certificates using AWS Route53
+# Assumes cert-manager can authenticate to Route53 with ambient AWS credentials such as IRSA or EKS Pod Identity
 resource "kubernetes_manifest" "cluster_issuer_dns" {
   depends_on = [helm_release.cert_manager]
 
@@ -165,7 +166,7 @@ resource "kubernetes_manifest" "cluster_issuer_dns" {
 ## Step 4: Issue a Certificate
 
 ```hcl
-# Request a certificate for an application
+# Request a certificate for an application after the ClusterIssuer exists
 resource "kubernetes_manifest" "app_certificate" {
   depends_on = [kubernetes_manifest.cluster_issuer_production]
 
@@ -236,4 +237,4 @@ resource "kubernetes_ingress_v1" "app" {
 
 ## Summary
 
-cert-manager deployed with OpenTofu automates TLS certificate lifecycle management. Combining HTTP-01 challenges for single-domain certificates and DNS-01 challenges for wildcard certificates covers all use cases. The annotated Ingress approach is the simplest path - cert-manager detects the annotation and provisions certificates automatically without requiring a separate Certificate resource.
+cert-manager deployed with OpenTofu automates TLS certificate lifecycle management. Combining HTTP-01 challenges for non-wildcard certificates and DNS-01 challenges for wildcard certificates covers the common ACME use cases. The annotated Ingress approach is the simplest path - cert-manager detects the annotation and provisions certificates automatically without requiring a separate Certificate resource.
