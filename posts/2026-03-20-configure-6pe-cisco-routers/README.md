@@ -16,8 +16,7 @@ Description: Step-by-step configuration of 6PE (IPv6 Provider Edge) on Cisco IOS
 Lab Topology:
 [CE1] ─── [PE1] ─── [P] ─── [PE2] ─── [CE2]
 IPv6       10.0.0.1   10.0.0.3  10.0.0.2   IPv6
-2001:db8:  /PE1 IP/  Core IP   /PE2 IP/   2001:db8:
-site1::/48                               site2::/48
+2001:db8:100::/48                       2001:db8:200::/48
 
 MPLS LDP runs between PE1-P and P-PE2
 MP-BGP IPv6 AF runs between PE1 and PE2
@@ -28,6 +27,8 @@ MP-BGP IPv6 AF runs between PE1 and PE2
 ```text
 ! PE1 - Enable LDP on backbone interface
 !
+ipv6 unicast-routing
+
 mpls ldp router-id Loopback0 force
 
 interface Loopback0
@@ -38,6 +39,7 @@ interface GigabitEthernet0/0
  ip address 10.1.1.1 255.255.255.252
  ip ospf 1 area 0
  mpls ip
+ no shutdown
 
 ! Verify MPLS is running
 show mpls interfaces
@@ -52,7 +54,7 @@ show mpls ldp bindings
 interface GigabitEthernet0/1
  description To CE1 (IPv6 customer)
  ip address 192.168.1.1 255.255.255.252
- ipv6 address 2001:db8:pe1-ce1::1/64
+ ipv6 address 2001:db8:10:1::1/64
  ipv6 enable
  no shutdown
 
@@ -79,18 +81,16 @@ router bgp 65000
  address-family ipv6
   neighbor 10.0.0.2 activate
   neighbor 10.0.0.2 send-community
-  neighbor 10.0.0.2 next-hop-self
-  ! Redistribute connected IPv6 networks (PE-CE subnets)
-  redistribute connected
+  neighbor 10.0.0.2 send-label
  exit-address-family
 
 ! PE1 - BGP peering with CE1 (IPv6 eBGP)
 router bgp 65000
+ neighbor 2001:db8:10:1::2 remote-as 65001
+ neighbor 2001:db8:10:1::2 description CE1-eBGP
  address-family ipv6
   ! CE1 peering
-  neighbor 2001:db8:pe1-ce1::2 remote-as 65001
-  neighbor 2001:db8:pe1-ce1::2 activate
-  neighbor 2001:db8:pe1-ce1::2 description CE1-eBGP
+  neighbor 2001:db8:10:1::2 activate
  exit-address-family
 ```
 
@@ -98,26 +98,29 @@ router bgp 65000
 
 ```text
 ! CE1 - Customer edge router
+ipv6 unicast-routing
+
 interface GigabitEthernet0/0
  description To PE1
- ipv6 address 2001:db8:pe1-ce1::2/64
+ ipv6 address 2001:db8:10:1::2/64
  ipv6 enable
+ no shutdown
 
 ! CE1 BGP
 router bgp 65001
  bgp router-id 192.168.10.1
  no bgp default ipv4-unicast
+ neighbor 2001:db8:10:1::1 remote-as 65000
+ neighbor 2001:db8:10:1::1 description PE1
 
  address-family ipv6
-  neighbor 2001:db8:pe1-ce1::1 remote-as 65000
-  neighbor 2001:db8:pe1-ce1::1 activate
-  neighbor 2001:db8:pe1-ce1::1 description PE1
+  neighbor 2001:db8:10:1::1 activate
   ! Advertise customer prefix
-  network 2001:db8:site1::/48
+  network 2001:db8:100::/48
  exit-address-family
 
 ! CE1 - Configure customer IPv6 prefix
-ipv6 route 2001:db8:site1::/48 Null0
+ipv6 route 2001:db8:100::/48 Null0
 ```
 
 ## Step 5: Verify 6PE
@@ -129,27 +132,31 @@ show bgp ipv6 unicast summary
 ! Should show: CE1 eBGP neighbor, State = Established
 
 ! View IPv6 routes with MPLS labels
-show bgp ipv6 unicast
+show bgp ipv6 unicast 2001:db8:200::/48
 ! Look for:
-! *>i 2001:db8:site2::/48  10.0.0.2  0  0  100  0 65002 i
-!    MPLS label: <label-number>
+! *>i 2001:db8:200::/48  ::FFFF:10.0.0.2 ...
+!    ... mpls label <label-number>
+
+! View label bindings advertised by BGP
+show bgp ipv6 unicast labels
+! Look for the remote prefix with an IPv4-mapped IPv6 next hop and an outgoing label
 
 ! Verify MPLS forwarding entry
 show mpls forwarding-table
-! Should show entry for IPv6 prefix with appropriate label
+! Should show an IPv6 aggregate/label entry associated with the remote 6PE next hop
 
 ! Check IPv6 routing table
 show ipv6 route
-! *>  2001:db8:site2::/48  [200/0]
-!      via 10.0.0.2 (nexthop from BGP), MPLS label
+! B  2001:db8:200::/48 [200/0]
+!    via ::FFFF:10.0.0.2, IPv6-mpls
 
 ! Test end-to-end
-ping ipv6 2001:db8:site2::10 source 2001:db8:site1::1
-traceroute ipv6 2001:db8:site2::10 source 2001:db8:site1::1
+ping ipv6 2001:db8:200::1 source 2001:db8:10:1::2
+traceroute ipv6 2001:db8:200::1 source 2001:db8:10:1::2
 
 ! Debug (if issues)
 debug bgp ipv6 unicast updates
-show bgp ipv6 unicast 2001:db8:site2::/48
+show bgp ipv6 unicast 2001:db8:200::/48
 ```
 
 ## Troubleshoot Common 6PE Issues
@@ -160,9 +167,9 @@ show bgp ipv6 unicast summary → check state
 ! Fix: Ensure neighbor is using update-source Loopback0
 ! Fix: Verify no ACL blocking TCP 179 between PE loopbacks
 
-2. Routes not being advertised:
+2. Routes not being advertised from the CE:
 show bgp ipv6 unicast → check for "network not in table"
-! Fix: Add null route for summary: ipv6 route 2001:db8:site1::/48 Null0
+! Fix: Add null route for summary on the CE: ipv6 route 2001:db8:100::/48 Null0
 
 3. Packets not labeled (MPLS not working):
 show mpls forwarding-table → check for IPv6 entries
@@ -172,7 +179,7 @@ show mpls forwarding-table → check for IPv6 entries
 4. Next-hop unreachable:
 show bgp ipv6 unicast → check next-hop attribute
 ! The next-hop is an IPv4-mapped IPv6 address: ::ffff:10.0.0.2
-! Fix: Use "neighbor x.x.x.x next-hop-self" for proper next-hop
+! Fix: Ensure the remote PE loopback is reachable in the IPv4 IGP and labeled by LDP across the MPLS core
 ```
 
-6PE on Cisco IOS requires MPLS LDP on backbone interfaces, MP-BGP with the IPv6 address family between PE routers (using IPv4 loopbacks as BGP peers), and IPv6 interfaces on PE-CE links, with the key insight that BGP next-hops use IPv4-mapped IPv6 addresses to embed PE IPv4 addresses for MPLS label resolution.
+6PE on Cisco IOS requires MPLS LDP on backbone interfaces, MP-BGP with the IPv6 address family between PE routers (using IPv4 loopbacks as BGP peers and `neighbor ... send-label` for labeled IPv6 routes), and IPv6 interfaces on PE-CE links, with the key insight that BGP next-hops use IPv4-mapped IPv6 addresses to embed PE IPv4 addresses for MPLS label resolution.
