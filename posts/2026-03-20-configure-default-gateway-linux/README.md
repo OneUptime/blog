@@ -73,6 +73,7 @@ sudo netplan apply
 
 ```bash
 # Method 1: nmcli
+nmcli connection modify eth0 ipv4.addresses 192.168.1.10/24
 nmcli connection modify eth0 ipv4.gateway 192.168.1.1
 nmcli connection modify eth0 ipv4.method manual
 nmcli connection up eth0
@@ -81,7 +82,7 @@ nmcli connection up eth0
 nmcli connection show eth0 | grep gateway
 ```
 
-Or edit the ifcfg file:
+Or, on systems still using legacy ifcfg profiles, edit the ifcfg file:
 
 ```bash
 # /etc/sysconfig/network-scripts/ifcfg-eth0
@@ -116,8 +117,7 @@ systemctl restart systemd-networkd
 # /etc/network/interfaces
 auto eth0
 iface eth0 inet static
-    address 192.168.1.10
-    netmask 255.255.255.0
+    address 192.168.1.10/24
     gateway 192.168.1.1
 ```
 
@@ -133,11 +133,11 @@ For hosts with multiple uplinks, use metrics to prefer one gateway:
 # Primary gateway (lower metric = preferred)
 ip route add default via 192.168.1.1 metric 100
 
-# Secondary gateway (failover)
+# Secondary gateway (higher metric)
 ip route add default via 192.168.2.1 metric 200
 ```
 
-The host will use 192.168.1.1 unless it becomes unreachable.
+The lower-metric route is preferred while both routes are present.
 
 ## Testing Default Gateway Connectivity
 
@@ -157,7 +157,7 @@ ip route get 8.8.8.8
 - `ip route add default via GATEWAY` adds a temporary default route.
 - Persist with Netplan (`routes: to: default via:`), nmcli, or systemd-networkd.
 - Multiple default gateways are resolved by metric (lower = preferred).
-- The default gateway must be on the same subnet as the host's IP.
+- By default, the gateway must be reachable on a directly connected network.
 
 **Related Reading:**
 
