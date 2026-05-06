@@ -16,7 +16,7 @@ When working with IPv6 addresses in security contexts:
 - IPv6 addresses contain colons and may include brackets in URLs
 - IPv4-mapped IPv6 addresses (`::ffff:x.x.x.x`) must be normalized
 - IPv6 CIDR notation uses a slash: `2001:db8::/32`
-- A /64 IPv6 subnet contains trillions of addresses - rate limit at /64 level
+- A /64 IPv6 subnet contains about 18 quintillion addresses - rate limit at /64 level
 
 ## Configuration Example
 
@@ -64,6 +64,8 @@ def get_rate_limit_key(client_ip: str) -> str:
     """Return rate limit key, grouping /64 subnets for IPv6."""
     try:
         addr = ipaddress.ip_address(client_ip)
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            return f"ratelimit:ipv4:{addr.ipv4_mapped}"
         if isinstance(addr, ipaddress.IPv6Address):
             # Group entire /64 subnet under one rate limit key
             # This prevents bypassing rate limits by using different addresses in same /64
@@ -87,7 +89,7 @@ def check_rate_limit(client_ip: str, max_requests: int = 100, window: int = 60) 
 ## Testing
 
 ```bash
-# Test with IPv6 client address
+# Test an endpoint over IPv6
 curl -6 -X POST https://[2001:db8::1]:443/auth/login   -H "Content-Type: application/json"   -d '{"username": "test", "password": "test"}'
 
 # Simulate multiple requests to test rate limiting
@@ -102,4 +104,4 @@ Use [OneUptime](https://oneuptime.com) to monitor authentication endpoint availa
 
 ## Conclusion
 
-How to Detect Brute Force Attacks from IPv6 Addresses requires understanding IPv6 address formats, normalizing IPv4-mapped addresses, and applying security policies at the /64 subnet level for IPv6 since individual users may have trillions of addresses within their prefix.
+How to Detect Brute Force Attacks from IPv6 Addresses requires understanding IPv6 address formats, normalizing IPv4-mapped addresses, and applying security policies at the /64 subnet level for IPv6 since individual users may have about 18 quintillion addresses within a /64 prefix.
