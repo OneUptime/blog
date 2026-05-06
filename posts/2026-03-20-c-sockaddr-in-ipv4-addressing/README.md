@@ -19,7 +19,7 @@ struct sockaddr_in {
     sa_family_t    sin_family;   /* AF_INET */
     in_port_t      sin_port;     /* port in network byte order */
     struct in_addr sin_addr;     /* IPv4 address */
-    char           sin_zero[8];  /* padding - zero this out */
+    unsigned char  sin_zero[8];  /* padding on many systems; zero the whole struct */
 };
 
 struct in_addr {
@@ -46,7 +46,7 @@ void demo_sockaddr_in(void) {
     inet_pton(AF_INET, "192.168.1.100", &addr.sin_addr);
 
     /* Option 2: any local address */
-    addr.sin_addr.s_addr = INADDR_ANY;       /* 0.0.0.0 */
+    addr.sin_addr.s_addr = htonl(INADDR_ANY); /* 0.0.0.0 */
 
     /* Option 3: loopback */
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); /* 127.0.0.1 */
@@ -63,18 +63,27 @@ void demo_sockaddr_in(void) {
 ```c
 int server_socket_ipv4(int port) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        perror("socket");
+        return -1;
+    }
 
     int opt = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt");
+        close(fd);
+        return -1;
+    }
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family      = AF_INET;
     addr.sin_port        = htons(port);
-    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         perror("bind");
+        close(fd);
         return -1;
     }
     return fd;
@@ -86,15 +95,24 @@ int server_socket_ipv4(int port) {
 ```c
 int connect_to(const char *ip, int port) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        perror("socket");
+        return -1;
+    }
 
     struct sockaddr_in server;
     memset(&server, 0, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_port   = htons(port);
-    inet_pton(AF_INET, ip, &server.sin_addr);
+    if (inet_pton(AF_INET, ip, &server.sin_addr) != 1) {
+        fprintf(stderr, "invalid IPv4 address\n");
+        close(fd);
+        return -1;
+    }
 
     if (connect(fd, (struct sockaddr *)&server, sizeof(server)) < 0) {
         perror("connect");
+        close(fd);
         return -1;
     }
     return fd;
@@ -108,9 +126,16 @@ struct sockaddr_in peer;
 socklen_t peer_len = sizeof(peer);
 int client_fd = accept(server_fd, (struct sockaddr *)&peer, &peer_len);
 
-char peer_ip[INET_ADDRSTRLEN];
-inet_ntop(AF_INET, &peer.sin_addr, peer_ip, INET_ADDRSTRLEN);
-printf("Connected: %s:%d\n", peer_ip, ntohs(peer.sin_port));
+if (client_fd < 0) {
+    perror("accept");
+} else {
+    char peer_ip[INET_ADDRSTRLEN];
+    if (inet_ntop(AF_INET, &peer.sin_addr, peer_ip, INET_ADDRSTRLEN) == NULL) {
+        perror("inet_ntop");
+    } else {
+        printf("Connected: %s:%d\n", peer_ip, ntohs(peer.sin_port));
+    }
+}
 ```
 
 ## Byte Order Conversion Reference
@@ -126,4 +151,4 @@ printf("Connected: %s:%d\n", peer_ip, ntohs(peer.sin_port));
 
 ## Conclusion
 
-`struct sockaddr_in` is the entry point for all IPv4 socket operations. Always zero-initialize it with `memset`, use `htons` for ports, `inet_pton` for addresses, and cast to `struct sockaddr *` when calling socket API functions.
+`struct sockaddr_in` is the entry point for all IPv4 socket operations. Always zero-initialize it with `memset`, use `htons` for ports, use `inet_pton` or `htonl` with `INADDR_*` constants for addresses, and cast to `struct sockaddr *` when calling socket API functions.
