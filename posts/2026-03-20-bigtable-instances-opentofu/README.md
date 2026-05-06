@@ -22,12 +22,12 @@ resource "google_bigtable_instance" "production" {
   cluster {
     cluster_id   = "us-central1-cluster"
     zone         = "us-central1-a"
-    num_nodes    = 3  # Minimum 3 nodes for production
-    storage_type = "SSD"  # SSD for high performance, HDD for archival
+    num_nodes    = 3  # Example fixed-size cluster size
+    storage_type = "SSD"  # HDD is better suited to less latency-sensitive workloads
   }
 
-  # Development instance uses different pricing (no dedicated nodes)
-  # instance_type = "DEVELOPMENT"  # or "PRODUCTION" (default)
+  # DEVELOPMENT is deprecated; PRODUCTION is the default
+  # instance_type = "DEVELOPMENT"
 
   deletion_protection = true
 
@@ -74,27 +74,40 @@ resource "google_bigtable_table" "metrics_table" {
   # Column family for time-series metrics
   column_family {
     family = "metrics"
-    # GC policy for automatic data expiry
-    gc_policy {
-      mode = "INTERSECTION"
-      max_age {
-        duration = "168h"  # 7 days retention
-      }
-      max_version {
-        number = 1  # Keep only latest version of each cell
-      }
-    }
   }
 
   # Column family for metadata
   column_family {
     family = "meta"
-    gc_policy {
-      mode = "UNION"
-      max_age {
-        duration = "720h"  # 30 days
-      }
-    }
+  }
+}
+
+# GC policy for automatic data expiry on the metrics family
+resource "google_bigtable_gc_policy" "metrics_gc" {
+  instance_name   = google_bigtable_instance.production.name
+  table           = google_bigtable_table.metrics_table.name
+  column_family   = "metrics"
+  deletion_policy = "ABANDON"
+  mode            = "INTERSECTION"
+
+  max_age {
+    duration = "168h"  # 7 days retention
+  }
+
+  max_version {
+    number = 1  # Keep only the latest version of each cell
+  }
+}
+
+# GC policy for the metadata family
+resource "google_bigtable_gc_policy" "meta_gc" {
+  instance_name   = google_bigtable_instance.production.name
+  table           = google_bigtable_table.metrics_table.name
+  column_family   = "meta"
+  deletion_policy = "ABANDON"
+
+  max_age {
+    duration = "720h"  # 30 days retention
   }
 }
 ```
@@ -120,4 +133,4 @@ resource "google_bigtable_instance_iam_member" "app_writer" {
 
 ## Summary
 
-Cloud Bigtable instances with OpenTofu provide a foundation for high-throughput time-series and analytical workloads. Multi-cluster replication enables geographic distribution and HA. GC policies in column families automatically expire old data, keeping storage costs manageable as data volumes grow.
+Cloud Bigtable instances with OpenTofu provide a foundation for high-throughput time-series and analytical workloads. Multi-cluster replication can provide geographic distribution and HA. GC policies on column families automatically expire old data, keeping storage costs manageable as data volumes grow.
