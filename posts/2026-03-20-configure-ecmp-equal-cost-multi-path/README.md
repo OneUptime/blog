@@ -8,7 +8,7 @@ Description: Configure Equal-Cost Multi-Path routing on Linux and network device
 
 ## Introduction
 
-Equal-Cost Multi-Path (ECMP) routing allows a router to use multiple next-hop paths of equal metric to a single destination. Instead of choosing one path and leaving others idle, the router distributes flows across all equal-cost paths - improving throughput and providing automatic failover.
+Equal-Cost Multi-Path (ECMP) routing allows a router to use multiple next-hop paths of equal metric to a single destination. Instead of choosing one path and leaving others idle, the router distributes flows across all equal-cost paths - improving throughput and providing redundancy across available paths.
 
 ## How ECMP Works
 
@@ -59,7 +59,7 @@ Configure the hashing policy:
 # Show current ECMP hash policy
 sysctl net.ipv4.fib_multipath_hash_policy
 
-# Set to hash by source+destination IP and L4 ports (recommended)
+# Set Layer 4 hashing (standard 5-tuple)
 sysctl -w net.ipv4.fib_multipath_hash_policy=1
 
 # Persist across reboots
@@ -67,10 +67,12 @@ echo "net.ipv4.fib_multipath_hash_policy=1" >> /etc/sysctl.conf
 ```
 
 Hash policy values:
-- `0` - Layer 3 only (src IP, dst IP)
-- `1` - Layer 3 + Layer 4 (src/dst IP + src/dst port)
+- `0` - Layer 3
+- `1` - Layer 4 (standard 5-tuple)
+- `2` - Layer 3 or inner Layer 3 if present
+- `3` - Custom multipath hash via `fib_multipath_hash_fields`
 
-## Configuring ECMP with FRR (Free Range Routing)
+## Configuring ECMP with FRRouting (FRR)
 
 For dynamic ECMP with OSPF:
 
@@ -88,8 +90,8 @@ For BGP ECMP:
 # FRR BGP config
 router bgp 65001
   address-family ipv4 unicast
-    maximum-paths 4        # IBGP ECMP
-    maximum-paths ibgp 4   # eBGP ECMP
+    maximum-paths 4        # eBGP ECMP
+    maximum-paths ibgp 4   # iBGP ECMP
 ```
 
 ## Verifying ECMP
@@ -101,8 +103,8 @@ ip route show 10.10.0.0/16
 # Monitor per-interface traffic to confirm load distribution
 watch -n 1 "ip -s link show eth0; ip -s link show eth1"
 
-# Use ss or netstat to see flows distributed across interfaces
-ss -tn | awk '{print $5}' | sort | uniq -c
+# Check which nexthop Linux selects for a given flow tuple
+ip route get 10.10.0.10 ipproto tcp sport 12345 dport 80
 ```
 
 ## Conclusion
