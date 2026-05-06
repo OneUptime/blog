@@ -4,38 +4,36 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Compliance, Security Scanning, CIS Benchmark, HIPAA, SOC2, Infrastructure as Code
 
-Description: Learn how to scan OpenTofu configurations against compliance frameworks like CIS Benchmarks, HIPAA, and SOC 2 using Checkov and custom OPA policies - ensuring infrastructure meets regulatory...
+Description: Learn how to scan OpenTofu configurations for compliance-related misconfigurations using Checkov and custom OPA policies - ensuring infrastructure meets regulatory...
 
 ## Introduction
 
-Compliance scanning automates the verification that infrastructure configurations meet regulatory and security framework requirements. Rather than relying on manual audits after deployment, scan OpenTofu configs against CIS Benchmarks, PCI DSS, HIPAA, and SOC 2 controls as part of every pull request.
+Compliance scanning automates the verification that infrastructure configurations meet regulatory and security framework requirements. Rather than relying on manual audits after deployment, scan OpenTofu configs against CIS-aligned checks and custom PCI DSS, HIPAA, or SOC 2 policies as part of every pull request.
 
-## Checkov: Built-in Compliance Frameworks
+## Checkov: Built-in Compliance Checks
 
-Checkov includes built-in checks mapped to compliance frameworks:
+Checkov scans OpenTofu source files through its `terraform` framework; select built-in checks by ID or severity:
 
 ```bash
 # Install Checkov
 
 pip install checkov
 
-# Scan against CIS AWS Benchmark Level 1
-checkov -d . --framework terraform --check CIS_AWS_1.2
+# Run specific compliance-related checks
+checkov -d . --framework terraform \
+  --check CKV_AWS_19,CKV_AWS_18,CKV_AWS_17,CKV_AWS_293,CKV_AWS_16
 
-# Scan against HIPAA controls
-checkov -d . --framework terraform --bc-api-key $BRIDGECREW_TOKEN --compliance HIPAA
+# Run all Terraform/OpenTofu checks
+checkov -d . --framework terraform
 
-# Scan against SOC 2
-checkov -d . --framework terraform --bc-api-key $BRIDGECREW_TOKEN --compliance SOC2
-
-# Run all built-in checks and export results
-checkov -d . --output json --output-file compliance-results.json
+# Run all built-in checks and export JSON results
+checkov -d . -o json --output-file-path reports
 ```
 
 ## Common CIS AWS Benchmark Violations
 
 ```hcl
-# CKV_AWS_23: Ensure all data stored in the S3 bucket is securely encrypted at rest
+# CKV_AWS_19: Ensure all data stored in the S3 bucket is securely encrypted at rest
 # FIX: Enable default encryption
 resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
   bucket = aws_s3_bucket.app.id
@@ -56,15 +54,15 @@ resource "aws_s3_bucket_logging" "app" {
   target_prefix = "app-access-logs/"
 }
 
-# CKV_AWS_86: Ensure RDS is not publicly accessible
+# CKV_AWS_17: Ensure all data stored in RDS is not publicly accessible
 resource "aws_db_instance" "postgres" {
-  identifier         = "prod-postgres"
+  identifier          = "prod-postgres"
   publicly_accessible = false  # CIS requirement
 
-  # CKV_AWS_157: Ensure RDS has deletion protection
+  # CKV_AWS_293: Ensure that AWS database instances have deletion protection enabled
   deletion_protection = true
 
-  # CKV_AWS_133: Ensure RDS is encrypted
+  # CKV_AWS_16: Ensure all data stored in the RDS is securely encrypted at rest
   storage_encrypted = true
   kms_key_id        = aws_kms_key.rds.arn
 }
@@ -78,15 +76,16 @@ Write Rego policies for controls that Checkov doesn't cover out of the box:
 # policies/pci_dss.rego
 package main
 
-import future.keywords.in
+import rego.v1
 
 # PCI DSS Req 1.3: Prohibit direct public access to cardholder data environment
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_db_instance"
-    resource.change.actions[_] in ["create", "update"]
+    some action in resource.change.actions
+    action in ["create", "update"]
 
-    # DB must not be in a public subnet
+    # DB must not be publicly accessible
     resource.change.after.publicly_accessible == true
 
     msg := sprintf(
@@ -96,10 +95,11 @@ deny[msg] {
 }
 
 # PCI DSS Req 8.2: Encrypt all stored cardholder data
-deny[msg] {
+deny contains msg if {
     resource := input.resource_changes[_]
     resource.type == "aws_db_instance"
-    resource.change.actions[_] in ["create", "update"]
+    some action in resource.change.actions
+    action in ["create", "update"]
 
     resource.change.after.storage_encrypted != true
 
@@ -120,6 +120,10 @@ on:
 
 jobs:
   compliance:
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -129,29 +133,32 @@ jobs:
 
       - name: OpenTofu Init & Plan
         run: |
-          tofu init
-          tofu plan -out=tfplan.binary
+          tofu init -input=false
+          tofu plan -input=false -out=tfplan.binary
           tofu show -json tfplan.binary > tfplan.json
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
-      - name: Checkov CIS Scan
-        uses: bridgecrewio/checkov-action@master
+      - name: Checkov Compliance Scan
+        uses: bridgecrewio/checkov-action@v12
         with:
           directory: .
           framework: terraform
-          check: CKV_AWS_23,CKV_AWS_18,CKV_AWS_86,CKV_AWS_157,CKV_AWS_133
+          check: CKV_AWS_19,CKV_AWS_18,CKV_AWS_17,CKV_AWS_293,CKV_AWS_16
           output_format: sarif
           output_file_path: checkov-results.sarif
 
-      - name: OPA Custom Compliance Policies
+      - name: Install Conftest
         run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           brew install conftest
-          conftest test tfplan.json --policy policies/
+
+      - name: OPA Custom Compliance Policies
+        run: conftest test tfplan.json --policy policies/
 
       - name: Upload Checkov Results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: checkov-results.sarif
@@ -165,8 +172,11 @@ framework:
   - terraform
 
 check:
-  - CIS_AWS_1.2   # CIS Benchmark Level 1
-  - PCI_DSS_3.2   # PCI DSS
+  - CKV_AWS_19
+  - CKV_AWS_18
+  - CKV_AWS_17
+  - CKV_AWS_293
+  - CKV_AWS_16
 
 skip-check:
   # Public website bucket - intentionally public
@@ -174,8 +184,10 @@ skip-check:
   - CKV2_AWS_6
 
 compact: true
-output: cli,sarif
-output-file-path: .
+output:
+  - cli
+  - sarif
+output-file-path: console,checkov-results.sarif
 ```
 
 ## Generating Compliance Reports
@@ -183,15 +195,15 @@ output-file-path: .
 ```bash
 # Generate a JSON compliance report for auditors
 checkov -d . \
-  --output json \
-  --output-file compliance-report.json \
+  -o json \
+  --output-file-path reports \
   --soft-fail   # Don't exit non-zero (just report)
 
 # Extract passing/failing check counts
-jq '.summary | {passed: .passed, failed: .failed}' compliance-report.json
+jq '.summary | {passed: .passed, failed: .failed}' reports/results_json.json
 # {"passed": 142, "failed": 3}
 ```
 
 ## Conclusion
 
-Compliance scanning in OpenTofu shifts regulatory verification left - from post-deployment audits to pre-merge checks. Checkov's 1,000+ built-in controls cover CIS Benchmarks, PCI DSS, HIPAA, and SOC 2. Supplement with custom OPA policies for organization-specific controls. Generate SARIF output for GitHub Security tab integration and JSON reports for auditors. With compliance gates in CI, every merged change is compliance-verified.
+Compliance scanning in OpenTofu shifts regulatory verification left - from post-deployment audits to pre-merge checks. Checkov's 1,000+ built-in controls cover many cloud security and compliance best practices, and custom OPA policies can fill gaps for organization-specific controls. Generate SARIF output for GitHub Security tab integration and JSON reports for auditors. With compliance gates in CI, every merged change is compliance-verified.
