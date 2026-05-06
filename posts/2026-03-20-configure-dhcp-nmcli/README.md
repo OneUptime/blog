@@ -22,6 +22,7 @@ nmcli connection modify "Wired connection 1" \
     ipv4.dns ""
 
 # Reactivate to apply
+nmcli connection down "Wired connection 1"
 nmcli connection up "Wired connection 1"
 ```
 
@@ -56,8 +57,10 @@ nmcli device show eth0 | grep -i dhcp
 ```bash
 # Send a specific hostname to the DHCP server
 nmcli connection modify "dhcp-eth0" \
+    ipv4.dhcp-send-hostname yes \
     ipv4.dhcp-hostname myserver
 
+nmcli connection down "dhcp-eth0"
 nmcli connection up "dhcp-eth0"
 ```
 
@@ -68,6 +71,7 @@ nmcli connection up "dhcp-eth0"
 nmcli connection modify "dhcp-eth0" \
     ipv4.dhcp-client-id myserver-unique-id
 
+nmcli connection down "dhcp-eth0"
 nmcli connection up "dhcp-eth0"
 ```
 
@@ -77,10 +81,6 @@ nmcli connection up "dhcp-eth0"
 # Renew DHCP lease by deactivating and reactivating
 nmcli connection down "dhcp-eth0"
 nmcli connection up "dhcp-eth0"
-
-# Alternative: use dhclient directly
-dhclient -r eth0
-dhclient eth0
 ```
 
 ## Accept or Ignore DNS from DHCP
@@ -91,6 +91,7 @@ nmcli connection modify "dhcp-eth0" \
     ipv4.ignore-auto-dns yes \
     ipv4.dns "8.8.8.8 1.1.1.1"
 
+nmcli connection down "dhcp-eth0"
 nmcli connection up "dhcp-eth0"
 ```
 
@@ -101,6 +102,7 @@ nmcli connection up "dhcp-eth0"
 nmcli connection modify "dhcp-eth0" \
     ipv4.ignore-auto-routes yes
 
+nmcli connection down "dhcp-eth0"
 nmcli connection up "dhcp-eth0"
 ```
 
