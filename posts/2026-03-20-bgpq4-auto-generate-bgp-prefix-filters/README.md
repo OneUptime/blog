@@ -20,23 +20,25 @@ sudo apt-get install bgpq4
 # Or build from source
 git clone https://github.com/bgp/bgpq4.git
 cd bgpq4
+./bootstrap
 ./configure && make && sudo make install
 ```
 
 ## Step 2: Query a Single AS for Its Prefixes
 
-Generate a Cisco-format prefix list for AS 65100:
+Generate plain prefix output or a Cisco IOS prefix list for AS112:
 
 ```bash
-# Generate an IOS prefix list for all prefixes in AS 65100
-bgpq4 -4 -F "%n/%l\n" AS65100
+# Generate plain prefix/mask output for all prefixes in AS112
+bgpq4 -4 -F "%n/%l\n" AS112
 
 # Generate a full Cisco IOS prefix-list configuration
-bgpq4 -4 -l CUSTOMER_65100 AS65100
+bgpq4 -4 -l CUSTOMER_AS112 AS112
 
 # Example output:
-# ip prefix-list CUSTOMER_65100 seq 5 permit 192.168.1.0/24
-# ip prefix-list CUSTOMER_65100 seq 10 permit 192.168.2.0/24
+# no ip prefix-list CUSTOMER_AS112
+# ip prefix-list CUSTOMER_AS112 permit 192.31.196.0/24
+# ip prefix-list CUSTOMER_AS112 permit 192.175.48.0/24
 ```
 
 ## Step 3: Generate a Prefix List for an AS-SET
@@ -44,14 +46,14 @@ bgpq4 -4 -l CUSTOMER_65100 AS65100
 Most ISPs register their prefixes under an AS-SET object, which includes their customers' ASes. Query the AS-SET instead of individual ASes:
 
 ```bash
-# Generate prefix list from AS-SET (includes all member ASes)
-bgpq4 -4 -l UPSTREAM_FILTER AS-EXAMPLE
+# Generate prefix list from an AS-SET (includes all member ASes)
+bgpq4 -4 -l UPSTREAM_FILTER AS-VOSTRON
 
-# Generate with maximum prefix length of /24 (reject more-specifics)
-bgpq4 -4 -l UPSTREAM_FILTER -R 24 AS-EXAMPLE
+# Allow more-specifics up to /24
+bgpq4 -4 -l UPSTREAM_FILTER -R 24 AS-VOSTRON
 
-# Generate for IPv6
-bgpq4 -6 -l UPSTREAM_FILTER_V6 AS-EXAMPLE
+# Generate for IPv6 from an IPv6 AS-SET
+bgpq4 -6 -l UPSTREAM_FILTER_V6 AS-RETN6
 ```
 
 ## Step 4: Use bgpq4 in an Automation Script
@@ -62,11 +64,11 @@ Create a shell script that regenerates and applies prefix filters for all custom
 #!/bin/bash
 # regenerate_bgp_filters.sh - Auto-generate and apply BGP prefix filters
 
-# List of customers: AS_number:description
+# List of IRR objects: object_name:description
 CUSTOMERS=(
-    "AS65100:customer-a"
-    "AS65200:customer-b"
-    "AS-EXAMPLE:upstream-isp"
+    "AS112:customer-a"
+    "AS20597:customer-b"
+    "AS-VOSTRON:upstream-isp"
 )
 
 OUTPUT_FILE="/tmp/bgp_filters.conf"
@@ -87,8 +89,8 @@ done
 
 echo "Generated filters saved to $OUTPUT_FILE"
 
-# Apply to router via SSH (requires sshpass or SSH keys)
-# ssh router.example.com < "$OUTPUT_FILE"
+# Apply the generated config with your router's supported deployment method.
+# For example, hand "$OUTPUT_FILE" to your SSH/NETCONF/Ansible workflow here.
 ```
 
 ## Step 5: Generate Filters for Different Router Formats
@@ -97,34 +99,34 @@ bgpq4 supports multiple router formats:
 
 ```bash
 # Cisco IOS format (default)
-bgpq4 -4 -l MYFILTER AS65100
+bgpq4 -4 -l MYFILTER AS112
 
 # Cisco IOS XR format
-bgpq4 -4 -S MYFILTER -X AS65100
+bgpq4 -4 -X -l MYFILTER AS112
 
 # BIRD format
-bgpq4 -4 -f AS65100 -b
+bgpq4 -4 -b AS112
 
 # OpenBGPD format
-bgpq4 -4 -f AS65100 -O
+bgpq4 -4 -B AS112
 
 # JSON output for programmatic use
-bgpq4 -4 -j AS65100
+bgpq4 -4 -j AS112
 ```
 
-## Step 6: Specify IRR Servers
+## Step 6: Specify IRR Sources
 
-By default, bgpq4 queries RADB. Specify alternative IRR servers for different RIRs:
+By default, bgpq4 queries `rr.ntt.net` and uses the mirrored IRR sources available there. Use `-S` to limit the sources you trust, and use `SOURCE::OBJECT` notation when you want to pin the root object to an authoritative source:
 
 ```bash
-# Query RIPE IRR
-bgpq4 -h whois.ripe.net -4 -l RIPE_FILTER AS-RIPE
+# Query only RIPE data
+bgpq4 -S RIPE -4 -l RIPE_FILTER AS-VOSTRON
 
-# Query ARIN
-bgpq4 -h rr.arin.net -4 -l ARIN_FILTER AS-ARIN
+# Query RIPE and ARIN data
+bgpq4 -S RIPE,ARIN -4 -l FILTER AS-VOSTRON
 
-# Query multiple servers
-bgpq4 -h whois.radb.net,rr.ntt.net -4 -l FILTER AS65100
+# Pin the root AS-SET to RIPE while leaving member lookups on the default source list
+bgpq4 -4 -l FILTER RIPE::AS-VOSTRON
 ```
 
 ## Step 7: Automate with Cron
@@ -139,4 +141,4 @@ Refresh prefix filters daily to pick up customer changes automatically:
 
 ## Conclusion
 
-bgpq4 eliminates the manual work of maintaining BGP prefix filters by generating them directly from IRR data. Run it as part of a scheduled automation pipeline to ensure filters stay current as customers update their IRR objects. Always set a maximum prefix length (`-R 24`) to prevent overly specific prefixes from being permitted.
+bgpq4 eliminates the manual work of maintaining BGP prefix filters by generating them directly from IRR data. Run it as part of a scheduled automation pipeline to ensure filters stay current as customers update their IRR objects. Choose prefix-length controls carefully: use `-R 24` only when you want to allow more-specifics up to /24, and use `-m 24` if you want to filter out prefixes longer than /24.
