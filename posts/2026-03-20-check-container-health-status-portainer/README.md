@@ -8,101 +8,103 @@ Description: Monitor container health check status in Portainer, interpret healt
 
 ---
 
-This guide shows you how to accomplish this common container management task in Portainer, including both the UI approach and the equivalent command-line method.
+This guide shows you how to check a container's health status in Portainer, including both the UI approach and the equivalent command-line method.
 
 ## Using the Portainer UI
 
-Navigate to **Containers** in the left sidebar. The container list view provides search and filter options at the top of the page.
+Navigate to **Containers** in the left sidebar, then select the container you want to inspect.
 
-### Filtering Options
+### Health Status Details
 
-The Portainer container list supports filtering by:
-- **Status**: Running, Stopped, Exited, Paused
-- **Name**: Search by container name substring
-- **Stack**: Filter by stack name
-- **Labels**: Filter by container labels (available in container details)
+On the container details page, Portainer shows the container's current status. If the container defines a Docker health check, you can also open **Inspect** and click **Text** to view the raw container JSON.
 
-Click the **Filter** button or search box to apply your criteria. The container list updates in real time.
+Look for these fields in the inspect output:
+- **State.Health.Status**: `starting`, `healthy`, or `unhealthy`
+- **State.Health.Log**: Recent health check runs, including exit codes and probe output
+
+If **State.Health** is missing, the container does not have a health check configured.
 
 ## Using the Docker CLI
 
-For scripted or automated use cases, Docker CLI provides powerful filtering:
+For scripted or automated use cases, Docker CLI can show and filter health information directly:
 
 ```bash
-# Filter running containers
+# Show running containers and include health information in the STATUS column
+docker ps --format "table {{.Names}}\t{{.Status}}"
 
-docker ps --filter "status=running"
+# Show only unhealthy containers
+docker ps --filter "health=unhealthy"
 
-# Filter by label key=value
-docker ps --filter "label=com.docker.compose.service=webapp"
+# Show only healthy containers
+docker ps --filter "health=healthy"
 
-# Filter by stack name (using Compose label)
-docker ps --filter "label=com.docker.compose.project=my-stack"
+# Show containers that are still starting
+docker ps --filter "health=starting"
 
-# Filter by image name
-docker ps --filter "ancestor=nginx:1.25"
+# Print the health status for a single container
+docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}no healthcheck{{end}}' my-container
 
-# Multiple filters (AND condition)
-docker ps --filter "status=running" --filter "label=environment=production"
-
-# Format the output to show specific fields
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.Labels}}"
+# Print the full health check details, including recent probe output
+docker inspect --format '{{json .State.Health}}' my-container
 ```
 
-## Labeling Your Containers for Better Filtering
+## Adding a Health Check So Status Appears
 
-Apply meaningful labels to make filtering effective:
+Docker only reports a health status when the container has a health check configured:
 
 ```yaml
-# In your docker-compose.yml
+# In your compose.yaml or docker-compose.yml
 services:
   webapp:
     image: myapp:1.2.3
-    labels:
-      # Standard labels for filtering
-      environment: "production"
-      team: "backend"
-      tier: "api"
-      version: "1.2.3"
-      backup: "required"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 ```
 
-With these labels, you can filter by:
+Replace the probe command with one your image actually includes. With a health check in place, you can verify it with:
+
 ```bash
-# Find all production containers
-docker ps --filter "label=environment=production"
+# Check the current health state for one container
+docker inspect --format '{{.State.Health.Status}}' my-container
 
-# Find all containers owned by the backend team
-docker ps --filter "label=team=backend"
+# Find all containers without a health check
+docker ps --filter "health=none"
 
-# Find containers needing backup
-docker ps --filter "label=backup=required"
+# Find all containers currently failing their health check
+docker ps --filter "health=unhealthy"
 ```
 
 ## Using the Portainer API
 
-For integration with monitoring tools or dashboards:
+For integration with monitoring tools or dashboards, Portainer exposes Docker API endpoints under `/api/endpoints/<ENVIRONMENT_ID>/docker`:
 
 ```python
 import requests
 
 headers = {"X-API-Key": "your-api-token"}
+container_id = "your-container-id"
 
-# Get containers with specific label via Portainer API
 response = requests.get(
-    "https://portainer.example.com/api/endpoints/1/docker/containers/json",
+    f"https://portainer.example.com/api/endpoints/1/docker/containers/{container_id}/json",
     headers=headers,
-    params={
-        "all": "false",  # Only running containers
-        "filters": '{"label": ["environment=production"]}'
-    }
 )
+response.raise_for_status()
 
-containers = response.json()
-for c in containers:
-    print(c["Names"][0], c["Status"])
+container = response.json()
+health = container.get("State", {}).get("Health")
+
+if health:
+    print(health["Status"])
+    for entry in health.get("Log", []):
+        print(entry["Start"], entry["ExitCode"], entry["Output"].strip())
+else:
+    print("No healthcheck configured")
 ```
 
 ## Summary
 
-Portainer's container filtering UI and Docker's filter flags both support filtering by status and labels. Consistent label conventions across your stacks make it significantly easier to find, manage, and audit specific container groups. Use the Portainer API for programmatic filtering in automation and monitoring tools.
+Portainer can show a container's status in the details view, and its **Inspect** -> **Text** view exposes the same Docker health data you can query from the CLI or API. Docker health states are `starting`, `healthy`, and `unhealthy`, and they only exist when the container has a `HEALTHCHECK` configured. Use `docker inspect` or the Portainer API when you need the recent probe log for debugging.
