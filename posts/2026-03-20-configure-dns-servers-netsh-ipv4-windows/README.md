@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Window, Networking, Netsh, DNS, IPv4, Network Configuration
+Tags: Windows, Networking, Netsh, DNS, IPv4, Network Configuration
 
 Description: Set, change, and remove DNS server addresses on a Windows network adapter using netsh interface ipv4 commands from an elevated command prompt.
 
@@ -16,15 +16,15 @@ DNS configuration on Windows can be done entirely from the command line using `n
 :: Show DNS settings for a specific adapter
 netsh interface ipv4 show dnsservers name="Ethernet"
 
-:: Or show all adapter DNS config
-netsh interface ipv4 show dns
+:: Or show all adapter TCP/IP config (including DNS)
+netsh interface ipv4 show config
 ```
 
 ## Set a Primary DNS Server
 
 ```cmd
 :: Replace any existing DNS with a single primary server
-netsh interface ipv4 set dns name="Ethernet" source=static address=8.8.8.8
+netsh interface ipv4 set dnsservers name="Ethernet" source=static address=8.8.8.8
 ```
 
 The `source=static` parameter prevents this from being overridden by DHCP.
@@ -33,10 +33,10 @@ The `source=static` parameter prevents this from being overridden by DHCP.
 
 ```cmd
 :: Add secondary DNS (index 2 = second server in the list)
-netsh interface ipv4 add dns name="Ethernet" address=1.1.1.1 index=2
+netsh interface ipv4 add dnsservers name="Ethernet" address=1.1.1.1 index=2
 
 :: Add a third server
-netsh interface ipv4 add dns name="Ethernet" address=9.9.9.9 index=3
+netsh interface ipv4 add dnsservers name="Ethernet" address=9.9.9.9 index=3
 ```
 
 ## Set Multiple DNS Servers at Once (PowerShell)
@@ -51,14 +51,14 @@ Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses @("8.8.8.
 
 ```cmd
 :: Remove all manually-configured DNS servers
-netsh interface ipv4 set dns name="Ethernet" source=static address=none
+netsh interface ipv4 set dnsservers name="Ethernet" source=static address=none
 ```
 
 ## Reset DNS to DHCP-Provided
 
 ```cmd
 :: Allow DHCP server to provide DNS settings
-netsh interface ipv4 set dns name="Ethernet" source=dhcp
+netsh interface ipv4 set dnsservers name="Ethernet" source=dhcp
 ```
 
 ## Verify DNS Settings
@@ -78,8 +78,8 @@ Expected output with static DNS:
 
 ```cmd
 :: Point to corporate DNS (needed for Active Directory resolution)
-netsh interface ipv4 set dns name="Ethernet" source=static address=192.168.1.10
-netsh interface ipv4 add dns name="Ethernet" address=192.168.1.11 index=2
+netsh interface ipv4 set dnsservers name="Ethernet" source=static address=192.168.1.10
+netsh interface ipv4 add dnsservers name="Ethernet" address=192.168.1.11 index=2
 ```
 
 ## DNS Configuration Script
@@ -91,11 +91,11 @@ set DNS1=8.8.8.8
 set DNS2=1.1.1.1
 
 echo Configuring DNS on %ADAPTER%...
-netsh interface ipv4 set dns name="%ADAPTER%" source=static address=%DNS1%
-netsh interface ipv4 add dns name="%ADAPTER%" address=%DNS2% index=2
+netsh interface ipv4 set dnsservers name="%ADAPTER%" source=static address=%DNS1%
+netsh interface ipv4 add dnsservers name="%ADAPTER%" address=%DNS2% index=2
 
 echo Done. Current DNS configuration:
-netsh interface ipv4 show dns name="%ADAPTER%"
+netsh interface ipv4 show dnsservers name="%ADAPTER%"
 ```
 
 ## Testing DNS After Configuration
@@ -111,4 +111,4 @@ nslookup google.com 8.8.8.8
 
 ## Conclusion
 
-Use `netsh interface ipv4 set dns` for the primary server and `add dns` with an index for additional servers. Always test with `nslookup` after configuring and flush the resolver cache with `ipconfig /flushdns` to ensure fresh lookups use the new servers.
+Use `netsh interface ipv4 set dnsservers` for the primary server and `add dnsservers` with an index for additional servers. Always test with `nslookup` after configuring and flush the resolver cache with `ipconfig /flushdns` to ensure fresh lookups use the new servers.
