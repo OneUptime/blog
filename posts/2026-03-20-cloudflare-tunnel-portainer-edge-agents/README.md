@@ -10,16 +10,16 @@ Description: Learn how to use Cloudflare Tunnel to connect Portainer Edge Agents
 
 Portainer Edge Agents poll the Portainer Server for instructions. Normally, the Edge Agent initiates outbound connections to the Portainer Server. With Cloudflare Tunnel, you can:
 
-- Route Edge Agent connections through Cloudflare without exposing port 9000/8000 on the Portainer Server
+- Route Edge Agent connections through Cloudflare without exposing ports 9443/8000 on the Portainer Server
 - Access remote sites that are behind CGNAT or restrictive firewalls
-- Add Cloudflare Access authentication to the Edge tunnel endpoint
+- Optionally publish a separate browser-only Portainer UI hostname behind Cloudflare Access
 
 ## Architecture
 
 ```text
 Remote Site (Edge Agent)
-    ↓ outbound HTTPS connection
-Cloudflare (portainer-server.yourdomain.com)
+    ↓ outbound HTTPS / WebSocket connections
+Cloudflare (portainer.yourdomain.com / portainer-edge.yourdomain.com)
     ↓ Cloudflare Tunnel
 Central Portainer Server
 ```
@@ -29,11 +29,14 @@ Central Portainer Server
 On the central Portainer Server, set up cloudflared:
 
 ```bash
+# Authenticate cloudflared with Cloudflare
+cloudflared tunnel login
+
 # Create tunnel
 
 cloudflared tunnel create portainer-server
 
-# Configure tunnel to expose both Portainer ports
+# Configure tunnel to expose both Portainer endpoints
 cat > ~/.cloudflared/config.yml << 'EOF'
 tunnel: <TUNNEL_ID>
 credentials-file: /root/.cloudflared/<TUNNEL_ID>.json
@@ -41,11 +44,15 @@ credentials-file: /root/.cloudflared/<TUNNEL_ID>.json
 ingress:
   # Main Portainer UI
   - hostname: portainer.yourdomain.com
-    service: http://localhost:9000
+    service: https://localhost:9443
+    originRequest:
+      noTLSVerify: true
 
-  # Edge agent tunnel port
+  # Edge agent tunnel endpoint
   - hostname: portainer-edge.yourdomain.com
-    service: http://localhost:8000
+    service: https://localhost:8000
+    originRequest:
+      noTLSVerify: true
 
   - service: http_status:404
 EOF
@@ -53,18 +60,21 @@ EOF
 # Create DNS records
 cloudflared tunnel route dns portainer-server portainer.yourdomain.com
 cloudflared tunnel route dns portainer-server portainer-edge.yourdomain.com
+
+# Run the tunnel
+cloudflared tunnel run portainer-server
 ```
 
 ## Step 2: Configure Portainer Server
 
-In Portainer: **Settings → Edge Compute**:
+In Portainer Business Edition: **Settings → Edge Compute**:
 
 ```text
-Portainer URL:       https://portainer.yourdomain.com
-Tunnel Server URL:   https://portainer-edge.yourdomain.com:443
+Portainer API server URL:         https://portainer.yourdomain.com
+Portainer tunnel server address:  https://portainer-edge.yourdomain.com:443
 ```
 
-Note: Use port 443 since Cloudflare Tunnel handles TLS on the standard HTTPS port.
+Note: Use port 443 since Cloudflare Tunnel terminates TLS on the standard HTTPS port. In Community Edition, the tunnel server address is not configurable separately in the UI.
 
 ## Step 3: Deploy Edge Agent on Remote Site
 
@@ -83,12 +93,11 @@ docker run -d \
   -e EDGE=1 \
   -e EDGE_ID=<EDGE_ID> \
   -e EDGE_KEY=<EDGE_KEY> \
-  -e EDGE_INSECURE_POLL=1 \
   --name portainer_edge_agent \
-  portainer/agent:latest
+  portainer/agent:<matching-portainer-version>
 ```
 
-The Edge Agent connects outbound to `portainer-edge.yourdomain.com:443` via Cloudflare.
+The Edge Agent polls `https://portainer.yourdomain.com` over HTTPS and opens the reverse tunnel to `https://portainer-edge.yourdomain.com:443` via Cloudflare when Portainer requests it.
 
 ## Step 4: Verify Connection
 
@@ -97,18 +106,15 @@ In Portainer Server, the remote environment should appear as **Online** under **
 ```bash
 # Check edge agent logs on remote site
 docker logs portainer_edge_agent | tail -20
-# Look for: "Connecting to server: https://portainer-edge.yourdomain.com"
-# And: "Connection established"
+# Look for successful polling and reverse tunnel connection messages
 ```
 
 ## Using Docker Compose for cloudflared + Portainer Server
 
 ```yaml
-version: "3.8"
-
 services:
   portainer:
-    image: portainer/portainer-ce:latest
+    image: portainer/portainer-ce:<matching-portainer-version>
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -125,17 +131,19 @@ services:
       - portainer
 ```
 
-In the Cloudflare tunnel config, map:
-- `portainer.yourdomain.com` → `http://portainer:9000`
-- `portainer-edge.yourdomain.com` → `http://portainer:8000`
+If you use `TUNNEL_TOKEN`, configure the published application routes in the Cloudflare dashboard:
+- `portainer.yourdomain.com` → `https://portainer:9443`
+- `portainer-edge.yourdomain.com` → `https://portainer:8000`
 
-## Security: Add Cloudflare Access to the Main UI
+If Portainer is using its default self-signed certificate, disable TLS verification for these origins in the tunnel route settings.
 
-Protect the Portainer UI with identity verification while keeping the edge tunnel open:
+## Security: Cloudflare Access Considerations
 
-- Apply Cloudflare Access to `portainer.yourdomain.com`
-- Do NOT apply Access to `portainer-edge.yourdomain.com` (Edge Agents don't support CF Access headers)
+Cloudflare Access can protect a separate browser-only Portainer UI hostname, but do not put Access in front of the hostnames used by the Edge Agent:
+
+- Do NOT apply Access to `portainer.yourdomain.com` if your Edge Agents use it as the Portainer API server URL
+- Do NOT apply Access to `portainer-edge.yourdomain.com` because the reverse tunnel endpoint also needs direct agent access
 
 ## Conclusion
 
-Cloudflare Tunnel is an excellent way to manage the Portainer Server's exposure while enabling Edge Agents from any internet-connected site to reach it. Edge Agents only make outbound HTTPS connections, meaning remote sites don't need any firewall changes - just Docker access and internet connectivity.
+Cloudflare Tunnel is an excellent way to manage the Portainer Server's exposure while enabling Edge Agents from any internet-connected site to reach it. Edge Agents only make outbound HTTPS and WebSocket connections, meaning remote sites don't need any firewall changes - just Docker access and internet connectivity.
