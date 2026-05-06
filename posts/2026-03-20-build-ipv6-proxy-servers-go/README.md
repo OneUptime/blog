@@ -22,7 +22,7 @@ import (
 type TCPProxy struct {
     ListenAddr  string
     BackendAddr string
-    Network     string  // "tcp6" for IPv6 frontend, "tcp4" for IPv4 backend
+    Network     string  // "tcp4" or "tcp6" for the frontend listener
 }
 
 func (p *TCPProxy) Start(ctx context.Context) error {
@@ -88,7 +88,7 @@ func main() {
     // Accept IPv4 connections, forward to IPv6 backend
     proxy := &TCPProxy{
         ListenAddr:  "0.0.0.0:8080",  // IPv4 frontend
-        BackendAddr: "[2001:db8::1]:8080",  // IPv6 backend
+        BackendAddr: net.JoinHostPort("2001:db8::1", "8080"),  // IPv6 backend
         Network:     "tcp4",
     }
 
@@ -104,7 +104,6 @@ func main() {
 package main
 
 import (
-    "crypto/tls"
     "fmt"
     "net"
     "net/http"
@@ -119,9 +118,14 @@ func newIPv6ReverseProxy(backendURL string) (*httputil.ReverseProxy, error) {
         return nil, err
     }
 
-    proxy := httputil.NewSingleHostReverseProxy(target)
+    proxy := &httputil.ReverseProxy{
+        Rewrite: func(r *httputil.ProxyRequest) {
+            r.SetURL(target)
+            r.SetXForwarded()
+        },
+    }
 
-    // Custom transport that handles IPv6 backends
+    // Custom transport with explicit dial timeouts for IPv4 or IPv6 backends
     proxy.Transport = &http.Transport{
         DialContext: (&net.Dialer{
             Timeout:   30 * time.Second,
@@ -129,16 +133,7 @@ func newIPv6ReverseProxy(backendURL string) (*httputil.ReverseProxy, error) {
         }).DialContext,
         MaxIdleConns:        100,
         IdleConnTimeout:     90 * time.Second,
-        TLSClientConfig:     &tls.Config{InsecureSkipVerify: false},
         TLSHandshakeTimeout: 10 * time.Second,
-    }
-
-    // Modify request to fix host header
-    originalDirector := proxy.Director
-    proxy.Director = func(req *http.Request) {
-        originalDirector(req)
-        // Ensure proper Host header for IPv6 backends
-        req.Host = target.Host
     }
 
     return proxy, nil
@@ -167,11 +162,11 @@ func main() {
 package main
 
 import (
-    "bufio"
     "fmt"
     "io"
     "net"
     "net/http"
+    "sync"
 )
 
 // IPv6CONNECTProxy handles HTTP CONNECT method for HTTPS tunneling
@@ -183,9 +178,15 @@ func (p *IPv6CONNECTProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    // CONNECT uses the authority form: host:port
+    host, port, err := net.SplitHostPort(r.RequestURI)
+    if err != nil || host == "" || port == "" {
+        http.Error(w, "CONNECT target must be host:port", http.StatusBadRequest)
+        return
+    }
+
     // Connect to the target (may be IPv4 or IPv6)
-    target := r.Host
-    targetConn, err := net.Dial("tcp", target)
+    targetConn, err := net.Dial("tcp", net.JoinHostPort(host, port))
     if err != nil {
         http.Error(w, err.Error(), http.StatusBadGateway)
         return
@@ -215,10 +216,16 @@ func (p *IPv6CONNECTProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     go func() {
         defer wg.Done()
         io.Copy(targetConn, clientBuf)
+        if tcpConn, ok := targetConn.(*net.TCPConn); ok {
+            tcpConn.CloseWrite()
+        }
     }()
     go func() {
         defer wg.Done()
         io.Copy(clientConn, targetConn)
+        if tcpConn, ok := clientConn.(*net.TCPConn); ok {
+            tcpConn.CloseWrite()
+        }
     }()
     wg.Wait()
 }
