@@ -8,7 +8,7 @@ Description: Configure EtherChannel (LACP and PAgP) on Cisco IOS switches to bun
 
 ## Introduction
 
-EtherChannel bundles 2–8 physical links into a single logical interface, multiplying bandwidth and providing link-level redundancy. For IPv4 routed interfaces, an EtherChannel delivers deterministic hashing-based load balancing across member links.
+EtherChannel bundles multiple physical links into a single logical interface, multiplying aggregate bandwidth and providing link-level redundancy. For IPv4 routed interfaces, an EtherChannel delivers deterministic hashing-based load balancing across member links.
 
 ## LACP EtherChannel (Recommended - IEEE 802.3ad)
 
@@ -38,6 +38,7 @@ interface Port-channel1
 
 ```cisco
 interface range GigabitEthernet0/1 - 2
+ no ip address
  no switchport
  channel-group 2 mode active
 
@@ -51,7 +52,7 @@ interface Port-channel2
 
 ```cisco
 interface range GigabitEthernet0/3 - 4
- channel-group 3 mode desirable    ! PAgP desirable (active)
+ channel-group 3 mode desirable    ! PAgP desirable (actively negotiates)
  ! Peer should be: mode auto or desirable
 ```
 
@@ -62,10 +63,11 @@ interface range GigabitEthernet0/3 - 4
 show etherchannel load-balance
 
 ! Change load balancing algorithm
-port-channel load-balance src-dst-ip   ! Best for routed traffic
-port-channel load-balance src-dst-mac  ! Best for bridged traffic
+port-channel load-balance src-dst-ip   ! Common choice for IP-routed traffic
+port-channel load-balance src-dst-mac  ! Common choice for Layer 2 MAC-based forwarding
 
-! Available options:
+! Available options vary by platform and IOS release.
+! Common options on IOS include:
 ! dst-ip, dst-mac, src-dst-ip, src-dst-mac, src-ip, src-mac
 ```
 
@@ -91,7 +93,7 @@ show interfaces Port-channel1
 ! Group  Port-channel  Protocol    Ports
 ! ------+-------------+-----------+-------
 ! 1      Po1(SU)         LACP      Gi0/1(P) Gi0/2(P)
-! SU = Layer2, P = in-sync
+! SU = Layer2 and in use, P = bundled in port-channel
 ```
 
 ## Troubleshooting
@@ -109,4 +111,4 @@ show interfaces GigabitEthernet0/1 etherchannel
 
 ## Conclusion
 
-EtherChannel doubles or quadruples bandwidth between switches while providing automatic failover. Use LACP `active` mode on both sides for dynamic negotiation. For IPv4 routed uplinks, configure the Port-channel as a Layer 3 interface and set load-balancing to `src-dst-ip` for the best distribution of routed flows.
+EtherChannel can double or quadruple aggregate bandwidth between switches while providing automatic failover. Use LACP `active` mode on both sides for dynamic negotiation. For IPv4 routed uplinks, configure the Port-channel as a Layer 3 interface and `src-dst-ip` is a common load-balancing choice for routed flows.
