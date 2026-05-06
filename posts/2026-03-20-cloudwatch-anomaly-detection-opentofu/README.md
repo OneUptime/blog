@@ -14,12 +14,12 @@ CloudWatch Anomaly Detection uses machine learning to continuously analyze metri
 
 - OpenTofu v1.6+
 - AWS credentials with CloudWatch permissions
-- An existing CloudWatch metric with at least 2 weeks of data for effective modeling
+- An existing CloudWatch metric with historical data (CloudWatch trains on up to 2 weeks of data, but anomaly detection can be enabled with less)
 
-## Step 1: Create Anomaly Detector
+## Step 1: Create Anomaly Detection Alarm
 
 ```hcl
-# Create a CloudWatch Anomaly Detector for Lambda invocations
+# Create a CloudWatch anomaly detection alarm for Lambda invocations
 
 resource "aws_cloudwatch_metric_alarm" "lambda_anomaly" {
   alarm_name          = "${var.project_name}-lambda-invocation-anomaly"
@@ -121,7 +121,7 @@ resource "aws_cloudwatch_metric_alarm" "traffic_drop_anomaly" {
       metric_name = "Count"
       namespace   = "AWS/ApiGateway"
       period      = 300
-      stat        = "Sum"
+      stat        = "SampleCount"
       dimensions = {
         ApiName = var.api_name
         Stage   = "prod"
@@ -150,4 +150,4 @@ aws cloudwatch describe-anomaly-detectors \
 
 ## Conclusion
 
-Anomaly Detection is most valuable for metrics with clear patterns-daily/weekly cycles, business hours variations, or growth trends. Allow at least 2-3 weeks for the model to learn before trusting alerts. Use a higher standard deviation multiplier (2-3) for noisy metrics and lower (1-1.5) for stable metrics. Combine anomaly detection with absolute threshold alarms for defense in depth-anomaly detection catches unexpected deviations while absolute thresholds catch extreme violations.
+Anomaly Detection is most valuable for metrics with clear patterns-daily/weekly cycles, business hours variations, or growth trends. A new model can take up to 3 hours for the actual band to appear in graphs and up to 2 weeks to train for more accurate expected values. Use a higher standard deviation multiplier (2-3) for noisy metrics and lower (1-1.5) for stable metrics. Combine anomaly detection with absolute threshold alarms for defense in depth-anomaly detection catches unexpected deviations while absolute thresholds catch extreme violations.
