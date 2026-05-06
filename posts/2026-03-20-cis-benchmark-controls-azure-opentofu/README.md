@@ -6,20 +6,17 @@ Tags: OpenTofu, CIS Benchmark, Azure Security, Compliance, Infrastructure as Cod
 
 Description: Learn how to implement CIS Microsoft Azure Foundations Benchmark controls with OpenTofu to establish a security baseline for Azure subscriptions.
 
-The CIS Microsoft Azure Foundations Benchmark provides security guidance for Azure subscriptions. OpenTofu lets you codify these controls as Azure Policy assignments, security center settings, and resource configurations.
+The CIS Microsoft Azure Foundations Benchmark provides security guidance for Azure subscriptions. OpenTofu lets you codify many of these controls as Azure Policy assignments, Defender for Cloud settings, resource configurations, and Microsoft Entra ID policies.
 
 ## Section 1: Identity and Access Management
 
 ```hcl
-# CIS 1.1 - Enable Security Defaults or Conditional Access (requires Entra ID P1)
+# CIS 1.1 - Enable Security Defaults, or use Conditional Access if you have Entra ID P1/P2.
+# Security Defaults do not require Entra ID P1/P2.
 
-# CIS 1.22 - Ensure that 'No users are allowed to consent to apps accessing company data'
-resource "azurerm_resource_group_policy_assignment" "no_app_consent" {
-  name                 = "restrict-app-consent"
-  resource_group_id    = azurerm_resource_group.security.id
-  policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/..."
-  description          = "CIS 1.22 - Restrict user app consent"
-}
+# CIS 1.22 - User consent to apps is a Microsoft Entra authorization policy setting.
+# Configure it through Microsoft Graph / Entra ID tooling rather than
+# azurerm_resource_group_policy_assignment.
 ```
 
 ## Section 2: Microsoft Defender for Cloud
@@ -67,9 +64,10 @@ resource "azurerm_storage_account" "cis_compliant" {
   account_tier             = "Standard"
   account_replication_type = "GRS"
 
-  enable_https_traffic_only       = true  # CIS 3.1
-  min_tls_version                 = "TLS1_2"  # CIS 3.2
-  allow_nested_items_to_be_public = false     # CIS 3.5
+  https_traffic_only_enabled      = true   # CIS 3.1
+  min_tls_version                 = "TLS1_2" # CIS 3.2
+  allow_nested_items_to_be_public = false  # CIS 3.5
+  public_network_access_enabled   = false  # CIS 3.7
 }
 
 # CIS 3.7 - Ensure storage account uses private endpoints
@@ -84,6 +82,11 @@ resource "azurerm_private_endpoint" "storage" {
     private_connection_resource_id = azurerm_storage_account.cis_compliant.id
     subresource_names              = ["blob"]
     is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "storage-dns-zone-group"
+    private_dns_zone_ids = [azurerm_private_dns_zone.blob.id]
   }
 }
 ```
@@ -125,9 +128,23 @@ resource "azurerm_monitor_diagnostic_setting" "subscription" {
 
 ```hcl
 # CIS 6.3 - Ensure SSH access is restricted to known IPs
+resource "azurerm_network_security_rule" "allow_ssh_known_ips" {
+  name                        = "allow-ssh-known-ips"
+  priority                    = 100
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "22"
+  source_address_prefixes     = var.admin_cidrs
+  destination_address_prefix  = "*"
+  resource_group_name         = azurerm_resource_group.main.name
+  network_security_group_name = azurerm_network_security_group.main.name
+}
+
 resource "azurerm_network_security_rule" "deny_ssh_all" {
   name                        = "deny-ssh-internet"
-  priority                    = 4096
+  priority                    = 110
   direction                   = "Inbound"
   access                      = "Deny"
   protocol                    = "Tcp"
@@ -142,4 +159,4 @@ resource "azurerm_network_security_rule" "deny_ssh_all" {
 
 ## Conclusion
 
-CIS Azure Benchmark controls span IAM, Defender for Cloud, storage, databases, logging, and networking. Use `azurerm_security_center_subscription_pricing` to enable Defender plans, enforce storage security settings at resource creation, and use Azure Policy assignments for organization-wide enforcement. Enable diagnostic settings to feed activity logs to Log Analytics for SIEM integration.
+CIS Azure Benchmark controls span IAM, Defender for Cloud, storage, databases, logging, and networking. Use `azurerm_security_center_subscription_pricing` to enable Defender plans, enforce storage security settings at resource creation, and use Azure Policy assignments for organization-wide enforcement where the control applies to Azure resources. Tenant-level Microsoft Entra controls, such as app consent, need to be managed through Entra ID / Microsoft Graph tooling. Enable diagnostic settings to feed activity logs to Log Analytics for SIEM integration.
