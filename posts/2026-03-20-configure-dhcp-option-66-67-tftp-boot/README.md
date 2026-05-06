@@ -13,7 +13,7 @@ Description: DHCP option 66 delivers the TFTP server hostname or IP and option 6
 | 66 | RFC 2132 | TFTP server name/IP | String |
 | 67 | RFC 2132 | Bootfile name | String |
 
-These options inform DHCP clients where to find their boot file and what file to load. Combined with `siaddr` (TFTP server IP in the DHCP header), they form the basis of PXE and phone provisioning.
+These options inform DHCP clients where to find their boot file and what file to load. Many PXE clients also rely on the BOOTP `next-server`/`siaddr` and `file` header fields, so administrators often set both the DHCP options and the BOOTP fields for compatibility.
 
 ## ISC dhcpd Configuration
 
@@ -30,21 +30,25 @@ subnet 10.0.0.0 netmask 255.255.255.0 {
     option tftp-server-name "10.0.0.10";
 
     # Option 67: Boot filename
-    filename "pxelinux.0";
+    option bootfile-name "pxelinux.0";
 
-    # Also set next-server (siaddr) for compatibility
+    # Also set BOOTP next-server and filename for compatibility
     next-server 10.0.0.10;
+    filename "pxelinux.0";
 }
 
-# Differentiate UEFI vs BIOS using vendor class
+# Differentiate UEFI vs BIOS using the PXE vendor-class prefix
 class "UEFI-64" {
-    match if option vendor-class-identifier = "PXEClient:Arch:00007";
-    filename "shimx64.efi";                 # UEFI boot file
+    match if substring(option vendor-class-identifier, 0, 20) = "PXEClient:Arch:00007"
+          or substring(option vendor-class-identifier, 0, 20) = "PXEClient:Arch:00009";
+    option bootfile-name "shimx64.efi";     # Example UEFI boot file
+    filename "shimx64.efi";
     option tftp-server-name "10.0.0.10";
 }
 
 class "BIOS" {
-    match if option vendor-class-identifier = "PXEClient:Arch:00000";
+    match if substring(option vendor-class-identifier, 0, 20) = "PXEClient:Arch:00000";
+    option bootfile-name "pxelinux.0";
     filename "pxelinux.0";                  # BIOS boot file
     option tftp-server-name "10.0.0.10";
 }
@@ -59,14 +63,18 @@ class "BIOS" {
 enable-tftp
 tftp-root=/var/lib/tftpboot
 
-# Option 66 and 67 via dhcp-boot
-# dhcp-boot=[filename],[tftp-hostname],[tftp-ip]
-dhcp-boot=pxelinux.0,tftpserver,10.0.0.10
+# Send DHCP options 66 and 67 explicitly
+dhcp-option-force=66,"10.0.0.10"
+dhcp-option-force=67,"pxelinux.0"
+
+# Also set BOOTP next-server and filename for PXE compatibility
+dhcp-boot=tag:!efi-x86_64,pxelinux.0,,10.0.0.10
 
 # UEFI support with multiple tags
 dhcp-match=set:efi-x86_64,option:client-arch,7
-dhcp-boot=tag:efi-x86_64,shimx64.efi,tftpserver,10.0.0.10
-dhcp-boot=tag:!efi-x86_64,pxelinux.0,tftpserver,10.0.0.10
+dhcp-match=set:efi-x86_64,option:client-arch,9
+dhcp-option-force=tag:efi-x86_64,67,"shimx64.efi"
+dhcp-boot=tag:efi-x86_64,shimx64.efi,,10.0.0.10
 ```
 
 ## For VoIP Phones (Generic)
@@ -76,9 +84,10 @@ dhcp-boot=tag:!efi-x86_64,pxelinux.0,tftpserver,10.0.0.10
 subnet 10.0.30.0 netmask 255.255.255.0 {
     range 10.0.30.10 10.0.30.250;
     option routers 10.0.30.1;
-    next-server 10.0.0.100;                 # TFTP/provisioning server
-    option tftp-server-name "10.0.0.100";  # Option 66
-    filename "phone_config.xml";            # Option 67 (phone config)
+    option tftp-server-name "10.0.0.100";   # Option 66
+    option bootfile-name "phone_config.xml"; # Option 67
+    next-server 10.0.0.100;                 # BOOTP next-server
+    filename "phone_config.xml";            # BOOTP boot file
     default-lease-time 3600;
 }
 ```
@@ -87,18 +96,18 @@ subnet 10.0.30.0 netmask 255.255.255.0 {
 
 ```bash
 # Check which options a client received
-# Method 1: verbose dhclient
-sudo dhclient -v eth0 2>&1 | grep -E "option|tftp|boot"
+# Method 1: verbose dhclient (useful for troubleshooting, but packet capture is more reliable)
+sudo dhclient -v eth0 2>&1 | grep -Ei "dhcp|tftp|boot"
 
 # Method 2: tshark
-tshark -i eth0 -Y "bootp.option.type == 66 || bootp.option.type == 67" \
-    -T fields -e bootp.option.tftp_server_name \
-               -e bootp.option.bootfile_name
+tshark -i eth0 -Y "dhcp.option.type == 66 || dhcp.option.type == 67" \
+    -T fields -e dhcp.option.tftp_server_name \
+               -e dhcp.option.bootfile_name
 ```
 
 ## Key Takeaways
 
-- Option 66 (string) and `siaddr` (binary IP in header) are redundant; use both for compatibility.
-- Option 67 defines the boot filename; combine with option 66 for full PXE provisioning.
+- Option 66 (string) and `next-server`/`siaddr` often serve the same purpose but are carried differently; set both when you need broad PXE compatibility.
+- Option 67 and the BOOTP `filename` field likewise overlap; setting both helps clients that expect one form or the other.
 - dnsmasq has a built-in TFTP server (`enable-tftp`) that simplifies PXE setups.
-- For UEFI boot, use vendor class matching to serve `shimx64.efi`; for BIOS, serve `pxelinux.0`.
+- For UEFI boot, match the PXE architecture and serve an appropriate `.efi` loader such as `shimx64.efi`; for BIOS, serve `pxelinux.0`.
