@@ -29,7 +29,8 @@ backend ipv6_web_servers
     balance roundrobin
 
     # HTTP health check
-    option httpchk GET /health HTTP/1.1\r\nHost:\ example.com
+    option httpchk GET /health HTTP/1.1
+    http-check send hdr Host example.com
 
     # Require specific HTTP status code
     http-check expect status 200
@@ -53,8 +54,8 @@ backend ipv6_api_servers
     # Accept multiple valid responses
     http-check expect rstatus ^(200|204)$
 
-    server api1 [2001:db8::api1]:3000 check inter 10s
-    server api2 [2001:db8::api2]:3000 check inter 10s
+    server api1 [2001:db8::21]:3000 check inter 10s
+    server api2 [2001:db8::22]:3000 check inter 10s
 ```
 
 ## SSL Health Check for HTTPS Backends
@@ -62,14 +63,14 @@ backend ipv6_api_servers
 ```haproxy
 backend ipv6_https_servers
     mode http
-    option ssl-hello-chk
 
     # HTTPS with certificate verification
-    option httpchk GET /health
+    option httpchk GET /health HTTP/1.1
+    http-check send hdr Host app.example.com
     http-check expect status 200
 
     server app1 [2001:db8::10]:443 check ssl verify required \
-        ca-file /etc/ssl/certs/ca-bundle.crt
+        ca-file @system-ca
 
     # Without certificate verification (for self-signed certs)
     server app2 [2001:db8::11]:443 check ssl verify none
@@ -96,12 +97,12 @@ backend ipv6_servers
 ```haproxy
 backend ipv6_servers
     # Use an external health check agent on a separate port
-    server app1 [2001:db8::10]:8080 check agent-check agent-addr [2001:db8::10] agent-port 9999
+    server app1 [2001:db8::10]:8080 check agent-check agent-addr 2001:db8::10 agent-port 9999
 
-    # The agent at port 9999 returns:
-    # "ready\n" = server is healthy
-    # "down\n"  = server is unhealthy
-    # "drain\n" = server is draining
+    # The agent at port 9999 can return:
+    # "up\n"    = mark the server UP if regular checks also pass
+    # "down\n"  = mark the server DOWN
+    # "drain\n" = put the server in drain mode
 ```
 
 ## View Health Check Status
@@ -125,9 +126,9 @@ frontend stats
     stats auth admin:password
 EOF
 
-# Access: http://[2001:db8::haproxy]:8404/stats
+# Access: http://[2001:db8::100]:8404/stats
 ```
 
 ## Summary
 
-Configure HAProxy health checks for IPv6 backends with `server app1 [2001:db8::10]:PORT check`. Use `option httpchk GET /health` with `http-check expect status 200` for HTTP-level checks. Tune timing with `inter`, `fastinter`, `downinter`, `rise`, and `fall` parameters. For HTTPS backends, add `ssl verify required` or `ssl verify none`. Monitor health status via `echo "show servers state" | socat stdio /var/run/haproxy/admin.sock` or the stats web interface.
+Configure HAProxy health checks for IPv6 backends with `server app1 [2001:db8::10]:PORT check`. Use `option httpchk GET /health HTTP/1.1` with `http-check send hdr Host example.com` and `http-check expect status 200` for HTTP-level checks. Tune timing with `inter`, `fastinter`, `downinter`, `rise`, and `fall` parameters. For HTTPS backends, add `ssl verify required ca-file @system-ca` or `ssl verify none`. Monitor health status via `echo "show servers state" | socat stdio /var/run/haproxy/admin.sock` or the stats web interface.
