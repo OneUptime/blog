@@ -16,18 +16,16 @@ cAdvisor (Container Advisor) is a Google-maintained tool that automatically disc
 - Memory usage (working set, resident set, limits)
 - Network I/O (bytes sent/received, packets, errors)
 - Filesystem usage and I/O
-- Container start/stop events
+- Container start time and OOM events
 
 ## Deploy cAdvisor via Portainer
 
 **Stacks → Add Stack → cadvisor**
 
 ```yaml
-version: "3.8"
-
 services:
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: ghcr.io/google/cadvisor:v0.56.2
     container_name: cadvisor
     restart: unless-stopped
     privileged: true
@@ -45,7 +43,7 @@ services:
       - monitoring
     command:
       # Optional: reduce cardinality by disabling unused collectors
-      - '--disable_metrics=percpu,sched,tcp,udp,disk,diskIO,hugetlb,referenced_memory,resctrl,cpuset,advtcp,memory_numa'
+      - '--disable_metrics=percpu,sched,tcp,udp,hugetlb,referenced_memory,resctrl,cpuset,advtcp,memory_numa'
 
 networks:
   monitoring:
@@ -53,7 +51,7 @@ networks:
     external: true
 ```
 
-Note: `privileged: true` is required for cAdvisor to access host kernel metrics.
+Note: The external `monitoring` network must already exist, and your Prometheus container must also be attached to it for `cadvisor:8080` to resolve. The `privileged: true` and `/dev/kmsg` settings match cAdvisor's current Docker quick-start for full host and container metrics.
 
 ## Verify cAdvisor Is Working
 
@@ -80,9 +78,9 @@ scrape_configs:
     static_configs:
       - targets: ['cadvisor:8080']
     metric_relabel_configs:
-      # Keep only container metrics (drop empty container names)
-      - source_labels: [container]
-        regex: '^$'
+      # Keep only container metrics
+      - source_labels: [id]
+        regex: '^/?$'
         action: drop
 ```
 
@@ -101,14 +99,18 @@ scrape_configs:
 Import dashboard ID `14282` (cAdvisor Exporter) or use these queries:
 
 ```promql
-# Container CPU usage (%)
-rate(container_cpu_usage_seconds_total{name!=""}[5m]) * 100
+# Container CPU usage (cores)
+sum by (name) (
+  rate(container_cpu_usage_seconds_total{name!=""}[5m])
+)
 
 # Container memory usage
 container_memory_working_set_bytes{name!=""}
 
-# Network receive rate
-rate(container_network_receive_bytes_total{name!=""}[5m])
+# Network receive rate (bytes/sec)
+sum by (name) (
+  rate(container_network_receive_bytes_total{name!=""}[5m])
+)
 ```
 
 ## Performance Tuning
@@ -117,10 +119,10 @@ cAdvisor can be resource-intensive. Reduce overhead:
 
 ```yaml
 command:
-  # Lower housekeeping interval
+  # Increase housekeeping interval
   - '--housekeeping_interval=30s'
-  # Reduce storage duration
-  - '--storage_duration=2m'
+  # Reduce local storage duration
+  - '--storage_duration=1m'
   # Disable unused collectors
   - '--disable_metrics=hugetlb,referenced_memory,resctrl,cpuset'
 ```
