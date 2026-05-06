@@ -8,7 +8,7 @@ Description: Understand the IPv6 benchmarking address space 2001:2::/48 (RFC 518
 
 ## Introduction
 
-RFC 5180 allocates `2001:2::/48` as the IPv6 benchmarking address space. Network performance tests using iperf3, netperf, and similar tools should use addresses from this range to clearly identify test traffic and avoid interference with production systems.
+RFC 5180 allocates `2001:2::/48` as the IPv6 benchmarking address space. Network performance tests using iperf3, netperf, and similar tools should use addresses from this range in isolated lab environments to clearly identify test traffic and avoid conflicts with production systems.
 
 ## Key Properties
 
@@ -21,16 +21,16 @@ RFC 5180 allocates `2001:2::/48` as the IPv6 benchmarking address space. Network
 ## Using Benchmarking Addresses in Tests
 
 ```bash
-# Configure benchmarking addresses on test interfaces
+# On the server host
+ip -6 addr add 2001:2::2/48 dev eth0
+iperf3 -s -B 2001:2::2
 
+# On the client host
 ip -6 addr add 2001:2::1/48 dev eth0
-ip -6 addr add 2001:2::2/48 dev eth1
-
-# Run iperf3 test using benchmarking addresses
 iperf3 -6 -B 2001:2::1 -c 2001:2::2 -t 60
 
-# Use for latency benchmarks
-ping6 -c 100 -I 2001:2::1 2001:2::2
+# Use for latency benchmarks from the client host
+ping -6 -c 100 -I 2001:2::1 2001:2::2
 ```
 
 ## Filtering at Network Boundaries
@@ -68,4 +68,4 @@ print(is_benchmarking_address("2001:db8::1"))   # False
 
 ## Conclusion
 
-Always use `2001:2::/48` for IPv6 performance benchmarking to clearly demarcate test traffic from production. Network operators should filter this prefix at borders. Use OneUptime to separate benchmarking traffic from production monitoring dashboards.
+Always use `2001:2::/48` for IPv6 performance benchmarking in isolated test environments to clearly demarcate test traffic from production. Network operators should filter this prefix at borders. Use OneUptime to separate benchmarking traffic from production monitoring dashboards.
