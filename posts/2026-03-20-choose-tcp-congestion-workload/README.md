@@ -17,13 +17,13 @@ graph TD
     A[What's your primary concern?] --> B[Maximum throughput]
     A --> C[Low latency]
     A --> D[Stability/fairness]
-    B --> E{RTT > 50ms or loss > 0.5%?}
-    E -->|Yes| F[Use BBR]
+    B --> E{Higher RTT or random loss?}
+    E -->|Yes| F[Test BBR first]
     E -->|No| G[CUBIC is fine]
     C --> H{Latency during congestion?}
     H -->|Critical| I[BBR + fq qdisc]
     H -->|Important| J[CUBIC + fq_codel]
-    D --> K[CUBIC - better fairness between flows]
+    D --> K[CUBIC - mature, widely deployed baseline]
 ```
 
 ## By Network Type
@@ -36,28 +36,29 @@ iperf3 -c target-host -t 10
 
 # === Datacenter / LAN ===
 # RTT: < 5ms, Loss: near 0%, Bandwidth: 10-100 Gbps
-# Best: CUBIC (works well, BBR brings marginal benefit)
+# Usually: CUBIC (works well; benchmark BBR if you want to compare)
 # Config:
 sysctl -w net.ipv4.tcp_congestion_control=cubic
 
 # === Internet / WAN ===
 # RTT: 20-100ms, Loss: 0-1%, Bandwidth: 1-10 Gbps
-# Best: BBR (significantly better throughput and latency)
+# Strong candidate: BBR (often better on higher-RTT or randomly lossy paths)
 # Config:
 modprobe tcp_bbr
 sysctl -w net.ipv4.tcp_congestion_control=bbr
-sysctl -w net.core.default_qdisc=fq
+sysctl -w net.core.default_qdisc=fq  # Default for newly created qdiscs
+tc qdisc replace dev IFACE root fq   # Apply fq immediately to an existing interface
 
 # === Long-haul / Satellite ===
 # RTT: 100-600ms, Loss: variable, Bandwidth: varies
-# Best: BBR (dramatically better, CUBIC becomes nearly unusable at 500ms+ RTT)
+# Strong candidate: BBR (CUBIC can need extremely low loss rates to sustain high throughput on very high-BDP paths)
 # Config: Same as WAN above
 
 # === Mobile / WiFi ===
 # RTT: 20-100ms, Loss: 1-5% (from wireless, not congestion)
-# Problem: CUBIC drastically reduces CWND for wireless loss that isn't congestion
-# Best: BBR (ignores loss, uses bandwidth estimate instead)
-# Config: BBR with fq
+# Problem: CUBIC is loss-based, so wireless loss still reduces CWND
+# Strong candidate: BBR (uses delivery-rate and RTT measurements rather than loss as its primary signal)
+# Config: BBR, often paired with fq on busy hosts
 ```
 
 ## By Application Type
@@ -65,21 +66,21 @@ sysctl -w net.core.default_qdisc=fq
 ```bash
 # === Bulk File Transfer ===
 # Goal: maximize throughput
-# Best: BBR on WAN, CUBIC on LAN
+# Usually: BBR on WAN, CUBIC on LAN
 # Key settings:
 sysctl -w net.ipv4.tcp_slow_start_after_idle=0  # Don't reset CWND
 # Large buffers for BDP
 
 # === Web Serving (many short connections) ===
 # Goal: minimize TTFB (time to first byte), good concurrency
-# Best: BBR (better slow-start behavior)
-# Config:
+# Best: benchmark CUBIC and BBR; short flows often depend more on initial window
+# Example BBR config:
 sysctl -w net.ipv4.tcp_congestion_control=bbr
-ip route change default via <gw> initcwnd 20  # Large initial window
+ip route change default via GATEWAY_IP initcwnd 10  # Per-route override; test carefully
 
 # === Video Streaming ===
 # Goal: stable, sufficient throughput; tolerate some latency
-# Best: BBR (pacing prevents bursty sending that causes rebuffering)
+# Strong candidate: BBR (pacing helps avoid bursty sending on busy links)
 # Note: BBR's packet pacing naturally helps streaming
 
 # === Database / Transactional ===
@@ -96,28 +97,34 @@ ip route change default via <gw> initcwnd 20  # Large initial window
 ```bash
 #!/bin/bash
 # Comprehensive algorithm comparison for your specific workload
+# Run as root; this changes the system-wide algorithm for new TCP connections
 
 SERVER="10.20.0.5"
 ALGORITHMS=("cubic" "bbr")
 
 for algo in "${ALGORITHMS[@]}"; do
     # Check availability
-    if ! grep -q "$algo" /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
+    if ! grep -qw "$algo" /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
         modprobe tcp_$algo 2>/dev/null
     fi
 
-    sysctl -w net.ipv4.tcp_congestion_control=$algo >/dev/null 2>&1
+    if ! sysctl -w net.ipv4.tcp_congestion_control="$algo" >/dev/null 2>&1; then
+        echo "Skipping $algo (not available)"
+        continue
+    fi
 
     echo "=== $algo ==="
     # Throughput
-    iperf3 -c $SERVER -t 20 2>/dev/null | grep "sender"
+    iperf3 -c "$SERVER" -t 20 2>/dev/null | grep "sender"
     # Latency under load
-    (ping -c 20 -i 1 $SERVER &>/tmp/ping_$algo.txt &)
-    iperf3 -c $SERVER -t 20 &>/dev/null
+    ping -c 20 -i 1 "$SERVER" >/tmp/ping_$algo.txt 2>&1 &
+    ping_pid=$!
+    iperf3 -c "$SERVER" -t 20 >/dev/null 2>&1
+    wait "$ping_pid"
     grep "rtt" /tmp/ping_$algo.txt | tail -1
 done
 ```
 
 ## Conclusion
 
-The best congestion control for most internet-facing services in 2026 is BBR with `fq` qdisc. It provides better throughput on any path with measurable latency, better latency under load due to pacing, and better behavior on lossy wireless links. CUBIC remains excellent for pure LAN/datacenter scenarios. Run the comparison script on your actual network before making a production change.
+For many internet-facing services in 2026, BBR is a strong candidate to test on Linux, often paired with `fq` on busy hosts. It often improves throughput on higher-RTT or randomly lossy paths and can reduce latency under load due to pacing. CUBIC remains an excellent, widely deployed baseline and is still well-suited to pure LAN/datacenter scenarios. Run the comparison script on your actual network before making a production change.
