@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: CFEngine, IPv6, Configuration Management, Policy, Automation
 
-Description: A guide to configuring IPv6 network settings using CFEngine policy language (CFScript/cf3), including sysctl parameters, file management, and command execution for IPv6 setup.
+Description: A guide to configuring IPv6 network settings using the CFEngine policy language, including sysctl parameters, file management, and command execution for IPv6 setup.
 
 CFEngine is one of the oldest configuration management tools, designed for high scalability and convergence. Its policy language (based on promise theory) is well-suited for maintaining consistent IPv6 configuration across large server fleets.
 
@@ -15,6 +15,8 @@ CFEngine is one of the oldest configuration management tools, designed for high 
 ├── promises.cf          # Main policy
 ├── ipv6/
 │   ├── ipv6_sysctl.cf   # Kernel parameters
+│   ├── ipv6_netplan.cf  # Netplan configuration
+│   ├── ipv6_commands.cf # Runtime sysctl commands
 │   ├── ipv6_firewall.cf # Firewall rules
 │   └── ipv6_common.cf   # Shared variables
 └── def.cf               # Site definitions
@@ -35,7 +37,7 @@ bundle common ipv6_config {
     "ipv6_prefix"         string => "2001:db8::/32";
 
   classes:
-    # Define class based on role
+    # Example classes
     "is_router"  expression => "any";
     "is_webserver" expression => "any";
 }
@@ -98,6 +100,7 @@ bundle agent ipv6_netplan {
       template_method => "mustache",
       template_data => parsejson('{
         "interface": "eth0",
+        "dhcp6": true,
         "accept_ra": true,
         "addresses": []
       }'),
@@ -125,10 +128,10 @@ bundle agent ipv6_kernel_params {
   commands:
     # Set IPv6 parameters via sysctl command
     "/sbin/sysctl -w net.ipv6.conf.all.disable_ipv6=0"
-      if => not(returnszero("/sbin/sysctl net.ipv6.conf.all.disable_ipv6 | grep -q '= 0'", "bash"));
+      if => not(returnszero("/sbin/sysctl net.ipv6.conf.all.disable_ipv6 | grep -q '= 0'", "useshell"));
 
     "/sbin/sysctl -w net.ipv6.conf.all.accept_ra=1"
-      if => not(returnszero("/sbin/sysctl net.ipv6.conf.all.accept_ra | grep -q '= 1'", "bash"));
+      if => not(returnszero("/sbin/sysctl net.ipv6.conf.all.accept_ra | grep -q '= 1'", "useshell"));
 }
 ```
 
@@ -150,7 +153,8 @@ bundle agent ipv6_firewall {
 
   commands:
     ip6tables_changed::
-      "/sbin/ip6tables-restore < /etc/ip6tables.rules"
+      "/sbin/ip6tables-restore"
+        args => "/etc/ip6tables.rules",
         comment => "Load IPv6 firewall rules";
 }
 
