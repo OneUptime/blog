@@ -21,9 +21,13 @@ Listen [2001:db8::10]:80
 # Listen on IPv6 loopback
 Listen [::1]:80
 
-# Listen on all IPv4 and IPv6 addresses
-Listen 80        # IPv4: 0.0.0.0:80
-Listen [::]:80   # IPv6: all interfaces
+# Listen on all interfaces on port 80
+Listen 80
+
+# If Apache is using separate IPv4 and IPv6 sockets,
+# use explicit listeners for each address family instead:
+# Listen 0.0.0.0:80
+# Listen [::]:80
 ```
 
 ## Apache IPv6 Configuration File
@@ -31,18 +35,15 @@ Listen [::]:80   # IPv6: all interfaces
 ```apache
 # /etc/apache2/ports.conf
 
-# Listen on both IPv4 and IPv6 port 80
-Listen 80
+# Listen on all IPv6 addresses on port 80
 Listen [::]:80
 
 # HTTPS
 <IfModule ssl_module>
-    Listen 443
     Listen [::]:443
 </IfModule>
 
 <IfModule mod_gnutls.c>
-    Listen 443
     Listen [::]:443
 </IfModule>
 ```
@@ -50,24 +51,28 @@ Listen [::]:80
 ## Dual-Stack vs IPv6-Only
 
 ```apache
-# Dual-stack: respond to both IPv4 and IPv6
+# Dual-stack on platforms that use separate IPv4 and IPv6 sockets
 Listen 0.0.0.0:80
 Listen [::]:80
 
+# On many Linux builds, Listen [::]:80 can already accept IPv4
+# via IPv4-mapped IPv6 addresses, so adding both may overlap.
+
 # IPv6-only server
 Listen [::]:80
-# (Don't add Listen 80 or Listen 0.0.0.0:80)
+# (On platforms where [::]:80 also accepts IPv4, this is IPv6-only
+# only when Apache is built/configured without IPv4-mapped addresses.)
 
 # Check if Apache is listening
-# ss -tlnp | grep apache
-# netstat -tlnp | grep apache
+# ss -tlnp | grep -E 'apache2|httpd'
+# netstat -tlnp | grep -E 'apache2|httpd'
 ```
 
 ## VirtualHost with IPv6
 
 ```apache
-# IPv6-only virtual host
-<VirtualHost [::]:80>
+# Virtual host bound to a specific IPv6 address
+<VirtualHost [2001:db8::10]:80>
     ServerName example.com
     DocumentRoot /var/www/html/example
     ErrorLog ${APACHE_LOG_DIR}/example-error.log
@@ -76,25 +81,24 @@ Listen [::]:80
 
 # Dual-stack virtual host
 <VirtualHost *:80>
-    # * matches both IPv4 and IPv6 Listen directives
+    # * matches any address Apache is listening on for port 80
     ServerName example.com
     DocumentRoot /var/www/html/example
 </VirtualHost>
 ```
 
-## Enable IPv6 Module
+## Verify IPv6 Support
 
 ```bash
-# Check if IPv6 is supported
-apache2 -V | grep IPv6
+# Inspect Apache build parameters
+apache2ctl -V
 # or
-httpd -V | grep IPv6
-# Should show: "IPv6 Listening" or "IPv6 support" in output
+httpd -V
 
-# On Debian/Ubuntu - enable IPv6 module is usually built-in
-# On RHEL/CentOS - also usually built-in
-# Verify via configuration
-grep -r 'IPv6\|Listen.*\[:' /etc/apache2/
+# Verify that an IPv6 Listen directive is configured
+grep -R '^[[:space:]]*Listen.*\[:' /etc/apache2/
+# or on RHEL/CentOS
+grep -R '^[[:space:]]*Listen.*\[:' /etc/httpd/
 ```
 
 ## Apply and Verify
@@ -111,8 +115,8 @@ systemctl restart apache2
 systemctl restart httpd
 
 # Verify IPv6 listening
-ss -6 -tlnp | grep apache
-# Expected: tcp6  LISTEN  0  128  [::]:80  [::]:*  apache2
+ss -6 -tlnp | grep -E 'apache2|httpd'
+# Expected: a LISTEN entry for [::]:80 or your configured IPv6 address
 
 # Test with curl
 curl -6 http://[::1]/
@@ -121,4 +125,4 @@ curl -6 http://[2001:db8::10]/
 
 ## Summary
 
-Configure Apache to listen on IPv6 by adding `Listen [::]:80` to `/etc/apache2/ports.conf`. For dual-stack, include both `Listen 80` (IPv4) and `Listen [::]:80` (IPv6). Use `<VirtualHost [::]:80>` for IPv6-only virtual hosts or `<VirtualHost *:80>` to match both. Test syntax with `apache2ctl configtest` and verify with `ss -6 -tlnp | grep apache`.
+Configure Apache to listen on IPv6 by adding `Listen [::]:80` to `/etc/apache2/ports.conf` or `httpd.conf`. On platforms that use separate IPv4 and IPv6 sockets, add both `Listen 0.0.0.0:80` and `Listen [::]:80`; on many Linux builds, `Listen [::]:80` may already accept IPv4 via mapped addresses. Use `<VirtualHost [2001:db8::10]:80>` for a specific IPv6 address or `<VirtualHost *:80>` to match any listened-on address. Test syntax with `apache2ctl configtest` and verify with `ss -6 -tlnp | grep -E 'apache2|httpd'`.
