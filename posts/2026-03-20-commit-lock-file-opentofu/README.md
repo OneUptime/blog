@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Lock File, Version Control, Git, Best Practice, Terraform.lock.hcl, Infrastructure as Code
 
-Description: Learn why committing the .terraform.lock.hcl dependency lock file to version control is a critical best practice for reproducible OpenTofu deployments and how to set up your team to manage it...
+Description: Learn why committing the .terraform.lock.hcl dependency lock file to version control is a critical best practice for consistent provider installation in OpenTofu and how to set up your team to manage it...
 
 ---
 
-The `.terraform.lock.hcl` file is not a build artifact - it's a dependency specification. Committing it to version control ensures reproducible deployments, prevents silent provider upgrades, and provides a change history for infrastructure dependencies just like `package-lock.json` in Node.js or `Pipfile.lock` in Python.
+The `.terraform.lock.hcl` file is not a build artifact - it's a provider dependency specification. Committing it to version control helps keep provider installation reproducible, prevents silent provider upgrades, and provides a change history for infrastructure provider dependencies just like `package-lock.json` in Node.js or `Pipfile.lock` in Python.
 
 ## Why Commit the Lock File
 
@@ -20,7 +20,7 @@ graph TD
 
     E[With lock file committed] --> F[tofu init uses<br/>exact pinned version]
     F --> G[Provider 5.40 everywhere<br/>dev = staging = prod]
-    G --> H[Reproducible deployments]
+    G --> H[Consistent provider versions]
 ```
 
 ## The Problem Without a Committed Lock File
@@ -29,7 +29,7 @@ graph TD
 # Scenario: Version constraint "~> 5.0" allows any 5.x version
 
 # Developer runs tofu init on Monday - gets 5.40.0
-# CI/CD runs tofu apply on Friday - gets 5.41.0 (released Tuesday)
+# CI/CD runs tofu init on Friday - gets 5.41.0 (released Tuesday)
 # The Friday deployment uses different provider code than tested on Monday
 
 # This can cause:
@@ -44,7 +44,7 @@ graph TD
 ```gitignore
 # .gitignore - DO NOT add .terraform.lock.hcl to this file
 
-# These should be ignored (local cache):
+# These should be ignored (workspace-local files):
 .terraform/
 *.tfstate
 *.tfstate.backup
@@ -53,8 +53,6 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
-.terraformrc
-
 # DO NOT IGNORE:
 # .terraform.lock.hcl - commit this file!
 ```
@@ -62,7 +60,7 @@ override.tf.json
 ## Lock File as Dependency Audit Trail
 
 ```bash
-# The lock file provides a full history of dependency changes
+# The lock file provides a full history of provider dependency changes
 
 git log --oneline .terraform.lock.hcl
 # abc1234 Upgrade AWS provider to 5.45.0
@@ -81,17 +79,17 @@ git show abc1234:.terraform.lock.hcl | diff - .terraform.lock.hcl
 tofu init
 
 tofu providers lock \
-  -platform=linux/amd64 \
-  -platform=linux/arm64 \
-  -platform=darwin/amd64 \
-  -platform=darwin/arm64
+  -platform=linux_amd64 \
+  -platform=linux_arm64 \
+  -platform=darwin_amd64 \
+  -platform=darwin_arm64
 
 # 2. Commit everything
 git add .terraform.lock.hcl providers.tf
 git commit -m "Add OpenTofu lock file with all platform checksums"
 
 # 3. Verify .gitignore doesn't exclude the lock file
-grep -n "lock" .gitignore  # Should not match .terraform.lock.hcl
+grep -n "\.terraform\.lock\.hcl" .gitignore  # Should return no matches
 ```
 
 ## CI/CD: Enforce Lock File Usage
@@ -101,31 +99,23 @@ grep -n "lock" .gitignore  # Should not match .terraform.lock.hcl
 jobs:
   plan:
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
         with:
-          tofu_version: "1.6.x"
+          tofu_version: "1.11.x"
 
-      # CORRECT: init without -upgrade respects the lock file
+      # CORRECT: init without -upgrade respects the lock file, and
+      # -lockfile=readonly makes CI fail instead of rewriting it
       - name: OpenTofu Init
-        run: tofu init
+        run: tofu init -lockfile=readonly
         env:
           TF_INPUT: "false"
 
       # WRONG: this would upgrade providers and may cause unexpected diffs
       # - name: OpenTofu Init
       #   run: tofu init -upgrade
-
-      - name: Detect lock file drift
-        run: |
-          # If lock file changed during init, it wasn't committed correctly
-          if ! git diff --quiet .terraform.lock.hcl; then
-            echo "ERROR: Lock file changed during init. Commit the updated lock file:"
-            echo "  tofu init && git add .terraform.lock.hcl && git commit"
-            exit 1
-          fi
 
       - name: OpenTofu Plan
         run: tofu plan
@@ -156,15 +146,13 @@ git commit -m "Upgrade AWS provider: 5.40.0 -> 5.45.0
 ## Lock File in Monorepo Structure
 
 ```bash
-# Each OpenTofu module has its own lock file
+# Each root OpenTofu configuration has its own lock file
 infrastructure/
 ├── modules/
 │   ├── vpc/
-│   │   ├── providers.tf
-│   │   └── .terraform.lock.hcl  ← Commit this
+│   │   └── providers.tf
 │   └── eks/
-│       ├── providers.tf
-│       └── .terraform.lock.hcl  ← Commit this
+│       └── providers.tf
 └── environments/
     ├── dev/
     │   ├── providers.tf
@@ -173,13 +161,14 @@ infrastructure/
         ├── providers.tf
         └── .terraform.lock.hcl  ← Commit this
 
-# Each lock file is independent - different modules can use different provider versions
+# The lock file belongs in the root module working directory, not each child module
+# Each root configuration's lock file is independent
 ```
 
 ## Best Practices
 
 - Never add `.terraform.lock.hcl` to `.gitignore` - this is the most common lock file mistake. The lock file is a critical part of your configuration, not a build artifact.
 - Commit the lock file at the same time as `providers.tf` changes - having one without the other in a commit makes it harder to understand why the lock file changed.
-- In CI/CD, run `tofu init` (not `tofu init -upgrade`) and fail if the lock file changes - this prevents CI from silently using upgraded provider versions that weren't reviewed.
+- In CI/CD, run `tofu init -lockfile=readonly` (and never `tofu init -upgrade`) - this prevents CI from silently using upgraded provider versions or rewriting the committed lock file.
 - Include a meaningful commit message when the lock file changes - "Upgrade AWS provider 5.40 → 5.45, tested in dev" is far more useful than "Update lock file".
 - Review lock file changes in PRs the same way you review application dependency upgrades - a provider upgrade is an infrastructure dependency change that can affect production behavior.
