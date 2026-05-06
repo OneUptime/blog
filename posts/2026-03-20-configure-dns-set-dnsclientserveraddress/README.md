@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Window, PowerShell, DNS, IPv4, Set-DnsClientServerAddress, Network Configuration
+Tags: Windows, PowerShell, DNS, IPv4, Set-DnsClientServerAddress, Network Configuration
 
 Description: Configure primary and secondary DNS servers on Windows network adapters using the Set-DnsClientServerAddress PowerShell cmdlet for automated, scriptable DNS management.
 
 ## Introduction
 
-`Set-DnsClientServerAddress` is the PowerShell cmdlet for configuring DNS servers on Windows adapters. It replaces manual GUI configuration and the `netsh` approach with a cleaner, scriptable interface.
+`Set-DnsClientServerAddress` is the PowerShell cmdlet for configuring DNS servers on Windows adapters. It replaces manual GUI configuration with a cleaner, PowerShell-native interface and offers a more modern alternative to `netsh`.
 
 ## Setting DNS Servers
 
@@ -55,7 +55,7 @@ Set-DnsClientServerAddress `
 Get-DnsClientServerAddress -InterfaceAlias "Ethernet"
 
 # Or
-ipconfig /all | Select-String "DNS Servers"
+ipconfig /all
 ```
 
 ## Configuring DNS on All Adapters at Once
@@ -87,8 +87,8 @@ Resolve-DnsName "google.com"
 
 ```cmd
 :: Set DNS with netsh
-netsh interface ipv4 set dns name="Ethernet" source=static address=8.8.8.8
-netsh interface ipv4 add dns name="Ethernet" address=1.1.1.1 index=2
+netsh interface ipv4 set dnsservers name="Ethernet" source=static address=8.8.8.8
+netsh interface ipv4 add dnsservers name="Ethernet" address=1.1.1.1 index=2
 ```
 
 ## DNS Configuration in a Provisioning Script
@@ -97,8 +97,7 @@ netsh interface ipv4 add dns name="Ethernet" address=1.1.1.1 index=2
 # Example: configure multiple servers in an array for easy maintenance
 $DNSServers = @(
     "192.168.1.10",   # Primary internal DNS
-    "192.168.1.11",   # Secondary internal DNS
-    "8.8.8.8"         # External fallback
+    "192.168.1.11"    # Secondary internal DNS
 )
 
 Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses $DNSServers
