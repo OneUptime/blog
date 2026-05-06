@@ -10,17 +10,17 @@ Description: Selecting the right RFC 1918 private address range depends on your 
 
 | Range | Size | Subnets Available | Best For |
 |-------|------|------------------|----------|
-| 10.0.0.0/8 | 16.7 million addresses | Thousands of /24 subnets | Large enterprises, cloud |
-| 172.16.0.0/12 | 1 million addresses | Hundreds of /24 subnets | Medium organizations |
+| 10.0.0.0/8 | 16.7 million addresses | 65,536 /24 subnets | Large enterprises, cloud |
+| 172.16.0.0/12 | 1 million addresses | 4,096 /24 subnets | Medium organizations |
 | 192.168.0.0/16 | 65,536 addresses | 256 /24 subnets | SOHO, home networks |
 
 ## Decision Factors
 
 ### 1. Scale and Growth
-Use `10.0.0.0/8` for organizations with multiple sites, data centers, or cloud deployments. Its 24 bits of host space allows hierarchical addressing: site ID + VLAN + host.
+Use `10.0.0.0/8` for organizations with multiple sites, data centers, or cloud deployments. Its 24 bits beyond the `/8` prefix allow hierarchical addressing: site ID + VLAN + host.
 
 ### 2. VPN and Peering Conflicts
-`192.168.0.0/16` is used by virtually every home router (192.168.1.0/24, 192.168.0.0/24). If employees use VPNs from home, address overlap between the corporate network and the employee's home router causes routing conflicts.
+`192.168.0.0/16` is commonly used by home routers (192.168.1.0/24, 192.168.0.0/24). If employees use VPNs from home, address overlap between the corporate network and the employee's home router causes routing conflicts.
 
 ```text
 Problem: Employee home router uses 192.168.1.0/24
@@ -32,7 +32,7 @@ Result:  VPN client cannot distinguish traffic destined for
 Prefer `10.0.0.0/8` or `172.16.0.0/12` for corporate networks to avoid this.
 
 ### 3. Multi-Tenant and Cloud Environments
-Cloud providers (AWS, Azure, GCP) use large blocks from `10.0.0.0/8` internally. Avoid choosing overlapping ranges if you plan to peer with cloud VPCs.
+Cloud deployments often use RFC 1918 ranges, and overlapping CIDR blocks can prevent peering or complicate hybrid connectivity. Avoid choosing overlapping ranges if you plan to peer with cloud VPCs or VNets.
 
 ## Hierarchical Addressing Example with 10.0.0.0/8
 
