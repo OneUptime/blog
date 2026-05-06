@@ -17,6 +17,8 @@ Forward DNS resolves names to IP addresses (A records). Reverse DNS resolves IP 
 
 # /etc/bind/zones/db.example.com:
 
+mkdir -p /etc/bind/zones
+
 cat > /etc/bind/zones/db.example.com << 'EOF'
 $TTL 3600
 
@@ -53,7 +55,7 @@ EOF
 
 ```bash
 # Reverse zone: 10.20.0.x → hostname
-# The zone name is the network address reversed + .in-addr.arpa
+# For octet-aligned networks, the zone name is the network prefix reversed + .in-addr.arpa
 
 # For 10.20.0.0/24 network:
 # Zone name: 0.20.10.in-addr.arpa
@@ -93,16 +95,16 @@ $TTL 3600
 @   IN  SOA ns1.example.com. admin.example.com. (2026032001 3600 900 604800 300)
 @   IN  NS  ns1.example.com.
 
-; Last two octets for /16:
-0.1     IN  PTR ns1.example.com.
-0.2     IN  PTR ns2.example.com.
-0.10    IN  PTR www.example.com.
-1.10    IN  PTR server-in-subnet1.example.com.
+; Last two octets in reverse order for /16:
+1.0     IN  PTR ns1.example.com.
+2.0     IN  PTR ns2.example.com.
+10.0    IN  PTR www.example.com.
+10.1    IN  PTR server-in-subnet1.example.com.
 EOF
 
 # For /8 network (10.0.0.0/8):
 # Zone name: 10.in-addr.arpa
-# Last three octets in PTR records:
+# Last three octets in reverse order:
 # 20.0.1  IN  PTR host1.example.com.
 ```
 
@@ -146,10 +148,10 @@ dig @localhost -x 10.20.0.11
 # Forward: www.example.com → 10.20.0.10
 # Reverse: 10.20.0.10 → www.example.com (or example.com)
 
-# Batch check all PTR records:
-for ip in $(dig @localhost example.com A +short); do
+# Batch check the sample PTR records:
+for ip in 10.20.0.1 10.20.0.2 10.20.0.10 10.20.0.11 10.20.0.20 10.20.0.30; do
     echo -n "$ip: "
-    dig @localhost -x $ip +short
+    dig @localhost -x "$ip" +short
 done
 ```
 
@@ -168,11 +170,11 @@ dig NS 0.20.10.in-addr.arpa
 # 0.20.10.in-addr.arpa IN NS ns2.example.com.
 
 # For cloud providers:
-# AWS: set reverse DNS in EC2 console or request from support
-# GCP: configure PTR records in Cloud DNS
-# Azure: configure in Azure DNS or Contact support for delegated reverse DNS
+# AWS: configure reverse DNS for an Elastic IP in Amazon EC2
+# GCP: configure PTR records for a VM's external IP in Compute Engine
+# Azure: configure reverse DNS on the Public IP resource; use Azure DNS for IP ranges assigned to your organization
 ```
 
 ## Conclusion
 
-Forward and reverse DNS zones are configured separately but should be consistent - every PTR record should have a matching A record pointing back. Forward zones use standard hostnames as record names. Reverse zones use the network address reversed as the zone name, with individual PTR records using just the host portion. After configuration, test both directions with `dig` and `dig -x`. For public IP addresses, ensure your ISP has delegated the reverse zone to your nameservers before PTR records will work for external queries.
+Forward and reverse DNS zones are configured separately but should be consistent - every PTR record should have a matching A record pointing back. Forward zones use standard hostnames as record names. Reverse zones use the reversed network prefix as the zone name, with individual PTR records using the remaining octets in reverse order. After configuration, test both directions with `dig` and `dig -x`. For public IP addresses, ensure your ISP has delegated the reverse zone to your nameservers before PTR records will work for external queries.
