@@ -4,23 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, IPv6, Communities, No-Export, Policy
 
-Description: Use the BGP no-export community to prevent IPv6 prefixes from being advertised beyond the local AS boundary.
+Description: Use the BGP no-export community to prevent IPv6 prefixes from being advertised beyond the local AS or BGP confederation boundary.
 
 ## Overview
 
-Use the BGP no-export community to prevent IPv6 prefixes from being advertised beyond the local AS boundary.
+Use the BGP no-export community to prevent IPv6 prefixes from being advertised beyond the local AS or BGP confederation boundary.
 
 ## BGP Communities and IPv6
 
-BGP communities are attributes attached to route announcements that carry policy signaling information. They work identically for IPv4 and IPv6 prefixes.
+BGP communities are attributes attached to route announcements that carry policy signaling information. They work identically for IPv4 and IPv6 prefixes, including the well-known `no-export` community defined in RFC 1997.
 
 ## Standard Community Format
 
-Standard BGP communities (RFC 1997) are 32-bit values written as two 16-bit numbers:
+Standard BGP communities (RFC 1997) are 32-bit values often written as two 16-bit numbers. Well-known communities such as `no-export` are reserved values and are usually configured by name:
 ```text
 ASN:value
-65000:100    # Well-known community
-65001:200    # Custom community
+65001:100    # Custom standard community
+65001:200    # Custom standard community
+no-export    # Well-known community (0xFFFFFF01)
 ```
 
 ## BIRD2 Configuration Example
@@ -28,31 +29,18 @@ ASN:value
 ```javascript
 # /etc/bird/bird.conf
 
-# Define community functions
-
-function set_local_pref(int pref) {
-    bgp_local_pref = pref;
-}
-
-# Filter for IPv6 routes with communities
-filter ipv6_community_policy {
-    # Honor upstream community signals for local preference
-    if (65001, 100) ~ bgp_community then {
-        set_local_pref(200);  # High preference
-        accept;
-    }
-    if (65001, 200) ~ bgp_community then {
-        set_local_pref(50);   # Low preference
-        accept;
-    }
+# Filter for IPv6 routes that should not leave the local AS
+filter ipv6_no_export_policy {
+    bgp_community.add((65535, 65281));  # no-export
     accept;
 }
 
 protocol bgp upstream {
-    neighbor 2001:db8:peer::1 as 65001;
+    local as 64496;
+    neighbor 2001:db8:1::1 as 65001;
     ipv6 {
-        import filter ipv6_community_policy;
-        export filter { accept; };
+        import all;
+        export filter ipv6_no_export_policy;
     };
 }
 ```
@@ -62,51 +50,47 @@ protocol bgp upstream {
 ```bash
 # FRR vtysh configuration
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:db8:1::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 activate
+    neighbor 2001:db8:1::1 activate
+    neighbor 2001:db8:1::1 route-map NO-EXPORT-OUT out
+    neighbor 2001:db8:1::1 send-community standard
 
-# Route map with community matching
-route-map COMMUNITY-POLICY permit 10
-  match community MY-COMMUNITIES
-  set local-preference 200
-
-# Define community list
-ip community-list standard MY-COMMUNITIES permit 65001:100
+# Route map to attach no-export
+route-map NO-EXPORT-OUT permit 10
+  set community additive no-export
 ```
 
 ## Cisco IOS Community Configuration
 
 ```text
-! Configure community for IPv6 BGP
+! Configure no-export for IPv6 BGP
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:db8:1::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 route-map COMMUNITY-INBOUND in
+    neighbor 2001:db8:1::1 activate
+    neighbor 2001:db8:1::1 route-map NO-EXPORT-OUT out
+    neighbor 2001:db8:1::1 send-community standard
 
 ! Route map
-route-map COMMUNITY-INBOUND permit 10
-  match community 100
-  set local-preference 200
-
-! Community list
-ip community-list 100 permit 65001:100
+route-map NO-EXPORT-OUT permit 10
+  set community no-export
 ```
 
 ## Testing Community Propagation
 
 ```bash
 # Check if communities are present on IPv6 routes in BIRD
-birdc "show route for 2001:db8::/32 all"
+birdc "show route 2001:db8:100::/48 all"
 
 # In FRR
-vtysh -c "show bgp ipv6 unicast 2001:db8::/32"
+vtysh -c "show bgp ipv6 unicast 2001:db8:100::/48"
 
-# Look for community attribute in output
-# Example: Community: 65001:100 65001:200
+# Look for the no-export community in output
 
-# Use RIPE looking glass for external verification
-curl "https://stat.ripe.net/data/bgp-state/data.json?resource=2001:db8::/32" | jq '.data.routes[].attrs.communities'
+# Use RIPE Stat for external verification
+# A properly tagged no-export route should normally not appear on public RIS collectors
+curl "https://stat.ripe.net/data/bgp-state/data.json?resource=YOUR_PUBLIC_IPV6_PREFIX" | jq '.data.nr_routes'
 ```
 
 ## Monitoring with OneUptime
@@ -115,4 +99,4 @@ Use [OneUptime](https://oneuptime.com) to monitor BGP session health for your IP
 
 ## Conclusion
 
-BGP communities work identically for IPv6 prefixes - you configure them in the same route maps and community lists. Always verify community propagation using BGP looking glasses and test policy changes in a lab environment before applying to production IPv6 BGP sessions.
+The `no-export` community works the same way for IPv6 prefixes as it does for IPv4. Always verify that the `no-export` community is present on the routes you expect, and test policy changes in a lab environment before applying them to production IPv6 BGP sessions.
