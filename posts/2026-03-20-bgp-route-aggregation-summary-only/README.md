@@ -34,18 +34,18 @@ Create an aggregate that covers the range you want to summarize:
 ```text
 router bgp 65001
  ! Aggregate all /24s within 192.168.0.0/16
- aggregate-address 192.168.0.0 255.255.0.0
+ ! Without summary-only, both the aggregate and the components are advertised:
+ ! aggregate-address 192.168.0.0 255.255.0.0
 
- ! The above advertises BOTH the aggregate AND the components
- ! Add summary-only to suppress component routes:
+ ! To suppress the component routes, configure:
  aggregate-address 192.168.0.0 255.255.0.0 summary-only
 ```
 
 With `summary-only`, only `192.168.0.0/16` is advertised to neighbors; the individual /24s are suppressed.
 
-## Step 3: Use as-set to Preserve AS-Path Information
+## Step 3: Understand as-set Before Using It
 
-By default, the aggregate route has an empty AS path (locally originated). Use `as-set` to include a set of all AS numbers from the component routes-this preserves routing policy information:
+Without `as-set`, the aggregate is advertised as coming from your AS and does not carry the component routes' full AS-path information. Cisco IOS supports `as-set` if you need to include that history:
 
 ```text
 router bgp 65001
@@ -53,11 +53,11 @@ router bgp 65001
  aggregate-address 192.168.0.0 255.255.0.0 summary-only as-set
 ```
 
-The aggregate will now carry an AS_SET attribute listing all contributing ASes, preventing certain routing loops.
+The aggregate will now carry an AS_SET built from the summarized paths, which can help BGP detect some loops. However, RFC 9774 (published in May 2025) deprecates origination of new BGP routes with AS_SET/AS_CONFED_SET, so `as-set` should not be treated as a default best practice for modern Internet-facing deployments.
 
-## Step 4: Selectively Suppress Component Routes
+## Step 4: Selectively Re-Advertise Component Routes
 
-Instead of suppressing all components, use an unsuppress map to continue advertising specific prefixes alongside the summary:
+Instead of suppressing components for every peer, use an unsuppress map on a specific neighbor to continue advertising selected prefixes alongside the summary:
 
 ```text
 ! Define which prefixes to still advertise despite summary-only
@@ -82,10 +82,10 @@ BGP routing table entry for 192.168.0.0/16
     Local, (aggregated by 65001 1.1.1.1)
       0.0.0.0 from 0.0.0.0 (1.1.1.1)
         Origin IGP, localpref 100, weight 32768
-        Atomic aggregate          <- present when summary-only used
+        Atomic aggregate
 ```
 
-The `Atomic aggregate` flag indicates component routes have been suppressed.
+The `Atomic aggregate` attribute indicates the aggregate may not carry full path information because of aggregation; it is not the signal that `summary-only` was configured. The `s` status code on the component routes is the direct indicator that they were suppressed.
 
 ## Step 6: Verify Suppressed Routes
 
@@ -101,4 +101,4 @@ Status codes: s suppressed, d damped, h history, * valid, > best
 
 ## Conclusion
 
-BGP route aggregation with `summary-only` reduces the number of prefixes advertised by your AS. Always ensure component routes exist in the BGP table before creating an aggregate, use `as-set` to preserve routing policy, and verify suppression with the `s` flag in `show ip bgp`.
+BGP route aggregation with `summary-only` reduces the number of prefixes advertised by your AS. Always ensure component routes exist in the BGP table before creating an aggregate, be cautious with `as-set` because modern BGP standards deprecate AS_SET in new Internet-facing advertisements, and verify suppression with the `s` flag in `show ip bgp`.
