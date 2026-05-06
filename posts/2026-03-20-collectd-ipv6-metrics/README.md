@@ -6,9 +6,9 @@ Tags: Collectd, IPv6, Metric, Monitoring, Linux, System Metrics
 
 Description: A guide to configuring Collectd to collect IPv6 network statistics and send them to Graphite or other backends for visualization.
 
-Collectd is a lightweight system statistics daemon widely used in network monitoring. Its `interface` and `ping` plugins can collect IPv6 interface statistics and probe IPv6 targets respectively.
+Collectd is a lightweight system statistics daemon widely used in network monitoring. Its `interface` and `ping` plugins can collect per-interface traffic statistics (covering both IPv4 and IPv6 traffic) and probe IPv6 targets respectively.
 
-## Step 1: Configure Collectd for IPv6 Interface Statistics
+## Step 1: Configure Collectd for Interface Statistics
 
 ```xml
 # /etc/collectd/collectd.conf - IPv6 metrics collection
@@ -54,17 +54,16 @@ LoadPlugin logfile
 </Plugin>
 ```
 
-## Step 3: Collect TCP/IPv6 Socket Statistics
+## Step 3: Collect TCP Socket Statistics (including IPv6)
 
 ```xml
 # tcpconns plugin - TCP connection counts including IPv6
 LoadPlugin tcpconns
 <Plugin tcpconns>
-    # Collect only listening IPv6 connections
+    # Count connections for these local service ports (IPv4 + IPv6)
     LocalPort "80"
     LocalPort "443"
     LocalPort "22"
-    ListeningPorts true
 </Plugin>
 ```
 
@@ -72,10 +71,11 @@ LoadPlugin tcpconns
 
 ```xml
 # Write to a Graphite/Carbon server over IPv6
+LoadPlugin write_graphite
 <Plugin write_graphite>
     <Node "graphite-ipv6">
         # Connect to Graphite via IPv6
-        Host "2001:db8::graphite"
+        Host "2001:db8::10"
         Port "2003"
         Prefix "collectd."
         Postfix ""
@@ -86,19 +86,19 @@ LoadPlugin tcpconns
 </Plugin>
 ```
 
-## Step 5: Send Metrics to InfluxDB over IPv6
+## Step 5: Send Metrics to an InfluxDB OSS v1 Collectd Listener over IPv6
 
 ```xml
-# Network plugin - send to InfluxDB Line Protocol over UDP/TCP
+# Network plugin - send collectd native packets over UDP
 <Plugin network>
-    # Send metrics to InfluxDB/collectd listener on IPv6
-    <Server "[2001:db8::influx]" "25826">
+    # Send metrics to an InfluxDB OSS v1 collectd listener on IPv6
+    <Server "2001:db8::20" "25826">
         SecurityLevel "None"
     </Server>
 </Plugin>
 ```
 
-## Step 6: Configure the Unixsock Plugin for Local IPv6 Queries
+## Step 6: Configure the Unixsock Plugin for Local Metric Queries
 
 ```xml
 # unixsock plugin - query collectd locally
