@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, DMVPN, IPv4, IOS, VPN, MGRE, NHRP, Hub-and-Spoke
 
-Description: Configure DMVPN Phase 1 (hub-and-spoke) on Cisco IOS routers using mGRE, NHRP, and IPsec to create a scalable hub-and-spoke VPN topology for IPv4.
+Description: Configure DMVPN Phase 1 (hub-and-spoke) on Cisco IOS routers using a hub-side mGRE tunnel, NHRP, and IPsec to create a scalable hub-and-spoke VPN topology for IPv4.
 
 ## Introduction
 
-DMVPN Phase 1 creates a hub-and-spoke topology where all spoke-to-spoke traffic transits through the hub. The mGRE tunnel on the hub handles dynamic spoke registrations via NHRP (Next Hop Resolution Protocol).
+DMVPN Phase 1 creates a hub-and-spoke topology where all spoke-to-spoke traffic transits through the hub. The mGRE tunnel on the hub handles dynamic spoke registrations via NHRP (Next Hop Resolution Protocol), while each spoke uses a point-to-point GRE tunnel to the hub.
 
 ## Hub Configuration
 
@@ -37,18 +37,16 @@ crypto ipsec profile DMVPN-PROFILE
 interface Tunnel0
  description DMVPN-Hub
  ip address 10.100.0.1 255.255.255.0
- no ip split-horizon eigrp 100      ! Allow EIGRP updates to spokes
- no ip next-hop-self eigrp 100
+ no ip split-horizon eigrp 100      ! Optional if running EIGRP over the tunnel
  tunnel source GigabitEthernet0/0   ! Hub WAN interface
  tunnel mode gre multipoint         ! mGRE - accept any source
  tunnel key 100
  tunnel protection ipsec profile DMVPN-PROFILE
 
- ! NHRP - register hub as NHS
+ ! NHRP - act as NHS for spokes
  ip nhrp network-id 100
  ip nhrp map multicast dynamic     ! Allow dynamic multicast mapping
  ip nhrp authentication NHRP-KEY
- ip nhrp redirect                  ! Required for Phase 3 (not used in Phase 1)
 ```
 
 ## Spoke Configuration
@@ -75,7 +73,7 @@ interface Tunnel0
  description DMVPN-Spoke1
  ip address 10.100.0.2 255.255.255.0
  tunnel source GigabitEthernet0/0   ! Spoke WAN interface
- tunnel mode gre multipoint
+ tunnel destination 203.0.113.1     ! Hub public IP
  tunnel key 100
  tunnel protection ipsec profile DMVPN-PROFILE
 
@@ -83,7 +81,6 @@ interface Tunnel0
  ip nhrp authentication NHRP-KEY
  ip nhrp nhs 10.100.0.1             ! Hub tunnel IP = Next Hop Server
  ip nhrp map 10.100.0.1 203.0.113.1 ! Hub tunnel IP → Hub public IP
- ip nhrp map multicast 203.0.113.1  ! Send multicast to hub
 
 ! Route LAN traffic through tunnel
 ip route 0.0.0.0 0.0.0.0 10.100.0.1   ! Default via hub
@@ -122,4 +119,4 @@ In DMVPN Phase 1:
 
 ## Conclusion
 
-DMVPN Phase 1 is the simplest DMVPN deployment mode - a hub-and-spoke topology where all traffic flows through the hub. It combines mGRE for multi-point tunneling, NHRP for dynamic spoke registration, and IPsec for encryption. Phase 2 builds on this by allowing direct spoke-to-spoke tunnels after an initial hub transit.
+DMVPN Phase 1 is the simplest DMVPN deployment mode - a hub-and-spoke topology where all traffic flows through the hub. It combines a hub-side mGRE tunnel, NHRP for dynamic spoke registration, and IPsec for encryption. Phase 2 builds on this by allowing direct spoke-to-spoke tunnels after an initial hub transit.
