@@ -33,23 +33,16 @@ opkg update && opkg install nodogsplash
 ## Basic nodogsplash Configuration
 
 ```bash
-# /etc/nodogsplash/nodogsplash.conf
-GatewayInterface br-guest        # WiFi guest bridge interface
-GatewayAddress 192.168.100.1     # Portal IP
-GatewayPort 2050
+# /etc/config/nodogsplash
+config nodogsplash
+  option enabled '1'
+  option gatewayinterface 'guest'    # OpenWrt guest network
+  option gatewayport '2050'
 
-# Authentication method: click-through (no password)
-AuthenticateImmediately yes
+  # Click-through with a custom splash page is the default behavior
 
-# Custom splash page
-SplashPage splash.html
-
-# Session timeout (seconds)
-ClientTimeout 7200
-
-# Bandwidth limits per client (Kbit/s)
-DownloadLimit 2048
-UploadLimit 512
+  # Timeout for authenticated clients (minutes)
+  option authidletimeout '120'
 ```
 
 ## Custom Splash Page
@@ -61,7 +54,7 @@ UploadLimit 512
 <head><title>Guest WiFi</title></head>
 <body>
   <h2>Welcome to Guest WiFi</h2>
-  <p>By connecting, you agree to our <a href="/terms">Terms of Service</a>.</p>
+  <p>By connecting, you agree to our Terms of Service.</p>
   <form method="get" action="$authaction">
     <input type="hidden" name="tok" value="$tok">
     <input type="hidden" name="redir" value="$redir">
@@ -74,25 +67,28 @@ UploadLimit 512
 ## pfSense Captive Portal
 
 ```text
-Services → Captive Portal → Add Zone
+Services → Captive Portal → Add
   Interface: GUESTNET
   Maximum concurrent connections: 100
   Idle timeout: 30 minutes
   Hard timeout: 480 minutes
-  Authentication: Local User Manager / No Authentication (click-through)
+  Authentication Method: None, don't authenticate users (click-through)
   Logout popup window: ✓
-  Redirect URL: https://www.example.com
+  After authentication Redirection URL: https://www.example.com
 ```
 
 ## DHCP for Captive Portal Network
 
 ```bash
 # Isolated DHCP pool for guest network
-# /etc/dnsmasq.d/guest.conf
-interface=br-guest
-dhcp-range=192.168.100.50,192.168.100.200,1h
-dhcp-option=3,192.168.100.1
-dhcp-option=6,8.8.8.8
+# /etc/config/dhcp
+config dhcp 'guest'
+  option interface 'guest'
+  option start '50'
+  option limit '151'
+  option leasetime '1h'
+  list dhcp_option '3,192.168.100.1'
+  list dhcp_option '6,192.168.100.1'
 ```
 
 ## Testing the Portal
@@ -110,5 +106,5 @@ ndsctl clients    # List authenticated clients
 
 - nodogsplash is a lightweight captive portal for OpenWrt; pfSense has a built-in captive portal for enterprise use.
 - Always isolate the captive portal network with a separate VLAN and DHCP pool to prevent guest-to-LAN access.
-- Use session timeouts and bandwidth limits to prevent resource abuse on guest networks.
-- For password-protected portals, use RADIUS or local user database authentication instead of click-through.
+- Use session timeouts and separate traffic shaping (for example, SQM) to prevent resource abuse on guest networks.
+- For password-protected portals on pfSense, use RADIUS or Local User Manager authentication instead of click-through.
