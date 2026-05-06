@@ -18,13 +18,15 @@ TCP is a byte-stream protocol - it does not preserve message boundaries. A singl
 #include <stdint.h>
 #include <errno.h>
 
-/* Read exactly 'n' bytes from fd into buf, retrying on partial reads.
+/* Read exactly 'n' bytes from fd into buf, retrying on partial reads
+   and interrupted system calls.
    Returns n on success, 0 on EOF, -1 on error. */
 ssize_t recvn(int fd, void *buf, size_t n) {
     size_t  received = 0;
     uint8_t *ptr     = (uint8_t *)buf;
     while (received < n) {
         ssize_t r = recv(fd, ptr + received, n - received, 0);
+        if (r < 0 && errno == EINTR) continue;
         if (r == 0)  return 0;   /* peer closed */
         if (r < 0)   return -1;  /* error */
         received += (size_t)r;
@@ -32,13 +34,15 @@ ssize_t recvn(int fd, void *buf, size_t n) {
     return (ssize_t)received;
 }
 
-/* Write exactly 'n' bytes from buf to fd, retrying on partial writes.
+/* Write exactly 'n' bytes from buf to fd, retrying on partial writes
+   and interrupted system calls.
    Returns n on success, -1 on error. */
 ssize_t sendn(int fd, const void *buf, size_t n) {
     size_t        sent = 0;
     const uint8_t *ptr = (const uint8_t *)buf;
     while (sent < n) {
         ssize_t s = send(fd, ptr + sent, n - sent, 0);
+        if (s < 0 && errno == EINTR) continue;
         if (s < 0) return -1;
         sent += (size_t)s;
     }
@@ -50,6 +54,7 @@ ssize_t sendn(int fd, const void *buf, size_t n) {
 
 ```c
 #include <arpa/inet.h>   /* htonl / ntohl */
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -94,18 +99,32 @@ typedef struct __attribute__((packed)) {
     uint64_t timestamp_ms; /* epoch milliseconds, big-endian */
 } sensor_reading_t;
 
+/* Convert 64-bit integers to/from big-endian using POSIX htonl/ntohl */
+static uint64_t htonll(uint64_t host64) {
+    static const unsigned int one = 1;
+    if (*(const unsigned char *)&one == 1) {
+        return ((uint64_t)htonl((uint32_t)(host64 & 0xFFFFFFFFULL)) << 32) |
+               htonl((uint32_t)(host64 >> 32));
+    }
+    return host64;
+}
+
+static uint64_t ntohll(uint64_t net64) {
+    return htonll(net64);
+}
+
 /* Marshal into network byte order before sending */
 void marshal_sensor(const sensor_reading_t *src, sensor_reading_t *dst) {
     dst->sensor_id    = htonl(src->sensor_id);
     dst->temperature  = (int32_t)htonl((uint32_t)src->temperature);
-    dst->timestamp_ms = htobe64(src->timestamp_ms);  /* Linux-specific */
+    dst->timestamp_ms = htonll(src->timestamp_ms);
 }
 
 /* Unmarshal after recv */
 void unmarshal_sensor(const sensor_reading_t *src, sensor_reading_t *dst) {
     dst->sensor_id    = ntohl(src->sensor_id);
     dst->temperature  = (int32_t)ntohl((uint32_t)src->temperature);
-    dst->timestamp_ms = be64toh(src->timestamp_ms);
+    dst->timestamp_ms = ntohll(src->timestamp_ms);
 }
 ```
 
@@ -116,6 +135,7 @@ void unmarshal_sensor(const sensor_reading_t *src, sensor_reading_t *dst) {
 #include <stdlib.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 
 int main(void) {
@@ -145,6 +165,11 @@ int main(void) {
 ```c
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 int main(void) {
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -160,7 +185,7 @@ int main(void) {
 
     int client_fd = accept(server_fd, NULL, NULL);
 
-    void *buf;
+    void *buf = NULL;
     ssize_t len = recv_message(client_fd, &buf);
     if (len == sizeof(sensor_reading_t)) {
         sensor_reading_t wire, local;
@@ -179,4 +204,4 @@ int main(void) {
 
 ## Conclusion
 
-Reliable binary transfer over TCP requires two layers: a framing protocol (length prefix) to delineate message boundaries, and loop-based `send`/`recv` helpers (`sendn`/`recvn`) to handle partial transfers. Always convert multi-byte integer fields to network byte order (`htonl`/`ntohl`, `htobe64`/`be64toh`) before sending and reverse on receipt. Use `__attribute__((packed))` on structs to prevent compiler padding that would corrupt the on-wire layout. Validate the length field before allocating to prevent memory exhaustion from malformed packets.
+Reliable binary transfer over TCP requires two layers: a framing protocol (length prefix) to delineate message boundaries, and loop-based `send`/`recv` helpers (`sendn`/`recvn`) to handle partial transfers. Always convert multi-byte integer fields to network byte order (`htonl`/`ntohl`; for 64-bit fields, use an equivalent helper such as `htonll`/`ntohll`) before sending and reverse on receipt. If you serialize a C struct directly, use a compiler-specific packing attribute such as `__attribute__((packed))` to prevent padding that would corrupt the on-wire layout. Validate the length field before allocating to prevent memory exhaustion from malformed packets.
