@@ -22,21 +22,15 @@ resource "aws_s3_bucket_versioning" "state" {
 
   versioning_configuration {
     status = "Enabled"
+    # mfa_delete = "Enabled"  # Optional: requires the top-level `mfa` argument
   }
-}
 
-# Enable MFA delete for extra protection
-resource "aws_s3_bucket_versioning" "state_with_mfa" {
-  bucket = aws_s3_bucket.terraform_state.id
-
-  versioning_configuration {
-    status    = "Enabled"
-    mfa_delete = "Enabled"  # Requires MFA to delete versions
-  }
+  # Optional: required if `mfa_delete = "Enabled"`
+  # mfa = "SERIAL MFA_CODE"
 }
 ```
 
-With versioning enabled, every `tofu apply` creates a new version automatically. You can restore any previous version at any time.
+With versioning enabled, every time OpenTofu writes an updated state object, S3 creates a new version automatically. If you enable MFA Delete, also set the resource's `mfa` argument; AWS only allows MFA Delete changes to be made by the root account. You can restore any previous version at any time.
 
 ## Setting Up Lifecycle Rules for Cost Management
 
@@ -73,13 +67,14 @@ Always make a manual backup before destructive operations:
 
 ```bash
 # Backup before a risky apply
-tofu state pull > state-backup-$(date +%Y%m%d-%H%M%S).tfstate
+BACKUP_FILE="state-backup-$(date +%Y%m%d-%H%M%S).tfstate"
+tofu state pull > "${BACKUP_FILE}"
 
 # Store backup in S3 with a timestamp
-aws s3 cp state-backup-$(date +%Y%m%d-%H%M%S).tfstate \
+aws s3 cp "${BACKUP_FILE}" \
   s3://my-backup-bucket/terraform-state-backups/
 
-# Or create a versioned backup in the same bucket
+# Or create a timestamped backup in the same bucket
 STATE_DATE=$(date +%Y%m%d-%H%M%S)
 aws s3 cp \
   s3://my-terraform-state/prod/terraform.tfstate \
@@ -88,16 +83,16 @@ aws s3 cp \
 
 ## OpenTofu's Automatic Local Backup
 
-OpenTofu automatically creates a `.tfstate.backup` file during local operations:
+When using the local backend, OpenTofu typically creates a `.tfstate.backup` file when it writes new state:
 
 ```bash
-# After an apply, you'll see:
+# With the default local state filename, you'll typically see:
 ls *.tfstate*
 # terraform.tfstate
 # terraform.tfstate.backup  ← Previous version automatically preserved
 ```
 
-This backup contains the state from before the last operation. Always check this file before troubleshooting state issues.
+This backup contains the state from before the last write when you're using local state. Always check this file before troubleshooting state issues.
 
 ## Scheduled Backup Script
 
@@ -111,7 +106,7 @@ BACKUP_DATE=$(date +%Y%m%d-%H%M%S)
 STATE_BUCKET="my-terraform-state"
 BACKUP_BUCKET="my-terraform-backups"
 
-# List all state files
+# List state files that use the default terraform.tfstate name
 STATES=$(aws s3 ls s3://${STATE_BUCKET}/ --recursive | grep "terraform.tfstate$" | awk '{print $4}')
 
 for STATE_KEY in $STATES; do
@@ -128,7 +123,7 @@ echo "Backup complete: ${BACKUP_DATE}"
 
 ## Cross-Region Replication
 
-For disaster recovery, replicate your state bucket to another region:
+For disaster recovery, replicate your state bucket to another region. Both source and destination buckets must already have versioning enabled, and the replication role needs the required S3 permissions:
 
 ```hcl
 resource "aws_s3_bucket_replication_configuration" "state" {
@@ -138,6 +133,8 @@ resource "aws_s3_bucket_replication_configuration" "state" {
   rule {
     id     = "replicate-state"
     status = "Enabled"
+
+    filter {}
 
     destination {
       bucket        = aws_s3_bucket.terraform_state_replica.arn
