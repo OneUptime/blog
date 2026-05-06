@@ -162,9 +162,11 @@ resource "aws_instance" "app" {
     {
       Name        = "${var.app_name}-${var.environment}"
       Environment = var.environment
-      # Conditionally add tag
-      Critical = var.environment == "prod" ? "true" : null
-    }
+    },
+    # Conditionally add tag
+    var.environment == "prod" ? {
+      Critical = "true"
+    } : {}
   )
 }
 ```
@@ -198,11 +200,11 @@ variable "log_retention_days" {
 resource "aws_cloudwatch_log_group" "app" {
   name = "/myapp/logs"
 
-  # null means "never expire"
+  # Default to 90 days when no value is provided
   retention_in_days = var.log_retention_days != null ? var.log_retention_days : 90
 }
 ```
 
 ## Conclusion
 
-The conditional expression is the primary way to make value selection dynamic in OpenTofu. It is used constantly for environment-specific sizing, feature flags, optional resources (via `count`), and null handling. For more than two choices, prefer a `lookup` on a map rather than deeply nested ternary expressions. When the condition is complex, extract it to a local value first for readability. Conditional expressions evaluate both branches syntactically, so both values must be valid expressions even if only one will be used.
+The conditional expression is the primary way to make value selection dynamic in OpenTofu. It is used constantly for environment-specific sizing, feature flags, optional resources (via `count`), and null handling. For more than two choices, prefer a `lookup` on a map rather than deeply nested ternary expressions. When the condition is complex, extract it to a local value first for readability. OpenTofu must be able to determine a consistent result type for both branches, so the true and false values should use compatible types even though only one result is selected.
