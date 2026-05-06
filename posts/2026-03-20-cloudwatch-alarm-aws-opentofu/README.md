@@ -8,7 +8,7 @@ Description: Learn how to create AWS CloudWatch alarms with OpenTofu to monitor 
 
 ## Introduction
 
-CloudWatch alarms watch a single metric and take actions when it crosses a threshold. OpenTofu makes it straightforward to define alarms as code alongside the resources they monitor, ensuring monitoring is never an afterthought.
+CloudWatch metric alarms watch a metric or metric math expression and take actions when the alarm changes state. OpenTofu makes it straightforward to define alarms as code alongside the resources they monitor, ensuring monitoring is never an afterthought.
 
 ## SNS Topic for Notifications
 
@@ -97,24 +97,25 @@ resource "aws_cloudwatch_metric_alarm" "cpu" {
   statistic           = "Average"
 }
 
-resource "aws_cloudwatch_metric_alarm" "memory" {
-  alarm_name          = "${var.name}-memory"
-  namespace           = "CWAgent"
-  metric_name         = "mem_used_percent"
+resource "aws_cloudwatch_metric_alarm" "status_check" {
+  alarm_name          = "${var.name}-status-check"
+  namespace           = "AWS/EC2"
+  metric_name         = "StatusCheckFailed"
   dimensions          = { InstanceId = aws_instance.web.id }
   comparison_operator = "GreaterThanThreshold"
-  threshold           = 90
+  threshold           = 0
   evaluation_periods  = 1
   period              = 60
-  statistic           = "Average"
+  statistic           = "Maximum"
+  treat_missing_data  = "missing"
 }
 
 # Composite alarm fires when BOTH conditions are true
 resource "aws_cloudwatch_composite_alarm" "critical" {
   alarm_name        = "${var.name}-critical"
-  alarm_description = "CPU AND memory are both critically high"
+  alarm_description = "CPU is critically high and the instance is failing status checks"
 
-  alarm_rule = "ALARM(${aws_cloudwatch_metric_alarm.cpu.alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.memory.alarm_name})"
+  alarm_rule = "ALARM(${aws_cloudwatch_metric_alarm.cpu.alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.status_check.alarm_name})"
 
   alarm_actions = [aws_sns_topic.alarms.arn]
 }
@@ -123,7 +124,7 @@ resource "aws_cloudwatch_composite_alarm" "critical" {
 ## Auto Scaling Trigger
 
 ```hcl
-# Trigger scale-out when CPU stays above 70% for 2 evaluation periods
+# Trigger a step scaling policy when CPU stays above 70% for 2 evaluation periods
 resource "aws_cloudwatch_metric_alarm" "scale_out" {
   alarm_name          = "${var.name}-scale-out"
   namespace           = "AWS/ECS"
@@ -141,4 +142,4 @@ resource "aws_cloudwatch_metric_alarm" "scale_out" {
 
 ## Conclusion
 
-CloudWatch alarms defined in OpenTofu are always co-located with the resources they monitor. Use composite alarms to reduce alert noise, and always configure both `alarm_actions` and `ok_actions` so your team knows when an issue resolves automatically.
+CloudWatch alarms defined in OpenTofu can live alongside the resources they monitor, making monitoring easier to manage as code. Use composite alarms to reduce alert noise, and when an alarm is used for notifications, configuring both `alarm_actions` and `ok_actions` helps your team know when an issue resolves automatically.
