@@ -31,7 +31,7 @@ Note the **Application (client) ID** and **Directory (tenant) ID**.
 ## Step 3: Configure API Permissions
 
 1. Go to **API permissions**
-2. Ensure `Microsoft Graph > User.Read` is present (granted by default)
+2. Ensure delegated Microsoft Graph permissions `User.Read` (granted by default), `openid`, `profile`, and `email` are present
 3. Click **Grant admin consent**
 
 ## Step 4: Configure Portainer OAuth with Azure AD
@@ -64,9 +64,11 @@ curl -X PUT \
       \"AccessTokenURI\": \"https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token\",
       \"ResourceURI\": \"https://graph.microsoft.com/v1.0/me\",
       \"RedirectURI\": \"https://portainer.example.com/\",
+      \"LogoutURI\": \"https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/logout\",
       \"UserIdentifier\": \"userPrincipalName\",
       \"Scopes\": \"openid profile email User.Read\",
-      \"OAuthAutoCreateUsers\": true
+      \"OAuthAutoCreateUsers\": true,
+      \"AuthStyle\": 1
     }
   }" \
   --insecure
@@ -79,8 +81,10 @@ curl -X PUT \
 | Authorization URL | `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize` |
 | Access Token URL | `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token` |
 | Resource URL | `https://graph.microsoft.com/v1.0/me` |
-| User Identifier | `userPrincipalName` (email format) or `mail` |
+| Logout URL | `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/logout` |
+| User Identifier | `userPrincipalName` |
 | Scopes | `openid profile email User.Read` |
+| Auth Style | `In Params` |
 
 ## Restrict Access to Specific Azure AD Groups
 
