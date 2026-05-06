@@ -23,15 +23,12 @@ def whoami():
 
 ```python
 from flask import Flask, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
 
-# Tell Flask to trust the first proxy in the chain
-
-app.config["TRUSTED_PROXIES"] = 1
-# Flask 2.3+ uses ProxyFix middleware
-from werkzeug.middleware.proxy_fix import ProxyFix
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+# Trust one proxy that sets X-Forwarded-For
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 
 @app.route("/whoami")
 def whoami():
@@ -47,6 +44,7 @@ import ipaddress
 
 app = Flask(__name__)
 
+# Replace these with the IPv4 ranges used by your reverse proxies
 TRUSTED_PROXIES = [
     ipaddress.IPv4Network("10.0.0.0/8"),
     ipaddress.IPv4Network("172.16.0.0/12"),
@@ -54,18 +52,32 @@ TRUSTED_PROXIES = [
     ipaddress.IPv4Network("127.0.0.0/8"),
 ]
 
-def is_trusted_proxy(ip: str) -> bool:
+def parse_ipv4(value):
     try:
-        addr = ipaddress.IPv4Address(ip)
-        return any(addr in net for net in TRUSTED_PROXIES)
-    except ValueError:
-        return False
+        return ipaddress.IPv4Address(value)
+    except (TypeError, ValueError):
+        return None
 
-def get_real_ip() -> str:
-    xff = request.headers.get("X-Forwarded-For", "")
-    if xff and is_trusted_proxy(request.remote_addr):
-        # Take the leftmost IP - the original client
-        return xff.split(",")[0].strip()
+def is_trusted_proxy(ip) -> bool:
+    addr = parse_ipv4(ip)
+    return addr is not None and any(addr in net for net in TRUSTED_PROXIES)
+
+def get_real_ip():
+    if not is_trusted_proxy(request.remote_addr):
+        return request.remote_addr
+
+    forwarded_for = []
+    for header_value in request.headers.getlist("X-Forwarded-For"):
+        for part in header_value.split(","):
+            addr = parse_ipv4(part.strip())
+            if addr is not None:
+                forwarded_for.append(addr)
+
+    # Walk right-to-left until we find the first address that is not one of our proxies
+    for addr in reversed(forwarded_for):
+        if not any(addr in net for net in TRUSTED_PROXIES):
+            return str(addr)
+
     return request.remote_addr
 
 @app.route("/whoami")
@@ -73,7 +85,7 @@ def whoami():
     return {"client_ip": get_real_ip()}
 ```
 
-## FastAPI
+## FastAPI: Direct Connection
 
 ```python
 from fastapi import FastAPI, Request
@@ -83,37 +95,25 @@ app = FastAPI()
 @app.get("/whoami")
 async def whoami(request: Request):
     # request.client.host is the direct connection IP
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        client_ip = xff.split(",")[0].strip()
-    else:
-        client_ip = request.client.host
+    client_ip = request.client.host if request.client else None
     return {"client_ip": client_ip}
 ```
 
-## FastAPI with TrustedHostMiddleware Proxy Support
+## FastAPI: Behind a Reverse Proxy
 
 ```python
 from fastapi import FastAPI, Request
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 app = FastAPI()
 
-# When deployed behind a known proxy, read forwarded headers safely
-@app.middleware("http")
-async def extract_real_ip(request: Request, call_next):
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        request.state.client_ip = xff.split(",")[0].strip()
-    else:
-        request.state.client_ip = request.client.host
-    return await call_next(request)
-
 @app.get("/whoami")
 async def whoami(request: Request):
-    return {"client_ip": request.state.client_ip}
+    # With Uvicorn configured to trust your proxy's forwarded headers,
+    # request.client.host reflects the real client IP
+    client_ip = request.client.host if request.client else None
+    return {"client_ip": client_ip}
 ```
 
 ## Conclusion
 
-Never read `X-Forwarded-For` without first verifying that `request.remote_addr` is a trusted proxy - an attacker can spoof this header on direct connections. In Flask, use `werkzeug.middleware.proxy_fix.ProxyFix` with `x_for=1` to safely unwrap one level of proxy. In FastAPI, validate the incoming connection address before trusting forwarded headers. Always document the expected number of proxy hops so the configuration remains correct as infrastructure changes.
+Never read `X-Forwarded-For` without first verifying that the connecting peer is a trusted proxy - an attacker can spoof this header on direct connections. In Flask, use `werkzeug.middleware.proxy_fix.ProxyFix` with the correct `x_for` count for your proxy chain. In FastAPI, configure your ASGI server to trust only known proxy IPs before relying on `request.client.host`. Always document the expected number of proxy hops so the configuration remains correct as infrastructure changes.
