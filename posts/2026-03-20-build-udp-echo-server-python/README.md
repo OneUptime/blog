@@ -35,7 +35,7 @@ def main():
     while True:
         try:
             # recvfrom returns (data, (address, port))
-            data, addr = sock.recvfrom(65535)  # Max UDP payload
+            data, addr = sock.recvfrom(65535)  # Buffer large enough for any IPv4 UDP datagram
             print(f"Received {len(data)} bytes from {addr[0]}:{addr[1]}")
 
             # Echo the data back to the sender
@@ -95,7 +95,7 @@ sock.close()
 
 ```python
 #!/usr/bin/env python3
-# Non-blocking UDP server using select for multiple sockets
+# Non-blocking UDP server using select
 
 import socket
 import select
@@ -140,7 +140,7 @@ class UDPEchoProtocol:
         print(f"Error: {exc}")
 
 async def main():
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     transport, protocol = await loop.create_datagram_endpoint(
         UDPEchoProtocol,
         local_addr=('0.0.0.0', 5000)
@@ -162,7 +162,7 @@ asyncio.run(main())
 python3 udp_echo_server.py &
 
 # Test with netcat
-echo "hello" | nc -u 127.0.0.1 5000
+printf "hello\n" | nc -u -w 1 127.0.0.1 5000
 
 # Test with the echo client
 python3 udp_echo_client.py 127.0.0.1
@@ -176,4 +176,4 @@ tcpdump -i lo -n 'udp port 5000' -A
 
 ## Conclusion
 
-A UDP echo server in Python requires just `socket.socket(AF_INET, SOCK_DGRAM)`, `bind()`, and a `recvfrom()/sendto()` loop. The sender's address comes back with every `recvfrom()` call, making it trivial to respond to any client. For production use, switch to the async version to handle many concurrent clients without blocking. The echo server pattern is also the foundation for building latency measurement tools - record the time before `sendto()` and after `recvfrom()` to measure UDP round-trip time precisely.
+A UDP echo server in Python requires just `socket.socket(AF_INET, SOCK_DGRAM)`, `bind()`, and a `recvfrom()/sendto()` loop. The sender's address comes back with every `recvfrom()` call, making it trivial to respond to any client. For workloads that need to integrate UDP handling with other asynchronous I/O, the async version avoids blocking on `recvfrom()`. The echo server pattern is also the foundation for building latency measurement tools - record the time before `sendto()` and after `recvfrom()` to measure UDP round-trip time precisely.
