@@ -28,6 +28,8 @@ The relay adds the **giaddr** (gateway IP address) field so the DHCP server know
 
 ## Option 1: DHCP Relay on Linux with isc-dhcp-relay
 
+On Debian/Ubuntu, the legacy `isc-dhcp-relay` package is still available even though ISC DHCP is end-of-life upstream.
+
 ```bash
 # Install the relay agent
 
@@ -52,11 +54,7 @@ sudo systemctl enable --now isc-dhcp-relay
 sudo journalctl -u isc-dhcp-relay -f
 ```
 
-Ensure IP forwarding is enabled:
-
-```bash
-echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
-```
+Ensure the relay host can reach the DHCP server and that any firewalls permit DHCP/BOOTP traffic (UDP ports 67/68).
 
 ## Option 2: Using dhcrelay Directly
 
@@ -82,16 +80,17 @@ interface vlan 20
  ip helper-address 10.0.0.1
 ```
 
-By default, `ip helper-address` forwards DHCP (port 67/68) and several other UDP services. To forward only DHCP:
+By default, `ip helper-address` forwards DHCP/BOOTP and several other UDP services. To leave only DHCP/BOOTP enabled:
 
 ```text
-! Disable generic UDP forwarding first
+! Disable the other default forwarded UDP services
+no ip forward-protocol udp 37
+no ip forward-protocol udp 42
+no ip forward-protocol udp 49
+no ip forward-protocol udp 53
 no ip forward-protocol udp 69
 no ip forward-protocol udp 137
 no ip forward-protocol udp 138
-
-! Re-enable for DHCP only
-ip forward-protocol udp 67
 ```
 
 ## Configuring the DHCP Server for Multiple Subnets
@@ -119,7 +118,7 @@ subnet 192.168.2.0 netmask 255.255.255.0 {
 sudo tcpdump -i eth1 -n "udp port 67 or udp port 68"
 
 # On the DHCP server - confirm it receives relayed requests with giaddr set
-sudo tcpdump -i eth0 -n -v "udp port 67" | grep "giaddr"
+sudo tcpdump -i eth0 -n -v "udp port 67" | grep "Gateway-IP"
 ```
 
 ## Conclusion
