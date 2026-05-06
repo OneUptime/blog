@@ -9,6 +9,7 @@ Description: Configure Cilium CNI for IPv6 and dual-stack Kubernetes clusters, e
 ## Introduction
 
 Cilium is a high-performance CNI plugin using eBPF for packet processing in the Linux kernel. Cilium has excellent dual-stack support with native IPv6 routing, load balancing, and network policy enforcement. In dual-stack mode, Cilium's eBPF programs handle both IPv4 and IPv6 traffic simultaneously. Cilium also supports replacing kube-proxy entirely using eBPF for Service load balancing over IPv6.
+These examples assume the Kubernetes cluster is already configured with IPv6 or dual-stack Pod and Service CIDRs.
 
 ## Install Cilium with IPv6 Support
 
@@ -21,20 +22,37 @@ curl -L --fail --remote-name-all \
 sudo tar xzvf cilium-linux-amd64.tar.gz -C /usr/local/bin
 
 # Install Cilium with dual-stack and kube-proxy replacement
-CONTROL_PLANE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+API_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+API_SERVER=${API_SERVER#https://}
+API_SERVER=${API_SERVER#http://}
+API_SERVER=${API_SERVER%%/*}
+if [[ "$API_SERVER" == \[*\]:* ]]; then
+    K8S_SERVICE_HOST="${API_SERVER%%]*}"
+    K8S_SERVICE_HOST="${K8S_SERVICE_HOST#[}"
+    K8S_SERVICE_PORT="${API_SERVER##*:}"
+elif [[ "$API_SERVER" == \[*\] ]]; then
+    K8S_SERVICE_HOST="${API_SERVER#[}"
+    K8S_SERVICE_HOST="${K8S_SERVICE_HOST%]}"
+    K8S_SERVICE_PORT=443
+elif [[ "$API_SERVER" == *:* ]]; then
+    K8S_SERVICE_HOST="${API_SERVER%%:*}"
+    K8S_SERVICE_PORT="${API_SERVER##*:}"
+else
+    K8S_SERVICE_HOST="$API_SERVER"
+    K8S_SERVICE_PORT=443
+fi
 
 cilium install \
     --set ipv4.enabled=true \
     --set ipv6.enabled=true \
     --set ipam.mode=kubernetes \
-    --set tunnel=vxlan \
+    --set routingMode=tunnel \
+    --set tunnelProtocol=vxlan \
+    --set bpf.masquerade=true \
+    --set enableIPv6Masquerade=true \
     --set kubeProxyReplacement=true \
-    --set k8sServiceHost="$CONTROL_PLANE_IP" \
-    --set k8sServicePort=6443 \
-    --set hostServices.enabled=true \
-    --set externalIPs.enabled=true \
-    --set nodePort.enabled=true \
-    --set hostPort.enabled=true
+    --set k8sServiceHost="$K8S_SERVICE_HOST" \
+    --set k8sServicePort="$K8S_SERVICE_PORT"
 
 # Verify installation
 cilium status --wait
@@ -59,10 +77,11 @@ ipam:
 kubeProxyReplacement: true
 
 # Tunnel encapsulation
-tunnel: vxlan
+routingMode: tunnel
+tunnelProtocol: vxlan
 
-# Enable IPv6 masquerade for outbound
-ipv6NativeRoutingCIDR: "fd00:10:244::/56"
+# Enable IPv6 masquerade for outbound traffic
+enableIPv6Masquerade: true
 
 # Enable BPF masquerade (more efficient than iptables)
 bpf:
@@ -77,12 +96,32 @@ hubble:
 ```
 
 ```bash
+API_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+API_SERVER=${API_SERVER#https://}
+API_SERVER=${API_SERVER#http://}
+API_SERVER=${API_SERVER%%/*}
+if [[ "$API_SERVER" == \[*\]:* ]]; then
+    K8S_SERVICE_HOST="${API_SERVER%%]*}"
+    K8S_SERVICE_HOST="${K8S_SERVICE_HOST#[}"
+    K8S_SERVICE_PORT="${API_SERVER##*:}"
+elif [[ "$API_SERVER" == \[*\] ]]; then
+    K8S_SERVICE_HOST="${API_SERVER#[}"
+    K8S_SERVICE_HOST="${K8S_SERVICE_HOST%]}"
+    K8S_SERVICE_PORT=443
+elif [[ "$API_SERVER" == *:* ]]; then
+    K8S_SERVICE_HOST="${API_SERVER%%:*}"
+    K8S_SERVICE_PORT="${API_SERVER##*:}"
+else
+    K8S_SERVICE_HOST="$API_SERVER"
+    K8S_SERVICE_PORT=443
+fi
+
 helm repo add cilium https://helm.cilium.io/
 helm install cilium cilium/cilium \
     --namespace kube-system \
     --values cilium-values.yaml \
-    --set k8sServiceHost="$CONTROL_PLANE_IP" \
-    --set k8sServicePort=6443
+    --set k8sServiceHost="$K8S_SERVICE_HOST" \
+    --set k8sServicePort="$K8S_SERVICE_PORT"
 ```
 
 ## IPv6 Network Policy with Cilium
@@ -110,7 +149,7 @@ spec:
   # Allow outbound to specific IPv6 range
   egress:
     - toCIDR:
-        - "fd00:10:244::/56"  # Pod CIDR
+        - "2001:db8:100::/64"  # Example external IPv6 range
     - toEndpoints:
         - matchLabels:
             k8s:io.kubernetes.pod.namespace: kube-system
@@ -149,7 +188,7 @@ kubectl -n kube-system exec ds/cilium -- \
 
 ```bash
 # Install Hubble CLI
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
 curl -L --fail --remote-name-all \
     "https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-amd64.tar.gz"
 sudo tar xzvf hubble-linux-amd64.tar.gz -C /usr/local/bin
@@ -158,10 +197,10 @@ sudo tar xzvf hubble-linux-amd64.tar.gz -C /usr/local/bin
 kubectl port-forward -n kube-system svc/hubble-relay 4245:80 &
 
 # Observe IPv6 traffic
-hubble observe --last 100 --ip-version ipv6
+hubble observe --last 100 --ipv6
 
 # Observe specific pod IPv6 traffic
-hubble observe --pod default/mypod --ip-version ipv6 --follow
+hubble observe --pod default/mypod --ipv6 --follow
 ```
 
 ## Conclusion
