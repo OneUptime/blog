@@ -77,8 +77,8 @@ Some resources should only exist in specific environments.
 
 ```hcl
 locals {
-  is_prod    = var.environment == "prod"
-  is_nonprod = !local.is_prod
+  is_prod = var.environment == "prod"
+  is_dev  = var.environment == "dev"
 }
 
 # Read replicas only in production
@@ -86,21 +86,20 @@ locals {
 resource "aws_db_instance" "read_replica" {
   count = local.is_prod ? var.read_replica_count : 0
 
-  replicate_source_db = aws_db_instance.app.id
+  replicate_source_db = aws_db_instance.app.identifier
   instance_class      = local.config.db_instance_class
   publicly_accessible = false
 }
 
 # Relaxed security groups in dev for easier debugging
-resource "aws_security_group_rule" "dev_ssh" {
-  count = local.is_nonprod ? 1 : 0
+resource "aws_vpc_security_group_ingress_rule" "dev_ssh" {
+  count = local.is_dev ? 1 : 0
 
-  type              = "ingress"
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "10.0.0.0/8"
   from_port         = 22
   to_port           = 22
-  protocol          = "tcp"
-  cidr_blocks       = ["10.0.0.0/8"]
-  security_group_id = aws_security_group.app.id
+  ip_protocol       = "tcp"
   description       = "Dev SSH access"
 }
 ```
