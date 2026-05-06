@@ -48,9 +48,9 @@ variable "iam_users" {
 }
 
 locals {
-  # AWS IAM has limits on batch operations - process in groups of 5
+  # Group IAM user names into batches of 5 for downstream processing
   user_batches = chunklist(var.iam_users, 5)
-  # [["user1"..."user5"], ["user6"..."user10"]]
+  # [["user1", "user2", "user3", "user4", "user5"], ["user6", "user7", "user8", "user9", "user10"]]
 }
 
 output "batch_count" {
@@ -76,7 +76,7 @@ variable "regions" {
 locals {
   instances_per_region = ceil(length(var.instance_ids) / length(var.regions))
 
-  # Split instance IDs into one group per region
+  # Split instance IDs into regional groups
   regional_instances = chunklist(var.instance_ids, local.instances_per_region)
 }
 
@@ -96,7 +96,7 @@ variable "notification_recipients" {
 }
 
 locals {
-  # SNS has a 10 recipient limit per publish - split into batches
+  # Group recipients into batches of 10 for downstream notification processing
   recipient_batches = chunklist(var.notification_recipients, 10)
 }
 ```
@@ -116,13 +116,11 @@ locals {
   # [["cert-1", "cert-2"], ["cert-3", "cert-4"], ["cert-5"]]
 }
 
-# Process each chunk
-
-resource "aws_acm_certificate_validation" "batch" {
-  count = length(local.cert_chunks)
-
-  certificate_arn         = local.cert_chunks[count.index][0]
-  validation_record_fqdns = local.cert_chunks[count.index]
+# Process each chunk with a for expression
+output "certificate_batches" {
+  value = {
+    for index, chunk in local.cert_chunks : "batch-${index + 1}" => chunk
+  }
 }
 ```
 
