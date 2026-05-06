@@ -12,9 +12,9 @@ DHCPv6 operates in two modes:
 - **Stateful (IA_NA)**: Server assigns IPv6 addresses
 - **Stateless**: SLAAC assigns addresses, DHCPv6 provides DNS/options only
 
-The router's RA flags determine which mode to use:
-- `M=1` → Stateful DHCPv6 for addresses
-- `O=1` → Stateless DHCPv6 for options only
+The router's RA flags indicate how hosts should use DHCPv6:
+- `M=1` → Hosts should use DHCPv6 for address assignment (`O` is redundant when `M` is set)
+- `O=1` → Hosts should use DHCPv6 for other configuration (such as DNS)
 
 ## Install dhcp6c (DHCPv6 Client)
 
@@ -43,12 +43,12 @@ interface em0 {
     request domain-name-servers;
     request domain-name;
 
-    # Script to run when address is assigned
-    script "/usr/local/sbin/dhcp6c-run-hooks";
+    # Optional: run a custom script when configuration changes
+    # script "/absolute/path/to/your-script";
 };
 
 id-assoc na 0 {
-    # Optional: specify preferred/valid lifetimes
+    # Optional: specify requested addresses and lifetimes
 };
 EOF
 ```
@@ -57,11 +57,17 @@ EOF
 
 ```bash
 cat >> /etc/rc.conf << 'EOF'
+# Enable IPv6 on the interface and accept router advertisements
+ifconfig_em0_ipv6="inet6 -ifdisabled accept_rtadv"
+rtsold_enable="YES"
+
 # DHCPv6 client
 dhcp6c_enable="YES"
 dhcp6c_interfaces="em0"
 EOF
 
+ifconfig em0 inet6 -ifdisabled accept_rtadv
+service rtsold start
 service dhcp6c start
 ```
 
@@ -69,7 +75,7 @@ service dhcp6c start
 
 ```bash
 # Start DHCPv6 client on em0 in foreground with debug
-dhcp6c -d -D em0
+dhcp6c -f -d -D em0
 
 # Start in background
 dhcp6c em0
@@ -85,26 +91,18 @@ ps aux | grep dhcp6c
 # Check for DHCPv6-assigned address
 ifconfig em0 | grep inet6
 
-# DHCPv6 addresses show as 'dynamic' in some output
-# Check ifconfig flags for the address
-
-# Check dhcp6c lease file
-cat /var/db/dhcp6c/dhcp6c-em0.lease
-
 # View dhcp6c logs
 grep dhcp6c /var/log/messages
 ```
 
-## ISC DHCP Client (dhclient) for DHCPv6
+## FreeBSD dhclient vs. dhcp6c
 
 ```bash
-# FreeBSD's dhclient also supports DHCPv6
-# Add to rc.conf:
-echo 'ifconfig_em0_ipv6="inet6 -ifdisabled"' >> /etc/rc.conf
+# FreeBSD's dhclient is the DHCPv4 client
+dhclient em0
 
-# Some FreeBSD versions use dhclient6
-# Check available tools
-pkg search dhclient
+# Use dhcp6c for DHCPv6
+which dhcp6c
 ```
 
 ## Stateless DHCPv6 (Options Only)
@@ -118,7 +116,8 @@ interface em0 {
     information-only;
     request domain-name-servers;
     request domain-name;
-    script "/usr/local/sbin/dhcp6c-run-hooks";
+    # Optional: run a custom script when configuration changes
+    # script "/absolute/path/to/your-script";
 };
 EOF
 
@@ -133,4 +132,4 @@ EOF
 
 ## Summary
 
-Configure DHCPv6 client on FreeBSD with `dhcp6c`. Create `/usr/local/etc/dhcp6c.conf` with `interface em0 { send ia-na 0; request domain-name-servers; }`. Enable with `dhcp6c_enable="YES"` and `dhcp6c_interfaces="em0"` in `/etc/rc.conf`. For stateless DHCPv6 (DNS only), use `information-only` and combine with SLAAC (`accept_rtadv`). Verify with `ifconfig em0 | grep inet6` and check lease files in `/var/db/dhcp6c/`.
+Configure DHCPv6 client on FreeBSD with `dhcp6c`. Create `/usr/local/etc/dhcp6c.conf` with `interface em0 { send ia-na 0; request domain-name-servers; }`. Enable IPv6 and router advertisements with `ifconfig_em0_ipv6="inet6 -ifdisabled accept_rtadv"` and `rtsold_enable="YES"` in `/etc/rc.conf`, then enable `dhcp6c` with `dhcp6c_enable="YES"` and `dhcp6c_interfaces="em0"`. For stateless DHCPv6 (DNS only), use `information-only` and combine with SLAAC (`accept_rtadv`). Verify with `ifconfig em0 | grep inet6` and `grep dhcp6c /var/log/messages`.
