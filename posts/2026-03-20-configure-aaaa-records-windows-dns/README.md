@@ -42,10 +42,10 @@ Add-DnsServerResourceRecordAAAA `
     -IPv6Address "2001:db8::1" `
     -TimeToLive ([TimeSpan]::FromHours(1))
 
-# Add AAAA for the zone apex (@ = empty name for zone root)
+# Add AAAA for the zone apex (. = zone root)
 Add-DnsServerResourceRecordAAAA `
     -ZoneName "corp.example.com" `
-    -Name "@" `
+    -Name "." `
     -IPv6Address "2001:db8::1" `
     -TimeToLive ([TimeSpan]::FromHours(1))
 
@@ -61,7 +61,7 @@ Add-DnsServerResourceRecordAAAA -ZoneName "corp.example.com" -Name "www" `
 For adding many records at once, use a CSV file with PowerShell:
 
 ```powershell
-# Create a CSV file: records.csv
+# Create a CSV file: C:\dns-records.csv
 # Name,IPv6Address
 # www,2001:db8::1
 # mail,2001:db8::100
@@ -120,10 +120,10 @@ Resolve-DnsName -Name "www.corp.example.com"
 ```
 
 ```cmd
-# From Command Prompt using nslookup
+REM From Command Prompt using nslookup
 nslookup -type=AAAA www.corp.example.com
 
-# Using nslookup interactively
+REM Using nslookup interactively
 nslookup
 > set type=AAAA
 > www.corp.example.com
@@ -131,16 +131,17 @@ nslookup
 
 ## Active Directory-Integrated Zones
 
-For AD-integrated zones, AAAA records replicate automatically to all DNS servers. After adding records, they propagate via AD replication without manual zone transfers:
+For AD-integrated zones, AAAA records replicate automatically through AD replication to other domain controllers running DNS according to the zone's replication scope. After adding records, they propagate without manual zone transfers:
 
 ```powershell
 # Check replication status
 repadmin /replsummary
 
-# Force immediate replication
-repadmin /syncall /Ade
+# Force immediate replication from a specific domain controller
+# Replace DC01 with the domain controller name to start the sync from
+repadmin /syncall DC01 /A /d /e
 ```
 
 ## Summary
 
-Windows DNS Server supports AAAA records through the DNS Manager GUI (enter an IPv6 address in the "New Host" dialog) and via PowerShell using `Add-DnsServerResourceRecordAAAA`. PowerShell is preferred for bulk operations and automation. In AD-integrated zones, AAAA records replicate automatically to all domain controllers running DNS.
+Windows DNS Server supports AAAA records through the DNS Manager GUI (enter an IPv6 address in the "New Host" dialog) and via PowerShell using `Add-DnsServerResourceRecordAAAA`. PowerShell is preferred for bulk operations and automation. In AD-integrated zones, AAAA records replicate automatically through AD replication to other domain controllers running DNS according to the zone's replication scope.
