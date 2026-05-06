@@ -48,10 +48,10 @@ sudo ss -4 -t -l -n -p
 
 ```bash
 # Check if something is listening on port 80
-ss -4 -t -l -n | grep ":80"
+ss -4 -H -t -l -n sport = :80
 
-# Or use the sport filter
-ss -4 -t -l -n sport = :80
+# Or show the matching socket with process info
+sudo ss -4 -t -l -n -p sport = :80
 ```
 
 ## Show All Established Connections
@@ -68,7 +68,7 @@ sudo ss -4 -t -n -p state established
 
 ```bash
 # Show connections to a specific destination port (e.g., database)
-ss -4 -t -n dst :5432
+ss -4 -t -n dport = :5432
 ```
 
 ## Using netstat (Legacy)
@@ -81,7 +81,7 @@ netstat -4 -u -l -n
 # With process IDs (requires root)
 sudo netstat -4 -t -l -n -p
 
-# Show all connections (listening + established)
+# Show all TCP sockets, including listening and non-listening
 sudo netstat -4 -t -n -p -a
 ```
 
@@ -89,7 +89,7 @@ sudo netstat -4 -t -n -p -a
 
 ```bash
 # Quick one-liner to check if port 443 is listening
-ss -4 -t -l -n | grep -q ":443" && echo "Port 443 is OPEN" || echo "Port 443 is CLOSED"
+ss -4 -H -t -l -n sport = :443 | grep -q . && echo "Port 443 is OPEN" || echo "Port 443 is CLOSED"
 ```
 
 ## Summary of Common ss Flags
@@ -103,4 +103,4 @@ ss -4 -t -l -n | grep -q ":443" && echo "Port 443 is OPEN" || echo "Port 443 is 
 
 ## Conclusion
 
-`ss -4tlnp` is the single most useful command for auditing listening ports - it shows protocol, address, port, and the owning process in one view. Use `grep` to filter for specific ports, and run with `sudo` to see process names for all services.
+`ss -4tlnp` is the single most useful command for auditing listening ports - it shows protocol, address, port, and the owning process in one view. Use `sport = :port` filters to narrow the output, and run with `sudo` to see process names for all services.
