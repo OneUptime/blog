@@ -8,7 +8,7 @@ Description: Configure Dante SOCKS5 proxy server to listen on IPv6 addresses, au
 
 ## Introduction
 
-Dante is a SOCKS5 server (socksify) and client library. It supports SOCKS4, SOCKS4a, and SOCKS5 protocols with IPv6. Its `sockd` server can listen on IPv6 and route SOCKS connections to IPv6 destinations.
+Dante is a SOCKS server and client library. It supports SOCKS4, SOCKS4a, and SOCKS5 protocols with IPv6. Its `sockd` server can listen on IPv6 and route SOCKS connections to IPv6 destinations.
 
 ## Installation
 
@@ -31,36 +31,36 @@ internal: :: port = 1080
 # External interface (where outbound connections go)
 external: eth0  # Or specify IPv6 address
 
-# Allow SOCKS5 (method 6 = username/password)
+# Allow either username/password or no authentication for SOCKS5
 socksmethod: username none
 
 # Client access rules
 client pass {
-    from: 2001:db8::/32 port 1-65535 to: 0.0.0.0/0
+    from: 2001:db8::/32 port 1-65535 to: ::/0
     log: connect disconnect
 }
 
 client pass {
-    from: ::1/128 port 1-65535 to: 0.0.0.0/0
+    from: ::1/128 port 1-65535 to: ::/0
     log: connect disconnect
 }
 
 # Reject all other clients
 client block {
-    from: 0.0.0.0/0 to: 0.0.0.0/0
+    from: 0/0 to: 0/0
     log: connect
 }
 
 # Allow connections to IPv6 destinations
 socks pass {
-    from: 0.0.0.0/0 to: ::/0
+    from: ::/0 to: ::/0
     log: connect disconnect
     socksmethod: username none
 }
 
 # Block all others
 socks block {
-    from: 0.0.0.0/0 to: 0.0.0.0/0
+    from: 0/0 to: 0/0
     log: connect error
 }
 ```
@@ -71,6 +71,7 @@ socks block {
 # /etc/danted.conf
 
 # Require username/password for SOCKS5
+user.privileged: root
 socksmethod: username
 
 client pass {
@@ -79,7 +80,7 @@ client pass {
 }
 
 socks pass {
-    from: 0.0.0.0/0 to: ::/0
+    from: ::/0 to: ::/0
     socksmethod: username
     log: connect
 }
@@ -104,13 +105,13 @@ systemctl enable --now danted
 ss -lntp | grep :1080
 
 # Test SOCKS5 over IPv6 (no auth)
-curl --socks5 "[::1]:1080" http://example.com/
+curl --proxy "socks5h://[::1]:1080" http://example.com/
 
 # Test SOCKS5 with auth
-curl --socks5 "socksuser:password@[::1]:1080" http://example.com/
+curl --proxy-user "socksuser:password" --proxy "socks5h://[::1]:1080" http://example.com/
 
-# Test connecting to IPv6 destination
-curl --socks5 "[::1]:1080" http://[2001:db8::server]/
+# Test connecting to an IPv6 destination
+curl --proxy "socks5://[::1]:1080" "http://[2001:db8::1]/"  # Replace with a reachable IPv6 host
 ```
 
 ## Step 4: IPv6 Outbound Only
@@ -118,10 +119,11 @@ curl --socks5 "[::1]:1080" http://[2001:db8::server]/
 ```nginx
 # /etc/danted.conf - force outbound via IPv6 interface
 
-external: 2001:db8::proxy  # Specific IPv6 source address
+external.protocol: ipv6
+external: eth0  # Use only the IPv6 address(es) on this interface
 
 socks pass {
-    from: 0.0.0.0/0 to: ::/0
+    from: ::/0 to: ::/0
     socksmethod: none
     command: connect
 }
@@ -131,24 +133,24 @@ socks pass {
 
 ```python
 import socks
-import socket
 
-# Configure SOCKS5 proxy over IPv6
-socks.set_default_proxy(
-    socks.SOCKS5,
-    "::1",    # IPv6 proxy address
-    1080,
-    username="socksuser",
-    password="password"
-)
-socket.socket = socks.socksocket
-
-# Now all socket connections go through the proxy
-import urllib.request
-response = urllib.request.urlopen("http://ipv6.example.com/")
-print(response.read())
+# Open a TCP connection through the SOCKS5 proxy on ::1
+with socks.create_connection(
+    ("example.com", 80),
+    proxy_type=socks.SOCKS5,
+    proxy_addr="::1",
+    proxy_port=1080,
+    proxy_username="socksuser",
+    proxy_password="password",
+) as sock:
+    sock.sendall(
+        b"GET / HTTP/1.1\r\n"
+        b"Host: example.com\r\n"
+        b"Connection: close\r\n\r\n"
+    )
+    print(sock.recv(4096).decode("utf-8", errors="replace"))
 ```
 
 ## Conclusion
 
-Dante's `sockd` listens on IPv6 by setting `internal: :: port = 1080`. Client ACLs accept IPv6 CIDR notation. Both IPv6-to-IPv6 and IPv6-to-IPv4 proxy connections are supported. Use username authentication for security. Monitor Dante with OneUptime's TCP port checks on the SOCKS5 port.
+Dante's `sockd` listens on IPv6 by setting `internal: :: port = 1080`. Client ACLs accept IPv6 CIDR notation. Use `::/0` in rules when you want IPv6-only clients or destinations, and `0/0` when a rule should match either IPv4 or IPv6. Use username authentication for security. Monitor Dante with OneUptime's TCP port checks on the SOCKS5 port.
