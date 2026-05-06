@@ -8,7 +8,7 @@ Description: Learn how to combine conditional expressions with for_each in OpenT
 
 ## Introduction
 
-`for_each` iterates over all items in a map or set. When combined with conditional filtering, you can selectively create resources from a larger dataset - creating S3 buckets only for enabled features, security group rules only for certain environments, or DNS records only for active services.
+`for_each` on resources and modules accepts a map or set of strings and creates one instance per item. When combined with conditional filtering, you can selectively create resources from a larger dataset - creating S3 buckets only for enabled features, security group rules only for certain environments, or DNS records only for active services.
 
 ## Filtering with for Expression
 
@@ -108,7 +108,7 @@ resource "aws_subnet" "database" {
 
 ## Conditional for_each with toset
 
-Filter a list and convert to a set for use with `for_each`.
+Filter a list, convert it to a set, and use the filtered result with `for_each`.
 
 ```hcl
 variable "regions" {
@@ -122,9 +122,18 @@ variable "active_regions" {
   default     = ["us-east-1"]
 }
 
+provider "aws" {
+  alias    = "regional"
+  for_each = toset(var.regions)
+  region   = each.key
+}
+
 resource "aws_s3_bucket" "regional_artifacts" {
   # Create only in active regions
-  for_each = toset(var.active_regions)
+  for_each = toset([
+    for region in var.regions : region
+    if contains(var.active_regions, region)
+  ])
 
   provider = aws.regional[each.key]
   bucket   = "myapp-artifacts-${each.key}"
