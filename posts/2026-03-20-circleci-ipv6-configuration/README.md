@@ -8,49 +8,48 @@ Description: Configure CircleCI pipelines for IPv6 testing using self-hosted run
 
 ## Introduction
 
-CircleCI's cloud executors have limited IPv6 support, but self-hosted runners (CircleCI Runners) can provide full IPv6 connectivity. This guide covers setting up a CircleCI Runner with IPv6, configuring Docker IPv6 networks for test containers, and writing CircleCI config.yml for IPv6 testing.
+CircleCI's cloud machine executor can test local IPv6 traffic, but CircleCI does not support IPv6 internet traffic in its cloud environment. Self-hosted machine runners can provide full IPv6 connectivity. This guide covers setting up a CircleCI machine runner with IPv6, configuring Docker IPv6 networks for test containers, and writing CircleCI config.yml for IPv6 testing.
 
-## Step 1: Set Up a Self-Hosted CircleCI Runner with IPv6
+## Step 1: Set Up a Self-Hosted CircleCI Machine Runner with IPv6
 
 ```bash
-# Install CircleCI Runner on a host with IPv6 connectivity
+# Install CircleCI machine runner 3 on a host with IPv6 connectivity
 
 # Follow CircleCI's runner installation guide for your OS
 
 # Debian/Ubuntu installation
-curl -fsSL https://packagecloud.io/install/repositories/circleci/runner/script.deb.sh | sudo bash
-sudo apt-get install circleci-launch-agent
+curl -s https://packagecloud.io/install/repositories/circleci/runner/script.deb.sh?any=true | sudo bash
+sudo apt-get install -y circleci-runner
 
 # Configure the runner
-sudo mkdir -p /etc/opt/circleci
-sudo tee /etc/opt/circleci/launch-agent-config.yaml > /dev/null << EOF
+sudo mkdir -p /etc/circleci-runner /var/lib/circleci-runner/workdir
+sudo tee /etc/circleci-runner/circleci-runner-config.yaml > /dev/null << EOF
 api:
   auth_token: <your-runner-token>
 
 runner:
   name: ipv6-runner-$(hostname)
-  working_directory: /var/opt/circleci/workdir
+  working_directory: /var/lib/circleci-runner/workdir
   cleanup_working_directory: true
 EOF
 
 # Start the runner
-sudo systemctl enable --now circleci.service
+sudo systemctl enable circleci-runner && sudo systemctl start circleci-runner
 
 # Verify the runner has IPv6
 ip -6 addr show scope global
-ping6 -c 3 2606:4700:4700::1111
+ping -6 -c 3 2606:4700:4700::1111
 ```
 
 ## Step 2: Enable Docker IPv6 on the Runner Host
 
 ```bash
-# Configure Docker daemon for IPv6 on the runner host
+# Configure Docker's default bridge network for IPv6 on the runner host
 sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
 {
   "ipv6": true,
-  "fixed-cidr-v6": "2001:db8:ci::/64",
-  "ip6tables": true,
-  "experimental": true
+  "fixed-cidr-v6": "fd00:1::/64",
+  "ip6tables": true
 }
 EOF
 
@@ -60,6 +59,8 @@ sudo systemctl restart docker
 docker info | grep -i ipv6
 ```
 
+This enables IPv6 on Docker's default bridge network. User-defined test networks still need the `--ipv6` flag when you create them.
+
 ## Step 3: CircleCI config.yml with IPv6
 
 ```yaml
@@ -67,18 +68,10 @@ docker info | grep -i ipv6
 
 version: 2.1
 
-orbs:
-  python: circleci/python@2.1.1
-
-executors:
-  ipv6-executor:
-    machine:
-      image: ubuntu-2204:current
-    resource_class: <your-namespace>/<your-runner-name>
-
 jobs:
   test-ipv6-connectivity:
-    executor: ipv6-executor
+    machine: true
+    resource_class: <your-namespace>/<your-resource-class>
     steps:
       - checkout
 
@@ -86,7 +79,7 @@ jobs:
           name: Verify IPv6 availability
           command: |
             ip -6 addr show scope global
-            ping6 -c 3 2606:4700:4700::1111
+            ping -6 -c 3 2606:4700:4700::1111
             curl -6 https://api6.ipify.org
 
       - run:
@@ -95,8 +88,8 @@ jobs:
             docker network create \
               --driver bridge \
               --ipv6 \
-              --subnet 2001:db8:test::/64 \
-              --gateway 2001:db8:test::1 \
+              --subnet fd00:2::/64 \
+              --gateway fd00:2::1 \
               ipv6-test-net
 
       - run:
@@ -123,7 +116,7 @@ jobs:
             # Test from another container on the IPv6 network
             docker run --rm --network ipv6-test-net \
               curlimages/curl:latest \
-              curl -6 "http://[$TEST_SERVER_IPV6]/" -v
+              curl --fail -6 "http://[$TEST_SERVER_IPV6]/" -v
 
       - run:
           name: Cleanup
@@ -133,10 +126,10 @@ jobs:
           when: always
 
   build-and-push-ipv6:
-    executor: ipv6-executor
+    machine: true
+    resource_class: <your-namespace>/<your-resource-class>
     steps:
       - checkout
-      - setup_remote_docker
 
       - run:
           name: Build application
@@ -145,14 +138,37 @@ jobs:
       - run:
           name: Test application IPv6 support
           command: |
-            # Run the app and test IPv6 binding
+            APP_PORT=8080 # Replace with your container port.
+            APP_HEALTH_PATH=/health # Replace with an endpoint your app exposes.
+
+            docker network create \
+              --driver bridge \
+              --ipv6 \
+              --subnet fd00:3::/64 \
+              --gateway fd00:3::1 \
+              app-ipv6-net
+
             docker run -d --name myapp \
+              --network app-ipv6-net \
               -e LISTEN_ON_IPV6=true \
               myapp:$CIRCLE_SHA1
 
-            # Verify app started and listening on IPv6
+            sleep 2
             docker logs myapp
-            docker rm -f myapp
+
+            APP_IPV6=$(docker inspect myapp \
+              -f '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}')
+
+            docker run --rm --network app-ipv6-net \
+              curlimages/curl:latest \
+              curl --fail -6 "http://[$APP_IPV6]:$APP_PORT$APP_HEALTH_PATH"
+
+      - run:
+          name: Cleanup
+          command: |
+            docker rm -f myapp || true
+            docker network rm app-ipv6-net || true
+          when: always
 
 workflows:
   ipv6-pipeline:
@@ -173,15 +189,15 @@ workflows:
 ```yaml
 # Additional job to test application-level IPv6 support
 test-app-ipv6:
-  executor: ipv6-executor
+  machine: true
+  resource_class: <your-namespace>/<your-resource-class>
   steps:
     - checkout
 
     - run:
-        name: Test Python application listens on IPv6
+        name: Test a Python service listens on IPv6
         command: |
-          # Start the Python app configured for IPv6
-          LISTEN_ADDR="::" python3 app.py &
+          python3 -m http.server --bind :: 8080 &
           APP_PID=$!
           sleep 2
 
@@ -189,27 +205,31 @@ test-app-ipv6:
           ss -6 -t -l -n | grep ":8080"
 
           # Test IPv6 connection
-          curl -6 "http://[::1]:8080/health"
+          curl --fail -6 "http://[::1]:8080/"
 
           kill $APP_PID
+          wait $APP_PID 2>/dev/null || true
 ```
 
 ## Troubleshooting CircleCI IPv6
 
 ```bash
 # If tests fail, check runner IPv6 status
-sudo journalctl -u circleci -n 50
+sudo journalctl -u circleci-runner -n 50
 
 # Verify Docker IPv6 is working on the runner
 docker run --rm ubuntu:22.04 ip -6 addr show
 
-# Check if ip6tables masquerading is enabled for containers
-sudo ip6tables -t nat -L POSTROUTING -n
+# Verify the Docker bridge networks have IPv6 enabled
+docker network inspect bridge
+docker network create --driver bridge --ipv6 --subnet fd00:4::/64 ipv6-debug-net
+docker network inspect ipv6-debug-net
+docker network rm ipv6-debug-net
 
-# If missing, add masquerading for the Docker IPv6 subnet
-sudo ip6tables -t nat -A POSTROUTING -s 2001:db8:ci::/64 ! -o docker0 -j MASQUERADE
+# Confirm IPv6 forwarding is enabled on the runner host
+sysctl net.ipv6.conf.all.forwarding
 ```
 
 ## Conclusion
 
-CircleCI IPv6 testing is most effective with a self-hosted runner configured with IPv6 access and Docker IPv6 enabled. The `config.yml` structure allows creating IPv6 Docker networks per job, running containers on those networks, and testing application IPv6 connectivity within the pipeline. For production use, ensure the runner host has a stable global IPv6 address and that Docker's ip6tables masquerading is properly configured for outbound IPv6 connectivity from containers.
+CircleCI IPv6 testing is most effective with a self-hosted machine runner configured with IPv6 access and Docker IPv6 enabled. The `config.yml` structure allows creating IPv6 Docker networks per job, running containers on those networks, and testing application IPv6 connectivity within the pipeline. For production use, ensure the runner host has a stable global IPv6 address, Docker can manage IPv6 packet filtering with `ip6tables`, and IPv6 forwarding is enabled on the host.
