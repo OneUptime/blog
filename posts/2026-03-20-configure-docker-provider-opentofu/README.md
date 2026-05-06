@@ -8,7 +8,7 @@ Description: Learn how to configure docker provider with OpenTofu using the Dock
 
 ## Introduction
 
-The OpenTofu Docker provider manages Docker resources declaratively. This is useful for local development environments, testing infrastructure, and managing Docker hosts in production.
+The Docker provider lets OpenTofu manage Docker resources declaratively. This is useful for local development environments, testing infrastructure, and managing Docker hosts in production.
 
 ## Provider Setup
 
@@ -17,7 +17,7 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "4.2.0"
     }
   }
 }
