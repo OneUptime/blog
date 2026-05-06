@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, IP Source Guard, IPSG, IPv4, Switching, Security, IOS
 
-Description: Configure IP Source Guard on Cisco IOS switches to prevent IP address spoofing by restricting traffic to only the IP and MAC addresses recorded in the DHCP snooping binding table.
+Description: Configure IP Source Guard on Cisco IOS switches to prevent IP address spoofing by restricting traffic to only the IP addresses, or IP and MAC address pairs, recorded in the IP source binding table.
 
 ## Introduction
 
-IP Source Guard (IPSG) creates per-port VLAN ACLs that permit only traffic matching the DHCP snooping binding table entries. A host cannot use an IP address it did not obtain from DHCP, blocking IP spoofing at Layer 2.
+IP Source Guard (IPSG) creates per-port ACLs that permit only traffic matching entries in the DHCP snooping binding database or manually configured IP source bindings. A host cannot use a source IP address that is not in the binding table, and with MAC filtering enabled the source MAC address must also match.
 
 ## Prerequisites
 
@@ -16,6 +16,10 @@ IP Source Guard (IPSG) creates per-port VLAN ACLs that permit only traffic match
 ! 1. Enable DHCP snooping
 ip dhcp snooping
 ip dhcp snooping vlan 10
+
+! Required for ip verify source port-security
+! DHCP server must support option 82
+ip dhcp snooping information option
 
 ! 2. Populate the binding table (clients must request DHCP leases)
 ! 3. Trust the uplink
@@ -34,7 +38,11 @@ interface GigabitEthernet0/1
  ip verify source            ! Filter by IP only
 
 ! To also filter by MAC address:
+! Requires DHCP snooping, option 82, and port security
 interface GigabitEthernet0/2
+ switchport mode access
+ switchport access vlan 10
+ switchport port-security
  ip verify source port-security
 ```
 
@@ -42,23 +50,26 @@ interface GigabitEthernet0/2
 
 ```cisco
 ! Servers don't use DHCP - add manual binding
-ip source binding 00:1a:2b:3c:4d:5e vlan 10 10.1.10.50 interface GigabitEthernet0/10
+ip source binding 001a.2b3c.4d5e vlan 10 10.1.10.50 interface GigabitEthernet0/10
 
 ! Add multiple static entries
-ip source binding 00:aa:bb:cc:dd:ee vlan 10 10.1.10.51 interface GigabitEthernet0/11
+ip source binding 00aa.bbcc.ddee vlan 10 10.1.10.51 interface GigabitEthernet0/11
 ```
 
 ## Verify IP Source Guard
 
 ```cisco
-! Show IPSG bindings per interface
+! Show IPSG status per interface
 show ip verify source
 
 ! Example:
 ! Interface    Filter-type  Filter-mode  IP-address   Mac-address     Vlan
 ! -----------  -----------  -----------  -----------  --------------  ----
-! Gi0/1        ip           active       10.1.10.100  00:1a:2b:3c:4d   10
-! Gi0/2        ip-mac       active       10.1.10.101  00:aa:bb:cc:dd   10
+! Gi0/1        ip           active       10.1.10.100                  10
+! Gi0/2        ip-mac       active       10.1.10.101  001a.2b3c.4d5e  10
+
+! Show IP source bindings (static and DHCP snooping)
+show ip source binding
 
 ! Show DHCP snooping binding table
 show ip dhcp snooping binding
@@ -70,6 +81,7 @@ show ip dhcp snooping binding
 interface GigabitEthernet0/3
  switchport mode access
  switchport access vlan 10
+ switchport port-security
  switchport port-security maximum 1
  switchport port-security mac-address sticky
  switchport port-security violation restrict
@@ -105,4 +117,4 @@ Layer 2 Security Stack:
 
 ## Conclusion
 
-IP Source Guard is the final layer of the Cisco Layer 2 security stack. It creates per-port dynamic ACLs that drop packets from any IP address not recorded in the DHCP snooping binding table, making IP spoofing impossible on switch access ports. Always add static bindings for hosts using manually configured IPv4 addresses.
+IP Source Guard is a key layer in the Cisco Layer 2 security stack. It creates per-port ACLs that drop packets whose source IP address, or source IP and MAC address pair when MAC filtering is enabled, is not recorded in the binding table, helping prevent IPv4 spoofing on switch access ports. Always add static bindings for hosts using manually configured IPv4 addresses.
