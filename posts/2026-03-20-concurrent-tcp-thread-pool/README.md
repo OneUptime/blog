@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: TCP, IPv4, Thread Pool, Python, Java, Go, Networking
 
-Description: Learn how to build a concurrent TCP server for IPv4 using thread pools in Python, Java, and Go to handle many simultaneous connections efficiently without creating a thread per connection.
+Description: Learn how to build a concurrent TCP server for IPv4 using thread pools in Python and Java, and a worker pool in Go, to handle many simultaneous connections efficiently without creating a thread per connection.
 
 ## Python: ThreadPoolExecutor
 
@@ -54,6 +54,16 @@ WORKERS    = 10
 QUEUE_SIZE = 50   # reject connections when queue is full
 
 task_queue: queue.Queue = queue.Queue(maxsize=QUEUE_SIZE)
+
+def handle(conn: socket.socket, addr: tuple) -> None:
+    with conn:
+        print(f"[+] {addr}")
+        while True:
+            data = conn.recv(4096)
+            if not data:
+                break
+            conn.sendall(data)
+        print(f"[-] {addr}")
 
 def worker() -> None:
     while True:
@@ -145,7 +155,10 @@ func worker(jobs <-chan net.Conn) {
 }
 
 func main() {
-    ln, _ := net.Listen("tcp4", "0.0.0.0:9000")
+    ln, err := net.Listen("tcp4", "0.0.0.0:9000")
+    if err != nil {
+        log.Fatal(err)
+    }
     defer ln.Close()
 
     jobs := make(chan net.Conn, 100)  // buffered queue
@@ -169,4 +182,4 @@ func main() {
 
 ## Conclusion
 
-A thread pool bounds memory usage and prevents thread exhaustion under load. Use `ThreadPoolExecutor` (Python), `Executors.newFixedThreadPool` (Java), or a buffered channel with worker goroutines (Go). When the pool is saturated, either reject new connections immediately (close and return a 503) or queue them with a bounded queue to provide backpressure. Choose the pool size based on the expected connection duration and the target concurrency - CPU-bound tasks need far fewer threads than I/O-bound tasks.
+A thread pool bounds the number of concurrent workers and helps prevent thread exhaustion under load, but queued work is only bounded if you also use a bounded queue. Use `ThreadPoolExecutor` (Python), `Executors.newFixedThreadPool` (Java), or a buffered channel with worker goroutines (Go). When the pool is saturated, either reject new connections immediately (for raw TCP, usually by closing the connection; an HTTP server could return a 503) or queue them with a bounded queue to provide backpressure. Choose the pool size based on the expected connection duration and the target concurrency - CPU-bound tasks need far fewer workers than I/O-bound tasks.
