@@ -90,6 +90,8 @@ LACPTransmitRate=fast
 TransmitHashPolicy=layer3+4
 ```
 
+This mode requires the connected switch ports to be configured for 802.3ad/LACP.
+
 ## Round-Robin Bonding
 
 ```ini
@@ -97,6 +99,8 @@ TransmitHashPolicy=layer3+4
 Mode=balance-rr
 MIIMonitorSec=100ms
 ```
+
+This mode generally requires the connected switch ports to be grouped into the same logical link.
 
 ## DHCP on Bond Interface
 
@@ -119,7 +123,7 @@ DHCP=ipv4
 | broadcast | 3 | All interfaces |
 | 802.3ad | 4 | LACP |
 | balance-tlb | 5 | Adaptive TX |
-| balance-alb | 6 | Adaptive RX+TX |
+| balance-alb | 6 | Adaptive TX + IPv4 RX |
 
 ## Conclusion
 
