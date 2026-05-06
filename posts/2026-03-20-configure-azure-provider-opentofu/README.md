@@ -8,7 +8,7 @@ Description: Learn how to configure the AzureRM provider in OpenTofu, including 
 
 ## Introduction
 
-The AzureRM provider is OpenTofu's primary provider for Microsoft Azure. Configuring it correctly sets up authentication, subscription targeting, and provider-wide feature flags that control resource lifecycle behaviour.
+The AzureRM provider is the primary provider for managing Microsoft Azure resources with OpenTofu. Configuring it correctly sets up authentication, subscription targeting, and provider-wide feature flags that control resource lifecycle behaviour.
 
 ## Minimal Configuration
 
@@ -44,12 +44,14 @@ provider "azurerm" {
 
     key_vault {
       # Keep soft-deleted Key Vaults and secrets recoverable
-      purge_soft_delete_on_destroy    = false
-      recover_soft_deleted_key_vaults = true
+      purge_soft_delete_on_destroy         = false
+      purge_soft_deleted_secrets_on_destroy = false
+      recover_soft_deleted_key_vaults      = true
+      recover_soft_deleted_secrets         = true
     }
 
     virtual_machine {
-      # Delete the OS disk when the VM is deleted
+      # Delete the OS disk when Linux or Windows VMs are deleted
       delete_os_disk_on_deletion = true
     }
 
