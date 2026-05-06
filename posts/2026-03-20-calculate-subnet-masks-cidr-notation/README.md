@@ -29,12 +29,13 @@ A /N prefix length means the mask has N ones followed by (32 − N) zeros:
 | /28 | 255.255.255.240 | 14 |
 | /29 | 255.255.255.248 | 6 |
 | /30 | 255.255.255.252 | 2 |
-| /31 | 255.255.255.254 | 2 (RFC 3021, no broadcast) |
+| /31 | 255.255.255.254 | 2 on point-to-point links (RFC 3021, no broadcast) |
 | /32 | 255.255.255.255 | 1 (host route) |
 
 ## Python: CIDR to Subnet Mask
 
 ```python
+import ipaddress
 import socket, struct
 
 def cidr_to_mask(prefix: int) -> str:
@@ -47,8 +48,10 @@ def cidr_to_mask(prefix: int) -> str:
 
 def mask_to_cidr(mask: str) -> int:
     """Convert a dotted-decimal subnet mask to CIDR prefix length."""
-    mask_int = struct.unpack("!I", socket.inet_aton(mask))[0]
-    return bin(mask_int).count("1")
+    network = ipaddress.IPv4Network(f"0.0.0.0/{mask}")
+    if str(network.netmask) != mask:
+        raise ValueError(f"Invalid subnet mask: {mask}")
+    return network.prefixlen
 
 # Examples
 
