@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Django, Python, IPv6, ALLOWED_HOSTS, Web Framework, WSGI, ASGI
 
-Description: Configure Django to accept requests from IPv6 clients by updating ALLOWED_HOSTS, handling IPv6 in middleware, and deploying with an IPv6-capable application server.
+Description: Configure Django to accept requests on IPv6-capable hosts by updating ALLOWED_HOSTS, optionally normalizing client IPs behind a reverse proxy, and deploying with an IPv6-capable application server.
 
 ## Introduction
 
-Django requires explicit configuration to work with IPv6. The key settings are `ALLOWED_HOSTS` (which must include IPv6 addresses in bracket notation for the dev server), and the `REMOTE_ADDR` handling in middleware. Production deployments need Gunicorn or uWSGI bound to IPv6.
+Django has built-in IPv6 support, but non-default hosts and production deployments still need explicit configuration. The key setting is `ALLOWED_HOSTS`, which should include IPv6 literals in bracket notation because Django validates the `Host` header without the port. If you're behind a reverse proxy, handle forwarded client IP headers carefully. Production deployments need an IPv6-capable WSGI or ASGI server such as Gunicorn or Uvicorn.
 
 ## Step 1: ALLOWED_HOSTS for IPv6
 
@@ -20,17 +20,15 @@ Django requires explicit configuration to work with IPv6. The key settings are `
 ALLOWED_HOSTS = [
     "example.com",
     "www.example.com",
-    "2001:db8::1",          # Specific IPv6 address
-    "[2001:db8::1]",        # Bracket notation (for dev server)
-    "::1",                  # Loopback
-    "[::1]",
+    "[2001:db8::1]",        # Specific IPv6 literal
+    "[::1]",                # Loopback
     # Wildcard for all (dev only!)
     # "*",
 ]
 
-# For the development server on IPv6:
-# python manage.py runserver [::]:8000
-# Requires the bracket notation in ALLOWED_HOSTS
+# When DEBUG=True and ALLOWED_HOSTS is empty, Django already allows
+# ".localhost", "127.0.0.1", and "[::1]".
+# If you access the dev server via a different IPv6 literal, add it in brackets here.
 ```
 
 ## Step 2: Run Django Dev Server on IPv6
@@ -46,7 +44,7 @@ python manage.py runserver "[::1]:8000"
 python manage.py runserver "[2001:db8::1]:8000"
 ```
 
-## Step 3: Middleware for IPv6 Client IP
+## Step 3: Middleware for IPv6 Client IP Behind a Trusted Proxy
 
 ```python
 # myapp/middleware.py
@@ -56,18 +54,19 @@ from django.http import HttpRequest
 
 class IPv6ClientMiddleware:
     """
-    Normalize IPv6 client addresses and handle X-Forwarded-For.
+    Normalize client IP addresses. Only trust X-Forwarded-For from a proxy you control.
     """
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request: HttpRequest):
-        # Extract real client IP
+        # Start with the direct client address provided by the server.
+        ip = request.META.get("REMOTE_ADDR", "")
+
+        # If you're behind a trusted reverse proxy, use the left-most forwarded IP.
         xff = request.META.get("HTTP_X_FORWARDED_FOR", "")
         if xff:
             ip = xff.split(",")[0].strip().strip("[]")
-        else:
-            ip = request.META.get("REMOTE_ADDR", "")
 
         # Normalize IPv6
         try:
@@ -95,7 +94,6 @@ MIDDLEWARE = [
 ```python
 # models.py
 from django.db import models
-from django.core.validators import validate_ipv46_address
 
 class UserSession(models.Model):
     # GenericIPAddressField handles both IPv4 and IPv6
@@ -114,9 +112,12 @@ class UserSession(models.Model):
 ```python
 # forms.py
 from django import forms
-from django.core.validators import validate_ipv46_address
 
 class NetworkConfigForm(forms.Form):
+    def __init__(self, *args, allow_loopback=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.allow_loopback = allow_loopback
+
     ipv6_address = forms.GenericIPAddressField(
         protocol="IPv6",
         label="IPv6 Address",
@@ -154,8 +155,8 @@ uvicorn myproject.asgi:application \
 ```python
 # settings.py
 
-# Ensure session cookies work for IPv6 clients
-SESSION_COOKIE_DOMAIN = None  # Use the request's host
+# Keep the default host-only cookie behavior
+SESSION_COOKIE_DOMAIN = None
 
 # CSRF trusted origins - include IPv6 addresses
 CSRF_TRUSTED_ORIGINS = [
@@ -167,4 +168,4 @@ CSRF_TRUSTED_ORIGINS = [
 
 ## Conclusion
 
-Django IPv6 support requires updating `ALLOWED_HOSTS` with IPv6 addresses (in bracket notation for the dev server), using `GenericIPAddressField` for storing IPs in models, and binding Gunicorn/Uvicorn to `[::]:8000`. Add `ProxyFix` or custom middleware to extract real IPv6 client addresses from proxy headers. Monitor Django with OneUptime's uptime and SSL checks on IPv6 endpoints.
+Django IPv6 support requires updating `ALLOWED_HOSTS` with bracketed IPv6 literals, using `GenericIPAddressField` for storing IPs in models, and binding Gunicorn or Uvicorn to IPv6. If you're behind a reverse proxy, only trust forwarded client IP headers from proxies you control. Monitor Django with OneUptime's uptime and SSL checks on IPv6 endpoints.
