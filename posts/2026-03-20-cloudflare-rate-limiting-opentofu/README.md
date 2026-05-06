@@ -8,7 +8,7 @@ Description: Learn how to configure Cloudflare rate limiting rules using OpenTof
 
 ---
 
-Cloudflare rate limiting sits at the edge, blocking abusive traffic before it reaches your origin servers. With OpenTofu's Cloudflare provider, rate limiting rules are defined as code, reviewed in pull requests, and applied consistently across zones.
+Cloudflare rate limiting sits at the edge, blocking abusive traffic before it reaches your origin servers. With the Cloudflare provider in OpenTofu, rate limiting rules are defined as code, reviewed in pull requests, and applied consistently across zones.
 
 ## Provider Configuration
 
@@ -19,7 +19,7 @@ terraform {
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.23"
+      version = "~> 4.43"
     }
   }
 }
@@ -31,7 +31,7 @@ provider "cloudflare" {
 
 ## Creating Rate Limiting Rules
 
-Cloudflare uses WAF Custom Rules with rate limiting expressions for modern rate limiting.
+Cloudflare uses rulesets in the `http_ratelimit` phase for modern rate limiting.
 
 ```hcl
 # rate_limiting.tf
@@ -57,8 +57,8 @@ resource "cloudflare_ruleset" "rate_limiting" {
       requests_per_period = 5           # Max 5 requests per minute
       mitigation_timeout  = 300         # Block for 5 minutes after threshold
 
-      # Count responses to detect failed attempts
-      requests_to_origin  = true
+      # Count only failed login attempts
+      counting_expression = "(http.request.uri.path eq \"/api/auth/login\" and http.request.method eq \"POST\" and http.response.code in {401 403})"
     }
   }
 
@@ -71,7 +71,7 @@ resource "cloudflare_ruleset" "rate_limiting" {
     expression = "starts_with(http.request.uri.path, \"/api/\")"
 
     ratelimit {
-      characteristics     = ["ip.src"]
+      characteristics     = ["cf.colo.id", "ip.src"]
       period              = 60
       requests_per_period = 100
       mitigation_timeout  = 60
@@ -87,7 +87,7 @@ resource "cloudflare_ruleset" "rate_limiting" {
     expression = "(http.request.uri.path eq \"/api/auth/register\" and http.request.method eq \"POST\")"
 
     ratelimit {
-      characteristics     = ["ip.src"]
+      characteristics     = ["cf.colo.id", "ip.src"]
       period              = 3600    # 1 hour window
       requests_per_period = 3       # Max 3 registrations per hour per IP
       mitigation_timeout  = 3600
@@ -99,44 +99,27 @@ resource "cloudflare_ruleset" "rate_limiting" {
 ## Custom Error Response for Rate-Limited Requests
 
 ```hcl
-# custom_responses.tf
-# Return a JSON error response instead of Cloudflare's default HTML page
-resource "cloudflare_ruleset" "custom_response" {
-  zone_id     = var.cloudflare_zone_id
-  name        = "Custom Error Responses"
-  description = "Custom responses for blocked requests"
-  kind        = "zone"
-  phase       = "http_custom_errors"
-
-  rules {
-    action      = "serve_error"
-    description = "Custom 429 response for rate limiting"
-    enabled     = true
-
-    expression = "true"
-
-    action_parameters {
-      response {
-        status_code  = 429
-        content_type = "application/json"
-        content      = "{\"error\": \"rate_limit_exceeded\", \"message\": \"Too many requests. Please try again later.\"}"
-      }
-    }
+# Add this block to a rate limiting rule to return JSON instead of Cloudflare's default HTML page
+action_parameters {
+  response {
+    status_code  = 429
+    content_type = "application/json"
+    content      = "{\"error\": \"rate_limit_exceeded\", \"message\": \"Too many requests. Please try again later.\"}"
   }
 }
 ```
 
-## Firewall Rules for IP Allowlisting
+## Custom Rules for IP Allowlisting
 
 ```hcl
-# firewall.tf
+# custom_rules.tf
 # Allow monitoring and health check IPs to bypass rate limiting
 resource "cloudflare_ruleset" "bypass_rules" {
   zone_id     = var.cloudflare_zone_id
   name        = "Bypass Rules"
   description = "Bypass rate limiting for trusted sources"
   kind        = "zone"
-  phase       = "http_request_firewall_managed"
+  phase       = "http_request_firewall_custom"
 
   rules {
     action      = "skip"
@@ -146,7 +129,7 @@ resource "cloudflare_ruleset" "bypass_rules" {
     expression = "ip.src in {${join(" ", var.trusted_ips)}}"
 
     action_parameters {
-      ruleset = "current"
+      phases = ["http_ratelimit"]
     }
   }
 }
@@ -155,7 +138,7 @@ resource "cloudflare_ruleset" "bypass_rules" {
 ## Best Practices
 
 - Tune rate limits using Cloudflare Analytics before enabling block mode - observe actual traffic patterns first.
-- Use multiple characteristics (`ip.src` + `cf.colo.id`) for stricter limits that account for shared IPs behind NAT.
-- Set `mitigation_timeout` to at least 5x the window period to prevent rapid retry attempts.
+- Include `cf.colo.id` in Terraform/API rate limiting characteristics, and use `cf.unique_visitor_id` instead of `ip.src` when you need NAT-aware visitor tracking.
+- Set `mitigation_timeout` based on the behavior you want: `0` throttles only over-limit requests, while values greater than `0` apply the action for the full timeout.
 - Return JSON error responses (not HTML) for API endpoints - clients need machine-readable errors.
 - Exempt health check endpoints from rate limiting to prevent false monitoring alerts.
