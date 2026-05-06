@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Cisco SD-WAN, Viptela, VManage, WAN, BGP, OSPF, Overlay
+Tags: IPv6, Cisco SD-WAN, Viptela, VManage, WAN, OMP, Overlay
 
-Description: Configure IPv6 support in Cisco SD-WAN (formerly Viptela) including service-side IPv6 addressing, transport-side IPv6, IPv6 BGP peering, and IPv6 application-aware routing policies.
+Description: Configure IPv6 support in Cisco SD-WAN (formerly Viptela) including service-side IPv6 addressing, transport-side IPv6, OMP IPv6 route distribution, and IPv6 traffic-steering policies.
 
 ---
 
@@ -41,50 +41,22 @@ vpn 1
  interface ge0/2
   ip address 192.168.1.1/24
   ipv6 address 2001:db8:a::1/64
-  ipv6 dhcp-server
-   address-pool 2001:db8:a::/64
-   dns-server 2001:4860:4860::8888
-  !
   no shutdown
  !
- ip route 0.0.0.0/0 vpn 0
- ipv6 route ::/0 vpn 0
 !
 ```
 
 ## vManage Device Template for IPv6
 
-```json
-{
-  "templateName": "Corporate-IPv6-Template",
-  "templateDescription": "Dual-stack template with IPv6",
-  "deviceType": "vedge-ISR-4331",
-  "generalTemplates": [
-    {
-      "templateId": "vpn1-template-id",
-      "templateType": "vpn-vedge",
-      "subTemplates": [
-        {
-          "templateId": "interface-template-id",
-          "templateType": "vpn-vedge-interface",
-          "config": {
-            "if-name": "ge0/2",
-            "ip": {
-              "address": "192.168.1.1/24"
-            },
-            "ipv6": {
-              "address": "2001:db8:a::1/64",
-              "dhcp-server": {
-                "address-pool": "2001:db8:a::/64",
-                "dns-server": ["2001:4860:4860::8888"]
-              }
-            }
-          }
-        }
-      ]
-    }
-  ]
-}
+```text
+# vManage feature template equivalent
+
+Configuration > Templates > Feature Templates > Cisco VPN Interface Ethernet
+  VPN: 1
+  Interface Name: ge0/2
+  IPv4 Address: 192.168.1.1/24
+  IPv6 Address: 2001:db8:a::1/64
+  Shutdown: Off
 ```
 
 ## OMP IPv6 Route Distribution
@@ -92,15 +64,15 @@ vpn 1
 ```text
 # Verify OMP distributes IPv6 prefixes
 
-show omp routes vpn 1 family ipv6
+show omp routes family ipv6 vpn 1
 
-# Output shows:
-# PREFIX            FROM PEER      PREFERENCE  VPN    COLOR     STATUS
-# 2001:db8:a::/64  192.168.0.1    0          1      biz-internet   C,I,R
-# 2001:db8:b::/64  192.168.0.2    0          1      biz-internet   C,I,R
+# Example output includes:
+# VPN  PREFIX           FROM PEER  STATUS
+# 1    2001:db8:a::/64  10.0.0.2   C,I,R
+# 1    2001:db8:b::/64  10.0.0.3   C,I,R
 
 # Check IPv6 routes installed in VPN
-show ip route vrf 1 ipv6
+show ipv6 routes vpn 1
 # or for IOS XE SD-WAN:
 show ipv6 route vrf 1
 ```
@@ -115,8 +87,7 @@ interface GigabitEthernet2
  vrf forwarding 1
  ip address 192.168.1.1 255.255.255.0
  ipv6 address 2001:db8:a::1/64
- ipv6 nd ra-interval 30
- ipv6 nd prefix 2001:db8:a::/64
+ ipv6 nd managed-config-flag
  no ip proxy-arp
  no shutdown
 
@@ -130,16 +101,16 @@ interface GigabitEthernet2
  ipv6 dhcp server VPN1-IPV6
 
 ! Verify
-show ipv6 interface brief
+show ipv6 route vrf 1
 show ipv6 dhcp binding
 ```
 
-## SD-WAN IPv6 Application-Aware Routing
+## SD-WAN IPv6 Traffic Steering Policy
 
 ```text
 # vManage Policy for IPv6 traffic steering
 
-# Application-Aware Routing Policy:
+# Centralized Data Policy:
 # Route IPv6 VoIP traffic over MPLS (low latency path)
 # Route IPv6 bulk traffic over broadband
 
@@ -149,7 +120,7 @@ Data Policy (Centralized):
        Action: set preferred-color mpls
     2. Match IPv6 Video (dscp af41)
        Action: set preferred-color mpls
-    3. Default: use biz-internet
+    3. Default: accept
 
 # Apply to sites
 Site List: ALL-SITES
@@ -160,22 +131,22 @@ VPN List: VPN-1
 
 ```bash
 # On vEdge device
-vEdge# show interface ge0/2 | grep ipv6
-# Shows IPv6 address, state
+vEdge# show ipv6 interface ge0/2 vpn 1
+# Shows IPv6 address, link-local address, and state
 
 # Verify IPv6 forwarding
-vEdge# show ip route vrf 1 family ipv6
+vEdge# show ipv6 routes vpn 1 omp
 # Shows OMP-learned IPv6 routes
 
 # Test connectivity
 vEdge# ping vpn 1 2001:db8:b::10
 
-# Check BFD session health for IPv6 transport
-vEdge# show bfd sessions | grep ipv6
+# Check BFD session health for the overlay transport
+vEdge# show bfd sessions
 
 # On vManage dashboard:
 # Monitor > Network > [Device] > Interface
 # Shows IPv6 statistics per interface
 ```
 
-Cisco SD-WAN IPv6 support requires configuring service-side VPN interfaces with dual-stack addresses, relying on OMP to distribute IPv6 prefixes between vEdge/cEdge devices, and optionally creating application-aware routing policies that steer IPv6 traffic based on DSCP markings or application type across the SD-WAN fabric.
+Cisco SD-WAN IPv6 support requires configuring service-side VPN interfaces with IPv6 or dual-stack addressing, relying on OMP to distribute IPv6 prefixes between vEdge/cEdge devices, and optionally creating centralized policies to steer IPv6 traffic across the SD-WAN fabric. For IPv6 application-aware routing based on application or app-list criteria, use Cisco IOS XE Catalyst SD-WAN Release 17.9.1a with Cisco vManage Release 20.9.1 or later.
