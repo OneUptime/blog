@@ -121,14 +121,22 @@ public class IPv6DNSLookup {
     public static String reverseLookup(String ipv6Addr) {
         try {
             InetAddress addr = InetAddress.getByName(ipv6Addr);
-            return addr.getCanonicalHostName();
+            if (!(addr instanceof Inet6Address)) {
+                return "Not an IPv6 address";
+            }
+            String canonical = addr.getCanonicalHostName();
+            return canonical.equals(addr.getHostAddress()) ? "No PTR record found" : canonical;
         } catch (UnknownHostException e) {
-            return "NXDOMAIN";
+            return "Invalid IPv6 address";
         }
     }
 
     public static String buildPTRName(String ipv6Addr) throws UnknownHostException {
-        byte[] b = InetAddress.getByName(ipv6Addr).getAddress();
+        InetAddress addr = InetAddress.getByName(ipv6Addr);
+        if (!(addr instanceof Inet6Address)) {
+            throw new UnknownHostException("Not an IPv6 address: " + ipv6Addr);
+        }
+        byte[] b = addr.getAddress();
         StringBuilder sb = new StringBuilder();
         for (int i = 15; i >= 0; i--) {
             sb.append(String.format("%x.%x.", b[i] & 0x0f, (b[i] >> 4) & 0x0f));
@@ -159,10 +167,19 @@ public class IPv6SubnetCalc {
 
     public static void calculate(String cidr) throws UnknownHostException {
         String[] parts = cidr.split("/");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("CIDR must be in address/prefix form");
+        }
         String addrStr = parts[0];
         int prefixLen = Integer.parseInt(parts[1]);
+        if (prefixLen < 0 || prefixLen > 128) {
+            throw new IllegalArgumentException("IPv6 prefix length must be between 0 and 128");
+        }
 
         InetAddress addr = InetAddress.getByName(addrStr);
+        if (!(addr instanceof Inet6Address)) {
+            throw new UnknownHostException("Not an IPv6 address: " + addrStr);
+        }
         byte[] addrBytes = addr.getAddress();
 
         // Create network mask
@@ -178,7 +195,7 @@ public class IPv6SubnetCalc {
         }
 
         InetAddress network = InetAddress.getByAddress(networkBytes);
-        BigInteger hostCount = BigInteger.TWO.pow(128 - prefixLen);
+        BigInteger hostCount = BigInteger.ONE.shiftLeft(128 - prefixLen);
 
         System.out.println("Prefix:    " + cidr);
         System.out.println("Network:   " + network.getHostAddress());
