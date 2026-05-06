@@ -4,9 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: nftables, Linux, Firewall, Security, Blocking, IPv4
 
-Description: Block specific IP addresses or subnets with nftables using simple rules, sets for multiple IPs, and dynamic sets for real-time blocking and unblocking.
+Description: Block specific IP addresses or subnets with nftables using simple rules, sets for multiple IPs, and timeout-enabled sets for real-time blocking and unblocking.
 
 Blocking IP addresses with nftables is cleaner and more efficient than iptables, especially when blocking multiple IPs using nftables' built-in set feature.
+
+These examples assume you already have an `inet filter` table with `input` and `output` base chains. If you do not, use the complete config example later in this post first.
 
 ## Block a Single IP Address
 
@@ -29,7 +31,7 @@ sudo nft add rule inet filter output ip daddr 1.2.3.4 drop
 sudo nft add rule inet filter input ip saddr 192.0.2.0/24 drop
 
 # Block a /16 range
-sudo nft add rule inet filter input ip saddr 198.51.100.0/16 drop
+sudo nft add rule inet filter input ip saddr 198.51.0.0/16 drop
 ```
 
 ## Block Multiple IPs Efficiently with Sets
@@ -50,19 +52,19 @@ sudo nft add rule inet filter input ip saddr @blocklist drop
 sudo nft list set inet filter blocklist
 ```
 
-## Dynamic Sets with Timeouts
+## Sets with Timeouts
 
 Add IPs that auto-expire after a time period:
 
 ```bash
 # Create a set with automatic expiry
 sudo nft add set inet filter temp-blocklist \
-  '{ type ipv4_addr; flags dynamic, timeout; timeout 1h; }'
+  '{ type ipv4_addr; flags timeout; timeout 1h; }'
 
 # Add an IP - auto-removes after 1 hour
 sudo nft add element inet filter temp-blocklist '{ 1.2.3.4 timeout 3600s }'
 
-# Rule to drop traffic from the dynamic set
+# Rule to drop traffic from the timeout-based set
 sudo nft add rule inet filter input ip saddr @temp-blocklist drop
 ```
 
@@ -145,4 +147,4 @@ sudo nft list chain inet filter input | grep "blocklist"
 # Output: ip saddr @blocklist counter packets 234 bytes 12340 drop
 ```
 
-nftables' built-in sets make IP blocking dramatically more efficient than iptables - you can block thousands of IPs with a single rule and a set, with no performance degradation.
+nftables' built-in sets make IP blocking dramatically more efficient than maintaining one rule per IP - you can block thousands of IPs with a single rule and a set while keeping the ruleset compact.
