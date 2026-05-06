@@ -24,25 +24,25 @@ User → Cloudflare Access (identity check) → Cloudflare Tunnel → Portainer
 
 ## Step 1: Connect an Identity Provider
 
-1. **Zero Trust → Settings → Authentication → Login methods**
-2. Click **Add new** and select your provider:
+1. **Zero Trust → Integrations → Identity providers**
+2. Click **Add new identity provider** and select your provider:
 
 ```text
 Google: Enter Client ID and Client Secret from Google OAuth
 GitHub: Enter Client ID and Client Secret from GitHub OAuth app
-OTP Email: No setup required - Cloudflare sends email codes
+One-time PIN (email): No setup required - Cloudflare sends email codes
 ```
 
 ## Step 2: Create an Access Application
 
-1. **Zero Trust → Access → Applications → Add an Application**
+1. **Zero Trust → Access controls → Applications → Add an application**
 2. Select **Self-hosted**
 3. Configure:
 
 ```text
-Application name:    Portainer
-Application domain:  portainer.yourdomain.com
-Session duration:    24h (or your preference)
+Application name:  Portainer
+Public hostname:   portainer.yourdomain.com
+Session duration:  24h (or your preference)
 ```
 
 ## Step 3: Create an Access Policy
@@ -54,30 +54,31 @@ Policy name:   Allow Team
 Decision:      Allow
 
 Include rules:
-  Email domain: yourcompany.com    (anyone with this email)
+  Emails ending in: @yourcompany.com
 
   OR
 
-  Email (list):
+  Emails:
     alice@example.com
     bob@example.com
 ```
 
-For stricter control, require a specific group:
+For stricter control, require additional conditions:
 
 ```text
 Include:
-  Email domain: yourcompany.com
+  Emails ending in: @yourcompany.com
 Require:
   Country: US    (only US-based users)
 ```
 
 ## Step 4: Enable App Launcher (Optional)
 
-Add Portainer to the Cloudflare App Launcher so team members can find it at `yourdomain.cloudflareaccess.com`:
+Add Portainer to the Cloudflare App Launcher so team members can find it at `<your-team-name>.cloudflareaccess.com`:
 
-1. **Access → App Launcher → Enable**
-2. The Portainer application will appear in the launcher automatically
+1. **Zero Trust → Access controls → Access settings → Manage your App Launcher**
+2. Add an App Launcher policy and choose the login methods you want to allow
+3. Open the Portainer application and enable **Show application in App Launcher** under **Experience settings**
 
 ## Step 5: Test Access
 
@@ -91,40 +92,42 @@ Add Portainer to the Cloudflare App Launcher so team members can find it at `you
 
 For CI/CD pipelines or scripts that need to access Portainer's API:
 
-1. **Access → Service Auth → Create Service Token**
+1. **Zero Trust → Access controls → Service credentials → Service Tokens → Create Service Token**
 2. Note the `CF-Access-Client-Id` and `CF-Access-Client-Secret`
-3. Include in API requests:
+3. In the Portainer Access application, add a policy with **Decision: Service Auth** so the token can authenticate without an IdP login
+4. Include in API requests:
 
 ```bash
 curl -s "https://portainer.yourdomain.com/api/endpoints" \
   -H "CF-Access-Client-Id: ${CF_CLIENT_ID}" \
   -H "CF-Access-Client-Secret: ${CF_CLIENT_SECRET}" \
-  -H "Authorization: Bearer ${PORTAINER_TOKEN}"
+  -H "X-API-Key: ${PORTAINER_API_KEY}"
 ```
 
 ## Bypass Access for Specific Paths
 
 If Portainer webhooks need to be accessible without auth:
 
-1. Create a **Bypass** policy for the webhook path:
+1. Create a separate self-hosted Access application for the exact webhook path Portainer generated (for example, `portainer.yourdomain.com/api/stacks/webhooks/*`)
+2. Add a **Bypass** policy to that path-specific application:
 
 ```text
+Application path: portainer.yourdomain.com/api/stacks/webhooks/*
+
 Policy name:   Webhook Bypass
 Decision:      Bypass
 
 Include:
   Everyone
-
-  Path: /api/webhooks/*
 ```
 
-## WARP Tunnel for Team VPN Alternative
+## WARP Client for Team VPN Alternative
 
-Instead of login-per-access, use Cloudflare WARP:
+If you want to reduce repeated browser logins, combine Cloudflare WARP with Access:
 
-- Team members install the WARP client
-- WARP connects them to your Zero Trust network
-- Access policy: Require WARP device enrolled
+- Team members install and enroll the WARP client
+- Enable device authentication identity on the Portainer Access application
+- If you want enrolled-device-only access, add a Gateway posture check to the Access policy
 
 ## Conclusion
 
