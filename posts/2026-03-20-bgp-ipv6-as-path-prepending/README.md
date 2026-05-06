@@ -10,109 +10,112 @@ Description: Configure AS-path prepending for IPv6 prefixes to influence inbound
 
 Configure AS-path prepending for IPv6 prefixes to influence inbound traffic distribution from multiple upstream providers.
 
-## BGP Communities and IPv6
+## AS-Path Prepending and IPv6
 
-BGP communities are attributes attached to route announcements that carry policy signaling information. They work identically for IPv4 and IPv6 prefixes.
+AS-path prepending artificially lengthens the AS_PATH attribute by adding extra copies of your own ASN to outbound route announcements. It works the same way for IPv6 prefixes as it does for IPv4 because IPv6 BGP uses multiprotocol extensions while keeping the same path attributes.
 
-## Standard Community Format
+## AS_PATH Behavior
 
-Standard BGP communities (RFC 1997) are 32-bit values written as two 16-bit numbers:
+BGP adds the local AS once when advertising a route to an eBGP peer. RFC 4271 also allows local policy to prepend additional copies of the local AS to make a path less attractive:
 ```text
-ASN:value
-65000:100    # Well-known community
-65001:200    # Custom community
+Normal eBGP advertisement:     64496
+Prepended twice in policy:     64496 64496 64496
 ```
 
 ## BIRD2 Configuration Example
 
-```javascript
+```bird
 # /etc/bird/bird.conf
 
-# Define community functions
+router id 192.0.2.1;
 
-function set_local_pref(int pref) {
-    bgp_local_pref = pref;
+protocol static static_v6 {
+    ipv6;
+    route 2001:db8:100::/48 blackhole;
 }
 
-# Filter for IPv6 routes with communities
-filter ipv6_community_policy {
-    # Honor upstream community signals for local preference
-    if (65001, 100) ~ bgp_community then {
-        set_local_pref(200);  # High preference
-        accept;
-    }
-    if (65001, 200) ~ bgp_community then {
-        set_local_pref(50);   # Low preference
-        accept;
+filter prepend_v6 {
+    if net = 2001:db8:100::/48 then {
+        bgp_path.prepend(64496);
+        bgp_path.prepend(64496);
     }
     accept;
 }
 
 protocol bgp upstream {
-    neighbor 2001:db8:peer::1 as 65001;
+    local as 64496;
+    neighbor 2001:db8:0:1::1 as 65001;
     ipv6 {
-        import filter ipv6_community_policy;
-        export filter { accept; };
+        import none;
+        export filter prepend_v6;
     };
 }
 ```
 
-## FRRouting Community Configuration
+## FRRouting AS-Path Prepending Configuration
 
 ```bash
 # FRR vtysh configuration
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:db8:0:1::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 activate
+    neighbor 2001:db8:0:1::1 activate
+    neighbor 2001:db8:0:1::1 route-map PREPEND-V6 out
+  exit-address-family
 
-# Route map with community matching
-route-map COMMUNITY-POLICY permit 10
-  match community MY-COMMUNITIES
-  set local-preference 200
+ipv6 prefix-list PREPEND-V6 seq 10 permit 2001:db8:100::/48
 
-# Define community list
-ip community-list standard MY-COMMUNITIES permit 65001:100
+route-map PREPEND-V6 permit 10
+  match ipv6 address prefix-list PREPEND-V6
+  set as-path prepend 64496 64496
+
+route-map PREPEND-V6 permit 20
 ```
 
-## Cisco IOS Community Configuration
+## Cisco IOS AS-Path Prepending Configuration
 
 ```text
-! Configure community for IPv6 BGP
+! Configure AS-path prepending for IPv6 BGP
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:DB8:0:1::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 route-map COMMUNITY-INBOUND in
+    neighbor 2001:DB8:0:1::1 activate
+    neighbor 2001:DB8:0:1::1 route-map PREPEND-V6 out
+  exit-address-family
 
-! Route map
-route-map COMMUNITY-INBOUND permit 10
-  match community 100
-  set local-preference 200
+ipv6 prefix-list PREPEND-V6 seq 10 permit 2001:DB8:100::/48
 
-! Community list
-ip community-list 100 permit 65001:100
+route-map PREPEND-V6 permit 10
+  match ipv6 address prefix-list PREPEND-V6
+  set as-path prepend 64496 64496
+
+route-map PREPEND-V6 permit 20
 ```
 
-## Testing Community Propagation
+## Testing AS-Path Prepending
 
 ```bash
-# Check if communities are present on IPv6 routes in BIRD
-birdc "show route for 2001:db8::/32 all"
+# Inspect the route selected for export in BIRD
+birdc "show route 2001:db8:100::/48 export upstream all"
+# Confirm the final on-wire AS_PATH from the peer side or an external source
 
 # In FRR
-vtysh -c "show bgp ipv6 unicast 2001:db8::/32"
+vtysh -c "show bgp ipv6 unicast neighbors 2001:db8:0:1::1 advertised-routes"
 
-# Look for community attribute in output
-# Example: Community: 65001:100 65001:200
+# In Cisco IOS
+show bgp ipv6 unicast neighbors 2001:DB8:0:1::1 advertised-routes
 
-# Use RIPE looking glass for external verification
-curl "https://stat.ripe.net/data/bgp-state/data.json?resource=2001:db8::/32" | jq '.data.routes[].attrs.communities'
+# Look for repeated copies of your ASN in the AS path
+
+# Use RIPEstat for external verification
+PREFIX="2001:db8:100::/48"  # replace with your announced public prefix
+curl "https://stat.ripe.net/data/bgp-state/data.json?resource=${PREFIX}" | jq '.data.bgp_state[].path'
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor BGP session health for your IPv6 peers and track route counts. Unexpected drops in prefix counts may indicate community-based filtering is rejecting your routes.
+Use [OneUptime](https://oneuptime.com) to monitor BGP session health for your IPv6 peers and track route counts. Unexpected path changes or prefix loss may indicate that your prepending policy is being applied incorrectly or that an upstream stopped accepting the route.
 
 ## Conclusion
 
-BGP communities work identically for IPv6 prefixes - you configure them in the same route maps and community lists. Always verify community propagation using BGP looking glasses and test policy changes in a lab environment before applying to production IPv6 BGP sessions.
+AS-path prepending works the same for IPv6 prefixes as it does for IPv4: apply the policy on outbound announcements in the IPv6 unicast address family and prepend only your own ASN. Always verify the advertised AS_PATH from the peer side or an external looking glass before applying changes to production IPv6 BGP sessions.
