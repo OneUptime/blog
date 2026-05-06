@@ -18,11 +18,11 @@ Start the OSPF process with a locally significant process ID (1–65535):
 Router(config)# router ospf 1
 ```
 
-The process ID is local to the router and does not need to match between routers-unlike OSPF area numbers.
+The process ID is local to the router and does not need to match between routers; by contrast, neighboring interfaces must agree on the OSPF area.
 
 ## Step 2: Configure the Router ID
 
-Set an explicit Router ID to avoid ambiguity. If not set, OSPF uses the highest loopback IP or highest active interface IP:
+Set an explicit Router ID to avoid ambiguity. If not set, OSPF uses the highest loopback IP address, or if no loopback exists, the highest active interface IP address:
 
 ```text
 ! Set explicit Router ID (recommended)
@@ -44,7 +44,7 @@ Router(config-router)# network 192.168.12.0 0.0.0.3 area 0
 Router(config-router)# network 1.1.1.1 0.0.0.0 area 0
 ```
 
-Alternatively, use the interface-level `ip ospf` command (preferred on IOS XE):
+Alternatively, you can enable OSPF directly on the interface with the `ip ospf` command:
 
 ```text
 ! Activate OSPF directly on the interface
