@@ -12,22 +12,29 @@ Learn how to use Checkov to scan OpenTofu configurations for security misconfigu
 
 ## Prerequisites
 
-- OpenTofu v1.6+ installed
+- Checkov installed
+- OpenTofu v1.6+ installed if you want to scan a generated plan file
 - Basic knowledge of OpenTofu concepts
-- Relevant cloud credentials configured
+- Relevant cloud credentials configured if you plan to run `tofu plan`
 
 ## Step 1: Set Up the Environment
 
 ```bash
-# Verify OpenTofu installation
+# Install Checkov
+pip3 install checkov
+# or
+brew install checkov
 
+# Verify Checkov installation
+checkov --version
+
+# Optional: verify OpenTofu if you plan to scan a generated plan file
 tofu version
 
-# Set up required environment variables
-export TF_LOG=INFO  # Enable logging
-export TF_INPUT=false  # Disable interactive input
+# Optional: enable verbose Checkov logs while troubleshooting
+export LOG_LEVEL=DEBUG
 
-# Configure cloud credentials
+# Configure cloud credentials only if you plan to generate and scan a plan file
 # AWS
 export AWS_PROFILE=your-profile
 # Azure
@@ -49,51 +56,44 @@ terraform {
       version = "~> 5.0"
     }
   }
-
-  # Remote state backend for team collaboration
-  backend "s3" {
-    bucket         = "my-opentofu-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
-  }
 }
 
 provider "aws" {
-  region = var.aws_region
+  region = "us-east-1"
+}
 
-  default_tags {
-    tags = {
-      ManagedBy   = "OpenTofu"
-      Environment = var.environment
-      Repository  = var.repository_url
-    }
-  }
+# This example intentionally omits versioning and encryption
+# so Checkov has findings to report.
+resource "aws_s3_bucket" "example" {
+  bucket = "replace-with-a-unique-bucket-name"
 }
 ```
 
 ## Step 3: Implement the Core Feature
 
 ```bash
-# Initialize the project
-tofu init -backend-config=backend.tfvars
+# Initialize the project for validation
+tofu init -backend=false
 
-# Create a plan and save it
-tofu plan -out=tfplan -var-file=production.tfvars
+# Validate the configuration
+tofu validate
 
-# Review the plan
-tofu show tfplan
+# Scan OpenTofu source files with Checkov
+# Checkov scans OpenTofu HCL by using the Terraform framework.
+checkov -d . --framework terraform
 
-# Apply the saved plan
-tofu apply tfplan
+# Optional: scan a generated plan file for more context-aware results
+# Plan JSON can include sensitive values, so keep it in a secure environment.
+tofu plan -out=tfplan
+tofu show -json tfplan > tfplan.json
+checkov -f tfplan.json --repo-root-for-plan-enrichment .
 ```
 
 ## Step 4: Set Up Automation
 
 ```yaml
-# .github/workflows/infrastructure.yml
-name: Infrastructure Deployment
+# .github/workflows/checkov.yml
+name: Checkov OpenTofu Scan
 
 on:
   push:
@@ -102,108 +102,57 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write
   contents: read
-  pull-requests: write
 
 jobs:
-  plan:
+  checkov:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
         with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Plan
-        run: tofu plan -no-color -out=tfplan
-
-      - name: Upload Plan
-        uses: actions/upload-artifact@v3
-        with:
-          name: tfplan
-          path: tfplan
-
-  apply:
-    needs: plan
-    runs-on: ubuntu-latest
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: "1.7.0"
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Download Plan
-        uses: actions/download-artifact@v3
-        with:
-          name: tfplan
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Apply
-        run: tofu apply -auto-approve tfplan
+          directory: .
+          framework: terraform
+          output_format: cli
 ```
 
 ## Step 5: Monitor and Verify
 
 ```bash
-# Check current state
-tofu show
+# Show only failed checks without code blocks
+checkov -d . --framework terraform --quiet --compact
 
-# List all managed resources
-tofu state list
+# Export results as JSON for CI systems or custom tooling
+checkov -d . --framework terraform -o json
 
-# Verify resource configuration
-tofu state show aws_instance.main
-
-# Check for drift
-tofu plan -refresh-only
+# Re-scan a generated plan file with source enrichment
+checkov -f tfplan.json --repo-root-for-plan-enrichment .
 ```
 
 ## Step 6: Implement Best Practices
 
 ```hcl
-# Use locals for computed values
-locals {
-  name_prefix = "${var.project}-${var.environment}"
-  common_tags = {
-    Project     = var.project
-    Environment = var.environment
-    ManagedBy   = "OpenTofu"
-    Owner       = var.team_email
+resource "aws_s3_bucket" "example" {
+  bucket = "replace-with-a-unique-bucket-name"
+}
+
+resource "aws_s3_bucket_versioning" "example" {
+  bucket = aws_s3_bucket.example.id
+
+  versioning_configuration {
+    status = "Enabled"
   }
 }
 
-# Use validation for variables
-variable "environment" {
-  description = "Deployment environment"
-  type        = string
+resource "aws_s3_bucket_server_side_encryption_configuration" "example" {
+  bucket = aws_s3_bucket.example.bucket
 
-  validation {
-    condition     = contains(["dev", "staging", "production"], var.environment)
-    error_message = "Environment must be dev, staging, or production."
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
   }
 }
 ```
@@ -212,11 +161,11 @@ variable "environment" {
 
 If you encounter issues:
 
-1. Enable debug logging: `export TF_LOG=DEBUG`
-2. Check provider credentials: Verify environment variables
-3. Review state consistency: Run `tofu refresh` then `tofu plan`
-4. Consult provider documentation for service-specific errors
+1. Verify Checkov installation: Run `checkov --version`
+2. If you use external modules, enable module downloads: Run `checkov -d . --download-external-modules True`
+3. For plan scanning, create JSON output first: Run `tofu show -json tfplan > tfplan.json`
+4. Review any skipped checks carefully and use suppressions only with documented justification
 
 ## Conclusion
 
-You have successfully implemented How to Use Checkov for OpenTofu Security Scanning. This approach provides a repeatable, auditable, and collaborative infrastructure management workflow. Combine with code review processes, automated testing, and proper access controls for a production-ready setup.
+You have successfully implemented Checkov scanning for OpenTofu configurations. This approach helps you catch security misconfigurations in source files and optional plan output before applying infrastructure changes. Combine it with code review processes and CI automation for a stronger DevSecOps workflow.
