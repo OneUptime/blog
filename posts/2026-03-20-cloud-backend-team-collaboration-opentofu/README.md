@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Cloud Backend, Team Collaboration, Terraform Cloud, Workflow
 
-Description: Learn how to use the Terraform Cloud backend for team collaboration in OpenTofu, including plan reviews, state locking, access controls, and collaborative workflows.
+Description: Learn how to use the HCP Terraform cloud backend for team collaboration in OpenTofu, including plan reviews, state locking, access controls, and collaborative workflows.
 
 ## Introduction
 
-The Terraform Cloud backend transforms OpenTofu from a local CLI tool into a collaborative platform. Teams can review plans before applying, see who ran what and when, share state safely with locking, and enforce policies. This guide covers the collaboration features and how to structure team workflows around them.
+The HCP Terraform cloud backend (formerly Terraform Cloud) transforms OpenTofu from a local CLI tool into a collaborative platform. Teams can review plans before applying, see who ran what and when, share state safely with locking, and enforce policies. This guide covers the collaboration features and how to structure team workflows around them.
 
 ## Collaborative Plan Review Workflow
 
@@ -17,7 +17,7 @@ The Terraform Cloud backend transforms OpenTofu from a local CLI tool into a col
 
 tofu plan -out=plan.tfplan
 
-# Terraform Cloud shows the plan in the UI:
+# HCP Terraform shows the plan in the UI:
 # https://app.terraform.io/app/my-company/workspaces/production/runs/run-abc123
 
 # Team members can review the plan in the browser
@@ -25,7 +25,7 @@ tofu plan -out=plan.tfplan
 
 # After approval, apply from CLI:
 tofu apply plan.tfplan
-# or apply from the Terraform Cloud UI
+# or apply from the HCP Terraform UI
 ```
 
 ## Access Control and Teams
@@ -79,7 +79,7 @@ curl -X POST \
 ## State Locking for Team Safety
 
 ```bash
-# Terraform Cloud automatically locks state during runs
+# HCP Terraform automatically locks state during runs
 # Multiple engineers trying to apply simultaneously:
 
 # Engineer A:
@@ -91,8 +91,11 @@ tofu apply
 # Run queued: #2 - Waiting for run #1 to complete...
 # Runs execute in order, no race conditions
 
-# Force-unlock if needed (emergency only)
-tofu force-unlock LOCK_ID
+# Force-unlock a workspace if a run leaves it locked (workspace admin only)
+curl -X POST \
+  -H "Authorization: Bearer $TF_TOKEN" \
+  -H "Content-Type: application/vnd.api+json" \
+  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/actions/force-unlock"
 ```
 
 ## Notification Configuration
@@ -105,7 +108,7 @@ curl -X POST \
   "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/notification-configurations" \
   -d '{
     "data": {
-      "type": "notification-configurations",
+      "type": "notification-configuration",
       "attributes": {
         "destination-type": "slack",
         "enabled": true,
@@ -142,12 +145,13 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
@@ -156,8 +160,12 @@ jobs:
 
       - name: OpenTofu Plan
         id: plan
-        run: tofu plan -no-color 2>&1 | tee /tmp/plan-output.txt
-        continue-on-error: true
+        run: |
+          set +e
+          tofu plan -no-color 2>&1 | tee /tmp/plan-output.txt
+          exit_code=${PIPESTATUS[0]}
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Comment plan on PR
         uses: actions/github-script@v7
@@ -166,12 +174,16 @@ jobs:
             const fs = require('fs');
             const plan = fs.readFileSync('/tmp/plan-output.txt', 'utf8');
             const truncated = plan.length > 65000 ? plan.slice(-65000) + '\n...(truncated)' : plan;
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## OpenTofu Plan\n```\n${truncated}\n````
+              body: ['## OpenTofu Plan', '```', truncated, '```'].join('\n')
             });
+
+      - name: Fail workflow if plan errored
+        if: steps.plan.outputs.exit_code != '0'
+        run: exit 1
 ```
 
 ## Structured Run Workflow
@@ -188,21 +200,21 @@ git checkout -b feature/add-database
 # 3. Create PR - GitHub Actions runs tofu plan
 # Plan output posted as PR comment
 
-# 4. Team reviews the plan in PR comments and Terraform Cloud UI
+# 4. Team reviews the plan in PR comments and HCP Terraform UI
 
 # 5. PR is approved and merged to main
 
-# 6. GitHub Actions runs tofu apply on main branch merge
-# Plan runs automatically, apply requires manual approval in Terraform Cloud
-# (if auto-apply is disabled)
+# 6. For auto-approved deployments, GitHub Actions runs tofu apply -auto-approve
+# on main branch merge
 
-# 7. Apply is approved in Terraform Cloud by authorized team member
+# 7. If auto-apply is disabled, an authorized team member reviews and applies
+# the run from the HCP Terraform UI
 ```
 
 ## Audit Trail
 
 ```bash
-# Terraform Cloud maintains a complete audit trail:
+# HCP Terraform maintains a complete audit trail:
 # - Who queued each run
 # - Who approved/discarded each apply
 # - What changes were made (plan output)
@@ -211,30 +223,27 @@ git checkout -b feature/add-database
 # View run history via API
 curl -H "Authorization: Bearer $TF_TOKEN" \
   "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/runs?page%5Bsize%5D=20" | \
-  jq '.data[] | {id: .id, status: .attributes.status, created: .attributes."created-at", by: .relationships."created-by"}'
+  jq '.data[] | {id: .id, status: .attributes.status, created: .attributes."created-at", created_by_id: .relationships."created-by".data.id}'
 ```
 
-## Policy Enforcement (Sentinel / OPA)
+## Policy Enforcement (Sentinel Example)
 
-```python
-# Sentinel policy example: require cost estimation approval
+```hcl
+# Sentinel policy example: limit monthly cost increase to $500
 # policies/require-cost-estimate.sentinel
 
 import "tfrun"
 import "decimal"
 
-# Block applies where cost increase exceeds $500/month
-maximum_cost_increase = decimal.new(500)
+delta_monthly_cost = decimal.new(tfrun.cost_estimate.delta_monthly_cost)
 
-main = rule when tfrun.phase is "apply" {
-    cost_estimate = tfrun.cost_estimate
-    delta = decimal.new(cost_estimate.delta_monthly_cost)
-    delta <= maximum_cost_increase
+main = rule {
+    delta_monthly_cost.less_than_or_equals(500)
 }
 ```
 
 ```bash
-# Upload policy to Terraform Cloud
+# Create a Sentinel policy object and attach it to an existing policy set
 curl -X POST \
   -H "Authorization: Bearer $TF_TOKEN" \
   -H "Content-Type: application/vnd.api+json" \
@@ -244,12 +253,21 @@ curl -X POST \
       "type": "policies",
       "attributes": {
         "name": "require-cost-estimate-approval",
+        "kind": "sentinel",
         "enforcement-level": "soft-mandatory"
+      },
+      "relationships": {
+        "policy-sets": {
+          "data": [
+            {"id": "polset-abc123", "type": "policy-sets"}
+          ]
+        }
       }
     }
   }'
+# Then upload the .sentinel source to the links.upload URL returned by the API
 ```
 
 ## Conclusion
 
-Terraform Cloud transforms OpenTofu into a collaborative tool by centralizing plan visibility, enforcing state locking, providing role-based access control, and maintaining an audit trail of all infrastructure changes. The key workflow is: developers propose changes via pull requests with plan output in PR comments, authorized team members approve applies in Terraform Cloud, and the audit trail records who approved what and when. Start with plan notifications and PR-based plan comments - these provide immediate collaboration value with minimal configuration.
+HCP Terraform transforms OpenTofu into a collaborative tool by centralizing plan visibility, enforcing state locking, providing role-based access control, and maintaining an audit trail of all infrastructure changes. The key workflow is: developers propose changes via pull requests with plan output in PR comments, authorized team members approve applies in HCP Terraform, and the audit trail records who approved what and when. Start with plan notifications and PR-based plan comments - these provide immediate collaboration value with minimal configuration.
