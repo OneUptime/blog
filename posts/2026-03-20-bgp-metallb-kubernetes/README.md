@@ -36,7 +36,7 @@ kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.5/confi
 
 # Wait for MetalLB pods to be ready
 kubectl wait --namespace metallb-system \
-  --for=condition=ready pod \
+  --for=condition=Ready pod \
   --selector=app=metallb \
   --timeout=90s
 
@@ -86,7 +86,7 @@ spec:
   # Optional: limit which nodes peer with this router
   # nodeSelectors:
   #   - matchLabels:
-  #       kubernetes.io/role: worker
+  #       kubernetes.io/hostname: worker-1
 ```
 
 ```bash
@@ -114,7 +114,7 @@ spec:
   # Optional: add BGP communities
   communities:
     - 65000:100
-  # Optional: control AS path prepending
+  # Optional: control route aggregation; 32 advertises exact /32 service IPs
   aggregationLength: 32
 ```
 
@@ -124,7 +124,7 @@ kubectl apply -f bgp-advertisement.yaml
 
 ## Step 5: Configure the Router Side (Cisco IOS)
 
-On your top-of-rack switch or router, configure BGP peering with each Kubernetes node:
+On your top-of-rack switch or router, configure BGP peering with each Kubernetes node. If you want ECMP across multiple nodes, also enable BGP multipath:
 
 ```text
 router bgp 65000
@@ -135,6 +135,7 @@ router bgp 65000
  neighbor 192.168.1.11 description k8s-node-2
 
  address-family ipv4 unicast
+  maximum-paths eibgp 2
   neighbor 192.168.1.10 activate
   neighbor 192.168.1.10 maximum-prefix 1000
   neighbor 192.168.1.11 activate
@@ -144,10 +145,30 @@ router bgp 65000
 
 ## Step 6: Test with a LoadBalancer Service
 
-Deploy a test service and verify it gets an IP:
+Deploy a test workload and service, then verify the service gets an IP:
 
 ```yaml
 # test-service.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+          ports:
+            - containerPort: 80
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -163,6 +184,10 @@ spec:
 
 ```bash
 kubectl apply -f test-service.yaml
+
+# Wait for the test workload and service IP
+kubectl rollout status deployment/test-nginx
+kubectl wait --for=jsonpath='{.status.loadBalancer.ingress}' service/test-nginx --timeout=90s
 
 # Check that an external IP was assigned
 kubectl get service test-nginx
@@ -186,4 +211,4 @@ kubectl logs -n metallb-system -l component=speaker
 
 ## Conclusion
 
-MetalLB in BGP mode transforms bare-metal Kubernetes clusters into first-class network citizens by advertising service IPs via BGP. Configure IPAddressPool for your service IP range, BGPPeer for router connectivity, and BGPAdvertisement to link them. The router receives /32 routes for each service IP, enabling ECMP load balancing across all nodes hosting the service.
+MetalLB in BGP mode transforms bare-metal Kubernetes clusters into first-class network citizens by advertising service IPs via BGP. Configure IPAddressPool for your service IP range, BGPPeer for router connectivity, and BGPAdvertisement to link them. The router receives /32 routes for each service IP by default and, when multipath is enabled on the router, can load balance across the nodes advertising that service.
