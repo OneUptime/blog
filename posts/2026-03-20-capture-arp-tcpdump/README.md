@@ -9,7 +9,7 @@ Description: Learn how to capture and filter ARP packets using tcpdump to diagno
 ## Basic ARP Capture
 
 ```bash
-# Capture all ARP packets on default interface
+# Capture all ARP packets on auto-selected interface
 
 sudo tcpdump -n -e arp
 
@@ -46,21 +46,21 @@ sudo tcpdump -n -e -i eth0 'arp[6:2] = 2'
 
 ```bash
 # Capture ARP involving a specific IP
-sudo tcpdump -n -e -i eth0 'arp and (arp[24:4] = 0xc0a80114 or arp[28:4] = 0xc0a80114)'
+sudo tcpdump -n -e -i eth0 'arp and (arp[14:4] = 0xc0a80114 or arp[24:4] = 0xc0a80114)'
 # 0xc0a80114 = 192.168.1.20 in hex
 ```
 
 A simpler approach is to capture all ARP and grep:
 
 ```bash
-sudo tcpdump -n -e arp 2>&1 | grep "192.168.1.20"
+sudo tcpdump -n -e -l arp 2>&1 | grep "192.168.1.20"
 ```
 
 ## Saving ARP Captures to File
 
 ```bash
 # Write to pcap file
-sudo tcpdump -i eth0 arp -w /tmp/arp_capture.pcap
+sudo tcpdump -i eth0 -w /tmp/arp_capture.pcap arp
 
 # Read back the capture
 sudo tcpdump -n -e -r /tmp/arp_capture.pcap arp
@@ -71,7 +71,7 @@ sudo tcpdump -n -e -v -r /tmp/arp_capture.pcap
 
 ## Detecting Gratuitous ARP
 
-Gratuitous ARP has the same sender IP and target IP. Filter requests where Sender IP (offset 14) = Target IP (offset 24):
+A common gratuitous ARP form is an ARP Request where the sender IP and target IP are the same. For Ethernet/IPv4 ARP, filter requests where Sender IP (offset 14) = Target IP (offset 24):
 
 ```bash
 sudo tcpdump -n -e -i eth0 'arp[6:2] = 1 and arp[14:4] = arp[24:4]'
@@ -80,26 +80,38 @@ sudo tcpdump -n -e -i eth0 'arp[6:2] = 1 and arp[14:4] = arp[24:4]'
 ## Monitoring ARP Activity in Real Time
 
 ```bash
-# Count ARP packets per host (using tee + awk)
-sudo tcpdump -n arp 2>/dev/null | awk '{print $4}' | sort | uniq -c | sort -rn
+# Count ARP activity by IP in real time
+sudo tcpdump -n -l arp 2>/dev/null | awk '
+/Request/ {
+    gsub(/,/, "", $7)
+    count[$5]++
+    count[$7]++
+    printf("%7d %s\n%7d %s\n\n", count[$5], $5, count[$7], $7)
+}
+/Reply/ {
+    count[$4]++
+    printf("%7d %s\n\n", count[$4], $4)
+}'
 ```
 
 ## Detecting ARP Anomalies
 
 ```bash
 #!/bin/bash
-# Monitor for any new ARP activity and alert
+# Monitor ARP requests and alert
 echo "Monitoring ARP on eth0..."
-sudo tcpdump -n -e arp -i eth0 2>/dev/null | while IFS= read -r line; do
+sudo tcpdump -n -l -i eth0 arp 2>/dev/null | while IFS= read -r line; do
     if echo "$line" | grep -q "Request"; then
-        IP=$(echo "$line" | grep -oP 'who-has \K[\d.]+')
-        FROM=$(echo "$line" | grep -oP 'tell \K[\d.]+')
+        IP=$(echo "$line" | awk '{print $5}')
+        FROM=$(echo "$line" | awk '{gsub(/,/, "", $7); print $7}')
         echo "[ARP REQUEST] $(date +%H:%M:%S) $FROM asked for $IP"
     fi
 done
 ```
 
 ## ARP Offset Reference
+
+For Ethernet/IPv4 ARP packets:
 
 | Offset | Length | Field |
 |--------|--------|-------|
@@ -118,7 +130,7 @@ done
 - `tcpdump -n -e arp` captures all ARP with MAC addresses shown.
 - Use `arp[6:2] = 1` for requests and `arp[6:2] = 2` for replies.
 - Save captures to pcap files for offline analysis with Wireshark.
-- ARP offset 6 contains the opcode; offset 14 and 24 are sender/target IPs.
+- For Ethernet/IPv4 ARP, offset 6 contains the opcode; offset 14 and 24 are sender/target IPs.
 
 **Related Reading:**
 
