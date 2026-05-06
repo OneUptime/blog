@@ -30,8 +30,8 @@ print(same_subnet("172.16.0.1",   "172.16.3.1",    14))  # True  (/14 = 172.16â€
 import ipaddress
 
 def same_subnet_mask(ip1: str, ip2: str, mask: str) -> bool:
-    """Check subnet membership using a dotted-decimal mask."""
-    mask_int = int(ipaddress.IPv4Address(mask))
+    """Check subnet membership using a dotted-decimal netmask."""
+    mask_int = int(ipaddress.IPv4Network(f"0.0.0.0/{mask}").netmask)
     n1 = int(ipaddress.IPv4Address(ip1)) & mask_int
     n2 = int(ipaddress.IPv4Address(ip2)) & mask_int
     return n1 == n2
@@ -89,14 +89,14 @@ print(find_segment("8.8.8.8"))       # None
 import ipaddress
 
 LOCAL_SUBNETS = [
-    ipaddress.IPv4Network("192.168.0.0/16"),
-    ipaddress.IPv4Network("10.0.0.0/8"),
-    ipaddress.IPv4Network("172.16.0.0/12"),
+    ipaddress.IPv4Network("192.168.1.0/24"),
+    ipaddress.IPv4Network("10.0.1.0/24"),
+    ipaddress.IPv4Network("172.16.0.0/24"),
 ]
 
 def should_route_locally(src: str, dst: str) -> bool:
     """
-    Return True if src and dst share at least one common local subnet,
+    Return True if src and dst share one of your directly connected subnets,
     suggesting the traffic can stay on the local network.
     """
     try:
