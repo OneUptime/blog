@@ -1,4 +1,4 @@
-# How to Configure BGP Local Preference for Inbound Traffic Control
+# How to Configure BGP Local Preference for Outbound Traffic Control
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -11,7 +11,7 @@ Description: Learn how to use BGP Local Preference to control which exit path yo
 Local Preference (LOCAL_PREF) is a BGP attribute used only within a single autonomous system. It tells all iBGP routers which exit path to prefer when multiple paths to the same destination exist. The route with the **highest** local preference wins.
 
 Key facts:
-- Default value: 100
+- Default value in Cisco IOS: 100
 - Scope: iBGP only (not sent to eBGP peers)
 - Range: 0–4294967295
 
@@ -98,19 +98,17 @@ Router# show ip bgp 0.0.0.0 0.0.0.0
 
 BGP routing table entry for 0.0.0.0/0
   Paths: (2 available, best #1)
-  ...
   65100
     203.0.113.1 from 203.0.113.1 (203.0.113.1)
-      Local preference: 200, weight 0
-      ...  BEST
+      Origin IGP, metric 0, localpref 200, valid, external, best
   65200
     198.51.100.1 from 198.51.100.1 (198.51.100.1)
-      Local preference: 100, weight 0
+      Origin IGP, metric 0, localpref 100, valid, external
 ```
 
 ## Step 5: Apply Changes Without Dropping Sessions
 
-After modifying route maps, apply a soft reset to re-evaluate routes:
+After modifying route maps, apply a soft reset to re-evaluate routes if the peer supports route refresh or inbound soft reconfiguration is enabled:
 
 ```text
 ! Re-process inbound routes from ISP1 with the new route map
