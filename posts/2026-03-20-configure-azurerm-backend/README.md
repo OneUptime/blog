@@ -8,7 +8,7 @@ Description: Learn how to configure the OpenTofu azurerm backend to store state 
 
 ## Introduction
 
-The `azurerm` backend stores OpenTofu state in Azure Blob Storage. It provides native state locking using blob leases, supports Azure AD authentication, and integrates with Azure's built-in encryption. This guide walks through the complete setup.
+The `azurerm` backend stores OpenTofu state in Azure Blob Storage. It provides native state locking using blob leases, supports Microsoft Entra ID authentication, and integrates with Azure's built-in encryption. This guide walks through the complete setup.
 
 ## Step 1: Create the Azure Storage Resources
 
@@ -46,7 +46,7 @@ resource "azurerm_storage_account" "state" {
 
 resource "azurerm_storage_container" "state" {
   name                  = "tfstate"
-  storage_account_name  = azurerm_storage_account.state.name
+  storage_account_id    = azurerm_storage_account.state.id
   container_access_type = "private"  # No public access
 }
 ```
@@ -129,15 +129,15 @@ terraform {
     storage_account_name = "stterraformstate001"
     container_name       = "tfstate"
     key                  = "prod/terraform.tfstate"
+    use_azuread_auth     = true
     use_msi              = true  # Use Managed Identity
-    # subscription_id and tenant_id auto-detected
   }
 }
 ```
 
 ## RBAC Permissions
 
-Grant the service principal or managed identity these roles:
+Grant the service principal or managed identity this role:
 
 ```hcl
 # Storage Blob Data Contributor role for reading and writing state
@@ -152,13 +152,14 @@ resource "azurerm_role_assignment" "terraform_state" {
 
 Azure Blob Storage uses blob leases for state locking:
 - Locks are acquired automatically during `plan` and `apply`
-- Lock duration is 60 seconds (auto-renewed during long operations)
-- If a process crashes, the lock expires after 60 seconds automatically
+- OpenTofu acquires an infinite blob lease and releases it when the operation completes
+- If a process crashes, the lease can remain until you break it manually
 
 ```bash
 # Check for active leases (stuck locks)
 az storage blob show \
   --account-name stterraformstate001 \
+  --auth-mode login \
   --container-name tfstate \
   --name "prod/terraform.tfstate" \
   --query 'properties.lease'
@@ -166,6 +167,7 @@ az storage blob show \
 # Break a stuck lease
 az storage blob lease break \
   --account-name stterraformstate001 \
+  --auth-mode login \
   --container-name tfstate \
   --blob-name "prod/terraform.tfstate"
 ```
