@@ -31,7 +31,7 @@ Functional groups:
 
 Combined tags:
   - device tagged with "region=us-west" AND "type=gateway"
-  - Portainer dynamic group selects all matching devices
+  - If Edge Compute is enabled, a Portainer dynamic group selects all matching devices
 ```
 
 ### Device Identification
@@ -100,7 +100,7 @@ systemctl disable --now bluetooth
 
 # Enable firewall
 ufw default deny incoming
-ufw allow 22/tcp      # SSH (from management network only)
+ufw allow proto tcp from 10.0.0.0/24 to any port 22   # SSH (management network only)
 ufw enable
 ```
 
@@ -123,11 +123,11 @@ services:
 
 ## Health Monitoring
 
-Configure heartbeat monitoring to detect offline devices:
+Configure environment-down alerting to detect offline devices:
 
-1. In Portainer, go to **Edge Environments** and enable heartbeat alerts
-2. Set alert threshold (e.g., alert after 30 minutes without heartbeat)
-3. Configure notification destination (email, Slack, PagerDuty)
+1. If you're using Portainer Business Edition, enable **Observability** and open **Alerting**
+2. Enable the **Environment Down** rule and set the threshold/duration for your fleet
+3. Configure notification channels (email, Slack, Microsoft Teams, or webhook)
 
 ## Device Provisioning Automation
 
@@ -139,30 +139,33 @@ Script edge device provisioning for consistency:
 
 set -euo pipefail
 
-DEVICE_ID="$1"
-EDGE_KEY="$2"
-PORTAINER_URL="https://portainer.example.com"
-
 # Validate arguments
-[ -z "$DEVICE_ID" ] && { echo "Usage: $0 <device-id> <edge-key>"; exit 1; }
+if [ "$#" -ne 2 ]; then
+  echo "Usage: $0 <edge-id> <edge-key>"
+  exit 1
+fi
+
+EDGE_ID="$1"
+EDGE_KEY="$2"
 
 # Install Docker
-curl -fsSL https://get.docker.com | sh
-systemctl enable docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+systemctl enable --now docker
 
 # Deploy Edge Agent
+# Add -e EDGE_INSECURE_POLL=1 if your Portainer server uses a self-signed certificate.
 docker run -d \
-  --name portainer-edge-agent \
+  --name portainer_edge_agent \
   --restart always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
   -e EDGE=1 \
-  -e EDGE_ID="$DEVICE_ID" \
+  -e EDGE_ID="$EDGE_ID" \
   -e EDGE_KEY="$EDGE_KEY" \
-  -e EDGE_INSECURE_POLL=1 \
-  portainer/agent:latest
+  portainer/agent:lts   # Match this tag to your Portainer Server release stream/version
 
-echo "Device $DEVICE_ID provisioned and connected to Portainer"
+echo "Edge agent $EDGE_ID provisioned and connected to Portainer"
 ```
 
 ## Summary
