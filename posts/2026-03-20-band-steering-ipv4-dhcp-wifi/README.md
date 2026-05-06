@@ -13,7 +13,7 @@ Band steering encourages dual-band clients to connect on 5GHz for better through
 ## SSID Strategy: Single SSID vs. Separate SSIDs
 
 **Recommended: Single SSID with band steering**
-- Both bands share the same SSID and DHCP pool
+- Both bands share the same SSID and, if bridged to the same LAN/VLAN, the same DHCP pool
 - Access point steers capable clients to 5GHz
 - Simplest experience for users
 
@@ -28,31 +28,34 @@ SSID: MyNetwork_5G     (5GHz)
 ## Configuring Band Steering on Ubiquiti UniFi
 
 ```text
-Wireless Networks → MyNetwork → Advanced Options
-  Band Steering: Prefer 5G
-  Minimum RSSI: -70 dBm (drop 5GHz clients with weak signal to 2.4GHz)
+Settings → WiFi → MyNetwork
+  Band Steering: Enabled
+
+UniFi Devices → <AP> → Settings
+  Minimum RSSI: Optional; disconnects low-signal clients when the threshold is crossed
 ```
 
 ## Configuring Band Steering on OpenWrt
+
+OpenWrt typically uses a service such as `usteer` or `DAWN` for band steering; in `/etc/config/wireless`, enable the 802.11k/v features those services rely on:
 
 ```bash
 # /etc/config/wireless
 
 config wifi-iface 'default_radio0'   # 2.4GHz
     option ssid 'MyNetwork'
-    option bss_transition '1'        # 802.11v BSS Transition (enables steering)
-    option ieee80211r '1'            # Fast BSS Transition
+    option ieee80211k '1'            # 802.11k neighbor reports
+    option bss_transition '1'        # 802.11v BSS Transition Management
 
 config wifi-iface 'default_radio1'   # 5GHz
     option ssid 'MyNetwork'
+    option ieee80211k '1'
     option bss_transition '1'
-    option ieee80211r '1'
-    option wpa_group_rekey '86400'
 ```
 
 ## DHCP Pool Configuration for Band Steering
 
-With a single shared SSID, all clients (both bands) use one DHCP pool:
+With a single shared SSID on the same LAN/VLAN, all clients (both bands) use one DHCP pool:
 
 ```bash
 # /etc/dnsmasq.conf
@@ -66,11 +69,11 @@ With separate SSIDs and VLANs:
 
 ```bash
 # 2.4GHz VLAN 20 pool
-dhcp-range=tag:vlan20,192.168.20.50,192.168.20.200,24h
+dhcp-range=set:vlan20,192.168.20.50,192.168.20.200,24h
 dhcp-option=tag:vlan20,3,192.168.20.1
 
 # 5GHz VLAN 50 pool
-dhcp-range=tag:vlan50,192.168.50.50,192.168.50.200,24h
+dhcp-range=set:vlan50,192.168.50.50,192.168.50.200,24h
 dhcp-option=tag:vlan50,3,192.168.50.1
 ```
 
@@ -87,7 +90,7 @@ cat /tmp/dhcp.leases
 
 ## Key Takeaways
 
-- Use a single SSID with band steering enabled for the simplest deployment; the AP handles client placement.
-- Set a minimum RSSI threshold (e.g., -70 dBm) so clients with poor 5GHz signal fall back to 2.4GHz.
-- With single SSID, use one DHCP pool; with separate SSIDs per band, assign separate VLANs and pools.
-- 802.11v BSS Transition Management is the standard mechanism for steering clients between bands.
+- Use a single SSID with band steering enabled for the simplest deployment; the AP can encourage compatible clients toward 5GHz.
+- Use Minimum RSSI cautiously; it disconnects clients below the threshold, and the client decides what to join next.
+- With a single SSID on one LAN/VLAN, use one DHCP pool; with separate SSIDs mapped to separate VLANs/subnets, use separate pools.
+- 802.11v BSS Transition Management can assist band steering, but clients ultimately decide whether to roam.
