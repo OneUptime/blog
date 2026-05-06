@@ -13,25 +13,26 @@ Chaos engineering proactively tests how systems behave under failure conditions.
 ## Step 1: Install LitmusChaos
 
 ```bash
-# Install via Helm
+# Install Litmus core components via Helm
 
 helm repo add litmuschaos https://litmuschaos.github.io/litmus-helm/
 helm repo update
 
-helm install litmus litmuschaos/litmus \
+helm install litmus litmuschaos/litmus-core \
   --namespace litmus \
   --create-namespace \
-  --set portal.frontend.service.type=ClusterIP
+  --set operatorMode=admin
 
-# Access Litmus Portal via port-forward
-kubectl port-forward svc/litmus-frontend-service 9091:9091 -n litmus
+# Verify the chaos operator is running
+kubectl get pods -n litmus
 ```
 
 ## Step 2: Install Chaos Experiments
 
 ```bash
-# Install standard chaos experiment hub
-kubectl apply -f https://hub.litmuschaos.io/api/chaos/2.14.0?file=charts/generic/experiments.yaml -n litmus
+# Install the Kubernetes chaos experiment chart
+helm install k8s litmuschaos/kubernetes-chaos \
+  --namespace litmus
 
 # Verify experiments are available
 kubectl get chaosexperiments -n litmus | head -20
@@ -45,12 +46,13 @@ apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosEngine
 metadata:
   name: pod-delete-chaos
-  namespace: production
+  namespace: litmus
 spec:
   appinfo:
     appns: production
     applabel: "app=api-server"
     appkind: deployment
+  annotationCheck: "false"
   engineState: active
   chaosServiceAccount: litmus-admin
   experiments:
@@ -64,11 +66,16 @@ spec:
             runProperties:
               probeTimeout: 5
               interval: 2
-              attempt: 10
+              retry: 1
+              probePollingInterval: 2
             httpProbe/inputs:
               url: "http://api-server.production.svc/health"
-              insecureSkipVerify: true
-              responseCode: "200"
+              insecureSkipVerify: false
+              responseTimeout: 1000
+              method:
+                get:
+                  criteria: ==
+                  responseCode: "200"
         components:
           env:
             - name: TOTAL_CHAOS_DURATION
@@ -87,12 +94,13 @@ apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosEngine
 metadata:
   name: network-latency-chaos
-  namespace: production
+  namespace: litmus
 spec:
   appinfo:
     appns: production
     applabel: "app=frontend"
     appkind: deployment
+  annotationCheck: "false"
   engineState: active
   chaosServiceAccount: litmus-admin
   experiments:
@@ -104,11 +112,17 @@ spec:
             mode: Edge
             cmdProbe/inputs:
               command: "kubectl get deployment frontend -n production -o jsonpath='{.status.availableReplicas}'"
-              source: ""
               comparator:
                 type: int
                 criteria: ">="
                 value: "2"
+              source:
+                image: "litmuschaos/k8s:latest"
+            runProperties:
+              probeTimeout: 5
+              interval: 5
+              retry: 1
+              initialDelaySeconds: 5
         components:
           env:
             - name: TOTAL_CHAOS_DURATION
@@ -124,7 +138,7 @@ spec:
 ## Step 5: Node Drain Experiment
 
 ```yaml
-# Test cluster behavior when a node goes offline
+# Cordon the target node before applying this engine so the runner pod is not evicted
 apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosEngine
 metadata:
@@ -135,6 +149,7 @@ spec:
     appns: production
     applabel: "app=critical-service"
     appkind: deployment
+  annotationCheck: "false"
   engineState: active
   chaosServiceAccount: litmus-admin
   experiments:
@@ -144,40 +159,47 @@ spec:
           env:
             - name: TOTAL_CHAOS_DURATION
               value: "120"
-            - name: NODE_LABEL
-              value: "type=worker"    # Drain worker nodes
-            - name: REVERT_CHAOS
-              value: "true"           # Re-enable node after chaos
+            - name: TARGET_NODE
+              value: "worker-node-1"  # Replace with the cordoned worker node name
 ```
 
-## Step 6: CPU and Memory Stress
+## Step 6: CPU Stress
 
 ```yaml
-# Simulate resource contention
+# Simulate CPU resource contention
 apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosEngine
 metadata:
   name: cpu-stress-chaos
-  namespace: production
+  namespace: litmus
 spec:
   appinfo:
     appns: production
     applabel: "app=database"
     appkind: statefulset
+  annotationCheck: "false"
+  engineState: active
   chaosServiceAccount: litmus-admin
   experiments:
     - name: pod-cpu-hog
       spec:
         probe:
-          - name: db-response-time-probe
-            type: httpProbe
+          - name: db-ready-replicas-probe
+            type: cmdProbe
             mode: Continuous
-            httpProbe/inputs:
-              url: "http://database-svc.production.svc:5432/health"
-              responseCode: "200"
+            cmdProbe/inputs:
+              command: "kubectl get statefulset database -n production -o jsonpath='{.status.readyReplicas}'"
+              comparator:
+                type: int
+                criteria: ">="
+                value: "1"
+              source:
+                image: "litmuschaos/k8s:latest"
             runProperties:
-              probeTimeout: 3
-              interval: 1
+              probeTimeout: 5
+              interval: 2
+              retry: 1
+              probePollingInterval: 2
         components:
           env:
             - name: TOTAL_CHAOS_DURATION
@@ -199,29 +221,68 @@ metadata:
   namespace: litmus
 spec:
   entrypoint: chaos-suite
+  serviceAccountName: litmus-admin
   templates:
     - name: chaos-suite
       steps:
         - - name: pod-delete
-            template: run-chaos
-            arguments:
-              parameters:
-                - name: experiment
-                  value: pod-delete-chaos.yaml
+            template: run-pod-delete
         - - name: network-latency
-            template: run-chaos
-            arguments:
-              parameters:
-                - name: experiment
-                  value: network-latency-chaos.yaml
-    - name: run-chaos
+            template: run-network-latency
+    - name: run-pod-delete
       inputs:
-        parameters:
-          - name: experiment
+        artifacts:
+          - name: engine
+            path: /tmp/pod-delete-chaos.yaml
+            raw:
+              data: |
+                apiVersion: litmuschaos.io/v1alpha1
+                kind: ChaosEngine
+                metadata:
+                  name: pod-delete-chaos
+                  namespace: litmus
+                spec:
+                  annotationCheck: "false"
+                  appinfo:
+                    appns: production
+                    applabel: "app=api-server"
+                    appkind: deployment
+                  engineState: active
+                  chaosServiceAccount: litmus-admin
+                  experiments:
+                    - name: pod-delete
       container:
         image: litmuschaos/litmus-checker:latest
-        command: [kubectl, apply, -f]
-        args: ["{{inputs.parameters.experiment}}"]
+        args:
+          - "-file=/tmp/pod-delete-chaos.yaml"
+          - "-saveName=/tmp/pod-delete-engine"
+    - name: run-network-latency
+      inputs:
+        artifacts:
+          - name: engine
+            path: /tmp/network-latency-chaos.yaml
+            raw:
+              data: |
+                apiVersion: litmuschaos.io/v1alpha1
+                kind: ChaosEngine
+                metadata:
+                  name: network-latency-chaos
+                  namespace: litmus
+                spec:
+                  annotationCheck: "false"
+                  appinfo:
+                    appns: production
+                    applabel: "app=frontend"
+                    appkind: deployment
+                  engineState: active
+                  chaosServiceAccount: litmus-admin
+                  experiments:
+                    - name: pod-network-latency
+      container:
+        image: litmuschaos/litmus-checker:latest
+        args:
+          - "-file=/tmp/network-latency-chaos.yaml"
+          - "-saveName=/tmp/network-latency-engine"
 ```
 
 ## Conclusion
