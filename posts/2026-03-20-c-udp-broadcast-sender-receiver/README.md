@@ -8,7 +8,7 @@ Description: Create a UDP broadcast sender and receiver in C using the SO_BROADC
 
 ## Introduction
 
-UDP broadcast allows a single packet to reach every host on a subnet simultaneously. This is the foundation for service discovery protocols like DHCP, ARP, and many IoT discovery mechanisms.
+UDP broadcast allows a single packet to reach every host on a subnet simultaneously. This is a common building block for bootstrap and discovery mechanisms like DHCP and many IoT discovery mechanisms.
 
 ## UDP Broadcast Sender
 
