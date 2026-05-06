@@ -33,7 +33,7 @@ nmcli connection up eth0-static ifname eth0
 # Connect a device (NetworkManager picks the best connection for it)
 nmcli device connect eth0
 
-# Disconnect a device (all connections on it are deactivated)
+# Disconnect a device (the active connection is deactivated and auto-connect is blocked)
 nmcli device disconnect eth0
 
 # Difference:
@@ -44,7 +44,7 @@ nmcli device disconnect eth0
 ## Checking Connection Status
 
 ```bash
-# Show all connections and their state
+# Show all configured connection profiles
 nmcli connection show
 
 # Active connections only
@@ -65,11 +65,11 @@ nmcli device status
 # Bring up DHCP connection
 nmcli connection up eth0-dhcp
 
-# Renew DHCP lease (without full reconnect)
-nmcli connection up eth0-dhcp  # Re-activates = new DHCP request
+# Force a fresh DHCP request by reconnecting the profile
+nmcli connection down eth0-dhcp && nmcli connection up eth0-dhcp
 
 # Or via device
-nmcli device reapply eth0  # Reapply current profile without DHCP renew
+nmcli device reapply eth0  # Reapply changes from the active profile without fully reconnecting
 ```
 
 ## Handling Connection Priority on Multiple Profiles
@@ -104,7 +104,7 @@ fi
 ## Monitoring Connection Events
 
 ```bash
-# Watch for connection state changes
+# Watch NetworkManager activity
 nmcli monitor
 
 # Output shows events like:
@@ -116,6 +116,6 @@ nmcli monitor
 ## Key Takeaways
 
 - `nmcli connection up <name>` activates a specific profile; `nmcli device connect <iface>` lets NM auto-select the profile.
-- `nmcli connection down <name>` deactivates a connection but may leave the device available for reconnection.
-- `nmcli device disconnect <iface>` fully disconnects the device and prevents auto-reconnect until explicitly connected.
+- `nmcli connection down <name>` deactivates a specific profile; the device may still auto-activate another suitable profile.
+- `nmcli device disconnect <iface>` disconnects the device and prevents further auto-activation on it until you manually reconnect it.
 - Use `nmcli monitor` to watch real-time connection events for debugging network state changes.
