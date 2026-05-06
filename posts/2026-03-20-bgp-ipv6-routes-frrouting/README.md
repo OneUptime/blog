@@ -36,7 +36,7 @@ Neighbor        V  AS     MsgRcvd  MsgSent  TblVer  InQ  OutQ  Up/Down  State/Pf
 fe80::2%eth0    4  65003     100       98       8     0    0   0d01h    3
 ```
 
-Sessions in `Active` or `Idle` state indicate connectivity problems. Sessions showing a number in `State/PfxRcd` are established and healthy.
+Sessions in `Active` or `Idle` state indicate session-establishment problems. Sessions showing a number in `State/PfxRcd` are established. FRR may also show `(Policy)` for an established eBGP session when default eBGP policy is enabled but filters are missing.
 
 ## show bgp ipv6 unicast (Full Table)
 
@@ -56,8 +56,9 @@ Status codes: s suppressed, d damped, h history, * valid, > best, = multipath,
 Route codes:
 - `*` = Valid
 - `>` = Best path
-- `i` = iBGP learned
+- leading `i` = Internal/iBGP path
 - `=` = ECMP multipath
+- trailing `i` in the `Path` column = IGP origin
 
 ## Checking a Specific Prefix
 
@@ -66,7 +67,7 @@ Route codes:
 vtysh -c "show bgp ipv6 unicast 2001:db8:peer::/48"
 
 # Output:
-# BGP routing table entry for 2001:db8:peer::/48/48
+# BGP routing table entry for 2001:db8:peer::/48
 # Paths: (1 available, best #1, table default)
 #   Advertised to non peer-group peers:
 #   2001:db8:ibgp::2
@@ -74,20 +75,20 @@ vtysh -c "show bgp ipv6 unicast 2001:db8:peer::/48"
 #     2001:db8::peer from 2001:db8::peer (2.2.2.2)
 #       Origin IGP, metric 0, localpref 100, valid, external, best
 #       Community: 65002:100
-#       Last update: 2026-03-20 10:00:00
+#       Last update: Fri Mar 20 10:00:00 2026
 ```
 
 ## Routes Advertised and Received
 
 ```bash
 # Show routes advertised to a specific peer
-vtysh -c "show bgp ipv6 unicast neighbors 2001:db8::peer advertised-routes"
+vtysh -c "show bgp ipv6 unicast neighbor 2001:db8::peer advertised-routes"
 
-# Show routes received from a specific peer
-vtysh -c "show bgp ipv6 unicast neighbors 2001:db8::peer routes"
+# Show routes accepted from a specific peer after inbound policy
+vtysh -c "show bgp ipv6 unicast neighbor 2001:db8::peer routes"
 
-# Show received-routes (requires soft-reconfiguration inbound)
-vtysh -c "show bgp ipv6 unicast neighbors 2001:db8::peer received-routes"
+# Show received-routes before inbound policy (requires soft-reconfiguration inbound)
+vtysh -c "show bgp ipv6 unicast neighbor 2001:db8::peer received-routes"
 ```
 
 ## Verifying Kernel Installation
@@ -98,7 +99,7 @@ ip -6 route show proto bgp
 
 # Output:
 # 2001:db8:peer::/48 via 2001:db8::peer dev eth0 proto bgp metric 20
-# 2001:db8:remote::/48 via 2001:db8::ibgp dev lo proto bgp metric 200
+# 2001:db8:remote::/48 via 2001:db8::ibgp dev eth1 proto bgp metric 200
 
 # If a route is in FRR BGP table but not here, check for:
 # - RIB failure (r flag in show bgp output)
@@ -108,13 +109,10 @@ ip -6 route show proto bgp
 ## RIB Failures
 
 ```bash
-# A "r" flag indicates a route failed to install in the kernel RIB
-vtysh -c "show bgp ipv6 unicast" | grep "^r"
-
-# Show only RIB failures
-vtysh -c "show bgp ipv6 unicast rib-failure"
+# FRR marks RIB failures with an "r" in the status-code field
+vtysh -c "show bgp ipv6 unicast"
 ```
 
 ## Summary
 
-FRRouting BGP IPv6 verification uses `show bgp ipv6 unicast summary` for session health and `show bgp ipv6 unicast` for the full route table. Combine with `ip -6 route show proto bgp` to confirm kernel installation. Watch for `r` (RIB failure) and `i` (iBGP) flags, and use `advertised-routes` and `routes` per neighbor to debug specific exchange issues.
+FRRouting BGP IPv6 verification uses `show bgp ipv6 unicast summary` for session health and `show bgp ipv6 unicast` for the full route table. Combine with `ip -6 route show proto bgp` to confirm kernel installation. Watch for `r` (RIB failure) and a leading `i` on internal/iBGP paths, and use `advertised-routes`, `routes`, and `received-routes` per neighbor to debug specific exchange issues.
