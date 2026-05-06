@@ -1,14 +1,14 @@
-# How to Configure CloudWatch Log Insights with OpenTofu
+# How to Configure CloudWatch Logs Insights with OpenTofu
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, AWS, CloudWatch, Log Insights, Monitoring, Infrastructure as Code
+Tags: OpenTofu, AWS, CloudWatch, Logs Insights, Monitoring, Infrastructure as Code
 
 Description: Learn how to create CloudWatch Log Groups, saved queries, and metric filters using OpenTofu for centralized log management.
 
 ---
 
-CloudWatch Log Insights provides an interactive query engine for log data. OpenTofu lets you provision log groups, retention policies, metric filters, and saved queries as infrastructure code.
+CloudWatch Logs Insights provides an interactive query engine for log data. OpenTofu lets you provision log groups, retention policies, metric filters, and saved queries as infrastructure code.
 
 ---
 
@@ -67,22 +67,26 @@ resource "aws_cloudwatch_query_definition" "error_query" {
 
 ---
 
-## Common Log Insights Queries
+## Common CloudWatch Logs Insights Queries
 
-```sql
--- Count errors by hour
+```
+# Count errors by hour
 fields @timestamp
 | filter @message like /ERROR/
-| stats count(*) as error_count by bin(1h)
-| sort @timestamp desc
+| stats count(*) as error_count by bin(1h) as hour
+| sort hour desc
+```
 
--- Top slowest requests
+```
+# Top slowest requests
 fields @timestamp, duration, endpoint
 | filter duration > 1000
 | sort duration desc
 | limit 20
+```
 
--- Error rate by service
+```
+# Error count by service
 fields @timestamp, service, level
 | filter level = "ERROR"
 | stats count(*) as errors by service
@@ -94,6 +98,10 @@ fields @timestamp, service, level
 ## Create an Alarm on the Metric Filter
 
 ```hcl
+resource "aws_sns_topic" "alerts" {
+  name = "cloudwatch-alerts"
+}
+
 resource "aws_cloudwatch_metric_alarm" "error_rate_alarm" {
   alarm_name          = "high-error-rate"
   metric_name         = "ErrorCount"
@@ -111,4 +119,4 @@ resource "aws_cloudwatch_metric_alarm" "error_rate_alarm" {
 
 ## Summary
 
-Create `aws_cloudwatch_log_group` with a `retention_in_days` policy to manage log costs. Use `aws_cloudwatch_log_metric_filter` to extract numeric metrics from log patterns. Save frequently-used Log Insights queries with `aws_cloudwatch_query_definition`. Build alarms on metric filters to get notified when error rates exceed thresholds.
+Create `aws_cloudwatch_log_group` with a `retention_in_days` policy to manage log costs. Use `aws_cloudwatch_log_metric_filter` to extract numeric metrics from log patterns. Save frequently-used CloudWatch Logs Insights queries with `aws_cloudwatch_query_definition`. Build alarms on metric filters to get notified when error rates exceed thresholds.
