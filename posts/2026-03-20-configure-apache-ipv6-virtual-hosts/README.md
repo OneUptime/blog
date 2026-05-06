@@ -9,14 +9,13 @@ Description: A practical guide to setting up multiple Apache virtual hosts serve
 ## IPv6 Virtual Host Fundamentals
 
 ```apache
-# In Apache, IPv6 addresses in VirtualHost must be in brackets
+# In Apache, explicit IPv6 addresses in VirtualHost must be in brackets
 
 # <VirtualHost [IPv6-address]:port>
 
-# All three syntax forms:
-<VirtualHost [::]:80>           # All IPv6 interfaces
+# Common syntax forms:
 <VirtualHost [2001:db8::10]:80>  # Specific IPv6 address
-<VirtualHost *:80>               # All interfaces (IPv4 + IPv6)
+<VirtualHost *:80>               # Wildcard address on port 80
 ```
 
 ## Name-Based IPv6 Virtual Hosting
@@ -27,8 +26,14 @@ Listen [::]:80
 
 # /etc/apache2/sites-available/ipv6-sites.conf
 
+# Default virtual host must be listed first for this address:port
+<VirtualHost *:80>
+    ServerName default.example.com
+    DocumentRoot /var/www/default
+</VirtualHost>
+
 # Site 1
-<VirtualHost [::]:80>
+<VirtualHost *:80>
     ServerName site1.example.com
     ServerAlias www.site1.example.com
     DocumentRoot /var/www/site1
@@ -38,18 +43,12 @@ Listen [::]:80
 </VirtualHost>
 
 # Site 2
-<VirtualHost [::]:80>
+<VirtualHost *:80>
     ServerName site2.example.com
     DocumentRoot /var/www/site2
 
     ErrorLog  ${APACHE_LOG_DIR}/site2-error.log
     CustomLog ${APACHE_LOG_DIR}/site2-access.log combined
-</VirtualHost>
-
-# Default virtual host
-<VirtualHost [::]:80>
-    ServerName default.example.com
-    DocumentRoot /var/www/default
 </VirtualHost>
 ```
 
@@ -81,10 +80,8 @@ Listen [2001:db8::20]:80
 ```apache
 # /etc/apache2/ports.conf
 Listen 80
-Listen [::]:80
 
-# Site accessible via both IPv4 and IPv6
-# Using wildcard matches both Listen directives
+# Wildcard virtual hosts match requests on port 80
 <VirtualHost *:80>
     ServerName example.com
     DocumentRoot /var/www/example
@@ -101,8 +98,8 @@ Listen [::]:80
 
 ```apache
 # /etc/apache2/ports.conf
+Listen 80
 Listen 443
-Listen [::]:443
 
 # Redirect HTTP to HTTPS
 <VirtualHost *:80>
@@ -129,6 +126,9 @@ Listen [::]:443
 ## Enable and Test
 
 ```bash
+# If using the HTTPS example, enable the required modules
+a2enmod ssl headers
+
 # Enable site configuration
 a2ensite ipv6-sites.conf
 
@@ -146,9 +146,9 @@ curl -6 -H "Host: site1.example.com" http://[::1]/
 curl -6 -H "Host: site2.example.com" http://[::1]/
 
 # Test with real IPv6 address
-curl -6 http://[2001:db8::10]/ -H "Host: site1.example.com"
+curl -6 -H "Host: site1.example.com" http://[2001:db8::10]/
 ```
 
 ## Summary
 
-Configure Apache IPv6 virtual hosts with `<VirtualHost [::]:80>` for all-IPv6 interfaces or `<VirtualHost [2001:db8::10]:80>` for a specific address. Name-based hosting over IPv6 works the same as IPv4 - Apache matches `Host:` header to `ServerName`. Use `<VirtualHost *:80>` to match all Listen directives (both IPv4 and IPv6). Verify layout with `apache2ctl -S` and test with `curl -6 -H "Host: example.com"`.
+Configure Apache IPv6 virtual hosts with `Listen [::]:80` plus `<VirtualHost *:80>` for name-based hosting, or `<VirtualHost [2001:db8::10]:80>` for a specific IPv6 address. Name-based hosting over IPv6 works the same as IPv4 - Apache first matches the best IP:port, then compares the `Host:` header to `ServerName` and `ServerAlias`. Use `<VirtualHost *:80>` as a wildcard virtual host on port 80, and remember that `Listen` controls which addresses Apache accepts connections on. Verify layout with `apache2ctl -S` and test with `curl -6 -H "Host: example.com"`.
