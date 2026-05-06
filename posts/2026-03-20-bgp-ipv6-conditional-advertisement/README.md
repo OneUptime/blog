@@ -4,115 +4,130 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, IPv6, Conditional Advertisement, Policy, BIRD
 
-Description: Implement conditional BGP advertisement for IPv6 prefixes that only announces routes when specific conditions are met.
+Description: Implement conditional BGP advertisement for IPv6 prefixes that only announces routes when specific conditions in the BGP table are met.
 
 ## Overview
 
-Implement conditional BGP advertisement for IPv6 prefixes that only announces routes when specific conditions are met.
+Implement conditional BGP advertisement for IPv6 prefixes that only announces routes when specific conditions in the BGP table are met.
 
-## BGP Communities and IPv6
+## Conditional Advertisement and IPv6
 
-BGP communities are attributes attached to route announcements that carry policy signaling information. They work identically for IPv4 and IPv6 prefixes.
+Conditional advertisement lets a BGP speaker announce one set of routes only when another route exists or does not exist in the BGP table. On platforms that support it, the same policy logic works for IPv6 unicast as it does for IPv4, but the match objects need to use IPv6-aware prefix lists.
 
-## Standard Community Format
+## Conditional Advertisement Logic
 
-Standard BGP communities (RFC 1997) are 32-bit values written as two 16-bit numbers:
+Conditional advertisement is commonly built from three policy objects:
 ```text
-ASN:value
-65000:100    # Well-known community
-65001:200    # Custom community
+advertise-map   # Prefixes to announce when the condition is met
+exist-map       # Announce only if these prefixes exist in the BGP table
+non-exist-map   # Announce only if these prefixes do not exist in the BGP table
 ```
+
+All prefixes referenced by the policy must already exist in the local BGP table before they can be conditionally advertised.
 
 ## BIRD2 Configuration Example
 
-```javascript
+BIRD 2 does not document a native `advertise-map` / `exist-map` feature like FRRouting or Cisco IOS. The common pattern is to make the route itself conditional and export it only while it exists in the routing table. This example uses a BFD-controlled static IPv6 route, so the prefix is withdrawn when the tracked next hop fails.
+
+```text
 # /etc/bird/bird.conf
 
-# Define community functions
+protocol device {}
 
-function set_local_pref(int pref) {
-    bgp_local_pref = pref;
+protocol bfd {}
+
+filter export_conditional_v6 {
+    if net = 2001:db8:100::/48 then accept;
+    reject;
 }
 
-# Filter for IPv6 routes with communities
-filter ipv6_community_policy {
-    # Honor upstream community signals for local preference
-    if (65001, 100) ~ bgp_community then {
-        set_local_pref(200);  # High preference
-        accept;
-    }
-    if (65001, 200) ~ bgp_community then {
-        set_local_pref(50);   # Low preference
-        accept;
-    }
-    accept;
+protocol static conditional_v6 {
+    ipv6;
+    route 2001:db8:100::/48 via 2001:db8::2 bfd;
 }
 
 protocol bgp upstream {
-    neighbor 2001:db8:peer::1 as 65001;
+    local as 64496;
+    neighbor 2001:db8::1 as 65001;
     ipv6 {
-        import filter ipv6_community_policy;
-        export filter { accept; };
+        import none;
+        export filter export_conditional_v6;
     };
 }
 ```
 
-## FRRouting Community Configuration
+## FRRouting Conditional Advertisement
 
 ```bash
 # FRR vtysh configuration
+ipv6 route 2001:db8:100::/48 Null0
+ipv6 route 2001:db8:200::/48 Null0
+
+ipv6 prefix-list ADV-PREFIX seq 5 permit 2001:db8:100::/48
+ipv6 prefix-list EXIST-PREFIX seq 5 permit 2001:db8:200::/48
+
+route-map ADV-MAP permit 10
+  match ipv6 address prefix-list ADV-PREFIX
+
+route-map EXIST-MAP permit 10
+  match ipv6 address prefix-list EXIST-PREFIX
+
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:db8::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 activate
-
-# Route map with community matching
-route-map COMMUNITY-POLICY permit 10
-  match community MY-COMMUNITIES
-  set local-preference 200
-
-# Define community list
-ip community-list standard MY-COMMUNITIES permit 65001:100
+    network 2001:db8:100::/48
+    network 2001:db8:200::/48
+    neighbor 2001:db8::1 advertise-map ADV-MAP exist-map EXIST-MAP
+    neighbor 2001:db8::1 activate
+  exit-address-family
 ```
 
-## Cisco IOS Community Configuration
+## Cisco IOS Conditional Advertisement
 
 ```text
-! Configure community for IPv6 BGP
+! Conditionally advertise 2001:DB8:100::/48 while 2001:DB8:200::/48 exists
+ipv6 route 2001:DB8:100::/48 Null0
+ipv6 route 2001:DB8:200::/48 Null0
+
+ipv6 prefix-list ADV-PREFIX seq 5 permit 2001:DB8:100::/48
+ipv6 prefix-list EXIST-PREFIX seq 5 permit 2001:DB8:200::/48
+
+route-map ADV-MAP permit 10
+  match ipv6 address prefix-list ADV-PREFIX
+
+route-map EXIST-MAP permit 10
+  match ipv6 address prefix-list EXIST-PREFIX
+
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:DB8::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 route-map COMMUNITY-INBOUND in
-
-! Route map
-route-map COMMUNITY-INBOUND permit 10
-  match community 100
-  set local-preference 200
-
-! Community list
-ip community-list 100 permit 65001:100
+    network 2001:DB8:100::/48
+    network 2001:DB8:200::/48
+    neighbor 2001:DB8::1 activate
+    neighbor 2001:DB8::1 advertise-map ADV-MAP exist-map EXIST-MAP
+  exit-address-family
 ```
 
-## Testing Community Propagation
+## Testing Conditional Advertisement
 
 ```bash
-# Check if communities are present on IPv6 routes in BIRD
-birdc "show route for 2001:db8::/32 all"
+# Check whether BIRD is exporting the conditional IPv6 prefix
+birdc "show route 2001:db8:100::/48 export upstream all"
 
 # In FRR
-vtysh -c "show bgp ipv6 unicast 2001:db8::/32"
+vtysh -c "show bgp ipv6 unicast neighbors 2001:db8::1 advertised-routes"
 
-# Look for community attribute in output
-# Example: Community: 65001:100 65001:200
+# In Cisco IOS
+show bgp ipv6 unicast neighbors 2001:DB8::1 advertised-routes
 
 # Use RIPE looking glass for external verification
-curl "https://stat.ripe.net/data/bgp-state/data.json?resource=2001:db8::/32" | jq '.data.routes[].attrs.communities'
+curl "https://stat.ripe.net/data/bgp-state/data.json?resource=YOUR_IPV6_PREFIX" | jq '.data.bgp_state[] | {target_prefix, path}'
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor BGP session health for your IPv6 peers and track route counts. Unexpected drops in prefix counts may indicate community-based filtering is rejecting your routes.
+Use [OneUptime](https://oneuptime.com) to monitor BGP session health for your IPv6 peers and track route counts. Unexpected changes in advertised prefix counts may indicate that the tracked condition changed and the IPv6 route was withdrawn.
 
 ## Conclusion
 
-BGP communities work identically for IPv6 prefixes - you configure them in the same route maps and community lists. Always verify community propagation using BGP looking glasses and test policy changes in a lab environment before applying to production IPv6 BGP sessions.
+Conditional advertisement for IPv6 relies on matching IPv6 prefixes in `advertise-map` and `exist-map` / `non-exist-map` policies. On platforms that support the feature natively, the policy is evaluated against the BGP table; in BIRD, you generally make the route itself conditional and export it only while it exists. Always verify both the local advertised-routes view and an external looking glass before applying changes to production IPv6 BGP sessions.
