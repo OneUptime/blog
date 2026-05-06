@@ -60,7 +60,8 @@ Start byte: 2960  Offset field:  370  Last: True
 ```python
 from scapy.all import IP, UDP, Raw, fragment
 
-pkt = IP(dst="10.0.0.1") / UDP(dport=514) / Raw(b"X" * 3800)
+# 3792 bytes of UDP data + 8-byte UDP header = 3800 bytes of IP payload
+pkt = IP(dst="10.0.0.1") / UDP(dport=514) / Raw(b"X" * 3792)
 frags = fragment(pkt, fragsize=1480)
 
 for i, f in enumerate(frags):
@@ -70,7 +71,7 @@ for i, f in enumerate(frags):
 
 ## Validating Offset Alignment
 
-Fragment payloads (except the last) must be multiples of 8 bytes. If they are not, the receiving host cannot correctly compute byte boundaries. A common bug is setting fragsize to a value not divisible by 8.
+Fragment payloads (except the last) must be multiples of 8 bytes. If they are not, a following fragment's offset cannot exactly identify the next byte position in 8-byte units. In custom fragmentation code, a common bug is using a fragment size that is not divisible by 8.
 
 ```python
 # Verify fragment sizes are multiples of 8
