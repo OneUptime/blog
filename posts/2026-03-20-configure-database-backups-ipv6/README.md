@@ -74,13 +74,13 @@ mysqldump \
 
 # Backup specific database
 mysqldump \
-  -h "[2001:db8::db]" \
+  -h 2001:db8::db \
   -u dbadmin \
   -p"password" \
   myapp_db \
   > /backups/myapp_$(date +%Y%m%d).sql
 
-# Note: MySQL uses [] notation for IPv6 addresses
+# Note: MySQL client -h/--host uses the IPv6 literal directly; [] is for URIs/connection strings
 ```
 
 ### MySQL Server Configuration for IPv6 Backups
@@ -142,7 +142,7 @@ PGPASSWORD="pgpassword" pg_dumpall \
 # MySQL backup
 log "Starting MySQL backup"
 mysqldump \
-  -h "[$DB_HOST]" \
+  -h "$DB_HOST" \
   -u root \
   -p"mysqlpass" \
   --all-databases \
@@ -173,4 +173,4 @@ log "All database backups completed"
 0 1 * * * /usr/local/bin/backup_databases_ipv6.sh
 ```
 
-Database backups over IPv6 are supported natively by all major database backup utilities - the key is using the correct IPv6 address format (brackets in URIs/connection strings) and ensuring database servers are configured to accept connections from IPv6 backup client addresses.
+Database backups over IPv6 are supported natively by all major database backup utilities - the key is using the correct IPv6 address format for each tool (for example, brackets in URIs/connection strings, but not for MySQL's `-h`/`--host` option) and ensuring database servers are configured to accept connections from IPv6 backup client addresses.
