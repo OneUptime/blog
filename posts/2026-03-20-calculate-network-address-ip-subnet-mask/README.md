@@ -91,5 +91,5 @@ Network = 172.16.**48**.0
 
 - Network address = IP AND subnet mask (bitwise).
 - All host bits become 0 in the network address.
-- The critical octet is the one where the mask is neither 255 nor 0.
+- For standard contiguous subnet masks, the critical octet is the one where the mask is neither 255 nor 0.
 - Python's `ipaddress.IPv4Interface` computes this automatically from CIDR notation.
