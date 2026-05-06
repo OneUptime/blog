@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, IPv4, Benchmarking, Performance, iperf3, Networking
 
-Description: Systematically benchmark and compare IPv6 versus IPv4 network throughput, latency, and jitter using iperf3, ping, and netperf on Linux systems.
+Description: Systematically benchmark and compare IPv6 versus IPv4 network throughput, latency, and jitter using iperf3 and ping on Linux systems.
 
 ## Introduction
 
@@ -13,7 +13,7 @@ Comparing IPv6 and IPv4 performance helps identify protocol-specific bottlenecks
 ## Prerequisites
 
 - Two Linux hosts with both IPv4 and IPv6 addresses
-- `iperf3`, `ping`/`ping6`, `netperf` installed
+- `iperf3` and `ping` installed
 - No firewall blocking test ports
 
 ## Step 1: Measure Round-Trip Latency
@@ -24,27 +24,27 @@ Comparing IPv6 and IPv4 performance helps identify protocol-specific bottlenecks
 ping -c 100 -i 0.1 192.0.2.1
 
 # IPv6 ping - 100 packets
-ping6 -c 100 -i 0.1 2001:db8::1
+ping -6 -c 100 -i 0.1 2001:db8::1
 
 # Compare statistics output:
 # rtt min/avg/max/mdev = X.XXX/X.XXX/X.XXX/X.XXX ms
 ```
 
-IPv6 often has slightly lower latency on native paths because there is no NAT traversal.
+IPv6 and IPv4 latency is often similar on native dual-stack networks; any differences are usually due to routing, peering, or device behavior rather than the IP version alone.
 
 ## Step 2: TCP Throughput with iperf3
 
 Run iperf3 as a server on the remote host, then benchmark from the local host.
 
 ```bash
-# On the server host - listen on both IPv4 and IPv6
+# On the server host - listen on port 5201
 iperf3 -s -p 5201
 
-# From the client - IPv4 TCP throughput
+# From the client - IPv4 TCP throughput (30 seconds, 4 parallel streams)
 iperf3 -c 192.0.2.1 -p 5201 \
-  -t 30 \          # 30-second test
-  -P 4 \           # 4 parallel streams
-  --format m       # Output in Mbits/s
+  -t 30 \
+  -P 4 \
+  --format m
 
 # From the client - IPv6 TCP throughput
 iperf3 -6 -c 2001:db8::1 -p 5201 \
@@ -69,8 +69,8 @@ iperf3 -c 192.0.2.1 -u -b 100M -t 60 --format m
 iperf3 -6 -c 2001:db8::1 -u -b 100M -t 60 --format m
 
 # iperf3 JSON output for scripted comparison
-iperf3 -6 -c 2001:db8::1 -t 30 -J > ipv6_result.json
-iperf3 -c 192.0.2.1 -t 30 -J > ipv4_result.json
+iperf3 -6 -c 2001:db8::1 -u -b 100M -t 60 -J > ipv6_result.json
+iperf3 -c 192.0.2.1 -u -b 100M -t 60 -J > ipv4_result.json
 
 # Parse and compare
 python3 - <<'EOF'
@@ -79,8 +79,11 @@ import json
 for label, fname in [("IPv4", "ipv4_result.json"), ("IPv6", "ipv6_result.json")]:
     with open(fname) as f:
         d = json.load(f)
-    bps = d["end"]["sum_received"]["bits_per_second"]
-    print(f"{label}: {bps/1e6:.2f} Mbps")
+    summary = d["end"].get("sum_received") or d["end"]["sum"]
+    bps = summary["bits_per_second"]
+    jitter = summary["jitter_ms"]
+    loss = summary["lost_percent"]
+    print(f"{label}: {bps/1e6:.2f} Mbps, jitter {jitter:.3f} ms, loss {loss:.2f}%")
 EOF
 ```
 
@@ -109,7 +112,7 @@ echo "=== IPv4 Latency ==="
 ping -c 50 -q "$SERVER4" 2>&1 | tail -2
 
 echo "=== IPv6 Latency ==="
-ping6 -c 50 -q "$SERVER6" 2>&1 | tail -2
+ping -6 -c 50 -q "$SERVER6" 2>&1 | tail -2
 ```
 
 ## Typical Results Interpretation
@@ -117,10 +120,10 @@ ping6 -c 50 -q "$SERVER6" 2>&1 | tail -2
 | Metric | Expected Outcome |
 |---|---|
 | TCP throughput | Approximately equal on native paths |
-| RTT latency | IPv6 may be 1-5% lower (no NAT) |
+| RTT latency | Usually similar; differences are often path-dependent |
 | Jitter | Similar; depends on path quality |
-| CPU overhead | IPv6 slightly higher on older kernels |
+| CPU overhead | Usually similar on modern systems; verify on your hardware |
 
 ## Conclusion
 
-On well-provisioned networks, IPv6 and IPv4 performance is nearly identical. IPv6 may offer marginal latency advantages by eliminating NAT. Use these benchmarks as a baseline, and run them periodically with OneUptime's performance metrics to detect regressions after infrastructure changes.
+On well-provisioned networks, IPv6 and IPv4 performance is nearly identical. Any latency differences are usually driven by routing and path characteristics rather than the IP version alone. Use these benchmarks as a baseline, and run them periodically with OneUptime's performance metrics to detect regressions after infrastructure changes.
