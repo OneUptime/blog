@@ -32,7 +32,7 @@ locals {
 resource "aws_db_instance" "main" {
   identifier        = "app-db-${var.environment}"
   engine            = "postgres"
-  engine_version    = "15.4"
+  engine_version    = "15"
   instance_class    = local.is_production ? "db.r6g.large" : "db.t3.micro"
   allocated_storage = local.is_production ? 100 : 20
   multi_az          = local.use_multi_az
@@ -91,15 +91,16 @@ variable "allow_public_access" {
 resource "aws_security_group" "app" {
   name   = "app-sg"
   vpc_id = var.vpc_id
+}
 
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    # Conditionally open to internet or restrict to internal networks
-    cidr_blocks = var.allow_public_access ? ["0.0.0.0/0"] : ["10.0.0.0/8"]
-    description = var.allow_public_access ? "HTTPS from internet" : "HTTPS from internal"
-  }
+resource "aws_vpc_security_group_ingress_rule" "https" {
+  security_group_id = aws_security_group.app.id
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+  # Conditionally open to internet or restrict to internal networks
+  cidr_ipv4         = var.allow_public_access ? "0.0.0.0/0" : "10.0.0.0/8"
+  description       = var.allow_public_access ? "HTTPS from internet" : "HTTPS from internal"
 }
 ```
 
@@ -113,17 +114,17 @@ variable "use_custom_kms" {
 
 variable "kms_key_id" {
   type    = string
-  default = ""
+  default = null
 }
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
-  # Use the provided KMS key or fall back to the AWS-managed key
-  kms_key_arn = var.use_custom_kms ? (
+  # Build a custom KMS key ARN only when overriding the default aws/s3 key
+  kms_key_arn = var.use_custom_kms && var.kms_key_id != null ? (
     "arn:aws:kms:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:key/${var.kms_key_id}"
-  ) : "alias/aws/s3"
+  ) : null
 }
 
 resource "aws_s3_bucket_server_side_encryption_configuration" "main" {
@@ -131,8 +132,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "main" {
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm     = var.use_custom_kms ? "aws:kms" : "AES256"
-      kms_master_key_id = var.use_custom_kms ? local.kms_key_arn : null
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = local.kms_key_arn
     }
   }
 }
@@ -168,4 +169,4 @@ locals {
 
 ## Conclusion
 
-Conditional expressions for individual attributes are more readable than duplicating entire resource blocks. Use the ternary operator for simple two-way choices, and chain them (with parentheses and newlines for readability) for multi-way selection. Reserve `count`-based conditional resources for cases where the entire resource needs to be optional.
+Conditional expressions for individual attributes are more readable than duplicating entire resource blocks. Use the ternary operator for simple two-way choices, and chain them (with parentheses and newlines for readability) for multi-way selection. Reserve resource-level conditionals (`enabled` in OpenTofu v1.11+, or `count` in older configurations) for cases where the entire resource needs to be optional.
