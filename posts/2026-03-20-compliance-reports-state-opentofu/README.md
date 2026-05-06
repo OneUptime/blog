@@ -8,7 +8,7 @@ Description: Learn how to generate compliance reports from OpenTofu state files 
 
 ---
 
-OpenTofu state contains a complete inventory of managed infrastructure. Combined with AWS Config compliance findings, you can generate reports that answer compliance questions: "Are all databases encrypted?" "Which resources are missing required tags?" "What changed last quarter?"
+OpenTofu state contains a complete inventory of the resources managed by that state. Combined with AWS Config compliance findings, you can generate reports that answer compliance questions: "Are all databases encrypted?" "Which resources are missing required tags?" "What changed last quarter?"
 
 ## Report Sources
 
@@ -33,16 +33,23 @@ tofu state list
 tofu state show aws_db_instance.main
 
 # Output structured inventory as JSON
-tofu show -json | jq '.values.root_module.resources[] | {
-  type: .type,
-  name: .name,
-  encrypted: .values.storage_encrypted,
-  multi_az: .values.multi_az
-}'
+tofu show -json | jq '
+  .values.root_module
+  | recurse(.child_modules[]?)
+  | .resources[]?
+  | {
+      type: .type,
+      name: .name,
+      encrypted: .values.storage_encrypted,
+      multi_az: .values.multi_az
+    }
+'
 
 # Check for unencrypted databases in state
 tofu show -json | jq '
-  .values.root_module.resources[]
+  .values.root_module
+  | recurse(.child_modules[]?)
+  | .resources[]?
   | select(.type == "aws_db_instance")
   | select(.values.storage_encrypted == false)
   | {name: .name, instance: .values.identifier}
@@ -70,7 +77,7 @@ output "compliance_inventory" {
     buckets = {
       for k, v in aws_s3_bucket.managed : k => {
         bucket = v.bucket
-        region = v.region
+        region = v.bucket_region
       }
     }
   }
@@ -102,7 +109,7 @@ resource "aws_lambda_function" "compliance_reporter" {
 # Generate monthly compliance report
 resource "aws_cloudwatch_event_rule" "monthly_report" {
   name                = "${var.environment}-monthly-compliance-report"
-  schedule_expression = "cron(0 8 1 * ? *)"  # 1st of every month at 8 AM
+  schedule_expression = "cron(0 8 1 * ? *)"  # 1st of every month at 8:00 UTC
 }
 
 resource "aws_cloudwatch_event_target" "report_lambda" {
@@ -110,18 +117,27 @@ resource "aws_cloudwatch_event_target" "report_lambda" {
   target_id = "compliance-reporter"
   arn       = aws_lambda_function.compliance_reporter.arn
 }
+
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.compliance_reporter.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.monthly_report.arn
+}
 ```
 
 ## AWS Config Compliance Summary
 
 ```bash
-# Generate a compliance summary from AWS Config
+# Generate a summary of non-compliant AWS Config rules
 aws configservice describe-compliance-by-config-rule \
+  --compliance-types NON_COMPLIANT \
   --query 'ComplianceByConfigRules[*].{
     Rule: ConfigRuleName,
     Status: Compliance.ComplianceType,
-    CompliantCount: Compliance.ComplianceContributorCount.CompliantResourceCount,
-    NonCompliantCount: Compliance.ComplianceContributorCount.NonCompliantResourceCount
+    NonCompliantCount: Compliance.ComplianceContributorCount.CappedCount,
+    CountCapped: Compliance.ComplianceContributorCount.CapExceeded
   }' \
   --output table
 
@@ -140,7 +156,7 @@ aws configservice get-compliance-details-by-config-rule \
 ## Change Tracking with CloudTrail
 
 ```hcl
-# cloudtrail.tf - track all infrastructure API calls
+# cloudtrail.tf - track management API calls and state bucket object access
 resource "aws_cloudtrail" "infrastructure" {
   name                          = "${var.environment}-infrastructure-trail"
   s3_bucket_name                = aws_s3_bucket.cloudtrail.id
@@ -169,6 +185,6 @@ resource "aws_cloudtrail" "infrastructure" {
 
 - Use `tofu show -json` to extract compliance-relevant attributes programmatically for audits.
 - Define `output` blocks that expose compliance attributes (encryption status, multi_az, deletion_protection) so auditors can query them without reading HCL.
-- Enable CloudTrail with log file validation - this proves to auditors that log files have not been tampered with.
+- Enable CloudTrail log file validation and validate the delivered digest files with the AWS CLI to detect whether log files were modified or deleted after delivery.
 - Store compliance reports in S3 with versioning and object lock for tamper-proof retention.
 - Schedule monthly compliance reports and send summaries to security and engineering leadership.
