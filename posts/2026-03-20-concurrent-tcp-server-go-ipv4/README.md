@@ -8,7 +8,7 @@ Description: Learn how to build a high-concurrency IPv4 TCP server in Go using g
 
 ## Go's Concurrency Model for TCP
 
-Go's goroutines are extremely lightweight (starting at ~8KB stack) making the "goroutine per connection" pattern practical even for thousands of concurrent clients-unlike threads in other languages.
+Go's goroutines are extremely lightweight (starting with small stacks, around 2 KB, that grow and shrink dynamically) making the "goroutine per connection" pattern practical even for thousands of concurrent clients-unlike threads in other languages.
 
 ## Production-Grade Concurrent TCP Server
 
@@ -17,9 +17,11 @@ package main
 
 import (
     "context"
+    "errors"
     "io"
     "log"
     "net"
+    "os"
     "os/signal"
     "sync"
     "syscall"
@@ -30,6 +32,10 @@ type Server struct {
     listener net.Listener
     wg       sync.WaitGroup
     quit     chan struct{}
+    serveDone chan struct{}
+
+    mu    sync.Mutex
+    conns map[net.Conn]struct{}
 }
 
 func NewServer(addr string) (*Server, error) {
@@ -40,11 +46,16 @@ func NewServer(addr string) (*Server, error) {
     return &Server{
         listener: ln,
         quit:     make(chan struct{}),
+        serveDone: make(chan struct{}),
+        conns:    make(map[net.Conn]struct{}),
     }, nil
 }
 
 func (s *Server) handleConn(conn net.Conn) {
     defer func() {
+        s.mu.Lock()
+        delete(s.conns, conn)
+        s.mu.Unlock()
         conn.Close()
         s.wg.Done()
     }()
@@ -61,8 +72,10 @@ func (s *Server) handleConn(conn net.Conn) {
         if err != nil {
             if err == io.EOF {
                 log.Printf("[%s] Disconnected gracefully", addr)
-            } else if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+            } else if errors.Is(err, os.ErrDeadlineExceeded) {
                 log.Printf("[%s] Idle timeout", addr)
+            } else if errors.Is(err, net.ErrClosed) {
+                log.Printf("[%s] Connection closed during shutdown", addr)
             } else {
                 log.Printf("[%s] Read error: %v", addr, err)
             }
@@ -72,6 +85,10 @@ func (s *Server) handleConn(conn net.Conn) {
         // Echo data back
         conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
         if _, err := conn.Write(buf[:n]); err != nil {
+            if errors.Is(err, net.ErrClosed) {
+                log.Printf("[%s] Connection closed during shutdown", addr)
+                return
+            }
             log.Printf("[%s] Write error: %v", addr, err)
             return
         }
@@ -79,6 +96,8 @@ func (s *Server) handleConn(conn net.Conn) {
 }
 
 func (s *Server) Serve() {
+    defer close(s.serveDone)
+
     for {
         conn, err := s.listener.Accept()
         if err != nil {
@@ -91,6 +110,9 @@ func (s *Server) Serve() {
             continue
         }
 
+        s.mu.Lock()
+        s.conns[conn] = struct{}{}
+        s.mu.Unlock()
         s.wg.Add(1)
         go s.handleConn(conn)
     }
@@ -99,6 +121,19 @@ func (s *Server) Serve() {
 func (s *Server) Shutdown() {
     close(s.quit)
     s.listener.Close()
+    <-s.serveDone
+
+    // Close active connections to unblock pending reads and writes.
+    s.mu.Lock()
+    conns := make([]net.Conn, 0, len(s.conns))
+    for conn := range s.conns {
+        conns = append(conns, conn)
+    }
+    s.mu.Unlock()
+
+    for _, conn := range conns {
+        conn.Close()
+    }
 
     // Wait for all connections to finish (with timeout)
     done := make(chan struct{})
@@ -127,7 +162,7 @@ func main() {
     go srv.Serve()
 
     // Wait for SIGINT or SIGTERM
-    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+    ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
     defer stop()
     <-ctx.Done()
 
@@ -184,4 +219,4 @@ func (s *Server) Serve() {
 
 ## Conclusion
 
-Go's goroutine-per-connection pattern is idiomatic and scales well. Use `sync.WaitGroup` to track active connections for graceful shutdown, set read/write deadlines to clean up idle clients, and a semaphore channel to cap maximum concurrency. Closing the listener causes `Accept()` to return an error, cleanly stopping the accept loop.
+Go's goroutine-per-connection pattern is idiomatic and scales well. Use `sync.WaitGroup` together with active connection tracking for graceful shutdown, set read/write deadlines to clean up idle clients, and a semaphore channel to cap maximum concurrency. Closing the listener causes `Accept()` to return an error, cleanly stopping the accept loop, but already accepted connections still need to be drained or closed separately.
