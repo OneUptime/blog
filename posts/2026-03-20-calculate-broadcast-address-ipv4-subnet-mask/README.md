@@ -8,7 +8,7 @@ Description: Calculate the IPv4 broadcast address from a host address and subnet
 
 ## Introduction
 
-The broadcast address is the last address in a subnet. It is computed by performing a bitwise OR of the network address with the bitwise NOT of the subnet mask. Every packet sent to this address is delivered to all hosts on the subnet.
+For a typical IPv4 subnet that defines a directed broadcast address, that address is the last address in the subnet. It is computed by performing a bitwise OR of the network address with the bitwise NOT of the subnet mask. Packets sent to this address are intended for all hosts on that subnet.
 
 ## C Implementation
 
@@ -103,4 +103,4 @@ console.log(broadcastFromCidr("172.16.5.200/20"));               // 172.16.15.25
 
 ## Conclusion
 
-The broadcast address is `(network_address) | (inverted_mask)`. Python's `ipaddress` module exposes it directly. In C and JavaScript, invert the mask bits after the AND with the IP and mask to compute the broadcast, remembering to handle unsigned 32-bit arithmetic carefully in JavaScript.
+For IPv4 subnets that define a directed broadcast address, it is `(network_address) | (inverted_mask)`. Python's `ipaddress` module exposes it directly. In C and JavaScript, invert the mask bits after the AND with the IP and mask to compute the broadcast, remembering to handle unsigned 32-bit arithmetic carefully in JavaScript.
