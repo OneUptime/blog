@@ -4,13 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: DHCP, Networking, Reservation, Static IP, Sysadmin, MAC Address
 
-Description: DHCP reservations (also called static DHCP or DHCP binding) assign a specific IP address to a device based on its MAC address, combining the convenience of DHCP with the predictability of a static IP.
+Description: DHCP reservations (also called static DHCP or DHCP binding) typically assign a specific IP address to a device based on its MAC address, combining the convenience of DHCP with the predictability of a static IP.
 
 ## What Is a DHCP Reservation?
 
-A reservation tells the DHCP server: "Whenever you see this MAC address, always give it this IP." The client still uses the DORA process but receives the same IP every time.
+A reservation tells the DHCP server: "Whenever you see this MAC address, give it this IP." The client still uses DHCP and, on initial address acquisition, follows the usual DISCOVER/OFFER/REQUEST/ACK flow.
 
-## ISC dhcpd: Adding Reservations
+## ISC dhcpd (Legacy): Adding Reservations
+
+ISC DHCP is end-of-life upstream, but the syntax below is still used in existing deployments.
 
 ```nginx
 # /etc/dhcp/dhcpd.conf
@@ -43,7 +45,7 @@ host voip-phone-1 {
 }
 ```
 
-Apply:
+Apply on Debian/Ubuntu:
 ```bash
 sudo systemctl restart isc-dhcp-server
 ```
@@ -92,20 +94,20 @@ ifconfig en0 | grep ether
 # Windows
 ipconfig /all | findstr "Physical"
 
-# From ARP table (if device is on same subnet)
+# Linux/macOS: from ARP table (if device is on same subnet)
 arp -a | grep 192.168.1.50
 ```
 
 ## Best Practices
 
-- Keep reserved IPs **outside** the dynamic DHCP range to avoid conflicts.
-- Use a dedicated range for reservations (e.g., .1–.99) and dynamic pool for .100–.200.
+- Keep reservation addresses in the correct subnet or scope for your DHCP server.
+- If you manually assign static IPs outside DHCP, exclude those addresses from the DHCP pool.
+- Some admins use a dedicated portion of the subnet for reservations, but whether it sits inside or outside the dynamic pool depends on the DHCP server.
 - Document MAC-to-IP mappings in your IPAM tool.
-- Reservation IPs should be in the subnet declaration but excluded from the dynamic range.
 
 ## Key Takeaways
 
-- Reservations use MAC address matching to always assign the same IP to a device.
-- The reserved IP should be outside the dynamic pool range to prevent conflicts.
+- Reservations commonly use MAC address matching to assign the same IP to a device.
+- The reserved IP must be valid for the subnet or scope; whether it should also sit outside the dynamic pool depends on the DHCP server.
 - ISC dhcpd uses `host` blocks; dnsmasq uses `dhcp-host` lines; Windows Server uses `Add-DhcpServerv4Reservation`.
-- Reservations are superior to purely static IPs because the DHCP server still distributes gateway, DNS, and other options centrally.
+- Reservations can be preferable to purely static IPs because the DHCP server still distributes gateway, DNS, and other options centrally.
