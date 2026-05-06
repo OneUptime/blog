@@ -44,38 +44,52 @@ network:
 ```
 
 ```bash
-netplan apply
+sudo netplan apply
 cat /proc/net/bonding/bond0
 ```
 
 ## LACP (802.3ad) Bond
 
 ```yaml
-bonds:
-  bond0:
-    interfaces:
-      - eth0
-      - eth1
-    dhcp4: true
-    parameters:
-      mode: 802.3ad
-      mii-monitor-interval: 100
-      lacp-rate: fast
-      transmit-hash-policy: layer3+4
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: false
+    eth1:
+      dhcp4: false
+  bonds:
+    bond0:
+      interfaces:
+        - eth0
+        - eth1
+      dhcp4: true
+      parameters:
+        mode: 802.3ad
+        mii-monitor-interval: 100
+        lacp-rate: fast
+        transmit-hash-policy: layer3+4
 ```
 
 ## Round-Robin Bond
 
 ```yaml
-bonds:
-  bond0:
-    interfaces:
-      - eth0
-      - eth1
-    dhcp4: true
-    parameters:
-      mode: balance-rr
-      mii-monitor-interval: 100
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: false
+    eth1:
+      dhcp4: false
+  bonds:
+    bond0:
+      interfaces:
+        - eth0
+        - eth1
+      dhcp4: true
+      parameters:
+        mode: balance-rr
+        mii-monitor-interval: 100
 ```
 
 ## Bond Mode Options
@@ -94,13 +108,13 @@ bonds:
 
 ```bash
 # Apply and check
-netplan apply
+sudo netplan apply
 ip addr show bond0
 cat /proc/net/bonding/bond0
 
-# Should show:
-# Bonding Mode: active-backup
-# Active Slave: eth0
+# Should include:
+# Bonding Mode: fault-tolerance (active-backup)
+# Currently Active Slave: eth0
 # Slave Interface: eth0
 # Slave Interface: eth1
 ```
@@ -131,4 +145,4 @@ network:
 
 ## Conclusion
 
-Netplan bonds use the `bonds` section with `interfaces` listing member interfaces and `parameters` for mode, MII monitor interval, and LACP settings. Member interfaces must have `dhcp4: false` with no IP. Verify with `cat /proc/net/bonding/bond0` after applying.
+Netplan bonds use the `bonds` section with `interfaces` listing member interfaces and `parameters` for mode, MII monitor interval, and LACP settings. If you define the member interfaces separately, set `dhcp4: false` and do not assign them IP addresses. Verify with `cat /proc/net/bonding/bond0` after applying.
