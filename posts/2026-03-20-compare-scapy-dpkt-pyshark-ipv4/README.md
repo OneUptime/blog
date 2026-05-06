@@ -18,14 +18,14 @@ Three libraries dominate Python IPv4 packet analysis:
 
 | Feature | Scapy | dpkt | PyShark |
 |---------|-------|------|---------|
-| Packet crafting | Excellent | Limited | None |
-| Packet sending | Yes (root required) | No | No |
-| Live capture | Yes | Via pcap lib | Yes |
+| Packet crafting | Excellent | Basic (manual) | None |
+| Packet sending | Yes (typically root/admin) | No | No |
+| Live capture | Yes | No built-in capture | Yes |
 | PCAP reading | Yes | Yes | Yes |
-| Protocol coverage | ~300 | ~50 | ~3000 |
+| Protocol coverage | Broad | Basic TCP/IP protocols | Very broad via Wireshark dissectors |
 | Performance | Medium | Fast | Slowest |
-| Dependencies | scapy | dpkt | TShark binary |
-| Display filters | BPF only | BPF only | Full Wireshark syntax |
+| Dependencies | Python package | Python package | Python package + TShark |
+| Filtering | BPF capture filters + Python callbacks | Custom code / external tools | Wireshark display filters |
 
 ## Reading an IPv4 Packet from PCAP: Side by Side
 
@@ -72,21 +72,21 @@ for pkt in cap:
 cap.close()
 ```
 
-## Performance Benchmark (Approximate)
+## Performance Expectations (Approximate)
 
-Processing 1 million packets from PCAP:
+Relative throughput for offline PCAP analysis:
 
 ```mermaid
 bar
-    title Packets/Second (higher is better)
+    title Relative Throughput (higher is better)
     x-axis [dpkt, Scapy, PyShark]
-    y-axis 0 --> 300000
-    bar [250000, 50000, 5000]
+    y-axis 0 --> 3
+    bar [3, 2, 1]
 ```
 
-- **dpkt**: ~250,000 pkt/s - fastest, minimal overhead
-- **Scapy**: ~50,000 pkt/s - feature-rich, moderate overhead
-- **PyShark**: ~5,000 pkt/s - subprocess-based, richest dissection
+- **dpkt**: typically the highest throughput for offline PCAP parsing because it keeps overhead low
+- **Scapy**: slower than dpkt because it builds richer packet objects
+- **PyShark**: usually the slowest because it relies on TShark for full dissection
 
 ## When to Use Each
 
@@ -108,12 +108,12 @@ bar
 - Using Wireshark display filter syntax
 - Wireshark is already installed on the system
 
-## Crafting a Packet (Scapy Only)
+## Crafting and Sending a Packet with Scapy
 
 ```python
 from scapy.all import IP, TCP, send
 
-# Only Scapy supports packet crafting
+# Scapy provides high-level packet crafting and packet sending
 
 pkt = IP(dst="10.0.0.1") / TCP(dport=80, flags="S")
 send(pkt)
