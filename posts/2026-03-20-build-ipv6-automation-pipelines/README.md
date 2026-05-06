@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: IPv6, Pipeline, CI/CD, Ansible, Python, GitOps, Automation
+Tags: IPv6, Python, YAML, curl, Automation
 
-Description: Build end-to-end IPv6 network automation pipelines from code commit to deployment verification using GitLab CI or GitHub Actions.
+Description: Build IPv6 automation checks for address validation, policy evaluation, and deployment verification using Python and CLI tooling.
 
 ## Introduction
 
-Build end-to-end IPv6 network automation pipelines from code commit to deployment verification using GitLab CI or GitHub Actions. This guide covers the essential configuration, code patterns, and verification steps.
+Build IPv6 automation checks for address validation, policy evaluation, and deployment verification using Python and CLI tooling. This guide covers the essential configuration, code patterns, and verification steps.
 
 ## Step 1: Prerequisites and Setup
 
@@ -16,10 +16,11 @@ Build end-to-end IPv6 network automation pipelines from code commit to deploymen
 # Ensure IPv6 is enabled and functional
 
 ip -6 addr show
-ping6 -c 3 ::1
+ping -6 -c 3 ::1
 
-# Install required dependencies
-pip install ipaddress netaddr  # Python
+# Python's ipaddress module is included in Python 3.
+# Install optional third-party dependencies only if you need them.
+python3 -m pip install netaddr  # Optional Python helper library
 # or
 npm install ipaddr.js          # JavaScript
 ```
@@ -28,7 +29,6 @@ npm install ipaddr.js          # JavaScript
 
 ```python
 import ipaddress
-from typing import Optional
 
 def check_ipv6_subnet(client_ip: str, allowed_prefix: str) -> bool:
     """Check if an IPv6 address is within an allowed subnet."""
@@ -41,7 +41,7 @@ def check_ipv6_subnet(client_ip: str, allowed_prefix: str) -> bool:
 
 # Example usage
 allowed_networks = [
-    "2001:db8:trusted::/48",
+    "2001:db8:1000::/48",
     "::1/128",
     "fe80::/10",
 ]
@@ -54,15 +54,15 @@ def is_allowed(client_ip: str) -> bool:
     return False
 
 # Tests
-print(is_allowed("2001:db8:trusted::1"))   # True
-print(is_allowed("2001:db8:unknown::1"))   # False
-print(is_allowed("::1"))                   # True
+print(is_allowed("2001:db8:1000::1"))  # True
+print(is_allowed("2001:db8:2000::1"))  # False
+print(is_allowed("::1"))               # True
 ```
 
 ## Step 3: Configuration
 
 ```yaml
-# Configuration example for Build IPv6 Network Automation Pipelines
+# Configuration example for IPv6 policy rules
 ipv6:
   enabled: true
   networks:
@@ -78,7 +78,20 @@ ipv6:
 
 ```bash
 # Apply configuration
-python3 configure.py --config config.yaml
+python3 - <<'PY'
+import ipaddress
+
+rules = [
+    ("2001:db8::/32", "allow"),
+    ("::/0", "deny"),
+]
+
+client = ipaddress.ip_address("2001:db8::1")
+for prefix, action in rules:
+    if client in ipaddress.ip_network(prefix, strict=False):
+        print(f"{client}: {action}")
+        break
+PY
 
 # Verify functionality
 python3 -c "
@@ -89,12 +102,13 @@ print(f'{addr} in {net}: {addr in net}')
 "
 
 # Test connectivity
-curl -6 http://[::1]:8080/health
+curl -g -6 http://[::1]:8080/health
 ```
 
 ## Step 5: Monitoring
 
 ```python
+import ipaddress
 import logging
 
 logger = logging.getLogger(__name__)
@@ -115,4 +129,4 @@ def log_ipv6_access(client_ip: str, allowed: bool):
 
 ## Conclusion
 
-Build IPv6 Network Automation Pipelines requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's  module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
+Building IPv6 automation workflows requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's ipaddress module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
