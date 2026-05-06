@@ -24,6 +24,8 @@ docker run -d \
     -v /opt/adguardhome/conf:/opt/adguardhome/conf \
     -p 53:53/udp -p 53:53/tcp \
     -p 3000:3000/tcp \
+    -p 443:443/tcp \
+    -p 853:853/tcp -p 853:853/udp \
     adguard/adguardhome
 ```
 
@@ -33,10 +35,9 @@ docker run -d \
 # /opt/AdGuardHome/AdGuardHome.yaml
 
 dns:
-  # Bind to all IPv6 and IPv4 interfaces
+  # Bind to all interfaces
   bind_hosts:
     - "::"
-    - "0.0.0.0"
   port: 53
 
   # Or specific IPv6 address
@@ -54,17 +55,18 @@ dns:
   upstream_dns:
     - "https://dns.cloudflare.com/dns-query"        # DoH
     - "tls://1dot1dot1dot1.cloudflare-dns.com"      # DoT
-    - "[2606:4700:4700::1111]"                       # Plain IPv6
-    - "[2606:4700:4700::1001]"
+    - "2606:4700:4700::1111"                        # Plain IPv6
+    - "2606:4700:4700::1001"
     - "8.8.8.8"                                      # IPv4 fallback
 
   # Use parallel queries for speed
-  all_servers: true
+  upstream_mode: parallel
 
   # Bootstrap resolvers (to resolve DoH hostnames)
   bootstrap_dns:
     - "2606:4700:4700::1111"
     - "8.8.8.8"
+  bootstrap_prefer_ipv6: true
 ```
 
 ## Step 3: Enable DoH and DoT on IPv6
@@ -78,7 +80,7 @@ tls:
   force_https: false
   port_https: 443       # DoH
   port_dns_over_tls: 853  # DoT
-  port_dns_over_quic: 784  # DoQ
+  port_dns_over_quic: 853  # DoQ
 
   # Certificate (Let's Encrypt or self-signed)
   certificate_path: /etc/ssl/dns.example.com.crt
@@ -86,15 +88,19 @@ tls:
 ```
 
 ```bash
+# Publish an AAAA record for dns.example.com that points to 2001:db8::1.
+
 # Access DoH over IPv6:
-# https://[2001:db8::1]/dns-query
+# https://dns.example.com/dns-query
 
 # Access DoT over IPv6:
-# tls://[2001:db8::1]:853
+# tls://dns.example.com
 
 # Test DoH
-curl -s "https://[2001:db8::1]/dns-query?name=example.com&type=AAAA" \
-    -H "Accept: application/dns-json"
+curl -6 \
+    --resolve dns.example.com:443:[2001:db8::1] \
+    --doh-url https://dns.example.com/dns-query \
+    -I https://example.com
 ```
 
 ## Step 4: Filtering Lists
@@ -104,7 +110,7 @@ curl -s "https://[2001:db8::1]/dns-query?name=example.com&type=AAAA" \
 
 filters:
   - enabled: true
-    url: "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt"
+    url: "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt"
     name: AdGuard DNS filter
     id: 1
   - enabled: true
@@ -118,14 +124,15 @@ filters:
 ```yaml
 # /opt/AdGuardHome/AdGuardHome.yaml
 
-# Custom DNS rewrites (local AAAA)
-rewrites:
-  - domain: "homeserver.local"
-    answer: "2001:db8::50"
-  - domain: "nas.local"
-    answer: "2001:db8::51"
-  - domain: "*.internal"
-    answer: "2001:db8::1"
+filtering:
+  # Custom DNS rewrites (local AAAA)
+  rewrites:
+    - domain: "homeserver.home.arpa"
+      answer: "2001:db8::50"
+    - domain: "nas.home.arpa"
+      answer: "2001:db8::51"
+    - domain: "*.home.arpa"
+      answer: "2001:db8::1"
 ```
 
 ## Step 6: Test
@@ -136,15 +143,15 @@ systemctl restart AdGuardHome
 
 # Test AAAA query filtering
 dig AAAA doubleclick.net @2001:db8::1
-# Returns: 0.0.0.0 or :: (blocked)
+# With the default blocking mode, blocked AAAA queries return ::
 
 # Test local record
-dig AAAA homeserver.local @2001:db8::1
+dig AAAA homeserver.home.arpa @2001:db8::1
 
 # Check web UI
-curl http://[2001:db8::1]:3000
+curl http://127.0.0.1:3000
 ```
 
 ## Conclusion
 
-AdGuard Home supports IPv6 listening and upstream resolution natively. Set `bind_hosts: ["::"]` and add IPv6 upstream resolvers to handle both IPv4-mapped and native IPv6 clients. The DoH/DoT endpoints work over IPv6 connections. Monitor AdGuard Home query throughput and filter hit rates with OneUptime.
+AdGuard Home supports IPv6 listening and upstream resolution natively. Set `bind_hosts: ["::"]`, add IPv6 upstream resolvers, and publish an AAAA record for your DoH/DoT hostname so dual-stack and IPv6-only clients can reach it over IPv6. Monitor AdGuard Home query throughput and filter hit rates with OneUptime.
