@@ -15,8 +15,6 @@ Apache Cassandra is a distributed NoSQL database designed for handling large amo
 ```yaml
 # docker-compose.yml - Apache Cassandra Cluster
 
-version: "3.8"
-
 networks:
   cassandra_net:
     driver: bridge
@@ -36,6 +34,11 @@ services:
     container_name: cassandra1
     restart: unless-stopped
     hostname: cassandra1
+    entrypoint: ["/bin/bash", "-lc"]
+    command: >
+      sed -ri 's/^(authenticator:).*/\1 PasswordAuthenticator/' /etc/cassandra/cassandra.yaml &&
+      sed -ri 's/^(authorizer:).*/\1 CassandraAuthorizer/' /etc/cassandra/cassandra.yaml &&
+      exec /usr/local/bin/docker-entrypoint.sh cassandra -f
     networks:
       cassandra_net:
         ipv4_address: 172.33.0.10
@@ -47,17 +50,15 @@ services:
       - CASSANDRA_NUM_TOKENS=256
       - CASSANDRA_DC=dc1
       - CASSANDRA_RACK=rack1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
       - CASSANDRA_SEEDS=172.33.0.10,172.33.0.11
       # Tune memory for Docker
       - MAX_HEAP_SIZE=512M
       - HEAP_NEWSIZE=128M
-      # Set Cassandra authentication
-      - CASSANDRA_AUTHENTICATOR=PasswordAuthenticator
-      - CASSANDRA_AUTHORIZER=CassandraAuthorizer
     volumes:
       - cassandra1_data:/var/lib/cassandra
     healthcheck:
-      test: ["CMD", "nodetool", "status"]
+      test: ["CMD-SHELL", "cqlsh -u cassandra -p cassandra -e 'DESCRIBE CLUSTER'"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -69,6 +70,11 @@ services:
     container_name: cassandra2
     restart: unless-stopped
     hostname: cassandra2
+    entrypoint: ["/bin/bash", "-lc"]
+    command: >
+      sed -ri 's/^(authenticator:).*/\1 PasswordAuthenticator/' /etc/cassandra/cassandra.yaml &&
+      sed -ri 's/^(authorizer:).*/\1 CassandraAuthorizer/' /etc/cassandra/cassandra.yaml &&
+      exec /usr/local/bin/docker-entrypoint.sh cassandra -f
     networks:
       cassandra_net:
         ipv4_address: 172.33.0.11
@@ -78,12 +84,18 @@ services:
       - CASSANDRA_CLUSTER_NAME=MyCluster
       - CASSANDRA_DC=dc1
       - CASSANDRA_RACK=rack1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
       - CASSANDRA_SEEDS=172.33.0.10,172.33.0.11
       - MAX_HEAP_SIZE=512M
       - HEAP_NEWSIZE=128M
-      - CASSANDRA_AUTHENTICATOR=PasswordAuthenticator
     volumes:
       - cassandra2_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -u cassandra -p cassandra -e 'DESCRIBE CLUSTER'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
       cassandra1:
         condition: service_healthy
@@ -94,6 +106,11 @@ services:
     container_name: cassandra3
     restart: unless-stopped
     hostname: cassandra3
+    entrypoint: ["/bin/bash", "-lc"]
+    command: >
+      sed -ri 's/^(authenticator:).*/\1 PasswordAuthenticator/' /etc/cassandra/cassandra.yaml &&
+      sed -ri 's/^(authorizer:).*/\1 CassandraAuthorizer/' /etc/cassandra/cassandra.yaml &&
+      exec /usr/local/bin/docker-entrypoint.sh cassandra -f
     networks:
       cassandra_net:
         ipv4_address: 172.33.0.12
@@ -103,25 +120,34 @@ services:
       - CASSANDRA_CLUSTER_NAME=MyCluster
       - CASSANDRA_DC=dc1
       - CASSANDRA_RACK=rack1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
       - CASSANDRA_SEEDS=172.33.0.10,172.33.0.11
       - MAX_HEAP_SIZE=512M
       - HEAP_NEWSIZE=128M
     volumes:
       - cassandra3_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -u cassandra -p cassandra -e 'DESCRIBE CLUSTER'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     depends_on:
       cassandra2:
         condition: service_healthy
 
   # Cassandra Web UI
   cassandra_web:
-    image: rancher/cassandra-web:latest
+    image: dcagatay/cassandra-web:latest
     container_name: cassandra_web
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      - CASSANDRA_HOST=cassandra1
+      - CASSANDRA_HOST_IPS=172.33.0.10,172.33.0.11,172.33.0.12
       - CASSANDRA_PORT=9042
+      - CASSANDRA_USERNAME=cassandra
+      - CASSANDRA_PASSWORD=cassandra
     networks:
       - cassandra_net
     depends_on:
@@ -137,6 +163,13 @@ docker exec -it cassandra1 cqlsh -u cassandra -p cassandra
 
 # Or run CQL commands directly
 docker exec cassandra1 cqlsh -u cassandra -p cassandra -e "
+-- Replicate authentication data across the cluster
+ALTER KEYSPACE system_auth
+WITH replication = {
+  'class': 'NetworkTopologyStrategy',
+  'dc1': 3
+};
+
 -- Create application keyspace with replication factor 3
 CREATE KEYSPACE IF NOT EXISTS myapp
 WITH replication = {
@@ -177,23 +210,29 @@ AND compaction = {
 CREATE ROLE IF NOT EXISTS appuser WITH PASSWORD = 'app_secure_password' AND LOGIN = true;
 GRANT ALL PERMISSIONS ON KEYSPACE myapp TO appuser;
 "
+
+# Distribute the updated system_auth replication to all nodes
+docker exec cassandra1 nodetool repair --full -pr system_auth
+docker exec cassandra2 nodetool repair --full -pr system_auth
+docker exec cassandra3 nodetool repair --full -pr system_auth
 ```
 
 ## Step 3: Connect Applications
 
 ```python
 # Python - Cassandra with cassandra-driver
+from cassandra import ConsistencyLevel
 from cassandra.cluster import Cluster
 from cassandra.auth import PlainTextAuthProvider
-from cassandra.query import SimpleStatement, ConsistencyLevel
+from cassandra.policies import DCAwareRoundRobinPolicy
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
-# Connect to cluster
+# Run this from another container attached to cassandra_net
 auth_provider = PlainTextAuthProvider(username='appuser', password='app_secure_password')
 
 cluster = Cluster(
-    contact_points=['cassandra1', 'cassandra2', 'cassandra3'],
+    contact_points=['cassandra1'],
     port=9042,
     auth_provider=auth_provider,
     # Local DC for topology-aware routing
@@ -216,10 +255,10 @@ session.execute(insert_user, (
     user_id,
     "alice@example.com",
     "Alice",
-    datetime.utcnow()
+    datetime.now(timezone.utc)
 ))
 
-# Query with LOCAL_QUORUM for best performance
+# Read with LOCAL_QUORUM in the local datacenter
 select_user = session.prepare("""
     SELECT * FROM users WHERE user_id = ?
 """)
@@ -236,7 +275,7 @@ insert_event = session.prepare("""
 
 session.execute(insert_event, (
     user_id,
-    datetime.utcnow(),
+    datetime.now(timezone.utc),
     "page_view",
     '{"page": "/dashboard"}'
 ))
@@ -273,23 +312,23 @@ BACKUP_DIR="/opt/backups/cassandra"
 mkdir -p "$BACKUP_DIR"
 
 # Take snapshot on all nodes
-docker exec cassandra1 nodetool snapshot myapp -t "$DATE"
-docker exec cassandra2 nodetool snapshot myapp -t "$DATE"
-docker exec cassandra3 nodetool snapshot myapp -t "$DATE"
+docker exec cassandra1 nodetool snapshot -t "$DATE" myapp
+docker exec cassandra2 nodetool snapshot -t "$DATE" myapp
+docker exec cassandra3 nodetool snapshot -t "$DATE" myapp
 
-# Copy snapshots from containers
+# Archive only the snapshot directories from each node
 for NODE in cassandra1 cassandra2 cassandra3; do
-    docker cp "$NODE:/var/lib/cassandra/data/myapp" \
-        "$BACKUP_DIR/${NODE}_${DATE}"
-    tar -czf "$BACKUP_DIR/${NODE}_${DATE}.tar.gz" \
-        -C "$BACKUP_DIR" "${NODE}_${DATE}"
-    rm -rf "$BACKUP_DIR/${NODE}_${DATE}"
+    docker exec "$NODE" sh -c "
+        cd /var/lib/cassandra/data &&
+        find myapp -type d -path '*/snapshots/$DATE' -print0 |
+        tar --null -czf - --files-from -
+    " > "$BACKUP_DIR/${NODE}_${DATE}.tar.gz"
 done
 
 # Clean up snapshots in containers
-docker exec cassandra1 nodetool clearsnapshot -t "$DATE"
-docker exec cassandra2 nodetool clearsnapshot -t "$DATE"
-docker exec cassandra3 nodetool clearsnapshot -t "$DATE"
+docker exec cassandra1 nodetool clearsnapshot -t "$DATE" myapp
+docker exec cassandra2 nodetool clearsnapshot -t "$DATE" myapp
+docker exec cassandra3 nodetool clearsnapshot -t "$DATE" myapp
 
 echo "Cassandra backup: $DATE"
 find "$BACKUP_DIR" -name "*.tar.gz" -mtime +7 -delete
@@ -297,4 +336,4 @@ find "$BACKUP_DIR" -name "*.tar.gz" -mtime +7 -delete
 
 ## Conclusion
 
-Apache Cassandra running in Docker via Portainer gives you a massively scalable, fault-tolerant NoSQL database. The 3-node cluster can handle the loss of one node without any downtime or data loss. The consistency level controls let you tune the trade-off between consistency and availability on a per-query basis. Portainer makes it easy to monitor all three nodes and run maintenance tasks like repairs and compactions via the container exec feature.
+Apache Cassandra running in Docker via Portainer gives you a scalable NoSQL database with replication across three nodes. With replication factor 3 and QUORUM or LOCAL_QUORUM operations, this cluster can continue serving requests if one Cassandra node fails. Because all three containers run on the same Docker host in this example, the host itself is still a single point of failure. The consistency level controls let you tune the trade-off between consistency and availability on a per-query basis. Portainer makes it easy to monitor all three nodes and run maintenance tasks like repairs and compactions via the container exec feature.
