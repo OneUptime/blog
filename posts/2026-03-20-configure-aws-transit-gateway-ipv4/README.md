@@ -34,9 +34,13 @@ resource "aws_ec2_transit_gateway" "main" {
 
 ```hcl
 resource "aws_ec2_transit_gateway_vpc_attachment" "vpc_a" {
+  # Use one subnet per Availability Zone for the attachment.
   subnet_ids         = aws_subnet.vpc_a_private[*].id
   transit_gateway_id = aws_ec2_transit_gateway.main.id
   vpc_id             = aws_vpc.vpc_a.id
+
+  # This attachment will use a custom TGW route table below.
+  transit_gateway_default_route_table_association = false
 
   tags = {
     Name = "tgw-attachment-vpc-a"
@@ -44,6 +48,7 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "vpc_a" {
 }
 
 resource "aws_ec2_transit_gateway_vpc_attachment" "vpc_b" {
+  # Use one subnet per Availability Zone for the attachment.
   subnet_ids         = aws_subnet.vpc_b_private[*].id
   transit_gateway_id = aws_ec2_transit_gateway.main.id
   vpc_id             = aws_vpc.vpc_b.id
@@ -87,9 +92,14 @@ resource "aws_ec2_transit_gateway_route_table" "production" {
   }
 }
 
-resource "aws_ec2_transit_gateway_route" "prod_to_shared" {
-  destination_cidr_block         = "10.100.0.0/16"  # Shared services VPC
-  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.shared.id
+resource "aws_ec2_transit_gateway_route_table_association" "vpc_a_production" {
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.vpc_a.id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.production.id
+}
+
+resource "aws_ec2_transit_gateway_route" "prod_to_vpc_b" {
+  destination_cidr_block         = aws_vpc.vpc_b.cidr_block
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.vpc_b.id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.production.id
 }
 ```
@@ -110,4 +120,4 @@ aws ec2 search-transit-gateway-routes   --transit-gateway-route-table-id tgw-rtb
 
 ## Summary
 
-Create an `aws_ec2_transit_gateway`, attach VPCs with `aws_ec2_transit_gateway_vpc_attachment`, and add routes in each VPC's route table pointing to the TGW for cross-VPC CIDRs. Use custom TGW route tables with `aws_ec2_transit_gateway_route_table` to implement network segmentation between environments.
+Create an `aws_ec2_transit_gateway`, attach VPCs with `aws_ec2_transit_gateway_vpc_attachment`, and add routes in each VPC's route table pointing to the TGW for cross-VPC CIDRs. Use custom TGW route tables with `aws_ec2_transit_gateway_route_table`, explicitly associate attachments with `aws_ec2_transit_gateway_route_table_association`, and add TGW routes to implement network segmentation between environments.
