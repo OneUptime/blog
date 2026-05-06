@@ -96,19 +96,23 @@ resource "aws_lb_listener_rule" "canary" {
 
 ```hcl
 # k8s_canary.tf
-# Deploy Argo Rollouts controller
+# Install the controller and CRDs first. The kubernetes_manifest resources
+# below need the Rollout CRDs to exist at plan time.
 resource "helm_release" "argo_rollouts" {
   name       = "argo-rollouts"
   repository = "https://argoproj.github.io/argo-helm"
   chart      = "argo-rollouts"
   version    = "2.35.0"
   namespace  = "argo-rollouts"
+  create_namespace = true
 
   wait    = true
   timeout = 300
 }
 
-# Create a Rollout resource instead of a Deployment
+# After the CRDs exist (typically from a prior apply or separate stack),
+# create a Rollout resource instead of a Deployment. This assumes matching
+# stable/canary Services and the referenced Istio VirtualService already exist.
 resource "kubernetes_manifest" "app_rollout" {
   depends_on = [helm_release.argo_rollouts]
 
@@ -137,7 +141,7 @@ resource "kubernetes_manifest" "app_rollout" {
           ]
 
           # Automated analysis - abort rollout if error rate exceeds 1%
-          analysis {
+          analysis = {
             templates = [{
               templateName = "error-rate-check"
             }]
@@ -204,12 +208,13 @@ resource "kubernetes_manifest" "error_rate_analysis" {
       metrics = [{
         name             = "error-rate"
         interval         = "1m"
-        failureLimit     = 3  # Abort after 3 consecutive failures
+        failureLimit     = 3  # Abort after 3 failed measurements
         successCondition = "result[0] < 0.01"  # Fail if error rate > 1%
 
         provider = {
           prometheus = {
             address = "http://kube-prometheus-stack-prometheus:9090"
+            # Adjust metric and label names to match your Prometheus schema.
             query   = <<-QUERY
               sum(rate(http_requests_total{service="{{args.service-name}}", status=~"5.."}[5m]))
               /
