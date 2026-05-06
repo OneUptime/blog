@@ -16,14 +16,15 @@ Envoy is a high-performance edge and service proxy used in service meshes (Istio
 # Ubuntu
 
 sudo apt-get update
-sudo apt-get install -y apt-transport-https ca-certificates curl gnupg-agent software-properties-common
+sudo apt-get install -y curl gpg
+sudo install -m 0755 -d /etc/apt/keyrings
 
-curl -sL 'https://deb.dl.getenvoy.io/public/gpg.8115BA8E629CC074.key' | sudo gpg --dearmor -o /usr/share/keyrings/getenvoy-keyring.gpg
+curl -fsSL https://apt.envoyproxy.io/signing.key | sudo gpg --dearmor -o /etc/apt/keyrings/envoy-keyring.gpg
 
-echo "deb [arch=amd64 signed-by=/usr/share/keyrings/getenvoy-keyring.gpg] https://deb.dl.getenvoy.io/public/deb/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/getenvoy.list
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/envoy-keyring.gpg] https://apt.envoyproxy.io $(. /etc/os-release && echo \"$VERSION_CODENAME\") main" | sudo tee /etc/apt/sources.list.d/envoy.list > /dev/null
 
 sudo apt-get update
-sudo apt-get install -y getenvoy-envoy
+sudo apt-get install -y envoy
 ```
 
 ## Static Configuration for HTTP Load Balancing
@@ -145,8 +146,8 @@ clusters:
 | ROUND_ROBIN | Sequential rotation |
 | LEAST_REQUEST | Fewest active requests |
 | RANDOM | Random selection |
-| RING_HASH | Consistent hash (sticky) |
-| MAGLEV | Google Maglev hash |
+| RING_HASH | Consistent hash with a configured hash policy |
+| MAGLEV | Google Maglev consistent hash with a configured hash policy |
 
 ## Accessing the Admin API
 
@@ -157,7 +158,7 @@ curl http://localhost:9901/clusters
 # View statistics
 curl http://localhost:9901/stats | grep upstream
 
-# Hot restart
+# Cleanly shut down Envoy
 curl -X POST http://localhost:9901/quitquitquit
 ```
 
