@@ -84,6 +84,7 @@ resource "aws_cloudwatch_dashboard" "app" {
           title  = "Request Latency"
           period = 60
           stat   = "Average"
+          region = "us-east-1"
           metrics = [
             ["MyApp/Production", "RequestLatency", "Endpoint", "/api/orders"]
           ]
