@@ -92,5 +92,5 @@ Broadcast:
 
 - Broadcast = network address OR wildcard mask (inverted subnet mask).
 - All host bits are set to 1 in the broadcast address.
-- The last address of any subnet is always the broadcast.
-- The broadcast address cannot be assigned to any host.
+- For conventional IPv4 subnets, the last address is the broadcast.
+- For conventional IPv4 subnets, the broadcast address cannot be assigned to a host.
