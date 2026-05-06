@@ -8,7 +8,7 @@ Description: Learn how to configure BGP using the address-family model for IPv4 
 
 ## The Old Model vs. the Address-Family Model
 
-In older Cisco IOS BGP configurations, IPv4 neighbors were activated automatically and network statements lived directly under `router bgp`. The newer address-family model (required for multiprotocol BGP-MP-BGP) separates IPv4, IPv6, and VPN route families into explicit `address-family` blocks.
+In older Cisco IOS BGP configurations, IPv4 neighbors were activated automatically and network statements lived directly under `router bgp`. The newer address-family model, used for multiprotocol BGP (MP-BGP), separates IPv4, IPv6, and VPN route families into explicit `address-family` blocks. For IPv4 unicast, explicit `neighbor ... activate` is required when `no bgp default ipv4-unicast` is configured before the neighbor is defined.
 
 **Old model (legacy):**
 ```text
@@ -41,7 +41,8 @@ router bgp 65001
 
  ! IPv4 Unicast Address Family
  address-family ipv4 unicast
-  ! Activate this neighbor for IPv4 unicast
+  ! Explicitly activate this neighbor for IPv4 unicast
+  ! (required if 'no bgp default ipv4-unicast' is configured)
   neighbor 203.0.113.1 activate
 
   ! Advertise networks
@@ -57,9 +58,9 @@ router bgp 65001
  exit-address-family
 ```
 
-## Step 2: Disable Auto-Summary
+## Step 2: Legacy Auto-Summary and Synchronization Settings
 
-In the address-family model, disable automatic route summarization to prevent unexpected prefix aggregation:
+On modern Cisco IOS, automatic summarization and BGP synchronization are already disabled by default. You may still see these commands in older or inherited configurations; when used, they belong under the IPv4 unicast address family:
 
 ```text
 router bgp 65001
@@ -72,9 +73,9 @@ router bgp 65001
  exit-address-family
 ```
 
-## Step 3: Configure Multiple Address Families on One Neighbor
+## Step 3: Configure Multiple Address Families
 
-The same neighbor can participate in multiple address families:
+A BGP process can use multiple address families, and the same neighbor can participate in more than one family:
 
 ```text
 router bgp 65001
@@ -101,11 +102,11 @@ router bgp 65001
 
 ## Step 4: Configure the no bgp default ipv4-unicast Command
 
-By default, Cisco IOS automatically activates neighbors in the IPv4 unicast address family. To require explicit activation (recommended for clarity):
+By default, Cisco IOS automatically activates neighbors in the IPv4 unicast address family. To require explicit activation (recommended for clarity), configure this command before the relevant `neighbor ... remote-as` statements:
 
 ```text
 router bgp 65001
- ! Require explicit activation - neighbors not active until added to address-family
+ ! Require explicit activation - configure before 'neighbor ... remote-as'
  no bgp default ipv4-unicast
 
  neighbor 203.0.113.1 remote-as 65100
@@ -151,4 +152,4 @@ router bgp 65001
 
 ## Conclusion
 
-The BGP address-family model provides clear separation between routing protocols and address families, enabling multiprotocol BGP for IPv6, VPNs, and more. Use `no bgp default ipv4-unicast` for explicit neighbor activation, define all per-neighbor policies within the address-family block, and use `show ip bgp ipv4 unicast summary` to verify the address family is operational.
+The BGP address-family model provides clear separation between routes and policy for different address families, enabling multiprotocol BGP for IPv6, VPNs, and more. Use `no bgp default ipv4-unicast` when you want explicit neighbor activation for IPv4 unicast, define all per-neighbor policies within the address-family block, and use `show ip bgp ipv4 unicast summary` to verify the address family is operational.
