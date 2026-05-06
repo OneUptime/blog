@@ -8,7 +8,7 @@ Description: Use /etc/hosts to create local DNS overrides, override specific hos
 
 ## Introduction
 
-`/etc/hosts` is the simplest DNS override mechanism. Entries here are resolved before DNS is queried (by default, per `/etc/nsswitch.conf`). It is useful for overriding specific hostnames for testing, creating local development aliases, pointing services to different servers for testing, or working around DNS issues with specific hosts.
+`/etc/hosts` is the simplest DNS override mechanism. Entries here are usually resolved before DNS is queried, depending on the order configured in `/etc/nsswitch.conf`. It is useful for overriding specific hostnames for testing, creating local development aliases, pointing services to different servers for testing, or working around DNS issues with specific hosts.
 
 ## Basic /etc/hosts Format
 
@@ -35,19 +35,19 @@ Description: Use /etc/hosts to create local DNS overrides, override specific hos
 
 ```bash
 # 1. Local development: point domain to localhost
-echo "127.0.0.1 myapp.local" >> /etc/hosts
+printf '127.0.0.1 myapp.local\n' | sudo tee -a /etc/hosts > /dev/null
 # Test your app via http://myapp.local
 
 # 2. Override specific host during testing:
-echo "10.20.0.99 api.example.com" >> /etc/hosts
+printf '10.20.0.99 api.example.com\n' | sudo tee -a /etc/hosts > /dev/null
 # All connections to api.example.com go to test server
 
 # 3. Block domains (point to 127.0.0.1 or 0.0.0.0):
-echo "0.0.0.0 tracking.example.com" >> /etc/hosts
-# Blocks tracking.example.com (resolves to loopback, connection refused)
+printf '0.0.0.0 tracking.example.com\n' | sudo tee -a /etc/hosts > /dev/null
+# Blocks tracking.example.com by resolving it to 0.0.0.0
 
 # 4. Speed up repeated lookups (override with known IP):
-echo "1.2.3.4 api.external-service.com" >> /etc/hosts
+printf '1.2.3.4 api.external-service.com\n' | sudo tee -a /etc/hosts > /dev/null
 # Bypasses DNS entirely for this host
 
 # 5. Container-to-container resolution in Docker:
@@ -60,14 +60,14 @@ docker run --add-host="myservice:10.20.0.5" myimage
 
 ```bash
 # Always backup before editing:
-cp /etc/hosts /etc/hosts.backup
+sudo cp /etc/hosts /etc/hosts.backup
 
 # Edit with your preferred editor:
-nano /etc/hosts
-# or: vim /etc/hosts
+sudo nano /etc/hosts
+# or: sudo vim /etc/hosts
 
 # Add multiple entries at once:
-cat >> /etc/hosts << 'EOF'
+sudo tee -a /etc/hosts > /dev/null << 'EOF'
 # Development servers
 10.20.0.10  api.example.com
 10.20.0.11  db.example.com
@@ -75,7 +75,7 @@ cat >> /etc/hosts << 'EOF'
 EOF
 
 # Remove an entry (using sed):
-sed -i '/api.example.com/d' /etc/hosts
+sudo sed -i '/api.example.com/d' /etc/hosts
 
 # Verify the entry is active:
 getent hosts api.example.com
@@ -91,12 +91,12 @@ ping -c 1 api.example.com
 ```bash
 # Check the resolution order:
 grep ^hosts /etc/nsswitch.conf
-# Standard: hosts: files dns
-# "files" = /etc/hosts, checked FIRST before DNS
+# Common: hosts: files dns
+# "files" = /etc/hosts, checked before DNS when it appears first
 
 # If "dns" comes before "files":
 # hosts: dns files
-# /etc/hosts is only checked if DNS fails (unusual)
+# /etc/hosts is only checked if DNS does not return a result
 
 # Override order for testing (without changing nsswitch.conf):
 getent -s files hosts api.example.com   # Only check /etc/hosts
@@ -107,8 +107,9 @@ getent -s dns hosts api.example.com     # Only check DNS
 
 ```bash
 # Docker automatically adds entries to container /etc/hosts:
-# - Container's own hostname
-# - Other containers in the same network (by container name)
+# - Container's own hostname and localhost entries
+# - Custom mappings added with --add-host / extra_hosts
+# Other containers on a user-defined network are usually resolved via Docker's embedded DNS
 
 # Inspect a running container's /etc/hosts:
 docker exec mycontainer cat /etc/hosts
@@ -146,4 +147,4 @@ awk '/^[^#]/{ip=$1; for(i=2;i<=NF;i++) print $i, ip}' /etc/hosts | \
 
 ## Conclusion
 
-`/etc/hosts` provides immediate, no-DNS-server-required hostname resolution. It is resolved before DNS by default (`files` before `dns` in `/etc/nsswitch.conf`). Use it for local development overrides, host-specific testing, and temporary routing changes. For blocking domains, point them to `0.0.0.0` (faster failure than `127.0.0.1` which sends the connection to your localhost). Remember that `/etc/hosts` changes take effect immediately - no caching or TTL - but only affect the single host where the file exists.
+`/etc/hosts` provides immediate, no-DNS-server-required hostname resolution. It is usually resolved before DNS when `/etc/nsswitch.conf` lists `files` before `dns`. Use it for local development overrides, host-specific testing, and temporary routing changes. For blocking domains, point them to `0.0.0.0` or `127.0.0.1`, depending on the behavior you want. Remember that `/etc/hosts` changes normally take effect immediately for new lookups, but some applications cache results, and the changes only affect the single host where the file exists.
