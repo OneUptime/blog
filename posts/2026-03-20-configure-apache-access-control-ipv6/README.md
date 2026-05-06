@@ -16,7 +16,7 @@ Description: Learn how to configure Apache access control rules for IPv6 address
     Require ip 2001:db8::10
 
     # Allow an IPv6 subnet
-    Require ip 2001:db8:trusted::/48
+    Require ip 2001:db8:1000::/48
 
     # Allow IPv4 subnet too
     Require ip 192.168.1.0/24
@@ -30,7 +30,7 @@ Description: Learn how to configure Apache access control rules for IPv6 address
     # Multiple Require directives are OR'd together
     <RequireAny>
         Require ip ::1               # IPv6 loopback
-        Require ip 2001:db8::/32     # Production IPv6 range
+        Require ip 2001:db8::/32     # Documentation IPv6 range
         Require ip fd00::/8          # ULA range
         Require ip 10.0.0.0/8        # IPv4 internal
     </RequireAny>
@@ -49,7 +49,7 @@ Description: Learn how to configure Apache access control rules for IPv6 address
         Require not ip 2001:db8::bad:ac70
 
         # Block entire subnet
-        Require not ip 2001:db8:blocked::/48
+        Require not ip 2001:db8:2000::/48
     </RequireAll>
 </Directory>
 ```
@@ -69,7 +69,7 @@ Description: Learn how to configure Apache access control rules for IPv6 address
     # Admin area - IPv6 management network only
     <Location /admin/>
         <RequireAny>
-            Require ip 2001:db8:mgmt::/64
+            Require ip 2001:db8:3000::/64
             Require ip ::1
         </RequireAny>
     </Location>
@@ -77,7 +77,7 @@ Description: Learn how to configure Apache access control rules for IPv6 address
     # API area - internal IPv6 only
     <Location /api/>
         <RequireAny>
-            Require ip 2001:db8:internal::/48
+            Require ip 2001:db8:4000::/48
             Require ip 192.168.0.0/16
         </RequireAny>
     </Location>
@@ -88,8 +88,8 @@ Description: Learn how to configure Apache access control rules for IPv6 address
 
 ```apache
 <VirtualHost *:80>
-    # Set environment variable for IPv6 clients
-    SetEnvIf Remote_Addr "^2001:db8:internal:" INTERNAL_IPV6
+    # Set environment variable for internal IPv6 clients
+    SetEnvIfExpr "-R '2001:db8:4000::/48'" INTERNAL_IPV6
 
     <Location /internal-api/>
         # Only allow if from internal IPv6 range
@@ -131,4 +131,4 @@ tail -f /var/log/apache2/error.log | grep "client denied"
 
 ## Summary
 
-Configure Apache access control for IPv6 with `Require ip 2001:db8:trusted::/48` in `<Directory>` or `<Location>` blocks. Use `<RequireAny>` for OR logic (allow any matching rule), `<RequireAll>` for AND logic (all conditions must match). Block addresses with `Require not ip`. Apache 2.4 uses the `Require` directive (mod_authz_host). Test with `curl -6 --interface <ipv6-addr>` and check for 403 responses.
+Configure Apache access control for IPv6 with `Require ip 2001:db8:1000::/48` in `<Directory>` or `<Location>` blocks. Use `<RequireAny>` for OR logic (allow any matching rule), `<RequireAll>` for AND logic (all conditions must match). Block addresses with `Require not ip`. Apache 2.4 uses the `Require` directive, with `mod_authz_host` providing the `ip` authorization provider. Test with `curl -6 --interface <ipv6-addr>` and check for 403 responses.
