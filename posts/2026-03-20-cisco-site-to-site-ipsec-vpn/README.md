@@ -55,7 +55,13 @@ crypto map VPN-MAP 10 ipsec-isakmp
 interface GigabitEthernet0/0
  description WAN
  ip address 203.0.113.1 255.255.255.252
+ ip nat outside
  crypto map VPN-MAP
+
+interface GigabitEthernet0/1
+ description LAN
+ ip address 192.168.1.1 255.255.255.0
+ ip nat inside
 
 ! NAT exemption (don't NAT VPN traffic)
 ip access-list extended NAT-EXEMPTION
@@ -90,8 +96,13 @@ crypto map VPN-MAP 10 ipsec-isakmp
  match address VPN-TRAFFIC-B
 
 interface GigabitEthernet0/0
+ description WAN
  ip address 203.0.113.2 255.255.255.252
  crypto map VPN-MAP
+
+interface GigabitEthernet0/1
+ description LAN
+ ip address 192.168.2.1 255.255.255.0
 ```
 
 ## Verify IPsec VPN
@@ -118,12 +129,13 @@ debug crypto isakmp
 debug crypto ipsec
 
 ! Common issues:
-! - Mismatched PSK: "MM_NO_STATE" in isakmp sa
+! - Phase 1 stuck in MM_NO_STATE: verify reachability, UDP/500, and matching ISAKMP policies
+! - Mismatched PSK: check debug crypto isakmp for sanity check failed messages
 ! - ACL mismatch: check interesting traffic ACL on both sides
 ! - NAT interference: ensure NAT exemption ACL is correct
-! - MTU issues: add ip mtu 1400 on the crypto interface
+! - MTU/MSS issues: if large packets fail, lower TCP MSS on the LAN interface
 ```
 
 ## Conclusion
 
-Site-to-site IPsec VPN on Cisco IOS requires matching IKE phase 1 policies, identical pre-shared keys, and symmetric interesting-traffic ACLs on both peers. Always add a NAT exemption to prevent the VPN traffic from being NATed before encryption. Verify with `show crypto isakmp sa` and `show crypto ipsec sa`.
+Site-to-site IPsec VPN on Cisco IOS requires matching IKE phase 1 policies, identical pre-shared keys, and symmetric interesting-traffic ACLs on both peers. If NAT is configured on the router, add a NAT exemption to prevent the VPN traffic from being NATed before encryption. Verify with `show crypto isakmp sa` and `show crypto ipsec sa`.
