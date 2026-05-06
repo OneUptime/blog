@@ -17,7 +17,7 @@ The default `bridge` network has issues for production:
 - All containers on the default bridge can communicate by IP
 - No DNS-based service discovery on the default bridge
 - No isolation between unrelated services
-- Shared network namespace risks
+- Shared bridge network increases lateral movement risk
 
 ## Best Practice 1: Use Custom Bridge Networks
 
@@ -26,7 +26,6 @@ Create a custom network for each application or set of related services:
 ```yaml
 # Good: Each service group has its own isolated network
 
-version: "3.8"
 services:
   webapp:
     image: myapp:1.2.3
@@ -51,18 +50,18 @@ networks:
     driver: bridge
   backend:
     driver: bridge
-    internal: true  # No external internet access for the database network
+    internal: true  # Externally isolate database traffic on this network
 ```
 
 ## Best Practice 2: Use `internal: true` for Databases
 
-Database networks should never be able to reach the internet:
+Place database traffic on an externally isolated network:
 
 ```yaml
 networks:
   db-net:
     driver: bridge
-    internal: true   # Containers on this network cannot reach external IPs
+    internal: true   # Create an externally isolated network
 ```
 
 ## Best Practice 3: Custom Subnets
@@ -128,10 +127,10 @@ networks:
 ## Inspect Networks via Portainer
 
 Use Portainer's **Networks** view to:
-- See all networks and their connected containers
-- Identify orphaned networks consuming resources
-- Verify network connectivity between services
-- Review IPAM configuration
+- See the networks configured in your environment
+- Add or remove networks as needed
+- Review IP range, subnet, gateway, and isolation settings
+- Check which networks a container is attached to from container details
 
 ## Cleanup Orphaned Networks
 
