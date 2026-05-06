@@ -17,6 +17,10 @@ locals {
   services = toset(["api", "worker", "frontend"])
 }
 
+resource "aws_kms_key" "ecr" {
+  description = "KMS key for ECR repositories"
+}
+
 resource "aws_ecr_repository" "services" {
   for_each = local.services
 
@@ -41,10 +45,10 @@ resource "aws_ecr_lifecycle_policy" "services" {
     rules = [
       {
         rulePriority = 1
-        description  = "Keep last 10 tagged images per environment"
+        description  = "Keep last 10 prod images"
         selection = {
           tagStatus      = "tagged"
-          tagPrefixList  = ["prod-", "staging-", "dev-"]
+          tagPrefixList  = ["prod-"]
           countType      = "imageCountMoreThan"
           countNumber    = 10
         }
@@ -52,6 +56,28 @@ resource "aws_ecr_lifecycle_policy" "services" {
       },
       {
         rulePriority = 2
+        description  = "Keep last 10 staging images"
+        selection = {
+          tagStatus      = "tagged"
+          tagPrefixList  = ["staging-"]
+          countType      = "imageCountMoreThan"
+          countNumber    = 10
+        }
+        action = { type = "expire" }
+      },
+      {
+        rulePriority = 3
+        description  = "Keep last 10 dev images"
+        selection = {
+          tagStatus      = "tagged"
+          tagPrefixList  = ["dev-"]
+          countType      = "imageCountMoreThan"
+          countNumber    = 10
+        }
+        action = { type = "expire" }
+      },
+      {
+        rulePriority = 4
         description  = "Remove untagged images after 7 days"
         selection = {
           tagStatus   = "untagged"
@@ -69,15 +95,16 @@ resource "aws_ecr_lifecycle_policy" "services" {
 ## GitHub Actions OIDC Integration
 
 ```hcl
-data "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
-}
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
 
 resource "aws_iam_openid_connect_provider" "github" {
-  count = data.aws_iam_openid_connect_provider.github == null ? 1 : 0
+  url = "https://token.actions.githubusercontent.com"
 
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
+  client_id_list = ["sts.amazonaws.com"]
+
+  # GitHub's thumbprint - verify this is current
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
@@ -90,7 +117,7 @@ resource "aws_iam_role" "github_actions" {
       Effect = "Allow"
       Action = "sts:AssumeRoleWithWebIdentity"
       Principal = {
-        Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
+        Federated = aws_iam_openid_connect_provider.github.arn
       }
       Condition = {
         StringEquals = {
@@ -132,7 +159,7 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
       {
         Effect   = "Allow"
         Action   = ["ecs:UpdateService", "ecs:DescribeServices"]
-        Resource = "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:service/*"
+        Resource = "arn:aws:ecs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:service/*"
       }
     ]
   })
@@ -167,10 +194,27 @@ resource "aws_sns_topic" "deployments" {
   name = "cicd-deployments"
 }
 
-resource "aws_sns_topic_subscription" "slack" {
+resource "aws_sns_topic_subscription" "webhook" {
   topic_arn = aws_sns_topic.deployments.arn
   protocol  = "https"
-  endpoint  = var.slack_webhook_url
+  # The endpoint must confirm the SNS subscription and accept SNS POST payloads.
+  endpoint  = var.notification_endpoint
+}
+
+resource "aws_sns_topic_policy" "deployments" {
+  arn = aws_sns_topic.deployments.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "events.amazonaws.com"
+      }
+      Action   = "sns:Publish"
+      Resource = aws_sns_topic.deployments.arn
+    }]
+  })
 }
 
 # EventBridge rule to catch ECS deployment events
