@@ -8,7 +8,7 @@ Description: DHCP lease duration determines how long a client holds an IP addres
 
 ## What Is Lease Duration?
 
-The lease duration (or lease time) is the period for which a DHCP server grants an IP address to a client. After half the lease expires (T1), the client attempts to renew. After 87.5% (T2), it tries any available server.
+The lease duration (or lease time) is the period for which a DHCP server grants an IP address to a client. By default, the client attempts to renew at T1 (50% of the lease) and rebind at T2 (87.5%), unless the server provides different renewal and rebinding timers.
 
 ## Choosing the Right Lease Time
 
@@ -64,18 +64,18 @@ dhcp-host=aa:bb:cc:dd:ee:ff,192.168.1.50,server1,infinite
 ## Viewing Lease Times on Linux (Client Side)
 
 ```bash
-# Check current lease and expiry time
+# If using ISC dhclient, check current lease and expiry time
 cat /var/lib/dhcp/dhclient.leases
 
-# With NetworkManager
-nmcli device show eth0 | grep DHCP
+# With NetworkManager, show DHCP info for an interface
+nmcli device show <interface> | grep DHCP
 ```
 
-## Calculating T1 and T2
+## Calculating Default T1 and T2
 
 ```python
 def lease_timers(lease_seconds: int) -> dict:
-    """Calculate T1 and T2 from lease duration."""
+    """Calculate default T1 and T2 from lease duration."""
     t1 = lease_seconds * 0.5
     t2 = lease_seconds * 0.875
     return {
@@ -93,6 +93,6 @@ for seconds in [1800, 3600, 86400, 604800]:
 
 - `default-lease-time` = time given if client doesn't request a specific duration.
 - `max-lease-time` = maximum the server will grant, regardless of client request.
-- T1 = 50% of lease → unicast renewal attempt.
-- T2 = 87.5% of lease → broadcast rebind to any DHCP server.
+- By default, T1 = 50% of lease → unicast renewal attempt.
+- By default, T2 = 87.5% of lease → broadcast rebind to any DHCP server.
 - Shorter leases trade more DHCP traffic for faster address recovery in high-turnover environments.
