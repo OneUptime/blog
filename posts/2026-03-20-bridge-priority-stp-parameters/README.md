@@ -17,13 +17,14 @@ Root Bridge: Lowest bridge ID (priority + MAC)
 Bridge ID: Priority (0-65535, lower=better) + bridge MAC
 
 Default priority: 32768
-To become root bridge: set priority < 32768 (e.g., 4096)
+To prefer this bridge as root: set a lower priority than competing bridges
+(e.g., 4096 when other bridges use the default 32768)
 ```
 
 ## Setting Bridge Priority with brctl
 
 ```bash
-# Set bridge priority (must be multiple of 4096)
+# Set bridge priority
 
 brctl setbridgeprio br0 4096
 
@@ -47,10 +48,11 @@ ip -d link show br0 | grep bridge
 
 ```bash
 # Port cost influences path selection (lower cost = preferred path)
-# Default: 100 for 100Mbps, 19 for 1Gbps, 4 for 10Gbps
+# Linux bridge defaults are based on link speed:
+# 100 for 10Mbps, 19 for 100Mbps, 5 for 1Gbps, 2 for 10Gbps
 
 # Set port cost on a bridge port
-brctl setportcost br0 eth0 10    # Lower cost = preferred
+brctl setpathcost br0 eth0 10    # Lower cost = preferred
 
 # Or with ip link
 ip link set eth0 type bridge_slave cost 10
@@ -59,26 +61,26 @@ ip link set eth0 type bridge_slave cost 10
 ## Setting Port Priority
 
 ```bash
-# Port priority (0-255, lower = more preferred)
-# Default: 128
+# Port priority (0-63, lower = more preferred)
+# Default: 32
 
-brctl setportprio br0 eth0 64   # More preferred port
+brctl setportprio br0 eth0 16   # More preferred port
 
 # With ip link
-ip link set eth0 type bridge_slave priority 64
+ip link set eth0 type bridge_slave priority 16
 ```
 
-## Enabling RSTP (Rapid Spanning Tree)
+## Enabling STP
 
 ```bash
-# Enable RSTP (802.1w) instead of classic STP
+# Enable STP on the bridge
 ip link set br0 type bridge stp_state 1
-# Note: Linux bridge always uses RSTP when STP is enabled via ip link
+# Note: This enables STP; it does not by itself select RSTP
 
-# Set hello time, max age, forward delay
-ip link set br0 type bridge hello_time 200     # 2 seconds (200 * 10ms)
-ip link set br0 type bridge max_age 2000       # 20 seconds
-ip link set br0 type bridge forward_delay 1500 # 15 seconds
+# Set hello time, max age, forward delay (values are in seconds)
+ip link set br0 type bridge hello_time 2       # 2 seconds
+ip link set br0 type bridge max_age 20         # 20 seconds
+ip link set br0 type bridge forward_delay 15   # 15 seconds
 ```
 
 ## Persistent STP Configuration (systemd-networkd)
@@ -114,7 +116,7 @@ brctl showstp br0
 #  port id                8001
 #  state                  forwarding          ← Active port
 #  designated cost           0
-#  port cost                 4
+#  port cost                 5
 
 # Check per-port state
 bridge link show
@@ -122,7 +124,7 @@ bridge link show
 
 ## Key Takeaways
 
-- Lower bridge priority wins root bridge election; use priority 4096 for the designated root bridge.
-- Bridge priority must be a multiple of 4096 (0, 4096, 8192, ..., 61440).
+- Lower bridge priority wins root bridge election; a value such as 4096 is commonly used for a preferred root bridge.
+- Linux bridge priority is an unsigned 16-bit value (0-65535); lower values are preferred.
 - Port cost controls path selection within STP; lower cost paths are preferred.
-- Linux bridges use RSTP by default when STP is enabled, providing faster convergence than classic STP.
+- Enabling `stp_state` turns on STP for the bridge; it does not by itself select RSTP.
