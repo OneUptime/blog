@@ -25,10 +25,10 @@ graph LR
 
 | Concept | Description |
 |---------|-------------|
-| **VRF** | Virtual Routing and Forwarding - one per customer on PE |
+| **VRF** | Virtual Routing and Forwarding - a separate routing table on the PE for a customer VPN |
 | **Route Distinguisher (RD)** | 8-byte value prepended to IPv6 prefix to make it globally unique |
-| **Route Target (RT)** | BGP community used to control VRF route import/export |
-| **VPNv6 Route** | 128-bit IPv6 prefix + 8-byte RD = 136-bit globally unique prefix |
+| **Route Target (RT)** | BGP extended community used to control VRF route import/export |
+| **VPNv6 Route** | 8-byte RD + IPv6 prefix in MP-BGP NLRI; a full VPN-IPv6 address is 24 bytes |
 
 ## VRF Configuration on Cisco IOS
 
@@ -49,11 +49,11 @@ Router(config-if)# ipv6 address 2001:db8:ce::/64 eui-64
 
 ! Configure BGP VPNv6
 Router(config)# router bgp 65001
-Router(config-router)# neighbor 2001:db8:pe2::1 remote-as 65001     ! iBGP to PE2
+Router(config-router)# neighbor 2001:db8:0:2::1 remote-as 65001     ! iBGP to PE2
 
 Router(config-router)# address-family vpnv6 unicast
-Router(config-router-af)# neighbor 2001:db8:pe2::1 activate
-Router(config-router-af)# neighbor 2001:db8:pe2::1 send-community extended
+Router(config-router-af)# neighbor 2001:db8:0:2::1 activate
+Router(config-router-af)# neighbor 2001:db8:0:2::1 send-community extended
 Router(config-router-af)# exit-address-family
 
 ! Redistribute customer VRF routes into BGP VPNv6
@@ -69,20 +69,17 @@ Router(config-router-af)# exit-address-family
 vtysh
 configure terminal
 
-! Create VRF
-vrf CUSTOMER_A
- vni 100       ! VXLAN/MPLS VNI
-exit-vrf
+! The Linux VRF must already exist; FRR does not create kernel VRFs
 
 ! Configure BGP with VPNv6
 router bgp 65001
  ! iBGP PE-to-PE session
- neighbor 2001:db8:pe2::1 remote-as 65001
- neighbor 2001:db8:pe2::1 update-source lo
+ neighbor 2001:db8:0:2::1 remote-as 65001
+ neighbor 2001:db8:0:2::1 update-source lo
 
  address-family ipv6 vpn
-  neighbor 2001:db8:pe2::1 activate
-  neighbor 2001:db8:pe2::1 send-community extended
+  neighbor 2001:db8:0:2::1 activate
+  neighbor 2001:db8:0:2::1 send-community extended
  exit-address-family
 
 ! Configure BGP within the VRF
@@ -91,6 +88,7 @@ router bgp 65001 vrf CUSTOMER_A
   rd vpn export 65001:100
   rt vpn import 65001:100
   rt vpn export 65001:100
+  label vpn export auto
   export vpn
   import vpn
   redistribute connected
@@ -108,10 +106,10 @@ Router# show bgp vpnv6 unicast all
 ! Show VRF-specific routes
 Router# show bgp ipv6 unicast vrf CUSTOMER_A
 
-! Verify RD/RT
-Router# show bgp vpnv6 unicast all neighbors 2001:db8:pe2::1 routes
+! Verify routes learned from the PE neighbor
+Router# show bgp all neighbors 2001:db8:0:2::1 routes
 ```
 
 ## Summary
 
-BGP VPNv6 uses AFI=2, SAFI=128 to carry IPv6 customer routes across an MPLS backbone. Each customer has a VRF with a Route Distinguisher to make prefixes globally unique and Route Targets to control which VRFs import/export routes. The PE-to-PE exchange uses iBGP with VPNv6 address family and extended communities carrying the Route Target.
+BGP VPNv6 uses AFI=2, SAFI=128 to carry IPv6 customer routes across an MPLS backbone. Each customer VPN uses a VRF with a Route Distinguisher to make prefixes globally unique and Route Targets to control which VRFs import/export routes. The PE-to-PE exchange uses iBGP with the VPNv6 address family and extended communities carrying the Route Target.
