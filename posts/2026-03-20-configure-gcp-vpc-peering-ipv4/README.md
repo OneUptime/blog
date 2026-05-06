@@ -18,8 +18,8 @@ Both VPCs must have non-overlapping IPv4 subnets. Check current ranges:
 PROJECT_A="project-a"
 PROJECT_B="project-b"
 
-gcloud compute networks subnets list --project=$PROJECT_A --filter="network:vpc-a"
-gcloud compute networks subnets list --project=$PROJECT_B --filter="network:vpc-b"
+gcloud compute networks subnets list --project=$PROJECT_A --network=vpc-a
+gcloud compute networks subnets list --project=$PROJECT_B --network=vpc-b
 ```
 
 ## Creating the Peering Connection (Both Sides Required)
@@ -53,13 +53,12 @@ gcloud compute networks peerings list \
   --project=$PROJECT_A \
   --network=vpc-a
 
-# Describe the peering for full details
-gcloud compute networks peerings describe a-to-b \
-  --project=$PROJECT_A \
-  --network=vpc-a
+# Describe the network for full peering details
+gcloud compute networks describe vpc-a \
+  --project=$PROJECT_A
 ```
 
-The `state` field should show `ACTIVE` once both sides are configured.
+The `STATE` column should show `ACTIVE` in `peerings list`. In `gcloud compute networks describe`, check the `peerings.connectionStatus` field.
 
 ## Testing Connectivity
 
@@ -86,10 +85,10 @@ gcloud compute firewall-rules create allow-from-vpc-a \
 
 ## Exporting and Importing Custom Routes
 
-By default, only subnet routes are exchanged. Custom/static routes require explicit configuration:
+By default, subnet routes are exchanged. Custom routes, including static routes, require explicit configuration:
 
 ```bash
-# Update peering to export custom static routes from Project A
+# Update peering to export custom routes from Project A
 gcloud compute networks peerings update a-to-b \
   --project=$PROJECT_A \
   --network=vpc-a \
@@ -106,9 +105,11 @@ gcloud compute networks peerings update b-to-a \
 
 ```bash
 # View routes learned via peering
-gcloud compute routes list \
+gcloud compute networks peerings list-routes a-to-b \
   --project=$PROJECT_A \
-  --filter="network=vpc-a AND nextHopPeering~a-to-b"
+  --network=vpc-a \
+  --region=us-central1 \
+  --direction=INCOMING
 ```
 
 ## Deleting a Peering
@@ -125,8 +126,8 @@ gcloud compute networks peerings delete a-to-b \
 |---|---|
 | Transitive routing | Not supported |
 | Overlapping CIDRs | Not allowed |
-| Max peerings per VPC | 25 (default) |
-| DNS resolution | Requires DNS peering (separate) |
+| Max peerings per VPC | Subject to the `Peerings per VPC network` quota |
+| DNS resolution | Internal DNS names are not shared automatically; use Cloud DNS peering zones or authorize private zones separately |
 
 ## Conclusion
 
