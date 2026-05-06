@@ -19,12 +19,14 @@ ip -6 addr show
 ping6 -c 3 2001:4860:4860::8888
 
 # Set a fully qualified hostname (required by FreeIPA)
-hostnamectl set-hostname ipa.example.com
+sudo hostnamectl set-hostname ipa.example.com
 
 # Ensure the hostname resolves to an IPv6 address
 echo "2001:db8::10 ipa.example.com ipa" | sudo tee -a /etc/hosts
 
-# Verify forward and reverse DNS (or set up /etc/hosts for testing)
+# Verify forward and reverse name resolution (or set up /etc/hosts for testing)
+getent ahostsv6 ipa.example.com
+getent hosts 2001:db8::10
 hostname -f
 ```
 
@@ -33,7 +35,7 @@ hostname -f
 ```bash
 # Install FreeIPA server packages
 # RHEL/CentOS/AlmaLinux
-sudo dnf install freeipa-server freeipa-server-dns -y
+sudo dnf install ipa-server ipa-server-dns -y
 
 # Run the FreeIPA installer
 # The --ip-address flag accepts IPv6 addresses
@@ -47,6 +49,7 @@ sudo ipa-server-install \
   --mkhomedir \
   --setup-dns \
   --forwarder=2001:4860:4860::8888 \
+  --auto-reverse \
   --unattended
 ```
 
@@ -56,19 +59,19 @@ After installation, verify all services listen on IPv6:
 
 ```bash
 # Check LDAP (389 Directory Server) is listening on IPv6
-ss -tlnp | grep :389
-ss -tlnp | grep :636  # LDAPS
+ss -6 -tlnp | grep :389
+ss -6 -tlnp | grep :636  # LDAPS
 
 # Check Kerberos KDC is listening on IPv6
-ss -tlnp | grep :88
-ss -ulnp | grep :88
+ss -6 -tlnp | grep :88
+ss -6 -ulnp | grep :88
 
 # Check DNS (if installed)
-ss -ulnp | grep :53
-ss -tlnp | grep :53
+ss -6 -ulnp | grep :53
+ss -6 -tlnp | grep :53
 
 # Check FreeIPA web UI (Apache)
-ss -tlnp | grep :443
+ss -6 -tlnp | grep :443
 ```
 
 ## Adding IPv6 DNS Records to FreeIPA
@@ -77,30 +80,30 @@ ss -tlnp | grep :443
 # Authenticate as admin
 kinit admin
 
-# Add AAAA record for the IPA server itself
-ipa dnsrecord-add example.com ipa \
-  --aaaa-rec 2001:db8::10
+# Verify the installer created the AAAA record for the IPA server itself
+ipa dnsrecord-show example.com ipa
 
 # Add AAAA records for other services
 ipa dnsrecord-add example.com ns1 \
   --aaaa-rec 2001:db8::10
 
 # Add PTR record for reverse DNS
-ipa dnsrecord-add 0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa. \
+ipa dnsrecord-add 0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa. \
   0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0 \
   --ptr-rec ipa.example.com.
 
 # Verify the record
-ipa dnsrecord-show example.com ipa
+ipa dnsrecord-show example.com ns1
 ```
 
 ## Enrolling an IPv6 Client in FreeIPA
 
 ```bash
 # Install IPA client packages
-sudo dnf install freeipa-client -y
+sudo dnf install ipa-client -y
 
-# Enroll the client - use IPv6 address if DNS is not yet configured
+# Enroll the client; ensure ipa.example.com resolves on the client
+# --ip-address adds the client's AAAA record in IPA DNS
 sudo ipa-client-install \
   --server=ipa.example.com \
   --domain=example.com \
@@ -112,7 +115,7 @@ sudo ipa-client-install \
   --unattended
 
 # Verify enrollment
-sudo ipa-client-install --test
+id admin
 ```
 
 ## Configuring Kerberos for IPv6
@@ -128,10 +131,10 @@ dig SRV _kerberos._udp.example.com
 kinit admin@EXAMPLE.COM
 
 # Verify ticket
-klist -v
+klist
 
 # Check KDC is reachable over IPv6
-nc -6 2001:db8::10 88 && echo "Kerberos KDC reachable over IPv6"
+nc -6 -z 2001:db8::10 88 && echo "Kerberos KDC reachable over IPv6"
 ```
 
 ## Managing Users and Groups over IPv6
@@ -156,12 +159,9 @@ ldapsearch -H ldap://[2001:db8::10] \
 ## Firewall Rules for FreeIPA IPv6
 
 ```bash
-# Open all required ports for FreeIPA over IPv6
-sudo firewall-cmd --permanent --add-service=freeipa-ldap
-sudo firewall-cmd --permanent --add-service=freeipa-ldaps
-sudo firewall-cmd --permanent --add-service=kerberos
+# Open all required ports for FreeIPA
+sudo firewall-cmd --permanent --add-service=freeipa-4
 sudo firewall-cmd --permanent --add-service=dns
-sudo firewall-cmd --permanent --add-service=https
 sudo firewall-cmd --reload
 
 # Verify rules
