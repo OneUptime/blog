@@ -37,7 +37,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
 import socket
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    s.connect(("192.168.1.10", 9000))
+    s.connect(("127.0.0.1", 9000))
     s.sendall(b"Hello, server!")
     data = s.recv(4096)
     print(f"Received: {data.decode()}")
@@ -108,6 +108,23 @@ import signal
 import threading
 
 shutdown_event = threading.Event()
+workers = []
+
+def handle(conn: socket.socket, addr: tuple) -> None:
+    with conn:
+        conn.settimeout(1.0)
+        print(f"[+] {addr}")
+        while not shutdown_event.is_set():
+            try:
+                data = conn.recv(4096)
+                if not data:
+                    break
+                conn.sendall(data)
+            except socket.timeout:
+                continue
+            except ConnectionResetError:
+                break
+        print(f"[-] {addr}")
 
 def sigterm(signum, frame):
     print("Shutting down...")
@@ -125,14 +142,18 @@ server.listen(5)
 while not shutdown_event.is_set():
     try:
         conn, addr = server.accept()
-        threading.Thread(target=handle, args=(conn, addr), daemon=True).start()
+        thread = threading.Thread(target=handle, args=(conn, addr))
+        thread.start()
+        workers.append(thread)
     except socket.timeout:
         continue
 
 server.close()
+for thread in workers:
+    thread.join()
 print("Server closed")
 ```
 
 ## Conclusion
 
-The client-server pattern with TCP sockets involves three phases: connection (`accept` / `connect`), data exchange (framing is essential - use length prefixes for message boundaries), and disconnection (detect with `recv` returning empty bytes). A thread per connection is the simplest concurrent model. Use `SO_REUSEADDR` to allow fast server restart. Signal handlers with `threading.Event` provide clean shutdown. For higher concurrency, replace threads with `asyncio.start_server`.
+The client-server pattern with TCP sockets involves three phases: connection (`accept` / `connect`), data exchange (framing is essential - use length prefixes for message boundaries), and disconnection (detect with `recv` returning empty bytes). A thread per connection is the simplest concurrent model. Use `SO_REUSEADDR` to allow fast server restart. Signal handlers with `threading.Event` and non-daemon worker threads provide clean shutdown. For higher concurrency, replace threads with `asyncio.start_server`.
