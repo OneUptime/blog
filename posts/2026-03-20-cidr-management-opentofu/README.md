@@ -93,10 +93,10 @@ locals {
   broadcast        = cidrhost(local.subnet, -1)   # 10.0.1.255
 }
 
-# Use for NAT gateway IP or DNS resolver
+# Use for planning fixed private IPs; AWS NAT gateway public IPs come from Elastic IPs
 resource "aws_eip" "nat" {
   domain = "vpc"
-  # Address is assigned by AWS, not manually, but cidrhost() helps with planning
+  # Elastic IPs are allocated by AWS rather than derived from the subnet CIDR
 }
 ```
 
@@ -152,4 +152,4 @@ resource "aws_subnet" "public" {
 
 ## Conclusion
 
-OpenTofu's CIDR functions eliminate manual IP address calculation errors. Use `cidrsubnet(vpc_cidr, newbits, netnum)` for individual subnets, `cidrsubnets(vpc_cidr, newbits...)` for sequential allocation, and `cidrhost(subnet, hostnum)` for specific host addresses. Plan a hierarchical addressing scheme: company supernet → regional /16 → environment /20 → tier /20 → availability zone /24. Encode this hierarchy in locals to make the allocation systematic and self-documenting.
+OpenTofu's CIDR functions eliminate manual IP address calculation errors. Use `cidrsubnet(vpc_cidr, newbits, netnum)` for individual subnets, `cidrsubnets(vpc_cidr, newbits...)` for sequential allocation, and `cidrhost(subnet, hostnum)` for specific host addresses. Plan a hierarchical addressing scheme: company supernet → regional /16 → environment /20 or tier /20 → availability zone /24. Encode this hierarchy in locals to make the allocation systematic and self-documenting.
