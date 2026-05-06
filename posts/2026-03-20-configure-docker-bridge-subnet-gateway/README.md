@@ -24,42 +24,33 @@ docker network create \
 
 ## Configuring Multiple IPAM Pools
 
-You can specify multiple subnets in a single network (for advanced use cases):
-
-```bash
-docker network create \
-  --driver bridge \
-  --subnet 10.10.0.0/24 \
-  --gateway 10.10.0.1 \
-  --subnet 10.10.1.0/24 \
-  --gateway 10.10.1.1 \
-  dual-subnet-network
-```
+A `bridge` network supports only a single subnet. If you need multiple subnets in one Docker network, use an `overlay` network or another driver that supports multiple IPAM configurations.
 
 ## Restricting the IP Allocation Range
 
 `--ip-range` restricts which addresses Docker automatically assigns (while the full subnet is still routable):
 
 ```bash
-# Subnet is /24, but auto-assign only from .100–.200
+# Subnet is /24, but auto-assign from the upper half of the subnet
 docker network create \
   --driver bridge \
   --subnet 10.10.0.0/24 \
   --gateway 10.10.0.1 \
-  --ip-range 10.10.0.100/25 \
+  --ip-range 10.10.0.128/25 \
   controlled-network
 ```
 
-Addresses outside the ip-range (.1–.99, .201–.254) can still be manually assigned with `--ip`.
+Addresses outside the `ip-range` but still inside the subnet can still be manually assigned with `--ip`.
 
 ## Disabling IPv6 Entirely
+
+IPv6 address assignment is disabled by default on a user-defined bridge network unless you enable it with `--ipv6`:
 
 ```bash
 docker network create \
   --driver bridge \
   --subnet 10.10.0.0/24 \
   --gateway 10.10.0.1 \
-  --opt "com.docker.network.bridge.enable_ipv6=false" \
   ipv4-only-network
 ```
 
@@ -67,10 +58,10 @@ docker network create \
 
 ```bash
 # Full network details including IPAM configuration
-docker network inspect prod-network
+docker network inspect controlled-network
 
-# Show just the IPAM config
-docker network inspect prod-network \
+# Show just the IPAM section
+docker network inspect controlled-network \
   --format '{{json .IPAM}}' | python3 -m json.tool
 ```
 
@@ -83,7 +74,7 @@ Output:
     {
       "Subnet": "10.10.0.0/24",
       "Gateway": "10.10.0.1",
-      "IPRange": "10.10.0.100/25"
+      "IPRange": "10.10.0.128/25"
     }
   ]
 }
@@ -100,12 +91,12 @@ networks:
       config:
         - subnet: 10.10.0.0/24
           gateway: 10.10.0.1
-          ip_range: 10.10.0.100/25
+          ip_range: 10.10.0.128/25
           aux_addresses:
             reserved-host: 10.10.0.5
 ```
 
-The `aux_addresses` field reserves specific IPs for external use without allocating them to containers.
+The `aux_addresses` field reserves specific IPs so Docker does not allocate them to containers.
 
 ## Common Subnet Planning
 
