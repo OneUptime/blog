@@ -9,15 +9,18 @@ Description: Configure Calico CNI for IPv6 and dual-stack Kubernetes clusters, i
 ## Introduction
 
 Calico is a popular CNI for Kubernetes that supports BGP-based pod routing. It has strong IPv6 support including IPv6 IPPools, BGP peering, and dual-stack networking. Calico's network policies work natively with IPv6 addresses.
+For dual-stack clusters, Kubernetes itself must already be configured with matching IPv4 and IPv6 pod and service CIDRs before installing Calico.
 
 ## Step 1: Install Calico with IPv6 Support
 
 ```bash
-# Install the Calico operator
+# Install the Calico operator CRDs and operator
 
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.4/manifests/operator-crds.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.31.4/manifests/tigera-operator.yaml
 
-# Configure dual-stack installation
+# Configure dual-stack installation for a cluster that already has matching
+# Kubernetes pod and service CIDRs configured on the control plane
 kubectl create -f - << 'EOF'
 apiVersion: operator.tigera.io/v1
 kind: Installation
@@ -26,15 +29,17 @@ metadata:
 spec:
   calicoNetwork:
     ipPools:
-      - blockSize: 26
+      - name: default-ipv4-pool
+        blockSize: 26
         cidr: 10.244.0.0/16
         encapsulation: VXLANCrossSubnet
         natOutgoing: Enabled
         nodeSelector: all()
-      - blockSize: 122
+      - name: default-ipv6-pool
+        blockSize: 122
         cidr: fd00:10:244::/48
         encapsulation: None
-        natOutgoing: Disabled
+        natOutgoing: Enabled
         nodeSelector: all()
   # Dual-stack
   serviceCIDRs:
@@ -45,6 +50,8 @@ EOF
 
 ## Step 2: Configure IPv6 IPPool
 
+If you manage IP pools with `calicoctl` or `kubectl` instead of `spec.calicoNetwork.ipPools`, use an IPv6 pool like this:
+
 ```yaml
 # calico-ipv6-pool.yaml
 apiVersion: projectcalico.org/v3
@@ -53,10 +60,10 @@ metadata:
   name: default-ipv6-pool
 spec:
   cidr: fd00:10:244::/48
-  blockSize: 122       # /122 = 4 addresses per block
+  blockSize: 122       # /122 = 64 addresses per block
   ipipMode: Never      # No IPIP for IPv6
   vxlanMode: Never     # No VXLAN for IPv6
-  natOutgoing: false   # No NAT for IPv6 (has routable addresses)
+  natOutgoing: true    # Recommended for ULA/private IPv6 ranges such as fd00::/8
   nodeSelector: all()
   disabled: false
 ```
@@ -68,8 +75,8 @@ calicoctl apply -f calico-ipv6-pool.yaml
 # Verify pools
 calicoctl get ippools
 
-# Check pod IPv6 allocation
-calicoctl get ipam blocks --inet6
+# Check IPv6 allocation blocks
+calicoctl ipam show --show-blocks
 ```
 
 ## Step 3: BGP Configuration for IPv6
@@ -84,7 +91,7 @@ spec:
   logSeverityScreen: Info
   nodeToNodeMeshEnabled: true
   asNumber: 65000
-  # Advertise IPv6 pod CIDRs
+  # Advertise IPv6 Service CIDRs over BGP
   serviceClusterIPs:
     - cidr: fd00:10:96::/108  # IPv6 service CIDR
 
@@ -94,10 +101,9 @@ kind: BGPPeer
 metadata:
   name: ipv6-upstream-peer
 spec:
-  peerIP: 2001:db8::upstream
+  peerIP: 2001:db8::1
   asNumber: 65001
   # Peer over IPv6
-  keepOriginalNextHop: false
 ```
 
 ## Step 4: NetworkPolicy for IPv6
@@ -120,7 +126,7 @@ spec:
     # Allow from IPv6 clients
     - from:
         - ipBlock:
-            cidr: 2001:db8:client::/48
+            cidr: 2001:db8:100::/48
       ports:
         - protocol: TCP
           port: 8080
@@ -146,7 +152,7 @@ spec:
   selector: all()
   order: 100
   ingress:
-    # Block link-local source addresses from outside (anti-spoofing)
+    # Block IPv6 link-local source addresses
     - action: Deny
       source:
         nets:
@@ -163,19 +169,25 @@ spec:
 calicoctl node status
 
 # Verify IPv6 addresses on pods
-kubectl get pods -o wide
-# Each pod should have an IPv4 and IPv6 address in dual-stack
+kubectl get pod pod-a -o go-template --template='{{range .status.podIPs}}{{printf "%s\n" .ip}}{{end}}'
+# In a dual-stack cluster, this should print both an IPv4 and an IPv6 address
 
 # Test IPv6 pod-to-pod
-kubectl exec -it pod-a -- ping6 fd00:10:244::5
+kubectl exec -it pod-a -- ping -6 <pod-ipv6>
+
+# Inspect Service IP families and cluster IPs
+kubectl describe svc my-service
+# A Service needs ipFamilyPolicy: PreferDualStack or RequireDualStack
+# to receive both IPv4 and IPv6 cluster IPs
 
 # Test IPv6 service access
-kubectl exec -it pod-a -- curl -6 http://[fd00:10:96::10]:8080/
+kubectl exec -it pod-a -- curl -6 http://[<service-ipv6>]:8080/
 
-# View BGP routes including IPv6
-calicoctl get bgp routes
+# Review BGP peers and advertised IPv6 Service CIDRs
+calicoctl get bgppeer
+calicoctl get bgpconfig default -o yaml
 ```
 
 ## Conclusion
 
-Calico supports IPv6 via dedicated IPPools with IPv6 CIDRs and BGP advertisement of IPv6 pod routes. Configure `blockSize: 122` for IPv6 blocks (/122 = 4 usable addresses per node block). NetworkPolicy works with IPv6 `ipBlock` CIDRs. Monitor Calico agent health, BGP session state, and IPv6 IPAM utilization with OneUptime's infrastructure checks.
+Calico supports IPv6 via dedicated IPPools with IPv6 CIDRs and BGP advertisement of IPv6 pod routes. Configure `blockSize: 122` for IPv6 blocks (/122 = 64 addresses per allocation block). Use `serviceClusterIPs` in `BGPConfiguration` when you also want to advertise IPv6 Service CIDRs. NetworkPolicy works with IPv6 `ipBlock` CIDRs. Monitor Calico agent health, BGP session state, and IPv6 IPAM utilization with OneUptime's infrastructure checks.
