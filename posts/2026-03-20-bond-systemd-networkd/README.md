@@ -23,7 +23,7 @@ Kind=bond
 
 [Bond]
 Mode=active-backup
-MIIMonitorSec=1s
+MIIMonitorSec=100ms
 UpDelaySec=2s
 DownDelaySec=200ms
 ```
