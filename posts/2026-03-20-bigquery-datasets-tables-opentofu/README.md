@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, GCP, BigQuery, Data Engineering, Analytics, Infrastructure as Code, Google Cloud
 
-Description: Learn how to create and manage BigQuery datasets, tables, views, and IAM bindings using OpenTofu for governed, reproducible data warehouse infrastructure.
+Description: Learn how to create and manage BigQuery datasets, tables, views, and access controls using OpenTofu for governed, reproducible data warehouse infrastructure.
 
 ---
 
@@ -19,7 +19,7 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.10"
+      version = "~> 7.0"
     }
   }
 }
@@ -74,8 +74,9 @@ resource "google_bigquery_table" "events" {
     type                     = "DAY"
     field                    = "event_timestamp"
     expiration_ms            = 31536000000  # 1 year
-    require_partition_filter = true  # Force queries to include partition filter
   }
+
+  require_partition_filter = true  # Force queries to include partition filter
 
   # Cluster by user_id for faster filtering
   clustering = ["user_id", "event_type"]
@@ -151,7 +152,7 @@ resource "google_bigquery_table" "daily_active_users" {
 # security.tf
 # Create a policy taxonomy for PII classification
 resource "google_data_catalog_taxonomy" "pii" {
-  region       = var.region
+  region       = lower(var.location)  # Must match the BigQuery dataset location
   display_name = "PII Classification"
   description  = "Taxonomy for classifying personally identifiable information"
   activated_policy_types = ["FINE_GRAINED_ACCESS_CONTROL"]
@@ -190,7 +191,7 @@ resource "google_bigquery_table" "users" {
 ## Best Practices
 
 - Use time partitioning on all large tables and set `require_partition_filter = true` to prevent expensive full-table scans.
-- Add clustering on the columns most commonly used in WHERE clauses after the partition column.
+- Add clustering on the columns most commonly used in WHERE clauses, and order clustered columns by priority.
 - Use `default_table_expiration_ms` on datasets to automatically clean up old data and control storage costs.
 - Apply policy tags to sensitive columns (PII, financial data) to enforce column-level access control.
-- Use OpenTofu to manage dataset-level IAM access - this ensures access grants are tracked and reviewable.
+- Use OpenTofu to manage dataset-level access controls - this ensures access grants are tracked and reviewable.
