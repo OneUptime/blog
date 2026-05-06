@@ -4,115 +4,71 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: BGP, IPv6, Route Dampening, Stability, FRRouting
 
-Description: Configure BGP route dampening for IPv6 prefixes to suppress flapping routes and improve routing stability.
+Description: Configure BGP route dampening for IPv6 prefixes where your platform supports it, and understand the current limitations in FRRouting and BIRD2.
 
 ## Overview
 
-Configure BGP route dampening for IPv6 prefixes to suppress flapping routes and improve routing stability.
+Configure BGP route dampening for IPv6 prefixes to suppress flapping routes and improve routing stability. Route dampening is defined in RFC 2439, and RFC 7196 recommends less aggressive thresholds than older vendor defaults.
 
-## BGP Communities and IPv6
+## BGP Route Dampening and IPv6
 
-BGP communities are attributes attached to route announcements that carry policy signaling information. They work identically for IPv4 and IPv6 prefixes.
+BGP route dampening is separate from BGP communities. The dampening algorithm can be applied to IPv6 prefixes only on platforms that implement it for the IPv6 address family, so support is implementation-specific rather than universal.
 
-## Standard Community Format
+## Dampening Parameters
 
-Standard BGP communities (RFC 1997) are 32-bit values written as two 16-bit numbers:
+The common route dampening parameters are:
 ```text
-ASN:value
-65000:100    # Well-known community
-65001:200    # Custom community
+half-life          # Penalty decay interval in minutes
+reuse              # Threshold below which a suppressed route is reused
+suppress           # Threshold above which a route is suppressed
+max-suppress-time  # Maximum suppression time in minutes
+
+RFC 7196 recommends a suppress threshold of at least 6000,
+with 12000 as a more conservative value.
 ```
 
-## BIRD2 Configuration Example
+## BIRD2 Support Status
 
-```javascript
-# /etc/bird/bird.conf
+BIRD2 does not currently provide a documented BGP route-flap dampening configuration, so there is no BIRD2 IPv6 dampening stanza to enable.
 
-# Define community functions
-
-function set_local_pref(int pref) {
-    bgp_local_pref = pref;
-}
-
-# Filter for IPv6 routes with communities
-filter ipv6_community_policy {
-    # Honor upstream community signals for local preference
-    if (65001, 100) ~ bgp_community then {
-        set_local_pref(200);  # High preference
-        accept;
-    }
-    if (65001, 200) ~ bgp_community then {
-        set_local_pref(50);   # Low preference
-        accept;
-    }
-    accept;
-}
-
-protocol bgp upstream {
-    neighbor 2001:db8:peer::1 as 65001;
-    ipv6 {
-        import filter ipv6_community_policy;
-        export filter { accept; };
-    };
-}
-```
-
-## FRRouting Community Configuration
+## FRRouting Support Status
 
 ```bash
-# FRR vtysh configuration
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
-  address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 activate
-
-# Route map with community matching
-route-map COMMUNITY-POLICY permit 10
-  match community MY-COMMUNITIES
-  set local-preference 200
-
-# Define community list
-ip community-list standard MY-COMMUNITIES permit 65001:100
+  bgp dampening 15 750 6000 60
 ```
 
-## Cisco IOS Community Configuration
+In current FRRouting releases, route-flap dampening is configured at the BGP instance or neighbor level, but the implementation currently works only for IPv4 unicast and multicast routes. There is no working FRRouting configuration that applies route-flap dampening to IPv6 unicast routes.
+
+## Cisco IOS Configuration
+
+On Cisco IOS platforms that support `bgp dampening` under `address-family ipv6 unicast`, a basic configuration looks like this:
 
 ```text
-! Configure community for IPv6 BGP
 router bgp 64496
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:db8:0:1::1 remote-as 65001
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 route-map COMMUNITY-INBOUND in
-
-! Route map
-route-map COMMUNITY-INBOUND permit 10
-  match community 100
-  set local-preference 200
-
-! Community list
-ip community-list 100 permit 65001:100
+    neighbor 2001:db8:0:1::1 activate
+    bgp dampening 15 750 6000 60
 ```
 
-## Testing Community Propagation
+## Testing Route Dampening
 
-```bash
-# Check if communities are present on IPv6 routes in BIRD
-birdc "show route for 2001:db8::/32 all"
+```text
+# On Cisco IOS, show dampened IPv6 routes
+show bgp ipv6 unicast dampening dampened-paths
 
-# In FRR
-vtysh -c "show bgp ipv6 unicast 2001:db8::/32"
+# Show flap statistics and current penalties
+show bgp ipv6 unicast dampening flap-statistics
 
-# Look for community attribute in output
-# Example: Community: 65001:100 65001:200
-
-# Use RIPE looking glass for external verification
-curl "https://stat.ripe.net/data/bgp-state/data.json?resource=2001:db8::/32" | jq '.data.routes[].attrs.communities'
+# Clear dampening state for a test prefix after lab validation
+clear bgp ipv6 unicast dampening 2001:db8::/64
 ```
 
 ## Monitoring with OneUptime
 
-Use [OneUptime](https://oneuptime.com) to monitor BGP session health for your IPv6 peers and track route counts. Unexpected drops in prefix counts may indicate community-based filtering is rejecting your routes.
+Use [OneUptime](https://oneuptime.com) to monitor BGP session health for your IPv6 peers and track route counts. Repeated session resets or rapid oscillation in accepted IPv6 prefixes may indicate route flapping and justify dampening on platforms that support it.
 
 ## Conclusion
 
-BGP communities work identically for IPv6 prefixes - you configure them in the same route maps and community lists. Always verify community propagation using BGP looking glasses and test policy changes in a lab environment before applying to production IPv6 BGP sessions.
+IPv6 route dampening is platform-specific. Cisco IOS provides IPv6 dampening commands, current FRRouting documentation limits route-flap dampening to IPv4 unicast and multicast, and BIRD2 does not currently document a BGP route-flap dampening feature. If you enable dampening, prefer conservative thresholds consistent with RFC 7196 and test in a lab before applying changes to production IPv6 BGP sessions.
