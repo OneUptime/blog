@@ -75,8 +75,11 @@ module "api_service" {
   environment  = var.environment
 
   # Foundation outputs
-  vpc_id     = module.vpc.vpc_id
-  subnet_ids = module.vpc.private_subnet_ids
+  networking = {
+    vpc_id             = module.vpc.vpc_id
+    private_subnet_ids = module.vpc.private_subnet_ids
+    public_subnet_ids  = module.vpc.public_subnet_ids
+  }
 
   # Service outputs
   db_endpoint = module.database.endpoint
@@ -125,7 +128,7 @@ module "api_service" {
 Create aggregator outputs for passing multiple module outputs as a single object:
 
 ```hcl
-# modules/infrastructure-outputs/main.tf
+# modules/infrastructure-outputs/outputs.tf
 # This "meta-module" aggregates all infrastructure outputs
 output "networking" {
   value = {
