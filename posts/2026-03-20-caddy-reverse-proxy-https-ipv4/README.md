@@ -13,11 +13,13 @@ Caddy automatically provisions and renews TLS certificates from Let's Encrypt or
 ## Installing Caddy
 
 ```bash
-sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
+sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+sudo chmod o+r /etc/apt/sources.list.d/caddy-stable.list
 sudo apt-get update
-sudo apt-get install caddy
+sudo apt-get install -y caddy
 ```
 
 ## Basic Reverse Proxy with Auto HTTPS
@@ -68,9 +70,8 @@ example.com {
 ```caddyfile
 app.example.com {
     reverse_proxy 10.0.1.10:8080 {
+        # Caddy sets X-Forwarded-For, X-Forwarded-Proto, and X-Forwarded-Host automatically.
         header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
     }
 
     header {
@@ -100,26 +101,26 @@ app.example.com {
 }
 ```
 
-## Using Local/Self-Signed Certificates
+## Using Caddy's Internal CA
 
 For internal/development use:
 
 ```caddyfile
 app.internal {
-    tls internal  # Use Caddy's internal CA (self-signed)
+    tls internal  # Use Caddy's internal CA
     reverse_proxy 10.0.1.10:8080
 }
 ```
 
-Caddy creates a local CA and trusts it on the system.
+Caddy creates a local CA for internal HTTPS and will try to install its root certificate into the local trust store. If that does not succeed automatically, run `caddy trust`.
 
-## Rate Limiting and Basic Auth
+## Basic Auth
 
 ```caddyfile
 api.example.com {
     # Basic authentication
-    basicauth /admin/* {
-        admin JDJhJDE0JGo1...   # bcrypt hash from caddy hash-password
+    basic_auth /admin/* {
+        admin $2a$14$Zkx19XLiW6VYouLHR5NmfOFU0z2GTNmpkT/5qqR7hx4IjWJPDhjvG   # example bcrypt hash
     }
 
     reverse_proxy 10.0.2.10:8080
@@ -136,10 +137,10 @@ caddy hash-password --plaintext "mypassword"
 
 ```bash
 # Validate Caddyfile syntax
-sudo caddy validate --config /etc/caddy/Caddyfile
+sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
 # Reload without downtime
-sudo caddy reload --config /etc/caddy/Caddyfile
+sudo caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
 
 # Or via systemd
 sudo systemctl reload caddy
