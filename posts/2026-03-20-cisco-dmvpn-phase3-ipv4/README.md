@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cisco, DMVPN, Phase 3, IPv4, IOS, VPN, Scalability, NHRP
 
-Description: Configure DMVPN Phase 3 on Cisco IOS to achieve hub-independent spoke-to-spoke routing using NHRP summarization, enabling hierarchical DMVPN designs.
+Description: Configure DMVPN Phase 3 on Cisco IOS to enable direct spoke-to-spoke routing after hub redirection while allowing hub-side route summarization for hierarchical DMVPN designs.
 
 ## Introduction
 
-DMVPN Phase 3 improves on Phase 2 by allowing the hub to advertise summarized routes while spokes still form direct tunnels. The key change is that the hub now injects NHRP routes into spokes' routing tables, allowing hierarchical DMVPN with route summarization.
+DMVPN Phase 3 improves on Phase 2 by allowing the hub to advertise summarized routes while spokes still form direct tunnels. The key change is that the hub sends NHRP redirects and the spokes install NHRP shortcut routes for specific remote destinations, allowing hierarchical DMVPN with route summarization.
 
 ## Differences Between Phases
 
@@ -18,7 +18,7 @@ Phase 2: Spoke-to-spoke tunnels, but hub cannot summarize routes
 Phase 3: Spoke-to-spoke tunnels + hub CAN summarize routes
          Hub uses "ip nhrp redirect" + spoke uses "ip nhrp shortcut"
          EIGRP/OSPF on hub can now advertise summaries
-         Spokes install /32 NHRP routes for direct spoke access
+         Spokes install NHRP shortcut routes/overrides for direct spoke access
 ```
 
 ## Hub Configuration
@@ -42,10 +42,10 @@ router eigrp 100
  network 10.100.0.0 0.0.0.255
  network 192.168.1.0 0.0.0.255
 
-! Hub CAN use split-horizon and next-hop-self in Phase 3
-! (unlike Phase 2 where these must be disabled)
+! Example summary for spoke/LAN prefixes in Phase 3
 interface Tunnel0
- ip summary-address eigrp 100 10.100.0.0 255.255.255.0
+ no ip split-horizon eigrp 100
+ ip summary-address eigrp 100 192.168.0.0 255.255.0.0
 ```
 
 ## Spoke Configuration
@@ -75,13 +75,13 @@ router eigrp 100
 ## Phase 3 Traffic Flow
 
 ```text
-1. Spoke A has a summary route (10.100.0.0/24) via Hub
-2. Spoke A sends to Spoke B (10.100.0.3) via Hub
-3. Hub receives packet, sends NHRP Redirect to Spoke A
-   "Spoke B is at public IP 203.0.113.3"
-4. Spoke A installs a /32 NHRP shortcut route: 10.100.0.3 → 203.0.113.3
+1. Spoke A has a summary route (192.168.0.0/16) via Hub
+2. Spoke A sends to a host behind Spoke B (192.168.3.10) via Hub
+3. Hub receives packet and sends an NHRP Redirect to Spoke A
+4. Spoke A resolves Spoke B and installs an NHRP shortcut route
+   for 192.168.3.0/24 via Spoke B's tunnel address 10.100.0.3
 5. Subsequent packets go Spoke A → Spoke B directly
-6. NHRP shortcut expires after no traffic (default 120s)
+6. The dynamic NHRP shortcut ages out according to NHRP holdtime/timers
 ```
 
 ## Verify Phase 3
@@ -114,4 +114,4 @@ and route summaries propagate upward.
 
 ## Conclusion
 
-DMVPN Phase 3 is the most scalable design, allowing hub-side route summarization while still enabling direct spoke-to-spoke tunnels via NHRP shortcuts. The critical configuration additions are `ip nhrp redirect` on the hub and `ip nhrp shortcut` on spokes. Phase 3 is the recommended choice for large enterprise DMVPN deployments.
+DMVPN Phase 3 is the most scalable design, allowing hub-side route summarization while still enabling direct spoke-to-spoke tunnels via NHRP shortcuts. The critical Phase 3 controls are `ip nhrp redirect` on the hub and `ip nhrp shortcut` on spokes. Phase 3 is the recommended choice for large enterprise DMVPN deployments.
