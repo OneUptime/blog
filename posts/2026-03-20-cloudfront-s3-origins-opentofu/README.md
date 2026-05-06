@@ -70,11 +70,36 @@ resource "aws_s3_bucket_policy" "website" {
 ## CloudFront Distribution
 
 ```hcl
+resource "aws_cloudfront_cache_policy" "website" {
+  name        = "${var.app_name}-website-cache-${var.environment}"
+  comment     = "Cache policy for ${var.app_name} website"
+  default_ttl = 3600
+  max_ttl     = 86400
+  min_ttl     = 0
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_brotli = true
+    enable_accept_encoding_gzip   = true
+
+    cookies_config {
+      cookie_behavior = "none"
+    }
+
+    headers_config {
+      header_behavior = "none"
+    }
+
+    query_strings_config {
+      query_string_behavior = "none"
+    }
+  }
+}
+
 resource "aws_cloudfront_distribution" "website" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
-  price_class         = "PriceClass_100"  # US, Canada, Europe only
+  price_class         = "PriceClass_100"  # USA, Canada, Europe, and Israel
 
   aliases = var.custom_domain != "" ? [var.custom_domain] : []
 
@@ -88,22 +113,20 @@ resource "aws_cloudfront_distribution" "website" {
     allowed_methods  = ["GET", "HEAD", "OPTIONS"]
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "S3-${aws_s3_bucket.website.id}"
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
+    cache_policy_id  = aws_cloudfront_cache_policy.website.id
 
     viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 3600   # 1 hour
-    max_ttl                = 86400  # 24 hours
     compress               = true
   }
 
-  # Handle SPA routing – return index.html for 404s
+  # Handle SPA routing - private S3 origins can return 403 or 404 for missing keys
+  custom_error_response {
+    error_code            = 403
+    response_code         = 200
+    response_page_path    = "/index.html"
+    error_caching_min_ttl = 10
+  }
+
   custom_error_response {
     error_code            = 404
     response_code         = 200
@@ -122,7 +145,7 @@ resource "aws_cloudfront_distribution" "website" {
 
     acm_certificate_arn      = var.custom_domain != "" ? var.acm_certificate_arn : null
     ssl_support_method       = var.custom_domain != "" ? "sni-only" : null
-    minimum_protocol_version = "TLSv1.2_2021"
+    minimum_protocol_version = var.custom_domain != "" ? "TLSv1.2_2021" : null
   }
 
   tags = {
@@ -154,4 +177,4 @@ tofu apply tfplan
 
 ## Summary
 
-CloudFront with an S3 origin is the standard pattern for serving static websites and SPAs globally. OpenTofu manages the S3 bucket, Origin Access Control, bucket policy, and CloudFront distribution - ensuring consistent, secure CDN deployments across environments.
+CloudFront with an S3 origin is the standard pattern for serving static websites and SPAs globally. OpenTofu manages the S3 bucket, Origin Access Control, bucket policy, cache policy, and CloudFront distribution - ensuring consistent, secure CDN deployments across environments.
