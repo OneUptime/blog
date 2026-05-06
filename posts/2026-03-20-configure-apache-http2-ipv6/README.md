@@ -8,7 +8,7 @@ Description: Configure Apache HTTP Server with HTTP/2 protocol support on IPv6 i
 
 ---
 
-Apache HTTP Server supports HTTP/2 through the `mod_http2` module. Enabling HTTP/2 on IPv6 requires enabling the module, configuring TLS (required for HTTP/2), and ensuring Apache listens on IPv6 interfaces.
+Apache HTTP Server supports HTTP/2 through the `mod_http2` module. Enabling HTTP/2 on IPv6 requires enabling the module, configuring TLS for browser-facing `h2`, and ensuring Apache listens on IPv6 interfaces.
 
 ## Enabling mod_http2
 
@@ -17,6 +17,9 @@ Apache HTTP Server supports HTTP/2 through the `mod_http2` module. Enabling HTTP
 
 sudo a2enmod http2
 sudo a2enmod ssl
+sudo a2enmod rewrite
+sudo a2enmod headers
+sudo a2enmod status
 
 # Verify module is loaded
 apache2ctl -M | grep "http2"
@@ -26,12 +29,9 @@ apache2ctl -M | grep "http2"
 
 ```apache
 # /etc/apache2/ports.conf
-# Listen on both IPv4 and IPv6 for HTTP and HTTPS
+# Listen on all interfaces; on dual-stack builds this includes IPv6
 Listen 80
-Listen [::]:80
-
 Listen 443
-Listen [::]:443
 ```
 
 ```apache
@@ -50,15 +50,14 @@ Listen [::]:443
 <VirtualHost *:443>
     ServerName yourdomain.com
 
-    # Enable HTTP/2 (TLS required)
-    Protocols h2 h2c http/1.1
+    # Enable HTTP/2 over TLS
+    Protocols h2 http/1.1
 
     SSLEngine on
-    SSLCertificateFile    /etc/letsencrypt/live/yourdomain.com/cert.pem
+    SSLCertificateFile    /etc/letsencrypt/live/yourdomain.com/fullchain.pem
     SSLCertificateKeyFile /etc/letsencrypt/live/yourdomain.com/privkey.pem
-    SSLCertificateChainFile /etc/letsencrypt/live/yourdomain.com/chain.pem
 
-    # Modern TLS settings (required for HTTP/2)
+    # TLS settings compatible with browser HTTP/2 use
     SSLProtocol -all +TLSv1.2 +TLSv1.3
     SSLHonorCipherOrder off
     SSLSessionTickets off
@@ -71,7 +70,7 @@ Listen [::]:443
         Require all granted
     </Directory>
 
-    # Server push via Link header
+    # Server push via Link header for clients that support it
     <FilesMatch "\.html$">
         Header add Link "</css/styles.css>; rel=preload; as=style"
         Header add Link "</js/app.js>; rel=preload; as=script"
@@ -85,7 +84,9 @@ Listen [::]:443
 ## IPv6-Only Apache Configuration
 
 ```apache
-# Listen only on IPv6
+# Bind only the IPv6 address
+Listen [2001:db8::1]:443
+
 <VirtualHost [2001:db8::1]:443>
     ServerName yourdomain.com
 
@@ -104,11 +105,11 @@ Listen [::]:443
 ```apache
 # /etc/apache2/conf-available/http2.conf
 
-# Global HTTP/2 settings
+# Direct protocol switch for h2c when h2c is enabled
 H2Direct on
 
-# Session cache (improves 0-RTT)
-H2SessionExtraFiles 5
+# Maximum concurrent streams per HTTP/2 session
+H2MaxSessionStreams 100
 
 # Stream push configuration
 H2Push on
@@ -118,11 +119,10 @@ H2PushPriority * after 32
 H2MinWorkers 10
 H2MaxWorkers 75
 
-# Timeout settings
-H2Timeout 5
-H2KeepAliveTimeout 5
+# Stream timeout
+H2StreamTimeout 5
 
-# Header table size for HPACK compression
+# Disable TLS warmup on reliable networks
 H2TLSWarmUpSize 0
 ```
 
@@ -143,25 +143,25 @@ sudo systemctl restart apache2
 curl -6 --http2 -I https://yourdomain.com/
 # Look for: HTTP/2 200
 
-# Check which protocols Apache is advertising
+# Check that ALPN negotiates HTTP/2
 openssl s_client \
-  -connect '[2001:db8::1]':443 \
+  -connect '[2001:db8::1]:443' \
   -servername yourdomain.com \
-  -alpn h2 < /dev/null 2>&1 | grep "Protocol"
-# Expected: Protocol : TLSv1.3 or similar, with ALPN negotiated h2
+  -alpn h2 < /dev/null 2>&1 | grep "ALPN protocol"
+# Expected: ALPN protocol: h2
 ```
 
 ## Monitoring HTTP/2 on Apache
 
 ```apache
-# Enable mod_status for protocol statistics
+# Expose server statistics via mod_status
 <Location /server-status>
     SetHandler server-status
     Require ip ::1 127.0.0.1
 </Location>
 
-# Log HTTP/2 protocol version
-LogFormat "%h %l %u %t \"%r\" %>s %b %{ALPN}e" http2_combined
+# Log the request protocol separately
+LogFormat "%h %l %u %t \"%r\" %>s %b %H" http2_combined
 CustomLog /var/log/apache2/http2_access.log http2_combined
 ```
 
