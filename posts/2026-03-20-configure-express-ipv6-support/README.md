@@ -8,7 +8,7 @@ Description: Configure Express.js to listen on IPv6, extract real client IPv6 ad
 
 ## Introduction
 
-Node.js and Express.js support IPv6 natively. The key is passing `::` as the host to `app.listen()` and configuring `trust proxy` to correctly extract client IPv6 addresses when behind a load balancer or reverse proxy.
+Node.js and Express.js support IPv6 natively. You can bind explicitly to `::` (or omit the host and let Node.js use the unspecified IPv6 address when IPv6 is available), then configure `trust proxy` to correctly extract client IPv6 addresses when behind a load balancer or reverse proxy.
 
 ## Step 1: Listen on IPv6
 
@@ -17,7 +17,7 @@ Node.js and Express.js support IPv6 natively. The key is passing `::` as the hos
 const express = require('express');
 const app = express();
 
-// Listen on all IPv6 interfaces (dual-stack on most OS)
+// Listen on all IPv6 interfaces (often dual-stack, depending on OS)
 app.listen(3000, '::', () => {
     console.log('Server listening on [::]:3000');
 });
@@ -31,9 +31,9 @@ const server = http.createServer(app);
 server.listen({
     host: '::',
     port: 3000,
-    ipv6Only: false,  // false = also accept IPv4 (dual-stack)
+    ipv6Only: false,  // Leave dual-stack enabled
 }, () => {
-    console.log('Listening on IPv6 (dual-stack)');
+    console.log('Listening on IPv6 (dual-stack when supported)');
 });
 ```
 
@@ -74,11 +74,6 @@ function getClientIP(req) {
     // With trust proxy configured, req.ip is the real client IP
     let ip = req.ip;
 
-    // Remove IPv6 brackets if present
-    if (ip && ip.startsWith('[') && ip.endsWith(']')) {
-        ip = ip.slice(1, -1);
-    }
-
     // Remove IPv4-mapped IPv6 prefix
     if (ip && ip.startsWith('::ffff:')) {
         ip = ip.slice(7);
@@ -99,7 +94,6 @@ app.use((req, res, next) => {
 ```javascript
 // middleware/rateLimit.js
 const { RateLimiterMemory } = require('rate-limiter-flexible');
-const net = require('net');
 const ipaddr = require('ipaddr.js');
 
 const rateLimiter = new RateLimiterMemory({
@@ -108,17 +102,19 @@ const rateLimiter = new RateLimiterMemory({
 });
 
 function getRateLimitKey(ip) {
-    if (net.isIPv6(ip)) {
-        try {
+    try {
+        const addr = ipaddr.process(ip);
+
+        if (addr.kind() === 'ipv6') {
             // Rate limit by /64 subnet
-            const addr = ipaddr.parse(ip);
-            const subnet = addr.mask(64);
-            return subnet.toString();
-        } catch (e) {
-            return ip;
+            const prefix = addr.toNormalizedString().split(':').slice(0, 4).join(':');
+            return `${prefix}::/64`;
         }
+
+        return addr.toString();
+    } catch {
+        return ip;
     }
-    return ip;
 }
 
 app.use(async (req, res, next) => {
@@ -151,9 +147,8 @@ app.use(morgan(':real-ip :method :url :status :response-time ms'));
 
 node server.js
 
-# Test from IPv6
+# Test from IPv6 (`::1` locally, or replace it with your server's real IPv6 address)
 curl -6 http://[::1]:3000/
-curl -6 http://[2001:db8::1]:3000/
 
 # Check headers
 curl -6 -I http://[::1]:3000/
@@ -164,4 +159,4 @@ curl -6 -H "X-Forwarded-For: 2001:db8::cafe" http://[::1]:3000/
 
 ## Conclusion
 
-Express.js on IPv6 requires passing `'::'` as the host to `app.listen()`. Set `trust proxy` to the appropriate level or specific IPv6 proxy addresses so `req.ip` returns the real client address. Strip `::ffff:` IPv4-mapped prefixes and rate-limit by /64 subnets for fair treatment of IPv6 clients. Monitor Express.js endpoints with OneUptime's IPv6 HTTP checks.
+Express.js can bind explicitly to `'::'` for IPv6, or let Node.js choose `::` when the host is omitted and IPv6 is available. Set `trust proxy` to the appropriate level or specific IPv6 proxy addresses so `req.ip` returns the real client address. Strip `::ffff:` IPv4-mapped prefixes and rate-limit by /64 subnets for fair treatment of IPv6 clients. Monitor Express.js endpoints with OneUptime's IPv6 HTTP checks.
