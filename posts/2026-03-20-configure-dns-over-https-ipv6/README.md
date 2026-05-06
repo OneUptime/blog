@@ -14,9 +14,9 @@ DNS over HTTPS (RFC 8484) encrypts DNS queries inside HTTPS traffic, preventing 
 
 ```text
 IPv6 Client
-    → HTTPS GET/POST https://[2001:db8::1]/dns-query
+    → HTTPS GET/POST https://dns.example.com/dns-query
     → NGINX (TLS termination, IPv6)
-    → Unbound (localhost resolver)
+    → Unbound (DoH backend on localhost)
     → Authoritative servers
 ```
 
@@ -43,8 +43,9 @@ acme.sh --issue -d dns.example.com \
 
 server {
     # Listen on IPv6 (and IPv4) for HTTPS
-    listen [::]:443 ssl http2;
-    listen 443 ssl http2;
+    listen [::]:443 ssl;
+    listen 443 ssl;
+    http2 on;
 
     server_name dns.example.com;
 
@@ -55,35 +56,41 @@ server {
 
     # DoH endpoint - RFC 8484
     location /dns-query {
-        proxy_pass http://127.0.0.1:5380;  # Unbound or CoreDNS DoH port
-        proxy_http_version 1.1;
+        proxy_pass http://127.0.0.1:5380;  # Local Unbound DoH backend
+        proxy_http_version 2;
         proxy_set_header Connection "";
         proxy_set_header Host $host;
 
         # Accept both GET and POST
         limit_except GET POST { deny all; }
-        add_header Content-Type "application/dns-message";
     }
 }
 ```
 
-## Step 3: Configure Unbound with DoH Backend
+## Step 3: Configure Unbound as the DoH Backend
 
-```yaml
+```conf
 # /etc/unbound/unbound.conf
 
 server:
-    interface: 127.0.0.1@5353
+    interface: 127.0.0.1@5380
     access-control: 127.0.0.1/32 allow
     prefer-ip6: yes
     auto-trust-anchor-file: "/var/lib/unbound/root.key"
+    https-port: 5380
+    http-endpoint: "/dns-query"
+    http-notls-downstream: yes
+    tls-service-pem: "/etc/letsencrypt/live/dns.example.com/fullchain.pem"
+    tls-service-key: "/etc/letsencrypt/live/dns.example.com/privkey.pem"
 
-# Or use CoreDNS with dns-over-https plugin:
+# Or use CoreDNS as a native DoH server instead:
 ```
 
 ```corefile
-# Corefile for CoreDNS DoH backend
-.:5380 {
+# Corefile for a native CoreDNS DoH server
+https://.:443 {
+    bind 2001:db8::1
+    tls /etc/letsencrypt/live/dns.example.com/fullchain.pem /etc/letsencrypt/live/dns.example.com/privkey.pem
     forward . 2606:4700:4700::1111 8.8.8.8
     cache 300
     log
@@ -96,7 +103,7 @@ server:
 -- /etc/dnsdist/dnsdist.conf
 
 -- Listen for DoH on IPv6
-addDOHLocal("[::]:443", "/etc/ssl/doh.crt", "/etc/ssl/doh.key", "/dns-query", {
+addDOHLocal("[::]:443", "/etc/ssl/doh.crt", "/etc/ssl/doh.key", { "/dns-query" }, {
     reusePort=true,
     minTLSVersion="tls1.2"
 })
@@ -106,7 +113,7 @@ addLocal("127.0.0.1:53")
 addLocal("[::1]:53")
 
 -- Route to upstream
-newServer({address="2606:4700:4700::1111", name="cloudflare-v6"})
+newServer({address="[2606:4700:4700::1111]:53", name="cloudflare-v6"})
 newServer({address="8.8.8.8", name="google-v4"})
 ```
 
@@ -114,18 +121,18 @@ newServer({address="8.8.8.8", name="google-v4"})
 
 ```bash
 # Test with curl (RFC 8484 GET method)
-DNS_QUERY=$(echo -n '\x00\x00\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00' | base64 -w 0 | tr '+/' '-_' | tr -d '=')
+DNS_QUERY='AAABAAABAAAAAAAAB2V4YW1wbGUDY29tAAABAAE'
 
-curl -s "https://dns.example.com/dns-query?dns=${DNS_QUERY}" \
+curl --ipv6 -s "https://dns.example.com/dns-query?dns=${DNS_QUERY}" \
     -H "Accept: application/dns-message" \
     --resolve "dns.example.com:443:[2001:db8::1]" \
-    -o /dev/null -w "%{http_code}"
+    -o /dev/null -w "%{http_code}\n"
 
 # Use kdig (from Knot DNS utils)
-kdig @dns.example.com AAAA google.com +tls +https
+kdig @dns.example.com +https=/dns-query google.com AAAA
 
 # Use dog (modern DNS client)
-dog AAAA google.com --nameserver https://[2001:db8::1]/dns-query
+dog google.com AAAA --https --nameserver dns.example.com
 ```
 
 ## Step 6: Configure Firefox to Use Custom DoH
@@ -134,9 +141,9 @@ dog AAAA google.com --nameserver https://[2001:db8::1]/dns-query
 about:config
 network.trr.mode = 2  (prefer DoH)
 network.trr.uri = https://dns.example.com/dns-query
-network.trr.bootstrapAddress = 2001:db8::1
+network.trr.bootstrapAddress = 2001:db8::1  (optional if dns.example.com already resolves)
 ```
 
 ## Conclusion
 
-A DoH server on IPv6 requires a TLS certificate, HTTPS listener bound to `[::]:443`, and a DNS backend (Unbound, CoreDNS, or dnsdist). Clients with IPv6 connectivity can use DoH at `https://[2001:db8::1]/dns-query`. Monitor DoH endpoint availability and latency with OneUptime's HTTPS checks.
+A DoH server on IPv6 requires a TLS certificate, HTTPS listener bound to `[::]:443`, and a DNS backend (Unbound, CoreDNS, or dnsdist). Clients with IPv6 connectivity can use DoH at `https://dns.example.com/dns-query`, with `dns.example.com` resolving to your IPv6 address. Monitor DoH endpoint availability and latency with OneUptime's HTTPS checks.
