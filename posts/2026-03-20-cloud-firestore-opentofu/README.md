@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Firestore, NoSQL, OpenTofu, Database, Firebase
 
-Description: Learn how to create and configure Cloud Firestore with OpenTofu including database creation, composite indexes, and IAM security rules for document database workloads.
+Description: Learn how to create and configure Cloud Firestore with OpenTofu including database creation, composite indexes, backup schedules, and IAM access control for document database workloads.
 
 ## Overview
 
@@ -18,16 +18,16 @@ Cloud Firestore is a flexible, scalable NoSQL document database for mobile, web,
 resource "google_firestore_database" "app_database" {
   project     = var.project_id
   name        = "(default)"  # Primary database uses "(default)" name
-  location_id = "us-central"
+  location_id = "us-central1"
   type        = "FIRESTORE_NATIVE"  # FIRESTORE_NATIVE or DATASTORE_MODE
 
-  # Enable point-in-time recovery for backup
+  # Enable point-in-time recovery for short-term recovery
   point_in_time_recovery_enablement = "POINT_IN_TIME_RECOVERY_ENABLED"
 
   # Delete protection to prevent accidental deletion
   delete_protection_state = "DELETE_PROTECTION_ENABLED"
 
-  # TTL policy for automatic document deletion
+  # Disable App Engine integration for this database
   app_engine_integration_mode = "DISABLED"
 }
 ```
@@ -117,4 +117,4 @@ resource "google_project_iam_member" "firestore_user" {
 
 ## Summary
 
-Cloud Firestore with OpenTofu enables document database management as code. Create composite indexes for complex queries, enable point-in-time recovery for compliance, and use backup schedules for data protection. Named databases allow multiple Firestore databases per project for multi-tenant or environment isolation scenarios.
+Cloud Firestore with OpenTofu enables document database management as code. Create composite indexes for complex queries, enable point-in-time recovery for short-term recovery, and use backup schedules for data protection. Named databases allow multiple Firestore databases per project for multi-tenant or environment isolation scenarios.
