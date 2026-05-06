@@ -10,7 +10,7 @@ Description: Learn how to capture network packets on Kubernetes pod networks usi
 
 Kubernetes pods have isolated network namespaces. To capture pod traffic you have several options:
 1. Run tcpdump inside the pod (if it has the binary)
-2. Use an ephemeral debug container (Kubernetes 1.23+)
+2. Use an ephemeral debug container (Kubernetes 1.25+)
 3. Capture on the host node's pod network interface (veth pair)
 4. Use a DaemonSet-based capture tool
 
@@ -24,19 +24,19 @@ kubectl exec -it my-pod -- which tcpdump
 # If available, capture directly
 kubectl exec -it my-pod -- tcpdump -i eth0 -n -w /tmp/capture.pcap
 
-# Copy capture to local machine
+# Copy capture to local machine (requires tar in the container image)
 kubectl cp my-pod:/tmp/capture.pcap /tmp/pod-capture.pcap
 wireshark /tmp/pod-capture.pcap
 
 # Real-time pipe to local Wireshark
-kubectl exec -it my-pod -- tcpdump -i eth0 -n -w - | wireshark -k -i -
+kubectl exec -i my-pod -- tcpdump -i eth0 -n -w - | wireshark -k -i -
 ```
 
-## Step 2: Use Ephemeral Debug Container (Kubernetes 1.23+)
+## Step 2: Use Ephemeral Debug Container (Kubernetes 1.25+)
 
 ```bash
 # Add a debug container with network tools to a running pod
-# Uses the same network namespace as the target pod
+# Pods share a network namespace, so tcpdump sees the same pod interfaces
 
 kubectl debug -it my-pod \
     --image=nicolaka/netshoot \
@@ -50,7 +50,9 @@ tcpdump -i eth0 -n -w /tmp/capture.pcap 'not port 22'
 
 ```bash
 # One-liner to stream capture from debug container to local Wireshark
-kubectl debug -it my-pod \
+kubectl debug my-pod \
+    --attach=true \
+    --quiet \
     --image=nicolaka/netshoot \
     --target=my-container \
     -- tcpdump -i eth0 -n -w - | wireshark -k -i -
@@ -59,31 +61,24 @@ kubectl debug -it my-pod \
 ## Step 3: Capture on Node via veth Interface
 
 ```bash
-# Find which node the pod is running on
+# Find which node the pod is running on and get one container runtime ID
 kubectl get pod my-pod -o wide
 # Note the NODE column
 
-# SSH to the node
-ssh user@k8s-node-1
-
-# Find the pod's network namespace
-CONTAINER_ID=$(kubectl get pod my-pod -o jsonpath='{.status.containerStatuses[0].containerID}' | sed 's/.*docker:\/\///')
-
-# Find the veth pair
-# Method 1: via nsenter
-PID=$(docker inspect --format '{{.State.Pid}}' $CONTAINER_ID)
-nsenter -t $PID -n ip link show eth0
-# Note the interface index number
-
-# Find matching veth on host
-ip link | grep "if${INDEX}"
-# Example output: veth1234abcd@if3
+kubectl get pod my-pod -o jsonpath='{.status.containerStatuses[0].containerID}'
+# Example output: containerd://7a8b9c...
 ```
 
 ```bash
-# Capture on the veth interface (captures all pod traffic)
-VETH=$(ip link | grep "veth" | grep -v SLAVE | awk -F: '{print $2}' | head -1 | tr -d ' ')
-sudo tcpdump -i $VETH -n -w /tmp/pod-veth-capture.pcap
+# Capture on the pod's node-side veth interface
+RUNTIME_ID=$(kubectl get pod my-pod -o jsonpath='{.status.containerStatuses[0].containerID}' | sed 's#.*://##')
+
+ssh user@k8s-node-1 "RUNTIME_ID=$RUNTIME_ID bash -s" <<'EOF'
+PID=$(sudo crictl inspect "$RUNTIME_ID" | jq -r '.info.pid')
+HOST_IFINDEX=$(sudo nsenter -t "$PID" -n ip -o link show eth0 | sed -E 's/.*@if([0-9]+):.*/\1/')
+VETH=$(ip -o link | awk -F': ' -v idx="$HOST_IFINDEX" '$1 == idx {print $2}' | cut -d@ -f1)
+sudo tcpdump -i "$VETH" -n -w /tmp/pod-veth-capture.pcap
+EOF
 ```
 
 ## Step 4: Use ksniff Plugin
@@ -143,6 +138,7 @@ spec:
       - name: captures
         hostPath:
           path: /tmp/k8s-captures
+          type: DirectoryOrCreate
 ```
 
 ```bash
@@ -158,36 +154,44 @@ kubectl cp kube-system/packet-capture-xxxxx:/captures/node-name.pcap /tmp/
 ## Step 6: Capture with nsenter on Node
 
 ```bash
-# SSH to the node where the pod runs
-ssh user@k8s-worker-1
+# Find the node and get one container runtime ID for the pod
+kubectl get pod my-pod -o wide
+RUNTIME_ID=$(kubectl get pod my-pod -o jsonpath='{.status.containerStatuses[0].containerID}' | sed 's#.*://##')
 
-# Find pod's PID
-CONTAINER=$(crictl ps | grep my-pod | awk '{print $1}')
-PID=$(crictl inspect $CONTAINER | jq '.info.pid')
-
-# Capture in pod's network namespace using nsenter
-sudo nsenter -t $PID -n tcpdump -i eth0 -n -w /tmp/pod-capture.pcap
+# Capture in the pod's network namespace on the node
+ssh user@k8s-worker-1 "RUNTIME_ID=$RUNTIME_ID bash -s" <<'EOF'
+PID=$(sudo crictl inspect "$RUNTIME_ID" | jq -r '.info.pid')
+sudo nsenter -t "$PID" -n tcpdump -i eth0 -n -w /tmp/pod-capture.pcap
+EOF
 
 # Or pipe to local Wireshark via SSH
-ssh user@k8s-worker-1 "sudo nsenter -t $PID -n tcpdump -i eth0 -n -w -" | \
-    wireshark -k -i -
+ssh user@k8s-worker-1 "RUNTIME_ID=$RUNTIME_ID bash -s" <<'EOF' | wireshark -k -i -
+PID=$(sudo crictl inspect "$RUNTIME_ID" | jq -r '.info.pid')
+sudo nsenter -t "$PID" -n tcpdump -i eth0 -n -w -
+EOF
 ```
 
 ## Step 7: Capture CNI-Specific Traffic
 
 ```bash
-# Calico - capture BGP and overlay traffic
+# Calico IP-in-IP overlay traffic
 # On node
-sudo tcpdump -i tunl0 -n -w /tmp/calico-tunnel.pcap
+sudo tcpdump -i tunl0 -n -w /tmp/calico-ipip.pcap
 
-# Flannel - capture VXLAN overlay
+# Calico VXLAN overlay traffic
+sudo tcpdump -i vxlan.calico -n -w /tmp/calico-vxlan.pcap
+
+# Flannel VXLAN backend
 sudo tcpdump -i flannel.1 -n -w /tmp/flannel-overlay.pcap
+
+# Calico BGP control-plane traffic on the node uplink (for example, eth0)
+sudo tcpdump -i eth0 -n port 179 -w /tmp/calico-bgp.pcap
 
 # Capture encapsulated traffic and inner packets
 # Inner packets are visible after decapsulation in Wireshark
-# Wireshark filter: vxlan or geneve
+# Wireshark display filter: vxlan
 ```
 
 ## Conclusion
 
-Kubernetes pod network capture has multiple approaches: run `tcpdump` directly inside pods, use `kubectl debug` with `nicolaka/netshoot` image for ephemeral debug containers, or install the `kubectl sniff` plugin for automatic Wireshark streaming. On the node level, identify the pod's veth pair and capture there, or use `nsenter -t [PID] -n` to enter the pod's network namespace. For cluster-wide capture, deploy a DaemonSet with `hostNetwork: true` and `NET_RAW` capabilities.
+Kubernetes pod network capture has multiple approaches: run `tcpdump` directly inside pods, use `kubectl debug` with `nicolaka/netshoot` image for ephemeral debug containers, or install the `kubectl sniff` plugin for automatic Wireshark streaming. On the node level, identify the pod's veth pair and capture there, or use `nsenter -t [PID] -n` to enter the pod's network namespace. For cluster-wide capture, deploy a DaemonSet with `hostNetwork: true` and `NET_ADMIN` / `NET_RAW` capabilities.
