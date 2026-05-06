@@ -8,7 +8,7 @@ Description: Configure Gateway Load Balancing Protocol (GLBP) on Cisco IOS to di
 
 ## Introduction
 
-GLBP differs from HSRP and VRRP by allowing multiple routers to actively forward traffic simultaneously. One router is elected Active Virtual Gateway (AVG); it assigns different virtual MAC addresses to each Active Virtual Forwarder (AVF), distributing client ARP replies in a round-robin or weighted fashion.
+GLBP differs from HSRP and VRRP by allowing multiple routers to actively forward traffic simultaneously. One router is elected Active Virtual Gateway (AVG); it assigns different virtual MAC addresses to each Active Virtual Forwarder (AVF), distributing client ARP replies in a round-robin, weighted, or host-dependent fashion.
 
 ## Basic GLBP Configuration
 
@@ -38,6 +38,7 @@ interface GigabitEthernet0/0
  ip address 10.1.10.4 255.255.255.0
  glbp 1 ip 10.1.10.1
  glbp 1 priority 80
+ glbp 1 authentication md5 key-string GLBPsecret
 ```
 
 ## Load Balancing Methods
@@ -72,16 +73,15 @@ interface GigabitEthernet0/0
 show glbp
 show glbp brief
 
-! Example:
+! Example output from show glbp:
 ! GigabitEthernet0/0 - Group 1
-!   State is Active (AVG)
+!   State is Active
 !   Virtual IP address is 10.1.10.1
 !   Hello time 3 sec, hold time 10 sec
-!   Redirect time 600 sec, forwarder timeout 14400 sec
-!
-!   Slot  State    MAC Address
-!    1    Active   0007.b400.0101  (this router)
-!    2    Active   0007.b400.0102  (Router 2)
+!   Redirect time 600 sec, forwarder time-out 14400 sec
+!   Priority 120
+!   Load balancing: round-robin
+!   There are 2 forwarders (2 active)
 ```
 
 ## Object Tracking
@@ -90,8 +90,9 @@ show glbp brief
 track 1 interface GigabitEthernet0/1 line-protocol
 
 interface GigabitEthernet0/0
+ glbp 1 weighting 200 lower 150 upper 180
  glbp 1 weighting track 1 decrement 60
- ! If WAN goes down, weight drops - AVG stops sending ARP for this forwarder
+ ! If WAN goes down, weight drops below the lower threshold and this router stops acting as an AVF
 ```
 
 ## GLBP vs HSRP vs VRRP
@@ -100,7 +101,7 @@ interface GigabitEthernet0/0
 |---------|------|------|------|
 | Multiple active gateways | Yes | No | No |
 | Load balancing | Yes | No | No |
-| Standard | Cisco proprietary | Cisco proprietary | IETF RFC 5798 |
+| Standard | Cisco proprietary | Cisco proprietary | IETF RFC 9568 |
 | Max active forwarders | 4 | 1 | 1 |
 
 ## Conclusion
