@@ -8,7 +8,7 @@ Description: Learn how to use Checkov to statically scan OpenTofu configurations
 
 ## Introduction
 
-Checkov is a static analysis tool from Bridgecrew that scans OpenTofu (and Terraform) configurations for hundreds of built-in security and compliance checks. Unlike OPA which evaluates plan output, Checkov analyzes `.tf` files directly - catching issues as early as the pre-commit stage.
+Checkov is a static analysis tool from Bridgecrew that scans OpenTofu (and Terraform) configurations for hundreds of built-in security and compliance checks. Unlike workflows that evaluate only generated plan output, Checkov analyzes `.tf` files directly - catching issues as early as the pre-commit stage.
 
 ## Installing Checkov
 
@@ -39,13 +39,13 @@ checkov -f main.tf
 checkov -d . --compact
 
 # Scan and output to JUnit XML (for CI integration)
-checkov -d . --output junitxml --output-file results.xml
+checkov -d . --output junitxml --output-file-path results.xml
 ```
 
 ## Sample Output
 
-```hcl
-Check: CKV_AWS_20: "Ensure the S3 bucket has access control list (ACL) applied and is private"
+```text
+Check: CKV_AWS_20: "S3 Bucket has an ACL defined which allows public READ access."
   FAILED for resource: aws_s3_bucket.app_data
   File: /main.tf:15-25
 
@@ -60,29 +60,32 @@ Passed checks: 45, Failed checks: 3, Skipped checks: 0
 ## Common Checks and Their Fixes
 
 ```hcl
-# Fix CKV_AWS_20: S3 bucket ACL should be private
+# Fix CKV_AWS_20: remove the public ACL from the bucket
 resource "aws_s3_bucket" "app_data" {
   bucket = "my-app-data"
 }
 
-resource "aws_s3_bucket_acl" "app_data" {
-  bucket = aws_s3_bucket.app_data.id
-  acl    = "private"  # Not "public-read"
+# Fix CKV_AWS_18: S3 bucket should have access logging
+resource "aws_s3_bucket" "access_logs" {
+  bucket = "my-access-logs"
 }
 
-# Fix CKV_AWS_18: S3 bucket should have access logging
+resource "aws_s3_bucket_acl" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+  acl    = "log-delivery-write"
+}
+
 resource "aws_s3_bucket_logging" "app_data" {
   bucket        = aws_s3_bucket.app_data.id
   target_bucket = aws_s3_bucket.access_logs.id
   target_prefix = "app-data-logs/"
 }
 
-# Fix CKV_AWS_66: S3 bucket should have MFA delete enabled
+# Fix CKV_AWS_21: S3 bucket should have versioning enabled
 resource "aws_s3_bucket_versioning" "app_data" {
   bucket = aws_s3_bucket.app_data.id
   versioning_configuration {
-    status     = "Enabled"
-    mfa_delete = "Enabled"
+    status = "Enabled"
   }
 }
 ```
@@ -108,14 +111,16 @@ Checkov can also scan the JSON plan (not just `.tf` files):
 tofu plan -out=tfplan.binary
 tofu show -json tfplan.binary > tfplan.json
 
-checkov -f tfplan.json --file-type terraform_plan
+checkov -f tfplan.json --framework terraform_plan
 ```
 
 ## GitHub Actions Integration
 
 ```yaml
+- uses: actions/checkout@v4
+
 - name: Checkov Security Scan
-  uses: bridgecrewio/checkov-action@master
+  uses: bridgecrewio/checkov-action@v12
   with:
     directory: .
     framework: terraform
@@ -125,7 +130,7 @@ checkov -f tfplan.json --file-type terraform_plan
 
 - name: Upload Checkov Results
   uses: github/codeql-action/upload-sarif@v3
-  if: always()
+  if: success() || failure()
   with:
     sarif_file: results.sarif
 ```
@@ -133,8 +138,8 @@ checkov -f tfplan.json --file-type terraform_plan
 ## Selecting Specific Check Groups
 
 ```bash
-# Run only CIS AWS benchmarks
-checkov -d . --check CIS_AWS
+# Run only AWS checks
+checkov -d . --check CKV_AWS*
 
 # Run only checks that prevent data exposure
 checkov -d . --check CKV_AWS_18,CKV_AWS_19,CKV_AWS_20,CKV_AWS_21
