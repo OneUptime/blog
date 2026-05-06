@@ -11,7 +11,10 @@ Description: Learn how to configure Elasticsearch to bind to IPv6 addresses for 
 ```yaml
 # /etc/elasticsearch/elasticsearch.yml
 
-# Bind to all interfaces (IPv4 and IPv6)
+# If Elasticsearch 8+ added http.host: 0.0.0.0 during security auto-configuration,
+# remove it or set http.host explicitly to the same IPv6 address.
+
+# Bind to all available network interfaces
 
 network.host: 0.0.0.0
 
@@ -37,12 +40,11 @@ network.bind_host: ["::1", "2001:db8::10"]
 # _site_     = site-local addresses
 # _global_   = global addresses (public)
 # _[iface]_  = addresses of a specific interface (e.g., _eth0_)
-# 0.0.0.0    = all IPv4
-# ::         = all IPv6
-# ::0        = all IPv6 (alternative notation)
+# 0.0.0.0    = all available network interfaces
+# Add :ipv4 or :ipv6 to a special value to limit the address family
 
-# IPv6-specific binding using _global_:
-network.host: ["_local_", "_global_"]
+# IPv6-specific binding using a special value:
+network.host: "_global:ipv6_"
 ```
 
 ## Full Configuration Example
@@ -55,6 +57,8 @@ node.name: node-1
 
 # Network
 network.host: "2001:db8::10"
+# If http.host was auto-configured separately, override it explicitly.
+http.host: "2001:db8::10"
 http.port: 9200
 transport.port: 9300
 
@@ -70,8 +74,8 @@ cluster.initial_master_nodes:
   - node-3
 
 # Security (Elasticsearch 8+)
-xpack.security.enabled: true
-xpack.security.transport.ssl.enabled: true
+# Security is enabled by default on first start.
+# If you configure TLS manually, also configure the required xpack.security.*.ssl certificate settings.
 ```
 
 ## Apply Configuration
@@ -81,32 +85,41 @@ xpack.security.transport.ssl.enabled: true
 systemctl restart elasticsearch
 
 # Verify listening on IPv6
-ss -6 -tlnp | grep java
-# Should show [::]:9200 (HTTP) and [::]:9300 (transport)
+ss -6 -tln | grep -E ':9200|:9300'
+# Should show IPv6 listeners on ports 9200 and 9300
 
-# Test HTTP API over IPv6
-curl -6 http://[2001:db8::10]:9200/
+# Test HTTPS API over IPv6 (default on Elasticsearch 8+)
+curl -6 --cacert /etc/elasticsearch/certs/http_ca.crt \
+    -u elastic:$ELASTIC_PASSWORD https://[2001:db8::10]:9200/
 
-# Test with authentication (Elasticsearch 8+)
-curl -6 -u elastic:password https://[2001:db8::10]:9200/
+# If HTTP TLS is disabled, use plain HTTP instead
+# curl -6 http://[2001:db8::10]:9200/
 ```
 
 ## Test Elasticsearch IPv6 Operations
 
 ```bash
 # Check cluster health
-curl -6 http://[2001:db8::10]:9200/_cluster/health?pretty
+curl -6 --cacert /etc/elasticsearch/certs/http_ca.crt \
+    -u elastic:$ELASTIC_PASSWORD \
+    https://[2001:db8::10]:9200/_cluster/health?pretty
 
 # Create an index
-curl -6 -X PUT http://[2001:db8::10]:9200/myindex
+curl -6 --cacert /etc/elasticsearch/certs/http_ca.crt \
+    -u elastic:$ELASTIC_PASSWORD \
+    -X PUT https://[2001:db8::10]:9200/myindex
 
 # Index a document
-curl -6 -X POST http://[2001:db8::10]:9200/myindex/_doc/1 \
+curl -6 --cacert /etc/elasticsearch/certs/http_ca.crt \
+    -u elastic:$ELASTIC_PASSWORD \
+    -X POST https://[2001:db8::10]:9200/myindex/_doc/1 \
     -H "Content-Type: application/json" \
     -d '{"title": "IPv6 Test Document"}'
 
 # Search
-curl -6 http://[2001:db8::10]:9200/myindex/_search?pretty
+curl -6 --cacert /etc/elasticsearch/certs/http_ca.crt \
+    -u elastic:$ELASTIC_PASSWORD \
+    https://[2001:db8::10]:9200/myindex/_search?pretty
 ```
 
 ## JVM IPv6 Preferences
@@ -116,14 +129,14 @@ curl -6 http://[2001:db8::10]:9200/myindex/_search?pretty
 
 # /etc/elasticsearch/jvm.options.d/ipv6.options
 cat > /etc/elasticsearch/jvm.options.d/ipv6.options << 'EOF'
-# Prefer IPv6 stack
+# Prefer IPv6 addresses when a hostname resolves to both IPv4 and IPv6
 -Djava.net.preferIPv6Addresses=true
 
-# Or prefer IPv4 (default JVM behavior)
+# Use IPv4-only sockets if required
 # -Djava.net.preferIPv4Stack=true
 EOF
 ```
 
 ## Summary
 
-Configure Elasticsearch IPv6 with `network.host: "2001:db8::10"` or `network.host: ["::1", "2001:db8::10"]` in `elasticsearch.yml`. For cluster nodes, set `discovery.seed_hosts` with IPv6 addresses in brackets. Restart with `systemctl restart elasticsearch`. For JVM-level IPv6 preferences, add `-Djava.net.preferIPv6Addresses=true` to JVM options. Test with `curl -6 http://[2001:db8::10]:9200/_cluster/health`.
+Configure Elasticsearch IPv6 with `network.host: "2001:db8::10"` in `elasticsearch.yml`. If you need multiple bind addresses, use `network.bind_host: ["::1", "2001:db8::10"]` and set `network.publish_host` to the published IPv6 address. On Elasticsearch 8+, remove or override any existing `http.host: 0.0.0.0` entry so HTTP also binds to the intended IPv6 address. For cluster nodes, set `discovery.seed_hosts` with IPv6 addresses in brackets. Restart with `systemctl restart elasticsearch`. If you want the JVM to prefer IPv6 when both address families are available, add `-Djava.net.preferIPv6Addresses=true` to JVM options. Test with `curl -6 --cacert /etc/elasticsearch/certs/http_ca.crt -u elastic:$ELASTIC_PASSWORD https://[2001:db8::10]:9200/_cluster/health`.
