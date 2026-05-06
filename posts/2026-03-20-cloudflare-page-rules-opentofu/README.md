@@ -4,21 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Cloudflare Page Rules provider in OpenTofu to manage Cloudflare Page Rules resources as code.
+Description: Learn how to configure the Cloudflare provider in OpenTofu to manage existing Cloudflare Page Rules resources as code.
 
 ## Introduction
 
-The Cloudflare Page Rules provider for OpenTofu enables managing Cloudflare Page Rules resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
+Cloudflare Page Rules are deprecated, but the Cloudflare provider for OpenTofu can still manage existing Page Rules resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
 
 ## Provider Installation
 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,32 +26,32 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Cloudflare provider supports API tokens via environment variables:
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export CLOUDFLARE_API_TOKEN="your-api-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "cloudflare" {
+  # API token is read from CLOUDFLARE_API_TOKEN
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+resource "cloudflare_page_rule" "main" {
+  zone_id  = var.zone_id
+  target   = "${var.domain}/old-page"
+  priority = 1
+  status   = "active"
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
+  actions = {
+    forwarding_url = {
+      url         = "https://${var.domain}/new-page"
+      status_code = 301
+    }
   }
 }
 ```
@@ -60,23 +59,23 @@ resource "provider_example_resource" "main" {
 ## Variables
 
 ```hcl
-variable "name"        { type = string }
-variable "environment" { type = string }
+variable "zone_id" { type = string }
+variable "domain"  { type = string }
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "page_rule_id" { value = cloudflare_page_rule.main.id }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- Store API tokens in environment variables or a secrets manager-never in .tf files
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
 - Use separate provider configurations per environment using aliases or workspaces
 
 ## Conclusion
 
-Managing Cloudflare Page Rules resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
+Managing existing Cloudflare Page Rules resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Because Cloudflare marks Page Rules as deprecated, use this approach mainly for existing Page Rules configurations or when you specifically need Page Rules behavior.
