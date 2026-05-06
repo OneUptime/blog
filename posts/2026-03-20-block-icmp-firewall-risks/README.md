@@ -8,14 +8,14 @@ Description: Learn which ICMP types to block and which to allow, and understand 
 
 ## Introduction
 
-Blocking all ICMP traffic is a common but misguided security practice. While it seems protective, it breaks critical network functions including path MTU discovery, traceroute, and time synchronization. The correct approach is to allow specific ICMP types that are operationally necessary while blocking the rest.
+Blocking all ICMP traffic is a common but misguided security practice. While it seems protective, it breaks critical network functions including path MTU discovery, ping-based monitoring, and traceroute. The correct approach is to allow specific ICMP types that are operationally necessary while blocking the rest.
 
 ## What Breaks When You Block All ICMP
 
 | ICMP Type | Effect of Blocking |
 |---|---|
 | Type 3 Code 4 (Fragmentation Needed) | Path MTU discovery fails → TCP sessions hang with large data |
-| Type 8 Echo Request | Ping monitoring fails, health checks stop working |
+| Type 8 Echo Request | Ping monitoring fails, ICMP-based health checks stop working |
 | Type 11 TTL Exceeded | Traceroute stops working for path diagnosis |
 | Type 0 Echo Reply | Responses to outbound pings are blocked |
 
@@ -50,9 +50,9 @@ iptables -A INPUT -p icmp -j DROP
 
 ```bash
 # /etc/nftables.conf
-table inet filter {
+table ip filter {
   chain input {
-    type filter hook input priority 0; policy drop;
+    type filter hook input priority 0; policy accept;
 
     # Allow essential ICMP
     icmp type { echo-reply, destination-unreachable, time-exceeded } accept
@@ -70,27 +70,28 @@ table inet filter {
 
 ```bash
 # After applying ICMP rules, verify PMTUD still works
-# Send a large packet with DF bit set to a remote server
-ping -s 1400 -M do -c 3 8.8.8.8
+# tracepath discovers the path MTU and reports PMTU changes
+tracepath 8.8.8.8
 
-# If you get "Frag needed" ICMP back - PMTUD works correctly
-# If the ping hangs/times out - you've blocked Type 3 Code 4
+# Look for "pmtu N" in the output. That confirms PMTUD feedback
+# is getting back to the host.
 
-# Check for PMTUD blocking
+# Check for PMTUD signals directly
 tcpdump -i eth0 -n 'icmp[0]=3 and icmp[1]=4'
-# You should see these packets if a remote router is sending them
+# You should see these packets when a router sends
+# "fragmentation needed" back to a sender
 ```
 
 ## Blocking ICMP on the OUTPUT Chain
 
 ```bash
-# Prevent your server from responding to pings (hide from scanners)
-# But still allow essential errors outbound
+# Prevent your server from replying to pings
+# Other outbound ICMP remains subject to your existing OUTPUT policy
 iptables -A OUTPUT -p icmp --icmp-type echo-reply -j DROP
 # Caution: this means pings to your server won't get replies
-# but TCP connections still work fine
+# but TCP connections still work normally
 ```
 
 ## Conclusion
 
-Never block all ICMP. The security benefit is minimal (the IP header is still visible to scanners regardless), and the operational cost is high - MTU black holes, broken health checks, and inability to use traceroute for diagnostics. Allow echo-request (rate-limited), echo-reply, fragmentation-needed, time-exceeded, and destination-unreachable. Selectively drop anything else.
+Never block all ICMP. The security benefit is minimal (the IP header is still visible to scanners regardless), and the operational cost is high - MTU black holes, broken ICMP-based health checks, and inability to use traceroute for diagnostics. Allow echo-request (rate-limited), echo-reply, fragmentation-needed, time-exceeded, and destination-unreachable. Selectively drop anything else.
