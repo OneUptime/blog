@@ -150,6 +150,10 @@ variable "environments" {
   }
 }
 
+variable "environment" {
+  type = string
+}
+
 # Access specific environment config
 locals {
   env_config = var.environments[var.environment]
@@ -195,9 +199,9 @@ variable "firewall_rules" {
   validation {
     condition = alltrue([
       for rule in var.firewall_rules :
-      contains(["tcp", "udp", "icmp", "-1"], rule.protocol)
+      contains(["tcp", "udp"], rule.protocol)
     ])
-    error_message = "Each firewall rule protocol must be tcp, udp, icmp, or -1 (all traffic)."
+    error_message = "Each firewall rule protocol must be tcp or udp."
   }
 
   validation {
