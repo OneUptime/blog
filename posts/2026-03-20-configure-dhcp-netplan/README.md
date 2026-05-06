@@ -8,7 +8,7 @@ Description: Configure DHCP-based IPv4 addressing using Netplan YAML on Ubuntu a
 
 ## Introduction
 
-Netplan enables DHCP with `dhcp4: true`. This is the simplest network configuration - the DHCP server assigns the IP address, gateway, and DNS. Additional DHCP options can be controlled via the `dhcp4-overrides` section.
+Netplan enables DHCP with `dhcp4: true`. This is the simplest network configuration - the DHCP server typically provides the IPv4 address, routes, and DNS settings. Additional DHCP options can be controlled via the `dhcp4-overrides` section.
 
 ## Basic DHCP Configuration
 
@@ -33,17 +33,20 @@ ip route show
 
 ## DHCP with Custom Overrides
 
+Some override keys are only supported with the `systemd-networkd` renderer, so this example sets it explicitly.
+
 ```yaml
 network:
   version: 2
+  renderer: networkd
   ethernets:
     eth0:
       dhcp4: true
+      # Use MAC as the DHCPv4 client identifier
+      dhcp-identifier: mac
       dhcp4-overrides:
         # Send a custom hostname to the DHCP server
         hostname: myserver
-        # Use MAC as client identifier
-        use-mac: true
         # Do not use DNS from DHCP
         use-dns: false
         # Do not install routes from DHCP
@@ -101,22 +104,25 @@ netplan apply
 netplan generate
 
 # Show DHCP lease details
+netplan ip leases eth0
+
+# On systems using systemd-networkd, show link status
 networkctl status eth0
-# Or
-cat /run/systemd/netif/leases/*
 ```
 
 ## DHCP4-Overrides Reference
 
 | Key | Default | Description |
 |---|---|---|
-| `use-dns` | true | Accept DNS from DHCP |
+| `use-dns` | true | Accept DNS from DHCP (`networkd` only) |
+| `use-ntp` | true | Accept NTP servers (`networkd` only) |
+| `send-hostname` | true | Send the local hostname to the DHCP server (`networkd` only) |
+| `use-hostname` | true | Accept the hostname from DHCP (`networkd` only) |
+| `use-mtu` | true | Accept the MTU from DHCP (`networkd` only) |
+| `hostname` | system hostname | Override the hostname sent to the DHCP server (`networkd` only) |
 | `use-routes` | true | Install routes from DHCP |
-| `use-ntp` | true | Accept NTP servers |
-| `hostname` | system hostname | Hostname sent to server |
-| `send-hostname` | true | Whether to send hostname |
-| `use-mac` | false | Use MAC as client identifier |
-| `route-metric` | 100 | Metric for DHCP-assigned routes |
+| `route-metric` | backend default | Metric for DHCP-assigned routes |
+| `use-domains` | unset | Accept DHCP-provided DNS search domains (`networkd` only) |
 
 ## Conclusion
 
