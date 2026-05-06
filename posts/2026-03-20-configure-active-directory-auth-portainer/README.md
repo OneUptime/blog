@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Active Directory, LDAP, Authentication, Window
+Tags: Portainer, Active Directory, LDAP, Authentication, Windows
 
 Description: Configure Portainer to authenticate users against Microsoft Active Directory using LDAP with the proper AD-specific settings.
 
@@ -28,13 +28,14 @@ New-ADUser `
   -Name "portainer-svc" `
   -UserPrincipalName "portainer-svc@corp.example.com" `
   -SamAccountName "portainer-svc" `
+  -Path "OU=Service Accounts,DC=corp,DC=example,DC=com" `
   -AccountPassword (ConvertTo-SecureString "StrongPassword123!" -AsPlainText -Force) `
   -PasswordNeverExpires $true `
   -CannotChangePassword $true `
   -Enabled $true `
   -Description "Portainer LDAP Service Account"
 
-# Grant read access to the Users OU
+# Ensure the service account has read access to the search base(s) Portainer will query
 # Portainer only needs read (list and search) permissions
 ```
 
@@ -55,10 +56,11 @@ curl -X PUT \
   -d '{
     "AuthenticationMethod": 2,
     "LDAPSettings": {
+      "ServerType": 2,
       "AnonymousMode": false,
       "ReaderDN": "CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com",
       "Password": "StrongPassword123!",
-      "URLs": ["ldaps://dc01.corp.example.com:636"],
+      "URLs": ["dc01.corp.example.com:636"],
       "TLSConfig": {
         "TLS": true,
         "TLSSkipVerify": false
@@ -95,9 +97,10 @@ curl -X PUT \
   -d '{
     "AuthenticationMethod": 2,
     "LDAPSettings": {
+      "ServerType": 2,
       "ReaderDN": "CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com",
       "Password": "StrongPassword123!",
-      "URLs": ["ldaps://dc01.corp.example.com:636"],
+      "URLs": ["dc01.corp.example.com:636"],
       "TLSConfig": {"TLS": true, "TLSSkipVerify": false},
       "SearchSettings": [{
         "BaseDN": "DC=corp,DC=example,DC=com",
@@ -107,8 +110,7 @@ curl -X PUT \
       "GroupSearchSettings": [{
         "GroupBaseDN": "OU=Portainer Groups,DC=corp,DC=example,DC=com",
         "GroupFilter": "(objectClass=group)",
-        "UserAttribute": "member",
-        "GroupAttribute": "cn"
+        "GroupAttribute": "member"
       }]
     }
   }' \
@@ -121,7 +123,7 @@ curl -X PUT \
 # Test AD LDAP bind from command line
 ldapsearch -H ldaps://dc01.corp.example.com:636 \
   -x \
-  -D "CORP\portainer-svc" \
+  -D "CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com" \
   -w "StrongPassword123!" \
   -b "DC=corp,DC=example,DC=com" \
   "(&(objectClass=user)(sAMAccountName=jsmith))" \
