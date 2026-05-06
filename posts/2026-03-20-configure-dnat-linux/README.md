@@ -8,7 +8,7 @@ Description: Learn how to configure Destination NAT (DNAT) on Linux using iptabl
 
 ## What Is DNAT?
 
-Destination NAT (DNAT) modifies the **destination IP address** (and optionally port) of incoming packets. It is applied in the PREROUTING chain, before routing decisions are made.
+Destination NAT (DNAT) modifies the **destination IP address** (and optionally port) of packets. It is commonly applied in the PREROUTING chain, before routing decisions are made. For locally-generated traffic, it can also be applied in the OUTPUT chain.
 
 **Use cases:**
 - Port forwarding to internal servers
@@ -27,8 +27,13 @@ echo 1 > /proc/sys/net/ipv4/ip_forward
 iptables -t nat -A PREROUTING -i eth1 -p tcp --dport 80 \
     -j DNAT --to-destination 192.168.1.10:80
 
-# Allow the forwarded traffic in the FORWARD chain
-iptables -A FORWARD -i eth1 -p tcp -d 192.168.1.10 --dport 80 -j ACCEPT
+# Allow new forwarded traffic to the internal server
+iptables -A FORWARD -i eth1 -o eth0 -p tcp -d 192.168.1.10 --dport 80 \
+    -m conntrack --ctstate NEW -j ACCEPT
+
+# Allow return traffic
+iptables -A FORWARD -i eth0 -o eth1 \
+    -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
 ## DNAT to a Different Port
@@ -38,7 +43,11 @@ iptables -A FORWARD -i eth1 -p tcp -d 192.168.1.10 --dport 80 -j ACCEPT
 iptables -t nat -A PREROUTING -i eth1 -p tcp --dport 2222 \
     -j DNAT --to-destination 192.168.1.20:22
 
-iptables -A FORWARD -i eth1 -p tcp -d 192.168.1.20 --dport 22 -j ACCEPT
+iptables -A FORWARD -i eth1 -o eth0 -p tcp -d 192.168.1.20 --dport 22 \
+    -m conntrack --ctstate NEW -j ACCEPT
+
+iptables -A FORWARD -i eth0 -o eth1 \
+    -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ```
 
 ## DNAT Based on Destination IP
@@ -71,7 +80,7 @@ iptables -t nat -A OUTPUT -p tcp --dport 80 \
 ## DNAT with nftables
 
 ```bash
-table inet nat {
+table ip nat {
     chain prerouting {
         type nat hook prerouting priority -100;
         
@@ -90,12 +99,12 @@ table inet nat {
 ## Transparent Proxy with DNAT
 
 ```bash
-# Redirect all HTTP traffic from LAN to local Squid proxy
+# Exclude a specific LAN host from the proxy
+iptables -t nat -A PREROUTING -i eth0 -s 192.168.1.50 -p tcp --dport 80 -j RETURN
+
+# Redirect all other HTTP traffic from LAN to local Squid proxy
 iptables -t nat -A PREROUTING -i eth0 -p tcp --dport 80 \
     -j DNAT --to-destination 192.168.1.1:3128
-
-# Exclude local traffic
-iptables -t nat -A PREROUTING -i eth0 -s 192.168.1.1 -p tcp --dport 80 -j RETURN
 ```
 
 ## Verifying DNAT Rules
@@ -109,13 +118,13 @@ nc -zv 203.0.113.1 80
 curl http://203.0.113.1
 
 # View active DNAT connections
-conntrack -L | grep DNAT
+conntrack -L --dst-nat
 ```
 
 ## Key Takeaways
 
-- DNAT modifies destination IP/port in PREROUTING before routing.
-- Always add a FORWARD rule to allow the DNAT'd traffic to pass.
+- DNAT usually modifies destination IP/port in PREROUTING before routing, and can also be used in OUTPUT for locally generated traffic.
+- If your FORWARD policy is restrictive, add a corresponding FORWARD rule to allow the DNAT'd traffic to pass.
 - nftables DNAT syntax: `dnat to IP:port` or `dnat to IP`.
 - DNAT in OUTPUT chain redirects locally generated traffic.
 
