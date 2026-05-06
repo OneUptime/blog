@@ -53,7 +53,7 @@ udp.dstport == 5000
 udp.length > 1400   # Large UDP packets
 
 # UDP checksum errors:
-udp.checksum_bad == true
+udp.checksum.bad
 
 # Combined filters:
 udp.port == 5000 and ip.addr == 10.20.0.5
@@ -68,12 +68,12 @@ icmp.type == 3 and icmp.code == 3
 ## Protocol Dissection for Known UDP Protocols
 
 ```text
-Wireshark automatically dissects these UDP protocols:
+Wireshark automatically dissects many UDP protocols, and can recognize RTP when signaling, heuristics, or Decode As make it identifiable:
 
 DNS (port 53):
   - filter: dns
   - Shows: query type, domain, response code
-  - Statistics → DNS to see response time distribution
+  - Statistics → DNS to inspect counts by opcode, response code, query type, and request-response timing
 
 DHCP (ports 67/68):
   - filter: dhcp or bootp
@@ -87,10 +87,10 @@ SNMP (port 161):
   - filter: snmp
   - Shows: community string, OID, value
 
-RTP (dynamic ports):
-  - Telephony → RTP → Show All Streams
+RTP (dynamic ports, often identified via signaling or Decode As):
+  - Telephony → RTP → RTP Streams
   - Shows: payload type, sequence numbers, timestamps
-  - Analyze → Expert Information for RTP issues
+  - Analyze → Expert Info for RTP-related warnings
 
 TFTP (port 69):
   - filter: tftp
@@ -144,12 +144,11 @@ tshark -r capture.pcap -T fields -e udp.length | sort -n | uniq -c
 # In Wireshark: right-click a UDP packet body → Export Packet Bytes
 
 # From tshark command line:
-# Export all UDP payloads to stdout (hex):
-tshark -r capture.pcap -T fields -e data.data 'udp and dst port 5000'
+# Export matching UDP payloads on destination port 5000 to stdout (hex):
+tshark -r capture.pcap -Y 'udp.dstport == 5000' -T fields -e @udp.payload
 
-# Save all UDP packets to separate files:
-tcpdump -r capture.pcap -w - 'udp port 5000' | \
-  tshark -r - -w /tmp/udp_5000.pcap
+# Save matching UDP packets to a separate capture file:
+tshark -r capture.pcap -Y 'udp.port == 5000' -w /tmp/udp_5000.pcap
 
 # Extract DNS query names from capture:
 tshark -r capture.pcap -Y 'dns.qry.type == 1' -T fields -e dns.qry.name | sort -u
@@ -157,4 +156,4 @@ tshark -r capture.pcap -Y 'dns.qry.type == 1' -T fields -e dns.qry.name | sort -
 
 ## Conclusion
 
-Wireshark's UDP analysis starts with a capture filter to limit data volume, then display filters to isolate specific flows. For known protocols like DNS, DHCP, and RTP, Wireshark decodes the payload automatically. For custom protocols, use "Decode As" to force the right dissector. Use `tshark` for command-line analysis and automation. The conversations/endpoints statistics window gives a quick overview of which UDP flows are using the most bandwidth.
+Wireshark's UDP analysis starts with a capture filter to limit data volume, then display filters to isolate specific flows. For known protocols like DNS and DHCP, Wireshark decodes the payload automatically. For RTP on dynamic ports or custom protocols, use signaling, heuristics, or "Decode As" to apply the right dissector. Use `tshark` for command-line analysis and automation. The conversations/endpoints statistics window gives a quick overview of which UDP flows are using the most bandwidth.
