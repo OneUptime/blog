@@ -4,55 +4,46 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the External provider in OpenTofu to manage External resources as code.
+Description: Learn how to configure and use the `external` provider in OpenTofu to query external programs as data sources.
 
 ## Introduction
 
-The External provider for OpenTofu enables managing External resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
+The `external` provider for OpenTofu allows an external program to participate in your configuration as a data source. This guide covers provider installation, passing input to the external program, and production best practices.
 
 ## Provider Installation
 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    external = {
+      source  = "hashicorp/external"
+      version = "~> 2.3.5"
     }
   }
+
   required_version = ">= 1.6.0"
 }
 ```
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The `external` provider does not define its own authentication settings. If the program you call needs credentials, pass them to that program securely, typically through environment variables:
 
 ```bash
-# Set provider credentials via environment variables
+# Optional: credentials consumed by your external program
 
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export EXTERNAL_API_TOKEN="your-api-token"
 ```
 
-```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
-}
-```
-
-## Example Resource
+## Example Data Source
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+data "external" "main" {
+  program = ["bash", "${path.module}/example-data-source.sh"]
 
-  tags = {
+  query = {
+    name        = var.name
     environment = var.environment
-    managed_by  = "opentofu"
   }
 }
 ```
@@ -67,16 +58,16 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "external_result" { value = data.external.main.result }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- If your external program needs credentials, pass them through environment variables or a secrets manager, never hardcode them in scripts or `.tf` files
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
-- Use separate provider configurations per environment using aliases or workspaces
+- Prefer a first-class provider when one exists, and keep external programs read-only because `external` exposes data sources rather than managed resources
 
 ## Conclusion
 
-Managing External resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
+Using the `external` provider in OpenTofu lets you bring read-only data from local scripts or programs into the same workflow as the rest of your configuration. Start with simple integrations, and move to a first-class provider when the integration grows beyond a small data-source use case.
