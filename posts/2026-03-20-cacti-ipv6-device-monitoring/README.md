@@ -8,103 +8,108 @@ Description: Configure Cacti network monitoring tool to poll and graph performan
 
 ---
 
-Cacti is a complete network graphing solution using RRDtool. Configuring Cacti to monitor IPv6 devices requires adding IPv6-addressed hosts and ensuring the PHP SNMP extension and Net-SNMP libraries support IPv6 polling.
+Cacti is a complete network graphing solution using RRDtool. Configuring Cacti to monitor IPv6 devices requires adding IPv6-addressed hosts and ensuring Net-SNMP supports IPv6 polling. For IPv6 devices, prefer Spine or the external Net-SNMP tools instead of relying on the PHP SNMP extension.
 
 ## Prerequisites for IPv6 SNMP Polling
 
 ```bash
-# Verify Net-SNMP supports IPv6
+# Install the Net-SNMP command-line tools if needed
+sudo apt install snmp -y
 
+# Verify Net-SNMP is installed
 snmpget --version
-# Should show "NET-SNMP version 5.x" with IPv6 support
 
 # Test SNMP over IPv6 from Cacti server
-snmpget -v2c -c public udp6:[2001:db8::device]:161 sysDescr.0
-
-# Install PHP SNMP extension
-sudo apt install php-snmp -y
-
-# Verify PHP SNMP works with IPv6
-php -r "echo snmpget('udp6:[2001:db8::device]', 'public', 'sysDescr.0');"
+snmpget -v2c -c public udp6:[2001:db8::10]:161 1.3.6.1.2.1.1.1.0
 ```
 
 ## Installing Cacti
 
 ```bash
 # Ubuntu/Debian
-sudo apt install cacti cacti-spine -y
+sudo apt install cacti cacti-spine snmp -y
 
 # Or manual install
-sudo apt install apache2 php php-snmp php-mysql \
-  mysql-server rrdtool -y
+sudo apt install apache2 php php-cli php-curl php-gd php-gmp \
+  php-intl php-ldap php-mbstring php-mysql php-xml php-zip \
+  mysql-server rrdtool snmp composer -y
 
 # Download Cacti
-wget https://www.cacti.net/downloads/cacti-1.2.25.tar.gz
-tar xf cacti-1.2.25.tar.gz
-sudo mv cacti-1.2.25 /var/www/html/cacti
+git clone -b 1.2.x https://github.com/Cacti/cacti.git
+sudo mv cacti /var/www/html/cacti
+
+# Install PHP dependencies
+cd /var/www/html/cacti
+composer install
 
 # Setup database
-mysql -u root -e "CREATE DATABASE cacti;"
+mysql -u root -e "CREATE DATABASE cacti CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -u root -e "CREATE USER 'cactiuser'@'localhost' IDENTIFIED BY 'cactiuser';"
+mysql -u root -e "GRANT ALL ON cacti.* TO 'cactiuser'@'localhost';"
+mysql -u root -e "GRANT SELECT ON mysql.time_zone_name TO 'cactiuser'@'localhost'; FLUSH PRIVILEGES;"
 mysql -u root cacti < /var/www/html/cacti/cacti.sql
 
 # Configure cacti
+sudo cp /var/www/html/cacti/include/config.php.dist /var/www/html/cacti/include/config.php
 sudo nano /var/www/html/cacti/include/config.php
 ```
 
 ## Adding IPv6 Devices to Cacti
 
-```sql
+```text
 Via Cacti Web Interface:
 1. Go to Management > Devices > Add
-2. In "Hostname" field, enter IPv6 address in brackets: [2001:db8::device]
+2. In "Hostname" field, enter IPv6 address in brackets: [2001:db8::10]
    Or use hostname with AAAA record: device.example.com
 3. Set SNMP Version (v2c or v3)
 4. Enter SNMP Community: public
 5. Select "Associated Template": Linux Host or applicable
 6. Click Create
 
-Important: Cacti stores the hostname as-is for SNMP polling
-PHP SNMP recognizes [IPv6] bracket notation for udp6 transport
+Important: Cacti's device form explicitly expects bracketed IPv6 literals in the Hostname field
+For reliable IPv6 polling, use Spine or the external Net-SNMP tools
 ```
 
 ## Cacti Configuration for IPv6 SNMP
 
-```php
-// /var/www/html/cacti/include/config.php
-// Ensure snmp libraries are configured
+```text
+In Cacti Web Interface:
 
-// If using custom SNMP path
-$config['snmp_timeout'] = 500;
-$config['snmp_retries'] = 3;
+1. Console > Settings > Paths
+   - Set the Net-SNMP binary paths if you use external SNMP tools
+   - Set the Spine binary path if you use Spine
 
-// PHP SNMP options
-// ini_set('snmp.oid_numeric_print', 1);
+2. Console > Settings > Poller
+   - Set Poller Type to Spine for IPv6 devices
+   - Adjust the default SNMP Timeout and Retries if needed
+
+3. On each device
+   - Set SNMP Version, Port, Timeout, and Retries as needed
+
+Note: SNMP timeout and retry defaults are Cacti settings stored in the database, not $config entries in include/config.php
 ```
 
 ```bash
 # Test Cacti can reach device over IPv6
 # From Cacti server:
-php -r "
-\$result = snmp2_get('[2001:db8::device]', 'public', 'sysDescr.0');
-var_dump(\$result);
-"
+snmpget -v2c -c public udp6:[2001:db8::10]:161 1.3.6.1.2.1.1.1.0
 ```
 
 ## Spine Poller for IPv6
 
-```bash
-# /etc/cacti/spine.conf - Spine poller configuration
+```ini
+# /etc/spine.conf - Spine poller configuration
 
-DB_Host     127.0.0.1
-DB_Database cacti
-DB_User     cactiuser
-DB_Pass     password
-DB_Port     3306
+DB_Host       localhost
+DB_Database   cacti
+DB_User       cactiuser
+DB_Pass       password
+DB_Port       3306
+```
 
-# Spine uses Net-SNMP which supports IPv6
-# No special IPv6 config needed - uses device hostname as stored
-# Ensure Net-SNMP is compiled with IPv6 support:
-snmpget --version 2>&1 | grep "IPv6"
+```text
+Spine uses Net-SNMP for SNMP transport. After configuring spine.conf, set the Spine binary path
+in Cacti and change Poller Type to Spine so IPv6 devices are polled by Spine instead of php-snmp.
 ```
 
 ## Creating IPv6-Specific Graphs
@@ -112,18 +117,11 @@ snmpget --version 2>&1 | grep "IPv6"
 ```text
 In Cacti Web Interface:
 
-1. Create Data Input Method:
-   - Input Type: SNMP
-   - OID: ipSystemStatsHCInReceives.ipv6
-
-2. Create Data Template for IPv6 traffic:
-   - Data Input: Your IPv6 SNMP input method
-   - Internal Data Source Name: ipv6_in_pkts
-
-3. Create Graph Template:
-   - Graph Template Items pointing to IPv6 data templates
-
-4. Associate with device
+1. Use the existing "SNMP - Generic OID Template"
+2. For the OID, enter: 1.3.6.1.2.1.4.31.1.1.4.2
+   - This is IP-MIB::ipSystemStatsHCInReceives for the ipv6(2) row
+3. Set the data source type to COUNTER if you want a rate graph
+4. Associate the graph with the device
 ```
 
 ## Troubleshooting IPv6 Polling in Cacti
@@ -132,23 +130,18 @@ In Cacti Web Interface:
 # Test SNMP directly from Cacti server
 snmpget -v2c -c public \
   -t 2 \
-  udp6:[2001:db8::device]:161 \
+  udp6:[2001:db8::10]:161 \
   1.3.6.1.2.1.1.1.0
 
 # Check Cacti log for SNMP errors
+# For a source installation under /var/www/html/cacti:
 sudo tail -f /var/www/html/cacti/log/cacti.log | grep -i "error\|snmp"
 
-# Test PHP SNMP
-php << 'EOF'
-$host = "[2001:db8::device]";
-$community = "public";
-$oid = "1.3.6.1.2.1.1.1.0";
-$result = snmp2_get($host, $community, $oid);
-echo $result . "\n";
-EOF
+# If using Spine, verify the Spine binary is installed
+spine --version
 
-# Check firewall allows SNMP from Cacti server
-sudo ip6tables -A INPUT -p udp -s 2001:db8::cacti --dport 161 -j ACCEPT
+# On the monitored device or its firewall, allow UDP/161 from the Cacti server
+sudo ip6tables -A INPUT -p udp -s 2001:db8::100 --dport 161 -j ACCEPT
 ```
 
-Cacti monitors IPv6-addressed devices by accepting IPv6 addresses in bracket notation in the hostname field, delegating actual IPv6 SNMP transport to the underlying Net-SNMP and PHP SNMP libraries which handle the `udp6` transport automatically.
+Cacti monitors IPv6-addressed devices by accepting bracketed IPv6 literals or hostnames with AAAA records in the device hostname field. For reliable IPv6 polling, use Spine or the external Net-SNMP tools so the underlying Net-SNMP stack handles the IPv6 SNMP transport.
