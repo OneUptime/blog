@@ -27,11 +27,11 @@ Always check the resource documentation for the import format:
 tofu import aws_iam_role_policy_attachment.example \
   "my-role/arn:aws:iam::123456789012:policy/MyPolicy"
 
-# IAM User Group Membership: user_name/group_name
+# IAM User Group Membership: user_name/group_name1/group_name2
 tofu import aws_iam_user_group_membership.example \
   "john.doe/developers"
 
-# IAM Policy Document (inline): role_name:policy_name
+# IAM Role Policy (inline): role_name:policy_name
 tofu import aws_iam_role_policy.example \
   "my-role:MyInlinePolicy"
 ```
@@ -42,20 +42,18 @@ tofu import aws_iam_role_policy.example \
 # DynamoDB table: just the table name
 tofu import aws_dynamodb_table.example my-table
 
-# DynamoDB Table Item: table_name/hash_key_value (with range key)
-# table_name/hash_key_value/range_key_value
-tofu import aws_dynamodb_table_item.example \
-  "my-table/HASH_VALUE/RANGE_VALUE"
+# DynamoDB table items cannot be imported
+# aws_dynamodb_table_item does not support import
 ```
 
 ## Route53
 
 ```bash
-# Route53 Record: zone_id/name/type
+# Route53 Record: zone_id_record_name_type[_set_identifier]
 tofu import aws_route53_record.example \
-  "ZXXXXXXXXXXX/_api.example.com/CNAME"
+  "ZXXXXXXXXXXX__api.example.com_CNAME"
 
-# Route53 Zone Association: zone_id:vpc_id
+# Route53 VPC Association Authorization: zone_id:vpc_id
 tofu import aws_route53_vpc_association_authorization.example \
   "ZXXXXXXXXXXX:vpc-0abc123def456789"
 ```
@@ -63,11 +61,11 @@ tofu import aws_route53_vpc_association_authorization.example \
 ## Security Group Rules
 
 ```bash
-# Security Group Rule: sg_id_rule_type_protocol_from_port_to_port_source
+# Security Group Rule: security_group_id_type_protocol_from_port_to_port_source
 tofu import aws_security_group_rule.example \
-  "sgrule-0abc1234_ingress_tcp_443_443_0.0.0.0/0"
+  "sg-0abc1234_ingress_tcp_443_443_0.0.0.0/0"
 
-# Note: the ID is the sgrule-xxx ID visible in the AWS console
+# Note: aws_security_group_rule uses a composite import ID, not the sgrule-xxx rule ID
 ```
 
 ## ECS
@@ -81,7 +79,7 @@ tofu import aws_ecs_task_definition.example \
   "arn:aws:ecs:us-east-1:123456789012:task-definition/my-task:5"
 ```
 
-## Using Import Blocks (OpenTofu 1.5+)
+## Using Import Blocks (OpenTofu 1.6+)
 
 ```hcl
 # imports.tf – loopable import blocks (OpenTofu 1.7+)
@@ -119,9 +117,9 @@ tofu import aws_iam_role_policy_attachment.example \
   "my-role/arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
 
 # Verify the import was successful
-tofu plan  # should show no changes
+tofu plan  # should show no changes if the configuration matches the live resource
 ```
 
 ## Summary
 
-Complex import IDs in OpenTofu follow provider-specific conventions - composite keys separated by `/`, `:`, or `_`. The resource's documentation import section is the authoritative reference. Using import blocks with `for_each` (OpenTofu 1.7+) simplifies bulk imports. Always run `tofu plan` after importing to verify the state matches the live resource configuration.
+Complex import IDs in OpenTofu follow provider-specific conventions - some use composite IDs separated by `/`, `:`, or `_`, and some resources cannot be imported at all. The resource's documentation import section is the authoritative reference. Using import blocks with `for_each` (OpenTofu 1.7+) simplifies bulk imports. Always run `tofu plan` after importing to verify the state matches the live resource configuration.
