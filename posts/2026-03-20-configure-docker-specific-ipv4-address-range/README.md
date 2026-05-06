@@ -8,7 +8,7 @@ Description: Configure Docker to allocate container IPs from a specific IPv4 add
 
 ## Introduction
 
-Docker by default selects subnets from `172.17.0.0/16` (default bridge) and `172.18.0.0/16`–`172.31.0.0/16` (custom networks). In environments where these overlap with VPN or corporate ranges, you need to redirect Docker to a safe, non-conflicting address range.
+Docker on Linux creates a default bridge network automatically, typically using `172.17.0.0/16`, and allocates user-defined bridge networks from built-in default address pools that include `172.17.0.0/16` through `172.31.0.0/16` and `192.168.0.0/16` subdivisions. In environments where these overlap with VPN or corporate ranges, you need to redirect Docker to a safe, non-conflicting address range.
 
 ## Configure /etc/docker/daemon.json
 
@@ -29,7 +29,7 @@ sudo nano /etc/docker/daemon.json
 ```
 
 - `bip`: defines the IP and subnet for the default `docker0` bridge
-- `default-address-pools`: defines the parent range and subnet size for new networks
+- `default-address-pools`: defines the parent range and subnet size for new local bridge networks
 
 ```bash
 sudo systemctl restart docker
@@ -40,12 +40,12 @@ sudo systemctl restart docker
 ```bash
 # Check docker0 bridge uses the new range
 
-ip addr show docker0 | grep inet
+ip -4 addr show docker0 | grep 'inet '
 
 # Create a test network and confirm it gets an address from the pool
 docker network create test-range
 docker network inspect test-range --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
-# Should show 10.200.1.0/24 (or the next available /24 in the pool)
+# Should show a /24 from 10.200.0.0/16, for example 10.200.1.0/24
 
 # Cleanup
 docker network rm test-range
@@ -69,7 +69,7 @@ docker network rm test-range
 }
 ```
 
-Docker uses the first pool until it is exhausted, then moves to the second.
+Docker allocates subnets from the configured pools as needed. Keep the pools non-overlapping.
 
 ## Choosing Safe Non-Conflicting Ranges
 
@@ -78,25 +78,25 @@ Run this script to find what ranges are in use on the host:
 ```bash
 #!/bin/bash
 echo "Currently in-use network ranges:"
-ip route show | awk '{print $1}' | grep -v "^default\|^via\|^dev\|^cache"
+ip -4 route show | awk '/^[0-9]/{print $1}'
 ```
 
-Pick a range not in the output. Common safe choices:
-- `10.200.0.0/16` (usually unused in enterprise)
-- `100.64.0.0/10` (IANA CGNAT range, typically unused)
-- `192.168.200.0/24` (if your LAN uses 192.168.1.x)
+Pick a private RFC 1918 range not in the output. Example choices to evaluate:
+- `10.200.0.0/16`
+- `10.201.0.0/16`
+- `192.168.200.0/24`
 
-## Checking for Conflicts Before Applying
+## Checking for Existing Routes Before Applying
 
 ```bash
-# Check if your chosen subnet conflicts with any existing route
+# Quick check whether the chosen prefix is already present in the route table
 ip route show | grep "10.200.0.0"
-# No output = no conflict
+# No output = no exact matching route
 ```
 
 ## Applying to Docker Compose Projects
 
-Custom networks defined without explicit subnets in Docker Compose will now use the configured address pools:
+Custom bridge networks defined without explicit subnets in Docker Compose will now use the configured address pools:
 
 ```yaml
 networks:
