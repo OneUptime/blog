@@ -22,8 +22,10 @@ dnf install -y bind bind-utils
 
 # Verify version
 named -v
-# BIND 9.18.x
+# Output varies by distribution release
 ```
+
+The configuration examples below use Debian/Ubuntu file paths. On RHEL/CentOS, place the same directives in `/etc/named.conf`, store zone files under `/var/named/`, and use the `named` service name.
 
 ## Step 1: Configure named.conf for IPv6
 
@@ -62,7 +64,7 @@ options {
 zone "example.com" {
     type master;
     file "/etc/bind/zones/db.example.com";
-    allow-transfer { 2001:db8:1::53; };  # IPv6 secondary
+    allow-transfer { "secondary-v6"; };  # IPv6 secondary
 };
 ```
 
@@ -106,6 +108,7 @@ mail    IN  AAAA    2001:db8::20
 
 ```nginx
 # /etc/bind/named.conf.local
+# Reverse zone for 2001:db8::/64
 
 zone "0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa" {
     type master;
@@ -122,28 +125,21 @@ $TTL 3600
 @   IN  NS  ns1.example.com.
 @   IN  NS  ns2.example.com.
 
-; PTR records for 2001:db8::1 through ::20
+; PTR records within 2001:db8::/64
 1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0  IN PTR ns1.example.com.
 2.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0  IN PTR ns2.example.com.
 0.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0  IN PTR www.example.com.
 0.2.0.0.0.0.0.0.0.0.0.0.0.0.0.0  IN PTR mail.example.com.
 ```
 
-## Step 4: ACL for IPv6 Clients
+## Step 4: ACL for an IPv6 Secondary
 
 ```nginx
-# /etc/bind/named.conf.options
+# /etc/bind/named.conf.local or another included file
+# Define this above any zone blocks that reference "secondary-v6".
 
-acl "trusted-v6" {
-    2001:db8::/32;
-    ::1;
-    localnets;
-};
-
-options {
-    allow-query     { any; };
-    allow-recursion { "trusted-v6"; };
-    allow-transfer  { 2001:db8:1::53; };
+acl "secondary-v6" {
+    2001:db8:1::53;
 };
 ```
 
@@ -159,28 +155,28 @@ named-checkzone 0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa \
     /etc/bind/zones/db.2001.db8.rev
 
 # Reload BIND
-systemctl reload bind9
+systemctl reload bind9   # Debian/Ubuntu
+systemctl reload named   # RHEL/CentOS
 
 # Test AAAA resolution over IPv6 transport
-dig -6 AAAA www.example.com @2001:db8::1
-dig AAAA www.example.com @2001:db8::1
+dig -6 @2001:db8::1 www.example.com AAAA
+dig @2001:db8::1 www.example.com AAAA
 
 # Test PTR
-dig -x 2001:db8::10 @2001:db8::1
+dig @2001:db8::1 -x 2001:db8::10
 ```
 
 ## Firewall Rules
 
 ```bash
-# Allow DNS over IPv6
+# Allow authoritative DNS over IPv6
 ip6tables -A INPUT -p udp --dport 53 -j ACCEPT
 ip6tables -A INPUT -p tcp --dport 53 -j ACCEPT
 
-# Allow zone transfers from secondary only
-ip6tables -A INPUT -s 2001:db8:1::53 -p tcp --dport 53 -j ACCEPT
-ip6tables -A INPUT -p tcp --dport 53 -j DROP
+# Restrict zone transfers in BIND with allow-transfer; AXFR/IXFR use TCP/53,
+# but regular DNS responses may also need TCP/53.
 ```
 
 ## Conclusion
 
-BIND9 authoritative server for IPv6 requires `listen-on-v6 { any; }`, AAAA records in forward zones, and ip6.arpa reverse zones. Use `named-checkconf` and `named-checkzone` before every reload. Monitor BIND with OneUptime to alert on zone transfer failures and query latency spikes.
+BIND9 authoritative server for IPv6 requires IPv6 listeners, AAAA records in forward zones, and ip6.arpa reverse zones. Use `named-checkconf` and `named-checkzone` before every reload. Monitor BIND with OneUptime to alert on zone transfer failures and query latency spikes.
