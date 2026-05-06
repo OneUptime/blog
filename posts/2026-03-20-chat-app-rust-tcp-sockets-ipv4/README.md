@@ -56,7 +56,7 @@ async fn handle_chat_client(
     let _ = tx.send(join_msg);
 
     // Ask for username
-    let _ = writer.write_all(b"Enter username: ").await;
+    let _ = writer.write_all(b"Enter username:\n").await;
     let mut username = String::new();
     let _ = reader.read_line(&mut username).await;
     let username = username.trim().to_string();
@@ -68,7 +68,7 @@ async fn handle_chat_client(
     // Task 1: Read messages from this client and broadcast them
     let tx_clone = tx.clone();
     let username_clone = username.clone();
-    let read_task = tokio::spawn(async move {
+    let mut read_task = tokio::spawn(async move {
         let mut line = String::new();
         loop {
             line.clear();
@@ -85,7 +85,7 @@ async fn handle_chat_client(
     });
 
     // Task 2: Receive broadcast messages and write to this client
-    let write_task = tokio::spawn(async move {
+    let mut write_task = tokio::spawn(async move {
         loop {
             match rx.recv().await {
                 Ok(msg) => {
@@ -101,10 +101,10 @@ async fn handle_chat_client(
         }
     });
 
-    // Wait for either task to finish (client disconnected)
+    // Wait for either task to finish, then stop the other one
     tokio::select! {
-        _ = read_task => {}
-        _ = write_task => {}
+        _ = &mut read_task => write_task.abort(),
+        _ = &mut write_task => read_task.abort(),
     }
 
     let leave_msg = format!("[Server] {} left the chat\n", username);
@@ -156,4 +156,4 @@ async fn main() -> std::io::Result<()> {
 
 ## Conclusion
 
-A Tokio-based chat server uses `broadcast::channel` to distribute messages to all connected clients simultaneously. Each client gets two tasks: one reads from the socket and sends to the channel, the other receives from the channel and writes to the socket. `tokio::select!` waits for either task to complete (disconnect detection). This pattern scales to thousands of concurrent chat users on a single thread.
+A Tokio-based chat server uses `broadcast::channel` to distribute messages to all connected clients simultaneously. Each client gets two tasks: one reads from the socket and sends to the channel, the other receives from the channel and writes to the socket. `tokio::select!` waits for either task to complete, and the remaining task is aborted to clean up the connection. This pattern scales to many concurrent chat users on Tokio's async runtime.
