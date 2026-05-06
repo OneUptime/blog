@@ -15,10 +15,10 @@ OpenTofu provisioners like `remote-exec` are explicitly discouraged by the OpenT
 ## Why Avoid Provisioners
 
 Problems with `remote-exec`:
-- Requires SSH access at provisioning time
+- Requires network access and SSH/WinRM connectivity at provisioning time
 - Failures leave resources in a tainted state
 - Hard to reproduce and debug
-- Breaks when instances are in private subnets
+- Requires extra networking or bastion access for instances in private subnets
 
 ---
 
@@ -29,7 +29,7 @@ resource "aws_instance" "web" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.micro"
 
-  user_data = base64encode(<<-EOF
+  user_data = <<-EOF
     #!/bin/bash
     set -e
 
@@ -37,13 +37,12 @@ resource "aws_instance" "web" {
     yum update -y
 
     # Install and configure nginx
-    amazon-linux-extras install nginx1 -y
+    yum install -y nginx
     systemctl enable --now nginx
 
     # Write a custom index page
     echo "<h1>Deployed by cloud-init</h1>" > /usr/share/nginx/html/index.html
   EOF
-  )
 
   tags = {
     Name = "web-server"
@@ -56,11 +55,10 @@ resource "aws_instance" "web" {
 ## cloud-init YAML Format
 
 ```hcl
-user_data = base64encode(<<-EOF
+user_data = <<-EOF
   #cloud-config
   packages:
     - nginx
-    - htop
     - git
 
   write_files:
@@ -75,7 +73,6 @@ user_data = base64encode(<<-EOF
     - systemctl enable --now nginx
     - echo "Bootstrap complete" >> /var/log/cloud-init-custom.log
 EOF
-)
 ```
 
 ---
@@ -90,16 +87,17 @@ APP_ENV="${app_env}"
 DB_HOST="${db_host}"
 
 yum install -y nginx
+mkdir -p /etc/app
 echo "DB=${DB_HOST}" > /etc/app/config.env
 systemctl enable --now nginx
 ```
 
 ```hcl
 resource "aws_instance" "app" {
-  user_data = base64encode(templatefile("templates/user_data.sh.tftpl", {
+  user_data = templatefile("templates/user_data.sh.tftpl", {
     app_env = var.environment
     db_host = aws_db_instance.main.endpoint
-  }))
+  })
 }
 ```
 
@@ -118,4 +116,4 @@ sudo cloud-init status --long
 
 ## Summary
 
-Replace OpenTofu `remote-exec` provisioners with `user_data` containing either a shell script (starting with `#!/bin/bash`) or cloud-config YAML (starting with `#cloud-config`). Use `templatefile()` to inject dynamic values. Verify execution by checking `/var/log/cloud-init-output.log` on the instance. This approach is idempotent, works in private subnets, and doesn't require SSH at provisioning time.
+Replace OpenTofu `remote-exec` provisioners with `user_data` containing either a shell script (starting with `#!/bin/bash`) or cloud-config YAML (starting with `#cloud-config`). Use `templatefile()` to inject dynamic values. Verify execution by checking `/var/log/cloud-init-output.log` on the instance. This approach runs during instance boot, works in private subnets, and doesn't require SSH at provisioning time.
