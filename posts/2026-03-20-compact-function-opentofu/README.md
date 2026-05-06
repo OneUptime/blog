@@ -54,7 +54,7 @@ variable "admin_role_arn" {
 }
 
 locals {
-  base_roles = ["arn:aws:iam::aws:policy/ReadOnlyAccess"]
+  base_roles = ["arn:aws:iam::123456789012:role/ReadOnlyRole"]
 
   # Conditionally include optional roles
   all_roles = compact(concat(
@@ -62,8 +62,8 @@ locals {
     [var.extra_role_arn],      # "" if not set
     [var.admin_role_arn],      # "" if not set
   ))
-  # If extra_role_arn = "" and admin_role_arn = "arn:...:AdminRole"
-  # Result: ["arn:...ReadOnly", "arn:...AdminRole"]
+  # If extra_role_arn = "" and admin_role_arn = "arn:aws:iam::123456789012:role/AdminRole"
+  # Result: ["arn:aws:iam::123456789012:role/ReadOnlyRole", "arn:aws:iam::123456789012:role/AdminRole"]
 }
 ```
 
