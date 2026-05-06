@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Volumes, Backup, Storage
 
-Description: Create backups of Docker volume data through Portainer for data protection and disaster recovery.
+Description: Manage Docker volumes in Portainer and back up their data with Docker CLI for data protection and disaster recovery.
 
 ---
 
-Docker volumes provide persistent storage for containers. Portainer's Volumes section gives you a complete UI for managing named volumes, bind mounts, and external storage backends.
+Docker volumes provide persistent storage for containers. Portainer's Volumes section gives you a UI for managing named volumes, including NFS and CIFS-backed volumes, while bind mounts are configured when you create or edit a container.
 
 ## Navigate to Volumes in Portainer
 
@@ -75,7 +75,7 @@ docker run -d \
   myapp:latest
 ```
 
-## Back Up a Volume
+## Back Up a Volume with Docker CLI
 
 ```bash
 # Backup volume data to a tar archive
@@ -93,7 +93,7 @@ docker run --rm \
 docker volume ls -f dangling=true
 
 # Remove all unused volumes (with confirmation prompt)
-docker volume prune
+docker volume prune -a
 
 # Check volume disk usage
 docker system df -v
