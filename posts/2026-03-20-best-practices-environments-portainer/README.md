@@ -48,62 +48,63 @@ portainer-configs/
 ```
 
 Connect stacks to Git repositories in Portainer:
-1. Go to **Stacks** > **Add Stack**
-2. Select **Repository** as the deployment method
+1. Go to **Stacks** > **Add stack**
+2. Select **Git repository** as the deployment method
 3. Configure your Git repository URL and branch
-4. Enable **Auto Update** for GitOps workflows
+4. Enable **GitOps updates** for GitOps workflows
 
 ## Practice 3: Implement Least-Privilege Access
 
-Design access control with minimum required permissions:
+Design access control with minimum required permissions. In Portainer Business Edition, map teams to the built-in roles:
 
 ```yaml
-# Role hierarchy for Portainer environments
+# Built-in Portainer roles for Docker environments
 Roles:
-  viewer:
-    - View containers and stacks
-    - Access logs
-    - No deployments
-  
-  developer:
-    - Deploy to dev/staging
-    - Manage stacks in assigned environments
-    - Create/delete containers
-  
-  operator:
-    - All developer permissions
-    - Deploy to production (with approval)
-    - Manage volumes and networks
-  
-  admin:
-    - Full access
+  "Read-Only User":
+    - View entitled resources
+    - No deployments or changes
+
+  "Standard User":
+    - Deploy and manage the resources they own
+    - Work within assigned environments
+
+  Operator:
+    - Update, redeploy, start, and stop existing resources
+    - Access logs and container consoles
+    - Cannot create or delete resources
+
+  "Environment Administrator":
+    - Full access within an assigned environment
+    - Cannot change Portainer settings or underlying host infrastructure
+
+  Administrator:
+    - Full global access
     - User management
     - Environment configuration
 ```
 
 ## Practice 4: Use Environment Variables for Configuration
 
-Never hardcode sensitive values in stack files:
+Use environment variables for non-sensitive settings, and use secrets for sensitive values:
 
 ```yaml
-# GOOD: Use environment variables
-version: "3.8"
+# GOOD: Use environment variables for non-sensitive settings
 services:
   app:
     image: my-app:latest
     environment:
-      - DB_PASSWORD=${DB_PASSWORD}
-      - API_KEY=${API_KEY}
-      - DATABASE_URL=${DATABASE_URL}
+      - APP_ENV=${APP_ENV}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - APP_PORT=${APP_PORT}
 ```
 
 ```yaml
-# BAD: Hardcoded values
+# BAD: Hardcoded secrets
 services:
   app:
     environment:
-      - DB_PASSWORD=mysecretpassword  # Never do this
-      - API_KEY=sk-1234567890         # Security risk
+      - DB_PASSWORD=mysecretpassword  # Use a secret instead
+      - API_KEY=sk-1234567890         # Use a secret instead
 ```
 
 ## Practice 5: Implement Health Checks
@@ -132,7 +133,7 @@ services:
 
 ## Practice 6: Set Resource Limits
 
-Always set resource limits to prevent noisy neighbor issues:
+For Compose deployments that support the `deploy` section, set resource limits to prevent noisy neighbor issues:
 
 ```yaml
 services:
@@ -150,7 +151,7 @@ services:
 
 ## Practice 7: Enable Logging Best Practices
 
-Configure structured logging for all services:
+Configure container log rotation for all services:
 
 ```yaml
 services:
@@ -161,7 +162,6 @@ services:
       options:
         max-size: "100m"     # Rotate at 100MB
         max-file: "5"        # Keep 5 log files
-        tag: "{{.Name}}/{{.ID}}"
 ```
 
 ## Practice 8: Regular Audits and Reviews
@@ -172,19 +172,19 @@ Schedule regular reviews of your Portainer setup:
 #!/bin/bash
 # audit.sh - Run monthly to review Portainer configurations
 
-echo "=== Portainer Audit Report ==="
-echo "Date: Thu Mar 19 23:10:43 GMT 2026"
+printf '=== Portainer Audit Report ===\n'
+printf 'Date: %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-echo "\n--- Unused Volumes ---"
-docker volume ls -qf dangling=true
+printf '\n--- Unused Volumes ---\n'
+docker volume ls -q --filter dangling=true
 
-echo "\n--- Stopped Containers ---"
+printf '\n--- Stopped Containers ---\n'
 docker ps -a --filter status=exited
 
-echo "\n--- Images without containers ---"
-docker images -qf dangling=true
+printf '\n--- Dangling Images ---\n'
+docker image ls -q --filter dangling=true
 
-echo "\n--- Large volumes ---"
+printf '\n--- Disk Usage Details ---\n'
 docker system df -v
 ```
 
@@ -196,17 +196,29 @@ Protect your Portainer management interface:
 # Portainer with security hardening
 services:
   portainer:
-    image: portainer/portainer-ee:latest
+    image: portainer/portainer-ce:sts
     command:
-      - --ssl                              # Force HTTPS
+      - --http-disabled                    # Disable HTTP and serve only on HTTPS
       - --sslcert=/certs/portainer.crt
       - --sslkey=/certs/portainer.key
       - --admin-password-file=/run/secrets/portainer-password
       - --hide-label=internal-only=true   # Hide internal containers
+    ports:
+      - "9443:9443"
+      - "8000:8000"
     secrets:
       - portainer-password
     volumes:
-      - portainer-certs:/certs
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer-data:/data
+      - ./certs:/certs:ro
+
+secrets:
+  portainer-password:
+    file: ./portainer-password.txt
+
+volumes:
+  portainer-data:
 ```
 
 ## Practice 10: Document Everything
