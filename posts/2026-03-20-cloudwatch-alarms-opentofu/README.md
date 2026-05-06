@@ -8,7 +8,7 @@ Description: Learn how to create CloudWatch metric alarms in AWS using OpenTofu 
 
 ---
 
-CloudWatch alarms watch a single metric over a time period and perform actions when the metric crosses a threshold. With OpenTofu, you can define your entire alerting strategy as code, ensuring every environment has consistent monitoring.
+CloudWatch metric alarms watch a single metric over a time period and perform actions when the metric crosses a threshold. With OpenTofu, you can define your entire alerting strategy as code, ensuring every environment has consistent monitoring.
 
 ## Creating a Basic CPU Utilization Alarm
 
@@ -69,7 +69,7 @@ When you have multiple services, use `for_each` to create alarms without repeati
 ```hcl
 # multi_alarm.tf
 variable "services" {
-  description = "Map of service names to their ECS service ARNs"
+  description = "Map of service names to ECS cluster/service details and alarm thresholds"
   type = map(object({
     cluster_name = string
     service_name = string
@@ -127,14 +127,14 @@ Composite alarms combine multiple alarms with AND/OR logic to reduce alert noise
 
 ```hcl
 # composite_alarm.tf
-# Only page on-call if BOTH CPU AND memory are high simultaneously
+# Only trigger a combined alert if BOTH CPU AND memory are high simultaneously
 resource "aws_cloudwatch_composite_alarm" "app_overloaded" {
   alarm_name = "app-overloaded"
   alarm_description = "Trigger only when both CPU and memory are high - indicates genuine overload"
 
   alarm_rule = "ALARM(${aws_cloudwatch_metric_alarm.high_cpu.alarm_name}) AND ALARM(${aws_cloudwatch_metric_alarm.ecs_memory["app"].alarm_name})"
 
-  alarm_actions = [aws_sns_topic.pagerduty.arn]
+  alarm_actions = [aws_sns_topic.alerts.arn]
 }
 ```
 
@@ -163,7 +163,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_connection_count" {
 
 ## Best Practices
 
-- Set `evaluation_periods` to at least 2 to avoid false positives from transient spikes.
+- Consider setting `evaluation_periods` to at least 2 for metrics prone to transient spikes, or use `datapoints_to_alarm` for M out of N alarms.
 - Always set both `alarm_actions` and `ok_actions` so you know when an alarm resolves.
 - Use `treat_missing_data = "notBreaching"` for metrics that may have gaps (like Lambda invocations).
 - Tag all alarms with environment and team labels so they're easy to filter in the CloudWatch console.
