@@ -57,7 +57,7 @@ zone "internal.example.com" {
 zone "partner.example.com" {
     type forward;
     forwarders {
-        2001:db8:partner::53;
+        2001:db8:100::53;
     };
     forward only;
 };
@@ -92,18 +92,18 @@ forward-zone:
     # IPv4 fallback forwarders
     forward-addr: 8.8.8.8
     forward-addr: 1.1.1.1
-    # Maintain DNSSEC validation even when forwarding
+    # Use plain DNS transport to upstreams
     forward-tls-upstream: no  # set yes for DNS-over-TLS
 ```
 
 ### Stub Zone for Internal Domains
 
 ```yaml
-# Forward internal zone to internal authoritative server
+# Resolve internal zone via an internal authoritative server
 stub-zone:
     name: "internal.example.com"
-    stub-addr: 192.168.1.53      # internal resolver IPv4
-    stub-addr: 2001:db8::53      # internal resolver IPv6
+    stub-addr: 192.168.1.53      # internal authoritative DNS IPv4
+    stub-addr: 2001:db8::53      # internal authoritative DNS IPv6
     stub-prime: no
 ```
 
@@ -115,7 +115,7 @@ stub-zone:
 # Forward everything to upstream resolvers
 .:53 {
     # Accept queries from any client (including IPv6)
-    # CoreDNS listens on :: by default
+    # CoreDNS binds to wildcard addresses by default
 
     # Forward to upstream resolvers
     forward . 8.8.8.8 8.8.4.4 [2001:4860:4860::8888] [2001:4860:4860::8844] {
@@ -144,21 +144,16 @@ internal.example.com:53 {
 dig AAAA google.com @::1
 
 # Check if the resolver uses IPv6 for upstream queries
-# Enable logging in BIND temporarily
-rndc querylog on
-tail -f /var/log/named/queries.log &
+# On the resolver host, capture traffic to an IPv6 forwarder in another terminal
+sudo tcpdump -ni any 'port 53 and host 2001:4860:4860::8888'
 
-# Make a query
+# Make a query through the local resolver for a name that is not already cached
 dig AAAA ipv6.google.com @127.0.0.1
 
-# Kill the log tail
-kill %1
-rndc querylog off
-
-# For Unbound: check verbosity output
-unbound-control verbosity 3
-dig AAAA google.com @127.0.0.1
-# Look for outbound queries with IPv6 source addresses
+# For Unbound with remote control enabled: check verbosity output
+sudo unbound-control verbosity 3
+dig AAAA ipv6.google.com @127.0.0.1
+# Look for outbound queries to the configured IPv6 forwarder addresses
 ```
 
 ## Verifying Forwarder Reachability
@@ -166,7 +161,7 @@ dig AAAA google.com @127.0.0.1
 Before configuring a forwarder, verify it's reachable:
 
 ```bash
-# Test UDP DNS over IPv6 to Google's IPv6 resolver
+# Test DNS reachability over IPv6 to Google's IPv6 resolver
 dig AAAA google.com @2001:4860:4860::8888
 
 # Test Cloudflare's IPv6 resolver
@@ -175,10 +170,10 @@ dig AAAA google.com @2606:4700:4700::1111
 # Test latency to IPv6 forwarders
 for FWD in "2001:4860:4860::8888" "2606:4700:4700::1111" "2620:fe::fe"; do
     echo -n "$FWD: "
-    ping6 -c 3 $FWD 2>/dev/null | grep avg | awk -F'/' '{print $5 "ms"}'
+    ping -6 -c 3 "$FWD" 2>/dev/null | grep avg | awk -F'/' '{print $5 "ms"}'
 done
 ```
 
 ## Summary
 
-Configure DNS forwarding for IPv6 by listing IPv6 forwarder addresses alongside IPv4 fallbacks in BIND's `forwarders {}` block, Unbound's `forward-zone`, or CoreDNS's `forward` directive. Use both IPv4 and IPv6 forwarders for resilience. Test with `dig @::1` to verify client-facing IPv6 acceptance and check resolver logs to confirm it uses IPv6 for upstream queries.
+Configure DNS forwarding for IPv6 by listing IPv6 forwarder addresses alongside IPv4 fallbacks in BIND's `forwarders {}` block, Unbound's `forward-zone`, or CoreDNS's `forward` directive. Use both IPv4 and IPv6 forwarders for resilience. Test with `dig @::1` to verify client-facing IPv6 acceptance and use resolver logs or packet capture to confirm it uses IPv6 for upstream queries.
