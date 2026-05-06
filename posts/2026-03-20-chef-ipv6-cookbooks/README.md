@@ -4,29 +4,31 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Chef, IPv6, Cookbook, Supermarket, Configuration Management, Automation
 
-Description: A guide to using Chef Supermarket cookbooks for IPv6 configuration, including the sysctl, firewall, and network cookbooks for standardized IPv6 deployment.
+Description: A guide to using Chef Infra resources and Chef Supermarket cookbooks for IPv6 configuration, including the built-in `sysctl` resource plus the `firewall` and `network_interfaces_v2` cookbooks for standardized IPv6 deployment.
 
-The Chef Supermarket provides community cookbooks that simplify IPv6 deployment. Leveraging existing cookbooks reduces implementation time and provides tested, community-maintained code for common IPv6 configuration tasks.
+Chef Supermarket cookbooks and Chef Infra's built-in resources can simplify IPv6 deployment. Leveraging existing building blocks reduces implementation time and provides tested code for common IPv6 configuration tasks.
 
-## Key Chef Supermarket Cookbooks for IPv6
+## Key Chef Resources for IPv6
 
-| Cookbook | Purpose |
+| Resource / Cookbook | Purpose |
 |---|---|
-| `sysctl` | Manage sysctl parameters persistently |
-| `firewall` | Cross-platform firewall management (iptables/ip6tables) |
-| `network_interfaces_v2` | Network interface management |
+| `sysctl` | Built-in Chef Infra resource for persistent sysctl management (replaces the deprecated `sysctl` cookbook) |
+| `firewall` | Cross-platform firewall management; IPv6 rules are iptables-specific |
+| `network_interfaces_v2` | Network interface management on older Ubuntu/RHEL/Windows targets |
 | `os-hardening` | Security hardening including IPv6 settings |
 
 ## Installing Cookbooks with Berkshelf
+
+Current Chef Workstation docs prefer Policyfiles, but Berkshelf is still available for Berksfile-based workflows.
 
 ```ruby
 # Berksfile
 
 source 'https://supermarket.chef.io'
 
-cookbook 'sysctl', '~> 1.1'
-cookbook 'firewall', '~> 2.7'
-cookbook 'network_interfaces_v2', '~> 2.2'
+cookbook 'firewall', '~> 6.3'
+cookbook 'network_interfaces_v2', '~> 2.11'
+cookbook 'os-hardening', '~> 4.2'
 ```
 
 ```bash
@@ -36,65 +38,65 @@ berks install
 berks upload
 ```
 
-## IPv6 sysctl with the sysctl Cookbook
+## IPv6 sysctl with Chef Infra's `sysctl` Resource
+
+The old `sysctl` cookbook's `sysctl_param` resource was promoted into Chef Infra as the built-in `sysctl` resource in Chef 14.
 
 ```ruby
 # recipes/ipv6_sysctl.rb
 
-include_recipe 'sysctl::default'
-
 # IPv6 parameters
-sysctl_param 'net.ipv6.conf.all.disable_ipv6' do
+sysctl 'net.ipv6.conf.all.disable_ipv6' do
   value 0
 end
 
-sysctl_param 'net.ipv6.conf.default.disable_ipv6' do
+sysctl 'net.ipv6.conf.default.disable_ipv6' do
   value 0
 end
 
-sysctl_param 'net.ipv6.conf.all.accept_ra' do
+sysctl 'net.ipv6.conf.all.accept_ra' do
   value 1
 end
 
-sysctl_param 'net.ipv6.conf.all.forwarding' do
+sysctl 'net.ipv6.conf.all.forwarding' do
   value node['ipv6']['forwarding'] ? 1 : 0
 end
 
-sysctl_param 'net.ipv6.conf.all.use_tempaddr' do
+sysctl 'net.ipv6.conf.all.use_tempaddr' do
   value node['ipv6']['privacy']['use_tempaddr']
 end
 ```
 
 ## IPv6 Firewall with the firewall Cookbook
 
-The `firewall` cookbook supports both iptables and ip6tables:
+For Linux IPv6 rules with the `firewall` cookbook, use the iptables solution so the cookbook manages both `iptables` and `ip6tables`:
 
 ```ruby
 # recipes/ipv6_firewall.rb
 
-include_recipe 'firewall'
+# Use the iptables provider for IPv6 rules.
+node.default['firewall']['solution'] = 'iptables'
+node.default['firewall']['ipv6_enabled'] = true
 
-# Enable ip6tables
-firewall 'default' do
-  ipv6_enabled true
-  action [:install, :save]
-end
+include_recipe 'firewall::default'
 
 # Allow loopback (both IPv4 and IPv6)
 firewall_rule 'loopback' do
   interface 'lo'
+  protocol :none
   command :allow
 end
 
 # Allow established sessions
 firewall_rule 'established' do
   stateful [:established, :related]
+  protocol :none
   command :allow
 end
 
 # Allow ICMPv6 (required for IPv6 operations)
 firewall_rule 'icmpv6' do
-  protocol :icmpv6
+  protocol :'ipv6-icmp'
   source '::/0'
   command :allow
 end
@@ -115,31 +117,24 @@ firewall_rule 'web_ipv6' do
   command :allow
 end
 
-# Drop everything else
-firewall_rule 'drop_all' do
-  command :deny
-end
+# The iptables provider defaults INPUT and FORWARD to DROP.
 ```
 
 ## Network Interface Configuration
 
+On Debian/Ubuntu, configure IPv6 with the cookbook's `ipv6` attribute instead of shelling out with `post_up` commands:
+
 ```ruby
 # recipes/ipv6_interface.rb
 
-include_recipe 'network_interfaces_v2'
-
 # Configure eth0 with static IPv6
-network_interface 'eth0' do
-  target_device 'eth0'
+network_interface 'eth0_inet6' do
+  device 'eth0'
+  ipv6 true
   bootproto 'static'
-  ipaddress '10.0.0.10'
-  netmask '255.255.255.0'
-  # Additional IPv6 via post-up commands
-  post_up [
-    "ip -6 addr add 2001:db8::10/64 dev eth0",
-    "ip -6 route add default via 2001:db8::1",
-  ]
-  pre_down ["ip -6 addr del 2001:db8::10/64 dev eth0"]
+  address '2001:db8::10'
+  netmask '64'
+  gateway '2001:db8::1'
 end
 ```
 
@@ -150,26 +145,16 @@ Create a wrapper cookbook that customizes community cookbooks:
 ```ruby
 # my_company_ipv6/recipes/default.rb
 
-# Override default attributes for sysctl cookbook
-node.default['sysctl']['conf_dir'] = '/etc/sysctl.d'
-
 # Override firewall defaults
+node.default['firewall']['solution'] = 'iptables'
 node.default['firewall']['ipv6_enabled'] = true
-node.default['firewall']['log_denied_packets'] = 'unicast'
 
-# Include community cookbooks
-include_recipe 'sysctl::default'
+# Include community cookbook
 include_recipe 'firewall::default'
 
-# Apply IPv6 sysctl settings
-sysctl_param 'net.ipv6.conf.all.disable_ipv6' do
+# Apply IPv6 sysctl settings with Chef Infra's built-in resource
+sysctl 'net.ipv6.conf.all.disable_ipv6' do
   value 0
-end
-
-# Apply IPv6 firewall settings
-firewall 'default' do
-  ipv6_enabled true
-  action [:install, :save]
 end
 ```
 
@@ -188,14 +173,14 @@ describe 'IPv6 Configuration' do
     its('value') { should eq 1 }
   end
 
-  # Test IPv6 firewall
-  describe command('ip6tables -L INPUT -n') do
-    its('stdout') { should match /ACCEPT.*ipv6-icmp/ }
-    its('stdout') { should match /ACCEPT.*tcp.*dpt:22/ }
+  # Test IPv6 firewall rules on the iptables backend
+  describe command('ip6tables -S INPUT') do
+    its('stdout') { should match /-A INPUT .* -p ipv6-icmp .* -j ACCEPT/ }
+    its('stdout') { should match /-A INPUT .* -p tcp .* --dport 22 .* -j ACCEPT/ }
   end
 
-  # Test IPv6 connectivity
-  describe command('ip -6 addr show | grep "inet6"') do
+  # Test that a global IPv6 address is configured
+  describe command('ip -6 addr show scope global') do
     its('stdout') { should_not be_empty }
   end
 end
@@ -209,4 +194,4 @@ kitchen test
 kitchen converge && kitchen verify
 ```
 
-Using Chef Supermarket cookbooks for IPv6 deployment provides tested, maintained implementations that reduce development time while ensuring consistent IPv6 configuration across your infrastructure.
+Using Chef Infra resources and Chef Supermarket cookbooks for IPv6 deployment can reduce development time while ensuring consistent IPv6 configuration across your infrastructure.
