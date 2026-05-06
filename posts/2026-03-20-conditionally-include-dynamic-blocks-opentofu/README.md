@@ -8,7 +8,7 @@ Description: Learn how to conditionally include or exclude dynamic blocks in Ope
 
 ## Introduction
 
-Sometimes a resource block should only include certain sub-blocks under specific conditions - for example, only add an HTTPS listener if a certificate is provided, or only include a lifecycle policy if retention is enabled. OpenTofu's dynamic block with a conditional `for_each` achieves this cleanly.
+Sometimes a resource block should only include certain sub-blocks under specific conditions - for example, only add an HTTP redirect action if a certificate is provided, or only include a Lambda VPC configuration when VPC networking is enabled. OpenTofu's dynamic block with a conditional `for_each` achieves this cleanly for nested blocks.
 
 ## The Core Pattern: Empty List vs Single-Element List
 
@@ -31,7 +31,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "bucket" {
   rule {
     # Include the CMK block only if encryption is enabled and a key is provided
     dynamic "apply_server_side_encryption_by_default" {
-      for_each = var.enable_encryption ? [1] : []
+      for_each = var.enable_encryption && var.kms_key_id != "" ? [1] : []
       content {
         sse_algorithm     = "aws:kms"
         kms_master_key_id = var.kms_key_id
@@ -40,7 +40,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "bucket" {
 
     # Default encryption applies when custom encryption is not configured
     dynamic "apply_server_side_encryption_by_default" {
-      for_each = var.enable_encryption ? [] : [1]
+      for_each = var.enable_encryption && var.kms_key_id != "" ? [] : [1]
       content {
         sse_algorithm = "AES256"
       }
@@ -63,6 +63,22 @@ resource "aws_lb" "app" {
   internal           = false
   load_balancer_type = "application"
   subnets            = var.public_subnet_ids
+}
+
+# HTTPS listener created only when a certificate is provided
+
+resource "aws_lb_listener" "https" {
+  count             = var.certificate_arn != "" ? 1 : 0
+  load_balancer_arn = aws_lb.app.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-2016-08"
+  certificate_arn   = var.certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
 }
 
 # HTTP listener always created
@@ -97,31 +113,38 @@ resource "aws_lb_listener" "http" {
 }
 ```
 
-## Optional Lifecycle Block
+## Optional S3 Lifecycle Configuration
 
 ```hcl
-variable "prevent_destroy" {
-  description = "Set lifecycle prevent_destroy on the S3 bucket"
+variable "enable_lifecycle" {
+  description = "Create an S3 lifecycle configuration for the bucket"
   type        = bool
   default     = false
+}
+
+variable "expiration_days" {
+  description = "Number of days before objects expire"
+  type        = number
+  default     = 30
 }
 
 resource "aws_s3_bucket" "main" {
   bucket = var.bucket_name
 
-  # NOTE: lifecycle blocks cannot use dynamic blocks directly in OpenTofu
-  # Use a separate resource or use the ignore_changes workaround instead
+  # NOTE: the lifecycle meta-argument cannot be generated with dynamic blocks
 }
 
-# The standard approach for optional lifecycle policies is to use separate
-# resources conditional on a variable
+# For S3 object lifecycle rules, use the dedicated resource and create it conditionally
 resource "aws_s3_bucket_lifecycle_configuration" "main" {
   count  = var.enable_lifecycle ? 1 : 0
-  bucket = aws_s3_bucket.main.id
+  bucket = aws_s3_bucket.main.bucket
 
   rule {
     id     = "expire-old-objects"
     status = "Enabled"
+
+    filter {}
+
     expiration {
       days = var.expiration_days
     }
@@ -138,11 +161,17 @@ variable "enable_vpc" {
   default     = false
 }
 
+variable "enable_xray" {
+  description = "Enable AWS X-Ray tracing for the Lambda"
+  type        = bool
+  default     = false
+}
+
 resource "aws_lambda_function" "app" {
   function_name = var.function_name
   role          = aws_iam_role.lambda.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs24.x"
   filename      = var.deployment_package
 
   # Include VPC config only when enabled
@@ -166,4 +195,4 @@ resource "aws_lambda_function" "app" {
 
 ## Conclusion
 
-Conditional dynamic blocks using the `for_each = condition ? [1] : []` pattern give you precise control over which resource sub-blocks are included. This eliminates the need for duplicating resource definitions or using `count` at the resource level just to handle optional configuration sections.
+Conditional dynamic blocks using the `for_each = condition ? [1] : []` pattern give you precise control over which nested resource blocks are included. This eliminates the need for duplicating resource definitions or using `count` at the resource level just to handle optional nested configuration sections.
