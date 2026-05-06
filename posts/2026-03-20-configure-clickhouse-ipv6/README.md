@@ -32,7 +32,7 @@ Description: Learn how to configure ClickHouse to listen on IPv6 addresses for H
     <!-- Native client interface (clickhouse-client) -->
     <tcp_port>9000</tcp_port>
 
-    <!-- Inter-server communication -->
+    <!-- Inter-server communication: endpoint advertised to other servers -->
     <interserver_http_port>9009</interserver_http_port>
     <interserver_http_host>2001:db8::10</interserver_http_host>
 </clickhouse>
@@ -60,8 +60,9 @@ Description: Learn how to configure ClickHouse to listen on IPv6 addresses for H
 systemctl restart clickhouse-server
 
 # Verify listening on IPv6
-ss -6 -tlnp | grep clickhouse
-# Expected: [::]:8123, [::]:9000
+ss -6 -tln | grep -E ':(8123|9000|9009)'
+# Expected: entries on ports 8123, 9000, and 9009 bound to your configured IPv6 addresses,
+# such as [2001:db8::10]:8123 or [::]:8123
 
 # Test HTTP interface over IPv6
 curl -6 http://[2001:db8::10]:8123/ping
@@ -110,4 +111,4 @@ print(result)
 
 ## Summary
 
-Configure ClickHouse for IPv6 by adding `<listen_host>2001:db8::10</listen_host>` or `<listen_host>::</listen_host>` (all interfaces) in a drop-in config file at `/etc/clickhouse-server/config.d/`. Set `interserver_http_host` to the node's IPv6 address for cluster communication. Test HTTP interface with `curl -6 http://[2001:db8::10]:8123/ping` and native client with `clickhouse-client --host 2001:db8::10`. Restart with `systemctl restart clickhouse-server`.
+Configure ClickHouse for IPv6 by adding `<listen_host>2001:db8::10</listen_host>` or `<listen_host>::</listen_host>` (all interfaces) in a drop-in config file at `/etc/clickhouse-server/config.d/`. If other nodes should reach this server over IPv6, set `interserver_http_host` to the IPv6 hostname or address they should use for cluster communication; the inter-server listener follows `listen_host` by default. Test HTTP interface with `curl -6 http://[2001:db8::10]:8123/ping` and native client with `clickhouse-client --host 2001:db8::10`. Restart with `systemctl restart clickhouse-server`.
