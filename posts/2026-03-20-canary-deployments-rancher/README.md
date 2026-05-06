@@ -17,11 +17,11 @@ A canary deployment sends a small percentage of traffic to a new version while m
 ```mermaid
 graph LR
     Users --> LB[Service]
-    LB -- "90% traffic" --> Stable[Stable v1 - 9 pods]
-    LB -- "10% traffic" --> Canary[Canary v2 - 1 pod]
+    LB -- "~90% traffic" --> Stable[Stable v1 - 9 pods]
+    LB -- "~10% traffic" --> Canary[Canary v2 - 1 pod]
 ```
 
-Kubernetes distributes traffic proportionally based on replica count, making pod-count-based canaries simple and effective.
+Kubernetes Services load-balance across matching endpoints, so pod-count-based canaries can approximate a split. The result is not a precise request percentage, and long-lived connections can skew the actual traffic share.
 
 ---
 
@@ -75,7 +75,7 @@ spec:
 
 ## Step 2: Deploy the Canary
 
-Deploy one pod running the new version. With 9 stable pods and 1 canary pod, approximately 10% of requests go to the canary:
+Deploy one pod running the new version. With 9 stable pods and 1 canary pod behind the same Service, this approximates a 10% share of new connections in the common case:
 
 ```yaml
 # canary-deployment.yaml
@@ -84,9 +84,6 @@ kind: Deployment
 metadata:
   name: my-app-canary
   namespace: my-app
-  annotations:
-    # Document the canary weight for visibility
-    deployment.kubernetes.io/canary-weight: "10"
 spec:
   replicas: 1
   selector:
@@ -110,9 +107,12 @@ spec:
 
 ## Step 3: Monitor Canary Health
 
-Use `kubectl top` and your observability stack to compare error rates:
+Use `kubectl top` (if Metrics Server is installed) and your observability stack to compare resource usage and error rates:
 
 ```bash
+# Check CPU and memory usage across both tracks
+kubectl top pod -n my-app -l app=my-app
+
 # Watch pod restarts on both tracks
 kubectl get pods -n my-app \
   -l app=my-app \
@@ -132,10 +132,10 @@ kubectl logs -n my-app \
 If the canary looks healthy after 15–30 minutes, shift more traffic by adjusting replica counts:
 
 ```bash
-# Increase canary to ~25% (3 canary, 9 stable)
+# Increase canary to ~25% of endpoints (3 canary, 9 stable)
 kubectl scale deployment my-app-canary --replicas=3 -n my-app
 
-# Increase canary to ~50% (9 canary, 9 stable)
+# Increase canary to ~50% of endpoints (9 canary, 9 stable)
 kubectl scale deployment my-app-canary --replicas=9 -n my-app
 
 # Full cutover: scale up canary to full capacity, then remove stable
@@ -157,10 +157,36 @@ kubectl scale deployment my-app-canary --replicas=0 -n my-app
 
 ## Advanced: Nginx Ingress Header-Based Canary
 
-For header-based canary routing (useful for internal testing), annotate the canary ingress:
+For header-based canary routing (useful for internal testing), use separate stable and canary Services. Point your primary ingress at the stable Service, and create a second ingress with the same host and path for the canary Service:
 
 ```yaml
-# canary-ingress.yaml
+# canary-routing.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-stable
+  namespace: my-app
+spec:
+  selector:
+    app: my-app
+    track: stable
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-canary
+  namespace: my-app
+spec:
+  selector:
+    app: my-app
+    track: canary
+  ports:
+    - port: 80
+      targetPort: 8080
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -172,6 +198,7 @@ metadata:
     nginx.ingress.kubernetes.io/canary-by-header: "X-Canary"
     nginx.ingress.kubernetes.io/canary-by-header-value: "always"
 spec:
+  ingressClassName: nginx
   rules:
     - host: my-app.example.com
       http:
