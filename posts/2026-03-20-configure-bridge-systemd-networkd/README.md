@@ -8,7 +8,7 @@ Description: Configure a Linux network bridge using systemd-networkd .netdev and
 
 ## Introduction
 
-A Linux bridge created by systemd-networkd requires a `.netdev` file for the bridge device and `.network` files for both the bridge (IP config) and each member interface (to attach them to the bridge). This is commonly used for KVM virtual machine networking.
+A Linux bridge created by systemd-networkd uses a `.netdev` file for the bridge device and `.network` files for the bridge (when assigning IP configuration to it) and each member interface (to attach them to the bridge). This is commonly used for KVM virtual machine networking.
 
 ## Step 1: Create the Bridge Device (.netdev)
 
