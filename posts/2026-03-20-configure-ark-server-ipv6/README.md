@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ARK Survival Evolved, IPv6, Game Server, Steam, Linux, Self-Hosted Gaming
 
-Description: Set up and configure an ARK: Survival Evolved dedicated server to support IPv6 player connections, covering SteamCMD installation, GameUserSettings, and firewall rules.
+Description: Set up and configure an ARK: Survival Evolved dedicated server on Linux, including the standard ARK ports to allow on IPv6-capable hosts.
 
 ---
 
-ARK: Survival Evolved (and ARK: Survival Ascended) uses Unreal Engine networking. The dedicated server can be configured to accept player connections over IPv6 through proper system-level binding and firewall configuration.
+ARK: Survival Evolved supports Linux dedicated servers. ARK: Survival Ascended does not support Linux natively, so the commands below apply to ARK: Survival Evolved. ARK's official server documentation is centered on the standard game, peer, query, and RCON ports; on dual-stack hosts you must also allow those same ports through your IPv6 firewall and verify connectivity on your own host.
 
 ## Installing ARK Dedicated Server
 
@@ -36,42 +36,36 @@ ls /home/ark/arkserver/
 [ServerSettings]
 ServerPassword=
 ServerAdminPassword=YourAdminPassword
-MaxPlayers=70
+RCONEnabled=True
+RCONPort=27020
 
 [SessionSettings]
-SessionName=My IPv6 ARK Server
+SessionName=My ARK Server
+Port=7777
+QueryPort=27015
 
-[/Script/ShooterGame.ShooterGameUserSettings]
+[/Script/Engine.GameSession]
 MaxPlayers=70
 
 [MessageOfTheDay]
-Message=Welcome to our IPv6 ARK server!
+Message=Welcome to our ARK server!
 Duration=20
 ```
 
-## Starting ARK Server on IPv6
+## Starting ARK Server
 
 ```bash
 # ARK uses a startup script
-# /home/ark/start_ark.sh
+# /home/ark/arkserver/ShooterGame/Binaries/Linux/server_start.sh
 #!/bin/bash
 
-ARK_SERVER="/home/ark/arkserver"
-SAVES="/home/ark/arkserver/ShooterGame/Saved"
+cd /home/ark/arkserver/ShooterGame/Binaries/Linux || exit 1
 
-"$ARK_SERVER/ShooterGame/Binaries/Linux/ShooterGameServer" \
-  TheIsland?listen?SessionName="IPv6 ARK" \
-  ?ServerPassword="" \
-  ?ServerAdminPassword="YourAdminPassword" \
-  ?MaxPlayers=70 \
-  -server \
-  -log \
-  -NoBattlEye \
-  -Port=7777 \
-  -QueryPort=27015 \
-  -RCONPort=27020
+./ShooterGameServer \
+  "TheIsland?SessionName=My ARK Server?Port=7777?QueryPort=27015" \
+  -log
 
-# ARK binds to all interfaces (including IPv6) automatically
+# ARK's documented Linux startup does not use a separate IPv6-specific bind flag
 ```
 
 ## Systemd Service for ARK
@@ -80,12 +74,13 @@ SAVES="/home/ark/arkserver/ShooterGame/Saved"
 # /etc/systemd/system/ark.service
 [Unit]
 Description=ARK Dedicated Server
+Wants=network-online.target
 After=network-online.target
 
 [Service]
 Type=simple
 User=ark
-WorkingDirectory=/home/ark/arkserver
+WorkingDirectory=/home/ark/arkserver/ShooterGame/Binaries/Linux
 
 ExecStartPre=/usr/games/steamcmd \
   +force_install_dir /home/ark/arkserver \
@@ -94,12 +89,8 @@ ExecStartPre=/usr/games/steamcmd \
   +quit
 
 ExecStart=/home/ark/arkserver/ShooterGame/Binaries/Linux/ShooterGameServer \
-  TheIsland?listen?SessionName="IPv6 ARK" \
-  ?MaxPlayers=70 \
-  ?ServerAdminPassword=YourAdminPassword \
-  -server -log \
-  -Port=7777 \
-  -QueryPort=27015
+  "TheIsland?SessionName=My ARK Server?Port=7777?QueryPort=27015" \
+  -log
 
 Restart=on-failure
 RestartSec=30
@@ -120,28 +111,29 @@ sudo systemctl enable --now ark
 ```bash
 # ARK uses the following ports
 # Game port: 7777 UDP
+# Peer port: 7778 UDP
 # Query port: 27015 UDP
 # RCON port: 27020 TCP
 
 sudo ip6tables -A INPUT -p udp --dport 7777 -j ACCEPT
+sudo ip6tables -A INPUT -p udp --dport 7778 -j ACCEPT
 sudo ip6tables -A INPUT -p udp --dport 27015 -j ACCEPT
 sudo ip6tables -A INPUT -p tcp --dport 27020 -j ACCEPT
 
-# Save IPv6 rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+# Persist these rules with your distro's firewall tooling
 ```
 
 ## Verifying IPv6 Connectivity
 
 ```bash
-# Check if ARK is listening on IPv6
-ss -6 -ulnp | grep -E "7777|27015"
+# Check if ARK is listening on the expected ports
+sudo ss -lntup | grep -E "7777|7778|27015|27020"
 
-# Check server logs for IPv6 connections
-sudo journalctl -u ark -f | grep -i "connect\|ipv6"
+# Check server logs while clients attempt to join
+sudo journalctl -u ark -f
 
-# Test port reachability
-nmap -6 -sU -p 7777,27015 2001:db8::ark
+# Test IPv6 reachability if your host has a routable IPv6 address
+nmap -6 -sU -p 7777,7778,27015 2001:db8::1
 ```
 
 ## ARK Auto-Update Script
@@ -166,4 +158,4 @@ echo "ARK server started. Status:"
 sudo systemctl status ark --no-pager
 ```
 
-ARK dedicated servers listen on all network interfaces by default, enabling IPv6 connections from players without additional binding configuration beyond ensuring IPv6 firewall rules permit the game and query ports.
+ARK: Survival Evolved on Linux uses the standard ARK game, peer, query, and optional RCON ports. On dual-stack hosts, allow the same ports in your IPv6 firewall, but note that ARK's official Linux server documentation does not provide a separate IPv6-specific bind option.
