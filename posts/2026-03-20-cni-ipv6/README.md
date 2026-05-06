@@ -15,7 +15,7 @@ Kubernetes requires a CNI (Container Network Interface) plugin for pod networkin
 ```bash
 # Install Tigera operator
 
-kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Configure Calico with dual-stack IP pools
 kubectl apply -f - << 'EOF'
@@ -44,25 +44,30 @@ EOF
 kubectl -n calico-system get pods
 
 # Check IP pools
-kubectl get ippool -o wide
+kubectl get ippools -o wide
 ```
 
 ## Cilium with Dual-Stack
 
 ```bash
 # Install Cilium CLI
+CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
 curl -L --fail --remote-name-all \
-    https://github.com/cilium/cilium-cli/releases/latest/download/cilium-linux-amd64.tar.gz
-sudo tar xzvf cilium-linux-amd64.tar.gz -C /usr/local/bin
+    https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 # Install Cilium with dual-stack
 cilium install \
+    --version 1.19.3 \
     --set ipv4.enabled=true \
     --set ipv6.enabled=true \
-    --set tunnel=vxlan \
-    --set kubeProxyReplacement=true \
-    --set k8sServiceHost=$(kubectl get node -o jsonpath='{.items[0].status.addresses[0].address}') \
-    --set k8sServicePort=6443
+    --set ipam.mode=kubernetes \
+    --set routingMode=tunnel \
+    --set tunnelProtocol=vxlan
 
 # Verify Cilium status
 cilium status
@@ -82,14 +87,12 @@ ipv6:
 ipam:
   mode: kubernetes
 
-tunnel: vxlan
+routingMode: tunnel
+tunnelProtocol: vxlan
 
-# If using BGP for routing
-bgp:
+# If using the BGP control plane, enable it and configure advertisements with Cilium BGP CRDs
+bgpControlPlane:
   enabled: true
-  announce:
-    loadbalancerIP: true
-    podCIDR: true
 ```
 
 ## Flannel with Dual-Stack
@@ -138,9 +141,8 @@ data:
 ```bash
 # Apply Flannel with dual-stack config
 kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
-# Then patch the ConfigMap with dual-stack settings
-kubectl patch configmap kube-flannel-cfg -n kube-flannel \
-    --patch-file=flannel-configmap.yaml
+# Then apply the dual-stack ConfigMap
+kubectl apply -f flannel-configmap.yaml
 kubectl rollout restart daemonset kube-flannel-ds -n kube-flannel
 ```
 
@@ -149,17 +151,17 @@ kubectl rollout restart daemonset kube-flannel-ds -n kube-flannel
 ```bash
 # For any CNI: check pods get dual-stack addresses
 kubectl run test-pod --image=alpine --command -- sleep infinity
-kubectl get pod test-pod -o jsonpath='{.status.podIPs}'
-# [{"ip":"10.244.x.x"},{"ip":"fd00:10:244::x"}]
+kubectl get pod test-pod -o jsonpath='{.status.podIPs[*].ip}'
+# 10.244.x.x fd00:10:244::x
 
-# Check node routing for IPv6 (Calico/Cilium)
+# Example: check IPv6 routes from a Calico node pod
 kubectl exec -n calico-system calico-node-xxxxx -- \
     ip -6 route show
 
 # Cilium connectivity test
-cilium connectivity test --test '//pod-to-pod'
+cilium connectivity test --test '/pod-to-pod'
 ```
 
 ## Conclusion
 
-Configure CNI plugins for dual-stack Kubernetes by adding IPv6 IP pools alongside IPv4 pools. Calico uses `Installation` CRD with multiple `ipPools`; Cilium uses `ipv6.enabled=true` in Helm values or the CLI; Flannel uses `IPv6Network` and `EnableIPv6` in its ConfigMap. All three support VXLAN encapsulation for IPv6 tunneling. After CNI installation, verify dual-stack by checking pod IPs with `kubectl get pod -o jsonpath='{.status.podIPs}'` - you should see both IPv4 and IPv6 addresses.
+Configure CNI plugins for dual-stack Kubernetes by adding IPv6 IP pools alongside IPv4 pools. Calico uses the `Installation` CRD with multiple `ipPools`; Cilium uses `ipv4.enabled=true`, `ipv6.enabled=true`, and the appropriate IPAM and routing settings in Helm values or the CLI; Flannel uses `IPv6Network` and `EnableIPv6` in its ConfigMap. All three support VXLAN encapsulation for IPv6 tunneling. After CNI installation, verify dual-stack by checking pod IPs with `kubectl get pod -o jsonpath='{.status.podIPs[*].ip}'` - you should see both IPv4 and IPv6 addresses.
