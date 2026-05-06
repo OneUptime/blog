@@ -111,7 +111,7 @@ ip link set tap0 up
 cat /proc/net/bonding/bond0 | grep "Currently Active Slave"
 
 # Check bridge has bond0 as a port
-bridge link show br0
+bridge link show dev bond0
 
 # Check bridge has an IP
 ip addr show br0
