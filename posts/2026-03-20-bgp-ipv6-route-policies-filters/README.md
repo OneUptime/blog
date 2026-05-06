@@ -14,7 +14,7 @@ BGP route policies and filters are essential security and operational controls. 
 
 - **Inbound filtering**: Accept only the prefixes your peer is authorized to announce
 - **Outbound filtering**: Send only the prefixes you own to prevent route leaks
-- **Anti-hijack protection**: Reject default routes and bogon prefixes from peers
+- **Anti-hijack protection**: Reject unexpected default routes and special-use prefixes from peers
 
 ## FRRouting: Basic Prefix List Filtering
 
@@ -23,17 +23,19 @@ vtysh
 configure terminal
 
 ! Inbound: accept only the peer's allocated space
-ipv6 prefix-list PEER_IN seq 5  permit 2001:db8:peer::/48 le 64
+ipv6 prefix-list PEER_IN seq 5  permit 2001:db8:100::/48 le 64
 ipv6 prefix-list PEER_IN seq 99 deny ::/0 le 128
 
 ! Outbound: advertise only our own prefix
-ipv6 prefix-list PEER_OUT seq 5  permit 2001:db8:mynet::/48
+ipv6 prefix-list PEER_OUT seq 5  permit 2001:db8:200::/48
 ipv6 prefix-list PEER_OUT seq 99 deny ::/0 le 128
 
 router bgp 65001
+ neighbor 2001:db8:0:1::2 remote-as 65002
  address-family ipv6 unicast
-  neighbor 2001:db8:peer::2 prefix-list PEER_IN  in
-  neighbor 2001:db8:peer::2 prefix-list PEER_OUT out
+  neighbor 2001:db8:0:1::2 activate
+  neighbor 2001:db8:0:1::2 prefix-list PEER_IN  in
+  neighbor 2001:db8:0:1::2 prefix-list PEER_OUT out
  exit-address-family
 
 end
@@ -48,46 +50,51 @@ Route maps allow more granular control, including setting LOCAL_PREF, MED, and c
 vtysh
 configure terminal
 
-! Deny bogon prefixes
-ipv6 prefix-list BOGONS seq 5  deny  ::/0
-ipv6 prefix-list BOGONS seq 10 deny  ::1/128
-ipv6 prefix-list BOGONS seq 15 deny  fc00::/7 le 128     ! ULA
-ipv6 prefix-list BOGONS seq 20 deny  fe80::/10 le 128    ! Link-local
-ipv6 prefix-list BOGONS seq 25 deny  fec0::/10 le 128    ! Deprecated site-local
-ipv6 prefix-list BOGONS seq 30 deny  ff00::/8  le 128    ! Multicast
-ipv6 prefix-list BOGONS seq 99 permit ::/0 le 128
+! Match default and special-use prefixes so the route map can reject them
+ipv6 prefix-list REJECT_V6 seq 5  permit ::/0
+ipv6 prefix-list REJECT_V6 seq 10 permit ::1/128
+ipv6 prefix-list REJECT_V6 seq 15 permit fc00::/7 le 128     ! ULA
+ipv6 prefix-list REJECT_V6 seq 20 permit fe80::/10 le 128    ! Link-local
+ipv6 prefix-list REJECT_V6 seq 25 permit fec0::/10 le 128    ! Deprecated site-local
+ipv6 prefix-list REJECT_V6 seq 30 permit ff00::/8  le 128    ! Multicast
+
+! Match only the peer's authorized space
+ipv6 prefix-list PEER_ALLOWED seq 5 permit 2001:db8:100::/48 le 64
 
 ! Route map: set local preference for preferred peer
-route-map PREFER_PEER permit 10
- match ipv6 address prefix-list BOGONS
- set local-preference 150
+route-map PREFER_PEER deny 10
+ match ipv6 address prefix-list REJECT_V6
 
 route-map PREFER_PEER permit 20
- match ipv6 address prefix-list BOGONS
- set local-preference 100
+ match ipv6 address prefix-list PEER_ALLOWED
+ set local-preference 150
 
 router bgp 65001
+ neighbor 2001:db8:0:1::2 remote-as 65002
  address-family ipv6 unicast
-  neighbor 2001:db8:peer::2 route-map PREFER_PEER in
+  neighbor 2001:db8:0:1::2 activate
+  neighbor 2001:db8:0:1::2 route-map PREFER_PEER in
  exit-address-family
 
 end
 ```
 
-## Cisco: Prefix List and Route Map Filtering
+## Cisco: Prefix List Filtering
 
 ```text
 ! Create IPv6 prefix lists
-Router(config)# ipv6 prefix-list PEER_IN  seq 5  permit 2001:db8:peer::/48 le 64
+Router(config)# ipv6 prefix-list PEER_IN  seq 5  permit 2001:db8:100::/48 le 64
 Router(config)# ipv6 prefix-list PEER_IN  seq 99 deny ::/0 le 128
-Router(config)# ipv6 prefix-list PEER_OUT seq 5  permit 2001:db8:mynet::/48
+Router(config)# ipv6 prefix-list PEER_OUT seq 5  permit 2001:db8:200::/48
 Router(config)# ipv6 prefix-list PEER_OUT seq 99 deny ::/0 le 128
 
 ! Apply to BGP neighbor
 Router(config)# router bgp 65001
+Router(config-router)# neighbor 2001:db8:0:1::2 remote-as 65002
 Router(config-router)# address-family ipv6 unicast
-Router(config-router-af)# neighbor 2001:db8:peer::2 prefix-list PEER_IN  in
-Router(config-router-af)# neighbor 2001:db8:peer::2 prefix-list PEER_OUT out
+Router(config-router-af)# neighbor 2001:db8:0:1::2 activate
+Router(config-router-af)# neighbor 2001:db8:0:1::2 prefix-list PEER_IN  in
+Router(config-router-af)# neighbor 2001:db8:0:1::2 prefix-list PEER_OUT out
 ```
 
 ## Maximum Prefix Limit (DoS Protection)
@@ -98,27 +105,31 @@ Limit the number of prefixes accepted from a peer to prevent BGP table flooding:
 # FRRouting: limit prefixes from a peer
 
 router bgp 65001
+ neighbor 2001:db8:0:1::2 remote-as 65002
  address-family ipv6 unicast
-  ! Accept maximum 1000 prefixes; warn at 80%; tear down session at limit
-  neighbor 2001:db8:peer::2 maximum-prefix 1000 80 restart 5
+  neighbor 2001:db8:0:1::2 activate
+  ! Accept a maximum of 1000 prefixes; tear down the session at the limit
+  neighbor 2001:db8:0:1::2 maximum-prefix 1000
  exit-address-family
 ```
 
 ```text
 ! Cisco
-Router(config-router-af)# neighbor 2001:db8:peer::2 maximum-prefix 1000 80 restart 5
+Router(config)# router bgp 65001
+Router(config-router)# neighbor 2001:db8:0:1::2 remote-as 65002
+Router(config-router)# neighbor 2001:db8:0:1::2 maximum-prefix 1000 80 restart 5
 ```
 
-## Soft Reconfiguration for Policy Changes
+## Soft Route Refresh for Policy Changes
 
-After changing a policy, reset the BGP session softly to apply new filters without tearing down the session:
+After changing a policy, if the peer supports route refresh, refresh the BGP session softly to apply new filters without tearing down the session:
 
 ```bash
 # Apply new inbound policy without resetting session
-vtysh -c "clear bgp ipv6 unicast 2001:db8:peer::2 soft in"
+vtysh -c "clear bgp ipv6 unicast 2001:db8:0:1::2 in"
 
 # Apply new outbound policy
-vtysh -c "clear bgp ipv6 unicast 2001:db8:peer::2 soft out"
+vtysh -c "clear bgp ipv6 unicast 2001:db8:0:1::2 out"
 ```
 
 ## Summary
