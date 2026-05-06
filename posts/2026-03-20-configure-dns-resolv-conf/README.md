@@ -22,47 +22,50 @@ EOF
 
 # With organization's DNS plus public fallback:
 cat > /etc/resolv.conf << 'EOF'
-nameserver 10.20.0.1     # Internal DNS (primary)
-nameserver 10.20.0.2     # Internal DNS (secondary)
-nameserver 8.8.8.8       # Public fallback
+# Internal DNS (primary)
+nameserver 10.20.0.1
+# Internal DNS (secondary)
+nameserver 10.20.0.2
+# Public fallback
+nameserver 8.8.8.8
 EOF
-# Note: Up to 3 nameservers supported; additional entries are ignored
+# Note: glibc uses up to 3 nameserver entries; additional entries are ignored
 ```
 
-## All Configuration Options
+## Common Configuration Options
 
 ```text
-# /etc/resolv.conf complete reference:
+# /etc/resolv.conf common options reference:
 
 nameserver <IP>
   # DNS server to query. Up to 3 allowed.
   # Queried in order; if first doesn't respond, try next.
 
 domain <domain>
-  # Local domain name. Sets single search domain.
-  # Can't be used with 'search' simultaneously.
+  # Obsolete single-entry form of 'search'.
+  # If both 'domain' and 'search' appear, the last one wins.
 
-search <domain1> [domain2] [domain3]
+search <domain1> [domain2] ...
   # Search list for short hostname lookups.
   # "ping db" tries: db.domain1, db.domain2, db.domain3, db
-  # Up to 6 domains; total 256 characters.
+  # glibc 2.26+: unlimited. glibc 2.25 and earlier: 6 domains, 256 chars total.
 
 options timeout:<n>
   # Seconds to wait for each nameserver response. Default: 5.
   # Lower (1-2) for faster failover.
 
 options attempts:<n>
-  # Number of retries per nameserver. Default: 2.
-  # Lower for faster failover.
+  # Total query attempts before giving up. Default: 2.
+  # Lower for faster failure.
 
 options rotate
   # Rotate through nameservers for load balancing.
   # Default: always try first server first.
 
 options ndots:<n>
-  # Minimum dots before treating as absolute (not searching).
-  # Default: 1. api.example.com (1 dot) = try search first.
-  # With ndots:2, api.example.com is tried absolutely first.
+  # Minimum dots before an initial absolute query is tried first.
+  # Default: 1. api.example.com (1 dot) = try absolute first.
+  # With ndots:2, api.example.com is searched first.
 ```
 
 ## Example Configurations
@@ -74,23 +77,23 @@ nameserver 10.20.0.10
 nameserver 10.20.0.11
 nameserver 8.8.8.8
 search company.internal us.company.internal
-domain company.internal
 options timeout:2 attempts:2
 EOF
 
-# Container/Docker environment (single resolver):
+# Docker custom network (embedded DNS):
 cat > /etc/resolv.conf << 'EOF'
-nameserver 172.17.0.1     # Docker bridge gateway
-options ndots:5 timeout:3
+nameserver 127.0.0.11
+options timeout:3
 EOF
 
 # Kubernetes pod DNS:
 cat > /etc/resolv.conf << 'EOF'
-nameserver 10.96.0.10     # kube-dns service IP
+# Example cluster DNS Service IP; varies by cluster
+nameserver 10.96.0.10
 search default.svc.cluster.local svc.cluster.local cluster.local
 options ndots:5
 EOF
-# ndots:5: Kubernetes requires this for proper in-cluster resolution
+# Kubernetes sets ndots:5 by default so search paths work for generated service names
 ```
 
 ## Protect Against Overwriting
@@ -99,7 +102,7 @@ EOF
 # NetworkManager and DHCP often overwrite /etc/resolv.conf
 # Methods to prevent:
 
-# Method 1: Make file immutable (root can't overwrite):
+# Method 1: Make file immutable (prevents normal writes until you remove the bit):
 chattr +i /etc/resolv.conf
 # Undo with: chattr -i /etc/resolv.conf
 
@@ -128,13 +131,15 @@ dig google.com
 ping db         # Tries db.company.internal first
 getent hosts db  # Shows what resolves to
 
-# Check which resolver is actually used:
-strace -e openat dig google.com 2>&1 | grep resolv
-# Shows if resolv.conf is being read
+# Check whether libc-based lookups read resolv.conf:
+strace -e trace=file getent hosts google.com 2>&1 | grep /etc/resolv.conf
+# Shows whether /etc/resolv.conf is being read
 
-# Debug resolver behavior:
-RESOLV_HOST_CONF=/etc/resolv.conf RESOLV_CONF=/etc/resolv.conf \
-  nscd -d -f  # nscd debug mode (if installed)
+# Check if /etc/resolv.conf is a real file or a symlink:
+ls -l /etc/resolv.conf
+
+# On systemd-resolved systems, inspect effective DNS settings:
+resolvectl status
 ```
 
 ## Conclusion
