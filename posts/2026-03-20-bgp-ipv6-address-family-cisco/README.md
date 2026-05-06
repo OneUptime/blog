@@ -28,13 +28,12 @@ Router(config)# router bgp 65001
 Router(config-router)# bgp router-id 1.1.1.1
 
 ! Configure eBGP neighbor using IPv6 address
-Router(config-router)# neighbor 2001:db8:peer::2 remote-as 65002
-Router(config-router)# neighbor 2001:db8:peer::2 description "eBGP peer"
+Router(config-router)# neighbor 2001:db8:12::2 remote-as 65002
 
 ! Activate the IPv6 address family
 Router(config-router)# address-family ipv6 unicast
-Router(config-router-af)# neighbor 2001:db8:peer::2 activate
-Router(config-router-af)# neighbor 2001:db8:peer::2 send-community
+Router(config-router-af)# neighbor 2001:db8:12::2 activate
+Router(config-router-af)# neighbor 2001:db8:12::2 send-community
 Router(config-router-af)# exit-address-family
 ```
 
@@ -61,11 +60,9 @@ Router(config-if)# ipv6 address 2001:db8::1/128
 Router(config)# router bgp 65001
 Router(config-router)# neighbor 2001:db8::2 remote-as 65001
 Router(config-router)# neighbor 2001:db8::2 update-source Loopback0
-Router(config-router)# neighbor 2001:db8::2 next-hop-self   ! Required for iBGP
 
 Router(config-router)# address-family ipv6 unicast
 Router(config-router-af)# neighbor 2001:db8::2 activate
-Router(config-router-af)# neighbor 2001:db8::2 next-hop-self
 Router(config-router-af)# exit-address-family
 ```
 
@@ -89,13 +86,13 @@ Router# show bgp ipv6 unicast summary
 Router# show bgp ipv6 unicast
 
 ! Show routes advertised to a specific peer
-Router# show bgp ipv6 unicast neighbors 2001:db8:peer::2 advertised-routes
+Router# show bgp ipv6 unicast neighbors 2001:db8:12::2 advertised-routes
 
-! Show routes received from a peer
-Router# show bgp ipv6 unicast neighbors 2001:db8:peer::2 routes
+! Show routes learned from a peer in the BGP table
+Router# show bgp ipv6 unicast neighbors 2001:db8:12::2 routes
 
 ! Show BGP neighbor details including capabilities
-Router# show bgp neighbors 2001:db8:peer::2 | include AFI
+Router# show bgp ipv6 unicast neighbors 2001:db8:12::2
 ```
 
 ## Sample show bgp ipv6 unicast Output
@@ -109,7 +106,7 @@ Origin codes: i - IGP, e - EGP, ? - incomplete
 
    Network                    Next Hop             Metric  LocPrf  Weight  Path
 *> 2001:db8:1::/48            ::                        0           32768  i
-*> 2001:db8:remote::/48       2001:db8:peer::2           0              0  65002 i
+*> 2001:db8:2::/48            2001:db8:12::2             0              0  65002 i
 ```
 
 ## Summary
