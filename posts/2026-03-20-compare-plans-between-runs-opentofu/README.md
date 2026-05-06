@@ -15,6 +15,8 @@ Save the plan JSON from each run with a consistent naming scheme:
 ```bash
 # Save plan with a timestamp
 
+mkdir -p plans
+
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 tofu plan -out=tfplan
 tofu show -json tfplan > "plans/plan-${TIMESTAMP}.json"
@@ -122,21 +124,26 @@ jobs:
 
       - name: Generate Today's Plan
         run: |
+          mkdir -p plans
           tofu init
           tofu plan -out=tfplan
           tofu show -json tfplan > plans/today.json
 
       - name: Compare with Baseline
+        id: compare
         run: |
-          python3 scripts/compare-plans.py plans/baseline.json plans/today.json > drift-report.txt
+          python3 compare-plans.py plans/baseline.json plans/today.json > drift-report.txt
           cat drift-report.txt
+          grep -q "Plans are identical." drift-report.txt
 
       - name: Alert on Drift
-        if: ${{ steps.compare.outcome == 'failure' }}
-        uses: slackapi/slack-github-action@v1
+        if: ${{ failure() && steps.compare.conclusion == 'failure' }}
+        uses: slackapi/slack-github-action@v3
         with:
-          payload: '{"text": "Infrastructure drift detected! See drift-report.txt."}'
           webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: "Infrastructure drift detected! See drift-report.txt."
 ```
 
 ## Comparing Attribute-Level Changes
@@ -144,6 +151,11 @@ jobs:
 For deeper comparison, check which specific attributes changed between two `update` operations:
 
 ```python
+import json
+
+with open("plan-after.json") as f:
+    plan = json.load(f)
+
 # Find attributes that differ between before and after for updated resources
 for change in plan["resource_changes"]:
     if change["change"]["actions"] == ["update"]:
