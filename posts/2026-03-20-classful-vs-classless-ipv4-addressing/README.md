@@ -18,13 +18,13 @@ In classful addressing, the network boundary was implied by the first octet:
 
 **Problem**: A company needing 500 hosts received a Class B (/16 = 65,534 hosts), wasting 65,034 addresses.
 
-## Classless Inter-Domain Routing (CIDR, RFC 4632)
+## Classless Inter-Domain Routing (CIDR, RFC 1519; updated by RFC 4632)
 
-CIDR (1993) introduced explicit prefix lengths, allowing any boundary:
+CIDR (1993) introduced explicit prefix lengths, allowing arbitrary contiguous prefix lengths:
 
 ```text
 Old: 172.16.0.0 → Class B → /16 implied
-New: 172.16.0.0/22 → exactly 1022 hosts, no waste
+New: 172.16.0.0/23 → 510 usable hosts, far less waste
 ```
 
 ## Comparing Address Efficiency
@@ -70,7 +70,7 @@ CIDR:     /23 = 510 hosts (waste: 10)
 
 ## Routing Table Impact
 
-Classful routing protocols (RIPv1) did not carry subnet mask information; they inferred it from address class. Classless protocols (RIPv2, OSPF, BGP) carry the prefix length explicitly:
+Classful routing protocols (RIPv1) did not carry subnet mask information; they inferred it from address class. Classless protocols (RIPv2, OSPF, BGP) carry prefix length or mask information explicitly:
 
 ```bash
 # Old classful route (mask inferred)
@@ -94,7 +94,7 @@ CIDR enables supernetting: combining multiple networks into one advertisement:
 
 ## Key Takeaways
 
-- Classful addressing wastes up to 65,000 addresses per allocation; CIDR allocates exactly what's needed.
-- CIDR introduced the /N prefix notation and allows any prefix length (1–32).
-- Classless routing protocols (OSPF, BGP, RIPv2, EIGRP) carry the prefix mask; RIPv1 and IGRP do not.
+- Classful addressing can waste tens of thousands of addresses for mid-sized allocations; CIDR allocates much closer to what's needed.
+- CIDR introduced the /N prefix notation and allows any contiguous prefix length from /0 to /32.
+- Classless routing protocols (OSPF, BGP, RIPv2, EIGRP) carry prefix length or mask information; RIPv1 and IGRP do not.
 - Supernetting (aggregation) reduces routing table size by combining contiguous blocks.
