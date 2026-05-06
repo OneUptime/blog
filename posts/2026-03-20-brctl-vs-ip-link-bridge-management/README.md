@@ -18,12 +18,12 @@ Description: Learn the differences between brctl and ip link/bridge for Linux br
 | Delete bridge | `brctl delbr br0` | `ip link del br0` |
 | Add port | `brctl addif br0 eth0` | `ip link set eth0 master br0` |
 | Remove port | `brctl delif br0 eth0` | `ip link set eth0 nomaster` |
-| Show bridges | `brctl show` | `bridge link show` |
-| Show STP | `brctl showstp br0` | `bridge stp show br0` |
+| Show bridges | `brctl show` | `ip link show type bridge` |
+| Show STP | `brctl showstp br0` | `ip -d link show dev br0` |
 | Show FDB | `brctl showmacs br0` | `bridge fdb show br br0` |
 | Set priority | `brctl setbridgeprio br0 4096` | `ip link set br0 type bridge priority 4096` |
-| Set port cost | `brctl setportcost br0 eth0 10` | `ip link set eth0 type bridge_slave cost 10` |
-| Set ageing | `brctl setageing br0 60` | `ip link set br0 type bridge ageing_time 6000` |
+| Set port cost | `brctl setpathcost br0 eth0 10` | `bridge link set dev eth0 cost 10` |
+| Set ageing | `brctl setageing br0 60` | `ip link set br0 type bridge ageing_time 60` |
 | Enable STP | `brctl stp br0 on` | `ip link set br0 type bridge stp_state 1` |
 
 ## Creating a Bridge
@@ -50,12 +50,15 @@ brctl show
 # bridge name  bridge id           STP enabled  interfaces
 # br0          8000.aabbccddeeff   yes          eth0
 
-# ip/bridge (more detail)
+# ip/bridge
+ip link show type bridge
+# 7: br0: <BROADCAST,MULTICAST> mtu 1500 ...
+
 bridge link show
 # 2: eth0 master br0 state forwarding priority 32 cost 4
 
-ip -d link show type bridge
-# Shows bridge-specific options
+ip -d link show dev br0
+# Shows bridge-specific options such as stp_state and ageing_time
 ```
 
 ## Showing FDB (MAC Table)
@@ -92,7 +95,7 @@ Use ip link / bridge (iproute2) for:
   - Consistent with rest of iproute2 toolchain
 
 Use brctl for:
-  - Scripts that must work on very old kernels (pre-3.x)
+  - Legacy scripts or environments that still ship bridge-utils
   - Reading documentation that uses brctl syntax
 ```
 
@@ -101,4 +104,4 @@ Use brctl for:
 - `brctl` and `ip link/bridge` manage the same kernel bridge subsystem; either can be used.
 - `brctl` is deprecated upstream; `ip link` and `bridge` are the current standard.
 - VLAN filtering features are only available via the `bridge` command - `brctl` has no VLAN support.
-- Use `bridge fdb show br br0` for JSON output (`-j`) compatible with monitoring pipelines.
+- Use `bridge -j fdb show br br0` for JSON output compatible with monitoring pipelines.
