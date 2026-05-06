@@ -8,11 +8,11 @@ Description: Learn how to create CloudFront distributions with Application Load 
 
 ## Introduction
 
-Using CloudFront in front of an Application Load Balancer (ALB) provides global edge caching, DDoS protection via AWS Shield, and SSL termination at the edge. OpenTofu manages the distribution, custom headers for origin validation, and cache behaviors.
+Using CloudFront in front of an Application Load Balancer (ALB) provides global edge caching, DDoS protection via AWS Shield Standard, and SSL termination at the edge. OpenTofu manages the distribution, custom headers for origin validation, and cache behaviors.
 
 ## Custom Header for Origin Validation
 
-Restrict the ALB to only accept traffic from CloudFront by requiring a secret header.
+Restrict the ALB so it only forwards requests that include a secret header added by CloudFront.
 
 ```hcl
 resource "random_password" "cf_secret" {
@@ -20,7 +20,8 @@ resource "random_password" "cf_secret" {
   special = false
 }
 
-# Add a listener rule on the ALB to block requests without the header
+# Add listener rules on the ALB to allow requests with the header
+# and return 403 for everything else.
 
 resource "aws_lb_listener_rule" "cf_only" {
   listener_arn = aws_lb_listener.https.arn
@@ -38,15 +39,107 @@ resource "aws_lb_listener_rule" "cf_only" {
     target_group_arn = aws_lb_target_group.app.arn
   }
 }
+
+resource "aws_lb_listener_rule" "deny_direct" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 50000
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
+
+  action {
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Access denied"
+      status_code  = "403"
+    }
+  }
+}
 ```
 
 ## CloudFront Distribution with ALB Origin
 
 ```hcl
+resource "aws_cloudfront_cache_policy" "dynamic" {
+  name        = "${var.app_name}-dynamic"
+  min_ttl     = 0
+  default_ttl = 0
+  max_ttl     = 0
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_brotli = true
+    enable_accept_encoding_gzip   = true
+
+    headers_config {
+      header_behavior = "whitelist"
+      headers {
+        items = ["Host", "Authorization", "Accept", "Accept-Language"]
+      }
+    }
+
+    cookies_config {
+      cookie_behavior = "all"
+    }
+
+    query_strings_config {
+      query_string_behavior = "all"
+    }
+  }
+}
+
+resource "aws_cloudfront_cache_policy" "static" {
+  name        = "${var.app_name}-static"
+  min_ttl     = 0
+  default_ttl = 86400
+  max_ttl     = 31536000
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_brotli = true
+    enable_accept_encoding_gzip   = true
+
+    headers_config {
+      header_behavior = "none"
+    }
+
+    cookies_config {
+      cookie_behavior = "none"
+    }
+
+    query_strings_config {
+      query_string_behavior = "none"
+    }
+  }
+}
+
+resource "aws_cloudfront_origin_request_policy" "static" {
+  name = "${var.app_name}-static"
+
+  headers_config {
+    header_behavior = "whitelist"
+    headers {
+      items = ["Host"]
+    }
+  }
+
+  cookies_config {
+    cookie_behavior = "none"
+  }
+
+  query_strings_config {
+    query_string_behavior = "none"
+  }
+}
+
 resource "aws_cloudfront_distribution" "app" {
   enabled         = true
   is_ipv6_enabled = true
   price_class     = "PriceClass_All"
+  web_acl_id      = aws_wafv2_web_acl.cf.arn
 
   aliases = [var.app_domain]
 
@@ -75,18 +168,7 @@ resource "aws_cloudfront_distribution" "app" {
     target_origin_id       = "ALB-${var.app_name}"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
-
-    forwarded_values {
-      query_string = true
-      headers      = ["Host", "Authorization", "Accept", "Accept-Language"]
-      cookies {
-        forward = "all"
-      }
-    }
-
-    min_ttl     = 0
-    default_ttl = 0  # no caching for dynamic content
-    max_ttl     = 0
+    cache_policy_id        = aws_cloudfront_cache_policy.dynamic.id
   }
 
   # Cache static assets aggressively
@@ -98,15 +180,8 @@ resource "aws_cloudfront_distribution" "app" {
 
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
-
-    forwarded_values {
-      query_string = false
-      cookies { forward = "none" }
-    }
-
-    min_ttl     = 0
-    default_ttl = 86400    # 1 day
-    max_ttl     = 31536000 # 1 year
+    cache_policy_id          = aws_cloudfront_cache_policy.static.id
+    origin_request_policy_id = aws_cloudfront_origin_request_policy.static.id
   }
 
   restrictions {
@@ -116,6 +191,7 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   viewer_certificate {
+    # CloudFront ACM certificates must be in us-east-1.
     acm_certificate_arn      = var.acm_certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
@@ -131,9 +207,20 @@ resource "aws_cloudfront_distribution" "app" {
 ## WAF Web ACL
 
 ```hcl
-resource "aws_wafv2_web_acl_association" "cloudfront" {
-  resource_arn = aws_cloudfront_distribution.app.arn
-  web_acl_arn  = aws_wafv2_web_acl.cf.arn
+resource "aws_wafv2_web_acl" "cf" {
+  provider = aws.us_east_1
+  name     = "${var.app_name}-cloudfront"
+  scope    = "CLOUDFRONT"
+
+  default_action {
+    allow {}
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${var.app_name}-cloudfront"
+    sampled_requests_enabled   = true
+  }
 }
 ```
 
@@ -147,4 +234,4 @@ tofu apply tfplan
 
 ## Summary
 
-CloudFront with an ALB origin provides edge caching, DDoS protection, and SSL termination for dynamic applications. OpenTofu manages the distribution, origin validation headers, cache behaviors for static and dynamic content, and WAF associations - creating a secure, globally distributed application delivery layer.
+CloudFront with an ALB origin provides edge caching, DDoS protection, and SSL termination for dynamic applications. OpenTofu manages the distribution, origin validation headers, modern cache and origin request policies for static and dynamic content, and WAF integration - creating a secure, globally distributed application delivery layer.
