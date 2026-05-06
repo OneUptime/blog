@@ -20,6 +20,7 @@ Capturing packets from a running Kubernetes pod is essential for debugging netwo
 kubectl exec -it my-pod -- tcpdump -i eth0 -w /tmp/capture.pcap
 
 # Copy the capture file to your local machine
+# Requires tar in the container image
 kubectl cp my-pod:/tmp/capture.pcap ./capture.pcap
 
 # Open with Wireshark
@@ -28,13 +29,17 @@ wireshark capture.pcap
 
 ---
 
-## Method 2: Ephemeral Debug Container (Kubernetes 1.23+)
+## Method 2: Ephemeral Debug Container (Kubernetes 1.25+)
 
 ```bash
-# Inject a debug container that shares the target pod's network namespace
-kubectl debug -it my-pod   --image=nicolaka/netshoot   --target=my-container   -- tcpdump -i eth0 -nn -w /tmp/capture.pcap
+# Add a debug container to the pod and open a shell
+kubectl debug -it my-pod   --image=nicolaka/netshoot   --container=debugger   --profile=sysadmin   -- sh
 
-# In another terminal, copy the file
+# Inside the debug container
+tcpdump -i eth0 -nn -w /tmp/capture.pcap
+
+# In another terminal, after stopping tcpdump but while the shell is still open
+# Requires tar in the selected container
 kubectl cp my-pod:/tmp/capture.pcap ./capture.pcap -c debugger
 ```
 
@@ -43,17 +48,14 @@ kubectl cp my-pod:/tmp/capture.pcap ./capture.pcap -c debugger
 ## Method 3: Capture on the Node
 
 ```bash
-# SSH to the node running the pod
-# Find the pod's network interface
-kubectl get pod my-pod -o wide  # Get node name
-ssh node01
+# Find the node running the pod
+kubectl get pod my-pod -o wide  # Replace node01 below with the NODE column value
 
-# Find the veth interface for the pod
+# Get the pod IP from your local shell
 POD_IP=$(kubectl get pod my-pod -o jsonpath='{.status.podIP}')
-VETH=$(ip route get ${POD_IP} | grep dev | awk '{print $3}')
 
-# Capture on the veth interface
-sudo tcpdump -i ${VETH} -w /tmp/pod-capture.pcap
+# SSH to the node and capture traffic for that pod IP
+ssh node01 "sudo tcpdump -i any host ${POD_IP} -w /tmp/pod-capture.pcap"
 ```
 
 ---
@@ -62,10 +64,14 @@ sudo tcpdump -i ${VETH} -w /tmp/pod-capture.pcap
 
 ```bash
 # Install ksniff kubectl plugin
+# Requires Krew to be installed
 kubectl krew install sniff
 
-# Capture and open directly in Wireshark
+# Capture to a local file
 kubectl sniff my-pod -n default -o capture.pcap
+
+# Open with Wireshark
+wireshark capture.pcap
 ```
 
 ---
@@ -87,4 +93,4 @@ tcpdump -i eth0 host 10.0.1.5 -w pod-to-pod.pcap
 
 ## Summary
 
-Use `kubectl exec` for quick captures if `tcpdump` is in the image, or inject an ephemeral debug container using `kubectl debug` with `--target` to share the pod's network namespace. For longer captures, run `tcpdump` on the node's veth interface. Transfer the `.pcap` file with `kubectl cp` and analyze with Wireshark.
+Use `kubectl exec` for quick captures if `tcpdump` is in the image, or add an ephemeral debug container using `kubectl debug`. All containers in a Pod share the network namespace; `--target` is only needed when you want to target another container's process namespace. For longer captures, run `tcpdump` from the node and filter by the Pod IP. Transfer the `.pcap` file with `kubectl cp` (which requires `tar` in the selected container) and analyze with Wireshark.
