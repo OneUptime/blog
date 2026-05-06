@@ -26,7 +26,7 @@ IPv6 Client                          Your IPv4 Origin
 
 For the IPv6-to-IPv4 proxy to work:
 - Your DNS records must be **proxied** (orange cloud in Cloudflare)
-- IPv6 Compatibility must be enabled in Network settings
+- IPv6 Compatibility should remain enabled in Network settings (it is on by default)
 - Your origin only needs an IPv4 address
 
 ## Enabling the Proxy
@@ -39,7 +39,7 @@ curl -X PATCH "https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/
   -H "Content-Type: application/json" \
   -d '{"proxied": true}'
 
-# Step 2: Enable IPv6 Compatibility
+# Step 2: If IPv6 Compatibility was disabled, turn it back on
 curl -X PATCH "https://api.cloudflare.com/client/v4/zones/{zone_id}/settings/ipv6" \
   -H "Authorization: Bearer $CF_API_TOKEN" \
   -H "Content-Type: application/json" \
@@ -49,21 +49,21 @@ curl -X PATCH "https://api.cloudflare.com/client/v4/zones/{zone_id}/settings/ipv
 ### Terraform Configuration
 
 ```hcl
-# Only an A record needed - Cloudflare provides AAAA automatically
-resource "cloudflare_record" "main" {
+# Only an A record needed - Cloudflare provides AAAA automatically for proxied hostnames
+resource "cloudflare_dns_record" "main" {
   zone_id = var.zone_id
   name    = "@"
   type    = "A"
-  value   = "203.0.113.10"    # Your IPv4-only origin
+  content = "203.0.113.10"    # Your IPv4-only origin
+  ttl     = 1                  # Auto
   proxied = true               # Enable Cloudflare proxy (orange cloud)
 }
 
 # Enable IPv6 compatibility
-resource "cloudflare_zone_settings_override" "main" {
-  zone_id = var.zone_id
-  settings {
-    ipv6 = "on"
-  }
+resource "cloudflare_zone_setting" "ipv6" {
+  zone_id    = var.zone_id
+  setting_id = "ipv6"
+  value      = "on"
 }
 ```
 
@@ -71,32 +71,27 @@ resource "cloudflare_zone_settings_override" "main" {
 
 When the proxy is enabled with IPv6 compatibility:
 
-1. Cloudflare adds `2606:4700::/32` AAAA records for your domain
+1. Cloudflare automatically returns AAAA answers for your proxied hostname using its anycast IPv6 addresses
 2. IPv6 clients resolve the AAAA record and connect to Cloudflare's IPv6 address
 3. Cloudflare forwards the request to your IPv4 origin
-4. Cloudflare adds `CF-Connecting-IP` header with the real IPv6 client address
+4. Cloudflare adds `CF-Connecting-IP` header with the real client IP address
 
 ## Reading IPv6 Client IPs at Your Origin
 
-Your origin receives connections from Cloudflare's IPv4 addresses, but the real client's IPv6 is in the `CF-Connecting-IP` header:
+Your origin receives connections from Cloudflare's IPv4 addresses, but the real client IP is in the `CF-Connecting-IP` header:
 
 ```nginx
 # /etc/nginx/nginx.conf
 
-# Trust Cloudflare IP ranges
-# IPv4 ranges
+# Trust Cloudflare IPv4 ranges
 set_real_ip_from 173.245.48.0/20;
 set_real_ip_from 103.21.244.0/22;
-# ... (full list at https://www.cloudflare.com/ips-v4)
-
-# IPv6 ranges (when Cloudflare connects from IPv6)
-set_real_ip_from 2400:cb00::/32;
-set_real_ip_from 2606:4700::/32;
+# ... (repeat for all Cloudflare IPv4 ranges at https://www.cloudflare.com/ips-v4)
 
 # Use CF-Connecting-IP for real client IP (includes IPv6)
 real_ip_header CF-Connecting-IP;
 
-# Now $remote_addr shows the real client IPv6 address
+# Now $remote_addr shows the real client IP address
 log_format cloudflare '$remote_addr - $request - $status';
 ```
 
@@ -105,28 +100,30 @@ log_format cloudflare '$remote_addr - $request - $status';
 Since Cloudflare proxies IPv6 clients to your IPv4 origin, consider allowing only Cloudflare IPs at your origin firewall:
 
 ```bash
-# Allow only Cloudflare's IPv4 ranges to reach origin
-# Get current Cloudflare IPs:
-curl https://www.cloudflare.com/ips-v4
+# Allow HTTPS only from Cloudflare's IPv4 ranges
+for ip in $(curl -fsSL https://www.cloudflare.com/ips-v4); do
+  sudo iptables -I INPUT -p tcp --dport 443 -s "$ip" -j ACCEPT
+done
 
-# Example ip6tables rule (block direct IPv6 access - all IPv6 goes through Cloudflare)
-sudo ip6tables -A INPUT -p tcp --dport 443 ! -s 2606:4700::/32 -j DROP
+# Block other direct IPv4 HTTPS traffic to the origin
+sudo iptables -A INPUT -p tcp --dport 443 -j DROP
+
+# If your origin also listens on IPv6, repeat with ips-v6 and ip6tables
 ```
 
 ## Testing IPv6-to-IPv4 Proxy
 
 ```bash
-# Verify AAAA record is Cloudflare's
+# Verify AAAA record resolves to Cloudflare
 dig AAAA example.com
-# Should return 2606:4700:xxxx::xxxx
+# Should return Cloudflare anycast IPv6 addresses
 
 # Test IPv6 client connection
 curl -6 -v https://example.com/ 2>&1 | grep "Connected to"
 # Should connect to a Cloudflare IPv6 address
 
-# Verify CF-Connecting-IP at origin
-# Check your origin access logs for CF-Connecting-IP values
-# Should contain the real client IPv6 address
+# Verify client IP restoration at origin
+# Check your origin access logs; $remote_addr should show the real client IPv6 address
 ```
 
-Cloudflare's IPv6-to-IPv4 proxy is the standard approach for legacy IPv4 infrastructure - one DNS change and one setting toggle gives full IPv6 connectivity to clients worldwide without any origin changes.
+Cloudflare's IPv6-to-IPv4 proxy is the standard approach for legacy IPv4 infrastructure - proxying the DNS record and keeping IPv6 Compatibility enabled gives IPv6 connectivity to clients worldwide without changing the origin's network stack.
