@@ -8,7 +8,7 @@ Description: Learn how to configure the OpenTofu GCS backend to store state file
 
 ## Introduction
 
-The GCS (Google Cloud Storage) backend stores OpenTofu state in a GCS bucket. It supports state locking via GCS object locks, server-side encryption with Google-managed or customer-managed keys, and bucket versioning for state history. This guide covers the complete setup.
+The GCS (Google Cloud Storage) backend stores OpenTofu state in a GCS bucket. It supports state locking with a separate lock object in the bucket, server-side encryption with Google-managed or customer-managed keys, and bucket versioning for state history. This guide covers the complete setup.
 
 ## Step 1: Create the GCS Bucket
 
@@ -44,18 +44,13 @@ resource "google_storage_bucket" "terraform_state" {
   # Uniform bucket-level access (no ACLs)
   uniform_bucket_level_access = true
 
-  # Enable soft delete
+  # Prevent public access
+  public_access_prevention = "enforced"
+
+  # Set soft delete retention to 30 days
   soft_delete_policy {
     retention_duration_seconds = 2592000  # 30 days
   }
-}
-
-# Prevent public access
-
-resource "google_storage_bucket_iam_binding" "prevent_public_access" {
-  bucket = google_storage_bucket.terraform_state.name
-  role   = "roles/storage.objectViewer"
-  members = []  # Empty = no public access
 }
 ```
 
@@ -76,7 +71,7 @@ terraform {
 
 ## Step 3: Organize State Files
 
-The `prefix` parameter creates a directory structure within the bucket:
+The `prefix` parameter creates a directory-like prefix structure within the bucket:
 
 ```text
 GCS bucket: my-terraform-state-bucket
@@ -143,14 +138,11 @@ When running on GKE with Workload Identity, credentials are automatic - no confi
 
 ## State Locking
 
-GCS uses object locking for state locking. The lock file is stored as an object in the bucket with a `.lock` extension.
+OpenTofu supports state locking with the GCS backend. Lock metadata is stored as a separate object in the bucket with a `.tflock` extension.
 
 ```bash
-# Check for active locks
-gsutil ls gs://my-terraform-state-bucket/prod/*.lock
-
-# Remove a stuck lock
-gsutil rm gs://my-terraform-state-bucket/prod/default.tfstate.lock
+# Remove a stuck lock using the lock ID reported by OpenTofu
+tofu force-unlock LOCK_ID
 ```
 
 ## Customer-Managed Encryption Keys (CMEK)
