@@ -8,7 +8,7 @@ Description: Configure BIND9 as a recursive (caching) DNS resolver that communic
 
 ## Introduction
 
-A recursive BIND resolver forwards queries to authoritative servers and caches results. Enabling IPv6 means it can receive queries from IPv6 clients and use IPv6 transport to reach upstream nameservers.
+A recursive BIND resolver resolves client queries by contacting other DNS servers and caches results. If forwarders are configured, it can send those recursive queries to the forwarders instead of walking the DNS hierarchy itself. Enabling IPv6 means it can receive queries from IPv6 clients and use IPv6 transport to reach upstream nameservers.
 
 ## Step 1: Basic Recursive Configuration
 
@@ -20,26 +20,20 @@ options {
 
     # Listen for queries from IPv6 and IPv4 clients
     listen-on-v6 { any; };
-    listen-on    { 127.0.0.1; };
+    listen-on    { any; };
 
     # Enable recursion
     recursion yes;
 
-    # Allow IPv6 and IPv4 local clients
-    allow-query {
-        ::1;
-        fe80::/10;
-        2001:db8::/32;
-        127.0.0.0/8;
-        192.168.0.0/16;
-        10.0.0.0/8;
-    };
+    # Allow only local clients to use this resolver
+    allow-query       { localhost; localnets; };
+    allow-query-cache { localhost; localnets; };
+    allow-recursion   { localhost; localnets; };
 
     # DNSSEC validation
     dnssec-validation auto;
 
-    # Use IPv6 for outbound queries when possible
-    # (BIND prefers IPv6 when the OS resolves the nameserver via AAAA)
+    # BIND can use IPv6 for outbound queries on IPv6-capable systems
 };
 ```
 
@@ -55,22 +49,22 @@ options {
         8.8.4.4;
     };
 
-    # forward only - don't do full recursion if forwarders fail
+    # Try forwarders first, then fall back to full recursion
     forward first;  # Try forwarders first, fall back to recursion
 };
 ```
 
-## Step 3: Prefer IPv6 for Outbound
+## Step 3: Outbound IPv6 Queries
 
 ```nginx
 # /etc/bind/named.conf.options
 
 options {
-    # Prefer IPv6 addresses when resolving NS records
-    # (enabled by default if IPv6 is available)
+    # BIND uses IPv6 for outbound queries automatically when IPv6 is available
 
-    # Explicitly set source address for outbound IPv6 queries
-    query-source-v6 address 2001:db8::53;
+    # If you need to pin the local IPv6 source address for those queries,
+    # replace the wildcard with an IPv6 address assigned to this server
+    query-source-v6 address *;
 
     # Set outbound interface for queries
     # (not usually needed - let the OS route)
@@ -105,7 +99,8 @@ dig AAAA google.com @::1
 dig A example.com @::1
 
 # Check that DNSSEC validation works
-dig +dnssec AAAA cloudflare.com @::1
+dig A ftp.isc.org @::1 +dnssec
+# Look for the ad flag in the response header
 
 # Confirm it's listening on IPv6
 ss -lnp | grep ":53"
@@ -141,7 +136,7 @@ logging {
 
 ```bash
 # Test recursion with a known AAAA record
-dig AAAA ipv6.google.com @::1 +stats
+dig AAAA google.com @::1 +stats
 # ;; Query time: 12 msec
 # ;; SERVER: ::1#53(::1)
 
@@ -149,10 +144,13 @@ dig AAAA ipv6.google.com @::1 +stats
 dig -x 2001:4860:4860::8888 @::1
 
 # Verify DNSSEC chain of trust
-dig +cd +dnssec AAAA www.dnssec-failed.org @::1
-# AD flag should not appear for failed zones
+dig A www.dnssec-failed.org @::1
+# A validating resolver should return SERVFAIL
+
+dig A www.dnssec-failed.org @::1 +cd
+# If this succeeds with +cd, the failure is due to DNSSEC validation
 ```
 
 ## Conclusion
 
-BIND recursive resolver with IPv6 requires `listen-on-v6 { any; }`, appropriate `allow-query` ACLs for IPv6 subnets, and optional forwarders with IPv6 addresses. Enable DNSSEC validation to authenticate responses. Monitor resolver latency and cache hit rate with OneUptime.
+BIND recursive resolver with IPv6 needs recursion enabled, appropriate ACLs such as `allow-query-cache` and `allow-recursion` to restrict which clients can use it, and optional forwarders with IPv6 addresses. Enable DNSSEC validation to authenticate responses. Monitor resolver latency and cache hit rate with OneUptime.
