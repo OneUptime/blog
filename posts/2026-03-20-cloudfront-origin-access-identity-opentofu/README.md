@@ -8,9 +8,9 @@ Description: Learn how to set up CloudFront Origin Access Identity to restrict d
 
 ## Introduction
 
-Origin Access Identity (OAI) is a legacy CloudFront feature (replaced by OAC in newer distributions) that creates a special CloudFront identity you grant S3 bucket access to. It ensures S3 objects can only be accessed through CloudFront, not directly. OpenTofu manages OAI creation and bucket policies.
+Origin Access Identity (OAI) is a legacy CloudFront feature, superseded by Origin Access Control (OAC), that creates a special CloudFront identity you grant S3 bucket access to. It ensures S3 objects can only be accessed through CloudFront, not directly. OpenTofu manages OAI creation and bucket policies.
 
-> **Note:** AWS recommends Origin Access Control (OAC) for new distributions. Use OAI only when OAC is not supported (e.g., older distribution configurations).
+> **Note:** AWS recommends Origin Access Control (OAC) for new distributions. OAI is legacy and does not support features such as newer S3 Regions, SSE-KMS, or dynamic `PUT`, `POST`, and `DELETE` requests to S3.
 
 ## Creating an OAI
 
@@ -63,6 +63,31 @@ resource "aws_s3_bucket_policy" "website" {
 ## CloudFront Distribution Using OAI
 
 ```hcl
+resource "aws_cloudfront_cache_policy" "website" {
+  name        = "${var.app_name}-${var.environment}-website-cache-policy"
+  comment     = "Cache policy for ${var.app_name} website"
+  default_ttl = 3600
+  max_ttl     = 86400
+  min_ttl     = 0
+
+  parameters_in_cache_key_and_forwarded_to_origin {
+    enable_accept_encoding_brotli = true
+    enable_accept_encoding_gzip   = true
+
+    cookies_config {
+      cookie_behavior = "none"
+    }
+
+    headers_config {
+      header_behavior = "none"
+    }
+
+    query_strings_config {
+      query_string_behavior = "none"
+    }
+  }
+}
+
 resource "aws_cloudfront_distribution" "website" {
   enabled             = true
   is_ipv6_enabled     = true
@@ -80,19 +105,12 @@ resource "aws_cloudfront_distribution" "website" {
   }
 
   default_cache_behavior {
+    cache_policy_id        = aws_cloudfront_cache_policy.website.id
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
     target_origin_id       = "S3-${var.app_name}"
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
-
-    forwarded_values {
-      query_string = false
-      cookies { forward = "none" }
-    }
-
-    default_ttl = 3600
-    max_ttl     = 86400
   }
 
   custom_error_response {
