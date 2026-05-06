@@ -15,7 +15,7 @@ sequenceDiagram
     participant S1 as Service A
     participant S2 as Service B
 
-    C->>N: DISCOVER broadcast (port 5353)
+    C->>N: DISCOVER broadcast (port 37020)
     N->>S1: DISCOVER
     N->>S2: DISCOVER
     S1->>C: ANNOUNCE (ip=192.168.1.10, port=8080, name=auth)
@@ -31,12 +31,12 @@ import time
 import threading
 import os
 
-DISCOVERY_PORT = 5353
-ANNOUNCE_PORT  = 5354
+DISCOVERY_PORT = 37020
+ANNOUNCE_PORT  = 37021
 
 def announce(service_name: str, service_port: int,
              interval: float = 5.0) -> threading.Thread:
-    """Periodically broadcast service presence on the local network."""
+    """Broadcast service presence and reply to discovery requests."""
     payload = json.dumps({
         "type":    "ANNOUNCE",
         "name":    service_name,
@@ -44,22 +44,39 @@ def announce(service_name: str, service_port: int,
         "host":    socket.gethostname(),
     }).encode()
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    broadcast_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    broadcast_sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
-    def _run():
+    reply_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    reply_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    reply_sock.bind(("0.0.0.0", DISCOVERY_PORT))
+    reply_sock.settimeout(1.0)
+
+    def _broadcast():
         print(f"Announcing '{service_name}' on port {service_port}")
         while True:
-            sock.sendto(payload, ("255.255.255.255", DISCOVERY_PORT))
+            broadcast_sock.sendto(payload, ("255.255.255.255", DISCOVERY_PORT))
             time.sleep(interval)
 
-    t = threading.Thread(target=_run, daemon=True)
+    def _reply():
+        while True:
+            try:
+                data, addr = reply_sock.recvfrom(4096)
+                msg = json.loads(data)
+                if msg.get("type") == "DISCOVER":
+                    reply_sock.sendto(payload, addr)
+            except socket.timeout:
+                continue
+
+    threading.Thread(target=_broadcast, daemon=True).start()
+    t = threading.Thread(target=_reply, daemon=True)
     t.start()
     return t
 
 # Start announcing this service
 
 announce("my-api", int(os.environ.get("PORT", 8080)))
+threading.Event().wait()
 ```
 
 ## Discovery Client
@@ -70,8 +87,8 @@ import json
 import threading
 import time
 
-DISCOVERY_PORT = 5353
-ANNOUNCE_PORT  = 5354
+DISCOVERY_PORT = 37020
+ANNOUNCE_PORT  = 37021
 
 class ServiceRegistry:
     def __init__(self):
@@ -144,7 +161,11 @@ def discover_services(timeout: float = 3.0) -> list[dict]:
 
     services = []
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        sock.settimeout(remaining)
         try:
             data, addr = sock.recvfrom(4096)
             msg = json.loads(data)
