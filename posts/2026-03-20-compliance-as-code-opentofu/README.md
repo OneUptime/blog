@@ -26,20 +26,30 @@ graph LR
 
 ```yaml
 # .github/workflows/security.yml
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
 
-- name: Run Checkov
-  uses: bridgecrewio/checkov-action@master
-  with:
-    directory: .
-    framework: terraform
-    soft_fail: false
-    output_format: sarif
-    output_file_path: checkov-results.sarif
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform
+          soft_fail: false
+          output_format: sarif
+          output_file_path: checkov-results.sarif
 
-- name: Upload Checkov results
-  uses: github/codeql-action/upload-sarif@v2
-  with:
-    sarif_file: checkov-results.sarif
+      - name: Upload Checkov results
+        if: success() || failure()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: checkov-results.sarif
 ```
 
 ## tfsec Configuration
@@ -47,12 +57,15 @@ graph LR
 ```yaml
 # .tfsec/config.yml
 severity_overrides:
-  AWS006: WARNING  # Security group allows ingress from 0.0.0.0/0
+  aws-ec2-no-public-ingress-sgr: LOW  # Security group allows ingress from 0.0.0.0/0
 
-exclude_checks:
-  - AWS018  # Security group has description (we document elsewhere)
+exclude:
+  - aws-ec2-add-description-to-security-group  # We document security group intent elsewhere
+```
 
-custom_checks:
+```yaml
+# .tfsec/custom_checks_tfchecks.yaml
+checks:
   - code: CUSTOM001
     description: Production databases must have deletion protection enabled
     impact: Database could be accidentally deleted
@@ -61,11 +74,13 @@ custom_checks:
       - resource
     requiredLabels:
       - aws_db_instance
-    severity: CRITICAL
+    severity: ERROR
     matchSpec:
-      action: isTrue
       name: deletion_protection
-    relatedInfoLinks:
+      action: equals
+      value: true
+    errorMessage: Production databases must have deletion protection enabled
+    relatedLinks:
       - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/db_instance
 ```
 
@@ -74,7 +89,8 @@ custom_checks:
 ```hcl
 # Compliance requirements enforced at plan time
 variable "kms_key_arn" {
-  type = string
+  type     = string
+  nullable = false
 
   validation {
     condition     = var.environment != "production" || length(var.kms_key_arn) > 0
@@ -83,7 +99,8 @@ variable "kms_key_arn" {
 }
 
 variable "backup_retention_days" {
-  type = number
+  type     = number
+  nullable = false
 
   validation {
     condition     = var.environment != "production" || var.backup_retention_days >= 7
@@ -106,6 +123,7 @@ resource "aws_db_instance" "main" {
 
 ```hcl
 # config_compliance.tf
+# Assumes a configuration recorder and the referenced S3/SNS resources are configured separately.
 locals {
   compliance_rules = {
     s3-bucket-server-side-encryption-enabled = {
@@ -136,7 +154,7 @@ resource "aws_config_config_rule" "compliance" {
   }
 }
 
-# Alert on compliance violations
+# Send AWS Config notifications, including compliance changes
 resource "aws_config_delivery_channel" "compliance" {
   name           = "compliance-delivery"
   s3_bucket_name = aws_s3_bucket.config.id
