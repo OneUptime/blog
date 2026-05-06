@@ -8,7 +8,7 @@ Description: Configure 6VPE (IPv6 VPN Provider Edge) on Juniper JunOS routers us
 
 ---
 
-Juniper JunOS implements 6VPE using routing instances (similar to Cisco VRFs) with the `vrf` type and `inet6` protocol family. MP-BGP uses the `inet6-vpn unicast` address family to exchange VPNv6 routes with RD/RT extended communities between PE routers.
+Juniper JunOS implements 6VPE using routing instances (similar to Cisco VRFs) with the `vrf` type and IPv6 on the PE-CE side. MP-BGP uses the `inet6-vpn unicast` address family to exchange VPNv6 routes, carrying the route distinguisher in the VPNv6 NLRI and route targets as BGP extended communities. On the PE routers, 6VPE also requires `protocols mpls ipv6-tunneling` so IPv6 VPN traffic can traverse the IPv4 MPLS core.
 
 ## JunOS Routing Instance (VRF) for 6VPE
 
@@ -18,7 +18,6 @@ Juniper JunOS implements 6VPE using routing instances (similar to Cisco VRFs) wi
 set routing-instances CUSTOMER-A instance-type vrf
 set routing-instances CUSTOMER-A route-distinguisher 65000:100
 set routing-instances CUSTOMER-A vrf-target target:65000:100
-set routing-instances CUSTOMER-A protocols bgp group CE-A family inet6 unicast
 
 # Add CE-facing interface to routing instance
 set routing-instances CUSTOMER-A interface ge-0/0/1.0
@@ -51,7 +50,6 @@ set routing-instances CUSTOMER-A protocols bgp group CE-A-BGP type external
 set routing-instances CUSTOMER-A protocols bgp group CE-A-BGP peer-as 65001
 set routing-instances CUSTOMER-A protocols bgp group CE-A-BGP family inet6 unicast
 set routing-instances CUSTOMER-A protocols bgp group CE-A-BGP neighbor 2001:db8:pe1-cea::2
-set routing-instances CUSTOMER-A protocols bgp group CE-A-BGP export EXPORT-CE-ROUTES
 ```
 
 ## Complete PE1 6VPE Configuration
@@ -68,6 +66,7 @@ set interfaces ge-0/0/0 unit 0 family mpls
 set protocols ospf area 0 interface ge-0/0/0.0
 set protocols ospf area 0 interface lo0.0 passive
 set protocols ldp interface ge-0/0/0.0
+set protocols mpls ipv6-tunneling
 set protocols mpls interface ge-0/0/0.0
 
 # Loopback
@@ -107,10 +106,10 @@ set routing-instances CUSTOMER-B protocols bgp group CE neighbor 2001:db8:pe1-ce
 
 ```bash
 # Show VPNv6 BGP summary
-show bgp summary | grep "inet6-vpn\|Establ"
+show bgp summary | match "bgp.l3vpn-inet6.0|Establ"
 
 # View VPNv6 routes in BGP
-show route table bgp.l3vpn-inet6.0
+show route table bgp.l3vpn-inet6.0 extensive
 # Shows: RD:prefix, label, RT attributes
 
 # Check per-routing-instance IPv6 routes
@@ -118,42 +117,55 @@ show route table CUSTOMER-A.inet6.0
 # Should show remote site IPv6 prefixes
 
 # Verify VPN labels
-show route table CUSTOMER-A.inet6.0 detail | grep "Label\|Nexthop\|Communities"
+show route table CUSTOMER-A.inet6.0 detail | match "Push|Nexthop|Communities"
 
 # Check MPLS forwarding for VPN
 show route forwarding-table family inet6 table CUSTOMER-A
 
 # Test connectivity
-ping routing-instance CUSTOMER-A inet6 2001:db8:cust-a-site2::10
+ping 2001:db8:cust-a-site2::10 routing-instance CUSTOMER-A inet6
 
 # Traceroute through VPN
-traceroute routing-instance CUSTOMER-A inet6 2001:db8:cust-a-site2::10
+traceroute 2001:db8:cust-a-site2::10 routing-instance CUSTOMER-A inet6
 
 # Verify isolation (Customer A cannot reach B)
-ping routing-instance CUSTOMER-A inet6 2001:db8:cust-b-site1::10
+ping 2001:db8:cust-b-site1::10 routing-instance CUSTOMER-A inet6
 # Should fail: No route to host
 ```
 
 ## Hub-and-Spoke 6VPE (Shared Services)
 
-```python
+```text
 # Hub site (data center) with shared services reachable by all VPNs
-# Use extra RT for spoke import
+# Use one shared RT from the hub to all spokes, and one common spoke RT back to the hub
 
-# Hub VRF: exports with both specific and shared RT
+set policy-options community CUSTOMER-A-RT members target:65000:100
+set policy-options community HUB-RT members target:65000:900
+set policy-options community SPOKE-RT members target:65000:901
+
+# Hub VRF: import spoke routes and export shared-services routes
+set routing-instances HUB-SITE vrf-import HUB-IMPORT
 set routing-instances HUB-SITE vrf-export HUB-EXPORT
-set policy-options policy-statement HUB-EXPORT term 1 then community add HUB-RT
-set policy-options policy-statement HUB-EXPORT term 1 then community add SPOKE-RT
-set policy-options policy-statement HUB-EXPORT term 1 then accept
+set policy-options policy-statement HUB-IMPORT term import-spokes from protocol bgp
+set policy-options policy-statement HUB-IMPORT term import-spokes from community SPOKE-RT
+set policy-options policy-statement HUB-IMPORT term import-spokes then accept
+set policy-options policy-statement HUB-EXPORT term export-shared from protocol bgp
+set policy-options policy-statement HUB-EXPORT term export-shared then community add HUB-RT
+set policy-options policy-statement HUB-EXPORT term export-shared then accept
 
-# Spoke VRFs: import hub's shared RT
+# Spoke VRF: import hub shared-services routes, keep its own RT, and export local CE routes toward the hub
 set routing-instances CUSTOMER-A vrf-import SPOKE-IMPORT
-set policy-options policy-statement SPOKE-IMPORT term import-hub \
-    from community HUB-RT
-set policy-options policy-statement SPOKE-IMPORT term import-hub then accept
-set policy-options policy-statement SPOKE-IMPORT term import-own \
-    from community SPOKE-RT
+set routing-instances CUSTOMER-A vrf-export SPOKE-EXPORT
+set policy-options policy-statement SPOKE-IMPORT term import-own from protocol bgp
+set policy-options policy-statement SPOKE-IMPORT term import-own from community CUSTOMER-A-RT
 set policy-options policy-statement SPOKE-IMPORT term import-own then accept
+set policy-options policy-statement SPOKE-IMPORT term import-hub from protocol bgp
+set policy-options policy-statement SPOKE-IMPORT term import-hub from community HUB-RT
+set policy-options policy-statement SPOKE-IMPORT term import-hub then accept
+set policy-options policy-statement SPOKE-EXPORT term export-customer-a from protocol bgp
+set policy-options policy-statement SPOKE-EXPORT term export-customer-a then community add CUSTOMER-A-RT
+set policy-options policy-statement SPOKE-EXPORT term export-customer-a then community add SPOKE-RT
+set policy-options policy-statement SPOKE-EXPORT term export-customer-a then accept
 ```
 
-JunOS 6VPE uses routing instances of type `vrf` with `inet6` address family, `inet6-vpn unicast` in the iBGP group for VPNv6 route exchange, and `vrf-target` as a simple way to configure matching RD/RT values, resulting in per-customer IPv6 routing isolation with efficient two-label MPLS forwarding across the service provider backbone.
+JunOS 6VPE uses routing instances of type `vrf`, `inet6-vpn unicast` in the iBGP group for VPNv6 route exchange, separate `route-distinguisher` and `vrf-target` settings for VPN identification and route-target matching, and `protocols mpls ipv6-tunneling` to carry IPv6 VPN traffic across the IPv4 MPLS backbone.
