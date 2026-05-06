@@ -8,11 +8,11 @@ Description: Learn how to implement an enabled variable pattern in OpenTofu modu
 
 ## Introduction
 
-While OpenTofu doesn't have a built-in `enabled` meta-argument, the community convention is to use an `enabled` variable to control whether a module or resource group should be created. This pattern is cleaner than passing `count` or boolean flags directly to individual resources.
+OpenTofu v1.11 introduced a built-in `enabled` meta-argument inside `lifecycle` blocks for resources and module calls. This is OpenTofu-specific; Terraform's current documented meta-arguments for conditional creation are still `count` and `for_each`. In reusable modules, a common pattern is to expose an `enabled` input variable and wire it into that meta-argument so callers can toggle an entire feature on or off without changing the module interface.
 
 ## Module-Level enabled Pattern
 
-Define an `enabled` variable and use it as the basis for all `count` expressions within the module.
+Define an `enabled` variable and use it as the basis for each resource's `lifecycle.enabled` setting within the module.
 
 ```hcl
 # modules/monitoring/variables.tf
@@ -24,6 +24,7 @@ variable "enabled" {
 }
 
 variable "service_name"    { type = string }
+variable "instance_id"     { type = string }
 variable "alarm_actions"   { type = list(string); default = [] }
 variable "cpu_threshold"   { type = number; default = 80 }
 variable "mem_threshold"   { type = number; default = 90 }
@@ -32,9 +33,6 @@ variable "mem_threshold"   { type = number; default = 90 }
 ```hcl
 # modules/monitoring/main.tf
 resource "aws_cloudwatch_metric_alarm" "cpu" {
-  # All resources check the enabled variable via count
-  count = var.enabled ? 1 : 0
-
   alarm_name          = "${var.service_name}-cpu-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
@@ -44,26 +42,45 @@ resource "aws_cloudwatch_metric_alarm" "cpu" {
   statistic           = "Average"
   threshold           = var.cpu_threshold
   alarm_actions       = var.alarm_actions
+
+  dimensions = {
+    InstanceId = var.instance_id
+  }
+
+  lifecycle {
+    enabled = var.enabled
+  }
 }
 
 resource "aws_cloudwatch_metric_alarm" "memory" {
-  count = var.enabled ? 1 : 0
-
   alarm_name          = "${var.service_name}-memory-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "MemoryUtilization"
+  metric_name         = "mem_used_percent"
   namespace           = "CWAgent"
   period              = 300
   statistic           = "Average"
   threshold           = var.mem_threshold
   alarm_actions       = var.alarm_actions
+
+  dimensions = {
+    InstanceId = var.instance_id
+  }
+
+  lifecycle {
+    enabled = var.enabled
+  }
 }
 
 resource "aws_cloudwatch_dashboard" "service" {
-  count          = var.enabled ? 1 : 0
   dashboard_name = "${var.service_name}-overview"
-  dashboard_body = jsonencode({ /* ... */ })
+  dashboard_body = jsonencode({
+    widgets = []
+  })
+
+  lifecycle {
+    enabled = var.enabled
+  }
 }
 ```
 
@@ -74,8 +91,9 @@ resource "aws_cloudwatch_dashboard" "service" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  enabled      = var.environment == "prod"
-  service_name = "web-app"
+  enabled       = var.environment == "prod"
+  service_name  = "web-app"
+  instance_id   = aws_instance.web.id
   alarm_actions = var.environment == "prod" ? [aws_sns_topic.alerts.arn] : []
   cpu_threshold = 70
 }
@@ -83,7 +101,7 @@ module "monitoring" {
 
 ## enabled with Feature Sub-Modules
 
-Organize optional features as sub-modules, each with their own enabled flag.
+Organize optional features as sub-modules, each with their own `enabled` input that the child module maps to `lifecycle.enabled` internally.
 
 ```hcl
 module "waf" {
@@ -107,17 +125,29 @@ module "guardduty" {
 }
 ```
 
-## Combining enabled with count for Scaling
+## Using enabled alongside count for Scaling
 
-Use `enabled` to gate creation and `count` for scaling.
+You cannot use `enabled` together with `count` on the same resource or module block. Use `enabled` on the containing module call, and use `count` inside that module for scaling.
 
 ```hcl
-variable "enabled"      { type = bool;   default = true }
+# Root module
+module "workers" {
+  source = "./modules/workers"
+
+  replica_count = var.replica_count
+  subnet_ids    = var.subnet_ids
+  instance_type = var.instance_type
+
+  lifecycle {
+    enabled = var.enabled
+  }
+}
+
+# modules/workers/main.tf
 variable "replica_count" { type = number; default = 1 }
 
 resource "aws_instance" "worker" {
-  # Zero instances when disabled; replica_count instances when enabled
-  count = var.enabled ? var.replica_count : 0
+  count = var.replica_count
 
   ami           = data.aws_ami.app.id
   instance_type = var.instance_type
@@ -125,7 +155,7 @@ resource "aws_instance" "worker" {
 
   tags = {
     Name  = "worker-${count.index + 1}"
-    Index = count.index
+    Index = tostring(count.index)
   }
 }
 ```
@@ -136,20 +166,20 @@ resource "aws_instance" "worker" {
 # modules/monitoring/outputs.tf
 output "dashboard_url" {
   description = "CloudWatch dashboard URL, or null if monitoring is disabled"
-  value = var.enabled ? (
-    "https://console.aws.amazon.com/cloudwatch/home#dashboards:name=${aws_cloudwatch_dashboard.service[0].dashboard_name}"
+  value = aws_cloudwatch_dashboard.service != null ? (
+    "https://console.aws.amazon.com/cloudwatch/home#dashboards:name=${aws_cloudwatch_dashboard.service.dashboard_name}"
   ) : null
 }
 
 output "alarm_arns" {
   description = "List of created alarm ARNs"
-  value = var.enabled ? [
-    aws_cloudwatch_metric_alarm.cpu[0].arn,
-    aws_cloudwatch_metric_alarm.memory[0].arn,
+  value = aws_cloudwatch_metric_alarm.cpu != null ? [
+    aws_cloudwatch_metric_alarm.cpu.arn,
+    aws_cloudwatch_metric_alarm.memory.arn,
   ] : []
 }
 ```
 
 ## Conclusion
 
-The `enabled` variable pattern makes module interfaces self-documenting and easy to use. Module callers can disable entire feature sets with a single flag, and the module handles all the internal `count` logic. This is the recommended approach for optional infrastructure features in reusable module libraries.
+The `enabled` pattern makes module interfaces self-documenting and easy to use. Module callers can disable entire feature sets with a single flag, and the module maps that flag to OpenTofu's built-in `lifecycle.enabled` behavior for single-instance resources. When you need multiple instances, keep using `count` or `for_each` and put the `enabled` decision on an outer module or separate block.
