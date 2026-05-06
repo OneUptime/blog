@@ -82,24 +82,24 @@ output "bastion_ip" {
 ## SSH Through the Bastion
 
 ```bash
-# Direct SSH via bastion (ProxyJump)
-
-ssh -J ec2-user@<bastion-ip> ec2-user@<private-instance-ip>
-
 # Configure in ~/.ssh/config
 Host bastion
   HostName <bastion-ip>
   User ec2-user
   IdentityFile ~/.ssh/bastion.pem
 
-Host private-*
+Host private-instance
+  HostName <private-instance-private-ip>
   User ec2-user
   IdentityFile ~/.ssh/private.pem
   ProxyJump bastion
+
+# SSH to the private instance through the bastion
+ssh private-instance
 ```
 
 ---
 
 ## Summary
 
-Deploy a bastion host in a public subnet with SSH access restricted to trusted CIDRs only. Allow private instances to accept SSH only from the bastion's security group. Use SSH ProxyJump (`-J`) to tunnel through the bastion without storing private instance IPs. Manage the entire setup with OpenTofu for auditable, repeatable deployments.
+Deploy a bastion host in a public subnet with SSH access restricted to trusted CIDRs only. Allow private instances to accept SSH only from the bastion's security group. Use SSH ProxyJump (`ProxyJump` in `~/.ssh/config`) to tunnel through the bastion without exposing private instances directly to the internet. Manage the entire setup with OpenTofu for auditable, repeatable deployments.
