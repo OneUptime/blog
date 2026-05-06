@@ -8,7 +8,7 @@ Description: Learn how to configure AWS Cognito User Pool App Clients for web, m
 
 ## Introduction
 
-App Clients define how an application authenticates with a Cognito User Pool. Each client has its own credentials, OAuth flows, allowed scopes, and callback URLs. OpenTofu lets you manage multiple app clients - for web frontends, mobile apps, and backend services - as code.
+App Clients define how an application authenticates with a Cognito User Pool. Each client has its own credentials, OAuth flows, allowed scopes, and callback URLs. To use Cognito OAuth 2.0 endpoints, you must also configure a user pool domain. OpenTofu lets you manage multiple app clients - for web frontends, mobile apps, and backend services - as code.
 
 ## Web Application Client
 
@@ -43,7 +43,7 @@ resource "aws_cognito_user_pool_client" "web" {
     refresh_token = "days"
   }
 
-  # Prevent users from authenticating with username/password directly
+  # Allow SRP and refresh-token auth, but not USER_PASSWORD_AUTH
   explicit_auth_flows = [
     "ALLOW_REFRESH_TOKEN_AUTH",
     "ALLOW_USER_SRP_AUTH"
@@ -53,7 +53,7 @@ resource "aws_cognito_user_pool_client" "web" {
 
 ## Backend / Machine-to-Machine Client
 
-Server-side apps need a client secret and use the client credentials flow.
+Server-side apps that use the client credentials flow need a client secret and a user pool domain.
 
 ```hcl
 resource "aws_cognito_user_pool_client" "backend" {
@@ -64,9 +64,7 @@ resource "aws_cognito_user_pool_client" "backend" {
 
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["client_credentials"]
-  allowed_oauth_scopes                 = ["${var.resource_server_id}/read", "${var.resource_server_id}/write"]
-
-  explicit_auth_flows = ["ALLOW_REFRESH_TOKEN_AUTH"]
+  allowed_oauth_scopes                 = aws_cognito_resource_server.api.scope_identifiers
 }
 ```
 
@@ -107,7 +105,7 @@ resource "aws_cognito_user_pool_client" "mobile" {
   callback_urls = ["myapp://callback"]
   logout_urls   = ["myapp://logout"]
 
-  # PKCE is enforced by using code flow without client secret
+  # Public mobile apps should use PKCE with the authorization code flow
   explicit_auth_flows = [
     "ALLOW_REFRESH_TOKEN_AUTH",
     "ALLOW_USER_SRP_AUTH"
