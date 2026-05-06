@@ -12,9 +12,10 @@ Use bpftool to inspect, debug, and manage eBPF programs and maps that process IP
 
 ## Prerequisites
 
-- Linux kernel 5.6+ (for BTF and full eBPF feature support)
-- Clang/LLVM for compiling eBPF C programs
-- Root access or CAP_BPF capability
+- A recent Linux kernel with eBPF/XDP support; Linux 5.8+ if you plan to rely on `CAP_BPF` instead of running as root
+- bpftool installed
+- Clang/LLVM and libbpf headers for compiling eBPF C programs
+- Root access is the simplest option; otherwise XDP program loading requires `CAP_BPF` and `CAP_NET_ADMIN`, and some `bpftool` listing operations may also require `CAP_SYS_ADMIN`
 
 ## IPv6 in eBPF Programs
 
@@ -26,6 +27,7 @@ eBPF programs process IPv6 packets using kernel headers. The IPv6 header is 40 b
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ipv6.h>
+#include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 
 SEC("xdp")
@@ -63,7 +65,7 @@ char LICENSE[] SEC("license") = "GPL";
 ```bash
 # Compile eBPF program
 
-clang -O2 -target bpf -c program.c -o program.o
+clang -O2 -g -target bpf -c program.c -o program.o
 
 # Load XDP program on interface
 sudo ip link set dev eth0 xdp obj program.o sec xdp
@@ -101,11 +103,11 @@ sudo bpftool map dump id <MAP_ID> | grep -A 3 "key"
 # Generate IPv6 test traffic
 ping6 -c 10 2001:db8::1
 
-# Use hping3 for IPv6 packet generation
-hping3 --ipv6 -S -p 80 2001:db8::1
+# Generate IPv6 TCP traffic
+curl -6 -I http://[2001:db8::1]/
 
 # Watch bpf_printk output (kernel trace pipe)
-sudo cat /sys/kernel/debug/tracing/trace_pipe
+sudo cat /sys/kernel/tracing/trace_pipe
 
 # Use trace-cmd for structured tracing
 sudo trace-cmd record -e "bpf:*" ping6 -c 5 2001:db8::1
