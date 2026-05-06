@@ -8,7 +8,7 @@ Description: Set up and configure a Factorio dedicated server to accept player c
 
 ---
 
-Factorio is a factory-building game with dedicated server support. The Factorio server can be configured to listen on IPv6 interfaces, enabling players to connect from IPv6-only or dual-stack networks.
+Factorio is a factory-building game with dedicated server support. The dedicated server exposes a `--bind` option for choosing the listen address, but current stable Factorio 2.0.x does not provide full IPv6 support. You can test direct IPv6 connectivity, but IPv6-only or dual-stack hosting should be validated carefully in your own environment.
 
 ## Installing Factorio Dedicated Server
 
@@ -30,26 +30,24 @@ sudo chown -R factorio:factorio /opt/factorio
 ## Configuring Factorio Server for IPv6
 
 ```bash
-# Generate default server settings
+# Create a save for the server
+sudo -u factorio mkdir -p /opt/factorio/saves
 sudo -u factorio /opt/factorio/factorio/bin/x64/factorio \
   --create /opt/factorio/saves/my-world.zip
 
-# Generate server-settings.json
-sudo -u factorio /opt/factorio/factorio/bin/x64/factorio \
-  --create /opt/factorio/saves/my-world.zip \
-  --start-server /opt/factorio/saves/my-world.zip \
-  --server-settings /opt/factorio/server-settings.json
+# Create server-settings.json from the bundled example
+sudo -u factorio cp /opt/factorio/factorio/data/server-settings.example.json \
+  /opt/factorio/server-settings.json
 ```
 
 ```json
-// /opt/factorio/server-settings.json
 {
   "name": "My IPv6 Factorio Server",
   "description": "Factorio server accessible over IPv6",
   "tags": ["ipv6", "vanilla"],
   "max_players": 16,
   "visibility": {
-    "public": true,
+    "public": false,
     "lan": false
   },
   "username": "",
@@ -70,17 +68,12 @@ sudo -u factorio /opt/factorio/factorio/bin/x64/factorio \
 ## Binding Factorio to IPv6
 
 ```bash
-# Start Factorio server - it listens on all interfaces by default (including IPv6)
-# Use --bind to specify interface
+# Factorio exposes --bind ADDRESS[:PORT], but current stable 2.0.x does not
+# fully support IPv6-only or dual-stack hosting. Use a specific IPv6 address
+# for direct-connect testing and verify connectivity from a remote client.
 sudo -u factorio /opt/factorio/factorio/bin/x64/factorio \
   --start-server /opt/factorio/saves/my-world.zip \
   --server-settings /opt/factorio/server-settings.json \
-  --bind "::" \
-  --port 34197
-
-# For specific IPv6 address
-sudo -u factorio /opt/factorio/factorio/bin/x64/factorio \
-  --start-server /opt/factorio/saves/my-world.zip \
   --bind "2001:db8::1" \
   --port 34197
 ```
@@ -102,6 +95,7 @@ WorkingDirectory=/opt/factorio
 ExecStart=/opt/factorio/factorio/bin/x64/factorio \
   --start-server /opt/factorio/saves/my-world.zip \
   --server-settings /opt/factorio/server-settings.json \
+  --bind 2001:db8::1 \
   --port 34197
 
 Restart=on-failure
@@ -124,20 +118,20 @@ sudo systemctl status factorio
 sudo ip6tables -A INPUT -p udp --dport 34197 -j ACCEPT
 
 # Save rules
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+sudo sh -c 'ip6tables-save > /etc/ip6tables/rules.v6'
 
 # Verify Factorio is listening on IPv6
-ss -ulnp | grep 34197
+sudo ss -6 -ulnp | grep 34197
 ```
 
 ## Verifying IPv6 Connectivity
 
 ```bash
 # Check if server is listening on IPv6
-ss -6 -ulnp | grep 34197
+sudo ss -6 -ulnp | grep 34197
 
 # Test UDP reachability over IPv6
-nmap -6 -sU -p 34197 2001:db8::factorio
+nmap -6 -sU -p 34197 2001:db8::1
 
 # Check server logs
 sudo journalctl -u factorio -f
@@ -148,16 +142,20 @@ ip -6 addr show scope global
 
 ## Server Whitelist and Bans over IPv6
 
+Example `/opt/factorio/server-whitelist.json` with Factorio player names (not IP addresses):
+
+```json
+[
+  "PlayerName1",
+  "PlayerName2"
+]
+```
+
+Enable the whitelist by adding `--use-server-whitelist=true --server-whitelist /opt/factorio/server-whitelist.json` to your server start command.
+
 ```bash
-# /opt/factorio/server-whitelist.json
-# Add player names (not IPs) - Factorio uses Steam usernames
-["PlayerName1", "PlayerName2"]
-
-# Enable whitelist in server-settings.json
-# "use_server_whitelist": true
-
 # Check ban list
 cat /opt/factorio/server-banlist.json
 ```
 
-Factorio's dedicated server listens on all network interfaces including IPv6 when bound to `::`, making it straightforward to serve players on IPv6 networks with standard firewall rules for UDP port 34197.
+Factorio exposes the `--bind` option for selecting a listen address, but current stable 2.0.x releases do not provide full IPv6 support. Open UDP port 34197 in your IPv6 firewall and verify direct client connectivity before relying on an IPv6 deployment.
