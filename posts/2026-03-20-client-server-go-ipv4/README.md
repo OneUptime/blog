@@ -75,10 +75,11 @@ func main() {
     defer conn.Close()
 
     fmt.Fprintln(conn, "Hello, server!")
-    scanner := bufio.NewScanner(conn)
-    for scanner.Scan() {
-        fmt.Println("Server:", scanner.Text())
+    msg, err := bufio.NewReader(conn).ReadString('\n')
+    if err != nil {
+        log.Fatal(err)
     }
+    fmt.Print("Server: ", msg)
 }
 ```
 
@@ -136,12 +137,15 @@ func handleConn(conn net.Conn) {
         var req Request
         if err := dec.Decode(&req); err != nil { return }
         log.Printf("Request: %s", req.Action)
-        enc.Encode(Response{Status: "ok"})
+        if err := enc.Encode(Response{Status: "ok"}); err != nil { return }
     }
 }
 
 func main() {
-    ln, _ := net.Listen("tcp4", "0.0.0.0:9000")
+    ln, err := net.Listen("tcp4", "0.0.0.0:9000")
+    if err != nil {
+        log.Fatal(err)
+    }
     defer ln.Close()
     for {
         conn, err := ln.Accept()
@@ -153,4 +157,4 @@ func main() {
 
 ## Conclusion
 
-Go's `net.Listen("tcp4", addr)` creates a listener restricted to IPv4. Spawn a goroutine per connection - goroutines are lightweight (2KB initial stack) so thousands of concurrent connections are practical. Use `io.ReadFull` for framed reads to ensure complete messages even when data arrives in fragments. Cancel the listener from a `context.Context` signal handler (`ln.Close()`) to unblock `Accept()` and trigger a clean shutdown. For large payloads, use `bufio.Reader`/`bufio.Writer` to reduce system call overhead.
+Go's `net.Listen("tcp4", addr)` creates a listener restricted to IPv4. Spawn a goroutine per connection - goroutines are lightweight and their stacks start small and grow as needed, so thousands of concurrent connections are practical. Use `io.ReadFull` for framed reads to ensure complete messages even when data arrives in fragments. Cancel the listener from a `context.Context` signal handler (`ln.Close()`) to unblock `Accept()` and trigger a clean shutdown. For large payloads, use `bufio.Reader`/`bufio.Writer` to reduce system call overhead.
