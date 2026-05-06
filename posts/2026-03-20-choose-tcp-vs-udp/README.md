@@ -38,14 +38,14 @@ Question 5: Are messages short (< 1 packet) and infrequent?
 ```bash
 # === Financial Transactions ===
 
-# Requirement: every order must arrive, in order, exactly once
+# Requirement: every order must arrive, in order, and be processed exactly once
 # Choice: TCP
-# Reason: TCP reliability and ordering match requirement exactly
+# Reason: TCP provides reliable, ordered transport; exactly-once processing still belongs in application logic
 
 # === DNS Queries ===
 # Requirement: fast, single request/response, tolerate retry at app layer
-# Choice: UDP (with TCP fallback for large responses)
-# Reason: sub-millisecond UDP query vs 1.5 RTT TCP handshake
+# Choice: UDP (with TCP fallback for truncated or larger responses)
+# Reason: common DNS lookups use UDP first to avoid connection setup; clients retry with TCP when needed
 
 # === VoIP / Real-time Audio ===
 # Requirement: low latency, tolerate occasional packet loss (better gap than delay)
@@ -54,8 +54,8 @@ Question 5: Are messages short (< 1 packet) and infrequent?
 
 # === Video Streaming (live) ===
 # Requirement: real-time, some loss acceptable, low latency
-# Choice: UDP (QUIC/RTP); sometimes TCP with small buffers
-# Reason: stale video frames are useless; better to skip and continue
+# Choice: UDP (typically RTP); sometimes TCP with small buffers
+# Reason: stale video frames are often less useful than timely ones
 
 # === File Transfer ===
 # Requirement: all bytes must arrive, correct order, checksummed
@@ -82,12 +82,12 @@ Question 5: Are messages short (< 1 packet) and infrequent?
 
 ```bash
 # Measure TCP connection overhead vs UDP
-# TCP: requires 3-way handshake before first byte
-# RTT cost: 1.5 RTT minimum before application data (SYN, SYN-ACK, ACK+Data)
+# TCP: normally requires a 3-way handshake
+# RTT cost: about 1 RTT before a client request reaches the server, about 1.5 RTT before the first response byte returns
 
 # For 1ms RTT:
-# TCP minimum: 1.5ms before first byte (TLS adds more)
-# UDP minimum: 0ms - first packet IS the request
+# TCP minimum: about 1ms before request arrival, about 1.5ms before first response byte (TLS can add more)
+# UDP minimum: no connection-setup RTT; the first packet can carry the request
 
 # This matters for short-lived, high-frequency connections
 # For persistent connections (HTTP/1.1 keep-alive, HTTP/2): TCP amortizes this cost
@@ -103,18 +103,18 @@ Question 5: Are messages short (< 1 packet) and infrequent?
 ## Hybrid Approach: QUIC
 
 ```bash
-# QUIC = UDP + reliability + ordering + congestion control + TLS
-# Best of both worlds for web traffic:
-# - UDP base: no kernel TCP state, faster handshake (0-RTT reconnect)
-# - Reliability per stream (not for all streams)
-# - Stream independence: no head-of-line blocking (unlike TCP)
+# QUIC = UDP + reliable streams + congestion control + TLS
+# Strong option for web traffic:
+# - UDP base: avoids TCP's separate transport handshake; resumed sessions can use 0-RTT
+# - Ordering is within each stream, not across all streams
+# - Stream independence: no head-of-line blocking between streams
 
 # Check if your service supports QUIC (HTTP/3):
-curl -I --http3 https://example.com 2>/dev/null | grep -i "alt-svc\|http/3"
+curl -I --http3 https://example.com 2>/dev/null | grep -Ei "alt-svc|^HTTP/3"
 
-# For new protocol design: consider QUIC or similar (WebRTC, DCCP)
+# For new protocol design: consider QUIC when you need reliable multiplexed transport over UDP
 ```
 
 ## Conclusion
 
-The choice is mechanical once you know your requirements. If all messages must arrive in order: use TCP. If you can tolerate loss and need low latency: use UDP. If you need broadcast/multicast: you must use UDP. For modern high-performance applications that want reliability with lower latency than TCP, QUIC (UDP-based) is the right answer. There is no universal winner - the right choice depends entirely on the application's reliability, ordering, and latency requirements.
+The choice is mechanical once you know your requirements. If all messages must arrive in order: use TCP. If you can tolerate loss and need low latency: use UDP. If you need broadcast/multicast: you must use UDP. For modern high-performance applications that want reliability with lower-latency connection setup and better multiplexing than TCP alone, QUIC (UDP-based) is often a strong option. There is no universal winner - the right choice depends entirely on the application's reliability, ordering, and latency requirements.
