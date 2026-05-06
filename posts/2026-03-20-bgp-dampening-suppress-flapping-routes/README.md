@@ -12,11 +12,11 @@ A BGP route flap occurs when a prefix is withdrawn and re-advertised repeatedly-
 
 ## How Dampening Works
 
-Each time a route flaps (is withdrawn), its penalty increases by 1000 (default). The penalty decays exponentially over time:
-- **Suppress limit (2000):** Route is suppressed when penalty exceeds this value
-- **Reuse limit (750):** Route is re-advertised when penalty drops below this value
-- **Half-life (15 min):** Time for penalty to drop to half its current value
-- **Max suppress time (60 min):** Maximum time a route stays suppressed
+In Cisco IOS, each time a route is withdrawn, its penalty increases by 1000 by default; an attribute change adds 500. The penalty decays exponentially over time:
+- **Suppress limit (Cisco IOS default: 2000):** Route is suppressed when penalty exceeds this value
+- **Reuse limit (Cisco IOS default: 750):** Route is made available again when penalty drops below this value
+- **Half-life (Cisco IOS default: 15 min):** Time for penalty to drop to half its current value
+- **Max suppress time (Cisco IOS default: 60 min):** Maximum time a route stays suppressed
 
 ## Step 1: Enable BGP Dampening
 
@@ -32,8 +32,8 @@ Or configure custom parameters:
 
 ```text
 router bgp 65001
- ! Custom: half-life=15min, reuse=750, suppress=2000, max-suppress=60min
- bgp dampening 15 750 2000 60
+ ! Custom example: half-life=15min, reuse=750, suppress=6000, max-suppress=60min
+ bgp dampening 15 750 6000 60
 ```
 
 ## Step 2: Apply Dampening Selectively with Route Maps
@@ -47,11 +47,6 @@ ip prefix-list DAMPEN_THESE seq 10 permit 0.0.0.0/0 ge 25
 ! Route map applies dampening for long prefixes (/25 and longer)
 route-map DAMPEN_LONG_PREFIXES permit 10
  match ip address prefix-list DAMPEN_THESE
- ! Use non-default parameters for these prefixes
- set dampening 5 750 2000 20
-
-route-map DAMPEN_LONG_PREFIXES permit 20
- ! Everything else gets no dampening
 
 router bgp 65001
  bgp dampening route-map DAMPEN_LONG_PREFIXES
@@ -63,40 +58,46 @@ router bgp 65001
 ! Show all currently dampened routes
 Router# show ip bgp dampened-paths
 
-Status codes: d damped, h history, * valid, > best, i internal
+Status codes: s suppressed, d damped, h history, * valid, > best, i - internal
 
-   Network          From             Reuse    Path
-d  192.168.99.0/24  203.0.113.1      00:45:00  65100 65200 i
+   Network          From             Reuse     Path
+*d 192.168.99.0/24  203.0.113.1      00:27:00  65100 65200 i
 
-! The 'Reuse' column shows how long until the route is re-advertised
+! The 'Reuse' column shows how long until the path is made available again
 ```
 
 ```text
-! Show history - routes that had penalties but aren't suppressed yet
+! Show flap statistics for routes that are currently or recently dampened
 Router# show ip bgp flap-statistics
 
-   Network          From        Flaps Duration  Reuse  Path
-*  192.168.50.0/24  10.0.0.1        5  00:10:00  -     65100 i
+Status codes: s suppressed, d damped, h history, * valid, > best, i - internal
+
+   Network          From        Flaps Duration  Reuse     Path
+*d 192.168.50.0/24  10.0.0.1        5  00:10:00 00:20:00 65100 i
+
+! The output shows how many times the route has flapped and when it becomes reusable
 ```
 
 ## Step 4: Check a Route's Current Penalty
 
 ```text
-Router# show ip bgp 192.168.99.0/24
+Router# show ip bgp 192.168.99.0 255.255.255.0
 
-BGP routing table entry for 192.168.99.0/24
-  Dampinfo: penalty 2400, flapped 3 times in 00:05:00
-           reuse in 00:45:00
-           Current penalty 2400 exceeds suppress limit 2000
+BGP routing table entry for 192.168.99.0 255.255.255.0
+Paths: (1 available, no best path)
+  65100 65200, (suppressed due to dampening)
+    203.0.113.1 from 203.0.113.1 (203.0.113.1)
+      Origin IGP, metric 0, valid, external
+      Dampinfo: penalty 2615, flapped 3 times in 00:05:18, reuse in 00:27:00
 ```
 
 ## Step 5: Manually Clear Dampening for a Route
 
-If a route has been stabilized and you want to re-advertise it immediately:
+If a route has stabilized and you want to unsuppress it immediately:
 
 ```text
 ! Clear dampening for a specific prefix
-Router# clear ip bgp dampening 192.168.99.0/24
+Router# clear ip bgp dampening 192.168.99.0 255.255.255.0
 
 ! Clear all dampened routes
 Router# clear ip bgp dampening
@@ -105,10 +106,10 @@ Router# clear ip bgp dampening
 ## Dampening Considerations
 
 - **Over-dampening:** Overly aggressive settings can suppress legitimate routes for too long, especially during maintenance
-- **RIPE Recommendation:** RIPE-229 recommends conservative dampening settings to avoid instability during routing protocol reconvergence
+- **Current guidance:** RFC 7196 recommends less aggressive settings than the classic Cisco defaults; the default suppress threshold of 2000 is considered overly aggressive
 - **Default is off:** Dampening is not enabled by default because improper tuning can cause more harm than good
-- **Monitor regularly:** Check `show ip bgp flap-statistics` to identify genuinely unstable neighbors
+- **Monitor regularly:** Check `show ip bgp flap-statistics` to identify genuinely unstable routes
 
 ## Conclusion
 
-BGP dampening protects your network from route flap instability by penalizing repeatedly withdrawn prefixes. Enable it with conservative default parameters, use route maps for selective application, and monitor dampened paths with `show ip bgp dampened-paths`. Always have a process to manually clear dampening when a genuinely stable route gets incorrectly suppressed.
+BGP dampening protects your network from route flap instability by penalizing repeatedly withdrawn prefixes. Enable it only where needed, use route maps for selective application, and monitor dampened paths with `show ip bgp dampened-paths`. If you use it, tune the suppress threshold conservatively rather than relying blindly on the classic defaults, and always have a process to manually clear dampening when a genuinely stable route gets incorrectly suppressed.
