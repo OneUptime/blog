@@ -6,12 +6,12 @@ Tags: OpenTofu, COALESCE, HCL, Fallback Values, Infrastructure as Code
 
 Description: Learn how to use OpenTofu's coalesce and coalescelist functions to implement clean fallback value chains in your configurations.
 
-`coalesce` returns the first non-null, non-empty-string value from a list of arguments. It is the most concise way to express "use this value, unless it's null or empty, in which case use the next one." This pattern appears everywhere in reusable module design.
+`coalesce` returns the first non-null, non-empty-string value from a list of arguments. It is the most concise way to express "use this value, unless it's null or an empty string, in which case use the next one." This pattern appears everywhere in reusable module design.
 
 ## coalesce Basics
 
 ```hcl
-# Returns the first non-null, non-empty value
+# Returns the first value that isn't null or an empty string
 
 coalesce(value1, value2, ..., fallback)
 ```
@@ -54,13 +54,20 @@ resource "aws_cloudwatch_log_group" "app" {
 }
 ```
 
-## Use Case 2: Environment Variable Fallback Chain
+## Use Case 2: Input Variable Fallback Chain
 
 Build a priority chain: most-specific first, broadest default last:
 
 ```hcl
-variable "prod_instance_type"   { type = string; default = null }
-variable "global_instance_type" { type = string; default = null }
+variable "prod_instance_type" {
+  type    = string
+  default = null
+}
+
+variable "global_instance_type" {
+  type    = string
+  default = null
+}
 
 locals {
   # Priority: production-specific > global setting > hardcoded default
@@ -77,8 +84,15 @@ locals {
 `coalescelist` returns the first non-empty list:
 
 ```hcl
-variable "custom_dns_servers"  { type = list(string); default = [] }
-variable "default_dns_servers" { type = list(string); default = ["8.8.8.8", "8.8.4.4"] }
+variable "custom_dns_servers" {
+  type    = list(string)
+  default = []
+}
+
+variable "default_dns_servers" {
+  type    = list(string)
+  default = ["8.8.8.8", "8.8.4.4"]
+}
 
 locals {
   # Use custom DNS servers if provided, otherwise use defaults
@@ -97,7 +111,7 @@ variable "config" {
 }
 
 locals {
-  # Try to get from config map, fall back to environment variable, then hardcoded default
+  # Try to get from the config map, then fall back to a hardcoded default
   db_host = coalesce(
     try(var.config["db_host"], null),
     "localhost"
@@ -110,8 +124,15 @@ locals {
 Build tag values with fallback chains for optional metadata:
 
 ```hcl
-variable "owner_email"  { type = string; default = null }
-variable "team_email"   { type = string; default = null }
+variable "owner_email" {
+  type    = string
+  default = null
+}
+
+variable "team_email" {
+  type    = string
+  default = null
+}
 
 locals {
   tags = {
@@ -126,7 +147,7 @@ locals {
 
 | Function | Use When |
 |---|---|
-| `coalesce(a, b, c)` | Multiple possible values, return first non-null/non-empty |
+| `coalesce(a, b, c)` | Multiple possible values, return first non-null/non-empty-string |
 | `lookup(map, key, default)` | Single map key with a default |
 | `try(expr, default)` | Expression might error (not just be null) |
 | `a != null ? a : b` | Simple null check with a single fallback |
