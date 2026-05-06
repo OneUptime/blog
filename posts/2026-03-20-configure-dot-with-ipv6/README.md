@@ -22,7 +22,8 @@ apt install unbound
 # Generate a TLS certificate (or use Let's Encrypt)
 openssl req -x509 -newkey rsa:4096 -keyout /etc/unbound/dot.key \
     -out /etc/unbound/dot.crt -days 365 -nodes \
-    -subj "/CN=dns.example.com"
+    -subj "/CN=dns.example.com" \
+    -addext "subjectAltName = DNS:dns.example.com"
 
 # Or get a certificate from Let's Encrypt
 certbot certonly --standalone -d dns.example.com
@@ -68,12 +69,10 @@ server:
 addLocal("0.0.0.0:53")
 addLocal("[::]:53")
 
--- DoT on all interfaces including IPv6
+-- DoT on IPv6
 addTLSLocal("[::]:853", "/etc/ssl/certs/server.crt", "/etc/ssl/private/server.key", {
     -- TLS minimum version
-    minTLSVersion = "tls1.2",
-    -- ALPN for DoT
-    alpn = {"dot"}
+    minTLSVersion = "tls1.2"
 })
 
 -- Upstream resolvers
@@ -94,6 +93,8 @@ setACL({"0.0.0.0/0", "::/0"})
 server:
     interface: ::0
     do-ip6: yes
+    # Load system CA certificates for upstream TLS validation
+    tls-system-cert: yes
 
 # Forward all queries to upstream DoT servers
 forward-zone:
@@ -116,8 +117,6 @@ forward-zone:
 # IPv6 DoT server
 DNS=2001:4860:4860::8888#dns.google 2606:4700:4700::1111#cloudflare-dns.com
 DNSOverTLS=yes
-# Fallback to standard DNS if DoT fails
-DNSOverTLS=opportunistic
 ```
 
 ```bash
@@ -133,16 +132,14 @@ resolvectl status
 
 ```bash
 # Test DoT connection using kdig (from knot-dnsutils)
-kdig -6 @2001:4860:4860::8888 +tls AAAA example.com
+kdig -6 @2001:4860:4860::8888 +tls-ca +tls-hostname=dns.google AAAA example.com
 
 # Test using openssl to verify TLS certificate
-openssl s_client -connect [2001:4860:4860::8888]:853 -showcerts
+openssl s_client -connect [2001:4860:4860::8888]:853 \
+    -servername dns.google -verify_hostname dns.google -brief </dev/null
 
-# Test using ncat (netcat with TLS)
-ncat -6 --ssl 2001:4860:4860::8888 853 <<< ""
-
-# Use dig with TCP to simulate DoT behavior (doesn't use TLS but tests connectivity)
-dig AAAA example.com @2001:4860:4860::8888 -p 853 +tcp
+# Test using ncat (netcat with TLS and certificate verification)
+ncat -6 --ssl-verify dns.google 853 < /dev/null
 ```
 
 ## Firewall Rules for DoT over IPv6
@@ -155,7 +152,7 @@ ip6tables -A OUTPUT -p tcp --dport 853 -j ACCEPT
 # Allow established connections
 ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# Save rules
+# Save rules (for example, on Debian with iptables-persistent)
 ip6tables-save > /etc/ip6tables/rules.v6
 ```
 
@@ -167,16 +164,17 @@ ss -6 -tlnp | grep ':853'
 # Expected: LISTEN ... [::]:853 ... unbound
 
 # Test DoT certificate validity
-openssl s_client -connect [2001:db8::dns]:853 </dev/null 2>&1 | \
-    grep -E "subject|issuer|expire"
+openssl s_client -connect [2001:db8::53]:853 \
+    -servername dns.example.com -verify_hostname dns.example.com \
+    </dev/null 2>/dev/null | openssl x509 -noout -subject -issuer -dates
 
-# Monitor with OneUptime: create a TCP monitor for [2001:db8::dns]:853
+# Monitor with OneUptime: create a TCP monitor for [2001:db8::53]:853
 # Alert if port 853 is unreachable
 ```
 
 ## Well-Known DoT Providers with IPv6
 
-| Provider | IPv6 Address | SPKI/Hostname |
+| Provider | IPv6 Address | Hostname |
 |---|---|---|
 | Google | `2001:4860:4860::8888` | `dns.google` |
 | Cloudflare | `2606:4700:4700::1111` | `cloudflare-dns.com` |
@@ -184,4 +182,4 @@ openssl s_client -connect [2001:db8::dns]:853 </dev/null 2>&1 | \
 
 ## Summary
 
-DNS-over-TLS with IPv6 listens on port 853 using TLS. Configure Unbound to listen on `::0@853` with a TLS certificate. Clients use Unbound, dnsdist, or systemd-resolved to forward queries over DoT to IPv6-addressed upstream resolvers. Test with `kdig -6 @<ipv6-addr> +tls` and ensure port 853/TCP is open in IPv6 firewall rules.
+DNS-over-TLS with IPv6 listens on port 853 using TLS. Configure Unbound to listen on `::0@853` with a TLS certificate. Clients use Unbound, dnsdist, or systemd-resolved to forward queries over DoT to IPv6-addressed upstream resolvers. Test with `kdig -6 @<ipv6-addr> +tls-ca +tls-hostname=<auth-name>` and ensure port 853/TCP is open in IPv6 firewall rules.
