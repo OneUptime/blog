@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Bundles, Offline, Air-Gapped, DevOps
 
-Description: Learn how to create a self-contained bundle of OpenTofu with all its providers and modules for deployment in completely offline or air-gapped environments.
+Description: Learn how to create a self-contained bundle of OpenTofu, provider plugins, and installed modules for a specific configuration in completely offline or air-gapped environments.
 
 ## Introduction
 
-A self-contained OpenTofu bundle packages the binary, all required provider plugins, and modules into a single transferable archive. Once transferred to an air-gapped environment, teams can run OpenTofu workflows without any internet access. This guide walks through creating, validating, and deploying such a bundle.
+A self-contained OpenTofu bundle packages the binary, all required provider plugins, and the installed modules for a specific configuration into a single transferable archive. Once transferred to an air-gapped environment, teams can run OpenTofu workflows for that bundled configuration without any internet access. This guide walks through creating, validating, and deploying such a bundle.
 
 ## Bundle Structure
 
@@ -16,20 +16,21 @@ A self-contained OpenTofu bundle packages the binary, all required provider plug
 opentofu-bundle/
 ├── install.sh                    # Automated installer
 ├── binary/
-│   ├── opentofu_1.7.0_linux_amd64.zip
-│   └── opentofu_1.7.0_SHA256SUMS
+│   ├── tofu_1.7.0_linux_amd64.zip
+│   └── tofu_1.7.0_SHA256SUMS
 ├── providers/
 │   └── registry.opentofu.org/
 │       └── hashicorp/
 │           ├── aws/
 │           ├── kubernetes/
 │           └── helm/
-├── modules/
-│   ├── terraform-aws-vpc/
-│   ├── terraform-aws-eks/
-│   └── internal/
+├── configuration/
+│   ├── main.tf
+│   ├── .terraform.lock.hcl
+│   └── .terraform/
+│       └── modules/
 └── config/
-    └── terraform.rc             # CLI configuration
+    └── opentofu.tfrc            # CLI configuration
 ```
 
 ## Creating the Bundle Script
@@ -43,27 +44,28 @@ set -euo pipefail
 TOFU_VERSION="${TOFU_VERSION:-1.7.0}"
 BUNDLE_NAME="opentofu-bundle-${TOFU_VERSION}-$(date +%Y%m%d)"
 BUNDLE_DIR="/tmp/${BUNDLE_NAME}"
-CONFIG_SOURCE="${CONFIG_SOURCE:-./infrastructure}"  # Path to your OpenTofu configs
+CONFIG_SOURCE="${CONFIG_SOURCE:-./infrastructure}"  # Path to a self-contained OpenTofu root module
 
 echo "Creating OpenTofu bundle: $BUNDLE_NAME"
 
 # Create directory structure
 
-mkdir -p "$BUNDLE_DIR"/{binary,providers,modules,config}
+mkdir -p "$BUNDLE_DIR"/{binary,providers,configuration,config}
 
 # ----------------------------------------
 # 1. Download OpenTofu binary
 # ----------------------------------------
 echo "Downloading OpenTofu ${TOFU_VERSION}..."
 
-for PLATFORM in linux_amd64 linux_arm64 darwin_arm64; do
-  curl -Lo "$BUNDLE_DIR/binary/opentofu_${TOFU_VERSION}_${PLATFORM}.zip" \
-    "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/opentofu_${TOFU_VERSION}_${PLATFORM}.zip" \
+for PLATFORM in linux_amd64 linux_arm64 darwin_amd64 darwin_arm64; do
+  curl -Lo "$BUNDLE_DIR/binary/tofu_${TOFU_VERSION}_${PLATFORM}.zip" \
+    "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_${PLATFORM}.zip" \
     --fail --silent --show-error
 done
 
-curl -Lo "$BUNDLE_DIR/binary/opentofu_${TOFU_VERSION}_SHA256SUMS" \
-  "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/opentofu_${TOFU_VERSION}_SHA256SUMS"
+curl -Lo "$BUNDLE_DIR/binary/tofu_${TOFU_VERSION}_SHA256SUMS" \
+  "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_SHA256SUMS" \
+  --fail --silent --show-error
 
 # ----------------------------------------
 # 2. Mirror providers
@@ -73,40 +75,43 @@ echo "Mirroring providers..."
 WORK_DIR=$(mktemp -d)
 trap "rm -rf $WORK_DIR" EXIT
 
-# Copy the provider configuration
-cp "$CONFIG_SOURCE"/**/*.tf "$WORK_DIR/" 2>/dev/null || \
-  cp "$CONFIG_SOURCE"/*.tf "$WORK_DIR/" 2>/dev/null || true
+# Copy the full configuration tree so relative module sources and the lock file are preserved
+mkdir -p "$WORK_DIR/source"
+cp -R "$CONFIG_SOURCE"/. "$WORK_DIR/source/"
+rm -rf "$WORK_DIR/source/.terraform"
 
-cd "$WORK_DIR"
-tofu init -backend=false 2>&1
+tofu -chdir="$WORK_DIR/source" init -backend=false
 
-# Mirror for all platforms
-tofu providers mirror \
+# Record checksums for all bundled platforms in the lock file
+tofu -chdir="$WORK_DIR/source" providers lock \
   -platform=linux_amd64 \
   -platform=linux_arm64 \
+  -platform=darwin_amd64 \
+  -platform=darwin_arm64
+
+# Mirror for all bundled platforms
+tofu -chdir="$WORK_DIR/source" providers mirror \
+  -platform=linux_amd64 \
+  -platform=linux_arm64 \
+  -platform=darwin_amd64 \
   -platform=darwin_arm64 \
   "$BUNDLE_DIR/providers/"
 
 # ----------------------------------------
 # 3. Bundle modules
 # ----------------------------------------
-echo "Bundling modules..."
+echo "Bundling configuration and installed modules..."
 
-if [ -d "$WORK_DIR/.terraform/modules" ]; then
-  cp -r "$WORK_DIR/.terraform/modules/"* "$BUNDLE_DIR/modules/" 2>/dev/null || true
-fi
+cp -a "$WORK_DIR/source/." "$BUNDLE_DIR/configuration/"
+rm -rf "$BUNDLE_DIR/configuration/.terraform/providers"
 
 # ----------------------------------------
 # 4. Create CLI config
 # ----------------------------------------
-cat > "$BUNDLE_DIR/config/terraform.rc" << 'RC'
+cat > "$BUNDLE_DIR/config/opentofu.tfrc" << 'RC'
 provider_installation {
   filesystem_mirror {
-    path    = "/opt/opentofu/providers"
-    include = ["registry.opentofu.org/*/*"]
-  }
-  direct {
-    exclude = ["registry.opentofu.org/*/*"]
+    path = "/opt/opentofu/providers"
   }
 }
 RC
@@ -121,6 +126,7 @@ set -euo pipefail
 BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_PREFIX="${INSTALL_PREFIX:-/opt/opentofu}"
 TOFU_BIN="${TOFU_BIN:-/usr/local/bin/tofu}"
+CONFIG_DEST="${CONFIG_DEST:-${INSTALL_PREFIX}/configuration}"
 
 echo "Installing OpenTofu from bundle..."
 
@@ -135,7 +141,7 @@ esac
 PLATFORM="${OS}_${ARCH}"
 
 # Install binary
-BINARY_ZIP=$(ls "$BUNDLE_DIR/binary/"*"${PLATFORM}.zip" 2>/dev/null | head -1)
+BINARY_ZIP=$(find "$BUNDLE_DIR/binary" -maxdepth 1 -type f -name "*_${PLATFORM}.zip" | head -1)
 if [ -z "$BINARY_ZIP" ]; then
   echo "No binary found for platform $PLATFORM"
   exit 1
@@ -150,23 +156,23 @@ rm -rf "$TMPDIR"
 # Install providers
 echo "Installing providers..."
 sudo mkdir -p "${INSTALL_PREFIX}/providers"
-sudo cp -r "$BUNDLE_DIR/providers/"* "${INSTALL_PREFIX}/providers/"
+sudo cp -a "$BUNDLE_DIR/providers/." "${INSTALL_PREFIX}/providers/"
 
-# Install modules
-if [ -d "$BUNDLE_DIR/modules" ] && [ -n "$(ls -A "$BUNDLE_DIR/modules")" ]; then
-  echo "Installing modules..."
-  sudo mkdir -p "${INSTALL_PREFIX}/modules"
-  sudo cp -r "$BUNDLE_DIR/modules/"* "${INSTALL_PREFIX}/modules/"
+# Install prepared configuration
+if [ -d "$BUNDLE_DIR/configuration" ]; then
+  echo "Installing prepared configuration..."
+  sudo mkdir -p "$CONFIG_DEST"
+  sudo cp -a "$BUNDLE_DIR/configuration/." "$CONFIG_DEST/"
 fi
 
 # Install CLI config
 sudo mkdir -p /etc/opentofu
-sudo cp "$BUNDLE_DIR/config/terraform.rc" /etc/opentofu/terraform.rc
+sudo cp "$BUNDLE_DIR/config/opentofu.tfrc" /etc/opentofu/opentofu.tfrc
 
 echo ""
 echo "Installation complete!"
-echo "Run: export TF_CLI_CONFIG_FILE=/etc/opentofu/terraform.rc"
-echo "Verify: tofu version"
+echo "Run: export TF_CLI_CONFIG_FILE=/etc/opentofu/opentofu.tfrc"
+echo "Verify: cd ${CONFIG_DEST} && tofu init -backend=false -get=false"
 INSTALLER
 
 chmod +x "$BUNDLE_DIR/install.sh"
@@ -197,12 +203,13 @@ cd opentofu-bundle-1.7.0-20240101
 sudo ./install.sh
 
 # Configure environment
-echo 'export TF_CLI_CONFIG_FILE=/etc/opentofu/terraform.rc' >> ~/.bashrc
+echo 'export TF_CLI_CONFIG_FILE=/etc/opentofu/opentofu.tfrc' >> ~/.bashrc
 source ~/.bashrc
 
 # Verify
+cd /opt/opentofu/configuration
 tofu version
-tofu init  # Should use local mirror
+tofu init -backend=false -get=false
 ```
 
 ## Validating the Bundle
@@ -219,36 +226,28 @@ tofu version && echo "OK" || echo "FAIL"
 
 # Check CLI config
 echo -n "CLI config: "
-[ -f "$TF_CLI_CONFIG_FILE" ] && echo "OK ($TF_CLI_CONFIG_FILE)" || echo "FAIL"
+CLI_CONFIG="${TF_CLI_CONFIG_FILE:-/etc/opentofu/opentofu.tfrc}"
+[ -f "$CLI_CONFIG" ] && echo "OK ($CLI_CONFIG)" || echo "FAIL"
 
 # Check providers in mirror
 echo "Providers in mirror:"
 find /opt/opentofu/providers -name "*.zip" | while read -r zip; do
   provider=$(echo "$zip" | sed 's|.*/registry.opentofu.org/||' | sed 's|/terraform-provider.*||')
-  version=$(echo "$zip" | grep -oP '\d+\.\d+\.\d+')
+  version=$(echo "$zip" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
   echo "  - $provider v$version"
 done
+
+# Check bundled modules
+echo -n "Bundled modules: "
+[ -f /opt/opentofu/configuration/.terraform/modules/modules.json ] && echo "OK" || echo "FAIL"
 
 # Test init without internet
 echo ""
 echo "Testing tofu init (offline)..."
-TMPDIR=$(mktemp -d)
-cat > "$TMPDIR/main.tf" << 'EOF'
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-EOF
-
-cd "$TMPDIR"
-tofu init -backend=false && echo "PASS: Provider installation works offline" || echo "FAIL: Provider installation failed"
-rm -rf "$TMPDIR"
+cd /opt/opentofu/configuration
+tofu init -backend=false -get=false && echo "PASS: Bundled configuration initializes offline" || echo "FAIL: Offline initialization failed"
 ```
 
 ## Conclusion
 
-A bundled OpenTofu deployment packages the binary, providers (via `tofu providers mirror`), and modules into a single transferable archive. The install script detects the platform, installs the binary, copies providers to the filesystem mirror directory, and writes the CLI config to redirect all provider downloads. After installation, set `TF_CLI_CONFIG_FILE` globally for all users so every `tofu init` uses the local mirror automatically.
+A bundled OpenTofu deployment packages the binary, a provider mirror (via `tofu providers mirror`), and a prepared working directory whose `.terraform/modules` cache is already populated. The install script detects the platform, installs the binary, copies providers to the filesystem mirror directory, installs the prepared configuration, and writes the CLI config to redirect provider downloads. After installation, set `TF_CLI_CONFIG_FILE` in the shell environment for each user or automation account that will run `tofu`.
