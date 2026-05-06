@@ -8,7 +8,7 @@ Description: Configure the Gin web framework to listen on IPv6, extract client I
 
 ## Introduction
 
-Gin uses Go's `net/http` package under the hood. Listening on IPv6 requires passing an IPv6 address or `[::]:port` as the bind address to `gin.Run()` or a custom `http.Server`. Go's `net/netip` package (1.18+) provides efficient IPv6 address parsing.
+Gin uses Go's `net/http` package under the hood. To bind explicitly on IPv6, pass an IPv6 address or `[::]:port` as the bind address to `gin.Run()` or a custom `http.Server`. Listening on `[::]:port` binds the IPv6 unspecified address; whether that also accepts IPv4 connections depends on the OS and socket configuration. Go's `net/netip` package (1.18+) provides efficient IPv6 address parsing. If you rely on proxy headers for client IPs, configure Gin's trusted proxies before using `c.ClientIP()`.
 
 ## Step 1: Listen on IPv6
 
@@ -17,7 +17,6 @@ Gin uses Go's `net/http` package under the hood. Listening on IPv6 requires pass
 package main
 
 import (
-    "net/http"
     "github.com/gin-gonic/gin"
 )
 
@@ -28,13 +27,22 @@ func main() {
         c.JSON(200, gin.H{"hello": "ipv6"})
     })
 
-    // Listen on all IPv6 interfaces (dual-stack on Linux)
+    // Listen on all IPv6 interfaces; IPv4 dual-stack behavior is OS-dependent
     r.Run("[::]:8080")
 }
 ```
 
 ```go
 // With custom server for IPv6-only
+package main
+
+import (
+    "net"
+    "net/http"
+
+    "github.com/gin-gonic/gin"
+)
+
 func main() {
     r := gin.Default()
 
@@ -48,7 +56,9 @@ func main() {
     if err != nil {
         panic(err)
     }
-    server.Serve(ln)
+    if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
+        panic(err)
+    }
 }
 ```
 
@@ -59,9 +69,7 @@ func main() {
 package middleware
 
 import (
-    "net"
     "net/netip"
-    "strings"
 
     "github.com/gin-gonic/gin"
 )
@@ -75,30 +83,18 @@ func ClientIPMiddleware() gin.HandlerFunc {
 }
 
 func extractClientIP(c *gin.Context) string {
-    // Check X-Forwarded-For
-    xff := c.GetHeader("X-Forwarded-For")
-    if xff != "" {
-        ip := strings.TrimSpace(strings.Split(xff, ",")[0])
-        if addr, err := netip.ParseAddr(ip); err == nil {
-            return addr.String()
-        }
-    }
-
-    // Fall back to remote address
-    host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-    if err != nil {
-        return c.Request.RemoteAddr
-    }
+    // ClientIP respects Gin's trusted proxy settings.
+    rawIP := c.ClientIP()
 
     // Normalize IPv4-mapped IPv6
-    if addr, err := netip.ParseAddr(host); err == nil {
+    if addr, err := netip.ParseAddr(rawIP); err == nil {
         if addr.Is4In6() {
             return addr.Unmap().String()
         }
         return addr.String()
     }
 
-    return host
+    return rawIP
 }
 ```
 
@@ -109,7 +105,9 @@ func extractClientIP(c *gin.Context) string {
 package handlers
 
 import (
+    "fmt"
     "net/netip"
+
     "github.com/gin-gonic/gin"
 )
 
@@ -118,6 +116,7 @@ type EndpointRequest struct {
     Port    int    `json:"port" binding:"required,min=1,max=65535"`
 }
 
+// Register with: r.POST("/endpoint", CreateEndpoint)
 func CreateEndpoint(c *gin.Context) {
     var req EndpointRequest
     if err := c.ShouldBindJSON(&req); err != nil {
@@ -131,21 +130,28 @@ func CreateEndpoint(c *gin.Context) {
         return
     }
 
+    addr = addr.Unmap()
+
+    if addr.Zone() != "" {
+        c.JSON(400, gin.H{"error": "scoped IPv6 addresses not allowed"})
+        return
+    }
+
     if addr.IsLoopback() {
         c.JSON(400, gin.H{"error": "loopback addresses not allowed"})
         return
     }
 
     var url string
-    if addr.Is6() && !addr.Is4In6() {
+    if addr.Is6() {
         url = fmt.Sprintf("http://[%s]:%d", addr.String(), req.Port)
     } else {
-        url = fmt.Sprintf("http://%s:%d", addr.Unmap().String(), req.Port)
+        url = fmt.Sprintf("http://%s:%d", addr.String(), req.Port)
     }
 
     c.JSON(200, gin.H{
         "address":  addr.String(),
-        "is_ipv6":  addr.Is6() && !addr.Is4In6(),
+        "is_ipv6":  addr.Is6(),
         "url":      url,
     })
 }
@@ -161,7 +167,6 @@ import (
     "net/netip"
     "sync"
     "time"
-    "github.com/gin-gonic/gin"
 )
 
 type RateLimiter struct {
@@ -185,6 +190,9 @@ func (rl *RateLimiter) Allow(ip string) bool {
     key := rl.getKey(ip)
     rl.mu.Lock()
     defer rl.mu.Unlock()
+    if rl.counters == nil {
+        rl.counters = make(map[string][]time.Time)
+    }
     now := time.Now()
     // filter old entries
     filtered := rl.counters[key][:0]
@@ -207,7 +215,9 @@ go run main.go
 # Test IPv6
 
 curl -6 http://[::1]:8080/
-curl -6 http://[2001:db8::1]:8080/endpoint \
+# After registering POST /endpoint:
+curl -6 http://[::1]:8080/endpoint \
+    -H 'Content-Type: application/json' \
     -d '{"address":"2001:db8::42","port":443}'
 
 # Verify listening
@@ -216,4 +226,4 @@ ss -lntp | grep :8080
 
 ## Conclusion
 
-Gin on IPv6 uses `r.Run("[::]:8080")` or a custom `net.Listen("tcp6", ...)` for IPv6-only mode. Use `net/netip.ParseAddr` for efficient, allocation-free IPv6 address parsing. The `Is4In6()` method identifies IPv4-mapped addresses for normalization. Rate-limit by /64 prefixes using `addr.Prefix(64)`. Monitor Gin endpoints with OneUptime's IPv6 HTTP checks.
+Binding to `[::]:8080` listens on the IPv6 unspecified address, and whether that also accepts IPv4 connections is OS-dependent. Use `net.Listen("tcp6", ...)` for IPv6-only mode. Use `net/netip.ParseAddr` for efficient IPv6 address parsing. The `Is4In6()` method identifies IPv4-mapped addresses for normalization. Rate-limit by /64 prefixes using `addr.Prefix(64)`. Monitor Gin endpoints with OneUptime's IPv6 HTTP checks.
