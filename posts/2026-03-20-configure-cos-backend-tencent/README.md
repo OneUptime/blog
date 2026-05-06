@@ -8,28 +8,27 @@ Description: Learn how to configure the OpenTofu COS backend to store state file
 
 ## Introduction
 
-The COS (Cloud Object Storage) backend stores OpenTofu state in Tencent Cloud Object Storage. It's the recommended remote state backend for infrastructure deployed on Tencent Cloud, providing versioning, encryption, and server-side locking support.
+The COS (Cloud Object Storage) backend stores OpenTofu state in Tencent Cloud Object Storage. It's the recommended remote state backend for infrastructure deployed on Tencent Cloud, providing versioning, encryption, and state locking support.
 
 ## Prerequisites
 
 - Tencent Cloud account with COS service enabled
-- SecretId and SecretKey or CAM role with COS permissions
+- SecretId and SecretKey with COS permissions, or credentials that can assume a CAM role
 - COS bucket created in your target region
 
 ## Step 1: Create the COS Bucket
 
 ```bash
-# Using tccli (Tencent Cloud CLI)
+# Using COSCLI
 
-tccli cos create-bucket \
-  --bucket my-terraform-state-1234567890 \
-  --region ap-guangzhou
+./coscli mb cos://my-terraform-state-1234567890 \
+  -e cos.ap-guangzhou.myqcloud.com
 
 # Enable versioning
-tccli cos put-bucket-versioning \
-  --bucket my-terraform-state-1234567890 \
-  --region ap-guangzhou \
-  --status Enabled
+./coscli bucket-versioning --method put \
+  cos://my-terraform-state-1234567890 \
+  Enabled \
+  -e cos.ap-guangzhou.myqcloud.com
 ```
 
 Or via the Tencent Cloud Console: COS → Bucket List → Create Bucket
@@ -44,11 +43,11 @@ terraform {
     bucket = "my-terraform-state-1234567890"  # Bucket name (includes AppID)
     prefix = "terraform/state/prod" # Path prefix in the bucket
 
-    # Optional: enable server-side encryption
+    # Optional: explicit, though true is the default
     encrypt = true
 
-    # Optional: use custom endpoint
-    # endpoint = "cos.ap-guangzhou.myqcloud.com"
+    # Optional: enable global acceleration
+    # accelerate = true
   }
 }
 ```
@@ -72,19 +71,30 @@ terraform {
     region     = "ap-guangzhou"
     bucket     = "my-terraform-state-1234567890"
     prefix     = "terraform/state/prod"
-    secret_id  = var.tencent_secret_id   # Use var or env var, not hardcoded
+    secret_id  = var.tencent_secret_id   # Prefer env vars for secrets; avoid hardcoding
     secret_key = var.tencent_secret_key
   }
 }
 ```
 
-### Using CAM Role (Recommended for CVM)
+### Using Assume Role
 
-When running on a Tencent Cloud CVM with a CAM role attached:
+If you want OpenTofu to assume a CAM role:
 
-```bash
-# No credentials needed - automatically uses the CVM's CAM role
-export TENCENTCLOUD_REGION="ap-guangzhou"
+```hcl
+terraform {
+  backend "cos" {
+    region = "ap-guangzhou"
+    bucket = "my-terraform-state-1234567890"
+    prefix = "terraform/state/prod"
+
+    assume_role {
+      role_arn         = "qcs::cam::uin/1234567890:roleName/TofuStateRole"
+      session_name     = "tofu-backend"
+      session_duration = 3600
+    }
+  }
+}
 ```
 
 ## State File Organization
@@ -98,7 +108,7 @@ COS bucket: my-terraform-state-1234567890
 
 ## Setting Up Permissions
 
-Create a CAM policy with minimal COS permissions:
+Create a CAM policy with minimal permissions for the state prefix:
 
 ```json
 {
@@ -107,18 +117,28 @@ Create a CAM policy with minimal COS permissions:
     {
       "effect": "allow",
       "action": [
-        "cos:PutObject",
-        "cos:GetObject",
-        "cos:DeleteObject",
-        "cos:ListObjects"
+        "name/cos:GetBucket"
       ],
       "resource": [
-        "qcs::cos:ap-guangzhou:uid/1234567890:my-terraform-state-1234567890/*"
+        "qcs::cos:ap-guangzhou:uid/1234567890:my-terraform-state-1234567890/"
+      ]
+    },
+    {
+      "effect": "allow",
+      "action": [
+        "name/cos:PutObject",
+        "name/cos:GetObject",
+        "name/cos:DeleteObject"
+      ],
+      "resource": [
+        "qcs::cos:ap-guangzhou:uid/1234567890:my-terraform-state-1234567890/terraform/state/prod/*"
       ]
     }
   ]
 }
 ```
+
+For state locking, also allow the Tag service APIs `CreateTag`, `DeleteTag`, and `DescribeTags` for the `tencentcloud-terraform-lock` tag key, as required by the OpenTofu COS backend.
 
 ## Server-Side Encryption
 
@@ -128,24 +148,12 @@ terraform {
     region  = "ap-guangzhou"
     bucket  = "my-terraform-state-1234567890"
     prefix  = "terraform/state/prod"
-    encrypt = true  # SSE-COS (Tencent managed keys)
+    encrypt = true  # Explicit; this uses AES256 server-side encryption
   }
 }
 ```
 
-For Customer-Managed Keys (SSE-KMS):
-
-```hcl
-terraform {
-  backend "cos" {
-    region         = "ap-guangzhou"
-    bucket         = "my-terraform-state-1234567890"
-    prefix         = "terraform/state/prod"
-    encrypt        = true
-    kms_key_id     = "your-kms-key-id"  # KMS key for SSE-KMS
-  }
-}
-```
+The OpenTofu COS backend does not support a `kms_key_id` argument. If you want SSE-KMS, configure default bucket encryption in COS and keep the backend configuration unchanged.
 
 ## Workspace Configuration
 
@@ -156,7 +164,7 @@ tofu workspace new staging
 
 # State file paths:
 # terraform/state/prod/terraform.tfstate       ← default
-# terraform/state/prod/env:/production/terraform.tfstate  ← production workspace
+# terraform/state/prod/production/terraform.tfstate  ← production workspace
 ```
 
 ## Initialize and Verify
@@ -173,12 +181,10 @@ tofu init
 tofu state list
 
 # Check bucket contents
-tccli cos list-objects \
-  --bucket my-terraform-state-1234567890 \
-  --region ap-guangzhou \
-  --prefix terraform/state/
+./coscli ls cos://my-terraform-state-1234567890/terraform/state/ \
+  -e cos.ap-guangzhou.myqcloud.com
 ```
 
 ## Conclusion
 
-The COS backend provides a native Tencent Cloud state storage solution that integrates with the Tencent Cloud IAM and encryption services. Enable versioning for state history, use server-side encryption for data protection, and apply CAM policies following least-privilege principles. For compute instances on CVM, use CAM roles instead of static credentials for improved security.
+The COS backend provides a native Tencent Cloud state storage solution that integrates with Tencent Cloud CAM and COS encryption features. Enable versioning for state history, use server-side encryption for data protection, and apply CAM policies following least-privilege principles. If you need temporary credentials, use the backend's `assume_role` support instead of long-lived static credentials.
