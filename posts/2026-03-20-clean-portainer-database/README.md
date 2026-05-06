@@ -8,7 +8,7 @@ Description: Remove stale containers, images, volumes, and endpoint data from Po
 
 ## Introduction
 
-Over time, Portainer's embedded boltdb database accumulates stale data: deleted endpoints that still have cached snapshots, old container records, removed images that are still referenced, and unused network configurations. This stale data increases database file size, slows queries, and consumes memory. This guide covers systematic cleanup at both the Docker layer and Portainer database layer.
+Over time, Portainer's embedded BoltDB database accumulates stale data: deleted endpoints that still have cached snapshots, old container records, removed images that are still referenced, and unused network configurations. This stale data increases database file size, slows queries, and consumes memory. This guide covers systematic cleanup at both the Docker layer and Portainer database layer.
 
 ## Step 1: Clean Up Docker Resources (Foundation)
 
@@ -25,14 +25,14 @@ docker system df
 # Local Volumes       31        14        45.2GB    12.3GB (27%)
 # Build Cache         156       0         8.2GB     8.2GB (100%)
 
-# Remove stopped containers (Portainer will clean their references too)
+# Remove stopped containers
 docker container prune -f
 
 # Remove unused images (not referenced by any container)
 docker image prune -a -f
 
-# Remove unused volumes (not mounted by any container)
-docker volume prune -f
+# Remove unused local volumes (named and anonymous, not mounted by any container)
+docker volume prune -a -f
 
 # Remove unused networks
 docker network prune -f
@@ -40,7 +40,8 @@ docker network prune -f
 # Remove build cache (safe to remove - rebuilds from scratch next time)
 docker builder prune -a -f
 
-# Complete cleanup (all of the above at once)
+# Single-command cleanup for stopped containers, unused images, networks,
+# build cache, and anonymous volumes
 docker system prune -a -f --volumes
 
 # Check reclaimed space
@@ -51,30 +52,30 @@ docker system df
 
 ```bash
 PORTAINER_URL="https://portainer.example.com"
-TOKEN="your_api_token"
+API_KEY="your_api_key"
 
 # List all endpoints
 curl -s \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $API_KEY" \
   "$PORTAINER_URL/api/endpoints" | \
   jq '.[] | {id: .Id, name: .Name, status: .Status, type: .Type}'
 
 # Status codes:
-# 1 = Active
-# 2 = Disconnected (stale)
-# Remove disconnected endpoints
+# 1 = Up
+# 2 = Down
+# Review down endpoints before deleting them
 
-# Find disconnected endpoints
-DISCONNECTED=$(curl -s \
-  -H "Authorization: Bearer $TOKEN" \
+# Find down endpoints
+DOWN_ENDPOINTS=$(curl -s \
+  -H "X-API-Key: $API_KEY" \
   "$PORTAINER_URL/api/endpoints" | \
   jq -r '.[] | select(.Status == 2) | .Id')
 
-# Remove each disconnected endpoint
-for endpoint_id in $DISCONNECTED; do
+# Remove each endpoint you have confirmed is stale
+for endpoint_id in $DOWN_ENDPOINTS; do
   echo "Removing stale endpoint: $endpoint_id"
   curl -s -X DELETE \
-    -H "Authorization: Bearer $TOKEN" \
+    -H "X-API-Key: $API_KEY" \
     "$PORTAINER_URL/api/endpoints/$endpoint_id"
 done
 ```
@@ -82,34 +83,37 @@ done
 ## Step 3: Clean Up Old Stack Records
 
 ```bash
-# List stacks in inactive or error state
+# List stacks and their current state
 curl -s \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $API_KEY" \
   "$PORTAINER_URL/api/stacks" | \
-  jq '.[] | {id: .Id, name: .Name, status: .Status}'
-# Status: 1=Active, 2=Inactive
+  jq '.[] | {id: .Id, endpointId: .EndpointId, name: .Name, status: .Status}'
+# Status: 1=Active, 2=Inactive, 3=Deploying, 4=Error
 
-# Remove inactive stacks (compose deleted but record remains)
+# Remove inactive stacks you no longer need
 INACTIVE_STACKS=$(curl -s \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $API_KEY" \
   "$PORTAINER_URL/api/stacks" | \
-  jq -r '.[] | select(.Status == 2) | .Id')
+  jq -r '.[] | select(.Status == 2) | "\(.Id) \(.EndpointId)"')
 
-for stack_id in $INACTIVE_STACKS; do
+while read -r stack_id endpoint_id; do
+  [ -n "$stack_id" ] || continue
   echo "Removing inactive stack: $stack_id"
   curl -s -X DELETE \
-    -H "Authorization: Bearer $TOKEN" \
-    "$PORTAINER_URL/api/stacks/$stack_id"
-done
+    -H "X-API-Key: $API_KEY" \
+    "$PORTAINER_URL/api/stacks/$stack_id?endpointId=$endpoint_id"
+done <<< "$INACTIVE_STACKS"
 ```
 
-## Step 4: Compact the boltdb Database
+## Step 4: Compact the BoltDB Database
 
 After removing data, the database file doesn't shrink automatically - it needs compaction:
 
 ```bash
 #!/bin/bash
 # compact-portainer-db.sh
+
+set -euo pipefail
 
 echo "=== Portainer Database Compaction ==="
 
@@ -124,15 +128,12 @@ echo "Before: $BEFORE_SIZE"
 echo "Stopping Portainer..."
 docker stop portainer
 
-# Compact using Docker's own utility or bbolt
-# Method 1: Use alpine with bbolt (if available)
+# Compact using the official bbolt CLI
 docker run --rm \
   -v "$DB_PATH:/data" \
-  alpine:latest \
-  sh -c "
-    # Install bbolt tool
-    wget -qO /tmp/bbolt https://github.com/etcd-io/bbolt/releases/download/v1.3.8/bbolt_1.3.8_linux_amd64 && \
-    chmod +x /tmp/bbolt && \
+  golang:1.24-alpine \
+  sh -ec "
+    GOBIN=/tmp go install go.etcd.io/bbolt/cmd/bbolt@latest && \
     /tmp/bbolt compact -o /data/portainer.db.compact /data/portainer.db && \
     mv /data/portainer.db /data/portainer.db.bak && \
     mv /data/portainer.db.compact /data/portainer.db
@@ -151,7 +152,7 @@ echo "Compaction complete. Backup at: portainer.db.bak"
 ## Step 5: Automate Weekly Cleanup
 
 ```bash
-# /etc/cron.weekly/portainer-cleanup
+# Save as /etc/cron.weekly/portainer-cleanup
 
 #!/bin/bash
 LOG="/var/log/portainer-cleanup.log"
@@ -166,20 +167,16 @@ docker image prune -f
 docker volume prune -f
 docker network prune -f
 
-FREED=$(docker system df 2>&1 | grep "Build Cache" | awk '{print $NF}')
-echo "Docker cleanup complete. Freed approximately $FREED"
+# Avoid truncating files under /var/lib/docker/containers directly.
+# Configure Docker log rotation instead.
+echo "Docker cleanup complete. Current logging driver: $(docker info --format '{{.LoggingDriver}}')"
 
-# Step 2: Clean up old logs
-find /var/lib/docker/containers -name "*.log" -size +100M | while read f; do
-  echo "Truncating large log: $f"
-  truncate -s 50M "$f"
-done
-
-# Step 3: Report
+# Step 2: Report
 echo "Cleanup complete: $(date)"
 docker system df
 
-chmod +x /etc/cron.weekly/portainer-cleanup
+# Then run outside the script:
+# chmod +x /etc/cron.weekly/portainer-cleanup
 ```
 
 ## Step 6: Monitor Database Growth
@@ -197,16 +194,17 @@ while true; do
   CONTAINERS=$(docker ps -q | wc -l)
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) db_size_bytes=$SIZE running_containers=$CONTAINERS" \
     >> "$LOG_FILE"
+
+  # Alert if database exceeds 500MB
+  DB_SIZE_MB=$((SIZE / 1048576))
+  if [ "$DB_SIZE_MB" -gt 500 ]; then
+    echo "WARNING: Portainer database is ${DB_SIZE_MB}MB - consider compaction"
+  fi
+
   sleep 3600  # Log every hour
 done
-
-# Alert if database exceeds 500MB
-DB_SIZE_MB=$(stat -c%s "$DB_PATH/portainer.db" | awk '{print int($1/1048576)}')
-if [ "$DB_SIZE_MB" -gt 500 ]; then
-  echo "WARNING: Portainer database is ${DB_SIZE_MB}MB - consider compaction"
-fi
 ```
 
 ## Conclusion
 
-Portainer database maintenance is a routine task, not a one-time fix. Docker resource cleanup (container prune, image prune, volume prune) is the first step - it removes the actual resources so Portainer's next snapshot reflects a clean state. Removing stale endpoints and inactive stack records via the Portainer API eliminates stale snapshot data. Weekly automated cleanup jobs prevent gradual accumulation. Schedule database compaction monthly or whenever the database grows beyond 200MB to keep Portainer responsive.
+Portainer database maintenance is a routine task, not a one-time fix. Docker resource cleanup (container prune, image prune, volume prune) is the first step - it removes the actual resources so Portainer's next snapshot reflects a clean state. Removing stale endpoints and inactive stack records via the Portainer API eliminates stale snapshot data. Weekly automated cleanup jobs prevent gradual accumulation. Schedule database compaction monthly or whenever the database growth trend becomes significant for your environment to keep Portainer responsive.
