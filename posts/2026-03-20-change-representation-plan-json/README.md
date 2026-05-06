@@ -29,13 +29,16 @@ tofu show -json tfplan > plan.json
 
 ```json
 {
-  "format_version": "1.2",
-  "opentofu_version": "1.7.0",
-  "variables": {},
-  "planned_values": {},
+  "format_version": "1.0",
+  "prior_state": {...},
+  "configuration": {...},
+  "planned_values": {...},
+  "variables": {...},
   "resource_changes": [...],
-  "output_changes": {},
-  "configuration": {}
+  "output_changes": {...},
+  "checks": [...],
+  "errored": false,
+  "timestamp": "2026-03-20T00:00:00Z"
 }
 ```
 
@@ -48,6 +51,7 @@ Each entry in `resource_changes` represents one resource:
 ```json
 {
   "address": "aws_instance.web",
+  "mode": "managed",
   "type": "aws_instance",
   "name": "web",
   "change": {
@@ -69,13 +73,15 @@ Each entry in `resource_changes` represents one resource:
 
 ## Change Actions
 
-| Action    | Meaning                                    |
-|-----------|--------------------------------------------|
-| `create`  | New resource will be created               |
-| `update`  | Existing resource will be modified in-place|
-| `delete`  | Resource will be destroyed                 |
-| `replace` | Resource will be destroyed and re-created  |
-| `no-op`   | No changes                                 |
+| Action                                      | Meaning                                      |
+|---------------------------------------------|----------------------------------------------|
+| `["create"]`                                | New resource will be created                 |
+| `["update"]`                                | Existing resource will be modified in-place  |
+| `["delete"]`                                | Resource will be destroyed                   |
+| `["delete", "create"]` or `["create", "delete"]` | Resource will be replaced             |
+| `["no-op"]`                                 | No changes                                   |
+| `["read"]`                                  | A data resource will be read                 |
+| `["forget"]`                                | Resource will be removed from state          |
 
 ---
 
@@ -88,8 +94,8 @@ jq '[.resource_changes[] | select(.change.actions == ["create"])] | length' plan
 # List all resources being destroyed
 jq -r '.resource_changes[] | select(.change.actions[] == "delete") | .address' plan.json
 
-# Check if any IAM resources are being modified
-jq -r '.resource_changes[] | select(.type | startswith("aws_iam")) | .address' plan.json
+# Check if any IAM resources have changes planned
+jq -r '.resource_changes[] | select(.type | startswith("aws_iam")) | select(.change.actions != ["no-op"]) | .address' plan.json
 ```
 
 ---
@@ -108,4 +114,4 @@ fi
 
 ## Summary
 
-Generate a JSON plan with `tofu plan -out=tfplan && tofu show -json tfplan`. The `resource_changes` array contains per-resource `actions` arrays indicating `create`, `update`, `delete`, or `replace`. Parse with `jq` to build automated policy gates, count destructive changes, or generate human-readable summaries in CI/CD pipelines.
+Generate a JSON plan with `tofu plan -out=tfplan && tofu show -json tfplan`. The `resource_changes` array contains per-resource `actions` arrays indicating common operations like `create`, `update`, `delete`, and `no-op`, with replacements represented as `["delete", "create"]` or `["create", "delete"]`. Parse with `jq` to build automated policy gates, count destructive changes, or generate human-readable summaries in CI/CD pipelines.
