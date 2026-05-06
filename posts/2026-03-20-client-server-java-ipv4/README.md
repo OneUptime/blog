@@ -47,20 +47,24 @@ public class EchoServer {
 ```java
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
 
 public class EchoClient {
     public static void main(String[] args) throws IOException {
-        try (Socket s = new Socket("192.168.1.10", 9000)) {
+        try (Socket s = new Socket("127.0.0.1", 9000)) {
             s.setSoTimeout(5000);
             OutputStream out = s.getOutputStream();
             InputStream  in  = s.getInputStream();
 
-            out.write("Hello, server!".getBytes());
+            out.write("Hello, server!".getBytes(StandardCharsets.UTF_8));
             out.flush();
 
             byte[] buf = new byte[4096];
             int n = in.read(buf);
-            System.out.printf("Received: %s%n", new String(buf, 0, n));
+            if (n == -1) {
+                throw new EOFException("Server closed the connection before replying");
+            }
+            System.out.printf("Received: %s%n", new String(buf, 0, n, StandardCharsets.UTF_8));
         }
     }
 }
@@ -82,8 +86,11 @@ public class FramedServer {
 
     static byte[] recvMsg(DataInputStream in) throws IOException {
         int length = in.readInt();      // blocking read of 4-byte header
+        if (length < 0) {
+            throw new IOException("Negative frame length: " + length);
+        }
         byte[] payload = new byte[length];
-        in.readFully(payload);          // block until all bytes arrive
+        in.readFully(payload);          // block until all bytes are read or EOF is reached
         return payload;
     }
 
@@ -125,15 +132,27 @@ public class PooledServer {
         ExecutorService pool = Executors.newFixedThreadPool(20);
         ServerSocket server  = new ServerSocket(9000);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            pool.shutdown();
             try { server.close(); } catch (IOException ignored) {}
+            pool.shutdown();
+            try {
+                if (!pool.awaitTermination(30, TimeUnit.SECONDS)) {
+                    pool.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                pool.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }));
 
         System.out.println("Pooled server on :9000");
         while (!server.isClosed()) {
             try {
                 final Socket client = server.accept();
-                pool.submit(() -> EchoServer.handle(client));
+                try {
+                    pool.submit(() -> EchoServer.handle(client));
+                } catch (RejectedExecutionException e) {
+                    try { client.close(); } catch (IOException ignored) {}
+                }
             } catch (IOException e) {
                 if (server.isClosed()) break;
             }
@@ -144,4 +163,4 @@ public class PooledServer {
 
 ## Conclusion
 
-Java's `ServerSocket(port, backlog, bindAddr)` provides fine-grained control over bind address and connection backlog. `DataInputStream.readFully()` is the reliable way to read an exact number of bytes - it retries internally until all bytes arrive. Use `ExecutorService.newFixedThreadPool` to limit concurrency and prevent thread exhaustion under load. Register a shutdown hook to close the `ServerSocket` (which unblocks `accept()`) and drain the thread pool gracefully. For Java 21+, consider virtual threads (`Executors.newVirtualThreadPerTaskExecutor()`) for massive concurrency without tuning pool sizes.
+Java's `ServerSocket(port, backlog, bindAddr)` provides fine-grained control over bind address and connection backlog. `DataInputStream.readFully()` is the reliable way to read an exact number of bytes - it blocks until the requested bytes are read or throws `EOFException`/`IOException` if the stream ends or an I/O error occurs. Use `ExecutorService.newFixedThreadPool` to limit concurrency and prevent thread exhaustion under load. Register a shutdown hook to close the `ServerSocket` (which unblocks `accept()`) and wait for the thread pool to finish outstanding work gracefully. For Java 21+, consider virtual threads (`Executors.newVirtualThreadPerTaskExecutor()`) for massive concurrency without tuning pool sizes.
