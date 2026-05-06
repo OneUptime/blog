@@ -58,7 +58,7 @@ def find_subnet(ip: str) -> Optional[ipaddress.IPv4Network]:
     except ValueError:
         return None
 
-print(find_subnet("192.168.1.50"))  # IPv4Network('192.168.0.0/16')
+print(find_subnet("192.168.1.50"))  # 192.168.0.0/16
 ```
 
 ## Flask Middleware: IP Allow-List
@@ -75,8 +75,7 @@ ALLOWED_CIDRS = [
 ]
 
 def get_client_ip() -> str:
-    xff = request.headers.get("X-Forwarded-For")
-    return xff.split(",")[0].strip() if xff else request.remote_addr
+    return request.remote_addr or ""
 
 @app.before_request
 def check_ip():
@@ -107,4 +106,4 @@ print(subnet_contains("10.1.0.0/16", "10.0.0.0/8"))   # False (parent/child reve
 
 ## Conclusion
 
-The `in` operator between an `IPv4Address` and an `IPv4Network` is the cleanest way to test subnet membership. For access control lists, build `IPv4Network` objects once at startup and iterate them for each request. The `subnet_of()` method is useful when you need to check if one CIDR block is entirely contained within another. Always wrap parsing in `try/except ValueError` to handle malformed input gracefully.
+The `in` operator between an `IPv4Address` and an `IPv4Network` is the cleanest way to test subnet membership. For access control lists, build `IPv4Network` objects once at startup and iterate them for each request. In Flask, use `request.remote_addr` for client checks; if your app is behind a reverse proxy, configure Flask/Werkzeug to trust forwarded headers so `request.remote_addr` reflects the real client IP. The `subnet_of()` method is useful when you need to check if one CIDR block is entirely contained within another. Always wrap parsing in `try/except ValueError` to handle malformed input gracefully.
