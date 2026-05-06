@@ -8,7 +8,7 @@ Description: Configure Flask to listen on IPv6, handle IPv6 client addresses in 
 
 ## Introduction
 
-Flask's built-in development server and production WSGI servers support IPv6. Enabling IPv6 means binding to `::` (all IPv6 interfaces) or a specific IPv6 address, and correctly parsing client IP addresses from request headers.
+Flask's built-in development server and production WSGI servers support IPv6. Enabling IPv6 means binding to `::` (all IPv6 interfaces) or a specific IPv6 address, and correctly handling client IP addresses when your app is behind a trusted reverse proxy.
 
 ## Step 1: Run Flask Dev Server on IPv6
 
@@ -25,7 +25,7 @@ def index():
     return f"Client IP: {client_ip}\n"
 
 if __name__ == "__main__":
-    # Listen on all IPv6 interfaces (and IPv4 via dual-stack)
+    # Listen on all IPv6 interfaces
     app.run(host="::", port=5000, debug=True)
 ```
 
@@ -33,9 +33,11 @@ if __name__ == "__main__":
 # Run the dev server
 python app.py
 
-# Test from IPv6 client
-curl -6 http://[::1]:5000/
-curl -6 http://[2001:db8::1]:5000/
+# Test locally from IPv6 loopback
+curl -g -6 "http://[::1]:5000/"
+
+# Replace 2001:db8::1 with your server's IPv6 address
+curl -g -6 "http://[2001:db8::1]:5000/"
 ```
 
 ## Step 2: Get Real Client IPv6 Address
@@ -47,16 +49,8 @@ import ipaddress
 app = Flask(__name__)
 
 def get_client_ip() -> str:
-    """Extract client IP, handling X-Forwarded-For for IPv6."""
-    # When behind a proxy
-    forwarded_for = request.headers.get("X-Forwarded-For")
-    if forwarded_for:
-        # Take the first (leftmost) address
-        client_ip = forwarded_for.split(",")[0].strip()
-        # Remove IPv6 brackets if present
-        client_ip = client_ip.strip("[]")
-    else:
-        client_ip = request.remote_addr
+    """Extract client IP after ProxyFix has trusted proxy headers."""
+    client_ip = request.remote_addr or ""
 
     try:
         addr = ipaddress.ip_address(client_ip)
@@ -90,6 +84,7 @@ from collections import defaultdict
 import ipaddress, time
 
 app = Flask(__name__)
+# This in-memory example is per-process; use shared storage in production.
 rate_counters = defaultdict(list)
 
 def get_rate_limit_key(ip: str) -> str:
@@ -105,7 +100,7 @@ def get_rate_limit_key(ip: str) -> str:
 
 @app.before_request
 def rate_limit():
-    ip = request.remote_addr
+    ip = request.remote_addr or ""
     key = get_rate_limit_key(ip)
     now = time.time()
     window = 60  # 1 minute
@@ -164,16 +159,14 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
 
-# Trust 1 proxy level for IPv6 forwarded headers
+# Trust 1 proxy level for the forwarded headers this proxy sets
 app.wsgi_app = ProxyFix(
     app.wsgi_app,
     x_for=1,
     x_proto=1,
-    x_host=1,
-    x_prefix=1,
 )
 ```
 
 ## Conclusion
 
-Flask supports IPv6 by binding to `::` in the development server or passing `[::]:port` to Gunicorn. Use `ProxyFix` middleware when behind a reverse proxy to correctly extract IPv6 client addresses from `X-Forwarded-For`. Rate-limit by /64 subnets to fairly handle IPv6 clients sharing a prefix. Monitor Flask endpoints with OneUptime's HTTP checks on IPv6 addresses.
+Flask supports IPv6 by binding to `::` in the development server or passing `[::]:port` to Gunicorn. Use `ProxyFix` middleware when behind a reverse proxy so Flask can trust forwarded client IP headers. If you need both IPv4 and IPv6 in production, bind both families explicitly with Gunicorn or terminate traffic at an IPv6-capable reverse proxy. Rate-limit by /64 subnets to fairly handle IPv6 clients sharing a prefix. Monitor Flask endpoints with OneUptime's HTTP checks on IPv6 addresses.
