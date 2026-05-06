@@ -18,81 +18,81 @@ When connecting to a hostname that has both A and AAAA records, the client must 
 
 ## RFC 6724: Default Address Selection
 
-RFC 6724 (updating RFC 3484) defines the standard algorithm for IPv6 address selection. It applies **policies** via a policy table to rank address pairs.
+RFC 6724 (updating RFC 3484) defines the standard algorithm for default address selection on dual-stack hosts. It applies **policies** via a policy table to rank destination/source address pairs.
 
-The default policy table on Linux:
+On Linux, related address-selection state can be inspected with:
 
 ```bash
-# View the current address selection policy table
+# Show the kernel's IPv6 address labels
 
 ip addrlabel list
 
-# Or check /etc/gai.conf (getaddrinfo configuration)
+# On glibc-based systems, show getaddrinfo() policy overrides
 cat /etc/gai.conf
 ```
 
 ## The gai.conf Policy Table
 
-The `getaddrinfo()` system call uses `/etc/gai.conf` to sort addresses. The default policy table (from RFC 6724) ranks:
+The `getaddrinfo()` library call on glibc-based systems can use `/etc/gai.conf` to override address sorting. The RFC 6724 default policy table ranks:
 
 ```text
-# /etc/gai.conf (Linux)
-# label <prefix> <label>   - assign labels to address ranges
-# precedence <prefix> <value> - higher precedence = preferred
+# RFC 6724 default labels and precedence
+label       ::1/128       0
+label       ::/0          1
+label       2002::/16     2
+label       ::/96         3
+label       ::ffff:0:0/96 4
+label       2001::/32     5
+label       fc00::/7      13
+label       fec0::/10     11
+label       3ffe::/16     12
 
-# Prefer IPv6 loopback
-label  ::1/128       0
-# IPv4-mapped addresses
-label  ::ffff:0:0/96  4
-# NAT64 prefix
-label  64:ff9b::/96   5
-
-# Precedence table (higher = more preferred)
-# ::1/128 (IPv6 loopback): 50
-# ::/0 (IPv6 global): 40
-# ::ffff:0:0/96 (IPv4-mapped): 35
-# Others: lower precedence
 precedence  ::1/128       50
 precedence  ::/0          40
 precedence  ::ffff:0:0/96 35
 precedence  2002::/16     30
-precedence  ::/96         20
-precedence  ::ffff:0:0/96 10
+precedence  2001::/32     5
+precedence  fc00::/7      3
+precedence  ::/96         1
+precedence  fec0::/10     1
+precedence  3ffe::/16     1
 ```
 
 ## The Destination Address Selection Rules
 
 RFC 6724 defines 10 rules applied in order. Key rules are:
 
-**Rule 1: Avoid unusable addresses** - Prefer reachable destinations over unreachable ones.
+**Rule 1: Avoid unusable destinations** - Prefer destinations that are reachable and have a usable source address.
 
 **Rule 4: Prefer home address** - If Mobile IPv6 is used, prefer the home address.
 
-**Rule 6: Prefer matching label** - Prefer destination addresses where the src/dst labels match.
+**Rule 5: Prefer matching label** - Prefer destination addresses where the src/dst labels match.
 
-**Rule 8: Prefer shorter prefix** - Prefer the most specific/longest matching address.
+**Rule 6: Prefer higher precedence** - Use the policy table to break ties.
 
-**Rule 9: Use longest matching prefix** - Prefer source addresses that share the most prefix bits with the destination.
+**Rule 8: Prefer smaller scope** - Prefer smaller-scope destinations when otherwise appropriate.
 
-**Rule 10: Otherwise prefer by policy** - Use the precedence table (`/etc/gai.conf`).
+**Rule 9: Use longest matching prefix** - When comparing same-family destinations, prefer the one whose chosen source shares the longest prefix.
+
+**Rule 10: Otherwise leave the order unchanged** - Keep the original resolver order as the final tiebreaker.
 
 ## Why IPv6 Is Preferred by Default
 
-The default `/etc/gai.conf` assigns:
+The RFC 6724 default policy table assigns:
 - `::` (IPv6 global) precedence **40**
 - `::ffff:0:0/96` (IPv4-mapped = IPv4) precedence **35**
 
-IPv6 has higher precedence (40 > 35), so dual-stack clients prefer IPv6 when both are available and reachable.
+IPv6 has higher precedence (40 > 35), so dual-stack clients usually try IPv6 before IPv4 when a matching IPv6 source address is available.
 
 ## Happy Eyeballs: The Connection Layer
 
-RFC 6724 selects destination addresses, but Happy Eyeballs (RFC 8305) handles the connection racing:
+RFC 6724 sorts destination addresses, but Happy Eyeballs (RFC 8305) uses that ordering and then races connection attempts across the list:
 
 ```mermaid
 flowchart LR
-    A[getaddrinfo] -->|RFC 6724 sort| B[Sorted address list]
-    B -->|IPv6 first| C[Start IPv6 connect]
-    C -->|250ms timeout| D[Start IPv4 connect in parallel]
+    A[getaddrinfo / DNS answers] -->|RFC 6724 sort| B[Ordered address list]
+    B -->|Interleave families| C[Start first connect]
+    C -->|250ms recommended delay| D[Start next connect]
     C & D --> E[First to succeed wins]
 ```
 
@@ -106,7 +106,7 @@ results = socket.getaddrinfo('example.com', 80)
 for family, type, proto, canonname, sockaddr in results:
     print(f'{family.name}: {sockaddr[0]}')
 "
-# IPv6 should appear first if Happy Eyeballs/RFC 6724 is working
+# This shows the order returned by getaddrinfo() after local policy is applied
 
 # Test which address curl actually uses
 curl -w "%{remote_ip}\n" -o /dev/null -s https://example.com
@@ -114,19 +114,22 @@ curl -w "%{remote_ip}\n" -o /dev/null -s https://example.com
 
 ## Modifying Address Selection Preferences
 
-To change the address selection policy (e.g., prefer IPv4 for a specific subnet):
+To change the address selection policy (e.g., prefer IPv4 globally on a glibc-based system):
 
 ```bash
-# Edit /etc/gai.conf to prefer IPv4 over IPv6 globally
-# Add: precedence ::ffff:0:0/96 100   (higher than IPv6's 40)
+# On glibc, adding any 'precedence' line replaces the default precedence table.
+# Copy the full default table into /etc/gai.conf, then give ::ffff:0:0/96 a
+# higher precedence than ::/0 if you want IPv4-mapped addresses preferred.
 sudo vim /etc/gai.conf
 
 # Or force IPv4 preference for specific application
 curl -4 https://example.com
 
 # In Python: specify address family
+python3 - <<'PY'
 import socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # IPv4 only
+PY
 ```
 
 ## Windows Address Selection
@@ -137,13 +140,13 @@ Windows implements address selection via the prefix policy table:
 # View Windows prefix policy table
 netsh interface ipv6 show prefixpolicies
 
-# Check which address is preferred for a destination
-Test-NetConnection -ComputerName example.com -Port 80
+# Test a connection and see the remote address chosen
+Test-NetConnection -ComputerName example.com -Port 80 -InformationLevel Detailed
 
-# Force IPv6 preference
-netsh interface ipv6 set prefixpolicies
+# Modify a prefix policy entry (example: raise IPv4-mapped precedence)
+netsh interface ipv6 set prefixpolicy prefix=::ffff:0:0/96 precedence=45 label=4
 ```
 
 ## Summary
 
-Clients choose between IPv4 and IPv6 through a two-layer process: RFC 6724 address selection sorts destination addresses by preference (IPv6 first by default), and Happy Eyeballs (RFC 8305) races connections to handle broken IPv6 paths gracefully. The `/etc/gai.conf` file on Linux controls address selection policy and can be modified to change preferences. Modern clients always prefer IPv6 when it's available and working, falling back to IPv4 only when needed.
+Clients choose between IPv4 and IPv6 through a two-layer process: RFC 6724 sorts destination addresses and helps choose source addresses, and Happy Eyeballs (RFC 8305) can interleave address families and race connection attempts. On glibc-based Linux, `/etc/gai.conf` can override address selection policy. Modern dual-stack clients usually prefer IPv6 in their initial ordering, but may quickly try IPv4 as well when Happy Eyeballs is in use.
