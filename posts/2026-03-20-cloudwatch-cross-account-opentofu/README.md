@@ -8,13 +8,13 @@ Description: Learn how to configure CloudWatch cross-account observability with 
 
 ## Introduction
 
-CloudWatch cross-account observability enables a centralized monitoring account to view metrics, logs, alarms, and traces from multiple source accounts. Instead of switching between accounts or building custom aggregation pipelines, operators can monitor all workloads from a single CloudWatch console view.
+CloudWatch cross-account observability enables a centralized monitoring account to view metrics, logs, and traces from multiple source accounts, and create alarms in the monitoring account based on source-account metrics. Instead of switching between accounts or building custom aggregation pipelines, operators can monitor all workloads from a single CloudWatch console view within a Region.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- A monitoring account (sink) and one or more source accounts
-- AWS credentials with CloudWatch and Organizations permissions
+- A monitoring account (sink) and one or more source accounts in the same AWS Region
+- AWS credentials with CloudWatch, OAM, and IAM permissions; AWS Organizations permissions are only needed if you onboard accounts by organization instead of listing account IDs
 
 ## Step 1: Set Up the Monitoring Account (Sink)
 
@@ -31,7 +31,7 @@ resource "aws_oam_sink" "monitoring" {
 
 # Policy allowing source accounts to link to this sink
 resource "aws_oam_sink_policy" "monitoring" {
-  sink_identifier = aws_oam_sink.monitoring.id
+  sink_identifier = aws_oam_sink.monitoring.arn
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -47,7 +47,7 @@ resource "aws_oam_sink_policy" "monitoring" {
           )
         }
         Condition = {
-          ForAllValues:StringEquals = {
+          "ForAllValues:StringEquals" = {
             "oam:ResourceTypes" = [
               "AWS::CloudWatch::Metric",
               "AWS::Logs::LogGroup",
@@ -69,7 +69,7 @@ output "sink_arn" {
 ## Step 2: Link Source Accounts to the Monitoring Sink
 
 ```hcl
-# In each source account - link to the monitoring sink
+# In each source account - link to the monitoring sink in the same Region
 resource "aws_oam_link" "to_monitoring" {
   label_template  = "$AccountName"
   resource_types  = [
@@ -85,16 +85,17 @@ resource "aws_oam_link" "to_monitoring" {
 }
 ```
 
-## Step 3: Cross-Account CloudWatch Alarm (Legacy Method)
+## Step 3: Optional Metric Stream Export
 
 ```hcl
-# Alternative: Cross-account metric sharing via sharing policies
-# Configure a sharing policy in the source account
-resource "aws_cloudwatch_metric_stream" "to_monitoring" {
-  name          = "${var.project_name}-metric-stream"
-  role_arn      = aws_iam_role.metric_stream.arn
-  firehose_arn  = var.monitoring_firehose_arn
-  output_format = "json"
+# In the monitoring account, optionally export metrics to Firehose.
+# The Firehose delivery stream must be in the same account and Region as the metric stream.
+resource "aws_cloudwatch_metric_stream" "to_firehose" {
+  name                            = "${var.project_name}-metric-stream"
+  role_arn                        = aws_iam_role.metric_stream.arn
+  firehose_arn                    = var.monitoring_firehose_arn
+  output_format                   = "json"
+  include_linked_accounts_metrics = true
 
   # Stream specific namespaces
   include_filter {
@@ -159,4 +160,4 @@ tofu apply -var="monitoring_sink_arn=<sink-arn>"
 
 ## Conclusion
 
-CloudWatch cross-account observability using OAM (Observability Access Manager) is the recommended approach for multi-account AWS Organizations. Once linked, the monitoring account can query metrics, search log groups, and view traces from all source accounts in a single console view. Link accounts by function (production, staging, development) or team to scope monitoring access appropriately.
+CloudWatch cross-account observability using OAM (Observability Access Manager) is the recommended approach for multi-account monitoring within a single Region. Once linked, the monitoring account can query metrics, search log groups, and view traces from all source accounts in a single console view, and you can create alarms in the monitoring account that watch shared metrics. Link accounts by function (production, staging, development) or team to scope monitoring access appropriately.
