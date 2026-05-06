@@ -15,14 +15,18 @@ cookbooks/ipv6_config/
 ├── recipes/
 │   ├── default.rb       # Main recipe
 │   ├── sysctl.rb        # Kernel parameters
-│   ├── firewall.rb      # ip6tables rules
+│   ├── firewall.rb      # IPv6 firewall rules
 │   └── interfaces.rb    # Network config
 ├── attributes/
 │   └── default.rb       # Default attribute values
 ├── templates/
-│   └── sysctl.conf.erb  # sysctl template
-└── metadata.rb
+│   └── default/
+│       ├── sysctl.conf.erb        # Alternative sysctl template
+│       └── netplan-ipv6.yaml.erb  # Netplan template
+└── metadata.rb          # Cookbook metadata and dependencies
 ```
+
+In `metadata.rb`, declare the community dependency with `depends 'firewall'`.
 
 ## Default Attributes
 
@@ -31,9 +35,12 @@ cookbooks/ipv6_config/
 
 default['ipv6_config']['disable_ipv6'] = false
 default['ipv6_config']['enable_forwarding'] = false
-default['ipv6_config']['accept_ra'] = 1
+default['ipv6_config']['accept_ra'] = 1  # set to 2 if forwarding is enabled and the host must still accept RAs
 default['ipv6_config']['privacy_extensions'] = true
-default['ipv6_config']['use_tempaddr'] = 2    # 2 = prefer temporary addresses
+default['ipv6_config']['use_tempaddr'] = 2    # 2 = prefer temporary addresses over public addresses
+
+# Use iptables when managing explicit IPv6 rules with the firewall cookbook
+default['firewall']['solution'] = 'iptables'
 ```
 
 ## Main Recipe
@@ -42,14 +49,6 @@ default['ipv6_config']['use_tempaddr'] = 2    # 2 = prefer temporary addresses
 # recipes/default.rb
 
 include_recipe 'ipv6_config::sysctl'
-
-if node['ipv6_config']['privacy_extensions']
-  include_recipe 'ipv6_config::privacy'
-end
-
-if node['ipv6_config']['enable_forwarding']
-  include_recipe 'ipv6_config::routing'
-end
 ```
 
 ## sysctl Recipe
@@ -59,54 +58,54 @@ end
 
 # Configure IPv6 kernel parameters
 
-sysctl_param 'net.ipv6.conf.all.disable_ipv6' do
+sysctl 'net.ipv6.conf.all.disable_ipv6' do
   value node['ipv6_config']['disable_ipv6'] ? 1 : 0
 end
 
-sysctl_param 'net.ipv6.conf.default.disable_ipv6' do
+sysctl 'net.ipv6.conf.default.disable_ipv6' do
   value node['ipv6_config']['disable_ipv6'] ? 1 : 0
 end
 
-sysctl_param 'net.ipv6.conf.all.accept_ra' do
+sysctl 'net.ipv6.conf.all.accept_ra' do
   value node['ipv6_config']['accept_ra']
 end
 
-sysctl_param 'net.ipv6.conf.all.forwarding' do
+sysctl 'net.ipv6.conf.default.accept_ra' do
+  value node['ipv6_config']['accept_ra']
+end
+
+sysctl 'net.ipv6.conf.all.forwarding' do
   value node['ipv6_config']['enable_forwarding'] ? 1 : 0
 end
 
-# If using sysctl resource directly:
-template '/etc/sysctl.d/60-ipv6.conf' do
-  source 'sysctl.conf.erb'
-  mode '0644'
-  variables(
-    disable_ipv6: node['ipv6_config']['disable_ipv6'],
-    forwarding: node['ipv6_config']['enable_forwarding'],
-    accept_ra: node['ipv6_config']['accept_ra'],
-    use_tempaddr: node['ipv6_config']['use_tempaddr']
-  )
-  notifies :run, 'execute[reload_sysctl]', :immediately
+sysctl 'net.ipv6.conf.default.forwarding' do
+  value node['ipv6_config']['enable_forwarding'] ? 1 : 0
 end
 
-execute 'reload_sysctl' do
-  command 'sysctl --system'
-  action :nothing
+sysctl 'net.ipv6.conf.all.use_tempaddr' do
+  value node['ipv6_config']['privacy_extensions'] ? node['ipv6_config']['use_tempaddr'] : 0
+end
+
+sysctl 'net.ipv6.conf.default.use_tempaddr' do
+  value node['ipv6_config']['privacy_extensions'] ? node['ipv6_config']['use_tempaddr'] : 0
 end
 ```
 
-## sysctl Template
+## Alternative sysctl Template
 
 ```erb
-<%# templates/sysctl.conf.erb %>
+<%# templates/default/sysctl.conf.erb %>
 # IPv6 Configuration managed by Chef - do not edit manually
-# Managed by: <%= node['chef_environment'] %>
+# Managed by: <%= node.chef_environment %>
 
 net.ipv6.conf.all.disable_ipv6 = <%= @disable_ipv6 ? 1 : 0 %>
 net.ipv6.conf.default.disable_ipv6 = <%= @disable_ipv6 ? 1 : 0 %>
 net.ipv6.conf.all.forwarding = <%= @forwarding ? 1 : 0 %>
 net.ipv6.conf.default.forwarding = <%= @forwarding ? 1 : 0 %>
 net.ipv6.conf.all.accept_ra = <%= @accept_ra %>
+net.ipv6.conf.default.accept_ra = <%= @accept_ra %>
 net.ipv6.conf.all.use_tempaddr = <%= @use_tempaddr %>
+net.ipv6.conf.default.use_tempaddr = <%= @use_tempaddr %>
 ```
 
 ## Firewall Recipe
@@ -114,7 +113,7 @@ net.ipv6.conf.all.use_tempaddr = <%= @use_tempaddr %>
 ```ruby
 # recipes/firewall.rb
 
-# Using the chef community 'firewall' cookbook for ip6tables
+# Using the Chef community 'firewall' cookbook with the iptables provider
 firewall 'default' do
   ipv6_enabled true
   action :install
@@ -167,10 +166,11 @@ end
 ## Chef Roles for IPv6
 
 ```json
-// roles/ipv6-web-server.json
 {
   "name": "ipv6-web-server",
   "description": "IPv6-enabled web server",
+  "json_class": "Chef::Role",
+  "chef_type": "role",
   "run_list": [
     "recipe[ipv6_config::default]",
     "recipe[ipv6_config::firewall]"
@@ -181,7 +181,8 @@ end
       "enable_forwarding": false,
       "privacy_extensions": true
     }
-  }
+  },
+  "override_attributes": {}
 }
 ```
 
@@ -189,7 +190,10 @@ end
 
 ```bash
 # Upload cookbook
-knife cookbook upload ipv6_config
+knife cookbook upload ipv6_config --include-dependencies
+
+# Upload role
+knife role from file roles/ipv6-web-server.json
 
 # Assign role to node
 knife node run_list add webserver01 'role[ipv6-web-server]'
