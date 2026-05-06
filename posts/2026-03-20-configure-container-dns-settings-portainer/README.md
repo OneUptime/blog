@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, DNS, Networking, Container
 
-Description: Set custom DNS servers and search domains for Docker containers in Portainer to control name resolution behavior.
+Description: Set custom DNS servers for Docker containers in Portainer to control name resolution behavior.
 
 ---
 
-Advanced container configuration in Portainer exposes Docker's full feature set through the web UI, allowing you to configure specialized settings without writing raw Docker commands.
+Advanced container configuration in Portainer lets you configure many Docker container settings through the web UI, allowing you to manage specialized options without writing raw Docker commands.
 
 ## Accessing Advanced Container Settings
 
-When creating or editing a container in Portainer:
+When creating a container in Portainer:
 1. Navigate to **Containers > Add container**
 2. Fill in basic settings (image, name, ports)
 3. Expand the **Advanced container settings** section
@@ -21,15 +21,17 @@ When creating or editing a container in Portainer:
 
 ```bash
 # Equivalent docker run command for device mapping
+# The host must have these device paths available
 
 docker run -d \
   --device /dev/video0:/dev/video0 \
   --device /dev/snd \
   --name my-container \
-  myimage:latest
+  ubuntu:24.04 \
+  tail -f /dev/null
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Devices**
+In Portainer UI: **Advanced container settings > Runtime & Resources > Devices**
 
 ## Sysctls Configuration
 
@@ -42,35 +44,40 @@ docker run -d \
   nginx:latest
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Sysctls**
+In Portainer UI: **Advanced container settings > Runtime & Resources > Sysctls**
 
 ## GPU Configuration (NVIDIA)
 
 ```bash
-# Ensure nvidia-container-toolkit is installed on the host first
-# Then configure GPU access in Portainer
+# Portainer GPU support is only available on Docker Standalone
+# environments and currently supports NVIDIA GPUs only.
+# Ensure nvidia-container-toolkit is installed on the host first.
 
 # Equivalent docker run
 docker run -d \
   --gpus all \
-  --name ml-training \
-  tensorflow/tensorflow:latest-gpu \
-  python train.py
+  --name gpu-worker \
+  ubuntu:24.04 \
+  tail -f /dev/null
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > GPUs**
+In Portainer UI: **Advanced container settings > Runtime & Resources > GPU**
 
 ## Linux Capabilities
 
 ```bash
-# Drop all capabilities, add only what's needed (secure approach)
+# Example of explicitly controlling container capabilities
+# Add only the capabilities your workload requires
 docker run -d \
   --cap-drop ALL \
   --cap-add NET_BIND_SERVICE \
   --cap-add CHOWN \
-  --name secure-nginx \
-  nginx:latest
+  --name secure-container \
+  ubuntu:24.04 \
+  tail -f /dev/null
 ```
+
+In Portainer UI: **Advanced container settings > Capabilities**
 
 ## Shared Memory Size
 
@@ -78,32 +85,39 @@ docker run -d \
 # Increase shared memory for applications like browsers or ML frameworks
 docker run -d \
   --shm-size=2g \
-  --name ml-worker \
-  pytorch/pytorch:latest
+  --name app-worker \
+  ubuntu:24.04 \
+  tail -f /dev/null
 ```
+
+In Portainer UI: **Advanced container settings > Runtime & Resources > Shared memory size**
 
 ## DNS Settings
 
 ```bash
-# Set custom DNS for a container
+# Set custom DNS servers for a container
 docker run -d \
   --dns 1.1.1.1 \
   --dns 8.8.8.8 \
-  --dns-search example.com \
   --name my-app \
-  myapp:latest
+  nginx:latest
 ```
+
+In Portainer UI: **Advanced container settings > Network > Primary DNS Server / Secondary DNS Server**
 
 ## Privileged Mode (Use Sparingly)
 
 ```bash
 # Only use privileged mode when absolutely necessary
-# Privileged containers have full host access
+# Privileged containers are not securely sandboxed
 docker run -d \
   --privileged \
   --name system-tool \
-  systool:latest
+  ubuntu:24.04 \
+  tail -f /dev/null
 ```
+
+In Portainer UI: **Advanced container settings > Runtime & Resources > Privileged mode**
 
 ---
 
