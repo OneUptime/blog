@@ -21,8 +21,6 @@ Developer → Gitea (Git) → Jenkins (Build/Test) → Registry → Portainer (D
 ```yaml
 # docker-compose.yml - Self-hosted CI/CD Stack
 
-version: "3.8"
-
 networks:
   cicd_network:
     driver: bridge
@@ -31,6 +29,7 @@ volumes:
   gitea_data:
   gitea_db:
   jenkins_home:
+  jenkins_docker_certs:
   registry_data:
 
 services:
@@ -74,9 +73,25 @@ services:
     depends_on:
       - gitea_db
 
+  # Docker daemon for Jenkins builds
+  docker:
+    image: docker:dind
+    container_name: jenkins_docker
+    restart: unless-stopped
+    privileged: true
+    environment:
+      - DOCKER_TLS_CERTDIR=/certs
+    command: --storage-driver=overlay2 --insecure-registry registry.yourdomain.com:5000
+    volumes:
+      - jenkins_docker_certs:/certs/client
+      - jenkins_home:/var/jenkins_home
+    networks:
+      - cicd_network
+
   # Jenkins CI/CD
   jenkins:
-    image: jenkins/jenkins:lts
+    build:
+      context: ./jenkins
     container_name: jenkins
     restart: unless-stopped
     ports:
@@ -84,12 +99,16 @@ services:
       - "50000:50000"    # Jenkins agents
     environment:
       - JENKINS_OPTS=--prefix=/jenkins
+      - DOCKER_HOST=tcp://docker:2376
+      - DOCKER_CERT_PATH=/certs/client
+      - DOCKER_TLS_VERIFY=1
     volumes:
       - jenkins_home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock  # For Docker builds
+      - jenkins_docker_certs:/certs/client:ro
     networks:
       - cicd_network
-    user: root  # Needed for Docker access
+    depends_on:
+      - docker
 
   # Private Docker Registry
   registry:
@@ -122,13 +141,37 @@ services:
       - registry
 ```
 
+Create a custom Jenkins image so the Docker CLI is available inside Jenkins:
+
+```dockerfile
+# jenkins/Dockerfile
+FROM jenkins/jenkins:lts-jdk21
+
+USER root
+RUN apt-get update && apt-get install -y lsb-release ca-certificates curl && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && apt-get install -y docker-ce-cli && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+USER jenkins
+```
+
+Use a registry hostname that both Jenkins and the Portainer-managed Docker environment can resolve. If you keep the registry on plain HTTP, configure that hostname as an insecure registry on each Docker daemon or front it with TLS.
+
 ## Step 2: Configure Jenkins Pipeline
 
 Install Jenkins plugins:
 - Docker Pipeline
 - Git
+- Gitea
+- Pipeline: Multibranch
 - Credentials
+- Mailer
 - Blue Ocean (optional)
+
+Create the Jenkins job as a **Multibranch Pipeline** so the branch conditions below resolve correctly.
 
 ```groovy
 // Jenkinsfile - Complete CI/CD pipeline
@@ -137,20 +180,28 @@ pipeline {
 
     environment {
         // Docker registry
-        REGISTRY = "registry:5000"
+        REGISTRY = "registry.yourdomain.com:5000"
         IMAGE_NAME = "${REGISTRY}/myapp/api"
-        IMAGE_TAG = "${BUILD_NUMBER}-${GIT_COMMIT.take(8)}"
 
-        // Portainer webhook (from Portainer Stack settings)
-        PORTAINER_WEBHOOK = credentials('portainer-webhook-url')
+        // Portainer deployment settings
+        PORTAINER_WEBHOOK_URL = credentials('portainer-webhook-url')
         PORTAINER_API_KEY = credentials('portainer-api-key')
         PORTAINER_URL = "https://portainer.yourdomain.com"
+        PORTAINER_STACK_ID = "1"
+        PORTAINER_ENDPOINT_ID = "1"
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
+                script {
+                    env.GIT_SHORT_COMMIT = sh(
+                        script: 'git rev-parse --short=8 HEAD',
+                        returnStdout: true
+                    ).trim()
+                    env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT_COMMIT}"
+                }
             }
         }
 
@@ -191,11 +242,10 @@ pipeline {
                 branch 'develop'
             }
             steps {
-                sh """
+                sh '''
                     curl -X POST \
-                        -H "X-API-Key: ${PORTAINER_API_KEY}" \
-                        "${PORTAINER_URL}/api/stacks/webhooks/${PORTAINER_WEBHOOK}"
-                """
+                        "${PORTAINER_WEBHOOK_URL}?IMAGE_TAG=${IMAGE_TAG}"
+                '''
             }
         }
 
@@ -208,13 +258,13 @@ pipeline {
                 ok "Deploy"
             }
             steps {
-                sh """
-                    curl -X POST \
+                sh '''
+                    curl -X PUT \
                         -H "X-API-Key: ${PORTAINER_API_KEY}" \
-                        "${PORTAINER_URL}/api/stacks/1/git/redeploy" \
                         -H "Content-Type: application/json" \
-                        -d '{"pullImage": true, "prune": false}'
-                """
+                        "${PORTAINER_URL}/api/stacks/${PORTAINER_STACK_ID}/git/redeploy?endpointId=${PORTAINER_ENDPOINT_ID}" \
+                        -d "{\"Prune\": false, \"RepullImageAndRedeploy\": true, \"Env\": [{\"name\": \"IMAGE_TAG\", \"value\": \"${IMAGE_TAG}\"}]}"
+                '''
             }
         }
     }
@@ -235,20 +285,22 @@ pipeline {
 }
 ```
 
-## Step 3: Configure Gitea Webhook to Trigger Jenkins
+## Step 3: Configure Gitea to Trigger Jenkins
 
-1. In Gitea: **Settings** > **Webhooks** > **Add Webhook** > **Gitea**
-2. Target URL: `http://jenkins:8080/gitea-webhook/post`
-3. Secret: (same as Jenkins Gitea plugin config)
-4. Trigger: Push events, Pull request events
+1. In Jenkins: **Manage Jenkins** > **Configure System** > **Gitea Servers**
+2. Add your Gitea URL and a Gitea personal access token
+3. Enable **manage hooks** so Jenkins can create repository webhooks automatically
+4. Create the repository job as a **Multibranch Pipeline** or **Organization Folder** backed by Gitea
 
 ## Step 4: Portainer Webhook Setup
 
-1. In Portainer: Navigate to your stack
-2. Click **Edit** > find the **Git polling** or **Webhook** section
-3. Enable **GitOps updates**
-4. Copy the webhook URL
-5. Store it as a Jenkins credential
+1. In Portainer: Navigate to your Git-based stack
+2. Click **Edit** and open the **GitOps updates** section
+3. Select **Webhook** as the update mechanism
+4. If Jenkins is deploying new image tags without changing the Git commit, enable **Force redeployment**
+5. Reference an environment variable in the stack, for example `image: registry.yourdomain.com:5000/myapp/api:${IMAGE_TAG:-latest}`
+6. Copy the full webhook URL
+7. Store it as a Jenkins secret text credential
 
 ## Step 5: Multi-Environment Stack Updates via API
 
@@ -259,7 +311,8 @@ pipeline {
 PORTAINER_URL="$1"
 API_KEY="$2"
 STACK_ID="$3"
-IMAGE_TAG="$4"
+ENDPOINT_ID="$4"
+IMAGE_TAG="$5"
 
 # Get current stack info
 STACK=$(curl -s \
@@ -268,16 +321,22 @@ STACK=$(curl -s \
 
 # Update image tag in environment variables
 NEW_ENV=$(echo "$STACK" | jq --arg tag "$IMAGE_TAG" \
-    '.Env | map(if .name == "IMAGE_TAG" then .value = $tag else . end)')
+    '.Env // [] | map(if .name == "IMAGE_TAG" then .value = $tag else . end)')
 
-# Redeploy the stack
+if ! echo "$NEW_ENV" | jq -e 'map(select(.name == "IMAGE_TAG")) | length > 0' >/dev/null; then
+    NEW_ENV=$(echo "$NEW_ENV" | jq --arg tag "$IMAGE_TAG" \
+        '. + [{"name":"IMAGE_TAG","value":$tag}]')
+fi
+
+# Pull and redeploy the Git-based stack
 curl -X PUT \
     -H "X-API-Key: $API_KEY" \
     -H "Content-Type: application/json" \
-    "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=1" \
-    -d "{\"stackFileContent\": $(echo "$STACK" | jq -c '.'), \"env\": $NEW_ENV, \"prune\": false}"
+    "$PORTAINER_URL/api/stacks/$STACK_ID/git/redeploy?endpointId=$ENDPOINT_ID" \
+    -d "$(jq -n --argjson env "$NEW_ENV" \
+        '{Prune: false, RepullImageAndRedeploy: true, Env: $env}')"
 ```
 
 ## Conclusion
 
-Your self-hosted CI/CD pipeline now automates the entire software delivery process. Gitea hosts your code, Jenkins builds, tests, and packages it, the private registry stores your Docker images, and Portainer webhooks trigger deployments. This stack runs entirely on your own infrastructure - no third-party dependencies, no data leaving your network, and no per-seat pricing. Portainer sits at the center of the deployment stage, making it easy to track what version is running in each environment.
+Your self-hosted CI/CD pipeline now automates the entire software delivery process. Gitea hosts your code, Jenkins builds, tests, and packages it, the private registry stores your Docker images, and Portainer webhooks trigger deployments. This stack runs on your own infrastructure, keeping your source code, build artifacts, and deployment workflow under your control. Portainer sits at the center of the deployment stage, making it easy to track what version is running in each environment.
