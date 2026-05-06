@@ -22,7 +22,7 @@ Subnet: 192.168.1.0/24
 
 ## ISC dhcpd: Exclusions via Range Definition
 
-In ISC dhcpd, exclusions are implemented by defining multiple range statements within a pool, leaving gaps:
+In ISC dhcpd, exclusions are implemented by defining one or more `range` statements and leaving gaps:
 
 ```text
 subnet 192.168.1.0 netmask 255.255.255.0 {
@@ -72,14 +72,19 @@ Remove-DhcpServerv4ExclusionRange `
 
 ## dnsmasq: Implicit Exclusions
 
-In dnsmasq, the range statement implicitly excludes anything outside the start-end bounds:
+In dnsmasq, the configured `dhcp-range` defines the dynamic pool; addresses outside that range are not leased dynamically:
 
 ```text
-# Only .50 to .200 are in the dynamic pool; all others are implicitly excluded
+# Only .50 to .200 are in the dynamic pool; addresses outside that range are not leased dynamically
 dhcp-range=192.168.1.50,192.168.1.200,255.255.255.0,24h
 ```
 
-For mid-range exclusions, add static hosts outside the pool or use tag-based filtering.
+For mid-range exclusions, define multiple `dhcp-range` entries in the same subnet and leave a gap:
+
+```text
+dhcp-range=10.0.10.10,10.0.10.49,255.255.255.0,24h
+dhcp-range=10.0.10.60,10.0.10.200,255.255.255.0,24h
+```
 
 ## Python: Documenting Reserved vs Available Addresses
 
@@ -89,6 +94,7 @@ import ipaddress
 subnet = ipaddress.IPv4Network("192.168.1.0/24")
 dynamic_pool = range(50, 201)  # .50 to .200
 excluded = range(1, 50)        # .1 to .49
+future_reserved = range(201, 255)  # .201 to .254
 
 print("Address allocation plan:")
 for i in range(1, 255):
@@ -97,6 +103,8 @@ for i in range(1, 255):
         status = "STATIC/RESERVED"
     elif i in dynamic_pool:
         status = "DYNAMIC POOL"
+    elif i in future_reserved:
+        status = "FUTURE STATIC"
     else:
         status = "UNALLOCATED"
     if i % 50 == 0 or i <= 3:  # Print select addresses
