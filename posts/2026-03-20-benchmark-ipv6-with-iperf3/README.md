@@ -15,6 +15,8 @@ iperf3 is the standard tool for network performance benchmarking. Its `-6` flag 
 - iperf3 installed on both endpoints: `apt-get install iperf3`
 - IPv6 connectivity between the two hosts
 - Firewall allowing TCP/UDP port 5201
+- `jq` installed on the machine running the benchmark suite script
+- Python 3 installed for the JSON analysis example
 
 ## Step 1: Basic IPv6 TCP Throughput Test
 
@@ -28,8 +30,8 @@ iperf3 -6 -c 2001:db8::1 -t 30
 
 # Example output:
 # [ ID] Interval       Transfer     Bitrate
-# [  5]  0.00-30.00 sec  33.4 GBytes  9.55 Gbits/sec  sender
-# [  5]  0.00-30.00 sec  33.4 GBytes  9.55 Gbits/sec  receiver
+# [  5]  0.00-30.00 sec  35.8 GBytes  9.55 Gbits/sec  sender
+# [  5]  0.00-30.00 sec  35.8 GBytes  9.55 Gbits/sec  receiver
 ```
 
 ## Step 2: Parallel Streams (Simulating Multiple Connections)
@@ -55,7 +57,7 @@ iperf3 -6 -c 2001:db8::1 -u -b 100M -t 60
 # VoIP simulation: 160-byte packets
 iperf3 -6 -c 2001:db8::1 -u -b 100k -l 160 -t 60
 
-# Video streaming simulation: 1316-byte packets (RTP typical)
+# Video streaming simulation: 1316-byte packets
 iperf3 -6 -c 2001:db8::1 -u -b 10M -l 1316 -t 60
 
 # UDP output includes:
@@ -107,10 +109,12 @@ for test_spec in "${tests[@]}"; do
         > "$OUTPUT_DIR/${name}.json" 2>&1
 
     # Extract and print key metrics
-    if [ "${name:0:3}" = "udp" ]; then
-        jq -r '.end.sum.jitter_ms as $j |
-               .end.sum.lost_percent as $l |
-               "  Jitter: \($j)ms  Lost: \($l)%"' \
+    if [ "$name" = "tcp_bidir" ]; then
+        jq -r '"  Forward: \(.end.sum_received.bits_per_second / 1e6) Mbps  Reverse: \(.end.sum_received_bidir_reverse.bits_per_second / 1e6) Mbps"' \
+            "$OUTPUT_DIR/${name}.json" | tee -a "$OUTPUT_DIR/summary.txt"
+    elif [ "${name:0:3}" = "udp" ]; then
+        jq -r '(.end.sum_received // .end.sum) as $rx |
+               "  Throughput: \($rx.bits_per_second / 1e6) Mbps  Jitter: \($rx.jitter_ms)ms  Lost: \($rx.lost_percent)%"' \
             "$OUTPUT_DIR/${name}.json" | tee -a "$OUTPUT_DIR/summary.txt"
     else
         jq -r '.end.sum_received.bits_per_second / 1e6 |
@@ -138,15 +142,28 @@ for filepath in glob.glob("/tmp/iperf3-results/*.json"):
         print(f"{test_name}: ERROR - {data['error']}")
         continue
 
+    protocol = data.get("start", {}).get("test_start", {}).get("protocol", "").upper()
     end = data.get("end", {})
-    if "sum_received" in end:
+
+    if protocol == "UDP":
+        udp = end.get("sum_received") or end.get("sum", {})
+        mbps = udp.get("bits_per_second", 0) / 1e6
+        jitter = udp.get("jitter_ms", 0)
+        lost_pct = udp.get("lost_percent", 0)
+        print(f"{test_name}: {mbps:.1f} Mbps, jitter={jitter:.3f}ms, loss={lost_pct:.2f}%")
+    elif "sum_received_bidir_reverse" in end:
+        forward_mbps = end["sum_received"]["bits_per_second"] / 1e6
+        reverse_mbps = end["sum_received_bidir_reverse"]["bits_per_second"] / 1e6
+        forward_retrans = end.get("sum_sent", {}).get("retransmits", 0)
+        reverse_retrans = end.get("sum_sent_bidir_reverse", {}).get("retransmits", 0)
+        print(
+            f"{test_name}: forward={forward_mbps:.1f} Mbps (retransmits={forward_retrans}), "
+            f"reverse={reverse_mbps:.1f} Mbps (retransmits={reverse_retrans})"
+        )
+    elif "sum_received" in end:
         mbps = end["sum_received"]["bits_per_second"] / 1e6
         retrans = end.get("sum_sent", {}).get("retransmits", 0)
         print(f"{test_name}: {mbps:.1f} Mbps, retransmits={retrans}")
-    elif "sum" in end:
-        jitter = end["sum"].get("jitter_ms", 0)
-        lost_pct = end["sum"].get("lost_percent", 0)
-        print(f"{test_name}: jitter={jitter:.3f}ms, loss={lost_pct:.2f}%")
 ```
 
 ## Conclusion
