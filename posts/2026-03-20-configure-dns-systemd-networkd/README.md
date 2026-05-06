@@ -8,7 +8,7 @@ Description: Configure DNS servers with systemd-networkd and systemd-resolved, i
 
 ## Introduction
 
-systemd-networkd delegates DNS resolution to `systemd-resolved`. DNS servers can be configured per-interface in `.network` files or globally in `resolved.conf`. Proper integration requires linking `/etc/resolv.conf` to the systemd-resolved stub resolver.
+systemd-networkd integrates with `systemd-resolved` for DNS resolution. DNS servers can be configured per-interface in `.network` files or globally in `resolved.conf`. A common and recommended setup is linking `/etc/resolv.conf` to the systemd-resolved stub resolver.
 
 ## Configure DNS in a .network File
 
@@ -33,7 +33,7 @@ Domains=example.com
 # Enable and start systemd-resolved
 systemctl enable --now systemd-resolved
 
-# Point /etc/resolv.conf to systemd-resolved stub
+# Recommended: point /etc/resolv.conf to the systemd-resolved stub
 ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 ```
 
@@ -114,4 +114,4 @@ resolvectl show-cache
 
 ## Conclusion
 
-DNS with systemd-networkd is managed by systemd-resolved. Configure per-interface DNS servers in `[Network]` DNS= lines within `.network` files. Enable systemd-resolved and link `/etc/resolv.conf` to its stub to activate it. Use `resolvectl status` to verify DNS assignment and `resolvectl query` to test resolution.
+DNS configured with systemd-networkd is typically handled by systemd-resolved. Configure per-interface DNS servers in `[Network]` DNS= lines within `.network` files. Enable systemd-resolved and, in the recommended stub-resolver setup, link `/etc/resolv.conf` to its stub. Use `resolvectl status` to verify DNS assignment and `resolvectl query` to test resolution.
