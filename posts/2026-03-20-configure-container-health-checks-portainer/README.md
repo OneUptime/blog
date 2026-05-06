@@ -4,20 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Health Check, Monitoring, Reliability, DevOps
 
-Description: Define and configure Docker container health checks in Portainer stacks to enable automatic restart on failure, proper depends_on ordering, and health status visibility in the Portainer dashboard.
+Description: Define and configure Docker container health checks in Portainer stacks to support `depends_on` ordering in Compose-based deployments and improve health status visibility in the Portainer dashboard.
 
 ---
 
-Health checks tell Docker (and Portainer) whether a container is actually functioning correctly, not just running. Portainer displays health status in the container list and uses it for `depends_on` conditions.
+Health checks tell Docker (and Portainer) whether a container is actually functioning correctly, not just running. Portainer surfaces container health information, and Compose-based stack deployments can use health checks with `depends_on` conditions such as `service_healthy`.
 
 ## Health Check States
 
-A container with a health check can be in four states:
+A container can be in one of these health-related states:
 
-- **starting** - health check hasn't run yet (within `start_period`)
-- **healthy** - last N checks passed
-- **unhealthy** - last N checks failed (triggers restart if `restart: always`)
-- **none** - no health check defined
+- **starting** - the container is still in its health check startup phase
+- **healthy** - the most recent health check passed
+- **unhealthy** - the container reached the configured `retries` threshold for consecutive failures
+- **no health check** - no health check is defined for the container
 
 ## Defining Health Checks in Portainer Stacks
 
@@ -30,7 +30,7 @@ services:
   webapp:
     image: myapp:1.2.3
     healthcheck:
-      # HTTP endpoint that returns 2xx for healthy
+      # HTTP endpoint that returns a successful response when healthy
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s        # Check every 30 seconds
       timeout: 10s         # Fail if no response in 10 seconds
@@ -112,30 +112,27 @@ Set `start_period` to at least the expected startup time of your application. Du
 
 ## Viewing Health Status in Portainer
 
-In Portainer's **Containers** list:
-- A green dot = `healthy`
-- A yellow dot = `starting` or `unhealthy`
-- Gray = no health check defined
+In Portainer's **Containers** list, you can see the container's status.
 
-Click a container to see detailed health check history in the **Inspect** tab.
+Click a container to open the **Inspect** tab and view the raw container data, including health check details when a health check is defined.
 
-## Triggering Restarts on Unhealthy
+## Health Checks and Restart Policies
 
-Combine health checks with restart policies to auto-recover:
+Combine health checks with restart policies so the container is restarted if its main process exits:
 
 ```yaml
 services:
   webapp:
     image: myapp:1.2.3
-    restart: unless-stopped    # Restart on exit or unhealthy
+    restart: unless-stopped    # Restart if the container exits
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       retries: 3
 ```
 
-When the container becomes `unhealthy`, Docker automatically restarts it (similar to Kubernetes liveness probes).
+A Docker health check only updates the container's health status; it does not restart the container by itself. Restart policies apply when the container exits. This differs from Kubernetes liveness probes.
 
 ## Summary
 
-Container health checks are a fundamental reliability feature. Define them for all production services in your Portainer stacks - especially databases and API services. Portainer's health status display gives immediate visibility into container health, and automatic restarts on unhealthy state reduce manual intervention for recoverable failures.
+Container health checks are a fundamental reliability feature. Define them for all production services in your Portainer stacks - especially databases and API services. Portainer's health status display gives immediate visibility into container health, and Compose-based dependency ordering can wait for services to become healthy before starting dependents.
