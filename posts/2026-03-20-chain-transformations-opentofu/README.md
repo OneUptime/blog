@@ -122,8 +122,11 @@ variable "availability_zones" {
 }
 
 locals {
-  # STEP 1: Generate all subnet CIDRs
-  all_cidrs = cidrsubnets(var.vpc_cidr, 8, 8, 8, 8, 8, 8)
+  # STEP 1: Generate one public and one private subnet CIDR per AZ
+  all_cidrs = cidrsubnets(
+    var.vpc_cidr,
+    [for _ in range(length(var.availability_zones) * 2) : 8]...
+  )
 
   # STEP 2: Split into public and private
   public_cidrs  = slice(local.all_cidrs, 0, length(var.availability_zones))
@@ -177,7 +180,7 @@ output "debug_step2" {
   value = local.servers_by_type
 }
 
-# Run tofu plan and inspect the outputs
+# Run tofu apply and inspect the outputs
 # Remove debug outputs before committing
 ```
 
