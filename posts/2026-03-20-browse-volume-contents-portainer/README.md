@@ -8,11 +8,11 @@ Description: Browse and inspect files inside Docker volumes using the Portainer 
 
 ---
 
-Docker volumes provide persistent storage for containers. Portainer's Volumes section gives you a complete UI for managing named volumes, bind mounts, and external storage backends.
+Docker volumes provide persistent storage for containers. Portainer's Volumes section gives you a UI for managing Docker volumes and supported backends such as NFS and CIFS/SMB.
 
 ## Navigate to Volumes in Portainer
 
-Go to **Volumes** in the left sidebar to see all volumes on the connected environment.
+Go to **Volumes** in the left sidebar to see the Docker volumes on the connected environment. If the environment is running Docker Swarm or the Portainer Agent, click **Browse** next to a volume to inspect its contents.
 
 ## Create Named Volumes
 
@@ -93,7 +93,7 @@ docker run --rm \
 docker volume ls -f dangling=true
 
 # Remove all unused volumes (with confirmation prompt)
-docker volume prune
+docker volume prune -a
 
 # Check volume disk usage
 docker system df -v
