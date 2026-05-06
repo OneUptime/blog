@@ -4,131 +4,144 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Cloudflare, Worker, IPv6, Edge, Serverless, Dual-Stack, Fetch
 
-Description: Build Cloudflare Workers that handle IPv6 client requests and make outbound IPv6 connections to origin servers.
+Description: Build Cloudflare Workers that handle IPv6 client requests and make outbound HTTP requests to IPv6 endpoints.
 
 ## Introduction
 
-Cloudflare Workers IPv6 enables serverless workloads to operate in IPv6 and dual-stack environments. The configuration varies by platform but involves enabling IPv6 on the underlying network, configuring function runtime environment, and validating IPv6 client connectivity.
+Cloudflare Workers already run on Cloudflare's edge, so you do not enable IPv6 on a Worker by attaching it to a VPC or subnet. Instead, IPv6 behavior depends on the Worker endpoint you expose and the Cloudflare headers and runtime APIs you use. For custom domains, Cloudflare's IPv6 Compatibility setting controls whether proxied hostnames advertise AAAA records.
 
 ## Step 1: Enable IPv6 on the Platform
 
 ```bash
-# Platform-specific IPv6 enablement
+# For workers.dev routes, Cloudflare manages the public endpoint for you.
+# For custom domains, confirm the hostname is proxied through Cloudflare
+# and that IPv6 Compatibility is enabled on the zone.
 
-# Most serverless platforms use the underlying cloud provider's network
+# Check that the Worker hostname has an AAAA record
+dig AAAA your-worker.example.com
 
-# Check if the platform's public endpoint has IPv6
-dig AAAA your-function-url.example.com
-
-# For VPC-integrated functions, ensure VPC subnet has IPv6
-# (refer to platform documentation)
+# You do not configure IPv6 for Workers at a VPC or subnet layer
 ```
 
 ## Step 2: Handle IPv6 Client Addresses in Functions
 
 ```python
-# Python serverless handler example
+from workers import WorkerEntrypoint, Response
+
 import ipaddress
 
-def handler(event, context):
-    # Extract client IP (varies by platform)
-    client_ip = (
-        event.get("requestContext", {})
-             .get("identity", {})
-             .get("sourceIp")
-        or event.get("headers", {}).get("X-Forwarded-For", "").split(",")[0].strip()
-        or "unknown"
-    )
+class Default(WorkerEntrypoint):
+    async def fetch(self, request):
+        # Prefer CF-Connecting-IPv6 when Pseudo IPv4 overwrites CF-Connecting-IP
+        client_ip = (
+            request.headers.get("cf-connecting-ipv6")
+            or request.headers.get("cf-connecting-ip")
+            or "unknown"
+        )
 
-    # Normalize IPv4-mapped IPv6
-    try:
-        addr = ipaddress.ip_address(client_ip)
-        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
-            client_ip = str(addr.ipv4_mapped)
-        is_ipv6 = isinstance(addr, ipaddress.IPv6Address) and not addr.ipv4_mapped
-    except ValueError:
-        is_ipv6 = False
+        # Normalize IPv4-mapped IPv6
+        try:
+            addr = ipaddress.ip_address(client_ip)
+            if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+                client_ip = str(addr.ipv4_mapped)
+                is_ipv6 = False
+            else:
+                is_ipv6 = addr.version == 6
+        except ValueError:
+            is_ipv6 = False
 
-    return {
-        "statusCode": 200,
-        "body": f"Client IP: {client_ip}, IPv6: {is_ipv6}"
-    }
+        return Response(
+            f"Client IP: {client_ip}, IPv6: {is_ipv6}",
+            headers={"content-type": "text/plain"},
+        )
 ```
 
 ## Step 3: Make Outbound IPv6 Requests
 
 ```python
-import urllib.request
+from workers import WorkerEntrypoint, Response, fetch as worker_fetch
 
-def call_ipv6_endpoint():
-    """Make HTTP request to an IPv6 endpoint from serverless."""
-    # URL with bracketed IPv6 address
-    url = "http://[2001:db8::1]/api/health"
+class Default(WorkerEntrypoint):
+    async def fetch(self, request):
+        """Make HTTP request to an IPv6 endpoint from a Worker."""
+        # Use brackets when targeting an IPv6 literal
+        url = "http://[2001:db8::1]/api/health"
 
-    try:
-        with urllib.request.urlopen(url, timeout=10) as response:
-            return response.read().decode()
-    except Exception as e:
-        return f"Error: {e}"
-
-# Or with requests library
-import requests
-
-def call_ipv6_with_requests():
-    response = requests.get("http://[2001:db8::1]/api", timeout=10)
-    return response.json()
+        try:
+            response = await worker_fetch(url)
+            return Response(
+                await response.text(),
+                headers={"content-type": "text/plain"},
+            )
+        except Exception as e:
+            return Response(f"Error: {e}", status=502)
 ```
 
 ## Step 4: Test IPv6 Connectivity
 
 ```bash
-# Test that your serverless endpoint accepts IPv6
-curl -6 https://your-function-url.example.com/
+# Test that your Worker endpoint accepts IPv6
+curl -6 https://your-worker.example.com/
 
 # Test with explicit IPv6 address
-curl --resolve "your-function-url.example.com:443:2001:db8::1"     https://your-function-url.example.com/
+curl --resolve "your-worker.example.com:443:[2001:db8::1]" \
+    https://your-worker.example.com/
 
 # Check IPv6 DNS
-dig AAAA your-function-url.example.com
+dig AAAA your-worker.example.com
 ```
 
 ## Step 5: Environment Variable Configuration
 
-```bash
-# Set environment variables for IPv6 endpoints
-# (Platform-specific - shown as generic examples)
+```toml
+# wrangler.toml
+[vars]
+BACKEND_URL = "http://[2001:db8::1]/api"
+DATABASE_HOST = "2001:db8::10"
+```
 
-BACKEND_URL="http://[2001:db8::backend]/api"
-DATABASE_HOST="2001:db8::db"
+```python
+from workers import WorkerEntrypoint, Response
 
-# In your function code
-import os
-backend_url = os.environ.get("BACKEND_URL", "http://[::1]/api")
+class Default(WorkerEntrypoint):
+    async def fetch(self, request):
+        backend_url = self.env.BACKEND_URL
+        return Response(backend_url)
 ```
 
 ## Step 6: Monitoring and Logging
 
 ```python
-import logging
 import ipaddress
+import logging
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
+from workers import WorkerEntrypoint, Response
 
-def log_ipv6_metrics(client_ip: str):
-    """Log IPv6 client metrics for observability."""
-    try:
-        addr = ipaddress.ip_address(client_ip)
-        logger.info({
-            "event": "request",
-            "client_ip": client_ip,
-            "ip_version": addr.version,
-            "is_private": addr.is_private,
-        })
-    except ValueError:
-        logger.warning(f"Invalid IP address: {client_ip}")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class Default(WorkerEntrypoint):
+    async def fetch(self, request):
+        client_ip = (
+            request.headers.get("cf-connecting-ipv6")
+            or request.headers.get("cf-connecting-ip")
+            or "unknown"
+        )
+
+        try:
+            addr = ipaddress.ip_address(client_ip)
+            logger.info(
+                "event=request client_ip=%s ip_version=%s is_private=%s",
+                client_ip,
+                addr.version,
+                addr.is_private,
+            )
+        except ValueError:
+            logger.warning("Invalid IP address: %s", client_ip)
+
+        return Response("ok")
 ```
 
 ## Conclusion
 
-Cloudflare Workers IPv6 works best when the underlying network has IPv6 enabled at the VPC/subnet level. Extract client IPv6 addresses from platform-specific request contexts, normalize IPv4-mapped addresses, and use bracket notation for IPv6 URLs in outbound requests. Monitor serverless function invocations from IPv6 clients with OneUptime to track adoption and error rates.
+Cloudflare Workers do not require IPv6 enablement at a VPC or subnet layer. Cloudflare's edge accepts IPv6 requests, and custom domains use the zone's IPv6 Compatibility setting. Read client IPs from `CF-Connecting-IP` or `CF-Connecting-IPv6`, use bindings via `self.env`, and use the Workers `fetch()` API for outbound HTTP requests. If you need to force an IPv6 destination, use a bracketed IPv6 literal or a hostname that only resolves to AAAA; for proxied DNS records with both IPv4 and IPv6 origin addresses, Cloudflare prefers IPv4.
