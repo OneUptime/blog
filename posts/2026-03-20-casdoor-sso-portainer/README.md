@@ -18,7 +18,7 @@ Casdoor is an open-source identity and access management platform with a web UI,
 4. Configure:
    - **Name**: portainer
    - **Display name**: Portainer
-   - **Redirect URLs**: `https://portainer.example.com/`
+   - **Redirect URLs**: the exact external URL of your Portainer instance, for example `https://portainer.example.com/`
    - **Grant types**: Authorization Code
    - **Response types**: code
    - **Token format**: JWT
@@ -51,7 +51,7 @@ TOKEN=$(curl -s -X POST \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
 CASDOOR_URL="https://casdoor.example.com"
-ORG_NAME="your-org"
+PORTAINER_URL="https://portainer.example.com/"
 
 curl -X PUT \
   https://localhost:9443/api/settings \
@@ -64,9 +64,9 @@ curl -X PUT \
       \"ClientSecret\": \"casdoor-client-secret\",
       \"AuthorizationURI\": \"$CASDOOR_URL/login/oauth/authorize\",
       \"AccessTokenURI\": \"$CASDOOR_URL/api/login/oauth/access_token\",
-      \"ResourceURI\": \"$CASDOOR_URL/api/get-account\",
-      \"RedirectURI\": \"https://portainer.example.com/\",
-      \"UserIdentifier\": \"name\",
+      \"ResourceURI\": \"$CASDOOR_URL/api/userinfo\",
+      \"RedirectURI\": \"$PORTAINER_URL\",
+      \"UserIdentifier\": \"preferred_username\",
       \"Scopes\": \"openid profile email\",
       \"OAuthAutoCreateUsers\": true
     }
@@ -80,8 +80,8 @@ curl -X PUT \
 |-----------------|--------------|
 | Authorization URL | `https://casdoor.example.com/login/oauth/authorize` |
 | Access Token URL | `https://casdoor.example.com/api/login/oauth/access_token` |
-| Resource URL | `https://casdoor.example.com/api/get-account` |
-| User Identifier | `name` |
+| Resource URL | `https://casdoor.example.com/api/userinfo` |
+| User Identifier | `preferred_username` |
 
 ## Configure Casdoor User Properties
 
@@ -89,7 +89,7 @@ In Casdoor, ensure users have the required attributes:
 
 1. Navigate to **Users** in Casdoor
 2. For each user, set at minimum:
-   - **Name** (used as the Portainer username if `UserIdentifier` is `name`)
+   - **Name** (used as the Portainer username if `UserIdentifier` is `preferred_username`)
    - **Email**
    - **Password**
 3. Under **Organizations**, assign users to your organization
@@ -100,7 +100,7 @@ In Casdoor, ensure users have the required attributes:
 2. Click **Login with OAuth**
 3. You'll be redirected to Casdoor's login page
 4. Enter Casdoor credentials
-5. Authorize the Portainer application
+5. If prompted, authorize the Portainer application
 6. You'll be redirected back to Portainer
 
 ---
