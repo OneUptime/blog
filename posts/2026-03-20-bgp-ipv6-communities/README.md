@@ -14,18 +14,18 @@ BGP communities are optional attributes attached to route updates that carry pol
 
 | Type | Format | Example | RFC |
 |------|--------|---------|-----|
-| Standard | ASN:value (4 bytes) | 65001:100 | RFC 1997 |
+| Standard | 2-octet-ASN:value (4 bytes) | 65001:100 | RFC 1997 |
 | Extended | Type:Administrator:value (8 bytes) | rt:65001:100 | RFC 4360 |
-| Large | ASN:Administrator:value (12 bytes) | 65001:100:200 | RFC 8092 |
+| Large | GlobalAdmin:LocalData1:LocalData2 (12 bytes) | 65001:100:200 | RFC 8092 |
 
 ## Well-Known Communities
 
 | Community | Action |
 |-----------|--------|
-| `no-export` | Do not export to eBGP peers |
-| `no-advertise` | Do not advertise to any neighbor |
-| `local-AS` | Do not send outside the local AS |
-| `internet` | Advertise to all peers |
+| `no-export` | Do not advertise outside a BGP confederation boundary |
+| `no-advertise` | Do not advertise to any BGP peer |
+| `local-AS` | Do not advertise to external BGP peers, including confederation eBGP peers |
+| `internet` | General Internet community; matches all routes by default |
 
 ## Setting Communities on FRRouting
 
@@ -38,14 +38,14 @@ route-map SET_COMMUNITY_OUT permit 10
  match ipv6 address prefix-list MY_PREFIXES
  set community 65001:100 65001:200 additive   ! Add communities
 
-! Tag routes with no-export to prevent re-advertisement
+! Alternative: tag routes with no-export while preserving existing communities
 route-map NO_EXPORT_TAG permit 10
- set community no-export
+ set community no-export additive
 
 router bgp 65001
  address-family ipv6 unicast
-  neighbor 2001:db8:peer::2 route-map SET_COMMUNITY_OUT out
-  neighbor 2001:db8:peer::2 send-community     ! Must enable sending communities
+  neighbor 2001:db8:1::2 route-map SET_COMMUNITY_OUT out
+  neighbor 2001:db8:1::2 send-community standard   ! Explicit; enabled by default in current FRR releases
  exit-address-family
 
 end
@@ -71,7 +71,7 @@ route-map PROCESS_COMMUNITY permit 99
 
 router bgp 65001
  address-family ipv6 unicast
-  neighbor 2001:db8:peer::2 route-map PROCESS_COMMUNITY in
+  neighbor 2001:db8:1::2 route-map PROCESS_COMMUNITY in
  exit-address-family
 
 end
@@ -79,23 +79,21 @@ end
 
 ## Large Communities (RFC 8092)
 
-Large communities are 12 bytes (3 × 4-byte fields) and solve the problem of encoding large ASNs in standard communities:
+Large communities are 12 bytes (3 x 4-byte fields) and avoid the 2-octet ASN limitation of standard communities:
 
 ```bash
 ! Use large communities for 4-byte ASN environments
 route-map SET_LARGE_COMMUNITY permit 10
  set large-community 131072:100:1 additive
 
-bgp large-community-list standard MY_LC permit 131072:100:1
-
 route-map MATCH_LARGE_COMMUNITY permit 10
- match large-community MY_LC
+ match large-community 131072:100:1
  set local-preference 150
 ```
 
 ## IXP Community Usage Example
 
-IXPs often define well-known communities for traffic engineering:
+IXPs often publish operator-defined communities for traffic engineering:
 
 ```bash
 ! Example: Accept routes tagged by peer with their community
@@ -128,13 +126,13 @@ route-map PROCESS_IXP_ROUTES permit 99
 ```bash
 # Show communities on received routes
 
-vtysh -c "show bgp ipv6 unicast" | grep Community
+vtysh -c "show bgp ipv6 unicast detail-routes" | grep Community
 
 # Show detail for a specific route including communities
-vtysh -c "show bgp ipv6 unicast 2001:db8:peer::/48"
+vtysh -c "show bgp ipv6 unicast 2001:db8:100::/48"
 # Look for: Community: 65002:100 65002:200
 ```
 
 ## Summary
 
-BGP communities are 32-bit (standard) or larger tags attached to route updates to convey policy intent. Use `set community` in route maps to tag outbound routes, `bgp community-list` to match incoming community values, and `send-community` to ensure communities are forwarded to peers. Always coordinate community assignments with your peers for consistent policy enforcement.
+BGP communities are 32-bit (standard) or larger tags attached to route updates to convey policy intent. Use `set community` or `set large-community` in route maps to tag routes, `bgp community-list` or `match large-community` to match policy values, and `send-community` with the appropriate option when you want FRRouting to send them explicitly. Always coordinate community assignments with your peers for consistent policy enforcement.
