@@ -16,7 +16,7 @@ Dynamic ARP Inspection (DAI) on Cisco switches:
 
 ## Prerequisites
 
-DAI relies on DHCP snooping bindings. Enable DHCP snooping first:
+DAI relies on DHCP snooping bindings for dynamically addressed hosts. Enable DHCP snooping first. If your DHCP infrastructure does not use Option 82, you can disable insertion:
 
 ```cisco
 ip dhcp snooping
@@ -41,10 +41,10 @@ show ip arp inspection vlan 10
 
 ## Configure Trusted Ports
 
-Ports connected to routers, other switches, or servers need to be trusted:
+Ports connected to routers, other switches, or other explicitly trusted infrastructure should be trusted:
 
 ```cisco
-! Trust uplink and server ports
+! Trust uplink and infrastructure ports
 interface GigabitEthernet0/24
  ip arp inspection trust
 
@@ -52,18 +52,18 @@ interface GigabitEthernet0/23
  ip arp inspection trust
 ```
 
-Access ports facing end users should remain untrusted (default).
+Host-facing access ports should remain untrusted (default); use ARP ACLs for static-IP hosts instead of broadly trusting the port.
 
 ## Add ARP ACLs for Static IP Hosts
 
-Hosts using static IPs are not in the DHCP snooping binding table, so you need ARP ACLs:
+Hosts using static IPs are not in the DHCP snooping binding table by default, so you need ARP ACLs:
 
 ```cisco
 ! Define static IP-to-MAC bindings
 arp access-list STATIC_SERVERS
- permit ip host 10.0.0.10 mac host aa:bb:cc:dd:ee:01
- permit ip host 10.0.0.20 mac host 00:11:22:33:44:55
- permit ip host 10.0.0.1 mac host ff:ee:dd:cc:bb:aa
+ permit ip host 10.0.0.10 mac host aabb.ccdd.ee01
+ permit ip host 10.0.0.20 mac host 0011.2233.4455
+ permit ip host 10.0.0.1 mac host ffee.ddcc.bbaa
 
 ! Apply to VLAN 10
 ip arp inspection filter STATIC_SERVERS vlan 10
@@ -72,7 +72,7 @@ ip arp inspection filter STATIC_SERVERS vlan 10
 ## Enable Enhanced Validations
 
 ```cisco
-! Validate source MAC, destination MAC, and sender IP
+! Examples of single validation settings (each command replaces the previous one)
 ip arp inspection validate src-mac
 ip arp inspection validate dst-mac
 ip arp inspection validate ip
@@ -85,7 +85,7 @@ ip arp inspection validate src-mac dst-mac ip
 |------------|----------------|
 | `src-mac` | ARP sender MAC matches Ethernet source MAC |
 | `dst-mac` | ARP target MAC matches Ethernet destination MAC (for replies) |
-| `ip` | Sender IP is not 0.0.0.0, broadcast, or multicast |
+| `ip` | Checks ARP IP fields for invalid addresses such as 0.0.0.0, broadcast, or multicast; sender IP is checked on requests and replies, and target IP on replies |
 
 ## Configure ARP Rate Limiting
 
@@ -133,6 +133,7 @@ Sample output:
 ! DHCP Snooping base
 ip dhcp snooping
 ip dhcp snooping vlan 10
+! Optional: disable Option 82 insertion if your DHCP infrastructure does not use it
 no ip dhcp snooping information option
 
 ! DAI on VLAN 10
@@ -141,7 +142,7 @@ ip arp inspection validate src-mac dst-mac ip
 
 ! ARP ACL for static hosts
 arp access-list STATIC_HOSTS
- permit ip host 10.0.0.1 mac host ff:ee:dd:cc:bb:aa
+ permit ip host 10.0.0.1 mac host ffee.ddcc.bbaa
 
 ip arp inspection filter STATIC_HOSTS vlan 10
 
@@ -157,8 +158,8 @@ interface GigabitEthernet0/24
 
 ## Key Takeaways
 
-- DAI validates ARP packets on untrusted ports against the DHCP snooping binding table.
-- Trusted ports bypass DAI (use for uplinks and servers).
+- DAI validates ARP packets on untrusted ports against the DHCP snooping binding table and any configured ARP ACLs.
+- Trusted ports bypass DAI (use for uplinks and other explicitly trusted infrastructure).
 - ARP ACLs are required for static IP hosts not covered by DHCP snooping.
 - Enhanced validations (`src-mac`, `dst-mac`, `ip`) catch additional attack vectors.
 
