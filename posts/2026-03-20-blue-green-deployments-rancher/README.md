@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Blue-Green Deployment, Rancher, Kubernetes, Zero Downtime, DevOps, Deployment Strategy, Service
 
-Description: Learn how to implement blue-green deployments in Rancher-managed Kubernetes clusters to achieve zero-downtime releases by switching traffic between two identical environments.
+Description: Learn how to implement blue-green deployments in Rancher-managed Kubernetes clusters to minimize downtime by switching traffic between two identical environments.
 
 ---
 
-Blue-green deployments eliminate downtime by running two identical environments - blue (current) and green (new). Traffic is switched atomically from blue to green after the new version passes verification, and rollback is instant.
+Blue-green deployments minimize downtime by running two identical environments - blue (current) and green (new). Traffic is switched from blue to green after the new version passes verification, and rollback is fast as long as the blue environment is still available.
 
 ---
 
@@ -24,7 +24,11 @@ graph LR
 
 ## Step 1: Create the Blue Deployment
 
-Deploy version 1 of your application labeled `slot: blue`:
+If the namespace does not already exist, create it first, then deploy version 1 of your application labeled `slot: blue`:
+
+```bash
+kubectl create namespace my-app
+```
 
 ```yaml
 # blue-deployment.yaml
@@ -64,7 +68,7 @@ spec:
 
 ## Step 2: Create the Service Pointing to Blue
 
-The Service uses a `slot` label selector to route traffic. Switching the slot switches traffic:
+The Service uses a `slot` label selector to route traffic. Changing the slot changes which Pods the Service selects:
 
 ```yaml
 # service.yaml
@@ -131,10 +135,10 @@ kubectl rollout status deployment/my-app-green -n my-app
 
 ## Step 4: Switch Traffic to Green
 
-Once the green deployment is healthy, patch the Service selector to point to green:
+Once the green deployment is healthy, patch the Service selector to point to green. This is a single API update, and traffic shifts as the Service endpoints reconcile:
 
 ```bash
-# This is an atomic operation - traffic switches instantly
+# Update the selector to shift new traffic to green
 kubectl patch service my-app \
   -n my-app \
   --type=json \
@@ -148,7 +152,7 @@ kubectl get service my-app -n my-app -o jsonpath='{.spec.selector}'
 
 ## Step 5: Verify and Clean Up
 
-Run smoke tests against production, then delete the blue deployment:
+Run smoke tests against production, then delete the blue deployment once you no longer need an immediate rollback:
 
 ```bash
 # Quick health check
@@ -162,7 +166,7 @@ kubectl delete deployment my-app-blue -n my-app
 
 ## Rollback Procedure
 
-If issues appear after the switch, revert the Service selector back to blue in seconds:
+If issues appear after the switch and before you delete the blue deployment, revert the Service selector back to blue:
 
 ```bash
 kubectl patch service my-app \
