@@ -8,7 +8,9 @@ Description: Use Scapy to capture live HTTP traffic over IPv4, extract request/r
 
 ## Introduction
 
-Scapy can capture and decode HTTP traffic at the packet level, giving you visibility into cleartext HTTP sessions. This is useful for security auditing, debugging, API testing, and understanding application behavior on the network.
+Scapy can capture and decode HTTP traffic at the packet level, giving you visibility into cleartext HTTP traffic. This is useful for security auditing, debugging, API testing, and understanding application behavior on the network.
+
+Because HTTP messages can span multiple TCP segments, the packet-level examples below inspect individual payloads, while the PCAP example uses Scapy's TCP session support to decode reassembled HTTP messages.
 
 > **Note**: Only capture traffic on networks you own or have authorization to monitor. Intercepting traffic without consent is illegal.
 
@@ -16,7 +18,8 @@ Scapy can capture and decode HTTP traffic at the packet level, giving you visibi
 
 ```bash
 pip install scapy
-# Root/sudo required for raw socket capture
+# Root/sudo or Administrator privileges are typically required for packet capture
+# BPF capture filters rely on libpcap/Npcap support on your platform
 
 ```
 
@@ -38,7 +41,7 @@ def analyze_http(pkt):
     except Exception:
         return
     
-    http_methods = ('GET ', 'POST ', 'PUT ', 'DELETE ', 'HEAD ', 'OPTIONS ', 'PATCH ')
+    http_methods = ('GET ', 'POST ', 'PUT ', 'DELETE ', 'HEAD ', 'OPTIONS ', 'PATCH ', 'CONNECT ', 'TRACE ')
     
     if any(payload_str.startswith(m) for m in http_methods):
         src_ip = pkt[IP].src
@@ -100,36 +103,54 @@ def analyze_http_response(pkt):
 sniff(filter="tcp port 80 and ip", prn=analyze_http_response, store=False)
 ```
 
-## Extracting Full HTTP Sessions from a PCAP File
+## Extracting HTTP Messages from a PCAP File
 
-Analyze previously captured traffic:
+Analyze previously captured traffic with Scapy's TCP session decoder:
 
 ```python
-from scapy.all import rdpcap, IP, TCP, Raw
-from collections import defaultdict
+from scapy.all import sniff, IP, TCPSession
+from scapy.layers.http import HTTPRequest, HTTPResponse
 
-# Load a pcap file
-packets = rdpcap("capture.pcap")
+def decode_field(value):
+    if value is None:
+        return ''
+    if isinstance(value, bytes):
+        return value.decode('utf-8', errors='replace')
+    return str(value)
 
-# Group packets by TCP flow (4-tuple)
-flows = defaultdict(list)
+# Read a pcap file and let Scapy defragment supported TCP payloads
+packets = sniff(offline="capture.pcap", session=TCPSession, store=True)
+
 for pkt in packets:
-    if pkt.haslayer(IP) and pkt.haslayer(TCP) and pkt.haslayer(Raw):
-        src = (pkt[IP].src, pkt[TCP].sport)
-        dst = (pkt[IP].dst, pkt[TCP].dport)
-        flow_key = (src, dst) if pkt[TCP].dport in (80, 8080) else (dst, src)
-        flows[flow_key].append(pkt[Raw].load)
-
-# Reassemble and display HTTP conversations
-for flow, payloads in flows.items():
-    combined = b''.join(payloads)
-    try:
-        text = combined.decode('utf-8', errors='replace')
-        if 'HTTP' in text:
-            print(f"\n=== Flow: {flow[0][0]}:{flow[0][1]} -> {flow[1][0]}:{flow[1][1]} ===")
-            print(text[:500])  # Print first 500 chars
-    except Exception:
-        pass
+    if not pkt.haslayer(IP):
+        continue
+    
+    src_ip = pkt[IP].src
+    dst_ip = pkt[IP].dst
+    
+    if pkt.haslayer(HTTPRequest):
+        req = pkt[HTTPRequest]
+        method = decode_field(req.Method)
+        path = decode_field(req.Path)
+        host = decode_field(req.Host)
+        request_line = f"{method} {path}".strip()
+        
+        print(f"[HTTP REQUEST] {src_ip} -> {dst_ip}")
+        print(f"  Request: {request_line}")
+        print(f"  Host: {host}")
+        print()
+    elif pkt.haslayer(HTTPResponse):
+        resp = pkt[HTTPResponse]
+        version = decode_field(resp.Http_Version)
+        status = decode_field(resp.Status_Code)
+        reason = decode_field(resp.Reason_Phrase)
+        content_type = decode_field(resp.Content_Type)
+        status_line = " ".join(part for part in (version, status, reason) if part)
+        
+        print(f"[HTTP RESPONSE] {src_ip} -> {dst_ip}")
+        print(f"  Status: {status_line}")
+        print(f"  Content-Type: {content_type}")
+        print()
 ```
 
 ## Extracting URLs and Headers to a CSV
@@ -147,14 +168,14 @@ with open(output_file, 'w', newline='') as csvfile:
     writer.writeheader()
     
     def log_http(pkt):
-        if not (pkt.haslayer(TCP) and pkt.haslayer(Raw)):
+        if not (pkt.haslayer(IP) and pkt.haslayer(TCP) and pkt.haslayer(Raw)):
             return
         try:
             payload = pkt[Raw].load.decode('utf-8', errors='replace')
         except Exception:
             return
         
-        if not any(payload.startswith(m) for m in ('GET ', 'POST ', 'PUT ')):
+        if not any(payload.startswith(m) for m in ('GET ', 'POST ', 'PUT ', 'DELETE ', 'HEAD ', 'OPTIONS ', 'PATCH ', 'CONNECT ', 'TRACE ')):
             return
         
         lines = payload.split('\r\n')
