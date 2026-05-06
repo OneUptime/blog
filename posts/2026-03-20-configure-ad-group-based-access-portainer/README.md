@@ -8,7 +8,7 @@ Description: Set up role-based access control in Portainer using Active Director
 
 ---
 
-Group-based access control in Portainer means AD group membership determines what environments and resources users can access. This scales access management across hundreds of users without individual configuration.
+Group-based access control in Portainer Business Edition means AD group membership determines what environments and resources users can access. This scales access management across hundreds of users without individual configuration.
 
 ## Design Your Access Model
 
@@ -17,16 +17,16 @@ Before configuration, plan the mapping:
 ```text
 AD Group                    → Portainer Team         → Access
 ---------------------------------------------------------------------------
-GRP-Portainer-Admins       → portainer-admins       → All environments (Admin)
-GRP-Portainer-DevOps       → devops-team            → Production (Operator)
-GRP-Portainer-Developers   → developers             → Development (Standard)
-GRP-Portainer-ReadOnly     → read-only-users        → All environments (Read)
+GRP-Portainer-Admins       → GRP-Portainer-Admins   → All environments (Environment administrator)
+GRP-Portainer-DevOps       → GRP-Portainer-DevOps   → Production (Operator)
+GRP-Portainer-Developers   → GRP-Portainer-Developers → Development (Standard User)
+GRP-Portainer-ReadOnly     → GRP-Portainer-ReadOnly → All environments (Helpdesk)
 ```
 
 ## Step 1: Create AD Security Groups
 
 ```powershell
-# Run on a domain controller
+# Run in a PowerShell session with the ActiveDirectory module
 
 New-ADGroup -Name "GRP-Portainer-Admins" -GroupScope Global -GroupCategory Security
 New-ADGroup -Name "GRP-Portainer-DevOps" -GroupScope Global -GroupCategory Security
@@ -47,19 +47,19 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Create teams matching AD group names (or a mapping)
-for team in "portainer-admins" "devops-team" "developers" "read-only-users"; do
+# Create teams with the same names as the AD groups you want to sync
+for team in "GRP-Portainer-Admins" "GRP-Portainer-DevOps" "GRP-Portainer-Developers" "GRP-Portainer-ReadOnly"; do
   RESULT=$(curl -s -X POST \
     https://localhost:9443/api/teams \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "{\"Name\": \"$team\"}" \
     --insecure)
-  echo "Team created: $team -> $(echo $RESULT | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("Id","error"))')"
+  echo "Team created: $team -> $(printf '%s' "$RESULT" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("Id","error"))')"
 done
 ```
 
-## Step 3: Configure AD with Group Sync
+## Step 3: Configure AD Authentication with Group Sync
 
 ```bash
 curl -X PUT \
@@ -69,10 +69,12 @@ curl -X PUT \
   -d '{
     "AuthenticationMethod": 2,
     "LDAPSettings": {
+      "AnonymousMode": false,
       "ReaderDN": "CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com",
       "Password": "ServicePassword!",
-      "URLs": ["ldaps://dc01.corp.example.com:636"],
+      "URL": "dc01.corp.example.com:636",
       "TLSConfig": {"TLS": true, "TLSSkipVerify": false},
+      "StartTLS": false,
       "SearchSettings": [{
         "BaseDN": "DC=corp,DC=example,DC=com",
         "Filter": "(&(objectClass=user)(objectCategory=person))",
@@ -81,8 +83,7 @@ curl -X PUT \
       "GroupSearchSettings": [{
         "GroupBaseDN": "OU=Portainer Groups,DC=corp,DC=example,DC=com",
         "GroupFilter": "(objectClass=group)",
-        "UserAttribute": "member",
-        "GroupAttribute": "cn"
+        "GroupAttribute": "member"
       }],
       "AutoCreateUsers": true
     }
@@ -92,7 +93,7 @@ curl -X PUT \
 
 ## Step 4: Assign Teams to Environments
 
-After teams are created and users are synced, assign environment access:
+After teams are created and users have logged in through AD at least once, assign environment access:
 
 ```bash
 # Get the list of environments and teams
