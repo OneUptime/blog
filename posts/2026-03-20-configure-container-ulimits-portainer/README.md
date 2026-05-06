@@ -15,7 +15,7 @@ Ulimits (user limits) are kernel-level constraints on resources a process can us
 | Type | Description | Common Uses |
 |------|-------------|-------------|
 | `nofile` | Open file descriptors | Databases, web servers, Elasticsearch |
-| `nproc` | Number of processes | Security hardening |
+| `nproc` | Number of processes available to a user | Process/thread ceilings (per-user, not per-container) |
 | `stack` | Stack size | JVM, ML workloads |
 | `memlock` | Locked memory | Elasticsearch, GPU workloads |
 | `core` | Core dump size | Debugging |
@@ -24,7 +24,6 @@ Ulimits (user limits) are kernel-level constraints on resources a process can us
 ## Configuring Ulimits in Portainer Stacks
 
 ```yaml
-version: "3.8"
 services:
   elasticsearch:
     image: elasticsearch:8.12.0
@@ -47,9 +46,6 @@ services:
       nofile:
         soft: 64000
         hard: 64000
-      nproc:
-        soft: 64000
-        hard: 64000
 ```
 
 ## High-Performance Web Server Configuration
@@ -68,7 +64,7 @@ services:
 
 ## GPU and ML Workload Configuration
 
-NVIDIA workloads require locked memory and large stacks:
+Many NVIDIA deep learning containers use locked memory and larger stacks:
 
 ```yaml
 services:
@@ -85,10 +81,9 @@ services:
 
 ## Setting Default Ulimits for All Containers
 
-Configure Docker daemon defaults to apply to all new containers:
+Configure Docker daemon defaults to apply to all new containers in `/etc/docker/daemon.json`:
 
 ```json
-// /etc/docker/daemon.json
 {
   "default-ulimits": {
     "nofile": {
@@ -100,7 +95,9 @@ Configure Docker daemon defaults to apply to all new containers:
 }
 ```
 
-This sets the baseline - individual containers can override it higher if needed.
+Reload or restart the Docker daemon after updating the file.
+
+This sets the baseline - individual containers can override these defaults as needed.
 
 ## Checking Current Ulimits
 
@@ -124,7 +121,7 @@ cat /proc/1/limits    # PID 1 (container init process) limits
 
 Common errors from insufficient ulimits:
 
-```bash
+```text
 # "Too many open files" - increase nofile limit
 java.io.IOException: Too many open files
 
@@ -137,11 +134,14 @@ ulimits:
 # "Resource temporarily unavailable" during fork - increase nproc
 bash: fork: Resource temporarily unavailable
 
-# Fix: increase nproc limit or set PID limit appropriately
+# Fix: increase nproc if the per-user limit is too low.
+# For per-container process caps, use pids_limit instead.
 ulimits:
   nproc:
     soft: 65535
     hard: 65535
+
+pids_limit: 65535
 ```
 
 ## Summary
