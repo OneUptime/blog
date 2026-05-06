@@ -41,6 +41,8 @@ variable "region" {
   default = "us-east-1"
 }
 
+data "aws_caller_identity" "current" {}
+
 # locals.tf - derived values (NOT configurable by callers)
 locals {
   # Compute derived values from variables
@@ -87,6 +89,7 @@ locals {
 }
 
 resource "aws_instance" "web" {
+  ami           = "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
   instance_type = local.instance_config.type
   count         = local.instance_config.count
 }
@@ -102,7 +105,22 @@ variable "services" {
   # ["web", "api", "worker"]
 }
 
+variable "project" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
 locals {
+  name_prefix = "${var.project}-${var.environment}"
+  common_tags = {
+    Environment = var.environment
+    Project     = var.project
+    ManagedBy   = "opentofu"
+  }
+
   # Build a map from a list
   service_ports = {
     web    = 80
@@ -123,7 +141,8 @@ locals {
 
 resource "aws_instance" "services" {
   for_each = local.service_configs
-  # ...
+  ami           = "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+  instance_type = "t3.small"
   tags = each.value.tags
 }
 ```
