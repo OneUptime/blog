@@ -44,9 +44,13 @@ Before forking, you need a listening socket bound to an IPv4 address and port.
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <signal.h>
+#include <sys/wait.h>
+#include <errno.h>
 
 #define PORT 8080
 #define BACKLOG 10
+
+void handle_client(int fd);
 
 int main() {
     int server_fd, client_fd;
@@ -59,7 +63,9 @@ int main() {
 
     /* Allow address reuse to avoid "Address already in use" on restart */
     int opt = 1;
-    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt"); exit(1);
+    }
 
     /* Bind to all IPv4 interfaces on PORT */
     memset(&address, 0, sizeof(address));
@@ -72,7 +78,9 @@ int main() {
     }
 
     /* Start listening; BACKLOG controls the connection queue size */
-    listen(server_fd, BACKLOG);
+    if (listen(server_fd, BACKLOG) < 0) {
+        perror("listen"); exit(1);
+    }
     printf("Server listening on port %d\n", PORT);
     return 0;
 }
@@ -84,7 +92,9 @@ After the socket is ready, the main loop accepts clients and forks a child for e
 
 ```c
 /* Reap zombie child processes automatically */
-signal(SIGCHLD, SIG_IGN);
+if (signal(SIGCHLD, SIG_IGN) == SIG_ERR) {
+    perror("signal"); exit(1);
+}
 
 while (1) {
     client_fd = accept(server_fd, (struct sockaddr *)&address, &addrlen);
@@ -100,7 +110,7 @@ while (1) {
         close(server_fd);
         handle_client(client_fd);
         close(client_fd);
-        exit(0);
+        _exit(0);
     } else {
         /* Parent process: close the client fd; child owns it now */
         close(client_fd);
@@ -120,19 +130,32 @@ void handle_client(int fd) {
 
     while ((n = read(fd, buffer, sizeof(buffer))) > 0) {
         /* Echo each received message back */
-        write(fd, buffer, n);
+        ssize_t sent = 0;
+        while (sent < n) {
+            ssize_t m = write(fd, buffer + sent, (size_t)(n - sent));
+            if (m <= 0) {
+                return;
+            }
+            sent += m;
+        }
     }
 }
 ```
 
 ## Preventing Zombie Processes
 
-Setting `SIGCHLD` to `SIG_IGN` tells the kernel to reap children automatically. Alternatively, use a `waitpid` loop in the `SIGCHLD` handler for more control.
+On Linux, setting `SIGCHLD` to `SIG_IGN` tells the kernel to reap children automatically. Alternatively, use a `waitpid` loop in the `SIGCHLD` handler for more control.
 
 ```c
 /* SIGCHLD handler that reaps all finished children */
 void sigchld_handler(int s) {
-    while (waitpid(-1, NULL, WNOHANG) > 0);
+    int saved_errno = errno;
+
+    (void) s;
+    while (waitpid(-1, NULL, WNOHANG) > 0) {
+    }
+
+    errno = saved_errno;
 }
 ```
 
