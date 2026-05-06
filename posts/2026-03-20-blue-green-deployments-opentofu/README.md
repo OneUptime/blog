@@ -8,7 +8,7 @@ Description: Learn how to implement blue-green deployments using OpenTofu to ach
 
 ---
 
-Blue-green deployments eliminate downtime by running two identical environments (blue and green) and switching traffic atomically. OpenTofu manages both environments and the routing layer, making the cutover a one-command operation that can be instantly rolled back.
+Blue-green deployments eliminate downtime by running two identical environments (blue and green) and switching traffic through the load balancer. OpenTofu manages both environments and the routing layer, making each traffic shift a one-command operation that can be quickly rolled back.
 
 ## Blue-Green with AWS ALB Target Groups
 
@@ -64,10 +64,11 @@ resource "aws_lb" "main" {
 
 # Blue target group (current stable version)
 resource "aws_lb_target_group" "blue" {
-  name     = "${var.app_name}-blue"
-  port     = 8080
-  protocol = "HTTP"
-  vpc_id   = var.vpc_id
+  name        = "${var.app_name}-blue"
+  port        = 8080
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
 
   health_check {
     path                = "/health"
@@ -79,10 +80,11 @@ resource "aws_lb_target_group" "blue" {
 
 # Green target group (new version being deployed)
 resource "aws_lb_target_group" "green" {
-  name     = "${var.app_name}-green"
-  port     = 8080
-  protocol = "HTTP"
-  vpc_id   = var.vpc_id
+  name        = "${var.app_name}-green"
+  port        = 8080
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
 
   health_check {
     path                = "/health"
@@ -133,7 +135,7 @@ resource "aws_ecs_service" "blue" {
   name            = "${var.app_name}-blue"
   cluster         = var.ecs_cluster_arn
   task_definition = aws_ecs_task_definition.blue.arn
-  desired_count   = var.blue_weight > 0 ? var.desired_count : 0
+  desired_count   = var.desired_count
 
   load_balancer {
     target_group_arn = aws_lb_target_group.blue.arn
@@ -152,7 +154,7 @@ resource "aws_ecs_service" "green" {
   name            = "${var.app_name}-green"
   cluster         = var.ecs_cluster_arn
   task_definition = aws_ecs_task_definition.green.arn
-  desired_count   = local.green_weight > 0 ? var.desired_count : 0
+  desired_count   = var.desired_count
 
   load_balancer {
     target_group_arn = aws_lb_target_group.green.arn
@@ -170,21 +172,21 @@ resource "aws_ecs_service" "green" {
 ## Deployment Workflow
 
 ```bash
-# Step 1: Deploy new version to green (blue still at 100%)
+# Step 1: Deploy new version to green while blue still serves 100% of traffic
 tofu apply -var="blue_weight=100" -var="green_image=v2.0.0"
 
 # Step 2: Gradually shift traffic to green
-tofu apply -var="blue_weight=90"  # 10% to green - monitor errors
-tofu apply -var="blue_weight=50"  # 50/50 split - canary validation
-tofu apply -var="blue_weight=0"   # 100% to green - complete cutover
+tofu apply -var="blue_weight=90"  # About 10% of new requests go to green - monitor errors
+tofu apply -var="blue_weight=50"  # Split new requests 50/50 - canary validation
+tofu apply -var="blue_weight=0"   # Route all new traffic to green - existing sticky sessions can drain
 
 # Step 3: Rollback in seconds if issues arise
-tofu apply -var="blue_weight=100" # Instantly back to blue
+tofu apply -var="blue_weight=100" # Route new traffic back to blue
 ```
 
 ## Best Practices
 
-- Use session stickiness during the transition to prevent users from switching between versions mid-session.
+- Use target group stickiness during the transition to prevent users from switching between versions mid-session.
 - Run automated smoke tests on the green environment before shifting any traffic.
 - Monitor error rates at each traffic split level - stop and rollback if errors increase.
 - Keep the blue environment running for at least 30 minutes after full cutover in case you need to roll back.
