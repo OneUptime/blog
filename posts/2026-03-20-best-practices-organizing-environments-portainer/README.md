@@ -28,27 +28,42 @@ Examples:
 
 Tags are the most powerful organization mechanism in Portainer. Apply consistent tags when adding environments:
 
-| Tag Key | Example Values | Purpose |
+| Tag Category | Example Tag Names | Purpose |
 |---------|---------------|---------|
-| `env` | prod, staging, dev | Environment tier |
-| `region` | us-east, eu-west | Geographic location |
-| `team` | platform, backend, ml | Owning team |
-| `type` | docker, kubernetes, swarm | Runtime type |
-| `criticality` | critical, standard | Incident priority |
+| Environment tier | `env-prod`, `env-staging`, `env-dev` | Environment tier |
+| Region | `region-us-east`, `region-eu-west` | Geographic location |
+| Team | `team-platform`, `team-backend`, `team-ml` | Owning team |
+| Runtime | `runtime-docker`, `runtime-kubernetes`, `runtime-swarm` | Runtime type |
+| Criticality | `criticality-critical`, `criticality-standard` | Incident priority |
 
-Apply tags via the Portainer API when automating environment registration:
+Create tags first, then associate their tag IDs when automating environment registration:
 
 ```bash
-# Register a new environment with tags via Portainer API
+# Create tags first
+
+curl -X POST "https://portainer.example.com/api/tags" \
+  -H "Authorization: Bearer $PORTAINER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"Name":"env-prod"}'
+
+curl -X POST "https://portainer.example.com/api/tags" \
+  -H "Authorization: Bearer $PORTAINER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"Name":"region-us-east"}'
+
+curl -X POST "https://portainer.example.com/api/tags" \
+  -H "Authorization: Bearer $PORTAINER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"Name":"team-backend"}'
+
+# Then register the environment and associate the existing tag IDs
 
 curl -X POST "https://portainer.example.com/api/endpoints" \
   -H "Authorization: Bearer $PORTAINER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "prod-us-east-webapp-01",
-    "endpointCreationType": 1,
-    "tags": ["env=prod", "region=us-east", "team=backend"]
-  }'
+  -F 'Name=prod-us-east-webapp-01' \
+  -F 'URL=tcp://10.0.7.10:2375' \
+  -F 'EndpointCreationType=1' \
+  -F 'TagIds=[1,2,3]'
 ```
 
 ## Environment Groups
@@ -62,10 +77,10 @@ Group related environments for bulk operations and access control:
 
 ## Access Control Pattern
 
-Map teams to environment groups with appropriate roles:
+In Portainer Business Edition, map teams to environment groups with appropriate roles:
 
 ```text
-Platform Engineers → All Environments (Admin)
+Platform Engineers → All Environments (Administrator)
 Backend Team      → Staging + Dev Environments (Standard User)
 Developers        → Dev Environments only (Standard User)
 Read-Only Auditors → All Environments (Read-Only User)
@@ -73,7 +88,7 @@ Read-Only Auditors → All Environments (Read-Only User)
 
 ## Environment Health Monitoring
 
-Create a naming convention that makes unhealthy environments visually obvious:
+Use Portainer's status indicators and tags to make unhealthy or maintenance environments visually obvious:
 
 1. Use Portainer's environment status indicators to monitor connectivity
 2. Set up heartbeat monitoring for edge environments
