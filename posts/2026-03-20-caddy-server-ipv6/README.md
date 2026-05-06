@@ -6,18 +6,19 @@ Tags: Caddy, IPv6, Web Server, Reverse Proxy, Automatic HTTPS, Load Balancing
 
 Description: A guide to configuring Caddy web server and reverse proxy with IPv6 support, including listening on IPv6 addresses and proxying to IPv6 backends.
 
-Caddy automatically handles IPv6 in most configurations. By default, Caddy listens on `[::]` (all interfaces, including IPv6) unless configured otherwise. This guide covers explicitly configuring IPv6 and using IPv6 backends.
+Caddy automatically handles IPv6 in most configurations. By default, Caddy sites bind on all network interfaces unless configured otherwise. This guide covers explicitly configuring IPv6 and using IPv6 backends.
 
 ## Default Behavior
 
-Caddy listens on both IPv4 and IPv6 by default:
+Caddy sites bind on all interfaces by default:
 
 ```bash
-# Caddy binds to :: (all interfaces) which accepts IPv4 and IPv6
+# Caddy binds sites on all network interfaces by default
 
 # Verify with:
-ss -6 -tlnp | grep caddy
-# Expected: tcp6 *:80 and *:443
+ss -ltnp | grep caddy
+# Look for listeners on :80 and :443; on dual-stack Linux hosts
+# they often appear as tcp6 listeners
 ```
 
 ## Caddyfile: Listen on IPv6
@@ -29,18 +30,20 @@ example.com {
 }
 
 # Explicitly listen on IPv6 only
-[::]:80 {
+:80 {
+    bind tcp6/[::]
     respond "IPv6 only server" 200
 }
 
 # Listen on specific IPv6 address
-[2001:db8::proxy]:443 {
-    tls internal
+ipv6.example.com {
+    bind tcp6/[2001:db8::proxy]
     reverse_proxy [2001:db8::backend]:8080
 }
 
 # Listen on multiple addresses including IPv6
-http://0.0.0.0:8080, http://[::]:8080 {
+:8080 {
+    bind 192.0.2.10 [2001:db8::proxy]
     respond "Dual-stack server" 200
 }
 ```
@@ -51,9 +54,6 @@ http://0.0.0.0:8080, http://[::]:8080 {
 # Proxy to a single IPv6 backend
 example.com {
     reverse_proxy [2001:db8::backend]:8080
-    tls {
-        on_demand
-    }
 }
 
 # Load balance across IPv6 backends
@@ -88,8 +88,7 @@ mixed.example.com {
       "servers": {
         "main": {
           "listen": [
-            ":443",
-            "[::]:443"
+            "tcp6/[::]:443"
           ],
           "routes": [
             {
@@ -127,9 +126,9 @@ Caddy's automatic HTTPS works with IPv6:
 
 ```caddyfile
 # Caddy automatically obtains TLS certificates
-# DNS must have both A and AAAA records pointing to Caddy's IP
+# DNS needs an AAAA record for IPv6; add an A record too if you also serve IPv4
 example.com {
-    # Caddy resolves example.com, obtains cert, serves on both IPv4 and IPv6
+    # Caddy obtains the certificate and serves on the configured listener(s)
     reverse_proxy [fd00:internal::backend]:3000
 }
 ```
@@ -139,10 +138,8 @@ example.com {
 ```caddyfile
 api.example.com {
     reverse_proxy [2001:db8::backend]:8080 {
-        # Preserve original IPv6 client IP
+        # Caddy already sets X-Forwarded-For, X-Forwarded-Proto, and X-Forwarded-Host
         header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
     }
 }
 ```
@@ -153,31 +150,28 @@ api.example.com {
 # Test with curl over IPv6
 curl -6 https://example.com/
 
-# Check Caddy logs for IPv6 client connections
-journalctl -u caddy -f | grep "::"
+# If access logging is enabled, watch for IPv6 client connections
+journalctl -u caddy -f
 
-# Caddy access log shows IPv6 addresses
-# {"level":"info","ts":"2026-03-20T...","msg":"handled request",
-#   "remote_addr":"[2001:db8::client]:54321",...}
+# Caddy access logs include IPv6 addresses in request.remote_ip/client_ip
+# {"level":"info","ts":"2026-03-20T...","logger":"http.log.access","msg":"handled request",
+#   "request":{"remote_ip":"2001:db8::client","client_ip":"2001:db8::client",...}}
 ```
 
 ## IPv6-Only Caddy Server
 
 ```caddyfile
 # For an IPv6-only deployment
-{
-    # Disable IPv4 listeners
-    default_bind [::]
-}
-
-[::]:80 {
+http://example.com {
+    bind tcp6/[::]
     redir https://{host}{uri}
 }
 
-[::]:443 {
+example.com {
+    bind tcp6/[::]
     tls /etc/caddy/cert.pem /etc/caddy/key.pem
     reverse_proxy [2001:db8::backend]:8080
 }
 ```
 
-Caddy's zero-config approach to IPv6 - listening on both IPv4 and IPv6 by default and supporting IPv6 backend addresses with bracket notation - makes it one of the easiest web servers to use in dual-stack and IPv6-only environments.
+Caddy's zero-config approach to IPv6 - binding on all interfaces by default and supporting IPv6 backend addresses with bracket notation - makes it one of the easiest web servers to use in dual-stack and IPv6-only environments.
