@@ -15,7 +15,7 @@ a2enmod ssl headers
 systemctl restart apache2
 
 # RHEL/CentOS
-# mod_ssl is usually pre-installed
+# Install mod_ssl if needed
 yum install mod_ssl
 systemctl restart httpd
 ```
@@ -24,8 +24,8 @@ systemctl restart httpd
 
 ```apache
 # /etc/apache2/ports.conf
+# On a typical dual-stack Apache build, this listens on both IPv4 and IPv6.
 Listen 443
-Listen [::]:443
 
 # /etc/apache2/sites-available/example-ssl.conf
 
@@ -40,9 +40,9 @@ Listen [::]:443
     ServerName example.com
 
     SSLEngine on
-    SSLCertificateFile      /etc/ssl/certs/example.com.crt
+    # On Apache 2.4.8+, include the intermediate chain in this file.
+    SSLCertificateFile      /etc/ssl/certs/example.com-fullchain.crt
     SSLCertificateKeyFile   /etc/ssl/private/example.com.key
-    SSLCertificateChainFile /etc/ssl/certs/ca-chain.crt
 
     # Modern TLS settings
     SSLProtocol             all -SSLv3 -TLSv1 -TLSv1.1
@@ -63,12 +63,16 @@ Listen [::]:443
 ## IPv6-Specific HTTPS VirtualHost
 
 ```apache
-# HTTPS only on IPv6
+# /etc/apache2/ports.conf
+# Use this instead of Listen 443 if you want an explicit IPv6 listener.
+Listen [::]:443
+
+# HTTPS on an explicit IPv6 listener
 <VirtualHost [::]:443>
     ServerName ipv6.example.com
 
     SSLEngine on
-    SSLCertificateFile    /etc/ssl/certs/ipv6.example.com.crt
+    SSLCertificateFile    /etc/ssl/certs/ipv6.example.com-fullchain.crt
     SSLCertificateKeyFile /etc/ssl/private/ipv6.example.com.key
     SSLProtocol           all -SSLv3 -TLSv1 -TLSv1.1
 
@@ -82,11 +86,11 @@ Listen [::]:443
 # Install certbot for Apache
 apt install certbot python3-certbot-apache
 
-# Obtain certificate (works for IPv6-accessible domains)
+# Obtain certificate and let Certbot update Apache
 certbot --apache -d example.com
 
-# If server is IPv6-only, ensure ACME challenge works over IPv6
-# Test: can Let's Encrypt reach your server?
+# If the domain has an AAAA record, ensure the HTTP-01 challenge path works over IPv6
+# after placing a temporary file in .well-known/acme-challenge/
 curl -6 http://example.com/.well-known/acme-challenge/test
 ```
 
@@ -112,4 +116,4 @@ curl -6 --tlsv1.3 https://example.com
 
 ## Summary
 
-Configure Apache HTTPS for IPv6 by adding `Listen [::]:443` to `ports.conf` and creating a `<VirtualHost *:443>` or `<VirtualHost [::]:443>` block with `SSLEngine on`, certificate paths, and `SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1`. Enable `mod_ssl` with `a2enmod ssl`. For dual-stack HTTPS, use `*:443` to match both IPv4 and IPv6 Listen directives. Test with `curl -6 https://example.com` and `openssl s_client -connect '[2001:db8::10]:443'`.
+Configure Apache HTTPS for IPv6 by creating a `<VirtualHost *:443>` or `<VirtualHost [::]:443>` block with `SSLEngine on`, certificate paths, and `SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1`. Enable `mod_ssl` with `a2enmod ssl`. For dual-stack HTTPS, `Listen 443` typically listens on both IPv4 and IPv6 interfaces, and `*:443` matches requests from either family. For an explicit IPv6 listener, use `Listen [::]:443` instead. Test with `curl -6 https://example.com` and `openssl s_client -connect '[2001:db8::10]:443'`.
