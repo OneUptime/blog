@@ -8,14 +8,13 @@ Description: Configure the Actix-web Rust framework to listen on IPv6 addresses,
 
 ## Introduction
 
-Actix-web uses Tokio's async runtime and supports IPv6 by binding to `[::]:port` or `SocketAddrV6`. The framework automatically handles dual-stack when bound to `::`.
+Actix-web uses Tokio's async runtime and supports IPv6 by binding to `[::]:port` or `SocketAddrV6`. Whether an IPv6 listener also accepts IPv4 connections depends on the OS and the `IPV6_V6ONLY` socket option.
 
 ## Step 1: Listen on IPv6
 
 ```rust
 // src/main.rs
-use actix_web::{web, App, HttpServer, HttpRequest, HttpResponse};
-use std::net::SocketAddr;
+use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -23,7 +22,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .route("/", web::get().to(index))
     })
-    // Bind to all IPv6 interfaces (dual-stack)
+    // Bind to all IPv6 interfaces
     .bind("[::]:8080")?
     .run()
     .await
@@ -38,11 +37,21 @@ async fn index(req: HttpRequest) -> HttpResponse {
 ```
 
 ```rust
-// IPv6-only (no IPv4 dual-stack)
-use std::net::{SocketAddrV6, Ipv6Addr};
+// IPv6-only (set IPV6_V6ONLY before handing the listener to Actix-web)
+use socket2::{Domain, Protocol, Socket, Type};
+use std::net::{Ipv6Addr, SocketAddrV6, TcpListener};
+
+let addr = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 8080, 0, 0);
+let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
+socket.set_only_v6(true)?;
+socket.set_nonblocking(true)?;
+socket.bind(&addr.into())?;
+socket.listen(1024)?;
+
+let listener: TcpListener = socket.into();
 
 HttpServer::new(|| { App::new().route("/", web::get().to(index)) })
-    .bind(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 8080, 0, 0))?
+    .listen(listener)?
     .run()
     .await
 ```
@@ -66,6 +75,7 @@ pub struct ClientIPMiddleware;
 impl<Svc, Body> Transform<Svc, ServiceRequest> for ClientIPMiddleware
 where
     Svc: Service<ServiceRequest, Response = ServiceResponse<Body>, Error = Error>,
+    Svc::Future: 'static,
 {
     type Response = ServiceResponse<Body>;
     type Error = Error;
@@ -83,15 +93,16 @@ pub struct ClientIPMiddlewareService<Svc> { service: Svc }
 impl<Svc, Body> Service<ServiceRequest> for ClientIPMiddlewareService<Svc>
 where
     Svc: Service<ServiceRequest, Response = ServiceResponse<Body>, Error = Error>,
+    Svc::Future: 'static,
 {
     type Response = ServiceResponse<Body>;
     type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + 'static>>;
 
     actix_web::dev::forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        // Extract real IP from X-Forwarded-For or peer addr
+        // Extract client IP from X-Forwarded-For or peer addr
         let ip: Option<IpAddr> = req
             .headers()
             .get("X-Forwarded-For")
@@ -114,14 +125,15 @@ where
 
 ```rust
 // src/handlers/info.rs
-use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web::{HttpMessage, HttpRequest, HttpResponse};
 use std::net::IpAddr;
 
 pub async fn client_info(req: HttpRequest) -> HttpResponse {
     let ip = req.extensions()
         .get::<IpAddr>()
         .copied()
-        .unwrap_or(IpAddr::V6(std::net::Ipv6Addr::LOCALHOST));
+        .or_else(|| req.peer_addr().map(|a| a.ip()))
+        .unwrap_or(IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED));
 
     let is_ipv6 = matches!(ip, IpAddr::V6(_));
 
@@ -155,13 +167,13 @@ cargo build --release
 ./target/release/myapp
 
 # Test IPv6
-curl -6 http://[::1]:8080/
-curl -6 http://[2001:db8::1]:8080/info
+curl -g -6 "http://[::1]:8080/"
+curl -g -6 "http://[YOUR_SERVER_IPV6]:8080/"
 
 # Verify
-ss -lntp | grep :8080
+ss -lntp6 | grep :8080
 ```
 
 ## Conclusion
 
-Actix-web supports IPv6 by binding to `"[::]:8080"` in `HttpServer::bind()`. Use middleware to extract client IPs from `X-Forwarded-For` and normalize IPv4-mapped addresses. Rust's `std::net::IpAddr` enum cleanly distinguishes IPv4 and IPv6 addresses. Monitor Actix-web with OneUptime's HTTP checks targeting IPv6 endpoints.
+Actix-web supports IPv6 by binding to `"[::]:8080"` in `HttpServer::bind()`. If you need to force IPv6-only behavior, configure `IPV6_V6ONLY` on the listener before passing it to `HttpServer::listen()`. Use middleware to extract client IPs from `X-Forwarded-For` and normalize IPv4-mapped addresses. Rust's `std::net::IpAddr` enum cleanly distinguishes IPv4 and IPv6 addresses. Monitor Actix-web with OneUptime's HTTP checks targeting IPv6 endpoints.
