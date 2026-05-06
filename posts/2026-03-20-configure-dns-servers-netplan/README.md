@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Linux, Netplan, DNS, Ubuntu, Network Configuration
 
-Description: Learn how to configure custom DNS servers and search domains on Ubuntu and Debian systems using Netplan.
+Description: Learn how to configure custom DNS servers and search domains on Ubuntu servers and other Linux systems that use Netplan.
 
 ---
 
-Netplan is the default network configuration tool on Ubuntu 20.04+. DNS settings in Netplan are applied through `systemd-resolved` and persist across reboots.
+Netplan is the default network configuration tool on Ubuntu Server. DNS settings defined in Netplan persist across reboots, and on systems using `systemd-resolved` you can inspect them with `resolvectl`.
 
 ---
 
@@ -28,11 +28,12 @@ ls /etc/netplan/
 # /etc/netplan/01-netcfg.yaml
 network:
   version: 2
+  renderer: networkd
   ethernets:
     eth0:
       dhcp4: true
       dhcp4-overrides:
-        use-dns: false          # Don't use DHCP-assigned DNS
+        use-dns: false          # Ignore DHCP-assigned DNS on networkd-based systems
       nameservers:
         addresses:
           - 1.1.1.1
@@ -50,6 +51,7 @@ network:
 ```yaml
 network:
   version: 2
+  renderer: networkd
   ethernets:
     eth0:
       addresses:
@@ -76,10 +78,10 @@ sudo netplan apply
 # Verify active DNS settings
 resolvectl status
 
-# Check which DNS is being used for a domain
+# Query a domain through the system resolver
 resolvectl query example.com
 
-# Test DNS resolution
+# Test DNS resolution (if dnsutils is installed)
 nslookup example.com
 dig @1.1.1.1 example.com
 ```
@@ -109,7 +111,7 @@ network:
 # Check systemd-resolved status
 systemctl status systemd-resolved
 
-# View /etc/resolv.conf (should be a symlink)
+# View /etc/resolv.conf (on systemd-resolved systems, should be a symlink)
 ls -la /etc/resolv.conf
 cat /etc/resolv.conf
 
@@ -121,4 +123,4 @@ sudo systemctl restart systemd-resolved
 
 ## Summary
 
-Add a `nameservers` block under your interface in `/etc/netplan/01-netcfg.yaml` with `addresses` (DNS server IPs) and optionally `search` domains. Set `dhcp4-overrides.use-dns: false` to ignore DHCP-assigned DNS. Run `sudo netplan apply` and verify with `resolvectl status`.
+Add a `nameservers` block under your interface in `/etc/netplan/01-netcfg.yaml` with `addresses` (DNS server IPs) and optionally `search` domains. On `networkd`-based systems, set `dhcp4-overrides.use-dns: false` to ignore DHCP-assigned DNS. Run `sudo netplan apply` and verify with `resolvectl status`.
