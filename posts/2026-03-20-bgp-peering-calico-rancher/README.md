@@ -8,170 +8,143 @@ Description: Step-by-step guide to configuring BGP peering with Calico CNI in Ra
 
 ## Introduction
 
-How to Set Up BGP Peering with Calico in Rancher is an important networking capability for production Kubernetes clusters managed by Rancher. This guide provides practical configuration steps and examples for implementing this feature.
+How to Set Up BGP Peering with Calico in Rancher is an important networking capability for production Kubernetes clusters managed by Rancher. In Rancher-managed clusters that use Calico as the CNI, BGP peering is configured through Calico resources such as `BGPConfiguration` and `BGPPeer`, not by editing generic CNI JSON files. This guide provides practical configuration steps and examples for implementing this feature.
 
 ## Prerequisites
 
-- Rancher v2.7+ cluster
+- Rancher-managed RKE or RKE2 cluster with Calico selected as the CNI
 - Cluster admin access
 - Understanding of Kubernetes networking fundamentals
-- CNI plugin compatible with this feature
+- The IP address and ASN of the external BGP peer
+- TCP port `179` open between Calico nodes and their BGP peers
+- Access to Calico `projectcalico.org/v3` resources through `kubectl`, or a configured `calicoctl`
+- `calicoctl` installed on a cluster node if you want to use `calicoctl node status`
 
 ## Architecture Overview
 
-Network configuration in Rancher-managed Kubernetes clusters leverages the CNI (Container Network Interface) plugin framework. Different networking features require different CNI configurations or additional plugins.
+Calico treats each Kubernetes node as a virtual router. When BGP is enabled, Calico creates a full node-to-node mesh by default and can also peer with external routers such as ToR switches or route reflectors. This guide assumes a Calico deployment where BGP is enabled; if your cluster is using VXLAN encapsulation for inter-node routing, BGP is not used for that overlay path. If you are replacing the default full mesh with explicit peerings, make the change during a maintenance window.
 
 ## Step 1: Verify Current Network Configuration
 
 ```bash
-# Check current CNI plugin
+# Confirm Calico is running and identify the namespace where calico-node pods live
+kubectl get pods -A -l k8s-app=calico-node -o wide
 
-kubectl get configmap -n kube-system kube-proxy -o yaml | grep mode
+# View node InternalIPs, which are commonly used as BGP source addresses
+kubectl get nodes -o wide
 
-# Check network policies
-kubectl get networkpolicies --all-namespaces
+# Inspect the current Calico BGP configuration
+kubectl get bgpconfigurations.projectcalico.org default -o yaml
 
-# View current pod networking
-kubectl describe nodes | grep -E "PodCIDR|InternalIP"
-
-# Check CNI configuration
-ls -la /etc/cni/net.d/
-cat /etc/cni/net.d/10-*.conf 2>/dev/null || cat /etc/cni/net.d/10-*.conflist 2>/dev/null
+# List any existing BGP peers
+kubectl get bgppeers.projectcalico.org -o yaml
 ```
+
+If your Calico installation does not expose `projectcalico.org/v3` resources through `kubectl`, use the equivalent `calicoctl get` commands instead.
 
 ## Step 2: Configure the Network Feature
 
 ```yaml
-# network-feature-config.yaml
-apiVersion: v1
-kind: ConfigMap
+# bgp-peering.yaml
+apiVersion: projectcalico.org/v3
+kind: BGPConfiguration
 metadata:
-  name: network-config
-  namespace: kube-system
-data:
-  config.conf: |
-    {
-      "name": "custom-network",
-      "cniVersion": "0.4.0",
-      "plugins": [
-        {
-          "type": "main-cni-plugin",
-          "ipam": {
-            "type": "host-local",
-            "ranges": [[{"subnet": "10.244.0.0/24"}]]
-          }
-        }
-      ]
-    }
-```
-
-## Step 3: Apply Network Policy
-
-```yaml
-# network-policy.yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: custom-network-policy
-  namespace: production
+  name: default
 spec:
-  podSelector:
-    matchLabels:
-      app: web-service
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          environment: production
-    ports:
-    - protocol: TCP
-      port: 8080
-  egress:
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          environment: production
-    ports:
-    - protocol: TCP
-      port: 5432    # Database
+  asNumber: 64512
+  nodeToNodeMeshEnabled: true # Set to false only after replacement peerings are in place
+  serviceClusterIPs:
+    - cidr: 10.43.0.0/16 # Replace with your cluster Service CIDR if you want ClusterIP advertisement
+  serviceLoadBalancerIPs:
+    - cidr: 198.51.100.0/24 # Optional; remove if you do not advertise LoadBalancer IPs
+---
+apiVersion: projectcalico.org/v3
+kind: BGPPeer
+metadata:
+  name: tor-router
+spec:
+  peerIP: 192.0.2.1   # Replace with your router or route-reflector IP
+  asNumber: 64567     # Replace with the remote peer ASN
 ```
+
+## Step 3: Apply the Network Feature
+
+```bash
+kubectl apply -f bgp-peering.yaml
+```
+
+If your environment uses `calicoctl` rather than the Calico API server for resource management, apply the same manifest with `calicoctl apply -f bgp-peering.yaml`.
 
 ## Step 4: Test Network Configuration
 
 ```bash
-# Test pod-to-pod connectivity
-kubectl run net-test --image=nicolaka/netshoot --rm -it   --restart=Never -- /bin/bash
+# Run this on a node where calicoctl is installed
+sudo calicoctl node status
 
-# Inside the pod:
-# ping <target-pod-ip>
-# curl http://<service-name>:<port>
-# nslookup <service-name>
-
-# Test with specific network features
-kubectl exec -n production   $(kubectl get pods -n production -o name | head -1)   -- ip addr show
+# Confirm the BGP peer resources were created
+kubectl get bgppeers.projectcalico.org
 ```
 
 ## Step 5: Monitor Network Traffic
 
 ```bash
-# View network statistics
-kubectl exec -n production   $(kubectl get pods -n production -o name | head -1)   -- netstat -tunapl
+# Review calico-node pods and recent log messages
+kubectl get pods -A -l k8s-app=calico-node -o wide
+kubectl logs -n <calico-namespace> -l k8s-app=calico-node --all-containers=true --since=1h
 
-# Check bandwidth usage with cilium/calico CLI
-kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calico-node -show-status
+# Re-check BGP session state from a cluster node
+sudo calicoctl node status
 ```
 
 ## Step 6: Configure Prometheus Metrics for Network
 
+If Rancher Monitoring is installed, you can add a `PrometheusRule` in the `cattle-monitoring-system` namespace to alert on Calico target health.
+
 ```yaml
-# network-metrics-probe.yaml
+# calico-bgp-alerts.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: network-health
+  name: calico-bgp-health
   namespace: cattle-monitoring-system
 spec:
   groups:
-  - name: network.rules
+  - name: calico-bgp.rules
     rules:
-    - alert: PodNetworkUnreachable
+    - alert: CalicoNodeTargetDown
       expr: |
-        up{job="network-probe"} == 0
+        up{job=~".*calico-node.*"} == 0
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Network probe failing for {{ $labels.instance }}"
-    
-    - alert: HighNetworkErrors
+        summary: "Calico node metrics target is down for {{ $labels.instance }}"
+
+    - alert: CalicoTyphaTargetDown
       expr: |
-        rate(node_network_transmit_errs_total[5m]) > 0.1
-      for: 10m
+        up{job=~".*calico-typha.*"} == 0
+      for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "High network error rate on {{ $labels.device }}"
+        summary: "Calico Typha metrics target is down for {{ $labels.instance }}"
 ```
 
 ## Step 7: Troubleshooting Common Issues
 
 ```bash
-# Debug network issues with netshoot
-kubectl run netdebug   --image=nicolaka/netshoot   --rm -it   --restart=Never   -- /bin/bash
+# Review the applied BGP resources
+kubectl get bgpconfigurations.projectcalico.org default -o yaml
+kubectl get bgppeers.projectcalico.org -o yaml
 
-# Check DNS resolution
-kubectl run dns-test   --image=busybox   --rm -it   --restart=Never   -- nslookup kubernetes.default.svc.cluster.local
+# Check calico-node pod health and logs
+kubectl get pods -A -l k8s-app=calico-node -o wide
+kubectl logs -n <calico-namespace> -l k8s-app=calico-node --all-containers=true --since=1h
 
-# View CNI logs
-journalctl -u kubelet --since "1 hour ago" | grep -i cni
-
-# Check pod network namespace
-kubectl exec -n kube-system   $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)   -- calico-node -show-status 2>/dev/null || true
+# Verify the BGP session state directly from the node
+sudo calicoctl node status
 ```
 
 ## Conclusion
 
-How to Set Up BGP Peering with Calico in Rancher configuration in Rancher requires careful understanding of the underlying CNI plugin and network topology. Test thoroughly in a staging environment before applying changes to production. Monitor network metrics and set up alerts to detect issues early.
+How to Set Up BGP Peering with Calico in Rancher requires configuring Calico's BGP resources directly and validating the resulting sessions from the Calico control plane, not from generic CNI configuration files. Test thoroughly in a staging environment before applying changes to production, ensure TCP port `179` is allowed between peers, and verify BGP sessions are established before disabling Calico's default node-to-node mesh.
