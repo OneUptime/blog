@@ -4,19 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, Bluetooth, BLE Mesh, IoT, Networking, Smart Building
 
-Description: Understand the relationship between Bluetooth Mesh and IPv6, including IP Proxy node configuration for connecting Bluetooth Mesh networks to IPv6 infrastructure.
+Description: Understand how Bluetooth Mesh differs from IPv6-over-BLE, including Mesh Proxy access and IPSP/6LoWPAN configuration for native IPv6 connectivity.
 
 ## Introduction
 
-Bluetooth Mesh (BT Mesh) is a networking standard for Bluetooth Low Energy (BLE) devices that enables many-to-many communication. Unlike Thread (which is natively IPv6), Bluetooth Mesh uses its own non-IP network layer. However, IPv6 connectivity can be achieved through Proxy Nodes and the Internet Protocol Support Profile (IPSP).
+Bluetooth Mesh (BT Mesh) is a networking standard for Bluetooth Low Energy (BLE) devices that enables many-to-many communication. Unlike Thread (which is natively IPv6), Bluetooth Mesh uses its own non-IP network layer and does not carry IPv6 packets directly. The Mesh Proxy feature lets a GATT client exchange mesh PDUs with the network, while native IPv6-over-BLE is standardized separately through the Internet Protocol Support Profile (IPSP) and 6LoWPAN.
 
 ## Two Approaches to BLE + IPv6
 
 ```mermaid
 flowchart LR
-    subgraph Approach1["Approach 1: BT Mesh + Proxy to IPv6"]
-        BTMesh["BT Mesh Network\n(non-IP)"] --> Proxy["BT Mesh Proxy Node\n(IPv6 gateway)"]
-        Proxy --> IPv6Net["IPv6 Network"]
+    subgraph Approach1["Approach 1: BT Mesh + Application Gateway"]
+        BTMesh["BT Mesh Network\n(non-IP)"] --> Proxy["BT Mesh Proxy Node\n(GATT proxy server)"]
+        Proxy --> Gateway["Linux / App Gateway\n(application-layer translation)"]
+        Gateway --> IPv6Net["IPv6 Network"]
     end
 
     subgraph Approach2["Approach 2: BLE IPv6 (IPSP)"]
@@ -25,85 +26,77 @@ flowchart LR
     end
 ```
 
-## Approach 1: Bluetooth Mesh with IPv6 Proxy
+## Approach 1: Bluetooth Mesh with an Application Gateway
 
-Bluetooth Mesh Proxy Nodes act as gateways between the BT Mesh network and IPv6:
+Bluetooth Mesh Proxy Nodes expose mesh messages over GATT. If you need to connect a Bluetooth Mesh deployment to IPv6 systems, the IPv6 translation happens in an application gateway on the host, not in the Mesh Proxy feature itself:
 
-### Setting Up a Linux BLE Proxy
+### Setting Up a Linux Bluetooth Mesh Host
 
 ```bash
-# Install BlueZ (Linux Bluetooth stack)
+# On Debian/Ubuntu, install BlueZ and the Bluetooth Mesh tools
+# (package names vary by distribution)
+sudo apt-get install bluez bluez-meshd
 
-sudo apt-get install bluez-tools bluez
-
-# Check BlueZ version (Mesh support requires 5.50+)
+# Check the installed BlueZ version
 bluetoothctl --version
 
-# Enable BLE mesh daemon
+# Start the regular Bluetooth daemon and the Bluetooth Mesh daemon
 sudo systemctl enable --now bluetooth
-sudo bluetoothd --experimental &
+sudo systemctl enable --now bluetooth-mesh
 
-# Use mesh-cfgclient to provision and configure a BT Mesh network
+# Use mesh-cfgclient to create a mesh network and provision nodes
 mesh-cfgclient
-> attach <UUID>
-> create <network-key-hex>
-> add-node <device-UUID>   # Provision new mesh node
+> create
+> discover-unprovisioned on
+> list-unprovisioned
+> provision <device-UUID>
 ```
 
-### Linux IPv6 Routing via BLE Proxy
+### Linux Host Integration via Mesh Proxy
 
-```bash
-# BlueZ 6LoWPAN support for BLE IPSP devices
-# Load the 6LoWPAN module for BLE
-sudo modprobe bluetooth_6lowpan
-
-echo 1 > /sys/kernel/debug/bluetooth/6lowpan_enable
-
-# Connect to a BLE device running IPSP (IPv6 over BLE)
-# This creates a lowpan interface for each connected BLE device
-# Once connected, the device gets a 6LoWPAN IPv6 address
-
-# List 6LoWPAN BLE interfaces
-ip link show | grep bt
-
-# Check IPv6 addresses on BLE 6LoWPAN interface
-ip -6 addr show bt0
-```
+Bluetooth Mesh proxying does not create a Linux `bt0` IPv6 interface and does not use the `bluetooth_6lowpan` kernel module. The Mesh Proxy service carries mesh proxy PDUs over GATT, so any bridge from mesh data to IPv6 happens in user space on the Linux host or gateway application.
 
 ## Approach 2: IPv6 Directly on BLE (IPSP)
 
-The Internet Protocol Support Profile (IPSP) enables IPv6 directly over BLE using 6LoWPAN:
+The Internet Protocol Support Profile (IPSP) enables IPv6 directly over BLE using 6LoWPAN. This is the standardized way to carry IPv6 packets over a BLE link:
 
 ### RIOT OS BLE IPSP Device
 
 ```makefile
-# Makefile - RIOT OS application with BLE IPSP (IPv6 over BLE)
+# Makefile - RIOT OS application for IPv6 over BLE
 BOARD = nrf52dk
-USEMODULE += nimble_netif
-USEMODULE += gnrc_ipv6_default
-USEMODULE += gnrc_sixlowpan_full
-USEMODULE += nimble_ipsp
+USEMODULE += shell
+USEMODULE += shell_cmds_default
+USEMODULE += ps
 USEMODULE += auto_init_gnrc_netif
+USEMODULE += gnrc_ipv6_default
+USEMODULE += gnrc_icmpv6_echo
+USEMODULE += nimble_netif
+
+# Linux 6LoWPAN interop currently requires SLAAC in RIOT
+CFLAGS += -DCONFIG_GNRC_IPV6_NIB_SLAAC=1
 ```
 
 ```c
 // main.c - BLE device with IPv6 connectivity via IPSP
-#include "nimble_netif.h"
-#include "net/gnrc/ipv6.h"
+#include <stdio.h>
+
+#include "msg.h"
+#include "shell.h"
+
+#define MAIN_QUEUE_SIZE     (8)
+static msg_t _main_msg_queue[MAIN_QUEUE_SIZE];
 
 int main(void) {
-    // Initialize NimBLE network interface
-    nimble_netif_init();
+    msg_init_queue(_main_msg_queue, MAIN_QUEUE_SIZE);
 
-    // Start advertising as an IPSP node
-    // The central device (hub) will connect and assign IPv6 address via RA
-    nimble_netif_accept(NULL, NULL, NULL);
+    puts("RIOT IPv6-over-BLE node");
+    puts("Run 'ble info' to print the BLE address.");
+    puts("Run 'ble adv RIOT-GNRC' to advertise the IP Support Service.");
 
-    // Once connected, GNRC IPv6 and 6LoWPAN handle the rest
-    // The device gets an IPv6 address via SLAAC
+    char line_buf[SHELL_DEFAULT_BUFSIZE];
+    shell_run(NULL, line_buf, SHELL_DEFAULT_BUFSIZE);
 
-    // Simple CoAP server on the device
-    // (uses the IPv6 address assigned via BLE connection)
     return 0;
 }
 ```
@@ -113,15 +106,19 @@ int main(void) {
 ```bash
 # Configure the Raspberry Pi as a BLE IPv6 hub
 
+# Mount debugfs if it is not already mounted
+sudo mount -t debugfs none /sys/kernel/debug
+
 # Enable 6LoWPAN over BLE
 sudo modprobe bluetooth_6lowpan
-echo 1 > /sys/kernel/debug/bluetooth/6lowpan_enable
+echo 1 | sudo tee /sys/kernel/debug/bluetooth/6lowpan_enable
 
-# Connect to IPSP device
-echo "connect <BLE-MAC-ADDRESS> 1" > /sys/kernel/debug/bluetooth/6lowpan_control
+# Connect to an IPSP device
+# RIOT's nimble_netif advertises with a random BLE address by default, so use type 2
+echo "connect <BLE-MAC-ADDRESS> 2" | sudo tee /sys/kernel/debug/bluetooth/6lowpan_control
 
-# Assign IPv6 prefix to the BLE interface
-sudo ip -6 addr add 2001:db8:ble:1::1/64 dev bt0
+# Assign a global IPv6 address within the BLE prefix
+sudo ip -6 addr add 2001:db8:1:1::1/64 dev bt0
 
 # Enable forwarding
 sudo sysctl -w net.ipv6.conf.all.forwarding=1
@@ -130,37 +127,41 @@ sudo sysctl -w net.ipv6.conf.all.forwarding=1
 sudo tee /etc/radvd.conf > /dev/null << 'EOF'
 interface bt0 {
     AdvSendAdvert on;
-    prefix 2001:db8:ble:1::/64 {
-        AdvOnLink on;
+    prefix 2001:db8:1:1::/64 {
+        AdvOnLink off;
         AdvAutonomous on;
-        AdvValidLifetime 86400;
-        AdvPreferredLifetime 3600;
+        AdvRouterAddr on;
     };
-    RDNSS 2001:db8:ble:1::53 {
-        AdvRDNSSLifetime 600;
+    abro 2001:db8:1:1::1 {
+        AdvVersionLow 10;
+        AdvVersionHigh 2;
+        AdvValidLifeTime 2;
     };
 };
 EOF
-sudo systemctl start radvd
+sudo systemctl restart radvd
 ```
 
 ## Verifying BLE IPv6 Connectivity
 
 ```bash
-# On the hub, check connected BLE devices have IPv6 addresses
+# On the hub, check the BLE 6LoWPAN interface and its IPv6 addresses
+ip link show bt0
+ip -6 addr show dev bt0
+
+# Inspect IPv6 neighbors learned on the BLE link
 ip -6 neigh show dev bt0
 
 # Ping a connected BLE IPSP device
-ping6 -c 3 2001:db8:ble:1::sensor1
+ping -6 -I bt0 <DEVICE-IPv6-ADDRESS>
 
 # Check routing table includes BLE prefix
 ip -6 route show dev bt0
 
-# From the BLE device (RIOT OS), test connectivity
-# Using the GNRC ping utility:
-# > ping 2001:db8:ble:1::1
+# From the BLE device (RIOT OS shell), test connectivity back to the hub
+# > ping 2001:db8:1:1::1
 ```
 
 ## Conclusion
 
-Bluetooth Mesh and IPv6 can coexist through two approaches: a Proxy Node that bridges the BT Mesh protocol to an IPv6 network, or direct IPv6-over-BLE using the IPSP profile with 6LoWPAN. The IPSP approach is the more direct IPv6 integration, treating the BLE connection as a 6LoWPAN link and assigning genuine IPv6 addresses to BLE devices. For smart building applications where Bluetooth Mesh is already deployed, the Proxy Node approach enables IPv6 management without replacing the existing mesh infrastructure.
+Bluetooth Mesh and IPv6 intersect in two different ways: Bluetooth Mesh can be reached from Linux or mobile hosts through the Mesh Proxy feature, while native IPv6 over BLE uses IPSP and 6LoWPAN. The IPSP approach is the standardized path when you need real IPv6 packets and addresses on the BLE link. For smart building deployments that already use Bluetooth Mesh, connect IP systems through an application gateway rather than expecting the Mesh Proxy feature itself to route IPv6.
