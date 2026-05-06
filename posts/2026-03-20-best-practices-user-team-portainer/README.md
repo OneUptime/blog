@@ -49,53 +49,53 @@ portainer-configs/
 
 Connect stacks to Git repositories in Portainer:
 1. Go to **Stacks** > **Add Stack**
-2. Select **Repository** as the deployment method
-3. Configure your Git repository URL and branch
-4. Enable **Auto Update** for GitOps workflows
+2. Select **Git repository** as the deployment method
+3. Configure your repository URL, reference, and Compose path
+4. Enable **GitOps updates** for automated update workflows
 
 ## Practice 3: Implement Least-Privilege Access
 
-Design access control with minimum required permissions:
+In Portainer Business Edition, design access control with minimum required permissions:
 
 ```yaml
-# Role hierarchy for Portainer environments
+# Portainer built-in roles for Docker and Swarm environments
 Roles:
-  viewer:
-    - View containers and stacks
-    - Access logs
-    - No deployments
+  "Read-only User":
+    - Read-only access to entitled resources
   
-  developer:
-    - Deploy to dev/staging
-    - Manage stacks in assigned environments
-    - Create/delete containers
+  "Standard User":
+    - Full control over resources the user or team owns
   
-  operator:
-    - All developer permissions
-    - Deploy to production (with approval)
-    - Manage volumes and networks
+  Operator:
+    - Update, redeploy, start, and stop existing resources
+    - View logs and open container consoles
+    - Cannot create or delete resources
   
-  admin:
-    - Full access
-    - User management
-    - Environment configuration
+  "Environment Administrator":
+    - Full access within assigned environments
+    - Cannot manage Portainer settings or host infrastructure
+
+  Administrator:
+    - Full access across Portainer
+    - User, team, and environment management
 ```
 
 ## Practice 4: Use Environment Variables for Configuration
 
-Never hardcode sensitive values in stack files:
+Use environment variables for regular configuration, and use Docker secrets for sensitive values:
 
 ```yaml
-# GOOD: Use environment variables
-version: "3.8"
+# GOOD: Use environment variables for non-secret configuration
 services:
   app:
     image: my-app:latest
     environment:
-      - DB_PASSWORD=${DB_PASSWORD}
-      - API_KEY=${API_KEY}
-      - DATABASE_URL=${DATABASE_URL}
+      - APP_ENV=${APP_ENV}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - DB_HOST=${DB_HOST}
 ```
+
+For passwords, API keys, and certificates, prefer Docker secrets over plain environment variables where your deployment target supports them.
 
 ```yaml
 # BAD: Hardcoded values
@@ -150,18 +150,18 @@ services:
 
 ## Practice 7: Enable Logging Best Practices
 
-Configure structured logging for all services:
+Configure log rotation for all services:
 
 ```yaml
 services:
   webapp:
     image: my-webapp:latest
     logging:
-      driver: json-file
+      driver: local
       options:
         max-size: "100m"     # Rotate at 100MB
         max-file: "5"        # Keep 5 log files
-        tag: "{{.Name}}/{{.ID}}"
+        compress: "true"
 ```
 
 ## Practice 8: Regular Audits and Reviews
@@ -172,19 +172,19 @@ Schedule regular reviews of your Portainer setup:
 #!/bin/bash
 # audit.sh - Run monthly to review Portainer configurations
 
-echo "=== Portainer Audit Report ==="
-echo "Date: Thu Mar 19 23:10:43 GMT 2026"
+printf '%s\n' "=== Portainer Audit Report ==="
+printf 'Date: %s\n' "$(date -u)"
 
-echo "\n--- Unused Volumes ---"
+printf '\n--- Unused Volumes ---\n'
 docker volume ls -qf dangling=true
 
-echo "\n--- Stopped Containers ---"
+printf '\n--- Stopped Containers ---\n'
 docker ps -a --filter status=exited
 
-echo "\n--- Images without containers ---"
+printf '\n--- Dangling Images ---\n'
 docker images -qf dangling=true
 
-echo "\n--- Large volumes ---"
+printf '\n--- Disk Usage Details ---\n'
 docker system df -v
 ```
 
@@ -196,17 +196,29 @@ Protect your Portainer management interface:
 # Portainer with security hardening
 services:
   portainer:
-    image: portainer/portainer-ee:latest
+    image: portainer/portainer-ee:lts
     command:
-      - --ssl                              # Force HTTPS
+      - --http-disabled                    # Serve Portainer only on HTTPS
       - --sslcert=/certs/portainer.crt
       - --sslkey=/certs/portainer.key
-      - --admin-password-file=/run/secrets/portainer-password
+      - --admin-password-file=/run/secrets/portainer-password  # First startup only
       - --hide-label=internal-only=true   # Hide internal containers
+    ports:
+      - "9443:9443"
+      - "8000:8000"
     secrets:
       - portainer-password
     volumes:
-      - portainer-certs:/certs
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+      - ./certs:/certs:ro
+
+secrets:
+  portainer-password:
+    file: ./portainer-password.txt
+
+volumes:
+  portainer_data:
 ```
 
 ## Practice 10: Document Everything
