@@ -15,7 +15,7 @@ Balance-TLB (Adaptive Transmit Load Balancing, mode 5) distributes outgoing traf
 - **No switch configuration required** (unlike modes 0, 2, 4)
 - **Transmit**: load balanced across all slaves based on load
 - **Receive**: only on the active receive slave
-- Requires the `ethtool` utility for load tracking
+- Requires NIC drivers with `ethtool` support for slave speed reporting
 
 ## Configure Balance-TLB
 
@@ -39,7 +39,7 @@ ip link set eth1 master bond0
 # Bring up the bond
 ip link set bond0 up
 ip addr add 192.168.1.100/24 dev bond0
-ip route add default via 192.168.1.1
+ip route add default via 192.168.1.1 dev bond0
 ```
 
 ## Verify Balance-TLB
@@ -54,7 +54,7 @@ cat /proc/net/bonding/bond0
 ## Set Primary Interface
 
 ```bash
-# Set a primary slave (preferred receive interface)
+# Set a primary slave (preferred active slave for receive traffic)
 echo eth0 > /sys/class/net/bond0/bonding/primary
 ```
 
@@ -62,32 +62,51 @@ echo eth0 > /sys/class/net/bond0/bonding/primary
 
 ```yaml
 # Netplan
-bonds:
-  bond0:
-    interfaces: [eth0, eth1]
-    addresses: [192.168.1.100/24]
-    parameters:
-      mode: balance-tlb
-      mii-monitor-interval: 100
-      primary: eth0
+network:
+  version: 2
+  ethernets:
+    eth0: {}
+    eth1: {}
+  bonds:
+    bond0:
+      interfaces: [eth0, eth1]
+      addresses: [192.168.1.100/24]
+      routes:
+        - to: default
+          via: 192.168.1.1
+      parameters:
+        mode: balance-tlb
+        mii-monitor-interval: 100
+        primary: eth0
 ```
 
 ```bash
 # nmcli (RHEL)
 nmcli connection add \
     type bond \
-    con-name bond-tlb \
+    con-name bond0 \
     ifname bond0 \
     bond.options "mode=balance-tlb,miimon=100,primary=eth0"
+
+nmcli connection add type ethernet slave-type bond con-name bond0-port1 ifname eth0 master bond0
+nmcli connection add type ethernet slave-type bond con-name bond0-port2 ifname eth1 master bond0
+
+nmcli connection modify bond0 \
+    connection.autoconnect-ports 1 \
+    ipv4.addresses '192.168.1.100/24' \
+    ipv4.gateway '192.168.1.1' \
+    ipv4.method manual
+
+nmcli connection up bond0
 ```
 
 ## Monitor Load Distribution
 
 ```bash
-# Watch per-slave statistics to see load distribution
+# Watch bond state and active slave information
 watch -n 2 "cat /proc/net/bonding/bond0"
 
-# Check interface statistics
+# Check per-interface statistics for transmit distribution
 ip -s link show eth0
 ip -s link show eth1
 ```
@@ -103,8 +122,8 @@ ip -s link show eth1
 
 - Receive traffic is not load-balanced (only transmit)
 - Lower aggregate receive throughput compared to mode 4 (LACP)
-- Requires kernel support for load monitoring
+- Requires NIC drivers with `ethtool` support for slave speed reporting
 
 ## Conclusion
 
-Balance-TLB provides outbound load balancing without any switch configuration, making it easy to deploy in any environment. The kernel dynamically distributes transmit traffic based on load, while receive traffic flows on the active slave. For full bidirectional load balancing without switch LACP support, use mode 6 (balance-ALB) which adds adaptive receive balancing.
+Balance-TLB provides outbound load balancing without any switch configuration, making it easy to deploy in any environment. The kernel dynamically distributes transmit traffic based on load, while receive traffic flows on the active slave. For bidirectional load balancing without switch LACP support, use mode 6 (balance-ALB), which adds adaptive receive balancing for IPv4 traffic.
