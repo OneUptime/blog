@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Infrastructure as Code, IaC, CloudWatch, Monitoring
 
-Description: Learn how to create AWS CloudWatch alarms for EC2, Lambda, and custom metrics using OpenTofu to enable proactive monitoring and automated responses.
+Description: Learn how to create AWS CloudWatch alarms for EC2, Lambda, and RDS metrics using OpenTofu to enable proactive monitoring and automated responses.
 
 ## Introduction
 
@@ -94,6 +94,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
 
   metric_query {
     id = "errors"
+    return_data = false
     metric {
       metric_name = "Errors"
       namespace   = "AWS/Lambda"
@@ -107,6 +108,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
 
   metric_query {
     id = "invocations"
+    return_data = false
     metric {
       metric_name = "Invocations"
       namespace   = "AWS/Lambda"
@@ -147,7 +149,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_storage_low" {
 ## Step 6: Create Composite Alarm
 
 ```hcl
-# Composite alarm fires when both CPU and memory are high
+# Composite alarm fires when both EC2 CPU is high and RDS free storage is low
 
 resource "aws_cloudwatch_composite_alarm" "high_load" {
   alarm_name = "high-load-composite"
@@ -167,4 +169,4 @@ tofu apply
 
 ## Conclusion
 
-You have successfully created CloudWatch alarms using OpenTofu for EC2, Lambda, and RDS monitoring. Composite alarms reduce alert fatigue by only triggering when multiple conditions are met simultaneously. Always configure both alarm_actions and ok_actions to receive recovery notifications.
+You have successfully created CloudWatch alarms using OpenTofu for EC2, Lambda, and RDS monitoring. Composite alarms can reduce alert fatigue when you configure notifications at the composite alarm level and use the underlying alarms only for evaluation. Configure both `alarm_actions` and `ok_actions` if you want recovery notifications.
