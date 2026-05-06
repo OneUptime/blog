@@ -51,8 +51,14 @@ Break complex logic into named intermediate values for clarity.
 ```hcl
 variable "environment"       { type = string }
 variable "region"            { type = string }
-variable "compliance_mode"   { type = bool; default = false }
-variable "high_availability" { type = bool; default = null }
+variable "compliance_mode" {
+  type    = bool
+  default = false
+}
+variable "high_availability" {
+  type    = bool
+  default = null
+}
 
 locals {
   # Step 1: Derive basic flags
@@ -82,7 +88,7 @@ locals {
 
 ## Conditional Logic with can() and try()
 
-Use `can()` to test whether an expression would succeed, enabling safe fallbacks.
+Use `try()` to normalize optional values and apply safe fallbacks in locals. Reserve `can()` mainly for validation rules when you need a boolean success check.
 
 ```hcl
 variable "vpc_config" {
@@ -95,12 +101,13 @@ variable "vpc_config" {
 }
 
 locals {
-  # Check if vpc_config is provided and has valid subnet IDs
-  has_valid_vpc = can(var.vpc_config.subnet_ids[0])
+  # Normalize optional VPC config to an empty list when it is unavailable
+  configured_subnet_ids = try(var.vpc_config.subnet_ids, [])
+  has_vpc_config        = length(local.configured_subnet_ids) > 0
 
   # Use VPC config if available, otherwise compute defaults
-  effective_subnet_ids = local.has_valid_vpc ? (
-    var.vpc_config.subnet_ids
+  effective_subnet_ids = local.has_vpc_config ? (
+    local.configured_subnet_ids
   ) : (
     data.aws_subnets.default.ids
   )
@@ -118,6 +125,8 @@ variable "explicit_features" {
 }
 
 locals {
+  is_us = startswith(var.region, "us-")
+
   # Derive implicit features from environment/region
   implicit_features = {
     enable_backup         = var.environment == "prod"
@@ -135,11 +144,11 @@ locals {
 
 resource "aws_db_instance" "read_replica" {
   count               = local.features.enable_read_replicas ? 1 : 0
-  replicate_source_db = aws_db_instance.main.id
+  replicate_source_db = aws_db_instance.main.identifier
   instance_class      = "db.r6g.large"
 }
 ```
 
 ## Conclusion
 
-Chain conditionals by decomposing them into named `locals` that build on each other. This approach is more readable than deeply nested ternaries and makes the logic easy to unit test. Use `can()` and `try()` when accessing potentially null or undefined values to make your chains robust against missing inputs.
+Chain conditionals by decomposing them into named `locals` that build on each other. This approach is more readable than deeply nested ternaries and makes the logic easy to unit test. Prefer `try()` for fallbacks in locals, and use `can()` mainly in validation rules when you need a boolean success check.
