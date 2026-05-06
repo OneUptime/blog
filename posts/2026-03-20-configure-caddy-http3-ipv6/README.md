@@ -12,16 +12,14 @@ Caddy enables HTTP/3 by default when TLS is configured, and it supports IPv6 nat
 
 ## HTTP/3 Status in Caddy
 
-Caddy has had HTTP/3 support since version 2 via the `quic-go` library:
+Caddy supports HTTP/3 in current v2 releases, and it is enabled by default for HTTPS sites:
 
 ```bash
-# Check Caddy version and HTTP/3 support
+# Check Caddy version
 
 caddy version
 
 # HTTP/3 is enabled by default when HTTPS is configured
-# Check experimental flag if needed (older versions):
-# experimental_http3 = true (not needed in recent versions)
 ```
 
 ## Basic Caddyfile with HTTP/3 and IPv6
@@ -32,16 +30,15 @@ caddy version
 {
     # Global options
     email admin@example.com
-    # HTTP/3 is enabled by default
-    # Explicit configuration:
+    # HTTP/3 is enabled by default; this makes it explicit
     servers {
         protocols h1 h2 h3
     }
 }
 
-# Caddy automatically listens on [::]:443 (IPv6) and 0.0.0.0:443 (IPv4)
+# Caddy listens on the HTTPS port for this site; use bind/default_bind to constrain interfaces
 yourdomain.com {
-    # Caddy automatically gets Let's Encrypt cert
+    # Caddy automatically manages publicly trusted certificates for qualifying domain names
     # HTTP/3 is advertised via Alt-Svc header
     root * /var/www/html
     file_server
@@ -67,10 +64,7 @@ For more granular control, use Caddy's JSON configuration:
     "http": {
       "servers": {
         "main": {
-          "listen": [
-            ":443",
-            "[::]:443"
-          ],
+          "listen": [":443"],
           "protocols": ["h1", "h2", "h3"],
           "routes": [
             {
@@ -82,25 +76,8 @@ For more granular control, use Caddy's JSON configuration:
                 }
               ]
             }
-          ],
-          "tls_connection_policies": [
-            {
-              "certificate_selection": {
-                "any_tag": ["auto"]
-              }
-            }
           ]
         }
-      }
-    },
-    "tls": {
-      "automation": {
-        "policies": [
-          {
-            "subjects": ["yourdomain.com"],
-            "issuers": [{"module": "acme"}]
-          }
-        ]
       }
     }
   }
@@ -111,17 +88,16 @@ For more granular control, use Caddy's JSON configuration:
 
 ```bash
 # Check Alt-Svc header (indicates HTTP/3 support)
-curl -6 -I https://yourdomain.com/ | grep "Alt-Svc"
-# Expected: alt-svc: h3=":443"; ma=2592000, h3-29=":443"; ma=2592000
+curl -6 -I https://yourdomain.com/ | grep -i "^alt-svc:"
 
-# Test HTTP/3 explicitly
-curl --http3 -6 https://yourdomain.com/ -v 2>&1 | grep "HTTP/3\|Version"
+# Test HTTP/3 explicitly (requires a curl build with HTTP/3 support)
+curl --http3-only -6 -o /dev/null -s -w "HTTP/%{http_version}\n" https://yourdomain.com/
 
 # Check QUIC UDP traffic
 sudo tcpdump -i eth0 ip6 and udp port 443
 
 # Verify IPv6 is being used
-curl -6 -o /dev/null -w "%{remote_ip}\n" https://yourdomain.com/
+curl -6 -s -o /dev/null -w "%{remote_ip}\n" https://yourdomain.com/
 ```
 
 ## Caddy with Reverse Proxy and HTTP/3
@@ -132,12 +108,8 @@ curl -6 -o /dev/null -w "%{remote_ip}\n" https://yourdomain.com/
 yourdomain.com {
     # Reverse proxy to backend service
     reverse_proxy /api/* {
-        to http://[2001:db8::backend]:8080
-
-        # HTTP/2 to backend (if backend supports it)
-        transport http {
-            versions 2
-        }
+        # Cleartext HTTP/2 to backend (h2c)
+        to h2c://[2001:db8::10]:8080
     }
 
     # Static files
@@ -154,27 +126,29 @@ yourdomain.com {
 # /etc/caddy/Caddyfile
 
 {
-    # Only listen on IPv6
+    # Bind site listeners to a specific IPv6 address
     default_bind [2001:db8::1]
 }
 
 yourdomain.com {
-    # HTTP/3 on IPv6-only listener
+    # HTTP/3 on the IPv6-bound site listener
     root * /var/www/html
     file_server
 }
 ```
 
+This binds the site listener to the IPv6 address above. Automatic HTTPS can still create a separate port 80 listener for redirects or ACME HTTP challenges, so account for that if you need every listener constrained to IPv6.
+
 ## Monitoring Caddy HTTP/3 Performance
 
 ```bash
 # Check Caddy metrics (Prometheus-compatible)
-# Enable metrics in Caddyfile:
-# servers {
+# Enable metrics collection in global options:
+# {
 #   metrics
 # }
 
-curl http://[::1]:2019/metrics | grep "caddy_http_requests"
+curl -s http://localhost:2019/metrics | grep "^caddy_http_"
 
 # View access logs for protocol distribution
 cat /var/log/caddy/access.log | \
