@@ -12,7 +12,7 @@ Advertising IPv6 prefixes via BGP requires the prefix to either exist in the rou
 
 ## Method 1: network Statement (Recommended)
 
-The `network` statement advertises a specific prefix if it exists in the routing table:
+The `network` statement advertises a specific prefix if an exact matching prefix exists in the routing table:
 
 ```bash
 # FRRouting - advertise a /48 prefix
@@ -21,12 +21,12 @@ vtysh
 configure terminal
 
 ! First, ensure the prefix exists in the routing table via a null route
-ipv6 route 2001:db8:myorg::/48 Null0
+ipv6 route 2001:db8:100::/48 Null0
 
 ! Advertise the prefix via BGP
 router bgp 65001
  address-family ipv6 unicast
-  network 2001:db8:myorg::/48
+  network 2001:db8:100::/48
 
  exit-address-family
 
@@ -34,7 +34,7 @@ end
 write memory
 ```
 
-The null route (blackhole) ensures the prefix is always in the routing table, which triggers the `network` statement to advertise it.
+The null route (blackhole) ensures the exact prefix is always in the routing table, which triggers the `network` statement to advertise it.
 
 ## Method 2: Redistribute Connected
 
@@ -50,7 +50,7 @@ router bgp 65001
 **Caution**: This can advertise too many specific routes. Use with a route map to filter:
 
 ```bash
-ipv6 prefix-list MY_PREFIXES seq 10 permit 2001:db8:myorg::/48 le 64
+ipv6 prefix-list MY_PREFIXES seq 10 permit 2001:db8:100::/48 le 64
 route-map CONNECTED_FILTER permit 10
  match ipv6 address prefix-list MY_PREFIXES
 
@@ -82,42 +82,51 @@ Router(config)# router bgp 65001
 Router(config-router)# address-family ipv6 unicast
 
 ! Advertise a specific prefix
-Router(config-router-af)# network 2001:db8:myorg::/48
+Router(config-router-af)# network 2001:db8:100::/48
 
 ! Ensure it's in the routing table
-Router(config)# ipv6 route 2001:db8:myorg::/48 Null0
+Router(config)# ipv6 route 2001:db8:100::/48 Null0
 ```
 
 ## Verifying Prefix is Being Advertised
 
 ```bash
 # FRRouting: check if prefix is in the BGP table and being advertised
-vtysh -c "show bgp ipv6 unicast 2001:db8:myorg::/48"
+vtysh -c "show bgp ipv6 unicast 2001:db8:100::/48"
 # Look for: ">" (best path) and "*" (valid)
 
 # Show what's being advertised to a specific peer
-vtysh -c "show bgp ipv6 unicast neighbors 2001:db8:peer::2 advertised-routes"
+vtysh -c "show bgp ipv6 unicast neighbors 2001:db8:200::2 advertised-routes"
 
 # On Cisco:
-show bgp ipv6 unicast neighbors 2001:db8:peer::2 advertised-routes
+show bgp ipv6 unicast neighbors 2001:db8:200::2 advertised-routes
 ```
 
 ## Conditional Advertising
 
-In FRRouting, you can conditionally advertise a prefix based on whether another prefix exists:
+In FRRouting, true conditional advertisement uses `advertise-map` with `exist-map` or `non-exist-map`; a plain `network` statement is not conditional:
 
 ```bash
-router bgp 65001
- address-family ipv6 unicast
-  ! Advertise this aggregate route always
-  network 2001:db8:myorg::/48
+ipv6 prefix-list ROUTES_TO_ADVERTISE seq 10 permit 2001:db8:100::/48
+ipv6 prefix-list TRIGGER_ROUTES seq 10 permit 2001:db8:200::/48
 
+route-map ADV_MAP permit 10
+ match ipv6 address prefix-list ROUTES_TO_ADVERTISE
+
+route-map EXIST_MAP permit 10
+ match ipv6 address prefix-list TRIGGER_ROUTES
+
+router bgp 65001
+ neighbor 2001:db8:300::2 remote-as 65002
+ address-family ipv6 unicast
+  neighbor 2001:db8:300::2 activate
+  neighbor 2001:db8:300::2 advertise-map ADV_MAP exist-map EXIST_MAP
  exit-address-family
 ```
 
 ## Best Practices for Prefix Advertisement
 
-1. **Advertise aggregates, not specifics** - Announce /32 or /48 aggregates, not /64 host routes
+1. **Advertise aggregates, not specifics** - Announce /32 or /48 aggregates, not individual /64 subnets
 2. **Use null routes** - Always pair network statements with a null route to ensure the prefix is in the RIB
 3. **Filter outbound** - Use prefix lists to prevent accidental advertisement of unintended routes
 4. **Register your prefix** - Ensure your IPv6 prefix is registered in an IRR database (ARIN, RIPE) and create RPKI ROAs
