@@ -8,7 +8,7 @@ Description: Learn how to configure CloudFront Origin Access Control for S3 orig
 
 ## Introduction
 
-Origin Access Control (OAC) is the modern replacement for Origin Access Identity (OAI). It uses AWS SigV4 signing and supports S3 Server-Side Encryption with KMS, S3 Object Lambda, and MediaStore origins. OpenTofu manages OAC creation and distribution configuration.
+Origin Access Control (OAC) is the modern, recommended replacement for Origin Access Identity (OAI) for S3 origins. It uses AWS SigV4 signing. For S3 origins, OAC supports server-side encryption with AWS KMS and dynamic requests, and CloudFront also supports OAC for MediaStore, MediaPackage v2, and Lambda function URL origins. OpenTofu manages OAC creation and distribution configuration.
 
 ## Creating an OAC
 
@@ -88,7 +88,7 @@ resource "aws_s3_bucket_policy" "website" {
 
 ## KMS Key Policy for CloudFront
 
-Allow CloudFront to decrypt objects encrypted with KMS.
+Allow CloudFront to use the KMS key for objects encrypted with SSE-KMS.
 
 ```hcl
 resource "aws_kms_key" "s3" {
@@ -111,7 +111,7 @@ resource "aws_kms_key_policy" "s3" {
       {
         Effect    = "Allow"
         Principal = { Service = "cloudfront.amazonaws.com" }
-        Action    = ["kms:Decrypt", "kms:GenerateDataKey*"]
+        Action    = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey*"]
         Resource  = "*"
         Condition = {
           StringEquals = {
