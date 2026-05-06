@@ -98,17 +98,17 @@ tofu -chdir=platform/networking plan
 
 ## Path Resolution with -chdir
 
-When `-chdir` is used, relative paths in your configuration are resolved relative to the chdir directory:
+When `-chdir` is used, OpenTofu treats the specified directory as the root module directory for the command. In configuration, prefer `path.root` or `path.module` for filesystem paths; `path.cwd` still refers to the original working directory where you ran `tofu`:
 
 ```hcl
 # networking/main.tf
 module "subnet" {
-  source = "./modules/subnet"  # Resolved relative to networking/
+  source = "./modules/subnet"  # Resolved relative to the current module directory
 }
 
 # File references
 locals {
-  user_data = file("./scripts/init.sh")  # Resolved relative to networking/
+  user_data = file("${path.module}/scripts/init.sh")  # Current module directory
 }
 ```
 
