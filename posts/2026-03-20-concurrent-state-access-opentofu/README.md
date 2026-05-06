@@ -8,7 +8,7 @@ Description: Learn how to configure and troubleshoot state locking in OpenTofu t
 
 ## Introduction
 
-OpenTofu uses state locking to prevent concurrent modifications. Without locking, two simultaneous `apply` operations could corrupt the state file. Understanding locking configuration and troubleshooting stale locks is essential for team environments.
+OpenTofu uses state locking to prevent concurrent modifications. Without locking, two simultaneous `apply` operations could corrupt the state file. Understanding locking configuration and troubleshooting stale locks is essential for team environments. On the S3 backend, native S3 locking is preferred, but DynamoDB locking remains fully supported.
 
 ## Configuring State Locking with DynamoDB
 
@@ -27,7 +27,8 @@ terraform {
 ```
 
 ```hcl
-# Create the DynamoDB lock table
+# Create this DynamoDB table before running `tofu init`
+# for the S3 backend that references it.
 resource "aws_dynamodb_table" "state_lock" {
   name         = "tofu-state-lock"
   billing_mode = "PAY_PER_REQUEST"
@@ -80,12 +81,12 @@ tofu force-unlock abc123-def456-ghi789
 
 ## Lock Timeout Configuration
 
-```hcl
-# Override the default lock wait timeout
+```bash
+# Lock wait timeout is a CLI option, not backend configuration.
+# Use -lock-timeout on commands such as tofu plan and tofu apply.
+#
 # -lock-timeout=0s means fail immediately if locked
 # -lock-timeout=5m means wait up to 5 minutes
-
-resource "null_resource" "example" {}
 ```
 
 ```bash
@@ -98,18 +99,18 @@ tofu apply -lock-timeout=10m
 
 ## CI/CD Concurrent Lock Management
 
-In CI systems with parallel jobs, use workspace-level locks and queue operations:
+In CI systems with parallel jobs, serialize applies with GitHub Actions concurrency groups:
 
 ```yaml
-# GitHub Actions: prevent concurrent applies per environment
+# GitHub Actions: prevent overlapping applies for the same workflow and ref
 concurrency:
-  group: tofu-${{ github.ref }}-${{ matrix.environment }}
-  cancel-in-progress: false  # Queue, don't cancel
+  group: tofu-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false  # Keep the running apply; allow one pending run
 ```
 
-## Per-Workspace Lock Tables
+## Separate Lock Tables by Environment
 
-For large teams, use separate lock tables per environment to avoid contention:
+If you want administrative separation between environments, you can use separate lock tables per environment. A single DynamoDB table can also lock multiple remote state files:
 
 ```hcl
 locals {
@@ -137,9 +138,9 @@ resource "aws_dynamodb_table" "lock_tables" {
 ## Monitoring Lock Table Activity
 
 ```hcl
-# CloudWatch alarm for excessive lock wait times
-resource "aws_cloudwatch_metric_alarm" "lock_contention" {
-  alarm_name          = "tofu-lock-contention"
+# CloudWatch alarm for unexpected lock table write activity
+resource "aws_cloudwatch_metric_alarm" "lock_table_writes" {
+  alarm_name          = "tofu-lock-table-writes"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "ConsumedWriteCapacityUnits"
@@ -155,4 +156,4 @@ resource "aws_cloudwatch_metric_alarm" "lock_contention" {
 
 ## Conclusion
 
-DynamoDB state locking is the standard mechanism for coordinating concurrent OpenTofu access. Always configure the DynamoDB table alongside your S3 backend - running without locking in a team environment will eventually cause state corruption. When removing stale locks with `force-unlock`, first confirm the process that held the lock is no longer running.
+State locking is essential for coordinating concurrent OpenTofu access. On the S3 backend, native S3 locking via `use_lockfile = true` is preferred, while DynamoDB locking remains a fully supported option. If you choose DynamoDB, create the lock table before running `tofu init`. When removing stale locks with `force-unlock`, first confirm the process that held the lock is no longer running.
