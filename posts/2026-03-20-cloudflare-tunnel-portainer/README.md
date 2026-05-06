@@ -34,7 +34,7 @@ Browser → Cloudflare (your domain) → Tunnel → cloudflared → Portainer
 # Install cloudflared
 
 curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o cloudflared.deb
-dpkg -i cloudflared.deb
+sudo dpkg -i cloudflared.deb
 
 # Authenticate (opens browser)
 cloudflared tunnel login
@@ -45,11 +45,11 @@ cloudflared tunnel create portainer-tunnel
 # Configure the tunnel
 cat > ~/.cloudflared/config.yml << 'EOF'
 tunnel: <TUNNEL_ID>
-credentials-file: /root/.cloudflared/<TUNNEL_ID>.json
+credentials-file: <PATH_TO_TUNNEL_CREDENTIALS_FILE>
 
 ingress:
   - hostname: portainer.yourdomain.com
-    service: http://localhost:9000
+    service: http://<PORTAINER_HOST>:9000
   - service: http_status:404
 EOF
 
@@ -62,7 +62,7 @@ cloudflared tunnel run portainer-tunnel
 
 ## Method 2: Using Cloudflare Zero Trust Dashboard (Recommended)
 
-1. Go to [Cloudflare Zero Trust](https://one.dash.cloudflare.com) → **Networks → Tunnels**
+1. Go to [Cloudflare Zero Trust](https://one.dash.cloudflare.com) → **Networks → Connectors → Cloudflare Tunnels**
 2. Click **Create Tunnel**
 3. Select **Cloudflared**
 4. Name it `portainer`
@@ -70,22 +70,22 @@ cloudflared tunnel run portainer-tunnel
 
 ```bash
 # Cloudflare provides this command - run it on your server
-cloudflared service install <YOUR_TOKEN>
+sudo cloudflared service install <YOUR_TOKEN>
 ```
 
 6. Under **Public Hostname**:
    - Subdomain: `portainer`
    - Domain: `yourdomain.com`
-   - Service: `http://localhost:9000`
+   - Service: `http://<PORTAINER_HOST>:9000`
 
-Cloudflare automatically creates the DNS record and the tunnel is active.
+Cloudflare automatically creates the DNS record when you save the public hostname.
 
 ## Accessing Portainer Through the Tunnel
 
 After configuration, Portainer is available at:
 `https://portainer.yourdomain.com`
 
-No port 9000 needs to be published on the Docker container:
+If `cloudflared` runs on the same Docker network as Portainer, no Portainer port needs to be published on the host:
 
 ```yaml
 services:
@@ -120,13 +120,13 @@ services:
     restart: unless-stopped
 ```
 
-Set `CLOUDFLARE_TUNNEL_TOKEN` in Portainer's environment variables.
+Set `CLOUDFLARE_TUNNEL_TOKEN` in your stack environment variables, and in the tunnel's **Public Hostname** use `http://portainer:9000` instead of `localhost`.
 
 ## Security Note
 
 Combine with Cloudflare Access for authentication before users reach Portainer:
 
-1. In Zero Trust → **Access → Applications → Add Application**
+1. In Zero Trust → **Access controls → Applications → Add an application**
 2. Type: **Self-hosted**
 3. Application domain: `portainer.yourdomain.com`
 4. Create a policy: require specific email domains or identity provider
