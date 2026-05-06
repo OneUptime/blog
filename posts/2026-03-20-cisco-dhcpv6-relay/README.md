@@ -12,7 +12,7 @@ Configure Cisco IOS as a DHCPv6 relay agent to forward DHCPv6 requests from clie
 
 ## Prerequisites
 
-- Cisco IOS 12.4(6)T or later
+- Cisco IOS 12.3(11)T or later
 - Global IPv6 routing enabled: `ipv6 unicast-routing`
 - Console or SSH access to the router
 
@@ -24,33 +24,27 @@ Configure Cisco IOS as a DHCPv6 relay agent to forward DHCPv6 requests from clie
 ! Always start with enabling IPv6 routing globally
 Router(config)# ipv6 unicast-routing
 
-! Configure interface with IPv6
+! Configure the client-facing interface with IPv6
 Router(config)# interface GigabitEthernet0/0
-Router(config-if)# ipv6 address 2001:db8::1/64
+Router(config-if)# ipv6 address 2001:db8:1::1/64
 Router(config-if)# no shutdown
 ```
 
 ### Feature-Specific Configuration
 
 ```text
-! Static route example
-Router(config)# ipv6 route 2001:db8:remote::/48 2001:db8:wan::254
+! Route to the remote DHCPv6 server if it is not directly connected
+Router(config)# ipv6 route 2001:db8:200::/64 2001:db8:100::254
 
-! ACL example
-Router(config)# ipv6 access-list BLOCK-BOGONS
-Router(config-ipv6-acl)# deny ipv6 ::/8 any
-Router(config-ipv6-acl)# deny ipv6 2001:db8::/32 any
-Router(config-ipv6-acl)# permit ipv6 any any
-
-! DHCPv6 server pool
-Router(config)# ipv6 dhcp pool IPV6-POOL
-Router(config-dhcpv6)# address prefix 2001:db8:1::/64
-Router(config-dhcpv6)# dns-server 2001:4860:4860::8888
-Router(config-dhcpv6)# domain-name example.com
-
-! Apply DHCPv6 to interface
+! Configure the server-facing interface
 Router(config)# interface GigabitEthernet0/1
-Router(config-if)# ipv6 dhcp server IPV6-POOL
+Router(config-if)# ipv6 address 2001:db8:100::1/64
+Router(config-if)# no shutdown
+
+! Enable DHCPv6 relay on the client-facing interface
+Router(config)# interface GigabitEthernet0/0
+Router(config-if)# ipv6 nd managed-config-flag
+Router(config-if)# ipv6 dhcp relay destination 2001:db8:200::10
 ```
 
 ## Verification Commands
@@ -65,14 +59,14 @@ Router# show ipv6 route
 ! Show NDP neighbor cache
 Router# show ipv6 neighbors
 
-! Show DHCP bindings
-Router# show ipv6 dhcp binding
+! Show DHCPv6 relay status
+Router# show ipv6 dhcp interface
 
-! Ping IPv6 address
-Router# ping ipv6 2001:db8::1
+! Ping the remote DHCPv6 server
+Router# ping ipv6 2001:db8:200::10
 
 ! Traceroute over IPv6
-Router# traceroute ipv6 2001:db8::1 source GigabitEthernet0/1
+Router# traceroute ipv6 2001:db8:200::10
 ```
 
 ## Debug Commands
@@ -97,4 +91,4 @@ Use [OneUptime](https://oneuptime.com) to monitor your Cisco router's IPv6 conne
 
 ## Conclusion
 
-How to Configure IPv6 DHCP Relay on Cisco IOS follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally before any interface IPv6 configuration will work. Always verify with `show ipv6` commands after making changes.
+How to Configure IPv6 DHCP Relay on Cisco IOS follows standard Cisco IOS configuration patterns. Remember to enable `ipv6 unicast-routing` globally so the router can forward IPv6 traffic and relay DHCPv6 messages between clients and the remote server. Always verify with `show ipv6` commands after making changes.
