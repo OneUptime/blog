@@ -66,13 +66,13 @@ resource "aws_instance" "app" {
 ## Merging Subnet Lists
 
 ```hcl
-resource "aws_subnet" "public" {
+resource "aws_subnet" "public_primary" {
   count  = 3
   vpc_id = aws_vpc.main.id
   # ...
 }
 
-resource "aws_subnet" "private" {
+resource "aws_subnet" "public_secondary" {
   count  = 3
   vpc_id = aws_vpc.main.id
   # ...
@@ -81,7 +81,7 @@ resource "aws_subnet" "private" {
 resource "aws_lb" "app" {
   name     = "app-lb"
   internal = false
-  subnets  = concat(aws_subnet.public[*].id, aws_subnet.private[*].id)
+  subnets  = concat(aws_subnet.public_primary[*].id, aws_subnet.public_secondary[*].id)
 }
 ```
 
@@ -144,10 +144,10 @@ locals {
   # concat: for lists
   combined_list = concat(["a", "b"], ["c", "d"])
 
-  # merge: for maps (not lists)
+  # merge: for maps and objects (not lists)
   combined_map = merge({ a = 1 }, { b = 2 })
 
-  # tolist on a set to make it a list before concat
+  # tolist on a set before concat (resulting order is undefined)
   set_as_list = tolist(toset(["x", "y", "z"]))
   with_more   = concat(local.set_as_list, ["a"])
 }
@@ -157,4 +157,4 @@ locals {
 
 ## Summary
 
-`concat()` combines multiple lists into a single ordered list. Use it to merge security group IDs, subnet lists, policy ARNs, and any other list-type resource arguments. It preserves order and allows duplicates. For merging maps, use `merge()` instead. Combine with conditional expressions to add optional lists only when needed.
+`concat()` combines multiple lists into a single ordered list. Use it to merge security group IDs, subnet lists, policy ARNs, and any other list-type resource arguments. It preserves order and allows duplicates. For merging maps or objects, use `merge()` instead. Combine with conditional expressions to add optional lists only when needed.
