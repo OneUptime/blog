@@ -8,7 +8,7 @@ Description: Configure DNS servers and search domains on Ubuntu/Debian using Net
 
 ## Introduction
 
-Netplan configures DNS servers via the `nameservers` key under each interface. DNS settings are passed to systemd-resolved (or NetworkManager depending on the renderer). You can set multiple DNS servers and search domains per interface.
+Netplan configures DNS servers via the `nameservers` key under each interface. DNS settings are passed to the active renderer. On systems using `systemd-networkd`, they are then visible through `systemd-resolved`; with a NetworkManager renderer, NetworkManager manages the connection profile. You can set multiple DNS servers and search domains per interface.
 
 ## Configure DNS on a Static Interface
 
@@ -67,6 +67,7 @@ network:
 ```yaml
 network:
   version: 2
+  renderer: networkd
   ethernets:
     eth0:
       dhcp4: true
@@ -88,7 +89,7 @@ resolvectl query google.com
 # Check which servers are being used
 resolvectl status
 
-# Test with dig
+# Query a specific DNS server directly with dig
 dig @8.8.8.8 google.com
 ```
 
@@ -98,7 +99,7 @@ dig @8.8.8.8 google.com
 # Apply changes
 netplan apply
 
-# Show effective DNS in resolv.conf
+# Inspect /etc/resolv.conf (often a systemd-resolved stub)
 cat /etc/resolv.conf
 
 # Per-interface DNS status
@@ -132,4 +133,4 @@ network:
 
 ## Conclusion
 
-DNS in Netplan is configured under the `nameservers` key with `addresses` (list of DNS servers) and optionally `search` (list of search domains). Use `dhcp4-overrides.use-dns: false` to ignore DNS from DHCP and use your own. Verify with `resolvectl status eth0` after applying.
+DNS in Netplan is configured under the `nameservers` key with `addresses` (list of DNS servers) and optionally `search` (list of search domains). Use `dhcp4-overrides.use-dns: false` with the `networkd` renderer to ignore DNS from DHCP and use your own. Verify with `resolvectl status eth0` after applying.
