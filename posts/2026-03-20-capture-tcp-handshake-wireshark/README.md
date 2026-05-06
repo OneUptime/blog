@@ -16,7 +16,7 @@ Wireshark is the most powerful graphical packet analyzer available. For TCP hand
 # Option 1: Capture directly in Wireshark
 
 # Start Wireshark → select interface → start capture
-# Apply display filter: tcp.port == 80 && tcp.flags.syn == 1
+# Apply display filter: tcp.port == 80
 
 # Option 2: Capture with tcpdump and open in Wireshark
 tcpdump -i eth0 -w /tmp/capture.pcap 'tcp port 80'
@@ -39,7 +39,7 @@ tcp.flags.syn == 1 && tcp.flags.ack == 1
 # Show both SYN and SYN-ACK for a specific host
 tcp.flags.syn == 1 && ip.addr == 10.20.0.5
 
-# Show the complete handshake (SYN + SYN-ACK + ACK)
+# Show the full TCP conversation for one connection
 tcp.stream eq 0
 ```
 
@@ -59,7 +59,7 @@ Transmission Control Protocol
   Flags: 0x002 (SYN)
   Window: 65535
   Options:
-    Maximum segment size: 1460 bytes    ← MSS negotiated here
+    Maximum segment size: 1460 bytes    ← MSS advertised by this sender
     SACK permitted                       ← Selective ACK support
     Timestamps: val=1234567, ecr=0      ← TCP timestamps
     Window scale: 7 (multiply by 128)   ← Window scaling
@@ -70,11 +70,11 @@ Transmission Control Protocol
 ```text
 # In Wireshark's Time column (relative timestamps):
 # Frame 1: 0.000000  SYN from client to server
-# Frame 2: 0.000823  SYN-ACK from server to client  ← 0.82ms server processing
+# Frame 2: 0.000823  SYN-ACK from server to client  ← 0.82ms from SYN to SYN-ACK here
 # Frame 3: 0.000891  ACK from client to server
 #
 # Total handshake time: 0.891ms (excellent for LAN)
-# For remote connections: handshake time ≈ RTT (each step is half-RTT)
+# On a client-side capture, SYN → SYN-ACK is roughly one RTT plus any server response time
 ```
 
 ## Using Wireshark's TCP Stream Analysis
@@ -96,7 +96,7 @@ Content-Type: text/html
 ## Using Wireshark Statistics
 
 ```text
-# Navigate to: Statistics → TCP Stream Graphs → Time-Sequence (Stevens)
+# Navigate to: Statistics → TCP Stream Graphs → Time Sequence (Stevens)
 # Shows sequence number progression over time - good for seeing slow start,
 # congestion events, and retransmissions
 
@@ -111,9 +111,9 @@ Content-Type: text/html
 # Extract handshake details from a pcap
 tshark -r /tmp/capture.pcap -Y "tcp.flags.syn==1" \
   -T fields -e frame.time -e ip.src -e ip.dst \
-  -e tcp.srcport -e tcp.dstport -e tcp.flags -e tcp.options.mss
+  -e tcp.srcport -e tcp.dstport -e tcp.flags -e tcp.options.mss_val
 ```
 
 ## Conclusion
 
-Wireshark turns raw packet data into readable TCP state information. The handshake analysis reveals negotiated options (MSS, window scale, SACK) that affect the entire connection's performance. Timing between SYN and SYN-ACK measures server-side processing time. Combining display filters with stream following lets you trace individual connections through complex captures.
+Wireshark turns raw packet data into readable TCP state information. The handshake analysis reveals MSS values and TCP options such as window scale, SACK, and timestamps that affect the entire connection's performance. Timing between SYN and SYN-ACK reflects the observed delay between those packets, including network latency and any server response time. Combining display filters with stream following lets you trace individual connections through complex captures.
