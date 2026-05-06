@@ -30,10 +30,11 @@ graph LR
 name: OpenTofu Plan
 on:
   pull_request:
-    paths: ['**.tf', '**.tfvars', '**.hcl']
+    paths: ['**.tf', '**.tofu', '**.tf.json', '**.tofu.json', '**.tfvars', '**.tfvars.json', '**.hcl']
 
 jobs:
   plan:
+    name: OpenTofu Plan
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -49,7 +50,7 @@ jobs:
           role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
           aws-region: us-east-1
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
           tofu_version: "1.6.0"
 
@@ -74,16 +75,18 @@ jobs:
 
       - name: Post plan to PR
         uses: actions/github-script@v7
+        env:
+          PLAN_OUTPUT_PATH: ${{ env.TF_DIR }}/plan_output.txt
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('${{ env.TF_DIR }}/plan_output.txt', 'utf8');
+            const plan = fs.readFileSync(process.env.PLAN_OUTPUT_PATH, 'utf8');
             const maxLength = 65000;
             const truncated = plan.length > maxLength
               ? plan.substring(0, maxLength) + '\n\n... truncated ...'
               : plan;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -106,11 +109,8 @@ resource "github_branch_protection" "main" {
   pattern       = "main"
 
   required_status_checks {
-    strict = true
-    contexts = [
-      "OpenTofu Plan / plan",
-      "OpenTofu Validate / validate",
-    ]
+    strict   = true
+    contexts = ["OpenTofu Plan"]
   }
 
   required_pull_request_reviews {
@@ -118,7 +118,7 @@ resource "github_branch_protection" "main" {
     dismiss_stale_reviews           = true
     require_code_owner_reviews      = true
     restrict_dismissals             = true
-    dismissal_restrictions          = ["/infrastructure-team"]
+    dismissal_restrictions          = ["myorg/infrastructure-team"]
   }
 
   enforce_admins = var.environment == "production"
@@ -130,7 +130,11 @@ resource "github_repository_file" "codeowners" {
   content    = <<-EOT
     # Infrastructure team owns all OpenTofu files
     *.tf @myorg/infrastructure-team
+    *.tofu @myorg/infrastructure-team
+    *.tf.json @myorg/infrastructure-team
+    *.tofu.json @myorg/infrastructure-team
     *.tfvars @myorg/infrastructure-team
+    *.tfvars.json @myorg/infrastructure-team
     environments/ @myorg/infrastructure-team
     modules/ @myorg/infrastructure-team
   EOT
@@ -173,7 +177,7 @@ resource "github_repository_file" "pr_template" {
 
 ## Best Practices
 
-- Post the full `tofu plan` output as a PR comment automatically - reviewers should not need to run the plan locally.
+- Post the `tofu plan` output as a PR comment automatically - reviewers should not need to run the plan locally, but large plans may need truncation or a workflow summary because GitHub comments have a size limit.
 - Require at least 2 approvals for production changes and configure CODEOWNERS so infrastructure team members are auto-requested.
 - Enable `dismiss_stale_reviews` so pushing new commits invalidates previous approvals and forces re-review.
 - Fail the CI pipeline if `tofu plan` exits non-zero - don't allow merging a PR with a broken plan.
