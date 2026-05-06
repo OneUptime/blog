@@ -62,8 +62,8 @@ router bgp 65001
 Router# show ip bgp
 
    Network          Next Hop            Metric LocPrf Weight Path
-*> 0.0.0.0          203.0.113.1              0    100    200  65100 i
-*  0.0.0.0          198.51.100.1             0    100    100  65200 i
+*> 0.0.0.0          203.0.113.1              0           200  65100 i
+*  0.0.0.0          198.51.100.1             0           100  65200 i
 
 ! Route via ISP1 has Weight=200 and is selected as best (>)
 ! Route via ISP2 has Weight=100 and is backup
@@ -85,7 +85,7 @@ Router# clear ip bgp 198.51.100.1 soft in
 |---|---|---|---|
 | Weight | Local router only | Higher wins | Never |
 | Local Preference | Entire AS | Higher wins | iBGP |
-| MED | Adjacent AS | Lower wins | eBGP only |
+| MED | Adjacent AS | Lower wins | iBGP within the AS; not to other ASes |
 
 Use Weight for quick fixes on a single router. Use Local Preference when you need consistent outbound path selection across the entire AS.
 
