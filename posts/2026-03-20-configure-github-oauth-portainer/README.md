@@ -12,8 +12,8 @@ GitHub OAuth is ideal for developer teams where everyone already has a GitHub ac
 
 ## Step 1: Create a GitHub OAuth Application
 
-1. Go to your GitHub account or organization settings
-2. Navigate to **Settings > Developer settings > OAuth Apps**
+1. In GitHub, go to **Settings**
+2. Navigate to **Developer settings > OAuth Apps**
 3. Click **New OAuth App**
 4. Fill in:
    - **Application name**: Portainer
@@ -92,16 +92,14 @@ curl -X PUT \
 
 ## Restrict Access to a GitHub Organization
 
-GitHub doesn't natively restrict OAuth to org members via scopes alone. Use these approaches:
+GitHub OAuth scopes do not restrict Portainer sign-in to members of a specific organization by themselves. To limit access, request organization read access, disable automatic user provisioning, and manually create only users whose organization membership you have verified:
 
 ```bash
-# Option 1: Add 'read:org' scope and manually approve users
+"Scopes": "read:user user:email read:org",
+"OAuthAutoCreateUsers": false
 
-# Option 2: Use GitHub's OAuth organization scopes
-"Scopes": "read:user user:email read:org"
-
-# Then in Portainer, disable auto-create and only approve
-# users who are verified org members
+# Then manually create only users whose GitHub organization
+# membership you have verified
 ```
 
 ## Test GitHub OAuth
