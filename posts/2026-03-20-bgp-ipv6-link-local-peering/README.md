@@ -26,13 +26,12 @@ configure terminal
 router bgp 65001
  bgp router-id 1.1.1.1
 
- ! Peer using link-local address - MUST specify interface
- neighbor fe80::2%eth0 remote-as 65002
- neighbor fe80::2%eth0 interface eth0     ! Required for link-local peers
- neighbor fe80::2%eth0 description "Link-local BGP peer on eth0"
+ ! Peer over the directly connected interface using IPv6 link-local addresses
+ neighbor eth0 interface v6only remote-as 65002
+ neighbor eth0 description "Link-local BGP peer on eth0"
 
  address-family ipv6 unicast
-  neighbor fe80::2%eth0 activate
+  neighbor eth0 activate
   network 2001:db8:1::/48
  exit-address-family
 
@@ -48,28 +47,35 @@ interface GigabitEthernet0/0
  ipv6 address fe80::1 link-local
  ipv6 enable
 
+interface Loopback0
+ ipv6 address 2001:db8:ffff::1/128
+
 router bgp 65001
  bgp router-id 1.1.1.1
 
- ! Use interface name instead of IP address for unnumbered BGP
- neighbor GigabitEthernet0/0 interface remote-as 65002
+ ! Use the peer's link-local address with the interface name
+ neighbor FE80::2%GigabitEthernet0/0 remote-as 65002
 
  address-family ipv6 unicast
-  neighbor GigabitEthernet0/0 activate
+  neighbor FE80::2%GigabitEthernet0/0 activate
+  neighbor FE80::2%GigabitEthernet0/0 route-map LL-NH out
   network 2001:db8:1::/48
  exit-address-family
+
+route-map LL-NH permit 10
+ set ipv6 next-hop 2001:db8:ffff::1
 ```
 
 ## Next-Hop Handling
 
-When BGP receives a route with a link-local next hop from a link-local peer, the next hop is only valid on that specific link. This creates a challenge for iBGP route reflection:
+When BGP receives a route with a link-local next hop from a directly connected peer, the next hop is only valid on that link. This becomes a problem when advertising the route to iBGP peers on other links, including through a route reflector:
 
 ```bash
-# FRRouting - next-hop-self required for iBGP when link-local peers exist
+# FRRouting - rewrite the next hop before advertising reflected iBGP routes
 
 router bgp 65001
  address-family ipv6 unicast
-  neighbor 2001:db8::route-reflector next-hop-self    # Replace link-local NH
+  neighbor 2001:db8::10 next-hop-self force    # Replace unreachable link-local NH
  exit-address-family
 ```
 
@@ -79,11 +85,8 @@ router bgp 65001
 # FRRouting - check peer state
 vtysh -c "show bgp ipv6 unicast summary"
 
-# Neighbor should show with link-local address
-# fe80::2       4   65002   100   100   5   0   0  00:45:12  8
-
 # Show neighbor details
-vtysh -c "show bgp neighbors fe80::2%eth0"
+vtysh -c "show bgp ipv6 unicast neighbor eth0"
 # Look for: BGP state = Established
 ```
 
@@ -97,7 +100,7 @@ ip -6 addr show dev eth0 | grep "scope link"
 ip -6 neigh show dev eth0 | grep "fe80::2"
 
 # If the neighbor is not discovered:
-ping6 fe80::2%eth0   # Test reachability first
+ping -6 fe80::2%eth0   # Test reachability first
 
 # Capture BGP OPEN messages
 sudo tcpdump -i eth0 -n "tcp port 179"
@@ -109,4 +112,4 @@ Link-local addresses are not routable beyond the local link. Therefore, **link-l
 
 ## Summary
 
-BGP link-local peering uses fe80:: addresses and requires specifying the interface in the neighbor configuration (e.g., `fe80::2%eth0` in FRRouting). It is ideal for directly connected peers and BGP unnumbered data center deployments. Always use `next-hop-self` when reflecting link-local routes to iBGP peers that cannot reach the link-local next hop.
+BGP link-local peering uses fe80:: addresses and requires binding the peer to the directly connected interface. It is ideal for directly connected peers and BGP unnumbered data center deployments. When those routes are advertised to iBGP peers on other links, rewrite the next hop to a reachable address.
