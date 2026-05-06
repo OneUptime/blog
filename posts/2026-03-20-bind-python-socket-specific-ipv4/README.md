@@ -1,23 +1,23 @@
-# How to Bind a Python Socket to a Specific IPv4 Interface
+# How to Bind a Python Socket to a Specific IPv4 Address
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Python, Socket, IPv4, Binding, Networking, Interface
 
-Description: Learn how to bind a Python socket to a specific IPv4 address or network interface to control which network traffic the socket sends and receives.
+Description: Learn how to bind a Python socket to a specific local IPv4 address to control which local address the socket sends and receives traffic on.
 
-## Why Bind to a Specific Interface?
+## Why Bind to a Specific IPv4 Address?
 
-Servers with multiple network interfaces (e.g., public and private NICs) should bind to a specific IP to avoid accidentally exposing services on the wrong interface. Clients can also bind to a specific source IP for routing or testing.
+Servers with multiple network interfaces (e.g., public and private NICs) should bind to the IPv4 address assigned to the intended interface to avoid accidentally exposing services on the wrong network. Clients can also bind to a specific source IP for routing or testing.
 
 ## Binding a Server to a Specific IPv4 Address
 
 ```python
 import socket
 
-# Only accept connections on this specific interface/IP
+# Only accept connections on this specific local IPv4 address
 
-BIND_IP = "192.168.1.50"   # Replace with your server's IP on the desired interface
+BIND_IP = "192.168.1.50"   # Replace with your server's IPv4 address on the desired interface
 PORT = 9000
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
@@ -56,22 +56,10 @@ srv.bind(("127.0.0.1", PORT))
 
 ```python
 import socket
-import struct
-import fcntl
-import array
 
-def get_ip_addresses() -> list[dict]:
-    """Get all IPv4 addresses for all network interfaces."""
-    import subprocess, json
-
-    # Use ip addr or socket.getaddrinfo for cross-platform approach
-    hostname = socket.gethostname()
-    # getaddrinfo returns all addresses for the hostname
-    results = socket.getaddrinfo(hostname, None, socket.AF_INET)
-    return [{"ip": r[4][0]} for r in results]
-
-# Simpler cross-platform approach using socket
-print(socket.gethostbyname_ex(socket.gethostname()))
+# List interface names known to the OS
+for index, name in socket.if_nameindex():
+    print(index, name)
 ```
 
 ## Binding a Client to a Specific Source IP
@@ -93,31 +81,31 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
     client.bind((SOURCE_IP, SOURCE_PORT))
 
     client.connect((SERVER_IP, SERVER_PORT))
-    client.sendall(b"Hello from specific interface!")
+    client.sendall(b"Hello from a specific source IP!")
     print(client.recv(1024).decode())
 ```
 
-## Binding a UDP Socket to a Specific Interface
+## Binding a UDP Socket to a Specific IPv4 Address
 
 ```python
 import socket
 
-# UDP socket bound to a specific interface
+# UDP socket bound to a specific local IPv4 address
 with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-    # Only receive UDP packets arriving on this interface
+    # Only receive UDP packets sent to this local address/port
     udp_sock.bind(("192.168.1.50", 9001))
     data, addr = udp_sock.recvfrom(4096)
     print(f"Received from {addr}: {data.decode()}")
 ```
 
-## Checking What Interface a Socket Is Bound To
+## Checking What Address a Socket Is Bound To
 
 ```python
 import socket
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
     s.bind(("0.0.0.0", 9000))
-    # getsockname() returns the address the socket is bound to
+    # getsockname() returns the socket's own bound address
     print(s.getsockname())   # ('0.0.0.0', 9000)
 ```
 
@@ -127,9 +115,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 |---------|---------|
 | `0.0.0.0` | All IPv4 interfaces |
 | `127.0.0.1` | Loopback only |
-| `192.168.x.x` | Specific LAN interface |
-| `""` (empty string) | Same as `0.0.0.0` in Python |
+| `192.168.x.x` | Specific local IPv4 address |
+| `""` (empty string) | Same as `0.0.0.0` for IPv4 in Python |
 
 ## Conclusion
 
-Binding to a specific IPv4 address gives you precise control over which network interface your server or client uses. Use `0.0.0.0` for servers that should accept connections on all interfaces, `127.0.0.1` for localhost-only services, and a specific IP when you need to restrict to a particular network interface.
+Binding to a specific local IPv4 address gives you precise control over which local address your server or client uses. Use `0.0.0.0` for servers that should accept connections on all IPv4 interfaces, `127.0.0.1` for localhost-only services, and a specific IP when you need to restrict traffic to one local address.
