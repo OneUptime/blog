@@ -19,15 +19,15 @@ kubectl get ippools -o yaml
 DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl get ippool -o wide
 
 # Example output:
-# NAME                  CIDR            SELECTOR
-# default-ipv4-ippool   10.244.0.0/16   all()
+# NAME                  CIDR            NAT    IPIPMODE   VXLANMODE   DISABLED   SELECTOR
+# default-ipv4-ippool   10.244.0.0/16   true   Never      Never       false      all()
 ```
 
 ## Creating a New IP Pool
 
 ```yaml
 # ippool-production.yaml
-apiVersion: crd.projectcalico.org/v1
+apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
   name: production-ipv4-pool
@@ -41,8 +41,10 @@ spec:
   natOutgoing: true
   # Assign this pool to production nodes only
   nodeSelector: "tier == 'production'"
-  # Disable automatic assignment (manage manually)
+  # Keep the pool enabled
   disabled: false
+  # Automatically assign addresses from this pool on matching nodes
+  assignmentMode: Automatic
   # Block size for per-node IP allocation
   blockSize: 26
 ```
@@ -55,7 +57,7 @@ kubectl apply -f ippool-production.yaml
 
 ```yaml
 # ippool-monitoring.yaml
-apiVersion: crd.projectcalico.org/v1
+apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
   name: monitoring-ipv4-pool
@@ -64,11 +66,12 @@ spec:
   vxlanMode: Always
   natOutgoing: true
   disabled: false
+  assignmentMode: Manual
   blockSize: 28
 ```
 
 ```bash
-# Annotate a namespace to use a specific pool
+# Annotate a namespace so newly created pods use a specific pool
 kubectl annotate namespace monitoring \
   cni.projectcalico.org/ipv4pools='["monitoring-ipv4-pool"]'
 ```
@@ -84,14 +87,14 @@ DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl patch ippool defau
 ## Managing IP Blocks (Per-Node Allocations)
 
 ```bash
-# View IP blocks allocated to nodes
-DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl get ipamblock
+# View IP pools and their allocated blocks
+DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam show --show-blocks
 
 # View IPAM usage statistics
-DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam show --summary
+DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam show
 
 # View allocations for a specific IP
-DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam show --ip 10.244.1.5
+DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam show --ip=10.244.1.5
 ```
 
 ## Checking for IP Allocation Issues
@@ -101,14 +104,23 @@ DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam show --ip 10.
 DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam show
 
 # Example output:
-# +----------+-----------+------------+------------+
-# | GROUPING |   CIDR    | IPS TOTAL  | IPS IN USE |
-# +----------+-----------+------------+------------+
-# | IP Pool  | 10.244.0.0/16 |  65536 |    350     |
-# +----------+-----------+------------+------------+
+# +----------+----------------+------------+------------+----------------+
+# | GROUPING |      CIDR      | IPS TOTAL  | IPS IN USE |    IPS FREE    |
+# +----------+----------------+------------+------------+----------------+
+# | IP Pool  | 10.244.0.0/16  |      65536 | 350 (1%)   | 65186 (99%)    |
+# +----------+----------------+------------+------------+----------------+
 
-# Release leaked IP addresses
-DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam release --ip 10.244.1.5
+# Lock the datastore before generating a leak report
+DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl datastore migrate lock
+
+# Generate a report of leaked or inconsistent allocations
+DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam check -o report.json
+
+# Release leaked IP addresses from the report
+DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl ipam release --from-report=report.json
+
+# Unlock the datastore when finished
+DATASTORE_TYPE=kubernetes KUBECONFIG=~/.kube/config calicoctl datastore migrate unlock
 ```
 
 ## Changing Encapsulation Mode
