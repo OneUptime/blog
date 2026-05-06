@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Can Function, Validation, HCL, Infrastructure as Code
 
-Description: Learn how to use OpenTofu's can function to test whether expressions are valid and build conditional logic based on value presence or type.
+Description: Learn how to use OpenTofu's can function to test whether expressions are valid and build boolean checks for validation and condition expressions.
 
-The `can` function evaluates an expression and returns `true` if the expression succeeds without an error, or `false` if it would produce an error. Unlike `try`, it does not return the value - it returns a boolean. This makes it ideal for conditional logic and custom variable validation.
+The `can` function evaluates an expression and returns `true` if the expression succeeds without an error, or `false` if it would produce an error. Unlike `try`, it does not return the value - it returns a boolean. This makes it useful when you need to turn a potentially failing expression into a boolean result, especially in custom variable validation and other condition expressions.
 
 ## Basic Syntax
 
@@ -77,6 +77,8 @@ locals {
 
 ## Use Case 4: Conditional Resource Behavior Based on Optional Attributes
 
+When an attribute is declared with `optional(...)` in an object type, OpenTofu sets it to `null` when omitted, so you can test for `null` directly:
+
 ```hcl
 variable "db_config" {
   type = object({
@@ -86,8 +88,8 @@ variable "db_config" {
 }
 
 locals {
-  # Only enable read routing if a read replica is configured
-  use_read_replica = can(var.db_config.read_replica) && var.db_config.read_replica != null
+  # Optional attributes without defaults are null when omitted
+  use_read_replica = var.db_config.read_replica != null
 }
 
 resource "aws_db_proxy_endpoint" "read" {
@@ -104,8 +106,8 @@ variable "kms_key_arn" {
   description = "ARN of the KMS key for encryption"
 
   validation {
-    # An ARN must match this pattern
-    condition     = can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]+$", var.kms_key_arn))
+    # A KMS key ARN must follow arn:<partition>:kms:<region>:<account-id>:key/<key-id>
+    condition     = can(regex("^arn:[^:]+:kms:[a-z0-9-]+:[0-9]{12}:key/(mrk-[[:xdigit:]]{32}|[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12})$", var.kms_key_arn))
     error_message = "kms_key_arn must be a valid KMS key ARN."
   }
 }
@@ -135,4 +137,4 @@ Use `can` when you need a boolean condition; use `try` when you need the value w
 
 ## Conclusion
 
-The `can` function is the right tool when you need to test whether an expression is valid before acting on it. Its primary uses are in `validation` blocks for input variable checking and in conditional logic that depends on optional attribute presence. Combine it with `try` for complete defensive value handling patterns.
+The `can` function is the right tool when you need to test whether an expression is valid before acting on it. Its primary use is turning dynamic errors into boolean results in `validation` and other condition expressions. When you need the value with a fallback instead, `try` is usually the better choice, and typed optional object attributes can often be handled with a direct `null` check.
