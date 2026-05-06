@@ -106,6 +106,14 @@ variable "extra_tags" {
   default = {}
 }
 
+variable "environment" {
+  type = string
+}
+
+variable "project_name" {
+  type = string
+}
+
 variable "team_name" {
   type = string
 }
@@ -114,15 +122,15 @@ variable "team_name" {
 locals {
   # Combine user-provided tags with always-required tags
   all_tags = merge(
-    # Required tags (computed)
+    # User-provided additional tags (variable)
+    var.extra_tags,
+
+    # Required tags (computed) override conflicting user-provided values
     {
       Environment = var.environment
       Project     = var.project_name
       ManagedBy   = "OpenTofu"
-      CreatedAt   = timestamp()
     },
-    # User-provided additional tags (variable)
-    var.extra_tags,
 
     # Override priority - computed values take precedence
     {
@@ -138,7 +146,7 @@ locals {
 # variables.tf - Simple, primitive inputs
 variable "enable_ssl" {
   type    = bool
-  default = true
+  default = false
 }
 
 variable "ssl_cert_arn" {
@@ -158,6 +166,8 @@ variable "https_port" {
 
 # locals.tf - Complex structure computed from simple variables
 locals {
+  enable_https = var.enable_ssl && var.ssl_cert_arn != null
+
   # Build listener configurations
   listeners = concat(
     # Always add HTTP listener
@@ -165,16 +175,16 @@ locals {
       port     = var.http_port
       protocol = "HTTP"
       action = {
-        type             = var.enable_ssl ? "redirect" : "forward"
-        redirect         = var.enable_ssl ? { port = tostring(var.https_port), protocol = "HTTPS", status_code = "HTTP_301" } : null
-        target_group_arn = var.enable_ssl ? null : aws_lb_target_group.main.arn
+        type             = local.enable_https ? "redirect" : "forward"
+        redirect         = local.enable_https ? { port = tostring(var.https_port), protocol = "HTTPS", status_code = "HTTP_301" } : null
+        target_group_arn = local.enable_https ? null : aws_lb_target_group.main.arn
       }
     }],
     # Conditionally add HTTPS listener
-    var.enable_ssl && var.ssl_cert_arn != null ? [{
+    local.enable_https ? [{
       port            = var.https_port
       protocol        = "HTTPS"
-      ssl_certificate = var.ssl_cert_arn
+      certificate_arn = var.ssl_cert_arn
       action = {
         type             = "forward"
         target_group_arn = aws_lb_target_group.main.arn
