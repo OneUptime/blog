@@ -8,11 +8,11 @@ Description: Learn how to create optional resources in OpenTofu using count and 
 
 ## Introduction
 
-Conditional resources allow you to optionally create infrastructure based on input variables. OpenTofu doesn't have an `if` statement for resources, but `count = 0` or `count = 1` and `for_each` with empty sets achieve the same effect cleanly.
+Conditional resources allow you to optionally create infrastructure based on input variables. OpenTofu doesn't have an `if` statement for resources. For single resources or modules in OpenTofu v1.11+, `lifecycle { enabled = ... }` is the cleanest option, while `count = 0` or `count = 1` and `for_each` with empty sets remain common patterns.
 
 ## Pattern 1: count = condition ? 1 : 0
 
-The simplest and most common pattern:
+A common pattern:
 
 ```hcl
 variable "enable_monitoring" {
@@ -93,28 +93,18 @@ output "bastion_ip" {
 Use `toset()` with an empty or populated set:
 
 ```hcl
-variable "additional_regions" {
+variable "extra_log_groups" {
   type    = list(string)
   default = []
-  # Set to ["eu-west-1", "ap-southeast-1"] to enable
+  # Set to ["api", "worker"] to enable
 }
 
-# Creates one replica per additional region, or none if list is empty
-resource "aws_s3_bucket_replication_configuration" "regional" {
-  for_each = toset(var.additional_regions)
+# Creates one log group per name, or none if list is empty
+resource "aws_cloudwatch_log_group" "extra" {
+  for_each = toset(var.extra_log_groups)
 
-  role   = aws_iam_role.replication.arn
-  bucket = aws_s3_bucket.primary.id
-
-  rule {
-    id     = "replicate-to-${each.value}"
-    status = "Enabled"
-
-    destination {
-      bucket        = aws_s3_bucket.replica[each.value].arn
-      storage_class = "STANDARD_IA"
-    }
-  }
+  name              = "/app/${each.value}/logs"
+  retention_in_days = 30
 }
 ```
 
@@ -123,10 +113,9 @@ resource "aws_s3_bucket_replication_configuration" "regional" {
 ```hcl
 variable "custom_domain" {
   type = object({
-    domain_name     = string
-    certificate_arn = string
+    domain_name = string
   })
-  default = null   # null = no custom domain
+  default = null   # null = no custom domain rule
 }
 
 resource "aws_lb_listener_rule" "custom_domain" {
@@ -167,7 +156,7 @@ resource "aws_lb" "main" {
   # ...
 }
 
-# Null attributes are safely ignored by OpenTofu
+# Skip the association entirely when there is no WAF ARN
 resource "aws_wafv2_web_acl_association" "alb" {
   count        = local.waf_arn != null ? 1 : 0
   resource_arn = aws_lb.main.arn
@@ -197,4 +186,4 @@ output "ips" { value = aws_instance.web[*].public_ip }
 
 ## Conclusion
 
-Conditional resources in OpenTofu use `count = condition ? 1 : 0` for simple enable/disable patterns, `for_each = toset(list)` for variable-count resources, and `variable = null` with null checks for optional configuration. Use `one()` to safely reference optional resources in outputs, and `try()` to handle the case where a conditional resource doesn't exist. Avoid mixing `count` and `for_each` on the same resource.
+Conditional resources in OpenTofu use `lifecycle { enabled = ... }` for single-resource toggles on OpenTofu v1.11+, `count = condition ? 1 : 0` for simple indexed enable/disable patterns, `for_each = toset(list)` for variable-count resources, and `variable = null` with null checks for optional configuration. Use `one()` to safely reference optional resources in outputs, and `try()` to handle the case where a conditional resource doesn't exist. Avoid mixing `count` and `for_each` on the same resource.
