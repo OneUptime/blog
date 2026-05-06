@@ -8,7 +8,7 @@ Description: Configure DHCP-based IPv4 addressing on Linux interfaces using syst
 
 ## Introduction
 
-systemd-networkd can request an IPv4 address via DHCP by setting `DHCP=yes` or `DHCP=ipv4` in the `[Network]` section of a `.network` file. Additional DHCP behavior (client ID, routes, DNS) can be tuned in a `[DHCPv4]` section.
+systemd-networkd can request an IPv4 address via DHCP by setting `DHCP=yes` or `DHCP=ipv4` in the `[Network]` section of a `.network` file. Additional DHCP client behavior (client ID, routes, DNS, hostname handling) can be tuned in a `[DHCPv4]` section.
 
 ## Basic DHCP Configuration
 
@@ -41,14 +41,14 @@ Name=eth0
 DHCP=ipv4
 
 [DHCPv4]
-# Use MAC address as client identifier (default)
+# Use MAC address as client identifier
 ClientIdentifier=mac
 
-# Or use the hostname
+# Or use an RFC 4361 client ID based on IAID and DUID (default)
 # ClientIdentifier=duid
 ```
 
-## Request Specific DHCP Options
+## Control Common DHCP Options
 
 ```ini
 [Match]
@@ -67,14 +67,14 @@ UseDNS=yes
 # Accept NTP servers from DHCP server
 UseNTP=yes
 
-# Set hostname from DHCP
+# Accept transient hostname from DHCP
 UseHostname=yes
 
 # Optionally send a hostname to the DHCP server
 Hostname=myhost
 ```
 
-## DHCP with Fallback Static Address
+## DHCP with an Additional Static Address
 
 ```ini
 [Match]
@@ -82,17 +82,18 @@ Name=eth0
 
 [Network]
 DHCP=ipv4
+# Static address configured alongside the DHCP lease
 Address=192.168.1.200/24
 
 [DHCPv4]
-# If DHCP fails, the static address is still configured
+# Set the metric for routes learned from DHCP
 RouteMetric=100
 ```
 
 ## Renew the DHCP Lease Manually
 
 ```bash
-# Force DHCP renew on eth0
+# Request DHCP lease renewal on eth0
 networkctl renew eth0
 
 # Or restart the networkd service
@@ -131,4 +132,4 @@ DHCP=ipv4
 
 ## Conclusion
 
-DHCP with systemd-networkd is configured by setting `DHCP=ipv4` in a `.network` file. The `[DHCPv4]` section controls which options to accept from the DHCP server. Use `networkctl status <interface>` to view the assigned address and lease details. Run `networkctl renew <interface>` to request a new lease.
+DHCP with systemd-networkd is configured by setting `DHCP=ipv4` in a `.network` file. The `[DHCPv4]` section controls DHCP client behavior, including which settings to accept from the DHCP server. Use `networkctl status <interface>` to view the assigned address and lease details. Run `networkctl renew <interface>` to request a new lease.
