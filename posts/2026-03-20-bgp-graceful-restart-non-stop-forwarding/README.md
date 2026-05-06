@@ -8,9 +8,9 @@ Description: Learn how to configure BGP Graceful Restart to maintain packet forw
 
 ## What Is BGP Graceful Restart?
 
-BGP Graceful Restart (GR), defined in RFC 4724, allows a router that is restarting its BGP process to signal its neighbors to continue forwarding packets using stale routes while the session is re-established. Without GR, a BGP restart causes neighbors to immediately withdraw all routes, creating a traffic blackhole until the session comes back up.
+BGP Graceful Restart (GR), defined in RFC 4724, allows a router that is restarting its BGP process to signal its neighbors to retain previously learned routes temporarily while the session is re-established. Without GR, a BGP restart causes neighbors to withdraw those routes immediately, which can interrupt traffic until the session comes back up.
 
-Non-Stop Forwarding (NSF) is the Cisco implementation that works with GR on hardware platforms that support separate control and data planes.
+Non-Stop Forwarding (NSF) is the Cisco high-availability behavior that works with GR on platforms that can preserve forwarding state during a control-plane or route-processor switchover.
 
 ## How Graceful Restart Works
 
@@ -19,18 +19,19 @@ sequenceDiagram
     participant Restarting as Restarting Router
     participant Helper as Helper Router
 
+    Note over Restarting,Helper: Graceful Restart capability was negotiated before the failure
     Note over Restarting: BGP process crashes/restarts
     Note over Restarting: Data plane continues forwarding
-    Restarting->>Helper: OPEN with Graceful Restart capability
     Helper->>Helper: Mark routes as stale, continue forwarding
-    Restarting->>Helper: BGP session re-established
+    Restarting->>Helper: Session re-established, OPEN with Graceful Restart capability
+    Restarting->>Helper: Initial routing updates
     Restarting->>Helper: End-of-RIB marker sent
-    Helper->>Helper: Remove stale routes, install fresh routes
+    Helper->>Helper: Remove any remaining stale routes
 ```
 
 ## Step 1: Enable BGP Graceful Restart
 
-On Cisco IOS, graceful restart is enabled per address family:
+On Cisco IOS/IOS XE, graceful restart is configured under BGP router configuration mode and negotiated per address family with each neighbor:
 
 ```text
 router bgp 65001
@@ -52,40 +53,35 @@ The `restart-time` is advertised to helpers so they know how long to retain stal
 Router# show ip bgp neighbors 203.0.113.1
 
 ! Look for:
-! Graceful Restart Capability: advertised and received
-! Graceful-restart restart time is 120 seconds
-! Address families preserved: IPv4 Unicast
+! Address family IPv4 Unicast: advertised and received
+! Graceful Restart Capability: advertised
+! Graceful-Restart is enabled, restart-time 120 seconds, stalepath-time 360 secs
 ```
 
 Both the restarting router and the helper must support and advertise the GR capability.
 
-## Step 3: Enable NSF on Cisco Platforms with Dual Processors
+## Step 3: Verify NSF Support on Cisco Platforms
 
-On platforms that support NSF (like Cisco 7600, ASR series), enable NSF awareness:
+On Cisco IOS/IOS XE, `bgp graceful-restart` also enables BGP NSF awareness on the peer. Actual nonstop forwarding during a switchover still depends on the restarting router supporting NSF/SSO in hardware and software:
 
 ```text
-! Enable NSF awareness (helps BGP peers using NSF)
+! Enable graceful restart / BGP NSF awareness
 router bgp 65001
  bgp graceful-restart
- ! NSF is automatically enabled on supported platforms
 ```
 
-On IOS XE/XR platforms, NSF may be enabled by default-verify with:
-
-```text
-Router# show ip bgp neighbors | include NSF
-! Output should show: NSF aware route processor
-```
+Use the same `show ip bgp neighbors` output from Step 2 to verify that graceful restart is active for the neighbor.
 
 ## Step 4: Configure Graceful Restart on FRRouting
 
-For Linux routers running FRR:
+For Linux routers running FRR, advertise preserved forwarding state only if the forwarding plane really stays programmed during restart:
 
 ```bash
 # In /etc/frr/bgpd.conf or via vtysh
 
 router bgp 65001
  bgp graceful-restart
+ ! Use only when forwarding state is actually preserved during restart
  bgp graceful-restart preserve-fw-state
  bgp graceful-restart restart-time 120
  bgp graceful-restart stalepath-time 360
@@ -93,17 +89,20 @@ router bgp 65001
 
 ## Step 5: Test Graceful Restart
 
-Test GR behavior in a lab by clearing the BGP process and observing stale route handling:
+Test GR behavior in a lab by triggering an actual BGP process or daemon restart and observing stale route handling on the helper router:
 
 ```text
-! Clear BGP process (simulates restart)
-Router# clear ip bgp * soft
+! Trigger an actual BGP restart in the lab
+! A soft reset does not invoke graceful restart
 
-! On the helper router, observe stale routes
+! On the helper router, stale routes appear with an "S" flag
+Helper# show ip bgp
+
+! Confirm the neighbor comes back with GR enabled
 Helper# show ip bgp neighbors 1.1.1.1
 
-! During the restart window, routes are marked stale
-! but the helper continues to forward traffic
+! During the restart window, routes stay in the table as stale
+! and are removed or refreshed after End-of-RIB is received
 ```
 
 ## Caveats and Limitations
