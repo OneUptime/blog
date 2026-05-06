@@ -8,7 +8,7 @@ Description: Configure Cisco IOS Zone-Based Firewall (ZBF) to perform stateful I
 
 ## Introduction
 
-Zone-Based Firewall (ZBF) replaces the legacy `ip inspect` model. Interfaces are assigned to zones; traffic between zones is controlled by zone-pair policies with inspect, drop, or pass actions. All traffic between zones is denied by default unless explicitly permitted.
+Zone-Based Firewall (ZBF) replaces the legacy `ip inspect` model. Interfaces are assigned to zones; traffic between zones is controlled by zone-pair policies with inspect, drop, or pass actions. Traffic between user-defined zones is denied by default unless explicitly permitted.
 
 ## Zone Definition and Interface Assignment
 
@@ -40,12 +40,12 @@ interface GigabitEthernet0/2
 ```cisco
 ! Match traffic for inspection
 class-map type inspect match-any INSIDE-TO-OUTSIDE-TRAFFIC
+ match protocol http
+ match protocol https
+ match protocol dns
  match protocol tcp
  match protocol udp
  match protocol icmp
- match protocol dns
- match protocol http
- match protocol https
 
 class-map type inspect match-any DMZ-SERVICES
  match protocol http
@@ -84,10 +84,6 @@ zone-pair security OUTSIDE-TO-DMZ source OUTSIDE destination DMZ
 
 zone-pair security INSIDE-TO-DMZ source INSIDE destination DMZ
  service-policy type inspect INSIDE-TO-DMZ-POLICY
-
-! Self zone - allows traffic to/from the router itself
-zone-pair security INSIDE-TO-SELF source INSIDE destination self
- service-policy type inspect INSIDE-TO-OUTSIDE-POLICY
 ```
 
 ## Verify ZBF
@@ -100,7 +96,7 @@ show zone-pair security
 show policy-map type inspect zone-pair INSIDE-TO-OUTSIDE
 
 ! Show active sessions
-show policy-firewall sessions
+show policy-map type inspect zone-pair sessions
 
 ! Show zone assignments
 show zone security
