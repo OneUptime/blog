@@ -20,64 +20,59 @@ cat >> /etc/bind/zones/db.example.com << 'EOF'
 www     60  IN  A  10.20.0.10
 www     60  IN  A  10.20.0.11
 www     60  IN  A  10.20.0.12
-; TTL=60: short TTL ensures clients re-query and get different IPs
-; (avoids all clients sticking to same server due to long cache)
+; TTL=60: shorter TTL encourages more frequent re-queries
+; (distribution is still affected by caching resolvers)
 EOF
 
 # Reload BIND:
 rndc reload example.com
 
 # Verify round-robin:
-dig www.example.com +short
+dig @127.0.0.1 www.example.com +short
 # Returns all 3 IPs; order may vary
 
-dig www.example.com +short
-# Second query may show different order (BIND shuffles by default)
+dig @127.0.0.1 www.example.com +short
+# Second query may show a different order
 ```
 
-## Configure rndc's Round-Robin Rotation
+## Configure BIND's RRset Ordering
 
 ```bash
 # BIND has a rrset-order directive to control answer ordering:
 # /etc/bind/named.conf.options:
 options {
-    # Randomize order for each response (true round-robin):
-    rrset-order { order random; };
+    # Explicit round-robin rotation:
+    rrset-order { order cyclic; };
 
-    # Or: cyclic rotation (strict round-robin, not random):
-    # rrset-order { order cyclic; };
-
-    # Or: fixed order (not round-robin, always same):
-    # rrset-order { order fixed; };
+    # If you leave rrset-order unset, BIND uses its version-specific default.
 };
 ```
 
 ## Configure with dnsmasq
 
 ```bash
-# dnsmasq automatically round-robins multiple address directives:
+# dnsmasq can return multiple A records for the same name:
 cat >> /etc/dnsmasq.d/lb.conf << 'EOF'
 # Round-robin across 3 servers:
-address=/api.example.com/10.20.0.10
-address=/api.example.com/10.20.0.11
-address=/api.example.com/10.20.0.12
+host-record=api.example.com,10.20.0.10,60
+host-record=api.example.com,10.20.0.11,60
+host-record=api.example.com,10.20.0.12,60
 
-# Short TTL for quicker distribution:
-# dnsmasq uses the global TTL; set min-cache-ttl in conf
+# dnsmasq permutes A/AAAA answers by default unless no-round-robin is set
 EOF
 ```
 
 ## TTL Considerations
 
 ```bash
-# TTL determines how long clients cache a specific IP:
-# TTL=3600: client keeps using same server for 1 hour
-#           → Load is NOT distributed at client level, only per new connection
-# TTL=60:   client re-queries every minute → better distribution
-# TTL=0:    client must query on every request → maximum distribution
-#           → Very high DNS query load, not recommended
+# TTL determines how long a resolver may cache the RRset:
+# TTL=3600: a client or recursive resolver may keep returning the same cached RRset
+#           → Fewer fresh DNS lookups, so distribution changes more slowly
+# TTL=60:   encourages more frequent re-queries → better distribution across fresh lookups
+# TTL=0:    disables caching beyond the current transaction
+#           → Higher DNS query load, usually not recommended
 
-# Best practice: TTL 30-60 for round-robin load balancing
+# Common starting point: TTL 30-60 for simple round-robin load balancing
 # This balances re-query frequency against DNS server load
 
 # Check effective TTL:
@@ -89,7 +84,7 @@ dig www.example.com | grep -A1 "ANSWER" | tail -1 | awk '{print "TTL:", $2}'
 ```bash
 # 1. No health checking
 # If a server goes down, DNS still returns its IP
-# Clients get ECONNREFUSED until TTL expires and they re-query
+# Clients can get connection failures until they re-query and pick a healthy IP
 
 # 2. Unequal distribution
 # Clients cache differently; some may cache longer than TTL
@@ -100,20 +95,21 @@ dig www.example.com | grep -A1 "ANSWER" | tail -1 | awk '{print "TTL:", $2}'
 # Multi-request protocols (HTTP keep-alive is fine; HTTP/1.0 per-request may break)
 
 # 4. Thundering herd
-# When TTL expires simultaneously for many clients, all re-query
-# And all get the same first IP in the rotation
+# When TTL expires simultaneously for many clients, many may re-query at once
+# Clients behind the same caching resolver often see the same cached RRset until it expires
 
 # When to use DNS round-robin:
 # - Stateless services (each request independent)
 # - Batch jobs where session persistence doesn't matter
-# - Geographic load distribution (A vs AAAA for different DCs)
+# - Simple distribution across multiple equivalent servers
 # - Simple redundancy (acceptable that unhealthy server gets traffic briefly)
 ```
 
 ## Health-Checked Alternative
 
 ```bash
-# For health checking: use nsupdate to remove unhealthy servers
+# For health checking on a dynamically updatable zone: use nsupdate
+# The zone must allow updates from this client or TSIG key.
 # Simple health check + nsupdate script:
 
 #!/bin/bash
@@ -121,7 +117,7 @@ SERVER_IP="10.20.0.12"
 DOMAIN="www.example.com"
 DNS_SERVER="10.20.0.1"
 
-if ! curl -sf http://$SERVER_IP/health > /dev/null 2>&1; then
+if ! curl -sf "http://$SERVER_IP/health" > /dev/null 2>&1; then
     echo "Server $SERVER_IP unhealthy, removing from DNS"
     nsupdate << EOF
 server $DNS_SERVER
@@ -134,4 +130,4 @@ fi
 
 ## Conclusion
 
-DNS round-robin is the simplest load balancing mechanism requiring no infrastructure beyond your existing DNS. Configure multiple A records with a short TTL (30-60 seconds) for reasonable distribution. Use BIND's `rrset-order random` for true randomization. Understand the limitations: no health checking, no true session persistence, and uneven distribution due to client-side caching. For production load balancing with health checks, DNS round-robin is a reasonable first step before investing in a proper load balancer, or as a complement to load balancers for geographic distribution.
+DNS round-robin is the simplest load balancing mechanism requiring no infrastructure beyond your existing DNS. Configure multiple A records with a short TTL (30-60 seconds) for reasonable distribution. Use BIND's `rrset-order cyclic` if you want explicit rotation. Understand the limitations: no health checking, no true session persistence, and uneven distribution due to client-side caching. For production load balancing with health checks, DNS round-robin is a reasonable first step before investing in a proper load balancer, or as a complement to load balancers for geographic distribution.
