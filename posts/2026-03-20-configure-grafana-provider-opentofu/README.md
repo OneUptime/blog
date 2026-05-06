@@ -15,10 +15,9 @@ The Grafana provider for OpenTofu enables managing Grafana resources with the sa
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    grafana = {
+      source  = "grafana/grafana"
+      version = "~> 4.0"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,33 +26,24 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Grafana provider can read configuration from environment variables:
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export GRAFANA_URL="https://grafana.example.com"
+export GRAFANA_AUTH="your-service-account-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "grafana" {
+  # url and auth are read from GRAFANA_URL and GRAFANA_AUTH
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
+resource "grafana_folder" "main" {
+  title = "${var.name}-${var.environment}"
 }
 ```
 
@@ -67,12 +57,12 @@ variable "environment" { type = string }
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "resource_id" { value = grafana_folder.main.id }
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
+- Store Grafana credentials in environment variables or a secrets manager, never in `.tf` files
 - Pin provider versions in `required_providers` to prevent unexpected updates
 - Commit the `.terraform.lock.hcl` file to lock exact provider versions
 - Use separate provider configurations per environment using aliases or workspaces
