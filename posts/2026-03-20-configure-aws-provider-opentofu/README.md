@@ -8,7 +8,7 @@ Description: Learn how to configure the AWS provider in OpenTofu, including regi
 
 ## Introduction
 
-The AWS provider is the most widely used OpenTofu provider. Configuring it correctly-with the right region, authentication method, and global tags-sets the foundation for all AWS resources you manage with OpenTofu.
+The AWS provider is one of the most widely used providers with OpenTofu. Configuring it correctly-with the right region, authentication method, and global tags-sets the foundation for all AWS resources you manage with OpenTofu.
 
 ## Minimal Configuration
 
@@ -19,7 +19,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 
@@ -32,11 +32,11 @@ provider "aws" {
 }
 ```
 
-Run `tofu init` to download the provider, then `tofu plan` to verify connectivity.
+Run `tofu init` to download the provider, then `tofu plan` to confirm OpenTofu can initialize the provider configuration.
 
 ## Setting Default Tags
 
-Apply tags to every resource without repeating them:
+Apply tags across supported resources without repeating them:
 
 ```hcl
 provider "aws" {
@@ -53,7 +53,7 @@ provider "aws" {
 }
 ```
 
-These tags are automatically applied to all resources created by this provider, and can be overridden per-resource.
+These tags are automatically applied to resources that support `tags` in this provider. Matching keys can be overridden per-resource, but provider-level default tags cannot be excluded from a specific resource.
 
 ## Assuming an IAM Role
 
@@ -144,7 +144,7 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       # Allow patch updates but not minor/major version bumps
-      version = "~> 5.40"
+      version = "~> 6.43"
     }
   }
 }
