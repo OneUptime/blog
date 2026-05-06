@@ -31,7 +31,7 @@ subnet 10.0.10.0 netmask 255.255.255.0 {
     range 10.0.10.50 10.0.10.200;
     option routers 10.0.10.1;
     option domain-name-servers 10.0.0.53, 8.8.8.8;
-    option domain-name "office.example.local";
+    option domain-name "office.example.com";
     default-lease-time 86400;
 }
 
@@ -40,7 +40,7 @@ subnet 10.0.30.0 netmask 255.255.255.0 {
     range 10.0.30.10 10.0.30.250;
     option routers 10.0.30.1;
     option domain-name-servers 10.0.0.53;
-    # VoIP phones call manager IP
+    # VoIP phones TFTP server
     option tftp-server-name "10.0.0.100";
     default-lease-time 3600;    # 1 hour - phones re-register frequently
 }
@@ -61,28 +61,28 @@ subnet 10.0.99.0 netmask 255.255.255.0 {
 
 # Office LAN on eth0.10
 interface=eth0.10
-dhcp-range=eth0.10,10.0.10.50,10.0.10.200,255.255.255.0,24h
+dhcp-range=set:office,10.0.10.50,10.0.10.200,255.255.255.0,24h
 
 # VoIP VLAN on eth0.30
 interface=eth0.30
-dhcp-range=eth0.30,10.0.30.10,10.0.30.250,255.255.255.0,1h
+dhcp-range=set:voip,10.0.30.10,10.0.30.250,255.255.255.0,1h
 
 # Guest WiFi on eth0.99
 interface=eth0.99
-dhcp-range=eth0.99,10.0.99.10,10.0.99.250,255.255.255.0,30m
+dhcp-range=set:guest,10.0.99.10,10.0.99.250,255.255.255.0,30m
 
-# Options per interface
-dhcp-option=eth0.10,option:router,10.0.10.1
-dhcp-option=eth0.30,option:router,10.0.30.1
-dhcp-option=eth0.99,option:router,10.0.99.1
+# Options per network
+dhcp-option=tag:office,option:router,10.0.10.1
+dhcp-option=tag:voip,option:router,10.0.30.1
+dhcp-option=tag:guest,option:router,10.0.99.1
 ```
 
 ## Address Pool Sizing
 
 When sizing a DHCP pool, consider:
 - **Concurrent clients**: How many devices are active at once?
-- **Lease duration**: Shorter leases = IPs returned faster; longer = fewer renewals.
-- **Growth headroom**: Leave 20% of addresses outside the pool for static assignments.
+- **Lease duration**: Shorter leases reclaim abandoned addresses faster; longer leases create fewer renewals.
+- **Growth headroom**: A common starting point is to leave 20% of addresses outside the pool for static assignments.
 
 ```python
 def pool_sizing(total_hosts: int, utilization: float = 0.8) -> dict:
@@ -102,6 +102,6 @@ for prefix in [24, 23, 22]:
 ## Key Takeaways
 
 - Create one scope per subnet with appropriate range, options, and lease time.
-- VoIP and guest networks benefit from shorter leases; office LANs from longer ones.
-- Always reserve 20% of the pool outside the dynamic range for static assignments.
-- Verify scope overlap doesn't occur between different subnets on the same server.
+- VoIP and guest networks often benefit from shorter leases; office LANs often use longer ones.
+- A 20% static reserve is a common starting point, but size pools to fit your actual environment.
+- Verify dynamic address ranges do not overlap and that each scope matches the intended subnet.
