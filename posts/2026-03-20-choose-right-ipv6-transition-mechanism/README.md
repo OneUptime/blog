@@ -38,8 +38,8 @@ flowchart TD
 Most enterprises should run dual-stack during transition and progressively move workloads to native IPv6:
 
 - New services: IPv6-native from day one
-- Existing IPv4 services: Add AAAA records, keep A records
-- Client access: Dual-stack clients use IPv6 when available (Happy Eyeballs)
+- Existing IPv4 services: Enable IPv6 on the service, publish AAAA records, keep A records
+- Client access: Dual-stack clients generally prefer IPv6 but fall back quickly if IPv4 works better (Happy Eyeballs)
 
 **When to use NAT64+DNS64**: When you want an IPv6-only segment (e.g., new data center pods) that still needs to reach legacy IPv4 external services.
 
@@ -49,7 +49,7 @@ Choose based on subscriber scale and operational preferences:
 
 | Technology | Best When | Drawback |
 |---|---|---|
-| Dual-Stack | IPv4 pool is sufficient | Requires two addresses per sub |
+| Dual-Stack | IPv4 pool is sufficient | Requires IPv4 plus IPv6 per sub |
 | DS-Lite | IPv4 pool is limited; prefer simpler CPE | AFTR state at scale |
 | lw4o6 | Large scale; can afford complex CPE | CPE must do NAT |
 | MAP-E | Very large scale; stateless preferred | Complex provisioning |
@@ -59,12 +59,12 @@ Choose based on subscriber scale and operational preferences:
 
 **Recommended: 464XLAT**
 
-Mobile networks are almost universally IPv6-only at the radio level. 464XLAT is the industry standard because:
+Many mobile networks deploy IPv6-only data services. 464XLAT is the standardized mechanism used to preserve IPv4 app compatibility because:
 
-- Devices get an IPv6 address only (saves IPv4 address space)
+- Devices get IPv6 connectivity on the access network (saves IPv4 address space)
 - CLAT on device handles IPv4-only apps transparently
 - PLAT (NAT64) at the carrier handles translation
-- Supported natively on Android 5+, iOS 8+, modern Linux
+- CLAT is implemented on Android, iOS, Linux, Windows, and Chrome OS; exact support varies by OS release and device
 
 ## Cloud / Kubernetes Environments
 
@@ -80,7 +80,7 @@ For Kubernetes and cloud environments:
 
 | Technology | IPv6-only clients | IPv4 apps | Stateful? | Complexity | Best for |
 |---|---|---|---|---|---|
-| Dual-Stack | Partial | Yes | No | Low | Enterprise |
+| Dual-Stack | No | Yes | No | Low | Enterprise |
 | 6in4/SIT | Yes | No | No | Low | Home users |
 | NAT64+DNS64 | Yes | Partial | Yes | Medium | Enterprise, cloud |
 | 464XLAT | Yes | Yes | Yes (PLAT) | Medium | Mobile carriers |
@@ -109,4 +109,4 @@ For Kubernetes and cloud environments:
 
 ## Summary
 
-No single IPv6 transition technology fits every use case. Enterprise networks benefit from dual-stack with eventual migration to native IPv6. Mobile carriers almost exclusively use 464XLAT. ISPs choose between DS-Lite, lw4o6, MAP-E, or MAP-T based on scale and operational complexity tolerance. Start with your client types, scale, and IPv4 dependency requirements to narrow down the right choice.
+No single IPv6 transition technology fits every use case. Enterprise networks benefit from dual-stack with eventual migration to native IPv6. Mobile carriers commonly use 464XLAT for IPv6-only data deployments. ISPs choose between DS-Lite, lw4o6, MAP-E, or MAP-T based on scale and operational complexity tolerance. Start with your client types, scale, and IPv4 dependency requirements to narrow down the right choice.
