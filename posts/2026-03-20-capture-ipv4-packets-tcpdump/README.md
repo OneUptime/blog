@@ -62,7 +62,7 @@ sudo tcpdump -i eth0 icmp
 # Combine filters with and/or/not
 sudo tcpdump -i eth0 'host 192.168.1.50 and port 80'
 sudo tcpdump -i eth0 'tcp and not port 22'    # Exclude SSH
-sudo tcpdump -i eth0 'src 192.168.1.0/24 and dst port 443'
+sudo tcpdump -i eth0 'src net 192.168.1.0/24 and dst port 443'
 ```
 
 ## Step 3: Verbose Output Options
@@ -96,9 +96,9 @@ sudo tcpdump -i eth0 -c 100 host 192.168.1.50
 sudo timeout 30 tcpdump -i eth0 -n ip
 
 # Limit snapshot length (bytes per packet)
-# Default captures full packet; -s 128 captures only headers
-sudo tcpdump -i eth0 -s 128 -n tcp   # Headers only (faster)
-sudo tcpdump -i eth0 -s 0 -n tcp     # Full packets (default in modern tcpdump)
+# Default snaplen is 262144 bytes; -s 128 truncates each packet to 128 bytes
+sudo tcpdump -i eth0 -s 128 -n tcp   # Capture only the first 128 bytes of each packet
+sudo tcpdump -i eth0 -s 0 -n tcp     # Use the default snaplen
 ```
 
 ## Step 5: Save Capture to PCAP File
@@ -127,7 +127,7 @@ sudo tcpdump -i eth0 'tcp[tcpflags] & tcp-syn != 0 and tcp[tcpflags] & tcp-ack =
 # Capture ICMP only
 sudo tcpdump -i eth0 icmp
 
-# Capture DHCP traffic (broadcast on ports 67/68)
+# Capture DHCP traffic (UDP ports 67/68)
 sudo tcpdump -i eth0 port 67 or port 68
 
 # Capture large packets (MTU issues)
@@ -143,18 +143,18 @@ sudo tcpdump -i eth0 -n port 53
 ## Step 7: Running tcpdump Without Root
 
 ```bash
-# Option 1: Add user to pcap group (Linux with pcap capabilities)
+# Option 1: Add user to pcap group (one Linux approach with file capabilities)
 sudo groupadd pcap
 sudo usermod -aG pcap $USER
-sudo chgrp pcap /usr/sbin/tcpdump
-sudo chmod 750 /usr/sbin/tcpdump
-sudo setcap cap_net_raw,cap_net_admin=eip /usr/sbin/tcpdump
+sudo chgrp pcap "$(command -v tcpdump)"
+sudo chmod 750 "$(command -v tcpdump)"
+sudo setcap cap_net_raw,cap_net_admin=eip "$(command -v tcpdump)"
 
 # Option 2: Run with sudo in scripts
 # Option 3: Use dumpcap (Wireshark's capture tool, less privileged)
 sudo apt-get install wireshark
 sudo usermod -aG wireshark $USER
-dumpcap -i eth0 -w /tmp/capture.pcap
+dumpcap -i eth0 -w /tmp/capture.pcapng
 ```
 
 ## Practical Capture Examples
@@ -163,8 +163,8 @@ dumpcap -i eth0 -w /tmp/capture.pcap
 # Diagnose why a server can't reach 10.20.30.1
 sudo tcpdump -i eth0 -n 'host 10.20.30.1' -v
 
-# Watch HTTP requests in real-time
-sudo tcpdump -i eth0 -A -n 'port 80 and tcp[((tcp[12:1] & 0xf0) >> 2):4] = 0x47455420'
+# Watch HTTP GET requests in real-time
+sudo tcpdump -i eth0 -A -n 'tcp port 80 and tcp[((tcp[12:1] & 0xf0) >> 2):4] = 0x47455420'
 
 # Monitor all traffic to/from a specific subnet
 sudo tcpdump -i eth0 -n 'net 10.20.0.0/16'
