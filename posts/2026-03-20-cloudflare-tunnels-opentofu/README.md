@@ -4,21 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Infrastructure as Code, Provider, Automation, DevOps
 
-Description: Learn how to configure and use the Cloudflare Tunnels provider in OpenTofu to manage Cloudflare Tunnels resources as code.
+Description: Learn how to configure and use the Cloudflare provider in OpenTofu to manage Cloudflare Tunnel resources as code.
 
 ## Introduction
 
-The Cloudflare Tunnels provider for OpenTofu enables managing Cloudflare Tunnels resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic resource configuration, and production best practices.
+The Cloudflare provider for OpenTofu enables managing Cloudflare Tunnel resources with the same plan/apply workflow as your cloud infrastructure. This guide covers authentication, basic tunnel configuration, and production best practices.
 
 ## Provider Installation
 
 ```hcl
 terraform {
   required_providers {
-    # Replace with the actual provider source
-    provider_name = {
-      source  = "provider-namespace/provider-name"
-      version = "~> 1.0"
+    cloudflare = {
+      source  = "registry.terraform.io/cloudflare/cloudflare"
+      version = "~> 5.19"
     }
   }
   required_version = ">= 1.6.0"
@@ -27,56 +26,89 @@ terraform {
 
 ## Authentication
 
-Most providers read credentials from environment variables:
+The Cloudflare provider can read credentials from environment variables. Prefer API tokens over the legacy global API key:
 
 ```bash
-# Set provider credentials via environment variables
-
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_API_SECRET="your-api-secret"
+export CLOUDFLARE_API_TOKEN="your-api-token"
 ```
 
 ```hcl
-provider "provider_name" {
-  # Credentials are read from environment variables
-  # api_key = var.api_key  # Alternative: inline (not recommended)
+provider "cloudflare" {
+  # Credentials are read from CLOUDFLARE_API_TOKEN
 }
 ```
 
 ## Example Resource
 
 ```hcl
-# Example resource demonstrating provider usage
-resource "provider_example_resource" "main" {
-  name = "${var.name}-${var.environment}"
+resource "cloudflare_zero_trust_tunnel_cloudflared" "main" {
+  account_id = var.cloudflare_account_id
+  name       = var.tunnel_name
+  config_src = "cloudflare"
+}
 
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
+resource "cloudflare_dns_record" "app" {
+  zone_id = var.cloudflare_zone_id
+  name    = var.hostname
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.main.id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+  ttl     = 1
+}
+
+resource "cloudflare_zero_trust_tunnel_cloudflared_config" "main" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.main.id
+
+  config = {
+    ingress = [
+      {
+        hostname = var.hostname
+        service  = var.origin_url
+      },
+      {
+        service = "http_status:404"
+      }
+    ]
   }
+}
+
+data "cloudflare_zero_trust_tunnel_cloudflared_token" "main" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.main.id
 }
 ```
 
 ## Variables
 
 ```hcl
-variable "name"        { type = string }
-variable "environment" { type = string }
+variable "cloudflare_account_id" { type = string }
+variable "cloudflare_zone_id"    { type = string }
+variable "hostname"              { type = string }
+variable "origin_url"            { type = string }
+variable "tunnel_name"           { type = string }
 ```
 
 ## Outputs
 
 ```hcl
-output "resource_id" { value = provider_example_resource.main.id }
+output "tunnel_id" {
+  value = cloudflare_zero_trust_tunnel_cloudflared.main.id
+}
+
+output "tunnel_token" {
+  value     = data.cloudflare_zero_trust_tunnel_cloudflared_token.main.token
+  sensitive = true
+}
 ```
 
 ## Best Practices
 
-- Store API keys in environment variables or a secrets manager-never in .tf files
-- Pin provider versions in `required_providers` to prevent unexpected updates
-- Commit the `.terraform.lock.hcl` file to lock exact provider versions
-- Use separate provider configurations per environment using aliases or workspaces
+- Store API tokens in environment variables or a secrets manager, never in `.tf` files
+- Pin the Cloudflare provider version in `required_providers` to prevent unexpected updates
+- Commit the `.terraform.lock.hcl` file to lock the reviewed provider version
+- Use separate state and credentials per environment; provider aliases help when one configuration must target multiple Cloudflare accounts
 
 ## Conclusion
 
-Managing Cloudflare Tunnels resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
+Managing Cloudflare Tunnel resources with OpenTofu brings the same consistency and auditability to SaaS tooling as you get with cloud infrastructure. Start by codifying your most critical resources and gradually expand coverage over time.
