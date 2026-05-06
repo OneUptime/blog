@@ -35,7 +35,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   -v /opt/portainer/ssl:/certs \
-  portainer/portainer-ee:latest \
+  portainer/portainer-ee:lts \
   --sslcert /certs/portainer.crt \
   --sslkey /certs/portainer.key
 ```
@@ -45,10 +45,9 @@ docker run -d \
 ```yaml
 # portainer-production-stack.yml
 
-version: "3.8"
 services:
   portainer:
-    image: portainer/portainer-ee:latest
+    image: portainer/portainer-ee:lts
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
@@ -96,13 +95,9 @@ server {
 
 ## Step 2: Resource Sizing
 
-Portainer's resource requirements scale with the number of environments and users:
+Portainer does not publish a fixed CPU/RAM sizing matrix. Size the deployment based on the number of managed environments, enabled features, and actual usage, and pay close attention to the performance of the persistent `/data` volume.
 
-| Scale | Environments | Concurrent Users | Recommended RAM | CPU |
-|-------|-------------|------------------|----------------|-----|
-| Small | 1-10 | 1-5 | 512MB | 0.5 core |
-| Medium | 10-50 | 5-20 | 1GB | 1 core |
-| Large | 50+ | 20+ | 2GB | 2 cores |
+For production workloads, Portainer recommends using an LTS release and persistent storage with high throughput and low latency. If you use Git-based deployments, make sure the `/data` volume also has enough capacity for local repository clones.
 
 Set resource limits:
 
@@ -128,38 +123,39 @@ Monitor Portainer's own health:
     restart: always
 ```
 
-Configure a monitor for `https://portainer.example.com/api/status` - this endpoint returns Portainer's operational status.
+Configure a monitor for `https://portainer.example.com/api/system/status` - this endpoint returns Portainer's operational status.
 
 ## Step 4: Security Hardening
 
 ```bash
-# 1. Change default admin username (do this on first login)
-# 2. Enable 2FA for admin accounts (BE feature)
-# 3. Configure IP allowlist for Portainer access
-# 4. Disable anonymous usage telemetry in Settings > General
+# 1. Change the initial admin username and use a strong password
+# 2. Configure LDAP, Active Directory, or OAuth if you need centralized authentication
+# 3. If Portainer is behind a reverse proxy and you see "Origin invalid" errors,
+#    start Portainer with --trusted-origins portainer.example.com
+# 4. Disable analytics during initial setup if you do not want anonymous usage statistics
 
 # Firewall: only allow HTTPS from trusted IPs to Portainer
-ufw allow from 10.0.0.0/8 to any port 443
-ufw deny 443
+ufw allow from 10.0.0.0/8 to any port 443 proto tcp
+ufw deny 443/tcp
 ```
 
 ## Step 5: High Availability
 
 For production environments where Portainer downtime is unacceptable:
 
-1. Run Portainer behind a load balancer
-2. Use shared storage (NFS, S3-compatible) for the Portainer data volume
-3. Configure health checks and auto-restart
+1. Persist the Portainer `/data` volume and run the server on a specific management node
+2. In Docker Swarm, constrain the Portainer service to the node where the data volume lives; in Kubernetes, use cluster-available storage or a `nodeSelector`
+3. Configure backups, health monitoring, and auto-restart
 
-Note: Portainer does not currently support active-active HA - this is a warm standby configuration.
+Note: Portainer does not currently support running multiple Portainer Server instances against the same clusters, so do not place multiple server replicas behind a load balancer.
 
 ## Step 6: Regular Maintenance
 
-- **Update Portainer** - run updates monthly, following the upgrade guide
-- **Prune unused resources** - schedule weekly `docker system prune` on all hosts
+- **Update Portainer** - stay on the latest patch release in your chosen stream; Portainer recommends LTS releases for production workloads
+- **Prune unused resources** - review before pruning; `docker system prune` removes unused containers, networks, images, and build cache
 - **Review access** - quarterly user and permission review
 - **Test backups** - monthly restore test from backup
 
 ## Summary
 
-Production Portainer deployments require TLS, proper resource sizing, monitoring, security hardening, and a backup/restore plan. Treat Portainer as a critical piece of infrastructure - its availability affects all the services it manages.
+Production Portainer deployments require TLS, proper sizing, monitoring, security hardening, persistent storage, and a backup/restore plan. Treat Portainer as a critical piece of infrastructure - its availability affects all the services it manages.
