@@ -19,7 +19,7 @@ For a network `A.B.C.D/N`:
 
 ```text
 Subnet mask = N consecutive 1-bits followed by (32-N) 0-bits
-Hosts per subnet = 2^(32-N) - 2  (subtract network & broadcast)
+Hosts per subnet = 2^(32-N) - 2 for /30 and shorter prefixes
 Number of /N subnets in a /M = 2^(N-M)
 
 Examples:
@@ -30,7 +30,7 @@ Examples:
 /28 = 16 addresses, 14 usable hosts
 /29 = 8 addresses, 6 usable hosts
 /30 = 4 addresses, 2 usable hosts (WAN links)
-/31 = 2 addresses, 2 usable (RFC 3021, no broadcast)
+/31 = 2 addresses, 2 usable on point-to-point links (RFC 3021)
 /32 = 1 address (host route, loopback)
 ```
 
@@ -68,13 +68,25 @@ from ipaddress import ip_network, ip_interface
 def subnet_info(cidr):
     net = ip_network(cidr, strict=False)
 
+    if net.prefixlen == 32:
+        first_host = last_host = net.network_address
+        usable_hosts = 1
+    elif net.prefixlen == 31:
+        first_host = net.network_address
+        last_host = net.broadcast_address
+        usable_hosts = 2
+    else:
+        first_host = net.network_address + 1
+        last_host = net.broadcast_address - 1
+        usable_hosts = net.num_addresses - 2
+
     return {
         'network_address': str(net.network_address),
         'broadcast_address': str(net.broadcast_address),
         'subnet_mask': str(net.netmask),
-        'first_host': str(net.network_address + 1),
-        'last_host': str(net.broadcast_address - 1),
-        'usable_hosts': net.num_addresses - 2,
+        'first_host': str(first_host),
+        'last_host': str(last_host),
+        'usable_hosts': usable_hosts,
         'total_addresses': net.num_addresses,
         'prefix_length': net.prefixlen,
     }
@@ -100,14 +112,27 @@ def divide_network(parent_cidr, new_prefix):
     parent = ip_network(parent_cidr)
     subnets = list(parent.subnets(new_prefix=new_prefix))
 
+    if subnets[0].prefixlen == 32:
+        hosts_per_subnet = 1
+    elif subnets[0].prefixlen == 31:
+        hosts_per_subnet = 2
+    else:
+        hosts_per_subnet = subnets[0].num_addresses - 2
+
     print(f"Dividing {parent_cidr} into /{new_prefix} subnets:")
     print(f"Number of subnets: {len(subnets)}")
-    print(f"Hosts per subnet: {subnets[0].num_addresses - 2}")
+    print(f"Hosts per subnet: {hosts_per_subnet}")
     print()
 
     for i, subnet in enumerate(subnets[:10]):  # Show first 10
-        first = subnet.network_address + 1
-        last = subnet.broadcast_address - 1
+        if subnet.prefixlen == 32:
+            first = last = subnet.network_address
+        elif subnet.prefixlen == 31:
+            first = subnet.network_address
+            last = subnet.broadcast_address
+        else:
+            first = subnet.network_address + 1
+            last = subnet.broadcast_address - 1
         print(f"  Subnet {i+1}: {subnet}  ({first} - {last})")
 
     if len(subnets) > 10:
@@ -141,4 +166,4 @@ divide_network('192.168.1.0/24', 26)
 
 ## Conclusion
 
-Subnet calculations follow a simple formula: usable hosts = 2^(32-prefix) - 2, network address = IP ANDed with mask, broadcast = network OR inverted mask. Use Python's `ipaddress.ip_network()` for instant calculations in scripts, and `parent.subnets(new_prefix=N)` to divide a network into equal subnets. A /30 with 2 usable hosts is the standard for WAN point-to-point links; /31 (RFC 3021) eliminates the wasted broadcast address for modern router links.
+Subnet calculations follow a simple formula: usable hosts = 2^(32-prefix) - 2 for /30 and shorter prefixes, network address = IP ANDed with mask, broadcast = network OR inverted mask. Use Python's `ipaddress.ip_network()` for instant calculations in scripts, and `parent.subnets(new_prefix=N)` to divide a network into equal subnets. A /30 with 2 usable hosts is the standard for WAN point-to-point links; /31 (RFC 3021) lets both addresses be used as host addresses on point-to-point links, while /32 represents a single-host route.
