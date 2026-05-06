@@ -41,15 +41,21 @@ import ipaddress
 
 def get_nth_subnet(parent_str: str, prefix: int, n: int) -> ipaddress.IPv6Network:
     """
-    Get the nth subnet of a given prefix length from a parent network.
+    Get the subnet at zero-based index n for a given prefix length.
     More efficient than generating all subnets.
     """
     parent = ipaddress.IPv6Network(parent_str)
     parent_int = int(parent.network_address)
 
+    if prefix <= parent.prefixlen:
+        raise ValueError(f"Prefix /{prefix} must be larger than /{parent.prefixlen}")
+
+    max_subnets = 1 << (prefix - parent.prefixlen)
+    if not 0 <= n < max_subnets:
+        raise IndexError(f"Subnet index {n} out of range for {parent}")
+
     # Calculate the size of each subnet
-    bits_diff = prefix - parent.prefixlen
-    subnet_size = 2 ** (128 - prefix)
+    subnet_size = 1 << (128 - prefix)
 
     # Calculate the nth subnet's network address
     nth_network_int = parent_int + (n * subnet_size)
@@ -57,9 +63,9 @@ def get_nth_subnet(parent_str: str, prefix: int, n: int) -> ipaddress.IPv6Networ
 
     return ipaddress.IPv6Network(f"{nth_network}/{prefix}")
 
-# Get the 100th /64 subnet from a /56
+# Get the /64 subnet at zero-based index 100 from a /56
 subnet = get_nth_subnet("2001:db8:1::/56", prefix=64, n=100)
-print(f"100th /64: {subnet}")   # 2001:db8:1:6400::/64
+print(f"Index 100 /64: {subnet}")   # 2001:db8:1:64::/64
 ```
 
 ## Calculating Available Subnets in a Range
@@ -87,7 +93,7 @@ def find_available_subnets(
     found = 0
 
     for subnet in parent.subnets(new_prefix=prefix):
-        if subnet not in allocated_nets:
+        if not any(subnet.overlaps(net) for net in allocated_nets):
             yield subnet
             found += 1
             if found >= count:
@@ -120,11 +126,14 @@ def generate_allocation_table(parent_str: str, subnet_prefix: int, count: int) -
     for i, subnet in enumerate(parent.subnets(new_prefix=subnet_prefix)):
         if i >= count:
             break
+        # IPv6 usable hosts exclude the Subnet-Router anycast address except on /127.
+        first_host = subnet.network_address if subnet.prefixlen >= 127 else subnet.network_address + 1
+        last_host = subnet.network_address + subnet.num_addresses - 1
         allocations.append({
             "index": i,
             "prefix": str(subnet),
-            "first_host": str(list(subnet.hosts())[0]) if subnet.prefixlen <= 126 else str(subnet.network_address + 1),
-            "last_host": str(list(subnet.hosts())[-1]) if subnet.prefixlen <= 126 else str(subnet.network_address + 2),
+            "first_host": str(first_host),
+            "last_host": str(last_host),
             "num_addresses": subnet.num_addresses,
         })
 
