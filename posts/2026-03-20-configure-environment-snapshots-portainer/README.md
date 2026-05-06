@@ -4,73 +4,61 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Snapshot, Configuration, Performance, Environment
 
-Description: Configure the snapshot frequency and behavior for individual Portainer environments to balance UI freshness with system performance.
+Description: Configure Portainer snapshot intervals to balance UI freshness with system performance for standard and Edge Async environments.
 
 ---
 
-How to Configure Environment Snapshots in Portainer in Portainer is a key management task for maintaining a well-organized and secure container infrastructure.
+Configuring environment snapshots in Portainer helps balance up-to-date dashboard data with the overhead of polling managed environments.
 
 ## Overview
 
-Portainer provides rich tooling for managing environments at scale. Following best practices ensures your team can efficiently navigate and manage multiple environments.
+For standard environments, Portainer configures snapshot timing as a global application setting. A snapshot contains the information displayed on an environment home page along with other basic environment information, and the default interval is `5m`. For Edge Agent Async environments in Portainer Business Edition, you can also override snapshot timing per environment when you add the environment.
 
 ## Step-by-Step Instructions
 
 ### Via the Portainer UI
 
 1. Log in to Portainer as an administrator
-2. Navigate to **Environments** (or the relevant section)
-3. Find the target environment or create a new configuration
-4. Apply the required settings
+2. Navigate to **Settings** -> **General**
+3. Under **Application settings**, find **Snapshot interval**
+4. Enter a duration such as `30s`, `5m`, or `1h`
 5. Save your changes
 
 ### Via the API
 
 ```bash
-TOKEN=$(curl -s -X POST \
-  https://localhost:9443/api/auth \
+PORTAINER_URL="https://portainer.example.com:9443/api"
+API_KEY="your-admin-access-token"
+
+# View the current snapshot interval
+curl -sS \
+  "${PORTAINER_URL}/settings" \
+  -H "X-API-Key: ${API_KEY}"
+
+# Update the snapshot interval to 10 minutes
+curl -sS -X PUT \
+  "${PORTAINER_URL}/settings" \
+  -H "X-API-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
-  --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
-
-# List all environments
-
-curl -s https://localhost:9443/api/endpoints \
-  -H "Authorization: Bearer $TOKEN" \
-  --insecure | python3 -c "
-import sys, json
-envs = json.load(sys.stdin)
-for e in envs:
-    tags = [t['Name'] for t in e.get('Tags', [])]
-    group = e.get('GroupId', 0)
-    print(f'  ID: {e[\"Id\"]}, Name: {e[\"Name\"]}, Group: {group}, Tags: {tags}')
-"
+  --data '{"SnapshotInterval":"10m"}'
 ```
 
-## Installing the Portainer Agent (for Cloud K8s)
+## For Edge Agent Async Environments
 
-For EKS, AKS, and GKE environments, deploy the agent via Helm:
+If you are adding an Edge Agent Async environment in Portainer Business Edition, Portainer also lets you adjust snapshot timing for that specific environment during setup:
 
-```bash
-# Add the Portainer Helm repository
-helm repo add portainer https://portainer.github.io/k8s/
-helm repo update
-
-# Install the Portainer Agent
-helm install portainer-agent portainer/portainer-agent \
-  -n portainer \
-  --create-namespace \
-  --set env.serverAddress="wss://portainer.example.com" \
-  --set env.edgeId="<your-edge-id>" \
-  --set env.edgeKey="<your-edge-key>"
-```
+1. Go to **Environments** and click **Add environment**
+2. Select **Docker Standalone** and choose **Edge Agent Async**
+3. Expand **More settings**
+4. Adjust the **Ping**, **Snapshot**, and **Command** intervals as needed
+5. Create the environment and run the generated deployment command on the target system
 
 ## Best Practices
 
-- Use descriptive names for environments (include location and type)
-- Apply consistent tags for filtering (e.g., , )
-- Group related environments together for bulk operations
-- Review environment list quarterly and remove decommissioned environments
+- Start with the default `5m` interval and reduce it only if you need fresher dashboard data
+- Increase the interval for large or remote environments to reduce API, CPU, and network overhead
+- Use per-environment snapshot overrides only for Edge Agent Async environments when the defaults are not sufficient
+- Remember that snapshot settings affect how fresh environment summary data appears in the UI
 
 ---
 
