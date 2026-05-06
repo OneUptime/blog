@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: IPv6, DNS, Unbound, AAAA Records, DNS Configuration
 
-Description: Learn how to serve AAAA records from Unbound as a local authoritative or stub resolver, enabling IPv6 hostname resolution for internal services.
+Description: Learn how to serve AAAA records from Unbound as local authoritative data or through a stub zone, enabling IPv6 hostname resolution for internal services.
 
-## Unbound as a Recursive Resolver vs Local Stub
+## Unbound as a Recursive Resolver vs Local Zones and Stub Zones
 
 Unbound is primarily a recursive/caching resolver - it doesn't serve authoritative zones by default. However, you can configure it to:
 
 1. **Serve local data**: Act as local authoritative for internal hostnames
 2. **Override upstream responses**: Force specific AAAA responses for development
-3. **Stub forward**: Forward specific zones to an authoritative server
+3. **Use stub zones**: Send queries for specific zones directly to an authoritative server
 
 ## Method 1: Adding Local AAAA Records with local-data
 
 The simplest way to serve AAAA records from Unbound is using `local-data` directives in `unbound.conf`:
 
-```yaml
+```conf
 # /etc/unbound/unbound.conf
 
 server:
@@ -60,35 +60,35 @@ cat > /etc/unbound/local-records.conf << 'EOF'
 # Local A and AAAA records
 
 local-data: "server1.corp.example.com. 3600 IN A 10.0.1.1"
-local-data: "server1.corp.example.com. 3600 IN AAAA 2001:db8:corp::1"
+local-data: "server1.corp.example.com. 3600 IN AAAA 2001:db8:100::1"
 
 local-data: "server2.corp.example.com. 3600 IN A 10.0.1.2"
-local-data: "server2.corp.example.com. 3600 IN AAAA 2001:db8:corp::2"
+local-data: "server2.corp.example.com. 3600 IN AAAA 2001:db8:100::2"
 
 local-data: "gateway.corp.example.com. 3600 IN A 10.0.1.254"
-local-data: "gateway.corp.example.com. 3600 IN AAAA 2001:db8:corp::254"
+local-data: "gateway.corp.example.com. 3600 IN AAAA 2001:db8:100::254"
 EOF
 ```
 
 Include this file in `unbound.conf`:
 
-```yaml
+```conf
 # /etc/unbound/unbound.conf
 server:
     # Include local records from separate file
     include: /etc/unbound/local-records.conf
 ```
 
-## Method 3: Stub Zone Forwarding to Authoritative Server
+## Method 3: Stub Zone Queries to an Authoritative Server
 
-If you have an authoritative DNS server (BIND, PowerDNS) with AAAA records, forward the zone to it from Unbound:
+If you have an authoritative DNS server (BIND, PowerDNS) with AAAA records, configure a stub zone so Unbound queries it directly:
 
-```yaml
+```conf
 # /etc/unbound/unbound.conf
 
-# Forward internal zone to authoritative server
+# Send internal zone queries directly to the authoritative server
 stub-zone:
-    name: "internal.example.com"
+    name: "internal.example.com."
     stub-addr: 192.168.1.53  # authoritative server IPv4
     stub-addr: 2001:db8::53  # authoritative server IPv6
     stub-prime: no
@@ -102,7 +102,7 @@ unbound-checkconf /etc/unbound/unbound.conf
 
 # Reload Unbound to apply changes
 systemctl reload unbound
-# or
+# or, if remote control is enabled:
 unbound-control reload
 
 # View current status
@@ -119,23 +119,23 @@ dig AAAA web.internal.example.com @127.0.0.1
 # web.internal.example.com. 3600 IN AAAA 2001:db8::10
 
 # Verify both A and AAAA are returned
-dig ANY web.internal.example.com @127.0.0.1
+dig A web.internal.example.com @127.0.0.1
+dig AAAA web.internal.example.com @127.0.0.1
 
 # Test from a client host
-dig AAAA web.internal.example.com @192.168.1.53
+dig AAAA web.internal.example.com @192.168.1.1
 ```
 
 ## Suppressing AAAA Records (When Needed)
 
-If you need to suppress AAAA records for a host that isn't yet IPv6-ready, use `local-zone` with type `redirect` to return NODATA:
+If you only want an IPv4 answer for a local hostname, publish only an A record for that name. When the hostname exists in local data, AAAA queries for the same hostname return NODATA rather than NXDOMAIN:
 
-```yaml
-# Return NODATA (not NXDOMAIN) for AAAA queries to legacy-server
-local-zone: "legacy-server.internal.example.com." redirect
+```conf
+# Publish only an A record for the legacy host
 local-data: "legacy-server.internal.example.com. 60 IN A 10.0.1.100"
-# No AAAA record = NODATA response for AAAA queries
+# No AAAA record for this name = NOERROR / NODATA for AAAA queries
 ```
 
 ## Summary
 
-Unbound serves local AAAA records via `local-data` directives in `unbound.conf` or in included files. For large deployments, keep records in a separate include file. For zones hosted on external authoritative servers, use `stub-zone` to forward. After any configuration change, validate with `unbound-checkconf` and reload with `unbound-control reload`.
+Unbound serves local AAAA records via `local-data` directives in `unbound.conf` or in included files. For large deployments, keep records in a separate include file. For zones hosted on external authoritative servers, use `stub-zone` to query them directly. After any configuration change, validate with `unbound-checkconf` and reload with `systemctl reload unbound` or `unbound-control reload` if remote control is enabled.
