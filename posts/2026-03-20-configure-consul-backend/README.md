@@ -12,7 +12,7 @@ The Consul backend stores OpenTofu state in HashiCorp Consul's key-value (KV) st
 
 ## Prerequisites
 
-- Consul cluster running (1.0+)
+- Consul cluster running
 - Consul ACL token with appropriate permissions (if ACLs enabled)
 - Network access from OpenTofu to the Consul HTTP API
 
@@ -78,8 +78,14 @@ resource "consul_acl_token" "opentofu_state" {
   local       = false  # Global token
 }
 
+# If you need to retrieve the SecretID in OpenTofu, use the dedicated data source.
+# Note: this writes the secret into state unless you also configure pgp_key.
+data "consul_acl_token_secret_id" "opentofu_state" {
+  accessor_id = consul_acl_token.opentofu_state.id
+}
+
 output "opentofu_state_token" {
-  value     = consul_acl_token.opentofu_state.secret_id
+  value     = data.consul_acl_token_secret_id.opentofu_state.secret_id
   sensitive = true
 }
 ```
@@ -125,19 +131,22 @@ terraform {
 Consul locking uses Consul sessions. When OpenTofu acquires a lock:
 
 1. Creates a Consul session with a TTL
-2. Acquires a lock on the KV path using the session
+2. Acquires a lock on `$path/.lock` using the session
 3. Renews the session during long operations
-4. Releases the lock and destroys the session on completion
+4. Releases the lock, removes lock metadata from `$path/.lockinfo`, and destroys the session on completion
 
 ```bash
 # Check for active locks
 consul kv get "opentofu/states/prod/.lock"
 
-# List all state files
-consul kv ls opentofu/states/
+# View lock metadata
+consul kv get "opentofu/states/prod/.lockinfo"
 
-# Force remove a stuck lock
-consul kv delete "opentofu/states/prod/.lock"
+# List all state keys under a prefix
+consul kv get -keys -separator="" "opentofu/states/"
+
+# Force-unlock a stuck state lock using the lock ID reported by OpenTofu
+tofu force-unlock <LOCK_ID>
 ```
 
 ## Workspace Support
@@ -158,13 +167,13 @@ terraform {
 tofu workspace new production
 
 # States stored at:
-# opentofu/states/app          ← default workspace
-# opentofu/states/app-production ← production workspace
+# opentofu/states/app                 ← default workspace
+# opentofu/states/app-env:production  ← production workspace
 ```
 
 ## Environment Variables
 
-All backend parameters can be set via environment variables:
+Common connection and TLS settings can be set via Consul environment variables:
 
 ```bash
 export CONSUL_HTTP_ADDR="https://consul.example.com:8500"
@@ -177,16 +186,20 @@ export CONSUL_CLIENT_KEY="/etc/consul/certs/client-key.pem"
 
 ## Monitoring State Operations
 
-Enable Consul audit logging to track state operations:
+If you're using Consul Enterprise with ACLs enabled, enable audit logging to track state operations:
 
 ```hcl
 # In Consul configuration
 audit {
   enabled = true
   sink "file" {
-    type   = "file"
-    format = "json"
-    path   = "/var/log/consul/audit.json"
+    type               = "file"
+    format             = "json"
+    path               = "/var/log/consul/audit.json"
+    delivery_guarantee = "best-effort"
+    rotate_duration    = "24h"
+    rotate_max_files   = 15
+    rotate_bytes       = 25165824
   }
 }
 ```
