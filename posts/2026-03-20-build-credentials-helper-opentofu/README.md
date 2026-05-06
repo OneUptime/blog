@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Credential, Authentication, Registry, Infrastructure as Code, Security
 
-Description: Learn how to configure a credentials helper in OpenTofu to authenticate with private module registries and OCI artifact stores.
+Description: Learn how to configure a credentials helper in OpenTofu to authenticate with private module registries and other OpenTofu-compatible services.
 
 ---
 
-OpenTofu supports credentials helpers - external executables that supply authentication tokens for private module registries and other services. This avoids storing credentials directly in configuration files.
+OpenTofu supports credentials helpers - external executables that supply authentication tokens for private module registries and other OpenTofu-compatible services. This avoids storing credentials directly in configuration files.
 
 ---
 
@@ -28,12 +28,10 @@ credentials "registry.example.com" {
 
 ```hcl
 # ~/.tofurc
-credentials_helper "my-helper" {
-  args = ["--config", "/etc/my-helper/config.json"]
-}
+credentials_helper "vault" {}
 ```
 
-The helper binary must be named `terraform-credentials-<name>` or `tofu-credentials-<name>` and be on the `PATH`.
+For this example, OpenTofu looks for an executable named `terraform-credentials-vault` in one of its default plugin search locations.
 
 ---
 
@@ -41,26 +39,39 @@ The helper binary must be named `terraform-credentials-<name>` or `tofu-credenti
 
 ```bash
 #!/bin/bash
-# /usr/local/bin/tofu-credentials-vault
+# ~/.terraform.d/plugins/terraform-credentials-vault
 # Fetches credentials from HashiCorp Vault
 
-ACTION=$1  # "get", "store", or "forget"
-HOST=$(cat /dev/stdin | jq -r '.url // empty' 2>/dev/null)
+ACTION=$1
+HOST=$2
 
 case "$ACTION" in
   get)
-    TOKEN=$(vault kv get -field=token secret/tofu/${HOST})
-    echo "{"token": "${TOKEN}"}"
+    TOKEN=$(vault kv get -field=token "secret/tofu/${HOST}") || {
+      echo "failed to read token for ${HOST} from Vault" >&2
+      exit 1
+    }
+    jq -n --arg token "$TOKEN" '{token: $token}'
     ;;
-  store|forget)
-    # Read-only helper - do nothing
+  store)
+    cat >/dev/null
+    echo "terraform-credentials-vault is read-only" >&2
+    exit 1
+    ;;
+  forget)
+    # This helper reads directly from Vault and does not keep local state.
+    exit 0
+    ;;
+  *)
+    echo "unsupported action: $ACTION" >&2
+    exit 1
     ;;
 esac
 ```
 
 Make it executable:
 ```bash
-chmod +x /usr/local/bin/tofu-credentials-vault
+chmod +x ~/.terraform.d/plugins/terraform-credentials-vault
 ```
 
 ---
@@ -78,15 +89,18 @@ OpenTofu calls the credentials helper to get the token for `registry.example.com
 
 ---
 
-## Use AWS CodeArtifact as a Credentials Source
+## Use AWS Secrets Manager as a Credentials Source
 
 ```bash
-# Generate an auth token
-TOKEN=$(aws codeartifact get-authorization-token   --domain mydomain   --domain-owner 123456789012   --query authorizationToken   --output text)
+# Read a token stored as a plaintext secret string
+TOKEN=$(aws secretsmanager get-secret-value \
+  --secret-id opentofu/registry.example.com/token \
+  --query SecretString \
+  --output text)
 
 # Write to .tofurc temporarily
 cat > ~/.tofurc <<EOF
-credentials "mydomain-123456789012.d.codeartifact.us-east-1.amazonaws.com" {
+credentials "registry.example.com" {
   token = "${TOKEN}"
 }
 EOF
@@ -96,4 +110,4 @@ EOF
 
 ## Summary
 
-Configure static credentials in `~/.tofurc` with `credentials` blocks, or delegate to an external binary via `credentials_helper`. Helpers must implement `get`, `store`, and `forget` subcommands and output JSON. This pattern enables integration with secret managers like HashiCorp Vault or AWS Secrets Manager, keeping tokens out of configuration files.
+Configure static credentials in `~/.tofurc` with `credentials` blocks, or delegate to an external binary via `credentials_helper`. Helpers must handle `get`, `store`, and `forget`; `get` returns JSON on stdout, and `store` receives JSON on stdin. This pattern enables integration with secret managers like HashiCorp Vault or AWS Secrets Manager. For OCI registries, use `oci_credentials`, Docker-style configuration files, or a configured Docker credentials helper instead.
