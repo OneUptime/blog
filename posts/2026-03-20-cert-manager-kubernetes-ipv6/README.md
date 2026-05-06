@@ -8,22 +8,21 @@ Description: Deploy and configure cert-manager in an IPv6-enabled Kubernetes clu
 
 ---
 
-cert-manager automates TLS certificate management in Kubernetes. In IPv6-enabled clusters, additional configuration is needed to ensure ACME challenges work correctly and cert-manager components bind to the right interfaces.
+cert-manager automates TLS certificate management in Kubernetes. In IPv6-enabled clusters, the main consideration is choosing an ACME challenge flow that matches how your services are exposed, especially for HTTP-01 validation.
 
 ## Prerequisites
 
 Verify your Kubernetes cluster has IPv6 networking enabled:
 
 ```bash
-# Check node IPv6 addresses
+# Check node addresses and confirm an IPv6 address is present
+kubectl get nodes <node-name> -o go-template --template='{{range .status.addresses}}{{printf "%s: %s\n" .type .address}}{{end}}'
 
-kubectl get nodes -o wide
+# Verify the node has an IPv6 Pod CIDR
+kubectl get nodes <node-name> -o go-template --template='{{range .spec.podCIDRs}}{{printf "%s\n" .}}{{end}}'
 
-# Verify pod IPv6 CIDR is configured
-kubectl cluster-info dump | grep -i "pod-cidr\|ipv6"
-
-# Check if dual-stack is enabled
-kubectl get configmap -n kube-system kube-proxy-config -o yaml | grep -i ipv6
+# Verify an existing pod has an IPv6 address
+kubectl get pods -n <namespace> <pod-name> -o go-template --template='{{range .status.podIPs}}{{printf "%s\n" .ip}}{{end}}'
 ```
 
 ## Installing cert-manager with Helm
@@ -37,8 +36,8 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
-  --version v1.14.0
+  --set crds.enabled=true \
+  --version v1.20.2
 
 # Verify cert-manager pods are running
 kubectl get pods -n cert-manager
@@ -46,7 +45,7 @@ kubectl get pods -n cert-manager
 
 ## Creating a ClusterIssuer for Let's Encrypt (DNS-01)
 
-For IPv6-only clusters or when pods don't have inbound IPv4 access, use DNS-01:
+DNS-01 is often the simplest option for IPv6-enabled clusters because it does not depend on public HTTP reachability, and it is required for wildcard certificates:
 
 ```yaml
 # letsencrypt-issuer.yaml
@@ -64,7 +63,6 @@ spec:
     solvers:
       - dns01:
           cloudflare:
-            email: admin@example.com
             apiTokenSecretRef:
               name: cloudflare-api-token
               key: api-token
@@ -120,7 +118,7 @@ kubectl get secret myapp-tls-secret -n default
 
 ## HTTP-01 Challenge in IPv6 Kubernetes Clusters
 
-For HTTP-01 challenges in dual-stack clusters, ensure the Ingress controller listens on IPv6:
+For HTTP-01 challenges in IPv6 or dual-stack clusters, ensure the selected Ingress controller is publicly reachable on port 80 for the records your domain advertises:
 
 ```yaml
 # letsencrypt-http01-issuer.yaml
@@ -137,12 +135,8 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
-            # Ensure the challenge ingress gets an IPv6-accessible IP
-            podTemplate:
-              metadata:
-                labels:
-                  acme-challenge: "true"
+            ingressClassName: nginx
+            # The selected Ingress controller must be reachable for HTTP-01 validation
 ```
 
 ## Ingress with Automatic Certificate via Annotations
@@ -188,8 +182,7 @@ kubectl get challenges -n default
 kubectl describe challenge <challenge-name> -n default
 
 # Check cert-manager controller logs for IPv6 errors
-kubectl logs -n cert-manager \
-  -l app=cert-manager \
+kubectl logs -n cert-manager deploy/cert-manager \
   --tail=100 | grep -i "ipv6\|error\|failed"
 
 # Test ACME server reachability from within the cluster
@@ -198,4 +191,4 @@ kubectl run -it --rm debug --image=curlimages/curl \
   curl -6 https://acme-v02.api.letsencrypt.org/directory
 ```
 
-cert-manager integrates seamlessly with IPv6 Kubernetes clusters when using DNS-01 challenges, enabling automatic certificate lifecycle management without requiring IPv4 inbound access to your pods.
+cert-manager works well in IPv6-enabled Kubernetes clusters, and DNS-01 is often the most straightforward option when you need wildcard certificates or want to avoid depending on public HTTP reachability for ACME validation.
