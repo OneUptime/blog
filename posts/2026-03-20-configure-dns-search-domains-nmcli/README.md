@@ -51,10 +51,10 @@ nmcli connection modify "Wired connection 1" \
 nmcli connection up "Wired connection 1"
 ```
 
-## Clear All Search Domains
+## Clear All Manually Configured Search Domains
 
 ```bash
-# Remove all search domains
+# Clear manually configured search domains
 nmcli connection modify "Wired connection 1" \
     ipv4.dns-search ""
 
@@ -67,8 +67,11 @@ nmcli connection up "Wired connection 1"
 # Show connection settings
 nmcli connection show "Wired connection 1" | grep dns-search
 
-# Check /etc/resolv.conf for the search line
-cat /etc/resolv.conf | grep search
+# If NetworkManager writes search domains to resolv.conf
+grep '^search' /etc/resolv.conf
+
+# If your system uses systemd-resolved
+resolvectl domain
 
 # Test short hostname resolution
 nslookup server1
@@ -78,7 +81,7 @@ nslookup server1
 ## Ignore Search Domains from DHCP
 
 ```bash
-# Do not accept search domains pushed by DHCP server
+# Do not accept DNS servers or search domains pushed by DHCP server
 nmcli connection modify "myconn" \
     ipv4.ignore-auto-dns yes \
     ipv4.dns "8.8.8.8" \
@@ -90,7 +93,7 @@ nmcli connection up "myconn"
 ## Search Domains vs DNS Domains
 
 - **Search domains** (`ipv4.dns-search`): used for hostname completion
-- **Routing domains** (`ipv4.dns`): direct specific domain queries to specific DNS servers (use `~domain.com` prefix in resolved)
+- **Routing domains** (`ipv4.dns-search` with `~domain.com`): used with split DNS to decide which connection's DNS servers receive matching queries; they are not used to complete unqualified hostnames
 
 ```bash
 # Configure a routing domain for internal DNS
@@ -100,4 +103,4 @@ nmcli connection modify "vpn-conn" \
 
 ## Conclusion
 
-DNS search domains in nmcli are set with `ipv4.dns-search`. Multiple domains are space-separated. Use `+` to append and `-` to remove specific entries. Verify with `cat /etc/resolv.conf | grep search` after activating the connection.
+DNS search domains in nmcli are set with `ipv4.dns-search`. Multiple domains are space-separated. Use `+` to append and `-` to remove specific entries. Verify with `nmcli connection show`, and if your system uses `systemd-resolved`, `resolvectl domain`.
