@@ -6,7 +6,7 @@ Tags: OpenTofu, Plan Analysis, Automation, Policy Enforcement, Infrastructure as
 
 Description: Build custom tools that analyze OpenTofu plan JSON output to enforce policies, generate reports, and automate approval workflows.
 
-The `tofu show -json` command gives you a structured representation of every planned change. Building custom analysis tools on top of this output lets you enforce organization-specific policies, generate change reports, and integrate with approval systems in ways that generic tools cannot.
+The `tofu show -json -plan=tfplan` command gives you a structured representation of the full plan, including every planned change. Building custom analysis tools on top of this output lets you enforce organization-specific policies, generate change reports, and integrate with approval systems in ways that generic tools cannot.
 
 ## The Analysis Framework
 
@@ -14,7 +14,7 @@ A custom plan analyzer typically follows this pattern:
 
 ```mermaid
 flowchart LR
-    A[tofu plan -out=tfplan] --> B[tofu show -json tfplan]
+    A[tofu plan -out=tfplan] --> B[tofu show -json -plan=tfplan]
     B --> C[plan.json]
     C --> D[Custom Analyzer]
     D --> E{Pass?}
@@ -56,7 +56,7 @@ class PlanAnalyzer:
     def check_no_database_deletes(self):
         """Block accidental deletion of RDS instances."""
         for change in self.get_changes_by_action("delete"):
-            if change["type"].startswith("aws_db_instance"):
+            if change["type"] == "aws_db_instance":
                 self.violations.append(PlanViolation(
                     rule="no-database-deletes",
                     resource=change["address"],
@@ -65,11 +65,15 @@ class PlanAnalyzer:
                 ))
 
     def check_instance_type_allowlist(self):
-        """Ensure only approved EC2 instance types are used."""
+        """Ensure planned EC2 instances use only approved instance types."""
         allowed = {"t3.micro", "t3.small", "t3.medium", "m5.large"}
-        for change in self.get_changes_by_action("create"):
+        for change in self.changes:
             if change["type"] == "aws_instance":
-                after = change["change"].get("after", {})
+                if change["change"]["actions"] == ["no-op"]:
+                    continue
+                after = change["change"].get("after")
+                if after is None:
+                    continue
                 itype = after.get("instance_type", "")
                 if itype not in allowed:
                     self.violations.append(PlanViolation(
@@ -80,12 +84,14 @@ class PlanAnalyzer:
                     ))
 
     def check_tags_required(self):
-        """Warn if resources are missing required tags."""
+        """Warn if planned resources are missing required tags."""
         required_tags = {"Environment", "Owner", "CostCenter"}
         for change in self.changes:
             if change["change"]["actions"] == ["no-op"]:
                 continue
-            after = change["change"].get("after") or {}
+            after = change["change"].get("after")
+            if after is None:
+                continue
             tags = after.get("tags") or {}
             missing = required_tags - set(tags.keys())
             if missing:
@@ -137,7 +143,7 @@ if __name__ == "__main__":
   run: |
     tofu init
     tofu plan -out=tfplan
-    tofu show -json tfplan > plan.json
+    tofu show -json -plan=tfplan > plan.json
 
 - name: Run Custom Policy Checks
   run: python3 scripts/plan_analyzer.py plan.json
