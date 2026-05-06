@@ -17,10 +17,10 @@ DHCP snooping validates DHCP messages on untrusted ports, blocks DHCP server res
 ip dhcp snooping
 ip dhcp snooping vlan 10,20,30
 
-! Disable option 82 insertion (often needed for external DHCP servers)
-no ip dhcp snooping information option
+! Optional: disable option 82 insertion only if the upstream DHCP server rejects it
+! no ip dhcp snooping information option
 
-! Trust the uplink port (connects to actual DHCP server)
+! Trust the uplink/trunk that receives legitimate DHCP server replies
 interface GigabitEthernet0/24
  description Uplink-to-Distribution
  ip dhcp snooping trust
@@ -77,7 +77,7 @@ interface GigabitEthernet0/5
 
 ```cisco
 ! Save binding table to a file (survives switch reload)
-ip dhcp snooping database flash:dhcp-snooping.db
+ip dhcp snooping database flash:/dhcp-snooping.db
 ip dhcp snooping database write-delay 300  ! Write every 5 minutes
 ```
 
@@ -95,9 +95,9 @@ no ip dhcp snooping information option
 
 ! Issue: Binding table lost after reload
 ! Fix: Configure persistent database
-ip dhcp snooping database flash:dhcp-snoop.db
+ip dhcp snooping database flash:/dhcp-snooping.db
 ```
 
 ## Conclusion
 
-DHCP snooping stops rogue DHCP servers from handing out unauthorized IPv4 addresses. Trust only the uplink port, rate-limit untrusted ports, disable option 82 insertion if your DHCP server doesn't support it, and persist the binding database to survive reloads. The binding table then enables Dynamic ARP Inspection and IP Source Guard.
+DHCP snooping stops rogue DHCP servers from handing out unauthorized IPv4 addresses. Trust only the port or ports that carry legitimate DHCP server replies, rate-limit untrusted ports, disable option 82 insertion only if your DHCP server rejects it, and persist the binding database to survive reloads. The binding table then enables Dynamic ARP Inspection and IP Source Guard.
