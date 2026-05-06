@@ -27,7 +27,7 @@ $TTL 3600
         3600        ; Refresh
         900         ; Retry
         604800      ; Expire
-        300 )       ; Minimum TTL
+        300 )       ; Negative cache TTL
 
 ; Name servers
 @       IN  NS  ns1.example.com.
@@ -78,8 +78,9 @@ rndc reload example.com
 rndc reload
 
 # Verify the AAAA record is loaded
+# Check the file configured by BIND's dump-file option (defaults to named_dump.db)
 rndc dumpdb -zones
-grep 'AAAA' /var/named/data/named_dump.db | grep 'example.com'
+grep 'AAAA' /path/to/named_dump.db | grep 'example.com'
 ```
 
 ## Verifying AAAA Records
@@ -91,8 +92,8 @@ dig AAAA www.example.com @127.0.0.1
 # Expected output:
 # www.example.com. 3600 IN AAAA 2001:db8::1
 
-# Query both A and AAAA (ANY query)
-dig ANY www.example.com @127.0.0.1
+# Query the A record separately if you also want to verify dual-stack resolution
+dig A www.example.com @127.0.0.1
 
 # Test from an external client (replace 192.0.2.1 with your server's IP)
 dig AAAA www.example.com @192.0.2.1
@@ -104,10 +105,10 @@ If you have a delegated subdomain and need to add AAAA glue records for name ser
 
 ```dns
 ; In the parent zone (example.com):
-; Glue A record for delegated NS
+; Glue A and AAAA records for delegated NS
 sub         IN  NS  ns1.sub.example.com.
 ns1.sub     IN  A       203.0.113.10
-ns1.sub     IN  AAAA    2001:db8:sub::10
+ns1.sub     IN  AAAA    2001:db8:1::10
 ```
 
 ## Multiple AAAA Records for Load Balancing
@@ -140,7 +141,7 @@ nsupdate -k /etc/named/update.key << 'EOF'
 server 127.0.0.1
 zone example.com
 update delete www.example.com. AAAA
-update add www.example.com. 3600 AAAA 2001:db8::new-address
+update add www.example.com. 3600 AAAA 2001:db8::10
 send
 EOF
 ```
