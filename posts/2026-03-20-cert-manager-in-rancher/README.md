@@ -13,14 +13,15 @@ cert-manager is the standard Kubernetes certificate management controller. It au
 ## Step 1: Install cert-manager
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
+helm repo add jetstack https://charts.jetstack.io --force-update
 helm repo update
 
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
-  --set replicaCount=2    # Two replicas for HA
+  --version v1.20.2 \
+  --set crds.enabled=true \
+  --set replicaCount=2    # Two controller replicas for HA
 ```
 
 ## Step 2: Verify Installation
@@ -53,10 +54,10 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx    # Use your Ingress class name
+            ingressClassName: nginx    # Use your Ingress class name
 
 ---
-# Staging issuer for testing (no rate limits)
+# Staging issuer for testing (higher rate limits; certificates are not trusted)
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -70,7 +71,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ```bash
@@ -144,10 +145,10 @@ kubectl get certificate -n production
 # Detailed certificate info including expiry
 kubectl describe certificate myapp-tls -n production
 
-# View certificate renewal events
-kubectl get events -n production --field-selector reason=Issued
+# View certificate issuance and renewal events
+kubectl get events -n production --field-selector reason=CertIssued
 ```
 
 ## Conclusion
 
-cert-manager on Rancher fully automates TLS certificate lifecycle management. Certificates are automatically renewed 30 days before expiry, and failures trigger Kubernetes events you can alert on. For internal services, configure a self-signed or private CA ClusterIssuer instead of Let's Encrypt.
+cert-manager on Rancher fully automates TLS certificate lifecycle management. Certificates are automatically renewed before expiry; for 90-day certificates, renewal is typically attempted around 30 days before expiration. Failures trigger Kubernetes events you can alert on. For internal services, configure a self-signed or private CA ClusterIssuer instead of Let's Encrypt.
