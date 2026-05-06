@@ -4,29 +4,29 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Cluster Federation, Multi-Cluster, Kubernetes, Fleet, Submariner, High Availability
 
-Description: Learn how to implement cluster federation in Rancher to synchronize workloads, policies, and namespaces across multiple Kubernetes clusters for high availability and geographic distribution.
+Description: Learn how to use Rancher, Fleet, and Submariner to deploy workloads across multiple Kubernetes clusters, standardize governance, and enable cross-cluster service connectivity.
 
 ---
 
-Cluster federation in Rancher allows you to treat multiple clusters as a single logical unit, distributing workloads, sharing policies, and enabling cross-cluster service connectivity.
+Rancher-based multi-cluster "federation" is usually assembled from tools such as Fleet, Rancher Projects and RoleTemplates, and Submariner so you can distribute workloads, standardize governance, and enable cross-cluster service connectivity.
 
 ---
 
 ## Federation Approaches in Rancher
 
-Rancher supports several patterns for cluster federation:
+Rancher is typically used with several multi-cluster patterns:
 
 | Approach | Tool | Best For |
 |---|---|---|
 | GitOps-based federation | Rancher Fleet | Config and app distribution |
 | Cross-cluster networking | Submariner | Pod/service communication |
-| Policy federation | Rancher Projects | Namespace and RBAC templates |
+| Governance consistency | Rancher Projects and RoleTemplates | Per-cluster quotas and RBAC standards |
 
 ---
 
 ## Approach 1: Rancher Fleet for Config Federation
 
-Deploy the same application configuration to multiple clusters using a single `GitRepo`:
+Deploy the same application configuration to multiple clusters using a single `GitRepo`. Use the `GitRepo` to select target clusters, and put per-cluster Helm overrides in the repo's `fleet.yaml`:
 
 ```yaml
 # gitrepo-federated.yaml
@@ -41,17 +41,31 @@ spec:
   branch: main
   paths:
     - apps/
-
-  # Deploy to ALL clusters with env=production label
   targets:
     - name: all-production
       clusterSelector:
         matchLabels:
           env: production
-      # Override values per region
-      helm:
-        values:
-          region: "{{ .ClusterLabels.region }}"
+
+---
+
+# apps/fleet.yaml
+targetCustomizations:
+  - name: us-east
+    clusterSelector:
+      matchLabels:
+        region: us-east
+    helm:
+      values:
+        region: us-east
+
+  - name: eu-west
+    clusterSelector:
+      matchLabels:
+        region: eu-west
+    helm:
+      values:
+        region: eu-west
 ```
 
 ---
@@ -71,13 +85,11 @@ subctl deploy-broker --kubeconfig cluster1.yaml
 # Join each cluster to the broker
 subctl join broker-info.subm \
   --kubeconfig cluster1.yaml \
-  --clusterid cluster1 \
-  --natt=false
+  --clusterid cluster1
 
 subctl join broker-info.subm \
   --kubeconfig cluster2.yaml \
-  --clusterid cluster2 \
-  --natt=false
+  --clusterid cluster2
 ```
 
 After joining, export a service so it is discoverable from other clusters:
@@ -98,26 +110,26 @@ curl http://my-app.my-app.svc.clusterset.local
 
 ---
 
-## Approach 3: Rancher Projects for Policy Federation
+## Approach 3: Rancher Projects for Governance Consistency
 
-Rancher Projects allow you to template namespaces and resource quotas and apply them across clusters consistently:
+Rancher Projects let you standardize quotas and access patterns per downstream cluster, but they are not a cross-cluster federation mechanism on their own:
 
 ```yaml
-# project-template.yaml (applied via Rancher management API)
+# project.yaml (applied to the Rancher management cluster)
 apiVersion: management.cattle.io/v3
-kind: ProjectTemplate
+kind: Project
 metadata:
   name: standard-team-project
+  namespace: c-m-abcde
 spec:
+  clusterName: c-m-abcde
+  displayName: standard-team-project
   resourceQuota:
     limit:
-      pods: "50"
-      requestsCpu: "10"
-      requestsMemory: 20Gi
+      limitsCpu: 1000m
   namespaceDefaultResourceQuota:
     limit:
-      requestsCpu: "2"
-      requestsMemory: 4Gi
+      limitsCpu: 50m
 ```
 
 ---
@@ -141,6 +153,6 @@ sum by (cluster) (
 ## Best Practices
 
 - Treat each cluster as an autonomous unit - federation should augment, not couple clusters tightly.
-- Use Fleet's **per-cluster value overrides** to customize behavior (replicas, resource limits) per cluster.
+- Use Fleet's **`targetCustomizations`** to customize behavior (replicas, resource limits) per cluster.
 - Test cross-cluster failover regularly to ensure Submariner tunnels remain healthy.
-- Apply federated RBAC via Rancher role templates to avoid per-cluster permission drift.
+- Use Rancher `RoleTemplates` and `ProjectRoleTemplateBindings` to reduce per-cluster permission drift.
