@@ -56,10 +56,10 @@ ip dhcp pool VLAN99_GUEST
 ## Static DHCP Reservations on Cisco
 
 ```text
-! Reserve a specific IP for a device by MAC
+! Reserve a specific IP for a DHCP client identifier (01 + MAC for Ethernet)
 ip dhcp pool WEBSERVER
    host 192.168.1.50 255.255.255.0
-   hardware-address aaaa.bbbb.cccc
+   client-identifier 01aa.aabb.bbcc.cc
    default-router 192.168.1.1
    dns-server 8.8.8.8
 ```
@@ -79,7 +79,7 @@ ip dhcp pool VOIP_PHONES
 ## Verification Commands
 
 ```text
-! View all active DHCP bindings (assigned leases)
+! View current DHCP bindings
 show ip dhcp binding
 
 ! View DHCP pool statistics (total, used, available)
@@ -105,6 +105,6 @@ interface Vlan10
 ## Key Takeaways
 
 - Use `ip dhcp excluded-address` to protect static device IPs before creating the pool.
-- `show ip dhcp binding` lists all active leases with MAC and IP.
+- `show ip dhcp binding` lists current DHCP bindings and assigned IPs.
 - `ip helper-address` enables the router to relay DHCP to an external server.
-- Cisco pools support all standard DHCP options via `option <number> <type> <value>`.
+- Cisco pools support custom DHCP options via `option code [instance] {ascii | hex | ip-address}`.
