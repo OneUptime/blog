@@ -2,18 +2,19 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Backstage, IPv6, Scaffolder, Infrastructure, IdP
+Tags: Backstage, IPv6, Scaffolder, Infrastructure, Crossplane
 
-Description: Create Backstage scaffolder templates that provision IPv6-enabled infrastructure through Crossplane or Terraform.
+Description: Define the Crossplane resources and Compositions that a Backstage scaffolder template can use to provision IPv6-enabled infrastructure.
 
 ## Overview
 
-Create Backstage scaffolder templates that provision IPv6-enabled infrastructure through Crossplane or Terraform.
+Backstage scaffolder templates can delegate IPv6-enabled infrastructure provisioning to Crossplane. This guide focuses on the Crossplane resources and Compositions that make that work.
 
 ## Prerequisites
 
 - Crossplane installed on a Kubernetes cluster
 - Cloud provider credentials configured
+- Function Patch and Transform installed if you're using Pipeline Compositions
 - Basic understanding of Crossplane Managed Resources and Compositions
 
 ## IPv6 Infrastructure with Crossplane
@@ -35,7 +36,7 @@ spec:
     cidrBlock: 10.0.0.0/16
     # Enable IPv6 CIDR block assignment
     amazonProvidedIpv6CidrBlock: true
-    enableDnsHostnames: true
+    enableDnsHostNames: true
     enableDnsSupport: true
     tags:
       - key: Name
@@ -60,8 +61,8 @@ spec:
     vpcIdRef:
       name: my-ipv6-vpc
     cidrBlock: 10.0.1.0/24
-    # IPv6 CIDR for this subnet (auto-assigned from VPC's /56)
-    ipv6CidrBlock: ""  # Set after VPC IPv6 CIDR is assigned
+    # Replace with a /64 from the VPC's associated IPv6 range
+    ipv6CIDRBlock: 2001:db8:1234:1a00::/64
     assignIpv6AddressOnCreation: true
     availabilityZone: us-east-1a
   providerConfigRef:
@@ -69,6 +70,8 @@ spec:
 ```
 
 ### Composition for Dual-Stack Network
+
+In current Crossplane releases, use a `mode: Pipeline` Composition with Function Patch and Transform instead of the deprecated legacy `resources` mode. Because Function Patch and Transform can't derive a subnet `/64` from a VPC CIDR block on its own, this example expects the subnet IPv6 CIDR to be provided in the XR spec.
 
 ```yaml
 # composition-dual-stack.yaml
@@ -80,30 +83,54 @@ spec:
   compositeTypeRef:
     apiVersion: network.example.com/v1alpha1
     kind: XDualStackNetwork
-  resources:
-    - name: vpc
-      base:
-        apiVersion: ec2.aws.crossplane.io/v1beta1
-        kind: VPC
-        spec:
-          forProvider:
-            amazonProvidedIpv6CidrBlock: true
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.region
-          toFieldPath: spec.forProvider.region
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: vpc
+            base:
+              apiVersion: ec2.aws.crossplane.io/v1beta1
+              kind: VPC
+              spec:
+                forProvider:
+                  cidrBlock: 10.0.0.0/16
+                  amazonProvidedIpv6CidrBlock: true
+                  enableDnsHostNames: true
+                  enableDnsSupport: true
+                providerConfigRef:
+                  name: aws-provider
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.region
 
-    - name: subnet
-      base:
-        apiVersion: ec2.aws.crossplane.io/v1beta1
-        kind: Subnet
-        spec:
-          forProvider:
-            assignIpv6AddressOnCreation: true
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.region
-          toFieldPath: spec.forProvider.region
+          - name: subnet
+            base:
+              apiVersion: ec2.aws.crossplane.io/v1beta1
+              kind: Subnet
+              spec:
+                forProvider:
+                  cidrBlock: 10.0.1.0/24
+                  assignIpv6AddressOnCreation: true
+                  vpcIdSelector:
+                    matchControllerRef: true
+                providerConfigRef:
+                  name: aws-provider
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.region
+                toFieldPath: spec.forProvider.region
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.availabilityZone
+                toFieldPath: spec.forProvider.availabilityZone
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.ipv6CIDR
+                toFieldPath: spec.forProvider.ipv6CIDRBlock
 ```
 
 ## XRD with IPv6 Fields
@@ -121,22 +148,27 @@ spec:
     plural: xdualstacknetworks
   versions:
     - name: v1alpha1
+      served: true
+      referenceable: true
       schema:
         openAPIV3Schema:
           type: object
           properties:
             spec:
               type: object
+              required:
+                - region
+                - availabilityZone
+                - ipv6CIDR
               properties:
                 region:
                   type: string
-                enableIPv6:
-                  type: boolean
-                  default: true
-                # IPv6 CIDR validation
+                availabilityZone:
+                  type: string
+                # Basic IPv6 CIDR format validation
                 ipv6CIDR:
                   type: string
-                  pattern: '^[0-9a-fA-F:]+/[0-9]+$'
+                  pattern: '^[0-9A-Fa-f:]+/[0-9]+$'
 ```
 
 ## Monitoring with OneUptime
@@ -145,4 +177,4 @@ Use [OneUptime](https://oneuptime.com) to monitor the health of your Crossplane-
 
 ## Conclusion
 
-How to Configure Backstage Scaffolder for IPv6 Infrastructure involves defining cloud resources with IPv6 CIDR blocks enabled, using Crossplane Compositions for reusable dual-stack infrastructure patterns, and validating IPv6 fields in XRDs. Always test Compositions against real cloud providers to verify IPv6 provisioning works end-to-end.
+Configuring Backstage Scaffolder for IPv6 infrastructure usually means defining Crossplane resources with IPv6 CIDR blocks enabled, using Crossplane Compositions for reusable dual-stack infrastructure patterns, and validating IPv6 inputs in XRDs. Always test Compositions against real cloud providers to verify IPv6 provisioning works end-to-end.
