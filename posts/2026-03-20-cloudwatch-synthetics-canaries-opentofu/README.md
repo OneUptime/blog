@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, CloudWatch Synthetics, Canaries, Synthetic Monitoring, Availability, Infrastructure as Code
 
-Description: Learn how to create CloudWatch Synthetics Canaries with OpenTofu to continuously test API endpoints and website availability from multiple AWS regions, detecting outages before users do.
+Description: Learn how to create CloudWatch Synthetics Canaries with OpenTofu to continuously test API endpoints and website availability, detecting outages before users do.
 
 ## Introduction
 
@@ -19,6 +19,8 @@ CloudWatch Synthetics Canaries run synthetic tests against API endpoints and web
 ## Step 1: Create S3 Bucket for Canary Artifacts
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3_bucket" "canary_artifacts" {
   bucket = "${var.project_name}-canary-artifacts-${data.aws_caller_identity.current.account_id}"
 
@@ -68,12 +70,23 @@ resource "aws_iam_role_policy" "canary" {
         Effect = "Allow"
         Action = [
           "s3:PutObject",
+          "s3:GetObject"
+        ]
+        Resource = ["${aws_s3_bucket.canary_artifacts.arn}/*"]
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "s3:GetBucketLocation"
         ]
-        Resource = [
-          aws_s3_bucket.canary_artifacts.arn,
-          "${aws_s3_bucket.canary_artifacts.arn}/*"
+        Resource = [aws_s3_bucket.canary_artifacts.arn]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ListAllMyBuckets"
         ]
+        Resource = "*"
       },
       {
         Effect = "Allow"
@@ -110,8 +123,8 @@ resource "aws_synthetics_canary" "api_health" {
   artifact_s3_location = "s3://${aws_s3_bucket.canary_artifacts.id}/api-health/"
   execution_role_arn   = aws_iam_role.canary.arn
   handler              = "apiCanary.handler"
-  zip_file             = "api_canary.zip"  # Canary script zip
-  runtime_version      = "syn-nodejs-puppeteer-7.0"
+  zip_file             = "api_canary.zip"  # ZIP containing nodejs/node_modules/apiCanary.js
+  runtime_version      = "syn-nodejs-puppeteer-15.0"
 
   schedule {
     expression          = "rate(5 minutes)"  # Run every 5 minutes
@@ -138,35 +151,52 @@ resource "aws_synthetics_canary" "api_health" {
 ## Step 4: Canary Script
 
 ```javascript
-// api_canary/apiCanary.js
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+// nodejs/node_modules/apiCanary.js
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const apiCanaryBlueprint = async function () {
-  const options = {
+  const requestOptions = {
     hostname: 'api.example.com',
     method: 'GET',
     path: '/health',
     port: 443,
-    protocol: 'https:',
-    headers: {
-      'User-Agent': 'CloudWatchSynthetics'
-    }
+    protocol: 'https:'
   };
 
-  const response = await synthetics.makeHttpRequest(options);
+  await synthetics.executeHttpStep('Verify /health endpoint', requestOptions, async (response) => {
+    return new Promise((resolve, reject) => {
+      let responseBody = '';
 
-  // Validate response
-  if (response.statusCode !== 200) {
-    throw new Error(`Health check failed: ${response.statusCode}`);
-  }
+      response.on('data', (chunk) => {
+        responseBody += chunk;
+      });
 
-  const body = JSON.parse(response.body);
-  if (body.status !== 'healthy') {
-    throw new Error(`Service unhealthy: ${body.status}`);
-  }
+      response.on('end', () => {
+        try {
+          if (response.statusCode !== 200) {
+            reject(new Error(`Health check failed: ${response.statusCode}`));
+            return;
+          }
 
-  log.info('Health check passed');
+          const body = JSON.parse(responseBody);
+          if (body.status !== 'healthy') {
+            reject(new Error(`Service unhealthy: ${body.status}`));
+            return;
+          }
+
+          log.info('Health check passed');
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
+
+      response.on('error', (error) => {
+        reject(error);
+      });
+    });
+  });
 };
 
 exports.handler = async () => {
@@ -199,7 +229,7 @@ resource "aws_cloudwatch_metric_alarm" "canary_failed" {
 ## Step 6: Deploy
 
 ```bash
-zip api_canary.zip api_canary/apiCanary.js
+zip -r api_canary.zip nodejs/
 
 tofu init
 tofu plan
