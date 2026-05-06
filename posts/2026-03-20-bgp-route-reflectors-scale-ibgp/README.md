@@ -79,8 +79,8 @@ On R1, check that routes originated by R2 (a peer it doesn't directly connect to
 ```text
 R1# show ip bgp
 
-! Routes learned via RR will show the RR's address as next-hop
-! (unless next-hop-self is configured on the RR)
+! Reflected iBGP routes normally preserve the original next-hop
+! The RR's address appears as next-hop only if you explicitly rewrite it on the RR
 
 ! The ORIGINATOR_ID attribute shows who originated the route
 ! The CLUSTER_LIST attribute shows which RRs reflected it
