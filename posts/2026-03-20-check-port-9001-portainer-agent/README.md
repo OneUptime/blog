@@ -12,14 +12,14 @@ How to Check If Port 9001 Is Accessible for Portainer Agent is an important oper
 
 ## Overview
 
-The Portainer Agent communicates with the Portainer server on TCP port 9001. Proper configuration and troubleshooting of the agent is essential for uninterrupted container management.
+By default, the Portainer Server communicates with the Portainer Agent on TCP port 9001. Proper configuration and troubleshooting of the agent is essential for uninterrupted container management.
 
 ## Common Configuration Steps
 
 ```bash
 # Check agent container status
 
-docker ps --filter name=portainer_agent
+docker ps -a --filter name=portainer_agent
 
 # View agent logs for errors
 docker logs portainer_agent --tail 50 2>&1
@@ -35,10 +35,11 @@ netstat -tlnp | grep 9001
 ```bash
 # From the Portainer server, test connectivity to the agent
 nc -zv <agent-host-ip> 9001
-# Expected: Connection succeeded
+# Success indicates the TCP port is reachable
 
-# Test with curl (should get a response)
-curl -k https://<agent-host-ip>:9001 2>&1 | head -5
+# Test the agent's public ping endpoint over HTTPS
+curl -k -sS -i https://<agent-host-ip>:9001/ping | head -5
+# Expected: HTTP/1.1 204 No Content
 ```
 
 ## Firewall Configuration
@@ -55,18 +56,16 @@ sudo firewall-cmd --reload
 sudo iptables -A INPUT -s <portainer-server-ip> -p tcp --dport 9001 -j ACCEPT
 ```
 
-## SELinux Context Fix (RHEL/CentOS)
+## SELinux Requirement (RHEL/CentOS)
 
 ```bash
-# Check for SELinux denials
-sudo ausearch -c 'docker' --raw | audit2allow -M portainer-agent
-sudo semodule -i portainer-agent.pp
-
-# Or temporarily disable enforcement for testing
-sudo setenforce 0
-
-# Add correct context for Docker socket
-sudo chcon -Rt svirt_sandbox_file_t /var/run/docker.sock
+# Portainer's Linux agent install assumes SELinux is disabled.
+# If SELinux must remain enabled, redeploy the agent with --privileged.
+docker stop portainer_agent && docker container rm portainer_agent
+docker run -d --privileged -p 9001:9001 --name portainer_agent --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  portainer/agent:<matching-version>
 ```
 
 ## Agent Version Compatibility
@@ -75,20 +74,16 @@ sudo chcon -Rt svirt_sandbox_file_t /var/run/docker.sock
 # Check current agent version
 docker inspect portainer_agent --format '{{.Config.Image}}'
 
-# Check Portainer server version
-curl -s https://localhost:9443/api/status --insecure | python3 -c "
-import sys, json
-status = json.load(sys.stdin)
-print(f'Server version: {status.get(\"Version\", \"unknown\")}')
-"
+# Check Portainer server image tag
+docker inspect portainer --format '{{.Config.Image}}'
 
-# Update agent to match server version
+# Update agent to match the Portainer server version tag
 docker stop portainer_agent && docker container rm portainer_agent
-docker pull portainer/agent:latest
+docker pull portainer/agent:<matching-version>
 docker run -d -p 9001:9001 --name portainer_agent --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  portainer/agent:<matching-version>
 ```
 
 ---
