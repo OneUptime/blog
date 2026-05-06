@@ -18,9 +18,9 @@ netperf provides a wider variety of test types than iperf3, including request-re
 apt-get install netperf       # Debian/Ubuntu
 yum install netperf           # RHEL/CentOS
 
-# Start netserver on target host (listens on all interfaces including IPv6)
+# Start netserver on target host with IPv6 enabled
 netserver -6 -p 12865
-# Or explicitly: netserver -L :: -p 12865
+# Or explicitly: netserver -6 -L :: -p 12865
 
 # Verify listening
 ss -6 -tlnp | grep 12865
@@ -30,7 +30,7 @@ ss -6 -tlnp | grep 12865
 
 ```bash
 # TCP bulk throughput (equivalent to iperf3 TCP)
-netperf -H 2001:db8::server -6 -t TCP_STREAM -l 30
+netperf -H 2001:db8::1 -6 -t TCP_STREAM -l 30
 # -l 30: test duration 30 seconds
 
 # Output:
@@ -41,7 +41,7 @@ netperf -H 2001:db8::server -6 -t TCP_STREAM -l 30
 # 87380  16384  16384    30.00    9412.34
 
 # Control send/recv buffer sizes
-netperf -H 2001:db8::server -6 -t TCP_STREAM -l 30 -- \
+netperf -H 2001:db8::1 -6 -t TCP_STREAM -l 30 -- \
   -s 4194304 -S 4194304
 ```
 
@@ -50,14 +50,14 @@ netperf -H 2001:db8::server -6 -t TCP_STREAM -l 30 -- \
 ```bash
 # TCP request-response (models HTTP/DB query latency)
 # Each transaction = send request + receive response
-netperf -H 2001:db8::server -6 -t TCP_RR -l 30
-# Output: transactions/sec and microseconds/transaction
+netperf -H 2001:db8::1 -6 -t TCP_RR -l 30
+# Output: transaction rate (transactions/sec); use -v 2 for usec/Tran detail
 
 # UDP request-response
-netperf -H 2001:db8::server -6 -t UDP_RR -l 30
+netperf -H 2001:db8::1 -6 -t UDP_RR -l 30
 
 # Vary request/response sizes to model real workloads
-netperf -H 2001:db8::server -6 -t TCP_RR -l 30 -- \
+netperf -H 2001:db8::1 -6 -t TCP_RR -l 30 -- \
   -r 512,512       # 512-byte request, 512-byte response
 ```
 
@@ -65,10 +65,10 @@ netperf -H 2001:db8::server -6 -t TCP_RR -l 30 -- \
 
 ```bash
 # UDP unidirectional stream (measures raw UDP throughput)
-netperf -H 2001:db8::server -6 -t UDP_STREAM -l 30 -- -m 1400
+netperf -H 2001:db8::1 -6 -t UDP_STREAM -l 30 -- -m 1400
 # -m 1400: message size close to MTU
 
-# Check packet loss on server side simultaneously
+# Watch UDP socket summary on the server side simultaneously
 ss -6 -u -s
 ```
 
@@ -76,13 +76,13 @@ ss -6 -u -s
 
 ```bash
 #!/bin/bash
-SERVER="2001:db8::server"
+SERVER="2001:db8::1"
 RESULTS=()
 
 run_test() {
     local name="$1"
     local args="$2"
-    result=$(netperf -H "$SERVER" -6 $args 2>/dev/null | tail -1 | awk '{print $NF}')
+    result=$(netperf -H "$SERVER" -6 -P 0 -v 0 $args 2>/dev/null | tail -1 | awk '{print $NF}')
     echo "$name: $result"
     RESULTS+=("$name=$result")
 }
