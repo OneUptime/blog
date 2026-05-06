@@ -21,7 +21,6 @@ The fastest way to find active hosts - query the existing NDP cache:
 ```python
 import subprocess
 import ipaddress
-import re
 from dataclasses import dataclass
 
 @dataclass
@@ -31,7 +30,7 @@ class NeighborEntry:
     state: str
     interface: str
 
-def scan_ndp_cache(interface: str = None) -> list[NeighborEntry]:
+def scan_ndp_cache(interface: str | None = None) -> list[NeighborEntry]:
     """
     Scan the NDP neighbor cache to find active IPv6 hosts.
     This doesn't send any packets - just reads kernel state.
@@ -44,18 +43,21 @@ def scan_ndp_cache(interface: str = None) -> list[NeighborEntry]:
     entries = []
 
     for line in result.stdout.splitlines():
-        # Example: "2001:db8::1 dev eth0 lladdr 00:11:22:33:44:55 REACHABLE"
-        match = re.match(
-            r'^(\S+)\s+dev\s+(\S+)\s+lladdr\s+(\S+)\s+(\S+)$', line
-        )
-        if match:
-            addr_str, iface, mac, state = match.groups()
-            try:
-                addr = ipaddress.IPv6Address(addr_str)
-                if not addr.is_link_local:  # Focus on global addresses
-                    entries.append(NeighborEntry(addr, mac, state, iface))
-            except ValueError:
-                pass
+        # Example outputs:
+        # "2001:db8::1 dev eth0 lladdr 00:11:22:33:44:55 REACHABLE"
+        # "fe80::1 dev eth0 lladdr 00:11:22:33:44:55 router STALE"
+        tokens = line.split()
+        if "dev" not in tokens or "lladdr" not in tokens:
+            continue
+
+        try:
+            addr = ipaddress.IPv6Address(tokens[0])
+            iface = tokens[tokens.index("dev") + 1]
+            mac = tokens[tokens.index("lladdr") + 1]
+            state = tokens[-1]
+            entries.append(NeighborEntry(addr, mac, state, iface))
+        except (ValueError, IndexError):
+            pass
 
     return entries
 
@@ -85,7 +87,7 @@ def multicast_discover(interface: str) -> list[ipaddress.IPv6Address]:
 
     # Ping all-nodes multicast
     subprocess.run(
-        ["ping6", "-c", "3", "-I", interface, "ff02::1"],
+        ["ping", "-6", "-c", "3", "-I", interface, "ff02::1"],
         capture_output=True
     )
 
@@ -162,14 +164,14 @@ import dns.resolver
 import dns.reversename
 import ipaddress
 
-def reverse_dns_scan(prefix_str: str) -> list[tuple]:
+def reverse_dns_scan(prefix_str: str) -> list[tuple[str, str]]:
     """
     Scan a small IPv6 subnet using reverse DNS lookups.
-    Only practical for /120 or smaller (256 addresses max).
+    Only practical for /120 or longer prefixes (256 total addresses or fewer).
     """
     prefix = ipaddress.IPv6Network(prefix_str)
 
-    if prefix.num_addresses > 512:
+    if prefix.num_addresses > 256:
         raise ValueError("Prefix too large for DNS scan")
 
     results = []
@@ -189,4 +191,4 @@ def reverse_dns_scan(prefix_str: str) -> list[tuple]:
 
 ## Conclusion
 
-Effective IPv6 network scanning combines NDP cache inspection, multicast discovery, and targeted async port probing. Since exhaustive address scanning is impractical for /64 subnets, these targeted approaches find active hosts reliably. Always obtain proper authorization before scanning any network.
+Effective IPv6 network scanning combines NDP cache inspection, multicast discovery, and targeted async port probing. Since exhaustive address scanning is impractical for /64 subnets, these targeted approaches can find active hosts efficiently. Always obtain proper authorization before scanning any network.
