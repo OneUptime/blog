@@ -8,7 +8,7 @@ Description: Learn how to replace OpenTofu provisioners with cloud-init user dat
 
 ## Introduction
 
-Cloud-init is the industry-standard method for bootstrapping cloud instances. It runs automatically when an instance first boots, before any SSH connection is available, and without any dependency on the OpenTofu process. This makes it far more reliable than `remote-exec` provisioners for software installation and initial configuration.
+Cloud-init is the industry-standard method for bootstrapping cloud instances. It runs automatically during an instance's first boot, without any dependency on the OpenTofu process or an SSH session from the OpenTofu host. This makes it far more reliable than `remote-exec` provisioners for software installation and initial configuration.
 
 ## Basic User Data Script
 
@@ -62,18 +62,15 @@ apt-get update -y
 apt-get install -y nodejs npm
 
 # Write configuration
+mkdir -p /etc/myapp
 cat > /etc/myapp/config.json <<'CONF'
-{
-  "db_host": "${db_host}",
-  "db_name": "${db_name}",
-  "port": ${app_port},
-  "environment": "${environment}"
-}
+${jsonencode({
+  db_host     = db_host
+  db_name     = db_name
+  port        = app_port
+  environment = environment
+})}
 CONF
-
-# Start the application service
-systemctl enable myapp
-systemctl start myapp
 ```
 
 ```hcl
@@ -121,12 +118,13 @@ resource "aws_instance" "app" {
               proxy_pass http://localhost:3000;
             }
           }
+        defer: true
 
     runcmd:
       - systemctl restart nginx
       - systemctl enable nginx
 
-    final_message: "Cloud-init setup complete after $UPTIME seconds"
+    final_message: "Cloud-init setup complete after $uptime seconds"
   EOF
 }
 ```
@@ -148,12 +146,12 @@ journalctl -u cloud-init
 
 | Factor | Cloud-Init | remote-exec Provisioner |
 |---|---|---|
-| Network dependency | None - runs at boot | Requires SSH access from OpenTofu host |
-| Retry on failure | Cloud-init retries internally | Resource is tainted; recreated |
-| Re-run on config change | New instance created | Does not re-run |
-| Drift detection | Can verify with user_data hash | Not detectable |
-| Debugging | Logs on the instance | SSH session output only |
-| Security | No ports needed at deploy time | SSH port must be open |
+| Network dependency | No SSH or WinRM access needed from the OpenTofu host | Requires SSH or WinRM access from the OpenTofu host |
+| Failure handling | Failures are reported by cloud-init on the instance | Failed creation-time provisioners taint the resource |
+| Re-run on config change | With `user_data_replace_on_change = true`, instance replacement re-runs cloud-init | Creation-time provisioners do not re-run during in-place updates |
+| Drift detection | Does not detect in-instance software drift; OpenTofu tracks the declared `user_data` only | Does not detect drift caused by commands already run on the instance |
+| Debugging | Logs on the instance | Provisioner output appears in apply logs |
+| Security | No inbound SSH or WinRM access required for bootstrapping | Inbound SSH or WinRM access required from the OpenTofu host |
 
 ## Conclusion
 
