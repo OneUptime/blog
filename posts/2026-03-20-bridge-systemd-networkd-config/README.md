@@ -108,4 +108,4 @@ virsh net-autostart br0-net
 
 ## Summary
 
-Create a bridge with a `.netdev` file, attach physical interfaces using `.network` files with `Bridge=br0`, and configure the bridge's IP in another `.network` file. Enable STP to prevent loops when connecting to managed switches. The bridge gives VMs and containers the same Layer 2 access as physical hosts on the network.
+Create a bridge with a `.netdev` file, attach physical interfaces using `.network` files with `Bridge=br0`, and configure the bridge's IP in another `.network` file. Enable STP when there is a possibility of Layer 2 loops. The bridge gives VMs and containers the same Layer 2 access as physical hosts on the network.
