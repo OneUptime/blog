@@ -43,33 +43,45 @@ Public key pinning is the most practical - the pin survives certificate renewals
 ```bash
 # Get the SPKI hash for certificate pinning
 
-openssl s_client -connect api.example.com:443 2>/dev/null   | openssl x509 -pubkey -noout   | openssl pkey -pubin -outform DER   | openssl dgst -sha256 -binary   | openssl enc -base64
+openssl s_client -connect api.example.com:443 -servername api.example.com </dev/null 2>/dev/null \
+  | openssl x509 -pubkey -noout \
+  | openssl pkey -pubin -outform DER \
+  | openssl dgst -sha256 -binary \
+  | openssl enc -base64
 # Output: abc123xyz...= (your pin)
 ```
 
 ---
 
-## Python Example with Requests
+## Python Example
 
 ```python
-import requests
-import ssl
-import hashlib
 import base64
+import hashlib
+import socket
+import ssl
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
 
 EXPECTED_PIN = "abc123xyz...="  # Your computed pin
+HOSTNAME = "api.example.com"
+PORT = 443
 
-def check_pin(conn, cert, errnum, depth, ok):
-    if depth == 0:
-        der_cert = ssl.DER_cert_to_PEM_cert(cert)
-        # Compare pin
-        pass
-    return ok
+context = ssl.create_default_context()
 
-# Using requests with custom adapter for pinning
-# (Use a library like 'certifi' + custom SSL context for production)
+with socket.create_connection((HOSTNAME, PORT), timeout=10) as sock:
+    with context.wrap_socket(sock, server_hostname=HOSTNAME) as tls_sock:
+        der_cert = tls_sock.getpeercert(binary_form=True)
+
+cert = x509.load_der_x509_certificate(der_cert)
+spki = cert.public_key().public_bytes(
+    encoding=serialization.Encoding.DER,
+    format=serialization.PublicFormat.SubjectPublicKeyInfo,
+)
+actual_pin = base64.b64encode(hashlib.sha256(spki).digest()).decode("ascii")
+
+if actual_pin != EXPECTED_PIN:
+    raise ssl.SSLError(f"pin validation failed: expected {EXPECTED_PIN}, got {actual_pin}")
 ```
 
 ---
@@ -87,6 +99,8 @@ val client = OkHttpClient.Builder()
     .build()
 ```
 
+On Android, use pinning cautiously: Google notes that certificate pinning is not generally recommended because certificate or CA changes can break connectivity unless you keep backup pins and a rotation plan.
+
 ---
 
 ## HTTP Public Key Pinning (HPKP) Header - Deprecated
@@ -102,4 +116,4 @@ HPKP was removed from browsers due to misuse risk. Use application-level pinning
 
 ## Summary
 
-Certificate pinning prevents MITM attacks by comparing a server's certificate or public key to a stored pin. Always pin the public key (SPKI hash) rather than the full certificate so that certificate renewals don't break the pin. Include at least one backup pin for rotation. Pinning is most appropriate for mobile apps and services where you control both client and server.
+Certificate pinning prevents MITM attacks by comparing a server's certificate or public key to a stored pin. Prefer pinning the public key (SPKI hash) rather than the full certificate when you want renewals to keep working with the same key pair. Include at least one backup pin for rotation. When used, pinning is most appropriate for clients and services you control end to end and can update quickly if certificate or CA changes are needed.
