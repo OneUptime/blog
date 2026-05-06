@@ -13,7 +13,8 @@ This guide covers How to Configure the Cloudflare Provider in OpenTofu using Ope
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- A Cloudflare API token with access to the zones you want to manage
+- Your Cloudflare account ID if you plan to create a zone
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -22,44 +23,42 @@ This guide covers How to Configure the Cloudflare Provider in OpenTofu using Ope
 terraform {
   required_version = ">= 1.6.0"
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.19.0"
     }
   }
 }
 
-# Configure the provider with credentials
-
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
+# Configure the provider with credentials from the environment
+provider "cloudflare" {
+  # Set CLOUDFLARE_API_TOKEN in your shell before running OpenTofu.
 }
 ```
 
 ## Step 2: Set Up Authentication
 
 ```bash
-# Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
+# Use environment variables for authentication and input values
+export CLOUDFLARE_API_TOKEN="your-api-token"
+export TF_VAR_account_id="your-account-id"
+export TF_VAR_zone_name="example.com"
+export TF_VAR_origin_ipv4="198.51.100.10"
 ```
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
+variable "account_id" {
+  description = "Cloudflare account ID"
   type        = string
-  sensitive   = true
 }
 
-variable "organization" {
-  description = "Organization name or ID"
+variable "zone_name" {
+  description = "DNS zone to manage"
+  type        = string
+}
+
+variable "origin_ipv4" {
+  description = "Origin IPv4 address for the DNS record"
   type        = string
 }
 ```
@@ -67,62 +66,54 @@ variable "organization" {
 ## Step 3: Create Basic Resources
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
+resource "cloudflare_zone" "main" {
+  account = {
+    id = var.account_id
   }
+
+  name = var.zone_name
+  type = "full"
 }
 
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+resource "cloudflare_dns_record" "www" {
+  zone_id = cloudflare_zone.main.id
+  name    = "www.${var.zone_name}"
+  type    = "A"
+  content = var.origin_ipv4
+  ttl     = 3600
+  proxied = true
+  comment = "Managed by OpenTofu"
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
-
-  notification {
-    channel = var.notification_channel
-  }
+# Enable DNSSEC for the zone
+resource "cloudflare_zone_dnssec" "main" {
+  zone_id = cloudflare_zone.main.id
+  status  = "active"
 }
 
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+# Configure zone-level DNS settings
+resource "cloudflare_zone_dns_settings" "main" {
+  zone_id            = cloudflare_zone.main.id
+  flatten_all_cnames = false
+  ns_ttl             = 86400
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "zone_id" {
+  description = "The ID of the created Cloudflare zone"
+  value       = cloudflare_zone.main.id
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "zone_name" {
+  description = "The name of the created Cloudflare zone"
+  value       = cloudflare_zone.main.name
 }
 ```
 
@@ -145,14 +136,14 @@ tofu apply
 ## Common Issues and Solutions
 
 ### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+Verify the API token is valid and has permission to manage the target zone and DNS records. Check that `CLOUDFLARE_API_TOKEN` is set in the shell where you run OpenTofu.
 
 ### Rate Limiting
-Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
+Cloudflare enforces API rate limits. If you hit HTTP 429 responses, reduce the number of changes in a single apply and retry after the rate limit window resets.
 
 ### Provider Version Conflicts
-Pin to a specific provider version range to ensure reproducible deployments.
+Pin to a specific provider version range and commit `.terraform.lock.hcl` to keep provider installation reproducible.
 
 ## Conclusion
 
-You have successfully configured How to Configure the Cloudflare Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured How to Configure the Cloudflare Provider in OpenTofu using OpenTofu. This provider enables you to manage Cloudflare zones, DNS records, and related DNS settings as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
