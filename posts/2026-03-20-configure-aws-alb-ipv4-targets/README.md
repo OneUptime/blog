@@ -13,7 +13,7 @@ AWS Application Load Balancer (ALB) operates at Layer 7 (HTTP/HTTPS). It support
 ## Step 1: Create the Target Group
 
 ```bash
-VPC_ID="vpc-0abc123def456"
+VPC_ID="vpc-0123456789abcdef0"
 
 # Create an IPv4 target group
 
@@ -37,19 +37,19 @@ TG_ARN=$(aws elbv2 create-target-group \
 ## Step 2: Register EC2 Instances as Targets
 
 ```bash
-# Register instances in the target group
+# Register instances in the target group; ALB uses their primary private IPv4 addresses
 aws elbv2 register-targets \
   --target-group-arn $TG_ARN \
-  --targets Id=i-0abc123def456,Port=80 \
-            Id=i-0abc123def789,Port=80
+  --targets Id=i-0123456789abcdef0,Port=80 \
+            Id=i-0fedcba9876543210,Port=80
 ```
 
 ## Step 3: Create the ALB
 
 ```bash
-SUBNET1="subnet-0pub1a"
-SUBNET2="subnet-0pub1b"
-SG_ID="sg-0abc123def456"
+SUBNET1="subnet-0123456789abcdef0"
+SUBNET2="subnet-0fedcba9876543210"
+SG_ID="sg-0123456789abcdef0"
 
 ALB_ARN=$(aws elbv2 create-load-balancer \
   --name my-alb \
@@ -104,8 +104,8 @@ aws elbv2 create-rule \
 ## Adding HTTPS Listener with ACM Certificate
 
 ```bash
-# Get the ACM certificate ARN
-CERT_ARN="arn:aws:acm:us-east-1:123456789:certificate/abc-def"
+# ACM certificate ARN in the same Region as the ALB
+CERT_ARN="arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
 
 aws elbv2 create-listener \
   --load-balancer-arn $ALB_ARN \
@@ -128,6 +128,8 @@ aws elbv2 describe-target-health \
 ## Enabling Access Logs
 
 ```bash
+# Requires an S3 bucket in the same Region with a bucket policy that allows
+# Elastic Load Balancing to write access logs.
 aws elbv2 modify-load-balancer-attributes \
   --load-balancer-arn $ALB_ARN \
   --attributes \
