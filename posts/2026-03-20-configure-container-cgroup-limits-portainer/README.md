@@ -8,7 +8,7 @@ Description: Configure Linux cgroup resource limits for Docker containers in Por
 
 ---
 
-Linux control groups (cgroups) are the kernel mechanism that enforces resource limits on containers. Docker exposes cgroup controls through configuration options that you can set in Portainer stacks or the container creation form.
+Linux control groups (cgroups) are the kernel mechanism that enforces resource limits on containers. Docker exposes cgroup controls through configuration options that you can set in Portainer stacks on Docker Standalone environments or the container creation form.
 
 ## CPU Limits
 
@@ -59,7 +59,7 @@ services:
   webapp:
     image: myapp:1.2.3
     mem_limit: 512m         # Hard limit - container is OOMKilled if exceeded
-    mem_reservation: 128m   # Soft limit - guaranteed minimum
+    mem_reservation: 128m   # Soft limit - applied under contention
     memswap_limit: 512m     # Same as mem_limit = no swap (recommended)
     # oom_kill_disable: false  # Allow OOM killer (default and recommended)
 ```
@@ -94,15 +94,14 @@ services:
 ## Complete Production Resource Configuration
 
 ```yaml
-version: "3.8"
 services:
   production-api:
     image: myapi:1.2.3
-    # CPU: max 2 cores, prefer cores 0-3
+    # CPU: max 2 cores, restrict execution to cores 0-3
     cpus: "2.0"
     cpu_shares: 1024
     cpuset: "0-3"
-    # Memory: 1GB limit, no swap, 256MB guaranteed
+    # Memory: 1GB limit, no swap, 256MB soft reservation
     mem_limit: 1g
     memswap_limit: 1g
     mem_reservation: 256m
@@ -141,13 +140,12 @@ docker stats container_name
 ## Portainer UI Resource Limits
 
 In Portainer's container creation form (not stacks), go to **Runtime & Resources** to set:
+- Memory reservation
 - Memory limit
-- CPU limit (as decimal cores)
-- CPU shares
-- CPU set
+- Maximum CPU usage
 
-For stack deployments, these are configured in the Compose YAML as shown above.
+For Docker Standalone stack deployments, the additional cgroup settings shown above are configured in the Compose YAML. On Docker Swarm, use `deploy.resources` for CPU and memory limits.
 
 ## Summary
 
-Cgroup limits in Portainer stacks protect shared hosts from resource exhaustion by any single container. Set CPU and memory limits on all production services, use I/O throttling for background jobs, and disable swap on memory-limited containers to get deterministic OOM behavior rather than slow swap-induced degradation.
+Cgroup limits in Portainer on Docker Standalone hosts protect shared hosts from resource exhaustion by any single container. Set CPU and memory limits on all production services, use I/O throttling for background jobs, and disable swap on memory-limited containers to get deterministic OOM behavior rather than slow swap-induced degradation.
