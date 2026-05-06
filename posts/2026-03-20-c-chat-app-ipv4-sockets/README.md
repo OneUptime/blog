@@ -17,8 +17,10 @@ Building a chat application in C using POSIX sockets teaches the fundamentals of
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -26,6 +28,18 @@ Building a chat application in C using POSIX sockets teaches the fundamentals of
 #define PORT 3000
 #define MAX_CLIENTS 30
 #define BUFFER_SIZE 1024
+
+int send_all(int fd, const char *buffer, size_t length) {
+    size_t total = 0;
+
+    while (total < length) {
+        ssize_t sent = send(fd, buffer + total, length - total, 0);
+        if (sent <= 0) return -1;
+        total += (size_t) sent;
+    }
+
+    return 0;
+}
 
 int main() {
     int server_fd;
@@ -38,6 +52,11 @@ int main() {
     
     /* Initialize client array */
     for (int i = 0; i < MAX_CLIENTS; i++) client_fds[i] = 0;
+
+    /* Prevent a disconnected client from terminating the server on send() */
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+        perror("signal"); exit(1);
+    }
     
     /* Create server socket */
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -93,7 +112,10 @@ int main() {
                 if (client_fds[i] == 0) {
                     client_fds[i] = new_fd;
                     char welcome[] = "Welcome to the chat!\n";
-                    send(new_fd, welcome, strlen(welcome), 0);
+                    if (send_all(new_fd, welcome, strlen(welcome)) < 0) {
+                        close(new_fd);
+                        client_fds[i] = 0;
+                    }
                     break;
                 }
             }
@@ -119,7 +141,10 @@ int main() {
                 buffer[n] = '\0';
                 for (int j = 0; j < MAX_CLIENTS; j++) {
                     if (client_fds[j] != 0 && client_fds[j] != fd) {
-                        send(client_fds[j], buffer, n, 0);
+                        if (send_all(client_fds[j], buffer, (size_t) n) < 0) {
+                            close(client_fds[j]);
+                            client_fds[j] = 0;
+                        }
                     }
                 }
             }
@@ -139,12 +164,25 @@ int main() {
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
 #define PORT 3000
 #define BUFFER_SIZE 1024
+
+int send_all(int fd, const char *buffer, size_t length) {
+    size_t total = 0;
+
+    while (total < length) {
+        ssize_t sent = send(fd, buffer + total, length - total, 0);
+        if (sent <= 0) return -1;
+        total += (size_t) sent;
+    }
+
+    return 0;
+}
 
 int main(int argc, char *argv[]) {
     int sock_fd;
@@ -198,7 +236,9 @@ int main(int argc, char *argv[]) {
         /* Data from stdin (user typed something) */
         if (FD_ISSET(STDIN_FILENO, &fds)) {
             if (!fgets(buffer, BUFFER_SIZE, stdin)) break;
-            send(sock_fd, buffer, strlen(buffer), 0);
+            if (send_all(sock_fd, buffer, strlen(buffer)) < 0) {
+                perror("send"); break;
+            }
         }
     }
     
