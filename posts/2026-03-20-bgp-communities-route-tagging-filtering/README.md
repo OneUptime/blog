@@ -14,9 +14,9 @@ BGP communities are optional transitive attributes attached to route announcemen
 
 | Community | Meaning |
 |---|---|
-| `no-export` | Do not advertise to eBGP peers |
+| `no-export` | Do not advertise outside the local AS or confederation |
 | `no-advertise` | Do not advertise to any peer |
-| `local-AS` | Do not send outside the local confederation sub-AS |
+| `local-AS` | Do not advertise to external BGP peers, including other confederation member ASes |
 | `internet` | Advertise normally (default) |
 
 ## Step 1: Attach a Community to Outbound Routes
@@ -63,7 +63,7 @@ router bgp 65002
 
 ## Step 3: Use Communities for Selective Export Control
 
-ISPs commonly use communities to let customers control how their routes are announced. Example: customer sets community `65001:200` to request no-export to specific peers:
+ISPs commonly use communities to let customers control how their routes are announced. Example: customer sets community `65001:200` to request that the route not be exported outside the ISP AS:
 
 ```bash
 ! ISP router: match customer's no-export community
@@ -80,12 +80,15 @@ route-map CUSTOMER_IN permit 20
 
 ## Step 4: Tag Routes by Region for Traffic Engineering
 
-Use communities to mark routes by geographic region for selective advertising:
+Use communities to mark routes by geographic region and adjust preference accordingly:
 
 ```text
 ! Mark routes learned from the European PoP
 route-map EUROPE_TAG permit 10
  set community 65001:300 additive
+
+! Match the Europe tag on the US router
+ip community-list standard EUROPE_COMMUNITY permit 65001:300
 
 ! On the US router - prefer routes tagged Europe less
 route-map PREFER_US permit 10
@@ -99,11 +102,11 @@ route-map PREFER_US permit 20
 ## Step 5: View Communities in the BGP Table
 
 ```text
-! Show BGP table with community column
+! Show routes carrying community 65001:100
 Router# show ip bgp community 65001:100
 
-! Show all routes and their community values
-Router# show ip bgp detail | include Community
+! Show routes permitted by the community list
+Router# show ip bgp community-list CUST_ROUTES
 
 ! Show community lists defined on the router
 Router# show ip community-list
@@ -111,4 +114,4 @@ Router# show ip community-list
 
 ## Conclusion
 
-BGP communities are a powerful mechanism for route tagging, policy enforcement, and traffic engineering. Always send communities explicitly with `send-community`, use `additive` to preserve existing tags, and test community list matches with `show ip bgp community` before deploying policy changes in production.
+BGP communities are a powerful mechanism for route tagging, policy enforcement, and traffic engineering. Always send communities explicitly with `send-community`, use `additive` to preserve existing tags, and test community list matches with `show ip bgp community-list CUST_ROUTES` before deploying policy changes in production.
