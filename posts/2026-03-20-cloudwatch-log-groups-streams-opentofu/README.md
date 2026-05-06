@@ -13,7 +13,7 @@ CloudWatch Log Groups and Log Streams organize application and AWS service logs.
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with CloudWatch Logs permissions
+- AWS credentials with CloudWatch Logs and AWS KMS permissions
 
 ## Step 1: Create Log Groups with Retention Policies
 
@@ -32,14 +32,14 @@ resource "aws_cloudwatch_log_group" "app" {
   }
 }
 
-# Lambda function log group (must match /aws/lambda/<function-name>)
+# Default Lambda log group (pre-create /aws/lambda/<function-name> when using the default)
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${var.lambda_function_name}"
   retention_in_days = 14
   kms_key_id        = aws_kms_key.logs.arn
 }
 
-# API Gateway execution logs
+# API Gateway access logs (execution logs use service-managed log groups)
 resource "aws_cloudwatch_log_group" "api_gateway" {
   name              = "/aws/apigateway/${var.project_name}"
   retention_in_days = 7
@@ -57,6 +57,10 @@ resource "aws_cloudwatch_log_group" "ecs" {
 ## Step 2: Create KMS Key for Log Encryption
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
+
 resource "aws_kms_key" "logs" {
   description             = "KMS key for CloudWatch Logs"
   deletion_window_in_days = 30
@@ -73,13 +77,13 @@ resource "aws_kms_key" "logs" {
       },
       {
         Effect    = "Allow"
-        Principal = { Service = "logs.${var.region}.amazonaws.com" }
+        Principal = { Service = "logs.${data.aws_region.current.region}.amazonaws.com" }
         Action    = ["kms:Encrypt*", "kms:Decrypt*", "kms:ReEncrypt*",
                      "kms:GenerateDataKey*", "kms:Describe*"]
         Resource  = "*"
         Condition = {
           ArnLike = {
-            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:*"
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:*"
           }
         }
       }
@@ -102,11 +106,11 @@ resource "aws_cloudwatch_log_stream" "app_instance_2" {
   log_group_name = aws_cloudwatch_log_group.app.name
 }
 
-# Generate streams dynamically for multiple instances
+# Generate additional streams dynamically for multiple workers
 resource "aws_cloudwatch_log_stream" "app_instances" {
   count = var.instance_count
 
-  name           = "instance-${count.index + 1}"
+  name           = "worker-${count.index + 1}"
   log_group_name = aws_cloudwatch_log_group.app.name
 }
 ```
@@ -156,4 +160,4 @@ aws logs filter-log-events \
 
 ## Conclusion
 
-Always pre-create CloudWatch Log Groups in OpenTofu rather than allowing services to auto-create them-this ensures retention policies and encryption are applied from the first log entry. Without explicit retention, logs accumulate indefinitely at $0.03/GB/month. Use the KMS key condition `kms:EncryptionContext:aws:logs:arn` to restrict the key to specific log groups, preventing accidental use for other purposes.
+Always pre-create CloudWatch Log Groups in OpenTofu rather than allowing services to auto-create them - this ensures retention policies and encryption are applied from the first log entry. Without explicit retention, logs accumulate indefinitely and continue to incur storage charges. Use the KMS key condition `kms:EncryptionContext:aws:logs:arn` to restrict the key to log groups in the intended account and Region, preventing accidental use for other purposes.
