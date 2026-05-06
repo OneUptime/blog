@@ -6,6 +6,8 @@ Tags: IPv6, CockroachDB, Distributed Database, NewSQL
 
 Description: Learn how to configure CockroachDB nodes to listen on IPv6 addresses, form clusters with IPv6 addresses, and connect clients over IPv6.
 
+For secure clusters, ensure each node certificate includes every IPv6 address or DNS name used to reach that node.
+
 ## CockroachDB IPv6 Start Flags
 
 ```bash
@@ -22,7 +24,7 @@ cockroach start \
 # Listen on all interfaces
 cockroach start \
     --listen-addr=[::]:26257 \
-    --advertise-addr=2001:db8::10 \
+    --advertise-addr=[2001:db8::10]:26257 \
     --http-addr=[::]:8080
 ```
 
@@ -63,6 +65,16 @@ cockroach start \
     --join=[2001:db8::10]:26257,[2001:db8::11]:26257,[2001:db8::12]:26257 \
     --background
 
+# Node 3 (2001:db8::12)
+cockroach start \
+    --certs-dir=/etc/cockroachdb/certs \
+    --store=path=/var/lib/cockroach \
+    --listen-addr=[2001:db8::12]:26257 \
+    --advertise-addr=[2001:db8::12]:26257 \
+    --http-addr=[2001:db8::12]:8080 \
+    --join=[2001:db8::10]:26257,[2001:db8::11]:26257,[2001:db8::12]:26257 \
+    --background
+
 # Initialize the cluster (run once from any node)
 cockroach init --host=[2001:db8::10]:26257 --certs-dir=/etc/cockroachdb/certs
 ```
@@ -79,7 +91,7 @@ cockroach sql \
 cockroach sql --host=[2001:db8::10]:26257 --insecure
 
 # Using PostgreSQL-compatible connection string
-psql "postgresql://root@[2001:db8::10]:26257/defaultdb?sslmode=require&sslrootcert=/etc/cockroachdb/certs/ca.crt"
+psql "postgresql://root@[2001:db8::10]:26257/defaultdb?sslmode=verify-full&sslrootcert=/etc/cockroachdb/certs/ca.crt&sslcert=/etc/cockroachdb/certs/client.root.crt&sslkey=/etc/cockroachdb/certs/client.root.key"
 ```
 
 ## Python Client over IPv6
@@ -91,10 +103,12 @@ import psycopg2
 conn = psycopg2.connect(
     host="2001:db8::10",
     port=26257,
-    database="defaultdb",
+    dbname="defaultdb",
     user="root",
-    sslmode="require",
-    sslrootcert="/etc/cockroachdb/certs/ca.crt"
+    sslmode="verify-full",
+    sslrootcert="/etc/cockroachdb/certs/ca.crt",
+    sslcert="/etc/cockroachdb/certs/client.root.crt",
+    sslkey="/etc/cockroachdb/certs/client.root.key"
 )
 ```
 
@@ -113,4 +127,4 @@ curl -6 https://[2001:db8::10]:8080/ --cacert /etc/cockroachdb/certs/ca.crt
 
 ## Summary
 
-Configure CockroachDB for IPv6 with `--listen-addr=[2001:db8::10]:26257` and `--advertise-addr=[2001:db8::10]:26257`. In multi-node clusters, provide all node IPv6 addresses in `--join`. CockroachDB uses the PostgreSQL wire protocol, so connect with standard psql or PostgreSQL drivers using `host=2001:db8::10 port=26257`. Verify with `ss -6 -tlnp | grep cockroach` and `cockroach node status`.
+Configure CockroachDB for IPv6 with `--listen-addr=[2001:db8::10]:26257` and `--advertise-addr=[2001:db8::10]:26257`. In multi-node clusters, provide the initial node IPv6 addresses in `--join` and reuse that join list on each node. CockroachDB uses the PostgreSQL wire protocol, so connect with standard psql or PostgreSQL drivers using `host=2001:db8::10 port=26257`; for secure self-hosted clusters, include the CA certificate and the client certificate/key. Verify with `ss -6 -tlnp | grep cockroach` and `cockroach node status`.
