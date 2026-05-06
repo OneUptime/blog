@@ -27,8 +27,6 @@ Blue-green deployment maintains two identical environments: Blue (current produc
 ```yaml
 # docker-compose.yml - Blue-Green deployment setup
 
-version: "3.8"
-
 networks:
   # Network for traffic router
   public:
@@ -36,9 +34,6 @@ networks:
   # Internal network shared by both environments
   app_internal:
     driver: bridge
-
-volumes:
-  shared_data:
 
 services:
   # Traffic router - Traefik
@@ -50,11 +45,12 @@ services:
       - "80:80"
       - "8080:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Directory on the Docker host that stores the live routing config
+      - /opt/blue-green/dynamic:/etc/traefik/dynamic:ro
     command:
       - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
       - "--entrypoints.web.address=:80"
     networks:
       - public
@@ -62,7 +58,7 @@ services:
 
   # Blue environment (current production)
   app_blue:
-    image: myapp:1.0.0
+    image: myapp:${BLUE_IMAGE_TAG:-1.0.0}
     container_name: app_blue
     restart: unless-stopped
     environment:
@@ -70,16 +66,10 @@ services:
       - COLOR=blue
     networks:
       - app_internal
-    labels:
-      - "traefik.enable=true"
-      # Initially active - receives all traffic
-      - "traefik.http.routers.app.rule=Host(`app.yourdomain.com`)"
-      - "traefik.http.routers.app.entrypoints=web"
-      - "traefik.http.services.app.loadbalancer.server.port=8080"
 
   # Green environment (new version, initially inactive)
   app_green:
-    image: myapp:1.1.0
+    image: myapp:${GREEN_IMAGE_TAG:-1.1.0}
     container_name: app_green
     restart: unless-stopped
     environment:
@@ -87,22 +77,43 @@ services:
       - COLOR=green
     networks:
       - app_internal
-    labels:
-      # NOT enabled - won't receive production traffic
-      - "traefik.enable=false"
-      # Can be tested directly on a different domain
-      - "traefik.http.routers.app-green-test.rule=Host(`green.yourdomain.com`)"
-      - "traefik.http.routers.app-green-test.entrypoints=web"
-      - "traefik.http.services.app-green-test.loadbalancer.server.port=8080"
+```
+
+```yaml
+# /opt/blue-green/dynamic/app-routing.yml
+
+http:
+  routers:
+    app:
+      rule: Host(`app.yourdomain.com`)
+      entryPoints:
+        - web
+      service: app-blue
+    app-green-test:
+      rule: Host(`green.yourdomain.com`)
+      entryPoints:
+        - web
+      service: app-green
+  services:
+    app-blue:
+      loadBalancer:
+        servers:
+          - url: http://app_blue:8080
+    app-green:
+      loadBalancer:
+        servers:
+          - url: http://app_green:8080
 ```
 
 ## Step 2: Deploy via Portainer Stack
 
-1. In Portainer, create a new stack named `app-production`
-2. Paste the docker-compose above
-3. Deploy the stack
-4. Verify Blue is receiving traffic at `http://app.yourdomain.com`
-5. Test Green at `http://green.yourdomain.com`
+1. On the Docker host, create the external network if it does not already exist: `docker network create public`
+2. On the Docker host, create `/opt/blue-green/dynamic/app-routing.yml` with the routing config above
+3. In Portainer, create a new stack named `app-production`
+4. Paste the docker-compose above
+5. Deploy the stack
+6. Verify Blue is receiving traffic at `http://app.yourdomain.com`
+7. Test Green at `http://green.yourdomain.com`
 
 ## Step 3: Traffic Switch Script
 
@@ -110,62 +121,67 @@ services:
 #!/bin/bash
 # blue-green-switch.sh - Switch traffic between blue and green
 
-STACK_NAME="app-production"
-PORTAINER_URL="https://portainer.yourdomain.com"
-PORTAINER_API_KEY="your-portainer-api-key"
+set -euo pipefail
 
-# Determine current active environment
-CURRENT=$(docker inspect app_blue | jq -r '.[0].Config.Labels."traefik.enable"')
+ROUTING_FILE="/opt/blue-green/dynamic/app-routing.yml"
 
-if [ "$CURRENT" = "true" ]; then
-    # Blue is active, switch to Green
-    ACTIVATE="app_green"
-    DEACTIVATE="app_blue"
-    echo "Switching: Blue → Green"
-else
-    # Green is active, switch to Blue
-    ACTIVATE="app_blue"
-    DEACTIVATE="app_green"
-    echo "Switching: Green → Blue"
+# Determine which backend the production router currently targets
+CURRENT=$(awk '
+  $1 == "app:" { in_app_router=1; next }
+  in_app_router && $1 == "service:" { print $2; exit }
+' "$ROUTING_FILE")
+
+if [ -z "$CURRENT" ]; then
+    echo "ERROR: Could not determine the active environment from $ROUTING_FILE"
+    exit 1
 fi
 
-# Update labels via Docker
-docker container stop "$DEACTIVATE"
-docker container rm "$DEACTIVATE"
+if [ "$CURRENT" = "app-blue" ]; then
+    TARGET="app-green"
+    echo "Switching: Blue -> Green"
+else
+    TARGET="app-blue"
+    echo "Switching: Green -> Blue"
+fi
 
-# Or use Portainer API to update the stack
-# This is cleaner as it updates the stack definition
-echo "Traffic switched to $ACTIVATE"
+# Update only the production router. Traefik reloads the file automatically.
+awk -v target="$TARGET" '
+  $1 == "app:" { in_app_router=1 }
+  in_app_router && $1 == "service:" {
+    sub(/app-(blue|green)/, target)
+    in_app_router=0
+  }
+  { print }
+' "$ROUTING_FILE" > "${ROUTING_FILE}.tmp"
+
+mv "${ROUTING_FILE}.tmp" "$ROUTING_FILE"
+
+echo "Traffic switched to ${TARGET#app-}"
 ```
 
 ## Step 4: Automated Blue-Green with Portainer Webhooks
+
+Portainer stack webhooks are available in Portainer Business Edition on non-Edge environments.
 
 ```bash
 #!/bin/bash
 # deploy-green.sh - Deploy new version to green and run tests
 
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <image-tag>"
+    exit 1
+fi
+
 NEW_VERSION="$1"
-PORTAINER_URL="https://portainer.yourdomain.com"
-API_KEY="your-portainer-api-key"
+STACK_WEBHOOK_URL="https://portainer.yourdomain.com/api/stacks/webhooks/your-webhook-id"
 
 echo "=== Starting Blue-Green Deployment ==="
 echo "Deploying version: $NEW_VERSION to Green"
 
-# Step 1: Pull new image
-docker pull "myapp:$NEW_VERSION"
-
-# Step 2: Update Green container with new image
-docker stop app_green 2>/dev/null
-docker rm app_green 2>/dev/null
-
-docker run -d \
-  --name app_green \
-  --network app_internal \
-  --label "traefik.enable=false" \
-  --label "traefik.http.routers.app-green-test.rule=Host(\`green.yourdomain.com\`)" \
-  --label "traefik.http.services.app-green-test.loadbalancer.server.port=8080" \
-  -e VERSION=green \
-  "myapp:$NEW_VERSION"
+# Step 1: Redeploy the stack with a new Green image tag
+curl -fsS -X POST "${STACK_WEBHOOK_URL}?GREEN_IMAGE_TAG=${NEW_VERSION}"
 
 echo "Green deployed. Running health checks..."
 sleep 10
@@ -187,22 +203,12 @@ fi
 
 echo "All tests passed. Switching traffic to Green..."
 
-# Step 5: Switch traffic
-docker stop app_blue
-
-docker run -d \
-  --name app_blue_old \
-  --network app_internal \
-  --label "traefik.enable=false" \
-  $(docker inspect app_blue --format='{{.Config.Image}}') || true
-
-# Enable Green as active
-docker label app_green traefik.enable=true
-docker label app_green "traefik.http.routers.app.rule=Host(\`app.yourdomain.com\`)"
+# Step 5: Switch production traffic to Green
+./blue-green-switch.sh
 
 echo "=== Deployment Complete ==="
 echo "Green (v$NEW_VERSION) is now serving production traffic"
-echo "Blue (previous version) is stopped (rollback available)"
+echo "Blue (previous version) is still running for instant rollback"
 ```
 
 ## Step 5: Instant Rollback
@@ -211,17 +217,23 @@ echo "Blue (previous version) is stopped (rollback available)"
 #!/bin/bash
 # rollback.sh - Instantly revert to Blue
 
+set -euo pipefail
+
+ROUTING_FILE="/opt/blue-green/dynamic/app-routing.yml"
+
 echo "=== ROLLBACK: Reverting to Blue ==="
 
-# Disable Green
-docker update --label-add traefik.enable=false app_green
+# Restore the production router to Blue. Traefik reloads the file automatically.
+awk '
+  $1 == "app:" { in_app_router=1 }
+  in_app_router && $1 == "service:" {
+    sub(/app-(blue|green)/, "app-blue")
+    in_app_router=0
+  }
+  { print }
+' "$ROUTING_FILE" > "${ROUTING_FILE}.tmp"
 
-# Enable Blue
-docker start app_blue
-docker update \
-  --label-add traefik.enable=true \
-  --label-add "traefik.http.routers.app.rule=Host(\`app.yourdomain.com\`)" \
-  app_blue
+mv "${ROUTING_FILE}.tmp" "$ROUTING_FILE"
 
 echo "Rollback complete. Blue is now serving traffic."
 ```
@@ -229,14 +241,17 @@ echo "Rollback complete. Blue is now serving traffic."
 ## Step 6: Validate Deployment in Portainer
 
 After switching:
-1. Check Portainer **Containers** view - both containers should show as running
+1. Check Portainer **Containers** view - both app containers should show as running
 2. Verify Traefik dashboard shows the correct active route
 3. Monitor container logs in Portainer for errors
 
 ```bash
+# Confirm which backend the production router targets
+grep -A3 '^    app:$' /opt/blue-green/dynamic/app-routing.yml
+
 # Validate traffic is flowing to correct container
 curl -I http://app.yourdomain.com
-# Check X-Server or other headers to identify which version is active
+# Check application-specific headers or response content to identify which version is active
 
 # Check container stats in Portainer
 # Containers > app_green > Stats
@@ -245,4 +260,4 @@ curl -I http://app.yourdomain.com
 
 ## Conclusion
 
-Blue-green deployments with Docker, Traefik, and Portainer give you zero-downtime releases with instant rollback capability. The pattern is simple: keep both versions running, test the new version before switching traffic, then switch instantly. Portainer makes it easy to manage both containers, view logs, and monitor the transition. The entire process can be automated in a CI/CD pipeline using Portainer's webhook API.
+Blue-green deployments with Docker, Traefik, and Portainer give you zero-downtime releases with instant rollback capability. The pattern is simple: keep both versions running, test the new version before switching traffic, then switch instantly. Portainer makes it easy to manage both containers, view logs, and monitor the transition. The entire process can be automated in a CI/CD pipeline using Portainer's stack webhooks in Business Edition.
