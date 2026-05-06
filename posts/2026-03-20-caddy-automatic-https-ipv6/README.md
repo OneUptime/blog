@@ -8,7 +8,7 @@ Description: Configure the Caddy web server to automatically obtain and renew TL
 
 ---
 
-Caddy is known for making HTTPS automatic and effortless. It has excellent IPv6 support out of the box, binding to both IPv4 and IPv6 by default and using its built-in ACME client (using the `certmagic` library) to obtain Let's Encrypt certificates.
+Caddy is known for making HTTPS automatic and effortless. It has excellent IPv6 support out of the box, binding to all interfaces by default and using its built-in ACME automation (via the `certmagic` library) to obtain publicly trusted certificates from ACME CAs such as Let's Encrypt and ZeroSSL.
 
 ## Installing Caddy
 
@@ -20,6 +20,8 @@ curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
   | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
   | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+sudo chmod o+r /etc/apt/sources.list.d/caddy-stable.list
 sudo apt update && sudo apt install caddy
 
 # Verify installation and version
@@ -33,15 +35,23 @@ Caddy's Caddyfile format is concise. IPv6 listening happens automatically:
 ```caddy
 # /etc/caddy/Caddyfile
 
-# Caddy binds to both [::]:443 and 0.0.0.0:443 by default
+# Caddy binds to all interfaces by default
 example.com {
-    # Caddy automatically fetches and renews Let's Encrypt certificate
+    # Caddy automatically fetches and renews a public TLS certificate
+    reverse_proxy localhost:8080
+}
+```
+
+To explicitly listen on IPv6 only, use:
+
+```caddy
+example.com {
+    bind [::]
     reverse_proxy localhost:8080
 }
 
-# To explicitly listen on IPv6 only:
-http://[::]:80 {
-    redir https://{host}{uri} permanent
+http://example.com {
+    bind [::]
 }
 ```
 
@@ -68,17 +78,18 @@ example.com {
 }
 ```
 
-## Using DNS-01 Challenge for IPv6-Only Servers
+## Using DNS-01 Challenge for Wildcard Certificates
 
-For IPv6-only servers or wildcard certificates, configure DNS-01 in the Caddyfile:
+For wildcard certificates, or when HTTP-01/TLS-ALPN-01 validation is not practical, configure DNS-01 in the Caddyfile:
 
 ```bash
-# Install the Cloudflare DNS plugin for Caddy
 # Download the xcaddy builder
 go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
 
-# Build Caddy with Cloudflare DNS plugin
+# Build a custom Caddy binary with the Cloudflare DNS plugin
 xcaddy build --with github.com/caddy-dns/cloudflare
+
+# Use the resulting custom binary for your Caddy service before reloading it
 ```
 
 ```caddy
@@ -100,13 +111,10 @@ example.com {
 }
 ```
 
-Set the environment variable:
+Set the environment variable with a systemd override:
 
 ```bash
-# Add to /etc/caddy/caddy.env or systemd override
-CF_API_TOKEN=your_cloudflare_api_token
-
-# Or create a systemd override
+# Create a systemd override
 sudo systemctl edit caddy
 ```
 
@@ -122,10 +130,11 @@ Environment="CF_API_TOKEN=your_cloudflare_api_token"
 # /etc/caddy/Caddyfile
 
 {
-    # Use Let's Encrypt production (default)
+    # Caddy's default public issuers are ZeroSSL and Let's Encrypt.
+    # Set acme_ca only if you want to force a specific ACME directory.
     acme_ca https://acme-v02.api.letsencrypt.org/directory
 
-    # Or use staging for testing
+    # Or use Let's Encrypt staging for testing
     # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
 
     email admin@example.com
@@ -152,7 +161,7 @@ sudo systemctl status caddy
 
 # Test IPv6 connectivity
 curl -6 https://example.com
-openssl s_client -connect '[2001:db8::1]:443' -servername example.com < /dev/null
+openssl s_client -6 -connect example.com:443 -servername example.com < /dev/null
 
 # Check Caddy's certificate storage
 sudo ls /var/lib/caddy/.local/share/caddy/certificates/
@@ -167,7 +176,7 @@ sudo journalctl -u caddy -f
 # Look for ACME and IPv6 specific messages
 sudo journalctl -u caddy | grep -i "acme\|ipv6\|certificate\|error"
 
-# Caddy admin API for certificate status
+# Caddy admin API for active config and local CA info
 curl http://localhost:2019/config/
 curl http://localhost:2019/pki/ca/local
 ```
