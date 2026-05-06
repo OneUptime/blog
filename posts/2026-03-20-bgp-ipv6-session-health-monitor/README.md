@@ -20,8 +20,8 @@ vtysh -c "show bgp ipv6 unicast summary"
 # Detailed neighbor status including uptime and reset count
 vtysh -c "show bgp neighbors 2001:db8::peer"
 
-# Show notification messages received (explains session drops)
-vtysh -c "show bgp neighbors 2001:db8::peer" | grep -A 3 "Last notification"
+# Show last reset reason and any BGP NOTIFICATION details
+vtysh -c "show bgp neighbors 2001:db8::peer" | grep -A 2 -E "Last reset|Notification"
 ```
 
 ## Key Metrics to Monitor
@@ -31,17 +31,23 @@ vtysh -c "show bgp neighbors 2001:db8::peer" | grep -A 3 "Last notification"
 | Session state | Established | Investigate TCP/routing/firewall |
 | PfxRcvd | Expected count | Check filters and peer config |
 | Up/Down time | Long uptime | Investigate flapping if resetting |
-| MsgRcvd/MsgSent | Increasing | Decreasing means session stalled |
-| Notifications | 0 or low | High count = protocol error |
+| MsgRcvd/MsgSent | Increasing over time | Flat during expected keepalives/updates or sudden reset to low values warrants investigation |
+| Last reset / notification | None or rare | Frequent notification-based resets indicate protocol or configuration errors |
 
 ## BGP with BFD (Bidirectional Forwarding Detection)
 
-BFD provides sub-second failure detection for BGP sessions, much faster than the Hold timer:
+BFD can provide sub-second failure detection for BGP sessions, much faster than the Hold timer:
 
 ```bash
 # FRRouting - Enable BFD for a BGP IPv6 neighbor
 vtysh
 configure terminal
+
+bfd
+ peer 2001:db8::peer local-address 2001:db8::1
+  no shutdown
+ exit
+exit
 
 router bgp 65001
  neighbor 2001:db8::peer bfd      ! Enable BFD
@@ -60,29 +66,31 @@ vtysh -c "show bfd peers"
 ## Session Flap Detection
 
 ```bash
-# Count how many times a BGP session has reset
-vtysh -c "show bgp neighbors 2001:db8::peer" | grep "Resets\|Reset reason"
+# Show session drop count and last reset reason
+vtysh -c "show bgp neighbors 2001:db8::peer" | grep -E "Connections established|Last reset|Notification"
 
-# Enable BGP notification logging
+# Enable BGP neighbor change logging
 vtysh
 configure terminal
-log bgp neighbor-changes
+
+router bgp 65001
+ bgp log-neighbor-changes
 end
 ```
 
 ## Prometheus Monitoring with frr-exporter
 
 ```bash
-# Install and run frr-exporter
+# Install and run frr-exporter with the IPv6 BGP collector enabled
 # (https://github.com/tynany/frr_exporter)
-frr_exporter --web.listen-address=":9342"
+frr_exporter --collector.bgp6 --web.listen-address=":9342"
 
-# Key BGP metrics exposed:
-# frr_bgp_peer_groups_total
-# frr_bgp_peer_up_total       ← 1 = up, 0 = down
-# frr_bgp_peer_message_in_total
-# frr_bgp_peer_message_out_total
-# frr_bgp_peer_prefix_received_total
+# Key BGP IPv6 metrics exposed (filter on afi="ipv6", safi="unicast"):
+# frr_bgp_peer_groups_count_total
+# frr_bgp_peer_state                        ← 1 = Established, 0 = down, 2 = administratively down
+# frr_bgp_peer_message_received_total
+# frr_bgp_peer_message_sent_total
+# frr_bgp_peer_prefixes_received_count_total
 ```
 
 ## Prometheus Alert Rules
@@ -93,7 +101,7 @@ groups:
   - name: bgp_ipv6
     rules:
       - alert: BGPSessionDown
-        expr: frr_bgp_peer_up_total == 0
+        expr: frr_bgp_peer_state{afi="ipv6",safi="unicast"} == 0
         for: 1m
         labels:
           severity: critical
@@ -101,7 +109,7 @@ groups:
           summary: "BGP IPv6 session down: {{ $labels.peer }}"
 
       - alert: BGPPrefixCountDrop
-        expr: delta(frr_bgp_peer_prefix_received_total[5m]) < -100
+        expr: delta(frr_bgp_peer_prefixes_received_count_total{afi="ipv6",safi="unicast"}[5m]) < -100
         for: 2m
         labels:
           severity: warning
@@ -112,13 +120,13 @@ groups:
 ## SNMP Monitoring
 
 ```bash
-# BGP SNMP OIDs (BGP4-MIB and BGP4V2-MIB for IPv6)
-# bgpPeerState: 1=idle, 2=connect, 3=active, 4=opensent, 5=openconfirm, 6=established
+# FRR SNMP monitoring requires FRR built with --enable-snmp, `agentx` enabled,
+# and a master SNMP agent. FRR supports BGP4-MIB (RFC 4273) and the draft
+# BGP4V2-MIB for IPv6-capable peer tables.
+# bgpPeerState / bgp4V2PeerState: 1=idle, 2=connect, 3=active, 4=opensent, 5=openconfirm, 6=established
 
-snmpget -v2c -c public router-ip \
-  BGP4V2-MIB::bgp4V2PeerState.1.2.16.<peer-ipv6-bytes>
-
-# Monitor via snmpwalk
+# Walk the peer tables first to discover the exact peer index used by your agent
+snmpwalk -v2c -c public router-ip BGP4-MIB::bgpPeerTable
 snmpwalk -v2c -c public router-ip BGP4V2-MIB::bgp4V2PeerTable
 ```
 
@@ -129,14 +137,14 @@ snmpwalk -v2c -c public router-ip BGP4V2-MIB::bgp4V2PeerTable
 # Check BGP session and alert if down
 
 PEER="2001:db8::peer"
-STATE=$(vtysh -c "show bgp neighbors $PEER" | grep "BGP state" | awk '{print $NF}')
+STATE=$(vtysh -c "show bgp neighbors $PEER" | sed -n 's/.*BGP state = \([^,(]*\).*/\1/p' | xargs)
 
-if [ "$STATE" != "Established," ]; then
+if [ "$STATE" != "Established" ]; then
     echo "ALERT: BGP IPv6 session to $PEER is $STATE" | \
     mail -s "BGP Alert" ops@example.com
 
-    # Optional: Try a soft reset
-    vtysh -c "clear bgp ipv6 unicast $PEER soft"
+    # Optional: Force a reconnect
+    vtysh -c "clear bgp ipv6 unicast $PEER"
 fi
 ```
 
