@@ -11,29 +11,42 @@ The CIS GCP Foundations Benchmark provides security recommendations for GCP. Ope
 ## Section 1: IAM
 
 ```hcl
-# CIS 1.1 - Avoid using corporate login credentials (service accounts for automation)
+# CIS 1.1 - Ensure that corporate login credentials are used
 
-# Enforced via organization policy
+# Enforced via IAM and identity governance outside the Google provider
 
-# CIS 1.4 - Ensure that service account keys are rotated within 90 days
-# This is enforced via an organization policy constraint
-resource "google_organization_policy" "disable_sa_key_creation" {
-  org_id     = data.google_organization.main.org_id
-  constraint = "constraints/iam.disableServiceAccountKeyCreation"
+# CIS 1.4 - Ensure that service account keys expire within 90 days
+# Set an expiry time for newly created service account keys
+resource "google_org_policy_policy" "sa_key_expiry" {
+  name   = "${data.google_organization.main.name}/policies/iam.serviceAccountKeyExpiryHours"
+  parent = data.google_organization.main.name
 
-  boolean_policy {
-    enforced = true  # Prevent creation of service account keys
+  spec {
+    rules {
+      values {
+        allowed_values = ["2160h"]  # 90 days
+      }
+    }
   }
 }
 
-# CIS 1.5 - Ensure that service accounts do not have admin privileges
-# Enforced via IAM binding reviews (detected via policy-as-code tools)
+# Prevent default service accounts from being granted Owner or Editor
+resource "google_org_policy_policy" "default_sa_basic_roles" {
+  name   = "${data.google_organization.main.name}/policies/iam.managed.preventPrivilegedBasicRolesForDefaultServiceAccounts"
+  parent = data.google_organization.main.name
+
+  spec {
+    rules {
+      enforce = "TRUE"
+    }
+  }
+}
 ```
 
 ## Section 2: Logging and Monitoring
 
 ```hcl
-# CIS 2.1 - Ensure that Cloud Audit Logs are configured for all services
+# CIS 2.1 - Enable Data Access audit logs for all services
 resource "google_project_iam_audit_config" "all_services" {
   project = var.project_id
   service = "allServices"
@@ -59,11 +72,24 @@ resource "google_logging_project_sink" "all_logs" {
   unique_writer_identity = true
 }
 
+resource "google_storage_bucket_iam_member" "all_logs_writer" {
+  bucket = google_storage_bucket.audit_logs.name
+  role   = "roles/storage.objectCreator"
+  member = google_logging_project_sink.all_logs.writer_identity
+}
+
 # CIS 2.11 - Ensure that the log metric filter and alerts exist for project ownership changes
 resource "google_logging_metric" "project_ownership" {
-  name   = "project-ownership-changes"
+  name    = "project-ownership-changes"
   project = var.project_id
-  filter = "protoPayload.serviceName=\"cloudresourcemanager.googleapis.com\" AND ProjectOwnership OR projectOwnerInvitee"
+  filter  = <<-EOT
+    (protoPayload.serviceName="cloudresourcemanager.googleapis.com")
+    AND (ProjectOwnership OR projectOwnerInvitee)
+    OR (protoPayload.serviceData.policyDelta.bindingDeltas.action="REMOVE"
+    AND protoPayload.serviceData.policyDelta.bindingDeltas.role="roles/owner")
+    OR (protoPayload.serviceData.policyDelta.bindingDeltas.action="ADD"
+    AND protoPayload.serviceData.policyDelta.bindingDeltas.role="roles/owner")
+  EOT
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -74,11 +100,12 @@ resource "google_logging_metric" "project_ownership" {
 resource "google_monitoring_alert_policy" "project_ownership" {
   display_name = "Project Ownership Changes"
   project      = var.project_id
+  combiner     = "OR"
 
   conditions {
     display_name = "Project ownership change detected"
     condition_threshold {
-      filter          = "metric.type=\"logging.googleapis.com/user/project-ownership-changes\""
+      filter          = "metric.type=\"logging.googleapis.com/user/project-ownership-changes\" AND resource.type=\"global\""
       comparison      = "COMPARISON_GT"
       threshold_value = 0
       duration        = "0s"
@@ -93,15 +120,16 @@ resource "google_monitoring_alert_policy" "project_ownership" {
 
 ```hcl
 # CIS 3.1 - Ensure the default network does not exist in projects
-resource "google_compute_project_metadata" "disable_default_network" {
-  # This is enforced via organization policy
-}
+# Existing default networks must be deleted separately; this policy only affects new projects
+resource "google_org_policy_policy" "skip_default_network" {
+  name   = "${data.google_organization.main.name}/policies/compute.skipDefaultNetworkCreation"
+  parent = data.google_organization.main.name
 
-resource "google_organization_policy" "skip_default_network" {
-  org_id     = data.google_organization.main.org_id
-  constraint = "constraints/compute.skipDefaultNetworkCreation"
-
-  boolean_policy { enforced = true }
+  spec {
+    rules {
+      enforce = "TRUE"
+    }
+  }
 }
 
 # CIS 3.6 - Ensure SSH access from the internet is blocked
@@ -122,12 +150,23 @@ resource "google_compute_firewall" "deny_ssh_internet" {
 ## Section 4: Virtual Machines
 
 ```hcl
+data "google_project" "current" {
+  project_id = var.project_id
+}
+
+resource "google_kms_crypto_key_iam_member" "compute_engine_service_agent" {
+  crypto_key_id = google_kms_crypto_key.vm_disk.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:service-${data.google_project.current.number}@compute-system.iam.gserviceaccount.com"
+}
+
 # CIS 4.1 - Ensure that instances are not configured to use the default service account
 # with full API access
 resource "google_compute_instance" "cis_compliant" {
   name         = "compliant-instance"
   machine_type = "e2-medium"
   zone         = "us-central1-a"
+  depends_on   = [google_kms_crypto_key_iam_member.compute_engine_service_agent]
 
   service_account {
     # Use a dedicated service account, not the Compute default SA
@@ -136,6 +175,7 @@ resource "google_compute_instance" "cis_compliant" {
   }
 
   # CIS 4.4 - Ensure OS login is enabled
+  # For organization-wide enforcement, use the compute.requireOsLogin policy
   metadata = {
     enable-oslogin = "TRUE"
   }
@@ -152,4 +192,4 @@ resource "google_compute_instance" "cis_compliant" {
 
 ## Conclusion
 
-CIS GCP Benchmark controls are implemented through a combination of organization policies (for project-wide enforcement), IAM audit config (for comprehensive logging), logging sinks (for log export), monitoring metrics and alerts (for real-time detection), and resource-level settings (OS Login, CMEK, no default network). Use organization-level constraints to enforce controls across all projects automatically.
+CIS GCP Benchmark controls are implemented through a combination of organization policies (for project-wide enforcement), IAM audit config (for Data Access audit logging), logging sinks (for log export), monitoring metrics and alerts (for real-time detection), and resource-level settings (OS Login, CMEK, no default network). Use organization-level constraints to enforce controls across all projects automatically, and remember that some controls such as default-network cleanup and pre-existing service account keys still require operational follow-through.
