@@ -49,36 +49,35 @@ portainer-configs/
 
 Connect stacks to Git repositories in Portainer:
 1. Go to **Stacks** > **Add Stack**
-2. Select **Repository** as the deployment method
+2. Select **Git Repository** as the deployment method
 3. Configure your Git repository URL and branch
-4. Enable **Auto Update** for GitOps workflows
+4. Enable **GitOps updates** for automated redeployments
 
 ## Practice 3: Implement Least-Privilege Access
 
-Design access control with minimum required permissions:
+In Portainer Business Edition, use built-in roles and assign only the minimum required permissions:
 
 ```yaml
-# Role hierarchy for Portainer environments
+# Example Portainer Business Edition role mapping
 Roles:
-  viewer:
-    - View containers and stacks
-    - Access logs
-    - No deployments
+  "Helpdesk":
+    - Read-only access to deployed resources
+    - Cannot open a container console
+    - Cannot change container volumes
   
-  developer:
-    - Deploy to dev/staging
-    - Manage stacks in assigned environments
-    - Create/delete containers
+  "Operator":
+    - Start, stop, update, and redeploy workloads
+    - Access logs and container consoles
+    - Cannot create or delete resources
   
-  operator:
-    - All developer permissions
-    - Deploy to production (with approval)
-    - Manage volumes and networks
+  "Environment administrator":
+    - Full access within assigned environments
+    - Cannot change Portainer internal settings
+    - Cannot change resource ownership
   
-  admin:
-    - Full access
-    - User management
-    - Environment configuration
+  "Administrator":
+    - Full access to Portainer settings
+    - Full access across all environments
 ```
 
 ## Practice 4: Use Environment Variables for Configuration
@@ -87,7 +86,6 @@ Never hardcode sensitive values in stack files:
 
 ```yaml
 # GOOD: Use environment variables
-version: "3.8"
 services:
   app:
     image: my-app:latest
@@ -132,7 +130,7 @@ services:
 
 ## Practice 6: Set Resource Limits
 
-Always set resource limits to prevent noisy neighbor issues:
+On platforms that implement the Compose `deploy` section, set resource limits to prevent noisy neighbor issues:
 
 ```yaml
 services:
@@ -150,7 +148,7 @@ services:
 
 ## Practice 7: Enable Logging Best Practices
 
-Configure structured logging for all services:
+Configure log rotation for all services:
 
 ```yaml
 services:
@@ -161,7 +159,6 @@ services:
       options:
         max-size: "100m"     # Rotate at 100MB
         max-file: "5"        # Keep 5 log files
-        tag: "{{.Name}}/{{.ID}}"
 ```
 
 ## Practice 8: Regular Audits and Reviews
@@ -173,18 +170,18 @@ Schedule regular reviews of your Portainer setup:
 # audit.sh - Run monthly to review Portainer configurations
 
 echo "=== Portainer Audit Report ==="
-echo "Date: Thu Mar 19 23:10:43 GMT 2026"
+echo "Date: $(date -u)"
 
-echo "\n--- Unused Volumes ---"
+printf '\n--- Unused Volumes ---\n'
 docker volume ls -qf dangling=true
 
-echo "\n--- Stopped Containers ---"
+printf '\n--- Stopped Containers ---\n'
 docker ps -a --filter status=exited
 
-echo "\n--- Images without containers ---"
-docker images -qf dangling=true
+printf '\n--- Dangling Images ---\n'
+docker image ls -qf dangling=true
 
-echo "\n--- Large volumes ---"
+printf '\n--- Docker Disk Usage ---\n'
 docker system df -v
 ```
 
@@ -193,12 +190,12 @@ docker system df -v
 Protect your Portainer management interface:
 
 ```yaml
-# Portainer with security hardening
+# Initial Portainer deployment with security hardening
 services:
   portainer:
     image: portainer/portainer-ee:latest
     command:
-      - --ssl                              # Force HTTPS
+      - --http-disabled                    # Disable HTTP, use HTTPS only
       - --sslcert=/certs/portainer.crt
       - --sslkey=/certs/portainer.key
       - --admin-password-file=/run/secrets/portainer-password
@@ -206,7 +203,16 @@ services:
     secrets:
       - portainer-password
     volumes:
+      - portainer-data:/data
       - portainer-certs:/certs
+
+secrets:
+  portainer-password:
+    file: ./portainer-password.txt
+
+volumes:
+  portainer-data:
+  portainer-certs:
 ```
 
 ## Practice 10: Document Everything
