@@ -62,6 +62,9 @@ resource "aws_cloudfront_cache_policy" "api" {
     query_strings_config {
       query_string_behavior = "all"
     }
+
+    enable_accept_encoding_gzip   = true
+    enable_accept_encoding_brotli = true
   }
 }
 ```
@@ -73,7 +76,7 @@ Controls what is forwarded to the origin beyond the cache key.
 ```hcl
 resource "aws_cloudfront_origin_request_policy" "api" {
   name    = "${var.app_name}-api-origin-policy"
-  comment = "Forward all headers and cookies to the API"
+  comment = "Forward all viewer headers, cookies, and query strings to the API"
 
   cookies_config {
     cookie_behavior = "all"
@@ -97,7 +100,7 @@ resource "aws_cloudfront_distribution" "app" {
   aliases = [var.app_domain]
 
   origin {
-    domain_name = aws_lb.app.dns_name
+    domain_name = var.origin_domain_name
     origin_id   = "ALB"
     custom_origin_config {
       http_port              = 80
@@ -118,9 +121,9 @@ resource "aws_cloudfront_distribution" "app" {
     compress                 = true
   }
 
-  # Images – long cache TTL
+  # Images under /images/ – long cache TTL
   ordered_cache_behavior {
-    path_pattern             = "*.{jpg,jpeg,png,gif,webp,svg,ico}"
+    path_pattern             = "/images/*"
     allowed_methods          = ["GET", "HEAD"]
     cached_methods           = ["GET", "HEAD"]
     target_origin_id         = "ALB"
