@@ -13,15 +13,15 @@ Certificate-based IPsec authentication eliminates shared secrets and enables sca
 ```bash
 # Generate the CA private key
 
-ipsec pki --gen --type rsa --size 4096 --outform pem > /etc/ipsec.d/private/ca.key.pem
-chmod 600 /etc/ipsec.d/private/ca.key.pem
+pki --gen --type rsa --size 4096 --outform pem > /etc/swanctl/private/ca.key.pem
+chmod 600 /etc/swanctl/private/ca.key.pem
 
 # Create the self-signed CA certificate
-ipsec pki --self --ca --lifetime 3650 \
-  --in /etc/ipsec.d/private/ca.key.pem \
+pki --self --ca --lifetime 3650 \
+  --in /etc/swanctl/private/ca.key.pem \
   --type rsa \
   --dn "C=US, O=My Org, CN=IPsec Root CA" \
-  --outform pem > /etc/ipsec.d/cacerts/ca.cert.pem
+  --outform pem > /etc/swanctl/x509ca/ca.cert.pem
 ```
 
 ## Step 2: Generate Gateway Certificates
@@ -30,76 +30,92 @@ For each gateway, create a key pair and certificate signed by the CA:
 
 ```bash
 # Gateway A certificate
-ipsec pki --gen --type rsa --size 2048 --outform pem > /etc/ipsec.d/private/gateway-a.key.pem
+pki --gen --type rsa --size 2048 --outform pem > /etc/swanctl/private/gateway-a.key.pem
+chmod 600 /etc/swanctl/private/gateway-a.key.pem
 
-ipsec pki --pub --in /etc/ipsec.d/private/gateway-a.key.pem --type rsa | \
-  ipsec pki --issue --lifetime 1825 \
-  --cacert /etc/ipsec.d/cacerts/ca.cert.pem \
-  --cakey /etc/ipsec.d/private/ca.key.pem \
+pki --req --type priv \
+  --in /etc/swanctl/private/gateway-a.key.pem \
   --dn "C=US, O=My Org, CN=Gateway A" \
   --san "gateway-a.example.com" \
+  --outform pem > /tmp/gateway-a.req.pem
+
+pki --issue --type pkcs10 --lifetime 1825 \
+  --in /tmp/gateway-a.req.pem \
+  --cacert /etc/swanctl/x509ca/ca.cert.pem \
+  --cakey /etc/swanctl/private/ca.key.pem \
   --flag serverAuth \
-  --outform pem > /etc/ipsec.d/certs/gateway-a.cert.pem
+  --outform pem > /etc/swanctl/x509/gateway-a.cert.pem
+
+# Generate Gateway B the same way, changing the filenames, DN, and SAN.
 
 # Verify the certificate
-ipsec pki --print --in /etc/ipsec.d/certs/gateway-a.cert.pem
+pki --print --in /etc/swanctl/x509/gateway-a.cert.pem
 ```
 
-## Step 3: Configure ipsec.conf for Certificate Auth
+## Step 3: Configure swanctl.conf for Certificate Auth
 
 ```conf
-# /etc/ipsec.conf on Gateway A
+# /etc/swanctl/swanctl.conf on Gateway A
 
-conn cert-tunnel
-    keyexchange=ikev2
-    auto=start
-    type=tunnel
+connections {
+  cert-tunnel {
+    version = 2
+    local_addrs = 1.2.3.4
+    remote_addrs = 5.6.7.8
+    proposals = aes256-sha256-modp2048
 
-    left=1.2.3.4
-    leftid="C=US, O=My Org, CN=Gateway A"
-    leftcert=gateway-a.cert.pem      # Filename in /etc/ipsec.d/certs/
-    leftsubnet=10.1.0.0/24
-    leftauth=pubkey                  # Certificate authentication
+    local {
+      auth = pubkey
+      id = "C=US, O=My Org, CN=Gateway A"
+      certs = gateway-a.cert.pem
+    }
 
-    right=5.6.7.8
-    rightid="C=US, O=My Org, CN=Gateway B"
-    rightsubnet=10.2.0.0/24
-    rightauth=pubkey
+    remote {
+      auth = pubkey
+      id = "C=US, O=My Org, CN=Gateway B"
+    }
 
-    ike=aes256-sha256-modp2048!
-    esp=aes256-sha256!
+    children {
+      cert-tunnel {
+        local_ts = 10.1.0.0/24
+        remote_ts = 10.2.0.0/24
+        esp_proposals = aes256-sha256
+        start_action = start
+      }
+    }
+  }
+}
 ```
 
-## Step 4: Configure ipsec.secrets for Certificate
+## Step 4: Configure the Private Key for Certificate Auth
 
-```conf
-# /etc/ipsec.secrets
-# Reference the private key file for this gateway's certificate
-: RSA gateway-a.key.pem
+```bash
+# No ipsec.secrets entry is required with swanctl-based certificate authentication.
+# Keep the gateway's private key in /etc/swanctl/private/ and readable only by root.
+chmod 600 /etc/swanctl/private/gateway-a.key.pem
 ```
 
 ## Step 5: Copy Certificates for Gateway B
 
 ```bash
 # Transfer to Gateway B (use secure channel)
-scp /etc/ipsec.d/cacerts/ca.cert.pem admin@gateway-b:/etc/ipsec.d/cacerts/
-scp /etc/ipsec.d/certs/gateway-b.cert.pem admin@gateway-b:/etc/ipsec.d/certs/
-scp /etc/ipsec.d/private/gateway-b.key.pem admin@gateway-b:/etc/ipsec.d/private/
+scp /etc/swanctl/x509ca/ca.cert.pem admin@gateway-b:/etc/swanctl/x509ca/
+scp /etc/swanctl/x509/gateway-b.cert.pem admin@gateway-b:/etc/swanctl/x509/
+scp /etc/swanctl/private/gateway-b.key.pem admin@gateway-b:/etc/swanctl/private/
 ```
 
 ## Verifying Certificate-Based Authentication
 
 ```bash
-# Start strongSwan and bring up the tunnel
+# Start strongSwan and load the updated configuration
 sudo systemctl restart strongswan
-sudo ipsec up cert-tunnel
+sudo swanctl --load-all
 
 # Verify authentication succeeded
-sudo journalctl -u strongswan | grep -i "cert\|pubkey\|authenticated"
-# Expected: "authentication of ... with RSA signature successful"
+sudo journalctl -u strongswan | grep -Ei "certificate|pubkey|authentication"
 
 # Check tunnel status
-sudo ipsec statusall | grep "ESTABLISHED"
+sudo swanctl --list-sas | grep "ESTABLISHED"
 ```
 
 ## Certificate Revocation with CRL
@@ -108,15 +124,19 @@ sudo ipsec statusall | grep "ESTABLISHED"
 # If a gateway's certificate is compromised, revoke it
 # On the CA host:
 
-# Revoke a certificate
-ipsec pki --gen-crl \
-  --cacert /etc/ipsec.d/cacerts/ca.cert.pem \
-  --cakey /etc/ipsec.d/private/ca.key.pem \
-  --cert /etc/ipsec.d/certs/compromised-gateway.cert.pem \
-  > /etc/ipsec.d/crls/revoked.crl.pem
+# Generate a CRL that revokes the compromised certificate
+pki --signcrl \
+  --cacert /etc/swanctl/x509ca/ca.cert.pem \
+  --cakey /etc/swanctl/private/ca.key.pem \
+  --reason key-compromise \
+  --cert /etc/swanctl/x509/compromised-gateway.cert.pem \
+  --outform pem > /etc/swanctl/x509crl/revoked.crl.pem
 
-# Distribute the CRL to all gateways
-# Gateways load CRLs from /etc/ipsec.d/crls/ automatically
+# If you already published a CRL, include:
+#   --lastcrl /etc/swanctl/x509crl/revoked.crl.pem
+
+# Distribute the CRL to all gateways and reload credentials
+# Gateways load CRLs from /etc/swanctl/x509crl/ with swanctl --load-creds
 ```
 
-Certificate-based IPsec authentication is the production standard for deployments with multiple gateways or clients, providing per-device accountability and immediate revocation capability.
+Certificate-based IPsec authentication is the production standard for deployments with multiple gateways or clients, providing per-device accountability and certificate revocation without rotating credentials for every peer.
