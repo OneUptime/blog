@@ -32,19 +32,19 @@ The checksum field at bytes 10-11 is `00 00` (zeroed for calculation).
 
 ```text
 Step 1: Group into 16-bit words
-  4500  0040  1c46  4000  4006  0000  ac10  0a63  ac10  0a0c
+  4500  003c  1c46  4000  4006  0000  ac10  0a63  ac10  0a0c
 
 Step 2: Sum all words
-  4500 + 0040 + 1c46 + 4000 + 4006 + 0000 + ac10 + 0a63 + ac10 + 0a0c
-= 1c473
+  4500 + 003c + 1c46 + 4000 + 4006 + 0000 + ac10 + 0a63 + ac10 + 0a0c
+= 24e17
 
-Step 3: Add carry (0x1 from the upper bits)
-  0xc473 + 0x0001 = 0xc474
+Step 3: Add carry (0x2 from the upper bits)
+  0x4e17 + 0x0002 = 0x4e19
 
 Step 4: One's complement
-  ~0xc474 = 0x3b8b
+  ~0x4e19 = 0xb1e6
 
-Result: checksum = 0x3b8b
+Result: checksum = 0xb1e6
 ```
 
 ## Python Implementation
@@ -129,20 +129,22 @@ print(f"Checksum valid: {verify_ipv4_checksum(header)}")
 
 ## Router Behavior: Updating the Checksum
 
-Every router decrements the TTL and must recalculate the checksum. Rather than recalculating from scratch, routers use an incremental update (RFC 1141).
+Every router decrements the TTL and must update the checksum. When TTL is the only header change, a router may use an incremental update instead of recomputing from scratch (RFC 1624).
 
 ```python
 def update_checksum_after_ttl_decrement(old_checksum: int, old_ttl: int) -> int:
     """
     Incrementally update checksum after TTL decrement.
     More efficient than full recalculation.
-    RFC 1141 incremental checksum update.
+    RFC 1624 incremental checksum update specialized for a TTL decrement.
     """
-    new_ttl = old_ttl - 1
-    # The change in the TTL field affects the checksum
-    delta = (~old_ttl & 0xFF) - (~new_ttl & 0xFF)
-    new_checksum = old_checksum - delta
-    # Fold carry
+    if not 1 <= old_ttl <= 255:
+        raise ValueError("old_ttl must be in 1..255 before decrement")
+
+    # TTL shares a 16-bit word with the Protocol field. Decrementing TTL by 1
+    # subtracts 0x0100 from that word, so the checksum increases by 0x0100
+    # with one's complement carry.
+    new_checksum = old_checksum + 0x0100
     while new_checksum >> 16:
         new_checksum = (new_checksum & 0xFFFF) + (new_checksum >> 16)
     return new_checksum & 0xFFFF
@@ -151,7 +153,7 @@ def update_checksum_after_ttl_decrement(old_checksum: int, old_ttl: int) -> int:
 ## Why tcpdump Shows "bad cksum"
 
 ```bash
-# tcpdump commonly shows "bad cksum" for locally generated packets
+# tcpdump commonly shows "bad cksum" for locally captured outbound packets
 # This is checksum offloading - the NIC computes the checksum in hardware
 # The kernel passes the packet with a placeholder checksum to the NIC
 
@@ -159,9 +161,9 @@ def update_checksum_after_ttl_decrement(old_checksum: int, old_ttl: int) -> int:
 ethtool --offload eth0 tx off rx off
 
 # Or tell tcpdump to ignore checksum errors
-tcpdump -n -v --no-verify-checksums -i eth0 'ip'
+tcpdump -n -v --dont-verify-checksums -i eth0 'ip'
 ```
 
 ## Summary
 
-The IPv4 checksum uses one's complement addition of all 16-bit header words: zero the checksum field, sum the words, fold in carry bits, then take the bitwise NOT. Verification sums all words including the checksum - a valid header produces 0xFFFF. Routers use RFC 1141 incremental updates after TTL decrement to avoid full recalculation. The `bad cksum` message in tcpdump almost always indicates hardware checksum offloading, not real corruption.
+The IPv4 checksum uses one's complement addition of all 16-bit header words: zero the checksum field, sum the words, fold in carry bits, then take the bitwise NOT. Verification sums all words including the checksum - a valid header produces 0xFFFF. Routers may use RFC 1624 incremental updates after TTL decrement to avoid full recalculation. On locally captured outbound traffic, a `bad cksum` message in tcpdump often indicates hardware checksum offloading rather than on-the-wire corruption.
