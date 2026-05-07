@@ -8,7 +8,7 @@ Description: Create Azure Network Security Group rules for IPv6 traffic, underst
 
 ## Introduction
 
-Azure Network Security Groups (NSGs) filter traffic by IP address ranges, ports, and protocols. For IPv6, you must add specific rules allowing or denying IPv6 address ranges - there is no automatic inheritance from IPv4 rules. NSGs apply to subnets or individual NICs and are the primary Layer 4 firewall mechanism in Azure virtual networks.
+Azure Network Security Groups (NSGs) filter traffic by IP address ranges, ports, and protocols. If you use IPv4-specific prefixes such as `0.0.0.0/0` or other IPv4 CIDRs, those rules do not match IPv6 traffic, so add IPv6 prefixes such as `::/0` when you want IPv6-specific rules. A wildcard `*` matches any IP address. NSGs apply to subnets or individual NICs and are the primary Layer 4 firewall mechanism in Azure virtual networks.
 
 ## Create NSG with IPv6 Rules
 
@@ -57,7 +57,7 @@ az network nsg rule create \
     --priority 300 \
     --protocol Tcp \
     --direction Inbound \
-    --source-address-prefixes "2001:db8:admin::/48" \
+    --source-address-prefixes "2001:db8:1234::/48" \
     --source-port-ranges "*" \
     --destination-address-prefixes "*" \
     --destination-port-ranges 22 \
@@ -90,7 +90,7 @@ resource "azurerm_network_security_group" "web" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "80"
-    source_address_prefix      = "*"
+    source_address_prefix      = "0.0.0.0/0"
     destination_address_prefix = "*"
   }
 
@@ -116,7 +116,7 @@ resource "azurerm_network_security_group" "web" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "443"
-    source_address_prefix      = "*"
+    source_address_prefix      = "0.0.0.0/0"
     destination_address_prefix = "*"
   }
 
@@ -129,19 +129,6 @@ resource "azurerm_network_security_group" "web" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "443"
-    source_address_prefix      = "::/0"
-    destination_address_prefix = "*"
-  }
-
-  # Allow ICMPv6 (for NDP and ping6)
-  security_rule {
-    name                       = "AllowICMPv6"
-    priority                   = 200
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Icmp"
-    source_port_range          = "*"
-    destination_port_range     = "*"
     source_address_prefix      = "::/0"
     destination_address_prefix = "*"
   }
@@ -172,16 +159,16 @@ resource "azurerm_subnet_network_security_group_association" "web" {
 ## NSG Default Rules for IPv6
 
 ```bash
-# Azure NSGs have default rules that apply to all traffic
-# Default rules (cannot be deleted, only overridden with lower priority number):
-# 65000 - AllowVNetInBound: Allow from VNet (covers IPv6 VNet ranges too)
-# 65001 - AllowAzureLoadBalancerInBound: Allow ALB health probes
-# 65500 - DenyAllInBound: Deny all other inbound
+# Azure NSGs have default rules for inbound traffic
+# Default rules (cannot be deleted, only overridden with a lower priority number):
+# 65000 - AllowVNetInBound: Allow from VirtualNetwork
+# 65001 - AllowAzureLoadBalancerInBound: Allow Azure Load Balancer health probes
+# 65500 - DenyAllInBound: Deny all other inbound traffic
 
-# For IPv6 from internet (not VNet), you need explicit allow rules
-# because the default DenyAllInBound blocks external IPv6 traffic
+# For IPv6 from the internet, add an explicit allow rule with an IPv6 prefix such as ::/0
+# if you want IPv6-specific matching; without another matching allow rule, DenyAllInBound blocks it
 ```
 
 ## Conclusion
 
-Azure NSG rules for IPv6 require explicit entries with IPv6 source or destination prefixes (`::/0` for any IPv6). There is no automatic coverage from IPv4 rules - `*` in a rule means "any address" but IPv6 addresses from the internet need explicit `::/0` rules. Always add ICMPv6 allow rules to enable NDP and connectivity testing. Associate NSGs to subnets (not individual NICs when possible) for centralized security management. Use consecutive priority numbers for paired IPv4/IPv6 rules (100 for IPv4, 101 for IPv6) to keep rules organized.
+Azure NSG rules for IPv6 can use IPv6 source or destination prefixes (`::/0` for any IPv6). IPv4-specific prefixes such as `0.0.0.0/0` or other IPv4 CIDRs do not match IPv6 traffic, while `*` means any IP address. ICMPv6 is not currently supported in Network Security Groups, so do not rely on NSG rules to filter or allow it. Associate NSGs to subnets (not individual NICs when possible) for centralized security management. Use consecutive priority numbers for paired IPv4/IPv6 rules (100 for IPv4, 101 for IPv6) to keep rules organized.
