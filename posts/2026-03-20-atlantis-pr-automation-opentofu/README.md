@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Atlantis, Pull Request Automation, GitOps, CI/CD, Infrastructure as Code
 
-Description: A step-by-step guide to configuring Atlantis to automatically run OpenTofu plan and apply operations in response to pull requests, enabling a GitOps workflow for infrastructure changes.
+Description: A step-by-step guide to configuring Atlantis to automatically run OpenTofu plans and execute applies from pull request comments, enabling a GitOps workflow for infrastructure changes.
 
 ## Introduction
 
-Atlantis is an open-source tool that enables GitOps workflows for infrastructure-as-code by automatically running `tofu plan` on pull requests and `tofu apply` on merge. This guide walks through setting up Atlantis with OpenTofu so your team can review infrastructure changes directly in pull request comments before they reach production.
+Atlantis is an open-source tool that enables GitOps workflows for infrastructure-as-code by automatically running `tofu plan` on pull requests and running `tofu apply` when a user comments `atlantis apply`. This guide walks through setting up Atlantis with OpenTofu so your team can review infrastructure changes directly in pull request comments before they reach production.
 
 ## How Atlantis Works
 
@@ -57,7 +57,7 @@ services:
 
 ## Configuring Atlantis for OpenTofu
 
-By default Atlantis calls `terraform`. Override this with the `atlantis.yaml` workflow configuration:
+By default Atlantis uses `terraform`. One way to switch a repo to OpenTofu is with a custom workflow in `atlantis.yaml`:
 
 ```yaml
 # atlantis.yaml - place at the root of your repo
@@ -90,17 +90,17 @@ projects:
       enabled: true
 ```
 
-## Setting the ATLANTIS_TERRAFORM_COMMAND Environment Variable
+## Setting the ATLANTIS_DEFAULT_TF_DISTRIBUTION Environment Variable
 
-An alternative to custom workflows is pointing Atlantis to the `tofu` binary:
+An alternative to custom workflows is telling Atlantis to use OpenTofu as the default Terraform distribution:
 
 ```bash
-# Tell Atlantis which binary to use
-export ATLANTIS_TERRAFORM_COMMAND=/usr/local/bin/tofu
+# Tell Atlantis to use OpenTofu for built-in plan/apply steps
+export ATLANTIS_DEFAULT_TF_DISTRIBUTION=opentofu
 
 # Or in docker-compose:
 # environment:
-#   ATLANTIS_TERRAFORM_COMMAND: /usr/local/bin/tofu
+#   ATLANTIS_DEFAULT_TF_DISTRIBUTION: opentofu
 ```
 
 ## Server-Side Repo Configuration
@@ -111,7 +111,8 @@ For centralized policy, configure allowed repos and workflow defaults in the ser
 # server-atlantis.yaml
 repos:
   - id: "github.com/yourorg/*"
-    # Allow teams to override the workflow in their atlantis.yaml
+    # Allow teams to select or define workflows in their atlantis.yaml
+    allowed_overrides: [workflow]
     allow_custom_workflows: true
     # Require PR to be approved before apply
     apply_requirements:
