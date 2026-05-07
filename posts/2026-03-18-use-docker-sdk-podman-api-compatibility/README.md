@@ -8,9 +8,9 @@ Description: Learn how to use existing Docker SDKs and tools with Podman's Docke
 
 ---
 
-> Podman provides a Docker-compatible API layer that allows existing Docker SDKs, tools, and scripts to work with Podman without modification. This compatibility layer makes migrating from Docker to Podman straightforward, letting you keep your existing automation while gaining Podman's rootless and daemonless advantages.
+> Podman provides a Docker-compatible API layer that allows many existing Docker SDKs, tools, and scripts to work with Podman with little or no modification. This compatibility layer makes migrating from Docker to Podman straightforward, letting you keep your existing automation while gaining Podman's rootless and daemonless advantages.
 
-One of Podman's strongest features is its commitment to Docker compatibility. The Podman API includes a complete Docker-compatible endpoint that speaks the same protocol as the Docker Engine API. This means the official Docker SDKs for Python, Go, and other languages can communicate with Podman directly, as can tools like Docker Compose and Portainer.
+One of Podman's strongest features is its commitment to Docker compatibility. The Podman API includes a Docker-compatible endpoint that speaks the same protocol as the Docker Engine API. This means the official Docker SDKs for Python, Go, and other languages can communicate with Podman directly, as can tools like Docker Compose and Portainer.
 
 This guide shows you how to configure Podman's compatibility layer and use Docker SDKs with it across multiple languages.
 
@@ -32,7 +32,7 @@ The compat API handles the same request and response formats that Docker clients
 ```bash
 # Rootful
 
-sudo podman system service --time=0 unix:///var/run/docker.sock &
+sudo podman system service --time=0 unix:///run/podman/podman.sock &
 
 # Rootless
 podman system service --time=0 unix://$XDG_RUNTIME_DIR/podman/podman.sock &
@@ -46,21 +46,14 @@ Many Docker SDKs default to connecting at `/var/run/docker.sock`. You can create
 sudo ln -sf /run/podman/podman.sock /var/run/docker.sock
 ```
 
-Or use systemd to manage the socket at the Docker-compatible path:
+Or use systemd to manage Podman's socket:
 
-```ini
-# /etc/systemd/system/podman-docker.socket
-[Unit]
-Description=Podman Docker-Compatible Socket
+```bash
+# Rootful
+sudo systemctl enable --now podman.socket
 
-[Socket]
-ListenStream=/var/run/docker.sock
-SocketMode=0660
-SocketUser=root
-SocketGroup=docker
-
-[Install]
-WantedBy=sockets.target
+# Rootless
+systemctl --user enable --now podman.socket
 ```
 
 ### Setting the DOCKER_HOST Environment Variable
@@ -91,7 +84,10 @@ import docker
 client = docker.from_env()
 
 # Option 2: Specify the socket path directly
-client = docker.DockerClient(base_url="unix:///run/podman/podman.sock")
+client = docker.DockerClient(
+    base_url="unix:///run/podman/podman.sock",
+    version="auto"
+)
 
 # Verify connection
 info = client.info()
@@ -104,7 +100,10 @@ print(f"Containers: {info.get('Containers', 0)}")
 ```python
 import docker
 
-client = docker.DockerClient(base_url="unix:///run/podman/podman.sock")
+client = docker.DockerClient(
+    base_url="unix:///run/podman/podman.sock",
+    version="auto"
+)
 
 # Pull an image
 print("Pulling nginx:alpine...")
@@ -149,7 +148,10 @@ print("Container removed")
 ### Volume and Network Management
 
 ```python
-client = docker.DockerClient(base_url="unix:///run/podman/podman.sock")
+client = docker.DockerClient(
+    base_url="unix:///run/podman/podman.sock",
+    version="auto"
+)
 
 # Create a volume
 volume = client.volumes.create(name="my-data", labels={"env": "dev"})
@@ -183,7 +185,7 @@ The Docker SDK for Go also works with Podman.
 ### Installation
 
 ```bash
-go get github.com/docker/docker/client
+go get github.com/moby/moby/client
 ```
 
 ### Connecting and Managing Containers
@@ -197,19 +199,17 @@ import (
     "io"
     "os"
 
-    "github.com/docker/docker/api/types"
-    "github.com/docker/docker/api/types/container"
-    "github.com/docker/docker/client"
     "github.com/docker/go-connections/nat"
+    "github.com/moby/moby/api/types/container"
+    "github.com/moby/moby/client"
 )
 
 func main() {
     ctx := context.Background()
 
     // Connect to Podman's compat socket
-    cli, err := client.NewClientWithOpts(
+    cli, err := client.New(
         client.WithHost("unix:///run/podman/podman.sock"),
-        client.WithAPIVersionNegotiation(),
     )
     if err != nil {
         fmt.Printf("Error creating client: %v\n", err)
@@ -218,15 +218,15 @@ func main() {
     defer cli.Close()
 
     // Check connection
-    info, err := cli.Info(ctx)
+    info, err := cli.Info(ctx, client.InfoOptions{})
     if err != nil {
         fmt.Printf("Error getting info: %v\n", err)
         os.Exit(1)
     }
-    fmt.Printf("Connected: %s, Containers: %d\n", info.Name, info.Containers)
+    fmt.Printf("Connected: %s, Containers: %d\n", info.Info.Name, info.Info.Containers)
 
     // Pull an image
-    reader, err := cli.ImagePull(ctx, "docker.io/library/nginx:alpine", types.ImagePullOptions{})
+    reader, err := cli.ImagePull(ctx, "docker.io/library/nginx:alpine", client.ImagePullOptions{})
     if err != nil {
         fmt.Printf("Error pulling image: %v\n", err)
         os.Exit(1)
@@ -236,19 +236,20 @@ func main() {
     fmt.Println("Image pulled")
 
     // Create container
-    resp, err := cli.ContainerCreate(ctx,
-        &container.Config{
-            Image: "nginx:alpine",
-            Env:   []string{"NGINX_HOST=localhost"},
+    resp, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+        Image: "nginx:alpine",
+        Config: &container.Config{
+            Env: []string{"NGINX_HOST=localhost"},
         },
-        &container.HostConfig{
+        HostConfig: &container.HostConfig{
             PortBindings: nat.PortMap{
                 "80/tcp": []nat.PortBinding{
                     {HostPort: "9090"},
                 },
             },
         },
-        nil, nil, "go-sdk-demo")
+        Name: "go-sdk-demo",
+    })
     if err != nil {
         fmt.Printf("Error creating container: %v\n", err)
         os.Exit(1)
@@ -256,20 +257,20 @@ func main() {
     fmt.Printf("Created: %s\n", resp.ID[:12])
 
     // Start container
-    if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+    if _, err := cli.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
         fmt.Printf("Error starting: %v\n", err)
         os.Exit(1)
     }
     fmt.Println("Started")
 
     // List containers
-    containers, _ := cli.ContainerList(ctx, container.ListOptions{})
-    for _, c := range containers {
+    containers, _ := cli.ContainerList(ctx, client.ContainerListOptions{})
+    for _, c := range containers.Items {
         fmt.Printf("  %s (%s) - %s\n", c.Names[0], c.ID[:12], c.State)
     }
 
     // Get logs
-    logReader, _ := cli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
+    logReader, _ := cli.ContainerLogs(ctx, resp.ID, client.ContainerLogsOptions{
         ShowStdout: true,
         ShowStderr: true,
         Tail:       "10",
@@ -279,8 +280,8 @@ func main() {
     fmt.Printf("Logs:\n%s\n", string(logData))
 
     // Stop and remove
-    cli.ContainerStop(ctx, resp.ID, container.StopOptions{})
-    cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{})
+    cli.ContainerStop(ctx, resp.ID, client.ContainerStopOptions{})
+    cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{})
     fmt.Println("Cleaned up")
 }
 ```
@@ -330,7 +331,7 @@ While Podman's compat API covers most Docker API features, there are some differ
 
 ### Handling API Version Negotiation
 
-Always enable API version negotiation when using Docker SDKs with Podman:
+Use API version negotiation when using Docker SDKs with Podman:
 
 ```python
 # Python
@@ -342,9 +343,8 @@ client = docker.DockerClient(
 
 ```go
 // Go
-cli, err := client.NewClientWithOpts(
+cli, err := client.New(
     client.WithHost("unix:///run/podman/podman.sock"),
-    client.WithAPIVersionNegotiation(),
 )
 ```
 
@@ -356,7 +356,10 @@ Create a simple test script to verify compatibility:
 import docker
 import sys
 
-client = docker.DockerClient(base_url="unix:///run/podman/podman.sock")
+client = docker.DockerClient(
+    base_url="unix:///run/podman/podman.sock",
+    version="auto"
+)
 
 tests = {
     "ping": lambda: client.ping(),
@@ -394,4 +397,4 @@ When migrating from Docker to Podman:
 
 ## Conclusion
 
-Podman's Docker-compatible API layer makes the transition from Docker to Podman remarkably smooth. By pointing Docker SDKs at the Podman socket, you can run your existing container management code, Docker Compose files, and CI/CD pipelines without modification. This compatibility, combined with Podman's rootless operation and daemonless architecture, gives you the best of both worlds: proven Docker tooling with Podman's security and simplicity.
+Podman's Docker-compatible API layer makes the transition from Docker to Podman remarkably smooth. By pointing Docker SDKs at the Podman socket, you can often run your existing container management code, Docker Compose files, and CI/CD pipelines with little or no modification. This compatibility, combined with Podman's rootless operation and daemonless architecture, gives you the best of both worlds: proven Docker tooling with Podman's security and simplicity.
