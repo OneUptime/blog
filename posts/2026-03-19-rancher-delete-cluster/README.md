@@ -12,9 +12,10 @@ Deleting a cluster in Rancher is a straightforward operation, but understanding 
 
 The behavior of cluster deletion depends on how the cluster was created:
 
-- **Rancher-provisioned clusters** (custom, node driver): Rancher deletes the cluster and can clean up infrastructure resources (VMs, cloud resources)
+- **Rancher-provisioned clusters on existing custom nodes**: Rancher removes the cluster and its Kubernetes components, but the underlying machines remain
+- **Rancher-provisioned clusters on infrastructure-provider nodes**: Rancher removes the cluster and can also clean up the nodes and infrastructure it provisioned
 - **Imported clusters**: Rancher removes its agents from the cluster but does not delete the cluster itself
-- **Hosted clusters** (EKS, GKE, AKS provisioned by Rancher): Rancher can delete the cloud-managed cluster and its resources
+- **Hosted clusters** (EKS, GKE, AKS provisioned by Rancher): Rancher asks the cloud provider to delete the managed cluster
 
 ## Prerequisites
 
@@ -42,7 +43,7 @@ Pre-Deletion Checklist
 Export cluster resources you might need later:
 
 ```bash
-# Export all custom resources
+# Export common built-in workload and service resources
 
 kubectl get all -A -o yaml > cluster-resources-backup.yaml
 
@@ -65,7 +66,7 @@ kubectl get pvc -A -o yaml > pvcs-backup.yaml
 5. Select **Delete**
 6. Confirm the deletion when prompted
 
-Rancher will ask you to type the cluster name to confirm the deletion for safety.
+Follow the confirmation prompt in the UI to complete the deletion.
 
 ### What Happens Next
 
@@ -76,18 +77,23 @@ For **imported clusters**:
 - The Kubernetes cluster itself continues to run independently
 - Workloads on the cluster are not affected
 
-For **Rancher-provisioned clusters** (custom with node driver):
+For **Rancher-provisioned clusters on existing custom nodes**:
 
 - Rancher removes the cluster from management
-- If provisioned via a node driver (vSphere, Harvester), the VMs may be deleted
+- Kubernetes components are torn down
+- The underlying VMs or bare-metal machines are not deleted automatically
+
+For **Rancher-provisioned clusters on infrastructure-provider nodes**:
+
+- Rancher removes the cluster from management
+- The nodes and infrastructure resources that Rancher provisioned may also be deleted
 - Kubernetes components are torn down
 
 For **hosted provider clusters** (EKS, GKE, AKS provisioned by Rancher):
 
 - Rancher sends a delete request to the cloud provider
-- The cloud provider tears down the cluster and associated resources
-- Node groups, VMs, and load balancers are deleted
-- Persistent volumes may or may not be deleted depending on the reclaim policy
+- The cloud provider tears down the managed control plane and worker nodes
+- Load balancer, network, and storage cleanup depends on the provider and should be verified separately
 
 ## Step 3: Verify Deletion
 
@@ -102,7 +108,7 @@ kubectl get clusters.management.cattle.io
 kubectl get clusters.provisioning.cattle.io -A
 ```
 
-### Check Cloud Resources (for provisioned clusters)
+### Check Cloud Resources (for hosted clusters)
 
 For EKS:
 
@@ -124,21 +130,19 @@ az aks list --resource-group <RESOURCE_GROUP>
 
 ## Step 4: Clean Up Imported Clusters (If Needed)
 
-When you delete an imported cluster from Rancher, the agents should be removed automatically. If they are not, clean them up manually:
+When you delete an imported cluster from Rancher, the agents should be removed automatically. If they are not, Rancher documents the `user-cluster.sh` cleanup script for removing Rancher components manually:
 
 ```bash
-# Switch to the formerly imported cluster's kubeconfig
-kubectl delete namespace cattle-system
-kubectl delete namespace cattle-fleet-system
-kubectl delete namespace cattle-fleet-local-system
+# Switch to the formerly imported cluster's kubeconfig context first
 
-# Remove RBAC resources
-kubectl delete clusterrolebinding cattle-admin-binding
-kubectl delete clusterrole cattle-admin
+curl -LO https://raw.githubusercontent.com/rancher/rancher/refs/heads/main/cleanup/user-cluster.sh
+chmod +x user-cluster.sh
 
-# Remove any remaining Rancher CRDs
-kubectl get crd | grep cattle.io | awk '{print $1}' | xargs kubectl delete crd
-kubectl get crd | grep fleet.cattle.io | awk '{print $1}' | xargs kubectl delete crd
+# Preview the cleanup first
+./user-cluster.sh rancher/rancher-agent:<RANCHER_VERSION> -dry-run
+
+# Run the cleanup with the rancher-agent version that matches your Rancher server
+./user-cluster.sh rancher/rancher-agent:<RANCHER_VERSION>
 ```
 
 ## Step 5: Clean Up Management Cluster Resources
@@ -149,11 +153,14 @@ After deleting a cluster, some resources may remain in the Rancher management cl
 # Check for orphaned cluster resources
 kubectl get clusters.management.cattle.io
 
-# Check for orphaned namespaces (each cluster gets a namespace)
+# Check for leftover Rancher project resources
+kubectl get projects.management.cattle.io -A
+
+# Inspect Rancher-created management namespaces and backing namespaces
 kubectl get namespaces | grep "^c-"
 
-# Clean up if needed
-kubectl delete namespace <orphaned-namespace>
+# Only after verifying a namespace belongs to the deleted cluster and is no longer needed
+kubectl delete namespace <RANCHER_MANAGEMENT_NAMESPACE>
 ```
 
 ## Step 6: Clean Up DNS and Load Balancers
@@ -166,12 +173,11 @@ If the deleted cluster had:
 
 ## Deleting Multiple Clusters
 
-If you need to delete multiple clusters, you can do it through the Rancher UI by selecting multiple clusters:
+If you need to delete multiple clusters, repeat the same deletion workflow for each cluster and verify the result after each removal:
 
 1. Go to **Cluster Management**
-2. Select the checkboxes next to each cluster you want to delete
-3. Click the **Delete** button in the toolbar
-4. Confirm the deletion
+2. Delete one cluster using the steps above
+3. Confirm it has been removed before proceeding to the next cluster
 
 ## Force Deleting a Stuck Cluster
 
@@ -181,8 +187,8 @@ Sometimes a cluster gets stuck in a `Removing` state. To force the deletion:
 # Find the cluster resource
 kubectl get clusters.management.cattle.io
 
-# Remove the finalizer to allow deletion
-kubectl patch clusters.management.cattle.io <CLUSTER_NAME> \
+# Remove the finalizer from the Rancher cluster ID to allow deletion
+kubectl patch clusters.management.cattle.io <CLUSTER_ID> \
   -p '{"metadata":{"finalizers":[]}}' \
   --type=merge
 ```
@@ -195,11 +201,11 @@ If you accidentally deleted a cluster:
 
 - **Imported cluster**: The cluster itself still exists. Re-import it into Rancher by following the import process again.
 - **Provisioned cluster**: If the infrastructure was not yet deleted, you may be able to re-import it. Otherwise, you need to recreate the cluster and restore from backups.
-- **Hosted cluster**: Check if the cloud provider has a deletion protection or recovery option. Some providers retain resources briefly after deletion.
+- **Hosted cluster**: Check the cloud provider's deletion documentation immediately. In most cases, you need to recreate the cluster and restore from backups.
 
 ## Best Practices
 
-- Enable deletion protection on critical cloud-managed clusters (EKS, GKE, AKS) at the cloud provider level
+- Use cloud-side safeguards against accidental deletion where available, and restrict cloud IAM permissions for cluster deletion
 - Always back up cluster data before deletion
 - Use Rancher's RBAC to restrict who can delete clusters
 - Tag clusters with metadata indicating their purpose and criticality
@@ -208,4 +214,4 @@ If you accidentally deleted a cluster:
 
 ## Conclusion
 
-Deleting a cluster in Rancher is simple through the UI, but understanding the implications for different cluster types is essential. Imported clusters continue to exist after removal from Rancher, while provisioned and hosted clusters may be fully torn down. Always back up data, verify cleanup of infrastructure resources, and remove any orphaned DNS records or load balancers after deletion.
+Deleting a cluster in Rancher is simple through the UI, but understanding the implications for different cluster types is essential. Imported clusters continue to exist after removal from Rancher, while Rancher-launched and hosted clusters remove Kubernetes and may also remove infrastructure depending on how the cluster was created. Always back up data, verify cleanup of infrastructure resources, and remove any orphaned DNS records or load balancers after deletion.
