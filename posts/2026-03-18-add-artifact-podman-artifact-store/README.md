@@ -56,7 +56,7 @@ EOF
 podman artifact add localhost/myorg/app-config:v1.0 app-config.yaml
 ```
 
-The artifact is now stored locally under the reference `localhost/myorg/app-config:v1.0`. The `localhost` prefix indicates it is in the local store only and has not been pushed to a remote registry.
+The artifact is now stored locally under the reference `localhost/myorg/app-config:v1.0`. Artifacts added with `podman artifact add` remain in the local artifact store until you explicitly push them to a remote registry.
 
 ## Adding Multiple Files as a Single Artifact
 
@@ -74,9 +74,9 @@ podman artifact add localhost/myorg/env-bundle:v1.0 db.env cache.env secrets.env
 
 All three files are now stored together under a single artifact reference.
 
-## Adding Files with a Custom Media Type
+## Adding Files with a Custom File Media Type
 
-OCI artifacts use media types to identify content. You can specify a custom media type when adding an artifact using the `--type` flag.
+OCI artifacts use media types to identify content. You can specify a custom media type for the file being added using the `--file-type` flag.
 
 ```bash
 # Create a security policy file
@@ -91,8 +91,8 @@ allow {
 }
 EOF
 
-# Add with a custom media type
-podman artifact add --type "application/vnd.rego.policy.v1+rego" \
+# Add with a custom file media type
+podman artifact add --file-type "application/vnd.rego.policy.v1+rego" \
   localhost/myorg/auth-policy:v1.0 policy.rego
 ```
 
@@ -144,4 +144,4 @@ podman artifact ls
 
 ## Summary
 
-Adding artifacts to the Podman artifact store is straightforward. You use `podman artifact add` with a reference name and one or more file paths. You can optionally set a custom media type with the `--type` flag. Once added, artifacts live in your local store and can be inspected, listed, or pushed to a remote OCI registry. This workflow lets you manage configuration files, binaries, policies, and other non-container content using the same container tooling you already know.
+Adding artifacts to the Podman artifact store is straightforward. You use `podman artifact add` with a reference name and one or more file paths. You can optionally set a custom file media type with the `--file-type` flag. Once added, artifacts live in your local store and can be inspected, listed, or pushed to a remote OCI registry. This workflow lets you manage configuration files, binaries, policies, and other non-container content using the same container tooling you already know.
