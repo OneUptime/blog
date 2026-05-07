@@ -6,16 +6,16 @@ Tags: Ansible, IPv6, SLAAC, Jinja2, Filter, Network Automation
 
 Description: A guide to using Ansible's slaac() Jinja2 filter to calculate SLAAC-derived IPv6 addresses from a prefix and MAC address in playbooks and templates.
 
-The `slaac()` filter in Ansible (provided by the `ansible.netcommon` or `netaddr` library) calculates the IPv6 address that a host will auto-configure via SLAAC, given a network prefix and the host's MAC address. This is useful for pre-populating DNS records, firewall rules, or configuration files before a host has been deployed.
+The `slaac()` filter in Ansible (provided by the `ansible.utils` collection and dependent on the `netaddr` Python library) calculates the EUI-64-based IPv6 address for a given network prefix and MAC address. This is useful for pre-populating DNS records, firewall rules, or configuration files when a host uses MAC-derived SLAAC addressing.
 
 ## How SLAAC Address Generation Works
 
-SLAAC uses EUI-64 to convert a 48-bit MAC address into a 64-bit interface ID. The interface ID is then appended to the /64 prefix to form the full 128-bit IPv6 address.
+When deriving a SLAAC address from a MAC address, the `slaac()` filter uses the modified EUI-64 process to convert a 48-bit MAC address into a 64-bit interface ID. The interface ID is then appended to the /64 prefix to form the full 128-bit IPv6 address.
 
 For example:
 - Prefix: `2001:db8:1::/64`
 - MAC: `52:54:00:ab:cd:ef`
-- EUI-64 interface ID: `5054:00ff:feab:cdef`
+- Modified EUI-64 interface ID: `5054:00ff:feab:cdef`
 - SLAAC address: `2001:db8:1::5054:00ff:feab:cdef`
 
 ## Using the slaac() Filter
@@ -37,7 +37,7 @@ For example:
   tasks:
     - name: Calculate SLAAC address from prefix and MAC
       ansible.builtin.debug:
-        msg: "SLAAC address: {{ ipv6_prefix | ansible.netcommon.slaac(host_mac) }}"
+        msg: "SLAAC address: {{ ipv6_prefix | ansible.utils.slaac(host_mac) }}"
         # Output: 2001:db8:1::5054:ff:feab:cdef
 ```
 
@@ -51,7 +51,7 @@ For example:
   gather_facts: false
 
   vars:
-    ipv6_prefix: "2001:db8:prod::/64"
+    ipv6_prefix: "2001:db8:100::/64"
     servers:
       - name: web-01
         mac: "52:54:00:11:22:33"
@@ -63,7 +63,7 @@ For example:
   tasks:
     - name: Display SLAAC address for each server
       ansible.builtin.debug:
-        msg: "{{ item.name }}: {{ ipv6_prefix | ansible.netcommon.slaac(item.mac) }}"
+        msg: "{{ item.name }}: {{ ipv6_prefix | ansible.utils.slaac(item.mac) }}"
       loop: "{{ servers }}"
 ```
 
@@ -77,7 +77,7 @@ For example:
   gather_facts: false
 
   vars:
-    ipv6_prefix: "2001:db8:prod::/64"
+    ipv6_prefix: "2001:db8:100::/64"
     servers:
       - name: web-01
         mac: "52:54:00:11:22:33"
@@ -94,7 +94,7 @@ For example:
         record: "{{ item.name }}"
         type: AAAA
         # Calculate the SLAAC address inline
-        value: "{{ ipv6_prefix | ansible.netcommon.slaac(item.mac) }}"
+        value: "{{ ipv6_prefix | ansible.utils.slaac(item.mac) }}"
         ttl: 300
         state: present
       loop: "{{ servers }}"
@@ -110,7 +110,7 @@ For example:
   become: true
 
   vars:
-    ipv6_prefix: "2001:db8:mgmt::/64"
+    ipv6_prefix: "2001:db8:200::/64"
     admin_hosts:
       - mac: "aa:bb:cc:dd:ee:ff"
       - mac: "11:22:33:44:55:66"
@@ -122,7 +122,7 @@ For example:
         chain: INPUT
         protocol: tcp
         destination_port: "22"
-        source: "{{ ipv6_prefix | ansible.netcommon.slaac(item.mac) }}/128"
+        source: "{{ ipv6_prefix | ansible.utils.slaac(item.mac) }}/128"
         jump: ACCEPT
       loop: "{{ admin_hosts }}"
 ```
@@ -130,8 +130,11 @@ For example:
 ## Installing the Required Collection
 
 ```bash
-# Install the netcommon collection for the slaac() filter
-ansible-galaxy collection install ansible.netcommon
+# Install the ansible.utils collection for the slaac() filter
+ansible-galaxy collection install ansible.utils
+
+# Install the netaddr dependency on the Ansible control node
+pip install netaddr
 ```
 
-The `slaac()` filter is a powerful tool for pre-computing IPv6 addresses in automation workflows, eliminating the need to manually calculate EUI-64 interface IDs when provisioning DNS, firewall rules, or configuration files for known hosts.
+The `slaac()` filter is a powerful tool for pre-computing EUI-64-based IPv6 addresses in automation workflows, eliminating the need to manually calculate interface IDs when provisioning DNS, firewall rules, or configuration files for known hosts.
