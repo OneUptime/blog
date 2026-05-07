@@ -8,7 +8,7 @@ Description: Configure IPv6 address spaces and subnets in Azure Virtual Networks
 
 ## Introduction
 
-Azure Virtual Networks support IPv6 through dual-stack configuration: you add an IPv6 address space alongside the existing IPv4 address space. Azure uses `/48` IPv6 prefixes for VNets and `/64` for subnets. Azure IPv6 addresses are globally unique and routable, similar to AWS. This guide covers creating and configuring dual-stack Azure VNets.
+Azure Virtual Networks support IPv6 through dual-stack configuration: you add an IPv6 address space alongside the existing IPv4 address space. Azure lets you define the IPv6 address space for the VNet, while IPv6 subnets must be exactly `/64`. Azure supports both unique local IPv6 space and global unicast space in a dual-stack VNet, but internet reachability requires explicit IPv6 public configuration. This guide covers creating and configuring dual-stack Azure VNets.
 
 ## Create Dual-Stack VNet with Azure CLI
 
@@ -57,7 +57,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -124,29 +124,29 @@ resource "azurerm_subnet" "db" {
 ```bash
 # Azure IPv6 differences from IPv4:
 # 1. VNet peering supports IPv6 (dual-stack to dual-stack)
-# 2. IPv6 ULA (fd00::/8) addresses are supported
-# 3. Can also use globally routable IPv6 via public IP prefix
+# 2. Unique local IPv6 addresses (within fc00::/7, such as fd00::/8) are supported
+# 3. Internet-facing IPv6 uses IPv6 public IPs or public IP prefixes
 # 4. ExpressRoute supports IPv6
-# 5. VPN Gateway supports IPv6 dual-stack
+# 5. VPN Gateway supports IPv6 dual-stack (currently in preview)
 
 # Add IPv6 address space to existing VNet
 az network vnet update \
     --resource-group "$RESOURCE_GROUP" \
     --name existing-vnet \
-    --add addressSpace.addressPrefixes "fd00:existing::/48"
+    --address-prefixes "10.10.0.0/16" "fd00:10:0::/56"
 
 # Update subnet to add IPv6
 az network vnet subnet update \
     --resource-group "$RESOURCE_GROUP" \
     --vnet-name existing-vnet \
     --name existing-subnet \
-    --add addressPrefixes "fd00:existing:0:1::/64"
+    --address-prefixes "10.10.1.0/24" "fd00:10:0:1::/64"
 ```
 
 ## VNet Peering with IPv6
 
 ```hcl
-# Peer two dual-stack VNets
+# Create peering in both directions between dual-stack VNets
 resource "azurerm_virtual_network_peering" "a_to_b" {
   name                      = "peer-a-to-b"
   resource_group_name       = azurerm_resource_group.main.name
@@ -158,8 +158,20 @@ resource "azurerm_virtual_network_peering" "a_to_b" {
   allow_gateway_transit        = false
   use_remote_gateways          = false
 }
+
+resource "azurerm_virtual_network_peering" "b_to_a" {
+  name                      = "peer-b-to-a"
+  resource_group_name       = azurerm_resource_group.main.name
+  virtual_network_name      = azurerm_virtual_network.vnet_b.name
+  remote_virtual_network_id = azurerm_virtual_network.vnet_a.id
+
+  allow_virtual_network_access = true
+  allow_forwarded_traffic      = true
+  allow_gateway_transit        = false
+  use_remote_gateways          = false
+}
 ```
 
 ## Conclusion
 
-Azure dual-stack VNets combine IPv4 and IPv6 address spaces in the same virtual network. Add IPv6 address spaces (either globally routable or ULA `fd00::/8`) alongside IPv4 prefixes. Subnets get both IPv4 and IPv6 CIDR blocks. Most Azure networking features (NSGs, route tables, load balancers) support IPv6 when properly configured. Start with ULA addresses for internal-only IPv6, or use public IP prefixes for globally routable IPv6 addresses visible from the internet.
+Azure dual-stack VNets combine IPv4 and IPv6 address spaces in the same virtual network. Add an IPv6 address space that matches your addressing plan, and use `/64` for each IPv6 subnet. Most Azure networking features (NSGs, route tables, load balancers) support IPv6 when properly configured. Start with unique local addresses for internal-only IPv6, and use IPv6 public IPs or public IP prefixes when you need internet-facing IPv6 connectivity.
