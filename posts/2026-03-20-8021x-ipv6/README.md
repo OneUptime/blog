@@ -10,7 +10,7 @@ Description: Configure 802.1X port-based authentication in IPv6 environments inc
 
 802.1X operates at Layer 2 - authentication happens before any IP address is assigned. IPv6 becomes relevant in two ways:
 1. The RADIUS server is reachable via IPv6 from the authenticator (switch/AP)
-2. After authentication, the user receives IPv6 addresses (via SLAAC, DHCPv6, or RADIUS)
+2. After authentication, the user receives IPv6 addresses (via SLAAC or DHCPv6, optionally guided by RADIUS IPv6 attributes)
 
 ```mermaid
 sequenceDiagram
@@ -18,7 +18,7 @@ sequenceDiagram
     participant A as Authenticator (Switch)
     participant R as RADIUS Server (IPv6)
     S->>A: EAPOL-Start
-    A->>R: RADIUS Access-Request (via IPv6: 2001:db8::radius)
+    A->>R: RADIUS Access-Request (via IPv6: 2001:db8::10)
     R->>A: RADIUS Access-Accept + VLAN + IPv6 attrs
     A->>S: EAP-Success + Port authorized
     S->>S: Get IPv6 via SLAAC/DHCPv6
@@ -33,8 +33,14 @@ sequenceDiagram
 
 listen {
     type = auth
-    ipaddr = ::          # IPv6 and IPv4 dual-stack
+    ipv6addr = ::
     port = 1812
+}
+
+listen {
+    type = acct
+    ipv6addr = ::
+    port = 1813
 }
 
 # EAP configuration (unchanged - 802.1X EAP is Layer 2)
@@ -58,7 +64,7 @@ wired_user  Cleartext-Password := "secret"
             Tunnel-Type = VLAN,
             Tunnel-Medium-Type = IEEE-802,
             Tunnel-Private-Group-ID = "100",
-            Framed-IPv6-Prefix = "2001:db8:vlan100::user/128",
+            Framed-IPv6-Prefix = 2001:db8:100::/64,
             Session-Timeout = 28800
 ```
 
@@ -68,16 +74,15 @@ wired_user  Cleartext-Password := "secret"
 ! Cisco Catalyst - 802.1X with IPv6 RADIUS server
 
 ! Configure RADIUS server via IPv6
+ipv6 unicast-routing
+
 radius server IPV6_RADIUS
- address ipv6 2001:db8::radius
- auth-port 1812
- acct-port 1813
+ address ipv6 2001:db8::10 auth-port 1812 acct-port 1813
  key radiuskey
 
 aaa group server radius RADIUS_GRP
  server name IPV6_RADIUS
- ip radius source-interface Vlan100   ! Must have IPv6 address
- ipv6 radius source-interface Vlan100
+ ipv6 radius source-interface Vlan100   ! Vlan100 must have an IPv6 address
 
 ! Enable 802.1X
 aaa new-model
@@ -97,7 +102,7 @@ interface GigabitEthernet0/1
 
 ! Verify
 show dot1x all summary
-show radius statistics
+show aaa servers
 ```
 
 ## Aruba/HP Switch: 802.1X with IPv6 RADIUS
@@ -105,18 +110,18 @@ show radius statistics
 ```text
 ! Aruba CX - 802.1X with IPv6 RADIUS
 
-radius-server host 2001:db8::radius key plain "radiuskey"
-radius-server host 2001:db8::radius auth-port 1812
+radius-server host 2001:db8::10 key plaintext radiuskey
 
-aaa authentication port-access dot1x authenticator
-aaa group radius RADIUS_GRP
- host 2001:db8::radius
+aaa group server radius RADIUS_GRP
+ server 2001:db8::10 vrf default
+
+aaa authentication port-access dot1x authenticator auth-method eap-radius
+aaa authentication port-access dot1x authenticator radius server-group RADIUS_GRP
+aaa authentication port-access dot1x authenticator enable
 
 interface 1/1/1
  vlan access 100
- dot1x authenticator
- dot1x role authenticator
- aaa authentication port-access dot1x authenticator
+ aaa authentication port-access dot1x authenticator enable
  no shutdown
 ```
 
@@ -146,54 +151,38 @@ network={
 wpa_supplicant -c /etc/wpa_supplicant/wpa_supplicant.conf \
     -i eth0 -D wired -B
 
-# After authentication, get IPv6 via SLAAC
-radvd-conf-check
-# Or DHCPv6
+# After authentication, IPv6 via SLAAC is automatic when Router Advertisements are present
+ip -6 addr show dev eth0
+# Or request DHCPv6
 dhclient -6 eth0
 ```
 
 ## Dynamic IPv6 VLAN Assignment
 
 ```text
-# FreeRADIUS: assign different VLAN + IPv6 pool per user group
+# FreeRADIUS: assign different VLAN + IPv6 prefix per user group
 
 # /etc/freeradius/3.0/users
 corp_user  Cleartext-Password := "secret"
            Tunnel-Type = VLAN,
            Tunnel-Medium-Type = IEEE-802,
            Tunnel-Private-Group-ID = "200",
-           Framed-IPv6-Pool = "corp_ipv6_pool",
+           Framed-IPv6-Prefix = 2001:db8:200::/64,
            Filter-Id = "corp_acl"
 
 guest_user Cleartext-Password := "guestpass"
            Tunnel-Type = VLAN,
            Tunnel-Medium-Type = IEEE-802,
            Tunnel-Private-Group-ID = "300",
-           Framed-IPv6-Pool = "guest_ipv6_pool"
+           Framed-IPv6-Prefix = 2001:db8:300::/64
 ```
 
-```bash
-# Per-VLAN IPv6 pools in FreeRADIUS
-# /etc/freeradius/3.0/mods-enabled/ippool_corp
+```text
+# Each RADIUS-assigned VLAN should have its own IPv6 prefix
+# advertised by the router or firewall for that VLAN
 
-ippool corp_ipv6_pool {
-    backend = redis
-    redis { server = "[::1]:6379"; database = 2 }
-    range-start = 2001:db8:corp::1
-    range-stop  = 2001:db8:corp::ffff
-    prefix-len  = 128
-    key = "%{User-Name}"
-    lease-duration = 28800
-}
-
-ippool guest_ipv6_pool {
-    backend = redis
-    redis { server = "[::1]:6379"; database = 3 }
-    range-start = 2001:db8:guest::1
-    range-stop  = 2001:db8:guest::ffff
-    prefix-len  = 128
-    lease-duration = 3600
-}
+VLAN 200 -> 2001:db8:200::/64
+VLAN 300 -> 2001:db8:300::/64
 ```
 
 ## Monitoring 802.1X Sessions
@@ -205,11 +194,11 @@ show dot1x all details
 
 # FreeRADIUS: active sessions in radacct
 mysql -u radius -p radius << 'EOF'
-SELECT username, nasipv6address, framedipv6prefix,
+SELECT username, framedipv6address, framedipv6prefix,
        acctstarttime, TIMESTAMPDIFF(MINUTE, acctstarttime, NOW()) AS min_ago
 FROM radacct
 WHERE acctstoptime IS NULL
-  AND nasipv6address IS NOT NULL
+  AND (framedipv6address <> '' OR framedipv6prefix <> '')
 ORDER BY acctstarttime DESC
 LIMIT 20;
 EOF
@@ -217,4 +206,4 @@ EOF
 
 ## Conclusion
 
-802.1X authentication itself is Layer 2 and unaffected by IPv6, but the RADIUS infrastructure supporting it can be fully IPv6-native. Configure RADIUS servers via IPv6 addresses on Cisco (`address ipv6`), Aruba, and other authenticators. After successful authentication, IPv6 address assignment occurs via SLAAC on the authorized VLAN or via RADIUS attributes (`Framed-IPv6-Prefix`, `Framed-IPv6-Pool`). Dynamic VLAN assignment works the same as IPv4 - `Tunnel-Type = VLAN` with `Tunnel-Private-Group-ID`. Monitor sessions with `show authentication sessions` and query `radacct` for IPv6 NAS address tracking.
+802.1X authentication itself is Layer 2 and unaffected by IPv6, but the RADIUS infrastructure supporting it can be fully IPv6-native. Configure RADIUS servers via IPv6 addresses on Cisco (`address ipv6`), Aruba, and other authenticators. After successful authentication, IPv6 address assignment usually occurs via SLAAC or DHCPv6 on the authorized VLAN, optionally using RADIUS reply attributes such as `Framed-IPv6-Prefix` or `Framed-IPv6-Address` where the NAS supports them. Dynamic VLAN assignment works the same as IPv4 - `Tunnel-Type = VLAN` with `Tunnel-Private-Group-ID`. Monitor sessions with `show authentication sessions` and query `radacct` for assigned IPv6 addresses or prefixes.
