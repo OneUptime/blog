@@ -27,15 +27,33 @@ Create a Kubernetes cluster that mirrors your production management cluster. Mat
 ### Example with RKE2
 
 ```bash
-# On each staging server node
+# On the first staging server node
 
 curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=<SAME_AS_PROD> sh -
 
 mkdir -p /etc/rancher/rke2
 
 cat > /etc/rancher/rke2/config.yaml <<EOF
+token: <SHARED_CLUSTER_TOKEN>
 tls-san:
-  - rancher-staging.yourdomain.com
+  - <RKE2_REGISTRATION_ADDRESS>
+write-kubeconfig-mode: "0644"
+EOF
+
+systemctl enable rke2-server
+systemctl start rke2-server
+
+# On each additional staging server node
+
+curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=<SAME_AS_PROD> sh -
+
+mkdir -p /etc/rancher/rke2
+
+cat > /etc/rancher/rke2/config.yaml <<EOF
+server: https://<RKE2_REGISTRATION_ADDRESS>:9345
+token: <SHARED_CLUSTER_TOKEN>
+tls-san:
+  - <RKE2_REGISTRATION_ADDRESS>
 write-kubeconfig-mode: "0644"
 EOF
 
@@ -59,12 +77,13 @@ Install cert-manager and Rancher matching your production versions exactly:
 
 ```bash
 # cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/<CERT_MANAGER_VERSION>/cert-manager.crds.yaml
 helm repo add jetstack https://charts.jetstack.io
+helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.14.4
+  --version <CERT_MANAGER_VERSION>
 
 # Rancher
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
@@ -74,7 +93,7 @@ helm install rancher rancher-stable/rancher \
   --namespace cattle-system \
   --create-namespace \
   --set hostname=rancher-staging.yourdomain.com \
-  --set replicas=3 \
+  --set replicas=<CURRENT_PROD_REPLICA_COUNT> \
   --set bootstrapPassword=stagingadmin \
   --version <CURRENT_PROD_VERSION>
 ```
@@ -101,7 +120,8 @@ curl -sfL https://get.k3s.io | sh -
 Import it into staging Rancher from the UI, or use the CLI:
 
 ```bash
-# Get the import command from Rancher UI and run it on the test cluster
+# Get the exact registration command from Rancher UI and run it on the test cluster.
+# If Rancher uses a self-signed certificate, use the curl-based command shown in the UI instead.
 kubectl apply -f https://rancher-staging.yourdomain.com/v3/import/<token>.yaml
 ```
 
@@ -138,10 +158,10 @@ curl -sk https://rancher-staging.yourdomain.com/healthz
 
 ## Step 5: Perform the Staging Upgrade
 
-Follow the exact same upgrade process you plan to use in production:
+Follow the exact same upgrade process you plan to use in production, including your normal backup procedure:
 
 ```bash
-# Back up
+# Export current Helm values
 helm get values rancher -n cattle-system -o yaml > staging-values.yaml
 
 # Update repo
@@ -171,7 +191,7 @@ After the upgrade completes, run a comprehensive validation.
 
 ```bash
 # Version check
-kubectl get settings server-version -o jsonpath='{.value}' -n cattle-system
+kubectl get settings.management.cattle.io server-version -o jsonpath='{.value}'
 
 # Pod health
 kubectl get pods -n cattle-system
@@ -202,18 +222,17 @@ Test these operations through the Rancher UI:
 Test the Rancher API endpoints:
 
 ```bash
-# Get an API token
-TOKEN=$(curl -sk "https://rancher-staging.yourdomain.com/v3-public/localProviders/local?action=login" \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"stagingadmin"}' | jq -r '.token')
+# Create an API key in Rancher UI and export the access and secret keys
+ACCESS_KEY="<ACCESS_KEY>"
+SECRET_KEY="<SECRET_KEY>"
 
 # List clusters via API
-curl -sk "https://rancher-staging.yourdomain.com/v3/clusters" \
-  -H "Authorization: Bearer $TOKEN" | jq '.data[].name'
+curl -sku "${ACCESS_KEY}:${SECRET_KEY}" "https://rancher-staging.yourdomain.com/v3/clusters" \
+  | jq '.data[].name'
 
 # List projects
-curl -sk "https://rancher-staging.yourdomain.com/v3/projects" \
-  -H "Authorization: Bearer $TOKEN" | jq '.data[].name'
+curl -sku "${ACCESS_KEY}:${SECRET_KEY}" "https://rancher-staging.yourdomain.com/v3/projects" \
+  | jq '.data[].name'
 ```
 
 ### Agent Connectivity
