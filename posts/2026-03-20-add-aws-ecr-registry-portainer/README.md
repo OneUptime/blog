@@ -8,11 +8,11 @@ Description: Learn how to connect Amazon Elastic Container Registry (ECR) to Por
 
 ## Overview
 
-AWS Elastic Container Registry (ECR) is a fully managed container registry. Unlike static username/password credentials, ECR uses short-lived tokens (valid 12 hours) that must be refreshed regularly. Portainer supports ECR natively in Business Edition, and you can also use a workaround for Community Edition.
+AWS Elastic Container Registry (ECR) is a fully managed container registry. ECR uses short-lived authorization tokens (valid 12 hours), but Portainer supports AWS ECR as a native registry type and refreshes those tokens automatically after you configure the registry with your AWS access key, secret access key, and region.
 
 ## Getting ECR Credentials
 
-ECR authentication tokens are obtained using the AWS CLI:
+If you want to verify access from the command line, you can retrieve an ECR authentication token with the AWS CLI:
 
 ```bash
 # Get an ECR login token (valid for 12 hours)
@@ -22,43 +22,26 @@ aws ecr get-login-password --region us-east-1
 # This outputs a token you use as a password with username "AWS"
 ```
 
-## Adding ECR in Portainer Business Edition
+## Adding ECR in Portainer
 
-1. Go to **Settings > Registries** and click **Add registry**.
-2. Select **Amazon ECR** as the registry type.
+1. Go to **Registries** and click **Add registry**.
+2. Select **AWS ECR** as the registry type.
 3. Enter:
+   - **Name**: A name for the registry in Portainer
    - **Registry URL**: Your ECR registry URL (e.g., `123456789012.dkr.ecr.us-east-1.amazonaws.com`)
+   - **Authentication**: Enable this option if your registry requires authentication
+   - **AWS Access Key**: Your AWS access key ID
+   - **AWS Secret Access Key**: Your AWS secret access key
    - **Region**: Your AWS region (e.g., `us-east-1`)
-   - **Access key ID**: Your AWS access key ID
-   - **Secret access key**: Your AWS secret access key
 4. Portainer will handle token refresh automatically.
 
-## Adding ECR in Community Edition (Manual Token Method)
+## Manual Token Rotation
 
-Since ECR tokens expire after 12 hours, you need to refresh them. Use a cron job or helper container:
-
-```bash
-# Script to refresh ECR credentials in Portainer
-#!/bin/bash
-
-ECR_TOKEN=$(aws ecr get-login-password --region us-east-1)
-PORTAINER_URL="http://localhost:9000"
-PORTAINER_TOKEN="your-portainer-api-token"
-REGISTRY_ID="1"  # The registry ID in Portainer
-
-# Update the registry credentials via Portainer API
-curl -X PUT "${PORTAINER_URL}/api/registries/${REGISTRY_ID}" \
-  -H "Authorization: Bearer ${PORTAINER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"Username\": \"AWS\",
-    \"Password\": \"${ECR_TOKEN}\"
-  }"
-```
+When you use Portainer's native AWS ECR registry integration, manual token rotation is not required. Portainer refreshes ECR authorization tokens automatically.
 
 ## Setting Up an IAM Policy for ECR Access
 
-Ensure your AWS credentials have the necessary ECR permissions:
+For pull-only access, ensure your AWS credentials have the necessary ECR permissions:
 
 ```json
 {
@@ -92,4 +75,4 @@ docker pull 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
 
 ## Conclusion
 
-Portainer Business Edition handles ECR token refresh automatically, making it the recommended option for production AWS workloads. For Community Edition, automate token refresh using a scheduled script or the `amazon-ecr-credential-helper`.
+Portainer can connect to AWS ECR as a native registry type and handle ECR token refresh automatically when you configure the registry with your AWS access key, secret access key, and region.
