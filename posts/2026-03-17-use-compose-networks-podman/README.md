@@ -17,9 +17,7 @@ By default, podman-compose creates a single network for all services. Custom net
 ## Default Network Behavior
 
 ```yaml
-# docker-compose.yml
-
-version: "3.8"
+# compose.yaml
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -37,15 +35,14 @@ services:
 podman-compose up -d
 
 # web can reach api and db by service name
-podman exec project_web_1 ping -c 1 api
-podman exec project_web_1 ping -c 1 db
+podman-compose exec web ping -c 1 api
+podman-compose exec web ping -c 1 db
 ```
 
 ## Custom Networks for Isolation
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
+# compose.yaml
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -78,10 +75,10 @@ networks:
 podman-compose up -d
 
 # web can reach api (both on frontend)
-podman exec project_web_1 ping -c 1 api
+podman-compose exec web ping -c 1 api
 
 # web cannot reach db (different networks)
-podman exec project_web_1 ping -c 1 db
+podman-compose exec web ping -c 1 db
 # This will fail - web is not on the backend network
 ```
 
@@ -142,8 +139,7 @@ podman network create shared-net
 ```
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
+# compose.yaml
 services:
   app:
     image: docker.io/library/nginx:alpine
@@ -173,8 +169,8 @@ services:
 
 ```bash
 # The db service can be reached by any of its aliases
-podman exec project_api_1 ping -c 1 database
-podman exec project_api_1 ping -c 1 postgres-primary
+podman-compose exec api ping -c 1 database
+podman-compose exec api ping -c 1 postgres-primary
 ```
 
 ## Summary
