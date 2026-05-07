@@ -199,8 +199,8 @@ jobs:
       # Restore cached images from previous runs
       - restore_cache:
           keys:
-            - podman-images-{{ checksum "Containerfile" }}
-            - podman-images-
+            - podman-images-{{ arch }}-{{ checksum "Containerfile" }}
+            - podman-images-{{ arch }}-
 
       # Load cached images if they exist
       - run:
@@ -214,7 +214,7 @@ jobs:
       # Build the image (layers will be reused from cache)
       - run:
           name: Build Image
-          command: podman build -t myapp:${CIRCLE_SHA1} .
+          command: podman build -f Containerfile -t myapp:${CIRCLE_SHA1} .
 
       # Save images to cache for future runs
       - run:
@@ -223,7 +223,7 @@ jobs:
             podman save -o /tmp/podman-cache.tar myapp:${CIRCLE_SHA1}
 
       - save_cache:
-          key: podman-images-{{ checksum "Containerfile" }}
+          key: podman-images-{{ arch }}-{{ checksum "Containerfile" }}
           paths:
             - /tmp/podman-cache.tar
 ```
