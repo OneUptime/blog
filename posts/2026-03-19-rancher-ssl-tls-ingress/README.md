@@ -106,13 +106,13 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@example.com
+    email: admin@yourdomain.com
     privateKeySecretRef:
       name: letsencrypt-prod-key
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 For testing, use the staging server first:
@@ -125,13 +125,13 @@ metadata:
 spec:
   acme:
     server: https://acme-staging-v02.api.letsencrypt.org/directory
-    email: admin@example.com
+    email: admin@yourdomain.com
     privateKeySecretRef:
       name: letsencrypt-staging-key
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Apply the ClusterIssuer:
@@ -185,13 +185,12 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@example.com
+    email: admin@yourdomain.com
     privateKeySecretRef:
       name: letsencrypt-dns-key
     solvers:
     - dns01:
         cloudflare:
-          email: admin@example.com
           apiTokenSecretRef:
             name: cloudflare-api-token
             key: api-token
@@ -248,8 +247,8 @@ Check the status of your certificates:
 kubectl get certificates --all-namespaces
 kubectl describe certificate myapp-tls -n default
 kubectl get certificaterequest --all-namespaces
-kubectl get order --all-namespaces
-kubectl get challenge --all-namespaces
+kubectl get orders --all-namespaces
+kubectl get challenges --all-namespaces
 ```
 
 A healthy certificate will show `Ready: True` in its status.
@@ -260,18 +259,18 @@ A healthy certificate will show `Ready: True` in its status.
 2. Go to **Service Discovery** > **Ingresses**.
 3. Click **Create** or edit an existing Ingress.
 4. Under **Certificates**, click **Add Certificate**.
-5. Select an existing secret or upload a new certificate.
+5. Select an existing certificate secret.
 6. Map the certificate to your host.
 7. Click **Save**.
 
 ## Troubleshooting
 
-- Check cert-manager logs: `kubectl logs -n cert-manager -l app=cert-manager`
+- Check cert-manager logs: `kubectl logs -n cert-manager deployment/cert-manager`
 - Review certificate status: `kubectl describe certificate <name> -n <namespace>`
-- Check for failed challenges: `kubectl get challenge --all-namespaces`
+- Check for failed challenges: `kubectl get challenges --all-namespaces`
 - Verify DNS resolution: `nslookup myapp.example.com`
 - Test TLS: `curl -vk https://myapp.example.com`
-- Check secret contents: `kubectl get secret myapp-tls -o yaml`
+- Check secret contents: `kubectl get secret myapp-tls -n default -o yaml`
 
 ## Summary
 
