@@ -24,7 +24,7 @@ podman run -d --name app \
   docker.io/library/nginx:latest
 
 # tmpfs with size limit and options
-podman run -d --name app \
+podman run -d --name app-tmpfs \
   --tmpfs /tmp:rw,size=100m,noexec \
   docker.io/library/nginx:latest
 ```
@@ -37,7 +37,7 @@ The `--mount` flag provides a more explicit syntax:
 # tmpfs mount with --mount syntax
 podman run -d --name cache-app \
   --mount type=tmpfs,target=/app/cache,tmpfs-size=256m \
-  docker.io/library/node:20
+  docker.io/library/node:20 tail -f /dev/null
 
 # With multiple options
 podman run -d --name secure-app \
@@ -103,7 +103,7 @@ podman run -d --name multi-tmp \
   --tmpfs /tmp:rw,size=100m \
   --tmpfs /app/cache:rw,size=500m,noexec \
   --tmpfs /app/sessions:rw,size=50m,noexec,nosuid \
-  docker.io/library/node:20
+  docker.io/library/node:20 tail -f /dev/null
 ```
 
 ## Verifying tmpfs Mounts
