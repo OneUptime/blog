@@ -11,7 +11,7 @@ Running Rancher as a single Docker container is fine for testing and small envir
 ## Prerequisites
 
 - An existing Rancher instance running as a Docker container
-- A target Kubernetes cluster ready for the Rancher Helm installation (RKE2, K3s, or RKE)
+- A target Kubernetes cluster ready for the Rancher Helm installation (RKE2, K3s, or another supported Kubernetes distribution)
 - Helm 3 installed
 - `kubectl` configured for the target cluster
 - `docker` CLI access to the source Rancher container
@@ -21,46 +21,37 @@ Running Rancher as a single Docker container is fine for testing and small envir
 Before starting the migration, record your current configuration:
 
 ```bash
-# Check the Rancher version
-
-docker exec rancher kubectl get settings server-version -o jsonpath='{.value}'
-
-# Note the hostname
-docker exec rancher kubectl get settings server-url -o jsonpath='{.value}'
-
-# List managed clusters
-docker exec rancher kubectl get clusters.management.cattle.io -o custom-columns=NAME:.metadata.name,DISPLAY:.spec.displayName
+# Record the exact Rancher image tag/version
+docker inspect rancher --format '{{.Config.Image}}'
 ```
 
-Save this information for reference during the migration.
+Also record the `server-url` setting from Rancher and the list of managed clusters so you can verify that the new installation uses the same hostname and retains the same cluster inventory.
 
 ## Step 2: Create a Backup of the Docker Rancher
 
 Stop the Rancher container and create a backup:
 
+Use the image tag you recorded in Step 1 as `<RANCHER_VERSION>`.
+
 ```bash
 # Stop the container
 docker stop rancher
 
-# Create a backup of the container's data volume
-docker create --volumes-from rancher --name rancher-backup busybox true
-docker cp rancher-backup:/var/lib/rancher /tmp/rancher-backup
+# Create a data container from the Rancher container
+docker create --volumes-from rancher --name rancher-data-<DATE> rancher/rancher:<RANCHER_VERSION>
 
-# Alternatively, if using a bind mount
-cp -r /opt/rancher /tmp/rancher-backup
-```
+# Create a backup tarball
+docker run --name busybox-backup-<DATE> \
+  --volumes-from rancher-data-<DATE> \
+  -v $PWD:/backup:z \
+  busybox tar pzcvf /backup/rancher-data-backup-<RANCHER_VERSION>-<DATE>.tar.gz /var/lib/rancher
 
-You should also export the etcd data from inside the container:
+# Clean up the temporary containers
+docker rm rancher-data-<DATE>
+docker rm busybox-backup-<DATE>
 
-```bash
+# Start Rancher again
 docker start rancher
-docker exec rancher sh -c "ETCDCTL_API=3 etcdctl snapshot save /tmp/etcd-snapshot.db \
-  --endpoints=https://127.0.0.1:2379 \
-  --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
-  --cert=/var/lib/rancher/k3s/server/tls/etcd/server-client.crt \
-  --key=/var/lib/rancher/k3s/server/tls/etcd/server-client.key"
-
-docker cp rancher:/tmp/etcd-snapshot.db /tmp/etcd-snapshot.db
 ```
 
 ## Step 3: Set Up the Target Kubernetes Cluster
@@ -82,71 +73,34 @@ cp /etc/rancher/rke2/rke2.yaml ~/.kube/config
 chmod 600 ~/.kube/config
 ```
 
-For a production setup, add at least two more server nodes for high availability.
+For a production setup, add at least two more server nodes so the control plane has an odd number of members for high availability.
 
-## Step 4: Install cert-manager on the Target Cluster
+## Step 4: Create a Migration Backup Using the Rancher Backup Operator
 
-Rancher requires cert-manager for TLS certificate management:
-
-```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml
-
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm install cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --create-namespace \
-  --version v1.14.4
-```
-
-Verify cert-manager is running:
-
-```bash
-kubectl get pods -n cert-manager
-```
-
-## Step 5: Install Rancher on the Target Cluster
-
-Install the same version of Rancher that is running on your Docker instance:
-
-```bash
-helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
-helm repo update
-
-helm install rancher rancher-stable/rancher \
-  --namespace cattle-system \
-  --create-namespace \
-  --set hostname=rancher.yourdomain.com \
-  --set replicas=3 \
-  --set bootstrapPassword=admin \
-  --version <SAME_VERSION_AS_DOCKER>
-```
-
-Wait for Rancher to be ready:
-
-```bash
-kubectl rollout status deployment rancher -n cattle-system
-```
-
-## Step 6: Migrate Data Using the Rancher Backup Operator
-
-The recommended approach for migrating data is using the Rancher Backup and Restore operator.
+The supported migration path is to use the Rancher Backup and Restore operator on the source Rancher instance.
 
 ### Install Backup Operator on the Docker Rancher
 
-Access the Docker Rancher UI and install the Backup and Restore operator from the Rancher Marketplace under the local cluster.
+Access the Docker Rancher UI and install the Backup and Restore operator from Apps > Charts under the local cluster.
 
-Create a backup from the UI or with kubectl from inside the container:
+If you are backing up to S3, create the credentials secret referenced by the Backup resource:
 
 ```bash
-docker exec rancher kubectl apply -f - <<EOF
+docker exec rancher kubectl -n cattle-resources-system create secret generic s3-creds \
+  --from-literal=accessKey=<access-key> \
+  --from-literal=secretKey=<secret-key>
+```
+
+Create a backup from the UI or with `kubectl` from inside the container:
+
+```bash
+docker exec -i rancher kubectl apply -f - <<EOF
 apiVersion: resources.cattle.io/v1
 kind: Backup
 metadata:
   name: migration-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   storageLocation:
     s3:
       bucketName: rancher-backups
@@ -157,30 +111,52 @@ spec:
 EOF
 ```
 
-Alternatively, create a local backup and copy it out:
+If you configured a default storage target when installing the operator, you can omit `storageLocation`:
 
 ```bash
-docker exec rancher kubectl apply -f - <<EOF
+docker exec -i rancher kubectl apply -f - <<EOF
 apiVersion: resources.cattle.io/v1
 kind: Backup
 metadata:
   name: migration-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
 EOF
 ```
 
-### Install Backup Operator on the Target Cluster
+Use the exact backup filename generated by the completed Backup resource in the restore step.
+
+## Step 5: Install Backup Operator on the Target Cluster
 
 ```bash
 helm repo add rancher-charts https://charts.rancher.io
-helm install rancher-backup-crd rancher-charts/rancher-backup-crd -n cattle-resources-system --create-namespace
-helm install rancher-backup rancher-charts/rancher-backup -n cattle-resources-system
+helm repo update
+
+CHART_VERSION=<chart-version-compatible-with-your-Rancher-version>
+
+helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
+  -n cattle-resources-system \
+  --create-namespace \
+  --version $CHART_VERSION
+
+helm install rancher-backup rancher-charts/rancher-backup \
+  -n cattle-resources-system \
+  --version $CHART_VERSION
 ```
 
-### Restore the Backup on the Target Cluster
+## Step 6: Restore the Backup on the Target Cluster
 
-Transfer the backup file to a location accessible by the target cluster, then create a Restore resource:
+Do not install Rancher on the new cluster before the restore. Restore the backup into the fresh target cluster first.
+
+If your backup is stored in S3, create the credentials secret on the target cluster:
+
+```bash
+kubectl -n cattle-resources-system create secret generic s3-creds \
+  --from-literal=accessKey=<access-key> \
+  --from-literal=secretKey=<secret-key>
+```
+
+Create a Restore resource:
 
 ```yaml
 apiVersion: resources.cattle.io/v1
@@ -188,7 +164,8 @@ kind: Restore
 metadata:
   name: migration-restore
 spec:
-  backupFilename: migration-backup-<timestamp>.tar.gz
+  backupFilename: <exact backup filename generated by the Backup resource>
+  prune: false
   storageLocation:
     s3:
       bucketName: rancher-backups
@@ -207,10 +184,70 @@ kubectl apply -f restore.yaml
 Monitor the restore progress:
 
 ```bash
-kubectl get restores -w
+kubectl get restore
+kubectl logs -n cattle-resources-system --tail 100 -f -l app.kubernetes.io/instance=rancher-backup
 ```
 
-## Step 7: Update DNS
+If you are migrating from the Docker install's embedded cluster to a different Kubernetes distribution such as RKE2, update the local cluster object before bringing up Rancher on the new cluster:
+
+```bash
+kubectl edit clusters.management.cattle.io local
+```
+
+Make these changes in the editor:
+
+- Change `status.driver` to `imported`
+- Remove `status.provider`
+- Remove the entire `status.version` map
+- Remove the `provider.cattle.io` label from `metadata.labels`
+- Remove the `management.cattle.io/current-cluster-controllers-version` annotation from `metadata.annotations`
+- Remove the entire `spec.rke2Config` or `spec.k3sConfig` map, if present
+
+## Step 7: Install cert-manager on the Target Cluster
+
+If you are using Rancher-generated certificates or Let's Encrypt, install cert-manager with a version supported by your Rancher release:
+
+```bash
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/<CERT_MANAGER_VERSION>/cert-manager.crds.yaml
+
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version <CERT_MANAGER_VERSION>
+```
+
+Verify cert-manager is running:
+
+```bash
+kubectl get pods -n cert-manager
+```
+
+## Step 8: Install Rancher on the Target Cluster
+
+Install the same Rancher version that is running in Docker, and use the same hostname from the original `server-url`:
+
+```bash
+helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo update
+
+helm install rancher rancher-stable/rancher \
+  --namespace cattle-system \
+  --create-namespace \
+  --set hostname=<same hostname from the original server-url> \
+  --set replicas=3 \
+  --version <SAME_VERSION_AS_DOCKER>
+```
+
+Wait for Rancher to be ready:
+
+```bash
+kubectl rollout status deployment rancher -n cattle-system
+```
+
+## Step 9: Update DNS
 
 Point your Rancher hostname DNS record to the new Kubernetes cluster's load balancer or ingress IP:
 
@@ -221,7 +258,7 @@ kubectl get ingress -n cattle-system
 
 Update your DNS records to point to the new IP address.
 
-## Step 8: Verify the Migration
+## Step 10: Verify the Migration
 
 Log in to the Rancher UI on the new cluster and check:
 
@@ -230,7 +267,7 @@ Log in to the Rancher UI on the new cluster and check:
 - Projects and namespaces are correctly assigned
 - Catalogs and apps are available
 
-## Step 9: Decommission the Docker Instance
+## Step 11: Decommission the Docker Instance
 
 Once you have verified everything works on the new Kubernetes-based installation, stop and remove the Docker container:
 
@@ -243,9 +280,9 @@ Keep the backup data for at least 30 days in case you need to reference it.
 
 ## Troubleshooting
 
-- **Clusters show as Unavailable**: The cluster agents may need to reconnect. Wait a few minutes, or re-import the clusters from the new Rancher.
-- **Certificate issues**: Make sure TLS certificates match the hostname and are properly configured.
-- **Version mismatch**: The target Rancher version must match the source version before restoring backups.
+- **Clusters show as Unavailable**: Make sure the new Rancher installation uses the same hostname as the original `server-url`, stop the original Rancher server after the DNS cutover, and restart `cattle-cluster-agent` in downstream clusters if they do not reconnect.
+- **Certificate issues**: Make sure the TLS certificates match the hostname and that the cert-manager version is supported for your Rancher release.
+- **Version mismatch**: The target Rancher version must match the source version before restoring backups, and the `rancher-backup` chart version must be compatible with that Rancher release.
 
 ## Conclusion
 
