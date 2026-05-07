@@ -104,7 +104,7 @@ Then verify DNS resolution:
 
 ```bash
 podman-compose up -d
-podman exec -it web ping api
+podman-compose exec web ping api
 ```
 
 ### 2. Volume Mount Permission Issues
@@ -157,7 +157,7 @@ volumes:
 
 ### 3. depends_on with Health Checks
 
-Docker Compose v2 supports `depends_on` with health check conditions. `podman-compose` may not fully support this:
+Docker Compose v2 supports `depends_on` with health check conditions. Recent `podman-compose` versions can enforce these with `podman wait`, but older Podman or `podman-compose` versions may not fully support health-based conditions:
 
 ```yaml
 # This might not work with older podman-compose versions
@@ -176,7 +176,7 @@ services:
       retries: 5
 ```
 
-If `depends_on` conditions are not respected, use an entrypoint script that waits for dependencies:
+If `depends_on` conditions are not respected, use an entrypoint script that waits for dependencies. Make sure the image running the script includes `nc`:
 
 ```yaml
 services:
@@ -255,7 +255,7 @@ services:
       - .env.local
 ```
 
-If environment variables are not being loaded, check the file format. Podman requires plain `KEY=VALUE` format without quotes around values in some cases:
+If environment variables are not being loaded, check the file format. Use standard Compose env file syntax, where each line is `KEY=VALUE`; quotes are valid, but remember that double-quoted values are parsed and interpolated:
 
 ```bash
 # .env - compatible format
@@ -263,11 +263,11 @@ DATABASE_URL=postgres://localhost/mydb
 API_KEY=abc123
 DEBUG=true
 
-# Avoid quoted values in some podman-compose versions
-# DATABASE_URL="postgres://localhost/mydb"  # May not work
+# Quoted values are also valid
+DATABASE_URL="postgres://localhost/mydb"
 ```
 
-Also verify the file path is relative to the compose file, not the current working directory:
+Also distinguish service-level `env_file` from the CLI `--env-file` option. `env_file` entries are service environment files resolved from the Compose file, while `--env-file` supplies variables for Compose interpolation and is resolved from the current working directory:
 
 ```bash
 podman-compose --env-file .env up
@@ -275,16 +275,16 @@ podman-compose --env-file .env up
 
 ### 6. Restart Policy Differences
 
-Docker Compose supports `restart: always`, but Podman handles restarts differently since it is daemonless:
+Docker Compose supports `restart: always`, and `podman-compose` passes restart policies through to Podman. For reboot-time startup and production supervision, manage the containers with systemd because Podman is daemonless:
 
 ```yaml
 services:
   web:
     image: nginx
-    restart: always  # May not work as expected with Podman
+    restart: always
 ```
 
-For Podman, use systemd to manage container restarts. Generate a systemd unit file:
+Generate a systemd unit file:
 
 ```bash
 # Start the container
@@ -297,33 +297,32 @@ podman generate systemd --name myproject_web_1 --files --new
 # Install and enable the service
 mkdir -p ~/.config/systemd/user/
 cp container-myproject_web_1.service ~/.config/systemd/user/
-systemctl --user enable --now container-myproject_web_1
+systemctl --user enable --now container-myproject_web_1.service
 ```
 
 Alternatively, use `podman-compose` with the `--in-pod` flag to create a pod that can be managed as a unit:
 
 ```bash
-podman-compose up -d
+podman-compose --in-pod true up -d
 ```
 
 ### 7. Docker Compose v2 Syntax Compatibility
 
-Some Docker Compose v2 features are not supported by `podman-compose`:
+Some Docker Compose v2 features have historically had uneven support in `podman-compose`. Recent versions support `profiles`, pass `deploy.resources` CPU and memory limits to Podman, and pass `platform` to Podman, so upgrade if these options are being ignored:
 
 ```yaml
-# These features may not work with podman-compose
 services:
   app:
-    profiles: ["dev"]        # Profiles may not be supported
+    profiles: ["dev"]
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: "512M"
-    platform: linux/amd64    # Platform may be ignored
+    platform: linux/amd64
 ```
 
-For resource limits, use Podman's native flags by running containers directly:
+On older versions where Compose resource limits are ignored, use Podman's native flags by running containers directly:
 
 ```bash
 podman run --cpus 0.5 --memory 512m myapp:latest
@@ -348,7 +347,7 @@ myproject-web-1
 myproject_web_1
 ```
 
-This can break scripts that reference containers by name. Use service names in your compose file and access them via the network:
+This can break scripts that reference containers by name. Prefer service names on the Compose network. If external scripts require a fixed container name, set one explicitly:
 
 ```yaml
 services:
@@ -365,10 +364,9 @@ podman-compose exec web nginx -s reload
 
 ### 9. Secrets and Configs
 
-Docker Compose secrets and configs may not work with `podman-compose`:
+Recent `podman-compose` versions support file-backed runtime secrets, but external secrets, environment-sourced secrets, and configs have more limited compatibility than Docker Compose:
 
 ```yaml
-# This may not be supported
 services:
   app:
     secrets:
