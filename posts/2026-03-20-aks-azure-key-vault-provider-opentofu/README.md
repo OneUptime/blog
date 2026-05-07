@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, AKS, Key Vault, Secrets Store CSI Driver, Workload Identity, Infrastructure as Code
 
-Description: Learn how to configure AKS with the Azure Key Vault Provider for Secrets Store CSI Driver using OpenTofu to mount Key Vault secrets as Kubernetes volumes without storing secrets in etcd.
+Description: Learn how to configure AKS with the Azure Key Vault Provider for Secrets Store CSI Driver using OpenTofu to mount Key Vault secrets as Kubernetes volumes, with optional sync to Kubernetes Secrets when needed.
 
 ## Introduction
 
-The Azure Key Vault Provider for Secrets Store CSI Driver allows Kubernetes pods to mount Azure Key Vault secrets, keys, and certificates as Kubernetes volumes. Secrets are fetched directly from Key Vault at pod startup and are never stored in Kubernetes etcd-providing a more secure alternative to Kubernetes Secrets. Combined with Workload Identity, pods authenticate to Key Vault using managed identities without any credentials in the pod spec.
+The Azure Key Vault Provider for Secrets Store CSI Driver allows Kubernetes pods to mount Azure Key Vault secrets, keys, and certificates as Kubernetes volumes. Secrets are fetched directly from Key Vault at pod startup and, when you mount them only as files, aren't stored as Kubernetes Secrets in etcd-providing a more secure alternative to Kubernetes Secrets. Combined with Workload Identity, pods authenticate to Key Vault using managed identities without any credentials in the pod spec.
 
 ## Prerequisites
 
@@ -19,6 +19,51 @@ The Azure Key Vault Provider for Secrets Store CSI Driver allows Kubernetes pods
 ## Step 1: Enable Key Vault CSI Driver on AKS
 
 ```hcl
+terraform {
+  required_version = ">= 1.6.0"
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
+variable "project_name" {
+  type = string
+}
+
+variable "location" {
+  type = string
+}
+
+variable "resource_group_name" {
+  type = string
+}
+
+variable "tenant_id" {
+  type = string
+}
+
+variable "subnet_id" {
+  type = string
+}
+
+variable "db_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "api_key" {
+  type      = string
+  sensitive = true
+}
+
 resource "azurerm_key_vault" "app" {
   name                        = "${var.project_name}-kv"
   location                    = var.location
@@ -49,7 +94,6 @@ resource "azurerm_kubernetes_cluster" "kv_csi" {
   location            = var.location
   resource_group_name = var.resource_group_name
   dns_prefix          = var.project_name
-  kubernetes_version  = "1.28"
 
   default_node_pool {
     name                = "system"
@@ -119,6 +163,12 @@ resource "azurerm_federated_identity_credential" "app" {
 ## Step 3: Kubernetes Resources
 
 ```yaml
+# kubernetes/00-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+---
 # kubernetes/serviceaccount.yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -214,10 +264,11 @@ az aks get-credentials \
   --name <cluster-name>
 
 # Apply Kubernetes resources
+kubectl apply -f kubernetes/00-namespace.yaml
 kubectl apply -f kubernetes/
 
-# Check SecretProviderClass status
-kubectl describe secretproviderclass app-secrets -n production
+# Check SecretProviderClassPodStatus
+kubectl get secretproviderclasspodstatus -n production
 
 # Check mounted secrets
 kubectl exec -n production <pod-name> -- ls /mnt/secrets
@@ -226,4 +277,4 @@ kubectl exec -n production <pod-name> -- cat /mnt/secrets/database-password
 
 ## Conclusion
 
-Enable `secret_rotation_enabled = true` to automatically update mounted secrets when they rotate in Key Vault-pods see the updated files without restart (for file mounts), or you need to restart pods to pick up updates to synced Kubernetes Secrets. The CSI Driver must mount the volume in at least one pod for secret rotation to function. Grant the pod's managed identity `Key Vault Secrets User` (read-only) rather than `Key Vault Secrets Officer` to follow the principle of least privilege. Never use the node managed identity for Key Vault access-use individual pod identities via Workload Identity to limit blast radius.
+Enable `secret_rotation_enabled = true` to automatically update mounted secrets when they rotate in Key Vault-pods see the updated files without restart for file mounts, and synced Kubernetes Secret volumes update automatically as well. Pods that consume synced Kubernetes Secrets through environment variables still need a restart to pick up changes. The CSI Driver must mount the volume in at least one pod for the synced Kubernetes Secret to exist and rotate. Grant the pod's managed identity `Key Vault Secrets User` (read-only) rather than `Key Vault Secrets Officer` to follow the principle of least privilege. Never use the node managed identity for Key Vault access-use individual pod identities via Workload Identity to limit blast radius.
