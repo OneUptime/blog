@@ -4,26 +4,31 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Networking, Pasta, slirp4netns, Migration
 
-Description: Learn how to migrate from slirp4netns to pasta networking in Podman for better performance and features.
+Description: Learn how to migrate from slirp4netns to pasta rootless networking in Podman for better performance and features.
 
 ---
 
-> Switching from slirp4netns to pasta improves rootless container networking performance, adds native IPv6 support, and reduces memory overhead.
+> Switching from slirp4netns to pasta improves rootless container networking performance, adds native IPv6 support, and can reduce networking overhead.
 
-Pasta is the recommended replacement for slirp4netns in rootless Podman. The migration is straightforward and brings significant networking improvements. This guide covers the steps to switch and verify the new backend.
+Pasta is the default rootless networking tool in current Podman releases and is the recommended replacement for slirp4netns. The migration is straightforward and brings significant networking improvements. This guide covers the steps to switch and verify the new rootless networking tool.
 
 ---
 
-## Checking Your Current Backend
+## Checking Your Current Rootless Networking Tool
 
 ```bash
-# Check which backend is currently in use
-
+# Check the Podman network backend (Netavark or CNI)
 podman info --format '{{ .Host.NetworkBackend }}'
 
-# Check available backends
+# Check the configured rootless networking tool
+grep -R "default_rootless_network_cmd" \
+  ~/.config/containers/containers.conf \
+  /etc/containers/containers.conf \
+  /usr/share/containers/containers.conf 2>/dev/null
+
+# Check available rootless networking tools
 podman info --format 'Pasta: {{ .Host.Pasta.Executable }}'
-podman info --format 'slirp4netns: {{ .Host.Slirp4NetNs.Executable }}'
+podman info --format 'slirp4netns: {{ .Host.Slirp4NetNS.Executable }}'
 ```
 
 ## Installing Pasta
@@ -42,19 +47,24 @@ sudo pacman -S passt
 pasta --version
 ```
 
-## Switching the Default Backend
+## Switching the Default Rootless Networking Tool
+
+Create or edit `~/.config/containers/containers.conf`. If `[network]` already exists, add only the setting under that section.
 
 ```bash
-# Create or edit the containers.conf file
 mkdir -p ~/.config/containers
+```
 
-cat >> ~/.config/containers/containers.conf << 'EOF'
+```toml
 [network]
 default_rootless_network_cmd = "pasta"
-EOF
+```
 
+```bash
 # Verify the change
-podman info --format '{{ .Host.NetworkBackend }}'
+podman run -d --name default-net docker.io/library/alpine:latest sleep 300
+podman inspect default-net --format '{{ .HostConfig.NetworkMode }}'
+podman rm -f default-net
 ```
 
 ## Testing Pasta with Existing Containers
@@ -63,7 +73,7 @@ podman info --format '{{ .Host.NetworkBackend }}'
 # Stop running containers
 podman stop --all
 
-# Restart a container (it will use the new backend)
+# Restart a container that uses the default rootless network
 podman start web
 
 # Or run a new test container
@@ -145,11 +155,11 @@ sed -i '/default_rootless_network_cmd/d' ~/.config/containers/containers.conf
 
 | Feature | slirp4netns | Pasta |
 |---------|-------------|-------|
-| Throughput | ~1 Gbps | ~5+ Gbps |
-| IPv6 | Limited | Native |
-| Memory per container | Higher | Lower |
-| Startup time | Slower | Faster |
+| Throughput | Lower | Higher |
+| IPv6 | Supported, but more limited | Native |
+| Addressing | NAT-based by default | No NAT by default |
+| Port forwarding | Uses a port handler | Preserves source IP by default |
 
 ## Summary
 
-Switch from slirp4netns to pasta by installing the `passt` package and setting `default_rootless_network_cmd = "pasta"` in `~/.config/containers/containers.conf`. Pasta provides better throughput, native IPv6 support, lower memory usage, and faster startup. Test port forwarding and connectivity after switching, and fall back to slirp4netns per-container if any issues arise during migration.
+Switch from slirp4netns to pasta by installing the `passt` package and setting `default_rootless_network_cmd = "pasta"` in the `[network]` section of `~/.config/containers/containers.conf`. Pasta provides better throughput, native IPv6 support, no NAT by default, and source-IP-preserving port forwarding. Test port forwarding and connectivity after switching, and fall back to slirp4netns per-container if any issues arise during migration.
