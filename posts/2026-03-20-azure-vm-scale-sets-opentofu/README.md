@@ -8,13 +8,13 @@ Description: Learn how to create Azure Virtual Machine Scale Sets with OpenTofu 
 
 ## Introduction
 
-Azure Virtual Machine Scale Sets (VMSS) allow you to deploy and manage a set of identical, auto-scaling VMs. Scale sets automatically increase or decrease the number of VM instances based on demand or a defined schedule. They support flexible orchestration mode for mixing VM types and sizes, and integrate with Azure Load Balancer and Application Gateway for traffic distribution. Scale sets are the foundation for auto-scaling application tiers.
+Azure Virtual Machine Scale Sets (VMSS) allow you to deploy and manage a set of identical, auto-scaling VMs. Scale sets automatically increase or decrease the number of VM instances based on demand or a defined schedule. They integrate with Azure Load Balancer and Application Gateway for traffic distribution. Azure also supports flexible orchestration mode for advanced scenarios such as mixing VM types and sizes, but the resource used in this example creates a uniform scale set. Scale sets are the foundation for auto-scaling application tiers.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - Azure credentials configured
-- A Resource Group and Virtual Network
+- A Resource Group, Virtual Network, Subnet, and Standard Load Balancer with a frontend IP configuration named `frontend` and a backend pool
 
 ## Step 1: Create Linux VM Scale Set
 
@@ -61,7 +61,8 @@ resource "azurerm_linux_virtual_machine_scale_set" "app" {
   }
 
   # Upgrade policy - how updates are rolled out
-  upgrade_mode = "RollingUpgrade"
+  upgrade_mode    = "Rolling"
+  health_probe_id = azurerm_lb_probe.http.id
 
   rolling_upgrade_policy {
     max_batch_instance_percent              = 20
@@ -79,9 +80,15 @@ resource "azurerm_linux_virtual_machine_scale_set" "app" {
     type = "SystemAssigned"
   }
 
+  lifecycle {
+    ignore_changes = [instances]
+  }
+
   tags = {
     Name = "${var.project_name}-vmss"
   }
+
+  depends_on = [azurerm_lb_rule.http]
 }
 ```
 
@@ -119,7 +126,7 @@ resource "azurerm_monitor_autoscale_setting" "app" {
       scale_action {
         direction = "Increase"
         type      = "ChangeCount"
-        value     = 2
+        value     = "2"
         cooldown  = "PT5M"
       }
     }
@@ -140,7 +147,7 @@ resource "azurerm_monitor_autoscale_setting" "app" {
       scale_action {
         direction = "Decrease"
         type      = "ChangeCount"
-        value     = 1
+        value     = "1"
         cooldown  = "PT10M"
       }
     }
@@ -211,4 +218,4 @@ az vmss list-instances \
 
 ## Conclusion
 
-Use `upgrade_mode = "RollingUpgrade"` in production to update VMs in batches without taking down the entire fleet-combine with `automatic_os_upgrade_policy` to keep OS patches current. Set the minimum capacity in autoscale to at least 2 to maintain availability during single VM failures. The scale-out cooldown should be shorter than scale-in cooldown to react quickly to load spikes but avoid thrashing during transient traffic variations. Use `instances` to set the initial count, but let autoscaling manage runtime capacity once deployed.
+Use `upgrade_mode = "Rolling"` in production to update VMs in batches without taking down the entire fleet-combine with `automatic_os_upgrade_policy` to keep OS patches current. Set the minimum capacity in autoscale to at least 2 to maintain availability during single VM failures. The scale-out cooldown should be shorter than scale-in cooldown to react quickly to load spikes but avoid thrashing during transient traffic variations. Use `instances` to set the initial count, but let autoscaling manage runtime capacity once deployed by ignoring changes to `instances` in the VMSS resource.
