@@ -71,7 +71,7 @@ EOF
 Choose the right storage driver for your environment.
 
 ```bash
-# Check which drivers are available
+# Check the active storage driver
 podman info --format '{{.Store.GraphDriverName}}'
 
 # View driver status
@@ -194,4 +194,4 @@ podman --log-level=debug info 2>&1 | grep -i "storage\|graph\|overlay" | head -1
 
 ## Summary
 
-The `storage.conf` file controls Podman's storage subsystem, defining the filesystem driver, storage locations, and driver-specific options. Choose the overlay driver for most environments, configure custom `graphroot` paths when disk space is limited, and monitor usage with `podman system df`. User-level configuration at `~/.config/containers/storage.conf` overrides system defaults, and changes require clearing existing storage with `podman system reset` to take effect.
+The `storage.conf` file controls Podman's storage subsystem, defining the filesystem driver, storage locations, and driver-specific options. Choose the overlay driver for most environments, configure custom `graphroot` paths when disk space is limited, and monitor usage with `podman system df`. User-level configuration at `~/.config/containers/storage.conf` overrides system defaults, and changing the storage driver requires clearing existing storage with `podman system reset` before the new driver takes effect.
