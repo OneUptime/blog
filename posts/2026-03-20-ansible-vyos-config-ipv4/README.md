@@ -19,8 +19,8 @@ vyos1 ansible_host=192.168.1.40
 [vyos_routers:vars]
 ansible_user=vyos
 ansible_password=VyOSpass
-ansible_network_os=vyos
-ansible_connection=network_cli
+ansible_network_os=vyos.vyos.vyos
+ansible_connection=ansible.netcommon.network_cli
 ```
 
 ## Configure IPv4 Interface
@@ -58,7 +58,7 @@ ansible_connection=network_cli
     - name: Configure outbound NAT masquerade
       vyos.vyos.vyos_config:
         lines:
-          - set nat source rule 100 outbound-interface 'eth0'
+          - set nat source rule 100 outbound-interface name 'eth0'
           - set nat source rule 100 source address '10.1.0.0/24'
           - set nat source rule 100 translation address 'masquerade'
 ```
@@ -66,20 +66,22 @@ ansible_connection=network_cli
 ## Configure Firewall
 
 ```yaml
-    - name: Configure firewall ruleset
+    - name: Configure IPv4 firewall chain
       vyos.vyos.vyos_config:
         lines:
-          - set firewall name WAN-IN default-action 'drop'
-          - set firewall name WAN-IN rule 10 action 'accept'
-          - set firewall name WAN-IN rule 10 state established 'enable'
-          - set firewall name WAN-IN rule 10 state related 'enable'
-          - set firewall name WAN-IN rule 20 action 'drop'
-          - set firewall name WAN-IN rule 20 state invalid 'enable'
+          - set firewall ipv4 name WAN-IN default-action 'drop'
+          - set firewall ipv4 name WAN-IN rule 10 action 'accept'
+          - set firewall ipv4 name WAN-IN rule 10 state established
+          - set firewall ipv4 name WAN-IN rule 10 state related
+          - set firewall ipv4 name WAN-IN rule 20 action 'drop'
+          - set firewall ipv4 name WAN-IN rule 20 state invalid
 
-    - name: Apply firewall to interface
+    - name: Hook firewall into forwarded WAN traffic
       vyos.vyos.vyos_config:
         lines:
-          - set interfaces ethernet eth0 firewall in name 'WAN-IN'
+          - set firewall ipv4 forward filter rule 100 action 'jump'
+          - set firewall ipv4 forward filter rule 100 inbound-interface name 'eth0'
+          - set firewall ipv4 forward filter rule 100 jump-target 'WAN-IN'
 ```
 
 ## Configure OSPF
@@ -107,7 +109,7 @@ ansible_connection=network_cli
 ```yaml
     - name: Save VyOS config
       vyos.vyos.vyos_config:
-        save: yes   # Saves to /config/config.boot
+        save: true   # Saves to /config/config.boot
 ```
 
 ```bash
@@ -118,4 +120,4 @@ ansible-playbook -i inventory.ini configure_vyos_ipv4.yml
 
 ## Conclusion
 
-`vyos.vyos.vyos_config` uses VyOS `set` and `delete` commands directly, making playbooks readable even for those unfamiliar with Ansible. Commit and save are handled by the module - use `save: yes` to persist configuration to the boot config file. Check mode works fully with VyOS.
+`vyos.vyos.vyos_config` uses VyOS `set` and `delete` commands directly, making playbooks readable even for those unfamiliar with Ansible. The module commits configuration changes, and `save: true` persists the running configuration to the boot config file. The module also supports check mode, so `--check --diff` can be used to preview changes.
