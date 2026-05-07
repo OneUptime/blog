@@ -8,11 +8,11 @@ Description: Configure Alertmanager alongside Prometheus in a Portainer stack to
 
 ## Introduction
 
-Prometheus handles metric collection and alert rule evaluation, while Alertmanager handles alert routing, grouping, inhibition, and notification delivery. Together they form a robust alerting pipeline. This guide shows how to deploy and configure both using Portainer with Docker configs.
+Prometheus handles metric collection and alert rule evaluation, while Alertmanager handles alert routing, grouping, inhibition, and notification delivery. Together they form a robust alerting pipeline. This guide shows how to deploy and configure both using Portainer with Docker Swarm configs.
 
 ## Prerequisites
 
-- Portainer installed on a Docker host
+- Portainer connected to a Docker Swarm environment
 - Basic understanding of Prometheus alerting concepts
 - Slack webhook URL (for the notification example)
 
@@ -20,7 +20,7 @@ Prometheus handles metric collection and alert rule evaluation, while Alertmanag
 
 ### Step 1: Create Docker Configs
 
-In Portainer navigate to **Configs** (or use secrets in Swarm mode). Create the following configs:
+In Portainer, open a Docker Swarm environment and navigate to **Configs**. Create the following configs:
 
 **Config name: `prometheus_config`**
 
@@ -122,15 +122,21 @@ route:
   repeat_interval: 4h   # Resend if still firing
 
   routes:
-    # Critical alerts go to PagerDuty
-    - match:
-        severity: critical
+    # Critical alerts go to PagerDuty first
+    - matchers:
+        - severity="critical"
       receiver: pagerduty
-      continue: true  # Also send to default receiver
+      continue: true  # Continue evaluating later routes
 
-    # Warning alerts go to Slack
-    - match:
-        severity: warning
+    # Critical alerts also go to email
+    - matchers:
+        - severity="critical"
+      receiver: email
+      continue: true
+
+    # Warning and critical alerts go to Slack
+    - matchers:
+        - severity=~"warning|critical"
       receiver: slack-notifications
 
 receivers:
@@ -154,10 +160,10 @@ receivers:
 
 # Inhibition rules - suppress lower severity if higher is firing
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'instance']
 ```
 
@@ -192,7 +198,6 @@ services:
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
-      - '--cluster.advertise-address=0.0.0.0:9094'
     volumes:
       - alertmanager_data:/alertmanager
     configs:
@@ -207,7 +212,9 @@ services:
     command:
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host'
     volumes:
+      - /:/host:ro,rslave
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
     restart: unless-stopped
@@ -225,24 +232,18 @@ configs:
     external: true
 ```
 
-### Step 3: Reload Configuration
+### Step 3: Update Configuration
 
-After changing configs, reload without restarting:
+Docker Swarm configs are immutable. When you need to change `prometheus.yml`, alert rules, or `alertmanager.yml`, create new versioned configs in Portainer and redeploy the stack so the services mount the new config objects.
 
-```bash
-# Reload Prometheus configuration
-curl -X POST http://localhost:9090/-/reload
-
-# Reload Alertmanager configuration
-curl -X POST http://localhost:9093/-/reload
-```
+The `/-/reload` endpoints are useful when a configuration file changes in place, such as with a bind mount, but they do not replace a stack update when you are using Docker configs.
 
 ### Step 4: Test Alerts
 
 Use Alertmanager's API to send a test alert:
 
 ```bash
-curl -XPOST http://localhost:9093/api/v1/alerts \
+curl -XPOST http://localhost:9093/api/v2/alerts \
   -H 'Content-Type: application/json' \
   -d '[{
     "labels": {
@@ -258,4 +259,4 @@ curl -XPOST http://localhost:9093/api/v1/alerts \
 
 ## Conclusion
 
-Prometheus and Alertmanager deployed together via Portainer provide a powerful, flexible alerting pipeline. Docker configs make it easy to manage configuration as code and reload without container restarts. With inhibition rules and routing trees, you can fine-tune exactly who gets notified about what and when.
+Prometheus and Alertmanager deployed together via Portainer provide a powerful, flexible alerting pipeline. Docker Swarm configs make it easy to manage configuration as code. With inhibition rules and routing trees, you can fine-tune exactly who gets notified about what and when.
