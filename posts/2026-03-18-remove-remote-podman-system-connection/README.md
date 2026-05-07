@@ -41,8 +41,8 @@ podman system connection remove my-remote-host
 # Verify the connection was removed
 podman system connection ls
 
-# Alternative syntax using the 'rm' alias
-podman system connection rm old-server
+# Remove another named connection
+podman system connection remove old-server
 ```
 
 ## Checking if a Connection Exists Before Removing
@@ -56,7 +56,7 @@ Prevent errors by checking existence first.
 CONNECTION_NAME="${1:?Usage: $0 <connection-name>}"
 
 # Check if the connection exists
-if podman system connection ls --format '{{.Name}}' | grep -q "^${CONNECTION_NAME}$"; then
+if podman system connection ls --format '{{.Name}}' | grep -Fxq -- "$CONNECTION_NAME"; then
     echo "Removing connection: $CONNECTION_NAME"
     podman system connection remove "$CONNECTION_NAME"
     echo "Connection removed successfully"
@@ -92,14 +92,14 @@ CONNECTION_NAME="${1:?Usage: $0 <connection-name>}"
 
 # Check if this is the default connection
 IS_DEFAULT=$(podman system connection ls --format json | \
-    jq -r ".[] | select(.Name==\"$CONNECTION_NAME\") | .Default")
+    jq -r --arg name "$CONNECTION_NAME" '.[] | select(.Name==$name) | .Default')
 
 if [ "$IS_DEFAULT" = "true" ]; then
     echo "WARNING: '$CONNECTION_NAME' is the default connection"
 
     # Find another connection to set as default
     NEW_DEFAULT=$(podman system connection ls --format '{{.Name}}' | \
-        grep -v "^${CONNECTION_NAME}$" | head -1)
+        grep -Fxv -- "$CONNECTION_NAME" | head -1)
 
     if [ -n "$NEW_DEFAULT" ]; then
         echo "Setting '$NEW_DEFAULT' as the new default"
@@ -153,12 +153,15 @@ CONNECTION_NAME="${1:?Usage: $0 <connection-name>}"
 
 # Get the identity file path before removing
 IDENTITY=$(podman system connection ls --format json | \
-    jq -r ".[] | select(.Name==\"$CONNECTION_NAME\") | .Identity")
+    jq -r --arg name "$CONNECTION_NAME" '.[] | select(.Name==$name) | .Identity // empty')
 
 # Get the remote host for known_hosts cleanup
 URI=$(podman system connection ls --format json | \
-    jq -r ".[] | select(.Name==\"$CONNECTION_NAME\") | .URI")
-REMOTE_HOST=$(echo "$URI" | sed 's|ssh://[^@]*@||; s|[:/].*||')
+    jq -r --arg name "$CONNECTION_NAME" '.[] | select(.Name==$name) | .URI // empty')
+REMOTE_HOST=""
+if [[ "$URI" == ssh://* ]]; then
+    REMOTE_HOST=$(printf '%s\n' "$URI" | sed -E 's|^ssh://([^@/]+@)?||; s|[:/].*||')
+fi
 
 # Remove the Podman connection
 podman system connection remove "$CONNECTION_NAME"
@@ -167,7 +170,7 @@ echo "Connection removed: $CONNECTION_NAME"
 # Optionally remove the SSH key if it is not used by other connections
 if [ -n "$IDENTITY" ] && [ -f "$IDENTITY" ]; then
     OTHER_USES=$(podman system connection ls --format json | \
-        jq -r ".[].Identity" | grep -c "$IDENTITY")
+        jq -r '.[].Identity // empty' | grep -Fxc -- "$IDENTITY")
 
     if [ "$OTHER_USES" -eq 0 ]; then
         echo "SSH key '$IDENTITY' is no longer used by any connection"
