@@ -79,10 +79,10 @@ print('OVERLAP!' if corp.overlaps(aws_default) else 'OK')
 # Use: 10.200.0.0/16 or 10.201.0.0/16 for cloud VPCs
 ```
 
-### 2. Kubernetes Default CIDR
+### 2. Common Kubernetes CIDRs
 
 ```bash
-# Kubernetes defaults: 10.244.0.0/16 (pods), 10.96.0.0/12 (services)
+# A common kubeadm + Flannel setup uses 10.244.0.0/16 (pods), 10.96.0.0/12 (services)
 # If your corp uses 10.0.0.0/8 without excluding these ranges → conflict
 
 # Check:
@@ -108,15 +108,15 @@ python3 check_overlap.py
 
 ## NAT as a Workaround for Unavoidable Overlap
 
-If re-addressing isn't possible, use NAT to translate the remote side:
+If re-addressing isn't possible and your platform supports `NETMAP`, use NAT to translate the remote side:
 
 ```bash
 # On the VPN gateway, NAT the remote 10.100.0.0/24 to appear as 10.200.0.0/24
 sudo iptables -t nat -A PREROUTING \
-  -d 10.200.0.0/24 -j DNAT --to-destination 10.100.0.0
+  -d 10.200.0.0/24 -j NETMAP --to 10.100.0.0/24
 
 sudo iptables -t nat -A POSTROUTING \
-  -s 10.100.0.0/24 -j SNAT --to-source 10.200.0.0
+  -s 10.100.0.0/24 -j NETMAP --to 10.200.0.0/24
 ```
 
 ## Pre-Deployment Checklist
