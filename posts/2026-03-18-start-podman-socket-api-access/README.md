@@ -75,19 +75,19 @@ Verify the socket is working by making API calls.
 ```bash
 # Ping the API to verify connectivity
 curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/_ping
+    http://localhost/libpod/_ping
 
 # Get system information through the API
 curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/info | jq '.version'
+    http://localhost/libpod/info | jq '.version'
 
 # List containers through the API
 curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/containers/json | jq '.[].Names'
+    http://localhost/libpod/containers/json | jq '.[].Names'
 
 # Use the Docker-compatible API endpoint
 curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
-    http://localhost/v1.41/containers/json | jq '.[].Names'
+    http://localhost/v1.40/containers/json | jq '.[].Names'
 ```
 
 ## Configuring the DOCKER_HOST Variable
@@ -151,7 +151,7 @@ podman system service --time 0 unix:///tmp/podman-debug.sock &
 
 # Test the manual socket
 curl --unix-socket /tmp/podman-debug.sock \
-    http://localhost/v4.0.0/libpod/_ping
+    http://localhost/libpod/_ping
 
 # Stop the manual service
 kill %1
@@ -178,7 +178,7 @@ systemctl --user show podman.service --property=TriggeredBy
 journalctl --user -u podman.socket -f &
 # Make an API call to trigger activation
 curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/_ping
+    http://localhost/libpod/_ping
 ```
 
 ## Troubleshooting Socket Issues
