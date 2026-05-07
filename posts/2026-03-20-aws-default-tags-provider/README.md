@@ -8,7 +8,7 @@ Description: Learn how to configure default tags on the AWS provider in OpenTofu
 
 ## Introduction
 
-The AWS provider's `default_tags` feature automatically applies a set of tags to all taggable resources. This eliminates the need to specify common tags (like `Environment`, `Owner`, `ManagedBy`) in every resource block. Default tags are merged with resource-level tags, with resource-level tags taking precedence on conflicts.
+The AWS provider's `default_tags` feature automatically applies a set of tags to supported taggable resources managed by the provider. This eliminates the need to specify common tags (like `Environment`, `Owner`, `ManagedBy`) in every resource block. Default tags are merged with resource-level tags, with resource-level tags taking precedence on conflicts.
 
 ## Basic Default Tags Configuration
 
@@ -30,7 +30,7 @@ provider "aws" {
 
 ## How Default Tags Work
 
-With the above configuration, every taggable resource automatically gets those tags:
+With the above configuration, supported taggable resources managed by the provider automatically get those tags:
 
 ```hcl
 # These tags are set explicitly
@@ -150,7 +150,7 @@ resource "aws_instance" "dev_server" {
 
 ## Tagging Compliance Check Block
 
-Combine default tags with a check block to verify compliance:
+Combine default tags with a check block to verify compliance. Failed assertions produce warnings and do not block plan or apply:
 
 ```hcl
 provider "aws" {
@@ -208,4 +208,4 @@ resource "aws_instance" "web" {
 
 ## Conclusion
 
-Default tags on the AWS provider are the simplest and most reliable way to enforce consistent tagging across all resources. Configure them once in the provider block and every taggable resource receives them automatically. Use `tags_all` to inspect the merged tag set. Combine default tags with check blocks or governance policies to enforce organization tagging standards without repeating tag definitions in every resource.
+Default tags on the AWS provider are the simplest and most reliable way to enforce consistent tagging across supported resources. Configure them once in the provider block and supported taggable resources receive them automatically. Use `tags_all` to inspect the merged tag set. Combine default tags with check blocks to monitor compliance, or with governance policies to enforce organization tagging standards without repeating tag definitions in every resource.
