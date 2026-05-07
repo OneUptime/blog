@@ -92,8 +92,10 @@ podman run --rm -it \
   bash -c "ls -la /dev/bus/usb/001/003"
 
 # Pass the entire USB bus for broader access
+# Major number 189 = USB bus devices
 podman run --rm -it \
-  --device /dev/bus/usb:/dev/bus/usb \
+  --device-cgroup-rule='c 189:* rwm' \
+  -v /dev/bus/usb:/dev/bus/usb:rw,dev \
   fedora:latest \
   bash -c "ls -la /dev/bus/usb/"
 ```
@@ -274,16 +276,16 @@ One challenge with USB passthrough is that the device must exist when the contai
 ```bash
 # Option 1: Pass the entire USB bus for dynamic device detection
 podman run --rm -it \
-  --device /dev/bus/usb:/dev/bus/usb \
+  -v /dev/bus/usb:/dev/bus/usb:rw,rslave,dev \
   --privileged \
   fedora:latest \
-  bash -c "while true; do lsusb; sleep 5; done"
+  bash -c "while true; do find /dev/bus/usb -type c; sleep 5; done"
 
 # Option 2: Use device cgroup rules to allow a class of devices
 podman run --rm -it \
   --device-cgroup-rule='c 166:* rwm' \
   --device-cgroup-rule='c 188:* rwm' \
-  -v /dev:/dev \
+  -v /dev:/dev:rw,rslave,dev \
   fedora:latest \
   bash
 
