@@ -82,19 +82,29 @@ SQL
 
 echo "Exporting events to SQLite: ${DB_FILE}"
 
+sql_escape() {
+    printf "%s" "$1" | sed "s/'/''/g"
+}
+
 podman events --format json | while IFS= read -r event; do
-    timestamp=$(echo "$event" | jq -r '.time // ""')
+    timestamp=$(echo "$event" | jq -r '.Time // ""')
     event_type=$(echo "$event" | jq -r '.Type // ""')
     status=$(echo "$event" | jq -r '.Status // ""')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // ""')
-    container_id=$(echo "$event" | jq -r '.Actor.ID // ""')
-    image=$(echo "$event" | jq -r '.Actor.Attributes.image // ""')
+    name=$(echo "$event" | jq -r '.Name // ""')
+    container_id=$(echo "$event" | jq -r '.ID // ""')
+    image=$(echo "$event" | jq -r '.Image // ""')
 
-    # Escape single quotes for SQL
-    safe_json=$(echo "$event" | sed "s/'/''/g")
+    # Escape single quotes for SQL string literals
+    safe_timestamp=$(sql_escape "$timestamp")
+    safe_event_type=$(sql_escape "$event_type")
+    safe_status=$(sql_escape "$status")
+    safe_name=$(sql_escape "$name")
+    safe_container_id=$(sql_escape "$container_id")
+    safe_image=$(sql_escape "$image")
+    safe_json=$(sql_escape "$event")
 
     sqlite3 "$DB_FILE" \
-        "INSERT INTO events (timestamp, type, status, name, container_id, image, raw_json) VALUES ('${timestamp}', '${event_type}', '${status}', '${name}', '${container_id}', '${image}', '${safe_json}');"
+        "INSERT INTO events (timestamp, type, status, name, container_id, image, raw_json) VALUES ('${safe_timestamp}', '${safe_event_type}', '${safe_status}', '${safe_name}', '${safe_container_id}', '${safe_image}', '${safe_json}');"
 
     echo "Stored: [${status}] ${name}"
 done
@@ -109,14 +119,14 @@ DB_FILE="/var/lib/podman-events/events.db"
 # Count events by status
 sqlite3 "$DB_FILE" "SELECT status, COUNT(*) FROM events GROUP BY status ORDER BY COUNT(*) DESC;"
 
-# Find all die events
-sqlite3 "$DB_FILE" "SELECT timestamp, name, image FROM events WHERE status='die';"
+# Find all died events
+sqlite3 "$DB_FILE" "SELECT timestamp, name, image FROM events WHERE status='died';"
 
 # Events for a specific container
 sqlite3 "$DB_FILE" "SELECT timestamp, status FROM events WHERE name='myapp' ORDER BY timestamp;"
 ```
 
-## Exporting to a TCP/UDP Endpoint
+## Exporting to a TCP Endpoint
 
 Send events to a remote log collector over the network.
 
@@ -174,7 +184,7 @@ podman events --format json | while IFS= read -r event; do
         LTRIM "podman:events:log" 0 9999 > /dev/null
 
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
     echo "Published: [${status}] ${name}"
 done
 ```
