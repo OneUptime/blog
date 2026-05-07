@@ -15,20 +15,18 @@ asdf is a universal version manager that handles OpenTofu, Node.js, Python, Ruby
 ## Install asdf
 
 ```bash
-# Clone asdf (latest version)
-
-git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.14.0
+# Install asdf with Homebrew (recommended on macOS/Linux)
+brew install asdf
 
 # Add to your shell config
 # For Bash:
-echo '. "$HOME/.asdf/asdf.sh"' >> ~/.bashrc
-echo '. "$HOME/.asdf/completions/asdf.bash"' >> ~/.bashrc
+echo 'export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"' >> ~/.bash_profile
 
 # For Zsh:
-echo '. "$HOME/.asdf/asdf.sh"' >> ~/.zshrc
+echo 'export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"' >> ~/.zshrc
 
 # Reload shell
-source ~/.bashrc  # or source ~/.zshrc
+source ~/.bash_profile  # or source ~/.zshrc
 
 # Verify
 asdf version
@@ -53,7 +51,7 @@ asdf plugin list
 
 ```bash
 # List all available OpenTofu versions
-asdf list-all opentofu
+asdf list all opentofu
 
 # Install specific versions
 asdf install opentofu 1.8.5
@@ -66,7 +64,7 @@ asdf install opentofu latest
 asdf list opentofu
 #   1.8.5
 #   1.9.0
-#  *latest -> 1.9.0
+#   1.11.6
 ```
 
 ---
@@ -74,11 +72,11 @@ asdf list opentofu
 ## Set the OpenTofu Version
 
 ```bash
-# Set a global default version
-asdf global opentofu 1.9.0
+# Set a default version in your home directory
+asdf set -u opentofu 1.9.0
 
-# Set a project-local version (creates .tool-versions in current directory)
-asdf local opentofu 1.8.5
+# Set a project version (creates .tool-versions in current directory)
+asdf set opentofu 1.8.5
 
 # Confirm the active version
 tofu version
@@ -112,13 +110,13 @@ tofu version
 ```bash
 # Project A needs OpenTofu 1.7.3
 mkdir project-a && cd project-a
-asdf local opentofu 1.7.3
+asdf set opentofu 1.7.3
 tofu version
 # OpenTofu v1.7.3
 
 # Project B needs OpenTofu 1.9.0
 mkdir ../project-b && cd ../project-b
-asdf local opentofu 1.9.0
+asdf set opentofu 1.9.0
 tofu version
 # OpenTofu v1.9.0
 
@@ -135,7 +133,7 @@ tofu version
 ```yaml
 # .github/workflows/tofu.yml - use asdf to install correct version
 - name: Install asdf
-  uses: asdf-vm/actions/setup@v3
+  uses: asdf-vm/actions/setup@v4
 
 - name: Install OpenTofu via asdf
   run: |
