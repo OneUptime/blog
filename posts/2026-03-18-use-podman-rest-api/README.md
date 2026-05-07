@@ -30,24 +30,24 @@ systemctl --user status podman.socket
 export PODMAN_SOCK="/run/user/$(id -u)/podman/podman.sock"
 
 # Ping the API to confirm it is responding
-curl --unix-socket "$PODMAN_SOCK" http://localhost/v4.0.0/libpod/_ping
+curl --unix-socket "$PODMAN_SOCK" http://localhost/libpod/_ping
 # Expected output: OK
 ```
 
 ## API Versioning
 
-The API supports versioned endpoints for both Podman-native and Docker-compatible calls.
+Most API endpoints use versioned paths for both Podman-native and Docker-compatible calls.
 
 ```bash
 PODMAN_SOCK="/run/user/$(id -u)/podman/podman.sock"
 
 # Podman-native API (libpod endpoints)
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v4.0.0/libpod/info | jq '.version'
+    http://localhost/v5.0.0/libpod/info | jq '.version'
 
 # Docker-compatible API
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v1.41/info | jq '.ServerVersion'
+    http://localhost/v1.40/info | jq '.ServerVersion'
 ```
 
 ## Listing Containers
@@ -59,16 +59,16 @@ PODMAN_SOCK="/run/user/$(id -u)/podman/podman.sock"
 
 # List all running containers (Podman API)
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v4.0.0/libpod/containers/json | jq '.[].Names'
+    http://localhost/v5.0.0/libpod/containers/json | jq '.[].Names'
 
 # List all containers including stopped (Podman API)
 curl -s --unix-socket "$PODMAN_SOCK" \
-    "http://localhost/v4.0.0/libpod/containers/json?all=true" | \
+    "http://localhost/v5.0.0/libpod/containers/json?all=true" | \
     jq '.[] | {name: .Names[0], state: .State, image: .Image}'
 
 # List containers using Docker-compatible API
 curl -s --unix-socket "$PODMAN_SOCK" \
-    "http://localhost/v1.41/containers/json?all=true" | jq '.[].Names'
+    "http://localhost/v1.40/containers/json?all=true" | jq '.[].Names'
 ```
 
 ## Creating and Starting Containers
@@ -87,16 +87,16 @@ curl -s --unix-socket "$PODMAN_SOCK" \
         "name": "api-test",
         "command": ["sleep", "3600"]
     }' \
-    http://localhost/v4.0.0/libpod/containers/create | jq '.'
+    http://localhost/v5.0.0/libpod/containers/create | jq '.'
 
 # Start the container
 curl -s --unix-socket "$PODMAN_SOCK" \
     -X POST \
-    http://localhost/v4.0.0/libpod/containers/api-test/start
+    http://localhost/v5.0.0/libpod/containers/api-test/start
 
 # Check the container status
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v4.0.0/libpod/containers/api-test/json | jq '.State.Status'
+    http://localhost/v5.0.0/libpod/containers/api-test/json | jq '.State.Status'
 ```
 
 ## Managing Images
@@ -109,22 +109,22 @@ PODMAN_SOCK="/run/user/$(id -u)/podman/podman.sock"
 # Pull an image
 curl -s --unix-socket "$PODMAN_SOCK" \
     -X POST \
-    "http://localhost/v4.0.0/libpod/images/pull?reference=docker.io/library/nginx:alpine" | \
+    "http://localhost/v5.0.0/libpod/images/pull?reference=docker.io/library/nginx:alpine" | \
     jq '.'
 
 # List all images
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v4.0.0/libpod/images/json | \
+    http://localhost/v5.0.0/libpod/images/json | \
     jq '.[] | {names: .Names, size: .Size, id: .Id[:12]}'
 
 # Inspect a specific image
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v4.0.0/libpod/images/alpine:latest/json | jq '.Size'
+    http://localhost/v5.0.0/libpod/images/alpine:latest/json | jq '.Size'
 
 # Remove an image
 curl -s --unix-socket "$PODMAN_SOCK" \
     -X DELETE \
-    http://localhost/v4.0.0/libpod/images/alpine:latest | jq '.'
+    http://localhost/v5.0.0/libpod/images/alpine:latest | jq '.'
 ```
 
 ## Container Operations
@@ -137,21 +137,21 @@ PODMAN_SOCK="/run/user/$(id -u)/podman/podman.sock"
 # Stop a container
 curl -s --unix-socket "$PODMAN_SOCK" \
     -X POST \
-    http://localhost/v4.0.0/libpod/containers/api-test/stop
+    http://localhost/v5.0.0/libpod/containers/api-test/stop
 
 # Restart a container
 curl -s --unix-socket "$PODMAN_SOCK" \
     -X POST \
-    http://localhost/v4.0.0/libpod/containers/api-test/restart
+    http://localhost/v5.0.0/libpod/containers/api-test/restart
 
 # Get container logs
 curl -s --unix-socket "$PODMAN_SOCK" \
-    "http://localhost/v4.0.0/libpod/containers/api-test/logs?stdout=true&tail=50"
+    "http://localhost/v5.0.0/libpod/containers/api-test/logs?stdout=true&tail=50"
 
 # Remove a container (force removal)
-curl -s --unix-socket "$PODMAN_SOCK" \
+curl -s -o /dev/null -w "%{http_code}\n" --unix-socket "$PODMAN_SOCK" \
     -X DELETE \
-    "http://localhost/v4.0.0/libpod/containers/api-test?force=true" | jq '.'
+    "http://localhost/v5.0.0/libpod/containers/api-test?force=true"
 ```
 
 ## System Information
@@ -163,21 +163,21 @@ PODMAN_SOCK="/run/user/$(id -u)/podman/podman.sock"
 
 # Get system info
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v4.0.0/libpod/info | \
+    http://localhost/v5.0.0/libpod/info | \
     jq '{hostname: .host.hostname, os: .host.os, cpus: .host.cpus}'
 
 # Get version information
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v4.0.0/libpod/version | jq '.'
+    http://localhost/v5.0.0/libpod/version | jq '.'
 
 # Get disk usage
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v4.0.0/libpod/system/df | jq '.'
+    http://localhost/v5.0.0/libpod/system/df | jq '.'
 
 # Prune unused resources via API
 curl -s --unix-socket "$PODMAN_SOCK" \
     -X POST \
-    http://localhost/v4.0.0/libpod/system/prune | jq '.'
+    http://localhost/v5.0.0/libpod/system/prune | jq '.'
 ```
 
 ## Volume Management
@@ -192,20 +192,20 @@ curl -s --unix-socket "$PODMAN_SOCK" \
     -X POST \
     -H "Content-Type: application/json" \
     -d '{"Name": "api-volume"}' \
-    http://localhost/v4.0.0/libpod/volumes/create | jq '.'
+    http://localhost/v5.0.0/libpod/volumes/create | jq '.'
 
 # List all volumes
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v4.0.0/libpod/volumes/json | jq '.[].Name'
+    http://localhost/v5.0.0/libpod/volumes/json | jq '.[].Name'
 
 # Inspect a volume
 curl -s --unix-socket "$PODMAN_SOCK" \
-    http://localhost/v4.0.0/libpod/volumes/api-volume/json | jq '.'
+    http://localhost/v5.0.0/libpod/volumes/api-volume/json | jq '.'
 
 # Remove a volume
-curl -s --unix-socket "$PODMAN_SOCK" \
+curl -s -o /dev/null -w "%{http_code}\n" --unix-socket "$PODMAN_SOCK" \
     -X DELETE \
-    http://localhost/v4.0.0/libpod/volumes/api-volume | jq '.'
+    http://localhost/v5.0.0/libpod/volumes/api-volume
 ```
 
 ## Building a Simple API Client Script
@@ -217,7 +217,8 @@ Wrap common API calls in a reusable script.
 # podman-api.sh - Simple Podman REST API client
 
 PODMAN_SOCK="/run/user/$(id -u)/podman/podman.sock"
-API_BASE="http://localhost/v4.0.0/libpod"
+API_HOST="http://localhost"
+API_BASE="${API_HOST}/v5.0.0/libpod"
 
 api_get() {
     curl -s --unix-socket "$PODMAN_SOCK" "${API_BASE}${1}" | jq '.'
@@ -228,7 +229,7 @@ api_post() {
 }
 
 case "${1}" in
-    ping)    curl -s --unix-socket "$PODMAN_SOCK" "${API_BASE}/_ping" ;;
+    ping)    curl -s --unix-socket "$PODMAN_SOCK" "${API_HOST}/libpod/_ping" ;;
     info)    api_get "/info" ;;
     ps)      api_get "/containers/json?all=true" ;;
     images)  api_get "/images/json" ;;
