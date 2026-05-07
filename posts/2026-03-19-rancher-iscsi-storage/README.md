@@ -10,7 +10,7 @@ iSCSI (Internet Small Computer Systems Interface) provides block-level storage o
 
 ## Prerequisites
 
-- A running Rancher instance (v2.6 or later)
+- A Rancher instance that manages your Kubernetes cluster
 - A managed Kubernetes cluster
 - An iSCSI target (storage server) accessible from cluster nodes
 - iSCSI initiator software installed on all cluster nodes
@@ -34,6 +34,18 @@ For RHEL/CentOS:
 sudo yum install iscsi-initiator-utils -y
 sudo systemctl enable --now iscsid
 ```
+
+If your cluster is Rancher-provisioned RKE, installing the initiator on the host is not sufficient because the kubelet runs in a container. Mount the host iSCSI tools into the kubelet:
+
+```yaml
+services:
+  kubelet:
+    extra_binds:
+      - "/etc/iscsi:/etc/iscsi"
+      - "/sbin/iscsiadm:/sbin/iscsiadm"
+```
+
+For RKE2 and K3s clusters managed by Rancher, installing the iSCSI tools on the host nodes is sufficient. On some RHEL releases, Rancher also documents an additional `libcrypto` bind mount for kubelet.
 
 Verify the initiator name:
 
@@ -61,7 +73,7 @@ Test the iSCSI connection manually:
 sudo iscsiadm -m node -T iqn.2024-01.com.example:storage.lun1 -p <ISCSI_SERVER_IP>:3260 --login
 
 # Verify the device
-sudo fdisk -l | grep -i iscsi
+sudo iscsiadm -m session -P 1
 lsblk
 
 # Logout when done testing
@@ -145,7 +157,6 @@ spec:
     iqn: iqn.2024-01.com.example:storage.lun1
     lun: 0
     fsType: ext4
-    chapAuthDiscovery: true
     chapAuthSession: true
     secretRef:
       name: iscsi-chap-secret
@@ -180,6 +191,14 @@ Ensure multipath is configured on the nodes:
 
 ```bash
 sudo apt install multipath-tools -y
+sudo systemctl enable --now multipathd
+```
+
+For RHEL/CentOS:
+
+```bash
+sudo yum install device-mapper-multipath -y
+sudo mpathconf --enable
 sudo systemctl enable --now multipathd
 ```
 
