@@ -38,13 +38,11 @@ podman --version
 podman info
 ```
 
-For Debian 11 (Bullseye), you may need to enable the backports repository for a newer version:
+For Debian 11 (Bullseye), Podman is also available in the main repository:
 
 ```bash
-echo "deb http://deb.debian.org/debian bullseye-backports main" | \
-  sudo tee /etc/apt/sources.list.d/backports.list
 sudo apt update
-sudo apt install -y -t bullseye-backports podman
+sudo apt install -y podman
 ```
 
 ## Configuring Rootless Containers
@@ -248,6 +246,7 @@ Create production-grade container services using Quadlet:
 [Container]
 ContainerName=production-app
 Image=myapp:latest
+Network=app-network.network
 PublishPort=8080:8000
 Volume=app-data:/app/data
 Environment=ENV=production
@@ -267,7 +266,6 @@ Create a network unit:
 ```ini
 # /etc/containers/systemd/app-network.network
 [Network]
-NetworkName=app-network
 Driver=bridge
 Subnet=10.89.1.0/24
 Gateway=10.89.1.1
@@ -355,9 +353,6 @@ Configure the storage driver for your environment. Edit `/etc/containers/storage
 ```toml
 [storage]
 driver = "overlay"
-
-[storage.options.overlay]
-mount_program = "/usr/bin/fuse-overlayfs"
 ```
 
 For rootless users, configure storage in `~/.config/containers/storage.conf`:
@@ -366,6 +361,9 @@ For rootless users, configure storage in `~/.config/containers/storage.conf`:
 [storage]
 driver = "overlay"
 graphroot = "/home/user/.local/share/containers/storage"
+
+[storage.options.overlay]
+mount_program = "/usr/bin/fuse-overlayfs"
 ```
 
 ## Container Auto-Updates
@@ -374,8 +372,8 @@ Enable automatic container updates:
 
 ```bash
 sudo systemctl enable --now podman-auto-update.timer
-systemctl list-timers | grep podman
-podman auto-update --dry-run
+sudo systemctl list-timers | grep podman
+sudo podman auto-update --dry-run
 ```
 
 ## Maintenance and Cleanup
