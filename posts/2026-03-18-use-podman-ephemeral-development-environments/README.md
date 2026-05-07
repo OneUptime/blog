@@ -26,17 +26,17 @@ This approach offers several advantages. You can experiment freely without worry
 
 Before creating ephemeral environments, make sure Podman is installed on your system.
 
-On Fedora or RHEL-based systems:
+On Fedora:
 
 ```bash
-sudo dnf install podman
+sudo dnf -y install podman
 ```
 
-On Ubuntu or Debian-based systems:
+On Debian 11+ or Ubuntu 20.10+:
 
 ```bash
 sudo apt-get update
-sudo apt-get install podman
+sudo apt-get -y install podman
 ```
 
 On macOS:
@@ -50,7 +50,7 @@ podman machine start
 Verify the installation:
 
 ```bash
-podman --version
+podman info
 ```
 
 ## Creating a Basic Ephemeral Environment
@@ -127,17 +127,15 @@ Now launch your ephemeral environment with a single command:
 podman run --rm -it \
   -v $(pwd):/workspace:Z \
   -p 3000:3000 \
-  -p 5432:5432 \
   dev-env:latest
 ```
 
 ## Using Podman Compose for Multi-Service Environments
 
-Real applications often depend on databases, caches, and other services. You can define a complete ephemeral stack using a compose file:
+Real applications often depend on databases, caches, and other services. Podman's `podman compose` command is a thin wrapper around an external Compose provider such as `docker-compose` or `podman-compose`. You can define a complete ephemeral stack using a compose file:
 
 ```yaml
-# podman-compose.yml
-version: "3"
+# compose.yaml
 services:
   dev:
     build: .
@@ -169,15 +167,15 @@ services:
 Notice the `tmpfs` mounts on the database and Redis services. This stores their data in memory rather than on disk, reinforcing the ephemeral nature of the environment. When you bring the stack down, all data disappears.
 
 ```bash
-podman-compose up -d
-podman-compose exec dev bash
+podman compose up -d
+podman compose exec dev bash
 # Do your work...
-podman-compose down
+podman compose down
 ```
 
-## Environment Variables and Secrets
+## Environment Variables
 
-Ephemeral environments need configuration without baking secrets into images. Use environment files:
+Ephemeral environments often need configuration without baking development-only values into images. Use environment files:
 
 ```bash
 # dev.env
