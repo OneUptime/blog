@@ -55,18 +55,22 @@ podman run -d \
   docker.io/jellyfin/jellyfin:latest
 ```
 
-For NVIDIA GPU transcoding:
+On SELinux systems with newer `container-selinux` releases, run `sudo setsebool -P container_use_dri_devices 1` so the container can access `/dev/dri`.
+
+For NVIDIA GPU transcoding, first install the NVIDIA container toolkit and generate a CDI specification for Podman, then pass the GPU device to the container:
 
 ```bash
 podman run -d \
   --name jellyfin \
   -p 8096:8096 \
-  --device=nvidia.com/gpu=all \
-  --security-opt=label=disable \
+  --device=nvidia.com/gpu=0 \
   -v jellyfin-config:/config:Z \
+  -v jellyfin-cache:/cache:Z \
   -v /srv/media:/media:ro,Z \
   docker.io/jellyfin/jellyfin:latest
 ```
+
+On older `container-selinux` releases, add `--security-opt=label=disable`.
 
 ## Deploying Plex Media Server
 
@@ -95,10 +99,9 @@ Navidrome provides a Spotify-like experience for your music collection:
 podman run -d \
   --name navidrome \
   -p 4533:4533 \
-  -e ND_SCANSCHEDULE=1h \
+  -e ND_SCANNER_SCHEDULE="@every 1h" \
   -e ND_LOGLEVEL=info \
   -e ND_SESSIONTIMEOUT=24h \
-  -e ND_ENABLETRANSCODING=true \
   -v navidrome-data:/data:Z \
   -v /srv/media/music:/music:ro,Z \
   docker.io/deluan/navidrome:latest
@@ -110,32 +113,7 @@ Access Navidrome at `http://localhost:4533`. It works with Subsonic-compatible c
 
 Self-host a Google Photos alternative:
 
-```bash
-podman pod create --name immich \
-  -p 2283:3001
-
-podman run -d --pod immich \
-  --name immich-db \
-  -e POSTGRES_DB=immich \
-  -e POSTGRES_USER=immich \
-  -e POSTGRES_PASSWORD=immichpass \
-  -v immich-db:/var/lib/postgresql/data:Z \
-  docker.io/tensorchord/pgvecto-rs:pg16-v0.2.1
-
-podman run -d --pod immich \
-  --name immich-redis \
-  docker.io/library/redis:7-alpine
-
-podman run -d --pod immich \
-  --name immich-server \
-  -e DB_HOSTNAME=127.0.0.1 \
-  -e DB_DATABASE_NAME=immich \
-  -e DB_USERNAME=immich \
-  -e DB_PASSWORD=immichpass \
-  -e REDIS_HOSTNAME=127.0.0.1 \
-  -v /srv/media/photos:/usr/src/app/upload:Z \
-  ghcr.io/immich-app/immich-server:release
-```
+Immich officially recommends using its current release-provided Docker Compose stack for production deployments. The service layout and image names change over time, so use the latest `docker-compose.yml` and `.env` from the Immich release and adapt them to Podman Compose or Quadlets if you want to run Immich under Podman.
 
 ## Audiobook Server with Audiobookshelf
 
@@ -198,7 +176,7 @@ podman run -d \
   -v radarr-config:/config:Z \
   -v /srv/media/movies:/movies:Z \
   -v /srv/downloads:/downloads:Z \
-  docker.io/linuxserver/radarr:latest
+  lscr.io/linuxserver/radarr:latest
 
 # Sonarr for TV shows
 podman run -d \
@@ -210,7 +188,7 @@ podman run -d \
   -v sonarr-config:/config:Z \
   -v /srv/media/tvshows:/tv:Z \
   -v /srv/downloads:/downloads:Z \
-  docker.io/linuxserver/sonarr:latest
+  lscr.io/linuxserver/sonarr:latest
 ```
 
 ## Monitoring Media Server Health
@@ -225,7 +203,7 @@ check_service() {
   local name=$1
   local url=$2
   local status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
-  if [ "$status" -eq 200 ]; then
+  if [ "$status" -ge 200 ] && [ "$status" -lt 400 ]; then
     echo "$name: OK (HTTP $status)"
   else
     echo "$name: FAILED (HTTP $status)"
@@ -233,10 +211,10 @@ check_service() {
 }
 
 check_service "Jellyfin" "http://localhost:8096/health"
-check_service "Navidrome" "http://localhost:4533/health"
-check_service "Audiobookshelf" "http://localhost:13378/ping"
-check_service "Radarr" "http://localhost:7878/ping"
-check_service "Sonarr" "http://localhost:8989/ping"
+check_service "Navidrome" "http://localhost:4533/"
+check_service "Audiobookshelf" "http://localhost:13378/"
+check_service "Radarr" "http://localhost:7878/"
+check_service "Sonarr" "http://localhost:8989/"
 
 echo ""
 echo "=== Resource Usage ==="
@@ -267,4 +245,4 @@ WantedBy=default.target
 
 ## Conclusion
 
-Podman provides a secure and efficient platform for self-hosted media streaming. By running Jellyfin, Navidrome, and supporting services in rootless containers, you get a complete media ecosystem that rivals commercial streaming services. Hardware transcoding support, persistent configuration, and systemd integration make these deployments production-ready for personal or family use.
+Podman provides a secure and efficient platform for self-hosted media streaming. By running Jellyfin, Navidrome, and supporting services in containers, you get a complete media ecosystem that rivals commercial streaming services. Hardware transcoding support, persistent configuration, and systemd integration make these deployments production-ready for personal or family use.
