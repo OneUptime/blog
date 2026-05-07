@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Debian, Docker, Kubernetes, Installation
 
-Description: A step-by-step guide to installing Rancher on Debian 12 (Bookworm) using Docker, covering system preparation, Docker installation, and Rancher configuration.
+Description: A step-by-step guide to installing Rancher on Debian 12 (Bookworm) using Docker, covering system preparation, Docker installation, and Rancher configuration for a single-node test or development environment.
 
-Debian is known for its stability, security, and commitment to free software. Debian 12 (Bookworm) is the current stable release and provides an excellent foundation for running Rancher. This guide covers the entire process from preparing a fresh Debian 12 server to deploying a fully functional Rancher instance.
+Debian is known for its stability, security, and commitment to free software. Debian 12 (Bookworm) remains a solid foundation for running Rancher, although Debian 13 is now the current stable release. Rancher's single-node Docker installation is intended for testing and development only. This guide covers the entire process from preparing a fresh Debian 12 server to deploying a fully functional Rancher instance.
 
 ## Prerequisites
 
 Before you begin, ensure you have:
 
-- A server running Debian 12 (Bookworm) with at least 4 GB RAM and 2 CPU cores
+- A 64-bit x86 server running Debian 12 (Bookworm) sized according to Rancher's current installation requirements
 - Root or sudo access
 - A static IP address or DNS name
 - Internet access for downloading packages
@@ -89,26 +89,7 @@ docker run hello-world
 
 ## Step 5: Configure the Firewall
 
-Debian does not enable a firewall by default. Install and configure `ufw` or use `iptables` directly:
-
-```bash
-sudo apt install -y ufw
-sudo ufw allow 22/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 6443/tcp
-sudo ufw enable
-```
-
-Alternatively, with iptables:
-
-```bash
-sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 6443 -j ACCEPT
-sudo apt install -y iptables-persistent
-sudo netfilter-persistent save
-```
+Debian does not enable a firewall by default. Rancher on Docker requires inbound TCP `80` and `443` on the Rancher node. Outbound TCP `6443` may also be needed later when Rancher connects to hosted or imported cluster APIs. Be aware that Docker-published ports bypass `ufw`, so if you need to restrict access, use `iptables`/`ip6tables` rules in the `DOCKER-USER` chain or an upstream firewall/security group.
 
 ## Step 6: Configure Kernel Modules
 
@@ -139,6 +120,7 @@ sudo sysctl --system
 ## Step 7: Configure Docker Logging
 
 ```bash
+sudo mkdir -p /etc/docker
 sudo tee /etc/docker/daemon.json <<EOF
 {
   "log-driver": "json-file",
@@ -161,7 +143,7 @@ sudo mkdir -p /opt/rancher
 
 ## Step 9: Run Rancher
 
-Deploy Rancher using Docker:
+Deploy Rancher using Docker for a single-node testing or development environment:
 
 ```bash
 docker run -d \
@@ -194,13 +176,7 @@ Complete the initial setup:
 
 ## Debian Specific Considerations
 
-**Nftables vs iptables**: Debian 12 uses nftables as the default firewall backend. Docker works with iptables, so ensure the iptables compatibility layer is available:
-
-```bash
-sudo update-alternatives --set iptables /usr/sbin/iptables-legacy
-sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-sudo systemctl restart docker
-```
+**Nftables vs iptables**: Debian 12 uses `iptables-nft` by default. Docker is compatible with `iptables-nft` and `iptables-legacy`, but firewall rules created with native `nft` commands are not supported on a host running Docker. If you need to filter Docker-published traffic, use `iptables`/`ip6tables` and the `DOCKER-USER` chain.
 
 **Minimal installation**: If you installed Debian with a minimal profile, you may need to install additional packages:
 
@@ -243,9 +219,8 @@ sudo journalctl -u docker --tail 50
 docker logs rancher --tail 100
 
 # Check firewall rules
-sudo ufw status verbose
-# or
-sudo iptables -L -n
+sudo iptables -L DOCKER-USER -n
+sudo ip6tables -L DOCKER-USER -n
 
 # Check system resources
 free -h
@@ -254,4 +229,4 @@ df -h
 
 ## Conclusion
 
-You have successfully installed Rancher on Debian 12. Debian's focus on stability and security makes it an excellent platform for running Rancher in production. With its long support cycle and predictable release schedule, Debian provides a reliable foundation for your Kubernetes management infrastructure.
+You have successfully installed Rancher on Debian 12. Debian's focus on stability and security makes it a solid platform for testing Rancher. For production deployments, Rancher should be installed on a supported Kubernetes cluster rather than as a single Docker container. With its predictable release cadence and long support window, Debian remains a reliable foundation for lab and evaluation environments.
