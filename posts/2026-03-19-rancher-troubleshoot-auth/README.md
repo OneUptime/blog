@@ -46,7 +46,7 @@ RANCHER_POD=$(kubectl get pod -l app=rancher -n cattle-system -o jsonpath='{.ite
 kubectl exec -it $RANCHER_POD -n cattle-system -- \
   curl -v telnet://ldap.example.com:636 --max-time 5
 
-# Test SAML/OIDC provider connectivity
+# Test OIDC provider connectivity
 kubectl exec -it $RANCHER_POD -n cattle-system -- \
   curl -sk "https://idp.example.com/.well-known/openid-configuration" | head -5
 
@@ -71,7 +71,8 @@ ldapsearch -x -H ldaps://ldap.example.com:636 \
   -D "cn=rancher-bind,ou=service-accounts,dc=example,dc=com" \
   -w "<password>" \
   -b "dc=example,dc=com" \
-  "(objectClass=*)" -s base
+  -s base \
+  "(objectClass=*)"
 
 # Test with specific user search
 ldapsearch -x -H ldaps://ldap.example.com:636 \
@@ -88,8 +89,8 @@ ldapsearch -x -H ldaps://ldap.example.com:636 \
 |---------|---------------|-------------------|----------|
 | Connection refused | Wrong port or firewall | `nc -zv ldap.example.com 636` | Check firewall rules and port |
 | Invalid credentials | Wrong bind DN or password | Test with ldapsearch | Verify the full DN and password |
-| No users found | Wrong search base | `ldapsearch -b "dc=example,dc=com" "(uid=*)" -s sub` | Check the user search base path |
-| No groups returned | Missing memberOf overlay | `ldapsearch "(uid=testuser)" memberOf` | Enable memberOf or fix group mapping |
+| No users found | Wrong search base | `ldapsearch -b "dc=example,dc=com" -s sub "(uid=*)"` | Check the user search base path |
+| No groups returned | Wrong group membership attribute or missing memberOf overlay | `ldapsearch "(uid=testuser)" memberOf` | Use the correct group membership attribute or enable memberOf |
 | TLS handshake failure | Certificate issue | `openssl s_client -connect ldap.example.com:636` | Update the CA certificate |
 
 ### Fix TLS Certificate Issues
@@ -99,13 +100,13 @@ ldapsearch -x -H ldaps://ldap.example.com:636 \
 openssl s_client -connect ldap.example.com:636 -showcerts </dev/null 2>/dev/null | \
   openssl x509 -noout -subject -issuer -dates
 
-# Export the CA certificate
+# Export the LDAP server certificate presented by the endpoint
 openssl s_client -connect ldap.example.com:636 -showcerts </dev/null 2>/dev/null | \
-  openssl x509 -outform PEM > ldap-ca.pem
+  openssl x509 -outform PEM > ldap-server-cert.pem
 
-# Verify the certificate chain
-openssl verify -CAfile ldap-ca.pem <(openssl s_client -connect ldap.example.com:636 \
-  -showcerts </dev/null 2>/dev/null | openssl x509)
+# Verify the server certificate against the CA that signed it
+SSL_CERT_DIR=/dummy SSL_CERT_FILE=/dummy \
+  openssl verify -CAfile /path/to/ldap-ca.pem ldap-server-cert.pem
 ```
 
 ## Step 4: Diagnose SAML Issues
@@ -115,8 +116,8 @@ For SAML authentication problems (Okta, Ping, Keycloak SAML, ADFS):
 ### Check SAML Metadata
 
 ```bash
-# Verify Rancher SP metadata is accessible
-curl -sk "https://rancher.example.com/v1-saml/keycloak/saml/metadata" | head -20
+# Verify Rancher SP metadata is accessible for the configured SAML provider
+curl -sk "https://rancher.example.com/v1-saml/<provider-name>/saml/metadata" | head -20
 
 # Verify IdP metadata is accessible
 curl -sk "https://idp.example.com/saml/metadata" | head -20
@@ -164,8 +165,9 @@ curl -s "https://idp.example.com/.well-known/openid-configuration" | jq '{
   jwks_uri
 }'
 
-# Verify JWKS endpoint
-curl -s "https://idp.example.com/protocol/openid-connect/certs" | jq '.keys[0].kid'
+# Verify the JWKS endpoint from the discovery document
+JWKS_URI=$(curl -s "https://idp.example.com/.well-known/openid-configuration" | jq -r '.jwks_uri')
+curl -s "$JWKS_URI" | jq '.keys[0].kid'
 ```
 
 ### Common OIDC Issues
@@ -184,51 +186,41 @@ For Azure AD authentication problems:
 
 ```bash
 # Test Azure AD token endpoint
-curl -s -X POST \
-  "https://login.microsoftonline.com/<tenant-id>/oauth2/v2.0/token" \
+TOKEN=$(curl -s -X POST \
+  "https://login.microsoftonline.com/<tenant-id>/oauth2/token" \
   -d "client_id=<client-id>" \
   -d "client_secret=<client-secret>" \
-  -d "scope=https://graph.microsoft.com/.default" \
-  -d "grant_type=client_credentials" | jq '.access_token | length'
+  -d "resource=https://graph.microsoft.com/" \
+  -d "grant_type=client_credentials" | jq -r '.access_token')
 
-# Test Microsoft Graph API
+# Test Microsoft Graph group lookup with the application token
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://graph.microsoft.com/v1.0/me" | jq
+  "https://graph.microsoft.com/v1.0/users/<user-upn-or-object-id>/memberOf" | jq '.value | length'
 ```
 
 Common Azure AD issues:
 
 - **AADSTS700016**: Application not found. Verify the Application ID.
 - **AADSTS65001**: Admin consent not granted. Grant admin consent in Azure AD.
-- **AADSTS50011**: Redirect URI mismatch. Update the redirect URI in the app registration.
+- **AADSTS50011**: Redirect URI mismatch. Update the redirect URI in the app registration to `https://rancher.example.com/verify-auth-azure`.
 
-## Step 7: Reset Authentication to Local
+## Step 7: Regain Local Admin Access
 
-If an external auth provider is broken and you are locked out:
+If an external auth provider is broken and you are locked out, regain access with a local Rancher admin account:
 
 ```bash
-# Reset auth to local only using kubectl
+# Reset the built-in Rancher admin password
 kubectl -n cattle-system exec $(kubectl -n cattle-system get pods \
   -l app=rancher --no-headers | head -1 | awk '{ print $1 }') \
-  -- reset-password
+  -c rancher -- reset-password
 
-# Or delete the auth config to revert to local auth
-kubectl get authconfigs -n cattle-system
-kubectl delete authconfig <provider-name> -n cattle-system
+# If the last admin was deleted or deactivated, recreate a default admin
+kubectl -n cattle-system exec $(kubectl -n cattle-system get pods \
+  -l app=rancher --no-headers | head -1 | awk '{ print $1 }') \
+  -c rancher -- ensure-default-admin
 ```
 
-Alternative method using the Rancher API from inside the cluster:
-
-```bash
-# From a pod with cluster access
-kubectl exec -it $RANCHER_POD -n cattle-system -- sh -c '
-  curl -sk -X PUT \
-    -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
-    -H "Content-Type: application/json" \
-    -d '"'"'{"enabled": false}'"'"' \
-    "https://localhost/v3/authConfigs/<provider-name>"
-'
-```
+Rancher recommends keeping local users available for exactly this scenario.
 
 ## Step 8: Check DNS Resolution
 
@@ -256,11 +248,13 @@ kubectl exec -it $RANCHER_POD -n cattle-system -- env | grep -i proxy
 kubectl exec -it $RANCHER_POD -n cattle-system -- env | grep NO_PROXY
 ```
 
-The `NO_PROXY` setting should include:
+The `NO_PROXY` setting should include Rancher and cluster-internal addresses such as:
 
 ```plaintext
-localhost,127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local
+localhost,127.0.0.1,0.0.0.0,cattle-system.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.svc,.cluster.local
 ```
+
+Add your cluster's service CIDR and pod CIDR if they are not already covered.
 
 ## Step 10: Collect Diagnostic Information
 
@@ -271,10 +265,10 @@ When contacting support, collect this information:
 # auth-diagnostic.sh - Collect authentication diagnostic information
 
 echo "=== Rancher Version ==="
-kubectl get settings server-version -n cattle-system -o jsonpath='{.value}'
+kubectl get settings.management.cattle.io server-version -o jsonpath='{.value}'
 
 echo -e "\n\n=== Auth Config ==="
-kubectl get authconfigs -A
+kubectl get authconfigs.management.cattle.io
 
 echo -e "\n\n=== Auth Provider Status ==="
 kubectl logs -l app=rancher -n cattle-system --tail=100 | grep -i "auth\|provider" | tail -20
