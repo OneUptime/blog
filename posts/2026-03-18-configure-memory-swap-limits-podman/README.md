@@ -51,21 +51,21 @@ The relationship between `--memory` and `--memory-swap`:
 
 ## Check cgroups v2 Support
 
-Memory swap limits require cgroups v2 with swap accounting enabled:
+On cgroups v2 systems, verify that the memory controller exposes swap accounting:
 
 ```bash
 # Check cgroup version
 stat -fc %T /sys/fs/cgroup/
 # "cgroup2fs" means cgroups v2
 
-# For cgroups v2, verify swap accounting is enabled
-cat /sys/fs/cgroup/memory.swap.max 2>/dev/null
-# If this file exists, swap accounting is active
+# For cgroups v2, verify the swap control file exists on a non-root cgroup
+find /sys/fs/cgroup -name memory.swap.max -print -quit 2>/dev/null
+# If a path is printed, cgroup swap accounting is available
 
 # Enable cgroups v2 if not active (requires reboot)
 # Add to kernel command line: systemd.unified_cgroup_hierarchy=1
 
-# Enable swap accounting (add to kernel command line)
+# On older cgroups v1 systems, enable swap accounting if needed
 # swapaccount=1
 ```
 
@@ -250,8 +250,11 @@ Create an OOM monitoring script:
 echo "Monitoring for OOM events..."
 
 podman events --filter event=died --format json | while read event; do
-  CONTAINER=$(echo "$event" | jq -r '.Actor.Attributes.name')
-  TIME=$(echo "$event" | jq -r '.time')
+  CONTAINER=$(echo "$event" | jq -r '.Name // .ID')
+  TIME=$(echo "$event" | jq -r '.Time')
+  OOM=$(podman inspect --format '{{.State.OOMKilled}}' "$CONTAINER" 2>/dev/null || true)
+
+  [ "$OOM" = "true" ] || continue
 
   echo "[OOM ALERT] Container: $CONTAINER at $TIME"
 
@@ -279,7 +282,7 @@ DURATION=${2:-3600}  # Default 1 hour
 INTERVAL=10
 
 echo "Profiling memory usage for $CONTAINER over ${DURATION}s"
-echo "timestamp,mem_usage,mem_limit,mem_percent" > memory-profile.csv
+echo "timestamp,mem_usage_limit,mem_percent" > memory-profile.csv
 
 MAX_MEM=0
 END=$(($(date +%s) + DURATION))
@@ -288,10 +291,9 @@ while [ $(date +%s) -lt $END ]; do
   STATS=$(podman stats --no-stream --format json "$CONTAINER" 2>/dev/null)
 
   MEM_USAGE=$(echo "$STATS" | jq -r '.[0].mem_usage' 2>/dev/null)
-  MEM_LIMIT=$(echo "$STATS" | jq -r '.[0].mem_limit' 2>/dev/null)
   MEM_PCT=$(echo "$STATS" | jq -r '.[0].mem_percent' 2>/dev/null)
 
-  echo "$(date +%s),$MEM_USAGE,$MEM_LIMIT,$MEM_PCT" >> memory-profile.csv
+  echo "$(date +%s),$MEM_USAGE,$MEM_PCT" >> memory-profile.csv
 
   sleep $INTERVAL
 done
