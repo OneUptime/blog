@@ -77,7 +77,7 @@ Use Podman containers with Nginx as the traffic switch.
 # Implement blue-green deployment with Podman on a single host
 
 NETWORK="bluegreen-net"
-NEW_IMAGE="myapp:${1:-latest}"
+NEW_IMAGE="${1:-myapp:latest}"
 STATE_FILE="/tmp/bluegreen-state"
 
 # Determine current active environment
@@ -117,6 +117,8 @@ echo "New version deployed to ${DEPLOY_TO} environment"
 
 Validate the new environment before switching traffic.
 
+This example assumes the application image already defines a `HEALTHCHECK` instruction, or that you set one when creating the container with `podman run --health-cmd`.
+
 ```bash
 #!/bin/bash
 # health-check.sh
@@ -128,18 +130,21 @@ RETRY_INTERVAL=3
 
 echo "Health checking ${DEPLOY_TO} environment..."
 
-for i in $(seq 1 $MAX_RETRIES); do
-  # Check container health
-  HEALTH=$(podman exec "app-${DEPLOY_TO}" \
-    wget -qO- http://localhost:8080/health 2>/dev/null || echo "failed")
+for i in $(seq 1 "$MAX_RETRIES"); do
+  # Run the container's configured Podman health check
+  podman healthcheck run "app-${DEPLOY_TO}" >/dev/null 2>&1
+  STATUS=$?
 
-  if echo "$HEALTH" | grep -q '"status":"ok"'; then
+  if [ "$STATUS" -eq 0 ]; then
     echo "Health check ${i}/${MAX_RETRIES}: PASSED"
     echo "${DEPLOY_TO} environment is healthy and ready for traffic"
     exit 0
+  elif [ "$STATUS" -eq 125 ]; then
+    echo "ERROR: app-${DEPLOY_TO} does not have a defined Podman health check"
+    exit 1
   else
     echo "Health check ${i}/${MAX_RETRIES}: waiting..."
-    sleep $RETRY_INTERVAL
+    sleep "$RETRY_INTERVAL"
   fi
 done
 
@@ -189,9 +194,10 @@ NGINX
 
 # Check if the load balancer is already running
 if podman inspect lb --format '{{.State.Running}}' 2>/dev/null | grep -q true; then
-  # Copy new config and reload
-  podman cp /tmp/nginx-bluegreen.conf lb:/etc/nginx/conf.d/default.conf
-  podman exec lb nginx -s reload
+  # The bind-mounted config file is already updated on the host; validate and reload
+  podman exec lb nginx -t && podman exec lb nginx -s reload
+elif podman inspect lb >/dev/null 2>&1; then
+  podman start lb
 else
   # Start the load balancer for the first time
   podman run -d \
@@ -233,6 +239,11 @@ if ! podman inspect "app-${ROLLBACK_TO}" --format '{{.State.Running}}' 2>/dev/nu
   exit 1
 fi
 
+if ! podman inspect lb --format '{{.State.Running}}' 2>/dev/null | grep -q true; then
+  echo "ERROR: Cannot rollback - load balancer is not running"
+  exit 1
+fi
+
 echo "Rolling back from ${ACTIVE} to ${ROLLBACK_TO}..."
 
 # Switch traffic back using the same mechanism
@@ -249,8 +260,7 @@ server {
 }
 NGINX
 
-podman cp /tmp/nginx-bluegreen.conf lb:/etc/nginx/conf.d/default.conf
-podman exec lb nginx -s reload
+podman exec lb nginx -t && podman exec lb nginx -s reload
 
 echo "$ROLLBACK_TO" > "$STATE_FILE"
 echo "Rollback complete. Traffic now on ${ROLLBACK_TO} environment."
@@ -268,10 +278,13 @@ Complete CI workflow combining build, deploy, verify, and switch.
 set -e
 
 VERSION="${CI_COMMIT_SHA:0:8}"
-IMAGE="registry.example.com/myapp:${VERSION}"
+REGISTRY="registry.example.com"
+IMAGE="${REGISTRY}/myapp:${VERSION}"
 
 echo "=== Step 1: Build ==="
 podman build -t "$IMAGE" .
+echo "${REGISTRY_TOKEN}" | podman login "${REGISTRY}" \
+  -u "${REGISTRY_USER}" --password-stdin
 podman push "$IMAGE"
 
 echo "=== Step 2: Deploy to idle environment ==="
