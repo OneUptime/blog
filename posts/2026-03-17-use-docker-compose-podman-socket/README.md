@@ -8,9 +8,9 @@ Description: Learn how to use the official Docker Compose tool with Podman by en
 
 ---
 
-> The Podman socket provides a Docker-compatible API, letting you use the official docker-compose tool without Docker Desktop.
+> The Podman socket provides a Docker-compatible API, letting you use the official Docker Compose CLI without Docker Desktop.
 
-Instead of using podman-compose, you can run the official Docker Compose (docker compose or docker-compose) against the Podman socket. Podman exposes a Docker-compatible REST API that Docker Compose can talk to, giving you full Compose v2 compatibility.
+Instead of using podman-compose, you can run the official Docker Compose (`docker compose`, or `docker-compose` where installed) against the Podman socket. Podman exposes a Docker-compatible REST API that Docker Compose can talk to, supporting many Compose v2 workflows.
 
 ---
 
@@ -73,7 +73,6 @@ docker compose ps
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -125,4 +124,4 @@ docker compose up -d
 
 ## Summary
 
-Enable the Podman socket with systemd, set `DOCKER_HOST` to point at it, and run the official Docker Compose tool against Podman. This gives you full Docker Compose v2 compatibility without Docker Desktop, using Podman as the container runtime.
+Enable the Podman socket with systemd, set `DOCKER_HOST` to point at it, and run the official Docker Compose tool against Podman. This lets you run many Docker Compose v2 workloads without Docker Desktop, using Podman as the container runtime.
