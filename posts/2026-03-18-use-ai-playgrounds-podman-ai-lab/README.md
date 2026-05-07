@@ -19,13 +19,13 @@ Podman AI Lab includes a Playground feature that provides a chat-style interface
 ```bash
 # Ensure Podman is running and AI Lab is installed
 
-podman info --format '{{.Version.Version}}'
+podman version --format '{{.Client.Version}}'
 
-# Verify you have at least one model downloaded
-podman machine ssh ls /var/lib/containers/ai-lab/models/
+# Verify you have at least one model downloaded in AI Lab
+# Podman Desktop > AI Lab > Catalog > Downloaded
 
 # Check that enough resources are allocated
-podman machine inspect --format 'CPUs: {{.Resources.CPUs}}, RAM: {{.Resources.Memory}}MB'
+podman machine inspect --format 'CPUs: {{.Resources.CPUs}}, RAM: {{.Resources.Memory}}MiB'
 ```
 
 ## Accessing the Playground
@@ -39,9 +39,9 @@ podman machine inspect --format 'CPUs: {{.Resources.CPUs}}, RAM: {{.Resources.Me
 
 ### Selecting a Model
 
-1. In the Playground, click the **Model** dropdown.
+1. In the new Playground form, choose an **Inference Runtime**.
 2. Choose from your downloaded models.
-3. The model will begin loading into memory (this may take a moment).
+3. Click **Create playground**. AI Lab will create or use a model service for the selected model (this may take a moment).
 
 ## Configuring Playground Parameters
 
@@ -149,11 +149,12 @@ EOF
 
 ```bash
 # While a Playground session is active, you can also send requests via CLI
-# Find the active inference port
-podman ps --filter "label=ai-lab" --format "{{.Ports}}" | grep -oP '\d+(?=->8080)'
+# Find the active inference server API URL
+container_id=$(podman ps --filter "label=ai-lab-inference-server" -q | head -n 1)
+api_url=$(podman inspect -f '{{ index .Config.Labels "api" }}' "$container_id")
 
 # Send the same prompt you would type in the Playground
-curl -s http://localhost:8080/v1/chat/completions \
+curl -s "$api_url/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{
     "messages": [
@@ -165,14 +166,13 @@ curl -s http://localhost:8080/v1/chat/completions \
   }' | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
 ```
 
-## Exporting Playground Conversations
+## Reviewing Playground Conversations
 
 ```bash
-# You can export conversation history from the Playground UI
-# Click the menu icon in the Playground and select "Export"
+# Review conversation history from the Playground UI
 
-# Conversations can be saved as JSON for later review
-# The exported format includes all messages, parameters, and model info
+# At the time of writing, Podman AI Lab does not provide a built-in
+# Playground conversation export action
 
 # This is useful for:
 # - Documenting model evaluations
@@ -185,13 +185,13 @@ curl -s http://localhost:8080/v1/chat/completions \
 ```bash
 # If the Playground shows "Model loading" for too long
 # Check if the model server is actually running
-podman ps --filter "label=ai-lab" --format "table {{.Names}}\t{{.Status}}"
+podman ps --filter "label=ai-lab-inference-server" --format "table {{.Names}}\t{{.Status}}"
 
 # Check inference server logs for errors
-podman logs $(podman ps --filter "label=ai-lab" -q --latest) 2>&1 | tail -20
+podman logs $(podman ps --filter "label=ai-lab-inference-server" -q | head -n 1) 2>&1 | tail -20
 
 # If responses are very slow, reduce the context size
-# Restart the model with a smaller context window from the settings
+# Lower Max Tokens or start a new model service with a smaller context window
 
 # If the model produces garbled output, try a different quantization
 # Q4_K_M generally produces better results than Q4_0
@@ -199,4 +199,4 @@ podman logs $(podman ps --filter "label=ai-lab" -q --latest) 2>&1 | tail -20
 
 ## Summary
 
-The AI Playground in Podman AI Lab is a powerful tool for interactively testing and evaluating AI models before integrating them into applications. By experimenting with system prompts, temperature settings, and different models, you can find the optimal configuration for your use case. Use side-by-side comparisons to evaluate model quality, and export conversations to document your findings. The Playground provides a fast feedback loop for AI experimentation without writing any code.
+The AI Playground in Podman AI Lab is a powerful tool for interactively testing and evaluating AI models before integrating them into applications. By experimenting with system prompts, temperature settings, and different models, you can find the optimal configuration for your use case. Use side-by-side comparisons to evaluate model quality, and review conversations to document your findings. The Playground provides a fast feedback loop for AI experimentation without writing any code.
