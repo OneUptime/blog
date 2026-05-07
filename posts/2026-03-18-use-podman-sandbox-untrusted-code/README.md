@@ -25,7 +25,7 @@ Additionally, Podman supports SELinux labeling, seccomp profiles, and capability
 The sandbox image should contain only what is absolutely necessary to run the target code:
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Install only the runtime needed
 
@@ -51,6 +51,7 @@ Here is how to run untrusted Python code with aggressive isolation:
 podman run --rm \
   --network none \
   --read-only \
+  --read-only-tmpfs=false \
   --tmpfs /tmp:size=50m \
   --memory 256m \
   --cpus 0.5 \
@@ -67,6 +68,7 @@ Let us break down each security flag:
 
 - `--network none` disables all network access
 - `--read-only` makes the root filesystem read-only
+- `--read-only-tmpfs=false` keeps Podman from adding extra writable tmpfs mounts under `/run`, `/tmp`, and `/var/tmp`
 - `--tmpfs /tmp:size=50m` provides a writable temp directory with a size limit
 - `--memory 256m` caps memory usage at 256 megabytes
 - `--cpus 0.5` limits CPU usage to half a core
@@ -96,33 +98,37 @@ if [ ! -f "$SCRIPT_PATH" ]; then
     exit 1
 fi
 
-# Detect the language and select the appropriate sandbox image
+# This example keeps the runner focused on the Python image built above
 EXTENSION="${SCRIPT_PATH##*.}"
-case "$EXTENSION" in
-    py)  IMAGE="sandbox:python"; CMD="python3 /sandbox/script.$EXTENSION" ;;
-    js)  IMAGE="sandbox:node";   CMD="node /sandbox/script.$EXTENSION" ;;
-    sh)  IMAGE="sandbox:shell";  CMD="sh /sandbox/script.$EXTENSION" ;;
-    rb)  IMAGE="sandbox:ruby";   CMD="ruby /sandbox/script.$EXTENSION" ;;
-    *)   echo "Unsupported file type: $EXTENSION"; exit 1 ;;
-esac
+if [ "$EXTENSION" != "py" ]; then
+    echo "Unsupported file type: $EXTENSION"
+    exit 1
+fi
+
+IMAGE="sandbox:python"
+CMD=(python3 /sandbox/script.py)
 
 echo "Running $SCRIPT_PATH in sandbox (timeout: ${TIMEOUT}s, memory: $MEMORY, cpu: $CPU)"
 
 # Run with timeout
+set +e
 timeout "$TIMEOUT" podman run --rm \
   --network none \
   --read-only \
+  --read-only-tmpfs=false \
   --tmpfs /tmp:size=50m \
   --memory "$MEMORY" \
   --cpus "$CPU" \
   --pids-limit 50 \
   --security-opt no-new-privileges \
   --cap-drop ALL \
-  -v "$(realpath "$SCRIPT_PATH"):/sandbox/script.$EXTENSION:ro,Z" \
+  --user sandbox \
+  -v "$(realpath "$SCRIPT_PATH"):/sandbox/script.py:ro,Z" \
   "$IMAGE" \
-  $CMD
+  "${CMD[@]}"
 
 EXIT_CODE=$?
+set -e
 
 if [ $EXIT_CODE -eq 124 ]; then
     echo "Execution timed out after ${TIMEOUT}s"
@@ -141,40 +147,7 @@ chmod +x sandbox-run.sh
 
 ## Custom Seccomp Profiles
 
-For even tighter security, create a custom seccomp profile that restricts which system calls the sandboxed code can make:
-
-```json
-{
-    "defaultAction": "SCMP_ACT_ERRNO",
-    "archMap": [
-        {
-            "architecture": "SCMP_ARCH_X86_64",
-            "subArchitectures": ["SCMP_ARCH_X86"]
-        }
-    ],
-    "syscalls": [
-        {
-            "names": [
-                "read", "write", "close", "fstat", "lseek",
-                "mmap", "mprotect", "munmap", "brk",
-                "rt_sigaction", "rt_sigprocmask",
-                "access", "pipe", "select", "dup", "dup2",
-                "clone", "fork", "execve", "exit", "wait4",
-                "kill", "uname", "fcntl", "flock",
-                "getuid", "getgid", "geteuid", "getegid",
-                "getpid", "getppid",
-                "arch_prctl", "set_tid_address",
-                "exit_group", "openat", "newfstatat",
-                "readlinkat", "getrandom", "futex",
-                "set_robust_list", "prlimit64",
-                "clock_gettime", "clock_nanosleep",
-                "rseq", "pread64", "sigaltstack"
-            ],
-            "action": "SCMP_ACT_ALLOW"
-        }
-    ]
-}
-```
+For even tighter security, create a custom seccomp profile that is derived from Podman's default profile for the exact runtime you are sandboxing. A tiny hand-written allowlist is likely to block syscalls Python needs during startup.
 
 Apply it:
 
@@ -182,8 +155,11 @@ Apply it:
 podman run --rm \
   --network none \
   --read-only \
+  --read-only-tmpfs=false \
+  --tmpfs /tmp:size=50m \
   --security-opt seccomp=sandbox-seccomp.json \
   --cap-drop ALL \
+  --user sandbox \
   -v ./script.py:/sandbox/script.py:ro,Z \
   sandbox:python \
   python3 /sandbox/script.py
@@ -204,11 +180,13 @@ STDERR_FILE="$OUTPUT_DIR/stderr.log"
 podman run --rm \
   --network none \
   --read-only \
+  --read-only-tmpfs=false \
   --tmpfs /tmp:size=50m \
   --memory 256m \
   --cpus 0.5 \
   --pids-limit 50 \
   --cap-drop ALL \
+  --user sandbox \
   -v ./script.py:/sandbox/script.py:ro,Z \
   sandbox:python \
   python3 /sandbox/script.py \
@@ -242,14 +220,20 @@ app = Flask(__name__)
 
 @app.route('/execute', methods=['POST'])
 def execute():
-    data = request.json
+    data = request.get_json() or {}
     code = data.get('code', '')
-    language = data.get('language', 'python')
+    language = str(data.get('language', 'python')).lower()
     timeout = min(data.get('timeout', 10), 30)
+
+    if language not in ('python', 'py'):
+        return jsonify({
+            'error': 'Unsupported language',
+            'exit_code': -1
+        }), 400
 
     # Write code to a temporary file
     with tempfile.NamedTemporaryFile(
-        mode='w', suffix=f'.{language}',
+        mode='w', suffix='.py',
         delete=False
     ) as f:
         f.write(code)
@@ -317,4 +301,4 @@ except Exception as e:
 
 ## Conclusion
 
-Podman provides excellent sandboxing capabilities for running untrusted code. By combining network isolation, read-only filesystems, resource limits, capability dropping, and custom seccomp profiles, you can create a sandbox that is genuinely difficult to escape. The rootless architecture of Podman adds an additional layer of protection that daemon-based runtimes cannot match. Whether you are building an online code execution platform, evaluating third-party libraries, or analyzing suspicious scripts, Podman sandboxes give you the confidence to run code without fear.
+Podman provides excellent sandboxing capabilities for running untrusted code. By combining network isolation, read-only filesystems, resource limits, capability dropping, and custom seccomp profiles, you can create a sandbox that is genuinely difficult to escape. Running Podman rootless adds an additional layer of protection by keeping the container workload inside your unprivileged user context. Whether you are building an online code execution platform, evaluating third-party libraries, or analyzing suspicious scripts, Podman sandboxes give you the confidence to run code without fear.
