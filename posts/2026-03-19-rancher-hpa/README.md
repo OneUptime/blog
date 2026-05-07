@@ -13,21 +13,21 @@ Horizontal Pod Autoscaling (HPA) automatically adjusts the number of pod replica
 - A running Rancher instance (v2.7 or later)
 - A managed Kubernetes cluster with the Metrics Server installed
 - A Deployment or StatefulSet workload with resource requests defined
-- (Optional) Prometheus for custom metrics-based scaling
+- (Optional) Prometheus and a compatible metrics adapter for custom metrics-based scaling
 
 ## Step 1: Verify Metrics Server
 
-HPA requires the Metrics Server to be running in your cluster. Most Rancher-provisioned clusters include it by default. Verify it is running:
+HPA requires resource metrics to be available in your cluster. Clusters created in Rancher v2.0.7 and later generally have the required Metrics Server and cluster configuration. Verify metrics are available:
 
 ```bash
-kubectl get deployment metrics-server -n kube-system
+kubectl top nodes
 ```
 
-If it is not installed, deploy it from the Rancher marketplace:
+If you get a `Metrics API not available` error, install Metrics Server according to your cluster distribution or use the official installation manifest:
 
-1. Go to **Apps > Charts**
-2. Search for **Metrics Server**
-3. Click **Install**
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
 
 ## Step 2: Ensure Resource Requests Are Set
 
@@ -51,14 +51,14 @@ spec:
 
 ## Step 3: Create an HPA via the Rancher UI
 
-1. Navigate to **Workloads > Deployments** in the Rancher dashboard
-2. Find the workload you want to autoscale
-3. Click the three-dot menu and select **Add HPA** (or navigate to **Service Discovery > HPA** and click **Create**)
+1. In Rancher, go to **Cluster Management**, open your cluster, and click **Explore**
+2. Navigate to **Service Discovery > HorizontalPodAutoscalers**
+3. Click **Create**
 
 Configure the HPA:
 
 - **Name**: Enter a name like `my-app-hpa`
-- **Target Workload**: Select your deployment
+- **Target Reference**: Select your deployment
 - **Min Replicas**: The minimum number of pods (e.g., `2`)
 - **Max Replicas**: The maximum number of pods (e.g., `10`)
 
@@ -179,7 +179,7 @@ spec:
           averageUtilization: 70
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 60
+      stabilizationWindowSeconds: 0
       policies:
         - type: Percent
           value: 100
@@ -198,14 +198,13 @@ spec:
 
 This configuration:
 
-- Allows scaling up by 100% or 4 pods per minute (whichever is larger)
-- Waits 60 seconds before scaling up (stabilization)
+- Scales up immediately by up to 100% or 4 pods per minute (whichever is larger)
 - Scales down by only 10% per minute
-- Waits 5 minutes before scaling down (stabilization)
+- Uses a 5-minute downscale stabilization window
 
 ## Step 6: Verify the HPA
 
-Check the HPA status in the Rancher UI under **Service Discovery > HPA**, or use kubectl:
+Check the HPA status in the Rancher UI under **Service Discovery > HorizontalPodAutoscalers**, or use kubectl:
 
 ```bash
 kubectl get hpa my-app-hpa -n default
