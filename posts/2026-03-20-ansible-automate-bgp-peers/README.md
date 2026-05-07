@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, BGP, Cisco IOS, Network Automation, Routing
 
-Description: Learn how to automate BGP peer (neighbor) configuration on Cisco IOS routers using Ansible playbooks with the cisco.ios.ios_bgp_global and ios_bgp_address_family modules.
+Description: Learn how to automate BGP peer (neighbor) configuration on Cisco IOS routers using Ansible playbooks with the cisco.ios.ios_bgp_global and cisco.ios.ios_bgp_address_family modules.
 
 ## Step 1: Define BGP Configuration in Inventory
 
@@ -42,11 +42,12 @@ all:
               update_source: Loopback0
       vars:
         ansible_network_os: cisco.ios.ios
-        ansible_connection: network_cli
+        ansible_connection: ansible.netcommon.network_cli
         ansible_user: admin
         ansible_password: "{{ vault_password }}"
-        ansible_become: yes
+        ansible_become: true
         ansible_become_method: enable
+        ansible_become_password: "{{ vault_enable_password | default(vault_password) }}"
 ```
 
 ## Step 2: BGP Configuration Playbook
@@ -71,9 +72,7 @@ all:
             - neighbor_address: "{{ item.peer_ip }}"
               remote_as: "{{ item.remote_as }}"
               description: "{{ item.description }}"
-              password:
-                encryption: 7
-                key: "{{ item.password | default(omit) }}"
+              password_options: "{{ {'encryption': 0, 'pass_key': item.password} if item.password is defined else omit }}"
               update_source: "{{ item.update_source | default(omit) }}"
         state: merged
       loop: "{{ bgp_neighbors }}"
@@ -88,7 +87,7 @@ all:
               neighbors:
                 - neighbor_address: "{{ item.peer_ip }}"
                   activate: true
-                  next_hop_self: "{{ true if item.peer_type == 'ibgp' else omit }}"
+                  nexthop_self: "{{ {'set': true} if item.peer_type == 'ibgp' else omit }}"
         state: merged
       loop: "{{ bgp_neighbors }}"
 
@@ -103,14 +102,24 @@ all:
 ```yaml
 # Add filtering configuration
     - name: Configure BGP prefix list (inbound filter)
-      cisco.ios.ios_command:
-        commands:
-          - "conf t"
+      cisco.ios.ios_config:
+        lines:
           - "ip prefix-list FROM_ISP1 seq 10 permit 0.0.0.0/0"
           - "ip prefix-list FROM_ISP1 seq 20 permit 0.0.0.0/0 ge 24 le 24"
-          - "router bgp {{ bgp_asn }}"
-          - "neighbor 203.0.113.1 prefix-list FROM_ISP1 in"
-          - "end"
+
+    - name: Apply inbound prefix list to ISP1 neighbor
+      cisco.ios.ios_bgp_address_family:
+        config:
+          as_number: "{{ bgp_asn }}"
+          address_family:
+            - afi: ipv4
+              safi: unicast
+              neighbors:
+                - neighbor_address: 203.0.113.1
+                  prefix_lists:
+                    - name: FROM_ISP1
+                      in: true
+        state: merged
 ```
 
 ## Step 4: Verify BGP Sessions
@@ -133,18 +142,20 @@ all:
       debug:
         msg: "{{ bgp_summary.stdout[0] }}"
 
-    - name: Check for established neighbors
+    - name: Check BGP neighbor state
       cisco.ios.ios_command:
         commands:
-          - "show ip bgp summary | count Established"
-      register: established_count
+          - "show ip bgp neighbors {{ item.peer_ip }}"
+      loop: "{{ bgp_neighbors }}"
+      register: bgp_neighbor_state
 
     - name: Assert neighbors are established
       assert:
         that:
-          - established_count.stdout[0] | int > 0
-        fail_msg: "No BGP neighbors in Established state!"
-        success_msg: "BGP sessions established: {{ established_count.stdout[0] }}"
+          - "'BGP state = Established' in item.stdout[0]"
+        fail_msg: "BGP neighbor {{ item.item.peer_ip }} is not in Established state!"
+        success_msg: "BGP neighbor {{ item.item.peer_ip }} is Established."
+      loop: "{{ bgp_neighbor_state.results }}"
 ```
 
 ## Step 5: Add BGP Peer Using Raw Config (for complex scenarios)
@@ -180,4 +191,4 @@ ansible-playbook -i inventory/hosts.yml playbooks/verify_bgp.yml
 
 ## Conclusion
 
-Ansible's `cisco.ios.ios_bgp_global` and `ios_bgp_address_family` modules configure BGP peers declaratively. Store per-router BGP data (ASN, router-ID, neighbors) in `host_vars`, run `configure_bgp.yml` to deploy, and verify with `verify_bgp.yml` that sessions reach Established state. For complex BGP features not yet covered by dedicated modules, use `ios_config` with `lines` and `parents` to send raw IOS configuration commands.
+Ansible's `cisco.ios.ios_bgp_global` and `cisco.ios.ios_bgp_address_family` modules configure BGP peers declaratively. Store per-router BGP data (ASN, router-ID, neighbors) in inventory or `host_vars`, run `configure_bgp.yml` to deploy, and verify with `verify_bgp.yml` that sessions reach Established state. For complex BGP scenarios, or when you need direct CLI parity, use `ios_config` with `lines` and `parents` to send raw IOS configuration commands.
