@@ -35,10 +35,10 @@ print('Backing Filesystem:', store.get('graphStatus', {}).get('Backing Filesyste
 
 # Available drivers:
 # overlay    - Most efficient, uses kernel OverlayFS (recommended)
-# fuse-overlayfs - Overlay via FUSE for older kernels
 # vfs        - Simple copy-based driver (most compatible)
 # btrfs      - Native btrfs subvolume support
 # zfs        - Native ZFS dataset support
+# fuse-overlayfs is a mount program for the overlay driver, not a separate driver.
 ```
 
 ## Checking Filesystem Compatibility
@@ -64,6 +64,9 @@ mount | grep -E "btrfs|zfs" 2>/dev/null || echo "No btrfs/zfs mounts found"
 Set up the overlay driver for the best performance on ext4 and xfs.
 
 ```bash
+# Reset storage first if you are switching from another driver
+podman system reset --force
+
 # Configure overlay driver
 mkdir -p ~/.config/containers
 
@@ -89,6 +92,9 @@ podman info --format '{{.Store.GraphDriverName}}'
 Use VFS when overlay is not available or for maximum compatibility.
 
 ```bash
+# Reset storage first if you are switching from another driver
+podman system reset --force
+
 # Configure VFS driver
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
@@ -99,9 +105,6 @@ driver = "vfs"
 [storage.options.vfs]
 # No special options needed for VFS
 EOF
-
-# Reset storage to switch drivers
-podman system reset --force
 
 # Verify VFS is active
 podman info --format '{{.Store.GraphDriverName}}'
@@ -119,6 +122,9 @@ Use the native btrfs driver on btrfs filesystems.
 # Check if storage is on btrfs
 df -T ~/.local/share/containers/storage/ | grep btrfs
 
+# Reset storage first if you are switching from another driver
+podman system reset --force
+
 # Configure btrfs driver
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
@@ -130,8 +136,7 @@ driver = "btrfs"
 # Use btrfs native snapshots for layers
 EOF
 
-# Reset and verify
-podman system reset --force
+# Verify
 podman info --format '{{.Store.GraphDriverName}}'
 ```
 
@@ -141,7 +146,7 @@ Safely switch from one storage driver to another.
 
 ```bash
 # Step 1: Save any important images
-podman save -o /tmp/saved-images.tar alpine nginx 2>/dev/null
+podman save --multi-image-archive -o /tmp/saved-images.tar alpine nginx 2>/dev/null
 
 # Step 2: Stop all containers
 podman stop -a 2>/dev/null
@@ -183,7 +188,7 @@ podman system df -v 2>/dev/null | head -20
 # Performance ranking (typical):
 # 1. overlay    - Fast, efficient copy-on-write, minimal disk usage
 # 2. btrfs/zfs  - Fast native snapshots on supported filesystems
-# 3. fuse-overlayfs - Slightly slower than kernel overlay
+# 3. overlay with fuse-overlayfs - Slightly slower than kernel overlay
 # 4. vfs        - Slowest, full copies of each layer
 
 # Test container startup time
@@ -221,4 +226,4 @@ podman run --rm alpine echo "Storage recovered"
 
 ## Summary
 
-The storage driver is a fundamental Podman configuration that affects performance and disk usage. Use the overlay driver for most environments, fuse-overlayfs for rootless on older kernels, btrfs/zfs for native filesystem snapshots, and vfs only when nothing else works. Always run `podman system reset --force` when switching drivers, and save important images before making changes. Configure the driver in `storage.conf` under the `[storage]` section.
+The storage driver is a fundamental Podman configuration that affects performance and disk usage. Use the overlay driver for most environments, overlay with fuse-overlayfs for rootless on older kernels, btrfs/zfs for native filesystem snapshots, and vfs only when nothing else works. Always run `podman system reset --force` before changing drivers, and save important images before making changes. Configure the driver in `storage.conf` under the `[storage]` section.
