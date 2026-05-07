@@ -50,8 +50,7 @@ Podman emits events for container lifecycle changes. Use these to track starts, 
 podman events
 
 # Filter for specific event types
-podman events --filter event=oom
-podman events --filter event=die
+podman events --filter event=died
 podman events --filter event=start
 
 # Filter by container name
@@ -71,14 +70,17 @@ Set up a persistent event monitor to log container lifecycle events:
 # monitor-events.sh - Log container events to file
 LOG_FILE="/var/log/podman-events.log"
 
-podman events --format json | while read event; do
+podman events --format json | while read -r event; do
   echo "$event" >> "$LOG_FILE"
 
   # Alert on OOM kills
-  if echo "$event" | jq -e '.Status == "oom"' > /dev/null 2>&1; then
-    CONTAINER=$(echo "$event" | jq -r '.Actor.Attributes.name')
-    echo "ALERT: OOM kill detected for container $CONTAINER" >&2
-    # Send notification (webhook, email, etc.)
+  if echo "$event" | jq -e '.Status == "died"' > /dev/null 2>&1; then
+    CONTAINER_ID=$(echo "$event" | jq -r '.ID')
+    CONTAINER=$(echo "$event" | jq -r '.Name')
+    if [ "$(podman container inspect "$CONTAINER_ID" --format '{{.State.OOMKilled}}' 2>/dev/null)" = "true" ]; then
+      echo "ALERT: OOM kill detected for container $CONTAINER" >&2
+      # Send notification (webhook, email, etc.)
+    fi
   fi
 done
 ```
@@ -119,7 +121,7 @@ podman ps --format "table {{.Names}}\t{{.Status}}"
 
 ## Expose Metrics with Prometheus
 
-For production monitoring, export Podman metrics to Prometheus. Podman exposes a REST API that can be scraped:
+For production monitoring, export Podman metrics to Prometheus. Podman exposes a REST API that monitoring tools and exporters can query:
 
 ```bash
 # Enable the Podman API socket
@@ -138,7 +140,6 @@ Use a metrics exporter to translate Podman stats into Prometheus format. Here is
 # podman_exporter.py - Export Podman metrics to Prometheus
 import subprocess
 import json
-import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 class MetricsHandler(BaseHTTPRequestHandler):
@@ -166,7 +167,8 @@ class MetricsHandler(BaseHTTPRequestHandler):
         for c in containers:
             name = c.get('name', 'unknown')
             # CPU usage percentage
-            cpu = c.get('cpu_percent', '0%').rstrip('%')
+            cpu = c.get('cpu_percent', '0%')
+            cpu = 0 if cpu == '--' else cpu.rstrip('%')
             lines.append(
                 f'podman_container_cpu_percent{{name="{name}"}} {cpu}'
             )
@@ -178,6 +180,7 @@ class MetricsHandler(BaseHTTPRequestHandler):
             )
             # Process count
             pids = c.get('pids', 0)
+            pids = 0 if pids == '--' else pids
             lines.append(
                 f'podman_container_pids{{name="{name}"}} {pids}'
             )
@@ -186,8 +189,8 @@ class MetricsHandler(BaseHTTPRequestHandler):
 
     def parse_bytes(self, size_str):
         """Convert human-readable size to bytes."""
-        units = {'B': 1, 'KB': 1024, 'MB': 1048576,
-                 'GB': 1073741824, 'TB': 1099511627776}
+        units = {'TB': 1099511627776, 'GB': 1073741824,
+                 'MB': 1048576, 'KB': 1024, 'B': 1}
         size_str = size_str.strip()
         for unit, multiplier in units.items():
             if size_str.upper().endswith(unit):
@@ -227,7 +230,8 @@ podman run -d \
   -v /var/run:/var/run:ro \
   -v /sys:/sys:ro \
   -v /var/lib/containers:/var/lib/containers:ro \
-  gcr.io/cadvisor/cadvisor:latest
+  --device /dev/kmsg \
+  ghcr.io/google/cadvisor:latest
 
 # Access the cAdvisor web UI
 # http://localhost:8080/containers/
@@ -252,7 +256,6 @@ journalctl CONTAINER_NAME=web --since "1 hour ago"
 podman run -d \
   --log-driver=k8s-file \
   --log-opt max-size=10m \
-  --log-opt max-file=3 \
   --name web your-image
 
 # Stream logs in real-time
@@ -313,10 +316,10 @@ CPU_THRESHOLD=80
 MEM_THRESHOLD=90
 
 while true; do
-  podman stats --no-stream --format json | jq -r '.[] | {
+  podman stats --no-stream --format json | jq -c '.[] | {
     name: .name,
-    cpu: (.cpu_percent | rtrimstr("%") | tonumber),
-    mem_percent: (.mem_percent | rtrimstr("%") | tonumber)
+    cpu: (if .cpu_percent == "--" then 0 else (.cpu_percent | rtrimstr("%") | tonumber) end),
+    mem_percent: (if .mem_percent == "--" then 0 else (.mem_percent | rtrimstr("%") | tonumber) end)
   }' | while read -r stat; do
     NAME=$(echo "$stat" | jq -r '.name')
     CPU=$(echo "$stat" | jq -r '.cpu')
