@@ -17,10 +17,9 @@ Manual IPAM updates are the main source of IPv6 address conflicts and stale reco
 # ipam_allocate.py
 
 import pynetbox
-import ipaddress
 from typing import Optional
 
-nb = pynetbox.api("http://netbox.internal", token="your-token")
+nb = pynetbox.api("http://netbox.internal", token="nbt_<key>.<token>")
 
 def allocate_ipv6_address(
     prefix: str,
@@ -30,8 +29,8 @@ def allocate_ipv6_address(
     role: Optional[str] = None
 ) -> str:
     """
-    Allocate the next available IPv6 /128 from a prefix.
-    Creates the address record in NetBox and returns the address string.
+    Allocate the next available IPv6 address from a prefix.
+    Creates the address record in NetBox and returns the address in CIDR notation.
     """
     # Find the prefix object
     prefix_obj = nb.ipam.prefixes.get(prefix=prefix)
@@ -39,17 +38,17 @@ def allocate_ipv6_address(
         raise ValueError(f"Prefix {prefix} not found in NetBox")
 
     # Request next available IP from the prefix
-    available = nb.ipam.prefixes.available_ips.create(
-        prefix_obj.id,
-        {
-            "description": description or f"Auto-allocated for {hostname}",
-            "dns_name": dns_name or f"{hostname}.example.com",
-            "status": "active",
-            "tags": [{"slug": "auto-allocated"}]
-        }
-    )
+    payload = {
+        "description": description or f"Auto-allocated for {hostname}",
+        "dns_name": dns_name or f"{hostname}.example.com",
+        "status": "active",
+    }
+    if role:
+        payload["role"] = role
 
-    allocated_addr = available["address"]
+    available = prefix_obj.available_ips.create(payload)
+
+    allocated_addr = available.address
     print(f"Allocated: {allocated_addr} for {hostname}")
     return allocated_addr
 
@@ -79,14 +78,15 @@ print(f"New server will use: {ip}")
 
   tasks:
     - name: Get next available IPv6 in prefix
-      netbox.netbox.netbox_available_ip:
+      netbox.netbox.netbox_ip_address:
         netbox_url: "{{ netbox_url }}"
         netbox_token: "{{ netbox_token }}"
-        parent: "{{ target_prefix }}"
         data:
+          prefix: "{{ target_prefix }}"
           description: "Auto-allocated for {{ server_name }}"
           dns_name: "{{ server_name }}.example.com"
           status: active
+        state: new
       register: ipv6_allocation
 
     - name: Display allocated address
@@ -96,19 +96,19 @@ print(f"New server will use: {ip}")
     - name: Store IPv6 in inventory
       add_host:
         name: "{{ server_name }}"
-        ansible_host: "{{ ipv6_allocation.ip_address.address | ipaddr('address') }}"
+        ansible_host: "{{ ipv6_allocation.ip_address.address | ansible.utils.ipaddr('address') }}"
 ```
 
 ## Terraform Integration
 
 ```hcl
 # main.tf - Terraform with NetBox provider
+# Pin the provider version to one supported by your NetBox release.
 
 terraform {
   required_providers {
     netbox = {
       source  = "e-breuninger/netbox"
-      version = "~> 3.0"
     }
   }
 }
@@ -124,11 +124,6 @@ resource "netbox_available_ip_address" "server_ipv6" {
   dns_name    = "app-server-10.example.com"
   description = "Terraform-provisioned server"
   status      = "active"
-
-  lifecycle {
-    # Prevent accidental address change
-    ignore_changes = [prefix_id]
-  }
 }
 
 data "netbox_prefix" "servers" {
@@ -150,12 +145,21 @@ output "server_ipv6" {
 SERVER_NAME="${1:-new-server}"
 PREFIX="2001:db8:0001:0001::/64"
 
+# Look up the prefix ID in NetBox
+PREFIX_ID=$(curl -s \
+    -H "Authorization: Bearer $NETBOX_TOKEN" \
+    -H "Accept: application/json" \
+    --get \
+    --data-urlencode "prefix=$PREFIX" \
+    "http://netbox.internal/api/ipam/prefixes/" \
+    | python3 -c "import json,sys; results=json.load(sys.stdin)['results']; sys.exit(f'Expected 1 prefix, got {len(results)}') if len(results) != 1 else print(results[0]['id'])")
+
 # Allocate from NetBox via API
 ALLOC=$(curl -s \
-    -H "Authorization: Token $NETBOX_TOKEN" \
+    -H "Authorization: Bearer $NETBOX_TOKEN" \
     -H "Content-Type: application/json" \
     -X POST \
-    "http://netbox.internal/api/ipam/prefixes/$(get_prefix_id "$PREFIX")/available-ips/" \
+    "http://netbox.internal/api/ipam/prefixes/$PREFIX_ID/available-ips/" \
     -d "{\"description\": \"CI/CD allocation for $SERVER_NAME\", \"status\": \"active\"}")
 
 IPv6_ADDR=$(echo "$ALLOC" | python3 -c "import json,sys; print(json.load(sys.stdin)['address'].split('/')[0])")
@@ -170,8 +174,8 @@ ansible-playbook playbooks/deploy_server.yml \
 ## Address Lifecycle Management
 
 ```python
-def deallocate_ipv6_address(ipv6_addr: str, reason: str = ""):
-    """Mark an IPv6 address as available (decommission workflow)."""
+def deprecate_ipv6_address(ipv6_addr: str, reason: str = ""):
+    """Mark an IPv6 address as deprecated (decommission workflow)."""
     # Find the IP address object
     ip_obj = nb.ipam.ip_addresses.get(address=ipv6_addr)
     if not ip_obj:
@@ -179,18 +183,17 @@ def deallocate_ipv6_address(ipv6_addr: str, reason: str = ""):
         return
 
     # Update status to deprecated first (soft delete)
-    nb.ipam.ip_addresses.update([{
-        "id": ip_obj.id,
+    ip_obj.update({
         "status": "deprecated",
         "description": f"DECOMMISSIONED: {reason}"
-    }])
+    })
 
     print(f"Marked {ipv6_addr} as deprecated: {reason}")
 
 # Usage in decommission workflow
-deallocate_ipv6_address("2001:db8:0001:0001::10", "Server retired 2026-03-20")
+deprecate_ipv6_address("2001:db8:0001:0001::10/64", "Server retired 2026-03-20")
 ```
 
 ## Conclusion
 
-Automating IPv6 address assignment through IPAM APIs (NetBox, Infoblox, etc.) eliminates manual allocation errors and ensures every address is tracked from the moment it is assigned. Use the `available-ips` endpoint (NetBox) or equivalent to atomically allocate the next available address without conflict checking in your automation code - the IPAM system handles concurrency. Integrate allocation into CI/CD pipelines so infrastructure provisioned through automation always updates IPAM, and build decommission workflows that mark addresses as deprecated rather than deleting them to preserve audit history.
+Automating IPv6 address assignment through IPAM APIs (NetBox, Infoblox, etc.) eliminates manual allocation errors and ensures every address is tracked from the moment it is assigned. Use the `available-ips` endpoint (NetBox) or equivalent to request the next available address directly from the IPAM system rather than implementing your own search logic in automation code. Integrate allocation into CI/CD pipelines so infrastructure provisioned through automation always updates IPAM, and build decommission workflows that mark addresses as deprecated rather than deleting them to preserve audit history.
