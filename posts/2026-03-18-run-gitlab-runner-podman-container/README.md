@@ -8,7 +8,7 @@ Description: Learn how to run GitLab Runner in a Podman container to execute CI/
 
 ---
 
-> GitLab Runner in Podman gives you a lightweight CI/CD executor in a rootless container ready to process your pipeline jobs.
+> GitLab Runner in Podman gives you a lightweight CI/CD executor in a container ready to process your pipeline jobs.
 
 GitLab Runner is the agent that runs CI/CD jobs defined in your GitLab pipelines. Running it in a Podman container isolates the runner from your host system, makes it portable across environments, and simplifies registration and management. This guide covers pulling the image, registering the runner, configuring executors, and managing the runner lifecycle.
 
@@ -39,7 +39,7 @@ podman volume create gitlab-runner-config
 podman run -d \
   --name my-gitlab-runner \
   -v gitlab-runner-config:/etc/gitlab-runner:Z \
-  gitlab/gitlab-runner:latest
+  docker.io/gitlab/gitlab-runner:latest
 
 # Check the container is running
 podman ps
@@ -50,20 +50,17 @@ podman logs my-gitlab-runner
 
 ## Registering the Runner with GitLab
 
-Register the runner with your GitLab instance using a registration token.
+Register the runner with your GitLab instance using a runner authentication token.
 
 ```bash
-# Register the runner interactively
-# Replace YOUR_GITLAB_URL and YOUR_REGISTRATION_TOKEN with your values
-podman exec -it my-gitlab-runner gitlab-runner register \
+# Register the runner non-interactively
+# Replace YOUR_RUNNER_AUTHENTICATION_TOKEN with the glrt- token from GitLab
+podman exec my-gitlab-runner gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --registration-token "YOUR_REGISTRATION_TOKEN" \
+  --token "YOUR_RUNNER_AUTHENTICATION_TOKEN" \
   --executor "shell" \
-  --description "podman-runner" \
-  --tag-list "podman,linux" \
-  --run-untagged="true" \
-  --locked="false"
+  --description "podman-runner"
 
 # Verify the registration
 podman exec my-gitlab-runner gitlab-runner list
@@ -88,7 +85,7 @@ shutdown_timeout = 0
 [[runners]]
   name = "podman-shell-runner"
   url = "https://gitlab.com/"
-  token = "YOUR_RUNNER_TOKEN"
+  token = "YOUR_RUNNER_AUTHENTICATION_TOKEN"
   executor = "shell"
   [runners.custom_build_dir]
   [runners.cache]
@@ -99,7 +96,7 @@ EOF
 podman run -d \
   --name gitlab-runner-shell \
   -v ~/gitlab-runner-config/config.toml:/etc/gitlab-runner/config.toml:Z \
-  gitlab/gitlab-runner:latest
+  docker.io/gitlab/gitlab-runner:latest
 ```
 
 ## Running Multiple Runners
@@ -115,30 +112,28 @@ podman volume create runner-2-config
 podman run -d \
   --name gitlab-runner-1 \
   -v runner-1-config:/etc/gitlab-runner:Z \
-  gitlab/gitlab-runner:latest
+  docker.io/gitlab/gitlab-runner:latest
 
 # Start Runner 2 - for test jobs
 podman run -d \
   --name gitlab-runner-2 \
   -v runner-2-config:/etc/gitlab-runner:Z \
-  gitlab/gitlab-runner:latest
+  docker.io/gitlab/gitlab-runner:latest
 
-# Register each runner with different tags
+# Register each runner with tokens for runners that already have different tags configured in GitLab
 podman exec gitlab-runner-1 gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --registration-token "YOUR_REGISTRATION_TOKEN" \
+  --token "YOUR_BUILD_RUNNER_AUTHENTICATION_TOKEN" \
   --executor "shell" \
-  --description "build-runner" \
-  --tag-list "build,compile"
+  --description "build-runner"
 
 podman exec gitlab-runner-2 gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --registration-token "YOUR_REGISTRATION_TOKEN" \
+  --token "YOUR_TEST_RUNNER_AUTHENTICATION_TOKEN" \
   --executor "shell" \
-  --description "test-runner" \
-  --tag-list "test,lint"
+  --description "test-runner"
 ```
 
 ## Custom Runner with Build Tools
@@ -150,7 +145,7 @@ Build a runner image with additional tools pre-installed.
 mkdir -p ~/gitlab-runner-custom
 
 cat > ~/gitlab-runner-custom/Containerfile <<'EOF'
-FROM gitlab/gitlab-runner:latest
+FROM docker.io/gitlab/gitlab-runner:latest
 
 # Install common build tools
 RUN apt-get update && apt-get install -y \
@@ -189,11 +184,11 @@ podman exec my-gitlab-runner gitlab-runner list
 # Verify runner connectivity to GitLab
 podman exec my-gitlab-runner gitlab-runner verify
 
-# Check runner status
-podman exec my-gitlab-runner gitlab-runner status
+# Check runner container status
+podman ps --filter name=my-gitlab-runner
 
-# View runner debug logs
-podman exec my-gitlab-runner gitlab-runner --debug run --user=gitlab-runner --working-directory=/home/gitlab-runner 2>&1 | head -30
+# View recent runner logs
+podman logs --tail=30 my-gitlab-runner
 ```
 
 ## Unregistering and Cleaning Up
@@ -220,4 +215,4 @@ podman volume rm gitlab-runner-config runner-1-config runner-2-config
 
 ## Summary
 
-Running GitLab Runner in a Podman container gives you an isolated CI/CD executor that is portable and easy to manage. Named volumes persist your runner configuration and registration across restarts. Multiple runners with different tags let you route build and test jobs to specialized executors. Custom images with pre-installed tools eliminate per-job installation overhead. Podman's rootless mode adds security to your CI/CD infrastructure, ensuring pipeline jobs run in a contained environment.
+Running GitLab Runner in a Podman container gives you an isolated CI/CD executor that is portable and easy to manage. Named volumes persist your runner configuration and registration across restarts. Multiple runners configured with different tags let you route build and test jobs to specialized executors. Custom images with pre-installed tools eliminate per-job installation overhead. Podman's rootless mode adds security to your CI/CD infrastructure when you run Podman rootless, ensuring pipeline jobs run in a contained environment.
