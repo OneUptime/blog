@@ -10,7 +10,7 @@ Storing Rancher backups on the same cluster they protect defeats the purpose of 
 
 ## Prerequisites
 
-- Rancher v2.5 or later with the Backup Operator installed
+- A supported Rancher version with the Backup Operator installed
 - An AWS account with S3 access
 - An S3 bucket created for Rancher backups
 - AWS access key and secret key with appropriate permissions
@@ -43,13 +43,21 @@ Create an IAM policy that grants the minimum required permissions for the Backup
     {
       "Effect": "Allow",
       "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:DeleteObject",
         "s3:ListBucket"
       ],
       "Resource": [
-        "arn:aws:s3:::rancher-backups-production",
+        "arn:aws:s3:::rancher-backups-production"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject",
+        "s3:PutObjectAcl"
+      ],
+      "Resource": [
         "arn:aws:s3:::rancher-backups-production/*"
       ]
     }
@@ -96,13 +104,13 @@ kind: Backup
 metadata:
   name: rancher-backup-s3
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 10
   storageLocation:
     s3:
       bucketName: rancher-backups-production
       folder: backups
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-east-1.amazonaws.com
       region: us-east-1
       credentialSecretName: s3-creds
       credentialSecretNamespace: cattle-resources-system
@@ -124,14 +132,14 @@ kind: Backup
 metadata:
   name: rancher-scheduled-s3-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 30
   schedule: "0 2 * * *"
   storageLocation:
     s3:
       bucketName: rancher-backups-production
       folder: daily
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-east-1.amazonaws.com
       region: us-east-1
       credentialSecretName: s3-creds
       credentialSecretNamespace: cattle-resources-system
@@ -193,12 +201,14 @@ aws s3api put-bucket-encryption \
       {
         "ApplyServerSideEncryptionByDefault": {
           "SSEAlgorithm": "aws:kms",
-          "KMSMasterKeyID": "your-kms-key-id"
+          "KMSMasterKeyID": "your-kms-key-arn"
         }
       }
     ]
   }'
 ```
+
+If you use SSE-KMS, the IAM user or role that Rancher uses for S3 access must also be allowed to use that KMS key in both IAM and the KMS key policy, including `kms:GenerateDataKey` and `kms:Decrypt`.
 
 ## Using S3-Compatible Storage
 
@@ -226,7 +236,7 @@ kubectl get secret s3-creds -n cattle-resources-system -o yaml
 
 ### Endpoint Errors
 
-For non-AWS S3 services, make sure the endpoint URL does not include the protocol prefix. Use `s3.amazonaws.com` not `https://s3.amazonaws.com`.
+For non-AWS S3 services, make sure the endpoint URL does not include the protocol prefix. Use `s3.us-east-1.amazonaws.com` not `https://s3.us-east-1.amazonaws.com`.
 
 ### Region Mismatch
 
