@@ -19,16 +19,16 @@ Health check failures can be caused by many factors: incorrect commands, applica
 ```bash
 # View the current health status
 
-podman inspect --format='{{.State.Health.Status}}' my-app
+podman inspect --format='{{.State.Healthcheck.Status}}' my-app
 
 # View detailed health check logs
-podman inspect --format='{{json .State.Health}}' my-app | python3 -m json.tool
+podman inspect --format='{{json .State.Healthcheck}}' my-app | python3 -m json.tool
 
 # Check the failing streak count
-podman inspect --format='{{.State.Health.FailingStreak}}' my-app
+podman inspect --format='{{.State.Healthcheck.FailingStreak}}' my-app
 
 # Look at the exit code and output of the last check
-podman inspect --format='{{range .State.Health.Log}}Exit: {{.ExitCode}} Output: {{.Output}}{{end}}' my-app
+podman inspect --format='{{range .State.Healthcheck.Log}}Exit: {{.ExitCode}} Output: {{.Output}}{{end}}' my-app
 ```
 
 ## Step 2: Test the Health Check Command Manually
