@@ -8,13 +8,13 @@ Description: Learn how to write assertions inside OpenTofu test run blocks to va
 
 ---
 
-OpenTofu's native testing framework (`tofu test`) allows you to write test files that provision real or mock infrastructure and then assert expected conditions. Assertions in `run` blocks verify that resources have the correct attributes after apply.
+OpenTofu's native testing framework (`tofu test`) allows you to write test files that provision real or mock infrastructure and then assert expected conditions. Assertions in `run` blocks verify expected conditions after a `plan` or `apply` operation.
 
 ---
 
 ## Test File Structure
 
-Test files use the `.tftest.hcl` extension and live alongside your configuration files.
+Test files use the `.tftest.hcl` extension and can live in the current directory or in a `tests` directory.
 
 ```hcl
 # tests/networking.tftest.hcl
@@ -120,4 +120,4 @@ tofu test -verbose
 
 ## Summary
 
-OpenTofu test `run` blocks support multiple `assert` statements that evaluate HCL expressions against applied resource attributes. Use `command = plan` for lightweight validation without provisioning, and `command = apply` when you need real resource attributes. Chain multiple `run` blocks to build stateful test sequences. Run with `tofu test` in CI to catch configuration regressions early.
+OpenTofu test `run` blocks support multiple `assert` statements that evaluate HCL expressions after a `plan` or `apply` operation. Use `command = plan` for lightweight validation without provisioning, and `command = apply` when you need real resource attributes. Use multiple `run` blocks to structure related test cases. Run with `tofu test` in CI to catch configuration regressions early.
