@@ -14,13 +14,13 @@ A DaemonSet ensures that a copy of a pod runs on every node (or a subset of node
 - A managed Kubernetes cluster with multiple nodes
 - Access to a project and namespace
 
-## Step 1: Navigate to DaemonSets
+## Step 1: Navigate to Workload
 
-Log in to your Rancher dashboard and select your target cluster. From the left sidebar, navigate to **Workloads > DaemonSets**.
+Log in to your Rancher dashboard and select your target cluster. From the left sidebar, click **Workload**.
 
 ## Step 2: Create a New DaemonSet
 
-Click the **Create** button to open the DaemonSet creation form.
+Click the **Create** button, then choose **DaemonSet** to open the DaemonSet creation form.
 
 Fill in the basic information:
 
@@ -36,18 +36,11 @@ In the **Container** section:
 - **Container Image**: Enter `fluentd:latest` (or your preferred logging agent)
 - **Pull Policy**: Select `IfNotPresent`
 
-Configure volume mounts to access host logs:
+Configure a volume mount to access host logs:
 
 1. Click **Add Volume** and select **Host Path**
 2. Set **Path on Host** to `/var/log`
 3. Set **Mount Point** to `/var/log`
-4. Check **Read Only**
-
-Add another volume for container logs:
-
-1. Click **Add Volume** and select **Host Path**
-2. Set **Path on Host** to `/var/lib/docker/containers`
-3. Set **Mount Point** to `/var/lib/docker/containers`
 4. Check **Read Only**
 
 ## Step 4: Configure Resource Limits
@@ -64,10 +57,8 @@ Since DaemonSets run on every node, it is important to set resource limits to av
 By default, DaemonSet pods are not scheduled on control plane nodes due to taints. If you need the DaemonSet to run on all nodes including the control plane, add tolerations:
 
 1. Scroll to the **Tolerations** section
-2. Click **Add Toleration**
-3. Set **Key** to `node-role.kubernetes.io/control-plane`
-4. Set **Effect** to `NoSchedule`
-5. Set **Operator** to `Exists`
+2. Click **Add Toleration** and set **Key** to `node-role.kubernetes.io/control-plane`, **Effect** to `NoSchedule`, and **Operator** to `Exists`
+3. Click **Add Toleration** again and set **Key** to `node-role.kubernetes.io/master`, **Effect** to `NoSchedule`, and **Operator** to `Exists`
 
 ## Step 6: Configure the Update Strategy
 
@@ -113,6 +104,9 @@ spec:
         - key: node-role.kubernetes.io/control-plane
           effect: NoSchedule
           operator: Exists
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+          operator: Exists
       containers:
         - name: fluentd
           image: fluentd:latest
@@ -127,21 +121,15 @@ spec:
             - name: varlog
               mountPath: /var/log
               readOnly: true
-            - name: containers
-              mountPath: /var/lib/docker/containers
-              readOnly: true
       volumes:
         - name: varlog
           hostPath:
             path: /var/log
-        - name: containers
-          hostPath:
-            path: /var/lib/docker/containers
 ```
 
 ## Step 8: Verify the DaemonSet
 
-Check the DaemonSet status in the Rancher UI under **Workloads > DaemonSets**. The desired number should match the number of eligible nodes.
+Check the DaemonSet status in the Rancher UI from the **Workload** view. The desired number should match the number of eligible nodes.
 
 Using kubectl:
 
@@ -190,8 +178,8 @@ spec:
 
 To update the container image or configuration:
 
-1. Go to **Workloads > DaemonSets**
-2. Click the three-dot menu and select **Edit Config**
+1. Go to **Workload**
+2. Open the DaemonSet and select **Edit Config**
 3. Make your changes (e.g., update the image tag)
 4. Click **Save**
 
