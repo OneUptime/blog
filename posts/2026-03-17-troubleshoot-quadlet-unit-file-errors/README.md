@@ -10,13 +10,13 @@ Description: Learn how to diagnose and fix common Quadlet unit file errors inclu
 
 > Quickly diagnose and resolve Quadlet issues by understanding the generation pipeline and using the right debugging tools.
 
-Quadlet transforms your `.container`, `.volume`, `.network`, and `.kube` files into systemd units. When things go wrong, the error can be in the Quadlet file syntax, the generated unit, or the container runtime. This guide walks through the most common issues and how to fix them.
+Quadlet transforms files such as `.container`, `.volume`, `.network`, `.pod`, `.image`, `.build`, and `.kube` files into systemd units. When things go wrong, the error can be in the Quadlet file syntax, the generated unit, or the container runtime. This guide walks through the most common issues and how to fix them.
 
 ---
 
 ## Step 1: Check if Quadlet Generated the Unit
 
-After running `systemctl --user daemon-reload`, verify the unit was generated:
+After running `systemctl --user daemon-reload` for rootless containers or `systemctl daemon-reload` for rootful containers, verify the unit was generated:
 
 ```bash
 # List generated Quadlet units
@@ -69,7 +69,7 @@ ls /etc/containers/systemd/
 ### Error: Invalid Directive
 
 ```text
-quadlet-generator: unsupported key "InvalidKey" in section "Container"
+quadlet-generator: unsupported key 'InvalidKey' in group 'Container'
 ```
 
 **Fix:** Check the directive name for typos. Valid directives are documented in `man quadlet`.
