@@ -8,7 +8,7 @@ Description: Learn how to create and attach AWS Organizations Service Control Po
 
 ## Introduction
 
-Service Control Policies (SCPs) are organizational policies that set maximum permissions for accounts in your AWS Organization. Unlike IAM policies, SCPs affect even the root account of member accounts. They are used to prevent specific actions organization-wide, such as disabling CloudTrail or creating resources in disallowed regions.
+Service Control Policies (SCPs) are organizational policies that set maximum permissions for accounts in your AWS Organization. Unlike IAM policies, SCPs affect even the root user of member accounts. They are used to prevent specific actions organization-wide, such as disabling CloudTrail or creating resources in disallowed regions.
 
 ## Prerequisites
 
@@ -16,7 +16,7 @@ Service Control Policies (SCPs) are organizational policies that set maximum per
 - AWS Organizations management account credentials
 - AWS Organizations with SCPs enabled
 
-## Step 1: Enable SCPs in the Organization
+## Step 1: Reference the Organization and Create an OU
 
 ```hcl
 # Data source to get the organization details
@@ -33,6 +33,12 @@ resource "aws_organizations_organizational_unit" "production" {
 ## Step 2: Create a Region Restriction SCP
 
 ```hcl
+# Update these to the regions you want to allow.
+variable "allowed_regions" {
+  type    = list(string)
+  default = ["us-east-1", "us-west-2"]
+}
+
 # Deny any actions outside approved regions
 resource "aws_organizations_policy" "region_restriction" {
   name        = "RegionRestriction"
@@ -115,20 +121,20 @@ resource "aws_organizations_policy" "prevent_org_leave" {
 # Prevent creating root user access keys
 resource "aws_organizations_policy" "no_root_keys" {
   name        = "NoRootAccessKeys"
-  description = "Prevent creating root account access keys"
+  description = "Prevent creating root user access keys"
   type        = "SERVICE_CONTROL_POLICY"
 
   content = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "DenyRootAccountAccessKeys"
+      Sid    = "DenyRootUserAccessKeys"
       Effect = "Deny"
       Action = [
         "iam:CreateAccessKey"
       ]
       Resource = "*"
       Condition = {
-        StringLike = {
+        ArnLike = {
           "aws:PrincipalArn" = "arn:aws:iam::*:root"
         }
       }
@@ -137,7 +143,7 @@ resource "aws_organizations_policy" "no_root_keys" {
 }
 ```
 
-## Step 4: Attach SCPs to OUs
+## Step 4: Attach SCPs to the Root and OUs
 
 ```hcl
 # Attach region restriction to the production OU
@@ -156,6 +162,11 @@ resource "aws_organizations_policy_attachment" "no_leave_root" {
   policy_id = aws_organizations_policy.prevent_org_leave.id
   target_id = data.aws_organizations_organization.main.roots[0].id
 }
+
+resource "aws_organizations_policy_attachment" "no_root_keys_root" {
+  policy_id = aws_organizations_policy.no_root_keys.id
+  target_id = data.aws_organizations_organization.main.roots[0].id
+}
 ```
 
 ## Step 5: Deploy
@@ -168,4 +179,4 @@ tofu apply
 
 ## Conclusion
 
-SCPs are the most powerful governance tool in AWS Organizations-they apply to all principals in an account, including the root user, and cannot be overridden by account-level policies. Use them for immutable guardrails: region restrictions, protecting audit infrastructure, preventing privilege escalation, and enforcing tagging. Remember that SCPs only deny-they don't grant permissions. Accounts still need identity-based policies to allow actions within the SCP's allowed boundary.
+SCPs are the most powerful governance tool in AWS Organizations-they apply to IAM users and roles in attached member accounts, including the root user, with exceptions such as service-linked roles, and cannot be overridden by account-level policies. Use them for immutable guardrails: region restrictions, protecting audit infrastructure, preventing privilege escalation, and enforcing tagging. Remember that SCPs don't grant permissions-they set the maximum available permissions. Accounts still need identity-based policies to allow actions within the SCP boundary.
