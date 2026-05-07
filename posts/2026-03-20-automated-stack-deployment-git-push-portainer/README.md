@@ -8,39 +8,39 @@ Description: Learn how to configure Portainer to automatically redeploy stacks w
 
 ---
 
-Portainer's GitOps integration lets you link a stack to a Git repository and automatically redeploy whenever you push changes. This means your deployed stack always reflects the latest version in your repo - no manual redeployments needed. This guide covers both Portainer's built-in Git integration and webhook-based CI/CD triggers.
+Portainer's GitOps integration lets you link a stack to a Git repository and automatically redeploy when Portainer detects a new commit, either by polling or via webhook. This keeps your deployed stack aligned with the version in Git without requiring manual redeployments. This guide covers both Portainer's built-in Git integration and webhook-based CI/CD triggers.
 
 ---
 
 ## Approach 1: Portainer Native Git Integration
 
-Portainer Business Edition supports native Git repository integration for stacks.
+Portainer supports deploying stacks directly from a Git repository. For webhook-based GitOps triggers, use Portainer Business Edition.
 
 ### Link a Stack to a Git Repository
 
 1. In Portainer, go to **Stacks > Add Stack**
-2. Select **Repository** as the build method
+2. Select **Git Repository** as the build method
 3. Fill in:
    - **Repository URL**: `https://github.com/yourorg/your-infrastructure.git`
    - **Repository reference**: `refs/heads/main`
-   - **Compose file path**: `stacks/myapp/docker-compose.yml`
-4. Optionally add a `.env` file for environment variables
-5. Enable **Auto update** and set the polling interval (or use webhooks)
+   - **Compose path**: `stacks/myapp/docker-compose.yml`
+4. Optionally load a `.env` file or define environment variables in Portainer
+5. Enable **GitOps updates** and choose either polling or webhook as the mechanism
 6. Click **Deploy the stack**
 
 ### Enable Git Webhook Trigger
 
-In the stack settings, enable the webhook URL:
-1. Go to the stack → **Settings**
-2. Enable **GitOps update**
+When creating the stack, or later from the stack details page, configure the webhook:
+1. Enable **GitOps updates**
+2. Select **Webhook** as the **Mechanism**
 3. Copy the generated webhook URL
-4. Add it to your GitHub repo: **Settings > Webhooks > Add webhook**
+4. Use it in GitHub Actions, or add it to your GitHub repo under **Settings > Webhooks > Add webhook** and subscribe to push events
 
 ---
 
 ## Approach 2: GitHub Actions Webhook Trigger
 
-Trigger Portainer stack redeployment from a GitHub Actions workflow.
+Trigger a Portainer GitOps update check from a GitHub Actions workflow.
 
 ```yaml
 # .github/workflows/deploy.yml - deploy to Portainer on push to main
@@ -63,7 +63,7 @@ jobs:
 
       - name: Trigger Portainer redeploy via webhook
         run: |
-          # Portainer webhook - triggers stack update with latest Git content
+          # Portainer GitOps webhook - triggers a check for the latest Git commit
           curl -X POST \
             "${{ secrets.PORTAINER_WEBHOOK_URL }}" \
             --fail \
@@ -75,37 +75,61 @@ jobs:
 
 ## Approach 3: Portainer API Stack Update from CI
 
-For more control, use the Portainer API to update a stack from CI with a specific image tag.
+For more control, use the Portainer API to redeploy a Git-based stack from CI with a specific image tag.
 
 ```bash
 #!/bin/bash
-# deploy-to-portainer.sh - update a stack via Portainer API
+# deploy-to-portainer.sh - redeploy a Git-based stack via Portainer API
+
+set -euo pipefail
 
 PORTAINER_URL="https://portainer.example.com"
 API_KEY="${PORTAINER_API_KEY}"
 STACK_ID="${PORTAINER_STACK_ID}"
-IMAGE_TAG="${GITHUB_SHA:-latest}"
+ENDPOINT_ID="${PORTAINER_ENDPOINT_ID}"
+IMAGE_TAG="${GITHUB_SHA:-latest}"  # assumes CI published an image tagged with the commit SHA
 
 echo "Deploying stack $STACK_ID with image tag: $IMAGE_TAG"
 
-# Get current stack file content
-STACK_FILE=$(curl -s -H "X-API-Key: $API_KEY" \
-  "$PORTAINER_URL/api/stacks/$STACK_ID/file" | \
-  python3 -c "import sys,json; print(json.load(sys.stdin)['StackFileContent'])")
+# Fetch the current stack definition so existing environment variables are preserved
+STACK_JSON=$(curl --silent --show-error --fail \
+  -H "X-API-KEY: $API_KEY" \
+  "$PORTAINER_URL/api/stacks/$STACK_ID")
 
-# Update the stack with new env var (passes image tag to Compose)
-curl -s -X PUT \
-  -H "X-API-Key: $API_KEY" \
+MERGED_ENV=$(printf '%s' "$STACK_JSON" | IMAGE_TAG="$IMAGE_TAG" python3 -c '
+import json, os, sys
+
+stack = json.load(sys.stdin)
+env = stack.get("Env") or []
+merged = []
+found = False
+
+for item in env:
+    name = item.get("name") or item.get("Name")
+    if not name:
+        continue
+
+    value = item.get("value") if "value" in item else item.get("Value")
+
+    if name == "IMAGE_TAG":
+        value = os.environ["IMAGE_TAG"]
+        found = True
+
+    merged.append({"name": name, "value": value})
+
+if not found:
+    merged.append({"name": "IMAGE_TAG", "value": os.environ["IMAGE_TAG"]})
+
+print(json.dumps(merged))
+')
+
+# Redeploy the Git-based stack with the merged environment
+curl --silent --show-error --fail \
+  -X PUT \
+  -H "X-API-KEY: $API_KEY" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"StackFileContent\": $(echo "$STACK_FILE" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))"),
-    \"Env\": [
-      {\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"}
-    ],
-    \"Prune\": true,
-    \"PullImage\": true
-  }" \
-  "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=1"
+  -d "{\"Env\": $MERGED_ENV, \"RepullImageAndRedeploy\": true}" \
+  "$PORTAINER_URL/api/stacks/$STACK_ID/git/redeploy?endpointId=$ENDPOINT_ID"
 
 echo "Stack deployment triggered."
 ```
@@ -116,7 +140,6 @@ echo "Stack deployment triggered."
 
 ```yaml
 # docker-compose.yml - uses IMAGE_TAG env var for automated deployments
-version: "3.8"
 
 services:
   webapp:
@@ -133,4 +156,4 @@ services:
 
 ## Summary
 
-Automated stack deployment on Git push requires a Portainer stack linked to a Git repository and a mechanism to trigger updates on push - either Portainer's built-in webhook support (BE), a GitHub Actions workflow, or a direct API call. The cleanest approach for teams is Portainer's native GitOps integration: merge to main, and Portainer automatically pulls and redeploys.
+Automated stack deployment on Git push requires a Portainer stack linked to a Git repository and a mechanism to trigger a GitOps update check on push - either a Portainer GitOps webhook, a GitHub Actions workflow, or a direct API call. The cleanest approach for teams is Portainer's native Git integration with GitOps updates enabled: merge to main, and Portainer will pull and redeploy when it detects the new commit.
