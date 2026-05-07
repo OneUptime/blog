@@ -7,6 +7,7 @@ Tags: Rancher, Kubernetes, AWS, Cloud, Installation
 Description: A practical guide to deploying Rancher on an AWS EC2 instance with K3s and Helm.
 
 Amazon Web Services is one of the most widely used cloud platforms, and running Rancher on an EC2 instance gives you a powerful Kubernetes management layer on top of AWS infrastructure. This guide covers every step from provisioning the EC2 instance to accessing the Rancher dashboard.
+This single-node setup is best suited for testing or proof-of-concept environments; Rancher recommends a highly available Kubernetes cluster for production deployments.
 
 ## Prerequisites
 
@@ -14,48 +15,52 @@ Amazon Web Services is one of the most widely used cloud platforms, and running 
 - AWS CLI installed and configured on your local machine
 - A domain name (optional but recommended)
 - An SSH key pair registered in your AWS account
+- The VPC ID and public subnet ID where you want to launch the instance
 
 ## Step 1: Create a Security Group
 
 Create a security group that allows the necessary traffic for Rancher:
 
 ```bash
-aws ec2 create-security-group \
+SG_ID=$(aws ec2 create-security-group \
   --group-name rancher-sg \
-  --description "Security group for Rancher server"
+  --description "Security group for Rancher server" \
+  --vpc-id <vpc-id> \
+  --query 'GroupId' \
+  --output text)
 
 aws ec2 authorize-security-group-ingress \
-  --group-name rancher-sg \
-  --protocol tcp --port 22 --cidr 0.0.0.0/0
+  --group-id "$SG_ID" \
+  --protocol tcp --port 22 --cidr <your-public-ip>/32
 
 aws ec2 authorize-security-group-ingress \
-  --group-name rancher-sg \
+  --group-id "$SG_ID" \
   --protocol tcp --port 80 --cidr 0.0.0.0/0
 
 aws ec2 authorize-security-group-ingress \
-  --group-name rancher-sg \
+  --group-id "$SG_ID" \
   --protocol tcp --port 443 --cidr 0.0.0.0/0
-
-aws ec2 authorize-security-group-ingress \
-  --group-name rancher-sg \
-  --protocol tcp --port 6443 --cidr 0.0.0.0/0
 ```
+
+Replace `<vpc-id>` with your VPC ID and `<your-public-ip>` with the public IP or CIDR range you want to allow for SSH access. If you plan to access the Kubernetes API remotely, add TCP port 6443 only for trusted source IP ranges.
 
 ## Step 2: Launch an EC2 Instance
 
-Launch an Ubuntu 22.04 instance with at least a t3.medium instance type:
+Launch an Ubuntu 22.04 instance in a public subnet with at least a t3.xlarge instance type:
 
 ```bash
 aws ec2 run-instances \
-  --image-id ami-0c7217cdde317cfec \
-  --instance-type t3.medium \
+  --image-id resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id \
+  --instance-type t3.xlarge \
+  --count 1 \
   --key-name your-key-pair \
-  --security-groups rancher-sg \
+  --subnet-id <public-subnet-id> \
+  --security-group-ids "$SG_ID" \
   --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":50,"VolumeType":"gp3"}}]' \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=rancher-server}]'
 ```
 
-Replace `your-key-pair` with your actual key pair name and update the AMI ID for your region.
+Replace `your-key-pair` and `<public-subnet-id>` with your values. The `resolve:ssm:` parameter fetches the current Ubuntu 22.04 AMI for the AWS Region you are using.
 
 ## Step 3: Allocate and Associate an Elastic IP
 
@@ -81,11 +86,13 @@ ssh -i ~/.ssh/your-key.pem ubuntu@<elastic-ip>
 
 ## Step 5: Install K3s
 
-Install K3s on the instance:
+Rancher needs to run on a Kubernetes version supported by the Rancher release you plan to install. Install a supported K3s version on the instance:
 
 ```bash
-curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=<supported-k3s-version> sh -s - server --cluster-init --write-kubeconfig-mode 644
 ```
+
+Replace `<supported-k3s-version>` with a K3s version from the Rancher support matrix for the Rancher release you want to install.
 
 Verify K3s is running:
 
@@ -173,7 +180,7 @@ Once Rancher is running, you can configure it to provision additional EC2 instan
 ## Cost Optimization Tips
 
 - Use Reserved Instances or Savings Plans for the Rancher server if it will run long-term
-- Consider using a t3.medium for small deployments or t3.large for managing many clusters
+- Consider using a t3.xlarge for small proof-of-concept deployments and larger instance types as you manage more clusters
 - Use gp3 EBS volumes for better price-performance compared to gp2
 - Set up billing alerts to monitor costs
 
