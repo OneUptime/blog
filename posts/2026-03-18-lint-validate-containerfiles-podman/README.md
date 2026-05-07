@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containerfile, Linting, Hadolint, DevOps
 
-Description: Learn how to lint and validate your Containerfiles for Podman using tools like Hadolint, container-diff, and custom validation scripts to catch errors before they reach production.
+Description: Learn how to lint and validate your Containerfiles for Podman using tools like Hadolint, Skopeo, Trivy, and custom validation scripts to catch errors before they reach production.
 
 ---
 
@@ -65,7 +65,7 @@ Each warning includes a rule code, severity level, and description.
 
 Hadolint rules are prefixed with DL (Docker Lint) or SC (ShellCheck). Here are some of the most important ones:
 
-**DL3006** warns when you use a tag like `latest` instead of pinning a specific version. Non-pinned tags make builds non-reproducible:
+**DL3007** warns when you use a tag like `latest` instead of pinning a specific version. Non-pinned tags make builds non-reproducible:
 
 ```dockerfile
 # Bad
@@ -138,7 +138,8 @@ override:
     - DL3001  # Invalid command
     - DL3003  # Use WORKDIR instead of cd
   warning:
-    - DL3006  # Tag pinning
+    - DL3006  # Missing image tag
+    - DL3007  # latest tag
   info:
     - DL3025  # CMD form
 ```
@@ -166,13 +167,16 @@ hadolint --format sarif Containerfile
 # Checkstyle format (for Jenkins)
 hadolint --format checkstyle Containerfile
 
-# CodeClimate format (for GitLab)
+# GitLab Code Quality format
+hadolint --format gitlab_codeclimate Containerfile
+
+# CodeClimate format
 hadolint --format codeclimate Containerfile
 ```
 
 ## Validating with Podman Build
 
-Podman itself can validate your Containerfile by performing a dry-run style build. While not a linter, the build process catches syntax errors and invalid instructions:
+Podman itself can validate your Containerfile by performing a test build. While not a linter, the build process catches syntax errors and invalid instructions:
 
 ```bash
 # Basic validation through build
@@ -275,13 +279,13 @@ Combine linting with vulnerability scanning for comprehensive validation:
 
 ```bash
 # Scan for vulnerabilities
-podman run --rm aquasec/trivy image my-app:latest
+trivy image my-app:latest
 
 # Scan with severity filter
-podman run --rm aquasec/trivy image --severity HIGH,CRITICAL my-app:latest
+trivy image --severity HIGH,CRITICAL my-app:latest
 
 # Scan the Containerfile itself for misconfigurations
-podman run --rm -v $(pwd):/work aquasec/trivy config /work/Containerfile
+trivy config Containerfile
 ```
 
 Trivy can also scan Containerfiles for configuration issues, complementing Hadolint's linting.
@@ -312,7 +316,7 @@ jobs:
           failure-threshold: warning
 
       - name: Security scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: .
@@ -325,7 +329,7 @@ lint-containerfile:
   stage: validate
   image: hadolint/hadolint:latest-alpine
   script:
-    - hadolint --format codeclimate Containerfile > hadolint-report.json
+    - hadolint --format gitlab_codeclimate Containerfile > hadolint-report.json
   artifacts:
     reports:
       codequality: hadolint-report.json
@@ -403,7 +407,11 @@ Validate that your ignore file is working:
 
 ```bash
 # Check what files are included in the build context
-podman build --no-cache . 2>&1 | head -5
+podman build --no-cache -f - . <<'EOF'
+FROM alpine
+COPY . /context
+RUN find /context -maxdepth 2 -type f | sort
+EOF
 ```
 
 ## Best Practices
