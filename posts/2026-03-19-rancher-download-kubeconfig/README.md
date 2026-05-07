@@ -6,17 +6,17 @@ Tags: Rancher, Kubernetes, kubeconfig, kubectl, CLI
 
 Description: Step-by-step guide to downloading and managing kubeconfig files from Rancher for accessing your Kubernetes clusters.
 
-A kubeconfig file is your credential and connection configuration for accessing a Kubernetes cluster. Rancher generates kubeconfig files that include authentication tokens and cluster endpoints. This guide covers every method for downloading kubeconfig files from Rancher and managing them effectively.
+A kubeconfig file is your credential and connection configuration for accessing a Kubernetes cluster. Rancher generates kubeconfig files that include cluster endpoints and, by default, authentication tokens. This guide covers every method for downloading kubeconfig files from Rancher and managing them effectively.
 
 ## Method 1: Download from the Rancher UI
 
 ### Step 1: Navigate to the Cluster
 
-Log into your Rancher instance and click on the cluster you want to access from the main dashboard.
+Log into your Rancher instance, open **☰ > Cluster Management**, and find the cluster you want to access.
 
 ### Step 2: Open the Cluster Dashboard
 
-Once you are in the cluster view, look for the kubeconfig button. In Rancher v2.7+, click the **Copy KubeConfig to Clipboard** button at the top of the cluster explorer page, or find it under the kebab menu (three dots).
+Open the cluster's kebab menu (three dots), then select **Download KubeConfig** or **Copy KubeConfig to Clipboard**.
 
 ### Step 3: Save the Configuration
 
@@ -41,12 +41,14 @@ kubectl get nodes
 
 ## Method 2: Download via the Rancher API
 
-This is the best method for automation and scripting.
+This legacy v3 API method works well for automation and scripting.
 
 ```bash
 export RANCHER_URL="https://rancher.example.com"
 export RANCHER_TOKEN="token-xxxxx:yyyyyyyyyyyyyyyy"
 export CLUSTER_ID="c-m-abc12345"
+
+mkdir -p ~/.kube
 
 curl -s -k -X POST \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
@@ -65,6 +67,8 @@ kubectl cluster-info
 ## Method 3: Download via the Rancher CLI
 
 ```bash
+mkdir -p ~/.kube
+
 rancher login https://rancher.example.com --token ${RANCHER_TOKEN}
 
 # List clusters to find the name
@@ -90,40 +94,44 @@ contexts:
 - name: my-cluster
   context:
     cluster: my-cluster
-    user: my-cluster
+    user: user-46tmn
 current-context: my-cluster
 users:
-- name: my-cluster
+- name: user-46tmn
   user:
-    token: kubeconfig-user-xxxx:yyyyyyyy
+    token: token-xxxxx:yyyyyyyy
 ```
 
 Key points:
 
 - The **server** URL routes through the Rancher proxy by default
-- The **token** is a Rancher-issued kubeconfig token (different from your API key)
-- The **certificate-authority-data** contains the Rancher server's CA certificate
+- If kubeconfig token generation is enabled, the **token** is a Rancher-issued kubeconfig token (different from your API key)
+- The **certificate-authority-data** contains the CA data for the selected endpoint
+- If admins set `kubeconfig-generate-token=false`, Rancher generates a kubeconfig that uses the Rancher CLI to fetch a short-lived token instead of embedding one
 
 ## Downloading kubeconfig with Direct Endpoint
 
-If you have the Authorized Cluster Endpoint (ACE) enabled, the kubeconfig may include a direct connection to the cluster API server:
+If you have an RKE2 or K3s cluster with the Authorized Cluster Endpoint (ACE) enabled, Rancher adds extra contexts for direct access to the cluster API server:
 
 ```yaml
-clusters:
+contexts:
 - name: my-cluster
-  cluster:
-    server: https://10.0.1.100:6443
-    certificate-authority-data: LS0tLS1...
-- name: my-cluster-rancher
-  cluster:
-    server: https://rancher.example.com/k8s/clusters/c-m-abc12345
+  context:
+    cluster: my-cluster
+    user: user-46tmn
+- name: my-cluster-fqdn
+  context:
+    cluster: my-cluster-fqdn
+    user: user-46tmn
 ```
+
+If no FQDN is configured, Rancher creates direct-access contexts named `<CLUSTER_NAME>-<NODE_NAME>` instead.
 
 You can choose which endpoint to use by switching contexts:
 
 ```bash
-kubectl config use-context my-cluster        # Direct access
-kubectl config use-context my-cluster-rancher # Through Rancher proxy
+kubectl config use-context my-cluster      # Through Rancher proxy
+kubectl config use-context my-cluster-fqdn # Direct access via ACE
 ```
 
 ## Downloading kubeconfig for All Clusters
@@ -178,6 +186,7 @@ kubectl config view --flatten > ~/.kube/config.merged
 
 # Replace the default config
 mv ~/.kube/config.merged ~/.kube/config
+unset KUBECONFIG
 
 # Verify
 kubectl config get-contexts
@@ -188,9 +197,9 @@ kubectl config get-contexts
 After merging, rename contexts for clarity:
 
 ```bash
-kubectl config rename-context c-m-abc12345 production
-kubectl config rename-context c-m-def67890 staging
-kubectl config rename-context c-m-ghi11111 development
+kubectl config rename-context my-cluster production
+kubectl config rename-context staging-cluster staging
+kubectl config rename-context development-cluster development
 
 kubectl config get-contexts
 ```
@@ -205,6 +214,8 @@ Rancher kubeconfig tokens expire after a configurable period. Set up automatic r
 
 RANCHER_URL="https://rancher.example.com"
 RANCHER_TOKEN="token-xxxxx:yyyyyyyyyyyyyyyy"
+
+mkdir -p ~/.kube/rancher
 
 clusters=$(curl -s -k \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
@@ -221,7 +232,7 @@ done <<< "$clusters"
 export KUBECONFIG=$(find ~/.kube/rancher -name "*.yaml" | tr '\n' ':')
 kubectl config view --flatten > ~/.kube/config
 
-echo "$(date): Kubeconfigs refreshed" >> /var/log/kubeconfig-refresh.log
+echo "$(date): Kubeconfigs refreshed" >> "${HOME}/.kube/kubeconfig-refresh.log"
 ```
 
 Add a cron job to run daily:
@@ -239,7 +250,7 @@ Rancher kubeconfig tokens have a default TTL set in the Rancher settings. Check 
 ```bash
 curl -s -k \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/settings/kubeconfig-default-token-TTL-minutes" | jq '.value'
+  "${RANCHER_URL}/v3/settings/kubeconfig-default-token-ttl-minutes" | jq '.value'
 ```
 
 ### File Permissions
@@ -266,15 +277,13 @@ Add kubeconfig patterns to your `.gitignore`:
 If a kubeconfig is compromised, revoke the associated token:
 
 ```bash
-# Find kubeconfig tokens
-curl -s -k \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/tokens?kind=kubeconfig" | jq '.data[] | {id, description, expired}'
+# For a token-based kubeconfig, extract the Rancher token ID
+TOKEN_ID=$(kubectl config view --raw --minify -o jsonpath='{.users[0].user.token}' | cut -d: -f1)
 
-# Delete a specific token
+# Delete the specific token
 curl -s -k -X DELETE \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/tokens/kubeconfig-user-xxxx"
+  "${RANCHER_URL}/v3/tokens/${TOKEN_ID}"
 ```
 
 ## Troubleshooting
@@ -290,7 +299,7 @@ kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
 Test connectivity:
 
 ```bash
-curl -sk "$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')/healthz"
+kubectl get --raw='/readyz'
 ```
 
 ### "Unauthorized" After Token Expiry
@@ -307,4 +316,4 @@ kubectl config set-cluster my-cluster --insecure-skip-tls-verify=true
 
 ## Summary
 
-Downloading kubeconfig from Rancher can be done through the UI, the API, or the CLI. For production workflows, use the API method to automate kubeconfig generation and refresh. Merge multiple kubeconfigs into a single file for easy context switching, set proper file permissions, and configure automatic token refresh to avoid authentication failures.
+Downloading kubeconfig from Rancher can be done through the UI, the API, or the CLI. For production workflows, automate kubeconfig generation and refresh through Rancher APIs. Merge multiple kubeconfigs into a single file for easy context switching, set proper file permissions, and configure automatic token refresh to avoid authentication failures.
