@@ -27,18 +27,51 @@ Docker Swarm is Docker's built-in orchestration system. Podman does not include 
 
 # Alternative: Use Kubernetes with Podman
 # Generate Kubernetes YAML from existing Podman containers
-podman generate kube mycontainer > mycontainer.yaml
+podman kube generate mycontainer > mycontainer.yaml
 
 # Deploy with Kubernetes (k3s, kind, or minikube)
 kubectl apply -f mycontainer.yaml
 
 # Alternative: Use Podman pods for multi-container grouping
+# Quick manual grouping
 podman pod create --name myapp -p 8080:80
 podman run -d --pod myapp --name web nginx
 podman run -d --pod myapp --name api myapi:latest
 
-# Generate a systemd service for auto-restart and management
-podman generate systemd --new --name myapp > myapp.service
+# Or use Quadlet instead for systemd auto-start and management
+mkdir -p ~/.config/containers/systemd
+cat > ~/.config/containers/systemd/myapp-managed.pod << 'EOF'
+[Pod]
+PodName=myapp-managed
+PublishPort=8081:80
+EOF
+
+cat > ~/.config/containers/systemd/web.container << 'EOF'
+[Container]
+Image=nginx
+Pod=myapp-managed.pod
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+
+cat > ~/.config/containers/systemd/api.container << 'EOF'
+[Container]
+Image=myapi:latest
+Pod=myapp-managed.pod
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now web.service api.service
 ```
 
 ## Docker Compose (Partial Differences)
@@ -55,9 +88,9 @@ Docker Compose mostly works with Podman, but some features differ.
 # docker compose watch (live sync) - limited support
 # docker compose profiles - supported in podman-compose
 
-# Use podman-compose for best compatibility
+# Use Podman's Compose wrapper with an installed Compose provider
 pip3 install podman-compose
-podman-compose up -d
+podman compose up -d
 
 # Or use docker-compose with the Podman socket
 export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"
@@ -67,19 +100,27 @@ docker-compose up -d
 
 ## Container Restart Policies
 
-Docker uses the daemon to handle restart policies. Podman uses systemd instead.
+Docker uses the daemon to handle restart policies. Podman can use restart policies for containers, but systemd is the recommended approach for long-running services.
 
 ```bash
 # Docker restart policy
 docker run -d --restart=always --name myapp myimage
 
-# Podman: --restart=always works but requires the Podman service
-# For reliable restarts, generate and use systemd services
-podman run -d --name myapp myimage
+# Podman: --restart=always works for container exit handling
+podman run -d --restart=always --name myapp myimage
 
-# Generate a systemd service
-podman generate systemd --new --name myapp \
-  --restart-policy=always > ~/.config/systemd/user/myapp.service
+# For reliable service management, use a Quadlet container unit
+mkdir -p ~/.config/containers/systemd
+cat > ~/.config/containers/systemd/myapp.container << 'EOF'
+[Container]
+Image=myimage
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
 
 # Enable and start the service
 systemctl --user daemon-reload
@@ -142,18 +183,18 @@ podman run -d --network mynet --name db postgres:16
 
 ## Docker Plugins (Volume and Network)
 
-Docker supports third-party volume and network plugins. Podman does not have this plugin system.
+Docker supports third-party volume and network plugins. Podman does not use Docker's plugin system; volume plugins must be configured through containers.conf, and many storage use cases can be handled with native mount options.
 
 ```bash
-# Docker volume plugins (not available in Podman)
+# Docker volume plugins (not available through Docker's plugin system in Podman)
 # docker volume create --driver rexray/ebs myvolume
 
 # Alternative: Use native mount options
 # NFS volume
 podman volume create \
   --opt type=nfs \
-  --opt o=addr=nfs-server.example.com,rw \
-  --opt device=:/exports/data \
+  --opt o=rw \
+  --opt device=nfs-server.example.com:/exports/data \
   nfs-volume
 
 # CIFS/SMB volume
@@ -165,6 +206,7 @@ podman volume create \
 
 # tmpfs volume
 podman volume create \
+  --opt device=tmpfs \
   --opt type=tmpfs \
   --opt o=size=100m \
   tmp-volume
@@ -255,4 +297,4 @@ podman secret rm my_db_password
 
 ## Summary
 
-While Podman does not support every Docker-specific feature, it provides practical alternatives for each gap. Docker Swarm is replaced by Kubernetes integration and Podman pods. Restart policies are handled by systemd service generation. Overlay networks are addressed through Kubernetes or VPN solutions. Volume plugins are replaced by native mount options. Docker Content Trust is replaced by Sigstore/cosign or Skopeo GPG signing. Understanding these differences and their workarounds ensures a smooth transition from Docker to Podman without losing critical functionality.
+While Podman does not support every Docker-specific feature, it provides practical alternatives for each gap. Docker Swarm is replaced by Kubernetes integration and Podman pods. Long-running services are handled by Quadlet and systemd. Overlay networks are addressed through Kubernetes or VPN solutions. Docker volume plugins are often replaced by native mount options or Podman-configured volume plugins. Docker Content Trust is replaced by Sigstore/cosign or Skopeo GPG signing. Understanding these differences and their workarounds ensures a smooth transition from Docker to Podman without losing critical functionality.
