@@ -14,7 +14,7 @@ There are many reasons to migrate Rancher to a new cluster: hardware refresh, mo
 - Helm 3 and kubectl installed
 - The Rancher Backup and Restore operator (or willingness to install it)
 - S3-compatible storage for backup transfer (recommended) or local file transfer capability
-- DNS control for the Rancher hostname
+- DNS control for the Rancher hostname, which must remain the same as the original Rancher server URL
 
 ## Step 1: Prepare the Source Cluster
 
@@ -42,11 +42,15 @@ If not already installed, add the Rancher Backup and Restore operator:
 helm repo add rancher-charts https://charts.rancher.io
 helm repo update
 
+CHART_VERSION=<chart-version>
+
 helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
-  -n cattle-resources-system --create-namespace
+  -n cattle-resources-system --create-namespace \
+  --version $CHART_VERSION
 
 helm install rancher-backup rancher-charts/rancher-backup \
-  -n cattle-resources-system
+  -n cattle-resources-system \
+  --version $CHART_VERSION
 ```
 
 ### Create S3 Credentials Secret
@@ -68,7 +72,7 @@ kind: Backup
 metadata:
   name: cluster-migration-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   storageLocation:
     s3:
       bucketName: rancher-migration
@@ -111,25 +115,97 @@ systemctl start rke2-server
 
 Add additional server and worker nodes as needed for high availability.
 
-### Install cert-manager
+Do not install Rancher on the target cluster yet. For a migration, restore Rancher first onto a clean target cluster, then install cert-manager and Rancher after the restore completes.
+
+## Step 3: Restore the Backup on the Target Cluster
+
+### Install the Backup Operator
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml
+helm repo add rancher-charts https://charts.rancher.io
+helm repo update
 
+CHART_VERSION=<chart-version>
+
+helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
+  -n cattle-resources-system --create-namespace \
+  --version $CHART_VERSION
+
+helm install rancher-backup rancher-charts/rancher-backup \
+  -n cattle-resources-system \
+  --version $CHART_VERSION
+```
+
+### Create S3 Credentials
+
+```bash
+kubectl create secret generic s3-creds \
+  -n cattle-resources-system \
+  --from-literal=accessKey=YOUR_ACCESS_KEY \
+  --from-literal=secretKey=YOUR_SECRET_KEY
+```
+
+### Perform the Restore
+
+Use the exact backup filename from your backup storage location:
+
+```yaml
+apiVersion: resources.cattle.io/v1
+kind: Restore
+metadata:
+  name: cluster-migration-restore
+spec:
+  backupFilename: backup-<uuid>-<timestamp>.tar.gz
+  prune: false
+  storageLocation:
+    s3:
+      bucketName: rancher-migration
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+      credentialSecretName: s3-creds
+      credentialSecretNamespace: cattle-resources-system
+```
+
+```bash
+kubectl apply -f restore.yaml
+kubectl get restores cluster-migration-restore -w
+```
+
+After the restore completes, if the source and target clusters use different Kubernetes distributions, update the local cluster object before installing Rancher:
+
+```bash
+kubectl edit clusters.management.cattle.io local
+```
+
+Make these changes before saving:
+
+- Change `status.driver` to `imported`
+- Remove `status.provider`
+- Remove the entire `status.version` map
+- Remove the `provider.cattle.io` label from `metadata.labels`
+- Remove the `management.cattle.io/current-cluster-controllers-version` annotation from `metadata.annotations`
+- Remove the entire `spec.rke2Config` or `spec.k3sConfig` map, if present
+
+### Install cert-manager
+
+Install the cert-manager version supported by your Rancher version:
+
+```bash
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.14.4
+  --version <SUPPORTED_CERT_MANAGER_VERSION> \
+  --set crds.enabled=true
 
 kubectl get pods -n cert-manager
 ```
 
 ### Install Rancher
 
-Install the same version of Rancher as the source cluster:
+Install the same version of Rancher as the source cluster, using the same Helm version and the chart repository that contains that release. For example, if the source release is from the stable channel:
 
 ```bash
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
@@ -148,60 +224,9 @@ Wait for it to be ready:
 kubectl rollout status deployment rancher -n cattle-system
 ```
 
-## Step 3: Restore the Backup on the Target Cluster
-
-### Install the Backup Operator
-
-```bash
-helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
-  -n cattle-resources-system --create-namespace
-
-helm install rancher-backup rancher-charts/rancher-backup \
-  -n cattle-resources-system
-```
-
-### Create S3 Credentials
-
-```bash
-kubectl create secret generic s3-creds \
-  -n cattle-resources-system \
-  --from-literal=accessKey=YOUR_ACCESS_KEY \
-  --from-literal=secretKey=YOUR_SECRET_KEY
-```
-
-### Perform the Restore
-
-```yaml
-apiVersion: resources.cattle.io/v1
-kind: Restore
-metadata:
-  name: cluster-migration-restore
-spec:
-  backupFilename: cluster-migration-backup-<timestamp>.tar.gz
-  storageLocation:
-    s3:
-      bucketName: rancher-migration
-      endpoint: s3.amazonaws.com
-      region: us-east-1
-      credentialSecretName: s3-creds
-      credentialSecretNamespace: cattle-resources-system
-```
-
-```bash
-kubectl apply -f restore.yaml
-kubectl get restores cluster-migration-restore -w
-```
-
-After the restore completes, restart Rancher:
-
-```bash
-kubectl rollout restart deployment rancher -n cattle-system
-kubectl rollout status deployment rancher -n cattle-system
-```
-
 ## Step 4: Switch DNS
 
-Update your DNS records to point the Rancher hostname to the new cluster's load balancer IP:
+Update your DNS records so the same Rancher hostname used by the original server URL points to the new cluster's load balancer IP:
 
 ```bash
 kubectl get svc -n cattle-system
@@ -210,7 +235,21 @@ kubectl get ingress -n cattle-system
 
 Use your DNS provider to update the A record. If you use a short TTL, this transition will be faster.
 
-## Step 5: Verify the Migration
+## Step 5: Scale Down the Original Rancher Instance
+
+After redirecting traffic to the new Rancher environment, scale the original Rancher instance to 0 replicas so it no longer contacts your managed clusters:
+
+```bash
+kubectl scale deployment rancher -n cattle-system --replicas=0
+```
+
+If you need to keep the original Rancher environment running temporarily, restart the downstream cluster agent on any affected cluster so it reconnects to the new Rancher server:
+
+```bash
+kubectl rollout restart deployment cattle-cluster-agent -n cattle-system
+```
+
+## Step 6: Verify the Migration
 
 Log in to the Rancher UI and perform these checks:
 
@@ -226,17 +265,6 @@ Check cluster agent connectivity:
 ```bash
 kubectl get clusters.management.cattle.io -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions
 ```
-
-## Step 6: Re-establish Agent Connections
-
-Some downstream clusters may need their agents to reconnect. If a cluster remains `Unavailable`, you can rotate the agent certificates from the Rancher UI or re-register the cluster.
-
-For clusters that need re-registration:
-
-1. Go to the cluster in the Rancher UI
-2. Navigate to cluster management options
-3. Select the option to rotate certificates or regenerate the registration command
-4. Apply the new agent YAML on the downstream cluster
 
 ## Step 7: Decommission the Source Cluster
 
@@ -254,10 +282,10 @@ helm uninstall rancher -n cattle-system
 
 ## Troubleshooting
 
-- **Restore fails**: Ensure the Rancher version on the target matches the source exactly.
-- **Clusters stuck in Unavailable**: Check agent logs on downstream clusters with `kubectl logs -n cattle-system -l app=cattle-cluster-agent`.
+- **Restore fails**: Ensure the Rancher version on the target matches the source exactly, Rancher was not installed on the target before the restore, and `prune: false` is set for the migration restore.
+- **Clusters stuck in Unavailable**: Confirm the original Rancher hostname now resolves to the new cluster and the old Rancher instance has been scaled down, then check agent logs with `kubectl logs -n cattle-system -l app=cattle-cluster-agent`.
 - **Authentication issues**: If using external auth (LDAP, AD, SAML), verify the target cluster can reach the auth endpoints.
-- **Certificate errors**: Regenerate certificates if the domain or load balancer IP changed.
+- **Certificate errors**: Use the same hostname that was configured as the original Rancher server URL. If only the load balancer IP changed, update DNS so that hostname resolves to the new cluster.
 
 ## Conclusion
 
