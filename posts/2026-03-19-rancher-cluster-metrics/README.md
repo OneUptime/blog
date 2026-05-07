@@ -10,21 +10,21 @@ Monitoring cluster metrics is essential for understanding resource utilization, 
 
 ## Built-in Cluster Metrics
 
-Rancher displays basic cluster metrics without any additional setup, as long as the metrics-server is running in your cluster.
+Rancher displays basic cluster information in the Cluster Dashboard, and live resource usage depends on the metrics-server running in your cluster.
 
 ### Accessing the Cluster Dashboard
 
 1. Log in to the Rancher UI
 2. Go to **Cluster Management**
-3. Click on your cluster name
-4. The cluster dashboard displays immediately
+3. Click **Explore** for your cluster
+4. The cluster dashboard opens
 
 The default dashboard shows:
 
-- **CPU utilization**: Current usage across all nodes
-- **Memory utilization**: Current memory consumption
-- **Pod count**: Number of running pods
-- **Node count**: Number of active nodes
+- **Node count**: Number of nodes in the cluster
+- **Memory usage**: Current memory consumption
+- **Events**: Recent cluster events
+- **Resources**: A summary of cluster resources
 
 ### Viewing Node-Level Metrics
 
@@ -51,9 +51,9 @@ Node details include:
 The metrics-server provides the resource metrics API used by the dashboard. Verify it is running:
 
 ```bash
-kubectl get deployment metrics-server -n kube-system
-kubectl top nodes
-kubectl top pods -A
+kubectl get deployment -n kube-system metrics-server
+kubectl top node
+kubectl top pod -A
 ```
 
 If metrics-server is not installed:
@@ -71,10 +71,9 @@ For comprehensive metrics, install the Rancher Monitoring chart which deploys Pr
 ### Step 1: Install the Monitoring Chart
 
 1. Navigate to your cluster in Rancher
-2. Go to **Apps** in the left sidebar
-3. Click **Charts**
-4. Find **Monitoring** in the chart list
-5. Click **Install**
+2. Click **Explore**
+3. Click **Cluster Tools** in the lower-left corner
+4. Click **Install** for **Monitoring**
 
 ### Step 2: Configure Monitoring
 
@@ -202,7 +201,7 @@ Rancher Monitoring includes many pre-configured Grafana dashboards:
 ### Accessing the Prometheus UI
 
 1. In the Rancher UI, go to **Monitoring**
-2. Click **Prometheus** to open the Prometheus UI
+2. Click **Prometheus Graph** to open the Prometheus UI
 3. Use the expression browser to query metrics
 
 ### Useful PromQL Queries
@@ -247,7 +246,7 @@ sum(increase(kube_pod_container_status_restarts_total[1h])) by (namespace, pod) 
 
 ### Create Alert Rules
 
-1. In the Rancher UI, go to **Monitoring > Alert Rules**
+1. In the Rancher UI, go to **Monitoring > Advanced > Prometheus Rules**
 2. Click **Create**
 3. Configure the alert:
 
@@ -277,8 +276,9 @@ spec:
 
 Set up notification channels in Alertmanager:
 
-1. Go to **Monitoring > Alertmanager Configs**
-2. Create a receiver for your preferred notification method:
+1. Go to **Monitoring > Alerting > AlertManagerConfigs**
+2. Click **Create** to create an AlertManagerConfig
+3. Open it and add a receiver for your preferred notification method:
    - Slack
    - Email
    - PagerDuty
@@ -313,11 +313,11 @@ For quick metric checks without the UI:
 ```bash
 # Node resource usage
 
-kubectl top nodes
+kubectl top node
 
 # Pod resource usage
-kubectl top pods -A --sort-by=cpu
-kubectl top pods -A --sort-by=memory
+kubectl top pod -A --sort-by=cpu
+kubectl top pod -A --sort-by=memory
 
 # Detailed node metrics
 kubectl describe node <NODE_NAME> | grep -A15 "Allocated resources"
