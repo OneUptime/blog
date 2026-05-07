@@ -74,16 +74,15 @@ resource "aws_lambda_permission" "iot_invoke" {
 ```hcl
 resource "aws_iot_topic_rule" "archive_to_s3" {
   name        = "${replace(var.app_name, "-", "_")}_archive"
-  description = "Archive all device messages to S3"
+  description = "Archive device data messages to S3"
   enabled     = true
   sql         = "SELECT * FROM 'devices/+/data'"
   sql_version = "2016-03-23"
 
   s3 {
     bucket_name = aws_s3_bucket.iot_archive.bucket
-    key         = "year=$${year()}/month=$${month()}/day=$${day()}/$${topic(2)}-$${timestamp()}.json"
+    key         = "year=$${parse_time('yyyy', timestamp(), 'UTC')}/month=$${parse_time('MM', timestamp(), 'UTC')}/day=$${parse_time('dd', timestamp(), 'UTC')}/$${topic(2)}-$${timestamp()}.json"
     role_arn    = aws_iam_role.iot_rules.arn
-    canned_acl  = "private"
   }
 }
 ```
