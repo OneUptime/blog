@@ -8,7 +8,7 @@ Description: Learn how to use the :U volume option in Podman to automatically ad
 
 ---
 
-> The :U volume option in Podman automatically chowns volume contents to match the UID/GID mapping inside the container's user namespace.
+> The :U volume option in Podman automatically chowns volume contents to match the container UID/GID mapped through the container's user namespace.
 
 When running rootless containers, Podman maps host UIDs to different UIDs inside the container via user namespaces. This mapping can cause permission mismatches on mounted volumes. The `:U` option solves this by automatically adjusting file ownership.
 
@@ -38,11 +38,12 @@ cat /etc/subgid
 mkdir -p /home/user/data
 echo "test" > /home/user/data/file.txt
 
-# Mount without :U - the container sees wrong ownership
+# Mount without :U - a non-root container user sees ownership that may not match
 podman run --rm \
+  --user 1000:1000 \
   -v /home/user/data:/data \
   docker.io/library/alpine:latest ls -la /data
-# The files may show as owned by "nobody" or a high UID
+# The files may show as owned by root, so writes by UID 1000 can fail
 ```
 
 ## Using :U to Fix Ownership
@@ -50,9 +51,10 @@ podman run --rm \
 ```bash
 # Mount with :U to automatically adjust ownership
 podman run --rm \
+  --user 1000:1000 \
   -v /home/user/data:/data:U \
   docker.io/library/alpine:latest ls -la /data
-# Files now show correct ownership matching the container user
+# Files now show ownership matching the container's mapped user
 
 # Works with named volumes too
 podman volume create mydata
@@ -88,17 +90,17 @@ podman run -d --name shared-app \
 
 ## How :U Affects Host Files
 
-The `:U` option changes the ownership of the files on the host to match the mapped UID. This means host-side ownership will appear as a high UID number.
+The `:U` option changes the ownership of the files on the host to match the mapped UID. With default rootless Podman, container root maps to your host UID, but non-root container users or alternate user namespace modes can appear on the host as high UID numbers from your subordinate UID range.
 
 ```bash
 # Before mounting with :U
 ls -la /home/user/data
 # drwxr-xr-x user user data
 
-# After a container with :U mounts and modifies the directory
+# After a container running as UID 1000 mounts the directory with :U
 ls -la /home/user/data
-# drwxr-xr-x 100000 100000 data
-# The high UID corresponds to root (UID 0) inside the container
+# drwxr-xr-x 100999 100999 data
+# With user:100000:65536 in /etc/subuid, this corresponds to UID 1000 inside the container
 ```
 
 ## Restoring Host Ownership
