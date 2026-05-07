@@ -8,7 +8,7 @@ Description: Add, modify, and remove DNS servers on Linux network connections us
 
 ## Introduction
 
-DNS servers in NetworkManager are set per-connection using `ipv4.dns`. You can add, modify, or remove DNS entries with `nmcli connection modify`. Changes take effect when the connection is reactivated.
+IPv4 DNS servers in NetworkManager are set per-connection using `ipv4.dns`. You can add, modify, or remove DNS entries with `nmcli connection modify`. Changes take effect when the connection is reactivated.
 
 ## Add a DNS Server to a Connection
 
@@ -46,7 +46,7 @@ nmcli connection up "Wired connection 1"
 
 ```bash
 # Show DNS settings in the connection profile
-nmcli connection show "Wired connection 1" | grep DNS
+nmcli -f ipv4.dns,ipv4.dns-search connection show "Wired connection 1"
 
 # Show effective DNS for the interface
 nmcli device show eth0 | grep DNS
@@ -77,7 +77,7 @@ nmcli connection modify "dhcp-eth0" \
 nmcli connection up "dhcp-eth0"
 ```
 
-## Set Global Fallback DNS in NetworkManager
+## Set Global DNS in NetworkManager
 
 ```ini
 # /etc/NetworkManager/conf.d/dns.conf
@@ -105,4 +105,4 @@ nmcli connection up "Wired connection 1"
 
 ## Conclusion
 
-DNS with nmcli is managed via `ipv4.dns` on each connection profile. Use `nmcli connection modify` to set, append (`+`), or remove (`-`) DNS entries. Activate changes with `nmcli connection up`. Use `nmcli device show eth0 | grep DNS` to see the effective DNS in use.
+Per-connection IPv4 DNS with nmcli is managed via `ipv4.dns` on each connection profile. Use `nmcli connection modify` to set, append (`+`), or remove (`-`) DNS entries. Activate changes with `nmcli connection up`. Use `nmcli device show eth0 | grep DNS` to see the effective DNS in use.
