@@ -4,22 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS ECR, OCI Registry, Provider Distribution, AWS
 
-Description: Learn how to use AWS Elastic Container Registry as an OCI registry for storing and distributing OpenTofu providers and modules within AWS-centric organizations.
+Description: Learn how to use AWS Elastic Container Registry as an OCI registry for storing and distributing OpenTofu provider mirrors and modules within AWS-centric organizations.
 
 ## Introduction
 
-AWS Elastic Container Registry (ECR) is OCI-compliant and works as both a container image registry and an OCI artifact store. For AWS-centric organizations, ECR provides native IAM authentication, cross-account access, lifecycle policies, and replication - making it a natural choice for OpenTofu provider and module distribution.
+AWS Elastic Container Registry (ECR) is OCI-compliant and works as both a container image registry and an OCI artifact store. For AWS-centric organizations, ECR provides native IAM authentication, cross-account access, lifecycle policies, and replication - making it a natural choice for OpenTofu provider mirrors and module distribution.
 
 ## Creating ECR Repositories for OpenTofu
 
 ```hcl
 # ecr.tf - Create ECR repositories for OpenTofu providers and modules
 
-# Repository for providers
-
-resource "aws_ecr_repository" "opentofu_providers" {
-  name                 = "opentofu-providers/hashicorp-aws"
-  image_tag_mutability = "MUTABLE"  # Allow tag updates for latest
+# Repository for a mirrored provider
+resource "aws_ecr_repository" "opentofu_provider_aws" {
+  name                 = "opentofu-providers/hashicorp/aws"
+  image_tag_mutability = "IMMUTABLE"  # Provider version tags should be immutable
 
   image_scanning_configuration {
     scan_on_push = true
@@ -40,9 +39,9 @@ resource "aws_ecr_repository" "module_vpc" {
   }
 }
 
-# ECR lifecycle policy - keep last 5 non-latest versions
+# ECR lifecycle policy - keep the last 5 tagged versions
 resource "aws_ecr_lifecycle_policy" "provider_policy" {
-  repository = aws_ecr_repository.opentofu_providers.name
+  repository = aws_ecr_repository.opentofu_provider_aws.name
 
   policy = jsonencode({
     rules = [
@@ -50,10 +49,10 @@ resource "aws_ecr_lifecycle_policy" "provider_policy" {
         rulePriority = 1
         description  = "Keep last 5 tagged versions"
         selection = {
-          tagStatus     = "tagged"
-          tagPrefixList = ["v"]
-          countType     = "imageCountMoreThan"
-          countNumber   = 5
+          tagStatus      = "tagged"
+          tagPatternList = ["*"]
+          countType      = "imageCountMoreThan"
+          countNumber    = 5
         }
         action = { type = "expire" }
       }
@@ -65,22 +64,20 @@ resource "aws_ecr_lifecycle_policy" "provider_policy" {
 ## Authenticating with ECR
 
 ```bash
-# Short-lived ECR authentication (12-hour token)
+# Short-lived ECR authentication for ORAS (12-hour token)
 aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin \
+  oras login --username AWS --password-stdin \
   123456789012.dkr.ecr.us-east-1.amazonaws.com
-
-# Configure credential helper for automatic token refresh
-cat > ~/.docker/config.json << 'EOF'
-{
-  "credHelpers": {
-    "123456789012.dkr.ecr.us-east-1.amazonaws.com": "ecr-login"
-  }
-}
-EOF
 
 # Install the credential helper
 go install github.com/awslabs/amazon-ecr-credential-helper/ecr-login/cli/docker-credential-ecr-login@latest
+
+# Configure OpenTofu to use the credential helper for this registry
+cat > ~/.tofurc << 'EOF'
+oci_credentials "123456789012.dkr.ecr.us-east-1.amazonaws.com" {
+  docker_credentials_helper = "ecr-login"
+}
+EOF
 ```
 
 ## Pushing Providers to ECR
@@ -101,11 +98,11 @@ PROVIDER_VERSION="5.20.1"
 
 echo "Authenticating with ECR..."
 aws ecr get-login-password --region "$AWS_REGION" | \
-  docker login --username AWS --password-stdin "$ECR_REGISTRY"
+  oras login --username AWS --password-stdin "$ECR_REGISTRY"
 
 # Download provider from official registry
 WORK_DIR=$(mktemp -d)
-trap "rm -rf $WORK_DIR" EXIT
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 cat > "$WORK_DIR/versions.tf" << EOF
 terraform {
@@ -125,16 +122,35 @@ tofu providers mirror \
   -platform=linux_arm64 \
   "$WORK_DIR/mirror/"
 
-# Push to ECR using oras
-cd "$WORK_DIR/mirror/registry.opentofu.org/${PROVIDER_NAMESPACE}/${PROVIDER_TYPE}/"
+# Build an OCI image layout that matches OpenTofu's provider mirror format
+PROVIDER_MIRROR_DIR="$WORK_DIR/mirror/registry.opentofu.org/${PROVIDER_NAMESPACE}/${PROVIDER_TYPE}"
+LAYOUT_DIR="$WORK_DIR/layout"
 
-ECR_REPO="${ECR_REGISTRY}/opentofu-providers/${PROVIDER_NAMESPACE}-${PROVIDER_TYPE}"
+cd "$PROVIDER_MIRROR_DIR"
+ECR_REPO="${ECR_REGISTRY}/opentofu-providers/${PROVIDER_NAMESPACE}/${PROVIDER_TYPE}"
 
-oras push "${ECR_REPO}:${PROVIDER_VERSION}" \
-  --config /dev/null:application/vnd.opentofu.provider.config.v1+json \
-  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_amd64.zip:application/vnd.opentofu.provider.v1.linux.amd64" \
-  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_arm64.zip:application/vnd.opentofu.provider.v1.linux.arm64" \
-  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_SHA256SUMS:application/vnd.opentofu.provider.v1.shasums"
+# These ORAS commands require ORAS v1.3.0 or later.
+oras push \
+  --artifact-type application/vnd.opentofu.provider-target \
+  --artifact-platform linux/amd64 \
+  --oci-layout "${LAYOUT_DIR}:linux_amd64" \
+  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_amd64.zip:archive/zip"
+
+oras push \
+  --artifact-type application/vnd.opentofu.provider-target \
+  --artifact-platform linux/arm64 \
+  --oci-layout "${LAYOUT_DIR}:linux_arm64" \
+  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_arm64.zip:archive/zip"
+
+oras manifest index create \
+  --artifact-type="application/vnd.opentofu.provider" \
+  --oci-layout "${LAYOUT_DIR}:${PROVIDER_VERSION}" \
+  linux_amd64 \
+  linux_arm64
+
+oras cp \
+  --from-oci-layout "${LAYOUT_DIR}:${PROVIDER_VERSION}" \
+  "${ECR_REPO}:${PROVIDER_VERSION}"
 
 echo "Provider mirrored to ECR: ${ECR_REPO}:${PROVIDER_VERSION}"
 ```
@@ -142,16 +158,16 @@ echo "Provider mirrored to ECR: ${ECR_REPO}:${PROVIDER_VERSION}"
 ## Configuring OpenTofu to Use ECR
 
 ```hcl
-# ~/.terraform.rc
+# ~/.tofurc
 
 provider_installation {
   oci_mirror {
-    url     = "oci://123456789012.dkr.ecr.us-east-1.amazonaws.com/opentofu-providers"
-    include = ["registry.opentofu.org/hashicorp/*"]
+    repository_template = "123456789012.dkr.ecr.us-east-1.amazonaws.com/opentofu-providers/${namespace}/${type}"
+    include             = ["registry.opentofu.org/hashicorp/aws"]
   }
 
   direct {
-    exclude = ["registry.opentofu.org/hashicorp/*"]
+    exclude = ["registry.opentofu.org/hashicorp/aws"]
   }
 }
 ```
@@ -161,7 +177,7 @@ provider_installation {
 ```hcl
 # Allow another AWS account to pull from ECR
 resource "aws_ecr_repository_policy" "cross_account" {
-  repository = aws_ecr_repository.opentofu_providers.name
+  repository = aws_ecr_repository.opentofu_provider_aws.name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -190,6 +206,8 @@ resource "aws_ecr_repository_policy" "cross_account" {
 
 ```hcl
 # IAM policy for CI/CD systems that push to the mirror
+data "aws_caller_identity" "current_account" {}
+
 resource "aws_iam_policy" "ecr_provider_push" {
   name        = "opentofu-ecr-provider-push"
   description = "Allow pushing OpenTofu providers to ECR mirror"
@@ -207,6 +225,7 @@ resource "aws_iam_policy" "ecr_provider_push" {
       {
         Effect = "Allow"
         Action = [
+          "ecr:BatchGetImage",
           "ecr:PutImage",
           "ecr:InitiateLayerUpload",
           "ecr:UploadLayerPart",
@@ -214,8 +233,8 @@ resource "aws_iam_policy" "ecr_provider_push" {
           "ecr:BatchCheckLayerAvailability"
         ]
         Resource = [
-          "arn:aws:ecr:us-east-1:${var.account_id}:repository/opentofu-providers/*",
-          "arn:aws:ecr:us-east-1:${var.account_id}:repository/opentofu-modules/*"
+          "arn:aws:ecr:us-east-1:${data.aws_caller_identity.current_account.account_id}:repository/opentofu-providers/*",
+          "arn:aws:ecr:us-east-1:${data.aws_caller_identity.current_account.account_id}:repository/opentofu-modules/*"
         ]
       }
     ]
@@ -244,8 +263,8 @@ resource "aws_iam_policy" "ecr_provider_pull" {
           "ecr:BatchCheckLayerAvailability"
         ]
         Resource = [
-          "arn:aws:ecr:us-east-1:${var.account_id}:repository/opentofu-providers/*",
-          "arn:aws:ecr:us-east-1:${var.account_id}:repository/opentofu-modules/*"
+          "arn:aws:ecr:us-east-1:${data.aws_caller_identity.current_account.account_id}:repository/opentofu-providers/*",
+          "arn:aws:ecr:us-east-1:${data.aws_caller_identity.current_account.account_id}:repository/opentofu-modules/*"
         ]
       }
     ]
@@ -257,12 +276,14 @@ resource "aws_iam_policy" "ecr_provider_pull" {
 
 ```hcl
 # Replicate ECR repositories to other regions
+data "aws_caller_identity" "replication" {}
+
 resource "aws_ecr_replication_configuration" "opentofu" {
   replication_configuration {
     rule {
       destination {
         region      = "eu-west-1"
-        registry_id = data.aws_caller_identity.current.account_id
+        registry_id = data.aws_caller_identity.replication.account_id
       }
 
       repository_filter {
@@ -276,4 +297,4 @@ resource "aws_ecr_replication_configuration" "opentofu" {
 
 ## Conclusion
 
-AWS ECR provides IAM-based authentication, lifecycle policies, cross-account access, and multi-region replication for OpenTofu provider and module distribution. The `amazon-ecr-credential-helper` handles automatic token refresh for Docker and oras, eliminating the need to re-run `aws ecr get-login-password` before every `tofu init`. Use ECR resource policies for cross-account access so teams in development and staging accounts can pull providers without managing separate registries.
+AWS ECR provides IAM-based authentication, lifecycle policies, cross-account access, and multi-region replication for OpenTofu provider mirrors and module distribution. When paired with an `oci_credentials` configuration that uses the `amazon-ecr-credential-helper`, OpenTofu can fetch fresh ECR credentials without re-running `aws ecr get-login-password` before every `tofu init`. Use ECR resource policies for cross-account access so teams in development and staging accounts can pull providers without managing separate registries.
