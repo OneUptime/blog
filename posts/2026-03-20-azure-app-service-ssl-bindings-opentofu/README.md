@@ -31,14 +31,20 @@ resource "azurerm_app_service_certificate_binding" "managed_cert_binding" {
 ## Step 2: Certificate from Azure Key Vault
 
 ```hcl
+# Lookup an existing CA-issued PKCS#12 certificate in Key Vault
+data "azurerm_key_vault_certificate" "ca_cert" {
+  name         = "my-app-certificate"
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
 # Import a certificate from Key Vault
 resource "azurerm_app_service_certificate" "kv_cert" {
   name                = "my-app-certificate"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
 
-  # Reference the certificate in Key Vault
-  key_vault_secret_id = azurerm_key_vault_certificate.cert.secret_id
+  # Requires: App Service resource provider has Secret Get and Certificate Get on the vault
+  key_vault_secret_id = data.azurerm_key_vault_certificate.ca_cert.secret_id
 }
 
 # Bind the Key Vault certificate to a custom domain
@@ -49,17 +55,18 @@ resource "azurerm_app_service_certificate_binding" "kv_cert_binding" {
 }
 ```
 
-## Step 3: Create Key Vault Certificate (Let's Encrypt or CA)
+## Step 3: Create a Self-Signed Key Vault Certificate
 
 ```hcl
-# Create a self-signed certificate in Key Vault (for dev/staging)
+# Create a self-signed certificate in Key Vault (for dev/staging only)
+# Use a CA-issued certificate for public App Service custom-domain bindings
 resource "azurerm_key_vault_certificate" "app_cert" {
   name         = "app-ssl-cert"
   key_vault_id = azurerm_key_vault.kv.id
 
   certificate_policy {
     issuer_parameters {
-      name = "Self"  # Self-signed; use "DigiCert" or other CA for production
+      name = "Self"  # Self-signed example
     }
 
     key_properties {
@@ -83,6 +90,8 @@ resource "azurerm_key_vault_certificate" "app_cert" {
     }
 
     x509_certificate_properties {
+      extended_key_usage = ["1.3.6.1.5.5.7.3.1"]  # Server authentication
+
       key_usage = [
         "cRLSign",
         "dataEncipherment",
@@ -117,8 +126,11 @@ resource "azurerm_linux_web_app" "secure_app" {
   https_only = true
 
   site_config {
-    # Enforce TLS 1.2 as the minimum version
+    # Enforce TLS 1.2 as the minimum version on the main site
     minimum_tls_version = "1.2"
+
+    # Enforce TLS 1.2 on the SCM/Kudu endpoint as well
+    scm_minimum_tls_version = "1.2"
 
     # Enable HTTP/2 for better performance
     http2_enabled = true
@@ -128,4 +140,4 @@ resource "azurerm_linux_web_app" "secure_app" {
 
 ## Summary
 
-Azure App Service SSL bindings with OpenTofu support multiple certificate scenarios from free managed certificates to Key Vault-backed certificates. The free managed certificate is ideal for most cases, while Key Vault certificates with auto-renewal policies are recommended for production workloads that need certificate lifecycle management.
+Azure App Service SSL bindings with OpenTofu support multiple certificate scenarios from free managed certificates to Key Vault-backed certificates. The free managed certificate is ideal for most cases, while Key Vault-backed CA-issued certificates are recommended for production workloads that need certificate lifecycle management.
