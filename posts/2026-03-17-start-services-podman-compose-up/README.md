@@ -28,10 +28,10 @@ podman-compose up -d
 ## Starting Specific Services
 
 ```bash
-# Start only the web and db services
+# Start the web and db services, plus any required dependencies
 podman-compose up -d web db
 
-# The api service will not be started
+# Unrelated services such as api will not be started
 podman-compose ps
 ```
 
@@ -57,7 +57,6 @@ podman-compose up -d --build
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
     build:
@@ -103,8 +102,8 @@ podman-compose logs -f
 ## Handling Startup Failures
 
 ```bash
-# Start and abort if any container exits with an error
-podman-compose up --abort-on-container-exit
+# Start and stop all containers if any container exits with an error
+podman-compose up --abort-on-container-failure
 
 # Check which container failed
 podman-compose ps -a
