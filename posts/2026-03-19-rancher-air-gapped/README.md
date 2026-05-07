@@ -16,7 +16,7 @@ You will need:
 
 - A workstation with internet access (for downloading images)
 - A private container registry accessible from your air-gapped network (such as Harbor, Nexus, or Docker Registry)
-- A Kubernetes cluster running in the air-gapped network (v1.25 or later)
+- A Kubernetes cluster running in the air-gapped network (v1.27 through v1.30 for Rancher v2.9.3)
 - `kubectl` and Helm 3 installed on a machine within the air-gapped network
 - `docker` or `skopeo` installed on the internet-connected workstation
 - At least 50 GB of disk space for image downloads
@@ -67,6 +67,7 @@ CERT_MANAGER_VERSION=v1.14.4
 echo "quay.io/jetstack/cert-manager-controller:${CERT_MANAGER_VERSION}" >> rancher-images.txt
 echo "quay.io/jetstack/cert-manager-webhook:${CERT_MANAGER_VERSION}" >> rancher-images.txt
 echo "quay.io/jetstack/cert-manager-cainjector:${CERT_MANAGER_VERSION}" >> rancher-images.txt
+echo "quay.io/jetstack/cert-manager-startupapicheck:${CERT_MANAGER_VERSION}" >> rancher-images.txt
 echo "quay.io/jetstack/cert-manager-acmesolver:${CERT_MANAGER_VERSION}" >> rancher-images.txt
 ```
 
@@ -89,6 +90,7 @@ This process can take a significant amount of time depending on your internet co
 Transfer the following files to a machine within the air-gapped network using a secure transfer method such as a USB drive or secure file transfer:
 
 - `rancher-images.tar.gz`
+- `rancher-images.txt`
 - `rancher-load-images.sh`
 - Rancher Helm chart (download it separately)
 - cert-manager Helm chart and CRDs
@@ -119,7 +121,7 @@ REGISTRY=registry.yourdomain.com:5000
   --registry ${REGISTRY}
 ```
 
-If using `skopeo` instead:
+If you prefer to tag and push the images manually with Docker instead:
 
 ```bash
 # Load the tar archive
@@ -151,7 +153,8 @@ helm install cert-manager ./cert-manager-${CERT_MANAGER_VERSION}.tgz \
   --namespace cert-manager \
   --set image.repository=${REGISTRY}/quay.io/jetstack/cert-manager-controller \
   --set webhook.image.repository=${REGISTRY}/quay.io/jetstack/cert-manager-webhook \
-  --set cainjector.image.repository=${REGISTRY}/quay.io/jetstack/cert-manager-cainjector
+  --set cainjector.image.repository=${REGISTRY}/quay.io/jetstack/cert-manager-cainjector \
+  --set startupapicheck.image.repository=${REGISTRY}/quay.io/jetstack/cert-manager-startupapicheck
 ```
 
 ## Step 8: Install Rancher
@@ -161,11 +164,12 @@ Create the Rancher namespace and install using the downloaded chart:
 ```bash
 kubectl create namespace cattle-system
 
-helm install rancher ./rancher-${RANCHER_VERSION}.tgz \
+helm install rancher ./rancher-${RANCHER_VERSION#v}.tgz \
   --namespace cattle-system \
   --set hostname=rancher.yourdomain.com \
   --set bootstrapPassword=yourSecurePassword \
   --set replicas=3 \
+  --set certmanager.version=${CERT_MANAGER_VERSION} \
   --set rancherImage=${REGISTRY}/rancher/rancher \
   --set systemDefaultRegistry=${REGISTRY} \
   --set useBundledSystemChart=true
