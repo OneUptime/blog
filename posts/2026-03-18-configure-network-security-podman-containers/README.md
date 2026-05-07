@@ -16,7 +16,7 @@ Podman containers can be connected to various network configurations, from fully
 
 ## Understanding Podman Networking
 
-Podman supports several network modes: bridge (default), host, none, and custom CNI/Netavark networks. Each mode provides different levels of isolation and connectivity.
+Podman supports several network modes: bridge (the default for rootful containers), pasta/private networking for rootless containers, host, none, and custom Netavark networks. Each mode provides different levels of isolation and connectivity.
 
 ```bash
 # View the default Podman network
@@ -141,7 +141,7 @@ podman run --rm -d \
 podman run --rm -d \
   --network=app-tier \
   --network=web-tier \
-  -p 127.0.0.1:8080:80 \
+  -p 127.0.0.1:8081:80 \
   --name tier-web \
   docker.io/library/nginx:alpine
 ```
@@ -163,11 +163,11 @@ podman run --rm \
   docker.io/library/alpine:latest \
   cat /etc/resolv.conf
 
-# Run a container with DNS disabled
+# Run a container without Podman's generated resolv.conf
 podman run --rm \
   --dns=none \
   docker.io/library/alpine:latest \
-  sh -c "cat /etc/resolv.conf && nslookup google.com 2>&1 || echo 'DNS disabled'"
+  sh -c "cat /etc/resolv.conf && nslookup google.com 2>&1 || echo 'DNS unavailable with image resolv.conf'"
 ```
 
 ## Dropping Network Capabilities
@@ -231,8 +231,8 @@ chmod +x audit-network.sh
 ## Cleanup
 
 ```bash
-podman stop db app local-only tier-db tier-app tier-web 2>/dev/null
-podman rm db app local-only tier-db tier-app tier-web 2>/dev/null
+podman stop db app local-only interface-bound tier-db tier-app tier-web 2>/dev/null
+podman rm db app local-only interface-bound tier-db tier-app tier-web 2>/dev/null
 podman network rm backend-net frontend-net db-tier app-tier web-tier 2>/dev/null
 rm -f audit-network.sh
 ```
