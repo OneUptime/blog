@@ -34,7 +34,7 @@ podman run -d \
   -e RABBITMQ_DEFAULT_USER=admin \
   -e RABBITMQ_DEFAULT_PASS=securepass \
   -v rabbitmq-data:/var/lib/rabbitmq:Z \
-  docker.io/library/rabbitmq:3-management-alpine
+  docker.io/library/rabbitmq:4-management-alpine
 ```
 
 Access the management UI at `http://localhost:15672`. The AMQP port is `5672` for client connections.
@@ -44,9 +44,14 @@ Access the management UI at `http://localhost:15672`. The AMQP port is `5672` fo
 Create a custom configuration for production use:
 
 ```bash
+mkdir -p ~/rabbitmq
+
 cat > ~/rabbitmq/rabbitmq.conf << 'EOF'
 listeners.tcp.default = 5672
 management.listener.port = 15672
+
+default_user = admin
+default_pass = securepass
 
 vm_memory_high_watermark.relative = 0.7
 disk_free_limit.absolute = 1GB
@@ -73,20 +78,23 @@ cat > ~/rabbitmq/definitions.json << 'EOF'
 }
 EOF
 
+podman volume create rabbitmq-prod-data
+
 podman run -d \
   --name rabbitmq-prod \
   -p 5672:5672 -p 15672:15672 \
-  -e RABBITMQ_DEFAULT_USER=admin \
-  -e RABBITMQ_DEFAULT_PASS=securepass \
   -v ~/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro,Z \
   -v ~/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro,Z \
-  -v rabbitmq-data:/var/lib/rabbitmq:Z \
-  docker.io/library/rabbitmq:3-management-alpine
+  -v rabbitmq-prod-data:/var/lib/rabbitmq:Z \
+  docker.io/library/rabbitmq:4-management-alpine
+
+podman exec rabbitmq-prod rabbitmqctl await_startup
+podman exec rabbitmq-prod rabbitmqctl import_definitions /etc/rabbitmq/definitions.json
 ```
 
 ## Deploying Apache Kafka
 
-Kafka requires ZooKeeper (or KRaft for newer versions). Deploy both in a pod:
+Kafka can run with ZooKeeper in legacy deployments, though newer releases recommend KRaft for new deployments. Deploy both in a pod:
 
 ```bash
 podman pod create --name kafka-pod \
@@ -98,8 +106,9 @@ podman pod create --name kafka-pod \
 podman run -d --pod kafka-pod \
   --name zookeeper \
   -e ZOOKEEPER_CLIENT_PORT=2181 \
+  -e ZOOKEEPER_TICK_TIME=2000 \
   -v zk-data:/var/lib/zookeeper/data:Z \
-  docker.io/confluentinc/cp-zookeeper:7.6.0
+  docker.io/confluentinc/cp-zookeeper:7.6.10
 
 # Kafka
 podman run -d --pod kafka-pod \
@@ -110,31 +119,36 @@ podman run -d --pod kafka-pod \
   -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
   -e KAFKA_LOG_RETENTION_HOURS=168 \
   -v kafka-data:/var/lib/kafka/data:Z \
-  docker.io/confluentinc/cp-kafka:7.6.0
+  docker.io/confluentinc/cp-kafka:7.6.10
 ```
 
 ## Kafka with KRaft Mode (No ZooKeeper)
 
-Newer Kafka versions support KRaft mode, eliminating the ZooKeeper dependency:
+Newer Kafka versions support KRaft mode. The single-node combined-mode example below eliminates the ZooKeeper dependency and is suitable for local development:
 
 ```bash
 podman run -d \
   --name kafka-kraft \
+  --hostname kafka-kraft \
   -p 9092:9092 \
   -e KAFKA_NODE_ID=1 \
-  -e KAFKA_PROCESS_ROLES=broker,controller \
-  -e KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
-  -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092 \
+  -e KAFKA_PROCESS_ROLES='broker,controller' \
+  -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP='CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT' \
+  -e KAFKA_LISTENERS='PLAINTEXT://kafka-kraft:29092,CONTROLLER://kafka-kraft:29093,PLAINTEXT_HOST://0.0.0.0:9092' \
+  -e KAFKA_ADVERTISED_LISTENERS='PLAINTEXT://kafka-kraft:29092,PLAINTEXT_HOST://localhost:9092' \
+  -e KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT \
   -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
-  -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093 \
-  -e CLUSTER_ID=$(podman run --rm docker.io/confluentinc/cp-kafka:7.6.0 kafka-storage random-uuid) \
+  -e KAFKA_CONTROLLER_QUORUM_VOTERS='1@kafka-kraft:29093' \
+  -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+  -e CLUSTER_ID=$(podman run --rm docker.io/confluentinc/cp-kafka:7.6.10 /bin/kafka-storage random-uuid) \
   -v kafka-kraft-data:/var/lib/kafka/data:Z \
-  docker.io/confluentinc/cp-kafka:7.6.0
+  docker.io/confluentinc/cp-kafka:7.6.10
 ```
 
 ## Creating Kafka Topics
 
 ```bash
+# Replace `kafka` with `kafka-kraft` if you started the KRaft example.
 podman exec kafka kafka-topics \
   --create \
   --topic orders \
@@ -162,7 +176,7 @@ podman run -d \
   -p 6379:6379 \
   -v redis-data:/data:Z \
   docker.io/library/redis:7-alpine \
-  redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+  redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
 ```
 
 Test Redis Streams:
@@ -176,7 +190,7 @@ podman exec redis-queue redis-cli XADD orders '*' product "gadget" quantity "3"
 podman exec redis-queue redis-cli XRANGE orders - +
 
 # Create consumer group
-podman exec redis-queue redis-cli XGROUP CREATE orders processors $ MKSTREAM
+podman exec redis-queue redis-cli XGROUP CREATE orders processors 0
 ```
 
 ## Producer and Consumer Examples
@@ -256,7 +270,7 @@ podman exec rabbitmq rabbitmqctl status
 ```ini
 # ~/.config/containers/systemd/rabbitmq.container
 [Container]
-Image=docker.io/library/rabbitmq:3-management-alpine
+Image=docker.io/library/rabbitmq:4-management-alpine
 PublishPort=5672:5672
 PublishPort=15672:15672
 Environment=RABBITMQ_DEFAULT_USER=admin
