@@ -15,6 +15,7 @@ AWS Direct Connect provides dedicated private network connectivity between on-pr
 - OpenTofu v1.6+
 - An existing Direct Connect connection (physical circuit) from AWS or a partner
 - AWS credentials with Direct Connect and VPC permissions
+- For Step 5, dedicated Direct Connect connections if you plan to use a LAG
 
 ## Step 1: Create Direct Connect Gateway
 
@@ -23,7 +24,7 @@ AWS Direct Connect provides dedicated private network connectivity between on-pr
 
 resource "aws_dx_gateway" "main" {
   name            = "${var.project_name}-dx-gateway"
-  amazon_side_asn = "64512"  # AWS-side BGP ASN (private range: 64512-65534)
+  amazon_side_asn = "64512"  # Private Amazon-side ASN (64512-65534 or 4200000000-4294967294)
 
   tags = {
     Name = "${var.project_name}-dx-gateway"
@@ -57,7 +58,7 @@ resource "aws_dx_private_virtual_interface" "main" {
 }
 ```
 
-## Step 3: Connect DX Gateway to VPCs
+## Step 3: Connect DX Gateway to Virtual Private Gateways
 
 ```hcl
 # Attach DX Gateway to VGW in each VPC
@@ -66,8 +67,7 @@ resource "aws_dx_gateway_association" "vpc_1" {
   associated_gateway_id = var.vgw_vpc_1_id  # Virtual Private Gateway of VPC 1
 
   allowed_prefixes = [
-    "10.0.0.0/8",   # Allow on-premises routes to VPC 1
-    "172.16.0.0/12"
+    "10.0.0.0/16"  # Must match or be wider than the VPC CIDR advertised over DX
   ]
 }
 
@@ -76,16 +76,25 @@ resource "aws_dx_gateway_association" "vpc_2" {
   associated_gateway_id = var.vgw_vpc_2_id
 
   allowed_prefixes = [
-    "10.0.0.0/8",
-    "172.16.0.0/12"
+    "10.1.0.0/16"
   ]
 }
 ```
 
-## Step 4: Create Transit Virtual Interface for Transit Gateway
+## Step 4: Create Separate Transit Virtual Interface for Transit Gateway
 
 ```hcl
-# Transit VIF connects to AWS Transit Gateway via DX Gateway
+# Transit VIFs require a DX Gateway that is used only for transit gateway associations
+resource "aws_dx_gateway" "transit" {
+  name            = "${var.project_name}-transit-dx-gateway"
+  amazon_side_asn = "65030"  # Must differ from the Transit Gateway ASN
+
+  tags = {
+    Name = "${var.project_name}-transit-dx-gateway"
+  }
+}
+
+# Transit VIF connects to AWS Transit Gateway via a transit-only DX Gateway
 resource "aws_dx_transit_virtual_interface" "main" {
   connection_id  = var.dx_connection_id
   name           = "${var.project_name}-transit-vif"
@@ -97,28 +106,28 @@ resource "aws_dx_transit_virtual_interface" "main" {
   customer_address = "169.254.200.2/30"
   bgp_auth_key     = var.bgp_auth_key
 
-  dx_gateway_id = aws_dx_gateway.main.id
+  dx_gateway_id = aws_dx_gateway.transit.id
 
   tags = {
     Name = "${var.project_name}-transit-vif"
   }
 }
 
-# Associate DX Gateway with Transit Gateway
+# Associate the transit-only DX Gateway with a Transit Gateway
 resource "aws_dx_gateway_association" "tgw" {
-  dx_gateway_id         = aws_dx_gateway.main.id
+  dx_gateway_id         = aws_dx_gateway.transit.id
   associated_gateway_id = var.transit_gateway_id
 
   allowed_prefixes = [
-    "10.0.0.0/8"
+    "10.0.0.0/8"  # Prefixes advertised to on-premises over the transit VIF
   ]
 }
 ```
 
-## Step 5: Create LAG for Redundancy
+## Step 5: Create LAG for Redundancy (Dedicated Connections Only)
 
 ```hcl
-# Link Aggregation Group combines multiple connections for redundancy and bandwidth
+# Link Aggregation Group combines multiple dedicated connections for redundancy and bandwidth
 resource "aws_dx_lag" "main" {
   name                  = "${var.project_name}-lag"
   connections_bandwidth = "10Gbps"
@@ -146,4 +155,4 @@ aws directconnect describe-virtual-interfaces \
 
 ## Conclusion
 
-Direct Connect physical provisioning (ordering circuits) is done outside Terraform through AWS or partner portals; OpenTofu manages the logical configuration on top. For production Direct Connect setups, always deploy two VIFs on separate physical connections in separate colocation facilities for redundancy. Use a Direct Connect Gateway with a Transit Gateway attachment for the most scalable architecture-it allows a single DX connection to reach all VPCs across regions.
+Direct Connect physical provisioning (ordering circuits) is done outside Terraform through AWS or partner portals; OpenTofu manages the logical configuration on top. For production Direct Connect setups, use redundant VIFs on multiple physical connections; for the highest resilience, AWS recommends multiple connections across multiple Direct Connect locations, customer devices, and customer sites. Use a Direct Connect Gateway with virtual private gateways for private-VIF designs, or a separate Direct Connect Gateway with a Transit Gateway association for transit-VIF designs.
