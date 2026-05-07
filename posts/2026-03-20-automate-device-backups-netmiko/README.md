@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Netmiko, Backup, Python, Cron, Network Automation, Cisco
 
-Description: Learn how to automate daily configuration backups of Cisco and other network devices using Netmiko and a scheduled cron job, with versioned storage.
+Description: Learn how to automate daily configuration backups of Cisco IOS and IOS XE devices using Netmiko and a scheduled cron job, with versioned storage.
 
 ## Step 1: Create the Backup Script
 
@@ -58,10 +58,11 @@ def backup_device(device_info):
         }
 
         with ConnectHandler(**conn_params) as conn:
-            conn.enable()
+            if device_info.get('enable_password'):
+                conn.enable()
 
-            # Get running configuration
-            config = conn.send_command('show running-config')
+            # Get full running configuration
+            config = conn.send_command('show running-config view full')
 
             # Write to timestamped file
             backup_file = device_dir / f"{hostname}_{timestamp}.cfg"
@@ -137,14 +138,12 @@ if __name__ == '__main__':
   device_type: cisco_ios
   username: backup_user
   password: backup_pass
-  enable_password: enable_pass
 
 - name: router02
   host: 192.168.1.2
   device_type: cisco_ios
   username: backup_user
   password: backup_pass
-  enable_password: enable_pass
 
 - name: switch01
   host: 192.168.1.10
@@ -156,27 +155,28 @@ if __name__ == '__main__':
 ## Step 3: Set Up a Dedicated Backup User on Devices
 
 ```text
-! Cisco IOS - create read-only backup user
-username backup_user privilege 5 secret 0 backup_pass
+! Cisco IOS / IOS XE - create read-only backup user
+username backup_user privilege 5 secret backup_pass
 
-! Allow show running-config at privilege level 5
-privilege exec level 5 show running-config
+! Allow the user to view the full running configuration
+privilege exec level 5 show running-config view full
+file privilege 5
 ```
 
 ## Step 4: Schedule with Cron
 
 ```bash
 # Test the script manually first
-chmod +x /usr/local/bin/network-backup.py
-python3 /usr/local/bin/network-backup.py
+sudo chmod +x /usr/local/bin/network-backup.py
+sudo /usr/bin/python3 /usr/local/bin/network-backup.py
 
-# Add to cron for daily backups at 2am
-crontab -e
+# Add to root's cron for daily backups at 2am
+sudo crontab -e
 # Add:
 # 0 2 * * * /usr/bin/python3 /usr/local/bin/network-backup.py >> /var/log/network-backup-cron.log 2>&1
 
 # Verify cron entry
-crontab -l
+sudo crontab -l
 ```
 
 ## Step 5: Verify Backups and Check for Changes
@@ -186,13 +186,16 @@ crontab -l
 ls -la /var/backups/network-configs/router01/
 
 # View latest backup
-cat /var/backups/network-configs/router01/router01_latest.cfg | head -20
+head -20 /var/backups/network-configs/router01/router01_latest.cfg
 
-# Diff two backups to see what changed
-diff /var/backups/network-configs/router01/router01_2026-03-19*.cfg \
-     /var/backups/network-configs/router01/router01_2026-03-20*.cfg
+# List the newest timestamped backups
+ls -1t /var/backups/network-configs/router01/router01_20*.cfg | head -2
+
+# Diff two specific backups to see what changed
+diff /var/backups/network-configs/router01/router01_2026-03-19_020000.cfg \
+     /var/backups/network-configs/router01/router01_2026-03-20_020000.cfg
 ```
 
 ## Conclusion
 
-Automate network device backups with Netmiko by connecting to each device, running `show running-config`, and writing the output to timestamped files. Run the script as a cron job (daily at 2am), maintain 30-day retention with automatic cleanup, and create a `_latest.cfg` symlink for easy access. Use a dedicated read-only backup user on network devices to limit the blast radius of compromised credentials.
+Automate network device backups with Netmiko by connecting to each device, running `show running-config view full`, and writing the output to timestamped files. Run the script as a cron job (daily at 2am), maintain 30-day retention with automatic cleanup, and create a `_latest.cfg` symlink for easy access. Use a dedicated read-only backup user on Cisco IOS and IOS XE devices to limit the blast radius of compromised credentials.
