@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Load Balancing, ALB, NLB, IPv4, High Availability, Networking
 
-Description: Enable cross-zone load balancing on AWS ALB and NLB to distribute IPv4 traffic evenly across targets in all availability zones, improving load distribution.
+Description: Understand cross-zone load balancing on AWS ALB and enable it on NLBs to distribute IPv4 traffic more evenly across targets in all availability zones, improving load distribution.
 
 ## Introduction
 
-By default, an AWS load balancer distributes traffic only to targets in the same availability zone as the receiving load balancer node. Cross-zone load balancing allows a load balancer node in one AZ to forward requests to targets in any AZ, ensuring even distribution regardless of target counts per zone.
+When cross-zone load balancing is off, a load balancer node distributes traffic only to targets in the same availability zone as the receiving load balancer node. Cross-zone load balancing allows a load balancer node in one AZ to forward requests to targets in any AZ, improving distribution when target counts differ per zone.
 
 ## Why Cross-Zone Matters
 
-Without cross-zone load balancing, if you have 2 targets in us-east-1a and 8 targets in us-east-1b, each load balancer node sends 50% to its zone - meaning each us-east-1a target gets 4x more traffic per instance than us-east-1b targets.
+Without cross-zone load balancing, if you have 2 targets in us-east-1a and 8 targets in us-east-1b, each load balancer node sends 50% to its zone - meaning each us-east-1a target can get 4x more traffic per instance than us-east-1b targets.
 
-With cross-zone enabled, all 10 targets share traffic equally.
+With cross-zone enabled, traffic can be distributed more evenly across all 10 targets.
 
 ## Enabling Cross-Zone on an Application Load Balancer
 
-Cross-zone load balancing is **always enabled** and **cannot be disabled** on ALBs. This is handled automatically.
+At the load balancer level, cross-zone load balancing is **always enabled** and **cannot be changed** on ALBs. At the target group level, you can override the default by explicitly turning cross-zone load balancing off or on.
 
 ```bash
 # Verify ALB cross-zone status
@@ -30,7 +30,7 @@ aws elbv2 describe-load-balancer-attributes \
 
 ## Enabling Cross-Zone on a Network Load Balancer
 
-NLBs have cross-zone **disabled by default** (to avoid inter-AZ data transfer charges). Enable it explicitly:
+NLBs have cross-zone **disabled by default** at the load balancer level. Enable it explicitly:
 
 ```bash
 # Enable cross-zone load balancing on an NLB
@@ -41,7 +41,7 @@ aws elbv2 modify-load-balancer-attributes \
 
 ## NLB Per-Target-Group Cross-Zone Override
 
-NLBs also support per-target-group cross-zone settings:
+NLB target groups default to the load balancer setting, but you can override it explicitly:
 
 ```bash
 # Enable cross-zone at the target group level
@@ -65,26 +65,26 @@ resource "aws_lb" "nlb" {
 
 ## Verifying Traffic Distribution
 
-Use CloudWatch metrics to verify even distribution across targets:
+Use CloudWatch metrics such as `NewFlowCount` to verify traffic flow per AZ:
 
 ```bash
-# Get HealthyHostCount per AZ
+# Get NewFlowCount per AZ
 aws cloudwatch get-metric-statistics \
   --namespace AWS/NetworkELB \
-  --metric-name HealthyHostCount \
+  --metric-name NewFlowCount \
   --dimensions \
     Name=LoadBalancer,Value=net/my-nlb/abc123 \
     Name=AvailabilityZone,Value=us-east-1a \
   --start-time 2026-03-19T00:00:00Z \
   --end-time 2026-03-19T01:00:00Z \
   --period 300 \
-  --statistics Average
+  --statistics Sum
 ```
 
 ## Cost Considerations
 
-Enabling cross-zone on NLBs incurs **inter-AZ data transfer charges** (~$0.01/GB). Evaluate whether the improved distribution justifies the cost based on your traffic patterns.
+Enabling cross-zone on NLBs can incur **inter-AZ data transfer charges**. Evaluate whether the improved distribution justifies the cost based on your traffic patterns and current EC2 data transfer pricing in your Region.
 
 ## Conclusion
 
-Cross-zone load balancing is essential for production deployments with unequal target counts across AZs. ALBs always use it; enable it on NLBs when traffic distribution matters more than inter-AZ data transfer costs.
+Cross-zone load balancing is useful for production deployments with unequal target counts across AZs. ALBs keep it enabled at the load balancer level, though target groups can override it; enable it on NLBs when traffic distribution matters more than inter-AZ data transfer costs.
