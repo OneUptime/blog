@@ -8,7 +8,7 @@ Description: Learn how to run Apache Zookeeper in a Podman container for distrib
 
 ---
 
-> Zookeeper in Podman provides a reliable distributed coordination service in a lightweight, rootless container for your cluster infrastructure.
+> Zookeeper in Podman provides a reliable distributed coordination service in a lightweight container that can run rootless for your cluster infrastructure.
 
 Apache Zookeeper is a centralized service for maintaining configuration information, naming, providing distributed synchronization, and providing group services. It is used by many distributed systems including older versions of Kafka, HBase, and Solr. Running it in a Podman container simplifies setup and keeps your coordination service isolated and portable.
 
@@ -19,7 +19,7 @@ Apache Zookeeper is a centralized service for maintaining configuration informat
 Download the official Zookeeper image.
 
 ```bash
-# Pull the latest Zookeeper image
+# Pull the Zookeeper 3.9 image
 
 podman pull docker.io/library/zookeeper:3.9
 
@@ -39,7 +39,8 @@ podman run -d \
   -p 2888:2888 \
   -p 3888:3888 \
   -p 8080:8080 \
-  zookeeper:3.9
+  -e ZOO_4LW_COMMANDS_WHITELIST=ruok,stat,conf,isro,mntr,srvr \
+  docker.io/library/zookeeper:3.9
 
 # Confirm the container is running
 podman ps
@@ -67,7 +68,7 @@ podman run -d \
   -p 2182:2181 \
   -v zk-data:/data:Z \
   -v zk-datalog:/datalog:Z \
-  zookeeper:3.9
+  docker.io/library/zookeeper:3.9
 
 # Verify volumes are attached
 podman inspect zk-persistent --format '{{range .Mounts}}{{.Name}} {{end}}'
@@ -80,6 +81,8 @@ Mount a custom configuration for advanced settings.
 ```bash
 # Create a config directory
 mkdir -p ~/zk-config
+podman volume create zk-custom-data
+podman volume create zk-custom-datalog
 
 # Write a custom zoo.cfg
 cat > ~/zk-config/zoo.cfg <<'EOF'
@@ -122,9 +125,9 @@ podman run -d \
   -p 2183:2181 \
   -p 8081:8080 \
   -v ~/zk-config/zoo.cfg:/conf/zoo.cfg:Z \
-  -v zk-data:/data:Z \
-  -v zk-datalog:/datalog:Z \
-  zookeeper:3.9
+  -v zk-custom-data:/data:Z \
+  -v zk-custom-datalog:/datalog:Z \
+  docker.io/library/zookeeper:3.9
 ```
 
 ## Working with Zookeeper Data
@@ -132,35 +135,17 @@ podman run -d \
 Use the Zookeeper CLI to create and manage znodes.
 
 ```bash
-# Connect to the Zookeeper CLI
-podman exec -it my-zookeeper zkCli.sh -server localhost:2181 <<'EOF'
-# List the root znodes
+# Run Zookeeper CLI commands
+podman exec -i my-zookeeper zkCli.sh -server localhost:2181 <<'EOF'
 ls /
-
-# Create a znode with data
 create /myapp "application-config"
-
-# Create a child znode
 create /myapp/database "host=db.example.com,port=5432"
-
-# Read the data from a znode
 get /myapp/database
-
-# Set new data on a znode
 set /myapp/database "host=new-db.example.com,port=5432"
-
-# List children of a znode
 ls /myapp
-
-# Create an ephemeral znode (disappears when session ends)
 create -e /myapp/leader "node-1"
-
-# Create a sequential znode (auto-incrementing suffix)
 create -s /myapp/worker- "worker-data"
-
-# Check znode stats
 stat /myapp
-
 quit
 EOF
 ```
@@ -203,9 +188,9 @@ podman start my-zookeeper
 
 # Remove containers and volumes
 podman rm -f my-zookeeper zk-persistent zk-custom
-podman volume rm zk-data zk-datalog
+podman volume rm zk-data zk-datalog zk-custom-data zk-custom-datalog
 ```
 
 ## Summary
 
-Running Zookeeper in a Podman container provides a self-contained coordination service that is easy to configure and monitor. Separate volumes for data and transaction logs ensure durability, while custom configuration files let you tune tick times, connection limits, and autopurge settings. The four-letter commands and admin server REST API give you visibility into cluster health. Podman's rootless containers keep Zookeeper isolated and secure, making this setup ideal for development environments and supporting distributed applications that depend on Zookeeper for coordination.
+Running Zookeeper in a Podman container provides a self-contained coordination service that is easy to configure and monitor. Separate volumes for data and transaction logs ensure durability, while custom configuration files let you tune tick times, connection limits, and autopurge settings. The four-letter commands and admin server REST API give you visibility into cluster health. Podman can run containers rootlessly to keep Zookeeper isolated, making this setup ideal for development environments and supporting distributed applications that depend on Zookeeper for coordination.
