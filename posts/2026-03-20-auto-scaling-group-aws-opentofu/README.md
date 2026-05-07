@@ -68,7 +68,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   instance_refresh {
@@ -104,9 +104,7 @@ resource "aws_autoscaling_policy" "cpu_target_tracking" {
     predefined_metric_specification {
       predefined_metric_type = "ASGAverageCPUUtilization"
     }
-    target_value     = 60.0  # Maintain 60% average CPU
-    scale_in_cooldown  = 300
-    scale_out_cooldown = 60
+    target_value = 60.0  # Maintain 60% average CPU
   }
 }
 ```
@@ -137,4 +135,4 @@ resource "aws_autoscaling_schedule" "scale_up_morning" {
 
 ## Conclusion
 
-Auto Scaling Groups with Launch Templates and target tracking policies provide elastic, cost-efficient compute. Use instance refresh for zero-downtime AMI or configuration updates, and combine target tracking with scheduled scaling for predictable workload patterns.
+Auto Scaling Groups with Launch Templates and target tracking policies provide elastic, cost-efficient compute. Use instance refresh for rolling AMI or configuration updates, and combine target tracking with scheduled scaling for predictable workload patterns.
