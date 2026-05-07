@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Registry, Google Cloud, GCR, Artifact Registry
 
-Description: Learn how to use Google Container Registry and Artifact Registry with Podman for managing container images on Google Cloud.
+Description: Learn how to use Artifact Registry and Artifact Registry-backed `gcr.io` endpoints with Podman for managing container images on Google Cloud.
 
 ---
 
-> Google Cloud offers both Container Registry and the newer Artifact Registry, and Podman works with both using service account authentication.
+> Container Registry is shut down, but Podman still works with `gcr.io` endpoints after you migrate them to Artifact Registry or use `pkg.dev` repositories directly.
 
-Google Container Registry (gcr.io) and its successor Google Artifact Registry provide managed container image hosting on Google Cloud Platform. Podman connects to these registries using GCP service account credentials or gcloud CLI authentication. This guide covers both registries and all authentication methods.
+Container Registry is deprecated and shut down, but Google Cloud still supports `gcr.io` URLs through Artifact Registry-backed `gcr.io` repositories. Podman connects to these registries using GCP service account credentials or gcloud CLI authentication. This guide covers both Artifact Registry hostname styles: `gcr.io` and `*.pkg.dev`.
 
 ---
 
@@ -33,20 +33,29 @@ gcloud auth list
 
 # Set the active project
 gcloud config set project my-gcp-project
+
+# Enable Artifact Registry
+gcloud services enable \
+  artifactregistry.googleapis.com \
+  cloudresourcemanager.googleapis.com
 ```
 
-## Authenticating Podman to GCR
+## Authenticating Podman to `gcr.io`
 
-Use gcloud to generate an access token for Podman.
+Container Registry itself is shut down. To keep using `gcr.io`, first migrate the project to Artifact Registry-backed `gcr.io` repositories.
 
 ```bash
+# Migrate gcr.io endpoints to Artifact Registry
+gcloud artifacts docker upgrade migrate \
+  --projects=my-gcp-project
+
 # Method 1: Use gcloud access token
 gcloud auth print-access-token | podman login gcr.io \
   --username oauth2accesstoken \
   --password-stdin
 
 # Method 2: Use gcloud credential helper output
-gcloud auth configure-docker gcr.io 2>/dev/null
+gcloud auth configure-docker gcr.io,us.gcr.io,eu.gcr.io,asia.gcr.io 2>/dev/null
 # This updates ~/.docker/config.json, which Podman can also read
 
 # Method 3: Login to regional registries
@@ -57,17 +66,17 @@ gcloud auth print-access-token | podman login us.gcr.io \
 
 ## Using Service Account Keys
 
-For CI/CD, use a service account JSON key file.
+For CI/CD, use a service account JSON key file if you cannot use access tokens or the credential helper.
 
 ```bash
 # Create a service account
 gcloud iam service-accounts create podman-ci \
   --display-name "Podman CI Service Account"
 
-# Grant the service account access to Container Registry
+# Grant the service account access to Artifact Registry-backed gcr.io repositories
 gcloud projects add-iam-policy-binding my-gcp-project \
   --member "serviceAccount:podman-ci@my-gcp-project.iam.gserviceaccount.com" \
-  --role "roles/storage.admin"
+  --role "roles/artifactregistry.createOnPushWriter"
 
 # Create and download a key file
 gcloud iam service-accounts keys create /tmp/sa-key.json \
@@ -79,14 +88,14 @@ cat /tmp/sa-key.json | podman login gcr.io \
   --password-stdin
 
 # For base64-encoded keys (common in CI/CD)
-cat /tmp/sa-key.json | base64 | podman login gcr.io \
+base64 -w 0 /tmp/sa-key.json | podman login gcr.io \
   --username _json_key_base64 \
   --password-stdin
 ```
 
-## Pulling Images from GCR
+## Pulling Images from `gcr.io`
 
-Pull images from Google Container Registry.
+Pull images from Artifact Registry-backed `gcr.io` repositories.
 
 ```bash
 # Pull from the global registry
@@ -97,16 +106,16 @@ podman pull us.gcr.io/my-gcp-project/myapp:latest
 podman pull eu.gcr.io/my-gcp-project/myapp:latest
 podman pull asia.gcr.io/my-gcp-project/myapp:latest
 
-# Pull Google-provided images
-podman pull gcr.io/google-containers/pause:3.9
+# Pull a Google-provided image that keeps its gcr.io URL
+podman pull gcr.io/cloud-builders/gcloud
 
 # List pulled GCR images
 podman images | grep gcr.io
 ```
 
-## Pushing Images to GCR
+## Pushing Images to `gcr.io`
 
-Tag and push images to Google Container Registry.
+Tag and push images to Artifact Registry-backed `gcr.io` repositories.
 
 ```bash
 PROJECT_ID="my-gcp-project"
@@ -128,7 +137,7 @@ gcloud container images list --repository=gcr.io/${PROJECT_ID}
 
 ## Using Google Artifact Registry
 
-Artifact Registry is the recommended successor to Container Registry.
+Artifact Registry is the supported service for new repositories.
 
 ```bash
 # Create an Artifact Registry repository
@@ -153,9 +162,9 @@ podman push \
   ${AR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/myapp:latest
 ```
 
-## Managing GCR Images
+## Managing `gcr.io` Images
 
-List, inspect, and delete images using gcloud.
+After redirection is enabled, you can continue to manage `gcr.io` image paths with `gcloud`.
 
 ```bash
 PROJECT_ID="my-gcp-project"
@@ -175,7 +184,7 @@ gcloud container images delete gcr.io/${PROJECT_ID}/myapp:v1.0 --quiet
 
 ## Configuring GCR in registries.conf
 
-Add GCR to your Podman configuration.
+If you want explicit registry entries, add them to your Podman configuration.
 
 ```toml
 # /etc/containers/registries.conf
@@ -197,7 +206,7 @@ A complete CI/CD script for Google Cloud and Podman.
 
 ```bash
 #!/bin/bash
-# ci-gcr-deploy.sh - Build and push to Google Container Registry
+# ci-gcr-deploy.sh - Build and push to Artifact Registry-backed gcr.io
 
 set -euo pipefail
 
@@ -207,7 +216,7 @@ IMAGE_TAG="${CI_COMMIT_SHA:0:8}"
 GCR_HOST="gcr.io"
 
 # Authenticate using service account key
-echo "${GCP_SA_KEY}" | podman login "${GCR_HOST}" \
+printf '%s' "${GCP_SA_KEY}" | podman login "${GCR_HOST}" \
   --username _json_key \
   --password-stdin
 
@@ -227,4 +236,4 @@ echo "Deployed: ${GCR_HOST}/${PROJECT_ID}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 ## Summary
 
-Google Container Registry and Artifact Registry work with Podman through OAuth2 access tokens or service account JSON keys. Use `gcloud auth print-access-token` for interactive authentication and service account keys for CI/CD pipelines. GCR supports regional registries for optimized pull performance. Google recommends migrating to Artifact Registry for new projects, which uses a slightly different URL format but the same authentication mechanisms.
+Podman works with Google Cloud registries through OAuth2 access tokens or service account JSON keys. If you still want to use `gcr.io` URLs, migrate them to Artifact Registry-backed `gcr.io` repositories first. Use `gcloud auth print-access-token` for interactive authentication and service account keys only when you cannot use a short-lived token or credential helper. For new repositories, Google recommends Artifact Registry with either `gcr.io` repository support or the native `*.pkg.dev` format.
