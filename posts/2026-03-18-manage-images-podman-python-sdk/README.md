@@ -46,8 +46,8 @@ with PodmanClient() as client:
     dangling = client.images.list(filters={"dangling": True})
     print(f"Dangling images: {len(dangling)}")
 
-    # Filter by reference pattern
-    nginx_images = client.images.list(filters={"reference": "nginx"})
+    # Filter by image name
+    nginx_images = client.images.list(name="nginx")
     print(f"Nginx images: {len(nginx_images)}")
 
     # Filter by label
@@ -79,13 +79,13 @@ Track download progress for large images:
 
 ```python
 from podman import PodmanClient
-import json
 
 with PodmanClient() as client:
     # Pull with streaming progress
     for line in client.images.pull(
         "docker.io/library/ubuntu:22.04",
-        stream=True
+        stream=True,
+        decode=True
     ):
         if isinstance(line, dict):
             status = line.get("status", "")
@@ -174,7 +174,7 @@ Build images from a Dockerfile programmatically:
 
 ```python
 from podman import PodmanClient
-import io
+import json
 
 with PodmanClient() as client:
     # Build from a Dockerfile in a directory
@@ -185,8 +185,9 @@ with PodmanClient() as client:
     )
 
     for log in build_logs:
-        if "stream" in log:
-            print(log["stream"], end="")
+        result = json.loads(log)
+        if "stream" in result:
+            print(result["stream"], end="")
 
     print(f"\nBuilt: {image.tags}")
 ```
@@ -203,11 +204,8 @@ import tarfile
 dockerfile_content = """
 FROM python:3.11-slim
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
 EXPOSE 8000
-CMD ["python", "app.py"]
+CMD ["python", "-m", "http.server", "8000"]
 """
 
 with PodmanClient() as client:
@@ -224,7 +222,8 @@ with PodmanClient() as client:
     image, logs = client.images.build(
         fileobj=fileobj,
         tag="myapp:latest",
-        custom_context=True
+        custom_context=True,
+        dockerfile="Dockerfile"
     )
 
     print(f"Built image: {image.tags}")
@@ -305,7 +304,7 @@ with PodmanClient() as client:
     print(f"Pruned dangling images, reclaimed {space / 1024 / 1024:.1f} MB")
 
     # Remove all unused images (not just dangling)
-    pruned = client.images.prune()
+    pruned = client.images.prune(all=True)
     space = pruned.get("SpaceReclaimed", 0)
     print(f"Pruned all unused images, reclaimed {space / 1024 / 1024:.1f} MB")
 ```
@@ -328,8 +327,7 @@ with PodmanClient() as client:
     print("Image saved to myapp-latest.tar")
 
     # Load from a tar file
-    with open("myapp-latest.tar", "rb") as f:
-        loaded = client.images.load(f)
+    loaded = client.images.load(file_path="myapp-latest.tar")
 
     for img in loaded:
         print(f"Loaded: {img.tags}")
@@ -341,7 +339,7 @@ Build an automated cleanup script for old or unused images:
 
 ```python
 from podman import PodmanClient
-from datetime import datetime, timedelta
+from datetime import datetime
 
 def cleanup_old_images(max_age_days=30, dry_run=True):
     """Remove images older than max_age_days."""
@@ -353,7 +351,9 @@ def cleanup_old_images(max_age_days=30, dry_run=True):
         for image in images:
             created = image.attrs.get("Created", 0)
             if isinstance(created, str):
-                continue
+                created = datetime.fromisoformat(
+                    created.replace("Z", "+00:00")
+                ).timestamp()
 
             if created < cutoff:
                 tags = image.tags or ["<none>"]
