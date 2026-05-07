@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Log Management, Logging, Loki, Grafana, Container
 
-Description: Learn how to set up centralized log management using Podman containers with tools like Grafana Loki, Promtail, and the ELK stack for aggregating and analyzing container and application logs.
+Description: Learn how to set up centralized log management using Podman containers with tools like Grafana Loki, Promtail for existing deployments, and the ELK stack for aggregating and analyzing container and application logs.
 
 ---
 
 > Podman integrates naturally with journald and supports multiple logging drivers, making it straightforward to build centralized log management pipelines using containerized tools.
 
-Log management is essential for understanding application behavior, debugging issues, and maintaining security visibility. Podman generates logs from every container it runs and supports routing those logs through different drivers. By combining Podman with containerized log aggregation tools like Loki, Promtail, or Elasticsearch, you can build a complete log management system without installing anything directly on the host.
+Log management is essential for understanding application behavior, debugging issues, and maintaining security visibility. Podman generates logs from every container it runs and supports routing those logs through different drivers. By combining Podman with containerized log aggregation tools like Loki, Promtail for existing deployments, or Elasticsearch, you can build a complete log management system without installing anything directly on the host.
 
 This guide covers Podman's logging capabilities and walks through setting up a full log management stack.
 
@@ -46,7 +46,7 @@ Podman supports `journald`, `k8s-file`, `none`, `passthrough`, and `passthrough-
 # Use journald (integrates with systemd journal)
 podman run -d --log-driver=journald --name app my-app
 
-# Use k8s-file (default for rootless)
+# Use k8s-file (common when journald is unavailable, including many rootless setups)
 podman run -d --log-driver=k8s-file --name app my-app
 
 # Set log size limits (note: Podman supports max-size but not max-file)
@@ -118,9 +118,10 @@ podman run -d \
 
 ## Deploying Promtail for Log Collection
 
-Promtail ships logs to Loki. Configure it to read Podman container logs:
+Promtail reached end-of-life on March 2, 2026. For new Loki deployments, use Grafana Alloy; if you need to maintain an existing Promtail pipeline, the most direct Podman setup is to scrape journald:
 
 ```bash
+mkdir -p ~/logging/promtail
 cat > ~/logging/promtail/config.yml << 'EOF'
 server:
   http_listen_port: 9080
@@ -132,19 +133,11 @@ clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
-  - job_name: podman-containers
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: podman
-          __path__: /var/log/containers/*.log
-
   - job_name: journal
     journal:
       max_age: 12h
       labels:
-        job: systemd-journal
+        job: podman
     relabel_configs:
       - source_labels: ['__journal__systemd_unit']
         target_label: 'unit'
@@ -155,9 +148,11 @@ EOF
 podman run -d \
   --name promtail \
   --network logging \
+  -p 9080:9080 \
   -v ~/logging/promtail/config.yml:/etc/promtail/config.yml:ro,Z \
-  -v /var/log:/var/log:ro \
+  -v /var/log/journal:/var/log/journal:ro \
   -v /run/log/journal:/run/log/journal:ro \
+  -v /etc/machine-id:/etc/machine-id:ro \
   docker.io/grafana/promtail:latest \
   -config.file=/etc/promtail/config.yml
 ```
@@ -200,12 +195,12 @@ podman run -d --pod elk \
   -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
   -e "xpack.security.enabled=false" \
   -v es-data:/usr/share/elasticsearch/data:Z \
-  docker.io/library/elasticsearch:8.12.0
+  docker.elastic.co/elasticsearch/elasticsearch:8.12.0
 
 podman run -d --pod elk \
   --name kibana \
-  -e "ELASTICSEARCH_HOSTS=http://127.0.0.1:9200" \
-  docker.io/library/kibana:8.12.0
+  -e 'ELASTICSEARCH_HOSTS=["http://127.0.0.1:9200"]' \
+  docker.elastic.co/kibana/kibana:8.12.0
 ```
 
 ## Structured Logging from Applications
@@ -251,10 +246,10 @@ logger.setLevel(logging.INFO)
 
 ## Log Rotation and Retention
 
-Configure automatic log rotation to prevent disk exhaustion:
+Configure log size limits to prevent disk exhaustion:
 
 ```bash
-# Set log size limit per container (Podman rotates the log file when the limit is reached)
+# Set log size limit per container (Podman truncates and reopens the log file when the limit is reached)
 podman run -d \
   --log-opt max-size=50mb \
   --name app my-app
@@ -278,15 +273,15 @@ Create a simple health check script:
 # check-logging.sh
 
 # Verify Loki is accepting logs
-curl -s http://localhost:3100/ready | grep -q "ready" && \
+curl -fsS http://localhost:3100/ready >/dev/null && \
   echo "Loki: OK" || echo "Loki: FAILED"
 
 # Verify Promtail is running
-curl -s http://localhost:9080/ready | grep -q "Ready" && \
+curl -fsS http://localhost:9080/ready >/dev/null && \
   echo "Promtail: OK" || echo "Promtail: FAILED"
 
 # Check for recent log entries
-RECENT=$(curl -s 'http://localhost:3100/loki/api/v1/query?query={job="podman"}' | \
+RECENT=$(curl -g -s 'http://localhost:3100/loki/api/v1/query?query={job="podman"}' | \
   python3 -c "import sys,json; print(len(json.load(sys.stdin)['data']['result']))")
 echo "Active log streams: $RECENT"
 ```
