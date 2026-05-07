@@ -153,7 +153,7 @@ resource "azurerm_subnet" "private_endpoints" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = [var.pe_subnet_cidr]
 
-  private_endpoint_network_policies_enabled = true
+  private_endpoint_network_policies = "Disabled"
 }
 ```
 
@@ -168,7 +168,7 @@ locals {
     sql        = "privatelink.database.windows.net"
     keyvault   = "privatelink.vaultcore.azure.net"
     servicebus = "privatelink.servicebus.windows.net"
-    cosmosdb   = "privatelink.documents.azure.com"
+    cosmosdb_nosql = "privatelink.documents.azure.com"
     acr        = "privatelink.azurecr.io"
   }
 }
@@ -192,8 +192,8 @@ resource "azurerm_private_dns_zone_virtual_network_link" "all" {
 
 ## Best Practices
 
-- Create Private DNS zones for every PaaS service accessed via Private Endpoints - without the DNS zone, name resolution returns the public IP even though traffic flows privately.
+- Create Private DNS zones for every PaaS service accessed via Private Endpoints - without the DNS zone or equivalent DNS configuration, the service FQDN resolves to the public endpoint instead of the private IP.
 - Use a dedicated subnet for private endpoints - they have special network policy requirements and isolating them simplifies security zone management.
-- Link private DNS zones to all VNets that need to resolve the private service - applications in VNets without the link will resolve the public IP of the service.
+- Link private DNS zones to all VNets that need to resolve the private service - applications in VNets without the link won't resolve the private IP through Azure Private DNS and will typically fall back to the public endpoint.
 - Use the `private_dns_zone_group` block inside the `azurerm_private_endpoint` resource - this automatically creates the DNS A record for the private IP, removing a manual step.
-- Disable public access on PaaS services after creating private endpoints: set `public_network_access_enabled = false` on storage accounts, SQL servers, and Key Vaults.
+- Private endpoints don't disable public access by themselves, so set `public_network_access_enabled = false` on storage accounts, SQL servers, and Key Vaults after creating private endpoints.
