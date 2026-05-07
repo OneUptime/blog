@@ -87,12 +87,22 @@ def process_arp(pkt):
 
 def build_known_table_from_system():
     """Build initial ARP table from the OS ARP cache."""
+    import re
     import subprocess
-    result = subprocess.run(["arp", "-n"], capture_output=True, text=True)
+
+    ipv4_re = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+    mac_re = re.compile(r"\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b")
+
+    try:
+        result = subprocess.run(["arp", "-n"], capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return
+
     for line in result.stdout.splitlines():
-        parts = line.split()
-        if len(parts) >= 3 and ":" in parts[-1]:
-            ip, mac = parts[0], parts[-1]
+        ip_match = ipv4_re.search(line)
+        mac_match = mac_re.search(line)
+        if ip_match and mac_match:
+            ip, mac = ip_match.group(0), mac_match.group(0)
             arp_table[ip] = mac
             print(f"[init] {ip} -> {mac}")
 
@@ -113,12 +123,12 @@ except KeyboardInterrupt:
         print(a)
 ```
 
-## Sending a Gratuitous ARP for Testing
+## Sending a Spoofed ARP Reply for Testing
 
 ```python
 from scapy.all import ARP, Ether, sendp
 
-# Send a gratuitous ARP (simulates a spoofed reply)
+# Send a spoofed ARP reply for testing
 # WARNING: Only use on your own test network!
 spoofed_arp = Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(
     op=2,
