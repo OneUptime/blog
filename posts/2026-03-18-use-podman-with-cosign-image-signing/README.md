@@ -19,15 +19,16 @@ Container supply chain security depends on knowing that the images you deploy ar
 Install Cosign on your system:
 
 ```bash
-# On Fedora/RHEL
-
-sudo dnf install cosign
+# On Fedora/RHEL-compatible systems (official RPM)
+LATEST_VERSION=$(curl https://api.github.com/repos/sigstore/cosign/releases/latest | grep tag_name | cut -d : -f2 | tr -d 'v", ')
+curl -O -L "https://github.com/sigstore/cosign/releases/latest/download/cosign-${LATEST_VERSION}-1.x86_64.rpm"
+sudo rpm -ivh cosign-${LATEST_VERSION}-1.x86_64.rpm
 
 # On macOS
 brew install cosign
 
 # Using Go
-go install github.com/sigstore/cosign/v2/cmd/cosign@latest
+go install github.com/sigstore/cosign/v3/cmd/cosign@latest
 
 # Verify installation
 cosign version
@@ -55,10 +56,11 @@ Build, push, and sign an image:
 podman build -t registry.example.com/myapp:v1.0.0 .
 
 # Push to registry
-podman push registry.example.com/myapp:v1.0.0
+podman push --digestfile image-digest.txt registry.example.com/myapp:v1.0.0
 
-# Sign the image
-cosign sign --key cosign.key registry.example.com/myapp:v1.0.0
+# Sign the immutable digest that was pushed
+IMAGE_DIGEST="registry.example.com/myapp@$(cat image-digest.txt)"
+cosign sign --key cosign.key "$IMAGE_DIGEST"
 ```
 
 The signature is stored alongside the image in the registry as an OCI artifact.
@@ -68,11 +70,13 @@ The signature is stored alongside the image in the registry as an OCI artifact.
 Verify that an image has a valid signature before pulling or deploying:
 
 ```bash
+IMAGE_DIGEST="registry.example.com/myapp@sha256:<digest>"
+
 # Verify with the public key
-cosign verify --key cosign.pub registry.example.com/myapp:v1.0.0
+cosign verify --key cosign.pub "$IMAGE_DIGEST"
 
 # Verify and display signature details
-cosign verify --key cosign.pub registry.example.com/myapp:v1.0.0 | jq .
+cosign verify --key cosign.pub "$IMAGE_DIGEST" | jq .
 ```
 
 ## Keyless Signing with Sigstore
@@ -80,17 +84,19 @@ cosign verify --key cosign.pub registry.example.com/myapp:v1.0.0 | jq .
 Cosign supports keyless signing using the Sigstore public infrastructure. This eliminates the need to manage long-lived signing keys:
 
 ```bash
+IMAGE_DIGEST="registry.example.com/myapp@sha256:<digest>"
+
 # Sign using keyless mode (OIDC authentication)
-cosign sign registry.example.com/myapp:v1.0.0
+cosign sign "$IMAGE_DIGEST"
 
 # This opens a browser for OIDC authentication
-# The signing certificate is recorded in the Rekor transparency log
+# The signing event is recorded in the Rekor transparency log
 
 # Verify keyless signature
 cosign verify \
   --certificate-identity=user@example.com \
   --certificate-oidc-issuer=https://accounts.google.com \
-  registry.example.com/myapp:v1.0.0
+  "$IMAGE_DIGEST"
 ```
 
 ## Adding Attestations
@@ -98,24 +104,28 @@ cosign verify \
 Attach build metadata and scan results as signed attestations:
 
 ```bash
+IMAGE_DIGEST="registry.example.com/myapp@sha256:<digest>"
+
 # Sign with custom annotations
 cosign sign --key cosign.key \
   -a "build-id=12345" \
   -a "git-commit=$(git rev-parse HEAD)" \
   -a "builder=ci-pipeline" \
-  registry.example.com/myapp:v1.0.0
+  "$IMAGE_DIGEST"
 
 # Attach a vulnerability scan as an attestation
-trivy image --format cosign-vuln --output vuln-report.json registry.example.com/myapp:v1.0.0
+trivy image --format cosign-vuln --output vuln-report.json "$IMAGE_DIGEST"
 cosign attest --key cosign.key \
   --predicate vuln-report.json \
   --type vuln \
-  registry.example.com/myapp:v1.0.0
+  "$IMAGE_DIGEST"
 
 # Attach an SBOM as an attestation
-syft registry.example.com/myapp:v1.0.0 -o spdx-json > sbom.json
-cosign attach sbom --sbom sbom.json registry.example.com/myapp:v1.0.0
-cosign sign --key cosign.key --attachment sbom registry.example.com/myapp:v1.0.0
+syft "$IMAGE_DIGEST" -o spdx-json > sbom.json
+cosign attest --key cosign.key \
+  --predicate sbom.json \
+  --type spdxjson \
+  "$IMAGE_DIGEST"
 ```
 
 ## Build Pipeline with Signing
@@ -132,6 +142,7 @@ IMAGE="registry.example.com/myapp"
 VERSION="${1:-$(git describe --tags --always)}"
 FULL_IMAGE="${IMAGE}:${VERSION}"
 COSIGN_KEY="cosign.key"
+DIGEST_FILE="$(mktemp)"
 
 echo "=== Building ${FULL_IMAGE} ==="
 podman build -t "$FULL_IMAGE" .
@@ -140,27 +151,29 @@ echo "=== Scanning for vulnerabilities ==="
 trivy image --exit-code 1 --severity CRITICAL "$FULL_IMAGE"
 
 echo "=== Pushing to registry ==="
-podman push "$FULL_IMAGE"
+podman push --digestfile "$DIGEST_FILE" "$FULL_IMAGE"
+
+IMAGE_DIGEST="${IMAGE}@$(cat "$DIGEST_FILE")"
 
 echo "=== Signing image ==="
-cosign sign --key "$COSIGN_KEY" \
+cosign sign --yes --key "$COSIGN_KEY" \
   -a "git-commit=$(git rev-parse HEAD)" \
   -a "git-branch=$(git rev-parse --abbrev-ref HEAD)" \
   -a "build-date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  "$FULL_IMAGE"
+  "$IMAGE_DIGEST"
 
 echo "=== Attaching SBOM ==="
-syft "$FULL_IMAGE" -o spdx-json > /tmp/sbom.json
+syft "$IMAGE_DIGEST" -o spdx-json > /tmp/sbom.json
 cosign attest --key "$COSIGN_KEY" \
   --predicate /tmp/sbom.json \
-  --type spdx \
-  "$FULL_IMAGE"
+  --type spdxjson \
+  "$IMAGE_DIGEST"
 
 echo "=== Verifying signature ==="
-cosign verify --key cosign.pub "$FULL_IMAGE"
+cosign verify --key cosign.pub "$IMAGE_DIGEST"
 
 echo "=== Done ==="
-echo "Image ${FULL_IMAGE} is built, scanned, signed, and pushed"
+echo "Image ${IMAGE_DIGEST} is built, scanned, signed, and pushed"
 ```
 
 ## Verification Before Deployment
@@ -173,7 +186,7 @@ Create a deployment script that verifies signatures:
 
 set -euo pipefail
 
-IMAGE="$1"
+IMAGE="$1" # Pass a digest reference, not a mutable tag
 PUBLIC_KEY="cosign.pub"
 
 echo "Verifying image signature for $IMAGE..."
@@ -186,7 +199,7 @@ if cosign verify --key "$PUBLIC_KEY" "$IMAGE" > /dev/null 2>&1; then
     if cosign verify-attestation --key "$PUBLIC_KEY" --type vuln "$IMAGE" > /dev/null 2>&1; then
         echo "Vulnerability attestation verified"
     else
-        echo "WARNING: No vulnerability attestation found"
+        echo "WARNING: Vulnerability attestation missing or failed verification"
     fi
 
     echo "Deploying $IMAGE..."
@@ -220,26 +233,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tools
+      - name: Install Podman
         run: |
-          sudo apt-get update && sudo apt-get install -y podman
-          brew install cosign
+          sudo apt-get update
+          sudo apt-get install -y podman
 
-      - name: Build image
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.0
+
+      - name: Build and push image
         run: |
           podman build -t registry.example.com/myapp:${{ github.ref_name }} .
-          podman push registry.example.com/myapp:${{ github.ref_name }}
+          podman push --digestfile digest.txt registry.example.com/myapp:${{ github.ref_name }}
+          echo "IMAGE_DIGEST=registry.example.com/myapp@$(cat digest.txt)" >> "$GITHUB_ENV"
 
       - name: Sign image (keyless)
         run: |
-          cosign sign registry.example.com/myapp:${{ github.ref_name }}
+          cosign sign --yes "$IMAGE_DIGEST"
 
       - name: Verify signature
         run: |
           cosign verify \
-            --certificate-identity-regexp=".*@example.com" \
+            --certificate-identity="https://github.com/${{ github.repository }}/.github/workflows/build-sign.yml@refs/tags/${{ github.ref_name }}" \
             --certificate-oidc-issuer=https://token.actions.githubusercontent.com \
-            registry.example.com/myapp:${{ github.ref_name }}
+            "$IMAGE_DIGEST"
 ```
 
 ## Configuring Podman for Signature Verification
@@ -259,7 +276,10 @@ Configure Podman to require signatures for specific registries:
             "registry.example.com": [
                 {
                     "type": "sigstoreSigned",
-                    "keyPath": "/etc/pki/containers/cosign.pub"
+                    "keyPath": "/etc/pki/containers/cosign.pub",
+                    "signedIdentity": {
+                        "type": "matchRepository"
+                    }
                 }
             ]
         }
@@ -267,7 +287,14 @@ Configure Podman to require signatures for specific registries:
 }
 ```
 
-With this policy, Podman will refuse to pull images from `registry.example.com` unless they have a valid Cosign signature.
+```yaml
+# /etc/containers/registries.d/registry.example.com.yaml
+docker:
+  registry.example.com:
+    use-sigstore-attachments: true
+```
+
+With this policy and registry configuration, Podman will refuse to pull images from `registry.example.com` unless they have a valid Cosign signature.
 
 ## Transparency Logs
 
@@ -283,7 +310,7 @@ rekor-cli get --uuid <log-entry-uuid>
 # Verify an entry in the transparency log
 cosign verify --key cosign.pub \
   --rekor-url https://rekor.sigstore.dev \
-  registry.example.com/myapp:v1.0.0
+  registry.example.com/myapp@sha256:<digest>
 ```
 
 ## Conclusion
