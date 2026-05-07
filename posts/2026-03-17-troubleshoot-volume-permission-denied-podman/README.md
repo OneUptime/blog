@@ -47,14 +47,15 @@ ls -la /home/user/data
 # Option 1: Change host directory ownership to match the container user
 sudo chown -R 1000:1000 /home/user/data
 
-# Option 2: Use the :U flag to auto-map ownership
+# Option 2: Use the :U flag to recursively adjust source ownership
 podman run -d --name myapp \
   -v /home/user/data:/data:U \
   docker.io/library/node:20
 
-# Option 3: Run the container as the same user that owns the files
+# Option 3: In rootless mode, map your host user to the container user
 podman run -d --name myapp \
-  --user $(stat -c '%u:%g' /home/user/data) \
+  --user 1000:1000 \
+  --userns=keep-id:uid=1000,gid=1000 \
   -v /home/user/data:/data \
   docker.io/library/node:20
 ```
@@ -83,12 +84,12 @@ ls -laZ /home/user/data
 # View your user namespace mapping
 podman unshare cat /proc/self/uid_map
 
-# Check what UID the container user maps to on the host
+# Check ownership as it appears inside the container namespace
 podman run --rm -v /home/user/data:/data \
   docker.io/library/alpine:latest stat -c '%u:%g' /data
 
-# Fix with podman unshare
-podman unshare chown -R 0:0 /home/user/data
+# Fix with podman unshare using the UID/GID that should own the path inside the container
+podman unshare chown -R 1000:1000 /home/user/data
 ```
 
 ## Step 6: Verify Mount Options
@@ -127,4 +128,4 @@ podman run --rm --user root \
 
 ## Summary
 
-Troubleshoot volume permission denied errors in Podman by checking the container user, host file ownership, SELinux labels, and mount options. Use `:U` for automatic UID mapping, `:Z` or `:z` for SELinux relabeling, and `podman unshare chown` for rootless namespace corrections. Systematic diagnosis of these three common causes resolves most volume permission issues.
+Troubleshoot volume permission denied errors in Podman by checking the container user, host file ownership, SELinux labels, and mount options. Use `:U` for recursive ownership adjustment, `:Z` or `:z` for SELinux relabeling, and `podman unshare chown` for rootless namespace corrections. Systematic diagnosis of these three common causes resolves most volume permission issues.
