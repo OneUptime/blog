@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, NAT Gateway, SNAT, Outbound Connectivity, VNet, Infrastructure as Code
 
-Description: Learn how to configure Azure NAT Gateway with OpenTofu to provide scalable, highly available outbound internet connectivity for private subnet resources without SNAT port exhaustion.
+Description: Learn how to configure Azure NAT Gateway with OpenTofu to provide scalable, highly available outbound internet connectivity for private subnet resources while reducing the risk of SNAT port exhaustion.
 
 ## Introduction
 
-Azure NAT Gateway provides outbound-only internet connectivity for VMs in private subnets. Unlike Load Balancer SNAT or instance-level public IPs, NAT Gateway scales automatically to support up to 64,512 SNAT ports per public IP address and is zone-redundant. It eliminates SNAT port exhaustion issues that plague high-connection-count workloads (such as microservices making many outbound API calls) and provides a stable source IP for outbound connections-useful for IP allowlisting with external services.
+Azure NAT Gateway provides outbound-only internet connectivity for resources in subnets. Unlike Load Balancer SNAT or instance-level public IPs, NAT Gateway scales automatically to support up to 64,512 SNAT ports per public IP address. The StandardV2 SKU is zone-redundant, while the Standard SKU used in the examples below can be deployed as zonal or no-zone. It reduces the risk of SNAT port exhaustion for high-connection-count workloads (such as microservices making many outbound API calls) and provides a stable source IP for outbound connections-useful for IP allowlisting with external services.
 
 ## Prerequisites
 
@@ -24,8 +24,8 @@ resource "azurerm_public_ip" "nat" {
   location            = var.location
   resource_group_name = var.resource_group_name
   allocation_method   = "Static"
-  sku                 = "Standard"  # Standard required for NAT Gateway
-  zones               = ["1"]       # Zone-specific or none for regional
+  sku                 = "Standard"  # Match the Standard NAT Gateway SKU
+  zones               = ["1"]       # Match the NAT Gateway zone for Standard SKU deployments
 
   tags = {
     Name = "${var.project_name}-nat-public-ip"
@@ -39,7 +39,7 @@ resource "azurerm_nat_gateway" "main" {
   sku_name                = "Standard"
   idle_timeout_in_minutes = 4  # 4-120 minutes, default 4
 
-  # Availability zone (1, 2, 3, or no zone for regional)
+  # Standard NAT Gateway can be zonal or no-zone
   zones = ["1"]
 
   tags = {
@@ -58,7 +58,7 @@ resource "azurerm_nat_gateway_public_ip_association" "main" {
 ## Step 2: Associate NAT Gateway with Subnets
 
 ```hcl
-# NAT Gateway applied to a subnet - all outbound traffic uses NAT GW
+# Attach NAT Gateway to the subnet for internet-bound traffic that uses the default route
 resource "azurerm_subnet_nat_gateway_association" "private_1" {
   subnet_id      = azurerm_subnet.private_1.id
   nat_gateway_id = azurerm_nat_gateway.main.id
@@ -82,6 +82,7 @@ resource "azurerm_public_ip" "nat_additional" {
   resource_group_name = var.resource_group_name
   allocation_method   = "Static"
   sku                 = "Standard"
+  zones               = ["1"]
 }
 
 resource "azurerm_nat_gateway_public_ip_association" "additional" {
@@ -95,7 +96,7 @@ resource "azurerm_nat_gateway_public_ip_association" "additional" {
 ## Step 4: NAT Gateway with Public IP Prefix
 
 ```hcl
-# Use a contiguous IP range instead of individual IPs (easier for allowlisting)
+# Use a contiguous IP range for easier allowlisting
 resource "azurerm_public_ip_prefix" "nat" {
   name                = "${var.project_name}-nat-prefix"
   location            = var.location
@@ -135,4 +136,4 @@ curl https://ifconfig.me  # Should return the NAT Gateway public IP
 
 ## Conclusion
 
-NAT Gateway overrides other outbound rules (Load Balancer SNAT, instance-level public IPs) for subnets it's associated with-only one outbound mechanism applies to a subnet at a time. Use a Public IP Prefix instead of individual IPs when you need to allowlist your outbound IP range with external partners-a `/29` prefix gives 8 consecutive IPs that can be specified as a single CIDR range. Keep `idle_timeout_in_minutes = 4` for most workloads; only increase it for long-lived idle connections that would otherwise be terminated mid-session. NAT Gateway is zone-specific, not zone-redundant-deploy one NAT Gateway per zone for true zone redundancy.
+For new internet-bound connections that use the subnet's default route, NAT Gateway takes precedence over Load Balancer outbound rules and instance-level public IPs; a user-defined route to a virtual appliance or virtual network gateway still takes precedence. Use a Public IP Prefix when you need a contiguous outbound IP range for allowlisting with external partners-a `/29` prefix gives 8 consecutive IPs, and NAT Gateway uses the entire prefix range. Keep `idle_timeout_in_minutes = 4` for most workloads; only increase it for long-lived idle TCP connections that would otherwise be terminated mid-session. Standard NAT Gateway can be zonal or no-zone, while StandardV2 NAT Gateway is zone-redundant.
