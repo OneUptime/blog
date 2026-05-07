@@ -19,7 +19,7 @@ InfluxDB is a high-performance time-series database designed for storing and que
 Download the official InfluxDB 2.x image.
 
 ```bash
-# Pull the latest InfluxDB 2.x image
+# Pull a specific InfluxDB 2.x image
 
 podman pull docker.io/library/influxdb:2.7
 
@@ -166,18 +166,11 @@ cat > ~/influxdb-config/config.toml <<'EOF'
 # InfluxDB 2.x configuration
 bolt-path = "/var/lib/influxdb2/influxd.bolt"
 engine-path = "/var/lib/influxdb2/engine"
-
-[http]
-  bind-address = ":8086"
-  flux-enabled = true
-
-[storage-wal]
-  wal-max-concurrent-writes = 128
-  wal-max-write-delay = "10m"
-
-[query]
-  concurrency = 10
-  queue-size = 100
+http-bind-address = ":8086"
+storage-wal-max-concurrent-writes = 128
+storage-wal-max-write-delay = "10m"
+query-concurrency = 10
+query-queue-size = 100
 EOF
 
 # Run InfluxDB with custom config
