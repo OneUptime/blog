@@ -73,7 +73,7 @@ case $STATUS in
     echo "Container has failed consecutive health checks"
     ;;
   "starting")
-    echo "Container is still in the start period"
+    echo "Container has not passed a health check yet"
     ;;
 esac
 ```
@@ -82,10 +82,10 @@ esac
 
 ```bash
 # View the last health check output
-podman inspect --format='{{(index .State.Health.Log 0).Output}}' my-web-app
+podman inspect --format='{{json .State.Health.Log}}' my-web-app | python3 -c 'import json,sys; log=json.load(sys.stdin); print(log[-1]["Output"] if log else "")'
 
 # View the exit code of the last health check
-podman inspect --format='{{(index .State.Health.Log 0).ExitCode}}' my-web-app
+podman inspect --format='{{json .State.Health.Log}}' my-web-app | python3 -c 'import json,sys; log=json.load(sys.stdin); print(log[-1]["ExitCode"] if log else "")'
 
 # View the current failing streak count
 podman inspect --format='{{.State.Health.FailingStreak}}' my-web-app
@@ -112,4 +112,4 @@ podman events --filter event=health_status
 
 ## Summary
 
-Podman provides multiple ways to view health check status: `podman ps` for a quick overview, `podman inspect` for detailed results and logs, and `podman events` for real-time monitoring. The three health states are starting (in the grace period), healthy (checks passing), and unhealthy (consecutive failures exceeded retries). Regularly monitoring these states helps you catch and resolve issues early.
+Podman provides multiple ways to view health check status: `podman ps` for a quick overview, `podman inspect` for detailed results and logs, and `podman events` for real-time monitoring. The three health states are starting (no health check has passed yet), healthy (checks passing), and unhealthy (consecutive failures exceeded retries). Regularly monitoring these states helps you catch and resolve issues early.
