@@ -8,7 +8,7 @@ Description: Learn how to set up and validate ACME HTTP-01 domain ownership chal
 
 ---
 
-The ACME HTTP-01 challenge verifies domain ownership by placing a token file at a specific URL path. When your domain has an AAAA record, Let's Encrypt will attempt to reach your server over IPv6, making proper IPv6 configuration essential.
+The ACME HTTP-01 challenge verifies domain ownership by placing a token file at a specific URL path. When your domain has an AAAA record, Let's Encrypt will prefer IPv6 for the initial validation request, making proper IPv6 configuration essential.
 
 ## How HTTP-01 Challenge Works
 
@@ -17,7 +17,7 @@ The ACME client places a file at:
 http://yourdomain.example.com/.well-known/acme-challenge/<token>
 ```
 
-Let's Encrypt fetches this URL over HTTP (port 80). If your DNS has an AAAA record, Let's Encrypt will connect over IPv6.
+Let's Encrypt fetches this URL over HTTP (port 80). If your DNS has both A and AAAA records, Let's Encrypt will prefer IPv6 for the initial connection and retry IPv4 only if the IPv6 connection times out at the network level.
 
 ## Prerequisites Check
 
@@ -37,7 +37,7 @@ ss -tlnp | grep ':80'
 
 ## Configuring Nginx for HTTP-01 over IPv6
 
-The web server must listen on both IPv4 and IPv6 for port 80:
+If your domain has both A and AAAA records, the web server should listen on both IPv4 and IPv6 on port 80:
 
 ```nginx
 # /etc/nginx/sites-available/default
@@ -71,12 +71,11 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ## Configuring Apache for HTTP-01 over IPv6
 
-Apache needs explicit IPv6 Listen directives:
+Apache can listen on all interfaces with a single `Listen 80` directive:
 
 ```apache
 # /etc/apache2/ports.conf
 Listen 80
-Listen [::]:80
 
 # /etc/apache2/sites-available/000-default.conf
 <VirtualHost *:80>
@@ -103,8 +102,7 @@ sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
 # Allow established connections (return traffic)
 sudo ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# Save rules persistently
-sudo ip6tables-save > /etc/ip6tables/rules.v6
+# Save rules persistently using your distro's firewall persistence mechanism
 ```
 
 ## Running the HTTP-01 Challenge
@@ -146,13 +144,13 @@ sudo rm /var/www/html/.well-known/acme-challenge/test-token
 
 ## Common HTTP-01 IPv6 Failures
 
-**Timeout during validation**: Let's Encrypt cannot reach port 80 over IPv6. Check firewall rules and confirm the web server listens on `[::]:80`.
+**Timeout during validation**: Let's Encrypt cannot reach port 80 over IPv6. Check firewall rules and confirm the web server listens on port 80 over IPv6.
 
 **Connection refused**: The server has an AAAA record but no service on port 80 over IPv6. Verify with `ss -tlnp | grep 80`.
 
 **404 Not Found**: The web server is reachable but the challenge file path is misconfigured. Verify the webroot path matches the server config.
 
-**Mixed IPv4/IPv6 issues**: If your server has both A and AAAA records, Let's Encrypt may use either. Ensure both work:
+**Mixed IPv4/IPv6 issues**: If your server has both A and AAAA records, Let's Encrypt will prefer IPv6 for the initial connection. It retries over IPv4 only if the IPv6 connection times out at the network level, so ensure the challenge works over IPv6 and also over IPv4 if an A record exists:
 
 ```bash
 # Test IPv4 path
@@ -162,4 +160,4 @@ curl -4 http://yourdomain.example.com/.well-known/acme-challenge/test
 curl -6 http://yourdomain.example.com/.well-known/acme-challenge/test
 ```
 
-Ensuring both IPv4 and IPv6 paths work for HTTP-01 challenges gives you a reliable certificate issuance pipeline regardless of which protocol Let's Encrypt uses for validation.
+Ensuring the IPv6 path works, and the IPv4 path too if you publish an A record, gives you a reliable certificate issuance pipeline for HTTP-01 validation.
