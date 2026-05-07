@@ -126,8 +126,9 @@ Docker Compose supports scaling individual services:
 
 ```bash
 # Docker Compose: scale specific services
+# For scaled services, avoid a fixed host port like "3000:3000".
 docker compose up -d --scale api=3
-# Creates api-1, api-2, api-3 with separate IPs
+# Creates three api containers with separate IPs behind the api service name
 ```
 
 Podman pods do not support scaling within a pod because containers share the same port space. To scale, you create multiple pods:
@@ -135,7 +136,7 @@ Podman pods do not support scaling within a pod because containers share the sam
 ```bash
 # Podman: create multiple pod instances
 for i in 1 2 3; do
-  podman pod create --name myapp-${i} -p $((8080+i)):80
+  podman pod create --name myapp-${i} -p $((3000+i)):3000
   podman run -d --pod myapp-${i} --name api-${i} my-api
 done
 ```
@@ -164,15 +165,20 @@ spec:
       image: nginx
       ports:
         - containerPort: 80
+          hostPort: 8080
     - name: api
       image: my-api
       ports:
         - containerPort: 3000
+          hostPort: 3000
     - name: db
       image: postgres:16
       env:
         - name: POSTGRES_PASSWORD
           value: secret
+      ports:
+        - containerPort: 5432
+          hostPort: 5432
 ```
 
 Docker Compose files require conversion tools like Kompose to generate Kubernetes manifests.
