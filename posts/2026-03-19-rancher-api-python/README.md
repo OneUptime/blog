@@ -4,9 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, API, REST API, Python, Automation
 
-Description: Complete guide to interacting with the Rancher API using Python, including authentication, CRUD operations, error handling, and building reusable client libraries.
+Description: Complete guide to interacting with Rancher's previous `/v3` API using Python, including authentication, CRUD operations, error handling, and building reusable client libraries.
 
-Python is an excellent choice for building Rancher automation tools and integrations. Its rich ecosystem of HTTP libraries and data processing tools makes it easy to interact with the Rancher API. This guide covers everything from basic requests to building a reusable client class.
+Python is an excellent choice for building Rancher automation tools and integrations. Its rich ecosystem of HTTP libraries and data processing tools makes it easy to interact with the Rancher API. This guide covers everything from basic requests to building a reusable client class for Rancher's previous `/v3` API.
+
+Rancher v2.8.0 introduced the Rancher Kubernetes API (RK-API), but the previous `/v3` API is still available and is what the examples below use.
 
 ## Prerequisites
 
@@ -25,7 +27,7 @@ import requests
 import json
 import urllib3
 
-# Disable SSL warnings for self-signed certificates
+# Disable SSL warnings only when you intentionally skip verification
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -84,7 +86,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class RancherClient:
-    def __init__(self, url: str, token: str, verify_ssl: bool = False):
+    def __init__(self, url: str, token: str, verify_ssl: bool = True):
         self.url = url.rstrip("/")
         self.session = requests.Session()
         self.session.headers.update({
@@ -94,7 +96,7 @@ class RancherClient:
         self.session.verify = verify_ssl
 
     def _request(self, method: str, endpoint: str, **kwargs):
-        url = f"{self.url}{endpoint}"
+        url = endpoint if endpoint.startswith(("http://", "https://")) else f"{self.url}{endpoint}"
         response = self.session.request(method, url, **kwargs)
         response.raise_for_status()
         if response.content:
@@ -124,8 +126,9 @@ class RancherClient:
         return self.get(f"/v3/nodes", params={"clusterId": cluster_id})["data"]
 
     def generate_kubeconfig(self, cluster_id: str) -> str:
-        result = self.post(
-            f"/v3/clusters/{cluster_id}?action=generateKubeconfig", data={}
+        cluster = self.get(f"/v3/clusters/{cluster_id}")
+        result = self._request(
+            "POST", cluster["actions"]["generateKubeconfig"], json={}
         )
         return result["config"]
 
@@ -394,4 +397,4 @@ export_inventory(client)
 
 ## Summary
 
-Python and the `requests` library provide a clean and powerful way to interact with the Rancher API. Build a reusable client class to keep your code organized, implement proper error handling with retries for production scripts, and use pagination helpers when dealing with large datasets. These patterns work for everything from quick one-off scripts to full automation frameworks.
+Python and the `requests` library provide a clean and powerful way to interact with Rancher's previous `/v3` API. Build a reusable client class to keep your code organized, implement proper error handling with retries for production scripts, and use pagination helpers when dealing with large datasets. These patterns work for everything from quick one-off scripts to full automation frameworks.
