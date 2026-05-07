@@ -90,7 +90,13 @@ Check which storage driver Podman is using:
 podman info --format '{{.Store.GraphDriverName}}'
 ```
 
-If it shows `vfs`, you are using far more space than necessary. Switch to `overlay` by editing the storage configuration.
+If it shows `vfs`, you are using far more space than necessary. Before switching to `overlay`, reset Podman's storage:
+
+```bash
+podman system reset
+```
+
+This will delete all images, containers, networks, build cache, machines, and volumes. After the reset, switch to `overlay` by editing the storage configuration.
 
 For rootless Podman, edit `~/.config/containers/storage.conf`:
 
@@ -112,13 +118,7 @@ sudo dnf install fuse-overlayfs
 sudo apt install fuse-overlayfs
 ```
 
-After changing the storage driver, reset Podman's storage:
-
-```bash
-podman system reset
-```
-
-This will delete all images, containers, and volumes, so pull your images again afterward.
+Then pull your images again afterward.
 
 ## Overlay Filesystem Size Limits
 
@@ -185,10 +185,10 @@ Containers     5      2       1.2GB    800MB (66%)
 Local Volumes  12     4       3.4GB    2.1GB (61%)
 ```
 
-Remove dangling images and build cache:
+Remove dangling images and persistent build cache:
 
 ```bash
-podman image prune -f
+podman image prune -f --build-cache
 ```
 
 ## Temporary Files and /tmp Space
@@ -211,7 +211,13 @@ podman pull myimage
 
 ## Changing the Podman Storage Location
 
-If your home directory is on a small partition, move Podman's storage to a larger filesystem. Edit `~/.config/containers/storage.conf`:
+If your home directory is on a small partition, move Podman's storage to a larger filesystem. If you want to start with empty storage, reset Podman before changing the paths:
+
+```bash
+podman system reset
+```
+
+Then edit `~/.config/containers/storage.conf`:
 
 ```ini
 [storage]
@@ -220,10 +226,10 @@ graphroot = "/mnt/large-disk/containers/storage"
 runroot = "/mnt/large-disk/containers/run"
 ```
 
-Then reset and restart:
+Then start using Podman again:
 
 ```bash
-podman system reset
+podman info --format '{{.Store.GraphRoot}}'
 ```
 
 For rootful Podman, edit `/etc/containers/storage.conf` with the same options.
