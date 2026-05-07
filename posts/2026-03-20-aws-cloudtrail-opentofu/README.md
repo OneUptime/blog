@@ -61,10 +61,67 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
 ## KMS Key for Encryption
 
 ```hcl
+data "aws_region" "current" {}
+
+data "aws_iam_policy_document" "cloudtrail_kms" {
+  statement {
+    sid    = "EnableRootPermissions"
+    effect = "Allow"
+    principals { type = "AWS"; identifiers = ["arn:aws:iam::${var.account_id}:root"] }
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowCloudTrailEncryptLogs"
+    effect = "Allow"
+    principals { type = "Service"; identifiers = ["cloudtrail.amazonaws.com"] }
+    actions   = ["kms:GenerateDataKey*"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:cloudtrail:${data.aws_region.current.name}:${var.account_id}:trail/${var.name}-trail"]
+    }
+    condition {
+      test     = "StringLike"
+      variable = "kms:EncryptionContext:aws:cloudtrail:arn"
+      values   = ["arn:aws:cloudtrail:*:${var.account_id}:trail/*"]
+    }
+  }
+
+  statement {
+    sid    = "AllowCloudTrailDescribeKey"
+    effect = "Allow"
+    principals { type = "Service"; identifiers = ["cloudtrail.amazonaws.com"] }
+    actions   = ["kms:DescribeKey"]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:cloudtrail:${data.aws_region.current.name}:${var.account_id}:trail/${var.name}-trail"]
+    }
+  }
+
+  statement {
+    sid    = "AllowCloudWatchLogsUseKey"
+    effect = "Allow"
+    principals { type = "Service"; identifiers = ["logs.${data.aws_region.current.name}.amazonaws.com"] }
+    actions   = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:Describe*"]
+    resources = ["*"]
+    condition {
+      test     = "ArnEquals"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:aws:logs:${data.aws_region.current.name}:${var.account_id}:log-group:/aws/cloudtrail/${var.name}"]
+    }
+  }
+}
+
 resource "aws_kms_key" "cloudtrail" {
   description             = "KMS key for CloudTrail log encryption"
   deletion_window_in_days = 30
   enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.cloudtrail_kms.json
 }
 
 resource "aws_kms_alias" "cloudtrail" {
@@ -76,6 +133,39 @@ resource "aws_kms_alias" "cloudtrail" {
 ## CloudTrail Trail
 
 ```hcl
+resource "aws_cloudwatch_log_group" "cloudtrail" {
+  name              = "/aws/cloudtrail/${var.name}"
+  retention_in_days = 90
+  kms_key_id        = aws_kms_key.cloudtrail.arn
+}
+
+data "aws_iam_policy_document" "cloudtrail_cw_assume_role" {
+  statement {
+    effect = "Allow"
+    principals { type = "Service"; identifiers = ["cloudtrail.amazonaws.com"] }
+    actions = ["sts:AssumeRole"]
+  }
+}
+
+resource "aws_iam_role" "cloudtrail_cw" {
+  name               = "${var.name}-cloudtrail-cloudwatch-logs"
+  assume_role_policy = data.aws_iam_policy_document.cloudtrail_cw_assume_role.json
+}
+
+data "aws_iam_policy_document" "cloudtrail_cw" {
+  statement {
+    effect    = "Allow"
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["${aws_cloudwatch_log_group.cloudtrail.arn}:log-stream:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "cloudtrail_cw" {
+  name   = "${var.name}-cloudtrail-cloudwatch-logs"
+  role   = aws_iam_role.cloudtrail_cw.id
+  policy = data.aws_iam_policy_document.cloudtrail_cw.json
+}
+
 resource "aws_cloudtrail" "main" {
   name                          = "${var.name}-trail"
   s3_bucket_name                = aws_s3_bucket.cloudtrail.id
@@ -93,24 +183,34 @@ resource "aws_cloudtrail" "main" {
 
     data_resource {
       type   = "AWS::S3::Object"
-      values = ["arn:aws:s3:::"]
+      values = ["arn:aws:s3"]
     }
   }
 
   tags       = { Name = "${var.name}-trail" }
-  depends_on = [aws_s3_bucket_policy.cloudtrail]
-}
-
-resource "aws_cloudwatch_log_group" "cloudtrail" {
-  name              = "/aws/cloudtrail/${var.name}"
-  retention_in_days = 90
-  kms_key_id        = aws_kms_key.cloudtrail.arn
+  depends_on = [aws_s3_bucket_policy.cloudtrail, aws_iam_role_policy.cloudtrail_cw]
 }
 ```
 
 ## Root Account Usage Alarm
 
 ```hcl
+resource "aws_sns_topic" "security_alerts" {
+  name = "${var.name}-security-alerts"
+}
+
+resource "aws_cloudwatch_log_metric_filter" "root_usage" {
+  name           = "RootAccountUsage"
+  log_group_name = aws_cloudwatch_log_group.cloudtrail.name
+  pattern        = "{$.userIdentity.type=\"Root\" && $.userIdentity.invokedBy NOT EXISTS && $.eventType!=\"AwsServiceEvent\"}"
+
+  metric_transformation {
+    name      = "RootAccountUsageEventCount"
+    namespace = "CloudTrailMetrics"
+    value     = "1"
+  }
+}
+
 resource "aws_cloudwatch_metric_alarm" "root_usage" {
   alarm_name          = "root-account-usage"
   alarm_description   = "Root account has been used - investigate immediately"
