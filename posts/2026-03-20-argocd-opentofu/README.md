@@ -35,6 +35,10 @@ provider "helm" {
     config_path = "~/.kube/config"
   }
 }
+
+provider "kubernetes" {
+  config_path = "~/.kube/config"
+}
 ```
 
 ```hcl
@@ -58,7 +62,7 @@ resource "helm_release" "argocd" {
   }
 
   set {
-    name  = "configs.params.server.insecure"
+    name  = "configs.params.server\\.insecure"
     value = "true"
   }
 }
@@ -67,6 +71,8 @@ resource "helm_release" "argocd" {
 ---
 
 ## Create an ArgoCD Application Resource
+
+Apply the Helm release first so the Argo CD `Application` CRD exists before OpenTofu plans this resource.
 
 ```hcl
 resource "kubernetes_manifest" "argocd_app" {
@@ -97,8 +103,6 @@ resource "kubernetes_manifest" "argocd_app" {
       }
     }
   }
-
-  depends_on = [helm_release.argocd]
 }
 ```
 
@@ -107,6 +111,10 @@ resource "kubernetes_manifest" "argocd_app" {
 ## Retrieve the ArgoCD Admin Password
 
 ```bash
+# First install ArgoCD so the Application CRD exists
+tofu apply -target=helm_release.argocd
+
+# Then apply the Application resource and any remaining changes
 tofu apply
 
 # Get initial admin password
@@ -114,9 +122,9 @@ kubectl get secret argocd-initial-admin-secret \
   -n argocd \
   -o jsonpath='{.data.password}' | base64 -d
 
-# Port-forward to access the UI
-kubectl port-forward svc/argocd-server -n argocd 8080:443
-# Open https://localhost:8080, login with admin / <password>
+# Port-forward to access the UI over HTTP because server.insecure=true
+kubectl port-forward svc/argocd-server -n argocd 8080:80
+# Open http://localhost:8080, login with admin / <password>
 ```
 
 ---
@@ -136,7 +144,7 @@ resource "kubernetes_secret" "argocd_repo" {
   data = {
     type          = "git"
     url           = "https://github.com/myorg/private-config"
-    username      = "git"
+    username      = var.github_username
     password      = var.github_token
   }
 }
@@ -146,4 +154,4 @@ resource "kubernetes_secret" "argocd_repo" {
 
 ## Summary
 
-Use the Helm provider to install ArgoCD into a Kubernetes cluster, then declare `Application` resources with `kubernetes_manifest` to define what Git paths to sync. Set `syncPolicy.automated` with `prune` and `selfHeal` for fully automated GitOps reconciliation. Store repository credentials in Kubernetes secrets labelled with `argocd.argoproj.io/secret-type: repository`.
+Use the Helm provider to install ArgoCD into a Kubernetes cluster, then declare `Application` resources with `kubernetes_manifest` after the Argo CD CRDs exist to define what Git paths to sync. Set `syncPolicy.automated` with `prune` and `selfHeal` for fully automated GitOps reconciliation. Store repository credentials in Kubernetes secrets labelled with `argocd.argoproj.io/secret-type: repository`.
