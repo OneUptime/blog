@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Window, Virtual Machine, Compute, RDP, Infrastructure as Code
 
-Description: Learn how to create Windows Server virtual machines on Azure with OpenTofu, including WinRM configuration, managed disks, and PowerShell DSC extensions.
+Description: Learn how to create Windows Server virtual machines on Azure with OpenTofu, including RDP access controls, managed disks, and the Custom Script Extension.
 
 ## Introduction
 
@@ -29,7 +29,7 @@ resource "azurerm_windows_virtual_machine" "main" {
   network_interface_ids = [azurerm_network_interface.main.id]
 
   admin_username = "azureuser"
-  admin_password = var.admin_password  # Store in Key Vault, not in code
+  admin_password = var.admin_password  # Source from Key Vault or another secret manager; still stored in state
 
   # OS disk
   os_disk {
@@ -92,9 +92,9 @@ resource "azurerm_network_security_group" "rdp" {
     protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "3389"
-    source_address_prefix      = var.admin_cidr  # Restrict to known IPs
+    source_address_prefixes    = var.allowed_rdp_source_cidrs  # Include your VPN/admin CIDR and AzureBastionSubnet CIDR as needed
     destination_address_prefix = "*"
-    description                = "Allow RDP from admin network only"
+    description                = "Allow RDP from approved private networks only"
   }
 }
 
@@ -153,12 +153,15 @@ tofu init
 tofu plan
 tofu apply
 
-# Connect via Azure Bastion or VPN (avoid public RDP in production)
+# Connect via Azure Bastion or private connectivity (avoid public RDP in production)
 
-# Get private IP
-tofu output -raw private_ip_address
+# Get the VM's IP addresses
+az vm list-ip-addresses \
+  --resource-group <rg> \
+  --name <vm-name> \
+  --output table
 
-# Or use Azure CLI to start a Bastion session
+# Or, from a local Windows machine, use Azure CLI to start a Bastion RDP session
 az network bastion rdp \
   --name <bastion-name> \
   --resource-group <rg> \
@@ -167,4 +170,4 @@ az network bastion rdp \
 
 ## Conclusion
 
-Never expose RDP (port 3389) directly to the public internet-use Azure Bastion for RDP access to avoid brute-force attacks. Store the `admin_password` in Azure Key Vault and retrieve it with a data source rather than hardcoding it. Set `patch_mode = "AutomaticByPlatform"` to enable Azure-managed patching that respects maintenance windows. For domain-joined VMs, use the `JsonADDomainExtension` to automate joining Windows VMs to Active Directory.
+Never expose RDP (port 3389) directly to the public internet; use Azure Bastion for RDP access to avoid brute-force attacks. Store the `admin_password` in Azure Key Vault or another secret manager and retrieve it with a data source rather than hardcoding it, but secure your OpenTofu state because the password is still stored there. Set `patch_mode = "AutomaticByPlatform"` to enable Azure-managed patching. If you need custom maintenance windows, use Azure Update Manager. For domain-joined VMs, use the `JsonADDomainExtension` to automate joining Windows VMs to Active Directory.
