@@ -21,7 +21,7 @@ In shared environments like CI servers or Swarm clusters where multiple nodes sh
 
 ## Anonymous Access (Default)
 
-By default, Portainer uses anonymous access to Docker Hub. No configuration is needed. Images are pulled using the Docker Hub public API without credentials.
+By default, Portainer provides built-in support for anonymous Docker Hub access. No configuration is needed. Public images can be pulled without configured Docker Hub credentials.
 
 This is fine for:
 - Personal/home lab use
@@ -30,42 +30,47 @@ This is fine for:
 
 ## Authenticated Access
 
-For production environments, add your Docker Hub credentials to avoid rate limiting and enable private image access.
+For production environments, add your Docker Hub username and personal access token to avoid rate limiting and enable private image access.
 
 ### Adding Credentials in Portainer
 
-1. Go to **Settings > Registries**.
+1. Go to **Registries**.
 2. Click **Add registry** and select **DockerHub**.
-3. Enter your Docker Hub username and password (or access token).
-4. Click **Add registry**.
-5. Assign it to your environment under **Environments > Edit > Registries**.
+3. Enter a name, your Docker Hub username, and your Docker Hub access token.
+4. Click **Test connection**.
+5. After the test succeeds, click **Add registry**.
 
 ### Creating a Docker Hub Access Token
 
 ```bash
 # In the Docker Hub UI:
 
-# Account Settings > Security > New Access Token
-# Name it "portainer-<environment>" for easy identification
+# Docker Home > Account settings > Personal access tokens > Generate new token
+# Use a description like "portainer-<environment>" for easy identification
 
 # Test the token from CLI
-docker login docker.io \
-  -u your-username \
-  -p dckr_pat_XXXXXXXXXXXX  # Access token format
+echo 'your-personal-access-token' | docker login \
+  --username your-username \
+  --password-stdin
 ```
 
 ## Checking Your Current Rate Limit Status
 
 ```bash
-# Check remaining rate limit (works for both anonymous and authenticated)
-TOKEN=$(curl -s \
+# Check remaining rate limit anonymously
+TOKEN=$(curl -fsSL \
   "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" \
   | jq -r .token)
 
-curl -I --head \
+# For an authenticated check, Docker documents this token request instead:
+# TOKEN=$(curl -fsSL --user 'your-username:your-password' \
+#   "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" \
+#   | jq -r .token)
+
+curl --head \
   -H "Authorization: Bearer $TOKEN" \
   https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest \
-  2>&1 | grep -i "ratelimit"
+  | grep -i "ratelimit"
 ```
 
 ## When to Use Each Approach
@@ -82,7 +87,7 @@ curl -I --head \
 
 ## Switching from Anonymous to Authenticated
 
-After adding credentials to Portainer, existing deployments continue working. New deployments and image updates automatically use the authenticated credentials.
+After adding credentials to Portainer, existing deployments continue working. Future pulls and image updates can use the authenticated registry configuration.
 
 ## Conclusion
 
