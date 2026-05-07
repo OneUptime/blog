@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Fedora Silverblue, Container, Immutable Desktop, Linux
 
-Description: Learn how to use Podman on Fedora Silverblue, the immutable desktop operating system where containers are the primary way to run applications and development environments.
+Description: Learn how to use Podman on Fedora Silverblue, the immutable desktop operating system with first-class support for containerized development environments and services.
 
 ---
 
-> Fedora Silverblue is an immutable desktop OS where Podman is the backbone of application management. This guide covers using Podman for development workflows, running GUI applications in containers, and leveraging toolbox and distrobox alongside Podman.
+> Fedora Silverblue is an immutable desktop OS with first-class support for container-focused workflows. This guide covers using Podman for development workflows, running GUI applications in containers, and leveraging toolbox and distrobox alongside Podman.
 
-Fedora Silverblue is an immutable variant of Fedora Workstation that delivers a stable, reliable desktop experience. The root filesystem is read-only, and applications are primarily installed as Flatpaks or run inside containers. Podman comes pre-installed and serves as the primary tool for running containerized workloads, development environments, and system services.
+Fedora Silverblue is an immutable variant of Fedora Workstation that delivers a stable, reliable desktop experience. The root filesystem is read-only, and applications are typically installed as Flatpaks, layered with rpm-ostree when needed, or run inside containers. Podman comes pre-installed and is a key tool for running containerized workloads, building images, and managing pods and services.
 
 This guide explains how to take full advantage of Podman on Silverblue for both development and everyday use.
 
@@ -18,13 +18,13 @@ This guide explains how to take full advantage of Podman on Silverblue for both 
 
 ## Understanding Silverblue and Podman
 
-On Fedora Silverblue, the base OS is managed by rpm-ostree. You cannot use dnf to install packages directly. Instead, you have three primary ways to run software:
+On Fedora Silverblue, the base OS is managed by rpm-ostree. You cannot use dnf to install packages directly on the host. Instead, you generally have three primary ways to install or run software:
 
 1. Flatpak for desktop applications
-2. Podman for containers and services
-3. Toolbox or Distrobox for mutable development environments
+2. Toolbox for mutable development environments and CLI tools
+3. rpm-ostree package layering for host-level packages
 
-Podman is already installed as part of the base image. Verify it:
+Podman is already installed as part of the base image and is used directly for standalone containers, images, pods, and services. Distrobox can be added as an alternative to toolbox for mutable container-based environments. Verify Podman and the host state:
 
 ```bash
 podman --version
@@ -129,16 +129,14 @@ distrobox enter arch-dev
 
 ## Running GUI Applications in Containers
 
-Podman on Silverblue can run graphical applications. The key is sharing the Wayland or X11 socket with the container:
+Podman on Silverblue can run graphical applications. On Wayland sessions, the key is sharing the Wayland socket with the container:
 
 ```bash
 # Run a GUI app with Wayland support
 podman run -it --rm \
   -e WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
   -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
-  -v $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/tmp/$WAYLAND_DISPLAY:ro \
-  -e DISPLAY=$DISPLAY \
-  -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
+  -v $XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR \
   --security-opt label=disable \
   my-gui-app:latest
 ```
@@ -148,8 +146,9 @@ For applications that need GPU access:
 ```bash
 podman run -it --rm \
   --device /dev/dri \
-  -e DISPLAY=$DISPLAY \
-  -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
+  -e WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+  -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+  -v $XDG_RUNTIME_DIR:$XDG_RUNTIME_DIR \
   --security-opt label=disable \
   docker.io/library/ubuntu:24.04 bash
 ```
@@ -217,12 +216,11 @@ Restart=always
 WantedBy=default.target
 ```
 
-Enable and start it as a user service:
+Reload user systemd and start it:
 
 ```bash
 systemctl --user daemon-reload
 systemctl --user start dev-database.service
-systemctl --user enable dev-database.service
 ```
 
 ## Pod-Based Development Stacks
@@ -263,30 +261,31 @@ podman system prune -a
 podman volume prune
 ```
 
-Configure storage location if you need to move container data to a different partition. Edit `~/.config/containers/storage.conf`:
+Override the rootless storage location if you need to customize it. Edit `~/.config/containers/storage.conf`:
 
 ```toml
 [storage]
 driver = "overlay"
-graphroot = "/home/user/.local/share/containers/storage"
+graphroot = "$HOME/containers/storage"
 
 [storage.options.overlay]
 mount_program = "/usr/bin/fuse-overlayfs"
 ```
 
+On SELinux systems, relabel the new path to match the default rootless container storage context before using it.
+
 ## Podman Compose for Development
 
-Use podman-compose for multi-container development environments. Install it in a toolbox:
+Use Podman's compose wrapper for multi-container development environments. Install a compose provider in a toolbox:
 
 ```bash
 toolbox enter dev-env
-pip install podman-compose
+sudo dnf install podman-compose
 ```
 
 Create a compose file:
 
 ```yaml
-version: "3"
 services:
   web:
     build: .
@@ -309,8 +308,8 @@ volumes:
 Run the stack:
 
 ```bash
-podman-compose up -d
-podman-compose logs -f
+podman compose up -d
+podman compose logs -f
 ```
 
 ## Updating Podman on Silverblue
