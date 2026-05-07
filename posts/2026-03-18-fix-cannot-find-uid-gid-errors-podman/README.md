@@ -18,7 +18,7 @@ This guide covers every scenario that produces this error and how to fix each on
 
 ## Understanding Subordinate UID/GID Ranges
 
-Linux assigns each user a range of subordinate UIDs and GIDs that they can use in user namespaces. These ranges are defined in two files:
+Linux systems can assign each user a range of subordinate UIDs and GIDs that they can use in user namespaces. These ranges are commonly defined in two files:
 
 - `/etc/subuid`: Maps users to subordinate UID ranges
 - `/etc/subgid`: Maps users to subordinate GID ranges
@@ -143,7 +143,7 @@ If your users are managed by SSSD (common in enterprise environments), SSSD may 
 
 1. Add entries to the local `/etc/subuid` and `/etc/subgid` files manually (SSSD users can still have local subuid entries).
 
-2. Configure SSSD to provide subordinate ID ranges (requires SSSD 2.0+ with the `files` provider).
+2. Configure subordinate ID delegation through `/etc/nsswitch.conf` and an SSSD-backed subid provider where your distribution and identity source support it. SSSD support for subordinate UID/GID ranges is provider- and version-dependent; for example, SSSD introduced IPA subuid/subgid support in the 2.6 series, and LDAP deployments need matching subid attributes.
 
 ## Container User Does Not Exist in /etc/passwd
 
@@ -188,6 +188,8 @@ podman run --userns=auto myimage id
 ```
 
 This requires `/etc/subuid` and `/etc/subgid` to have a sufficiently large range (at least 65536 IDs).
+
+For rootful Podman, `--userns=auto` is different: Podman uses subordinate ID ranges reserved for the special `containers` user by default, or for the user configured with `root-auto-userns-user` in `/etc/containers/storage.conf`.
 
 ### host
 
@@ -278,14 +280,14 @@ which newuidmap newgidmap
 ls -la $(which newuidmap) $(which newgidmap)
 ```
 
-These binaries must be setuid root:
+These binaries are normally installed setuid root:
 
 ```bash
 # They should show -rwsr-xr-x (note the 's')
 ls -la /usr/bin/newuidmap /usr/bin/newgidmap
 ```
 
-If the setuid bit is missing:
+If the setuid bit is missing, restore the package permissions or reinstall the package that provides them, such as `shadow-utils` or `uidmap` depending on your distribution. As a temporary repair on systems that package these helpers as setuid binaries:
 
 ```bash
 sudo chmod u+s /usr/bin/newuidmap /usr/bin/newgidmap
