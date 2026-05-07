@@ -8,7 +8,7 @@ Description: Learn how to create and manage AWS KMS customer-managed keys and al
 
 ## Introduction
 
-AWS KMS Customer-Managed Keys (CMKs) provide full control over encryption keys used to protect your AWS resources-S3, EBS, RDS, DynamoDB, and more. Unlike AWS-managed keys, CMKs allow custom key policies, usage auditing via CloudTrail, the ability to disable/delete keys, and cross-account/cross-region sharing for complex architectures.
+AWS KMS customer managed keys provide full control over encryption keys used to protect your AWS resources-S3, EBS, RDS, DynamoDB, and more. Unlike AWS-managed keys, customer managed keys allow custom key policies, usage auditing via CloudTrail, the ability to disable or schedule deletion of keys, and cross-account sharing. For cross-Region architectures, AWS KMS also supports multi-Region keys.
 
 ## Prerequisites
 
@@ -88,7 +88,7 @@ resource "aws_kms_alias" "main" {
 ## Step 2: Create Service-Specific Keys
 
 ```hcl
-# Separate key for RDS (with RDS service principal)
+# Separate key for RDS (grant access to the IAM principal that creates the RDS resource)
 
 resource "aws_kms_key" "rds" {
   description         = "KMS key for RDS encryption"
@@ -105,9 +105,20 @@ resource "aws_kms_key" "rds" {
       },
       {
         Effect    = "Allow"
-        Principal = { Service = "rds.amazonaws.com" }
-        Action    = ["kms:Decrypt", "kms:GenerateDataKey", "kms:CreateGrant", "kms:ListGrants", "kms:RevokeGrant"]
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.app_role_name}" }
+        Action    = ["kms:DescribeKey"]
         Resource  = "*"
+      },
+      {
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.app_role_name}" }
+        Action    = ["kms:CreateGrant", "kms:ListGrants", "kms:RevokeGrant"]
+        Resource  = "*"
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "rds.${data.aws_region.current.name}.amazonaws.com"
+          }
+        }
       }
     ]
   })
@@ -129,7 +140,7 @@ resource "aws_kms_alias" "rds" {
 ```hcl
 # Multi-region primary key (can replicate to other regions)
 resource "aws_kms_key" "multi_region" {
-  description         = "Multi-region CMK for ${var.project_name}"
+  description         = "Multi-region KMS key for ${var.project_name}"
   enable_key_rotation = true
   multi_region        = true  # Enable multi-region capability
 
@@ -156,7 +167,6 @@ resource "aws_kms_replica_key" "replica" {
   description             = "Replica of ${var.project_name} multi-region key"
   primary_key_arn         = aws_kms_key.multi_region.arn
   deletion_window_in_days = 30
-  enable_key_rotation     = true
 
   tags = {
     Name   = "${var.project_name}-multi-region-replica"
@@ -168,7 +178,8 @@ resource "aws_kms_replica_key" "replica" {
 ## Step 4: Cross-Account Key Sharing
 
 ```hcl
-# Allow another account to use this key
+# Allow another account to use this key.
+# Note: principals in the partner account also need an IAM policy in that account.
 resource "aws_kms_key" "shared" {
   description         = "Shared key for cross-account encryption"
   enable_key_rotation = true
@@ -185,13 +196,8 @@ resource "aws_kms_key" "shared" {
       {
         Effect    = "Allow"
         Principal = { AWS = "arn:aws:iam::${var.partner_account_id}:root" }
-        Action    = ["kms:Decrypt", "kms:DescribeKey"]
+        Action    = ["kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey*", "kms:DescribeKey"]
         Resource  = "*"
-        Condition = {
-          StringEquals = {
-            "kms:CallerAccount" = var.partner_account_id
-          }
-        }
       }
     ]
   })
@@ -209,9 +215,10 @@ tofu apply
 aws kms describe-key --key-id alias/my-project/main
 
 # View key rotation status
-aws kms get-key-rotation-status --key-id alias/my-project/main
+aws kms get-key-rotation-status \
+  --key-id "$(aws kms describe-key --key-id alias/my-project/main --query 'KeyMetadata.KeyId' --output text)"
 ```
 
 ## Conclusion
 
-Create separate KMS keys per service or data classification rather than sharing a single key-this limits the blast radius if a key is compromised and enables independent key lifecycle management. Always enable automatic key rotation, which rotates the backing cryptographic material annually while preserving the key ARN and alias. Multi-region keys are essential for cross-region encrypted storage like Aurora Global Databases and Global S3 replication with KMS encryption.
+Create separate KMS keys per service or data classification rather than sharing a single key-this limits the blast radius if a key is compromised and enables independent key lifecycle management. For symmetric customer managed keys with AWS-generated key material, enable automatic key rotation so AWS KMS rotates the backing cryptographic material while preserving the key ARN and alias. Multi-region keys are useful when you need related KMS keys with shared key material across Regions.
