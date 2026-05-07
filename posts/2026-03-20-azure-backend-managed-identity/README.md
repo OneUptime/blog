@@ -8,7 +8,7 @@ Description: Learn how to configure the OpenTofu azurerm backend to authenticate
 
 ## Introduction
 
-Azure Managed Identity provides an identity for Azure resources (VMs, Container Apps, AKS pods) that eliminates the need to manage credentials. When OpenTofu runs on Azure-hosted infrastructure, Managed Identity is the most secure and operationally simple authentication method for the azurerm backend.
+Azure Managed Identity provides an identity for Azure resources such as VMs and Azure Container Instances that eliminates the need to manage credentials. For AKS workloads, the equivalent pattern is Microsoft Entra Workload ID. When OpenTofu runs on Azure-hosted infrastructure, Managed Identity is the most secure and operationally simple authentication method for the azurerm backend.
 
 ## Types of Managed Identities
 
@@ -85,14 +85,17 @@ resource "azurerm_container_group" "runner" {
     memory = "2"
 
     environment_variables = {
-      SUBSCRIPTION_ID = var.subscription_id
-      TENANT_ID       = var.tenant_id
+      ARM_USE_MSI         = "true"
+      ARM_USE_AZUREAD     = "true"
+      ARM_SUBSCRIPTION_ID = var.subscription_id
+      ARM_TENANT_ID       = var.tenant_id
+      ARM_CLIENT_ID       = azurerm_user_assigned_identity.terraform.client_id
     }
   }
 }
 ```
 
-### For AKS with Azure AD Workload Identity
+### For AKS with Microsoft Entra Workload ID
 
 ```yaml
 # Kubernetes ServiceAccount
@@ -105,6 +108,8 @@ metadata:
     azure.workload.identity/client-id: "<MANAGED_IDENTITY_CLIENT_ID>"
 ```
 
+Pods that use this service account must also include the label `azure.workload.identity/use: "true"`.
+
 ## Step 3: Configure the Backend for Managed Identity
 
 ```hcl
@@ -116,10 +121,11 @@ terraform {
     container_name       = "tfstate"
     key                  = "prod/terraform.tfstate"
 
-    # Use Managed Identity
-    use_msi         = true
-    subscription_id = "SUBSCRIPTION_ID"
-    tenant_id       = "TENANT_ID"
+    # Use Managed Identity with Entra ID auth to the state container
+    use_msi          = true
+    use_azuread_auth = true
+    subscription_id  = "SUBSCRIPTION_ID"
+    tenant_id        = "TENANT_ID"
 
     # For user-assigned MI, specify the client ID
     client_id = "MANAGED_IDENTITY_CLIENT_ID"
@@ -131,10 +137,13 @@ Or use environment variables:
 
 ```bash
 export ARM_USE_MSI=true
+export ARM_USE_AZUREAD=true
 export ARM_SUBSCRIPTION_ID="SUBSCRIPTION_ID"
 export ARM_TENANT_ID="TENANT_ID"
 export ARM_CLIENT_ID="MANAGED_IDENTITY_CLIENT_ID"  # User-assigned MI
 ```
+
+When running inside AKS with Workload Identity, use `use_aks_workload_identity = true` (or `ARM_USE_AKS_WORKLOAD_IDENTITY=true`) instead of `use_msi = true`.
 
 ## System-Assigned Managed Identity
 
@@ -166,9 +175,10 @@ terraform {
     container_name       = "tfstate"
     key                  = "prod/terraform.tfstate"
 
-    use_msi         = true
-    subscription_id = "SUBSCRIPTION_ID"
-    tenant_id       = "TENANT_ID"
+    use_msi          = true
+    use_azuread_auth = true
+    subscription_id  = "SUBSCRIPTION_ID"
+    tenant_id        = "TENANT_ID"
     # No client_id needed for system-assigned MI
   }
 }
@@ -178,25 +188,36 @@ terraform {
 
 ```yaml
 # GitHub Actions with Azure OIDC (preferred for GitHub-hosted runners)
-- name: Azure Login
-  uses: azure/login@v2
-  with:
-    client-id: ${{ secrets.AZURE_CLIENT_ID }}
-    tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-    subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+permissions:
+  id-token: write
+  contents: read
 
-- name: Setup OpenTofu
-  uses: opentofu/setup-opentofu@v1
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
 
-- name: Deploy
-  env:
-    ARM_USE_OIDC: true
-    ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-    ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-    ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-  run: |
-    tofu init
-    tofu apply -auto-approve
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+
+      - name: Deploy
+        env:
+          ARM_USE_OIDC: true
+          ARM_USE_AZUREAD: true
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          tofu init
+          tofu apply -auto-approve
 ```
 
 ## Conclusion
