@@ -83,7 +83,7 @@ helm upgrade my-redis bitnami/redis \
   --reuse-values
 ```
 
-The `--reuse-values` flag keeps your existing custom values and only applies the new chart defaults for new fields.
+The `--reuse-values` flag starts from the values in the current release and merges in any overrides you pass with flags like `--set` or `-f`.
 
 ### Upgrade with New Values
 
@@ -152,20 +152,20 @@ helm diff upgrade my-redis bitnami/redis \
 After clicking **Upgrade**, the Rancher UI shows the operation progress. Navigate to:
 
 1. **Apps > Installed Apps** to check the release status
-2. **Workloads > Deployments** to watch pods being updated
+2. **Workloads > Deployments** or **Workloads > StatefulSets** to watch workloads being updated
 3. **Workloads > Pods** to see individual pod health
 
 ### Via kubectl
 
 ```bash
 # Watch the rollout
-kubectl rollout status deployment/my-redis-master -n default
+kubectl rollout status statefulset/my-redis-master -n default
 
 # Check pod status
 kubectl get pods -l app.kubernetes.io/instance=my-redis -n default
 
-# View events
-kubectl get events -n default --sort-by=.lastTimestamp | tail -20
+# View recent events
+kubectl events -n default --for statefulset/my-redis-master
 ```
 
 ## Step 6: Verify the Upgrade
@@ -189,8 +189,8 @@ Test the application:
 # Port-forward and test
 kubectl port-forward svc/my-redis-master 6379:6379 -n default
 
-# In another terminal
-redis-cli ping
+# In another terminal, use the release password
+redis-cli -a YOUR_PASSWORD ping
 ```
 
 ## Handling Upgrade Failures
@@ -251,9 +251,9 @@ helm install my-redis-v2 bitnami/redis --version 19.0.0 -n default -f values.yam
 helm uninstall my-redis -n default
 ```
 
-### Canary Upgrade
+### Incremental Upgrade
 
-Use `--set` to minimize changes and test incrementally:
+Apply the version and value changes in smaller steps to reduce risk:
 
 ```bash
 # First, upgrade with minimal changes
