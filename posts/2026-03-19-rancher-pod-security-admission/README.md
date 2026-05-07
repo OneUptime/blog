@@ -6,11 +6,11 @@ Tags: Rancher, Kubernetes, Pod Security, Security, Permission, RBAC
 
 Description: A practical guide to configuring Pod Security Admission (PSA) in Rancher to enforce security standards for pod workloads.
 
-Pod Security Admission (PSA) replaced Pod Security Policies (PSP) starting in Kubernetes 1.25. PSA enforces the Pod Security Standards at the namespace level, controlling what security contexts and capabilities pods can use. Rancher provides tools to configure PSA across your clusters. This guide walks through setting up PSA effectively.
+Pod Security Admission (PSA) is the built-in replacement for Pod Security Policies (PSP), which were removed in Kubernetes 1.25. PSA enforces the Pod Security Standards at the namespace level, controlling what security contexts and capabilities pods can use. In Rancher, you can manage PSA with namespace labels and, in Rancher v2.7.2+, cluster-level PSA configuration templates. This guide walks through setting up PSA effectively.
 
 ## Prerequisites
 
-- Rancher v2.7+ managing Kubernetes 1.25+ clusters
+- Rancher v2.7.2+ managing Kubernetes 1.25+ clusters
 - Administrator or cluster owner access
 - Understanding of the three Pod Security Standards: Privileged, Baseline, and Restricted
 
@@ -30,16 +30,17 @@ Each level can be applied in three modes:
 
 ## Step 1: Check Current PSA Configuration
 
-Verify whether your cluster has PSA enabled:
+Verify your Kubernetes version and check whether namespaces already have PSA labels:
 
 ```bash
 # Check the Kubernetes version (PSA is stable in 1.25+)
-
-kubectl version --short
+kubectl version
 
 # Check namespace labels for existing PSA configuration
-kubectl get namespaces -o json | \
-  jq -r '.items[] | select(.metadata.labels["pod-security.kubernetes.io/enforce"] != null) | "\(.metadata.name): enforce=\(.metadata.labels["pod-security.kubernetes.io/enforce"])"'
+kubectl get namespaces \
+  -L pod-security.kubernetes.io/enforce \
+  -L pod-security.kubernetes.io/audit \
+  -L pod-security.kubernetes.io/warn
 ```
 
 ## Step 2: Configure PSA at the Namespace Level
@@ -66,11 +67,11 @@ This configuration enforces baseline security, audits against restricted standar
 
 ## Step 3: Configure PSA Through Rancher UI
 
-Rancher provides a UI for managing PSA on projects and namespaces:
+Rancher lets you edit namespace PSA labels through the UI:
 
 1. Navigate to your cluster in Rancher.
 2. Go to **Cluster > Projects/Namespaces**.
-3. Click on the namespace you want to configure.
+3. Find the namespace you want to configure and click **Edit Config**.
 4. Under **Labels**, add the PSA labels:
 
 ```plaintext
@@ -84,48 +85,19 @@ pod-security.kubernetes.io/warn = restricted
 
 ## Step 4: Configure PSA at the Cluster Level
 
-To set a default PSA level for the entire cluster, configure the admission controller:
+To set a default PSA level for the entire cluster, use Rancher's cluster-level PSA configuration:
 
-Create an admission configuration file:
-
-```yaml
-apiVersion: apiserver.config.k8s.io/v1
-kind: AdmissionConfiguration
-plugins:
-  - name: PodSecurity
-    configuration:
-      apiVersion: pod-security.admission.config.k8s.io/v1
-      kind: PodSecurityConfiguration
-      defaults:
-        enforce: "baseline"
-        enforce-version: "latest"
-        audit: "restricted"
-        audit-version: "latest"
-        warn: "restricted"
-        warn-version: "latest"
-      exemptions:
-        usernames: []
-        runtimeClasses: []
-        namespaces:
-          - kube-system
-          - cattle-system
-          - cattle-fleet-system
-          - cattle-impersonation-system
-          - rancher-operator-system
-```
-
-For RKE2 clusters managed by Rancher, place this in the cluster configuration:
+In Rancher v2.7.2+, the supported cluster-level workflow is to assign a Pod Security Admission configuration template. Rancher includes built-in templates such as `rancher-privileged` and `rancher-restricted`, and you can create custom templates when you need different defaults or exemptions.
 
 1. Go to the cluster's settings in Rancher.
-2. Edit the cluster YAML.
-3. Add the admission configuration under `spec.rkeConfig.machineGlobalConfig`:
+2. Create or edit the PSA template under **Cluster Management > Advanced > Pod Security Admissions**.
+3. Edit the cluster configuration and assign the template under **Pod Security Admission Configuration Template**.
+
+For RKE2 clusters managed by Rancher, the cluster YAML includes the template name like this:
 
 ```yaml
 spec:
-  rkeConfig:
-    machineGlobalConfig:
-      kube-apiserver-arg:
-        - "admission-control-config-file=/etc/rancher/rke2/psa.yaml"
+  defaultPodSecurityAdmissionConfigurationTemplateName: rancher-restricted
 ```
 
 ## Step 5: Set Up PSA for Rancher Projects
@@ -136,13 +108,13 @@ Apply PSA labels to all namespaces in a Rancher project consistently:
 #!/bin/bash
 # apply-psa-to-project.sh
 
-PROJECT_NAMESPACE="c-m-xxxxx"
+CLUSTER_ID="c-m-xxxxx"
 PROJECT_ID="p-xxxxx"
 PSA_LEVEL="baseline"
 
 # Get all namespaces in the project
 NAMESPACES=$(kubectl get namespaces -o json | \
-  jq -r ".items[] | select(.metadata.annotations[\"field.cattle.io/projectId\"] == \"$PROJECT_NAMESPACE:$PROJECT_ID\") | .metadata.name")
+  jq -r ".items[] | select(.metadata.annotations[\"field.cattle.io/projectId\"] == \"$CLUSTER_ID:$PROJECT_ID\") | .metadata.name")
 
 for ns in $NAMESPACES; do
   echo "Applying PSA labels to namespace: $ns"
@@ -193,7 +165,8 @@ metadata:
 spec:
   containers:
     - name: test
-      image: nginx
+      image: busybox:1.36
+      command: ["sh", "-c", "sleep 3600"]
       securityContext:
         allowPrivilegeEscalation: false
         runAsNonRoot: true
@@ -212,24 +185,15 @@ kubectl apply -f test-compliant.yaml
 
 ## Step 7: Exempt System Namespaces
 
-Rancher and Kubernetes system namespaces need to run privileged workloads. Exempt them:
+Rancher and Kubernetes system namespaces need exemptions when you use a restrictive cluster-wide PSA template. Add them to the template's `exemptions.namespaces` list instead of relying only on namespace labels.
 
-```bash
-# Exempt Rancher system namespaces
-for ns in kube-system cattle-system cattle-fleet-system cattle-impersonation-system; do
-  kubectl label namespace $ns \
-    pod-security.kubernetes.io/enforce=privileged \
-    pod-security.kubernetes.io/audit=privileged \
-    pod-security.kubernetes.io/warn=privileged \
-    --overwrite
-done
-```
+The exact list depends on which Rancher features and add-ons are installed. Rancher's sample restricted configuration includes namespaces such as `kube-system`, `kube-public`, `kube-node-lease`, `cattle-system`, `cattle-fleet-system`, `cattle-impersonation-system`, `fleet-default`, `fleet-local`, `cert-manager`, `cis-operator-system`, `compliance-operator-system`, `longhorn-system`, and `tigera-operator`.
 
 ## Step 8: Roll Out PSA Gradually
 
 Use a phased approach to avoid disrupting existing workloads:
 
-**Phase 1 - Audit only:**
+**Phase 1 - Warn and audit only:**
 
 ```bash
 kubectl label namespace production \
@@ -237,14 +201,16 @@ kubectl label namespace production \
   pod-security.kubernetes.io/warn=baseline
 ```
 
-Review the audit logs and warnings:
+Review warnings and preview enforcement:
 
 ```bash
-# Check for PSA violations in the audit log
-kubectl get events -n production --field-selector reason=FailedCreate | grep "violates PodSecurity"
+# Create a test workload and review the warning returned by kubectl
+kubectl apply -f test-privileged.yaml
 
-# Check warnings in recent pod creations
-kubectl logs -n kube-system -l component=kube-apiserver | grep "PodSecurity"
+# Preview the impact of enforcing baseline without changing the namespace yet
+kubectl label --dry-run=server --overwrite namespace production \
+  pod-security.kubernetes.io/enforce=baseline \
+  pod-security.kubernetes.io/enforce-version=latest
 ```
 
 **Phase 2 - Warn and audit with restricted, enforce baseline:**
@@ -270,9 +236,8 @@ kubectl label namespace production \
 Set up monitoring for PSA violations:
 
 ```bash
-# Check for audit annotations on pods
-kubectl get pods -n production -o json | \
-  jq -r '.items[] | select(.metadata.annotations["pod-security.kubernetes.io/audit-violations"] != null) | "\(.metadata.name): \(.metadata.annotations["pod-security.kubernetes.io/audit-violations"])"'
+# On RKE2 clusters with API audit logging enabled, look for PSA audit annotations
+grep 'pod-security.kubernetes.io/audit-violations' /var/lib/rancher/rke2/server/logs/audit.log
 ```
 
 ## Step 10: Document Exemption Procedures
@@ -303,8 +268,8 @@ metadata:
 
 ## Best Practices
 
-- **Start with audit mode**: Begin by auditing in restricted mode to identify violations before enforcing anything.
-- **Exempt system namespaces**: Always exempt Rancher and Kubernetes system namespaces.
+- **Start with warn and audit**: Begin by auditing and warning in restricted or baseline mode to identify violations before enforcing anything.
+- **Exempt system namespaces**: Always exempt the Rancher and cluster add-on namespaces required by your environment.
 - **Use baseline as the minimum**: Enforce at least the baseline standard for all user-facing namespaces.
 - **Target restricted for production**: Work toward restricted enforcement for production workloads.
 - **Phase the rollout**: Move gradually from audit to warn to enforce.
@@ -313,4 +278,4 @@ metadata:
 
 ## Conclusion
 
-Pod Security Admission in Rancher provides a built-in mechanism for enforcing pod security standards across your clusters. By configuring PSA at the namespace and cluster level, exempting system namespaces, and rolling out enforcement gradually, you can harden your workloads without disrupting existing applications. Start with audit mode, fix violations, and progressively tighten enforcement to reach the restricted standard for production workloads.
+Pod Security Admission in Rancher lets you enforce pod security standards with namespace labels and cluster-level PSA templates. By configuring PSA at the namespace and cluster level, exempting required system namespaces, and rolling out enforcement gradually, you can harden your workloads without disrupting existing applications. Start with warn and audit, fix violations, and progressively tighten enforcement to reach the restricted standard for production workloads.
