@@ -4,14 +4,14 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, DHCPv6, IPv6, Linux, Network Services, Automation
 
-Description: A guide to deploying and configuring ISC DHCPv6 servers on Linux using Ansible playbooks and templates.
+Description: A guide to deploying and configuring ISC DHCPv6 servers on Debian- and Red Hat-family Linux using Ansible playbooks and templates.
 
-DHCPv6 provides stateful IPv6 address assignment and DNS configuration to clients, complementing SLAAC for networks that require centralized address tracking. This guide uses Ansible to deploy and configure `isc-dhcp-server` for DHCPv6.
+DHCPv6 provides stateful IPv6 address assignment and DNS configuration to clients, complementing SLAAC for networks that require centralized address tracking. This guide uses Ansible to deploy and configure ISC DHCP for DHCPv6 on Debian- and Red Hat-family Linux hosts.
 
 ## Playbook Structure
 
 ```text
-dhcpv6-role/
+dhcpv6_role/
 ├── tasks/
 │   └── main.yml
 ├── templates/
@@ -50,11 +50,21 @@ dhcpv6_valid_lifetime: 7200
     name: "{{ 'isc-dhcp-server' if ansible_os_family == 'Debian' else 'dhcp-server' }}"
     state: present
 
-- name: Configure DHCPv6 listening interface
+- name: Configure DHCPv6 listening interface on Debian
   ansible.builtin.lineinfile:
-    path: "{{ '/etc/default/isc-dhcp-server' if ansible_os_family == 'Debian' else '/etc/sysconfig/dhcpd' }}"
+    path: /etc/default/isc-dhcp-server
     regexp: '^INTERFACESv6='
     line: "INTERFACESv6=\"{{ dhcpv6_interface }}\""
+  when: ansible_os_family == 'Debian'
+  notify: Restart DHCPv6
+
+- name: Configure DHCPv6 listening interface on Red Hat
+  ansible.builtin.lineinfile:
+    path: /etc/sysconfig/dhcpd6
+    regexp: '^DHCPDARGS='
+    line: "DHCPDARGS=\"{{ dhcpv6_interface }}\""
+    create: true
+  when: ansible_os_family == 'RedHat'
   notify: Restart DHCPv6
 
 - name: Write DHCPv6 configuration file
@@ -68,8 +78,8 @@ dhcpv6_valid_lifetime: 7200
   notify: Restart DHCPv6
 
 - name: Enable and start DHCPv6 service
-  ansible.builtin.systemd:
-    name: "{{ 'isc-dhcp-server6' if ansible_os_family == 'Debian' else 'dhcpd6' }}"
+  ansible.builtin.systemd_service:
+    name: "{{ 'isc-dhcp-server' if ansible_os_family == 'Debian' else 'dhcpd6' }}"
     state: started
     enabled: true
 ```
@@ -80,7 +90,7 @@ dhcpv6_valid_lifetime: 7200
 # templates/dhcpd6.conf.j2 - ISC DHCPv6 server configuration
 # Managed by Ansible - do not edit manually
 
-default-lease-time {{ dhcpv6_preferred_lifetime }};
+default-lease-time {{ dhcpv6_valid_lifetime }};
 preferred-lifetime {{ dhcpv6_preferred_lifetime }};
 max-lease-time {{ dhcpv6_valid_lifetime }};
 
@@ -109,8 +119,8 @@ host {{ host.name }} {
 # handlers/main.yml
 ---
 - name: Restart DHCPv6
-  ansible.builtin.systemd:
-    name: "{{ 'isc-dhcp-server6' if ansible_os_family == 'Debian' else 'dhcpd6' }}"
+  ansible.builtin.systemd_service:
+    name: "{{ 'isc-dhcp-server' if ansible_os_family == 'Debian' else 'dhcpd6' }}"
     state: restarted
 ```
 
@@ -123,13 +133,13 @@ host {{ host.name }} {
   hosts: dhcp_servers
   become: true
   vars:
-    dhcpv6_subnet: "2001:db8:production::/64"
-    dhcpv6_range_start: "2001:db8:production::100"
-    dhcpv6_range_end: "2001:db8:production::900"
+    dhcpv6_subnet: "2001:db8:100::/64"
+    dhcpv6_range_start: "2001:db8:100::100"
+    dhcpv6_range_end: "2001:db8:100::900"
     dhcpv6_static_hosts:
       - name: "print-server"
         duid: "00:03:00:01:aa:bb:cc:dd:ee:ff"
-        ipv6_address: "2001:db8:production::10"
+        ipv6_address: "2001:db8:100::10"
   roles:
     - dhcpv6_role
 ```
@@ -139,11 +149,11 @@ host {{ host.name }} {
 ```bash
 ansible-playbook site.yml -i inventory.ini
 
-# Verify the service is running
-ansible dhcp_servers -m systemd -a "name=isc-dhcp-server6" --become
+# Verify the DHCPv6 service is active
+ansible dhcp_servers -m ansible.builtin.shell -a "systemctl is-active isc-dhcp-server || systemctl is-active dhcpd6" --become
 
 # Check DHCPv6 leases
-ansible dhcp_servers -m command -a "cat /var/lib/dhcp/dhcpd6.leases" --become
+ansible dhcp_servers -m ansible.builtin.shell -a "cat /var/lib/dhcp/dhcpd6.leases 2>/dev/null || cat /var/lib/dhcpd/dhcpd6.leases" --become
 ```
 
 Ansible ensures DHCPv6 server configuration is consistent, validated before deployment, and easily updated across multiple DHCP servers with a single playbook run.
