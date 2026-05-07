@@ -26,14 +26,6 @@ Create a dedicated bind account in FreeIPA for Rancher:
 
 ```bash
 # Create a system account for Rancher
-
-ipa user-add svc-rancher \
-  --first="Rancher" \
-  --last="Service" \
-  --shell=/sbin/nologin \
-  --password
-
-# Or create a service account using LDAP directly
 ldapadd -x -H ldaps://ipa.example.com:636 \
   -D "cn=Directory Manager" \
   -w "<dm-password>" <<EOF
@@ -53,8 +45,8 @@ Determine your FreeIPA LDAP structure:
 
 ```bash
 # Find the base DN
-ipa env realm
-# Output: EXAMPLE.COM -> base DN is dc=example,dc=com
+ipa env basedn
+# Output: basedn: dc=example,dc=com
 
 # List user container
 ldapsearch -x -H ldaps://ipa.example.com:636 \
@@ -126,21 +118,20 @@ Set up the user search parameters for FreeIPA:
 
 ```plaintext
 User Search Base: cn=users,cn=accounts,dc=example,dc=com
-Username Attribute: uid
-User Login Attribute: uid
-User Object Class: inetOrgPerson
-User Name Attribute: cn
+Object Class: inetOrgPerson
+Username Attribute: cn
+Login Attribute: uid
 User Member Attribute: memberOf
 Search Attribute: uid|cn|mail
 User Enabled Attribute: nsAccountLock
-User Disabled Bit Mask: (leave blank)
+Disabled Status Bitmask: TRUE
 ```
 
 Note the FreeIPA-specific settings:
 
-- FreeIPA uses `inetOrgPerson` as the user object class.
+- FreeIPA user entries include `inetOrgPerson`.
 - The `uid` attribute is used for login.
-- The `nsAccountLock` attribute indicates disabled accounts.
+- The `nsAccountLock` attribute is set to `TRUE` for disabled accounts.
 
 ## Step 6: Configure Group Search Settings
 
@@ -148,27 +139,25 @@ Set up the group search parameters:
 
 ```plaintext
 Group Search Base: cn=groups,cn=accounts,dc=example,dc=com
-Group Object Class: groupofnames
-Group Name Attribute: cn
-Group DN Attribute: entryDN
-Group Member User Attribute: dn
+Object Class: groupofnames
+Name Attribute: cn
+Group Member User Attribute: entryDN
 Group Member Mapping Attribute: member
-Group Search Attribute: cn
+Search Attribute: cn
+Group DN Attribute: entryDN
 Nested Group Membership: ☐ Disabled
 ```
 
-FreeIPA groups use `groupofnames` as the object class and `member` for group membership.
+FreeIPA groups use `groupofnames` as one of their object classes and `member` for group membership, so Rancher should match memberships using DN-valued attributes such as `entryDN`.
 
 ## Step 7: Test the Configuration
 
 Test the FreeIPA authentication:
 
-1. Click the **Test** button.
-2. Enter a valid FreeIPA username and password.
-3. Verify the returned information:
-   - Username
-   - Display name
-   - Group memberships
+1. Click **Enable**.
+2. Enter a valid FreeIPA username and password for the account that should be mapped to Rancher's local principal account.
+3. Click **Authenticate With OpenLDAP**.
+4. Verify that authentication succeeds.
 
 If the test fails:
 
@@ -187,10 +176,7 @@ kubectl logs -l app=rancher -n cattle-system --tail=200 | grep -i "ldap\|auth"
 
 ## Step 8: Enable FreeIPA Authentication
 
-After successful testing:
-
-1. Click **Enable** to activate OpenLDAP (FreeIPA) authentication.
-2. Confirm the action.
+After successful authentication, Rancher enables OpenLDAP (FreeIPA) authentication automatically and maps the authenticated FreeIPA user to the local principal account.
 
 ## Step 9: Map FreeIPA Groups to Rancher Roles
 
@@ -224,7 +210,7 @@ ipa group-add-member rancher-users --users=dev1,dev2,dev3
 
 ### Disabled Accounts
 
-FreeIPA uses the `nsAccountLock` attribute to disable accounts. When set to `TRUE`, the user cannot log in. Rancher respects this if the User Enabled Attribute is configured correctly.
+FreeIPA uses the `nsAccountLock` attribute to disable accounts. When set to `TRUE`, the user cannot log in. Rancher respects this when `User Enabled Attribute` is set to `nsAccountLock` and `Disabled Status Bitmask` is set to `TRUE`.
 
 ```bash
 # Disable a user in FreeIPA
@@ -245,18 +231,10 @@ ipa passwd
 
 ### Multiple FreeIPA Replicas
 
-For high availability, configure Rancher to connect to a load-balanced FreeIPA endpoint:
+For high availability, configure Rancher to connect to a load-balanced FreeIPA endpoint or virtual IP:
 
 ```plaintext
 Hostname: ipa-lb.example.com
-```
-
-Or configure DNS-based failover:
-
-```bash
-# FreeIPA SRV records
-_ldaps._tcp.example.com. IN SRV 0 100 636 ipa1.example.com.
-_ldaps._tcp.example.com. IN SRV 1 100 636 ipa2.example.com.
 ```
 
 ## Best Practices
