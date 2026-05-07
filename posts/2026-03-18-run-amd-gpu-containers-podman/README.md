@@ -18,12 +18,11 @@ AMD has made significant strides in the GPU computing space with its ROCm (Radeo
 
 ### Supported Hardware
 
-AMD GPU compute support through ROCm is available on specific GPU families. Check the ROCm documentation for the latest supported hardware list, but generally the following are supported:
+AMD GPU compute support through ROCm is available on specific GPU models. Check the ROCm documentation for the latest supported hardware list, but generally the following are supported:
 
 - AMD Instinct series (MI100, MI210, MI250, MI300)
-- AMD Radeon RX 7000 series (limited ROCm support)
-- AMD Radeon RX 6000 series (limited ROCm support)
-- AMD Radeon Pro series
+- Selected AMD Radeon RX 7000 series GPUs (limited ROCm support)
+- Selected AMD Radeon Pro series GPUs
 
 ### Verify Your AMD GPU
 
@@ -51,8 +50,8 @@ sudo apt-get install -y ./amdgpu-install_6.0.60000-1_all.deb
 # Install the AMDGPU driver with ROCm support
 sudo amdgpu-install --usecase=rocm
 
-# On RHEL/Fedora
-sudo dnf install -y https://repo.radeon.com/amdgpu-install/6.0/rhel/9.3/amdgpu-install-6.0.60000-1.el9.noarch.rpm
+# On RHEL 9.3
+sudo yum install -y https://repo.radeon.com/amdgpu-install/6.0/rhel/9.3/amdgpu-install-6.0.60000-1.el9.noarch.rpm
 sudo amdgpu-install --usecase=rocm
 
 # Reboot after installation
@@ -103,6 +102,7 @@ The key device files for AMD GPU compute are:
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
+  --group-add keep-groups \
   rocm/dev-ubuntu-22.04:6.0 \
   rocm-smi
 
@@ -116,6 +116,7 @@ podman run --rm -it \
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
+  --group-add keep-groups \
   rocm/dev-ubuntu-22.04:6.0 \
   rocminfo
 
@@ -123,6 +124,7 @@ podman run --rm -it \
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
+  --group-add keep-groups \
   rocm/dev-ubuntu-22.04:6.0 \
   clinfo
 ```
@@ -184,6 +186,7 @@ EOF
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
+  --group-add keep-groups \
   -v /tmp/amd-gpu-demo:/workspace:Z \
   rocm/pytorch:rocm6.0_ubuntu22.04_py3.10_pytorch_2.1.1 \
   python3 /workspace/test_amd_gpu.py
@@ -245,6 +248,7 @@ EOF
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
+  --group-add keep-groups \
   -v /tmp/opencl-demo:/workspace:Z \
   rocm/dev-ubuntu-22.04:6.0 \
   bash -c "pip install pyopencl && python3 /workspace/test_opencl.py"
@@ -263,6 +267,7 @@ ls /dev/dri/render*
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri/renderD128:/dev/dri/renderD128 \
+  --group-add keep-groups \
   rocm/dev-ubuntu-22.04:6.0 \
   rocm-smi
 
@@ -270,6 +275,7 @@ podman run --rm -it \
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
+  --group-add keep-groups \
   -e ROCR_VISIBLE_DEVICES=0 \
   rocm/pytorch:rocm6.0_ubuntu22.04_py3.10_pytorch_2.1.1 \
   python3 -c "import torch; print(f'Visible GPUs: {torch.cuda.device_count()}')"
@@ -289,6 +295,7 @@ rocm-smi --showmeminfo vram
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
+  --group-add keep-groups \
   rocm/dev-ubuntu-22.04:6.0 \
   rocm-smi --showuse
 ```
@@ -297,6 +304,7 @@ podman run --rm -it \
 
 ```bash
 # Rootless podman works with AMD GPUs if the user has correct group membership
+# and the container keeps the user's supplementary groups
 # Verify permissions
 id | grep -o 'render\|video'
 
@@ -307,6 +315,12 @@ ls -la /dev/kfd /dev/dri/renderD128
 # The render group should have rw access
 # crw-rw---- 1 root render 234, 0 ... /dev/kfd
 # crw-rw----+ 1 root render 226, 128 ... /dev/dri/renderD128
+
+# Preserve supplementary groups for rootless containers
+podman run --rm --group-add keep-groups \
+  --device /dev/kfd:/dev/kfd \
+  --device /dev/dri:/dev/dri \
+  rocm/dev-ubuntu-22.04:6.0 rocminfo
 ```
 
 ## Troubleshooting
@@ -319,9 +333,9 @@ lsmod | grep amdgpu
 sudo modprobe amdgpu
 
 # Error: "Permission denied" on /dev/kfd
-# Add user to render group
+# Add user to render group and preserve supplementary groups
 sudo usermod -aG render $USER
-# Log out and back in
+# Log out and back in, then use --group-add keep-groups with rootless podman
 
 # Check if ROCm can see your GPU
 /opt/rocm/bin/rocminfo 2>&1 | head -30
@@ -337,4 +351,4 @@ dnf list installed | grep rocm
 
 ## Conclusion
 
-Running AMD GPU containers with Podman is well-supported through the standard Linux DRI device interface and the ROCm platform. By passing `/dev/kfd` and `/dev/dri` into your containers, you get full access to AMD GPU compute capabilities. The ROCm ecosystem provides pre-built container images for popular frameworks like PyTorch and TensorFlow, making it straightforward to run GPU-accelerated workloads. With proper user group configuration, rootless Podman works seamlessly with AMD GPUs, giving you secure and isolated GPU computing without root privileges.
+Running AMD GPU containers with Podman is well-supported through the standard Linux DRI device interface and the ROCm platform. By passing `/dev/kfd` and `/dev/dri` into your containers, you get access to AMD GPU compute capabilities. The ROCm ecosystem provides pre-built container images for popular frameworks like PyTorch and TensorFlow, making it straightforward to run GPU-accelerated workloads. With proper user group configuration and supplementary group handling, rootless Podman works with AMD GPUs, giving you secure and isolated GPU computing without root privileges.
