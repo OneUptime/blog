@@ -26,7 +26,7 @@ sequenceDiagram
 
 ## ARP Packet Structure
 
-ARP packets are 28 bytes for IPv4/Ethernet:
+The ARP message body is 28 bytes for IPv4 over Ethernet:
 
 | Field | Size | Description |
 |-------|------|-------------|
@@ -37,14 +37,14 @@ ARP packets are 28 bytes for IPv4/Ethernet:
 | Operation | 2 bytes | 1 = Request, 2 = Reply |
 | Sender MAC | 6 bytes | Sender's MAC address |
 | Sender IP | 4 bytes | Sender's IPv4 address |
-| Target MAC | 6 bytes | Target MAC (00:00... in request) |
+| Target MAC | 6 bytes | Target MAC (typically 00:00... in a request) |
 | Target IP | 4 bytes | Target IPv4 address |
 
 ## ARP Request
 
 - **Destination MAC**: `ff:ff:ff:ff:ff:ff` (broadcast)
 - **Operation**: 1 (Request)
-- **Target MAC**: `00:00:00:00:00:00` (unknown, asking)
+- **Target MAC**: `00:00:00:00:00:00` (typical value when unknown)
 - **Target IP**: IP being resolved
 
 ```text
@@ -79,7 +79,7 @@ from scapy.all import ARP, Ether, srp, sendp
 
 # Build ARP Request
 
-def arp_request(target_ip, iface='eth0'):
+def arp_request(target_ip, iface=None):
     ether = Ether(dst='ff:ff:ff:ff:ff:ff')  # broadcast
     arp = ARP(pdst=target_ip, op=1)          # op=1: request
     packet = ether / arp
@@ -90,7 +90,7 @@ def arp_request(target_ip, iface='eth0'):
 arp_request('192.168.1.20')
 
 # Craft an ARP Reply (for testing)
-def send_arp_reply(target_ip, target_mac, spoofed_ip, iface='eth0'):
+def send_arp_reply(target_ip, target_mac, spoofed_ip, iface=None):
     pkt = Ether(dst=target_mac) / ARP(
         op=2,          # reply
         psrc=spoofed_ip,
@@ -117,7 +117,7 @@ tcpdump -n -e 'arp[6:2] = 2'
 
 - ARP requests are broadcast; ARP replies are unicast.
 - The Operation field (1=request, 2=reply) distinguishes message types.
-- The Target MAC in a request is all zeros because it is not yet known.
+- The Target MAC in a request is typically all zeros because it is not yet known.
 - Both sender MAC and IP are included so the target can update its own cache upon receiving the request.
 
 **Related Reading:**
