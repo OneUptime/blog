@@ -220,7 +220,7 @@ Prevent containers from consuming excessive resources:
 podman run -d \
   --name api \
   --memory=512m \
-  --memory-swap=512m \
+  --memory-swap=1g \
   --cpus=1.0 \
   --pids-limit=100 \
   --ulimit nofile=1024:2048 \
@@ -271,7 +271,7 @@ podman run -d \
   --security-opt=no-new-privileges \
   --security-opt seccomp=/usr/share/containers/seccomp.json \
   --memory=256m \
-  --memory-swap=256m \
+  --memory-swap=512m \
   --cpus=0.5 \
   --pids-limit=50 \
   --tmpfs /tmp:size=10m \
@@ -293,12 +293,12 @@ ContainerName=hardened-api
 User=1000:1000
 DropCapability=ALL
 ReadOnly=true
+SeccompProfile=/usr/share/containers/seccomp.json
 SecurityLabelType=container_t
 Volume=./config:/etc/app/config:ro,Z
 Volume=app-data:/app/data:Z
 Network=app-internal.network
-PodmanArgs=--security-opt=no-new-privileges --memory=256m --cpus=0.5 --pids-limit=50
-AddDevice=
+PodmanArgs=--security-opt=no-new-privileges --memory=256m --memory-swap=512m --cpus=0.5 --pids-limit=50
 HealthCmd=curl -f http://localhost:3000/health || exit 1
 HealthInterval=30s
 
