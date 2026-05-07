@@ -71,15 +71,14 @@ resource "azurerm_storage_table" "tables" {
 }
 ```
 
-## Step 4: Table Access Control Lists (ACLs)
+## Step 4: Insert Table Entities
 
-You can define stored access policies for tables:
+You can also seed entities into a table:
 
 ```hcl
-# Create a stored access policy for table access (used with SAS tokens)
+# Insert a sample entity into the Users table
 resource "azurerm_storage_table_entity" "example" {
-  storage_account_name = azurerm_storage_account.storage.name
-  table_name           = azurerm_storage_table.users.name
+  storage_table_id = azurerm_storage_table.users.id
 
   partition_key = "US"
   row_key       = "user-001"
