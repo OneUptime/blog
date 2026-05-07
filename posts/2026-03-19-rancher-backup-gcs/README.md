@@ -20,27 +20,30 @@ Google Cloud Storage (GCS) offers an S3-compatible interoperability mode that wo
 Create a bucket for Rancher backups:
 
 ```bash
-gsutil mb -p YOUR_PROJECT_ID -l us-central1 -b on gs://rancher-backups-production
+gcloud storage buckets create gs://rancher-backups-production \
+  --project=YOUR_PROJECT_ID \
+  --location=us-central1 \
+  --uniform-bucket-level-access
 ```
 
 Enable versioning for additional safety:
 
 ```bash
-gsutil versioning set on gs://rancher-backups-production
+gcloud storage buckets update gs://rancher-backups-production --versioning
 ```
 
 ## Step 2: Enable S3 Interoperability
 
-GCS provides an S3-compatible API through its interoperability settings. Enable interop access in the Google Cloud Console:
+GCS provides an S3-compatible API through its interoperability settings. After creating the service account in the next step, create an HMAC key for it in the Google Cloud Console:
 
 1. Go to **Cloud Storage** > **Settings** > **Interoperability**.
-2. Click **Create a key for a service account** or use the default project keys.
-3. Note the **Access Key** and **Secret** that are generated.
+2. Click **Create a key for a service account**.
+3. Select the service account, then note the **Access Key** and **Secret** that are generated.
 
-Alternatively, create interoperability keys using gsutil:
+Alternatively, create interoperability keys using the gcloud CLI:
 
 ```bash
-gsutil hmac create YOUR_SERVICE_ACCOUNT@YOUR_PROJECT.iam.gserviceaccount.com
+gcloud storage hmac create YOUR_SERVICE_ACCOUNT@YOUR_PROJECT.iam.gserviceaccount.com
 ```
 
 This outputs an access key and secret.
@@ -58,15 +61,15 @@ gcloud iam service-accounts create rancher-backup \
 Grant the necessary permissions:
 
 ```bash
-gsutil iam ch \
-  serviceAccount:rancher-backup@YOUR_PROJECT_ID.iam.gserviceaccount.com:objectAdmin \
-  gs://rancher-backups-production
+gcloud storage buckets add-iam-policy-binding gs://rancher-backups-production \
+  --member=serviceAccount:rancher-backup@YOUR_PROJECT_ID.iam.gserviceaccount.com \
+  --role=roles/storage.objectAdmin
 ```
 
 Create HMAC keys for this service account:
 
 ```bash
-gsutil hmac create rancher-backup@YOUR_PROJECT_ID.iam.gserviceaccount.com
+gcloud storage hmac create rancher-backup@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
 Save the access key ID and secret from the output.
@@ -92,7 +95,7 @@ kind: Backup
 metadata:
   name: rancher-backup-gcs
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 10
   storageLocation:
     s3:
@@ -120,7 +123,7 @@ kind: Backup
 metadata:
   name: rancher-daily-gcs-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 30
   schedule: "0 2 * * *"
   storageLocation:
@@ -150,7 +153,7 @@ kubectl get backups.resources.cattle.io rancher-backup-gcs -o yaml
 List backups in the GCS bucket:
 
 ```bash
-gsutil ls gs://rancher-backups-production/backups/
+gcloud storage ls gs://rancher-backups-production/backups/
 ```
 
 ## Step 8: Configure Lifecycle Rules
@@ -193,18 +196,25 @@ cat > lifecycle.json << 'EOF'
 }
 EOF
 
-gsutil lifecycle set lifecycle.json gs://rancher-backups-production
+gcloud storage buckets update gs://rancher-backups-production \
+  --lifecycle-file=lifecycle.json
 ```
 
 ## Step 9: Enable Bucket Lock for Compliance
 
-If compliance requires immutable backups, enable a retention policy:
+If compliance requires immutable backups, first set a retention policy:
 
 ```bash
-gsutil retention set 30d gs://rancher-backups-production
+gcloud storage buckets update gs://rancher-backups-production --retention-period=30d
 ```
 
-This prevents any backup from being deleted for 30 days.
+To enable Bucket Lock, permanently lock the retention policy:
+
+```bash
+gcloud storage buckets update gs://rancher-backups-production --lock-retention-period
+```
+
+This prevents backup objects younger than 30 days from being deleted or replaced. Locking the retention policy is irreversible.
 
 ## Troubleshooting
 
@@ -213,7 +223,7 @@ This prevents any backup from being deleted for 30 days.
 Verify the HMAC keys are active:
 
 ```bash
-gsutil hmac list
+gcloud storage hmac list
 ```
 
 If keys are inactive, create new ones and update the Kubernetes secret.
@@ -224,15 +234,15 @@ Make sure to use `storage.googleapis.com` as the endpoint. Do not include `https
 
 ### Permission Denied
 
-Verify the service account has `objectAdmin` permissions on the bucket:
+Verify the service account has `roles/storage.objectAdmin` permissions on the bucket:
 
 ```bash
-gsutil iam get gs://rancher-backups-production
+gcloud storage buckets get-iam-policy gs://rancher-backups-production
 ```
 
 ### Region Configuration
 
-GCS does not enforce region validation in the S3-compatible API the same way AWS does. You can use any valid GCS region string, but the bucket's actual location is determined when it was created.
+Rancher still requires a `region` value for S3-compatible storage. Use the actual bucket location, such as `us-central1`, to match the bucket you created.
 
 ## Conclusion
 
