@@ -17,6 +17,7 @@ Environment variables are the simplest way to supply AWS credentials without mod
 ```bash
 export AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
 export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+export AWS_REGION=us-east-1
 export AWS_DEFAULT_REGION=us-east-1
 ```
 
@@ -52,6 +53,7 @@ aws sts get-caller-identity
 #!/bin/bash
 export AWS_ACCESS_KEY_ID="${CI_AWS_ACCESS_KEY_ID}"
 export AWS_SECRET_ACCESS_KEY="${CI_AWS_SECRET_ACCESS_KEY}"
+export AWS_REGION="us-east-1"
 export AWS_DEFAULT_REGION="us-east-1"
 
 aws s3 ls s3://my-bucket
@@ -62,31 +64,24 @@ aws s3 ls s3://my-bucket
 ## Use in Docker
 
 ```dockerfile
-ENV AWS_ACCESS_KEY_ID=""
-ENV AWS_SECRET_ACCESS_KEY=""
+ENV AWS_REGION="us-east-1"
 ENV AWS_DEFAULT_REGION="us-east-1"
 ```
 
 Or pass at runtime:
 
 ```bash
-docker run -e AWS_ACCESS_KEY_ID=... -e AWS_SECRET_ACCESS_KEY=... myimage
+docker run -e AWS_ACCESS_KEY_ID=... -e AWS_SECRET_ACCESS_KEY=... -e AWS_REGION=us-east-1 -e AWS_DEFAULT_REGION=us-east-1 myimage
 ```
 
 ---
 
 ## Credential Precedence
 
-AWS uses this lookup order:
-1. Environment variables
-2. `~/.aws/credentials` file
-3. IAM instance profile / ECS task role
-4. IAM role for service accounts (EKS)
-
-Environment variables take highest priority (after explicit code overrides), making them ideal for overriding config file credentials during testing.
+AWS SDKs and the AWS CLI do not all use the same complete credential chain, but environment variables are checked before shared credentials and config files. Explicit CLI parameters or code-level settings can still override them, and the exact order of role-based providers such as EKS web identity, ECS task roles, and EC2 instance profiles varies by SDK and tool.
 
 ---
 
 ## Summary
 
-Set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_DEFAULT_REGION` to authenticate any AWS SDK or CLI tool. Add `AWS_SESSION_TOKEN` for temporary credentials. Environment variable credentials take precedence over config file credentials, making them well-suited for CI/CD pipelines where secrets are injected as environment variables.
+Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` to authenticate with AWS, then set a Region. For broad AWS SDK and CLI compatibility, set `AWS_REGION` and `AWS_DEFAULT_REGION`. Add `AWS_SESSION_TOKEN` for temporary credentials. Environment variable credentials take precedence over shared config file credentials, making them well-suited for CI/CD pipelines where secrets are injected as environment variables.
