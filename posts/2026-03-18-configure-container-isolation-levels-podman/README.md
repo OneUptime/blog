@@ -88,28 +88,15 @@ podman info --format '{{.Host.Security.SECCOMPProfilePath}}'
 ```
 
 ```bash
-# Create a restrictive seccomp profile
-cat > /tmp/strict-seccomp.json << 'EOF'
+# Create a custom seccomp profile that blocks the keyctl syscall
+cat > /tmp/block-keyctl-seccomp.json << 'EOF'
 {
-  "defaultAction": "SCMP_ACT_ERRNO",
+  "defaultAction": "SCMP_ACT_ALLOW",
   "architectures": ["SCMP_ARCH_X86_64"],
   "syscalls": [
     {
-      "names": [
-        "read", "write", "close", "fstat", "lseek", "mmap",
-        "mprotect", "munmap", "brk", "access", "pipe",
-        "select", "sched_yield", "dup2", "nanosleep",
-        "getpid", "socket", "connect", "accept", "sendto",
-        "recvfrom", "bind", "listen", "getsockname",
-        "getpeername", "clone", "execve", "exit", "wait4",
-        "openat", "exit_group", "epoll_create1", "epoll_ctl",
-        "epoll_wait", "futex", "set_robust_list", "fcntl",
-        "sigaltstack", "rt_sigaction", "rt_sigprocmask",
-        "gettid", "getuid", "getgid", "geteuid", "getegid",
-        "getcwd", "readlink", "arch_prctl", "set_tid_address",
-        "stat", "getrandom", "pread64", "ioctl"
-      ],
-      "action": "SCMP_ACT_ALLOW"
+      "names": ["keyctl"],
+      "action": "SCMP_ACT_ERRNO"
     }
   ]
 }
@@ -117,9 +104,9 @@ EOF
 
 # Run with the custom seccomp profile
 podman run --rm \
-  --security-opt seccomp=/tmp/strict-seccomp.json \
+  --security-opt seccomp=/tmp/block-keyctl-seccomp.json \
   docker.io/library/alpine:latest \
-  echo "Running with strict seccomp"
+  echo "Running with a custom seccomp profile"
 ```
 
 ## Maximum Isolation with User Namespaces
@@ -152,7 +139,7 @@ podman run --rm -d \
   --tmpfs /tmp:rw,size=32m,noexec,nosuid \
   --cap-drop=ALL \
   --security-opt no-new-privileges \
-  --security-opt seccomp=/tmp/strict-seccomp.json \
+  --security-opt seccomp=/tmp/block-keyctl-seccomp.json \
   --userns=auto \
   --memory=256m \
   --cpus=1 \
@@ -206,7 +193,7 @@ chmod +x compare-isolation.sh
 ```bash
 podman stop default-isolation standard-isolation max-isolation 2>/dev/null
 podman rm default-isolation standard-isolation max-isolation 2>/dev/null
-rm -f /tmp/strict-seccomp.json compare-isolation.sh
+rm -f /tmp/block-keyctl-seccomp.json compare-isolation.sh
 ```
 
 ## Summary
