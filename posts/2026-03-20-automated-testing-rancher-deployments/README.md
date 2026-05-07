@@ -8,11 +8,11 @@ Description: Set up automated testing pipelines for Rancher deployments using He
 
 ## Introduction
 
-Automated testing for Kubernetes deployments in Rancher ensures that each deployment is validated before reaching production. Testing runs at multiple gates: Helm chart tests validate the chart itself, smoke tests validate the deployed application, integration tests validate service interactions, and chaos tests validate resilience. This guide covers implementing all testing layers.
+Automated testing for Kubernetes deployments in Rancher ensures that each deployment is validated before reaching production. Testing runs at multiple gates: Helm chart tests validate the deployed release in-cluster, smoke tests validate the deployed application, integration tests validate service interactions, and chaos tests validate resilience. This guide covers implementing all testing layers.
 
 ## Step 1: Helm Chart Tests
 
-Helm tests run in-cluster after deployment to validate the chart:
+Helm tests run in-cluster after deployment to validate the release:
 
 ```yaml
 # templates/tests/connectivity-test.yaml
@@ -42,22 +42,19 @@ spec:
 ```
 
 ```bash
-# Run Helm tests after deployment
-helm test myapp --namespace production --timeout 5m
-
-# View test pod logs
-kubectl logs myapp-test -n production
+# Run Helm tests after deployment and include test pod logs
+helm test myapp --namespace production --timeout 5m --logs
 ```
 
 ## Step 2: Smoke Test Suite
 
 ```yaml
-# Smoke test CronJob (runs after each deployment)
+# Smoke test Job (runs after each deployment)
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: smoke-test-{{ .Release.Revision }}
-  namespace: production
+  namespace: {{ .Release.Namespace }}
   annotations:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
@@ -131,7 +128,8 @@ jobs:
             --namespace=staging \
             --env="TARGET=http://myapp.staging.svc" \
             --restart=Never \
-            --wait \
+            --attach \
+            --rm \
             --kubeconfig <(echo "${{ secrets.STAGING_KUBECONFIG }}" | base64 -d)
 
       - name: Deploy to production (if tests pass)
@@ -147,7 +145,7 @@ jobs:
 ## Step 4: Chaos Testing with Litmus
 
 ```yaml
-# ChaosEngine for pod kill test
+# ChaosEngine for pod delete test
 apiVersion: litmuschaos.io/v1alpha1
 kind: ChaosEngine
 metadata:
@@ -159,7 +157,7 @@ spec:
     applabel: "app=myapp"
     appkind: deployment
   engineState: active
-  chaosServiceAccount: litmus-admin
+  chaosServiceAccount: pod-delete-sa
   experiments:
     - name: pod-delete
       spec:
@@ -179,6 +177,8 @@ spec:
 #!/bin/bash
 # post_deploy_validate.sh
 
+set -e
+
 NAMESPACE=$1
 APP_NAME=$2
 EXPECTED_REPLICAS=$3
@@ -188,6 +188,7 @@ echo "Validating deployment: $APP_NAME in $NAMESPACE"
 # 1. All pods ready
 READY=$(kubectl get deployment $APP_NAME -n $NAMESPACE \
   -o jsonpath='{.status.readyReplicas}')
+READY=${READY:-0}
 if [ "$READY" -ne "$EXPECTED_REPLICAS" ]; then
   echo "ERROR: Expected $EXPECTED_REPLICAS ready pods, got $READY"
   kubectl describe deployment $APP_NAME -n $NAMESPACE
@@ -205,10 +206,10 @@ for count in $CRASHES; do
   fi
 done
 
-# 3. Resource utilization in bounds
-CPU_REQUEST=$(kubectl top pods -n $NAMESPACE -l app=$APP_NAME \
+# 3. Report current CPU usage
+CPU_USAGE=$(kubectl top pod -n $NAMESPACE -l app=$APP_NAME \
   --no-headers | awk '{sum+=$2} END {print sum}')
-echo "Current CPU usage: ${CPU_REQUEST}m"
+echo "Current CPU usage: ${CPU_USAGE}m"
 
 echo "Validation PASSED: $APP_NAME is healthy"
 ```
