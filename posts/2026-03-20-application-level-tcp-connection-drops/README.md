@@ -36,23 +36,24 @@ journalctl -u myapp | grep -i "timeout\|deadline\|cancel" | tail -20
 
 # Check if the timeout is configurable
 # Python example:
-# requests.get(url, timeout=5)  ← 5 second timeout
-# If operation takes 6 seconds: request times out and connection drops
+# requests.get(url, timeout=5)  ← 5 second connect/read timeout
+# If the server sends no bytes for >5 seconds: the request times out and closes
 ```
 
 ### Cause 2: Load Balancer Idle Timeout
 
 ```bash
-# Load balancers drop connections idle > their configured timeout
-# AWS ALB: 60 seconds default
-# nginx proxy_read_timeout: 60 seconds default
-# HAProxy: 50 seconds default
+# Load balancers and proxies drop connections idle > their configured timeout
+# AWS ALB idle timeout: 60 seconds default
+# nginx proxy_read_timeout: 60 seconds default between successive reads
+# HAProxy: no built-in 50 second default; timeout client/server/tunnel must be configured explicitly
 
 # Verify by testing with explicit timing:
-time curl -v http://myservice/slow-endpoint 2>&1 | grep -E "time|Error"
+time curl -v http://myservice/slow-endpoint -o /dev/null
 
-# If failure occurs at ~60 seconds: LB timeout
-# Fix: increase LB timeout OR add TCP keepalives
+# If failure occurs at ~60 seconds of no traffic: proxy/LB idle timeout
+# Fix: increase the proxy/LB timeout or send application data/heartbeats before it expires
+# TCP keepalives only help if the application enables SO_KEEPALIVE and the intermediary treats probes as activity
 sysctl -w net.ipv4.tcp_keepalive_time=30
 sysctl -w net.ipv4.tcp_keepalive_intvl=10
 ```
@@ -60,30 +61,31 @@ sysctl -w net.ipv4.tcp_keepalive_intvl=10
 ### Cause 3: File Descriptor Exhaustion
 
 ```bash
-# When FD limit is reached, application cannot accept new connections
-# And may drop existing ones
+# When FD limit is reached, the application cannot accept or open more sockets
 
-# Check current FD usage
-cat /proc/$(pgrep myapp)/status | grep FDSize
-ls -la /proc/$(pgrep myapp)/fd | wc -l
-ulimit -n   # per-process limit
+# Check current FD usage and limits for the process
+ls /proc/$(pgrep myapp)/fd | wc -l
+cat /proc/$(pgrep myapp)/limits | grep "Max open files"
+ulimit -n   # current shell/session soft limit
 
 # Check for FD exhaustion errors in logs
 journalctl -u myapp | grep -i "too many open files\|EMFILE"
 
-# Increase FD limit
+# Increase FD limit in the current shell/session
 ulimit -n 65536
 
-# Permanent: /etc/security/limits.conf
-echo "myuser soft nofile 65536" >> /etc/security/limits.conf
-echo "myuser hard nofile 65536" >> /etc/security/limits.conf
+# For a systemd service, set a persistent limit in the unit
+systemctl edit myapp
+# Add:
+# [Service]
+# LimitNOFILE=65536
 ```
 
 ### Cause 4: Application Thread/Goroutine Exhaustion
 
 ```bash
 # Application runs out of threads to handle new connections
-# New connections are accepted but immediately dropped
+# New connections may queue, time out, or be reset once work cannot be scheduled
 
 # Check thread count for the process
 cat /proc/$(pgrep myapp)/status | grep Threads
@@ -92,7 +94,7 @@ cat /proc/$(pgrep myapp)/status | grep Threads
 # Check thread pool metrics via JMX or application metrics
 
 # For Python: check if using asyncio properly
-# Blocking calls in async code exhaust event loop threads
+# Blocking calls in async code stall the event loop and delay socket handling
 ```
 
 ### Cause 5: Connection Pool Overflow
@@ -128,10 +130,10 @@ tcpdump -i eth0 -n -v 'tcp[tcpflags] & tcp-rst != 0' -c 10
 
 # 4. Check system resource limits
 ulimit -a
-ss -tn | wc -l                # Current connection count
+ss -Htn | wc -l               # Current TCP connection count
 cat /proc/sys/fs/file-nr      # System-wide FD usage
 ```
 
 ## Conclusion
 
-Application-level TCP drops require investigating beyond the network layer. The RST source identifies the culprit: application RST indicates timeout or resource exhaustion in the app; middlebox RST indicates proxy/LB timeout. Enable TCP keepalives for idle connection retention, check resource limits (FDs, threads, connection pools), and correlate failure timing with configured timeout values.
+Application-level TCP drops require investigating beyond the network layer. When the failure is a reset, the RST source identifies the culprit: application RST indicates timeout or resource exhaustion in the app; middlebox RST indicates proxy/LB timeout. If an intermediary enforces idle timeouts, increase that timeout or ensure the application sends traffic or heartbeats before it expires; TCP keepalives only help when the application enables them and the intermediary treats them as activity. Check resource limits (FDs, threads, connection pools), and correlate failure timing with configured timeout values.
