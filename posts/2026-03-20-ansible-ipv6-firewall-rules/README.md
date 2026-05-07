@@ -29,14 +29,13 @@ Configuring IPv6 firewall rules with Ansible ensures consistent security policy 
         path: /etc/default/ufw
         regexp: '^IPV6='
         line: 'IPV6=yes'
-      notify: Reload UFW
 
     - name: Allow SSH from IPv6 management range
       community.general.ufw:
         rule: allow
         port: "22"
         proto: tcp
-        src: "2001:db8:management::/48"
+        src: "2001:db8:100::/48"
         direction: in
         comment: "SSH from management IPv6 range"
 
@@ -51,12 +50,8 @@ Configuring IPv6 firewall rules with Ansible ensures consistent security policy 
         - "80"
         - "443"
 
-    - name: Allow ICMPv6 (required for IPv6 operation)
-      community.general.ufw:
-        rule: allow
-        proto: ipv6
-        direction: in
-        # UFW automatically allows NDP ICMPv6 when IPv6 is enabled
+    # UFW's default before6.rules already allow the ICMPv6 traffic required
+    # for IPv6 operation, including neighbor discovery, when IPv6 is enabled.
 
     - name: Enable UFW
       community.general.ufw:
@@ -111,7 +106,7 @@ Configuring IPv6 firewall rules with Ansible ensures consistent security policy 
         chain: INPUT
         protocol: tcp
         destination_port: "22"
-        source: "2001:db8:management::/48"
+        source: "2001:db8:100::/48"
         jump: ACCEPT
         comment: "SSH from management range"
 
@@ -132,8 +127,8 @@ Configuring IPv6 firewall rules with Ansible ensures consistent security policy 
         chain: INPUT
         policy: DROP
 
-    - name: Save ip6tables rules (Debian/Ubuntu)
-      ansible.builtin.command:
+    - name: Export current ip6tables rules to a file (Debian/Ubuntu)
+      ansible.builtin.shell:
         cmd: ip6tables-save > /etc/ip6tables.rules
       when: ansible_os_family == "Debian"
       changed_when: true
@@ -149,22 +144,27 @@ Configuring IPv6 firewall rules with Ansible ensures consistent security policy 
   become: true
 
   tasks:
-    - name: Ensure firewalld is installed and running
-      ansible.builtin.systemd:
+    - name: Install firewalld
+      ansible.builtin.package:
+        name: firewalld
+        state: present
+
+    - name: Ensure firewalld is running
+      ansible.builtin.systemd_service:
         name: firewalld
         state: started
         enabled: true
 
     - name: Allow SSH from IPv6 management prefix
       ansible.posix.firewalld:
-        rich_rule: "rule family='ipv6' source address='2001:db8:management::/48' port port='22' protocol='tcp' accept"
+        rich_rule: 'rule family="ipv6" source address="2001:db8:100::/48" port port="22" protocol="tcp" accept'
         state: enabled
         permanent: true
         immediate: true
 
     - name: Allow HTTP from all IPv6
       ansible.posix.firewalld:
-        rich_rule: "rule family='ipv6' source address='::/0' port port='80' protocol='tcp' accept"
+        rich_rule: 'rule family="ipv6" port port="80" protocol="tcp" accept'
         state: enabled
         permanent: true
         immediate: true
