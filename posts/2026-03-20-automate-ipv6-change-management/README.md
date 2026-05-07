@@ -16,10 +16,10 @@ Automate IPv6 network change workflows including approval gates, deployment, val
 # Ensure IPv6 is enabled and functional
 
 ip -6 addr show
-ping6 -c 3 ::1
+ping -6 -c 3 ::1
 
-# Install required dependencies
-pip install ipaddress netaddr  # Python
+# Python 3 includes ipaddress in the standard library; netaddr is optional
+pip install netaddr            # Python
 # or
 npm install ipaddr.js          # JavaScript
 ```
@@ -41,7 +41,7 @@ def check_ipv6_subnet(client_ip: str, allowed_prefix: str) -> bool:
 
 # Example usage
 allowed_networks = [
-    "2001:db8:trusted::/48",
+    "2001:db8:1000::/48",
     "::1/128",
     "fe80::/10",
 ]
@@ -54,8 +54,8 @@ def is_allowed(client_ip: str) -> bool:
     return False
 
 # Tests
-print(is_allowed("2001:db8:trusted::1"))   # True
-print(is_allowed("2001:db8:unknown::1"))   # False
+print(is_allowed("2001:db8:1000::1"))      # True
+print(is_allowed("2001:db8:2000::1"))      # False
 print(is_allowed("::1"))                   # True
 ```
 
@@ -77,8 +77,12 @@ ipv6:
 ## Step 4: Apply and Verify
 
 ```bash
-# Apply configuration
-python3 configure.py --config config.yaml
+# Validate configured prefixes
+python3 -c "
+import ipaddress
+for prefix in ('2001:db8::/32', '::/0'):
+    print(ipaddress.ip_network(prefix, strict=False))
+"
 
 # Verify functionality
 python3 -c "
@@ -89,13 +93,14 @@ print(f'{addr} in {net}: {addr in net}')
 "
 
 # Test connectivity
-curl -6 http://[::1]:8080/health
+curl -6 -g http://[::1]:8080/health
 ```
 
 ## Step 5: Monitoring
 
 ```python
 import logging
+import ipaddress
 
 logger = logging.getLogger(__name__)
 
@@ -115,4 +120,4 @@ def log_ipv6_access(client_ip: str, allowed: bool):
 
 ## Conclusion
 
-Automate IPv6 Change Management requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's  module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
+Automate IPv6 Change Management requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's `ipaddress` module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
