@@ -69,8 +69,8 @@ Docker Buildx provides multi-platform builds and advanced build features. Podman
 # Docker Buildx multi-platform build
 docker buildx build --platform linux/amd64,linux/arm64 -t myapp:latest .
 
-# Podman equivalent - use --platform directly
-podman build --platform linux/amd64,linux/arm64 -t myapp:latest .
+# Podman equivalent - use --platform with --manifest for multiple platforms
+podman build --platform linux/amd64,linux/arm64 --manifest myapp:latest .
 
 # Build for a specific platform
 podman build --platform linux/arm64 -t myapp:arm64 .
@@ -139,7 +139,8 @@ case "$1" in
         exec podman manifest "$@"
         ;;
       *)
-        echo "Buildx subcommand '$1' - using podman build instead"
+        echo "Buildx subcommand '$1' is not fully supported by this wrapper."
+        echo "Use 'podman build' or 'podman manifest' directly for advanced buildx workflows."
         shift
         exec podman build "$@"
         ;;
@@ -172,7 +173,15 @@ Docker Scout does not work with Podman, but excellent alternatives exist.
 
 ```bash
 # Install Trivy for vulnerability scanning
-sudo dnf install -y trivy   # Fedora
+sudo tee /etc/yum.repos.d/trivy.repo <<'EOF'
+[trivy]
+name=Trivy repository
+baseurl=https://get.trivy.dev/rpm/releases/$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=https://get.trivy.dev/rpm/public.key
+EOF
+sudo dnf install -y trivy
 brew install trivy           # macOS
 
 # Scan a Podman image with Trivy
@@ -182,8 +191,8 @@ trivy image myapp:latest
 trivy image --severity HIGH,CRITICAL myapp:latest
 
 # Install Grype as another alternative
-curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | \
-  sh -s -- -b /usr/local/bin
+curl -sSfL https://get.anchore.io/grype | \
+  sudo sh -s -- -b /usr/local/bin
 
 # Scan with Grype
 grype myapp:latest
