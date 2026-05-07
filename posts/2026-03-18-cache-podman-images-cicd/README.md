@@ -32,7 +32,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Layer 2: Install dependencies (cached when package files unchanged)
-RUN npm ci --production
+RUN npm ci
 
 # Layer 3: Copy application source (changes frequently)
 COPY . .
@@ -54,22 +54,22 @@ Use a container registry as a cache source for your builds.
 
 REGISTRY="docker.io/myorg"
 IMAGE="${REGISTRY}/myapp"
+CACHE_IMAGE="${REGISTRY}/myapp-cache"
 
 # Log in to the registry
 echo "${REGISTRY_TOKEN}" | podman login docker.io \
   -u "${REGISTRY_USER}" --password-stdin
 
-# Pull the latest image to use as a cache source
-podman pull "${IMAGE}:latest" || true
-
-# Build using the cached image layers from the registry
+# Build using cached layers from the registry and update the cache
 podman build \
-  --cache-from "${IMAGE}:latest" \
+  --layers \
+  --cache-from "${CACHE_IMAGE}" \
+  --cache-to "${CACHE_IMAGE}" \
   --tag "${IMAGE}:${COMMIT_SHA}" \
   --tag "${IMAGE}:latest" \
   .
 
-# Push the new image (this becomes the cache for the next build)
+# Push the new image tags
 podman push "${IMAGE}:${COMMIT_SHA}"
 podman push "${IMAGE}:latest"
 ```
