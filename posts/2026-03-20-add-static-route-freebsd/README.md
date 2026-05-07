@@ -33,8 +33,8 @@ netstat -rn
 # Show only IPv4 routes
 netstat -rn -f inet
 
-# Show routes with interface names
-netstat -rn -f inet -I em0
+# Show routes with wider interface name column
+netstat -rnW -f inet
 ```
 
 ## Delete a Route
@@ -80,7 +80,7 @@ service routing restart
 netstat -rn -f inet
 
 # Check specific route
-route get 192.168.2.100
+route show 192.168.2.100
 ```
 
 ## Add Route via /etc/rc.local (Alternative)
@@ -91,11 +91,11 @@ route add -net 192.168.2.0/24 10.0.0.1
 route add -net 172.16.0.0/16 10.0.0.1
 ```
 
-## Check Routing Table with route show
+## Check a Route with route show
 
 ```bash
 # Show route for a specific destination
-route get 192.168.2.100
+route show 192.168.2.100
 
 # Test connectivity
 ping 192.168.2.1
