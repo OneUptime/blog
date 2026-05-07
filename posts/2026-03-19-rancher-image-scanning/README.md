@@ -10,7 +10,7 @@ Container images can contain known vulnerabilities in their base OS packages, la
 
 ## Prerequisites
 
-- Rancher v2.5 or later
+- A Rancher-managed Kubernetes cluster
 - kubectl access with admin privileges
 - Helm 3 installed
 - A container registry accessible from the cluster
@@ -41,24 +41,12 @@ The Trivy Operator automatically scans workloads running in the cluster and gene
 
 Configure scan settings:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: trivy-operator
-  namespace: trivy-system
-data:
-  trivy.severity: "CRITICAL,HIGH,MEDIUM"
-  trivy.timeout: "10m0s"
-  scanJob.tolerations: "[]"
-  vulnerabilityReports.scanner: "Trivy"
-  configAuditReports.scanner: "Trivy"
-```
-
-Apply the configuration:
-
 ```bash
-kubectl apply -f trivy-config.yaml
+kubectl patch cm trivy-operator -n trivy-system --type merge \
+  -p '{"data":{"scanJob.tolerations":"[]","vulnerabilityReports.scanner":"Trivy","configAuditReports.scanner":"Trivy"}}'
+
+kubectl patch cm trivy-operator-trivy-config -n trivy-system --type merge \
+  -p '{"data":{"trivy.severity":"CRITICAL,HIGH,MEDIUM","trivy.timeout":"10m0s"}}'
 ```
 
 ## Step 3: View Vulnerability Reports
@@ -80,7 +68,7 @@ Summarize vulnerabilities across the cluster:
 
 ```bash
 kubectl get vulnerabilityreports -A -o json | \
-  jq '[.items[].report.vulnerabilities[] | .severity] | group_by(.) | map({(.[0]): length}) | add'
+  jq '[.items[].report.vulnerabilities[]?.severity] | group_by(.) | map({(.[0]): length}) | add'
 ```
 
 ## Step 4: Scan Images Before Deployment
@@ -115,75 +103,47 @@ scan_image:
 
 ## Step 5: Set Up Admission Control for Image Scanning
 
-Prevent deployment of images with critical vulnerabilities using an admission webhook. Deploy the Trivy admission controller:
-
-```bash
-helm install trivy-admission aquasecurity/trivy-operator \
-  -n trivy-system \
-  --set admissionController.enabled=true \
-  --set admissionController.failurePolicy=Fail \
-  --set admissionController.severity="CRITICAL"
-```
-
-This blocks any pod that uses an image with critical vulnerabilities from being deployed.
+Trivy Operator does not provide a built-in admission controller that blocks pods based on vulnerability severity. Use Trivy Operator to generate `VulnerabilityReport` resources, and add a separate Kubernetes admission policy layer if you need deployment-time enforcement.
 
 ## Step 6: Configure Private Registry Scanning
 
-If your images are in a private registry, configure Trivy with registry credentials:
+If your images are in a private registry, configure an image pull secret in the workload namespace:
 
 ```bash
 kubectl create secret docker-registry registry-creds \
-  -n trivy-system \
+  -n production \
   --docker-server=your-registry.example.com \
   --docker-username=scanner \
   --docker-password=YOUR_PASSWORD
 ```
 
-Update the Trivy Operator configuration:
+Reference that secret from the workload or its ServiceAccount. With the default configuration, Trivy Operator will reuse image pull secrets referenced by the workload:
 
 ```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: trivy-operator-trivy-config
-  namespace: trivy-system
-type: Opaque
-stringData:
-  TRIVY_USERNAME: scanner
-  TRIVY_PASSWORD: YOUR_PASSWORD
-  TRIVY_NON_SSL: "false"
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        - name: registry-creds
 ```
 
 ## Step 7: Monitor Scanning Results in Rancher
 
-View scan results through the Rancher UI by navigating to the cluster and checking for security-related resources. You can also set up a dashboard using Grafana:
+View scan results through the Rancher UI by exploring the cluster's custom resources, including `VulnerabilityReport`. Rancher can display Kubernetes custom resources and CRDs in the cluster UI. You can also expose Trivy metrics to Prometheus and Grafana:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: trivy-dashboard
-  namespace: cattle-monitoring-system
-  labels:
-    grafana_dashboard: "1"
-data:
-  trivy-dashboard.json: |
-    {
-      "dashboard": {
-        "title": "Trivy Vulnerability Dashboard",
-        "panels": [
-          {
-            "title": "Vulnerabilities by Severity",
-            "type": "piechart"
-          }
-        ]
-      }
-    }
+```bash
+helm upgrade trivy-operator aquasecurity/trivy-operator \
+  -n trivy-system \
+  --reuse-values \
+  --set serviceMonitor.enabled=true \
+  --set service.headless=false
 ```
+
+Then import the published Trivy Operator Grafana dashboard with ID `17813`.
 
 ## Step 8: Set Up Alerting for Critical Vulnerabilities
 
-Create alerts when critical vulnerabilities are detected:
+If Rancher Monitoring is installed in `cattle-monitoring-system`, create alerts when critical vulnerabilities are detected:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -232,20 +192,23 @@ MEDIUM:.report.summary.mediumCount
 
 ## Step 10: Schedule Regular Full Scans
 
-Configure the operator to rescan all workloads periodically:
+Configure the operator to expire and regenerate vulnerability reports periodically:
 
 ```bash
 helm upgrade trivy-operator aquasecurity/trivy-operator \
   -n trivy-system \
+  --reuse-values \
   --set operator.scanJobTimeout=15m \
   --set operator.scanJobsConcurrentLimit=3 \
-  --set compliance.cron="0 2 * * *"
+  --set operator.scannerReportTTL=24h
 ```
+
+When a report expires, the operator recreates it and triggers a fresh scan.
 
 ## Best Practices
 
 - Scan images in your CI/CD pipeline before pushing to the registry.
-- Block deployment of images with critical vulnerabilities using admission controllers.
+- If you need enforcement, pair image scanning with a separate admission policy engine.
 - Regularly update the vulnerability database for accurate scanning.
 - Set up alerts for newly discovered critical vulnerabilities.
 - Maintain a vulnerability remediation SLA (e.g., critical within 24 hours, high within 7 days).
@@ -253,4 +216,4 @@ helm upgrade trivy-operator aquasecurity/trivy-operator \
 
 ## Conclusion
 
-Container image scanning is a critical component of Kubernetes security. By deploying the Trivy Operator in your Rancher-managed clusters, scanning images in CI/CD pipelines, and enforcing policies through admission controllers, you can detect and prevent vulnerable images from running in production. Combined with monitoring and alerting, image scanning provides continuous visibility into your application security posture.
+Container image scanning is a critical component of Kubernetes security. By deploying the Trivy Operator in your Rancher-managed clusters, scanning images in CI/CD pipelines, and, where needed, enforcing separate admission policies, you can detect and reduce the risk of vulnerable images running in production. Combined with monitoring and alerting, image scanning provides continuous visibility into your application security posture.
