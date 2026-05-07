@@ -8,7 +8,7 @@ Description: Learn how to configure OpenTofu to authenticate with HashiCorp Vaul
 
 ## Introduction
 
-AppRole is Vault's machine-to-machine auth method designed for automated systems. OpenTofu uses a Role ID (non-secret) and Secret ID (secret, short-lived) to authenticate and receive a Vault token. This is ideal for CI/CD pipelines where you cannot use human-interactive auth methods.
+AppRole is Vault's machine-to-machine auth method designed for automated systems. OpenTofu uses a Role ID (non-secret) and Secret ID (secret, typically short-lived) to authenticate and receive a Vault token. This is ideal for CI/CD pipelines where you cannot use human-interactive auth methods.
 
 ## Setting Up AppRole in Vault
 
@@ -131,20 +131,15 @@ jobs:
 ## Using Environment Variables Instead of Variables
 
 ```hcl
-# Alternative: use auth_login_approle block
-provider "vault" {
-  address = "https://vault.example.com:8200"
-
-  auth_login_approle {
-    role_id_file_path   = "/run/secrets/vault-role-id"
-    secret_id_file_path = "/run/secrets/vault-secret-id"
-  }
-}
+# Alternative: authenticate outside OpenTofu and let the provider read
+# VAULT_ADDR and VAULT_TOKEN from the environment
+provider "vault" {}
 ```
 
 ```bash
-# Or export VAULT_TOKEN directly after getting it
-VAULT_TOKEN=$(vault write -field=client_token auth/approle/login \
+# Or export VAULT_ADDR and VAULT_TOKEN directly after logging in
+export VAULT_ADDR="https://vault.example.com:8200"
+VAULT_TOKEN=$(vault write -field=token auth/approle/login \
   role_id="${VAULT_ROLE_ID}" \
   secret_id="${VAULT_SECRET_ID}")
 export VAULT_TOKEN
@@ -153,9 +148,9 @@ export VAULT_TOKEN
 ## Response Wrapping for Secure Secret ID Delivery
 
 ```bash
-# Generate a wrapped Secret ID (the wrap token reveals the real Secret ID)
-vault write -wrap-ttl=60s -force \
-  auth/approle/role/opentofu-cicd/secret-id
+# Generate a wrapped Secret ID and capture the wrapping token
+WRAPPING_TOKEN=$(vault write -wrap-ttl=60s -field=wrapping_token -force \
+  auth/approle/role/opentofu-cicd/secret-id)
 
 # Unwrap to get the actual Secret ID
 VAULT_SECRET_ID=$(vault unwrap -field=secret_id "${WRAPPING_TOKEN}")
