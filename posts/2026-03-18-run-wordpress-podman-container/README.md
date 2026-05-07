@@ -82,6 +82,8 @@ Run WordPress and MariaDB as separate containers connected by a network.
 ```bash
 # Create a custom network
 podman network create wordpress-net
+podman volume create wp-db-standalone-data
+podman volume create wp-content-standalone
 
 # Run MariaDB on the custom network
 podman run -d \
@@ -91,7 +93,7 @@ podman run -d \
   -e MARIADB_DATABASE=wordpress \
   -e MARIADB_USER=wpuser \
   -e MARIADB_PASSWORD=wp-secret \
-  -v wp-db-data:/var/lib/mysql:Z \
+  -v wp-db-standalone-data:/var/lib/mysql:Z \
   mariadb:11
 
 # Wait for MariaDB
@@ -106,7 +108,7 @@ podman run -d \
   -e WORDPRESS_DB_USER=wpuser \
   -e WORDPRESS_DB_PASSWORD=wp-secret \
   -e WORDPRESS_DB_NAME=wordpress \
-  -v wp-content:/var/www/html/wp-content:Z \
+  -v wp-content-standalone:/var/www/html/wp-content:Z \
   wordpress:latest
 ```
 
@@ -116,6 +118,8 @@ Pass additional WordPress configuration through environment variables.
 
 ```bash
 # Run WordPress with extra configuration
+podman rm -f wp-app 2>/dev/null || true
+
 podman run -d \
   --pod wordpress-pod \
   --name wp-custom \
@@ -171,6 +175,8 @@ cat > ~/wp-dev/themes/my-theme/index.php <<'EOF'
 EOF
 
 # Run WordPress with theme directory mounted for live editing
+podman rm -f wp-app wp-custom 2>/dev/null || true
+
 podman run -d \
   --pod wordpress-pod \
   --name wp-dev \
@@ -187,6 +193,8 @@ podman run -d \
 ## Using WP-CLI
 
 Manage WordPress from the command line using WP-CLI.
+
+Use the name of the WordPress container you are running. For the first pod setup, that container is `wp-app`.
 
 ```bash
 # Install WP-CLI inside the WordPress container
@@ -227,7 +235,7 @@ podman rm -f wp-standalone wp-db-standalone
 podman network rm wordpress-net
 
 # Clean up volumes
-podman volume rm wp-db-data wp-content
+podman volume rm wp-db-data wp-content wp-db-standalone-data wp-content-standalone
 ```
 
 ## Summary
