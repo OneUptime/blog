@@ -8,7 +8,7 @@ Description: Learn how to migrate your running Docker containers, images, and co
 
 ---
 
-> Migrating from Docker to Podman does not require rebuilding your images - you can export and import containers directly while preserving their state and configuration.
+> Migrating from Docker to Podman does not require rebuilding your images - you can move images directly, then recreate containers from their inspected configuration.
 
 Moving from Docker to Podman is a common step for teams seeking a daemonless, rootless container runtime. The good news is that Podman uses the same OCI image format as Docker, so your images are fully compatible. This guide walks through a practical migration process for moving your Docker containers, images, and configurations to Podman.
 
@@ -59,7 +59,7 @@ podman images | grep myapp
 docker images --format '{{.Repository}}:{{.Tag}}' | \
   grep -v '<none>' | while read IMG; do
     echo "Saving ${IMG}..."
-    docker save "$IMG" -o "/tmp/$(echo $IMG | tr '/:' '_').tar"
+    docker save -o "/tmp/$(echo $IMG | tr '/:' '_').tar" "$IMG"
 done
 
 # Load all saved images into Podman
@@ -117,12 +117,12 @@ CONTAINER_NAME="myapp"
 # Extract the original Docker run parameters
 IMAGE=$(docker inspect "$CONTAINER_NAME" | jq -r '.[0].Config.Image')
 PORTS=$(docker inspect "$CONTAINER_NAME" | \
-  jq -r '.[0].HostConfig.PortBindings | to_entries[] |
+  jq -r '.[0].HostConfig.PortBindings // {} | to_entries[] |
     "-p " + .value[0].HostPort + ":" + (.key | split("/")[0])')
 ENVS=$(docker inspect "$CONTAINER_NAME" | \
-  jq -r '.[0].Config.Env[] | "-e " + .')
+  jq -r '.[0].Config.Env // [] | .[] | "-e " + .')
 VOLUMES=$(docker inspect "$CONTAINER_NAME" | \
-  jq -r '.[0].Mounts[] | "-v " + .Source + ":" + .Destination')
+  jq -r '.[0].Mounts // [] | .[] | "-v " + .Source + ":" + .Destination')
 
 echo "Recreating container: ${CONTAINER_NAME}"
 echo "Image: ${IMAGE}"
@@ -145,14 +145,17 @@ podman ps | grep "$CONTAINER_NAME"
 
 ## Migrating Container Data
 
-If containers have data in their writable layers, export and import them.
+If containers have data in their writable layers, export and import them. This captures the container filesystem, but not Docker volumes or the original image metadata such as `CMD` and `ENTRYPOINT`.
 
 ```bash
 # Export a running container (includes filesystem changes)
-docker export mycontainer -o /tmp/mycontainer-export.tar
+docker export -o /tmp/mycontainer-export.tar mycontainer
 
 # Import the container filesystem as a Podman image
-podman import /tmp/mycontainer-export.tar mycontainer-migrated:latest
+podman import \
+  --change 'CMD ["/path/to/start-command"]' \
+  /tmp/mycontainer-export.tar \
+  mycontainer-migrated:latest
 
 # Run the imported container
 podman run -d --name mycontainer mycontainer-migrated:latest
