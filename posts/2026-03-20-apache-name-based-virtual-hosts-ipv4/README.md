@@ -8,7 +8,7 @@ Description: Learn how to configure Apache to serve multiple websites from a sin
 
 ---
 
-Name-based virtual hosting lets one Apache server host dozens of websites on a single IPv4 address. Apache distinguishes between sites using the HTTP `Host` header that browsers send with every request.
+Name-based virtual hosting lets one Apache server host dozens of websites on a single IPv4 address. Apache distinguishes between sites using the HTTP `Host` header that browsers send with every request. The file paths, helper commands, log variables, and service name below use the Debian/Ubuntu Apache layout.
 
 ## How Name-Based Virtual Hosting Works
 
@@ -95,7 +95,7 @@ The first `VirtualHost` block that matches the IP:port pair is treated as the de
     ServerName default.example.com
     DocumentRoot /var/www/html
 
-    # Return 404 for unrecognized hosts
+    # Return 403 for unrecognized hosts
     <Location />
         Require all denied
     </Location>
