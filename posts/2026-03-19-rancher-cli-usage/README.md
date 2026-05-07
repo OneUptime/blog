@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, CLI, Cluster Management
 
-Description: A practical guide to using the Rancher CLI for managing clusters, projects, apps, and resources from the command line.
+Description: A practical guide to using the Rancher CLI for managing clusters, projects, namespaces, and resources from the command line.
 
-The Rancher CLI gives you command-line access to your Rancher server, letting you manage clusters, projects, namespaces, and workloads without opening a browser. This guide covers the most common operations you will perform with the Rancher CLI.
+The Rancher CLI gives you command-line access to your Rancher server, letting you manage clusters, projects, namespaces, and Kubernetes resources without opening a browser. This guide covers the most common operations you will perform with the Rancher CLI.
 
 ## Logging In
 
@@ -16,10 +16,10 @@ Before you can use any CLI commands, you need to authenticate with your Rancher 
 rancher login https://rancher.example.com --token token-xxxxx:yyyyyyyyyyyyyyyy
 ```
 
-If your Rancher instance uses a self-signed certificate, add the `--skip-verify` flag:
+If your Rancher instance uses a private or self-signed CA certificate, pass it with `--cacert`:
 
 ```bash
-rancher login https://rancher.example.com --token token-xxxxx:yyyyyyyyyyyyyyyy --skip-verify
+rancher login https://rancher.example.com --token token-xxxxx:yyyyyyyyyyyyyyyy --cacert /path/to/cacerts.pem
 ```
 
 After a successful login, the CLI stores your credentials in `~/.rancher/cli2.json`.
@@ -45,7 +45,7 @@ rancher context current
 ### Switch to a Specific Project
 
 ```bash
-rancher context switch --project c-m-abc12345:p-xyz789
+rancher context switch c-m-abc12345:p-xyz789
 ```
 
 ## Managing Clusters
@@ -56,19 +56,12 @@ rancher context switch --project c-m-abc12345:p-xyz789
 rancher clusters ls
 ```
 
-This outputs a table with cluster names, IDs, states, and node counts:
-
-```plaintext
-CURRENT   ID              NAME          STATE    NODES   PROVIDER
-*         c-m-abc12345    production    active   5       rke2
-          c-m-def67890    staging       active   3       rke2
-          c-m-ghi11111    development   active   2       k3s
-```
+This outputs a table with cluster IDs, states, names, providers, node counts, and cluster resource totals.
 
 ### Inspect a Cluster
 
 ```bash
-rancher clusters inspect production
+rancher inspect --type cluster production
 ```
 
 ### Get Cluster Kubeconfig
@@ -100,7 +93,7 @@ rancher projects create --cluster production --description "Team Alpha services"
 ### Switch to a Project
 
 ```bash
-rancher project switch team-alpha
+rancher context switch team-alpha
 ```
 
 ## Managing Namespaces
@@ -122,52 +115,16 @@ rancher namespaces create my-namespace
 ### Move a Namespace to a Different Project
 
 ```bash
-rancher namespaces move my-namespace p-newproject
+rancher namespaces move my-namespace c-m-abc12345:p-abcde
 ```
 
 ## Working with Applications (Catalog Apps)
 
-### List App Catalogs
-
-```bash
-rancher catalog ls
-```
-
-### Search for Apps
-
-```bash
-rancher apps search nginx
-```
-
-### Install an App
-
-```bash
-rancher apps install cattle-global-data:library-nginx my-nginx \
-  --namespace my-namespace \
-  --set replicaCount=3
-```
-
-### List Installed Apps
-
-```bash
-rancher apps ls
-```
-
-### Upgrade an App
-
-```bash
-rancher apps upgrade my-nginx 1.2.0
-```
-
-### Delete an App
-
-```bash
-rancher apps delete my-nginx
-```
+Current Rancher CLI releases do not include the legacy `catalog` or `apps` command groups. Manage Rancher apps through the Rancher UI or Helm CLI instead.
 
 ## Running kubectl Commands
 
-The Rancher CLI can proxy kubectl commands to your managed clusters:
+With `kubectl` installed locally, the Rancher CLI can run it against the cluster in your current Rancher context:
 
 ```bash
 rancher kubectl get pods --all-namespaces
@@ -181,45 +138,21 @@ rancher kubectl get nodes -o wide
 rancher kubectl apply -f deployment.yaml
 ```
 
-This routes all kubectl commands through the Rancher server, so you do not need to configure kubeconfig files separately.
+The CLI uses the current Rancher context to generate and cache the kubeconfig it needs for the selected cluster, so you do not need to manage a separate kubeconfig manually for each command.
 
 ## Managing Tokens
 
-### List Your API Tokens
+Current Rancher CLI releases do not provide `tokens ls`, `tokens create`, or `tokens delete` commands for Rancher API keys. Create API tokens in the Rancher UI or API, then use them with `rancher login --token`.
+
+To clear cached kubeconfig credentials used by the CLI, run:
 
 ```bash
-rancher tokens ls
-```
-
-### Create a New Token
-
-```bash
-rancher tokens create --description "Automation token" --ttl 86400000
-```
-
-### Delete a Token
-
-```bash
-rancher tokens delete token-abc12
+rancher token delete all
 ```
 
 ## Working with Multi-Cluster Apps
 
-### Deploy a Multi-Cluster App
-
-```bash
-rancher multiclusterapps install \
-  --target c-m-abc12345:p-proj1 \
-  --target c-m-def67890:p-proj2 \
-  cattle-global-data:library-nginx \
-  global-nginx
-```
-
-### List Multi-Cluster Apps
-
-```bash
-rancher multiclusterapps ls
-```
+Current Rancher CLI releases do not include the legacy `multiclusterapps` command group.
 
 ## Using Output Formats
 
@@ -252,8 +185,10 @@ rancher clusters ls -q
 
 for cluster_id in $(rancher clusters ls -q); do
   echo "Deploying to cluster: ${cluster_id}"
-  rancher context switch --cluster "${cluster_id}"
-  rancher kubectl apply -f deployment.yaml
+  kubeconfig="$(mktemp)"
+  rancher clusters kubeconfig "${cluster_id}" > "${kubeconfig}"
+  KUBECONFIG="${kubeconfig}" kubectl apply -f deployment.yaml
+  rm -f "${kubeconfig}"
 done
 ```
 
@@ -262,9 +197,12 @@ done
 ```bash
 #!/bin/bash
 
-for cluster in $(rancher clusters ls --format '{{.Cluster.Name}}'); do
-  echo "=== ${cluster} ==="
-  rancher kubectl --cluster "${cluster}" get nodes -o wide
+for cluster_id in $(rancher clusters ls -q); do
+  echo "=== ${cluster_id} ==="
+  kubeconfig="$(mktemp)"
+  rancher clusters kubeconfig "${cluster_id}" > "${kubeconfig}"
+  KUBECONFIG="${kubeconfig}" kubectl get nodes -o wide
+  rm -f "${kubeconfig}"
   echo ""
 done
 ```
@@ -276,38 +214,31 @@ done
 
 mkdir -p ~/.kube/rancher
 
-for cluster in $(rancher clusters ls --format '{{.Cluster.Name}}'); do
-  rancher clusters kubeconfig "${cluster}" > ~/.kube/rancher/${cluster}.yaml
-  echo "Exported kubeconfig for ${cluster}"
+for cluster_id in $(rancher clusters ls -q); do
+  rancher clusters kubeconfig "${cluster_id}" > ~/.kube/rancher/${cluster_id}.yaml
+  echo "Exported kubeconfig for ${cluster_id}"
 done
 ```
 
 ## Helpful CLI Tips
 
-### Enable Shell Completion
+### Check Command Help
 
-For bash:
-
-```bash
-rancher completion bash > /etc/bash_completion.d/rancher
-source /etc/bash_completion.d/rancher
-```
-
-For zsh:
+Current Rancher CLI releases do not include a built-in `completion` command. Use the built-in help for command discovery:
 
 ```bash
-rancher completion zsh > "${fpath[1]}/_rancher"
-source ~/.zshrc
+rancher --help
+rancher clusters --help
+rancher context switch --help
 ```
 
 ### Use Environment Variables
 
-You can set default values with environment variables:
+The CLI supports environment variables for some options:
 
 ```bash
-export RANCHER_URL="https://rancher.example.com"
-export RANCHER_TOKEN="token-xxxxx:yyyyyyyyyyyyyyyy"
-export RANCHER_SKIP_VERIFY=true
+export RANCHER_CONFIG_DIR="$HOME/.rancher"
+export CATTLE_OAUTH_AUTH_FLOW=authcode
 ```
 
 ### Check CLI Version
@@ -318,4 +249,4 @@ rancher --version
 
 ## Summary
 
-The Rancher CLI provides a fast and scriptable way to manage your entire Rancher environment. From switching contexts and managing clusters to deploying applications and running kubectl commands, everything you can do in the UI is available from the terminal. Combine these commands in shell scripts to build powerful automation workflows.
+The Rancher CLI provides a fast and scriptable way to manage common Rancher workflows from the terminal. From switching contexts and managing clusters and namespaces to generating kubeconfigs and running kubectl commands, it works well for both day-to-day administration and automation.
