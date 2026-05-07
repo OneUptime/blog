@@ -30,7 +30,7 @@ resource "aws_sagemaker_notebook_instance_lifecycle_configuration" "setup" {
   on_create = base64encode(<<-SCRIPT
     #!/bin/bash
     sudo -u ec2-user -i <<'EOF'
-    # Clone project notebooks from S3
+    # Sync project notebooks from S3
     aws s3 sync s3://${var.notebooks_bucket}/notebooks ~/SageMaker/
     EOF
   SCRIPT
@@ -78,8 +78,7 @@ resource "aws_sagemaker_domain" "studio" {
 
     jupyter_server_app_settings {
       default_resource_spec {
-        instance_type       = "system"
-        sagemaker_image_arn = data.aws_sagemaker_prebuilt_ecr_image.studio.registry_path
+        instance_type = "system"
       }
     }
 
