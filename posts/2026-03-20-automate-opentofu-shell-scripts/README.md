@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Shell Script, Automation, Bash, DevOps, Infrastructure as Code
 
-Description: Learn how to write shell scripts to automate repetitive OpenTofu tasks like multi-workspace deployments, state manipulation, and environment bootstrapping.
+Description: Learn how to write shell scripts to automate repetitive OpenTofu tasks like multi-environment deployments, state manipulation, and environment bootstrapping.
 
 ## Introduction
 
@@ -76,11 +76,13 @@ aws s3api create-bucket \
 # Enable versioning
 aws s3api put-bucket-versioning \
   --bucket "${STATE_BUCKET}" \
+  --region "${REGION}" \
   --versioning-configuration Status=Enabled
 
 # Enable encryption
 aws s3api put-bucket-encryption \
   --bucket "${STATE_BUCKET}" \
+  --region "${REGION}" \
   --server-side-encryption-configuration '{
     "Rules": [{"ApplyServerSideEncryptionByDefault": {"SSEAlgorithm": "aws:kms"}}]
   }'
@@ -88,6 +90,7 @@ aws s3api put-bucket-encryption \
 # Block public access
 aws s3api put-public-access-block \
   --bucket "${STATE_BUCKET}" \
+  --region "${REGION}" \
   --public-access-block-configuration \
     "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
 
@@ -114,6 +117,8 @@ echo "  region = \"${REGION}\""
 # Import multiple existing resources into state
 
 set -euo pipefail
+
+# Resource blocks for each address must already exist in configuration.
 
 # Format: "resource_address=resource_id"
 RESOURCES=(
