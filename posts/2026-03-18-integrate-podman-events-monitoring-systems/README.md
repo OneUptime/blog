@@ -92,7 +92,7 @@ echo "Forwarding Podman events to syslog..."
 
 podman events --format json | while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
     event_type=$(echo "$event" | jq -r '.Type')
 
     # Send to syslog using logger command
@@ -107,18 +107,18 @@ Forward events to a webhook endpoint for integration with services like Slack or
 
 ```bash
 #!/bin/bash
-# webhook-forwarder.sh - Forward critical events to a webhook
+# webhook-forwarder.sh - Forward container exit events to a webhook
 # Usage: ./webhook-forwarder.sh <webhook-url>
 
 WEBHOOK_URL="${1:?Usage: $0 <webhook-url>}"
 
-echo "Forwarding critical events to webhook..."
+echo "Forwarding container exit events to webhook..."
 
-podman events --filter event=die --filter event=oom --format json | \
+podman events --filter event=died --format json | \
 while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
-    timestamp=$(echo "$event" | jq -r '.time')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
     # Build webhook payload
     payload=$(jq -n \
@@ -172,7 +172,7 @@ echo "Forwarding events to Loki at ${LOKI_URL}..."
 
 podman events --format json | while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
     timestamp_ns=$(date +%s%N)
 
     # Build Loki push payload
