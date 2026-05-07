@@ -11,10 +11,11 @@ Google Kubernetes Engine (GKE) provides managed Kubernetes on Google Cloud Platf
 ## Prerequisites
 
 - A running Rancher installation (v2.7 or later)
-- An existing GKE cluster in Google Cloud
+- An existing GKE Standard cluster in Google Cloud (GKE Autopilot isn't supported)
 - `gcloud` CLI installed and configured
 - `kubectl` installed
-- A GCP service account with appropriate permissions
+- `cluster-admin` access in the GKE cluster
+- For GKE-type registration in Rancher, a GCP service account with appropriate permissions
 - Network connectivity from the GKE cluster to the Rancher server
 
 ## Step 1: Configure kubectl for the GKE Cluster
@@ -26,7 +27,7 @@ gcloud auth login
 gcloud config set project <PROJECT_ID>
 
 gcloud container clusters get-credentials <CLUSTER_NAME> \
-  --region <REGION> \
+  --location <REGION_OR_ZONE> \
   --project <PROJECT_ID>
 ```
 
@@ -37,9 +38,17 @@ kubectl get nodes
 kubectl cluster-info
 ```
 
+If your current GKE identity does not already have Kubernetes `cluster-admin`, grant it before continuing:
+
+```bash
+kubectl create clusterrolebinding cluster-admin-binding \
+  --clusterrole cluster-admin \
+  --user <YOUR_GOOGLE_ACCOUNT_EMAIL>
+```
+
 ## Step 2: Prepare a GCP Service Account
 
-Rancher needs a GCP service account to manage the GKE cluster. Create one with the necessary permissions:
+If you want Rancher to register the cluster as a GKE cluster type, Rancher needs a GCP service account to manage the GKE cluster. Create one with the necessary permissions:
 
 ```bash
 # Create the service account
@@ -55,6 +64,14 @@ gcloud projects add-iam-policy-binding <PROJECT_ID> \
 gcloud projects add-iam-policy-binding <PROJECT_ID> \
   --member="serviceAccount:rancher-gke-import@<PROJECT_ID>.iam.gserviceaccount.com" \
   --role="roles/compute.viewer"
+
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:rancher-gke-import@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/viewer"
+
+gcloud projects add-iam-policy-binding <PROJECT_ID> \
+  --member="serviceAccount:rancher-gke-import@<PROJECT_ID>.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
 
 # Create and download the key file
 gcloud iam service-accounts keys create rancher-gke-key.json \
@@ -73,13 +90,13 @@ gcloud iam service-accounts keys create rancher-gke-key.json \
 
 ## Step 4: Import the GKE Cluster
 
-### Option A: Import as a GKE Cluster (Recommended)
+### Option A: Register as a GKE Cluster Type (Recommended)
 
 1. Go to **Cluster Management**
 2. Click **Import Existing**
 3. Select **Google GKE**
 4. Select your cloud credential
-5. Choose the Google Cloud project and region
+5. Choose the Google Cloud project and location
 6. Rancher lists available GKE clusters
 7. Select your cluster and click **Register**
 
@@ -107,9 +124,9 @@ Watch the agent pods deploy in the GKE cluster:
 kubectl get pods -n cattle-system -w
 ```
 
-In the Rancher UI, the cluster status progresses through `Waiting`, `Provisioning`, and finally `Active`.
+In the Rancher UI, the cluster should move to `Active` after the agents connect and Rancher finishes reconciling the cluster.
 
-The import typically completes within 5 minutes.
+The registration usually takes a few minutes, depending on network reachability and how quickly Rancher can reconcile the cluster.
 
 ## Step 6: Verify the Import
 
@@ -117,8 +134,7 @@ Once the cluster shows as Active:
 
 ```bash
 # Check agents
-kubectl get deployments -n cattle-system
-kubectl get deployments -n cattle-fleet-system
+kubectl get pods -n cattle-system -l app=cattle-cluster-agent
 
 # Verify node visibility
 kubectl get nodes
@@ -157,7 +173,7 @@ GKE comes with built-in Cloud Logging and Cloud Monitoring. You can use these al
 ```bash
 # Check if GKE monitoring is enabled
 gcloud container clusters describe <CLUSTER_NAME> \
-  --region <REGION> \
+  --location <REGION_OR_ZONE> \
   --format="value(monitoringConfig)"
 ```
 
@@ -199,11 +215,11 @@ For GKE private clusters (no public endpoint):
 
 ### VPC-Native Clusters
 
-GKE VPC-native clusters use alias IP ranges. Rancher agents work with both VPC-native and routes-based clusters without additional configuration.
+GKE VPC-native clusters use alias IP ranges. If you're working with older routes-based GKE clusters, verify support for your Rancher version before importing.
 
 ## Troubleshooting
 
-- **Permission denied errors**: Verify the service account has `container.admin` role. Check that the gcloud user has `container.clusterAdmin` binding.
+- **Permission denied errors**: Verify the Rancher cloud credential service account has `roles/container.admin`, `roles/compute.viewer`, `roles/viewer`, and `roles/iam.serviceAccountUser`. Also verify the identity you use with `kubectl` has Kubernetes `cluster-admin` access in the GKE cluster.
 - **Agent pods not starting**: Check pod events with `kubectl describe pods -n cattle-system`. Common issues include network policies blocking outbound traffic.
 - **Cluster remains in Waiting state**: Verify network connectivity from GKE nodes to the Rancher URL. Check firewall rules.
 - **GKE details not showing**: Ensure the cloud credential is valid and has the correct permissions. Re-import as a GKE type if you initially used Generic.
