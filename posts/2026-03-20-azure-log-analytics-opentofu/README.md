@@ -65,7 +65,7 @@ resource "azurerm_monitor_diagnostic_setting" "app_service" {
 
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
 
-  # Enable all log categories
+  # Enable selected App Service log categories
   enabled_log {
     category = "AppServiceHTTPLogs"
   }
@@ -105,11 +105,11 @@ resource "azurerm_monitor_diagnostic_setting" "key_vault" {
 
 ## Installing Solutions
 
-Extend the workspace with pre-built solutions for common use cases.
+Optionally extend the workspace with pre-built solutions for common use cases.
 
 ```hcl
 # solutions.tf
-# Enable the Container Insights solution for AKS monitoring
+# Install the Container Insights workspace solution
 resource "azurerm_log_analytics_solution" "container_insights" {
   solution_name         = "ContainerInsights"
   location              = azurerm_resource_group.monitoring.location
@@ -123,7 +123,7 @@ resource "azurerm_log_analytics_solution" "container_insights" {
   }
 }
 
-# Enable Security Center solution
+# Install the Security solution
 resource "azurerm_log_analytics_solution" "security" {
   solution_name         = "Security"
   location              = azurerm_resource_group.monitoring.location
@@ -153,6 +153,7 @@ resource "azurerm_kubernetes_cluster" "app" {
 
   oms_agent {
     log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
+    msi_auth_for_monitoring_enabled = true
   }
 }
 ```
@@ -172,7 +173,7 @@ resource "azurerm_log_analytics_saved_search" "error_summary" {
 
   query = <<-QUERY
     AppRequests
-    | where ResultCode >= 500
+    | where toint(ResultCode) >= 500
     | summarize ErrorCount = count() by AppRoleName, ResultCode
     | order by ErrorCount desc
     | take 20
@@ -206,5 +207,5 @@ output "workspace_primary_key" {
 - Use a single workspace per environment to simplify querying and cost management.
 - Set `retention_in_days` based on compliance requirements - 90 days is a common baseline.
 - Use the `PerGB2018` SKU unless you have specific commitment tier requirements.
-- Enable Azure Defender integration by linking the workspace to Microsoft Defender for Cloud.
-- Export workspace data to Azure Storage for long-term archival if you need retention beyond 730 days.
+- Enable Microsoft Defender for Cloud on the workspace if you need Defender data or ingestion benefits.
+- Use long-term retention for data you need to keep beyond 730 days, and export to Azure Storage only if you need an external archive.
