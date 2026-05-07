@@ -8,9 +8,9 @@ Description: Learn how to build a container image from scratch using Buildah and
 
 ---
 
-> Building from scratch produces the smallest possible container images with zero unnecessary packages or vulnerabilities.
+> Building from scratch produces very small container images with no unnecessary OS packages inherited from a base image.
 
-Most container images start from a base like `ubuntu` or `alpine`, which includes an operating system with hundreds of packages you may never need. Building from scratch means starting with an empty filesystem and adding only what your application requires. This approach produces the smallest possible images and drastically reduces the attack surface. Buildah makes this process straightforward.
+Most container images start from a base like `ubuntu` or `alpine`, which includes an operating system with hundreds of packages you may never need. Building from scratch means starting with an empty filesystem and adding only what your application requires. This approach produces very small images and reduces the inherited attack surface. Buildah makes this process straightforward.
 
 ---
 
@@ -21,8 +21,8 @@ Most container images start from a base like `ubuntu` or `alpine`, which include
 
 podman pull ubuntu:22.04
 podman pull alpine:3.19
-podman images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" \
-  --filter "reference=ubuntu" --filter "reference=alpine"
+podman images ubuntu:22.04 --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+podman images alpine:3.19 --format "{{.Repository}}\t{{.Tag}}\t{{.Size}}"
 
 # Typical sizes:
 # ubuntu:22.04  ~  77MB
@@ -43,7 +43,8 @@ container=$(buildah from scratch)
 buildah containers --format "table {{.ContainerName}}\t{{.ImageName}}"
 
 # The container has no files, no shell, nothing
-# You cannot use "buildah run" because there is no shell to execute
+# You cannot run shell commands such as "buildah run $container -- sh"
+# until you add a shell or executable
 ```
 
 ## Building a Go Application from Scratch
@@ -157,10 +158,9 @@ podman ps --filter "name=scratch-test" --format "table {{.Names}}\t{{.Image}}\t{
 
 # Compare the image size against common base images
 echo "=== Image Size Comparison ==="
-podman images --format "{{.Repository}}:{{.Tag}} -> {{.Size}}" \
-  --filter "reference=go-scratch-app" \
-  --filter "reference=ubuntu" \
-  --filter "reference=alpine"
+podman images go-scratch-app --format "{{.Repository}}:{{.Tag}} -> {{.Size}}"
+podman images ubuntu:22.04 --format "{{.Repository}}:{{.Tag}} -> {{.Size}}"
+podman images alpine:3.19 --format "{{.Repository}}:{{.Tag}} -> {{.Size}}"
 ```
 
 ## Building a C Application from Scratch
@@ -234,4 +234,4 @@ rm -rf /tmp/go-scratch-app /tmp/c-scratch-app /tmp/ca-certificates.crt /tmp/pass
 
 ## Summary
 
-Building containers from scratch with Buildah produces the smallest and most secure images possible by including only your application binary and its essential dependencies. This approach works best with statically compiled languages like Go, Rust, and C. The result is an image that often measures under 10MB with no shell, no package manager, and no unnecessary attack surface. Combined with Podman for runtime, you get a minimal, secure container workflow from build to deployment.
+Building containers from scratch with Buildah produces very small images by including only your application binary and its essential dependencies. This approach works best with applications that can be statically compiled, including Go, Rust, and C. The result is an image that often measures under 10MB with no shell, no package manager, and less inherited attack surface. Combined with Podman for runtime, you get a minimal, secure container workflow from build to deployment.
