@@ -24,7 +24,7 @@ IPv6 forwarding must be enabled on any Linux host that acts as a router, Kuberne
         name: net.ipv6.conf.all.forwarding
         value: "1"
         state: present
-        # Write to sysctl.conf for persistence across reboots
+        # Write to a sysctl.d file for persistence across reboots
         sysctl_file: /etc/sysctl.d/99-ipv6-forwarding.conf
         reload: true
 
@@ -97,8 +97,9 @@ IPv6 forwarding must be enabled on any Linux host that acts as a router, Kuberne
     name: "{{ item.name }}"
     value: "{{ item.value }}"
     state: present
+    sysctl_set: true
     sysctl_file: /etc/sysctl.d/99-ipv6-forwarding.conf
-    reload: "{{ loop.last }}"
+    reload: false
   loop:
     - { name: net.ipv6.conf.all.forwarding, value: "1" }
     - { name: net.ipv6.conf.default.forwarding, value: "1" }
