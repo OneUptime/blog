@@ -8,7 +8,7 @@ Description: Learn how to add validation blocks to OpenTofu variables to catch i
 
 ---
 
-Variable validation lets you define business rules for your variable values beyond just type checking. If a user passes an invalid value, OpenTofu shows a custom error message at plan time - before any infrastructure changes are attempted. This guide shows how to write effective validation rules.
+Variable validation lets you define business rules for your variable values beyond just type checking. If a user passes an invalid value, OpenTofu shows a custom error message as soon as the value can be evaluated, typically during planning and before any infrastructure changes are attempted. This guide shows how to write effective validation rules.
 
 ---
 
@@ -37,8 +37,8 @@ tofu plan -var="environment=test"
 # Error output:
 # │ Error: Invalid value for variable
 # │
-# │   on variables.tf line 1:
-# │    1: variable "environment" {
+# │   on variables.tf line 3:
+# │    3: variable "environment" {
 # │
 # │ Environment must be one of: development, staging, production.
 ```
@@ -58,13 +58,13 @@ variable "app_name" {
   }
 }
 
-# Validate string format with regex
+# Validate AWS region code format
 variable "aws_region" {
   type = string
 
   validation {
-    condition     = can(regex("^[a-z]{2}-[a-z]+-[0-9]$", var.aws_region))
-    error_message = "aws_region must be a valid AWS region format (e.g., us-east-1)."
+    condition     = can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]$", var.aws_region))
+    error_message = "aws_region must use a valid AWS region code format (e.g., us-east-1)."
   }
 }
 
@@ -78,13 +78,13 @@ variable "replica_count" {
   }
 }
 
-# Validate CIDR block format
+# Validate IPv4 CIDR block format
 variable "vpc_cidr" {
   type = string
 
   validation {
     condition     = can(cidrnetmask(var.vpc_cidr))
-    error_message = "vpc_cidr must be a valid CIDR block (e.g., 10.0.0.0/16)."
+    error_message = "vpc_cidr must be a valid IPv4 CIDR block (e.g., 10.0.0.0/16)."
   }
 }
 ```
@@ -101,7 +101,7 @@ variable "instance_type" {
 
   # Rule 1: Must be a valid format
   validation {
-    condition     = can(regex("^[a-z][0-9]+\\.[a-z0-9]+$", var.instance_type))
+    condition     = can(regex("^[a-z][a-z0-9-]*\\.[a-z0-9]+$", var.instance_type))
     error_message = "instance_type must be a valid EC2 instance type format (e.g., t3.micro)."
   }
 
@@ -145,7 +145,7 @@ variable "tags" {
 
 ## Using can() for Safe Expression Testing
 
-The `can()` function returns `true` if an expression succeeds and `false` if it throws an error. Use it to validate values that would error on invalid input:
+The `can()` function returns `true` if an expression evaluates successfully and `false` if it produces an error at evaluation time. Use it to validate values that would error on invalid input:
 
 ```hcl
 variable "database_url" {
@@ -163,4 +163,4 @@ variable "database_url" {
 
 ## Summary
 
-Variable validation blocks enforce business rules on input values with clear, user-friendly error messages. Use `contains()` for allowed values, `regex()` with `can()` for format validation, range checks for numbers, and multiple validation blocks for multi-rule enforcement. Validation runs at `tofu plan` time - before any infrastructure changes are attempted.
+Variable validation blocks enforce business rules on input values with clear, user-friendly error messages. Use `contains()` for allowed values, `regex()` with `can()` for format validation, range checks for numbers, and multiple validation blocks for multi-rule enforcement. Input variable validation runs as soon as the value can be evaluated, typically during planning and before any infrastructure changes are attempted.
