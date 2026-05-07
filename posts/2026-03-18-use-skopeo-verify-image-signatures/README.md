@@ -43,26 +43,27 @@ skopeo copy \
   docker://docker.io/library/nginx:1.25 \
   docker://registry.example.com/nginx:1.25
 
-# The signature is stored in a signature storage location
-# By default, this is alongside the image in the registry
+# The signature is written to the configured lookaside storage
+# Without a registry-specific config, the default is /var/lib/containers/sigstore
+# for root or $HOME/.local/share/containers/sigstore for an unprivileged user
 ```
 
 ## Configuring Signature Storage
 
-Signatures can be stored in the registry itself or in a separate web server. Configure the storage location in the registries configuration.
+Simple-signing signatures can be stored in lookaside storage. Configure the storage location in the registries configuration.
 
 ```bash
 # Create the registries configuration directory
 sudo mkdir -p /etc/containers/registries.d/
 
-# Configure signature storage for your registry
+# Configure lookaside signature storage for your registry
 sudo tee /etc/containers/registries.d/registry.example.com.yaml << 'EOF'
 docker:
   registry.example.com:
-    # Store signatures on a web server
-    sigstore: https://signatures.example.com
-    # Use a different location for writing signatures
-    sigstore-staging: file:///var/lib/containers/sigstore
+    # Read signatures from a web server
+    lookaside: https://signatures.example.com
+    # Write new signatures to a local staging location
+    lookaside-staging: file:///var/lib/containers/sigstore
 EOF
 ```
 
@@ -70,7 +71,7 @@ EOF
 # For local file-based signature storage, create the directory
 sudo mkdir -p /var/lib/containers/sigstore
 
-# Copy and sign an image - the signature goes to sigstore-staging
+# Copy and sign an image - the signature goes to lookaside-staging
 skopeo copy \
   --sign-by "your-email@example.com" \
   docker://docker.io/library/alpine:3.19 \
@@ -107,28 +108,22 @@ EOF
 ```
 
 ```bash
-# Export your public GPG key for the verification policy
-gpg --export --armor "your-email@example.com" | \
-  sudo tee /etc/pki/containers/trusted-key.gpg
-
-# Alternatively, export as binary format
 sudo mkdir -p /etc/pki/containers/
+
+# Export your public GPG keyring for the verification policy
 gpg --export "your-email@example.com" | \
   sudo tee /etc/pki/containers/trusted-key.gpg > /dev/null
 ```
 
 ## Verifying Images with Skopeo
 
-Once the policy is configured, Skopeo automatically verifies signatures when copying or inspecting images.
+Once the policy is configured, Skopeo automatically verifies signatures when copying images.
 
 ```bash
 # This copy will fail if the image is not signed by a trusted key
 skopeo copy \
   docker://registry.example.com/myapp:v1.0 \
   containers-storage:myapp:v1.0
-
-# Inspect will also respect the signature policy
-skopeo inspect docker://registry.example.com/myapp:v1.0
 ```
 
 ## Standalone Signature Verification
@@ -139,18 +134,18 @@ You can verify signatures manually using the `skopeo standalone-verify` command.
 # Get the image manifest
 skopeo inspect --raw docker://registry.example.com/myapp:v1.0 > manifest.json
 
-# Get the image digest
-DIGEST=$(skopeo inspect docker://registry.example.com/myapp:v1.0 | \
-  jq -r '.Digest')
+# Optionally compute the manifest digest from the downloaded manifest
+skopeo manifest-digest manifest.json
 
 # Download the signature file
-# (location depends on your sigstore configuration)
+# (location depends on your lookaside configuration)
 
 # Verify the signature against the manifest
 skopeo standalone-verify \
+  --public-key-file /etc/pki/containers/trusted-key.gpg \
   manifest.json \
-  registry.example.com/myapp \
-  "$DIGEST" \
+  registry.example.com/myapp:v1.0 \
+  any \
   /path/to/signature-file
 ```
 
@@ -177,8 +172,11 @@ skopeo copy \
 
 echo "Image signed and pushed: ${IMAGE_NAME}:${TAG}"
 
-# Verify the pushed image can be validated
-skopeo inspect "docker://${IMAGE_NAME}:${TAG}" && \
+# Verify the pushed image can be validated by policy
+VERIFY_DIR=$(mktemp -d)
+skopeo copy \
+  "docker://${IMAGE_NAME}:${TAG}" \
+  "dir:${VERIFY_DIR}" && \
   echo "Signature verification passed."
 ```
 
@@ -222,4 +220,4 @@ EOF
 
 ## Summary
 
-Image signing and verification with Skopeo provides a critical security layer for container workflows. By signing images during the copy process and configuring verification policies, you ensure that only trusted, unmodified images reach your production systems. Skopeo integrates with GPG for cryptographic signing, supports flexible signature storage options, and works with Podman's policy system to enforce verification automatically. Incorporating image signing into your CI/CD pipeline establishes a secure supply chain from build to deployment.
+Image signing and verification with Skopeo provides a critical security layer for container workflows. By signing images during the copy process and configuring verification policies, you ensure that only trusted, unmodified images reach your production systems. Skopeo integrates with GPG for cryptographic signing, supports configurable lookaside signature storage, and works with Podman's policy system to enforce verification automatically. Incorporating image signing into your CI/CD pipeline establishes a secure supply chain from build to deployment.
