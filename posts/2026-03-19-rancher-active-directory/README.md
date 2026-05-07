@@ -14,7 +14,7 @@ Microsoft Active Directory (AD) is one of the most widely used directory service
 - A Microsoft Active Directory domain controller accessible from the Rancher server
 - An AD service account with read access to the directory
 - Network connectivity between Rancher and the AD server (LDAP port 389 or LDAPS port 636)
-- AD domain details: base DN, bind DN, and domain name
+- AD domain details: base DN, user/group search base DNs, service account username, and NetBIOS domain name
 
 ## Step 1: Prepare the Active Directory Service Account
 
@@ -42,10 +42,10 @@ Collect the following information from your AD environment:
 Domain Controller Hostname: dc01.example.com
 Port: 636 (LDAPS) or 389 (LDAP)
 Base DN: DC=example,DC=com
-Bind DN: CN=svc-rancher,OU=Service Accounts,DC=example,DC=com
+Service Account Username: EXAMPLE\svc-rancher
 User Search Base: OU=Users,DC=example,DC=com
 Group Search Base: OU=Groups,DC=example,DC=com
-Default Login Domain: example
+Default Login Domain: EXAMPLE
 ```
 
 Verify connectivity from the Rancher server:
@@ -54,14 +54,14 @@ Verify connectivity from the Rancher server:
 # Test LDAP connectivity
 
 ldapsearch -x -H ldap://dc01.example.com:389 \
-  -D "CN=svc-rancher,OU=Service Accounts,DC=example,DC=com" \
+  -D "EXAMPLE\\svc-rancher" \
   -w "<password>" \
   -b "DC=example,DC=com" \
   "(sAMAccountName=testuser)"
 
 # Test LDAPS connectivity
 ldapsearch -x -H ldaps://dc01.example.com:636 \
-  -D "CN=svc-rancher,OU=Service Accounts,DC=example,DC=com" \
+  -D "EXAMPLE\\svc-rancher" \
   -w "<password>" \
   -b "DC=example,DC=com" \
   "(sAMAccountName=testuser)"
@@ -84,21 +84,21 @@ Fill in the AD connection details:
 Hostname or IP Address: dc01.example.com
 Port: 636
 TLS: ☑ Enabled
-Certificate: (paste the AD CA certificate if using LDAPS)
-Service Account Distinguished Name: CN=svc-rancher,OU=Service Accounts,DC=example,DC=com
+Certificate: (paste the issuing CA certificate, plus any intermediate certificates, in PEM format when using LDAPS)
+Service Account Username: EXAMPLE\svc-rancher
 Service Account Password: <password>
-Default Login Domain: example
+Default Login Domain: EXAMPLE
 ```
 
-If your AD uses a self-signed certificate:
+If your AD uses a self-signed certificate or private CA:
 
 ```bash
-# Export the AD CA certificate
+# Export the certificate chain presented by the AD server
 openssl s_client -connect dc01.example.com:636 -showcerts </dev/null 2>/dev/null | \
-  openssl x509 -outform PEM > ad-ca-cert.pem
+  sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ad-cert-chain.pem
 ```
 
-Paste the contents of `ad-ca-cert.pem` into the Certificate field.
+Paste the contents of `ad-cert-chain.pem` into the Certificate field.
 
 ## Step 5: Configure User and Group Search Settings
 
@@ -106,31 +106,30 @@ Set up the search parameters:
 
 ```plaintext
 User Search Base: OU=Users,DC=example,DC=com
-Username Attribute: sAMAccountName
-User Login Attribute: sAMAccountName
-User Object Class: person
-User Name Attribute: name
+Object Class: person
+Username Attribute: name
+Login Attribute: sAMAccountName
 User Member Attribute: memberOf
-Search Attribute: sAMAccountName|sn|givenName
+Search Attribute: sAMAccountName|name
 User Enabled Attribute: userAccountControl
-User Disabled Bit Mask: 2
+Disabled Status Bitmask: 2
 
 Group Search Base: OU=Groups,DC=example,DC=com
-Group Object Class: group
-Group Name Attribute: name
+Object Class: group
+Name Attribute: name
 Group DN Attribute: distinguishedName
 Group Member User Attribute: distinguishedName
 Group Member Mapping Attribute: member
-Group Search Attribute: sAMAccountName
+Search Attribute: sAMAccountName
 ```
 
 ## Step 6: Test the Configuration
 
-Before saving, test the connection:
+Rancher validates the configuration as part of the enable flow:
 
-1. Click **Test** at the bottom of the configuration form.
-2. Enter a known AD username and password.
-3. Verify that authentication succeeds and user details are returned correctly.
+1. Click **Enable** at the bottom of the configuration form.
+2. Enter the username and password for the AD account that should be mapped to the local principal account.
+3. Click **Authenticate with Active Directory**.
 
 If the test fails, check the following:
 
@@ -141,20 +140,15 @@ If the test fails, check the following:
 
 ## Step 7: Save and Enable
 
-Once testing is successful:
-
-1. Click **Enable** to activate AD authentication.
-2. You will be prompted to confirm. Click **Enable** again.
-
-After enabling, the Rancher login page will show an option to log in with Active Directory credentials.
+After successful authentication, Active Directory authentication is enabled automatically and you are signed in as that AD user. The Rancher login page will then show an option to log in with Active Directory credentials.
 
 ## Step 8: Map AD Groups to Rancher Roles
 
 Assign Rancher roles to AD groups:
 
 1. Navigate to **Users & Authentication** then **Groups**.
-2. Search for an AD group.
-3. Assign global roles to the group.
+2. Search for an AD group and click **⋮ > Edit Config**.
+3. Assign global roles to the group and save.
 
 ```plaintext
 AD Group: DevOps-Team
@@ -169,18 +163,18 @@ Rancher Role: User-Base
 
 For cluster-level access:
 
-1. Navigate to a cluster.
-2. Go to **Cluster Members**.
-3. Click **Add**.
+1. Navigate to **Cluster Management**.
+2. For the target cluster, click **⋮ > Edit Config**.
+3. Open the **Member Roles** tab and click **Add Member**.
 4. Search for the AD group.
 5. Assign the cluster role.
 
 ```plaintext
 AD Group: App-Team-A
-Cluster Role: Cluster Member
+Cluster Role: Member
 
 AD Group: SRE-Team
-Cluster Role: Cluster Owner
+Cluster Role: Owner
 ```
 
 ## Step 9: Configure Nested Group Support
@@ -198,13 +192,11 @@ Common issues and their solutions:
 
 ```bash
 # Check Rancher server logs for AD errors
-kubectl logs -l app=rancher -n cattle-system --tail=200 | grep -i "activedirectory\|ldap\|auth"
+kubectl logs -n cattle-system -l app=rancher -c rancher --tail=200 | grep -Ei "activedirectory|ldap|auth"
 
-# Test LDAP search from the Rancher pod
-kubectl exec -it $(kubectl get pod -l app=rancher -n cattle-system -o jsonpath='{.items[0].metadata.name}') \
-  -n cattle-system -- \
-  ldapsearch -x -H ldaps://dc01.example.com:636 \
-  -D "CN=svc-rancher,OU=Service Accounts,DC=example,DC=com" \
+# Repeat the LDAP test from a host that has ldapsearch installed and network access to AD
+ldapsearch -x -H ldaps://dc01.example.com:636 \
+  -D "EXAMPLE\\svc-rancher" \
   -w "<password>" \
   -b "OU=Users,DC=example,DC=com" \
   "(sAMAccountName=testuser)" dn
@@ -213,9 +205,9 @@ kubectl exec -it $(kubectl get pod -l app=rancher -n cattle-system -o jsonpath='
 | Issue | Possible Cause | Solution |
 |-------|---------------|----------|
 | Connection timeout | Firewall blocking LDAP ports | Open ports 389/636 between Rancher and AD |
-| Invalid credentials | Wrong bind DN format | Use the full distinguished name |
+| Invalid credentials | Wrong service account username format or password | Use a valid UPN or `DOMAIN\\username` and verify the password |
 | No users found | Incorrect search base | Verify the OU path in AD |
-| TLS handshake failure | Certificate mismatch | Import the correct CA certificate |
+| TLS handshake failure | Certificate mismatch | Import the correct CA certificate chain |
 | Slow authentication | Nested group resolution | Disable nested groups or optimize AD structure |
 
 ## Best Practices
@@ -224,7 +216,7 @@ kubectl exec -it $(kubectl get pod -l app=rancher -n cattle-system -o jsonpath='
 - **Use a dedicated service account**: Do not use a personal account for the LDAP bind. Use a service account with minimal permissions.
 - **Map groups, not users**: Assign roles to AD groups rather than individual users for easier management.
 - **Test in staging**: Configure and test AD integration in a staging Rancher instance before enabling it in production.
-- **Plan for failover**: Configure multiple AD domain controllers for high availability.
+- **Plan for failover**: Use a highly available AD endpoint, such as a DNS name or load balancer backed by multiple domain controllers.
 
 ## Conclusion
 
