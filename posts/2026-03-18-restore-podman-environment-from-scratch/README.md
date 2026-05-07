@@ -123,24 +123,33 @@ for netconf in /backups/podman/latest/networks/*.json; do
     NETWORK_NAME=$(basename "$netconf" .json)
     echo "Recreating network: $NETWORK_NAME"
 
-    # Extract subnet from config
-    SUBNET=$(python3 -c "
+    # Extract subnet and gateway from podman network inspect output
+    mapfile -t NET_ARGS < <(python3 -c "
 import json
 with open('$netconf') as f:
     data = json.load(f)
+data = data[0] if isinstance(data, list) else data
+for subnet in data.get('subnets', []):
+    if subnet.get('subnet'):
+        print('--subnet')
+        print(subnet['subnet'])
+    if subnet.get('gateway'):
+        print('--gateway')
+        print(subnet['gateway'])
 plugins = data.get('plugins', [])
-for p in plugins:
-    if 'ipam' in p:
-        ranges = p['ipam'].get('ranges', [[]])
-        for r in ranges[0]:
-            print(r.get('subnet', ''))
+for plugin in plugins:
+    ranges = plugin.get('ipam', {}).get('ranges', [])
+    for group in ranges:
+        for item in group:
+            if item.get('subnet'):
+                print('--subnet')
+                print(item['subnet'])
+            if item.get('gateway'):
+                print('--gateway')
+                print(item['gateway'])
 " 2>/dev/null)
 
-    if [ -n "$SUBNET" ]; then
-        podman network create --subnet "$SUBNET" "$NETWORK_NAME"
-    else
-        podman network create "$NETWORK_NAME"
-    fi
+    podman network create "${NET_ARGS[@]}" "$NETWORK_NAME"
 done
 
 podman network ls
@@ -161,10 +170,25 @@ for archive in "$VOLUME_BACKUP_DIR"/*.tar.gz; do
     [[ "$archive" == *-inspect.json ]] && continue
 
     VOLUME_NAME=$(basename "$archive" .tar.gz)
+    METADATA="$VOLUME_BACKUP_DIR/$VOLUME_NAME-inspect.json"
     echo "  Restoring volume: $VOLUME_NAME"
 
-    # Create the volume
-    podman volume create "$VOLUME_NAME"
+    # Create the volume, preserving labels if metadata is available
+    LABEL_ARGS=()
+    if [ -f "$METADATA" ]; then
+        while IFS= read -r label; do
+            LABEL_ARGS+=(--label "$label")
+        done < <(python3 -c "
+import json
+with open('$METADATA') as f:
+    data = json.load(f)
+data = data[0] if isinstance(data, list) else data
+for k, v in (data.get('Labels') or {}).items():
+    print(f'{k}={v}')
+")
+    fi
+
+    podman volume create "${LABEL_ARGS[@]}" "$VOLUME_NAME"
 
     # Restore data using podman volume import
     gunzip -c "$archive" | podman volume import "$VOLUME_NAME" -
@@ -177,7 +201,7 @@ echo "Restored volumes:"
 podman volume ls
 ```
 
-If you have volume metadata, restore labels:
+If you have volume metadata, you can inspect labels before recreating a volume:
 
 ```bash
 for metadata in "$VOLUME_BACKUP_DIR"/*-inspect.json; do
@@ -187,7 +211,7 @@ for metadata in "$VOLUME_BACKUP_DIR"/*-inspect.json; do
 import json
 with open('$metadata') as f:
     data = json.load(f)
-labels = data[0].get('Labels', {}) if isinstance(data, list) else data.get('Labels', {})
+labels = (data[0].get('Labels', {}) if isinstance(data, list) else data.get('Labels', {})) or {}
 for k, v in labels.items():
     print(f'  {k}={v}')
 "
@@ -209,21 +233,13 @@ for metadata in "$CONTAINER_BACKUP_DIR"/*-inspect.json; do
     CONTAINER_NAME=$(basename "$metadata" -inspect.json)
     echo "  Recreating: $CONTAINER_NAME"
 
-    # Extract configuration from metadata
-    IMAGE=$(python3 -c "
-import json
-with open('$metadata') as f:
-    data = json.load(f)
-d = data[0] if isinstance(data, list) else data
-print(d.get('ImageName', d.get('Config', {}).get('Image', '')))
-")
-
     # Build the podman run command
-    RUN_CMD=$(python3 << 'PYEOF'
+    RUN_CMD=$(python3 - "$metadata" << 'PYEOF'
 import json
+import shlex
 import sys
 
-with open('METADATA_FILE') as f:
+with open(sys.argv[1]) as f:
     data = json.load(f)
 
 d = data[0] if isinstance(data, list) else data
@@ -235,12 +251,12 @@ args = []
 # Name
 name = d.get('Name', '').lstrip('/')
 if name:
-    args.append(f'--name {name}')
+    args.extend(['--name', name])
 
 # Environment variables (skip default PATH)
 for env in config.get('Env', []):
     if not env.startswith('PATH='):
-        args.append(f'-e "{env}"')
+        args.extend(['-e', env])
 
 # Port mappings
 port_bindings = host_config.get('PortBindings', {})
@@ -248,44 +264,45 @@ for container_port, bindings in port_bindings.items():
     if bindings:
         for binding in bindings:
             host_port = binding.get('HostPort', '')
+            host_ip = binding.get('HostIp', '')
             if host_port:
-                args.append(f'-p {host_port}:{container_port.split("/")[0]}')
+                published = f'{host_port}:{container_port}'
+                if host_ip:
+                    published = f'{host_ip}:{published}'
+                args.extend(['-p', published])
 
 # Volume mounts
 for mount in d.get('Mounts', []):
     src = mount.get('Source', mount.get('Name', ''))
     dst = mount.get('Destination', '')
     if src and dst:
-        args.append(f'-v {src}:{dst}')
+        args.extend(['-v', f'{src}:{dst}'])
 
 # Restart policy
 restart = host_config.get('RestartPolicy', {}).get('Name', '')
 if restart and restart != 'no':
-    args.append(f'--restart {restart}')
+    args.extend(['--restart', restart])
 
 # Network
 networks = d.get('NetworkSettings', {}).get('Networks', {})
 for net_name in networks:
     if net_name not in ('podman', 'bridge'):
-        args.append(f'--network {net_name}')
+        args.extend(['--network', net_name])
 
 # Image
 image = d.get('ImageName', config.get('Image', ''))
 
 # Command
 cmd = config.get('Cmd', [])
-cmd_str = ' '.join(cmd) if cmd else ''
+command = cmd if isinstance(cmd, list) else ([cmd] if cmd else [])
 
-print(' '.join(args) + f' {image} {cmd_str}')
+print(' '.join(shlex.quote(arg) for arg in args + [image] + command))
 PYEOF
 )
 
-    # Replace placeholder with actual file path
-    RUN_CMD=$(echo "$RUN_CMD" | sed "s|METADATA_FILE|$metadata|g")
-
     echo "    podman run -d $RUN_CMD"
     # Uncomment the next line to actually run:
-    # podman run -d $RUN_CMD
+    # eval "podman run -d $RUN_CMD"
 done
 ```
 
