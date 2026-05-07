@@ -10,22 +10,24 @@ Running Rancher in production requires more than a default installation. Securit
 
 ## Prerequisites
 
-- Rancher v2.5 or later
+- A currently supported Rancher release
 - kubectl and Helm 3 access
 - Admin privileges on the Rancher management cluster
 - A valid TLS certificate for the Rancher hostname
 
 ## Step 1: Use a Hardened Kubernetes Distribution
 
-Deploy Rancher on a hardened Kubernetes distribution such as RKE2, which is designed for security-focused environments. RKE2 ships with CIS benchmark compliance by default.
+Deploy Rancher on a hardened Kubernetes distribution such as RKE2, which is designed for security-focused environments. RKE2 is hardened by default, and the `cis` profile enables the controls needed for the applicable CIS benchmark on supported RKE2 releases.
 
-Install RKE2 with CIS hardening profile:
+Install RKE2 with the current CIS hardening profile:
 
 ```bash
 curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=server sh -
 
+mkdir -p /etc/rancher/rke2
+
 cat > /etc/rancher/rke2/config.yaml << 'EOF'
-profile: cis-1.6
+profile: cis
 selinux: true
 secrets-encryption: true
 EOF
@@ -36,10 +38,17 @@ systemctl start rke2-server
 
 ## Step 2: Configure TLS with a Trusted Certificate
 
-Never use self-signed certificates in production. Use a certificate from a trusted CA or Let's Encrypt:
+Never use self-signed certificates in production. Add the stable Rancher Helm repository first:
 
 ```bash
-helm install rancher rancher-latest/rancher \
+helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo update
+```
+
+Then use a certificate from a trusted CA or Let's Encrypt. If you use Let's Encrypt, cert-manager must already be installed and port 80 must be reachable for the HTTP-01 challenge:
+
+```bash
+helm install rancher rancher-stable/rancher \
   -n cattle-system \
   --create-namespace \
   --set hostname=rancher.yourdomain.com \
@@ -57,7 +66,7 @@ kubectl create secret tls tls-rancher-ingress \
   --cert=tls.crt \
   --key=tls.key
 
-helm install rancher rancher-latest/rancher \
+helm install rancher rancher-stable/rancher \
   -n cattle-system \
   --create-namespace \
   --set hostname=rancher.yourdomain.com \
@@ -65,11 +74,13 @@ helm install rancher rancher-latest/rancher \
   --set replicas=3
 ```
 
+If the certificate is signed by a private CA, also create the `tls-ca` secret and set `--set privateCA=true`.
+
 ## Step 3: Restrict Network Access
 
-Limit who can reach the Rancher UI and API by configuring network policies and firewall rules.
+Limit who can reach the Rancher UI and API by using load balancer or firewall allowlists, and use NetworkPolicies to restrict in-cluster traffic to Rancher pods.
 
-Create a NetworkPolicy to restrict access to the Rancher namespace:
+For example, if Rancher is exposed through the `ingress-nginx` controller, allow ingress to the Rancher pods only from that namespace:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -85,20 +96,22 @@ spec:
   - Ingress
   ingress:
   - from:
-    - ipBlock:
-        cidr: 10.0.0.0/8
-    - ipBlock:
-        cidr: 172.16.0.0/12
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
     ports:
     - protocol: TCP
-      port: 443
+      port: 80
 ```
+
+Adjust the namespace selector if you use a different ingress controller.
 
 ## Step 4: Enable Audit Logging
 
-Enable Kubernetes API audit logging to track all API requests:
+Enable Kubernetes API audit logging by placing an audit policy on the RKE2 server nodes and pointing the API server at it:
 
 ```yaml
+# /etc/rancher/rke2/audit-policy.yaml
 apiVersion: audit.k8s.io/v1
 kind: Policy
 metadata:
@@ -118,11 +131,21 @@ rules:
   - group: "management.cattle.io"
 ```
 
+```yaml
+# Add to /etc/rancher/rke2/config.yaml
+audit-policy-file: /etc/rancher/rke2/audit-policy.yaml
+```
+
+```bash
+systemctl restart rke2-server
+```
+
 Configure Rancher's built-in audit log:
 
 ```bash
-helm upgrade rancher rancher-latest/rancher \
+helm upgrade rancher rancher-stable/rancher \
   -n cattle-system \
+  --set auditLog.enabled=true \
   --set auditLog.level=2 \
   --set auditLog.destination=hostPath \
   --set auditLog.hostPath=/var/log/rancher/audit
@@ -134,23 +157,16 @@ Avoid using the default admin account for daily operations. Create role-based ac
 
 1. In Rancher, go to **Users & Authentication** > **Users**.
 2. Create individual user accounts.
-3. Go to **Cluster Management** and assign users to specific clusters with appropriate roles:
+3. Go to **Cluster Management** and assign users to specific clusters or projects with appropriate roles:
    - **Cluster Owner**: Full control of a single cluster.
-   - **Cluster Member**: Deploy workloads but cannot manage cluster settings.
-   - **Read-Only**: View-only access.
+   - **Cluster Member**: View most cluster-level resources and create new projects.
+   - **Read-Only**: View project resources without making changes.
 
-Remove the default admin password and use an external authentication provider:
-
-```bash
-helm upgrade rancher rancher-latest/rancher \
-  -n cattle-system \
-  --set 'extraEnv[0].name=CATTLE_RESTRICT_DEFAULT_ADMIN' \
-  --set 'extraEnv[0].value=true'
-```
+After the first login, reset the local admin password and reserve local users for break-glass access only.
 
 ## Step 6: Enable External Authentication
 
-Configure an external identity provider instead of local accounts:
+Configure an external identity provider for day-to-day access instead of relying only on local accounts:
 
 1. Go to **Users & Authentication** > **Auth Provider**.
 2. Select your provider (LDAP, Active Directory, SAML, GitHub, Google OAuth, etc.).
@@ -158,14 +174,7 @@ Configure an external identity provider instead of local accounts:
 4. Test the configuration.
 5. Enable the provider.
 
-For LDAP configuration via Helm:
-
-```bash
-helm upgrade rancher rancher-latest/rancher \
-  -n cattle-system \
-  --set 'extraEnv[0].name=CATTLE_AUTH_PROVIDER' \
-  --set 'extraEnv[0].value=activedirectory'
-```
+Keep a small number of local users for emergency access if your external provider is unavailable. Rancher does not provide a generic Helm setting for LDAP, AD, SAML, or OIDC configuration; configure the provider in the Rancher UI or Rancher API after installation.
 
 ## Step 7: Restrict the Rancher API
 
@@ -174,42 +183,23 @@ Limit API access using API keys with scoped permissions:
 1. Go to **API & Keys** in the user menu.
 2. Create API keys with specific scopes and expiration times.
 3. Never use admin-level API keys in automation; use scoped keys instead.
-
-Set API key expiration:
-
-```bash
-helm upgrade rancher rancher-latest/rancher \
-  -n cattle-system \
-  --set 'extraEnv[0].name=CATTLE_TOKEN_MAX_TTL_MINUTES' \
-  --set 'extraEnv[0].value=1440'
-```
+4. In **Global Settings**, set `auth-token-max-ttl-minutes` to bound the maximum lifetime of API and kubeconfig tokens.
 
 ## Step 8: Secure etcd
 
-Ensure etcd communication is encrypted and access is restricted:
+RKE2 enables mutual TLS for embedded etcd by default. Keep etcd inaccessible from untrusted networks and do not expose ports `2379` or `2380` publicly. The embedded etcd configuration already enables `client-cert-auth=true` and `peer-client-cert-auth=true`.
 
-```yaml
-# RKE2 config
-
-etcd-arg:
-  - "client-cert-auth=true"
-  - "peer-client-cert-auth=true"
-```
-
-Enable etcd encryption at rest:
-
-```bash
-# Already enabled with secrets-encryption: true in RKE2 config
-```
+Enable Kubernetes secret encryption at rest by keeping `secrets-encryption: true` in the RKE2 config shown earlier.
 
 ## Step 9: Run Security Scans
 
-Use the CIS Benchmark scanning feature in Rancher:
+Use Rancher's compliance scanning feature:
 
 1. Navigate to the cluster.
-2. Go to **CIS Benchmark** in the cluster menu.
-3. Run a scan to identify security issues.
-4. Review and remediate findings.
+2. If Compliance is not installed yet, go to **Apps** > **Charts** and install **Compliance**.
+3. Go to **Compliance** > **Scan**.
+4. Create a scan and choose a profile.
+5. Review and remediate findings.
 
 ## Step 10: Keep Rancher Updated
 
@@ -217,7 +207,7 @@ Stay current with security patches:
 
 ```bash
 helm repo update
-helm search repo rancher-latest/rancher --versions | head -5
+helm search repo rancher-stable/rancher --versions | head -5
 ```
 
 Subscribe to Rancher security advisories and apply updates promptly.
@@ -230,11 +220,11 @@ Subscribe to Rancher security advisories and apply updates promptly.
 - [ ] Configure RBAC with least privilege
 - [ ] Use external authentication (LDAP/SAML)
 - [ ] Restrict network access to Rancher
-- [ ] Enable etcd encryption
-- [ ] Run CIS benchmark scans
+- [ ] Enable Kubernetes secret encryption at rest
+- [ ] Run compliance scans
 - [ ] Set API key expiration
 - [ ] Keep Rancher and Kubernetes up to date
-- [ ] Enable Pod Security Standards or Policies
+- [ ] Enable Pod Security Standards
 - [ ] Configure backup encryption
 
 ## Conclusion
