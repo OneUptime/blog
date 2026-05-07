@@ -6,7 +6,7 @@ Tags: AWS, Terraform, IPv6, Egress-Only Internet Gateway, VPC, Networking
 
 Description: A guide to creating and configuring an AWS Egress-Only Internet Gateway with Terraform to enable IPv6 outbound-only internet access for private subnets.
 
-An Egress-Only Internet Gateway (EIGW) is the IPv6 equivalent of a NAT Gateway. It allows instances in private subnets to initiate outbound IPv6 connections to the internet while preventing inbound connections from being established from the internet. This is a key component for securing IPv6-enabled private subnets.
+An Egress-Only Internet Gateway (EIGW) provides outbound-only internet access for IPv6 traffic, similar to the role a NAT Gateway plays for IPv4. It allows instances in private subnets to initiate outbound IPv6 connections to the internet while preventing inbound connections from being established from the internet. This is a key component for securing IPv6-enabled private subnets.
 
 ## How It Differs from a Regular Internet Gateway
 
@@ -59,8 +59,8 @@ resource "aws_subnet" "private_a" {
 
   availability_zone = "us-east-1a"
 
-  # Do NOT assign IPv6 on creation automatically for private subnets
-  # (instances will still get a GUA if you enable this, which is fine)
+  # Auto-assign IPv6 addresses on launch so instances in this subnet
+  # can use outbound IPv6 without per-instance address assignment
   assign_ipv6_address_on_creation = true
 
   tags = {
@@ -120,8 +120,7 @@ ping6 -c 3 ipv6.google.com
 
 ```bash
 # List Egress-Only Internet Gateways
-aws ec2 describe-egress-only-internet-gateways \
-  --filters "Name=attachment.vpc-id,Values=$(terraform output -raw vpc_id)"
+aws ec2 describe-egress-only-internet-gateways
 ```
 
 The Egress-Only Internet Gateway is a critical component for maintaining security in IPv6 AWS architectures - it gives private instances full IPv6 egress while ensuring they cannot be reached directly from the internet.
