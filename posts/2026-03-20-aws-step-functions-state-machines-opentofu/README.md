@@ -42,7 +42,18 @@ resource "aws_iam_role_policy" "step_functions" {
       },
       {
         Effect   = "Allow"
-        Action   = ["logs:CreateLogDelivery", "logs:PutLogEvents", "logs:GetLogDelivery"]
+        Action = [
+          "logs:CreateLogDelivery",
+          "logs:CreateLogStream",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutLogEvents",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+          "logs:DescribeLogGroups"
+        ]
         Resource = "*"
       }
     ]
