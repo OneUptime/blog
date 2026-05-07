@@ -17,9 +17,9 @@ Build arguments (ARGs) in Compose files let you pass values to the Containerfile
 ## Defining Build Arguments
 
 ```yaml
-# docker-compose.yml
+# compose.yaml
 
-version: "3.8"
+name: project
 services:
   app:
     build:
@@ -62,8 +62,7 @@ podman inspect project_app --format '{{.Config.Labels.build_date}}'
 ## Arguments from Environment Variables
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
+# compose.yaml
 services:
   app:
     build:
@@ -89,8 +88,7 @@ BUILD_ENV=staging
 ```
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
+# compose.yaml
 services:
   app:
     build:
@@ -107,10 +105,10 @@ services:
 # Containerfile with multi-stage build
 ARG NODE_VERSION=20
 FROM docker.io/library/node:${NODE_VERSION}-alpine AS builder
-ARG APP_ENV=production
+ARG NPM_OMIT=dev
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=${APP_ENV}
+RUN npm ci --omit=${NPM_OMIT}
 COPY . .
 RUN npm run build
 
@@ -125,7 +123,7 @@ services:
       context: .
       args:
         NODE_VERSION: "20"
-        APP_ENV: production
+        NPM_OMIT: dev
 ```
 
 ## List Syntax for Arguments
@@ -138,7 +136,15 @@ services:
       args:
         # Map syntax
         PYTHON_VERSION: "3.12"
-        # Or list syntax
+```
+
+```yaml
+services:
+  app:
+    build:
+      context: .
+      args:
+        # List syntax
         - APP_ENV=production
         - DEBUG=false
 ```
