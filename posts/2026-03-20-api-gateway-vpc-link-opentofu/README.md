@@ -8,7 +8,7 @@ Description: Learn how to create an API Gateway VPC Link with OpenTofu to expose
 
 ## Introduction
 
-API Gateway VPC Link enables API Gateway to communicate with private resources inside a VPC, such as internal load balancers, ECS services, or EKS pods. HTTP API VPC Links use AWS PrivateLink and can connect to Network Load Balancers and Application Load Balancers, while REST API VPC Links connect to NLBs only.
+API Gateway VPC Link enables API Gateway to communicate with private resources inside a VPC, such as internal load balancers, ECS services, or EKS pods. HTTP API VPC Links create managed elastic network interfaces in your subnets and can connect to Network Load Balancers, Application Load Balancers, or AWS Cloud Map services. For REST APIs, the legacy `aws_api_gateway_vpc_link` resource shown below connects to NLBs only.
 
 ## Prerequisites
 
@@ -19,7 +19,7 @@ API Gateway VPC Link enables API Gateway to communicate with private resources i
 ## Step 1: Create Network Load Balancer for VPC Resources
 
 ```hcl
-# NLB for internal services (required for REST API VPC Link)
+# NLB for internal services (required for the legacy REST API VPC Link resource shown here)
 
 resource "aws_lb" "internal" {
   name               = "${var.project_name}-internal-nlb"
@@ -63,7 +63,7 @@ resource "aws_lb_listener" "services" {
 ## Step 2: Create REST API VPC Link
 
 ```hcl
-# VPC Link for REST API connects to NLB
+# Legacy REST API VPC Link resource connects to NLB
 resource "aws_api_gateway_vpc_link" "main" {
   name        = "${var.project_name}-vpc-link"
   description = "VPC Link for internal services"
@@ -78,7 +78,7 @@ resource "aws_api_gateway_vpc_link" "main" {
 ## Step 3: Create HTTP API VPC Link
 
 ```hcl
-# HTTP API VPC Link uses PrivateLink to connect to NLB or ALB
+# HTTP API VPC Link creates managed ENIs in your subnets for private integrations
 resource "aws_apigatewayv2_vpc_link" "main" {
   name               = "${var.project_name}-http-vpc-link"
   security_group_ids = [var.vpc_link_security_group_id]
@@ -103,8 +103,12 @@ resource "aws_apigatewayv2_integration" "vpc_link" {
   integration_type   = "HTTP_PROXY"
   integration_method = "ANY"
 
-  # Use the private NLB URL as the integration URI
+  # Use the private NLB listener ARN as the integration URI
   integration_uri = aws_lb_listener.services.arn
+
+  request_parameters = {
+    "overwrite:path" = "$request.path"
+  }
 
   connection_type = "VPC_LINK"
   connection_id   = aws_apigatewayv2_vpc_link.main.id
@@ -156,4 +160,4 @@ curl https://{api-id}.execute-api.us-east-1.amazonaws.com/prod/health
 
 ## Conclusion
 
-VPC Links enable API Gateway to serve as the public-facing API layer for private backend services without exposing them to the internet. The internal NLB remains private within the VPC, and all traffic flows through the AWS network. Use HTTP API VPC Links for new deployments-they support both NLB and ALB targets and leverage PrivateLink for better security isolation compared to REST API VPC Links.
+VPC Links enable API Gateway to serve as the public-facing API layer for private backend services without exposing them to the internet. The internal NLB remains private within the VPC, and all traffic flows through the AWS network. Use HTTP API VPC Links for new HTTP API deployments-they support NLB, ALB, and AWS Cloud Map targets. For REST APIs, the legacy `aws_api_gateway_vpc_link` resource remains NLB-based, while newer private integrations can use VPC links V2.
