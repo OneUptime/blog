@@ -19,7 +19,7 @@ After you checkpoint a container, the next step is restoring it. Podman's restor
 Before restoring a container, you need:
 
 - A previously checkpointed container (see the checkpointing guide)
-- CRIU 3.15 or later installed
+- CRIU 3.11 or later installed
 - Root access
 - The same Podman host where the checkpoint was created (for local restore)
 
@@ -82,15 +82,17 @@ sudo podman exec state-test cat /tmp/state.txt
 
 The restored container's `/tmp/state.txt` will show the iterations continuing from the checkpoint point, with new timestamps after the restore.
 
-## Restore with Resource Adjustments
+## Restore with Configuration Constraints
 
-You cannot change most container parameters during restore, but you can adjust some resource limits. The container will be restored with the same configuration it had when checkpointed, including:
+You cannot change most container parameters during a local restore. The container will be restored with the same configuration it had when checkpointed, including:
 
 - Image and command
 - Environment variables
 - Network configuration
 - Volume mounts
-- Resource limits (unless explicitly overridden)
+- Resource limits
+
+When restoring from an exported checkpoint archive or checkpoint image, Podman supports a few restore-time changes, such as replacing published ports with `--publish`.
 
 To see the full configuration of a checkpointed container:
 
@@ -147,24 +149,28 @@ sudo podman container restore state-test
 sudo podman exec state-test ps aux
 ```
 
-This is useful for debugging. You can checkpoint a container that is exhibiting a problem, then restore it multiple times to inspect different aspects of its state without losing the problematic condition.
+This is useful for debugging. You can checkpoint a container that is exhibiting a problem, then restore it with `--keep` or use an exported checkpoint to inspect different aspects of its state without losing the problematic condition.
 
 ## Repeated Restore from the Same Checkpoint
 
-By default, restoring a container consumes the checkpoint data. If you want to restore from the same checkpoint multiple times, you need to export the checkpoint first (covered in a separate guide) or re-checkpoint the container.
+By default, restoring a container consumes the checkpoint data. If you want to restore from the same checkpoint multiple times, use `--keep`, export the checkpoint first (covered in a separate guide), or re-checkpoint the container.
 
 ```bash
-# First restore works
-sudo podman container restore counter
+# Restore while keeping the checkpoint data
+sudo podman container restore --keep counter
 
-# Checkpoint again to create a new restore point
+# Stop the restored container before restoring the same local checkpoint again
+sudo podman stop counter
+sudo podman container restore --keep counter
+
+# Or checkpoint again to create a new restore point
 sudo podman container checkpoint counter
 
 # Second restore from the new checkpoint
 sudo podman container restore counter
 ```
 
-For repeated restores from the same point, the export/import workflow is more appropriate.
+For repeated restores as separate containers from the same point, the export/import workflow is more appropriate.
 
 ## Checking Restore Timing
 
@@ -208,7 +214,7 @@ sudo podman --log-level=debug container restore counter 2>&1 | tail -20
 sudo podman inspect counter --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
 ```
 
-**Network conflicts**: If another container has taken the same IP address, the restore may fail. Check for conflicts:
+**Network conflicts**: If the original container used a static IP address and another container has taken the same IP address, the restore may fail. Check for conflicts:
 
 ```bash
 sudo podman network inspect podman
