@@ -24,8 +24,8 @@ Podman looks for TLS certificates in a specific directory structure.
 ls -la /etc/containers/certs.d/
 
 # Each registry gets its own subdirectory
-# The directory name must match the registry hostname and port
-# /etc/containers/certs.d/<registry-hostname>:<port>/
+# The directory name must match the registry host[:port] as used in image references
+# /etc/containers/certs.d/<registry-hostname>[:<port>]/
 
 # User-level certificate directory (rootless Podman)
 ls -la ~/.config/containers/certs.d/ 2>/dev/null
@@ -103,9 +103,9 @@ The expected file naming convention within each registry directory.
 ```bash
 # List the expected files in a certificate directory
 # /etc/containers/certs.d/<registry>/
-#   ca.crt        - CA certificate (PEM format)
+#   *.crt         - CA certificates (PEM format)
 #   client.cert   - Client certificate (PEM format, for mTLS)
-#   client.key    - Client private key (PEM format, for mTLS)
+#   client.key    - Matching client private key (PEM format, for mTLS)
 
 # View the structure
 tree /etc/containers/certs.d/ 2>/dev/null || \
