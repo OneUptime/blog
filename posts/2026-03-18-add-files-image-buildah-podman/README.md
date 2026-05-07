@@ -111,7 +111,7 @@ buildah run $container -- ls -la /usr/local/bin/startup.sh
 
 ## Using buildah add
 
-The `buildah add` command works like `buildah copy` but with additional features: it can extract tar archives and fetch files from URLs.
+The `buildah add` command works like `buildah copy` but with archive extraction for local archive files. Both commands can also fetch files from URLs.
 
 ### Add and Extract a Tar Archive
 
@@ -154,10 +154,10 @@ echo ".env" >> /tmp/project/.containerignore
 echo "__pycache__" >> /tmp/project/.containerignore
 echo ".git" >> /tmp/project/.containerignore
 
-# When using buildah copy from a context directory,
-# the .containerignore file is respected
+# When using buildah copy with a context directory,
+# the .containerignore file in that context is respected
 # Copy the project excluding ignored files
-buildah copy $container /tmp/project /opt/project
+buildah copy --contextdir /tmp/project $container . /opt/project
 
 # Verify that .env was not copied
 buildah run $container -- ls -la /opt/project/
