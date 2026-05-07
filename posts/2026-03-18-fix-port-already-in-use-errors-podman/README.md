@@ -22,13 +22,13 @@ When you run a container with the `-p` flag, Podman maps a port on your host to 
 podman run -d -p 8080:80 nginx
 ```
 
-This command maps host port 8080 to container port 80. If another process is already listening on host port 8080, Podman will fail with:
+This command maps host port 8080 to container port 80. If you try to bind a privileged host port such as 80 in rootless mode, Podman may fail with:
 
 ```text
 Error: rootlessport cannot expose privileged port 80, you can add 'net.ipv4.ip_unprivileged_port_start=80' to /etc/sysctl.conf, or choose a larger port number (>= 1024): listen tcp 0.0.0.0:80: bind: permission denied
 ```
 
-Or:
+If another process is already listening on host port 8080, Podman will fail with:
 
 ```text
 Error: unable to start container: port 8080 is already in use
@@ -117,9 +117,9 @@ podman run -d -p 8081:3000 --name api node-app
 podman run -d -p 5433:5432 --name db postgres
 ```
 
-### 3. Clean Up Stopped Containers Holding Ports
+### 3. Clean Up Stopped Containers Before Recreating Them
 
-Stopped containers can sometimes hold port reservations, especially if they did not shut down cleanly:
+Stopped containers do not normally keep listening sockets open, but removing them avoids confusion before recreating containers with corrected port mappings:
 
 ```bash
 # Remove all stopped containers
@@ -241,19 +241,14 @@ podman run -d --pod mypod --name api my-node-app
 
 ### 8. Dealing with TIME_WAIT State
 
-After stopping a container, the port might remain in TIME_WAIT state for up to 60 seconds. During this period, the port cannot be reused:
+After stopping a container, existing TCP connections may remain in TIME_WAIT state for a short period. This usually does not prevent Podman from binding a listening port again, but it can be useful to check when debugging connection behavior:
 
 ```bash
 # Check for ports in TIME_WAIT state
-ss -tlnp | grep TIME_WAIT
+ss -tan state time-wait | grep ":8080 "
 ```
 
-To allow immediate port reuse, you can set the `SO_REUSEADDR` socket option. With Podman, this usually means waiting a moment or using a different port. You can also adjust the system-wide TIME_WAIT timeout:
-
-```bash
-# Reduce TIME_WAIT timeout (use with caution in production)
-sudo sysctl net.ipv4.tcp_fin_timeout=15
-```
+With Podman, this usually means waiting a moment or using a different port. Avoid tuning unrelated TCP sysctl values unless you are solving a broader networking issue and understand the system-wide impact.
 
 ## A Quick Diagnostic Script
 
