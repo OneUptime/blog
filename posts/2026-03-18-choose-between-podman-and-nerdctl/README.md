@@ -54,12 +54,12 @@ nerdctl can be installed standalone or with its full dependencies:
 
 ```bash
 # Install nerdctl with containerd (full bundle)
-wget https://github.com/containerd/nerdctl/releases/download/v1.7.0/nerdctl-full-1.7.0-linux-amd64.tar.gz
-sudo tar -xzf nerdctl-full-1.7.0-linux-amd64.tar.gz -C /usr/local
+wget https://github.com/containerd/nerdctl/releases/download/v2.3.0/nerdctl-full-2.3.0-linux-amd64.tar.gz
+sudo tar -xzf nerdctl-full-2.3.0-linux-amd64.tar.gz -C /usr/local
 
 # Install nerdctl only (requires containerd separately)
-wget https://github.com/containerd/nerdctl/releases/download/v1.7.0/nerdctl-1.7.0-linux-amd64.tar.gz
-sudo tar -xzf nerdctl-1.7.0-linux-amd64.tar.gz -C /usr/local/bin
+wget https://github.com/containerd/nerdctl/releases/download/v2.3.0/nerdctl-2.3.0-linux-amd64.tar.gz
+sudo tar -xzf nerdctl-2.3.0-linux-amd64.tar.gz -C /usr/local/bin
 
 # Start containerd
 sudo systemctl start containerd
@@ -92,7 +92,7 @@ nerdctl stop web && nerdctl rm web
 
 ## Rootless Support
 
-Podman runs rootless by default with no additional configuration:
+Podman runs rootless when invoked as a regular user, assuming the usual distribution packages and subordinate UID/GID mappings are in place:
 
 ```bash
 # Podman: rootless out of the box
@@ -110,7 +110,7 @@ containerd-rootless-setuptool.sh install
 nerdctl run -d --name web nginx
 ```
 
-Podman's rootless implementation is more mature and better tested across distributions.
+Podman's rootless implementation is mature and well tested across distributions, and packaged installations usually include the needed rootless dependencies.
 
 ## Compose Support
 
@@ -210,7 +210,8 @@ Description=Nginx container
 After=containerd.service
 
 [Service]
-ExecStart=/usr/local/bin/nerdctl start web
+ExecStartPre=-/usr/local/bin/nerdctl rm -f web
+ExecStart=/usr/local/bin/nerdctl run --name web -p 8080:80 docker.io/library/nginx:stable
 ExecStop=/usr/local/bin/nerdctl stop web
 Restart=always
 
@@ -223,7 +224,7 @@ WantedBy=multi-user.target
 Podman supports automatic container image updates:
 
 ```bash
-podman run -d --label io.containers.autoupdate=registry --name web nginx
+podman run -d --label io.containers.autoupdate=registry --name web docker.io/library/nginx:stable
 podman auto-update
 ```
 
@@ -262,7 +263,7 @@ For frequent CLI operations, nerdctl may be slightly faster because containerd c
 
 ## When to Choose Podman
 
-- You want rootless containers without additional setup
+- You want rootless containers with minimal setup on most packaged Linux distributions
 - You need native pod support
 - You want deep systemd integration with Quadlet
 - You prefer a daemonless architecture
