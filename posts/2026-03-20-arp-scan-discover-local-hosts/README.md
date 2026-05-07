@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Arp-scan, ARP, Linux, Network Discovery, LAN, Security
 
-Description: Use arp-scan to discover all devices on a local IPv4 network segment by sending ARP requests and collecting responses, revealing hosts that don't respond to ping.
+Description: Use arp-scan to discover active IPv4 hosts on a local network segment by sending ARP requests and collecting responses, revealing hosts that don't respond to ping.
 
 arp-scan discovers hosts at Layer 2 using ARP, making it more reliable than ping-based discovery. Hosts with ICMP blocked by firewalls still respond to ARP requests, so arp-scan finds devices that appear invisible to ping sweeps.
 
@@ -14,8 +14,8 @@ arp-scan discovers hosts at Layer 2 using ARP, making it more reliable than ping
 # Debian/Ubuntu
 sudo apt install arp-scan -y
 
-# RHEL/CentOS
-sudo yum install arp-scan -y
+# RHEL/CentOS Stream (with EPEL)
+sudo dnf install arp-scan -y
 ```
 
 ## Basic Network Discovery
@@ -60,22 +60,27 @@ sudo arp-scan -I eth0 192.168.1.0/24
 ## Identify Duplicate IPs
 
 ```bash
-# Duplicate IPs appear as two lines with same IP but different MACs
-sudo arp-scan --localnet | sort | uniq -D
-# Lines appearing more than once with same IP = IP conflict
-
-# More explicit duplicate detection
-sudo arp-scan --localnet | awk 'seen[$1]++ {print "DUPLICATE IP: "$0}'
+# Show IPs claimed by more than one unique MAC address
+sudo arp-scan --localnet --plain --format='${ip}\t${mac}' | awk '
+!seen[$1, $2]++ {
+    macs[$1] = macs[$1] ? macs[$1] ", " $2 : $2
+    count[$1]++
+}
+END {
+    for (ip in count)
+        if (count[ip] > 1)
+            print "DUPLICATE IP:", ip, "->", macs[ip]
+}'
 ```
 
 ## Show Only New/Unexpected Devices
 
 ```bash
 # Save a known-good scan as baseline
-sudo arp-scan 192.168.1.0/24 | sort > /tmp/baseline-hosts.txt
+sudo arp-scan --plain --format='${ip}\t${mac}' 192.168.1.0/24 | sort -u > /tmp/baseline-hosts.txt
 
 # Run new scan and compare
-sudo arp-scan 192.168.1.0/24 | sort > /tmp/current-hosts.txt
+sudo arp-scan --plain --format='${ip}\t${mac}' 192.168.1.0/24 | sort -u > /tmp/current-hosts.txt
 diff /tmp/baseline-hosts.txt /tmp/current-hosts.txt
 
 # New lines (starting with >) = new devices on network
@@ -101,7 +106,7 @@ sudo arp-scan --bandwidth 1000000 192.168.1.0/24
 ## Custom ARP Requests
 
 ```bash
-# Scan with a specific source IP (for VLAN testing)
+# Scan with a specific source IP in the ARP packet
 sudo arp-scan --arpspa 192.168.1.200 192.168.1.0/24
 
 # Set destination MAC to broadcast explicitly
@@ -121,10 +126,10 @@ sudo arp-scan --interval 100 192.168.1.0/24
 KNOWN="/var/lib/network-audit/known-hosts.txt"
 CURRENT="/tmp/current-scan.txt"
 
-sudo arp-scan -I eth0 192.168.1.0/24 2>/dev/null \
-  | grep -E "^[0-9]" \
-  | awk '{print $1, $2}' \
-  | sort > "$CURRENT"
+mkdir -p "$(dirname "$KNOWN")"
+
+sudo arp-scan -I eth0 --plain --format='${ip} ${mac}' 192.168.1.0/24 2>/dev/null \
+  | sort -u > "$CURRENT"
 
 if [ -f "$KNOWN" ]; then
     NEW=$(comm -23 "$CURRENT" "$KNOWN")
@@ -137,4 +142,4 @@ fi
 cp "$CURRENT" "$KNOWN"
 ```
 
-arp-scan finds devices that refuse ICMP ping - printers, IoT devices, and hosts with strict firewalls all appear in arp-scan results, making it the most reliable local network discovery tool.
+arp-scan often finds devices that refuse ICMP ping - printers, IoT devices, and hosts with strict firewalls can still appear in arp-scan results, making it a reliable local network discovery tool on an IPv4 LAN.
