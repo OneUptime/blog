@@ -20,9 +20,10 @@ This guide demonstrates how to deploy Caddy as a reverse proxy for Podman contai
 
 Make sure you have the following:
 
-- Podman 4.0 or later
+- Podman 4.4 or later if you plan to use the Quadlet systemd example
 - A Linux system (Fedora, RHEL, Ubuntu, or Debian)
 - For automatic HTTPS: a domain name with DNS records pointing to your server
+- For rootless Podman on ports 80 and 443: either run as root, use higher host ports, or configure Linux to allow unprivileged low ports
 
 Check your Podman version:
 
@@ -276,7 +277,7 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable caddy.service
+systemctl --user enable --now caddy.service
 loginctl enable-linger $USER
 ```
 
