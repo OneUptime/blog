@@ -15,7 +15,7 @@ The `ip route add` command adds entries to the Linux kernel routing table. Stati
 Before adding routes, examine the current routing table:
 
 ```bash
-# Show the full routing table
+# Show routes from the main table (default)
 
 ip route show
 
@@ -47,13 +47,13 @@ sudo ip route add 172.16.0.0/24 dev tun0
 
 ## Setting Route Metrics
 
-When multiple routes exist to the same destination, the route with the lower metric wins:
+When multiple routes exist to the same destination, the route with the lower metric is preferred:
 
 ```bash
 # Primary route with lower metric (preferred)
 sudo ip route add 10.0.0.0/8 via 192.168.1.1 metric 100
 
-# Backup route with higher metric (used if primary fails)
+# Secondary route with higher metric (less preferred)
 sudo ip route add 10.0.0.0/8 via 192.168.1.2 metric 200
 ```
 
@@ -74,7 +74,7 @@ Used to silently drop or reject traffic to a network:
 # Silently drop packets destined for 192.0.2.0/24
 sudo ip route add blackhole 192.0.2.0/24
 
-# Send ICMP unreachable back to the sender
+# Generate an ICMP host unreachable response
 sudo ip route add unreachable 198.51.100.0/24
 ```
 
@@ -84,7 +84,7 @@ sudo ip route add unreachable 198.51.100.0/24
 # Check which route would be used for a destination
 ip route get 10.50.1.100
 
-# Show all routes in verbose mode
+# Show routes with additional details
 ip -d route show
 ```
 
