@@ -25,8 +25,8 @@ ip route show
 ## Using netplan try (Recommended for Remote Servers)
 
 ```bash
-# Apply with a 120-second timeout
-# If you don't confirm, it auto-reverts
+# Apply with the default 120-second timeout
+# If you don't confirm, Netplan attempts to auto-revert
 netplan try
 
 # You'll see:
@@ -34,7 +34,7 @@ netplan try
 # Press ENTER before the timeout to accept the new configuration"
 ```
 
-This is safer for remote SSH sessions - if the new config breaks connectivity, the old config is automatically restored after 120 seconds.
+This is safer for remote SSH sessions - if the new config breaks connectivity, Netplan attempts to restore the old config after 120 seconds if you do not confirm. Because `netplan try` has known rollback bugs, verify that the rollback actually happened.
 
 ## Generate Backend Config Without Applying
 
@@ -42,7 +42,9 @@ This is safer for remote SSH sessions - if the new config breaks connectivity, t
 # Validate YAML and generate backend config files (no apply)
 netplan generate
 
-# Generated files go to /run/systemd/network/ or /run/NetworkManager/
+# Generated files go under /run/, such as /run/systemd/network/ or
+# /run/NetworkManager/system-connections/
+# For example, inspect systemd-networkd output:
 ls /run/systemd/network/
 ```
 
@@ -60,35 +62,39 @@ echo $?
 
 ```bash
 # See what netplan is doing during apply
-netplan --debug apply
+netplan apply --debug
 
 # Or
-netplan apply -d
+netplan --debug apply
 ```
 
 ## Apply Only Specific Configuration File
 
 ```bash
-# Netplan processes all files in /etc/netplan/ alphabetically
-# You cannot apply a single file - all files are applied together
+# Netplan merges all files in /lib/netplan/, /etc/netplan/, and /run/netplan/
+# Files with different names are processed in lexicographical order
 
-# To isolate testing, temporarily remove other files or use netplan try
+# netplan apply works on the merged configuration, not a single file
+# For temporary testing of an extra file, use:
+netplan try --config-file ./test.yaml
 ```
 
 ## Reload vs Apply
 
 ```bash
-# netplan apply: full reconfiguration (interfaces may briefly go down)
+# netplan apply: regenerate backend config from Netplan YAML and apply it
 netplan apply
 
-# networkctl reload: for systemd-networkd backend (only reloads .network files)
+# networkctl reload: systemd-networkd only; reloads existing .network/.netdev files
+# It does not regenerate them from Netplan YAML
 networkctl reload
 ```
 
 ## Check Netplan Version
 
 ```bash
-netplan --version
+# On Ubuntu/Debian, check the installed netplan.io package version
+dpkg-query -W netplan.io
 ```
 
 ## Common Apply Issues
@@ -100,12 +106,12 @@ netplan generate
 
 # Issue: Changes not taking effect
 # Check which backend is in use
-cat /etc/netplan/01-*.yaml | grep renderer
+grep -R "renderer:" /etc/netplan/
 
-# Default renderer is systemd-networkd on Ubuntu Server
-# renderer: NetworkManager uses NetworkManager backend
+# If no renderer is set, Netplan defaults to networkd (systemd-networkd)
+# renderer: NetworkManager uses the NetworkManager backend
 ```
 
 ## Conclusion
 
-Use `netplan try` for safe interactive testing (auto-reverts if you don't confirm), `netplan apply` for scripted/immediate application, and `netplan generate` for validation without applying. After applying, verify with `ip addr`, `ip route`, and `ping` to confirm the configuration is working.
+Use `netplan try` for safe interactive testing (it attempts to auto-revert if you don't confirm), `netplan apply` for scripted/immediate application, and `netplan generate` for validation without applying. After applying, verify with `ip addr`, `ip route`, and `ping` to confirm the configuration is working.
