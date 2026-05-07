@@ -16,7 +16,7 @@ Podman provides the `podman artifact ls` command to view all OCI artifacts store
 
 ## Prerequisites
 
-Make sure you have Podman 5.x or later with artifact support.
+Make sure you have Podman 5.4 or later with artifact support.
 
 ```bash
 # Verify Podman version
@@ -53,7 +53,7 @@ The simplest usage lists every artifact in the local store.
 podman artifact ls
 ```
 
-This produces a table showing the artifact reference, media type, size, and creation time. Each row represents one artifact stored locally.
+This produces a table showing the artifact repository, tag, digest, creation time, and size. Each row represents one artifact stored locally.
 
 ## Understanding the Output
 
@@ -75,11 +75,11 @@ The output columns typically include:
 
 ## Filtering Artifacts by Name
 
-You can filter the list by providing a partial or full artifact reference.
+The `podman artifact ls` command lists all local artifacts. To focus on a partial or full artifact reference, format the output and filter it with standard shell tools.
 
 ```bash
 # List only artifacts matching a specific repository
-podman artifact ls localhost/myorg/app-config
+podman artifact ls --format "{{.Repository}}:{{.Tag}}" | grep "^localhost/myorg/app-config:"
 
 # This shows only the app-config artifacts with all their tags
 ```
@@ -94,8 +94,8 @@ Podman supports Go template formatting for customized output, which is helpful f
 # Output only the repository and tag in a custom format
 podman artifact ls --format "{{.Repository}}:{{.Tag}}"
 
-# Output as JSON for programmatic consumption
-podman artifact ls --format json
+# Output without the table header for programmatic consumption
+podman artifact ls --noheading
 
 # Show only digests for all artifacts
 podman artifact ls --format "{{.Digest}}"
@@ -125,7 +125,7 @@ ARTIFACT="localhost/myorg/app-config"
 VERSION="v2.0"
 
 # Check if the artifact exists
-if podman artifact ls --format "{{.Repository}}:{{.Tag}}" | grep -q "${ARTIFACT}:${VERSION}"; then
+if podman artifact ls --format "{{.Repository}}:{{.Tag}}" | grep -Fxq "${ARTIFACT}:${VERSION}"; then
     echo "Artifact ${ARTIFACT}:${VERSION} found in local store"
 else
     echo "Artifact ${ARTIFACT}:${VERSION} not found"
@@ -140,10 +140,10 @@ To understand how much local disk space artifacts consume, inspect the size colu
 
 ```bash
 # Show artifacts sorted by size (largest first)
-podman artifact ls --format "{{.Size}}\t{{.Repository}}:{{.Tag}}" | sort -rh
+podman artifact ls --format "{{.VirtualSize}}\t{{.Repository}}:{{.Tag}}" | sort -nr
 
-# Show total disk usage of all artifacts
-podman artifact ls --format "{{.Size}}" | paste -sd+ | bc
+# Show total artifact size in bytes
+podman artifact ls --format "{{.VirtualSize}}" | awk '{total += $1} END {print total}'
 ```
 
 ## Checking for Stale Artifacts
@@ -162,4 +162,4 @@ Review the output and remove any artifacts you no longer need using `podman arti
 
 ## Summary
 
-The `podman artifact ls` command is your window into the local Podman artifact store. It lists all stored OCI artifacts with their references, tags, digests, sizes, and creation times. You can filter by repository name, format output for scripting with Go templates or JSON, and combine it with shell tools for counting and sorting. Regularly listing your artifacts helps you stay organized, identify stale entries, and verify that artifacts were added or pulled correctly.
+The `podman artifact ls` command is your window into the local Podman artifact store. It lists all stored OCI artifacts with their references, tags, digests, sizes, and creation times. You can filter by repository name, format output for scripting with Go templates, and combine it with shell tools for counting and sorting. Regularly listing your artifacts helps you stay organized, identify stale entries, and verify that artifacts were added or pulled correctly.
