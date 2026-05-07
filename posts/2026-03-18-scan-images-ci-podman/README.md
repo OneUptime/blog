@@ -45,9 +45,11 @@ trivy image --input /tmp/myapp-scan.tar \
   --severity HIGH,CRITICAL \
   --exit-code 1 \
   --format table
+SCAN_EXIT=$?
 
 # Clean up
 rm -f /tmp/myapp-scan.tar
+exit $SCAN_EXIT
 ```
 
 ## Scanning with Grype
@@ -74,9 +76,11 @@ podman save -o /tmp/myapp.tar myapp:scan
 grype /tmp/myapp.tar \
   --fail-on high \
   --output table
+SCAN_EXIT=$?
 
-echo "Scan exit code: $?"
+echo "Scan exit code: $SCAN_EXIT"
 rm -f /tmp/myapp.tar
+exit $SCAN_EXIT
 ```
 
 ## Generating an SBOM with Syft
@@ -106,11 +110,13 @@ syft /tmp/myapp.tar -o cyclonedx-json > sbom-cyclonedx.json
 
 # You can then scan the SBOM with Grype
 grype sbom:sbom-spdx.json --fail-on critical
+SCAN_EXIT=$?
 
 echo "SBOM files generated:"
 ls -la sbom-*.json
 
 rm -f /tmp/myapp.tar
+exit $SCAN_EXIT
 ```
 
 ## GitHub Actions Integration
