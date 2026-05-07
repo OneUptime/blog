@@ -61,7 +61,7 @@ podman run --rm -it \
   fedora:latest \
   bash -c "dnf install -y v4l-utils && v4l2-ctl --device=/dev/video0 --all"
 
-# Pass all video devices
+# Pass multiple video devices
 podman run --rm -it \
   --device /dev/video0:/dev/video0 \
   --device /dev/video1:/dev/video1 \
@@ -270,6 +270,11 @@ def detect_motion(device_id=0, threshold=25, min_area=500, duration=30):
 
     # Read the first frame as reference
     ret, prev_frame = cap.read()
+    if not ret:
+        print("Error: Failed to capture initial frame")
+        cap.release()
+        return
+
     prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
     prev_gray = cv2.GaussianBlur(prev_gray, (21, 21), 0)
 
@@ -334,7 +339,7 @@ podman run --rm -it \
 ## GStreamer Camera Pipeline
 
 ```bash
-# Use GStreamer for camera capture and streaming
+# Use GStreamer for camera capture
 podman run --rm -it \
   --device /dev/video0:/dev/video0 \
   --group-add keep-groups \
@@ -377,23 +382,24 @@ for i in [0, 2]:
 ## RTSP Streaming from a Container
 
 ```bash
-# Stream camera feed over RTSP from a container
+# Publish camera feed to an RTSP server from a container
 cat > /tmp/camera-demo/stream.sh << 'EOF'
 #!/bin/bash
-# Stream camera via RTSP using ffmpeg
-echo "Starting RTSP stream on rtsp://0.0.0.0:8554/live"
+# Publish camera via RTSP using ffmpeg. Start an RTSP server first.
+RTSP_URL="${RTSP_URL:-rtsp://host.containers.internal:8554/live}"
+echo "Publishing RTSP stream to ${RTSP_URL}"
 ffmpeg -f v4l2 -video_size 640x480 -framerate 30 \
   -i /dev/video0 \
   -c:v libx264 -preset ultrafast -tune zerolatency \
-  -f rtsp rtsp://0.0.0.0:8554/live
+  -f rtsp -rtsp_transport tcp "${RTSP_URL}"
 EOF
 chmod +x /tmp/camera-demo/stream.sh
 
-# Run the streaming container
+# Run the publishing container
 podman run --rm -it \
   --device /dev/video0:/dev/video0 \
   --group-add keep-groups \
-  -p 8554:8554 \
+  -e RTSP_URL=rtsp://host.containers.internal:8554/live \
   -v /tmp/camera-demo:/app:Z \
   ubuntu:22.04 \
   bash -c "apt-get update && apt-get install -y ffmpeg && bash /app/stream.sh"
@@ -448,7 +454,7 @@ v4l2-ctl --device=/dev/video0 --list-formats-ext
 # Use a resolution the camera natively supports
 
 # SELinux blocking (Fedora/RHEL)
-sudo setsebool -P container_use_devices on
+sudo setsebool -P container_use_devices=true
 ```
 
 ## Conclusion
