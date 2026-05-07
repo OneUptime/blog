@@ -89,37 +89,14 @@ done
 
 ## Renaming Connections
 
-Podman does not have a rename command, but you can recreate connections.
+Podman includes a rename command for system connections.
 
 ```bash
-#!/bin/bash
-# rename-connection.sh - Rename a Podman system connection
+# Rename a Podman system connection
+podman system connection rename old-name new-name
 
-OLD_NAME="old-name"
-NEW_NAME="new-name"
-
-# Extract the current connection details
-URI=$(podman system connection ls --format json | jq -r ".[] | select(.Name==\"$OLD_NAME\") | .URI")
-IDENTITY=$(podman system connection ls --format json | jq -r ".[] | select(.Name==\"$OLD_NAME\") | .Identity")
-IS_DEFAULT=$(podman system connection ls --format json | jq -r ".[] | select(.Name==\"$OLD_NAME\") | .Default")
-
-if [ -z "$URI" ]; then
-    echo "Connection '$OLD_NAME' not found"
-    exit 1
-fi
-
-# Add the new connection with the same settings
-podman system connection add "$NEW_NAME" "$URI" --identity "$IDENTITY"
-
-# Set as default if the old one was default
-if [ "$IS_DEFAULT" = "true" ]; then
-    podman system connection default "$NEW_NAME"
-fi
-
-# Remove the old connection
-podman system connection remove "$OLD_NAME"
-
-echo "Renamed '$OLD_NAME' to '$NEW_NAME'"
+# Verify the new name
+podman system connection ls
 ```
 
 ## Using Specific Connections
@@ -210,8 +187,12 @@ cat ~/podman-connections.json | jq '.[].Name'
 while read -r line; do
     NAME=$(echo "$line" | jq -r '.Name')
     URI=$(echo "$line" | jq -r '.URI')
-    IDENTITY=$(echo "$line" | jq -r '.Identity')
-    podman system connection add "$NAME" "$URI" --identity "$IDENTITY"
+    IDENTITY=$(echo "$line" | jq -r '.Identity // empty')
+    if [ -n "$IDENTITY" ]; then
+        podman system connection add "$NAME" "$URI" --identity "$IDENTITY"
+    else
+        podman system connection add "$NAME" "$URI"
+    fi
 done < <(jq -c '.[]' ~/podman-connections.json)
 ```
 
