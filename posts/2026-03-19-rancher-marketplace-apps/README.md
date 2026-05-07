@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, Helm, Marketplace, App Catalog
 
 Description: Learn how to browse, configure, and deploy applications from the Rancher Marketplace, including monitoring, logging, and infrastructure tools.
 
-The Rancher Marketplace provides a curated collection of Helm charts for deploying popular applications, infrastructure tools, and Rancher extensions directly from the Rancher UI. It includes official Rancher charts, partner integrations, and community-maintained applications. This guide walks you through finding and deploying apps from the marketplace.
+The Rancher Marketplace provides a curated collection of Helm charts for deploying popular applications, infrastructure tools, and Rancher extensions directly from the Rancher UI. It includes official Rancher charts, partner integrations, and any custom charts from repositories you add. This guide walks you through finding and deploying apps from the marketplace.
 
 ## Prerequisites
 
@@ -21,11 +21,11 @@ The Rancher Marketplace provides a curated collection of Helm charts for deployi
 2. Select the cluster where you want to deploy applications
 3. Navigate to **Apps > Charts** from the left sidebar
 
-This page displays all available charts from configured repositories. The default repositories include:
+This page displays all available charts from Rancher, Partners, and any custom repositories configured for the cluster. The left-most filter includes:
 
 - **Rancher**: Official Rancher charts (Monitoring, Logging, Istio, etc.)
-- **Rancher Partner**: Charts from Rancher partners
-- **Rancher Charts**: Additional Rancher-maintained charts
+- **Partners**: Charts from Rancher partners
+- **Custom repositories**: Charts listed under the name of each repository you add
 
 ## Step 2: Browse and Search for Apps
 
@@ -35,11 +35,11 @@ Use the search bar at the top to find specific applications by name. For example
 
 ### Filter by Repository
 
-Use the repository filter to show charts from a specific source. This is useful when you have multiple repositories configured and want to find charts from a particular vendor.
+Use the left-most filter to show charts from a specific source. This is useful when you have multiple repositories configured and want to find charts from a particular vendor.
 
 ### Filter by Category
 
-Some charts are tagged with categories. Use the category filter to browse charts by type, such as:
+Some charts may be tagged with categories. If category filters are available in your Rancher version, use them to browse charts by type, such as:
 
 - Monitoring and Alerting
 - Logging
@@ -107,23 +107,35 @@ kubectl port-forward svc/rancher-monitoring-grafana 3000:80 -n cattle-monitoring
 
 1. Search for "Logging" in **Apps > Charts**
 2. Click on **Logging** (Rancher Logging)
-3. Click **Install**
-4. Configure the logging output:
+3. Click **Install** to open the chart configuration
+4. Complete any chart-specific settings you need, then click **Install**
+5. After the chart is installed, configure log routing by creating a `ClusterOutput` and `ClusterFlow`, for example:
 
 ```yaml
-# Example: Send logs to Elasticsearch
-
-outputs:
-  - name: elasticsearch
-    type: elasticsearch
-    elasticsearch:
-      host: elasticsearch.logging.svc.cluster.local
-      port: 9200
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: ClusterOutput
+metadata:
+  name: elasticsearch
+  namespace: cattle-logging-system
+spec:
+  elasticsearch:
+    host: elasticsearch.logging.svc.cluster.local
+    port: 9200
+    scheme: http
+---
+apiVersion: logging.banzaicloud.io/v1beta1
+kind: ClusterFlow
+metadata:
+  name: all-logs
+  namespace: cattle-logging-system
+spec:
+  globalOutputRefs:
+    - elasticsearch
 ```
 
-5. Click **Install**
-
 ## Step 5: Deploy Rancher Istio (Service Mesh)
+
+If your Rancher version still includes the Rancher Istio chart, you can install it from **Apps > Charts**. Rancher-Istio is deprecated in Rancher v2.12.0 and later.
 
 1. Search for "Istio" in **Apps > Charts**
 2. Click on **Istio**
@@ -136,6 +148,8 @@ outputs:
    - **Jaeger**: Enable distributed tracing
 5. Click **Install**
 
+On RKE2 or K3s clusters, also enable CNI and provide the overlay file that sets `cniBinDir` and `cniConfDir` during installation.
+
 ## Step 6: Deploy a Database from the Marketplace
 
 ### Deploy PostgreSQL
@@ -146,11 +160,14 @@ outputs:
 4. Configure:
 
 ```yaml
+architecture: replication
+
 auth:
   postgresPassword: "admin-password"
   username: "myapp"
   password: "app-password"
   database: "myappdb"
+  replicationPassword: "replication-password"
 
 primary:
   persistence:
@@ -194,7 +211,8 @@ Cert-Manager automates TLS certificate management.
 4. Configure:
 
 ```yaml
-installCRDs: true
+crds:
+  enabled: true
 replicaCount: 1
 resources:
   requests:
@@ -223,7 +241,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ## Managing Installed Marketplace Apps
@@ -255,4 +273,4 @@ kubectl get pvc -n cattle-monitoring-system
 
 ## Summary
 
-The Rancher Marketplace provides a convenient way to deploy monitoring, logging, service mesh, databases, and other infrastructure tools into your Kubernetes clusters. Each application can be configured through the Rancher form UI or YAML editor before deployment. Start with essential infrastructure like monitoring and logging, then expand to application-level tools as your needs grow. The marketplace keeps charts updated, making it easy to stay current with security patches and new features.
+The Rancher Marketplace provides a convenient way to deploy monitoring, logging, service mesh, databases, and other infrastructure tools into your Kubernetes clusters. Each application can be configured through the Rancher form UI or YAML editor before deployment. Start with essential infrastructure like monitoring and logging, then expand to application-level tools as your needs grow. The marketplace surfaces chart updates from configured repositories, making it easier to apply security patches and new features.
