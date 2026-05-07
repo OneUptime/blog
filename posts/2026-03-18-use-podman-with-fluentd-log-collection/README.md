@@ -10,7 +10,7 @@ Description: Learn how to use Podman with Fluentd to collect, process, and forwa
 
 > Fluentd running alongside your Podman containers creates a unified logging layer that collects, transforms, and routes logs from every container to your preferred storage and analysis tools.
 
-Container logs are ephemeral by default. When a container stops or is removed, its logs disappear. For production systems, you need a reliable way to collect, process, and store logs from all your containers. Fluentd is an open-source log collector that excels at this task. Running Fluentd in a Podman container alongside your application containers creates a centralized logging pipeline that captures everything and routes it to your storage backend of choice.
+Container logs are ephemeral by default. Stopped containers can still retain logs, but once a container is removed its local logs disappear. For production systems, you need a reliable way to collect, process, and store logs from all your containers. Fluentd is an open-source log collector that excels at this task. Running Fluentd in a Podman container alongside your application containers creates a centralized logging pipeline that captures everything and routes it to your storage backend of choice.
 
 ---
 
@@ -53,9 +53,11 @@ Create the Fluentd configuration file:
   path /fluentd/log/containers/*.log
   pos_file /fluentd/buffer/containers.log.pos
   tag container.*
+  follow_inodes true
   <parse>
     @type json
     time_key time
+    time_type string
     time_format %Y-%m-%dT%H:%M:%S.%NZ
   </parse>
 </source>
@@ -88,12 +90,12 @@ Create the Fluentd configuration file:
 
 ## Sending Container Logs to Fluentd
 
-Podman does not support the `fluentd` logging driver. Podman's supported log drivers are `k8s-file` (default), `journald`, `none`, `passthrough`, and `passthrough-tty`. To forward container logs to Fluentd, pipe them from `podman logs` or mount shared log volumes:
+Podman does not support the `fluentd` logging driver. Podman's supported log drivers are `k8s-file`, `journald` (default unless changed), `none`, `passthrough`, and `passthrough-tty`. To forward container logs to Fluentd, pipe them from `podman logs` into `fluent-cat`, or mount shared log volumes:
 
 ```bash
 # Forward logs by piping podman logs to Fluentd
 podman logs -f myapp 2>&1 | \
-  fluent-cat -h localhost -p 24224 app.myapp
+  fluent-cat --none --message-key log -h localhost -p 24224 app.myapp
 ```
 
 Alternatively, write application logs to a shared volume that Fluentd monitors:
@@ -113,6 +115,7 @@ podman run -d \
 The base Fluentd image is minimal. Add plugins for your specific needs:
 
 ```dockerfile
+# Containerfile.fluentd
 FROM fluent/fluentd:v1.16-1
 
 USER root
@@ -129,7 +132,7 @@ USER fluent
 ```
 
 ```bash
-podman build -t custom-fluentd:latest .
+podman build -f Containerfile.fluentd -t custom-fluentd:latest .
 ```
 
 ## Forwarding to Elasticsearch
@@ -159,7 +162,7 @@ Configure Fluentd to send logs to Elasticsearch:
     retry_max_interval 60s
     retry_forever true
     chunk_limit_size 8m
-    queue_limit_length 256
+    total_limit_size 2g
     overflow_action block
   </buffer>
 </match>
@@ -238,6 +241,7 @@ Parse structured and unstructured logs:
   path /fluentd/log/app/*.log
   pos_file /fluentd/buffer/app.pos
   tag app.log
+  follow_inodes true
   <parse>
     @type json
   </parse>
@@ -352,7 +356,7 @@ Add to your Prometheus configuration:
 scrape_configs:
   - job_name: 'fluentd'
     static_configs:
-      - targets: ['fluentd:24231']
+      - targets: ['localhost:24231']
 ```
 
 ## Conclusion
