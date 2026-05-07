@@ -28,7 +28,7 @@ graph LR
 
 ## Step 1: Set Up Environment-Specific Stack Variables
 
-In Portainer, each environment has separate stack instances with different variables.
+In Portainer, each environment has separate stack instances with different variables. The example below assumes Docker Swarm environments so `deploy.replicas` is applied during deployment.
 
 ```yaml
 # docker-compose.yml - single file, environment-specific vars injected by Portainer
@@ -62,30 +62,107 @@ In each Portainer environment, configure these stack variables:
 ## Step 2: Multi-Environment Deployment Script
 
 ```bash
-#!/bin/bash
-# deploy-all-envs.sh - promote a build through environments
+#!/usr/bin/env bash
+set -euo pipefail
+
+# deploy-all-envs.sh - promote a build through Portainer-managed Docker Swarm environments
 
 PORTAINER_URL="https://portainer.example.com"
 API_KEY="${PORTAINER_API_KEY}"
-IMAGE_TAG="${1:-latest}"  # pass image tag as argument
+IMAGE_TAG="${1:-latest}"     # pass image tag as first argument
+TARGET_ENV="${2:-dev}"       # dev, staging, or prod
 
-# Environment configuration
-declare -A ENV_STACKS=(
-  ["dev"]="3"       # Portainer endpoint ID for dev
-  ["staging"]="5"   # Portainer endpoint ID for staging
-  ["prod"]="8"      # Portainer endpoint ID for production
+# Portainer environment (endpoint) IDs
+declare -A ENV_ENDPOINTS=(
+  ["dev"]="3"
+  ["staging"]="5"
+  ["prod"]="8"
 )
+
+# Docker Swarm IDs for those Portainer environments
+declare -A ENV_SWARMS=(
+  ["dev"]="swarm-dev-id"
+  ["staging"]="swarm-staging-id"
+  ["prod"]="swarm-prod-id"
+)
+
+build_payload() {
+  local mode="$1"
+  local env_name="$2"
+  local swarm_id="$3"
+  local app_env db_host log_level replicas
+
+  case "$env_name" in
+    dev)
+      app_env="development"
+      db_host="db-dev.internal"
+      log_level="debug"
+      replicas="1"
+      ;;
+    staging)
+      app_env="staging"
+      db_host="db-stage.internal"
+      log_level="info"
+      replicas="2"
+      ;;
+    prod)
+      app_env="production"
+      db_host="db-prod.internal"
+      log_level="warn"
+      replicas="5"
+      ;;
+    *)
+      echo "Unknown environment: $env_name" >&2
+      exit 1
+      ;;
+  esac
+
+  MODE="$mode" \
+  IMAGE_TAG="$IMAGE_TAG" \
+  APP_ENV="$app_env" \
+  DB_HOST="$db_host" \
+  LOG_LEVEL="$log_level" \
+  REPLICAS="$replicas" \
+  SWARM_ID="$swarm_id" \
+  python3 - <<'PY'
+import json
+import os
+
+payload = {
+    "StackFileContent": open("docker-compose.yml", encoding="utf-8").read(),
+    "Env": [
+        {"name": "IMAGE_TAG", "value": os.environ["IMAGE_TAG"]},
+        {"name": "APP_ENV", "value": os.environ["APP_ENV"]},
+        {"name": "DB_HOST", "value": os.environ["DB_HOST"]},
+        {"name": "LOG_LEVEL", "value": os.environ["LOG_LEVEL"]},
+        {"name": "REPLICAS", "value": os.environ["REPLICAS"]},
+    ],
+}
+
+if os.environ["MODE"] == "create":
+    payload["Name"] = "webapp"
+    payload["SwarmID"] = os.environ["SWARM_ID"]
+else:
+    payload["Prune"] = True
+    payload["RepullImageAndRedeploy"] = True
+
+print(json.dumps(payload))
+PY
+}
 
 deploy_to_environment() {
   local env_name="$1"
   local env_id="$2"
-  local stack_id
+  local swarm_id="$3"
+  local stack_id payload
 
   echo "=== Deploying to $env_name (endpoint $env_id) ==="
 
   # Find the stack ID for this environment
-  stack_id=$(curl -s -H "X-API-Key: $API_KEY" \
-    "$PORTAINER_URL/api/stacks?filters={\"EndpointID\":$env_id}" | \
+  stack_id=$(curl --fail --silent --show-error --get \
+    -H "X-API-Key: $API_KEY" \
+    --data-urlencode "filters={\"EndpointID\":${env_id}}" \
+    "$PORTAINER_URL/api/stacks" | \
     python3 -c "
 import sys, json
 stacks = json.load(sys.stdin)
@@ -97,42 +174,43 @@ for s in stacks:
 
   if [ -z "$stack_id" ]; then
     echo "Stack not found for $env_name - deploying new stack"
+    payload="$(build_payload create "$env_name" "$swarm_id")"
+
     # Create stack if it doesn't exist
-    curl -s -X POST \
+    curl --fail --silent --show-error -X POST \
       -H "X-API-Key: $API_KEY" \
       -H "Content-Type: application/json" \
-      -d "{
-        \"Name\": \"webapp\",
-        \"StackFileContent\": $(cat docker-compose.yml | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))"),
-        \"Env\": [
-          {\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"},
-          {\"name\": \"APP_ENV\", \"value\": \"$env_name\"}
-        ]
-      }" \
-      "$PORTAINER_URL/api/stacks?type=1&method=string&endpointId=$env_id"
+      -d "$payload" \
+      "$PORTAINER_URL/api/stacks/create/swarm/string?endpointId=$env_id"
   else
     echo "Updating existing stack $stack_id"
-    curl -s -X PUT \
+    payload="$(build_payload update "$env_name" "$swarm_id")"
+
+    curl --fail --silent --show-error -X PUT \
       -H "X-API-Key: $API_KEY" \
       -H "Content-Type: application/json" \
-      -d "{
-        \"StackFileContent\": $(cat docker-compose.yml | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))"),
-        \"Env\": [{\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"}],
-        \"Prune\": true,
-        \"PullImage\": true
-      }" \
+      -d "$payload" \
       "$PORTAINER_URL/api/stacks/$stack_id?endpointId=$env_id"
   fi
+
   echo "$env_name deployment triggered."
 }
 
-# Deploy to dev first
-deploy_to_environment "dev" "${ENV_STACKS[dev]}"
+case "$TARGET_ENV" in
+  dev|staging|prod)
+    deploy_to_environment "$TARGET_ENV" "${ENV_ENDPOINTS[$TARGET_ENV]}" "${ENV_SWARMS[$TARGET_ENV]}"
+    ;;
+  *)
+    echo "Usage: $0 <image-tag> [dev|staging|prod]" >&2
+    exit 1
+    ;;
+esac
 
 echo ""
-echo "Dev deployment complete. Run your integration tests, then:"
-echo "  $0 $IMAGE_TAG staging     # to promote to staging"
-echo "  $0 $IMAGE_TAG prod        # to promote to production"
+echo "$TARGET_ENV deployment complete."
+echo "Examples:"
+echo "  $0 $IMAGE_TAG staging"
+echo "  $0 $IMAGE_TAG prod"
 ```
 
 ---
@@ -156,6 +234,11 @@ jobs:
       - uses: actions/checkout@v4
       - id: meta
         run: echo "version=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      - name: Log in to registry
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
       - name: Build and push
         run: |
           docker build -t myrepo/myapp:${{ steps.meta.outputs.version }} .
@@ -164,35 +247,101 @@ jobs:
   deploy-dev:
     needs: build
     runs-on: ubuntu-latest
+    env:
+      APP_ENV: development
+      DB_HOST: db-dev.internal
+      LOG_LEVEL: debug
+      REPLICAS: "1"
     steps:
+      - uses: actions/checkout@v4
       - name: Deploy to Dev
         run: |
-          curl -X PUT -H "X-API-Key: ${{ secrets.PORTAINER_TOKEN }}" \
+          python3 -c "import json, os, pathlib; print(json.dumps({
+              'StackFileContent': pathlib.Path('docker-compose.yml').read_text(encoding='utf-8'),
+              'Env': [
+                  {'name': 'IMAGE_TAG', 'value': '${{ needs.build.outputs.image_tag }}'},
+                  {'name': 'APP_ENV', 'value': os.environ['APP_ENV']},
+                  {'name': 'DB_HOST', 'value': os.environ['DB_HOST']},
+                  {'name': 'LOG_LEVEL', 'value': os.environ['LOG_LEVEL']},
+                  {'name': 'REPLICAS', 'value': os.environ['REPLICAS']},
+              ],
+              'Prune': True,
+              'RepullImageAndRedeploy': True,
+          }))" > payload.json
+
+          curl --fail --silent --show-error -X PUT \
+            -H "X-API-Key: ${{ secrets.PORTAINER_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d '{"Env": [{"name": "IMAGE_TAG", "value": "${{ needs.build.outputs.image_tag }}"}], "PullImage": true, "Prune": false}' \
+            --data @payload.json \
             "${{ secrets.PORTAINER_URL }}/api/stacks/${{ vars.DEV_STACK_ID }}?endpointId=${{ vars.DEV_ENV_ID }}"
 
   deploy-staging:
     needs: [build, deploy-dev]
     runs-on: ubuntu-latest
-    environment: staging   # requires manual approval in GitHub
+    environment: staging   # configure required reviewers on this environment for manual approval
+    env:
+      APP_ENV: staging
+      DB_HOST: db-stage.internal
+      LOG_LEVEL: info
+      REPLICAS: "2"
     steps:
+      - uses: actions/checkout@v4
       - name: Deploy to Staging
         run: |
-          curl -X PUT -H "X-API-Key: ${{ secrets.PORTAINER_TOKEN }}" \
+          python3 -c "import json, os, pathlib; print(json.dumps({
+              'StackFileContent': pathlib.Path('docker-compose.yml').read_text(encoding='utf-8'),
+              'Env': [
+                  {'name': 'IMAGE_TAG', 'value': '${{ needs.build.outputs.image_tag }}'},
+                  {'name': 'APP_ENV', 'value': os.environ['APP_ENV']},
+                  {'name': 'DB_HOST', 'value': os.environ['DB_HOST']},
+                  {'name': 'LOG_LEVEL', 'value': os.environ['LOG_LEVEL']},
+                  {'name': 'REPLICAS', 'value': os.environ['REPLICAS']},
+              ],
+              'Prune': True,
+              'RepullImageAndRedeploy': True,
+          }))" > payload.json
+
+          curl --fail --silent --show-error -X PUT \
+            -H "X-API-Key: ${{ secrets.PORTAINER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data @payload.json \
             "${{ secrets.PORTAINER_URL }}/api/stacks/${{ vars.STAGING_STACK_ID }}?endpointId=${{ vars.STAGING_ENV_ID }}"
 
   deploy-prod:
     needs: [build, deploy-staging]
     runs-on: ubuntu-latest
-    environment: production  # requires manual approval in GitHub
+    environment: production  # configure required reviewers on this environment for manual approval
+    env:
+      APP_ENV: production
+      DB_HOST: db-prod.internal
+      LOG_LEVEL: warn
+      REPLICAS: "5"
     steps:
+      - uses: actions/checkout@v4
       - name: Deploy to Production
-        run: echo "Deploying to production..."
+        run: |
+          python3 -c "import json, os, pathlib; print(json.dumps({
+              'StackFileContent': pathlib.Path('docker-compose.yml').read_text(encoding='utf-8'),
+              'Env': [
+                  {'name': 'IMAGE_TAG', 'value': '${{ needs.build.outputs.image_tag }}'},
+                  {'name': 'APP_ENV', 'value': os.environ['APP_ENV']},
+                  {'name': 'DB_HOST', 'value': os.environ['DB_HOST']},
+                  {'name': 'LOG_LEVEL', 'value': os.environ['LOG_LEVEL']},
+                  {'name': 'REPLICAS', 'value': os.environ['REPLICAS']},
+              ],
+              'Prune': True,
+              'RepullImageAndRedeploy': True,
+          }))" > payload.json
+
+          curl --fail --silent --show-error -X PUT \
+            -H "X-API-Key: ${{ secrets.PORTAINER_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data @payload.json \
+            "${{ secrets.PORTAINER_URL }}/api/stacks/${{ vars.PROD_STACK_ID }}?endpointId=${{ vars.PROD_ENV_ID }}"
 ```
 
 ---
 
 ## Summary
 
-Multi-environment deployments with Portainer use the same Docker Compose files with environment-specific variables injected per environment. The Portainer API allows CI/CD pipelines to deploy and update stacks programmatically across dev, staging, and production environments. GitHub Actions `environment:` blocks provide the human approval gates between environments.
+Multi-environment deployments with Portainer use the same Docker Compose files with environment-specific variables injected per environment. The Portainer API allows CI/CD pipelines to deploy and update stacks programmatically across dev, staging, and production environments. GitHub Actions `environment:` blocks can provide the human approval gates between environments when those GitHub environments are configured with protection rules such as required reviewers.
