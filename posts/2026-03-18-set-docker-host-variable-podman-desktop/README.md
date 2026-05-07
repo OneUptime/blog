@@ -16,14 +16,15 @@ The `DOCKER_HOST` environment variable tells Docker-compatible tools where to fi
 
 ## Understanding DOCKER_HOST
 
-The `DOCKER_HOST` variable specifies the socket or TCP endpoint that container tools use to communicate with the container engine. By default, Docker tools look for the socket at `/var/run/docker.sock`.
+The `DOCKER_HOST` variable specifies the socket or TCP endpoint that container tools use to communicate with the container engine. By default, Docker tools look for the socket at `/var/run/docker.sock` on macOS and Linux, or the `npipe:////./pipe/docker_engine` named pipe on Windows.
 
 ```bash
 # Check if DOCKER_HOST is currently set
 
 echo $DOCKER_HOST
 
-# If empty, tools default to /var/run/docker.sock
+# If empty, tools default to /var/run/docker.sock on macOS/Linux
+# or npipe:////./pipe/docker_engine on Windows
 # We need to point it to the Podman socket instead
 ```
 
@@ -33,10 +34,13 @@ The socket location varies by operating system and configuration:
 
 ```bash
 # On Linux (rootless Podman)
-echo "unix:///run/user/$(id -u)/podman/podman.sock"
+echo "unix://${XDG_RUNTIME_DIR}/podman/podman.sock"
 
 # On macOS with Podman machine
 podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}'
+
+# On Windows with Podman machine
+podman machine inspect --format '{{.ConnectionInfo.PodmanPipe.Path}}'
 
 # Generic method: check podman info
 podman info --format '{{.Host.RemoteSocket.Path}}'
@@ -55,10 +59,10 @@ systemctl --user enable --now podman.socket
 systemctl --user status podman.socket
 
 # Set DOCKER_HOST for the current session
-export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"
 
 # Make it permanent by adding to your shell profile
-echo 'export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"' >> ~/.bashrc
+echo 'export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"' >> ~/.bashrc
 source ~/.bashrc
 
 # Verify the setting
@@ -83,7 +87,7 @@ echo "export DOCKER_HOST=\"unix://$SOCKET_PATH\"" >> ~/.zshrc
 source ~/.zshrc
 
 # Test the connection
-podman info > /dev/null && echo "Connection successful"
+docker info > /dev/null && echo "Connection successful"
 ```
 
 ## Setting DOCKER_HOST on Windows
@@ -92,23 +96,26 @@ For Windows with WSL2:
 
 ```bash
 # In WSL2, find the Podman socket
-export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"
 
 # Enable the socket
 systemctl --user enable --now podman.socket
 
 # Add to .bashrc for persistence
-echo 'export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"' >> ~/.bashrc
+echo 'export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"' >> ~/.bashrc
 ```
 
 For PowerShell:
 
 ```powershell
+# Find the Podman named pipe
+$podmanPipe = (podman machine inspect --format '{{.ConnectionInfo.PodmanPipe.Path}}') -replace '\\','/'
+
 # Set for the current session
-$env:DOCKER_HOST = "npipe:////./pipe/podman-machine-default"
+$env:DOCKER_HOST = "npipe://$podmanPipe"
 
 # Set permanently for the user
-[Environment]::SetEnvironmentVariable("DOCKER_HOST", "npipe:////./pipe/podman-machine-default", "User")
+[Environment]::SetEnvironmentVariable("DOCKER_HOST", "npipe://$podmanPipe", "User")
 ```
 
 ## Configuring Tools to Use DOCKER_HOST
@@ -117,17 +124,17 @@ Once set, Docker-compatible tools should work automatically:
 
 ```bash
 # Docker Compose reads DOCKER_HOST automatically
-docker-compose up -d
-docker-compose ps
+docker compose up -d
+docker compose ps
 
 # Testcontainers uses DOCKER_HOST
 # Also disable Ryuk for Podman compatibility
 export TESTCONTAINERS_RYUK_DISABLED=true
-export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"
 
 # VS Code Dev Containers
 # Add to VS Code settings.json:
-# "docker.host": "unix:///run/user/1000/podman/podman.sock"
+# "containers.environment": { "DOCKER_HOST": "unix:///run/user/1000/podman/podman.sock" }
 
 # Verify tools can connect
 docker info 2>/dev/null || podman info
@@ -139,7 +146,7 @@ Some tools ignore `DOCKER_HOST` and always look for `/var/run/docker.sock`:
 
 ```bash
 # On Linux: create a symlink to the Podman socket
-sudo ln -sf /run/user/$(id -u)/podman/podman.sock /var/run/docker.sock
+sudo ln -sf "${XDG_RUNTIME_DIR}/podman/podman.sock" /var/run/docker.sock
 
 # On macOS: symlink to the Podman machine socket
 SOCKET_PATH=$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')
