@@ -45,7 +45,7 @@ kubectl describe limitrange -n <namespace-name>
 1. Navigate to your cluster in Rancher.
 2. Go to **Cluster > Projects/Namespaces**.
 3. Find the namespace you want to configure.
-4. Click the three-dot menu and select **Edit**.
+4. Click the three-dot menu and select **Edit Config**.
 5. Under **Resource Limits**, configure the limits:
    - **CPU Reservation**: Total CPU requests allowed
    - **CPU Limit**: Total CPU limits allowed
@@ -56,32 +56,23 @@ kubectl describe limitrange -n <namespace-name>
 
 ## Step 3: Set Namespace Limits via kubectl
 
-Create a ResourceQuota for the namespace:
+For a namespace in a Rancher project, set the project association and optional override on the Namespace object:
 
 ```yaml
 apiVersion: v1
-kind: ResourceQuota
+kind: Namespace
 metadata:
-  name: namespace-quota
-  namespace: api-production
-spec:
-  hard:
-    pods: "50"
-    requests.cpu: "8"
-    requests.memory: "16Gi"
-    limits.cpu: "16"
-    limits.memory: "32Gi"
-    configmaps: "50"
-    persistentvolumeclaims: "10"
-    secrets: "50"
-    services: "20"
-    services.loadbalancers: "2"
-    services.nodeports: "5"
+  name: api-production
+  annotations:
+    field.cattle.io/projectId: c-m-abcde:p-vwxyz
+    field.cattle.io/resourceQuota: '{"limit":{"pods":"50","requestsCpu":"8","requestsMemory":"16Gi","limitsCpu":"16","limitsMemory":"32Gi","configMaps":"50","persistentVolumeClaims":"10","secrets":"50","services":"20","servicesLoadBalancers":"2","servicesNodePorts":"5"}}'
 ```
 
 ```bash
-kubectl apply -f namespace-quota.yaml
+kubectl apply -f namespace.yaml
 ```
+
+Rancher only applies override values for resources that are already defined on the project's quota.
 
 ## Step 4: Set Container-Level Defaults with LimitRange
 
@@ -146,74 +137,62 @@ Rancher projects can set default container resource limits that apply to all nam
    - **Memory Limit**: Default memory limit per container
 6. Click **Save**.
 
-Rancher creates LimitRange objects in each namespace to enforce these defaults.
+Rancher creates LimitRange objects to enforce these defaults. Namespaces created after you set the project-level default inherit it automatically; existing namespaces need their container default resource limit updated separately.
 
 ## Step 6: Override Namespace Limits Within a Project
 
 When one namespace needs more resources than the default:
 
 ```bash
-# Check the project's total quota and current usage
-kubectl get projects.management.cattle.io <project-id> -n <cluster-id> -o json | \
-  jq '.spec.resourceQuota'
+# Run this against the Rancher management cluster
+# Check the project's total quota and namespace default quota
+kubectl --namespace <cluster-id> get projects.management.cattle.io <project-id> -o json | \
+  jq '.spec | {
+    projectLimit: .resourceQuota.limit,
+    namespaceDefaultLimit: .namespaceDefaultResourceQuota.limit
+  }'
 
-# Check how much is allocated to other namespaces
-kubectl get resourcequota --all-namespaces -o json | \
-  jq -r '.items[] | select(.metadata.namespace | startswith("api-")) | "\(.metadata.namespace): CPU=\(.spec.hard["requests.cpu"] // "none"), Memory=\(.spec.hard["requests.memory"] // "none")"'
+# Check the current namespace override, if any
+kubectl get namespace api-production -o json | \
+  jq -r '.metadata.annotations["field.cattle.io/resourceQuota"] // "no override set"'
 ```
 
 Then adjust the specific namespace's quota:
 
 ```bash
-kubectl patch resourcequota namespace-quota -n api-production -p '{
-  "spec": {
-    "hard": {
-      "requests.cpu": "16",
-      "requests.memory": "32Gi",
-      "pods": "100"
-    }
-  }
-}'
+kubectl annotate namespace api-production \
+  field.cattle.io/resourceQuota='{"limit":{"pods":"100","requestsCpu":"16","requestsMemory":"32Gi","limitsCpu":"32","limitsMemory":"64Gi"}}' \
+  --overwrite
 ```
 
-Make sure the total across all namespaces does not exceed the project limit.
+Make sure the override stays within the configured project limit and includes every resource you want Rancher to manage for that namespace.
 
 ## Step 7: Set Limits for Different Workload Types
 
-Create multiple LimitRanges for different pod categories using labels and admission webhooks. A simpler approach is to set per-namespace limits based on workload type:
+A simple Rancher approach is to set different namespace overrides based on workload type:
 
 **For high-traffic API namespaces:**
 
 ```yaml
 apiVersion: v1
-kind: ResourceQuota
+kind: Namespace
 metadata:
-  name: api-quota
-  namespace: api-production
-spec:
-  hard:
-    pods: "100"
-    requests.cpu: "16"
-    requests.memory: "32Gi"
-    limits.cpu: "32"
-    limits.memory: "64Gi"
+  name: api-production
+  annotations:
+    field.cattle.io/projectId: c-m-abcde:p-vwxyz
+    field.cattle.io/resourceQuota: '{"limit":{"pods":"100","requestsCpu":"16","requestsMemory":"32Gi","limitsCpu":"32","limitsMemory":"64Gi"}}'
 ```
 
 **For batch processing namespaces:**
 
 ```yaml
 apiVersion: v1
-kind: ResourceQuota
+kind: Namespace
 metadata:
-  name: batch-quota
-  namespace: batch-processing
-spec:
-  hard:
-    pods: "20"
-    requests.cpu: "32"
-    requests.memory: "64Gi"
-    limits.cpu: "64"
-    limits.memory: "128Gi"
+  name: batch-processing
+  annotations:
+    field.cattle.io/projectId: c-m-abcde:p-vwxyz
+    field.cattle.io/resourceQuota: '{"limit":{"pods":"20","requestsCpu":"32","requestsMemory":"64Gi","limitsCpu":"64","limitsMemory":"128Gi"}}'
 ```
 
 Batch namespaces typically need fewer pods but more resources per pod.
@@ -232,8 +211,27 @@ kubectl get resourcequota -n api-production -o json | \
 
 # Percentage usage
 kubectl get resourcequota -n api-production -o json | \
-  jq -r '.items[].status | to_entries | group_by(.key | split(".")[0]) | .[] | .[0].key as $type |
-  if ($type == "used" or $type == "hard") then empty else . end'
+  jq -r '
+    def qty:
+      if test("^[0-9]+(\\.[0-9]+)?m$") then sub("m$"; "") | tonumber / 1000
+      elif test("^[0-9]+(\\.[0-9]+)?Ki$") then sub("Ki$"; "") | tonumber * 1024
+      elif test("^[0-9]+(\\.[0-9]+)?Mi$") then sub("Mi$"; "") | tonumber * 1048576
+      elif test("^[0-9]+(\\.[0-9]+)?Gi$") then sub("Gi$"; "") | tonumber * 1073741824
+      elif test("^[0-9]+(\\.[0-9]+)?Ti$") then sub("Ti$"; "") | tonumber * 1099511627776
+      elif test("^[0-9]+(\\.[0-9]+)?Pi$") then sub("Pi$"; "") | tonumber * 1125899906842624
+      elif test("^[0-9]+(\\.[0-9]+)?Ei$") then sub("Ei$"; "") | tonumber * 1152921504606847000
+      elif test("^[0-9]+(\\.[0-9]+)?$") then tonumber
+      else null
+      end;
+    .items[].status as $status
+    | $status.hard
+    | to_entries[]
+    | .key as $key
+    | (.value | qty) as $hard
+    | ($status.used[$key] | qty) as $used
+    | select($hard != null and $used != null and $hard > 0)
+    | "\($key): \((($used / $hard) * 10000 | round) / 100)% (\($status.used[$key])/\($status.hard[$key]))"
+  '
 ```
 
 For a visual overview, use Rancher's monitoring:
@@ -272,11 +270,9 @@ kubectl describe limitrange -n <namespace>
 ```bash
 # Verify the namespace is in the correct project
 kubectl get namespace <namespace> -o jsonpath='{.metadata.annotations.field\.cattle\.io/projectId}'
-
-# Re-apply the namespace to the project if needed
-kubectl annotate namespace <namespace> \
-  field.cattle.io/projectId="c-m-xxxxx:p-xxxxx" --overwrite
 ```
+
+If the namespace was created outside the target project, recreate it with the correct `field.cattle.io/projectId` annotation. Rancher does not allow moving a namespace into a project that already has a resource quota configured.
 
 ## Step 10: Automate Namespace Limit Configuration
 
@@ -286,45 +282,41 @@ Use a script to apply consistent limits across namespaces:
 #!/bin/bash
 # apply-namespace-limits.sh
 
-NAMESPACE=$1
-TIER=${2:-standard}  # standard, high, or batch
+PROJECT_ID=$1
+NAMESPACE=$2
+TIER=${3:-standard}  # standard, high, or batch
 
 case $TIER in
   standard)
-    CPU_REQ="4" ; CPU_LIM="8" ; MEM_REQ="8Gi" ; MEM_LIM="16Gi" ; PODS="50"
+    QUOTA='{"limit":{"pods":"50","requestsCpu":"4","requestsMemory":"8Gi","limitsCpu":"8","limitsMemory":"16Gi"}}'
     ;;
   high)
-    CPU_REQ="16" ; CPU_LIM="32" ; MEM_REQ="32Gi" ; MEM_LIM="64Gi" ; PODS="100"
+    QUOTA='{"limit":{"pods":"100","requestsCpu":"16","requestsMemory":"32Gi","limitsCpu":"32","limitsMemory":"64Gi"}}'
     ;;
   batch)
-    CPU_REQ="32" ; CPU_LIM="64" ; MEM_REQ="64Gi" ; MEM_LIM="128Gi" ; PODS="20"
+    QUOTA='{"limit":{"pods":"20","requestsCpu":"32","requestsMemory":"64Gi","limitsCpu":"64","limitsMemory":"128Gi"}}'
     ;;
 esac
 
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
-kind: ResourceQuota
+kind: Namespace
 metadata:
-  name: ${TIER}-quota
-  namespace: ${NAMESPACE}
-spec:
-  hard:
-    pods: "${PODS}"
-    requests.cpu: "${CPU_REQ}"
-    requests.memory: "${MEM_REQ}"
-    limits.cpu: "${CPU_LIM}"
-    limits.memory: "${MEM_LIM}"
+  name: ${NAMESPACE}
+  annotations:
+    field.cattle.io/projectId: ${PROJECT_ID}
+    field.cattle.io/resourceQuota: '${QUOTA}'
 EOF
 
-echo "Applied $TIER limits to namespace $NAMESPACE"
+echo "Applied $TIER limits to namespace $NAMESPACE in project $PROJECT_ID"
 ```
 
 Usage:
 
 ```bash
-./apply-namespace-limits.sh api-production high
-./apply-namespace-limits.sh data-processing batch
-./apply-namespace-limits.sh frontend-staging standard
+./apply-namespace-limits.sh c-m-abcde:p-vwxyz api-production high
+./apply-namespace-limits.sh c-m-abcde:p-vwxyz data-processing batch
+./apply-namespace-limits.sh c-m-abcde:p-vwxyz frontend-staging standard
 ```
 
 ## Best Practices
