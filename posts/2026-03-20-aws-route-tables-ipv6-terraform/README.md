@@ -24,22 +24,21 @@ AWS route tables require explicit IPv6 routes - adding an IPv4 default route doe
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
-  # IPv4 default route via Internet Gateway
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.main.id
-  }
-
-  # IPv6 default route via the SAME Internet Gateway
-  # (IGW handles both IPv4 and IPv6 for public subnets)
-  route {
-    ipv6_cidr_block = "::/0"
-    gateway_id      = aws_internet_gateway.main.id
-  }
-
   tags = {
     Name = "public-rt"
   }
+}
+
+resource "aws_route" "public_ipv4_default" {
+  route_table_id         = aws_route_table.public.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.main.id
+}
+
+resource "aws_route" "public_ipv6_default" {
+  route_table_id              = aws_route_table.public.id
+  destination_ipv6_cidr_block = "::/0"
+  gateway_id                  = aws_internet_gateway.main.id
 }
 
 # Associate all public subnets with this route table
@@ -62,22 +61,21 @@ resource "aws_egress_only_internet_gateway" "eigw" {
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
 
-  # IPv4 default route via NAT Gateway (one per AZ)
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
-  }
-
-  # IPv6 default route via Egress-Only Internet Gateway
-  # (allows outbound IPv6 but blocks inbound)
-  route {
-    ipv6_cidr_block        = "::/0"
-    egress_only_gateway_id = aws_egress_only_internet_gateway.eigw.id
-  }
-
   tags = {
     Name = "private-rt"
   }
+}
+
+resource "aws_route" "private_ipv4_default" {
+  route_table_id         = aws_route_table.private.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.main.id
+}
+
+resource "aws_route" "private_ipv6_default" {
+  route_table_id              = aws_route_table.private.id
+  destination_ipv6_cidr_block = "::/0"
+  egress_only_gateway_id      = aws_egress_only_internet_gateway.eigw.id
 }
 
 resource "aws_route_table_association" "private" {
@@ -95,14 +93,14 @@ For routing IPv6 traffic to a specific VPC peer or Transit Gateway:
 # rt-specific-ipv6.tf - Add a specific IPv6 route to a VPC peering connection
 resource "aws_route" "ipv6_peer" {
   route_table_id              = aws_route_table.private.id
-  destination_ipv6_cidr_block = "fd00:peer::/56"  # IPv6 CIDR of the peer VPC
+  destination_ipv6_cidr_block = "2001:db8:1234:1a00::/56"  # IPv6 CIDR of the peer VPC
   vpc_peering_connection_id   = aws_vpc_peering_connection.peer.id
 }
 
 # Or via Transit Gateway
 resource "aws_route" "ipv6_tgw" {
   route_table_id              = aws_route_table.private.id
-  destination_ipv6_cidr_block = "::/0"
+  destination_ipv6_cidr_block = "2001:db8:2000::/48"
   transit_gateway_id          = aws_ec2_transit_gateway.main.id
 }
 ```
@@ -114,23 +112,24 @@ terraform apply
 
 # View the routes in the public route table
 aws ec2 describe-route-tables \
-  --route-table-ids $(terraform output -raw public_rt_id) \
-  --query 'RouteTables[0].Routes[*].{Dest:DestinationIpv6CidrBlock,GW:GatewayId}'
+  --filters "Name=tag:Name,Values=public-rt" \
+  --query 'RouteTables[0].Routes[?DestinationIpv6CidrBlock!=`null`].{Dest:DestinationIpv6CidrBlock,Target:GatewayId}'
 
 # Verify routes from an EC2 instance
 # Public instance:
 ip -6 route show
-# Should show: default via fe80::... dev eth0 (gateway)
+# Should include a default IPv6 route via a link-local next hop on the primary interface
 ```
 
 ## Step 5: Validate Connectivity
 
 ```bash
-# From a public instance: should reach internet over IPv6
-ping6 -c 3 2001:4860:4860::8888
+# From a public instance with an IPv6 address and ICMPv6 allowed: should reach the internet over IPv6
+ping -6 -c 3 2001:4860:4860::8888
 
-# From a private instance: should reach internet IPv6 but not be reachable
-ping6 -c 3 2001:4860:4860::8888
+# From a private instance with an IPv6 address and ICMPv6 allowed: should still reach the internet over IPv6
+ping -6 -c 3 2001:4860:4860::8888
+# Unsolicited inbound IPv6 connections from the internet should still fail
 ```
 
 Correct IPv6 route table configuration is the foundation of AWS dual-stack networking - without the right next-hop entries, even properly addressed instances will fail to route IPv6 traffic.
