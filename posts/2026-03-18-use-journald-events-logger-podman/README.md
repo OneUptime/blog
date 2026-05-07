@@ -16,7 +16,7 @@ On systems running systemd, Podman can store container events in the systemd jou
 
 ## Enabling the journald Backend
 
-The journald backend is the default on most Linux distributions with systemd. Verify it is active.
+The current default depends on the platform, so verify that `journald` is active.
 
 ```bash
 # Check current events logger
@@ -70,7 +70,7 @@ podman events --since 5m --filter event=start
 
 ## Querying Events with journalctl
 
-The journald backend stores events in the systemd journal, so you can use `journalctl` directly.
+The journald backend stores events in the systemd journal, so you can use `journalctl` directly. For rootless Podman, the `--user` examples below require persistent user journals to be enabled.
 
 ```bash
 # View all Podman events in the user journal
@@ -116,7 +116,7 @@ journald stores structured data that you can filter on.
 ```bash
 # Filter by specific fields in the journal
 journalctl --user -t podman PODMAN_EVENT=start
-journalctl --user -t podman PODMAN_EVENT=die
+journalctl --user -t podman PODMAN_EVENT=died
 
 # View available fields for Podman events
 journalctl --user -t podman -o json | head -1 | jq 'keys'
@@ -128,24 +128,25 @@ Configure how long journald retains Podman events.
 
 ```bash
 # Check current journal disk usage
-journalctl --user --disk-usage
+journalctl --disk-usage
 
 # View journal retention settings
-# System settings are in /etc/systemd/journald.conf
-# User settings are in ~/.config/systemd/user/journald.conf
+# Settings are in /etc/systemd/journald.conf
+# Drop-in overrides are in /etc/systemd/journald.conf.d/*.conf
 
-# Check the maximum journal size
-systemctl --user show systemd-journald | grep -i size
+# Show any explicitly configured size or retention limits
+grep -E '^(SystemMaxUse|SystemMaxFileSize|RuntimeMaxUse|RuntimeMaxFileSize|MaxRetentionSec)=' \
+    /etc/systemd/journald.conf /etc/systemd/journald.conf.d/*.conf 2>/dev/null
 ```
 
-Configure retention for the user journal:
+Configure retention for journald:
 
 ```bash
-# Create user journald config directory
-mkdir -p ~/.config/systemd/
+# Create a journald drop-in directory
+sudo mkdir -p /etc/systemd/journald.conf.d/
 
 # Set retention limits
-cat > ~/.config/systemd/journald.conf << 'EOF'
+sudo tee /etc/systemd/journald.conf.d/podman-events.conf > /dev/null << 'EOF'
 [Journal]
 # Maximum disk space for journal files
 SystemMaxUse=500M
@@ -154,6 +155,9 @@ SystemMaxFileSize=50M
 # How long to keep journal entries
 MaxRetentionSec=30day
 EOF
+
+# Apply the updated journald settings
+sudo systemctl restart systemd-journald
 ```
 
 ## Exporting journald Events
@@ -207,17 +211,17 @@ journalctl --user -t podman -n 10 --no-pager -o cat
 
 ```bash
 # Check if journald is running
-systemctl --user status systemd-journald
+systemctl status systemd-journald
 
 # Verify Podman can write to the journal
 logger -t podman "test message"
-journalctl --user -t podman -n 1
+journalctl -t podman -n 1
 
 # Check for journal errors
-journalctl --user -t podman --verify 2>&1 | tail -5
+journalctl --verify 2>&1 | tail -5
 
 # If events are missing, check if the backend is correctly set
-podman info | grep -i event
+podman info --format '{{.Host.EventLogger}}'
 ```
 
 ## Cleanup
