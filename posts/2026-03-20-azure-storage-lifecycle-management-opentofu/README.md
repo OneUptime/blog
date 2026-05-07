@@ -20,7 +20,7 @@ resource "azurerm_storage_account" "storage" {
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = azurerm_resource_group.rg.location
   account_tier             = "Standard"
-  # GRS enables geo-redundancy; lifecycle management works with all replication types
+  # GRS enables geo-redundancy and supports the archive-tier actions used below
   account_replication_type = "GRS"
   access_tier              = "Hot"
 }
@@ -28,7 +28,7 @@ resource "azurerm_storage_account" "storage" {
 
 ## Step 2: Define Lifecycle Management Policy
 
-The lifecycle policy applies rules based on blob age, prefix, or tags.
+The lifecycle policy applies rules based on blob age, container-qualified prefixes, or tags.
 
 ```hcl
 # Lifecycle management policy with multiple rules
@@ -40,18 +40,18 @@ resource "azurerm_storage_management_policy" "lifecycle" {
     enabled = true
 
     filters {
-      # Apply this rule only to blobs in the "logs/" prefix
+      # Prefix filters must start with a container name; "logs/" matches blobs in the "logs" container
       prefix_match = ["logs/"]
       blob_types   = ["blockBlob"]
     }
 
     actions {
       base_blob {
-        # Move to Cool tier after 30 days of no access
+        # Move to Cool tier after 30 days without modification
         tier_to_cool_after_days_since_modification_greater_than    = 30
-        # Move to Archive tier after 90 days
+        # Move to Archive tier after 90 days without modification
         tier_to_archive_after_days_since_modification_greater_than = 90
-        # Permanently delete after 365 days
+        # Permanently delete after 365 days without modification
         delete_after_days_since_modification_greater_than          = 365
       }
 
@@ -67,6 +67,7 @@ resource "azurerm_storage_management_policy" "lifecycle" {
     enabled = true
 
     filters {
+      # "temp/" matches blobs in the "temp" container
       prefix_match = ["temp/"]
       blob_types   = ["blockBlob"]
     }
