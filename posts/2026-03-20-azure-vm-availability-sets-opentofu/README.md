@@ -8,7 +8,7 @@ Description: Learn how to configure Azure VM Availability Sets with OpenTofu to 
 
 ## Introduction
 
-Azure Availability Sets protect VMs against hardware failures and planned maintenance events by distributing them across fault domains (separate physical racks with independent power and network) and update domains (groups of VMs restarted together during planned maintenance). VMs in an Availability Set receive a 99.95% SLA when using Standard storage, or 99.99% with Premium storage. For cloud-native workloads, Availability Zones provide stronger guarantees, but Availability Sets remain important for lift-and-shift migrations and workloads requiring specific VM proximity.
+Azure Availability Sets protect VMs against hardware failures and planned maintenance events by distributing them across fault domains (separate physical racks with independent power and network) and update domains (groups of VMs restarted together during planned maintenance). Using two or more VMs in an Availability Set helps meet the 99.95% Azure SLA. For cloud-native workloads, Availability Zones provide stronger guarantees, but Availability Sets remain important for lift-and-shift migrations and workloads requiring specific VM proximity.
 
 ## Prerequisites
 
@@ -94,6 +94,14 @@ resource "azurerm_network_interface" "app" {
 ## Step 3: Associate VMs with Load Balancer Backend Pool
 
 ```hcl
+resource "azurerm_public_ip" "main" {
+  name                = "${var.project_name}-pip"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
 resource "azurerm_lb" "main" {
   name                = "${var.project_name}-lb"
   location            = var.location
@@ -134,7 +142,7 @@ az vm availability-set show \
   --name <avset-name>
 
 # Check VM fault/update domain assignments
-az vm show \
+az vm get-instance-view \
   --resource-group <rg> \
   --name <vm-name> \
   --query "{FaultDomain: platformFaultDomain, UpdateDomain: platformUpdateDomain}"
@@ -142,4 +150,4 @@ az vm show \
 
 ## Conclusion
 
-Availability Sets cannot be changed after VM creation-plan the architecture before deploying. You cannot mix Availability Zones and Availability Sets for the same VM. For new deployments targeting 99.99% SLA, use Availability Zones instead of Availability Sets. Availability Sets work best when you need to keep VMs in the same datacenter for low-latency communication while still protecting against rack-level failures. Always deploy at least 2 VMs in an Availability Set-a single VM provides no high availability protection.
+Fault and update domain counts cannot be changed after the availability set is created-plan the architecture before deploying. You cannot mix Availability Zones and Availability Sets for the same VM. For new deployments targeting 99.99% SLA, use Availability Zones instead of Availability Sets. Availability Sets work best when you need to keep VMs in the same datacenter for low-latency communication while still protecting against rack-level failures. Always deploy at least 2 VMs in an Availability Set-a single VM provides no high availability protection.
