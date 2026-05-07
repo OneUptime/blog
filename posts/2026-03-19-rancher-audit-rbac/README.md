@@ -11,7 +11,7 @@ Regular RBAC audits are critical for maintaining the security of your Rancher-ma
 ## Prerequisites
 
 - Rancher v2.7+ with administrator access
-- kubectl access to the Rancher management cluster
+- kubectl access to the Rancher management cluster and any downstream cluster you want to inspect at the Kubernetes RBAC layer
 - jq installed for JSON processing
 - Basic familiarity with Rancher's role model
 
@@ -32,7 +32,7 @@ Focus on high-privilege roles:
 ```bash
 # Find all administrators
 kubectl get globalrolebindings -o json | \
-  jq -r '.items[] | select(.globalRoleName == "admin") | "\(.userName) - Created: \(.metadata.creationTimestamp)"'
+  jq -r '.items[] | select(.globalRoleName == "admin") | "\(.userPrincipalName // .groupPrincipalName // .userName) - Created: \(.metadata.creationTimestamp)"'
 
 # Count admins
 echo "Total administrators:"
@@ -59,12 +59,12 @@ for cluster in $(kubectl get clusters.management.cattle.io -o jsonpath='{.items[
 
   # List cluster role bindings
   kubectl get clusterroletemplatebindings -n $cluster -o json | \
-    jq -r '.items[] | "\(.userName // .groupPrincipalName // "unknown")\t\(.roleTemplateId)\t\(.metadata.creationTimestamp)"' | \
+    jq -r '.items[] | "\(.userPrincipalName // .groupPrincipalName // .userName // "unknown")\t\(.roleTemplateName)\t\(.metadata.creationTimestamp)"' | \
     column -t -s $'\t'
 
   # Count cluster owners
   owners=$(kubectl get clusterroletemplatebindings -n $cluster -o json | \
-    jq '[.items[] | select(.roleTemplateId == "cluster-owner")] | length')
+    jq '[.items[] | select(.roleTemplateName == "cluster-owner")] | length')
   echo "  Cluster Owners: $owners"
   echo ""
 done
@@ -79,18 +79,17 @@ done
 echo "=== Project Role Audit ==="
 echo ""
 
-for project in $(kubectl get projects.management.cattle.io --all-namespaces -o json | jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name)/\(.spec.displayName)"'); do
-  cluster=$(echo $project | cut -d'/' -f1)
-  proj_id=$(echo $project | cut -d'/' -f2)
-  proj_name=$(echo $project | cut -d'/' -f3)
+kubectl get projects.management.cattle.io --all-namespaces -o json | \
+  jq -r '.items[] | [.metadata.namespace, .metadata.name, (.spec.displayName // .metadata.name), .status.backingNamespace] | @tsv' | \
+  while IFS=$'\t' read -r cluster proj_id proj_name backing_ns; do
+  [ -z "$backing_ns" ] && continue
 
-  bindings=$(kubectl get projectroletemplatebindings -n $cluster -o json | \
-    jq -r "[.items[] | select(.projectName == \"$cluster:$proj_id\")] | length")
+  bindings=$(kubectl get projectroletemplatebindings -n "$backing_ns" -o json | jq '.items | length')
 
   if [ "$bindings" -gt 0 ]; then
     echo "--- Project: $proj_name ---"
-    kubectl get projectroletemplatebindings -n $cluster -o json | \
-      jq -r ".items[] | select(.projectName == \"$cluster:$proj_id\") | \"\(.userName // .groupPrincipalName // \"unknown\")\t\(.roleTemplateId)\"" | \
+    kubectl get projectroletemplatebindings -n "$backing_ns" -o json | \
+      jq -r '.items[] | "\(.userPrincipalName // .groupPrincipalName // .userName // "unknown")\t\(.roleTemplateName)"' | \
       column -t -s $'\t'
     echo ""
   fi
@@ -99,7 +98,7 @@ done
 
 ## Step 4: Identify Orphaned Role Bindings
 
-Orphaned bindings belong to users who no longer exist or groups that have been removed:
+Start by checking for user bindings whose Rancher `User` resource no longer exists:
 
 ```bash
 # Find bindings with no matching user
@@ -121,16 +120,16 @@ Review custom role templates for wildcard permissions or broad access:
 ```bash
 # Find roles with wildcard permissions
 kubectl get roletemplates -o json | \
-  jq -r '.items[] | select(.rules[]? | .apiGroups[]? == "*" or .resources[]? == "*" or .verbs[]? == "*") | "WARNING - \(.metadata.name) (\(.displayName)): has wildcard permissions"'
+  jq -r '.items[] | select(.builtin != true) | select(any(.rules[]?; any(.apiGroups[]?; . == "*") or any(.resources[]?; . == "*") or any(.verbs[]?; . == "*"))) | "WARNING - \(.metadata.name) (\(.displayName)): has wildcard permissions"'
 
 # Find roles that grant delete on all resources
 kubectl get roletemplates -o json | \
-  jq -r '.items[] | select(.rules[]? | .verbs[]? == "delete" and .resources[]? == "*") | "WARNING - \(.metadata.name): grants delete on all resources"'
+  jq -r '.items[] | select(.builtin != true) | select(any(.rules[]?; any(.verbs[]?; . == "delete") and any(.resources[]?; . == "*"))) | "WARNING - \(.metadata.name): grants delete on all resources"'
 ```
 
 ## Step 6: Audit Kubernetes-Level RBAC
 
-Rancher's RBAC layer sits on top of Kubernetes RBAC. Audit the underlying bindings too:
+Rancher's RBAC layer sits on top of Kubernetes RBAC. Switch `kubectl` to the downstream cluster context first, then audit the underlying bindings:
 
 ```bash
 # List all ClusterRoleBindings in a downstream cluster
@@ -145,30 +144,27 @@ kubectl get clusterrolebindings -o json | \
 
 ## Step 7: Enable and Review Audit Logs
 
-Enable Rancher's audit logging to track RBAC-related actions:
+Enable Rancher's API audit logging to track RBAC-related actions. If Rancher is installed with Helm, configure audit logging during installation or upgrade:
 
-1. Go to **Global Settings** in the Rancher UI.
-2. Set `audit-level` to `2` for detailed logging.
-3. Configure the audit log destination.
+1. Set `auditLog.enabled` to `true`.
+2. Set `auditLog.level` to `2` for request-body logging.
+3. Choose an `auditLog.destination` such as `sidecar` or `hostPath`.
 
 Via Helm values during Rancher installation:
 
 ```yaml
 auditLog:
+  enabled: true
   level: 2
   destination: sidecar
-  hostPath: /var/log/rancher/audit/
-  maxAge: 30
-  maxBackup: 10
-  maxSize: 100
 ```
 
 Review audit logs for RBAC changes:
 
 ```bash
-# Search for role binding creation events
-grep "clusterroletemplatebindings" /var/log/rancher/audit/audit.log | \
-  jq -r 'select(.verb == "create" or .verb == "delete") | "\(.requestReceivedTimestamp) \(.verb) \(.objectRef.name) by \(.user.username)"'
+# Review RBAC-related Rancher API audit events from the audit sidecar
+kubectl -n cattle-system logs <rancher-pod> -c rancher-audit-log | \
+  jq -r 'select(.requestURI | test("/(clusterroletemplatebindings|projectroletemplatebindings|globalrolebindings)")) | select(.method == "POST" or .method == "PUT" or .method == "PATCH" or .method == "DELETE") | "\(.requestTimestamp) \(.method) \(.requestURI) by \(.user.extra.username[0] // .user.name)"'
 ```
 
 ## Step 8: Generate a Comprehensive Audit Report
@@ -179,7 +175,10 @@ Create a complete audit report script:
 #!/bin/bash
 # rbac-audit-report.sh
 
-REPORT_FILE="rbac-audit-$(date +%Y%m%d).txt"
+REPORT_DIR="${REPORT_DIR:-/opt/reports}"
+REPORT_FILE="$REPORT_DIR/rbac-audit-$(date +%Y%m%d).txt"
+
+mkdir -p "$REPORT_DIR"
 
 {
   echo "RBAC Audit Report - $(date)"
@@ -195,7 +194,7 @@ REPORT_FILE="rbac-audit-$(date +%Y%m%d).txt"
   echo "2. ADMINISTRATOR ACCOUNTS"
   echo "-------------------------"
   kubectl get globalrolebindings -o json | \
-    jq -r '.items[] | select(.globalRoleName == "admin") | "  \(.userName)"'
+    jq -r '.items[] | select(.globalRoleName == "admin") | "  \(.userPrincipalName // .groupPrincipalName // .userName)"'
   echo ""
 
   echo "3. CLUSTER ACCESS SUMMARY"
@@ -204,7 +203,7 @@ REPORT_FILE="rbac-audit-$(date +%Y%m%d).txt"
     display=$(kubectl get clusters.management.cattle.io $cluster -o jsonpath='{.spec.displayName}')
     count=$(kubectl get clusterroletemplatebindings -n $cluster -o json | jq '.items | length')
     owners=$(kubectl get clusterroletemplatebindings -n $cluster -o json | \
-      jq '[.items[] | select(.roleTemplateId == "cluster-owner")] | length')
+      jq '[.items[] | select(.roleTemplateName == "cluster-owner")] | length')
     echo "  $display: $count total bindings, $owners owners"
   done
   echo ""
@@ -212,13 +211,13 @@ REPORT_FILE="rbac-audit-$(date +%Y%m%d).txt"
   echo "4. CUSTOM ROLES WITH ELEVATED PERMISSIONS"
   echo "------------------------------------------"
   kubectl get roletemplates -o json | \
-    jq -r '.items[] | select(.builtin != true) | select(.rules[]? | .verbs[]? == "*" or .resources[]? == "*") | "  WARNING: \(.displayName) has wildcard permissions"'
+    jq -r '.items[] | select(.builtin != true) | select(any(.rules[]?; any(.apiGroups[]?; . == "*") or any(.verbs[]?; . == "*") or any(.resources[]?; . == "*"))) | "  WARNING: \(.displayName) has wildcard permissions"'
   echo ""
 
   echo "5. ROLES GRANTING SECRET ACCESS"
   echo "-------------------------------"
   kubectl get roletemplates -o json | \
-    jq -r '.items[] | select(.rules[]? | .resources[]? == "secrets") | "  \(.displayName) (\(.metadata.name)): grants access to secrets"'
+    jq -r '.items[] | select(any(.rules[]?; any(.resources[]?; . == "secrets"))) | "  \(.displayName) (\(.metadata.name)): grants access to secrets"'
 
 } > "$REPORT_FILE"
 
@@ -231,7 +230,7 @@ Schedule the audit script to run regularly:
 
 ```bash
 # Add to crontab - runs monthly on the 1st at 6 AM
-0 6 1 * * /opt/scripts/rbac-audit-report.sh && mail -s "Monthly RBAC Audit" security-team@example.com < /opt/reports/rbac-audit-*.txt
+0 6 1 * * /opt/scripts/rbac-audit-report.sh && mail -s "Monthly RBAC Audit" security-team@example.com < "/opt/reports/rbac-audit-$(date +\%Y\%m\%d).txt"
 ```
 
 ## Step 10: Remediate Findings
