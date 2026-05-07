@@ -16,7 +16,7 @@ Building container images inside Kubernetes has traditionally relied on Docker-i
 
 ## Why Podman Over Docker-in-Docker?
 
-Docker-in-Docker (DinD) requires running a Docker daemon inside a container with privileged access. This creates security risks because the inner daemon has access to the host kernel. Podman eliminates this risk:
+Docker-in-Docker (DinD) usually requires running a Docker daemon inside a container with privileged access. This creates security risks because the inner daemon still shares the host kernel. Podman reduces some of these risks:
 
 - No daemon required, reducing the attack surface
 - Rootless mode for unprivileged container builds
@@ -110,7 +110,7 @@ Use Podman as a build step in Tekton:
 
 ```yaml
 # tekton-podman-task.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: podman-build
@@ -220,7 +220,7 @@ spec:
     spec:
       containers:
         - name: build
-          image: quay.io/podman/stable
+          image: quay.io/buildah/stable
           securityContext:
             privileged: true
           command:
@@ -233,13 +233,13 @@ spec:
               cd /build
 
               # Build the image
-              podman build -t registry.example.com/myapp:latest .
+              buildah build -t registry.example.com/myapp:latest .
 
               # Login and push
-              podman login registry.example.com \
+              buildah login registry.example.com \
                 --username "$REGISTRY_USER" \
                 --password "$REGISTRY_PASS"
-              podman push registry.example.com/myapp:latest
+              buildah push registry.example.com/myapp:latest
           env:
             - name: REGISTRY_USER
               valueFrom:
@@ -363,18 +363,11 @@ spec:
           command: ["bash", "-c"]
           args:
             - |
-              # Build for amd64
-              podman build --platform linux/amd64 \
-                -t myapp:amd64 /workspace
-
-              # Build for arm64
-              podman build --platform linux/arm64 \
-                -t myapp:arm64 /workspace
-
-              # Create a manifest list
-              podman manifest create myapp:latest
-              podman manifest add myapp:latest myapp:amd64
-              podman manifest add myapp:latest myapp:arm64
+              # Build a multi-architecture manifest list
+              podman build \
+                --platform linux/amd64,linux/arm64 \
+                --manifest myapp:latest \
+                /workspace
 
               echo "Multi-arch build complete"
           volumeMounts:
@@ -439,8 +432,8 @@ kubectl exec podman-builder -- podman info --format '{{.Store.GraphDriverName}}'
 # Check for storage space issues
 kubectl exec podman-builder -- df -h /var/lib/containers
 
-# View Podman system logs
-kubectl exec podman-builder -- podman system events --since 1h
+# View recent Podman system events
+kubectl exec podman-builder -- podman system events --since 1h --stream=false
 ```
 
 ## Conclusion
