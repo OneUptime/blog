@@ -8,7 +8,7 @@ Description: Assign a static IPv4 address to a Docker container using the --ip f
 
 ## Introduction
 
-Docker assigns IPs automatically from the network's DHCP pool. To assign a static IP, you must use a **user-defined network** (not the default `docker0` bridge) and specify the IP at container runtime or in Docker Compose.
+Docker assigns IPs automatically from the network's address pool. To assign a static IP, you must use a **user-defined network** (not the default `bridge` network, which maps to `docker0` on Linux) and specify the IP at container runtime or in Docker Compose.
 
 ## Step 1: Create a Network with a Known Subnet
 
@@ -46,8 +46,6 @@ docker run --rm --network static-net alpine ping -c 3 192.168.200.10
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   web:
     image: nginx:alpine
@@ -79,7 +77,7 @@ docker inspect $(docker compose ps -q web) | grep '"IPAddress"'
 
 ## Why Static IPs Cannot Be Used on the Default Bridge
 
-The default `docker0` network (`docker run` without `--network`) does not support `--ip`. Docker requires a user-defined network because the default bridge uses a different internal management mode.
+The default `bridge` network (`docker run` without `--network`, backed by `docker0` on Linux) does not support user-specified container IPs with `--ip`. Docker only supports user-specified IP addresses on user-defined networks.
 
 ## Confirming the IP Persists Across Container Restarts
 
@@ -95,4 +93,4 @@ Static IP assignments in user-defined networks persist across restarts as long a
 
 ## Conclusion
 
-Assign static IPs to Docker containers using `--ip` with `docker run` or `ipv4_address` in Docker Compose. Always create a user-defined network with a defined subnet first - static IPs are not supported on the default bridge network.
+Assign static IPs to Docker containers using `--ip` with `docker run` or `ipv4_address` in Docker Compose. Always create a user-defined network with a defined subnet first - user-specified container IPs are not supported on the default `bridge` network.
