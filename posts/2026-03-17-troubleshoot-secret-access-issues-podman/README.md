@@ -33,11 +33,11 @@ echo -n "secret-value" | podman secret create my_secret -
 
 ```bash
 # Check the container configuration for secrets
-podman inspect --format='{{json .HostConfig.Secrets}}' my-container | python3 -m json.tool
+podman inspect --format='{{json .Config.Secrets}}' my-container | python3 -m json.tool
 
 # If the output is empty or null, the secret was not attached
 # Recreate the container with the --secret flag
-podman rm my-container
+podman rm -f my-container
 podman run -d --name my-container --secret my_secret my-app:latest
 ```
 
@@ -84,7 +84,7 @@ podman exec my-container find / -name "my_secret" 2>/dev/null
 
 # Default location is /run/secrets/<name>
 # If you specified a custom target, check that path instead
-podman inspect --format='{{json .HostConfig.Secrets}}' my-container
+podman inspect --format='{{json .Config.Secrets}}' my-container
 ```
 
 ### Permission denied when reading the secret
