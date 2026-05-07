@@ -26,7 +26,7 @@ sudo dnf install -y skopeo
 # Install on Ubuntu/Debian
 sudo apt-get update && sudo apt-get install -y skopeo
 
-# Verify the version (sync requires Skopeo 0.2+)
+# Verify the installed version
 skopeo --version
 ```
 
@@ -57,8 +57,8 @@ skopeo sync \
   docker.io/library/alpine \
   /opt/image-mirror/
 
-# The directory will contain a subdirectory for each tag
-ls /opt/image-mirror/alpine/
+# The directory will contain one image directory per tag
+ls /opt/image-mirror/
 ```
 
 ## Sync from Local Directory to Registry
@@ -66,11 +66,11 @@ ls /opt/image-mirror/alpine/
 After transferring images to an air-gapped environment, push them from the local directory to the target registry.
 
 ```bash
-# Sync from local directory back to a registry
+# Sync one image tag from the local directory back to a registry
 skopeo sync \
   --src dir \
   --dest docker \
-  /opt/image-mirror/ \
+  /opt/image-mirror/alpine:latest \
   airgapped-registry.internal.com
 ```
 
@@ -94,8 +94,7 @@ registry.source.com:
       - "15"
 docker.io:
   images-by-tag-regex:
-    library/python:
-      - "^3\\.12"
+    library/python: "^3\\.12"
 ```
 
 ```bash
@@ -120,7 +119,7 @@ podman login dest-registry.example.com
 skopeo sync \
   --src docker \
   --dest docker \
-  --authfile ~/.config/containers/auth.json \
+  --authfile "${XDG_RUNTIME_DIR}/containers/auth.json" \
   source-registry.example.com/myorg/myapp \
   dest-registry.example.com/myorg
 
