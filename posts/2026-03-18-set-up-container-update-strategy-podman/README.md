@@ -29,7 +29,7 @@ podman auto-update --dry-run
 podman auto-update
 ```
 
-For auto-update to work, containers must meet two requirements: they must be labeled with the auto-update policy, and they must run inside a systemd unit (created via Quadlet or `podman generate systemd`):
+For auto-update to work, containers must meet two requirements: they must be labeled with the auto-update policy, and they must run inside a systemd unit. Quadlet is the recommended approach; `podman generate systemd` also creates systemd units but is deprecated:
 
 ```bash
 podman run -d \
@@ -58,14 +58,14 @@ podman run -d \
   my-api:latest
 ```
 
-The `registry` policy connects to the image registry to check for updates. The `local` policy checks if a newer local image exists, which is useful when your CI/CD pipeline pushes images to the local Podman storage.
+The `registry` policy connects to the image registry to check for updates and requires a fully qualified image reference such as `docker.io/library/nginx:stable`. The `local` policy checks if a newer local image exists, which is useful when your CI/CD pipeline pushes images to the local Podman storage.
 
 ## Setting Up the Auto-Update Timer
 
 Podman includes a systemd timer for periodic auto-updates:
 
 ```bash
-# Enable the timer (checks daily by default)
+# Enable the timer (checks daily at midnight by default)
 systemctl --user enable --now podman-auto-update.timer
 
 # Check timer status
@@ -89,6 +89,7 @@ RandomizedDelaySec=30m
 EOF
 
 systemctl --user daemon-reload
+systemctl --user restart podman-auto-update.timer
 ```
 
 ## Auto-Update with Quadlet
@@ -139,55 +140,49 @@ podman run -d \
   --health-interval=30s \
   --health-retries=3 \
   --health-start-period=60s \
-  my-api:stable
+  --health-on-failure=kill \
+  registry.example.com/myteam/my-api:stable
 ```
 
 In a Quadlet file:
 
 ```ini
 [Container]
-Image=my-api:stable
+Image=registry.example.com/myteam/my-api:stable
 AutoUpdate=registry
 HealthCmd=curl -f http://localhost:3000/health || exit 1
 HealthInterval=30s
 HealthRetries=3
 HealthStartPeriod=60s
+HealthOnFailure=kill
 ```
+
+The `kill` action lets systemd observe the failed container and apply the service restart policy. For update rollback decisions, Podman can best detect startup failure when the container uses systemd readiness notification (`--sdnotify=container` or `Notify=true` in Quadlet) and the application sends `READY=1` only after it is ready.
 
 ## Rollback Procedure
 
-When an update causes issues, roll back to the previous image:
+Podman auto-update rolls back automatically by default if restarting the systemd unit fails after an image update. For a manual rollback, pin the Quadlet file to a known-good tag or digest and restart the systemd service:
 
 ```bash
 #!/bin/bash
 # rollback.sh
 
-CONTAINER=$1
+SERVICE=$1
+GOOD_IMAGE=$2
+QUADLET_FILE=$3
 
-# Get the current image
-CURRENT_IMAGE=$(podman inspect "$CONTAINER" --format '{{.ImageName}}')
-echo "Current image: $CURRENT_IMAGE"
-
-# List available local versions
-echo "Available local images:"
-podman images "$CURRENT_IMAGE" --format "table {{.Tag}}\t{{.ID}}\t{{.Created}}"
-
-# Stop the current container
-podman stop "$CONTAINER"
-
-# Get the previous image ID
-PREVIOUS_ID=$(podman images "$CURRENT_IMAGE" --format '{{.ID}}' | sed -n '2p')
-
-if [ -z "$PREVIOUS_ID" ]; then
-  echo "No previous image found for rollback"
+if [ -z "$SERVICE" ] || [ -z "$GOOD_IMAGE" ] || [ -z "$QUADLET_FILE" ]; then
+  echo "Usage: $0 <service-name> <known-good-image> <quadlet-file>"
   exit 1
 fi
 
-echo "Rolling back to image: $PREVIOUS_ID"
-podman rm "$CONTAINER"
-podman run -d --name "$CONTAINER" \
-  --label io.containers.autoupdate=registry \
-  "$PREVIOUS_ID"
+echo "Rolling back $SERVICE to image: $GOOD_IMAGE"
+podman pull "$GOOD_IMAGE"
+
+# Update the Quadlet Image= line and restart the generated service.
+sed -i "s|^Image=.*|Image=$GOOD_IMAGE|" "$QUADLET_FILE"
+systemctl --user daemon-reload
+systemctl --user restart "$SERVICE"
 
 echo "Rollback complete"
 ```
@@ -206,10 +201,9 @@ podman auto-update --dry-run
 # Update monitoring and logging first
 for svc in prometheus grafana loki; do
   echo "Updating $svc..."
-  podman pull $(podman inspect "$svc" --format '{{.ImageName}}')
-  podman stop "$svc"
-  podman rm "$svc"
-  # Re-create with same config
+  image=$(podman inspect "$svc" --format '{{.ImageName}}')
+  podman pull "$image"
+  systemctl --user restart "${svc}.service"
 done
 
 echo "Waiting 5 minutes to verify Stage 1..."
@@ -218,14 +212,13 @@ sleep 300
 echo "=== Stage 2: Update application services ==="
 for svc in api worker; do
   echo "Updating $svc..."
-  podman pull $(podman inspect "$svc" --format '{{.ImageName}}')
+  image=$(podman inspect "$svc" --format '{{.ImageName}}')
+  podman pull "$image"
 
   # Save current config
   podman inspect "$svc" > "/tmp/${svc}-backup.json"
 
-  podman stop "$svc"
-  podman rm "$svc"
-  # Re-create with same config
+  systemctl --user restart "${svc}.service"
 done
 
 echo "Waiting 5 minutes to verify Stage 2..."
@@ -233,7 +226,7 @@ sleep 300
 
 echo "=== Stage 3: Update data services ==="
 echo "Database and cache updates require manual approval"
-echo "Run: podman pull postgres:16 && podman stop db && ..."
+echo "Run: podman pull docker.io/library/postgres:16 && systemctl --user restart db.service"
 ```
 
 ## Image Pinning for Stability
@@ -291,9 +284,11 @@ echo "Total updates available: ${UPDATE_COUNT:-0}"
 Lock specific containers to prevent unintended updates:
 
 ```bash
-# Remove auto-update label to prevent updates
+# Inspect auto-update labels before recreating or changing the Quadlet
 podman container inspect db --format '{{.Config.Labels}}'
+```
 
+```ini
 # For Quadlet, simply omit or disable AutoUpdate
 [Container]
 Image=docker.io/library/postgres:16-alpine
@@ -319,6 +314,9 @@ podman pull "$IMAGE"
 # Run test container
 podman run -d --name "${CONTAINER}-test" \
   --network test-network \
+  --health-cmd="curl -f http://localhost:3000/health || exit 1" \
+  --health-interval=30s \
+  --health-retries=3 \
   "$IMAGE"
 
 # Wait for startup
