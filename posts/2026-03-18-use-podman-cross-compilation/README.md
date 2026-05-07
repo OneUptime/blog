@@ -18,7 +18,7 @@ Building software that runs on different CPU architectures has traditionally bee
 
 Before you can run containers for foreign architectures, you need to install QEMU user-mode emulation on your host:
 
-On Fedora or RHEL:
+On Fedora:
 
 ```bash
 sudo dnf install qemu-user-static
@@ -86,6 +86,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+RUN mkdir -p /output
 
 # Build for all target platforms
 RUN GOOS=linux GOARCH=amd64 go build -o /output/app-linux-amd64 ./cmd/server
@@ -193,6 +194,8 @@ linker = "arm-linux-gnueabihf-gcc"
 ```
 
 ```bash
+podman build -t rust-cross-env .
+
 podman run --rm \
   -v $(pwd):/build:Z \
   -v cargo-cache:/usr/local/cargo/registry \
@@ -239,9 +242,10 @@ PLATFORMS=("linux/amd64" "linux/arm64" "linux/arm/v7")
 echo "Building $APP_NAME version $VERSION for ${#PLATFORMS[@]} platforms"
 
 # Create manifest
-podman manifest create "${APP_NAME}:${VERSION}" 2>/dev/null || \
-  podman manifest rm "${APP_NAME}:${VERSION}" && \
-  podman manifest create "${APP_NAME}:${VERSION}"
+if podman manifest exists "${APP_NAME}:${VERSION}"; then
+  podman manifest rm "${APP_NAME}:${VERSION}"
+fi
+podman manifest create "${APP_NAME}:${VERSION}"
 
 for platform in "${PLATFORMS[@]}"; do
     os=$(echo "$platform" | cut -d/ -f1)
@@ -301,7 +305,7 @@ jobs:
         run: |
           sudo apt-get install -y qemu-user-static
           sudo podman run --rm --privileged \
-            multiarch/qemu-user-static --reset -p yes
+            docker.io/multiarch/qemu-user-static --reset -p yes
 
       - name: Build multi-platform
         run: |
