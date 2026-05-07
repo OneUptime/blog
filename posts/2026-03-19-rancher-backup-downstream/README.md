@@ -13,7 +13,8 @@ The Rancher Backup Operator protects the management server, but it does not back
 - Rancher-managed downstream clusters
 - kubectl access to downstream clusters
 - Helm 3 installed
-- An S3-compatible storage bucket for backups
+- Velero CLI installed
+- An AWS S3 bucket for backups
 - Rancher v2.5 or later
 
 ## Step 1: Install Velero on Downstream Clusters
@@ -23,8 +24,8 @@ You can install Velero on each downstream cluster through Rancher or directly vi
 ### Install via Rancher UI
 
 1. In Rancher, navigate to the downstream cluster.
-2. Go to **Apps & Marketplace** > **Charts**.
-3. Search for **Velero** in the Rancher or partner charts.
+2. Go to **Apps** > **Charts**.
+3. Search for **Velero** in an enabled chart repository.
 4. Click **Install** and configure the storage backend.
 
 ### Install via Helm
@@ -42,7 +43,9 @@ helm repo add vmware-tanzu https://vmware-tanzu.github.io/helm-charts
 helm repo update
 ```
 
-Create the credentials file for S3:
+The Helm example below uses AWS S3.
+
+Create the credentials file for AWS S3:
 
 ```bash
 cat > velero-credentials.txt << 'EOF'
@@ -65,9 +68,9 @@ helm install velero vmware-tanzu/velero \
   --set configuration.volumeSnapshotLocation[0].name=default \
   --set configuration.volumeSnapshotLocation[0].provider=aws \
   --set configuration.volumeSnapshotLocation[0].config.region=us-east-1 \
-  --set credentials.secretContents.cloud="$(cat velero-credentials.txt)" \
+  --set-file credentials.secretContents.cloud=./velero-credentials.txt \
   --set initContainers[0].name=velero-plugin-for-aws \
-  --set initContainers[0].image=velero/velero-plugin-for-aws:v1.8.0 \
+  --set initContainers[0].image=velero/velero-plugin-for-aws:v1.12.2 \
   --set initContainers[0].volumeMounts[0].mountPath=/target \
   --set initContainers[0].volumeMounts[0].name=plugins
 ```
@@ -131,12 +134,10 @@ velero schedule get
 
 ## Step 4: Back Up Persistent Volumes
 
-To include persistent volume data in your backups, ensure the CSI snapshot plugin is installed:
+To include persistent volume snapshots in your backups, ensure the storage plugin you installed supports snapshots. With the AWS configuration shown above, verify that the default `VolumeSnapshotLocation` exists:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+kubectl get volumesnapshotlocations.velero.io -n velero
 ```
 
 Create a backup with volume snapshots:
@@ -218,12 +219,12 @@ This deploys Velero configuration to all clusters labeled with `backup: enabled`
 
 ## Step 8: Monitor Backup Status Across Clusters
 
-Create a monitoring dashboard that checks backup status across all downstream clusters. You can use the Rancher API to query backup information:
+Create a monitoring dashboard that checks backup status across all configured cluster contexts. You can use your kubeconfig contexts to query backup information:
 
 ```bash
-for cluster in $(kubectl get clusters.management.cattle.io -o jsonpath='{.items[*].metadata.name}'); do
+kubectl config get-contexts -o name | while read -r cluster; do
   echo "Cluster: $cluster"
-  kubectl --context $cluster get backups.velero.io -n velero 2>/dev/null || echo "  Velero not installed"
+  kubectl --context "$cluster" get backups.velero.io -n velero 2>/dev/null || echo "  Velero not installed"
 done
 ```
 
