@@ -18,8 +18,8 @@ As organizations evolve, you may need to move namespaces between projects. A tea
 
 When you move a namespace from one project to another:
 
-1. **RBAC changes immediately**: The namespace inherits the RBAC bindings of the new project. Users who had access through the old project lose access. Users assigned to the new project gain access.
-2. **Resource quotas change**: The namespace's resource consumption counts against the new project's quotas instead of the old project's quotas.
+1. **RBAC changes**: The namespace inherits the RBAC bindings of the new project. Users who had access through the old project lose access. Users assigned to the new project gain access.
+2. **Resource quotas may change**: If the source project has a project resource quota and the target project does not, Rancher removes the namespace's inherited project quota. Rancher does not allow moving a namespace into a project that already has a project resource quota configured.
 3. **Network policies may change**: If project network isolation is enabled, the namespace's network access changes to match the new project's isolation settings.
 4. **Workloads continue running**: Pods and other resources in the namespace are not affected. They keep running without interruption.
 
@@ -58,7 +58,7 @@ kubectl get namespaces -o json | \
 6. In the dialog, select the target project from the dropdown.
 7. Click **Move** to confirm.
 
-The namespace immediately appears under the new project with the new project's RBAC rules.
+After Rancher reconciles the move, the namespace appears under the new project with the new project's RBAC rules.
 
 ## Step 3: Move a Namespace via kubectl
 
@@ -73,27 +73,23 @@ kubectl annotate namespace <namespace-name> \
 
 Where `c-m-xxxxx` is the cluster ID and `p-yyyyy` is the target project ID.
 
-You also need to update the label:
-
-```bash
-kubectl label namespace <namespace-name> \
-  field.cattle.io/projectId="p-yyyyy" \
-  --overwrite
-```
-
 ## Step 4: Move a Namespace via the Rancher API
 
 ```bash
-# Get the namespace details
+# Namespace to move
 NAMESPACE="my-app-staging"
 CLUSTER_ID="c-m-xxxxx"
 TARGET_PROJECT="c-m-xxxxx:p-yyyyy"
 
-# Update the namespace's project assignment
-curl -X PUT \
-  "https://<rancher-url>/v3/clusters/${CLUSTER_ID}/namespaces/${NAMESPACE}" \
-  -H 'Authorization: Bearer <api-token>' \
+# Look up the namespace resource and capture the URL in .actions.move
+MOVE_ACTION=$(curl -sS -u '<access-key>:<secret-key>' \
+  "https://<rancher-url>/v3/clusters/${CLUSTER_ID}/namespaces/${NAMESPACE}" | \
+  jq -r '.actions.move')
+
+# POST the target project to the move action URL
+curl -sS -u '<access-key>:<secret-key>' \
   -H 'Content-Type: application/json' \
+  -X POST "${MOVE_ACTION}" \
   -d "{
     \"projectId\": \"${TARGET_PROJECT}\"
   }"
@@ -116,10 +112,6 @@ for ns in "${NAMESPACES[@]}"; do
 
   kubectl annotate namespace $ns \
     field.cattle.io/projectId="${CLUSTER_ID}:${TARGET_PROJECT_ID}" \
-    --overwrite
-
-  kubectl label namespace $ns \
-    field.cattle.io/projectId="${TARGET_PROJECT_ID}" \
     --overwrite
 
   echo "  Done."
@@ -145,33 +137,32 @@ The namespace will appear as unassigned in the Rancher UI. It will not inherit a
 
 ## Step 7: Handle Resource Quota Conflicts
 
-When moving a namespace to a project with resource quotas, check for conflicts:
+When resource quotas are involved, check for conflicts:
 
 ```bash
-# Check the target project's remaining quota
-kubectl get projects.management.cattle.io <target-project-id> -n <cluster-id> -o json | \
+# Run this against the management cluster
+# Check whether the target project has a project resource quota configured
+kubectl --namespace <cluster-id> get projects.management.cattle.io <target-project-id> -o json | \
   jq '.spec.resourceQuota'
 
-# Check the namespace's current resource usage
-kubectl describe resourcequota -n <namespace-name>
+# Check the namespace's current resource quota, if any
+kubectl get resourcequota -n <namespace-name>
 ```
 
-If the namespace's current usage exceeds the target project's available quota, the move will succeed but new resource creation in the namespace may be blocked until the quota is adjusted.
+If the target project already has a project resource quota configured, Rancher will not allow the move. If you move a namespace from a project that has a quota set to a project with no project quota set, Rancher removes the namespace's inherited project quota.
 
 To handle this:
 
-1. Check the current usage of the namespace.
-2. Verify the target project has enough quota headroom.
-3. If needed, increase the target project's quota before moving.
-4. Move the namespace.
-5. Adjust quotas as needed after the move.
+1. Check whether the target project has a project resource quota configured.
+2. If it does, remove or adjust that project quota before moving, or choose a different target project.
+3. If the source project had a quota and the target does not, review the namespace's quota after the move.
 
 ## Step 8: Update Access After Moving
 
 After moving a namespace, verify that the right people have access:
 
 ```bash
-# Check who can access the namespace now
+# Inspect rolebindings in the namespace after the move
 kubectl get rolebindings -n <namespace-name> -o json | \
   jq -r '.items[] | "\(.metadata.name)\t\(.roleRef.name)\t\(.subjects[]? | "\(.kind)/\(.name)")"' | \
   column -t -s $'\t'
@@ -237,7 +228,7 @@ kubectl auth can-i list pods -n <namespace-name> --as=<old-project-member>
 
 - **Communicate before moving**: Inform affected teams before moving namespaces, as their access will change.
 - **Move during low-traffic periods**: While workloads keep running, RBAC changes could temporarily affect ongoing operations.
-- **Check quotas first**: Verify the target project has sufficient quota before moving.
+- **Check quotas first**: Verify whether the target project has a project resource quota configured before moving.
 - **Update documentation**: Keep records of which namespaces belong to which projects.
 - **Use Terraform**: Manage namespace-to-project assignments in code for auditability.
 - **Test in staging**: Practice namespace moves in a non-production environment first.
