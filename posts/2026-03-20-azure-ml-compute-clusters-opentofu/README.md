@@ -13,6 +13,32 @@ Azure Machine Learning provides a managed platform for training, deploying, and 
 ## Creating an Azure ML Workspace
 
 ```hcl
+provider "azurerm" {
+  features {}
+}
+
+data "azurerm_client_config" "current" {}
+
+variable "location" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
+variable "app_name" {
+  type = string
+}
+
+variable "developer_alias" {
+  type = string
+}
+
+variable "developer_object_id" {
+  type = string
+}
+
 resource "azurerm_resource_group" "ml" {
   name     = "rg-ml-${var.environment}"
   location = var.location
