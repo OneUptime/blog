@@ -55,7 +55,7 @@ ip netns exec ns1 ip addr show lo
 
 ## Assign Multiple IPs to the Same Interface
 
-You can assign multiple IPv4 addresses (aliases) to a single interface:
+You can assign multiple IPv4 addresses to a single interface:
 
 ```bash
 # Primary IP
