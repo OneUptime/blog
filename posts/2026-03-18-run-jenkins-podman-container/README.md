@@ -8,7 +8,7 @@ Description: Learn how to run Jenkins in a Podman container with persistent work
 
 ---
 
-> Jenkins in Podman provides a fully-featured CI/CD server in a rootless container with persistent jobs, plugins, and build history.
+> Jenkins in Podman provides a fully-featured CI/CD server that can run in a rootless container with persistent jobs, plugins, and build history.
 
 Jenkins is the most widely adopted open-source automation server, powering CI/CD pipelines for teams of all sizes. Running it in a Podman container gives you a portable, isolated Jenkins instance that is easy to back up, upgrade, and replicate. This guide walks through setup, persistence, initial configuration, and plugin management.
 
@@ -37,7 +37,7 @@ podman run -d \
   --name my-jenkins \
   -p 8080:8080 \
   -p 50000:50000 \
-  jenkins/jenkins:lts
+  docker.io/jenkins/jenkins:lts
 
 # Check the container is running
 podman ps
@@ -60,7 +60,7 @@ podman run -d \
   -p 8081:8080 \
   -p 50001:50000 \
   -v jenkins-data:/var/jenkins_home:Z \
-  jenkins/jenkins:lts
+  docker.io/jenkins/jenkins:lts
 
 # Verify the volume
 podman volume inspect jenkins-data
@@ -77,7 +77,7 @@ podman run -d \
   -p 8082:8080 \
   -e JAVA_OPTS="-Djenkins.install.runSetupWizard=false" \
   -v jenkins-data:/var/jenkins_home:Z \
-  jenkins/jenkins:lts
+  docker.io/jenkins/jenkins:lts
 
 # Wait for Jenkins to start
 sleep 30
@@ -88,7 +88,7 @@ curl -s http://localhost:8082/api/json | python3 -m json.tool | head -10
 
 ## Installing Plugins at Startup
 
-Pre-install Jenkins plugins using the install-plugins script.
+Pre-install Jenkins plugins using the Jenkins plugin CLI.
 
 ```bash
 # Create a plugins list file
@@ -103,17 +103,18 @@ credentials
 workflow-aggregator
 github
 slack
+configuration-as-code
 EOF
 
 # Build a custom Jenkins image with pre-installed plugins
 cat > ~/jenkins-config/Containerfile <<'EOF'
-FROM jenkins/jenkins:lts
+FROM docker.io/jenkins/jenkins:lts
 
 # Skip the setup wizard
 ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false"
 
 # Install plugins
-COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
+COPY --chown=jenkins:jenkins plugins.txt /usr/share/jenkins/ref/plugins.txt
 RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
 EOF
 
@@ -158,10 +159,10 @@ podman run -d \
   --name jenkins-jcasc \
   -p 8084:8080 \
   -e JAVA_OPTS="-Djenkins.install.runSetupWizard=false" \
-  -e CASC_JENKINS_CONFIG=/var/jenkins_home/casc_configs \
-  -v ~/jenkins-config/jenkins.yaml:/var/jenkins_home/casc_configs/jenkins.yaml:Z \
+  -e CASC_JENKINS_CONFIG=/tmp/jenkins.yaml \
+  -v ~/jenkins-config/jenkins.yaml:/tmp/jenkins.yaml:Z \
   -v jenkins-data:/var/jenkins_home:Z \
-  jenkins/jenkins:lts
+  jenkins-custom
 ```
 
 ## Running Jenkins with Resource Limits
@@ -177,7 +178,7 @@ podman run -d \
   --cpus 2.0 \
   -e JAVA_OPTS="-Xms512m -Xmx1g -Djenkins.install.runSetupWizard=false" \
   -v jenkins-data:/var/jenkins_home:Z \
-  jenkins/jenkins:lts
+  docker.io/jenkins/jenkins:lts
 ```
 
 ## Managing the Container
@@ -188,21 +189,23 @@ Common Jenkins management operations.
 # View Jenkins logs
 podman logs my-jenkins
 
-# Safely restart Jenkins via the API
-curl -X POST http://localhost:8080/safeRestart
+# Safely restart Jenkins via the API after creating an API token
+JENKINS_USER=admin
+JENKINS_API_TOKEN=your-api-token
+curl -X POST --user "$JENKINS_USER:$JENKINS_API_TOKEN" http://localhost:8080/safeRestart
 
 # Check Jenkins system info
-curl -s http://localhost:8080/api/json | python3 -m json.tool | head -15
+curl -s --user "$JENKINS_USER:$JENKINS_API_TOKEN" http://localhost:8080/api/json | python3 -m json.tool | head -15
 
 # Stop and start
 podman stop my-jenkins
 podman start my-jenkins
 
 # Remove containers and volumes
-podman rm -f my-jenkins jenkins-persistent jenkins-auto jenkins-plugins jenkins-jcasc
+podman rm -f my-jenkins jenkins-persistent jenkins-auto jenkins-plugins jenkins-jcasc jenkins-limited
 podman volume rm jenkins-data
 ```
 
 ## Summary
 
-Running Jenkins in a Podman container provides a portable CI/CD server with straightforward configuration and management. Named volumes preserve your jobs, build history, and plugins across container restarts. Pre-installing plugins and using Jenkins Configuration as Code eliminates manual setup steps, making your Jenkins instance fully reproducible. Resource limits keep Jenkins from consuming excessive host resources, and Podman's rootless execution adds a security boundary around your automation server.
+Running Jenkins in a Podman container provides a portable CI/CD server with straightforward configuration and management. Named volumes preserve your jobs, build history, and plugins across container restarts. Pre-installing plugins and using Jenkins Configuration as Code eliminates manual setup steps, making your Jenkins instance fully reproducible. Resource limits keep Jenkins from consuming excessive host resources, and Podman's rootless execution mode adds a security boundary around your automation server.
