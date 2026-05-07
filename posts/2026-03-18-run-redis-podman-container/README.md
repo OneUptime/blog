@@ -19,7 +19,7 @@ Redis is an in-memory data structure store used as a database, cache, message br
 Download the official Redis image.
 
 ```bash
-# Pull the latest Redis image
+# Pull the Redis 7 image
 
 podman pull docker.io/library/redis:7
 
@@ -36,7 +36,7 @@ Start Redis with default settings.
 podman run -d \
   --name my-redis \
   -p 6379:6379 \
-  redis:7
+  docker.io/library/redis:7
 
 # Confirm the container is running
 podman ps
@@ -54,7 +54,7 @@ Protect your Redis instance with a password.
 podman run -d \
   --name redis-secure \
   -p 6380:6379 \
-  redis:7 redis-server --requirepass my-redis-password
+  docker.io/library/redis:7 redis-server --requirepass my-redis-password
 
 # Connect with authentication
 podman exec -it redis-secure redis-cli -a my-redis-password PING
@@ -73,7 +73,7 @@ podman run -d \
   --name redis-persistent \
   -p 6381:6379 \
   -v redis-data:/data:Z \
-  redis:7 redis-server --appendonly yes
+  docker.io/library/redis:7 redis-server --appendonly yes
 
 # Verify data persistence by writing and reading a key
 podman exec -it redis-persistent redis-cli SET testkey "hello from podman"
@@ -129,7 +129,7 @@ podman run -d \
   -p 6382:6379 \
   -v ~/redis-config/redis.conf:/usr/local/etc/redis/redis.conf:Z \
   -v redis-data:/data:Z \
-  redis:7 redis-server /usr/local/etc/redis/redis.conf
+  docker.io/library/redis:7 redis-server /usr/local/etc/redis/redis.conf
 
 # Verify the configuration is loaded
 podman exec -it redis-custom redis-cli -a my-redis-password CONFIG GET maxmemory
