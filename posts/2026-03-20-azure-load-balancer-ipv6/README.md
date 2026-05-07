@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, IPv6, Load Balancer, Dual-Stack, Standard Load Balancer, Cloud
 
-Description: Configure Azure Standard Load Balancer with IPv6 frontend configurations, load balancing rules, and backend pool to enable dual-stack load balancing for applications.
+Description: Configure Azure Standard Load Balancer with IPv6 frontend configurations, load balancing rules, and backend pools to enable dual-stack load balancing for applications.
 
 ## Introduction
 
-Azure Standard Load Balancer supports dual-stack (IPv4 + IPv6) configuration through multiple frontend IP configurations. You create one frontend for IPv4 (Standard public IP) and one for IPv6 (Standard public IP with IPv6), then define separate load balancing rules for each. Backend pool VMs must have both IPv4 and IPv6 NIC configurations to receive traffic on both protocols.
+Azure Standard Load Balancer supports dual-stack (IPv4 + IPv6) configuration through multiple frontend IP configurations. You create one frontend for IPv4 (Standard public IP) and one for IPv6 (Standard public IP with IPv6), then define separate load balancing rules and backend pools for each. Backend VMs must have IPv4 and IPv6 IP configurations on their NICs to receive traffic on both protocols, and dual-stack deployments need an active Network Security Group for IPv6 health probes to function.
 
 ## Create Standard Load Balancer with IPv6
 
@@ -23,6 +23,7 @@ az group create --name "$RG" --location "$LOCATION"
 az network public-ip create \
     --resource-group "$RG" \
     --name pip-ipv6-frontend \
+    --allocation-method Static \
     --version IPv6 \
     --sku Standard \
     --tier Regional
@@ -31,6 +32,7 @@ az network public-ip create \
 az network public-ip create \
     --resource-group "$RG" \
     --name pip-ipv4-frontend \
+    --allocation-method Static \
     --version IPv4 \
     --sku Standard
 
@@ -49,11 +51,17 @@ az network lb frontend-ip create \
     --name frontend-ipv6 \
     --public-ip-address pip-ipv6-frontend
 
-# Create backend pool
+# Create IPv4 backend pool
 az network lb address-pool create \
     --resource-group "$RG" \
     --lb-name lb-dualstack \
-    --name backendpool-dualstack
+    --name backendpool-ipv4
+
+# Create IPv6 backend pool
+az network lb address-pool create \
+    --resource-group "$RG" \
+    --lb-name lb-dualstack \
+    --name backendpool-ipv6
 
 # Create health probe
 az network lb probe create \
@@ -72,7 +80,7 @@ az network lb rule create \
     --frontend-port 80 \
     --backend-port 80 \
     --frontend-ip-name frontend-ipv4 \
-    --backend-pool-name backendpool-dualstack \
+    --backend-pool-name backendpool-ipv4 \
     --probe-name health-probe
 
 # Add IPv6 load balancing rule
@@ -84,7 +92,7 @@ az network lb rule create \
     --frontend-port 80 \
     --backend-port 80 \
     --frontend-ip-name frontend-ipv6 \
-    --backend-pool-name backendpool-dualstack \
+    --backend-pool-name backendpool-ipv6 \
     --probe-name health-probe
 ```
 
@@ -130,9 +138,14 @@ resource "azurerm_lb" "main" {
   }
 }
 
-resource "azurerm_lb_backend_address_pool" "main" {
+resource "azurerm_lb_backend_address_pool" "ipv4" {
   loadbalancer_id = azurerm_lb.main.id
-  name            = "backend-pool"
+  name            = "backend-pool-ipv4"
+}
+
+resource "azurerm_lb_backend_address_pool" "ipv6" {
+  loadbalancer_id = azurerm_lb.main.id
+  name            = "backend-pool-ipv6"
 }
 
 resource "azurerm_lb_probe" "http" {
@@ -150,7 +163,7 @@ resource "azurerm_lb_rule" "http_ipv4" {
   frontend_port                  = 80
   backend_port                   = 80
   frontend_ip_configuration_name = "frontend-ipv4"
-  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.main.id]
+  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.ipv4.id]
   probe_id                       = azurerm_lb_probe.http.id
 }
 
@@ -162,7 +175,7 @@ resource "azurerm_lb_rule" "http_ipv6" {
   frontend_port                  = 80
   backend_port                   = 80
   frontend_ip_configuration_name = "frontend-ipv6"
-  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.main.id]
+  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.ipv6.id]
   probe_id                       = azurerm_lb_probe.http.id
 }
 ```
@@ -170,16 +183,21 @@ resource "azurerm_lb_rule" "http_ipv6" {
 ## Add VMs to Backend Pool with IPv6 NICs
 
 ```bash
-# VMs in backend pool need dual-stack NICs
+VNET="vnet-dualstack"
+SUBNET="subnet-dualstack"
+
+# The NIC's primary IPv4 IP configuration should already be in backendpool-ipv4
 az network nic ip-config create \
     --resource-group "$RG" \
     --nic-name vm-nic-1 \
     --name ipv6-config \
+    --vnet-name "$VNET" \
+    --subnet "$SUBNET" \
     --private-ip-address-version IPv6 \
     --lb-name lb-dualstack \
-    --lb-address-pools backendpool-dualstack
+    --lb-address-pools backendpool-ipv6
 ```
 
 ## Conclusion
 
-Azure Standard Load Balancer supports dual-stack IPv6 through multiple frontend IP configurations. Create separate frontend configurations and load balancing rules for IPv4 and IPv6 traffic, sharing the same backend pool. Backend VMs need dual-stack NIC configurations with both IPv4 and IPv6 private IP addresses. The Standard SKU is required for IPv6 support - Basic Load Balancer does not support IPv6. After configuration, verify with `curl -6 http://[IPv6-public-ip]/` from an external IPv6 client.
+Azure Standard Load Balancer supports dual-stack IPv6 through multiple frontend IP configurations. Create separate frontend configurations, load balancing rules, and backend pools for IPv4 and IPv6 traffic. Backend VMs need dual-stack NIC configurations with both IPv4 and IPv6 private IP addresses, and an active Network Security Group is required for IPv6 health probes to function. Use Standard Load Balancer for new deployments; Basic Load Balancer was retired on September 30, 2025. After configuration, verify with `curl -6 http://[IPv6-public-ip]/` from an external IPv6 client.
