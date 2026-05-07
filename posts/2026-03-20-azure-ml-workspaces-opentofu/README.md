@@ -45,8 +45,8 @@ resource "azurerm_container_registry" "ml" {
   name                = "acr${var.prefix}${var.environment}"
   resource_group_name = azurerm_resource_group.ml.name
   location            = azurerm_resource_group.ml.location
-  sku                 = "Premium"  # Required for workspace integration
-  admin_enabled       = false
+  sku                 = "Premium"  # Required only if you need ACR Private Link
+  admin_enabled       = true       # Required by the current AzureRM workspace resource
 }
 
 # Key Vault for secrets
@@ -132,7 +132,8 @@ resource "azurerm_machine_learning_compute_cluster" "training" {
 
   ssh {
     admin_username = "azureuser"
-    # Use SSH key from Key Vault in production
+    key_value      = var.compute_cluster_ssh_public_key
+    # Store the private key securely; retrieve the public key from Key Vault in production
   }
 
   subnet_resource_id = var.training_subnet_id
@@ -162,20 +163,26 @@ resource "azurerm_machine_learning_compute_cluster" "cpu" {
 
 ```hcl
 # endpoint.tf
-resource "azurerm_machine_learning_online_endpoint" "main" {
-  name                          = "${var.model_name}-endpoint"
-  machine_learning_workspace_id = azurerm_machine_learning_workspace.main.id
-  location                      = azurerm_resource_group.ml.location
+resource "azapi_resource" "main" {
+  type      = "Microsoft.MachineLearningServices/workspaces/onlineEndpoints@2025-12-01"
+  name      = "${var.model_name}-endpoint"
+  parent_id = azurerm_machine_learning_workspace.main.id
+  location  = azurerm_resource_group.ml.location
 
   identity {
     type = "SystemAssigned"
   }
 
-  auth_mode = "Key"
-
   tags = {
     Model       = var.model_name
     Environment = var.environment
+  }
+
+  body = {
+    properties = {
+      authMode            = "Key"
+      publicNetworkAccess = var.environment == "production" ? "Disabled" : "Enabled"
+    }
   }
 }
 ```
