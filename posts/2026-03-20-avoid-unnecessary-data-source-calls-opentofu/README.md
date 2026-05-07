@@ -8,7 +8,7 @@ Description: Learn how to avoid unnecessary data source calls in OpenTofu that s
 
 ## Introduction
 
-Data sources in OpenTofu read information from external systems during planning. While useful, unnecessary data source calls make plans slower, consume API rate limits, add complexity, and can cause plan failures when APIs are unavailable. Knowing when to use a data source versus a variable or local value is essential for efficient configurations.
+Data sources in OpenTofu read information from external systems, usually during planning. While useful, unnecessary data source calls make plans slower, consume API rate limits, add complexity, and can cause plan failures when APIs are unavailable. Knowing when to use a data source versus a variable or local value is essential for efficient configurations.
 
 ## When Data Sources Are Appropriate
 
@@ -43,7 +43,7 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-resource "aws_launch_template" "app" {
+resource "aws_launch_template" "app_from_lookup" {
   image_id = data.aws_ami.ubuntu.id
 }
 
@@ -51,10 +51,9 @@ resource "aws_launch_template" "app" {
 variable "base_ami_id" {
   type        = string
   description = "Ubuntu 22.04 LTS AMI ID for the target region"
-  default     = "ami-0c7217cdde317cfec"  # update when OS patches are needed
 }
 
-resource "aws_launch_template" "app" {
+resource "aws_launch_template" "app_pinned" {
   image_id = var.base_ami_id
 }
 ```
@@ -69,29 +68,32 @@ resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
 }
 
-data "aws_vpc" "main" {
+data "aws_vpc" "main_lookup" {
   id = aws_vpc.main.id  # redundant - you already have the resource!
 }
 
-resource "aws_subnet" "public" {
-  vpc_id = data.aws_vpc.main.id  # unnecessary indirection
+resource "aws_subnet" "public_via_data" {
+  vpc_id     = data.aws_vpc.main_lookup.id  # unnecessary indirection
+  cidr_block = "10.0.1.0/24"
 }
 
 # CORRECT: Reference the resource directly
-resource "aws_subnet" "public" {
-  vpc_id = aws_vpc.main.id  # direct reference, no API call needed
+resource "aws_subnet" "public_direct" {
+  vpc_id     = aws_vpc.main.id  # direct reference, no API call needed
+  cidr_block = "10.0.1.0/24"
 }
 ```
 
 ## Common Unnecessary Data Source: Region and Account Lookups
 
-Only call these once and cache in a local.
+If multiple child modules need these values, read them once in the root module and pass them in as variables.
 
 ```hcl
-# WASTEFUL: Multiple data source calls for the same values
-data "aws_region" "current" {}
-data "aws_caller_identity" "current1" {}  # called in module A
-data "aws_caller_identity" "current2" {}  # called in module B (duplicate!)
+# WASTEFUL: Duplicate data source calls for the same values
+data "aws_region" "current_a" {}
+data "aws_region" "current_b" {}
+data "aws_caller_identity" "current_a" {}
+data "aws_caller_identity" "current_b" {}
 
 # BETTER: Call once per configuration, pass via variables
 data "aws_caller_identity" "current" {}
@@ -99,7 +101,7 @@ data "aws_region" "current" {}
 
 locals {
   account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.name
+  region     = data.aws_region.current.region
 }
 
 # Pass to modules as variables rather than having each module call its own
@@ -110,18 +112,19 @@ module "storage" {
 }
 ```
 
-## Caching Slow Data Sources with -refresh=false
+## Skipping Refresh with -refresh=false
 
-Skip data source refresh when you know nothing has changed.
+Skip refresh and reuse values already recorded in state when you know nothing has changed. This can speed up planning, but it can also produce an incomplete or incorrect plan if remote objects changed outside OpenTofu.
 
 ```bash
-# Skip refreshing data sources (use cached state values)
+# Skip refresh and reuse values already recorded in state
 tofu plan -refresh=false
 
 # This is useful when:
 # - Working offline or with limited network
 # - Plans are very slow due to many data source API calls
 # - You're debugging configuration logic, not infrastructure state
+# Warning: this ignores external changes until you run a normal refresh again
 ```
 
 ## Data Sources That Scan Many Resources
@@ -146,4 +149,4 @@ variable "private_subnet_ids" {
 
 ## Summary
 
-Unnecessary data source calls slow plans, hit API rate limits, and add complexity. Avoid data sources for values you already have in your configuration, values that rarely change (pin them as variables instead), and resources that are in the same state file. When data sources are necessary, call them once and pass values through locals or module variables rather than duplicating the same data source across multiple files or modules. Use `-refresh=false` during development to skip data source refreshes and speed up planning.
+Unnecessary data source calls slow plans, hit API rate limits, and add complexity. Avoid data sources for values you already have in your configuration, values that rarely change (pin them as variables instead), and resources that are in the same state file. When data sources are necessary, call them once and pass values through locals or module variables rather than duplicating the same data source across multiple files or modules. Use `-refresh=false` carefully during development when you intentionally want to skip refresh and accept the risk of missing external changes.
