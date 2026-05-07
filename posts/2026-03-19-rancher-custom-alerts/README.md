@@ -148,27 +148,27 @@ Additional labels like `team` and `service` help route alerts to the right peopl
 
 ## Step 5: Configure Alert Inhibition
 
-Prevent redundant alerts by configuring inhibition rules in Alertmanager. For example, inhibit warning alerts when a critical alert fires for the same service:
+Prevent redundant alerts by configuring inhibition rules in Alertmanager. If you are configuring the `rancher-monitoring` chart values, you can add inhibition rules under `alertmanager.config`. For example, inhibit warning alerts when a critical alert fires for the same alert in the same namespace:
 
 ```yaml
 alertmanager:
   config:
     inhibit_rules:
       - source_matchers:
-          - severity = critical
+          - 'severity = critical'
         target_matchers:
-          - severity = warning
+          - 'severity = warning'
         equal:
-          - alertname
           - namespace
+          - alertname
 ```
 
 ## Step 6: Test Your Alert Rules
 
-Verify that your PrometheusRule was picked up by Prometheus:
+Verify that your PrometheusRule exists in the namespace where you created it:
 
 ```bash
-kubectl get prometheusrules -n cattle-monitoring-system
+kubectl get prometheusrules -A
 ```
 
 Check the Prometheus UI for your rules:
