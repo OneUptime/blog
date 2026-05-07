@@ -18,7 +18,7 @@ Health checks that stay in "starting" are almost always caused by the health che
 
 ## Understanding Podman Health Checks
 
-A health check is a command that Podman runs periodically inside your container to determine if the application is healthy. The health check has four parameters:
+A health check is a command that Podman runs periodically inside your container to determine if the application is healthy. The health check has five parameters:
 
 - **Command**: What to run inside the container
 - **Interval**: How often to run it (default: 30s)
@@ -34,12 +34,12 @@ The health states are:
 
 ## Why Health Checks Stay in Starting
 
-The container stays in "starting" when the health check command never returns exit code 0, but also hasn't failed enough times to be marked "unhealthy." This happens when:
+The container stays in "starting" when the health check command has not returned exit code 0 yet and Podman is still inside the configured start period. After the start period, continued failures eventually mark the container "unhealthy." If it appears stuck in "starting," this often happens when:
 
 1. The health check command is wrong and fails immediately
 2. The command hangs (times out) on every attempt
 3. The start period is too long
-4. The health check interval hasn't elapsed yet
+4. Automatic health checks are disabled or have not run as expected
 5. The command works but returns a non-zero exit code
 
 ## Fix 1: Check Health Check Output
@@ -47,7 +47,7 @@ The container stays in "starting" when the health check command never returns ex
 The first step is to see what the health check is actually doing:
 
 ```bash
-podman inspect my-container --format '{{json .State.Health}}' | python3 -m json.tool
+podman inspect my-container --format '{{json .State.Healthcheck}}' | python3 -m json.tool
 ```
 
 This shows recent health check results including exit codes and output:
@@ -95,10 +95,10 @@ Use `wget` which is included in Alpine by default:
 HEALTHCHECK CMD wget -qO- http://localhost:8080/health || exit 1
 ```
 
-Or use a shell-based check that requires no extra tools:
+Or use the BusyBox `wget` included in Alpine for a check that does not require installing `curl`:
 
 ```dockerfile
-HEALTHCHECK CMD /bin/sh -c 'echo -e "GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n" > /dev/tcp/localhost/8080' || exit 1
+HEALTHCHECK CMD wget --spider -q http://127.0.0.1:8080/health || exit 1
 ```
 
 For applications that write a PID file or status file:
@@ -164,9 +164,9 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
   CMD curl -f http://localhost:8080/health || exit 1
 ```
 
-The `--start-period` gives the application 30 seconds before health check failures count toward the retry limit. During this period, failures are ignored and the status remains "starting."
+The `--start-period` gives the application 30 seconds before health check failures count toward the retry limit. During this period, failed checks do not make the container unhealthy, so the status remains "starting" until a check succeeds or the start period expires.
 
-However, if the start period is set too long, the container will stay in "starting" for that entire duration even if the application is ready. Set it to just long enough for your application's typical startup time.
+However, if the start period is set too long and checks keep failing, the container can stay in "starting" longer than expected before Podman marks it unhealthy. Set it to just long enough for your application's typical startup time.
 
 ## Fix 5: Fix Permission Issues
 
@@ -176,17 +176,19 @@ The health check command runs as the container's configured user. If the user do
 # Running as non-root user
 USER 1000
 
-# This might fail if curl is not accessible to user 1000
+# This might fail if the health check tool or endpoint is not accessible to user 1000
 HEALTHCHECK CMD curl -f http://localhost:8080/health || exit 1
 ```
 
-Fix by ensuring the health check tool is accessible:
+Fix custom health check scripts by ensuring the health check tool is executable:
 
 ```dockerfile
 FROM node:20-alpine
-RUN apk add --no-cache curl && chmod a+x /usr/bin/curl
+RUN apk add --no-cache curl
+COPY healthcheck.sh /usr/local/bin/healthcheck.sh
+RUN chmod a+x /usr/local/bin/healthcheck.sh
 USER 1000
-HEALTHCHECK CMD curl -f http://localhost:8080/health || exit 1
+HEALTHCHECK CMD /usr/local/bin/healthcheck.sh
 ```
 
 Or use a health check that does not require special permissions:
@@ -195,19 +197,19 @@ Or use a health check that does not require special permissions:
 HEALTHCHECK CMD node -e "require('http').get('http://localhost:8080/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) })"
 ```
 
-## Fix 6: Fix Localhost vs 0.0.0.0 Binding
+## Fix 6: Fix Localhost and IP Binding
 
-A common issue is the application listening on `0.0.0.0` but the health check connecting to `localhost` (or vice versa):
+A common issue is the application listening only on IPv4 while `localhost` resolves to IPv6 first, or the application listening on an address that the health check is not using:
 
 ```dockerfile
 # Application listens on 127.0.0.1:8080
 # Health check connects to localhost:8080
-# This should work, but if the app binds to 0.0.0.0 only on IPv6...
+# This should work, but can fail if localhost resolves to ::1 first
 
 HEALTHCHECK CMD curl -f http://127.0.0.1:8080/health || exit 1
 ```
 
-If your application binds to `0.0.0.0`, make sure the health check uses `127.0.0.1` or `localhost`. Some containers have IPv6 issues where `localhost` resolves to `::1` but the app only listens on IPv4. Use the explicit IP:
+If your application binds to `0.0.0.0`, a health check to `127.0.0.1` should work for IPv4. Some containers have IPv6 issues where `localhost` resolves to `::1` but the app only listens on IPv4. Use the explicit IPv4 address:
 
 ```dockerfile
 HEALTHCHECK CMD curl -f http://127.0.0.1:8080/health || exit 1
@@ -350,7 +352,7 @@ Set up a simple monitoring loop:
 ```bash
 #!/bin/bash
 while true; do
-    STATUS=$(podman inspect my-container --format '{{.State.Health.Status}}' 2>/dev/null)
+    STATUS=$(podman inspect my-container --format '{{.State.Healthcheck.Status}}' 2>/dev/null)
     echo "$(date): Health status: $STATUS"
     if [ "$STATUS" = "healthy" ]; then
         echo "Container is healthy!"
