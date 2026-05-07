@@ -150,15 +150,11 @@ variables {
   instance_type      = "t3.micro"
 }
 
-module "app" {
-  source = "../"
-}
-
 run "creates_instance_in_correct_subnet" {
   command = plan
 
   assert {
-    condition     = module.app.aws_instance.app.subnet_id == "subnet-mock12345"
+    condition     = aws_instance.app.subnet_id == "subnet-mock12345"
     error_message = "Instance should be in the specified subnet"
   }
 }
