@@ -10,7 +10,7 @@ Description: Learn how to use podman system connection subcommands to add, list,
 
 > The podman system connection command is your control panel for managing containers across an entire fleet of hosts from a single terminal.
 
-Podman's system connection feature provides a unified interface for managing remote container hosts. With a few subcommands, you can register new hosts, switch between environments, and run container operations across your infrastructure. This guide provides a complete walkthrough of every `podman system connection` subcommand with practical examples.
+Podman's system connection feature provides a unified interface for managing remote container hosts. With a few subcommands, you can register new hosts, switch between environments, and run container operations across your infrastructure. This guide provides a walkthrough of the core `podman system connection` subcommands with practical examples.
 
 ---
 
@@ -28,6 +28,7 @@ podman system connection --help
 # default   - Set the default connection
 # list (ls) - List all connections
 # remove (rm) - Remove a connection
+# rename (mv) - Rename a connection
 ```
 
 ## Adding Connections
@@ -202,13 +203,14 @@ done
 Understand where connection data is stored.
 
 ```bash
-# Podman stores connections in the containers configuration directory
-# Default location for rootless users:
-cat ~/.config/containers/podman-connections.json 2>/dev/null || \
-cat ~/.config/containers/containers.conf 2>/dev/null | grep -A 5 "\[engine.service_destinations\]"
+# Podman-managed connections are stored here by default for rootless users:
+cat ~/.config/containers/podman-connections.json 2>/dev/null
 
-# The configuration can also be part of containers.conf
-podman info --format '{{.Host.RemoteSocket.Path}}'
+# Connections defined in containers.conf use per-connection service_destinations tables
+grep -n '^\[engine\.service_destinations\.' ~/.config/containers/containers.conf 2>/dev/null
+
+# ReadWrite=false means the connection came from containers.conf
+podman system connection ls --format "table {{.Name}}\t{{.ReadWrite}}"
 ```
 
 ## Advanced: Temporary Connection Override
@@ -228,30 +230,20 @@ CONTAINER_HOST=ssh://user@temp-host/run/user/1000/podman/podman.sock \
 # Useful for one-off commands without adding a permanent connection
 ```
 
-## Cleaning Up All Connections
+## Cleaning Up Editable Connections
 
-Remove all connections for a fresh start.
+Remove all connections stored in `podman-connections.json` for a fresh start.
 
 ```bash
 #!/bin/bash
-# reset-connections.sh - Remove all Podman system connections
+# reset-connections.sh - Remove all editable Podman system connections
 
-CONNECTIONS=$(podman system connection ls --format '{{.Name}}')
-
-if [ -z "$CONNECTIONS" ]; then
-    echo "No connections to remove"
-    exit 0
-fi
-
-echo "Removing all connections:"
-for conn in $CONNECTIONS; do
-    podman system connection rm "$conn"
-    echo "  Removed: $conn"
-done
+podman system connection remove --all
 
 echo ""
-echo "All connections removed. Using local Podman instance."
-podman info --format 'Local host: {{.Host.Hostname}}'
+echo "Editable connections removed."
+echo "Any remaining ReadWrite=false entries come from containers.conf:"
+podman system connection ls --format "table {{.Name}}\t{{.ReadWrite}}"
 ```
 
 ## Summary
