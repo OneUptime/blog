@@ -4,27 +4,39 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWX, Ansible Tower, Network Automation, Workflow, Inventory, Credential, CI/CD
 
-Description: Learn how to set up AWX (the open-source Ansible Tower) for network automation workflows, including inventory management, credential storage, and scheduled playbook execution.
+Description: Learn how to set up AWX, the upstream open-source project for Red Hat Ansible Automation Platform, for network automation workflows, including inventory management, credential storage, and scheduled playbook execution.
 
 ---
 
 AWX provides a web UI, REST API, and role-based access control for Ansible, making it ideal for team-based network automation at scale.
 
-## Installing AWX with Docker Compose
+## Installing AWX with the AWX Operator
 
 ```bash
-# Clone AWX repository
+# Clone the AWX Operator repository
 
-git clone https://github.com/ansible/awx.git
-cd awx
+git clone https://github.com/ansible/awx-operator.git
+cd awx-operator
 
-# Install via operator (Kubernetes) or Docker (for testing)
-# Docker Compose (AWX ≤ 17):
-cd installer
-ansible-playbook -i inventory install.yml
+# Deploy the operator to a Kubernetes cluster
+make deploy
 
-# Access UI at http://your-server:80
-# Default credentials: admin / password (change immediately)
+# Create an AWX instance
+cat <<'EOF' > awx-demo.yml
+apiVersion: awx.ansible.com/v1beta1
+kind: AWX
+metadata:
+  name: awx-demo
+  namespace: awx
+spec:
+  service_type: nodeport
+EOF
+
+kubectl apply -f awx-demo.yml
+
+# Retrieve the generated admin password
+kubectl get secret awx-demo-admin-password \
+  -n awx -o jsonpath="{.data.password}" | base64 --decode ; echo
 ```
 
 ## Setting Up Network Inventory
@@ -38,12 +50,14 @@ Inventories → Add → Inventory
 
 Add Group: cisco_switches
 Add Hosts:
-  sw-01  Variables: ansible_host=10.0.1.1
-  sw-02  Variables: ansible_host=10.0.1.2
+  sw-01  Variables:
+    ansible_host: 10.0.1.1
+  sw-02  Variables:
+    ansible_host: 10.0.1.2
 
 Group Variables:
   ansible_network_os: cisco.ios.ios
-  ansible_connection: network_cli
+  ansible_connection: ansible.netcommon.network_cli
   ansible_become: true
   ansible_become_method: enable
 ```
@@ -51,11 +65,12 @@ Group Variables:
 ## Storing Network Credentials Securely
 
 ```text
-Credentials → Add → Credential Type: Network
+Credentials → Add → Credential Type: Machine
   Name: Cisco Switch Creds
   Username: admin
   Password: (stored encrypted in AWX)
-  Enable Password: (stored encrypted)
+  Privilege Escalation Method: enable
+  Privilege Escalation Password: (stored encrypted)
 ```
 
 ## Creating a Job Template
@@ -101,14 +116,14 @@ Templates → Deploy ACLs → Schedules → Add
 ```bash
 # Launch a job via API
 curl -X POST \
-  -u admin:password \
+  -u admin:<your-password> \
   -H "Content-Type: application/json" \
   -d '{"extra_vars": {"dry_run": false}}' \
-  http://awx.example.com/api/v2/job_templates/5/launch/
+  https://awx.example.com/api/v2/job_templates/5/launch/
 
 # Check job status
-curl -u admin:password \
-  http://awx.example.com/api/v2/jobs/42/ | jq '.status'
+curl -u admin:<your-password> \
+  https://awx.example.com/api/v2/jobs/42/ | jq '.status'
 ```
 
 ## Key Takeaways
