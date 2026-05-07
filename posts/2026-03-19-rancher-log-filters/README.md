@@ -12,7 +12,7 @@ Log filters in Rancher allow you to process log data before it reaches your stor
 
 - Rancher v2.6 or later with the Logging chart installed.
 - A configured ClusterOutput or Output destination.
-- Cluster admin or namespace permissions.
+- Cluster admin for `ClusterFlow` and `ClusterOutput`, or project/namespace permissions for `Flow` and `Output`.
 
 ## Understanding Filters in Rancher Logging
 
@@ -108,7 +108,7 @@ filters:
       remove_keys: "$.kubernetes.pod_id,$.kubernetes.docker_id,$.kubernetes.master_url"
 ```
 
-### Rename Fields
+### Copy or Derive Fields
 
 ```yaml
 filters:
@@ -189,6 +189,8 @@ filters:
 
 This filter recognizes exception patterns in multiple programming languages and merges the stack trace lines into a single log entry.
 
+Note: `detectExceptions` is mutually exclusive with `tag_normaliser` in the same flow.
+
 ## Step 6: Normalize Tags
 
 Customize the Fluentd tag used for routing:
@@ -203,8 +205,10 @@ Available placeholders:
 - `${namespace_name}`
 - `${pod_name}`
 - `${container_name}`
-- `${container_id}`
+- `${pod_id}`
+- `${labels}`
 - `${host}`
+- `${docker_id}`
 
 ## Step 7: Replace Dots in Field Names
 
@@ -242,7 +246,7 @@ spec:
         key_name: log
         reserve_data: true
         remove_key_name_field: true
-        suppress_parse_error_log: true
+        emit_invalid_record_to_error: false
 
     # 3. Exclude health check noise
     - grep:
@@ -297,16 +301,16 @@ Check that filters are applied correctly:
 kubectl get clusterflows -n cattle-logging-system -o yaml
 
 # Check Fluentd configuration
-kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd | head -100
+kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd --tail=100
 
 # Look for filter-related errors
-kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd | grep -i "filter\|error\|warn"
+kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd --tail=-1 | grep -Ei 'filter|error|warn'
 ```
 
 To test filters, generate a known log message and verify it appears (or does not appear) at the destination:
 
 ```bash
-kubectl run log-test --rm -it --image=busybox -- sh -c 'echo "TEST_FILTER_VERIFICATION: error level=ERROR"'
+kubectl run log-test --rm -it --restart=Never --image=busybox -- sh -c 'echo "TEST_FILTER_VERIFICATION: error level=ERROR"'
 ```
 
 ## Summary
