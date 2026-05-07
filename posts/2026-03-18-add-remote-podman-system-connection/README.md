@@ -35,7 +35,7 @@ ssh user@remote-host "systemctl --user status podman.socket"
 
 ## Setting Up SSH Keys
 
-Remote connections require SSH key-based authentication.
+Remote connections commonly use SSH key-based authentication.
 
 ```bash
 # Generate an SSH key pair if you do not have one
@@ -74,13 +74,13 @@ podman system connection ls
 Connect to a root-level Podman instance for full system access.
 
 ```bash
+# Ensure the rootful socket is enabled on the remote host
+ssh root@remote-host "systemctl enable --now podman.socket"
+
 # Add a rootful connection (uses the system socket path)
 podman system connection add my-remote-root \
     ssh://root@remote-host/run/podman/podman.sock \
     --identity ~/.ssh/podman-remote
-
-# Ensure the rootful socket is enabled on the remote host
-ssh root@remote-host "systemctl enable --now podman.socket"
 
 # Verify the connection
 podman --connection my-remote-root info --format '{{.Host.Hostname}}'
@@ -195,7 +195,7 @@ ssh -i ~/.ssh/podman-remote user@remote-host \
 
 # Debug: Test the API through SSH manually
 ssh -i ~/.ssh/podman-remote user@remote-host \
-    "curl --unix-socket /run/user/\$(id -u)/podman/podman.sock http://localhost/v4.0.0/libpod/_ping"
+    "curl --unix-socket /run/user/\$(id -u)/podman/podman.sock http://localhost/libpod/_ping"
 
 # Debug: Check if lingering is enabled (needed for persistent sockets)
 ssh -i ~/.ssh/podman-remote user@remote-host \
