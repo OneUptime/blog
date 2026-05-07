@@ -45,7 +45,7 @@ skopeo list-tags docker://docker.io/library/nginx
 skopeo list-tags docker://quay.io/prometheus/prometheus
 
 # List tags for an image on GitHub Container Registry
-skopeo list-tags docker://ghcr.io/actions/runner
+skopeo list-tags docker://ghcr.io/actions/actions-runner
 ```
 
 The output is JSON with a `Tags` array containing every available tag.
@@ -71,7 +71,7 @@ skopeo list-tags docker://docker.io/library/python | \
 skopeo list-tags docker://docker.io/library/node | \
   jq -r '.Tags[] | select(contains("alpine"))'
 
-# Get the latest semantic version tags (exclude sha and special tags)
+# Get semantic version-like tags (exclude sha and special tags)
 skopeo list-tags docker://docker.io/library/redis | \
   jq -r '.Tags[] | select(test("^[0-9]+\\.[0-9]+"))'
 ```
