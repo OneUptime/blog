@@ -28,11 +28,11 @@ podman pull docker.io/library/eclipse-temurin:21-jdk
 # Amazon Corretto - Amazon's OpenJDK distribution
 podman pull docker.io/library/amazoncorretto:21
 
-# Official OpenJDK (deprecated for newer versions, but still available)
-podman pull docker.io/library/openjdk:21-slim
+# IBM Semeru Runtimes - OpenJDK with the OpenJ9 JVM
+podman pull docker.io/library/ibm-semeru-runtimes:open-21-jdk
 ```
 
-Eclipse Temurin is the most popular choice for container-based Java development. Use the `-jdk` tag for development (includes the compiler) and `-jre` for production (runtime only).
+Eclipse Temurin is the most popular choice for container-based Java development. Use the `-jdk` tag for development (includes the compiler) and `-jre` for production (runtime only). The Docker Official `openjdk` image is deprecated and only publishes early-access builds, so use a vendor-maintained distribution for current GA releases.
 
 ## Compiling and Running a Simple Java Application
 
@@ -162,7 +162,6 @@ Spring Boot is the most common Java web framework. Here is a complete developmen
 Create a `docker-compose.yml` for Spring Boot with PostgreSQL:
 
 ```yaml
-version: "3.8"
 services:
   app:
     build: .
@@ -307,7 +306,7 @@ COPY --from=builder /app/target/*.jar app.jar
 EXPOSE 8080
 
 # Configure JVM for containers (respects container memory limits)
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
 ```
@@ -321,7 +320,7 @@ podman build -t my-java-app:prod -f Containerfile.prod .
 podman run --rm -p 8080:8080 my-java-app:prod
 ```
 
-The `-XX:+UseContainerSupport` flag tells the JVM to respect the container's memory limits instead of trying to use all available host memory. The `-XX:MaxRAMPercentage=75.0` flag limits heap usage to 75% of the container's allocated memory, leaving room for non-heap memory and the OS.
+Modern JDKs already enable container awareness by default. The `-XX:MaxRAMPercentage=75.0` flag limits heap usage to 75% of the container's allocated memory, leaving room for non-heap memory and the OS.
 
 ## Conclusion
 
