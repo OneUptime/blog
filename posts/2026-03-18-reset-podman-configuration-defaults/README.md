@@ -28,7 +28,7 @@ echo "Volumes: $(podman volume ls -q 2>/dev/null | wc -l)"
 echo "Networks: $(podman network ls -q 2>/dev/null | wc -l)"
 echo ""
 echo "Storage Root: $(podman info --format '{{.Store.GraphRoot}}')"
-echo "Config Files: $(podman info --format '{{range .Host.ConfigFiles}}{{.}} {{end}}')"
+echo "Storage Config File: $(podman info --format '{{.Store.ConfigFile}}')"
 ```
 
 ## Backing Up Before Reset
@@ -80,8 +80,8 @@ rm -f ~/.config/containers/registries.conf
 podman info --format '{{.Host.OCIRuntime.Name}}'
 podman info --format '{{.Store.GraphDriverName}}'
 
-# Check which config files are now in use
-podman info --format '{{range .Host.ConfigFiles}}{{.}}{{"\n"}}{{end}}'
+# Check the storage configuration file now in use
+podman info --format '{{.Store.ConfigFile}}'
 ```
 
 ## Full System Reset
@@ -89,7 +89,7 @@ podman info --format '{{range .Host.ConfigFiles}}{{.}}{{"\n"}}{{end}}'
 Reset all Podman storage, containers, and images.
 
 ```bash
-# WARNING: This removes ALL containers, images, volumes, and networks
+# WARNING: This removes ALL pods, containers, images, volumes, networks, build cache, and Podman machines
 
 # Stop all running containers first
 podman stop -a 2>/dev/null
@@ -106,9 +106,9 @@ echo "Volumes after reset: $(podman volume ls -q 2>/dev/null | wc -l)"
 podman run --rm alpine echo "Podman reset successful"
 ```
 
-## Resetting Storage Only
+## Resetting Storage and Podman State Only
 
-Reset storage while preserving configuration.
+Reset storage and Podman state while preserving configuration.
 
 ```bash
 # Back up configuration first
@@ -151,29 +151,21 @@ sudo podman info --format '{{.Store.GraphDriverName}}'
 sudo podman run --rm alpine echo "Root Podman reset successful"
 ```
 
-## Migrating Storage After Configuration Changes
+## Migrating Containers After Runtime or UID/GID Changes
 
-Use system migrate when changing storage-related settings.
+Use system migrate when changing runtime settings or rootless user namespace mappings.
 
 ```bash
-# podman system migrate reconfigures storage without data loss
-# Use this instead of reset when possible
-
-# Change a storage setting
-cat > ~/.config/containers/storage.conf << 'EOF'
-[storage]
-driver = "overlay"
-
-[storage.options.overlay]
-mountopt = "nodev,metacopy=on"
-EOF
-
-# Migrate existing storage to match new configuration
+# podman system migrate updates containers for the current Podman version
+# It also stops the rootless pause process so /etc/subuid and /etc/subgid changes can take effect
 podman system migrate
 
-# Verify migration was successful
+# Migrate existing containers to a new OCI runtime if needed
+# podman system migrate --new-runtime crun
+
+# Verify the current runtime and storage driver
+podman info --format '{{.Host.OCIRuntime.Name}}'
 podman info --format '{{.Store.GraphDriverName}}'
-podman images
 ```
 
 ## Restoring from Backup
@@ -248,4 +240,4 @@ podman run --rm alpine echo "Fresh Podman setup complete"
 
 ## Summary
 
-Resetting Podman to defaults involves removing configuration files and using `podman system reset --force` to clear storage. Always back up important images and configuration files before resetting. Use `podman system migrate` for non-destructive storage reconfiguration when possible. After a reset, restore configuration from backups and re-pull needed images. A clean default configuration with documented settings provides a solid foundation for a fresh start.
+Resetting Podman to defaults involves removing configuration files and using `podman system reset --force` to clear storage and Podman state. Always back up important images and configuration files before resetting. Use `podman system migrate` for Podman version, runtime, or rootless UID/GID mapping migrations when appropriate. After a reset, restore configuration from backups and re-pull needed images. A clean default configuration with documented settings provides a solid foundation for a fresh start.
