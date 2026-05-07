@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Webhook, Automation
 
-Description: Learn how to set up and configure webhooks in Rancher to automate responses to cluster events, scaling triggers, and policy enforcement.
+Description: Learn how to verify Rancher's built-in admission webhooks and connect external webhook endpoints for alert-driven automation.
 
-Rancher webhooks allow you to trigger automated actions based on events in your clusters. You can use them to enforce policies, automate scaling, send notifications, and integrate with external systems. This guide covers setting up and configuring Rancher webhooks for common use cases.
+Rancher uses webhooks to validate and mutate Kubernetes resources in Rancher-managed clusters. For automation workflows such as scaling or notifications, Rancher monitoring can forward alerts to an external webhook endpoint. This guide covers verifying Rancher's built-in webhook component and wiring alert-driven automation to a custom webhook service.
 
 ## Understanding Rancher Webhooks
 
-Rancher provides a webhook receiver that listens for specific events and executes actions in response. The webhook system is deployed as part of the `rancher-webhook` component and handles admission control, validation, and mutation of Kubernetes resources.
+Rancher deploys the `rancher-webhook` component as an admission controller for Kubernetes. It handles admission control, validation, and mutation of Kubernetes resources that Rancher manages.
 
-There are two types of webhook functionality in Rancher:
+There are two common webhook-related patterns in Rancher environments:
 
 1. **Admission Webhooks**: Built-in validation and mutation webhooks that enforce Rancher policies
-2. **Custom Webhook Receivers**: User-configurable webhooks that trigger actions on external events
+2. **Alerting Webhook Integrations**: Alertmanager receivers that send alerts to external webhook endpoints for custom automation
 
-## Setting Up the Rancher Webhook Receiver
+## Verifying the Rancher Webhook Deployment
 
-### Installing via Helm
+### Managing via Helm
 
 The Rancher webhook is typically installed automatically with Rancher. Verify it is running:
 
@@ -30,117 +30,96 @@ kubectl get validatingwebhookconfigurations | grep rancher
 kubectl get mutatingwebhookconfigurations | grep rancher
 ```
 
-If you need to reinstall or upgrade:
+Rancher manages deployment and upgrades of `rancher-webhook` automatically. If you need to customize the webhook chart, put the Helm values in the `rancher-config` ConfigMap:
 
-```bash
-helm upgrade --install rancher-webhook rancher-charts/rancher-webhook \
-  --namespace cattle-system \
-  --set certs.mode=auto
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rancher-config
+  namespace: cattle-system
+  labels:
+    app.kubernetes.io/part-of: "rancher"
+data:
+  rancher-webhook: '{"port": 9553, "priorityClassName": "system-node-critical"}'
 ```
 
-## Creating Webhook Receivers for Scaling
+## Triggering Scaling with an External Webhook
 
-Rancher allows you to create webhook receivers that can scale workloads up or down based on external triggers.
+Rancher's built-in `rancher-webhook` handles admission control. For scaling workflows, expose your own webhook endpoint and have Alertmanager call it.
 
-### Step 1: Create a Webhook Receiver via the API
+### Step 1: Point to Your Webhook Endpoint
+
+If you are triggering the webhook from inside the cluster, you can use the service DNS name:
 
 ```bash
-export RANCHER_URL="https://rancher.example.com"
-export RANCHER_TOKEN="token-xxxxx:yyyyyyyyyyyyyyyy"
-export CLUSTER_ID="c-m-abc12345"
-export PROJECT_ID="c-m-abc12345:p-xyz789"
+WEBHOOK_URL="http://webhook-handler.automation.svc.cluster.local/webhook"
+```
 
-# Create a scale-up webhook
+### Step 2: Send a Scale-Up Event
 
-curl -s -k -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
+```bash
+curl -s -X POST \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "scale-up-nginx",
-    "driver": "scaleService",
-    "scaleServiceConfig": {
-      "action": "up",
-      "amount": 2,
-      "serviceId": "deployment:default:nginx",
-      "min": 1,
-      "max": 20
-    }
+    "alerts": [
+      {
+        "status": "firing",
+        "labels": {
+          "alertname": "HighCPU"
+        }
+      }
+    ]
   }' \
-  "${RANCHER_URL}/v3/projects/${PROJECT_ID}/receivers"
+  "${WEBHOOK_URL}"
 ```
 
-The response includes a webhook URL:
-
-```json
-{
-  "id": "receiver-xxxxx",
-  "url": "https://rancher.example.com/hooks/xxxxx?token=yyyyy"
-}
-```
-
-### Step 2: Create a Scale-Down Webhook
+### Step 3: Send a Scale-Down Event
 
 ```bash
-curl -s -k -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
+curl -s -X POST \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "scale-down-nginx",
-    "driver": "scaleService",
-    "scaleServiceConfig": {
-      "action": "down",
-      "amount": 1,
-      "serviceId": "deployment:default:nginx",
-      "min": 1,
-      "max": 20
-    }
+    "alerts": [
+      {
+        "status": "firing",
+        "labels": {
+          "alertname": "LowCPU"
+        }
+      }
+    ]
   }' \
-  "${RANCHER_URL}/v3/projects/${PROJECT_ID}/receivers"
-```
-
-### Step 3: Trigger the Webhook
-
-Call the webhook URL to trigger the scaling action:
-
-```bash
-WEBHOOK_URL="https://rancher.example.com/hooks/xxxxx?token=yyyyy"
-
-curl -s -k -X POST "${WEBHOOK_URL}"
+  "${WEBHOOK_URL}"
 ```
 
 ## Integrating with External Monitoring
 
 ### Alertmanager Integration
 
-Configure Alertmanager to call your Rancher webhook when alerts fire:
+Configure Alertmanager to call your webhook service when alerts fire. This example assumes the route is dedicated to scaling alerts:
 
 ```yaml
 # alertmanager.yml
 route:
   receiver: 'rancher-scaler'
   routes:
-    - match:
-        alertname: HighCPU
-      receiver: 'rancher-scale-up'
-    - match:
-        alertname: LowCPU
-      receiver: 'rancher-scale-down'
+    - matchers:
+        - alertname="HighCPU"
+      receiver: 'rancher-scaler'
+    - matchers:
+        - alertname="LowCPU"
+      receiver: 'rancher-scaler'
 
 receivers:
-  - name: 'rancher-scale-up'
+  - name: 'rancher-scaler'
     webhook_configs:
-      - url: 'https://rancher.example.com/hooks/scale-up-xxxxx?token=yyyyy'
-        send_resolved: false
-
-  - name: 'rancher-scale-down'
-    webhook_configs:
-      - url: 'https://rancher.example.com/hooks/scale-down-xxxxx?token=yyyyy'
+      - url: 'http://webhook-handler.automation.svc.cluster.local/webhook'
         send_resolved: false
 ```
 
 ### Prometheus Alert Rules
 
-Create alert rules that trigger your webhooks:
+Create alert rules that trigger your webhook service. Make sure your Prometheus instance selects `PrometheusRule` resources from this namespace:
 
 ```yaml
 # prometheus-rules.yaml
@@ -172,7 +151,7 @@ spec:
 
 ## Building a Custom Webhook Endpoint
 
-If you need more complex logic than Rancher's built-in webhook receivers provide, build a custom webhook server:
+If you need more complex logic than Rancher's admission webhooks provide, build a custom webhook server:
 
 ```go
 package main
@@ -198,6 +177,7 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
         return
     }
+    defer r.Body.Close()
 
     var payload AlertmanagerPayload
     if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -207,6 +187,9 @@ func webhookHandler(w http.ResponseWriter, r *http.Request) {
 
     for _, alert := range payload.Alerts {
         log.Printf("Alert: %s, Status: %s", alert.Labels["alertname"], alert.Status)
+        if alert.Status != "firing" {
+            continue
+        }
 
         switch alert.Labels["alertname"] {
         case "HighCPU":
@@ -243,9 +226,44 @@ func main() {
 }
 ```
 
-Deploy this as a service in your cluster:
+Deploy this as a service in your cluster. The image should include both your webhook binary and a compatible `kubectl`:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webhook-handler
+  namespace: automation
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: webhook-handler
+  namespace: default
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["nginx"]
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: ["nginx"]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: webhook-handler
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: webhook-handler
+    namespace: automation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: webhook-handler
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -281,29 +299,26 @@ spec:
       targetPort: 8080
 ```
 
-## Managing Webhook Receivers
+## Managing the Custom Webhook Service
 
-### List All Webhook Receivers
+### View the Webhook Handler Resources
 
 ```bash
-curl -s -k \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/projects/${PROJECT_ID}/receivers" | jq '.data[] | {
-    id,
-    name,
-    driver,
-    url: .url
-  }'
+kubectl get deployment webhook-handler -n automation
+kubectl get serviceaccount webhook-handler -n automation
+kubectl get service webhook-handler -n automation
+kubectl get role webhook-handler -n default
+kubectl get rolebinding webhook-handler -n default
 ```
 
-### Delete a Webhook Receiver
+### Delete the Webhook Handler
 
 ```bash
-RECEIVER_ID="receiver-xxxxx"
-
-curl -s -k -X DELETE \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/projects/${PROJECT_ID}/receivers/${RECEIVER_ID}"
+kubectl delete deployment webhook-handler -n automation
+kubectl delete service webhook-handler -n automation
+kubectl delete serviceaccount webhook-handler -n automation
+kubectl delete rolebinding webhook-handler -n default
+kubectl delete role webhook-handler -n default
 ```
 
 ## Configuring Admission Webhook Policies
@@ -314,17 +329,17 @@ Rancher's admission webhooks can enforce policies on resource creation and modif
 
 ```bash
 kubectl get validatingwebhookconfigurations rancher.cattle.io -o yaml
+kubectl get mutatingwebhookconfigurations rancher.cattle.io -o yaml
 ```
 
 ### Escalation Prevention
 
-The Rancher webhook automatically prevents privilege escalation. If a user tries to create a role with more permissions than they have, the webhook blocks it:
+Rancher's admission webhooks include privilege-escalation checks for Rancher-managed RBAC resources, and they also enforce Pod Security Admission label changes on namespaces. For example, the following command is rejected if the user lacks the `updatepsa` permission on the project that owns the namespace:
 
 ```bash
-# This would be rejected if the user lacks cluster-admin privileges
-kubectl create clusterrolebinding admin-binding \
-  --clusterrole=cluster-admin \
-  --user=regular-user
+kubectl label namespace default \
+  pod-security.kubernetes.io/enforce=restricted \
+  --overwrite
 ```
 
 ## Troubleshooting Webhooks
@@ -338,20 +353,20 @@ kubectl logs -n cattle-system -l app=rancher-webhook --tail=100
 ### Verify Webhook Endpoint Connectivity
 
 ```bash
-# From inside the cluster
-kubectl run curl-test --rm -it --image=curlimages/curl -- \
-  curl -s -o /dev/null -w "%{http_code}" https://rancher.example.com/hooks/xxxxx
+kubectl get svc rancher-webhook -n cattle-system
+kubectl get endpoints rancher-webhook -n cattle-system
 ```
 
 ### Common Issues
 
-If webhook receivers are not triggering, check:
+If webhook behavior is not working as expected, check:
 
-1. The webhook URL is accessible from the calling system
-2. The token in the webhook URL has not expired
-3. The target workload exists and the service ID is correct
-4. Network policies are not blocking the webhook traffic
+1. The `rancher-webhook` pod and service are present in `cattle-system`
+2. The `rancher.cattle.io` validating and mutating webhook configurations point to the `rancher-webhook` service
+3. The Kubernetes API server can reach port `9443` on the webhook service, especially on private GKE clusters or EKS clusters using Calico
+4. If you deployed a custom webhook service, its ServiceAccount and RBAC rules allow it to scale the target workload
+5. Network policies are not blocking either API server traffic to `rancher-webhook` or Alertmanager traffic to your custom webhook service
 
 ## Summary
 
-Rancher webhooks provide a powerful mechanism for automating responses to events in your clusters. Use built-in webhook receivers for simple scaling operations, integrate with Alertmanager for monitoring-driven automation, and build custom webhook servers for complex logic. The built-in admission webhooks handle policy enforcement automatically, preventing privilege escalation and resource validation issues.
+Rancher's built-in webhook component is an admission webhook for policy enforcement, validation, and mutation in Rancher-managed clusters. For automation workflows such as scaling or notifications, pair Rancher monitoring and Alertmanager with an external webhook service. That combination lets you respond to alerts while Rancher's admission webhooks continue to enforce security and resource policy checks.
