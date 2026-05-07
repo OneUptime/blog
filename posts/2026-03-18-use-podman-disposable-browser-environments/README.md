@@ -22,7 +22,7 @@ Disposable browser containers address all these needs. Each session starts from 
 
 ## Setting Up X11 Forwarding
 
-To display a graphical browser running inside a container on your host screen, you need X11 forwarding. On Linux, this is straightforward:
+To display a graphical browser running inside a container on your host screen, you need X11 access. On Linux, this is straightforward:
 
 ```bash
 # Allow local connections to your X server
@@ -33,13 +33,7 @@ xhost +local:
 echo $DISPLAY
 ```
 
-On macOS, install XQuartz first:
-
-```bash
-brew install --cask xquartz
-# Log out and back in, then:
-xhost +localhost
-```
+The examples below assume a Linux host. On macOS, Podman runs containers inside a Linux virtual machine via `podman machine`, so the `/tmp/.X11-unix` bind mount shown here does not apply directly.
 
 ## Running Firefox in a Container
 
@@ -51,7 +45,7 @@ podman run --rm -it \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --security-opt label=disable \
   --name disposable-firefox \
-  fedora:40 \
+  fedora:43 \
   bash -c "dnf install -y firefox && firefox --no-remote"
 ```
 
@@ -60,7 +54,7 @@ This installs Firefox and launches it. When you close the browser, the container
 For faster startup, build a dedicated image:
 
 ```dockerfile
-FROM fedora:40
+FROM fedora:43
 
 RUN dnf install -y \
     firefox \
@@ -86,10 +80,10 @@ podman run --rm -it \
 
 ## Running Chromium in a Container
 
-Chromium requires a few additional flags to run inside a container:
+Chromium often needs a few additional flags to run smoothly inside a container:
 
 ```dockerfile
-FROM fedora:40
+FROM fedora:43
 
 RUN dnf install -y \
     chromium \
@@ -104,7 +98,6 @@ USER browser
 ENTRYPOINT ["chromium-browser", \
     "--no-sandbox", \
     "--disable-gpu", \
-    "--disable-dev-shm-usage", \
     "--no-first-run"]
 ```
 
@@ -119,14 +112,14 @@ podman run --rm -it \
   disposable-chromium
 ```
 
-The `--shm-size=2g` flag increases shared memory, which Chromium needs to function properly. The `--disable-dev-shm-usage` flag in the entrypoint tells Chromium to use `/tmp` instead of `/dev/shm` as a fallback.
+The `--shm-size=2g` flag increases shared memory, which Chromium uses for stability inside containers. The `--no-sandbox` flag disables Chromium's own sandbox, so only keep it if your container environment cannot provide a usable browser sandbox.
 
 ## Headless Browsers for Automation
 
 For automated testing and web scraping, you do not need a graphical display at all. Run browsers in headless mode:
 
 ```dockerfile
-FROM node:20-bookworm
+FROM node:24-bookworm
 
 RUN apt-get update && apt-get install -y \
     chromium \
@@ -142,24 +135,29 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 WORKDIR /app
 
-RUN useradd -m scraper
+COPY scrape.js /app/scrape.js
+RUN npm install puppeteer-core
+
+RUN useradd -m scraper && chown -R scraper:scraper /app
 USER scraper
+
+CMD ["node", "/app/scrape.js"]
 ```
 
 Create a simple scraping script:
 
 ```javascript
 // scrape.js
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 
 (async () => {
     const browser = await puppeteer.launch({
+        browser: 'chrome',
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-        headless: 'new',
+        headless: true,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -183,11 +181,11 @@ const puppeteer = require('puppeteer');
 Run it:
 
 ```bash
+podman build -t disposable-headless .
+
 podman run --rm \
-  -v $(pwd):/app:Z \
   -e TARGET_URL="https://example.com" \
-  disposable-headless \
-  node scrape.js
+  disposable-headless
 ```
 
 ## VNC-Based Browser Access
@@ -195,7 +193,7 @@ podman run --rm \
 For remote or collaborative browser access, use a VNC server inside the container:
 
 ```dockerfile
-FROM fedora:40
+FROM fedora:43
 
 RUN dnf install -y \
     firefox \
@@ -206,9 +204,10 @@ RUN dnf install -y \
     && dnf clean all
 
 RUN useradd -m browser
-USER browser
 
-COPY start-vnc.sh /home/browser/start-vnc.sh
+COPY --chown=browser:browser --chmod=755 start-vnc.sh /home/browser/start-vnc.sh
+
+USER browser
 
 EXPOSE 5901
 
@@ -220,12 +219,12 @@ ENTRYPOINT ["/home/browser/start-vnc.sh"]
 # start-vnc.sh
 
 # Set VNC password
-mkdir -p ~/.vnc
-echo "password" | vncpasswd -f > ~/.vnc/passwd
-chmod 600 ~/.vnc/passwd
+mkdir -p ~/.config/tigervnc
+echo "password" | vncpasswd -f > ~/.config/tigervnc/passwd
+chmod 600 ~/.config/tigervnc/passwd
 
 # Start VNC server
-vncserver :1 -geometry 1920x1080 -depth 24
+vncserver :1 -localhost no -geometry 1920x1080 -depth 24
 
 # Start window manager
 DISPLAY=:1 fluxbox &
@@ -248,13 +247,13 @@ Connect with any VNC client to `localhost:5901`.
 
 ## Network Isolation
 
-For maximum security when visiting untrusted sites, isolate the browser's network:
+For tighter separation while still allowing outbound access, place the browser on its own user-defined network:
 
 ```bash
-# Create an isolated network
-podman network create --internal browser-net
+# Create a dedicated network
+podman network create browser-net
 
-# Run browser with restricted network
+# Run browser on that network
 podman run --rm -it \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
@@ -264,7 +263,7 @@ podman run --rm -it \
   disposable-firefox
 ```
 
-You can also use `--network none` to completely disable networking and pre-load content for offline analysis.
+A dedicated network keeps the browser separate from other container networks while still allowing outbound access. If you create the network with `--internal`, Podman does not add a default route and the browser will not be able to reach external websites. You can also use `--network none` to completely disable networking and pre-load content for offline analysis.
 
 ## Managing Multiple Browser Sessions
 
@@ -276,6 +275,7 @@ A helper script simplifies launching disposable browser sessions:
 
 BROWSER=${1:-firefox}
 PROFILE_NAME="session-$(date +%s)"
+EXTRA_ARGS=()
 
 case $BROWSER in
     firefox)
@@ -283,6 +283,7 @@ case $BROWSER in
         ;;
     chromium)
         IMAGE="disposable-chromium"
+        EXTRA_ARGS+=(--shm-size=2g)
         ;;
     *)
         echo "Unknown browser: $BROWSER"
@@ -296,6 +297,7 @@ podman run --rm -it \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --security-opt label=disable \
+  "${EXTRA_ARGS[@]}" \
   --name "$PROFILE_NAME" \
   "$IMAGE"
 
