@@ -30,12 +30,16 @@ provider "azurerm" {
 
 ## Authentication Setup
 
-For managed identity, ensure the Azure resource (VM, ACI, or Azure DevOps) has the managed identity enabled and assigned appropriate RBAC roles on the target subscription or resource group:
+For managed identity, ensure the Azure resource running OpenTofu (such as a VM or ACI) has the managed identity enabled and assigned appropriate RBAC roles on the target subscription or resource group:
 
 ```bash
 # Assign Contributor role to the managed identity
 
-az role assignment create   --assignee "<managed-identity-principal-id>"   --role "Contributor"   --scope "/subscriptions/$SUBSCRIPTION_ID"
+az role assignment create \
+  --assignee-object-id "<managed-identity-principal-id>" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Contributor" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID"
 ```
 
 For Azure CLI authentication:
@@ -60,7 +64,9 @@ provider "azurerm" {
   use_msi         = true  # System-assigned managed identity
   subscription_id = var.subscription_id
 }
+```
 
+```hcl
 # For user-assigned managed identity
 provider "azurerm" {
   features {}
@@ -76,6 +82,11 @@ provider "azurerm" {
 variable "subscription_id" {
   type        = string
   description = "Azure Subscription ID"
+}
+
+variable "managed_identity_client_id" {
+  type        = string
+  description = "Client ID of the user-assigned managed identity"
 }
 ```
 
