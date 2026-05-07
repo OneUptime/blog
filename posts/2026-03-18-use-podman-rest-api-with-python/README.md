@@ -31,19 +31,21 @@ The `requests-unixsocket` package adds Unix domain socket support to the standar
 Here is the basic pattern for connecting to the Podman API through a Unix socket:
 
 ```python
+import os
 import requests_unixsocket
-import json
+from urllib.parse import quote
 
 session = requests_unixsocket.Session()
 
-# Unix socket paths must be URL-encoded
-
-# /run/podman/podman.sock becomes %2Frun%2Fpodman%2Fpodman.sock
-SOCKET_PATH = "%2Frun%2Fpodman%2Fpodman.sock"
-BASE_URL = f"http+unix://{SOCKET_PATH}/v4.0.0/libpod"
+# Rootless default: $XDG_RUNTIME_DIR/podman/podman.sock
+# Rootful default: /run/podman/podman.sock
+runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+socket_path = f"{runtime_dir}/podman/podman.sock" if runtime_dir else "/run/podman/podman.sock"
+BASE_URL = f"http+unix://{quote(socket_path, safe='')}/v5.0.0/libpod"
 
 # Test connectivity
 response = session.get(f"{BASE_URL}/info")
+response.raise_for_status()
 info = response.json()
 print(f"Connected to Podman on {info['host']['hostname']}")
 print(f"Podman version: {info['version']['Version']}")
@@ -54,17 +56,46 @@ print(f"Podman version: {info['version']['Version']}")
 To keep your code organized, wrap the API interactions in a client class:
 
 ```python
+import os
 import requests_unixsocket
-import json
-import time
 from urllib.parse import quote
 
 
 class PodmanClient:
-    def __init__(self, socket_path="/run/podman/podman.sock", api_version="v4.0.0"):
+    def __init__(self, socket_path=None, api_version="v5.0.0"):
+        if socket_path is None:
+            runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+            socket_path = f"{runtime_dir}/podman/podman.sock" if runtime_dir else "/run/podman/podman.sock"
         self.session = requests_unixsocket.Session()
         encoded_path = quote(socket_path, safe="")
         self.base_url = f"http+unix://{encoded_path}/{api_version}/libpod"
+
+    @staticmethod
+    def _decode_multiplexed_stream(data):
+        """Decode Podman's framed stdout/stderr stream into plain text."""
+        output = []
+        offset = 0
+
+        while offset + 8 <= len(data):
+            if data[offset + 1:offset + 4] != b"\x00\x00\x00":
+                return data.decode("utf-8", errors="replace")
+
+            stream_type = data[offset]
+            frame_size = int.from_bytes(data[offset + 4:offset + 8], "big")
+            frame_end = offset + 8 + frame_size
+
+            if frame_end > len(data):
+                return data.decode("utf-8", errors="replace")
+
+            if stream_type in (1, 2):
+                output.append(data[offset + 8:frame_end])
+
+            offset = frame_end
+
+        if offset != len(data):
+            return data.decode("utf-8", errors="replace")
+
+        return b"".join(output).decode("utf-8", errors="replace")
 
     def _request(self, method, endpoint, **kwargs):
         url = f"{self.base_url}{endpoint}"
@@ -117,14 +148,15 @@ class PodmanClient:
             "tail": tail,
             "timestamps": timestamps
         })
-        return response.text
+        response.raise_for_status()
+        return self._decode_multiplexed_stream(response.content)
 
     # Images
     def list_images(self):
         return self.get("/images/json")
 
     def pull_image(self, reference):
-        return self.post("/images/pull", params={"reference": reference})
+        return self.post("/images/pull", params={"reference": reference, "quiet": True})
 
     def remove_image(self, name, force=False):
         return self.delete(f"/images/{name}", params={"force": force})
@@ -192,6 +224,8 @@ print("Container removed")
 Retrieve and process container statistics:
 
 ```python
+import os
+import json
 import requests_unixsocket
 from urllib.parse import quote
 
@@ -199,26 +233,30 @@ from urllib.parse import quote
 def get_container_stats(socket_path, container_name):
     session = requests_unixsocket.Session()
     encoded = quote(socket_path, safe="")
-    url = f"http+unix://{encoded}/v4.0.0/libpod/containers/{container_name}/stats"
+    url = f"http+unix://{encoded}/v5.0.0/libpod/containers/stats"
 
-    response = session.get(url, params={"stream": False}, stream=True)
+    response = session.get(url, params=[("containers", container_name), ("stream", "false")])
+    response.raise_for_status()
+    stats = response.json()
 
-    for line in response.iter_lines():
-        if line:
-            stats = json.loads(line)
-            return {
-                "name": stats.get("Name"),
-                "cpu_percent": round(stats.get("CPU", 0), 2),
-                "memory_mb": round(stats.get("MemUsage", 0) / 1048576, 2),
-                "memory_limit_mb": round(stats.get("MemLimit", 0) / 1048576, 2),
-                "memory_percent": round(stats.get("MemPerc", 0), 2),
-                "net_input_mb": round(stats.get("NetInput", 0) / 1048576, 2),
-                "net_output_mb": round(stats.get("NetOutput", 0) / 1048576, 2),
-                "pids": stats.get("PIDs", 0),
-            }
+    network = stats.get("Network") or {}
+    rx_bytes = sum(iface.get("RxBytes", 0) for iface in network.values())
+    tx_bytes = sum(iface.get("TxBytes", 0) for iface in network.values())
 
+    return {
+        "name": stats.get("Name"),
+        "cpu_percent": round(stats.get("CPU", 0), 2),
+        "memory_mb": round(stats.get("MemUsage", 0) / 1048576, 2),
+        "memory_limit_mb": round(stats.get("MemLimit", 0) / 1048576, 2),
+        "memory_percent": round(stats.get("MemPerc", 0), 2),
+        "network_rx_mb": round(rx_bytes / 1048576, 2),
+        "network_tx_mb": round(tx_bytes / 1048576, 2),
+        "pids": stats.get("PIDs", 0),
+    }
 
-stats = get_container_stats("/run/podman/podman.sock", "my-container")
+runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+socket_path = f"{runtime_dir}/podman/podman.sock" if runtime_dir else "/run/podman/podman.sock"
+stats = get_container_stats(socket_path, "my-container")
 print(json.dumps(stats, indent=2))
 ```
 
@@ -236,7 +274,9 @@ def exec_in_container(client, container_name, command, user=None):
     exec_config = {
         "AttachStdout": True,
         "AttachStderr": True,
-        "Cmd": command if isinstance(command, list) else command.split()
+        "Cmd": command if isinstance(command, list) else command.split(),
+        # Use a TTY so Podman returns a raw stream instead of multiplexed frames.
+        "Tty": True,
     }
     if user:
         exec_config["User"] = user
@@ -247,10 +287,12 @@ def exec_in_container(client, container_name, command, user=None):
 
     # Step 2: Start exec instance
     response = session.post(f"{base}/exec/{exec_id}/start", json={"Detach": False})
+    response.raise_for_status()
     output = response.text
 
     # Step 3: Get exit code
     response = session.get(f"{base}/exec/{exec_id}/json")
+    response.raise_for_status()
     exit_code = response.json().get("ExitCode", -1)
 
     return {"output": output, "exit_code": exit_code}
@@ -349,11 +391,46 @@ except PodmanAPIError as e:
 Stream container logs in real time:
 
 ```python
+import os
+import requests_unixsocket
+from urllib.parse import quote
+
+
+def iter_log_lines(response):
+    """Yield log lines from Podman's multiplexed log stream."""
+    response.raise_for_status()
+    frame_buffer = b""
+    text_buffer = ""
+
+    for chunk in response.iter_content(chunk_size=None):
+        if not chunk:
+            continue
+
+        frame_buffer += chunk
+        while len(frame_buffer) >= 8:
+            frame_size = int.from_bytes(frame_buffer[4:8], "big")
+            if len(frame_buffer) < 8 + frame_size:
+                break
+
+            payload = frame_buffer[8:8 + frame_size]
+            text_buffer += payload.decode("utf-8", errors="replace")
+
+            while "\n" in text_buffer:
+                line, text_buffer = text_buffer.split("\n", 1)
+                if line:
+                    yield line
+
+            frame_buffer = frame_buffer[8 + frame_size:]
+
+    if text_buffer:
+        yield text_buffer
+
+
 def stream_logs(socket_path, container_name, callback=None):
     """Stream container logs and process each line."""
     session = requests_unixsocket.Session()
     encoded = quote(socket_path, safe="")
-    url = f"http+unix://{encoded}/v4.0.0/libpod/containers/{container_name}/logs"
+    url = f"http+unix://{encoded}/v5.0.0/libpod/containers/{container_name}/logs"
 
     response = session.get(url, params={
         "follow": True,
@@ -363,19 +440,19 @@ def stream_logs(socket_path, container_name, callback=None):
     }, stream=True)
 
     try:
-        for line in response.iter_lines():
-            if line:
-                decoded = line.decode("utf-8", errors="replace")
-                if callback:
-                    callback(decoded)
-                else:
-                    print(decoded)
+        for line in iter_log_lines(response):
+            if callback:
+                callback(line)
+            else:
+                print(line)
     except KeyboardInterrupt:
         print("\nStopped streaming")
 
 
 # Usage
-stream_logs("/run/podman/podman.sock", "my-container")
+runtime_dir = os.environ.get("XDG_RUNTIME_DIR")
+socket_path = f"{runtime_dir}/podman/podman.sock" if runtime_dir else "/run/podman/podman.sock"
+stream_logs(socket_path, "my-container")
 ```
 
 ## Batch Operations
