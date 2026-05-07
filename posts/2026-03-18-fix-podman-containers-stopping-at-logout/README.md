@@ -8,17 +8,17 @@ Description: Learn why rootless Podman containers stop when you log out and how 
 
 ---
 
-> Rootless Podman containers stop when you log out of your SSH session because systemd terminates all user processes. This guide shows you how to keep containers running permanently using lingering sessions and systemd integration.
+> Rootless Podman containers can stop when you log out of your SSH session because the per-user systemd manager and runtime directory normally go away after the last session ends. This guide shows you how to keep containers running permanently using lingering sessions and systemd integration.
 
 You SSH into a server, start a Podman container in detached mode, log out, and come back later to find the container has stopped. This is one of the most confusing Podman behaviors for people coming from Docker, where containers keep running regardless of user sessions.
 
-The difference is architectural. Docker uses a system-level daemon that persists independently of user sessions. Podman is daemonless and runs containers as regular user processes. When your user session ends, systemd cleans up all processes belonging to that session, including your containers.
+The difference is architectural. Docker uses a system-level daemon that persists independently of user sessions. Podman is daemonless and runs rootless containers as user-owned processes. When your last login session ends, systemd may terminate processes in that session scope and normally tears down the user's runtime state, which can affect your containers.
 
 ---
 
 ## Why Containers Stop at Logout
 
-On modern Linux systems with systemd, user processes are managed by `systemd-logind`. When a user logs out, `systemd-logind` sends SIGTERM (and eventually SIGKILL) to all processes in that user's session scope. This includes any Podman containers running under that user.
+On modern Linux systems with systemd, user sessions are managed by `systemd-logind`. If `KillUserProcesses=yes` is configured, `systemd-logind` sends SIGTERM (and eventually SIGKILL) to all processes in that user's session scope. Even when session processes are abandoned instead of killed, the user's systemd manager and `/run/user/<UID>` runtime directory normally stop after the last session ends unless lingering is enabled.
 
 You can verify this behavior:
 
@@ -31,11 +31,11 @@ cat /proc/self/cgroup
 loginctl show-user $(whoami) | grep Linger
 ```
 
-If `Linger=no`, your processes will be killed at logout.
+If `Linger=no`, your per-user systemd manager is not kept around after the last logout. On systems configured with `KillUserProcesses=yes`, processes in the login session scope are also killed at logout.
 
 ## Fix 1: Enable Lingering for Your User
 
-The primary fix is to enable "lingering" for your user account. Lingering tells systemd to keep a user's processes running even after all their sessions have ended:
+The primary fix is to enable "lingering" for your user account. Lingering tells systemd to start the user's service manager at boot and keep it around after all their sessions have ended:
 
 ```bash
 sudo loginctl enable-linger $(whoami)
@@ -53,7 +53,7 @@ Verify it is enabled:
 loginctl show-user $(whoami) | grep Linger
 ```
 
-The output should show `Linger=yes`. After enabling linger, your rootless Podman containers will continue running after you log out.
+The output should show `Linger=yes`. After enabling linger, your rootless Podman containers and user services have the persistent user manager and runtime directory they need after you log out.
 
 This is the simplest fix and works immediately for all containers you start from the command line.
 
@@ -117,10 +117,9 @@ Then reload and start:
 ```bash
 systemctl --user daemon-reload
 systemctl --user start my-web-app.service
-systemctl --user enable my-web-app.service
 ```
 
-Quadlet files are simpler to write and maintain than full systemd unit files. They support all common Podman options:
+Quadlet files are simpler to write and maintain than full systemd unit files. The `[Install]` section is applied by the Quadlet generator, so the service is wired into `default.target` without running `systemctl enable` on the generated transient service. Quadlet files support all common Podman options:
 
 ```ini
 [Container]
@@ -197,7 +196,6 @@ mkdir -p ~/.config/containers/systemd/
 cat > ~/.config/containers/systemd/my-app.container << 'EOF'
 [Unit]
 Description=My Application
-After=network-online.target
 
 [Container]
 Image=my-app:latest
@@ -215,9 +213,9 @@ TimeoutStartSec=120
 WantedBy=default.target
 EOF
 
-# Step 3: Reload and enable
+# Step 3: Reload and start
 systemctl --user daemon-reload
-systemctl --user enable --now my-app.service
+systemctl --user start my-app.service
 
 # Step 4: Verify
 systemctl --user status my-app.service
@@ -265,4 +263,4 @@ sudo loginctl enable-linger $(whoami)
 
 ## Conclusion
 
-Rootless Podman containers stop at logout because systemd terminates user session processes. The fix is straightforward: run `loginctl enable-linger` to keep your user's processes alive, then use systemd unit files or Quadlet to manage containers properly. For production, Quadlet files provide the cleanest integration with systemd, handling container lifecycle, restart policies, and boot startup automatically. Always enable lingering for any user account that runs long-lived Podman containers.
+Rootless Podman containers can stop at logout because systemd may terminate user session processes and normally removes the user's runtime state after the last session ends. The fix is straightforward: run `loginctl enable-linger` to keep your user's service manager alive, then use systemd unit files or Quadlet to manage containers properly. For production, Quadlet files provide the cleanest integration with systemd, handling container lifecycle, restart policies, and boot startup automatically. Always enable lingering for any user account that runs long-lived Podman containers.
