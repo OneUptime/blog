@@ -10,7 +10,7 @@ Description: A comprehensive guide to configuring container registries in Podman
 
 > Properly configured registries are the foundation of a reliable container workflow in Podman.
 
-Container registries are remote storage locations where container images are hosted and distributed. Podman supports multiple registries out of the box and allows fine-grained control over which registries to use, how to authenticate, and how to resolve image names. This guide walks you through the essentials of configuring container registries in Podman.
+Container registries are remote storage locations where container images are hosted and distributed. Podman supports multiple registries out of the box and allows fine-grained control over which registries to use and how to resolve image names. This guide walks you through the essentials of configuring container registries in Podman.
 
 ---
 
@@ -43,12 +43,12 @@ Before making changes, review the current state of your registry configuration.
 podman info | grep -A 20 registries
 
 # List the unqualified search registries
-podman info --format '{{.Registries.Search}}'
+podman info --format '{{index .Registries "search"}}'
 ```
 
 ## Configuring Unqualified Search Registries
 
-When you pull an image without specifying a full registry path (e.g., `podman pull nginx`), Podman searches through a list of registries in order. You configure this in `registries.conf`.
+When you pull an image without specifying a full registry path (e.g., `podman pull nginx`), Podman uses short-name resolution and may search through a list of registries in order. You configure this in `registries.conf`.
 
 ```toml
 # /etc/containers/registries.conf
@@ -61,7 +61,8 @@ unqualified-search-registries = ["docker.io", "quay.io", "ghcr.io"]
 ```bash
 # Test the search order by pulling an unqualified image
 podman pull nginx
-# Podman will search docker.io first, then quay.io, then ghcr.io
+# If no short-name alias or prompt changes the resolution,
+# Podman uses docker.io first, then quay.io, then ghcr.io
 ```
 
 ## Adding a Specific Registry
