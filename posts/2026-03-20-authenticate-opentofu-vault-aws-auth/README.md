@@ -8,7 +8,7 @@ Description: Learn how to configure OpenTofu to authenticate with HashiCorp Vaul
 
 ## Introduction
 
-Vault's AWS auth method lets OpenTofu authenticate using existing AWS credentials - either IAM role credentials (iam type) or EC2 instance identity documents (ec2 type). This eliminates the need for separate Vault credentials in AWS-hosted CI/CD systems and EC2-based runners.
+Vault's AWS auth method supports both `iam` and `ec2`, but the Vault provider's `auth_login_aws` block signs an IAM `GetCallerIdentity` request. That means OpenTofu can authenticate using existing AWS role credentials from CI/CD systems and EC2 instance profiles without managing separate Vault credentials.
 
 ## Setting Up AWS Auth in Vault
 
@@ -20,14 +20,15 @@ resource "vault_auth_backend" "aws" {
   path = "aws"
 }
 
-# Configure AWS auth to use current region's STS
+# Configure AWS auth to use a regional STS endpoint
 resource "vault_aws_auth_backend_client" "config" {
-  backend    = vault_auth_backend.aws.path
-  # If Vault runs on AWS, no credentials needed - uses instance profile
-  # Otherwise provide access keys:
-  access_key = var.vault_aws_access_key
-  secret_key = var.vault_aws_secret_key
-  sts_region = "us-east-1"
+  backend      = vault_auth_backend.aws.path
+  sts_endpoint = "https://sts.us-east-1.amazonaws.com"
+  sts_region   = "us-east-1"
+  # Example with explicit credentials.
+  # If Vault runs on AWS, omit access_key and secret_key and use the instance profile instead.
+  access_key   = var.vault_aws_access_key
+  secret_key   = var.vault_aws_secret_key
 }
 
 # Create a role for the CI/CD IAM role
@@ -75,17 +76,17 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/github-actions-opentofu
           aws-region: us-east-1
 
       # Now OpenTofu can use AWS credentials to auth with Vault
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: OpenTofu Apply
         run: |
@@ -99,11 +100,12 @@ jobs:
 ## EC2 Instance Auth
 
 ```hcl
-# For EC2 instances authenticating via instance identity document
+# For OpenTofu running on EC2, use the instance profile with IAM auth
 resource "vault_aws_auth_backend_role" "ec2_role" {
   backend                    = vault_auth_backend.aws.path
   role                       = "ec2-bastion"
-  auth_type                  = "ec2"
+  auth_type                  = "iam"
+  bound_iam_principal_arns   = ["arn:aws:iam::123456789012:role/ec2-bastion"]
   bound_ami_ids              = ["ami-0123456789abcdef0"]
   bound_account_ids          = ["123456789012"]
   bound_regions              = ["us-east-1"]
@@ -121,9 +123,8 @@ provider "vault" {
   address = "https://vault.example.com:8200"
 
   auth_login_aws {
-    role      = "ec2-bastion"
-    # ec2 auth - signs the instance identity document
-    header_value = "vault.example.com"
+    role = "ec2-bastion"
+    # Uses the EC2 instance profile credentials to sign GetCallerIdentity
   }
 }
 ```
