@@ -87,7 +87,7 @@ If the digests are the same, there is no update available.
 podman healthcheck run webapp
 
 # View health check logs
-podman inspect webapp --format '{{json .State.Health}}' | python3 -m json.tool
+podman inspect webapp --format '{{json .State.Healthcheck}}' | python3 -m json.tool
 
 # Check the container logs for application errors
 podman logs webapp --since "10 minutes ago"
