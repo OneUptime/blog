@@ -1,21 +1,23 @@
-# How to Enforce Cluster Templates with Rancher
+# How to Enforce RKE Templates with Rancher
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Rancher, Kubernetes, Cluster Templates, RBAC
+Tags: Rancher, Kubernetes, RKE Templates, RBAC
 
-Description: Learn how to enforce cluster templates in Rancher so that all new clusters must be created from approved templates.
+Description: Learn how to enforce RKE templates in Rancher so that all new Rancher-provisioned RKE1 clusters must be created from approved templates.
 
-Enforcing cluster templates in Rancher ensures that every new Kubernetes cluster in your organization meets defined standards. When template enforcement is enabled, users cannot create clusters with ad-hoc configurations. This guide shows you how to set up and manage template enforcement effectively.
+Enforcing RKE templates in Rancher ensures that every new Rancher-provisioned RKE1 cluster in your organization meets defined standards. When template enforcement is enabled, users cannot create clusters with ad-hoc configurations. This guide shows you how to set up and manage template enforcement effectively.
+
+This feature applies to Rancher's legacy RKE1 templates. Rancher 2.12 and later no longer support provisioning or managing downstream RKE1 clusters, so use this guide only with Rancher 2.11 or earlier.
 
 ## Prerequisites
 
-- Rancher v2.6 or later with admin access
-- At least one cluster template already created and configured
+- Rancher v2.6 through v2.11 with admin access
+- At least one RKE template already created and configured
 - Users and roles configured in Rancher
 - An understanding of Rancher RBAC
 
-## Why Enforce Cluster Templates
+## Why Enforce RKE Templates
 
 Without enforcement, any user with cluster creation permissions can provision clusters with arbitrary configurations. This leads to configuration drift, security gaps, and operational inconsistencies. Enforcement ensures that every cluster aligns with your organization's standards for networking, security, and resource management.
 
@@ -55,9 +57,9 @@ The output should return `"true"`.
 
 Before enforcing templates, make sure your templates are production-ready:
 
-1. Navigate to **Cluster Management** then **RKE Templates**.
-2. Review each template to ensure all critical settings are locked.
-3. Verify that templates cover all the infrastructure providers your teams use.
+1. Navigate to **Cluster Management** then **RKE1 Configuration > RKE Templates**.
+2. Review each template to ensure all critical settings are not marked **Allow User Override**.
+3. Verify that you have matching node templates or other provisioning workflows for the infrastructure providers your teams use.
 4. Set a default revision for each template.
 
 Check that the following settings are locked in your templates:
@@ -65,45 +67,33 @@ Check that the following settings are locked in your templates:
 ```yaml
 # Critical locked settings checklist
 
-network:
-  plugin: canal  # Locked
+rancher_kubernetes_engine_config:
+  authorization:
+    mode: rbac  # Locked
 
-services:
-  kube-api:
-    authorization:
-      mode: rbac  # Locked
-    audit_log:
-      enabled: true  # Locked
-    secrets_encryption_config:
-      enabled: true  # Locked
-  etcd:
-    backup_config:
-      enabled: true  # Locked
-      interval_hours: 6  # Locked
+  network:
+    plugin: canal  # Locked
+
+  services:
+    kube_api:
+      audit_log:
+        enabled: true  # Locked
+      secrets_encryption_config:
+        enabled: true  # Locked
+    etcd:
+      backup_config:
+        enabled: true  # Locked
+        interval_hours: 6  # Locked
 ```
 
 ## Step 4: Assign Template Access
 
 Make sure all users who need to create clusters have access to at least one template:
 
-1. Open a cluster template.
+1. Open an RKE template.
 2. Click **Add Member**.
 3. Add users or groups that need access.
-4. Set the role to **Member** for users who should use but not modify the template.
-
-```bash
-# Add a member to a template via API
-curl -s -k \
-  -X POST \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "accessType": "member",
-    "clusterTemplateId": "cattle-global-data:ct-xxxxx",
-    "userPrincipalId": "local://user-xxxxx"
-  }' \
-  "https://rancher.example.com/v3/clusterTemplateRevisions"
-```
+4. Set the access type to **User** for people who should use but not modify the template.
 
 ## Step 5: Test Enforcement
 
@@ -111,43 +101,22 @@ Verify that enforcement works correctly:
 
 1. Log in as a non-admin user who has cluster creation permissions.
 2. Navigate to **Cluster Management** and click **Create**.
-3. You should see that the **Cluster Template** field is now required.
+3. You should be required to use an existing RKE template and revision.
 4. Attempting to create a cluster without selecting a template should be blocked.
-
-Test with the API as well:
-
-```bash
-# This should fail when enforcement is enabled
-curl -s -k \
-  -X POST \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "test-cluster",
-    "rancherKubernetesEngineConfig": {
-      "network": {
-        "plugin": "flannel"
-      }
-    }
-  }' \
-  "https://rancher.example.com/v3/clusters"
-```
-
-The response should indicate that a cluster template is required.
 
 ## Step 6: Handle Exceptions
 
-In some cases, you may need to allow specific users to bypass enforcement:
+In Rancher, RKE template enforcement exempts administrators only:
 
-1. Go to **Users & Authentication**.
-2. Select the user or group that needs an exception.
-3. Assign the **Cluster Template Owner** role at the global level.
+1. Go to **Users & Authentication** if you need to review who has administrator access.
+2. Remove unnecessary administrator access before enabling enforcement.
+3. For users who need more flexibility, share a less restrictive RKE template instead of bypassing enforcement.
 
-Users with admin or cluster-template-owner roles can still create clusters without templates. Limit these roles to platform administrators only.
+Template ownership lets a user revise and share a template, but it does not exempt them from enforcement. Limit administrator access to platform administrators only.
 
 ## Step 7: Monitor Compliance
 
-Set up monitoring to track template compliance across your clusters:
+Set up monitoring to track template compliance across your Rancher-provisioned RKE clusters:
 
 ```bash
 # List all clusters and their template status
@@ -156,6 +125,7 @@ curl -s -k \
   "https://rancher.example.com/v3/clusters" | \
   jq '.data[] | {
     name: .name,
+    driver: .driver,
     template: .clusterTemplateId,
     revision: .clusterTemplateRevisionId,
     state: .state
@@ -173,7 +143,7 @@ TOKEN="$RANCHER_TOKEN"
 
 clusters=$(curl -s -k \
   -H "Authorization: Bearer $TOKEN" \
-  "$RANCHER_URL/v3/clusters" | jq -r '.data[] | select(.clusterTemplateId == null) | .name')
+  "$RANCHER_URL/v3/clusters" | jq -r '.data[] | select(.driver == "rancherKubernetesEngine" and .clusterTemplateId == null) | .name')
 
 if [ -n "$clusters" ]; then
   echo "WARNING: The following clusters are not using templates:"
@@ -186,7 +156,7 @@ fi
 
 As your organization grows, refine your enforcement approach:
 
-1. **Create provider-specific templates**: Have separate templates for AWS, Azure, GCP, and on-premises deployments.
+1. **Create provider-specific templates**: Have separate templates for AWS, Azure, GCP, and on-premises deployments, and pair them with node templates if you also need to standardize infrastructure.
 2. **Establish a template review process**: Require peer review before template changes are published.
 3. **Version template policies**: Track which templates are approved for which environments.
 
@@ -218,53 +188,16 @@ resource "rancher2_setting" "cluster_template_enforcement" {
   name  = "cluster-template-enforcement"
   value = "true"
 }
-
-resource "rancher2_cluster_template" "production" {
-  name        = "production-standard"
-  description = "Standard production cluster template"
-
-  members {
-    access_type       = "member"
-    group_principal_id = "local://g-xxxxx"
-  }
-
-  template_revisions {
-    name    = "v1.0"
-    default = true
-
-    cluster_config {
-      rke_config {
-        network {
-          plugin = "canal"
-        }
-        services {
-          kube_api {
-            audit_log {
-              enabled = true
-            }
-          }
-          etcd {
-            backup_config {
-              enabled        = true
-              interval_hours = 6
-              retention      = 30
-            }
-          }
-        }
-      }
-    }
-  }
-}
 ```
 
 ## Best Practices
 
 - **Communicate changes early**: Notify teams before enabling enforcement so they understand the new requirements.
-- **Provide sufficient templates**: Ensure there are templates for every valid use case to avoid blocking legitimate work.
+- **Provide sufficient templates**: Ensure there are RKE templates for every valid use case to avoid blocking legitimate work.
 - **Audit regularly**: Review template assignments and compliance reports on a regular schedule.
-- **Maintain escape hatches**: Have a documented process for emergency exceptions that requires management approval.
+- **Maintain escape hatches**: Have a documented process for emergency administrator access or approved use of a more permissive template.
 - **Automate compliance checks**: Integrate template compliance into your CI/CD pipelines and monitoring dashboards.
 
 ## Conclusion
 
-Enforcing cluster templates in Rancher is a critical governance step for organizations running multiple Kubernetes clusters. By enabling enforcement, preparing comprehensive templates, and monitoring compliance, you create a secure and consistent foundation for your container infrastructure. The key is balancing control with flexibility so teams can remain productive within defined guardrails.
+Enforcing RKE templates in Rancher is a critical governance step for organizations running multiple Kubernetes clusters. By enabling enforcement, preparing comprehensive templates, and monitoring compliance, you create a secure and consistent foundation for your container infrastructure. The key is balancing control with flexibility so teams can remain productive within defined guardrails.
