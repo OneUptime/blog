@@ -18,10 +18,10 @@ SES Configuration Sets let you apply rules to a group of emails you send, includ
 resource "aws_ses_configuration_set" "transactional" {
   name = "transactional-emails"
 
-  # Control whether to track email open and click events
+  # Publish configuration set reputation metrics such as bounce and complaint rates
   reputation_metrics_enabled = true
 
-  # Disable sending for this configuration set (useful for testing)
+  # Keep sending enabled for emails that use this configuration set
   sending_enabled = true
 
   delivery_options {
@@ -79,9 +79,9 @@ resource "aws_ses_event_destination" "cloudwatch" {
 }
 ```
 
-## Adding a Kinesis Firehose Destination
+## Adding an Amazon Data Firehose Destination
 
-Stream all email events to S3 via Kinesis Firehose for long-term analytics.
+Stream all email events to S3 via an existing Amazon Data Firehose delivery stream for long-term analytics.
 
 ```hcl
 resource "aws_ses_event_destination" "firehose" {
@@ -146,4 +146,4 @@ tofu apply tfplan
 
 ## Summary
 
-SES configuration sets enable rich email observability by routing events to SNS, CloudWatch, or Kinesis Firehose. OpenTofu lets you manage these configuration sets and their destinations as code, making it easy to replicate your email tracking setup across environments.
+SES configuration sets enable rich email observability by routing events to SNS, CloudWatch, or Amazon Data Firehose. OpenTofu lets you manage these configuration sets and their destinations as code, making it easy to replicate your email tracking setup across environments.
