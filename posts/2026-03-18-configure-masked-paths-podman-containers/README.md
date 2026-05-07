@@ -82,10 +82,9 @@ podman run --rm \
   docker.io/library/alpine:latest \
   sh -c "cat /etc/hostname 2>&1 || echo '/etc/hostname is masked'"
 
-# Mask multiple paths by specifying the flag multiple times
+# Mask multiple paths by separating them with colons
 podman run --rm \
-  --security-opt mask=/etc/hostname \
-  --security-opt mask=/etc/resolv.conf \
+  --security-opt mask=/etc/hostname:/etc/resolv.conf \
   docker.io/library/alpine:latest \
   sh -c "
     echo '--- hostname ---'
@@ -95,30 +94,22 @@ podman run --rm \
   "
 ```
 
-## Masking Paths via containers.conf
+## Masking Paths via Quadlet
 
-Set default masked paths for all containers through the Podman configuration file.
+Set masked paths for containers managed by Podman Quadlet units with the `Mask=` key.
 
 ```bash
-# Create a sample containers.conf with custom masked paths
-cat > /tmp/masked-paths-config.conf << 'EOF'
-[containers]
-# Additional paths to mask in all containers
-# These are merged with the built-in defaults
-masked_paths = [
-  "/proc/kcore",
-  "/proc/keys",
-  "/proc/timer_list",
-  "/proc/sched_debug",
-  "/sys/firmware",
-  "/proc/scsi",
-  "/proc/acpi",
-  "/sys/devices/virtual/powercap"
-]
+# Create a sample Quadlet container unit with custom masked paths
+mkdir -p ~/.config/containers/systemd
+cat > ~/.config/containers/systemd/secure-db.container << 'EOF'
+[Container]
+Image=docker.io/library/alpine:latest
+Exec=sleep 3600
+Mask=/proc/kcore:/proc/keys:/proc/timer_list:/proc/sched_debug:/sys/firmware:/proc/scsi:/proc/acpi:/sys/devices/virtual/powercap
 EOF
 
-echo "Sample config at /tmp/masked-paths-config.conf"
-echo "Copy to ~/.config/containers/containers.conf to apply"
+systemctl --user daemon-reload
+systemctl --user start secure-db.service
 ```
 
 ## Practical Example: Securing a Database Container
@@ -130,11 +121,7 @@ Database containers should not have access to host kernel details.
 # Mask paths that could leak host hardware or kernel information
 podman run -d \
   --name secure-db \
-  --security-opt mask=/proc/kcore \
-  --security-opt mask=/proc/keys \
-  --security-opt mask=/proc/timer_list \
-  --security-opt mask=/sys/firmware \
-  --security-opt mask=/proc/acpi \
+  --security-opt mask=/proc/kcore:/proc/keys:/proc/timer_list:/sys/firmware:/proc/acpi \
   docker.io/library/alpine:latest sleep 3600
 
 # Verify masked paths from inside the container
@@ -161,9 +148,7 @@ Masked paths work alongside other Podman security features for defense in depth.
 podman run --rm \
   --cap-drop ALL \
   --security-opt no-new-privileges \
-  --security-opt mask=/proc/kcore \
-  --security-opt mask=/proc/keys \
-  --security-opt mask=/proc/acpi \
+  --security-opt mask=/proc/kcore:/proc/keys:/proc/acpi \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid \
   docker.io/library/alpine:latest \
@@ -177,4 +162,4 @@ podman run --rm \
 
 ## Summary
 
-Masked paths in Podman prevent containers from reading sensitive kernel and system information. Podman applies sensible defaults, but you can add custom masked paths with `--security-opt mask=` or through `containers.conf`. Mask paths that could expose host hardware details, kernel memory, cryptographic keys, or scheduling information. Combined with dropped capabilities, no-new-privileges, and read-only filesystems, masked paths form part of a comprehensive container security strategy.
+Masked paths in Podman prevent containers from reading sensitive kernel and system information. Podman applies sensible defaults, but you can add custom masked paths with `--security-opt mask=` or, for Quadlet-managed containers, with `Mask=`. Mask paths that could expose host hardware details, kernel memory, cryptographic keys, or scheduling information. Combined with dropped capabilities, no-new-privileges, and read-only filesystems, masked paths form part of a comprehensive container security strategy.
