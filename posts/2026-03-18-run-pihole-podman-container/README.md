@@ -43,10 +43,11 @@ podman run -d \
   -p 53:53/udp \
   -p 8080:80 \
   -e TZ=America/New_York \
-  -e WEBPASSWORD=my-pihole-password \
-  -v pihole-config:/etc/pihole:Z \
-  -v pihole-dnsmasq:/etc/dnsmasq.d:Z \
-  pihole/pihole:latest
+  -e FTLCONF_webserver_api_password=my-pihole-password \
+  -e FTLCONF_dns_listeningMode=ALL \
+  -v pihole-config:/etc/pihole:z \
+  -v pihole-dnsmasq:/etc/dnsmasq.d:z \
+  docker.io/pihole/pihole:latest
 
 # Wait for Pi-hole to initialize
 sleep 15
@@ -68,21 +69,23 @@ Set custom upstream DNS servers for Pi-hole to forward queries to.
 
 ```bash
 # Run Pi-hole with custom upstream DNS servers
+podman volume create pihole-custom-config
+podman volume create pihole-custom-dnsmasq
+
 podman run -d \
   --name pihole-custom-dns \
   -p 5353:53/tcp \
   -p 5353:53/udp \
   -p 8081:80 \
   -e TZ=America/New_York \
-  -e WEBPASSWORD=my-pihole-password \
-  -e PIHOLE_DNS_="1.1.1.1;1.0.0.1" \
-  -e DNSSEC=true \
-  -e REV_SERVER=true \
-  -e REV_SERVER_TARGET=192.168.1.1 \
-  -e REV_SERVER_CIDR=192.168.1.0/24 \
-  -v pihole-config:/etc/pihole:Z \
-  -v pihole-dnsmasq:/etc/dnsmasq.d:Z \
-  pihole/pihole:latest
+  -e FTLCONF_webserver_api_password=my-pihole-password \
+  -e FTLCONF_dns_listeningMode=ALL \
+  -e FTLCONF_dns_upstreams="1.1.1.1;1.0.0.1" \
+  -e FTLCONF_dns_dnssec=true \
+  -e FTLCONF_dns_revServers="true,192.168.1.0/24,192.168.1.1,lan" \
+  -v pihole-custom-config:/etc/pihole:z \
+  -v pihole-custom-dnsmasq:/etc/dnsmasq.d:z \
+  docker.io/pihole/pihole:latest
 ```
 
 ## Adding Custom DNS Records
@@ -98,8 +101,8 @@ podman exec my-pihole bash -c 'cat >> /etc/pihole/custom.list <<EOF
 192.168.1.100 homelab.local
 EOF'
 
-# Restart DNS to apply changes
-podman exec my-pihole pihole restartdns
+# Restart the container so FTL re-reads local DNS records
+podman restart my-pihole
 
 # Test the custom DNS record
 dig @localhost server.local +short
@@ -111,7 +114,7 @@ Add and manage ad-blocking lists.
 
 ```bash
 # View current blocklist statistics
-podman exec my-pihole pihole -c -e
+podman exec my-pihole pihole api stats/summary
 
 # Update the gravity database (blocklists)
 podman exec my-pihole pihole -g
@@ -124,7 +127,7 @@ podman exec my-pihole bash -c 'sqlite3 /etc/pihole/gravity.db \
 podman exec my-pihole pihole -g
 
 # Check how many domains are blocked
-podman exec my-pihole pihole -c -e | head -5
+podman exec my-pihole pihole api stats/summary
 ```
 
 ## Whitelisting and Blacklisting Domains
@@ -133,25 +136,25 @@ Control which domains are allowed or blocked.
 
 ```bash
 # Whitelist a domain
-podman exec my-pihole pihole -w example.com
+podman exec my-pihole pihole allow example.com
 
 # Whitelist with a comment
-podman exec my-pihole pihole -w safe-site.com --comment "Needed for work"
+podman exec my-pihole pihole allow safe-site.com --comment "Needed for work"
 
 # Blacklist a specific domain
-podman exec my-pihole pihole -b tracking.example.com
+podman exec my-pihole pihole deny tracking.example.com
 
 # Blacklist with a wildcard
-podman exec my-pihole pihole --wild-block ads.example.com
+podman exec my-pihole pihole --wild ads.example.com
 
 # Show the current whitelist
-podman exec my-pihole pihole -w -l
+podman exec my-pihole pihole allow -l
 
 # Show the current blacklist
-podman exec my-pihole pihole -b -l
+podman exec my-pihole pihole deny -l
 
 # Remove a domain from the whitelist
-podman exec my-pihole pihole -w -d example.com
+podman exec my-pihole pihole allow -d example.com
 ```
 
 ## Custom dnsmasq Configuration
@@ -160,6 +163,8 @@ Add custom dnsmasq settings for advanced DNS control.
 
 ```bash
 # Create a custom dnsmasq configuration
+podman exec my-pihole pihole-FTL --config misc.etc_dnsmasq_d true
+
 podman exec my-pihole bash -c 'cat > /etc/dnsmasq.d/99-custom.conf <<EOF
 # Set a custom domain for local network
 local=/home.lab/
@@ -175,8 +180,8 @@ server=/corp.example.com/10.0.0.1
 cache-size=10000
 EOF'
 
-# Restart DNS to apply changes
-podman exec my-pihole pihole restartdns
+# Restart the container so FTL re-reads dnsmasq configuration files
+podman restart my-pihole
 ```
 
 ## Monitoring Pi-hole
@@ -185,19 +190,19 @@ Check Pi-hole statistics and query logs.
 
 ```bash
 # View Pi-hole summary statistics
-podman exec my-pihole pihole -c -e
+podman exec my-pihole pihole api stats/summary
 
 # View the query log (last 20 entries)
-podman exec my-pihole pihole -t 20
+podman exec my-pihole pihole api 'queries?length=20'
 
 # Check Pi-hole status
 podman exec my-pihole pihole status
 
 # Use the Pi-hole API for stats
-curl -s "http://localhost:8080/admin/api.php?summary" | python3 -m json.tool
+podman exec my-pihole pihole api stats/summary
 
 # Get top blocked domains
-curl -s "http://localhost:8080/admin/api.php?topItems=10&auth=$(podman exec my-pihole pihole -a -p my-pihole-password 2>&1 | grep -oP 'New password.*' || echo '')" | python3 -m json.tool
+podman exec my-pihole pihole api 'stats/top_domains?blocked=true&count=10'
 
 # Temporarily disable Pi-hole blocking (for 5 minutes)
 podman exec my-pihole pihole disable 300
@@ -218,7 +223,7 @@ podman logs my-pihole
 podman exec my-pihole tail -f /var/log/pihole/pihole.log
 
 # Restart the Pi-hole DNS service
-podman exec my-pihole pihole restartdns
+podman exec my-pihole pihole reloaddns
 
 # Stop and start
 podman stop my-pihole
@@ -226,7 +231,7 @@ podman start my-pihole
 
 # Remove containers and volumes
 podman rm -f my-pihole pihole-custom-dns
-podman volume rm pihole-config pihole-dnsmasq
+podman volume rm pihole-config pihole-dnsmasq pihole-custom-config pihole-custom-dnsmasq
 ```
 
 ## Summary
