@@ -19,7 +19,7 @@ Two-factor authentication (2FA) adds an essential security layer to your Rancher
 
 Rancher relies on its authentication providers for 2FA enforcement. The recommended approaches are:
 
-1. **OIDC/SAML provider with built-in MFA** (Okta, Azure AD, Keycloak, etc.)
+1. **OIDC/SAML provider with built-in MFA** (Okta, Microsoft Entra ID, Keycloak, etc.)
 2. **GitHub with 2FA enforcement**
 3. **Proxy-based authentication with MFA**
 
@@ -39,7 +39,7 @@ Configure the OTP settings:
 OTP Type: Time-Based (TOTP)
 OTP Hash Algorithm: SHA1
 Number of Digits: 6
-Look Ahead Window: 1
+Look Around Window: 1
 OTP Token Period: 30 seconds
 ```
 
@@ -55,24 +55,23 @@ Configure OTP:
   Default Action: ON
 ```
 
-### Step 3: Create a Browser Flow with OTP
+### Step 3: Verify the Browser Flow Uses the Built-in 2FA Step
 
 1. Go to **Authentication** then **Flows**.
-2. Duplicate the **Browser** flow.
-3. Add an OTP execution step:
+2. Open the default **Browser** flow and confirm it contains the built-in conditional 2FA step.
+3. For the standard username/password + TOTP experience, you do not need to create a separate browser flow.
 
 ```plaintext
-Browser Flow (copy):
+Browser Flow:
   ├── Cookie (Alternative)
   ├── Identity Provider Redirector (Alternative)
   └── Forms (Alternative)
       ├── Username Password Form (Required)
-      └── OTP Form (Required)
+      └── Browser - Conditional 2FA (Conditional)
+          ├── Condition - User Configured (Required)
+          ├── Condition - credential (Required)
+          └── OTP Form (Alternative)
 ```
-
-4. Bind this flow to the browser flow:
-   - Go to **Authentication** then **Bindings**.
-   - Set **Browser Flow** to your custom flow.
 
 ### Step 4: Test OTP with Rancher
 
@@ -84,11 +83,11 @@ Browser Flow (copy):
 6. Enter the verification code.
 7. Verify that you are logged in to Rancher.
 
-## Method 2: 2FA via Azure AD Conditional Access
+## Method 2: 2FA via Microsoft Entra ID (Azure AD) Conditional Access
 
 ### Step 1: Create a Conditional Access Policy
 
-1. Go to the Azure Portal and navigate to **Azure AD** then **Security** then **Conditional Access**.
+1. Sign in to the Microsoft Entra admin center and navigate to **Entra ID** then **Conditional Access** then **Policies**.
 2. Click **New policy**.
 
 Configure the policy:
@@ -97,12 +96,13 @@ Configure the policy:
 Name: Rancher MFA Requirement
 Assignments:
   Users: All users (or specific groups)
-  Cloud apps: Select the Rancher app registration
+  Target resources: Select the Rancher enterprise application
 Conditions:
   (configure as needed - e.g., all locations)
-Grant:
-  Grant access
-  ☑ Require multi-factor authentication
+Access controls:
+  Grant:
+    Grant access
+    ☑ Require multi-factor authentication
 Session:
   Sign-in frequency: 8 hours
 ```
@@ -111,13 +111,13 @@ Session:
 
 ### Step 2: Configure Azure MFA Methods
 
-1. Navigate to **Azure AD** then **Security** then **Authentication methods**.
+1. Navigate to **Entra ID** then **Protection** then **Authentication methods**.
 2. Enable the MFA methods your organization supports:
 
 ```plaintext
 ☑ Microsoft Authenticator (push notifications)
-☑ OATH hardware tokens
-☑ OATH software tokens (TOTP apps)
+☑ Hardware OATH tokens
+☑ Software OATH tokens (TOTP apps)
 ☑ SMS (less secure, not recommended)
 ☑ Voice call (less secure, not recommended)
 ```
@@ -134,31 +134,30 @@ Session:
 ### Step 1: Configure Okta MFA Policy
 
 1. Log in to the Okta Admin Console.
-2. Navigate to **Security** then **Multifactor**.
-3. Enable MFA factors:
+2. Navigate to **Security** then **Authenticators**.
+3. Enable the authenticators you want to allow and set them to **Required** or **Optional** in your authenticator enrollment policy:
 
 ```plaintext
-Factor Types:
+Authenticators:
   ☑ Okta Verify (push/TOTP)
   ☑ Google Authenticator
-  ☑ YubiKey (hardware token)
-  ☐ SMS (disabled for security)
-  ☐ Voice Call (disabled for security)
+  ☑ YubiKey OTP or Security Key / Biometric Authenticator
+  ☐ Phone (SMS/voice, disabled for security)
 ```
 
 ### Step 2: Create an MFA Sign-On Policy
 
 1. Navigate to the Rancher application in Okta.
-2. Click the **Sign On** tab.
+2. Open the **Sign On** tab and assign or create an app sign-in policy.
 3. Add a sign-on rule:
 
 ```plaintext
 Rule Name: Require MFA for Rancher
 Conditions:
-  When user signs in: All users
-  After MFA enrollment: Challenge at every sign on
+  People: All users
 Access:
-  Authentication policy: Any 2 factor types
+  User must authenticate with: Any 2 factor types
+  Prompt for authentication: Every time user signs in to resource
 ```
 
 ### Step 3: Enroll Users
@@ -183,15 +182,15 @@ Users will be prompted to enroll in MFA on their next login attempt:
 ☑ Require two-factor authentication for everyone in the organization
 ```
 
-4. Set a grace period for existing members to enable 2FA.
+4. Optionally enable **Only allow secure two-factor methods** if you want to exclude SMS-based 2FA.
 
 ### Step 2: Verify Enforcement
 
-Members who do not enable 2FA within the grace period will be removed from the organization automatically. This ensures that all Rancher logins through GitHub have 2FA enabled.
+Members and billing managers who do not enable 2FA will retain membership but lose access to organization resources until they comply. Outside collaborators who do not enable 2FA are removed automatically. This ensures that Rancher logins through GitHub meet GitHub's organization-level 2FA requirement.
 
 ## Method 5: Reverse Proxy with MFA
 
-For environments using local authentication, add an MFA layer with a reverse proxy:
+For environments that need an additional access-control layer in front of Rancher, place OAuth2 Proxy in front of Rancher and enforce MFA in the upstream OIDC provider. This protects access to the Rancher UI, but it does not add MFA to Rancher's built-in local authentication.
 
 ### Step 1: Deploy OAuth2 Proxy
 
@@ -215,17 +214,32 @@ spec:
         - name: oauth2-proxy
           image: quay.io/oauth2-proxy/oauth2-proxy:latest
           args:
-            - --provider=oidc
+            - --provider=keycloak-oidc
+            - --http-address=0.0.0.0:4180
+            - --reverse-proxy=true
             - --oidc-issuer-url=https://keycloak.example.com/realms/your-realm
+            - --redirect-url=https://rancher.example.com/oauth2/callback
             - --client-id=rancher-proxy
-            - --client-secret=$(CLIENT_SECRET)
-            - --cookie-secret=$(COOKIE_SECRET)
-            - --upstream=https://rancher-internal.example.com
-            - --email-domain=example.com
-            - --pass-access-token=true
+            - --client-secret=<client-secret>
+            - --cookie-secret=<base64-cookie-secret>
+            - --upstream=http://rancher.cattle-system.svc.cluster.local:80
+            - --email-domain=*
             - --set-xauthrequest=true
           ports:
             - containerPort: 4180
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy
+  namespace: cattle-system
+spec:
+  selector:
+    app: oauth2-proxy
+  ports:
+    - name: http
+      port: 4180
+      targetPort: 4180
 ```
 
 ### Step 2: Configure Ingress
@@ -234,11 +248,38 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: rancher-mfa
-  annotations:
-    nginx.ingress.kubernetes.io/auth-url: "http://oauth2-proxy.cattle-system.svc.cluster.local:4180/oauth2/auth"
-    nginx.ingress.kubernetes.io/auth-signin: "https://rancher.example.com/oauth2/start"
+  name: oauth2-proxy
+  namespace: cattle-system
 spec:
+  tls:
+    - hosts:
+        - rancher.example.com
+      secretName: rancher-tls
+  rules:
+    - host: rancher.example.com
+      http:
+        paths:
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: oauth2-proxy
+                port:
+                  number: 4180
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rancher-mfa
+  namespace: cattle-system
+  annotations:
+    nginx.ingress.kubernetes.io/auth-url: "https://$host/oauth2/auth"
+    nginx.ingress.kubernetes.io/auth-signin: "https://$host/oauth2/start?rd=$escaped_request_uri"
+spec:
+  tls:
+    - hosts:
+        - rancher.example.com
+      secretName: rancher-tls
   rules:
     - host: rancher.example.com
       http:
@@ -249,7 +290,7 @@ spec:
               service:
                 name: rancher
                 port:
-                  number: 443
+                  number: 80
 ```
 
 ## Monitoring 2FA Compliance
@@ -259,12 +300,15 @@ Track which users have 2FA enabled:
 ```bash
 # For GitHub-based auth, check organization members
 
-curl -H "Authorization: token $GITHUB_TOKEN" \
+curl -L \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
   "https://api.github.com/orgs/your-org/members?filter=2fa_disabled"
 
 # For Rancher, audit authentication events
-kubectl logs -l app=rancher -n cattle-system --tail=500 | \
-  grep -i "login\|auth" | tail -20
+kubectl -n cattle-system logs deploy/rancher --tail=500 | \
+  grep -Ei "login|auth" | tail -20
 ```
 
 ## Best Practices
@@ -277,4 +321,4 @@ kubectl logs -l app=rancher -n cattle-system --tail=500 | \
 
 ## Conclusion
 
-While Rancher does not include built-in 2FA, you can effectively implement it through identity provider integrations. Whether you use Keycloak, Azure AD, Okta, or GitHub, the key is to enforce MFA at the identity provider level so that every Rancher authentication goes through a second factor. Choose the approach that aligns with your existing identity infrastructure and security requirements.
+While Rancher does not include built-in 2FA for local accounts, you can effectively implement it through identity provider integrations. Whether you use Keycloak, Microsoft Entra ID (Azure AD), Okta, or GitHub, the key is to enforce MFA at the identity provider level so that every Rancher authentication goes through a second factor. Choose the approach that aligns with your existing identity infrastructure and security requirements.
