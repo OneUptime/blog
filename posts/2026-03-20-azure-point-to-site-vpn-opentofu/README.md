@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, VPN, Point-to-Site, Remote Access, Infrastructure as Code
 
-Description: Learn how to configure Azure Point-to-Site VPN for individual remote user access to Azure VNets using certificate or Azure AD authentication with OpenTofu.
+Description: Learn how to configure Azure Point-to-Site VPN for individual remote user access to Azure VNets using certificate or Microsoft Entra ID authentication with OpenTofu.
 
 ## Introduction
 
-Azure Point-to-Site (P2S) VPN allows individual computers to connect to your Azure VNet without requiring a physical VPN device. OpenTofu manages the VPN Gateway P2S configuration with certificate or Azure AD authentication.
+Azure Point-to-Site (P2S) VPN allows individual computers to connect to your Azure VNet without requiring a physical VPN device. OpenTofu manages the VPN Gateway P2S configuration with certificate or Microsoft Entra ID authentication.
 
 ## Creating the VPN Gateway with P2S
 
@@ -23,7 +23,7 @@ resource "azurerm_virtual_network_gateway" "p2s" {
   sku      = "VpnGw1"
 
   active_active = false
-  enable_bgp    = false
+  bgp_enabled   = false
 
   ip_configuration {
     name                          = "p2sGatewayConfig"
@@ -54,7 +54,9 @@ resource "azurerm_virtual_network_gateway" "p2s" {
 }
 ```
 
-## Azure AD Authentication for P2S
+## Microsoft Entra ID Authentication for P2S
+
+Use this gateway configuration instead of the certificate-based example above when you want Microsoft Entra ID authentication.
 
 ```hcl
 resource "azurerm_virtual_network_gateway" "p2s_aad" {
@@ -77,7 +79,7 @@ resource "azurerm_virtual_network_gateway" "p2s_aad" {
     vpn_client_protocols = ["OpenVPN"]
 
     aad_tenant   = "https://login.microsoftonline.com/${var.tenant_id}"
-    aad_audience = "41b23e61-6c1e-4545-b367-cd054e0ed4b4"  # Azure VPN app ID
+    aad_audience = "c632b3df-fb67-4d84-bdcf-b95ad541b5c8"  # Microsoft-registered Azure VPN Client app ID (Azure Public)
     aad_issuer   = "https://sts.windows.net/${var.tenant_id}/"
   }
 }
@@ -85,7 +87,7 @@ resource "azurerm_virtual_network_gateway" "p2s_aad" {
 
 ## Generating a Self-Signed Root Certificate
 
-You can use OpenSSL to generate test certificates.
+You can use OpenSSL to generate a test root certificate. Each VPN client also needs a client certificate signed by this root certificate.
 
 ```bash
 # Generate root CA key and certificate
@@ -139,4 +141,4 @@ tofu apply tfplan
 
 ## Summary
 
-Azure Point-to-Site VPN enables secure remote access for individual users. OpenTofu manages the VPN Gateway P2S configuration including client address pools, protocol selection, and either certificate or Azure AD authentication - all as version-controlled infrastructure code.
+Azure Point-to-Site VPN enables secure remote access for individual users. OpenTofu manages the VPN Gateway P2S configuration including client address pools, protocol selection, and either certificate or Microsoft Entra ID authentication - all as version-controlled infrastructure code.
