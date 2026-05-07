@@ -17,7 +17,7 @@ Volume snapshots provide point-in-time copies of your persistent volumes, enabli
 
 ## Step 1: Install the Snapshot Controller
 
-Many clusters do not include the snapshot controller by default. Install it:
+Snapshot CRDs and the snapshot controller are typically installed by the Kubernetes distribution. If your cluster does not include them already, install a release that matches your Kubernetes version. The example below uses external-snapshotter v7.0.1, which supports Kubernetes 1.20+ and recommends Kubernetes 1.24. For Kubernetes 1.25+ clusters, use a current 8.x release instead.
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
@@ -120,14 +120,14 @@ kubectl describe volumesnapshot db-snapshot-20260319 -n default
 kubectl get volumesnapshotcontent
 
 # Verify readiness
-kubectl get volumesnapshot db-snapshot-20260319 -o jsonpath='{.status.readyToUse}'
+kubectl get volumesnapshot db-snapshot-20260319 -n default -o jsonpath='{.status.readyToUse}'
 ```
 
 A successful snapshot shows `readyToUse: true`.
 
 ## Step 5: Restore from a Snapshot
 
-Create a new PVC from the snapshot:
+Create a new PVC from the snapshot using a StorageClass backed by the same CSI driver as the source PVC, and request at least the snapshot's restore size:
 
 ```yaml
 apiVersion: v1
@@ -155,7 +155,7 @@ kubectl get pvc db-data-restored -n default
 
 ## Step 6: Clone a Volume Using Snapshots
 
-Clone a volume by creating a snapshot and restoring it:
+Clone a volume by creating a snapshot and restoring it with a StorageClass backed by the same CSI driver:
 
 ```bash
 # Step 1: Create snapshot
@@ -221,7 +221,7 @@ spec:
             - -c
             - |
               TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-              cat <<SNAP | kubectl apply -f -
+              cat <<SNAP | kubectl create -f -
               apiVersion: snapshot.storage.k8s.io/v1
               kind: VolumeSnapshot
               metadata:
@@ -262,6 +262,7 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: snapshot-sa
+  namespace: default
 roleRef:
   kind: Role
   name: snapshot-role
@@ -292,7 +293,7 @@ kubectl get volumesnapshot -n default -o jsonpath='{range .items[*]}{.metadata.n
 
 ## Step 9: Pre-Snapshot Hooks
 
-Ensure data consistency before taking snapshots by quiescing the application:
+Ensure data consistency before taking snapshots by quiescing the application. If you use filesystem freezing, the container must include `fsfreeze` and have the privileges needed to freeze the mounted filesystem:
 
 ```bash
 # Freeze the filesystem before snapshot
@@ -311,10 +312,13 @@ kubectl exec db-pod -- fsfreeze --unfreeze /data
 For databases, use native flush commands:
 
 ```bash
-# MySQL - flush and lock
-kubectl exec mysql-pod -- mysql -e "FLUSH TABLES WITH READ LOCK;"
-# Take snapshot...
-kubectl exec mysql-pod -- mysql -e "UNLOCK TABLES;"
+# MySQL - keep the same session open while the snapshot runs
+kubectl exec -it mysql-pod -- mysql
+
+# In that same MySQL session:
+FLUSH TABLES WITH READ LOCK;
+# Take snapshot from another terminal...
+UNLOCK TABLES;
 
 # PostgreSQL - checkpoint
 kubectl exec pg-pod -- psql -c "CHECKPOINT;"
@@ -325,10 +329,11 @@ kubectl exec pg-pod -- psql -c "CHECKPOINT;"
 
 ```bash
 # Check snapshot controller logs
-kubectl logs -n kube-system -l app=snapshot-controller --tail=50
+kubectl logs -n kube-system -l app.kubernetes.io/name=snapshot-controller --tail=50
 
-# Check CSI driver logs
-kubectl logs -n kube-system -l app=csi-controller --tail=50
+# Identify the CSI controller pod for your driver, then check the csi-snapshotter container logs
+kubectl get pods -A | grep csi
+kubectl logs -n <driver-namespace> <driver-controller-pod> -c csi-snapshotter --tail=50
 
 # Verify VolumeSnapshotClass
 kubectl get volumesnapshotclass
