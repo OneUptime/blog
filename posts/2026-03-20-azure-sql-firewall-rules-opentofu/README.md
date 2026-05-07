@@ -23,8 +23,8 @@ resource "azurerm_mssql_server" "server" {
   administrator_login          = "sqladmin"
   administrator_login_password = var.sql_admin_password
 
-  # Restrict public network access
-  public_network_access_enabled = true  # Set to false for private-only access
+  # Keep the public endpoint enabled when using firewall or virtual network rules
+  public_network_access_enabled = true  # Use private endpoints instead for private-only access
 }
 ```
 
@@ -39,15 +39,15 @@ resource "azurerm_mssql_firewall_rule" "office_ip" {
   end_ip_address   = "203.0.113.10"
 }
 
-# Allow access from a CIDR range (OpenTofu handles range arithmetic)
+# Allow access from an IP range
 resource "azurerm_mssql_firewall_rule" "vpn_range" {
   name             = "AllowVPNRange"
   server_id        = azurerm_mssql_server.server.id
-  start_ip_address = "192.168.1.0"
-  end_ip_address   = "192.168.1.255"
+  start_ip_address = "198.51.100.0"
+  end_ip_address   = "198.51.100.255"
 }
 
-# Special rule: 0.0.0.0 to 0.0.0.0 allows all Azure services
+# Special rule: 0.0.0.0 to 0.0.0.0 enables "Allow Azure services and resources to access this server"
 resource "azurerm_mssql_firewall_rule" "azure_services" {
   name             = "AllowAzureServices"
   server_id        = azurerm_mssql_server.server.id
@@ -59,7 +59,7 @@ resource "azurerm_mssql_firewall_rule" "azure_services" {
 ## Step 3: Manage Multiple Rules Dynamically
 
 ```hcl
-# Define allowed CIDRs in variables for easy management
+# Define allowed IP ranges in variables for easy management
 variable "allowed_ip_ranges" {
   description = "Map of firewall rule names to IP range objects"
   type = map(object({
@@ -87,6 +87,22 @@ resource "azurerm_mssql_firewall_rule" "dynamic_rules" {
 ## Step 4: VNet Service Endpoint Rules
 
 ```hcl
+# The subnet must have the Microsoft.Sql service endpoint enabled
+resource "azurerm_virtual_network" "vnet" {
+  name                = "app-vnet"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  address_space       = ["10.0.0.0/16"]
+}
+
+resource "azurerm_subnet" "app_subnet" {
+  name                 = "app-subnet"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.1.0/24"]
+  service_endpoints    = ["Microsoft.Sql"]
+}
+
 # Allow access from a specific VNet subnet via service endpoint
 resource "azurerm_mssql_virtual_network_rule" "app_subnet_rule" {
   name      = "allow-app-subnet"
