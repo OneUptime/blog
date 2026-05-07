@@ -41,7 +41,7 @@ podman run -d --name web \
   docker.io/library/nginx:latest
 
 # Verify both IP and MAC
-podman exec web ip addr show eth0
+podman inspect web --format '{{ range .NetworkSettings.Networks }}IP={{ .IPAddress }} MAC={{ .MacAddress }}{{ end }}'
 ```
 
 ## MAC Address with Macvlan Networks
@@ -57,7 +57,7 @@ sudo podman network create \
   --gateway 192.168.1.1 \
   lan-net
 
-# Assign a specific MAC for DHCP reservation
+# Assign a specific MAC and IP address
 sudo podman run -d --name server \
   --network lan-net \
   --ip 192.168.1.200 \
@@ -73,9 +73,19 @@ sudo podman run -d --name server \
 # Configure your DHCP server with a reservation:
 # MAC: 02:42:c0:a8:01:c8 -> IP: 192.168.1.200
 
-# The container always gets the same IP from DHCP
+# Enable the DHCP proxy when using the Netavark backend
+sudo systemctl enable --now netavark-dhcp-proxy.socket
+
+# Create a macvlan network that uses DHCP IPAM
+sudo podman network create \
+  --driver macvlan \
+  --opt parent=eth0 \
+  --ipam-driver dhcp \
+  lan-dhcp
+
+# The DHCP server assigns the reserved IP based on the MAC
 sudo podman run -d --name dhcp-client \
-  --network lan-net \
+  --network lan-dhcp \
   --mac-address 02:42:c0:a8:01:c8 \
   docker.io/library/alpine:latest tail -f /dev/null
 ```
