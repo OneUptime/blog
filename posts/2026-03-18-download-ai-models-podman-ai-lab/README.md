@@ -20,13 +20,15 @@ Before downloading models, ensure the AI Lab extension is installed and your Pod
 
 ```bash
 # Verify Podman is running
-
 podman info --format '{{.Version.Version}}'
 
-# Check available disk space (models can be 2-10GB each)
-podman machine ssh df -h /
+# Check available disk space in the default AI Lab storage location on Linux
+# For macOS and Windows, use the Models path shown in AI Lab settings.
+AI_LAB_STORAGE="${HOME}/.local/share/containers/podman-desktop/extensions-storage/redhat.ai-lab"
+MODEL_DIR="${AI_LAB_STORAGE}/models"
+df -h "$AI_LAB_STORAGE"
 
-# Ensure at least 50GB of free disk space
+# Optional: increase the Podman machine disk for model services and applications
 podman machine stop
 podman machine set --disk-size 150
 podman machine start
@@ -36,23 +38,23 @@ podman machine start
 
 ### Using the Podman Desktop UI
 
-Open Podman Desktop and navigate to the AI Lab section. Click on **Models** to see the full catalog. Models are organized by category:
+Open Podman Desktop and navigate to the AI Lab section. Click on **Catalog** to see the curated list of models. Models are organized by category:
 
 - **Language Models**: General-purpose LLMs for text generation and chat
 - **Code Models**: Specialized models for code generation and completion
 - **Instruction Models**: Fine-tuned models that follow instructions well
 
-### Using the CLI to List Available Models
+### Using the CLI to Inspect Local Model Files
 
 ```bash
-# List all containers related to AI Lab model services
-podman ps -a --filter "label=ai-lab-model" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+# List running or stopped AI Lab inference server containers
+podman ps -a --filter "label=ai-lab-inference-server" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 
-# Check what model files have been downloaded
-podman machine ssh ls -lh /var/lib/containers/ai-lab/models/
+# Check what URL-based model files have been downloaded
+find "$MODEL_DIR" -maxdepth 2 -type f -exec ls -lh {} \;
 
 # Check total disk usage by models
-podman machine ssh du -sh /var/lib/containers/ai-lab/models/
+du -sh "$MODEL_DIR"
 ```
 
 ## Downloading Models
@@ -63,21 +65,22 @@ podman machine ssh du -sh /var/lib/containers/ai-lab/models/
 # The AI Lab catalog includes models in GGUF format optimized for CPU inference
 # Common models available in the catalog:
 
-# Llama-based models (Meta)
-# - llama-2-7b-chat (small, fast, good for testing)
-# - llama-3-8b-instruct (newer, better quality)
+# Granite models (IBM)
+# - granite-4.0-micro-GGUF (small, fast, good for testing)
+# - granite-4.0-tiny-GGUF (lightweight instruction model)
+# - granite-3.3-8b-instruct-GGUF (larger instruction model)
 
-# Mistral models
-# - mistral-7b-instruct (excellent quality-to-size ratio)
+# Qwen and Gemma models
+# - qwen3-4b-GGUF
+# - gemma-3n-E4B-it-GGUF
 
 # Code-focused models
-# - codellama-7b-instruct (code generation)
-# - granite-code-3b (IBM, lightweight code model)
+# - granite-8b-code-instruct-GGUF
 ```
 
 ### Download a Model via the UI
 
-1. Open Podman Desktop and go to **AI Lab > Models**.
+1. Open Podman Desktop and go to **AI Lab > Catalog**.
 2. Browse the catalog or use the search bar to find a model.
 3. Click the **Download** button next to your chosen model.
 4. Monitor the download progress in the notification area.
@@ -86,10 +89,10 @@ podman machine ssh du -sh /var/lib/containers/ai-lab/models/
 
 ```bash
 # List downloaded model files and their sizes
-podman machine ssh find /var/lib/containers/ai-lab/models -name "*.gguf" -exec ls -lh {} \;
+find "$MODEL_DIR" -name "*.gguf" -exec ls -lh {} \;
 
-# Check the integrity of a downloaded model file
-podman machine ssh sha256sum /var/lib/containers/ai-lab/models/mistral-7b-instruct.gguf
+# Check the integrity of downloaded GGUF model files
+find "$MODEL_DIR" -name "*.gguf" -exec sha256sum {} \;
 ```
 
 ## Managing Model Storage
@@ -98,36 +101,36 @@ podman machine ssh sha256sum /var/lib/containers/ai-lab/models/mistral-7b-instru
 
 ```bash
 # See how much space each model is using
-podman machine ssh du -sh /var/lib/containers/ai-lab/models/*
+du -sh "$MODEL_DIR"/*
 
 # Example output:
-# 4.1G    /var/lib/containers/ai-lab/models/llama-2-7b-chat-q4_0.gguf
-# 4.4G    /var/lib/containers/ai-lab/models/mistral-7b-instruct-q4_0.gguf
-# 3.8G    /var/lib/containers/ai-lab/models/codellama-7b-instruct-q4_0.gguf
+# 2.5G    /home/user/.local/share/containers/podman-desktop/extensions-storage/redhat.ai-lab/models/hf.ibm-granite.granite-4.0-micro-GGUF
+# 4.6G    /home/user/.local/share/containers/podman-desktop/extensions-storage/redhat.ai-lab/models/hf.qwen.qwen3-4b-GGUF
+# 5.0G    /home/user/.local/share/containers/podman-desktop/extensions-storage/redhat.ai-lab/models/hf.ibm-granite.granite-8b-code-instruct
 ```
 
 ### Remove Unused Models
 
 ```bash
-# Remove a specific model file to free disk space
-podman machine ssh rm /var/lib/containers/ai-lab/models/llama-2-7b-chat-q4_0.gguf
+# Remove a specific URL-based model directory to free disk space
+rm -rf "$MODEL_DIR/hf.ibm-granite.granite-4.0-micro-GGUF"
 
 # Verify the model was removed
-podman machine ssh ls -la /var/lib/containers/ai-lab/models/
+ls -la "$MODEL_DIR"
 ```
 
 ## Understanding Model Formats and Quantization
 
 ```bash
 # Models in the catalog use GGUF format with various quantization levels
-# Lower quantization = smaller file, faster inference, lower quality
-# Higher quantization = larger file, slower inference, better quality
+# Fewer quantization bits = smaller file, faster inference, lower quality
+# More quantization bits = larger file, slower inference, better quality
 
 # Common quantization levels:
 # Q4_0 - 4-bit quantization, smallest, good for testing (~4GB for 7B params)
 # Q4_K_M - 4-bit with k-quant, good balance (~4.5GB for 7B params)
 # Q5_K_M - 5-bit with k-quant, better quality (~5GB for 7B params)
-# Q8_0 - 8-bit quantization, near full quality (~7GB for 7B params)
+# Q8_0 - 8-bit quantization, larger and higher quality (~7-8GB for 7B params)
 
 # Check your available RAM to choose the right quantization
 podman machine inspect --format 'Memory: {{.Resources.Memory}}MB'
@@ -144,31 +147,34 @@ podman machine inspect --format 'Memory: {{.Resources.Memory}}MB'
 
 ```bash
 # Download a GGUF model file from Hugging Face manually
-podman machine ssh curl -L -o /var/lib/containers/ai-lab/models/custom-model.gguf \
-  "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+mkdir -p "$HOME/Downloads/ai-models"
+curl -L -o "$HOME/Downloads/ai-models/granite-3.3-8b-instruct-Q4_K_M.gguf" \
+  "https://huggingface.co/ibm-granite/granite-3.3-8b-instruct-GGUF/resolve/main/granite-3.3-8b-instruct-Q4_K_M.gguf"
 
 # Verify the download completed successfully
-podman machine ssh ls -lh /var/lib/containers/ai-lab/models/custom-model.gguf
+ls -lh "$HOME/Downloads/ai-models/granite-3.3-8b-instruct-Q4_K_M.gguf"
 
-# The model should now appear in the AI Lab interface after a refresh
+# Import the file from AI Lab > Catalog > Import Model
 ```
 
 ## Troubleshooting Download Issues
 
 ```bash
-# If a download fails or gets stuck, clear partial downloads
-podman machine ssh find /var/lib/containers/ai-lab/models -name "*.part" -delete
+# If a download fails or gets stuck, clear partial URL downloads
+find "$MODEL_DIR" -name "*.tmp" -delete
 
-# Check network connectivity from the Podman machine
-podman machine ssh curl -I https://huggingface.co
+# Check network connectivity from your workstation
+curl -I https://huggingface.co
 
 # If disk space runs out during download
 podman machine stop
 podman machine set --disk-size 200
 podman machine start
 
-# Restart the AI Lab service if models are not appearing
-podman restart $(podman ps --filter "label=ai-lab" -q)
+# Restart AI Lab inference server containers if a running service is stuck
+for container in $(podman ps --filter "label=ai-lab-inference-server" -q); do
+  podman restart "$container"
+done
 ```
 
 ## Summary
