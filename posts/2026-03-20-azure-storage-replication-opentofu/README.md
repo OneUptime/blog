@@ -8,7 +8,7 @@ Description: Learn how to configure Azure Storage replication options including 
 
 ## Overview
 
-Azure Storage offers multiple replication strategies to protect your data. OpenTofu makes it straightforward to configure and switch between replication types as part of your infrastructure code.
+Azure Storage offers multiple replication strategies to protect your data. OpenTofu makes it straightforward to configure replication types as part of your infrastructure code, though some redundancy changes require storage account recreation or migration.
 
 ## Replication Types
 
@@ -47,19 +47,16 @@ resource "azurerm_storage_account" "zrs_storage" {
 }
 ```
 
-## Step 2: Geo-Redundant Storage (GRS)
+## Step 2: Read-Access Geo-Redundant Storage (RA-GRS)
 
 ```hcl
-# GRS replicates data to a secondary region automatically
+# RA-GRS replicates data to a secondary region and enables read access from the secondary endpoint
 resource "azurerm_storage_account" "grs_storage" {
   name                     = "mygrsstorage"
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = azurerm_resource_group.rg.location
   account_tier             = "Standard"
-  account_replication_type = "RAGRS"  # Read-Access GRS enables reads from secondary
-
-  # Enable secondary endpoint access for read operations during regional outages
-  cross_tenant_replication_enabled = false
+  account_replication_type = "RAGRS"  # Provider value for RA-GRS
 }
 
 output "primary_blob_endpoint" {
@@ -68,26 +65,26 @@ output "primary_blob_endpoint" {
 
 output "secondary_blob_endpoint" {
   value       = azurerm_storage_account.grs_storage.secondary_blob_endpoint
-  description = "Secondary endpoint available with RAGRS for read-only access"
+  description = "Secondary endpoint available with RA-GRS for read-only access"
 }
 ```
 
-## Step 3: Geo-Zone-Redundant Storage (GZRS)
+## Step 3: Read-Access Geo-Zone-Redundant Storage (RA-GZRS)
 
 ```hcl
-# GZRS combines zone redundancy with geo-replication for maximum protection
+# RA-GZRS combines zone redundancy, geo-replication, and read access to the secondary region
 resource "azurerm_storage_account" "gzrs_storage" {
   name                     = "mygzrsstorage"
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = azurerm_resource_group.rg.location
   account_tier             = "Standard"
-  account_replication_type = "RAGZRS"  # Read-Access GZRS
+  account_replication_type = "RAGZRS"  # Provider value for RA-GZRS
 }
 ```
 
 ## Step 4: Object Replication Between Accounts
 
-For granular replication between specific containers:
+For granular replication of block blobs between specific containers:
 
 ```hcl
 # Source storage account (must have versioning and change feed enabled)
@@ -117,6 +114,19 @@ resource "azurerm_storage_account" "destination" {
   }
 }
 
+# Source and destination containers
+resource "azurerm_storage_container" "src_container" {
+  name                  = "source-container"
+  storage_account_id    = azurerm_storage_account.source.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "dst_container" {
+  name                  = "destination-container"
+  storage_account_id    = azurerm_storage_account.destination.id
+  container_access_type = "private"
+}
+
 # Object replication policy
 resource "azurerm_storage_object_replication" "replication" {
   source_storage_account_id      = azurerm_storage_account.source.id
@@ -125,7 +135,7 @@ resource "azurerm_storage_object_replication" "replication" {
   rules {
     source_container_name      = azurerm_storage_container.src_container.name
     destination_container_name = azurerm_storage_container.dst_container.name
-    # Replicate only blobs with this prefix
+    # Replicate only blobs whose names begin with this prefix
     filter_out_blobs_with_prefix = ["important/"]
   }
 }
@@ -133,4 +143,4 @@ resource "azurerm_storage_object_replication" "replication" {
 
 ## Summary
 
-Choosing the right Azure Storage replication strategy with OpenTofu depends on your RPO/RTO requirements and budget. Use ZRS for zone-level HA, RAGRS/RAGZRS for cross-region DR with read access, and object replication for fine-grained container-level replication policies.
+Choosing the right Azure Storage replication strategy with OpenTofu depends on your RPO/RTO requirements and budget. Use ZRS for zone-level HA, RA-GRS/RA-GZRS for cross-region DR with read access, and object replication for fine-grained container-level replication policies.
