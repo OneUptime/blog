@@ -14,13 +14,13 @@ A Kubernetes Job creates one or more pods and ensures they run to successful com
 - A managed Kubernetes cluster registered in Rancher
 - Access to a project and namespace
 
-## Step 1: Navigate to the Jobs Page
+## Step 1: Navigate to the Workload View
 
-Log in to your Rancher dashboard, select your target cluster, and navigate to **Workloads > Jobs** from the left sidebar.
+Log in to your Rancher dashboard, select your target cluster, click **Explore**, and navigate to **Workload** from the left sidebar.
 
 ## Step 2: Create a New Job
 
-Click the **Create** button to open the Job creation form.
+Click the **Create** button, then choose **Job** to open the Job creation form.
 
 Fill in the basic details:
 
@@ -70,7 +70,7 @@ If your job needs to read input data or write output:
 
 ## Step 6: Deploy the Job
 
-Click **Create** to submit the Job. Rancher will create the pod(s) and the job will begin executing.
+Click **Launch** to submit the Job. Rancher will create the pod(s) and the job will begin executing.
 
 ## Alternative: Deploy via YAML
 
@@ -130,6 +130,7 @@ metadata:
 spec:
   completions: 10
   parallelism: 3
+  completionMode: Indexed
   backoffLimit: 5
   template:
     spec:
@@ -152,7 +153,7 @@ This runs 10 completions with up to 3 pods running at a time.
 
 ## Step 7: Monitor the Job
 
-In the Rancher UI, navigate to **Workloads > Jobs** to see your job status:
+In the Rancher UI, return to **Workload** to see your job status:
 
 - **Active**: Number of currently running pods
 - **Succeeded**: Number of successfully completed pods
@@ -184,7 +185,7 @@ kubectl logs job/data-migration-v2 -n default
 For jobs with multiple pods:
 
 ```bash
-kubectl logs job/batch-processor -n default --all-containers
+kubectl logs job/batch-processor -n default --all-pods=true
 ```
 
 ## Automatic Cleanup
@@ -202,7 +203,7 @@ This keeps your cluster clean by removing finished jobs automatically.
 
 To manually delete a completed or failed job:
 
-1. Go to **Workloads > Jobs**
+1. Go to **Workload**
 2. Click the three-dot menu next to the job
 3. Select **Delete**
 
