@@ -8,7 +8,7 @@ Description: Learn why reviewing the OpenTofu plan before every apply is critica
 
 ## Introduction
 
-Skipping plan review is one of the most dangerous practices in infrastructure management. A plan tells you exactly what OpenTofu will do to your infrastructure before it does anything. Running `tofu apply -auto-approve` without reviewing the plan has caused production outages, accidental data deletion, and security incidents at organizations of all sizes.
+Skipping plan review is one of the most dangerous practices in infrastructure management. A plan shows the changes OpenTofu plans to make to your infrastructure before it does anything. Running `tofu apply -auto-approve` without reviewing the plan has caused production outages, accidental data deletion, and security incidents at organizations of all sizes.
 
 ## Why Plan Review Matters
 
@@ -20,10 +20,10 @@ The plan can reveal destructive actions you didn't intend.
 tofu apply -auto-approve  # DANGEROUS in production
 
 # What the plan might have shown you:
-#   # aws_db_instance.main must be replaced
-# -/+ resource "aws_db_instance" "main" {
-#     ~ parameter_group_name = "default.postgres15" -> "myapp-postgres15"  # forces replacement!
-#       id                   = "myapp-prod-db"
+#   # aws_rds_cluster.main must be replaced
+# -/+ resource "aws_rds_cluster" "main" {
+#     ~ cluster_identifier = "myapp-prod-db" -> "myapp-prod-db-v2"  # forces replacement!
+#       id                 = "myapp-prod-db"
 #     }
 #
 # Plan: 0 to add, 0 to change, 1 to destroy, 1 to add.
@@ -58,6 +58,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v2
+      - run: tofu init -input=false
       - run: tofu plan -out=plan.tfplan
       - uses: actions/upload-artifact@v4
         with:
@@ -67,9 +69,11 @@ jobs:
   apply:
     needs: plan
     runs-on: ubuntu-latest
-    environment: production  # requires manual approval in GitHub
+    environment: production  # can require manual approval when protection rules are configured
     steps:
       - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v2
+      - run: tofu init -input=false
       - uses: actions/download-artifact@v4
         with:
           name: plan
@@ -81,23 +85,41 @@ jobs:
 Make plan review part of the code review process.
 
 ````yaml
-- name: Comment plan on PR
-  uses: actions/github-script@v7
-  if: github.event_name == 'pull_request'
-  with:
-    script: |
-      const planOutput = `
-      ## OpenTofu Plan
-      ```
-      ${{ steps.plan.outputs.stdout }}
-      ```
-      `;
-      github.rest.issues.createComment({
-        issue_number: context.issue.number,
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        body: planOutput
-      });
+permissions:
+  pull-requests: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v2
+      - run: tofu init -input=false
+
+      - name: OpenTofu plan
+        id: plan
+        run: tofu plan -no-color -out=plan.tfplan
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v9
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: ${{ steps.plan.outputs.stdout }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const planOutput = `## OpenTofu Plan
+
+            \`\`\`
+            ${process.env.PLAN}
+            \`\`\`
+            `;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: planOutput
+            });
 ````
 
 ## Watch for Destructive Change Signals
