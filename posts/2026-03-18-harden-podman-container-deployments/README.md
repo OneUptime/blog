@@ -22,7 +22,7 @@ The security of your containers starts with the host operating system.
 # Ensure Podman and dependencies are up to date
 
 sudo dnf update -y podman containers-common 2>/dev/null || \
-sudo apt-get update && sudo apt-get upgrade -y podman 2>/dev/null
+(sudo apt-get update && sudo apt-get install --only-upgrade -y podman) 2>/dev/null
 
 # Verify Podman version
 podman version
@@ -99,10 +99,9 @@ podman run --rm -d \
   --tmpfs /tmp:rw,size=64m,noexec,nosuid,nodev \
   --cap-drop=ALL \
   --security-opt no-new-privileges \
-  --security-opt seccomp=default \
   --userns=auto \
   --memory=256m \
-  --memory-swap=256m \
+  --memory-swap=512m \
   --cpus=1 \
   --pids-limit=100 \
   --ulimit nofile=1024:2048 \
@@ -150,6 +149,8 @@ podman run --rm -d \
   --name hardened-web \
   --read-only \
   --tmpfs /tmp:rw,size=32m \
+  --tmpfs /var/cache/nginx:rw,size=64m \
+  --tmpfs /var/run:rw,size=8m \
   --cap-drop=ALL \
   --cap-add=NET_BIND_SERVICE \
   --security-opt no-new-privileges \
@@ -166,7 +167,7 @@ Prevent resource exhaustion attacks with strict limits.
 podman run --rm -d \
   --name resource-limited \
   --memory=128m \
-  --memory-swap=128m \
+  --memory-swap=256m \
   --memory-reservation=64m \
   --cpus=0.5 \
   --pids-limit=50 \
@@ -292,7 +293,6 @@ chmod +x hardening-check.sh
 
 ```yaml
 # docker-compose.yml - Production hardened deployment
-version: "3"
 services:
   web:
     image: docker.io/library/nginx:alpine
