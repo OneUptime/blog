@@ -19,16 +19,19 @@ Packer by HashiCorp is a well-established tool for building machine images. Whil
 Install Packer on your system:
 
 ```bash
-# On Fedora/RHEL
+# On Fedora
+wget -O- https://rpm.releases.hashicorp.com/fedora/hashicorp.repo | sudo tee /etc/yum.repos.d/hashicorp.repo
+sudo dnf install -y packer
 
-sudo dnf install -y dnf-plugins-core
-sudo dnf config-manager --add-repo https://rpm.releases.hashicorp.com/fedora/hashicorp.repo
-sudo dnf install packer
+# On RHEL
+sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+sudo yum install -y packer
 
 # On Ubuntu/Debian
 wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
-sudo apt-get update && sudo apt-get install packer
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt-get update && sudo apt-get install -y packer
 
 # Verify installation
 packer version
@@ -36,11 +39,11 @@ packer version
 
 ## Configuring Packer with Podman
 
-Packer uses the Docker builder plugin, which can communicate with Podman through its Docker-compatible socket. Enable the Podman socket:
+Packer uses the Docker builder plugin, which can communicate with Podman through its Docker-compatible socket. On a Linux host, enable the Podman socket:
 
 ```bash
 systemctl --user enable --now podman.socket
-export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
 ```
 
 Install the Docker plugin for Packer:
@@ -114,10 +117,23 @@ packer build image.pkr.hcl
 
 ## Using Ansible Provisioner
 
-One of Packer's biggest advantages is the Ansible provisioner, which lets you reuse existing Ansible roles for container images:
+One of Packer's biggest advantages is the Ansible provisioner, which lets you reuse existing Ansible roles for container images. The system running Packer must also have `ansible-playbook` installed:
 
 ```hcl
 # ansible-image.pkr.hcl
+packer {
+  required_plugins {
+    docker = {
+      version = ">= 1.0.0"
+      source  = "github.com/hashicorp/docker"
+    }
+    ansible = {
+      version = ">= 1.1.0"
+      source  = "github.com/hashicorp/ansible"
+    }
+  }
+}
+
 source "docker" "app" {
   image  = "ubuntu:24.04"
   commit = true
@@ -131,7 +147,15 @@ source "docker" "app" {
 build {
   sources = ["source.docker.app"]
 
+  provisioner "shell" {
+    inline = [
+      "apt-get update",
+      "DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-apt"
+    ]
+  }
+
   provisioner "ansible" {
+    use_proxy     = true
     playbook_file = "ansible/provision.yml"
     extra_arguments = [
       "--extra-vars", "app_version=1.0.0",
@@ -153,12 +177,10 @@ The Ansible playbook:
 ---
 - name: Provision container image
   hosts: all
-  become: true
   tasks:
     - name: Install system packages
       ansible.builtin.apt:
         name:
-          - python3
           - python3-pip
           - nginx
           - supervisor
@@ -181,6 +203,8 @@ The Ansible playbook:
       ansible.builtin.pip:
         requirements: /app/requirements.txt
         state: present
+        executable: pip3
+        break_system_packages: true
 
     - name: Configure nginx
       ansible.builtin.template:
@@ -231,10 +255,17 @@ build {
 
   provisioner "shell" {
     inline = [
+      "mkdir -p /output",
       "cd /src",
       "go mod download",
       "CGO_ENABLED=0 go build -o /output/server ./cmd/server"
     ]
+  }
+
+  provisioner "file" {
+    direction   = "download"
+    source      = "/output/server"
+    destination = "server"
   }
 
   post-processor "docker-tag" {
@@ -254,18 +285,16 @@ build {
     ]
   }
 
-  provisioner "shell" {
-    inline = [
-      "# Copy binary from builder container",
-      "BUILDER_ID=$(podman create myapp-builder:latest)",
-      "podman cp $BUILDER_ID:/output/server /tmp/server",
-      "podman rm $BUILDER_ID"
-    ]
+  provisioner "file" {
+    source      = "server"
+    destination = "/tmp/server"
   }
 
-  provisioner "file" {
-    source      = "/tmp/server"
-    destination = "/app/server"
+  provisioner "shell" {
+    inline = [
+      "mv /tmp/server /app/server",
+      "chmod +x /app/server"
+    ]
   }
 
   post-processor "docker-tag" {
@@ -273,6 +302,12 @@ build {
     tags       = ["latest"]
   }
 }
+```
+
+Because Packer runs builds in parallel by default, build this template sequentially:
+
+```bash
+packer build -parallel-builds=1 multi-stage.pkr.hcl
 ```
 
 ## Using Variables and Environment-Specific Builds
@@ -344,7 +379,7 @@ packer build \
   -var "app_version=2.1.0" \
   -var "environment=staging" \
   -var "registry=registry.example.com" \
-  parameterized.pkr.hcl
+  .
 ```
 
 ## Pushing to a Registry
@@ -360,16 +395,18 @@ build {
     scripts = ["scripts/build.sh"]
   }
 
-  post-processor "docker-tag" {
-    repository = "registry.example.com/myapp"
-    tags       = [var.app_version]
-  }
+  post-processors {
+    post-processor "docker-tag" {
+      repository = "registry.example.com/myapp"
+      tags       = [var.app_version]
+    }
 
-  post-processor "docker-push" {
-    login          = true
-    login_server   = "registry.example.com"
-    login_username = var.registry_username
-    login_password = var.registry_password
+    post-processor "docker-push" {
+      login          = true
+      login_server   = "registry.example.com"
+      login_username = var.registry_username
+      login_password = var.registry_password
+    }
   }
 }
 ```
@@ -391,23 +428,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Podman and Packer
+      - name: Install Podman
         run: |
           sudo apt-get update
           sudo apt-get install -y podman
-          wget https://releases.hashicorp.com/packer/1.10.0/packer_1.10.0_linux_amd64.zip
-          unzip packer_1.10.0_linux_amd64.zip
-          sudo mv packer /usr/local/bin/
 
-      - name: Enable Podman socket
+      - name: Install Packer
         run: |
-          systemctl --user enable --now podman.socket
+          wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt-get update
+          sudo apt-get install -y packer
 
       - name: Build image
         env:
-          DOCKER_HOST: "unix:///run/user/$(id -u)/podman/podman.sock"
+          DOCKER_HOST: "unix:///tmp/podman.sock"
         run: |
-          packer init .
+          podman system service --time 0 "$DOCKER_HOST" &
+          service_pid=$!
+          trap 'kill $service_pid >/dev/null 2>&1 || true' EXIT
+          until [ -S /tmp/podman.sock ]; do sleep 1; done
+          packer init image.pkr.hcl
           packer build \
             -var "app_version=${GITHUB_REF_NAME}" \
             image.pkr.hcl
