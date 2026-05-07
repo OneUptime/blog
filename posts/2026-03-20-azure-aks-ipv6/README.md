@@ -8,7 +8,7 @@ Description: Configure Azure AKS clusters with dual-stack IPv4/IPv6 networking, 
 
 ## Introduction
 
-Azure AKS supports dual-stack IPv4/IPv6 Kubernetes networking. In dual-stack mode, pods receive both IPv4 and IPv6 addresses, services can have both ClusterIP families, and load balancers can front traffic from IPv4 and IPv6 clients. This is built on Azure CNI with dual-stack VNet subnet assignment.
+Azure AKS supports dual-stack IPv4/IPv6 Kubernetes networking. In dual-stack mode, pods receive both IPv4 and IPv6 addresses, services can have both ClusterIP families, and load balancers can front traffic from IPv4 and IPv6 clients. With Azure CNI Overlay, nodes receive both IPv4 and IPv6 addresses from the dual-stack VNet subnet, while pods receive both address families from the configured pod CIDRs.
 
 ## Create Dual-Stack AKS Cluster
 
@@ -25,13 +25,13 @@ az group create --name "$RG" --location "$LOCATION"
 az network vnet create \
     --resource-group "$RG" \
     --name vnet-aks \
-    --address-prefixes "10.0.0.0/8" "fd00:aks::/48"
+    --address-prefixes "10.0.0.0/8" "fd00:1234::/48"
 
 az network vnet subnet create \
     --resource-group "$RG" \
     --vnet-name vnet-aks \
     --name subnet-aks \
-    --address-prefixes "10.1.0.0/16" "fd00:aks:1::/64"
+    --address-prefixes "10.1.0.0/16" "fd00:1234:1::/64"
 
 SUBNET_ID=$(az network vnet subnet show \
     --resource-group "$RG" \
@@ -48,10 +48,10 @@ az aks create \
     --node-vm-size Standard_D2s_v3 \
     --network-plugin azure \
     --network-plugin-mode overlay \
-    --ip-families IPv4,IPv6 \
-    --pod-cidr "192.168.0.0/16" "fd12:3456:789a::/48" \
-    --service-cidrs "10.0.0.0/16" "fd12:3456:789b::/108" \
-    --dns-service-ip "10.0.0.10" \
+    --ip-families ipv4,ipv6 \
+    --pod-cidrs "192.168.0.0/16,fd12:3456:789a::/64" \
+    --service-cidrs "172.16.0.0/16,fd12:3456:789b::/108" \
+    --dns-service-ip "172.16.0.10" \
     --vnet-subnet-id "$SUBNET_ID" \
     --generate-ssh-keys
 ```
@@ -64,21 +64,39 @@ az aks get-credentials \
     --resource-group "$RG" \
     --name "$CLUSTER_NAME"
 
-# Check nodes have dual-stack addresses
-kubectl get nodes -o wide
-# INTERNAL-IP should show both IPv4 and IPv6
-
-# Check pod CIDR assignments
-kubectl describe node | grep -A 5 "Addresses:"
+# Check nodes have dual-stack addresses and pod CIDRs
+kubectl get nodes -o=custom-columns="NAME:.metadata.name,ADDRESSES:.status.addresses[?(@.type=='InternalIP')].address,PODCIDRS:.spec.podCIDRs[*]"
 
 # Check system pods have dual-stack IPs
-kubectl get pods -n kube-system -o wide
+kubectl get pods -n kube-system -o=custom-columns="NAME:.metadata.name,PODIPS:.status.podIPs[*].ip"
 ```
 
 ## Deploy Dual-Stack Service
 
 ```yaml
 # dual-stack-service.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: nginx
+          ports:
+            - containerPort: 80
+
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -103,10 +121,6 @@ kind: Service
 metadata:
   name: web-lb
   namespace: default
-  annotations:
-    # Azure Load Balancer with dualstack
-    service.beta.kubernetes.io/azure-load-balancer-ipv4-frontend-ip-configuration-name: frontend-ipv4
-    service.beta.kubernetes.io/azure-load-balancer-ipv6-frontend-ip-configuration-name: frontend-ipv6
 spec:
   selector:
     app: web
@@ -117,41 +131,54 @@ spec:
   ipFamilies:
     - IPv4
     - IPv6
+  # On AKS Linux node pools, IPv6 services should use Local so kube-proxy
+  # answers the Azure Load Balancer health probe on the node.
+  externalTrafficPolicy: Local
   type: LoadBalancer
 ```
 
 ```bash
 # Apply and verify
 kubectl apply -f dual-stack-service.yaml
+kubectl rollout status deployment/web
 
 # Check service has both IPv4 and IPv6 ClusterIPs
-kubectl get svc web-service -o wide
-# CLUSTER-IP should show both families
+kubectl get svc web-service -o jsonpath='{.spec.clusterIPs}{"\n"}{.spec.ipFamilies}{"\n"}'
+# clusterIPs should include both families
+
+# Check LoadBalancer has both IPv4 and IPv6 public IPs
+kubectl get svc web-lb -o jsonpath='{.status.loadBalancer.ingress[*].ip}{"\n"}'
 
 # Check endpoints
-kubectl get endpoints web-service -o yaml | grep ip
+kubectl get endpointslices -l kubernetes.io/service-name=web-service
 ```
 
 ## Test IPv6 Pod Connectivity
 
 ```bash
 # Deploy test pod
-kubectl run test --image=curlimages/curl --rm -it \
-    --restart=Never -- sh
+kubectl run test --image=debian:stable-slim --restart=Never --command -- sleep 1d
+kubectl wait --for=condition=Ready pod/test --timeout=120s
 
-# Inside pod: check addresses
-ip -6 addr show
+# Install test tools
+kubectl exec test -- sh -c 'apt-get update && apt-get install -y ca-certificates curl iproute2 iputils-ping'
+
+# Check addresses
+kubectl exec test -- ip -6 addr show
 
 # Test IPv6 connectivity
-curl -6 https://ipv6.google.com
-ping6 -c 3 2001:4860:4860::8888
+kubectl exec test -- curl -6 -I https://www.google.com
+kubectl exec test -- ping -6 -c 3 2001:4860:4860::8888
 
 # Test inter-pod IPv6
-# Get IPv6 of another pod
-OTHER_POD_IPV6=$(kubectl get pod other-pod -o jsonpath='{.status.podIPs[?(@.ip=~".*:.*")].ip}')
-curl "http://[${OTHER_POD_IPV6}]/"
+OTHER_POD=$(kubectl get pod -l app=web -o jsonpath='{.items[0].metadata.name}')
+OTHER_POD_IPV6=$(kubectl get pod "$OTHER_POD" -o jsonpath='{range .status.podIPs[*]}{.ip}{"\n"}{end}' | grep ':')
+kubectl exec test -- curl "http://[${OTHER_POD_IPV6}]/"
+
+# Clean up
+kubectl delete pod test
 ```
 
 ## Conclusion
 
-AKS dual-stack requires `--ip-families IPv4,IPv6` at cluster creation with both IPv4 and IPv6 pod CIDRs and service CIDRs. The dual-stack VNet subnet must have both IPv4 and IPv6 CIDR blocks. Services use `ipFamilyPolicy: PreferDualStack` with `ipFamilies: [IPv4, IPv6]` to get both ClusterIPs. LoadBalancer services create Azure Load Balancers with both IPv4 and IPv6 frontend configurations, enabling external clients to connect over either protocol. Once created, the IP family configuration cannot be changed - design for dual-stack from the start.
+AKS dual-stack requires `--ip-families ipv4,ipv6` at cluster creation with both IPv4 and IPv6 pod CIDRs and service CIDRs. The dual-stack VNet subnet must have both IPv4 and IPv6 CIDR blocks, and the service CIDRs must not overlap the VNet or subnet ranges. Services use `ipFamilyPolicy: PreferDualStack` with `ipFamilies: [IPv4, IPv6]` to get both ClusterIPs. Starting in AKS v1.27, a `LoadBalancer` service can be provisioned with one IPv4 public IP and one IPv6 public IP; on AKS Linux node pools, IPv6 services should use `externalTrafficPolicy: Local` for Azure Load Balancer health probes. Once created, the IP family configuration cannot be changed - design for dual-stack from the start.
