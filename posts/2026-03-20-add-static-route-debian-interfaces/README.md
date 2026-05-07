@@ -28,7 +28,7 @@ iface eth0 inet static
     pre-down ip route del 172.16.0.0/16 via 10.0.0.1
 ```
 
-## Method 2: Using up/down Directives (Legacy Syntax)
+## Method 2: Using up/down Directives
 
 ```bash
 auto eth0
@@ -52,21 +52,20 @@ systemctl restart networking
 
 ## Method 3: Using ifupdown-extra Package
 
-The `ifupdown-extra` package provides a cleaner route syntax:
+The `ifupdown-extra` package installs helper scripts that read static routes from `/etc/network/routes`:
 
 ```bash
 apt install ifupdown-extra
 
-# /etc/network/interfaces
-iface eth0 inet static
-    address 10.0.0.100
-    netmask 255.255.255.0
-    up route add -net 192.168.2.0/24 gw 10.0.0.1
+# /etc/network/routes
+# Network         Netmask         Gateway     Interface
+192.168.2.0       255.255.255.0   10.0.0.1    eth0
+172.16.0.0        255.255.0.0     10.0.0.1    eth0
 ```
 
 ## Method 4: Using /etc/network/if-up.d/ Scripts
 
-For more complex routing logic, create a script in `if-up.d`:
+For more complex routing logic, create a script in `/etc/network/if-up.d/`:
 
 ```bash
 cat > /etc/network/if-up.d/static-routes << 'EOF'
@@ -92,4 +91,4 @@ ip route get 192.168.2.100
 
 ## Conclusion
 
-Debian's ifupdown uses `post-up` directives in `/etc/network/interfaces` to add static routes when interfaces come up. Always pair `post-up` routes with `pre-down` removal to clean up routes when the interface goes down. For complex routing, use `/etc/network/if-up.d/` scripts. Routes are applied automatically on boot when the interface initializes.
+Debian's ifupdown uses `post-up` or `up` directives in `/etc/network/interfaces` to add static routes when interfaces come up. When you add routes directly in an interface stanza, pair `post-up` routes with `pre-down` removal to clean up routes when the interface goes down. For complex routing, use `/etc/network/if-up.d/` scripts. Routes are applied automatically on boot when the interface initializes.
