@@ -22,19 +22,19 @@ resource "aws_iot_policy" "device_basic" {
       {
         Effect   = "Allow"
         Action   = "iot:Connect"
-        Resource = "arn:aws:iot:${var.region}:${var.account_id}:client/${!iot:ClientId}"
+        Resource = "arn:aws:iot:${var.region}:${var.account_id}:client/$${iot:ClientId}"
       },
       {
         Effect = "Allow"
         Action = ["iot:Publish", "iot:Receive"]
         Resource = [
-          "arn:aws:iot:${var.region}:${var.account_id}:topic/devices/${!iot:ClientId}/*"
+          "arn:aws:iot:${var.region}:${var.account_id}:topic/devices/$${iot:ClientId}/*"
         ]
       },
       {
         Effect   = "Allow"
         Action   = "iot:Subscribe"
-        Resource = "arn:aws:iot:${var.region}:${var.account_id}:topicfilter/devices/${!iot:ClientId}/*"
+        Resource = "arn:aws:iot:${var.region}:${var.account_id}:topicfilter/devices/$${iot:ClientId}/*"
       }
     ]
   })
@@ -43,7 +43,7 @@ resource "aws_iot_policy" "device_basic" {
 
 ## Sensor-Specific Policy
 
-Restrict a sensor to only publish telemetry data.
+Restrict a sensor to publishing its own telemetry, receiving device-specific commands, and interacting with its device shadow.
 
 ```hcl
 resource "aws_iot_policy" "sensor" {
@@ -53,13 +53,13 @@ resource "aws_iot_policy" "sensor" {
     Version = "2012-10-17"
     Statement = [
       {
-        # Only allow connection from devices with matching ClientId
+        # Only allow connection from attached things using the thing name as ClientId
         Effect   = "Allow"
         Action   = "iot:Connect"
-        Resource = "arn:aws:iot:${var.region}:${var.account_id}:client/${!iot:ClientId}"
+        Resource = "arn:aws:iot:${var.region}:${var.account_id}:client/$${iot:Connection.Thing.ThingName}"
         Condition = {
           Bool = {
-            "iot:Connection.Thing.IsAttached" = "true"  # must be registered thing
+            "iot:Connection.Thing.IsAttached" = "true"  # principal must be attached to a thing
           }
         }
       },
@@ -67,22 +67,45 @@ resource "aws_iot_policy" "sensor" {
         # Publish only to the device's own telemetry topic
         Effect   = "Allow"
         Action   = "iot:Publish"
-        Resource = "arn:aws:iot:${var.region}:${var.account_id}:topic/sensors/${!iot:Connection.Thing.ThingName}/telemetry"
+        Resource = "arn:aws:iot:${var.region}:${var.account_id}:topic/sensors/$${iot:Connection.Thing.ThingName}/telemetry"
       },
       {
         # Subscribe to device-specific commands topic
         Effect   = "Allow"
         Action   = ["iot:Subscribe", "iot:Receive"]
         Resource = [
-          "arn:aws:iot:${var.region}:${var.account_id}:topicfilter/sensors/${!iot:Connection.Thing.ThingName}/commands",
-          "arn:aws:iot:${var.region}:${var.account_id}:topic/sensors/${!iot:Connection.Thing.ThingName}/commands"
+          "arn:aws:iot:${var.region}:${var.account_id}:topicfilter/sensors/$${iot:Connection.Thing.ThingName}/commands",
+          "arn:aws:iot:${var.region}:${var.account_id}:topic/sensors/$${iot:Connection.Thing.ThingName}/commands"
         ]
       },
       {
-        # Allow updating device shadow
+        # Allow reading and updating device shadow over reserved MQTT topics
         Effect   = "Allow"
-        Action   = ["iot:GetThingShadow", "iot:UpdateThingShadow"]
-        Resource = "arn:aws:iot:${var.region}:${var.account_id}:thing/${!iot:Connection.Thing.ThingName}"
+        Action   = "iot:Publish"
+        Resource = [
+          "arn:aws:iot:${var.region}:${var.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/get",
+          "arn:aws:iot:${var.region}:${var.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = "iot:Subscribe"
+        Resource = [
+          "arn:aws:iot:${var.region}:${var.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/get/accepted",
+          "arn:aws:iot:${var.region}:${var.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/get/rejected",
+          "arn:aws:iot:${var.region}:${var.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/accepted",
+          "arn:aws:iot:${var.region}:${var.account_id}:topicfilter/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/rejected"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = "iot:Receive"
+        Resource = [
+          "arn:aws:iot:${var.region}:${var.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/get/accepted",
+          "arn:aws:iot:${var.region}:${var.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/get/rejected",
+          "arn:aws:iot:${var.region}:${var.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/accepted",
+          "arn:aws:iot:${var.region}:${var.account_id}:topic/$aws/things/$${iot:Connection.Thing.ThingName}/shadow/update/rejected"
+        ]
       }
     ]
   })
@@ -108,7 +131,7 @@ resource "aws_iot_policy" "fleet" {
       {
         Effect   = "Allow"
         Action   = ["iot:Publish", "iot:Subscribe", "iot:Receive"]
-        Resource = "arn:aws:iot:${var.region}:${var.account_id}:*"
+        Resource = "*"
       }
     ]
   })
@@ -134,4 +157,4 @@ tofu apply tfplan
 
 ## Summary
 
-AWS IoT Core policies provide granular authorization for device connections, topic publishing, and subscriptions. OpenTofu manages policy documents with thing-specific variable substitution (`${!iot:ClientId}`) and certificate attachments - enabling secure, least-privilege IoT fleet management.
+AWS IoT Core policies provide granular authorization for device connections, topic publishing, and subscriptions. OpenTofu manages policy documents with AWS IoT policy variables such as `$${iot:ClientId}` and certificate attachments - enabling secure, least-privilege IoT fleet management.
