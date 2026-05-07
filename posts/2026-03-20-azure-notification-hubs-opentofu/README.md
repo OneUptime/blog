@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Notification Hub, Push Notification, Infrastructure as Code, Mobile
 
-Description: Learn how to create Azure Notification Hub namespaces and hubs with OpenTofu to send push notifications to iOS, Android, and Windows devices at scale.
+Description: Learn how to create Azure Notification Hub namespaces and hubs with OpenTofu to support push notification workloads at scale.
 
 ## Introduction
 
-Azure Notification Hubs is a scalable push notification engine that lets you send notifications to any platform (APNs, FCM, WNS) from any backend. OpenTofu automates the provisioning of namespaces, hubs, and platform credential configurations.
+Azure Notification Hubs is a scalable push notification engine that lets you send notifications to any platform (APNs, FCM, WNS) from any backend. OpenTofu automates the provisioning of namespaces, hubs, authorization rules, and APNs credential configuration.
 
 ## Creating a Notification Hub Namespace
 
@@ -31,6 +31,8 @@ resource "azurerm_notification_hub_namespace" "main" {
 
 ## Creating a Notification Hub
 
+The current `azurerm_notification_hub` resource supports APNs credentials directly. For Android, Azure Notification Hubs now uses FCM v1 credentials, so the legacy `gcm_credential` block should not be used for new configurations.
+
 ```hcl
 resource "azurerm_notification_hub" "main" {
   name                = "myapp-hub"
@@ -44,12 +46,7 @@ resource "azurerm_notification_hub" "main" {
     bundle_id        = var.apns_bundle_id
     key_id           = var.apns_key_id
     team_id          = var.apns_team_id
-    token            = var.apns_token  # .p8 file contents
-  }
-
-  # Firebase Cloud Messaging (FCM) credentials for Android
-  gcm_credential {
-    api_key = var.fcm_server_key
+    token            = var.apns_token  # APNs auth key contents, without the BEGIN/END PRIVATE KEY lines
   }
 }
 ```
@@ -100,7 +97,6 @@ variable "apns_bundle_id"  { type = string  sensitive = true }
 variable "apns_key_id"     { type = string  sensitive = true }
 variable "apns_team_id"    { type = string  sensitive = true }
 variable "apns_token"      { type = string  sensitive = true }
-variable "fcm_server_key"  { type = string  sensitive = true }
 ```
 
 ## Outputs
@@ -108,7 +104,7 @@ variable "fcm_server_key"  { type = string  sensitive = true }
 ```hcl
 output "hub_connection_string" {
   description = "Connection string for backend services"
-  value       = azurerm_notification_hub_authorization_rule.backend.primary_access_key
+  value       = azurerm_notification_hub_authorization_rule.backend.primary_connection_string
   sensitive   = true
 }
 
@@ -127,4 +123,4 @@ tofu apply tfplan
 
 ## Summary
 
-OpenTofu makes it easy to provision Azure Notification Hub namespaces, hubs, and platform credentials as code. By separating listen and send authorization rules, you control which components of your system can register devices versus send push notifications.
+OpenTofu makes it easy to provision Azure Notification Hub namespaces, hubs, authorization rules, and APNs credentials as code. By separating listen and send authorization rules, you control which components of your system can register devices versus send push notifications.
