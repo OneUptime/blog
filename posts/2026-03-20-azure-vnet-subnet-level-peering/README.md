@@ -4,37 +4,40 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, VNet, Peering, IPv4, Networking, Cloud
 
-Description: Set up Azure Virtual Network peering between VNets to enable private IPv4 communication between subnets in different VNets without traversing the public internet.
+Description: Set up Azure subnet peering between VNets to enable private IPv4 communication between selected subnets in different VNets without traversing the public internet.
 
 ## Introduction
 
-Azure VNet peering connects two virtual networks so resources in each can communicate using private IPv4 addresses, as if they were on the same network. Peering works within the same region (VNet peering) or across regions (Global VNet peering) and supports both Azure-to-Azure and hub-and-spoke topologies.
+Azure subnet peering connects two virtual networks by linking specific subnets instead of entire virtual network address spaces. Resources in the peered subnets can communicate using private IPv4 addresses, as if they were on the same network. Like regular VNet peering, subnet peering works within the same region or across regions (Global VNet peering) and supports both Azure-to-Azure and hub-and-spoke topologies.
 
 ## Prerequisites
 
-- Two Azure VNets with non-overlapping IPv4 address spaces
-- The VNets must be in the same Azure AD tenant (or use cross-tenant peering)
-- Contributor role on both VNets
+- Two Azure VNets and the subnets you want to peer
+- The participating subnets must be unique and belong to unique address spaces across peering links
+- Register the subscription for subnet peering allowlisting
+- Azure CLI 2.31.0 or later if you use the CLI examples
+- The VNets must be in the same Microsoft Entra tenant (or use cross-tenant peering)
+- Network Contributor role on both VNets
 
 ## VNet Address Space Planning
 
-Peered VNets must not have overlapping CIDR blocks:
+For subnet peering, the subnets that participate in the peering must be unique and belong to unique address spaces across peering links:
 
 ```text
 VNet A: 10.1.0.0/16
-  - Subnet A1: 10.1.1.0/24
+  - Subnet A1 (peered): 10.1.1.0/24
   - Subnet A2: 10.1.2.0/24
 
 VNet B: 10.2.0.0/16
-  - Subnet B1: 10.2.1.0/24
+  - Subnet B1 (peered): 10.2.1.0/24
 ```
 
-## Creating VNet Peering with Azure CLI
+## Creating Subnet Peering with Azure CLI
 
-Peering is bidirectional - you must create a peering link from A to B AND from B to A:
+Peering is bidirectional - you must create a peering link from A to B AND from B to A. For subnet peering, set `--peer-complete-vnets false` and specify the local and remote subnet names on each side:
 
 ```bash
-# Peer VNet A to VNet B
+# Peer subnet A1 in VNet A to subnet B1 in VNet B
 
 az network vnet peering create \
   --name "vnetA-to-vnetB" \
@@ -42,16 +45,22 @@ az network vnet peering create \
   --vnet-name vnet-a \
   --remote-vnet /subscriptions/SUB_ID/resourceGroups/rg-network/providers/Microsoft.Network/virtualNetworks/vnet-b \
   --allow-vnet-access true \
-  --allow-forwarded-traffic true
+  --allow-forwarded-traffic true \
+  --peer-complete-vnets false \
+  --local-subnet-names subnet-a1 \
+  --remote-subnet-names subnet-b1
 
-# Peer VNet B to VNet A (required for bidirectional communication)
+# Peer subnet B1 in VNet B to subnet A1 in VNet A (required for bidirectional communication)
 az network vnet peering create \
   --name "vnetB-to-vnetA" \
   --resource-group rg-network \
   --vnet-name vnet-b \
   --remote-vnet /subscriptions/SUB_ID/resourceGroups/rg-network/providers/Microsoft.Network/virtualNetworks/vnet-a \
   --allow-vnet-access true \
-  --allow-forwarded-traffic true
+  --allow-forwarded-traffic true \
+  --peer-complete-vnets false \
+  --local-subnet-names subnet-b1 \
+  --remote-subnet-names subnet-a1
 ```
 
 ## Verifying Peering Status
@@ -62,7 +71,7 @@ az network vnet peering show \
   --name "vnetA-to-vnetB" \
   --resource-group rg-network \
   --vnet-name vnet-a \
-  --query "{State:peeringState, RemoteVNet:remoteVirtualNetwork.id}"
+  --query "{State:peeringState, LocalSubnets:localSubnetNames, RemoteSubnets:remoteSubnetNames}"
 ```
 
 ## Allowing Gateway Transit
@@ -96,6 +105,9 @@ resource "azurerm_virtual_network_peering" "a_to_b" {
 
   allow_virtual_network_access = true
   allow_forwarded_traffic      = true
+  peer_complete_virtual_networks_enabled = false
+  local_subnet_names                     = ["subnet-a1"]
+  remote_subnet_names                    = ["subnet-b1"]
 }
 
 resource "azurerm_virtual_network_peering" "b_to_a" {
@@ -106,25 +118,28 @@ resource "azurerm_virtual_network_peering" "b_to_a" {
 
   allow_virtual_network_access = true
   allow_forwarded_traffic      = true
+  peer_complete_virtual_networks_enabled = false
+  local_subnet_names                     = ["subnet-b1"]
+  remote_subnet_names                    = ["subnet-a1"]
 }
 ```
 
 ## Network Security Groups and Peering
 
-Peering creates a route between VNets, but NSG rules still apply. Ensure NSGs on target subnets allow traffic from the peered VNet's address space:
+Subnet peering creates routes for the participating subnets, but NSG rules still apply. Ensure NSGs on the participating subnets allow traffic from the peered subnet CIDR or address space you intend to reach:
 
 ```bash
-# Allow traffic from VNet A's range to VNet B's subnet
+# Allow traffic from VNet A's peered subnet to VNet B's peered subnet
 az network nsg rule create \
   --resource-group rg-network \
   --nsg-name nsg-subnet-b1 \
-  --name allow-vnetA \
+  --name allow-subnet-a1 \
   --priority 200 \
-  --source-address-prefixes 10.1.0.0/16 \
+  --source-address-prefixes 10.1.1.0/24 \
   --destination-port-ranges '*' \
   --access Allow
 ```
 
 ## Conclusion
 
-Azure VNet peering is the lowest-latency, highest-throughput way to connect Azure VNets. It uses the Azure backbone network and avoids the public internet entirely, making it ideal for connecting production environments, management networks, and hub-and-spoke topologies.
+Azure subnet peering gives you the same low-latency, high-throughput connectivity as VNet peering while letting you choose exactly which subnets participate. It uses the Azure backbone network and avoids the public internet entirely, making it useful when you need tighter scope than full-VNet peering.
