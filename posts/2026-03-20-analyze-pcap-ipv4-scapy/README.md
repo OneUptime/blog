@@ -72,7 +72,7 @@ from collections import defaultdict
 
 packets = rdpcap("/path/to/capture.pcap")
 
-# Group packets by TCP 5-tuple
+# Group packets by bidirectional TCP endpoint pair
 conversations = defaultdict(list)
 
 for pkt in packets:
@@ -126,11 +126,14 @@ print(f"Packets involving {target_ip}: {len(filtered)}")
 
 ```python
 from scapy.all import rdpcap, IP, wrpcap
+from ipaddress import ip_address, ip_network
 
 packets = rdpcap("/path/to/capture.pcap")
+subnet = ip_network("192.168.1.0/24")
 
-# Keep only packets to/from a specific subnet (192.168.1.x)
-filtered = [p for p in packets if IP in p and p[IP].dst.startswith("192.168.1.")]
+# Keep only packets to/from a specific subnet (192.168.1.0/24)
+filtered = [p for p in packets if IP in p and
+            (ip_address(p[IP].src) in subnet or ip_address(p[IP].dst) in subnet)]
 
 wrpcap("/tmp/filtered.pcap", filtered)
 print(f"Wrote {len(filtered)} packets to /tmp/filtered.pcap")
