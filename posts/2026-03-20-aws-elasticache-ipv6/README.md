@@ -8,7 +8,7 @@ Description: Enable dual-stack mode on AWS ElastiCache clusters for Redis and Me
 
 ## Introduction
 
-AWS ElastiCache supports IPv6 connections through dual-stack mode for both Redis and Memcached engines. When configured with dual-stack, the cache cluster creates endpoints that return both IPv4 and IPv6 addresses, enabling applications in IPv6-only subnets to connect to the cache. This is important for modern AWS architectures using IPv6-native EKS clusters or IPv6-only VPC deployments.
+AWS ElastiCache supports IPv6 connections for both Redis and Memcached using `ipv6` or `dual_stack` network types. When configured with dual-stack, the cache can accept both IPv4 and IPv6 connections. For dual-stack clusters, `ip_discovery` controls which IP family is advertised through cluster discovery or auto discovery. This is important for modern AWS architectures using IPv6-native EKS clusters or IPv6-only VPC deployments.
 
 ## Create ElastiCache Subnet Group with IPv6
 
@@ -24,23 +24,23 @@ aws elasticache create-cache-subnet-group \
 ## Create Redis Cluster with Dual-Stack
 
 ```bash
-# Create Redis cluster with dual-stack
+# Create Redis replication group with dual-stack
 aws elasticache create-replication-group \
     --replication-group-id my-redis-cluster \
-    --description "Redis with IPv6 support" \
+    --replication-group-description "Redis with IPv6 support" \
     --cache-node-type cache.t3.micro \
     --engine redis \
     --engine-version "7.0" \
     --num-cache-clusters 2 \
     --cache-subnet-group-name ipv6-cache-subnet-group \
     --security-group-ids sg-12345678 \
-    --ip-discovery DUAL_STACK \
-    --network-type DUAL_STACK
+    --network-type dual_stack \
+    --ip-discovery ipv6
 
-# Get the cluster endpoint
+# Get the primary and reader endpoints
 aws elasticache describe-replication-groups \
     --replication-group-id my-redis-cluster \
-    --query "ReplicationGroups[0].{ConfigurationEndpoint:ConfigurationEndpoint, NodeGroups:NodeGroups}"
+    --query "ReplicationGroups[0].NodeGroups[0].{PrimaryEndpoint:PrimaryEndpoint, ReaderEndpoint:ReaderEndpoint}"
 ```
 
 ## Terraform ElastiCache with IPv6
@@ -74,8 +74,9 @@ resource "aws_elasticache_replication_group" "redis" {
   subnet_group_name  = aws_elasticache_subnet_group.main.name
   security_group_ids = [aws_security_group.redis.id]
 
-  # Enable dual-stack (IPv4 + IPv6)
+  # Allow both IPv4 and IPv6 client connections
   network_type = "dual_stack"
+  # Advertise IPv6 in discovery responses
   ip_discovery = "ipv6"
 
   at_rest_encryption_enabled = true
@@ -99,8 +100,9 @@ resource "aws_elasticache_cluster" "memcached" {
   subnet_group_name  = aws_elasticache_subnet_group.main.name
   security_group_ids = [aws_security_group.memcached.id]
 
-  # Enable dual-stack
+  # Allow both IPv4 and IPv6 client connections
   network_type = "dual_stack"
+  # Advertise IPv6 in auto discovery responses
   ip_discovery = "ipv6"
 
   tags = { Name = "memcached-dual-stack" }
@@ -111,7 +113,7 @@ resource "aws_security_group" "redis" {
   vpc_id = aws_vpc.main.id
   name   = "redis-sg"
 
-  # Allow Redis from app servers (IPv4)
+  # Allow Redis from app servers
   ingress {
     from_port       = 6379
     to_port         = 6379
@@ -119,7 +121,7 @@ resource "aws_security_group" "redis" {
     security_groups = [aws_security_group.app.id]
   }
 
-  # Allow Redis over IPv6 from VPC
+  # Example CIDR-based IPv6 rule for the VPC
   ingress {
     from_port        = 6379
     to_port          = 6379
@@ -136,12 +138,12 @@ resource "aws_security_group" "redis" {
 import redis
 import socket
 
-# Verify the endpoint resolves to IPv6
-endpoint = "clustercfg.my-redis-cluster.abc.use1.cache.amazonaws.com"
+# Verify the primary endpoint resolves to IPv6
+endpoint = "my-redis-cluster.abc.use1.cache.amazonaws.com"
 addrs = socket.getaddrinfo(endpoint, 6379, socket.AF_INET6)
 print(f"IPv6 endpoints: {[a[4][0] for a in addrs]}")
 
-# Connect to Redis (will use IPv6 if preferred)
+# Connect to Redis (will use IPv6 if the client prefers IPv6 for DNS resolution)
 r = redis.Redis(
     host=endpoint,
     port=6379,
@@ -159,4 +161,4 @@ print(f"Value: {value.decode()}")
 
 ## Conclusion
 
-ElastiCache dual-stack mode (`network_type = "dual_stack"`) enables both IPv4 and IPv6 connections to Redis and Memcached clusters. Configure subnet groups with IPv6-enabled subnets and set `ip_discovery = "ipv6"` to return IPv6 addresses from cluster discovery. Security groups must include IPv6 rules for the cache port (6379 for Redis, 11211 for Memcached). Applications connect using the standard endpoint DNS name, which resolves to IPv6 when in a dual-stack or IPv6-only environment.
+ElastiCache dual-stack mode (`network_type = "dual_stack"`) enables both IPv4 and IPv6 connections to Redis and Memcached clusters. Configure subnet groups with IPv6-enabled subnets and set `ip_discovery = "ipv6"` when you want discovery or auto discovery to advertise IPv6. For TLS-enabled dual-stack clusters, the client determines whether IPv4 or IPv6 is used based on DNS resolution preferences. Security groups should allow the cache port (6379 for Redis, 11211 for Memcached) from the IPv6 sources that need access, or use security-group references for application security groups. Applications connect using the standard endpoint DNS name and resolve it according to the client network stack.
