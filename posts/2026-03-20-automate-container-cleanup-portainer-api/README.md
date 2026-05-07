@@ -48,12 +48,12 @@ for e in envs:
 This script removes stopped containers, dangling images, and unused volumes via the Portainer API.
 
 ```bash
-#!/bin/bash
+#!/bin/sh
 # portainer-cleanup.sh - automated cleanup via Portainer API
 
-PORTAINER_URL="https://portainer.example.com"
-API_KEY="ptr_your_api_key_here"
-LOG_FILE="/var/log/portainer-cleanup.log"
+PORTAINER_URL="${PORTAINER_URL:-https://portainer.example.com}"
+API_KEY="${API_KEY:-ptr_your_api_key_here}"
+LOG_FILE="${LOG_FILE:-/var/log/portainer-cleanup.log}"
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
@@ -70,8 +70,8 @@ for ENV_ID in $ENDPOINTS; do
   log "Processing environment $ENV_ID..."
 
   # Remove stopped containers
-  STOPPED=$(curl -s -H "X-API-Key: $API_KEY" \
-    "$PORTAINER_URL/api/endpoints/$ENV_ID/docker/containers/json?filters={\"status\":[\"exited\"]}" | \
+  STOPPED=$(curl -s --globoff -H "X-API-Key: $API_KEY" \
+    "$PORTAINER_URL/api/endpoints/$ENV_ID/docker/containers/json?all=true&filters={\"status\":[\"exited\"]}" | \
     python3 -c "import sys,json; [print(c['Id']) for c in json.load(sys.stdin)]")
 
   for CONTAINER_ID in $STOPPED; do
@@ -83,7 +83,7 @@ for ENV_ID in $ENDPOINTS; do
 
   # Prune dangling images
   log "  Pruning dangling images..."
-  curl -s -X POST \
+  curl -s --globoff -X POST \
     -H "X-API-Key: $API_KEY" \
     "$PORTAINER_URL/api/endpoints/$ENV_ID/docker/images/prune?filters={\"dangling\":[\"true\"]}" | \
     python3 -c "
@@ -95,9 +95,9 @@ print(f'  Reclaimed: {reclaimed / 1024 / 1024:.1f} MB')
 
   # Prune unused volumes
   log "  Pruning unused volumes..."
-  curl -s -X POST \
+  curl -s --globoff -X POST \
     -H "X-API-Key: $API_KEY" \
-    "$PORTAINER_URL/api/endpoints/$ENV_ID/docker/volumes/prune" | \
+    "$PORTAINER_URL/api/endpoints/$ENV_ID/docker/volumes/prune?filters={\"all\":[\"true\"]}" | \
     python3 -c "
 import sys, json
 result = json.load(sys.stdin)
@@ -121,7 +121,7 @@ chmod +x /usr/local/bin/portainer-cleanup.sh
 # Schedule daily cleanup at 2 AM
 crontab -e
 # Add:
-0 2 * * * /usr/local/bin/portainer-cleanup.sh >> /var/log/portainer-cleanup.log 2>&1
+0 2 * * * /usr/local/bin/portainer-cleanup.sh >/dev/null 2>> /var/log/portainer-cleanup.log
 ```
 
 ---
@@ -136,19 +136,21 @@ version: "3.8"
 
 services:
   cleanup:
-    image: alpine/curl:latest
+    image: alpine:3.20
     restart: unless-stopped
     environment:
       PORTAINER_URL: https://portainer.example.com
       API_KEY: ptr_your_api_key_here
     volumes:
-      - ./cleanup.sh:/cleanup.sh:ro
-    entrypoint: ["crond", "-f", "-d", "8"]
-    # Mount cleanup.sh as a cron job inside the container
+      - ./portainer-cleanup.sh:/cleanup.sh:ro
+    command: >
+      sh -c "apk add --no-cache curl python3 &&
+             echo '0 2 * * * sh /cleanup.sh >/dev/null 2>> /var/log/portainer-cleanup.log' > /etc/crontabs/root &&
+             crond -f"
 ```
 
 ---
 
 ## Summary
 
-The Portainer API exposes Docker operations across all your environments through a single authenticated endpoint. A cleanup script that iterates over environment IDs and calls the Docker prune endpoints can be scheduled via cron or as a Portainer-managed container to keep your hosts clean automatically.
+The Portainer API exposes Docker operations across all your environments through a single authenticated endpoint. A cleanup script that iterates over environment IDs and calls Docker Engine API endpoints to remove stopped containers and prune images and volumes can be scheduled via cron or as a Portainer-managed container to keep your hosts clean automatically.
