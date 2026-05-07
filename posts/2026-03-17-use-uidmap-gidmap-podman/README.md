@@ -8,20 +8,21 @@ Description: Learn how to use --uidmap and --gidmap flags in Podman for precise 
 
 ---
 
-> The `--uidmap` and `--gidmap` flags provide the most granular control over user namespace mappings, letting you define exactly how each container UID maps to a host UID.
+> The `--uidmap` and `--gidmap` flags provide the most granular control over user namespace mappings, letting you define exactly how each container UID maps to a host or intermediate UID.
 
-While `--userns` provides preset mapping modes, `--uidmap` and `--gidmap` let you specify custom mapping entries. This is essential when you need specific UIDs inside the container to map to specific UIDs on the host.
+While `--userns` provides preset mapping modes, `--uidmap` and `--gidmap` let you specify custom mapping entries. This is essential when you need specific UIDs inside the container to map to specific IDs outside the container.
 
 ---
 
 ## Understanding the Map Format
 
-The mapping format is `container_id:host_id:size`:
+The mapping format is `container_id:from_id:size`:
 
 ```bash
-# Syntax: --uidmap container_id:host_id:size
+# Syntax: --uidmap container_id:from_id:size
 
-# Maps a range of container UIDs to a range of host UIDs
+# Maps a range of container UIDs to a range of host UIDs in rootful mode
+# In rootless mode, from_id is an intermediate UID in Podman's user namespace
 
 # Example: map container UID 0 to host UID 1000, one ID
 # --uidmap 0:1000:1
@@ -61,8 +62,8 @@ podman run --rm \
 # Problem: files in a bind mount are owned by a different UID
 # Solution: map the container UID to match the file owner
 
-# If files on host are owned by UID 1000 and the container
-# app runs as UID 33 (www-data), map container 33 to host 1000
+# If files on host are owned by your UID and the container
+# app runs as UID 33 (www-data), map container 33 to your host UID
 podman run --rm \
   --uidmap 0:1:33 \
   --uidmap 33:0:1 \
@@ -89,22 +90,20 @@ podman run --rm \
 # Isolate container with a unique UID range
 podman run -d \
   --name isolated-app \
-  --uidmap 0:10000:65536 \
-  --gidmap 0:10000:65536 \
+  --uidmap 0:1:65536 \
+  --gidmap 0:1:65536 \
   my-app:latest
 
 # Run two containers with non-overlapping UID ranges
 podman run -d --name app1 \
-  --uidmap 0:0:1 \
-  --uidmap 1:1:10000 \
+  --uidmap 0:1:10000 \
   app:latest
 
 podman run -d --name app2 \
-  --uidmap 0:0:1 \
-  --uidmap 1:10001:10000 \
+  --uidmap 0:10001:10000 \
   app:latest
 
-# These containers have completely isolated UID spaces
+# These containers use non-overlapping subordinate UID ranges
 ```
 
 ## Viewing Active Mappings
@@ -134,4 +133,4 @@ grep "$USER" /etc/subuid
 
 ## Summary
 
-The `--uidmap` and `--gidmap` flags provide precise control over how container UIDs/GIDs map to host UIDs/GIDs. Each mapping entry follows the `container_id:host_id:size` format. Use custom mappings when you need specific UIDs inside the container to correspond to specific UIDs on the host, when isolating containers with non-overlapping UID ranges, or when fixing volume permission mismatches. For most use cases, `--userns=keep-id` or `--userns=auto` is simpler, but `--uidmap`/`--gidmap` offers full flexibility when needed.
+The `--uidmap` and `--gidmap` flags provide precise control over how container UIDs/GIDs map outside the container. Each mapping entry follows the `container_id:from_id:size` format. Use custom mappings when you need specific UIDs inside the container to correspond to specific IDs outside the container, when isolating containers with non-overlapping UID ranges, or when fixing volume permission mismatches. For most use cases, `--userns=keep-id` or `--userns=auto` is simpler, but `--uidmap`/`--gidmap` offers full flexibility when needed.
