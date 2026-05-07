@@ -32,7 +32,7 @@ Both tools cover the basics well:
 | DNS monitoring | ✅ | ✅ |
 | Keyword monitoring | ✅ | ✅ |
 | WebSocket monitoring | ✅ | ✅ |
-| API monitoring | ❌ | ✅ |
+| API monitoring | Partial (HTTP/JSON checks) | ✅ |
 | Synthetic monitoring (Playwright) | ❌ | ✅ |
 | IPv6 monitoring | ❌ | ✅ |
 | Server/VM monitoring | ❌ | ✅ |
@@ -83,7 +83,7 @@ OneUptime builds the full incident lifecycle into the platform - from detection 
 
 | Feature | Uptime Kuma | OneUptime |
 |---------|-------------|-----------|
-| Notification channels | 90+ services | Email, SMS, Phone, Webhook |
+| Notification channels | 90+ services | Email, SMS, Phone, Push, Slack/Teams, Webhooks/workflows |
 | On-call schedules | ❌ | ✅ |
 | On-call rotation | ❌ | ✅ |
 | Escalation policies | ❌ | ✅ |
@@ -91,7 +91,7 @@ OneUptime builds the full incident lifecycle into the platform - from detection 
 
 Uptime Kuma's notification integration list is impressive - 90+ services including Telegram, Discord, Slack, Pushover, Gotify, and many more. If you want to send alerts to a niche notification service, Uptime Kuma probably supports it.
 
-OneUptime takes a different approach with built-in on-call management. Schedules, rotations, escalation policies - the stuff you'd normally need PagerDuty or OpsGenie for. Fewer notification integrations, but deeper alerting workflow.
+OneUptime takes a different approach with built-in on-call management. Schedules, rotations, escalation policies - the stuff you'd normally need PagerDuty or OpsGenie for. It has fewer simple notifier targets than Uptime Kuma, but deeper alerting workflow and broader workflow integrations.
 
 ### Observability (Logs, Traces, Metrics)
 
@@ -123,14 +123,14 @@ Uptime Kuma is genuinely lightweight. You can run it on a Raspberry Pi. The SQLi
 ### OneUptime
 
 - **Stack:** Node.js/TypeScript + PostgreSQL + ClickHouse + Redis
-- **RAM:** 4+ GB recommended
+- **RAM:** 8 GB minimum for homelab use, 16 GB recommended
 - **Disk:** Depends on data retention
 - **Dependencies:** Multiple services (Docker Compose or Kubernetes)
 - **Setup time:** 15-30 minutes with Docker Compose
 
 OneUptime is a bigger deployment. It needs PostgreSQL for relational data, ClickHouse for time-series telemetry, and Redis for caching. The trade-off is that this architecture supports the much larger feature set - you can't run a full observability platform on SQLite.
 
-For a small VPS or home server, Uptime Kuma's footprint is a major advantage. For a team that's already running Kubernetes or has dedicated infrastructure, OneUptime's resource requirements are reasonable.
+For a small VPS or home server, Uptime Kuma's footprint is a major advantage. For a team that's already running Kubernetes or has dedicated infrastructure, OneUptime's resource requirements are more reasonable.
 
 ## Pricing
 
