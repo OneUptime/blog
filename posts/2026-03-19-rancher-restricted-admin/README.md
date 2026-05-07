@@ -6,60 +6,47 @@ Tags: Rancher, Kubernetes, RBAC, Permission, Role, Security
 
 Description: Learn how to configure and use Rancher's restricted admin role to delegate administrative tasks without granting full platform access.
 
-Rancher's restricted admin role provides a middle ground between the full administrator role and the standard user role. Restricted admins can manage most aspects of Rancher but are prevented from accessing the local (management) cluster and certain global settings. This guide explains how to set up and use the restricted admin feature.
+Rancher's restricted admin role provides a middle ground between the full administrator role and the standard user role on Rancher versions that still include it. Restricted admins can manage most downstream-cluster operations but cannot alter the local (management) cluster. This guide explains how to assign and use the role on supported Rancher versions.
 
 ## Prerequisites
 
-- Rancher v2.7+ installation
-- Full administrator access to enable the feature
+- Rancher v2.7-v2.10 installation
+- Full administrator access to assign global permissions
 - Understanding of which users need elevated but not unrestricted access
 
 ## Understanding the Restricted Admin Role
 
-The restricted admin role was introduced to address a common scenario: organizations need multiple people who can manage clusters, users, and settings, but giving everyone full admin access creates unnecessary risk.
+The restricted admin role was introduced to address a common scenario: organizations need multiple people who can manage clusters, users, and authentication providers, but giving everyone full admin access creates unnecessary risk.
 
 A restricted admin can:
 
 - Manage downstream clusters (create, edit, delete)
 - Manage users and assign roles
 - Configure authentication providers
-- Manage Helm chart repositories and apps
-- View and modify most global settings
+- Manage global catalogs and Helm repositories
+- List global settings
 
 A restricted admin cannot:
 
-- Access the local (management) cluster where Rancher itself runs
-- Modify critical infrastructure settings
-- Access the Rancher server's underlying Kubernetes resources
+- Alter the local (management) cluster where Rancher itself runs
+- Use local-cluster functions such as creating projects/namespaces or adding cluster/project members there
+- Modify Rancher settings
 
-## Step 1: Enable the Restricted Admin Feature
+## Step 1: Confirm Your Rancher Version Supports Restricted Admin
 
-The restricted admin feature is controlled by a global setting:
+The built-in `restricted-admin` role is available on Rancher versions that still include it, such as v2.7 through v2.10. In Rancher v2.10 it is deprecated, and newer Rancher documentation no longer includes it.
 
-**Via the UI:**
+You do not enable the role with a post-install global setting. It is a built-in global permission on supported versions.
 
-1. Log in as a full administrator.
-2. Go to **Global Settings** (hamburger menu > **Global Settings**).
-3. Find the setting `restricted-admin`.
-4. Click **Edit** (or the pencil icon).
-5. Set the value to `true`.
-6. Click **Save**.
-
-**Via kubectl:**
+If you are installing Rancher for the first time and want the initial bootstrapped administrator to use this role, start Rancher with:
 
 ```bash
-kubectl patch settings restricted-admin -p '{"value": "true"}'
-```
-
-**Verify the setting:**
-
-```bash
-kubectl get settings restricted-admin -o jsonpath='{.value}'
+CATTLE_RESTRICTED_DEFAULT_ADMIN=true
 ```
 
 ## Step 2: Assign the Restricted Admin Role
 
-Once enabled, the restricted admin role appears in the global roles list.
+On supported versions, the restricted admin role appears in the global permissions list.
 
 **Via the UI:**
 
@@ -72,19 +59,24 @@ Once enabled, the restricted admin role appears in the global roles list.
 **Via the API:**
 
 ```bash
-# First, find the user ID
+# First, find the Rancher user resource name
 
-curl -s 'https://<rancher-url>/v3/users' \
+curl -s 'https://<rancher-url>/apis/management.cattle.io/v3/users' \
   -H 'Authorization: Bearer <api-token>' | \
-  jq -r '.data[] | "\(.id)\t\(.username)"' | column -t
+  jq -r '.items[] | "\(.metadata.name)\t\(.username)"' | column -t
 
 # Assign the restricted admin role
-curl -X POST 'https://<rancher-url>/v3/globalrolebindings' \
+curl -X POST 'https://<rancher-url>/apis/management.cattle.io/v3/globalrolebindings' \
   -H 'Authorization: Bearer <api-token>' \
   -H 'Content-Type: application/json' \
   -d '{
-    "globalRoleId": "restricted-admin",
-    "userId": "<user-id>"
+    "apiVersion": "management.cattle.io/v3",
+    "kind": "GlobalRoleBinding",
+    "metadata": {
+      "generateName": "grb-"
+    },
+    "globalRoleName": "restricted-admin",
+    "userName": "<user-resource-name>"
   }'
 ```
 
@@ -107,38 +99,20 @@ Log in as the restricted admin and verify the access boundaries.
 **Via kubectl as the restricted admin:**
 
 ```bash
+# Replace these with the actual context names from Rancher-generated kubeconfigs
+
 # Should work - downstream cluster access
-kubectl get nodes --context=downstream-cluster
+kubectl get nodes --context=<downstream-context>
 
 # Should fail - local cluster access
-kubectl get nodes --context=local
+kubectl get nodes --context=<local-context>
 ```
 
 ## Step 4: Configure Local Cluster Access
 
-The key feature of the restricted admin is that the local cluster (where Rancher runs) is hidden. However, you can fine-tune what restricted admins see:
+The built-in `restricted-admin` role does not include local cluster functions. On supported Rancher versions, the local cluster remains outside this role's scope by design.
 
-**To completely hide the local cluster:**
-
-This is the default behavior when restricted admin is enabled. The local cluster does not appear in the restricted admin's cluster list.
-
-**To grant limited local cluster access to specific restricted admins:**
-
-If certain restricted admins need read-only access to the local cluster for monitoring:
-
-```yaml
-apiVersion: management.cattle.io/v3
-kind: ClusterRoleTemplateBinding
-metadata:
-  generateName: crtb-
-  namespace: local
-spec:
-  clusterName: local
-  roleTemplateId: cluster-member
-  userPrincipalId: "local://u-xxxxx"
-```
-
-Use this sparingly, as it partially defeats the purpose of restricted admin.
+If a user needs any local cluster access, use a custom global role instead of relying on the built-in `restricted-admin` role alone. Rancher documents `inheritedClusterRoles` as the mechanism for building custom global roles that grant downstream-cluster permissions while you explicitly add only the global resources you need.
 
 ## Step 5: Set Up a Restricted Admin Hierarchy
 
@@ -155,7 +129,7 @@ Restricted Administrators (5-10 people)
 ├── Create and manage downstream clusters
 ├── Manage user accounts and roles
 ├── Configure authentication
-└── Manage catalogs and apps
+└── Manage catalogs and repositories
 
 Standard Users (everyone else)
 ├── Access assigned clusters
@@ -180,7 +154,7 @@ kubectl get globalrolebindings -o json | \
 # 1. Remove the admin global role binding
 # 2. Add the restricted-admin global role binding
 
-USER_TO_MIGRATE="u-xxxxx"
+USER_TO_MIGRATE="<user-resource-name>"
 
 # Find and delete the admin binding
 ADMIN_BINDING=$(kubectl get globalrolebindings -o json | \
@@ -191,14 +165,13 @@ if [ -n "$ADMIN_BINDING" ]; then
   kubectl delete globalrolebinding $ADMIN_BINDING
 
   echo "Creating restricted-admin binding"
-  kubectl apply -f - <<EOF
+  kubectl create -f - <<EOF
 apiVersion: management.cattle.io/v3
 kind: GlobalRoleBinding
 metadata:
   generateName: grb-
-spec:
-  globalRoleName: restricted-admin
-  userName: $USER_TO_MIGRATE
+globalRoleName: restricted-admin
+userName: $USER_TO_MIGRATE
 EOF
 
   echo "Migration complete for $USER_TO_MIGRATE"
@@ -209,64 +182,62 @@ fi
 
 Monitor what restricted admins do:
 
+Audit logging must be enabled first. By default Rancher writes audit logs to the `rancher-audit-log` sidecar; the file path below applies when `auditLog.destination=hostPath` is configured.
+
 ```bash
 # Check audit logs for restricted admin actions
 # Filter by users with the restricted-admin role
 
-RESTRICTED_ADMINS=$(kubectl get globalrolebindings -o json | \
+export RESTRICTED_ADMINS=$(kubectl get globalrolebindings -o json | \
   jq -r '.items[] | select(.globalRoleName == "restricted-admin") | .userName')
 
-echo "Restricted admin users: $RESTRICTED_ADMINS"
+echo "Restricted admin users:"
+printf '%s\n' "$RESTRICTED_ADMINS"
 
-# Check for any attempts to access the local cluster
-grep "local" /var/log/rancher/audit/audit.log | \
-  jq -r 'select(.user.username as $u | env.RESTRICTED_ADMINS | contains($u)) | "\(.requestReceivedTimestamp) \(.user.username) \(.verb) \(.objectRef.resource)"'
+# Check for any attempts to access the local cluster when using hostPath audit logs
+jq -r '
+  select(.user.username as $u | (env.RESTRICTED_ADMINS | split("\n") | map(select(length > 0))) | index($u)) |
+  select(.requestURI | contains("/k8s/clusters/local/")) |
+  "\(.requestReceivedTimestamp) \(.user.username) \(.verb) \(.requestURI)"
+' /var/log/rancher/audit/audit.log
 ```
 
 ## Step 8: Customize Restricted Admin Permissions
 
-If the built-in restricted admin role does not exactly match your needs, create a custom global role that mirrors it with modifications:
+If the built-in restricted admin role does not exactly match your needs, create a custom global role that uses `inheritedClusterRoles` for downstream cluster access and adds only the global resources you need:
 
 ```yaml
 apiVersion: management.cattle.io/v3
 kind: GlobalRole
 metadata:
   name: custom-restricted-admin
-spec:
-  displayName: Custom Restricted Admin
-  description: "Admin-like access without local cluster and without user management"
-  rules:
-    - apiGroups: ["management.cattle.io"]
-      resources: ["clusters"]
-      verbs: ["create", "get", "list", "watch", "update", "delete"]
-    - apiGroups: ["provisioning.cattle.io"]
-      resources: ["clusters"]
-      verbs: ["create", "get", "list", "watch", "update", "delete"]
-    - apiGroups: ["management.cattle.io"]
-      resources: ["nodepools", "nodes", "clustertemplates"]
-      verbs: ["*"]
-    - apiGroups: ["catalog.cattle.io"]
-      resources: ["clusterrepos", "apps", "operations"]
-      verbs: ["*"]
-    - apiGroups: ["management.cattle.io"]
-      resources: ["settings"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: ["management.cattle.io"]
-      resources: ["preferences"]
-      verbs: ["*"]
+displayName: Custom Restricted Admin
+description: "Downstream cluster-owner access without user management"
+inheritedClusterRoles:
+  - cluster-owner
+rules:
+  - apiGroups: ["management.cattle.io"]
+    resources: ["clusters"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
+  - apiGroups: ["catalog.cattle.io"]
+    resources: ["clusterrepos"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
+  - apiGroups: ["management.cattle.io"]
+    resources: ["settings"]
+    verbs: ["get", "list", "watch"]
 ```
 
-This version removes user management permissions, limiting the role to cluster and catalog operations only.
+This example grants `cluster-owner` on all downstream clusters via `inheritedClusterRoles`, adds cluster creation and catalog repository management, and keeps settings read-only without granting user or global-role management. Avoid using `*` on `globalroles`, because it also includes the `bind` and `escalate` verbs.
 
 ## Best Practices
 
-- **Start with restricted admin**: Default to restricted admin for elevated access and only grant full admin when absolutely necessary.
+- **Use it only on supported versions**: The built-in restricted admin role is available on Rancher versions that still include it. On newer releases, create a custom global role instead.
 - **Keep full admins to 2-3**: Only the core platform team should have full administrator access.
-- **Enable the feature early**: Turn on restricted admin before you have many admin users to avoid a disruptive migration later.
+- **Plan the role model early**: Decide whether you need the built-in role or a custom global role before you have many administrator users to migrate.
 - **Document the boundary**: Make sure restricted admins understand what they can and cannot do.
-- **Use with auth provider groups**: Assign the restricted admin role to an identity provider group for easier lifecycle management.
-- **Audit the local cluster**: Monitor access attempts to the local cluster to detect any boundary violations.
+- **Use with auth provider groups**: Assign the role or its custom replacement to an identity provider group for easier lifecycle management.
+- **Audit the local cluster boundary**: Monitor attempts to access the local cluster and review any custom global roles for overbroad permissions.
 
 ## Conclusion
 
-The restricted admin role in Rancher provides a secure way to delegate administrative responsibilities without exposing the management infrastructure. By enabling this feature, migrating excess full admins to restricted admin, and monitoring access patterns, you create a clear separation between platform management and cluster management. This reduces risk while still empowering teams to manage their Kubernetes infrastructure.
+The restricted admin role in Rancher can be a secure way to delegate administrative responsibilities on Rancher versions that still include it. By assigning it carefully, migrating excess full admins, and monitoring access patterns, you create a clearer separation between platform management and downstream cluster management. On newer Rancher releases, use a custom global role instead of the built-in restricted admin role.
