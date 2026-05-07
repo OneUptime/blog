@@ -48,8 +48,8 @@ resource "azurerm_storage_account" "secure" {
   account_tier             = "Standard"
   account_replication_type = "GRS"
 
-  # Deny all public access by default
-  public_network_access_enabled   = false
+  # Keep the public endpoint enabled, but restrict it to selected networks
+  public_network_access_enabled   = true
   allow_nested_items_to_be_public = false
 
   network_rules {
@@ -62,7 +62,7 @@ resource "azurerm_storage_account" "secure" {
       var.additional_subnet_id
     ]
 
-    # Allow from specific IP ranges (optional)
+    # Allow from specific public IP ranges (optional)
     ip_rules = var.admin_cidr_ranges
   }
 
@@ -75,33 +75,27 @@ resource "azurerm_storage_account" "secure" {
 ## Step 3: Restrict Azure SQL to VNet
 
 ```hcl
-resource "azurerm_sql_server" "main" {
+resource "azurerm_mssql_server" "main" {
   name                         = "${var.project_name}-sql"
   resource_group_name          = var.resource_group_name
   location                     = var.location
   version                      = "12.0"
   administrator_login          = var.sql_admin_login
   administrator_login_password = var.sql_admin_password
+
+  # Service endpoints secure the public endpoint to selected subnets
+  public_network_access_enabled = true
 }
 
 # VNet rule restricts SQL to specified subnets
 
-resource "azurerm_sql_virtual_network_rule" "app_subnet" {
-  name                = "allow-app-subnet"
-  resource_group_name = var.resource_group_name
-  server_name         = azurerm_sql_server.main.name
-  subnet_id           = azurerm_subnet.app.id
+resource "azurerm_mssql_virtual_network_rule" "app_subnet" {
+  name      = "allow-app-subnet"
+  server_id = azurerm_mssql_server.main.id
+  subnet_id = azurerm_subnet.app.id
 
-  # Ignore missing endpoint (endpoint enables automatically)
+  # Require the Microsoft.Sql service endpoint to already be enabled
   ignore_missing_vnet_service_endpoint = false
-}
-
-# Deny all public internet access
-resource "azurerm_mssql_firewall_rule" "deny_all" {
-  name             = "DenyAllPublic"
-  server_id        = azurerm_sql_server.main.id
-  start_ip_address = "0.0.0.0"
-  end_ip_address   = "0.0.0.0"
 }
 ```
 
@@ -114,7 +108,7 @@ resource "azurerm_key_vault" "secure" {
   resource_group_name         = var.resource_group_name
   tenant_id                   = var.tenant_id
   sku_name                    = "standard"
-  enable_rbac_authorization   = true
+  rbac_authorization_enabled  = true
   purge_protection_enabled    = true
   soft_delete_retention_days  = 90
 
