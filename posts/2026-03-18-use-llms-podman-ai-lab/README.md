@@ -8,33 +8,32 @@ Description: Learn how to work with large language models in Podman AI Lab for t
 
 ---
 
-> Large language models running locally through Podman AI Lab give you GPT-like capabilities without API keys or usage fees.
+> Large language models running locally through Podman AI Lab give you GPT-like capabilities without remote API usage fees.
 
-Large Language Models (LLMs) are the backbone of modern AI applications like chatbots, code assistants, and content generators. Podman AI Lab lets you run these models entirely on your local hardware. This guide covers selecting the right LLM for your task, configuring it for optimal performance, and integrating it into common workflows.
+Large Language Models (LLMs) are the backbone of modern AI applications like chatbots, code assistants, and content generators. Podman AI Lab provides a curated local model catalog and can start local inference services on your hardware. This guide covers selecting the right LLM for your task, configuring it for optimal performance, and integrating it into common workflows.
 
 ---
 
 ## Understanding Available LLMs
 
 ```bash
-# Podman AI Lab catalog includes several LLM families.
+# Podman AI Lab provides a curated model catalog, and the exact list changes over time.
+# Current examples in the catalog include:
 
-# Each family has different strengths:
+# General-purpose / instruction-tuned
+# - mistralai/Mistral-Small-3.2-24B-Instruct-2506
+# - qwen/qwen3-4b-GGUF
+# - ibm-granite/granite-3.3-8b-instruct-GGUF
+# - openai/gpt-oss-20b (Unsloth quantization)
 
-# Llama (Meta) - General purpose, strong reasoning
-# - llama-3-8b-instruct: Latest generation, excellent quality
-# - llama-2-7b-chat: Older but well-tested, lower resource needs
+# Code-focused
+# - ibm-granite/granite-8b-code-instruct-GGUF
 
-# Mistral - Efficient, strong performance for size
-# - mistral-7b-instruct: Excellent quality-to-size ratio
-# - mixtral-8x7b: Mixture of experts, higher quality but larger
+# Small / specialized examples
+# - ibm-granite/granite-4.0-tiny-GGUF
+# - microsoft/Phi-4-mini-reasoning (Unsloth quantization)
 
-# Granite (IBM) - Enterprise-focused
-# - granite-7b-instruct: Trained on enterprise data
-# - granite-code-3b: Lightweight code model
-
-# CodeLlama (Meta) - Code-focused
-# - codellama-7b-instruct: Code generation and explanation
+# You can also import your own models if the built-in catalog does not match your use case.
 ```
 
 ## Starting an LLM Service
@@ -45,15 +44,17 @@ podman run -d \
   --name llm-server \
   -p 8080:8080 \
   -v ~/ai-models:/models:ro \
-  ghcr.io/ggerganov/llama.cpp:server \
-  --model /models/mistral-7b-instruct-q4_k_m.gguf \
+  ghcr.io/ggml-org/llama.cpp:server \
+  --model /models/granite-3.3-8b-instruct-Q4_K_M.gguf \
+  --alias local-model \
   --host 0.0.0.0 \
   --port 8080 \
   --ctx-size 4096 \
-  --threads 4
+  --threads 4 \
+  --metrics
 
-# Wait for the model to load
-podman logs -f llm-server 2>&1 | grep -m1 "listening"
+# Wait for the model to finish loading
+until curl -sf http://localhost:8080/health >/dev/null; do sleep 1; done
 ```
 
 ## Text Generation Use Cases
@@ -65,6 +66,7 @@ podman logs -f llm-server 2>&1 | grep -m1 "listening"
 curl -s http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
+    "model": "local-model",
     "messages": [
       {"role": "system", "content": "You are a senior Linux administrator. Be concise and practical."},
       {"role": "user", "content": "How do I find which process is using the most memory?"},
@@ -83,6 +85,7 @@ curl -s http://localhost:8080/v1/chat/completions \
 curl -s http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
+    "model": "local-model",
     "messages": [
       {"role": "system", "content": "You are an expert Python developer. Write clean, well-commented code."},
       {"role": "user", "content": "Write a Python script that monitors disk usage and sends an alert if any partition exceeds 90% usage."}
@@ -99,6 +102,7 @@ curl -s http://localhost:8080/v1/chat/completions \
 curl -s http://localhost:8080/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
+    "model": "local-model",
     "messages": [
       {"role": "system", "content": "Summarize the following text in 3 bullet points. Be concise."},
       {"role": "user", "content": "Containers are lightweight, portable units of software that package an application and its dependencies together. Unlike virtual machines, containers share the host operating system kernel, making them much more efficient in terms of resource usage. Container technologies like Podman and Docker have revolutionized software deployment by ensuring applications run consistently across different environments. The adoption of containers has led to the development of orchestration platforms like Kubernetes, which manage the lifecycle of containerized applications at scale."}
@@ -116,6 +120,7 @@ cat << 'SCRIPT' > ~/llm_pipeline.sh
 # A reusable script for sending prompts to the local LLM server
 
 LLM_URL="${LLM_URL:-http://localhost:8080}"
+MODEL_NAME="${MODEL_NAME:-local-model}"
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-You are a helpful assistant.}"
 TEMPERATURE="${TEMPERATURE:-0.7}"
 MAX_TOKENS="${MAX_TOKENS:-512}"
@@ -130,16 +135,20 @@ fi
 # Send the request and extract the response text
 curl -s "${LLM_URL}/v1/chat/completions" \
   -H "Content-Type: application/json" \
-  -d "$(python3 -c "
+  -d "$(MODEL_NAME="$MODEL_NAME" SYSTEM_PROMPT="$SYSTEM_PROMPT" PROMPT="$PROMPT" TEMPERATURE="$TEMPERATURE" MAX_TOKENS="$MAX_TOKENS" python3 - <<'PY'
 import json
+import os
 print(json.dumps({
+    'model': os.environ['MODEL_NAME'],
     'messages': [
-        {'role': 'system', 'content': '''${SYSTEM_PROMPT}'''},
-        {'role': 'user', 'content': '''${PROMPT}'''}
+        {'role': 'system', 'content': os.environ['SYSTEM_PROMPT']},
+        {'role': 'user', 'content': os.environ['PROMPT']}
     ],
-    'temperature': ${TEMPERATURE},
-    'max_tokens': ${MAX_TOKENS}
-}))")" | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
+    'temperature': float(os.environ['TEMPERATURE']),
+    'max_tokens': int(os.environ['MAX_TOKENS'])
+}))
+PY
+)" | python3 -c "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'])"
 SCRIPT
 chmod +x ~/llm_pipeline.sh
 
@@ -148,7 +157,10 @@ chmod +x ~/llm_pipeline.sh
 ~/llm_pipeline.sh "Explain DNS in one paragraph"
 
 # Pipe content into the LLM
-echo "Review this Containerfile for security issues: FROM ubuntu:latest\nRUN apt-get update" | \
+printf '%s\n' \
+  'Review this Containerfile for security issues:' \
+  'FROM ubuntu:latest' \
+  'RUN apt-get update' | \
   SYSTEM_PROMPT="You are a container security expert." ~/llm_pipeline.sh
 
 # Summarize a file
@@ -158,13 +170,14 @@ cat /etc/os-release | SYSTEM_PROMPT="Summarize this system information." ~/llm_p
 ## Optimizing LLM Performance
 
 ```bash
-# Monitor tokens per second during generation
-podman logs llm-server 2>&1 | grep -E "tokens per second|eval time"
+# Monitor prompt and generation throughput
+curl -s http://localhost:8080/metrics | \
+  grep -E 'llamacpp:(prompt|predicted)_tokens_seconds'
 
 # Key tuning parameters for CPU inference:
-# --threads: Match your CPU core count (not hyperthreads)
-# --ctx-size: Reduce if memory is tight (2048 minimum for chat)
-# --batch-size: Increase for better throughput (256-1024)
+# --threads: Start near your physical core count, then benchmark on your hardware
+# --ctx-size: Larger contexts use more memory; the default 0 uses the model's metadata
+# --batch-size: Controls prompt-processing throughput and memory use; the default is 2048
 # --mlock: Lock model in memory to prevent swapping
 
 # Restart with optimized settings
@@ -175,10 +188,11 @@ podman run -d \
   -p 8080:8080 \
   -v ~/ai-models:/models:ro \
   --cpus 8 --memory 10g \
-  ghcr.io/ggerganov/llama.cpp:server \
-  --model /models/mistral-7b-instruct-q4_k_m.gguf \
+  ghcr.io/ggml-org/llama.cpp:server \
+  --model /models/granite-3.3-8b-instruct-Q4_K_M.gguf \
+  --alias local-model \
   --host 0.0.0.0 --port 8080 \
-  --ctx-size 4096 --threads 8 --batch-size 512 --mlock
+  --ctx-size 4096 --threads 8 --batch-size 512 --mlock --metrics
 ```
 
 ## Cleaning Up
@@ -190,4 +204,4 @@ podman stop llm-server && podman rm llm-server
 
 ## Summary
 
-Podman AI Lab makes it practical to run LLMs locally for a wide range of tasks including chat, code generation, and text summarization. Choosing the right model family and quantization level for your hardware is key to getting good results. By wrapping LLM calls in scripts, you can integrate local AI into your existing DevOps workflows. The OpenAI-compatible API means any tool or library that works with OpenAI will work with your local model server.
+Podman AI Lab makes it practical to run LLMs locally for a wide range of tasks including chat, code generation, and text summarization. Choosing the right model family and quantization level for your hardware is key to getting good results. By wrapping LLM calls in scripts, you can integrate local AI into your existing DevOps workflows. The OpenAI-compatible API works with many OpenAI-style clients, but compatibility is not identical across every endpoint or feature, and chat models work best when the loaded model has a supported chat template.
