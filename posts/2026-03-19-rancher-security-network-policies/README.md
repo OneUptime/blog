@@ -20,7 +20,7 @@ By default, Kubernetes allows all pods to communicate with each other without re
 Not all CNI plugins support Network Policies. Verify your cluster uses a compatible CNI:
 
 ```bash
-kubectl get pods -n kube-system | grep -E "calico|canal|cilium|weave"
+kubectl get pods -A | grep -E "calico|canal|cilium|weave"
 ```
 
 For RKE2 clusters, Canal (Calico + Flannel) is the default CNI and supports Network Policies.
@@ -28,7 +28,7 @@ For RKE2 clusters, Canal (Calico + Flannel) is the default CNI and supports Netw
 When creating a new cluster in Rancher, select a CNI that supports Network Policies:
 
 1. Go to **Cluster Management** > **Create**.
-2. Under **Network Provider**, select **Canal** or **Calico**.
+2. Under **Container Network Provider**, select **Canal**, **Calico**, or **Cilium**.
 
 ## Step 2: Create a Default Deny Policy
 
@@ -47,7 +47,7 @@ spec:
   - Egress
 ```
 
-Apply to all application namespaces:
+Apply it to the namespace:
 
 ```bash
 kubectl apply -f default-deny.yaml
@@ -57,7 +57,7 @@ After applying this, no pods in the namespace can send or receive traffic unless
 
 ## Step 3: Allow DNS Resolution
 
-Pods need DNS access to resolve service names. Allow egress to the kube-dns service:
+Pods need DNS access to resolve service names. Allow egress to the cluster DNS pods:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -71,7 +71,12 @@ spec:
   - Egress
   egress:
   - to:
-    - namespaceSelector: {}
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
     ports:
     - protocol: UDP
       port: 53
@@ -101,7 +106,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
     ports:
     - protocol: TCP
       port: 80
@@ -202,7 +207,7 @@ This allows all traffic within the namespace but blocks traffic from other names
 
 ## Step 6: Allow Rancher System Traffic
 
-Ensure Rancher system components can still communicate with your pods:
+If Rancher system components need to reach your pods, allow those namespaces explicitly:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -218,21 +223,21 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: cattle-system
+          kubernetes.io/metadata.name: cattle-system
     - namespaceSelector:
         matchLabels:
-          name: cattle-monitoring-system
+          kubernetes.io/metadata.name: cattle-monitoring-system
 ```
 
 ## Step 7: Manage Network Policies via Rancher UI
 
-Rancher provides a UI for managing Network Policies:
+Rancher lets you manage `NetworkPolicy` resources from the cluster dashboard:
 
 1. Navigate to the cluster.
-2. Go to **Policy** > **Network Policies**.
-3. Click **Create** to add a new policy.
-4. Use the form to define selectors and rules.
-5. Review the generated YAML and save.
+2. Open **Cluster Explorer**.
+3. In the target namespace, locate the **NetworkPolicy** resource.
+4. Click **Create** to add a new policy, or edit an existing one as YAML.
+5. Review the YAML and save.
 
 ## Step 8: Block External Egress
 
@@ -242,7 +247,7 @@ Prevent pods from reaching the internet unless explicitly needed:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: deny-external-egress
+  name: allow-private-egress
   namespace: production
 spec:
   podSelector: {}
@@ -258,7 +263,7 @@ spec:
         cidr: 192.168.0.0/16
 ```
 
-This allows traffic only to private IP ranges, effectively blocking internet access.
+This allows egress only to the listed private CIDR ranges. Adjust these CIDRs to match the internal networks your workloads actually need; `ipBlock` rules are intended for cluster-external IP ranges.
 
 ## Step 9: Test Network Policies
 
@@ -271,22 +276,23 @@ kubectl run test-client --rm -it --image=busybox --restart=Never -n production -
   wget -qO- --timeout=3 http://api-service:8080/health
 
 # Test blocked connectivity
-kubectl run test-client --rm -it --image=busybox --restart=Never -n staging -- \
-  wget -qO- --timeout=3 http://api-service.production:8080/health
+kubectl run test-client --rm -it --image=busybox --restart=Never -n default -- \
+  wget -qO- --timeout=3 http://api-service.production.svc.cluster.local:8080/health
 ```
 
 The second command should time out if cross-namespace traffic is blocked.
 
 ## Step 10: Monitor Network Policy Impact
 
-Use Calico or Cilium flow logs to see which connections are being blocked:
+Use Calico policy logging or Cilium monitor output to see which connections are being blocked:
 
 ```bash
-# For Calico
-kubectl logs -n kube-system -l k8s-app=calico-node | grep -i denied
+# For Calico, inspect calico/node logs after enabling Calico policy logging
+kubectl get pods -n calico-system
+kubectl logs -n calico-system <calico-node-pod>
 
 # For Cilium
-kubectl exec -n kube-system -l k8s-app=cilium -- cilium monitor --type drop
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop
 ```
 
 ## Best Practices
