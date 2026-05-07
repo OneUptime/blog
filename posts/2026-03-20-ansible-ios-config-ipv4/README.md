@@ -8,7 +8,7 @@ Description: Use the Ansible cisco.ios.ios_config module to push IPv4 interface 
 
 ## Introduction
 
-The `cisco.ios.ios_config` module pushes arbitrary IOS configuration blocks to Cisco devices. It is idempotent - it only applies changes if the current configuration differs from the desired state.
+The `cisco.ios.ios_config` module pushes arbitrary IOS configuration blocks to Cisco devices. When you use full-form commands that match the running configuration, it is idempotent and only applies changes if the current configuration differs from the desired state.
 
 ## Inventory File
 
@@ -22,8 +22,8 @@ router2 ansible_host=192.168.1.2
 [cisco_routers:vars]
 ansible_user=admin
 ansible_password=AdminPass123
-ansible_network_os=ios
-ansible_connection=network_cli
+ansible_network_os=cisco.ios.ios
+ansible_connection=ansible.netcommon.network_cli
 ansible_become=yes
 ansible_become_method=enable
 ansible_become_password=EnablePass
@@ -88,16 +88,15 @@ ansible_become_password=EnablePass
         parents: interface GigabitEthernet0/0
 ```
 
-## Backup Before Change
+## Backup Running Config
 
 ```yaml
-    - name: Backup running config before changes
+    - name: Backup running config
       cisco.ios.ios_config:
         backup: yes
         backup_options:
           dir_path: ./backups
-          filename: "{{ inventory_hostname }}-{{ ansible_date_time.date }}"
-        lines: []  # No config changes - backup only
+          filename: "{{ inventory_hostname }}-{{ now(fmt='%Y-%m-%d') }}"
 ```
 
 ## Save Running Config
@@ -105,7 +104,7 @@ ansible_become_password=EnablePass
 ```yaml
     - name: Save configuration to startup
       cisco.ios.ios_config:
-        save_when: modified   # Only save if changes were made
+        save_when: modified   # Only save if the running-config changed since the last save to startup-config
 ```
 
 ## Run the Playbook
@@ -119,4 +118,4 @@ ansible-playbook -i inventory.ini configure_interface.yml --check --diff
 
 ## Conclusion
 
-`cisco.ios.ios_config` provides idempotent IPv4 configuration management for Cisco IOS. Use `parents` to scope configuration blocks correctly, `backup: yes` to capture the pre-change state, and `save_when: modified` to persist changes to NVRAM only when modifications were made. Always test with `--check --diff` before applying to production.
+`cisco.ios.ios_config` provides IPv4 configuration management for Cisco IOS. Use full-form commands and `parents` to keep configuration matching idempotent, `backup: yes` to capture the current running-config, and `save_when: modified` to persist changes to NVRAM only when the running-config has changed since the last save to startup-config. Always test with `--check --diff` before applying to production.
