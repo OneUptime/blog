@@ -233,7 +233,7 @@ PublishPort=8080:8000
 Volume=app-data:/app/data:Z
 Environment=ENV=production
 Environment=DB_HOST=db.example.com
-AutoUpdate=registry
+AutoUpdate=local
 
 [Service]
 Restart=always
@@ -247,9 +247,9 @@ Activate the service:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now app.service
+sudo systemctl start app.service
 sudo systemctl status app.service
-journalctl -u app.service -f
+sudo journalctl -u app.service -f
 ```
 
 ## Pods for Multi-Container Applications
