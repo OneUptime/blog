@@ -81,7 +81,7 @@ nmcli connection up "myconn"
 ```bash
 # Set routes (replaces all existing routes in the profile)
 nmcli connection modify "myconn" \
-    ipv4.routes "192.168.50.0/24 10.0.0.2 192.168.60.0/24 10.0.0.3"
+    ipv4.routes "192.168.50.0/24 10.0.0.2, 192.168.60.0/24 10.0.0.3"
 
 nmcli connection up "myconn"
 ```
