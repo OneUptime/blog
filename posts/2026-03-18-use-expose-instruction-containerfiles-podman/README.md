@@ -115,10 +115,10 @@ EXPOSE 443
 ```
 
 ```bash
-podman run -P myapp
+podman run -d --name myapp-container -P myapp
 
 # Check the assigned ports
-podman port myapp
+podman port myapp-container
 # 80/tcp -> 0.0.0.0:32768
 # 443/tcp -> 0.0.0.0:32769
 ```
@@ -292,7 +292,7 @@ podman pod create --name myapp-pod -p 8080:80 -p 5432:5432
 
 # Run containers in the pod
 podman run --pod myapp-pod -d nginx:alpine
-podman run --pod myapp-pod -d postgres:16-alpine
+podman run --pod myapp-pod -d -e POSTGRES_PASSWORD=example postgres:16-alpine
 
 # Both containers share the same network
 # nginx is accessible at localhost:8080
