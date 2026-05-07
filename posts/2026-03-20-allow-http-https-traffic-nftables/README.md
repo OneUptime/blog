@@ -8,7 +8,7 @@ Description: Add nftables rules to allow inbound HTTP (port 80) and HTTPS (port 
 
 ## Introduction
 
-Running a web server requires opening ports 80 and 443 in your firewall. nftables makes it straightforward to allow both protocols in a single rule using a set literal. This guide covers how to do this correctly for both IPv4 and IPv6 traffic.
+Running a web server requires opening ports 80 and 443 in your firewall. nftables makes it straightforward to allow both ports in a single rule using a set literal. This guide covers how to do this correctly in an `inet` table so the same TCP rule applies to both IPv4 and IPv6 traffic.
 
 ## Prerequisites
 
@@ -26,21 +26,21 @@ nftables supports matching multiple port values in one rule using a set literal 
 nft add rule inet filter input tcp dport { 80, 443 } accept
 ```
 
-## Allow Only HTTPS and Redirect HTTP
+## Allow HTTPS and Redirect HTTP
 
-For a modern security posture, you may want to accept only HTTPS and let your application handle HTTP-to-HTTPS redirection:
+For a modern security posture, you may want to serve content only over HTTPS and allow HTTP only so your application can return an HTTP-to-HTTPS redirect:
 
 ```bash
 # Accept HTTPS
 nft add rule inet filter input tcp dport 443 accept
 
-# Accept HTTP but mark it (application does the redirect)
+# Accept HTTP so the web server can return a redirect to HTTPS
 nft add rule inet filter input tcp dport 80 accept
 ```
 
 ## Restrict Web Traffic to Specific Source Ranges
 
-You can combine source IP filtering with port matching:
+You can combine source IP filtering with port matching. In an `inet` table, `ip saddr` matches IPv4 sources only; use `ip6 saddr` for IPv6 source filtering.
 
 ```bash
 # Allow web traffic only from a specific subnet
@@ -49,7 +49,7 @@ nft add rule inet filter input ip saddr 192.168.1.0/24 tcp dport { 80, 443 } acc
 
 ## Full Example Configuration
 
-A complete nftables configuration for a public web server:
+A minimal nftables configuration for a web server:
 
 ```bash
 #!/usr/sbin/nft -f
@@ -68,6 +68,9 @@ table inet filter {
 
         # Drop invalid packets
         ct state invalid drop
+
+        # Allow ICMPv6 neighbor discovery so IPv6 connectivity works
+        icmpv6 type { nd-neighbor-solicit, nd-router-advert, nd-neighbor-advert } accept
 
         # Allow SSH (management access)
         tcp dport 22 accept
@@ -97,7 +100,7 @@ nft list ruleset | grep -E "80|443"
 
 # Test from another machine
 curl -I http://your-server-ip
-curl -I https://your-server-ip
+curl -I https://your-server-name
 ```
 
 ## Rate Limiting Web Traffic
@@ -113,13 +116,14 @@ nft add rule inet filter input tcp dport { 80, 443 } \
 ## Save and Enable
 
 ```bash
-# Save the current ruleset
-nft list ruleset > /etc/nftables.conf
+# Save the current ruleset to a configuration file commonly loaded by nftables
+echo "flush ruleset" > /etc/nftables.conf
+nft list ruleset >> /etc/nftables.conf
 
-# Enable nftables at boot
+# Enable nftables at boot if your distribution provides the nftables service
 systemctl enable nftables
 ```
 
 ## Conclusion
 
-Allowing HTTP and HTTPS with nftables is concise thanks to set literals that match multiple ports in one rule. Combine this with rate limiting and source filtering to build a hardened web server firewall. Always save your ruleset to `/etc/nftables.conf` and enable the service to persist rules across reboots.
+Allowing HTTP and HTTPS with nftables is concise thanks to set literals that match multiple ports in one rule. Combine this with rate limiting and source filtering to build a hardened web server firewall. Save your ruleset to the configuration file used by your distribution, commonly `/etc/nftables.conf`, and enable the service to persist rules across reboots.
