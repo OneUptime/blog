@@ -54,7 +54,7 @@ Description=Bad container
 
 [Container]
 Imagee=docker.io/library/nginx:latest
-PublishPorts=8080:80
+PublishPort=8080:80
 CONTAINEREOF
 
 # Validate - this will show errors
@@ -79,11 +79,8 @@ Check what systemd unit the generator produces:
 After generating the unit, use systemd-analyze to verify:
 
 ```bash
-# Reload to get the generated units
-systemctl --user daemon-reload
-
-# Verify the unit file syntax
-systemd-analyze --user verify webapp.service
+# Verify the generated unit file syntax
+systemd-analyze --user --generators=true verify webapp.service
 
 # Check for dependency issues
 systemd-analyze --user dot webapp.service
@@ -103,7 +100,7 @@ GENERATOR="/usr/lib/systemd/system-generators/podman-system-generator"
 echo "Validating Quadlet files in $QUADLET_DIR..."
 
 # Run the generator in dry-run mode
-output=$($GENERATOR --user --dryrun 2>&1)
+output=$(QUADLET_UNIT_DIRS="$QUADLET_DIR" $GENERATOR --user --dryrun 2>&1)
 exit_code=$?
 
 if [ $exit_code -ne 0 ]; then
