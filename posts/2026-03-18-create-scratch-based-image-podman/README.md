@@ -33,7 +33,7 @@ Scratch images are appropriate when your application is a statically linked bina
 Here is the most common scratch use case: a statically compiled Go binary:
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -73,7 +73,7 @@ Most real applications need more than just the binary. Here are the files you co
 If your application makes HTTPS requests, it needs CA certificate bundles:
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache ca-certificates
 
@@ -92,14 +92,14 @@ COPY --from=builder /server /server
 ENTRYPOINT ["/server"]
 ```
 
-Without these certificates, any HTTPS connection from your application will fail with certificate verification errors.
+Without these certificates, standard HTTPS connections that rely on system roots will fail with certificate verification errors.
 
 ### Timezone Data
 
 If your application needs timezone support:
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache ca-certificates tzdata
 
@@ -123,7 +123,7 @@ ENTRYPOINT ["/server"]
 Running as non-root is a security best practice. Since scratch has no `/etc/passwd`, you need to create or copy one:
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache ca-certificates tzdata
 
@@ -154,7 +154,7 @@ ENTRYPOINT ["/server"]
 Here is a complete template that includes all common requirements:
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Install system dependencies
 RUN apk add --no-cache \
@@ -222,7 +222,7 @@ podman build \
 Rust applications can also target scratch using musl for static linking:
 
 ```dockerfile
-FROM rust:1.77-slim AS builder
+FROM rust:1.95-slim AS builder
 
 RUN apt-get update && apt-get install -y musl-tools && \
     rustup target add x86_64-unknown-linux-musl
@@ -249,7 +249,7 @@ The `strip` command removes debug symbols, further reducing binary size.
 For C applications, use musl-gcc for static compilation:
 
 ```dockerfile
-FROM alpine:3.19 AS builder
+FROM alpine:3.23 AS builder
 
 RUN apk add --no-cache gcc musl-dev
 
@@ -270,13 +270,13 @@ ENTRYPOINT ["/server"]
 If your application serves static files (HTML, CSS, images), copy them into the scratch image:
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /server .
 
-FROM node:20-alpine AS frontend
+FROM node:24-alpine AS frontend
 
 WORKDIR /app
 COPY frontend/package*.json ./
@@ -295,7 +295,7 @@ ENTRYPOINT ["/server"]
 
 ## Working with Temporary Files
 
-Scratch images have no `/tmp` directory. If your application needs temporary storage, create the directory in your entrypoint or use a volume:
+Scratch images have no `/tmp` directory. If your application needs temporary storage, create the directory in your application startup code or use a volume:
 
 ```bash
 # Mount a tmpfs for temporary files
@@ -322,20 +322,23 @@ podman logs my-container
 # Attach a debug container to the same network
 podman run --rm -it --network container:my-container alpine sh
 
-# Use podman mount to inspect the filesystem (requires root)
+# Use podman mount to inspect the filesystem (rootful containers)
 sudo podman mount my-container
+
+# For rootless containers, run mount inside the Podman user namespace
+podman unshare podman mount my-container
 ```
 
 For development, consider a debug build target:
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /server .
 
 # Debug target with a shell
-FROM alpine:3.19 AS debug
+FROM alpine:3.23 AS debug
 COPY --from=builder /server /server
 ENTRYPOINT ["/server"]
 
@@ -358,7 +361,7 @@ Understanding when to use each minimal base helps you make the right choice:
 
 **Scratch** gives you the absolute smallest image but requires a fully static binary. You get zero OS overhead and zero attack surface from OS packages. You are responsible for including everything.
 
-**Distroless** includes glibc and essential runtime files. It supports dynamically linked binaries and includes CA certificates, timezone data, and user configuration out of the box. Slightly larger than scratch but much easier to work with.
+**Distroless** includes only the runtime files needed by each image variant, such as glibc in the base and cc images. It can support dynamically linked binaries when you choose a variant with the required runtime libraries, and common variants include useful defaults such as CA certificates and non-root tags. Slightly larger than scratch but much easier to work with.
 
 **Alpine** is a full (minimal) Linux distribution at around 7 MB. It includes a shell, package manager, and common utilities. Use it when you need to install additional packages or need a shell for debugging.
 
