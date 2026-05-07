@@ -33,7 +33,7 @@ resource "helm_release" "argocd" {
   name             = "argocd"
   repository       = "https://argoproj.github.io/argo-helm"
   chart            = "argo-cd"
-  version          = "6.7.3"
+  version          = "9.5.12"
   namespace        = "argocd"
   create_namespace = true
 
@@ -58,18 +58,18 @@ resource "helm_release" "argocd" {
         replicas = var.environment == "production" ? 2 : 1
 
         ingress = {
-          enabled = true
+          enabled          = true
+          ingressClassName = "nginx"
           annotations = {
-            "kubernetes.io/ingress.class"    = "nginx"
-            "cert-manager.io/cluster-issuer" = "letsencrypt-prod"
+            "cert-manager.io/cluster-issuer"                 = "letsencrypt-prod"
+            "nginx.ingress.kubernetes.io/backend-protocol" = "HTTPS"
           }
-          hosts = ["argocd.${var.domain}"]
-          tls   = [{ secretName = "argocd-tls", hosts = ["argocd.${var.domain}"] }]
+          hostname = "argocd.${var.domain}"
+          tls      = true
         }
       }
 
-      applicationSet = { enabled = true }
-      notifications  = { enabled = true }
+      notifications = { enabled = true }
     })
   ]
 }
@@ -77,8 +77,12 @@ resource "helm_release" "argocd" {
 
 ## ArgoCD Project and Application
 
+Apply the ArgoCD Helm release first. The `kubernetes_manifest` resource validates custom resource schemas at plan time, so `AppProject`, `Application`, and `ApplicationSet` resources should be applied in a second OpenTofu run after the ArgoCD CRDs already exist.
+
 ```hcl
 # argocd_apps.tf
+
+# Apply these resources after the ArgoCD chart and CRDs already exist.
 resource "kubernetes_manifest" "argocd_project" {
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
@@ -143,6 +147,7 @@ resource "kubernetes_manifest" "app" {
       }
     }
   }
+  depends_on = [helm_release.argocd, kubernetes_manifest.argocd_project]
 }
 ```
 
@@ -179,15 +184,17 @@ resource "kubernetes_manifest" "app_set" {
           }
           destination = {
             server    = "https://kubernetes.default.svc"
-            namespace = "{{environment}}-${var.app_name}"
+            namespace = "${var.team}-{{environment}}"
           }
           syncPolicy = {
             automated = { prune = true, selfHeal = true }
+            syncOptions = ["CreateNamespace=true"]
           }
         }
       }
     }
   }
+  depends_on = [helm_release.argocd, kubernetes_manifest.argocd_project]
 }
 ```
 
