@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Networking, Pasta, Rootless
 
-Description: Learn how to use pasta as the rootless networking backend in Podman for improved performance and features.
+Description: Learn how to use pasta as the rootless networking tool in Podman for improved performance and features.
 
 ---
 
-> Pasta is the modern rootless networking backend for Podman, offering better performance, IPv6 support, and simpler configuration compared to the legacy slirp4netns.
+> Pasta is the modern rootless networking tool for Podman, offering better performance, IPv6 support, and simpler configuration compared to the legacy slirp4netns.
 
-Pasta (Package-specific Approach to Sockets Translation Architecture) is a user-space networking tool that provides network connectivity for rootless containers. It is the default networking backend in newer versions of Podman and offers significant improvements over slirp4netns.
+Pasta (Pack A Subtle Tap Abstraction) is a user-space networking tool that provides network connectivity for rootless containers. It is the default rootless networking tool in newer versions of Podman and offers significant improvements over slirp4netns.
 
 ---
 
@@ -21,7 +21,7 @@ Pasta (Package-specific Approach to Sockets Translation Architecture) is a user-
 
 which pasta
 
-# Check which network backend Podman is using
+# Check the pasta executable detected by Podman
 podman info --format '{{ .Host.Pasta.Executable }}'
 
 # Verify pasta version
@@ -126,11 +126,13 @@ podman run -d --name web6 \
 # Set pasta as default in containers.conf
 # Edit ~/.config/containers/containers.conf
 
-# [containers]
+# [network]
 # default_rootless_network_cmd = "pasta"
 
 # Verify the default
-podman info --format '{{ .Host.NetworkBackend }}'
+podman run -d --name default-net docker.io/library/alpine:latest sleep 300
+podman inspect default-net --format '{{ .HostConfig.NetworkMode }}'
+podman rm -f default-net
 ```
 
 ## Troubleshooting Pasta
@@ -153,4 +155,4 @@ ls -la $(which pasta 2>/dev/null)
 
 ## Summary
 
-Pasta is the modern rootless networking backend for Podman, providing better performance, native IPv6 support, and lower memory usage compared to slirp4netns. Install the `passt` package to get pasta, and use it explicitly with `--network pasta` or set it as the default in `containers.conf`. Pasta handles port forwarding natively and is the default backend in Podman 5.0 and later.
+Pasta is the modern rootless networking tool for Podman, providing better performance, native IPv6 support, and lower memory usage compared to slirp4netns. Install the `passt` package to get pasta, and use it explicitly with `--network pasta` or set it as the default in `containers.conf`. Pasta handles port forwarding natively and is the default rootless networking tool in Podman 5.0 and later.
