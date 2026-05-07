@@ -8,12 +8,12 @@ Description: Learn how to create an API Gateway HTTP API with OpenTofu for lower
 
 ## Introduction
 
-API Gateway HTTP API is a newer, simpler alternative to REST API with up to 71% lower cost and 60% lower latency. It supports JWT authorizers natively, automatic CORS, and Lambda proxy integrations. Use HTTP API when you don't need REST API-specific features like API keys, usage plans, request/response transformations, or caching.
+API Gateway HTTP API is a newer, simpler alternative to REST API with at least 71% lower cost and up to 60% lower latency. It supports JWT authorizers natively, automatic CORS, and Lambda proxy integrations. Use HTTP API when you don't need REST API-specific features like API keys, usage plans and per-client throttling, request validation, private API endpoints, or caching.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with API Gateway v2 and Lambda permissions
+- AWS credentials with API Gateway v2, Lambda, and CloudWatch Logs permissions
 
 ## Step 1: Create HTTP API with CORS
 
@@ -50,10 +50,6 @@ resource "aws_apigatewayv2_integration" "lambda" {
   integration_method = "POST"
 
   payload_format_version = "2.0"  # v2.0 is simpler for Lambda
-
-  # Connection settings (for VPC Link integration)
-  # connection_type = "VPC_LINK"
-  # connection_id   = aws_apigatewayv2_vpc_link.main.id
 }
 
 # Lambda permission for HTTP API
@@ -158,9 +154,9 @@ tofu apply
 
 # Test the endpoint
 curl -H "Authorization: Bearer <token>" \
-  https://{api-id}.execute-api.us-east-1.amazonaws.com/prod/users
+  "$(tofu output -raw api_endpoint)/users"
 ```
 
 ## Conclusion
 
-API Gateway HTTP APIs are the recommended choice for new Lambda-based APIs due to their lower cost, lower latency, and simpler configuration. The JWT authorizer natively integrates with Cognito and any OpenID Connect provider without Lambda authorizer overhead. Use `auto_deploy = true` for development stages, but disable it for production to control deployment timing.
+API Gateway HTTP APIs are the recommended choice for new Lambda-based APIs due to their lower cost, lower latency, and simpler configuration. The JWT authorizer natively integrates with Cognito and any OpenID Connect provider without Lambda authorizer overhead. Use `auto_deploy = true` for simple setups and development stages, but consider disabling it for production to control deployment timing.
