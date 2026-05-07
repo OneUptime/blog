@@ -48,8 +48,8 @@ podman run --rm my-app:1.0.0 --version
 ### Squash Layers
 
 ```bash
-# Without squash, each buildah run command creates a separate layer
-# Squash merges all layers into a single layer
+# Without squash, commit preserves the base image layers and adds the container's changes
+# Squash merges all layers, including inherited base layers, into a single layer
 buildah commit --squash $container my-app:squashed
 
 # Compare layer counts
@@ -76,13 +76,13 @@ podman inspect my-app:docker --format '{{.ManifestType}}'
 ### Compression Options
 
 ```bash
-# Default compression (gzip)
-buildah commit $container my-app:gzip
+# Local storage commits are uncompressed by default
+buildah commit $container my-app:default
 
-# Use zstd compression (faster, better compression ratio)
-buildah commit --compression-format zstd $container my-app:zstd
+# Force compression when writing the image
+buildah commit --disable-compression=false $container my-app:compressed
 
-# Disable compression (faster commit, larger image)
+# Disable compression explicitly
 buildah commit --disable-compression $container my-app:uncompressed
 
 # Compare sizes
@@ -223,7 +223,7 @@ buildah rm $container
 
 ```bash
 # Run the committed image to verify it works
-podman run --rm nginx-custom:latest nginx -t 2>&1 | head -5
+podman run --rm --entrypoint nginx nginx-custom:latest -t 2>&1 | head -5
 
 # Check the image can be exported and re-imported
 podman save nginx-custom:latest -o /tmp/nginx-custom.tar
@@ -240,10 +240,10 @@ rm -f /tmp/nginx-custom.tar
 ```bash
 buildah rm --all 2>/dev/null
 podman rmi my-app:1.0.0 my-app:squashed my-app:oci my-app:docker \
-  my-app:gzip my-app:zstd my-app:uncompressed my-app:auto-cleanup \
+  my-app:default my-app:compressed my-app:uncompressed my-app:auto-cleanup \
   nginx-custom:latest build-stage:app 2>/dev/null
 ```
 
 ## Summary
 
-The `buildah commit` command is the bridge between a mutable working container and an immutable container image. Key options include squashing layers for smaller images, choosing between OCI and Docker formats for registry compatibility, and selecting compression algorithms for optimal transfer. Committed images are instantly available to Podman and can be pushed to any container registry. Using consistent tagging strategies with timestamps or semantic versions makes image management predictable and auditable.
+The `buildah commit` command is the bridge between a mutable working container and an immutable container image. Key options include squashing layers for smaller images, choosing between OCI and Docker formats for registry compatibility, and controlling layer compression. Committed images are instantly available to Podman and can be pushed to any container registry. Using consistent tagging strategies with timestamps or semantic versions makes image management predictable and auditable.
