@@ -15,20 +15,21 @@ An IPv6 readiness assessment identifies gaps between your current state and what
 ### 1. Internet Connectivity
 
 ```bash
-# Check if your ISP provides IPv6 transit
+# Check if your upstream provider gives you IPv6 Internet connectivity
 
 curl -6 https://api6.ipify.org 2>/dev/null || echo "No IPv6 Internet"
 
-# Check your public IPv6 prefix assignment
+# Check for a global IPv6 address and a default route
+ip -6 address show scope global
 ip -6 route show default
-# Should show a default route via ISP's IPv6 gateway
+# Should show a default route via your upstream IPv6 router
 ```
 
 | Check | Pass Criteria | Status |
 |-------|---------------|--------|
-| ISP provides IPv6 transit | /56 or larger prefix delegated | |
-| IPv6 reachable from DMZ | `ping6 2001:4860:4860::8888` succeeds | |
-| IPv6 DNS resolvers available | `dig AAAA google.com` returns results | |
+| Upstream provider offers IPv6 service | Global IPv6 address or delegated prefix assigned for your network plan | |
+| IPv6 reachable from DMZ | `ping -6 2001:4860:4860::8888` succeeds | |
+| AAAA DNS resolution works | `dig AAAA google.com` returns results | |
 
 ### 2. Network Equipment
 
@@ -99,10 +100,10 @@ for f in findings[:20]:
 ```bash
 # Check if monitoring tools handle IPv6
 # Prometheus: can scrape IPv6 targets?
-curl -6 http://[::1]:9090/api/v1/query?query=up
+curl -g -6 http://[::1]:9090/api/v1/query?query=up
 
 # Nagios/Icinga: IPv6 check plugins installed?
-check_ping6 -H 2001:db8::1 -w 100,10% -c 200,20%
+check_ping -H 2001:db8::1 -w 100,10% -c 200,20% -6
 
 # Zabbix: IPv6 agent support?
 zabbix_get -s ::1 -p 10050 -k system.uptime
@@ -159,4 +160,4 @@ Overall readiness score: X/10
 
 ## Conclusion
 
-A thorough readiness assessment covers five dimensions: connectivity, equipment, applications, security, and monitoring. Score each category and identify critical blockers before writing the migration roadmap. The most common blocking gaps are applications with hardcoded IPv4 addresses, firewalls lacking IPv6 stateful inspection, and SIEMs unable to correlate IPv6 events. Addressing these gaps upfront prevents mid-migration surprises.
+A thorough readiness assessment covers six dimensions: connectivity, equipment, applications, security, monitoring, and team skills. Score each category and identify critical blockers before writing the migration roadmap. Common blocking gaps include applications with hardcoded IPv4 addresses, firewalls lacking IPv6 stateful inspection, and SIEMs unable to correlate IPv6 events. Addressing these gaps upfront prevents mid-migration surprises.
