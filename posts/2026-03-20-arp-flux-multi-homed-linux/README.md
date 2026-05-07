@@ -8,7 +8,7 @@ Description: Learn what ARP flux is, why it causes connectivity issues on multi-
 
 ## What Is ARP Flux?
 
-ARP flux (also called ARP gratuitous confusion) occurs on a Linux host with **multiple network interfaces** (multi-homed). The kernel may:
+ARP flux occurs on a Linux host with **multiple network interfaces** (multi-homed). The kernel may:
 
 1. Reply to ARP requests on the "wrong" interface
 2. Use a different source IP in ARP replies than the interface that received the request
@@ -24,10 +24,10 @@ By default, Linux will respond to ARP requests for any IP configured on any inte
 
 ```text
 eth0: 192.168.1.10/24
-eth1: 10.0.0.10/24
+eth1: 192.168.1.11/24
 
 ARP Request on eth1: "Who has 192.168.1.10?"
-Linux may reply on eth1 using 192.168.1.10
+Linux may reply on eth1 even though 192.168.1.10 is configured on eth0
 → ARP reply comes from the wrong interface
 ```
 
@@ -55,7 +55,9 @@ The `arp_ignore` parameter controls which ARP requests Linux responds to:
 | 0 | Reply to any ARP request for any IP on any interface (default, causes flux) |
 | 1 | Only reply if the target IP matches the interface that received the request |
 | 2 | Only reply if target IP matches interface AND source IP is on the same subnet |
-| 3-8 | More restrictive modes (rarely used) |
+| 3 | Do not reply for host-scope local addresses |
+| 4-7 | Reserved |
+| 8 | Do not reply for local addresses |
 
 ### Set arp_ignore=1 (Recommended for Multi-Homed Hosts)
 
@@ -64,7 +66,7 @@ The `arp_ignore` parameter controls which ARP requests Linux responds to:
 sudo sysctl -w net.ipv4.conf.eth0.arp_ignore=1
 sudo sysctl -w net.ipv4.conf.eth1.arp_ignore=1
 
-# Or globally (affects all interfaces)
+# Or globally (the higher of `all` and the per-interface value is used)
 sudo sysctl -w net.ipv4.conf.all.arp_ignore=1
 ```
 
@@ -76,7 +78,7 @@ The `arp_announce` parameter controls which source IP is used in ARP requests se
 |-------|---------|
 | 0 | Use any local IP as source (default, can cause flux) |
 | 1 | Avoid using IP addresses not in the target's subnet |
-| 2 | Always use the IP of the interface sending the request |
+| 2 | Use the best local address for the target, typically one from the outgoing interface's subnet |
 
 ```bash
 # Recommended for multi-homed
@@ -86,15 +88,16 @@ sudo sysctl -w net.ipv4.conf.all.arp_announce=2
 ## Fixing ARP Flux: arp_filter
 
 ```bash
-# arp_filter=1: Only answer ARP if the kernel would route the reply through
-# the receiving interface (requires policy routing to be configured)
+# arp_filter=1: Useful when multiple interfaces share a subnet.
+# Only answer ARP if the kernel would route the packet back out the
+# receiving interface (requires source-based policy routing)
 sudo sysctl -w net.ipv4.conf.all.arp_filter=1
 ```
 
 ## Persistent Configuration
 
 ```bash
-cat >> /etc/sysctl.conf << 'EOF'
+sudo tee -a /etc/sysctl.conf > /dev/null << 'EOF'
 net.ipv4.conf.all.arp_ignore = 1
 net.ipv4.conf.all.arp_announce = 2
 EOF
@@ -106,7 +109,7 @@ sudo sysctl -p
 ARP flux especially affects:
 
 - **Load balancers with multiple NICs** (e.g., LVS/IPVS)
-- **Bonded/LACP interfaces** with multiple physical NICs
+- **Hosts with multiple interfaces on the same subnet**
 - **Hosts with management + data NICs**
 - **Container hosts** with multiple bridge networks
 
@@ -114,8 +117,8 @@ ARP flux especially affects:
 
 - ARP flux occurs when Linux responds to ARP requests on the wrong interface.
 - `arp_ignore=1` limits replies to only the interface that received the request.
-- `arp_announce=2` ensures ARP requests use the source IP of the outgoing interface.
-- These settings are essential for multi-homed servers, LVS load balancers, and ECMP routing setups.
+- `arp_announce=2` makes Linux prefer the best local source IP for the target, usually one from the outgoing interface's subnet.
+- These settings are often important for multi-homed servers, LVS load balancers, and ECMP routing setups.
 
 **Related Reading:**
 
