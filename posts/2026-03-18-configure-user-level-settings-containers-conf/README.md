@@ -35,6 +35,9 @@ cat > ~/.config/containers/containers.conf << 'EOF'
 # Set timezone to match the host system
 tz = "local"
 
+# Default DNS servers for containers
+dns_servers = ["8.8.8.8", "8.8.4.4"]
+
 # Add custom environment variables to all containers
 env = [
     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -45,10 +48,6 @@ env = [
 [engine]
 # Number of parallel image layer downloads
 image_parallel_copies = 3
-
-[network]
-# Default DNS servers for containers
-dns_servers = ["8.8.8.8", "8.8.4.4"]
 EOF
 ```
 
@@ -57,24 +56,16 @@ EOF
 Tailor the default container behavior to your workflow.
 
 ```bash
-# Add container resource defaults
-cat >> ~/.config/containers/containers.conf << 'EOF'
+# Add more user-level container defaults in a drop-in file
+mkdir -p ~/.config/containers/containers.conf.d
+cat > ~/.config/containers/containers.conf.d/99-user-container-defaults.conf << 'EOF'
 
 [containers]
-# Default memory limit for containers (0 = unlimited)
-# memory = 2147483648
+# Default cgroup settings for containers
+# cgroup_conf = ["memory.high=2147483648"]
 
-# Default CPU shares
-# cpu_shares = 1024
-
-# Default stop signal
-stop_signal = "SIGTERM"
-
-# Default stop timeout in seconds
-stop_timeout = 10
-
-# Default working directory inside containers
-# workdir = "/"
+# Default process limit (0 = unlimited)
+# pids_limit = 1024
 
 # Default init process
 init = false
@@ -86,7 +77,12 @@ EOF
 
 ```bash
 # Verify your settings are applied
-podman info --format '{{.Host.ConfigFiles}}'
+podman info --format json | python3 -c "
+import sys, json
+info = json.load(sys.stdin)
+print('Runtime:', info.get('host', {}).get('ociRuntime', {}).get('name', 'unknown'))
+print('Log Driver:', info.get('host', {}).get('logDriver', 'unknown'))
+"
 ```
 
 ## Configuring Engine Preferences
@@ -108,14 +104,14 @@ env = [
 runtime = "crun"
 
 # Set the default image pull policy
-# Options: always, missing, newer, never
+# Options: always, missing, never
 pull_policy = "missing"
 
 # Configure event logging
 events_logger = "file"
 
-# Set the temporary directory for builds
-# tmp_dir = "/tmp/podman-builds"
+# Set the temporary directory for image copy operations
+# image_copy_tmp_dir = "/tmp/podman-image-copies"
 
 # Number of parallel copies for image pulls
 image_parallel_copies = 5
@@ -164,11 +160,14 @@ echo "=== User-level config ==="
 cat ~/.config/containers/containers.conf | grep -v "^#" | grep -v "^$"
 
 # Run a container to test environment variables
-podman run --rm alpine env | sort
+podman run --rm docker.io/library/alpine:latest env | sort
 
 # Verify the runtime being used
-podman run --rm alpine cat /proc/1/cmdline | tr '\0' ' '
-echo ""
+podman info --format json | python3 -c "
+import sys, json
+info = json.load(sys.stdin)
+print(info.get('host', {}).get('ociRuntime', {}).get('name', 'unknown'))
+"
 
 # Check debug output for configuration loading order
 podman --log-level=debug info 2>&1 | grep -i "config\|reading" | head -10
