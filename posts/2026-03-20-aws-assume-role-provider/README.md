@@ -8,7 +8,7 @@ Description: Learn how to configure the AWS provider in OpenTofu to assume an IA
 
 ## Introduction
 
-The AWS provider's `assume_role` configuration allows OpenTofu to assume a different IAM role before making API calls. This is the standard pattern for cross-account deployments (deploying to a target account from a CI/CD account), for enforcing least-privilege access, and for using OIDC federation with GitHub Actions or other CI systems.
+The AWS provider's `assume_role` and `assume_role_with_web_identity` configurations allow OpenTofu to assume a different IAM role before making API calls. This is the standard pattern for cross-account deployments (deploying to a target account from a CI/CD account) and for enforcing least-privilege access. For OIDC federation with GitHub Actions or other CI systems, use `assume_role_with_web_identity` or let the CI system exchange the OIDC token for short-lived AWS credentials before OpenTofu runs.
 
 ## Basic Assume Role Configuration
 
@@ -55,7 +55,7 @@ provider "aws" {
     # Role in account B that allows deployment
     role_arn     = "arn:aws:iam::${var.target_account_id}:role/opentofu-deploy"
     session_name = "opentofu-${var.environment}"
-    duration_seconds = 3600  # 1-hour session
+    duration     = "1h"  # 1-hour session
   }
 }
 ```
@@ -116,32 +116,35 @@ resource "aws_instance" "app" {
 
 ## OIDC Authentication (GitHub Actions)
 
-Use OIDC tokens instead of access keys:
+Use OIDC tokens instead of access keys. In GitHub Actions, the common pattern is to let the workflow exchange the OIDC token for short-lived AWS credentials before OpenTofu runs:
 
 ```hcl
-# The AWS provider automatically uses OIDC when configured
 provider "aws" {
   region = "us-east-1"
-
-  assume_role_with_web_identity {
-    role_arn                = "arn:aws:iam::123456789012:role/github-actions-role"
-    web_identity_token_file = "/tmp/oidc-token"  # Set by GitHub Actions
-    session_name            = "github-actions-${var.environment}"
-  }
 }
 ```
 
 ```yaml
-# GitHub Actions workflow
-- name: Configure AWS credentials
-  uses: aws-actions/configure-aws-credentials@v4
-  with:
-    role-to-assume: arn:aws:iam::123456789012:role/github-actions-role
-    aws-region: us-east-1
+# GitHub Actions workflow excerpt
+permissions:
+  id-token: write
+  contents: read
 
-- name: OpenTofu Apply
-  run: tofu apply -auto-approve
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.1.0
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-role
+          aws-region: us-east-1
+
+      - name: OpenTofu Apply
+        run: tofu apply -auto-approve
 ```
+
+The action exchanges GitHub's OIDC token for temporary AWS credentials and exports them for the AWS provider to use automatically. The IAM role assumed by the workflow must trust `token.actions.githubusercontent.com`, allow `sts:AssumeRoleWithWebIdentity`, and scope access with `token.actions.githubusercontent.com:aud` and `token.actions.githubusercontent.com:sub` conditions in the trust policy.
 
 ## IAM Role for OpenTofu
 
@@ -195,6 +198,8 @@ provider "aws" {
 }
 ```
 
+When you pass session tags, the target role trust policy must allow `sts:TagSession` in addition to `sts:AssumeRole`.
+
 ## Conclusion
 
-`assume_role` in the AWS provider enables clean cross-account deployments and least-privilege access patterns. Use it with `session_name` for audit trail clarity, `duration_seconds` to limit session lifetime, and OIDC for keyless CI/CD authentication. For multi-account organizations, combine assume_role with provider aliases to manage multiple target accounts from a single OpenTofu configuration. Always prefer OIDC federation over long-lived access keys for CI/CD workflows.
+`assume_role` in the AWS provider enables clean cross-account deployments and least-privilege access patterns. Use it with `session_name` for audit trail clarity and `duration` to limit session lifetime. For keyless CI/CD authentication, use OIDC via `assume_role_with_web_identity` or let your CI system exchange the OIDC token for temporary AWS credentials before OpenTofu runs. For multi-account organizations, combine `assume_role` with provider aliases to manage multiple target accounts from a single OpenTofu configuration. Always prefer OIDC federation over long-lived access keys for CI/CD workflows.
