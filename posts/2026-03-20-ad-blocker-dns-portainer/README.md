@@ -25,8 +25,6 @@ When a device requests `ads.doubleclick.net`, your DNS server (Pi-hole/AdGuard) 
 ```yaml
 # docker-compose.yml - Pi-hole
 
-version: "3.8"
-
 networks:
   dns_network:
     driver: bridge
@@ -49,35 +47,35 @@ services:
     ports:
       - "53:53/tcp"   # DNS TCP
       - "53:53/udp"   # DNS UDP
-      - "67:67/udp"   # DHCP (optional)
+      # - "67:67/udp" # DHCP; bridge mode also needs a DHCP relay
       - "8053:80/tcp" # Web admin UI
     environment:
       # Admin password for web UI
-      - WEBPASSWORD=your_secure_admin_password
+      - FTLCONF_webserver_api_password=your_secure_admin_password
+
+      # Required when using bridge networking
+      - FTLCONF_dns_listeningMode=all
 
       # Upstream DNS servers
-      - PIHOLE_DNS_=1.1.1.1;1.0.0.2;9.9.9.9
+      - FTLCONF_dns_upstreams=1.1.1.1;1.0.0.2;9.9.9.9
 
       # Your local domain (optional)
-      - VIRTUAL_HOST=pihole.local
+      - FTLCONF_dns_domain_name=home
 
       # Timezone
       - TZ=America/New_York
 
       # DNSSEC validation
-      - DNSSEC=true
+      - FTLCONF_dns_dnssec=true
 
       # Enable FTLDNS privacy
-      - FTLCONF_PRIVACYLEVEL=0
-
-      # IPv6 support
-      - IPv6=false
+      - FTLCONF_misc_privacylevel=0
     volumes:
       # Pi-hole configuration
       - pihole_etc:/etc/pihole
-      # DNSMasq configuration
+      # Optional custom dnsmasq files; Pi-hole v6 also needs FTLCONF_misc_etc_dnsmasq_d=true
       - pihole_dnsmasq:/etc/dnsmasq.d
-    # Required for DNS
+    # Needed only if you enable Pi-hole's DHCP server
     cap_add:
       - NET_ADMIN
     networks:
@@ -91,7 +89,6 @@ AdGuard Home offers a more modern interface and built-in HTTPS/DoH support.
 
 ```yaml
 # docker-compose.yml - AdGuard Home
-version: "3.8"
 
 networks:
   dns_network:
@@ -111,16 +108,15 @@ services:
       - "53:53/udp"    # DNS UDP
       - "3000:3000"    # Initial setup UI
       - "8080:80"      # Web admin UI (after setup)
-      - "443:443"      # HTTPS
-      - "784:784/udp"  # DNS over QUIC
+      - "443:443/tcp"  # HTTPS / DNS over HTTPS
+      - "443:443/udp"  # HTTP/3 / DNS over HTTPS
       - "853:853/tcp"  # DNS over TLS
+      - "853:853/udp"  # DNS over QUIC
     volumes:
       # Work directory (query logs, statistics)
       - adguard_work:/opt/adguardhome/work
       # Configuration directory
       - adguard_conf:/opt/adguardhome/conf
-    cap_add:
-      - NET_ADMIN
     networks:
       - dns_network
 ```
@@ -133,29 +129,28 @@ Point all devices on your network to use Pi-hole/AdGuard as the DNS server.
 1. Log into your router admin panel
 2. Find **DHCP Settings** or **LAN Settings**
 3. Set **Primary DNS** to your Docker host IP (e.g., `192.168.1.100`)
-4. Optionally set **Secondary DNS** to `1.1.1.1` as fallback
+4. Leave **Secondary DNS** blank if your router allows it, or point it to a second Pi-hole/AdGuard Home instance
 
 ### Option B: Individual Device Configuration
 ```bash
-# Linux - modify /etc/resolv.conf
+# Linux - temporary change until DHCP or NetworkManager rewrites it
 echo "nameserver 192.168.1.100" | sudo tee /etc/resolv.conf
 
 # Or via NetworkManager
-nmcli con modify "your-connection" ipv4.dns "192.168.1.100"
+nmcli con modify "your-connection" ipv4.method auto ipv4.ignore-auto-dns yes ipv4.dns "192.168.1.100"
 nmcli con up "your-connection"
 ```
 
 ## Step 4: Add Custom Blocklists to Pi-hole
 
 ```bash
-# Add blocklists via Pi-hole API
-# Navigate to Settings > Blocklists and add:
+# Add blocklists in the Pi-hole web interface:
 # https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
 # https://raw.githubusercontent.com/FadeMind/hosts.extras/master/add.Spam/hosts
 # https://www.github.developerdan.com/hosts/lists/ads-and-tracking-extended.txt
 
 # Or via command line
-docker exec pihole pihole -g  # Update gravity (download blocklists)
+docker exec pihole pihole updateGravity
 ```
 
 ## Step 5: Configure Local DNS Records
@@ -164,23 +159,22 @@ Add your self-hosted services as local DNS records:
 
 ```bash
 # In Pi-hole: Settings > Local DNS > DNS Records
-# Or add to dnsmasq config
+# Or add to Pi-hole's custom DNS list
 
-cat << 'EOF' > /opt/pihole/dnsmasq/custom.conf
-# Local service entries
-address=/portainer.home/192.168.1.100
-address=/nextcloud.home/192.168.1.100
-address=/jellyfin.home/192.168.1.100
-address=/grafana.home/192.168.1.100
+docker exec -i pihole tee -a /etc/pihole/custom.list > /dev/null << 'EOF'
+192.168.1.100 portainer.home
+192.168.1.100 nextcloud.home
+192.168.1.100 jellyfin.home
+192.168.1.100 grafana.home
 EOF
 
 # Restart Pi-hole to apply
 docker restart pihole
 ```
 
-## Step 6: Set Up Unbound as Recursive DNS
+## Step 6: Set Up Unbound as an Upstream Resolver
 
-For maximum privacy, use Unbound as a recursive DNS resolver:
+For additional DNS privacy, you can use Unbound as an upstream resolver. Note that `mvance/unbound:latest` forwards queries to Cloudflare over TLS by default; if you want full recursion, provide a custom `unbound.conf`.
 
 ```yaml
 # Add to docker-compose.yml
@@ -188,8 +182,6 @@ For maximum privacy, use Unbound as a recursive DNS resolver:
     image: mvance/unbound:latest
     container_name: unbound
     restart: unless-stopped
-    volumes:
-      - /opt/unbound:/opt/unbound/etc/unbound
     networks:
       dns_network:
         ipv4_address: 172.21.0.101
@@ -198,7 +190,7 @@ For maximum privacy, use Unbound as a recursive DNS resolver:
 ```yaml
 # Update Pi-hole to use Unbound
 environment:
-  - PIHOLE_DNS_=172.21.0.101#5335
+  - FTLCONF_dns_upstreams=unbound#53
 ```
 
 ## Monitoring in Portainer
@@ -209,27 +201,26 @@ Use Portainer to monitor your DNS server:
 - **Restart**: Quickly restart after configuration changes
 
 ```bash
-# Check Pi-hole statistics
+# Check Pi-hole status
 docker exec pihole pihole status
-docker exec pihole pihole -c  # Chronometer (real-time stats)
 
 # Check query logs
-docker exec pihole pihole -t  # Tail live queries
+docker exec pihole pihole tail
 
 # Update blocklists
-docker exec pihole pihole -g
+docker exec pihole pihole updateGravity
 ```
 
 ## Allowlisting Domains
 
 ```bash
 # Allow a domain that's being incorrectly blocked
-docker exec pihole pihole -w example.com
+docker exec pihole pihole allow example.com
 
 # Allow a regex pattern
-docker exec pihole pihole --white-regex '^ads\..*\.yoursite\.com$'
+docker exec pihole pihole --allow-regex '^ads\..*\.yoursite\.com$'
 ```
 
 ## Conclusion
 
-You now have a network-wide ad blocker running in Docker managed through Portainer. Every device on your network - phones, smart TVs, gaming consoles, and laptops - benefits from ad and tracker blocking without any configuration on individual devices. Pi-hole typically blocks 15-25% of all DNS queries in a household, significantly reducing tracking and improving page load times. Use Portainer to keep your ad blocker updated and monitor its resource usage.
+You now have a network-wide ad blocker running in Docker managed through Portainer. Every device on your network - phones, smart TVs, gaming consoles, and laptops - benefits from ad and tracker blocking without any configuration on individual devices. Pi-hole can block a meaningful share of DNS queries in a household, significantly reducing tracking and improving page load times. Use Portainer to keep your ad blocker updated and monitor its resource usage.
