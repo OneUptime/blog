@@ -97,6 +97,7 @@ podman build -t my-api:${BUILD_DATE} .
 podman build -t my-api:${BUILD_DATE}-1 .
 
 # Date + git SHA
+GIT_SHA=$(git rev-parse --short HEAD)
 podman build -t my-api:${BUILD_DATE}-${GIT_SHA} .
 ```
 
@@ -149,8 +150,8 @@ podman build \
 podman tag "${IMAGE_NAME}:${GIT_SHA}" "${IMAGE_NAME}:${GIT_BRANCH}"
 podman tag "${IMAGE_NAME}:${GIT_SHA}" "${IMAGE_NAME}:${BUILD_DATE}-${GIT_SHA}"
 
-# Tag with semver if this is a git tag
-if [ -n "$GIT_TAG" ]; then
+# Tag with semver if this git tag is a SemVer release
+if echo "$GIT_TAG" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
   podman tag "${IMAGE_NAME}:${GIT_SHA}" "${IMAGE_NAME}:${GIT_TAG}"
 
   # Parse semver components
@@ -172,7 +173,7 @@ podman images "${IMAGE_NAME}" --format "table {{.Tag}}\t{{.ID}}\t{{.Created}}"
 
 ## OCI Image Labels
 
-Embed metadata directly in the image using standard OCI labels:
+Embed metadata directly in the image using standard OCI annotation keys as labels:
 
 ```dockerfile
 FROM docker.io/library/node:20-alpine
@@ -200,7 +201,7 @@ podman build \
   -t my-api:1.2.3 .
 ```
 
-Query labels from running containers:
+Query labels from images:
 
 ```bash
 podman inspect my-api:1.2.3 --format '{{index .Config.Labels "org.opencontainers.image.version"}}'
@@ -223,7 +224,7 @@ skopeo copy \
   docker://registry.example.com/myteam/my-api:1.2.3 \
   docker://backup-registry.example.com/myteam/my-api:1.2.3
 
-# Delete old tags from registry
+# Delete an old image manifest from registry
 skopeo delete docker://registry.example.com/myteam/my-api:1.0.0
 ```
 
@@ -239,10 +240,9 @@ IMAGE="my-api"
 KEEP_RECENT=10
 
 # List all tags sorted by creation date
-TAGS=$(podman images "${IMAGE}" --format '{{.Tag}} {{.Created}}' | \
-  sort -k2 -r | \
+TAGS=$(podman images "${IMAGE}" --sort created --format '{{.Tag}}' | \
   tail -n +$((KEEP_RECENT + 1)) | \
-  awk '{print $1}')
+  grep -v '^<none>$')
 
 for tag in $TAGS; do
   if [ "$tag" != "latest" ] && [ "$tag" != "production" ] && [ "$tag" != "staging" ]; then
@@ -254,7 +254,7 @@ done
 
 ## Auto-Update with Tags
 
-Use tags with Podman's auto-update feature:
+Use tags with Podman's auto-update feature for systemd-managed containers:
 
 ```bash
 # Use a mutable tag for auto-update
@@ -264,7 +264,7 @@ podman run -d \
   registry.example.com/myteam/my-api:stable
 
 # When you push a new image with the 'stable' tag,
-# podman auto-update will pull and restart
+# podman auto-update can pull it and restart the systemd unit
 podman auto-update
 ```
 
