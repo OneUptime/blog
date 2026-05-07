@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Rootless, Networking, Port, Security
 
-Description: A step-by-step guide to binding ports below 1024 in rootless Podman containers, covering kernel tunables, socket activation, and reverse proxy approaches.
+Description: A step-by-step guide to binding ports below 1024 in rootless Podman containers, covering kernel tunables, reverse proxy approaches, firewall forwarding, and capability-based approaches.
 
 ---
 
 > "You do not need root to serve on port 80 -- you just need the right kernel configuration."
 
-By default, Linux reserves ports 1 through 1023 for privileged processes. Rootless Podman containers run as your regular user, so binding to port 80 or 443 fails with a "permission denied" error. This guide covers every method to solve this problem without running containers as root.
+By default, Linux reserves ports 1 through 1023 for privileged processes. Rootless Podman containers run as your regular user, so binding to port 80 or 443 fails with a "permission denied" error. This guide covers several common methods to solve this problem without running containers as root.
 
 ---
 
@@ -26,7 +26,7 @@ podman run -d -p 80:80 --name webserver nginx
 # You will see an error like:
 # Error: rootlessport cannot expose privileged port 80,
 # you can add 'net.ipv4.ip_unprivileged_port_start=80'
-# to /etc/sysctl.conf (or use determine a higher port)
+# to /etc/sysctl.conf (or choose a larger port number)
 
 # Verify the current minimum unprivileged port
 cat /proc/sys/net/ipv4/ip_unprivileged_port_start
@@ -119,23 +119,23 @@ sudo apt-get install iptables-persistent  # Debian/Ubuntu
 sudo netfilter-persistent save
 ```
 
-## Method 4: Set Ambient Capabilities
+## Method 4: Set File Capabilities
 
-You can grant the specific capability to bind low ports to the Podman binary:
+You can grant the specific capability to bind low ports to the rootless port helper on systems where Podman uses it for port forwarding:
 
 ```bash
 # Grant CAP_NET_BIND_SERVICE to the rootlessport helper
 sudo setcap cap_net_bind_service=ep /usr/libexec/podman/rootlessport
 
-# Now rootless Podman can bind privileged ports
-podman run -d -p 443:443 --name secure-web nginx
+# If your Podman setup uses this helper, rootless Podman can now bind privileged ports
+podman run -d -p 80:80 --name webserver nginx
 
 # Verify it is running
 podman ps
-curl -k https://localhost:443
+curl http://localhost:80
 ```
 
-Note that this approach requires the setcap change to persist across package updates.
+Note that this approach is distribution- and network-backend-dependent, and the helper path can vary. Podman 5 defaults to `pasta` for rootless networking, so prefer the sysctl, reverse proxy, or firewall forwarding approach unless you have verified that your installation uses `rootlessport`. This approach also requires the `setcap` change to persist across package updates.
 
 ## Summary
 
