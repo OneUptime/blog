@@ -8,7 +8,7 @@ Description: Learn how to configure Azure Managed Identities with OpenTofu to en
 
 ## Overview
 
-Azure Managed Identities eliminate the need to manage credentials by providing Azure services with an automatically managed identity in Azure AD. OpenTofu manages both System-Assigned (tied to a resource lifecycle) and User-Assigned (standalone, reusable) identities.
+Azure Managed Identities eliminate the need to manage credentials by providing Azure resources with an automatically managed identity in Microsoft Entra ID. OpenTofu manages both System-Assigned (tied to a resource lifecycle) and User-Assigned (standalone, reusable) identities.
 
 ## Step 1: User-Assigned Managed Identity
 
@@ -69,7 +69,7 @@ resource "azurerm_linux_virtual_machine" "vm" {
 ## Step 4: Grant Role Assignments to the Identity
 
 ```hcl
-# Grant the user-assigned identity access to a Key Vault
+# Grant the user-assigned identity access to a Key Vault that uses Azure RBAC
 resource "azurerm_role_assignment" "identity_kv_reader" {
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets User"
@@ -83,7 +83,7 @@ resource "azurerm_role_assignment" "identity_storage_reader" {
   principal_id         = azurerm_user_assigned_identity.app_identity.principal_id
 }
 
-# Grant the VM's system-assigned identity access to read secrets
+# Grant the VM's system-assigned identity access to read secrets from a Key Vault that uses Azure RBAC
 resource "azurerm_role_assignment" "vm_kv_access" {
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets User"
@@ -126,4 +126,4 @@ output "user_assigned_identity_principal_id" {
 
 ## Summary
 
-Azure Managed Identities with OpenTofu eliminate credential management by providing Azure resources with automatic identities. Use User-Assigned identities when the same identity needs to be shared across multiple resources, and System-Assigned when each resource needs a unique identity tied to its lifecycle.
+Azure Managed Identities with OpenTofu eliminate credential management by providing Azure resources with automatic identities in Microsoft Entra ID. Use User-Assigned identities when the same identity needs to be shared across multiple resources, and System-Assigned when each resource needs a unique identity tied to its lifecycle.
