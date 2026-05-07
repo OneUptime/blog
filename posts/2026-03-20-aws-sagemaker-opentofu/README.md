@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, SageMaker, Machine Learning, MLOps, IAM, Infrastructure as Code
 
-Description: Learn how to provision AWS SageMaker domains, user profiles, notebook instances, and model endpoints using OpenTofu for reproducible machine learning infrastructure.
+Description: Learn how to provision AWS SageMaker domains, user profiles, and model endpoints using OpenTofu for reproducible machine learning infrastructure.
 
 ---
 
@@ -14,7 +14,7 @@ AWS SageMaker provides managed infrastructure for the full ML lifecycle - from d
 
 ```mermaid
 graph TD
-    A[SageMaker Domain<br/>Data Scientists access] --> B[Notebook Instances<br/>Data exploration]
+    A[SageMaker Domain<br/>Data Scientists access] --> B[JupyterLab Apps<br/>Data exploration]
     A --> C[Training Jobs<br/>On-demand compute]
     C --> D[Model Registry<br/>Versioned models]
     D --> E[Endpoints<br/>Real-time inference]
@@ -88,10 +88,18 @@ resource "aws_sagemaker_domain" "main" {
       }
     }
 
-    kernel_gateway_app_settings {
+    jupyter_lab_app_settings {
+      app_lifecycle_management {
+        idle_settings {
+          idle_timeout_in_minutes     = 60
+          min_idle_timeout_in_minutes = 60
+          max_idle_timeout_in_minutes = 120
+          lifecycle_management        = "ENABLED"
+        }
+      }
+
       default_resource_spec {
-        instance_type        = "ml.t3.medium"
-        lifecycle_config_arn = aws_sagemaker_studio_lifecycle_config.auto_shutdown.arn
+        instance_type = "ml.t3.medium"
       }
     }
   }
@@ -104,21 +112,6 @@ resource "aws_sagemaker_domain" "main" {
     Environment = var.environment
     ManagedBy   = "opentofu"
   }
-}
-
-# Auto-shutdown lifecycle config to save costs
-resource "aws_sagemaker_studio_lifecycle_config" "auto_shutdown" {
-  studio_lifecycle_config_name     = "${var.prefix}-auto-shutdown"
-  studio_lifecycle_config_app_type = "KernelGateway"
-
-  # Base64-encoded script to shut down idle kernels after 1 hour
-  studio_lifecycle_config_content = base64encode(<<-EOF
-    #!/bin/bash
-    pip install jupyter-activity-monitor-extension
-    jupyter lab --generate-config
-    echo "c.ServerApp.shutdown_no_activity_timeout = 3600" >> ~/.jupyter/jupyter_lab_config.py
-  EOF
-  )
 }
 
 # User profile for each data scientist
@@ -173,10 +166,6 @@ resource "aws_sagemaker_endpoint" "main" {
   name                 = "${var.model_name}-endpoint"
   endpoint_config_name = aws_sagemaker_endpoint_configuration.main.name
 
-  lifecycle {
-    create_before_destroy = true
-  }
-
   tags = {
     ModelVersion = var.model_version
     Environment  = var.environment
@@ -205,7 +194,7 @@ resource "aws_appautoscaling_policy" "endpoint" {
   service_namespace  = aws_appautoscaling_target.endpoint.service_namespace
 
   target_tracking_scaling_policy_configuration {
-    target_value = 70.0  # Target 70% CPU utilization
+    target_value = 70.0  # Keep average invocations per instance near 70
 
     predefined_metric_specification {
       predefined_metric_type = "SageMakerVariantInvocationsPerInstance"
@@ -219,8 +208,8 @@ resource "aws_appautoscaling_policy" "endpoint" {
 
 ## Best Practices
 
-- Use SageMaker Studio lifecycle configs to auto-shutdown idle notebook kernels - without auto-shutdown, data scientists may leave expensive GPU instances running overnight.
+- Use JupyterLab idle shutdown settings to stop idle Studio apps - SageMaker can enforce idle shutdown at the domain or user profile level to avoid leaving billable notebook compute running overnight.
 - Deploy endpoints in a VPC with private subnets - SageMaker endpoints don't need public internet access, and keeping them private reduces the attack surface.
-- Use endpoint configuration versioning (`create_before_destroy = true`) - updating an endpoint replaces the configuration without downtime.
+- Use unique endpoint configuration names for each rollout - SageMaker requires a new endpoint configuration for updates, and `UpdateEndpoint` shifts traffic to the new fleet without availability loss.
 - Configure Application Auto Scaling for production endpoints - traffic patterns for ML inference are often unpredictable and bursty.
 - Use model registry to version models rather than naming endpoints by version - this separates the infrastructure (endpoint) from the artifact (model version) and enables rollbacks.
