@@ -10,20 +10,20 @@ Description: Learn how to replace Docker with Podman in Jenkins pipelines for bu
 
 > Podman in Jenkins pipelines gives you rootless, daemonless container operations without requiring the Jenkins agent to have Docker socket access.
 
-Jenkins remains one of the most widely used CI/CD servers, and Podman offers a more secure alternative to Docker for container operations within Jenkins pipelines. By removing the need for the Docker daemon and socket mounting, you reduce the attack surface of your CI environment. This guide shows you how to configure Jenkins to use Podman in both declarative and scripted pipelines.
+Jenkins remains one of the most widely used CI/CD servers, and Podman offers a more secure alternative to Docker for container operations within Jenkins pipelines. By removing the need for the Docker daemon and socket mounting, you reduce the attack surface of your CI environment. This guide shows you how to configure Jenkins to use Podman in declarative pipelines.
 
 ---
 
 ## Installing Podman on Jenkins Agents
 
-Before using Podman in your pipelines, ensure it is installed on your Jenkins agents.
+Before using Podman in your pipelines, ensure it is installed on your Jenkins agents. For rootless Podman, the Jenkins user also needs subordinate UID/GID mappings in `/etc/subuid` and `/etc/subgid`, and the agent needs a rootless networking helper such as `passt`.
 
 ```bash
 #!/bin/bash
 # Install Podman on Ubuntu-based Jenkins agents
 
 sudo apt-get update
-sudo apt-get install -y podman
+sudo apt-get install -y podman fuse-overlayfs passt
 
 # Verify the installation
 podman --version
@@ -36,7 +36,7 @@ cat > ~/.config/containers/storage.conf << 'EOF'
 driver = "overlay"
 
 [storage.options.overlay]
-# Use native overlay diff for better performance
+# Use fuse-overlayfs for rootless overlay storage
 mount_program = "/usr/bin/fuse-overlayfs"
 EOF
 
@@ -94,6 +94,7 @@ pipeline {
 
         stage('Push Image') {
             when {
+                // Requires a Multibranch Pipeline job
                 branch 'main'
             }
             steps {
@@ -104,10 +105,12 @@ pipeline {
                     passwordVariable: 'REG_PASS'
                 )]) {
                     sh """
-                        podman login \
-                            -u \$REG_USER \
-                            -p \$REG_PASS \
+                        set +x
+                        printf '%s' "\$REG_PASS" | podman login \
+                            --username "\$REG_USER" \
+                            --password-stdin \
                             ${REGISTRY}
+                        set -x
 
                         podman push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
                         podman push ${REGISTRY}/${IMAGE_NAME}:latest
@@ -119,8 +122,8 @@ pipeline {
 
     post {
         always {
-            // Clean up images to save disk space on the agent
-            sh 'podman image prune -f || true'
+            // Clean up unused images to save disk space on the agent
+            sh 'podman image prune -af || true'
         }
     }
 }
@@ -145,7 +148,7 @@ pipeline {
         stage('Integration Test') {
             steps {
                 // Create a pod for grouping test containers
-                sh 'podman pod create --name jenkins-test-pod -p 5432:5432'
+                sh 'podman pod create --name jenkins-test-pod'
 
                 // Start the database inside the pod
                 sh """
@@ -154,12 +157,19 @@ pipeline {
                         --name test-db \
                         -e POSTGRES_PASSWORD=secret \
                         -e POSTGRES_DB=testdb \
-                        postgres:16
+                        docker.io/library/postgres:16
                 """
 
                 // Wait for database readiness
-                sh 'sleep 5'
-                sh 'podman exec test-db pg_isready -U postgres'
+                sh '''
+                    for i in $(seq 1 30); do
+                        if podman exec test-db pg_isready -U postgres -d testdb; then
+                            exit 0
+                        fi
+                        sleep 2
+                    done
+                    exit 1
+                '''
 
                 // Run integration tests against the database
                 sh """
@@ -183,17 +193,18 @@ pipeline {
 
 ## Creating a Podman Docker Alias
 
-If you have existing Jenkins pipelines that call `docker`, you can create an alias so they work with Podman without modification.
+If you have existing Jenkins pipelines that call `docker`, you can provide a Docker-compatible entry point for Podman so many commands continue to work with minimal changes.
 
 ```bash
 #!/bin/bash
-# Create a docker alias that points to podman on the Jenkins agent
-# This allows existing pipelines to work without changes
+# Create a docker-compatible entry point that points to podman on the Jenkins agent
+# Many docker commands work unchanged, but verify your pipeline after switching
 
 # Option 1: Symlink (requires root)
 sudo ln -sf /usr/bin/podman /usr/local/bin/docker
 
-# Option 2: Shell alias in the Jenkins user profile
+# Option 2: Bash alias for interactive shells only
+# Jenkins sh steps use the agent's default shell, not ~/.bashrc
 echo 'alias docker=podman' >> ~jenkins/.bashrc
 
 # Option 3: Wrapper script for non-interactive shells
@@ -210,4 +221,4 @@ docker --version  # Should show podman version
 
 ## Summary
 
-Podman integrates well with Jenkins pipelines, offering a daemonless and rootless container runtime that improves security. You can use Podman in both declarative and scripted Jenkins pipelines for building images, running tests, and pushing to registries. The pod feature simplifies multi-container integration testing, and the Docker CLI compatibility means you can migrate existing pipelines with minimal changes. Clean up images in post-build steps to keep your Jenkins agents healthy.
+Podman integrates well with Jenkins pipelines, offering a daemonless and rootless container runtime that improves security. You can use Podman in Jenkins pipelines for building images, running tests, and pushing to registries. The pod feature simplifies multi-container integration testing, and the Docker CLI compatibility means you can migrate many existing pipelines with minimal changes. Clean up unused images in post-build steps to keep your Jenkins agents healthy.
