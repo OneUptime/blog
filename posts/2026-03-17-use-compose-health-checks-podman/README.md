@@ -58,7 +58,7 @@ healthcheck:
   # Number of consecutive failures before marking unhealthy
   retries: 3
 
-  # Grace period for container startup before checks begin
+  # Grace period for container startup before failures count
   start_period: 15s
 ```
 
