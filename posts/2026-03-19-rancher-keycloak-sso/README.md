@@ -64,16 +64,18 @@ Master SAML Processing URL: https://rancher.example.com/v1-saml/keycloak/saml/ac
 
 Fine-tune the SAML settings:
 
-1. In the Rancher client settings, configure the following:
+1. In the Rancher client configuration, set the following values across the **Settings** and **Keys** tabs:
 
 ```plaintext
 Sign Documents: ON
 Sign Assertions: ON
+Client Signature Required: OFF
+Encrypt Assertions: OFF
 Signature Algorithm: RSA_SHA256
 SAML Signature Key Name: KEY_ID
 Canonicalization Method: EXCLUSIVE
 Name ID Format: username
-Force POST Binding: ON
+Force POST Binding: OFF
 Include AuthnStatement: ON
 Force Name ID Format: ON
 ```
@@ -162,18 +164,17 @@ Groups:
 
 Get the Keycloak SAML metadata:
 
-```bash
-# Download realm SAML metadata
+1. Open the Rancher SAML client in Keycloak.
+2. Click the **Installation** tab.
+3. Choose **SAML Metadata IDPSSODescriptor**.
+4. Download the `metadata.xml` file.
 
-curl -s "https://keycloak.example.com/realms/rancher-org/protocol/saml/descriptor" \
-  > keycloak-idp-metadata.xml
-```
-
-Or find the metadata URL in Keycloak:
+If you use the realm metadata endpoint instead:
 
 1. Go to **Realm Settings**.
 2. Click the **General** tab.
 3. Under **Endpoints**, click **SAML 2.0 Identity Provider Metadata**.
+4. Copy the raw XML response. Rancher expects an `EntityDescriptor` root element, so if the endpoint returns `EntitiesDescriptor`, adjust it before pasting it into Rancher.
 
 ## Step 7: Configure Keycloak in Rancher
 
@@ -182,17 +183,23 @@ Set up the Keycloak auth provider in Rancher:
 1. Log in to Rancher as an administrator.
 2. Navigate to **Users & Authentication** then **Auth Provider**.
 3. Select **Keycloak (SAML)**.
+4. If you do not already have a key/certificate pair for Rancher, generate one:
 
-Enter the configuration:
+```bash
+openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout rancher.key -out rancher.cert
+```
+
+5. Enter the configuration:
 
 ```plaintext
 Display Name Field: displayName
 User Name Field: userName
 UID Field: uid
 Groups Field: groups
-Entity ID: https://rancher.example.com/v1-saml/keycloak/saml/metadata
+Entity ID Field: https://rancher.example.com/v1-saml/keycloak/saml/metadata
 Rancher API Host: https://rancher.example.com
-IdP Metadata: (paste the Keycloak SAML metadata XML)
+Private Key / Certificate: (paste the contents of rancher.key and rancher.cert)
+IdP Metadata: (paste the Keycloak metadata.xml contents)
 ```
 
 ## Step 8: Test the Integration
@@ -208,17 +215,19 @@ If testing fails:
 
 ```bash
 # Check Rancher logs
-kubectl logs -l app=rancher -n cattle-system --tail=200 | grep -i "saml\|keycloak\|auth"
+kubectl logs -n cattle-system deploy/rancher --tail=200 | grep -Ei 'saml|keycloak|auth'
 
-# Check Keycloak logs
-kubectl logs -l app=keycloak -n keycloak --tail=200 | grep -i "saml\|rancher"
+# Check Keycloak logs using your deployment, pod name, or label selector
+kubectl logs -n <keycloak-namespace> <keycloak-pod-name> --tail=200 | grep -Ei 'saml|rancher'
 ```
 
 Common issues:
 
 | Issue | Solution |
 |-------|----------|
-| Invalid requester | Verify the Client ID in Keycloak matches the Entity ID in Rancher |
+| Not redirected to Keycloak | Make sure `Force POST Binding` is set to `OFF` |
+| Invalid requester | Verify the Client ID in Keycloak matches the Entity ID Field in Rancher. If Keycloak logs show `SigAlg was null`, set `Client Signature Required` to `OFF` |
+| Failed to process response | Set `Encrypt Assertions` to `OFF` |
 | Missing attributes | Check the protocol mappers are configured correctly |
 | Signature validation failed | Ensure Sign Documents and Sign Assertions are enabled |
 | Groups not returned | Verify the Group list mapper is configured with correct settings |
