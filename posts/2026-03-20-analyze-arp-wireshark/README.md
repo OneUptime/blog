@@ -66,31 +66,31 @@ arp.opcode == 2
 arp.isgratuitous == true
 
 # Show ARP for a specific IP
-arp.src.proto_ipv4 == 192.168.1.10
+arp.src.proto_ipv4 == 192.168.1.10 || arp.dst.proto_ipv4 == 192.168.1.10
 
 # Show ARP involving a specific MAC
-arp.src.hw_mac == aa:bb:cc:dd:ee:01
+arp.src.hw_mac == aa:bb:cc:dd:ee:01 || arp.dst.hw_mac == aa:bb:cc:dd:ee:01
 
-# Detect possible ARP spoofing (same IP, different MACs)
+# Show duplicate IP-use warnings
 arp.duplicate-address-detected
 ```
 
 ## Identifying ARP Spoofing in Wireshark
 
-Wireshark automatically highlights potential ARP spoofing with a warning:
+Wireshark can raise expert information warnings for duplicate IP use that may indicate ARP spoofing:
 
-- **"Duplicate IP address detected"** - appears when two different MACs claim the same IP
-- Color-coded in red/yellow in the packet list
+- **"Duplicate IP address configured"** - appears when Wireshark sees the same IP used with different MAC addresses
+- Shown as expert information with warning severity
 
 Filter for duplicate IP detection:
 
 ```text
-arp.duplicate-address-detected || arp.duplicate-address-frame
+arp.duplicate-address-detected
 ```
 
 ## Building an ARP Summary with Wireshark Statistics
 
-Go to **Statistics → Endpoints** to see all Layer 2 (Ethernet) addresses that sent ARP, with packet counts.
+With an `arp` display filter applied, go to **Statistics → Endpoints** to see Layer 2 (Ethernet) addresses involved in the filtered ARP traffic, with packet counts.
 
 Or use **Statistics → Protocol Hierarchy** to see what percentage of traffic is ARP.
 
@@ -124,7 +124,7 @@ tshark -i eth0 -f "arp" -a duration:10 -q -z io,stat,1
 - Use `arp` as both capture and display filter in Wireshark.
 - `arp.opcode == 1` filters requests, `arp.opcode == 2` filters replies.
 - Wireshark automatically detects gratuitous ARPs with `arp.isgratuitous`.
-- The "duplicate address detected" warning in Wireshark can indicate ARP spoofing.
+- The duplicate IP warning in Wireshark can indicate ARP spoofing.
 
 **Related Reading:**
 
