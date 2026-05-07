@@ -24,10 +24,10 @@ You can verify the current timezone inside a container:
 
 ```bash
 podman run --rm alpine date
-podman run --rm alpine cat /etc/localtime
+podman run --rm alpine date +"%Z %z"
 ```
 
-The output will show UTC time, regardless of your host timezone.
+For a plain Alpine image, the output will show UTC time unless you configure another timezone.
 
 ## Fix 1: Set the TZ Environment Variable
 
@@ -62,7 +62,7 @@ timedatectl list-timezones
 Or inside an image that has the timezone database:
 
 ```bash
-podman run --rm alpine ls /usr/share/zoneinfo/
+podman run --rm alpine sh -c "apk add --no-cache tzdata >/dev/null && ls /usr/share/zoneinfo/"
 ```
 
 ## Fix 2: Mount the Host's Timezone Files
@@ -93,14 +93,17 @@ For images you build yourself, set the timezone during the build. The approach v
 FROM ubuntu:22.04
 
 ENV TZ=America/New_York
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
 ```
 
 **For Alpine-based images:**
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.23
 
 RUN apk add --no-cache tzdata
 ENV TZ=America/New_York
@@ -110,10 +113,12 @@ RUN cp /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 **For RHEL/Fedora-based images:**
 
 ```dockerfile
-FROM fedora:39
+FROM fedora:43
 
 ENV TZ=America/New_York
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime
+RUN dnf install -y tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && dnf clean all
 ```
 
 ## Fix 4: Set the Timezone in Podman Compose
@@ -146,33 +151,34 @@ Some applications have their own timezone configuration and do not respect the `
 
 ```bash
 podman run -e TZ=America/New_York \
-           -e PGTZ=America/New_York \
-           postgres:16
+           -e POSTGRES_PASSWORD=secret \
+           postgres:16 -c timezone=America/New_York
 ```
 
 Inside PostgreSQL, verify:
 
 ```sql
 SHOW timezone;
-SET timezone = 'America/New_York';
+SET TIME ZONE 'America/New_York';
 ```
 
 **MySQL/MariaDB:**
 
 ```bash
-podman run -e TZ=America/New_York \
+podman run --name my-mysql \
+           -e TZ=America/New_York \
            -e MYSQL_ROOT_PASSWORD=secret \
-           mysql:8.0
+           mysql:8.4
 
 # Then set the timezone in MySQL
 
 podman exec -it my-mysql mysql -u root -p -e "SET GLOBAL time_zone = 'America/New_York';"
 ```
 
-For persistent MySQL timezone configuration, you also need to load the timezone tables:
+For named MySQL timezone support, you also need to load the timezone tables:
 
 ```bash
-podman exec -it my-mysql mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root -p mysql
+podman exec -it my-mysql sh -c "mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql -u root -p mysql"
 ```
 
 **Java applications:**
@@ -202,7 +208,7 @@ podman run -e TZ=America/New_York my-node-app
 Alpine images are minimal and often do not include the timezone database. If you set `TZ` but the timezone does not change, you likely need to install the `tzdata` package:
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache tzdata
 ENV TZ=America/New_York
 ```
@@ -216,7 +222,7 @@ podman exec my-container apk info tzdata
 If you want to keep the image small, you can install tzdata, copy the timezone file, and then remove the package:
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache --virtual .tz tzdata \
     && cp /usr/share/zoneinfo/America/New_York /etc/localtime \
     && echo "America/New_York" > /etc/timezone \
