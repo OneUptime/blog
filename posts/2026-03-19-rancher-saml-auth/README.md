@@ -4,14 +4,14 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Authentication, SAML, SSO
 
-Description: A practical guide to configuring SAML-based single sign-on authentication in Rancher with any SAML 2.0 identity provider.
+Description: A practical guide to configuring SAML-based single sign-on authentication in Rancher with Rancher's supported SAML identity providers.
 
-SAML (Security Assertion Markup Language) enables single sign-on (SSO) authentication between Rancher and your identity provider. This allows users to authenticate once with their corporate identity provider and gain access to Rancher without entering separate credentials. This guide covers the general SAML setup process.
+SAML (Security Assertion Markup Language) enables single sign-on (SSO) authentication between Rancher and your identity provider. This allows users to authenticate once with their corporate identity provider and gain access to Rancher without entering separate credentials. This guide covers the general setup process for Rancher's supported SAML providers, such as AD FS, PingIdentity, Keycloak, Okta, and Shibboleth.
 
 ## Prerequisites
 
 - Rancher v2.6 or later with admin access
-- A SAML 2.0 compatible identity provider (IdP)
+- A Rancher-supported SAML identity provider (such as AD FS, PingIdentity, Keycloak, Okta, or Shibboleth)
 - Access to configure your identity provider
 - The Rancher server URL must be accessible from users' browsers
 - TLS configured on the Rancher server
@@ -29,49 +29,50 @@ The SAML authentication flow works as follows:
 
 ## Step 1: Get Rancher SP Metadata
 
-First, obtain the Rancher Service Provider (SP) metadata:
+First, identify the Rancher Service Provider (SP) metadata URL for your provider:
 
 1. Log in to Rancher as an administrator.
 2. Navigate to **Users & Authentication** then **Auth Provider**.
-3. Select your SAML provider (e.g., **Ping**, **Keycloak**, **ADFS**, or **Shibboleth**).
+3. Select your SAML provider (for example, **Ping Identity**, **Keycloak SAML**, **ADFS**, **Okta**, or **Shibboleth**).
 4. Note the SP metadata URL, typically:
 
 ```plaintext
 https://rancher.example.com/v1-saml/adfs/saml/metadata
 ```
 
-Or download the metadata:
+For providers that publish metadata after the configuration is saved, you can download it with:
 
 ```bash
 curl -sk "https://rancher.example.com/v1-saml/adfs/saml/metadata" > rancher-sp-metadata.xml
 ```
 
+For PingIdentity, Keycloak SAML, and Shibboleth, Rancher documents that the metadata URL does not return valid data until the authentication configuration has been saved in Rancher.
+
 ## Step 2: Configure Your Identity Provider
 
 Register Rancher as a Service Provider in your IdP. The general process involves:
 
-1. Import or manually enter the Rancher SP metadata.
+1. Import or manually enter the Rancher SP settings that your provider requires.
 2. Configure the following endpoints:
 
 ```plaintext
-Entity ID: https://rancher.example.com/v1-saml/adfs/saml/metadata
-ACS URL: https://rancher.example.com/v1-saml/adfs/saml/acs
-Single Logout URL: https://rancher.example.com/v1-saml/adfs/saml/slo
+Entity ID / Relying Party Trust Identifier: https://rancher.example.com/v1-saml/adfs/saml/metadata
+ACS URL / SAML 2.0 WebSSO Protocol Service URL: https://rancher.example.com/v1-saml/adfs/saml/acs
 ```
 
-3. Configure attribute mappings to include:
+3. Configure attribute mappings for the fields Rancher expects. The exact attribute names must match what your IdP emits. For example:
 
 ```plaintext
-UID Attribute: uid (or preferred username attribute)
-Display Name Attribute: displayName
-User Name Attribute: userName
-Groups Attribute: groups
-Email Attribute: email
+UID Attribute: a unique user attribute such as email, userPrincipalName, or sAMAccountName
+Display Name Attribute: displayName or name
+User Name Attribute: givenName, email, or another username attribute
+Groups Attribute: groups, memberOf, member, or an IdP-specific group claim
+Email Attribute: email (optional, but commonly included)
 ```
 
 ## Step 3: Configure Attribute Statements
 
-Set up SAML attribute statements in your IdP to send the required user information:
+Set up SAML attribute statements in your IdP to send the user information Rancher is configured to read. The attribute names below are examples only:
 
 ```xml
 <!-- Example SAML attribute statement configuration -->
@@ -111,9 +112,10 @@ Extract the key information from the metadata:
 ```plaintext
 IdP Entity ID: https://adfs.example.com/adfs/services/trust
 SSO URL: https://adfs.example.com/adfs/ls/
-SLO URL: https://adfs.example.com/adfs/ls/?wa=wsignout1.0
 Certificate: (the IdP signing certificate)
 ```
+
+If you are using Keycloak, Rancher documents that the metadata pasted into Rancher may need `EntityDescriptor` as the root element instead of `EntitiesDescriptor`.
 
 ## Step 5: Configure SAML in Rancher
 
@@ -124,29 +126,24 @@ Enter the IdP details in Rancher:
 3. Fill in the configuration:
 
 ```plaintext
-Display Name Field: displayName
-User Name Field: userName
-UID Field: uid
-Groups Field: groups
-Entity ID Field: https://rancher.example.com/v1-saml/adfs/saml/metadata
+Display Name Field: the IdP attribute that contains display names
+User Name Field: the IdP attribute that contains usernames
+UID Field: the IdP attribute that uniquely identifies each user
+Groups Field: the IdP attribute that exposes groups
+Entity ID Field: https://rancher.example.com/v1-saml/keycloak/saml/metadata (provider-specific; for example, Keycloak or PingIdentity)
 Rancher API Host: https://rancher.example.com
+Private Key / Certificate: (paste or generate the key/certificate pair Rancher uses for SAML)
 IDP Metadata: (paste the IdP metadata XML)
 ```
 
-Or enter the fields manually:
-
-```plaintext
-IdP Entity ID: https://adfs.example.com/adfs/services/trust
-SAML SSO URL: https://adfs.example.com/adfs/ls/
-IDP Certificate: (paste the IdP signing certificate in PEM format)
-```
+The exact fields vary by provider, but Rancher's current SAML provider documentation centers on importing the IdP metadata XML and supplying a private key/certificate pair.
 
 ## Step 6: Configure Group Mappings
 
 Map SAML groups to Rancher roles:
 
 ```plaintext
-SAML Group Attribute Name: groups
+SAML Group Attribute Name: the group attribute your IdP emits (for example, groups, memberOf, member, or http://schemas.xmlsoap.org/claims/Group)
 
 Group Mappings:
   "platform-admins" -> Administrator
@@ -154,20 +151,20 @@ Group Mappings:
   "readonly-users" -> User-Base
 ```
 
-In the Rancher UI:
+Rancher assigns permissions based on the groups returned in the SAML response. In the Rancher UI:
 
 1. Go to **Users & Authentication** then **Groups**.
-2. Search for a SAML group.
+2. Start typing the group name and select it from the drop-down when it appears.
 3. Assign the appropriate global role.
 
 ## Step 7: Test SAML Authentication
 
-Test the configuration before enabling it for all users:
+Validate the configuration as part of the enable flow. Use the external account you intend to administer Rancher with, because Rancher grants admin permissions to the account used to enable the external provider:
 
-1. Click the **Test** button in the SAML configuration page.
+1. Click **Enable** in the SAML configuration page.
 2. You will be redirected to your IdP login page.
 3. Authenticate with your IdP credentials.
-4. Verify that you are redirected back to Rancher with proper user information.
+4. Verify that you are redirected back to Rancher and signed in successfully.
 
 If testing fails, check:
 
@@ -187,25 +184,15 @@ Common SAML errors:
 
 ## Step 8: Enable SAML Authentication
 
-Once testing succeeds:
-
-1. Click **Enable** to activate SAML authentication.
-2. Confirm the action.
-
-The Rancher login page will now show a SAML SSO login button.
+After the validation login succeeds, Rancher keeps SAML enabled and signs you in through the external provider. The Rancher login page will now show the configured SAML provider button.
 
 ## Step 9: Configure Single Logout
 
-Set up Single Logout (SLO) so that logging out of Rancher also logs the user out of the IdP:
+If your provider supports SAML Single Logout (SLO), Rancher exposes logout behavior options for it:
 
-1. In your IdP, configure the SLO endpoint:
-
-```plaintext
-SLO URL: https://rancher.example.com/v1-saml/adfs/saml/slo
-SLO Binding: HTTP-Redirect
-```
-
-2. In Rancher, verify the SLO configuration is enabled.
+1. In Rancher, open **Users & Authentication** then **Auth Provider**.
+2. Under **Log Out behavior**, choose whether Rancher should log out only the Rancher session, also log out of the authentication provider, or prompt the user to choose.
+3. If your IdP requires explicit SLO settings, use the SLO values published in the provider metadata.
 
 Test SLO by logging out of Rancher and verifying you are also logged out of the IdP.
 
@@ -225,13 +212,9 @@ When your IdP certificate is about to expire:
 ### Monitor Authentication
 
 ```bash
-# Check for SAML authentication failures
+# Inspect recent SAML-related log entries
 kubectl logs -l app=rancher -n cattle-system --tail=500 | \
-  grep -i "saml.*error\|saml.*fail"
-
-# Count successful SAML logins
-kubectl logs -l app=rancher -n cattle-system --tail=1000 | \
-  grep -i "saml.*success" | wc -l
+  grep -Ei "saml|auth"
 ```
 
 ## Best Practices
