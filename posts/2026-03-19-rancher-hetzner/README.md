@@ -13,7 +13,7 @@ Hetzner Cloud offers excellent price-to-performance ratios, making it an attract
 - A Hetzner Cloud account
 - The `hcloud` CLI tool installed and configured with an API token
 - An SSH key added to your Hetzner Cloud account
-- A domain name (optional but recommended)
+- A DNS name that resolves to your server IP, such as a domain or a temporary hostname like `<server-ip>.sslip.io`
 
 ## Step 1: Create an SSH Key (If Not Already Done)
 
@@ -38,7 +38,7 @@ hcloud firewall add-rule rancher-fw --direction in --protocol tcp --port 6443 --
 
 ## Step 3: Create the Server
 
-Create a server with at least 4 GB RAM. The CX21 or CPX21 types work well:
+Create a server. For a lightweight proof-of-concept install, a 4 GB server such as CX23 or CPX21 is a reasonable starting point:
 
 ```bash
 hcloud server create \
@@ -94,7 +94,7 @@ helm install cert-manager jetstack/cert-manager \
   --set crds.enabled=true
 ```
 
-Wait for pods to become ready:
+Check that the pods are ready:
 
 ```bash
 kubectl get pods -n cert-manager
@@ -131,6 +131,7 @@ Configure the floating IP inside the server:
 cat > /etc/netplan/60-floating-ip.yaml <<EOF
 network:
   version: 2
+  renderer: networkd
   ethernets:
     eth0:
       addresses:
@@ -142,11 +143,11 @@ netplan apply
 
 ## Step 10: Configure DNS and Access Rancher
 
-Point your domain to the server IP (or floating IP) and then access `https://rancher.example.com` in your browser. Log in with the bootstrap password and set your admin credentials.
+Point your DNS name to the server IP (or floating IP) and then access `https://rancher.example.com` in your browser. Log in with the bootstrap password and set your admin credentials.
 
 ## Using Hetzner Cloud with Rancher
 
-While Rancher does not include a built-in Hetzner node driver by default, you can install the Hetzner Cloud Controller Manager and use custom cluster drivers. Alternatively, you can create K3s or RKE2 clusters manually on Hetzner servers and import them into Rancher.
+Rancher can manage K3s or RKE2 clusters that you create on Hetzner servers and import into the Rancher UI. If you want Rancher to provision nodes from the UI, Rancher also supports adding custom node drivers.
 
 To import an existing cluster:
 
