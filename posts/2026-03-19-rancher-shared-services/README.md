@@ -36,7 +36,7 @@ A dedicated shared services project keeps cross-cutting infrastructure organized
 6. Configure resource quotas appropriate for shared infrastructure.
 7. Click **Create**.
 
-**Via kubectl:**
+**Via kubectl (on Rancher's management cluster):**
 
 ```yaml
 apiVersion: management.cattle.io/v3
@@ -65,15 +65,18 @@ spec:
 ```
 
 ```bash
-kubectl apply -f shared-services-project.yaml
+kubectl create -f shared-services-project.yaml
 ```
 
 ## Step 2: Create Namespaces for Shared Services
 
-Organize shared services into dedicated namespaces:
+After the project is created, look up its generated ID on the Rancher management cluster and then create dedicated namespaces on the managed cluster:
 
 ```bash
-# Create namespaces
+# Look up the generated project ID on the Rancher management cluster.
+kubectl --namespace c-m-xxxxx get projects
+
+# Switch kubectl to the managed cluster context before creating the namespaces.
 
 for ns in monitoring logging ingress cert-manager shared-databases; do
   cat <<EOF | kubectl apply -f -
@@ -82,9 +85,8 @@ kind: Namespace
 metadata:
   name: $ns
   annotations:
-    field.cattle.io/projectId: "c-m-xxxxx:p-shared"
+    field.cattle.io/projectId: "c-m-xxxxx:p-xxxxx"
   labels:
-    field.cattle.io/projectId: "p-shared"
     project: shared-services
     purpose: infrastructure
 EOF
@@ -104,7 +106,7 @@ resource "rancher2_project_role_template_binding" "shared_platform_owner" {
   group_principal_id = data.rancher2_principal.platform_team.id
 }
 
-# All users - read-only access to monitoring dashboards
+# All developers - read-only access to the shared services project
 resource "rancher2_project_role_template_binding" "shared_all_readonly" {
   name               = "shared-all-readonly"
   project_id         = rancher2_project.shared_services.id
@@ -130,12 +132,12 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # Allow from all namespaces (all tenants)
+    # Allow from all namespaces
     - from:
         - namespaceSelector: {}
 ```
 
-**Allow shared services to scrape metrics from all projects:**
+**Example: allow monitoring workloads to scrape common metrics endpoints across namespaces:**
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -144,13 +146,11 @@ metadata:
   name: allow-prometheus-scrape
   namespace: monitoring
 spec:
-  podSelector:
-    matchLabels:
-      app: prometheus
+  podSelector: {}
   policyTypes:
     - Egress
   egress:
-    # Allow Prometheus to reach all namespaces for scraping
+    # Allow monitoring workloads to reach common metrics ports
     - to:
         - namespaceSelector: {}
       ports:
@@ -160,9 +160,11 @@ spec:
           port: 8080
         - protocol: TCP
           port: 9100
-    # Allow DNS
+    # Allow DNS to CoreDNS in kube-system
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -189,7 +191,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              project: shared-services
+              app: ingress-controller
           podSelector:
             matchLabels:
               app.kubernetes.io/name: ingress-nginx
@@ -197,38 +199,88 @@ spec:
 
 ## Step 5: Deploy Monitoring in the Shared Project
 
-Install Prometheus and Grafana in the monitoring namespace:
+Rancher's built-in Monitoring app deploys into `cattle-monitoring-system`. To keep Prometheus and Grafana in the shared project, install the chart directly in the `monitoring` namespace:
 
 ```bash
-# Using Rancher's monitoring integration
-# Navigate to Cluster > Cluster Tools > Monitoring
-# Or install via Helm:
-
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
 helm install monitoring prometheus-community/kube-prometheus-stack \
   --namespace monitoring \
   --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
   --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
-  --set grafana.adminPassword=<secure-password>
+  --set grafana.adminPassword='replace-this-password'
 ```
 
 ## Step 6: Deploy Logging in the Shared Project
 
-Set up centralized logging:
+Set up centralized logging by installing Loki in the shared project. Use Grafana Alloy or another supported collector to ship logs into Loki:
 
 ```bash
-# Install Loki for log aggregation
-helm repo add grafana https://grafana.github.io/helm-charts
-helm install loki grafana/loki-stack \
+# Install Loki in monolithic mode for a small shared-services stack
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
+helm repo update
+
+cat <<'EOF' > loki-values.yaml
+loki:
+  commonConfig:
+    replication_factor: 1
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  pattern_ingester:
+    enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+  ruler:
+    enable_api: true
+minio:
+  enabled: true
+deploymentMode: Monolithic
+singleBinary:
+  replicas: 1
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomPlanner:
+  replicas: 0
+bloomBuilder:
+  replicas: 0
+bloomGateway:
+  replicas: 0
+EOF
+
+helm install loki grafana-community/loki \
   --namespace logging \
-  --set promtail.enabled=true \
-  --set loki.persistence.enabled=true \
-  --set loki.persistence.size=50Gi
+  -f loki-values.yaml
 ```
 
 ## Step 7: Deploy the Ingress Controller
 
-Install a shared ingress controller:
+Install a shared ingress controller. If your platform still standardizes on `ingress-nginx`, the Helm install looks like this, but choose a maintained controller for new long-lived deployments:
 
 ```bash
 helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
@@ -250,10 +302,10 @@ kubectl label namespace ingress app=ingress-controller
 Install cert-manager for automated TLS:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
+helm repo add jetstack https://charts.jetstack.io --force-update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
-  --set installCRDs=true \
+  --set crds.enabled=true \
   --set resources.requests.cpu=50m \
   --set resources.requests.memory=64Mi
 ```
@@ -274,7 +326,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ## Step 9: Set Up Cross-Project Service Access
@@ -332,7 +384,7 @@ Tenant applications connect using: `shared-redis.shared-databases.svc.cluster.lo
 
 Create documentation for tenant teams about available shared services:
 
-```yaml
+```bash
 # Add annotations to the shared-services namespaces
 kubectl annotate namespace monitoring \
   "docs/description=Prometheus and Grafana monitoring stack" \
@@ -340,7 +392,7 @@ kubectl annotate namespace monitoring \
   "docs/url=https://grafana.cluster.example.com"
 
 kubectl annotate namespace logging \
-  "docs/description=Loki log aggregation with Promtail agents" \
+  "docs/description=Loki log aggregation" \
   "docs/access=Teams can view logs from their own namespaces" \
   "docs/url=https://grafana.cluster.example.com/explore"
 
@@ -379,7 +431,11 @@ done
 echo ""
 echo "--- Resource Usage ---"
 for ns in monitoring logging ingress cert-manager shared-databases; do
-  kubectl top pods -n $ns --no-headers 2>/dev/null | awk -v ns=$ns '{cpu+=$2; mem+=$3} END {printf "  %s: CPU=%dm, Memory=%dMi\n", ns, cpu, mem}'
+  if kubectl top pods -n $ns --no-headers >/dev/null 2>&1; then
+    kubectl top pods -n $ns --no-headers | awk -v ns=$ns '{cpu+=$2; mem+=$3} END {printf "  %s: CPU=%dm, Memory=%dMi\n", ns, cpu, mem}'
+  else
+    echo "  $ns: Metrics API not available"
+  fi
 done
 ```
 
