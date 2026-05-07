@@ -53,11 +53,11 @@ print('Processing complete')
 ### Cryptographic Operations
 
 ```bash
-# Generate keys in an isolated environment
+# Generate keys in an isolated environment using an image with OpenSSL pre-installed
 podman run --rm --network none \
   -v /home/user/keys:/keys \
-  docker.io/library/alpine:latest \
-  sh -c "apk add --no-cache openssl && openssl genrsa -out /keys/private.pem 4096"
+  docker.io/alpine/openssl:latest \
+  openssl genrsa -out /keys/private.pem 4096
 ```
 
 ### Compilation and Build Tasks
@@ -124,7 +124,7 @@ podman run --rm \
 | Loopback | Yes | Yes |
 | Container-to-container | No | Yes |
 | External access | No | No |
-| DNS resolution | No | Yes |
+| DNS resolution | No | Container names only |
 
 ## Summary
 
