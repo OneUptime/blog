@@ -8,7 +8,7 @@ Description: Configure iptables to selectively allow only the necessary ICMP typ
 
 ## Introduction
 
-iptables allows fine-grained control over ICMP traffic using the `--icmp-type` option. Rather than allowing all ICMP or blocking all ICMP, you can permit specific types and codes that are operationally required while dropping the rest. This section covers the exact rules needed for a secure, functional ICMP policy.
+iptables allows fine-grained control over ICMP traffic using the `--icmp-type` option. Rather than allowing all ICMP or blocking all ICMP, you can permit specific types and codes that are operationally required while dropping the rest. This section covers a practical set of rules for a secure, functional host ICMP policy.
 
 ## ICMP Type Names in iptables
 
@@ -17,7 +17,7 @@ iptables accepts both numeric types and symbolic names:
 ```bash
 # List all supported ICMP type names
 
-iptables -p icmp --help 2>&1 | grep "icmp-type"
+iptables -p icmp -h
 
 # Common names:
 # echo-request         (Type 8)
@@ -31,7 +31,7 @@ iptables -p icmp --help 2>&1 | grep "icmp-type"
 ## Allow Inbound ICMP Selectively
 
 ```bash
-# Flush existing INPUT ICMP rules (be careful - don't lock yourself out)
+# Delete a broad INPUT ICMP drop rule if present (be careful - don't lock yourself out)
 iptables -D INPUT -p icmp -j DROP 2>/dev/null
 
 # 1. Allow ping requests (rate-limited to prevent flood)
@@ -78,8 +78,9 @@ iptables -A OUTPUT -p icmp -j DROP
 iptables -I INPUT -s 10.50.0.0/24 -p icmp --icmp-type echo-request -j DROP
 
 # Allow pings only from your monitoring server
+iptables -D INPUT -p icmp --icmp-type echo-request \
+  -m limit --limit 5/sec --limit-burst 10 -j ACCEPT 2>/dev/null
 iptables -I INPUT -s 10.0.0.100/32 -p icmp --icmp-type echo-request -j ACCEPT
-iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
 ```
 
 ## Saving and Restoring iptables Rules
@@ -105,14 +106,14 @@ iptables -L INPUT -n -v
 # Test that ping works (rule 1 passes)
 ping -c 3 8.8.8.8
 
-# Test that PMTUD works (rule 3 passes)
-ping -s 1400 -M do -c 3 8.8.8.8
+# Test that PMTUD-related ICMP is getting through (rule 3 passes)
+tracepath 8.8.8.8
 
 # Test that blocked ICMP types are dropped
 # (Type 15 = information request - should be blocked)
-hping3 --icmp --icmp-type 15 -c 1 <your-server>
+hping3 --icmp --icmptype 15 -c 1 <your-server>
 ```
 
 ## Conclusion
 
-Selective ICMP filtering with iptables is straightforward once you know which types to allow. The golden rule: never block Type 3 Code 4 (fragmentation needed). Allow echo-request rate-limited, echo-reply, destination-unreachable, and time-exceeded. These four types cover all legitimate operational needs while eliminating exposure to ICMP-based scanning and information disclosure.
+Selective ICMP filtering with iptables is straightforward once you know which types to allow. The golden rule: never block Type 3 Code 4 (fragmentation needed). On a host, allowing echo-request rate-limited, echo-reply, destination-unreachable, and time-exceeded covers common operational needs such as ping, PMTUD, and traceroute while blocking older or less commonly needed ICMP types. Routers or specialized systems may require additional ICMP types.
