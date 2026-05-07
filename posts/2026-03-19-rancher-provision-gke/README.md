@@ -45,7 +45,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:${SA_EMAIL}" \
-  --role="roles/compute.admin"
+  --role="roles/compute.viewer"
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:${SA_EMAIL}" \
@@ -53,7 +53,7 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 
 gcloud projects add-iam-policy-binding $PROJECT_ID \
   --member="serviceAccount:${SA_EMAIL}" \
-  --role="roles/iam.serviceAccountAdmin"
+  --role="roles/viewer"
 
 # Generate the key file
 gcloud iam service-accounts keys create rancher-gke-key.json \
@@ -76,13 +76,15 @@ gcloud iam service-accounts keys create rancher-gke-key.json \
 2. Click **Create**
 3. Select **Google GKE** under hosted Kubernetes providers
 
+Rancher provisions GKE clusters in Standard mode. GKE Autopilot is not supported because Rancher needs to create resources in the `kube-system` namespace.
+
 ## Step 5: Configure the GKE Cluster
 
 ### Basic Settings
 
 - **Cluster Name**: Enter a name (e.g., `production-gke`)
 - **Cloud Credential**: Select your GCP credential
-- **Project**: Select the GCP project
+- **Project ID**: Enter the GCP project ID
 - **Region/Zone**: Choose a region (e.g., `us-central1`) or specific zone
 
 ### Regional vs Zonal
@@ -94,7 +96,7 @@ gcloud iam service-accounts keys create rancher-gke-key.json \
 
 Select the GKE Kubernetes version. GKE offers:
 
-- **Release channels**: Rapid, Regular, or Stable
+- **Release channels**: Rapid, Regular, Stable, or Extended (Standard clusters only)
 - **Specific version**: Pin to a particular version
 
 ### Networking
@@ -120,6 +122,8 @@ For private clusters:
 - **Enable Private Nodes**: Worker nodes have no public IPs
 - **Enable Private Endpoint**: API server has no public endpoint
 - **Master IP Range**: CIDR for the control plane (e.g., `172.16.0.0/28`)
+
+Private nodes typically need Cloud NAT or equivalent access to pull required images and contact Rancher during provisioning.
 
 ### Master Authorized Networks
 
@@ -169,7 +173,6 @@ Select the node image:
 ### Security
 
 - **Shielded Nodes**: Enable Secure Boot and vTPM
-- **Workload Identity**: Enable for secure GCP service access from pods
 
 ### Labels and Taints
 
@@ -214,7 +217,7 @@ In the Rancher UI, watch the cluster status. You can also monitor from the GCP C
 
 ## Step 9: Verify the Cluster
 
-Once Active:
+Once Active, configure `kubectl` for the cluster and run:
 
 ```bash
 kubectl get nodes -o wide
@@ -229,12 +232,15 @@ Verify in the Rancher UI:
 
 ## Step 10: Post-Provisioning Setup
 
-### Set Up Workload Identity
+### Set Up Workload Identity Federation for GKE
 
-If enabled, bind Kubernetes service accounts to GCP service accounts:
+If enabled, link a Kubernetes service account to an IAM service account:
 
 ```bash
 kubectl create serviceaccount app-sa -n default
+
+gcloud iam service-accounts create app-sa \
+  --display-name="app-sa"
 
 gcloud iam service-accounts add-iam-policy-binding \
   app-sa@${PROJECT_ID}.iam.gserviceaccount.com \
@@ -242,19 +248,20 @@ gcloud iam service-accounts add-iam-policy-binding \
   --member "serviceAccount:${PROJECT_ID}.svc.id.goog[default/app-sa]"
 
 kubectl annotate serviceaccount app-sa \
+  -n default \
   iam.gke.io/gcp-service-account=app-sa@${PROJECT_ID}.iam.gserviceaccount.com
 ```
 
 ### Install Monitoring
 
-Install the Rancher monitoring stack from **Apps** for Rancher-specific metrics and dashboards.
+Install the Rancher monitoring stack from **Cluster Tools** for Rancher-specific metrics and dashboards.
 
 ## Troubleshooting
 
 - **Provisioning fails with quota errors**: Check your GCP project quotas for the selected region.
 - **API not enabled**: Ensure all required GCP APIs are enabled in the project.
 - **Service account permissions**: Verify the service account has all required roles.
-- **Network issues**: For private clusters, ensure Rancher can reach the GKE API endpoint.
+- **Network issues**: For private clusters, ensure Rancher can reach the GKE API endpoint and that nodes can access required images through Cloud NAT or a private registry.
 
 ## Conclusion
 
