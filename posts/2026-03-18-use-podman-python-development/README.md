@@ -10,7 +10,7 @@ Description: A practical guide to using Podman for Python development, covering 
 
 > Podman lets you run Python applications in isolated, reproducible containers without installing anything on your host machine beyond Podman itself.
 
-Python development often involves juggling multiple Python versions, virtual environments, and system-level dependencies that conflict across projects. One project needs Python 3.9 with specific C libraries, another needs Python 3.12 with different ones. Containers solve this by giving each project its own isolated environment. Podman makes this especially clean because it runs without a daemon and does not require root privileges.
+Python development often involves juggling multiple Python versions, virtual environments, and system-level dependencies that conflict across projects. One project needs Python 3.9 with specific C libraries, another needs Python 3.12 with different ones. Containers solve this by giving each project its own isolated environment. Podman makes this especially clean because it runs without a daemon and can run without root privileges.
 
 This guide covers how to set up Python development workflows inside Podman containers, from simple scripts to full web application stacks.
 
@@ -174,10 +174,9 @@ Now open `http://localhost:5000` in your browser. When you edit `app.py` on your
 
 ## Developing a Django Application
 
-Django projects follow a similar pattern but typically need a database. Here is a `docker-compose.yml` for Django with PostgreSQL:
+Django projects follow a similar pattern but typically need a database. Here is a `compose.yaml` for Django with PostgreSQL. This assumes your Django settings read the PostgreSQL connection values from environment variables:
 
 ```yaml
-version: "3.8"
 services:
   web:
     build: .
@@ -187,9 +186,14 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgres://django:django@db:5432/djangodb
+      POSTGRES_DB: djangodb
+      POSTGRES_USER: django
+      POSTGRES_PASSWORD: django
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   db:
     image: docker.io/library/postgres:16-alpine
@@ -197,6 +201,11 @@ services:
       POSTGRES_USER: django
       POSTGRES_PASSWORD: django
       POSTGRES_DB: djangodb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -230,17 +239,20 @@ CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
 Run the stack:
 
 ```bash
+# Podman's compose subcommand uses an external compose provider such as
+# docker-compose or podman-compose, so make sure one is installed first.
+
 # Start Django and PostgreSQL together
-podman-compose up -d
+podman compose up -d
 
 # Run Django migrations
-podman-compose exec web python manage.py migrate
+podman compose exec web python manage.py migrate
 
 # Create a superuser
-podman-compose exec web python manage.py createsuperuser
+podman compose exec web python manage.py createsuperuser
 
 # View logs
-podman-compose logs -f web
+podman compose logs -f web
 ```
 
 ## Running Tests Inside Containers
@@ -255,7 +267,7 @@ podman run --rm \
   my-python-app \
   python -m pytest tests/ -v
 
-# Run with coverage
+# Run with coverage (requires pytest-cov)
 podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
@@ -344,4 +356,4 @@ COPY . .
 
 ## Conclusion
 
-Podman handles Python development workflows just as well as Docker does, with the added benefits of running daemonless and rootless. The key patterns are: use slim base images for speed, copy `requirements.txt` early for layer caching, mount your source code for live editing, and use `podman-compose` when you need databases or other services alongside your app. Whether you are building a small Flask API or a large Django application, the containerized workflow keeps your host machine clean and your environments reproducible across every machine on your team.
+Podman handles Python development workflows just as well as Docker does, with the added benefits of running daemonless and rootless. The key patterns are: use slim base images for speed, copy `requirements.txt` early for layer caching, mount your source code for live editing, and use `podman compose` when you need databases or other services alongside your app. Whether you are building a small Flask API or a large Django application, the containerized workflow keeps your host machine clean and your environments reproducible across every machine on your team.
