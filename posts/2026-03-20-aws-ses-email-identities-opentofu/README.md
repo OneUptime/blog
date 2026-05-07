@@ -60,6 +60,12 @@ resource "aws_route53_record" "ses_verification" {
   ttl     = 600
   records = [aws_ses_domain_identity.example.verification_token]
 }
+
+resource "aws_ses_domain_identity_verification" "example" {
+  domain = aws_ses_domain_identity.example.domain
+
+  depends_on = [aws_route53_record.ses_verification]
+}
 ```
 
 ## Configuring a Custom MAIL FROM Domain
@@ -93,11 +99,16 @@ resource "aws_route53_record" "ses_mail_from_txt" {
 
 ## Checking Verification Status
 
-After applying, you can check the verification status using data sources or by reading outputs.
+If `tofu apply` completes after `aws_ses_domain_identity_verification.example`, SES has confirmed the domain identity. You can also output the verification values for inspection.
 
 ```hcl
+output "verified_domain_identity" {
+  description = "Domain identity after SES verification succeeds"
+  value       = aws_ses_domain_identity_verification.example.id
+}
+
 output "domain_verification_token" {
-  description = "TXT record value required for domain verification"
+  description = "TXT record value used for domain verification"
   value       = aws_ses_domain_identity.example.verification_token
 }
 
