@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, LDAP, Team, Authentication, Business Edition
 
-Description: Configure Portainer Business Edition to automatically create and populate teams based on LDAP group membership.
+Description: Configure Portainer Business Edition to automatically populate existing teams based on LDAP group membership.
 
 ---
 
-Portainer Business Edition can map LDAP groups to Portainer teams, automatically adding users to the correct teams when they log in. This eliminates manual team management for organizations using LDAP or Active Directory.
+Portainer Business Edition can map LDAP groups to existing Portainer teams, automatically adding users to the correct teams when they log in. This eliminates manual team management for organizations using LDAP or Active Directory.
 
 ## How LDAP Team Sync Works
 
@@ -22,12 +22,11 @@ When a user logs in via LDAP:
 
 1. Navigate to **Settings > Authentication**
 2. Select **LDAP** authentication
-3. Enable **Auto-populate team membership**
-4. Configure the **Group search settings**:
+3. Configure the **Group search settings**:
    - **Group Base DN**: `ou=groups,dc=example,dc=com`
    - **Group Filter**: `(objectClass=groupOfNames)` or `(objectClass=group)` for AD
-   - **Group Attribute for Users**: `member` (or `memberOf` depending on schema)
-   - **Group Name Attribute**: `cn`
+   - **Group Membership Attribute**: `member`
+   - Team names must match the LDAP group's `cn` value
 
 ## Configure via API
 
@@ -50,7 +49,7 @@ curl -X PUT \
       "AnonymousMode": false,
       "ReaderDN": "cn=portainer,dc=example,dc=com",
       "Password": "ldap-password",
-      "URLs": ["ldaps://ldap.example.com:636"],
+      "URL": "ldap.example.com:636",
       "TLSConfig": {"TLS": true, "TLSSkipVerify": false},
       "SearchSettings": [{
         "BaseDN": "ou=users,dc=example,dc=com",
@@ -60,8 +59,7 @@ curl -X PUT \
       "GroupSearchSettings": [{
         "GroupBaseDN": "ou=groups,dc=example,dc=com",
         "GroupFilter": "(objectClass=groupOfNames)",
-        "UserAttribute": "member",
-        "GroupAttribute": "cn"
+        "GroupAttribute": "member"
       }],
       "AutoCreateUsers": true
     }
@@ -90,15 +88,14 @@ done
 
 ## Active Directory Group Sync
 
-For Active Directory, the memberOf attribute is typically used:
+For Active Directory, Portainer still expects DN-based group membership on the group object, typically the `member` attribute:
 
 ```json
 {
   "GroupSearchSettings": [{
     "GroupBaseDN": "ou=groups,dc=corp,dc=example,dc=com",
     "GroupFilter": "(objectClass=group)",
-    "UserAttribute": "memberOf",
-    "GroupAttribute": "cn"
+    "GroupAttribute": "member"
   }]
 }
 ```
@@ -108,20 +105,31 @@ For Active Directory, the memberOf attribute is typically used:
 After a user logs in via LDAP, verify they've been added to the correct team:
 
 ```bash
-# List teams and their members
+# List teams
 curl -s https://localhost:9443/api/teams \
   -H "Authorization: Bearer $TOKEN" \
   --insecure | python3 -m json.tool
 
-# Check a specific user's team membership
-curl -s https://localhost:9443/api/users \
+# List team memberships
+curl -s https://localhost:9443/api/team_memberships \
+  -H "Authorization: Bearer $TOKEN" \
+  --insecure | python3 -m json.tool
+
+# Check a specific user's team memberships
+USER_ID=$(curl -s https://localhost:9443/api/users \
   -H "Authorization: Bearer $TOKEN" \
   --insecure | python3 -c "
 import sys, json
 users = json.load(sys.stdin)
 for u in users:
-    print(f'User: {u[\"Username\"]}, Teams: {u.get(\"TeamIDs\", [])}')
-"
+    if u['Username'] == 'alice':
+        print(u['Id'])
+        break
+")
+
+curl -s https://localhost:9443/api/users/$USER_ID/memberships \
+  -H "Authorization: Bearer $TOKEN" \
+  --insecure | python3 -m json.tool
 ```
 
 ---
