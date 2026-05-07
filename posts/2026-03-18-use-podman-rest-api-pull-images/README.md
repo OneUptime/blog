@@ -53,21 +53,21 @@ The Docker-compatible endpoint uses a different parameter format.
 # Pull using the Docker-compatible endpoint
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
-  "http://localhost/v1.41/images/create?fromImage=nginx&tag=latest"
+  "http://localhost/v1.40/images/create?fromImage=nginx&tag=latest"
 
 # Pull a specific image and tag
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
-  "http://localhost/v1.41/images/create?fromImage=docker.io/library/postgres&tag=16"
+  "http://localhost/v1.40/images/create?fromImage=docker.io/library/postgres&tag=16"
 ```
 
 ## Authenticated Pulls
 
-For private registries, you need to provide authentication credentials. The credentials are sent as a Base64-encoded JSON header.
+For private registries, you need to provide authentication credentials. The credentials are sent as a URL-safe Base64-encoded JSON header.
 
 ```bash
 # Create the auth string
-AUTH=$(echo -n '{"username":"myuser","password":"mypassword"}' | base64)
+AUTH=$(printf '%s' '{"username":"myuser","password":"mypassword"}' | base64 | tr -d '\n' | tr '+/' '-_')
 
 # Pull from a private registry with authentication
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
@@ -80,7 +80,7 @@ For registries using a token-based auth system, include the token directly.
 
 ```bash
 # Auth with a registry token
-AUTH=$(echo -n '{"identitytoken":"your-registry-token"}' | base64)
+AUTH=$(printf '%s' '{"identitytoken":"your-registry-token"}' | base64 | tr -d '\n' | tr '+/' '-_')
 
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
@@ -98,12 +98,14 @@ curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   http://localhost/v4.0.0/libpod/images/json | python3 -m json.tool
 
 # List with filters
-curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/images/json?filters={\"reference\":[\"nginx\"]}"
+curl -s -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data-urlencode 'filters={"reference":["nginx"]}' \
+  http://localhost/v4.0.0/libpod/images/json
 
 # List dangling images (untagged)
-curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/images/json?filters={\"dangling\":[\"true\"]}"
+curl -s -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data-urlencode 'filters={"dangling":["true"]}' \
+  http://localhost/v4.0.0/libpod/images/json
 ```
 
 ## Formatting Image Listings
@@ -116,7 +118,7 @@ curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   http://localhost/v4.0.0/libpod/images/json | \
   jq '.[] | {
     repo: (.RepoTags[0] // "none"),
-    id: .Id[:12],
+    id: (.Id | sub("^sha256:"; "")[:12]),
     size_mb: (.Size / 1024 / 1024 | floor),
     created: .Created
   }'
@@ -124,7 +126,7 @@ curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 # List just image names
 curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   http://localhost/v4.0.0/libpod/images/json | \
-  jq -r '.[].RepoTags[]'
+  jq -r '.[] | .RepoTags[]?'
 ```
 
 ## Inspecting an Image
@@ -140,7 +142,7 @@ curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   http://localhost/v4.0.0/libpod/images/nginx:latest/json | \
   jq '{
-    id: .Id[:12],
+    id: (.Id | sub("^sha256:"; "")[:12]),
     architecture: .Architecture,
     os: .Os,
     size: (.Size / 1024 / 1024 | floor | tostring) + "MB",
@@ -176,7 +178,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 # Verify the tag was applied
 curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   http://localhost/v4.0.0/libpod/images/json | \
-  jq -r '.[].RepoTags[]' | grep my-registry
+  jq -r '.[] | .RepoTags[]?' | grep my-registry
 ```
 
 ## Removing Images
@@ -210,7 +212,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 Search for images on remote registries through the API.
 
 ```bash
-# Search Docker Hub for nginx images
+# Search configured registries for nginx images
 curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   "http://localhost/v4.0.0/libpod/images/search?term=nginx&limit=5" | \
   jq '.[] | {name: .Name, description: .Description, stars: .Stars, official: .Official}'
@@ -245,7 +247,7 @@ class PodmanImageClient:
     def pull(self, reference, username=None, password=None):
         headers = {}
         if username and password:
-            auth = base64.b64encode(
+            auth = base64.urlsafe_b64encode(
                 json.dumps({"username": username, "password": password}).encode()
             ).decode()
             headers['X-Registry-Auth'] = auth
@@ -285,14 +287,14 @@ client = PodmanImageClient()
 
 # Pull an image
 image_id = client.pull("docker.io/library/alpine:latest")
-print(f"Pulled image: {image_id[:12] if image_id else 'failed'}")
+print(f"Pulled image: {image_id.split(':', 1)[-1][:12] if image_id else 'failed'}")
 
 # Check if image exists
 print(f"Alpine exists: {client.exists('alpine:latest')}")
 
 # List all images
 for img in client.list_images():
-    tags = img.get('RepoTags', ['<none>'])
+    tags = img.get('RepoTags') or ['<none>']
     size_mb = img.get('Size', 0) / 1024 / 1024
     print(f"  {tags[0]:40s} {size_mb:.1f} MB")
 
