@@ -10,7 +10,7 @@ Audit logging captures a detailed record of all API requests to your Kubernetes 
 
 ## Prerequisites
 
-- Rancher v2.5 or later
+- Rancher Manager v2.13 or later for the Rancher server examples below
 - Admin access to Rancher
 - kubectl access with cluster admin privileges
 - A log aggregation system (EFK, Loki, Splunk, or similar)
@@ -22,19 +22,17 @@ Rancher has built-in audit logging for its own API. Enable it during installatio
 ```bash
 helm upgrade rancher rancher-latest/rancher \
   -n cattle-system \
+  --set auditLog.enabled=true \
   --set auditLog.level=2 \
-  --set auditLog.destination=sidecar \
-  --set auditLog.maxAge=30 \
-  --set auditLog.maxBackup=10 \
-  --set auditLog.maxSize=100
+  --set auditLog.destination=sidecar
 ```
 
 ### Audit Log Levels
 
-- **Level 0**: Disabled (no logging).
-- **Level 1**: Log event metadata only (who, when, what resource).
-- **Level 2**: Log metadata plus request body.
-- **Level 3**: Log metadata, request body, and response body.
+- **Level 0**: Log request and response metadata only.
+- **Level 1**: Log metadata plus request and response headers.
+- **Level 2**: Log metadata, headers, and request body.
+- **Level 3**: Log metadata, headers, request body, and response body.
 
 For compliance, level 2 is typically sufficient. Level 3 provides the most detail but generates significantly more data.
 
@@ -43,6 +41,8 @@ For compliance, level 2 is typically sufficient. Level 3 provides the most detai
 - **sidecar**: Logs go to a sidecar container that can be scraped by your log collector.
 - **hostPath**: Logs are written to a path on the host node.
 
+Rotation settings such as `maxAge`, `maxBackup`, and `maxSize` only apply when `auditLog.destination=hostPath`.
+
 ## Step 2: Access Rancher Audit Logs
 
 ### Sidecar Destination
@@ -50,7 +50,7 @@ For compliance, level 2 is typically sufficient. Level 3 provides the most detai
 View logs from the sidecar container:
 
 ```bash
-kubectl logs -n cattle-system -l app=rancher -c rancher-audit-log -f
+kubectl -n cattle-system logs -f <rancher-pod-name> rancher-audit-log
 ```
 
 ### Host Path Destination
@@ -60,8 +60,13 @@ If using hostPath, configure the path:
 ```bash
 helm upgrade rancher rancher-latest/rancher \
   -n cattle-system \
+  --set auditLog.enabled=true \
+  --set auditLog.level=2 \
   --set auditLog.destination=hostPath \
-  --set auditLog.hostPath=/var/log/rancher/audit
+  --set auditLog.hostPath=/var/log/rancher/audit \
+  --set auditLog.maxAge=30 \
+  --set auditLog.maxBackup=10 \
+  --set auditLog.maxSize=100
 ```
 
 Access logs on the node:
@@ -83,8 +88,8 @@ Save as `audit-policy.yaml`:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  # Log authentication events at RequestResponse level
-  - level: RequestResponse
+  # Log authentication review events at Metadata level (avoid logging bearer tokens)
+  - level: Metadata
     resources:
     - group: "authentication.k8s.io"
       resources: ["tokenreviews"]
@@ -126,34 +131,53 @@ rules:
 
 ### Apply to RKE2 Clusters
 
-Copy the policy to the control plane node:
-
-```bash
-scp audit-policy.yaml control-plane:/etc/rancher/rke2/audit-policy.yaml
-```
-
-Configure RKE2 to use the audit policy:
+For Rancher-provisioned RKE2 clusters, edit the cluster YAML in Rancher and set `audit-policy-file` in `machineGlobalConfig`:
 
 ```yaml
-# /etc/rancher/rke2/config.yaml
-
-kube-apiserver-arg:
-  - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
-  - "audit-log-path=/var/log/kubernetes/audit/audit.log"
-  - "audit-log-maxage=30"
-  - "audit-log-maxbackup=10"
-  - "audit-log-maxsize=100"
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+spec:
+  rkeConfig:
+    machineGlobalConfig:
+      audit-policy-file: |
+        apiVersion: audit.k8s.io/v1
+        kind: Policy
+        rules:
+          - level: Metadata
+            resources:
+            - group: "authentication.k8s.io"
+              resources: ["tokenreviews"]
+          - level: Metadata
+            resources:
+            - group: "authorization.k8s.io"
+              resources: ["subjectaccessreviews"]
+          - level: Metadata
+            resources:
+            - group: ""
+              resources: ["secrets"]
+          - level: RequestResponse
+            verbs: ["create", "update", "patch", "delete"]
+            resources:
+            - group: ""
+              resources: ["pods", "services", "configmaps", "namespaces", "serviceaccounts"]
+            - group: "apps"
+              resources: ["deployments", "statefulsets", "daemonsets"]
+            - group: "rbac.authorization.k8s.io"
+              resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+          - level: Metadata
+            resources:
+            - group: "management.cattle.io"
+            - group: "provisioning.cattle.io"
+          - level: Metadata
+            omitStages:
+            - RequestReceived
 ```
 
-Restart RKE2:
+Save the cluster YAML and let Rancher roll out the updated RKE2 server configuration.
 
-```bash
-systemctl restart rke2-server
-```
+### Apply to Legacy RKE1 Clusters via Rancher
 
-### Apply to RKE Clusters via Rancher
-
-Edit the cluster YAML in Rancher:
+If you still manage an RKE1 cluster, edit the cluster YAML in Rancher:
 
 ```yaml
 rancher_kubernetes_engine_config:
@@ -195,7 +219,7 @@ data:
   fluent.conf: |
     <source>
       @type tail
-      path /var/log/kubernetes/audit/audit.log
+      path /var/lib/rancher/rke2/server/logs/audit.log
       pos_file /var/log/fluentd/audit.pos
       tag kubernetes.audit
       <parse>
@@ -208,17 +232,16 @@ data:
       host elasticsearch.logging.svc
       port 9200
       index_name kubernetes-audit
-      type_name _doc
     </match>
 ```
 
 ### Using Rancher Logging
 
-Rancher includes a built-in logging feature:
+Rancher includes a built-in logging app:
 
 1. Navigate to the cluster.
-2. Go to **Apps & Marketplace** > **Charts**.
-3. Install **Rancher Logging** (based on Banzai Cloud logging operator).
+2. Go to **Apps**.
+3. Install **Rancher Logging** (based on the Logging Operator).
 4. Configure a ClusterOutput:
 
 ```yaml
@@ -231,10 +254,11 @@ spec:
   elasticsearch:
     host: elasticsearch.logging.svc
     port: 9200
+    scheme: http
     index_name: rancher-audit
 ```
 
-5. Create a ClusterFlow to route audit logs:
+5. If Rancher server audit logs are going to the sidecar container, create a ClusterFlow to route them:
 
 ```yaml
 apiVersion: logging.banzaicloud.io/v1beta1
@@ -245,8 +269,8 @@ metadata:
 spec:
   match:
   - select:
-      labels:
-        app: rancher
+      namespaces:
+      - cattle-system
       container_names:
       - rancher-audit-log
   globalOutputRefs:
@@ -267,6 +291,8 @@ Key panels to include:
 
 ## Step 6: Configure Alerts for Suspicious Activity
 
+The kube-apiserver exposes request metrics that can be used for basic alerting:
+
 ```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
@@ -277,39 +303,36 @@ spec:
   groups:
   - name: audit-security
     rules:
-    - alert: ExcessiveFailedAuth
+    - alert: ExcessiveUnauthorizedRequests
       expr: |
-        increase(apiserver_audit_event_total{
-          verb="create",
-          resource="tokenreviews",
-          code=~"4.."
-        }[5m]) > 10
+        sum(increase(apiserver_request_total{
+          code=~"401|403"
+        }[5m])) > 10
       labels:
         severity: warning
       annotations:
-        summary: "More than 10 failed authentication attempts in 5 minutes"
-    - alert: SecretAccessAnomaly
+        summary: "More than 10 unauthorized or forbidden API requests in 5 minutes"
+    - alert: SecretAccessSpike
       expr: |
-        increase(apiserver_audit_event_total{
-          resource="secrets",
-          verb="get"
-        }[5m]) > 50
+        sum(increase(apiserver_request_total{
+          resource="secrets"
+        }[5m])) > 50
       labels:
         severity: warning
       annotations:
-        summary: "Unusual volume of secret access detected"
+        summary: "Unusual volume of Secret API requests detected"
 ```
 
 ## Step 7: Implement Log Retention Policies
 
-Define retention based on compliance requirements:
+Define retention with your compliance team based on the standards that apply to you:
 
-| Standard | Minimum Retention |
-|----------|------------------|
-| SOC 2 | 1 year |
-| PCI DSS | 1 year |
-| HIPAA | 6 years |
-| ISO 27001 | As defined by organization |
+| Standard | Retention Guidance |
+|----------|--------------------|
+| SOC 2 | Defined by your control set and auditor |
+| PCI DSS | At least 1 year, with 3 months immediately available |
+| HIPAA | Based on state law and HIPAA documentation requirements |
+| ISO 27001 | Defined by your ISMS and organization |
 
 Configure retention in your log storage system:
 
@@ -321,8 +344,7 @@ curl -X PUT "http://elasticsearch:9200/_ilm/policy/audit-retention" \
     "policy": {
       "phases": {
         "hot": {"actions": {"rollover": {"max_size": "50gb", "max_age": "30d"}}},
-        "warm": {"min_age": "30d", "actions": {"shrink": {"number_of_shards": 1}}},
-        "cold": {"min_age": "90d", "actions": {"freeze": {}}},
+        "warm": {"min_age": "30d", "actions": {"forcemerge": {"max_num_segments": 1}}},
         "delete": {"min_age": "365d", "actions": {"delete": {}}}
       }
     }
@@ -346,7 +368,7 @@ curl -s "http://elasticsearch:9200/kubernetes-audit/_search" \
   -H 'Content-Type: application/json' \
   -d '{
     "size": 0,
-    "query": {"range": {"@timestamp": {"gte": "now-30d"}}},
+    "query": {"range": {"stageTimestamp": {"gte": "now-30d"}}},
     "aggs": {"users": {"terms": {"field": "user.username.keyword", "size": 100}}}
   }' | jq '.aggregations.users.buckets[] | "\(.key): \(.doc_count) events"'
 
@@ -359,7 +381,7 @@ curl -s "http://elasticsearch:9200/kubernetes-audit/_search" \
     "query": {
       "bool": {
         "must": [
-          {"range": {"@timestamp": {"gte": "now-30d"}}},
+          {"range": {"stageTimestamp": {"gte": "now-30d"}}},
           {"terms": {"verb.keyword": ["create", "update", "patch", "delete"]}}
         ]
       }
