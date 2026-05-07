@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Podman, Window, Container, WSL, Virtualization
+Tags: Podman, Windows, Container, WSL, Virtualization
 
 Description: A detailed guide to fixing Podman machine startup failures on Windows, covering WSL2 configuration, Hyper-V conflicts, resource allocation, and Windows-specific troubleshooting steps.
 
@@ -16,7 +16,7 @@ Podman on Windows runs Linux containers inside a virtual machine, similar to mac
 
 ## How Podman Machine Works on Windows
 
-Podman on Windows creates a lightweight Fedora CoreOS virtual machine using one of these backends:
+Podman on Windows creates a lightweight Linux virtual machine using one of these backends. Current Podman releases use a custom Fedora-based image for WSL and a custom Fedora CoreOS-based image for other machine providers:
 
 - **WSL2** (default): Uses the Windows Subsystem for Linux
 - **Hyper-V**: Uses Microsoft's hypervisor (requires Windows Pro, Enterprise, or Education)
@@ -104,7 +104,7 @@ podman machine start
 
 ### 2. Hyper-V Feature Conflicts
 
-Other virtualization software (VirtualBox, VMware) can conflict with Hyper-V and WSL2. If you have these installed:
+Older versions of other virtualization software (VirtualBox, VMware) can conflict with Hyper-V and WSL2. If you have these installed:
 
 ```powershell
 # Check if Hyper-V features are enabled
@@ -115,7 +115,7 @@ Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-L
 Enable-WindowsOptionalFeature -Online -FeatureName VirtualMachinePlatform -NoRestart
 ```
 
-Restart your computer after enabling features. If VirtualBox is causing conflicts, update it to version 6.1.28 or later, which supports Hyper-V coexistence.
+Restart your computer after enabling features. If VirtualBox is causing conflicts, update it to a current version that supports Hyper-V coexistence.
 
 ### 3. Corrupted Podman Machine
 
@@ -182,9 +182,9 @@ Windows Defender or third-party antivirus software can block the VM processes or
 
 ```powershell
 # Add exclusions for Podman directories
-Add-MpExclusion -Path "$env:USERPROFILE\.local\share\containers"
-Add-MpExclusion -Path "$env:USERPROFILE\.config\containers"
-Add-MpExclusion -Path "$env:ProgramFiles\RedHat\Podman"
+Add-MpPreference -ExclusionPath "$env:USERPROFILE\.local\share\containers"
+Add-MpPreference -ExclusionPath "$env:USERPROFILE\.config\containers"
+Add-MpPreference -ExclusionPath "$env:ProgramFiles\RedHat\Podman"
 ```
 
 Also check the Windows Defender quarantine for any Podman-related files:
@@ -201,8 +201,8 @@ Corporate VPNs and custom DNS configurations can prevent the Podman machine from
 # Check DNS configuration inside WSL
 wsl -d podman-machine-default cat /etc/resolv.conf
 
-# If DNS is not working, configure it manually
-wsl -d podman-machine-default bash -c "echo 'nameserver 8.8.8.8' > /etc/resolv.conf"
+# If DNS is not working, configure it manually as a temporary test
+wsl -d podman-machine-default bash -c "echo 'nameserver 8.8.8.8' | sudo tee /etc/resolv.conf > /dev/null"
 ```
 
 For VPN issues, configure WSL networking in `%USERPROFILE%\.wslconfig`:
@@ -243,7 +243,8 @@ wsl --shutdown
 # The VHDX file location varies but is typically under:
 # %USERPROFILE%\AppData\Local\Packages\...\LocalState\ext4.vhdx
 
-# Optimize the disk
+# Optimize the disk. This cmdlet is part of the Hyper-V PowerShell module,
+# and the VHDX must be detached or attached read-only.
 Optimize-VHD -Path "<path-to-ext4.vhdx>" -Mode Full
 ```
 
@@ -254,7 +255,7 @@ If you updated Podman but the existing machine was created with an older version
 ```powershell
 # Check versions
 podman --version
-podman machine inspect --format "{{.ImagePath}}"
+podman info
 
 # Remove old machine and create new one
 podman machine rm podman-machine-default --force
@@ -308,8 +309,8 @@ podman machine start
 When nothing else works:
 
 ```powershell
-# Remove all Podman machines
-podman machine rm --all --force
+# Remove all Podman machines and machine configuration
+podman machine reset --force
 
 # Unregister from WSL
 wsl --list --verbose
