@@ -46,22 +46,22 @@ Without WORKDIR, you might be tempted to use `cd` inside RUN instructions. This 
 # Bad: cd doesn't persist across RUN instructions
 FROM python:3.12-slim
 
-RUN cd /app && pip install flask  # Works, but only for this line
-RUN python app.py  # ERROR: runs in /, not /app
+RUN mkdir -p /app && cd /app && pwd  # Outputs /app, but only for this line
+RUN pwd  # Outputs /
 
 # Good: WORKDIR persists for all subsequent instructions
 FROM python:3.12-slim
 
 WORKDIR /app
-RUN pip install flask  # Runs in /app
-COPY . .              # Copies to /app
-RUN python app.py     # Runs in /app
+RUN pwd     # Outputs /app
+COPY . .    # Copies to /app
+RUN pwd     # Still runs in /app
 ```
 
-WORKDIR also sets the directory where commands run when you start the container:
+WORKDIR also sets the default directory where commands run when you start the container:
 
 ```bash
-# Without WORKDIR, the default directory is /
+# If the image does not set WORKDIR, the default directory is /
 podman run myapp pwd
 # Output: /
 
@@ -131,7 +131,7 @@ RUN mkdir -p ${LOG_DIR}
 CMD ["node", "server.js"]
 ```
 
-Note that ARG variables do not work with WORKDIR expansion in the same way since ARG values are only available during build time and have different scoping rules.
+Note that ARG variables can also be used with WORKDIR after they are declared. The difference is that ARG values are only available during build time and follow build-stage scoping rules, while ENV values persist in the final image.
 
 ## Multiple WORKDIR Instructions
 
