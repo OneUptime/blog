@@ -37,7 +37,7 @@ Podman Desktop provides a UI for managing registry connections:
 1. Open Podman Desktop and go to **Settings** (gear icon).
 2. Navigate to **Registries** in the settings menu.
 3. Click **Add Registry** to configure a new registry.
-4. Enter the registry URL (e.g., `ghcr.io` or `registry.example.com`).
+4. Enter the registry URL (e.g., `https://ghcr.io` or `https://registry.example.com`).
 5. Provide your username and password or token.
 6. Click **Login** to authenticate.
 
@@ -145,8 +145,8 @@ podman push localhost:5000/my-app:latest
 Podman stores registry credentials in an auth file:
 
 ```bash
-# View the location of the auth file
-podman info --format '{{.Store.GraphRoot}}'
+# View the default Linux auth file path
+echo "${XDG_RUNTIME_DIR}/containers/auth.json"
 
 # Check stored credentials (paths may vary by OS)
 cat ${XDG_RUNTIME_DIR}/containers/auth.json 2>/dev/null || \
