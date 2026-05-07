@@ -72,11 +72,11 @@ When installing packages, follow these practices to keep images lean and builds 
 ### Pin Package Versions
 
 ```dockerfile
-# Good: Pinned versions for reproducibility
+# Good: Pinned versions for reproducibility (Debian 12 example)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl=7.88.1-10+deb12u5 \
-        ca-certificates=20230311 \
+        curl=7.88.1-10+deb12u14 \
+        ca-certificates=20230311+deb12u1 \
     && rm -rf /var/lib/apt/lists/*
 ```
 
@@ -126,7 +126,7 @@ RUN apk add --no-cache tini
 
 # Layer 2: Install app dependencies (changes when package.json changes)
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Layer 3: Copy source code (changes frequently)
 COPY . .
@@ -259,7 +259,7 @@ RUN --mount=type=secret,id=api_token \
 Build with secrets:
 
 ```bash
-podman build --secret id=api_token,src=./token.txt -t myapp .
+podman build --secret=id=api_token,src=./token.txt -t myapp .
 ```
 
 ## Using Cache Mounts
@@ -278,6 +278,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Cache apt packages
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
     apt-get update && apt-get install -y gcc
 ```
 
@@ -295,7 +297,7 @@ RUN apt-get update
 RUN apt-get install -y curl  # May use stale package index
 
 # Mistake 3: Not using set -e in shell scripts
-RUN cd /nonexistent && echo "This still runs"  # Silent failure
+RUN cd /nonexistent; echo "This still runs"  # Silent failure
 
 # Fix: Use set -e or chain with &&
 RUN set -e && cd /app && ./configure && make && make install
