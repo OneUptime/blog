@@ -15,6 +15,7 @@ AWS IAM Identity Center permission sets define the AWS access granted to users a
 - OpenTofu v1.6+
 - AWS credentials with Identity Center and Organizations permissions
 - AWS IAM Identity Center enabled in the management account
+- AWS provider configured for the AWS Region where IAM Identity Center is enabled
 
 ## Step 1: Get the Identity Center Instance
 
@@ -42,7 +43,7 @@ resource "aws_ssoadmin_permission_set" "read_only" {
   tags = { Role = "Auditor" }
 }
 
-# Developer permission set with EC2, S3, Lambda access
+# Developer permission set with broad AWS service access
 resource "aws_ssoadmin_permission_set" "developer" {
   name             = "Developer"
   description      = "Developer access for application teams"
@@ -98,17 +99,30 @@ resource "aws_ssoadmin_permission_set_inline_policy" "developer_custom" {
 
   inline_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "DenyProductionChanges"
-      Effect = "Deny"
-      Action = ["ec2:TerminateInstances", "rds:DeleteDBInstance"]
-      Resource = "*"
-      Condition = {
-        StringEquals = {
-          "aws:ResourceTag/Environment" = "production"
+    Statement = [
+      {
+        Sid    = "DenyProductionEc2Termination"
+        Effect = "Deny"
+        Action = ["ec2:TerminateInstances"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/Environment" = "production"
+          }
+        }
+      },
+      {
+        Sid    = "DenyProductionRdsDeletion"
+        Effect = "Deny"
+        Action = ["rds:DeleteDBInstance"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "rds:db-tag/Environment" = "production"
+          }
         }
       }
-    }]
+    ]
   })
 }
 ```
@@ -150,4 +164,4 @@ tofu apply
 
 ## Conclusion
 
-AWS IAM Identity Center permission sets enable centralized, role-based access management across your entire AWS organization. Define permission sets once and assign them to different accounts-the same "Developer" set can have access in dev but not production. Set short session durations for privileged permission sets and use custom inline policies to add guardrails like preventing production resource termination by developer accounts.
+AWS IAM Identity Center permission sets enable centralized, role-based access management across your entire AWS organization. Define permission sets once and assign them to different accounts-the same "Developer" set can have access in dev but not production. Set short session durations for privileged permission sets and use custom inline policies to add guardrails like preventing production EC2 instance termination or RDS DB instance deletion by developer accounts.
