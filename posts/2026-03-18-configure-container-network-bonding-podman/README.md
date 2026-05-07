@@ -51,19 +51,22 @@ The most common approach is to configure bonding at the host level using Network
 sudo nmcli connection add type bond \
   con-name bond0 \
   ifname bond0 \
-  bond.options "mode=active-backup,miimon=100"
+  mode active-backup \
+  miimon 100
 
-# Add the first slave interface
+# Add the first port interface
 sudo nmcli connection add type ethernet \
-  con-name bond0-slave1 \
+  con-name bond0-port1 \
   ifname eth0 \
-  master bond0
+  controller bond0 \
+  port-type bond
 
-# Add the second slave interface
+# Add the second port interface
 sudo nmcli connection add type ethernet \
-  con-name bond0-slave2 \
+  con-name bond0-port2 \
   ifname eth1 \
-  master bond0
+  controller bond0 \
+  port-type bond
 
 # Assign an IP address to the bond
 sudo nmcli connection modify bond0 \
@@ -84,7 +87,7 @@ The `miimon=100` parameter checks link status every 100 milliseconds.
 cat /proc/net/bonding/bond0
 ```
 
-This shows the bond mode, active slave, and the status of each interface.
+This shows the bond mode, active port, and the status of each interface.
 
 Once host-level bonding is configured, Podman containers automatically benefit from the bonded interface when they use the default bridge network.
 
@@ -94,8 +97,8 @@ Podman allows containers to join multiple networks simultaneously, providing app
 
 ```bash
 # Create two separate networks
-podman network create frontend-net --subnet 10.10.1.0/24
-podman network create backend-net --subnet 10.10.2.0/24
+podman network create --subnet 10.10.1.0/24 frontend-net
+podman network create --subnet 10.10.2.0/24 backend-net
 
 # Run a container attached to both networks
 podman run -d \
@@ -137,18 +140,24 @@ The container gets its own IP address on the physical network and benefits from 
 
 ## Creating a Bonded Bridge for Containers
 
-For more control, you can create a Linux bridge on top of a bonded interface and configure Podman to use it:
+For more control, you can create a Linux bridge on top of a bonded interface and configure Podman to use it. If you use this approach, assign the host IP address to the bridge instead of the bond:
 
 ```bash
+# Remove IP configuration from the bond profile if it was assigned earlier
+sudo nmcli connection modify bond0 \
+  ipv4.method disabled \
+  ipv6.method disabled
+
 # Create a bridge on the bond interface
 sudo nmcli connection add type bridge \
   con-name br-bond0 \
   ifname br-bond0
 
-sudo nmcli connection add type bridge-slave \
-  con-name br-bond0-slave \
+sudo nmcli connection add type ethernet \
+  con-name br-bond0-port \
   ifname bond0 \
-  master br-bond0
+  controller br-bond0 \
+  port-type bridge
 
 sudo nmcli connection modify br-bond0 \
   ipv4.addresses "192.168.1.100/24" \
@@ -161,19 +170,13 @@ sudo nmcli connection up br-bond0
 Then create a Podman network using this bridge:
 
 ```bash
-cat > /etc/containers/networks/bonded-bridge.json << 'EOF'
-{
-  "name": "bonded-bridge",
-  "driver": "bridge",
-  "network_interface": "br-bond0",
-  "subnets": [
-    {
-      "subnet": "192.168.1.0/24",
-      "gateway": "192.168.1.1"
-    }
-  ]
-}
-EOF
+sudo podman network create \
+  --driver bridge \
+  --interface-name br-bond0 \
+  --opt mode=unmanaged \
+  --subnet 192.168.1.0/24 \
+  --gateway 192.168.1.1 \
+  bonded-bridge
 ```
 
 ## Monitoring Network Bond Health
@@ -245,8 +248,8 @@ sudo ip link set eth0 down
 # Verify failover occurred
 cat /proc/net/bonding/bond0 | grep "Currently Active Slave"
 
-# Test that containers are still reachable
-curl http://localhost
+# Test that a published container service is still reachable
+curl http://192.168.1.100
 
 # Restore the interface
 sudo ip link set eth0 up
@@ -259,8 +262,8 @@ In active-backup mode, traffic should seamlessly switch to the backup interface 
 Beyond network bonding, you can achieve redundancy at the application level by running services across multiple networks:
 
 ```bash
-podman network create net-primary --subnet 10.20.1.0/24
-podman network create net-secondary --subnet 10.20.2.0/24
+podman network create --subnet 10.20.1.0/24 net-primary
+podman network create --subnet 10.20.2.0/24 net-secondary
 
 # Run the load balancer on both networks
 podman run -d \
