@@ -8,19 +8,20 @@ Description: Learn when and how to use the any type constraint for OpenTofu vari
 
 ---
 
-The `any` type constraint tells OpenTofu to accept a variable of any type without validation. OpenTofu infers the actual type from the provided value. While flexible, `any` should be used thoughtfully - it reduces type safety and can lead to unexpected behavior when callers pass incompatible types.
+The `any` type constraint tells OpenTofu to accept a value whose concrete type will be decided later. `any` is a placeholder rather than a real type, so OpenTofu tries to infer a single concrete type from the provided value. While flexible, `any` should be used thoughtfully - it reduces type safety and can lead to unexpected type conversions or hard-to-debug behavior.
 
 ---
 
 ## When to Use `any`
 
 Use `any` when:
-- Building highly generic modules that accept different structures
-- The variable type depends on the caller's use case
-- You're wrapping another module and passing values through unchanged
+- Passing an opaque value through unchanged to another module or external system
+- Encoding a value with `jsonencode` without inspecting its contents
+- The module does not access attributes or elements of the value
 
 Avoid `any` when:
 - You know the expected type - use that type instead
+- Your configuration reads attributes or elements from the value
 - Type safety is important for preventing misconfiguration
 
 ---
@@ -32,13 +33,14 @@ Avoid `any` when:
 
 variable "config" {
   type        = any
-  description = "Configuration object - accepts any structure"
+  description = "Opaque configuration value passed through unchanged"
 }
 
-# Callers can pass different structures
+# Different callers can pass different values when the module
+# treats config as an opaque value
 
 # module call 1:
-module "app" {
+module "app_object" {
   source = "./modules/app"
   config = {
     name    = "my-app"
@@ -47,8 +49,8 @@ module "app" {
 }
 
 # module call 2 (different structure, same variable):
-module "service" {
-  source = "./modules/service"
+module "app_regions" {
+  source = "./modules/app"
   config = ["us-east-1", "us-west-2"]
 }
 ```
@@ -57,35 +59,35 @@ module "service" {
 
 ## any with Collections
 
-`any` is most useful for collection types where the element type varies:
+`any` inside a collection still requires all elements to be convertible to a single type:
 
 ```hcl
-variable "tags" {
-  type        = map(any)   # map with values of any type
-  description = "Resource tags - values can be strings, numbers, or booleans"
+variable "labels" {
+  type        = map(any)
+  description = "Map values must still be convertible to a single element type"
   default = {
-    Name        = "my-resource"    # string
-    version     = 2                 # number
-    enabled     = true              # boolean
+    team        = "platform"
+    environment = "prod"
   }
 }
 ```
+
+For example, a value like `{ name = "app", enabled = true }` can be converted to `map(string)` rather than preserved as mixed element types.
 
 ---
 
 ## How OpenTofu Infers Types with `any`
 
 ```hcl
-# OpenTofu converts values based on context
-variable "data" {
-  type = any
+# OpenTofu chooses a single element type for collections that use `any`
+variable "items" {
+  type = list(any)
 }
 
 # If you pass:
-# data = ["a", "b", "c"] → type becomes list(string)
-# data = {a = 1, b = 2}  → type becomes map(number)
-# data = "hello"          → type becomes string
-# data = 42               → type becomes number
+# items = ["a", "b", "c"] → type becomes list(string)
+# items = ["a", 1, "b"]   → type becomes list(string)
+# items = ["a", [], "b"]  → OpenTofu rejects the value
 ```
 
 ---
@@ -93,25 +95,17 @@ variable "data" {
 ## Practical Example: Pass-Through Module Variable
 
 ```hcl
-# A generic "settings" variable that passes through to a sub-module
-# without knowing its structure
+# A wrapper module can accept opaque settings and pass them straight through
+# without inspecting their structure
 
 variable "provider_settings" {
   type        = any
-  description = "Provider-specific settings passed through to the provider configuration"
-  default     = {}
+  description = "Opaque settings passed through unchanged to a child module"
 }
 
-# Use in a dynamic block
-resource "aws_lb_listener" "main" {
-  # ...
-
-  dynamic "default_action" {
-    for_each = var.provider_settings != null ? [var.provider_settings] : []
-    content {
-      type = default_action.value.type
-    }
-  }
+module "provider_specific" {
+  source   = "./modules/provider-specific"
+  settings = var.provider_settings
 }
 ```
 
@@ -119,16 +113,13 @@ resource "aws_lb_listener" "main" {
 
 ## Type Check in the Configuration
 
-When using `any`, add validation to catch type errors at plan time instead of apply time.
+If you need to inspect the value's structure, prefer an exact type constraint plus validation:
 
 ```hcl
 variable "config" {
-  type = any
-
-  validation {
-    condition     = can(var.config.name)  # must have a "name" attribute
-    error_message = "config must have a 'name' attribute."
-  }
+  type = object({
+    name = string
+  })
 
   validation {
     condition     = length(var.config.name) > 0
@@ -141,4 +132,4 @@ variable "config" {
 
 ## Summary
 
-The `any` type constraint provides maximum flexibility but sacrifices type safety. Use it for truly generic pass-through variables or when building adapters between modules. For all other cases, use the most specific type you can - it produces better error messages and documentation. When you do use `any`, add validation blocks to enforce the structure you expect.
+The `any` type constraint provides maximum flexibility but sacrifices type safety. Use it only for truly opaque pass-through values or when encoding data without inspecting it. For all other cases, use the most specific type you can - it produces better error messages and documentation. If you need to enforce structure or specific attributes, prefer an exact object or collection type and add validation blocks for value-level rules.
