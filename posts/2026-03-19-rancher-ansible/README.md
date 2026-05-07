@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Ansible, IaC, Installation
 
-Description: Automate Rancher installation across multiple servers using Ansible playbooks.
+Description: Automate Rancher installation on a K3s server using Ansible playbooks.
 
-Ansible is a powerful automation tool that uses simple YAML playbooks to configure systems and deploy software. Using Ansible to install Rancher gives you a repeatable, idempotent deployment process that can be applied to multiple servers. This guide walks you through creating Ansible playbooks to automate the entire Rancher installation.
+Ansible is a powerful automation tool that uses simple YAML playbooks to configure systems and deploy software. Using Ansible to install Rancher gives you a repeatable deployment process for a K3s server. This guide walks you through creating Ansible playbooks to automate the entire Rancher installation.
 
 ## Prerequisites
 
 - Ansible 2.14 or later installed on your control machine
-- One or more target servers running Ubuntu 22.04
-- SSH access to the target servers with a user that has sudo privileges
-- Python 3 installed on the target servers
+- A target server running Ubuntu 22.04
+- SSH access to the target server with a user that has sudo privileges
+- Python 3 installed on the target server
 - A domain name (optional but recommended)
 
 ## Step 1: Set Up the Project Structure
@@ -37,10 +37,10 @@ rancher-server ansible_host=192.168.1.100 ansible_user=ubuntu ansible_ssh_privat
 
 [rancher_servers:vars]
 rancher_hostname=rancher.example.com
-rancher_bootstrap_password=admin
+rancher_bootstrap_password=change-this-password
 ```
 
-Replace the IP address, username, and key path with your actual values.
+Replace the IP address, username, key path, hostname, and bootstrap password with your actual values.
 
 ## Step 3: Define Default Variables
 
@@ -48,12 +48,12 @@ Replace the IP address, username, and key path with your actual values.
 # roles/rancher/defaults/main.yml
 ---
 rancher_hostname: "rancher.example.com"
-rancher_bootstrap_password: "admin"
-rancher_version: "stable"
+rancher_bootstrap_password: "change-this-password"
+rancher_version: "2.14.0"
 rancher_replicas: 1
-k3s_version: ""
-cert_manager_version: "v1.14.4"
-helm_version: "3.14.0"
+k3s_version: "v1.35.2+k3s1"
+cert_manager_version: "v1.13.1"
+helm_version: "3.18.0"
 kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 ```
 
@@ -69,7 +69,7 @@ kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 
 - name: Install K3s
   ansible.builtin.shell: |
-    curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+    curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION={{ k3s_version }} sh -s - server --cluster-init --write-kubeconfig-mode 644
   when: not k3s_binary.stat.exists
   register: k3s_install
 
@@ -101,7 +101,9 @@ kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 
 - name: Install Helm
   ansible.builtin.shell: |
-    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    chmod 700 get_helm.sh
+    ./get_helm.sh
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
   when: helm_check.rc != 0
@@ -114,7 +116,7 @@ kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 ---
 - name: Add jetstack Helm repository
   ansible.builtin.shell: |
-    helm repo add jetstack https://charts.jetstack.io
+    helm repo add jetstack https://charts.jetstack.io --force-update
     helm repo update
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
@@ -133,6 +135,7 @@ kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
     helm install cert-manager jetstack/cert-manager \
       --namespace cert-manager \
       --create-namespace \
+      --version {{ cert_manager_version }} \
       --set crds.enabled=true
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
@@ -140,7 +143,9 @@ kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 
 - name: Wait for cert-manager to be ready
   ansible.builtin.shell: |
-    kubectl -n cert-manager wait --for=condition=ready pod -l app=cert-manager --timeout=120s
+    kubectl -n cert-manager rollout status deploy/cert-manager --timeout=120s
+    kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=120s
+    kubectl -n cert-manager rollout status deploy/cert-manager-cainjector --timeout=120s
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
 ```
@@ -152,7 +157,7 @@ kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 ---
 - name: Add Rancher Helm repository
   ansible.builtin.shell: |
-    helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+    helm repo add rancher-stable https://releases.rancher.com/server-charts/stable --force-update
     helm repo update
   environment:
     KUBECONFIG: "{{ kubeconfig_path }}"
@@ -176,6 +181,7 @@ kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
   ansible.builtin.shell: |
     helm install rancher rancher-stable/rancher \
       --namespace cattle-system \
+      --version {{ rancher_version }} \
       --set hostname={{ rancher_hostname }} \
       --set bootstrapPassword={{ rancher_bootstrap_password }} \
       --set replicas={{ rancher_replicas }}
@@ -226,7 +232,7 @@ kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 ```yaml
 # site.yml
 ---
-- name: Install Rancher on target servers
+- name: Install Rancher on the target server
   hosts: rancher_servers
   become: yes
   roles:
@@ -261,8 +267,8 @@ Access `https://rancher.example.com` in your browser and log in.
 
 ## Running Against Multiple Servers
 
-To install Rancher on multiple servers, simply add more hosts to the inventory file. Ansible will run the playbook against all servers in parallel.
+Do not add more hosts to this inventory to create a single Rancher installation. That would create separate single-node K3s clusters and separate Rancher instances. If you want Rancher to run across multiple machines, first build a multi-node K3s or RKE2 cluster, then run the Rancher Helm steps against that cluster.
 
 ## Summary
 
-You have automated the Rancher installation using Ansible. This approach provides idempotent deployments, meaning you can safely re-run the playbook without causing issues. The playbook can be version-controlled, shared across teams, and extended to include additional configuration steps like setting up monitoring, backup, or custom Rancher settings.
+You have automated the Rancher installation using Ansible. This approach provides a repeatable deployment process that can be version-controlled, shared across teams, and extended to include additional configuration steps like setting up monitoring, backup, or custom Rancher settings.
