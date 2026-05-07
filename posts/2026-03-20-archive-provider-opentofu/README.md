@@ -8,12 +8,12 @@ Description: Learn how to configure the Archive provider in OpenTofu to create Z
 
 ## Introduction
 
-This guide covers How to Configure the Archive Provider in OpenTofu using OpenTofu with practical examples and production-ready configurations.
+This guide covers how to configure the Archive provider in OpenTofu to create ZIP archives from local files and directories for Lambda functions and other deployments.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- API credentials for the relevant service
+- Files or a directory you want to package
 - Basic understanding of OpenTofu concepts
 
 ## Step 1: Install and Configure the Provider
@@ -21,108 +21,67 @@ This guide covers How to Configure the Archive Provider in OpenTofu using OpenTo
 ```hcl
 terraform {
   required_version = ">= 1.6.0"
+
   required_providers {
-    # Provider configuration depends on the specific service
-    # Replace with the actual provider source and version
-    example = {
-      source  = "hashicorp/example"
-      version = "~> 1.0"
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.7"
     }
   }
 }
-
-# Configure the provider with credentials
-
-provider "example" {
-  # Use environment variables for credentials
-  # EXAMPLE_API_KEY, EXAMPLE_TOKEN, etc.
-  
-  # Or specify directly (not recommended for secrets)
-  # api_key = var.api_key
-}
 ```
 
-## Step 2: Set Up Authentication
+The Archive provider requires no provider block or API credentials.
 
-```bash
-# Use environment variables for authentication
-export PROVIDER_API_KEY="your-api-key"
-export PROVIDER_TOKEN="your-token"
-export PROVIDER_ORG="your-organization"
-```
+## Step 2: Define Archive Inputs
 
 ```hcl
-variable "api_key" {
-  description = "API key for authentication"
-  type        = string
-  sensitive   = true
-}
-
-variable "organization" {
-  description = "Organization name or ID"
-  type        = string
+locals {
+  archive_type = "zip"
+  source_dir   = "${path.module}/lambda"
+  output_path  = "${path.module}/lambda.zip"
 }
 ```
 
-## Step 3: Create Basic Resources
+## Step 3: Create a Basic Archive
 
 ```hcl
-# Example resource creation
-# Replace with actual resource types for the provider
-
-resource "example_project" "main" {
-  name        = "${var.environment}-project"
-  description = "Managed by OpenTofu"
-
-  tags = {
-    environment = var.environment
-    managed_by  = "opentofu"
-  }
-}
-
-# Configure access control
-resource "example_team" "developers" {
-  name    = "developers"
-  project = example_project.main.id
-  role    = "contributor"
+resource "archive_file" "lambda" {
+  type        = local.archive_type
+  source_dir  = local.source_dir
+  output_path = local.output_path
 }
 ```
 
 ## Step 4: Configure Advanced Settings
 
 ```hcl
-# Monitoring and alerting configuration
-resource "example_alert" "main" {
-  name      = "critical-alert"
-  project   = example_project.main.id
-  severity  = "critical"
-  threshold = 90
-
-  notification {
-    channel = var.notification_channel
-  }
-}
-
-# Backup and retention policies
-resource "example_backup_policy" "main" {
-  name              = "daily-backup"
-  project           = example_project.main.id
-  retention_days    = 30
-  schedule          = "0 2 * * *"  # Daily at 2 AM
+resource "archive_file" "lambda_advanced" {
+  type                        = "zip"
+  source_dir                  = "${path.module}/lambda"
+  output_path                 = "${path.module}/lambda-advanced.zip"
+  excludes                    = ["**/.terraform/**", "**/*.tmp"]
+  output_file_mode            = "0666"
+  exclude_symlink_directories = true
 }
 ```
 
 ## Step 5: Define Outputs
 
 ```hcl
-output "project_id" {
-  description = "The ID of the created project"
-  value       = example_project.main.id
+output "archive_path" {
+  description = "The path to the generated archive"
+  value       = archive_file.lambda.output_path
 }
 
-output "project_name" {
-  description = "The name of the created project"
-  value       = example_project.main.name
+output "archive_sha256" {
+  description = "Base64-encoded SHA256 checksum of the archive"
+  value       = archive_file.lambda.output_base64sha256
+}
+
+output "archive_size" {
+  description = "The size of the generated archive in bytes"
+  value       = archive_file.lambda.output_size
 }
 ```
 
@@ -144,15 +103,15 @@ tofu apply
 
 ## Common Issues and Solutions
 
-### Authentication Errors
-Verify API keys are valid and have the required permissions. Check for typos in environment variable names.
+### No Authentication Required
+The Archive provider works with local files and does not use API credentials. If initialization fails, verify the provider source address and version constraint instead.
 
-### Rate Limiting
-Add `depends_on` to serialize resource creation and avoid hitting API rate limits.
+### Empty Archive Errors
+Archive provider v2.4.2 and later returns an error when the resulting archive would be empty. Make sure the source directory contains files and that your `excludes` patterns are not filtering everything out.
 
-### Provider Version Conflicts
-Pin to a specific provider version range to ensure reproducible deployments.
+### Plan and Apply Behavior
+If you use `data "archive_file"` instead of `resource "archive_file"`, the archive is created during `tofu plan`. Persist that generated file between `plan` and `apply`, or use the resource form for multi-step CI/CD workflows.
 
 ## Conclusion
 
-You have successfully configured How to Configure the Archive Provider in OpenTofu using OpenTofu. This provider enables you to manage all aspects of the service as code, ensuring consistency and enabling GitOps workflows. Always use environment variables or secure secret stores for sensitive credentials.
+You have successfully configured the Archive provider in OpenTofu to generate ZIP archives from local files and directories. Because the provider requires no credentials, the main choices are which source input to package and whether to use the data source or resource form for your workflow. Use the archive outputs, especially checksums, to feed downstream deployments such as Lambda.
