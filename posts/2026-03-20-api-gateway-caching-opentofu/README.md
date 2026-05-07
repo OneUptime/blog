@@ -8,7 +8,7 @@ Description: Learn how to configure API Gateway response caching with OpenTofu t
 
 ## Introduction
 
-API Gateway caching stores responses from your integration endpoint for a configurable TTL (up to 3600 seconds). Cached responses are served directly from API Gateway without invoking Lambda or hitting backend services, reducing latency from hundreds of milliseconds to single-digit milliseconds and significantly cutting backend costs for frequently accessed resources.
+API Gateway caching stores responses from your integration endpoint for a configurable TTL (up to 3600 seconds). Cached responses are served directly from API Gateway without invoking Lambda or hitting backend services, reducing latency and significantly cutting backend costs for frequently accessed resources.
 
 ## Prerequisites
 
@@ -32,6 +32,16 @@ resource "aws_api_gateway_stage" "prod" {
 
   access_log_settings {
     destination_arn = var.cloudwatch_log_group_arn
+    format = jsonencode({
+      requestId         = "$context.requestId"
+      extendedRequestId = "$context.extendedRequestId"
+      ip                = "$context.identity.sourceIp"
+      requestTime       = "$context.requestTime"
+      httpMethod        = "$context.httpMethod"
+      resourcePath      = "$context.resourcePath"
+      status            = "$context.status"
+      responseLength    = "$context.responseLength"
+    })
   }
 
   tags = {
@@ -48,7 +58,7 @@ resource "aws_api_gateway_stage" "prod" {
 resource "aws_api_gateway_method_settings" "cached_get" {
   rest_api_id = var.api_gateway_id
   stage_name  = aws_api_gateway_stage.prod.stage_name
-  method_path = "users/GET"  # Format: {resource}/{HTTP_METHOD}
+  method_path = "users/GET"  # Format: {resource_path}/{HTTP_METHOD}
 
   settings {
     metrics_enabled        = true
@@ -60,8 +70,8 @@ resource "aws_api_gateway_method_settings" "cached_get" {
     cache_ttl_in_seconds           = 300  # Cache for 5 minutes
     cache_data_encrypted           = true
 
-    # Allow clients to request fresh data bypassing cache
-    require_authorization_caching  = false
+    # Allow any client to refresh the cache with Cache-Control: max-age=0
+    require_authorization_for_cache_control = false
   }
 }
 
@@ -113,7 +123,7 @@ resource "aws_api_gateway_method" "get_user" {
 resource "aws_api_gateway_method_settings" "get_user_cached" {
   rest_api_id = var.api_gateway_id
   stage_name  = aws_api_gateway_stage.prod.stage_name
-  method_path = "users~1{userId}/GET"  # ~ escapes /
+  method_path = "users/{userId}/GET"
 
   settings {
     caching_enabled      = true
@@ -145,7 +155,7 @@ tofu init
 tofu plan
 tofu apply
 
-# Manually invalidate cache for a specific method
+# Manually flush the entire stage cache
 aws apigateway flush-stage-cache \
   --rest-api-id <api-id> \
   --stage-name prod
@@ -153,4 +163,4 @@ aws apigateway flush-stage-cache \
 
 ## Conclusion
 
-API Gateway caching provides the biggest performance and cost improvement for read-heavy endpoints with stable data. Size the cache cluster based on your unique cache keys and response sizes-start with 0.5 GB and scale up if cache eviction metrics are high. Always encrypt cache data in production and include relevant path/query parameters in cache keys to avoid serving stale data to different users.
+API Gateway caching provides the biggest performance and cost improvement for read-heavy endpoints with stable data. Size the cache cluster based on your unique cache keys and response sizes. Start with 0.5 GB and use `CacheHitCount` and `CacheMissCount` during load testing to decide whether to scale up. Always encrypt cache data in production and include relevant path/query parameters in cache keys to avoid serving stale data to different users.
