@@ -31,27 +31,27 @@ podman pod top app-pod
 ## Understanding the Output
 
 ```bash
-# Default output shows USER, PID, PPID, and COMMAND
+# Default output is similar to ps -ef
 podman pod top app-pod
 
 # Example output:
-# USER    PID   PPID  %CPU  COMMAND
-# root    1     0     0.0   nginx: master process
-# nginx   29    1     0.0   nginx: worker process
-# root    1     0     0.0   sleep 10
+# USER    PID   PPID  %CPU   ELAPSED  TTY  TIME  COMMAND
+# root    1     0     0.000  20s      ?    0s    nginx: master process
+# nginx   29    1     0.000  20s      ?    0s    nginx: worker process
+# root    1     0     0.000  18s      ?    0s    sleep 10
 ```
 
 ## Custom Format Descriptors
 
 ```bash
 # Show specific columns
-podman pod top app-pod pid user comm vsz rss
+podman pod top app-pod pid user comm vsz
 
 # Show process hierarchy with arguments
 podman pod top app-pod pid ppid args
 
-# Include CPU and memory usage
-podman pod top app-pod pid user pcpu pmem comm
+# Include CPU and virtual memory size
+podman pod top app-pod pid user pcpu vsz comm
 ```
 
 ## Available Format Descriptors
@@ -64,9 +64,7 @@ podman pod top app-pod pid user pcpu pmem comm
 # comm   - Command name
 # args   - Full command with arguments
 # pcpu   - CPU percentage
-# pmem   - Memory percentage
 # vsz    - Virtual memory size
-# rss    - Resident set size
 # etime  - Elapsed time
 # state  - Process state
 ```
@@ -88,7 +86,7 @@ podman pod top app-pod
 
 ```bash
 # Use watch to continuously monitor pod processes
-watch -n 2 podman pod top app-pod pid user pcpu pmem comm
+watch -n 2 podman pod top app-pod pid user pcpu vsz comm
 
 # This refreshes every 2 seconds
 ```
@@ -97,10 +95,10 @@ watch -n 2 podman pod top app-pod pid user pcpu pmem comm
 
 ```bash
 # Sort output by CPU usage (using shell tools)
-podman pod top app-pod pid user pcpu pmem comm | head -1
-podman pod top app-pod pid user pcpu pmem comm | tail -n +2 | sort -k3 -rn
+podman pod top app-pod pid user pcpu vsz comm | head -1
+podman pod top app-pod pid user pcpu vsz comm | tail -n +2 | sort -k3 -rn
 ```
 
 ## Summary
 
-Use `podman pod top` to get a unified view of all processes running across every container in a pod. Customize the output with format descriptors to show CPU, memory, and other process details. Combine with `watch` for continuous monitoring during debugging.
+Use `podman pod top` to get a unified view of all processes running across every container in a pod. Customize the output with format descriptors to show CPU, virtual memory size, and other process details. Combine with `watch` for continuous monitoring during debugging.
