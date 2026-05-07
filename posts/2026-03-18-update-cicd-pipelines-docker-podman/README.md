@@ -268,9 +268,11 @@ build:
   image: quay.io/podman/stable
   variables:
     STORAGE_DRIVER: vfs
+    IMAGE: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
   script:
-    - podman build -t myapp .
-    - podman push myapp
+    - podman login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
+    - podman build -t ${IMAGE} .
+    - podman push ${IMAGE}
 ```
 
 ## Setting Up CI Runners for Podman
@@ -280,7 +282,7 @@ Configure your CI runners to support Podman builds.
 ```bash
 # Install Podman on a CI runner (Ubuntu)
 sudo apt-get update
-sudo apt-get install -y podman skopeo buildah
+sudo apt-get install -y podman skopeo buildah fuse-overlayfs
 
 # Configure storage for CI (use vfs for containerized runners)
 mkdir -p ~/.config/containers/
