@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Rootless, Security, Setup
 
-Description: Learn how to set up rootless Podman for the first time to run containers securely without root privileges.
+Description: Learn how to set up rootless Podman for the first time to run containers securely without running Podman as root.
 
 ---
 
-> Rootless Podman lets you run containers as a regular user without any root privileges, providing a significant security improvement over traditional root-based container runtimes.
+> Rootless Podman lets you run containers as a regular user without running the container runtime as root, providing a significant security improvement over traditional root-based container runtimes.
 
-Running containers as root is a security concern because a container escape could give an attacker full root access to the host. Rootless Podman solves this by running the entire container stack as an unprivileged user, using Linux user namespaces for isolation.
+Running containers as root is a security concern because a container escape could give an attacker full root access to the host. Rootless Podman reduces this risk by running containers as an unprivileged user, using Linux user namespaces for isolation.
 
 ---
 
@@ -23,8 +23,10 @@ Ensure your system meets the requirements:
 
 uname -r
 
-# Verify user namespace support is enabled
-cat /proc/sys/kernel/unprivileged_userns_clone
+# On Debian/Ubuntu, verify unprivileged user namespaces are enabled
+if [ -f /proc/sys/kernel/unprivileged_userns_clone ]; then
+  cat /proc/sys/kernel/unprivileged_userns_clone
+fi
 # Should output: 1
 
 # If it shows 0, enable it (requires root)
@@ -37,14 +39,14 @@ echo "kernel.unprivileged_userns_clone=1" | sudo tee /etc/sysctl.d/userns.conf
 
 ```bash
 # Fedora / RHEL / CentOS
-sudo dnf install -y podman
+sudo dnf install -y podman passt
 
 # Ubuntu / Debian
 sudo apt-get update
-sudo apt-get install -y podman
+sudo apt-get install -y podman passt uidmap
 
 # Arch Linux
-sudo pacman -S podman
+sudo pacman -S podman passt
 
 # Verify the installation
 podman --version
@@ -99,12 +101,12 @@ podman info --format '{{.Host.Security.Rootless}}'
 podman info --format '{{.Store.GraphRoot}}'
 # Should be something like: /home/username/.local/share/containers/storage
 
-# If needed, customize storage in containers.conf
+# If needed, customize storage in storage.conf
 mkdir -p ~/.config/containers
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
 driver = "overlay"
-graphroot = "/home/$USER/.local/share/containers/storage"
+graphroot = "$HOME/.local/share/containers/storage"
 EOF
 ```
 
@@ -136,4 +138,4 @@ podman rm -f test-web
 
 ## Summary
 
-Setting up rootless Podman involves installing Podman, configuring subuid/subgid mappings for your user, verifying user namespace support, and enabling lingering for background containers. Once configured, you can run all Podman commands as your regular user without sudo, providing a significant security improvement. Rootless Podman uses Linux user namespaces to isolate containers, meaning a container escape cannot gain root access to the host.
+Setting up rootless Podman involves installing Podman, configuring subuid/subgid mappings for your user, verifying user namespace support, and enabling lingering for background containers. Once configured, you can run Podman commands as your regular user without sudo, providing a significant security improvement. Rootless Podman uses Linux user namespaces to isolate containers, meaning a container escape does not automatically gain root access to the host.
