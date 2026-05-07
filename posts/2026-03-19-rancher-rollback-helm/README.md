@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, Helm
 
 Description: Learn how to roll back Helm releases in Rancher to recover from failed upgrades, configuration errors, or unstable deployments.
 
-When a Helm upgrade goes wrong, whether due to a misconfigured value, an incompatible chart version, or a buggy application release, you need to quickly roll back to a known good state. Rancher and Helm both provide mechanisms to roll back releases to previous revisions. This guide covers all the methods and best practices for rolling back Helm releases.
+When a Helm upgrade goes wrong, whether due to a misconfigured value, an incompatible chart version, or a buggy application release, you need to quickly roll back to a known good state. Rancher helps you inspect installed apps and recent operations, while Helm provides the rollback mechanism for releases. This guide covers the practical workflow and best practices for rolling back Helm releases.
 
 ## Prerequisites
 
@@ -18,9 +18,9 @@ When a Helm upgrade goes wrong, whether due to a misconfigured value, an incompa
 
 When you roll back a Helm release, Helm:
 
-1. Retrieves the manifest and values from the target revision
-2. Renders the chart templates with those values
-3. Applies the resulting manifests to the cluster
+1. Retrieves the chart, manifest, hooks, and values from the target revision
+2. Creates a new release revision that copies that target state
+3. Applies the stored manifest from that revision to the cluster
 4. Creates a new revision (the rollback itself is a new revision)
 
 For example, if you roll back from revision 4 to revision 2, you get revision 5 that matches the state of revision 2.
@@ -47,17 +47,17 @@ kubectl describe pods -l app.kubernetes.io/instance=my-app -n default
 kubectl logs -l app.kubernetes.io/instance=my-app -n default --tail=50
 ```
 
-In the Rancher UI, navigate to **Apps > Installed Apps** and check the release status. Then go to **Workloads** to inspect pod health.
+In the Rancher UI, open the target cluster's Cluster Dashboard, navigate to **Apps > Installed Apps**, and check the release status. Then go to **Workloads** to inspect pod health.
 
-## Step 2: Roll Back via the Rancher UI
+## Step 2: Locate the Release in Rancher
 
-1. Navigate to **Apps > Installed Apps**
-2. Find the release you want to roll back
-3. Click the three-dot menu and select **Rollback**
-4. Select the target revision from the dropdown list
-5. Click **Rollback** to confirm
+1. Click **☰ > Cluster Management**
+2. Find the cluster and click **Explore**
+3. Navigate to **Apps > Installed Apps**
+4. Find the release you want to inspect
+5. Review its details, current chart version, and recent operations
 
-Rancher will execute the rollback and show you the progress. The release status will update once the rollback completes.
+Rancher shows the installed app details and recent Helm operations, but the documented rollback workflow is to use the Helm CLI from a shell with access to the cluster.
 
 ## Step 3: Roll Back via the Helm CLI
 
@@ -89,10 +89,10 @@ helm rollback my-app 2 -n default
 # Wait for rollback to complete
 helm rollback my-app 2 -n default --wait --timeout 5m
 
-# Force resource updates even if conflicts exist
+# Force resource replacement if needed
 helm rollback my-app 2 -n default --force
 
-# Clean up new resources created during the failed upgrade
+# Clean up resources created during the rollback if the rollback fails
 helm rollback my-app 2 -n default --cleanup-on-fail
 ```
 
@@ -107,8 +107,8 @@ helm status my-app -n default
 # Verify the revision
 helm history my-app -n default
 
-# Check the values match the expected revision
-helm get values my-app -n default
+# Check the current computed values
+helm get values my-app -n default --all
 
 # Verify pods are healthy
 kubectl get pods -l app.kubernetes.io/instance=my-app -n default
@@ -117,7 +117,7 @@ kubectl get pods -l app.kubernetes.io/instance=my-app -n default
 kubectl port-forward svc/my-app 8080:80 -n default
 ```
 
-In Rancher, navigate to **Apps > Installed Apps** and verify the release shows as "deployed". Check **Workloads** to confirm all pods are running.
+In Rancher, open the target cluster's Cluster Dashboard, navigate to **Apps > Installed Apps**, and verify the release shows as **Deployed**. Check **Workloads** to confirm all pods are running.
 
 ## Handling Special Rollback Scenarios
 
@@ -147,7 +147,7 @@ helm rollback my-app 2 -n default --force
 kubectl get pvc -l app.kubernetes.io/instance=my-app -n default
 
 # Check for resource quota issues
-kubectl describe namespace default | grep -A 10 "Resource Quotas"
+kubectl describe resourcequota -n default
 ```
 
 ### Rolling Back Custom Resource Definitions
@@ -164,7 +164,7 @@ kubectl delete crd myresource.example.com
 
 ### Rolling Back with Hook Failures
 
-If Helm hooks (pre-install, post-install, etc.) fail during rollback:
+If Helm rollback hooks (`pre-rollback`, `post-rollback`) fail during rollback:
 
 ```bash
 # Skip hooks during rollback
@@ -218,15 +218,21 @@ echo "Upgrade successful"
 
 ```bash
 #!/bin/bash
+set -e
 
 # Upgrade
 helm upgrade my-app my-chart --version 2.0.0 -n default -f values.yaml --wait
 
-# Wait for application health
-sleep 30
+# Forward the service locally for the health check
+kubectl port-forward svc/my-app 8080:80 -n default >/tmp/my-app-port-forward.log 2>&1 &
+PF_PID=$!
+trap 'kill $PF_PID 2>/dev/null || true' EXIT
+
+# Wait for the port-forward to be ready
+sleep 5
 
 # Check application health
-if ! curl -sf http://my-app-service/health; then
+if ! curl -sf http://127.0.0.1:8080/health; then
   echo "Health check failed, rolling back..."
   helm rollback my-app -n default --wait
   exit 1
@@ -255,9 +261,9 @@ helm rollback database 2 -n default --wait
 3. Test rollback procedures regularly in staging environments
 4. Document the rollback process for your team
 5. Back up data before rolling back stateful applications
-6. Use `helm diff` to compare the current state with the target revision before rolling back
+6. If you use the `helm-diff` plugin, compare the current state with the target revision before rolling back
 7. Monitor application health immediately after a rollback
 
 ## Summary
 
-Rolling back Helm releases in Rancher is straightforward using either the UI or the Helm CLI. The key is to maintain sufficient revision history, verify the target revision before rolling back, and confirm application health after the rollback completes. For production environments, use the `--atomic` flag on upgrades to enable automatic rollbacks, and always test rollback procedures in staging before relying on them in production.
+Rolling back Helm releases in Rancher is straightforward once you identify the release in Rancher and perform the rollback with the Helm CLI. The key is to maintain sufficient revision history, verify the target revision before rolling back, and confirm application health after the rollback completes. For production environments, use the `--atomic` flag on upgrades to enable automatic rollbacks, and always test rollback procedures in staging before relying on them in production.
