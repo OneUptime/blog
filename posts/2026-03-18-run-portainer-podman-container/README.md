@@ -16,7 +16,7 @@ Portainer is a lightweight management UI that lets you interact with your contai
 
 ## Prerequisites
 
-- A Linux host with Podman installed (version 4.0 or later).
+- A Linux host with Podman installed. Portainer's current Podman support targets Podman 5.x on Linux.
 - Root access (for the system-level Podman socket) or a rootless Podman setup.
 - A web browser for accessing the Portainer dashboard.
 
@@ -81,10 +81,12 @@ sudo podman run -d \
   --name portainer \
   -p 8000:8000 \
   -p 9443:9443 \
-  -v /run/podman/podman.sock:/var/run/docker.sock:Z \
-  -v portainer_data:/data:Z \
-  --restart unless-stopped \
-  docker.io/portainer/portainer-ce:latest
+  --restart=always \
+  --privileged \
+  --security-opt label=disable \
+  -v /run/podman/podman.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  docker.io/portainer/portainer-ce:lts
 ```
 
 Key flags explained:
@@ -93,8 +95,9 @@ Key flags explained:
 |------|---------|
 | `-p 9443:9443` | HTTPS web interface (primary access point) |
 | `-p 8000:8000` | Edge agent communication port |
-| `-v /run/podman/podman.sock:/var/run/docker.sock:Z` | Maps the Podman socket to where Portainer expects the Docker socket |
-| `-v portainer_data:/data:Z` | Persists Portainer's database and settings |
+| `-v /run/podman/podman.sock:/var/run/docker.sock` | Maps the Podman socket to where Portainer expects the Docker socket |
+| `--privileged` and `--security-opt label=disable` | Allows Portainer to access the Podman API socket from inside the container |
+| `-v portainer_data:/data` | Persists Portainer's database and settings |
 
 The critical mapping is the socket: Portainer looks for `/var/run/docker.sock`, so we mount the Podman socket at that path. Since Podman's API is Docker-compatible, Portainer works seamlessly.
 
@@ -102,7 +105,7 @@ The critical mapping is the socket: Portainer looks for `/var/run/docker.sock`, 
 
 ## Step 4: Run Portainer with the User Socket (Rootless)
 
-For a rootless Podman setup:
+For a rootless Podman setup, note that Portainer with rootless Podman may work but is not currently officially supported by Portainer:
 
 ```bash
 # Run Portainer with the user-level Podman socket
@@ -110,10 +113,12 @@ podman run -d \
   --name portainer \
   -p 8000:8000 \
   -p 9443:9443 \
-  -v /run/user/$(id -u)/podman/podman.sock:/var/run/docker.sock:Z \
-  -v portainer_data:/data:Z \
-  --restart unless-stopped \
-  docker.io/portainer/portainer-ce:latest
+  --restart=always \
+  --privileged \
+  --security-opt label=disable \
+  -v /run/user/$(id -u)/podman/podman.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  docker.io/portainer/portainer-ce:lts
 ```
 
 Note that in a rootless setup, Portainer will only see and manage containers running under your user account.
@@ -222,7 +227,7 @@ podman logs --tail 50 portainer
 podman restart portainer
 
 # Update Portainer to the latest version
-podman pull docker.io/portainer/portainer-ce:latest
+podman pull docker.io/portainer/portainer-ce:lts
 podman stop portainer
 podman rm portainer
 # Re-run the podman run command from Step 3 or Step 4
@@ -258,11 +263,13 @@ Description=Portainer CE Container
 
 [Container]
 ContainerName=portainer
-Image=docker.io/portainer/portainer-ce:latest
+Image=docker.io/portainer/portainer-ce:lts
 PublishPort=8000:8000
 PublishPort=9443:9443
-Volume=/run/podman/podman.sock:/var/run/docker.sock:Z
-Volume=portainer_data:/data:Z
+PodmanArgs=--privileged
+SecurityLabelDisable=true
+Volume=/run/podman/podman.sock:/var/run/docker.sock
+Volume=portainer_data:/data
 
 [Service]
 Restart=always
@@ -276,18 +283,17 @@ Then reload and start:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl start portainer.service
-sudo systemctl enable portainer.service
 ```
 
 ---
 
 ## Security Considerations
 
-- Change the default admin password immediately after first login.
+- Use a strong administrator password when creating the first user.
 - Use a reverse proxy (such as Nginx or Caddy) with a valid TLS certificate in front of Portainer for production use.
 - Restrict access to port 9443 using firewall rules to trusted IPs only.
 - The Podman socket grants full control over your containers. Anyone with access to Portainer can manage all containers visible to that socket.
-- Consider using Portainer's built-in role-based access control (RBAC) if multiple users need access.
+- Consider Portainer Business Edition's role-based access control (RBAC) if multiple users need granular access.
 
 ---
 
