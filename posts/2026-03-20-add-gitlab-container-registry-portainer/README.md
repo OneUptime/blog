@@ -8,11 +8,11 @@ Description: Learn how to connect GitLab's built-in container registry to Portai
 
 ## Overview
 
-GitLab includes a built-in container registry that integrates with GitLab CI/CD pipelines. Every GitLab project can push images to `registry.gitlab.com/<namespace>/<project>`. Portainer can pull from this registry using a GitLab personal access token or deploy token.
+GitLab includes a built-in container registry that integrates with GitLab CI/CD pipelines. On GitLab.com, images are pushed under `registry.gitlab.com/<namespace>/<project>[/<optional-path>]`. In Portainer, you can connect to this registry either with Portainer's GitLab registry option and a GitLab personal access token, or with a Custom registry entry and a GitLab deploy token.
 
 ## Creating a GitLab Deploy Token
 
-Deploy tokens are the preferred way to grant Portainer read access to your GitLab registry:
+Deploy tokens are the preferred way to grant Portainer read access when you add GitLab as a Custom registry:
 
 1. In GitLab, go to your project's **Settings > Repository**.
 2. Expand **Deploy tokens**.
@@ -24,31 +24,34 @@ Deploy tokens are the preferred way to grant Portainer read access to your GitLa
 ## Creating a Personal Access Token (Alternative)
 
 ```bash
-# In GitLab UI: User Settings > Access Tokens
+# In GitLab UI: Avatar > Edit profile > Access > Personal access tokens
 
-# Create a token with scope: read_registry
-# Token acts as password, your GitLab username as username
+# Create a token with scopes: read_api, read_registry
+# Token acts as the PAT/password value, your GitLab username as username
 ```
 
 ## Adding GitLab Registry to Portainer
 
-1. Go to **Settings > Registries** and click **Add registry**.
-2. Select **GitLab** or **Custom registry**.
-3. Enter:
+1. Go to **Registries** and click **Add registry**.
+2. If you are using a GitLab personal access token, select **GitLab** and enter:
+   - **Username**: Your GitLab username
+   - **Personal Access Token**: A token with `read_api` and `read_registry`
+3. If you are using a deploy token instead, select **Custom registry** and enter:
    - **Registry URL**: `registry.gitlab.com`
+   - **Authentication**: Enabled
    - **Username**: Your deploy token username (e.g., `gitlab+deploy-token-123`)
    - **Password**: Your deploy token value
 4. Click **Add registry**.
 
 ## For Self-Hosted GitLab
 
-If you run GitLab on your own server, use your instance's registry URL:
+If you run GitLab on your own server, use the exact registry hostname configured for your instance:
 
 ```text
 registry.yourcompany.com
 ```
 
-The setup is identical - create a deploy token in your self-hosted GitLab and use it in Portainer.
+The setup is similar - use **GitLab** with **Override default configuration** for a self-hosted GitLab instance, or use **Custom registry** with your self-hosted registry hostname and credentials.
 
 ## Using GitLab Registry Images in a Stack
 
@@ -67,9 +70,9 @@ services:
 
 ```bash
 # Test login to GitLab registry via CLI
-docker login registry.gitlab.com \
+echo "<your-deploy-token>" | docker login registry.gitlab.com \
   -u gitlab+deploy-token-123 \
-  -p <your-deploy-token>
+  --password-stdin
 
 # Pull an image to verify
 docker pull registry.gitlab.com/mygroup/myproject/app:latest
@@ -87,11 +90,11 @@ build:
   services:
     - docker:dind
   script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
 ```
 
 ## Conclusion
 
-GitLab's built-in registry and deploy tokens make it straightforward to integrate with Portainer. Use deploy tokens (not personal access tokens) for service accounts to limit exposure and enable easy rotation.
+GitLab's built-in registry makes it straightforward to integrate with Portainer. If you're using Portainer's **Custom registry** option, prefer deploy tokens for pull-only service access; if you're using Portainer's **GitLab** registry option, use a personal access token with the required scopes.
