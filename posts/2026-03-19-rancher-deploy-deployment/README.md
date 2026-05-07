@@ -109,7 +109,7 @@ Click **Import** to create the Deployment from the YAML definition.
 
 ## Alternative: Deploy via kubectl
 
-You can also use `kubectl` through the Rancher UI. Click the **kubectl** button in the top-right corner of the cluster dashboard to open a shell, then run:
+You can also use `kubectl` through the Rancher UI. Click the **Kubectl Shell** button in the top navigation of the cluster dashboard to open a shell, then run:
 
 ```bash
 kubectl apply -f - <<EOF
@@ -153,7 +153,7 @@ kubectl get pods -l app=my-nginx-app -n default
 
 ## Step 7: Expose the Deployment with a Service
 
-To make your deployment accessible, create a Service. In Rancher, navigate to **Service Discovery > Services** and click **Create**. Select the service type:
+If you already added a port in Step 3, Rancher creates a corresponding Service for the workload automatically. If you need a separate Service, navigate to **Service Discovery > Services** and click **Create**. Select the service type:
 
 - **ClusterIP**: Internal access only
 - **NodePort**: Access via node IP and a port
