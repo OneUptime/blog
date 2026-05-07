@@ -10,7 +10,7 @@ Persistent Volumes (PVs) provide durable storage for Kubernetes workloads that s
 
 ## Prerequisites
 
-- A running Rancher instance (v2.6 or later)
+- A supported Rancher Manager release (for example, v2.10 or later)
 - A managed Kubernetes cluster
 - Available storage backend (local disk, NFS, cloud storage, etc.)
 - kubectl access to your cluster
@@ -25,7 +25,7 @@ Kubernetes uses three key concepts for persistent storage:
 
 ## Step 1: Create a Persistent Volume Manually
 
-Create a PV backed by a host path (suitable for testing):
+Create a PV backed by a host path (suitable only for single-node testing; for multi-node clusters, prefer a `local` PV or networked storage):
 
 ```yaml
 apiVersion: v1
@@ -39,6 +39,7 @@ spec:
     storage: 10Gi
   accessModes:
     - ReadWriteOnce
+  storageClassName: ""
   persistentVolumeReclaimPolicy: Retain
   hostPath:
     path: /mnt/data
@@ -47,6 +48,8 @@ spec:
 ```bash
 kubectl apply -f my-pv.yaml
 ```
+
+For Rancher-launched clusters, make sure the host path is exposed to kubelet through the required extra bind before using `hostPath` volumes.
 
 ## Step 2: Create a Persistent Volume Claim
 
@@ -61,6 +64,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  storageClassName: ""
   resources:
     requests:
       storage: 5Gi
@@ -82,7 +86,7 @@ kubectl get pv my-pv
 
 ## Step 3: Create PVs via the Rancher UI
 
-1. Navigate to your cluster in the Rancher dashboard.
+1. In the Rancher dashboard, go to **Cluster Management**, open your cluster, and click **Explore**.
 2. Go to **Storage** > **Persistent Volumes**.
 3. Click **Create**.
 4. Configure:
@@ -94,12 +98,12 @@ kubectl get pv my-pv
 
 ## Step 4: Create PVCs via the Rancher UI
 
-1. Go to **Storage** > **PersistentVolumeClaims**.
+1. From the same cluster's **Explore** view, go to **Storage** > **Persistent Volume Claims**.
 2. Click **Create**.
 3. Configure:
    - **Name**: `my-pvc`
    - **Namespace**: `default`
-   - **Storage Class**: Select or leave default
+   - **Storage Class**: Leave empty for a static PV like `my-pv`, or select a StorageClass for dynamic provisioning
    - **Requested Storage**: `5Gi`
    - **Access Modes**: `ReadWriteOnce`
 4. Click **Create**.
@@ -140,10 +144,10 @@ spec:
 
 PVs support different access modes:
 
-- **ReadWriteOnce (RWO)**: Can be mounted as read-write by a single node
+- **ReadWriteOnce (RWO)**: Can be mounted as read-write by a single node; multiple pods on that node can still share it
 - **ReadOnlyMany (ROX)**: Can be mounted as read-only by many nodes
 - **ReadWriteMany (RWX)**: Can be mounted as read-write by many nodes
-- **ReadWriteOncePod (RWOP)**: Can be mounted as read-write by a single pod
+- **ReadWriteOncePod (RWOP)**: Can be mounted as read-write by a single pod (CSI volumes only)
 
 ```yaml
 apiVersion: v1
@@ -166,7 +170,7 @@ The reclaim policy determines what happens to the PV when the PVC is deleted:
 
 - **Retain**: PV is kept with data intact (manual cleanup needed)
 - **Delete**: PV and underlying storage are deleted
-- **Recycle**: Basic scrub (deprecated, use dynamic provisioning instead)
+- **Recycle**: Basic scrub (deprecated; in current Kubernetes releases, only `nfs` and `hostPath` support it)
 
 ```yaml
 apiVersion: v1
@@ -191,9 +195,22 @@ kubectl patch pv my-pv -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
 
 ## Step 8: Use PVCs with StatefulSets
 
-StatefulSets use volumeClaimTemplates for automatic PVC creation:
+StatefulSets use volumeClaimTemplates for automatic PVC creation and require a headless Service for stable network identity:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: database
+  ports:
+    - port: 5432
+      name: postgres
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -248,13 +265,13 @@ kubectl describe pv my-pv
 kubectl describe pvc my-pvc -n default
 
 # Check storage usage inside a pod
-kubectl exec app-with-storage-xxx -- df -h /usr/share/nginx/html
+kubectl exec deployment/app-with-storage -- df -h /usr/share/nginx/html
 ```
 
 ## Troubleshooting
 
 - **PVC stuck in Pending**: No matching PV available or StorageClass not configured
-- **PV stuck in Released**: Change reclaim policy or manually delete and recreate
+- **PV stuck in Released**: Clean up the underlying storage and reclaim the PV manually, or delete and recreate it
 - **Mount errors**: Check that the storage backend is accessible from nodes
 - **Permission issues**: Verify the security context and fsGroup settings
 - **Capacity mismatch**: PV capacity must be >= PVC request
