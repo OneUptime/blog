@@ -24,11 +24,11 @@ When a container fails to start, events reveal the sequence of what happened.
 podman run --name debug-start alpine nonexistent-command 2>/dev/null
 
 # Check the events to see what happened
-podman events --since 1m --filter container=debug-start \
+podman events --since 1m --stream=false --filter container=debug-start \
     --format '{{.Time}} {{.Status}}'
 
-# You will see: create, init, start, die in quick succession
-# The die event with a non-zero exit code confirms the failure
+# You will see: create, init, start, died in quick succession
+# The died event confirms the container exited immediately
 
 # Get the exit code
 podman inspect --format '{{.State.ExitCode}}' debug-start
@@ -41,7 +41,8 @@ Track down why a running container died unexpectedly.
 
 ```bash
 # Create a container that will crash after some time
-podman run -d --name debug-crash alpine sh -c "sleep 10 && exit 137"
+podman run -d --name debug-crash alpine \
+    sh -c "sleep 10 && echo 'simulated crash' >&2 && kill -9 1"
 
 # Monitor events for this container
 podman events --filter container=debug-crash --format json &
@@ -68,11 +69,11 @@ Detect when containers are killed due to memory exhaustion.
 
 ```bash
 # Run a container with a strict memory limit
-podman run -d --name debug-oom --memory 10m alpine sh -c \
-    "dd if=/dev/zero of=/dev/null bs=20M count=1"
+podman run -d --name debug-oom --memory 10m docker.io/library/python:3-alpine \
+    sh -c "python -c 'x = bytearray(20 * 1024 * 1024); import time; time.sleep(30)'"
 
 # Check events for OOM indicators
-podman events --since 1m --filter container=debug-oom \
+podman events --since 1m --stream=false --filter container=debug-oom \
     --format '{{.Time}} {{.Status}}'
 
 # Inspect the container for OOM details
@@ -99,24 +100,25 @@ echo ""
 
 # Get all events for this container
 podman events --since "$DURATION" \
+    --stream=false \
     --filter container="$CONTAINER" \
     --format json 2>/dev/null | \
 while IFS= read -r event; do
-    timestamp=$(echo "$event" | jq -r '.time')
+    timestamp=$(echo "$event" | jq -r '.time | todateiso8601')
     status=$(echo "$event" | jq -r '.Status')
 
     # Add context based on event type
     case "$status" in
         create)
-            image=$(echo "$event" | jq -r '.Actor.Attributes.image // "unknown"')
+            image=$(echo "$event" | jq -r '.Image // "unknown"')
             echo "${timestamp} | CREATE  | Image: ${image}"
             ;;
         start)
             echo "${timestamp} | START   | Container started"
             ;;
-        die)
-            exit_code=$(echo "$event" | jq -r '.Actor.Attributes.containerExitCode // "unknown"')
-            echo "${timestamp} | DIE     | Exit code: ${exit_code}"
+        died)
+            exit_code=$(echo "$event" | jq -r '.ContainerExitCode // "unknown"')
+            echo "${timestamp} | DIED    | Exit code: ${exit_code}"
             ;;
         stop)
             echo "${timestamp} | STOP    | Graceful shutdown"
@@ -153,15 +155,16 @@ echo "=== Containers with Recent Restarts ==="
 echo ""
 
 # Look for containers that have multiple start events in the last hour
-podman events --since 1h --filter event=start --format json 2>/dev/null | \
-    jq -r '.Actor.Attributes.name // "unknown"' | sort | uniq -c | sort -rn | \
+podman events --since 1h --stream=false --filter type=container --filter event=start --format json 2>/dev/null | \
+    jq -r '.Name // "unknown"' | sort | uniq -c | sort -rn | \
 while read -r count name; do
     if [ "$count" -gt 2 ]; then
         echo "Container: ${name} - Started ${count} times in last hour"
 
         # Show the timeline
         podman events --since 1h --filter container="$name" \
-            --format '  {{.Time}} {{.Status}}' 2>/dev/null
+            --stream=false --format json 2>/dev/null | \
+            jq -r '"  \(.time | todateiso8601) \(.Status)"'
 
         echo ""
     fi
@@ -211,8 +214,8 @@ echo ""
 echo "TIMESTAMP                  | CONTAINER           | EVENT"
 echo "---------------------------|---------------------|--------"
 
-podman events --since 30m --format json 2>/dev/null | \
-    jq -r '[.time, (.Actor.Attributes.name // "unknown"), .Status] | @tsv' | \
+podman events --since 30m --stream=false --filter type=container --format json 2>/dev/null | \
+    jq -r '[(.time | todateiso8601), (.Name // "unknown"), .Status] | @tsv' | \
     sort | \
 while IFS=$'\t' read -r timestamp name status; do
     printf "%-27s | %-19s | %s\n" "$timestamp" "$name" "$status"
@@ -236,7 +239,7 @@ podman inspect --format '   Status: {{.State.Status}} | Exit: {{.State.ExitCode}
 
 # 2. Recent events
 echo "2. Recent events:"
-podman events --since 30m --filter container="$CONTAINER" \
+podman events --since 30m --stream=false --filter container="$CONTAINER" \
     --format '   {{.Time}} {{.Status}}' 2>/dev/null
 
 # 3. Last logs
