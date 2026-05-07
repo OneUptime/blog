@@ -74,19 +74,20 @@ If you omit `nodePort`, Kubernetes will automatically assign one from the availa
 
 ## Step 3: Create a NodePort Service via the Rancher UI
 
-1. Navigate to your cluster in the Rancher dashboard.
-2. Go to **Service Discovery** > **Services**.
-3. Click **Create**.
-4. Select **NodePort** as the service type.
-5. Configure the service:
+1. In the Rancher dashboard, go to **Cluster Management**.
+2. Open your cluster and click **Explore**.
+3. Go to **Service Discovery** > **Services**.
+4. Click **Create**.
+5. Select **NodePort** as the service type.
+6. Configure the service:
    - **Name**: `nodeport-demo-svc`
    - **Namespace**: `default`
    - **Selectors**: `app = nodeport-demo`
-6. Under **Ports**, configure:
+7. Under **Ports**, configure:
    - **Service Port**: `80`
    - **Target Port**: `80`
    - **Node Port**: `30080` (or leave blank for auto-assignment)
-7. Click **Create**.
+8. Click **Create**.
 
 ## Step 4: Access the Service
 
@@ -134,23 +135,13 @@ spec:
 
 ## Step 6: Change the NodePort Range
 
-By default, Kubernetes uses ports 30000-32767 for NodePort services. To change this range, modify the API server configuration.
-
-For RKE clusters, edit the cluster configuration in Rancher:
+By default, Kubernetes uses ports 30000-32767 for NodePort services. To change this range on Rancher-managed RKE2 or K3s clusters, edit the cluster configuration in Rancher:
 
 1. Go to **Cluster Management** > **Your Cluster** > **Edit Config**.
-2. Under **Advanced Options**, add to the kube-apiserver arguments:
-   ```plaintext
-   service-node-port-range: 20000-40000
-   ```
+2. Under **Networking**, change **NodePort Service Port Range** to `20000-40000`.
 3. Save and wait for the cluster to reconcile.
 
-For RKE2 clusters, add to the server config:
-
-```yaml
-kube-apiserver-arg:
-  - service-node-port-range=20000-40000
-```
+If you're working with an older RKE (RKE1) cluster, use the equivalent **Node Port Range** option or `service_node_port_range` setting in the cluster YAML.
 
 ## Step 7: Restrict External Traffic Policy
 
@@ -205,7 +196,7 @@ Check the service status:
 ```bash
 kubectl get svc nodeport-demo-svc -n default
 kubectl describe svc nodeport-demo-svc -n default
-kubectl get endpoints nodeport-demo-svc -n default
+kubectl get endpointslice -n default -l kubernetes.io/service-name=nodeport-demo-svc
 ```
 
 Verify connectivity:
@@ -215,14 +206,14 @@ Verify connectivity:
 curl -v http://<NODE_IP>:30080
 
 # Test from inside the cluster
-kubectl run test --image=busybox --rm -it -- wget -qO- http://nodeport-demo-svc
+kubectl run test -n default --image=busybox --restart=Never --rm -it --command -- wget -qO- http://nodeport-demo-svc
 ```
 
 ## Troubleshooting
 
 - **Port conflict**: If a NodePort is already in use, choose a different port
 - **Firewall rules**: Ensure the NodePort range is open on your firewall and security groups
-- **No endpoints**: Check that pods are running and selectors match: `kubectl get endpoints <svc-name>`
+- **No endpoints**: Check that pods are running and selectors match: `kubectl get endpointslice -n <namespace> -l kubernetes.io/service-name=<svc-name>`
 - **Connection refused**: Verify the targetPort matches the container port
 - **Timeout**: Check node firewall rules and network security groups
 
