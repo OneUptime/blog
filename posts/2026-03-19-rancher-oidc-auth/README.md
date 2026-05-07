@@ -49,7 +49,7 @@ Client Secret: (from the Credentials tab)
 For Auth0:
 
 1. Create a new Application (Regular Web Application).
-2. Set the callback URL to `https://rancher.example.com/verify-auth`.
+2. Set **Allowed Callback URLs** to `https://rancher.example.com/verify-auth`.
 3. Note the Client ID, Client Secret, and Domain.
 
 ## Step 2: Discover OIDC Endpoints
@@ -83,30 +83,49 @@ The discovery document provides all required endpoints:
 
 ## Step 3: Configure Group Claims
 
-Ensure your OIDC provider sends group information in the ID token or userinfo response.
+Ensure your OIDC provider sends group information in the userinfo response or in a claim Rancher can map.
 
 For Keycloak:
 
-1. In the Rancher client, go to **Client scopes**.
-2. Add a mapper:
+1. In the Rancher client, go to **Client scopes** and open the dedicated client scope for the Rancher client.
+2. Add the required mappers:
 
 ```plaintext
+Groups Mapper
 Mapper Type: Group Membership
-Name: groups
+Name: Groups Mapper
 Token Claim Name: groups
 Full group path: OFF
+Add to ID token: OFF
+Add to access token: OFF
+Add to userinfo: ON
+
+Client Audience
+Mapper Type: Audience
+Name: Client Audience
+Included Client Audience: rancher
+Add to ID token: OFF
+Add to access token: ON
+
+Group Path
+Mapper Type: Group Membership
+Name: Group Path
+Token Claim Name: full_group_path
+Full group path: ON
 Add to ID token: ON
 Add to access token: ON
 Add to userinfo: ON
 ```
 
-For Auth0, create a custom rule or action:
+If Rancher needs to search Keycloak users or groups, assign the `query-users`, `query-groups`, and `view-users` roles to the relevant users or groups in Keycloak.
+
+For Auth0, create an Action:
 
 ```javascript
-// Auth0 Action - Add groups to token
+// Auth0 Action - Map roles into a namespaced claim Rancher can use
 exports.onExecutePostLogin = async (event, api) => {
   const namespace = 'https://rancher.example.com';
-  if (event.authorization) {
+  if (event.authorization && event.authorization.roles) {
     api.idToken.setCustomClaim(`${namespace}/groups`, event.authorization.roles);
     api.accessToken.setCustomClaim(`${namespace}/groups`, event.authorization.roles);
   }
@@ -119,82 +138,77 @@ Set up the OIDC authentication provider:
 
 1. Log in to Rancher as an administrator.
 2. Navigate to **Users & Authentication** then **Auth Provider**.
-3. Select **Keycloak (OIDC)** or the generic OIDC option if available.
+3. Select **Keycloak (OIDC)** for Keycloak, or **Generic OIDC** for another provider.
 
-Enter the configuration:
+Enter the Keycloak configuration:
 
 ```plaintext
 Client ID: rancher
 Client Secret: <your-client-secret>
-Issuer URL: https://keycloak.example.com/realms/your-realm
-Auth Endpoint: https://keycloak.example.com/realms/your-realm/protocol/openid-connect/auth
-Token Endpoint: https://keycloak.example.com/realms/your-realm/protocol/openid-connect/token
-User Info Endpoint: https://keycloak.example.com/realms/your-realm/protocol/openid-connect/userinfo
-JWKS URL: https://keycloak.example.com/realms/your-realm/protocol/openid-connect/certs
+Keycloak URL: https://keycloak.example.com
+Keycloak Realm: your-realm
 Rancher URL: https://rancher.example.com
+Endpoints: Specify (advanced)
+Issuer: https://keycloak.example.com/realms/your-realm
+Auth Endpoint: https://keycloak.example.com/realms/your-realm/protocol/openid-connect/auth
 ```
+
+For Keycloak 17 and newer, use `Specify (advanced)` to override the generated `Issuer` and `Auth Endpoint`; generated values include `/auth`, which is only correct for Keycloak 16 or older.
+
+For Auth0, Dex, or another OIDC-compliant provider, use **Generic OIDC** and provide the provider `Issuer`; Rancher uses OIDC discovery from the issuer when available.
 
 ## Step 5: Configure Claim Mappings
 
-Map OIDC claims to Rancher user attributes:
+Rancher uses the `sub` claim as the unique PrincipalID, so it must be stable and immutable. With Generic OIDC, you can override the default `name`, `email`, and `groups` claims if your provider uses different names:
 
 ```plaintext
-UID Claim: sub
-Display Name Claim: name
-User Name Claim: preferred_username
-Groups Claim: groups
-Email Claim: email
+Custom Name Claim: name
+Custom Email Claim: email
+Custom Groups Claim: groups
 ```
 
 For Auth0 with custom claims:
 
 ```plaintext
-Groups Claim: https://rancher.example.com/groups
+Custom Groups Claim: https://rancher.example.com/groups
 ```
 
 ## Step 6: Configure Scopes
 
-Set the OIDC scopes that Rancher requests:
+Ensure your IdP client can issue the claims Rancher relies on. `openid` is required, while `profile`, `email`, and `groups` determine whether those claims are available:
 
 ```plaintext
-Scopes: openid profile email groups
+Keycloak: openid profile email
+Auth0: openid profile email
+Dex: openid profile email groups
 ```
 
-For providers that use different scope names:
-
-```bash
-# Keycloak (default scopes)
-Scopes: openid profile email
-
-# Auth0
-Scopes: openid profile email
-
-# Dex
-Scopes: openid profile email groups offline_access
-```
+Use provider-specific mappers or Actions when group membership is not exposed by scope alone.
 
 ## Step 7: Test the OIDC Configuration
 
-Test authentication before enabling:
-
-1. Click the **Test** button.
-2. You will be redirected to your OIDC provider's login page.
-3. Authenticate with your credentials.
-4. Verify that you are redirected back to Rancher with correct user information.
+Rancher validates the configuration during the enable flow. After Rancher redirects you back from the IdP, verify that the returned user information is correct.
 
 Check the returned claims:
 
 ```bash
-# Decode a JWT token to verify claims (for debugging)
-echo "$TOKEN" | cut -d '.' -f 2 | base64 -d 2>/dev/null | jq
+# Export the token you want to inspect first, for example:
+# export TOKEN='<id-token>'
+
+python3 - <<'PY'
+import os, json, base64
+payload = os.environ["TOKEN"].split(".")[1]
+payload += "=" * (-len(payload) % 4)
+print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))
+PY
 
 # Check Rancher logs
-kubectl logs -l app=rancher -n cattle-system --tail=200 | grep -i "oidc\|auth\|keycloak"
+kubectl logs deploy/rancher -n cattle-system --tail=200 | grep -Ei 'oidc|auth|keycloak'
 ```
 
 ## Step 8: Enable OIDC Authentication
 
-After successful testing:
+To complete setup:
 
 1. Click **Enable** to activate OIDC authentication.
 2. Confirm the action.
@@ -206,7 +220,7 @@ The login page will show the OIDC login button.
 Assign roles based on OIDC groups:
 
 1. Navigate to **Users & Authentication** then **Groups**.
-2. Search for OIDC groups.
+2. Search for the OIDC group, or enter the exact group name manually if you are using a custom groups claim.
 3. Assign roles.
 
 ```plaintext
@@ -223,39 +237,34 @@ For cluster-level access:
 
 ## Step 10: Advanced OIDC Configuration
 
-### Token Refresh
+### Rancher Token TTL
 
-Configure token refresh behavior:
+If you want to change Rancher's maximum API token TTL:
 
 ```bash
 # Set token TTL
-curl -s -k \
+curl -sS \
   -X PUT \
   -H "Authorization: Bearer $RANCHER_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"value": "57600"}' \
+  -d '{"value":"57600"}' \
   "https://rancher.example.com/v3/settings/auth-token-max-ttl-minutes"
 ```
 
 ### Logout Integration
 
-Configure end-session for proper logout:
-
-Ensure the OIDC provider's end-session endpoint is configured so that logging out of Rancher also ends the OIDC session.
+If your IdP supports OIDC single logout (SLO), configure Rancher to use the `end_session_endpoint` from the discovery document and add the Rancher URL as an allowed post-logout redirect URI in the IdP client.
 
 ### Custom CA Certificates
 
 If your OIDC provider uses a private CA:
 
-1. Add the CA certificate to Rancher.
-2. In the OIDC configuration, paste the CA certificate.
-
-Or add it to the Rancher deployment:
+1. Add the CA certificate chain to Rancher.
+2. For Helm-based Rancher deployments that need additional trusted CAs, enable `additionalTrustedCAs=true` and create the trust secret:
 
 ```bash
-kubectl create secret generic tls-ca-additional \
-  -n cattle-system \
-  --from-file=ca-additional.pem=oidc-ca.pem
+kubectl -n cattle-system create secret generic tls-ca-additional \
+  --from-file=ca-additional.pem=./ca-additional.pem
 ```
 
 ## Troubleshooting
@@ -265,15 +274,15 @@ Common OIDC issues:
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | Invalid redirect URI | Redirect mismatch | Ensure the redirect URI is exactly `https://rancher.example.com/verify-auth` |
-| Token validation failed | Clock skew or wrong JWKS | Sync NTP and verify the JWKS URL |
-| Groups not returned | Missing scope or mapper | Add the groups scope and verify the claim mapper |
+| Token validation failed | Clock skew or incorrect issuer metadata | Sync NTP and verify the issuer and discovery document |
+| Groups not returned | Missing mapper, custom claim, or provider-side group scope | Verify the Keycloak mapper or Auth0 Action and ensure the provider exposes the groups claim Rancher expects |
 | Invalid client credentials | Wrong client secret | Regenerate and update the client secret |
-| SSL handshake error | Untrusted CA | Add the CA certificate to Rancher |
+| SSL handshake error | Untrusted CA | Add the certificate chain to Rancher and, if needed, configure `additionalTrustedCAs=true` |
 
 ## Best Practices
 
 - **Use discovery endpoint**: Let Rancher discover endpoints automatically from the `.well-known/openid-configuration` URL when possible.
-- **Configure proper scopes**: Only request the scopes you need to minimize the data exchanged.
+- **Configure proper claims**: Request only the scopes and custom claims Rancher actually needs.
 - **Map groups to roles**: Use OIDC groups for role assignments instead of individual user mappings.
 - **Monitor token expiration**: Configure appropriate token lifetimes in both the OIDC provider and Rancher.
 - **Test logout flow**: Verify that logging out of Rancher properly terminates the OIDC session.
