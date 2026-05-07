@@ -16,7 +16,7 @@ Sonarr is a PVR (Personal Video Recorder) application for TV shows. It monitors 
 
 ## Prerequisites
 
-- A Linux host with Podman installed (version 4.0 or later).
+- A Linux host with Podman installed (version 4.0 or later, or 4.4 or later for the Quadlet systemd example).
 - A download client (such as SABnzbd, NZBGet, Transmission, or qBittorrent) already running.
 - An indexer (such as Jackett, Prowlarr, or a Usenet indexer).
 - Disk space for your TV show library.
@@ -45,7 +45,7 @@ The key design consideration is that Sonarr needs to see both the download direc
 
 ## Step 2: Run the Sonarr Container
 
-Use the LinuxServer.io Sonarr image, which includes a clean base and automatic update support:
+Use the LinuxServer.io Sonarr image, which includes a clean base and stores Sonarr's configuration outside the container:
 
 ```bash
 # Run Sonarr with persistent configuration and media access
@@ -53,13 +53,13 @@ podman run -d \
   --name sonarr \
   -p 8989:8989 \
   -v ~/sonarr/config:/config:Z \
-  -v ~/media/tvshows:/tv:Z \
-  -v ~/downloads:/downloads:Z \
+  -v ~/media/tvshows:/tv:z \
+  -v ~/downloads:/downloads:z \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/New_York \
   --restart unless-stopped \
-  docker.io/linuxserver/sonarr:latest
+  lscr.io/linuxserver/sonarr:latest
 ```
 
 Key flags explained:
@@ -68,8 +68,8 @@ Key flags explained:
 |------|---------|
 | `-p 8989:8989` | Exposes the Sonarr web interface |
 | `-v ~/sonarr/config:/config:Z` | Persists Sonarr database, settings, and logs |
-| `-v ~/media/tvshows:/tv:Z` | Gives Sonarr access to your TV show library |
-| `-v ~/downloads:/downloads:Z` | Allows Sonarr to find and import completed downloads |
+| `-v ~/media/tvshows:/tv:z` | Gives Sonarr access to your TV show library |
+| `-v ~/downloads:/downloads:z` | Allows Sonarr to find and import completed downloads |
 | `-e PUID=1000` / `-e PGID=1000` | Runs as your user to match file ownership on the host |
 
 ---
@@ -170,13 +170,13 @@ podman run -d \
   --network media-net \
   -p 8989:8989 \
   -v ~/sonarr/config:/config:Z \
-  -v ~/media/tvshows:/tv:Z \
-  -v ~/downloads:/downloads:Z \
+  -v ~/media/tvshows:/tv:z \
+  -v ~/downloads:/downloads:z \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/New_York \
   --restart unless-stopped \
-  docker.io/linuxserver/sonarr:latest
+  lscr.io/linuxserver/sonarr:latest
 
 # Run your download client on the same network
 # Containers can reach each other by name (e.g., http://transmission:9091)
@@ -199,7 +199,7 @@ podman logs -f sonarr
 podman restart sonarr
 
 # Update Sonarr to the latest version
-podman pull docker.io/linuxserver/sonarr:latest
+podman pull lscr.io/linuxserver/sonarr:latest
 podman stop sonarr
 podman rm sonarr
 # Re-run the podman run command with the same flags
@@ -229,7 +229,7 @@ sudo systemctl start container-sonarr.service
 
 ### Recommended Method (Quadlet)
 
-Create a file at `~/.config/containers/systemd/sonarr.container` (rootless) or `/etc/containers/systemd/sonarr.container` (root):
+Create a file at `~/.config/containers/systemd/sonarr.container` for a rootless container. For a root container, use `/etc/containers/systemd/sonarr.container` and replace `%h` with the absolute host paths you want to mount:
 
 ```ini
 [Unit]
@@ -237,11 +237,11 @@ Description=Sonarr Container
 
 [Container]
 ContainerName=sonarr
-Image=docker.io/linuxserver/sonarr:latest
+Image=lscr.io/linuxserver/sonarr:latest
 PublishPort=8989:8989
 Volume=%h/sonarr/config:/config:Z
-Volume=%h/media/tvshows:/tv:Z
-Volume=%h/downloads:/downloads:Z
+Volume=%h/media/tvshows:/tv:z
+Volume=%h/downloads:/downloads:z
 Environment=PUID=1000
 Environment=PGID=1000
 Environment=TZ=America/New_York
@@ -253,12 +253,15 @@ Restart=always
 WantedBy=default.target
 ```
 
-Then reload and start:
+Then reload and start the rootless service:
 
 ```bash
 systemctl --user daemon-reload
 systemctl --user start sonarr.service
 systemctl --user enable sonarr.service
+
+# Allow the rootless service to start at boot without an active login session
+sudo loginctl enable-linger "$USER"
 ```
 
 ---
