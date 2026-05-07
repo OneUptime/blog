@@ -6,9 +6,9 @@ Tags: Azure, Terraform, IPv6, Load Balancer, Dual-Stack, Networking
 
 Description: A guide to creating an Azure Standard Load Balancer with IPv6 frontend IP configurations and dual-stack backend pools using Terraform.
 
-Azure Standard Load Balancer supports dual-stack configurations with separate IPv4 and IPv6 frontend IP addresses. Backend pool members (VMs) must also have IPv6 private addresses configured on their NICs to receive IPv6 traffic.
+Azure Standard Load Balancer supports dual-stack configurations with separate IPv4 and IPv6 frontend IP addresses. Backend pool members (VMs) must also have IPv6 private addresses configured on their NICs to receive IPv6 traffic. In dual-stack deployments, keep a Network Security Group associated with the subnet or NIC so Standard public load balancer inbound traffic and IPv6 health probes can function correctly.
 
-## Step 1: Create IPv6 Public IP for the Load Balancer
+## Step 1: Create Public IPs for the Load Balancer
 
 ```hcl
 # public-ips.tf
@@ -41,7 +41,7 @@ resource "azurerm_lb" "main" {
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
-  # Standard SKU is required for IPv6 and availability zones
+  # Standard SKU is the supported option for new Azure Load Balancer deployments
   sku = "Standard"
 
   # IPv4 frontend configuration
@@ -133,15 +133,14 @@ resource "azurerm_network_interface_backend_address_pool_association" "ipv6" {
 ```bash
 terraform apply
 
-# Get the IPv6 frontend IP
-LB_IPV6=$(az network lb frontend-ip show \
-  --lb-name lb-dual-stack \
-  --name frontend-ipv6 \
+# Get the IPv6 public IP used by the frontend configuration
+LB_IPV6=$(az network public-ip show \
+  --name pip-lb-ipv6 \
   --resource-group rg-main \
-  --query publicIpAddress.ipAddress -o tsv)
+  --query ipAddress -o tsv)
 
 # Test HTTP over IPv6
-curl -6 "http://[$LB_IPV6]/"
+curl -6 "http://[$LB_IPV6]/health"
 ```
 
 Azure Standard Load Balancer with dual-stack frontends enables organizations to serve both IPv4 and IPv6 clients from a single load balancer resource, reducing infrastructure complexity during IPv6 migration.
