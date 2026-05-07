@@ -40,15 +40,16 @@ podman-compose ps
 Resources removed by default:
 - Containers for all services
 - Networks defined in the compose file
+- The default network, if one is used
 
 Resources preserved by default:
-- Named volumes
+- Named and anonymous volumes
 - Images
 
 ## Removing Volumes
 
 ```bash
-# Stop containers and remove named volumes too
+# Stop containers and remove named and anonymous volumes too
 podman-compose down -v
 
 # This deletes data in volumes like database files
@@ -68,7 +69,7 @@ podman-compose down --rmi local
 ## Stop vs Down
 
 ```bash
-# Stop: pauses containers but keeps them (can restart later)
+# Stop: stops containers but keeps them (can restart later)
 podman-compose stop
 
 # Restart stopped containers
@@ -114,8 +115,8 @@ echo "Cleanup complete."
 ## Verifying Cleanup
 
 ```bash
-# Check that no containers remain
-podman ps -a
+# Check that no project containers remain
+podman-compose ps
 
 # Check that volumes are removed (if -v was used)
 podman volume ls
