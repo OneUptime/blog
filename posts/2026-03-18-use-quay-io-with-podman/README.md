@@ -16,20 +16,17 @@ Quay.io is a container registry operated by Red Hat that provides image hosting,
 
 ## Adding Quay.io to Search Registries
 
-Ensure Quay.io is available as a search registry in Podman.
+Ensure Quay.io is available as a search registry in Podman if you use unqualified image names.
 
 ```bash
 # Check if quay.io is already in the search list
 
-podman info --format '{{.Registries.Search}}'
+podman info --format '{{index .Registries "search"}}'
 
 # Add quay.io to the search registries if missing
-sudo tee /etc/containers/registries.conf <<'EOF'
+sudo mkdir -p /etc/containers/registries.conf.d
+sudo tee /etc/containers/registries.conf.d/99-search-registries.conf <<'EOF'
 unqualified-search-registries = ["docker.io", "quay.io"]
-
-[[registry]]
-prefix = "quay.io"
-location = "quay.io"
 EOF
 ```
 
@@ -43,10 +40,10 @@ podman pull quay.io/podman/stable:latest
 
 # Pull popular images from Quay.io
 podman pull quay.io/prometheus/prometheus:latest
-podman pull quay.io/coreos/etcd:latest
+podman pull quay.io/coreos/etcd:v3.6.11
 
 # Pull a specific tag
-podman pull quay.io/podman/stable:v4.9
+podman pull quay.io/podman/stable:v3.11.3
 
 # List the pulled image
 podman images | grep quay.io
@@ -67,7 +64,7 @@ echo "$QUAY_TOKEN" | podman login quay.io \
   --password-stdin
 
 # Verify login status
-podman login quay.io --get-login
+podman login --get-login quay.io
 ```
 
 ## Creating and Using Robot Accounts
@@ -202,4 +199,4 @@ echo "Published: ${REGISTRY}/${ORG}/${IMAGE}:${TAG}"
 
 ## Summary
 
-Quay.io integrates naturally with Podman as both are part of the Red Hat container ecosystem. You can pull public images without authentication, and use robot accounts for secure automated access to private repositories. Quay.io offers vulnerability scanning, team-based permissions, and encrypted passwords for CLI use. Add quay.io to your unqualified search registries and use skopeo for remote image inspection without pulling.
+Quay.io integrates naturally with Podman as both are part of the Red Hat container ecosystem. You can pull public images without authentication, and use robot accounts for secure automated access to private repositories. Quay.io offers vulnerability scanning, team-based permissions, and encrypted passwords for CLI use. If you use unqualified image names, add quay.io to your unqualified search registries, and use skopeo for remote image inspection without pulling.
