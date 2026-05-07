@@ -77,7 +77,7 @@ Complex for expressions deserve their own locals with descriptive names.
 ```hcl
 # BAD: Dense one-liner
 resource "aws_security_group_rule" "ingress" {
-  for_each    = {for idx, port in var.allowed_ports : tostring(port) => port if port != 0 && port < 65535}
+  for_each    = {for idx, port in var.allowed_ports : tostring(port) => port if port > 0 && port <= 65535}
 }
 
 # GOOD: Clear and validated
@@ -85,7 +85,7 @@ locals {
   valid_ports = {
     for port in var.allowed_ports :
     tostring(port) => port
-    if port > 0 && port < 65535
+    if port > 0 && port <= 65535
   }
 }
 
@@ -116,7 +116,9 @@ locals {
 resource "aws_shield_protection" "main" {
   count = local.should_enable_shield ? 1 : 0
   # Or with OpenTofu 1.11+:
-  # enabled = local.should_enable_shield
+  # lifecycle {
+  #   enabled = local.should_enable_shield
+  # }
 }
 ```
 
