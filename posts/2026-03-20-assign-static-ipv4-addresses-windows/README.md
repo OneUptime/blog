@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Window, IPv4, Networking, Network Configuration, Static IP, Sysadmin
+Tags: Windows, IPv4, Networking, Network Configuration, Static IP, Sysadmin
 
 Description: On Windows, static IPv4 addresses can be set through the GUI Network Adapter settings, via the netsh command-line tool, or using PowerShell's New-NetIPAddress cmdlet.
 
@@ -11,13 +11,9 @@ Description: On Windows, static IPv4 addresses can be set through the GUI Networ
 PowerShell provides the most scriptable and modern approach:
 
 ```powershell
-# Find the interface index (InterfaceIndex column)
+# Find the interface index (ifIndex column)
 
 Get-NetAdapter
-
-# Remove any existing IP configuration on the adapter (index 5 in this example)
-Remove-NetIPAddress -InterfaceIndex 5 -Confirm:$false -ErrorAction SilentlyContinue
-Remove-NetRoute -InterfaceIndex 5 -Confirm:$false -ErrorAction SilentlyContinue
 
 # Assign a static IP address
 New-NetIPAddress `
@@ -32,19 +28,19 @@ Set-DnsClientServerAddress `
     -ServerAddresses ("8.8.8.8", "1.1.1.1")
 
 # Verify
-Get-NetIPAddress -InterfaceIndex 5
-Get-NetRoute -InterfaceIndex 5
+Get-NetIPAddress -InterfaceIndex 5 -AddressFamily IPv4
+Get-NetRoute -InterfaceIndex 5 -AddressFamily IPv4
 ```
 
 ## Method 2: netsh (Command Prompt)
 
 ```cmd
 REM Assign static IP (replace "Ethernet" with your adapter name)
-netsh interface ipv4 set address name="Ethernet" static 192.168.1.100 255.255.255.0 192.168.1.1
+netsh interface ipv4 set address name="Ethernet" source=static address=192.168.1.100 mask=255.255.255.0 gateway=192.168.1.1
 
 REM Set DNS servers
-netsh interface ipv4 set dns name="Ethernet" static 8.8.8.8
-netsh interface ipv4 add dns name="Ethernet" 1.1.1.1 index=2
+netsh interface ipv4 set dnsservers name="Ethernet" source=static address=8.8.8.8
+netsh interface ipv4 add dnsservers name="Ethernet" address=1.1.1.1 index=2
 
 REM Verify
 netsh interface ipv4 show config name="Ethernet"
@@ -65,13 +61,14 @@ netsh interface ipv4 show config name="Ethernet"
 ## Reverting to DHCP
 
 ```powershell
-# PowerShell: switch back to DHCP
-Set-NetIPInterface -InterfaceIndex 5 -Dhcp Enabled
+# PowerShell: switch back to DHCP for IPv4
+Set-NetIPInterface -InterfaceIndex 5 -AddressFamily IPv4 -Dhcp Enabled
+Remove-NetIPAddress -InterfaceIndex 5 -AddressFamily IPv4 -PrefixOrigin Manual -Confirm:$false -ErrorAction SilentlyContinue
 Set-DnsClientServerAddress -InterfaceIndex 5 -ResetServerAddresses
 
 # netsh equivalent
-# netsh interface ipv4 set address name="Ethernet" dhcp
-# netsh interface ipv4 set dns name="Ethernet" dhcp
+# netsh interface ipv4 set address name="Ethernet" source=dhcp
+# netsh interface ipv4 set dnsservers name="Ethernet" source=dhcp
 ```
 
 ## Verifying the Configuration
@@ -80,14 +77,14 @@ Set-DnsClientServerAddress -InterfaceIndex 5 -ResetServerAddresses
 # Show all IP configuration details
 ipconfig /all
 
-# Test gateway and internet connectivity
+# Test gateway and internet reachability
 Test-NetConnection -ComputerName 192.168.1.1
-Test-NetConnection -ComputerName 8.8.8.8 -Port 80
+Test-NetConnection -ComputerName 8.8.8.8
 ```
 
 ## Key Takeaways
 
 - PowerShell (`New-NetIPAddress`) is the most scriptable and recommended method.
-- `netsh` works on older Windows versions (XP through Windows 11).
-- Always remove existing IP/route entries before assigning a new static address to avoid conflicts.
+- `netsh` remains available on current Windows versions, but Microsoft recommends PowerShell for new automation.
+- If you are replacing an existing manual IPv4 configuration, remove or update only the specific IPv4 address or default route you no longer want.
 - Use `ipconfig /all` to verify the full IP, mask, gateway, and DNS configuration.
