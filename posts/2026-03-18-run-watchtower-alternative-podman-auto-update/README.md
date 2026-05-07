@@ -140,7 +140,31 @@ The `--new` flag is important: it tells systemd to create a fresh container from
 
 ### Install the Service Files
 
-For root containers:
+For Quadlet root containers:
+
+```bash
+# Reload systemd so it generates services from the Quadlet files
+sudo systemctl daemon-reload
+
+# Enable the generated services so they start on boot
+sudo systemctl enable nginx-web.service
+sudo systemctl enable redis-cache.service
+```
+
+For Quadlet rootless containers:
+
+```bash
+# Reload the user systemd daemon so it generates services from the Quadlet files
+systemctl --user daemon-reload
+
+# Enable the generated services
+systemctl --user enable nginx-web.service
+systemctl --user enable redis-cache.service
+```
+
+If you used the legacy `podman generate systemd` method, install the generated `.service` files instead.
+
+For generated root container services:
 
 ```bash
 # Move the generated files to the systemd system directory
@@ -155,7 +179,7 @@ sudo systemctl enable container-nginx-web.service
 sudo systemctl enable container-redis-cache.service
 ```
 
-For rootless containers:
+For generated rootless container services:
 
 ```bash
 # Create the user systemd directory if it does not exist
@@ -180,9 +204,21 @@ systemctl --user enable container-redis-cache.service
 podman stop nginx-web redis-cache
 podman rm nginx-web redis-cache
 
-# Start them through systemd instead
+# Start them through systemd instead if you used Quadlet root services
+sudo systemctl start nginx-web.service
+sudo systemctl start redis-cache.service
+
+# Or start them through systemd if you used Quadlet rootless services
+systemctl --user start nginx-web.service
+systemctl --user start redis-cache.service
+
+# Or start them through systemd if you used generated legacy root services
 sudo systemctl start container-nginx-web.service
 sudo systemctl start container-redis-cache.service
+
+# Or use the user manager for generated legacy rootless services
+systemctl --user start container-nginx-web.service
+systemctl --user start container-redis-cache.service
 ```
 
 ---
@@ -280,20 +316,28 @@ sudo systemctl status podman-auto-update.timer
 
 ## Step 7: Rollback a Failed Update
 
-One advantage of the systemd integration is rollback capability. If a container fails to start after an update, systemd can restart the previous version:
+One advantage of the systemd integration is rollback capability. By default, `podman auto-update` rolls back to the previous image if restarting the systemd unit fails after an update:
 
 ```bash
 # Check if a service failed after an update
-sudo systemctl status container-nginx-web.service
+sudo systemctl status nginx-web.service
 
 # View the failure logs
-sudo journalctl -u container-nginx-web.service --no-pager -n 50
+sudo journalctl -u nginx-web.service --no-pager -n 50
+```
 
-# Manually roll back by specifying the previous image digest
-podman pull docker.io/library/nginx@sha256:<previous-digest>
+For a manual rollback with Quadlet, pin the service to the previous image digest:
 
-# Restart the service
-sudo systemctl restart container-nginx-web.service
+```ini
+[Container]
+Image=docker.io/library/nginx@sha256:<previous-digest>
+```
+
+Then reload systemd and restart the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart nginx-web.service
 ```
 
 ---
