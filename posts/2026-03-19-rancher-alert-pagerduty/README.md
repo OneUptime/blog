@@ -205,13 +205,14 @@ kubectl delete prometheusrule test-pagerduty-alert -n cattle-monitoring-system
 Check Alertmanager logs for PagerDuty delivery errors:
 
 ```bash
-kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=alertmanager | grep -i pagerduty
+kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=alertmanager \
+  -c alertmanager --tail=-1 --prefix | grep -i pagerduty
 ```
 
 Common issues:
 
-- **403 Forbidden**: The integration key is invalid. Verify the key in PagerDuty.
-- **Network errors**: Ensure the cluster allows outbound HTTPS connections to `events.pagerduty.com`.
+- **PagerDuty API errors**: Verify the integration key, and make sure the receiver is using an **Events API v2** integration key with `routing_key` or `routing_key_file`.
+- **Network errors**: Ensure the cluster allows outbound HTTPS connections to the PagerDuty Events API endpoint for your account region: `events.pagerduty.com` or `events.eu.pagerduty.com`.
 - **Incidents not auto-resolving**: Verify `send_resolved: true` is set in the PagerDuty config.
 - **Duplicate incidents**: Check group_by labels and group_interval settings to ensure related alerts are grouped properly.
 
