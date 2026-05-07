@@ -8,7 +8,7 @@ Description: Configure Asterisk PBX to accept SIP registrations, make and receiv
 
 ---
 
-Asterisk is a leading open-source PBX. Configuring it for IPv6 requires updating the SIP channel driver (PJSIP or chan_sip) to listen on IPv6 interfaces and configuring endpoints to use IPv6 addresses.
+Asterisk is a leading open-source PBX. Configuring it for IPv6 requires updating the SIP channel driver (PJSIP, or chan_sip on Asterisk 20 and earlier) to listen on IPv6 interfaces and configuring endpoints to use IPv6 addresses.
 
 ## Asterisk with PJSIP over IPv6
 
@@ -43,7 +43,7 @@ context=from-internal
 disallow=all
 allow=ulaw,alaw,g729
 auth=1001-auth
-aors=1001
+aors=1001-aor
 transport=transport-udp-ipv6
 
 [1001-auth]
@@ -55,19 +55,34 @@ username=1001
 [1001-aor]
 type=aor
 max_contacts=5
+
+; IPv6 SIP trunk
+[sip-trunk-ipv6]
+type=endpoint
+transport=transport-udp-ipv6
+context=from-external
+disallow=all
+allow=ulaw,alaw
+aors=sip-trunk-ipv6-aor
+direct_media=no
+
+[sip-trunk-ipv6-aor]
+type=aor
+contact=sip:[2001:db8::20]:5060
+
+[sip-trunk-ipv6-identify]
+type=identify
+endpoint=sip-trunk-ipv6
+match=2001:db8::20
 ```
 
-## Asterisk with chan_sip (Legacy) over IPv6
+## Asterisk with chan_sip (Legacy, Asterisk 20 and Earlier) over IPv6
 
 ```ini
 # /etc/asterisk/sip.conf
 
 [general]
-bindaddr=::
-bindport=5060
-
-; Enable IPv6
-ipv6=yes
+bindaddr=[::]:5060
 
 ; SIP domain
 domain=pbx.example.com
@@ -83,12 +98,12 @@ disallow=all
 allow=ulaw,alaw
 
 ; Register to IPv6 SIP trunk
-register => user:password@[2001:db8::sip-trunk]/1001
+register => user:password@[2001:db8::20]/1001
 
 ; IPv6 SIP trunk peer
 [sip-trunk-ipv6]
 type=peer
-host=2001:db8::sip-trunk
+host=2001:db8::20
 port=5060
 fromdomain=example.com
 disallow=all
@@ -98,8 +113,10 @@ insecure=invite
 
 ## Asterisk Dialplan for IPv6
 
-```javascript
+```ini
 # /etc/asterisk/extensions.conf
+
+; Use PJSIP/... for res_pjsip endpoints, or SIP/... if you are using chan_sip.
 
 [from-internal]
 ; Dial internal extension
@@ -126,14 +143,9 @@ exten => 1001,n,Hangup()
 [general]
 rtpstart=10000
 rtpend=20000
-
-; RTP IPv6 binding
-bindaddr=::
-
-; DSCP marking
-tos=ef      ; Expedited Forwarding for RTP
-cos=5
 ```
+
+With `res_pjsip`, no separate IPv6 RTP bind is required in `rtp.conf`; Asterisk selects IPv4 or IPv6 RTP based on the address family used for SIP signaling.
 
 ## Firewall Rules for Asterisk over IPv6
 
@@ -161,11 +173,11 @@ asterisk -rx "pjsip show transports"
 
 # Check SIP peer/endpoint status
 asterisk -rx "pjsip show endpoints"
-asterisk -rx "sip show peers"  # For chan_sip
+asterisk -rx "sip show peers"  # For chan_sip on Asterisk 20 and earlier
 
 # Test SIP registration from client
 # Configure Linphone/MicroSIP to register to IPv6:
-# Domain: [2001:db8::asterisk]:5060
+# Domain: [2001:db8::10]:5060
 # Username: 1001
 # Password: userpassword
 
@@ -177,4 +189,4 @@ asterisk -rx "pjsip set logger on"
 sudo tail -f /var/log/asterisk/messages | grep "INVITE\|REGISTER\|2001:"
 ```
 
-Asterisk's PJSIP driver supports IPv6 through `bind=::` in the transport configuration, with the dual-transport approach (separate IPv4 and IPv6 transport objects) providing fine-grained control over which endpoints use which IP version for registration and calls.
+Asterisk's PJSIP driver supports IPv6 through `bind=::` or a specific IPv6 bind address in the transport configuration. When you need both IPv4 and IPv6, define separate transport objects rather than relying on a single wildcard IPv6 transport for dual-stack signaling.
