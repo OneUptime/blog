@@ -10,7 +10,7 @@ Webhooks provide a flexible way to integrate Rancher alerts with any external sy
 
 ## Prerequisites
 
-- Rancher v2.6 or later with the Monitoring chart installed.
+- Rancher v2.11 or later with the Monitoring chart installed.
 - Cluster admin permissions.
 - A webhook endpoint that accepts HTTP POST requests.
 
@@ -22,6 +22,7 @@ Your webhook endpoint must accept HTTP POST requests with JSON payload. Here is 
 {
   "version": "4",
   "groupKey": "{}:{alertname=\"HighCPU\"}",
+  "truncatedAlerts": 0,
   "status": "firing",
   "receiver": "webhook-receiver",
   "groupLabels": {
@@ -49,7 +50,8 @@ Your webhook endpoint must accept HTTP POST requests with JSON payload. Here is 
       },
       "startsAt": "2026-03-19T10:00:00.000Z",
       "endsAt": "0001-01-01T00:00:00Z",
-      "generatorURL": "http://prometheus:9090/graph?..."
+      "generatorURL": "http://prometheus:9090/graph?...",
+      "fingerprint": "c6eadffa33fcdf37"
     }
   ]
 }
@@ -124,6 +126,21 @@ receivers:
             credentials_file: /etc/alertmanager/secrets/webhook-token/token
 ```
 
+Create the token secret and mount it:
+
+```bash
+kubectl create secret generic webhook-token \
+  --namespace cattle-monitoring-system \
+  --from-literal=token='your-bearer-token'
+```
+
+```yaml
+alertmanager:
+  alertmanagerSpec:
+    secrets:
+      - webhook-token
+```
+
 ### Custom Headers
 
 To add custom headers, use the `http_config` section:
@@ -135,11 +152,13 @@ receivers:
       - url: "https://webhook.example.com/api/alerts"
         send_resolved: true
         http_config:
-          authorization:
-            type: Bearer
-            credentials_file: /etc/alertmanager/secrets/webhook-token/token
-          tls_config:
-            insecure_skip_verify: false
+          http_headers:
+            X-Alertmanager-Source:
+              values:
+                - "rancher-monitoring"
+            X-Webhook-Token:
+              files:
+                - /etc/alertmanager/secrets/webhook-token/token
 ```
 
 ## Step 4: Configure Multiple Webhook Endpoints
@@ -170,13 +189,13 @@ alertmanager:
       routes:
         - receiver: "infrastructure-webhook"
           matchers:
-            - alertname =~ "Node.*|etcd.*|APIServer.*"
+            - 'alertname=~"Node.*|etcd.*|APIServer.*"'
         - receiver: "application-webhook"
           matchers:
-            - alertname =~ "Pod.*|Deployment.*|Service.*"
+            - 'alertname=~"Pod.*|Deployment.*|Service.*"'
         - receiver: "security-webhook"
           matchers:
-            - category = security
+            - 'category="security"'
     receivers:
       - name: "default-webhook"
         webhook_configs:
@@ -249,6 +268,8 @@ receivers:
             insecure_skip_verify: false
 ```
 
+Mount the `webhook-ca` secret with `alertmanager.alertmanagerSpec.secrets` so Alertmanager can read `ca.crt`.
+
 ## Step 8: Test the Webhook Integration
 
 Create a test alert:
@@ -303,7 +324,7 @@ kubectl delete prometheusrule test-webhook-alert -n cattle-monitoring-system
 Check Alertmanager logs for webhook delivery errors:
 
 ```bash
-kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=alertmanager | grep -i webhook
+kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=alertmanager --all-containers=true --tail=200 | grep -i webhook
 ```
 
 Common issues:
