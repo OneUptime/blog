@@ -10,38 +10,35 @@ The Rancher API provides programmatic access to your entire Kubernetes infrastru
 
 ## Prerequisites
 
-- Rancher v2.5 or later
+- Rancher v2.13 or later
 - Admin access to Rancher
 - kubectl access with cluster admin privileges
 - Understanding of Rancher RBAC model
 
-## Step 1: Use Scoped API Keys Instead of Admin Tokens
+## Step 1: Use Least-Privilege API Keys and Tokens Instead of Admin Tokens
 
-Never use the admin token for automation. Create scoped API keys with minimum required permissions.
+Never use the admin token for automation. Create API keys or tokens with minimum required permissions.
 
 ### Create a Scoped API Key via UI
 
 1. Log in to Rancher as the appropriate user (not admin).
-2. Click the user icon > **API & Keys**.
+2. Click the user icon > **Account & API Keys**.
 3. Click **Create API Key**.
 4. Set a **Description** for the key.
-5. Set an **Expiration** (e.g., 90 days).
-6. Under **Scope**, select the specific cluster or project.
+5. Set an **Expiration** (e.g., 30 days).
+6. Under **Scope**, select the specific cluster if you only need Kubernetes API access to that cluster.
 7. Click **Create**.
 
-### Create a Scoped API Key via CLI
+### Create a Rancher API Token via Kubernetes API
 
 ```bash
-curl -X POST \
-  'https://rancher.yourdomain.com/v3/tokens' \
-  -H 'Authorization: Bearer ADMIN_TOKEN' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "type": "token",
-    "description": "CI/CD pipeline - cluster-1 deploy only",
-    "ttl": 7776000000,
-    "userId": "user-xxxxx"
-  }'
+kubectl create -o jsonpath='{.status.value}' -f - <<'EOF'
+apiVersion: ext.cattle.io/v1
+kind: Token
+spec:
+  description: CI/CD pipeline token
+  ttl: 2592000000 # 30 days in milliseconds
+EOF
 ```
 
 ## Step 2: Set Token Expiration Policies
@@ -49,13 +46,10 @@ curl -X POST \
 Configure maximum token lifetime to prevent long-lived credentials:
 
 ```bash
-helm upgrade rancher rancher-latest/rancher \
-  -n cattle-system \
-  --set 'extraEnv[0].name=CATTLE_TOKEN_MAX_TTL_MINUTES' \
-  --set 'extraEnv[0].value=43200'
+kubectl edit setting auth-token-max-ttl-minutes
 ```
 
-This sets a maximum token lifetime of 30 days (43200 minutes).
+Set `value` to `43200` to enforce a maximum token lifetime of 30 days.
 
 Through the Rancher UI:
 
@@ -88,10 +82,12 @@ spec:
           service:
             name: rancher
             port:
-              number: 443
+              number: 80
 ```
 
 ### Using a Network Policy
+
+Use this only if your ingress or load balancer preserves the original client source IP to the Rancher pods.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -113,12 +109,12 @@ spec:
         cidr: 203.0.113.0/24
     ports:
     - protocol: TCP
-      port: 443
+      port: 80
 ```
 
 ## Step 4: Enable Rate Limiting
 
-Protect the API from brute force attacks and abuse with rate limiting.
+Protect the API from abuse and excessive token-management requests with rate limiting.
 
 ### Using NGINX Ingress Controller
 
@@ -137,25 +133,25 @@ spec:
   - host: rancher.yourdomain.com
     http:
       paths:
-      - path: /v3/tokens
+      - path: /apis/ext.cattle.io/v1/tokens
         pathType: Prefix
         backend:
           service:
             name: rancher
             port:
-              number: 443
+              number: 80
 ```
 
-This limits authentication endpoints to 10 requests per second per client.
+This limits token-management requests to 10 requests per second per client.
 
 ## Step 5: Configure External Authentication
 
-Replace local authentication with an external identity provider for stronger security:
+Use an external identity provider for stronger security:
 
 ### LDAP/Active Directory
 
 1. Go to **Users & Authentication** > **Auth Provider**.
-2. Select **ActiveDirectory**.
+2. Select **Active Directory**.
 3. Configure the LDAP connection:
 
 ```plaintext
@@ -168,63 +164,68 @@ Search Base: dc=yourdomain,dc=com
 
 4. Test and enable.
 
-### SAML (Okta, Azure AD, etc.)
+### SAML/OIDC Providers
 
 1. Go to **Users & Authentication** > **Auth Provider**.
-2. Select **SAML**.
-3. Configure with your identity provider's metadata URL.
-4. Map SAML attributes to Rancher roles.
+2. Select the provider that matches your identity provider (for example, Okta, Azure AD, Keycloak SAML, or Generic OIDC).
+3. Configure the connection details required by that provider.
+4. Map users or groups to the minimum required Rancher roles.
 
-### After enabling external auth, disable local authentication:
+### After enabling external auth, keep break-glass local users:
 
-```bash
-kubectl -n cattle-system patch setting disable-local-auth \
-  --type='merge' -p '{"value":"true"}'
-```
+Keep a few local authentication users for emergency access if your external identity provider is unavailable.
 
-## Step 6: Implement Service Account Best Practices
+## Step 6: Use Dedicated Automation Users
 
-For automation and CI/CD, use dedicated service accounts:
+For automation and CI/CD, use a dedicated Rancher user:
 
 ```bash
-# Create a service account in Rancher for CI/CD
+# Create a dedicated local Rancher user for CI/CD
+kubectl create -f - <<'EOF'
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: cicd-deployer
+displayName: "CI/CD Deployer"
+username: "cicd-deployer"
+EOF
 
-curl -X POST \
-  'https://rancher.yourdomain.com/v3/users' \
-  -H 'Authorization: Bearer ADMIN_TOKEN' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "type": "user",
-    "username": "cicd-deployer",
-    "mustChangePassword": false,
-    "enabled": true
-  }'
+kubectl create -f - <<'EOF'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cicd-deployer
+  namespace: cattle-local-user-passwords
+type: Opaque
+stringData:
+  password: ChangeMeToALongRandomPassword123!
+EOF
 ```
 
 Assign minimal permissions:
 
 ```bash
-# Grant deploy-only access to a specific project
-curl -X POST \
-  'https://rancher.yourdomain.com/v3/projectroletemplatebindings' \
-  -H 'Authorization: Bearer ADMIN_TOKEN' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "type": "projectRoleTemplateBinding",
-    "projectId": "c-xxxxx:p-xxxxx",
-    "roleTemplateId": "project-member",
-    "userId": "user-xxxxx"
-  }'
+# Grant project-member access to a specific project
+kubectl create -f - <<'EOF'
+apiVersion: management.cattle.io/v3
+kind: ProjectRoleTemplateBinding
+metadata:
+  generateName: prtb-
+  namespace: c-m-abcde-p-vwxyz
+projectName: c-m-abcde:p-vwxyz
+roleTemplateName: project-member
+userName: cicd-deployer
+EOF
 ```
 
 ## Step 7: Audit API Access
 
-Enable and monitor API access logs. Ensure audit logging is configured (see the audit logging guide) and specifically monitor:
+Enable and monitor API access logs. If audit logging is enabled with `--set auditLog.level=1`, you can specifically monitor:
 
 ```bash
 # Check recent API token usage
 kubectl logs -n cattle-system -l app=rancher -c rancher-audit-log | \
-  jq 'select(.requestURI | startswith("/v3"))' | head -20
+  jq 'select(.requestURI | startswith("/v3") or startswith("/apis/ext.cattle.io/") or startswith("/apis/management.cattle.io/"))' | head -20
 ```
 
 Monitor for suspicious patterns:
@@ -258,10 +259,10 @@ kube-apiserver-arg:
 
 ### Restrict API Server Network Access
 
-On cloud providers, ensure the API server load balancer is not publicly accessible:
+On cloud providers, review security group or firewall rules so only trusted networks can reach the API server:
 
 ```bash
-# AWS - restrict security group
+# AWS - allow a private CIDR after removing any broader rules
 aws ec2 authorize-security-group-ingress \
   --group-id sg-xxxxx \
   --protocol tcp \
@@ -275,19 +276,17 @@ Implement a token rotation process:
 
 ```bash
 #!/bin/bash
-# Script to rotate API tokens
+# Script to rotate Rancher API tokens
 
-# List tokens older than 60 days
-TOKENS=$(curl -s \
-  'https://rancher.yourdomain.com/v3/tokens' \
-  -H 'Authorization: Bearer ADMIN_TOKEN' | \
-  jq -r '.data[] | select(.expired == false) | select((.createdTS / 1000) < (now - 5184000)) | .id')
+CUTOFF=$(date -u -d '60 days ago' +%s)
+
+TOKENS=$(kubectl get tokens.ext.cattle.io -o json | \
+  jq -r --argjson cutoff "$CUTOFF" \
+  '.items[] | select((.metadata.creationTimestamp | fromdateiso8601) < $cutoff) | .metadata.name')
 
 for TOKEN_ID in $TOKENS; do
   echo "Revoking old token: $TOKEN_ID"
-  curl -X DELETE \
-    "https://rancher.yourdomain.com/v3/tokens/$TOKEN_ID" \
-    -H 'Authorization: Bearer ADMIN_TOKEN'
+  kubectl delete tokens.ext.cattle.io "$TOKEN_ID"
 done
 ```
 
@@ -299,12 +298,7 @@ After setting up external authentication and creating appropriate admin accounts
 
 1. Change the default admin password to a long, random string.
 2. Store it in a secure vault for emergency access only.
-3. Enable the restrict default admin setting:
-
-```bash
-kubectl -n cattle-system patch setting auth-user-info-max-age-seconds \
-  --type='merge' -p '{"value":"0"}'
-```
+3. Use named admin users for day-to-day administration, and reserve the default `admin` account for emergency access only.
 
 ## Security Checklist
 
@@ -312,8 +306,8 @@ kubectl -n cattle-system patch setting auth-user-info-max-age-seconds \
 - [ ] Set token expiration policies
 - [ ] Restrict API access by IP
 - [ ] Enable rate limiting
-- [ ] Configure external authentication (LDAP/SAML)
-- [ ] Disable local authentication
+- [ ] Configure external authentication (LDAP/SAML/OIDC)
+- [ ] Keep break-glass local users secured
 - [ ] Audit all API access
 - [ ] Rotate tokens regularly
 - [ ] Disable anonymous Kubernetes API access
