@@ -96,7 +96,7 @@ resource "aws_autoscaling_group" "app" {
   # Launch template
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   # Target group attachment for load balancer
@@ -137,17 +137,16 @@ resource "aws_autoscaling_group" "app" {
 
 ```hcl
 resource "aws_autoscaling_policy" "cpu_tracking" {
-  name                   = "cpu-target-tracking"
-  autoscaling_group_name = aws_autoscaling_group.app.name
-  policy_type            = "TargetTrackingScaling"
+  name                      = "cpu-target-tracking"
+  autoscaling_group_name    = aws_autoscaling_group.app.name
+  policy_type               = "TargetTrackingScaling"
+  estimated_instance_warmup = 300
 
   target_tracking_configuration {
     predefined_metric_specification {
       predefined_metric_type = "ASGAverageCPUUtilization"
     }
-    target_value     = 60.0  # Keep CPU around 60%
-    scale_in_cooldown  = 300
-    scale_out_cooldown = 60
+    target_value = 60.0  # Keep CPU around 60%
   }
 }
 ```
@@ -177,4 +176,4 @@ tofu apply
 
 ## Conclusion
 
-You have successfully deployed an Auto Scaling Group using OpenTofu with launch templates, target tracking policies, warm pools, and lifecycle hooks. Instance refresh enables zero-downtime rolling updates when your launch template changes. Always use ELB health checks rather than EC2 health checks for application-level health monitoring.
+You have successfully deployed an Auto Scaling Group using OpenTofu with launch templates, target tracking policies, warm pools, and lifecycle hooks. Instance refresh enables rolling updates when your launch template changes. Use ELB health checks when you want the Auto Scaling Group to replace instances based on load balancer-reported application health.
