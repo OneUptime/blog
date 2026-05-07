@@ -46,13 +46,13 @@ ip neigh add 10.0.0.4 lladdr 00:11:22:33:44:77 dev eth0 nud permanent
 ip neigh replace 192.168.1.50 lladdr ff:ee:dd:cc:bb:aa dev eth0 nud permanent
 ```
 
-## nud States for Static Entries
+## nud States for Manual Entries
 
 ```bash
 # PERMANENT - never expires, never refreshed
 ip neigh add 10.0.0.1 lladdr aa:bb:cc:dd:ee:ff dev eth0 nud permanent
 
-# NOARP - static entry that doesn't require ARP
+# NOARP - valid entry without neighbor validation; unlike PERMANENT, it can expire
 ip neigh add 10.0.0.1 lladdr aa:bb:cc:dd:ee:ff dev eth0 nud noarp
 ```
 
@@ -71,7 +71,7 @@ ip neigh del 192.168.1.50 dev eth0
 ip neigh add 192.168.1.50 lladdr aa:bb:cc:dd:ee:ff dev eth0 nud permanent
 ```
 
-Or using a systemd-networkd `.network` file approach via `/etc/arp-static.sh`:
+Or using a systemd service:
 
 ```bash
 # Create a systemd service
