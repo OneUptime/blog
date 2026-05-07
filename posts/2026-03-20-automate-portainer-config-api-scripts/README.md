@@ -27,7 +27,7 @@ PORTAINER_URL="${PORTAINER_URL:?Required}"
 ADMIN_USER="${PORTAINER_ADMIN_USER:-admin}"
 ADMIN_PASS="${PORTAINER_ADMIN_PASS:?Required}"
 
-log() { echo "[$(date '+%H:%M:%S')] $*"; }
+log() { echo "[$(date '+%H:%M:%S')] $*" >&2; }
 
 # 1. Wait for Portainer to be ready
 wait_for_portainer() {
@@ -38,23 +38,25 @@ wait_for_portainer() {
   log "Portainer is ready"
 }
 
-# 2. Initialize or authenticate
+# 2. Initialize if needed, then authenticate
 get_token() {
-  # Try to initialize first (only works once)
-  TOKEN=$(curl -sf -X POST "${PORTAINER_URL}/api/users/admin/init" \
+  # The init endpoint creates the first admin user but does not return a JWT.
+  curl -sf -X POST "${PORTAINER_URL}/api/users/admin/init" \
     -H "Content-Type: application/json" \
     -d "{\"Username\":\"${ADMIN_USER}\",\"Password\":\"${ADMIN_PASS}\"}" \
-    2>/dev/null | jq -r '.jwt' || true)
+    > /dev/null 2>&1 || true
 
-  # Fall back to login if already initialized
-  if [ -z "${TOKEN}" ] || [ "${TOKEN}" = "null" ]; then
-    TOKEN=$(curl -sf -X POST "${PORTAINER_URL}/api/auth" \
-      -H "Content-Type: application/json" \
-      -d "{\"username\":\"${ADMIN_USER}\",\"password\":\"${ADMIN_PASS}\"}" \
-      | jq -r '.jwt')
+  local token
+  token=$(curl -sf -X POST "${PORTAINER_URL}/api/auth" \
+    -H "Content-Type: application/json" \
+    -d "{\"Username\":\"${ADMIN_USER}\",\"Password\":\"${ADMIN_PASS}\"}" \
+    | jq -r '.jwt')
+
+  if [ -z "${token}" ] || [ "${token}" = "null" ]; then
+    return 1
   fi
 
-  echo "${TOKEN}"
+  echo "${token}"
 }
 
 # 3. Configure global settings
@@ -66,34 +68,55 @@ configure_settings() {
     -H "Authorization: Bearer ${token}" \
     -H "Content-Type: application/json" \
     -d '{
-      "enableTelemetry": false,
-      "authenticationMethod": 1,
-      "edgeAgentCheckinInterval": 5,
-      "loginBannerEnabled": false
+      "SnapshotInterval": "5m",
+      "EdgeAgentCheckinInterval": 5
     }'
 }
 
 # 4. Add registries
 add_registry() {
   local token="$1" name="$2" url="$3" user="$4" pass="$5"
+  local registry_id
+  registry_id=$(curl -sf "${PORTAINER_URL}/api/registries" \
+    -H "Authorization: Bearer ${token}" \
+    | jq -r --arg name "${name}" '.[] | select(.Name == $name) | .Id' | head -n 1)
+
+  if [ -n "${registry_id}" ]; then
+    log "Registry already exists: ${name}"
+    echo "${registry_id}"
+    return 0
+  fi
+
   log "Adding registry: ${name}"
 
   curl -sf -X POST "${PORTAINER_URL}/api/registries" \
     -H "Authorization: Bearer ${token}" \
     -H "Content-Type: application/json" \
     -d "{
-      \"Type\": 1,
+      \"Type\": 3,
       \"Name\": \"${name}\",
       \"URL\": \"${url}\",
+      \"TLS\": true,
       \"Authentication\": true,
       \"Username\": \"${user}\",
       \"Password\": \"${pass}\"
-    }"
+    }" | jq '.Id'
 }
 
 # 5. Create teams
 create_team() {
   local token="$1" name="$2"
+  local team_id
+  team_id=$(curl -sf "${PORTAINER_URL}/api/teams" \
+    -H "Authorization: Bearer ${token}" \
+    | jq -r --arg name "${name}" '.[] | select(.Name == $name) | .Id' | head -n 1)
+
+  if [ -n "${team_id}" ]; then
+    log "Team already exists: ${name}"
+    echo "${team_id}"
+    return 0
+  fi
+
   log "Creating team: ${name}"
 
   curl -sf -X POST "${PORTAINER_URL}/api/teams" \
@@ -106,7 +129,7 @@ create_team() {
 wait_for_portainer
 TOKEN=$(get_token)
 configure_settings "${TOKEN}"
-add_registry "${TOKEN}" "Harbor" "harbor.mycompany.com" "robot\$portainer" "${HARBOR_TOKEN}"
+HARBOR_REGISTRY=$(add_registry "${TOKEN}" "Harbor" "harbor.mycompany.com" "robot\$portainer" "${HARBOR_TOKEN}")
 BACKEND_TEAM=$(create_team "${TOKEN}" "backend")
 FRONTEND_TEAM=$(create_team "${TOKEN}" "frontend")
 
