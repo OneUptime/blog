@@ -19,7 +19,6 @@ Multi-service applications often require specific startup ordering. A web applic
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -50,7 +49,6 @@ Basic `depends_on` only waits for the container to start, not for the service to
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -83,7 +81,7 @@ services:
 ```
 
 ```bash
-# Podman waits for db and redis health checks to pass before starting web
+# podman-compose waits for db and redis health checks to pass before starting web
 podman-compose up -d
 
 # Check health status
