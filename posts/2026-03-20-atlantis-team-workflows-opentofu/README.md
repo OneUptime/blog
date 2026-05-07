@@ -8,7 +8,7 @@ Description: Learn how to set up Atlantis to automate OpenTofu plan and apply wo
 
 ---
 
-Atlantis is a self-hosted PR automation tool that runs `tofu plan` and `tofu apply` in response to pull request comments. It keeps the plan/apply cycle inside the PR, creating a clear audit trail of who approved and applied each change.
+Atlantis is a self-hosted PR automation tool that can run `tofu plan` and `tofu apply` in response to pull request comments when you configure the project to use the OpenTofu distribution. It keeps the plan/apply cycle inside the PR, creating a clear audit trail of who approved and applied each change.
 
 ## Atlantis Workflow
 
@@ -40,12 +40,13 @@ projects:
   - name: production
     dir: environments/production
     workspace: default
+    terraform_distribution: opentofu
     terraform_version: v1.6.0
     autoplan:
       when_modified:
         - "*.tf"
         - "*.tfvars"
-        - "../modules/**/*.tf"
+        - "../../modules/**/*.tf"
       enabled: true
     apply_requirements:
       - approved
@@ -55,6 +56,7 @@ projects:
   - name: staging
     dir: environments/staging
     workspace: default
+    terraform_distribution: opentofu
     autoplan:
       when_modified: ["*.tf", "*.tfvars"]
       enabled: true
@@ -70,8 +72,7 @@ workflows:
             extra_args: ["-var-file=production.tfvars"]
     apply:
       steps:
-        - apply:
-            extra_args: ["-var-file=production.tfvars"]
+        - apply
 ```
 
 ## Deploying Atlantis on Kubernetes
@@ -82,7 +83,7 @@ resource "helm_release" "atlantis" {
   name             = "atlantis"
   repository       = "https://runatlantis.github.io/helm-charts"
   chart            = "atlantis"
-  version          = "4.23.0"
+  version          = "6.4.0"
   namespace        = "atlantis"
   create_namespace = true
 
@@ -91,21 +92,36 @@ resource "helm_release" "atlantis" {
       atlantisUrl = "https://atlantis.${var.domain}"
 
       github = {
-        user   = var.github_user
-        secret = var.webhook_secret
+        user = var.github_user
       }
 
-      repoAllowlist = "github.com/myorg/*"
+      vcsSecretName = "atlantis-secrets"
 
-      orgAllowlist = "github.com/myorg"
+      orgAllowlist = "github.com/myorg/*"
 
-      requireApproval = true
-      requireMergeable = true
+      repoConfig = <<-EOT
+        repos:
+          - id: /.*/
+            apply_requirements: [approved, mergeable]
+            allowed_overrides: [workflow, apply_requirements, delete_source_branch_on_merge]
+            allow_custom_workflows: true
+      EOT
 
       environmentSecrets = [
-        { name = "GITHUB_TOKEN", secretName = "atlantis-secrets", secretKey = "github-token" },
-        { name = "AWS_ACCESS_KEY_ID", secretName = "atlantis-secrets", secretKey = "aws-access-key-id" },
-        { name = "AWS_SECRET_ACCESS_KEY", secretName = "atlantis-secrets", secretKey = "aws-secret-access-key" },
+        {
+          name = "AWS_ACCESS_KEY_ID"
+          secretKeyRef = {
+            name = "atlantis-secrets"
+            key  = "aws-access-key-id"
+          }
+        },
+        {
+          name = "AWS_SECRET_ACCESS_KEY"
+          secretKeyRef = {
+            name = "atlantis-secrets"
+            key  = "aws-secret-access-key"
+          }
+        },
       ]
 
       resources = {
@@ -166,8 +182,8 @@ resource "github_repository_webhook" "atlantis" {
 
 ## Best Practices
 
-- Set `apply_requirements: [approved, mergeable]` in `atlantis.yaml` to prevent applies without PR approval and passing CI.
+- Set `apply_requirements: [approved, mergeable]` in `atlantis.yaml`, and allow that override in Atlantis server-side repo config, to prevent applies without PR approval and mergeability checks.
 - Use `autoplan: enabled: true` with `when_modified` patterns so Atlantis plans automatically when relevant files change.
 - Deploy Atlantis with persistent storage - it stores plan files between plan and apply operations.
-- Use separate webhook secrets per repository for security; rotate them like any credential.
+- Use a strong webhook secret for Atlantis webhooks; Atlantis expects the same secret across repositories, and you should rotate it like any credential.
 - Enable `automerge: true` for non-production environments to streamline low-risk changes.
