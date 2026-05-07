@@ -12,26 +12,25 @@ The Rancher UI provides built-in log viewing capabilities that allow you to insp
 
 - Rancher v2.6 or later.
 - Access to at least one managed cluster.
-- Project member or cluster view permissions.
+- Permission to view workloads and pods in the target project or cluster.
 
 ## Step 1: Access Container Logs from the Workload View
 
 1. Log in to the Rancher UI and select your cluster.
-2. Navigate to **Workload > Deployments** (or StatefulSets, DaemonSets, etc.).
+2. Navigate to **Workloads > Deployments** (or StatefulSets, DaemonSets, etc.).
 3. Click on the deployment name to view its details.
 4. In the pod list, click the three-dot menu next to a pod.
 5. Select **View Logs**.
 
-The log viewer opens showing real-time log output from the selected pod.
+The log viewer opens showing real-time log output from the selected pod and container.
 
 ## Step 2: Access Logs from the Pod View
 
-1. Navigate to **Workload > Pods**.
+1. Navigate to **Workloads > Pods**.
 2. Find the pod you want to inspect.
-3. Click on the pod name to open its details page.
-4. Click the **Logs** tab at the top of the pod details page.
+3. Use the three-dot menu on the pod row and select **View Logs**.
 
-Alternatively, use the three-dot menu on the pod row and select **View Logs**.
+Alternatively, open the pod details page and use the row actions for the container you want, then select **View Logs**.
 
 ## Step 3: Navigate the Log Viewer Interface
 
@@ -49,17 +48,17 @@ Toggle timestamp display to show or hide the timestamp prefix on each log line. 
 
 Toggle word wrap to handle long log lines. When disabled, you can scroll horizontally to see the full line.
 
-### Auto-Scroll
+### Follow Mode
 
-The auto-scroll feature keeps the log viewer scrolled to the bottom, showing the newest log entries as they arrive. Toggle this off when you need to scroll back through historical logs.
+The log viewer follows new log entries by default. If you scroll up to inspect older output, Rancher pauses following. Click **Follow** to jump back to the bottom and resume live output.
 
 ## Step 4: Follow Live Logs
 
 The Rancher log viewer supports real-time log streaming:
 
 1. Open the log viewer for a running container.
-2. Ensure auto-scroll is enabled (the follow icon at the bottom).
-3. New log entries appear at the bottom as they are generated.
+2. By default, the viewer follows new output. If you have scrolled up, click **Follow**.
+3. New log entries appear as they are generated.
 
 This is equivalent to running `kubectl logs -f <pod> -c <container>`.
 
@@ -68,8 +67,8 @@ This is equivalent to running `kubectl logs -f <pod> -c <container>`.
 When a container has restarted, you can view logs from the previous instance:
 
 1. Open the log viewer for the container.
-2. Look for the **Previous** toggle or option.
-3. Enable it to see logs from the last terminated container instance.
+2. Enable the **Use Previous Container** option.
+3. Rancher shows logs from the last terminated container instance.
 
 This is equivalent to `kubectl logs <pod> -c <container> --previous` and is essential for debugging crash loops.
 
@@ -85,21 +84,21 @@ This is useful when you need to share logs with team members or attach them to i
 
 ## Step 7: Search and Filter Logs
 
-Use the search functionality in the log viewer to find specific log entries:
+Use the filter field in the log viewer to find specific log entries:
 
-1. Click the search icon or use the search bar.
-2. Enter a search term.
-3. Matching log lines are highlighted.
+1. Enter a search term.
+2. Matching log lines remain visible and matching text is highlighted.
 
-For more advanced filtering, use the log viewer's filter options if available, or download the logs and use local text search tools.
+For more advanced filtering, use kubectl or download the logs and use local text search tools.
 
 ## Step 8: View Logs via kubectl
 
 For more advanced log viewing, use kubectl commands from the Rancher UI's built-in kubectl shell:
 
-1. Navigate to your cluster.
-2. Click the kubectl shell icon (terminal icon) in the top right.
-3. Use kubectl commands:
+1. Open **☰ > Cluster Management**.
+2. Find your cluster and click **Explore**.
+3. In the top navigation, click **Kubectl Shell**.
+4. Use kubectl commands:
 
 ```bash
 # View current logs
@@ -125,17 +124,17 @@ kubectl logs <pod-name> -n <namespace> --tail=100
 kubectl logs <pod-name> -n <namespace> --since=1h
 
 # View logs from all pods in a deployment
-kubectl logs -l app=my-app -n <namespace> --all-containers
+kubectl logs deployment/my-app -n <namespace> --all-pods=true
 
-# View logs from all pods with a specific label
-kubectl logs -l tier=frontend -n <namespace> --prefix
+# View logs from all containers in pods with a specific label
+kubectl logs -l tier=frontend -n <namespace> --all-containers=true --prefix
 ```
 
 ## Step 9: View Logs for Jobs and CronJobs
 
 For batch workloads:
 
-1. Navigate to **Workload > Jobs** or **Workload > CronJobs**.
+1. Navigate to **Workloads > Jobs** or **Workloads > CronJobs**.
 2. Click on the job name.
 3. In the pod list, find the pod associated with the job run.
 4. Click the three-dot menu and select **View Logs**.
@@ -170,7 +169,7 @@ When debugging a container issue:
 ### Use Labels to Find Related Pods
 
 When debugging a service with multiple replicas:
-1. Navigate to **Workload > Pods**.
+1. Navigate to **Workloads > Pods**.
 2. Use the namespace and label filters to find all pods for a service.
 3. Check logs across multiple pods to identify if the issue is isolated or widespread.
 
@@ -190,4 +189,4 @@ For applications with long startup times:
 
 ## Summary
 
-The Rancher UI provides convenient log viewing capabilities for quick container debugging. Use the built-in log viewer to stream live logs, view previous container instances, download logs, and search for specific entries. For more advanced log analysis, use the kubectl shell with log commands. Always correlate container logs with pod events for a complete picture of container behavior.
+The Rancher UI provides convenient log viewing capabilities for quick container debugging. Use the built-in log viewer to follow live logs, view previous container instances, download logs, filter for specific entries, and adjust range, wrapping, and timestamp options. For more advanced log analysis, use the kubectl shell with log commands. Always correlate container logs with pod events for a complete picture of container behavior.
