@@ -8,7 +8,7 @@ Description: Learn how to provision Azure IoT Central applications for no-code I
 
 ## Introduction
 
-Azure IoT Central is a fully managed IoT SaaS platform that provides device connectivity, data visualization, rules, and analytics without requiring deep cloud expertise. OpenTofu manages IoT Central application creation and access control as code.
+Azure IoT Central is a fully managed IoT application platform that provides device connectivity, data visualization, rules, and analytics without requiring deep cloud expertise. OpenTofu manages IoT Central application creation and access control as code.
 
 ## Creating an IoT Central Application
 
@@ -28,11 +28,15 @@ resource "azurerm_iotcentral_application" "main" {
 
   display_name = "${var.app_name} IoT Platform"
 
-  # SKU: ST0 (free), ST1, ST2
+  # SKU: ST0, ST1, ST2
   sku = "ST1"
 
   # Use a public template (optional)
   template = "iotc-pnp-preview@1.0.0"
+
+  identity {
+    type = "SystemAssigned"
+  }
 
   tags = {
     Environment = var.environment
@@ -48,7 +52,7 @@ resource "azurerm_iotcentral_application_network_rule_set" "main" {
   iotcentral_application_id = azurerm_iotcentral_application.main.id
 
   # Default action for requests not matching any rule
-  apply_to_devices = true
+  apply_to_device = true
   default_action   = "Deny"
 
   ip_rule {
@@ -76,11 +80,10 @@ resource "azurerm_eventhub_namespace" "export" {
 }
 
 resource "azurerm_eventhub" "telemetry" {
-  name                = "telemetry"
-  namespace_name      = azurerm_eventhub_namespace.export.name
-  resource_group_name = azurerm_resource_group.iot.name
-  partition_count     = 4
-  message_retention   = 1
+  name              = "telemetry"
+  namespace_id      = azurerm_eventhub_namespace.export.id
+  partition_count   = 4
+  message_retention = 1
 }
 
 # Grant IoT Central system identity access to send to Event Hub
@@ -121,4 +124,4 @@ tofu apply tfplan
 
 ## Summary
 
-Azure IoT Central simplifies IoT device management with a managed SaaS platform. OpenTofu provisions the application, configures network access rules, and sets up managed identity permissions for data export to Event Hubs - enabling consistent IoT platform deployments across environments.
+Azure IoT Central simplifies IoT device management with a managed application platform. OpenTofu provisions the application, configures network access rules, and sets up managed identity permissions for data export to Event Hubs - enabling consistent IoT platform deployments across environments.
