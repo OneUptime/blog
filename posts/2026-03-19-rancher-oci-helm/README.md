@@ -10,7 +10,7 @@ OCI (Open Container Initiative) registries have become a standard way to store a
 
 ## Prerequisites
 
-- A running Rancher instance (v2.7 or later)
+- A running Rancher instance (v2.9 or later)
 - Helm CLI v3.8.0 or later (OCI support is GA since v3.8.0)
 - Access to an OCI-compatible container registry
 - A Helm chart to push
@@ -20,7 +20,7 @@ OCI (Open Container Initiative) registries have become a standard way to store a
 Traditional Helm repositories use an HTTP server with an `index.yaml` file listing all available charts. OCI-based repositories store charts as OCI artifacts in container registries, offering several advantages:
 
 - **Unified infrastructure**: Store both container images and Helm charts in the same registry
-- **No index.yaml management**: The registry handles versioning and discovery
+- **No index.yaml management**: The registry handles storage and version tags without an `index.yaml`
 - **Standard authentication**: Use the same credentials for images and charts
 - **Content addressability**: Charts are referenced by digest for immutability
 
@@ -70,7 +70,7 @@ helm registry login registry-1.docker.io -u your-username
 ### GitHub Container Registry (GHCR)
 
 ```bash
-echo $GITHUB_TOKEN | helm registry login ghcr.io -u your-username --password-stdin
+echo $CR_PAT | helm registry login ghcr.io -u your-username --password-stdin
 ```
 
 ### AWS ECR
@@ -114,6 +114,8 @@ helm push my-app-1.0.0.tgz oci://harbor.example.com/my-project
 helm push my-app-1.0.0.tgz oci://myregistry.azurecr.io/helm
 ```
 
+Some registries require the target repository or project to exist before you push. For example, create the ECR repository first and create the Harbor project in Harbor before pushing.
+
 The chart will be available at `oci://<registry>/<path>/my-app:1.0.0`.
 
 ## Step 5: Verify the Push
@@ -133,14 +135,14 @@ helm pull oci://ghcr.io/your-org/my-app --version 1.0.0
 
 ### Add an OCI Repository in Rancher
 
-As of Rancher v2.7+, you can add OCI-based Helm repositories:
+As of Rancher v2.9+, you can add OCI-based Helm repositories:
 
 1. Navigate to **Apps > Repositories** in the Rancher dashboard
 2. Click **Create**
 3. Set the **Target** to **OCI**
 4. Configure the repository:
    - **Name**: A unique identifier (e.g., `my-oci-charts`)
-   - **OCI URL**: The registry URL (e.g., `oci://ghcr.io/your-org`)
+   - **OCI URL**: The registry URL (for example, `oci://ghcr.io/your-org/my-app` or a dedicated namespace that contains only Helm charts)
    - **Authentication**: Configure credentials if the registry is private
 
 ### Via YAML
@@ -151,8 +153,8 @@ kind: ClusterRepo
 metadata:
   name: my-oci-charts
 spec:
-  url: oci://ghcr.io/your-org
-  credentials:
+  url: oci://ghcr.io/your-org/my-app
+  clientSecret:
     name: oci-registry-credentials
     namespace: cattle-system
 ---
@@ -169,7 +171,7 @@ stringData:
 
 ### Install from OCI via Helm CLI
 
-If the Rancher UI does not yet fully support OCI browsing, use the Helm CLI through the Rancher kubectl shell:
+You can also install directly from OCI with the Helm CLI:
 
 ```bash
 # Install directly from OCI
@@ -235,7 +237,7 @@ publish-chart:
   script:
     - helm registry login $CI_REGISTRY -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
     - helm package ./charts/my-app
-    - helm push my-app-*.tgz oci://$CI_REGISTRY/$CI_PROJECT_NAMESPACE
+    - helm push my-app-*.tgz oci://$CI_REGISTRY_IMAGE
   only:
     - tags
 ```
@@ -258,11 +260,14 @@ List available tags (versions) using the registry API:
 
 ```bash
 # For GHCR
-curl -H "Authorization: Bearer $GITHUB_TOKEN" \
-  https://ghcr.io/v2/your-org/my-app/tags/list
+curl -L \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer $CR_PAT" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  https://api.github.com/orgs/your-org/packages/container/my-app/versions
 
 # For Docker Hub
-curl https://registry.hub.docker.com/v2/repositories/your-username/my-app/tags
+curl https://hub.docker.com/v2/namespaces/your-username/repositories/my-app/tags
 ```
 
 ## Cleaning Up Old Versions
