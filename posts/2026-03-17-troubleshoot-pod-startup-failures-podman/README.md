@@ -21,7 +21,7 @@ Pod startup failures can stem from image pull errors, port conflicts, resource e
 
 podman pod ls --filter name=my-pod
 
-# If the pod shows "Degraded", one or more containers failed
+# If the pod shows "Degraded", one or more containers are not running as expected
 # If it shows "Exited", all containers stopped
 ```
 
@@ -32,7 +32,7 @@ podman pod ls --filter name=my-pod
 podman ps -a --filter pod=my-pod --format "table {{.Names}}\t{{.Status}}\t{{.ExitCode}}"
 
 # Look for containers with non-zero exit codes
-# Exit code 125: Container failed to start
+# Exit code 125: Podman or container engine error
 # Exit code 126: Command cannot be invoked
 # Exit code 127: Command not found
 # Exit code 137: OOM killed or SIGKILL
@@ -120,7 +120,7 @@ podman logs init-container-name
 
 ```bash
 # Override the entrypoint to get a shell in the failing container
-podman run -it --pod my-pod --entrypoint /bin/sh docker.io/library/nginx:alpine
+podman run -it --pod my-pod --entrypoint /bin/sh docker.io/library/nginx:alpine -l
 
 # Check the environment, filesystem, and network from inside
 # env
