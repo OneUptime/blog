@@ -28,6 +28,23 @@ resource "azurerm_key_vault" "tde_kv" {
   soft_delete_retention_days = 90
   purge_protection_enabled   = true
 }
+
+# Allow the current principal to create the TDE key
+resource "azurerm_key_vault_access_policy" "current_user" {
+  key_vault_id = azurerm_key_vault.tde_kv.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
+
+  key_permissions = [
+    "Create",
+    "Delete",
+    "Get",
+    "GetRotationPolicy",
+    "Purge",
+    "Recover",
+    "Update",
+  ]
+}
 ```
 
 ## Step 2: Create SQL Server with System-Assigned Identity
@@ -45,6 +62,11 @@ resource "azurerm_mssql_server" "server" {
   # System-assigned identity for Key Vault authentication
   identity {
     type = "SystemAssigned"
+  }
+
+  # Avoid drift when the TDE protector is managed separately
+  lifecycle {
+    ignore_changes = [transparent_data_encryption_key_vault_key_id]
   }
 }
 
@@ -77,7 +99,10 @@ resource "azurerm_key_vault_key" "tde_key" {
     "wrapKey",
   ]
 
-  depends_on = [azurerm_key_vault_access_policy.sql_tde_policy]
+  depends_on = [
+    azurerm_key_vault_access_policy.current_user,
+    azurerm_key_vault_access_policy.sql_tde_policy,
+  ]
 }
 ```
 
@@ -90,19 +115,19 @@ resource "azurerm_mssql_server_transparent_data_encryption" "tde" {
   key_vault_key_id = azurerm_key_vault_key.tde_key.id
 
   # Use CMK from Key Vault (not service-managed key)
-  auto_rotation_enabled = true  # Automatically use new key versions
+  auto_rotation_enabled = true  # Automatically rotate to newer key versions
 }
 ```
 
-## Step 5: Verify TDE on Database
+## Step 5: Create Database Protected by TDE
 
 ```hcl
-# TDE is automatically inherited by databases on the server
-# But you can explicitly enable it at database level too
+# Databases on the server inherit the server-level TDE protector
 resource "azurerm_mssql_database" "protected_db" {
-  name      = "protecteddb"
-  server_id = azurerm_mssql_server.server.id
-  sku_name  = "S1"
+  name                                = "protecteddb"
+  server_id                           = azurerm_mssql_server.server.id
+  sku_name                            = "S1"
+  transparent_data_encryption_enabled = true
 }
 ```
 
