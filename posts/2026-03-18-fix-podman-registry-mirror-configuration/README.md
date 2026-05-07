@@ -12,17 +12,17 @@ Description: Learn how to configure Podman registry mirrors to speed up image pu
 
 Pulling container images from public registries like Docker Hub can be slow, unreliable, or throttled by rate limits. Registry mirrors solve this by redirecting pull requests to a closer or faster copy of the same images. Podman uses a configuration file called `registries.conf` to define these mirrors, but the syntax and behavior can be confusing.
 
-This guide covers the modern TOML-based `registries.conf` format, which replaced the older INI-style format. If you are still using the old format, this guide will help you migrate.
+This guide covers the modern version 2 `registries.conf` format. If you are still using the old version 1 format, this guide will help you migrate.
 
 ---
 
 ## Understanding registries.conf
 
-Podman reads registry configuration from these locations, in order of priority:
+Podman reads registry configuration from these locations:
 
-1. `$HOME/.config/containers/registries.conf` (rootless, per-user)
-2. `/etc/containers/registries.conf` (system-wide)
-3. `/etc/containers/registries.conf.d/*.conf` (drop-in files)
+1. `$HOME/.config/containers/registries.conf` if it exists, otherwise `/etc/containers/registries.conf`
+2. If the system-wide main file is used, `/etc/containers/registries.conf.d/*.conf` and then `$HOME/.config/containers/registries.conf.d/*.conf`
+3. If the per-user main file is used, only `$HOME/.config/containers/registries.conf.d/*.conf`
 
 The modern format uses TOML syntax with `[[registry]]` sections:
 
@@ -167,7 +167,7 @@ When you run `podman pull nginx` without specifying a registry, Podman uses the 
 unqualified-search-registries = ["docker.io", "quay.io", "registry.access.redhat.com"]
 ```
 
-Podman tries each registry in order. To avoid ambiguity, always use fully qualified image names:
+Podman uses short-name resolution for these names. Depending on your `short-name-mode` setting and whether the command is running in a terminal, Podman may prompt you to choose a registry or may try the configured registries in order. To avoid ambiguity, always use fully qualified image names:
 
 ```bash
 # Ambiguous - could come from any search registry
@@ -197,16 +197,9 @@ blocked = true
 
 This prevents any pulls from Docker Hub. Use this in environments where you want to force all images to come from your internal registry.
 
-Combine blocking with a mirror to redirect users:
+Do not combine `blocked = true` with a redirect for the same prefix. If you want users to pull from an internal registry instead of Docker Hub, use a redirect without blocking:
 
 ```toml
-# Block direct access to Docker Hub
-[[registry]]
-prefix = "docker.io"
-location = "docker.io"
-blocked = true
-
-# But allow our mirror
 [[registry]]
 prefix = "docker.io"
 location = "internal-mirror.company.com"
@@ -220,7 +213,11 @@ If your mirror requires authentication, configure credentials separately. Podman
 podman login your-mirror.example.com
 ```
 
-This stores credentials in `$XDG_RUNTIME_DIR/containers/auth.json` or `~/.config/containers/auth.json`.
+On Linux, this stores credentials in `$XDG_RUNTIME_DIR/containers/auth.json` by default. If you want credentials to persist across reboots, specify the persistent auth file explicitly:
+
+```bash
+podman login --authfile ~/.config/containers/auth.json your-mirror.example.com
+```
 
 You can also create the auth file manually:
 
@@ -231,7 +228,7 @@ cat > ~/.config/containers/auth.json << 'EOF'
 {
     "auths": {
         "your-mirror.example.com": {
-            "auth": "base64-encoded-username:password"
+            "auth": "dXNlcm5hbWU6cGFzc3dvcmQ="
         }
     }
 }
@@ -276,8 +273,8 @@ podman info | grep -A 20 registries
 # Pull an image and watch which registry is used
 podman pull --log-level=debug docker.io/library/alpine:latest 2>&1 | grep -i "mirror\|trying\|pulling"
 
-# List all configured registries
-podman info --format '{{range .Registries.Search}}{{.}}{{end}}'
+# List configured search registries
+podman info --format '{{range .Registries.Search}}{{println .}}{{end}}'
 ```
 
 Common issues and their fixes:
@@ -298,17 +295,14 @@ nslookup mirror.example.com
 
 ## Migrating from Old Format
 
-The old INI-style format looked like this:
+The old version 1 format looked like this:
 
-```ini
+```toml
 [registries.search]
 registries = ['docker.io']
-
-[registries.mirror]
-docker.io = ['mirror.example.com']
 ```
 
-Convert it to the new TOML format:
+Version 1 does not support registry mirrors, longest-prefix matches, or location rewriting. Convert it to the new TOML format and add the mirror configuration there:
 
 ```toml
 unqualified-search-registries = ["docker.io"]
@@ -321,7 +315,7 @@ location = "docker.io"
 location = "mirror.example.com"
 ```
 
-Podman logs a deprecation warning if you use the old format. Migrate as soon as possible since the old format does not support all features.
+Podman logs a deprecation warning if you use the old format. Migrate as soon as possible since the old format does not support registry mirrors, longest-prefix matches, or location rewriting.
 
 ## Conclusion
 
