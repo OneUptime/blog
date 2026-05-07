@@ -8,7 +8,7 @@ Description: Learn how to create and manage AWS Systems Manager Parameter Store 
 
 ## Introduction
 
-AWS Systems Manager Parameter Store stores configuration data and secrets as key-value pairs. Unlike Secrets Manager, it has no additional cost for standard parameters and integrates natively with EC2 user data, ECS task definitions, and Lambda environment variables.
+AWS Systems Manager Parameter Store stores configuration data and secrets as key-value pairs. Unlike Secrets Manager, it has no additional cost for standard parameters and can be read from EC2 user data scripts, ECS task definitions, and Lambda functions.
 
 ## Standard String Parameter
 
@@ -82,7 +82,7 @@ resource "aws_ssm_parameter" "config" {
 
 ```hcl
 resource "aws_instance" "app" {
-  ami           = data.aws_ami.ubuntu.id
+  ami           = data.aws_ami.al2023.id
   instance_type = "t3.small"
 
   user_data = <<-EOF
@@ -90,10 +90,11 @@ resource "aws_instance" "app" {
     # Read configuration from SSM Parameter Store at startup
     APP_PORT=$(aws ssm get-parameter \
       --name "/${var.environment}/${var.app_name}/PORT" \
-      --query Parameter.Value \
+      --query 'Parameter.Value' \
       --output text \
       --region ${var.region})
 
+    mkdir -p /etc/myapp
     echo "APP_PORT=$APP_PORT" > /etc/myapp/env
     systemctl start myapp
   EOF
