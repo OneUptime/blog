@@ -21,8 +21,8 @@ Not all events need alerts. Focus on events that indicate problems.
 ```bash
 # Critical events that should trigger immediate alerts
 
-# - die: Container process exited unexpectedly
-# - oom: Container ran out of memory
+# - died with non-zero exit code: Container process exited unexpectedly
+# - died with exit code 137: Container may have been killed by OOM
 # - kill: Container was forcefully killed
 
 # Warning events that may need attention
@@ -46,21 +46,20 @@ echo "Alerts logged to: ${ALERT_LOG}"
 
 podman events --format json | while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
     event_type=$(echo "$event" | jq -r '.Type')
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
     case "$status" in
-        die)
-            exit_code=$(echo "$event" | jq -r '.Actor.Attributes.containerExitCode // "unknown"')
-            if [ "$exit_code" != "0" ]; then
+        died)
+            exit_code=$(echo "$event" | jq -r '.ContainerExitCode // "unknown"')
+            if [ "$exit_code" = "137" ]; then
+                alert="CRITICAL: Container '${name}' died with exit code 137 - possible OOM kill"
+                echo "[${timestamp}] ${alert}" | tee -a "$ALERT_LOG"
+            elif [ "$exit_code" != "0" ]; then
                 alert="CRITICAL: Container '${name}' died with exit code ${exit_code}"
                 echo "[${timestamp}] ${alert}" | tee -a "$ALERT_LOG"
             fi
-            ;;
-        oom)
-            alert="CRITICAL: Container '${name}' killed by OOM"
-            echo "[${timestamp}] ${alert}" | tee -a "$ALERT_LOG"
             ;;
         kill)
             alert="WARNING: Container '${name}' was killed"
@@ -93,13 +92,16 @@ echo "Starting email alerts for Podman events..."
 echo "Alert recipient: ${ALERT_EMAIL}"
 
 podman events --format json \
-    --filter event=die \
-    --filter event=oom | \
+    --filter event=died | \
 while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
-    timestamp=$(echo "$event" | jq -r '.time')
-    exit_code=$(echo "$event" | jq -r '.Actor.Attributes.containerExitCode // "N/A"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
+    timestamp=$(echo "$event" | jq -r '.Time')
+    exit_code=$(echo "$event" | jq -r '.ContainerExitCode // "N/A"')
+
+    if [ "$exit_code" = "0" ]; then
+        continue
+    fi
 
     subject="Container ${name} - ${status} on ${HOSTNAME}"
     body="Container Alert Details:
@@ -157,21 +159,20 @@ echo "Starting Slack alerts..."
 
 podman events --format json | while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
 
     case "$status" in
-        die)
-            exit_code=$(echo "$event" | jq -r '.Actor.Attributes.containerExitCode // "unknown"')
-            if [ "$exit_code" != "0" ]; then
+        died)
+            exit_code=$(echo "$event" | jq -r '.ContainerExitCode // "unknown"')
+            if [ "$exit_code" = "137" ]; then
+                send_slack_alert "danger" \
+                    "Possible OOM Kill: ${name}" \
+                    "Container died with exit code 137"
+            elif [ "$exit_code" != "0" ]; then
                 send_slack_alert "danger" \
                     "Container Crashed: ${name}" \
                     "Exit code: ${exit_code}"
             fi
-            ;;
-        oom)
-            send_slack_alert "danger" \
-                "OOM Kill: ${name}" \
-                "Container was killed due to memory exhaustion"
             ;;
         stop)
             send_slack_alert "warning" \
@@ -198,7 +199,7 @@ declare -A restart_times
 echo "Monitoring for restart loops (max ${MAX_RESTARTS} restarts in ${TIME_WINDOW}s)..."
 
 podman events --filter event=start --format json | while IFS= read -r event; do
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
     now=$(date +%s)
 
     # Get existing restart times for this container
@@ -270,7 +271,7 @@ Trigger test events to verify alerts work correctly.
 #!/bin/bash
 # test-alerts.sh - Generate events that should trigger alerts
 
-echo "Testing die event with non-zero exit code..."
+echo "Testing died event with non-zero exit code..."
 podman run --name alert-test-crash alpine sh -c "exit 1"
 podman rm alert-test-crash
 
