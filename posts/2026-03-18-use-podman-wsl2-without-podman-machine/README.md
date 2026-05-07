@@ -8,9 +8,9 @@ Description: Learn how to run Podman directly inside WSL2 without using Podman M
 
 ---
 
-> Running Podman directly in WSL2 bypasses the overhead of Podman Machine and gives you a native Linux container experience on Windows. This guide shows you how to install, configure, and use Podman inside WSL2 without the additional virtual machine layer.
+> Running Podman directly in WSL2 bypasses the overhead of Podman Machine and gives you a native Linux container experience on Windows. This guide shows you how to install, configure, and use Podman inside WSL2 without the additional Podman-managed machine layer.
 
-Podman Machine on Windows creates a dedicated virtual machine to run containers, but if you already have WSL2 installed, you have a Linux kernel running on your system. Running Podman directly inside WSL2 eliminates the extra VM overhead of Podman Machine, reduces memory consumption, and gives you a more integrated experience with your Windows development environment. This approach is especially useful for developers who already use WSL2 for their daily workflow.
+Podman Machine on Windows manages a separate Linux environment to run containers, but if you already have WSL2 installed, you already have a Linux kernel running on your system. Running Podman directly inside WSL2 avoids the extra Podman-managed environment, reduces memory consumption, and gives you a more integrated experience with your Windows development environment. This approach is especially useful for developers who already use WSL2 for their daily workflow.
 
 This guide walks through setting up Podman inside WSL2 without Podman Machine, configuring it for rootless operation, and integrating it with your Windows development tools.
 
@@ -28,16 +28,16 @@ wsl --set-default-version 2
 Install a Linux distribution. Ubuntu is the most common choice:
 
 ```powershell
-wsl --install -d Ubuntu-24.04
+wsl --install -d Ubuntu
 ```
 
-Verify WSL2 is running:
+Verify your distro is using WSL2:
 
 ```powershell
 wsl --list --verbose
 ```
 
-The output should show your distribution running with VERSION 2.
+The output should show your distribution with VERSION 2.
 
 ## Installing Podman in WSL2
 
@@ -45,13 +45,13 @@ Open your WSL2 distribution and install Podman. For Ubuntu:
 
 ```bash
 sudo apt update
-sudo apt install -y podman podman-compose uidmap slirp4netns
+sudo apt install -y podman podman-compose uidmap slirp4netns fuse-overlayfs
 ```
 
 For Fedora on WSL2:
 
 ```bash
-sudo dnf install -y podman podman-compose
+sudo dnf install -y podman podman-compose fuse-overlayfs
 ```
 
 Verify the installation:
@@ -63,7 +63,7 @@ podman info
 
 ## Why Not Use Podman Machine
 
-Podman Machine creates a separate QEMU or Hyper-V virtual machine to run containers. When using WSL2, this means you have two virtual machines running: WSL2 and the Podman Machine VM. This wastes resources and adds complexity.
+Podman Machine creates a separate Podman-managed environment to run containers. On current Windows releases, Podman Machine uses WSL by default and can also use Hyper-V, so you still end up working in a separate Linux instance instead of your existing WSL2 distro. This adds resource overhead and complexity.
 
 By running Podman directly in WSL2, you get a single Linux environment that handles both your shell work and container workloads. The benefits include lower memory usage, faster startup times, and simpler networking since everything runs in the same WSL2 instance.
 
@@ -79,6 +79,7 @@ cat /etc/subgid
 If your user is missing entries:
 
 ```bash
+podman system migrate
 sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
 ```
 
@@ -118,15 +119,14 @@ wsl --shutdown
 Reopen your WSL2 terminal and verify systemd is running:
 
 ```bash
-systemctl --version
-systemctl is-system-running
+systemctl status
+systemctl list-unit-files --type=service
 ```
 
 If you encounter cgroup-related errors, ensure cgroups v2 is available:
 
 ```bash
-mount | grep cgroup
-cat /proc/filesystems | grep cgroup
+podman info --format '{{.Host.CgroupsVersion}}'
 ```
 
 ## Running Containers
@@ -216,10 +216,11 @@ code .
 
 VS Code opens in the WSL2 context where Podman is available. The integrated terminal has direct access to Podman commands.
 
-For the Podman extension in VS Code, point it to the WSL2 Podman socket:
+For the Podman extension in VS Code, start the WSL2 Podman socket and point it to the socket path:
 
 ```bash
-echo $XDG_RUNTIME_DIR/podman/podman.sock
+systemctl --user enable --now podman.socket
+echo "unix://$XDG_RUNTIME_DIR/podman/podman.sock"
 ```
 
 ## Systemd Integration with Quadlet
@@ -242,11 +243,11 @@ Restart=always
 WantedBy=default.target
 ```
 
-Enable the service:
+Load and start the service:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now devstack.service
+systemctl --user start devstack.service
 systemctl --user status devstack.service
 ```
 
@@ -293,9 +294,9 @@ volumes:
 Run the stack:
 
 ```bash
-podman-compose up -d
-podman-compose ps
-podman-compose logs -f
+podman compose up -d
+podman compose ps
+podman compose logs -f
 ```
 
 All ports are accessible from Windows browsers and tools.
@@ -338,11 +339,11 @@ podman run -d --pod dev-pod --name dev-app \
 Optimize Podman performance in WSL2:
 
 ```bash
-# Use the overlay storage driver
-cat ~/.config/containers/storage.conf
+# Check the active storage driver
+podman info --format '{{.Store.GraphDriverName}}'
 ```
 
-Ensure you are using the `overlay` driver with `fuse-overlayfs`:
+If `~/.config/containers/storage.conf` already exists, ensure it is using the `overlay` driver with `fuse-overlayfs`:
 
 ```toml
 [storage]
@@ -383,15 +384,15 @@ diskpart
 
 ## Creating a Podman Alias for Docker Compatibility
 
-If you have scripts or tools that expect the docker command:
+If you want interactive shell shortcuts for Docker-compatible commands:
 
 ```bash
 echo 'alias docker=podman' >> ~/.bashrc
-echo 'alias docker-compose=podman-compose' >> ~/.bashrc
+echo "alias docker-compose='podman compose'" >> ~/.bashrc
 source ~/.bashrc
 ```
 
-You can also create a symlink:
+For command-line tools that look for a `docker` binary, you can also create a symlink:
 
 ```bash
 sudo ln -s /usr/bin/podman /usr/local/bin/docker
@@ -399,4 +400,4 @@ sudo ln -s /usr/bin/podman /usr/local/bin/docker
 
 ## Conclusion
 
-Running Podman directly in WSL2 without Podman Machine gives you a lean, efficient container runtime on Windows. You avoid the overhead of an additional virtual machine, get direct filesystem access between Windows and your containers, and benefit from automatic port forwarding. Combined with VS Code's WSL integration and systemd support for persistent services, this setup provides a first-class container development experience on Windows that rivals native Linux workstations. For developers already using WSL2, adding Podman directly to your WSL2 instance is the simplest and most resource-efficient way to work with containers on Windows.
+Running Podman directly in WSL2 without Podman Machine gives you a lean, efficient container runtime on Windows. You avoid the overhead of a separate Podman-managed machine, get direct filesystem access between Windows and your containers, and benefit from automatic port forwarding. Combined with VS Code's WSL integration and systemd support for persistent services, this setup provides a first-class container development experience on Windows that rivals native Linux workstations. For developers already using WSL2, adding Podman directly to your WSL2 instance is the simplest and most resource-efficient way to work with containers on Windows.
