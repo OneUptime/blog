@@ -17,20 +17,20 @@ Rootless Podman uses user namespaces to remap UIDs, which can cause unexpected p
 ## Error: Permission Denied on Bind Mounts
 
 ```bash
-# Problem: container cannot read or write files in a bind mount
+# Problem: non-root container user cannot read or write files in a bind mount
 
-podman run --rm -v ./data:/app/data alpine:latest ls /app/data
+podman run --rm --user "$(id -u):$(id -g)" -v ./data:/app/data alpine:latest ls /app/data
 # ls: can't open '/app/data': Permission denied
 
 # Diagnosis: check the ownership on the host
 ls -la ./data
 
-# Fix 1: Use keep-id to preserve your UID inside the container
-podman run --rm --userns=keep-id -v ./data:/app/data alpine:latest ls /app/data
+# Fix 1: Use keep-id and run as your UID inside the container
+podman run --rm --user "$(id -u):$(id -g)" --userns=keep-id -v ./data:/app/data alpine:latest ls /app/data
 
-# Fix 2: Use podman unshare to set proper ownership
-podman unshare chown -R 0:0 ./data
-podman run --rm -v ./data:/app/data alpine:latest ls /app/data
+# Fix 2: Use podman unshare to set ownership for the container UID
+podman unshare chown -R "$(id -u):$(id -g)" ./data
+podman run --rm --user "$(id -u):$(id -g)" -v ./data:/app/data alpine:latest ls /app/data
 
 # Fix 3: Relax directory permissions
 chmod -R a+rX ./data
@@ -122,11 +122,11 @@ podman volume create mydata
 podman run --rm -v mydata:/data alpine:latest ls -la /data
 # Files show unexpected ownership
 
-# Fix: initialize the volume with correct ownership
-podman run --rm -v mydata:/data alpine:latest chown -R 1000:1000 /data
+# Fix: initialize the volume with ownership mapped to your host UID
+podman run --rm --userns=keep-id -v mydata:/data alpine:latest chown -R "$(id -u):$(id -g)" /data
 
-# Or use --userns=keep-id
-podman run --rm --userns=keep-id -v mydata:/data alpine:latest ls -la /data
+# Then run the container as that UID
+podman run --rm --user "$(id -u):$(id -g)" --userns=keep-id -v mydata:/data alpine:latest ls -la /data
 ```
 
 ## Error: EACCES When Writing to /proc or /sys
@@ -155,7 +155,7 @@ grep "$USER" /etc/subuid /etc/subgid
 # Step 4: Test basic container functionality
 podman run --rm alpine:latest echo "Basic test passed"
 
-# Step 5: Check SELinux or AppArmor
+# Step 5: Check SELinux labels
 getenforce 2>/dev/null || echo "SELinux not available"
 # If SELinux is enforcing, try with :z or :Z on volumes
 podman run --rm -v ./data:/app/data:z alpine:latest ls /app/data
@@ -163,4 +163,4 @@ podman run --rm -v ./data:/app/data:z alpine:latest ls /app/data
 
 ## Summary
 
-Permission errors in rootless Podman typically stem from UID mapping mismatches, missing subuid/subgid configuration, privileged port restrictions, or storage driver issues. Use `--userns=keep-id` for development bind mounts, `podman unshare` for fixing volume ownership, and ensure your system has proper subuid/subgid allocations and the newuidmap/newgidmap tools installed. When SELinux is active, use the `:z` or `:Z` volume options to set appropriate labels.
+Permission errors in rootless Podman typically stem from UID mapping mismatches, missing subuid/subgid configuration, privileged port restrictions, or storage driver issues. Use `--userns=keep-id` with `--user` for development bind mounts, `podman unshare` for fixing volume ownership, and ensure your system has proper subuid/subgid allocations and the newuidmap/newgidmap tools installed. When SELinux is active, use the `:z` or `:Z` volume options to set appropriate labels.
