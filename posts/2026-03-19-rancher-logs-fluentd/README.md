@@ -55,7 +55,7 @@ kubectl create secret generic fluentd-forward-secret \
   --from-literal=shared-key='your-shared-key'
 ```
 
-If using TLS, also create a TLS secret:
+If using TLS with a custom CA, also create a CA certificate secret:
 
 ```bash
 kubectl create secret generic fluentd-forward-tls \
@@ -85,7 +85,7 @@ spec:
       total_limit_size: 2GB
       flush_interval: 5s
       flush_thread_count: 2
-      retry_max_interval: 30
+      retry_max_interval: 30s
       retry_forever: true
 ```
 
@@ -107,8 +107,9 @@ spec:
             secretKeyRef:
               name: fluentd-forward-secret
               key: shared-key
+    transport: tls
     tls_cert_path:
-      valueFrom:
+      mountFrom:
         secretKeyRef:
           name: fluentd-forward-tls
           key: ca.crt
@@ -181,7 +182,7 @@ spec:
 
 ## Step 6: Tag-Based Routing
 
-Configure the forward output to preserve tags for routing on the aggregator side:
+Retag logs for routing on the aggregator side:
 
 ```yaml
 apiVersion: logging.banzaicloud.io/v1beta1
@@ -214,7 +215,7 @@ On the aggregator, use tag-based matching:
 
 ## Step 7: Configure Compression
 
-Enable gzip compression for network efficiency:
+If your installed Logging chart version supports the `forward.compress` field, enable gzip compression for network efficiency:
 
 ```yaml
 spec:
@@ -234,7 +235,7 @@ spec:
 
 ## Step 8: Deploy Fluentd Aggregator in Kubernetes
 
-If you want to run the aggregator inside the cluster:
+Create a ConfigMap from the `fluentd.conf` in Step 1 and deploy the aggregator inside the cluster:
 
 ```yaml
 apiVersion: apps/v1
@@ -255,7 +256,7 @@ spec:
     spec:
       containers:
         - name: fluentd
-          image: fluent/fluentd:v1.16
+          image: fluent/fluentd-aggregator:latest
           ports:
             - containerPort: 24224
               name: forward
@@ -290,6 +291,7 @@ metadata:
   name: fluentd-aggregator
   namespace: logging
 spec:
+  clusterIP: None
   selector:
     app: fluentd-aggregator
   ports:
@@ -303,14 +305,15 @@ spec:
 Check Fluentd output logs:
 
 ```bash
-kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd | grep -i forward
+kubectl get pods -n cattle-logging-system
+kubectl logs -n cattle-logging-system <fluentd-pod-name> -c fluentd | grep -i forward
 ```
 
 On the aggregator side, check incoming log count:
 
 ```bash
 # If the aggregator exposes Prometheus metrics
-curl http://fluentd-aggregator:24231/metrics | grep fluentd_input_status_num_records_total
+curl http://<aggregator-host>:24231/metrics | grep fluentd_input_status_num_records_total
 ```
 
 ## Troubleshooting
@@ -319,7 +322,7 @@ curl http://fluentd-aggregator:24231/metrics | grep fluentd_input_status_num_rec
 - **Authentication error**: Check that shared keys match on both sides.
 - **TLS handshake failure**: Verify certificates are correct and not expired.
 - **High buffer usage**: The aggregator may be slow or unreachable. Check aggregator health.
-- **Duplicate logs**: Ensure `require_ack_response: true` is set for exactly-once delivery.
+- **Duplicate logs**: Use `require_ack_response: true` for at-least-once delivery, then check for downstream retries or replays.
 
 ## Summary
 
