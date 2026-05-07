@@ -11,8 +11,8 @@ Description: Learn why adding AAAA records for servers without real IPv6 connect
 A common mistake during IPv6 deployment is adding AAAA records to DNS before the server actually has working IPv6 connectivity. When a client receives a AAAA record and tries to connect, it experiences a connection timeout or failure before falling back to IPv4 - leading to noticeable delays for users.
 
 This is particularly painful because:
-- **Modern clients prefer IPv6**: When AAAA records exist, clients try IPv6 first
-- **Happy Eyeballs has a delay**: RFC 8305 waits ~250ms before trying IPv4 fallback
+- **Modern clients often prefer IPv6**: When AAAA records exist, dual-stack clients commonly try IPv6 first
+- **Happy Eyeballs has a delay**: RFC 8305 recommends a 250ms default delay before the next connection attempt
 - **Some clients don't fall back**: Certain applications don't implement Happy Eyeballs correctly
 
 ## Why a Server Might Have a AAAA Record But No Working IPv6
@@ -30,7 +30,7 @@ Run these checks on the server BEFORE adding a AAAA record:
 ```bash
 # 1. Verify the server has a routable IPv6 address (not just link-local)
 
-ip -6 addr show | grep -v 'fe80'
+ip -6 addr show scope global
 # Should show your 2001:db8:... or similar global address
 
 # 2. Verify there is a default IPv6 route
@@ -38,7 +38,7 @@ ip -6 route show default
 # Should show: default via <gateway> dev eth0 ...
 
 # 3. Test outbound IPv6 connectivity from the server
-ping6 -c 3 2001:4860:4860::8888
+ping -6 -c 3 2001:4860:4860::8888
 # If this fails, IPv6 routing is broken - do NOT add AAAA yet
 
 # 4. Test that the service is listening on IPv6
@@ -48,7 +48,7 @@ ss -6 -tlnp | grep :80
 
 # 5. Test inbound IPv6 connectivity from an external host
 # From another machine with IPv6:
-curl -6 http://2001:db8::server-ip/
+curl -6 http://[2001:db8::1]/
 ```
 
 ## Testing with a Pre-Publication Check
@@ -57,7 +57,7 @@ Before adding the AAAA to public DNS, test with a local `/etc/hosts` override:
 
 ```bash
 # On a test client, add the AAAA record to /etc/hosts temporarily
-echo "2001:db8::1 www.example.com" >> /etc/hosts
+printf '2001:db8::1 www.example.com\n' | sudo tee -a /etc/hosts >/dev/null
 
 # Test the connection over IPv6
 curl -6 http://www.example.com/
@@ -91,16 +91,17 @@ ss -6 -tlnp | grep ':80\|:443'
 If a AAAA record is causing failures and IPv6 isn't ready yet:
 
 ```bash
-# BIND: remove the AAAA record from zone file and reload
+# BIND: for a file-backed zone, remove the AAAA record, increment the SOA serial, and reload
 # In the zone file: delete the AAAA line for www
 rndc reload example.com
 
+# For dynamic BIND zones, use nsupdate or rndc freeze/thaw before editing
+
 # PowerDNS via pdnsutil
-pdnsutil delete-rrset example.com www AAAA
+pdnsutil rrset delete example.com www.example.com AAAA
 
 # Wait for TTL to expire on resolvers
-# If urgency is high, the TTL was already served - must wait it out
-# Or contact major ISPs/CDNs to flush their caches
+# Cached answers already served with a TTL generally have to age out
 
 # Verify the record is no longer returned
 dig AAAA www.example.com @8.8.8.8
@@ -119,7 +120,7 @@ server {
 }
 ```
 
-For Apache, add IPv6 Listen directives:
+For Apache, ensure it is listening on IPv6 as well. On builds that use separate IPv6 sockets, add an explicit IPv6 `Listen` directive:
 
 ```apache
 # httpd.conf
@@ -130,12 +131,12 @@ Listen [::]:80
 ## Safe AAAA Rollout Checklist
 
 Before adding any AAAA record:
-- Server has a global (non-link-local) IPv6 address: `ip -6 addr show`
+- Server has a global (non-link-local) IPv6 address: `ip -6 addr show scope global`
 - Default IPv6 route exists: `ip -6 route show default`
 - Service listens on `::` or specific IPv6 address: `ss -6 -tlnp`
 - Firewall allows IPv6 on service port: `ip6tables -L -n`
-- Outbound IPv6 works: `ping6 2001:4860:4860::8888`
-- Inbound IPv6 tested from external host: `curl -6 http://<IPv6-addr>/`
+- Outbound IPv6 works: `ping -6 2001:4860:4860::8888`
+- Inbound IPv6 tested from external host: `curl -6 http://[<IPv6-addr>]/`
 
 ## Summary
 
