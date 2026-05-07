@@ -16,10 +16,10 @@ Ghost is a powerful, open-source blogging and publishing platform built on Node.
 
 ## Pulling the Ghost Image
 
-Download the official Ghost image.
+Download the official Ghost 5 image.
 
 ```bash
-# Pull the latest Ghost image
+# Pull the Ghost 5 image
 
 podman pull docker.io/library/ghost:5
 
@@ -207,6 +207,20 @@ cat > ~/ghost-themes/my-theme/index.hbs <<'EOF'
 {{pagination}}
 EOF
 
+# Create the post template
+cat > ~/ghost-themes/my-theme/post.hbs <<'EOF'
+{{!< default}}
+{{#post}}
+<article>
+    <h1>{{title}}</h1>
+    <time>{{date format="MMMM DD, YYYY"}}</time>
+    <section>
+        {{content}}
+    </section>
+</article>
+{{/post}}
+EOF
+
 # Run Ghost with the custom theme directory mounted
 podman run -d \
   --name ghost-dev \
@@ -226,7 +240,7 @@ Interact with Ghost programmatically through its API.
 # Once configured, you can query posts:
 # curl -s "http://localhost:2368/ghost/api/content/posts/?key=YOUR_CONTENT_API_KEY"
 
-# Check Ghost's health
+# Check basic Ghost site information
 curl -s http://localhost:2368/ghost/api/admin/site/ | python3 -m json.tool
 ```
 
