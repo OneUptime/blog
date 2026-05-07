@@ -8,7 +8,7 @@ Description: Learn how to configure Azure Spot Virtual Machines with OpenTofu to
 
 ## Introduction
 
-Azure Spot Virtual Machines use Azure's excess compute capacity at up to 90% discount compared to regular VMs. In exchange, Azure can evict Spot VMs with only a 30-second warning when it needs the capacity back. Spot VMs are ideal for batch processing, data analytics, CI/CD pipelines, stateless web frontends, and any workload that can tolerate interruption and restart. They are not suitable for databases, production stateful services, or SLA-critical applications.
+Azure Spot Virtual Machines use Azure's excess compute capacity at up to 90% discount compared to regular VMs. In exchange, Azure can evict Spot VMs with only about 30 seconds' notice when it needs the capacity back. Spot VMs are ideal for batch processing, data analytics, CI/CD pipelines, stateless web frontends, and any workload that can tolerate interruption and restart. They are not suitable for databases, production stateful services, or SLA-critical applications.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ resource "azurerm_linux_virtual_machine" "spot" {
   eviction_policy = "Deallocate"  # Deallocate or Delete
 
   # Optional: set max price (in USD/hour)
-  # Set to -1 to pay up to on-demand price (default)
+  # Set to -1 to avoid price-based eviction and pay at most on-demand price (default)
   max_bid_price = -1
 
   network_interface_ids           = [azurerm_network_interface.spot.id]
@@ -111,7 +111,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "spot" {
   # Spread across zones for better capacity availability
   zones = ["1", "2", "3"]
 
-  # Rebalance Spot capacity across zones
+  # Attempt to restore evicted Spot instances
   spot_restore {
     enabled = true
     timeout = "PT1H"  # Try to restore for 1 hour after eviction
@@ -122,7 +122,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "spot" {
 ## Step 3: Handle Eviction Events
 
 ```hcl
-# Azure Scheduled Events listener (run on the VM)
+# Azure Scheduled Events listener (installed as a systemd service on the VM)
 
 # Monitor: http://169.254.169.254/metadata/scheduledevents
 
@@ -136,23 +136,43 @@ resource "azurerm_virtual_machine_extension" "eviction_handler" {
   settings = jsonencode({
     script = base64encode(<<-EOT
       #!/bin/bash
-      # Install eviction handler daemon
+      # Install eviction handler service
       cat > /usr/local/bin/spot-eviction-handler.sh <<'HANDLER'
       #!/bin/bash
       while true; do
         EVENTS=$(curl -s -H "Metadata: true" \
           "http://169.254.169.254/metadata/scheduledevents?api-version=2020-07-01")
         if echo "$EVENTS" | grep -q "Preempt"; then
-          # Graceful shutdown: drain tasks, save state, flush logs
-          systemctl stop app-worker.service
-          aws s3 sync /var/data/checkpoint s3://checkpoint-bucket/
-          break
+          # Graceful shutdown: drain tasks, trigger durable checkpointing, flush logs
+          # Replace app-worker.service with your workload service name.
+          systemctl stop app-worker.service || true
+          # Replace this with your own durable checkpoint upload step, such as Azure Blob Storage.
+          sync
+          exit 0
         fi
-        sleep 5
+        sleep 1
       done
       HANDLER
+
+      cat > /etc/systemd/system/spot-eviction-handler.service <<'SERVICE'
+      [Unit]
+      Description=Azure Spot eviction handler
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/local/bin/spot-eviction-handler.sh
+      Restart=on-failure
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+      SERVICE
+
       chmod +x /usr/local/bin/spot-eviction-handler.sh
-      nohup /usr/local/bin/spot-eviction-handler.sh &
+      systemctl daemon-reload
+      systemctl enable --now spot-eviction-handler.service
     EOT
     )
   })
@@ -166,19 +186,20 @@ tofu init
 tofu plan
 tofu apply
 
-# Check current Spot VM state
+# Check current Spot VM power state
 az vm show \
   --resource-group <rg> \
   --name <vm-name> \
-  --query "{Priority: priority, EvictionPolicy: evictionPolicy, State: provisioningState}"
+  --show-details \
+  --query "{Priority: priority, EvictionPolicy: evictionPolicy, PowerState: powerState}"
 
-# Check Spot pricing for a VM size
+# Check whether a VM size supports Spot in a region
 az vm list-skus \
   --location eastus \
   --size Standard_D4s_v3 \
-  --query "[].{Name: name, SpotAvailable: capabilities[?name=='LowPriorityCapable'].value}"
+  --query "[].{Name: name, SpotCapable: capabilities[?name=='LowPriorityCapable'].value}"
 ```
 
 ## Conclusion
 
-Use `eviction_policy = "Delete"` for stateless batch workloads (avoids ongoing disk charges after eviction) and `eviction_policy = "Deallocate"` for workloads that need to resume from where they stopped. Setting `max_bid_price = -1` means you pay up to the on-demand price and reduce eviction frequency-useful for longer batch jobs. For VM Scale Sets, deploy across multiple zones with `spot_restore` enabled to automatically replace evicted instances. Always poll the Azure Scheduled Events endpoint (http://169.254.169.254/metadata/scheduledevents) from within Spot VMs to get the 30-second eviction warning and save checkpoint state.
+Use `eviction_policy = "Delete"` for stateless batch workloads (avoids ongoing disk charges after eviction) and `eviction_policy = "Deallocate"` for workloads that need to resume from where they stopped. Setting `max_bid_price = -1` means the VM will not be evicted for price reasons, while never charging more than the on-demand price, useful when you only want capacity-based evictions. For VM Scale Sets, deploy across multiple zones with `spot_restore` enabled to automatically attempt to restore evicted instances. Always poll the Azure Scheduled Events endpoint (http://169.254.169.254/metadata/scheduledevents) from within Spot VMs to receive best-effort eviction notices, which Azure attempts to deliver up to 30 seconds before eviction, and save checkpoint state.
