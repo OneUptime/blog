@@ -25,7 +25,7 @@ resource "azurerm_policy_definition" "require_https" {
     if = {
       allOf = [
         { field = "type", equals = "Microsoft.Storage/storageAccounts" },
-        { field = "Microsoft.Storage/storageAccounts/supportsHttpsTrafficOnly", equals = "false" }
+        { field = "Microsoft.Storage/storageAccounts/supportsHttpsTrafficOnly", notEquals = "true" }
       ]
     }
     then = { effect = "deny" }
@@ -43,8 +43,16 @@ resource "azurerm_policy_definition" "require_tls12" {
       allOf = [
         { field = "type", equals = "Microsoft.Storage/storageAccounts" },
         {
-          field   = "Microsoft.Storage/storageAccounts/minimumTlsVersion"
-          notEquals = "TLS1_2"
+          anyOf = [
+            {
+              field     = "Microsoft.Storage/storageAccounts/minimumTlsVersion"
+              notEquals = "TLS1_2"
+            },
+            {
+              field  = "Microsoft.Storage/storageAccounts/minimumTlsVersion"
+              exists = "false"
+            }
+          ]
         }
       ]
     }
@@ -81,7 +89,7 @@ resource "azurerm_policy_set_definition" "storage_security" {
 
   # Include built-in policies by their ID
   policy_definition_reference {
-    policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae30-26a93ef643f9"
+    policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/4fa4b6c0-31ca-4c0d-b10d-24b96f62a751"
     reference_id         = "builtin-storage-public-access"
   }
 }
@@ -124,6 +132,8 @@ resource "azurerm_policy_set_definition" "cis_baseline" {
 
 ```hcl
 # Assign the storage security initiative to a subscription
+data "azurerm_subscription" "current" {}
+
 resource "azurerm_subscription_policy_assignment" "storage_security_assignment" {
   name                 = "storage-security-assignment"
   subscription_id      = data.azurerm_subscription.current.id
