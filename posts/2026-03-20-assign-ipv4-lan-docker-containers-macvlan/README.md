@@ -9,6 +9,7 @@ Description: Configure Docker macvlan networking so containers receive IPv4 addr
 ## Introduction
 
 Using LAN IPv4 addresses for Docker containers removes the need for port mapping and NAT, letting containers behave like physical servers. The key is coordinating the container IP range with your DHCP server to avoid conflicts.
+The macvlan driver works on Linux hosts; it is not supported on Docker Desktop for Mac or Windows.
 
 ## Planning the Address Space
 
@@ -16,9 +17,9 @@ Before configuring, reserve a range in your LAN DHCP server's exclusion list:
 
 | LAN | DHCP Range | Docker Container Range |
 |---|---|---|
-| 192.168.1.0/24 | 192.168.1.10–.199 | 192.168.1.220–.250 |
+| 192.168.1.0/24 | 192.168.1.10–.199 | 192.168.1.220–.254 |
 
-The container range (192.168.1.220–.250) must be excluded from the DHCP pool to prevent conflicts.
+The container range (192.168.1.220–.254) must be excluded from the DHCP pool to prevent conflicts. In this example, `.220–.223` are reserved for fixed container IPs and `.224–.254` are available for Docker auto-assignment.
 
 ## Creating the macvlan Network
 
@@ -29,12 +30,12 @@ docker network create \
   --driver macvlan \
   --subnet 192.168.1.0/24 \
   --gateway 192.168.1.1 \
-  --ip-range 192.168.1.220/27 \
+  --ip-range 192.168.1.224/27 \
   --opt parent=eth0 \
   lan-containers
 ```
 
-`192.168.1.220/27` covers `.220–.251` - a clean 32-address block.
+`192.168.1.224/27` is a clean 32-address block; usable auto-assigned container addresses are `.225–.254`.
 
 ## Assigning LAN IPs to Containers
 
@@ -52,7 +53,7 @@ docker run -d \
   --network lan-containers \
   --ip 192.168.1.220 \
   --restart unless-stopped \
-  -e WEBPASSWORD=admin \
+  -e FTLCONF_webserver_api_password=admin \
   pihole/pihole:latest
 ```
 
@@ -70,8 +71,6 @@ curl http://192.168.1.220/admin
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   pihole:
     image: pihole/pihole:latest
@@ -94,7 +93,7 @@ networks:
       config:
         - subnet: 192.168.1.0/24
           gateway: 192.168.1.1
-          ip_range: 192.168.1.220/27
+          ip_range: 192.168.1.224/27
 ```
 
 ## Host-to-Container Communication (Important)
@@ -103,11 +102,11 @@ By default, macvlan isolates the Docker host from its containers. The host canno
 
 ## Registering Container IPs in DHCP/DNS
 
-For services to be findable by name, add DNS entries on your router or internal DNS:
+For services with fixed container IPs, add DNS entries on your router or internal DNS and use a home-only domain such as `home.arpa`:
 
 ```text
-pihole.local → 192.168.1.220
-homeassistant.local → 192.168.1.221
+pihole.home.arpa → 192.168.1.220
+homeassistant.home.arpa → 192.168.1.221
 ```
 
 ## Conclusion
