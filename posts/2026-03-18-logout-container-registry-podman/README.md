@@ -10,7 +10,7 @@ Description: Learn how to securely log out from container registries in Podman, 
 
 > Logging out from registries is essential for security hygiene, especially on shared systems and CI/CD environments.
 
-After working with private container registries, it is important to remove stored credentials when they are no longer needed. The `podman logout` command removes authentication tokens from the credential store, preventing unauthorized access to your registry accounts. This guide covers all aspects of logging out from registries in Podman.
+After working with private container registries, it is important to remove stored credentials when they are no longer needed. The `podman logout` command removes cached credentials from the authentication file or configured credential store, preventing unauthorized access to your registry accounts. This guide covers all aspects of logging out from registries in Podman.
 
 ---
 
@@ -110,12 +110,14 @@ echo "Cleaning up registry credentials..."
 # Log out from all registries
 podman logout --all 2>/dev/null || true
 
-# Remove the auth file entirely for extra safety
-AUTH_FILE="${XDG_RUNTIME_DIR}/containers/auth.json"
-if [ -f "$AUTH_FILE" ]; then
-    # Securely overwrite before deleting
-    shred -u "$AUTH_FILE" 2>/dev/null || rm -f "$AUTH_FILE"
-    echo "Auth file removed: $AUTH_FILE"
+# Remove the default Linux auth file entirely for extra safety
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    AUTH_FILE="${XDG_RUNTIME_DIR}/containers/auth.json"
+    if [ -f "$AUTH_FILE" ]; then
+        # Securely overwrite before deleting
+        shred -u "$AUTH_FILE" 2>/dev/null || rm -f "$AUTH_FILE"
+        echo "Auth file removed: $AUTH_FILE"
+    fi
 fi
 
 # Clean up any custom auth files used in the pipeline
@@ -157,10 +159,10 @@ On shared machines, take extra precautions.
 # Log out from all registries
 podman logout --all
 
-# Remove all Podman temporary data for the current user
+# Reset all Podman storage for the current user
 podman system reset --force 2>/dev/null || true
 
-# Clear any cached images that might contain registry tokens
+# Remove unused local images, if desired
 podman image prune --all --force
 ```
 
