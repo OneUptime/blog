@@ -19,20 +19,23 @@ Rancher projects group one or more Kubernetes namespaces together and let you as
 Rancher ships with three built-in project roles:
 
 - **Project Owner**: Full control over the project, including managing members, namespaces, and all workloads within the project.
-- **Project Member**: Can manage workloads, services, and configurations within the project but cannot manage project membership.
-- **Read-Only**: Can view all resources within the project but cannot modify anything.
+- **Project Member**: Can manage project-scoped resources such as namespaces, workloads, services, and configurations within the project but cannot manage project membership.
+- **Read Only**: Can view all resources within the project but cannot modify anything.
 
 ## Step 1: Navigate to the Project
 
 1. Log in to the Rancher UI.
-2. Click the **hamburger menu** and select your cluster under **Explore Cluster**.
-3. Click **Cluster > Projects/Namespaces** in the left sidebar.
-4. Locate the project you want to manage and click on its name.
+2. Click **☰ > Cluster Management**.
+3. On the **Clusters** page, locate your cluster and click **Explore**.
+4. Click **Cluster > Projects/Namespaces** in the left sidebar.
+5. Locate the project you want to manage.
 
 ## Step 2: Access Project Members
 
-1. Within the project view, click **Project** in the left sidebar.
-2. Select **Members** from the dropdown menu.
+1. On the **Projects/Namespaces** page, go to the project you want to manage.
+2. Next to the **Create Namespace** button above the project name, click **☰**.
+3. Select **Edit Config**.
+4. Open the **Members** tab.
 
 This displays all users and groups assigned to this project and their current roles.
 
@@ -43,7 +46,7 @@ This displays all users and groups assigned to this project and their current ro
 3. In the **Project Permissions** dropdown, choose the appropriate role:
    - **Project Owner** for full project administration
    - **Project Member** for workload management
-   - **Read-Only** for view-only access
+   - **Read Only** for view-only access
    - Any custom project roles you have created
 4. Click **Create**.
 
@@ -53,8 +56,8 @@ The user will immediately gain access to all namespaces within the project accor
 
 For team-based access, assign roles to groups from your identity provider:
 
-1. Go to **Project > Members** and click **Add**.
-2. Switch the member type to **Group**.
+1. On the project's **Members** tab, click **Add**.
+2. Use the member type dropdown to select **Group**.
 3. Search for and select the group.
 4. Choose the project role.
 5. Click **Create**.
@@ -63,27 +66,37 @@ Example scenarios:
 
 - Assign the `developers` group as **Project Member** on the development project
 - Assign the `qa-team` group as **Project Member** on the staging project
-- Assign the `managers` group as **Read-Only** on the production project
+- Assign the `managers` group as **Read Only** on the production project
 
 ## Step 5: Assign Project Roles via the Rancher API
 
-Use the Rancher API for programmatic role assignment:
+Use the Rancher management API for programmatic role assignment:
 
 ```bash
-# Get the project ID
-
-curl -s 'https://<rancher-url>/v3/projects' \
-  -H 'Authorization: Bearer <api-token>' | jq '.data[] | {id, name}'
+# List projects with their project name and backing namespace
+curl -s 'https://<rancher-url>/apis/management.cattle.io/v3/projects' \
+  -H 'Authorization: Bearer <api-token>' |
+  jq '.items[] | {
+    projectName: (.spec.clusterName + ":" + .metadata.name),
+    displayName: .spec.displayName,
+    backingNamespace: .status.backingNamespace
+  }'
 
 # Assign a user as Project Member
 curl -X POST \
-  'https://<rancher-url>/v3/projectroletemplatebindings' \
+  'https://<rancher-url>/apis/management.cattle.io/v3/namespaces/<project-backing-namespace>/projectroletemplatebindings' \
   -H 'Authorization: Bearer <api-token>' \
   -H 'Content-Type: application/json' \
   -d '{
-    "projectId": "c-m-xxxxx:p-xxxxx",
-    "roleTemplateId": "project-member",
-    "userPrincipalId": "local://<user-id>"
+    "apiVersion": "management.cattle.io/v3",
+    "kind": "ProjectRoleTemplateBinding",
+    "metadata": {
+      "generateName": "prtb-",
+      "namespace": "<project-backing-namespace>"
+    },
+    "projectName": "c-m-xxxxx:p-xxxxx",
+    "roleTemplateName": "project-member",
+    "userPrincipalName": "<user-principal>"
   }'
 ```
 
@@ -91,13 +104,19 @@ To assign a group:
 
 ```bash
 curl -X POST \
-  'https://<rancher-url>/v3/projectroletemplatebindings' \
+  'https://<rancher-url>/apis/management.cattle.io/v3/namespaces/<project-backing-namespace>/projectroletemplatebindings' \
   -H 'Authorization: Bearer <api-token>' \
   -H 'Content-Type: application/json' \
   -d '{
-    "projectId": "c-m-xxxxx:p-xxxxx",
-    "roleTemplateId": "project-member",
-    "groupPrincipalId": "openldap_group://cn=developers,ou=groups,dc=example,dc=com"
+    "apiVersion": "management.cattle.io/v3",
+    "kind": "ProjectRoleTemplateBinding",
+    "metadata": {
+      "generateName": "prtb-",
+      "namespace": "<project-backing-namespace>"
+    },
+    "projectName": "c-m-xxxxx:p-xxxxx",
+    "roleTemplateName": "project-member",
+    "groupPrincipalName": "openldap_group://cn=developers,ou=groups,dc=example,dc=com"
   }'
 ```
 
@@ -133,13 +152,12 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: configmap-editor
-spec:
-  context: project
-  displayName: ConfigMap Editor
-  rules:
-    - apiGroups: [""]
-      resources: ["configmaps"]
-      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+context: project
+displayName: ConfigMap Editor
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ```
 
 Apply the role template:
@@ -157,7 +175,7 @@ Check that the assigned role works correctly by switching to the user's perspect
 ```bash
 # As the assigned user, check permissions within a project namespace
 kubectl auth can-i list pods -n <project-namespace>
-kubectl auth can-i create deployments -n <project-namespace>
+kubectl auth can-i create deployments.apps -n <project-namespace>
 
 # This should be denied if the user only has project-level access
 kubectl auth can-i list nodes
@@ -169,15 +187,15 @@ You can also verify through the Rancher UI by logging in as the assigned user an
 
 To change a role:
 
-1. Go to **Project > Members**.
-2. Click the **three-dot menu** next to the user or group.
-3. Select **Edit** and choose a different role.
-4. Click **Save**.
+1. Go to the project's **Members** tab.
+2. Remove the existing membership entry for the user or group.
+3. Add the user or group again.
+4. Assign the new role and click **Create**.
 
 To remove access entirely:
 
-1. Click the **three-dot menu** next to the user or group.
-2. Select **Delete**.
+1. Go to the project's **Members** tab.
+2. Select the user or group and click **Delete**.
 3. Confirm the removal.
 
 ## Best Practices
@@ -192,7 +210,7 @@ To remove access entirely:
 
 If a user cannot access project resources:
 
-1. Confirm the user is listed under **Project > Members** with the correct role.
+1. Confirm the user is listed on the project's **Members** tab with the correct role.
 2. Verify that the project contains the expected namespaces.
 3. Check that the user does not have a conflicting cluster-level restriction.
 4. Ensure the cluster is in an **Active** state.
