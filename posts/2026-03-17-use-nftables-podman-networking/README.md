@@ -10,7 +10,7 @@ Description: Learn how to use nftables to manage firewall rules for Podman conta
 
 > nftables is the successor to iptables and provides a cleaner syntax for managing packet filtering rules on Podman hosts.
 
-Modern Linux distributions are migrating from iptables to nftables as the default packet filtering framework. Podman versions 4.x and later support nftables natively. This guide covers how to write nftables rules that control traffic to and from Podman containers.
+Modern Linux distributions are migrating from iptables to nftables as the default packet filtering framework. Podman 4.x and later use Netavark as the default network backend on new systems, and Netavark supports nftables as a firewall driver. This guide assumes rootful Podman bridge networking with Netavark configured to use nftables, and covers how to write nftables rules that control traffic to and from Podman containers.
 
 ---
 
@@ -31,8 +31,8 @@ sudo nft list ruleset
 # Run a container with a published port
 podman run -d --name webapp -p 8080:80 docker.io/library/nginx:alpine
 
-# List the nftables ruleset to see Podman-created rules
-sudo nft list ruleset | grep -A 5 "podman"
+# List the nftables ruleset to see Netavark-created rules
+sudo nft list ruleset | grep -A 5 "netavark"
 ```
 
 ## Creating a Table for Container Rules
@@ -41,8 +41,8 @@ sudo nft list ruleset | grep -A 5 "podman"
 # Create a dedicated table for container firewall rules
 sudo nft add table inet podman-filter
 
-# Add an input chain for traffic to containers
-sudo nft add chain inet podman-filter forward {type filter hook forward priority 0\; policy accept\;}
+# Add a forward chain for traffic to containers
+sudo nft 'add chain inet podman-filter forward { type filter hook forward priority 0; policy accept; }'
 ```
 
 ## Restricting Access to a Published Port
@@ -64,7 +64,7 @@ sudo nft add rule inet podman-filter forward \
 ## Logging Container Traffic
 
 ```bash
-# Add a logging rule before the drop rule
+# Add a logging rule at the beginning of the chain
 sudo nft insert rule inet podman-filter forward \
   ip daddr "$CONTAINER_IP" tcp dport 80 \
   log prefix "podman-webapp: " level info
@@ -76,11 +76,11 @@ sudo journalctl -k --grep "podman-webapp" --no-pager -n 10
 ## Rate Limiting Connections
 
 ```bash
-# Limit new connections to 20 per minute
-sudo nft add rule inet podman-filter forward \
+# Drop new connections above 20 per minute
+sudo nft insert rule inet podman-filter forward \
   ip daddr "$CONTAINER_IP" tcp dport 80 \
   ct state new \
-  limit rate 20/minute accept
+  limit rate over 20/minute drop
 ```
 
 ## Blocking Outbound Traffic from Containers
