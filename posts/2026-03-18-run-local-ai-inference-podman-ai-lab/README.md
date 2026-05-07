@@ -21,8 +21,10 @@ Running AI inference locally means your prompts and responses never leave your m
 
 podman machine inspect --format 'CPUs: {{.Resources.CPUs}}, Memory: {{.Resources.Memory}}MB'
 
-# Ensure you have at least one model downloaded
-podman machine ssh ls -lh /var/lib/containers/ai-lab/models/
+# Ensure you have at least one model downloaded in Podman AI Lab
+# The default local model directory is under the AI Lab user data directory,
+# for example:
+ls -lh "$HOME/aistudio/models/"
 
 # Recommended minimums for inference:
 # - 4 CPUs for 7B parameter models
@@ -34,22 +36,26 @@ podman machine ssh ls -lh /var/lib/containers/ai-lab/models/
 
 ### Using the Podman Desktop UI
 
-1. Open Podman Desktop and navigate to **AI Lab > Models**.
-2. Find your downloaded model and click **Start Inference**.
-3. The service will spin up a container running an inference server.
-4. Note the port number displayed (usually 8080 or similar).
+1. Open Podman Desktop and click the Podman AI Lab icon in the left navigation pane.
+2. In the Podman AI Lab navigation bar, click **Services**.
+3. Click **New Model Service**, select your downloaded model, and edit the port number if needed.
+4. Click **Create service**.
+5. The service will spin up a container running an inference server. Note the port number displayed.
 
 ### Using the CLI
 
 ```bash
-# Start a llama.cpp-based inference server with a downloaded model
+# Start a llama.cpp-based inference server with a downloaded GGUF model
+# Replace the host path and model filename with the model you downloaded.
 podman run -d \
   --name ai-inference \
   -p 8080:8080 \
-  -v /var/lib/containers/ai-lab/models:/models:ro \
+  -v "$HOME/aistudio/models:/models:ro" \
   --label ai-lab-model=true \
-  ghcr.io/containers/ai-lab-model-service:latest \
+  rlcr.io/ramalama/llamacpp-cpu-distroless:latest \
   --model /models/mistral-7b-instruct-q4_0.gguf \
+  --host 0.0.0.0 \
+  --port 8080 \
   --ctx-size 4096 \
   --threads 4
 
@@ -105,7 +111,7 @@ from openai import OpenAI
 # Point the client at the local inference server
 client = OpenAI(
     base_url="http://localhost:8080/v1",
-    api_key="not-needed"  # Local server does not require auth
+    api_key="sk-no-key-required"  # Local server does not require auth
 )
 
 # Send a chat completion request
@@ -142,9 +148,12 @@ podman stop ai-inference && podman rm ai-inference
 podman run -d \
   --name ai-inference \
   -p 8080:8080 \
-  -v /var/lib/containers/ai-lab/models:/models:ro \
-  ghcr.io/containers/ai-lab-model-service:latest \
+  -v "$HOME/aistudio/models:/models:ro" \
+  --label ai-lab-model=true \
+  rlcr.io/ramalama/llamacpp-cpu-distroless:latest \
   --model /models/codellama-7b-instruct-q4_0.gguf \
+  --host 0.0.0.0 \
+  --port 8080 \
   --ctx-size 8192 \
   --threads 8 \
   --batch-size 512
@@ -183,8 +192,8 @@ podman stop ai-inference
 podman rm ai-inference
 
 # To stop all AI Lab inference containers
-podman stop $(podman ps --filter "label=ai-lab-model" -q)
-podman rm $(podman ps -a --filter "label=ai-lab-model" -q)
+podman ps --filter "label=ai-lab-model=true" -q | xargs -r podman stop
+podman ps -a --filter "label=ai-lab-model=true" -q | xargs -r podman rm
 ```
 
 ## Summary
