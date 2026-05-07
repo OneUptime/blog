@@ -67,6 +67,9 @@ exporters:
     tls:
       insecure: true
 
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
   prometheus:
     endpoint: 0.0.0.0:8889
 
@@ -85,11 +88,16 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [debug]
+      exporters: [otlphttp/loki, debug]
 
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Run the collector:
@@ -102,7 +110,7 @@ podman run -d \
   -p 4318:4318 \
   -p 8888:8888 \
   -p 8889:8889 \
-  -v ~/otel/config/otel-collector-config.yml:/etc/otelcol/config.yaml:ro,Z \
+  -v ~/otel/config/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro,Z \
   otel/opentelemetry-collector-contrib:latest
 ```
 
@@ -122,7 +130,7 @@ services:
       - "4318:4318"
       - "8889:8889"
     volumes:
-      - ./otel/config/otel-collector-config.yml:/etc/otelcol/config.yaml:ro
+      - ./otel/config/otel-collector-config.yml:/etc/otelcol-contrib/config.yaml:ro,Z
 
   jaeger:
     image: jaegertracing/all-in-one:latest
@@ -136,7 +144,7 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
       - prometheus-data:/prometheus
 
   grafana:
@@ -146,7 +154,7 @@ services:
       - "3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro,Z
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
 
@@ -269,8 +277,8 @@ func main() {
         start := time.Now()
 
         span.SetAttributes(
-            attribute.String("http.method", r.Method),
-            attribute.String("http.path", r.URL.Path),
+            attribute.String("http.request.method", r.Method),
+            attribute.String("url.path", r.URL.Path),
         )
 
         // Simulate work
@@ -377,15 +385,10 @@ processors:
         type: probabilistic
         probabilistic:
           sampling_percentage: 10
-
-# Transform and enrich data
-processors:
   transform:
     trace_statements:
-      - context: span
-        statements:
-          - set(attributes["deployment.environment"], "production")
-          - set(attributes["service.namespace"], "myapp")
+      - set(resource.attributes["deployment.environment.name"], "production")
+      - set(resource.attributes["service.namespace"], "myapp")
 
 service:
   pipelines:
@@ -395,14 +398,15 @@ service:
       exporters: [otlp/jaeger]
 ```
 
-## Environment Variable Auto-Configuration
+## Environment Variable Configuration
 
-Use environment variables for zero-code configuration:
+If your application already uses the OpenTelemetry SDK or a zero-code auto-instrumentation agent, you can configure it with environment variables:
 
 ```bash
 podman run -d \
   --name my-service \
   -e OTEL_SERVICE_NAME=my-service \
+  -e OTEL_TRACES_EXPORTER=otlp \
   -e OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 \
   -e OTEL_EXPORTER_OTLP_PROTOCOL=grpc \
   -e OTEL_TRACES_SAMPLER=parentbased_traceidratio \
