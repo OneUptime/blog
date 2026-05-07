@@ -32,7 +32,7 @@ nmcli connection show "Wired connection 1"
 nmcli connection modify "Wired connection 1" \
   +ipv4.addresses "192.168.1.20/24"
 
-# Apply the changes
+# Reactivate the connection to apply the profile change
 nmcli connection up "Wired connection 1"
 ```
 
@@ -44,7 +44,7 @@ The `+` prefix appends to the existing address list rather than replacing it.
 
 ```bash
 # Show addresses on the interface
-ip addr show eth0
+ip addr show dev <interface-name>
 
 # Or check via nmcli
 nmcli connection show "Wired connection 1" | grep ipv4.addresses
@@ -76,10 +76,10 @@ nmcli connection up "Wired connection 1"
 
 ---
 
-## Set Address with Gateway
+## Set the Connection Gateway
 
 ```bash
-# Add secondary address and specify gateway
+# Add an address and set the connection's default gateway
 nmcli connection modify "Wired connection 1" \
   +ipv4.addresses "10.0.0.5/24" \
   ipv4.gateway "10.0.0.1"
@@ -87,8 +87,10 @@ nmcli connection modify "Wired connection 1" \
 nmcli connection up "Wired connection 1"
 ```
 
+`ipv4.gateway` sets the default gateway for the connection profile; it is not a per-address setting.
+
 ---
 
 ## Summary
 
-Use `nmcli connection modify` with the `+ipv4.addresses` argument to append a secondary IPv4 address to any NetworkManager-managed interface. Apply the change with `nmcli connection up`. This approach is persistent across reboots and integrates with NetworkManager's connection profiles.
+Use `nmcli connection modify` with the `+ipv4.addresses` argument to append a secondary IPv4 address to any NetworkManager-managed interface. Reactivate the connection with `nmcli connection up` to apply the profile change. This approach is persistent across reboots and integrates with NetworkManager's connection profiles.
