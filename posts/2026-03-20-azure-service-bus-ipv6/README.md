@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, IPv6, Service Bus, Messaging, Private Endpoint, Dual-Stack
 
-Description: Configure Azure Service Bus to accept connections over IPv6 through Private Endpoints in dual-stack VNets and configure IP filtering rules for IPv6 client addresses.
+Description: Configure Azure Service Bus to accept connections over private IPv6 through Private Endpoints in dual-stack VNets. For public endpoints, Service Bus IP filtering remains IPv4-only.
 
 ## Introduction
 
-Azure Service Bus supports IPv6 connectivity through Private Endpoints in dual-stack VNets. When a Private Endpoint is deployed in an IPv6-enabled subnet, clients can connect to Service Bus over IPv6. Additionally, Service Bus network rules support IPv6 address ranges for IP filtering. This enables message-based architectures to function in IPv6-only or dual-stack environments.
+Azure Service Bus can be reached over private IPv6 through Private Endpoints in dual-stack VNets. Create the Private Endpoint as `DualStack` and use the recommended private DNS zone for Service Bus so the namespace FQDN resolves to the private endpoint address inside the VNet. Service Bus IP firewall rules on the public endpoint are currently IPv4-only.
 
 ## Create Service Bus with Private Endpoint
 
@@ -38,38 +38,36 @@ az network private-endpoint create \
     --subnet subnet-private \
     --private-connection-resource-id "$SB_ID" \
     --group-id namespace \
-    --connection-name connection-servicebus
+    --connection-name connection-servicebus \
+    --ip-version-type DualStack
 
 # Create private DNS zone for Service Bus
 az network private-dns zone create \
     --resource-group "$RG" \
-    --name "servicebus.windows.net"
+    --name "privatelink.servicebus.windows.net"
 
 az network private-dns link vnet create \
     --resource-group "$RG" \
-    --zone-name "servicebus.windows.net" \
+    --zone-name "privatelink.servicebus.windows.net" \
     --name link-vnet \
     --virtual-network vnet-dualstack \
     --registration-enabled false
 
-# Add DNS record for the private endpoint
-PRIVATE_IP=$(az network private-endpoint show \
+# Attach the private DNS zone to the private endpoint
+az network private-endpoint dns-zone-group create \
     --resource-group "$RG" \
-    --name pe-servicebus \
-    --query "customDnsConfigs[0].ipAddresses[0]" \
-    --output tsv)
-
-az network private-dns record-set a add-record \
-    --resource-group "$RG" \
-    --zone-name "servicebus.windows.net" \
-    --record-set-name "sb-myapp" \
-    --ipv4-address "$PRIVATE_IP"
+    --endpoint-name pe-servicebus \
+    --name zonegroup-servicebus \
+    --private-dns-zone "privatelink.servicebus.windows.net" \
+    --zone-name "privatelink.servicebus.windows.net"
 ```
 
-## Terraform Service Bus with IPv6
+## Terraform Service Bus Private Endpoint
+
+The AzureRM provider can create the Service Bus namespace, private endpoint, and DNS zone group. If you need to force the private endpoint to `DualStack`, configure that setting through Azure CLI or ARM because the documented `azurerm_private_endpoint` arguments don't expose it.
 
 ```hcl
-# service_bus_ipv6.tf
+# service_bus_private_endpoint.tf
 
 resource "azurerm_servicebus_namespace" "main" {
   name                = "sb-myapp"
@@ -77,18 +75,18 @@ resource "azurerm_servicebus_namespace" "main" {
   resource_group_name = azurerm_resource_group.main.name
   sku                 = "Premium"
 
-  # Enable public network access only for specific IPs
+  # Disable public network access and use private endpoints only
   public_network_access_enabled = false
 
   tags = { Name = "service-bus" }
 }
 
-# Private endpoint in dual-stack subnet
+# Private endpoint and DNS zone group
 resource "azurerm_private_endpoint" "servicebus" {
   name                = "pe-servicebus"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  subnet_id           = azurerm_subnet.private.id  # IPv6-enabled subnet
+  subnet_id           = azurerm_subnet.private.id
 
   private_service_connection {
     name                           = "conn-servicebus"
@@ -118,14 +116,14 @@ resource "azurerm_private_dns_zone_virtual_network_link" "servicebus" {
 }
 ```
 
-## Add IPv6 Network Rules
+## Add IPv4 Network Rules
 
 ```bash
-# Add IPv6 CIDR to Service Bus network rules (public endpoint)
+# Service Bus IP firewall rules for the public endpoint are IPv4-only
 az servicebus namespace network-rule-set ip-rule add \
     --resource-group "$RG" \
     --namespace-name sb-myapp \
-    --ip-mask "2001:db8:allowed::/48" \
+    --ip-mask "203.0.113.0/24" \
     --action Allow
 
 # List current network rules
@@ -140,22 +138,9 @@ az servicebus namespace network-rule-set show \
 ```python
 from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
-# Connection over IPv6 via Private Endpoint
-# The private endpoint DNS resolves to IPv6 when in dual-stack subnet
+# The namespace FQDN stays the same. With private DNS configured in the VNet,
+# it resolves to the private endpoint address.
 connection_str = "Endpoint=sb://sb-myapp.servicebus.windows.net/;..."
-
-# Force IPv6 DNS resolution (Python)
-import socket
-original_getaddrinfo = socket.getaddrinfo
-
-def ipv6_preferred_getaddrinfo(*args, **kwargs):
-    results = original_getaddrinfo(*args, **kwargs)
-    # Sort IPv6 first
-    ipv6 = [r for r in results if r[0] == socket.AF_INET6]
-    ipv4 = [r for r in results if r[0] == socket.AF_INET]
-    return ipv6 + ipv4
-
-socket.getaddrinfo = ipv6_preferred_getaddrinfo
 
 # Create Service Bus client
 client = ServiceBusClient.from_connection_string(connection_str)
@@ -165,9 +150,9 @@ with client:
     with sender:
         message = ServiceBusMessage("Hello over IPv6!")
         sender.send_messages(message)
-        print("Message sent over IPv6 Private Endpoint")
+        print("Message sent through the Service Bus private endpoint")
 ```
 
 ## Conclusion
 
-Azure Service Bus IPv6 connectivity is achieved through Private Endpoints deployed in dual-stack subnets. The Private Endpoint gets both IPv4 and IPv6 addresses from the subnet, allowing clients in the VNet to connect over either protocol. Use private DNS zones to resolve the Service Bus namespace to the Private Endpoint addresses. For public access, configure IP filtering rules with IPv6 CIDR blocks. The Premium SKU is required for Private Endpoint support.
+Azure Service Bus private IPv6 connectivity is achieved through Private Endpoints in dual-stack VNets. Create the private endpoint as `DualStack` and use the `privatelink.servicebus.windows.net` private DNS zone so the namespace FQDN resolves correctly inside the VNet. Service Bus public IP filtering remains IPv4-only. The Premium SKU is required for Private Endpoint support.
