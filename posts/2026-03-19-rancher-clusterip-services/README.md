@@ -17,7 +17,7 @@ ClusterIP is the default Kubernetes service type that provides internal-only loa
 
 ## Understanding ClusterIP Services
 
-A ClusterIP service receives a stable virtual IP address within the cluster's service CIDR range. Other pods can reach the service using this IP or the DNS name. The service load-balances traffic across all pods matching its selector.
+A ClusterIP service receives a stable virtual IP address within the cluster's service CIDR range. Other pods can reach the service using this IP or the DNS name. The service load-balances traffic across ready pods matching its selector.
 
 ## Step 1: Create a ClusterIP Service via kubectl
 
@@ -62,16 +62,16 @@ Since ClusterIP is the default type, you can omit `type: ClusterIP` and it will 
 
 ## Step 3: Access the Service from Other Pods
 
-ClusterIP services are accessible via DNS within the cluster. The DNS format is:
+ClusterIP services are accessible via DNS within the cluster. The fully qualified DNS format is:
 
-```xml
-<service-name>.<namespace>.svc.cluster.local
+```text
+<service-name>.<namespace>.svc.<cluster-domain>
 ```
 
-Test connectivity from another pod:
+Many clusters use `cluster.local` as the default cluster domain. Test connectivity from another pod in the same namespace:
 
 ```bash
-kubectl run test-pod --image=busybox --rm -it -- sh
+kubectl run test-pod --image=busybox --rm -it --restart=Never -- sh
 
 # Inside the pod
 
@@ -82,7 +82,7 @@ wget -qO- http://backend-service
 
 ## Step 4: Configure a Headless Service
 
-A headless service (ClusterIP set to None) does not perform load balancing. Instead, DNS returns the IP addresses of all individual pods:
+A headless service (ClusterIP set to None) does not perform load balancing. Instead, DNS returns the IP addresses of all individual ready pods:
 
 ```yaml
 apiVersion: v1
@@ -102,8 +102,8 @@ spec:
 This is useful for stateful applications where clients need to connect to specific pods, such as databases or message queues.
 
 ```bash
-# DNS lookup returns all pod IPs
-kubectl run test --image=busybox --rm -it -- nslookup headless-backend.default.svc.cluster.local
+# DNS lookup returns all ready pod IPs
+kubectl run test --image=busybox --rm -it --restart=Never -- nslookup headless-backend.default.svc.cluster.local
 ```
 
 ## Step 5: Configure Multiple Ports
@@ -154,11 +154,7 @@ spec:
     targetPort: 8080
 ```
 
-The IP must be within the cluster's service CIDR range and not already assigned. Check the range:
-
-```bash
-kubectl cluster-info dump | grep service-cluster-ip-range
-```
+The IP must be within the cluster's service CIDR range and not already assigned. Check your cluster configuration or Kubernetes distribution documentation for the configured `service-cluster-ip-range` before choosing a static IP.
 
 ## Step 7: Create an ExternalName Service
 
@@ -175,9 +171,9 @@ spec:
   externalName: db.external-provider.com
 ```
 
-Pods can now reach the external database using `external-db.default.svc.cluster.local`, which resolves to `db.external-provider.com`.
+Pods can now resolve `external-db.default.svc.<cluster-domain>` to `db.external-provider.com`.
 
-## Step 8: Configure Service with Endpoint Slices
+## Step 8: Configure Service with EndpointSlices
 
 For services that need to point to external IPs without selectors:
 
@@ -190,7 +186,8 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 80
 ---
 apiVersion: discovery.k8s.io/v1
@@ -200,10 +197,13 @@ metadata:
   namespace: default
   labels:
     kubernetes.io/service-name: external-service
+    endpointslice.kubernetes.io/managed-by: cluster-admins
 spec:
   addressType: IPv4
   ports:
-    - port: 80
+    - name: http
+      protocol: TCP
+      port: 80
   endpoints:
     - addresses:
       - "192.168.1.100"
@@ -213,12 +213,11 @@ spec:
 
 ## Step 9: Monitor Service Health
 
-Verify the service and its endpoints:
+Verify the service and its EndpointSlices:
 
 ```bash
 kubectl get svc backend-service -n default
 kubectl describe svc backend-service -n default
-kubectl get endpoints backend-service -n default
 kubectl get endpointslices -l kubernetes.io/service-name=backend-service -n default
 ```
 
