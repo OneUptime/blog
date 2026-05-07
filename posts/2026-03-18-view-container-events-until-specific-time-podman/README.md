@@ -36,7 +36,7 @@ Absolute timestamps give you precise control over the end boundary.
 podman events --until "2026-03-18T12:00:00"
 
 # View events up to a specific date (end of day)
-podman events --until "2026-03-18"
+podman events --until "2026-03-18T23:59:59"
 ```
 
 ## Creating Bounded Time Windows
@@ -107,7 +107,7 @@ echo ""
 # Break down by container
 echo "Events by container:"
 podman events --since "$START_TIME" --until "$END_TIME" --format json 2>/dev/null | \
-    jq -r '.Actor.Attributes.name // "unnamed"' | sort | uniq -c | sort -rn
+    jq -r '.Name // "unnamed"' | sort | uniq -c | sort -rn
 echo ""
 
 # Full event timeline
@@ -158,14 +158,14 @@ podman events \
 
 ## Using --until to Stop Streaming
 
-The `--until` flag also determines when a live event stream should stop.
+The `--until` flag also determines when a live event stream should stop, as long as you use a future absolute timestamp.
 
 ```bash
-# Stream events for the next 60 seconds then stop automatically
-podman events --until 60s
+# Stream events for the next 60 seconds, then stop automatically
+podman events --until "$(date --date='+60 seconds' '+%Y-%m-%dT%H:%M:%S')"
 
 # This will stream live events and automatically stop
-# after 60 seconds have elapsed
+# when the computed end time is reached
 ```
 
 ## Combining --until with Filters
@@ -197,27 +197,27 @@ podman events \
 Export events from a specific window for sharing or external analysis.
 
 ```bash
-# Export a time window as a JSON report
+# Export a time window as a JSON Lines report
 podman events \
     --since "2026-03-18T08:00:00" \
     --until "2026-03-18T20:00:00" \
-    --format json > /tmp/daily-events.json
+    --format json > /tmp/daily-events.jsonl
 
 # Generate a CSV from the time window
 echo "timestamp,type,status,name" > /tmp/window-events.csv
 podman events \
     --since "2026-03-18T08:00:00" \
     --until "2026-03-18T20:00:00" \
-    --format json | jq -r '[.Time, .Type, .Status, .Name] | @csv' >> /tmp/window-events.csv
+    --format json | jq -r '[.time, .Type, .Status, .Name] | @csv' >> /tmp/window-events.csv
 
-echo "Exported $(wc -l < /tmp/window-events.csv) events to CSV"
+echo "Exported $(($(wc -l < /tmp/window-events.csv) - 1)) events to CSV"
 ```
 
 ## Cleanup
 
 ```bash
 # Clean up temporary files
-rm -f /tmp/daily-events.json /tmp/window-events.csv
+rm -f /tmp/daily-events.jsonl /tmp/window-events.csv
 ```
 
 ## Summary
