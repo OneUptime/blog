@@ -4,28 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Kubernetes, Testing, Local Development
 
-Description: Learn how to validate and test Kubernetes YAML manifests locally using Podman before deploying to a cluster.
+Description: Learn how to check and test supported Kubernetes YAML manifests locally using Podman before deploying to a cluster.
 
 ---
 
 > Test your Kubernetes YAML locally with Podman to catch errors before they reach your cluster.
 
-Deploying untested YAML to a Kubernetes cluster can cause outages and debugging headaches. Podman lets you validate and run Kubernetes manifests locally on your workstation. This fast feedback loop catches misconfigurations, broken images, and resource issues before they affect production.
+Deploying untested YAML to a Kubernetes cluster can cause outages and debugging headaches. Podman lets you run supported Kubernetes manifests locally on your workstation. This fast feedback loop catches many misconfigurations, broken images, and resource issues before they affect production.
 
 ---
 
 ## Validating YAML Syntax
 
 ```bash
-# Use podman kube play --dry-run to validate without deploying
+# podman kube play does not include a dry-run validation flag,
+# so validate with other tools first
 
-# This is not a built-in flag, so we validate with other tools first
-
-# Check YAML syntax with python
-python3 -c "import yaml; yaml.safe_load(open('deployment.yaml'))"
+# Check YAML syntax with Python and PyYAML
+python3 -c "import yaml; list(yaml.safe_load_all(open('deployment.yaml')))"
 
 # Or use kubectl for schema validation if available
-kubectl apply --dry-run=client -f deployment.yaml
+kubectl apply --dry-run=client --validate=strict -f deployment.yaml
 ```
 
 ## Running YAML Locally with Podman
@@ -151,4 +150,4 @@ podman image prune -f
 
 ## Summary
 
-Podman lets you test Kubernetes YAML locally by deploying pods on your workstation with `podman kube play`. This catches image, configuration, and networking errors before they reach your cluster. Use an iterative tear-down-and-redeploy script for a fast feedback loop.
+Podman lets you test supported Kubernetes YAML locally by deploying pods on your workstation with `podman kube play`. This catches image, configuration, and networking errors before they reach your cluster. Use an iterative tear-down-and-redeploy script for a fast feedback loop.
