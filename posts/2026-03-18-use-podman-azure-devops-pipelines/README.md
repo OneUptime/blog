@@ -100,6 +100,13 @@ Create a multi-stage pipeline for build, test, and deploy workflows.
 trigger:
   - main
 
+variables:
+  # Azure Container Registry settings
+  acrName: 'myregistry'
+  acrLoginServer: 'myregistry.azurecr.io'
+  imageName: 'myapp'
+  imageTag: '$(Build.BuildId)'
+
 stages:
   # Build stage: create and save the container image
   - stage: Build
@@ -211,8 +218,9 @@ Run multi-container integration tests using Podman pods.
           postgres:16
 
         # Wait for database
-        sleep 5
-        podman exec testdb pg_isready -U postgres
+        until podman exec testdb pg_isready -U postgres; do
+          sleep 2
+        done
 
         # Run integration tests
         podman run --rm \
