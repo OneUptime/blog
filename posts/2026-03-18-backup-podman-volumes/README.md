@@ -112,15 +112,18 @@ For databases, use the database's own dump utility instead of copying raw files:
 podman exec postgres-db pg_dump -U postgres mydb > /backups/mydb-$(date +%Y%m%d-%H%M%S).sql
 
 # MySQL/MariaDB
-podman exec mysql-db mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" --all-databases > /backups/all-databases-$(date +%Y%m%d-%H%M%S).sql
+podman exec mysql-db sh -c 'mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" --all-databases' > /backups/all-databases-$(date +%Y%m%d-%H%M%S).sql
 
 # MongoDB
 podman exec mongo-db mongodump --archive=/tmp/backup.archive
 podman cp mongo-db:/tmp/backup.archive /backups/mongo-$(date +%Y%m%d-%H%M%S).archive
 
 # Redis
+LASTSAVE=$(podman exec redis-cache redis-cli LASTSAVE)
 podman exec redis-cache redis-cli BGSAVE
-sleep 2
+while [ "$(podman exec redis-cache redis-cli LASTSAVE)" = "$LASTSAVE" ]; do
+    sleep 1
+done
 podman cp redis-cache:/data/dump.rdb /backups/redis-$(date +%Y%m%d-%H%M%S).rdb
 ```
 
@@ -144,6 +147,7 @@ Here is a script that backs up all named volumes on a system:
 
 ```bash
 #!/bin/bash
+set -o pipefail
 
 BACKUP_DIR="/backups/podman-volumes/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
@@ -155,9 +159,7 @@ echo "Starting volume backup at $(date)" | tee "$LOG_FILE"
 for volume in $(podman volume ls -q); do
     echo "Backing up volume: $volume" | tee -a "$LOG_FILE"
 
-    podman volume export "$volume" | gzip > "$BACKUP_DIR/${volume}.tar.gz" 2>> "$LOG_FILE"
-
-    if [ $? -eq 0 ]; then
+    if podman volume export "$volume" 2>> "$LOG_FILE" | gzip > "$BACKUP_DIR/${volume}.tar.gz"; then
         BACKUP_SIZE=$(du -h "$BACKUP_DIR/${volume}.tar.gz" | cut -f1)
         echo "  Success: ${volume}.tar.gz ($BACKUP_SIZE)" | tee -a "$LOG_FILE"
     else
@@ -268,7 +270,7 @@ KEEP_MIN=5
 BACKUP_COUNT=$(ls -d "$BACKUP_ROOT"/*/ 2>/dev/null | wc -l)
 
 if [ "$BACKUP_COUNT" -gt "$KEEP_MIN" ]; then
-    find "$BACKUP_ROOT" -maxdepth 1 -type d -mtime +$KEEP_DAYS | \
+    find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime +$KEEP_DAYS | \
         sort | head -n -$KEEP_MIN | xargs rm -rf
 fi
 ```
