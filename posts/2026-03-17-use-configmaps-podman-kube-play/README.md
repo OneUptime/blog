@@ -62,7 +62,7 @@ spec:
         # Load all keys from the ConfigMap as environment variables
         - configMapRef:
             name: app-config
-      command: ["python", "-c", "import os; print(os.environ.get('DATABASE_HOST'))"]
+      command: ["sleep", "infinity"]
 ```
 
 ## Deploying with podman kube play
