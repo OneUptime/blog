@@ -16,7 +16,7 @@ etcd is the distributed key-value store that serves as the backbone of Kubernete
 
 ## Step 1: Verify etcd Metrics Are Being Scraped
 
-Rancher's monitoring stack should automatically scrape etcd metrics. Verify this in the Prometheus UI:
+Rancher's monitoring stack should automatically scrape etcd metrics through PushProx. Verify this in the Prometheus UI:
 
 1. Open Prometheus from **Monitoring > Prometheus**.
 2. Navigate to **Status > Targets**.
@@ -50,7 +50,7 @@ This dashboard shows:
 ### Leader and Election Metrics
 
 ```promql
-# Current leader
+# Whether this member is the leader
 
 etcd_server_is_leader
 
@@ -67,7 +67,7 @@ rate(etcd_server_proposals_failed_total[5m])
 # Current database size in bytes
 etcd_mvcc_db_total_size_in_bytes
 
-# Database size in use (after compaction)
+# Logical database size in use
 etcd_mvcc_db_total_size_in_use_in_bytes
 ```
 
@@ -198,55 +198,43 @@ For direct etcd health checks:
 ```bash
 # For RKE clusters
 docker exec etcd etcdctl endpoint health --cluster
+docker exec etcd etcdctl endpoint status --cluster --write-out=table
 
 # For RKE2 clusters
-/var/lib/rancher/rke2/bin/etcdctl \
-  --endpoints=https://127.0.0.1:2379 \
-  --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
-  --cert=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
-  --key=/var/lib/rancher/rke2/server/tls/etcd/server-client.key \
-  endpoint health
+export ETCDCTL_API=3
+export PATH=$PATH:/var/lib/rancher/rke2/bin
+export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
+export ETCDCTL_CACERT=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt
+export ETCDCTL_CERT=/var/lib/rancher/rke2/server/tls/etcd/client.crt
+export ETCDCTL_KEY=/var/lib/rancher/rke2/server/tls/etcd/client.key
+
+etcdctl endpoint health --cluster
+etcdctl endpoint status --cluster --write-out=table
 ```
 
-Check the database size:
-
-```bash
-etcdctl endpoint status --write-out=table
-```
+The `DB SIZE` column in `endpoint status --write-out=table` shows the current database size.
 
 ## Step 6: Configure etcd Metrics Exposure
 
-If etcd metrics are not being scraped, you may need to configure the etcd ServiceMonitor. For RKE2 clusters:
+If etcd metrics are not being scraped on RKE2, use the built-in Rancher Monitoring integration instead of creating a standalone etcd `ServiceMonitor`. Rancher Monitoring scrapes etcd on RKE2 through PushProx, so verify the built-in RKE2 etcd component is enabled in your monitoring chart values:
 
 ```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: etcd-monitor
-  namespace: cattle-monitoring-system
-  labels:
-    app: rancher-monitoring
-    release: rancher-monitoring
-spec:
-  endpoints:
-    - port: metrics
-      scheme: https
-      tlsConfig:
-        caFile: /etc/prometheus/secrets/etcd-certs/ca.crt
-        certFile: /etc/prometheus/secrets/etcd-certs/client.crt
-        keyFile: /etc/prometheus/secrets/etcd-certs/client.key
-        insecureSkipVerify: false
-  namespaceSelector:
-    matchNames:
-      - kube-system
-  selector:
-    matchLabels:
-      component: etcd
+rke2Etcd:
+  enabled: true
 ```
+
+If you are scraping etcd outside Rancher Monitoring, enable metrics exposure on the RKE2 server nodes:
+
+```yaml
+# /etc/rancher/rke2/config.yaml
+etcd-expose-metrics: true
+```
+
+Restart `rke2-server` after changing the server configuration. RKE2's dedicated etcd metrics port is `2381`.
 
 ## Step 7: Perform etcd Maintenance
 
-When monitoring indicates issues, perform maintenance:
+When monitoring indicates issues, perform maintenance. Use the same container or `ETCDCTL_*` context from Step 5 for the following commands:
 
 ### Compaction
 
