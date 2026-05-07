@@ -53,6 +53,27 @@ log() {
 
 log "Starting Podman backup"
 
+notify_backup_result() {
+    local status="$1"
+    local message="$2"
+
+    # Webhook notification (Slack, Discord, etc.)
+    if [ -n "${WEBHOOK_URL:-}" ]; then
+        curl -s -X POST "$WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"text\": \"Podman Backup $status on $(hostname): $message\"
+            }" || true
+    fi
+
+    # Email notification
+    if command -v mail &> /dev/null && [ -n "${NOTIFY_EMAIL:-}" ]; then
+        echo "$message" | mail -s "Podman Backup $status - $(hostname)" "$NOTIFY_EMAIL" || true
+    fi
+}
+
+trap 'notify_backup_result "FAILURE" "Backup failed. Check $LOG_FILE for details."' ERR
+
 # ---- Backup Containers ----
 log "Backing up containers..."
 for container in $(podman ps -a --format "{{.Names}}"); do
@@ -85,14 +106,14 @@ done
 
 # ---- Backup Images ----
 log "Backing up images..."
-podman images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" | while read image; do
+while read -r image; do
     SAFE_NAME=$(echo "$image" | tr '/:' '_')
     log "  Image: $image"
 
     podman save "$image" | gzip > "$BACKUP_DIR/images/${SAFE_NAME}.tar.gz" 2>> "$LOG_FILE"
 
     log "  Done: $image"
-done
+done < <(podman images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" || true)
 
 # ---- Generate Manifest ----
 log "Generating manifest..."
@@ -116,10 +137,12 @@ log "Applying retention policy (keep $RETENTION_DAYS days, min $MIN_BACKUPS back
 BACKUP_COUNT=$(find "$BACKUP_ROOT" -maxdepth 1 -type d -name "2*" | wc -l)
 
 if [ "$BACKUP_COUNT" -gt "$MIN_BACKUPS" ]; then
-    find "$BACKUP_ROOT" -maxdepth 1 -type d -name "2*" -mtime +$RETENTION_DAYS | \
-        sort | head -n -$MIN_BACKUPS | while read old_backup; do
-        log "  Removing old backup: $old_backup"
-        rm -rf "$old_backup"
+    find "$BACKUP_ROOT" -maxdepth 1 -type d -name "2*" -printf '%T@ %p\n' | \
+        sort -rn | tail -n +$((MIN_BACKUPS + 1)) | cut -d' ' -f2- | while read -r old_backup; do
+        if [ -n "$(find "$old_backup" -maxdepth 0 -mtime +$RETENTION_DAYS -print)" ]; then
+            log "  Removing old backup: $old_backup"
+            rm -rf "$old_backup"
+        fi
     done
 fi
 
@@ -127,6 +150,7 @@ fi
 find "$BACKUP_ROOT" -name "backup-*.log" -mtime +$RETENTION_DAYS -delete
 
 log "Backup process complete"
+notify_backup_result "SUCCESS" "Backup completed: $TOTAL_SIZE at $BACKUP_DIR"
 ```
 
 Make it executable:
@@ -233,33 +257,39 @@ BACKUP_DIR="/backups/databases/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
 # PostgreSQL
-if podman ps --format "{{.Names}}" | grep -q "postgres"; then
+POSTGRES_CONTAINER=$(podman ps --format "{{.Names}}" | grep -m1 "postgres" || true)
+if [ -n "$POSTGRES_CONTAINER" ]; then
     echo "Backing up PostgreSQL..."
-    podman exec postgres-db pg_dumpall -U postgres | \
+    podman exec "$POSTGRES_CONTAINER" pg_dumpall -U postgres | \
         gzip > "$BACKUP_DIR/postgres-all.sql.gz"
 fi
 
 # MySQL/MariaDB
-if podman ps --format "{{.Names}}" | grep -q "mysql\|mariadb"; then
+MYSQL_CONTAINER=$(podman ps --format "{{.Names}}" | grep -m1 "mysql\|mariadb" || true)
+if [ -n "$MYSQL_CONTAINER" ]; then
     echo "Backing up MySQL..."
-    podman exec mysql-db mysqldump -u root \
+    podman exec "$MYSQL_CONTAINER" mysqldump -u root \
         -p"${MYSQL_ROOT_PASSWORD}" \
         --all-databases | gzip > "$BACKUP_DIR/mysql-all.sql.gz"
 fi
 
 # MongoDB
-if podman ps --format "{{.Names}}" | grep -q "mongo"; then
+MONGO_CONTAINER=$(podman ps --format "{{.Names}}" | grep -m1 "mongo" || true)
+if [ -n "$MONGO_CONTAINER" ]; then
     echo "Backing up MongoDB..."
-    podman exec mongo-db mongodump --archive | \
+    podman exec "$MONGO_CONTAINER" mongodump --archive | \
         gzip > "$BACKUP_DIR/mongo-all.archive.gz"
 fi
 
 # Redis
-if podman ps --format "{{.Names}}" | grep -q "redis"; then
+REDIS_CONTAINER=$(podman ps --format "{{.Names}}" | grep -m1 "redis" || true)
+if [ -n "$REDIS_CONTAINER" ]; then
     echo "Backing up Redis..."
-    podman exec redis-cache redis-cli BGSAVE
-    sleep 2
-    podman cp redis-cache:/data/dump.rdb "$BACKUP_DIR/redis-dump.rdb"
+    podman exec "$REDIS_CONTAINER" redis-cli BGSAVE
+    while [ "$(podman exec "$REDIS_CONTAINER" redis-cli INFO persistence | awk -F: '/rdb_bgsave_in_progress/ {gsub(/\r/, "", $2); print $2}')" = "1" ]; do
+        sleep 1
+    done
+    podman cp "$REDIS_CONTAINER":/data/dump.rdb "$BACKUP_DIR/redis-dump.rdb"
 fi
 
 echo "Database backup complete: $BACKUP_DIR"
@@ -271,7 +301,7 @@ Add email or webhook notifications to your backup script:
 
 ```bash
 #!/bin/bash
-# Add to the end of podman-backup.sh
+# Add near the top of podman-backup.sh, after LOG_FILE is defined
 
 notify_backup_result() {
     local status="$1"
@@ -283,21 +313,19 @@ notify_backup_result() {
             -H "Content-Type: application/json" \
             -d "{
                 \"text\": \"Podman Backup $status on $(hostname): $message\"
-            }"
+            }" || true
     fi
 
     # Email notification
     if command -v mail &> /dev/null && [ -n "${NOTIFY_EMAIL:-}" ]; then
-        echo "$message" | mail -s "Podman Backup $status - $(hostname)" "$NOTIFY_EMAIL"
+        echo "$message" | mail -s "Podman Backup $status - $(hostname)" "$NOTIFY_EMAIL" || true
     fi
 }
 
-# Call at the end of the backup script
-if [ $? -eq 0 ]; then
-    notify_backup_result "SUCCESS" "Backup completed: $TOTAL_SIZE at $BACKUP_DIR"
-else
-    notify_backup_result "FAILURE" "Backup failed. Check $LOG_FILE for details."
-fi
+trap 'notify_backup_result "FAILURE" "Backup failed. Check $LOG_FILE for details."' ERR
+
+# Call at the end of the backup script after TOTAL_SIZE is calculated
+notify_backup_result "SUCCESS" "Backup completed: $TOTAL_SIZE at $BACKUP_DIR"
 ```
 
 ## Backup Verification
@@ -320,12 +348,12 @@ echo "Verifying backup: $LATEST_BACKUP"
 ERRORS=0
 
 # Check all tar archives
-for archive in $(find "$LATEST_BACKUP" -name "*.tar.gz"); do
+while read -r archive; do
     if ! gzip -t "$archive" 2>/dev/null; then
         echo "CORRUPTED: $archive"
         ERRORS=$((ERRORS + 1))
     fi
-done
+done < <(find "$LATEST_BACKUP" -name "*.tar.gz")
 
 # Try loading a random image backup
 IMAGE_BACKUP=$(find "$LATEST_BACKUP/images" -name "*.tar.gz" | shuf -n 1)
