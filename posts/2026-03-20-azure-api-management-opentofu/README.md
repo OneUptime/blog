@@ -15,7 +15,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -35,11 +35,13 @@ resource "azurerm_api_management" "main" {
   publisher_name      = "ACME Corp"
   publisher_email     = "api-team@example.com"
 
-  sku_name = "Premium_1"  # Developer, Basic, Standard, Premium
+  sku_name = "Premium_1"  # <Tier>_<Capacity>, for example Developer_1, Standard_1, Premium_1
 
-  # VNet integration for Premium tier
+  # VNet injection for supported classic tiers such as Premium
   virtual_network_type = "Internal"  # Internal, External, or None
 
+  # If APIM uses Key Vault-backed secrets or certificates in a VNet,
+  # allow subnet egress to AzureKeyVault and AzureActiveDirectory.
   virtual_network_configuration {
     subnet_id = azurerm_subnet.apim.id
   }
@@ -52,7 +54,7 @@ resource "azurerm_api_management" "main" {
   hostname_configuration {
     proxy {
       host_name                    = "api.${var.domain_name}"
-      certificate_source           = "BuiltIn"
+      key_vault_certificate_id     = azurerm_key_vault_certificate.gateway.versionless_secret_id
       negotiate_client_certificate = false
     }
   }
@@ -82,10 +84,10 @@ resource "azurerm_api_management_named_value" "api_key" {
   api_management_name = azurerm_api_management.main.name
   resource_group_name = azurerm_resource_group.apim.name
   display_name        = "Backend API Key"
-  secret              = true  # Mark as sensitive - value not exposed in API
+  secret              = true  # Mark as secret in APIM
 
   value_from_key_vault {
-    secret_id = azurerm_key_vault_secret.backend_api_key.versionless_id
+    secret_id = azurerm_key_vault_secret.backend_api_key.resource_versionless_id
   }
 }
 ```
@@ -162,7 +164,7 @@ resource "azurerm_api_management_backend" "users_service" {
 
   credentials {
     header = {
-      X-API-Key = ["{{backend-api-key}}"]  # References named value
+      X-API-Key = "{{backend-api-key}}"  # References named value
     }
   }
 }
@@ -171,7 +173,7 @@ resource "azurerm_api_management_backend" "users_service" {
 ## Diagnostic Settings and Logging
 
 ```hcl
-# Send APIM logs to Log Analytics
+# Send APIM telemetry to Application Insights
 resource "azurerm_api_management_logger" "app_insights" {
   name                = "app-insights-logger"
   api_management_name = azurerm_api_management.main.name
@@ -205,4 +207,4 @@ resource "azurerm_api_management_diagnostic" "main" {
 
 ## Conclusion
 
-Azure API Management in OpenTofu provides enterprise-grade API governance across all your services. Use Named Values to centralize configuration referenced in policies, Products to define API access tiers with built-in rate limiting, and Backends to manage upstream service connections with credential injection. Enable Application Insights logging for full request/response tracing, and use system-assigned managed identity to access Key Vault secrets without storing credentials in configuration.
+Azure API Management in OpenTofu provides enterprise-grade API governance across all your services. Use Named Values to centralize configuration referenced in policies, Products to define API access tiers, product policies to apply rate limiting, and Backends to manage upstream service connections with credential injection. Enable Application Insights logging for full request/response tracing, and use system-assigned managed identity to access Key Vault secrets without storing credentials in configuration.
