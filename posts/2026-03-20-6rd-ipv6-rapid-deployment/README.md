@@ -8,7 +8,7 @@ Description: Learn how 6rd (IPv6 Rapid Deployment) works as an ISP-controlled IP
 
 ## Overview
 
-6rd (IPv6 Rapid Deployment) was developed by Free (a French ISP) in 2008 and standardized in RFC 5969. It is an ISP-managed variant of 6to4 that eliminates the relay quality problem by using ISP-controlled border relays (BRs). The ISP assigns a 6rd prefix, and customer IPv6 addresses embed the customer's IPv4 address within that prefix.
+6rd (IPv6 Rapid Deployment) was first deployed by Free (a French ISP) in late 2007, documented in RFC 5569, and standardized in RFC 5969. It is an ISP-managed variant of 6to4 that eliminates the relay quality problem by using ISP-controlled border relays (BRs). The ISP assigns a 6rd prefix, and customer IPv6 prefixes embed some or all of the customer's IPv4 address within that prefix.
 
 ## How 6rd Differs from 6to4
 
@@ -25,28 +25,29 @@ Description: Learn how 6rd (IPv6 Rapid Deployment) works as an ISP-controlled IP
 
 The ISP defines:
 - A 6rd prefix (e.g., `2001:db8::/32`)
-- IPv4 mask bits to embed (e.g., 32 bits = full IPv4)
+- `IPv4MaskLen`, the number of common high-order IPv4 bits stripped before embedding
+
+The delegated prefix length is `6rdPrefixLen + (32 - IPv4MaskLen)`.
 
 Example:
 ```text
 6rd Prefix:    2001:db8::/32
-IPv4 mask:     32 bits (full IPv4 address embedded)
+IPv4MaskLen:   0 (embed all 32 bits of the CE IPv4 address)
 Customer IPv4: 192.0.2.10 = c0:00:02:0a
 
-6rd CE address:
-  2001:db8: + c000:020a + :0001:0000:0000:0001
-  = 2001:db8:c000:020a::/64
+CE delegated prefix:
+  2001:db8:c000:020a::/64
 
 6rd BR (relay) IPv4: 198.51.100.1
 ```
 
-If the ISP shortens the IPv4 mask (e.g., 24 bits - last octet removed), the prefix is longer:
+If the ISP sets `IPv4MaskLen` to 8 (for example, all CEs are in `10.0.0.0/8`), 24 IPv4 bits are embedded, so the delegated prefix becomes /56:
 ```text
 6rd Prefix:    2001:db8::/32
-IPv4 mask:     24 bits (first 3 octets of IPv4)
-IPv4 bits:     192.0.2 = c0:00:02
+IPv4MaskLen:   8 (the common high-order octet 10 is stripped)
+Customer IPv4: 10.100.100.1
 
-CE prefix: 2001:db8:c000:02XX::/56   (X = dynamic host ID)
+CE prefix:     2001:db8:6464:0100::/56
 ```
 
 ## 6rd Provisioning via DHCPv4
@@ -55,9 +56,10 @@ The ISP provisions 6rd parameters to CPE devices via DHCPv4 option 212 (RFC 5969
 
 ```text
 DHCP option 212 carries:
-  - IPv4MaskLen: bits of IPv4 to embed (e.g., 32)
-  - 6rdPrefix: e.g., 2001:db8::/32
-  - 6rdBRIPv4Address: e.g., 198.51.100.1
+  - IPv4MaskLen: count of common high-order IPv4 bits (e.g., 0)
+  - 6rdPrefixLen: e.g., 32
+  - 6rdPrefix: e.g., 2001:db8::
+  - 6rdBRIPv4Address(es): e.g., 198.51.100.1
 ```
 
 CPE receives these and automatically configures the 6rd tunnel.
@@ -74,7 +76,7 @@ graph LR
 
 ## CPE Configuration Example
 
-A home router (CPE) implementing 6rd:
+A home router (CPE) implementing 6rd for a `/32` 6rd prefix with `IPv4MaskLen=0`:
 
 ```bash
 # Linux CPE - manual 6rd configuration
@@ -83,23 +85,28 @@ A home router (CPE) implementing 6rd:
 
 IP4=192.0.2.10        # WAN IPv4 from ISP DHCP
 BR=198.51.100.1       # ISP Border Relay IPv4
-PREFIX=2001:db8::     # 6rd prefix
+PREFIX=2001:db8       # 6rd /32 prefix written without the trailing ::
 PLEN=32               # 6rd prefix length (bits)
-IP4MASKLEN=32         # IPv4 bits to embed
+IP4MASKLEN=0          # 0 means embed all 32 bits of the CE IPv4 address
 
-# Convert IPv4 to hex: 192.0.2.10 = c0000210
-HEX=$(printf '%08x' $(echo $IP4 | awk -F. '{printf "%d\n", ($1*2^24)+($2*2^16)+($3*2^8)+$4}'))
+IFS=. read -r o1 o2 o3 o4 <<< "$IP4"
+HEX=$(printf '%02x%02x%02x%02x' "$o1" "$o2" "$o3" "$o4")
 
-# 6rd prefix for this CPE
+IFS=. read -r b1 b2 b3 b4 <<< "$BR"
+BR_HEX=$(printf '%02x%02x%02x%02x' "$b1" "$b2" "$b3" "$b4")
+
+# 6rd delegated prefix for this CPE
 CE_PREFIX="${PREFIX}:${HEX:0:4}:${HEX:4:4}::/64"
+BR6="${PREFIX}:${BR_HEX:0:4}:${BR_HEX:4:4}::"
 echo "6rd CE prefix: $CE_PREFIX"
 
 # Create tunnel
-ip tunnel add 6rd mode sit remote any local $IP4 ttl 64
-ip tunnel 6rd dev 6rd relay prefix $PREFIX/$PLEN mappedlen $IP4MASKLEN
+ip tunnel add 6rd mode sit remote any local "$IP4" ttl 64
+ip tunnel 6rd dev 6rd 6rd-prefix ${PREFIX}::/$PLEN 6rd-relay_prefix 0.0.0.0/$IP4MASKLEN
 ip link set 6rd up
-ip addr add ${PREFIX}:${HEX:0:4}:${HEX:4:4}::1/128 dev 6rd
-ip route add ::/0 via ::$BR dev 6rd
+ip addr add "${PREFIX}:${HEX:0:4}:${HEX:4:4}::1/128" dev 6rd
+ip -6 route add "${PREFIX}::/$PLEN" dev 6rd
+ip -6 route add ::/0 via "$BR6" dev 6rd
 ```
 
 ## Router Advertisement to Home Network
@@ -122,10 +129,10 @@ interface eth0 {
 
 ## Real-World 6rd Deployments
 
-6rd was deployed by several ISPs during 2009-2015:
-- **Free (Iliad, France)** - first ISP, deployed 2008
-- **Comcast** - tested but ultimately went to native dual-stack
-- **US ISPs** - brief deployment then transitioned to native IPv6
+6rd was deployed or trialed by several operators during the early IPv6 transition:
+- **Free (Iliad, France)** - early commercial deployment documented in RFC 5569, rolled out in late 2007
+- **Comcast** - deployed 6rd in technology trials, but public rollout centered on native dual-stack
+- **Other operators** - evaluated or deployed 6rd as a transitional mechanism before later moving to native IPv6
 
 Most ISPs that deployed 6rd have since migrated to native dual-stack. 6rd is considered a transitional mechanism, not a permanent solution.
 
@@ -139,8 +146,8 @@ Most ISPs that deployed 6rd have since migrated to native dual-stack. 6rd is con
 iptables -A INPUT -p 41 -s 198.51.100.1 -j ACCEPT
 iptables -A INPUT -p 41 -j DROP
 
-# Block 6rd prefixes at enterprise border if not used
-ip6tables -I FORWARD -s 2001:db8:c000::/36 -j DROP
+# Block the 6rd domain prefix at an enterprise border if it is not used
+ip6tables -I FORWARD -s 2001:db8::/32 -j DROP
 ```
 
 ## Summary
