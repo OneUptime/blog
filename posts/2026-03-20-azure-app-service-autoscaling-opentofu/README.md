@@ -8,19 +8,19 @@ Description: Learn how to configure Azure App Service autoscaling with OpenTofu 
 
 ## Overview
 
-Azure App Service autoscaling automatically adjusts the number of instances based on demand. OpenTofu configures autoscale settings with metric-based rules, scheduled profiles, and notification actions.
+Azure App Service autoscaling automatically adjusts the number of App Service Plan instances based on demand. Because apps in the same App Service plan share the same workers, autoscale rules apply to the plan rather than to an individual web app. OpenTofu configures autoscale settings with metric-based rules, scheduled profiles, and notification actions.
 
-## Step 1: Create App Service Plan and Web App
+## Step 1: Create App Service Plan
 
 ```hcl
-# main.tf - Standard or Premium plan is required for autoscaling
+# main.tf - Standard tier or higher is required for Azure Monitor autoscale
 
 resource "azurerm_service_plan" "autoscale_plan" {
   name                = "autoscale-app-plan"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   os_type             = "Linux"
-  sku_name            = "S2"  # Standard S2 - minimum for autoscale
+  sku_name            = "S2"  # Example Standard tier plan for autoscale
 
   # Initial instance count
   worker_count = 2
@@ -38,7 +38,7 @@ resource "azurerm_monitor_autoscale_setting" "app_autoscale" {
   target_resource_id  = azurerm_service_plan.autoscale_plan.id
   enabled             = true
 
-  # Default profile - metric-based scaling
+  # Default fallback profile when no scheduled profile is active
   profile {
     name = "defaultProfile"
 
@@ -64,7 +64,7 @@ resource "azurerm_monitor_autoscale_setting" "app_autoscale" {
       scale_action {
         direction = "Increase"
         type      = "ChangeCount"
-        value     = 2  # Add 2 instances at a time
+        value     = "2"  # Add 2 instances at a time
         cooldown  = "PT5M"  # Wait 5 minutes before scaling again
       }
     }
@@ -85,13 +85,13 @@ resource "azurerm_monitor_autoscale_setting" "app_autoscale" {
       scale_action {
         direction = "Decrease"
         type      = "ChangeCount"
-        value     = 1  # Remove 1 instance at a time
+        value     = "1"  # Remove 1 instance at a time
         cooldown  = "PT10M"
       }
     }
   }
 
-  # Scheduled profile for known traffic peaks (e.g., business hours)
+  # Scheduled profile for higher baseline capacity during weekday business hours
   profile {
     name = "businessHours"
 
@@ -107,6 +107,105 @@ resource "azurerm_monitor_autoscale_setting" "app_autoscale" {
       hours    = [8]    # Start at 8 AM UTC
       minutes  = [0]
     }
+
+    # Repeat the metric rules because only one autoscale profile is active at a time
+    rule {
+      metric_trigger {
+        metric_name        = "CpuPercentage"
+        metric_resource_id = azurerm_service_plan.autoscale_plan.id
+        operator           = "GreaterThan"
+        statistic          = "Average"
+        threshold          = 70
+        time_aggregation   = "Average"
+        time_grain         = "PT1M"
+        time_window        = "PT10M"
+      }
+
+      scale_action {
+        direction = "Increase"
+        type      = "ChangeCount"
+        value     = "2"
+        cooldown  = "PT5M"
+      }
+    }
+
+    rule {
+      metric_trigger {
+        metric_name        = "CpuPercentage"
+        metric_resource_id = azurerm_service_plan.autoscale_plan.id
+        operator           = "LessThan"
+        statistic          = "Average"
+        threshold          = 30
+        time_aggregation   = "Average"
+        time_grain         = "PT1M"
+        time_window        = "PT10M"
+      }
+
+      scale_action {
+        direction = "Decrease"
+        type      = "ChangeCount"
+        value     = "1"
+        cooldown  = "PT10M"
+      }
+    }
+  }
+
+  # Scheduled profile to return to the lower baseline after business hours
+  profile {
+    name = "afterHours"
+
+    capacity {
+      default = 2
+      minimum = 1
+      maximum = 10
+    }
+
+    recurrence {
+      timezone = "UTC"
+      days     = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+      hours    = [18]   # Start at 6 PM UTC
+      minutes  = [0]
+    }
+
+    rule {
+      metric_trigger {
+        metric_name        = "CpuPercentage"
+        metric_resource_id = azurerm_service_plan.autoscale_plan.id
+        operator           = "GreaterThan"
+        statistic          = "Average"
+        threshold          = 70
+        time_aggregation   = "Average"
+        time_grain         = "PT1M"
+        time_window        = "PT10M"
+      }
+
+      scale_action {
+        direction = "Increase"
+        type      = "ChangeCount"
+        value     = "2"
+        cooldown  = "PT5M"
+      }
+    }
+
+    rule {
+      metric_trigger {
+        metric_name        = "CpuPercentage"
+        metric_resource_id = azurerm_service_plan.autoscale_plan.id
+        operator           = "LessThan"
+        statistic          = "Average"
+        threshold          = 30
+        time_aggregation   = "Average"
+        time_grain         = "PT1M"
+        time_window        = "PT10M"
+      }
+
+      scale_action {
+        direction = "Decrease"
+        type      = "ChangeCount"
+        value     = "1"
+        cooldown  = "PT10M"
+      }
+    }
   }
 
   # Notification when scaling events occur
@@ -114,7 +213,7 @@ resource "azurerm_monitor_autoscale_setting" "app_autoscale" {
     email {
       send_to_subscription_administrator    = true
       send_to_subscription_co_administrator = false
-      custom_emails                          = ["ops-team@example.com"]
+      custom_emails                         = ["ops-team@example.com"]
     }
   }
 }
@@ -122,46 +221,31 @@ resource "azurerm_monitor_autoscale_setting" "app_autoscale" {
 
 ## Step 3: Memory-Based Scaling Rule
 
+Azure Monitor supports a single autoscale setting per App Service plan, so add the memory rule to the existing autoscale setting instead of creating a second autoscale setting.
+
 ```hcl
-# Add memory pressure scaling rule to the autoscale setting
-resource "azurerm_monitor_autoscale_setting" "memory_autoscale" {
-  name                = "memory-autoscale"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-  target_resource_id  = azurerm_service_plan.autoscale_plan.id
+# Add this rule to each autoscale profile that should react to memory pressure
+rule {
+  metric_trigger {
+    metric_name        = "MemoryPercentage"
+    metric_resource_id = azurerm_service_plan.autoscale_plan.id
+    operator           = "GreaterThan"
+    statistic          = "Average"
+    threshold          = 80
+    time_aggregation   = "Average"
+    time_grain         = "PT1M"
+    time_window        = "PT5M"
+  }
 
-  profile {
-    name = "memoryProfile"
-
-    capacity {
-      default = 2
-      minimum = 2
-      maximum = 8
-    }
-
-    rule {
-      metric_trigger {
-        metric_name        = "MemoryPercentage"
-        metric_resource_id = azurerm_service_plan.autoscale_plan.id
-        operator           = "GreaterThan"
-        statistic          = "Average"
-        threshold          = 80
-        time_aggregation   = "Average"
-        time_grain         = "PT1M"
-        time_window        = "PT5M"
-      }
-
-      scale_action {
-        direction = "Increase"
-        type      = "ChangeCount"
-        value     = 1
-        cooldown  = "PT5M"
-      }
-    }
+  scale_action {
+    direction = "Increase"
+    type      = "ChangeCount"
+    value     = "1"
+    cooldown  = "PT5M"
   }
 }
 ```
 
 ## Summary
 
-Azure App Service autoscaling configured with OpenTofu dynamically adjusts your application's compute capacity. Combining metric-based rules for CPU and memory with scheduled profiles for known traffic peaks ensures cost-efficient scaling that handles both predictable and unpredictable load changes.
+Azure App Service autoscaling configured with OpenTofu dynamically adjusts your App Service plan's compute capacity. Combining metric-based CPU and memory rules with scheduled profiles that raise the baseline instance count during business hours helps handle both predictable traffic peaks and variable load efficiently.
