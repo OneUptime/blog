@@ -10,7 +10,7 @@ Description: Learn how to migrate your Dockerfiles to Containerfiles for use wit
 
 > Containerfiles and Dockerfiles use the same syntax - renaming is optional, but adopting Containerfile signals your commitment to open standards and avoids Docker-specific assumptions.
 
-Podman and Buildah support both Dockerfiles and Containerfiles. A Containerfile is functionally identical to a Dockerfile - it uses the same instructions, same syntax, and same build behavior. The name change reflects the shift toward vendor-neutral container tooling. This guide covers the practical steps for migrating, the few differences you should be aware of, and how to maintain compatibility with both ecosystems.
+Podman and Buildah support both Dockerfiles and Containerfiles. A Containerfile uses the same instruction syntax as a Dockerfile. The name change reflects the shift toward vendor-neutral container tooling. This guide covers the practical steps for migrating, the few differences you should be aware of, and how to maintain compatibility with both ecosystems.
 
 ---
 
@@ -19,7 +19,7 @@ Podman and Buildah support both Dockerfiles and Containerfiles. A Containerfile 
 Containerfile and Dockerfile are interchangeable names for the same format.
 
 ```bash
-# Podman looks for Containerfile first, then Dockerfile
+# Podman and Buildah use Containerfile or Dockerfile as default build-file names
 
 # Both of these work identically:
 podman build -t myapp .          # Finds Containerfile or Dockerfile
@@ -121,7 +121,7 @@ CMD ["python", "app.py"]
 
 ## Handling FROM References
 
-Podman is stricter about image references than Docker. Use fully qualified names.
+Podman can prompt or fail on ambiguous short image names depending on your short-name configuration. Use fully qualified names.
 
 ```dockerfile
 # Docker allows short names (may be ambiguous)
@@ -150,11 +150,11 @@ CMD ["python", "app.py"]
 Instead of rewriting all FROM lines, configure short-name aliases in Podman.
 
 ```bash
-# View the default short-name aliases
-cat /etc/containers/registries.conf.d/shortnames.conf
+# View the default short-name aliases if the file exists
+[ -f /etc/containers/registries.conf.d/shortnames.conf ] && cat /etc/containers/registries.conf.d/shortnames.conf
 
-# Add custom aliases
-sudo tee -a /etc/containers/registries.conf.d/shortnames.conf << 'EOF'
+# Add custom aliases in a separate drop-in file
+sudo tee /etc/containers/registries.conf.d/99-myapp-shortnames.conf << 'EOF'
 [aliases]
   "myapp-base" = "registry.example.com/base/myapp"
   "python" = "docker.io/library/python"
@@ -221,7 +221,7 @@ Migrate all Dockerfiles in a project or monorepo.
 
 PROJECT_ROOT="${1:-.}"
 
-find "$PROJECT_ROOT" -name "Dockerfile*" | while read DFILE; do
+find "$PROJECT_ROOT" -type f -name "Dockerfile*" | while IFS= read -r DFILE; do
   DIR=$(dirname "$DFILE")
   BASENAME=$(basename "$DFILE")
 
