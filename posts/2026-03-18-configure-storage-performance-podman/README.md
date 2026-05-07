@@ -41,7 +41,7 @@ Podman supports several storage drivers. The overlay driver is the best choice f
 | Driver | Performance | Compatibility | Use Case |
 |--------|------------|---------------|----------|
 | overlay | Excellent | Kernel 4.0+ | Default, recommended |
-| fuse-overlayfs | Good | Rootless fallback | Older kernels, rootless |
+| overlay with fuse-overlayfs | Good | Rootless fallback | Older kernels, rootless |
 | vfs | Poor | Universal | Testing, fallback only |
 | btrfs | Good | Btrfs filesystem | Btrfs hosts |
 | zfs | Good | ZFS filesystem | ZFS hosts |
@@ -82,21 +82,16 @@ The overlay driver has several tunable options:
 driver = "overlay"
 
 [storage.options.overlay]
-# Use native overlay diff for better performance
-# Avoids falling back to naive diff calculation
+# Use the kernel overlay mount implementation when supported
 mount_program = ""
 
 # Set the size of the overlay mount
 # Useful for controlling disk usage per container
 size = ""
 
-# Enable metacopy for faster file operations
+# Enable metacopy for faster metadata-only file operations
 # Only copies metadata, not data, on copy-up
 mountopt = "nodev,metacopy=on"
-
-# Force the use of native overlay
-# Skip fallback to fuse-overlayfs
-force_mask = "shared"
 ```
 
 For rootless Podman on older kernels, configure fuse-overlayfs:
@@ -109,7 +104,8 @@ mount_program = "/usr/bin/fuse-overlayfs"
 Check if your kernel supports native overlay for rootless:
 
 ```bash
-# Check kernel version (5.11+ supports rootless overlay natively)
+# Check kernel version (5.13+ is recommended for native rootless overlay,
+# especially on SELinux-enabled systems)
 uname -r
 
 # Test if native overlay works
@@ -181,7 +177,7 @@ Volumes bypass the storage driver and provide direct filesystem access. Configur
 
 ```bash
 # Named volume with specific mount options
-podman volume create --opt type=tmpfs --opt o=size=1g fast-cache
+podman volume create --opt device=tmpfs --opt type=tmpfs --opt o=size=1g fast-cache
 
 # Use volumes for write-heavy workloads
 podman run -v fast-cache:/app/cache \
@@ -255,16 +251,13 @@ podman system df
 podman system df -v  # Verbose with per-image breakdown
 ```
 
-Configure automatic garbage collection in `containers.conf`:
+Configure image pull behavior in `containers.conf`:
 
 ```toml
 # ~/.config/containers/containers.conf
 [engine]
-# Automatically remove stopped containers
-auto_remove = false
-
 # Image pull policy
-image_pull_policy = "newer"
+pull_policy = "missing"
 ```
 
 ---
@@ -320,7 +313,7 @@ runroot = "/run/user/1000/containers"
 # Additional storage options can be set here
 
 [storage.options.overlay]
-# Use native overlay on kernel 5.11+
+# Use native overlay on kernel 5.13+ when supported
 mount_program = ""
 # Fallback for older kernels
 # mount_program = "/usr/bin/fuse-overlayfs"
