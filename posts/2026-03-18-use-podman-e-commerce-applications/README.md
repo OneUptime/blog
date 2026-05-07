@@ -18,7 +18,7 @@ This guide covers deploying common e-commerce platforms with Podman, including W
 
 ## Why Podman for E-Commerce
 
-E-commerce applications handle sensitive data including payment information, customer addresses, and order histories. Podman's rootless containers reduce the blast radius of any compromise. Without a privileged daemon, there is no escalation path from a container breakout to full host access. Podman pods also let you group your application, database, and cache into a single manageable unit that shares a network namespace.
+E-commerce applications handle sensitive data including payment information, customer addresses, and order histories. Podman's rootless containers reduce the blast radius of any compromise. Without a privileged daemon, and with rootless containers that cannot have more privileges than the user running them, a compromise is generally constrained to that user's access. Podman pods also let you group your application, database, and cache into a single manageable unit that shares a network namespace.
 
 ## Deploying WooCommerce with Podman
 
@@ -74,7 +74,7 @@ For a custom storefront built with Node.js:
 FROM docker.io/library/node:20-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY . .
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -87,7 +87,9 @@ A sample Express-based storefront entry point:
 ```javascript
 // server.js
 const express = require('express');
+const { Pool } = require('pg');
 const app = express();
+const db = new Pool({ connectionString: process.env.DATABASE_URL });
 const port = process.env.PORT || 3000;
 
 app.use(express.json());
@@ -96,12 +98,12 @@ app.use(express.static('public'));
 app.get('/api/products', async (req, res) => {
   // Fetch products from database
   const products = await db.query('SELECT * FROM products WHERE active = true');
-  res.json(products);
+  res.json(products.rows);
 });
 
 app.get('/api/products/:id', async (req, res) => {
   const product = await db.query('SELECT * FROM products WHERE id = $1', [req.params.id]);
-  res.json(product);
+  res.json(product.rows[0] || null);
 });
 
 app.post('/api/cart', async (req, res) => {
@@ -138,15 +140,18 @@ podman run -d --pod custom-store \
 
 ## Adding Search with Elasticsearch
 
-Product search is critical for e-commerce. Add an Elasticsearch container:
+Product search is critical for e-commerce. For local development or testing, add an Elasticsearch container:
 
 ```bash
 podman run -d --pod ecommerce \
   --name ecom-search \
+  -m 1g \
   -e "discovery.type=single-node" \
-  -e "ES_JAVA_OPTS=-Xms256m -Xmx256m" \
+  -e "xpack.security.enabled=false" \
+  -e "xpack.security.http.ssl.enabled=false" \
+  -e "xpack.license.self_generated.type=trial" \
   -v ecom-search-data:/usr/share/elasticsearch/data:Z \
-  docker.io/library/elasticsearch:8.12.0
+  docker.elastic.co/elasticsearch/elasticsearch:9.3.3
 ```
 
 ## Persistent Storage for Product Data
@@ -164,10 +169,14 @@ podman volume inspect ecom-db-data
 For product images and uploads, bind mount a host directory:
 
 ```bash
-podman run -d --pod ecommerce \
+podman run -d --replace --pod ecommerce \
   --name ecom-wp \
-  -v /srv/ecommerce/uploads:/var/www/html/wp-content/uploads:Z \
+  -e WORDPRESS_DB_HOST=127.0.0.1 \
+  -e WORDPRESS_DB_NAME=wordpress \
+  -e WORDPRESS_DB_USER=wpuser \
+  -e WORDPRESS_DB_PASSWORD=wppass \
   -v ecom-wp-data:/var/www/html:Z \
+  -v /srv/ecommerce/uploads:/var/www/html/wp-content/uploads:Z \
   docker.io/library/wordpress:php8.2-apache
 ```
 
@@ -182,19 +191,30 @@ podman run --rm --pod ecommerce \
   > /srv/backups/ecom-$(date +%Y%m%d).sql
 ```
 
-Create a systemd timer to run this daily:
+Create a systemd service and timer to run this daily:
 
 ```ini
-# ~/.config/containers/systemd/ecom-backup.container
-[Container]
-Image=docker.io/library/mariadb:11
-Pod=ecommerce.pod
-Exec=sh -c 'mariadb-dump -h 127.0.0.1 -u root -prootpass wordpress > /backups/ecom-$(date +%%Y%%m%%d).sql'
-Volume=/srv/backups:/backups:Z
+# ~/.config/systemd/user/ecom-backup.service
+[Unit]
+Description=Back up the ecommerce MariaDB database
 
 [Service]
 Type=oneshot
+ExecStart=/usr/bin/bash -lc '/usr/bin/podman exec ecom-db mariadb-dump -u root -prootpass wordpress > /srv/backups/ecom-$(date +%%Y%%m%%d).sql'
+
+# ~/.config/systemd/user/ecom-backup.timer
+[Unit]
+Description=Run the ecommerce backup daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
 ```
+
+Enable it with `systemctl --user enable --now ecom-backup.timer`.
 
 ## Security Considerations
 
@@ -220,12 +240,12 @@ podman run -d \
   my-storefront
 ```
 
-## Scaling with podman-compose
+## Scaling with podman compose
 
 For a complete e-commerce stack, define everything in a compose file:
 
 ```yaml
-# docker-compose.yml (works with podman-compose)
+# compose.yaml (works with podman compose when a compose provider is installed)
 version: "3.9"
 services:
   app:
@@ -259,8 +279,10 @@ volumes:
 Run with:
 
 ```bash
-podman-compose up -d
+podman compose up -d
 ```
+
+This uses an external compose provider such as `podman-compose` or `docker-compose`.
 
 ## Conclusion
 
