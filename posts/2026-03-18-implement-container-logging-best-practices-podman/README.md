@@ -44,26 +44,28 @@ RUN ln -sf /dev/stdout /var/log/nginx/access.log && \
 Podman supports several log drivers:
 
 ```bash
-# journald: integrates with systemd journal (recommended for production)
+# journald: integrates with systemd journal
 podman run -d --log-driver=journald --name api my-api
 
-# k8s-file: JSON format, default for rootless
+# k8s-file: Kubernetes CRI-compatible file format
 podman run -d --log-driver=k8s-file --name api my-api
 
-# json-file: Docker-compatible JSON format
+# json-file: alias for k8s-file in Podman
 podman run -d --log-driver=json-file --name api my-api
 
 # none: disable logging
 podman run -d --log-driver=none --name batch-job my-job
 ```
 
-Set the default driver system-wide:
+Set the default driver for your user:
 
 ```ini
 # ~/.config/containers/containers.conf
 [containers]
 log_driver = "journald"
 ```
+
+For a system-wide default, use `/etc/containers/containers.conf` instead.
 
 ## Structured Logging
 
@@ -154,7 +156,7 @@ podman run -d \
   my-api:latest
 ```
 
-System-wide defaults:
+User-level defaults:
 
 ```ini
 # ~/.config/containers/containers.conf
@@ -217,6 +219,8 @@ journalctl CONTAINER_ID=<container-id>
 Include context in every log entry to make debugging easier:
 
 ```javascript
+const os = require('os');
+
 const logger = pino({
   level: 'info',
   base: {
@@ -231,7 +235,7 @@ const logger = pino({
 logger.info({ requestId: 'abc123', userId: 42 }, 'Order created');
 // Output:
 // {"level":"info","service":"api","version":"1.2.3","environment":"production",
-//  "hostname":"abc123","requestId":"abc123","userId":42,"msg":"Order created"}
+//  "hostname":"api-01","requestId":"abc123","userId":42,"msg":"Order created"}
 ```
 
 Pass context through environment variables:
@@ -249,12 +253,12 @@ podman run -d --name api \
 Forward container logs to a centralized system:
 
 ```bash
-# Promtail for Loki
-podman run -d --name promtail \
+# Grafana Alloy for Loki
+podman run -d --name alloy \
   -v /run/log/journal:/run/log/journal:ro \
-  -v ~/promtail.yml:/etc/promtail/config.yml:ro,Z \
-  docker.io/grafana/promtail:latest \
-  -config.file=/etc/promtail/config.yml
+  -v ~/config.alloy:/etc/alloy/config.alloy:ro,Z \
+  docker.io/grafana/alloy:latest \
+  run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
 
 # Fluentd for Elasticsearch
 podman run -d --name fluentd \
