@@ -30,16 +30,16 @@ rules:
   - seq: 20
     action: permit
     protocol: tcp
-    src: "2001:db8:trusted::/48"
-    dst: "2001:db8:servers::/48"
+    src: "2001:db8:100::/48"
+    dst: "2001:db8:200::/48"
     dst_port: 443
     remark: "Allow HTTPS from trusted subnet"
 
   - seq: 30
     action: permit
     protocol: tcp
-    src: "2001:db8:trusted::/48"
-    dst: "2001:db8:servers::/48"
+    src: "2001:db8:100::/48"
+    dst: "2001:db8:200::/48"
     dst_port: 22
     remark: "Allow SSH from trusted subnet"
 
@@ -48,7 +48,7 @@ rules:
     protocol: ipv6
     src: any
     dst: any
-    remark: "Implicit deny all"
+    remark: "Explicit deny all with logging"
     log: true
 ```
 
@@ -62,7 +62,7 @@ rules:
   gather_facts: false
 
   vars:
-    policy_file: "policies/ipv6_acl_policy.yml"
+    policy_file: "../policies/ipv6_acl_policy.yml"
 
   tasks:
     - name: Load ACL policy
@@ -71,28 +71,27 @@ rules:
 
     - name: Generate IOS-XR ACL configuration
       template:
-        src: "templates/iosxr_ipv6_acl.j2"
+        src: "../templates/iosxr_ipv6_acl.j2"
         dest: "/tmp/{{ inventory_hostname }}_acl.txt"
       delegate_to: localhost
+      check_mode: no
 
     - name: Apply ACL on IOS-XR
       cisco.iosxr.iosxr_config:
-        lines:
-          - "ipv6 access-list {{ acl_name }}"
-        parents: []
         src: "/tmp/{{ inventory_hostname }}_acl.txt"
       when: ansible_network_os == "cisco.iosxr.iosxr"
 
     - name: Verify ACL applied
       cisco.iosxr.iosxr_command:
         commands:
-          - "show ipv6 access-list {{ acl_name }}"
+          - "show access-lists ipv6 {{ acl_name }}"
       register: acl_output
+      when: ansible_network_os == "cisco.iosxr.iosxr" and not ansible_check_mode
 
     - name: Fail if ACL not found
       fail:
         msg: "ACL {{ acl_name }} not found after deployment"
-      when: acl_name not in acl_output.stdout[0]
+      when: ansible_network_os == "cisco.iosxr.iosxr" and not ansible_check_mode and acl_name not in acl_output.stdout[0]
 ```
 
 ## Step 3: Jinja2 Template for IOS-XR
@@ -153,7 +152,7 @@ if __name__ == "__main__":
 
 ```bash
 # Validate policy
-python scripts/validate_acl_policy.py
+python3 scripts/validate_acl_policy.py
 
 # Check mode (dry run)
 ansible-playbook playbooks/deploy_ipv6_acl.yml --check --diff
@@ -162,7 +161,7 @@ ansible-playbook playbooks/deploy_ipv6_acl.yml --check --diff
 ansible-playbook playbooks/deploy_ipv6_acl.yml
 
 # Verify on device
-ssh admin@2001:db8::r1 "show ipv6 access-list IPV6_INGRESS_FILTER"
+ssh admin@2001:db8::1 "show access-lists ipv6 IPV6_INGRESS_FILTER"
 ```
 
 ## Conclusion
