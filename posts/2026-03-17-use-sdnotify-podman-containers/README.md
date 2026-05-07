@@ -16,12 +16,14 @@ The sd_notify protocol allows a service to notify systemd about its startup stat
 
 ## How sdnotify Works with Podman
 
-Podman supports four sdnotify modes:
+Podman's `--sdnotify` option supports four modes:
 
 - **container** - The container process sends sd_notify messages (Podman proxies them). This is the default.
 - **conmon** - The conmon process sends READY when the container starts.
 - **healthy** - Podman sends READY when the container's health check passes.
 - **ignore** - No notification is sent.
+
+In Quadlet `.container` files, the `Notify=` setting maps this behavior for systemd-managed containers: `Notify=true` passes the notification socket into the container, `Notify=healthy` waits for a passing health check, and the default `Notify=false` lets the container runtime report startup when it starts the container process.
 
 ## Using sdnotify=container
 
@@ -59,10 +61,12 @@ import os
 def notify_ready():
     sock_path = os.environ.get('NOTIFY_SOCKET')
     if sock_path:
-        sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-        sock.connect(sock_path)
-        sock.sendall(b'READY=1')
-        sock.close()
+        if sock_path[0] == '@':
+            sock_path = '\0' + sock_path[1:]
+
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+            sock.connect(sock_path)
+            sock.sendall(b'READY=1')
 
 # Application initialization code here
 # ...
@@ -106,21 +110,34 @@ WantedBy=default.target
 Applications can also send status updates:
 
 ```python
+import socket
+import os
+
+def notify(message):
+    sock_path = os.environ.get('NOTIFY_SOCKET')
+    if sock_path:
+        if sock_path[0] == '@':
+            sock_path = '\0' + sock_path[1:]
+
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as sock:
+            sock.connect(sock_path)
+            sock.sendall(message)
+
 # Send status messages
-sock.sendall(b'STATUS=Accepting connections on port 3000')
+notify(b'STATUS=Accepting connections on port 3000')
 
 # Send watchdog keepalive
-sock.sendall(b'WATCHDOG=1')
+notify(b'WATCHDOG=1')
 ```
 
-## Using the conmon Default
+## Using the Quadlet Default
 
-Without explicit Notify configuration, Podman uses conmon-based notification:
+Without explicit Notify configuration in a Quadlet `.container` file, the container runtime handles startup notification:
 
 ```ini
 [Container]
 Image=docker.io/myorg/myapp:latest
-# No Notify directive - conmon signals READY when container starts
+# No Notify directive - the runtime reports startup when the container process starts
 
 [Service]
 Type=notify
