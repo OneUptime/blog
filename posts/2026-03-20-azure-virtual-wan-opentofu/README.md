@@ -64,8 +64,6 @@ resource "azurerm_virtual_hub_connection" "spoke_1" {
   name                      = "spoke-1-connection"
   virtual_hub_id            = azurerm_virtual_hub.east_us.id
   remote_virtual_network_id = var.spoke_1_vnet_id
-
-  internet_security_enabled = true  # Route internet traffic through hub (e.g., Azure Firewall)
 }
 
 resource "azurerm_virtual_hub_connection" "spoke_2" {
@@ -73,7 +71,15 @@ resource "azurerm_virtual_hub_connection" "spoke_2" {
   virtual_hub_id            = azurerm_virtual_hub.east_us.id
   remote_virtual_network_id = var.spoke_2_vnet_id
 
-  internet_security_enabled = true
+  routing {
+    associated_route_table_id = azurerm_virtual_hub_route_table.custom.id
+
+    propagated_route_table {
+      route_table_ids = [
+        azurerm_virtual_hub.east_us.default_route_table_id
+      ]
+    }
+  }
 }
 ```
 
@@ -86,12 +92,7 @@ resource "azurerm_vpn_gateway" "east_us" {
   resource_group_name = var.resource_group_name
   virtual_hub_id      = azurerm_virtual_hub.east_us.id
 
-  scale_unit = 1  # Each scale unit = 500 Mbps
-
-  bgp_settings {
-    asn         = 65515  # Azure reserved BGP ASN
-    peer_weight = 0
-  }
+  scale_unit = 1  # 1 scale unit = 500 Mbps aggregate throughput
 }
 
 # VPN site representing branch office
@@ -126,6 +127,17 @@ resource "azurerm_vpn_gateway_connection" "branch" {
     protocol         = "IKEv2"
 
     bgp_enabled = true
+  }
+
+  routing {
+    associated_route_table = azurerm_virtual_hub.east_us.default_route_table_id
+
+    propagated_route_table {
+      route_table_ids = [
+        azurerm_virtual_hub.east_us.default_route_table_id,
+        azurerm_virtual_hub_route_table.custom.id
+      ]
+    }
   }
 }
 ```
@@ -172,4 +184,4 @@ az network vhub get-effective-routes \
 
 ## Conclusion
 
-Virtual WAN Standard type supports any-to-any routing (branch-to-branch, branch-to-VNet, VNet-to-VNet across hubs) automatically-traffic routes through the hub without explicit route configuration. Each scale unit in VPN Gateway provides 500 Mbps; size the gateway based on aggregate branch bandwidth. Integrate Azure Firewall into Virtual WAN hubs (Secured Virtual Hubs) to inspect all traffic between spokes and branches without deploying individual firewalls in each VNet. Virtual WAN is significantly cheaper than managing individual VPN gateways in hub VNets when connecting more than 5-10 branches.
+Virtual WAN Standard supports any-to-any routing (branch-to-branch, branch-to-VNet, and VNet-to-VNet across hubs) when connections use the default association and propagation behavior. Each VPN gateway scale unit represents 500 Mbps of aggregate site-to-site capacity, so size the gateway based on aggregate branch bandwidth. Integrate Azure Firewall into Virtual WAN hubs (Secured Virtual Hubs) with routing intent to inspect traffic between spokes and branches without deploying individual firewalls in each VNet. Use current Virtual WAN pricing to compare gateway, connection unit, routing, and security costs for your topology rather than relying on a fixed branch-count rule of thumb.
