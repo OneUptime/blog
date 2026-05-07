@@ -87,9 +87,9 @@ app.listen(PORT, '0.0.0.0', () => {
 
 FROM node:20-bookworm-slim
 WORKDIR /app
-COPY package*.json ./
+COPY api/package*.json ./
 RUN npm install
-COPY . .
+COPY api/. .
 EXPOSE 3000
 CMD ["npx", "nodemon", "server.js"]
 ```
@@ -100,11 +100,12 @@ Build and run:
 # Build the API image
 podman build -t my-api .
 
-# Run with volume mount for live reloading
+# Run with live reloading while keeping container-installed dependencies
 podman run -d \
   --name api-dev \
   -p 3000:3000 \
   -v ./api:/app:Z \
+  -v api-node_modules:/app/node_modules \
   my-api
 
 # Test the API
@@ -116,8 +117,11 @@ curl http://localhost:3000/api/items | python3 -m json.tool
 Most real APIs need a database. Use a Podman pod to run the API server and database together:
 
 ```bash
+# Build the FastAPI image
+podman build -t my-python-api -f Containerfile.python .
+
 # Create a pod for the API and its database
-podman pod create --name api-stack -p 3000:3000 -p 5432:5432
+podman pod create --name api-stack -p 8000:8000 -p 5432:5432
 
 # Start PostgreSQL
 podman run -d --pod api-stack --name api-db \
@@ -128,13 +132,15 @@ podman run -d --pod api-stack --name api-db \
   postgres:16
 
 # Wait for the database to be ready
-sleep 5
+until podman exec api-db pg_isready -U apiuser -d apidb; do
+  sleep 1
+done
 
 # Start the API server
 podman run -d --pod api-stack --name api-server \
   -v ./api:/app:Z \
   -e DATABASE_URL="postgresql://apiuser:apipass@localhost:5432/apidb" \
-  my-api
+  my-python-api
 ```
 
 Here is a Python FastAPI example with database integration:
@@ -142,7 +148,7 @@ Here is a Python FastAPI example with database integration:
 ```python
 # api/main.py
 from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import create_engine, Column, Integer, String, Float, text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -177,14 +183,13 @@ class ProductCreate(BaseModel):
     stock: int = 0
 
 class ProductResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     description: str
     price: float
     stock: int
-
-    class Config:
-        from_attributes = True
 
 # Dependency to get a database session
 def get_db():
@@ -236,9 +241,9 @@ def health_check(db: Session = Depends(get_db)):
 # Containerfile.python
 FROM python:3.12-slim
 WORKDIR /app
-COPY requirements.txt .
+COPY api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY . .
+COPY api/. .
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 ```
@@ -251,39 +256,71 @@ The most powerful pattern for API testing is spinning up a fresh database for ea
 #!/bin/bash
 # run-integration-tests.sh
 
-set -e
+set -euo pipefail
 
+TEST_POD="test-stack-$$"
 TEST_DB_CONTAINER="test-db-$$"
-TEST_DB_PORT=25432
+TEST_API_CONTAINER="test-api-$$"
 
-# Start a disposable database
+cleanup() {
+  podman pod rm -f "$TEST_POD" >/dev/null 2>&1 || true
+}
+
+trap cleanup EXIT
+
+# Build the API image used for the integration test run
+podman build -t my-python-api -f Containerfile.python .
+
+# Create a pod for the API and disposable database
+podman pod create --name "$TEST_POD" -p 8000:8000
+
+# Start a disposable database inside the pod
 podman run -d \
+  --pod "$TEST_POD" \
   --name "$TEST_DB_CONTAINER" \
   -e POSTGRES_USER=test \
   -e POSTGRES_PASSWORD=test \
   -e POSTGRES_DB=testdb \
-  -p "$TEST_DB_PORT:5432" \
   postgres:16
 
 # Wait for database readiness
 echo "Waiting for test database..."
 for i in $(seq 1 30); do
-  if podman exec "$TEST_DB_CONTAINER" pg_isready -U test 2>/dev/null; then
+  if podman exec "$TEST_DB_CONTAINER" pg_isready -U test -d testdb >/dev/null 2>&1; then
     break
   fi
   sleep 1
 done
 
+if ! podman exec "$TEST_DB_CONTAINER" pg_isready -U test -d testdb >/dev/null 2>&1; then
+  echo "Test database did not become ready in time" >&2
+  exit 1
+fi
+
+# Start the API against the disposable database
+podman run -d \
+  --pod "$TEST_POD" \
+  --name "$TEST_API_CONTAINER" \
+  -e DATABASE_URL="postgresql://test:test@localhost:5432/testdb" \
+  my-python-api
+
+# Wait for the API to be ready
+echo "Waiting for API server..."
+for i in $(seq 1 30); do
+  if curl -fsS http://localhost:8000/api/health >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+if ! curl -fsS http://localhost:8000/api/health >/dev/null 2>&1; then
+  echo "API server did not become ready in time" >&2
+  exit 1
+fi
+
 # Run integration tests
-DATABASE_URL="postgresql://test:test@localhost:$TEST_DB_PORT/testdb" \
+API_BASE_URL="http://localhost:8000" \
   pytest tests/integration/ -v --tb=short
-
-EXIT_CODE=$?
-
-# Tear down the database
-podman rm -f "$TEST_DB_CONTAINER"
-
-exit $EXIT_CODE
 ```
 
 Write integration tests that use the containerized database:
@@ -373,7 +410,7 @@ app.post('/v1/notifications', (req, res) => {
 });
 
 // Catch-all for unhandled routes
-app.all('*', (req, res) => {
+app.all('/{*path}', (req, res) => {
   console.log(`Unhandled: ${req.method} ${req.path}`);
   res.status(404).json({ error: 'Mock endpoint not configured' });
 });
