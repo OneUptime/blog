@@ -16,7 +16,7 @@ Home Assistant is the leading open-source platform for home automation. It suppo
 
 ## Prerequisites
 
-- A Linux host with Podman installed (version 4.0 or later).
+- A Linux host with Podman installed (with cgroup v2 if you plan to use the Quadlet systemd service).
 - At least 2 GB of free RAM and 1 GB of disk space.
 - Network access to your smart home devices (same subnet recommended).
 - Optional: USB devices such as Zigbee/Z-Wave dongles if you use those protocols.
@@ -128,21 +128,21 @@ Home Assistant configuration lives in YAML files inside the config directory. He
 - id: "sunset_porch_light"
   alias: "Turn on porch light at sunset"
   description: "Automatically turns on the porch light when the sun sets"
-  trigger:
-    - platform: sun
+  triggers:
+    - trigger: sun
       event: sunset
       offset: "-00:15:00"  # 15 minutes before sunset
-  condition:
+  conditions:
     - condition: state
       entity_id: binary_sensor.porch_motion
       state: "off"  # Only if no motion detected (light might already be on)
-  action:
-    - service: light.turn_on
+  actions:
+    - action: light.turn_on
       target:
         entity_id: light.porch
       data:
         brightness_pct: 80
-        color_temp: 370  # Warm white
+        color_temp_kelvin: 2700  # Warm white
 ```
 
 After editing YAML files, reload the configuration from the web UI or restart the container:
@@ -218,14 +218,31 @@ tar czf ~/homeassistant-backup-$(date +%Y%m%d).tar.gz ~/homeassistant/config/
 For automatic startup on boot:
 
 ```bash
-# Generate a systemd unit file
-podman generate systemd --name homeassistant --new --files
+# Create a Quadlet unit file
+sudo mkdir -p /etc/containers/systemd
+sudo tee /etc/containers/systemd/homeassistant.container >/dev/null <<'EOF'
+[Unit]
+Description=Home Assistant container
 
-# Install and enable the service
-sudo mv container-homeassistant.service /etc/systemd/system/
+[Container]
+ContainerName=homeassistant
+Image=ghcr.io/home-assistant/home-assistant:stable
+Network=host
+PodmanArgs=--privileged
+Volume=/home/your-user/homeassistant/config:/config:Z
+Volume=/run/dbus:/run/dbus:ro
+Environment=TZ=America/New_York
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Replace /home/your-user with your actual home directory, then enable the service
 sudo systemctl daemon-reload
-sudo systemctl enable container-homeassistant.service
-sudo systemctl start container-homeassistant.service
+sudo systemctl enable --now homeassistant.service
 ```
 
 ---
