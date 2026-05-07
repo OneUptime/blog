@@ -28,8 +28,9 @@ podman info | grep networkBackend
 # Docker bridge    -> Podman bridge (default)
 # Docker host      -> Podman host
 # Docker none      -> Podman none
-# Docker overlay   -> Not available (use pods or Kubernetes)
+# Docker overlay   -> No built-in equivalent (use Kubernetes or another multi-host networking solution)
 # Docker macvlan   -> Podman macvlan
+# Docker ipvlan    -> Podman ipvlan
 ```
 
 ## Inventorying Docker Networks
@@ -105,10 +106,11 @@ podman network create \
   --gateway 10.5.0.1 \
   --label environment=production \
   --label team=backend \
+  --opt com.docker.network.bridge.name=br-prod \
   production-net
 
-# Note: Podman manages bridge names automatically with Netavark
-# The com.docker.network.bridge.name option is Docker-specific
+# Note: Podman also supports com.docker.network.bridge.name for bridge networks
+# You can also use --interface-name=br-prod with Netavark
 ```
 
 ## Batch Network Migration Script
@@ -148,9 +150,27 @@ docker network ls --format '{{.Name}}' | while read NET; do
     jq -r '.[0].Driver')
   INTERNAL=$(docker network inspect "$NET" | \
     jq -r '.[0].Internal')
+  PARENT=$(docker network inspect "$NET" | \
+    jq -r '.[0].Options.parent // empty')
+  MACVLAN_MODE=$(docker network inspect "$NET" | \
+    jq -r '.[0].Options.macvlan_mode // empty')
+
+  # Podman does not provide a built-in overlay driver
+  case "$DRIVER" in
+    bridge|macvlan|ipvlan)
+      ;;
+    overlay)
+      echo "  SKIP: Docker overlay networks need Kubernetes or another multi-host networking solution."
+      continue
+      ;;
+    *)
+      echo "  SKIP: Unsupported or plugin driver: ${DRIVER}"
+      continue
+      ;;
+  esac
 
   # Build the Podman network create command
-  CMD="podman network create"
+  CMD="podman network create --driver ${DRIVER}"
 
   if [ -n "$SUBNET" ]; then
     CMD="${CMD} --subnet ${SUBNET}"
@@ -160,8 +180,12 @@ docker network ls --format '{{.Name}}' | while read NET; do
     CMD="${CMD} --gateway ${GATEWAY}"
   fi
 
-  if [ "$DRIVER" = "macvlan" ]; then
-    CMD="${CMD} --driver macvlan"
+  if [ -n "$PARENT" ]; then
+    CMD="${CMD} -o parent=${PARENT}"
+  fi
+
+  if [ "$DRIVER" = "macvlan" ] && [ -n "$MACVLAN_MODE" ]; then
+    CMD="${CMD} -o mode=${MACVLAN_MODE}"
   fi
 
   if [ "$INTERNAL" = "true" ]; then
@@ -236,14 +260,13 @@ Podman pods provide an alternative to Docker networks for tightly coupled contai
 
 ```bash
 # Create a pod (all containers share the same network namespace)
-podman pod create --name myapp-pod -p 8080:80 -p 5432:5432
+podman pod create --name myapp-pod -p 8080:80
 
 # Add containers to the pod
 podman run -d --pod myapp-pod --name web nginx
-podman run -d --pod myapp-pod --name db postgres:16
 
 # Containers in the same pod communicate via localhost
-podman exec web curl -s localhost:5432
+podman run --rm --pod myapp-pod curlimages/curl:latest curl -s http://localhost:80
 ```
 
 ## Verifying Network Migration
