@@ -39,7 +39,7 @@ Persistent routes are stored in the registry under:
 The metric determines route preference (lower = preferred):
 
 ```cmd
-:: Add route with metric 10 (preferred over default metric of 1)
+:: Add route with metric 10
 route add 10.0.0.0 mask 255.0.0.0 192.168.1.254 metric 10
 ```
 
@@ -95,7 +95,7 @@ route [-p] add <destination> mask <mask> <gateway> [metric <M>] [if <interface>]
   destination     Network address
   mask            Subnet mask
   gateway         Next-hop IP address
-  metric          Route cost (optional, default 1)
+  metric          Route cost (optional, 1-9999)
   if              Interface index (optional)
 ```
 
