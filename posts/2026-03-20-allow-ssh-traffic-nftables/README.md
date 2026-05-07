@@ -18,15 +18,15 @@ nftables is the modern Linux firewall framework replacing iptables. One of the f
 
 ## Basic nftables Table and Chain Setup
 
-Before adding rules, you need a table and an input chain. If you are starting fresh, create them first.
+Before adding rules, you need a table and an input chain. If you are starting fresh, create them first, but keep the input chain policy at `accept` until your allow rules are in place.
 
 ```bash
 # Create an inet table (handles both IPv4 and IPv6)
 
 nft add table inet filter
 
-# Create an input chain with a default drop policy
-nft add chain inet filter input { type filter hook input priority 0 \; policy drop \; }
+# Create an input chain first. Keep policy accept while building rules
+nft add chain inet filter input { type filter hook input priority 0 \; policy accept \; }
 
 # Create forward and output chains
 nft add chain inet filter forward { type filter hook forward priority 0 \; policy drop \; }
@@ -35,10 +35,10 @@ nft add chain inet filter output { type filter hook output priority 0 \; policy 
 
 ## Allow SSH Traffic on Port 22
 
-Always allow established/related connections first so existing sessions are not interrupted, then allow new SSH connections.
+If you are building rules interactively, add the allow rules first and only switch the input chain to a drop policy after the ruleset is complete. Always allow established/related connections before enabling a drop policy so existing sessions are not interrupted.
 
 ```bash
-# Allow already-established connections (critical - run this before adding drop policies)
+# Allow already-established connections before enabling a drop policy
 nft add rule inet filter input ct state established,related accept
 
 # Allow loopback interface traffic
@@ -52,11 +52,13 @@ nft add rule inet filter input tcp dport 22 accept
 
 Limiting SSH access to known management IPs significantly reduces attack surface.
 
+In an `inet` table, `ip saddr` matches IPv4 sources only. Use `ip6 saddr` for IPv6 source restrictions.
+
 ```bash
-# Allow SSH only from a specific IP address
+# Allow SSH only from a specific IPv4 address
 nft add rule inet filter input ip saddr 203.0.113.10 tcp dport 22 accept
 
-# Allow SSH from a CIDR range (e.g., office subnet)
+# Allow SSH from an IPv4 CIDR range (e.g., office subnet)
 nft add rule inet filter input ip saddr 10.0.0.0/8 tcp dport 22 accept
 ```
 
@@ -78,16 +80,17 @@ After adding rules, verify they appear correctly.
 nft list table inet filter
 
 # Show rules with handle numbers (needed to delete specific rules)
-nft list table inet filter -a
+nft -a list table inet filter
 ```
 
 ## Save Rules Persistently
 
-Rules added with `nft add rule` are not persistent across reboots. Save the current ruleset to a file.
+Rules added with `nft add` are not persistent across reboots. Save the current ruleset to the configuration file used by your distribution's `nftables` service.
 
 ```bash
-# Save ruleset to the default nftables configuration file
-nft list ruleset > /etc/nftables.conf
+# Save ruleset to a configuration file commonly loaded by nftables
+echo "flush ruleset" > /etc/nftables.conf
+nft list ruleset >> /etc/nftables.conf
 
 # Enable nftables to load the ruleset on boot
 systemctl enable nftables
@@ -114,6 +117,9 @@ table inet filter {
 
         # Drop invalid packets
         ct state invalid drop
+
+        # Allow ICMPv6 neighbor discovery so IPv6 connectivity works
+        icmpv6 type { nd-neighbor-solicit, nd-router-advert, nd-neighbor-advert } accept
 
         # Allow SSH from anywhere
         tcp dport 22 accept
