@@ -10,6 +10,8 @@ Description: Learn how to use Portainer service and container webhooks to automa
 
 Portainer supports webhooks at multiple levels:
 
+Webhooks are only available on non-Edge environments. Current Portainer documentation also marks stack and container webhooks as Business Edition features.
+
 | Webhook Type | Target | Action |
 |-------------|--------|--------|
 | Stack webhook | Docker Compose stack | Redeploy entire stack |
@@ -20,26 +22,28 @@ Portainer supports webhooks at multiple levels:
 
 1. Go to your Docker environment in Portainer.
 2. Navigate to **Containers** and click on a container.
-3. In the container detail view, find the **Webhooks** section.
-4. Toggle **Enable webhook** to On.
-5. Copy the webhook URL.
+3. In the container detail view, toggle **Container webhook** to On.
+4. Copy the webhook URL.
 
 ## Creating a Service Webhook (Swarm)
 
 1. Navigate to **Services** in your Swarm environment.
 2. Click on a service.
-3. Find the **Webhooks** tab.
-4. Enable and copy the webhook URL.
+3. In the service details screen, toggle **Service webhook** to On.
+4. Copy the webhook URL.
 
 ## Triggering Webhooks
 
 ```bash
-# Basic webhook trigger
+# Service or container webhook trigger
 
 curl -X POST "https://portainer.mycompany.com/api/webhooks/token123"
 
-# With a specific image tag (recommended for traceability)
+# Service or container webhook with a specific image tag
 curl -X POST "https://portainer.mycompany.com/api/webhooks/token123?tag=v2.1.0"
+
+# Stack webhook trigger
+curl -X POST "https://portainer.mycompany.com/api/stacks/webhooks/token123"
 
 # Verify success (expects 204 No Content)
 HTTP_STATUS=$(curl -s -w "%{http_code}" -o /dev/null \
@@ -54,23 +58,23 @@ Many container registries can call a URL when an image is pushed. Configure your
 ### Docker Hub Webhook
 
 1. In Docker Hub, go to your repository.
-2. Click **Webhooks** and add your Portainer webhook URL.
-3. Docker Hub calls it after every successful push.
+2. Click **Webhooks**, provide a name, and enter your Portainer webhook URL as the destination.
+3. Docker Hub sends a POST request on repository push events.
 
 ### Harbor Webhook
 
 ```bash
 # In Harbor UI: Project > Webhooks
-# Type: HTTP
+# Notify type: HTTP
 # Endpoint URL: https://portainer.mycompany.com/api/webhooks/token123
-# Event types: Push artifact
+# Events: Push artifact to registry
 ```
 
-## Chaining Webhooks: CI → Registry → Portainer
+## Triggering from CI After Push
 
 ```bash
 #!/bin/bash
-# Full automated pipeline: Build > Push > Deploy
+# Build, push, then trigger Portainer directly from CI
 
 set -e
 
@@ -99,12 +103,12 @@ fi
 ## Monitoring Webhook Deployments
 
 ```bash
-# After triggering a webhook, check container status
+# After triggering a webhook, check container status via the Portainer API
 sleep 30  # Wait for deployment to complete
 
 CONTAINER_STATUS=$(curl -s \
   "${PORTAINER_URL}/api/endpoints/${ENDPOINT_ID}/docker/containers/json" \
-  -H "Authorization: Bearer ${API_TOKEN}" | \
+  -H "X-API-Key: ${API_TOKEN}" | \
   jq -r '.[] | select(.Names[0] == "/myapp") | .Status')
 
 echo "Container status: ${CONTAINER_STATUS}"
