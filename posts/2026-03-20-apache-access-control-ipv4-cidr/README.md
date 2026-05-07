@@ -12,7 +12,7 @@ Apache's `Require ip` directive accepts full CIDR notation, making it easy to gr
 
 ## CIDR Notation in Apache
 
-Apache accepts multiple CIDR formats:
+Apache accepts multiple IP-based matching formats, including CIDR notation:
 
 ```apache
 # Full CIDR notation
@@ -21,7 +21,7 @@ Require ip 192.168.1.0/24       # 192.168.1.0 to .255 (/24 = 256 addresses)
 Require ip 10.0.0.0/8           # Entire 10.x.x.x range
 Require ip 172.16.0.0/12        # 172.16.x.x through 172.31.x.x
 
-# Short form (Apache expands automatically)
+# Partial IP form (byte-boundary subnet shorthand)
 Require ip 192.168.1            # Equivalent to 192.168.1.0/24
 Require ip 10                   # Equivalent to 10.0.0.0/8
 
@@ -64,7 +64,7 @@ Different areas of the site accessible from different CIDR ranges:
         Require all granted
     </Location>
 
-    # Employee area: accessible from corporate subnets (/22 = 1024 hosts)
+    # Employee area: accessible from corporate subnets (/22 = 1024 addresses)
     <Location /employee>
         Require ip 10.10.0.0/22    # 10.10.0.0 – 10.10.3.255
         Require ip 10.20.0.0/22
@@ -82,7 +82,7 @@ Different areas of the site accessible from different CIDR ranges:
 </VirtualHost>
 ```
 
-## Blocking Specific Subnets with RequireNot
+## Blocking Specific Subnets with `Require not`
 
 ```apache
 <Location />
@@ -90,11 +90,11 @@ Different areas of the site accessible from different CIDR ranges:
         Require all granted
 
         # Block known problematic subnets
-        RequireNot ip 192.0.2.0/24
-        RequireNot ip 198.51.100.0/24
+        Require not ip 192.0.2.0/24
+        Require not ip 198.51.100.0/24
 
-        # Block cloud scraper ranges
-        RequireNot ip 100.64.0.0/10
+        # Example: block RFC 6598 shared address space
+        Require not ip 100.64.0.0/10
     </RequireAll>
 </Location>
 ```
@@ -139,11 +139,11 @@ ipcalc 192.168.1.0/24
 ## Testing CIDR Rules
 
 ```bash
-# Test access from within allowed range
-curl --interface 10.10.0.50 http://portal.example.com/employee/
+# From a client in an allowed subnet, expect a non-403 response
+curl -I http://portal.example.com/employee/
 
-# Test access from blocked range (should return 403)
-curl --interface 198.51.100.100 http://portal.example.com/employee/
+# From a client outside the allowed subnets, expect 403
+curl -I http://portal.example.com/employee/
 
 # Reload Apache after changes
 sudo apache2ctl configtest && sudo systemctl reload apache2
@@ -151,4 +151,4 @@ sudo apache2ctl configtest && sudo systemctl reload apache2
 
 ## Conclusion
 
-Apache's `Require ip` with CIDR notation provides network-level access control that scales from single hosts to entire /8 supernets. Use hierarchical CIDR ranges to match your network topology, combine with `RequireAll`/`RequireNot` for exclusion rules, and document your CIDR decisions with comments in the configuration for future maintainability.
+Apache's `Require ip` with CIDR notation provides network-level access control that scales from single hosts to entire /8 supernets. Use hierarchical CIDR ranges to match your network topology, combine with `RequireAll`/`Require not` for exclusion rules, and document your CIDR decisions with comments in the configuration for future maintainability.
