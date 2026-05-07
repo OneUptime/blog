@@ -2,33 +2,24 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Azure, IPv6, Front Door, CDN, Global Load Balancer, Anycast
+Tags: Azure, IPv6, Front Door, CDN, Global Load Balancer
 
-Description: Configure Azure Front Door to accept IPv6 client connections, enabling global IPv6 anycast distribution of web applications and APIs.
+Description: Configure Azure Front Door to accept IPv6 client connections, enabling global IPv6 delivery for web applications and APIs.
 
 ## Introduction
 
-Azure Front Door is a global HTTP/HTTPS load balancer and CDN that supports IPv6 by default. All Front Door endpoints accept IPv6 connections from clients because Front Door operates from Microsoft's anycast network which has global IPv6 presence. Backend origins can be IPv4-only - Front Door handles IPv6 termination and connects to backends over IPv4 or IPv6 as available.
+Azure Front Door is a global HTTP/HTTPS load balancer and CDN that supports IPv6 by default. Front Door endpoints accept IPv6 connections from clients through Microsoft's global edge network. Backend origins can remain IPv4-only - Front Door terminates the client connection at the edge and forwards traffic to the configured origin over HTTP or HTTPS.
 
 ## Azure Front Door Classic with IPv6
 
+Front Door Classic is legacy. Existing Classic frontends still accept IPv6, but new Classic profiles can no longer be created and the service retires on March 31, 2027.
+
 ```bash
-RG="rg-frontdoor"
+FRONTEND_HOST="myapp.azurefd.net"
 
-# Front Door Classic (legacy) supports IPv6 by default
-
-# Just create the profile and IPv6 works automatically
-
-az network front-door create \
-    --resource-group "$RG" \
-    --name myapp-frontdoor \
-    --backend-address mybackend.example.com \
-    --frontend-host-name myapp.azurefd.net \
-    --forwarding-protocol HttpsOnly
-
-# Verify IPv6 access
-dig AAAA myapp.azurefd.net
-curl -6 https://myapp.azurefd.net/
+# Verify IPv6 access on an existing Front Door Classic frontend
+dig AAAA "$FRONTEND_HOST"
+curl -6 "https://${FRONTEND_HOST}/"
 ```
 
 ## Azure Front Door Standard/Premium with IPv6
@@ -75,10 +66,10 @@ resource "azurerm_cdn_frontdoor_origin" "web" {
   enabled                       = true
 
   certificate_name_check_enabled = true
-  host_name                      = azurerm_linux_virtual_machine.web.public_ip_address
+  host_name                      = "origin-web.example.com"
   http_port                      = 80
   https_port                     = 443
-  origin_host_header             = "www.example.com"
+  origin_host_header             = "origin-web.example.com"
   priority                       = 1
   weight                         = 1000
 }
@@ -92,6 +83,7 @@ resource "azurerm_cdn_frontdoor_route" "web" {
   supported_protocols    = ["Http", "Https"]
   patterns_to_match      = ["/*"]
   forwarding_protocol    = "HttpsOnly"
+  link_to_default_domain = true
   https_redirect_enabled = true
 
   cache {
@@ -111,11 +103,10 @@ output "frontdoor_endpoint" {
 AFD_HOSTNAME="endpoint-web-xyz.z01.azurefd.net"
 
 dig AAAA "$AFD_HOSTNAME"
-# Expected: AAAA record with anycast IPv6 addresses
+# Expected: AAAA record for the Front Door endpoint
 
 # Test IPv6 access
 curl -6 -I "https://${AFD_HOSTNAME}/"
-curl -6 -H "Host: www.example.com" "https://${AFD_HOSTNAME}/"
 
 # Check which IP was used
 curl -6 -w "Connected to: %{remote_ip}\n" -s -o /dev/null "https://${AFD_HOSTNAME}/"
@@ -127,6 +118,8 @@ curl -6 -I https://www.example.com
 ## Custom Domain with IPv6 on Front Door
 
 ```bash
+RG="rg-frontdoor"
+
 # Add custom domain to Front Door
 az afd custom-domain create \
     --resource-group "$RG" \
@@ -150,6 +143,15 @@ az network dns record-set cname set-record \
     --record-set-name www \
     --cname "endpoint-web-xyz.z01.azurefd.net"
 
+# After the domain validates, associate the custom domain with the route
+az afd route update \
+    --resource-group "$RG" \
+    --profile-name afd-main \
+    --endpoint-name endpoint-web \
+    --route-name route-web \
+    --custom-domains www-example \
+    --link-to-default-domain Enabled
+
 # For IPv6 with CNAME:
 # CNAME → Front Door hostname (has AAAA records)
 # Clients follow CNAME → get IPv6 address from Front Door
@@ -157,4 +159,4 @@ az network dns record-set cname set-record \
 
 ## Conclusion
 
-Azure Front Door supports IPv6 natively - all Front Door endpoints automatically respond to IPv6 clients through Microsoft's anycast network. No special IPv6 configuration is required. The Front Door domain names have AAAA records resolving to anycast IPv6 addresses. Custom domains using CNAME to the Front Door endpoint inherit IPv6 accessibility. Backends can be IPv4-only since Front Door terminates IPv6 connections at the edge and connects to origins over IPv4 or IPv6 as needed.
+Azure Front Door supports IPv6 natively. No special IPv6 configuration is required. Front Door hostnames publish AAAA records, and custom domains using CNAME to the Front Door endpoint inherit IPv6 accessibility after the domain is associated with a route. Backends can remain IPv4-only since Front Door terminates IPv6 connections at the edge and forwards traffic to the configured origin.
