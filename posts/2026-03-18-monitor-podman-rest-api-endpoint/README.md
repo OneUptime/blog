@@ -26,7 +26,7 @@ The simplest way to check if the Podman API is healthy is to ping it:
 # Simple health check
 
 curl -s --unix-socket /run/podman/podman.sock \
-  http://localhost/v4.0.0/libpod/_ping
+  http://localhost/libpod/_ping
 
 # Expected response: OK
 ```
@@ -38,7 +38,7 @@ The `_ping` endpoint returns a simple "OK" string when the API is healthy. It is
 ```bash
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
   --unix-socket /run/podman/podman.sock \
-  http://localhost/v4.0.0/libpod/_ping)
+  http://localhost/libpod/_ping)
 
 if [ "$HTTP_CODE" -eq 200 ]; then
   echo "Podman API is healthy"
@@ -52,7 +52,7 @@ fi
 ```bash
 RESPONSE_TIME=$(curl -s -o /dev/null -w "%{time_total}" \
   --unix-socket /run/podman/podman.sock \
-  http://localhost/v4.0.0/libpod/_ping)
+  http://localhost/libpod/_ping)
 
 echo "Response time: ${RESPONSE_TIME}s"
 
@@ -71,6 +71,7 @@ Build a script that checks multiple aspects of API health:
 
 SOCKET="/run/podman/podman.sock"
 API="http://localhost/v4.0.0/libpod"
+PING_API="http://localhost/libpod"
 ALERT_EMAIL="ops@example.com"
 LOG_FILE="/var/log/podman-health.log"
 
@@ -80,7 +81,7 @@ log() {
 
 check_api_ping() {
   local result
-  result=$(curl -s --max-time 5 --unix-socket "$SOCKET" "$API/_ping" 2>&1)
+  result=$(curl -s --max-time 5 --unix-socket "$SOCKET" "$PING_API/_ping" 2>&1)
   if [ "$result" = "OK" ]; then
     return 0
   fi
@@ -177,7 +178,6 @@ Export Podman API metrics for Prometheus scraping:
 """Podman API metrics exporter for Prometheus."""
 
 import time
-import json
 import requests_unixsocket
 from urllib.parse import quote
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -185,6 +185,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 SOCKET_PATH = "/run/podman/podman.sock"
 ENCODED_SOCKET = quote(SOCKET_PATH, safe="")
 BASE_URL = f"http+unix://{ENCODED_SOCKET}/v4.0.0/libpod"
+PING_URL = f"http+unix://{ENCODED_SOCKET}/libpod"
 METRICS_PORT = 9191
 
 
@@ -195,7 +196,7 @@ def collect_metrics():
     # API health
     try:
         start = time.time()
-        resp = session.get(f"{BASE_URL}/_ping", timeout=5)
+        resp = session.get(f"{PING_URL}/_ping", timeout=5)
         duration = time.time() - start
         api_up = 1 if resp.text == "OK" else 0
         metrics.append(f"podman_api_up {api_up}")
@@ -233,24 +234,21 @@ def collect_metrics():
         for container in running:
             name = container["Names"][0].replace("-", "_")
             stats_resp = session.get(
-                f"{BASE_URL}/containers/{container['Id']}/stats",
-                params={"stream": False},
+                f"{BASE_URL}/containers/stats",
+                params={"containers": container["Id"], "stream": False},
                 timeout=10,
-                stream=True,
             )
-            for line in stats_resp.iter_lines():
-                if line:
-                    stats = json.loads(line)
-                    metrics.append(
-                        f'podman_container_cpu_percent{{name="{name}"}} {stats.get("CPU", 0):.2f}'
-                    )
-                    metrics.append(
-                        f'podman_container_memory_bytes{{name="{name}"}} {stats.get("MemUsage", 0)}'
-                    )
-                    metrics.append(
-                        f'podman_container_pids{{name="{name}"}} {stats.get("PIDs", 0)}'
-                    )
-                    break
+            stats_payload = stats_resp.json()
+            stats = stats_payload[0] if isinstance(stats_payload, list) else stats_payload
+            metrics.append(
+                f'podman_container_cpu_percent{{name="{name}"}} {stats.get("CPU", 0):.2f}'
+            )
+            metrics.append(
+                f'podman_container_memory_bytes{{name="{name}"}} {stats.get("MemUsageBytes", 0)}'
+            )
+            metrics.append(
+                f'podman_container_pids{{name="{name}"}} {stats.get("PIDs", 0)}'
+            )
     except Exception:
         pass
 
@@ -299,7 +297,7 @@ curl -s -o /dev/null -w "%{http_code}" \
   --cacert /etc/podman/tls/ca.pem \
   --cert /etc/podman/tls/client-cert.pem \
   --key /etc/podman/tls/client-key.pem \
-  https://podman-api.example.com:8443/v4.0.0/libpod/_ping
+  https://podman-api.example.com:8443/libpod/_ping
 ```
 
 ## Monitoring Events
@@ -315,16 +313,16 @@ curl -s --unix-socket "$SOCKET" --no-buffer \
   "http://localhost/v4.0.0/libpod/events" | \
   while read -r event; do
     TYPE=$(echo "$event" | jq -r '.Type // "unknown"')
-    ACTION=$(echo "$event" | jq -r '.Action // "unknown"')
-    NAME=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
-    TIME=$(echo "$event" | jq -r '.time // 0')
+    ACTION=$(echo "$event" | jq -r '.Status // "unknown"')
+    NAME=$(echo "$event" | jq -r '.Name // "unknown"')
+    TIME=$(echo "$event" | jq -r '.Time // "unknown"')
 
     case "$ACTION" in
-      die|stop|kill|oom)
-        echo "ALERT: Container $NAME event: $ACTION at $(date -d @$TIME)"
+      died|stop|kill)
+        echo "ALERT: Container $NAME event: $ACTION at $(date -d "$TIME")"
         ;;
       start|create)
-        echo "INFO: Container $NAME event: $ACTION at $(date -d @$TIME)"
+        echo "INFO: Container $NAME event: $ACTION at $(date -d "$TIME")"
         ;;
     esac
   done
@@ -352,7 +350,7 @@ CURRENT_STATE="unknown"
 PREVIOUS_STATE=$(cat "$STATE_FILE" 2>/dev/null || echo "unknown")
 
 PING_RESULT=$(curl -s --max-time 5 --unix-socket "$SOCKET" \
-  "http://localhost/v4.0.0/libpod/_ping" 2>/dev/null)
+  "http://localhost/libpod/_ping" 2>/dev/null)
 
 if [ "$PING_RESULT" = "OK" ]; then
   CURRENT_STATE="up"
