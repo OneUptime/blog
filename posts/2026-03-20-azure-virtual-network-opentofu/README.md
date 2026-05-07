@@ -32,16 +32,24 @@ output "vnet_name" { value = azurerm_virtual_network.main.name }
 
 ```hcl
 variable "resource_group_name" { type = string }
-variable "location"            { type = string; default = "East US" }
+variable "location" {
+  type    = string
+  default = "East US"
+}
 variable "environment"         { type = string }
 variable "name"                { type = string }
+variable "vnet_cidr"           { type = string }
+variable "custom_dns_servers" {
+  type    = list(string)
+  default = []
+}
 ```
 
 ## Outputs
 
 ```hcl
-output "id"   { value = azurerm_resource_type.main.id }
-output "name" { value = azurerm_resource_type.main.name }
+output "id"   { value = azurerm_virtual_network.main.id }
+output "name" { value = azurerm_virtual_network.main.name }
 ```
 
 ## Conclusion
