@@ -8,7 +8,7 @@ Description: Connect Docker containers to multiple networks in Portainer for adv
 
 ---
 
-Docker networking is fundamental to container communication. Portainer provides a visual interface for creating and managing all Docker network types.
+Docker networking is fundamental to container communication. Portainer provides a visual interface for creating and managing Docker networks, including bridge, macvlan, ipvlan, and overlay networks.
 
 ## Docker Network Types
 
@@ -19,7 +19,7 @@ Docker networking is fundamental to container communication. Portainer provides 
 | IPvlan | IP-level network access, shared MAC |
 | Overlay | Multi-host communication in Docker Swarm |
 | Host | Container shares host network stack |
-| None | No networking (fully isolated) |
+| None | Isolated from external networking; loopback only |
 
 ## Create Networks via CLI
 
@@ -50,7 +50,7 @@ docker network create \
   -o ipvlan_mode=l2 \
   ipvlan-network
 
-# Overlay network (Swarm)
+# Overlay network (requires Swarm mode)
 docker network create \
   --driver overlay \
   --attachable \
@@ -86,7 +86,7 @@ docker run -d \
 # Inspect network configuration
 docker network inspect my-bridge-network
 
-# Test connectivity between containers
+# Test connectivity between containers (if ping is installed)
 docker exec my-container ping other-container
 
 # Check container's network settings
