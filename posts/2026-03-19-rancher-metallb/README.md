@@ -50,15 +50,18 @@ Wait for the pods to be ready:
 kubectl get pods -n metallb-system -w
 ```
 
-## Step 3: Install via Rancher Apps
+## Step 3: Alternatively, Install via Rancher Apps
+
+If you prefer to install MetalLB from the Rancher UI instead of the Helm CLI, add the MetalLB chart repository and install the chart there. In older Rancher 2.6 releases, the **Apps** area is labeled **Apps & Marketplace**.
 
 1. Navigate to your cluster in the Rancher dashboard.
-2. Go to **Apps** > **Charts**.
-3. Search for **MetalLB**.
-4. Click **Install**.
-5. Select namespace `metallb-system`.
-6. Configure values as needed.
-7. Click **Install**.
+2. Go to **Apps** > **Repositories** and add the Helm chart repository `https://metallb.github.io/metallb`.
+3. Go to **Apps** > **Charts**.
+4. Search for **MetalLB**.
+5. Click **Install**.
+6. Select namespace `metallb-system`.
+7. Configure values as needed.
+8. Click **Install**.
 
 ## Step 4: Configure Layer 2 Mode
 
@@ -196,7 +199,7 @@ metadata:
   name: web-app-static
   namespace: default
   annotations:
-    metallb.universe.tf/loadBalancerIPs: "192.168.1.200"
+    metallb.io/loadBalancerIPs: "192.168.1.200"
 spec:
   type: LoadBalancer
   selector:
@@ -217,7 +220,7 @@ metadata:
   name: staging-app
   namespace: staging
   annotations:
-    metallb.universe.tf/address-pool: staging-pool
+    metallb.io/address-pool: staging-pool
 spec:
   type: LoadBalancer
   selector:
