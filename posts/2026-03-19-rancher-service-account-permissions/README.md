@@ -17,7 +17,7 @@ Service accounts provide identities for processes running in pods. Unlike user a
 
 ## Understanding Service Accounts in Rancher
 
-Every namespace has a `default` service account that is automatically mounted into pods unless specified otherwise. In Kubernetes 1.24 and later, service account tokens are no longer automatically created as secrets. Instead, tokens are projected into pods via the TokenRequest API.
+Every namespace has a `default` service account that is automatically mounted into pods unless specified otherwise. In Kubernetes 1.24 and later, service account tokens are no longer automatically created as secrets. In modern clusters, pods typically receive short-lived projected tokens via the TokenRequest API.
 
 Rancher manages service accounts through the standard Kubernetes RBAC model. You can create service accounts, define roles, and bind those roles to service accounts using Rancher's UI or kubectl.
 
@@ -26,7 +26,8 @@ Rancher manages service accounts through the standard Kubernetes RBAC model. You
 **Via the Rancher UI:**
 
 1. Navigate to your cluster and select the target namespace.
-2. Go to **Service Discovery > Services** or use the **kubectl shell** from the cluster dashboard.
+2. Go to **More Resources > Core > ServiceAccounts**.
+3. Click **Create**.
 
 **Via kubectl:**
 
@@ -128,14 +129,11 @@ spec:
       containers:
         - name: controller
           image: my-controller:latest
-          env:
-            - name: KUBERNETES_SERVICE_HOST
-              value: "kubernetes.default.svc"
 ```
 
-## Step 5: Create a ClusterRole for Cross-Namespace Access
+## Step 5: Create a ClusterRole for Cluster-Wide Access
 
-If a service account needs access across multiple namespaces, use a ClusterRole with a ClusterRoleBinding:
+If a service account needs access across all namespaces, use a ClusterRole with a ClusterRoleBinding:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -181,7 +179,7 @@ automountServiceAccountToken: false
 kubectl apply -f default-sa-patch.yaml
 ```
 
-This ensures that pods in the `production` namespace do not receive API credentials unless they explicitly use a service account with `automountServiceAccountToken: true`.
+This ensures that pods in the `production` namespace that use the `default` service account do not receive API credentials unless token automounting is enabled explicitly in the pod spec.
 
 ## Step 7: Create a Token for External Use
 
@@ -211,8 +209,9 @@ type: kubernetes.io/service-account-token
 Rancher provides a UI for viewing and managing service accounts:
 
 1. Navigate to your cluster in the Rancher UI.
-2. Go to **Storage > Secrets** to see service account token secrets.
-3. Use the **kubectl Shell** from the cluster dashboard for direct management.
+2. Go to **More Resources > Core > ServiceAccounts** to view and manage service accounts.
+3. If you manually create a long-lived service account token secret, you can view it under **Storage > Secrets** or **More Resources > Core > Secrets**.
+4. Use the **kubectl Shell** from the cluster dashboard for direct management.
 
 To view service accounts for a namespace:
 
@@ -228,7 +227,8 @@ Review what each service account can do:
 kubectl get serviceaccounts -n production
 
 # Check permissions for a specific service account
-kubectl auth can-i --list --as=system:serviceaccount:production:app-deployer
+kubectl auth can-i --list -n production \
+  --as=system:serviceaccount:production:app-deployer
 
 # Check a specific permission
 kubectl auth can-i create deployments -n production \
