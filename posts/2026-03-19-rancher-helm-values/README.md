@@ -6,13 +6,14 @@ Tags: Rancher, Kubernetes, Helm
 
 Description: Learn how to configure Helm chart values in Rancher using the form editor, YAML editor, and CLI for customizing application deployments.
 
-Helm chart values are the primary mechanism for customizing application deployments. They control everything from replica counts and resource limits to feature flags and database connection strings. Rancher provides multiple interfaces for configuring these values, from an auto-generated form UI to a full YAML editor. This guide covers how to work with Helm chart values effectively in Rancher.
+Helm chart values are the primary mechanism for customizing application deployments. They control everything from replica counts and resource limits to feature flags and database connection strings. Rancher provides multiple interfaces for configuring these values, from chart-provided configuration forms to a full YAML editor. This guide covers how to work with Helm chart values effectively in Rancher.
 
 ## Prerequisites
 
 - A running Rancher instance (v2.7 or later)
 - A managed Kubernetes cluster registered in Rancher
 - A Helm chart repository configured in Rancher
+- Helm CLI installed locally, and any chart repository used in CLI examples added to your local Helm configuration
 - Basic understanding of YAML syntax
 
 ## Understanding Helm Values
@@ -44,17 +45,17 @@ helm show values bitnami/redis --version 19.0.0
 # Show the chart README for documentation
 helm show readme bitnami/redis --version 19.0.0
 
-# Show the values schema if available
+# Show the chart metadata
 helm show chart bitnami/redis --version 19.0.0
 ```
 
 ## Step 2: Configure Values via the Rancher Form UI
 
-When you install or upgrade a chart in Rancher, the form view provides an intuitive interface for setting values.
+When you install or upgrade a Rancher chart that includes `questions.yaml`, the form view provides an intuitive interface for setting values.
 
 1. Go to **Apps > Charts** and select a chart
 2. Click **Install**
-3. The **Form** tab shows auto-generated fields based on the chart's `questions.yaml` or values schema
+3. Rancher shows configuration fields based on the chart's `questions.yaml`
 
 Form fields map directly to values in the `values.yaml`. For example:
 
@@ -70,21 +71,17 @@ The form also supports:
 
 ## Step 3: Configure Values via the YAML Editor
 
-For full control, switch to the YAML editor in the Rancher install/upgrade form:
+For full control, use the YAML editor in the Rancher install/upgrade form. Native Helm charts in Rancher are configured this way by default.
 
-1. Click the **Edit YAML** tab
-2. The editor shows the complete `values.yaml` with defaults
+1. Open the YAML editor
+2. Enter or edit the values you want to apply
 3. Modify the values as needed
 
 Example configuration:
 
 ```yaml
-# Application settings
-replicaCount: 3
-
 image:
   repository: bitnami/redis
-  tag: "7.4.0"
   pullPolicy: IfNotPresent
 
 # Authentication
@@ -111,7 +108,8 @@ master:
       memory: 512Mi
   service:
     type: ClusterIP
-    port: 6379
+    ports:
+      redis: 6379
 
 # Replica configuration
 replica:
@@ -210,13 +208,13 @@ helm install my-app my-chart \
 
 ```bash
 # Show user-supplied values only
-helm get values my-redis -n default
+helm get values my-redis -n default -o yaml
 
 # Show all values including defaults
-helm get values my-redis -n default --all
+helm get values my-redis -n default --all -o yaml
 
 # Output as YAML for editing
-helm get values my-redis -n default > current-values.yaml
+helm get values my-redis -n default -o yaml > current-values.yaml
 ```
 
 ## Step 6: Update Values on an Existing Release
