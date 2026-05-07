@@ -18,7 +18,7 @@ This guide provides a detailed comparison to help you make an informed decision 
 
 ## Architecture Differences
 
-The most fundamental difference is the daemon. Docker runs a persistent background service (dockerd) that manages all containers. Every Docker CLI command communicates with this daemon over a Unix socket. Podman, by contrast, is daemonless. Each Podman command forks its own process, and containers run as direct child processes of the user's session.
+The most fundamental difference is the daemon. Docker runs a persistent background service (dockerd) that manages all containers. Every Docker CLI command communicates with this daemon over a Unix socket. Podman, by contrast, is daemonless. Each Podman command starts the requested operation directly, and running containers are monitored by `conmon` instead of a central container daemon.
 
 ```bash
 # Docker: CLI talks to daemon
@@ -33,14 +33,14 @@ This architectural difference has cascading effects on security, resource usage,
 
 ## Security Comparison
 
-Docker's daemon runs as root by default, which means any container managed by Docker has an indirect path to root privileges. Docker does support rootless mode, but it requires additional configuration. Podman runs rootless by default:
+Docker's daemon runs as root by default, which means access to the Docker socket is effectively highly privileged. Docker does support rootless mode, but it requires additional configuration. Podman can run rootless without a daemon, and when you run it as a non-root user, containers run in rootless mode:
 
 ```bash
-# Podman: rootless is the default
+# Podman: rootless when run as a non-root user
 podman run -d --name web nginx
 
 # Check the process owner
-ps aux | grep nginx
+ps aux | grep conmon
 # user  12345  ... conmon --cid ...
 
 # Docker rootless requires setup
@@ -49,7 +49,7 @@ export DOCKER_HOST=unix:///run/user/1000/docker.sock
 docker run -d --name web nginx
 ```
 
-Podman maps container UIDs to unprivileged host UIDs through user namespaces, so even UID 0 inside the container maps to an unprivileged user outside.
+In rootless mode, Podman maps container UIDs to unprivileged host UIDs through user namespaces, so even UID 0 inside the container maps to an unprivileged user outside.
 
 ## Pod Support
 
@@ -92,13 +92,16 @@ alias docker=podman
 
 ## Compose Support
 
-Docker has Docker Compose built into the CLI. Podman supports compose files through `podman-compose` or the Docker Compose tool itself:
+Docker has Docker Compose built into the CLI. Podman supports compose files through `podman compose`, which delegates to an external Compose provider such as `podman-compose` or Docker Compose:
 
 ```bash
 # Docker Compose (built-in)
 docker compose up -d
 
-# Podman with podman-compose
+# Podman with an installed Compose provider
+podman compose up -d
+
+# Podman with podman-compose directly
 pip install podman-compose
 podman-compose up -d
 
@@ -169,11 +172,11 @@ Moving from Docker to Podman is straightforward for most workloads:
 # Export Docker images
 docker save myapp:latest | podman load
 
-# Convert Docker Compose to Podman pods
-podman play kube my-k8s-manifest.yaml
+# Run Kubernetes YAML with Podman
+podman kube play my-k8s-manifest.yaml
 
 # Generate Kubernetes YAML from running containers
-podman generate kube myapp > myapp.yaml
+podman kube generate myapp > myapp.yaml
 ```
 
 ## Feature Comparison Summary
@@ -184,9 +187,9 @@ podman generate kube myapp > myapp.yaml
 | Rootless default | No | Yes |
 | Pod support | No | Yes |
 | systemd integration | Limited | Quadlet |
-| Compose support | Built-in | podman-compose |
+| Compose support | Built-in | podman compose / podman-compose |
 | Build tool | BuildKit | Buildah |
-| Image signing | Notary | sigstore |
+| Image signing | DCT/Notary (retiring) | sigstore |
 | Auto-update | No | Yes |
 | Kubernetes YAML | No | Generate/Play |
 
