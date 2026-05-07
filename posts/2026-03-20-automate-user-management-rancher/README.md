@@ -22,32 +22,48 @@ export RANCHER_URL="https://rancher.company.com"
 export RANCHER_TOKEN="token-xxxxx:yyyyyyyyyyyyyyy"
 
 # Test authentication
-curl -sk -H "Authorization: Bearer $RANCHER_TOKEN" \
-  "$RANCHER_URL/v3/users" | jq '.data[].username'
+curl -sku "$RANCHER_TOKEN" \
+  "$RANCHER_URL/v3/users" | jq -r '.data[].username'
 ```
 
 ## Step 2: Create Users via API
 
 ```bash
 # Create a new local user
-curl -sk -X POST \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
+USER_ID=$(curl -sku "$RANCHER_TOKEN" -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "username": "jsmith",
     "password": "SecurePassword123!",
     "name": "John Smith",
-    "enabled": true
+    "enabled": true,
+    "mustChangePassword": true
   }' \
-  "$RANCHER_URL/v3/users"
+  "$RANCHER_URL/v3/users" | jq -r '.id')
 
-# Batch user creation from CSV
-while IFS=',' read -r username name email; do
-  curl -sk -X POST \
-    -H "Authorization: Bearer $RANCHER_TOKEN" \
+# Grant the minimum global role required for the user to log in
+
+curl -sku "$RANCHER_TOKEN" -X POST \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"jsmith-user-base\",
+    \"globalRoleId\": \"user-base\",
+    \"userId\": \"$USER_ID\"
+  }" \
+  "$RANCHER_URL/v3/globalrolebindings"
+
+# Batch user creation from CSV: username,name,password
+while IFS=',' read -r username name password; do
+  user_id=$(curl -sku "$RANCHER_TOKEN" -X POST \
     -H "Content-Type: application/json" \
-    -d "{\"username\": \"$username\", \"name\": \"$name\", \"enabled\": true}" \
-    "$RANCHER_URL/v3/users"
+    -d "{\"username\": \"$username\", \"password\": \"$password\", \"name\": \"$name\", \"enabled\": true, \"mustChangePassword\": true}" \
+    "$RANCHER_URL/v3/users" | jq -r '.id')
+
+  curl -sku "$RANCHER_TOKEN" -X POST \
+    -H "Content-Type: application/json" \
+    -d "{\"name\": \"${username}-user-base\", \"globalRoleId\": \"user-base\", \"userId\": \"$user_id\"}" \
+    "$RANCHER_URL/v3/globalrolebindings"
+
   echo "Created user: $username"
 done < users.csv
 ```
@@ -56,21 +72,21 @@ done < users.csv
 
 ```bash
 # Get cluster ID
-CLUSTER_ID=$(curl -sk -H "Authorization: Bearer $RANCHER_TOKEN" \
+CLUSTER_ID=$(curl -sku "$RANCHER_TOKEN" \
   "$RANCHER_URL/v3/clusters" | jq -r '.data[] | select(.name=="production") | .id')
 
 # Get user ID
-USER_ID=$(curl -sk -H "Authorization: Bearer $RANCHER_TOKEN" \
+USER_ID=$(curl -sku "$RANCHER_TOKEN" \
   "$RANCHER_URL/v3/users?username=jsmith" | jq -r '.data[0].id')
 
 # Assign cluster-member role
-curl -sk -X POST \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
+curl -sku "$RANCHER_TOKEN" -X POST \
   -H "Content-Type: application/json" \
   -d "{
+    \"name\": \"jsmith-cluster-member\",
     \"clusterId\": \"$CLUSTER_ID\",
     \"roleTemplateId\": \"cluster-member\",
-    \"userPrincipalId\": \"local://$USER_ID\"
+    \"userId\": \"$USER_ID\"
   }" \
   "$RANCHER_URL/v3/clusterroletemplatebindings"
 ```
@@ -83,7 +99,7 @@ terraform {
   required_providers {
     rancher2 = {
       source  = "rancher/rancher2"
-      version = "~> 4.0"
+      version = "~> 14.0"
     }
   }
 }
@@ -93,70 +109,68 @@ provider "rancher2" {
   token_key  = var.rancher_token
 }
 
+data "rancher2_cluster" "production" {
+  name = "production"
+}
+
 # Define users in a structured way
 variable "users" {
   type = list(object({
-    username = string
-    name     = string
-    email    = string
-    role     = string
+    username         = string
+    name             = string
+    password         = string
+    role_template_id = string
   }))
   default = [
-    { username = "jsmith",  name = "John Smith",  email = "jsmith@co.com",  role = "developer" },
-    { username = "awilson", name = "Alice Wilson", email = "awilson@co.com", role = "viewer" }
+    { username = "jsmith",  name = "John Smith",  password = "ChangeMe123!", role_template_id = "cluster-member" },
+    { username = "awilson", name = "Alice Wilson", password = "ChangeMe123!", role_template_id = "cluster-member" }
   ]
 }
 
 resource "rancher2_user" "users" {
-  for_each = { for u in var.users : u.username => u }
-  username = each.value.username
-  name     = each.value.name
-  enabled  = true
+  for_each             = { for u in var.users : u.username => u }
+  username             = each.value.username
+  password             = each.value.password
+  name                 = each.value.name
+  enabled              = true
+  must_change_password = true
+}
+
+resource "rancher2_global_role_binding" "user_base" {
+  for_each       = rancher2_user.users
+  name           = "${each.key}-user-base"
+  global_role_id = "user-base"
+  user_id        = each.value.id
 }
 
 resource "rancher2_cluster_role_template_binding" "bindings" {
-  for_each          = { for u in var.users : u.username => u }
-  cluster_id        = data.rancher2_cluster.production.id
-  role_template_id  = each.value.role
-  user_id           = rancher2_user.users[each.key].id
+  for_each         = { for u in var.users : u.username => u }
+  name             = "${each.key}-${each.value.role_template_id}"
+  cluster_id       = data.rancher2_cluster.production.id
+  role_template_id = each.value.role_template_id
+  user_id          = rancher2_user.users[each.key].id
 }
 ```
 
 ## Step 5: Sync with Active Directory Groups
 
 ```bash
-# Script to sync AD group members to Rancher project roles
-AD_GROUPS_URL="https://graph.microsoft.com/v1.0/groups"
+# Bind an external directory group directly to a Rancher project role
+# so membership stays managed in the identity provider.
+bind_group_to_project() {
+  local binding_name=$1
+  local group_principal_id=$2
+  local rancher_project=$3
+  local role_template_id=$4
 
-sync_ad_group_to_rancher() {
-  local group_id=$1
-  local rancher_project=$2
-  local role=$3
-
-  # Get group members from Azure AD
-  members=$(curl -s -H "Authorization: Bearer $AD_TOKEN" \
-    "$AD_GROUPS_URL/$group_id/members" | \
-    jq -r '.value[].userPrincipalName')
-
-  # Sync each member to Rancher project
-  for email in $members; do
-    # Find user in Rancher by email
-    user_id=$(curl -sk -H "Authorization: Bearer $RANCHER_TOKEN" \
-      "$RANCHER_URL/v3/users?email=$email" | jq -r '.data[0].id')
-
-    if [ -n "$user_id" ]; then
-      # Ensure project role binding exists
-      curl -sk -X POST \
-        -H "Authorization: Bearer $RANCHER_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d "{\"projectId\": \"$rancher_project\", \"roleTemplateId\": \"$role\", \"userId\": \"$user_id\"}" \
-        "$RANCHER_URL/v3/projectroletemplatebindings"
-    fi
-  done
+  curl -sku "$RANCHER_TOKEN" -X POST \
+    -H "Content-Type: application/json" \
+    -d "{\"name\": \"$binding_name\", \"projectId\": \"$rancher_project\", \"roleTemplateId\": \"$role_template_id\", \"groupPrincipalId\": \"$group_principal_id\"}" \
+    "$RANCHER_URL/v3/projectroletemplatebindings"
 }
 
 # Run sync
-sync_ad_group_to_rancher "k8s-devs-group-id" "production-project-id" "developer"
+bind_group_to_project "prod-devs-project-member" "<group_principal_id_from_rancher>" "c-m-abcde:p-vwxyz" "project-member"
 ```
 
 ## Step 6: Off-boarding Automation
@@ -165,26 +179,30 @@ sync_ad_group_to_rancher "k8s-devs-group-id" "production-project-id" "developer"
 # Disable departed user
 disable_user() {
   local username=$1
-  local user_id=$(curl -sk -H "Authorization: Bearer $RANCHER_TOKEN" \
+  local user_id=$(curl -sku "$RANCHER_TOKEN" \
     "$RANCHER_URL/v3/users?username=$username" | jq -r '.data[0].id')
 
-  curl -sk -X PUT \
-    -H "Authorization: Bearer $RANCHER_TOKEN" \
+  if [ -z "$user_id" ] || [ "$user_id" = "null" ]; then
+    echo "User not found: $username"
+    return 1
+  fi
+
+  curl -sku "$RANCHER_TOKEN" -X PUT \
     -H "Content-Type: application/json" \
     -d '{"enabled": false}' \
     "$RANCHER_URL/v3/users/$user_id"
 
   echo "Disabled user: $username"
 
-  # Optionally remove all role bindings
-  bindings=$(curl -sk -H "Authorization: Bearer $RANCHER_TOKEN" \
-    "$RANCHER_URL/v3/clusterroletemplatebindings?userId=$user_id" | \
-    jq -r '.data[].id')
+  # Optionally remove global, cluster, and project role bindings
+  for endpoint in globalrolebindings clusterroletemplatebindings projectroletemplatebindings; do
+    bindings=$(curl -sku "$RANCHER_TOKEN" \
+      "$RANCHER_URL/v3/$endpoint?userId=$user_id" | jq -r '.data[]?.id')
 
-  for binding in $bindings; do
-    curl -sk -X DELETE \
-      -H "Authorization: Bearer $RANCHER_TOKEN" \
-      "$RANCHER_URL/v3/clusterroletemplatebindings/$binding"
+    for binding in $bindings; do
+      curl -sku "$RANCHER_TOKEN" -X DELETE \
+        "$RANCHER_URL/v3/$endpoint/$binding"
+    done
   done
 }
 ```
