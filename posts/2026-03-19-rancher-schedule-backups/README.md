@@ -33,7 +33,7 @@ kind: Backup
 metadata:
   name: rancher-daily-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 7
   schedule: "0 2 * * *"
 ```
@@ -67,14 +67,14 @@ kind: Backup
 metadata:
   name: rancher-hourly-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 24
   schedule: "0 * * * *"
   storageLocation:
     s3:
       bucketName: rancher-backups
       folder: hourly
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-east-1.amazonaws.com
       region: us-east-1
       credentialSecretName: s3-creds
       credentialSecretNamespace: cattle-resources-system
@@ -84,14 +84,14 @@ kind: Backup
 metadata:
   name: rancher-daily-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 30
   schedule: "0 2 * * *"
   storageLocation:
     s3:
       bucketName: rancher-backups
       folder: daily
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-east-1.amazonaws.com
       region: us-east-1
       credentialSecretName: s3-creds
       credentialSecretNamespace: cattle-resources-system
@@ -101,14 +101,14 @@ kind: Backup
 metadata:
   name: rancher-weekly-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 12
   schedule: "0 3 * * 0"
   storageLocation:
     s3:
       bucketName: rancher-backups
       folder: weekly
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-east-1.amazonaws.com
       region: us-east-1
       credentialSecretName: s3-creds
       credentialSecretNamespace: cattle-resources-system
@@ -132,11 +132,11 @@ After the first scheduled backup should have run, check the backup status:
 kubectl get backups.resources.cattle.io
 ```
 
-You will see output with each scheduled execution listed:
+You will see the scheduled Backup custom resource, with the most recent backup file shown in the `Latest-Backup` column:
 
 ```plaintext
-NAME                    STATUS    LAST BACKUP                              AGE
-rancher-daily-backup    Ready     rancher-daily-backup-2026-03-19.tar.gz   1d
+NAME                    LOCATION   TYPE        LATEST-BACKUP                                                                     RESOURCESET                AGE   STATUS
+rancher-daily-backup    S3         Recurring   rancher-daily-backup-752ecd87-d958-4d20-8350-072f8d090045-2026-03-19T02-00-00Z.tar.gz   rancher-resource-set-full   1d    Completed
 ```
 
 Check the details of the backup:
@@ -147,32 +147,26 @@ kubectl describe backups.resources.cattle.io rancher-daily-backup
 
 ## Step 6: Set Up Monitoring and Alerts
 
-To ensure your scheduled backups are actually running, set up monitoring. If you use Prometheus, you can create an alert based on backup status:
+To ensure your scheduled backups are actually running, set up monitoring. If you have enabled the operator's metrics endpoint and use Prometheus, you can create an alert based on the operator's backup metrics:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: rancher-backup-alerts
-  namespace: cattle-monitoring-system
+  namespace: cattle-resources-system
 spec:
   groups:
   - name: rancher-backup
     rules:
-    - alert: RancherBackupFailed
-      expr: |
-        kube_customresource_status_condition{
-          group="resources.cattle.io",
-          kind="Backup",
-          status="False",
-          condition="Ready"
-        } == 1
-      for: 5m
+    - alert: BackupFailed
+      expr: increase(rancher_backups_failed_total[5m]) > 0
+      for: 1m
       labels:
         severity: critical
       annotations:
         summary: "Rancher backup failed"
-        description: "Backup {{ $labels.name }} has failed."
+        description: "Backup {{ $labels.name }} had a failed processing event in the last 5 minutes."
 ```
 
 ## Step 7: Modify an Existing Schedule
@@ -183,11 +177,11 @@ To change the schedule of an existing backup, edit the resource:
 kubectl edit backups.resources.cattle.io rancher-daily-backup
 ```
 
-Change the `schedule` field and save. The operator will pick up the new schedule immediately.
+Change the `schedule` field and save. The operator will use the updated schedule for future runs.
 
 ## Step 8: Pause and Resume Scheduled Backups
 
-To temporarily stop scheduled backups without deleting the resource, you can remove the schedule field or delete and recreate the backup resource.
+The Backup resource does not provide a dedicated pause flag. To stop future scheduled backups, delete the Backup custom resource and reapply the manifest when you want to resume.
 
 To delete a scheduled backup:
 
@@ -199,7 +193,7 @@ This stops future backups but does not delete existing backup files from storage
 
 ## Best Practices
 
-- Use external storage (S3, GCS, or MinIO) for scheduled backups to avoid filling up local storage.
+- Use external storage (S3-compatible object storage such as AWS S3 or MinIO) for scheduled backups to avoid filling up local storage.
 - Set retention counts that align with your recovery point objectives (RPO).
 - Monitor backup status and set up alerts for failures.
 - Test restores periodically to verify backup integrity.
@@ -208,4 +202,4 @@ This stops future backups but does not delete existing backup files from storage
 
 ## Conclusion
 
-Automated scheduled backups give you confidence that your Rancher management server can be recovered at any time. By combining cron schedules with retention policies and external storage, you create a robust backup strategy that requires minimal ongoing maintenance. In the next guides, we cover configuring specific storage backends like S3, Azure Blob, and GCS.
+Automated scheduled backups give you confidence that your Rancher management server can be recovered at any time. By combining cron schedules with retention policies and external storage, you create a robust backup strategy that requires minimal ongoing maintenance. In the next guides, we cover configuring specific S3-compatible storage backends such as S3 and MinIO.
