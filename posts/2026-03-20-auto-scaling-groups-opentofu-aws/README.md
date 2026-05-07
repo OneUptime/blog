@@ -33,7 +33,7 @@ resource "aws_launch_template" "web" {
   tag_specifications {
     resource_type = "instance"
     tags = {
-      Name = "web-asg-instance"
+      Name = "web-asg"
     }
   }
 }
@@ -45,10 +45,11 @@ resource "aws_launch_template" "web" {
 
 ```hcl
 resource "aws_autoscaling_group" "web" {
-  name                = "web-asg"
-  vpc_zone_identifier = aws_subnet.private[*].id
-  target_group_arns   = [aws_lb_target_group.web.arn]
-  health_check_type   = "ELB"
+  name                      = "web-asg"
+  vpc_zone_identifier       = aws_subnet.private[*].id
+  target_group_arns         = [aws_lb_target_group.web.arn]
+  health_check_type         = "ELB"
+  health_check_grace_period = 300
 
   min_size         = 2
   max_size         = 10
@@ -93,10 +94,14 @@ resource "aws_autoscaling_policy" "cpu_target" {
 ```hcl
 resource "aws_autoscaling_policy" "scale_out" {
   name                   = "scale-out"
-  scaling_adjustment     = 2
+  policy_type            = "StepScaling"
   adjustment_type        = "ChangeInCapacity"
-  cooldown               = 300
   autoscaling_group_name = aws_autoscaling_group.web.name
+
+  step_adjustment {
+    metric_interval_lower_bound = 0.0
+    scaling_adjustment          = 2
+  }
 }
 
 resource "aws_cloudwatch_metric_alarm" "high_cpu" {
