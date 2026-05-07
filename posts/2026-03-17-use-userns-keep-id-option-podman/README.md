@@ -30,7 +30,7 @@ podman run --rm --userns=keep-id alpine:latest id
 ## Solving Bind Mount Permission Issues
 
 ```bash
-# Problem: without keep-id, files created in the container are owned by root
+# Default rootless behavior: container root maps to your host user
 mkdir -p /tmp/test-project
 podman run --rm -v /tmp/test-project:/app alpine:latest touch /app/file.txt
 ls -la /tmp/test-project/file.txt
@@ -44,6 +44,7 @@ podman run --rm --user 1000 -v /tmp/test-project:/app alpine:latest touch /app/f
 podman run --rm --userns=keep-id -v /tmp/test-project:/app alpine:latest touch /app/file3.txt
 ls -la /tmp/test-project/file3.txt
 # Owned by your user, works perfectly
+# On SELinux systems, add :Z or :z to the volume option if labeling blocks access
 
 rm -rf /tmp/test-project
 ```
@@ -105,11 +106,14 @@ podman run -it --rm \
 # Run a database with data directory owned by your user
 podman run -d \
   --name dev-db \
-  --userns=keep-id \
+  --user postgres \
+  --userns=keep-id:uid=999,gid=999 \
   -v ./pgdata:/var/lib/postgresql/data \
   -e POSTGRES_PASSWORD=devpass \
   -p 5432:5432 \
   postgres:15
+
+# UID/GID 999 matches the postgres user in the official postgres:15 image
 ```
 
 ## Checking the Active Mapping
