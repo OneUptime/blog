@@ -16,7 +16,7 @@ If you have ever tried to pull an image or start a container with Podman and bee
 
 ## Understanding the Overlay Storage Driver
 
-Podman uses storage drivers to manage the layered filesystem that containers rely on. The overlay driver (also called overlay2) is the default and most performant option. It works by stacking filesystem layers on top of each other, allowing containers to share common base layers efficiently.
+Podman uses storage drivers to manage the layered filesystem that containers rely on. The overlay driver is the default and most performant option on most Linux systems. It works by stacking filesystem layers on top of each other, allowing containers to share common base layers efficiently.
 
 The overlay driver requires specific kernel support and filesystem capabilities. When these requirements are not met, Podman throws the "overlay: mount failed" error.
 
@@ -95,11 +95,11 @@ sudo setenforce 0
 podman run hello-world
 ```
 
-If that works, the proper fix is to update the SELinux policy rather than leaving it in permissive mode:
+If that works, the proper fix is to correct the SELinux labels or policy rather than leaving it in permissive mode. For example, if you moved Podman's storage directory, label the new path like the default container storage path:
 
 ```bash
-sudo setsebool -P container_use_cephfs on
-sudo restorecon -Rv /var/lib/containers
+sudo semanage fcontext -a -e /var/lib/containers /NEWSTORAGEPATH
+sudo restorecon -Rv /NEWSTORAGEPATH
 ```
 
 ### 4. Corrupted Storage
@@ -114,7 +114,7 @@ podman system reset
 sudo podman system reset
 ```
 
-This command removes all containers, images, and volumes, so use it with caution. If you want to preserve your images, you can export them first:
+This command removes all pods, containers, images, networks, volumes, machines, and the configured storage directories, so use it with caution. If you want to preserve your images, you can export them first:
 
 ```bash
 podman save -o my-image-backup.tar my-image:latest
@@ -152,7 +152,7 @@ driver = "overlay"
 mount_program = "/usr/bin/fuse-overlayfs"
 ```
 
-After making changes, reset storage to apply:
+If Podman has already initialized storage with another driver, reset storage before changing the driver configuration:
 
 ```bash
 podman system reset
