@@ -10,16 +10,16 @@ Description: A practical guide to diagnosing and fixing common networking proble
 
 > "Most rootless Podman network issues stem from missing configurations, not missing capabilities."
 
-Running Podman without root privileges is a security win, but networking in rootless mode works differently than in rootful mode. Instead of manipulating real network interfaces, rootless Podman uses slirp4netns or pasta to create userspace network stacks. This guide walks through the most common network issues and how to fix them.
+Running Podman without root privileges is a security win, but networking in rootless mode works differently than in rootful mode. For the default rootless network path, Podman uses slirp4netns or pasta to create userspace network stacks instead of attaching containers directly to a host bridge. This guide walks through the most common network issues and how to fix them.
 
 ---
 
 ## Understanding Rootless Networking
 
-Rootless Podman cannot create real network bridges or manipulate iptables. It relies on userspace networking tools. Check which backend you are using:
+Rootless Podman relies on userspace networking tools for its default network path. Check the Podman network backend and the available rootless networking tools:
 
 ```bash
-# Check the current network backend
+# Check the current Podman network backend
 
 podman info --format '{{.Host.NetworkBackend}}'
 
@@ -107,10 +107,7 @@ podman network ls
 podman run -d --name web --network mynet nginx
 podman run -d --name app --network mynet alpine sleep 3600
 
-# Test connectivity between containers
-podman exec app ping -c 3 web
-
-# Containers can also reach each other by name via DNS
+# Test connectivity and container-name DNS
 podman exec app wget -qO- http://web:80
 ```
 
@@ -144,16 +141,17 @@ podman stop --all
 podman network prune -f
 
 # Reset Podman storage and network state
+# WARNING: this removes containers, pods, images, networks, volumes, and machines
 podman system reset --force
 
 # Recreate your network and test again
 podman network create mynet
-podman run --rm --network mynet alpine ping -c 3 google.com
+podman run --rm --network mynet alpine wget -qO- http://example.com
 ```
 
 ## Checking Firewall Interference
 
-Host firewalls can block rootless container traffic. Check and adjust as needed:
+Host firewalls can block traffic to published container ports. Check and adjust as needed:
 
 ```bash
 # Check if firewalld is blocking traffic
@@ -162,8 +160,8 @@ sudo firewall-cmd --list-all
 # On systems with nftables, list rules
 sudo nft list ruleset | head -40
 
-# Allow Podman traffic through firewalld
-sudo firewall-cmd --zone=trusted --add-interface=podman0 --permanent
+# Allow traffic to a published host port through firewalld
+sudo firewall-cmd --add-port=8080/tcp --permanent
 sudo firewall-cmd --reload
 ```
 
