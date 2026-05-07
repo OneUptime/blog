@@ -48,8 +48,8 @@ In a busy environment, streaming all events creates too much noise. Apply filter
 # Stream only container start events
 podman events --filter event=start
 
-# Stream only container stop and die events
-podman events --filter event=stop --filter event=die
+# Stream only container stop and died events
+podman events --filter event=stop --filter event=died
 
 # Stream events for a specific container
 podman events --filter container=myapp
@@ -67,7 +67,7 @@ podman events --format json
 This produces output like:
 
 ```json
-{"Name":"stream-test","Status":"start","Time":"2026-03-18T10:15:30.123456","Type":"container"}
+{"ID":"a0f8ab051bfd43f9c5141a8a2502139707e4b38d98ac0872e57c5315381e88ad","Image":"docker.io/library/alpine:latest","Name":"stream-test","Status":"start","Time":"2026-03-18T10:15:30.123456-04:00","Type":"container"}
 ```
 
 ## Building a Real-Time Event Processor
@@ -83,9 +83,9 @@ echo "Starting real-time event processor..."
 podman events --format json | while IFS= read -r event; do
     # Parse event fields using jq
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
     event_type=$(echo "$event" | jq -r '.Type')
-    timestamp=$(echo "$event" | jq -r '.time')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
     # React based on event type
     case "$status" in
@@ -95,10 +95,9 @@ podman events --format json | while IFS= read -r event; do
         stop)
             echo "[${timestamp}] STOPPED: ${name}"
             ;;
-        die)
+        died)
             echo "[${timestamp}] DIED: ${name} - Investigating..."
-            # Get exit code from container inspect if still available
-            exit_code=$(podman inspect --format '{{.State.ExitCode}}' "$name" 2>/dev/null)
+            exit_code=$(echo "$event" | jq -r '.ContainerExitCode // empty')
             if [ -n "$exit_code" ] && [ "$exit_code" != "0" ]; then
                 echo "  WARNING: Non-zero exit code: ${exit_code}"
             fi
@@ -121,10 +120,10 @@ chmod +x realtime-processor.sh
 
 ## Streaming Events with Timestamps
 
-Use Go templates to customize the timestamp format in the stream.
+Use Go templates to customize the output format in the stream.
 
 ```bash
-# Stream with custom timestamp format
+# Stream with custom output format
 podman events --format '{{.Time}} | {{.Type}} | {{.Status}} | {{.Name}}'
 
 # Stream with only the fields you care about
@@ -136,8 +135,8 @@ podman events --format 'EVENT: {{.Status}} CONTAINER: {{.Name}}'
 You can run multiple filtered streams simultaneously to separate concerns.
 
 ```bash
-# Terminal 1: Monitor critical events (die, oom)
-podman events --filter event=die --filter event=oom
+# Terminal 1: Monitor critical events (died, kill)
+podman events --filter event=died --filter event=kill
 
 # Terminal 2: Monitor lifecycle events
 podman events --filter event=start --filter event=stop
@@ -152,10 +151,10 @@ Stream events to both the terminal and a log file simultaneously.
 
 ```bash
 # Stream to terminal and log file at the same time
-podman events --format json | tee /var/log/podman-realtime.log
+podman events --format json | tee /tmp/podman-realtime.log
 
 # Stream filtered events to multiple destinations
-podman events --format json | tee >(jq '.Status' >> /tmp/statuses.log) | jq '.'
+podman events --format json | tee >(jq -r '.Status' >> /tmp/statuses.log) | jq '.'
 ```
 
 ## Handling Stream Disconnections
@@ -169,7 +168,7 @@ In production, your event stream should be resilient to disconnections.
 while true; do
     echo "$(date): Connecting to Podman event stream..."
 
-    # Stream events, will exit if Podman service restarts
+    # Stream events; this command exits if the event stream disconnects
     podman events --format json 2>/tmp/podman-events-error.log
 
     # If we get here, the stream disconnected
