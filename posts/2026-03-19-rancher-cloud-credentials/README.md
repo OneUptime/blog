@@ -6,26 +6,26 @@ Tags: Rancher, Kubernetes, Cloud Credentials
 
 Description: Learn how to create and manage cloud credential sets in Rancher for secure and centralized cloud provider authentication.
 
-Cloud credentials in Rancher provide a centralized and secure way to store authentication details for cloud providers. They are used when provisioning nodes, creating clusters, and managing cloud resources. This guide covers creating and managing credentials for AWS, Azure, GCP, and other providers.
+Cloud credentials in Rancher provide a centralized and secure way to store authentication details for cloud providers. They are used when provisioning nodes, creating clusters, and managing cloud resources. This guide covers creating and managing credentials for AWS, Azure, GCP, and other providers. The credential types available in Rancher depend on the enabled integrations and active node drivers in your installation.
 
 ## Prerequisites
 
-- Rancher v2.6 or later
+- A supported Rancher release
 - Admin or standard user access to Rancher
 - Cloud provider account credentials with appropriate permissions
 - Understanding of IAM roles and permissions for your cloud provider
 
 ## Why Use Cloud Credentials
 
-Cloud credentials in Rancher centralize authentication management. Instead of entering cloud provider keys every time you create a cluster or node template, you configure credentials once and reference them across multiple resources. This improves security by reducing key sprawl and simplifies credential rotation.
+Cloud credentials in Rancher centralize authentication management. Instead of entering cloud provider keys every time you create a cluster or machine pool, you configure credentials once and reference them across multiple resources. This improves security by reducing key sprawl and simplifies credential rotation.
 
 ## Step 1: Access Cloud Credentials
 
 Navigate to the cloud credentials section:
 
 1. Log in to Rancher.
-2. Click your user avatar in the top-right corner.
-3. Select **Cloud Credentials** from the dropdown.
+2. Click **☰ > Cluster Management**.
+3. Select **Cloud Credentials**.
 
 ## Step 2: Create AWS Credentials
 
@@ -44,37 +44,54 @@ Secret Key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 Default Region: us-east-1
 ```
 
-For better security, create an IAM user with minimal required permissions:
+For better security, create an IAM user with least-privilege permissions. For Amazon EC2 machine provisioning, Rancher documents an IAM policy like this:
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "VisualEditor0",
       "Effect": "Allow",
       "Action": [
-        "ec2:*",
-        "iam:PassRole",
-        "iam:GetInstanceProfile",
-        "iam:GetRole",
-        "iam:CreateRole",
-        "iam:CreateInstanceProfile",
-        "iam:AddRoleToInstanceProfile",
-        "iam:ListInstanceProfiles",
-        "iam:ListRoles"
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:Describe*",
+        "ec2:ImportKeyPair",
+        "ec2:CreateKeyPair",
+        "ec2:CreateSecurityGroup",
+        "ec2:CreateTags",
+        "ec2:DeleteKeyPair",
+        "ec2:ModifyInstanceMetadataOptions"
       ],
       "Resource": "*"
     },
     {
+      "Sid": "VisualEditor1",
       "Effect": "Allow",
       "Action": [
-        "kms:Decrypt",
-        "kms:GenerateDataKeyWithoutPlaintext",
-        "kms:Encrypt",
-        "kms:DescribeKey",
-        "kms:CreateGrant"
+        "ec2:RunInstances"
       ],
-      "Resource": "arn:aws:kms:*:*:key/*"
+      "Resource": [
+        "arn:aws:ec2:REGION::image/ami-*",
+        "arn:aws:ec2:REGION:AWS_ACCOUNT_ID:instance/*",
+        "arn:aws:ec2:REGION:AWS_ACCOUNT_ID:placement-group/*",
+        "arn:aws:ec2:REGION:AWS_ACCOUNT_ID:volume/*",
+        "arn:aws:ec2:REGION:AWS_ACCOUNT_ID:subnet/*",
+        "arn:aws:ec2:REGION:AWS_ACCOUNT_ID:key-pair/*",
+        "arn:aws:ec2:REGION:AWS_ACCOUNT_ID:network-interface/*",
+        "arn:aws:ec2:REGION:AWS_ACCOUNT_ID:security-group/*"
+      ]
+    },
+    {
+      "Sid": "VisualEditor2",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:RebootInstances",
+        "ec2:TerminateInstances",
+        "ec2:StartInstances",
+        "ec2:StopInstances"
+      ],
+      "Resource": "arn:aws:ec2:REGION:AWS_ACCOUNT_ID:instance/*"
     }
   ]
 }
@@ -125,7 +142,7 @@ Set up Google Cloud Platform credentials:
 2. Select **Google** as the cloud credential type.
 3. Upload or paste the service account JSON key.
 
-First, create a service account in GCP:
+If you are using the credential for Google GCE machine provisioning, create a service account in GCP with the documented Rancher roles:
 
 ```bash
 # Create a service account
@@ -141,12 +158,16 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
   --member="serviceAccount:rancher-provisioner@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
   --role="roles/iam.serviceAccountUser"
 
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:rancher-provisioner@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/viewer"
+
 # Create and download the key
 gcloud iam service-accounts keys create rancher-gcp-key.json \
   --iam-account=rancher-provisioner@YOUR_PROJECT_ID.iam.gserviceaccount.com
 ```
 
-Then paste the contents of `rancher-gcp-key.json` into the Rancher credential form.
+Then paste the contents of `rancher-gcp-key.json` into the Rancher credential form. If you are using the credential for GKE instead, Rancher documents a different role set: Compute Viewer, Project Viewer, Kubernetes Engine Admin, and Service Account User.
 
 ## Step 5: Create vSphere Credentials
 
@@ -165,13 +186,17 @@ Username: rancher-svc@vsphere.local
 Password: your-vcenter-password
 ```
 
-Ensure the vSphere user has the following permissions:
+Ensure the vSphere user has the documented Rancher permissions:
 
-- Virtual Machine (all privileges)
-- Datastore (allocate space, browse, low-level file operations)
-- Network (assign network)
-- Resource (assign virtual machine to resource pool)
-- Profile-driven storage (all privileges)
+- `Cns Privileges`: Searchable
+- `Content library`: Read Storage when deploying from a content library
+- `Cryptographic operations`: Direct Access
+- `Datastore`: AllocateSpace, Browse, FileManagement, UpdateVirtualMachineFiles, UpdateVirtualMachineMetadata
+- `Global`: Set custom attribute
+- `Network`: Assign
+- `Resource`: AssignVMToPool
+- `Virtual Machine`: Config (All), GuestOperations (All), Interact (All), Inventory (All), Provisioning (All)
+- `vSphere Tagging`: Assign or Unassign vSphere Tag, Assign or Unassign vSphere Tag on Object
 
 ## Step 6: Create DigitalOcean Credentials
 
@@ -187,82 +212,35 @@ Description: DigitalOcean production account
 Access Token: dop_v1_your-personal-access-token
 ```
 
-Generate a token in the DigitalOcean console under **API** with read and write scopes.
+Generate a token in the DigitalOcean console under **API** with **Full Access** or custom scopes that allow Rancher to create and manage the DigitalOcean resources you plan to use.
 
 ## Step 7: Manage Credential Access
 
-Control who can use each credential:
-
-```bash
-# List all cloud credentials
-curl -s -k \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  "https://rancher.example.com/v3/cloudCredentials" | \
-  jq '.data[] | {id: .id, name: .name, type: .type}'
-```
-
-Cloud credentials are owned by the creating user by default. To share credentials:
-
-1. Navigate to the credential in the UI.
-2. Edit the credential.
-3. Modify the access settings as needed.
+Cloud credentials are owned by the creating user by default. In current Rancher releases, non-admin users cannot share cloud credentials with other non-admin users, while admins can view and manage other users' cloud credentials.
 
 ## Step 8: Rotate Credentials
 
 Regularly rotate your cloud credentials:
 
 1. Generate new credentials in your cloud provider console.
-2. In Rancher, navigate to **Cloud Credentials**.
-3. Click the three-dot menu on the credential and select **Edit**.
+2. In Rancher, navigate to **☰ > Cluster Management > Cloud Credentials**.
+3. Click the three-dot menu on the credential and select **Edit Config**.
 4. Update the keys or secrets.
 5. Click **Save**.
 
-```bash
-# Update credentials via API
-curl -s -k \
-  -X PUT \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "aws-production",
-    "amazonec2credentialConfig": {
-      "accessKey": "NEW_ACCESS_KEY",
-      "secretKey": "NEW_SECRET_KEY",
-      "defaultRegion": "us-east-1"
-    }
-  }' \
-  "https://rancher.example.com/v3/cloudCredentials/cattle-global-data:cc-xxxxx"
-```
-
-Existing clusters and node templates using the credential will automatically use the updated values.
+The updated credential is then available for subsequent provisioning operations that reference it.
 
 ## Step 9: Audit Credential Usage
 
-Track which resources use each credential:
-
-```bash
-# Find node templates using a specific credential
-curl -s -k \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  "https://rancher.example.com/v3/nodeTemplates" | \
-  jq '.data[] | select(.cloudCredentialId == "cattle-global-data:cc-xxxxx") | {name: .name, id: .id}'
-```
+Track which clusters, machine pools, or legacy node templates reference each credential before rotating or deleting it.
 
 ## Step 10: Delete Unused Credentials
 
 Clean up credentials that are no longer in use:
 
-1. Verify no node templates or clusters reference the credential.
-2. Navigate to **Cloud Credentials**.
+1. Verify no machine pools, clusters, or legacy node templates reference the credential.
+2. Navigate to **☰ > Cluster Management > Cloud Credentials**.
 3. Click the three-dot menu and select **Delete**.
-
-```bash
-# Delete a cloud credential via API
-curl -s -k \
-  -X DELETE \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  "https://rancher.example.com/v3/cloudCredentials/cattle-global-data:cc-xxxxx"
-```
 
 ## Best Practices
 
