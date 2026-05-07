@@ -14,6 +14,7 @@ API Gateway stage variables act as environment variables for API stages, allowin
 
 - OpenTofu v1.6+
 - An existing API Gateway REST API
+- API Gateway CloudWatch Logs permissions configured if you enable `access_log_settings`
 - AWS credentials with API Gateway and Lambda permissions
 
 ## Step 1: Create API Stage with Stage Variables
@@ -36,6 +37,16 @@ resource "aws_api_gateway_stage" "prod" {
 
   access_log_settings {
     destination_arn = var.prod_log_group_arn
+    format = jsonencode({
+      requestId         = "$context.requestId"
+      extendedRequestId = "$context.extendedRequestId"
+      ip                = "$context.identity.sourceIp"
+      requestTime       = "$context.requestTime"
+      httpMethod        = "$context.httpMethod"
+      resourcePath      = "$context.resourcePath"
+      status            = "$context.status"
+      responseLength    = "$context.responseLength"
+    })
   }
 
   xray_tracing_enabled = true
@@ -61,6 +72,16 @@ resource "aws_api_gateway_stage" "staging" {
 
   access_log_settings {
     destination_arn = var.staging_log_group_arn
+    format = jsonencode({
+      requestId         = "$context.requestId"
+      extendedRequestId = "$context.extendedRequestId"
+      ip                = "$context.identity.sourceIp"
+      requestTime       = "$context.requestTime"
+      httpMethod        = "$context.httpMethod"
+      resourcePath      = "$context.resourcePath"
+      status            = "$context.status"
+      responseLength    = "$context.responseLength"
+    })
   }
 
   tags = {
@@ -95,7 +116,7 @@ resource "aws_lambda_permission" "api_prod" {
   function_name = var.lambda_function_name
   qualifier     = "prod"  # Lambda alias
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${var.api_gateway_execution_arn}/*/prod/*"
+  source_arn    = "${var.api_gateway_execution_arn}/prod/*/*"
 }
 
 resource "aws_lambda_permission" "api_staging" {
@@ -104,7 +125,7 @@ resource "aws_lambda_permission" "api_staging" {
   function_name = var.lambda_function_name
   qualifier     = "staging"  # Lambda alias
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${var.api_gateway_execution_arn}/*/staging/*"
+  source_arn    = "${var.api_gateway_execution_arn}/staging/*/*"
 }
 ```
 
@@ -113,7 +134,7 @@ resource "aws_lambda_permission" "api_staging" {
 ```python
 def handler(event, context):
     # Stage variables are passed in the event object
-    stage_variables = event.get('stageVariables', {})
+    stage_variables = event.get('stageVariables') or {}
     log_level = stage_variables.get('logLevel', 'INFO')
     feature_flag = stage_variables.get('featureFlag', 'false') == 'true'
 
