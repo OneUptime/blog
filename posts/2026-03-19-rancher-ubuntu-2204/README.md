@@ -6,16 +6,16 @@ Tags: Rancher, Ubuntu, Docker, Kubernetes, Installation
 
 Description: A step-by-step guide to installing Rancher on Ubuntu 22.04 LTS using Docker, covering system preparation, Docker installation, and Rancher deployment.
 
-Ubuntu 22.04 LTS (Jammy Jellyfish) is one of the most popular Linux distributions for server deployments. Its long-term support lifecycle and wide package availability make it an excellent choice for running Rancher. This guide walks you through installing Rancher on Ubuntu 22.04 from a fresh server setup to a fully functional Rancher deployment.
+Ubuntu 22.04 LTS (Jammy Jellyfish) is one of the most popular Linux distributions for server deployments. Its long-term support lifecycle and wide package availability make it an excellent choice for running Rancher. This guide walks you through installing Rancher on Ubuntu 22.04 from a fresh server setup to a fully functional Rancher deployment for testing or development.
 
 ## Prerequisites
 
 Before you begin, ensure you have:
 
-- A server running Ubuntu 22.04 LTS with at least 4 GB RAM and 2 CPU cores
+- A server running Ubuntu 22.04 LTS with at least 16 GB RAM and 4 vCPUs
 - Root or sudo access
 - A static IP address or DNS name for your server
-- Ports 80 and 443 open in your firewall
+- Ports 80 and 443 available on the host
 
 ## Step 1: Update the System
 
@@ -27,16 +27,12 @@ sudo apt update && sudo apt upgrade -y
 
 ## Step 2: Install Required Dependencies
 
-Install the packages that Docker and Rancher need:
+Install the packages that Docker needs:
 
 ```bash
 sudo apt install -y \
-  apt-transport-https \
   ca-certificates \
-  curl \
-  gnupg \
-  lsb-release \
-  software-properties-common
+  curl
 ```
 
 ## Step 3: Install Docker
@@ -44,9 +40,18 @@ sudo apt install -y \
 Add the official Docker GPG key and repository:
 
 ```bash
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 ```
 
 Install Docker Engine:
@@ -79,16 +84,15 @@ docker run hello-world
 
 ## Step 4: Configure Firewall
 
-If you are using UFW (Ubuntu's default firewall), allow the necessary ports:
+If you are using UFW (Ubuntu's default firewall), allow the Rancher UI ports:
 
 ```bash
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-sudo ufw allow 6443/tcp
 sudo ufw reload
 ```
 
-Port 6443 is used by the Kubernetes API server when Rancher provisions clusters.
+For a Rancher server running in Docker, the published ports are 80 and 443. Be aware that Docker publishes container ports using its own firewall rules.
 
 ## Step 5: Configure System Settings
 
@@ -135,6 +139,9 @@ docker run -d \
   -p 80:80 \
   -p 443:443 \
   -v /opt/rancher:/var/lib/rancher \
+  --log-driver json-file \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
   --privileged \
   rancher/rancher:latest
 ```
@@ -153,13 +160,12 @@ Open your browser and navigate to `https://<your-server-ip>`. Accept the self-si
 
 Complete the initial setup by:
 
-1. Setting a new admin password
-2. Configuring the Rancher server URL
-3. Accepting the terms and conditions
+1. Setting a new admin password with at least 12 characters
+2. Configuring the Rancher Server URL
 
-## Step 10: Configure Log Rotation
+## Step 10: Configure Default Log Rotation
 
-To prevent Docker logs from consuming too much disk space, configure log rotation:
+If you want default log rotation for newly created containers, configure it in the Docker daemon:
 
 ```bash
 sudo tee /etc/docker/daemon.json <<EOF
@@ -175,7 +181,7 @@ EOF
 sudo systemctl restart docker
 ```
 
-Note that restarting Docker will restart the Rancher container as well.
+These settings apply only to containers created after the change. The Rancher container above already enables log rotation with `--log-opt`.
 
 ## Setting Up Automatic Updates
 
@@ -208,10 +214,8 @@ sudo ss -tlnp | grep -E ':(80|443)'
 
 Common issues on Ubuntu 22.04:
 
-- **AppArmor conflicts**: If Rancher fails to start, try running `sudo aa-remove-unknown`
 - **DNS resolution**: Check `/etc/resolv.conf` has valid nameservers
-- **Swap**: Kubernetes prefers swap to be disabled. Run `sudo swapoff -a` and remove the swap entry from `/etc/fstab`
 
 ## Conclusion
 
-You have successfully installed Rancher on Ubuntu 22.04 LTS. Your Rancher instance is now ready to create and manage Kubernetes clusters. Ubuntu 22.04 will receive security updates until April 2027, giving you a stable foundation for your container management platform.
+You have successfully installed Rancher on Ubuntu 22.04 LTS. Your Rancher instance is now ready for testing and development use to create and manage Kubernetes clusters. Ubuntu 22.04 receives standard security maintenance until May 2027, giving you a stable foundation for your container management platform.
