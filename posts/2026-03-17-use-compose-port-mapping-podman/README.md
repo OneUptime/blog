@@ -10,16 +10,14 @@ Description: Learn how to configure port mappings in podman-compose to expose co
 
 > Port mappings in compose files control how container services are accessible from the host and external networks.
 
-Port mapping connects a port on your host machine to a port inside the container, making containerized services accessible from the outside. podman-compose supports all standard Compose port mapping syntax, including short and long forms, protocol selection, and IP binding.
+Port mapping connects a port on your host machine to a port inside the container, making containerized services accessible from the outside. podman-compose supports the common Compose port mapping syntax shown below, including short and long forms, protocol selection, and IP binding.
 
 ---
 
 ## Basic Port Mapping
 
 ```yaml
-# docker-compose.yml
-
-version: "3.8"
+# compose.yaml
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -90,7 +88,7 @@ services:
 # Find the assigned port
 podman-compose ps
 # Or
-podman port project_web_1
+podman port <project>_web_1
 ```
 
 ## Port Ranges
@@ -112,10 +110,10 @@ services:
     image: docker.io/library/nginx:alpine
     ports:
       - target: 80
-        published: 8080
+        published: "8080"
         protocol: tcp
-        # host: bind to host port directly
-        # ingress: for swarm load balancing (not used in Podman)
+        # host_ip: optionally bind to a specific host IP
+        # mode: host/ingress is for swarm-style publishing (not used in Podman)
 ```
 
 ## Expose vs Ports
