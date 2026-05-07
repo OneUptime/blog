@@ -52,18 +52,23 @@ fi
 # Strip the 'v' prefix if present
 VERSION="${GIT_TAG#v}"
 
-# Validate semantic version format (major.minor.patch)
-if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+# Validate semantic version format (major.minor.patch[-prerelease][+build])
+SEMVER_REGEX='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
+if ! [[ "$VERSION" =~ $SEMVER_REGEX ]]; then
   echo "ERROR: Invalid version format: ${VERSION}"
-  echo "Expected: MAJOR.MINOR.PATCH (e.g., 1.2.3 or 1.2.3-rc.1)"
+  echo "Expected: MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD] (e.g., 1.2.3, 1.2.3-rc.1, or 1.2.3+build.5)"
   exit 1
 fi
 
 # Parse semver components
 MAJOR=$(echo "$VERSION" | cut -d. -f1)
 MINOR=$(echo "$VERSION" | cut -d. -f2)
-PATCH=$(echo "$VERSION" | cut -d. -f3 | cut -d- -f1)
-PRERELEASE=$(echo "$VERSION" | grep -oP '(?<=-).+' || true)
+PATCH=$(echo "$VERSION" | cut -d. -f3 | sed -E 's/[-+].*$//')
+PRERELEASE=""
+if [[ "$VERSION" == *-* ]]; then
+  PRERELEASE="${VERSION#*-}"
+  PRERELEASE="${PRERELEASE%%+*}"
+fi
 
 echo "Version: ${VERSION}"
 echo "Major: ${MAJOR}, Minor: ${MINOR}, Patch: ${PATCH}"
@@ -248,29 +253,40 @@ jobs:
 
       # Extract version from tag
       - name: Extract version
+        id: release_meta
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          MAJOR=$(echo $VERSION | cut -d. -f1)
-          MINOR=$(echo $VERSION | cut -d. -f2)
+          VERSION_CORE=${VERSION%%+*}
+          PRERELEASE=""
+          if [[ "$VERSION_CORE" == *-* ]]; then
+            PRERELEASE="${VERSION_CORE#*-}"
+          fi
+          MAJOR=$(echo $VERSION_CORE | cut -d. -f1)
+          MINOR=$(echo $VERSION_CORE | cut -d. -f2)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "PRERELEASE=$PRERELEASE" >> $GITHUB_ENV
           echo "MAJOR=$MAJOR" >> $GITHUB_ENV
           echo "MINOR=$MINOR" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       # Build with Podman
       - name: Build release image
         run: |
-          podman build \
-            --tag ghcr.io/${{ github.repository }}:${{ env.VERSION }} \
-            --tag ghcr.io/${{ github.repository }}:${{ env.MAJOR }}.${{ env.MINOR }} \
-            --tag ghcr.io/${{ github.repository }}:${{ env.MAJOR }} \
-            --tag ghcr.io/${{ github.repository }}:latest \
-            .
+          TAG_ARGS=(
+            --tag ghcr.io/${{ github.repository }}:$VERSION
+            --tag ghcr.io/${{ github.repository }}:$MAJOR.$MINOR
+            --tag ghcr.io/${{ github.repository }}:$MAJOR
+          )
+          if [ -z "$PRERELEASE" ]; then
+            TAG_ARGS+=(--tag ghcr.io/${{ github.repository }}:latest)
+          fi
+          podman build "${TAG_ARGS[@]}" .
 
       # Run tests
       - name: Run tests
         run: |
           podman run --rm \
-            ghcr.io/${{ github.repository }}:${{ env.VERSION }} \
+            ghcr.io/${{ github.repository }}:$VERSION \
             npm test
 
       # Push to registry
@@ -278,14 +294,19 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             podman login ghcr.io -u ${{ github.actor }} --password-stdin
-          podman push --all-tags ghcr.io/${{ github.repository }}
+          podman push ghcr.io/${{ github.repository }}:$VERSION
+          podman push ghcr.io/${{ github.repository }}:$MAJOR.$MINOR
+          podman push ghcr.io/${{ github.repository }}:$MAJOR
+          if [ -z "$PRERELEASE" ]; then
+            podman push ghcr.io/${{ github.repository }}:latest
+          fi
 
       # Install and run cosign for signing
       - uses: sigstore/cosign-installer@v3
       - name: Sign image
         run: |
           cosign sign --yes \
-            ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+            ghcr.io/${{ github.repository }}:$VERSION
 
       # Create GitHub Release
       - name: Create Release
@@ -295,7 +316,7 @@ jobs:
           body: |
             ## Container Image
             ```bash
-            podman pull ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+            podman pull ghcr.io/${{ github.repository }}:${{ steps.release_meta.outputs.version }}
             ```
 ````
 
