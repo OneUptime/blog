@@ -19,7 +19,7 @@ HAProxy is one of the most reliable and high-performance load balancers availabl
 Download the official HAProxy image.
 
 ```bash
-# Pull the latest HAProxy image
+# Pull the HAProxy 2.9 image
 
 podman pull docker.io/library/haproxy:2.9
 
@@ -86,10 +86,11 @@ Start HAProxy with your custom configuration.
 # Run HAProxy with the configuration file
 podman run -d \
   --name my-haproxy \
-  -p 80:80 \
+  --sysctl net.ipv4.ip_unprivileged_port_start=0 \
+  -p 8080:80 \
   -p 8404:8404 \
   -v ~/haproxy-config/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:Z \
-  haproxy:2.9
+  docker.io/library/haproxy:2.9
 
 # Check the container is running
 podman ps
@@ -157,10 +158,11 @@ EOF
 # Run HAProxy with the load balancing config
 podman run -d \
   --name haproxy-lb \
+  --sysctl net.ipv4.ip_unprivileged_port_start=0 \
   -p 8081:80 \
   -p 8405:8404 \
   -v ~/haproxy-config/haproxy-lb.cfg:/usr/local/etc/haproxy/haproxy.cfg:Z \
-  haproxy:2.9
+  docker.io/library/haproxy:2.9
 ```
 
 ## TCP Load Balancing
@@ -207,7 +209,7 @@ podman run -d \
   -p 5432:5432 \
   -p 8406:8404 \
   -v ~/haproxy-config/haproxy-tcp.cfg:/usr/local/etc/haproxy/haproxy.cfg:Z \
-  haproxy:2.9
+  docker.io/library/haproxy:2.9
 ```
 
 ## Checking the Stats Dashboard
