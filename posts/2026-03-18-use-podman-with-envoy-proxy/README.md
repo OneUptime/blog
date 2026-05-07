@@ -20,6 +20,7 @@ Start with a basic Envoy configuration as a reverse proxy:
 
 ```bash
 mkdir -p ~/envoy/config
+podman network create app-net
 ```
 
 ```yaml
@@ -98,12 +99,15 @@ Run Envoy:
 ```bash
 podman run -d \
   --name envoy \
+  --network app-net \
   --restart always \
   -p 8080:8080 \
   -p 9901:9901 \
   -v ~/envoy/config/envoy.yaml:/etc/envoy/envoy.yaml:ro,Z \
-  envoyproxy/envoy:v1.29-latest
+  envoyproxy/envoy:v1.37.2
 ```
+
+This assumes your backend containers are attached to the same Podman network and are reachable as `api` and `web` via their container names or network aliases.
 
 Access the Envoy admin interface at `http://localhost:9901`.
 
@@ -116,25 +120,21 @@ Deploy Envoy as the entry point for a multi-service application:
 version: "3"
 services:
   envoy:
-    image: envoyproxy/envoy:v1.29-latest
+    image: envoyproxy/envoy:v1.37.2
     restart: always
     ports:
       - "8080:8080"
       - "9901:9901"
     volumes:
-      - ./envoy/config/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./envoy/config/envoy.yaml:/etc/envoy/envoy.yaml:ro,Z
 
   api:
     image: myapp-api:latest
     restart: always
-    deploy:
-      replicas: 3
 
   web:
     image: myapp-web:latest
     restart: always
-    deploy:
-      replicas: 2
 
   auth:
     image: myapp-auth:latest
@@ -175,7 +175,7 @@ clusters:
   - name: cache_service
     connect_timeout: 2s
     type: STRICT_DNS
-    # Ring Hash for consistent hashing (good for caches)
+    # Ring Hash for consistent hashing when combined with a route hash_policy
     lb_policy: RING_HASH
     load_assignment:
       cluster_name: cache_service
@@ -207,6 +207,8 @@ clusters:
                     address: compute
                     port_value: 8080
 ```
+
+For `RING_HASH` to be effective, configure a route `hash_policy` such as a header, cookie, or source IP.
 
 ## Circuit Breaking
 
@@ -350,26 +352,28 @@ Envoy provides rich metrics, logging, and tracing:
 
 ```yaml
 # Access logging
-http_filters:
-  - name: envoy.filters.http.router
-    typed_config:
-      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-
-access_log:
-  - name: envoy.access_loggers.stdout
-    typed_config:
-      "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
-      log_format:
-        json_format:
-          timestamp: "%START_TIME%"
-          method: "%REQ(:METHOD)%"
-          path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
-          protocol: "%PROTOCOL%"
-          response_code: "%RESPONSE_CODE%"
-          response_time: "%DURATION%"
-          upstream_host: "%UPSTREAM_HOST%"
-          bytes_sent: "%BYTES_SENT%"
-          bytes_received: "%BYTES_RECEIVED%"
+typed_config:
+  "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+  stat_prefix: ingress_http
+  access_log:
+    - name: envoy.access_loggers.stdout
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+        log_format:
+          json_format:
+            timestamp: "%START_TIME%"
+            method: "%REQ(:METHOD)%"
+            path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
+            protocol: "%PROTOCOL%"
+            response_code: "%RESPONSE_CODE%"
+            response_time: "%DURATION%"
+            upstream_host: "%UPSTREAM_HOST%"
+            bytes_sent: "%BYTES_SENT%"
+            bytes_received: "%BYTES_RECEIVED%"
+  http_filters:
+    - name: envoy.filters.http.router
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
 ```
 
 Expose metrics for Prometheus:
@@ -434,7 +438,7 @@ podman run -d \
   --pod myapp-pod \
   --name envoy-sidecar \
   -v ~/envoy/config/sidecar.yaml:/etc/envoy/envoy.yaml:ro,Z \
-  envoyproxy/envoy:v1.29-latest
+  envoyproxy/envoy:v1.37.2
 ```
 
 ## Conclusion
