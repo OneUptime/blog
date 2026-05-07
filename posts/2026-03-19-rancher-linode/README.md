@@ -13,11 +13,11 @@ Linode, now part of Akamai, offers straightforward cloud computing with predicta
 - A Linode account
 - The Linode CLI installed and configured (`linode-cli`)
 - An SSH key pair
-- A domain name (optional but recommended)
+- A domain name, or a wildcard DNS service such as `sslip.io` for a quick proof-of-concept
 
 ## Step 1: Create a Linode Instance
 
-Create a Linode with at least 4 GB RAM. The Linode 4GB plan is a good starting point:
+For a quick test, the Linode 4GB plan is a reasonable starting point:
 
 ```bash
 linode-cli linodes create \
@@ -26,14 +26,17 @@ linode-cli linodes create \
   --image linode/ubuntu22.04 \
   --root_pass "YourSecurePassword123!" \
   --authorized_keys "$(cat ~/.ssh/id_rsa.pub)" \
+  --private_ip true \
+  --interface_generation legacy_config \
   --label rancher-server \
   --booted true
 ```
 
-Get the Linode IP address:
+Get the Linode IP addresses:
 
 ```bash
-linode-cli linodes list --label rancher-server --format ipv4 --text --no-headers
+LINODE_ID=$(linode-cli linodes list --label rancher-server --format id --text --no-headers)
+linode-cli linodes ips-list $LINODE_ID
 ```
 
 ## Step 2: Configure the Firewall
@@ -48,15 +51,13 @@ linode-cli firewalls create \
   --rules.inbound '[
     {"action":"ACCEPT","protocol":"TCP","ports":"22","addresses":{"ipv4":["0.0.0.0/0"]}},
     {"action":"ACCEPT","protocol":"TCP","ports":"80","addresses":{"ipv4":["0.0.0.0/0"]}},
-    {"action":"ACCEPT","protocol":"TCP","ports":"443","addresses":{"ipv4":["0.0.0.0/0"]}},
-    {"action":"ACCEPT","protocol":"TCP","ports":"6443","addresses":{"ipv4":["0.0.0.0/0"]}}
+    {"action":"ACCEPT","protocol":"TCP","ports":"443","addresses":{"ipv4":["0.0.0.0/0"]}}
   ]'
 ```
 
 Attach the firewall to your Linode:
 
 ```bash
-LINODE_ID=$(linode-cli linodes list --label rancher-server --format id --text --no-headers)
 FIREWALL_ID=$(linode-cli firewalls list --label rancher-fw --format id --text --no-headers)
 
 linode-cli firewalls device-create $FIREWALL_ID \
@@ -67,13 +68,15 @@ linode-cli firewalls device-create $FIREWALL_ID \
 ## Step 3: SSH into the Linode
 
 ```bash
-ssh root@<linode-ip>
+ssh root@<public-ip>
 ```
 
 ## Step 4: Install K3s
 
+Rancher must run on a Kubernetes version listed in the Rancher support matrix. Set `INSTALL_K3S_VERSION` to a supported K3s release before you install:
+
 ```bash
-curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=<supported-k3s-version> sh -s - server --cluster-init --write-kubeconfig-mode 644
 ```
 
 Verify K3s is running:
@@ -91,7 +94,9 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 ## Step 5: Install Helm
 
 ```bash
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
 ```
 
 ## Step 6: Install cert-manager
@@ -114,28 +119,33 @@ kubectl get pods -n cert-manager
 
 ## Step 7: Install Rancher
 
+Use a fully qualified domain name for Rancher. For a quick proof-of-concept, you can use `<public-ip>.sslip.io` instead of a domain you own.
+
 ```bash
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
 helm repo update
 
 kubectl create namespace cattle-system
 
+RANCHER_HOSTNAME=rancher.example.com
+RANCHER_BOOTSTRAP_PASSWORD='ChangeThisPassword123!'
+
 helm install rancher rancher-stable/rancher \
   --namespace cattle-system \
-  --set hostname=rancher.example.com \
-  --set bootstrapPassword=admin \
+  --set hostname="$RANCHER_HOSTNAME" \
+  --set bootstrapPassword="$RANCHER_BOOTSTRAP_PASSWORD" \
   --set replicas=1
 ```
 
 ## Step 8: Configure DNS
 
-Create a DNS A record pointing your domain to the Linode IP address. If you use Linode DNS Manager:
+If you are using a real domain name, create a DNS A record pointing it to the Linode's public IP address. If you use Linode DNS Manager:
 
 ```bash
 linode-cli domains records-create <domain-id> \
   --type A \
   --name rancher \
-  --target <linode-ip> \
+  --target <public-ip> \
   --ttl_sec 300
 ```
 
@@ -146,23 +156,23 @@ kubectl -n cattle-system rollout status deploy/rancher
 kubectl -n cattle-system get pods
 ```
 
-Navigate to `https://rancher.example.com`, log in with the bootstrap password, and configure your admin credentials.
+Navigate to the hostname you set above, log in with the bootstrap password, and configure your admin credentials.
 
 ## Using Linode Node Driver with Rancher
 
 Rancher includes a Linode node driver that lets you provision Kubernetes clusters directly on Linode infrastructure:
 
 1. In the Rancher UI, go to Cluster Management
-2. Click Create and select Linode
-3. Enter your Linode API token
-4. Configure instance type, region, and image
-5. Set up your node pools and create the cluster
+2. Activate the Linode node driver if it is not already active
+3. Create an RKE or RKE2 cluster and add a machine pool that uses a Linode node template
+4. Enter your Linode API token in the node template
+5. Configure instance type, region, and image, then create the cluster
 
 Rancher will provision Linode instances and configure them as Kubernetes nodes automatically.
 
 ## NodeBalancer Integration
 
-For production deployments, consider placing a Linode NodeBalancer in front of your Rancher server:
+For production deployments, use an HTTP/2-compatible load balancer in front of Rancher. On Linode, use a NodeBalancer in TCP mode for SSL pass-through rather than HTTPS termination:
 
 ```bash
 linode-cli nodebalancers create \
@@ -171,10 +181,16 @@ linode-cli nodebalancers create \
 
 linode-cli nodebalancers config-create <nodebalancer-id> \
   --port 443 \
-  --protocol https \
-  --ssl_cert "$(cat /path/to/cert.pem)" \
-  --ssl_key "$(cat /path/to/key.pem)"
+  --protocol tcp \
+  --check connection
+
+linode-cli nodebalancers node-create --address <private-ip>:443 \
+  --label rancher-server \
+  --mode accept \
+  <nodebalancer-id> <config-id>
 ```
+
+This gives Rancher a stable entry point, but a single Rancher server is still a single point of failure. For true production high availability, use multiple Rancher server nodes behind the load balancer.
 
 ## Cleanup
 
