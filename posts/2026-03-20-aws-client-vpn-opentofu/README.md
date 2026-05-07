@@ -13,7 +13,7 @@ AWS Client VPN is a managed OpenVPN-based service that enables employees to secu
 ## Prerequisites
 
 - OpenTofu v1.6+
-- ACM certificates for server and optionally client authentication
+- ACM certificate for the server and, for mutual TLS, optionally a client certificate in ACM if it was issued by a different CA
 - AWS credentials with EC2 and Client VPN permissions
 
 ## Step 1: Create ACM Certificates for VPN
@@ -21,7 +21,8 @@ AWS Client VPN is a managed OpenVPN-based service that enables employees to secu
 ```hcl
 # Server certificate for Client VPN
 
-# Note: For mutual TLS, both server and client certs must be imported to ACM
+# Note: For mutual TLS, the server cert must be imported to ACM
+# Import a client cert too only if it was issued by a different CA
 # This typically requires generating certs with easy-rsa or similar tools
 
 # Import server certificate (generated outside Terraform)
@@ -35,6 +36,7 @@ resource "aws_acm_certificate" "vpn_server" {
   }
 }
 
+# Optional: only needed when client certs are issued by a different CA
 resource "aws_acm_certificate" "vpn_client" {
   private_key       = file("client1.key")
   certificate_body  = file("client1.crt")
@@ -60,6 +62,8 @@ resource "aws_ec2_client_vpn_endpoint" "main" {
   # Mutual TLS authentication
   authentication_options {
     type                       = "certificate-authentication"
+    # If the client cert was issued by the same CA as the server cert,
+    # you can use aws_acm_certificate.vpn_server.arn here instead.
     root_certificate_chain_arn = aws_acm_certificate.vpn_client.arn
   }
 
@@ -82,7 +86,8 @@ resource "aws_ec2_client_vpn_endpoint" "main" {
   vpc_id             = var.vpc_id
   security_group_ids = [aws_security_group.client_vpn.id]
 
-  session_timeout_hours = 8  # Force re-authentication after 8 hours
+  disconnect_on_session_timeout = true
+  session_timeout_hours         = 8  # Require manual reconnect after 8 hours
 
   tags = {
     Name = "${var.project_name}-client-vpn"
@@ -152,9 +157,10 @@ aws ec2 export-client-vpn-client-configuration \
   --client-vpn-endpoint-id <endpoint-id> \
   --output text > client-config.ovpn
 
-# Add client certificate to the .ovpn file and connect with OpenVPN client
+# Add the client certificate and private key to the .ovpn file for mutual TLS,
+# then connect with an OpenVPN client
 ```
 
 ## Conclusion
 
-Enable `split_tunnel = true` unless you need to route all internet traffic through the VPN-split tunnel reduces VPN bandwidth requirements and improves performance for internet access. Configure `session_timeout_hours` to force periodic re-authentication, improving security. Log all connections to CloudWatch to maintain an audit trail of who connected when and from where.
+Enable `split_tunnel = true` unless you need to route all internet traffic through the VPN. Split tunnel reduces VPN bandwidth requirements and improves performance for internet access. Configure `session_timeout_hours` with `disconnect_on_session_timeout = true` if you want users to reconnect periodically. Log all connections to CloudWatch to maintain an audit trail of who connected when and from where.
