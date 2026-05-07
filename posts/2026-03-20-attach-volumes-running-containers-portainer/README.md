@@ -8,11 +8,11 @@ Description: Understand how to add volume mounts to containers in Portainer, req
 
 ---
 
-Docker volumes provide persistent storage for containers. Portainer's Volumes section gives you a complete UI for managing named volumes, bind mounts, and external storage backends.
+Docker volumes provide persistent storage for containers. In Portainer, the Volumes section lets you manage named volumes and external storage backends, while bind mounts are configured from a container's advanced settings.
 
 ## Navigate to Volumes in Portainer
 
-Go to **Volumes** in the left sidebar to see all volumes on the connected environment.
+Go to **Volumes** in the left sidebar to see all volumes on the connected environment and create new ones. To attach a volume to an existing running container, open the container, choose **Duplicate/Edit**, add the mapping under **Advanced container settings**, and replace the container with the recreated one.
 
 ## Create Named Volumes
 
