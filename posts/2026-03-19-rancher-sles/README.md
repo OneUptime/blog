@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, SLE, Docker, Kubernetes, Installation
 
-Description: A complete guide to installing Rancher on SUSE Linux Enterprise Server 15 using Docker, including subscription management and enterprise configuration.
+Description: A complete guide to installing Rancher on SUSE Linux Enterprise Server 15 using Docker for development or testing, including subscription management and SLES-specific configuration.
 
-SUSE Linux Enterprise Server (SLES) is an enterprise-grade Linux distribution designed for mission-critical workloads. Since SUSE acquired Rancher Labs, SLES has become the premier platform for running Rancher in enterprise environments. This guide walks you through installing Rancher on SLES 15 SP5 or later.
+SUSE Linux Enterprise Server (SLES) is an enterprise-grade Linux distribution designed for mission-critical workloads. Since SUSE acquired Rancher Labs, SLES has become the premier platform for running Rancher in enterprise environments. This guide walks you through installing Rancher on SLES 15 SP5 or later by using Rancher's single-container Docker deployment for development or testing.
 
 ## Prerequisites
 
@@ -85,15 +85,15 @@ docker run hello-world
 
 ## Step 5: Configure the Firewall
 
-SLES uses `firewalld`. Open the necessary ports:
+SLES uses `firewalld`. For a Docker-hosted Rancher server, open `80/tcp` and `443/tcp`:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=80/tcp
 sudo firewall-cmd --permanent --add-port=443/tcp
-sudo firewall-cmd --permanent --add-port=6443/tcp
-sudo firewall-cmd --permanent --zone=public --add-masquerade
 sudo firewall-cmd --reload
 ```
+
+When Rancher manages hosted or imported clusters, the Rancher server also needs outbound access to their Kubernetes API servers on `6443/tcp`.
 
 Alternatively, using SuSEfirewall2 on older SLES installations:
 
@@ -203,9 +203,9 @@ Complete the setup:
 
 ## SLES Enterprise Considerations
 
-**SUSE support**: As a SLES customer, you have access to SUSE support for both SLES and Rancher. If you encounter issues, you can open support tickets through the SUSE Customer Center.
+**SUSE support**: Your SLES subscription covers SLES. Rancher support is provided through a separate SUSE Rancher Prime subscription, with support cases managed through the SUSE Customer Center.
 
-**RKE2 integration**: SUSE recommends using RKE2 (Rancher Kubernetes Engine 2) for downstream clusters. RKE2 is FIPS 140-2 compliant and designed for security-sensitive environments:
+**RKE2 integration**: SUSE recommends using RKE2 (Rancher Kubernetes Engine 2) for downstream clusters. RKE2 provides FIPS enablement and is designed for security-sensitive environments:
 
 ```bash
 # RKE2 can be provisioned directly from the Rancher UI
@@ -214,13 +214,13 @@ Complete the setup:
 
 **SUSE Manager integration**: If you use SUSE Manager for system management, Rancher can work alongside it. SUSE Manager handles OS-level patching while Rancher manages the Kubernetes layer.
 
-**High availability**: For production SLES environments, consider deploying Rancher on a multi-node Kubernetes cluster using Helm instead of Docker. This provides better resilience and is the SUSE-recommended approach.
+**High availability**: For production SLES environments, deploy Rancher on a multi-node Kubernetes cluster using Helm instead of Docker. This provides better resilience and aligns with Rancher's supported production guidance.
 
-**Security compliance**: SLES offers security certifications including Common Criteria EAL4+ and FIPS 140-2. When running Rancher on SLES for compliance-sensitive workloads:
+**Security compliance**: Certification status is service-pack specific. SLES 15 SP5 provides FIPS 140-3 guidance, but SUSE notes that SLES 15 SP5 itself is not submitted for Common Criteria or NIST FIPS 140-3 certification. When running Rancher on SLES for compliance-sensitive workloads:
 
 ```bash
 # Check FIPS mode
-sysctl crypto.fips_enabled
+sudo fips-mode-setup --check
 
 # Verify security modules
 sudo aa-status
@@ -265,4 +265,4 @@ df -h
 
 ## Conclusion
 
-You have successfully installed Rancher on SUSE Linux Enterprise Server. SLES is the ideal enterprise platform for Rancher, offering full commercial support from SUSE, security certifications, and tight integration with the broader SUSE ecosystem. This combination provides a production-ready Kubernetes management solution backed by enterprise-grade support and security.
+You have successfully installed Rancher on SUSE Linux Enterprise Server. SLES integrates well with the broader SUSE ecosystem and provides enterprise features for the host operating system, while Rancher support is available through SUSE Rancher Prime. For production deployments, use a supported Helm installation on Kubernetes instead of the single-container Docker method shown here.
