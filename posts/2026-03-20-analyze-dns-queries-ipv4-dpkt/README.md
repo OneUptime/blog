@@ -8,12 +8,12 @@ Description: Parse and analyze DNS query and response packets from IPv4 traffic 
 
 ## Introduction
 
-DNS traffic analysis reveals which domains your hosts are resolving - useful for security auditing (detecting malware C2 domains), capacity planning, and debugging connectivity issues. `dpkt` provides efficient DNS parsing from PCAP files or live capture.
+DNS traffic analysis reveals which domains your hosts are resolving - useful for security auditing (detecting malware C2 domains), capacity planning, and debugging connectivity issues. `dpkt` provides efficient DNS parsing from PCAP files, and you can pair it with Scapy for live capture.
 
 ## Prerequisites
 
 ```bash
-pip install dpkt
+pip install dpkt scapy
 ```
 
 ## Parsing DNS Queries from a PCAP File
@@ -24,7 +24,7 @@ import socket
 from collections import Counter
 
 def parse_dns_from_pcap(pcap_file):
-    """Extract all DNS queries and responses from a pcap."""
+    """Extract UDP-based DNS queries and responses from IPv4 traffic in an Ethernet pcap."""
     queries = []
     responses = []
     
@@ -41,7 +41,7 @@ def parse_dns_from_pcap(pcap_file):
                     continue
                 
                 udp = ip.data
-                # DNS uses UDP port 53
+                # This example focuses on DNS over UDP on port 53
                 if not isinstance(udp, dpkt.udp.UDP):
                     continue
                 if udp.dport != 53 and udp.sport != 53:
@@ -63,8 +63,7 @@ def parse_dns_from_pcap(pcap_file):
                             'src': src_ip,
                             'dst': dst_ip,
                             'name': qname,
-                            'type': qtype,
-                            'type_str': dpkt.dns.DNS_QTYPE_STR.get(qtype, str(qtype))
+                            'type': qtype
                         })
                 
                 # Process DNS responses (QR bit = 1)
@@ -125,7 +124,7 @@ def flag_suspicious_dns(queries):
         
         # Long random-looking labels (possible DGA)
         labels = name.split('.')
-        for label in labels[:-2]:  # Skip TLD and SLD
+        for label in labels[:-2]:  # Skip the last two labels as a simple heuristic
             if len(label) > 20:
                 flags.append("long_label")
                 break
@@ -174,13 +173,13 @@ from scapy.all import sniff, IP, UDP, DNS, DNSQR
 
 def live_dns_capture(pkt):
     """Callback for live DNS query capture with Scapy."""
-    if pkt.haslayer(DNS) and pkt.haslayer(DNSQR):
+    if pkt.haslayer(IP) and pkt.haslayer(DNS) and pkt.haslayer(DNSQR):
         qname = pkt[DNSQR].qname.decode('utf-8').rstrip('.')
         src = pkt[IP].src
         print(f"{src} queried: {qname}")
 
 print("Capturing live DNS queries...")
-sniff(filter="udp port 53", prn=live_dns_capture, store=False)
+sniff(filter="ip and udp port 53", prn=live_dns_capture, store=False)
 ```
 
 ## Conclusion
