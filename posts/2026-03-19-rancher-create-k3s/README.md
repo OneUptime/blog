@@ -12,8 +12,8 @@ K3s is a lightweight, certified Kubernetes distribution designed for edge comput
 
 - A running Rancher installation (v2.7 or later)
 - At least one Linux node with:
-  - Minimum 1 GB RAM and 1 CPU (2 GB RAM and 2 CPUs recommended)
-  - A supported OS (Ubuntu 20.04+, RHEL 8+, Debian 11+, SLES 15+)
+  - Minimum 2 GB RAM and 2 CPU cores for server nodes; 512 MB RAM and 1 CPU core for agent nodes
+  - A supported modern Linux distribution (for example Ubuntu/Debian, RHEL/CentOS/Fedora, or SUSE Linux Enterprise/openSUSE)
   - Systemd or openrc init system
 - Network connectivity between nodes and to the Rancher server
 
@@ -24,7 +24,7 @@ K3s has minimal requirements compared to standard Kubernetes distributions.
 ### Basic Node Setup
 
 ```bash
-# Disable swap (optional for K3s but recommended)
+# Disable swap unless you have explicitly configured Kubernetes to tolerate it
 
 sudo swapoff -a
 
@@ -45,9 +45,9 @@ sudo sysctl --system
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
-| 6443 | TCP | Kubernetes API |
+| 6443 | TCP | K3s supervisor / Kubernetes API |
 | 8472 | UDP | Flannel VXLAN |
-| 10250 | TCP | kubelet |
+| 10250 | TCP | kubelet metrics and API (required for metrics-server) |
 | 2379-2380 | TCP | etcd (HA mode) |
 
 ## Step 2: Create the Cluster in Rancher
@@ -55,7 +55,7 @@ sudo sysctl --system
 1. Log in to the Rancher UI
 2. Go to **Cluster Management**
 3. Click **Create**
-4. Under **Use existing nodes and create a cluster using RKE2/K3s**, select **Custom**
+4. Select **Custom**
 
 ## Step 3: Configure Cluster Settings
 
@@ -68,11 +68,11 @@ Make sure you select a K3s version (these typically show with a `+k3s` suffix).
 
 ### Network Configuration
 
-Select the CNI:
+K3s uses Flannel by default. If you want a different CNI, disable Flannel in the K3s configuration and install the CNI separately.
 
 - **Flannel** (default for K3s): Simple overlay networking
-- **Canal**: Flannel + Calico network policies
-- **Calico**: Full Calico implementation
+- **Canal**: Install separately after setting `flannel-backend: none`; typically also set `disable-network-policy: true`
+- **Calico**: Install separately after setting `flannel-backend: none`; typically also set `disable-network-policy: true`
 
 ### Service CIDR and Cluster CIDR
 
@@ -88,26 +88,27 @@ Cluster DNS: 10.43.0.10
 
 ### Datastore
 
-K3s supports two datastore options:
+K3s supports embedded and external datastore options:
 
 - **Embedded etcd** (default for HA): Built-in etcd for multi-server setups
-- **Embedded SQLite**: Single-server only, minimal resource usage
+- **Embedded SQLite**: Default for single-server setups
+- **External datastore**: Supported options include etcd, MySQL/MariaDB, and PostgreSQL
 
-For production with HA, use embedded etcd with 3 server nodes.
+For production with HA, use embedded etcd with 3 server nodes or a supported external datastore.
 
 ### Disable Components
 
 K3s bundles several components that you can disable if not needed:
 
 ```yaml
-# In the additional server args
+# In the K3s cluster configuration
 disable:
   - traefik      # Disable built-in Traefik ingress
   - servicelb    # Disable built-in ServiceLB
   - metrics-server  # If using external metrics
 ```
 
-Configure these through the Rancher UI under advanced cluster options.
+Configure these through the Rancher cluster configuration, typically by editing the cluster YAML.
 
 ### Registry Mirror
 
@@ -117,8 +118,7 @@ For air-gapped or private registry environments:
 mirrors:
   docker.io:
     endpoint:
-      - https://registry.yourdomain.com
-  "registry.yourdomain.com":
+      - "https://registry.yourdomain.com"
     rewrite:
       "^rancher/(.*)": "mirror/rancher/$1"
 ```
@@ -127,17 +127,17 @@ mirrors:
 
 ### Register Server Nodes
 
-Select **etcd** and **Control Plane** roles and copy the registration command:
+Rancher custom clusters need at least one node with each role. For a single-node or compact HA setup, select **etcd**, **Control Plane**, and **Worker** on the same node and copy the registration command:
 
 ```bash
 curl -fL https://rancher.yourdomain.com/system-agent-install.sh | sudo sh -s - \
   --server https://rancher.yourdomain.com \
   --label 'cattle.io/os=linux' \
   --token <TOKEN> \
-  --etcd --controlplane
+  --etcd --controlplane --worker
 ```
 
-For a single-server setup, run this on one node. For HA, run on 3 nodes.
+For a single-server setup, run this on one node. For a compact HA setup, run this on 3 nodes. If you prefer dedicated workers, make sure you also register at least one worker-only node before provisioning completes.
 
 ### Register Agent (Worker) Nodes
 
@@ -173,13 +173,13 @@ Watch the cluster come online:
 2. Watch nodes register and roles get assigned
 3. Wait for status to change to `Active`
 
-Check system agent logs on nodes:
+On systemd-based nodes, check system agent logs:
 
 ```bash
 sudo journalctl -u rancher-system-agent -f
 ```
 
-Check K3s service logs:
+On systemd-based nodes, check K3s service logs:
 
 ```bash
 sudo journalctl -u k3s -f          # Server nodes
@@ -200,15 +200,15 @@ K3s system pods include:
 
 - `coredns`
 - `local-path-provisioner` (default storage)
-- `metrics-server`
+- `metrics-server` (if not disabled)
 - `traefik` (if not disabled)
-- Network plugin pods (flannel, canal, or calico)
+- Flannel pods by default, or your custom CNI pods if you installed Canal or Calico separately
 
-Check resource usage to confirm K3s's lightweight footprint:
+If `metrics-server` is enabled, check resource usage to confirm K3s's lightweight footprint:
 
 ```bash
-kubectl top nodes
-kubectl top pods -A
+kubectl top node
+kubectl top pod -A
 ```
 
 ## Step 8: Deploy Workloads
@@ -261,7 +261,7 @@ spec:
 ## Troubleshooting
 
 - **Node not joining**: Verify network connectivity to Rancher. Check system-agent logs.
-- **High memory usage**: K3s should use 500-700 MB on server nodes. If higher, check for memory leaks in workloads.
+- **High memory usage**: K3s server memory depends on enabled components and workloads. Current K3s profiling shows a baseline closer to 1.4-1.6 GB on server nodes, so size nodes accordingly.
 - **Storage issues**: K3s uses local-path-provisioner by default. For production, consider adding a more robust storage solution.
 - **DNS resolution failures**: Check coredns pods and node DNS configuration.
 
