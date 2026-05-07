@@ -10,28 +10,18 @@ Kubernetes secrets store sensitive data such as passwords, API keys, and TLS cer
 
 ## Prerequisites
 
-- Rancher v2.5 or later
-- RKE or RKE2 managed clusters
+- Rancher v2.5 or later for RKE2 clusters
+- RKE2 managed clusters, or existing legacy RKE (RKE1) clusters on Rancher versions that still support them
 - Admin access to Rancher
 - SSH access to control plane nodes
 
-## Step 1: Enable Built-in Secrets Encryption in RKE2
+## Step 1: Verify Built-in Secrets Encryption in RKE2
 
-RKE2 provides the simplest way to enable secrets encryption:
+Current RKE2 releases manage secrets encryption automatically by generating an encryption configuration and passing it to the Kubernetes API server. Verify that it is enabled:
 
 ```bash
 # On the RKE2 server node
 
-cat >> /etc/rancher/rke2/config.yaml << 'EOF'
-secrets-encryption: true
-EOF
-
-systemctl restart rke2-server
-```
-
-Verify encryption is enabled:
-
-```bash
 rke2 secrets-encrypt status
 ```
 
@@ -44,7 +34,7 @@ Current Rotation Stage: start
 
 ## Step 2: Enable Secrets Encryption in RKE via Rancher
 
-For RKE clusters managed through Rancher:
+For existing RKE (RKE1) clusters managed through Rancher:
 
 1. Go to **Cluster Management**.
 2. Click the three-dot menu on the cluster.
@@ -61,62 +51,26 @@ rancher_kubernetes_engine_config:
 
 5. Save the changes. Rancher will update the cluster.
 
-## Step 3: Create a Custom Encryption Configuration
+> Note: RKE1 reached end of life on July 31, 2025, and Rancher 2.12+ no longer supports provisioning or managing downstream RKE1 clusters.
 
-For fine-grained control, create a custom encryption configuration:
+## Step 3: Choose an Encryption Provider in RKE2
 
-```yaml
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources:
-      - secrets
-    providers:
-      - aescbc:
-          keys:
-            - name: key1
-              secret: YOUR_32_BYTE_BASE64_KEY
-      - identity: {}
-```
-
-Generate a secure key:
+RKE2 manages the encryption configuration file for you. To change the provider from the default `aescbc` to `secretbox` on releases that support it, update the RKE2 config:
 
 ```bash
-KEY=$(head -c 32 /dev/urandom | base64)
-echo "Encryption key: $KEY"
-```
-
-Save the configuration on the control plane node:
-
-```bash
-cat > /etc/rancher/rke2/encryption-config.yaml << EOF
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources:
-      - secrets
-    providers:
-      - aescbc:
-          keys:
-            - name: key1
-              secret: ${KEY}
-      - identity: {}
+# /etc/rancher/rke2/config.yaml
+cat >> /etc/rancher/rke2/config.yaml << 'EOF'
+secrets-encryption-provider: secretbox
 EOF
 
-chmod 600 /etc/rancher/rke2/encryption-config.yaml
+systemctl restart rke2-server
 ```
 
-Configure RKE2 to use it:
-
-```yaml
-# /etc/rancher/rke2/config.yaml
-kube-apiserver-arg:
-  - "encryption-provider-config=/etc/rancher/rke2/encryption-config.yaml"
-```
+`secretbox` support was added in the April 2025 RKE2 releases. For FIPS 140-2 compliance, keep the default `aescbc` provider.
 
 ## Step 4: Encrypt All Existing Secrets
 
-After enabling encryption, existing secrets are still stored unencrypted. Re-encrypt them:
+After enabling encryption on an existing cluster or changing providers, existing secrets remain under the previous configuration until they are rewritten. Re-encrypt them:
 
 ```bash
 kubectl get secrets -A -o json | kubectl replace -f -
@@ -143,7 +97,7 @@ ETCDCTL_API=3 etcdctl get /registry/secrets/default/test-secret \
   --endpoints=https://127.0.0.1:2379 | hexdump -C | head -20
 ```
 
-Encrypted secrets will show binary data with the prefix `k8s:enc:aescbc:v1:key1:`.
+Encrypted secrets will show binary data instead of readable Secret content. With the `aescbc` provider, the stored value is prefixed with `k8s:enc:aescbc:v1:`.
 
 ## Step 6: Rotate Encryption Keys
 
@@ -152,48 +106,39 @@ Rotate keys periodically to limit the impact of a key compromise.
 ### For RKE2 Built-in Encryption
 
 ```bash
-# Prepare rotation
-rke2 secrets-encrypt prepare
+# Run on one RKE2 server node
+rke2 secrets-encrypt rotate-keys
 
-# Restart the server
-systemctl restart rke2-server
-
-# Rotate the key
-rke2 secrets-encrypt rotate
-
-# Restart the server again
-systemctl restart rke2-server
-
-# Re-encrypt all secrets
-rke2 secrets-encrypt reencrypt
-
-# Check status
+# Wait for reencryption to finish
 rke2 secrets-encrypt status
 ```
 
+On HA clusters, run `rotate-keys` on one server node, wait until the status shows `reencrypt_finished`, then restart `rke2-server.service` sequentially on each server node. For older RKE2 releases, use the classic `prepare` / `rotate` / `reencrypt` procedure from the RKE2 documentation.
+
 ### For Custom Encryption Configuration
 
-1. Add the new key before the old key:
+1. Add the new key as the second key entry:
 
 ```yaml
 providers:
   - aescbc:
       keys:
-        - name: key2
-          secret: NEW_KEY
         - name: key1
           secret: OLD_KEY
+        - name: key2
+          secret: NEW_KEY
   - identity: {}
 ```
 
 2. Restart the API server.
-3. Re-encrypt all secrets.
-4. Remove the old key.
-5. Restart the API server again.
+3. Move the new key to the first position in the list.
+4. Restart the API server again.
+5. Re-encrypt all secrets.
+6. Remove the old key after all secrets have been rewritten.
 
 ## Step 7: Integrate with External KMS
 
-For production environments, use an external Key Management Service instead of static keys.
+For production environments where you manage the Kubernetes API server encryption configuration directly, use an external Key Management Service instead of static keys. On Kubernetes v1.29 and later, prefer KMS v2; KMS v1 is deprecated and disabled by default. This is Kubernetes-level guidance rather than a native RKE2 provider setting.
 
 ### AWS KMS Plugin
 
@@ -207,38 +152,14 @@ resources:
       - secrets
     providers:
       - kms:
+          apiVersion: v2
           name: aws-kms
           endpoint: unix:///var/run/kms-plugin/socket.sock
-          cachesize: 1000
           timeout: 3s
       - identity: {}
 ```
 
-Deploy the KMS plugin as a static pod:
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: aws-kms-plugin
-  namespace: kube-system
-spec:
-  containers:
-  - name: kms-plugin
-    image: your-registry/aws-kms-plugin:latest
-    env:
-    - name: AWS_KMS_KEY_ID
-      value: "arn:aws:kms:us-east-1:ACCOUNT:key/KEY_ID"
-    - name: AWS_REGION
-      value: us-east-1
-    volumeMounts:
-    - name: socket
-      mountPath: /var/run/kms-plugin
-  volumes:
-  - name: socket
-    hostPath:
-      path: /var/run/kms-plugin
-```
+Deploy a Kubernetes-compatible AWS KMS plugin on each control plane node according to the plugin's documentation, and expose it over the UNIX domain socket referenced by `endpoint`.
 
 ### HashiCorp Vault Transit
 
@@ -252,12 +173,14 @@ resources:
       - secrets
     providers:
       - kms:
+          apiVersion: v2
           name: vault-kms
           endpoint: unix:///var/run/vault-kms/socket.sock
-          cachesize: 1000
           timeout: 3s
       - identity: {}
 ```
+
+As with AWS KMS, the Vault-backed KMS plugin must run on each control plane node and listen on the configured UNIX domain socket.
 
 ## Step 8: Audit Secrets Access
 
@@ -279,7 +202,7 @@ rules:
   verbs: ["create", "update", "patch", "delete"]
 ```
 
-This logs all secret access operations for compliance and security monitoring.
+This policy logs common secret read and write operations for compliance and security monitoring.
 
 ## Troubleshooting
 
@@ -302,14 +225,14 @@ If you removed an old key before re-encrypting, secrets encrypted with that key 
 
 ### Performance Impact
 
-Encryption adds CPU overhead. Monitor API server latency:
+Encryption adds CPU overhead. Monitor API server resource usage:
 
 ```bash
 kubectl top pods -n kube-system -l component=kube-apiserver
 ```
 
-Use `aescbc` for the best balance of security and performance in most environments.
+Prefer `kms` v2 when you need external key management. In RKE2, `aescbc` remains the default and is required for FIPS 140-2 compliance, while `secretbox` is also supported on newer releases.
 
 ## Conclusion
 
-Secrets encryption is a fundamental security measure for Kubernetes clusters. Rancher-managed RKE2 clusters make it easy to enable with a single configuration option, while custom encryption configurations and external KMS integrations provide additional flexibility for enterprise environments. Combined with regular key rotation and access auditing, secrets encryption ensures your sensitive data is protected at rest.
+Secrets encryption is a fundamental security measure for Kubernetes clusters. Rancher-managed RKE2 clusters include built-in secrets encryption, while legacy RKE clusters can enable it through Rancher configuration. Combined with regular key rotation and access auditing, secrets encryption helps protect your sensitive data at rest.
