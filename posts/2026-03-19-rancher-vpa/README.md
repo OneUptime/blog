@@ -27,17 +27,17 @@ cd autoscaler/vertical-pod-autoscaler
 ./hack/vpa-up.sh
 ```
 
-Alternatively, install via Helm:
+Alternatively, the upstream project also publishes a Helm chart, although its README notes that the chart is still under development and not marked production-ready:
 
 ```bash
-helm repo add fairwinds-stable https://charts.fairwinds.com/stable
-helm install vpa fairwinds-stable/vpa --namespace vpa --create-namespace
+helm repo add autoscalers https://kubernetes.github.io/autoscaler
+helm upgrade -i vertical-pod-autoscaler autoscalers/vertical-pod-autoscaler
 ```
 
-Verify the installation:
+Verify the installation in the namespace you used. For `vpa-up.sh`, that is `kube-system`:
 
 ```bash
-kubectl get pods -n vpa
+kubectl get pods -n kube-system
 ```
 
 You should see three components running:
@@ -48,7 +48,7 @@ You should see three components running:
 
 ## Step 2: Create a VPA Resource
 
-### Recommendation-Only Mode (Initial)
+### Recommendation-Only Mode (Off)
 
 Start with the `Off` mode to observe recommendations without automatic changes:
 
@@ -67,15 +67,15 @@ spec:
     updateMode: "Off"
 ```
 
-Apply this using Rancher's **Import YAML** feature or kubectl:
+Apply this using Rancher or kubectl:
 
 ```bash
 kubectl apply -f vpa.yaml
 ```
 
-### Auto Mode
+### Recreate Mode
 
-Once you are comfortable with the recommendations, switch to `Auto` mode:
+Once you are comfortable with the recommendations, switch to `Recreate` mode:
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
@@ -89,7 +89,7 @@ spec:
     kind: Deployment
     name: my-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: my-app
@@ -187,7 +187,7 @@ Recommendation:
 
 ## Step 5: Monitor VPA Actions
 
-When VPA is in Auto mode, it will evict and recreate pods to apply new resource values. Monitor these events:
+When VPA is in Recreate mode, it will evict and recreate pods to apply new resource values. Monitor these events:
 
 ```bash
 kubectl get events -n default --field-selector reason=EvictedByVPA
@@ -220,7 +220,7 @@ spec:
     kind: Deployment
     name: my-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: my-app
@@ -234,7 +234,7 @@ spec:
 
 ### Pod Disruption
 
-In Auto mode, VPA evicts pods to apply new resource values. This causes brief downtime for single-replica workloads. Ensure you have:
+In Recreate mode, VPA evicts pods to apply new resource values. This causes brief downtime for single-replica workloads. Ensure you have:
 
 - Multiple replicas for high availability
 - Pod Disruption Budgets (PDBs) configured
@@ -255,8 +255,8 @@ spec:
 
 ### Warm-Up Time
 
-VPA needs time to collect usage data and generate accurate recommendations. Allow at least 24 hours of data collection before switching from Off to Auto mode, especially for workloads with variable traffic patterns.
+VPA needs time to collect usage data and generate accurate recommendations. Let it observe representative workload traffic before switching from Off to Recreate mode, especially for workloads with variable traffic patterns.
 
 ## Summary
 
-Vertical Pod Autoscaling helps you right-size your workloads by automatically adjusting CPU and memory requests based on actual usage. Start with the Off mode to observe recommendations, then progress to Auto mode once you are confident in the boundaries. Use resource policies to set safe minimums and maximums, and be mindful of the interaction between VPA and HPA. VPA is especially valuable for optimizing resource utilization and reducing costs in large clusters.
+Vertical Pod Autoscaling helps you right-size your workloads by automatically adjusting CPU and memory requests based on actual usage. Start with the Off mode to observe recommendations, then progress to Recreate mode once you are confident in the boundaries. Use resource policies to set safe minimums and maximums, and be mindful of the interaction between VPA and HPA. VPA is especially valuable for optimizing resource utilization and reducing costs in large clusters.
