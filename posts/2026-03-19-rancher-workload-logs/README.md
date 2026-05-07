@@ -56,7 +56,7 @@ Instead of navigating to individual pods:
 
 ### Basic Log Commands
 
-Open the kubectl shell from the Rancher UI (click the **kubectl** button in the top-right corner), or use your local kubectl configured with Rancher credentials.
+Open the kubectl shell from the Rancher UI (click the **Kubectl Shell** button in the top navigation menu), or use your local kubectl configured with Rancher credentials.
 
 View logs for a specific pod:
 
@@ -128,21 +128,21 @@ For Jobs:
 kubectl logs job/my-job -n default
 ```
 
-For CronJobs, find the latest job first:
+For CronJobs, find the latest job created by the CronJob first:
 
 ```bash
-kubectl get jobs -l job-name=my-cronjob -n default --sort-by=.metadata.creationTimestamp
-kubectl logs job/my-cronjob-28457320 -n default
+latest_job=$(kubectl get jobs -n default --sort-by=.metadata.creationTimestamp -o custom-columns=NAME:.metadata.name --no-headers | grep '^my-cronjob-' | tail -n 1)
+kubectl logs job/"$latest_job" -n default
 ```
 
-## Method 3: View Logs via Rancher Monitoring
+## Method 3: View Logs via Rancher Logging
 
-Rancher's built-in monitoring stack (based on Prometheus and Grafana) can be extended with log aggregation.
+Rancher Logging is a separate app for cluster-level log aggregation and persistence.
 
 ### Install the Logging Chart
 
 1. Go to **Apps > Charts** in the Rancher dashboard
-2. Search for **Logging** (Rancher Logging, based on Banzai Cloud Logging Operator)
+2. Search for **Logging** (Rancher Logging, powered by the Logging operator)
 3. Click **Install** and configure the output destination
 
 ### Configure a ClusterOutput
@@ -154,6 +154,7 @@ apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterOutput
 metadata:
   name: elasticsearch-output
+  namespace: cattle-logging-system
 spec:
   elasticsearch:
     host: elasticsearch.logging.svc.cluster.local
@@ -171,6 +172,7 @@ apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterFlow
 metadata:
   name: all-logs
+  namespace: cattle-logging-system
 spec:
   filters:
     - tag_normaliser: {}
