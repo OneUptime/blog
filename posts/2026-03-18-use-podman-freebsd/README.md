@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, FreeBSD, Container, OCI, Unix
 
-Description: Learn how to install and use Podman on FreeBSD for running OCI-compatible Linux containers using FreeBSD's jail and Linux emulation capabilities.
+Description: Learn how to install and use Podman on FreeBSD for running OCI-compatible FreeBSD containers and many Linux containers using FreeBSD's jail and Linux emulation capabilities.
 
 ---
 
-> Podman brings OCI container support to FreeBSD, letting you run Linux containers alongside native FreeBSD workloads. This guide covers installing Podman on FreeBSD, configuring the Linux compatibility layer, and running containers on one of the most reliable Unix operating systems.
+> Podman brings experimental OCI container support to FreeBSD, letting you run native FreeBSD container images and many Linux containers on one of the most reliable Unix operating systems. This guide covers installing Podman on FreeBSD, configuring the required services, and enabling the Linux compatibility layer for Linux images.
 
-FreeBSD has long had its own containerization technology in the form of jails, but the growing ecosystem of OCI container images makes Podman support valuable for FreeBSD users. Podman on FreeBSD enables you to pull and run standard Linux container images, bridging the gap between the FreeBSD ecosystem and the broader container world. This support relies on FreeBSD's Linux binary compatibility layer and specific adaptations in Podman for the FreeBSD kernel.
+FreeBSD has long had its own containerization technology in the form of jails, but the growing ecosystem of OCI container images makes Podman support valuable for FreeBSD users. Podman on FreeBSD uses the `ocijail` runtime to run OCI containers as FreeBSD jails, and it can also run many Linux container images when the Linux compatibility layer is enabled. This bridges the gap between the FreeBSD ecosystem and the broader container world.
 
-This guide walks through setting up Podman on FreeBSD and running OCI containers.
+This guide walks through setting up Podman on FreeBSD and running both native FreeBSD and Linux OCI containers.
 
 ---
 
 ## Prerequisites
 
-Podman on FreeBSD requires FreeBSD 13.1 or later (FreeBSD 14.0 or later is recommended for the best compatibility). The container support uses a combination of FreeBSD jails, ZFS, and the Linux compatibility layer. Ensure your system is up to date:
+The FreeBSD port of Podman is experimental and is supported on FreeBSD 14.3 or later. Podman uses FreeBSD jails via `ocijail`, ZFS is recommended for container storage, and Linux images additionally require the Linux compatibility layer. Ensure your system is up to date:
 
 ```bash
 sudo freebsd-update fetch
@@ -48,20 +48,20 @@ podman --version
 podman info
 ```
 
+To support Podman container restart policies, make sure `/dev/fd` is backed by `fdescfs`:
+
+```bash
+sudo mount -t fdescfs fdesc /dev/fd
+echo 'fdesc   /dev/fd         fdescfs         rw      0       0' | sudo tee -a /etc/fstab
+```
+
 ## Enabling the Linux Compatibility Layer
 
-To run Linux containers on FreeBSD, enable the Linux compatibility layer:
+If you want to run Linux container images on FreeBSD, enable the Linux compatibility layer:
 
 ```bash
 sudo sysrc linux_enable="YES"
 sudo service linux start
-```
-
-Load the Linux kernel module:
-
-```bash
-sudo kldload linux64
-sudo sysrc kld_list+="linux64"
 ```
 
 Verify the Linux compatibility layer is active:
@@ -107,17 +107,23 @@ EOF
 
 ## Running Your First Container
 
-Pull and run a basic Linux container:
+Run a native FreeBSD container:
 
 ```bash
-podman pull docker.io/library/alpine:latest
-podman run --rm docker.io/library/alpine:latest echo "Hello from FreeBSD"
+podman run --rm docker.io/dougrabson/hello
+```
+
+To run a Linux container image, pull and run it with `--os=linux`:
+
+```bash
+podman pull --os=linux docker.io/library/alpine:latest
+podman run --rm --os=linux docker.io/library/alpine:latest echo "Hello from FreeBSD"
 ```
 
 Run an interactive container:
 
 ```bash
-podman run -it --rm docker.io/library/alpine:latest sh
+podman run -it --rm --os=linux docker.io/library/alpine:latest sh
 ```
 
 Inside the container, verify the Linux environment:
@@ -129,15 +135,16 @@ uname -a
 
 ## Running a Web Server
 
-Deploy an Nginx container:
+Deploy an Nginx container. After configuring PF as shown later, verify the published port:
 
 ```bash
 podman run -d --name webserver \
   -p 8080:80 \
+  --os=linux \
   docker.io/library/nginx:latest
 
 podman ps
-curl http://localhost:8080
+fetch -o- http://localhost:8080
 ```
 
 ## Working with Volumes
@@ -157,6 +164,7 @@ podman run -d --name database \
   -v mydata:/var/lib/postgresql/data \
   -e POSTGRES_PASSWORD=secret \
   -p 5432:5432 \
+  --os=linux \
   docker.io/library/postgres:16
 ```
 
@@ -166,12 +174,13 @@ Bind mount a host directory:
 podman run -d --name web \
   -v /usr/local/www:/usr/share/nginx/html:ro \
   -p 8080:80 \
+  --os=linux \
   docker.io/library/nginx:latest
 ```
 
 ## Building Container Images
 
-Create a Containerfile and build on FreeBSD:
+Create a Containerfile and build a Linux image on FreeBSD:
 
 ```dockerfile
 FROM docker.io/library/alpine:latest
@@ -180,7 +189,7 @@ RUN apk add --no-cache python3 py3-pip
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY . .
 
@@ -191,13 +200,13 @@ CMD ["python3", "app.py"]
 Build the image:
 
 ```bash
-podman build -t myapp:latest .
+podman build --os=linux -t myapp:latest .
 podman images
 ```
 
 ## Networking
 
-Podman on FreeBSD supports basic networking. Create a container network:
+Podman on FreeBSD supports basic networking once PF is configured. Create a container network:
 
 ```bash
 podman network create appnet
@@ -207,8 +216,8 @@ podman network ls
 Run containers on the same network:
 
 ```bash
-podman run -d --network appnet --name backend myapp-api:latest
-podman run -d --network appnet --name frontend -p 8080:80 myapp-web:latest
+podman run -d --network appnet --name backend --os=linux myapp-api:latest
+podman run -d --network appnet --name frontend -p 8080:80 --os=linux myapp-web:latest
 ```
 
 ## Pod Support
@@ -220,9 +229,11 @@ podman pod create --name app-stack -p 8080:80 -p 5432:5432
 
 podman run -d --pod app-stack --name db \
   -e POSTGRES_PASSWORD=secret \
+  --os=linux \
   docker.io/library/postgres:16
 
 podman run -d --pod app-stack --name app \
+  --os=linux \
   myapp:latest
 ```
 
@@ -236,59 +247,23 @@ podman pod start app-stack
 
 ## Integrating with FreeBSD rc.d
 
-Create an rc.d service script for your container:
+The FreeBSD package installs a built-in `rc.d` service for restarting containers with a restart policy after boot. Create a container with a restart policy:
 
 ```bash
-sudo tee /usr/local/etc/rc.d/podman_webapp << 'RCEOF'
-#!/bin/sh
+sudo podman run -d --name webapp \
+  --restart=always \
+  -p 8080:80 \
+  --os=linux \
+  docker.io/library/nginx:latest
 
-# PROVIDE: podman_webapp
-
-# REQUIRE: DAEMON podman
-# KEYWORD: shutdown
-
-. /etc/rc.subr
-
-name="podman_webapp"
-rcvar="${name}_enable"
-
-start_cmd="${name}_start"
-stop_cmd="${name}_stop"
-status_cmd="${name}_status"
-
-podman_webapp_start()
-{
-    echo "Starting ${name}."
-    /usr/local/bin/podman run -d --name webapp \
-        -p 8080:80 \
-        docker.io/library/nginx:latest
-}
-
-podman_webapp_stop()
-{
-    echo "Stopping ${name}."
-    /usr/local/bin/podman stop webapp
-    /usr/local/bin/podman rm webapp
-}
-
-podman_webapp_status()
-{
-    /usr/local/bin/podman ps --filter name=webapp
-}
-
-load_rc_config $name
-run_rc_command "$1"
-RCEOF
-
-sudo chmod +x /usr/local/etc/rc.d/podman_webapp
-sudo sysrc podman_webapp_enable="YES"
+sudo service podman enable
 ```
 
 Start the service:
 
 ```bash
-sudo service podman_webapp start
-sudo service podman_webapp status
+sudo service podman start
+podman ps
 ```
 
 ## FreeBSD Jails vs Podman Containers
@@ -302,26 +277,17 @@ Use FreeBSD jails when you need native FreeBSD processes, ZFS integration, and m
 sudo jail -c name=myjail path=/jails/myjail host.hostname=myjail ip4.addr=192.168.1.100
 ```
 
-Use Podman when you need to run Linux container images or leverage the OCI ecosystem:
+Use Podman when you need OCI workflows, native FreeBSD container images, or Linux container images with the Linux compatibility layer enabled:
 
 ```bash
-podman run -d docker.io/library/redis:7
+podman run -d --os=linux docker.io/library/redis:7
 ```
 
 You can run both jails and Podman containers on the same system for different workloads.
 
-Resource Limits
+## Resource Usage
 
-Use FreeBSD's rctl to limit container resources:
-
-```bash
-podman run -d --name limited \
-  --memory=512m \
-  --cpus=1.0 \
-  myapp:latest
-```
-
-Monitor resource usage:
+Monitor container resource usage:
 
 ```bash
 podman stats --no-stream
@@ -329,19 +295,21 @@ podman stats --no-stream
 
 ## Firewall Configuration with PF
 
-FreeBSD uses PF (Packet Filter) for firewalling. Add rules for container ports:
+FreeBSD uses PF (Packet Filter) for container NAT and port forwarding. Copy the sample PF configuration installed by the package:
 
 ```bash
-# /etc/pf.conf
-pass in on egress proto tcp to port 8080
-pass in on egress proto tcp to port 5432
+sudo cp /usr/local/etc/containers/pf.conf.sample /etc/pf.conf
+# Edit /etc/pf.conf and set v4egress_if and v6egress_if to your network interfaces.
 ```
 
-Load the rules:
+Enable PF and allow localhost-to-container redirects:
 
 ```bash
-sudo pfctl -f /etc/pf.conf
-sudo pfctl -e
+sudo sysrc pf_enable="YES"
+sudo kldload pf
+sudo sysctl net.pf.filter_local=1
+echo 'net.pf.filter_local=1' | sudo tee -a /etc/sysctl.conf.local
+sudo service pf start
 ```
 
 ## Troubleshooting
@@ -350,7 +318,7 @@ Check the Linux compatibility layer status:
 
 ```bash
 kldstat | grep linux
-sysctl compat.linux
+mount | grep /compat/linux
 ```
 
 View Podman logs:
@@ -360,18 +328,10 @@ podman logs webserver
 podman events --since 1h
 ```
 
-If containers fail to start, check for missing Linux kernel module support:
+If Linux containers fail to start, restart the Linux compatibility service and ensure the required filesystems are mounted:
 
 ```bash
-sudo kldload linux64
-sudo kldload fdescfs
-sudo kldload linprocfs
-sudo kldload tmpfs
-```
-
-Mount the required filesystems:
-
-```bash
+sudo service linux start
 sudo mount -t fdescfs fdesc /dev/fd
 sudo mount -t linprocfs linproc /compat/linux/proc
 ```
@@ -395,4 +355,4 @@ sudo zfs list -t snapshot
 
 ## Conclusion
 
-Podman on FreeBSD opens the door to running the vast ecosystem of OCI-compatible Linux containers on one of the most stable and performant Unix operating systems. While FreeBSD jails remain the go-to solution for native FreeBSD workloads, Podman bridges the gap by letting you run Linux container images alongside your FreeBSD infrastructure. The combination of ZFS storage, PF firewalling, and Podman containers gives FreeBSD administrators a powerful and flexible platform for modern containerized deployments.
+Podman on FreeBSD opens the door to OCI workflows on one of the most stable and performant Unix operating systems. While FreeBSD jails remain the go-to solution for native FreeBSD workloads, Podman adds a familiar OCI toolchain that can run native FreeBSD container images and many Linux images on the same host. The current FreeBSD port is still experimental, but with ZFS storage, PF networking, and the Linux compatibility layer for Linux images, it is already a useful platform for evaluation and testing.
