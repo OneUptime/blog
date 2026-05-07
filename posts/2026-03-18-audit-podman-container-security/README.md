@@ -123,7 +123,7 @@ chmod +x podman-audit.sh
 
 ## Checking for Privileged Containers
 
-Privileged containers should never be used in production.
+Privileged containers should almost never be used in production.
 
 ```bash
 # Find any privileged containers
@@ -148,7 +148,9 @@ podman images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.Created}}"
 ```bash
 # Check if any containers use the latest tag (not recommended for production)
 podman ps --format '{{.Image}}' | while read img; do
-  if echo "$img" | grep -q ":latest" || ! echo "$img" | grep -q ":"; then
+  ref_without_digest=${img%@*}
+  last_component=${ref_without_digest##*/}
+  if [ "$last_component" = "latest" ] || ! echo "$last_component" | grep -q ":"; then
     echo "[WARN] Using 'latest' tag: $img"
   fi
 done
@@ -191,8 +193,15 @@ done
 
 ```bash
 # Generate a JSON audit report for all containers
+first=true
+printf '[\n'
 podman ps -q | while read cid; do
-  podman inspect "$cid" --format '{
+  if [ "$first" = true ]; then
+    first=false
+  else
+    printf ',\n'
+  fi
+  podman inspect "$cid" --format '  {
     "name": "{{.Name}}",
     "image": "{{.Config.Image}}",
     "readonly": {{.HostConfig.ReadonlyRootfs}},
@@ -202,6 +211,7 @@ podman ps -q | while read cid; do
     "capabilities": "{{.EffectiveCaps}}"
   }'
 done
+printf '\n]\n'
 ```
 
 ## Cleanup
