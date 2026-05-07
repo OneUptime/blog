@@ -131,18 +131,20 @@ resource "aws_api_gateway_method" "get_users" {
 }
 ```
 
-## Step 4: Monitor Usage with CloudWatch
+For REST APIs, after changing a method to require an API key, you must create a new deployment for the stage for the change to take effect.
+
+## Step 4: Monitor API Traffic with CloudWatch
 
 ```hcl
-resource "aws_cloudwatch_metric_alarm" "api_quota_approaching" {
-  alarm_name          = "${var.project_name}-api-quota-warning"
+resource "aws_cloudwatch_metric_alarm" "api_requests_approaching" {
+  alarm_name          = "${var.project_name}-api-traffic-warning"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "Count"
   namespace           = "AWS/ApiGateway"
   period              = 86400  # 1 day
-  statistic           = "Sum"
-  threshold           = 8000   # Alert at 80% of basic tier daily quota
+  statistic           = "SampleCount"
+  threshold           = 8000   # Alert when the prod stage exceeds 8,000 requests/day
 
   dimensions = {
     ApiName = var.api_name
@@ -152,6 +154,8 @@ resource "aws_cloudwatch_metric_alarm" "api_quota_approaching" {
   alarm_actions = [var.sns_topic_arn]
 }
 ```
+
+This alarm tracks total request volume for the `prod` stage. For per-API-key or per-usage-plan quota consumption, use the API Gateway usage APIs or CLI instead of the `Count` CloudWatch metric.
 
 ## Step 5: Deploy
 
@@ -169,4 +173,4 @@ aws apigateway get-api-key \
 
 ## Conclusion
 
-API Gateway Usage Plans enable per-consumer throttling for multi-tenant APIs, protecting backend services from abuse while enforcing subscription-based quotas. Customers send their API key in the `x-api-key` header, and API Gateway enforces the associated usage plan limits before the request reaches your backend. Combine usage plans with Lambda authorizers for authentication plus key-based usage tracking.
+API Gateway Usage Plans enable per-consumer throttling for multi-tenant APIs, protecting backend services from abuse while supporting subscription-based quotas. Customers send their API key in the `x-api-key` header, and API Gateway applies the associated usage plan limits before routing the request to your backend, although throttling and quotas are best-effort rather than guaranteed hard limits. Combine usage plans with Lambda authorizers for authentication plus key-based usage tracking.
