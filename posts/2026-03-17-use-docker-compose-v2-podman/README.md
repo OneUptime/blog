@@ -8,9 +8,9 @@ Description: Learn how to use the official Docker Compose v2 plugin with Podman 
 
 ---
 
-> Docker Compose v2 works natively with Podman through the socket API, giving you the latest Compose features without Docker Desktop.
+> Docker Compose v2 can work with Podman through the socket API, giving you Compose v2 features without Docker Desktop.
 
-Docker Compose v2 is the Go-based rewrite of Docker Compose that runs as a Docker CLI plugin (`docker compose` instead of `docker-compose`). It can communicate with any Docker-compatible API, including the Podman socket, giving you access to the latest Compose features while using Podman as the runtime.
+Docker Compose v2 is the Go-based rewrite of Docker Compose that runs as a Docker CLI plugin (`docker compose` instead of `docker-compose`). It can communicate with Docker-compatible APIs, including the Podman socket, giving you access to Compose v2 features while using Podman as the runtime.
 
 ---
 
@@ -48,7 +48,7 @@ docker info
 ## Running Compose v2 Commands
 
 ```bash
-# All standard Compose v2 commands work
+# Common Compose v2 commands work
 docker compose up -d
 docker compose ps
 docker compose logs -f
@@ -100,7 +100,7 @@ docker compose up -d
 # podman-compose - Python-based, calls podman CLI directly
 podman-compose up -d
 
-# Both read the same docker-compose.yml format
+# Both read Compose files, though feature support can differ
 ```
 
 ## Using Docker CLI with Podman
@@ -140,9 +140,9 @@ curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
 
 # If compose fails, check Podman version
 podman --version
-# Docker Compose v2 works best with Podman 4.x+
+# Use a recent Podman release; Podman Desktop Compose docs require Podman 4.7.0+
 ```
 
 ## Summary
 
-Docker Compose v2 works with Podman by connecting through the Docker-compatible socket API. Enable the Podman socket, set `DOCKER_HOST`, and use `docker compose` commands as usual. This gives you the latest Compose features including watch mode, improved dependency handling, and profiles, all running on Podman.
+Docker Compose v2 works with Podman by connecting through the Docker-compatible socket API. Enable the Podman socket, set `DOCKER_HOST`, and use `docker compose` commands as usual. This gives you Compose v2 features including watch mode, improved dependency handling, and profiles, while keeping in mind that Podman's Docker API compatibility may not cover every Docker Engine behavior.
