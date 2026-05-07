@@ -24,14 +24,14 @@ The most straightforward way to view system information is to run the command wi
 podman info
 ```
 
-This outputs a detailed YAML document covering three main sections: host, registries, and store. The output can be extensive, so understanding each section is key.
+This outputs a detailed YAML document with top-level sections such as host, plugins, registries, store, and version. The output can be extensive, so understanding each section is key.
 
 ## Understanding the Host Section
 
 The host section provides details about the machine running Podman.
 
 ```bash
-# View only the host section using grep to filter output
+# View the start of the host section using grep to filter output
 podman info | grep -A 50 "^host:"
 ```
 
@@ -83,7 +83,7 @@ The registries section shows which container registries Podman is configured to 
 
 ```bash
 # Display configured registries for searching images
-podman info --format '{{.Registries.Search}}'
+podman info --format '{{index .Registries "search"}}'
 ```
 
 This is useful for verifying that your organization's private registry is properly configured.
@@ -116,7 +116,7 @@ Podman supports Go templates for precise output formatting.
 
 ```bash
 # Display host OS and architecture on one line
-podman info --format 'OS: {{.Host.Os}} | Arch: {{.Host.Arch}}'
+podman info --format 'OS: {{.Host.OS}} | Arch: {{.Host.Arch}}'
 
 # Show kernel version
 podman info --format 'Kernel: {{.Host.Kernel}}'
