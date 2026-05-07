@@ -8,7 +8,7 @@ Description: Learn how to connect Google Artifact Registry to Portainer using a 
 
 ## Overview
 
-Google Artifact Registry (GAR) is GCP's container registry service, replacing the older Google Container Registry (GCR). It uses the format `<region>-docker.pkg.dev/<project>/<repository>/<image>`. Authentication requires a GCP service account.
+Google Artifact Registry (GAR) is Google Cloud's registry service for container images, replacing the older Google Container Registry (GCR). It uses the format `<location>-docker.pkg.dev/<project>/<repository>/<image>`. For Portainer, a service account JSON key is the most practical option for persistent authentication.
 
 ## Creating a Service Account for Portainer
 
@@ -30,11 +30,12 @@ gcloud iam service-accounts keys create portainer-key.json \
 
 ## Getting the Registry Password
 
-Google Artifact Registry uses the service account key file as the password. The username is always `_json_key`:
+Google Artifact Registry can authenticate either with a short-lived OAuth access token or with a service account key file. For the JSON key method, the username is always `_json_key`:
 
 ```bash
-# Get the base64-encoded access token for Docker authentication
-gcloud auth print-access-token
+# Generate a short-lived OAuth access token for Docker authentication
+gcloud auth print-access-token \
+  --impersonate-service-account=portainer-puller@YOUR_PROJECT_ID.iam.gserviceaccount.com
 
 # Or use the JSON key file directly with the username "_json_key"
 cat portainer-key.json
@@ -42,10 +43,10 @@ cat portainer-key.json
 
 ## Adding Google Artifact Registry to Portainer
 
-1. Go to **Settings > Registries** and click **Add registry**.
+1. Go to **Registries** and click **Add registry**.
 2. Select **Custom registry**.
 3. Enter:
-   - **Registry URL**: `us-docker.pkg.dev` (adjust region as needed)
+   - **Registry URL**: `us-docker.pkg.dev` (adjust location as needed)
    - **Username**: `_json_key`
    - **Password**: Paste the entire contents of your JSON key file
 4. Click **Add registry**.
@@ -57,7 +58,7 @@ cat portainer-key.json
 cat portainer-key.json | docker login \
   -u _json_key \
   --password-stdin \
-  us-docker.pkg.dev
+  https://us-docker.pkg.dev
 
 # Pull an image to verify
 docker pull us-docker.pkg.dev/my-project/my-repo/my-image:latest
@@ -76,21 +77,29 @@ services:
       replicas: 2
 ```
 
-## Using Short-Lived Access Tokens (Recommended)
+## Using Short-Lived Access Tokens
 
-For better security, use short-lived OAuth tokens instead of the key file. Automate token refresh via a cron job:
+For better security, use short-lived OAuth tokens instead of the key file. Because the token expires after 60 minutes, you must update the saved registry entry before it expires:
 
 ```bash
 #!/bin/bash
-# Refresh Google Artifact Registry token in Portainer every hour
-TOKEN=$(gcloud auth print-access-token)
+# Refresh the saved GAR credentials in Portainer
+PORTAINER_URL="https://portainer.example.com"
+TOKEN=$(gcloud auth print-access-token \
+  --impersonate-service-account=portainer-puller@YOUR_PROJECT_ID.iam.gserviceaccount.com)
 
-curl -X PUT "http://localhost:9000/api/registries/1" \
+curl -X PUT "${PORTAINER_URL}/api/registries/YOUR_REGISTRY_ID" \
   -H "Authorization: Bearer $PORTAINER_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"Username\": \"oauth2accesstoken\", \"Password\": \"$TOKEN\"}"
+  -d '{
+    "Name": "google-artifact-registry",
+    "URL": "us-docker.pkg.dev",
+    "Authentication": true,
+    "Username": "oauth2accesstoken",
+    "Password": "'"$TOKEN"'"
+  }'
 ```
 
 ## Conclusion
 
-Google Artifact Registry integrates with Portainer as a custom registry. Use the `_json_key` authentication method with a least-privilege service account for a stable, long-term setup.
+Google Artifact Registry integrates with Portainer as a custom registry. Use the `_json_key` authentication method with a least-privilege service account when you need stable stored credentials in Portainer.
