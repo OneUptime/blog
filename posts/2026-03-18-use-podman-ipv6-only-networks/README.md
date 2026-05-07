@@ -48,10 +48,11 @@ For container networks, ULA addresses (`fd00::/8`) are the standard choice for i
 
 ## Creating an IPv6-Only Podman Network
 
-Create a network with only an IPv6 subnet. Note that the `--ipv6` flag enables dual-stack (both IPv4 and IPv6), so for a true IPv6-only network, specify only an IPv6 subnet without the `--ipv6` flag:
+Create a network with only an IPv6 subnet. In current Podman releases, use the `--ipv6` flag together with an IPv6 subnet to create an IPv6-enabled bridge network without assigning an IPv4 subnet:
 
 ```bash
 podman network create \
+  --ipv6 \
   --subnet fd00:dead:beef::/64 \
   --gateway fd00:dead:beef::1 \
   ipv6-net
@@ -113,11 +114,10 @@ podman exec static-ipv6 ip -6 addr show
 
 ## Dual-Stack Configuration
 
-Dual-stack networks support both IPv4 and IPv6, allowing containers to communicate over either protocol. Use the `--ipv6` flag along with both an IPv4 and IPv6 subnet:
+Dual-stack networks support both IPv4 and IPv6, allowing containers to communicate over either protocol. Create one by providing both an IPv4 and an IPv6 subnet:
 
 ```bash
 podman network create \
-  --ipv6 \
   --subnet 10.100.0.0/24 \
   --gateway 10.100.0.1 \
   --subnet fd00:100::/64 \
@@ -152,7 +152,7 @@ podman run -d \
   -p 80:80 \
   docker.io/library/nginx:alpine
 
-# Listen only on a specific IPv6 address
+# Listen on all IPv6 addresses only
 podman run -d \
   --name web-ipv6-specific \
   --network ipv6-net \
@@ -164,6 +164,7 @@ Test access over IPv6:
 
 ```bash
 curl -6 http://[::1]:80
+curl -6 http://[::1]:8080
 ```
 
 ## DNS Configuration for IPv6
@@ -196,8 +197,8 @@ podman run -d \
   --name dns-resolver \
   --network ipv6-net \
   --ip6 fd00:dead:beef::53 \
-  -e "DNS1=2001:4860:4860::8888" \
-  -e "DNS2=2001:4860:4860::8844" \
+  -e "FTLCONF_dns_upstreams=2001:4860:4860::8888;2001:4860:4860::8844" \
+  -e "FTLCONF_dns_listeningMode=all" \
   docker.io/pihole/pihole:latest
 ```
 
@@ -238,6 +239,7 @@ DNS64 works with NAT64 by synthesizing AAAA records for domains that only have A
 
 ```bash
 # Using BIND for DNS64
+mkdir -p ~/dns64
 cat > ~/dns64/named.conf << 'EOF'
 options {
     listen-on-v6 { any; };
@@ -268,10 +270,11 @@ podman run -d \
   docker.io/library/alpine sleep 3600
 ```
 
-Now the container can reach IPv4-only services through NAT64:
+Now the container can resolve IPv4-only destinations through DNS64 and reach translated IPv4 endpoints through NAT64:
 
 ```bash
-podman exec ipv6-only-app wget -qO- http://ipv4only.example.com
+podman exec ipv6-only-app nslookup nat64-tutorial.mx
+podman exec ipv6-only-app ping6 -c 3 64:ff9b::8.8.8.8
 ```
 
 ## IPv6 Firewall Rules
@@ -300,6 +303,7 @@ ICMPv6 is essential for IPv6 operations including neighbor discovery, path MTU d
 Configure Nginx to listen on IPv6 for reverse proxy duties:
 
 ```bash
+mkdir -p ~/nginx-ipv6/conf.d
 cat > ~/nginx-ipv6/conf.d/default.conf << 'EOF'
 server {
     listen [::]:80;
@@ -348,7 +352,7 @@ chmod +x ~/ipv6-monitor.sh
 For routing between IPv6 container networks, enable IPv6 forwarding:
 
 ```bash
-sudo cat > /etc/sysctl.d/99-ipv6-forwarding.conf << 'EOF'
+sudo tee /etc/sysctl.d/99-ipv6-forwarding.conf > /dev/null << 'EOF'
 net.ipv6.conf.all.forwarding = 1
 net.ipv6.conf.default.forwarding = 1
 EOF
@@ -371,8 +375,8 @@ podman exec ipv6-app ip -6 addr show
 ### Cannot Reach External IPv6 Addresses
 
 ```bash
-# Test link-local connectivity first
-podman exec ipv6-app ping6 -c 1 fe80::1%eth0
+# Test connectivity to the network gateway first
+podman exec ipv6-app ping6 -c 1 fd00:dead:beef::1
 
 # Check if the default route exists
 podman exec ipv6-app ip -6 route show
