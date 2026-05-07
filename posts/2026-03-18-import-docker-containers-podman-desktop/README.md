@@ -21,7 +21,7 @@ Docker images follow the OCI standard and can be moved to Podman directly:
 ```bash
 # Method 1: Save from Docker and load into Podman
 
-docker save nginx:alpine -o nginx-alpine.tar
+docker save -o nginx-alpine.tar nginx:alpine
 podman load -i nginx-alpine.tar
 
 # Verify the image was imported
@@ -43,8 +43,8 @@ For bulk migration, export and import multiple images:
 docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>"
 
 # Save all images to a single archive
-docker save $(docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>") \
-  -o all-images.tar
+docker save -o all-images.tar \
+  $(docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>")
 
 # Load all images into Podman
 podman load -i all-images.tar
@@ -59,7 +59,7 @@ Running or stopped containers can be exported and imported:
 
 ```bash
 # Export a Docker container's filesystem
-docker export my-container -o my-container.tar
+docker export -o my-container.tar my-container
 
 # Import the container filesystem as a Podman image
 podman import my-container.tar my-container-image:imported
@@ -84,14 +84,14 @@ For Docker Compose projects, the transition is straightforward:
 pip install podman-compose
 podman-compose -f docker-compose.yml up -d
 
-# Option 2: Use docker-compose with Podman socket
+# Option 2: Use Docker Compose with the Podman socket
 export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
-docker-compose up -d
+docker compose up -d
 
 # Option 3: Convert to Kubernetes YAML
 # First run with podman-compose, then generate YAML
 podman-compose up -d
-podman generate kube my-service > my-service-k8s.yaml
+podman kube generate my-service > my-service-k8s.yaml
 ```
 
 ## Migrating Docker Volumes
@@ -122,12 +122,12 @@ podman run --rm \
 
 ## Using Podman Desktop to Import Images
 
-Podman Desktop provides a UI for importing images:
+Podman Desktop shows images imported with the Podman CLI:
 
-1. Open Podman Desktop and go to the **Images** section.
-2. Click **Import** or **Load** in the toolbar.
-3. Browse to select your exported tar file.
-4. The image will be loaded and appear in the images list.
+1. Save or export your Docker image or container to a tar file.
+2. Run `podman load -i image-archive.tar` for Docker image archives, or `podman import container-archive.tar image-name:tag` for exported container filesystems.
+3. Open Podman Desktop and go to the **Images** section.
+4. The imported image will appear in the images list.
 5. You can then run containers from the imported image.
 
 ## Recreating Container Configurations
@@ -173,9 +173,9 @@ podman volume inspect my-podman-volume
 podman run --rm alpine ping -c 3 google.com
 
 # Run your application tests
-podman exec web-server curl -s localhost:80
+curl -s http://localhost:8080
 ```
 
 ## Summary
 
-Importing Docker containers into Podman Desktop is a well-supported migration path thanks to shared OCI standards. Whether you are moving individual images, bulk-exporting your entire image library, or migrating volume data, the process involves standard export and import operations. Podman Desktop's graphical interface adds convenience for image imports, while the CLI handles complex migration scenarios. The key is to preserve not just the images but also the container configurations including ports, environment variables, and volume mounts.
+Importing Docker containers into Podman Desktop is a well-supported migration path thanks to shared OCI standards. Whether you are moving individual images, bulk-exporting your entire image library, or migrating volume data, the process involves standard export and import operations. Podman Desktop's graphical interface makes imported images easy to view and run, while the CLI handles complex migration scenarios. The key is to preserve not just the images but also the container configurations including ports, environment variables, and volume mounts.
