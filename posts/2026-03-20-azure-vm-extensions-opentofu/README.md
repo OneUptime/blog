@@ -8,13 +8,15 @@ Description: Learn how to configure Azure VM extensions with OpenTofu to automat
 
 ## Introduction
 
-Azure VM extensions are small applications that run on VMs to provide post-deployment configuration, automation, and management. Common extensions include Custom Script Extension (run scripts), Azure Monitor Agent (collect metrics and logs), Microsoft Antimalware, AAD Login (use Azure AD credentials), and Disk Encryption. Extensions run as privileged processes and are managed by the Azure VM Agent that runs on every Azure VM.
+Azure VM extensions are small applications that run on VMs to provide post-deployment configuration, automation, and management. Common extensions include Custom Script Extension (run scripts), Azure Monitor Agent (collect metrics and logs), Microsoft Antimalware, Microsoft Entra login (use Microsoft Entra credentials), and Disk Encryption. Extensions run as privileged processes and are managed by the guest agent on the VM; Azure Marketplace images include this agent by default.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - An existing Azure Linux or Windows VM
-- Azure credentials with VM Contributor permissions
+- Azure credentials with Virtual Machine Contributor permissions; the role assignment example also requires permission to create Azure RBAC role assignments (`Microsoft.Authorization/roleAssignments/write`)
+- If you're using Azure Monitor Agent or Microsoft Entra SSH login, enable a system-assigned managed identity on the VM
+- If you're using Azure Monitor Agent, have a Data Collection Rule available to associate with the VM
 
 ## Step 1: Custom Script Extension (Linux)
 
@@ -55,22 +57,19 @@ resource "azurerm_virtual_machine_extension" "ama" {
   type_handler_version       = "1.0"
   automatic_upgrade_enabled  = true
   auto_upgrade_minor_version = true
+}
 
-  settings = jsonencode({
-    authentication = {
-      managedIdentity = {
-        identifier-name  = "mi_res_id"
-        identifier-value = azurerm_linux_virtual_machine.main.id
-      }
-    }
-  })
+resource "azurerm_monitor_data_collection_rule_association" "ama_dcr" {
+  name                    = "ama-dcr-association"
+  target_resource_id      = azurerm_linux_virtual_machine.main.id
+  data_collection_rule_id = var.data_collection_rule_id
 }
 ```
 
-## Step 3: AAD SSH Login Extension
+## Step 3: Microsoft Entra SSH Login Extension
 
 ```hcl
-# Allow Azure AD users to SSH into Linux VMs
+# Allow Microsoft Entra users to SSH into Linux VMs
 
 resource "azurerm_virtual_machine_extension" "aad_login" {
   name                 = "AADSSHLoginForLinux"
@@ -94,11 +93,11 @@ resource "azurerm_role_assignment" "vm_login" {
 
 ```hcl
 resource "azurerm_virtual_machine_extension" "disk_encryption" {
-  name                 = "AzureDiskEncryption"
+  name                 = "AzureDiskEncryptionForLinux"
   virtual_machine_id   = azurerm_linux_virtual_machine.main.id
   publisher            = "Microsoft.Azure.Security"
-  type                 = "AzureDiskEncryption"
-  type_handler_version = "2.2"
+  type                 = "AzureDiskEncryptionForLinux"
+  type_handler_version = "1.1"
 
   settings = jsonencode({
     EncryptionOperation = "EnableEncryption"
@@ -124,8 +123,8 @@ resource "azurerm_virtual_machine_extension" "antimalware" {
     RealtimeProtectionEnabled = true
     ScheduledScanSettings = {
       isEnabled = true
-      day       = "1"     # Sunday
-      time      = "120"   # Minutes from midnight
+      day       = 1       # Sunday
+      time      = 120     # Minutes from midnight
       scanType  = "Quick"
     }
     Exclusions = {
@@ -148,7 +147,7 @@ tofu apply
 az vm extension show \
   --resource-group <rg> \
   --vm-name <vm-name> \
-  --name CustomScript
+  --name setup-script
 
 # View extension logs (Linux)
 # /var/log/azure/custom-script/handler.log
@@ -156,4 +155,4 @@ az vm extension show \
 
 ## Conclusion
 
-Order extension deployment carefully using `depends_on` when extensions have dependencies. The Azure Monitor Agent extension requires a managed identity on the VM (`identity { type = "SystemAssigned" }`) and a Data Collection Rule association to start collecting metrics and logs. Use `automatic_upgrade_enabled = true` on monitoring extensions to stay current with agent updates. For Custom Script Extension, prefer referencing scripts from Azure Blob Storage over base64-encoded inline scripts to keep configurations readable and maintainable.
+Order extension deployment carefully using `depends_on` when extensions have dependencies. Both Azure Monitor Agent and `AADSSHLoginForLinux` require a managed identity on the VM (`identity { type = "SystemAssigned" }`), and Azure Monitor Agent also needs a Data Collection Rule association before it starts collecting guest metrics and logs. Azure Disk Encryption is scheduled for retirement on September 15, 2028, so use Encryption at host for new VMs and reserve ADE for existing workloads that still require it. Use `automatic_upgrade_enabled = true` on monitoring extensions to stay current with agent updates. For Custom Script Extension, prefer referencing scripts from Azure Blob Storage over base64-encoded inline scripts to keep configurations readable and maintainable.
