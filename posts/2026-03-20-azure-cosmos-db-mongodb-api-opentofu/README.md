@@ -8,7 +8,7 @@ Description: Learn how to create Azure Cosmos DB with the MongoDB API using Open
 
 ## Overview
 
-Azure Cosmos DB's MongoDB API provides wire-protocol compatibility with MongoDB, allowing you to use existing MongoDB drivers and tools while benefiting from Cosmos DB's global distribution and automatic scaling. OpenTofu manages the full lifecycle of these resources.
+Azure Cosmos DB's MongoDB API provides wire-protocol compatibility with MongoDB, allowing you to use existing MongoDB drivers and tools with minimal changes while benefiting from Cosmos DB's global distribution and elastic scale. OpenTofu manages the full lifecycle of these resources.
 
 ## Step 1: Create the Cosmos DB Account with MongoDB API
 
@@ -47,10 +47,6 @@ resource "azurerm_cosmosdb_account" "mongodb" {
   capabilities {
     name = "EnableMongo"
   }
-
-  capabilities {
-    name = "MongoDBv3.4"
-  }
 }
 ```
 
@@ -81,7 +77,7 @@ resource "azurerm_cosmosdb_mongo_collection" "users" {
   # Shard key for data distribution (equivalent to partition key)
   shard_key = "userId"
 
-  # Throughput for this specific collection (overrides database-level)
+  # Dedicated throughput for this specific collection
   throughput = 400
 
   # Create indexes on the collection
@@ -91,7 +87,7 @@ resource "azurerm_cosmosdb_mongo_collection" "users" {
   }
 
   index {
-    keys   = ["email"]
+    keys   = ["userId", "email"]
     unique = true
   }
 
@@ -117,7 +113,7 @@ resource "azurerm_cosmosdb_mongo_collection" "products" {
   }
 
   index {
-    keys   = ["sku"]
+    keys   = ["categoryId", "sku"]
     unique = true
   }
 }
@@ -127,7 +123,7 @@ resource "azurerm_cosmosdb_mongo_collection" "products" {
 
 ```hcl
 output "mongodb_connection_string" {
-  value       = azurerm_cosmosdb_account.mongodb.connection_strings[0]
+  value       = azurerm_cosmosdb_account.mongodb.primary_mongodb_connection_string
   sensitive   = true
   description = "MongoDB-compatible connection string"
 }
@@ -139,4 +135,4 @@ output "cosmos_endpoint" {
 
 ## Summary
 
-Azure Cosmos DB with MongoDB API, managed via OpenTofu, provides a drop-in replacement for MongoDB with the added benefits of global distribution and SLA-backed availability. Existing MongoDB applications need only a connection string change to use Cosmos DB as the backend.
+Azure Cosmos DB with MongoDB API, managed via OpenTofu, provides MongoDB wire-protocol compatibility with the added benefits of global distribution and SLA-backed availability. Many existing MongoDB applications can connect with minimal changes, but compatibility still depends on the selected server version and supported feature set.
