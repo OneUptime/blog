@@ -47,7 +47,7 @@ systemctl --user status podman.socket
 
 # The service starts automatically when a connection is made
 curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/_ping
+    http://localhost/libpod/_ping
 
 # Check that the service was activated
 systemctl --user status podman.service
@@ -95,7 +95,7 @@ systemctl --user status podman-api.service
 
 ## Creating a Custom Socket Unit
 
-Define a custom socket unit for a different socket path or TCP listener.
+Define a custom socket unit for a different Unix socket path.
 
 ```bash
 # Create a custom socket unit
@@ -150,7 +150,7 @@ sudo systemctl status podman.socket
 
 # Test the rootful API
 sudo curl --unix-socket /run/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/_ping
+    http://localhost/libpod/_ping
 ```
 
 ## Customizing with Drop-In Files
@@ -235,7 +235,7 @@ cat > ~/.local/bin/podman-health-check.sh << 'SCRIPT'
 #!/bin/bash
 SOCKET="/run/user/$(id -u)/podman/podman.sock"
 
-if curl -sf --unix-socket "$SOCKET" http://localhost/v4.0.0/libpod/_ping > /dev/null 2>&1; then
+if curl -sf --unix-socket "$SOCKET" http://localhost/libpod/_ping > /dev/null 2>&1; then
     exit 0
 else
     echo "Podman API health check failed, restarting service"
