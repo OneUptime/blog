@@ -10,7 +10,7 @@ Description: Learn how to set and manage container image metadata like labels, e
 
 > Well-configured image metadata makes containers self-documenting and easier to operate in production.
 
-Container image metadata controls how a container behaves when it runs, including its entrypoint, environment variables, exposed ports, and user context. It also includes descriptive labels that help with image management and compliance. Buildah provides the `buildah config` command to set all aspects of image metadata before committing the final image. This guide covers every metadata option available.
+Container image metadata controls how a container behaves when it runs, including its entrypoint, environment variables, exposed ports, and user context. It also includes descriptive labels that help with image management and compliance. Buildah provides the `buildah config` command to set image configuration metadata before committing the final image. This guide covers the most common runtime and descriptive metadata options.
 
 ---
 
@@ -159,8 +159,8 @@ buildah inspect --format '{{range $key, $val := .OCIv1.Config.Volumes}}{{$key}} 
 ## Setting Stop Signal
 
 ```bash
-# Configure the signal sent to stop the container
-# Default is SIGTERM, but some applications need a different signal
+# Configure the image stop signal
+# Buildah's image stop-signal setting defaults to SIGINT, but some applications need a different signal
 buildah config --stop-signal SIGQUIT $container
 
 # SIGQUIT is useful for applications like Nginx that do graceful shutdown on SIGQUIT
@@ -234,4 +234,4 @@ rm -f /tmp/app.py
 
 ## Summary
 
-Buildah config provides comprehensive control over every aspect of container image metadata. From runtime behavior settings like entrypoint, environment variables, and user context to documentation through labels and annotations, you can fully configure how your image behaves and is identified. Using standardized OCI labels makes images discoverable and manageable at scale. All metadata set with Buildah is preserved when the image is committed and runs correctly with Podman or any OCI-compatible runtime.
+Buildah config provides comprehensive control over common container image metadata. From runtime behavior settings like entrypoint, environment variables, and user context to documentation through labels and annotations, you can configure how your image behaves and is identified. Using standardized OCI labels makes images discoverable and manageable at scale. Metadata set with Buildah is preserved when the image is committed and can be used by Podman or any OCI-compatible runtime.
