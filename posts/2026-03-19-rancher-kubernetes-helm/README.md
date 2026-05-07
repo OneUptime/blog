@@ -12,11 +12,12 @@ Deploying Rancher on a Kubernetes cluster using Helm is the recommended approach
 
 Before you begin, ensure you have:
 
-- A running Kubernetes cluster (v1.25 or later) with at least 3 nodes
+- A running Kubernetes cluster on a Rancher-supported Kubernetes version; for production high availability, use at least 3 nodes
 - `kubectl` installed and configured to access your cluster
-- Helm 3 installed on your workstation
+- Helm 3 installed on your workstation, using a version compatible with your Kubernetes version
+- An ingress controller available in the cluster. RKE2 and K3s include one by default, but managed Kubernetes services typically require you to install one first
 - A fully qualified domain name (FQDN) pointing to your cluster's load balancer
-- At least 8 GB of RAM and 4 CPU cores across your cluster nodes
+- For a small production HA setup, at least 4 vCPUs and 16 GB of RAM per node for the nodes running Rancher
 
 ## Step 1: Install Helm
 
@@ -36,14 +37,10 @@ helm version
 
 Rancher uses cert-manager to issue and manage TLS certificates. Install it before deploying Rancher:
 
-```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml
-```
-
 Add the Jetstack Helm repository:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
+helm repo add jetstack https://charts.jetstack.io --force-update
 helm repo update
 ```
 
@@ -53,7 +50,7 @@ Install cert-manager:
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.14.4
+  --set crds.enabled=true
 ```
 
 Verify cert-manager is running:
@@ -69,11 +66,11 @@ All three pods (cert-manager, cert-manager-cainjector, and cert-manager-webhook)
 Add the Rancher Helm chart repository. Choose the appropriate channel:
 
 ```bash
-# For the latest stable release
+# For the latest release channel (useful for testing newer builds)
 
 helm repo add rancher-latest https://releases.rancher.com/server-charts/latest
 
-# For the stable release (recommended for production)
+# For the stable release channel (recommended for production)
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
 
 helm repo update
@@ -100,6 +97,7 @@ helm install rancher rancher-stable/rancher \
 ```
 
 The `replicas=3` setting ensures high availability by running three Rancher server pods.
+If your ingress controller requires an explicit ingress class, add `--set ingress.ingressClassName=<your-ingress-class>` to the install command.
 
 ## Step 6: Wait for the Deployment to Complete
 
@@ -145,13 +143,13 @@ On the first login screen:
 
 ## Step 9: Configure DNS
 
-Make sure your DNS record for `rancher.yourdomain.com` points to your cluster's load balancer IP. You can find the load balancer IP with:
+Make sure your DNS record for `rancher.yourdomain.com` points to the address exposed by your ingress controller. You can verify the Rancher ingress address with:
 
 ```bash
-kubectl get svc -n cattle-system
 kubectl get ingress -n cattle-system
 ```
 
+If your ingress controller is exposed through a `LoadBalancer` service, its external IP or hostname is usually on that service, often in a namespace such as `ingress-nginx`, `traefik`, or `kube-system`.
 If you are using an ingress controller like NGINX, ensure it is properly configured to route traffic to the Rancher service.
 
 ## Customizing the Installation
@@ -196,6 +194,7 @@ To upgrade Rancher to a newer version:
 helm repo update
 helm upgrade rancher rancher-stable/rancher \
   --namespace cattle-system \
+  --reuse-values \
   --set hostname=rancher.yourdomain.com \
   --set replicas=3
 ```
@@ -222,7 +221,7 @@ Common issues include:
 
 - **cert-manager not ready**: Wait for cert-manager pods to be fully running before installing Rancher
 - **DNS not configured**: Ensure your domain points to the cluster's ingress
-- **Insufficient resources**: Each Rancher pod needs at least 256 Mi of memory
+- **Insufficient resources**: For production HA, size the upstream cluster according to Rancher installation requirements; current small-cluster guidance is 4 vCPUs and 16 GB RAM per node
 
 ## Conclusion
 
