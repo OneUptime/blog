@@ -12,10 +12,11 @@ Protecting your Rancher management server is critical for maintaining control ov
 
 Before you begin, make sure you have the following:
 
-- A running Rancher v2.5 or later installation
+- A running Rancher v2.5 or later installation on a Kubernetes cluster
 - kubectl access to the local (upstream) Rancher cluster
 - Helm 3 installed on your workstation
 - Cluster admin privileges on the Rancher management cluster
+- An existing Kubernetes StorageClass or PersistentVolume for storing backups
 
 ## Step 1: Install the Rancher Backup Operator via Helm
 
@@ -26,15 +27,19 @@ helm repo add rancher-charts https://charts.rancher.io
 helm repo update
 ```
 
-Install the backup operator into the `cattle-resources-system` namespace:
+Install the backup operator into the `cattle-resources-system` namespace and configure persistent storage for backups:
 
 ```bash
 helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
   -n cattle-resources-system \
-  --create-namespace
+  --create-namespace \
+  --wait
 
 helm install rancher-backup rancher-charts/rancher-backup \
-  -n cattle-resources-system
+  -n cattle-resources-system \
+  --set persistence.enabled=true \
+  --set persistence.storageClass=<storage-class-name> \
+  --wait
 ```
 
 Verify that the operator pod is running:
@@ -54,12 +59,14 @@ rancher-backup-5d4b8c7f9d-abcde   1/1     Running   0          30s
 
 Alternatively, you can install the Backup Operator through the Rancher UI:
 
-1. Log in to Rancher and navigate to the local cluster.
-2. Go to **Apps & Marketplace** > **Charts**.
-3. Search for **Rancher Backups**.
-4. Click **Install** and follow the prompts.
-5. Select the target namespace (default is `cattle-resources-system`).
-6. Click **Install** to deploy the operator.
+1. Log in to Rancher and go to **Cluster Management**.
+2. Open the `local` cluster with **Explore**.
+3. Go to **Apps** > **Charts**.
+4. Search for **Rancher Backups**.
+5. Click **Install** and follow the prompts.
+6. Select the target namespace (default is `cattle-resources-system`).
+7. Configure a default storage location using an existing StorageClass or PersistentVolume.
+8. Click **Install** to deploy the operator.
 
 ## Step 3: Create a Backup Resource
 
@@ -71,7 +78,7 @@ kind: Backup
 metadata:
   name: rancher-backup-1
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-basic
   retentionCount: 5
 ```
 
@@ -93,16 +100,17 @@ Look for the `status` section in the output. A successful backup will show:
 
 ```yaml
 status:
+  backupType: One-time
   conditions:
   - lastUpdateTime: "2026-03-19T10:00:00Z"
+    message: Completed
     status: "True"
     type: Ready
-  backupType: one-time
-  filename: rancher-backup-1-2026-03-19T10-00-00Z.tar.gz
-  storageLocation: ""
+  filename: rancher-backup-1-752ecd87-d958-4d20-8350-072f8d090045-2026-03-19T10-00-00Z.tar.gz
+  storageLocation: PV
 ```
 
-The backup file is stored as an encrypted tarball. By default, backups are stored in the default PersistentVolume of the operator pod.
+The backup file is stored as a `.tar.gz` archive. It is only encrypted if you configure `encryptionConfigSecretName`. With the Helm example above, backups are stored in the PersistentVolumeClaim mounted at `/var/lib/backups` in the operator pod.
 
 ## Step 5: List Existing Backups
 
@@ -116,7 +124,7 @@ This lists all Backup resources along with their status.
 
 ## Step 6: Verify the Backup File
 
-To confirm the backup file exists and is valid, exec into the operator pod:
+To confirm the backup file exists, exec into the operator pod:
 
 ```bash
 BACKUP_POD=$(kubectl get pods -n cattle-resources-system -l app.kubernetes.io/name=rancher-backup -o jsonpath='{.items[0].metadata.name}')
@@ -145,12 +153,12 @@ kind: Backup
 metadata:
   name: rancher-backup-s3
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-basic
   retentionCount: 10
   storageLocation:
     s3:
       bucketName: rancher-backups
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-east-1.amazonaws.com
       region: us-east-1
       credentialSecretName: s3-creds
       credentialSecretNamespace: cattle-resources-system
@@ -158,13 +166,10 @@ spec:
 
 ## What Gets Backed Up
 
-The Rancher Backup Operator backs up the following resources:
+The Rancher Backup Operator backs up the Rancher application resources defined by the selected ResourceSet:
 
-- All Rancher custom resources (clusters, projects, users, roles, etc.)
-- Catalog configurations
-- Global settings
-- Multi-cluster app configurations
-- Authentication provider configurations
+- `rancher-resource-set-basic` includes Rancher management resources without secrets
+- `rancher-resource-set-full` includes the same Rancher management resources plus essential secrets
 
 Note that the Backup Operator does not back up downstream cluster workloads or etcd data. Those require separate backup strategies.
 
