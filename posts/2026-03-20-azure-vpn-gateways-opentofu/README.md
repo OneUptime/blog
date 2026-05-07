@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, VPN Gateway, Networking, Hybrid Cloud, Infrastructure as Code
 
-Description: Learn how to create Azure VPN Gateways for site-to-site and point-to-site connectivity using OpenTofu.
+Description: Learn how to create Azure VPN Gateways for site-to-site connectivity using OpenTofu.
 
 ## Introduction
 
@@ -19,7 +19,7 @@ resource "azurerm_subnet" "gateway" {
   name                 = "GatewaySubnet"  # this name is required by Azure
   resource_group_name  = azurerm_resource_group.main.name
   virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.0.255.0/27"]  # /27 or larger recommended
+  address_prefixes     = ["10.0.255.0/27"]  # /27 or larger is required for non-Basic SKUs
 }
 ```
 
@@ -47,12 +47,12 @@ resource "azurerm_virtual_network_gateway" "main" {
   vpn_type = "RouteBased"
 
   # SKU determines throughput and features
-  # Basic, VpnGw1, VpnGw2, VpnGw3 (and AZ variants)
+  # Basic, VpnGw1-VpnGw5 (and AZ variants)
   sku            = "VpnGw1"
   generation     = "Generation1"
 
   active_active = false
-  enable_bgp    = false
+  bgp_enabled   = false
 
   ip_configuration {
     name                          = "vnetGatewayConfig"
@@ -113,7 +113,10 @@ resource "azurerm_virtual_network_gateway_connection" "site_to_site" {
 variable "environment"       { type = string }
 variable "onprem_public_ip"  { type = string }
 variable "onprem_cidr"       { type = string }
-variable "vpn_shared_key"    { type = string  sensitive = true }
+variable "vpn_shared_key" {
+  type      = string
+  sensitive = true
+}
 
 output "gateway_public_ip" {
   value = azurerm_public_ip.vpn_gateway.ip_address
