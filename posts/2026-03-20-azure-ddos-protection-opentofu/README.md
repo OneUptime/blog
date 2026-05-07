@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, DDoS Protection, Network Security, Infrastructure as Code
 
-Description: Learn how to configure Azure DDoS Network Protection with OpenTofu to protect public IP resources against volumetric, protocol, and application-layer DDoS attacks.
+Description: Learn how to configure Azure DDoS Network Protection with OpenTofu to protect public IP resources against network-layer volumetric and protocol DDoS attacks.
 
 ## Introduction
 
-Azure DDoS Network Protection provides enhanced DDoS mitigation against all types of DDoS attacks (volumetric, protocol, and application layer) for resources in a virtual network. Unlike the basic DDoS protection included in all Azure services, DDoS Network Protection provides adaptive tuning, attack analytics, real-time metrics, and post-attack reports. It protects all public IP resources associated with VNets linked to a DDoS protection plan.
+Azure DDoS Network Protection provides enhanced DDoS mitigation against network-layer DDoS attacks such as volumetric and protocol attacks for resources in a virtual network. For application-layer (Layer 7) attacks, pair it with a web application firewall (WAF). Unlike the default infrastructure-level DDoS protection included with Azure services, DDoS Network Protection provides adaptive tuning, attack analytics, real-time metrics, and post-attack reports. It protects public IP resources associated with linked VNets.
 
 ## Prerequisites
 
@@ -55,14 +55,14 @@ resource "azurerm_virtual_network" "protected" {
 ## Step 3: Public IP Resources to Protect
 
 ```hcl
-# All Standard public IPs in the protected VNet are automatically covered
+# Public IP resources associated with resources in the protected VNet are automatically covered
 
 resource "azurerm_public_ip" "app_gateway" {
   name                = "${var.project_name}-agw-pip"
   location            = var.location
   resource_group_name = var.resource_group_name
   allocation_method   = "Static"
-  sku                 = "Standard"  # DDoS requires Standard SKU public IPs
+  sku                 = "Standard"  # Use Standard SKU for new public IPs
 }
 
 resource "azurerm_public_ip" "load_balancer" {
@@ -109,7 +109,7 @@ resource "azurerm_monitor_metric_alert" "ddos_packets_dropped" {
 
   criteria {
     metric_namespace = "Microsoft.Network/publicIPAddresses"
-    metric_name      = "DDoSTriggerTCPPackets"
+    metric_name      = "PacketsDroppedDDoS"
     aggregation      = "Maximum"
     operator         = "GreaterThan"
     threshold        = 10000
@@ -141,9 +141,8 @@ resource "azurerm_monitor_diagnostic_setting" "ddos_pip" {
     category = "DDoSMitigationReports"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 ```
@@ -164,10 +163,10 @@ az network public-ip show \
 # Check if an IP is under attack (during an attack)
 az monitor metrics list \
   --resource <pip-id> \
-  --metric "IfUnderDDoSAttack" \
+  --metrics "IfUnderDDoSAttack" \
   --interval PT1M
 ```
 
 ## Conclusion
 
-Azure DDoS Network Protection is priced per protected plan (not per IP), so one plan can cover all VNets linked to it across a subscription. Always use Standard SKU public IPs with DDoS Network Protection-Basic SKU IPs receive only the basic DDoS mitigation built into Azure. Enable DDoS Flow Logs for forensic analysis during and after attacks. The DDoS Protection plan can be shared across multiple subscriptions in the same tenant using `azurerm_network_ddos_protection_plan` resource with cross-subscription VNet linking.
+Azure DDoS Network Protection uses a shared pricing model, with one plan covering up to 100 protected IP addresses. For new deployments, use Standard SKU public IPs. DDoS IP Protection requires Standard SKU public IPs, while DDoS Network Protection protects public IP resources associated with linked VNets. Enable DDoS diagnostic logs, including mitigation flow logs and mitigation reports, for analysis during and after attacks. A single DDoS Protection plan can be shared across multiple subscriptions in the same tenant.
