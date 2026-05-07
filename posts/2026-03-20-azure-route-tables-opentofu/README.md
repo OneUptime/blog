@@ -24,8 +24,8 @@ resource "azurerm_route_table" "app" {
   location            = var.location
   resource_group_name = var.resource_group_name
 
-  # Disable BGP route propagation (prevents on-prem routes from overriding UDRs)
-  disable_bgp_route_propagation = true
+  # Disable BGP route propagation so propagated on-prem routes don't bypass broader UDRs
+  bgp_route_propagation_enabled = false
 
   route {
     name                   = "to-hub-firewall"
@@ -60,7 +60,7 @@ resource "azurerm_route_table" "spoke_subnets" {
   name                          = "${var.project_name}-spoke-rt"
   location                      = var.location
   resource_group_name           = var.resource_group_name
-  disable_bgp_route_propagation = true
+  bgp_route_propagation_enabled = false
 
   # Force all internet traffic through Azure Firewall in hub
   route {
@@ -78,7 +78,7 @@ resource "azurerm_route_table" "spoke_subnets" {
     next_hop_in_ip_address = var.azure_firewall_private_ip
   }
 
-  # Route to on-premises via VPN/ExpressRoute gateway (bypass firewall for on-prem)
+  # Route to on-premises via VPN gateway (bypass firewall for on-prem)
   route {
     name           = "to-on-prem"
     address_prefix = "192.168.0.0/16"
@@ -98,14 +98,13 @@ resource "azurerm_subnet_route_table_association" "spoke" {
 ## Step 3: Route Table for AKS Nodes (Kubenet)
 
 ```hcl
-# Required when AKS uses kubenet networking
+# Kubenet requires a route table on the cluster subnet; AKS can create one if you don't supply it
 resource "azurerm_route_table" "aks" {
   name                          = "${var.project_name}-aks-rt"
   location                      = var.location
   resource_group_name           = var.resource_group_name
-  disable_bgp_route_propagation = false  # Allow BGP for AKS
 
-  # AKS adds pod CIDR routes automatically during cluster creation
+  # AKS adds and updates pod CIDR routes during cluster operations
   tags = {
     Name = "${var.project_name}-aks-route-table"
   }
@@ -135,7 +134,7 @@ resource "azurerm_route_table" "regional" {
   name                          = "${var.project_name}-${each.key}-rt"
   location                      = each.value.location
   resource_group_name           = each.value.resource_group_name
-  disable_bgp_route_propagation = true
+  bgp_route_propagation_enabled = false
 
   route {
     name                   = "default-to-firewall"
@@ -143,6 +142,28 @@ resource "azurerm_route_table" "regional" {
     next_hop_type          = "VirtualAppliance"
     next_hop_in_ip_address = each.value.firewall_private_ip
   }
+}
+
+locals {
+  regional_subnet_associations = flatten([
+    for region_name, region in var.regions : [
+      for subnet_index, subnet_id in region.subnet_ids : {
+        key         = "${region_name}-${subnet_index}"
+        region_name = region_name
+        subnet_id   = subnet_id
+      }
+    ]
+  ])
+}
+
+resource "azurerm_subnet_route_table_association" "regional" {
+  for_each = {
+    for association in local.regional_subnet_associations :
+    association.key => association
+  }
+
+  subnet_id      = each.value.subnet_id
+  route_table_id = azurerm_route_table.regional[each.value.region_name].id
 }
 ```
 
@@ -159,15 +180,14 @@ az network nic show-effective-route-table \
   --name <nic-name> \
   --output table
 
-# Troubleshoot routing with IP flow verify
-az network watcher test-ip-flow \
-  --vm <vm-id> \
-  --direction Outbound \
-  --protocol TCP \
-  --local <private-ip>:0 \
-  --remote 1.1.1.1:443
+# Troubleshoot routing with Next Hop (requires Network Watcher in the VM's region)
+az network watcher show-next-hop \
+  --resource-group <rg> \
+  --vm <vm-name-or-id> \
+  --source-ip <private-ip> \
+  --dest-ip 1.1.1.1
 ```
 
 ## Conclusion
 
-Set `disable_bgp_route_propagation = true` in spoke subnets to prevent VPN/ExpressRoute BGP routes from overriding your UDRs-this is critical when routing all traffic through Azure Firewall because an on-prem BGP route could create a routing loop. Use `next_hop_type = "VirtualNetworkGateway"` (not a specific IP) for on-premises routes so the traffic takes the active gateway without hardcoding the gateway IP. AKS with kubenet networking requires a pre-existing route table on the node subnet-Azure needs write permissions to the route table to add pod CIDR routes during node pool operations.
+Set `bgp_route_propagation_enabled = false` in spoke route tables to prevent propagated VPN/ExpressRoute routes from bypassing broader UDRs-this is critical when routing all traffic through Azure Firewall because an on-prem route could create a routing loop. Use `next_hop_type = "VirtualNetworkGateway"` (not a specific IP) for on-premises routes when the virtual network uses a VPN gateway. AKS with kubenet networking requires a route table on the node subnet-if you don't provide one, AKS creates it; if you bring your own, associate it before cluster creation and grant the cluster identity write permissions so AKS can add and update pod CIDR routes during cluster operations.
