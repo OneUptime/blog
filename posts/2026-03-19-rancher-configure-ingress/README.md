@@ -12,14 +12,14 @@ Ingress resources in Kubernetes provide HTTP and HTTPS routing to services withi
 
 Before you begin, make sure you have:
 
-- A running Rancher instance (v2.6 or later)
+- A running Rancher instance
 - At least one managed Kubernetes cluster
-- An ingress controller deployed in your cluster (Rancher typically deploys one by default)
+- An ingress controller deployed in your cluster. RKE2 installs ingress-nginx by default, while K3s installs Traefik by default.
 - A deployed application with a ClusterIP or NodePort service
 
 ## Understanding Ingress in Kubernetes
 
-An Ingress resource defines rules for routing external HTTP/HTTPS traffic to internal services. It acts as a reverse proxy, allowing you to expose multiple services under a single external IP address with path-based or host-based routing.
+An Ingress resource defines rules for routing external HTTP/HTTPS traffic to internal services. Together with an ingress controller, it acts as a reverse proxy, allowing you to expose multiple services under a single external IP address with path-based or host-based routing.
 
 Key components include:
 
@@ -32,16 +32,16 @@ Key components include:
 First, confirm that an ingress controller is running in your cluster. In Rancher, navigate to your cluster and open a kubectl shell.
 
 ```bash
-kubectl get pods -n ingress-nginx
-```
-
-You should see pods with a running status. If using RKE2 or K3s, Rancher often deploys NGINX or Traefik by default.
-
-```bash
 kubectl get ingressclass
 ```
 
 This shows the available ingress classes in your cluster.
+
+```bash
+kubectl get pods -A
+```
+
+You should see a running ingress controller, such as `ingress-nginx` or `traefik`. In RKE2 and K3s, these controller pods typically run in `kube-system`.
 
 ## Step 2: Deploy a Sample Application
 
@@ -109,7 +109,7 @@ kubectl apply -f hello-app.yaml
 
 ## Step 4: Create an Ingress via kubectl
 
-Alternatively, you can create an Ingress resource using YAML:
+Alternatively, you can create an Ingress resource using YAML. Replace `YOUR_INGRESS_CLASS` with a class returned by `kubectl get ingressclass`:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -117,10 +117,8 @@ kind: Ingress
 metadata:
   name: hello-ingress
   namespace: default
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
-  ingressClassName: nginx
+  ingressClassName: YOUR_INGRESS_CLASS
   rules:
   - host: hello.example.com
     http:
@@ -142,7 +140,7 @@ kubectl apply -f hello-ingress.yaml
 
 ## Step 5: Configure Path-Based Routing
 
-You can route different paths to different services:
+You can route different paths to different services by using the same ingress class you verified in Step 1:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -151,7 +149,7 @@ metadata:
   name: multi-path-ingress
   namespace: default
 spec:
-  ingressClassName: nginx
+  ingressClassName: YOUR_INGRESS_CLASS
   rules:
   - host: myapp.example.com
     http:
@@ -174,7 +172,7 @@ spec:
 
 ## Step 6: Configure Host-Based Routing
 
-Route traffic based on the hostname:
+Route traffic based on the hostname by using the same ingress class you verified in Step 1:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -183,7 +181,7 @@ metadata:
   name: multi-host-ingress
   namespace: default
 spec:
-  ingressClassName: nginx
+  ingressClassName: YOUR_INGRESS_CLASS
   rules:
   - host: app1.example.com
     http:
@@ -215,7 +213,7 @@ Check that your Ingress resource was created successfully:
 kubectl get ingress -n default
 ```
 
-You should see output showing the host, paths, and the assigned address. Test the Ingress by adding an entry to your `/etc/hosts` file (for local testing) or configuring DNS:
+You should see output showing the host, paths, and, depending on your ingress controller, an assigned address or `<pending>` while it is being provisioned. Test the Ingress by adding an entry to your `/etc/hosts` file (for local testing) or configuring DNS:
 
 ```bash
 curl -H "Host: hello.example.com" http://<INGRESS_IP>/
@@ -223,7 +221,7 @@ curl -H "Host: hello.example.com" http://<INGRESS_IP>/
 
 ## Step 8: Add Default Backend
 
-Configure a default backend that handles requests that do not match any rule:
+Configure a default backend that handles requests that do not match any rule by using the same ingress class you verified in Step 1:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -232,7 +230,7 @@ metadata:
   name: default-backend-ingress
   namespace: default
 spec:
-  ingressClassName: nginx
+  ingressClassName: YOUR_INGRESS_CLASS
   defaultBackend:
     service:
       name: default-service
@@ -255,12 +253,12 @@ spec:
 
 If your Ingress is not working as expected:
 
-- Check the ingress controller logs: `kubectl logs -n ingress-nginx <pod-name>`
+- Check the ingress controller logs: `kubectl logs -n <controller-namespace> <pod-name>`
 - Verify the service endpoints: `kubectl get endpoints <service-name>`
 - Ensure DNS or host entries point to the correct IP
-- Check for conflicting Ingress rules in the same namespace
+- Check for conflicting Ingress rules for the same host or path
 - Verify the ingressClassName matches your installed controller
 
 ## Summary
 
-Configuring Ingress in Rancher allows you to efficiently route external traffic to your Kubernetes services. Whether you use the Rancher UI or kubectl, you can set up path-based routing, host-based routing, and default backends to manage traffic flow into your cluster. With Rancher handling the management layer, you can focus on defining your routing rules while Rancher ensures the underlying infrastructure is properly configured.
+Configuring Ingress in Rancher allows you to efficiently route external traffic to your Kubernetes services. Whether you use the Rancher UI or kubectl, you can set up path-based routing, host-based routing, and default backends to manage traffic flow into your cluster. With Rancher providing a management UI over your cluster resources, you can focus on defining your routing rules while the ingress controller handles the underlying traffic routing.
