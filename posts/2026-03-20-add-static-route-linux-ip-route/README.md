@@ -47,7 +47,7 @@ ip route add 10.10.10.1/32 via 192.168.1.1
 ## Add a Default Route
 
 ```bash
-# Set or add a default gateway
+# Add a default gateway
 ip route add default via 192.168.1.1
 
 # Add default route through a specific interface
@@ -84,13 +84,15 @@ Routes added with `ip route add` are lost on reboot. Persist with your distribut
 # Ubuntu/Netplan
 # Add to /etc/netplan/01-routes.yaml:
 # network:
-#   ...
-#   routes:
-#     - to: 192.168.2.0/24
-#       via: 10.0.0.1
+#   version: 2
+#   ethernets:
+#     eth0:
+#       routes:
+#         - to: 192.168.2.0/24
+#           via: 10.0.0.1
 
 # RHEL/nmcli
-nmcli connection modify eth0 +ipv4.routes "192.168.2.0/24 10.0.0.1"
+nmcli connection modify id "<connection-name>" +ipv4.routes "192.168.2.0/24 10.0.0.1"
 
 # systemd-networkd (.network file)
 # [Route]
