@@ -10,10 +10,10 @@ API keys are the foundation of programmatic access to Rancher. Whether you need 
 
 ## Understanding Rancher API Key Types
 
-Rancher supports two types of API keys:
+Rancher supports API keys with or without a cluster scope:
 
-- **Account API Keys**: Scoped to a specific user account. These keys inherit the permissions of the user who created them.
-- **Scoped API Keys**: Limited to a specific cluster or project. These provide more granular access control.
+- **No-Scope API Keys**: These inherit the permissions of the user who created them and can access all Rancher resources that user can access.
+- **Cluster-Scoped API Keys**: These are limited to the Kubernetes API of a specific cluster.
 
 Each API key consists of an Access Key (username) and a Secret Key (password), combined in the format `access_key:secret_key`.
 
@@ -27,16 +27,15 @@ Log into your Rancher instance and click on your user avatar in the top-right co
 
 ### Step 2: Create a New API Key
 
-Click the **Create API Key** button. You will see a form with the following fields:
+Click the **Create API Key** button. You can set the following options:
 
 - **Description**: A human-readable label for the key (e.g., "CI/CD Pipeline Key")
 - **Scope**: Choose between "No Scope" (full access) or limit to a specific cluster
-- **Expires**: Set an expiration time or leave blank for no expiration
-- **Auto-delete expired key**: Toggle whether expired keys should be cleaned up automatically
+- **Expiration**: Select an expiration period. Rancher enforces the `auth-token-max-ttl-minutes` maximum TTL setting.
 
 ### Step 3: Save Your Credentials
 
-After clicking **Create**, Rancher displays the Access Key, Secret Key, and Bearer Token. Copy these immediately because the Secret Key and Bearer Token are only shown once.
+After clicking **Create**, Rancher displays the API Endpoint, Access Key, Secret Key, and Bearer Token. Copy these immediately because the Secret Key and Bearer Token are only shown once.
 
 ```plaintext
 Access Key:  token-abc12
@@ -48,68 +47,67 @@ Store these securely in a password manager or secrets vault.
 
 ## Generating API Keys Through the API
 
-You can also create API keys programmatically using an existing key or session token.
+Starting with Rancher v2.14.0, legacy v3 API tokens are being phased out. For new automation, Rancher's supported public token API is `tokens.ext.cattle.io`, which you use through the Rancher Kubernetes API.
 
-### Creating an Account-Scoped Key
+To use the following commands, configure `kubectl` to authenticate to Rancher with an existing Rancher API key that has no scope.
+
+### Creating a No-Scope Key
 
 ```bash
-curl -s -k -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "token",
-    "description": "Automation Key - Created via API",
-    "ttl": 0
-  }' \
-  "${RANCHER_URL}/v3/tokens"
+kubectl create -o json -f - <<'EOF'
+apiVersion: ext.cattle.io/v1
+kind: Token
+spec:
+  description: Automation Key - Created via API
+EOF
 ```
 
-The `ttl` field is in milliseconds. Set it to `0` for a non-expiring key or use a value like `86400000` for a 24-hour key.
+If `spec.ttl` is omitted, Rancher uses the value from `auth-token-max-ttl-minutes` as the expiration period. If you set `spec.ttl`, the value is in milliseconds and must be greater than `0` and less than or equal to the configured maximum TTL.
 
 ### Creating a Cluster-Scoped Key
 
 To create a key scoped to a specific cluster:
 
 ```bash
-curl -s -k -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "token",
-    "description": "Production Cluster Key",
-    "ttl": 0,
-    "clusterId": "c-m-abc12345"
-  }' \
-  "${RANCHER_URL}/v3/tokens"
+kubectl create -o json -f - <<'EOF'
+apiVersion: ext.cattle.io/v1
+kind: Token
+spec:
+  description: Production Cluster Key
+  clusterName: c-m-abc12345
+  ttl: 7200000
+EOF
 ```
 
 ### Parsing the Response
 
-The response contains your new credentials:
+The response contains the token metadata, the access key, and a ready-to-use bearer token:
 
 ```bash
-curl -s -k -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "token",
-    "description": "Script Key"
-  }' \
-  "${RANCHER_URL}/v3/tokens" | jq '{
-    accessKey: .token,
-    secretKey: .token,
-    bearerToken: "\(.token):\(.token)"
-  }'
+kubectl create -o json -f - <<'EOF' | jq '{
+  tokenId: .metadata.name,
+  accessKey: .status.value,
+  bearerToken: .status.bearerToken,
+  expiresAt: .status.expiresAt
+}'
+apiVersion: ext.cattle.io/v1
+kind: Token
+spec:
+  description: Script Key
+EOF
 ```
 
-## Generating API Keys via the Rancher CLI
+With `tokens.ext.cattle.io`, `.status.value` is the access key and `.status.bearerToken` is the fully formed bearer token you can use in API requests.
 
-The Rancher CLI can also generate API keys:
+## Using API Keys with the Rancher CLI
+
+The Rancher CLI authenticates with an existing API bearer token; it does not create a new Rancher API key.
 
 ```bash
-rancher login https://rancher.example.com --token ${RANCHER_TOKEN}
-rancher tokens create --description "CLI Generated Key" --ttl 0
+rancher login https://rancher.example.com --token ${RANCHER_BEARER_TOKEN}
 ```
+
+The `rancher token` command generates kubeconfig tokens, not Rancher API keys.
 
 ## Managing Existing API Keys
 
@@ -118,16 +116,13 @@ rancher tokens create --description "CLI Generated Key" --ttl 0
 To list all API keys for your account:
 
 ```bash
-curl -s -k \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/tokens" | jq '.data[] | {
-    id: .id,
-    description: .description,
-    expired: .expired,
-    created: .created,
-    expiresAt: .expiresAt,
-    clusterId: .clusterName
-  }'
+kubectl get tokens.ext.cattle.io -o json | jq '.items[] | {
+  id: .metadata.name,
+  description: .spec.description,
+  expired: .status.expired,
+  expiresAt: .status.expiresAt,
+  clusterName: .spec.clusterName
+}'
 ```
 
 ### Deleting an API Key
@@ -137,22 +132,20 @@ To revoke an API key:
 ```bash
 TOKEN_ID="token-abc12"
 
-curl -s -k -X DELETE \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/tokens/${TOKEN_ID}"
+kubectl delete tokens.ext.cattle.io "${TOKEN_ID}"
 ```
 
 ### Checking Key Validity
 
-Test whether a key is still valid:
+For a no-scope key, test whether the bearer token is still valid:
 
 ```bash
-curl -s -k -o /dev/null -w "%{http_code}" \
-  -H "Authorization: Bearer token-abc12:xxxxxxxxxxxx" \
-  "${RANCHER_URL}/v3/users?me=true"
+curl -s -o /dev/null -w "%{http_code}" \
+  -H "Authorization: Bearer ${RANCHER_BEARER_TOKEN}" \
+  "${RANCHER_URL}/apis/management.cattle.io/v3/users"
 ```
 
-A `200` response means the key is valid. A `401` means it has expired or been revoked.
+A `200` response means the token authenticated successfully. A `401` means authentication failed because the token is expired, revoked, or invalid.
 
 ## Best Practices for API Key Management
 
@@ -163,15 +156,13 @@ For CI/CD pipelines that run on a schedule, create keys with a TTL that slightly
 ```bash
 # Create a key that expires in 2 hours (7200000 ms)
 
-curl -s -k -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "token",
-    "description": "CI Pipeline - Short-lived",
-    "ttl": 7200000
-  }' \
-  "${RANCHER_URL}/v3/tokens"
+kubectl create -o jsonpath='{.status.bearerToken}' -f - <<'EOF'
+apiVersion: ext.cattle.io/v1
+kind: Token
+spec:
+  description: CI Pipeline - Short-lived
+  ttl: 7200000
+EOF
 ```
 
 ### Use Scoped Keys for Least Privilege
@@ -179,15 +170,14 @@ curl -s -k -X POST \
 Instead of granting full access, scope keys to specific clusters:
 
 ```bash
-curl -s -k -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "token",
-    "description": "Staging Only Key",
-    "clusterId": "c-m-staging01"
-  }' \
-  "${RANCHER_URL}/v3/tokens"
+kubectl create -o jsonpath='{.status.bearerToken}' -f - <<'EOF'
+apiVersion: ext.cattle.io/v1
+kind: Token
+spec:
+  description: Staging Only Key
+  clusterName: c-m-staging01
+  ttl: 7200000
+EOF
 ```
 
 ### Rotate Keys Regularly
@@ -197,30 +187,25 @@ Build a rotation script that creates a new key and deletes the old one:
 ```bash
 #!/bin/bash
 
-RANCHER_URL="https://rancher.example.com"
-OLD_TOKEN="token-old123:xxxxxxxxxxxx"
+# Assumes kubectl is already configured to authenticate to Rancher.
+OLD_TOKEN_ID="token-old123"
 
-# Create new key using old key
-NEW_KEY=$(curl -s -k -X POST \
-  -H "Authorization: Bearer ${OLD_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "token",
-    "description": "Rotated Key - '"$(date +%Y-%m-%d)"'"
-  }' \
-  "${RANCHER_URL}/v3/tokens")
+NEW_TOKEN_JSON=$(kubectl create -o json -f - <<EOF
+apiVersion: ext.cattle.io/v1
+kind: Token
+spec:
+  description: Rotated Key - $(date +%Y-%m-%d)
+EOF
+)
 
-NEW_TOKEN=$(echo "$NEW_KEY" | jq -r '.token')
-echo "New token created: ${NEW_TOKEN}"
+NEW_BEARER_TOKEN=$(echo "$NEW_TOKEN_JSON" | jq -r '.status.bearerToken')
+NEW_TOKEN_ID=$(echo "$NEW_TOKEN_JSON" | jq -r '.metadata.name')
+echo "New token created: ${NEW_TOKEN_ID}"
 
-# Store the new token in your secrets manager
-# vault kv put secret/rancher token="${NEW_TOKEN}"
+# Store the new bearer token in your secrets manager before revoking the old token
+# vault kv put secret/rancher token="${NEW_BEARER_TOKEN}"
 
-# Delete old key
-OLD_TOKEN_ID=$(echo "$OLD_TOKEN" | cut -d: -f1)
-curl -s -k -X DELETE \
-  -H "Authorization: Bearer ${NEW_TOKEN}" \
-  "${RANCHER_URL}/v3/tokens/${OLD_TOKEN_ID}"
+kubectl delete tokens.ext.cattle.io "${OLD_TOKEN_ID}"
 
 echo "Old token deleted: ${OLD_TOKEN_ID}"
 ```
@@ -231,16 +216,16 @@ Never store API keys in plain text files, environment variables in shared system
 
 ```bash
 # HashiCorp Vault
-vault kv put secret/rancher/api-key token="${RANCHER_TOKEN}"
+vault kv put secret/rancher/api-key token="${RANCHER_BEARER_TOKEN}"
 
 # AWS Secrets Manager
 aws secretsmanager create-secret \
   --name rancher-api-key \
-  --secret-string "${RANCHER_TOKEN}"
+  --secret-string "${RANCHER_BEARER_TOKEN}"
 
 # Kubernetes Secret
 kubectl create secret generic rancher-api-key \
-  --from-literal=token="${RANCHER_TOKEN}" \
+  --from-literal=token="${RANCHER_BEARER_TOKEN}" \
   -n automation
 ```
 
@@ -249,16 +234,14 @@ kubectl create secret generic rancher-api-key \
 Periodically review all active keys and remove unused ones:
 
 ```bash
-curl -s -k \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/tokens" | jq '.data[] | select(.expired == false) | {
-    id,
-    description,
-    created,
-    lastUsed: .lastUpdateTime
-  }'
+kubectl get tokens.ext.cattle.io -o json | jq '.items[] | select(.status.expired == false) | {
+  id: .metadata.name,
+  description: .spec.description,
+  expiresAt: .status.expiresAt,
+  lastUsedAt: .status.lastUsedAt
+}'
 ```
 
 ## Summary
 
-Generating and managing API keys in Rancher is straightforward whether you use the UI, the API, or the CLI. The key practices to follow are using scoped keys with appropriate TTLs, rotating them regularly, and storing them in a secrets manager. With properly configured API keys, you can safely automate any Rancher operation.
+Generating and managing API keys in Rancher is straightforward whether you use the UI or the Rancher Kubernetes API. The Rancher CLI authenticates with existing API keys rather than creating them. The key practices to follow are using scoped keys with appropriate TTLs, rotating them regularly, and storing them in a secrets manager. With properly configured API keys, you can safely automate any Rancher operation.
