@@ -145,7 +145,7 @@ podman tag localhost/myapp:latest myregistry.example.com/myapp:latest
 podman push myregistry.example.com/myapp:latest
 
 # Verify the image is on the registry
-podman search myregistry.example.com/myapp
+podman pull myregistry.example.com/myapp:latest
 ```
 
 ## Configuring for Rootless Users
