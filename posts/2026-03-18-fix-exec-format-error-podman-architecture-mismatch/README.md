@@ -8,7 +8,7 @@ Description: Learn how to fix the 'exec format error' in Podman caused by runnin
 
 ---
 
-> The "exec format error" in Podman means you are trying to run a container image built for a different CPU architecture than your host. This guide explains how to identify the mismatch and run or build images for the correct platform.
+> The "exec format error" in Podman often means you are trying to run a container image built for a different CPU architecture than your host. This guide explains how to identify the mismatch and run or build images for the correct platform.
 
 The "exec format error" is a Linux kernel error that occurs when you try to execute a binary compiled for a different CPU architecture. In the container world, this most commonly happens when you pull an x86_64 (amd64) image on an ARM (aarch64) machine or vice versa. With the growing adoption of ARM-based systems like Apple Silicon Macs, AWS Graviton instances, and Raspberry Pi devices, this error has become increasingly common.
 
@@ -75,11 +75,13 @@ podman manifest inspect docker.io/library/nginx:latest | grep architecture
 
 If you need to run an image built for a different architecture, you can use QEMU user-mode emulation. This translates instructions from one architecture to another at runtime.
 
-On Fedora, RHEL, or CentOS:
+On Fedora or CentOS Stream:
 
 ```bash
-sudo dnf install qemu-user-static
+sudo dnf install qemu-user-static qemu-user-binfmt
 ```
+
+On RHEL, the package names and availability depend on the enabled repositories and RHEL version.
 
 On Ubuntu or Debian:
 
@@ -119,7 +121,7 @@ Using `podman build` with the `--platform` flag:
 
 ```bash
 # Build for multiple architectures
-podman build --platform linux/amd64,linux/arm64 -t myapp:latest .
+podman build --platform linux/amd64,linux/arm64 --manifest myapp:latest .
 ```
 
 For more control, use `podman manifest` to create a manifest list:
@@ -196,9 +198,9 @@ podman machine ssh
 # Check if QEMU is registered
 ls /proc/sys/fs/binfmt_misc/qemu-x86_64
 
-# If not, install it
-sudo dnf install qemu-user-static
-sudo systemctl restart systemd-binfmt
+# If not, install it. Default Podman machines use Fedora CoreOS.
+sudo rpm-ostree install qemu-user-static qemu-user-binfmt
+sudo systemctl reboot
 exit
 ```
 
@@ -231,7 +233,7 @@ jobs:
       - name: Build multi-arch image
         run: |
           podman build --platform linux/amd64,linux/arm64 \
-            -t myapp:${{ github.sha }} .
+            --manifest myapp:${{ github.sha }} .
 
       - name: Test on both architectures
         run: |
@@ -264,4 +266,4 @@ skopeo inspect --raw docker://docker.io/library/nginx:latest | \
 
 ## Conclusion
 
-The "exec format error" in Podman is always caused by an architecture mismatch between the container image and the host system. The fix depends on your situation: pull the correct architecture with `--platform`, install QEMU for cross-architecture emulation, or build multi-architecture images using manifest lists. As ARM adoption continues to grow, building multi-architecture images from the start saves time and prevents these errors downstream. Use the `TARGETARCH` build argument in your Dockerfiles to write architecture-aware build scripts that work everywhere.
+When Podman's "exec format error" is caused by an architecture mismatch between the container image and the host system, the fix depends on your situation: pull the correct architecture with `--platform`, install QEMU for cross-architecture emulation, or build multi-architecture images using manifest lists. As ARM adoption continues to grow, building multi-architecture images from the start saves time and prevents these errors downstream. Use the `TARGETARCH` build argument in your Dockerfiles to write architecture-aware build scripts that work everywhere.
