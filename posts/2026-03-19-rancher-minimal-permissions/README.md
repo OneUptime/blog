@@ -17,58 +17,24 @@ Locking down Rancher with minimal permissions reduces your attack surface and li
 
 ## Step 1: Harden Global Settings
 
-Start by restricting platform-wide defaults:
-
-```bash
-# Disable default cluster roles for new users
-
-kubectl patch settings cluster-default-role -p '{"value": ""}'
-
-# Disable default project roles
-kubectl patch settings project-default-role -p '{"value": ""}'
-
-# Restrict the ability to create clusters
-kubectl patch settings cluster-template-enforcement -p '{"value": "true"}'
-```
-
-In the Rancher UI:
+Start by reviewing the platform-wide settings in the Rancher UI:
 
 1. Go to **Global Settings**.
 2. Set `auth-user-info-max-age-seconds` to `3600` (refresh user info hourly).
 3. Set `auth-user-session-ttl-minutes` to `480` (8-hour session timeout).
 4. Set `kubeconfig-default-token-ttl-minutes` to `480` (8-hour token TTL).
+5. If you still manage older RKE1-provisioned clusters, you can also enable `cluster-template-enforcement` to require standard users to create clusters from a template.
 
 ## Step 2: Restrict Default Global Roles
 
-Remove the Standard User default and create a minimal default role:
+Remove the Standard User default and use the built-in minimal login role instead:
 
-```yaml
-apiVersion: management.cattle.io/v3
-kind: GlobalRole
-metadata:
-  name: minimal-user
-spec:
-  displayName: Minimal User
-  description: "Login access only - no cluster creation or global resource access"
-  newUserDefault: true
-  rules:
-    - apiGroups: ["management.cattle.io"]
-      resources: ["preferences"]
-      verbs: ["*"]
-    - apiGroups: ["management.cattle.io"]
-      resources: ["settings"]
-      verbs: ["get", "list", "watch"]
-```
+1. Go to **Users & Authentication > Role Templates > Global**.
+2. Edit **Standard User** and set **Default role for new users** to **No**.
+3. Edit **User-Base** and set **Default role for new users** to **Yes**.
+4. Add any extra built-in global permissions or custom global roles only where they are required.
 
-```bash
-kubectl apply -f minimal-user.yaml
-```
-
-Then disable Standard User as a default:
-
-1. Go to **Users & Authentication > Roles > Global**.
-2. Edit **Standard User** and uncheck default.
-3. Edit **User-Base** and uncheck default if the minimal role above replaces it.
+Default global roles are assigned automatically only to users coming from an external authentication provider. Local users still need explicit global permissions when you create them.
 
 ## Step 3: Create Purpose-Built Cluster Roles
 
@@ -81,22 +47,21 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: cluster-viewer
-spec:
-  context: cluster
-  displayName: Cluster Viewer
-  rules:
-    - apiGroups: [""]
-      resources: ["nodes", "namespaces", "events", "persistentvolumes"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: ["apps"]
-      resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: [""]
-      resources: ["pods", "pods/log", "services", "configmaps"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: ["storage.k8s.io"]
-      resources: ["storageclasses"]
-      verbs: ["get", "list", "watch"]
+context: cluster
+displayName: Cluster Viewer
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "events", "persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "services", "configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
 ```
 
 **Cluster Operator** - for those managing cluster infrastructure:
@@ -106,25 +71,24 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: cluster-operator
-spec:
-  context: cluster
-  displayName: Cluster Operator
-  rules:
-    - apiGroups: [""]
-      resources: ["nodes"]
-      verbs: ["get", "list", "watch", "update", "patch"]
-    - apiGroups: [""]
-      resources: ["namespaces"]
-      verbs: ["get", "list", "watch", "create"]
-    - apiGroups: ["storage.k8s.io"]
-      resources: ["storageclasses"]
-      verbs: ["get", "list", "watch", "create", "update", "patch"]
-    - apiGroups: [""]
-      resources: ["persistentvolumes"]
-      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-    - apiGroups: [""]
-      resources: ["events"]
-      verbs: ["get", "list", "watch"]
+context: cluster
+displayName: Cluster Operator
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
 ```
 
 ```bash
@@ -140,28 +104,27 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: app-developer
-spec:
-  context: project
-  displayName: Application Developer
-  rules:
-    - apiGroups: ["apps"]
-      resources: ["deployments", "deployments/scale"]
-      verbs: ["get", "list", "watch", "create", "update", "patch"]
-    - apiGroups: [""]
-      resources: ["services", "configmaps"]
-      verbs: ["get", "list", "watch", "create", "update", "patch"]
-    - apiGroups: [""]
-      resources: ["pods", "pods/log"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: [""]
-      resources: ["pods/exec"]
-      verbs: ["create"]
-    - apiGroups: ["networking.k8s.io"]
-      resources: ["ingresses"]
-      verbs: ["get", "list", "watch", "create", "update", "patch"]
-    - apiGroups: ["batch"]
-      resources: ["jobs", "cronjobs"]
-      verbs: ["get", "list", "watch", "create", "update", "patch"]
+context: project
+displayName: Application Developer
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
 ```
 
 **Config Viewer** - can only view configurations:
@@ -171,19 +134,18 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: config-viewer
-spec:
-  context: project
-  displayName: Configuration Viewer
-  rules:
-    - apiGroups: [""]
-      resources: ["configmaps"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: ["apps"]
-      resources: ["deployments", "statefulsets", "daemonsets"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: [""]
-      resources: ["services", "pods"]
-      verbs: ["get", "list", "watch"]
+context: project
+displayName: Configuration Viewer
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services", "pods"]
+    verbs: ["get", "list", "watch"]
 ```
 
 ```bash
@@ -192,34 +154,36 @@ kubectl apply -f project-roles.yaml
 
 ## Step 5: Disable Unused Built-in Roles
 
-You cannot delete built-in roles, but you can make them unavailable for assignment by locking them:
+You cannot delete built-in roles, but you can prevent future assignment of cluster and project roles by locking them:
 
-1. Go to **Users & Authentication > Roles**.
-2. For each built-in role that you do not want used:
-3. Click the three-dot menu and select **Edit**.
-4. Check **Lock this role** (if available) or note in the description that it should not be used.
+1. Go to **Users & Authentication > Role Templates**.
+2. Open the **Cluster** or **Project/Namespaces** tab.
+3. For each built-in role that you do not want assigned, click the three-dot menu and select **Edit Config**.
+4. Set **Locked** to **Yes** and save.
+
+Global roles cannot be locked.
 
 ## Step 6: Restrict API Key Creation
 
-Limit who can create API keys, as API keys bypass the UI session timeout:
+Limit who can create API keys, as API keys have their own TTL and are not governed by the Rancher UI session timeout:
 
-1. When using the Rancher API, always set an expiration on API keys.
-2. Audit existing API keys regularly:
+1. When using the Rancher API, always set an expiration on API keys and keep `auth-token-max-ttl-minutes` aligned with your maximum allowed lifetime.
+2. On Rancher v2.13 and later, audit existing API keys regularly:
 
 ```bash
 # List all API keys (tokens)
-kubectl get tokens.management.cattle.io -o json | \
-  jq -r '.items[] | select(.token != null) | "\(.userId)\t\(.description // "no description")\t\(.expiresAt // "never")"' | \
-  column -t -s $'\t'
+kubectl get tokens.ext.cattle.io -o wide
 ```
 
 Remove API keys that do not have an expiration date set:
 
 ```bash
 # Find tokens without expiration
-kubectl get tokens.management.cattle.io -o json | \
-  jq -r '.items[] | select(.expiresAt == null or .expiresAt == "") | .metadata.name'
+kubectl get tokens.ext.cattle.io -o json | \
+  jq -r '.items[] | select(.status.expiresAt == null or .status.expiresAt == "") | .metadata.name'
 ```
+
+On older Rancher releases, the legacy `tokens.management.cattle.io` resource is used instead.
 
 ## Step 7: Enable Audit Logging
 
@@ -228,9 +192,10 @@ Track all access and changes with audit logging:
 ```yaml
 # In your Rancher Helm values
 auditLog:
+  enabled: true
   level: 2
-  destination: sidecar
-  hostPath: /var/log/rancher/audit/
+  destination: hostPath
+  hostPath: /var/log/rancher/audit
   maxAge: 90
   maxBackup: 30
   maxSize: 100
@@ -244,9 +209,7 @@ The Rancher UI includes a kubectl shell that uses the logged-in user's permissio
 
 - Users with minimal roles will have limited kubectl access through the shell.
 - Cluster Viewers cannot modify resources even through the shell.
-- The shell respects all role bindings.
-
-To completely disable the shell for certain users, create roles that do not include `pods/exec` permissions.
+- The shell respects all role bindings, but it also creates Rancher `kubectl-shell-*` tokens, so review those alongside other API keys.
 
 ## Step 9: Apply Network-Level Restrictions
 
@@ -254,7 +217,7 @@ Complement RBAC with network policies in your Rancher projects:
 
 1. Go to the project settings.
 2. Enable **Project Network Isolation**.
-3. This prevents pods in one project from communicating with pods in another project.
+3. On CNIs that enforce Kubernetes `NetworkPolicy`, this blocks cross-project pod traffic by default.
 
 ## Step 10: Validate the Lockdown
 
@@ -290,8 +253,8 @@ kubectl get roletemplates -o json | \
 # Check session settings
 echo ""
 echo "4. Session Settings:"
-kubectl get settings kubeconfig-default-token-ttl-minutes -o jsonpath='  Token TTL: {.value} minutes{"\n"}'
-kubectl get settings auth-user-session-ttl-minutes -o jsonpath='  Session TTL: {.value} minutes{"\n"}'
+kubectl get setting kubeconfig-default-token-ttl-minutes -o jsonpath='  Token TTL: {.value} minutes{"\n"}'
+kubectl get setting auth-user-session-ttl-minutes -o jsonpath='  Session TTL: {.value} minutes{"\n"}'
 
 echo ""
 echo "=== Validation Complete ==="
