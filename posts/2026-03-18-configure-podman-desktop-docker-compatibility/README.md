@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Podman Desktop, Docker, Compatibility, Migration
 
-Description: Learn how to configure Podman Desktop for full Docker compatibility so existing Docker workflows, tools, and scripts work without modification.
+Description: Learn how to configure Podman Desktop for Docker compatibility so existing Docker workflows, tools, and scripts can work with minimal changes.
 
 ---
 
-> Podman Desktop can serve as a drop-in replacement for Docker Desktop, letting you run existing Docker commands, Compose files, and tools without changes.
+> Podman Desktop can serve as a Docker-compatible container environment, letting you run many existing Docker commands, Compose files, and tools with minimal changes.
 
-Many development teams have existing Docker-based workflows, CI scripts, and tooling. Podman Desktop provides Docker compatibility features that allow these tools to work seamlessly with Podman as the underlying engine. This guide covers configuring the Docker socket, CLI aliases, Docker Compose support, and ensuring your existing workflows continue to function.
+Many development teams have existing Docker-based workflows, CI scripts, and tooling. Podman Desktop provides Docker compatibility features that allow many of these tools to work with Podman as the underlying engine. This guide covers configuring the Docker socket, CLI aliases, Docker Compose support, and ensuring your existing workflows continue to function.
 
 ---
 
 ## Understanding Docker Compatibility
 
-Podman implements the Docker-compatible API, which means most Docker CLI commands work with Podman without modification. The key to compatibility is ensuring tools that expect Docker can communicate with Podman.
+Podman implements a Docker-compatible API, which means most Docker CLI commands and API clients work with Podman without modification. The key to compatibility is ensuring tools that expect Docker can communicate with Podman.
 
 ```bash
 # Podman supports most Docker CLI commands natively
@@ -69,38 +69,37 @@ docker images
 Podman Desktop includes a Docker compatibility mode:
 
 1. Open Podman Desktop and go to **Settings**.
-2. Navigate to **Docker Compatibility**.
-3. Enable the **Docker socket compatibility** toggle.
-4. Podman Desktop will create a Docker-compatible socket.
-5. Tools expecting Docker will automatically connect.
+2. Navigate to **Preferences** > **Docker Compatibility**.
+3. Enable the **Docker Compatibility** toggle if it is not already enabled.
+4. Open **Docker Compatibility** in the Settings list to check the socket mapping status.
+5. On macOS, enable **Third-Party Docker Tool Compatibility** if it was disabled. On Linux and Windows, use `DOCKER_HOST` when tools need to connect directly to the Podman socket.
 
-This creates a socket at the standard Docker socket path that forwards requests to Podman.
+When socket compatibility is enabled, Podman Desktop maps the standard Docker socket path to Podman where the platform supports it.
 
 ## Docker Compose Support
 
-Podman supports Docker Compose through `podman-compose` or the official `docker-compose` with the Podman socket:
+Podman supports Docker Compose through `podman compose` with an external Compose provider such as Docker Compose or `podman-compose`, or by running the Docker Compose plugin with the Podman socket:
 
 ```bash
 # Option 1: Install podman-compose
 pip install podman-compose
 
-# Use podman-compose with your existing docker-compose.yml
-podman-compose up -d
-podman-compose ps
-podman-compose down
+# Use Podman's Compose wrapper with your existing compose.yaml
+podman compose up -d
+podman compose ps
+podman compose down
 
-# Option 2: Use docker-compose with Podman socket
-export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
-docker-compose up -d
-docker-compose ps
-docker-compose down
+# Option 2: Use Docker Compose with the Podman socket
+export DOCKER_HOST=unix://${XDG_RUNTIME_DIR}/podman/podman.sock
+docker compose up -d
+docker compose ps
+docker compose down
 ```
 
 Example `docker-compose.yml` that works with both:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   web:
     image: nginx:alpine
@@ -124,17 +123,17 @@ Set environment variables for Docker compatibility:
 
 ```bash
 # Point DOCKER_HOST to the Podman socket
-export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"
 
 # On macOS with Podman machine
-export DOCKER_HOST="unix://$HOME/.local/share/containers/podman/machine/podman.sock"
+export DOCKER_HOST="unix://$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')"
 
-# Disable Docker CLI version check warnings
-export DOCKER_CLI_EXPERIMENTAL=enabled
+# Leave Docker API version negotiation enabled unless you need a specific API version
+unset DOCKER_API_VERSION
 
 # Add to your shell profile for persistence
 cat >> ~/.zshrc << 'EOF'
-export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+export DOCKER_HOST="unix://${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
 EOF
 ```
 
@@ -143,19 +142,23 @@ EOF
 Verify that popular Docker tools work with Podman:
 
 ```bash
-# Test with docker-compose
-docker-compose version
+# Test with Docker Compose
+docker compose version
 
-# Test with Testcontainers (Java/Node.js testing)
+# Test with Testcontainers on rootless Linux
 export TESTCONTAINERS_RYUK_DISABLED=true
-export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"
+
+# Test with Testcontainers on macOS
+export DOCKER_HOST="unix://$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')"
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 
 # Test with VS Code Dev Containers
 # Set the docker.host setting in VS Code
 # "docker.host": "unix:///run/user/1000/podman/podman.sock"
 
-# Test with Buildx (limited support)
-podman buildx version 2>/dev/null || echo "Use podman build instead"
+# Docker Buildx is a Docker CLI plugin, not a Podman subcommand
+docker buildx version 2>/dev/null || echo "Use podman build instead"
 ```
 
 ## Handling Compatibility Differences
@@ -171,7 +174,7 @@ podman run --rm alpine whoami
 podman network create my-network
 podman network ls
 
-# BuildKit syntax is supported through Podman build
+# Dockerfile syntax is supported through Podman build
 podman build --layers -t my-app .
 
 # Podman does not have a daemon; containers run as child processes
@@ -180,4 +183,4 @@ podman build --layers -t my-app .
 
 ## Summary
 
-Configuring Podman Desktop for Docker compatibility lets you leverage existing Docker workflows, scripts, and tools without modification. The Docker-compatible socket, CLI aliases, and Compose support provide a seamless transition path. By setting the right environment variables and enabling compatibility features in Podman Desktop, your team can adopt Podman while preserving investments in Docker-based tooling.
+Configuring Podman Desktop for Docker compatibility lets you leverage many existing Docker workflows, scripts, and tools with minimal changes. The Docker-compatible socket, CLI aliases, and Compose support provide a practical transition path. By setting the right environment variables and enabling compatibility features in Podman Desktop, your team can adopt Podman while preserving investments in Docker-based tooling.
