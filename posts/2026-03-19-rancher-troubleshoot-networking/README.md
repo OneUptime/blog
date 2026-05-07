@@ -16,16 +16,18 @@ Networking issues in Kubernetes can be complex, involving multiple layers from p
 
 ## Step 1: Diagnose Pod-to-Pod Connectivity
 
-Start by testing basic pod-to-pod communication:
+Start by testing basic pod-to-pod communication over the application port:
 
 ```bash
 # Create a debug pod
 
-kubectl run netshoot --image=nicolaka/netshoot --rm -it -- bash
+kubectl run netshoot --image=nicolaka/netshoot --restart=Never --rm -it --command -- /bin/bash
 
 # From inside the debug pod, test connectivity to another pod
-ping <POD_IP>
+nc -vz <POD_IP> <PORT>
 curl http://<POD_IP>:<PORT>
+# Optional, if ICMP is allowed in your environment
+ping <POD_IP>
 traceroute <POD_IP>
 ```
 
@@ -33,6 +35,7 @@ If pod-to-pod communication fails, check the CNI plugin:
 
 ```bash
 kubectl get pods -n kube-system | grep -E "calico|canal|flannel|cilium"
+# Example for Canal-based clusters; adjust the selector to match your CNI
 kubectl logs -n kube-system -l k8s-app=canal --tail=50
 ```
 
@@ -41,7 +44,7 @@ kubectl logs -n kube-system -l k8s-app=canal --tail=50
 Test service resolution and connectivity:
 
 ```bash
-kubectl run netshoot --image=nicolaka/netshoot --rm -it -- bash
+kubectl run netshoot --image=nicolaka/netshoot --restart=Never --rm -it --command -- /bin/bash
 
 # Test DNS resolution
 nslookup my-service.default.svc.cluster.local
@@ -52,14 +55,14 @@ curl http://my-service.default.svc.cluster.local
 wget -qO- --timeout=5 http://my-service
 ```
 
-Check service endpoints:
+Check service backend endpoints:
 
 ```bash
-kubectl get endpoints my-service -n default
+kubectl get endpointslice -l kubernetes.io/service-name=my-service -n default
 kubectl describe svc my-service -n default
 ```
 
-If there are no endpoints, the service selector does not match any running pods:
+If there are no backend endpoints for a selector-based Service, the selector may not match any Pods, or the Pods may not be Ready:
 
 ```bash
 kubectl get pods --show-labels -n default
@@ -78,7 +81,7 @@ kubectl logs -n kube-system -l k8s-app=kube-dns --tail=50
 Test DNS from a pod:
 
 ```bash
-kubectl run dns-test --image=busybox:1.36 --rm -it -- nslookup kubernetes.default
+kubectl run dns-test --image=busybox:1.36 --restart=Never --rm -it --command -- nslookup kubernetes.default
 ```
 
 If DNS fails, check the CoreDNS ConfigMap:
@@ -101,11 +104,11 @@ kubectl exec <pod-name> -- cat /etc/resolv.conf
 
 ## Step 4: Diagnose Ingress Issues
 
-Check the ingress controller is running:
+Check the ingress controller is running (for example, ingress-nginx or Traefik):
 
 ```bash
-kubectl get pods -n ingress-nginx
-kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx --tail=100
+kubectl get pods -A | grep -E "ingress-nginx|traefik"
+kubectl logs -n <controller-namespace> <controller-pod-name> --tail=100
 ```
 
 Verify the Ingress resource:
@@ -121,7 +124,7 @@ Test the ingress from outside:
 curl -v -H "Host: myapp.example.com" http://<INGRESS_IP>/
 ```
 
-Check for configuration errors in the NGINX config:
+If you are using ingress-nginx, check for configuration errors in the NGINX config:
 
 ```bash
 kubectl exec -n ingress-nginx <pod-name> -- nginx -T | grep -A 10 "myapp.example.com"
@@ -180,11 +183,12 @@ For LoadBalancer services stuck in Pending:
 
 ```bash
 kubectl describe svc <service-name> -n <namespace>
-kubectl get events --field-selector involvedObject.name=<service-name>
+kubectl get events -n <namespace> --field-selector involvedObject.kind=Service,involvedObject.name=<service-name>
 ```
 
 Common causes:
 - Cloud provider controller not running
+- On K3s with ServiceLB, no nodes have the requested hostPort available or ServiceLB is disabled
 - No available IPs in MetalLB pool
 - Cloud provider quota exceeded
 - Missing IAM permissions
@@ -209,7 +213,7 @@ kubectl exec <pod-name> -- ss -tlnp
 kubectl get configmap coredns -n kube-system -o yaml | grep forward
 
 # Verify upstream DNS is reachable
-kubectl run test --image=busybox --rm -it -- nslookup google.com
+kubectl run test --image=busybox:1.36 --restart=Never --rm -it --command -- nslookup google.com
 ```
 
 **Problem: Intermittent connection failures**
@@ -221,8 +225,8 @@ kubectl get pods -n <namespace> --sort-by='.status.containerStatuses[0].restartC
 # Check node resource pressure
 kubectl describe node <node-name> | grep -A 5 Conditions
 
-# Check endpoint changes
-kubectl get events --field-selector reason=EndpointsUpdated
+# Check backend endpoint changes
+kubectl get endpointslice -l kubernetes.io/service-name=<service-name> -n <namespace> -w
 ```
 
 **Problem: Connection timeouts between services**
@@ -235,8 +239,8 @@ kubectl get pods -l app=<target-app> -o wide
 kubectl describe pod <pod-name> | grep -A 5 Readiness
 
 # Test TCP connectivity
-kubectl run test --image=nicolaka/netshoot --rm -it -- \
-  bash -c "timeout 5 bash -c 'echo > /dev/tcp/<SERVICE_IP>/<PORT>' && echo 'open' || echo 'closed'"
+kubectl run test --image=nicolaka/netshoot --restart=Never --rm -it --command -- \
+  /bin/bash -c "timeout 5 bash -c 'echo > /dev/tcp/<SERVICE_IP>/<PORT>' && echo 'open' || echo 'closed'"
 ```
 
 ## Step 10: Collect Diagnostic Information
@@ -247,26 +251,26 @@ Gather comprehensive networking diagnostics:
 # Cluster info
 kubectl cluster-info dump --output-directory=/tmp/cluster-dump
 
-# CNI configuration
-kubectl get configmap -n kube-system | grep -i cni
+# CNI components
+kubectl get pods -n kube-system -o wide | grep -E "calico|canal|flannel|cilium"
 kubectl get ds -n kube-system
 
-# All services and endpoints
+# All services and EndpointSlices
 kubectl get svc --all-namespaces
-kubectl get endpoints --all-namespaces
+kubectl get endpointslice --all-namespaces
 
 # Network policies
 kubectl get networkpolicies --all-namespaces
 
 # Events related to networking
-kubectl get events --all-namespaces --sort-by='.lastTimestamp' | grep -i -E "network|dns|ingress|service"
+kubectl get events --all-namespaces --sort-by='.metadata.creationTimestamp' | grep -i -E "network|dns|ingress|service"
 ```
 
 ## Troubleshooting Checklist
 
-1. Can pods ping each other by IP?
+1. Can pods reach each other on the required port?
 2. Can pods resolve DNS names?
-3. Do services have endpoints?
+3. Do services have backend endpoints?
 4. Do service selectors match pod labels?
 5. Are network policies blocking traffic?
 6. Is the ingress controller running?
