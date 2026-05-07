@@ -56,6 +56,9 @@ podman run -d \
   -v ms-pgdata:/var/lib/postgresql/data:Z \
   postgres:16
 
+# Wait until PostgreSQL accepts connections
+until podman exec postgres pg_isready -U admin; do sleep 1; done
+
 # Create databases for each service
 podman exec postgres psql -U admin -c "CREATE DATABASE users_db;"
 podman exec postgres psql -U admin -c "CREATE DATABASE products_db;"
@@ -73,13 +76,15 @@ podman run -d \
 
 ```python
 # user-service/main.py
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, EmailStr
+from contextlib import asynccontextmanager
 import os
+import time
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
-
-app = FastAPI(title="User Service", version="1.0.0")
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 # Connect to PostgreSQL using the container name as hostname
 DB_HOST = os.getenv("DB_HOST", "postgres")
@@ -96,10 +101,19 @@ def get_db():
     conn.autocommit = True
     return conn
 
-# Initialize the schema on startup
-@app.on_event("startup")
-def init_db():
-    conn = get_db()
+def wait_for_db(max_retries=30, delay=2):
+    last_error = None
+    for _ in range(max_retries):
+        try:
+            return get_db()
+        except psycopg2.OperationalError as exc:
+            last_error = exc
+            time.sleep(delay)
+    raise last_error
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    conn = wait_for_db()
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -110,6 +124,9 @@ def init_db():
         )
     """)
     conn.close()
+    yield
+
+app = FastAPI(title="User Service", version="1.0.0", lifespan=lifespan)
 
 class UserCreate(BaseModel):
     email: str
@@ -162,7 +179,10 @@ def health():
         conn.close()
         return {"status": "healthy", "service": "user-service"}
     except Exception as e:
-        return {"status": "unhealthy", "error": str(e)}
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": str(e)}
+        )
 ```
 
 ```dockerfile
@@ -201,10 +221,40 @@ const pool = new Pool({
 const redisClient = redis.createClient({
   url: `redis://${process.env.REDIS_HOST || 'redis'}:6379`
 });
-redisClient.connect().catch(console.error);
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function waitForPostgres(maxRetries = 30, delayMs = 2000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+    try {
+      await pool.query('SELECT 1');
+      return;
+    } catch (err) {
+      if (attempt === maxRetries) {
+        throw err;
+      }
+      await sleep(delayMs);
+    }
+  }
+}
+
+async function connectRedis(maxRetries = 30, delayMs = 2000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+    try {
+      await redisClient.connect();
+      return;
+    } catch (err) {
+      if (attempt === maxRetries) {
+        throw err;
+      }
+      await sleep(delayMs);
+    }
+  }
+}
 
 // Initialize the schema
 async function initDB() {
+  await waitForPostgres();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS products (
       id SERIAL PRIMARY KEY,
@@ -216,7 +266,6 @@ async function initDB() {
     )
   `);
 }
-initDB();
 
 // GET /products - List products with Redis caching
 app.get('/products', async (req, res) => {
@@ -293,15 +342,27 @@ app.patch('/products/:id/stock', async (req, res) => {
 
 app.get('/health', async (req, res) => {
   try {
-    await pool.query('SELECT 1');
+    await Promise.all([
+      pool.query('SELECT 1'),
+      redisClient.ping()
+    ]);
     res.json({ status: 'healthy', service: 'product-service' });
   } catch (err) {
-    res.json({ status: 'unhealthy', error: err.message });
+    res.status(503).json({ status: 'unhealthy', error: err.message });
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Product service running on port ${PORT}`);
+async function start() {
+  await Promise.all([initDB(), connectRedis()]);
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Product service running on port ${PORT}`);
+  });
+}
+
+start().catch((err) => {
+  console.error('Failed to start product service', err);
+  process.exit(1);
 });
 ```
 
@@ -313,7 +374,7 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 EXPOSE 8002
-CMD ["npx", "nodemon", "server.js"]
+CMD ["node", "--watch", "server.js"]
 ```
 
 ## Order Service (Node.js/Express)
@@ -340,7 +401,24 @@ const pool = new Pool({
 const USER_SERVICE = process.env.USER_SERVICE_URL || 'http://user-service:8001';
 const PRODUCT_SERVICE = process.env.PRODUCT_SERVICE_URL || 'http://product-service:8002';
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function waitForPostgres(maxRetries = 30, delayMs = 2000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+    try {
+      await pool.query('SELECT 1');
+      return;
+    } catch (err) {
+      if (attempt === maxRetries) {
+        throw err;
+      }
+      await sleep(delayMs);
+    }
+  }
+}
+
 async function initDB() {
+  await waitForPostgres();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS orders (
       id SERIAL PRIMARY KEY,
@@ -353,7 +431,6 @@ async function initDB() {
     )
   `);
 }
-initDB();
 
 // POST /orders - Create an order (calls User and Product services)
 app.post('/orders', async (req, res) => {
@@ -417,13 +494,33 @@ app.get('/health', async (req, res) => {
     await pool.query('SELECT 1');
     res.json({ status: 'healthy', service: 'order-service' });
   } catch (err) {
-    res.json({ status: 'unhealthy', error: err.message });
+    res.status(503).json({ status: 'unhealthy', error: err.message });
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Order service running on port ${PORT}`);
+async function start() {
+  await initDB();
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Order service running on port ${PORT}`);
+  });
+}
+
+start().catch((err) => {
+  console.error('Failed to start order service', err);
+  process.exit(1);
 });
+```
+
+```dockerfile
+# order-service/Containerfile
+FROM node:20-bookworm-slim
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+EXPOSE 8003
+CMD ["node", "--watch", "server.js"]
 ```
 
 ## API Gateway
@@ -438,43 +535,58 @@ const PORT = 8000;
 
 // Service routing table
 const services = {
-  '/api/users': 'http://user-service:8001',
-  '/api/products': 'http://product-service:8002',
-  '/api/orders': 'http://order-service:8003'
+  '/api/users': {
+    target: 'http://user-service:8001',
+    basePath: '/users',
+    health: 'http://user-service:8001/health'
+  },
+  '/api/products': {
+    target: 'http://product-service:8002',
+    basePath: '/products',
+    health: 'http://product-service:8002/health'
+  },
+  '/api/orders': {
+    target: 'http://order-service:8003',
+    basePath: '/orders',
+    health: 'http://order-service:8003/health'
+  }
 };
 
 // Set up proxy routes for each service
-Object.entries(services).forEach(([path, target]) => {
+Object.entries(services).forEach(([path, { target, basePath }]) => {
   app.use(path, createProxyMiddleware({
     target,
     changeOrigin: true,
-    pathRewrite: { [`^${path}`]: path.replace('/api', '') },
-    onError: (err, req, res) => {
-      res.status(503).json({
-        error: 'Service unavailable',
-        service: path
-      });
+    pathRewrite: (requestPath) =>
+      requestPath === '/' ? basePath : `${basePath}${requestPath}`,
+    on: {
+      error: (err, req, res) => {
+        res.status(503).json({
+          error: 'Service unavailable',
+          service: path
+        });
+      }
     }
   }));
 });
 
 // Health check that verifies all services
 app.get('/health', async (req, res) => {
-  const checks = await Promise.allSettled(
-    Object.entries(services).map(async ([path, target]) => {
-      const response = await fetch(`${target}/health`);
-      return { path, status: response.ok ? 'up' : 'down' };
+  const checks = await Promise.all(
+    Object.entries(services).map(async ([path, { health }]) => {
+      try {
+        const response = await fetch(health);
+        return { path, status: response.ok ? 'up' : 'down' };
+      } catch (err) {
+        return { path, status: 'down' };
+      }
     })
   );
 
-  const results = checks.map(c =>
-    c.status === 'fulfilled' ? c.value : { path: 'unknown', status: 'down' }
-  );
-
-  const allHealthy = results.every(r => r.status === 'up');
+  const allHealthy = checks.every(r => r.status === 'up');
   res.status(allHealthy ? 200 : 503).json({
     status: allHealthy ? 'healthy' : 'degraded',
-    services: results
+    services: checks
   });
 });
 
@@ -483,20 +595,30 @@ app.listen(PORT, '0.0.0.0', () => {
 });
 ```
 
+```dockerfile
+# api-gateway/Containerfile
+FROM node:20-bookworm-slim
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+EXPOSE 8000
+CMD ["node", "--watch", "server.js"]
+```
+
 ## Orchestrating with podman-compose
 
 Instead of starting each container manually, use a compose file:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   postgres:
     image: postgres:16
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: adminpass
+      POSTGRES_DB: admin
     ports:
       - "5432:5432"
     volumes:
@@ -578,17 +700,32 @@ services:
 
 networks:
   microservices:
-    driver: bridge
+    external: true
+    name: microservices-net
 
 volumes:
   pgdata:
+```
+
+Create the database init script referenced by the compose file:
+
+```bash
+# init-db.sh
+#!/bin/sh
+set -e
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'EOSQL'
+CREATE DATABASE users_db;
+CREATE DATABASE products_db;
+CREATE DATABASE orders_db;
+EOSQL
 ```
 
 Start everything with one command:
 
 ```bash
 # Install podman-compose
-pip install podman-compose
+pip3 install podman-compose
 
 # Start all services
 podman-compose up -d
@@ -601,6 +738,9 @@ podman-compose logs -f
 
 # Stop everything
 podman-compose down
+
+# Remove everything, including the database volume, to re-run init-db.sh from scratch
+podman-compose down -v
 ```
 
 ## Testing Inter-Service Communication
@@ -636,16 +776,16 @@ When debugging inter-service issues, use these techniques:
 podman-compose logs user-service
 
 # Exec into a service container to test connectivity
-podman exec -it order-service bash
+podman-compose exec order-service sh
 # Inside the container, test connectivity to other services
-curl http://user-service:8001/health
-curl http://product-service:8002/health
+node -e "fetch('http://user-service:8001/health').then(r => r.text()).then(console.log)"
+node -e "fetch('http://product-service:8002/health').then(r => r.text()).then(console.log)"
 
 # Inspect the network to see all connected containers
 podman network inspect microservices-net
 
 # Monitor network traffic between services (requires tcpdump in container)
-podman exec product-service bash -c \
+podman-compose exec product-service sh -c \
   "apt-get update && apt-get install -y tcpdump && tcpdump -i any port 8002 -A"
 ```
 
