@@ -12,7 +12,7 @@ Azure Service Principals are identities created for use with automated tools, CI
 
 ## Understanding Service Principals
 
-A Service Principal is the local representation of an Azure AD Application within a specific tenant or directory. Think of the App Registration as the global identity definition and the Service Principal as its instantiation in your subscription.
+A Service Principal is the local representation of an Azure AD Application within a specific tenant or directory. Think of the App Registration as the global identity definition and the Service Principal as its instantiation in your tenant.
 
 ```mermaid
 graph TD
@@ -69,12 +69,7 @@ resource "azuread_application_password" "cicd_secret" {
   display_name   = "cicd-secret"
 
   # Secret expires after 1 year - plan for rotation
-  end_date = timeadd(timestamp(), "8760h")
-
-  lifecycle {
-    # Prevent accidental deletion of the secret
-    ignore_changes = [end_date]
-  }
+  end_date_relative = "8760h"
 }
 ```
 
@@ -86,9 +81,11 @@ Once created, assign an RBAC role to grant the service principal access to Azure
 # role_assignment.tf
 # Assign the Contributor role at the subscription level
 resource "azurerm_role_assignment" "cicd_contributor" {
-  scope                = data.azurerm_subscription.current.id
-  role_definition_name = "Contributor"
-  principal_id         = azuread_service_principal.cicd_sp.object_id
+  scope                            = data.azurerm_subscription.current.id
+  role_definition_name             = "Contributor"
+  principal_id                     = azuread_service_principal.cicd_sp.object_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
 }
 ```
 
@@ -143,7 +140,7 @@ output "client_secret" {
 ## Best Practices
 
 - Prefer certificate-based authentication over client secrets for production workloads.
-- Set explicit expiry dates on secrets and automate rotation using Key Vault rotation policies.
+- Set explicit expiry dates on secrets and automate rotation using a Key Vault secret rotation workflow.
 - Assign the minimum required role - avoid `Owner` or `Contributor` at subscription scope unless absolutely necessary.
 - Use federated credentials for GitHub Actions and Azure Pipelines to eliminate secrets entirely via OIDC.
 
