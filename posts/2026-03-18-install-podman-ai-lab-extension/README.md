@@ -47,7 +47,7 @@ podman info --format '{{.Host.RemoteSocket.Path}}'
 flatpak install -y flathub io.podman_desktop.PodmanDesktop
 
 # On macOS with Homebrew
-brew install podman-desktop
+brew install --cask podman-desktop
 
 # On Ubuntu/Debian, download the .deb from the official site
 # Visit https://podman-desktop.io/downloads and grab the latest .deb
@@ -75,24 +75,22 @@ Once Podman Desktop is open:
 4. Wait for the download and installation to complete.
 5. The AI Lab icon will appear in the left sidebar.
 
-### Method 2: Install via the CLI
+### Method 2: Install a Custom Extension Image
 
-```bash
-# Install the AI Lab extension directly from the OCI image
-podman desktop extension install ghcr.io/containers/podman-desktop-extension-ai-lab:latest
-
-# Verify the extension is listed
-podman desktop extension list
-```
+1. Navigate to the **Extensions** tab in the left sidebar.
+2. Click **Install custom...**.
+3. Enter the extension image name: `ghcr.io/containers/podman-desktop-extension-ai-lab`.
+4. Click **Install**.
+5. Verify the extension by checking the **Installed** tab on the Extensions page.
 
 ## Verifying the Installation
 
 ```bash
 # Check that the Podman machine has sufficient resources for AI workloads
-podman machine inspect --format '{{.Resources.CPUs}} CPUs, {{.Resources.Memory}}MB RAM'
+podman machine inspect --format '{{.Resources.CPUs}} CPUs, {{.Resources.Memory}} bytes RAM'
 
-# For AI models, you typically need at least 8GB of RAM allocated
-# If your machine has less, increase it
+# For AI Lab, a Podman machine with at least 12GB of RAM and 4 CPUs is recommended.
+# On QEMU-backed machines, if your machine has less, increase it.
 podman machine stop
 podman machine set --memory 12288 --cpus 6
 podman machine start
@@ -100,17 +98,11 @@ podman machine start
 
 ### Confirm Extension Is Active
 
-```bash
-# List installed extensions and check AI Lab status
-podman desktop extension list | grep ai-lab
-
-# Check that the AI Lab backend containers are running
-podman ps --filter "label=ai-lab" --format "{{.Names}}\t{{.Status}}"
-```
+Check the left navigation pane for the Podman AI Lab icon and verify that Podman AI Lab appears in the **Installed** tab on the Extensions page.
 
 ## Configuring the Extension
 
-### Set the Model Storage Directory
+### Check Model Storage Space
 
 ```bash
 # By default, models are stored in the Podman machine
@@ -119,6 +111,7 @@ podman machine ssh df -h /
 
 # If you need more space, increase the disk size
 podman machine stop
+# Disk size can only be increased, and this setting applies to QEMU-backed machines.
 podman machine set --disk-size 100
 podman machine start
 ```
@@ -127,14 +120,14 @@ podman machine start
 
 ```bash
 # Check current resource allocation
-podman machine inspect --format 'CPUs: {{.Resources.CPUs}}, Memory: {{.Resources.Memory}}MB, Disk: {{.Resources.DiskSize}}GB'
+podman machine inspect --format 'CPUs: {{.Resources.CPUs}}, Memory: {{.Resources.Memory}} bytes, Disk: {{.Resources.DiskSize}} bytes'
 
 # Recommended minimums for AI workloads:
 # - CPUs: 4+
-# - Memory: 8192MB+ (8GB)
+# - Memory: 12288MB+ (12GB)
 # - Disk: 50GB+ (models can be large)
 
-# Apply recommended settings
+# Apply recommended settings on QEMU-backed machines
 podman machine stop
 podman machine set --cpus 8 --memory 16384 --disk-size 100
 podman machine start
@@ -145,15 +138,11 @@ podman machine start
 ### Extension Fails to Install
 
 ```bash
-# Clear the extension cache and retry
-podman desktop extension remove ghcr.io/containers/podman-desktop-extension-ai-lab || true
+# Clean up unused Podman resources and retry the installation from Podman Desktop
 podman system prune --volumes -f
 
 # Pull the extension image manually
-podman pull ghcr.io/containers/podman-desktop-extension-ai-lab:latest
-
-# Retry installation
-podman desktop extension install ghcr.io/containers/podman-desktop-extension-ai-lab:latest
+podman pull ghcr.io/containers/podman-desktop-extension-ai-lab
 ```
 
 ### Podman Machine Not Responding
@@ -165,21 +154,15 @@ podman machine rm -f
 podman machine init --cpus 8 --memory 16384 --disk-size 100
 podman machine start
 
-# Reinstall the extension after machine reset
-podman desktop extension install ghcr.io/containers/podman-desktop-extension-ai-lab:latest
+# Reinstall the extension from Extensions > Catalog > Install Podman AI Lab
 ```
 
 ### Check Logs for Errors
 
-```bash
-# View Podman Desktop logs for debugging
-# On macOS
-cat ~/Library/Logs/Podman\ Desktop/main.log | tail -50
-
-# On Linux
-cat ~/.local/share/podman-desktop/logs/main.log | tail -50
-```
+1. Click the **Troubleshooting** icon in the Podman Desktop status bar.
+2. Select the **Logs** tab to view the logs.
+3. Optionally, select **Gather Logs** to save all logs into a `.zip` file.
 
 ## Summary
 
-Installing the Podman AI Lab extension is straightforward with either the graphical Podman Desktop interface or the CLI. The key steps are ensuring Podman and Podman Desktop are installed, allocating sufficient resources to the Podman machine for AI workloads, and installing the extension from the catalog. With the AI Lab extension active, you can begin downloading and running AI models locally without any cloud services.
+Installing the Podman AI Lab extension is straightforward with either the graphical Podman Desktop catalog or the custom extension image flow. The key steps are ensuring Podman and Podman Desktop are installed, allocating sufficient resources to the Podman machine for AI workloads, and installing the extension from the catalog. With the AI Lab extension active, you can begin downloading and running AI models locally without any cloud services.
