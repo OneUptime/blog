@@ -10,7 +10,7 @@ Description: Master the FROM instruction in Podman Containerfiles to choose opti
 
 > The FROM instruction is the foundation of every Containerfile. Choosing the right base image and using FROM effectively can make the difference between a bloated, insecure container and a lean, production-ready one.
 
-Every Containerfile starts with a FROM instruction. It defines the base image that your container will be built upon, and it is arguably the most consequential decision you make when building a container image. The FROM instruction determines your image size, available system libraries, security surface area, and compatibility with your application.
+A valid Containerfile must include a FROM instruction, though global ARG instructions can appear before the first FROM. It defines the base image that your container will be built upon, and it is arguably the most consequential decision you make when building a container image. The FROM instruction determines your image size, available system libraries, security surface area, and compatibility with your application.
 
 In this guide, we will explore how to use the FROM instruction effectively in Podman, covering base image selection, tag strategies, multi-stage builds, and advanced patterns that will help you build better containers.
 
@@ -36,13 +36,13 @@ Here are some common examples:
 
 ```dockerfile
 # Using a tag
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Using a specific digest
-FROM node@sha256:a1b2c3d4e5f6...
+FROM node@sha256:<64-character-digest>
 
 # Naming a build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 ```
 
 ## Choosing the Right Base Image
@@ -54,11 +54,11 @@ The base image you select has cascading effects on everything that follows. Here
 These include a complete Linux distribution with package managers and common utilities:
 
 ```dockerfile
-# Full Ubuntu base (~75MB)
+# Ubuntu base
 FROM ubuntu:24.04
 
-# Full Fedora base (~180MB)
-FROM fedora:40
+# Fedora base with DNF
+FROM fedora:42
 
 RUN dnf install -y python3 python3-pip && dnf clean all
 ```
@@ -70,11 +70,11 @@ Use full distribution images when you need access to a wide range of system pack
 Slim images strip out documentation, extra locales, and uncommon packages:
 
 ```dockerfile
-# Python slim (~50MB vs ~350MB for full)
+# Python slim
 FROM python:3.12-slim
 
-# Node slim (~60MB vs ~350MB for full)
-FROM node:20-slim
+# Node slim
+FROM node:24-slim
 ```
 
 These are a good middle ground when you need a package manager but want to keep the image size reasonable.
@@ -84,11 +84,11 @@ These are a good middle ground when you need a package manager but want to keep 
 Alpine Linux uses musl libc and busybox, producing significantly smaller images:
 
 ```dockerfile
-# Alpine base (~5MB)
-FROM alpine:3.19
+# Alpine base
+FROM alpine:3.23
 
-# Node on Alpine (~130MB vs ~350MB for full)
-FROM node:20-alpine
+# Node on Alpine
+FROM node:24-alpine
 
 RUN apk add --no-cache python3 py3-pip
 ```
@@ -101,16 +101,16 @@ Distroless images contain only your application and its runtime dependencies, wi
 
 ```dockerfile
 # Distroless for Java
-FROM gcr.io/distroless/java21-debian12
+FROM gcr.io/distroless/java21-debian13
 
 # Distroless for Node.js
-FROM gcr.io/distroless/nodejs20-debian12
+FROM gcr.io/distroless/nodejs24-debian13
 
 # Distroless static (for compiled binaries)
-FROM gcr.io/distroless/static-debian12
+FROM gcr.io/distroless/static-debian13
 ```
 
-Distroless images offer the smallest attack surface and are ideal for production deployments of compiled applications.
+Distroless images reduce the attack surface and are ideal for production deployments where you want only the required runtime files.
 
 ### Scratch (Empty Base)
 
@@ -140,19 +140,19 @@ FROM python:3.12
 FROM python:3.12.3-slim
 
 # Best: Pin by digest for full reproducibility
-FROM python:3.12.3-slim@sha256:abcdef123456...
+FROM python:3.12.3-slim@sha256:<64-character-digest>
 ```
 
-For production images, pin at least to a minor version. For critical infrastructure, pin by digest. You can find digests using:
-
-```bash
-podman inspect --format='{{.Digest}}' python:3.12.3-slim
-```
-
-Or pull and check:
+For production images, pin at least to a minor version. For critical infrastructure, pin by digest. After pulling the image, you can find its digest using:
 
 ```bash
 podman pull python:3.12.3-slim
+podman image inspect --format '{{ .Digest }}' python:3.12.3-slim
+```
+
+Or list local images with digests:
+
+```bash
 podman images --digests python
 ```
 
@@ -162,7 +162,7 @@ Multi-stage builds use multiple FROM instructions to separate build-time depende
 
 ```dockerfile
 # Stage 1: Build the application
-FROM rust:1.77-alpine AS builder
+FROM rust:1.95-alpine AS builder
 
 RUN apk add --no-cache musl-dev
 WORKDIR /app
@@ -171,7 +171,7 @@ COPY src/ ./src/
 RUN cargo build --release
 
 # Stage 2: Create the runtime image
-FROM alpine:3.19
+FROM alpine:3.23
 
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /app/target/release/myapp /usr/local/bin/myapp
@@ -187,11 +187,10 @@ The final image contains only the compiled binary and Alpine, not the entire Rus
 You can copy files from any image, not just previous stages:
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.23
 
-# Copy nginx binary from the official nginx image
-COPY --from=nginx:alpine /usr/sbin/nginx /usr/sbin/nginx
-COPY --from=nginx:alpine /etc/nginx /etc/nginx
+# Copy a config file from the official nginx image
+COPY --from=nginx:latest /etc/nginx/nginx.conf /nginx.conf
 ```
 
 ### Multiple Build Stages for Complex Applications
@@ -200,7 +199,7 @@ For applications with multiple components, you can use several build stages:
 
 ```dockerfile
 # Stage 1: Build frontend
-FROM node:20-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -208,7 +207,7 @@ COPY frontend/ .
 RUN npm run build
 
 # Stage 2: Build backend
-FROM golang:1.22-alpine AS backend-builder
+FROM golang:1.26-alpine AS backend-builder
 WORKDIR /backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
@@ -216,7 +215,7 @@ COPY backend/ .
 RUN CGO_ENABLED=0 go build -o server .
 
 # Stage 3: Final runtime image
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
@@ -230,7 +229,7 @@ CMD ["./server"]
 
 ## Using Build Arguments with FROM
 
-You can parameterize the FROM instruction using ARG. This is the only instruction that can appear before FROM:
+You can parameterize the FROM instruction using ARG. ARG is the only instruction that can appear before FROM:
 
 ```dockerfile
 ARG BASE_IMAGE=python
@@ -255,7 +254,7 @@ podman build -t myapp .
 # Use Alpine variant
 podman build --build-arg BASE_TAG=3.12-alpine -t myapp:alpine .
 
-# Use a completely different base
+# Use a different Python version
 podman build --build-arg BASE_IMAGE=python --build-arg BASE_TAG=3.11-slim -t myapp:py311 .
 ```
 
@@ -264,12 +263,12 @@ podman build --build-arg BASE_IMAGE=python --build-arg BASE_TAG=3.11-slim -t mya
 When building for multiple architectures, you can specify the target platform:
 
 ```dockerfile
-FROM --platform=linux/amd64 golang:1.22-alpine AS builder-amd64
+FROM --platform=linux/amd64 golang:1.26-alpine AS builder-amd64
 WORKDIR /app
 COPY . .
 RUN GOARCH=amd64 go build -o app-amd64 .
 
-FROM --platform=linux/arm64 golang:1.22-alpine AS builder-arm64
+FROM --platform=linux/arm64 golang:1.26-alpine AS builder-arm64
 WORKDIR /app
 COPY . .
 RUN GOARCH=arm64 go build -o app-arm64 .
@@ -278,23 +277,26 @@ RUN GOARCH=arm64 go build -o app-arm64 .
 Or build multi-architecture images with Podman:
 
 ```bash
-podman build --platform linux/amd64,linux/arm64 -t myapp:latest .
+podman build --platform linux/amd64,linux/arm64 --manifest myapp .
 ```
+
+If a build stage runs `RUN` instructions for a non-native architecture, Podman also needs emulation support such as `qemu-user-static`.
 
 ## Verifying and Inspecting Base Images
 
 Before using a base image, inspect it to understand what you are building on:
 
 ```bash
-# Check image layers and size
-podman image inspect node:20-alpine
+podman pull node:24-alpine
+
+# Check image configuration and size
+podman image inspect node:24-alpine
 
 # View image history (layers)
-podman image history node:20-alpine
+podman image history node:24-alpine
 
 # Check for known vulnerabilities (requires external tools)
-podman pull node:20-alpine
-trivy image node:20-alpine
+trivy image node:24-alpine
 ```
 
 ## Common Mistakes to Avoid
@@ -306,20 +308,20 @@ Here are patterns to watch out for when using FROM:
 FROM ubuntu:latest  # Don't do this
 
 # Mistake 2: Using unnecessarily large base images
-FROM ubuntu:24.04   # 75MB when you only need a static binary
+FROM ubuntu:24.04   # When you only need a static binary
 # Use scratch or distroless instead
 
 # Mistake 3: Not using multi-stage builds
-FROM golang:1.22
+FROM golang:1.26
 WORKDIR /app
 COPY . .
 RUN go build -o server .
 CMD ["./server"]
-# The Go toolchain (~800MB) is in the final image
+# The Go toolchain is in the final image
 
 # Mistake 4: Ignoring image update schedule
-FROM node:20.11.0-alpine  # Will never get security patches
-# Use node:20-alpine for automatic patch updates
+FROM python:3.12.3-slim  # Will never get 3.12.x updates automatically
+# Use python:3.12-slim for automatic patch updates
 ```
 
 ## Conclusion
