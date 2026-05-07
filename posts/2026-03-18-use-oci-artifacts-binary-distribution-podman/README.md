@@ -41,11 +41,14 @@ func main() {
 }
 EOF
 
+# Initialize a module so package-based builds work later in the tutorial
+go mod init example.com/myapp
+
 # Build the binary
 go build -o myapp hello.go
 
 # Add the binary to the Podman artifact store
-podman artifact add registry.example.com/myorg/myapp-binary:v1.0-linux-amd64 myapp
+podman artifact add --replace registry.example.com/myorg/myapp-binary:v1.0-linux-amd64 myapp
 
 # Verify the artifact was added
 podman artifact ls | grep myapp-binary
@@ -74,7 +77,7 @@ echo "# MyApp v1.0 Release Notes" > release/docs/CHANGELOG.txt
 tar -czf myapp-v1.0-linux-amd64.tar.gz -C release .
 
 # Add the archive as an artifact
-podman artifact add registry.example.com/myorg/myapp-release:v1.0-linux-amd64 \
+podman artifact add --replace registry.example.com/myorg/myapp-release:v1.0-linux-amd64 \
     myapp-v1.0-linux-amd64.tar.gz
 ```
 
@@ -86,17 +89,17 @@ Distribute binaries for multiple platforms using platform-specific tags.
 # Build and package for each platform
 # Linux AMD64
 GOOS=linux GOARCH=amd64 go build -o myapp-linux-amd64 hello.go
-podman artifact add registry.example.com/myorg/myapp-binary:v1.0-linux-amd64 \
+podman artifact add --replace registry.example.com/myorg/myapp-binary:v1.0-linux-amd64 \
     myapp-linux-amd64
 
 # Linux ARM64
 GOOS=linux GOARCH=arm64 go build -o myapp-linux-arm64 hello.go
-podman artifact add registry.example.com/myorg/myapp-binary:v1.0-linux-arm64 \
+podman artifact add --replace registry.example.com/myorg/myapp-binary:v1.0-linux-arm64 \
     myapp-linux-arm64
 
 # macOS AMD64
 GOOS=darwin GOARCH=amd64 go build -o myapp-darwin-amd64 hello.go
-podman artifact add registry.example.com/myorg/myapp-binary:v1.0-darwin-amd64 \
+podman artifact add --replace registry.example.com/myorg/myapp-binary:v1.0-darwin-amd64 \
     myapp-darwin-amd64
 
 # Push all platform variants
@@ -116,11 +119,11 @@ sha256sum myapp-linux-arm64 >> checksums.txt
 sha256sum myapp-darwin-amd64 >> checksums.txt
 
 # Add checksums as a separate artifact
-podman artifact add registry.example.com/myorg/myapp-checksums:v1.0 checksums.txt
+podman artifact add --replace registry.example.com/myorg/myapp-checksums:v1.0 checksums.txt
 
 # Or bundle the binary and checksum together
 sha256sum myapp-linux-amd64 > myapp-linux-amd64.sha256
-podman artifact add registry.example.com/myorg/myapp-binary:v1.0-linux-amd64-verified \
+podman artifact add --replace registry.example.com/myorg/myapp-binary:v1.0-linux-amd64-verified \
     myapp-linux-amd64 myapp-linux-amd64.sha256
 ```
 
@@ -147,23 +150,25 @@ On the consumer side, pull the binary artifact and extract it.
 
 ```bash
 #!/bin/bash
-# Install script: download and install myapp from the OCI registry
+# Download script: fetch myapp from the OCI registry
 
 REGISTRY="registry.example.com"
 VERSION="v1.0"
 OS="linux"
 ARCH="amd64"
+ARTIFACT="${REGISTRY}/myorg/myapp-binary:${VERSION}-${OS}-${ARCH}"
+TARGET="./myapp"
 
 echo "Downloading myapp ${VERSION} for ${OS}/${ARCH}..."
 
-# Pull the binary artifact
-podman artifact pull "${REGISTRY}/myorg/myapp-binary:${VERSION}-${OS}-${ARCH}"
+# Pull the binary artifact into the local artifact store
+podman artifact pull "$ARTIFACT"
 
-# Inspect to get the filename
-podman artifact inspect "${REGISTRY}/myorg/myapp-binary:${VERSION}-${OS}-${ARCH}" | \
-    jq -r '.layers[].annotations["org.opencontainers.image.title"]'
+# Extract the single-file artifact to a local executable
+podman artifact extract "$ARTIFACT" "$TARGET"
+chmod +x "$TARGET"
 
-echo "Binary artifact downloaded successfully"
+echo "Binary artifact extracted to ${TARGET}"
 ```
 
 ## Release Automation Script
@@ -192,7 +197,7 @@ for platform in "${PLATFORMS[@]}"; do
     GOOS=$OS GOARCH=$ARCH go build -o "$BINARY" .
 
     echo "Adding artifact..."
-    podman artifact add "${REGISTRY}/${REPO}-binary:${VERSION}-${OS}-${ARCH}" "$BINARY"
+    podman artifact add --replace "${REGISTRY}/${REPO}-binary:${VERSION}-${OS}-${ARCH}" "$BINARY"
 
     echo "Pushing artifact..."
     podman artifact push "${REGISTRY}/${REPO}-binary:${VERSION}-${OS}-${ARCH}"
