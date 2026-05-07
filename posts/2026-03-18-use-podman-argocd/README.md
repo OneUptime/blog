@@ -87,9 +87,9 @@ cd /tmp/gitops
 sed -i "s|image: ${REGISTRY}/${APP_NAME}:.*|image: ${NEW_IMAGE}|g" \
   "apps/${APP_NAME}/deployment.yaml"
 
-# Alternatively, update a Kustomize overlay
-cd "apps/${APP_NAME}/overlays/production"
-kustomize edit set image "${REGISTRY}/${APP_NAME}=${NEW_IMAGE}"
+# Or, if the ArgoCD Application points to a Kustomize overlay:
+# cd "apps/${APP_NAME}/overlays/production"
+# kustomize edit set image "${REGISTRY}/${APP_NAME}=${NEW_IMAGE}"
 
 # Commit and push the change
 git config user.email "ci-bot@example.com"
@@ -187,6 +187,9 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -195,17 +198,19 @@ jobs:
       - name: Build image
         run: |
           VERSION=$(echo ${{ github.sha }} | cut -c1-8)
+          IMAGE_ID=$(echo "ghcr.io/${{ github.repository }}" | tr '[A-Z]' '[a-z]')
           podman build \
-            --tag ghcr.io/${{ github.repository }}:${VERSION} \
+            --tag ${IMAGE_ID}:${VERSION} \
             .
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "IMAGE_ID=${IMAGE_ID}" >> "$GITHUB_ENV"
 
       # Push to GHCR
       - name: Push image
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | \
             podman login ghcr.io -u ${{ github.actor }} --password-stdin
-          podman push ghcr.io/${{ github.repository }}:${{ env.VERSION }}
+          podman push "${IMAGE_ID}:${VERSION}"
 
       # Update GitOps repository to trigger ArgoCD
       - name: Update GitOps manifests
@@ -214,13 +219,13 @@ jobs:
           cd /tmp/gitops
 
           # Update the image tag
-          sed -i "s|image: ghcr.io/${{ github.repository }}:.*|image: ghcr.io/${{ github.repository }}:${{ env.VERSION }}|g" \
+          sed -i "s|image: ${IMAGE_ID}:.*|image: ${IMAGE_ID}:${VERSION}|g" \
             apps/myapp/deployment.yaml
 
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git add -A
-          git commit -m "deploy: myapp to ${{ env.VERSION }}"
+          git commit -m "deploy: myapp to ${VERSION}"
           git push
 ```
 
