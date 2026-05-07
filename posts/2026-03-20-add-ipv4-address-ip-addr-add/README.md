@@ -47,7 +47,7 @@ ip -4 addr show eth0
 ## Add IP with a Label
 
 ```bash
-# Labels create virtual interface aliases (e.g., eth0:1)
+# Labels tag the address; eth0:1 is a common label format
 ip addr add 192.168.1.101/24 dev eth0 label eth0:1
 
 # Verify
@@ -98,7 +98,7 @@ ip route show | grep 192.168.1.0
 # /etc/netplan/01-netcfg.yaml → addresses: [192.168.1.100/24]
 
 # nmcli (RHEL/NetworkManager)
-# nmcli con mod "eth0" +ipv4.addresses 192.168.1.100/24
+# nmcli con mod "eth0" ipv4.method manual ipv4.addresses 192.168.1.100/24
 
 # systemd-networkd
 # /etc/systemd/network/eth0.network → [Address] Address=192.168.1.100/24
