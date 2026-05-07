@@ -49,7 +49,7 @@ nmcli connection up "Wired connection 1"
 ## Add Secondary IP on a Different Subnet
 
 ```bash
-# Secondary IP on a different subnet (no gateway needed for secondary)
+# Secondary IP on a different directly connected subnet
 nmcli connection modify "Wired connection 1" \
     +ipv4.addresses 10.0.0.50/24
 
@@ -69,9 +69,9 @@ nmcli connection up "Wired connection 1"
 ## Replace All IPs (Primary + Secondary)
 
 ```bash
-# Set only these IPs, removing all others
+# Set only these stored IPv4 addresses, removing all others from the profile
 nmcli connection modify "Wired connection 1" \
-    ipv4.addresses "192.168.1.100/24 192.168.1.101/24 192.168.1.102/24"
+    ipv4.addresses "192.168.1.100/24, 192.168.1.101/24, 192.168.1.102/24"
 
 nmcli connection up "Wired connection 1"
 ```
