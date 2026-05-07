@@ -23,10 +23,10 @@ Portainer administrators can:
 ## Assign Administrator Role via the UI
 
 1. Log in as an existing administrator
-2. Navigate to **Users** in the left sidebar
-3. Click on the user you want to promote
-4. Change **Role** from **Standard user** to **Administrator**
-5. Click **Update user**
+2. From the menu expand **User-related** then select **Users**
+3. Click the username of the user you want to promote to administrator
+4. Toggle **Administrator** on
+5. Click **Save**
 
 ## Assign Administrator via API
 
