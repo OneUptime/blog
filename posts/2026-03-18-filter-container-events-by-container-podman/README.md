@@ -64,9 +64,9 @@ podman run -d --name frontend nginx:latest
 podman run -d --name backend alpine sleep 300
 podman run -d --name database alpine sleep 300
 
-# Monitor events for two specific containers using grep
+# Monitor events for two specific containers using jq
 podman events --format json | jq --unbuffered \
-    'select(.Actor.Attributes.name == "frontend" or .Actor.Attributes.name == "backend")'
+    'select(.Name == "frontend" or .Name == "backend")'
 ```
 
 ## Combining Container Filter with Event Filters
@@ -77,8 +77,8 @@ Narrow down further by combining the container filter with specific event types.
 # Monitor only start and stop events for a specific container
 podman events --filter container=myapp --filter event=start --filter event=stop
 
-# Monitor die events for a specific container (useful for crash detection)
-podman events --filter container=myapp --filter event=die
+# Monitor died events for a specific container (useful for crash detection)
+podman events --filter container=myapp --filter event=died
 
 # Monitor exec events for a specific container (track shell access)
 podman events --filter container=myapp --filter event=exec
@@ -132,7 +132,7 @@ fi
 podman events --filter container="$CONTAINER_NAME" --format json | \
 while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    timestamp=$(echo "$event" | jq -r '.time')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
     # Log the event
     log_entry="[${timestamp}] ${CONTAINER_NAME}: ${status}"
@@ -140,7 +140,7 @@ while IFS= read -r event; do
 
     # Alert on critical events
     case "$status" in
-        die|oom)
+        died)
             echo "ALERT: Container ${CONTAINER_NAME} experienced ${status} event!" >&2
             ;;
     esac
@@ -159,15 +159,16 @@ Look back at past events for a specific container.
 
 ```bash
 # View events for a container from the last hour
-podman events --filter container=myapp --since 1h
+podman events --filter container=myapp --since 1h --stream=false
 
 # View events for a container from a specific time range
 podman events --filter container=myapp \
-    --since "2026-03-18T08:00:00" \
-    --until "2026-03-18T12:00:00"
+    --since "2026-03-18T08:00:00Z" \
+    --until "2026-03-18T12:00:00Z" \
+    --stream=false
 
 # Count events for a container in the last 24 hours
-podman events --filter container=myapp --since 24h --format json | wc -l
+podman events --filter container=myapp --since 24h --stream=false --format json | wc -l
 ```
 
 ## Using Labels to Group Container Monitoring
