@@ -181,7 +181,7 @@ def cleanup():
     run_cmd("podman system prune -f", check=False)
 
 if __name__ == "__main__":
-    image = os.environ.get("IMAGE_NAME", "myapp:latest")
+    image = os.environ.get("IMAGE_NAME", "myapp")
     success = build_and_test(image)
     cleanup()
     sys.exit(0 if success else 1)
@@ -212,7 +212,7 @@ podman run --rm -it \
   --security-opt label=disable \
   --device /dev/fuse \
   --user podman \
-  -v build-cache:/home/podman/.local/share/containers:Z \
+  -v build-cache:/home/podman/.local/share/containers:Z,U \
   quay.io/podman/stable \
   bash -c '
     podman pull docker.io/library/golang:1.21
@@ -237,7 +237,7 @@ Then exec into it:
 
 ```bash
 podman exec -it podman-host bash -c '
-  systemctl --user enable --now podman.socket
+  systemctl enable --now podman.socket
   podman run --rm alpine echo "Nested with systemd"
 '
 ```
@@ -267,7 +267,7 @@ podman run --rm \
   --security-opt label=disable \
   --device /dev/fuse \
   --user podman \
-  -v podman-storage:/home/podman/.local/share/containers:Z \
+  -v podman-storage:/home/podman/.local/share/containers:Z,U \
   quay.io/podman/stable \
   podman pull docker.io/library/python:3.11-slim
 
@@ -276,7 +276,7 @@ podman run --rm \
   --security-opt label=disable \
   --device /dev/fuse \
   --user podman \
-  -v podman-storage:/home/podman/.local/share/containers:Z \
+  -v podman-storage:/home/podman/.local/share/containers:Z,U \
   quay.io/podman/stable \
   podman run --rm python:3.11-slim python3 -c "print('cached image')"
 ```
