@@ -31,7 +31,7 @@ ip route add default via 192.168.1.1
 ## Replacing an Existing Route
 
 ```bash
-# Replace route even if it already exists
+# Replace route, or add it if it does not exist
 ip route replace 10.0.0.0/24 via 192.168.1.100
 ```
 
@@ -47,7 +47,7 @@ ip route get 10.0.0.5
 
 ## Making Static Routes Persistent
 
-### Ubuntu/Debian (Netplan)
+### Ubuntu / Debian systems using Netplan
 
 ```yaml
 # /etc/netplan/01-static-routes.yaml
@@ -82,17 +82,22 @@ systemctl restart network
 
 ```bash
 # Using nmcli
-nmcli connection modify eth0 +ipv4.routes "10.0.0.0/24 192.168.1.254"
-nmcli connection up eth0
+nmcli connection modify <connection_name> +ipv4.routes "10.0.0.0/24 192.168.1.254"
+nmcli connection up <connection_name>
 
 # Verify
-nmcli connection show eth0 | grep route
+nmcli connection show <connection_name> | grep ipv4.routes
 ```
 
 ### systemd-networkd
 
 ```ini
 # /etc/systemd/network/10-eth0.network
+[Match]
+Name=eth0
+
+[Network]
+
 [Route]
 Destination=10.0.0.0/24
 Gateway=192.168.1.254
@@ -132,15 +137,18 @@ NETWORKS=(
 )
 
 for net in "${NETWORKS[@]}"; do
-    ip route add "$net" via "$GATEWAY" 2>/dev/null
-    echo "Added: $net via $GATEWAY"
+    if ip route add "$net" via "$GATEWAY" 2>/dev/null; then
+        echo "Added: $net via $GATEWAY"
+    else
+        echo "Not added: $net via $GATEWAY"
+    fi
 done
 ```
 
 ## Key Takeaways
 
 - `ip route add NETWORK via GATEWAY` adds a temporary static route.
-- `ip route replace` adds or replaces an existing route atomically.
+- `ip route replace` changes an existing route or adds a new one.
 - Persist routes with Netplan (Ubuntu), nmcli (RHEL 8+), or systemd-networkd.
 - Use `nexthop` for ECMP (Equal-Cost Multi-Path) routes.
 
