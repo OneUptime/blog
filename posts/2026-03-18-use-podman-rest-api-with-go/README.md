@@ -65,11 +65,23 @@ func main() {
     }
     defer resp.Body.Close()
 
-    var info map[string]interface{}
-    json.NewDecoder(resp.Body).Decode(&info)
+    if resp.StatusCode != http.StatusOK {
+        body, _ := io.ReadAll(resp.Body)
+        fmt.Fprintf(os.Stderr, "Unexpected status %d: %s\n", resp.StatusCode, body)
+        os.Exit(1)
+    }
 
-    host := info["host"].(map[string]interface{})
-    fmt.Printf("Connected to: %s\n", host["hostname"])
+    var info struct {
+        Host struct {
+            Hostname string `json:"hostname"`
+        } `json:"host"`
+    }
+    if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+        fmt.Fprintf(os.Stderr, "Decode error: %v\n", err)
+        os.Exit(1)
+    }
+
+    fmt.Printf("Connected to: %s\n", info.Host.Hostname)
 }
 ```
 
@@ -83,6 +95,7 @@ package main
 import (
     "bytes"
     "context"
+    "encoding/binary"
     "encoding/json"
     "fmt"
     "io"
@@ -187,6 +200,11 @@ func (c *PodmanClient) ListContainers(all bool) ([]Container, error) {
     }
     defer resp.Body.Close()
 
+    if resp.StatusCode != http.StatusOK {
+        body, _ := io.ReadAll(resp.Body)
+        return nil, fmt.Errorf("list failed (HTTP %d): %s", resp.StatusCode, body)
+    }
+
     var containers []Container
     if err := json.NewDecoder(resp.Body).Decode(&containers); err != nil {
         return nil, fmt.Errorf("decode response: %w", err)
@@ -208,7 +226,9 @@ func (c *PodmanClient) CreateContainer(spec ContainerSpec) (*CreateResponse, err
     }
 
     var result CreateResponse
-    json.NewDecoder(resp.Body).Decode(&result)
+    if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+        return nil, fmt.Errorf("decode create response: %w", err)
+    }
     return &result, nil
 }
 
@@ -220,7 +240,7 @@ func (c *PodmanClient) StartContainer(name string) error {
     }
     defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+    if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotModified {
         body, _ := io.ReadAll(resp.Body)
         return fmt.Errorf("start failed (HTTP %d): %s", resp.StatusCode, body)
     }
@@ -236,7 +256,7 @@ func (c *PodmanClient) StopContainer(name string, timeout int) error {
     }
     defer resp.Body.Close()
 
-    if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+    if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotModified {
         body, _ := io.ReadAll(resp.Body)
         return fmt.Errorf("stop failed (HTTP %d): %s", resp.StatusCode, body)
     }
@@ -267,6 +287,11 @@ func (c *PodmanClient) InspectContainer(name string) (*ContainerInspect, error) 
     }
     defer resp.Body.Close()
 
+    if resp.StatusCode != http.StatusOK {
+        body, _ := io.ReadAll(resp.Body)
+        return nil, fmt.Errorf("inspect failed (HTTP %d): %s", resp.StatusCode, body)
+    }
+
     var inspect ContainerInspect
     if err := json.NewDecoder(resp.Body).Decode(&inspect); err != nil {
         return nil, fmt.Errorf("decode inspect: %w", err)
@@ -274,7 +299,22 @@ func (c *PodmanClient) InspectContainer(name string) (*ContainerInspect, error) 
     return &inspect, nil
 }
 
-// GetLogs retrieves container logs
+// readLogFrame reads a single Podman log frame from the Libpod log stream.
+func readLogFrame(r io.Reader) ([]byte, error) {
+    var header [8]byte
+    if _, err := io.ReadFull(r, header[:]); err != nil {
+        return nil, err
+    }
+
+    frameSize := binary.BigEndian.Uint32(header[4:])
+    frame := make([]byte, frameSize)
+    if _, err := io.ReadFull(r, frame); err != nil {
+        return nil, fmt.Errorf("read log frame: %w", err)
+    }
+    return frame, nil
+}
+
+// GetLogs retrieves container logs from the Libpod log stream
 func (c *PodmanClient) GetLogs(name string, tail int) (string, error) {
     endpoint := fmt.Sprintf("/containers/%s/logs?stdout=true&stderr=true&tail=%d", name, tail)
     resp, err := c.doRequest("GET", endpoint, nil)
@@ -283,11 +323,23 @@ func (c *PodmanClient) GetLogs(name string, tail int) (string, error) {
     }
     defer resp.Body.Close()
 
-    body, err := io.ReadAll(resp.Body)
-    if err != nil {
-        return "", fmt.Errorf("read logs: %w", err)
+    if resp.StatusCode != http.StatusOK {
+        body, _ := io.ReadAll(resp.Body)
+        return "", fmt.Errorf("logs failed (HTTP %d): %s", resp.StatusCode, body)
     }
-    return string(body), nil
+
+    var logs bytes.Buffer
+    for {
+        frame, err := readLogFrame(resp.Body)
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return "", fmt.Errorf("read logs: %w", err)
+        }
+        logs.Write(frame)
+    }
+    return logs.String(), nil
 }
 ```
 
@@ -383,7 +435,7 @@ func stopAllContainers(client *PodmanClient) error {
 
 ## Streaming Logs
 
-Stream container logs using Go's streaming HTTP support:
+Stream container logs by reading the framed Libpod log stream:
 
 ```go
 func streamLogs(client *PodmanClient, containerName string) error {
@@ -395,18 +447,20 @@ func streamLogs(client *PodmanClient, containerName string) error {
     }
     defer resp.Body.Close()
 
-    buf := make([]byte, 4096)
+    if resp.StatusCode != http.StatusOK {
+        body, _ := io.ReadAll(resp.Body)
+        return fmt.Errorf("stream logs failed (HTTP %d): %s", resp.StatusCode, body)
+    }
+
     for {
-        n, err := resp.Body.Read(buf)
-        if n > 0 {
-            fmt.Print(string(buf[:n]))
-        }
+        frame, err := readLogFrame(resp.Body)
         if err == io.EOF {
             break
         }
         if err != nil {
             return fmt.Errorf("read log stream: %w", err)
         }
+        fmt.Print(string(frame))
     }
     return nil
 }
