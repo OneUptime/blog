@@ -10,7 +10,7 @@ Description: Learn how to use the VOLUME instruction in Podman Containerfiles to
 
 > The VOLUME instruction creates mount points for persistent data in your container images. Understanding how volumes work in Podman is essential for applications that need to store data beyond the container lifecycle.
 
-Containers are ephemeral by design. When a container stops or is removed, all data written to the container's filesystem disappears. The VOLUME instruction in a Containerfile declares mount points where persistent or shared data should be stored, ensuring that important data survives container restarts and removals.
+Containers are ephemeral by design. Data written to a container's writable layer persists while the container exists, but it is lost when the container is removed. The VOLUME instruction in a Containerfile declares mount points where persistent or shared data should be stored, so that data can live outside the container's writable layer when the volume itself is preserved.
 
 This guide covers the VOLUME instruction in Podman Containerfiles, explaining how volumes work, when to use the VOLUME instruction versus runtime volume mounts, and best practices for managing persistent data.
 
@@ -34,7 +34,7 @@ VOLUME ["/data", "/logs", "/config"]
 
 ## What VOLUME Does
 
-The VOLUME instruction creates a mount point at the specified path. When a container is created from the image, Podman automatically creates an anonymous volume and mounts it at that path:
+The VOLUME instruction creates a mount point at the specified path. By default, when a container is created from the image and that path is not overridden at runtime, Podman creates an anonymous volume and mounts it at that path:
 
 ```dockerfile
 FROM postgres:16-alpine
@@ -123,7 +123,7 @@ Understanding the specific behavior of the VOLUME instruction helps you use it c
 
 ### Data Initialization
 
-When a named or anonymous volume is first mounted, Podman copies the existing data from the image into the volume:
+When a newly created named or anonymous Podman-managed volume is first mounted, Podman copies the existing data from the image into the volume by default:
 
 ```dockerfile
 FROM alpine:3.19
@@ -137,24 +137,23 @@ RUN echo "initial data" > data.txt
 VOLUME /data
 ```
 
-The first time a container starts, `config.txt` and `data.txt` are copied into the volume. Subsequent containers using the same volume see the persisted data.
+The first time a container starts with a newly created internal volume, `config.txt` and `data.txt` are copied into the volume. Subsequent containers using the same volume see the persisted data.
 
 ### Instructions After VOLUME
 
-Any changes to a VOLUME path in subsequent Containerfile instructions are silently discarded:
+With current Podman builds, changes to a VOLUME path made by later `RUN` instructions are kept by default. If you build with `podman build --compat-volumes`, Podman reverts `RUN` changes in VOLUME paths to match legacy behavior:
 
 ```dockerfile
 FROM alpine:3.19
 
 VOLUME /data
 
-# WARNING: This change will NOT be in the final image
+# Kept by default in current Podman builds
 RUN echo "important" > /data/file.txt
-# The file is written to the anonymous volume during build,
-# but a new volume is created when the container runs
+# If you build with --compat-volumes, RUN changes under /data are reverted
 ```
 
-Always make file changes before the VOLUME instruction:
+For maximum compatibility across builders, it is still safest to make file changes before the VOLUME instruction:
 
 ```dockerfile
 FROM alpine:3.19
@@ -387,11 +386,11 @@ Without these labels, the container may get "permission denied" errors when acce
 ## Common Mistakes
 
 ```dockerfile
-# Mistake 1: Modifying volume paths after VOLUME declaration
+# Mistake 1: Relying on builder-specific behavior after VOLUME declaration
 VOLUME /data
-RUN echo "config" > /data/config.txt  # Silently discarded!
+RUN echo "config" > /data/config.txt  # Kept by default in current Podman builds, but not portable
 
-# Fix: Create files before VOLUME
+# Safer: Create files before VOLUME
 RUN mkdir -p /data && echo "config" > /data/config.txt
 VOLUME /data
 
@@ -414,4 +413,4 @@ USER appuser
 
 ## Conclusion
 
-The VOLUME instruction declares mount points for persistent data in your container images. It creates anonymous volumes automatically, initializes them with existing image data, and signals to users that the path contains important state. Use VOLUME for paths that genuinely need persistence, like database files and user uploads. Set permissions and create default content before the VOLUME declaration, as changes after it are discarded. For maximum control over storage, prefer named volumes and bind mounts at runtime with `podman run -v`. Understand the distinction between the VOLUME instruction as documentation and declaration versus runtime volume mounts as the operational mechanism for data persistence.
+The VOLUME instruction declares mount points for data that should live outside the container's writable layer. By default, Podman creates anonymous volumes for image-defined VOLUME paths, initializes newly created internal volumes with existing image data, and signals to users that the path contains important state. Use VOLUME for paths that genuinely need persistence, like database files and user uploads. Set permissions and create default content before the VOLUME declaration for maximum compatibility across builders, because behavior after VOLUME can vary. For maximum control over storage, prefer named volumes and bind mounts at runtime with `podman run -v`. Understand the distinction between the VOLUME instruction as documentation and declaration versus runtime volume mounts as the operational mechanism for data persistence.
