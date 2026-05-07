@@ -25,7 +25,7 @@ which slirp4netns
 slirp4netns --version
 
 # Verify Podman can use it
-podman info --format '{{ .Host.Slirp4NetNs.Executable }}'
+podman info | grep -A3 slirp4netns
 ```
 
 ## Using slirp4netns Explicitly
@@ -38,7 +38,8 @@ podman run -d --name web \
   docker.io/library/nginx:latest
 
 # Verify connectivity
-podman exec web ping -c 3 8.8.8.8
+podman run --rm --network slirp4netns \
+  docker.io/library/alpine:latest ping -c 3 8.8.8.8
 curl http://localhost:8080
 ```
 
@@ -66,10 +67,10 @@ podman run -d --name app3 \
 slirp4netns supports different port handler backends:
 
 ```bash
-# Use rootlesskit port handler (default on some systems)
-podman run -d --name web \
+# Use rootlesskit port handler (the default)
+podman run -d --name web-rootlesskit \
   --network slirp4netns:port_handler=rootlesskit \
-  -p 8080:80 \
+  -p 8082:80 \
   docker.io/library/nginx:latest
 
 # Use slirp4netns built-in port handler
@@ -87,7 +88,7 @@ podman run --rm --network slirp4netns \
   docker.io/library/alpine:latest ip route show
 # default via 10.0.2.2
 
-# Map the host gateway to a hostname
+# Allow access to services bound to the host loopback address
 podman run --rm \
   --network slirp4netns:allow_host_loopback=true \
   docker.io/library/alpine:latest ping -c 2 10.0.2.2
@@ -118,7 +119,7 @@ podman run --rm --network slirp4netns \
 # Configure in containers.conf
 # Edit ~/.config/containers/containers.conf
 
-# [containers]
+# [network]
 # default_rootless_network_cmd = "slirp4netns"
 ```
 
@@ -133,7 +134,7 @@ podman run --rm --network slirp4netns \
 # For better performance, consider switching to pasta
 podman run -d --name fast-web \
   --network pasta \
-  -p 8080:80 \
+  -p 8083:80 \
   docker.io/library/nginx:latest
 ```
 
