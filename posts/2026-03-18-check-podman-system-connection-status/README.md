@@ -28,6 +28,7 @@ podman system connection ls
 # - URI: the connection endpoint
 # - Identity: SSH key used for authentication
 # - Default: whether this is the default connection
+# - ReadWrite: whether Podman can modify this connection
 ```
 
 ## Checking the Default Connection
@@ -36,7 +37,7 @@ Identify which connection is currently active.
 
 ```bash
 # Show the default connection
-podman system connection ls --format '{{range .}}{{if .Default}}{{.Name}}: {{.URI}}{{end}}{{end}}'
+podman system connection ls --format '{{if .Default}}{{.Name}}: {{.URI}}{{end}}'
 
 # Alternative: list all with default indicator
 podman system connection ls --format "table {{.Name}}\t{{.URI}}\t{{.Default}}"
@@ -53,7 +54,7 @@ podman info --format '{{.Host.Hostname}}'
 # Test a specific named connection
 podman --connection my-remote-host info --format '{{.Host.Hostname}}'
 
-# Quick ping test through the API
+# Quick version check through the remote API
 podman --connection my-remote-host version --format '{{.Server.Version}}'
 ```
 
@@ -96,7 +97,7 @@ fi
 
 # Check each connection
 for conn in $CONNECTIONS; do
-    DEFAULT=$(podman system connection ls --format "{{range .}}{{if eq .Name \"$conn\"}}{{.Default}}{{end}}{{end}}")
+    DEFAULT=$(podman system connection ls --format json | jq -r --arg conn "$conn" '.[] | select(.Name == $conn) | .Default')
     MARKER=""
     if [ "$DEFAULT" = "true" ]; then
         MARKER=" [DEFAULT]"
@@ -122,7 +123,7 @@ Inspect the configuration of a specific connection.
 podman system connection ls --format "table {{.Name}}\t{{.URI}}\t{{.Identity}}\t{{.Default}}"
 
 # Extract the URI for a specific connection
-podman system connection ls --format '{{range .}}{{if eq .Name "my-connection"}}{{.URI}}{{end}}{{end}}'
+podman system connection ls --format json | jq -r '.[] | select(.Name=="my-connection") | .URI'
 
 # Check if a specific connection uses the expected socket path
 podman system connection ls --format json | jq '.[] | select(.Name=="my-connection")'
@@ -143,13 +144,17 @@ CONNECTIONS=$(podman system connection ls --format '{{.Name}}')
 for conn in $CONNECTIONS; do
     # Measure the time to execute a simple command
     START=$(date +%s%N)
-    podman --connection "$conn" version --format '{{.Server.Version}}' > /dev/null 2>&1
+    if podman --connection "$conn" version --format '{{.Server.Version}}' > /dev/null 2>&1; then
+        STATUS="OK"
+    else
+        STATUS="UNREACHABLE"
+    fi
     END=$(date +%s%N)
 
     # Calculate elapsed time in milliseconds
     ELAPSED=$(( (END - START) / 1000000 ))
 
-    if [ $ELAPSED -gt 0 ]; then
+    if [ "$STATUS" = "OK" ]; then
         printf "%-20s %dms\n" "$conn:" "$ELAPSED"
     else
         printf "%-20s UNREACHABLE\n" "$conn:"
@@ -166,8 +171,8 @@ Check that the local Podman instance is working correctly.
 podman info --format 'Host: {{.Host.Hostname}}'
 podman version --format 'Version: {{.Client.Version}}'
 
-# Check if the local socket is available
-SOCKET="/run/user/$(id -u)/podman/podman.sock"
+# Check if the local rootless socket is available
+SOCKET="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
 if [ -S "$SOCKET" ]; then
     echo "Local socket: $SOCKET (active)"
     curl -s --unix-socket "$SOCKET" http://localhost/v4.0.0/libpod/_ping
