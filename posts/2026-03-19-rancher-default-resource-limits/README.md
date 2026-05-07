@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Namespace, Resource Quota
 
-Description: Learn how to set default container resource limits per namespace in Rancher so every pod gets sensible defaults automatically.
+Description: Learn how to set Rancher project defaults and Kubernetes LimitRange policies so workloads get sensible CPU and memory defaults.
 
-When developers deploy workloads without specifying resource requests and limits, pods can consume unbounded resources and cause problems for other workloads. Rancher lets you configure default resource limits per namespace so that every container gets sensible defaults. This guide shows how to set up and manage these defaults.
+When developers deploy workloads without specifying resource requests and limits, pods can consume unbounded resources and cause problems for other workloads. Rancher can manage project-level container defaults, and Kubernetes LimitRange objects can enforce namespace defaults so containers get sensible requests and limits. This guide shows how to set up and manage these defaults.
 
 ## Prerequisites
 
@@ -20,30 +20,31 @@ Without default limits:
 
 - A single pod can consume all available CPU or memory on a node.
 - The Kubernetes scheduler cannot make informed placement decisions.
-- Resource quotas cannot be enforced (quotas require pods to declare requests and limits).
+- CPU and memory resource quotas become harder to use because pods must declare the corresponding requests or limits, or admission may reject them.
 - Noisy neighbor problems become common in shared clusters.
 
-Default resource limits solve this by automatically assigning resource requests and limits to containers that do not specify them.
+Kubernetes LimitRange objects solve this by automatically assigning default resource requests and limits to containers that do not specify them.
 
 ## Step 1: Configure Defaults at the Project Level
 
-Rancher lets you set container defaults for an entire project. These defaults apply to all namespaces in the project.
+Rancher lets you set container defaults for a project. These defaults are propagated to namespaces created in the project after the setting is enabled.
 
 **Via the Rancher UI:**
 
-1. Navigate to your cluster.
-2. Go to **Cluster > Projects/Namespaces**.
-3. Click the three-dot menu on the project.
-4. Select **Edit Config**.
-5. Scroll to **Container Default Resource Limit**.
-6. Set the following:
+1. In the upper left corner, click **☰ > Cluster Management**.
+2. On the **Clusters** page, go to your cluster and click **Explore**.
+3. Go to **Cluster > Projects/Namespaces**.
+4. Click the three-dot menu on the project.
+5. Select **Edit Config**.
+6. Scroll to **Container Default Resource Limit**.
+7. Set the following:
    - **CPU Reservation**: `100m` (the default CPU request)
    - **CPU Limit**: `500m` (the default CPU limit)
    - **Memory Reservation**: `128Mi` (the default memory request)
    - **Memory Limit**: `512Mi` (the default memory limit)
-7. Click **Save**.
+8. Click **Save**.
 
-Rancher will create a LimitRange object in each namespace within the project.
+Rancher propagates this setting to namespaces created after the project is updated. Existing namespaces need the setting configured individually, and a Kubernetes LimitRange is what enforces admission-time defaults for pods created without explicit resources.
 
 ## Step 2: Configure Defaults via Terraform
 
@@ -74,9 +75,11 @@ resource "rancher2_project" "backend" {
 }
 ```
 
+As with the Rancher UI, these project-level container defaults are propagated to newly created namespaces rather than injected into every Pod.
+
 ## Step 3: Configure Defaults per Namespace with LimitRange
 
-For more control, create a LimitRange directly in a namespace:
+For admission-time defaulting and enforcement, create a LimitRange directly in a namespace:
 
 ```yaml
 apiVersion: v1
@@ -109,8 +112,8 @@ This LimitRange does four things:
 
 - **default**: Sets the CPU and memory limit if not specified by the container.
 - **defaultRequest**: Sets the CPU and memory request if not specified.
-- **max**: Caps the maximum resources any container can request.
-- **min**: Sets the minimum resources any container must request.
+- **max**: Caps the maximum resources any container can declare.
+- **min**: Sets the minimum resources any container can declare.
 
 ## Step 4: Configure Different Defaults for Different Namespaces
 
@@ -184,7 +187,7 @@ spec:
 
 ## Step 5: Verify Default Limits Are Applied
 
-Deploy a pod without resource specifications and check if defaults are applied:
+Deploy a pod without resource specifications and check if the LimitRange defaults are applied:
 
 ```yaml
 apiVersion: v1
@@ -262,7 +265,7 @@ spec:
 
 The pod-level max ensures that even a pod with multiple containers cannot exceed 8 CPU and 16Gi memory total.
 
-## Step 7: Set PVC Size Defaults
+## Step 7: Set PVC Size Limits
 
 Control persistent volume claim sizes:
 
@@ -279,10 +282,6 @@ spec:
         storage: "100Gi"
       min:
         storage: "1Gi"
-      default:
-        storage: "10Gi"
-      defaultRequest:
-        storage: "5Gi"
 ```
 
 ## Step 8: Apply Defaults Across All Namespaces
@@ -339,20 +338,23 @@ done
 After setting defaults, monitor whether they are appropriate:
 
 ```bash
-# Check for pods that are being throttled (hitting CPU limits)
+# Check current CPU usage
 kubectl top pods -n api-production --sort-by=cpu
 
-# Check for pods that are close to memory limits
+# Check current memory usage
 kubectl top pods -n api-production --sort-by=memory
 
-# Check for OOMKilled events
-kubectl get events -n api-production --field-selector reason=OOMKilling
+# Check for pods with OOMKilled containers
+kubectl get pods -n api-production -o json | \
+  jq -r '.items[] | select(any(.status.containerStatuses[]?; .lastState.terminated.reason == "OOMKilled" or .state.terminated.reason == "OOMKilled")) | .metadata.name'
 
 # Check for pods that cannot be scheduled
 kubectl get events -n api-production --field-selector reason=FailedScheduling
 ```
 
-If pods are frequently being OOMKilled, the default memory limit may be too low. If pods cannot be scheduled, the default requests may be too high for the available cluster capacity.
+These `kubectl top` commands require Metrics Server or another metrics pipeline that serves the Kubernetes metrics API.
+
+If memory usage is consistently high or pods are frequently OOMKilled, the default memory limit may be too low. If pods cannot be scheduled, the default requests may be too high for the available cluster capacity.
 
 ## Step 10: Update Default Limits
 
@@ -368,7 +370,7 @@ Or replace the LimitRange:
 kubectl apply -f updated-limitrange.yaml
 ```
 
-Changes apply only to new pods. Existing pods keep their current resource settings. To apply new defaults to existing workloads, you need to restart the deployments:
+Changes apply only to new pods. Existing pods keep their current resource settings. To apply new defaults to existing workloads managed by Deployments, restart the deployments:
 
 ```bash
 kubectl rollout restart deployment -n api-production
@@ -386,4 +388,4 @@ kubectl rollout restart deployment -n api-production
 
 ## Conclusion
 
-Default resource limits per namespace ensure that every container in your Rancher-managed clusters has appropriate resource constraints, even when developers do not specify them. By setting sensible defaults through Rancher's project settings or Kubernetes LimitRange objects, you prevent resource contention, enable accurate scheduling, and make resource quotas enforceable. Tune your defaults based on monitoring data and adjust them as workload patterns change.
+Default resource policies per namespace help ensure that containers in your Rancher-managed clusters have appropriate resource constraints, even when developers do not specify them. Rancher project settings can pre-populate defaults during workload creation, while Kubernetes LimitRange objects enforce namespace-level defaults at admission time. Tune your defaults based on monitoring data and adjust them as workload patterns change.
