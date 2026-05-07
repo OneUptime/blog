@@ -35,14 +35,13 @@ spec:                   # Resource-specific configuration
 
 ## Applying YAML via Podman Desktop
 
-Podman Desktop provides a built-in YAML editor and apply mechanism:
+Podman Desktop provides an Apply YAML mechanism for Kubernetes objects:
 
 1. Open Podman Desktop and go to the **Kubernetes** section.
-2. Click the **Apply YAML** button.
-3. Either paste your YAML directly or browse to select a file.
-4. Review the manifest in the built-in editor.
-5. Select the target Kubernetes context and namespace.
-6. Click **Apply** to create the resources on the cluster.
+2. Open the object page for the resource you want to create, such as **Deployments** or **Services**.
+3. Select the namespace where you want to create the object.
+4. Click the **Apply YAML** button and select your YAML manifest file.
+5. Click **OK** in the confirmation notification to create the resources on the cluster.
 
 ## Creating a Complete Deployment YAML
 
@@ -123,7 +122,7 @@ Podman can generate Kubernetes YAML from running containers:
 podman run -d --name my-nginx -p 8080:80 nginx:alpine
 
 # Generate the Kubernetes YAML
-podman generate kube my-nginx > nginx-pod.yaml
+podman kube generate my-nginx > nginx-pod.yaml
 
 # Review the generated manifest
 cat nginx-pod.yaml
