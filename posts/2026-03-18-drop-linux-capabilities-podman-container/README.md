@@ -10,7 +10,7 @@ Description: Learn how to remove unnecessary Linux capabilities from Podman cont
 
 > Dropping capabilities you do not need is one of the simplest and most effective ways to harden a container.
 
-By default, Podman grants containers a set of Linux capabilities that covers common use cases. However, many containers do not need all of these default capabilities. Dropping unused ones reduces the attack surface and limits what a compromised container can do. Podman's `--cap-drop` flag makes this straightforward.
+By default, Podman grants containers a configurable set of Linux capabilities that covers common use cases. However, many containers do not need all of these default capabilities. Dropping unused ones reduces the attack surface and limits what a compromised container can do. Podman's `--cap-drop` flag makes this straightforward.
 
 This guide explains how to identify and drop unnecessary capabilities from your Podman containers.
 
@@ -32,7 +32,7 @@ podman run --rm docker.io/library/alpine:latest \
   sh -c "apk add --no-cache libcap && getpcaps 1"
 ```
 
-Common default capabilities include `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `KILL`, `SETGID`, `SETUID`, `SETPCAP`, `NET_BIND_SERVICE`, `SYS_CHROOT`, and `MKNOD`.
+The current default capabilities configured by containers-common are `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `KILL`, `NET_BIND_SERVICE`, `SETFCAP`, `SETGID`, `SETPCAP`, `SETUID`, and `SYS_CHROOT`.
 
 ## Dropping a Single Capability
 
@@ -47,7 +47,7 @@ podman run --rm \
   sh -c "chown nobody /tmp && echo 'success'" || echo "chown failed - capability dropped"
 
 # Drop SETUID to prevent the container from changing user IDs
-# This stops binaries with the setuid bit from escalating privileges
+# This prevents processes from making arbitrary setuid calls
 podman run --rm \
   --cap-drop SETUID \
   docker.io/library/alpine:latest \
@@ -60,12 +60,12 @@ Pass `--cap-drop` multiple times to remove several capabilities at once.
 
 ```bash
 # Drop multiple capabilities for a hardened container
-# MKNOD prevents creating device nodes
-# NET_RAW prevents crafting raw network packets
+# SETFCAP prevents setting file capabilities
+# SETPCAP prevents changing process capability sets
 # SYS_CHROOT prevents using the chroot system call
 podman run --rm \
-  --cap-drop MKNOD \
-  --cap-drop NET_RAW \
+  --cap-drop SETFCAP \
+  --cap-drop SETPCAP \
   --cap-drop SYS_CHROOT \
   docker.io/library/alpine:latest \
   sh -c "apk add --no-cache libcap && getpcaps 1"
@@ -76,7 +76,7 @@ podman run --rm \
 The most secure approach is to drop all capabilities and then add back only what the container specifically needs.
 
 ```bash
-# Drop all capabilities - the container runs with zero privileges
+# Drop all capabilities - the container runs with no Linux capabilities
 podman run --rm \
   --cap-drop ALL \
   docker.io/library/alpine:latest \
@@ -118,18 +118,19 @@ podman stop secure-nginx && podman rm secure-nginx
 
 ## Preventing Network-Based Attacks
 
-Dropping `NET_RAW` prevents containers from sending crafted network packets, which mitigates ARP spoofing and other low-level network attacks.
+Dropping `NET_RAW` prevents containers from using raw and packet sockets, which mitigates ARP spoofing and other low-level network attacks. Current Podman defaults do not include `NET_RAW`, but you should still drop it explicitly if your site defaults or container options add it.
 
 ```bash
-# Drop NET_RAW to prevent raw socket creation
-# Ping uses raw sockets, so it will fail without NET_RAW
+# Keep NET_RAW absent to prevent raw socket creation
+# Alpine's ping uses raw sockets, so it will fail without NET_RAW
 podman run --rm \
   --cap-drop NET_RAW \
   docker.io/library/alpine:latest \
-  ping -c 1 8.8.8.8 || echo "ping failed - NET_RAW dropped"
+  ping -c 1 8.8.8.8 || echo "ping failed - NET_RAW absent"
 
-# Compare with a container that has NET_RAW
+# Compare with a container that explicitly has NET_RAW
 podman run --rm \
+  --cap-add NET_RAW \
   docker.io/library/alpine:latest \
   ping -c 1 8.8.8.8
 ```
