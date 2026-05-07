@@ -8,7 +8,7 @@ Description: Learn why provisioners are a last resort in OpenTofu and what alter
 
 ## Introduction
 
-OpenTofu provisioners (`remote-exec`, `local-exec`, `file`) allow running scripts on resources after creation. They seem convenient but create significant problems: they run only once, can fail and leave resources in partially configured states, are hard to test, and bypass OpenTofu's idempotency model. Understanding better alternatives saves hours of debugging.
+OpenTofu provisioners (`remote-exec`, `local-exec`, `file`) allow running commands on the machine running OpenTofu or on remote resources, and copying files to remote resources, during resource creation or destruction. They seem convenient but create significant problems: creation-time provisioners run only during creation, can fail and leave resources in partially configured states, are hard to test, and bypass OpenTofu's idempotency model. Understanding better alternatives saves hours of debugging.
 
 ## Why Provisioners Are Problematic
 
@@ -21,6 +21,13 @@ resource "aws_instance" "web" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.medium"
 
+  connection {
+    type        = "ssh"
+    user        = "ubuntu"
+    host        = self.public_ip
+    private_key = file(var.private_key_path)
+  }
+
   provisioner "remote-exec" {
     inline = [
       "sudo apt-get update",
@@ -28,8 +35,8 @@ resource "aws_instance" "web" {
       "sudo systemctl start nginx",
     ]
     # Problems:
-    # 1. Only runs on initial creation, never on updates
-    # 2. If the script fails, resource is "tainted" and will be replaced
+    # 1. Creation-time provisioners only run on initial creation, never on updates
+    # 2. If the script fails, the resource is tainted by default and replaced on the next apply
     # 3. Requires SSH access (security concern)
     # 4. Not idempotent - can fail if packages changed
     # 5. Can't be tested in isolation
@@ -47,7 +54,7 @@ resource "aws_instance" "web" {
   instance_type = "t3.medium"
 
   # user_data runs via cloud-init (no SSH needed)
-  user_data = base64encode(<<-EOF
+  user_data = <<-EOF
     #!/bin/bash
     apt-get update -y
     apt-get install -y nginx
@@ -57,13 +64,12 @@ resource "aws_instance" "web" {
     # Write a simple index page
     echo "<h1>Deployed by OpenTofu</h1>" > /var/www/html/index.html
   EOF
-  )
 
-  # Or use a file template
-  user_data = base64encode(templatefile("${path.module}/scripts/bootstrap.sh", {
-    app_name    = var.app_name
-    environment = var.environment
-  }))
+  # Or render user_data from a file template:
+  # user_data = templatefile("${path.module}/scripts/bootstrap.sh", {
+  #   app_name    = var.app_name
+  #   environment = var.environment
+  # })
 }
 ```
 
@@ -110,12 +116,12 @@ resource "aws_ecs_task_definition" "app" {
 }
 ```
 
-## Better Alternative 4: AWS SSM Documents for Post-Creation Config
+## Better Alternative 4: AWS Systems Manager State Manager for Post-Creation Config
 
-If you must configure VMs after creation, use SSM Run Command instead of SSH.
+If you must configure VMs after creation, use Systems Manager State Manager associations on SSM-managed instances instead of SSH-based provisioners.
 
 ```hcl
-# Run commands via SSM (no SSH needed)
+# Apply packages via SSM State Manager (no SSH needed)
 resource "aws_ssm_association" "install_cloudwatch_agent" {
   name = "AWS-ConfigureAWSPackage"
 
@@ -125,8 +131,9 @@ resource "aws_ssm_association" "install_cloudwatch_agent" {
   }
 
   parameters = {
-    action      = "Install"
-    packageName = "AmazonCloudWatchAgent"
+    action  = "Install"
+    name    = "AmazonCloudWatchAgent"
+    version = "latest"
   }
 }
 ```
@@ -150,4 +157,4 @@ NOT appropriate:
 
 ## Summary
 
-Provisioners are a last resort that bypass OpenTofu's idempotency model and create resources that are hard to reason about. For VM bootstrapping, use `user_data` with cloud-init or pre-baked AMIs. For application deployment, use containers. For post-creation configuration, use SSM Run Command. Reserve provisioners only for destroy-time cleanup and external notifications where no idempotent alternative exists.
+Provisioners are a last resort that bypass OpenTofu's idempotency model and create resources that are hard to reason about. For VM bootstrapping, use `user_data` with cloud-init or pre-baked AMIs. For application deployment, use containers. For post-creation configuration, use Systems Manager State Manager associations on SSM-managed instances. Reserve provisioners only for destroy-time cleanup and external notifications where no idempotent alternative exists.
