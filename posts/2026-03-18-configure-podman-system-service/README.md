@@ -41,10 +41,10 @@ The socket location depends on whether you are running as root or rootless.
 # unix:///run/podman/podman.sock
 
 # Default rootless socket location
-# unix:///run/user/$(id -u)/podman/podman.sock
+# unix://$XDG_RUNTIME_DIR/podman/podman.sock
 
 # Check the actual socket path
-echo "Rootless socket: unix:///run/user/$(id -u)/podman/podman.sock"
+echo "Rootless socket: unix://$XDG_RUNTIME_DIR/podman/podman.sock"
 
 # Start the service on a custom socket path
 podman system service --time 0 unix:///tmp/my-podman.sock
@@ -61,6 +61,9 @@ The recommended way to manage the Podman service is through systemd.
 # For rootless users: enable and start the socket-activated service
 systemctl --user enable podman.socket
 systemctl --user start podman.socket
+
+# To keep the user socket available after reboot without logging in
+loginctl enable-linger "$USER"
 
 # Check the socket status
 systemctl --user status podman.socket
@@ -109,8 +112,12 @@ For remote access, configure the service to listen on a TCP port.
 podman system service --time 0 tcp://0.0.0.0:8080
 
 # For production, use TLS encryption
-# First generate TLS certificates, then start with TLS
-podman system service --time 0 tcp://0.0.0.0:8443
+# First generate TLS certificates, then start with mutual TLS
+podman system service --time 0 \
+    --tls-cert /path/to/server.crt \
+    --tls-key /path/to/server.key \
+    --tls-client-ca /path/to/ca.crt \
+    tcp://0.0.0.0:8443
 
 # Test the TCP connection
 curl http://localhost:8080/v4.0.0/libpod/info
@@ -121,19 +128,19 @@ curl http://localhost:8080/v4.0.0/libpod/info
 Configure the Podman service to work with Docker-compatible tools.
 
 ```bash
-# Create a Docker-compatible socket symlink for rootless
-export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+# Point Docker-compatible tools at the rootless Podman socket
+export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 
 # Verify Docker CLI works with Podman service
 docker info
 docker ps
 
 # For docker-compose compatibility
-export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
+export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 docker-compose up -d
 
 # Make the DOCKER_HOST variable persistent
-echo "export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock" >> ~/.bashrc
+echo 'export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock' >> ~/.bashrc
 ```
 
 ## Monitoring the Service
@@ -151,7 +158,7 @@ journalctl --user -u podman.service -f
 ss -ln | grep podman
 
 # Test the API endpoint
-curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
+curl --unix-socket "$XDG_RUNTIME_DIR/podman/podman.sock" \
     http://localhost/v4.0.0/libpod/info | jq '.version'
 ```
 
@@ -160,13 +167,20 @@ curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
 Apply security best practices when running the Podman service.
 
 ```bash
-# Restrict socket file permissions
-chmod 600 /run/user/$(id -u)/podman/podman.sock
+# Restrict rootless socket file permissions
+chmod 600 "$XDG_RUNTIME_DIR/podman/podman.sock"
 
-# For rootful service, restrict access to the docker group
+# For rootful service, restrict access to a dedicated podman group
 sudo groupadd -f podman
-sudo chown root:podman /run/podman/podman.sock
-sudo chmod 660 /run/podman/podman.sock
+sudo mkdir -p /etc/systemd/system/podman.socket.d
+sudo tee /etc/systemd/system/podman.socket.d/override.conf > /dev/null << 'EOF'
+[Socket]
+SocketMode=0660
+SocketUser=root
+SocketGroup=podman
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart podman.socket
 
 # Add authorized users to the podman group
 sudo usermod -aG podman username
@@ -187,11 +201,11 @@ systemctl --user is-active podman.socket
 journalctl --user -u podman.service --since "5 minutes ago"
 
 # If the socket file exists but service is not running, clean up
-rm -f /run/user/$(id -u)/podman/podman.sock
+rm -f "$XDG_RUNTIME_DIR/podman/podman.sock"
 systemctl --user restart podman.socket
 
 # Verify the service is responding to API calls
-curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
+curl --unix-socket "$XDG_RUNTIME_DIR/podman/podman.sock" \
     http://localhost/v4.0.0/libpod/_ping
 # Expected response: OK
 ```
