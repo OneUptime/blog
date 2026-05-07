@@ -25,7 +25,7 @@ graph LR
 ```hcl
 # provider_service.tf - the VPC that hosts the service
 
-# NLB is required as the front-end for PrivateLink endpoint services
+# NLB is required as the front-end for PrivateLink interface endpoint services
 
 resource "aws_lb" "privatelink" {
   name               = "${var.service_name}-privatelink-nlb"
@@ -57,6 +57,14 @@ resource "aws_lb_target_group" "service" {
     unhealthy_threshold = 3
     interval            = 10
   }
+}
+
+resource "aws_lb_target_group_attachment" "service" {
+  for_each = toset(var.service_target_ips)
+
+  target_group_arn = aws_lb_target_group.service.arn
+  target_id        = each.value
+  port             = var.service_port
 }
 
 resource "aws_lb_listener" "service" {
@@ -126,7 +134,7 @@ resource "aws_vpc_endpoint" "service" {
   vpc_endpoint_type   = "Interface"
   subnet_ids          = var.consumer_private_subnet_ids
   security_group_ids  = [aws_security_group.endpoint.id]
-  private_dns_enabled = true  # Creates Route 53 private hosted zone
+  private_dns_enabled = false # Set to true only if the provider configured and verified a private DNS name
 
   tags = {
     Name        = var.service_name
@@ -136,8 +144,8 @@ resource "aws_vpc_endpoint" "service" {
 }
 
 output "endpoint_dns" {
-  description = "DNS name for connecting to the service"
-  value       = aws_vpc_endpoint.service.dns_entry[0].dns_name
+  description = "Endpoint-specific DNS name for connecting to the service"
+  value       = aws_vpc_endpoint.service.dns_entry[0]["dns_name"]
 }
 ```
 
@@ -146,34 +154,24 @@ output "endpoint_dns" {
 ```hcl
 # cross_account.tf - provider accepts consumer from another account
 
-# Provider allows consumer account to create endpoints
+# Alternative to allowed_principals on aws_vpc_endpoint_service:
+# allow a specific consumer account to discover the service
 resource "aws_vpc_endpoint_service_allowed_principal" "consumer" {
   vpc_endpoint_service_id = aws_vpc_endpoint_service.main.id
   principal_arn           = "arn:aws:iam::${var.consumer_account_id}:root"
 }
 
-# If acceptance_required = true, accept pending connections
-data "aws_vpc_endpoint_connections" "pending" {
-  vpc_endpoint_service_id = aws_vpc_endpoint_service.main.id
-
-  filter {
-    name   = "vpc-endpoint-state"
-    values = ["pendingAcceptance"]
-  }
-}
-
 resource "aws_vpc_endpoint_connection_accepter" "consumer" {
-  for_each = toset(data.aws_vpc_endpoint_connections.pending.vpc_endpoint_ids)
-
+  # Use the endpoint ID created in the consumer account
   vpc_endpoint_service_id = aws_vpc_endpoint_service.main.id
-  vpc_endpoint_id         = each.value
+  vpc_endpoint_id         = var.consumer_vpc_endpoint_id
 }
 ```
 
 ## Best Practices
 
 - Use `acceptance_required = true` for services shared across accounts - this requires manual or automated approval before a consumer can connect, preventing unauthorized access.
-- Enable `private_dns_enabled = true` on interface endpoints - this creates a private Route 53 hosted zone so applications can use the service's original DNS name without code changes.
+- Enable private DNS on interface endpoints only after the provider has associated and verified a private DNS name for the endpoint service; otherwise use the endpoint-specific DNS name returned by AWS.
 - Use network load balancers with `enable_cross_zone_load_balancing = true` - without cross-zone balancing, consumers in AZs without healthy targets will experience failures.
-- Scope `allowed_principals` to specific accounts rather than using `"*"` - PrivateLink visibility and access should be explicitly granted, not open to all accounts.
-- Test connectivity from the consumer VPC using `nslookup` to verify private DNS resolution works before your application connects.
+- Scope `allowed_principals` to specific accounts rather than using `"*"` - PrivateLink visibility and access should be explicitly granted, not open to all accounts. If you use `aws_vpc_endpoint_service_allowed_principal`, do not also list the same principal in `allowed_principals`.
+- Test connectivity from the consumer VPC using `nslookup` against the endpoint-specific DNS name, or the private DNS name if the provider configured one, before your application connects.
