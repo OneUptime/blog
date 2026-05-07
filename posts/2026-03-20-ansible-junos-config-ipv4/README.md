@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Juniper, Junos, IPv4, Network Automation, Junos_config
 
-Description: Use the Ansible junipernetworks.junos.junos_config module to push IPv4 interface and routing configurations to Juniper JunOS devices using Junos set commands and Jinja2 templates.
+Description: Use the Ansible junipernetworks.junos.junos_config module to push IPv4 interface and routing configurations to Juniper Junos devices using Junos set commands and XML configuration files.
 
 ## Introduction
 
-The `junipernetworks.junos.junos_config` module configures Juniper JunOS devices via NETCONF. It accepts both Junos set commands and XML-format configuration, with rollback support for safe deployments.
+The `junipernetworks.junos.junos_config` module configures Juniper Junos devices via NETCONF. It accepts Junos set commands and source configuration files such as XML, with rollback and commit-confirmed support for safer deployments. Before using it, ensure NETCONF is enabled on the device and `ncclient` is installed on the control node.
 
 ## Inventory
 
@@ -19,8 +19,8 @@ jrouter1 ansible_host=192.168.1.10
 [juniper_routers:vars]
 ansible_user=admin
 ansible_password=AdminPass
-ansible_network_os=junos
-ansible_connection=netconf
+ansible_network_os=junipernetworks.junos.junos
+ansible_connection=ansible.netcommon.netconf
 ```
 
 ## Configure IPv4 Interface with Set Commands
@@ -89,32 +89,34 @@ ansible_connection=netconf
 ## Rollback on Failure
 
 ```yaml
-    - name: Configure with rollback on error
+    - name: Configure with commit confirmed
       junipernetworks.junos.junos_config:
         lines:
           - set routing-options static route 10.2.0.0/16 next-hop 10.1.0.254
-        rollback: 0         # Rollback to last committed if error occurs
         confirm: 5          # Auto-rollback after 5 minutes unless confirmed
+
+    - name: Confirm the commit after validation
+      junipernetworks.junos.junos_config:
+        confirm_commit: true
 ```
 
 ## Backup Running Config
 
 ```yaml
-    - name: Retrieve and save current config
+    - name: Save current config backup
       junipernetworks.junos.junos_config:
-        retrieve: running
         backup: yes
         backup_options:
           dir_path: ./backups/
           filename: "{{ inventory_hostname }}-{{ lookup('pipe', 'date +%Y%m%d') }}"
-        lines: []
 ```
 
 ## Run the Playbook
 
 ```bash
-# Install collection
+# Install collection and NETCONF dependency
 ansible-galaxy collection install junipernetworks.junos
+python3 -m pip install ncclient
 
 # Run with check mode
 ansible-playbook -i inventory.ini configure_junos_ipv4.yml --check --diff
@@ -125,4 +127,4 @@ ansible-playbook -i inventory.ini configure_junos_ipv4.yml
 
 ## Conclusion
 
-`junipernetworks.junos.junos_config` uses NETCONF for reliable JunOS configuration management. Use set commands for simple changes, XML templates for complex configurations, the `confirm` parameter for automatic rollback on commit timeout, and `backup: yes` to preserve pre-change state. Always test with `--check --diff` before production deployment.
+`junipernetworks.junos.junos_config` uses NETCONF for reliable Junos configuration management. The `junipernetworks.junos` collection is currently deprecated and scheduled for removal in Ansible 14, so plan accordingly for long-term automation. Use set commands for simple changes, XML configuration files for complex configurations, the `confirm` parameter for automatic rollback on commit timeout, and `backup: yes` to preserve pre-change state. Always test with `--check --diff` before production deployment.
