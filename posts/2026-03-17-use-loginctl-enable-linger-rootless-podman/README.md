@@ -71,9 +71,9 @@ WantedBy=default.target
 ```
 
 ```bash
-# Reload and enable the service
+# Reload and start the generated service
 systemctl --user daemon-reload
-systemctl --user enable --now webapp.service
+systemctl --user start webapp.service
 ```
 
 Now the service will:
@@ -128,7 +128,7 @@ export XDG_RUNTIME_DIR=/run/user/$(id -u)
 
 ### Services Not Starting at Boot
 
-Ensure both linger is enabled and the service is enabled:
+Ensure linger is enabled and the generated service is enabled:
 
 ```bash
 loginctl show-user $(whoami) --property=Linger
@@ -137,4 +137,4 @@ systemctl --user is-enabled webapp.service
 
 ## Summary
 
-`loginctl enable-linger` is essential for production rootless Podman services. Without it, services stop when you log out and do not start at boot. Enable linger, then enable your Quadlet services with `systemctl --user enable` to get persistent, boot-starting rootless container services.
+`loginctl enable-linger` is essential for production rootless Podman services. Without it, services stop when you log out and do not start at boot. Enable linger, include an `[Install]` section in your Quadlet file, reload the user manager, and start the generated service to get persistent, boot-starting rootless container services.
