@@ -47,11 +47,11 @@ The terminal tab provides a full terminal emulator connected to the container. Y
 Use `podman exec` to start an interactive shell session.
 
 ```bash
-# Open a bash shell in the container
-podman exec -it my-web-server /bin/bash
-
-# If bash is not available (Alpine images use ash/sh)
+# Open a shell in the Alpine-based demo container
 podman exec -it my-web-server /bin/sh
+
+# If your container image includes bash, you can use it instead
+podman exec -it my-bash-container /bin/bash
 
 # Open with a specific working directory
 podman exec -it -w /etc/nginx my-web-server /bin/sh
