@@ -121,8 +121,7 @@ Common booleans and their purposes:
 # Allow containers to connect to any TCP port
 sudo setsebool -P container_connect_any 1
 
-# Allow containers to manage all files on the system
-# (USE WITH CAUTION - very permissive)
+# Allow containers to manage cgroups, commonly needed for systemd in containers
 sudo setsebool -P container_manage_cgroup 1
 
 # Allow containers to use NFS mounts
@@ -147,8 +146,10 @@ podman run --security-opt label=disable -v /data:/data myimage
 Run a container with a specific SELinux type:
 
 ```bash
-podman run --security-opt label=type:svirt_lxc_net_t myimage
+podman run --security-opt label=type:svirt_apache_t myimage
 ```
+
+The selected type must be defined by SELinux policy.
 
 Set a specific level (MCS category):
 
