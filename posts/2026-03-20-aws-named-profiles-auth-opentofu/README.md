@@ -45,12 +45,19 @@ output = json
 
 # SSO profile example
 [profile sso-dev]
-sso_start_url  = https://my-org.awsapps.com/start
-sso_region     = us-east-1
+sso_session    = my-sso
 sso_account_id = 111111111111
 sso_role_name  = DeveloperAccess
 region         = us-east-1
+output         = json
+
+[sso-session my-sso]
+sso_start_url           = https://my-org.awsapps.com/start
+sso_region              = us-east-1
+sso_registration_scopes = sso:account:access
 ```
+
+Before using an IAM Identity Center profile, run `aws sso login --profile sso-dev` to establish the session.
 
 ## Using a Profile in the Provider Block
 
@@ -72,7 +79,7 @@ variable "aws_profile" {
 }
 
 provider "aws" {
-  region  = var.aws_region
+  region  = "us-east-1"
   profile = var.aws_profile
 }
 ```
@@ -116,7 +123,7 @@ region                = us-east-1
 # Profile that assumes a role in the prod account
 [profile prod-deploy]
 source_profile = base-admin
-role_arn       = arn:aws:iam::PROD_ACCOUNT:role/DeployRole
+role_arn       = arn:aws:iam::123456789012:role/DeployRole
 region         = us-west-2
 ```
 
@@ -130,7 +137,7 @@ provider "aws" {
 
 ## Multi-Environment Workspace Pattern
 
-Combine named profiles with OpenTofu workspaces for clean environment separation:
+If you already use OpenTofu workspaces, you can map workspace names to profiles, but workspaces are not the right isolation mechanism for deployments that require separate credentials or access controls:
 
 ```hcl
 locals {
@@ -156,4 +163,4 @@ tofu apply  # Uses the aws-dev profile automatically
 
 ## Conclusion
 
-Named profiles are ideal for local development workflows where a developer needs to interact with multiple AWS accounts. For CI/CD pipelines, prefer OIDC or IAM roles-but profiles remain the most ergonomic solution for daily developer use on a shared machine.
+Named profiles are ideal for local development workflows where a developer needs to interact with multiple AWS accounts. For CI/CD pipelines, prefer OIDC or IAM roles, but profiles remain the most ergonomic solution for daily developer use on a developer workstation.
