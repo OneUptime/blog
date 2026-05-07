@@ -10,7 +10,7 @@ Description: Learn how to block specific container registries in Podman to preve
 
 > Blocking registries is a key security measure to ensure containers only come from approved sources.
 
-In enterprise and security-sensitive environments, controlling which registries users can pull images from is critical. Podman allows administrators to block specific registries entirely, preventing any image pulls or pushes to those locations. This guide covers how to block registries, verify the blocks are active, and combine blocking with other security policies.
+In enterprise and security-sensitive environments, controlling which registries users can pull images from is critical. Podman allows administrators to block specific registries, namespaces, or images, preventing matching image pulls. This guide covers how to block registries, verify the blocks are active, and combine blocking with other security policies.
 
 ---
 
@@ -70,7 +70,7 @@ blocked = true
 prefix = "ghcr.io"
 blocked = true
 
-# Only allow the internal registry
+# Configure the internal registry
 [[registry]]
 prefix = "approved-registry.internal"
 location = "approved-registry.internal"
@@ -95,7 +95,7 @@ podman pull approved-registry.internal/alpine:latest
 
 ## Blocking with Pattern Matching
 
-You can block registries using prefix patterns to cover entire domains.
+You can block registries using prefix patterns to cover subdomains.
 
 ```toml
 # /etc/containers/registries.conf
@@ -113,7 +113,7 @@ blocked = true
 
 ## Combining Blocks with an Allow List
 
-A common pattern is to block all public registries and only allow specific internal ones.
+A common pattern is to search only approved internal registries for unqualified image names and explicitly block known public registries.
 
 ```toml
 # /etc/containers/registries.conf
@@ -121,13 +121,13 @@ A common pattern is to block all public registries and only allow specific inter
 # Only search the approved registry
 unqualified-search-registries = ["approved.internal:5000"]
 
-# Allow the approved internal registry
+# Configure the approved internal registry
 [[registry]]
 prefix = "approved.internal:5000"
 location = "approved.internal:5000"
 insecure = false
 
-# Block everything else
+# Block known public registries
 [[registry]]
 prefix = "docker.io"
 blocked = true
@@ -151,16 +151,16 @@ blocked = true
 
 ## System-Wide Enforcement
 
-Ensure the block applies to all users on the system.
+Configure the system-wide file for users who do not provide their own rootless registry configuration.
 
 ```bash
 # Set strict permissions on the system configuration
 sudo chmod 644 /etc/containers/registries.conf
 sudo chown root:root /etc/containers/registries.conf
 
-# Prevent users from overriding with user-level config
-# by setting a restrictive policy (optional, depends on policy)
-# Note: user-level configs take precedence by default
+# Rootless users can create $HOME/.config/containers/registries.conf,
+# which is used instead of the system-wide file. Manage or audit those
+# files if you need the same registry rules for rootless users.
 ```
 
 ## Verifying Block Configuration
@@ -168,14 +168,14 @@ sudo chown root:root /etc/containers/registries.conf
 Check the effective registry configuration.
 
 ```bash
-# Display all registry settings
+# Display configured registry search settings
 podman info --format '{{.Registries}}'
 
 # Check with debug logging for detailed output
 podman --log-level=debug pull docker.io/library/alpine:latest 2>&1 | head -20
 
-# List all configured registries and their status
-podman info 2>&1 | grep -A 5 -i "blocked"
+# Inspect the registry configuration files directly for blocked entries
+grep -R "blocked = true" /etc/containers/registries.conf /etc/containers/registries.conf.d/ 2>/dev/null
 ```
 
 ## Temporarily Unblocking a Registry
@@ -186,8 +186,8 @@ If you need to temporarily unblock a registry for maintenance.
 # Create a temporary configuration that unblocks the registry
 sudo cp /etc/containers/registries.conf /etc/containers/registries.conf.blocked
 
-# Edit to remove or comment out the blocked line
-sudo sed -i 's/blocked = true/blocked = false/' /etc/containers/registries.conf
+# Edit the specific registry block to remove or comment out the blocked line
+sudo vi /etc/containers/registries.conf
 
 # Perform the needed pull
 podman pull docker.io/library/alpine:latest
@@ -198,4 +198,4 @@ sudo cp /etc/containers/registries.conf.blocked /etc/containers/registries.conf
 
 ## Summary
 
-Blocking registries in Podman is done by setting `blocked = true` in the `registries.conf` file for each registry you want to restrict. This is a fundamental security measure for environments that need to control where container images come from. Combine blocking with an approved registry allow list for the strongest security posture. Always test your blocks after configuration and ensure system-level permissions prevent unauthorized overrides.
+Blocking registries in Podman is done by setting `blocked = true` in the `registries.conf` file for each registry, namespace, or image you want to restrict. This is a fundamental security measure for environments that need to control where container images come from. Combine blocking with approved registry search settings for a stronger security posture. Always test your blocks after configuration and account for rootless user configuration files when enforcing registry rules.
