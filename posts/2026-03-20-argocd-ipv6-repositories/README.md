@@ -19,48 +19,55 @@ ArgoCD manages Kubernetes applications by syncing from Git repositories. When yo
 ## Step 1: Verify ArgoCD Pods Have IPv6 Connectivity
 
 ```bash
-# Check that ArgoCD pods are running in IPv6 cluster
+# Check that ArgoCD pods have IPv6 addresses assigned
+kubectl get pods -n argocd \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.podIPs[*]}{.ip}{" "}{end}{"\n"}{end}'
 
-kubectl get pods -n argocd -o wide
+# Verify the argocd-repo-server pod has IPv6 interfaces
+kubectl exec -n argocd deployment/argocd-repo-server -- \
+    cat /proc/net/if_inet6
 
-# Verify the argocd-server pod can reach IPv6 resources
-kubectl exec -n argocd deployment/argocd-server -- \
-    sh -c "ip -6 addr show && ping6 -c 2 2606:4700:4700::1111"
-
-# Check ArgoCD's service addresses
-kubectl get svc -n argocd
+# Check ArgoCD's service IP families and addresses
+kubectl get svc -n argocd \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.ipFamilies}{"\t"}{.spec.clusterIPs}{"\n"}{end}'
 ```
 
 ## Step 2: Add a Repository with IPv6 HTTPS URL
 
 ```bash
 # Add a private Git repo accessible over IPv6 via HTTPS
-argocd repo add https://[2001:db8::gitea]/org/repo.git \
+argocd repo add https://[2001:db8::1]/org/repo.git \
     --username myuser \
     --password mypassword \
     --insecure-skip-server-verification  # Only for self-signed certs in testing
 
-# Add with custom CA certificate (recommended for self-signed certs)
-argocd repo add https://[2001:db8::gitea]/org/repo.git \
+# Add with TLS client certificate authentication
+argocd repo add https://[2001:db8::1]/org/repo.git \
     --username myuser \
     --password mypassword \
-    --tls-client-cert-path /tmp/git-ca.crt
+    --tls-client-cert-path /tmp/git-client.crt \
+    --tls-client-cert-key-path /tmp/git-client.key
 ```
+
+For self-signed or private CA server certificates, use ArgoCD's TLS certificate management (`argocd cert add-tls` or `argocd-tls-certs-cm`) instead of `--tls-client-cert-path`. The server certificate must still be valid for the host in the repository URL, so HTTPS over a literal IPv6 address requires the certificate to include that IPv6 address as an IP subjectAltName.
 
 ## Step 3: Add a Repository with IPv6 SSH URL
 
 ```bash
-# Add SSH key for GitHub/GitLab over IPv6
+# Add SSH key for GitHub, GitLab, or Gitea over IPv6
 # First generate or provide an SSH key
 ssh-keygen -t ed25519 -f /tmp/argocd-git-key -N ""
 
 # Add the public key to your Git server
 
-# Register the repo in ArgoCD using SSH with IPv6 address
-argocd repo add git@[2001:db8::gitea]:org/repo.git \
+# Register the server's SSH host key in ArgoCD
+ssh-keyscan 2001:db8::1 | argocd cert add-ssh --batch
+
+# Register the repo in ArgoCD using SSH with an IPv6 literal
+argocd repo add ssh://git@[2001:db8::1]/org/repo.git \
     --ssh-private-key-path /tmp/argocd-git-key
 
-# For GitHub (which has IPv6 connectivity):
+# For GitHub (which has IPv6 connectivity via DNS):
 argocd repo add git@github.com:org/repo.git \
     --ssh-private-key-path /tmp/argocd-git-key
 ```
@@ -81,12 +88,18 @@ metadata:
 type: Opaque
 stringData:
   type: git
-  url: "https://[2001:db8::gitea]/org/repo.git"
+  url: "https://[2001:db8::1]/org/repo.git"
   username: "git-user"
   password: "git-token"
-  # Optional: TLS client certificate
-  # tlsClientCertData: <base64-cert>
-  # tlsClientCertKey: <base64-key>
+  # Optional: TLS client certificate in PEM format
+  # tlsClientCertData: |
+  #   -----BEGIN CERTIFICATE-----
+  #   ...
+  #   -----END CERTIFICATE-----
+  # tlsClientCertKey: |
+  #   -----BEGIN PRIVATE KEY-----
+  #   ...
+  #   -----END PRIVATE KEY-----
 ```
 
 ```bash
@@ -106,7 +119,7 @@ spec:
   project: default
   source:
     # Use IPv6 URL for the Git repository
-    repoURL: https://[2001:db8::gitea]/org/my-app.git
+    repoURL: https://[2001:db8::1]/org/my-app.git
     targetRevision: HEAD
     path: k8s/
 
@@ -127,11 +140,14 @@ kubectl apply -f argocd-app.yaml
 
 # Or via CLI
 argocd app create my-app \
-    --repo https://[2001:db8::gitea]/org/my-app.git \
+    --repo https://[2001:db8::1]/org/my-app.git \
     --path k8s/ \
     --dest-server https://kubernetes.default.svc \
     --dest-namespace production \
-    --sync-policy automated
+    --sync-policy automated \
+    --auto-prune \
+    --self-heal \
+    --sync-option CreateNamespace=true
 ```
 
 ## Step 6: Verify Repository Connectivity
@@ -141,10 +157,10 @@ argocd app create my-app \
 argocd repo list
 
 # Get detailed status for a specific repo
-argocd repo get https://[2001:db8::gitea]/org/repo.git
+argocd repo get https://[2001:db8::1]/org/repo.git
 
-# Force a connection test
-argocd repo refresh https://[2001:db8::gitea]/org/repo.git
+# Force a connection status refresh
+argocd repo get https://[2001:db8::1]/org/repo.git --refresh hard
 ```
 
 ## Troubleshooting IPv6 Repository Connections
@@ -153,15 +169,15 @@ argocd repo refresh https://[2001:db8::gitea]/org/repo.git
 # Check ArgoCD repo server logs for connection errors
 kubectl logs -n argocd deployment/argocd-repo-server --tail=50 | grep -i "error\|ipv6\|connection"
 
-# Test SSH connectivity to the Git server from the ArgoCD pod
+# Test SSH repository access from the ArgoCD repo server
 kubectl exec -n argocd deployment/argocd-repo-server -- \
-    ssh -T -o StrictHostKeyChecking=no git@2001:db8::gitea
+    git ls-remote ssh://git@[2001:db8::1]/org/repo.git HEAD
 
-# Test HTTPS connectivity
+# Test HTTPS repository access from the ArgoCD repo server
 kubectl exec -n argocd deployment/argocd-repo-server -- \
-    curl -6 -v https://[2001:db8::gitea]/api/v1/repos/org/repo
+    git ls-remote https://[2001:db8::1]/org/repo.git HEAD
 ```
 
 ## Conclusion
 
-ArgoCD supports IPv6 repository connections through standard Git URL notation with IPv6 addresses enclosed in square brackets. Repository credentials are stored as Kubernetes Secrets with the `argocd.argoproj.io/secret-type: repository` label. The key requirement is that ArgoCD pods in the cluster have IPv6 network connectivity, which is provided automatically in dual-stack or IPv6-only Kubernetes clusters. SSH and HTTPS repository connections both work identically with IPv6 URLs.
+ArgoCD supports IPv6 repository connections through standard Git URL notation. For HTTP and HTTPS URLs, IPv6 literals are enclosed in square brackets. For SSH connections to a literal IPv6 address, use the `ssh://` form instead of scp-style `git@host:path` syntax, and make sure the SSH host key is present in ArgoCD. Repository credentials are stored as Kubernetes Secrets with the `argocd.argoproj.io/secret-type: repository` label. The key requirement is that `argocd-repo-server` in the cluster has IPv6 network connectivity, which depends on your cluster and CNI being configured for dual-stack or IPv6-only networking. HTTPS over a literal IPv6 address also requires a server certificate that is valid for that IP address.
