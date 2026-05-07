@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, API, REST API, User Management
 
-Description: Complete guide to managing users, roles, and permissions in Rancher programmatically using the REST API.
+Description: Complete guide to managing users, roles, and permissions in Rancher programmatically using the legacy `/v3` REST API.
 
-Managing users in Rancher through the API enables you to automate onboarding, enforce consistent role assignments, and integrate with external identity systems. This guide covers creating users, assigning roles at global, cluster, and project levels, and managing authentication providers.
+Managing users in Rancher through the API enables you to automate onboarding and enforce consistent role assignments. This guide uses Rancher's legacy `/v3` API endpoints for creating users and assigning roles at global, cluster, and project levels.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ export RANCHER_URL="https://rancher.example.com"
 export RANCHER_TOKEN="token-xxxxx:yyyyyyyyyyyyyyyy"
 ```
 
-You need an API token from a user with admin or user-manager privileges.
+These examples target the legacy `/v3` API endpoint. You need the Bearer Token shown under Account & API Keys for a user that can manage users and role bindings, typically an Administrator.
 
 ## Creating Local Users
 
@@ -181,7 +181,7 @@ Common global roles include:
 - `admin` - Full administrator access
 - `user` - Standard user (can create clusters)
 - `user-base` - Basic user (login only, no cluster creation)
-- `restricted-admin` - Admin without local cluster access
+- `restricted-admin` - Deprecated built-in role for downstream-cluster admin access without local cluster access
 
 ### Assign a Global Role
 
@@ -226,10 +226,10 @@ curl -s -k \
   "${RANCHER_URL}/v3/roleTemplates?context=cluster" | jq '.data[] | {id, name, description}'
 ```
 
-Common cluster roles:
+Common cluster role templates include:
 - `cluster-owner` - Full cluster access
-- `cluster-member` - Can view and manage most resources
-- `read-only` - View-only access
+- `cluster-member` - Standard cluster membership
+- `projects-view` - View projects in the cluster
 
 ### Assign a Cluster Role
 
@@ -254,7 +254,8 @@ curl -s -k \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
   "${RANCHER_URL}/v3/clusterRoleTemplateBindings?clusterId=${CLUSTER_ID}" | jq '.data[] | {
     id,
-    userId: .userPrincipalId,
+    userId,
+    userPrincipalId,
     roleTemplateId
   }'
 ```
@@ -286,7 +287,8 @@ curl -s -k \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
   "${RANCHER_URL}/v3/projectRoleTemplateBindings?projectId=${PROJECT_ID}" | jq '.data[] | {
     id,
-    userId: .userPrincipalId,
+    userId,
+    userPrincipalId,
     roleTemplateId
   }'
 ```
@@ -335,4 +337,4 @@ done
 
 ## Summary
 
-The Rancher API provides complete control over user management. You can create and modify users, assign roles at global, cluster, and project levels, and build automation scripts for onboarding and auditing. Use scoped roles to enforce the principle of least privilege, and regularly audit user access with automated scripts.
+The legacy Rancher `/v3` API provides complete control over user management. You can create and modify users, assign roles at global, cluster, and project levels, and build automation scripts for onboarding and auditing. Use scoped roles to enforce the principle of least privilege, and regularly audit user access with automated scripts.
