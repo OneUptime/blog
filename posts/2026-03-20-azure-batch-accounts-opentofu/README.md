@@ -4,15 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Batch, HPC, Infrastructure as Code, Compute
 
-Description: Learn how to create Azure Batch accounts, pools, and jobs for large-scale parallel batch processing workloads using OpenTofu.
+Description: Learn how to create Azure Batch accounts, pools, and applications for large-scale parallel batch processing workloads using OpenTofu.
 
 ## Introduction
 
-Azure Batch is a managed service for running large-scale parallel and high-performance computing (HPC) applications. OpenTofu manages Batch accounts, pools with auto-scaling, and job schedules as code.
+Azure Batch is a managed service for running large-scale parallel and high-performance computing (HPC) applications. OpenTofu manages Batch accounts, pools with auto-scaling, and Batch applications as code.
 
 ## Creating a Batch Account
 
 ```hcl
+provider "azurerm" {
+  features {}
+}
+
 resource "azurerm_resource_group" "main" {
   name     = "rg-batch-${var.environment}"
   location = var.location
@@ -54,9 +58,9 @@ resource "azurerm_batch_pool" "linux_workers" {
 
   # VM image configuration
   storage_image_reference {
-    publisher = "microsoft-dsvm"
-    offer     = "ubuntu-hpc"
-    sku       = "2204"
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts"
     version   = "latest"
   }
 
@@ -74,11 +78,11 @@ resource "azurerm_batch_pool" "linux_workers" {
     EOF
   }
 
-  # Start task to install dependencies on each node
+  # Start task to install Python dependencies on each node
   start_task {
-    command_line         = "/bin/bash -c 'pip3 install pandas numpy scikit-learn'"
+    command_line         = "/bin/bash -c 'apt-get update && apt-get install -y python3-pip && pip3 install pandas numpy scikit-learn'"
     wait_for_success     = true
-    max_task_retry_count = 1
+    task_retry_maximum   = 1
 
     user_identity {
       auto_user {
@@ -128,4 +132,4 @@ tofu apply tfplan
 
 ## Summary
 
-Azure Batch enables large-scale parallel workloads without managing cluster infrastructure. OpenTofu provisions Batch accounts, pools with auto-scaling formulas, and application packages - giving you a fully automated, reproducible HPC platform.
+Azure Batch enables large-scale parallel workloads without managing cluster infrastructure. OpenTofu provisions Batch accounts, pools with auto-scaling formulas, and Batch applications - giving you a fully automated, reproducible HPC platform.
