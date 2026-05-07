@@ -11,10 +11,10 @@ VMware vSphere is one of the most common virtualization platforms in enterprise 
 ## Prerequisites
 
 - A running Rancher installation (v2.7 or later)
-- VMware vSphere 6.7 or later
+- VMware vSphere 6.7 Update 3, 7.0 Update 1, or later
 - vCenter Server with appropriate permissions
 - A VM template or cloud image for node provisioning
-- Network connectivity between vSphere VMs and the Rancher server
+- Network connectivity from the Rancher server to vCenter on 443/TCP and to provisioned VMs on 22/TCP and 2376/TCP
 - Sufficient vSphere resources (CPU, memory, storage)
 
 ## Step 1: Prepare vSphere
@@ -24,7 +24,7 @@ VMware vSphere is one of the most common virtualization platforms in enterprise 
 Rancher uses VM templates to provision nodes. Create a template with a supported OS:
 
 1. Create a VM in vSphere with Ubuntu 22.04 or RHEL 8
-2. Install VMware Tools or open-vm-tools
+2. Install the required template dependencies, including `cloud-init`, `open-vm-tools`, `openssh-server`, `open-iscsi`, `curl`, `wget`, `git`, `net-tools`, `unzip`, `apparmor-parser`, `ca-certificates`, `cloud-guest-utils`, `cloud-image-utils`, and `cloud-initramfs-growroot`
 3. Configure cloud-init for automated provisioning
 4. Convert the VM to a template
 
@@ -47,6 +47,11 @@ Datastore:
   - Allocate space
   - Browse datastore
   - Low level file operations
+  - Update virtual machine files
+  - Update virtual machine metadata
+
+Cns Privileges:
+  - Searchable
 
 Network:
   - Assign network
@@ -56,16 +61,23 @@ Resource:
 
 Virtual Machine:
   - Configuration (all)
+  - Guest operations (all)
   - Interaction (all)
   - Inventory (all)
   - Provisioning (all)
-  - Snapshot management (all)
 
-Content Library:
-  - Read (if using content libraries)
+Content library:
+  - Read Storage (if using content libraries)
+
+Cryptographic operations:
+  - Direct access
 
 Global:
-  - Custom attributes
+  - Set custom attribute
+
+vSphere Tagging:
+  - Assign or unassign vSphere tag
+  - Assign or unassign vSphere tag on object
 ```
 
 Create a vSphere user and assign this role at the appropriate level in the vCenter hierarchy.
@@ -77,6 +89,7 @@ Create a vSphere user and assign this role at the appropriate level in the vCent
 3. Click **Create**
 4. Select **vSphere**
 5. Enter:
+   - **Name**: `vsphere-credential`
    - **vCenter Server**: `vcenter.yourdomain.com`
    - **Port**: 443
    - **Username**: `rancher-user@vsphere.local`
@@ -159,28 +172,15 @@ Choose the network plugin:
 
 ### vSphere Cloud Provider
 
-Enable the vSphere cloud provider for native integration:
+For the RKE2/K3s workflow described here, use Rancher's out-of-tree vSphere integration instead of the legacy in-tree `vsphereCloudProvider` YAML used by RKE clusters:
 
-```yaml
-cloudProvider:
-  name: vsphere
-  vsphereCloudProvider:
-    virtualCenter:
-      vcenter.yourdomain.com:
-        datacenters: Datacenter
-        user: rancher-user@vsphere.local
-        password: <PASSWORD>
-    workspace:
-      server: vcenter.yourdomain.com
-      datacenter: Datacenter
-      default-datastore: vsanDatastore
-      folder: /Datacenter/vm/Rancher
-```
+1. In **Cluster Configuration**, set **Cloud Provider** to **vSphere**
+2. In **Add-On Config**, configure the vSphere CPI and CSI options, or install the **vSphere CPI** chart first and then the **vSphere CSI** chart from **Apps > Charts** after the cluster is created
 
 This enables:
 
 - vSphere storage provisioning (VMDK volumes)
-- Load balancer integration
+- ProviderID and node address initialization through CPI
 - Node zone/region awareness
 
 ### Storage Configuration
@@ -260,12 +260,13 @@ kubectl get pvc test-pvc
 
 ## Step 8: Post-Provisioning
 
-### Install the vSphere CSI Driver
+### Install the vSphere CPI and CSI Drivers
 
-If not automatically installed, deploy the vSphere CSI driver:
+If you did not configure them during cluster creation, deploy the vSphere integrations in this order:
 
-1. Go to **Apps** in the cluster
-2. Install the **vSphere CSI** chart from the Rancher marketplace
+1. Go to **Apps > Charts** in the cluster
+2. Install the **vSphere CPI** chart and confirm the nodes have a `ProviderID`
+3. Install the **vSphere CSI** chart
 
 ### Enable Monitoring
 
@@ -278,10 +279,10 @@ For high availability, configure VM anti-affinity rules in vSphere to spread con
 ## Troubleshooting
 
 - **VM creation fails**: Check vSphere permissions and resource availability (CPU, memory, storage).
-- **Cloud-init not running**: Verify the VM template has cloud-init installed and the VMware datasource configured.
-- **Storage provisioning fails**: Check the vSphere CSI driver logs and verify the storage policy exists.
+- **Cloud-init not running**: Verify the VM template has cloud-init installed and the NoCloud datasource configured.
+- **Storage provisioning fails**: Check that the vSphere CPI is installed, verify the vSphere CSI driver logs, and confirm the storage policy exists.
 - **Network connectivity issues**: Verify the VM network port group and that DHCP or static IP assignment is working.
 
 ## Conclusion
 
-Provisioning Kubernetes clusters on vSphere from Rancher brings cloud-like automation to your on-premises data center. Rancher handles VM creation, OS configuration, and Kubernetes installation, giving you a fully managed cluster on your existing VMware infrastructure. With vSphere cloud provider integration, you get native storage provisioning and load balancer support, making it a comprehensive solution for enterprise Kubernetes on vSphere.
+Provisioning Kubernetes clusters on vSphere from Rancher brings cloud-like automation to your on-premises data center. Rancher handles VM creation, OS configuration, and Kubernetes installation, giving you a fully managed cluster on your existing VMware infrastructure. With vSphere CPI/CSI integration, you get native storage provisioning and node topology awareness, making it a comprehensive solution for enterprise Kubernetes on vSphere.
