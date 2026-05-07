@@ -90,18 +90,22 @@ resource "aws_iam_role" "mwaa" {
 
 resource "aws_iam_role_policy" "mwaa" {
   name = "MWAAExecutionPolicy"
-  role = aws_iam_role.mwaa.id
+  role = aws_iam_role.mwaa.name
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
+        Effect   = "Allow"
+        Action   = "airflow:PublishMetrics"
+        Resource = "arn:aws:airflow:${var.aws_region}:${data.aws_caller_identity.current.account_id}:environment/${var.environment}-airflow"
+      },
+      {
         Effect = "Allow"
         Action = [
-          "s3:GetObject",
-          "s3:GetObjectVersion",
-          "s3:ListBucket",
-          "s3:ListBucketVersions",
+          "s3:GetObject*",
+          "s3:GetBucket*",
+          "s3:List*",
         ]
         Resource = [
           aws_s3_bucket.airflow.arn,
@@ -116,10 +120,20 @@ resource "aws_iam_role_policy" "mwaa" {
           "logs:PutLogEvents",
           "logs:GetLogEvents",
           "logs:GetLogRecord",
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams",
+          "logs:GetLogGroupFields",
+          "logs:GetQueryResults",
         ]
-        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:airflow-*"
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:airflow-${var.environment}-airflow-*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:DescribeLogGroups"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetAccountPublicAccessBlock"]
+        Resource = "*"
       },
       {
         Effect   = "Allow"
@@ -128,8 +142,32 @@ resource "aws_iam_role_policy" "mwaa" {
       },
       {
         Effect = "Allow"
-        Action = ["sqs:*"]
+        Action = [
+          "sqs:ChangeMessageVisibility",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl",
+          "sqs:ReceiveMessage",
+          "sqs:SendMessage",
+        ]
         Resource = "arn:aws:sqs:${var.aws_region}:*:airflow-celery-*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey",
+          "kms:GenerateDataKey*",
+          "kms:Encrypt",
+        ]
+        NotResource = "arn:aws:kms:*:${data.aws_caller_identity.current.account_id}:key/*"
+        Condition = {
+          StringLike = {
+            "kms:ViaService" = [
+              "sqs.${var.aws_region}.amazonaws.com"
+            ]
+          }
+        }
       }
     ]
   })
@@ -142,21 +180,21 @@ resource "aws_iam_role_policy" "mwaa" {
 # mwaa.tf
 resource "aws_mwaa_environment" "main" {
   name                 = "${var.environment}-airflow"
-  airflow_version      = "2.8.1"
-  environment_class    = var.environment_class  # mw1.small, mw1.medium, mw1.large
+  airflow_version      = "2.11.0"
+  environment_class    = var.environment_class  # Use a supported MWAA environment class
   execution_role_arn   = aws_iam_role.mwaa.arn
+  webserver_access_mode = "PRIVATE_ONLY"
   max_workers          = var.max_workers
   min_workers          = var.min_workers
 
   # S3 configuration
   source_bucket_arn    = aws_s3_bucket.airflow.arn
   dag_s3_path          = "dags/"
-  plugins_s3_path      = "plugins/plugins.zip"
-  requirements_s3_path = "requirements/requirements.txt"
+  # Optional plugin and requirements files also need their corresponding *_s3_object_version values.
 
   network_configuration {
     security_group_ids = [aws_security_group.mwaa.id]
-    subnet_ids         = var.private_subnet_ids  # At least 2 private subnets
+    subnet_ids         = var.private_subnet_ids  # Two private subnets in different Availability Zones
   }
 
   logging_configuration {
@@ -188,6 +226,12 @@ resource "aws_mwaa_environment" "main" {
     "scheduler.dag_dir_list_interval" = "30"
   }
 
+  depends_on = [
+    aws_iam_role_policy.mwaa,
+    aws_s3_bucket_versioning.airflow,
+    aws_s3_bucket_public_access_block.airflow,
+  ]
+
   tags = var.common_tags
 }
 
@@ -218,5 +262,5 @@ resource "aws_security_group" "mwaa" {
 - Use `mw1.small` for development and `mw1.medium` or larger for production workloads.
 - Store DAGs in S3 and use CI/CD to sync them - avoid manual uploads.
 - Enable versioning on the S3 bucket (required by MWAA) - this also lets you roll back bad DAG deployments.
-- Use private subnets for MWAA - the environment should not be publicly accessible.
-- Monitor the `NumQueuedTasks` CloudWatch metric to detect when workers are overwhelmed and scale accordingly.
+- Use two private subnets in different Availability Zones, and keep the webserver in `PRIVATE_ONLY` mode unless you explicitly need public access.
+- Monitor the `QueuedTasks` CloudWatch metric to detect when workers are overwhelmed and scale accordingly.
