@@ -6,12 +6,12 @@ Tags: Rancher, Kubernetes, Logging
 
 Description: Learn how to set up namespace-scoped logging in Rancher using Outputs and Flows for team-specific log management.
 
-Project-level logging in Rancher allows teams to manage their own log collection and routing within their namespaces. Unlike cluster-level logging which requires admin permissions, project-level logging uses namespace-scoped Output and Flow resources that project members can create and manage. This guide covers setting up and managing project-level logging.
+Project-level logging in Rancher allows teams to manage their own log collection and routing within their project namespaces. Unlike cluster-level logging which requires cluster admin permissions, project-level logging uses namespace-scoped Output and Flow resources that project owners can create and manage. This guide covers setting up and managing project-level logging.
 
 ## Prerequisites
 
 - Rancher v2.6 or later with the Logging chart installed.
-- Project member or namespace admin permissions.
+- Project owner permissions in the target project.
 - A log storage destination accessible from the cluster.
 
 ## Understanding Project-Level Logging
@@ -19,7 +19,7 @@ Project-level logging in Rancher allows teams to manage their own log collection
 In Rancher's logging architecture:
 
 - **ClusterOutput / ClusterFlow**: Cluster-wide resources in `cattle-logging-system` namespace. Requires cluster admin.
-- **Output / Flow**: Namespace-scoped resources. Can be created by project members in their own namespaces.
+- **Output / Flow**: Namespace-scoped resources. Can be created by project owners in their project namespaces.
 
 Flows can only reference Outputs in the same namespace, or ClusterOutputs that have been made available cluster-wide.
 
@@ -136,7 +136,7 @@ spec:
           - key: level
             pattern: "debug"
 
-    # Redact sensitive data
+    # Remove top-level sensitive fields
     - record_transformer:
         remove_keys: "password,secret,token,api_key"
 
@@ -146,10 +146,10 @@ spec:
 
 ## Step 5: Route Logs to Multiple Outputs
 
-Send logs to different outputs based on log content:
+Send logs to multiple outputs, with error logs also going to a dedicated output:
 
 ```yaml
-# Error logs go to a dedicated output
+# Error logs also go to a dedicated output
 
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: Flow
@@ -234,13 +234,14 @@ spec:
 
 ## Step 8: Configure via the Rancher UI
 
-1. Navigate to your cluster in Rancher.
-2. Go to **Logging** in the left navigation menu.
-3. Switch to the **Outputs** tab and click **Create**.
-4. Select the output type (Elasticsearch, Loki, Splunk, etc.).
-5. Fill in the connection details.
-6. Switch to the **Flows** tab and click **Create**.
-7. Select the output reference and configure any filters.
+1. In Rancher, click **☰ > Cluster Management**.
+2. On the **Clusters** page, open the target cluster and click **Explore**.
+3. In the left navigation menu, click **Logging**.
+4. Switch to the **Outputs** tab and click **Create**.
+5. Select the output type (Elasticsearch, Loki, Splunk, etc.).
+6. Fill in the connection details.
+7. Switch to the **Flows** tab and click **Create**.
+8. Select the output reference and configure any filters.
 
 ## Step 9: Verify Project-Level Logging
 
@@ -252,10 +253,10 @@ kubectl get outputs -n my-team-namespace
 kubectl get flows -n my-team-namespace
 
 # Check Fluentd logs for your namespace's flow
-kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd | grep my-team-namespace
+kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd --tail=-1 | grep my-team-namespace
 
 # Check for errors
-kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd | grep -i error
+kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd --tail=-1 | grep -i error
 ```
 
 ## Step 10: Troubleshoot Project-Level Logging
@@ -271,7 +272,7 @@ kubectl get pods -n my-team-namespace --show-labels
 **Output connection errors**: Check Fluentd logs for connection issues.
 
 ```bash
-kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd | grep -i "failed\|error\|connection"
+kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd --tail=-1 | grep -i "failed\|error\|connection"
 ```
 
 **Secret not found**: Ensure the credentials secret exists in the same namespace as the Output.
@@ -288,4 +289,4 @@ kubectl describe flow team-log-flow -n my-team-namespace
 
 ## Summary
 
-Project-level logging in Rancher enables teams to manage their own log collection within their namespaces using Output and Flow resources. Teams can configure their own log destinations, filters, and routing rules without requiring cluster admin permissions. This approach supports multi-tenant clusters where each team needs independent control over their logging pipeline while the cluster admin maintains overall logging governance through ClusterOutputs and ClusterFlows.
+Project-level logging in Rancher enables teams to manage their own log collection within their namespaces using Output and Flow resources. Project owners can configure log destinations, filters, and routing rules without requiring cluster admin permissions. This approach supports multi-tenant clusters where each team needs independent control over their logging pipeline while the cluster admin maintains overall logging governance through ClusterOutputs and ClusterFlows.
