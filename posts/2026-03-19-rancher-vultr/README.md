@@ -12,8 +12,9 @@ Vultr provides high-performance cloud compute instances across numerous global l
 
 - A Vultr account with API access enabled
 - The Vultr CLI installed and configured, or access to the Vultr API
+- `jq` installed locally for parsing API responses
 - An SSH key added to your Vultr account
-- A domain name (optional but recommended)
+- A DNS name for Rancher, such as your own domain or `<instance-ip>.sslip.io`
 
 ## Step 1: Create a Vultr Instance Using the API
 
@@ -47,7 +48,7 @@ Get the instance IP address:
 
 ```bash
 curl -s "https://api.vultr.com/v2/instances" \
-  -H "Authorization: Bearer $VULTR_API_KEY" | jq '.instances[] | select(.label=="rancher-server") | .main_ip'
+  -H "Authorization: Bearer $VULTR_API_KEY" | jq -r '.instances[] | select(.label=="rancher-server") | .main_ip'
 ```
 
 ## Step 2: Configure Firewall
@@ -80,6 +81,21 @@ for PORT in 22 80 443 6443; do
       \"port\": \"$PORT\"
     }"
 done
+```
+
+Attach the firewall group to the instance:
+
+```bash
+INSTANCE_ID="$(curl -s "https://api.vultr.com/v2/instances" \
+  -H "Authorization: Bearer $VULTR_API_KEY" | jq -r '.instances[] | select(.label=="rancher-server") | .id')"
+
+curl -s "https://api.vultr.com/v2/instances/$INSTANCE_ID" \
+  -X PATCH \
+  -H "Authorization: Bearer $VULTR_API_KEY" \
+  -H "Content-Type: application/json" \
+  --data "{
+    \"firewall_group_id\": \"$FIREWALL_GROUP_ID\"
+  }"
 ```
 
 ## Step 3: SSH into the Instance
@@ -142,14 +158,14 @@ kubectl create namespace cattle-system
 
 helm install rancher rancher-stable/rancher \
   --namespace cattle-system \
-  --set hostname=rancher.example.com \
+  --set hostname=<dns-name-for-rancher> \
   --set bootstrapPassword=admin \
   --set replicas=1
 ```
 
 ## Step 8: Set Up DNS
 
-Create a DNS A record pointing your domain to the instance IP address. If you manage DNS through Vultr:
+If you are using your own domain and manage DNS through Vultr, create a DNS A record pointing it to the instance IP address:
 
 ```bash
 curl -s "https://api.vultr.com/v2/domains/example.com/records" \
@@ -170,7 +186,7 @@ curl -s "https://api.vultr.com/v2/domains/example.com/records" \
 kubectl -n cattle-system rollout status deploy/rancher
 ```
 
-Open `https://rancher.example.com` in your browser. Log in and set your admin password.
+Open `https://<dns-name-for-rancher>` in your browser. Log in and set your admin password.
 
 ## Using Reserved IPs
 
