@@ -42,7 +42,7 @@ If the monitoring chart fails to install:
 ```bash
 # Check Helm release status
 
-helm list -n cattle-monitoring-system
+helm status rancher-monitoring -n cattle-monitoring-system
 
 # Check Helm release history
 helm history rancher-monitoring -n cattle-monitoring-system
@@ -112,8 +112,8 @@ kubectl get podmonitors --all-namespaces
 Verify the labels match what Prometheus expects:
 
 ```bash
-# Check Prometheus ruleSelector and serviceMonitorSelector
-kubectl get prometheus -n cattle-monitoring-system -o yaml | grep -A 10 "serviceMonitorSelector"
+# Check Prometheus serviceMonitorSelector and podMonitorSelector
+kubectl get prometheus rancher-monitoring-prometheus -n cattle-monitoring-system -o yaml | grep -A 20 -E "serviceMonitorSelector|podMonitorSelector|serviceMonitorNamespaceSelector|podMonitorNamespaceSelector"
 ```
 
 ### Missing Metrics
@@ -139,7 +139,7 @@ If Prometheus is running out of disk space:
 kubectl exec -n cattle-monitoring-system prometheus-rancher-monitoring-prometheus-0 -c prometheus -- df -h /prometheus
 
 # Check current retention settings
-kubectl get prometheus -n cattle-monitoring-system -o jsonpath='{.items[0].spec.retention}'
+kubectl get prometheus rancher-monitoring-prometheus -n cattle-monitoring-system -o jsonpath='{.spec.retention}'
 ```
 
 Reduce retention or increase storage:
@@ -181,13 +181,13 @@ If Grafana shows "No data" or data source errors:
 
 1. In Grafana, go to **Configuration > Data Sources**.
 2. Click on the Prometheus data source.
-3. Click **Test** to verify connectivity.
+3. Click **Save & test** to verify connectivity.
 
 Check the data source URL resolves correctly:
 
 ```bash
-kubectl exec -n cattle-monitoring-system -l app.kubernetes.io/name=grafana -c grafana -- \
-  curl -s http://rancher-monitoring-prometheus.cattle-monitoring-system.svc:9090/api/v1/query?query=up
+kubectl exec -n cattle-monitoring-system deployment/rancher-monitoring-grafana -c grafana -- \
+  curl -s 'http://rancher-monitoring-prometheus.cattle-monitoring-system.svc:9090/api/v1/query?query=up'
 ```
 
 ### Grafana Authentication Issues
@@ -220,7 +220,7 @@ Navigate to **Status > Rules** and verify:
 Check Alertmanager logs:
 
 ```bash
-kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=alertmanager
+kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=alertmanager -c alertmanager
 ```
 
 Common notification failures:
@@ -252,16 +252,16 @@ If node-level metrics are missing:
 
 ```bash
 # Check node-exporter pods
-kubectl get pods -n cattle-monitoring-system -l app=prometheus-node-exporter
+kubectl get pods -n cattle-monitoring-system -l app.kubernetes.io/name=prometheus-node-exporter
 
 # Check node-exporter logs
-kubectl logs -n cattle-monitoring-system -l app=prometheus-node-exporter
+kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=prometheus-node-exporter -c node-exporter
 ```
 
 Node exporter runs as a DaemonSet, so there should be one pod per node:
 
 ```bash
-kubectl get ds -n cattle-monitoring-system
+kubectl get ds -n cattle-monitoring-system -l app.kubernetes.io/name=prometheus-node-exporter
 ```
 
 ## Step 7: Troubleshoot kube-state-metrics Issues
@@ -270,7 +270,7 @@ If Kubernetes state metrics are missing:
 
 ```bash
 kubectl get pods -n cattle-monitoring-system -l app.kubernetes.io/name=kube-state-metrics
-kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=kube-state-metrics
+kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=kube-state-metrics -c kube-state-metrics
 ```
 
 Common issues:
@@ -283,16 +283,16 @@ If troubleshooting does not resolve the issue, restart components:
 
 ```bash
 # Restart Prometheus
-kubectl rollout restart statefulset -n cattle-monitoring-system prometheus-rancher-monitoring-prometheus
+kubectl rollout restart statefulset/prometheus-rancher-monitoring-prometheus -n cattle-monitoring-system
 
 # Restart Grafana
-kubectl rollout restart deployment -n cattle-monitoring-system rancher-monitoring-grafana
+kubectl rollout restart deployment/rancher-monitoring-grafana -n cattle-monitoring-system
 
 # Restart Alertmanager
-kubectl rollout restart statefulset -n cattle-monitoring-system alertmanager-rancher-monitoring-alertmanager
+kubectl rollout restart statefulset/alertmanager-rancher-monitoring-alertmanager -n cattle-monitoring-system
 
 # Restart the operator
-kubectl rollout restart deployment -n cattle-monitoring-system rancher-monitoring-operator
+kubectl rollout restart deployment/rancher-monitoring-operator -n cattle-monitoring-system
 ```
 
 ## Step 9: Collect Diagnostic Information
@@ -304,13 +304,13 @@ When escalating an issue, collect this information:
 kubectl get pods -n cattle-monitoring-system -o wide
 
 # Events in the monitoring namespace
-kubectl get events -n cattle-monitoring-system --sort-by='.lastTimestamp'
+kubectl get events -n cattle-monitoring-system --sort-by='.metadata.creationTimestamp'
 
 # Prometheus configuration
-kubectl get prometheus -n cattle-monitoring-system -o yaml
+kubectl get prometheus rancher-monitoring-prometheus -n cattle-monitoring-system -o yaml
 
 # Alertmanager configuration
-kubectl get alertmanager -n cattle-monitoring-system -o yaml
+kubectl get alertmanager rancher-monitoring-alertmanager -n cattle-monitoring-system -o yaml
 
 # Helm release values
 helm get values rancher-monitoring -n cattle-monitoring-system
