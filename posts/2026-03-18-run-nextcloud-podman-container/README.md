@@ -8,7 +8,7 @@ Description: Learn how to run Nextcloud in a Podman container for self-hosted fi
 
 ---
 
-> Nextcloud in Podman gives you a self-hosted cloud storage and collaboration platform in a rootless container with full data ownership.
+> Nextcloud in Podman gives you a self-hosted cloud storage and collaboration platform that can run in a rootless container with full data ownership.
 
 Nextcloud is a self-hosted productivity platform that provides file storage, sharing, calendars, contacts, and more. Running it in a Podman container lets you deploy your own private cloud with full control over your data. This guide covers setting up Nextcloud with a database backend, persistent storage, and administrative configuration.
 
@@ -129,8 +129,27 @@ Automate the installation with environment variables.
 
 ```bash
 # Run Nextcloud with full automatic configuration
+podman pod create \
+  --name nc-configured-pod \
+  -p 8084:80
+
+podman volume create nc-configured-db-data
+podman volume create nc-configured-data
+
 podman run -d \
-  --pod nextcloud-pod \
+  --pod nc-configured-pod \
+  --name nc-configured-db \
+  -e MARIADB_ROOT_PASSWORD=root-secret \
+  -e MARIADB_DATABASE=nextcloud \
+  -e MARIADB_USER=nextcloud \
+  -e MARIADB_PASSWORD=nc-secret \
+  -v nc-configured-db-data:/var/lib/mysql:Z \
+  mariadb:11
+
+sleep 15
+
+podman run -d \
+  --pod nc-configured-pod \
   --name nc-configured \
   -e MYSQL_DATABASE=nextcloud \
   -e MYSQL_USER=nextcloud \
@@ -146,7 +165,7 @@ podman run -d \
   -e SMTP_PASSWORD=mail-secret \
   -e MAIL_FROM_ADDRESS=nextcloud \
   -e MAIL_DOMAIN=example.com \
-  -v nc-data:/var/www/html:Z \
+  -v nc-configured-data:/var/www/html:Z \
   nextcloud:latest
 ```
 
@@ -189,6 +208,9 @@ Add Redis caching for improved performance.
 # Create a pod with Nextcloud, MariaDB, and Redis
 podman pod create --name nc-full-pod -p 8083:80
 
+podman volume create nc-full-db-data
+podman volume create nc-full-data
+
 # Run Redis in the pod
 podman run -d \
   --pod nc-full-pod \
@@ -203,10 +225,10 @@ podman run -d \
   -e MARIADB_DATABASE=nextcloud \
   -e MARIADB_USER=nextcloud \
   -e MARIADB_PASSWORD=nc-secret \
-  -v nc-db-data:/var/lib/mysql:Z \
+  -v nc-full-db-data:/var/lib/mysql:Z \
   mariadb:11
 
-sleep 10
+sleep 15
 
 # Run Nextcloud with Redis caching enabled
 podman run -d \
@@ -220,7 +242,7 @@ podman run -d \
   -e REDIS_HOST_PASSWORD=redis-secret \
   -e NEXTCLOUD_ADMIN_USER=admin \
   -e NEXTCLOUD_ADMIN_PASSWORD=admin-secret \
-  -v nc-data:/var/www/html:Z \
+  -v nc-full-data:/var/www/html:Z \
   nextcloud:latest
 ```
 
@@ -239,11 +261,11 @@ podman pod stop nextcloud-pod
 podman pod start nextcloud-pod
 
 # Remove pods and containers
-podman pod rm -f nextcloud-pod nc-full-pod
+podman pod rm -f nextcloud-pod nc-configured-pod nc-full-pod
 podman rm -f my-nextcloud nc-granular
 
 # Clean up volumes
-podman volume rm nc-db-data nc-data nc-html nc-custom-apps nc-config nc-user-data
+podman volume rm nc-db-data nc-data nc-html nc-custom-apps nc-config nc-user-data nc-configured-db-data nc-configured-data nc-full-db-data nc-full-data
 ```
 
 ## Summary
