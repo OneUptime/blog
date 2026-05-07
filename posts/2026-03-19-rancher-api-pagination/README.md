@@ -10,7 +10,7 @@ When your Rancher environment manages hundreds of clusters, thousands of nodes, 
 
 ## How Rancher API Pagination Works
 
-The Rancher API uses limit and marker-based pagination. Every collection response includes a `pagination` object:
+The previous v3 Rancher API uses limit and marker-based pagination. Every paginated collection response includes a `pagination` object:
 
 ```json
 {
@@ -19,6 +19,7 @@ The Rancher API uses limit and marker-based pagination. Every collection respons
   "data": [...],
   "pagination": {
     "limit": 100,
+    "partial": true,
     "total": 450,
     "first": "https://rancher.example.com/v3/nodes",
     "next": "https://rancher.example.com/v3/nodes?marker=node-xyz",
@@ -29,10 +30,11 @@ The Rancher API uses limit and marker-based pagination. Every collection respons
 
 Key fields:
 - **limit**: Maximum number of items per page (default varies by resource type)
-- **total**: Total number of items matching your query
-- **next**: URL for the next page of results (absent on the last page)
-- **first**: URL for the first page
-- **last**: URL for the last page
+- **partial**: Whether the response is truncated and more results are available
+- **total**: Total number of items matching your query, if the server provides it
+- **next**: URL for the next page of results (present when the result is truncated and more results are available)
+- **first**: URL for the first page, when provided
+- **last**: URL for the last page, if the server provides it
 
 ## Setting Up
 
@@ -66,7 +68,7 @@ api "${RANCHER_URL}/v3/clusters?limit=10" | jq '{
 api "${RANCHER_URL}/v3/nodes?limit=50" | jq '.pagination'
 ```
 
-The maximum limit depends on the resource type, but values up to 1000 generally work.
+The previous v3 API supports `limit` values up to 1000.
 
 ## Navigating Pages with the marker Parameter
 
@@ -157,21 +159,26 @@ The v1 (Steve) API uses slightly different pagination parameters:
 
 ```bash
 # Set page size with limit
-api "${RANCHER_URL}/v1/pods?limit=100" | jq '.pagination'
+api "${RANCHER_URL}/v1/pods?limit=100" | jq '{
+  continue: .continue,
+  next: .pagination.next
+}'
 ```
 
-The v1 API response includes a `continue` token:
+The v1 API response includes a top-level `continue` token, and partial results also include a `pagination.next` URL:
 
 ```json
 {
+  "continue": "eyJ2IjoiMTIz...",
   "pagination": {
     "limit": 100,
-    "continue": "eyJ2IjoiMTIz..."
+    "partial": true,
+    "next": "https://rancher.example.com/v1/pods?limit=100&continue=eyJ2IjoiMTIz..."
   }
 }
 ```
 
-Use the continue token for the next page:
+You can follow `pagination.next` directly, or reuse the `continue` token with the same query parameters:
 
 ```bash
 api "${RANCHER_URL}/v1/pods?limit=100&continue=eyJ2IjoiMTIz..."
@@ -197,12 +204,7 @@ while [ -n "$url" ]; do
   echo "$response" | jq -r '.data[] | "\(.metadata.namespace)/\(.metadata.name)"'
 
   # Check for continuation
-  continue_token=$(echo "$response" | jq -r '.pagination.continue // empty')
-  if [ -n "$continue_token" ]; then
-    url="${RANCHER_URL}/v1/pods?limit=100&continue=${continue_token}"
-  else
-    url=""
-  fi
+  url=$(echo "$response" | jq -r '.pagination.next // empty')
 done
 
 echo "Total pods: ${total}"
@@ -222,14 +224,15 @@ api "${RANCHER_URL}/v1/pods/default?limit=50" | jq '.pagination'
 
 ## Sorting Paginated Results
 
-Control sort order with the `sort` and `order` parameters:
+In the previous v3 API, available sort names vary by collection. Inspect `sortLinks` to see what a given endpoint supports:
 
 ```bash
-# Sort clusters by name ascending
-api "${RANCHER_URL}/v3/clusters?sort=name&order=asc&limit=10"
+# Show the supported sort links for clusters
+api "${RANCHER_URL}/v3/clusters?limit=10" | jq '.sortLinks'
 
-# Sort nodes by creation date descending
-api "${RANCHER_URL}/v3/nodes?sort=created&order=desc&limit=20"
+# Follow one of the returned sort links, for example the `name` sort if present
+sort_url=$(api "${RANCHER_URL}/v3/clusters?limit=10" | jq -r '.sortLinks.name // empty')
+[ -n "$sort_url" ] && api "$sort_url"
 ```
 
 ## Performance Tips
@@ -254,26 +257,7 @@ api "${RANCHER_URL}/v1/pods?fieldSelector=status.phase=Failed&limit=100"
 
 ### Parallelize Page Fetches
 
-If you know the total count, you can fetch pages in parallel:
-
-```bash
-#!/bin/bash
-
-total=$(api "${RANCHER_URL}/v3/nodes?limit=1" | jq '.pagination.total')
-page_size=100
-pages=$(( (total + page_size - 1) / page_size ))
-
-echo "Total: ${total}, Pages: ${pages}"
-
-for i in $(seq 0 $((pages - 1))); do
-  offset=$((i * page_size))
-  api "${RANCHER_URL}/v3/nodes?limit=${page_size}&offset=${offset}" > /tmp/nodes_page_${i}.json &
-done
-
-wait
-echo "All pages fetched."
-cat /tmp/nodes_page_*.json | jq -s '[.[].data[]] | length'
-```
+The previous v3 API uses marker-based pagination, so you generally cannot fetch arbitrary pages in parallel. Each `marker` value comes from the previous response, so page retrieval is typically sequential.
 
 ## Error Handling for Pagination
 
