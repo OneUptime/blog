@@ -8,7 +8,7 @@ Description: Configure HTTP and HTTPS health checks for AWS Application Load Bal
 
 ## Introduction
 
-Health checks are how an AWS ALB determines whether a target (EC2 instance, IP, or Lambda) is ready to receive traffic. A target must pass health checks before the ALB sends requests to it, and it is removed from rotation if checks start failing. Proper health check configuration is critical for zero-downtime deployments and automatic failover.
+Health checks are how an AWS ALB determines whether an IPv4 target (EC2 instance or IP address) is ready to receive traffic. A target must pass health checks before the ALB sends requests to it, and the ALB normally stops routing requests to a target if checks start failing. Proper health check configuration is critical for zero-downtime deployments and automatic failover.
 
 ## Health Check Parameters
 
@@ -35,13 +35,13 @@ aws elbv2 create-target-group \
   --vpc-id vpc-0123456789abcdef0 \
   --target-type instance \
   --health-check-protocol HTTP \
-  --health-check-path /health \          # Dedicated health check endpoint
+  --health-check-path /health \
   --health-check-port 8080 \
-  --healthy-threshold-count 2 \          # Require 2 consecutive successes
-  --unhealthy-threshold-count 3 \        # Remove after 3 failures
+  --healthy-threshold-count 2 \
+  --unhealthy-threshold-count 3 \
   --health-check-timeout-seconds 5 \
-  --health-check-interval-seconds 15 \   # Check every 15 seconds
-  --matcher HttpCode=200-299             # Accept any 2xx as healthy
+  --health-check-interval-seconds 15 \
+  --matcher HttpCode=200-299
 ```
 
 ## Modifying Health Checks on an Existing Target Group
@@ -71,9 +71,11 @@ Your application should expose a dedicated health check endpoint:
 
 ```python
 # Example Flask health check endpoint
+import sqlite3
 from flask import Flask, jsonify
 
 app = Flask(__name__)
+db = sqlite3.connect(":memory:", check_same_thread=False)
 
 @app.route('/health')
 def health_check():
@@ -81,7 +83,7 @@ def health_check():
     try:
         db.execute("SELECT 1")
         return jsonify({"status": "healthy"}), 200
-    except Exception:
+    except sqlite3.Error:
         return jsonify({"status": "unhealthy"}), 503
 ```
 
