@@ -27,13 +27,13 @@ export DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
 # Verify Docker Compose v2 is available
 docker compose version
 # Requires v2.22.0 or later for watch support
+# Requires v2.23.0 or later for sync+restart
 ```
 
 ## Defining Watch Rules
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   web:
     build:
@@ -104,7 +104,6 @@ CMD ["node", "server.js"]
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
     build:
@@ -168,4 +167,4 @@ services:
 
 ## Summary
 
-Compose watch automates file syncing and container rebuilds during development. Use `sync` for hot-reloadable files, `rebuild` for dependency changes, and `sync+restart` for config files that need a process restart. This feature requires Docker Compose v2.22+ with the Podman socket.
+Compose watch automates file syncing and container rebuilds during development. Use `sync` for hot-reloadable files, `rebuild` for dependency changes, and `sync+restart` for config files that need a process restart. This feature requires Docker Compose v2.22+ with the Podman socket, and `sync+restart` requires Docker Compose v2.23+.
