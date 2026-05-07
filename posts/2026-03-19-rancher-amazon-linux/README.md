@@ -8,6 +8,8 @@ Description: A step-by-step guide to installing Rancher on Amazon Linux 2023 usi
 
 Amazon Linux 2023 is the latest generation of Amazon Linux from AWS. It is optimized for running on AWS EC2 instances and provides a stable, secure, and high-performance environment for cloud workloads. This guide covers installing Rancher on Amazon Linux 2023, including AWS-specific considerations such as security groups and instance configuration.
 
+Rancher's single-node Docker installation is intended for development and testing, not production.
+
 ## Prerequisites
 
 Before you begin, ensure you have:
@@ -15,7 +17,7 @@ Before you begin, ensure you have:
 - An EC2 instance running Amazon Linux 2023 with at least 4 GB RAM (t3.medium or larger)
 - SSH access to the instance
 - An Elastic IP or DNS name associated with the instance
-- An AWS Security Group configured to allow inbound traffic on ports 80, 443, and 6443
+- An AWS Security Group configured to allow inbound traffic on ports 80 and 443
 
 ## Step 1: Configure the Security Group
 
@@ -26,7 +28,8 @@ In the AWS Console, ensure your EC2 instance's security group allows the followi
 | 22    | TCP      | Your IP   | SSH access           |
 | 80    | TCP      | 0.0.0.0/0 | HTTP                 |
 | 443   | TCP      | 0.0.0.0/0 | HTTPS (Rancher UI)   |
-| 6443  | TCP      | VPC CIDR  | Kubernetes API       |
+
+If you plan to manage downstream clusters with Rancher, allow outbound access from the instance to those clusters' Kubernetes API endpoints (commonly TCP 6443, or the provider-specific API endpoint port).
 
 ## Step 2: Update the System
 
@@ -65,15 +68,7 @@ docker --version
 docker run hello-world
 ```
 
-If Docker is not available in the default repositories, install it from the Docker CE repository:
-
-```bash
-sudo dnf install -y dnf-plugins-core
-sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-sudo dnf install -y docker-ce docker-ce-cli containerd.io
-sudo systemctl enable docker
-sudo systemctl start docker
-```
+Before proceeding, check the Rancher support matrix to confirm that your Docker major/minor version is validated for the Rancher release you plan to run.
 
 ## Step 4: Disable Swap
 
@@ -142,12 +137,15 @@ For EC2 instances, consider using an EBS volume for Rancher data to ensure durab
 
 sudo mkdir -p /opt/rancher
 
-# If using a separate EBS volume (recommended for production)
-# Attach an EBS volume in the AWS Console, then:
-# sudo mkfs.xfs /dev/xvdf
+# If using a separate EBS volume
+# Attach an EBS volume in the AWS Console, then identify the actual device name with lsblk.
+# On Nitro-based instances such as t3.medium, the volume typically appears as /dev/nvme1n1.
+# lsblk
+# sudo mkfs -t xfs <device>
 # sudo mkdir -p /opt/rancher
-# sudo mount /dev/xvdf /opt/rancher
-# echo '/dev/xvdf /opt/rancher xfs defaults 0 0' | sudo tee -a /etc/fstab
+# sudo mount <device> /opt/rancher
+# sudo blkid <device>
+# echo 'UUID=<uuid> /opt/rancher xfs defaults,nofail 0 2' | sudo tee -a /etc/fstab
 ```
 
 ## Step 8: Run Rancher
@@ -183,7 +181,7 @@ Complete the initial setup:
 
 ## AWS-Specific Considerations
 
-**Instance metadata**: Amazon Linux 2023 uses IMDSv2 by default. Rancher can leverage AWS cloud provider integration when provisioning clusters:
+**Instance metadata**: Amazon Linux 2023 AMIs require IMDSv2 by default. Rancher can leverage AWS cloud provider integration when provisioning clusters:
 
 ```bash
 # Verify IMDSv2 is working
@@ -193,17 +191,24 @@ curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-da
 
 **IAM roles**: If you plan to use Rancher to provision EKS clusters or manage AWS resources, attach an IAM role to your EC2 instance with the appropriate permissions.
 
-**Elastic IP**: Always use an Elastic IP for your Rancher instance to ensure the IP does not change after a stop/start cycle.
+**Elastic IP**: If you are exposing Rancher directly on the instance, use an Elastic IP or stable DNS name so the Rancher server URL does not change after a stop/start cycle.
 
 **Backup with EBS snapshots**: Take regular EBS snapshots for backup:
 
 ```bash
-# Get the instance ID
+# Get the instance ID and list attached volumes
 INSTANCE_ID=$(TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600") && curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-echo "Instance ID: $INSTANCE_ID"
+aws ec2 describe-volumes \
+  --filters Name=attachment.instance-id,Values="$INSTANCE_ID" \
+  --query 'Volumes[].{VolumeId:VolumeId,Device:Attachments[0].Device}' \
+  --output table
 ```
 
-You can then create EBS snapshots via the AWS Console or CLI.
+You can then create an EBS snapshot for the volume that holds `/opt/rancher` via the AWS Console or CLI:
+
+```bash
+aws ec2 create-snapshot --volume-id <volume-id> --description "Rancher data backup"
+```
 
 ## Troubleshooting
 
@@ -214,18 +219,18 @@ sudo systemctl status docker
 # View Rancher logs
 docker logs rancher --tail 100
 
-# Check security group (from instance)
+# Confirm the instance public IP
 curl -s http://checkip.amazonaws.com
-# Verify the returned IP can access ports 80 and 443
+# Verify your Elastic IP or DNS record points to the returned IP
 
 # Check system resources
 free -h
 df -h
 
 # Check DNS resolution
-nslookup rancher.yourdomain.com
+getent hosts rancher.yourdomain.com
 ```
 
 ## Conclusion
 
-You have successfully installed Rancher on Amazon Linux 2023. Running Rancher on Amazon Linux within AWS gives you tight integration with AWS services, making it easier to provision and manage EKS clusters and other AWS resources directly from the Rancher dashboard. The combination of Amazon Linux's optimized performance on EC2 and Rancher's multi-cluster management capabilities provides a strong foundation for your Kubernetes operations.
+You have successfully installed Rancher on Amazon Linux 2023 for development or evaluation. Running Rancher on Amazon Linux within AWS gives you tight integration with AWS services, making it easier to explore Rancher's multi-cluster management capabilities and manage EKS clusters and other AWS resources from the Rancher dashboard before moving to a supported high-availability production deployment on Kubernetes.
