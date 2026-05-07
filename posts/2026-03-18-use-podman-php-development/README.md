@@ -168,6 +168,9 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
     gd pdo_mysql zip intl opcache bcmath
 
+# Install the Redis extension used by Laravel's default PhpRedis client
+RUN pecl install redis && docker-php-ext-enable redis
+
 # Install Composer
 COPY --from=docker.io/library/composer:2 /usr/bin/composer /usr/bin/composer
 
@@ -198,10 +201,11 @@ EXPOSE 80
 CMD ["apache2-foreground"]
 ```
 
-Create a `docker-compose.yml` for Laravel with MySQL and Redis:
+Podman's `compose` subcommand uses an external compose provider, so make sure `podman-compose` or Docker Compose is installed before running these commands.
+
+Create a `compose.yaml` for Laravel with MySQL and Redis:
 
 ```yaml
-version: "3.8"
 services:
   app:
     build: .
@@ -216,7 +220,8 @@ services:
       DB_DATABASE: laravel
       DB_USERNAME: laravel
       DB_PASSWORD: secret
-      CACHE_DRIVER: redis
+      CACHE_STORE: redis
+      REDIS_CLIENT: phpredis
       REDIS_HOST: redis
     depends_on:
       - db
@@ -243,39 +248,61 @@ volumes:
   mysqldata:
 ```
 
-Start the stack and initialize Laravel:
+Start the stack and initialize Laravel once MySQL has finished initializing:
 
 ```bash
 # Start all services
-podman-compose up -d
+podman compose up -d
+
+# Install PHP dependencies inside the running container
+podman compose exec app composer install
 
 # Run Laravel migrations
-podman-compose exec app php artisan migrate
+podman compose exec app php artisan migrate
 
 # Generate the application key
-podman-compose exec app php artisan key:generate
+podman compose exec app php artisan key:generate
 
 # Clear and rebuild caches
-podman-compose exec app php artisan config:clear
-podman-compose exec app php artisan cache:clear
+podman compose exec app php artisan config:clear
+podman compose exec app php artisan cache:clear
 
 # View logs
-podman-compose logs -f app
+podman compose logs -f app
 ```
 
 ## Using PHP-FPM with Nginx
 
 For a more production-like setup, use PHP-FPM with Nginx as separate containers:
 
+Create `Containerfile.fpm`:
+
+```dockerfile
+FROM docker.io/library/php:8.3-fpm
+
+RUN apt-get update && apt-get install -y \
+    libpng-dev libjpeg-dev libfreetype6-dev \
+    libzip-dev libicu-dev \
+    unzip git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) \
+    gd pdo_mysql zip intl opcache bcmath
+
+COPY --from=docker.io/library/composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www/html
+```
+
 ```yaml
-version: "3.8"
 services:
   nginx:
     image: docker.io/library/nginx:alpine
     ports:
       - "8080:80"
     volumes:
-      - .:/var/www/html:Z
+      - .:/var/www/html:z
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:Z
     depends_on:
       - php
@@ -285,7 +312,14 @@ services:
       context: .
       dockerfile: Containerfile.fpm
     volumes:
-      - .:/var/www/html:Z
+      - .:/var/www/html:z
+    environment:
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: myapp
+      DB_USERNAME: myapp
+      DB_PASSWORD: secret
     depends_on:
       - db
 
@@ -354,7 +388,7 @@ podman run --rm \
   docker.io/library/php:8.3-cli \
   vendor/bin/phpunit
 
-# Run PHPUnit with coverage
+# Run PHPUnit with coverage using a custom image that includes Xdebug or PCOV
 podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
@@ -362,7 +396,7 @@ podman run --rm \
   vendor/bin/phpunit --coverage-text
 
 # Run Laravel tests
-podman-compose exec app php artisan test --verbose
+podman compose exec app php artisan test --verbose
 ```
 
 ## Conclusion
