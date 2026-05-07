@@ -8,7 +8,7 @@ Description: Create and configure IPv6-enabled subnets in AWS VPC, assign /64 CI
 
 ## Introduction
 
-After enabling IPv6 on your VPC, you assign `/64` IPv6 CIDR blocks to individual subnets from the VPC's `/56` prefix. Each subnet gets a unique `/64` block. You can configure subnets to automatically assign IPv6 addresses to EC2 instances at launch, enabling dual-stack or IPv6-only operation.
+After enabling IPv6 on your VPC, you typically assign `/64` IPv6 CIDR blocks to individual subnets. If your VPC uses an Amazon-provided IPv6 CIDR, AWS assigns a `/56` to the VPC and each subnet gets a unique `/64` carved from that range. You can configure subnets to automatically assign IPv6 addresses to EC2 instances at launch, enabling dual-stack or IPv6-only operation.
 
 ## Assign IPv6 CIDR to Existing Subnet
 
@@ -28,9 +28,11 @@ echo "VPC IPv6 CIDR: $IPV6_CIDR"
 # Get a subnet ID
 SUBNET_ID="subnet-12345678"
 
-# Assign IPv6 /64 (using subnet number 0x00 to 0xff)
-# Replace the last two octets of /56 with the subnet number
-IPV6_SUBNET="${IPV6_CIDR%00::/56}00::/64"
+# Pick a subnet number from 00 to ff (for an Amazon-provided /56)
+SUBNET_HEX="00"
+
+# Replace the last byte of the fourth hextet with the subnet number
+IPV6_SUBNET="${IPV6_CIDR%00::/56}${SUBNET_HEX}::/64"
 echo "Assigning IPv6 subnet: $IPV6_SUBNET"
 
 aws ec2 associate-subnet-cidr-block \
@@ -49,7 +51,7 @@ aws ec2 modify-subnet-attribute \
 # subnets.tf - IPv6-enabled subnets
 
 locals {
-  # Extract the /56 prefix to carve /64 subnets
+  # Amazon-provided VPC IPv6 CIDRs are /56; carve /64 subnets from them
   vpc_ipv6_cidr = aws_vpc.main.ipv6_cidr_block
 }
 
@@ -58,7 +60,7 @@ resource "aws_subnet" "public_a" {
   cidr_block        = "10.0.1.0/24"
   availability_zone = "us-east-1a"
 
-  # Assign /64 from the VPC /56
+  # Assign /64 from an Amazon-provided VPC /56
   ipv6_cidr_block = cidrsubnet(aws_vpc.main.ipv6_cidr_block, 8, 1)
 
   # Auto-assign IPv6 to instances launched in this subnet
@@ -87,7 +89,7 @@ resource "aws_subnet" "private_a" {
   cidr_block        = "10.0.10.0/24"
   availability_zone = "us-east-1a"
 
-  # Private subnets also get IPv6 (all IPv6 in AWS is public)
+  # Private subnets can also use IPv6; routing still controls reachability
   ipv6_cidr_block = cidrsubnet(aws_vpc.main.ipv6_cidr_block, 8, 10)
   assign_ipv6_address_on_creation = true
 
@@ -133,10 +135,10 @@ aws ec2 describe-subnets \
 ## The cidrsubnet Function for /64 Carving
 
 ```bash
-# AWS VPC gets a /56. To carve /64 subnets:
-# /56 has room for 256 x /64 subnets (2^(64-56) = 256)
+# Amazon-provided VPC IPv6 CIDRs are /56.
+# A /56 has room for 256 x /64 subnets (2^(64-56) = 256)
 
-# Terraform cidrsubnet(ipv6_cidr, 8, n) works because:
+# Terraform cidrsubnet(ipv6_cidr, 8, n) works for a /56 because:
 # 64 - 56 = 8 additional bits needed
 # n = subnet index (0-255)
 
@@ -149,4 +151,4 @@ aws ec2 describe-subnets \
 
 ## Conclusion
 
-AWS IPv6 subnets use `/64` blocks carved from the VPC's `/56` block. Use `cidrsubnet(vpc.ipv6_cidr_block, 8, N)` in Terraform to generate each subnet's IPv6 CIDR. Enable `assign_ipv6_address_on_creation = true` to automatically assign IPv6 addresses to instances. Remember that all IPv6 addresses in AWS are globally routable - "private" vs "public" is controlled by routing and security groups, not by the IP address itself. Configure route tables to route `::/0` through an Internet Gateway for public subnets or an Egress-Only IGW for private subnets.
+When your VPC uses an Amazon-provided IPv6 CIDR, AWS allocates a `/56` to the VPC and you typically assign `/64` subnets from that range. Use `cidrsubnet(vpc.ipv6_cidr_block, 8, N)` in Terraform when the VPC CIDR is `/56` to generate each subnet's IPv6 CIDR. Enable `assign_ipv6_address_on_creation = true` to automatically assign IPv6 addresses to instances. Amazon-provided IPv6 addresses are globally routable, but routing and security groups still control reachability; AWS also supports private IPv6 ranges through IPAM. For Amazon-provided public IPv6 subnets, configure route tables to route `::/0` through an Internet Gateway for public subnets or an Egress-Only IGW for private subnets.
