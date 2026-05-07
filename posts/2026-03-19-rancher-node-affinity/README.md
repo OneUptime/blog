@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, Node Templates
 
 Description: A practical guide to configuring node affinity and anti-affinity rules in Rancher for optimized workload scheduling.
 
-Node affinity and anti-affinity rules in Kubernetes control where pods are scheduled based on node labels and other pod locations. Rancher provides a user-friendly interface for configuring these rules alongside direct YAML editing. This guide covers how to set up both node affinity and anti-affinity for your workloads.
+Affinity and anti-affinity rules in Kubernetes control where pods are scheduled based on node labels and the locations of other pods. Rancher provides a user-friendly interface for configuring these rules alongside direct YAML editing. This guide covers how to set up both node affinity and anti-affinity for your workloads.
 
 ## Prerequisites
 
@@ -35,32 +35,37 @@ Before setting affinity rules, label your nodes appropriately:
 ```bash
 # Label nodes by zone
 
-kubectl label nodes node-1 topology.kubernetes.io/zone=us-east-1a
-kubectl label nodes node-2 topology.kubernetes.io/zone=us-east-1b
-kubectl label nodes node-3 topology.kubernetes.io/zone=us-east-1c
+kubectl label --overwrite nodes node-1 topology.kubernetes.io/zone=us-east-1a
+kubectl label --overwrite nodes node-2 topology.kubernetes.io/zone=us-east-1b
+kubectl label --overwrite nodes node-3 topology.kubernetes.io/zone=us-east-1c
+kubectl label --overwrite nodes node-4 topology.kubernetes.io/zone=us-east-1a
+kubectl label --overwrite nodes node-5 topology.kubernetes.io/zone=us-east-1b
+kubectl label --overwrite nodes node-6 topology.kubernetes.io/zone=us-east-1c
 
 # Label nodes by hardware type
-kubectl label nodes node-4 hardware=gpu
-kubectl label nodes node-5 hardware=gpu
-kubectl label nodes node-6 hardware=standard
+kubectl label --overwrite nodes node-1 hardware=standard
+kubectl label --overwrite nodes node-2 hardware=high-memory
+kubectl label --overwrite nodes node-4 hardware=gpu
+kubectl label --overwrite nodes node-5 hardware=gpu
+kubectl label --overwrite nodes node-6 hardware=standard
 
 # Label nodes by environment
-kubectl label nodes node-1 environment=production
-kubectl label nodes node-2 environment=production
-kubectl label nodes node-3 environment=staging
+kubectl label --overwrite nodes node-1 environment=production
+kubectl label --overwrite nodes node-2 environment=production
+kubectl label --overwrite nodes node-3 environment=staging
 
 # Label nodes by team
-kubectl label nodes node-1 team=data-engineering
-kubectl label nodes node-2 team=web-services
+kubectl label --overwrite nodes node-1 team=data-engineering
+kubectl label --overwrite nodes node-2 team=web-services
 ```
 
 You can also label nodes through the Rancher UI:
 
 1. Navigate to your cluster.
 2. Go to **Nodes**.
-3. Click on a node name.
-4. Click **Edit Labels & Annotations**.
-5. Add labels and click **Save**.
+3. Open the node's options menu and select **Edit**.
+4. Add labels.
+5. Click **Save**.
 
 ## Step 2: Configure Required Node Affinity
 
@@ -69,7 +74,7 @@ Set a hard node affinity rule using the Rancher UI:
 1. Navigate to your cluster's **Workloads**.
 2. Create or edit a deployment.
 3. Scroll to the **Node Scheduling** section.
-4. Select **Require all of** and add your label match expressions.
+4. Configure required node affinity by adding your label match expressions.
 
 Or configure it through YAML:
 
@@ -229,7 +234,7 @@ This schedules `log-collector` pods on the same nodes as `api-service` pods.
 
 ## Step 6: Zone-Based Anti-Affinity
 
-Spread pods across availability zones:
+Prefer spreading pods across availability zones:
 
 ```yaml
 apiVersion: apps/v1
@@ -248,18 +253,22 @@ spec:
     spec:
       affinity:
         podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchExpressions:
-                  - key: app
-                    operator: In
-                    values:
-                      - database-replica
-              topologyKey: topology.kubernetes.io/zone
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - database-replica
+                topologyKey: topology.kubernetes.io/zone
       containers:
         - name: db
           image: postgres:16
 ```
+
+This prefers placing replicas in different zones. If you need hard zone-based pod anti-affinity, make sure your cluster admission configuration allows a `topologyKey` other than `kubernetes.io/hostname`.
 
 ## Step 7: Combine Affinity and Anti-Affinity
 
@@ -316,12 +325,9 @@ Use the Rancher UI for simpler affinity configurations:
 
 1. Open your cluster in Rancher.
 2. Navigate to **Workloads** and select or create a deployment.
-3. Click on the **Pod Scheduling** tab.
-4. Under **Node Scheduling**, choose one of the options:
-   - **Run pods on any available node**
-   - **Run pods on specific nodes** (node selector)
-   - **Use advanced scheduling rules** (affinity)
-5. Add your affinity rules using the form fields.
+3. In the workload form, open the **Node Scheduling** section.
+4. Configure node selectors or advanced scheduling rules, depending on your Rancher version.
+5. Add your affinity rules using the form fields, or edit the workload YAML directly for more complex rules.
 6. Click **Save**.
 
 ## Step 9: Verify Affinity Rules
@@ -371,12 +377,12 @@ Common solutions:
 
 ## Best Practices
 
-- **Start with preferred rules**: Use `preferredDuringScheduling` initially and switch to `required` only when necessary.
-- **Label nodes consistently**: Establish a labeling convention and automate label application through node templates.
-- **Test with dry-run**: Before applying affinity rules to production workloads, test them in a staging environment.
+- **Start with preferred rules**: Use `preferredDuringSchedulingIgnoredDuringExecution` initially and switch to `requiredDuringSchedulingIgnoredDuringExecution` only when necessary.
+- **Label nodes consistently**: Establish a labeling convention and automate label application through your cluster provisioning workflow or node pools.
+- **Test in staging**: Before applying affinity rules to production workloads, test them in a staging environment.
 - **Monitor scheduling latency**: Complex affinity rules can slow down scheduling. Monitor scheduler performance.
 - **Document your strategy**: Maintain documentation of your affinity rules and the reasons behind them so that new team members can understand the scheduling logic.
 
 ## Conclusion
 
-Node affinity and anti-affinity rules in Rancher give you fine-grained control over where your workloads run. By combining node labels with affinity rules, you can optimize resource utilization, improve availability, and ensure workloads land on appropriate hardware. Start with simple rules and add complexity as your scheduling needs grow.
+Affinity and anti-affinity rules in Rancher give you fine-grained control over where your workloads run. By combining node labels with affinity rules, you can optimize resource utilization, improve availability, and ensure workloads land on appropriate hardware. Start with simple rules and add complexity as your scheduling needs grow.
