@@ -38,13 +38,22 @@ podman run -d \
 
 # Wait for the database to be ready
 echo "Waiting for database..."
+DB_READY=0
 for i in $(seq 1 30); do
-  if podman exec test-db pg_isready -U testuser; then
+  if podman exec test-db pg_isready -q -U testuser -d testdb; then
     echo "Database is ready"
+    DB_READY=1
     break
   fi
   sleep 1
 done
+
+if [ "$DB_READY" -ne 1 ]; then
+  echo "Database did not become ready in time" >&2
+  podman rm -f test-db
+  podman network rm integration-net
+  exit 1
+fi
 
 # Build the application image
 podman build -t myapp:test .
@@ -98,9 +107,28 @@ podman run -d \
   redis:7-alpine
 
 # Wait for both services to be ready
-sleep 3
-podman exec pod-db pg_isready -U app
-podman exec pod-redis redis-cli ping
+echo "Waiting for PostgreSQL and Redis..."
+DB_READY=0
+REDIS_READY=0
+for i in $(seq 1 30); do
+  if [ "$DB_READY" -ne 1 ] && podman exec pod-db pg_isready -q -U app -d integration; then
+    DB_READY=1
+  fi
+  if [ "$REDIS_READY" -ne 1 ] && podman exec pod-redis redis-cli ping >/dev/null; then
+    REDIS_READY=1
+  fi
+  if [ "$DB_READY" -eq 1 ] && [ "$REDIS_READY" -eq 1 ]; then
+    echo "Services are ready"
+    break
+  fi
+  sleep 1
+done
+
+if [ "$DB_READY" -ne 1 ] || [ "$REDIS_READY" -ne 1 ]; then
+  echo "Pod services did not become ready in time" >&2
+  podman pod rm -f test-pod
+  exit 1
+fi
 
 # Build and start the application inside the pod
 podman build -t myapp:test .
@@ -147,8 +175,23 @@ podman run -d \
   postgres:16-alpine
 
 # Wait for database
-sleep 5
-podman exec migrate-db pg_isready -U app
+echo "Waiting for database..."
+DB_READY=0
+for i in $(seq 1 30); do
+  if podman exec migrate-db pg_isready -q -U app -d testdb; then
+    echo "Database is ready"
+    DB_READY=1
+    break
+  fi
+  sleep 1
+done
+
+if [ "$DB_READY" -ne 1 ]; then
+  echo "Database did not become ready in time" >&2
+  podman rm -f migrate-db
+  podman network rm test-net
+  exit 1
+fi
 
 # Build the application image
 podman build -t myapp:test .
@@ -159,6 +202,13 @@ podman run --rm \
   --network test-net \
   -e DATABASE_URL="postgresql://app:secret@migrate-db:5432/testdb" \
   myapp:test npm run db:migrate
+MIGRATE_EXIT=$?
+
+if [ "$MIGRATE_EXIT" -ne 0 ]; then
+  podman rm -f migrate-db
+  podman network rm test-net
+  exit $MIGRATE_EXIT
+fi
 
 # Seed the database with test data
 echo "Seeding test data..."
@@ -166,6 +216,13 @@ podman run --rm \
   --network test-net \
   -e DATABASE_URL="postgresql://app:secret@migrate-db:5432/testdb" \
   myapp:test npm run db:seed
+SEED_EXIT=$?
+
+if [ "$SEED_EXIT" -ne 0 ]; then
+  podman rm -f migrate-db
+  podman network rm test-net
+  exit $SEED_EXIT
+fi
 
 # Run integration tests against the migrated and seeded database
 echo "Running integration tests..."
@@ -209,9 +266,33 @@ podman run -d --name fs-rabbit --network fullstack-net \
   rabbitmq:3-alpine
 
 # Wait for all services
-sleep 8
-podman exec fs-db pg_isready -U postgres
-podman exec fs-redis redis-cli ping
+echo "Waiting for all services..."
+DB_READY=0
+REDIS_READY=0
+RABBIT_READY=0
+for i in $(seq 1 60); do
+  if [ "$DB_READY" -ne 1 ] && podman exec fs-db pg_isready -q -U postgres -d app; then
+    DB_READY=1
+  fi
+  if [ "$REDIS_READY" -ne 1 ] && podman exec fs-redis redis-cli ping >/dev/null; then
+    REDIS_READY=1
+  fi
+  if [ "$RABBIT_READY" -ne 1 ] && podman exec fs-rabbit rabbitmq-diagnostics -q ping >/dev/null; then
+    RABBIT_READY=1
+  fi
+  if [ "$DB_READY" -eq 1 ] && [ "$REDIS_READY" -eq 1 ] && [ "$RABBIT_READY" -eq 1 ]; then
+    echo "All services are ready"
+    break
+  fi
+  sleep 1
+done
+
+if [ "$DB_READY" -ne 1 ] || [ "$REDIS_READY" -ne 1 ] || [ "$RABBIT_READY" -ne 1 ]; then
+  echo "One or more services did not become ready in time" >&2
+  podman rm -f fs-db fs-redis fs-rabbit
+  podman network rm fullstack-net
+  exit 1
+fi
 
 # Build the application
 podman build -t myapp:test .
@@ -224,6 +305,13 @@ ENV_VARS="-e DATABASE_URL=postgresql://postgres:secret@fs-db:5432/app \
 # Run migrations
 podman run --rm --network fullstack-net $ENV_VARS \
   myapp:test npm run db:migrate
+MIGRATE_EXIT=$?
+
+if [ "$MIGRATE_EXIT" -ne 0 ]; then
+  podman rm -f fs-db fs-redis fs-rabbit
+  podman network rm fullstack-net
+  exit $MIGRATE_EXIT
+fi
 
 # Start the API server
 podman run -d --name fs-api --network fullstack-net $ENV_VARS \
@@ -290,7 +378,27 @@ start_service db -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test postgres:16-alpin
 start_service cache redis:7-alpine
 
 # Wait for readiness
-sleep 5
+echo "Waiting for services..."
+DB_READY=0
+REDIS_READY=0
+for i in $(seq 1 30); do
+  if [ "$DB_READY" -ne 1 ] && podman exec db pg_isready -q -U postgres -d test; then
+    DB_READY=1
+  fi
+  if [ "$REDIS_READY" -ne 1 ] && podman exec cache redis-cli ping >/dev/null; then
+    REDIS_READY=1
+  fi
+  if [ "$DB_READY" -eq 1 ] && [ "$REDIS_READY" -eq 1 ]; then
+    echo "Services are ready"
+    break
+  fi
+  sleep 1
+done
+
+if [ "$DB_READY" -ne 1 ] || [ "$REDIS_READY" -ne 1 ]; then
+  echo "Services did not become ready in time" >&2
+  exit 1
+fi
 
 # Build and run tests
 podman build -t myapp:test .
