@@ -69,8 +69,8 @@ echo "Starting pod lifecycle monitor..."
 podman events --filter type=pod --format json | \
 while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
-    timestamp=$(echo "$event" | jq -r '.time')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
     case "$status" in
         create)
@@ -131,8 +131,7 @@ Monitor events for a specific pod.
 
 ```bash
 # Watch events for a specific pod
-podman events --filter type=pod --format json | \
-    jq --unbuffered 'select(.Actor.Attributes.name == "web-pod")'
+podman events --filter type=pod --filter pod=web-pod --format json
 
 # Alternatively, filter by pod name using grep
 podman events --filter type=pod \
@@ -156,9 +155,9 @@ while true; do
     printf "%-20s %-10s %-8s %-10s\n" "POD" "STATUS" "CONTAINERS" "RUNNING"
     printf "%-20s %-10s %-8s %-10s\n" "---" "------" "----------" "-------"
 
-    podman pod ps --format json 2>/dev/null | \
-    jq -r '.[] | [.Name, .Status, (.Containers | length | tostring), (.Containers | map(select(.Status == "running")) | length | tostring)] | @tsv' | \
-    while IFS=$'\t' read -r name status total running; do
+    podman pod ps --format '{{.Name}}\t{{.Status}}\t{{.NumberOfContainers}}\t{{.ContainerStatuses}}' 2>/dev/null | \
+    while IFS=$'\t' read -r name status total container_statuses; do
+        running=$(printf "%s" "$container_statuses" | tr ',' '\n' | grep -c '^running$')
         printf "%-20s %-10s %-8s %-10s\n" "$name" "$status" "$total" "$running"
     done
 
@@ -188,13 +187,13 @@ echo "Auditing pod operations to: ${AUDIT_FILE}"
 podman events --filter type=pod --format json | \
 while IFS= read -r event; do
     # Enrich with additional context
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
     status=$(echo "$event" | jq -r '.Status')
-    timestamp=$(echo "$event" | jq -r '.time')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
     # Get pod details if pod still exists
     pod_info=$(podman pod inspect "$name" 2>/dev/null | \
-        jq '{containers: (.Containers | length), infra: .InfraContainerId}' 2>/dev/null)
+        jq '.[0] | {containers: (.Containers | length), infra: .InfraContainerID}' 2>/dev/null)
 
     # Build enriched audit entry
     audit_entry=$(echo "$event" | jq --argjson info "${pod_info:-null}" \
@@ -215,11 +214,11 @@ Watch for pods that fail or have containers die unexpectedly.
 
 echo "Monitoring for pod failures..."
 
-# Watch for die events in pod containers
-podman events --filter event=die --format json | \
+# Watch for died events in pod containers
+podman events --filter event=died --format json | \
 while IFS= read -r event; do
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
-    exit_code=$(echo "$event" | jq -r '.Actor.Attributes.containerExitCode // "unknown"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
+    exit_code=$(echo "$event" | jq -r '.ContainerExitCode // "unknown"')
 
     # Check if this container belongs to a pod
     pod=$(podman inspect --format '{{.Pod}}' "$name" 2>/dev/null)
