@@ -69,20 +69,17 @@ nmcli connection modify eth0 \
 nmcli connection up eth0
 ```
 
-## Add Route Using connection.d Files
+## Add Route by Editing a Keyfile Connection Profile
 
-For advanced route management, create a file in the connection directory:
+If the connection profile is stored in keyfile format, edit the existing `.nmconnection` file and add route entries under the `[ipv4]` section:
 
 ```bash
-# Find the connection UUID
-nmcli -g UUID connection show eth0
+# Find the connection profile file
+nmcli -t -f NAME,FILENAME connection show | grep '^eth0:'
 
-# Create a route file
-cat > /etc/NetworkManager/system-connections/eth0.nmconnection << 'EOF'
-[ipv4]
-route1=192.168.2.0/24,10.0.0.1,100
-route2=172.16.0.0/16,10.0.0.1,200
-EOF
+# Add these lines under the existing [ipv4] section:
+# route1=192.168.2.0/24,10.0.0.1,100
+# route2=172.16.0.0/16,10.0.0.1,200
 
 nmcli connection reload
 nmcli connection up eth0
@@ -90,4 +87,4 @@ nmcli connection up eth0
 
 ## Conclusion
 
-nmcli adds persistent static routes using `+ipv4.routes "network gateway metric"`. Routes are stored in the connection profile and applied when the connection is active. Use `nmcli connection modify` to add routes and `nmcli connection up` to apply them. Remove routes with `-ipv4.routes` using the same format.
+nmcli adds persistent static routes using `+ipv4.routes "network[/prefix] gateway [metric]"`. Routes are stored in the connection profile and applied when the connection is active. Use `nmcli connection modify` to add routes and `nmcli connection up` to apply them. Remove routes with `-ipv4.routes` using the same format.
