@@ -81,33 +81,31 @@ Authorized JavaScript Origins: https://rancher.example.com
 Authorized Redirect URIs: https://rancher.example.com/verify-auth
 ```
 
-3. Click **Create** and note the credentials:
+3. Click **Create**, download the OAuth credentials JSON, and note the credentials it contains:
 
 ```plaintext
 Client ID: xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
 Client Secret: GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-## Step 4: Enable Required APIs
+## Step 4: Enable Required API
 
-Enable the necessary Google APIs:
+Enable the required Google API:
 
 ```bash
 # Using gcloud CLI
 
 gcloud services enable admin.googleapis.com --project=rancher-auth
-gcloud services enable people.googleapis.com --project=rancher-auth
 ```
 
 Or through the Console:
 
 1. Navigate to **APIs & Services** then **Library**.
 2. Search for and enable **Admin SDK API**.
-3. Search for and enable **People API**.
 
 ## Step 5: Create a Service Account for Group Lookup
 
-To support group-based access, create a service account:
+Rancher requires a service account for user and group lookups:
 
 1. Navigate to **IAM & Admin** then **Service Accounts**.
 2. Click **Create Service Account**.
@@ -137,7 +135,7 @@ Set up domain-wide delegation for the service account:
 In the Google Workspace Admin Console:
 
 1. Go to admin.google.com.
-2. Navigate to **Security** then **API Controls** then **Domain-wide Delegation**.
+2. Navigate to **Security** then **Access and data control** then **API controls** then **Manage Domain Wide Delegation**.
 3. Click **Add new**.
 4. Enter the service account Client ID.
 5. Add the OAuth scopes:
@@ -160,12 +158,10 @@ Set up Google authentication in Rancher:
 Enter the configuration:
 
 ```plaintext
-Client ID: xxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com
-Client Secret: GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx
-Hostname or IP Address for Admin SDK API: admin.googleapis.com
 Admin Email: admin@example.com
 Domain: example.com
-Service Account JSON: (paste the service account key JSON)
+OAuth Credentials: (paste or upload the OAuth credentials JSON)
+Service Account Credentials: (paste or upload the service account key JSON)
 Nested Group Membership: ☐ Disabled
 ```
 
@@ -173,7 +169,7 @@ Nested Group Membership: ☐ Disabled
 
 Test Google OAuth authentication:
 
-1. Click the **Test** button.
+1. Click **Authenticate with Google**.
 2. You will be redirected to the Google sign-in page.
 3. Select your Google Workspace account.
 4. Authorize the Rancher application.
@@ -183,7 +179,7 @@ Verify that the test returns:
 
 - Email address
 - Display name
-- Google Workspace groups (if service account is configured)
+- Google Workspace groups
 
 If testing fails:
 
@@ -240,9 +236,9 @@ Common issues with Google OAuth:
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | Redirect URI mismatch | URI does not match Cloud Console | Verify the redirect URI is exactly `https://rancher.example.com/verify-auth` |
-| Groups not loading | Service account not configured | Set up domain-wide delegation for the service account |
+| Groups not loading | Service account or domain-wide delegation is misconfigured | Verify the service account JSON and domain-wide delegation configuration |
 | Access denied | User not in allowed group | Add the user to an authorized Google Workspace group |
-| API not enabled | Required API disabled | Enable Admin SDK API and People API in Cloud Console |
+| API not enabled | Required API disabled | Enable Admin SDK API in Cloud Console |
 | Domain mismatch | Wrong domain configured | Verify the domain matches your Google Workspace domain |
 
 ## Best Practices
