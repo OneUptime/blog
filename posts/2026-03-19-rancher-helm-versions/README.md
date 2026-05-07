@@ -47,7 +47,7 @@ Click on a release in **Apps > Installed Apps** to see its detail page. The page
 
 ### Via the Helm CLI
 
-For a complete revision history, use the kubectl shell in Rancher:
+For release history details, use the Helm CLI against the cluster (for example, from a workstation configured with the cluster's kubeconfig):
 
 ```bash
 helm history my-redis -n default
@@ -100,10 +100,10 @@ helm get all my-redis --revision 2 -n default
 To understand what changed between revisions, compare the values:
 
 ```bash
-# Get values from two revisions
+# Get values from two revisions as YAML
 
-helm get values my-redis --revision 1 -n default > revision1.yaml
-helm get values my-redis --revision 2 -n default > revision2.yaml
+helm get values my-redis --revision 1 -n default -o yaml > revision1.yaml
+helm get values my-redis --revision 2 -n default -o yaml > revision2.yaml
 
 # Compare them
 diff revision1.yaml revision2.yaml
@@ -121,6 +121,7 @@ Use the `helm diff` plugin for a more streamlined comparison:
 
 ```bash
 # Install the diff plugin
+# Helm 4 users may need --verify=false for plugins that don't publish provenance files
 helm plugin install https://github.com/databus23/helm-diff
 
 # Compare revisions
@@ -150,7 +151,7 @@ helm search repo bitnami/redis --version ">=18.0.0 <20.0.0"
 
 ## Step 6: Control Revision History Length
 
-Helm stores release history as Kubernetes Secrets. By default, Helm keeps a maximum of 10 revisions. You can change this:
+By default, Helm stores release information as Kubernetes Secrets and keeps a maximum of 10 revisions. You can change this:
 
 ```bash
 # Set max history during upgrade
@@ -162,7 +163,7 @@ helm upgrade my-redis bitnami/redis \
 
 To set a global default, configure the `HELM_MAX_HISTORY` environment variable.
 
-To clean up old revisions manually:
+To inspect the underlying release Secrets manually:
 
 ```bash
 # View release secrets
@@ -181,8 +182,8 @@ If a release is stuck in a pending state:
 # Check the status
 helm status my-redis -n default
 
-# If stuck, you may need to manually fix it
-kubectl get secrets -n default -l owner=helm,name=my-redis,status=pending-upgrade
+# If stuck, inspect the Helm release Secrets and their labels
+kubectl get secrets -n default -l owner=helm,name=my-redis --show-labels
 ```
 
 ### Failed Releases
@@ -193,7 +194,7 @@ If an upgrade fails:
 # View the history to see the failure
 helm history my-redis -n default
 
-# Roll back to the last successful revision
+# Roll back to a known-good revision
 helm rollback my-redis 3 -n default
 ```
 
@@ -202,10 +203,10 @@ helm rollback my-redis 3 -n default
 Sometimes resources are left behind after a failed release:
 
 ```bash
-# List resources that belong to a release
+# List common namespaced resources labeled with the release name
 kubectl get all -l app.kubernetes.io/instance=my-redis -n default
 
-# If needed, force delete the release
+# If needed, uninstall the release without running hooks
 helm uninstall my-redis -n default --no-hooks
 ```
 
@@ -213,7 +214,9 @@ helm uninstall my-redis -n default --no-hooks
 
 | Status | Description |
 |--------|-------------|
+| `unknown` | The release is in an uncertain state |
 | `deployed` | Successfully installed or upgraded |
+| `uninstalled` | The release has been uninstalled from Kubernetes |
 | `superseded` | A previous revision replaced by a newer one |
 | `failed` | The install or upgrade failed |
 | `uninstalling` | Currently being uninstalled |
