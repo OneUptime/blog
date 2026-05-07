@@ -6,7 +6,7 @@ Tags: OpenTofu, Azure, Backup, Virtual Machine, Infrastructure as Code
 
 Description: Learn how to configure Azure Backup for virtual machines with OpenTofu, including recovery services vaults, backup policies, and VM protection.
 
-Azure Backup for VMs provides application-consistent snapshots with long-term retention. Managing backup configuration in OpenTofu ensures every VM is protected with the correct policy and retention settings from day one.
+Azure Backup for VMs provides application-consistent or file-system-consistent snapshots with long-term retention. Managing backup configuration in OpenTofu ensures every VM is protected with the correct policy and retention settings from day one.
 
 ## Provider Configuration
 
@@ -15,15 +15,17 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
+  subscription_id = var.subscription_id
+
   features {
     recovery_services_vault {
-      recover_soft_deleted_vms_after_cleanup = true
+      recover_soft_deleted_backup_protected_vm = true
     }
   }
 }
@@ -43,10 +45,9 @@ resource "azurerm_recovery_services_vault" "main" {
   resource_group_name = azurerm_resource_group.backup.name
 
   sku                         = "Standard"
-  soft_delete_enabled         = true
-  storage_mode_type           = "GeoRedundant"  # LRS, GRS, ZRS, GeoRedundant
+  storage_mode_type           = "GeoRedundant"  # GeoRedundant, LocallyRedundant, ZoneRedundant
 
-  immutability = "Locked"  # Prevent vault modification/deletion
+  immutability = "Locked"  # Lock immutability to help prevent destructive changes
 
   cross_region_restore_enabled = true
 
@@ -100,17 +101,27 @@ resource "azurerm_backup_policy_vm" "daily" {
 ## Protect VM with Backup
 
 ```hcl
+data "azurerm_virtual_machine" "app" {
+  name                = "app-vm"
+  resource_group_name = var.app_resource_group
+}
+
+data "azurerm_virtual_machine" "db" {
+  name                = "db-vm"
+  resource_group_name = var.app_resource_group
+}
+
 resource "azurerm_backup_protected_vm" "app_vm" {
   resource_group_name = azurerm_resource_group.backup.name
   recovery_vault_name = azurerm_recovery_services_vault.main.name
-  source_vm_id        = azurerm_virtual_machine.app.id
+  source_vm_id        = data.azurerm_virtual_machine.app.id
   backup_policy_id    = azurerm_backup_policy_vm.daily.id
 }
 
 resource "azurerm_backup_protected_vm" "db_vm" {
   resource_group_name = azurerm_resource_group.backup.name
   recovery_vault_name = azurerm_recovery_services_vault.main.name
-  source_vm_id        = azurerm_virtual_machine.db.id
+  source_vm_id        = data.azurerm_virtual_machine.db.id
   backup_policy_id    = azurerm_backup_policy_vm.daily.id
 }
 ```
@@ -138,15 +149,16 @@ resource "azurerm_backup_protected_vm" "all" {
 ## Backup Alert
 
 ```hcl
-resource "azurerm_monitor_alert_rule_action_group" "backup_alert" {
-  name                    = "backup-alerts"
-  resource_group_name     = azurerm_resource_group.backup.name
-  scopes                  = [azurerm_recovery_services_vault.main.id]
-  # Monitor backup job failures
-  condition {
-    signal_name    = "Backup Health Events"
-    operator       = "Equals"
-    threshold      = "Unhealthy"
+resource "azurerm_recovery_services_vault" "main" {
+  name                = "production-backup-vault"
+  location            = azurerm_resource_group.backup.location
+  resource_group_name = azurerm_resource_group.backup.name
+
+  sku               = "Standard"
+  storage_mode_type = "GeoRedundant"
+
+  monitoring {
+    alerts_for_all_job_failures_enabled = true
   }
 }
 ```
