@@ -43,13 +43,13 @@ sudo apt install docker-compose-plugin
 docker compose version
 ```
 
-podman-compose is installed via pip:
+podman-compose can be installed via pip or distribution packages:
 
 ```bash
-pip install podman-compose
+pip3 install podman-compose
 
-# Or system-wide
-sudo pip install podman-compose
+# Or from distribution packages, where available
+sudo apt install podman-compose
 
 # Verify
 podman-compose version
@@ -65,11 +65,10 @@ docker compose up -d
 
 ## Compose File Compatibility
 
-Both tools read the same `docker-compose.yml` format. However, feature support differs:
+Both tools read the same Compose file format, commonly `compose.yaml` or `docker-compose.yml`. However, feature support differs:
 
 ```yaml
 # This file works with both tools
-version: "3.9"
 services:
   web:
     image: docker.io/library/nginx:stable
@@ -187,14 +186,14 @@ services:
       - app-data:/data
       # Bind mount
       - ./config:/etc/app/config:ro
-      # With SELinux label (Podman-specific)
+      # With SELinux label
       - ./logs:/var/log/app:Z
 
 volumes:
   app-data:
 ```
 
-The `:Z` SELinux label is Podman-specific and is ignored by Docker Compose. podman-compose handles it natively.
+The `:Z` SELinux label is supported by the Compose specification and by both Docker and Podman on SELinux-enabled hosts. podman-compose passes it through to Podman natively.
 
 ## Performance and Resource Usage
 
@@ -229,11 +228,11 @@ docker compose logs
 docker compose down
 ```
 
-This approach gives you Docker Compose's full feature set while running containers through Podman.
+This approach gives you Docker Compose's CLI behavior while running containers through Podman's Docker-compatible API. Some behavior can still differ because Podman is not the Docker Engine.
 
 ## When to Choose podman-compose
 
-- You want a lightweight, Python-based tool without additional dependencies
+- You want a lightweight, Python-based tool without Docker or a Docker daemon
 - You need native Podman features like pod mode
 - You prefer pure Podman tooling without Docker compatibility layers
 - Your compose files use basic features (services, volumes, networks, ports)
@@ -249,7 +248,7 @@ This approach gives you Docker Compose's full feature set while running containe
 
 ## When to Use Docker Compose with Podman Socket
 
-- You want Docker Compose features with Podman's rootless security
+- You want Docker Compose workflows with Podman's rootless security
 - You are migrating from Docker and want to keep existing compose workflows
 - You need features that podman-compose does not support
 - You want to gradually transition to Podman-native tooling
