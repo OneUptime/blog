@@ -10,9 +10,8 @@ Pod Security Policies (PSPs) provide cluster-level controls that restrict what c
 
 ## Prerequisites
 
-- Rancher v2.5 or later
-- RKE or RKE2 managed clusters with Kubernetes < 1.25
-- Admin access to Rancher
+- A Rancher-launched RKE cluster running Kubernetes v1.24 or earlier
+- Admin access to the Rancher UI
 - kubectl access to the cluster
 
 ## Important Note on Deprecation
@@ -23,17 +22,17 @@ Pod Security Policies are deprecated as of Kubernetes 1.21 and removed in Kubern
 
 ### For New Clusters
 
-When creating a new cluster in Rancher, enable PSPs during cluster creation:
+When creating a new Rancher-launched RKE cluster, enable PSPs during cluster creation:
 
 1. Go to **Cluster Management** > **Create**.
 2. Configure your cluster settings.
 3. In the **Advanced Options**, enable **Pod Security Policy Support**.
-4. Select a default PSP: **Restricted** or **Unrestricted**.
+4. Select a default PSP such as **restricted-noroot**, **restricted**, or **unrestricted**.
 5. Complete the cluster creation.
 
 ### For Existing Clusters
 
-Edit the existing cluster configuration:
+Edit the existing RKE cluster configuration:
 
 1. Go to **Cluster Management**.
 2. Click the three-dot menu on the cluster.
@@ -44,31 +43,25 @@ Edit the existing cluster configuration:
 
 ## Step 2: Understand Built-in PSP Templates
 
-Rancher provides two built-in PSP templates:
+Rancher ships with three built-in PSPs: `restricted-noroot`, `restricted`, and `unrestricted`. The `restricted-noroot` and `unrestricted` policies map closely to the examples below:
 
-### Restricted PSP
+### Restricted-NoRoot PSP
 
 ```yaml
 apiVersion: policy/v1beta1
 kind: PodSecurityPolicy
 metadata:
-  name: restricted-psp
+  name: restricted-noroot
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'docker/default,runtime/default'
+    apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: 'runtime/default'
+    apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
 spec:
   privileged: false
   allowPrivilegeEscalation: false
   requiredDropCapabilities:
   - ALL
-  hostNetwork: false
-  hostIPC: false
-  hostPID: false
-  runAsUser:
-    rule: MustRunAsNonRoot
-  seLinux:
-    rule: RunAsAny
-  fsGroup:
-    rule: RunAsAny
-  supplementalGroups:
-    rule: RunAsAny
   volumes:
   - configMap
   - emptyDir
@@ -76,7 +69,29 @@ spec:
   - secret
   - downwardAPI
   - persistentVolumeClaim
+  hostNetwork: false
+  hostIPC: false
+  hostPID: false
+  runAsUser:
+    rule: MustRunAsNonRoot
+  seLinux:
+    rule: RunAsAny
+  supplementalGroups:
+    rule: MustRunAs
+    ranges:
+    - min: 1
+      max: 65535
+  fsGroup:
+    rule: MustRunAs
+    ranges:
+    - min: 1
+      max: 65535
+  readOnlyRootFilesystem: false
 ```
+
+### Restricted PSP
+
+This policy is a more permissive variant of `restricted-noroot` that still enforces most restrictions, but does not require containers to run as a non-root user.
 
 ### Unrestricted PSP
 
@@ -84,23 +99,30 @@ spec:
 apiVersion: policy/v1beta1
 kind: PodSecurityPolicy
 metadata:
-  name: unrestricted-psp
+  name: unrestricted
+  annotations:
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
 spec:
   privileged: true
   allowPrivilegeEscalation: true
+  allowedCapabilities:
+  - '*'
+  volumes:
+  - '*'
   hostNetwork: true
+  hostPorts:
+  - min: 0
+    max: 65535
   hostIPC: true
   hostPID: true
   runAsUser:
     rule: RunAsAny
   seLinux:
     rule: RunAsAny
-  fsGroup:
-    rule: RunAsAny
   supplementalGroups:
     rule: RunAsAny
-  volumes:
-  - '*'
+  fsGroup:
+    rule: RunAsAny
 ```
 
 ## Step 3: Create a Custom PSP
@@ -113,7 +135,8 @@ kind: PodSecurityPolicy
 metadata:
   name: custom-app-psp
   annotations:
-    seccomp.security.alpha.kubernetes.io/allowedProfiles: runtime/default
+    seccomp.security.alpha.kubernetes.io/allowedProfileNames: runtime/default
+    seccomp.security.alpha.kubernetes.io/defaultProfileName: runtime/default
 spec:
   privileged: false
   allowPrivilegeEscalation: false
@@ -191,8 +214,8 @@ This binds the custom PSP to all service accounts in the `production` namespace.
 Rancher allows PSP assignment at the project level:
 
 1. Navigate to the cluster.
-2. Go to **Projects/Namespaces**.
-3. Click on a project.
+2. Click **Explore**, then go to **Cluster** > **Projects/Namespaces**.
+3. Click on a project and select **Edit Config**.
 4. In project settings, select the PSP to apply.
 5. Save the changes.
 
@@ -200,7 +223,7 @@ All pods created in namespaces within that project will be subject to the assign
 
 ## Step 6: Test PSP Enforcement
 
-Deploy a test pod that violates the restricted PSP:
+Deploy a test pod that violates the custom PSP:
 
 ```yaml
 apiVersion: v1
@@ -238,11 +261,15 @@ metadata:
 spec:
   containers:
   - name: test
-    image: nginx
+    image: busybox:1.36
+    command: ["sh", "-c", "sleep 3600"]
     securityContext:
       runAsNonRoot: true
       runAsUser: 1000
       allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      seccompProfile:
+        type: RuntimeDefault
       capabilities:
         drop:
         - ALL
@@ -250,9 +277,20 @@ spec:
 
 ## Step 7: Handle System Workloads
 
-System components like kube-proxy, CNI plugins, and monitoring agents may need elevated privileges. Create a permissive PSP for system namespaces:
+System components like kube-proxy, CNI plugins, and monitoring agents may need elevated privileges. Bind the built-in `unrestricted` PSP to system namespaces:
 
 ```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: use-unrestricted-psp
+rules:
+- apiGroups: ['policy']
+  resources: ['podsecuritypolicies']
+  verbs: ['use']
+  resourceNames:
+  - unrestricted
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -274,11 +312,11 @@ subjects:
 
 If you are planning to upgrade to Kubernetes 1.25+, start migrating from PSPs to Pod Security Standards:
 
-1. Audit current PSP usage:
+1. List your PSPs and inspect related RBAC bindings, for example:
 
 ```bash
 kubectl get psp
-kubectl get clusterrolebinding -o json | jq '.items[] | select(.roleRef.kind=="ClusterRole") | select(.roleRef.name | contains("psp"))'
+kubectl get rolebinding,clusterrolebinding -A -o json | jq '.items[] | select(.roleRef.kind=="ClusterRole") | select(.roleRef.name | contains("psp"))'
 ```
 
 2. Map your PSPs to equivalent Pod Security Standards levels (privileged, baseline, restricted).
