@@ -38,7 +38,7 @@ scrape_configs:
 
   - job_name: 'node'
     static_configs:
-      - targets: ['node-exporter:9100']
+      - targets: ['host.containers.internal:9100']
 
   - job_name: 'podman'
     static_configs:
@@ -73,19 +73,14 @@ podman run -d \
   --restart always \
   --pid host \
   --network host \
-  -v /proc:/host/proc:ro \
-  -v /sys:/host/sys:ro \
-  -v /:/rootfs:ro \
-  prom/node-exporter:latest \
-  --path.procfs=/host/proc \
-  --path.sysfs=/host/sys \
-  --path.rootfs=/rootfs \
-  --collector.filesystem.mount-points-exclude="^/(sys|proc|dev|host|etc)($$|/)"
+  -v /:/host:ro,rslave \
+  quay.io/prometheus/node-exporter:latest \
+  --path.rootfs=/host
 ```
 
 ## Exposing Podman Metrics
 
-Podman can expose container metrics through its API. Enable the metrics endpoint:
+To expose Podman container metrics through a Prometheus exporter, enable the Podman API socket first:
 
 ```bash
 # Enable Podman API socket
@@ -95,18 +90,21 @@ systemctl --user enable --now podman.socket
 podman run -d \
   --name podman-exporter \
   --restart always \
+  -e CONTAINER_HOST=unix:///run/podman/podman.sock \
   -p 9882:9882 \
-  -v /run/user/$(id -u)/podman/podman.sock:/run/podman/podman.sock:ro \
-  quay.io/navidys/prometheus-podman-exporter:latest
+  -v $XDG_RUNTIME_DIR/podman/podman.sock:/run/podman/podman.sock \
+  --userns=keep-id:uid=65534 \
+  --security-opt label=disable \
+  quay.io/navidys/prometheus-podman-exporter:latest \
+  --collector.enhance-metrics
 ```
 
 ## Creating a Monitoring Stack with Compose
 
-Deploy a complete monitoring stack:
+Deploy a monitoring stack with Compose:
 
 ```yaml
 # monitoring-compose.yml
-version: "3"
 services:
   prometheus:
     image: prom/prometheus:latest
@@ -124,16 +122,15 @@ services:
       - '--web.enable-lifecycle'
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
     container_name: node-exporter
     restart: always
+    network_mode: host
     pid: host
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
+      - /:/host:ro,rslave
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host'
 
   alertmanager:
     image: prom/alertmanager:latest
@@ -143,17 +140,6 @@ services:
       - "9093:9093"
     volumes:
       - ./alertmanager/config:/etc/alertmanager:ro
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor
-    restart: always
-    ports:
-      - "8080:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
 
 volumes:
   prometheus-data:
@@ -249,7 +235,7 @@ Add the application to your Prometheus config:
 scrape_configs:
   - job_name: 'myapp'
     static_configs:
-      - targets: ['myapp:3000']
+      - targets: ['host.containers.internal:3000']
     metrics_path: /metrics
     scrape_interval: 10s
 ```
@@ -264,7 +250,7 @@ groups:
   - name: container_alerts
     rules:
       - alert: ContainerHighCPU
-        expr: rate(container_cpu_usage_seconds_total[5m]) > 0.8
+        expr: rate(podman_container_cpu_seconds_total[5m]) > 0.8
         for: 5m
         labels:
           severity: warning
@@ -272,7 +258,7 @@ groups:
           summary: "Container {{ $labels.name }} has high CPU usage"
 
       - alert: ContainerHighMemory
-        expr: container_memory_usage_bytes / container_memory_limit_bytes > 0.9
+        expr: podman_container_mem_usage_bytes / podman_container_mem_limit_bytes > 0.9
         for: 5m
         labels:
           severity: critical
@@ -280,14 +266,14 @@ groups:
           summary: "Container {{ $labels.name }} is using >90% of memory limit"
 
       - alert: ContainerRestarting
-        expr: increase(container_restart_count[1h]) > 3
+        expr: changes(podman_container_started_seconds[1h]) > 3
         labels:
           severity: warning
         annotations:
           summary: "Container {{ $labels.name }} has restarted more than 3 times in the last hour"
 
       - alert: ApplicationHighLatency
-        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 1
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) > 1
         for: 5m
         labels:
           severity: warning
@@ -304,7 +290,7 @@ rule_files:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: ['alertmanager:9093']
+        - targets: ['host.containers.internal:9093']
 ```
 
 ## Useful PromQL Queries
@@ -313,23 +299,24 @@ Query container and application metrics:
 
 ```promql
 # CPU usage per container (last 5 minutes)
-rate(container_cpu_usage_seconds_total[5m])
+rate(podman_container_cpu_seconds_total[5m])
 
 # Memory usage per container
-container_memory_usage_bytes
+podman_container_mem_usage_bytes
 
 # HTTP request rate by endpoint
-rate(http_requests_total[5m])
+sum by (endpoint) (rate(http_requests_total[5m]))
 
 # 95th percentile response time
-histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))
 
 # Error rate (5xx responses)
-rate(http_requests_total{status=~"5.."}[5m])
-/ rate(http_requests_total[5m])
+sum(rate(http_requests_total{status=~"5.."}[5m]))
+/ sum(rate(http_requests_total[5m]))
 
 # Container network I/O
-rate(container_network_transmit_bytes_total[5m])
+rate(podman_container_net_input_total[5m])
++ rate(podman_container_net_output_total[5m])
 ```
 
 ## Reloading Configuration
@@ -346,4 +333,4 @@ podman kill --signal HUP prometheus
 
 ## Conclusion
 
-Prometheus and Podman together provide a comprehensive monitoring solution for containerized environments. Running Prometheus in a container ensures your monitoring infrastructure is as portable and reproducible as the applications it monitors. With Node Exporter for host metrics, cAdvisor or Podman exporter for container metrics, and application-level instrumentation, you get full-stack observability. Alerting rules keep you informed of issues before they impact users, and PromQL gives you the power to query and analyze metrics in any way you need.
+Prometheus and Podman together provide a comprehensive monitoring solution for containerized environments. Running Prometheus in a container ensures your monitoring infrastructure is as portable and reproducible as the applications it monitors. With Node Exporter for host metrics, Podman exporter for container metrics, and application-level instrumentation, you get full-stack observability. Alerting rules keep you informed of issues before they impact users, and PromQL gives you the power to query and analyze metrics in any way you need.
