@@ -15,13 +15,13 @@ Azure Bastion is a fully managed PaaS service that provides secure, seamless RDP
 - No public IP required on VMs
 - No need to manage jump servers or VPNs
 - RDP/SSH over port 443 (passes most corporate firewalls)
-- Integrated with Azure Active Directory for authentication
+- Supports Microsoft Entra ID authentication for supported RDP/SSH scenarios
 - Protects against port scanning and brute-force attacks
 
 ## Prerequisites
 
 - An Azure VNet with a dedicated subnet named exactly `AzureBastionSubnet` (minimum /26)
-- The subnet must NOT have NSGs or route tables attached initially
+- Create the subnet without route tables or delegations; if you attach an NSG to `AzureBastionSubnet`, configure the required Bastion rules
 
 ## Deploying Azure Bastion
 
@@ -49,7 +49,8 @@ az network bastion create \
   --public-ip-address bastion-pip \
   --vnet-name prod-vnet \
   --location eastus \
-  --sku Standard              # Standard SKU enables native client and IP-based connections
+  --sku Standard \
+  --enable-tunneling true     # Required for az network bastion ssh/rdp native-client commands
 ```
 
 Deployment takes 5–10 minutes as Azure provisions the managed infrastructure.
@@ -61,7 +62,7 @@ From the Azure Portal:
 2. Click **Connect > Bastion**
 3. Enter credentials and click **Connect**
 
-Using Azure CLI with native client:
+Using Azure CLI with native client (requires Bastion tunneling enabled; `az network bastion rdp` uses a local Windows client):
 
 ```bash
 # Connect to a Linux VM via SSH through Bastion
@@ -82,7 +83,7 @@ az network bastion rdp \
 
 ## Removing Public IPs from VMs
 
-After deploying Bastion, VMs no longer need public IPs:
+If Bastion is your only management path, VMs no longer need public IPs:
 
 ```bash
 # Disassociate and delete the public IP from a VM NIC
@@ -90,7 +91,7 @@ az network nic ip-config update \
   --resource-group rg-prod \
   --nic-name my-vm-nic \
   --name ipconfig1 \
-  --remove publicIpAddress
+  --public-ip-address null
 
 az network public-ip delete \
   --resource-group rg-prod \
@@ -107,7 +108,9 @@ az network nsg rule create \
   --nsg-name vm-nsg \
   --name allow-bastion \
   --priority 100 \
-  --source-address-prefixes 10.0.255.0/26 \   # AzureBastionSubnet range
+  --direction Inbound \
+  --protocol Tcp \
+  --source-address-prefixes 10.0.255.0/26 \
   --destination-port-ranges 22 3389 \
   --access Allow
 ```
@@ -119,14 +122,14 @@ resource "azurerm_bastion_host" "main" {
   name                = "prod-bastion"
   location            = azurerm_resource_group.prod.location
   resource_group_name = azurerm_resource_group.prod.name
+  sku                 = "Standard"
+  tunneling_enabled   = true
 
   ip_configuration {
     name                 = "configuration"
     subnet_id            = azurerm_subnet.bastion.id
     public_ip_address_id = azurerm_public_ip.bastion.id
   }
-
-  sku = "Standard"
 }
 ```
 
