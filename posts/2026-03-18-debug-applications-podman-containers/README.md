@@ -156,7 +156,7 @@ In VS Code, create a launch configuration to attach to the remote debugger:
 Node.js has a built-in inspector that you can enable with the `--inspect` flag:
 
 ```dockerfile
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 WORKDIR /app
 COPY package*.json .
 RUN npm ci
@@ -229,7 +229,7 @@ In IntelliJ IDEA, create a **Remote JVM Debug** run configuration pointing to `l
 Go applications compiled with debug symbols can be debugged remotely using Delve:
 
 ```dockerfile
-FROM golang:1.22 AS builder
+FROM golang:1.26-bookworm AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -237,7 +237,7 @@ COPY . .
 # Build with debug symbols (disable optimizations)
 RUN CGO_ENABLED=0 go build -gcflags="all=-N -l" -o server .
 
-FROM golang:1.22
+FROM golang:1.26-bookworm
 # Install Delve debugger
 RUN go install github.com/go-delve/delve/cmd/dlv@latest
 WORKDIR /app
