@@ -34,17 +34,15 @@ The Settings page is organized into sections: Resources, Registries, Proxy, and 
 
 ## Configuring Container Engine Resources
 
-On macOS and Windows, Podman runs inside a virtual machine. You can adjust the VM resources.
+On macOS and Windows, Podman runs inside a virtual machine. You can adjust the VM resources for machine providers that support these settings.
 
 ```bash
 # From the CLI, stop the current machine
 podman machine stop
 
-# Remove the existing machine
-podman machine rm
-
-# Create a new machine with custom resources
-podman machine init \
+# Update the existing machine with custom resources
+# Disk size can only be increased on existing machines
+podman machine set \
     --cpus 4 \
     --memory 8192 \
     --disk-size 100
@@ -112,18 +110,22 @@ If your network requires a proxy, configure it in Podman Desktop.
 # Set proxy environment variables for the Podman machine
 podman machine ssh
 
-# Inside the machine, edit the environment
-sudo tee /etc/systemd/system/podman.service.d/proxy.conf <<EOF
-[Service]
-Environment="HTTP_PROXY=http://proxy.example.com:8080"
-Environment="HTTPS_PROXY=http://proxy.example.com:8080"
-Environment="NO_PROXY=localhost,127.0.0.1,.internal"
+# Inside the machine, configure the Podman engine environment
+sudo mkdir -p /etc/containers/containers.conf.d
+sudo tee /etc/containers/containers.conf.d/proxy.conf <<EOF
+[engine]
+env = [
+    "HTTP_PROXY=http://proxy.example.com:8080",
+    "HTTPS_PROXY=http://proxy.example.com:8080",
+    "NO_PROXY=localhost,127.0.0.1,.internal"
+]
 EOF
 
-# Reload and restart
-sudo systemctl daemon-reload
-sudo systemctl restart podman
 exit
+
+# Restart the machine so the engine picks up the configuration
+podman machine stop
+podman machine start
 ```
 
 In Podman Desktop, navigate to Settings > Proxy to configure proxy settings through the GUI.
@@ -150,21 +152,17 @@ To install an extension, go to Settings > Extensions, browse the catalog, and cl
 Enable Docker API compatibility for tools that expect Docker.
 
 ```bash
-# Stop and reconfigure the Podman machine for rootful mode
-podman machine stop
-podman machine set --rootful
+# On Linux, enable the user API socket for Docker-compatible tools
+systemctl --user enable --now podman.socket
 
-# Start the machine
-podman machine start
+# Point Docker-compatible tools at the Podman socket
+export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
 
-# Verify the Docker socket is available
-podman machine inspect | grep -i socket
-
-# Test with a Docker-compatible command
-curl --unix-socket /var/run/docker.sock http://localhost/version 2>/dev/null | python3 -m json.tool
+# Test the Docker-compatible API
+curl --unix-socket "$XDG_RUNTIME_DIR/podman/podman.sock" http://localhost/version 2>/dev/null | python3 -m json.tool
 ```
 
-In Podman Desktop, the Docker Compatibility section under Settings shows the socket status and lets you toggle compatibility mode.
+In Podman Desktop, go to Settings > Docker Compatibility to view socket status, select a Docker CLI context, and configure Compose support. On macOS, the third-party Docker tool compatibility setting can map tools to `/var/run/docker.sock`; on Windows and Linux, use `DOCKER_HOST` when a tool needs an explicit socket.
 
 ## Configuring Default Container Settings
 
@@ -173,11 +171,13 @@ Set default values for container creation.
 ```bash
 # Configure default container settings via containers.conf
 # On Linux:
+mkdir -p ~/.config/containers
 nano ~/.config/containers/containers.conf
 
 # On macOS (inside the Podman machine):
 podman machine ssh
-vi /etc/containers/containers.conf
+mkdir -p ~/.config/containers
+vi ~/.config/containers/containers.conf
 ```
 
 Example configuration:
@@ -201,7 +201,8 @@ default_ulimits = [
 
 ```bash
 # Verify the configuration
-podman info | grep -A 20 "store"
+podman info --format '{{ .Host.LogDriver }}'
+podman run --rm alpine env | grep '^TZ='
 ```
 
 ## Configuring Storage
@@ -214,12 +215,13 @@ podman info | grep -A 10 "store"
 
 # Edit storage configuration
 # On Linux:
+mkdir -p ~/.config/containers
 nano ~/.config/containers/storage.conf
 
 # Example: change the storage driver or location
 # [storage]
 # driver = "overlay"
-# graphroot = "/var/lib/containers/storage"
+# graphroot = "$HOME/containers/storage"
 ```
 
 ## Summary
