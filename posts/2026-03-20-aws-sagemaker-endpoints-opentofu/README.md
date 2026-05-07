@@ -30,24 +30,50 @@ resource "aws_iam_role_policy_attachment" "sagemaker_full" {
   role       = aws_iam_role.sagemaker.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSageMakerFullAccess"
 }
+
+resource "aws_iam_role_policy" "sagemaker_model_bucket" {
+  name = "${var.app_name}-sagemaker-model-bucket"
+  role = aws_iam_role.sagemaker.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject"
+        ]
+        Resource = "arn:aws:s3:::${var.model_bucket}/models/classifier/${var.model_version}/model.tar.gz"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject"
+        ]
+        Resource = "arn:aws:s3:::${var.model_bucket}/data-capture/*"
+      }
+    ]
+  })
+}
 ```
 
 ## Model Definition
 
 ```hcl
+data "aws_sagemaker_prebuilt_ecr_image" "xgboost" {
+  repository_name = "sagemaker-xgboost"
+  image_tag       = "1.7-1"
+  region          = var.region
+}
+
 resource "aws_sagemaker_model" "classifier" {
   name               = "${var.app_name}-classifier-${var.model_version}"
   execution_role_arn = aws_iam_role.sagemaker.arn
 
   primary_container {
     # Pre-built SageMaker container for XGBoost
-    image          = "${var.account_id}.dkr.ecr.${var.region}.amazonaws.com/xgboost:1.7-1"
+    image          = data.aws_sagemaker_prebuilt_ecr_image.xgboost.registry_path
     model_data_url = "s3://${var.model_bucket}/models/classifier/${var.model_version}/model.tar.gz"
-
-    environment = {
-      SAGEMAKER_CONTAINER_LOG_LEVEL = "20"
-      SAGEMAKER_PROGRAM              = "inference.py"
-    }
   }
 
   tags = {
@@ -126,7 +152,7 @@ resource "aws_appautoscaling_policy" "sagemaker_scale" {
   service_namespace  = aws_appautoscaling_target.sagemaker.service_namespace
 
   target_tracking_scaling_policy_configuration {
-    target_value       = 70  # scale when invocations per instance exceed 70
+    target_value       = 70  # target 70 average invocations per instance
     predefined_metric_specification {
       predefined_metric_type = "SageMakerVariantInvocationsPerInstance"
     }
