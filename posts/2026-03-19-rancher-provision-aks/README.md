@@ -41,19 +41,7 @@ Output:
 }
 ```
 
-For more granular permissions, assign specific roles:
-
-```bash
-# Required roles for AKS provisioning
-
-az role assignment create --assignee <APP_ID> \
-  --role "Azure Kubernetes Service Contributor" \
-  --scope /subscriptions/$SUBSCRIPTION_ID
-
-az role assignment create --assignee <APP_ID> \
-  --role "Network Contributor" \
-  --scope /subscriptions/$SUBSCRIPTION_ID
-```
+For more granular permissions, Rancher documents a custom `Rancher AKSv2` role scoped to the target resource group. The subscription-wide `Contributor` assignment above is the simplest supported option.
 
 ## Step 2: Create a Cloud Credential in Rancher
 
@@ -92,7 +80,7 @@ Select the AKS Kubernetes version from the available options.
 #### Network Plugin
 
 - **Azure CNI** (recommended): Assigns VNet IPs directly to pods
-- **Kubenet**: Uses NAT for pod networking, fewer IPs required
+- **Kubenet**: Uses NAT for pod networking, fewer IPs required, but AKS retires kubenet on March 31, 2028
 
 #### Network Configuration (Azure CNI)
 
@@ -101,7 +89,6 @@ Virtual Network: Select existing or create new
 Subnet: Select a subnet with sufficient IP space
 Service CIDR: 10.0.0.0/16
 DNS Service IP: 10.0.0.10
-Docker Bridge CIDR: 172.17.0.1/16
 Pod CIDR: (auto-assigned with Azure CNI)
 ```
 
@@ -109,7 +96,7 @@ Pod CIDR: (auto-assigned with Azure CNI)
 
 Select a network policy provider:
 
-- **Azure**: Azure-native network policies
+- **Azure**: Azure-native network policies (requires Azure CNI)
 - **Calico**: Calico network policies
 - **None**: No network policies
 
@@ -126,14 +113,14 @@ Authorized IP Ranges: 203.0.113.0/24, <RANCHER_IP>/32
 Enable for a private AKS cluster where the API server has no public endpoint:
 
 - **Private Cluster**: Enable
-- **Private DNS Zone**: System or custom
+- **Private DNS Zone**: System or none
 
-### Azure AD Integration
+### Role-Based Access Control
 
-Enable Azure AD for Kubernetes RBAC:
+Rancher requires Kubernetes RBAC for AKS clusters:
 
-- **Managed Azure AD**: Enable for Azure AD-based authentication
-- **Admin Group Object IDs**: Add Azure AD group IDs for cluster admins
+- **RBAC**: Enabled by default and required for Rancher-managed AKS clusters
+- **Local Accounts**: Leave enabled so Rancher can register or import the cluster
 
 ## Step 5: Configure Node Pools
 
@@ -179,7 +166,7 @@ workload-type: general
 Add taints for specialized pools:
 
 ```plaintext
-dedicated: high-memory:NoSchedule
+dedicated=high-memory:NoSchedule
 ```
 
 ## Step 6: Configure Additional Settings
@@ -203,12 +190,6 @@ Container Insights: Enabled
 Log Analytics Workspace: Select or create
 ```
 
-### Auto-Upgrade
-
-Configure automatic Kubernetes version upgrades:
-
-- **Upgrade Channel**: stable, rapid, or none
-
 ## Step 7: Create the Cluster
 
 Review settings and click **Create**. Rancher provisions the AKS cluster, which includes:
@@ -222,7 +203,7 @@ Provisioning takes approximately 10 to 15 minutes.
 
 ## Step 8: Verify the Cluster
 
-Once Active:
+Once Active and your kubeconfig is configured:
 
 ```bash
 kubectl get nodes -o wide
@@ -255,19 +236,15 @@ AKS provides Azure Disk and Azure File storage classes by default:
 kubectl get storageclasses
 ```
 
-Set your preferred default:
-
-```bash
-kubectl patch storageclass managed-csi -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
-```
+On AKS, the built-in `managed-csi` class is already the default, and AKS can overwrite changes to built-in storage class defaults.
 
 ### Set Up RBAC
 
-Configure Rancher RBAC alongside Azure AD:
+Configure Rancher RBAC after provisioning:
 
 1. Add cluster members in Rancher
 2. Configure project-level access
-3. Map Azure AD groups to Rancher roles
+3. Map external identity provider groups to Rancher roles if Rancher is integrated with one
 
 ## Troubleshooting
 
