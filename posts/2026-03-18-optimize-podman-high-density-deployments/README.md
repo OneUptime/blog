@@ -26,7 +26,8 @@ echo "=== Host Resources ==="
 echo "CPUs: $(nproc)"
 echo "Memory: $(free -h | awk '/^Mem:/{print $2}')"
 echo "Swap: $(free -h | awk '/^Swap:/{print $2}')"
-echo "Disk: $(df -h /var/lib/containers/storage | awk 'NR==2{print $4}') available"
+STORAGE_ROOT=$(podman info --format '{{.Store.GraphRoot}}' 2>/dev/null || echo /var/lib/containers/storage)
+echo "Disk: $(df -h "$STORAGE_ROOT" | awk 'NR==2{print $4}') available"
 echo ""
 
 echo "=== Current Container Count ==="
@@ -39,7 +40,16 @@ echo ""
 echo "=== Per-Container Average ==="
 if [ "$RUNNING" -gt 0 ]; then
   podman stats --no-stream --format json | jq '
-    [.[].mem_usage | split("/")[0] | gsub("[^0-9.]"; "") | tonumber] |
+    def to_mb:
+      capture("(?<num>[0-9.]+)\\s*(?<unit>[A-Za-z]+)")
+      | (.num | tonumber) *
+        (if (.unit | ascii_downcase) == "gb" then 1000
+         elif (.unit | ascii_downcase) == "gib" then 1024
+         elif (.unit | ascii_downcase) == "kb" then 0.001
+         elif (.unit | ascii_downcase) == "kib" then 0.0009765625
+         elif (.unit | ascii_downcase) == "b" then 0.000001
+         else 1 end);
+    [.[].mem_usage | split("/")[0] | to_mb] |
     "Avg Memory: \(add / length | round)MB"'
 fi
 ```
@@ -55,15 +65,15 @@ Memory is usually the limiting factor for container density. Reduce per-containe
 
 podman run -d --name app \
   --memory=64m \
-  --memory-swap=64m \
+  --memory-swap=128m \
   --memory-reservation=32m \
   lightweight-app:latest
 
-# Disable swap to prevent memory overcommit
-podman run -d --memory=64m --memory-swap=64m your-image
+# Set a total memory+swap ceiling
+podman run -d --memory=64m --memory-swap=128m your-image
 
-# Use --oom-kill-disable cautiously for critical services
-podman run -d --memory=128m --oom-kill-disable your-image
+# Adjust OOM preference cautiously for critical services
+podman run -d --memory=128m --oom-score-adj=-500 your-image
 ```
 
 Build memory-efficient images:
@@ -71,7 +81,7 @@ Build memory-efficient images:
 ```dockerfile
 # Use static binaries to avoid shared library overhead
 FROM scratch
-COPY --from=builder /app/server /server
+COPY server /server
 ENTRYPOINT ["/server"]
 
 # For interpreted languages, use slim variants
@@ -120,7 +130,7 @@ for cpu in $(seq 0 $((NUM_CPUS - 1))); do
       --cpuset-cpus="$cpu" \
       --cpu-shares=512 \
       --memory=64m \
-      --memory-swap=64m \
+      --memory-swap=128m \
       worker:latest
   done
 done
@@ -170,10 +180,13 @@ fs.file-max = 2097152
 fs.nr_open = 2097152
 fs.inotify.max_user_watches = 1048576
 fs.inotify.max_user_instances = 8192
+fs.inotify.max_queued_events = 32768
 net.core.somaxconn = 65535
 net.ipv4.ip_local_port_range = 1024 65535
+net.ipv4.tcp_max_syn_backlog = 65535
 net.netfilter.nf_conntrack_max = 1048576
 vm.overcommit_memory = 1
+vm.overcommit_ratio = 95
 EOF
 
 sudo sysctl --system
@@ -260,14 +273,14 @@ done
 # Use host networking for maximum density (no network namespace overhead)
 podman run -d --network=host --name app your-image
 
-# Use macvlan for direct network attachment (no bridge overhead)
-podman network create -d macvlan \
+# Use macvlan for direct network attachment (no bridge overhead; rootful only)
+sudo podman network create -d macvlan \
   --subnet=192.168.1.0/24 \
   --gateway=192.168.1.1 \
   -o parent=eth0 \
   direct-net
 
-podman run -d --network=direct-net your-image
+sudo podman run -d --network=direct-net your-image
 
 # Increase available ports
 sudo sysctl -w net.ipv4.ip_local_port_range="1024 65535"
@@ -328,7 +341,7 @@ for batch_start in $(seq 0 $BATCH_SIZE $((TOTAL - 1))); do
     podman run -d \
       --name "app-$i" \
       --memory=64m \
-      --memory-swap=64m \
+      --memory-swap=128m \
       --cpus=0.25 \
       --read-only \
       --tmpfs /tmp:rw,size=16m \
@@ -403,7 +416,7 @@ http_proxy = false
 # Reduce event logging overhead
 events_logger = "none"
 
-# Number of parallel container operations
+# Number of locks available for containers, pods, and volumes
 num_locks = 4096
 
 # Cgroup manager
