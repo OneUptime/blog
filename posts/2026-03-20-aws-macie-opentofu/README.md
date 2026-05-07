@@ -28,6 +28,8 @@ resource "aws_macie2_account" "main" {
 ## Step 2: Create Classification Jobs
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 # One-time classification job for sensitive data discovery
 
 resource "aws_macie2_classification_job" "full_scan" {
@@ -35,6 +37,7 @@ resource "aws_macie2_classification_job" "full_scan" {
 
   name       = "${var.project_name}-full-scan"
   job_type   = "ONE_TIME"  # or SCHEDULED
+  custom_data_identifier_ids = [aws_macie2_custom_data_identifier.account_number.id]
 
   s3_job_definition {
     bucket_definitions {
@@ -48,7 +51,7 @@ resource "aws_macie2_classification_job" "full_scan" {
         and {
           simple_scope_term {
             comparator = "STARTS_WITH"
-            key        = "PREFIX"
+            key        = "OBJECT_KEY"
             values     = ["data/", "uploads/", "user-files/"]
           }
         }
@@ -67,6 +70,7 @@ resource "aws_macie2_classification_job" "weekly_scan" {
 
   name     = "${var.project_name}-weekly-scan"
   job_type = "SCHEDULED"
+  custom_data_identifier_ids = [aws_macie2_custom_data_identifier.account_number.id]
 
   schedule_frequency {
     weekly_schedule {
@@ -97,8 +101,8 @@ resource "aws_macie2_custom_data_identifier" "account_number" {
   name        = "InternalAccountNumber"
   description = "Detect internal customer account numbers"
 
-  regex             = "ACC-[0-9]{8}"  # Matches ACC-12345678
-  maximum_match_distance = 50         # Context characters around match
+  regex                  = "ACC-[0-9]{8}"  # Matches ACC-12345678
+  maximum_match_distance = 50              # Distance allowed between the regex match and a keyword
 
   keywords          = ["account", "customer", "client"]  # Must appear near the pattern
   ignore_words      = ["ACCOUNT_TEMPLATE", "ACC-00000000"]  # Known safe values
@@ -111,6 +115,8 @@ resource "aws_macie2_custom_data_identifier" "account_number" {
 
 ## Step 4: Route Macie Findings to SNS
 
+Make sure the SNS topic's resource policy allows `events.amazonaws.com` to publish to it.
+
 ```hcl
 resource "aws_cloudwatch_event_rule" "macie_high_findings" {
   name        = "${var.project_name}-macie-high-findings"
@@ -121,7 +127,7 @@ resource "aws_cloudwatch_event_rule" "macie_high_findings" {
     "detail-type" = ["Macie Finding"]
     detail = {
       severity = {
-        description = ["High", "Critical"]
+        description = ["High"]
       }
     }
   })
@@ -151,11 +157,11 @@ tofu init
 tofu plan
 tofu apply
 
-# View findings
+# List HIGH severity finding IDs
 aws macie2 list-findings \
-  --filter-criteria '{"severity":{"gte":7}}'
+  --finding-criteria '{"criterion":{"severity.description":{"eq":["High"]}}}'
 ```
 
 ## Conclusion
 
-Macie is essential for organizations handling PII or financial data in S3-it continuously monitors bucket security posture and can discover sensitive data you didn't know existed. Start with a one-time scan of your most sensitive buckets to establish a baseline, then enable scheduled scans for ongoing discovery. Use custom data identifiers to detect business-specific sensitive patterns that Macie's built-in managed identifiers don't cover, and route HIGH/CRITICAL findings to your security team for immediate investigation.
+Macie is essential for organizations handling PII or financial data in S3-it continuously monitors bucket security posture and can discover sensitive data you didn't know existed. Start with a one-time scan of your most sensitive buckets to establish a baseline, then enable scheduled scans for ongoing discovery. Use custom data identifiers to detect business-specific sensitive patterns that Macie's built-in managed identifiers don't cover, and route HIGH severity findings to your security team for immediate investigation.
