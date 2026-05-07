@@ -34,8 +34,8 @@ First, ensure the device and interface exist in NetBox (DCIM section):
 ```bash
 # Get the interface ID
 curl -H "Authorization: Token <TOKEN>" \
-  "http://localhost:8080/api/dcim/interfaces/?device=web01&name=eth0" \
-  | python3 -m json.tool | grep '"id"'
+  "http://localhost:8080/api/dcim/interfaces/?device=web01&name=eth0&fields=id,name" \
+  | python3 -c 'import json, sys; print(json.load(sys.stdin)["results"][0]["id"])'
 
 # Assign IP to the interface
 curl -X PATCH \
@@ -56,7 +56,7 @@ curl -X PATCH \
 # reserved    - reserved for future use
 # deprecated  - no longer in use, can be reclaimed
 # dhcp        - assigned by DHCP (not manually)
-# slaac       - assigned via IPv6 SLAAC
+# slaac       - assigned via IPv6 SLAAC (IPv6 only)
 
 # Update IP status
 curl -X PATCH \
@@ -111,10 +111,11 @@ curl -H "Authorization: Token <TOKEN>" \
 ## Checking IP Utilization per Prefix
 
 ```bash
-# Prefix utilization shows percentage of IPs assigned
+# NetBox calculates prefix utilization automatically from child IPs, ranges, and prefixes.
+# The REST prefix serializer returns prefix metadata such as children and mark_utilized.
 curl -H "Authorization: Token <TOKEN>" \
-  "http://localhost:8080/api/ipam/prefixes/?prefix=10.100.1.0/24" \
-  | python3 -m json.tool | grep -E "\"utilized\"|\"available\"|\"count\""
+  "http://localhost:8080/api/ipam/prefixes/?prefix=10.100.1.0/24&fields=prefix,children,mark_utilized,is_pool" \
+  | python3 -m json.tool
 ```
 
 ## Setting a Device's Primary IP
