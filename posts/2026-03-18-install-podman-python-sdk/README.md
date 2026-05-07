@@ -16,7 +16,7 @@ If you have ever wanted to manage containers from Python code rather than the co
 
 ## Prerequisites
 
-Before installing the Podman Python SDK, you need two things on your system: Podman itself and Python 3.6 or later. The SDK communicates with Podman through its REST API, so a working Podman installation is essential.
+Before installing the Podman Python SDK, you need two things on your system: Podman itself and Python 3.9 or later. The SDK communicates with Podman through its REST API, so a working Podman installation is essential.
 
 ### Installing Podman
 
@@ -97,10 +97,10 @@ This installs the latest stable version of the SDK along with its dependencies. 
 pip install podman==5.0.0
 ```
 
-To install with development dependencies for contributing or testing:
+To install with testing dependencies for contributing or testing:
 
 ```bash
-pip install podman[dev]
+pip install podman[test]
 ```
 
 ### Installing from Source
@@ -181,7 +181,7 @@ The Podman Python SDK has a minimal set of dependencies:
 pip show podman
 ```
 
-Key dependencies include `requests` for HTTP communication, `urllib3` for connection pooling, and `tomli` for configuration file parsing. The SDK uses these to communicate with the Podman REST API over the Unix socket.
+Key dependencies include `requests` for HTTP communication, `urllib3` for connection pooling, and `tomli` for configuration file parsing on Python versions before 3.11. The SDK uses these to communicate with the Podman REST API over the Unix socket.
 
 You can see the full dependency tree:
 
