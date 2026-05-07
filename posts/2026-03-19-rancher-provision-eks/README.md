@@ -12,47 +12,12 @@ Rancher can provision fully managed EKS clusters directly in your AWS account, g
 
 - A running Rancher installation (v2.7 or later)
 - An AWS account with appropriate permissions
-- AWS Access Key and Secret Key (or IAM role if Rancher runs on EC2)
+- AWS access key ID and secret access key for the Rancher cloud credential
 - A VPC with subnets configured for EKS (or let Rancher create one)
 
 ## Step 1: Set Up AWS IAM Permissions
 
-Create an IAM user or role with the permissions Rancher needs to provision EKS:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "eks:*",
-        "ec2:*",
-        "iam:CreateRole",
-        "iam:DeleteRole",
-        "iam:AttachRolePolicy",
-        "iam:DetachRolePolicy",
-        "iam:GetRole",
-        "iam:PassRole",
-        "iam:CreateInstanceProfile",
-        "iam:DeleteInstanceProfile",
-        "iam:AddRoleToInstanceProfile",
-        "iam:RemoveRoleFromInstanceProfile",
-        "iam:GetInstanceProfile",
-        "iam:CreateServiceLinkedRole",
-        "iam:ListAttachedRolePolicies",
-        "cloudformation:*",
-        "autoscaling:*",
-        "elasticloadbalancing:*",
-        "kms:DescribeKey",
-        "logs:CreateLogGroup",
-        "logs:DescribeLogGroups"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
+Use Rancher's current documented minimum EKS permissions rather than a hand-written sample policy. The required permissions differ depending on whether Rancher will create the VPC, install the Amazon EBS CSI add-on, or provision an IPv6 cluster.
 
 ## Step 2: Create a Cloud Credential in Rancher
 
@@ -94,8 +59,7 @@ Configure the VPC and networking:
 
 **Create New VPC:**
 
-- Let Rancher create a new VPC with the required subnets
-- Specify the CIDR block (e.g., `10.0.0.0/16`)
+- Let Rancher create a new VPC with the required subnets automatically
 
 ### Public Access
 
@@ -108,6 +72,8 @@ Configure API server endpoint access:
 ```plaintext
 Public Access Sources: 0.0.0.0/0 (or restrict to specific CIDRs)
 ```
+
+If you create the cluster with a private-only API endpoint, Rancher either needs network reachability to the cluster or it will prompt you to run a registration command after provisioning.
 
 ### Logging
 
@@ -142,15 +108,16 @@ Click **Add Node Group** and configure:
 ### Disk Configuration
 
 - **Disk Size**: Root volume size in GB (e.g., 50)
-- **Disk Type**: gp3 (recommended) or gp2
+- If you use a custom launch template, configure the EBS volume type there (for example, `gp3`)
 
 ### AMI Type
 
 Select the AMI type:
 
-- **Amazon Linux 2**: Default, most compatible
+- **Amazon Linux 2023**: Default for newly created managed node groups on newer EKS versions
+- **Amazon Linux 2**: Still available, but no longer the default on newer EKS versions
 - **Bottlerocket**: Security-focused, minimal OS
-- **Ubuntu**: Ubuntu-based nodes
+- **Custom AMI**: Use a properly configured custom AMI or launch template if you need a non-default image such as Ubuntu
 
 ### Spot Instances
 
@@ -188,7 +155,7 @@ Review all settings and click **Create**. Rancher will:
 1. Create the EKS cluster in AWS
 2. Create the configured node groups
 3. Deploy Rancher agents into the cluster
-4. Register the cluster in Rancher
+4. Register the cluster in Rancher. If you chose a private-only API endpoint, Rancher may prompt you to run a registration command unless it already has network access to the cluster.
 
 This process takes 10 to 20 minutes.
 
@@ -227,7 +194,7 @@ Go to **Apps** and install the **Monitoring** chart.
 
 ### Configure Storage
 
-EKS provides the EBS CSI driver. Verify it is installed:
+If you plan to use Amazon EBS volumes, verify that the Amazon EBS CSI driver is installed:
 
 ```bash
 kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-ebs-csi-driver
@@ -251,13 +218,15 @@ volumeBindingMode: WaitForFirstConsumer
 
 ### Set Up IAM Roles for Service Accounts (IRSA)
 
-Enable IRSA for fine-grained IAM permissions:
+Enable IRSA for fine-grained IAM permissions. Standard IPv4 EKS clusters do not automatically create the IAM OIDC provider, so verify it first:
 
 ```bash
-# This is typically configured during EKS creation
-# Verify the OIDC provider exists
-aws eks describe-cluster --name <CLUSTER_NAME> --query "cluster.identity.oidc"
+cluster_name=<CLUSTER_NAME>
+oidc_id=$(aws eks describe-cluster --name $cluster_name --query "cluster.identity.oidc.issuer" --output text | cut -d '/' -f 5)
+aws iam list-open-id-connect-providers | grep $oidc_id
 ```
+
+If the last command returns no output, create the IAM OIDC provider before configuring IRSA.
 
 ## Troubleshooting
 
