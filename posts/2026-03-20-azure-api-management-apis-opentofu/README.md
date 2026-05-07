@@ -115,14 +115,12 @@ resource "azurerm_api_management_api_policy" "orders" {
         <validate-jwt header-name="Authorization" failed-validation-httpcode="401"
                       failed-validation-error-message="Unauthorized">
           <openid-config url="${var.oidc_config_url}" />
-          <required-claims>
-            <claim name="aud">
-              <value>${var.api_audience}</value>
-            </claim>
-          </required-claims>
+          <audiences>
+            <audience>${var.api_audience}</audience>
+          </audiences>
         </validate-jwt>
 
-        <!-- Route to backend using named value -->
+        <!-- Route to backend using a backend entity -->
         <set-backend-service backend-id="orders-service" />
 
         <!-- Add correlation ID for tracing -->
@@ -165,9 +163,10 @@ resource "azurerm_api_management_api_operation_policy" "list_orders_cache" {
   xml_content = <<-XML
     <policies>
       <inbound>
-        <!-- Cache GET /orders responses for 60 seconds -->
+        <!-- Cache authenticated GET /orders responses for 60 seconds per access token -->
         <cache-lookup vary-by-developer="false" vary-by-developer-groups="false"
-                      allow-private-response-caching="false">
+                      allow-private-response-caching="true">
+          <vary-by-header>Authorization</vary-by-header>
           <vary-by-query-parameter>page</vary-by-query-parameter>
           <vary-by-query-parameter>limit</vary-by-query-parameter>
         </cache-lookup>
