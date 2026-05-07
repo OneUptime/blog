@@ -8,7 +8,7 @@ Description: Compare Quadlet and Docker Compose for running containers as system
 
 ---
 
-> Quadlet turns container definitions into native systemd units, while Docker Compose manages containers through its own daemon, leading to different operational models for production deployments.
+> Quadlet turns container definitions into native systemd units, while Docker Compose manages containers through the Docker Engine daemon, leading to different operational models for production deployments.
 
 Running containers as system services is essential for production deployments. Two popular approaches are Podman's Quadlet, which generates systemd unit files from container definitions, and Docker Compose, which manages multi-container applications through the Docker daemon. Each approach integrates differently with your system's service manager.
 
@@ -18,7 +18,7 @@ This guide compares both tools to help you choose the right approach for your pr
 
 ## What is Quadlet
 
-Quadlet is a systemd generator that reads `.container`, `.pod`, `.network`, and `.volume` files and produces systemd service units. Containers managed by Quadlet are true systemd services, supporting all systemd features like dependencies, timers, and socket activation.
+Quadlet is a systemd generator that reads files such as `.container`, `.pod`, `.network`, `.volume`, `.image`, `.build`, `.kube`, and `.artifact` files and produces systemd service units. Containers managed by Quadlet are true systemd services, integrating with standard systemd features like dependency ordering, timers, resource controls, and journald.
 
 ```ini
 # ~/.config/containers/systemd/web.container
@@ -41,7 +41,6 @@ Activate and manage with standard systemctl commands:
 ```bash
 systemctl --user daemon-reload
 systemctl --user start web
-systemctl --user enable web
 systemctl --user status web
 ```
 
@@ -143,8 +142,8 @@ Environment=DATABASE_URL=postgresql://user:pass@db:5432/app
 Network=app.network
 
 [Unit]
-Requires=db.service
-After=db.service
+Requires=db.container
+After=db.container
 
 [Service]
 Restart=always
@@ -192,11 +191,11 @@ journalctl --user -u web -f
 # Check status
 systemctl --user status web
 
-# Enable on boot
-systemctl --user enable web
+# Re-read Quadlet files and apply their [Install] sections
+systemctl --user daemon-reload
 ```
 
-Docker Compose manages all services together:
+Docker Compose commonly manages the application as a project, while still allowing service-specific commands:
 
 ```bash
 # Start all services
@@ -217,12 +216,12 @@ docker compose logs -f web
 Quadlet services integrate natively with systemd boot ordering:
 
 ```bash
-# User services start with user session
-systemctl --user enable web
+# User services start with the user service manager when [Install] has WantedBy=default.target
+systemctl --user daemon-reload
 
 # System services start at boot
 # Place files in /etc/containers/systemd/ for root containers
-sudo systemctl enable web
+sudo systemctl daemon-reload
 ```
 
 Docker Compose requires a separate systemd unit or Docker's restart policies:
@@ -271,7 +270,7 @@ Image=my-api:latest
 Network=app.network
 PublishPort=3000:3000
 [Unit]
-After=db.service
+After=db.container
 [Service]
 Restart=always
 [Install]
@@ -283,7 +282,7 @@ Image=nginx:stable
 Network=app.network
 PublishPort=8080:80
 [Unit]
-After=api.service
+After=api.container
 [Service]
 Restart=always
 [Install]
