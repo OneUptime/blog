@@ -110,8 +110,8 @@ You can skip TLS for a mirror while keeping it enabled for the primary registry.
 # /etc/containers/registries.conf
 
 [[registry]]
-prefix = "docker.io"
-location = "docker.io"
+prefix = "registry.example.com"
+location = "registry.example.com"
 insecure = false
 
 # Local mirror without TLS
@@ -200,7 +200,7 @@ podman --log-level=debug pull dev-registry.local:5000/myapp:latest 2>&1 | \
 podman info --format '{{.Registries}}'
 
 # Test if a registry has valid TLS
-openssl s_client -connect dev-registry.local:5000 </dev/null 2>&1 | \
+openssl s_client -connect dev-registry.local:5000 -servername dev-registry.local </dev/null 2>&1 | \
   grep -i "verify"
 ```
 
