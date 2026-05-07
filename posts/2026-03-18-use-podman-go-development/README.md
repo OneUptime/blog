@@ -8,7 +8,7 @@ Description: A practical guide to using Podman for Go development, covering modu
 
 ---
 
-> Podman and Go are a natural pairing. Go compiles to static binaries, and Podman runs containers without a daemon. Together they produce lean, self-contained applications with minimal overhead.
+> Podman and Go are a natural pairing. Go can compile to static binaries, and Podman runs containers without a daemon. Together they produce lean, self-contained applications with minimal overhead.
 
 Go already has excellent tooling for managing dependencies and cross-compiling binaries. But containerized development still offers real benefits: consistent build environments across teams, easy integration with databases and external services, and the ability to test against specific OS and architecture combinations. Podman is a particularly good fit because Go developers tend to value simplicity and minimal dependencies, and Podman delivers exactly that.
 
@@ -23,13 +23,13 @@ The official Go images come in a few variants:
 ```bash
 # Full image - Debian-based, includes gcc and common build tools
 
-podman pull docker.io/library/golang:1.22
+podman pull docker.io/library/golang:1.26
 
 # Alpine image - smaller, musl-based
-podman pull docker.io/library/golang:1.22-alpine
+podman pull docker.io/library/golang:1.26-alpine
 ```
 
-For development, the full `golang:1.22` image is easier to work with because some Go packages use cgo and need gcc. The Alpine variant is smaller but may require installing build tools for certain dependencies.
+For development, the full `golang:1.26` image is easier to work with because some Go packages use cgo and need gcc. The Alpine variant is smaller but may require installing build tools for certain dependencies.
 
 ## Running Go Code in a Container
 
@@ -38,14 +38,14 @@ For development, the full `golang:1.22` image is easier to work with because som
 podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
-  docker.io/library/golang:1.22 \
+  docker.io/library/golang:1.26 \
   go run main.go
 
 # Start an interactive shell in a Go environment
 podman run -it --rm \
   -v $(pwd):/app:Z \
   -w /app \
-  docker.io/library/golang:1.22 \
+  docker.io/library/golang:1.26 \
   bash
 ```
 
@@ -58,7 +58,7 @@ Create a simple Go web server. First, initialize the module:
 podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
-  docker.io/library/golang:1.22 \
+  docker.io/library/golang:1.26 \
   go mod init github.com/yourname/myapp
 ```
 
@@ -109,15 +109,15 @@ func main() {
 ## Creating a Development Containerfile
 
 ```dockerfile
-FROM docker.io/library/golang:1.22
+FROM docker.io/library/golang:1.26
 
 # Install air for live reloading during development
 RUN go install github.com/air-verse/air@latest
 
 WORKDIR /app
 
-# Copy go.mod and go.sum first for dependency caching
-COPY go.mod go.sum* ./
+# Copy go.mod first for dependency caching
+COPY go.mod ./
 RUN go mod download
 
 # Copy source code
@@ -137,11 +137,11 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  bin = "./tmp/main"
   cmd = "go build -o ./tmp/main ."
+  entrypoint = ["./tmp/main"]
   delay = 1000
   exclude_dir = ["tmp", "vendor"]
-  exclude_regex = ["_test.go"]
+  exclude_regex = ["_test\\.go"]
   include_ext = ["go", "tpl", "tmpl", "html"]
 
 [log]
@@ -180,7 +180,7 @@ podman run -it --rm \
   -v go-mod-cache:/go/pkg/mod \
   -w /app \
   -p 8080:8080 \
-  docker.io/library/golang:1.22 \
+  docker.io/library/golang:1.26 \
   go run main.go
 ```
 
@@ -188,10 +188,9 @@ This prevents Go from re-downloading all dependencies every time you create a ne
 
 ## Multi-Container Setup with a Database
 
-Here is a `docker-compose.yml` for a Go API with PostgreSQL:
+Here is a `compose.yaml` for a Go API with PostgreSQL:
 
 ```yaml
-version: "3.8"
 services:
   app:
     build: .
@@ -227,13 +226,13 @@ Notice the `go-build-cache` volume. Go caches compiled packages in `~/.cache/go-
 
 ```bash
 # Start the stack
-podman-compose up -d
+podman compose up -d
 
 # View logs
-podman-compose logs -f app
+podman compose logs -f app
 
 # Run a command in the app container
-podman-compose exec app go test ./...
+podman compose exec app go test ./...
 ```
 
 ## Running Tests
@@ -244,7 +243,7 @@ podman run --rm \
   -v $(pwd):/app:Z \
   -v go-mod-cache:/go/pkg/mod \
   -w /app \
-  docker.io/library/golang:1.22 \
+  docker.io/library/golang:1.26 \
   go test ./... -v
 
 # Run tests with race detection
@@ -252,7 +251,7 @@ podman run --rm \
   -v $(pwd):/app:Z \
   -v go-mod-cache:/go/pkg/mod \
   -w /app \
-  docker.io/library/golang:1.22 \
+  docker.io/library/golang:1.26 \
   go test -race ./... -v
 
 # Run tests with coverage
@@ -260,15 +259,15 @@ podman run --rm \
   -v $(pwd):/app:Z \
   -v go-mod-cache:/go/pkg/mod \
   -w /app \
-  docker.io/library/golang:1.22 \
-  go test ./... -coverprofile=coverage.out && go tool cover -func=coverage.out
+  docker.io/library/golang:1.26 \
+  sh -c 'go test ./... -coverprofile=coverage.out && go tool cover -func=coverage.out'
 
 # Run benchmarks
 podman run --rm \
   -v $(pwd):/app:Z \
   -v go-mod-cache:/go/pkg/mod \
   -w /app \
-  docker.io/library/golang:1.22 \
+  docker.io/library/golang:1.26 \
   go test -bench=. -benchmem ./...
 ```
 
@@ -285,8 +284,8 @@ podman run -it --rm \
   -p 8080:8080 \
   -p 2345:2345 \
   --security-opt=seccomp=unconfined \
-  docker.io/library/golang:1.22 \
-  bash -c "go install github.com/go-delve/delve/cmd/dlv@latest && dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient ."
+  docker.io/library/golang:1.26 \
+  bash -c "go install github.com/go-delve/delve/cmd/dlv@latest && dlv debug . --headless --listen=:2345 --accept-multiclient"
 ```
 
 The `--security-opt=seccomp=unconfined` flag is needed because Delve uses ptrace, which is blocked by the default seccomp profile.
@@ -297,11 +296,17 @@ VS Code `launch.json` for attaching to the container:
 {
   "name": "Attach to Container",
   "type": "go",
+  "debugAdapter": "dlv-dap",
   "request": "attach",
   "mode": "remote",
-  "remotePath": "/app",
   "port": 2345,
-  "host": "127.0.0.1"
+  "host": "127.0.0.1",
+  "substitutePath": [
+    {
+      "from": "${workspaceFolder}",
+      "to": "/app"
+    }
+  ]
 }
 ```
 
@@ -315,35 +320,35 @@ podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
   -e GOOS=linux -e GOARCH=amd64 \
-  docker.io/library/golang:1.22 \
-  go build -o bin/myapp-linux-amd64
+  docker.io/library/golang:1.26 \
+  sh -c 'mkdir -p bin && go build -o bin/myapp-linux-amd64'
 
 # Build for Linux ARM64
 podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
   -e GOOS=linux -e GOARCH=arm64 \
-  docker.io/library/golang:1.22 \
-  go build -o bin/myapp-linux-arm64
+  docker.io/library/golang:1.26 \
+  sh -c 'mkdir -p bin && go build -o bin/myapp-linux-arm64'
 
 # Build for macOS ARM64
 podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
   -e GOOS=darwin -e GOARCH=arm64 \
-  docker.io/library/golang:1.22 \
-  go build -o bin/myapp-darwin-arm64
+  docker.io/library/golang:1.26 \
+  sh -c 'mkdir -p bin && go build -o bin/myapp-darwin-arm64'
 ```
 
 ## Building a Minimal Production Image
 
-Go compiles to a single static binary, which means your production image can be incredibly small. The `scratch` image contains literally nothing: no shell, no libraries, no OS.
+With `CGO_ENABLED=0`, Go can compile to a single static binary, which means your production image can be incredibly small. The `scratch` image contains literally nothing: no shell, no libraries, no OS.
 
 ```dockerfile
 # Stage 1: Build the binary
-FROM docker.io/library/golang:1.22 AS builder
+FROM docker.io/library/golang:1.26 AS builder
 WORKDIR /app
-COPY go.mod go.sum ./
+COPY go.mod ./
 RUN go mod download
 COPY . .
 
@@ -383,4 +388,4 @@ The `-ldflags="-w -s"` flags strip debug information and symbol tables from the 
 
 ## Conclusion
 
-Go and Podman complement each other well. Go's static binaries make for tiny production images, and Podman's daemonless design keeps the development workflow simple. The key practices are: cache Go modules and build artifacts in named volumes for fast iteration, use `air` for live reloading during development, and take advantage of multi-stage builds with `scratch` base images for production. The result is a development environment that is fast, reproducible, and produces deployment artifacts measured in megabytes rather than hundreds of megabytes.
+Go and Podman complement each other well. Go's ability to produce static binaries makes for tiny production images, and Podman's daemonless design keeps the development workflow simple. The key practices are: cache Go modules and build artifacts in named volumes for fast iteration, use `air` for live reloading during development, and take advantage of multi-stage builds with `scratch` base images for production. The result is a development environment that is fast, reproducible, and produces deployment artifacts measured in megabytes rather than hundreds of megabytes.
