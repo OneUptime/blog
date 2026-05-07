@@ -17,7 +17,7 @@ Advertising one /16 summary replaces all 256 entries with one, while hiding inte
 
 ## Identifying Aggregatable Routes
 
-Routes are aggregatable if they are:
+Routes can be summarized into a single supernet if they are:
 1. Contiguous (no gaps between them)
 2. Form a power-of-two sized group
 3. Start at the correct boundary
@@ -25,26 +25,13 @@ Routes are aggregatable if they are:
 ```python
 import ipaddress
 
-def find_summary(networks: list) -> str:
-    """Find the tightest summary route for a list of networks."""
+def find_summary(networks: list[str]) -> str:
+    """Return a single summary route when the input aggregates cleanly."""
     nets = [ipaddress.IPv4Network(n) for n in networks]
     collapsed = list(ipaddress.collapse_addresses(nets))
-    if len(collapsed) == 1:
-        return str(collapsed[0])
-
-    # Multiple blocks needed - return the covering supernet of first and last
-    all_addrs = sorted(nets, key=lambda n: n.network_address)
-    first, last = all_addrs[0], all_addrs[-1]
-
-    # Find common prefix length
-    first_int = int(first.network_address)
-    last_int = int(last.network_address)
-    xor = first_int ^ last_int
-    if xor == 0:
-        return str(first)
-    prefix = 32 - xor.bit_length()
-    summary = ipaddress.IPv4Network(f"{first.network_address}/{prefix}", strict=False)
-    return str(summary)
+    if len(collapsed) != 1:
+        raise ValueError(f"Multiple summary routes would be required: {collapsed}")
+    return str(collapsed[0])
 
 # Example: 8 contiguous /24s → should summarize to /21
 
@@ -63,11 +50,12 @@ print(f"Collapsed: {collapsed}")
 # /etc/frr/frr.conf
 router bgp 65001
   address-family ipv4 unicast
-    ! Advertise summary and suppress more-specifics
+    ! More-specific routes inside 10.1.0.0/21 must already exist in the BGP table
+    ! Advertise summary and suppress more-specific advertisements
     aggregate-address 10.1.0.0/21 summary-only
     !
-    ! Or advertise both summary and specifics
-    aggregate-address 10.1.0.0/21
+    ! Or advertise both summary and specifics, use:
+    ! aggregate-address 10.1.0.0/21
   exit-address-family
 ```
 
@@ -76,8 +64,8 @@ router bgp 65001
 ```text
 # ABR summarization in OSPF
 router ospf 1
-  area 1 range 10.1.0.0 255.255.248.0
-  ! Summarizes all routes in area 1 that fall within 10.1.0.0/21
+  area 1 range 10.1.0.0/21
+  ! Summarizes intra-area routes in area 1 that fall within 10.1.0.0/21
 ```
 
 ## Linux: Static Summary Route
@@ -93,7 +81,7 @@ python3 -c "import ipaddress; print(list(ipaddress.IPv4Network('10.1.0.0/21').su
 
 ## Key Takeaways
 
-- Route aggregation requires contiguous networks forming a power-of-two group aligned to its boundary.
-- `ipaddress.collapse_addresses()` automatically finds the tightest summary for a list of routes.
-- BGP `aggregate-address summary-only` suppresses more-specific routes, forcing traffic through the summary point.
+- A single summary route requires contiguous networks forming a power-of-two group aligned to its boundary.
+- `ipaddress.collapse_addresses()` returns the minimum set of summary routes for a list of networks.
+- BGP `aggregate-address summary-only` suppresses advertisement of more-specific routes to neighbors.
 - OSPF ABR summarization uses `area range` to hide intra-area detail from the backbone.
