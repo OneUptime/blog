@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Security, Auditing, Event, Compliance
 
-Description: Learn how to audit container activities using Podman events to maintain security compliance and track all container operations.
+Description: Learn how to audit container activities using Podman events to maintain security compliance and track container operations.
 
 ---
 
 > A complete audit trail of container activities is not optional in regulated environments - it is a compliance requirement.
 
-Container auditing is essential for security compliance, incident forensics, and operational governance. Podman events provide a built-in mechanism to track every container operation, from creation and configuration to execution and removal. This guide shows you how to build a comprehensive container audit system using Podman events.
+Container auditing is essential for security compliance, incident forensics, and operational governance. Podman events provide a built-in mechanism to track container operations, from creation and execution to removal. This guide shows you how to build a comprehensive container audit system using Podman events.
 
 ---
 
@@ -19,23 +19,23 @@ Container auditing is essential for security compliance, incident forensics, and
 Container auditing should capture several categories of activity:
 
 ```bash
-# Lifecycle events - who created, started, stopped, removed containers
+# Lifecycle events - created, started, stopped, and removed containers
 
-podman events --filter type=container --since 24h
+podman events --filter type=container --since 24h --stream=false
 
 # Image events - what images were pulled or modified
-podman events --filter type=image --since 24h
+podman events --filter type=image --since 24h --stream=false
 
-# Exec events - what commands were run inside containers
-podman events --filter event=exec --since 24h
+# Exec events - when commands were run inside containers
+podman events --filter event=exec --since 24h --stream=false
 
 # Volume events - what storage was provisioned
-podman events --filter type=volume --since 24h
+podman events --filter type=volume --since 24h --stream=false
 ```
 
 ## Setting Up an Audit Log
 
-Create a dedicated audit log that captures all Podman events with full detail.
+Create a dedicated audit log that captures all Podman events in JSON Lines format.
 
 ```bash
 #!/bin/bash
@@ -47,7 +47,7 @@ mkdir -p "$AUDIT_DIR"
 echo "Starting Podman audit logger..."
 echo "Audit directory: ${AUDIT_DIR}"
 
-# Create a daily rotating audit log
+# Create a date-stamped audit log
 DATE=$(date '+%Y-%m-%d')
 AUDIT_LOG="${AUDIT_DIR}/audit-${DATE}.jsonl"
 
@@ -61,15 +61,15 @@ echo "$AUDIT_PID" > "${AUDIT_DIR}/audit.pid"
 
 ## Auditing Container Creation
 
-Track who created containers and with what configuration.
+Track when containers are created and which image they use.
 
 ```bash
 # Monitor all container creations
 podman events --filter event=create --format json | \
 while IFS= read -r event; do
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unnamed"')
-    image=$(echo "$event" | jq -r '.Actor.Attributes.image // "unknown"')
-    timestamp=$(echo "$event" | jq -r '.time')
+    name=$(echo "$event" | jq -r '.Name // "unnamed"')
+    image=$(echo "$event" | jq -r '.Image // "unknown"')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
     echo "[AUDIT] Container created: ${name}"
     echo "  Image: ${image}"
@@ -80,7 +80,7 @@ done
 
 ## Auditing Container Exec Operations
 
-Exec events are critical for security - they show when someone runs commands inside a container.
+Exec events are critical for security - they show when a command is run inside a container.
 
 ```bash
 # Start a container for testing exec auditing
@@ -89,8 +89,8 @@ podman run -d --name audit-target alpine sleep 600
 # In another terminal, monitor exec events
 podman events --filter event=exec --format json | \
 while IFS= read -r event; do
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name')
-    timestamp=$(echo "$event" | jq -r '.time')
+    name=$(echo "$event" | jq -r '.Name')
+    timestamp=$(echo "$event" | jq -r '.Time')
     echo "[SECURITY AUDIT] Exec detected on container: ${name} at ${timestamp}"
 done
 
@@ -120,36 +120,36 @@ REPORT_FILE="/tmp/podman-audit-report-$(date '+%Y%m%d-%H%M%S').txt"
 
     # Summary statistics
     echo "--- Summary ---"
-    total=$(podman events --since "${HOURS}h" --format json 2>/dev/null | wc -l)
+    total=$(podman events --since "${HOURS}h" --stream=false --format json 2>/dev/null | wc -l)
     echo "Total events: ${total}"
     echo ""
 
     # Container lifecycle summary
     echo "--- Container Lifecycle ---"
     echo "Created:"
-    podman events --since "${HOURS}h" --filter event=create --format json 2>/dev/null | \
-        jq -r '"  \(.time) - \(.Actor.Attributes.name // "unnamed") (\(.Actor.Attributes.image // "unknown"))"'
+    podman events --since "${HOURS}h" --stream=false --filter event=create --format json 2>/dev/null | \
+        jq -r '"  \(.Time) - \(.Name // "unnamed") (\(.Image // "unknown"))"'
 
     echo "Removed:"
-    podman events --since "${HOURS}h" --filter event=remove --format json 2>/dev/null | \
-        jq -r '"  \(.time) - \(.Actor.Attributes.name // "unnamed")"'
+    podman events --since "${HOURS}h" --stream=false --filter event=remove --format json 2>/dev/null | \
+        jq -r '"  \(.Time) - \(.Name // "unnamed")"'
 
     echo ""
     echo "--- Container Deaths ---"
-    podman events --since "${HOURS}h" --filter event=die --format json 2>/dev/null | \
-        jq -r '"  \(.time) - \(.Actor.Attributes.name // "unnamed") (exit: \(.Actor.Attributes.containerExitCode // "unknown"))"'
+    podman events --since "${HOURS}h" --stream=false --filter event=died --format json 2>/dev/null | \
+        jq -r '"  \(.Time) - \(.Name // "unnamed") (exit: \(.ContainerExitCode // "unknown"))"'
 
     echo ""
     echo "--- Exec Operations ---"
-    exec_count=$(podman events --since "${HOURS}h" --filter event=exec --format json 2>/dev/null | wc -l)
+    exec_count=$(podman events --since "${HOURS}h" --stream=false --filter event=exec --format json 2>/dev/null | wc -l)
     echo "Total exec operations: ${exec_count}"
-    podman events --since "${HOURS}h" --filter event=exec --format json 2>/dev/null | \
-        jq -r '"  \(.time) - \(.Actor.Attributes.name // "unnamed")"'
+    podman events --since "${HOURS}h" --stream=false --filter event=exec --format json 2>/dev/null | \
+        jq -r '"  \(.Time) - \(.Name // "unnamed")"'
 
     echo ""
     echo "--- Image Operations ---"
-    podman events --since "${HOURS}h" --filter type=image --format json 2>/dev/null | \
-        jq -r '"  \(.time) - \(.Status) \(.Actor.Attributes.name // .Name // "unnamed")"'
+    podman events --since "${HOURS}h" --stream=false --filter type=image --format json 2>/dev/null | \
+        jq -r '"  \(.Time) - \(.Status) \(.Name // "unnamed")"'
 
     echo ""
     echo "============================================"
@@ -174,13 +174,13 @@ mkdir -p "$REPORT_DIR"
 DATE=$(date '+%Y-%m-%d')
 REPORT_FILE="${REPORT_DIR}/daily-audit-${DATE}.json"
 
-podman events --since 24h --format json | jq -s '{
+podman events --since 24h --stream=false --format json | jq -s '{
     report_date: "'"${DATE}"'",
     total_events: length,
     events_by_status: (group_by(.Status) | map({(.[0].Status): length}) | add),
-    containers_active: ([.[] | select(.Type == "container") | .Actor.Attributes.name] | unique),
-    deaths: [.[] | select(.Status == "die") | {name: .Actor.Attributes.name, time: .time}],
-    exec_operations: [.[] | select(.Status == "exec") | {name: .Actor.Attributes.name, time: .time}]
+    containers_seen: ([.[] | select(.Type == "container") | .Name] | unique),
+    deaths: [.[] | select(.Status == "died") | {name: .Name, time: .Time}],
+    exec_operations: [.[] | select(.Status == "exec") | {name: .Name, time: .Time}]
 }' > "$REPORT_FILE"
 
 echo "Daily audit saved to: ${REPORT_FILE}"
@@ -218,4 +218,4 @@ rm -f /tmp/audit-creates.jsonl /tmp/podman-audit-report-*.txt
 
 ## Summary
 
-Auditing container activities with Podman events provides the visibility needed for security compliance and operational governance. By capturing container lifecycle events, exec operations, image changes, and volume activity, you can maintain a comprehensive record of everything that happens in your container environment. Automated daily reports, secure log storage, and integrity verification ensure your audit trail is both complete and trustworthy.
+Auditing container activities with Podman events provides the visibility needed for security compliance and operational governance. By capturing container lifecycle events, exec operations, image changes, and volume activity, you can maintain a comprehensive record of the events Podman reports in your container environment. Automated daily reports, secure log storage, and integrity verification help keep your audit trail trustworthy.
