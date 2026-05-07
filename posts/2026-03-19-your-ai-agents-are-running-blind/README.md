@@ -18,11 +18,11 @@ We've been building observability tooling for traditional software for over a de
 
 ## Why Traditional Monitoring Fails for AI Agents
 
-Here's the thing about monitoring a REST API: the behavior is deterministic. Endpoint A takes request B and returns response C. You measure latency, error rates, throughput. If something breaks, the stack trace tells you exactly where.
+Here's the thing about monitoring a typical REST API: the behavior is usually more bounded. Endpoint A takes request B and is expected to return a predictable class of responses. You measure latency, error rates, throughput. If something breaks, the stack trace or error path usually gives you a much clearer starting point.
 
 AI agents break every assumption that traditional monitoring relies on.
 
-**Non-deterministic behavior.** The same input can produce wildly different outputs. An agent might take three steps to complete a task today and seventeen steps tomorrow. Your P99 latency metrics are meaningless when the execution path is different every time.
+**Non-deterministic behavior.** The same input can produce wildly different outputs. An agent might take three steps to complete a task today and seventeen steps tomorrow. Your P99 latency metrics are a lot less useful on their own when the execution path is different every time.
 
 **Cascading decision chains.** Agents don't just call one function. They reason, call tools, evaluate results, reason again, call different tools, and iterate until they reach a conclusion. A single "request" might involve dozens of LLM calls, each building on the last. One bad decision in step three can corrupt everything downstream.
 
@@ -44,7 +44,7 @@ Each agent invocation should produce a distributed trace that captures the full 
 - Branching decisions and why they were made
 - The final output and confidence signals
 
-This is where OpenTelemetry shines. Agent frameworks like LangChain, CrewAI, and AutoGen are starting to add OTEL instrumentation, but you'll probably need to add custom spans for your specific tool calls and decision points.
+This is where OpenTelemetry shines. LangChain/LangSmith, CrewAI, and AutoGen all have OTEL support paths now, but you'll probably still need to add custom spans for your specific tool calls and decision points.
 
 ```python
 from opentelemetry import trace
