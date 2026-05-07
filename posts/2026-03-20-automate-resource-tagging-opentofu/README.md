@@ -8,11 +8,11 @@ Description: Learn how to implement consistent resource tagging across all OpenT
 
 ## Introduction
 
-Consistent resource tagging enables cost allocation, security policy enforcement, and automated governance. OpenTofu provides provider-level default tags, local tag variables, and merge patterns to ensure every resource gets the right tags without repetition.
+Consistent resource tagging enables cost allocation, security policy enforcement, and automated governance. In OpenTofu, the AWS provider supports provider-level default tags, and you can combine that with local tag variables and merge patterns to ensure every resource gets the right tags without repetition.
 
 ## Provider-Level Default Tags
 
-AWS provider supports `default_tags` that apply to all resources automatically.
+AWS provider supports `default_tags` for resources that implement `tags`, with `aws_autoscaling_group` as a notable exception.
 
 ```hcl
 provider "aws" {
@@ -22,7 +22,7 @@ provider "aws" {
     tags = {
       Environment  = var.environment
       Project      = var.project
-      Owner        = var.team
+      Team         = var.team
       ManagedBy    = "opentofu"
       CostCenter   = var.cost_center
       Terraform    = "true"
@@ -53,7 +53,6 @@ locals {
     Team        = var.team
     CostCenter  = var.cost_center
     ManagedBy   = "opentofu"
-    CreatedAt   = timestamp()
   }
 
   # Merge base tags with resource-specific extra tags
@@ -99,20 +98,19 @@ resource "aws_s3_bucket" "backups" {
 }
 ```
 
-## Enforcing Required Tags with check Blocks
+## Validating Required Tags with check Blocks
 
-OpenTofu 1.5+ supports `check` blocks for post-apply validation.
+OpenTofu supports `check` blocks for non-blocking validation during plan and apply.
 
 ```hcl
 check "all_resources_tagged" {
   assert {
     condition = length([
-      for resource in [
-        aws_instance.web.tags,
-        aws_db_instance.main.tags,
-        aws_s3_bucket.data.tags
-      ] : resource
-      if !contains(keys(resource), "CostCenter")
+      for resource_tags in [
+        aws_db_instance.main.tags_all,
+        aws_s3_bucket.backups.tags_all
+      ] : resource_tags
+      if !contains(keys(resource_tags), "CostCenter")
     ]) == 0
     error_message = "All resources must have a CostCenter tag."
   }
@@ -124,25 +122,41 @@ check "all_resources_tagged" {
 ```bash
 #!/bin/bash
 # scripts/check-tag-compliance.sh
-# Scan OpenTofu state for untagged resources
+# Scan OpenTofu state for missing required tags
+# Requires: jq
 
-REQUIRED_TAGS=("Environment" "Project" "Team" "CostCenter")
+set -euo pipefail
+
+REQUIRED_TAGS='["Environment", "Project", "Team", "CostCenter"]'
 VIOLATIONS=0
 
-# Get all resources from state
-resources=$(tofu state list)
+missing_tags=$(
+  tofu show -state -json | jq -r --argjson required_tags "$REQUIRED_TAGS" '
+    def resources(mod):
+      (mod.resources // [])[],
+      ((mod.child_modules // [])[] | resources(.));
 
-for resource in $resources; do
-  # Get tags for this resource
-  tags=$(tofu state show "$resource" 2>/dev/null | grep -A 50 "tags " | grep -v "^tags_all" || true)
+    .values.root_module? as $root
+    | if $root == null then
+        empty
+      else
+        $root
+        | resources(.)
+        | select(.mode == "managed")
+        | select((.values.tags_all // .values.tags // null) != null)
+        | . as $resource
+        | (.values.tags_all // .values.tags // {}) as $tags
+        | $required_tags[]
+        | select($tags[.] == null)
+        | "MISSING TAG '\''\(.)'\'' on: \($resource.address)"
+      end
+  '
+)
 
-  for tag in "${REQUIRED_TAGS[@]}"; do
-    if ! echo "$tags" | grep -q "\"$tag\""; then
-      echo "MISSING TAG '$tag' on: $resource"
-      VIOLATIONS=$((VIOLATIONS + 1))
-    fi
-  done
-done
+if [[ -n "$missing_tags" ]]; then
+  echo "$missing_tags"
+  VIOLATIONS=$(printf '%s\n' "$missing_tags" | wc -l | tr -d ' ')
+fi
 
 if [[ $VIOLATIONS -gt 0 ]]; then
   echo "Found $VIOLATIONS tag violations."
@@ -164,4 +178,4 @@ cost_center = "cc-1234"
 
 ## Summary
 
-Consistent resource tagging requires a combination of provider-level default tags, centralized tag modules, and compliance checks. OpenTofu's `default_tags` in the AWS provider eliminates tag repetition, while `check` blocks and compliance scripts enforce tag governance across the entire resource fleet.
+Consistent resource tagging requires a combination of provider-level default tags, centralized tag modules, and compliance checks. OpenTofu's `default_tags` in the AWS provider eliminates tag repetition, while `check` blocks and compliance scripts help validate tag governance across the entire resource fleet.
