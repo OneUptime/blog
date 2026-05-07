@@ -15,10 +15,12 @@ The most integrated approach is building a dashboard page as a Rancher UI extens
 ### Step 1: Scaffold the Extension
 
 ```bash
-npx @rancher/create-extension cluster-dashboard
+npm init @rancher/extension@latest cluster-dashboard
 cd cluster-dashboard
 yarn install
 ```
+
+For Rancher v2.9, use `@legacy-v2`; for Rancher v2.7 and v2.8, use `@legacy-v1`.
 
 ### Step 2: Create the Dashboard Component
 
@@ -82,7 +84,7 @@ Create `pkg/cluster-dashboard/pages/dashboard.vue`:
               <th>Reason</th>
               <th>Object</th>
               <th>Message</th>
-              <th>Age</th>
+              <th>Created</th>
             </tr>
           </thead>
           <tbody>
@@ -233,27 +235,26 @@ export default {
 Update `pkg/cluster-dashboard/index.ts`:
 
 ```typescript
+import { importTypes } from '@rancher/auto-import';
 import { IPlugin } from '@shell/core/types';
 
 const routes = [
   {
-    name: 'c-cluster-cluster-dashboard-main',
-    path: '/c/:cluster/cluster-dashboard',
+    name: 'c-cluster-cluster-dashboard-dashboard',
+    path: '/c/:cluster/cluster-dashboard/dashboard',
     component: () => import('./pages/dashboard.vue'),
     meta: {
       product: 'cluster-dashboard',
-      cluster: true,
-    }
-  }
+    },
+  },
 ];
 
-const extension: IPlugin = {
-  name: 'cluster-dashboard',
-  routes,
-  stores: [],
-};
-
-export default extension;
+export default function(plugin: IPlugin) {
+  importTypes(plugin);
+  plugin.metadata = require('./package.json');
+  plugin.addProduct(require('./product'));
+  plugin.addRoutes(routes);
+}
 ```
 
 ### Step 4: Register as a Product
@@ -271,17 +272,19 @@ export function init($plugin: IPlugin, store: any) {
     inStore: 'cluster',
     weight: 110,
     to: {
-      name: 'c-cluster-cluster-dashboard-main',
-      params: { product: $plugin.name }
+      name: 'c-cluster-cluster-dashboard-dashboard',
+      params: { product: $plugin.name },
+      meta: { product: $plugin.name }
     }
   });
 
   virtualType({
     name: 'dashboard',
-    labelKey: 'Dashboard',
+    label: 'Dashboard',
     route: {
-      name: 'c-cluster-cluster-dashboard-main',
-      params: { product: $plugin.name }
+      name: 'c-cluster-cluster-dashboard-dashboard',
+      params: { product: $plugin.name },
+      meta: { product: $plugin.name }
     }
   });
 
@@ -292,17 +295,14 @@ export function init($plugin: IPlugin, store: any) {
 ### Step 5: Build and Deploy
 
 ```bash
-# Build for production
+# Build the extension package
 
 yarn build-pkg cluster-dashboard
-
-# Build Helm chart
-yarn build-helm cluster-dashboard
-
-# Install via Helm
-helm install cluster-dashboard ./charts/cluster-dashboard \
-  --namespace cattle-ui-plugin-system
+# Serve the package locally for a Developer Load
+yarn serve-pkgs
 ```
+
+Enable **Extension developer features** and use **Extensions > ⋮ > Developer load** to load the built package for testing. For a production installation, publish the extension as a Helm chart and add its repository under **Extensions > ⋮ > Manage Repositories**.
 
 ## Approach 2: Grafana Dashboard Integration
 
@@ -310,14 +310,15 @@ Rancher's monitoring stack includes Grafana. You can create custom Grafana dashb
 
 ### Step 1: Enable Monitoring
 
-Install the Rancher Monitoring chart:
+Install the Rancher Monitoring chart. Grafana and Prometheus are enabled by default:
 
 ```bash
+helm repo add rancher-charts https://charts.rancher.io
+helm repo update
+
 helm install rancher-monitoring rancher-charts/rancher-monitoring \
   --namespace cattle-monitoring-system \
-  --create-namespace \
-  --set grafana.enabled=true \
-  --set prometheus.enabled=true
+  --create-namespace
 ```
 
 ### Step 2: Create a Custom Grafana Dashboard
@@ -335,62 +336,60 @@ metadata:
 data:
   custom-dashboard.json: |
     {
-      "dashboard": {
-        "title": "Custom Cluster Overview",
-        "uid": "custom-cluster-overview",
-        "panels": [
-          {
-            "title": "CPU Usage by Node",
-            "type": "timeseries",
-            "datasource": "Prometheus",
-            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-            "targets": [
-              {
-                "expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
-                "legendFormat": "{{ instance }}"
-              }
-            ]
-          },
-          {
-            "title": "Memory Usage by Node",
-            "type": "timeseries",
-            "datasource": "Prometheus",
-            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-            "targets": [
-              {
-                "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
-                "legendFormat": "{{ instance }}"
-              }
-            ]
-          },
-          {
-            "title": "Pod Count by Namespace",
-            "type": "bargauge",
-            "datasource": "Prometheus",
-            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-            "targets": [
-              {
-                "expr": "count by(namespace) (kube_pod_info)",
-                "legendFormat": "{{ namespace }}"
-              }
-            ]
-          },
-          {
-            "title": "Container Restart Count",
-            "type": "table",
-            "datasource": "Prometheus",
-            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-            "targets": [
-              {
-                "expr": "sort_desc(kube_pod_container_status_restarts_total > 5)",
-                "legendFormat": "{{ namespace }}/{{ pod }}"
-              }
-            ]
-          }
-        ],
-        "time": {"from": "now-6h", "to": "now"},
-        "refresh": "30s"
-      }
+      "title": "Custom Cluster Overview",
+      "uid": "custom-cluster-overview",
+      "panels": [
+        {
+          "title": "CPU Usage by Node",
+          "type": "timeseries",
+          "datasource": "Prometheus",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "targets": [
+            {
+              "expr": "100 - (avg by(instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+              "legendFormat": "{{ instance }}"
+            }
+          ]
+        },
+        {
+          "title": "Memory Usage by Node",
+          "type": "timeseries",
+          "datasource": "Prometheus",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "targets": [
+            {
+              "expr": "(1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100",
+              "legendFormat": "{{ instance }}"
+            }
+          ]
+        },
+        {
+          "title": "Pod Count by Namespace",
+          "type": "bargauge",
+          "datasource": "Prometheus",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "targets": [
+            {
+              "expr": "count by(namespace) (kube_pod_info)",
+              "legendFormat": "{{ namespace }}"
+            }
+          ]
+        },
+        {
+          "title": "Container Restart Count",
+          "type": "table",
+          "datasource": "Prometheus",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "targets": [
+            {
+              "expr": "sort_desc(kube_pod_container_status_restarts_total > 5)",
+              "legendFormat": "{{ namespace }}/{{ pod }}"
+            }
+          ]
+        }
+      ],
+      "time": {"from": "now-6h", "to": "now"},
+      "refresh": "30s"
     }
 ```
 
@@ -404,7 +403,7 @@ Navigate to **Monitoring > Grafana** in Rancher, then find your custom dashboard
 
 ## Approach 3: Embedded Metrics Dashboard
 
-You can embed metrics directly into a Rancher extension by querying Prometheus:
+You can embed metrics directly into a Rancher extension by querying Prometheus. This example assumes the default `rancher-monitoring` release name in the `cattle-monitoring-system` namespace:
 
 ```vue
 <template>
@@ -433,7 +432,7 @@ export default {
     this.refreshInterval = setInterval(() => this.fetchMetrics(), 30000);
   },
 
-  beforeDestroy() {
+  beforeUnmount() {
     if (this.refreshInterval) {
       clearInterval(this.refreshInterval);
     }
