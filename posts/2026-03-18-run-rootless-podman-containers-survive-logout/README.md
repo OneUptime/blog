@@ -4,31 +4,31 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Rootless, Systemd, Linger, Persistence
 
-Description: A practical guide to keeping rootless Podman containers running after you log out of your session, using systemd user services and loginctl linger.
+Description: A practical guide to keeping rootless Podman containers running after you log out of your session, using Quadlet systemd user services and loginctl linger.
 
 ---
 
 > "A container that stops when you close your terminal is not ready for production."
 
-By default, rootless Podman containers are tied to your user session. When you log out, systemd terminates your user slice and all processes in it, including your containers. This guide shows you how to make rootless containers persistent, surviving logouts and even reboots.
+By default, rootless Podman containers that you start directly from a login session are tied to that session. When the session ends, systemd may terminate the session scope that contains those processes. This guide shows you how to make rootless containers persistent, surviving logouts and even reboots.
 
 ---
 
 ## Understanding Why Containers Stop
 
-When you log out, systemd kills all processes in your user session. Rootless Podman containers run under your user scope, so they get terminated too.
+When you log out, systemd can clean up processes in your login session. Rootless Podman containers started directly from that session can be terminated too.
 
 ```bash
 # Start a rootless container
 
-podman run -d --name test-app nginx
+podman run -d --name test-app docker.io/library/nginx:latest
 
 # Check which systemd scope it runs under
 podman inspect test-app --format '{{.State.ConmonPid}}' | xargs ps -o user,pid,cgroup -p
 
-# Log out and log back in -- the container will be gone
+# Log out and log back in -- the container will stop
 podman ps -a --filter name=test-app
-# The container will show as stopped or missing
+# The container will show as stopped
 ```
 
 ## Step 1: Enable Linger for Your User
@@ -49,49 +49,48 @@ systemctl --user status
 
 With linger enabled, systemd starts your user instance at boot and keeps it running permanently.
 
-## Step 2: Generate a systemd User Service
+## Step 2: Create a Quadlet User Service
 
-Podman can automatically generate systemd unit files from running containers.
+Podman Quadlet lets you define containers as systemd user services.
 
-```bash
-# Start the container you want to persist
-podman run -d --name webapp -p 8080:80 nginx
+```ini
+# ~/.config/containers/systemd/webapp.container
+[Unit]
+Description=Rootless webapp container
 
-# Generate a systemd user service file
-podman generate systemd --name webapp --new --files
+[Container]
+Image=docker.io/library/nginx:latest
+ContainerName=webapp
+PublishPort=8080:80
 
-# This creates a file named container-webapp.service
-cat container-webapp.service
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
 ```
 
-The `--new` flag generates a service that creates and removes the container each time, which is cleaner than managing an existing container.
+Quadlet reads the `.container` file and generates a `webapp.service` systemd user unit that creates and removes the container as part of the service lifecycle.
 
 ## Step 3: Install the Service
 
-Move the generated service file to your systemd user directory and enable it:
+Create the Quadlet file in your user configuration directory and enable it:
 
 ```bash
-# Create the systemd user directory if it does not exist
-mkdir -p ~/.config/systemd/user
-
-# Move the generated service file
-mv container-webapp.service ~/.config/systemd/user/
-
-# Stop and remove the manually started container
-podman stop webapp
-podman rm webapp
+# Create the Quadlet user directory if it does not exist
+mkdir -p ~/.config/containers/systemd
 
 # Reload the systemd user daemon
 systemctl --user daemon-reload
 
 # Enable the service to start at boot
-systemctl --user enable container-webapp.service
+systemctl --user enable webapp.service
 
 # Start the service now
-systemctl --user start container-webapp.service
+systemctl --user start webapp.service
 
 # Check the service status
-systemctl --user status container-webapp.service
+systemctl --user status webapp.service
 ```
 
 ## Step 4: Verify Persistence Across Logout
@@ -100,15 +99,15 @@ Test that the container survives a logout:
 
 ```bash
 # Verify the container is running
-podman ps
+podman ps --filter name=webapp
 
 # Check the service is active
-systemctl --user is-active container-webapp.service
+systemctl --user is-active webapp.service
 
 # Log out via SSH and log back in, then check again
 # The container should still be running
-podman ps
-systemctl --user status container-webapp.service
+podman ps --filter name=webapp
+systemctl --user status webapp.service
 ```
 
 ## Managing the Persistent Container
@@ -117,45 +116,59 @@ Use standard systemctl commands to manage the container lifecycle:
 
 ```bash
 # Stop the container
-systemctl --user stop container-webapp.service
+systemctl --user stop webapp.service
 
 # Start the container
-systemctl --user start container-webapp.service
+systemctl --user start webapp.service
 
 # Restart the container
-systemctl --user restart container-webapp.service
+systemctl --user restart webapp.service
 
 # View container logs through journald
-journalctl --user -u container-webapp.service --no-pager -n 50
+journalctl --user -u webapp.service --no-pager -n 50
 
 # Follow logs in real time
-journalctl --user -u container-webapp.service -f
+journalctl --user -u webapp.service -f
 ```
 
 ## Handling Multiple Containers with Pods
 
-For multi-container applications, generate a service for an entire pod:
+For multi-container applications, define a pod and attach containers to it:
+
+```ini
+# ~/.config/containers/systemd/myapp.pod
+[Pod]
+PodName=myapp
+PublishPort=8080:80
+PublishPort=5432:5432
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+```ini
+# ~/.config/containers/systemd/myapp-web.container
+[Container]
+Image=docker.io/library/nginx:latest
+ContainerName=myapp-web
+Pod=myapp.pod
+```
+
+```ini
+# ~/.config/containers/systemd/myapp-db.container
+[Container]
+Image=docker.io/library/postgres:16
+ContainerName=myapp-db
+Pod=myapp.pod
+```
 
 ```bash
-# Create a pod with multiple containers
-podman pod create --name myapp -p 8080:80 -p 5432:5432
-
-# Add containers to the pod
-podman run -d --pod myapp --name myapp-web nginx
-podman run -d --pod myapp --name myapp-db postgres:16
-
-# Generate systemd files for the entire pod
-podman generate systemd --name myapp --new --files
-
-# Install all the generated service files
-mv pod-myapp.service container-myapp-*.service ~/.config/systemd/user/
-
-# Remove the manually created pod
-podman pod rm -f myapp
-
 # Enable and start the pod service
 systemctl --user daemon-reload
-systemctl --user enable --now pod-myapp.service
+systemctl --user enable --now myapp-pod.service
 
 # Verify the pod is running
 podman pod ps
@@ -164,4 +177,4 @@ podman ps --pod
 
 ## Summary
 
-Making rootless Podman containers survive logout requires two things: enabling linger with `loginctl enable-linger` and managing containers through systemd user services. Use `podman generate systemd` to create service files, install them under `~/.config/systemd/user/`, and enable them with `systemctl --user enable`. This gives you containers that start at boot, survive logouts, restart on failure, and integrate with standard systemd management workflows.
+Making rootless Podman containers survive logout requires two things: enabling linger with `loginctl enable-linger` and managing containers through systemd user services. Use Quadlet files under `~/.config/containers/systemd/`, reload the user manager with `systemctl --user daemon-reload`, and enable the generated services with `systemctl --user enable`. This gives you containers that start at boot, survive logouts, restart on failure, and integrate with standard systemd management workflows.
