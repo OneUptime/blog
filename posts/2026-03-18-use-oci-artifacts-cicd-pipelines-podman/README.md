@@ -16,7 +16,7 @@ CI/CD pipelines benefit enormously from OCI artifacts. Instead of scattering bui
 
 ## Prerequisites
 
-Your CI/CD runner needs Podman 5.x or later and registry credentials.
+Your CI/CD runner needs Podman 5.5 or later, `jq`, and registry credentials.
 
 ```bash
 # Verify Podman on the CI runner
@@ -70,7 +70,7 @@ echo "Artifacts published for version ${VERSION}"
 
 ## Pipeline Pattern: Consume Artifacts in Deployment
 
-A deployment stage pulls artifacts published by the build stage.
+A deployment stage pulls artifacts published by the build stage and extracts them for use.
 
 ```bash
 #!/bin/bash
@@ -85,15 +85,19 @@ echo "=== Deployment Stage ==="
 # Pull the configuration artifact
 echo "Pulling configuration..."
 podman artifact pull "${REGISTRY}/${PROJECT}-config:${VERSION}"
+mkdir -p deploy-config
+podman artifact extract "${REGISTRY}/${PROJECT}-config:${VERSION}" ./deploy-config
 
 # Pull the binary artifact
 echo "Pulling binary..."
 podman artifact pull "${REGISTRY}/${PROJECT}-binary:${VERSION}"
+podman artifact extract "${REGISTRY}/${PROJECT}-binary:${VERSION}" \
+    "./myapp-${VERSION}.tar.gz"
 
 # Inspect the artifacts to verify contents
 echo "Verifying artifacts..."
 podman artifact inspect "${REGISTRY}/${PROJECT}-config:${VERSION}" | \
-    jq -r '.layers[].annotations["org.opencontainers.image.title"]'
+    jq -r '.Manifest.layers[].annotations["org.opencontainers.image.title"]'
 
 echo "Deployment artifacts ready for version ${VERSION}"
 ```
@@ -181,6 +185,8 @@ publish:
     - echo "$REGISTRY_PASSWORD" | podman login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
     - podman artifact add "${REGISTRY}/${PROJECT}-binary:${CI_COMMIT_TAG}" build/myapp
     - podman artifact push "${REGISTRY}/${PROJECT}-binary:${CI_COMMIT_TAG}"
+    - podman artifact add "${REGISTRY}/${PROJECT}-config:${CI_COMMIT_TAG}" config/production.yaml
+    - podman artifact push "${REGISTRY}/${PROJECT}-config:${CI_COMMIT_TAG}"
   only:
     - tags
 
@@ -190,12 +196,17 @@ deploy:
     - echo "$REGISTRY_PASSWORD" | podman login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
     - podman artifact pull "${REGISTRY}/${PROJECT}-binary:${CI_COMMIT_TAG}"
     - podman artifact pull "${REGISTRY}/${PROJECT}-config:${CI_COMMIT_TAG}"
+    - podman artifact extract "${REGISTRY}/${PROJECT}-binary:${CI_COMMIT_TAG}" ./myapp
+    - mkdir -p deploy-config
+    - podman artifact extract "${REGISTRY}/${PROJECT}-config:${CI_COMMIT_TAG}" ./deploy-config
     - echo "Deploying version ${CI_COMMIT_TAG}"
+  only:
+    - tags
 ```
 
 ## Artifact Promotion Across Environments
 
-Promote artifacts through environments by retagging.
+Promote artifacts through environments by extracting a validated artifact locally and publishing it under a production tag.
 
 ```bash
 #!/bin/bash
@@ -204,14 +215,18 @@ Promote artifacts through environments by retagging.
 REGISTRY="registry.example.com"
 PROJECT="myorg/myapp-config"
 VERSION="v2.0"
+WORKDIR=$(mktemp -d)
+
+trap 'rm -rf "$WORKDIR"' EXIT
 
 # Pull the staging-verified artifact
 podman artifact pull "${REGISTRY}/${PROJECT}:staging-${VERSION}"
+mkdir -p "$WORKDIR"
+podman artifact extract "${REGISTRY}/${PROJECT}:staging-${VERSION}" "$WORKDIR"
 
-# Retag for production
-podman artifact add "${REGISTRY}/${PROJECT}:prod-${VERSION}" \
-    $(podman artifact inspect "${REGISTRY}/${PROJECT}:staging-${VERSION}" | \
-      jq -r '.layers[0].annotations["org.opencontainers.image.title"]')
+# Re-publish for production
+mapfile -t FILES < <(find "$WORKDIR" -maxdepth 1 -type f | sort)
+podman artifact add "${REGISTRY}/${PROJECT}:prod-${VERSION}" "${FILES[@]}"
 
 # Push the production-tagged artifact
 podman artifact push "${REGISTRY}/${PROJECT}:prod-${VERSION}"
@@ -233,14 +248,14 @@ ARTIFACT="registry.example.com/myorg/myapp-config:v2.0"
 podman artifact pull "$ARTIFACT"
 
 # Validate the artifact has expected layers
-LAYER_COUNT=$(podman artifact inspect "$ARTIFACT" | jq '.layers | length')
+LAYER_COUNT=$(podman artifact inspect "$ARTIFACT" | jq '.Manifest.layers | length')
 if [ "$LAYER_COUNT" -lt 1 ]; then
     echo "ERROR: Artifact has no layers"
     exit 1
 fi
 
 # Validate the media type
-MEDIA_TYPE=$(podman artifact inspect "$ARTIFACT" | jq -r '.mediaType')
+MEDIA_TYPE=$(podman artifact inspect "$ARTIFACT" | jq -r '.Manifest.mediaType')
 if [ "$MEDIA_TYPE" != "application/vnd.oci.image.manifest.v1+json" ]; then
     echo "ERROR: Unexpected media type: $MEDIA_TYPE"
     exit 1
@@ -251,4 +266,4 @@ echo "Artifact validation passed"
 
 ## Summary
 
-OCI artifacts integrate naturally into CI/CD pipelines through Podman. Build stages produce and push artifacts, deployment stages pull and consume them, and promotion workflows retag artifacts across environments. This works with GitHub Actions, GitLab CI, and any CI/CD system that supports Podman. By centralizing binaries, configuration, and container images in a single OCI registry, you create a consistent and auditable software supply chain. Validation steps ensure artifact integrity before deployment.
+OCI artifacts integrate naturally into CI/CD pipelines through Podman. Build stages produce and push artifacts, deployment stages pull and extract them, and promotion workflows re-publish validated artifacts across environments. This works with GitHub Actions, GitLab CI, and any CI/CD system that supports Podman. By centralizing binaries, configuration, and container images in a single OCI registry, you create a consistent and auditable software supply chain. Validation steps ensure artifact integrity before deployment.
