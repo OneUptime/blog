@@ -36,7 +36,7 @@ ip link set eth0 master bond0
 ip link set eth1 master bond0
 
 # Optionally set a preferred primary interface
-ip link set bond0 type bond active_slave eth0
+ip link set bond0 type bond primary eth0
 
 # Bring up the bond
 ip link set bond0 up
@@ -52,7 +52,7 @@ cat /proc/net/bonding/bond0
 
 # Sample output:
 # Bonding Mode: fault-tolerance (active-backup)
-# Primary Slave: eth0 (primary_reselect failure)
+# Primary Slave: eth0 (primary_reselect always)
 # Currently Active Slave: eth0
 # MII Status: up
 # ...
@@ -66,7 +66,7 @@ The primary interface is preferred when it is available:
 # Set eth0 as primary via sysfs
 echo eth0 > /sys/class/net/bond0/bonding/primary
 
-# Or during bond creation
+# Or via iproute2
 ip link set bond0 type bond primary eth0
 ```
 
@@ -86,7 +86,7 @@ cat /sys/class/net/bond0/bonding/active_slave
 
 # Step 4: Re-enable eth0
 ip link set eth0 up
-# Bond should failback to eth0 (primary)
+# With primary=eth0 and the default primary_reselect policy, the bond should fail back to eth0
 ```
 
 ## Key Parameters
@@ -106,19 +106,24 @@ cat /proc/net/bonding/bond0
 ## Persistent Configuration (Netplan)
 
 ```yaml
-bonds:
-  bond0:
-    interfaces: [eth0, eth1]
-    addresses: [192.168.1.100/24]
-    parameters:
-      mode: active-backup
-      primary: eth0
-      mii-monitor-interval: 100
-      up-delay: 200
-      down-delay: 200
-      primary-reselect-policy: always
+network:
+  version: 2
+  ethernets:
+    eth0: {}
+    eth1: {}
+  bonds:
+    bond0:
+      interfaces: [eth0, eth1]
+      addresses: [192.168.1.100/24]
+      parameters:
+        mode: active-backup
+        primary: eth0
+        mii-monitor-interval: 100
+        up-delay: 200
+        down-delay: 200
+        primary-reselect-policy: always
 ```
 
 ## Conclusion
 
-Active-backup bonding provides simple, reliable failover with no switch configuration required. The primary interface carries all traffic; the backup monitors link state and activates only on failure. Configure `miimon`, `updelay`, and `downdelay` to tune failover sensitivity and avoid false positives from transient link drops.
+Active-backup bonding provides simple, reliable failover with no switch configuration required. The primary interface carries all traffic; the bonding driver monitors link state and activates the backup only on failure. Configure `miimon`, `updelay`, and `downdelay` to tune failover sensitivity and avoid false positives from transient link drops.
