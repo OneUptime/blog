@@ -93,5 +93,5 @@ for i, (r1, r2) in enumerate(connections):
 
 - /30 provides exactly 2 usable host addresses - ideal for router-to-router links.
 - One /24 yields 64 /30 subnets, making it an efficient P2P link pool.
-- /31 (RFC 3021) is even more efficient with no broadcast, but requires both sides to support it.
+- /31 (RFC 3021) is even more efficient because it uses both addresses as host addresses on a point-to-point link, but requires both sides to support it.
 - Allocate a dedicated block (e.g., 10.254.0.0/24) for all P2P links to keep them organized.
