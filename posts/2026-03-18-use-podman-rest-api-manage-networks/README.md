@@ -10,19 +10,18 @@ Description: Learn how to create, configure, inspect, and manage container netwo
 
 > Managing networks through the Podman REST API lets you programmatically define how containers communicate, isolate workloads, and build complex multi-container architectures with custom networking configurations.
 
-Container networking determines how containers communicate with each other and the outside world. Podman provides a flexible networking stack powered by Netavark (or CNI on older versions) that supports bridge networks, macvlan networks, and custom configurations. The REST API exposes full control over network creation, management, and container attachment. This guide covers all network operations available through the API.
+Container networking determines how containers communicate with each other and the outside world. Podman provides a flexible networking stack powered by Netavark (or CNI on older versions) that supports bridge networks, macvlan networks, and custom configurations. The REST API exposes full control over network creation, management, and container attachment. This guide covers the main network operations available through the API.
 
 ---
 
 ## Understanding Podman Networks
 
-Podman supports several network types:
+Common user-defined Podman network drivers include:
 
 - **Bridge**: The default network type. Creates an isolated network with a virtual bridge, providing NAT-based connectivity to the host network. Containers on the same bridge can communicate directly.
 - **Macvlan**: Assigns a MAC address to each container, making it appear as a physical device on the network. Useful when containers need to be directly accessible on the LAN.
-- **Host**: Shares the host's network namespace. No network isolation.
 
-The default `podman` network is created automatically and provides basic bridge connectivity.
+The default bridge network is named `podman`; when Podman runs as root, `--network bridge` and `--network podman` use it.
 
 ## Listing Networks
 
@@ -46,15 +45,15 @@ Use filters to find specific networks.
 
 ```bash
 # Filter by name
-curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+curl -g -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   "http://localhost/v4.0.0/libpod/networks/json?filters={\"name\":[\"my-network\"]}"
 
 # Filter by driver type
-curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+curl -g -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   "http://localhost/v4.0.0/libpod/networks/json?filters={\"driver\":[\"bridge\"]}"
 
 # Filter by label
-curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+curl -g -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   "http://localhost/v4.0.0/libpod/networks/json?filters={\"label\":[\"env=production\"]}"
 ```
 
@@ -110,11 +109,11 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   http://localhost/v4.0.0/libpod/networks/create
 ```
 
-When `dns_enabled` is true, containers on this network can resolve each other by name. The `internal` flag, when set to true, prevents containers from accessing external networks.
+When `dns_enabled` is true, containers on this bridge network can resolve each other by name. On bridge networks, setting `internal` to true removes the default route and restricts external access.
 
 ## Creating an Internal Network
 
-Internal networks provide container-to-container communication without external access.
+On bridge networks, internal mode preserves container-to-container communication while removing the default route for external access.
 
 ```bash
 # Create an internal-only network
@@ -311,7 +310,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X DELETE \
   http://localhost/v4.0.0/libpod/networks/app-network
 
-# Force remove (disconnects containers first)
+# Force remove (removes containers attached to the network)
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X DELETE \
   "http://localhost/v4.0.0/libpod/networks/app-network?force=true"
@@ -328,7 +327,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   http://localhost/v4.0.0/libpod/networks/prune
 
 # Prune with a label filter
-curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+curl -g --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
   "http://localhost/v4.0.0/libpod/networks/prune?filters={\"label\":[\"env=dev\"]}"
 ```
