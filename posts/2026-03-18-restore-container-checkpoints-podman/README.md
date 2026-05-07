@@ -10,7 +10,7 @@ Description: A guide to restoring Podman container checkpoints, covering local r
 
 > A checkpoint is only valuable if you can restore it. Learn how to bring checkpointed Podman containers back to life with their full runtime state intact.
 
-Creating checkpoints is half the story. The real value comes from restoring them: bringing a container back to life with its memory, processes, and network connections exactly as they were at checkpoint time. This guide covers the restore process in detail, including local restores, cross-host restores, handling conflicts, and verifying that the restored container is working correctly.
+Creating checkpoints is half the story. The real value comes from restoring them: bringing a container back to life with its memory, processes, and supported network state as they were at checkpoint time. This guide covers the restore process in detail, including local restores, cross-host restores, handling conflicts, and verifying that the restored container is working correctly.
 
 ---
 
@@ -55,9 +55,11 @@ sudo podman container restore \
     --name app-restored
 ```
 
-### Restore Without Activating Network
+Do not use `--name` when restoring a checkpoint that needs `--tcp-established`; Podman cannot assign a new name and preserve the original TCP connection state at the same time.
 
-To restore a container without reconnecting its network (useful for debugging):
+### Restore While Ignoring Static IP or MAC
+
+If the original container was created with a static IP or MAC address and that address is already in use on the restore host, tell Podman not to reuse it:
 
 ```bash
 sudo podman container restore \
@@ -101,6 +103,7 @@ One of the most powerful use cases for checkpointing is migrating a running cont
 
 sudo podman container checkpoint production-app \
     --export /tmp/production-app-checkpoint.tar.gz \
+    --compress=gzip \
     --tcp-established
 
 # Transfer to destination
@@ -156,6 +159,8 @@ sudo podman container restore \
     --name restored-app
 ```
 
+Remember that `--name` cannot be combined with `--tcp-established`.
+
 ### Port Conflict
 
 If the port is already in use:
@@ -172,19 +177,37 @@ sudo podman container restore \
 
 ### Volume Conflicts
 
-If the checkpoint references volumes that do not exist on the destination host, create them first:
+If the checkpoint includes named volumes, Podman restores their contents by default and the destination host must not already have volumes with the same names. Remove or rename conflicting destination volumes first, or use `--ignore-volumes` if you want to attach existing volumes without restoring the checkpointed volume contents.
+
+Bind-mount source paths are different: those paths must exist on the destination host before restore.
 
 ```bash
-# Check what volumes the checkpoint expects
-tar xzf /backups/checkpoint.tar.gz config.dump -O | python3 -c "
-import json, sys
-config = json.load(sys.stdin)
-for mount in config.get('Mounts', []):
-    print(f\"Type: {mount['Type']}, Source: {mount['Source']}, Dest: {mount['Destination']}\")
-"
+# Check named volumes and bind mounts the checkpoint expects
+TMPDIR=$(mktemp -d)
+tar xzf /backups/checkpoint.tar.gz -C "$TMPDIR" config.dump spec.dump
+python3 - "$TMPDIR" <<'PY'
+import json, pathlib, sys
 
-# Create missing volumes
-sudo podman volume create app-data
+checkpoint = pathlib.Path(sys.argv[1])
+config = json.loads((checkpoint / "config.dump").read_text())
+spec = json.loads((checkpoint / "spec.dump").read_text())
+
+for volume in config.get("namedVolumes", []):
+    print(f"Named volume: {volume['volumeName']} -> {volume['dest']}")
+
+for mount in spec.get("mounts", []):
+    if mount.get("type") == "bind":
+        print(f"Bind mount: {mount.get('source')} -> {mount.get('destination')}")
+PY
+rm -rf "$TMPDIR"
+
+# If an existing named volume conflicts and you do not need its contents
+sudo podman volume rm app-data
+
+# Or keep existing destination volumes and skip restoring checkpointed volume data
+sudo podman container restore \
+    --import /backups/checkpoint.tar.gz \
+    --ignore-volumes
 ```
 
 ## Validating a Restored Container
@@ -207,7 +230,7 @@ fi
 echo "Status: running"
 
 # Check processes are active
-PIDS=$(sudo podman top "$CONTAINER" -o pid | tail -n +2 | wc -l)
+PIDS=$(sudo podman top "$CONTAINER" pid | tail -n +2 | wc -l)
 echo "Active processes: $PIDS"
 
 # Check network connectivity
@@ -282,6 +305,7 @@ CHECKPOINT="/tmp/${APP_NAME}-rollback.tar.gz"
 echo "Creating rollback checkpoint..."
 sudo podman container checkpoint "$APP_NAME" \
     --export "$CHECKPOINT" \
+    --compress=gzip \
     --leave-running
 
 echo "Deploying new version..."
@@ -289,10 +313,10 @@ sudo podman stop "$APP_NAME"
 sudo podman rm "$APP_NAME"
 sudo podman run -d --name "$APP_NAME" $NEW_IMAGE
 
-echo "Waiting for health check..."
+echo "Waiting for container start..."
 sleep 10
 
-# Check if the new version is healthy
+# Check if the new version is running
 HEALTHY=$(sudo podman inspect "$APP_NAME" --format '{{.State.Running}}')
 
 if [ "$HEALTHY" = "true" ]; then
@@ -317,9 +341,10 @@ Remove or rename the existing container, or use `--name` to restore with a diffe
 Check CRIU compatibility. The most common cause is a kernel version mismatch between the checkpoint host and restore host.
 
 ```bash
-# Check CRIU logs
-sudo cat /tmp/criu-restore.log 2>/dev/null
-sudo journalctl -u criu --no-pager | tail -30
+# Re-run with Podman debug logging and keep CRIU artifacts for inspection
+sudo podman --log-level=debug container restore \
+    --keep \
+    --import /backups/checkpoint.tar.gz
 ```
 
 ### "Error: restoring file locks failed"
@@ -343,4 +368,4 @@ watch -n 1 'sudo podman ps -a --format "table {{.Names}}\t{{.Status}}"'
 
 ## Conclusion
 
-Restoring checkpoints gives you the ability to resume containers exactly where they left off, whether on the same host or a different one. This is invaluable for zero-downtime migrations, instant rollbacks, and debugging. Always validate restored containers, handle conflicts with naming and port remapping, and remember that cross-host restores require compatible kernel and CRIU versions. The investment in understanding checkpoint restore pays off the first time you need to roll back a failed deployment in seconds instead of minutes.
+Restoring checkpoints gives you the ability to resume containers exactly where they left off, whether on the same host or a different one. This is invaluable for low-downtime migrations, faster rollbacks, and debugging. Always validate restored containers, handle conflicts with naming and port remapping, and remember that cross-host restores require compatible kernel and CRIU versions. The investment in understanding checkpoint restore pays off the first time you need to roll back a failed deployment in seconds instead of minutes.
