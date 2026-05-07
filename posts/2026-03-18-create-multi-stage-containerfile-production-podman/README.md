@@ -253,7 +253,7 @@ EXPOSE 8080
 ENTRYPOINT ["./server"]
 ```
 
-The frontend and backend stages are independent and can be built in parallel by Podman's build engine.
+The frontend and backend stages are independent and can be built in parallel by Podman's build engine when you use `podman build --jobs`.
 
 ## Named Stages and Build Targets
 
@@ -357,7 +357,7 @@ COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
 
-COPY --from=builder /app/server /server
+COPY --from=builder /server /server
 
 USER appuser:appgroup
 
