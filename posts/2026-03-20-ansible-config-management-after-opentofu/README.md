@@ -17,8 +17,23 @@ OpenTofu is ideal for provisioning cloud infrastructure (VMs, networks, database
 ```hcl
 # main.tf - provision an EC2 instance
 
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"] # Canonical
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
 resource "aws_instance" "web" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = data.aws_ami.ubuntu.id
   instance_type = "t3.micro"
   key_name      = aws_key_pair.deployer.key_name
 
@@ -46,7 +61,7 @@ WEB_IP=$(tofu output -raw web_server_ip)
 ## Phase 2: Generate an Ansible Inventory from OpenTofu Output
 
 ```bash
-# Write a dynamic inventory file
+# Write an inventory file from the OpenTofu output
 cat > inventory.ini <<EOF
 [web]
 ${WEB_IP} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/deployer.pem
@@ -70,7 +85,7 @@ resource "local_file" "ansible_inventory" {
 
 ```bash
 # Wait for SSH to become available
-ansible all -i inventory.ini -m ping --timeout=30
+ansible all -i inventory.ini -m ansible.builtin.wait_for_connection -a "timeout=300"
 
 # Run a playbook
 ansible-playbook -i inventory.ini playbooks/web-server.yml
@@ -124,11 +139,16 @@ ansible-playbook -i inventory.ini playbooks/web-server.yml
 - name: Configure with Ansible
   run: |
     WEB_IP=$(jq -r '.web_server_ip.value' tofu-outputs.json)
-    ansible-playbook -i "${WEB_IP}," playbooks/web-server.yml
+    cat > inventory.ini <<EOF
+    [web]
+    ${WEB_IP} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/deployer.pem
+    EOF
+    ansible all -i inventory.ini -m ansible.builtin.wait_for_connection -a "timeout=300"
+    ansible-playbook -i inventory.ini playbooks/web-server.yml
 ```
 
 ---
 
 ## Summary
 
-Use OpenTofu to provision infrastructure and output IP addresses and resource IDs, then feed those values into an Ansible inventory. Run Ansible playbooks to configure the software layer. This two-phase approach keeps infrastructure provisioning and configuration management cleanly separated and composable in CI/CD pipelines.
+Use OpenTofu to provision infrastructure and output IP addresses and other values, then feed the connection details into an Ansible inventory. Run Ansible playbooks to configure the software layer. This two-phase approach keeps infrastructure provisioning and configuration management cleanly separated and composable in CI/CD pipelines.
