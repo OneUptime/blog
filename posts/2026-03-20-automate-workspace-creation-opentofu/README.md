@@ -10,7 +10,7 @@ Manually running `tofu workspace new` before every deployment introduces human e
 
 ## The Core Pattern
 
-OpenTofu's workspace command exits with a non-zero code if a workspace already exists. A robust automation script handles this gracefully:
+OpenTofu's `workspace select` command supports `-or-create`, so a robust automation script can select an existing workspace or create it on demand:
 
 ```bash
 #!/usr/bin/env bash
@@ -21,20 +21,15 @@ set -euo pipefail
 
 WORKSPACE="${1}"
 
-if tofu workspace list | grep -q "^\s*${WORKSPACE}$"; then
-  echo "Workspace '${WORKSPACE}' already exists. Selecting it."
-  tofu workspace select "$WORKSPACE"
-else
-  echo "Creating workspace '${WORKSPACE}'..."
-  tofu workspace new "$WORKSPACE"
-fi
+echo "Selecting or creating workspace '${WORKSPACE}'..."
+tofu workspace select -or-create "$WORKSPACE"
 
 echo "Active workspace: $(tofu workspace show)"
 ```
 
 ## Integrating with GitHub Actions
 
-Create or select a workspace automatically on every pull request:
+Create or select a workspace automatically on every pull request from a branch in the same repository:
 
 ```yaml
 # .github/workflows/preview.yml
@@ -46,22 +41,24 @@ on:
 
 jobs:
   deploy:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     env:
       # Derive workspace name from PR number, e.g. "pr-42"
-      TF_WORKSPACE: pr-${{ github.event.pull_request.number }}
+      WORKSPACE_NAME: pr-${{ github.event.pull_request.number }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install OpenTofu
         run: |
-          curl -Lo tofu.tar.gz \
-            https://github.com/opentofu/opentofu/releases/latest/download/tofu_linux_amd64.tar.gz
-          tar -xzf tofu.tar.gz && sudo mv tofu /usr/local/bin/
+          curl --proto '=https' --tlsv1.2 -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+          chmod +x install-opentofu.sh
+          ./install-opentofu.sh --install-method standalone
+          rm -f install-opentofu.sh
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -71,10 +68,10 @@ jobs:
         run: tofu init
 
       - name: Ensure Workspace Exists
-        run: bash scripts/ensure-workspace.sh "$TF_WORKSPACE"
+        run: bash scripts/ensure-workspace.sh "$WORKSPACE_NAME"
 
       - name: Tofu Apply
-        run: tofu apply -auto-approve -var="env=$TF_WORKSPACE"
+        run: tofu apply -auto-approve -var="env=$WORKSPACE_NAME"
 ```
 
 ## Automating Workspace Teardown on PR Close
@@ -91,21 +88,23 @@ on:
 
 jobs:
   teardown:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     env:
-      TF_WORKSPACE: pr-${{ github.event.pull_request.number }}
+      WORKSPACE_NAME: pr-${{ github.event.pull_request.number }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install OpenTofu
         run: |
-          curl -Lo tofu.tar.gz \
-            https://github.com/opentofu/opentofu/releases/latest/download/tofu_linux_amd64.tar.gz
-          tar -xzf tofu.tar.gz && sudo mv tofu /usr/local/bin/
+          curl --proto '=https' --tlsv1.2 -fsSL https://get.opentofu.org/install-opentofu.sh -o install-opentofu.sh
+          chmod +x install-opentofu.sh
+          ./install-opentofu.sh --install-method standalone
+          rm -f install-opentofu.sh
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -116,22 +115,21 @@ jobs:
 
       - name: Destroy and Delete Workspace
         run: |
-          if tofu workspace list | grep -q "^\s*${TF_WORKSPACE}$"; then
-            tofu workspace select "$TF_WORKSPACE"
+          if tofu workspace select "$WORKSPACE_NAME"; then
             tofu destroy -auto-approve
             tofu workspace select default
-            tofu workspace delete "$TF_WORKSPACE"
+            tofu workspace delete "$WORKSPACE_NAME"
           else
-            echo "Workspace $TF_WORKSPACE not found, skipping."
+            echo "Workspace $WORKSPACE_NAME not found, skipping."
           fi
 ```
 
 ## Using the TF_WORKSPACE Environment Variable
 
-OpenTofu respects the `TF_WORKSPACE` environment variable, making it easy to set the active workspace without an explicit `workspace select` call:
+OpenTofu respects the `TF_WORKSPACE` environment variable, making it easy to set the active workspace without an explicit `workspace select` call once the workspace already exists:
 
 ```bash
-# Set workspace via environment variable
+# Set an existing workspace via environment variable
 export TF_WORKSPACE=pr-42
 
 # All subsequent tofu commands target this workspace automatically
@@ -140,7 +138,7 @@ tofu plan
 tofu apply -auto-approve
 ```
 
-This approach works well in container-based CI where environment variables are the primary configuration mechanism.
+This approach works well in container-based CI once the workspace already exists and environment variables are the primary configuration mechanism.
 
 ## Bulk Creation from a List
 
