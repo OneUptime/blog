@@ -23,16 +23,16 @@ The official Rust images include the compiler, cargo, and common build tools:
 ```bash
 # Full image - Debian-based, includes gcc, linker, and common libraries
 
-podman pull docker.io/library/rust:1.77
+podman pull docker.io/library/rust:1-bookworm
 
 # Slim image - smaller Debian base
-podman pull docker.io/library/rust:1.77-slim
+podman pull docker.io/library/rust:1-slim-bookworm
 
 # Alpine image - smallest, uses musl instead of glibc
-podman pull docker.io/library/rust:1.77-alpine
+podman pull docker.io/library/rust:1-alpine3.23
 ```
 
-For development, `rust:1.77-slim` works well. The Alpine variant uses musl libc, which produces fully static binaries but can behave differently from glibc in edge cases.
+For development, `rust:1-slim-bookworm` works well. The Alpine variant uses musl libc, and its default Rust target is musl-based, which is useful for static binaries but can behave differently from glibc in edge cases.
 
 ## Running Rust Code in a Container
 
@@ -41,14 +41,14 @@ For development, `rust:1.77-slim` works well. The Alpine variant uses musl libc,
 podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
-  docker.io/library/rust:1.77-slim \
+  docker.io/library/rust:1-slim-bookworm \
   bash -c "rustc main.rs && ./main"
 
 # Start an interactive shell with Rust tools available
 podman run -it --rm \
   -v $(pwd):/app:Z \
   -w /app \
-  docker.io/library/rust:1.77-slim \
+  docker.io/library/rust:1-slim-bookworm \
   bash
 ```
 
@@ -61,35 +61,37 @@ Create a new Cargo project inside a container:
 podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
-  docker.io/library/rust:1.77-slim \
+  docker.io/library/rust:1-slim-bookworm \
   cargo init myproject
 ```
 
 ## Caching Dependencies for Faster Builds
 
-Rust's compile times are a real concern, and re-downloading and recompiling dependencies on every container start makes it worse. Use named volumes to cache both the Cargo registry and the build artifacts.
+Rust's compile times are a real concern, and re-downloading and recompiling dependencies on every container start makes it worse. Use named volumes to cache the Cargo registry, Cargo's git dependencies, and the build artifacts.
 
 ```bash
 # Create volumes for Cargo caches
 podman volume create cargo-registry
+podman volume create cargo-git
 podman volume create cargo-target
 
 # Run with caches mounted
 podman run -it --rm \
   -v $(pwd):/app:Z \
   -v cargo-registry:/usr/local/cargo/registry \
+  -v cargo-git:/usr/local/cargo/git \
   -v cargo-target:/app/target \
   -w /app \
-  docker.io/library/rust:1.77-slim \
+  docker.io/library/rust:1-slim-bookworm \
   cargo build
 ```
 
-The `cargo-registry` volume stores downloaded crate sources and their compiled metadata. The `cargo-target` volume stores the compiled artifacts. Together, these make incremental builds inside containers nearly as fast as native builds.
+The `cargo-registry` volume stores registry index data and downloaded crates. The `cargo-git` volume stores git-based dependencies. The `cargo-target` volume stores the compiled artifacts. Together, these make incremental builds inside containers nearly as fast as native builds.
 
 ## Creating a Development Containerfile
 
 ```dockerfile
-FROM docker.io/library/rust:1.77-slim
+FROM docker.io/library/rust:1-slim-bookworm
 
 # Install system dependencies and development tools
 RUN apt-get update && apt-get install -y \
@@ -129,8 +131,11 @@ podman build -t rust-dev .
 
 # Run with source mounted and caches
 podman run -it --rm \
-  -v $(pwd)/src:/app/src:Z \
+  -v $(pwd):/app:Z \
   -v cargo-registry:/usr/local/cargo/registry \
+  -v cargo-git:/usr/local/cargo/git \
+  -v cargo-target:/app/target \
+  -w /app \
   -p 8080:8080 \
   rust-dev
 ```
@@ -203,9 +208,11 @@ Run with cargo-watch for live reloading:
 podman run -it --rm \
   -v $(pwd):/app:Z \
   -v cargo-registry:/usr/local/cargo/registry \
+  -v cargo-git:/usr/local/cargo/git \
   -v cargo-target:/app/target \
+  -w /app \
   -p 8080:8080 \
-  docker.io/library/rust:1.77-slim \
+  docker.io/library/rust:1-slim-bookworm \
   bash -c "cargo install cargo-watch && cargo watch -x run"
 ```
 
@@ -215,7 +222,7 @@ Axum is another popular Rust web framework. The container setup is identical sin
 
 ```toml
 [dependencies]
-axum = "0.7"
+axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -254,15 +261,16 @@ async fn main() {
 ## Multi-Container Setup with a Database
 
 ```yaml
-version: "3.8"
 services:
   app:
     build: .
     ports:
       - "8080:8080"
     volumes:
-      - ./src:/app/src:Z
+      - .:/app:Z
       - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - cargo-target:/app/target
     environment:
       DATABASE_URL: postgres://rustuser:rustpass@db:5432/rustdb
     depends_on:
@@ -281,6 +289,8 @@ services:
 
 volumes:
   cargo-registry:
+  cargo-git:
+  cargo-target:
   pgdata:
 ```
 
@@ -291,27 +301,30 @@ volumes:
 podman run --rm \
   -v $(pwd):/app:Z \
   -v cargo-registry:/usr/local/cargo/registry \
+  -v cargo-git:/usr/local/cargo/git \
   -v cargo-target:/app/target \
   -w /app \
-  docker.io/library/rust:1.77-slim \
+  docker.io/library/rust:1-slim-bookworm \
   cargo test
 
 # Run tests with output
 podman run --rm \
   -v $(pwd):/app:Z \
   -v cargo-registry:/usr/local/cargo/registry \
+  -v cargo-git:/usr/local/cargo/git \
   -v cargo-target:/app/target \
   -w /app \
-  docker.io/library/rust:1.77-slim \
+  docker.io/library/rust:1-slim-bookworm \
   cargo test -- --nocapture
 
 # Run a specific test
 podman run --rm \
   -v $(pwd):/app:Z \
   -v cargo-registry:/usr/local/cargo/registry \
+  -v cargo-git:/usr/local/cargo/git \
   -v cargo-target:/app/target \
   -w /app \
-  docker.io/library/rust:1.77-slim \
+  docker.io/library/rust:1-slim-bookworm \
   cargo test test_hello_endpoint
 ```
 
@@ -324,10 +337,11 @@ For debugging with GDB or LLDB:
 podman run -it --rm \
   -v $(pwd):/app:Z \
   -v cargo-registry:/usr/local/cargo/registry \
+  -v cargo-git:/usr/local/cargo/git \
   -v cargo-target:/app/target \
   -w /app \
   --security-opt=seccomp=unconfined \
-  docker.io/library/rust:1.77 \
+  docker.io/library/rust:1-bookworm \
   bash -c "apt-get update && apt-get install -y gdb && cargo build && gdb target/debug/myapp"
 ```
 
@@ -337,7 +351,7 @@ Rust shines here. A statically linked Rust binary can run in a `scratch` contain
 
 ```dockerfile
 # Stage 1: Build the release binary
-FROM docker.io/library/rust:1.77-slim AS builder
+FROM docker.io/library/rust:1-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y \
     pkg-config libssl-dev \
@@ -376,7 +390,7 @@ CMD ["myapp"]
 For an even smaller image using a fully static binary with musl:
 
 ```dockerfile
-FROM docker.io/library/rust:1.77-alpine AS builder
+FROM docker.io/library/rust:1-alpine3.23 AS builder
 RUN apk add --no-cache musl-dev
 WORKDIR /app
 COPY . .
@@ -402,4 +416,4 @@ podman run --rm -p 8080:8080 my-rust-app:prod
 
 ## Conclusion
 
-Podman handles Rust development workflows cleanly once you set up proper caching. The two volumes you need are the Cargo registry and the target directory. With those cached, incremental builds inside containers are fast. Use `cargo-watch` for live reloading during development, and take advantage of Rust's static compilation for tiny production images. The combination of Rust's zero-cost abstractions and Podman's daemonless container runtime gives you minimal overhead at every layer of the stack.
+Podman handles Rust development workflows cleanly once you set up proper caching. The main cache directories to persist are the Cargo registry, Cargo's git directory, and the target directory. With those cached, incremental builds inside containers are fast. Use `cargo-watch` for live reloading during development, and take advantage of Rust's static compilation for tiny production images. The combination of Rust's zero-cost abstractions and Podman's daemonless container runtime gives you minimal overhead at every layer of the stack.
