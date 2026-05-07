@@ -10,7 +10,7 @@ Zero trust security operates on the principle that no entity, whether inside or 
 
 ## Prerequisites
 
-- Rancher v2.5 or later
+- Rancher v2.5 or later; for Rancher v2.12 and later, use the supported Istio distribution for your Rancher version because Rancher-Istio is deprecated
 - Kubernetes clusters with a CNI that supports Network Policies
 - kubectl and Helm 3 access
 - Admin privileges on Rancher
@@ -32,28 +32,24 @@ spec:
   - Egress
 ```
 
-Automate this for all new namespaces by using a mutating webhook or OPA Gatekeeper constraint that requires default deny policies:
+Automate this for all new namespaces by provisioning the namespace and its default deny policy together in the same GitOps change:
 
 ```yaml
-apiVersion: templates.gatekeeper.sh/v1
-kind: ConstraintTemplate
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: k8srequiredefaultdeny
+  name: production
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: production
 spec:
-  crd:
-    spec:
-      names:
-        kind: K8sRequireDefaultDeny
-  targets:
-    - target: admission.k8s.gatekeeper.sh
-      rego: |
-        package k8srequiredefaultdeny
-
-        violation[{"msg": msg}] {
-          input.review.kind.kind == "Namespace"
-          input.review.operation == "CREATE"
-          msg := "All namespaces must have a default deny NetworkPolicy. Apply one after creation."
-        }
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
 ```
 
 ## Step 2: Enable Mutual TLS with a Service Mesh
@@ -64,16 +60,15 @@ Deploy a service mesh to encrypt all service-to-service communication with mTLS.
 
 1. Navigate to the cluster in Rancher.
 2. Go to **Apps & Marketplace** > **Charts**.
-3. Search for **Istio**.
+3. Search for **Istio** or the supported Istio distribution for your Rancher version.
 4. Click **Install** and configure options.
-5. Enable **mTLS strict mode**.
 
 ### Configure Strict mTLS
 
-After Istio is installed, enforce strict mTLS cluster-wide:
+After Istio is installed, enforce strict mTLS mesh-wide by applying the policy in Istio's root namespace, which is commonly `istio-system`:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -170,7 +165,7 @@ spec:
 With Istio, create fine-grained authorization policies:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: api-access
@@ -183,8 +178,8 @@ spec:
   rules:
   - from:
     - source:
-        principals:
-        - "cluster.local/ns/production/sa/frontend"
+        serviceAccounts:
+        - "production/frontend"
     to:
     - operation:
         methods: ["GET", "POST"]
@@ -217,13 +212,16 @@ Falco detects suspicious runtime behavior such as:
 Create custom Falco rules for your environment:
 
 ```yaml
+- list: approved_outbound_destination_ipaddrs
+  items: ["10.0.0.10", "10.0.0.11"]
+
 - rule: Unexpected Outbound Connection
   desc: Detect outbound connections to non-approved destinations
   condition: >
-    outbound and not (fd.sip in (approved_ips))
+    outbound and not (fd.sip in (approved_outbound_destination_ipaddrs))
   output: >
     Unexpected outbound connection (user=%user.name command=%proc.cmdline
-    connection=%fd.name container=%container.name)
+    connection=%fd.name %container.info)
   priority: WARNING
 ```
 
@@ -234,7 +232,10 @@ Ensure only signed and verified images are deployed:
 ```bash
 # Install Cosign
 
-go install github.com/sigstore/cosign/v2/cmd/cosign@latest
+go install github.com/sigstore/cosign/v3/cmd/cosign@latest
+
+# Generate a key pair
+cosign generate-key-pair
 
 # Sign an image
 cosign sign --key cosign.key your-registry/app:latest
@@ -243,28 +244,26 @@ cosign sign --key cosign.key your-registry/app:latest
 cosign verify --key cosign.pub your-registry/app:latest
 ```
 
-Deploy a policy engine to enforce image verification:
+With Sigstore policy-controller, opt the namespace in and create a ClusterImagePolicy to enforce image signature verification:
+
+```bash
+kubectl label namespace production policy.sigstore.dev/include=true
+```
 
 ```yaml
-apiVersion: templates.gatekeeper.sh/v1
-kind: ConstraintTemplate
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
 metadata:
-  name: k8simageverification
+  name: production-images-must-be-signed
 spec:
-  crd:
-    spec:
-      names:
-        kind: K8sImageVerification
-  targets:
-    - target: admission.k8s.gatekeeper.sh
-      rego: |
-        package k8simageverification
-
-        violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
-          not startswith(container.image, "your-registry.example.com/")
-          msg := sprintf("Image %v is not from the trusted registry", [container.image])
-        }
+  images:
+  - glob: "your-registry.example.com/**"
+  authorities:
+  - key:
+      data: |
+        -----BEGIN PUBLIC KEY-----
+        REPLACE_WITH_YOUR_COSIGN_PUBLIC_KEY
+        -----END PUBLIC KEY-----
 ```
 
 ## Step 8: Encrypt Data at Rest and in Transit
@@ -276,6 +275,9 @@ Ensure all data is encrypted:
 - **Secrets**: Use external secrets management:
 
 ```bash
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+
 helm install external-secrets external-secrets/external-secrets \
   -n external-secrets \
   --create-namespace
@@ -297,18 +299,92 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: security-audit
-  namespace: security
 spec:
   schedule: "0 6 * * 1"
   jobTemplate:
     spec:
       template:
         spec:
+          hostPID: true
           containers:
           - name: audit
-            image: aquasec/kube-bench:latest
+            image: docker.io/aquasec/kube-bench:v0.15.4
             command: ["kube-bench"]
-          restartPolicy: OnFailure
+            volumeMounts:
+            - name: var-lib-cni
+              mountPath: /var/lib/cni
+              readOnly: true
+            - name: var-lib-etcd
+              mountPath: /var/lib/etcd
+              readOnly: true
+            - name: var-lib-kubelet
+              mountPath: /var/lib/kubelet
+              readOnly: true
+            - name: var-lib-kube-scheduler
+              mountPath: /var/lib/kube-scheduler
+              readOnly: true
+            - name: var-lib-kube-controller-manager
+              mountPath: /var/lib/kube-controller-manager
+              readOnly: true
+            - name: etc-systemd
+              mountPath: /etc/systemd
+              readOnly: true
+            - name: lib-systemd
+              mountPath: /lib/systemd/
+              readOnly: true
+            - name: srv-kubernetes
+              mountPath: /srv/kubernetes/
+              readOnly: true
+            - name: etc-kubernetes
+              mountPath: /etc/kubernetes
+              readOnly: true
+            - name: usr-bin
+              mountPath: /usr/local/mount-from-host/bin
+              readOnly: true
+            - name: etc-cni-netd
+              mountPath: /etc/cni/net.d/
+              readOnly: true
+            - name: opt-cni-bin
+              mountPath: /opt/cni/bin/
+              readOnly: true
+          restartPolicy: Never
+          volumes:
+          - name: var-lib-cni
+            hostPath:
+              path: /var/lib/cni
+          - name: var-lib-etcd
+            hostPath:
+              path: /var/lib/etcd
+          - name: var-lib-kubelet
+            hostPath:
+              path: /var/lib/kubelet
+          - name: var-lib-kube-scheduler
+            hostPath:
+              path: /var/lib/kube-scheduler
+          - name: var-lib-kube-controller-manager
+            hostPath:
+              path: /var/lib/kube-controller-manager
+          - name: etc-systemd
+            hostPath:
+              path: /etc/systemd
+          - name: lib-systemd
+            hostPath:
+              path: /lib/systemd
+          - name: srv-kubernetes
+            hostPath:
+              path: /srv/kubernetes
+          - name: etc-kubernetes
+            hostPath:
+              path: /etc/kubernetes
+          - name: usr-bin
+            hostPath:
+              path: /usr/bin
+          - name: etc-cni-netd
+            hostPath:
+              path: /etc/cni/net.d/
+          - name: opt-cni-bin
+            hostPath:
+              path: /opt/cni/bin/
 ```
 
 ## Zero Trust Checklist
