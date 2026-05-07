@@ -15,6 +15,8 @@ Description: Configure Apache mod_proxy_fcgi to communicate with PHP-FPM over an
 ```bash
 sudo a2enmod proxy
 sudo a2enmod proxy_fcgi
+
+# Only needed if you use the Authorization header passthrough below
 sudo a2enmod setenvif
 
 sudo systemctl reload apache2
@@ -54,7 +56,7 @@ pm.max_spare_servers = 35
 ```bash
 sudo systemctl restart php8.2-fpm
 sudo ss -tlnp | grep 9000
-# Expected: LISTEN 0 511 127.0.0.1:9000
+# Expected: a LISTEN entry for 127.0.0.1:9000
 ```
 
 ## Apache Virtual Host with mod_proxy_fcgi
@@ -80,7 +82,12 @@ sudo ss -tlnp | grep 9000
         SetHandler "proxy:fcgi://127.0.0.1:9000"
     </FilesMatch>
 
-    # For PHP-FPM on a remote server
+    # Define a matching worker to enable connection reuse
+    <Proxy "fcgi://127.0.0.1:9000">
+        ProxySet enablereuse=on
+    </Proxy>
+
+    # For PHP-FPM on a remote server, see the dedicated example below
     # SetHandler "proxy:fcgi://192.168.1.20:9000"
 
     ErrorLog  /var/log/apache2/app-error.log
@@ -96,9 +103,9 @@ sudo ss -tlnp | grep 9000
     DocumentRoot /var/www/app
 
     # Alternative syntax using ProxyPassMatch
-    ProxyPassMatch ^/(.*\.php(/.*)?)$ fcgi://127.0.0.1:9000/var/www/app/$1
+    ProxyPassMatch ^/(.*\.php(/.*)?)$ fcgi://127.0.0.1:9000/var/www/app/$1 enablereuse=on
 
-    # Required: tell FPM the document root via environment
+    # Optional: pass Authorization through to PHP apps that need it
     SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 </VirtualHost>
 ```
@@ -117,12 +124,14 @@ For separating PHP processing onto a dedicated server:
         SetHandler "proxy:fcgi://192.168.1.20:9000"
     </FilesMatch>
 
-    # Pass document root info to FPM
+    # Define a matching worker and enable connection reuse
     <Proxy "fcgi://192.168.1.20:9000">
-        ProxySet connectiontimeout=5 timeout=60
+        ProxySet enablereuse=on connectiontimeout=5 timeout=60
     </Proxy>
 </VirtualHost>
 ```
+
+With this `SetHandler` approach, the PHP files must exist at the same path (`/var/www/app`) on the PHP-FPM host, because Apache passes the mapped filesystem path to PHP-FPM.
 
 On the PHP-FPM server (192.168.1.20), allow connections from Apache:
 
@@ -147,4 +156,4 @@ ss -tn dst 127.0.0.1:9000
 
 ## Conclusion
 
-Apache `mod_proxy_fcgi` over IPv4 connects to PHP-FPM using FastCGI protocol on port 9000. Configure PHP-FPM to listen on `127.0.0.1:9000` for local setups or `0.0.0.0:9000` for remote deployments. The `SetHandler "proxy:fcgi://..."` syntax in `<FilesMatch>` blocks is the cleanest modern approach, enabling PHP processing on dedicated servers with connection pool reuse.
+Apache `mod_proxy_fcgi` over IPv4 connects to PHP-FPM using FastCGI protocol on port 9000. Configure PHP-FPM to listen on `127.0.0.1:9000` for local setups or `0.0.0.0:9000` for remote deployments. The `SetHandler "proxy:fcgi://..."` syntax in `<FilesMatch>` blocks is a clean modern approach. Add a matching `<Proxy>` worker, or use `enablereuse=on` with `ProxyPassMatch`, if you want backend connection reuse.
