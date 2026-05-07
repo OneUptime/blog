@@ -18,7 +18,7 @@ This guide covers the most common scenarios that produce permission denied error
 
 ## Understanding Rootless Podman and User Namespaces
 
-Podman's rootless mode maps your host user ID into a range of subordinate UIDs inside the container. When you run a container as a regular user, Podman uses entries in `/etc/subuid` and `/etc/subgid` to create a user namespace. Inside the container, processes may run as root (UID 0), but on the host, they map to your unprivileged user.
+Podman's rootless mode creates a user namespace using your host user ID and the subordinate UID/GID ranges assigned to that user. When you run a container as a regular user, Podman uses entries in `/etc/subuid` and `/etc/subgid` to create that namespace. Inside the container, processes may run as root (UID 0), but by default that container root maps to your unprivileged user on the host, while other container UIDs map into your subordinate UID range.
 
 This mapping is what causes most permission denied errors. A file owned by root on the host cannot be written to by your mapped user inside the container, and vice versa.
 
@@ -95,16 +95,15 @@ Check ownership:
 ls -la ~/.local/share/containers/storage/
 ```
 
-If files are owned by root (perhaps from a previous `sudo podman` run), reset them:
+If files are owned by root (perhaps from a previous `sudo podman` run), reset the host ownership:
 
 ```bash
-podman unshare chown -R $(id -u):$(id -g) ~/.local/share/containers/storage/
+sudo chown -R $(id -u):$(id -g) ~/.local/share/containers/
 ```
 
-Or remove the storage entirely and start fresh:
+Or reset Podman's storage entirely and start fresh. This removes all containers, pods, images, networks, volumes, build cache, and machines for that user:
 
 ```bash
-rm -rf ~/.local/share/containers/storage/
 podman system reset
 ```
 
@@ -118,13 +117,13 @@ Verify the directory exists:
 ls -la /run/user/$(id -u)
 ```
 
-If it is missing, it usually means you are not logged in through a proper session (e.g., you are using `su` instead of `ssh` or a direct login). The `XDG_RUNTIME_DIR` environment variable must be set:
+If it is missing, it usually means you are not logged in through a proper systemd user session (e.g., you are using `su` instead of `ssh` or a direct login). The `XDG_RUNTIME_DIR` environment variable should point to that session directory:
 
 ```bash
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
 ```
 
-For `su` sessions, use `machinectl shell` or `sudo -i -u username` instead, which properly set up the user session.
+For `su` or misconfigured `sudo` sessions, start a real user session with `machinectl shell username@`, `ssh username@localhost`, or `systemd-run --machine=username@ --user ...` before running Podman.
 
 ## Permission Denied Inside the Container
 
