@@ -66,15 +66,16 @@ CMD ["npm", "start"]
 
 ## React Development with Podman
 
-Create a React development environment:
+Create a React development environment with Vite:
 
 ```bash
 # Create a new React project (run this once on the host or in a container)
 podman run --rm -v .:/workspace:Z -w /workspace \
   node:20-bookworm-slim \
-  npx create-react-app my-react-app
+  npm create vite@latest my-react-app -- --template react
 
 cd my-react-app
+npm install
 ```
 
 Create a Containerfile optimized for React development:
@@ -91,14 +92,11 @@ RUN npm install
 
 COPY . .
 
-EXPOSE 3000
+EXPOSE 5173
 
-# React dev server settings for container environments
-ENV WATCHPACK_POLLING=true
-ENV WDS_SOCKET_PORT=3000
-ENV BROWSER=none
+ENV CHOKIDAR_USEPOLLING=true
 
-CMD ["npm", "start"]
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 ```
 
 Run the React development container:
@@ -109,12 +107,12 @@ podman build -t react-dev -f Containerfile.react .
 
 podman run -d \
   --name react-app \
-  -p 3000:3000 \
+  -p 5173:5173 \
   -v ./src:/app/src:Z \
   -v ./public:/app/public:Z \
   react-dev
 
-# Open http://localhost:3000 in your browser
+# Open http://localhost:5173 in your browser
 # Edit files in ./src and the browser will hot-reload
 ```
 
@@ -126,18 +124,12 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 
-# Install Vue CLI globally
-RUN npm install -g @vue/cli
-
 COPY package*.json ./
 RUN npm install
 
 COPY . .
 
 EXPOSE 5173
-
-# Vite dev server settings for container environments
-ENV CHOKIDAR_USEPOLLING=true
 
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 ```
@@ -155,14 +147,11 @@ export default defineConfig({
     // Bind to all interfaces so the container port mapping works
     host: '0.0.0.0',
     port: 5173,
+    strictPort: true,
     // Enable polling for file watching in containers
     watch: {
       usePolling: true,
       interval: 1000
-    },
-    // Allow connections from outside the container
-    hmr: {
-      port: 5173
     }
   }
 });
@@ -187,9 +176,6 @@ FROM node:20-bookworm-slim
 
 WORKDIR /app
 
-# Install Angular CLI
-RUN npm install -g @angular/cli
-
 COPY package*.json ./
 RUN npm install
 
@@ -200,7 +186,7 @@ EXPOSE 4200
 # Angular dev server settings
 ENV NG_CLI_ANALYTICS=false
 
-CMD ["ng", "serve", "--host", "0.0.0.0", "--poll", "2000"]
+CMD ["npx", "ng", "serve", "--host", "0.0.0.0", "--poll", "2000"]
 ```
 
 ```bash
@@ -231,19 +217,20 @@ podman run --rm \
   --network host \
   -v ./:/app:Z \
   -w /app \
-  cypress/included:latest \
-  --config baseUrl=http://localhost:3000
+  cypress/included:15.14.2 \
+  --config baseUrl=http://localhost:5173
 ```
 
 For a more complete testing setup, use a pod that runs both the dev server and the test runner:
 
 ```bash
 # Create a testing pod
-podman pod create --name test-pod -p 3000:3000
+podman pod create --name test-pod -p 5173:5173
 
 # Start the dev server
 podman run -d --pod test-pod --name test-server \
-  -v ./:/app:Z \
+  -v ./src:/app/src:Z \
+  -v ./public:/app/public:Z \
   react-dev
 
 # Wait for the server to be ready
@@ -251,10 +238,10 @@ sleep 10
 
 # Run end-to-end tests against the dev server
 podman run --rm --pod test-pod \
-  -v ./cypress:/app/cypress:Z \
-  -v ./cypress.config.js:/app/cypress.config.js:Z \
-  cypress/included:latest \
-  --config baseUrl=http://localhost:3000
+  -v ./:/app:Z \
+  -w /app \
+  cypress/included:15.14.2 \
+  --config baseUrl=http://localhost:5173
 
 # Clean up
 podman pod stop test-pod
@@ -263,7 +250,7 @@ podman pod rm test-pod
 
 ## Production Builds with Multi-Stage Containers
 
-Use a multi-stage build to create an optimized production image:
+For Vite-based frontend apps, use a multi-stage build to create an optimized production image:
 
 ```dockerfile
 # Containerfile.prod
@@ -283,7 +270,7 @@ FROM nginx:alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy the built files from the builder stage
-COPY --from=builder /app/build /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Add security headers
 RUN echo 'server_tokens off;' > /etc/nginx/conf.d/security.conf
@@ -292,6 +279,8 @@ EXPOSE 80
 
 CMD ["nginx", "-g", "daemon off;"]
 ```
+
+If you're building an Angular app, change the copy source to match your configured `outputPath` (commonly `dist/<project-name>`).
 
 Create the Nginx configuration:
 
@@ -314,7 +303,7 @@ server {
         try_files $uri $uri/ /index.html;
     }
 
-    # Proxy API requests to the backend (if co-located)
+    # Proxy API requests to a backend running in the same pod
     location /api/ {
         proxy_pass http://localhost:3001;
         proxy_set_header Host $host;
@@ -435,4 +424,4 @@ podman run -d --name project-c \
 
 ## Conclusion
 
-Podman provides a clean way to containerize frontend development workflows. By running dev servers inside containers with volume mounts, you get consistent toolchain versions across your team while keeping hot reloading functional. Multi-stage builds produce optimized production images served by Nginx. And because Podman runs rootless, you do not need elevated privileges for any of this. The key configuration to remember is enabling file polling (`WATCHPACK_POLLING` or `CHOKIDAR_USEPOLLING`) since filesystem events from the host do not always propagate into the container.
+Podman provides a clean way to containerize frontend development workflows. By running dev servers inside containers with volume mounts, you get consistent toolchain versions across your team while keeping hot reloading functional. Multi-stage builds produce optimized production images served by Nginx. And because Podman runs rootless, you do not need elevated privileges for any of this. The key configuration to remember is enabling polling-based file watching, whether through framework-specific environment variables like `WATCHPACK_POLLING` or tool configuration such as Vite's `server.watch.usePolling`, since filesystem events from the host do not always propagate into the container.
