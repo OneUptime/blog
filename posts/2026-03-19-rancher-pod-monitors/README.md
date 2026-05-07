@@ -66,9 +66,11 @@ Apply:
 kubectl apply -f my-app-podmonitor.yaml
 ```
 
+The examples in this guide use `release: rancher-monitoring` because Rancher Monitoring is commonly configured to select PodMonitors by that label. If your Prometheus `podMonitorSelector` is customized, use labels that match that selector instead.
+
 ## Step 3: Ensure Pods Have Named Container Ports
 
-PodMonitors reference container ports by name. Your pod spec should include named ports:
+When you use `port`, PodMonitors reference container ports by name. Your pod spec should include named ports:
 
 ```yaml
 apiVersion: apps/v1
@@ -77,6 +79,9 @@ metadata:
   name: my-app
   namespace: my-namespace
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
       labels:
@@ -128,7 +133,12 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app-with-sidecar
+  namespace: my-namespace
 spec:
+  selector:
+    matchLabels:
+      app: my-app
+      has-metrics-sidecar: "true"
   template:
     metadata:
       labels:
@@ -246,9 +256,10 @@ spec:
   podMetricsEndpoints:
     - port: metrics
       path: /metrics
+      # Use a shorter scrape interval for short-lived pods.
       interval: 15s
-  # Short-lived pods need faster discovery
-  jobLabel: job-name
+  # Use the Job's pod label as the Prometheus `job` label.
+  jobLabel: batch.kubernetes.io/job-name
 ```
 
 For the CronJob:
@@ -274,6 +285,7 @@ spec:
               ports:
                 - name: metrics
                   containerPort: 9090
+          restartPolicy: OnFailure
 ```
 
 ## Step 9: Verify PodMonitor Discovery
@@ -315,10 +327,10 @@ kubectl get pods -n my-namespace -l app=my-app --show-labels
 kubectl get pods -n my-namespace -o jsonpath='{.items[*].spec.containers[*].ports[*].name}'
 ```
 
-**Missing release label**: The PodMonitor must have `release: rancher-monitoring` in its labels.
+**Selector label mismatch**: If your Rancher Monitoring Prometheus is configured to select PodMonitors by Helm release label, include `release: rancher-monitoring`. Otherwise, ensure the PodMonitor labels match `podMonitorSelector`.
 
 **Namespace not watched**: Check Prometheus `podMonitorNamespaceSelector` configuration.
 
 ## Summary
 
-PodMonitors in Rancher allow you to scrape Prometheus metrics directly from pods without requiring a Kubernetes Service. They are ideal for DaemonSets, sidecar containers, batch jobs, and any workload where service-based discovery is not appropriate. Always include the `release: rancher-monitoring` label and verify pod container ports are named correctly.
+PodMonitors in Rancher allow you to scrape Prometheus metrics directly from pods without requiring a Kubernetes Service. They are ideal for DaemonSets, sidecar containers, batch jobs, and any workload where service-based discovery is not appropriate. If your Rancher Monitoring installation selects PodMonitors by Helm release label, include `release: rancher-monitoring`; otherwise, make sure the PodMonitor labels match your Prometheus `podMonitorSelector`. When you use `port`, verify that pod container ports are named correctly.
