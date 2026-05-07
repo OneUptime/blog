@@ -10,14 +10,14 @@ Description: Learn how to use Buildah in shell scripts for fully automated, repe
 
 > Scripted Buildah builds give you the full power of shell scripting for container image construction.
 
-While Containerfiles are the standard way to build container images, they have limitations. You cannot use conditional logic, loops, or dynamic configuration within a Containerfile. Buildah scripts solve this by letting you use the full power of Bash or any other scripting language to construct images. This approach is particularly useful in CI/CD pipelines where build parameters vary between environments.
+While Containerfiles are the standard way to build container images, they have limitations. They support build arguments and shell logic in `RUN` instructions, but they do not provide native conditionals, loops, or arbitrary orchestration across build steps. Buildah scripts solve this by letting you use the full power of Bash or any other scripting language to construct images. This approach is particularly useful in CI/CD pipelines where build parameters vary between environments.
 
 ---
 
 ## Why Scripted Builds
 
 ```bash
-# Containerfiles are static and declarative. Buildah scripts are dynamic:
+# Containerfiles are mostly declarative. Buildah scripts are fully dynamic:
 
 # - Conditional package installation based on environment variables
 # - Looping over a list of services to build multiple images
@@ -102,14 +102,14 @@ if [ "$BUILD_ENV" = "development" ]; then
   buildah run $container -- pip install --no-cache-dir \
     pytest flask-debugtoolbar ipdb
   buildah config --env FLASK_DEBUG=1 $container
-  buildah config --env FLASK_ENV=development $container
+  buildah config --env APP_ENV=development $container
 fi
 
 # Conditional: Production optimizations
 if [ "$BUILD_ENV" = "production" ]; then
   echo "Applying production optimizations..."
   buildah run $container -- pip install --no-cache-dir gunicorn
-  buildah config --env FLASK_ENV=production $container
+  buildah config --env APP_ENV=production $container
   buildah config --user 1000:1000 $container
 
   # Remove unnecessary files in production
@@ -269,7 +269,7 @@ cleanup() {
   exit $exit_code
 }
 
-trap cleanup EXIT ERR
+trap cleanup EXIT
 
 # Validate prerequisites
 command -v buildah >/dev/null || { echo "buildah not found"; exit 1; }
