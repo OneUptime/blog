@@ -28,16 +28,16 @@ The original rootless networking solution. It creates a TAP device connected to 
 
 A newer, faster alternative to slirp4netns that uses a different approach to userspace networking. It provides better performance and more features. It is the default in newer Podman versions.
 
-Check which backend you are using:
+Check which Podman network backend you are using:
 
 ```bash
 podman info --format '{{.Host.NetworkBackend}}'
 ```
 
-Or check directly:
+This reports `netavark` or `cni`. To check which rootless networking command is configured, inspect `containers.conf`:
 
 ```bash
-podman info | grep -i "network\|slirp\|pasta"
+grep -R "default_rootless_network_cmd" ~/.config/containers/containers.conf /etc/containers/containers.conf /usr/share/containers/containers.conf 2>/dev/null
 ```
 
 ## Port Binding Failures
@@ -71,10 +71,11 @@ echo "net.ipv4.ip_unprivileged_port_start=80" | sudo tee /etc/sysctl.d/podman-pr
 sudo sysctl --system
 ```
 
-**Solution 3**: Use rootlessport with a capability:
+**Solution 3**: Redirect from the privileged port to an unprivileged one with a proxy, firewall rule, or redirection tool:
 
 ```bash
-sudo setcap cap_net_bind_service=ep /usr/bin/rootlessport
+sudo firewall-cmd --add-forward-port=port=80:proto=tcp:toport=8080 --permanent
+sudo firewall-cmd --reload
 ```
 
 ### Port Already in Use
@@ -125,7 +126,7 @@ podman exec app curl http://web:80
 
 ### Containers Cannot Communicate on Default Network
 
-On the default `podman` network in rootless mode, each container gets its own isolated slirp4netns or pasta instance. They cannot communicate directly.
+In the default rootless network mode, each container gets its own isolated slirp4netns or pasta instance. They cannot communicate directly.
 
 **Solution**: Always use a custom network for containers that need to talk to each other:
 
@@ -137,7 +138,7 @@ podman run -d --name api --network appnet -e DB_HOST=db myapi
 
 ## Accessing Host Services from Containers
 
-Containers often need to connect to services running on the host (databases, caches, APIs). In rootless mode, the host is not accessible via `docker.host.internal` by default.
+Containers often need to connect to services running on the host (databases, caches, APIs). In rootless mode, the Docker-compatible `host.docker.internal` name is not guaranteed unless Podman can add it for the container's network setup.
 
 ### Using host.containers.internal
 
@@ -159,10 +160,10 @@ This disables network isolation entirely. The container shares the host's networ
 
 ### Using the Gateway Address
 
-The container's default gateway often points to the host:
+With slirp4netns, the container's default gateway is commonly `10.0.2.2`. Host loopback access through that address may require `allow_host_loopback=true`:
 
 ```bash
-podman run --rm myimage ip route | grep default
+podman run --rm --network slirp4netns:allow_host_loopback=true myimage ip route | grep default
 # default via 10.0.2.2 dev tap0
 # Access host services via 10.0.2.2
 ```
@@ -266,17 +267,17 @@ On Fedora and RHEL systems, firewalld can block container traffic. Check the fir
 sudo firewall-cmd --get-active-zones
 ```
 
-Add the Podman interface to the trusted zone:
+For rootful bridge networks, add the Podman interface to the trusted zone:
 
 ```bash
 sudo firewall-cmd --zone=trusted --add-interface=podman0 --permanent
 sudo firewall-cmd --reload
 ```
 
-For rootless containers, the interface name varies. Check with:
+For rootless custom networks, the interface name varies and may be inside the user's network namespace. Check the specific network with:
 
 ```bash
-podman network inspect podman --format '{{.NetworkInterface}}'
+podman network inspect appnet --format '{{.NetworkInterface}}'
 ```
 
 ### nftables Rules
