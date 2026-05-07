@@ -25,7 +25,7 @@ podman run --rm \
   -v /input:/input:ro,Z \
   -v /output:/output:Z \
   processor:latest \
-  /scripts/process.sh /input/file001.csv
+  /scripts/process_csv.py /input/file001.csv
 
 # Process all files in a directory
 for file in /input/*.csv; do
@@ -34,7 +34,7 @@ for file in /input/*.csv; do
       -v /input:/input:ro,Z \
       -v /output:/output:Z \
       processor:latest \
-      /scripts/process.sh "/input/$filename"
+      /scripts/process_csv.py "/input/$filename"
 done
 ```
 
@@ -52,7 +52,7 @@ RUN pip install --no-cache-dir \
     psycopg2-binary
 
 COPY scripts/ /scripts/
-RUN chmod +x /scripts/*.sh /scripts/*.py
+RUN chmod +x /scripts/process_csv.py
 
 WORKDIR /workspace
 
@@ -269,20 +269,21 @@ if __name__ == '__main__':
             'image': 'processor:latest',
             'input_dir': '/data/input',
             'output_dir': '/data/output',
-            'args': ['/scripts/process.py', f'/input/chunk_{i:03d}.csv'],
+            'args': ['/scripts/process_csv.py', f'/input/chunk_{i:03d}.csv'],
             'memory': '1g',
             'cpus': 1.0,
         }
         for i in range(20)
     ]
 
+    batch_start = datetime.now()
     results = run_batch(jobs, max_workers=4)
+    elapsed_time = (datetime.now() - batch_start).total_seconds()
 
     succeeded = sum(1 for r in results if r['exit_code'] == 0)
     failed = sum(1 for r in results if r['exit_code'] != 0)
-    total_time = sum(r['duration'] for r in results)
 
-    print(f"\nBatch complete: {succeeded} succeeded, {failed} failed, {total_time:.1f}s total")
+    print(f"\nBatch complete: {succeeded} succeeded, {failed} failed, {elapsed_time:.1f}s elapsed")
 
     with open('/data/output/batch_report.json', 'w') as f:
         json.dump(results, f, indent=2)
@@ -331,7 +332,7 @@ run_with_retry() {
     return 1
 }
 
-run_with_retry processor:latest /scripts/process.sh "$@"
+run_with_retry processor:latest /scripts/process_csv.py "$@"
 ```
 
 ## Cleanup After Batch Runs
@@ -344,7 +345,7 @@ Ensure containers and resources are cleaned up after batch runs:
 
 echo "Cleaning up batch processing resources..."
 
-# Remove any stopped containers from failed jobs
+# Remove all stopped containers
 podman container prune -f
 
 # Remove dangling images
