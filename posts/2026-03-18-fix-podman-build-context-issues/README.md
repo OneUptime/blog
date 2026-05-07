@@ -8,15 +8,15 @@ Description: Learn how to fix Podman build context problems including files not 
 
 ---
 
-> Podman build context issues cause "file not found" errors during image builds, slow builds from sending too much data, and unexpected files in your images. This guide explains how the build context works and how to fix every common problem.
+> Podman build context issues cause "file not found" errors during image builds, slow builds from processing too much data, and unexpected files in your images. This guide explains how the build context works and how to fix every common problem.
 
-You run `podman build` and get an error saying a file does not exist, even though you can see it on disk. Or your build takes forever because Podman is sending gigabytes of data to the build process. Or sensitive files end up in your image even though you did not mean to include them. All of these problems stem from misunderstanding how the build context works.
+You run `podman build` and get an error saying a file does not exist, even though you can see it on disk. Or your build takes forever because Podman is processing gigabytes of data in the build context. Or sensitive files end up in your image even though you did not mean to include them. All of these problems stem from misunderstanding how the build context works.
 
 ---
 
 ## Understanding Build Context
 
-When you run `podman build`, the last argument specifies the build context directory. Podman sends the entire contents of this directory to the build process. Every `COPY` and `ADD` instruction in your Dockerfile references files relative to this context, not relative to the Dockerfile location.
+When you run `podman build`, the last argument specifies the build context directory. Podman uses the contents of this directory as the build context. Every `COPY` and `ADD` instruction in your Dockerfile references files relative to this context, not relative to the Dockerfile location.
 
 ```bash
 # The "." means the current directory is the build context
@@ -82,7 +82,7 @@ COPY app/src/ /app/src/
 
 ## Fix 2: Use .dockerignore to Control Context Size
 
-If your build is slow, Podman is probably sending too many files as context. Check the context size:
+If your build is slow, Podman is probably processing too many files as context. Check the context size:
 
 ```bash
 # See how much data is in the build context
@@ -116,7 +116,7 @@ venv
 .vscode
 ```
 
-This dramatically reduces build time by preventing large directories from being sent to the build process.
+This dramatically reduces build time by preventing large directories from being included in the build context.
 
 Note that Podman also supports `.containerignore` as an alternative name:
 
@@ -151,16 +151,16 @@ In this case, `COPY main.py /app/` copies `src/main.py`, not `build/main.py`.
 
 ## Fix 4: Handle Symlinks in Build Context
 
-By default, Podman does not follow symlinks in the build context. If you have symlinked files or directories, they will not be included:
+Symlinks in the build context do not let you copy files from outside the context. If a symlink points to a path outside the context, the target file is not added to the context as a regular file:
 
 ```bash
-# This symlink will NOT be followed
+# This symlink points outside the build context
 ls -la config -> /etc/my-app/config
 
-# The file will not be in the build context
+# The target file is still outside the build context
 ```
 
-Fix by copying the actual files instead of using symlinks, or use the `--no-cache` flag and restructure your project to avoid symlinks in the build context.
+Fix by copying the actual files into the build context, or restructure your project so the symlink target is also inside the context.
 
 ## Fix 5: Fix Multi-Stage Build Copy Issues
 
@@ -254,12 +254,14 @@ Build and check the output:
 podman build --no-cache -t debug-context .
 ```
 
-You can also check what `.dockerignore` is excluding:
+You can also check what `.dockerignore` is excluding by building a temporary debug Dockerfile from standard input:
 
 ```bash
-# List files that WOULD be in the context (respecting .dockerignore)
-# Compare with files actually in the directory
-diff <(find . -type f | sort) <(find . -type f | sort | grep -v -f .dockerignore)
+podman build --no-cache -f - . <<'EOF'
+FROM alpine:3.19
+COPY . /debug-context/
+RUN find /debug-context -type f | sort | head -100
+EOF
 ```
 
 ## Fix 9: Handle Large Files Efficiently
@@ -294,4 +296,4 @@ The `.dockerignore` file should be placed in the directory specified by `context
 
 ## Conclusion
 
-Build context issues in Podman come down to understanding one principle: the build context is a snapshot of a directory that gets sent to the build process, and all COPY paths are relative to it. Keep your context small with `.dockerignore`, use the `-f` flag to separate Dockerfile location from context directory, and use `--from` in multi-stage builds to copy between stages. When debugging, add a temporary build step that lists the context contents to see exactly what Podman has access to during the build.
+Build context issues in Podman come down to understanding one principle: the build context is a snapshot of a directory used by the build process, and all COPY paths are relative to it. Keep your context small with `.dockerignore`, use the `-f` flag to separate Dockerfile location from context directory, and use `--from` in multi-stage builds to copy between stages. When debugging, add a temporary build step that lists the context contents to see exactly what Podman has access to during the build.
