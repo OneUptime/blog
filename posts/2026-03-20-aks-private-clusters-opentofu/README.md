@@ -24,7 +24,7 @@ resource "azurerm_kubernetes_cluster" "private" {
   location            = var.location
   resource_group_name = var.resource_group_name
   dns_prefix          = "${var.project_name}-private"
-  kubernetes_version  = "1.28"
+  kubernetes_version  = "1.35"
 
   default_node_pool {
     name                = "system"
@@ -32,7 +32,7 @@ resource "azurerm_kubernetes_cluster" "private" {
     node_count          = 3
     min_count           = 3
     max_count           = 10
-    enable_auto_scaling = true
+    auto_scaling_enabled = true
     vnet_subnet_id      = var.aks_subnet_id
     zones               = ["1", "2", "3"]
 
@@ -51,7 +51,7 @@ resource "azurerm_kubernetes_cluster" "private" {
   private_cluster_public_fqdn_enabled = false      # Disable public FQDN
 
   # Optional: custom private DNS zone (for more control)
-  # private_dns_zone_id = azurerm_private_dns_zone.aks.id
+  # private_dns_zone_id = azurerm_private_dns_zone.aks.id  # Requires user-assigned identity and role assignments
 
   network_profile {
     network_plugin    = "azure"
@@ -76,9 +76,16 @@ resource "azurerm_kubernetes_cluster" "private" {
 
 ```hcl
 # Create custom private DNS zone for the API server
+# Custom private DNS requires a user-assigned identity with DNS and network permissions.
+
+resource "azurerm_user_assigned_identity" "aks" {
+  name                = "${var.project_name}-aks-private-dns"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+}
 
 resource "azurerm_private_dns_zone" "aks" {
-  name                = "privatelink.${var.location}.azmk8s.io"
+  name                = "privatelink.${replace(lower(var.location), " ", "")}.azmk8s.io"
   resource_group_name = var.resource_group_name
 }
 
@@ -100,6 +107,18 @@ resource "azurerm_private_dns_zone_virtual_network_link" "admin" {
   registration_enabled  = false
 }
 
+resource "azurerm_role_assignment" "aks_dns" {
+  scope                = azurerm_private_dns_zone.aks.id
+  role_definition_name = "Private DNS Zone Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks.principal_id
+}
+
+resource "azurerm_role_assignment" "aks_network" {
+  scope                = var.vnet_id
+  role_definition_name = "Network Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks.principal_id
+}
+
 resource "azurerm_kubernetes_cluster" "private_custom_dns" {
   name                = "${var.project_name}-aks-private"
   location            = var.location
@@ -114,23 +133,23 @@ resource "azurerm_kubernetes_cluster" "private_custom_dns" {
   }
 
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.aks.id]
   }
 
-  private_cluster_enabled = true
-  private_dns_zone_id     = azurerm_private_dns_zone.aks.id  # Custom zone
+  private_cluster_enabled             = true
+  private_dns_zone_id                 = azurerm_private_dns_zone.aks.id  # Custom zone
+  private_cluster_public_fqdn_enabled = false
 
   network_profile {
     network_plugin    = "azure"
     load_balancer_sku = "standard"
   }
-}
 
-# Grant AKS identity DNS Zone Contributor to manage DNS records
-resource "azurerm_role_assignment" "aks_dns" {
-  scope                = azurerm_private_dns_zone.aks.id
-  role_definition_name = "Private DNS Zone Contributor"
-  principal_id         = azurerm_kubernetes_cluster.private_custom_dns.identity[0].principal_id
+  depends_on = [
+    azurerm_role_assignment.aks_dns,
+    azurerm_role_assignment.aks_network
+  ]
 }
 ```
 
@@ -169,11 +188,11 @@ resource "azurerm_linux_virtual_machine" "jumpbox" {
   custom_data = base64encode(<<-EOT
     #!/bin/bash
     apt-get update
-    apt-get install -y apt-transport-https ca-certificates curl
-    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/kubernetes-archive-keyring.gpg
-    echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" > /etc/apt/sources.list.d/kubernetes.list
-    apt-get update && apt-get install -y kubectl
+    apt-get install -y ca-certificates curl
     curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+    az aks install-cli \
+      --install-location /usr/local/bin/kubectl \
+      --kubelogin-install-location /usr/local/bin/kubelogin
   EOT
   )
 
@@ -193,28 +212,6 @@ resource "azurerm_subnet" "cicd_runner" {
   virtual_network_name = var.vnet_name
   address_prefixes     = ["10.0.10.0/24"]
 }
-
-# Azure Container Instance for self-hosted CI/CD runner
-resource "azurerm_container_group" "gh_runner" {
-  name                = "${var.project_name}-gh-runner"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  ip_address_type     = "Private"
-  subnet_ids          = [azurerm_subnet.cicd_runner.id]
-  os_type             = "Linux"
-
-  container {
-    name   = "runner"
-    image  = "ghcr.io/actions/actions-runner:latest"
-    cpu    = "2.0"
-    memory = "4.0"
-
-    environment_variables = {
-      GITHUB_URL   = "https://github.com/${var.github_org}/${var.github_repo}"
-      RUNNER_TOKEN = var.github_runner_token
-    }
-  }
-}
 ```
 
 ## Step 5: Deploy
@@ -224,15 +221,15 @@ tofu init
 tofu plan
 tofu apply
 
-# Get credentials (must run from within the VNet or connected network)
+# Get credentials
 az aks get-credentials \
   --resource-group <rg> \
   --name <cluster-name>
 
-# Use Bastion to connect to jumpbox, then run:
+# Use Bastion to connect to jumpbox, then run from a machine that can reach the private endpoint:
 kubectl get nodes
 
-# Run commands directly from Azure CLI (uses private endpoint)
+# Run one-off troubleshooting commands through the AKS Run Command control plane
 az aks command invoke \
   --resource-group <rg> \
   --name <cluster-name> \
@@ -241,4 +238,4 @@ az aks command invoke \
 
 ## Conclusion
 
-The `az aks command invoke` command allows running kubectl commands against private clusters from anywhere with Azure CLI access-it routes through the Azure control plane without requiring network connectivity to the private endpoint. This is useful for emergency access and CI/CD pipelines that can't reach the private VNet. For ongoing CI/CD, deploy self-hosted GitHub Actions runners or Azure DevOps agents within the VNet. Using `private_dns_zone_id = "System"` is the simplest configuration-Azure manages the private DNS zone automatically; use a custom zone only when you need to share it with multiple peered VNets.
+The `az aks command invoke` command allows running one-off `kubectl` or `helm` commands against private clusters through the Azure control plane without requiring direct network connectivity to the private endpoint. This is useful for troubleshooting or emergency access, but not for ongoing programmatic access. For ongoing CI/CD, deploy self-hosted GitHub Actions runners or Azure DevOps agents within the VNet or a connected network. Using `private_dns_zone_id = "System"` is the simplest configuration-Azure manages the private DNS zone automatically; use a custom zone when you need to manage DNS links and permissions yourself, such as in hub-and-spoke or custom DNS environments.
