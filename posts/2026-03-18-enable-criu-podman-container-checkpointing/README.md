@@ -10,7 +10,7 @@ Description: A step-by-step guide to installing and enabling CRIU on Linux so yo
 
 > CRIU is the engine behind Podman's ability to freeze a running container in place and bring it back to life later. Before you can checkpoint anything, CRIU needs to be installed and properly configured on your system.
 
-Container checkpointing lets you snapshot the entire runtime state of a container, including its process memory, open file descriptors, and network connections. Podman delegates the heavy lifting to CRIU (Checkpoint/Restore In Userspace), a Linux tool that can freeze and restore process trees. This post walks through installing CRIU, verifying it works, and configuring your system so Podman can use it.
+Container checkpointing lets you snapshot the runtime state of a container, including its process memory, open file descriptors, and supported network state. Podman delegates the heavy lifting to CRIU (Checkpoint/Restore In Userspace), a Linux tool that can freeze and restore process trees. This post walks through installing CRIU, verifying it works, and configuring your system so Podman can use it.
 
 ---
 
@@ -25,11 +25,11 @@ CRIU supports capturing:
 - Process memory pages
 - CPU register state
 - Open file descriptors and pipes
-- Network sockets and TCP connections
+- Network sockets, and established TCP connections when requested with TCP support
 - Timers and signals
 - Namespaces (PID, network, mount, IPC, UTS)
 
-This makes it possible to freeze a container mid-execution and resume it on the same host or a different one.
+This makes it possible to freeze a container mid-execution and resume it on the same host or a compatible different host.
 
 ## Checking Your Kernel Support
 
@@ -94,7 +94,8 @@ For older Ubuntu or Debian releases where the packaged version is too old, you c
 ```bash
 sudo apt install build-essential pkg-config libprotobuf-dev libprotobuf-c-dev \
   protobuf-c-compiler protobuf-compiler python3-protobuf libbsd-dev \
-  libcap-dev libnl-3-dev libnet-dev libaio-dev libgnutls28-dev
+  uuid-dev iproute2 libcap-dev libnl-3-dev libnet-dev libaio-dev \
+  libgnutls28-dev
 
 git clone https://github.com/checkpoint-restore/criu.git
 cd criu
@@ -137,11 +138,11 @@ For a more detailed check:
 sudo criu check --all
 ```
 
-This runs additional checks for features like TCP connection restoration and external namespaces.
+This runs the basic, extra, and experimental kernel feature checks.
 
 ## Configuring Podman to Use CRIU
 
-Podman looks for CRIU in the system PATH, so if you installed it via a package manager, no additional configuration is needed. You can verify Podman can find CRIU:
+Podman and the OCI runtime expect CRIU to be available on the host. If you installed it via a package manager, no additional configuration is usually needed. You can verify the binary is present:
 
 ```bash
 which criu
@@ -149,7 +150,7 @@ which criu
 
 This should return something like `/usr/sbin/criu` or `/usr/local/sbin/criu`.
 
-If you installed CRIU to a non-standard location, make sure the binary is in root's PATH since checkpoint operations require root privileges:
+If you installed CRIU to a non-standard location, make sure the binary is available to root since checkpoint operations require root privileges:
 
 ```bash
 sudo which criu
@@ -226,13 +227,19 @@ sudo modprobe udp_diag
 sudo modprobe inet_diag
 ```
 
-**Container runtime mismatch**: Ensure your container runtime (usually runc or crun) supports CRIU integration. Check with:
+**Container runtime mismatch**: Ensure your container runtime (usually runc or crun) supports CRIU integration. Check the configured OCI runtime with:
 
 ```bash
-sudo podman info | grep -i runtime
+sudo podman info --format '{{.Host.OCIRuntime.Name}}'
 ```
 
-crun has native CRIU support and is the default runtime in newer Podman versions.
+For more detail, inspect the full runtime block:
+
+```bash
+sudo podman info --format '{{.Host.OCIRuntime.Version}}'
+```
+
+crun builds commonly include CRIU support and crun is the default runtime in newer Podman versions on many distributions.
 
 ## Conclusion
 
