@@ -15,8 +15,6 @@ Automated testing in Docker containers ensures every developer and CI/CD system 
 ```yaml
 # docker-compose.test.yml - Unit test configuration
 
-version: "3.8"
-
 services:
   unit_tests:
     build:
@@ -59,7 +57,6 @@ CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0"]
 
 ```yaml
 # docker-compose.integration.yml - Integration tests with real services
-version: "3.8"
 
 networks:
   test_network:
@@ -102,13 +99,7 @@ services:
       - TESTING=true
       - DATABASE_URL=postgresql://testuser:testpass@test_postgres:5432/testdb
       - REDIS_URL=redis://test_redis:6379/0
-    command: >
-      sh -c "
-        # Wait for dependencies
-        python -c 'import time, psycopg2; [time.sleep(1) for _ in range(30) if not psycopg2.connect(\"postgresql://testuser:testpass@test_postgres/testdb\")]'
-        # Run tests
-        pytest tests/integration/ -v --junitxml=/app/test-results/integration.xml
-      "
+    command: pytest tests/integration/ -v --junitxml=/app/test-results/integration.xml
     depends_on:
       test_postgres:
         condition: service_healthy
@@ -118,13 +109,15 @@ services:
       - test_network
     volumes:
       - test_results:/app/test-results
+
+volumes:
+  test_results:
 ```
 
 ## Step 3: End-to-End Tests with Playwright
 
 ```yaml
 # docker-compose.e2e.yml - E2E tests with Playwright
-version: "3.8"
 
 networks:
   e2e_network:
@@ -138,11 +131,12 @@ services:
     environment:
       - DATABASE_URL=postgresql://testuser:testpass@e2e_postgres:5432/testdb
     depends_on:
-      - e2e_postgres
+      e2e_postgres:
+        condition: service_healthy
     networks:
       - e2e_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 5s
       retries: 10
 
@@ -162,15 +156,19 @@ services:
 
   # Playwright E2E test runner
   playwright:
-    image: mcr.microsoft.com/playwright:v1.41.0-jammy
+    image: mcr.microsoft.com/playwright:v1.59.1-jammy
     container_name: playwright_tests
-    command: npx playwright test
+    command: >
+      sh -c "npm init -y >/dev/null 2>&1 &&
+      npm install --no-save @playwright/test@1.59.1 &&
+      npx playwright test"
     depends_on:
       app:
         condition: service_healthy
     environment:
       - BASE_URL=http://app:8000
       - PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+      - PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
     volumes:
       - ./e2e:/tests
       - playwright_results:/tests/test-results
@@ -178,6 +176,8 @@ services:
     networks:
       - e2e_network
     working_dir: /tests
+    init: true
+    ipc: host
 
 volumes:
   test_results:
@@ -219,8 +219,6 @@ Create a test runner stack in Portainer to run tests on demand:
 
 ```yaml
 # portainer-test-stack.yml - On-demand test execution
-version: "3.8"
-
 networks:
   test_net:
     driver: bridge
@@ -228,16 +226,12 @@ networks:
 services:
   test_runner:
     image: registry.yourdomain.com/myapp/api:${IMAGE_TAG:-latest}
-    container_name: test_runner
     command: >
       sh -c "
-        pytest tests/
-        -v
-        --junitxml=/results/test-report.xml
-        --cov=src
-        --cov-report=html:/results/coverage
-        && echo 'Tests PASSED'
-        || echo 'Tests FAILED'
+        pytest tests/ -v --junitxml=/results/test-report.xml --cov=src --cov-report=html:/results/coverage;
+        status=$$?;
+        if [ $$status -eq 0 ]; then echo 'Tests PASSED'; else echo 'Tests FAILED'; fi;
+        exit $$status
       "
     environment:
       - DATABASE_URL=postgresql://test:test@test_db:5432/testdb
@@ -270,35 +264,75 @@ services:
 #!/bin/bash
 # run-tests-portainer.sh - Trigger test run via Portainer API
 
+set -euo pipefail
+
+ENDPOINT_ID="${ENDPOINT_ID:-1}"
+STACK_NAME="test-run-${BUILD_NUMBER:-$(date +%s)}"
+
+cleanup() {
+    if [ -n "${STACK_ID:-}" ] && [ "${STACK_ID}" != "null" ]; then
+        curl -fsS -X DELETE \
+            -H "X-API-KEY: $PORTAINER_API_KEY" \
+            "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=$ENDPOINT_ID" >/dev/null
+    fi
+}
+
+trap cleanup EXIT
+
 # Deploy test stack
-RESPONSE=$(curl -s -X POST \
-    -H "X-API-Key: $PORTAINER_API_KEY" \
+RESPONSE=$(curl -fsS -X POST \
+    -H "X-API-KEY: $PORTAINER_API_KEY" \
     -H "Content-Type: application/json" \
-    "$PORTAINER_URL/api/stacks/create/standalone/string?endpointId=1" \
+    "$PORTAINER_URL/api/stacks/create/standalone/string?endpointId=$ENDPOINT_ID" \
     -d "{
-      \"name\": \"test-run-$BUILD_NUMBER\",
-      \"stackFileContent\": $(cat portainer-test-stack.yml | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),
-      \"env\": [{\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"}]
+      \"Name\": \"$STACK_NAME\",
+      \"StackFileContent\": $(python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' < portainer-test-stack.yml),
+      \"Env\": [{\"name\": \"IMAGE_TAG\", \"value\": \"${IMAGE_TAG:-latest}\"}]
     }")
 
 STACK_ID=$(echo "$RESPONSE" | jq '.Id')
+DOCKER_API_VERSION=$(curl -fsS \
+    -H "X-API-KEY: $PORTAINER_API_KEY" \
+    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/version" | jq -r '.ApiVersion')
 
-# Wait for tests to complete
-# Monitor container until it exits
-until [ "$(docker inspect test_runner --format '{{.State.Status}}')" = "exited" ]; do
+# Wait for the test runner container to be created
+FILTERS=$(STACK_NAME="$STACK_NAME" python3 - <<'PY'
+import json
+import os
+import urllib.parse
+
+filters = {
+    "label": [
+        f"com.docker.compose.project={os.environ['STACK_NAME']}",
+        "com.docker.compose.service=test_runner"
+    ]
+}
+
+print(urllib.parse.quote(json.dumps(filters)))
+PY
+)
+
+until [ -n "${CONTAINER_ID:-}" ] && [ "${CONTAINER_ID}" != "null" ]; do
+    CONTAINER_ID=$(curl -fsS \
+        -H "X-API-KEY: $PORTAINER_API_KEY" \
+        "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/v$DOCKER_API_VERSION/containers/json?all=1&filters=$FILTERS" \
+        | jq -r '.[0].Id // empty')
     sleep 5
 done
 
-# Get exit code
-EXIT_CODE=$(docker inspect test_runner --format '{{.State.ExitCode}}')
+# Wait for tests to complete and capture the container exit code
+WAIT_RESPONSE=$(curl -fsS -X POST \
+    -H "X-API-KEY: $PORTAINER_API_KEY" \
+    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/v$DOCKER_API_VERSION/containers/$CONTAINER_ID/wait?condition=not-running")
+EXIT_CODE=$(echo "$WAIT_RESPONSE" | jq -r '.StatusCode')
 
 # Collect test results
-docker cp test_runner:/results/test-report.xml ./
-
-# Cleanup test stack
-curl -X DELETE \
-    -H "X-API-Key: $PORTAINER_API_KEY" \
-    "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=1"
+curl -fsS \
+    -H "X-API-KEY: $PORTAINER_API_KEY" \
+    "$PORTAINER_URL/api/endpoints/$ENDPOINT_ID/docker/v$DOCKER_API_VERSION/containers/$CONTAINER_ID/archive?path=/results/test-report.xml" \
+    -o test-report.tar
+tar -xOf test-report.tar > test-report.xml
+rm -f test-report.tar
 
 exit $EXIT_CODE
 ```
