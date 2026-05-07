@@ -8,21 +8,22 @@ Description: Connect Azure Container Instances to Portainer for managing serverl
 
 ---
 
-Adding environments to Portainer allows centralized management of containers across different infrastructure types. Each environment type has specific connection requirements.
+Adding environments to Portainer allows centralized management of containers across different infrastructure types. Azure ACI environments use Azure credentials rather than a Docker socket or Portainer Agent.
 
 ## Prerequisites
 
 - Portainer running and accessible
-- Target environment accessible from the Portainer server
-- Appropriate credentials or connection details
+- A Microsoft Entra app registration / service principal with access to the Azure subscription you want Portainer to manage
+- The Application (client) ID, Directory (tenant) ID, and a client secret for that app registration
+- HTTPS access from the Portainer server to the Azure management API
 
 ## Adding the Environment via the UI
 
 1. Log in to Portainer as an administrator
 2. Navigate to **Environments** in the left sidebar
 3. Click **Add environment**
-4. Select the appropriate environment type
-5. Fill in the connection details
+4. Select **ACI** and click **Start Wizard**
+5. Enter a name, **Application ID**, **Tenant ID**, and **Authentication Key**
 6. Click **Connect**
 
 ## Adding via API
@@ -34,17 +35,17 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Add environment via API
+ACI_NAME="my-azure-aci"
 
+# Add Azure ACI environment via API
 curl -X POST \
   https://localhost:9443/api/endpoints \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Name": "my-environment",
-    "EndpointCreationType": 1,
-    "URL": "unix:///var/run/docker.sock"
-  }' \
+  --form-string "Name=${ACI_NAME}" \
+  --form-string "EndpointCreationType=3" \
+  --form-string "AzureApplicationID=your-application-client-id" \
+  --form-string "AzureTenantID=your-directory-tenant-id" \
+  --form-string "AzureAuthenticationKey=your-client-secret" \
   --insecure
 
 # List all environments
@@ -54,7 +55,7 @@ curl -s https://localhost:9443/api/endpoints \
 import sys, json
 envs = json.load(sys.stdin)
 for e in envs:
-    print(f'  ID: {e[\"Id\"]}, Name: {e[\"Name\"]}, Type: {e.get(\"Type\",\"?\")}')
+    print(f'  ID: {e[\"Id\"]}, Name: {e[\"Name\"]}, Type: {e.get(\"Type\",\"?\")}, URL: {e.get(\"URL\",\"?\")}')
 "
 ```
 
@@ -62,27 +63,26 @@ for e in envs:
 
 | Type | Value | Description |
 |------|-------|-------------|
-| Docker standalone (socket) | 1 | Local Docker via socket |
-| Agent | 2 | Remote via Portainer Agent |
-| Azure ACI | 3 | Azure Container Instances |
-| Docker standalone (API) | 4 | Remote Docker via TCP |
-| Kubernetes | 7 | K8s via agent or kubeconfig |
+| Azure ACI | 3 | Portainer `EndpointCreationType` value for Azure Container Instances |
 
 ## Verify the Connection
 
 After adding the environment, verify it shows as healthy:
 
 ```bash
-# Check environment status
+# Check Azure ACI environment status
+ACI_NAME="my-azure-aci"
+
 curl -s https://localhost:9443/api/endpoints \
   -H "Authorization: Bearer $TOKEN" \
   --insecure | python3 -c "
 import sys, json
 envs = json.load(sys.stdin)
 for e in envs:
-    status = e.get('Status', 0)
-    status_str = 'Online' if status == 1 else 'Offline'
-    print(f'{e[\"Name\"]}: {status_str}')
+    if e['Name'] == '${ACI_NAME}':
+        status = e.get('Status', 0)
+        status_str = 'Online' if status == 1 else 'Offline'
+        print(f'{e[\"Name\"]}: {status_str} (Type={e.get(\"Type\",\"?\")}, URL={e.get(\"URL\",\"?\")})')
 "
 ```
 
