@@ -8,9 +8,9 @@ Description: Install and use Podman on ARM-based servers like AWS Graviton, Rasp
 
 ---
 
-> ARM-based servers are reshaping the data center landscape with better power efficiency and competitive performance. Podman runs natively on ARM (aarch64) without any emulation, giving you the same rootless, daemonless container experience as on x86_64 while taking full advantage of ARM's efficiency gains.
+> ARM-based servers are reshaping the data center landscape with better power efficiency and competitive performance. On Linux ARM hosts, Podman itself runs natively on aarch64, giving you the same rootless, daemonless container experience as on x86_64 while taking full advantage of ARM's efficiency gains.
 
-ARM processors have moved from mobile devices to data centers. AWS Graviton, Ampere Altra, and Apple Silicon servers offer significant cost and energy savings compared to x86 alternatives. Podman fully supports the aarch64 architecture, and most popular container images now publish ARM variants. This guide covers everything you need to run Podman on ARM servers in development and production.
+ARM processors have moved from mobile devices to cloud, edge, and development systems. AWS Graviton and Ampere Altra offer significant cost and energy savings for server workloads compared to x86 alternatives, while Apple Silicon has made ARM a common local development platform. Podman fully supports the aarch64 architecture on Linux, and most popular container images now publish ARM variants. This guide covers everything you need to run Podman on ARM servers in development and production.
 
 ---
 
@@ -29,7 +29,7 @@ ARM processors have moved from mobile devices to data centers. AWS Graviton, Amp
 
 ## Installing Podman on ARM Servers
 
-### Ubuntu Server (aarch64)
+### Ubuntu Server 20.10+ (aarch64)
 
 ```bash
 sudo apt update
@@ -42,11 +42,11 @@ sudo apt install -y podman slirp4netns fuse-overlayfs uidmap
 sudo dnf install -y podman
 ```
 
-### Debian (aarch64)
+### Debian 11+ (aarch64)
 
 ```bash
 sudo apt update
-sudo apt install -y podman slirp4netns fuse-overlayfs
+sudo apt install -y podman slirp4netns fuse-overlayfs uidmap
 ```
 
 ### Raspberry Pi OS (64-bit)
@@ -61,7 +61,7 @@ Install Podman:
 
 ```bash
 sudo apt update
-sudo apt install -y podman
+sudo apt install -y podman uidmap
 ```
 
 Verify the installation and architecture:
@@ -71,7 +71,7 @@ podman version
 podman info --format '{{.Host.Arch}}'
 ```
 
-The output should show `arm64` or `aarch64`.
+The `podman info` output should show `arm64`.
 
 ---
 
@@ -81,7 +81,7 @@ Most official images on Docker Hub publish multi-architecture manifests. Podman 
 
 ```bash
 podman pull docker.io/library/nginx:alpine
-podman inspect nginx:alpine --format '{{.Architecture}}'
+podman image inspect docker.io/library/nginx:alpine --format '{{.Architecture}}'
 ```
 
 The output should show `arm64`.
@@ -173,9 +173,9 @@ podman push myorg/myapp:latest-amd64
 
 # Create and push the manifest (from either server)
 podman manifest create myorg/myapp:latest
-podman manifest add myorg/myapp:latest myorg/myapp:latest-arm64
-podman manifest add myorg/myapp:latest myorg/myapp:latest-amd64
-podman manifest push myorg/myapp:latest docker://docker.io/myorg/myapp:latest
+podman manifest add myorg/myapp:latest docker://docker.io/myorg/myapp:latest-arm64
+podman manifest add myorg/myapp:latest docker://docker.io/myorg/myapp:latest-amd64
+podman manifest push --all myorg/myapp:latest docker://docker.io/myorg/myapp:latest
 ```
 
 ### Cross-Architecture Builds with QEMU
@@ -315,7 +315,8 @@ done
 podman run -d --name pihole \
   -p 53:53/tcp -p 53:53/udp -p 80:80 \
   -e TZ=America/New_York \
-  -e WEBPASSWORD=admin \
+  -e FTLCONF_webserver_api_password=admin \
+  -e FTLCONF_dns_listeningMode=all \
   -v pihole:/etc/pihole:Z \
   docker.io/pihole/pihole:latest
 ```
@@ -353,4 +354,4 @@ podman run --platform linux/amd64 docker.io/library/alpine uname -m
 
 ## Conclusion
 
-Podman on ARM-based servers delivers a first-class container experience with significant cost and energy benefits. Whether you are running production workloads on AWS Graviton, deploying home lab services on a Raspberry Pi, or building multi-architecture images for heterogeneous environments, Podman's native ARM support means no emulation overhead and no compromises. Focus on using ARM-native images for best performance, build multi-architecture manifests when you need cross-platform compatibility, and take advantage of ARM's core density for parallel workloads.
+Podman on ARM-based servers delivers a first-class container experience with significant cost and energy benefits. Whether you are running production workloads on AWS Graviton, deploying home lab services on a Raspberry Pi, or building multi-architecture images for heterogeneous environments, Podman's native ARM support lets you avoid emulation overhead when you use ARM-native images. Focus on using ARM-native images for best performance, build multi-architecture manifests when you need cross-platform compatibility, and take advantage of ARM's core density for parallel workloads.
