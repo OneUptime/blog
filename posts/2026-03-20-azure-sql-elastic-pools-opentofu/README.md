@@ -46,8 +46,8 @@ resource "azurerm_mssql_elasticpool" "pool" {
   }
 
   per_database_settings {
-    min_capacity = 0.25  # Minimum vCores per database (can idle to near-zero)
-    max_capacity = 4     # Maximum vCores a single database can use
+    min_capacity = 0.25  # Guaranteed minimum vCores per database
+    max_capacity = 4     # Max vCores a single database can use, if available
   }
 }
 ```
@@ -104,8 +104,8 @@ resource "azurerm_mssql_elasticpool" "dtu_pool" {
   }
 
   per_database_settings {
-    min_capacity = 0    # Databases can have 0 DTUs when idle
-    max_capacity = 100  # Any database can burst to full 100 DTUs
+    min_capacity = 0    # No guaranteed DTUs per database
+    max_capacity = 100  # Max DTUs a single database can use, if available
   }
 }
 ```
