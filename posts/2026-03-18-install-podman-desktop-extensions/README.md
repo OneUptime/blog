@@ -65,8 +65,8 @@ You can install extensions directly from OCI registries:
 
 ```bash
 # Extensions are standard OCI images that you can inspect
-podman pull ghcr.io/podman-desktop/podman-desktop-extension-bootc:latest
-podman inspect ghcr.io/podman-desktop/podman-desktop-extension-bootc:latest
+podman pull ghcr.io/podman-desktop/extension-bootc:next
+podman inspect ghcr.io/podman-desktop/extension-bootc:next
 ```
 
 ## Managing Installed Extensions
@@ -74,7 +74,7 @@ podman inspect ghcr.io/podman-desktop/podman-desktop-extension-bootc:latest
 View and manage your installed extensions:
 
 1. Go to **Extensions > Installed** to see all active extensions.
-2. Each extension shows its status (enabled/disabled), version, and resource usage.
+2. Each extension shows details such as its status and version.
 3. Click the toggle to enable or disable an extension without removing it.
 4. Click **Remove** to uninstall an extension completely.
 
@@ -135,12 +135,12 @@ This is useful when an extension conflicts with another tool or when you want to
 If an extension is not working correctly:
 
 ```bash
-# Check Podman Desktop logs for extension errors
-# On macOS: ~/Library/Application Support/Podman Desktop/logs/
-# On Linux: ~/.local/share/Podman Desktop/logs/
+# Check Podman Desktop logs for extension errors from the UI:
+# 1. Click the Troubleshooting icon in the status bar.
+# 2. Select the Logs tab to view logs.
+# 3. Optionally use Gather Logs to save all logs as a .zip file.
 
-# View the log file
-ls ~/Library/Application\ Support/Podman\ Desktop/logs/
+# You can also check the extension's status on the Extensions page.
 
 # Common issues:
 # - Extension requires a newer Podman Desktop version
