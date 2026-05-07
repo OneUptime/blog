@@ -61,10 +61,10 @@ podman stop label-check && podman rm label-check
 Use `--security-opt label=type:` to change the SELinux type applied to the container process.
 
 ```bash
-# Run a container with the svirt_lxc_net_t type
-# This type allows network access for container processes
+# Run a container with a custom policy-defined type
+# The SELinux policy must define the alternate type before you use it
 podman run --rm \
-  --security-opt label=type:svirt_lxc_net_t \
+  --security-opt label=type:my_container.process \
   docker.io/library/fedora:latest \
   cat /proc/self/attr/current
 
@@ -158,12 +158,12 @@ mkdir -p /tmp/shared-selinux
 # Both can access the same labeled resources
 podman run -d --name app-a \
   --security-opt label=level:s0:c100,c200 \
-  -v /tmp/shared-selinux:/shared:z \
+  -v /tmp/shared-selinux:/shared:Z \
   docker.io/library/fedora:latest sleep 3600
 
 podman run -d --name app-b \
   --security-opt label=level:s0:c100,c200 \
-  -v /tmp/shared-selinux:/shared:z \
+  -v /tmp/shared-selinux:/shared:Z \
   docker.io/library/fedora:latest sleep 3600
 
 # Write from one container and read from the other
