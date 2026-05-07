@@ -8,7 +8,7 @@ Description: Learn how to configure active-active deployments using OpenTofu whe
 
 ## Overview
 
-Active-active deployments run identical workloads in multiple regions simultaneously, routing users to the nearest region for low latency and providing instant failover. OpenTofu configures latency-based routing, data replication, and conflict resolution.
+Active-active deployments run identical workloads in multiple regions simultaneously, routing users to the lowest-latency region for low latency and providing instant failover. OpenTofu configures the AWS services that provide latency-based routing, data replication, and conflict handling.
 
 ## Step 1: Latency-Based DNS Routing
 
@@ -20,30 +20,22 @@ locals {
     "us-east-1" = {
       alb_dns  = module.app_us_east.alb_dns_name
       alb_zone = module.app_us_east.alb_zone_id
+      alb_arn  = module.app_us_east.alb_arn
     }
     "eu-west-1" = {
       alb_dns  = module.app_eu_west.alb_dns_name
       alb_zone = module.app_eu_west.alb_zone_id
+      alb_arn  = module.app_eu_west.alb_arn
     }
     "ap-southeast-1" = {
       alb_dns  = module.app_ap_se.alb_dns_name
       alb_zone = module.app_ap_se.alb_zone_id
+      alb_arn  = module.app_ap_se.alb_arn
     }
   }
 }
 
-# Create health checks and DNS records for each region
-resource "aws_route53_health_check" "region" {
-  for_each = local.regions
-
-  fqdn              = each.value.alb_dns
-  port              = 443
-  type              = "HTTPS"
-  resource_path     = "/health"
-  failure_threshold = 3
-  request_interval  = 30
-}
-
+# Create latency records for each region and use ALB target health
 resource "aws_route53_record" "latency" {
   for_each = local.regions
 
@@ -61,8 +53,6 @@ resource "aws_route53_record" "latency" {
   latency_routing_policy {
     region = each.key
   }
-
-  health_check_id = aws_route53_health_check.region[each.key].id
 }
 ```
 
@@ -97,8 +87,8 @@ resource "aws_dynamodb_table" "active_active" {
     region_name = "ap-southeast-1"
   }
 
-  # Last-writer-wins conflict resolution (built-in)
-  # For custom conflict resolution, use DynamoDB Streams + Lambda
+  # Default MREC global tables use last-writer-wins conflict resolution
+  # If you need application-specific reconciliation, handle it outside the table, for example with DynamoDB Streams consumers
 }
 ```
 
@@ -112,7 +102,7 @@ resource "aws_globalaccelerator_accelerator" "app" {
 }
 
 resource "aws_globalaccelerator_listener" "https" {
-  accelerator_arn = aws_globalaccelerator_accelerator.app.id
+  accelerator_arn = aws_globalaccelerator_accelerator.app.arn
   protocol        = "TCP"
 
   port_range {
@@ -121,15 +111,17 @@ resource "aws_globalaccelerator_listener" "https" {
   }
 }
 
-# Endpoint groups per region with traffic distribution
-resource "aws_globalaccelerator_endpoint_group" "us_east" {
-  listener_arn          = aws_globalaccelerator_listener.https.id
-  endpoint_group_region = "us-east-1"
-  traffic_dial_percentage = 33.33  # Equal distribution
+# Create one endpoint group per region and keep each region active
+resource "aws_globalaccelerator_endpoint_group" "region" {
+  for_each = local.regions
+
+  listener_arn            = aws_globalaccelerator_listener.https.arn
+  endpoint_group_region   = each.key
+  traffic_dial_percentage = 100
 
   endpoint_configuration {
-    endpoint_id = module.app_us_east.alb_arn
-    weight      = 100
+    endpoint_id                    = each.value.alb_arn
+    weight                         = 100
     client_ip_preservation_enabled = true
   }
 
@@ -140,26 +132,25 @@ resource "aws_globalaccelerator_endpoint_group" "us_east" {
 }
 ```
 
-## Step 4: Cache Invalidation Across Regions
+## Step 4: Cross-Region Read Replica Cache
 
 ```hcl
-# ElastiCache Global Datastore for cross-region cache
+# ElastiCache Global Datastore for cross-region read replicas
 resource "aws_elasticache_global_replication_group" "app" {
   global_replication_group_id_suffix = "app-cache"
   primary_replication_group_id       = aws_elasticache_replication_group.primary.id
-  num_node_groups                    = 1
 }
 
-# Each region adds itself to the global datastore
+# A secondary region joins the global datastore as a read-only replica
 resource "aws_elasticache_replication_group" "global_member_eu" {
   provider                    = aws.eu_west
   replication_group_id        = "app-cache-eu"
-  description                 = "EU member of global cache"
+  description                 = "EU secondary cache"
   global_replication_group_id = aws_elasticache_global_replication_group.app.global_replication_group_id
-  num_cache_clusters          = 2
+  num_cache_clusters          = 1
 }
 ```
 
 ## Summary
 
-Active-active deployments configured with OpenTofu route users to their nearest region using Route53 latency routing with health checks, providing automatic failover when a region fails. DynamoDB Global Tables replicate writes across all regions using last-writer-wins conflict resolution, enabling any region to accept writes. Global Accelerator provides two static anycast IPs for DNS simplicity and uses AWS's backbone network to route from the user's entry point to the closest healthy endpoint.
+Active-active deployments configured with OpenTofu route users to the region with the best latency using Route53 latency routing and ALB target health, providing automatic failover when a region fails. In the default multi-Region eventual consistency mode, DynamoDB Global Tables replicate writes across all regions using last-writer-wins conflict resolution, enabling any region to accept writes. Global Accelerator provides two static anycast IPs for DNS simplicity and uses AWS's backbone network to route from the user's entry point to an optimal healthy endpoint.
