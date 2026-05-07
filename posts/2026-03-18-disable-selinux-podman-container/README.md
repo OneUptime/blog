@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Linux, Security, SELinux, Troubleshooting
 
-Description: Learn how to disable SELinux enforcement for individual Podman containers when mandatory access control policies interfere with your workload.
+Description: Learn how to disable SELinux label separation for individual Podman containers when mandatory access control policies interfere with your workload.
 
 ---
 
-> Disabling SELinux for a container removes mandatory access control - use it as a diagnostic step, not a permanent solution.
+> Disabling SELinux label separation for a container removes label confinement - use it as a diagnostic step, not a permanent solution.
 
-SELinux enforces mandatory access control on Podman containers, restricting file access, network operations, and inter-process communication based on security labels. While this is excellent for production security, it can interfere with development workflows, legacy applications, or containers that need broad filesystem access. Podman lets you disable SELinux enforcement per container without affecting the rest of the system.
+SELinux enforces mandatory access control on Podman containers, restricting file access, network operations, and inter-process communication based on security labels. While this is excellent for production security, it can interfere with development workflows, legacy applications, or containers that need broad filesystem access. Podman lets you disable SELinux label separation per container without affecting the rest of the system.
 
 This guide shows how to disable SELinux for Podman containers and recommends safer alternatives.
 
@@ -36,11 +36,11 @@ sudo ausearch -m avc -ts recent 2>/dev/null | tail -10 || echo "No audit data av
 
 ## Disabling SELinux with --security-opt
 
-Use the `--security-opt label=disable` flag to turn off SELinux labeling for a specific container.
+Use the `--security-opt label=disable` flag to turn off SELinux label separation for a specific container.
 
 ```bash
 # Run a container with SELinux disabled
-# The container process will not have an SELinux label applied
+# The container process will not use Podman's usual container SELinux label
 podman run --rm \
   --security-opt label=disable \
   docker.io/library/fedora:latest \
@@ -154,7 +154,7 @@ echo "Compose file created at /tmp/no-selinux-compose.yml"
 
 ## Verifying SELinux Is Disabled for a Container
 
-Confirm that SELinux enforcement is not active for a specific container.
+Confirm that SELinux label separation is not active for a specific container.
 
 ```bash
 # Run a container with SELinux disabled
@@ -177,4 +177,4 @@ podman stop no-selinux && podman rm no-selinux
 
 ## Summary
 
-Disabling SELinux for a Podman container with `--security-opt label=disable` removes mandatory access control from that container. Use this primarily for debugging and development, not for production deployments. Before disabling SELinux, try the `:z` and `:Z` volume mount flags or configure custom labels. If you must disable it, combine the container with other security measures such as dropped capabilities and non-root users to maintain a reasonable security posture.
+Disabling SELinux label separation for a Podman container with `--security-opt label=disable` turns off label confinement for that container. Use this primarily for debugging and development, not for production deployments. Before disabling SELinux label separation, try the `:z` and `:Z` volume mount flags or configure custom labels. If you must disable it, combine the container with other security measures such as dropped capabilities and non-root users to maintain a reasonable security posture.
