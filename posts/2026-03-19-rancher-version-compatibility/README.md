@@ -26,7 +26,7 @@ A mismatch in any of these can cause upgrade failures or instability.
 
 The Rancher support matrix is the primary reference for version compatibility. It documents which versions of Kubernetes, operating systems, and container runtimes are supported for each Rancher release.
 
-Access the support matrix at the official Rancher documentation site. Look for the page titled "Support Matrix" under the version you plan to upgrade to.
+Access the support matrix from the official SUSE Rancher support matrix site for the Rancher version you plan to upgrade to.
 
 Key things to check:
 
@@ -41,13 +41,13 @@ Key things to check:
 Verify the Kubernetes version of your management cluster:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
-Or get the server version specifically:
+Or get the version information in structured form:
 
 ```bash
-kubectl get nodes -o wide
+kubectl version -o yaml
 ```
 
 Compare this version against the support matrix for your target Rancher version. If your Kubernetes version is too old or too new, you may need to upgrade or adjust your cluster before upgrading Rancher.
@@ -67,7 +67,7 @@ Verify that each downstream cluster's Kubernetes version falls within the suppor
 
 ## Step 4: Check cert-manager Compatibility
 
-Rancher depends on cert-manager for TLS certificate management. Check your current cert-manager version:
+If your Rancher installation uses Rancher-generated or Let's Encrypt certificates, cert-manager is part of the TLS setup. Check your current cert-manager version:
 
 ```bash
 kubectl get deployment cert-manager -n cert-manager -o jsonpath='{.spec.template.spec.containers[0].image}'
@@ -79,7 +79,7 @@ Or check via Helm:
 helm list -n cert-manager
 ```
 
-The Rancher release notes specify which cert-manager versions are supported. You may need to upgrade cert-manager before upgrading Rancher.
+The Rancher installation and upgrade documentation, along with the release notes for your target version, specify the supported cert-manager version or required upgrade path. You may need to upgrade cert-manager before upgrading Rancher.
 
 ## Step 5: Check Helm Version
 
@@ -89,7 +89,7 @@ Verify your Helm version:
 helm version --short
 ```
 
-Rancher requires Helm 3. If you are still on Helm 2, you must migrate to Helm 3 before proceeding.
+For Helm-based Rancher installs, the current installation and upgrade instructions assume Helm 3. Helm v2 was deprecated in the Rancher v2.7 line and removed in Rancher v2.9, so migrate to Helm 3 before proceeding.
 
 ## Step 6: Check Node Operating Systems
 
@@ -111,10 +111,10 @@ Cross-reference these against the support matrix. Pay attention to:
 
 ## Step 7: Check for Deprecated APIs
 
-Newer versions of Rancher may run on newer Kubernetes versions that have removed deprecated APIs. Check if your cluster uses deprecated APIs:
+Newer versions of Rancher may run on newer Kubernetes versions that have removed deprecated APIs. Check whether the API server has recorded requests to deprecated APIs:
 
 ```bash
-kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
+kubectl get --raw /metrics | grep '^apiserver_requested_deprecated_apis{'
 ```
 
 You can also use tools like `kubent` (Kube No Trouble) to scan for deprecated resources:
@@ -135,7 +135,7 @@ Check your current version:
 
 ```bash
 helm list -n cattle-system
-kubectl get settings server-version -o jsonpath='{.value}' -n cattle-system
+kubectl get settings.management.cattle.io server-version -o jsonpath='{.value}'
 ```
 
 ## Step 9: Check Ingress Controller Compatibility
@@ -168,7 +168,7 @@ Management Cluster:
   [ ] Kubernetes version: ___ (within supported range)
   [ ] OS version: ___ (supported)
   [ ] Container runtime: ___ (supported)
-  [ ] cert-manager version: ___ (compatible)
+  [ ] cert-manager version: ___ (compatible, if used)
 
 Downstream Clusters:
   [ ] Cluster 1: K8s ___ (compatible)
