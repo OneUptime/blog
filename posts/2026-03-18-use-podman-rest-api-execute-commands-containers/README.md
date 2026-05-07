@@ -18,10 +18,11 @@ The exec workflow in the Podman API involves two steps: first you create an exec
 
 ## Prerequisites
 
-Start the Podman API service:
+Start the Podman API service. For a rootless setup, use the default user socket path; if you are running rootful Podman, use `/run/podman/podman.sock` instead:
 
 ```bash
-podman system service --time=0 unix:///run/podman/podman.sock
+export SOCKET="${XDG_RUNTIME_DIR}/podman/podman.sock"
+podman system service --time=0 "unix://$SOCKET"
 ```
 
 Make sure you have a running container to test with:
@@ -44,12 +45,13 @@ This separation allows you to configure the execution environment before running
 Use the exec create endpoint to define the command and its options:
 
 ```bash
-curl -s --unix-socket /run/podman/podman.sock \
+curl -s --unix-socket "$SOCKET" \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "AttachStdout": true,
     "AttachStderr": true,
+    "Tty": true,
     "Cmd": ["ls", "-la", "/"]
   }' \
   "http://localhost/v4.0.0/libpod/containers/test-container/exec"
@@ -87,14 +89,14 @@ With the exec ID from the previous step, start the execution:
 ```bash
 EXEC_ID="a1b2c3d4e5f6"
 
-curl -s --unix-socket /run/podman/podman.sock \
+curl -s --unix-socket "$SOCKET" \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{"Detach": false}' \
   "http://localhost/v4.0.0/libpod/exec/$EXEC_ID/start"
 ```
 
-The response body contains the command output directly.
+Because this example creates the exec instance with `"Tty": true`, the response body can be printed directly. Without a TTY, Podman uses the same multiplexed stream format as the attach endpoint.
 
 ## Complete Example: Running a Command
 
@@ -103,7 +105,7 @@ Here is a complete script that creates and starts an exec instance:
 ```bash
 #!/bin/bash
 
-SOCKET="/run/podman/podman.sock"
+SOCKET="${XDG_RUNTIME_DIR}/podman/podman.sock"
 API="http://localhost/v4.0.0/libpod"
 CONTAINER="test-container"
 
@@ -115,6 +117,7 @@ EXEC_RESPONSE=$(curl -s --unix-socket "$SOCKET" \
   -d '{
     "AttachStdout": true,
     "AttachStderr": true,
+    "Tty": true,
     "Cmd": ["cat", "/etc/os-release"]
   }' \
   "$API/containers/$CONTAINER/exec")
@@ -145,7 +148,7 @@ echo "--- End Output ---"
 You can pass environment variables to the exec command:
 
 ```bash
-curl -s --unix-socket /run/podman/podman.sock \
+curl -s --unix-socket "$SOCKET" \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{
@@ -162,7 +165,7 @@ curl -s --unix-socket /run/podman/podman.sock \
 To execute a command as a specific user inside the container:
 
 ```bash
-curl -s --unix-socket /run/podman/podman.sock \
+curl -s --unix-socket "$SOCKET" \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{
@@ -179,7 +182,7 @@ curl -s --unix-socket /run/podman/podman.sock \
 You can specify the working directory for the command:
 
 ```bash
-curl -s --unix-socket /run/podman/podman.sock \
+curl -s --unix-socket "$SOCKET" \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{
@@ -196,8 +199,8 @@ curl -s --unix-socket /run/podman/podman.sock \
 After starting an exec instance, you can inspect its status:
 
 ```bash
-curl -s --unix-socket /run/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/exec/$EXEC_ID/inspect" | jq .
+curl -s --unix-socket "$SOCKET" \
+  "http://localhost/v4.0.0/libpod/exec/$EXEC_ID/json" | jq .
 ```
 
 The response includes the exit code, which tells you whether the command succeeded:
@@ -218,7 +221,7 @@ For long-running commands, you can run them in detached mode:
 
 ```bash
 # Create exec instance
-EXEC_ID=$(curl -s --unix-socket /run/podman/podman.sock \
+EXEC_ID=$(curl -s --unix-socket "$SOCKET" \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{
@@ -229,15 +232,15 @@ EXEC_ID=$(curl -s --unix-socket /run/podman/podman.sock \
   "http://localhost/v4.0.0/libpod/containers/test-container/exec" | jq -r '.Id')
 
 # Start in detached mode
-curl -s --unix-socket /run/podman/podman.sock \
+curl -s --unix-socket "$SOCKET" \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{"Detach": true}' \
   "http://localhost/v4.0.0/libpod/exec/$EXEC_ID/start"
 
 # Check status later
-curl -s --unix-socket /run/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/exec/$EXEC_ID/inspect" | jq '{running: .Running, exit_code: .ExitCode}'
+curl -s --unix-socket "$SOCKET" \
+  "http://localhost/v4.0.0/libpod/exec/$EXEC_ID/json" | jq '{running: .Running, exit_code: .ExitCode}'
 ```
 
 ## Building a Remote Command Runner
@@ -247,7 +250,7 @@ Here is a more complete script that wraps the exec workflow into a reusable func
 ```bash
 #!/bin/bash
 
-SOCKET="/run/podman/podman.sock"
+SOCKET="${XDG_RUNTIME_DIR}/podman/podman.sock"
 API="http://localhost/v4.0.0/libpod"
 
 exec_in_container() {
@@ -263,6 +266,7 @@ exec_in_container() {
     -d "{
       \"AttachStdout\": true,
       \"AttachStderr\": true,
+      \"Tty\": true,
       \"Cmd\": $cmd_json
     }" \
     "$API/containers/$container/exec" | jq -r '.Id')
@@ -283,7 +287,7 @@ exec_in_container() {
   # Get exit code
   local exit_code
   exit_code=$(curl -s --unix-socket "$SOCKET" \
-    "$API/exec/$exec_id/inspect" | jq '.ExitCode')
+    "$API/exec/$exec_id/json" | jq '.ExitCode')
 
   echo "$output"
   return "$exit_code"
@@ -299,15 +303,16 @@ exec_in_container "test-container" "df" "-h"
 
 echo ""
 echo "=== Process List ==="
-exec_in_container "test-container" "ps" "aux"
+exec_in_container "test-container" "ps"
 ```
 
 ## Error Handling
 
 Handle common errors gracefully:
 
-- **404**: Container not found. Verify the container name or ID.
-- **409**: Container is not running. You can only exec into running containers.
+- **404**: Container or exec session not found, depending on the endpoint.
+- **409** when creating an exec instance: The container is paused.
+- **409** when starting an exec instance: The container is not running.
 - **500**: Internal error. Check the Podman service logs.
 
 ```bash
@@ -315,12 +320,12 @@ HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --unix-socket "$SOCKET" \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{"AttachStdout": true, "Cmd": ["ls"]}' \
-  "$API/containers/my-container/exec")
+  "http://localhost/v4.0.0/libpod/containers/my-container/exec")
 
 case $HTTP_CODE in
   201) echo "Exec instance created successfully" ;;
   404) echo "Container not found" ;;
-  409) echo "Container is not running" ;;
+  409) echo "Container is paused" ;;
   500) echo "Internal server error" ;;
   *)   echo "Unexpected status: $HTTP_CODE" ;;
 esac
