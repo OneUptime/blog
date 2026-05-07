@@ -8,7 +8,7 @@ Description: Learn how to identify, diagnose, and fix circular dependencies in O
 
 ## Introduction
 
-A circular dependency occurs when Resource A depends on Resource B, and Resource B depends on Resource A. OpenTofu cannot determine which to create first and will error with "Cycle detected." Understanding how to restructure configurations to eliminate cycles is a practical skill for infrastructure engineers.
+A circular dependency occurs when Resource A depends on Resource B, and Resource B depends on Resource A. OpenTofu cannot determine a valid dependency order and will fail with a cycle error. Understanding how to restructure configurations to eliminate cycles is a practical skill for infrastructure engineers.
 
 ## How Circular Dependencies Occur
 
@@ -48,20 +48,15 @@ resource "aws_security_group" "load_balancer" {
 # OpenTofu will show the cycle when you run plan
 tofu plan
 
-# Error output:
-# Error: Cycle detected
-#
-# module.root:
-#   aws_security_group.app
-#   aws_security_group.load_balancer
+# Error output will include an "Error: Cycle" line
 
-# Also use the graph command to visualize
-tofu graph | grep -A5 -B5 "security_group"
+# If GraphViz is installed, render the graph and highlight cyclic edges
+tofu graph -draw-cycles | dot -Tsvg > graph.svg
 ```
 
 ## Fix: Use Separate Security Group Rules
 
-Break the cycle by separating security group creation from rule attachment.
+Break the cycle by separating security group creation from rule attachment using dedicated rule resources.
 
 ```hcl
 # Create security groups without inline rules
@@ -78,22 +73,20 @@ resource "aws_security_group" "load_balancer" {
 }
 
 # Add rules separately - no cycle because both SGs exist first
-resource "aws_security_group_rule" "app_from_lb" {
-  type                     = "ingress"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.app.id
-  source_security_group_id = aws_security_group.load_balancer.id
+resource "aws_vpc_security_group_ingress_rule" "app_from_lb" {
+  security_group_id            = aws_security_group.app.id
+  referenced_security_group_id = aws_security_group.load_balancer.id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
 }
 
-resource "aws_security_group_rule" "lb_to_app" {
-  type                     = "egress"
-  from_port                = 8080
-  to_port                  = 8080
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.load_balancer.id
-  source_security_group_id = aws_security_group.app.id
+resource "aws_vpc_security_group_egress_rule" "lb_to_app" {
+  security_group_id            = aws_security_group.load_balancer.id
+  referenced_security_group_id = aws_security_group.app.id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
 }
 ```
 
@@ -132,25 +125,27 @@ Explicit `depends_on` can also create cycles.
 
 ```hcl
 # BAD: Explicit cycle via depends_on
-resource "aws_iam_role" "lambda" {
-  name       = "lambda-role"
-  depends_on = [aws_lambda_function.processor]  # depends on lambda
+resource "terraform_data" "a" {
+  input      = "a"
+  depends_on = [terraform_data.b]
 }
 
-resource "aws_lambda_function" "processor" {
-  role       = aws_iam_role.lambda.arn
-  depends_on = [aws_iam_role.lambda]  # depends on role (already implicit)
+resource "terraform_data" "b" {
+  input      = "b"
+  depends_on = [terraform_data.a]  # CYCLE
 }
 
-# FIX: Remove the unnecessary depends_on from the role
-# The implicit dependency through aws_lambda_function.processor.role = aws_iam_role.lambda.arn
-# is sufficient and correct
-resource "aws_iam_role" "lambda" {
-  name = "lambda-role"
-  # No depends_on needed here
+# FIX: Remove the unnecessary depends_on and use an expression reference
+# when one resource actually needs another resource's value
+resource "terraform_data" "a" {
+  input = "a"
+}
+
+resource "terraform_data" "b" {
+  input = terraform_data.a.output  # implicit dependency
 }
 ```
 
 ## Summary
 
-Circular dependencies in OpenTofu are resolved by restructuring how resources reference each other. The most common fix is separating resource creation from relationship configuration - create security groups first, then add rules separately. For module cycles, ensure data flows in one direction (network module → app module, never the reverse). Use `tofu graph` to visualize dependencies when diagnosing complex cycles. Avoid adding `depends_on` to resources that already have implicit dependencies through attribute references.
+Circular dependencies in OpenTofu are resolved by restructuring how resources reference each other. The most common fix is separating resource creation from relationship configuration - create security groups first, then add rules separately with dedicated rule resources. For module cycles, ensure data flows in one direction (network module → app module, never the reverse). Use `tofu graph` to visualize dependencies when diagnosing complex cycles. Avoid adding `depends_on` to resources that already have implicit dependencies through attribute references.
