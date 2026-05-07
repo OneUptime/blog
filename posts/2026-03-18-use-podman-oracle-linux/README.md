@@ -21,14 +21,13 @@ This guide covers installing Podman, configuring it for Oracle environments, and
 On Oracle Linux 9, Podman is available in the default repositories:
 
 ```bash
-sudo dnf install -y podman podman-compose buildah skopeo
+sudo dnf install -y container-tools
 ```
 
 On Oracle Linux 8, enable the container-tools module:
 
 ```bash
-sudo dnf module enable -y container-tools:ol8
-sudo dnf install -y podman buildah skopeo
+sudo dnf module install -y container-tools:ol8
 ```
 
 Verify the installation:
@@ -38,7 +37,7 @@ podman --version
 podman info
 ```
 
-Check that the Oracle Linux specific kernel features are available:
+Check the running kernel reported by the host and Podman:
 
 ```bash
 uname -r
@@ -47,15 +46,15 @@ podman info --format '{{.Host.Kernel}}'
 
 ## Configuring the Oracle Container Registry
 
-Oracle provides its own container registry with pre-built images for Oracle software. Configure Podman to access it:
+Oracle Linux already configures Podman to search Oracle Container Registry and Docker Hub by default. Verify the current setting:
 
 ```bash
-sudo tee /etc/containers/registries.conf.d/oracle.conf << 'EOF'
-unqualified-search-registries = ["container-registry.oracle.com", "docker.io"]
-EOF
+grep '^unqualified-search-registries' /etc/containers/registries.conf
 ```
 
 Log in to the Oracle Container Registry:
+
+For licensed images, use your Oracle account username and an Oracle Container Registry authentication token as the password, and accept the repository terms in the web UI first if required.
 
 ```bash
 podman login container-registry.oracle.com
@@ -139,7 +138,7 @@ Create a Containerfile using Oracle Linux as the base:
 ```dockerfile
 FROM container-registry.oracle.com/os/oraclelinux:9-slim
 
-RUN microdnf install -y python3 python3-pip && \
+RUN microdnf install -y python3 python3-pip curl && \
     microdnf clean all
 
 WORKDIR /app
@@ -184,11 +183,13 @@ podman login <region-key>.ocir.io
 podman pull <region-key>.ocir.io/<tenancy-namespace>/myapp:latest
 ```
 
+When prompted, use `<tenancy-namespace>/<username>` and an OCI auth token. For federated users, use `<tenancy-namespace>/<domain-name>/<username>`.
+
 Push images to OCIR:
 
 ```bash
-podman tag myapp:latest iad.ocir.io/my-tenancy/myapp:latest
-podman push iad.ocir.io/my-tenancy/myapp:latest
+podman tag myapp:latest <region-key>.ocir.io/<tenancy-namespace>/myapp:latest
+podman push <region-key>.ocir.io/<tenancy-namespace>/myapp:latest
 ```
 
 ## SELinux Integration
@@ -244,7 +245,7 @@ Create production services:
 # /etc/containers/systemd/oracle-app.container
 [Container]
 ContainerName=oracle-app
-Image=iad.ocir.io/my-tenancy/myapp:latest
+Image=<region-key>.ocir.io/<tenancy-namespace>/myapp:latest
 PublishPort=8080:8000
 Volume=app-data:/app/data:Z
 Environment=ENV=production
@@ -344,12 +345,12 @@ Run applications that need Oracle database connectivity:
 ```dockerfile
 FROM container-registry.oracle.com/os/oraclelinux:9-slim
 
-RUN microdnf install -y oracle-instantclient-release-el9 && \
-    microdnf install -y oracle-instantclient-basic oracle-instantclient-sqlplus && \
+RUN microdnf install -y oracle-release-el9 python3 && \
+    microdnf install -y oracle-instantclient19.27-basic oracle-instantclient19.27-sqlplus && \
     microdnf clean all
 
-ENV LD_LIBRARY_PATH=/usr/lib/oracle/21/client64/lib
-ENV PATH=$PATH:/usr/lib/oracle/21/client64/bin
+ENV LD_LIBRARY_PATH=/usr/lib/oracle/19.27/client64/lib
+ENV PATH=$PATH:/usr/lib/oracle/19.27/client64/bin
 
 WORKDIR /app
 COPY . .
@@ -370,4 +371,4 @@ podman image prune -a
 
 ## Conclusion
 
-Podman on Oracle Linux provides a fully supported container runtime optimized for Oracle workloads and Oracle Cloud Infrastructure. With access to the Oracle Container Registry, SUSE BCI equivalents in Oracle Linux base images, and native OCI integration, you can build and deploy enterprise containers that take full advantage of the Oracle ecosystem. The combination of SELinux security, systemd integration through Quadlet, and rootless container support makes Podman on Oracle Linux a robust platform for both development and production deployments.
+Podman on Oracle Linux provides a fully supported container runtime optimized for Oracle workloads and Oracle Cloud Infrastructure. With access to the Oracle Container Registry, Oracle Linux base images, and native OCI integration, you can build and deploy enterprise containers that take full advantage of the Oracle ecosystem. The combination of SELinux security, systemd integration through Quadlet, and rootless container support makes Podman on Oracle Linux a robust platform for both development and production deployments.
