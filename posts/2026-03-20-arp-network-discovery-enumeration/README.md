@@ -11,7 +11,7 @@ Description: Learn how to use ARP scanning and monitoring techniques to discover
 ARP-based host discovery is faster and more reliable than ICMP ping for local subnet scanning because:
 
 - ARP operates at Layer 2 (MAC level) - cannot be blocked by IP firewalls
-- All hosts must respond to ARP requests on their subnet
+- All active IPv4 hosts on the local subnet should respond to ARP requests for their own addresses
 - Works even when hosts block ICMP
 - Reveals both IP and MAC addresses simultaneously
 
@@ -21,7 +21,7 @@ ARP-based host discovery is faster and more reliable than ICMP ping for local su
 # Install
 
 sudo apt install arp-scan          # Ubuntu/Debian
-sudo yum install arp-scan          # RHEL/CentOS
+sudo dnf install arp-scan          # Fedora / RHEL family (often via EPEL on RHEL)
 brew install arp-scan              # macOS
 
 # Scan local network
@@ -30,7 +30,7 @@ sudo arp-scan --localnet
 # Scan a specific subnet
 sudo arp-scan 192.168.1.0/24 --interface eth0
 
-# Show duplicate replies (useful for detecting duplicate IPs)
+# Retry each target up to three times if you suspect packet loss
 sudo arp-scan --localnet --retry=3
 ```
 
@@ -46,11 +46,11 @@ Sample output:
 ## Method 2: nmap ARP Scan
 
 ```bash
-# ARP scan (requires root for raw packet access)
+# ARP-based host discovery (requires privileges for raw packet access)
 sudo nmap -sn -PR 192.168.1.0/24
 
-# Show MAC addresses too
-sudo nmap -sn -PR --send-eth 192.168.1.0/24
+# On a local Ethernet network, ARP is already the default
+sudo nmap -sn 192.168.1.0/24
 ```
 
 ## Method 3: Python Scapy ARP Sweep
@@ -60,7 +60,7 @@ from scapy.all import ARP, Ether, srp
 import ipaddress
 
 def arp_scan(subnet, iface='eth0'):
-    """Scan subnet and return list of (ip, mac) for active hosts."""
+    """Scan subnet and return IP/MAC mappings for active hosts."""
     pkt = Ether(dst='ff:ff:ff:ff:ff:ff') / ARP(pdst=subnet)
     results, _ = srp(pkt, timeout=3, iface=iface, verbose=False)
     
@@ -90,7 +90,7 @@ from datetime import datetime
 seen_hosts = defaultdict(set)
 
 def process_arp(pkt):
-    if ARP in pkt and pkt[ARP].op == 2:  # ARP Reply
+    if ARP in pkt and pkt[ARP].op in (1, 2):  # ARP Request or Reply
         ip = pkt[ARP].psrc
         mac = pkt[ARP].hwsrc
         if mac not in seen_hosts[ip]:
