@@ -8,7 +8,7 @@ Description: A guide to accessing and using output values from child modules in 
 
 ## Introduction
 
-When using modules in OpenTofu, child modules expose their outputs which can then be used by the parent module or other sibling modules. Accessing module outputs correctly is fundamental to composing complex infrastructure from smaller, reusable components.
+When using modules in OpenTofu, child modules expose their outputs which can then be used by the parent module and passed to other child modules. Accessing module outputs correctly is fundamental to composing complex infrastructure from smaller, reusable components.
 
 ## Module Output Syntax
 
@@ -150,7 +150,7 @@ output "kubeconfig_command" {
 ```hcl
 # If module output is a list:
 output "public_subnet_ids" {
-  value = [aws_subnet.public[*].id]
+  value = aws_subnet.public[*].id
   # Returns: ["subnet-123", "subnet-456"]
 }
 
@@ -175,13 +175,13 @@ locals {
 ## Debugging Module Outputs
 
 ```bash
-# View all outputs including from modules
+# View all root outputs, including child outputs re-exposed by the root module
 tofu output
 
-# Check what a module exposes (outputs are shown in plan)
+# Review how module outputs affect planned resources
 tofu plan
 
-# View specific module output (after apply)
+# View a specific root output (after apply)
 tofu output vpc_id
 
 # Check state for module resources
