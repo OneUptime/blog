@@ -18,7 +18,7 @@ ARP monitoring sends ARP requests to specific targets to detect link failures. U
 | Detects switch port down | Yes | Yes |
 | Detects upstream failure | No | Yes |
 | Requires target IP | No | Yes |
-| Works with all modes | Yes | Most |
+| Works with all modes | Yes | No |
 
 ## Configuring ARP Monitoring
 
@@ -32,8 +32,10 @@ iface bond0 inet static
   gateway 10.0.0.1
   bond-slaves eth0 eth1
   bond-mode active-backup
-  bond-arp-interval 1000         # ARP probe every 1000ms
-  bond-arp-ip-target 10.0.0.1   # Target to ARP probe (usually gateway)
+  # ARP probe every 1000ms
+  bond-arp-interval 1000
+  # Target to ARP probe (usually gateway)
+  bond-arp-ip-target 10.0.0.1
   # Multiple targets for redundancy:
   # bond-arp-ip-target 10.0.0.1 10.0.0.2
 ```
@@ -49,9 +51,11 @@ Kind=bond
 [Bond]
 Mode=active-backup
 ARPIntervalSec=1000ms
-ARPIPTargets=10.0.0.1 10.0.0.2   # Space-separated list
-ARPValidate=active                 # Validate only active slave
-ARPAllSlavesActive=false
+# Space-separated list
+ARPIPTargets=10.0.0.1 10.0.0.2
+# Validate only active slave
+ARPValidate=active
+AllSlavesActive=false
 ```
 
 ## nmcli Configuration
@@ -65,12 +69,14 @@ nmcli connection up bond0
 ## ARP Validate Modes
 
 ```bash
-# arp_validate controls which slaves are validated:
-# none    - no validation (default)
-# active  - validate only active slave
-# backup  - validate only backup slaves
-# all     - validate all slaves
-# filter  - validate but don't count failures for link-down decision
+# arp_validate controls validation/filtering behavior:
+# none          - no validation or filtering (default)
+# active        - validate only the active slave
+# backup        - validate only backup slaves
+# all           - validate all slaves
+# filter        - use only ARP traffic for link monitoring; no validation
+# filter_active - filter on all slaves, validate only the active slave
+# filter_backup - filter on all slaves, validate only backup slaves
 
 # /etc/network/interfaces
 bond-arp-validate all
@@ -96,7 +102,7 @@ watch -n 1 "cat /proc/net/bonding/bond0 | grep -E 'Active|MII|ARP'"
 # Disable eth0 (primary slave)
 ip link set eth0 down
 
-# Within arp_interval time, eth1 should become active
+# After a few missed ARP polls (default arp_missed_max=2), eth1 should become active
 watch -n 0.5 "cat /proc/net/bonding/bond0 | grep 'Active Slave'"
 
 # Re-enable
@@ -107,5 +113,5 @@ ip link set eth0 up
 
 - ARP monitoring detects network-level failures (lost gateway connectivity) that MII monitoring misses.
 - Set `arp_ip_target` to the gateway IP; if the gateway is unreachable, the slave is considered failed.
-- Use multiple ARP targets (`arp_ip_target=10.0.0.1 10.0.0.2`) for redundancy - the slave is failed only if all targets are unreachable.
-- ARP interval of 1000ms (1 second) provides fast detection; set `arp_validate=all` for active/backup validation.
+- Use multiple ARP targets (`arp_ip_target=10.0.0.1,10.0.0.2`) for redundancy; in active-backup mode with ARP validation enabled, the default is to keep a slave up as long as any target responds.
+- ARP interval of 1000ms (1 second) provides fast detection, but actual failover timing also depends on `arp_missed_max`; set `arp_validate=all` for active/backup validation.
