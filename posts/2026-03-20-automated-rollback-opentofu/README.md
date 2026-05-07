@@ -17,7 +17,7 @@ The simplest rollback strategy uses version-controlled infrastructure configurat
 ```bash
 # Rollback by reverting the Git commit and re-applying
 
-git revert HEAD
+git revert --no-edit HEAD
 git push origin main
 # CI/CD pipeline runs tofu apply on the reverted config automatically
 ```
@@ -89,7 +89,7 @@ resource "aws_ecs_service" "app" {
     type = "ECS"
   }
 
-  # Define successful deployment criteria
+  # Rolling update capacity settings during deployment
   deployment_maximum_percent         = 200
   deployment_minimum_healthy_percent = 100
 }
@@ -110,7 +110,7 @@ resource "aws_lambda_function" "rollback_handler" {
 
   environment {
     variables = {
-      # The GitHub repo and workflow to trigger for rollback
+      # The GitHub repo and workflow file to dispatch for rollback
       GITHUB_OWNER      = var.github_org
       GITHUB_REPO       = var.github_repo
       GITHUB_TOKEN      = var.github_token
@@ -139,16 +139,16 @@ resource "aws_lambda_permission" "sns_rollback" {
   source_arn    = aws_sns_topic.deployment_failures.arn
 }
 
-# Alarm that triggers rollback on high error rate
+# Alarm that triggers rollback on high target 5xx count
 resource "aws_cloudwatch_metric_alarm" "high_error_rate" {
   alarm_name          = "${var.service_name}-high-error-rate"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "5XXError"
+  metric_name         = "HTTPCode_Target_5XX_Count"
   namespace           = "AWS/ApplicationELB"
   period              = 60
   statistic           = "Sum"
-  threshold           = 50  # More than 50 5xx errors per minute
+  threshold           = 50  # More than 50 target 5xx responses per minute
 
   alarm_actions = [aws_sns_topic.deployment_failures.arn]
 
@@ -164,30 +164,29 @@ resource "aws_cloudwatch_metric_alarm" "high_error_rate" {
 # .github/workflows/rollback.yml
 name: Emergency Rollback
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Triggered by the rollback Lambda via the GitHub REST API
     inputs:
       target_commit:
         description: 'Git commit SHA to roll back to'
         required: true
-  workflow_call:  # Called by rollback Lambda
 
 jobs:
   rollback:
     environment: production
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.target_commit }}
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_APPLY_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
+        uses: opentofu/setup-opentofu@v2
 
       - name: Rollback to previous state
         run: |
