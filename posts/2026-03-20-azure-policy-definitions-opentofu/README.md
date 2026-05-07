@@ -13,12 +13,12 @@ Azure Policy lets you enforce organizational standards and assess compliance acr
 ## Step 1: Create a Custom Policy Definition
 
 ```hcl
-# main.tf - Policy to require tags on all resources
+# main.tf - Policy to require tags on resources that support tags
 
 resource "azurerm_policy_definition" "require_tags" {
   name         = "require-required-tags"
   policy_type  = "Custom"
-  mode         = "All"  # Apply to all resource types
+  mode         = "Indexed"  # Evaluate resources that support tags and location
   display_name = "Require mandatory resource tags"
   description  = "Enforces that resources have required tags: Environment and CostCenter"
 
@@ -32,7 +32,7 @@ resource "azurerm_policy_definition" "require_tags" {
   parameters = jsonencode({
     requiredTags = {
       type = "Array"
-      defaultValue = ["Environment", "CostCenter", "Owner"]
+      defaultValue = ["Environment", "CostCenter"]
       metadata = {
         displayName = "Required Tags"
         description = "List of required tag names"
@@ -40,19 +40,18 @@ resource "azurerm_policy_definition" "require_tags" {
     }
   })
 
-  # Policy rule - deny resources without the required tags
+  # Policy rule - deny resources missing any required tag
   policy_rule = jsonencode({
     if = {
-      allOf = [
-        {
-          field  = "tags['Environment']"
-          exists = "false"
-        },
-        {
-          field  = "tags['CostCenter']"
+      count = {
+        value = "[parameters('requiredTags')]"
+        name  = "requiredTag"
+        where = {
+          field  = "[concat('tags[', current('requiredTag'), ']')]"
           exists = "false"
         }
-      ]
+      }
+      greater = 0
     }
     then = {
       effect = "deny"
@@ -85,7 +84,7 @@ resource "azurerm_policy_definition" "audit_storage_https" {
         },
         {
           field  = "Microsoft.Storage/storageAccounts/supportsHttpsTrafficOnly"
-          equals = "false"
+          notEquals = "true"
         }
       ]
     }
@@ -96,10 +95,10 @@ resource "azurerm_policy_definition" "audit_storage_https" {
 }
 ```
 
-## Step 3: Modify Effect Policy (Auto-Remediation)
+## Step 3: Modify Effect Policy
 
 ```hcl
-# Policy that automatically adds a tag if missing
+# Policy that adds a tag if missing during create or update
 resource "azurerm_policy_definition" "auto_tag_environment" {
   name         = "add-default-environment-tag"
   policy_type  = "Custom"
@@ -150,4 +149,4 @@ resource "azurerm_resource_group_policy_assignment" "require_tags_assignment" {
 
 ## Summary
 
-Azure Policy definitions managed with OpenTofu provide governance-as-code for your Azure environment. Custom policies let you enforce organizational standards beyond the built-in policies, with effects ranging from `deny` (blocking) to `audit` (reporting) to `modify` (auto-remediation).
+Azure Policy definitions managed with OpenTofu provide governance-as-code for your Azure environment. Custom policies let you enforce organizational standards beyond the built-in policies, with effects ranging from `deny` (blocking) to `audit` (reporting) to `modify` (updating matching resources during create or update, with remediation tasks available for existing resources).
