@@ -14,6 +14,8 @@ When you need to interact with the Podman API from shell scripts, CI/CD pipeline
 
 This guide provides a complete reference for using curl with the Podman REST API, covering all major operations from container management to image handling.
 
+Before running the examples, make sure the Podman API service is available. For a rootless service, start `podman.socket` with `systemctl --user start podman.socket`; for a rootful service, use `sudo systemctl start podman.socket`.
+
 ---
 
 ## Basic curl Syntax for Podman
@@ -23,6 +25,8 @@ All Podman API requests through a Unix socket follow this pattern:
 ```bash
 curl --unix-socket /run/podman/podman.sock http://localhost/v4.0.0/libpod/{endpoint}
 ```
+
+These examples use the default rootful socket path. For rootless Podman, replace `/run/podman/podman.sock` with `$XDG_RUNTIME_DIR/podman/podman.sock`.
 
 Key curl flags you will use frequently:
 
@@ -65,6 +69,8 @@ curl -s --unix-socket /run/podman/podman.sock \
 ```
 
 ### Create a Container
+
+Pull the image first if it is not already present locally.
 
 ```bash
 curl -s --unix-socket /run/podman/podman.sock \
@@ -252,7 +258,8 @@ Here is a script that demonstrates the complete container lifecycle using curl:
 ```bash
 #!/bin/bash
 
-SOCKET="/run/podman/podman.sock"
+SOCKET="${XDG_RUNTIME_DIR}/podman/podman.sock"
+[ -S "$SOCKET" ] || SOCKET="/run/podman/podman.sock"
 API="http://localhost/v4.0.0/libpod"
 CONTAINER_NAME="curl-demo"
 IMAGE="docker.io/library/nginx:alpine"
@@ -290,7 +297,7 @@ echo "5. Fetching logs..."
 api_call GET "/containers/$CONTAINER_NAME/logs?stdout=true&tail=5"
 
 echo "6. Getting stats..."
-api_call GET "/containers/$CONTAINER_NAME/stats?stream=false" | jq '{cpu: .CPU, mem_mb: (.MemUsage / 1048576)}'
+api_call GET "/containers/stats?containers=$CONTAINER_NAME&stream=false" | jq '{cpu: .CPU, mem_mb: (.MemUsage / 1048576)}'
 
 echo "7. Stopping container..."
 api_call POST "/containers/$CONTAINER_NAME/stop?timeout=5"
@@ -313,4 +320,4 @@ echo "Done."
 
 ## Conclusion
 
-curl provides a direct, dependency-free way to interact with the Podman REST API. Every container management operation available through the Podman CLI can be performed through curl and the API, making it ideal for automation scripts, CI/CD pipelines, and environments where installing the full Podman toolchain is not practical. The examples in this guide cover the most common operations, and you can explore the full API specification for additional endpoints and parameters.
+curl provides a direct, dependency-free way to interact with the Podman REST API. Many container management operations available through Podman can be performed through curl and the API, making it ideal for automation scripts, CI/CD pipelines, and environments where installing the full Podman toolchain is not practical. The examples in this guide cover the most common operations, and you can explore the full API specification for additional endpoints and parameters.
