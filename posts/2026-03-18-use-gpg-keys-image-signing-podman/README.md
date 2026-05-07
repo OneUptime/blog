@@ -8,9 +8,9 @@ Description: Learn how to generate, manage, and use GPG keys specifically for si
 
 ---
 
-> GPG keys are the foundation of Podman's native image signing. Proper key management is what separates a secure signing workflow from security theater.
+> GPG keys are the foundation of Podman's native simple-signing workflow. Proper key management is what separates a secure signing workflow from security theater.
 
-Podman's built-in image signing relies on GPG (GNU Privacy Guard) keys. This guide covers the complete lifecycle of GPG keys for container image signing, from generation to distribution, rotation, and revocation. Proper key management ensures that your signed images remain trustworthy over time.
+Podman's built-in simple-signing support relies on GPG (GNU Privacy Guard) keys. For verification across hosts, Podman also needs a `registries.d` configuration that tells it where to read and write signatures. This guide covers the complete lifecycle of GPG keys for container image signing, from generation to distribution, rotation, and revocation. Proper key management ensures that your signed images remain trustworthy over time.
 
 ---
 
@@ -19,19 +19,10 @@ Podman's built-in image signing relies on GPG (GNU Privacy Guard) keys. This gui
 Always create a separate GPG key specifically for container image signing. Do not reuse personal email keys.
 
 ```bash
-# Generate a signing key with specific parameters
-
-gpg --batch --gen-key << 'EOF'
-%no-protection
-Key-Type: RSA
-Key-Length: 4096
-Key-Usage: sign
-Name-Real: Container Signing Key
-Name-Comment: Production Image Signing
-Name-Email: container-signing@example.com
-Expire-Date: 1y
-%commit
-EOF
+# Generate a signing key with a 1-year expiration
+gpg --yes --quick-generate-key \
+  "Container Signing Key (Production Image Signing) <container-signing@example.com>" \
+  rsa4096 sign 1y
 ```
 
 ```bash
@@ -40,7 +31,7 @@ gpg --list-keys --keyid-format long container-signing@example.com
 ```
 
 ```bash
-# View the key fingerprint (needed for verification)
+# View the key fingerprint (useful for key verification and auditing)
 gpg --fingerprint container-signing@example.com
 ```
 
@@ -83,7 +74,7 @@ echo "Private key backup size: $(wc -c < container-signing-private.asc) bytes"
 
 ## Importing Keys on Verification Hosts
 
-On systems that need to verify signed images, import the public key.
+If you also want to inspect the key with GPG on a verification host, import the public key locally.
 
 ```bash
 # Import the public key into the GPG keyring
@@ -96,6 +87,16 @@ gpg --list-keys container-signing@example.com
 ```bash
 # Install the key for Podman's policy system
 sudo cp container-signing-pub.gpg /etc/pki/containers/container-signing.gpg
+
+# Configure a shared lookaside store for simple-signing signatures.
+# Install the same registries.d entry on the signing host and every verification host.
+sudo mkdir -p /etc/containers/registries.d
+sudo tee /etc/containers/registries.d/registry.example.com.yaml > /dev/null << 'EOF'
+docker:
+  registry.example.com:
+    lookaside: file:///mnt/shared-signatures
+    lookaside-staging: file:///mnt/shared-signatures
+EOF
 
 # Configure the trust policy to use this key
 sudo tee /etc/containers/policy.json > /dev/null << 'EOF'
@@ -117,6 +118,8 @@ EOF
 ```
 
 ## Signing Images with Your GPG Key
+
+On Linux and WSL2, you can add a simple-signing signature during `podman push` with `--sign-by`.
 
 ```bash
 # Build an image
@@ -144,16 +147,9 @@ Organizations often need different keys for different environments.
 ```bash
 # Generate keys for different environments
 for env in dev staging production; do
-  gpg --batch --gen-key << EOF
-%no-protection
-Key-Type: RSA
-Key-Length: 4096
-Key-Usage: sign
-Name-Real: Container Signing Key (${env})
-Name-Email: container-${env}@example.com
-Expire-Date: 1y
-%commit
-EOF
+  gpg --yes --quick-generate-key \
+    "Container Signing Key (${env}) <container-${env}@example.com>" \
+    rsa4096 sign 1y
 done
 
 # List all signing keys
@@ -161,14 +157,16 @@ gpg --list-keys --keyid-format short | grep -A1 "Container Signing"
 ```
 
 ```bash
-# Export all environment-specific public keys
+# Export and install all environment-specific public keys
+sudo mkdir -p /etc/pki/containers
 for env in dev staging production; do
   gpg --export "container-${env}@example.com" > "/tmp/container-${env}.gpg"
+  sudo cp "/tmp/container-${env}.gpg" "/etc/pki/containers/container-${env}.gpg"
 done
 ```
 
 ```bash
-# Configure policy to accept images signed by any of these keys
+# Configure policy to require the matching key for each registry
 sudo tee /etc/containers/policy.json > /dev/null << 'EOF'
 {
   "default": [{"type": "reject"}],
@@ -179,6 +177,13 @@ sudo tee /etc/containers/policy.json > /dev/null << 'EOF'
           "type": "signedBy",
           "keyType": "GPGKeys",
           "keyPath": "/etc/pki/containers/container-dev.gpg"
+        }
+      ],
+      "staging-registry.example.com": [
+        {
+          "type": "signedBy",
+          "keyType": "GPGKeys",
+          "keyPath": "/etc/pki/containers/container-staging.gpg"
         }
       ],
       "prod-registry.example.com": [
@@ -203,16 +208,9 @@ Rotate keys before they expire to maintain continuity.
 gpg --list-keys --with-colons container-signing@example.com | grep "^pub" | cut -d: -f7
 
 # Generate a new key before the old one expires
-gpg --batch --gen-key << 'EOF'
-%no-protection
-Key-Type: RSA
-Key-Length: 4096
-Key-Usage: sign
-Name-Real: Container Signing Key v2
-Name-Email: container-signing-v2@example.com
-Expire-Date: 1y
-%commit
-EOF
+gpg --yes --quick-generate-key \
+  "Container Signing Key v2 <container-signing-v2@example.com>" \
+  rsa4096 sign 1y
 
 # Export the new public key
 gpg --export container-signing-v2@example.com > /tmp/container-signing-v2.gpg
@@ -222,10 +220,10 @@ sudo cp /tmp/container-signing-v2.gpg /etc/pki/containers/
 ## Revoking a Compromised Key
 
 ```bash
-# Generate a revocation certificate
-gpg --gen-revoke container-signing@example.com > revoke-cert.asc
+# Generate and store a revocation certificate before you need it
+gpg --output revoke-cert.asc --gen-revoke container-signing@example.com
 
-# If the key is compromised, import the revocation certificate
+# If the key is compromised later, import the stored revocation certificate
 gpg --import revoke-cert.asc
 
 # Remove the compromised key from Podman's trusted keys
@@ -244,4 +242,4 @@ rm -f /tmp/container-*.gpg
 
 ## Summary
 
-GPG keys are central to Podman's image signing and verification workflow. By generating dedicated signing keys, distributing public keys to verification hosts, and maintaining a key rotation schedule, you build a reliable trust infrastructure for your container images. Keep private keys secure, use separate keys for different environments, and have a revocation plan ready in case a key is compromised.
+GPG keys are central to Podman's simple-signing and verification workflow. By generating dedicated signing keys, distributing public keys to verification hosts, configuring a shared signature store, and maintaining a key rotation schedule, you build a reliable trust infrastructure for your container images. Keep private keys secure, use separate keys for different environments, and have a revocation plan ready in case a key is compromised.
