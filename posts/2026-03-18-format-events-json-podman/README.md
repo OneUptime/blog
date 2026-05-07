@@ -37,20 +37,18 @@ podman run --rm --name json-test alpine echo "hello" 2>/dev/null
 podman events --since 30s --format json | head -1 | jq '.'
 ```
 
-The output contains fields like:
+The output contains top-level fields like:
 
 ```json
 {
+  "ID": "abc123def456...",
+  "Image": "docker.io/library/alpine:latest",
   "Name": "json-test",
   "Type": "container",
   "Status": "create",
   "Time": "2026-03-18T10:30:00.000000000Z",
-  "Actor": {
-    "ID": "abc123def456...",
-    "Attributes": {
-      "name": "json-test",
-      "containerExitCode": "0"
-    }
+  "Attributes": {
+    "name": "json-test"
   }
 }
 ```
@@ -70,7 +68,7 @@ podman events --since 1h --format json | jq -r '[.Name, .Status] | @tsv'
 podman events --since 1h --format json | jq 'select(.Status == "start")'
 
 # Extract nested attributes
-podman events --since 1h --format json | jq -r '.Actor.Attributes.name'
+podman events --since 1h --format json | jq -r '.Attributes.name'
 ```
 
 ## Using Go Templates for Custom JSON
