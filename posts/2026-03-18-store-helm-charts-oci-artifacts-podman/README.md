@@ -16,7 +16,7 @@ Helm 3 introduced experimental support for storing charts as OCI artifacts, and 
 
 ## Prerequisites
 
-You need Podman 5.x or later and Helm 3.8 or later.
+You need Podman 5.5 or later and Helm 3.8 or later.
 
 ```bash
 # Verify Podman version
@@ -63,7 +63,8 @@ Add the packaged chart to the Podman artifact store.
 ```bash
 # Add the Helm chart package as an OCI artifact
 podman artifact add \
-    --type "application/vnd.cncf.helm.chart.content.v1.tar+gzip" \
+    --type "application/vnd.cncf.helm.config.v1+json" \
+    --file-type "application/vnd.cncf.helm.chart.content.v1.tar+gzip" \
     registry.example.com/myorg/charts/mywebapp:0.1.0 \
     mywebapp-0.1.0.tgz
 
@@ -74,7 +75,7 @@ podman artifact ls | grep mywebapp
 podman artifact inspect registry.example.com/myorg/charts/mywebapp:0.1.0 | python3 -m json.tool
 ```
 
-The `--type` flag sets the media type to the standard Helm chart content type, ensuring compatibility with Helm and other OCI tooling.
+The `--type` flag sets the Helm chart artifact type, and `--file-type` sets the standard Helm chart content layer type, ensuring compatibility with Helm and other OCI tooling.
 
 ## Pushing the Chart to a Registry
 
@@ -130,19 +131,12 @@ helm package mywebapp/
 
 # Add and push the new version
 podman artifact add \
-    --type "application/vnd.cncf.helm.chart.content.v1.tar+gzip" \
+    --type "application/vnd.cncf.helm.config.v1+json" \
+    --file-type "application/vnd.cncf.helm.chart.content.v1.tar+gzip" \
     registry.example.com/myorg/charts/mywebapp:0.2.0 \
     mywebapp-0.2.0.tgz
 
 podman artifact push registry.example.com/myorg/charts/mywebapp:0.2.0
-
-# Also tag as latest
-podman artifact add \
-    --type "application/vnd.cncf.helm.chart.content.v1.tar+gzip" \
-    registry.example.com/myorg/charts/mywebapp:latest \
-    mywebapp-0.2.0.tgz
-
-podman artifact push registry.example.com/myorg/charts/mywebapp:latest
 ```
 
 ## Bundling Chart with Values Files
@@ -204,7 +198,8 @@ helm package "$CHART_DIR"
 
 # Add to Podman artifact store
 podman artifact add \
-    --type "application/vnd.cncf.helm.chart.content.v1.tar+gzip" \
+    --type "application/vnd.cncf.helm.config.v1+json" \
+    --file-type "application/vnd.cncf.helm.chart.content.v1.tar+gzip" \
     "${REGISTRY}/${CHART_REPO}/${CHART_NAME}:${CHART_VERSION}" \
     "${CHART_NAME}-${CHART_VERSION}.tgz"
 
@@ -216,4 +211,4 @@ echo "Chart ${CHART_NAME}:${CHART_VERSION} published successfully"
 
 ## Summary
 
-Storing Helm charts as OCI artifacts with Podman unifies your container images and Kubernetes deployment charts in a single registry. You package charts with `helm package`, add them to the Podman artifact store with the correct Helm media type, and push them to any OCI-compliant registry. Charts can be versioned with tags, bundled with values files, and distributed through CI/CD pipelines. Both Podman and Helm native OCI commands can work with the same chart artifacts, giving you flexibility in how you manage and consume them.
+Storing Helm charts as OCI artifacts with Podman unifies your container images and Kubernetes deployment charts in a single registry. You package charts with `helm package`, add them to the Podman artifact store with the correct Helm media types, and push them to any OCI-compliant registry. Charts can be versioned with semantic-version tags, bundled with values files, and distributed through CI/CD pipelines. Both Podman and Helm native OCI commands can work with the same chart artifacts, giving you flexibility in how you manage and consume them.
