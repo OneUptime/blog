@@ -81,7 +81,7 @@ cat > ~/.config/containers/containers.conf << 'EOF'
 [engine]
 runtime = "crun"
 
-# Pull policy: always, missing, newer, never
+# Pull policy: always, missing, never
 # "missing" only pulls if the image is not in local storage
 pull_policy = "missing"
 
@@ -89,7 +89,7 @@ pull_policy = "missing"
 image_parallel_copies = 5
 
 # Default image format for builds
-# Options: oci, docker
+# Options: oci, v2s2, v2s1
 image_default_format = "oci"
 
 # Default transport for image operations
@@ -112,15 +112,19 @@ Choose how Podman logs container events.
 
 ```bash
 # Configure the event logging system
-cat >> ~/.config/containers/containers.conf << 'EOF'
-
+cat > ~/.config/containers/containers.conf << 'EOF'
 [engine]
+runtime = "crun"
+pull_policy = "missing"
+image_parallel_copies = 5
+image_default_format = "oci"
+
 # Event logger options: file, journald, none
 # "file" works for rootless users without journald access
 events_logger = "file"
 
 # Maximum size of the events log file (in bytes)
-# events_log_file_max_size = 1000000
+# events_logfile_max_size = "1000000"
 EOF
 ```
 
@@ -138,9 +142,14 @@ Set the cgroup manager for resource control.
 
 ```bash
 # Add cgroup manager configuration
-cat >> ~/.config/containers/containers.conf << 'EOF'
-
+cat > ~/.config/containers/containers.conf << 'EOF'
 [engine]
+runtime = "crun"
+pull_policy = "missing"
+image_parallel_copies = 5
+image_default_format = "oci"
+events_logger = "file"
+
 # CGroup manager: systemd or cgroupfs
 # "systemd" is recommended for systems with systemd
 cgroup_manager = "systemd"
@@ -188,14 +197,11 @@ stop_timeout = 10
 # Number of locks (must be power of 2)
 # num_locks = 2048
 
-# Enable container labeling (SELinux)
-# label = true
-
 # Static directory for persistent container data
-# static_dir = "/var/lib/containers/storage/libpod"
+# static_dir = "/home/user/.local/share/containers/storage/libpod"
 
 # Volume directory
-# volume_path = "/var/lib/containers/storage/volumes"
+# volume_path = "/home/user/.local/share/containers/storage/volumes"
 EOF
 
 # Verify the full configuration
