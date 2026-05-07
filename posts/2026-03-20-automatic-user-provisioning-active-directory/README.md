@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Active Directory, User Provisioning, LDAP, Automation
 
-Description: Configure Portainer to automatically create user accounts on first login when authenticating via Active Directory, eliminating manual user management.
+Description: Configure Portainer Business Edition to automatically create user accounts on first login when authenticating via Active Directory, eliminating manual user management.
 
 ---
 
-With auto-provisioning enabled, Portainer creates a user account the first time someone logs in via Active Directory - no pre-registration required. Users inherit team memberships from their AD group assignments.
+In Portainer Business Edition, with auto-provisioning enabled, Portainer creates a user account the first time someone logs in via Active Directory - no pre-registration required. Users can be added to matching Portainer teams based on their AD group assignments.
 
 ## Enable Auto-Create Users
 
@@ -32,7 +32,7 @@ curl -X PUT \
     "LDAPSettings": {
       "ReaderDN": "CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com",
       "Password": "ServicePassword!",
-      "URLs": ["ldaps://dc01.corp.example.com:636"],
+      "URL": "dc01.corp.example.com:636",
       "TLSConfig": {"TLS": true, "TLSSkipVerify": false},
       "SearchSettings": [{
         "BaseDN": "DC=corp,DC=example,DC=com",
@@ -42,8 +42,7 @@ curl -X PUT \
       "GroupSearchSettings": [{
         "GroupBaseDN": "OU=Portainer Groups,DC=corp,DC=example,DC=com",
         "GroupFilter": "(objectClass=group)",
-        "UserAttribute": "member",
-        "GroupAttribute": "cn"
+        "GroupAttribute": "member"
       }],
       "AutoCreateUsers": true
     }
@@ -66,7 +65,7 @@ flowchart TD
     I --> J[User logged in]
     C --> K{Authentication successful?}
     K -->|No| F
-    K -->|Yes| L[Sync group memberships]
+    K -->|Yes| L[Add matching Portainer team memberships]
     L --> J
 ```
 
@@ -75,30 +74,40 @@ flowchart TD
 Restrict auto-provisioning to specific AD groups using the search filter:
 
 ```bash
-# Only auto-provision users who are members of the Portainer users OU
-# or who have a specific AD attribute set
+# Re-submit the full LDAPSettings block when changing nested LDAP settings
+# Only enabled users in the "Portainer Users" AD group can log in and be auto-provisioned
 curl -X PUT \
   https://localhost:9443/api/settings \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
+    "AuthenticationMethod": 2,
     "LDAPSettings": {
+      "ReaderDN": "CN=portainer-svc,OU=Service Accounts,DC=corp,DC=example,DC=com",
+      "Password": "ServicePassword!",
+      "URL": "dc01.corp.example.com:636",
+      "TLSConfig": {"TLS": true, "TLSSkipVerify": false},
       "SearchSettings": [{
-        "BaseDN": "OU=Portainer Users,DC=corp,DC=example,DC=com",
-        "Filter": "(&(objectClass=user)(objectCategory=person)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))",
+        "BaseDN": "DC=corp,DC=example,DC=com",
+        "Filter": "(&(objectClass=user)(objectCategory=person)(memberOf=CN=Portainer Users,OU=Groups,DC=corp,DC=example,DC=com)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))",
         "UserNameAttribute": "sAMAccountName"
+      }],
+      "GroupSearchSettings": [{
+        "GroupBaseDN": "OU=Portainer Groups,DC=corp,DC=example,DC=com",
+        "GroupFilter": "(objectClass=group)",
+        "GroupAttribute": "member"
       }],
       "AutoCreateUsers": true
     }
   }' \
   --insecure
-# Only users in the "Portainer Users" OU can log in and be auto-provisioned
+# Only enabled users in the "Portainer Users" AD group can log in and be auto-provisioned
 ```
 
 ## View Auto-Provisioned Users
 
 ```bash
-# List all users in Portainer to see auto-provisioned accounts
+# List users in Portainer to see accounts created after first AD login
 curl -s https://localhost:9443/api/users \
   -H "Authorization: Bearer $TOKEN" \
   --insecure | python3 -c "
@@ -106,13 +115,13 @@ import sys, json
 users = json.load(sys.stdin)
 for u in users:
     role = 'Admin' if u.get('Role') == 1 else 'User'
-    print(f\"{u['Username']:<30} {role:<10} Teams: {u.get('TeamIDs', [])}\")
+    print(f\"{u['Id']:<5} {u['Username']:<30} {role}\")
 "
 ```
 
 ## Deprovisioning Users
 
-When someone leaves the organization, disable their AD account. The next time Portainer checks (on login), the authentication will fail. For immediate revocation:
+When someone leaves the organization, disable their AD account. The next login attempt will fail. To remove the Portainer account as well:
 
 ```bash
 # Delete a specific user from Portainer
