@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Web Apps, App Service, OpenTofu, Deployment, PaaS
 
-Description: Learn how to deploy Azure Web Apps with OpenTofu, including application settings, container deployments, managed identity configuration, and startup commands.
+Description: Learn how to deploy Azure Web Apps with OpenTofu, including application settings, container deployments, and managed identity configuration.
 
 ## Overview
 
@@ -40,7 +40,6 @@ resource "azurerm_linux_web_app" "node_app" {
   # Application settings (environment variables)
   app_settings = {
     NODE_ENV              = "production"
-    PORT                  = "8080"
     WEBSITE_RUN_FROM_PACKAGE = "1"
     APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.insights.connection_string
   }
@@ -99,10 +98,15 @@ resource "azurerm_windows_web_app" "dotnet_app" {
     }
   }
 
+  # Required for Azure SQL authentication with a system-assigned managed identity
+  identity {
+    type = "SystemAssigned"
+  }
+
   connection_string {
     name  = "DefaultConnection"
     type  = "SQLServer"
-    value = "Server=${var.sql_server_fqdn};Database=appdb;Authentication=Active Directory Managed Identity"
+    value = "Server=${var.sql_server_fqdn};Database=appdb;Authentication=Active Directory Managed Identity;Encrypt=True"
   }
 }
 ```
