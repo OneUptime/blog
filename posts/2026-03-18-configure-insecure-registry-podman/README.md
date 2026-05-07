@@ -173,7 +173,7 @@ sudo firewall-cmd --add-rich-rule='rule family="ipv4" source address="192.168.1.
 When moving to production, remove insecure registry settings.
 
 ```bash
-# Remove insecure registry blocks from the configuration
+# Remove insecure flags from registry blocks
 sudo sed -i '/insecure = true/d' /etc/containers/registries.conf
 
 # Or restore from backup
