@@ -17,31 +17,33 @@ Ambassador, now known as Emissary-Ingress, is an API gateway for Kubernetes buil
 
 service:
   type: LoadBalancer
-  # Dual-stack for IPv6 external access
-  ipFamilyPolicy: PreferDualStack
-  ipFamilies:
-    - IPv4
-    - IPv6
   annotations:
-    # AWS NLB dual-stack
+    # AWS Load Balancer Controller: dual-stack, internet-facing NLB with IP targets
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
     service.beta.kubernetes.io/aws-load-balancer-ip-address-type: "dualstack"
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-
-# Emissary (Envoy) listens on all interfaces including IPv6 by default
-
-# when deployed in a dual-stack Kubernetes cluster
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 ```
 
 ```bash
+# Install Emissary CRDs
+kubectl apply -f https://app.getambassador.io/yaml/emissary/latest/emissary-crds.yaml
+kubectl wait --timeout=90s --for=condition=available deployment emissary-apiext -n emissary-system
+
 # Install Emissary-Ingress via Helm
 helm repo add datawire https://app.getambassador.io
+helm repo update
 helm install emissary-ingress datawire/emissary-ingress \
     -n emissary-system \
     --create-namespace \
     -f emissary-values.yaml
 
-# Verify installation and IPv6 external IP
-kubectl get svc emissary-ingress -n emissary-system
+# Configure the Helm-created Service for dual-stack
+kubectl patch service emissary-ingress -n emissary-system --type merge \
+    -p '{"spec":{"ipFamilyPolicy":"PreferDualStack","ipFamilies":["IPv4","IPv6"]}}'
+
+# Verify installation and dual-stack service settings
+kubectl get svc emissary-ingress -n emissary-system -o yaml
 ```
 
 ## Ambassador Mapping for IPv6 Backend
@@ -58,19 +60,16 @@ spec:
   hostname: "api.example.com"
   prefix: /api/
   service: myapp:8080   # Kubernetes service name:port
+  enable_ipv6: true     # Prefer AAAA lookups for upstream service resolution
 
   # Headers for IPv6 clients
-  set_request_headers:
+  add_request_headers:
     X-Forwarded-Proto: "https"
 
   # Timeout configuration
   connect_timeout_ms: 5000
   timeout_ms: 60000
   idle_timeout_ms: 300000
-
-  # Load balancing policy
-  load_balancer:
-    policy: round_robin
 ```
 
 ## Ambassador Host for TLS
@@ -85,17 +84,14 @@ metadata:
   namespace: production
 spec:
   hostname: api.example.com
-  acmeProvider:
-    email: admin@example.com
-    authority: https://acme-v02.api.letsencrypt.org/directory
   tlsSecret:
-    name: api-tls
+    name: api-tls   # Pre-created kubernetes.io/tls Secret
   requestPolicy:
     insecure:
       action: Redirect   # Redirect HTTP to HTTPS
 ```
 
-## AmbassadorListener for IPv6
+## Emissary Listener for IPv6
 
 ```yaml
 # listener-ipv6.yaml
@@ -141,6 +137,7 @@ metadata:
 spec:
   service: "ratelimit.ratelimit-system:8081"
   protocol_version: v3
+  domain: emissary
   timeout_ms: 1000
 
 ---
@@ -154,19 +151,19 @@ spec:
   hostname: "api.example.com"
   prefix: /v1/
   service: api:8080
-  rate_limits:
-    - descriptor: "source_ip"
-      # Rate limit by client IPv6 (full /128 address)
-      # For IPv6 prefix-based limiting, configure in ratelimit service
-      request_headers:
-        - header_name: "X-Forwarded-For"
-          descriptor_key: "source_ip"
+  # Rate limit by the trusted client IP address (IPv4 or IPv6)
+  # For IPv6 prefix-based limiting, implement prefix aggregation in the rate limit service
+  labels:
+    emissary:
+      - source-ip:
+          - remote_address:
+              key: remote_address
 ```
 
 ## IPv6 Client IP Extraction in Emissary
 
 ```yaml
-# xff-config.yaml - Configure trusted proxy CIDRs
+# xff-config.yaml - Configure trusted X-Forwarded-For hops
 
 apiVersion: getambassador.io/v3alpha1
 kind: Module
@@ -175,30 +172,31 @@ metadata:
   namespace: emissary-system
 spec:
   config:
-    # Trusted proxies for X-Forwarded-For (IPv4 and IPv6)
-    xff_num_trusted_hops: 1   # Skip the cloud load balancer hop
-    # Emissary uses Envoy's XFF trusted hop count
-    # For IPv6 LBs: set xff_num_trusted_hops to number of proxy hops
+    # For an L7 load balancer that adds X-Forwarded-For
+    use_remote_address: false
+    xff_num_trusted_hops: 1   # One trusted proxy hop in front of Emissary
+    # For L4 load balancers such as AWS NLB, the client source IP is preserved
+    # and X-Forwarded-For is not added by the load balancer itself
 ```
 
 ## Verify Emissary IPv6 Operation
 
 ```bash
-# Check Emissary pods have IPv6
-kubectl get pods -n emissary-system -o wide
-# Pod IPs should be IPv6 in dual-stack cluster
+# Check Emissary pods have dual-stack addresses
+kubectl get pods -n emissary-system \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.podIPs[*]}{.ip}{" "}{end}{"\n"}{end}'
+# In a dual-stack cluster, pods should list both IPv4 and IPv6 addresses
 
-# Check Envoy listeners in Emissary
-kubectl exec -n emissary-system deployment/emissary-ingress -- \
-    curl -s http://localhost:8001/listeners | jq '.listener_statuses[].name'
-# Should show listeners on :: addresses
+# In one terminal, port-forward the Envoy admin endpoint
+kubectl port-forward -n emissary-system deployment/emissary-ingress 8001:8001
 
-# Test routing over IPv6
-EMISSARY_IPV6=$(kubectl get svc emissary-ingress -n emissary-system \
-    -o jsonpath='{.status.loadBalancer.ingress[?(@.ipMode=="VIP")].ip}')
+# In another terminal, inspect the active listener addresses
+curl -s http://127.0.0.1:8001/listeners?format=json | \
+    jq -r '.listener_statuses[].local_address.socket_address.address'
+# Should include :: or another IPv6 listen address when IPv6 is active
 
-curl -6 -H "Host: api.example.com" \
-    "http://[$EMISSARY_IPV6]:80/api/health"
+# After publishing an AAAA record for api.example.com to the load balancer
+curl -k -6 https://api.example.com/api/health
 
 # Check Mapping status
 kubectl get mappings -n production
@@ -207,4 +205,4 @@ kubectl describe mapping myapp-mapping -n production | grep -A5 "Status"
 
 ## Conclusion
 
-Emissary-Ingress (Ambassador) supports IPv6 through its underlying Envoy Proxy, which listens on `::` for all IPv6 interfaces when the pod has IPv6 connectivity in a dual-stack cluster. The Kubernetes service uses `ipFamilyPolicy: PreferDualStack` for IPv6 external load balancer addresses. Mapping CRDs route IPv6 client requests to backend Kubernetes services by name - service name resolution in dual-stack clusters returns both IPv4 and IPv6 endpoints. Configure `xff_num_trusted_hops` in the Ambassador Module to extract real client IPv6 addresses when behind cloud load balancers. The Host CRD manages TLS termination, and certificates for IPv6 ingress must include domain SANs (not IP SANs, since hostnames are used).
+Emissary-Ingress (Ambassador) supports IPv6 through its underlying Envoy Proxy and Kubernetes dual-stack networking. The Kubernetes service should use `ipFamilyPolicy: PreferDualStack` for dual-stack external load balancer addresses. Mapping CRDs can route to backend Kubernetes services by name; when Emissary should use AAAA records for upstream resolution, set `enable_ipv6: true` on the `Mapping`. Configure `use_remote_address` and `xff_num_trusted_hops` when Emissary is behind an L7 load balancer that adds `X-Forwarded-For`; with L4 load balancers such as AWS NLB, the client source IP is preserved instead. The Host CRD manages TLS termination, and certificates for IPv6 ingress must include domain SANs when clients connect by hostname.
