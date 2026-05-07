@@ -8,7 +8,7 @@ Description: Learn how to create AWS Direct Connect Gateways, virtual interfaces
 
 ## Introduction
 
-AWS Direct Connect provides a dedicated network connection from your data center to AWS, bypassing the public internet for lower latency and more consistent throughput. OpenTofu manages Direct Connect Gateways, Virtual Interfaces, and Transit Gateway associations.
+AWS Direct Connect provides a dedicated network connection from your data center to AWS, bypassing the public internet for lower latency and more consistent throughput. OpenTofu manages Direct Connect Gateways, virtual interfaces, and gateway associations.
 
 ## Creating a Direct Connect Gateway
 
@@ -19,14 +19,14 @@ resource "aws_dx_gateway" "main" {
 }
 ```
 
-## Creating a Hosted Private Virtual Interface
+## Creating a Transit Virtual Interface
 
 ```hcl
-# A Private Virtual Interface connects to a VGW or DXGW
+# A Transit Virtual Interface connects to a DXGW for Transit Gateway access
 
-resource "aws_dx_private_virtual_interface" "main" {
+resource "aws_dx_transit_virtual_interface" "main" {
   connection_id    = var.dx_connection_id  # the Direct Connect connection ID
-  name             = "${var.app_name}-pvif"
+  name             = "${var.app_name}-tvif"
   vlan             = 4094        # VLAN tag
   address_family   = "ipv4"
   bgp_asn          = 65000       # your on-premises BGP ASN
@@ -38,7 +38,7 @@ resource "aws_dx_private_virtual_interface" "main" {
   bgp_auth_key     = var.bgp_auth_key
 
   tags = {
-    Name        = "${var.app_name}-pvif"
+    Name        = "${var.app_name}-tvif"
     Environment = var.environment
     ManagedBy   = "opentofu"
   }
@@ -52,7 +52,7 @@ resource "aws_dx_gateway_association" "tgw" {
   dx_gateway_id         = aws_dx_gateway.main.id
   associated_gateway_id = aws_ec2_transit_gateway.main.id
 
-  # Allowed VPC prefixes to advertise over Direct Connect
+  # Prefixes the Direct Connect gateway advertises to your on-premises network
   allowed_prefixes = [
     "10.0.0.0/8",
     "172.16.0.0/12"
@@ -60,7 +60,7 @@ resource "aws_dx_gateway_association" "tgw" {
 }
 ```
 
-## Associating with a Virtual Private Gateway
+## Alternatively, Associating with a Virtual Private Gateway
 
 ```hcl
 resource "aws_dx_gateway_association" "vgw" {
@@ -123,4 +123,4 @@ tofu apply tfplan
 
 ## Summary
 
-AWS Direct Connect provides dedicated, reliable hybrid connectivity. OpenTofu manages Direct Connect Gateways, virtual interfaces, Transit Gateway associations, and CloudWatch alarms - creating a complete, code-managed hybrid networking setup.
+AWS Direct Connect provides dedicated, reliable hybrid connectivity. OpenTofu manages Direct Connect Gateways, transit and public virtual interfaces, gateway associations, and CloudWatch alarms - creating a complete, code-managed hybrid networking setup.
