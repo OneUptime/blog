@@ -35,7 +35,7 @@ kind: Backup
 metadata:
   name: dr-hourly-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 24
   schedule: "0 * * * *"
   encryptionConfigSecretName: backup-encryption
@@ -43,7 +43,7 @@ spec:
     s3:
       bucketName: rancher-dr-backups
       folder: hourly
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-west-2.amazonaws.com
       region: us-west-2
       credentialSecretName: dr-s3-creds
       credentialSecretNamespace: cattle-resources-system
@@ -53,7 +53,7 @@ kind: Backup
 metadata:
   name: dr-daily-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 30
   schedule: "0 1 * * *"
   encryptionConfigSecretName: backup-encryption
@@ -61,7 +61,7 @@ spec:
     s3:
       bucketName: rancher-dr-backups
       folder: daily
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-west-2.amazonaws.com
       region: us-west-2
       credentialSecretName: dr-s3-creds
       credentialSecretNamespace: cattle-resources-system
@@ -71,7 +71,7 @@ kind: Backup
 metadata:
   name: dr-weekly-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 12
   schedule: "0 2 * * 0"
   encryptionConfigSecretName: backup-encryption
@@ -79,7 +79,7 @@ spec:
     s3:
       bucketName: rancher-dr-backups
       folder: weekly
-      endpoint: s3.amazonaws.com
+      endpoint: s3.us-west-2.amazonaws.com
       region: us-west-2
       credentialSecretName: dr-s3-creds
       credentialSecretNamespace: cattle-resources-system
@@ -93,7 +93,7 @@ kubectl apply -f dr-backups.yaml
 
 ## Step 3: Set Up Cross-Region Backup Replication
 
-Enable S3 cross-region replication to ensure backups survive a regional outage:
+Enable versioning on both the source and destination buckets, then configure S3 cross-region replication to ensure backups survive a regional outage:
 
 ```bash
 aws s3api put-bucket-replication \
@@ -120,99 +120,123 @@ aws s3api put-bucket-replication \
 Create a runbook that your team can follow during a disaster. The key steps are:
 
 1. Provision a new Kubernetes cluster in the DR region.
-2. Install cert-manager and Rancher (same version).
-3. Install the Backup Operator.
-4. Create storage credentials.
-5. Scale down Rancher.
-6. Restore from the latest backup.
-7. Scale up Rancher.
-8. Update DNS.
+2. Install a Rancher Backup Operator chart version compatible with your Rancher version.
+3. Create storage credentials and recreate the encryption config secret if the backup was encrypted.
+4. Restore from the latest backup with `prune: false`.
+5. Install cert-manager.
+6. Install Rancher with the same Rancher version and hostname as the original server.
+7. Update DNS or your load balancer to point that hostname at the DR cluster.
+8. Scale down the original Rancher instance if it is still reachable.
 9. Verify downstream clusters reconnect.
 
 Save this as a script for rapid execution. Here is an example `dr-recover.sh`:
 
 ```bash
 #!/bin/bash
-set -e
+set -euo pipefail
 
 BACKUP_FILE=$1
-RANCHER_VERSION=$2
-HOSTNAME=$3
+CHART_VERSION=$2
+RANCHER_VERSION=$3
+HOSTNAME=$4
+CERT_MANAGER_VERSION=$5
+
+S3_BUCKET=${S3_BUCKET:-rancher-dr-backups}
+S3_REGION=${S3_REGION:-us-west-2}
+S3_ENDPOINT=${S3_ENDPOINT:-s3.${S3_REGION}.amazonaws.com}
+S3_FOLDER=${S3_FOLDER:-}
+S3_SECRET_NAME=${S3_SECRET_NAME:-dr-s3-creds}
+S3_SECRET_NAMESPACE=${S3_SECRET_NAMESPACE:-cattle-resources-system}
+ENCRYPTION_SECRET_NAME=${ENCRYPTION_SECRET_NAME:-}
 
 echo "Starting Rancher DR recovery..."
 
-# Install cert-manager
-
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
-kubectl wait --for=condition=Available -n cert-manager deployment/cert-manager --timeout=120s
-
-# Install Rancher
+# Install a rancher-backup chart version compatible with your Rancher version.
+helm repo add rancher-charts https://charts.rancher.io
 helm repo add rancher-latest https://releases.rancher.com/server-charts/latest
+helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
 helm repo update
-helm install rancher rancher-latest/rancher \
+helm install --wait rancher-backup-crd rancher-charts/rancher-backup-crd \
+  -n cattle-resources-system --create-namespace \
+  --version="${CHART_VERSION}"
+helm install --wait rancher-backup rancher-charts/rancher-backup \
+  -n cattle-resources-system \
+  --version="${CHART_VERSION}"
+
+# Assumes the S3 credential secret already exists in ${S3_SECRET_NAMESPACE}.
+# Set S3_FOLDER if BACKUP_FILE is stored under a folder such as hourly, daily, or weekly.
+cat >/tmp/restore-migration.yaml <<EOF
+apiVersion: resources.cattle.io/v1
+kind: Restore
+metadata:
+  name: restore-migration
+spec:
+  backupFilename: ${BACKUP_FILE}
+  prune: false
+  storageLocation:
+    s3:
+      bucketName: ${S3_BUCKET}
+      folder: ${S3_FOLDER}
+      endpoint: ${S3_ENDPOINT}
+      region: ${S3_REGION}
+      credentialSecretName: ${S3_SECRET_NAME}
+      credentialSecretNamespace: ${S3_SECRET_NAMESPACE}
+EOF
+
+if [ -n "${ENCRYPTION_SECRET_NAME}" ]; then
+  printf '  encryptionConfigSecretName: %s\n' "${ENCRYPTION_SECRET_NAME}" >> /tmp/restore-migration.yaml
+fi
+
+kubectl apply -f /tmp/restore-migration.yaml
+kubectl wait --for=condition=Ready restore/restore-migration --timeout=30m
+
+# Install a cert-manager version supported by your Rancher release.
+kubectl apply -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml"
+kubectl wait --for=condition=Available -n cert-manager deployment --all --timeout=180s
+
+RANCHER_CHART_REPO=${RANCHER_CHART_REPO:-rancher-stable}
+
+helm install rancher "${RANCHER_CHART_REPO}/rancher" \
   -n cattle-system --create-namespace \
-  --set hostname=$HOSTNAME \
-  --set replicas=3 \
-  --version=$RANCHER_VERSION
+  --set hostname="${HOSTNAME}" \
+  --version="${RANCHER_VERSION}" \
+  --wait
 
-kubectl rollout status deployment rancher -n cattle-system
-
-# Install Backup Operator
-helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
-  -n cattle-resources-system --create-namespace
-helm install rancher-backup rancher-charts/rancher-backup \
-  -n cattle-resources-system
-
-# Wait for operator
-kubectl rollout status deployment rancher-backup -n cattle-resources-system
-
-# Scale down Rancher for restore
-kubectl scale deployment rancher -n cattle-system --replicas=0
-
-echo "Apply the restore resource manually with backup file: $BACKUP_FILE"
-echo "Then scale Rancher back up with: kubectl scale deployment rancher -n cattle-system --replicas=3"
+echo "Update DNS or your load balancer so ${HOSTNAME} resolves to the DR cluster."
 ```
 
 ## Step 5: Set Up Monitoring and Alerts
 
-Monitor your backup status and alert on failures:
+Enable the backup operator metrics (`monitoring.metrics.enabled=true` and `monitoring.serviceMonitor.enabled=true`) when you install or upgrade the chart, then alert on those metrics:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: dr-backup-alerts
-  namespace: cattle-monitoring-system
+  namespace: cattle-resources-system
 spec:
   groups:
   - name: disaster-recovery
     rules:
     - alert: BackupMissed
       expr: |
-        time() - max(kube_customresource_status_condition_last_transition_time{
-          group="resources.cattle.io",
-          kind="Backup",
-          condition="Ready",
-          status="True"
-        }) > 7200
+        time() - max(rancher_backup_last_processed_timestamp_seconds) > 7200
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "No successful Rancher backup in the last 2 hours"
+        summary: "No Rancher backup has been processed in the last 2 hours"
     - alert: BackupFailed
       expr: |
-        kube_customresource_status_condition{
-          group="resources.cattle.io",
-          kind="Backup",
-          condition="Ready",
-          status="False"
-        } == 1
-      for: 5m
+        sum by (name) (
+          increase(rancher_backups_failed_total[5m])
+        ) > 0
+      for: 1m
       labels:
         severity: critical
       annotations:
-        summary: "Rancher backup has failed"
+        summary: "Rancher backup {{ $labels.name }} has failed"
 ```
 
 ## Step 6: Test Recovery Regularly
@@ -230,7 +254,7 @@ Schedule regular DR tests, ideally quarterly. A DR test involves:
 
 Rancher backups protect the management plane, but downstream cluster workloads need their own backup strategy:
 
-- Enable etcd snapshots on all managed clusters (covered in the etcd backup guide).
+- Enable etcd snapshots on self-managed downstream clusters where you control etcd (covered in the etcd backup guide).
 - Use Velero or similar tools for workload-level backups.
 - Store downstream backups in the same cross-region storage for consistency.
 
