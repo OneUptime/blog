@@ -8,7 +8,7 @@ Description: Access AWS S3 buckets over IPv6 using dualstack endpoints, configur
 
 ## Introduction
 
-AWS S3 supports IPv6 access through dualstack endpoints (`s3.dualstack.<region>.amazonaws.com`). These endpoints return both A and AAAA records, allowing IPv6 clients to connect. The standard S3 endpoints are IPv4-only. Using dualstack endpoints is essential for IPv6-only instances and useful for dual-stack applications.
+AWS S3 supports IPv6 access through dualstack endpoints (`s3.dualstack.<region>.amazonaws.com`). These endpoints return both A and AAAA records, allowing IPv6 clients to connect. The standard public S3 REST endpoints are IPv4-only. Using dualstack endpoints is essential for public IPv6 access and useful for dual-stack applications.
 
 ## S3 Dualstack Endpoints
 
@@ -34,14 +34,18 @@ curl -6 https://my-bucket.s3.dualstack.us-east-1.amazonaws.com/
 
 ```bash
 # Use dualstack endpoint in AWS CLI
-aws s3 ls --endpoint-url https://s3.dualstack.us-east-1.amazonaws.com/
+aws s3 ls \
+    --region us-east-1 \
+    --endpoint-url https://s3.dualstack.us-east-1.amazonaws.com/
 
 # Configure in AWS CLI config
-aws configure set s3.use_dualstack_endpoint true
+aws configure set default.region us-east-1
+aws configure set default.s3.use_dualstack_endpoint true
 
 # Or set in ~/.aws/config:
 cat << 'EOF' >> ~/.aws/config
 [default]
+region = us-east-1
 s3 =
     use_dualstack_endpoint = true
 EOF
@@ -59,10 +63,7 @@ from botocore.config import Config
 
 # Configure boto3 to use dualstack endpoints
 config = Config(
-    s3={
-        'use_dualstack_endpoint': True,
-        'addressing_style': 'path'  # Required for dualstack
-    }
+    use_dualstack_endpoint=True
 )
 
 s3 = boto3.client(
@@ -71,7 +72,7 @@ s3 = boto3.client(
     config=config
 )
 
-# Upload file over IPv6
+# Upload file using the dualstack endpoint
 s3.upload_file('local-file.txt', 'my-bucket', 'remote-file.txt')
 
 # Download file
@@ -132,7 +133,7 @@ aws s3 website s3://my-bucket/ \
 my-bucket.s3-website-us-east-1.amazonaws.com
 
 # For IPv6 static website, use CloudFront with S3 origin
-# CloudFront supports IPv6 and can front S3 static sites
+# CloudFront supports IPv6 when IPv6 is enabled on the distribution
 
 # Test IPv6 access via CloudFront
 dig AAAA my-distribution.cloudfront.net
@@ -150,14 +151,13 @@ curl -6 -v \
 
 # Test with AWS CLI
 aws s3 ls s3://my-bucket/ \
+    --region us-east-1 \
     --endpoint-url https://s3.dualstack.us-east-1.amazonaws.com
 
-# If using IPv6-only subnet, standard S3 endpoints will fail
-# Only dualstack endpoints work from IPv6-only subnets
-aws s3 ls s3://my-bucket/  # Fails in IPv6-only subnet
-aws s3 ls --endpoint-url https://s3.dualstack.us-east-1.amazonaws.com s3://my-bucket/  # Works
+# For public S3 access from an IPv6-only environment, use a dualstack endpoint.
+# If you're using an S3 VPC endpoint, configure it for IPv6 or dualstack DNS.
 ```
 
 ## Conclusion
 
-S3 IPv6 access requires using dualstack endpoints (`s3.dualstack.<region>.amazonaws.com`) instead of standard IPv4 endpoints. Configure the AWS CLI with `use_dualstack_endpoint = true` and boto3 with `Config(s3={'use_dualstack_endpoint': True})`. S3 bucket policies can use `aws:SourceIp` conditions with IPv6 CIDR blocks. For IPv6-only VPC subnets, dualstack endpoints are essential as standard S3 endpoints return only IPv4 addresses.
+S3 IPv6 access over public endpoints requires using dualstack endpoints (`s3.dualstack.<region>.amazonaws.com`) instead of the standard public IPv4 endpoints. Configure the AWS CLI with `use_dualstack_endpoint = true` and boto3 with `Config(use_dualstack_endpoint=True)`. S3 bucket policies can use `aws:SourceIp` conditions with IPv6 CIDR blocks. If you access S3 through VPC endpoints, configure the endpoint IP address type and DNS record IP type for IPv6 or dualstack.
