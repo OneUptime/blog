@@ -10,7 +10,7 @@ Description: Learn how to use named volumes, bind mounts, and tmpfs mounts in po
 
 > Compose volumes provide persistent storage for databases and application data, while bind mounts enable live code editing during development.
 
-podman-compose supports all major volume types from the Compose specification: named volumes for persistent data, bind mounts for development workflows, and tmpfs mounts for temporary in-memory storage. This guide covers each type and when to use them.
+podman-compose supports common Linux volume types from the Compose specification: named volumes for persistent data, bind mounts for development workflows, and tmpfs mounts for temporary in-memory storage. This guide covers each type and when to use them.
 
 ---
 
@@ -40,7 +40,7 @@ podman-compose up -d
 
 # Verify the volume exists
 podman volume ls
-# Output: pgdata
+# Output includes a project-scoped volume such as <project>_pgdata
 
 # Data persists even after 'down'
 podman-compose down
@@ -139,7 +139,7 @@ services:
       - shared-data:/data
   reader:
     image: docker.io/library/busybox:latest
-    command: sh -c "tail -f /data/log.txt"
+    command: sh -c "while [ ! -f /data/log.txt ]; do sleep 1; done; tail -f /data/log.txt"
     volumes:
       - shared-data:/data:ro
 
@@ -166,7 +166,7 @@ volumes:
 podman-compose down -v
 
 # Remove a specific volume
-podman volume rm pgdata
+podman volume rm <project>_pgdata
 
 # Remove all unused volumes
 podman volume prune -f
