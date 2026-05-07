@@ -16,7 +16,7 @@ Pods are a concept borrowed from Kubernetes. A Podman pod is a group of one or m
 
 ## Understanding Podman Pods
 
-A pod in Podman consists of an infrastructure container (the "infra" container) and one or more application containers. The infra container holds the shared namespaces and stays running for the lifetime of the pod. All other containers in the pod share the network namespace of the infra container.
+By default, a pod in Podman consists of an infrastructure container (the "infra" container) and one or more application containers. The infra container holds the shared namespaces and, by default, stays running for the lifetime of the pod. All other containers in the pod share the network namespace of the infra container.
 
 Key characteristics of pods:
 
@@ -24,7 +24,7 @@ Key characteristics of pods:
 - Containers communicate with each other over `localhost`
 - The pod lifecycle manages all containers together (start, stop, restart)
 - Pods can be exported to Kubernetes YAML format
-- Each pod has an infra container that maintains the shared namespaces
+- By default, each pod has an infra container that maintains the shared namespaces
 
 ## Creating a Pod
 
@@ -136,7 +136,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -H "Content-Type: application/json" \
   -d '{
     "name": "networked-pod",
-    "networks": {
+    "Networks": {
       "pod-network": {
         "static_ips": ["10.90.0.50"]
       }
@@ -175,9 +175,9 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
     "command": ["node", "server.js"],
     "mounts": [
       {
-        "destination": "/app",
-        "source": "/home/user/myapp",
-        "type": "bind"
+        "Target": "/app",
+        "Source": "/home/user/myapp",
+        "Type": "bind"
       }
     ]
   }' \
@@ -217,7 +217,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
       "POSTGRES_DB": "myapp"
     },
     "mounts": [
-      {"destination": "/var/lib/postgresql/data", "source": "pg-data", "type": "volume"}
+      {"Target": "/var/lib/postgresql/data", "Source": "pg-data", "Type": "volume"}
     ]
   }' \
   http://localhost/v4.0.0/libpod/containers/create
@@ -248,7 +248,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
     },
     "command": ["node", "server.js"],
     "mounts": [
-      {"destination": "/app", "source": "/home/user/myapp", "type": "bind"}
+      {"Target": "/app", "Source": "/home/user/myapp", "Type": "bind"}
     ]
   }' \
   http://localhost/v4.0.0/libpod/containers/create
@@ -283,7 +283,9 @@ curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 
 # Filter by label
 curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/pods/json?filters={\"label\":[\"env=production\"]}"
+  --get \
+  --data-urlencode 'filters={"label":["env=production"]}' \
+  http://localhost/v4.0.0/libpod/pods/json
 ```
 
 ## Inspecting a Pod
@@ -342,7 +344,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 Monitor resource usage across all containers in a pod.
 
 ```bash
-# Get stats for all pods
+# Get stats for all running pods
 curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   "http://localhost/v4.0.0/libpod/pods/stats?all=true" | python3 -m json.tool
 ```
@@ -373,7 +375,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 Export a pod definition as Kubernetes-compatible YAML.
 
 ```bash
-# Generate Kubernetes YAML from a running pod
+# Generate Kubernetes YAML from a pod
 curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   "http://localhost/v4.0.0/libpod/generate/kube?names=fullstack-pod"
 
