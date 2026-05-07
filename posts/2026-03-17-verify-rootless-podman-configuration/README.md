@@ -35,7 +35,7 @@ grep "$USER" /etc/subuid
 grep "$USER" /etc/subgid
 
 # Both should show entries like: username:100000:65536
-# If empty, rootless containers will not work
+# If empty, a standard rootless setup is incomplete
 ```
 
 ## Test User Namespace Mappings
@@ -64,6 +64,7 @@ podman info --format '{{.Store.GraphDriverName}}'
 
 podman info --format '{{.Store.GraphRoot}}'
 # Expected: /home/<user>/.local/share/containers/storage
+# This may differ if XDG_DATA_HOME or storage.conf changes the storage path
 
 # Verify storage is writable
 podman run --rm alpine:latest touch /tmp/test && echo "Storage OK"
@@ -98,7 +99,7 @@ podman run --rm alpine:latest nslookup google.com
 
 # Test port publishing
 podman run -d --name web-test -p 8888:80 nginx:latest
-curl -s http://localhost:8888 > /dev/null && echo "Port publishing OK"
+curl --retry 5 --retry-delay 1 --retry-connrefused -s http://localhost:8888 > /dev/null && echo "Port publishing OK"
 podman rm -f web-test
 ```
 
@@ -138,12 +139,12 @@ check() {
 }
 
 check "Running rootless" "podman info --format '{{.Host.Security.Rootless}}' | grep -q true"
-check "subuid configured" "grep -q $USER /etc/subuid"
-check "subgid configured" "grep -q $USER /etc/subgid"
+check "subuid configured" "grep -q '^${USER}:' /etc/subuid"
+check "subgid configured" "grep -q '^${USER}:' /etc/subgid"
 check "Pull image" "podman pull alpine:latest"
 check "Run container" "podman run --rm alpine:latest true"
 check "Network connectivity" "podman run --rm alpine:latest ping -c 1 8.8.8.8"
-check "Port publishing" "podman run --rm -d -p 9999:80 --name ptest nginx:latest && curl -sf http://localhost:9999 && podman rm -f ptest"
+check "Port publishing" "sh -c 'podman rm -f ptest >/dev/null 2>&1 || true; podman run -d -p 9999:80 --name ptest nginx:latest && curl --retry 5 --retry-delay 1 --retry-connrefused -sf http://localhost:9999; rc=$?; podman rm -f ptest >/dev/null 2>&1 || true; exit $rc'"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
