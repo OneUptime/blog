@@ -36,6 +36,7 @@ When installing or upgrading Rancher via Helm, enable audit logging:
 ```bash
 helm upgrade rancher rancher-stable/rancher \
   --namespace cattle-system \
+  --set auditLog.enabled=true \
   --set auditLog.level=2 \
   --set auditLog.destination=hostPath \
   --set auditLog.hostPath=/var/log/rancher/audit \
@@ -45,10 +46,10 @@ helm upgrade rancher rancher-stable/rancher \
 ```
 
 Audit log levels for Rancher:
-- **0**: Disabled.
-- **1**: Log only event metadata.
-- **2**: Log metadata and request body.
-- **3**: Log metadata, request body, and response body.
+- **0**: Log request and response metadata.
+- **1**: Log metadata plus request and response headers.
+- **2**: Log metadata, headers, and request body.
+- **3**: Log metadata, headers, request body, and response body.
 
 ### Configure Audit Log Output
 
@@ -57,6 +58,7 @@ Send audit logs to a sidecar container:
 ```bash
 helm upgrade rancher rancher-stable/rancher \
   --namespace cattle-system \
+  --set auditLog.enabled=true \
   --set auditLog.level=2 \
   --set auditLog.destination=sidecar
 ```
@@ -66,6 +68,8 @@ This runs a sidecar container that outputs audit logs to stdout, which can be co
 ## Step 2: Configure Kubernetes API Server Audit Logging
 
 ### For RKE Clusters
+
+RKE1 reached end of life on July 31, 2025, and Rancher 2.12 and later no longer support provisioning or managing downstream RKE1 clusters, so this configuration only applies to older Rancher environments with existing RKE1 clusters.
 
 Edit the cluster configuration in Rancher to enable API server audit logging:
 
@@ -87,8 +91,6 @@ services:
             # Log authentication events at RequestResponse level
             - level: RequestResponse
               resources:
-                - group: ""
-                  resources: ["tokenreviews"]
                 - group: "authentication.k8s.io"
                   resources: ["tokenreviews"]
 
@@ -116,10 +118,6 @@ services:
                 - group: ""
                   resources: ["namespaces"]
 
-            # Log read-only access at metadata level
-            - level: Metadata
-              verbs: ["get", "list", "watch"]
-
             # Skip logging for health checks and system endpoints
             - level: None
               nonResourceURLs:
@@ -128,57 +126,59 @@ services:
                 - /livez*
                 - /version
                 - /swagger*
+
+            # Log read-only access at metadata level
+            - level: Metadata
+              verbs: ["get", "list", "watch"]
 ```
 
 ### For RKE2 Clusters
 
-Create an audit policy file and configure RKE2:
+In Rancher-provisioned RKE2 clusters, set the audit policy in the cluster spec with `machineSelectorConfig` so the policy is delivered only to control plane nodes:
 
 ```yaml
-# /etc/rancher/rke2/audit-policy.yaml
+apiVersion: provisioning.cattle.io/v1
+kind: Cluster
+spec:
+  rkeConfig:
+    machineSelectorConfig:
+      - config:
+          audit-policy-file: |
+            apiVersion: audit.k8s.io/v1
+            kind: Policy
+            rules:
+              - level: RequestResponse
+                resources:
+                  - group: ""
+                    resources: ["secrets", "configmaps"]
+                verbs: ["create", "update", "patch", "delete"]
 
-apiVersion: audit.k8s.io/v1
-kind: Policy
-rules:
-  - level: RequestResponse
-    resources:
-      - group: ""
-        resources: ["secrets", "configmaps"]
-    verbs: ["create", "update", "patch", "delete"]
+              - level: Request
+                resources:
+                  - group: "apps"
+                    resources: ["deployments", "statefulsets", "daemonsets"]
+                  - group: "batch"
+                    resources: ["jobs", "cronjobs"]
+                verbs: ["create", "update", "patch", "delete"]
 
-  - level: Request
-    resources:
-      - group: "apps"
-        resources: ["deployments", "statefulsets", "daemonsets"]
-      - group: "batch"
-        resources: ["jobs", "cronjobs"]
-    verbs: ["create", "update", "patch", "delete"]
+              - level: Metadata
+                resources:
+                  - group: ""
+                    resources: ["pods", "services"]
 
-  - level: Metadata
-    resources:
-      - group: ""
-        resources: ["pods", "services"]
+              - level: None
+                users: ["system:kube-proxy"]
 
-  - level: None
-    users: ["system:kube-proxy"]
-
-  - level: None
-    nonResourceURLs:
-      - /healthz*
-      - /readyz*
+              - level: None
+                nonResourceURLs:
+                  - /healthz*
+                  - /readyz*
+        machineLabelSelector:
+          matchLabels:
+            rke.cattle.io/control-plane-role: 'true'
 ```
 
-Configure RKE2 to use the audit policy:
-
-```yaml
-# /etc/rancher/rke2/config.yaml
-kube-apiserver-arg:
-  - "audit-policy-file=/etc/rancher/rke2/audit-policy.yaml"
-  - "audit-log-path=/var/log/kube-audit/audit.log"
-  - "audit-log-maxage=30"
-  - "audit-log-maxbackup=10"
-  - "audit-log-maxsize=100"
-```
+RKE2 already sets the audit log path and rotation arguments by default. If you need a custom policy file location or a custom audit log path, use `machineSelectorFiles` and `machineGlobalConfig` to pass the required `kube-apiserver-arg` values.
 
 ## Step 3: Collect Audit Logs with the Logging Stack
 
@@ -212,7 +212,20 @@ spec:
 
 ### Create a ClusterFlow for Audit Logs
 
+For file-based Kubernetes audit logs, first expose the audit log file through a `HostTailer`, then route that stream with a `ClusterFlow`. Set the `path` to the audit log path configured on your cluster, such as `/var/log/kube-audit/audit-log.json` on RKE or `/var/lib/rancher/rke2/server/logs/audit.log` on RKE2.
+
 ```yaml
+apiVersion: logging-extensions.banzaicloud.io/v1alpha1
+kind: HostTailer
+metadata:
+  name: kube-audit-hosttailer
+  namespace: cattle-logging-system
+spec:
+  fileTailers:
+    - name: kube-audit
+      path: /var/log/kube-audit/audit-log.json
+      disabled: false
+---
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterFlow
 metadata:
@@ -222,7 +235,9 @@ spec:
   match:
     - select:
         labels:
-          component: kube-apiserver
+          app.kubernetes.io/name: kube-audit-hosttailer
+        container_names:
+          - kube-audit
   filters:
     - parser:
         parse:
@@ -265,7 +280,7 @@ spec:
 
 ## Step 5: Create Audit Log Alerts
 
-Alert on suspicious activities detected in audit logs:
+Use API server request metrics to alert on suspicious activity and correlate it with your audit logs:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -282,7 +297,7 @@ spec:
       rules:
         - alert: UnauthorizedAPIAccess
           expr: |
-            increase(apiserver_audit_event_total{code=~"401|403"}[5m]) > 10
+            sum(increase(apiserver_request_total{code=~"401|403"}[5m])) > 10
           for: 5m
           labels:
             severity: warning
@@ -292,7 +307,7 @@ spec:
 
         - alert: SecretAccessAnomaly
           expr: |
-            increase(apiserver_audit_event_total{resource="secrets",verb=~"get|list"}[5m]) > 100
+            sum(increase(apiserver_request_total{resource="secrets"}[5m])) > 100
           for: 5m
           labels:
             severity: warning
