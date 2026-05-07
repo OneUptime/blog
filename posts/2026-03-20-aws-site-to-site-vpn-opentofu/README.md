@@ -8,7 +8,7 @@ Description: Learn how to create AWS Site-to-Site VPN connections between your V
 
 ## Introduction
 
-AWS Site-to-Site VPN creates an encrypted IPSec tunnel between your AWS VPC and on-premises data center or branch office. OpenTofu manages Virtual Private Gateways, Customer Gateways, VPN connections, and route propagation as code.
+AWS Site-to-Site VPN creates two encrypted IPsec tunnels between your AWS VPC and on-premises data center or branch office. OpenTofu manages Virtual Private Gateways, Customer Gateways, VPN connections, and route propagation as code.
 
 ## Creating a Virtual Private Gateway
 
@@ -16,7 +16,6 @@ AWS Site-to-Site VPN creates an encrypted IPSec tunnel between your AWS VPC and 
 # Virtual Private Gateway (AWS side of the connection)
 
 resource "aws_vpn_gateway" "main" {
-  vpc_id          = var.vpc_id
   amazon_side_asn = 64512  # BGP ASN for AWS side
 
   tags = {
@@ -56,10 +55,10 @@ resource "aws_vpn_connection" "main" {
   customer_gateway_id = aws_customer_gateway.onprem.id
   type                = "ipsec.1"
 
-  # Static routing (set to true for policy-based VPN devices)
-  static_routes_only = false  # false = use BGP dynamic routing
+  # Leave this false for BGP dynamic routing; set to true only for devices that don't support BGP
+  static_routes_only = false
 
-  # Custom IKE and IPSec settings
+  # Custom IKE and IPsec settings
   tunnel1_ike_versions           = ["ikev2"]
   tunnel1_phase1_encryption_algorithms = ["AES256"]
   tunnel1_phase1_integrity_algorithms  = ["SHA2-256"]
@@ -81,7 +80,7 @@ resource "aws_vpn_connection" "main" {
 ## Static Routes
 
 ```hcl
-# Add a static route for each on-premises CIDR (when BGP not used)
+# Add a static route for each on-premises CIDR only when static_routes_only = true
 resource "aws_vpn_connection_route" "onprem_cidr" {
   vpn_connection_id      = aws_vpn_connection.main.id
   destination_cidr_block = var.onprem_cidr  # e.g., 192.168.0.0/24
@@ -113,8 +112,8 @@ output "vpn_tunnel2_address" {
 }
 
 output "vpn_configuration" {
-  description = "Download the configuration from the AWS console for your VPN device type"
-  value       = "VPN ID: ${aws_vpn_connection.main.id}"
+  description = "Customer gateway configuration in AWS XML format"
+  value       = aws_vpn_connection.main.customer_gateway_configuration
 }
 ```
 
