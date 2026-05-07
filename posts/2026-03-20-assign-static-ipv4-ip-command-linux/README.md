@@ -109,8 +109,7 @@ sudo netplan apply
 ```text
 auto eth0
 iface eth0 inet static
-    address 192.168.1.100
-    netmask 255.255.255.0
+    address 192.168.1.100/24
     gateway 192.168.1.1
 ```
 
