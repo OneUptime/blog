@@ -8,7 +8,7 @@ Description: Learn how to create an Azure Service Principal and configure OpenTo
 
 ## Introduction
 
-An Azure Service Principal is a non-human identity used by applications, services, and automation tools to access Azure resources. It is the recommended authentication method for CI/CD pipelines running OpenTofu.
+An Azure Service Principal is a non-human identity used by applications, services, and automation tools to access Azure resources. It is a common authentication method for CI/CD pipelines running OpenTofu.
 
 ## Creating a Service Principal
 
@@ -22,7 +22,7 @@ az ad sp create-for-rbac \
   --output json
 ```
 
-This outputs:
+This includes:
 ```json
 {
   "appId": "CLIENT_ID",
@@ -50,30 +50,19 @@ provider "azurerm" {
 ## Certificate-Based Authentication
 
 ```hcl
-# Generate a certificate for the service principal
-resource "tls_private_key" "sp" {
-  algorithm = "RSA"
-  rsa_bits  = 4096
-}
+provider "azurerm" {
+  features {}
 
-resource "tls_self_signed_cert" "sp" {
-  private_key_pem = tls_private_key.sp.private_key_pem
-
-  subject {
-    common_name  = "opentofu-service-principal"
-    organization = "My Organisation"
-  }
-
-  validity_period_hours = 8760  # 1 year
-  allowed_uses          = ["cert_signing", "key_encipherment", "digital_signature"]
-}
-
-# Upload the certificate to the service principal
-resource "azuread_application_certificate" "sp" {
-  application_id = azuread_application.opentofu.id
-  type           = "AsymmetricX509Cert"
-  value          = tls_self_signed_cert.sp.cert_pem
-  end_date       = timeadd(timestamp(), "8760h")
+  # Credentials from environment variables (preferred)
+  # ARM_CLIENT_ID, ARM_CLIENT_CERTIFICATE_PATH,
+  # ARM_CLIENT_CERTIFICATE_PASSWORD, ARM_TENANT_ID, ARM_SUBSCRIPTION_ID
+  # The certificate must be a PKCS#12 (.pfx) bundle whose public
+  # certificate has been uploaded to the service principal.
+  client_id                   = var.client_id
+  client_certificate_path     = var.client_certificate_path
+  client_certificate_password = var.client_certificate_password
+  tenant_id                   = var.tenant_id
+  subscription_id             = var.subscription_id
 }
 ```
 
@@ -84,6 +73,8 @@ resource "azuread_application_certificate" "sp" {
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       ARM_CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
       ARM_CLIENT_SECRET:   ${{ secrets.AZURE_CLIENT_SECRET }}
@@ -91,8 +82,8 @@ jobs:
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v2
       - run: tofu init
       - run: tofu apply -auto-approve
 ```
@@ -111,4 +102,4 @@ resource "azurerm_role_assignment" "opentofu_rg" {
 
 ## Conclusion
 
-Service Principals are the standard CI/CD authentication method for Azure. Prefer certificate authentication over client secrets for production as certificates do not expire silently. Always scope the role assignment to the minimum required resource group or subscription, not the entire Azure AD tenant.
+Service Principals are a common CI/CD authentication method for Azure. Prefer certificate authentication over client secrets for production when you can securely manage certificate distribution and rotation, and monitor expiration for both certificates and secrets. Always scope the role assignment to the minimum required resource group, subscription, or resource.
