@@ -11,7 +11,7 @@ Admission controllers intercept requests to the Kubernetes API server before res
 ## Prerequisites
 
 - Rancher v2.5 or later
-- RKE or RKE2 managed clusters
+- RKE2 managed clusters, or older Rancher environments that still manage RKE1 clusters
 - Admin access to Rancher
 - kubectl access with cluster admin privileges
 
@@ -26,29 +26,29 @@ Controllers run in order: mutating first, then validating.
 
 ## Step 2: View Enabled Admission Controllers
 
-Check which admission controllers are currently enabled:
+Check which admission controllers are explicitly enabled or disabled in the API server flags:
 
 ```bash
-kubectl -n kube-system describe pod kube-apiserver-NODE | grep enable-admission
+kubectl -n kube-system describe pod kube-apiserver-NODE | grep -E 'enable-admission-plugins|disable-admission-plugins'
 ```
 
 For RKE2:
 
 ```bash
-ps aux | grep kube-apiserver | tr ' ' '\n' | grep admission
+ps -fC kube-apiserver | grep -E 'enable-admission-plugins|disable-admission-plugins'
 ```
 
-Default enabled controllers in RKE2 include: NamespaceLifecycle, LimitRanger, ServiceAccount, DefaultStorageClass, DefaultTolerationSeconds, MutatingAdmissionWebhook, ValidatingAdmissionWebhook, ResourceQuota, PodSecurityAdmission, and NodeRestriction.
+RKE2 explicitly sets `NodeRestriction` and otherwise inherits the Kubernetes default admission plugins. The default Kubernetes set varies by release, so use the kube-apiserver help output for your Kubernetes version to see the built-in defaults and inspect the running flags for any additions or removals.
 
 ## Step 3: Enable Additional Built-in Controllers
 
-For RKE2 clusters, add admission controllers via the config:
+For RKE2 clusters, add admission controllers via the config. If you override this flag, include `NodeRestriction` in the list:
 
 ```yaml
 # /etc/rancher/rke2/config.yaml
 
 kube-apiserver-arg:
-  - "enable-admission-plugins=NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,DefaultTolerationSeconds,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,ResourceQuota,PodSecurityAdmission,NodeRestriction,AlwaysPullImages,DenyServiceExternalIPs"
+  - "enable-admission-plugins=NodeRestriction,AlwaysPullImages,DenyServiceExternalIPs"
 ```
 
 Restart the server:
@@ -57,15 +57,17 @@ Restart the server:
 systemctl restart rke2-server
 ```
 
-For RKE clusters via Rancher:
+For older RKE clusters via Rancher, use the YAML editor. RKE1 is end-of-life and is not supported in Rancher 2.12 and later:
 
 ```yaml
 rancher_kubernetes_engine_config:
   services:
     kube_api:
       extra_args:
-        enable-admission-plugins: "NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,ResourceQuota,AlwaysPullImages"
+        enable-admission-plugins: "<DEFAULT_PLUGINS_FOR_YOUR_KUBERNETES_VERSION>,AlwaysPullImages"
 ```
+
+When you override `enable-admission-plugins` in RKE1, include the full default list for your Kubernetes version as well as any additional plugins you want to enable.
 
 ## Step 4: Configure AlwaysPullImages
 
@@ -77,7 +79,7 @@ This is enabled by adding `AlwaysPullImages` to the admission plugins list as sh
 
 Deploy a custom validating webhook to enforce your own policies. Here is an example that rejects pods without resource limits:
 
-First, create the webhook service:
+First, create the webhook Deployment and Service:
 
 ```yaml
 apiVersion: apps/v1
@@ -158,6 +160,8 @@ webhooks:
 
 Mutating webhooks can automatically modify resources. A common use case is injecting default labels:
 
+This configuration assumes a `label-injector` Deployment and Service are already running in `kube-system`, similar to the validating webhook example above:
+
 ```yaml
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -187,9 +191,9 @@ webhooks:
       - kube-system
 ```
 
-## Step 7: Configure ResourceQuota Admission Controller
+## Step 7: Configure ResourceQuota and LimitRange
 
-Enforce resource quotas per namespace:
+Enforce resource quotas per namespace and set default per-container requests and limits:
 
 ```yaml
 apiVersion: v1
@@ -249,11 +253,25 @@ Test that your admission controllers are working:
 
 ```bash
 # Test ResourceQuota enforcement
-kubectl run test-pod --image=nginx -n production --limits="cpu=100,memory=100Gi"
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+  namespace: production
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    resources:
+      limits:
+        cpu: "21"
+        memory: 100Gi
+EOF
 # Should be rejected if it exceeds quota
 
 # Test AlwaysPullImages
-kubectl run test-pull --image=nginx -n production --dry-run=server -o yaml | grep imagePullPolicy
+kubectl run test-pull --image=nginx:1.25 -n production --dry-run=server -o yaml | grep imagePullPolicy
 # Should show "Always"
 ```
 
