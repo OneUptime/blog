@@ -6,19 +6,19 @@ Tags: AWS, Terraform, IPv6, Subnets, VPC, Networking
 
 Description: A guide to assigning IPv6 /64 CIDR blocks to AWS subnets using Terraform, enabling dual-stack EC2 instances and EKS nodes.
 
-When you enable IPv6 on an AWS VPC, it receives a /56 CIDR block. You can then carve this into up to 256 /64 subnets - one per subnet. This guide shows how to automate that allocation with Terraform's `cidrsubnet` function.
+When you request an Amazon-provided IPv6 CIDR block for an AWS VPC, it receives a /56 CIDR block. You can then carve this into up to 256 /64 subnets - one per subnet. This guide shows how to automate that allocation with Terraform's `cidrsubnet` function.
 
 ## Understanding IPv6 Subnet Math in AWS
 
-AWS always assigns a /56 to your VPC. You then assign /64 blocks to subnets. The `cidrsubnet` Terraform function handles this:
+With an Amazon-provided IPv6 CIDR block, AWS assigns a /56 to your VPC. You then assign /64 blocks to subnets. The `cidrsubnet` Terraform function handles this:
 
 ```hcl
 # cidrsubnet(prefix, newbits, netnum)
 
 # For /56 -> /64: newbits = 64 - 56 = 8
 # netnum is the subnet index (0-255)
-cidrsubnet("2600:1f18:1234:5678::/56", 8, 0)  # -> 2600:1f18:1234:5678::/64
-cidrsubnet("2600:1f18:1234:5678::/56", 8, 1)  # -> 2600:1f18:1234:5679::/64
+cidrsubnet("2600:1f18:1234:5600::/56", 8, 0)  # -> 2600:1f18:1234:5600::/64
+cidrsubnet("2600:1f18:1234:5600::/56", 8, 1)  # -> 2600:1f18:1234:5601::/64
 ```
 
 ## Step 1: Create the VPC
@@ -87,7 +87,12 @@ resource "aws_subnet" "private" {
 ## Step 3: Output IPv6 CIDRs
 
 ```hcl
-# outputs.tf - Output the IPv6 CIDRs for reference
+# outputs.tf - Output the VPC ID and IPv6 CIDRs for reference
+output "vpc_id" {
+  value = aws_vpc.main.id
+  description = "VPC ID"
+}
+
 output "public_subnet_ipv6_cidrs" {
   value = aws_subnet.public[*].ipv6_cidr_block
   description = "IPv6 CIDRs assigned to public subnets"
@@ -101,10 +106,10 @@ output "private_subnet_ipv6_cidrs" {
 
 ## Step 4: Enable IPv6 on an Existing Subnet
 
-If you have existing subnets without IPv6, add the `ipv6_cidr_block` attribute:
+If you already manage a subnet with Terraform and it does not yet have IPv6, add the `ipv6_cidr_block` attribute:
 
 ```hcl
-# Add IPv6 to an existing subnet using aws_vpc_ipv6_cidr_block_association
+# Add IPv6 to an existing subnet definition
 resource "aws_subnet" "existing" {
   vpc_id          = aws_vpc.main.id
   cidr_block      = "10.0.50.0/24"
@@ -123,7 +128,7 @@ terraform apply
 # Verify subnets have IPv6 CIDRs assigned
 aws ec2 describe-subnets \
   --filters "Name=vpc-id,Values=$(terraform output -raw vpc_id)" \
-  --query 'Subnets[*].{ID:SubnetId,IPv6:Ipv6CidrBlockAssociationSet}'
+  --query 'Subnets[*].{ID:SubnetId,IPv6Cidrs:Ipv6CidrBlockAssociationSet[*].Ipv6CidrBlock}'
 ```
 
 Using `cidrsubnet` with a consistent indexing scheme makes IPv6 subnet allocation predictable, repeatable, and easy to expand as your infrastructure grows.
