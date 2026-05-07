@@ -146,7 +146,7 @@ podman logs my-web-server > /tmp/web-server.log 2>&1
 # Save with timestamps
 podman logs -t my-web-server > /tmp/web-server-timestamped.log 2>&1
 
-# Append new logs to an existing file
+# Follow logs and append them to a file
 podman logs -f my-web-server >> /tmp/web-server.log 2>&1 &
 
 # Save only error output
@@ -191,7 +191,7 @@ Podman supports different logging drivers that affect how logs are stored.
 
 ```bash
 # Check the current log driver
-podman info | grep -i log
+podman info --format '{{ .Host.LogDriver }}'
 
 # Run a container with a specific log driver
 podman run -d \
@@ -199,15 +199,14 @@ podman run -d \
     --log-driver journald \
     docker.io/library/nginx:alpine
 
-# For journald driver, view logs with journalctl
-journalctl CONTAINER_NAME=logged-app
+# Podman can still retrieve logs from a journald-backed container
+podman logs logged-app
 
-# Run with the json-file log driver (default)
+# Run with the json-file compatibility alias for k8s-file
 podman run -d \
     --name json-logged-app \
     --log-driver json-file \
-    --log-opt max-size=10m \
-    --log-opt max-file=3 \
+    --log-opt max-size=10mb \
     docker.io/library/nginx:alpine
 ```
 
@@ -216,9 +215,8 @@ podman run -d \
 Podman Desktop's log viewer provides several features for debugging:
 
 - **Real-time streaming**: Logs update automatically as new entries appear
-- **Scroll lock**: Pause auto-scrolling to examine specific log entries
-- **Copy to clipboard**: Select and copy log text for sharing
-- **Search**: Use the browser find function (Ctrl/Cmd+F) to search within visible logs
+- **Search**: Type a keyword in the log view's search box to find matching log entries
+- **Open Logs shortcut**: Use the container overflow menu and choose **Open Logs** as an alternative to opening the full container details page
 
 ```bash
 # Generate various log levels for debugging practice
@@ -236,4 +234,4 @@ podman logs -f debug-app
 
 ## Summary
 
-Viewing container logs is essential for debugging and monitoring. Podman Desktop provides a built-in log viewer accessible from any container's detail page, with real-time streaming and scroll control. The `podman logs` CLI command offers powerful options including tail, follow, timestamps, and time-based filtering. You can search logs with grep, save them to files for analysis, and monitor multiple containers simultaneously. Understanding how to effectively use container logs is a fundamental skill for container-based development and operations.
+Viewing container logs is essential for debugging and monitoring. Podman Desktop provides a built-in log viewer accessible from any container's detail page, with real-time streaming and built-in keyword search. The `podman logs` CLI command offers powerful options including tail, follow, timestamps, and time-based filtering. You can search logs with grep, save them to files for analysis, and monitor multiple containers simultaneously. Understanding how to effectively use container logs is a fundamental skill for container-based development and operations.
