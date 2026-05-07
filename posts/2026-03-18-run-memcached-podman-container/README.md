@@ -80,8 +80,8 @@ podman run -d \
 # -t 4: use 4 threads
 # -v: verbose logging
 
-# Check the stats to verify settings
-echo "stats" | nc localhost 11213 | grep -E "limit_maxbytes|curr_connections|threads"
+# Check the settings to verify configuration
+echo "stats settings" | nc localhost 11213 | grep -E "maxbytes|maxconns|num_threads"
 ```
 
 ## Working with Memcached Data
