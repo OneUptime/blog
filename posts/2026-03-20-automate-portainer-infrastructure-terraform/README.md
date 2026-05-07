@@ -15,7 +15,7 @@ graph TD
     C --> D[Install Portainer Agent]
     D --> E[Register environments in Portainer]
     E --> F[Deploy stacks to environments]
-    F --> G[Configure users and teams]
+    F --> G[Output infrastructure summary]
 ```
 
 ## Complete Multi-File Terraform Setup
@@ -35,6 +35,10 @@ terraform {
       source  = "hetznercloud/hcloud"
       version = "~> 1.44"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.13"
+    }
   }
 
   backend "s3" {
@@ -45,8 +49,8 @@ terraform {
 }
 
 provider "portainer" {
-  endpoint     = var.portainer_url
-  access_token = var.portainer_api_token
+  endpoint = var.portainer_url
+  api_key  = var.portainer_api_key
 }
 
 provider "hcloud" {
@@ -64,7 +68,7 @@ locals {
   docker_init_script = <<-EOF
     #!/bin/bash
     apt-get update
-    apt-get install -y docker.io docker-compose
+    apt-get install -y docker.io
     systemctl enable docker
     systemctl start docker
 
@@ -109,18 +113,38 @@ resource "hcloud_firewall" "docker" {
 ```hcl
 # environments.tf
 
-# Wait for agent to start, then register each VM
+# Create a Portainer group and tag for the production hosts
+resource "portainer_endpoint_group" "production" {
+  name        = "production"
+  description = "Production Docker environments"
+}
+
+resource "portainer_tag" "production" {
+  name = "production"
+}
+
+# Give cloud-init time to install Docker and start the Portainer Agent
+resource "time_sleep" "wait_for_agents" {
+  depends_on      = [hcloud_server.docker_hosts]
+  create_duration = "90s"
+
+  triggers = {
+    host_ids = join(",", hcloud_server.docker_hosts[*].id)
+  }
+}
+
+# Register each Docker host in Portainer after the agent is up
 resource "portainer_environment" "docker_hosts" {
   count = var.docker_host_count
 
-  name = hcloud_server.docker_hosts[count.index].name
-  type = 2  # Docker standalone via agent
-  url  = "tcp://${hcloud_server.docker_hosts[count.index].ipv4_address}:9001"
+  name                = hcloud_server.docker_hosts[count.index].name
+  environment_address = "tcp://${hcloud_server.docker_hosts[count.index].ipv4_address}:9001"
+  type                = 2  # Docker standalone via agent
 
-  group_id = portainer_environment_group.production.id
+  group_id = portainer_endpoint_group.production.id
   tag_ids  = [portainer_tag.production.id]
 
-  depends_on = [hcloud_server.docker_hosts]
+  depends_on = [time_sleep.wait_for_agents]
 }
 ```
 
@@ -133,22 +157,27 @@ resource "portainer_environment" "docker_hosts" {
 resource "portainer_stack" "monitoring" {
   count = var.docker_host_count
 
-  name        = "monitoring"
-  endpoint_id = portainer_environment.docker_hosts[count.index].id
+  name            = "monitoring"
+  deployment_type = "standalone"
+  method          = "file"
+  endpoint_id     = portainer_environment.docker_hosts[count.index].id
 
-  stack_file_content = file("stacks/monitoring/docker-compose.yml")
+  stack_file_path = "stacks/monitoring/docker-compose.yml"
 
-  env = [
-    { name = "GRAFANA_PASSWORD", value = var.grafana_password }
-  ]
+  env {
+    name  = "GRAFANA_PASSWORD"
+    value = var.grafana_password
+  }
 }
 
 # Deploy application stack to production hosts
 resource "portainer_stack" "app" {
   count = var.docker_host_count
 
-  name        = "my-application"
-  endpoint_id = portainer_environment.docker_hosts[count.index].id
+  name            = "my-application"
+  deployment_type = "standalone"
+  method          = "string"
+  endpoint_id     = portainer_environment.docker_hosts[count.index].id
 
   stack_file_content = templatefile("stacks/app/docker-compose.yml", {
     image_tag = var.app_image_tag
