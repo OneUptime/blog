@@ -22,19 +22,7 @@ Containerized cron jobs solve all of these issues. Each job has its own filesyst
 
 ## Using Podman with Systemd Timers
 
-On systems running systemd, timers are the modern replacement for cron. They integrate naturally with Podman, especially since Podman generates systemd unit files.
-
-First, create a container for your job:
-
-```bash
-podman create \
-  --name backup-job \
-  --replace \
-  -v /data:/data:ro,Z \
-  -v /backups:/backups:Z \
-  backup-image:latest \
-  /scripts/run-backup.sh
-```
+On systems running systemd, timers are the modern replacement for cron. They integrate naturally with Podman through Quadlet, which generates systemd services from container unit files.
 
 Create a Quadlet container unit file (the modern replacement for the deprecated `podman generate systemd`):
 
@@ -55,7 +43,7 @@ Type=oneshot
 Create a timer file:
 
 ```ini
-# ~/.config/containers/systemd/backup-job.timer
+# ~/.config/systemd/user/backup-job.timer
 [Unit]
 Description=Run backup job daily
 
@@ -76,6 +64,12 @@ systemctl --user enable --now backup-job.timer
 systemctl --user list-timers
 ```
 
+For rootless timers that need to keep running after you log out, enable lingering once:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
 ## Using Podman with Traditional Cron
 
 If you prefer traditional crontab, you can call Podman directly from cron entries:
@@ -87,13 +81,13 @@ crontab -e
 
 ```cron
 # Run database backup every day at 2 AM
-0 2 * * * podman run --rm -v /data:/data:ro,Z -v /backups:/backups:Z backup-image:latest /scripts/backup.sh >> /var/log/backup.log 2>&1
+0 2 * * * podman run --rm -v /data:/data:ro,Z -v /backups:/backups:Z backup-image:latest /scripts/backup.sh >> "$HOME"/backup.log 2>&1
 
 # Clean up old logs every Sunday at 3 AM
-0 3 * * 0 podman run --rm -v /var/log/app:/logs:Z cleanup-image:latest /scripts/cleanup-logs.sh --days 30 >> /var/log/cleanup.log 2>&1
+0 3 * * 0 podman run --rm -v /var/log/app:/logs:Z cleanup-image:latest /scripts/cleanup-logs.sh --days 30 >> "$HOME"/cleanup.log 2>&1
 
 # Generate reports every hour
-0 * * * * podman run --rm --env-file /etc/app/env -v /reports:/output:Z reports-image:latest /scripts/hourly-report.sh >> /var/log/reports.log 2>&1
+0 * * * * podman run --rm --env-file /etc/app/env -v /reports:/output:Z reports-image:latest /scripts/hourly-report.sh >> "$HOME"/reports.log 2>&1
 ```
 
 ## Building a Cron Job Container
@@ -161,7 +155,7 @@ The `timeout` command (from coreutils) automatically kills the container process
 
 ## Job Monitoring and Alerting
 
-Create a wrapper script that handles logging, timing, and error notification:
+Create a wrapper script that handles logging, timing, error notification, and optional Podman arguments:
 
 ```bash
 #!/bin/bash
@@ -171,10 +165,23 @@ set -euo pipefail
 
 JOB_NAME="$1"
 shift
+
+PODMAN_ARGS=()
+if [[ "${1:-}" == -* ]]; then
+  while (($#)); do
+    if [[ "$1" == "--" ]]; then
+      shift
+      break
+    fi
+    PODMAN_ARGS+=("$1")
+    shift
+  done
+fi
+
 IMAGE="$1"
 shift
 
-LOG_DIR="/var/log/container-jobs"
+LOG_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/container-jobs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/${JOB_NAME}.log"
 
@@ -184,8 +191,7 @@ echo "[$(date)] Starting job: $JOB_NAME" >> "$LOG_FILE"
 # Run the container
 if podman run --rm \
   --name "${JOB_NAME}-$(date +%s)" \
-  --memory 1g \
-  --cpus 2.0 \
+  "${PODMAN_ARGS[@]}" \
   "$IMAGE" \
   "$@" >> "$LOG_FILE" 2>&1; then
 
@@ -198,14 +204,18 @@ else
   DURATION=$((END_TIME - START_TIME))
   echo "[$(date)] Job $JOB_NAME FAILED (exit code: $EXIT_CODE) after ${DURATION}s" >> "$LOG_FILE"
 
-  # Send alert
-  curl -X POST "$ALERT_WEBHOOK_URL" \
-    -H "Content-Type: application/json" \
-    -d "{\"text\": \"Cron job $JOB_NAME failed with exit code $EXIT_CODE after ${DURATION}s\"}"
+  # Send alert if a webhook is configured
+  if [[ -n "${ALERT_WEBHOOK_URL:-}" ]]; then
+    curl -X POST "$ALERT_WEBHOOK_URL" \
+      -H "Content-Type: application/json" \
+      -d "{\"text\": \"Cron job $JOB_NAME failed with exit code $EXIT_CODE after ${DURATION}s\"}"
+  fi
 
   exit $EXIT_CODE
 fi
 ```
+
+Pass extra Podman flags before a `--` separator; the image and command come after it.
 
 Use it in your crontab:
 
@@ -216,7 +226,7 @@ Use it in your crontab:
 
 ## Podman Quadlet for Systemd Integration
 
-Podman 4.4 and later supports Quadlet, a way to define containers directly as systemd units:
+Podman includes Quadlet, a way to define containers as systemd-managed units:
 
 ```ini
 # ~/.config/containers/systemd/backup.container
@@ -227,7 +237,7 @@ Description=Database backup container
 Image=backup-image:latest
 Volume=/data:/data:ro,Z
 Volume=/backups:/backups:Z
-Environment=DB_HOST=localhost
+Environment=DB_HOST=host.containers.internal
 Environment=DB_USER=backup
 Environment=DB_NAME=production
 Exec=/scripts/backup.sh
@@ -237,7 +247,7 @@ Type=oneshot
 ```
 
 ```ini
-# ~/.config/containers/systemd/backup.timer
+# ~/.config/systemd/user/backup.timer
 [Unit]
 Description=Run database backup daily
 
@@ -267,8 +277,8 @@ jobs:
     image: backup:latest
     schedule: "0 2 * * *"
     volumes:
-      - "/data:/data:ro"
-      - "/backups:/backups"
+      - "/data:/data:ro,Z"
+      - "/backups:/backups:Z"
     memory: 1g
     timeout: 3600
 
@@ -276,7 +286,7 @@ jobs:
     image: cleanup:latest
     schedule: "0 3 * * 0"
     volumes:
-      - "/var/log:/logs"
+      - "/var/log:/logs:Z"
     memory: 256m
     timeout: 600
 
@@ -298,15 +308,22 @@ A script to install all jobs:
 while IFS= read -r line; do
     echo "$line"
 done < <(python3 -c "
+import shlex
 import yaml
 with open('jobs.yml') as f:
     config = yaml.safe_load(f)
 for job in config['jobs']:
-    volumes = ' '.join(f'-v {v}:Z' for v in job.get('volumes', []))
-    env_file = f'--env-file {job[\"env_file\"]}' if 'env_file' in job else ''
-    memory = f'--memory {job[\"memory\"]}' if 'memory' in job else ''
+    command = ['/usr/local/bin/run-job.sh', job['name']]
+    if 'memory' in job:
+        command.extend(['--memory', str(job['memory'])])
+    for volume in job.get('volumes', []):
+        command.extend(['-v', volume])
+    if 'env_file' in job:
+        command.extend(['--env-file', job['env_file']])
+    command.extend(['--', job['image']])
     timeout_val = f'timeout {job[\"timeout\"]}' if 'timeout' in job else ''
-    print(f'{job[\"schedule\"]} {timeout_val} /usr/local/bin/run-job.sh {job[\"name\"]} {memory} {volumes} {env_file} {job[\"image\"]}')
+    cron_command = ' '.join(shlex.quote(part) for part in command)
+    print(f'{job[\"schedule\"]} {timeout_val} {cron_command}')
 ") | crontab -
 ```
 
