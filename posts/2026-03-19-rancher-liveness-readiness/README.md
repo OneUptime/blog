@@ -27,8 +27,8 @@ Health probes are essential for keeping your Kubernetes workloads reliable. Live
 
 ### Navigate to the Workload
 
-1. Go to **Workloads > Deployments** in the Rancher dashboard
-2. Click **Create** for a new workload, or click the three-dot menu and **Edit Config** for an existing one
+1. Go to **☰ > Cluster Management**, open your cluster, and click **Explore > Workload**
+2. Click **Create** and choose **Deployment** for a new workload, or find an existing workload and click the three-dot menu and **Edit Config**
 
 ### Add a Liveness Probe
 
@@ -166,13 +166,12 @@ readinessProbe:
 
 ### gRPC Probes
 
-For gRPC services (Kubernetes 1.24+):
+For gRPC services that implement the gRPC Health Checking Protocol (available by default in Kubernetes 1.24+, stable in Kubernetes 1.27+):
 
 ```yaml
 livenessProbe:
   grpc:
     port: 50051
-    service: my.health.v1.Health
   initialDelaySeconds: 10
   periodSeconds: 10
   failureThreshold: 3
@@ -185,7 +184,7 @@ livenessProbe:
 | `initialDelaySeconds` | Seconds to wait before running the first probe | 0 |
 | `periodSeconds` | How often to run the probe | 10 |
 | `timeoutSeconds` | Seconds to wait for a response | 1 |
-| `successThreshold` | Consecutive successes to be considered healthy | 1 |
+| `successThreshold` | Consecutive successes to be considered healthy after a failure (`1` for liveness and startup probes) | 1 |
 | `failureThreshold` | Consecutive failures to be considered unhealthy | 3 |
 
 ## Probe Configuration Guidelines
@@ -256,7 +255,7 @@ readinessProbe:
 
 ## Common Mistakes to Avoid
 
-1. **Liveness and readiness probes on the same endpoint**: The liveness probe should check if the process is alive, while the readiness probe should check if it can serve traffic. Using the same endpoint for both defeats the purpose.
+1. **Assuming liveness and readiness probes must use different endpoints**: They can use the same low-cost endpoint for simple applications. Use separate endpoints when liveness and readiness need to represent different conditions.
 
 2. **Initial delay too short**: If your application takes 30 seconds to start, but your liveness probe starts after 5 seconds, the pod will be killed in a restart loop.
 
