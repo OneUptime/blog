@@ -8,7 +8,7 @@ Description: Learn how to create and manage Azure Resource Groups with OpenTofu 
 
 ## Introduction
 
-Resource Groups are the fundamental organisational unit in Azure. Every Azure resource must belong to exactly one resource group. OpenTofu manages resource groups as the first step in any Azure deployment.
+Resource Groups are the fundamental organisational unit in Azure. Most Azure resources belong to exactly one resource group, although some resource types exist at the subscription, management group, or tenant scope. OpenTofu commonly manages resource groups early in Azure deployments, and the examples below assume the `azurerm` provider is already configured for your target subscription.
 
 ## Basic Resource Group
 
@@ -99,6 +99,7 @@ variable "environment"    { type = string }
 variable "location"       { type = string; default = "East US" }
 variable "location_short" { type = string; default = "eastus" }
 variable "owner_email"    { type = string }
+variable "common_tags"    { type = map(string); default = {} }
 
 output "resource_group_name" { value = azurerm_resource_group.main.name }
 output "resource_group_id"   { value = azurerm_resource_group.main.id }
@@ -114,4 +115,4 @@ Azure resource group naming best practices:
 
 ## Conclusion
 
-Resource groups are the containers for all other Azure resources. Separate them by tier for fine-grained RBAC and cost reporting, apply management locks to production groups, and enforce consistent naming and tagging conventions from the start.
+Resource groups are the containers for most Azure resources deployed at resource-group scope. Separate them by tier for fine-grained RBAC and cost reporting, apply management locks to production groups, and enforce consistent naming and tagging conventions from the start.
