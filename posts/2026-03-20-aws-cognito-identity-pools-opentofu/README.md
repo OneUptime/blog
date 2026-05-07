@@ -15,7 +15,7 @@ Cognito Identity Pools (Federated Identities) allow your users to obtain tempora
 ```hcl
 resource "aws_cognito_identity_pool" "main" {
   identity_pool_name               = "${var.app_name}-identity-${var.environment}"
-  allow_unauthenticated_identities = false  # set true for guest access
+  allow_unauthenticated_identities = true   # set false if you don't need guest access
 
   # Link to a Cognito User Pool
   cognito_identity_providers {
@@ -70,7 +70,7 @@ resource "aws_iam_role_policy" "authenticated" {
           "s3:GetObject",
           "s3:PutObject"
         ]
-        Resource = "arn:aws:s3:::${var.user_bucket}/\${cognito-identity.amazonaws.com:sub}/*"
+        Resource = "arn:aws:s3:::${var.user_bucket}/$${cognito-identity.amazonaws.com:sub}/*"
       }
     ]
   })
@@ -116,6 +116,8 @@ resource "aws_cognito_identity_pool_roles_attachment" "main" {
 
 ```hcl
 resource "aws_cognito_identity_pool" "with_social" {
+  count = var.google_client_id == "" ? 0 : 1
+
   identity_pool_name               = "${var.app_name}-identity"
   allow_unauthenticated_identities = false
 
@@ -129,10 +131,13 @@ resource "aws_cognito_identity_pool" "with_social" {
 ## Variables and Outputs
 
 ```hcl
-variable "app_name"     { type = string }
-variable "environment"  { type = string }
-variable "user_bucket"  { type = string }
-variable "google_client_id" { type = string default = "" }
+variable "app_name"    { type = string }
+variable "environment" { type = string }
+variable "user_bucket" { type = string }
+variable "google_client_id" {
+  type    = string
+  default = ""
+}
 
 output "identity_pool_id" {
   value = aws_cognito_identity_pool.main.id
