@@ -2,18 +2,19 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, Azure, Firewall Policies, Network Security, Application Rules, IdP, Infrastructure as Code
+Tags: OpenTofu, Azure, Firewall Policies, Network Security, Application Rules, IDPS, Infrastructure as Code
 
 Description: Learn how to configure Azure Firewall Policies with OpenTofu to centrally manage network, application, and NAT rules across multiple firewalls with IDPS and TLS inspection.
 
 ## Introduction
 
-Azure Firewall Policy is a global resource that centralizes firewall configuration across multiple Azure Firewalls and Virtual WAN Secured Hubs. It supports hierarchical policies (parent/child) for organization-wide base rules and team-specific overrides. Azure Firewall Premium tier adds IDPS (Intrusion Detection and Prevention), TLS inspection, URL filtering, and Web Categories to Standard's network/application rules.
+Azure Firewall Policy is a global resource that centralizes firewall configuration across multiple Azure Firewalls and Virtual WAN Secured Hubs. It supports hierarchical policies (parent/child) for organization-wide base rules and team-specific additions. Azure Firewall Premium tier adds IDPS (Intrusion Detection and Prevention), TLS inspection, and URL filtering, and provides more granular Web Categories matching than Standard.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - Azure credentials with Network permissions
+- For TLS inspection: an Azure Key Vault secret containing the intermediate CA certificate, plus a user-assigned managed identity with Key Vault Secret Get/List permissions via Key Vault access policies
 - An Azure Firewall or Secured Virtual Hub to attach the policy
 
 ## Step 1: Create Firewall Policy
@@ -23,7 +24,12 @@ resource "azurerm_firewall_policy" "main" {
   name                = "${var.project_name}-fw-policy"
   resource_group_name = var.resource_group_name
   location            = var.location
-  sku                 = "Premium"  # Standard or Premium
+  sku                 = "Premium"  # Premium is required for IDPS and TLS inspection
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.firewall_policy_identity_id]
+  }
 
   # IDPS configuration (Premium only)
   intrusion_detection {
@@ -81,11 +87,11 @@ resource "azurerm_firewall_policy_rule_collection_group" "network" {
     }
 
     rule {
-      name              = "allow-dns"
+      name              = "allow-ntp"
       protocols         = ["UDP"]
       source_addresses  = ["10.0.0.0/8"]
-      destination_fqdns = ["*.azure.com"]
-      destination_ports = ["53"]
+      destination_fqdns = ["time.windows.com"]
+      destination_ports = ["123"]
     }
   }
 
@@ -124,10 +130,6 @@ resource "azurerm_firewall_policy_rule_collection_group" "application" {
       protocols {
         type = "Https"
         port = 443
-      }
-      protocols {
-        type = "Http"
-        port = 80
       }
       destination_fqdn_tags = ["WindowsUpdate", "MicrosoftActiveProtectionService"]
     }
@@ -227,9 +229,9 @@ az network firewall show \
 # Monitor firewall logs
 az monitor log-analytics query \
   --workspace <workspace-id> \
-  --analytics-query "AzureDiagnostics | where Category == 'AzureFirewallNetworkRule' | take 10"
+  --analytics-query "AZFWNetworkRule | take 10"
 ```
 
 ## Conclusion
 
-Enable DNS proxy (`dns { proxy_enabled = true }`) on Firewall Policy when using FQDN-based network rules-without DNS proxy, the firewall cannot resolve FQDNs in network rules and will silently fail. Use IP Groups (`azurerm_ip_group`) to group CIDR ranges for reuse across multiple rules instead of duplicating address lists. For hierarchical organizations, create a base parent policy with organization-wide rules and child policies for team-specific overrides; child policies inherit all parent rules and can only add to them.
+Enable DNS proxy (`dns { proxy_enabled = true }`) on the Firewall Policy and configure your virtual network or clients to use the firewall's private IP as DNS when using FQDN-based network rules; otherwise, FQDN-based network rules won't work consistently. Use IP Groups (`azurerm_ip_group`) to group CIDR ranges for reuse across multiple rules instead of duplicating address lists. For hierarchical organizations, create a base parent policy with organization-wide rules and child policies for team-specific additions; child policies inherit parent network and application rule collections, while NAT rule collections must be defined in the child policy.
