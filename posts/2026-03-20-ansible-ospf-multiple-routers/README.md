@@ -73,8 +73,10 @@ all:
               router_id: "{{ ospf_router_id }}"
               passive_interfaces:
                 default: false
-                interfaces:
-                  - Loopback0
+                interface:
+                  set_interface: true
+                  name:
+                    - Loopback0
               network:
                 - address: "{{ item.address }}"
                   wildcard_bits: "{{ item.wildcard }}"
@@ -116,16 +118,10 @@ all:
       debug:
         msg: "{{ ospf_neighbors.stdout[0] }}"
 
-    - name: Check OSPF neighbor count
-      cisco.ios.ios_command:
-        commands:
-          - show ip ospf neighbor | count FULL
-      register: ospf_full_count
-
     - name: Assert at least one FULL neighbor
       assert:
         that:
-          - ospf_full_count.stdout[0] | int > 0
+          - (ospf_neighbors.stdout[0] | regex_findall('FULL/') | length) > 0
         fail_msg: "No OSPF neighbors in FULL state on {{ inventory_hostname }}"
         success_msg: "OSPF adjacencies established on {{ inventory_hostname }}"
 ```
@@ -135,18 +131,20 @@ all:
 ```yaml
 # Add to the ospf playbook or create a separate playbook
     - name: Configure OSPF MD5 authentication on interfaces
-      cisco.ios.ios_command:
-        commands:
-          - "conf t"
-          - "interface GigabitEthernet0/1"
-          - "ip ospf authentication message-digest"
-          - "ip ospf message-digest-key 1 md5 ospf_secret_key"
-          - "end"
+      cisco.ios.ios_config:
+        lines:
+          - ip ospf authentication message-digest
+          - ip ospf message-digest-key 1 md5 ospf_secret_key
+        parents: interface GigabitEthernet0/1
 ```
 
-## Step 5: Configure OSPF Stub Area on Router03
+## Step 5: Configure OSPF Stub Area 1 on Routers in Area 1
 
 ```yaml
+# Set this on every router in area 1, including the ABR.
+# inventory/host_vars/router02.yml
+ospf_area1_stub: true
+
 # inventory/host_vars/router03.yml
 ospf_area1_stub: true
 ```
