@@ -8,7 +8,7 @@ Description: Learn how to create AWS Batch job queues, configure priority-based 
 
 ## Introduction
 
-AWS Batch Job Queues hold submitted batch jobs until compute capacity is available in the associated compute environments. Multiple queues with different priorities allow you to control job scheduling order. OpenTofu manages queues, priorities, and job definitions as code.
+AWS Batch Job Queues hold submitted batch jobs until compute capacity is available in the associated compute environments. Multiple queues with different priorities let you control which queues are evaluated first by the scheduler. OpenTofu manages queues, priorities, and job definitions as code.
 
 ## Creating a Job Queue
 
@@ -18,7 +18,7 @@ resource "aws_batch_job_queue" "standard" {
   state    = "ENABLED"
   priority = 10  # lower number = lower priority
 
-  # Associate with compute environments in order of priority
+  # Associate with compute environments in order of preference
   compute_environment_order {
     order               = 1
     compute_environment = aws_batch_compute_environment.ec2.arn
@@ -58,9 +58,18 @@ resource "aws_batch_job_definition" "data_processor" {
 
   container_properties = jsonencode({
     image      = "${var.ecr_repo}/data-processor:latest"
-    vcpus      = 4
-    memory     = 8192  # MB
     jobRoleArn = aws_iam_role.batch_job.arn
+
+    resourceRequirements = [
+      {
+        type  = "VCPU"
+        value = "4"
+      },
+      {
+        type  = "MEMORY"
+        value = "8192"
+      }
+    ]
 
     environment = [
       {
@@ -103,13 +112,13 @@ resource "aws_batch_job_definition" "data_processor" {
 
     evaluate_on_exit {
       on_status_reason = "Host EC2*"
-      action           = "RETRY"  # retry if spot instance was terminated
+      action           = "RETRY"  # retry if the host EC2 instance caused the failure
     }
 
     evaluate_on_exit {
       on_reason    = "*"
       on_exit_code = "1"
-      action       = "FAILED"
+      action       = "EXIT"
     }
   }
 
@@ -158,4 +167,4 @@ tofu apply tfplan
 
 ## Summary
 
-AWS Batch job queues with priority ordering and multiple compute environment fallbacks give you fine-grained control over batch job scheduling. OpenTofu manages queues, job definitions, retry strategies, and IAM roles together as a complete batch processing stack.
+AWS Batch job queues with priority settings and multiple compute environment fallbacks give you fine-grained control over queue evaluation and compute environment selection. OpenTofu manages queues, job definitions, retry strategies, and IAM roles together as a complete batch processing stack.
