@@ -8,7 +8,7 @@ Description: Learn how to integrate Skopeo with Podman in CI/CD pipelines for bu
 
 ---
 
-> Combining Skopeo and Podman in CI/CD pipelines gives you a daemonless, rootless container workflow that handles building, testing, and promoting images across registries.
+> Combining Skopeo and Podman in CI/CD pipelines gives you a daemonless container workflow that can run rootlessly while handling building, testing, and promoting images across registries.
 
 Modern CI/CD pipelines frequently build and deploy container images. Using Podman for building and Skopeo for copying and promoting images between registries creates a secure, daemonless workflow. This guide covers practical CI/CD integration patterns for GitHub Actions, GitLab CI, and generic pipeline environments.
 
@@ -79,7 +79,7 @@ jobs:
 
 ## GitLab CI Integration
 
-Configure Skopeo and Podman in a GitLab CI pipeline.
+Configure Skopeo and Podman in a GitLab CI pipeline on runners configured to use Podman as the container runtime.
 
 ```yaml
 # .gitlab-ci.yml
@@ -94,6 +94,8 @@ build:
   stage: build
   image: quay.io/podman/stable
   script:
+    - dnf -y install skopeo
+
     # Log in to the GitLab Container Registry
     - echo "${CI_REGISTRY_PASSWORD}" |
         podman login ${CI_REGISTRY}
@@ -110,22 +112,16 @@ build:
 
 promote-to-production:
   stage: promote
-  image: quay.io/skopeo/stable
+  image:
+    name: quay.io/skopeo/stable
+    entrypoint: [""]
   only:
     - tags
   script:
-    # Log in to both registries
-    - echo "${CI_REGISTRY_PASSWORD}" |
-        podman login ${CI_REGISTRY}
-          --username ${CI_REGISTRY_USER}
-          --password-stdin
-    - echo "${PROD_REGISTRY_PASSWORD}" |
-        podman login ${PROD_REGISTRY}
-          --username ${PROD_REGISTRY_USER}
-          --password-stdin
-
     # Promote the image directly between registries
     - skopeo copy
+        --src-creds "${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD}"
+        --dest-creds "${PROD_REGISTRY_USER}:${PROD_REGISTRY_PASSWORD}"
         docker://${IMAGE_NAME}:${CI_COMMIT_SHA}
         docker://${PROD_REGISTRY}/myapp:${CI_COMMIT_TAG}
 ```
@@ -185,11 +181,11 @@ Integrate image scanning into the pipeline using Skopeo to fetch images for scan
 IMAGE="registry.example.com/myapp:${CI_COMMIT_SHA}"
 SCAN_DIR="/tmp/scan-image"
 
-# Export the image to a local directory for scanning
+# Export the image to a local OCI layout for scanning
 mkdir -p "$SCAN_DIR"
 skopeo copy \
   "docker://${IMAGE}" \
-  "dir:${SCAN_DIR}"
+  "oci:${SCAN_DIR}"
 
 # Run a vulnerability scanner (e.g., Trivy) on the exported image
 trivy image --input "${SCAN_DIR}" --severity HIGH,CRITICAL --exit-code 1
