@@ -113,6 +113,14 @@ The `containers.podman.podman_container` module lets you manage containers decla
 
 Use Ansible to build container images consistently across your infrastructure:
 
+If you use `synchronize`, install the `ansible.posix` collection as well:
+
+```bash
+ansible-galaxy collection install ansible.posix
+```
+
+The `synchronize` module also requires `rsync` on the control node and the target host.
+
 ```yaml
 # build-images.yml
 ---
@@ -123,7 +131,7 @@ Use Ansible to build container images consistently across your infrastructure:
     registry: registry.example.com
   tasks:
     - name: Copy application source
-      ansible.builtin.synchronize:
+      ansible.posix.synchronize:
         src: ./app/
         dest: /tmp/app-build/
 
@@ -172,7 +180,7 @@ Podman pods group related containers, similar to Kubernetes pods:
         state: started
         publish:
           - "8080:3000"
-          - "9090:9090"
+          - "9100:9100"
 
     - name: Run app in pod
       containers.podman.podman_container:
@@ -238,10 +246,11 @@ Implement rolling deployments across multiple hosts:
       retries: 30
       delay: 2
 
-    - name: Remove old images
-      containers.podman.podman_image:
-        name: "{{ app_image }}"
-        state: absent
+    - name: Prune unused images
+      containers.podman.podman_prune:
+        image: true
+        image_filters:
+          dangling_only: false
       ignore_errors: true
 ```
 
@@ -253,7 +262,7 @@ ansible-playbook rolling-deploy.yml -e deploy_version=v2.1.0
 
 ## Systemd Integration with Ansible
 
-> **Note:** The `generate_systemd` option and `podman generate systemd` command are deprecated since Podman 4.7. The recommended approach for new deployments is to use Quadlet files for systemd integration. The example below still works but may be removed in a future Podman release.
+> **Note:** `podman generate systemd`, which the `generate_systemd` option relies on, is deprecated in current Podman releases. The recommended approach for new deployments is to use Quadlet files for systemd integration. The example below still works for existing workflows, but new deployments should prefer Quadlet.
 
 Generate and manage systemd units for Podman containers:
 
@@ -267,14 +276,14 @@ Generate and manage systemd units for Podman containers:
       containers.podman.podman_container:
         name: myapp
         image: myapp:latest
+        rm: true
         state: created
-        restart_policy: always
         publish:
           - "8080:3000"
         generate_systemd:
           path: ~/.config/systemd/user/
           restart_policy: always
-          time: 30
+          stop_timeout: 30
           names: true
           new: true
 
