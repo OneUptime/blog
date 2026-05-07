@@ -164,14 +164,14 @@ podman run -it --rm \
   python manage.py runserver 0.0.0.0:8000
 ```
 
-If you experience issues with the default reloader, you can force the stat reloader by setting an environment variable:
+If you want the stat-based polling reloader, avoid installing Watchman and `pywatchman` in the development image. If both are installed, Django uses Watchman for autoreload; `DJANGO_WATCHMAN_TIMEOUT` only changes the Watchman client timeout:
 
 ```bash
 podman run -it --rm \
   -v $(pwd):/app:Z \
   -w /app \
   -p 8000:8000 \
-  -e DJANGO_WATCHMAN_TIMEOUT=0 \
+  -e DJANGO_WATCHMAN_TIMEOUT=10 \
   my-django-image \
   python manage.py runserver 0.0.0.0:8000
 ```
@@ -183,14 +183,15 @@ podman run -it --rm \
   -v $(pwd):/app:Z \
   -w /app \
   -p 8000:8000 \
+  -e WATCHFILES_FORCE_POLLING=true \
   docker.io/library/python:3.12-slim \
-  bash -c "pip install fastapi uvicorn && uvicorn main:app --host 0.0.0.0 --reload --reload-dir /app"
+  bash -c "pip install fastapi 'uvicorn[standard]' && uvicorn main:app --host 0.0.0.0 --reload --reload-dir /app"
 ```
 
-Uvicorn's `--reload` flag uses `watchfiles` by default, which supports polling. If it does not detect changes, install `watchfiles` explicitly:
+Uvicorn's `--reload` flag uses `watchfiles` when it is installed. If `watchfiles` is not installed, Uvicorn falls back to checking modification times for `*.py` files. When using `watchfiles` across a VM-backed mount, set `WATCHFILES_FORCE_POLLING=true` if changes are not detected:
 
 ```bash
-pip install watchfiles
+WATCHFILES_FORCE_POLLING=true uvicorn main:app --reload
 ```
 
 ### Go with Air
@@ -295,8 +296,8 @@ podman run -it --rm \
   -v maven-cache:/root/.m2 \
   -w /app \
   -p 8080:8080 \
-  -e SPRING_DEVTOOLS_RESTART_POLL_INTERVAL=2000 \
-  -e SPRING_DEVTOOLS_RESTART_QUIET_PERIOD=1000 \
+  -e SPRING_DEVTOOLS_RESTART_POLL_INTERVAL=2s \
+  -e SPRING_DEVTOOLS_RESTART_QUIET_PERIOD=1s \
   my-spring-image \
   mvn spring-boot:run
 ```
@@ -366,7 +367,7 @@ podman run -it --rm \
   my-dev-image
 
 # Exclude directories that do not need hot reloading
-# Use .containerignore to reduce the sync scope
+# Keep dependency and build output directories out of bind mounts when possible
 ```
 
 ### Exclude Large Directories
