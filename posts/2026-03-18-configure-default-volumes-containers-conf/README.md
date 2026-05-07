@@ -28,8 +28,7 @@ cat > ~/.config/containers/containers.conf << 'EOF'
 # Default volumes mounted in every container
 # Format: "host_path:container_path:options"
 volumes = [
-    "/etc/localtime:/etc/localtime:ro",
-    "/etc/timezone:/etc/timezone:ro"
+    "/etc/localtime:/etc/localtime:ro"
 ]
 EOF
 
@@ -74,7 +73,7 @@ Each volume definition supports several mount options.
 #   rw     - Read-write mount (default)
 #   z      - Shared SELinux label
 #   Z      - Private SELinux label
-#   U      - Chown to container user (rootless)
+#   U      - Chown the source to match the container UID/GID mapping
 
 # Example with multiple options
 cat > ~/.config/containers/containers.conf << 'EOF'
@@ -138,16 +137,19 @@ volumes = [
 ]
 EOF
 
+# Create the host path before using it as a bind mount
+mkdir -p /tmp/test-data
+
 # Runtime volumes are ADDED to default volumes (not replacing them)
 podman run --rm -v /tmp/test-data:/data alpine sh -c '
     echo "=== Default mount ==="
     ls /etc/localtime
     echo "=== Runtime mount ==="
-    ls /data 2>/dev/null || echo "/data mount present"
+    test -d /data && echo "/data mount present"
 '
 
 # List all mounts in a running container
-podman run --rm alpine mount | grep -E "localtime|data"
+podman run --rm -v /tmp/test-data:/data alpine mount | grep -E "localtime|data"
 ```
 
 ## Troubleshooting Volume Issues
@@ -171,7 +173,8 @@ ls -la /etc/localtime 2>/dev/null || echo "Source path missing"
 # :Z = private label (only one container can access)
 
 # 3. Permission issues with rootless Podman
-# Use :U option to chown the mount to the container user
+# Use :U option to chown the source to match the container UID/GID mapping
+mkdir -p /tmp/test
 podman run --rm -v /tmp/test:/data:U alpine ls -la /data
 
 # Verify your configuration file syntax
