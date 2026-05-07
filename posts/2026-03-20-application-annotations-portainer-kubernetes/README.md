@@ -19,37 +19,41 @@ Annotations are key-value pairs attached to Kubernetes objects that store non-id
 
 When creating or editing an application in Portainer:
 
-1. Scroll to the **Advanced configuration** section.
-2. Find **Annotations** or **Labels and annotations**.
+1. Open the application form in Portainer.
+2. Under **Base configuration**, find **Annotations**.
 3. Click **Add annotation** and enter key-value pairs.
-4. Click **Deploy** or **Update**.
+4. Save the changes to create or update the application.
 
 ## Common Annotation Examples
+
+Apply each annotation to the Kubernetes object expected by the controller or tool.
 
 ### Nginx Ingress Annotations
 
 ```yaml
-# Deployment metadata annotations
+# Ingress metadata annotations
 
 metadata:
-  name: my-app
+  name: my-app-ingress
   annotations:
     # Nginx Ingress controller configuration
     nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
 ```
 
 ### Prometheus Scraping Annotations
 
 ```yaml
 # Pod template annotations for Prometheus auto-discovery
-metadata:
-  annotations:
-    prometheus.io/scrape: "true"       # Tell Prometheus to scrape this pod
-    prometheus.io/port: "8080"         # Port where metrics are exposed
-    prometheus.io/path: "/metrics"     # Metrics endpoint path
+spec:
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"       # Tell Prometheus to scrape this pod
+        prometheus.io/port: "8080"         # Port where metrics are exposed
+        prometheus.io/path: "/metrics"     # Metrics endpoint path
 ```
 
 ### Deployment Change Tracking
@@ -58,21 +62,20 @@ metadata:
 metadata:
   annotations:
     # Track who deployed and from which CI job
-    deployment.kubernetes.io/deployed-by: "github-actions"
-    deployment.kubernetes.io/git-commit: "abc123"
-    deployment.kubernetes.io/deployed-at: "2026-03-20T10:30:00Z"
+    example.com/deployed-by: "github-actions"
+    example.com/git-commit: "abc123"
+    example.com/deployed-at: "2026-03-20T10:30:00Z"
 ```
 
 ## Force Pod Restart via Annotation
 
-You can trigger a rolling restart without changing the application logic by updating an annotation:
+You can trigger a rolling restart without changing the application logic by updating an annotation on the Pod template:
 
 ```bash
-# Trigger a rolling restart by updating an annotation
-kubectl annotate deployment my-app \
-  restart-time="$(date +%s)" \
-  --overwrite \
-  --namespace=production
+# Trigger a rolling restart by updating a Pod template annotation
+kubectl patch deployment my-app \
+  --namespace=production \
+  -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"kubectl.kubernetes.io/restartedAt\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}}}}}"
 
 # Or use the dedicated restart command
 kubectl rollout restart deployment/my-app --namespace=production
@@ -98,8 +101,8 @@ kubectl annotate deployment my-app \
   --namespace=production
 
 # View all annotations
-kubectl get deployment my-app -o jsonpath='{.metadata.annotations}' \
-  --namespace=production | jq
+kubectl get deployment my-app -o json \
+  --namespace=production | jq '.metadata.annotations'
 ```
 
 ## Ingress with Annotations Example
@@ -112,7 +115,6 @@ metadata:
   name: my-app-ingress
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/use-regex: "true"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
   tls:
@@ -133,4 +135,4 @@ spec:
 
 ## Conclusion
 
-Annotations are a powerful metadata mechanism in Kubernetes. Portainer's annotation editor lets you add the necessary hints for ingress controllers, monitoring systems, and GitOps tooling without switching to the command line.
+Annotations are a powerful metadata mechanism in Kubernetes. Portainer's forms and manifest editor let you add the necessary hints for ingress controllers, monitoring systems, and GitOps tooling without switching to the command line.
