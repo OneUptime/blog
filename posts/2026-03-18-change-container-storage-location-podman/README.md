@@ -54,6 +54,14 @@ chmod 700 "$NEW_STORAGE"
 
 # Verify the target filesystem has enough space
 df -h "$NEW_STORAGE"
+
+# On SELinux systems, label the new storage path like the default location
+# Rootless:
+# sudo semanage fcontext -a -e "$HOME/.local/share/containers" /data/containers
+# sudo restorecon -R -v /data/containers
+# Root:
+# sudo semanage fcontext -a -e /var/lib/containers /data/containers
+# sudo restorecon -R -v /data/containers
 ```
 
 ## Stopping All Containers
@@ -79,6 +87,9 @@ podman ps -a
 Update storage.conf to point to the new location.
 
 ```bash
+# If you plan to reset storage instead of copying it, run
+# podman system reset --force before changing storage.conf
+
 # Create or update user-level storage configuration
 mkdir -p ~/.config/containers
 
@@ -103,14 +114,14 @@ EOF
 
 ## Resetting Podman Storage
 
-Reset storage to apply the new location cleanly.
+Reset storage before changing the storage configuration if you want to start cleanly.
 
 ```bash
-# Reset Podman to clear the old storage location
+# Reset Podman to clear the current storage location
 # WARNING: This removes all containers, images, and volumes
 podman system reset --force
 
-# Verify the new storage path is in use
+# After updating storage.conf, verify the new storage path is in use
 podman info --format '{{.Store.GraphRoot}}'
 
 # Confirm the new directory is being used
@@ -143,6 +154,9 @@ du -sh ~/.local/share/containers/storage/ 2>/dev/null || echo "Old storage clear
 For root Podman, edit the system-wide storage.conf.
 
 ```bash
+# Reset root storage before changing storage.conf
+sudo podman system reset --force
+
 # Edit the system-wide storage configuration
 sudo tee /etc/containers/storage.conf > /dev/null << 'EOF'
 [storage]
@@ -156,9 +170,6 @@ runroot = "/run/containers/storage"
 mountopt = "nodev,metacopy=on"
 EOF
 
-# Reset root storage
-sudo podman system reset --force
-
 # Verify the new root storage path
 sudo podman info --format '{{.Store.GraphRoot}}'
 ```
@@ -170,17 +181,18 @@ A symlink approach avoids configuration changes.
 ```bash
 # Stop all containers first
 podman stop -a
-podman system reset --force
 
 # Move existing storage to new location
 CURRENT="$HOME/.local/share/containers/storage"
 NEW="/data/containers/storage"
 
-# Copy existing data if needed
-# cp -a "$CURRENT" "$NEW"
+# Copy existing data while Podman is stopped
+mkdir -p "$(dirname "$NEW")"
+mkdir -p "$NEW"
+cp -a "$CURRENT"/. "$NEW"/
 
-# Remove old directory and create symlink
-rm -rf "$CURRENT"
+# Move old directory aside and create symlink
+mv "$CURRENT" "${CURRENT}.bak"
 ln -s "$NEW" "$CURRENT"
 
 # Verify the symlink
@@ -218,4 +230,4 @@ df -h /data/containers/storage/
 
 ## Summary
 
-Changing Podman's storage location involves updating `graphroot` in `storage.conf` and resetting storage with `podman system reset`. Always back up important images before migration, and verify the new location has sufficient space and proper permissions. For rootless Podman, edit `~/.config/containers/storage.conf`; for root Podman, edit `/etc/containers/storage.conf`. Symbolic links offer a simpler alternative when you prefer not to modify configuration files.
+Changing Podman's storage location involves updating `graphroot` in `storage.conf` and, when starting cleanly, resetting the current storage with `podman system reset` before changing the configuration. Always back up important images before migration, and verify the new location has sufficient space and proper permissions. For rootless Podman, edit `~/.config/containers/storage.conf`; for root Podman, edit `/etc/containers/storage.conf`. Symbolic links offer a simpler alternative when you prefer not to modify configuration files.
