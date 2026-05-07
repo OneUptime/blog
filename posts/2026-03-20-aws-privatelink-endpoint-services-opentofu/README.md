@@ -69,12 +69,12 @@ resource "aws_vpc_endpoint_service" "main" {
   network_load_balancer_arns = [aws_lb.service.arn]
 
   # Allowed principals (AWS accounts or IAM ARNs)
-  # Leave empty to require approval but allow any account to request
+  # Use "*" only if you intentionally want any AWS principal to discover the service
   allowed_principals = [
     "arn:aws:iam::${var.consumer_account_id}:root"
   ]
 
-  # Private DNS name requires domain ownership verification
+  # Private DNS name requires domain ownership verification before consumers can use it
   private_dns_name = "service.${var.domain_name}"
 
   tags = {
@@ -86,21 +86,24 @@ output "service_name" {
   value       = aws_vpc_endpoint_service.main.service_name
   description = "Service name to share with consumers: e.g., com.amazonaws.vpce.us-east-1.vpce-svc-xxx"
 }
+
+output "service_id" {
+  value       = aws_vpc_endpoint_service.main.id
+  description = "Service ID for provider-side acceptance and status checks"
+}
 ```
 
 ## Step 3: Accept Connection Requests (Provider Side)
 
-```hcl
-# Auto-accept connections from specific principals
+```bash
+# Review pending connection requests for this endpoint service
+aws ec2 describe-vpc-endpoint-connections \
+  --filters Name=service-id,Values=<service-id> Name=vpc-endpoint-state,Values=pendingAcceptance
 
-resource "aws_vpc_endpoint_service" "auto_accept" {
-  acceptance_required        = false  # Auto-accept all requests from allowed principals
-  network_load_balancer_arns = [aws_lb.service.arn]
-
-  allowed_principals = [
-    "arn:aws:iam::${var.consumer_account_id}:root"
-  ]
-}
+# Accept a specific pending connection request
+aws ec2 accept-vpc-endpoint-connections \
+  --service-id <service-id> \
+  --vpc-endpoint-ids <vpce-id>
 ```
 
 ## Step 4: Create Interface Endpoint (Consumer Side)
@@ -114,11 +117,14 @@ resource "aws_vpc_endpoint" "service" {
   subnet_ids          = var.consumer_private_subnet_ids
   security_group_ids  = [aws_security_group.endpoint.id]
 
-  private_dns_enabled = true  # Enable private DNS for the endpoint
-
   tags = {
     Name = "${var.project_name}-service-endpoint"
   }
+}
+
+resource "aws_vpc_endpoint_private_dns" "service" {
+  vpc_endpoint_id     = aws_vpc_endpoint.service.id
+  private_dns_enabled = true  # Requires the provider private DNS name to be verified
 }
 
 resource "aws_security_group" "endpoint" {
@@ -148,9 +154,10 @@ tofu plan
 tofu apply
 
 # Check endpoint service state
-aws ec2 describe-vpc-endpoint-services \
-  --service-names <service-name> \
-  --query 'ServiceDetails[0].ServiceState'
+aws ec2 describe-vpc-endpoint-service-configurations \
+  --service-ids <service-id> \
+  --query 'ServiceConfigurations[0].ServiceState' \
+  --output text
 ```
 
 ## Conclusion
