@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Networking, Routing, IPv4, Cisco, FRRouting
 
-Description: Learn what administrative distance is, how it determines which routing protocol's routes are installed in the routing table, and how to view and modify it.
+Description: Learn what administrative distance is, how it determines which route is installed in the routing table when the same prefix is learned from multiple sources, and how to view and modify it.
 
 ## What Is Administrative Distance?
 
-Administrative Distance (AD) is a value that indicates the **trustworthiness of a routing protocol**. When the same prefix is learned from multiple sources, the route with the **lowest AD** is installed in the routing table.
+Administrative Distance (AD) is a value that indicates the **trustworthiness of a route source**. When the same prefix is learned from multiple sources, the route with the **lowest AD** is installed in the routing table.
 
-Think of AD as the tiebreaker when multiple protocols know about the same network.
+Think of AD as the tiebreaker when multiple sources know about the same network.
 
 ## Default Administrative Distances (Cisco IOS)
 
@@ -23,13 +23,13 @@ Think of AD as the tiebreaker when multiple protocols know about the same networ
 | IS-IS | 115 |
 | RIP | 120 |
 | BGP (iBGP) | 200 |
-| Unknown/Unreachable | 255 |
+| Unknown | 255 |
 
 **Lower AD = More trusted = Installed in routing table**
 
 ## FRRouting Administrative Distances
 
-FRRouting uses similar but slightly different defaults:
+FRRouting uses similar defaults for these common route sources:
 
 | Route Source | FRR Default AD |
 |-------------|--------------|
@@ -49,7 +49,7 @@ OSPF route: 10.0.0.0/24 via 192.168.1.2 [AD 110]
 RIP route:  10.0.0.0/24 via 192.168.1.3 [AD 120]
 
 → OSPF route is installed (lower AD = more trusted)
-→ RIP route is kept as backup (floated static)
+→ RIP route remains available as a backup route
 ```
 
 If OSPF fails, RIP's route can be installed.
@@ -60,10 +60,10 @@ These are commonly confused:
 
 | Concept | Scope | Purpose |
 |---------|-------|---------|
-| Administrative Distance | Between protocols | Which protocol's route to install |
+| Administrative Distance | Between route sources | Which route source's route to install |
 | Metric | Within a protocol | Which path within a protocol to use |
 
-Metric is only compared **within the same protocol**. AD determines which protocol wins.
+Metric is only compared **within the same protocol**. AD determines which route source wins.
 
 ## Floating Static Routes
 
@@ -105,15 +105,14 @@ vtysh -c "show ip route"
 
 ## Linux `ip route` and Distance
 
-Linux routing uses metrics, not administrative distance by default:
+Linux routing uses metrics, not a separate administrative distance field by default:
 
 ```bash
 # Static route with metric 50
 ip route add 10.0.0.0/24 via 192.168.1.254 metric 50
 
-# OSPF-installed route shows up with its OSPF metric
-# Use vtysh for full protocol distance view
-vtysh -c "show ip route 10.0.0.0"
+# Use vtysh when you need the protocol distance view
+vtysh -c "show ip route 10.0.0.0/24"
 ```
 
 ## Changing Administrative Distance in FRRouting
@@ -124,7 +123,7 @@ router ospf
  distance 150
 exit
 
-! Change RIP AD from 120 to 100 (now more trusted than OSPF with AD 110)
+! Change RIP AD from 120 to 100
 router rip
  distance 100
 exit
@@ -132,9 +131,9 @@ exit
 
 ## Key Takeaways
 
-- Administrative Distance determines which routing protocol's routes are installed when multiple protocols know the same prefix.
+- Administrative Distance determines which route is installed when multiple sources know the same prefix.
 - Lower AD = more trusted (connected=0, static=1, eBGP=20, OSPF=110, RIP=120).
-- AD is compared **between protocols**; metric is compared **within a protocol**.
+- AD is compared **between route sources**; metric is compared **within a protocol**.
 - Floating static routes (AD > dynamic protocol AD) serve as backup routes.
 
 **Related Reading:**
