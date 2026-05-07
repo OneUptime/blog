@@ -75,7 +75,7 @@ resource "aws_autoscaling_group" "app" {
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   instance_refresh {
@@ -150,7 +150,7 @@ resource "aws_autoscaling_lifecycle_hook" "termination" {
   role_arn                = aws_iam_role.lifecycle.arn
 }
 
-# Hook that fires after launch - allows initialization before traffic
+# Hook that fires during launch - allows initialization before traffic
 resource "aws_autoscaling_lifecycle_hook" "launch" {
   name                   = "${var.environment}-launch-hook"
   autoscaling_group_name = aws_autoscaling_group.app.name
@@ -178,13 +178,13 @@ resource "aws_autoscaling_group" "mixed" {
     instances_distribution {
       on_demand_base_capacity                  = 2     # Minimum On-Demand count
       on_demand_percentage_above_base_capacity = 20    # 20% On-Demand, 80% Spot above base
-      spot_allocation_strategy                 = "capacity-optimized"
+      spot_allocation_strategy                 = "price-capacity-optimized"
     }
 
     launch_template {
       launch_template_specification {
         launch_template_id = aws_launch_template.app.id
-        version            = "$Latest"
+        version            = aws_launch_template.app.latest_version
       }
 
       # Allow multiple instance types for better Spot availability
@@ -228,4 +228,4 @@ resource "aws_autoscaling_schedule" "scale_down" {
 
 ## Conclusion
 
-AWS Auto Scaling Groups with OpenTofu provide elastic compute capacity that responds to real demand. Use target tracking policies for simple CPU/request scaling, lifecycle hooks for graceful instance draining, and mixed instance policies to blend Spot and On-Demand capacity for up to 70% cost savings. The `instance_refresh` block enables zero-downtime deployments when the launch template changes - OpenTofu triggers a rolling refresh automatically on apply.
+AWS Auto Scaling Groups with OpenTofu provide elastic compute capacity that responds to real demand. Use target tracking policies for simple CPU/request scaling, lifecycle hooks for graceful instance draining, and mixed instance policies to blend Spot and On-Demand capacity for up to 70% cost savings. The `instance_refresh` block enables rolling deployments when the launch template version changes, and using `aws_launch_template.app.latest_version` lets OpenTofu trigger a rolling refresh automatically on apply.
