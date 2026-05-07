@@ -8,9 +8,9 @@ Description: A complete walkthrough of migrating a running container from one ho
 
 ---
 
-> Live container migration with Podman lets you move a running application from one host to another without losing its in-memory state, open connections, or accumulated runtime data.
+> Live container migration with Podman lets you move a running application from one host to another without losing its in-memory state or accumulated runtime data.
 
-Moving containers between hosts normally means stopping the application, recreating it on the new host, and losing all runtime state. With Podman's checkpoint/restore and export/import workflow, you can capture the entire state of a running container, transfer it to another machine, and resume it there. The application continues from exactly where it left off.
+Moving containers between hosts normally means stopping the application, recreating it on the new host, and losing all runtime state. With Podman's checkpoint/restore and export/import workflow, you can capture the state of a running container, transfer it to another machine, and resume it there. The application continues from exactly where it left off.
 
 ---
 
@@ -23,7 +23,7 @@ The migration process has four steps:
 3. Import and restore the container on the target host
 4. Verify the migrated container is running correctly
 
-Both hosts need Podman and CRIU installed. The target host needs to have a compatible kernel and CPU architecture.
+Both hosts need Podman and CRIU installed. The target host needs to have a compatible kernel, CPU architecture, and container runtime.
 
 ## Preparing Both Hosts
 
@@ -85,14 +85,15 @@ Checkpoint the container and export it to a tar archive in a single command:
 
 ```bash
 # On the source host
-sudo podman container checkpoint migrate-demo --export=/tmp/migrate-demo.tar.gz
+sudo podman container checkpoint migrate-demo --export=/tmp/migrate-demo.tar.gz \
+  --compress=gzip
 ```
 
 This command:
 
 1. Freezes all processes in the container
 2. Dumps the process state via CRIU
-3. Packages the checkpoint data along with the container's filesystem into a tar archive
+3. Packages the checkpoint data along with the container's filesystem changes into a gzip-compressed tar archive
 4. Stops the container
 
 Verify the export file was created:
@@ -183,21 +184,23 @@ sudo podman pull registry.example.com/my-app:latest
 
 ## Migration with Network Considerations
 
-Network configuration is one of the trickiest parts of container migration. The restored container will try to use the same network settings it had on the source host.
+Network configuration is one of the trickiest parts of container migration. The restored container generally tries to use the same network settings it had on the source host.
 
-If both hosts use the same network configuration (same subnet, same bridge network), the migration is straightforward. If the network topology differs, you may need to adjust:
+If both hosts use the same network configuration (same subnet, same bridge network), the migration is straightforward. If the network topology differs, you may need to adjust published ports or ignore static addressing from the original container:
 
 ```bash
-# Restore with a specific network
+# Restore with a different published port and ignore a static IP from the source
 sudo podman container restore --import=/tmp/migrate-demo.tar.gz \
-  --name=migrate-demo
+  --name=migrate-demo \
+  --publish=8081:8080 \
+  --ignore-static-ip
 ```
 
-For containers that had port mappings on the source host, the same ports must be available on the target host. If port 8080 was mapped on the source, it cannot be in use on the target.
+For containers that had port mappings on the source host, the same ports must be available on the target host unless you replace them with `--publish`. If port 8080 was mapped on the source and you keep the same mapping, it cannot be in use on the target.
 
 ## Migration with Volumes
 
-Volumes present a challenge for migration because the checkpoint does not include volume data. You need to handle volume data separately:
+Volumes present a challenge for migration because checkpoint archives include named volume data by default. For large volumes, shared storage, or volume data you want to transfer separately, exclude the volume contents from the checkpoint and handle them with Podman's volume export and import commands:
 
 ```bash
 # On the source host - container with a volume
@@ -206,15 +209,17 @@ sudo podman run -d --name app-with-data \
   docker.io/library/alpine \
   /bin/sh -c 'while true; do date >> /data/log.txt; sleep 1; done'
 
-# Before checkpointing, sync the volume data
-# Option 1: Copy volume data manually
-sudo tar czf /tmp/app-data-volume.tar.gz -C /var/lib/containers/storage/volumes/app-data/_data .
+# Before checkpointing, export the volume data
+sudo podman volume export app-data --output /tmp/app-data-volume.tar
 
-# Checkpoint and export
-sudo podman container checkpoint app-with-data --export=/tmp/app-with-data.tar.gz
+# Checkpoint and export without embedding volume contents
+sudo podman container checkpoint app-with-data \
+  --export=/tmp/app-with-data.tar.gz \
+  --compress=gzip \
+  --ignore-volumes
 
 # Transfer both files to the target host
-scp /tmp/app-with-data.tar.gz /tmp/app-data-volume.tar.gz user@target-host:/tmp/
+scp /tmp/app-with-data.tar.gz /tmp/app-data-volume.tar user@target-host:/tmp/
 ```
 
 On the target host:
@@ -222,10 +227,12 @@ On the target host:
 ```bash
 # Create the volume and populate it
 sudo podman volume create app-data
-sudo tar xzf /tmp/app-data-volume.tar.gz -C /var/lib/containers/storage/volumes/app-data/_data
+sudo podman volume import app-data /tmp/app-data-volume.tar
 
 # Restore the container
-sudo podman container restore --import=/tmp/app-with-data.tar.gz --name=app-with-data
+sudo podman container restore --import=/tmp/app-with-data.tar.gz \
+  --name=app-with-data \
+  --ignore-volumes
 ```
 
 ## Scripting the Migration
@@ -241,7 +248,7 @@ TARGET_HOST="$2"
 CHECKPOINT_FILE="/tmp/${CONTAINER_NAME}-checkpoint.tar.gz"
 
 echo "Checkpointing ${CONTAINER_NAME}..."
-sudo podman container checkpoint "${CONTAINER_NAME}" --export="${CHECKPOINT_FILE}"
+sudo podman container checkpoint "${CONTAINER_NAME}" --export="${CHECKPOINT_FILE}" --compress=gzip
 
 echo "Transferring checkpoint to ${TARGET_HOST}..."
 scp "${CHECKPOINT_FILE}" "${TARGET_HOST}:${CHECKPOINT_FILE}"
@@ -269,7 +276,7 @@ The total migration downtime is the sum of checkpoint time, transfer time, and r
 
 ```bash
 echo "Checkpoint phase:"
-time sudo podman container checkpoint migrate-demo --export=/tmp/migrate-demo.tar.gz
+time sudo podman container checkpoint migrate-demo --export=/tmp/migrate-demo.tar.gz --compress=gzip
 
 echo "Transfer phase:"
 time scp /tmp/migrate-demo.tar.gz target-host:/tmp/
@@ -282,4 +289,4 @@ For a small container, total downtime can be under 5 seconds. For larger contain
 
 ## Conclusion
 
-Migrating a container between hosts with Podman checkpoint/restore involves exporting the checkpoint to a file, transferring it, and importing it on the target host. The key requirements are matching CPU architectures, compatible CRIU versions, and the same container image on both hosts. Volume data must be handled separately. The total downtime equals the sum of checkpoint, transfer, and restore times, making this approach suitable for workloads that need minimal interruption during host maintenance or load rebalancing.
+Migrating a container between hosts with Podman checkpoint/restore involves exporting the checkpoint to a file, transferring it, and importing it on the target host. The key requirements are matching CPU architectures, compatible CRIU versions, compatible container runtimes, and the same container image on both hosts. Volume data may need to be handled separately for large volumes or shared storage. The total downtime equals the sum of checkpoint, transfer, and restore times, making this approach suitable for workloads that need minimal interruption during host maintenance or load rebalancing.
