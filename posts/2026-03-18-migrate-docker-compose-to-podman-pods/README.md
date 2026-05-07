@@ -35,7 +35,7 @@ services:
 ```
 
 ```bash
-# Podman pod: services use localhost
+# Podman pod: after the pod exists, services use localhost
 podman run -d --pod myapp --name api \
   -e DATABASE_URL=postgresql://user:pass@127.0.0.1:5432/app \
   -e REDIS_URL=redis://127.0.0.1:6379 \
@@ -98,6 +98,7 @@ List what needs to change:
 - Hostnames (`db`, `cache`) become `127.0.0.1`
 - Ports are declared at the pod level
 - All containers must use unique port numbers
+- Services with `build:` need images built separately with `podman build`
 
 ## Step 2: Check for Port Conflicts
 
@@ -135,9 +136,16 @@ podman volume create redis-data
 Export data from Docker volumes and import into Podman volumes:
 
 ```bash
-# Export from Docker
+# Check the actual Docker Compose volume name first. Compose usually
+# prefixes named volumes with the project name unless `name:` or
+# `external:` is set.
+docker volume ls \
+  --filter label=com.docker.compose.volume=pgdata \
+  --format '{{.Name}}'
+
+# Export from Docker using the returned name. This example assumes myapp_pgdata.
 docker run --rm \
-  -v pgdata:/source:ro \
+  -v myapp_pgdata:/source:ro \
   -v $(pwd)/backup:/backup \
   alpine tar -czf /backup/pgdata.tar.gz -C /source .
 
@@ -156,6 +164,9 @@ Create a pod with all the published ports:
 podman pod create --name myapp \
   -p 80:80 \
   -p 443:443
+
+# Build images that were built by Docker Compose
+podman build -t my-api ./api
 ```
 
 ## Step 6: Start Containers in the Pod
@@ -233,6 +244,9 @@ podman volume create redis-data
 echo "Creating pod..."
 podman pod create --name myapp -p 80:80 -p 443:443
 
+echo "Building API image..."
+podman build -t my-api ./api
+
 echo "Starting database..."
 podman run -d --pod myapp --name db \
   -e POSTGRES_DB=appdb \
@@ -278,7 +292,7 @@ One benefit of using pods is Kubernetes compatibility:
 podman kube generate myapp > myapp-k8s.yaml
 ```
 
-This produces a Kubernetes-compatible manifest that you can deploy directly to a cluster.
+This produces a Kubernetes YAML manifest. Review the generated volumes, image names, security settings, and service exposure before applying it to a cluster.
 
 ## Step 10: Set Up systemd Management
 
@@ -309,6 +323,7 @@ Pod=myapp.pod
 Volume=uploads:/app/uploads:Z
 Environment=DATABASE_URL=postgresql://appuser:apppass@127.0.0.1:5432/appdb
 Environment=REDIS_URL=redis://127.0.0.1:6379
+Environment=SECRET_KEY=mysecret
 [Service]
 Restart=always
 ```
