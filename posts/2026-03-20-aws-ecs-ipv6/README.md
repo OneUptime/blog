@@ -8,11 +8,16 @@ Description: Enable IPv6 for AWS ECS tasks using dual-stack VPC subnets, configu
 
 ## Introduction
 
-AWS ECS supports IPv6 for both Fargate and EC2 launch types when deployed in dual-stack or IPv6-only VPC subnets. ECS tasks with `awsvpc` networking mode get their own network interfaces and can receive IPv6 addresses. This enables containers to serve IPv6 clients directly or through an Application Load Balancer.
+AWS ECS supports IPv6 for Fargate and for supported EC2 Linux tasks when deployed in dual-stack or IPv6-only VPC subnets. When the `dualStackIPv6` account setting is enabled and the subnet auto-assigns IPv6 addresses, tasks with `awsvpc` networking mode get their own network interfaces and can receive IPv6 addresses. This enables containers to serve IPv6 clients directly or through an Application Load Balancer.
 
 ## ECS Cluster and Task IPv6 Configuration
 
 ```bash
+# Enable IPv6 assignment for awsvpc tasks in dual-stack subnets
+aws ecs put-account-setting-default \
+    --name dualStackIPv6 \
+    --value enabled
+
 # Create ECS cluster (cluster itself is region-level, IPv6 is per-task)
 
 aws ecs create-cluster \
@@ -31,13 +36,12 @@ aws ecs register-task-definition \
         "name": "web",
         "image": "nginx:latest",
         "portMappings": [
-            {"containerPort": 80, "protocol": "tcp"},
-            {"containerPort": 443, "protocol": "tcp"}
+            {"containerPort": 80, "protocol": "tcp"}
         ],
         "essential": true
     }]'
 
-# Run task in IPv6-enabled subnet
+# Run task in a dual-stack subnet with IPv6 auto-assign enabled
 aws ecs run-task \
     --cluster ipv6-cluster \
     --task-definition web-task \
@@ -103,13 +107,17 @@ resource "aws_ecs_service" "web" {
 
   network_configuration {
     subnets = [
-      aws_subnet.private_a.id,  # IPv6-enabled subnets
+      aws_subnet.private_a.id,  # dual-stack subnets with assign_ipv6_address_on_creation = true
       aws_subnet.private_b.id,
     ]
     security_groups  = [aws_security_group.ecs_tasks.id]
+    # Private dual-stack Fargate tasks still need IPv4 egress (NAT or VPC endpoints)
+    # for task launch dependencies such as ECR, Secrets Manager, and SSM.
     assign_public_ip = false
   }
 
+  # For awsvpc tasks, the target group must use target_type = "ip".
+  # To accept IPv6 clients, configure the ALB with ip_address_type = "dualstack".
   load_balancer {
     target_group_arn = aws_lb_target_group.web.arn
     container_name   = "web"
@@ -158,7 +166,7 @@ for task_arn in $TASK_ARNS; do
     ENI=$(aws ecs describe-tasks \
         --cluster ipv6-cluster \
         --tasks "$task_arn" \
-        --query "tasks[0].attachments[?type=='ElasticNetworkInterface'].details[?name=='networkInterfaceId'].value" \
+        --query "tasks[0].attachments[?type=='ElasticNetworkInterface'] | [0].details[?name=='networkInterfaceId'] | [0].value" \
         --output text)
 
     if [ -n "$ENI" ]; then
@@ -166,11 +174,11 @@ for task_arn in $TASK_ARNS; do
             --network-interface-ids "$ENI" \
             --query "NetworkInterfaces[0].Ipv6Addresses[0].Ipv6Address" \
             --output text)
-        echo "Task: $(basename $task_arn) → IPv6: ${IPV6:-none}"
+        echo "Task: $(basename "$task_arn") → IPv6: ${IPV6:-none}"
     fi
 done
 ```
 
 ## Conclusion
 
-ECS IPv6 requires dual-stack or IPv6-enabled subnets with IPv6 CIDR blocks assigned. Tasks using `awsvpc` network mode get their own ENIs, which can have IPv6 addresses when the subnet auto-assigns them. The ALB in dualstack mode handles IPv6 client connections and forwards to ECS tasks over IPv4 or IPv6 depending on the subnet configuration. Security groups for ECS tasks must include appropriate IPv6 rules for any direct IPv6 traffic.
+ECS IPv6 requires the `dualStackIPv6` account setting to be enabled plus subnets with IPv6 CIDR blocks assigned and IPv6 auto-assign enabled. Tasks using `awsvpc` network mode get their own ENIs, which can have IPv6 addresses when the subnet auto-assigns them. For private dual-stack Fargate tasks, task launch dependencies still need IPv4 egress through a NAT gateway or VPC endpoints. The ALB in dualstack mode handles IPv6 client connections, and it forwards to ECS tasks based on the target group's IP address type. Security groups for ECS tasks must include appropriate IPv6 rules for any direct IPv6 traffic.
