@@ -32,13 +32,13 @@ mount | grep cgroup
 podman info --format '{{.Host.CgroupsVersion}}'
 # Output: v2 (desired) or v1
 
-# Verify the cgroup controllers available to your user
-cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.controllers
+# Verify the cgroup controllers delegated to your user service
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
 ```
 
 ## Enabling cgroups v2
 
-If your system is still on cgroups v1, you can switch to v2 by updating the kernel boot parameters:
+If your system is still on cgroups v1, older systemd-based distributions can usually switch to v2 by updating the kernel boot parameters:
 
 ```bash
 # For GRUB-based systems, add the cgroup v2 parameter
@@ -65,8 +65,8 @@ stat -fc %T /sys/fs/cgroup/
 For rootless containers to use resource limits, your user session needs cgroup controller delegation:
 
 ```bash
-# Check which controllers are delegated to your user
-cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.controllers
+# Check which controllers are delegated to your user service
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
 
 # If cpu and memory are missing, create a systemd override
 sudo mkdir -p /etc/systemd/system/user@.service.d
@@ -76,12 +76,11 @@ sudo tee /etc/systemd/system/user@.service.d/delegate.conf << 'EOF'
 Delegate=cpu cpuset io memory pids
 EOF
 
-# Reload systemd and restart the user service
+# Reload systemd, then log out and log back in or reboot
 sudo systemctl daemon-reload
-sudo systemctl restart user@$(id -u).service
 
 # Verify controllers are now delegated
-cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.controllers
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
 # Should include: cpu cpuset io memory pids
 ```
 
@@ -165,4 +164,4 @@ cat "/sys/fs/cgroup/$CGPATH/cgroup.controllers"
 
 ## Summary
 
-cgroups v2 is essential for rootless Podman resource management. Verify your system runs cgroups v2 with `stat -fc %T /sys/fs/cgroup/`, switch from v1 by adding the `systemd.unified_cgroup_hierarchy=1` kernel parameter, and enable controller delegation with a systemd override for `user@.service`. Once configured, use standard Podman flags like `--cpus`, `--memory`, and `--device-read-bps` to control container resources. Monitor usage with `podman stats` and inspect raw cgroup values when you need detailed diagnostics.
+cgroups v2 is essential for rootless Podman resource management. Verify your system runs cgroups v2 with `stat -fc %T /sys/fs/cgroup/`, switch older systemd-based systems from v1 by adding the `systemd.unified_cgroup_hierarchy=1` kernel parameter, and enable controller delegation with a systemd override for `user@.service`. Once configured, use standard Podman flags like `--cpus`, `--memory`, and `--device-read-bps` to control container resources. Monitor usage with `podman stats` and inspect raw cgroup values when you need detailed diagnostics.
