@@ -10,7 +10,7 @@ Description: A comprehensive guide to securing the Podman REST API in production
 
 > The Podman REST API provides full control over your container infrastructure. Anyone with access to the API can create, modify, and destroy containers, pull images, and access sensitive data. Securing the API is not optional; it is a fundamental requirement for any production deployment.
 
-The Podman REST API gives clients the same level of control as having shell access to the container host. An unsecured API endpoint is effectively a root shell available over the network. This guide covers the essential security measures you should implement to protect your Podman API from unauthorized access, data interception, and abuse.
+The Podman REST API gives clients control equivalent to shell access as the user running the API service. For a rootful service, an unsecured API endpoint is effectively root-level control available over the network. This guide covers the essential security measures you should implement to protect your Podman API from unauthorized access, data interception, and abuse.
 
 ---
 
@@ -85,7 +85,7 @@ systemctl --user enable --now podman.socket
 ls -la $XDG_RUNTIME_DIR/podman/podman.sock
 ```
 
-With rootless Podman, even if an attacker gains API access, they operate within the unprivileged user's namespace and cannot access the host root filesystem or other users' containers.
+With rootless Podman, even if an attacker gains API access, they operate within the unprivileged user's namespace and cannot access root-only host files or other users' containers.
 
 ## TLS Encryption
 
@@ -133,8 +133,8 @@ openssl x509 -req -days 365 -in client.csr \
   -out client-cert.pem -extfile client-ext.cnf
 
 # Set permissions
+chmod 644 ca.pem server-cert.pem client-cert.pem
 chmod 600 *-key.pem
-chmod 644 *.pem
 
 # Clean up CSRs
 rm -f *.csr *.cnf *.srl
@@ -205,7 +205,7 @@ server {
     # Rate limit all requests
     limit_req zone=podman_api_limit burst=10 nodelay;
 
-    # Block dangerous endpoints
+    # Apply stricter rate limits to sensitive endpoints
     location ~ ^/v[0-9.]+/(libpod/)?containers/.+/exec$ {
         # Stricter rate limit for exec
         limit_req zone=podman_write_limit burst=5 nodelay;
@@ -213,10 +213,11 @@ server {
         proxy_buffering off;
     }
 
-    # Block privileged container creation patterns
+    # Apply stricter controls to container creation requests
     location ~ ^/v[0-9.]+/(libpod/)?containers/create$ {
         limit_req zone=podman_write_limit burst=5 nodelay;
 
+        # Nginx does not inspect JSON request bodies by itself.
         # Use lua or a custom auth module to inspect request bodies
         # and reject privileged container requests
         proxy_pass http://podman_api;
@@ -372,23 +373,23 @@ This approach means the API is never directly reachable from the network and rel
 
 ## Audit Logging
 
-Track all API requests for security auditing:
+Track API socket connection activity for security auditing:
 
 ```bash
 #!/bin/bash
 
-# Wrapper script that logs all Podman API activity
+# Wrapper script that logs Podman API socket connection activity
 SOCKET="/run/podman/podman.sock"
 AUDIT_LOG="/var/log/podman-audit.log"
 
-# Use socat to intercept and log traffic
+# Use socat to proxy the socket and log connection diagnostics
 socat -d -d \
   UNIX-LISTEN:/run/podman/podman-audited.sock,fork,mode=660 \
   UNIX-CONNECT:"$SOCKET" \
   2>> "$AUDIT_LOG"
 ```
 
-For more detailed audit logging, use the Nginx reverse proxy approach with structured access logs:
+For request-level audit logging, use the Nginx reverse proxy approach with structured access logs:
 
 ```nginx
 log_format podman_audit '$remote_addr - $remote_user [$time_local] '
@@ -416,8 +417,9 @@ prefix = "registry.example.com"
 insecure = false
 ```
 
+/etc/containers/policy.json:
+
 ```json
-// /etc/containers/policy.json
 {
     "default": [{"type": "reject"}],
     "transports": {
