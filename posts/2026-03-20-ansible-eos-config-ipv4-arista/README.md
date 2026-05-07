@@ -8,7 +8,7 @@ Description: Use the Ansible arista.eos.eos_config module to configure IPv4 inte
 
 ## Introduction
 
-The `arista.eos.eos_config` module manages Arista EOS device configuration via eAPI or SSH. It is idempotent and supports both direct lines and configuration templates.
+The `arista.eos.eos_config` module manages Arista EOS device configuration via CLI (SSH) or eAPI. It is idempotent and supports both direct lines and configuration templates.
 
 ## Inventory
 
@@ -19,8 +19,8 @@ arista1 ansible_host=192.168.1.20
 [arista_switches:vars]
 ansible_user=admin
 ansible_password=AdminPass
-ansible_network_os=eos
-ansible_connection=network_cli
+ansible_network_os=arista.eos.eos
+ansible_connection=ansible.netcommon.network_cli
 ansible_become=yes
 ansible_become_method=enable
 ```
@@ -41,6 +41,16 @@ ansible_become_method=enable
         lines:
           - ip address 192.168.1.20/24
         parents: interface Management1
+
+    - name: Enable IPv4 routing
+      arista.eos.eos_config:
+        lines:
+          - ip routing
+
+    - name: Create VLAN 10
+      arista.eos.eos_config:
+        lines:
+          - vlan 10
 
     - name: Configure routed interface (SVI)
       arista.eos.eos_config:
@@ -81,20 +91,19 @@ ansible_become_method=enable
           - router-id 10.0.0.1
           - neighbor 10.0.0.2 remote-as 65000
           - neighbor 10.0.0.2 description Core-Router
-          - network 10.1.0.0/16
+          - network 10.1.10.0/24
         parents: router bgp 65001
 ```
 
 ## Backup and Save
 
 ```yaml
-    - name: Backup before change
+    - name: Backup current running config
       arista.eos.eos_config:
         backup: yes
         backup_options:
           dir_path: ./backups/
-          filename: "{{ inventory_hostname }}-{{ ansible_date_time.date }}"
-        lines: []
+          filename: "{{ inventory_hostname }}-{{ now(utc=true, fmt='%Y-%m-%d') }}"
 
     - name: Save configuration
       arista.eos.eos_config:
@@ -111,4 +120,4 @@ ansible-playbook -i inventory.ini configure_arista_ipv4.yml
 
 ## Conclusion
 
-`arista.eos.eos_config` manages Arista EOS IPv4 configuration with the same interface as other Ansible network modules. Use `parents` to scope lines to the correct configuration mode, `save_when: modified` to write to NVRAM only on changes, and `backup: yes` to capture pre-change configuration. Check mode (`--check --diff`) previews changes without applying them.
+`arista.eos.eos_config` manages Arista EOS IPv4 configuration with the same interface as other Ansible network modules. Use `parents` to scope lines to the correct configuration mode, `save_when: modified` to copy the running-config to startup-config only when it has changed since the last save, and `backup: yes` to capture a running-config backup. Check mode (`--check --diff`) previews changes without applying them.
