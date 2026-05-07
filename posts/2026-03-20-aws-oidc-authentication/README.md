@@ -17,7 +17,9 @@ OIDC federation lets external identity providers (like GitHub Actions, GitLab CI
 ```bash
 # For GitHub Actions
 
-aws iam create-open-id-connect-provider   --url https://token.actions.githubusercontent.com   --client-id-list sts.amazonaws.com   --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com
 ```
 
 ---
@@ -82,7 +84,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/github-actions-role
           aws-region: us-east-1
@@ -93,11 +95,12 @@ jobs:
 
 ---
 
-## Restrict by Branch or Environment
+## Restrict by Branch
 
 ```hcl
 Condition = {
   StringEquals = {
+    "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
     "token.actions.githubusercontent.com:sub" = "repo:myorg/myrepo:ref:refs/heads/main"
   }
 }
