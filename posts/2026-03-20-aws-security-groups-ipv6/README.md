@@ -99,12 +99,12 @@ resource "aws_security_group" "web" {
     from_port        = 22
     to_port          = 22
     protocol         = "tcp"
-    ipv6_cidr_blocks = ["2001:db8:admin::/48"]
+    ipv6_cidr_blocks = ["2001:db8:1234::/48"]
   }
 
-  # ICMPv6 - needed for NDP and ping6
+  # ICMPv6 - useful for ping6 testing
   ingress {
-    description      = "ICMPv6 for NDP and ping"
+    description      = "ICMPv6 for ping6 testing"
     from_port        = -1
     to_port          = -1
     protocol         = "58"  # ICMPv6
@@ -152,7 +152,7 @@ aws ec2 authorize-security-group-ingress \
 # List all IPv6 ingress rules
 aws ec2 describe-security-groups \
     --group-ids sg-12345678 \
-    --query "SecurityGroups[0].IpPermissions[?Ipv6Ranges!=null].{Protocol:IpProtocol, FromPort:FromPort, ToPort:ToPort, IPv6:Ipv6Ranges[*].CidrIpv6}"
+    --query 'SecurityGroups[0].IpPermissions[?length(Ipv6Ranges) > `0`].{Protocol:IpProtocol, FromPort:FromPort, ToPort:ToPort, IPv6:Ipv6Ranges[*].CidrIpv6}'
 ```
 
 ## Conclusion
