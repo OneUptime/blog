@@ -16,7 +16,7 @@ As you work with OCI artifacts in Podman, your local artifact store accumulates 
 
 ## Prerequisites
 
-Ensure you have Podman 5.x or later installed.
+Ensure you have a Podman version that includes the `podman artifact` commands. These commands were experimental in older 5.x releases, so check the local help output before using the examples.
 
 ```bash
 # Verify Podman version
@@ -81,11 +81,11 @@ podman artifact ls
 If you know the digest of an artifact, you can remove it that way.
 
 ```bash
-# First, find the digest
-podman artifact inspect localhost/myorg/app-config:v3.0 | jq -r '.layers[0].digest'
+# First, find the artifact manifest digest
+DIGEST=$(podman artifact inspect localhost/myorg/app-config:v3.0 --format "{{.Digest}}")
 
-# Remove by the full reference (digest-based removal)
-podman artifact rm localhost/myorg/app-config:v3.0
+# Remove by the digest
+podman artifact rm "$DIGEST"
 ```
 
 ## Removing All Artifacts Matching a Pattern
@@ -103,7 +103,9 @@ podman artifact add localhost/myorg/prod-config:v1 test1.txt
 # Remove all artifacts matching "test-config"
 podman artifact ls --format "{{.Repository}}:{{.Tag}}" | \
     grep "test-config" | \
-    xargs -I {} podman artifact rm {}
+    while read -r artifact; do
+        podman artifact rm "$artifact"
+    done
 
 # Verify only prod-config remains
 podman artifact ls
@@ -111,12 +113,11 @@ podman artifact ls
 
 ## Removing All Local Artifacts
 
-To clear the entire local artifact store, list all artifacts and remove them.
+To clear the entire local artifact store, use the `--all` option.
 
 ```bash
 # Remove every artifact in the local store
-podman artifact ls --format "{{.Repository}}:{{.Tag}}" | \
-    xargs -I {} podman artifact rm {}
+podman artifact rm --all
 
 # Confirm the store is empty
 podman artifact ls
@@ -140,7 +141,7 @@ if [ -z "$ARTIFACT" ]; then
 fi
 
 # Check if the artifact exists
-if ! podman artifact ls --format "{{.Repository}}:{{.Tag}}" | grep -q "$ARTIFACT"; then
+if ! podman artifact ls --format "{{.Repository}}:{{.Tag}}" | grep -Fxq "$ARTIFACT"; then
     echo "Artifact $ARTIFACT not found in local store"
     exit 1
 fi
@@ -172,7 +173,10 @@ REPOS=$(podman artifact ls --format "{{.Repository}}" | sort -u)
 
 for repo in $REPOS; do
     # Get all tags for this repo, sorted by creation time
-    TAGS=$(podman artifact ls --format "{{.Repository}}:{{.Tag}}" | grep "^${repo}:")
+    TAGS=$(podman artifact ls --format "{{.CreatedAt}}	{{.Repository}}:{{.Tag}}" | \
+        grep "	${repo}:" | \
+        sort | \
+        cut -f2-)
     TAG_COUNT=$(echo "$TAGS" | wc -l)
 
     if [ "$TAG_COUNT" -gt 1 ]; then
