@@ -38,11 +38,11 @@ The `podman history` command shows each layer with its size, making it easy to i
 
 Your base image is the foundation of your image size. Here is how common bases compare:
 
-| Base Image | Compressed Size | Use Case |
+| Base Image | Approximate Image Size | Use Case |
 |-----------|----------------|----------|
 | ubuntu:24.04 | ~77MB | Full OS, broad compatibility |
 | debian:bookworm-slim | ~52MB | Debian without extras |
-| alpine:3.20 | ~3.5MB | Minimal Linux with musl libc |
+| alpine:3.23 | ~8MB | Minimal Linux with musl libc |
 | gcr.io/distroless/base | ~20MB | No shell, no package manager |
 | scratch | 0MB | Empty, for static binaries |
 
@@ -70,7 +70,7 @@ Multi-stage builds are the most effective technique for reducing image size. Bui
 
 ```dockerfile
 # Stage 1: Build with all tools
-FROM golang:1.22 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -94,6 +94,7 @@ For Python, separate the dependency installation from the runtime:
 # Build stage - install and compile dependencies
 FROM python:3.12-slim AS builder
 WORKDIR /app
+COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # Runtime stage - only the installed packages
@@ -203,7 +204,7 @@ RUN find /usr/local -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null; \
 For Alpine-based images, clean up APK cache:
 
 ```dockerfile
-FROM alpine:3.20
+FROM alpine:3.23
 
 RUN apk add --no-cache curl jq && \
     rm -rf /var/cache/apk/*
@@ -218,7 +219,7 @@ The `--no-cache` flag for `apk add` avoids creating a local cache entirely.
 For compiled applications, strip debug symbols and compress binaries:
 
 ```dockerfile
-FROM golang:1.22 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /app
 COPY . .
 
@@ -226,8 +227,9 @@ COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /app/server .
 
 # Optional: UPX compression (30-50% smaller)
-RUN apt-get update && apt-get install -y upx && \
-    upx --best /app/server
+RUN apt-get update && apt-get install -y --no-install-recommends upx-ucl && \
+    upx --best /app/server && \
+    rm -rf /var/lib/apt/lists/*
 ```
 
 For C/C++ applications:
