@@ -8,9 +8,9 @@ Description: Learn how to use Podman in Tekton Pipelines for building, testing, 
 
 ---
 
-> Tekton and Podman are a natural pair: both are cloud-native, both run without a daemon, and both are designed for Kubernetes environments.
+> Tekton and Podman are a natural pair: both are cloud-native, both run without a daemon, and both fit well into Kubernetes-centric workflows.
 
-Tekton is a Kubernetes-native CI/CD framework that runs pipelines as Kubernetes resources. Using Podman inside Tekton tasks gives you a daemonless, rootless container build tool that fits perfectly into the Kubernetes ecosystem. This guide shows you how to create Tekton tasks and pipelines that use Podman for container operations.
+Tekton is a Kubernetes-native CI/CD framework that runs pipelines as Kubernetes resources. Using Podman inside Tekton tasks gives you a daemonless container tool for building, testing, and pushing images. Because each Tekton task runs in its own Pod, this guide saves the built image into the shared workspace so later tasks can load and reuse it.
 
 ---
 
@@ -39,6 +39,10 @@ spec:
       description: Path to the Containerfile
       type: string
       default: "Containerfile"
+    - name: ARCHIVE
+      description: File name for the saved image archive in the shared workspace
+      type: string
+      default: "podman-image.tar"
 
   workspaces:
     - name: source
@@ -55,6 +59,7 @@ spec:
       workingDir: $(workspaces.source.path)
       securityContext:
         runAsUser: 0
+        privileged: true
       script: |
         #!/bin/bash
         set -e
@@ -65,16 +70,23 @@ spec:
 
         # Build the image
         podman build \
-          --tag $(params.IMAGE) \
-          --file $(params.CONTAINERFILE) \
-          $(params.CONTEXT)
+          --tag "$(params.IMAGE)" \
+          --file "$(params.CONTAINERFILE)" \
+          "$(params.CONTEXT)"
 
         # Get and store the image digest
-        DIGEST=$(podman inspect --format '{{.Digest}}' $(params.IMAGE))
-        echo -n "$DIGEST" > $(results.IMAGE_DIGEST.path)
+        DIGEST=$(podman image inspect --format '{{.Digest}}' "$(params.IMAGE)")
+        echo -n "$DIGEST" > "$(results.IMAGE_DIGEST.path)"
+
+        # Save the image into the shared workspace for later tasks
+        podman save \
+          --format oci-archive \
+          --output "$(workspaces.source.path)/$(params.ARCHIVE)" \
+          "$(params.IMAGE)"
 
         echo "Built image: $(params.IMAGE)"
         echo "Digest: $DIGEST"
+        echo "Saved image archive: $(workspaces.source.path)/$(params.ARCHIVE)"
 ```
 
 ## Creating a Push Task
@@ -93,10 +105,14 @@ spec:
     - name: IMAGE
       description: The fully qualified image name to push
       type: string
+    - name: ARCHIVE
+      description: File name of the saved image archive in the shared workspace
+      type: string
+      default: "podman-image.tar"
 
   workspaces:
     - name: source
-      description: The workspace with the built image
+      description: Shared workspace containing the saved image archive
     - name: registry-credentials
       description: Workspace containing registry credentials
 
@@ -105,21 +121,27 @@ spec:
       image: quay.io/podman/stable:latest
       securityContext:
         runAsUser: 0
+        privileged: true
       script: |
         #!/bin/bash
         set -e
 
         export STORAGE_DRIVER=vfs
 
+        # Load the image archive created by the build task
+        podman load --input "$(workspaces.source.path)/$(params.ARCHIVE)"
+
         # Configure registry authentication from the workspace
-        CRED_DIR=$(workspaces.registry-credentials.path)
+        CRED_DIR="$(workspaces.registry-credentials.path)"
+        mkdir -p "${HOME}/.docker"
         if [ -f "${CRED_DIR}/config.json" ]; then
-          mkdir -p /run/containers/0
-          cp "${CRED_DIR}/config.json" /run/containers/0/auth.json
+          cp "${CRED_DIR}/config.json" "${HOME}/.docker/config.json"
+        elif [ -f "${CRED_DIR}/.dockerconfigjson" ]; then
+          cp "${CRED_DIR}/.dockerconfigjson" "${HOME}/.docker/config.json"
         fi
 
         # Push the image to the registry
-        podman push $(params.IMAGE)
+        podman push "$(params.IMAGE)"
 
         echo "Pushed: $(params.IMAGE)"
 ```
@@ -218,6 +240,10 @@ spec:
     - name: IMAGE
       description: The image to test
       type: string
+    - name: ARCHIVE
+      description: File name of the saved image archive in the shared workspace
+      type: string
+      default: "podman-image.tar"
     - name: TEST_COMMAND
       description: The test command to run
       type: string
@@ -232,14 +258,18 @@ spec:
       workingDir: $(workspaces.source.path)
       securityContext:
         runAsUser: 0
+        privileged: true
       script: |
         #!/bin/bash
         set -e
 
         export STORAGE_DRIVER=vfs
 
+        # Load the image archive created by the build task
+        podman load --input "$(workspaces.source.path)/$(params.ARCHIVE)"
+
         # Run the test suite inside the container
-        podman run --rm $(params.IMAGE) $(params.TEST_COMMAND)
+        podman run --rm "$(params.IMAGE)" $(params.TEST_COMMAND)
 
         echo "Tests passed successfully"
 ```
@@ -279,6 +309,10 @@ spec:
 #!/bin/bash
 # Apply the pipeline resources and trigger a run
 
+# Install the catalog git-clone Task if it is not already present
+kubectl apply -f \
+  https://raw.githubusercontent.com/tektoncd/catalog/main/task/git-clone/0.6/git-clone.yaml
+
 # Apply tasks and pipeline
 kubectl apply -f tekton/tasks/
 kubectl apply -f tekton/pipelines/
@@ -292,4 +326,4 @@ tkn pipelinerun logs --last -f
 
 ## Summary
 
-Tekton and Podman are a natural combination for Kubernetes-native CI/CD. Podman runs inside Tekton task steps without needing a daemon, and the vfs storage driver works reliably in container environments. By breaking your pipeline into modular tasks for building, testing, and pushing, you can reuse components across different pipelines. The workspace mechanism in Tekton allows sharing build artifacts between tasks, and Kubernetes secrets handle registry credentials securely. Use PipelineRuns to trigger builds and the Tekton CLI to monitor progress.
+Tekton and Podman are a natural combination for Kubernetes-native CI/CD. Podman runs inside Tekton task steps without needing a daemon, and the vfs storage driver works reliably in container environments. By breaking your pipeline into modular tasks for building, testing, and pushing, you can reuse components across different pipelines. In a multi-task pipeline, save the built image into a shared workspace and load it again in later tasks, because each Tekton task runs in its own Pod. Kubernetes secrets can provide registry credentials securely, and PipelineRuns let you trigger builds and monitor them with the Tekton CLI.
