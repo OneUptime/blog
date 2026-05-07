@@ -33,11 +33,11 @@ This gives you the version number in a compact format suitable for quick checks.
 For more comprehensive version details, use the `podman version` command.
 
 ```bash
-# Display detailed version information for client and server
+# Display detailed version information for the client and, when using a remote connection, the server
 podman version
 ```
 
-This outputs a structured view with both client and server version details, including:
+This outputs a structured view with client version details and, when using a remote connection, server version details, including:
 
 - **Version**: The Podman release version
 - **API Version**: The REST API version supported
@@ -63,7 +63,7 @@ podman version --format '{{.Client.APIVersion}}'
 podman version --format '{{.Client.GoVersion}}'
 
 # Display the build time
-podman version --format '{{.Client.Built}}'
+podman version --format '{{.Client.BuiltTime}}'
 ```
 
 ## Checking Component Versions
@@ -137,7 +137,7 @@ fi
 
 ## Checking for Available Updates
 
-While Podman does not have a built-in update checker, you can compare your version against the latest release.
+While Podman does not have a built-in update checker, you can use your package manager to check for newer packaged versions.
 
 ```bash
 # Check the installed version
@@ -173,7 +173,7 @@ podman info --format json | jq '{
   arch: .host.arch,
   kernel: .host.kernel,
   cgroupManager: .host.cgroupManager,
-  cgroupVersion: .host.cgroupsVersion,
+  cgroupVersion: .host.cgroupVersion,
   ociRuntime: .host.ociRuntime,
   conmon: .host.conmon,
   rootless: .host.security.rootless,
