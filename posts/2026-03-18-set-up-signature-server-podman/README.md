@@ -20,7 +20,7 @@ Podman stores and retrieves signatures using a well-defined URL pattern. When an
 
 The URL pattern follows this structure:
 ```text
-<sigstore-url>/<image-name>@<digest-algorithm>=<digest-hex>/signature-<n>
+<lookaside-url>/<image-name>@<digest-algorithm>=<digest-hex>/signature-<n>
 ```
 
 ## Setting Up the Signature Storage Directory
@@ -91,17 +91,17 @@ curl -s http://localhost:8888/healthz
 ## Configuring Podman to Use the Signature Server
 
 ```bash
-# Configure the signature storage for pushing (writing) and pulling (reading)
+# Configure the lookaside signature storage for pushing (writing) and verification (reading)
 sudo mkdir -p /etc/containers/registries.d
 
-sudo tee /etc/containers/registries.d/myregistry.yaml > /dev/null << 'EOF'
+sudo tee /etc/containers/registries.d/localhost-5000.yaml > /dev/null << 'EOF'
 docker:
-  registry.example.com:
+  localhost:5000:
     # Where Podman writes signatures during 'podman push --sign-by'
-    sigstore-staging: file:///var/lib/containers/sigstore
+    lookaside-staging: file:///var/lib/containers/sigstore
 
-    # Where Podman reads signatures during 'podman pull'
-    sigstore: http://localhost:8888
+    # Where Podman reads signatures when signature verification is required
+    lookaside: http://localhost:8888
 EOF
 ```
 
@@ -228,4 +228,4 @@ rm -rf /tmp/sigserver-config
 
 ## Summary
 
-A signature server provides a centralized, accessible location for Podman to retrieve image signatures during verification. By running a simple web server that hosts signature files in the expected directory structure, you enable signature verification across your entire infrastructure. Configure Podman clients to point their sigstore URL to your server, automate signature publishing from your CI/CD pipeline, and use HTTPS in production to protect signature integrity in transit.
+A signature server provides a centralized, accessible location for Podman to retrieve image signatures during verification. By running a simple web server that hosts signature files in the expected directory structure, you enable signature verification across your entire infrastructure. Configure Podman clients to point their lookaside URL to your server, automate signature publishing from your CI/CD pipeline, and use HTTPS in production to protect signature integrity in transit.
