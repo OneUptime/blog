@@ -140,16 +140,16 @@ Add a new node group or expand an existing one:
 2. Click **Edit Config**
 3. Under **Node Pools**, increase the count or add a new pool
 
-## Adding Windows Nodes
+## Adding Windows Worker Nodes to Custom RKE2 Clusters
 
-Rancher supports mixed Linux and Windows clusters. To add a Windows worker node:
+Rancher supports mixed Linux and Windows RKE2 custom clusters. This only works for clusters created with Windows support enabled, and the Windows registration command appears only after the cluster is running with Linux etcd, control plane, and worker nodes. To add a Windows worker node:
 
-1. In the cluster registration page, select the **Windows** tab
-2. Copy the Windows registration command
+1. In the cluster registration page, select the **Worker** role
+2. Copy the Windows worker registration command
 3. Run it on the Windows Server node (PowerShell):
 
 ```powershell
-Invoke-WebRequest -Uri "https://rancher.yourdomain.com/system-agent-install.ps1" -OutFile agent-install.ps1
+Invoke-WebRequest -Uri "https://rancher.yourdomain.com/wins-agent-install.ps1" -OutFile agent-install.ps1
 .\agent-install.ps1 -Server "https://rancher.yourdomain.com" -Token "<TOKEN>" -Worker
 ```
 
@@ -157,19 +157,21 @@ Note: Windows nodes can only serve as worker nodes, not control plane or etcd no
 
 ## Node Preparation Best Practices
 
-Before adding any node, ensure it meets these requirements:
+Before adding any node, ensure it meets your cluster's distribution-specific requirements and that the node has enough resources for Kubernetes system components and your workloads:
 
 ### System Requirements
 
 ```bash
 # Check available resources
 
-free -h          # Memory (minimum 4 GB for workers)
-nproc            # CPU cores (minimum 2)
-df -h /          # Disk space (minimum 20 GB)
+free -h          # Memory
+nproc            # CPU cores
+df -h /          # Disk space
 ```
 
 ### Network Requirements
+
+The exact ports vary by cluster type and CNI. For custom clusters, verify the ports required by your Kubernetes distribution:
 
 ```bash
 # Verify connectivity to Rancher
@@ -178,9 +180,11 @@ curl -sk https://rancher.yourdomain.com/healthz
 # Verify connectivity to existing cluster nodes
 ping <EXISTING_NODE_IP>
 
-# Check required ports are open
-nc -zv <EXISTING_NODE_IP> 6443
-nc -zv <EXISTING_NODE_IP> 9345
+# For K3s and RKE2 custom clusters, verify the Kubernetes API on a server node
+nc -zv <SERVER_NODE_IP> 6443
+
+# For RKE2 custom clusters, verify the supervisor / registration port on a server node
+nc -zv <SERVER_NODE_IP> 9345
 ```
 
 ### DNS Configuration
@@ -193,11 +197,8 @@ nslookup rancher.yourdomain.com
 ### Time Synchronization
 
 ```bash
-# Ensure NTP is configured
+# Ensure the system clock is synchronized
 timedatectl status
-# If not synchronized:
-sudo systemctl enable chronyd
-sudo systemctl start chronyd
 ```
 
 ## Verifying the New Node
@@ -217,13 +218,15 @@ kubectl get pods -A -o wide | grep <NEW_NODE_NAME>
 
 ### Verify Node Resources
 
+If metrics-server is installed:
+
 ```bash
 kubectl top node <NEW_NODE_NAME>
 ```
 
-### Test Workload Scheduling
+### Test Pod Placement on the New Node
 
-Deploy a test workload to verify the new node accepts pods:
+Deploy a test workload to verify the new node can run a pod:
 
 ```bash
 kubectl run test-pod --image=nginx --restart=Never \
@@ -236,9 +239,9 @@ kubectl delete pod test-pod
 ## Troubleshooting
 
 - **Node stuck in Provisioning**: Check the system-agent logs with `journalctl -u rancher-system-agent`. Verify network connectivity.
-- **Node shows NotReady**: Check kubelet status with `systemctl status kubelet` or `journalctl -u rke2-agent`.
-- **Registration command expired**: Generate a new registration command from the Rancher UI.
-- **Node has wrong role**: You cannot change a node's role after registration. Remove the node and re-register with the correct role.
+- **Node shows NotReady**: Check the node service logs. For RKE2, use `journalctl -u rke2-server` or `journalctl -u rke2-agent`. For K3s, use `journalctl -u k3s` or `journalctl -u k3s-agent`.
+- **Registration command no longer works**: Copy the current registration command from the Rancher UI again and rerun it on the node.
+- **Node has the wrong role**: Remove the node and re-register it with the correct role selection.
 - **Pods not scheduling**: Check for taints on the new node with `kubectl describe node <NODE_NAME> | grep Taints`.
 
 ## Conclusion
