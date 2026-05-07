@@ -29,7 +29,10 @@ etcd-s3-region: us-east-1
 etcd-s3-access-key: AKIAIOSFODNN7EXAMPLE
 etcd-s3-secret-key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 etcd-s3-folder: rke2-production
+etcd-s3-retention: 15                         # Keep 15 snapshots in S3
+```
 
+```bash
 # Restart rke2-server to apply
 systemctl restart rke2-server
 ```
@@ -51,23 +54,24 @@ apiVersion: resources.cattle.io/v1
 kind: Backup
 metadata:
   name: rancher-automated-daily
-  namespace: cattle-resources-system
 spec:
   storageLocation:
     s3:
       bucketName: company-rancher-management-backups
       region: us-east-1
+      endpoint: s3.us-east-1.amazonaws.com
       credentialSecretName: s3-credentials
       credentialSecretNamespace: cattle-resources-system
-  schedule: "0 3 * * *"      # Daily at 3 AM UTC
+  resourceSetName: rancher-resource-set-full
+  schedule: "0 3 * * *"      # Daily at 3 AM
   retentionCount: 30          # Keep 30 days
   encryptionConfigSecretName: backup-encryption-secret
 ```
 
 ```bash
 # Monitor backup status
-kubectl get backups -n cattle-resources-system
-kubectl describe backup rancher-automated-daily -n cattle-resources-system
+kubectl get backups.resources.cattle.io
+kubectl describe backups.resources.cattle.io rancher-automated-daily
 
 # Create S3 credentials secret
 kubectl create secret generic s3-credentials \
@@ -104,7 +108,10 @@ velero backup create pre-maintenance-$(date +%Y%m%d-%H%M) \
 velero schedule get
 
 # Check last backup status per schedule
-velero backup get --selector schedule-name=production-daily | head -5
+kubectl get backups.velero.io -n velero \
+  --sort-by=.metadata.creationTimestamp \
+  -o custom-columns=NAME:.metadata.name,PHASE:.status.phase | \
+  grep '^production-daily-' | tail -1
 ```
 
 ## Step 4: Database-Specific Backup CronJobs
@@ -133,6 +140,7 @@ spec:
                 - /bin/sh
                 - -c
                 - |
+                  apk add --no-cache aws-cli >/dev/null
                   DATE=$(date +%Y%m%d-%H%M%S)
                   pg_dump -h $PGHOST -U $PGUSER $PGDATABASE | \
                   gzip | \
@@ -152,6 +160,8 @@ spec:
                     secretKeyRef:
                       name: postgres-backup-secret
                       key: password
+                - name: AWS_DEFAULT_REGION
+                  value: us-east-1
           restartPolicy: OnFailure
 ```
 
@@ -170,18 +180,23 @@ spec:
       rules:
         - alert: VeleroBackupFailed
           expr: |
-            increase(velero_backup_failure_total[24h]) > 0
+            velero_backup_last_status{schedule!=""} != 1
+          for: 15m
           annotations:
-            summary: "Velero backup failed in the last 24 hours"
+            summary: "Velero backup {{ $labels.schedule }} is failing"
           labels:
             severity: critical
 
-        - alert: VeleroBackupMissing
+        - alert: VeleroNoNewBackup
           expr: |
-            time() - velero_backup_last_successful_timestamp > 86400
+            (
+              (time() - velero_backup_last_successful_timestamp{schedule!=""}) > bool (25 * 3600)
+              or
+              absent(velero_backup_last_successful_timestamp{schedule!=""})
+            ) == 1
           for: 1h
           annotations:
-            summary: "No successful Velero backup in 24 hours"
+            summary: "Velero backup {{ $labels.schedule }} has not run successfully in the last 25 hours"
           labels:
             severity: critical
 ```
@@ -209,8 +224,17 @@ spec:
                 - -c
                 - |
                   # Get latest backup
-                  LATEST=$(velero backup get --output json | \
-                    jq -r '.items | sort_by(.metadata.creationTimestamp) | last | .metadata.name')
+                  LATEST=$(velero backup get -o json | \
+                    jq -r '.items
+                      | map(select((.metadata.name | startswith("production-daily-")) and .status.phase == "Completed"))
+                      | sort_by(.status.completionTimestamp)
+                      | last
+                      | .metadata.name')
+
+                  if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+                    echo "No completed production-daily backup found"
+                    exit 1
+                  fi
 
                   # Restore to test namespace
                   velero restore create restore-test-$(date +%Y%m%d) \
@@ -223,6 +247,7 @@ spec:
 
                   # Clean up test namespace
                   kubectl delete namespace restore-test
+          restartPolicy: OnFailure
 ```
 
 ## Conclusion
