@@ -8,9 +8,9 @@ Description: Learn how to set default environment variables in containers.conf s
 
 ---
 
-> Default environment variables in containers.conf ensure every container starts with a consistent baseline configuration without requiring explicit flags on each run.
+> Default environment variables in containers.conf ensure containers using that configuration start with a consistent baseline without requiring explicit flags on each run.
 
-Setting environment variables on every `podman run` command is tedious and error-prone. By defining defaults in `containers.conf`, you guarantee that all containers on your system start with the same baseline environment. This is particularly useful for proxy settings, locale configurations, and common paths. This guide shows you how to configure and manage default environment variables.
+Setting environment variables on every `podman run` command is tedious and error-prone. By defining defaults in `containers.conf`, you can make containers run by that user start with the same baseline environment. This is particularly useful for proxy settings, locale configurations, and common paths. This guide shows you how to configure and manage default environment variables.
 
 ---
 
@@ -71,25 +71,27 @@ podman run --rm alpine env | grep -i proxy
 Pass through specific host environment variables to containers.
 
 ```bash
-# Configure environment variable passthrough
+# Configure specific environment variable passthrough
 cat > ~/.config/containers/containers.conf << 'EOF'
 [containers]
-# Static default environment variables
+# Static default environment variables and host passthrough
+# Names without values copy values from the host environment when set
 env = [
     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-    "TERM=xterm-256color"
+    "TERM=xterm-256color",
+    "USER",
+    "HOME"
 ]
 
-# Pass host environment variables into containers
-# List variable names without values to pass the host value through
+# Keep full host environment passthrough disabled
 env_host = false
 EOF
 
 # If env_host is true, ALL host environment variables are passed
 # This is generally not recommended for security reasons
 
-# Instead, pass specific variables at runtime
-podman run --rm -e USER -e HOME alpine env | grep -E "USER|HOME"
+# Verify specific host variables are passed through
+podman run --rm alpine env | grep -E "USER|HOME"
 ```
 
 ## Setting Application-Specific Defaults
@@ -182,10 +184,10 @@ echo ""
 echo "=== With override ==="
 podman run --rm -e TERM=dumb -e CUSTOM=value alpine env | sort
 
-# Verify which config file is being loaded
-podman info --format '{{range .Host.ConfigFiles}}{{.}}{{"\n"}}{{end}}'
+# Verify configuration loading in debug output
+podman --log-level=debug info 2>&1 | grep -i containers.conf
 ```
 
 ## Summary
 
-Default environment variables in `containers.conf` provide a consistent baseline for every container created with Podman. Use them for proxy settings, locale configurations, timezone defaults, and framework-specific variables. The `env` array in the `[containers]` section accepts any environment variable, and runtime flags like `-e` and `--env-file` can override or extend these defaults on a per-container basis.
+Default environment variables in `containers.conf` provide a consistent baseline for containers created with Podman using that configuration. Use them for proxy settings, locale configurations, timezone defaults, and framework-specific variables. The `env` array in the `[containers]` section accepts any environment variable, and runtime flags like `-e` and `--env-file` can override or extend these defaults on a per-container basis.
