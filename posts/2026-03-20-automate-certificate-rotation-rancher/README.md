@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Certificate, Cert-Manager, TLS, Automation, Kubernetes, Security
 
-Description: Automate TLS certificate rotation in Rancher using cert-manager for application certificates, and built-in RKE2 mechanisms for Kubernetes component certificates, ensuring no certificate expiry...
+Description: Automate TLS certificate rotation in Rancher using cert-manager for application certificates and Rancher installations that use cert-manager-managed TLS, plus built-in RKE2 mechanisms for Kubernetes component certificates, ensuring no certificate expiry...
 
 ## Introduction
 
-Certificate expiry is one of the most preventable causes of production outages. Automating certificate rotation-for Kubernetes component certificates (API server, etcd, kubelet), Rancher's own certificates, and application TLS certificates-eliminates manual renewal processes. cert-manager handles application certificates, while RKE2 manages Kubernetes component certificates automatically.
+Certificate expiry is one of the most preventable causes of production outages. Automating certificate rotation-for Kubernetes component certificates (API server, etcd, kubelet), Rancher deployments that use cert-manager-managed TLS, and application TLS certificates-eliminates manual renewal processes. cert-manager handles application certificates and Rancher's TLS when Rancher is installed with `ingress.tls.source=rancher` or `ingress.tls.source=letsEncrypt`, while RKE2 manages Kubernetes client and server certificates automatically.
 
 ## Step 1: Install cert-manager
 
@@ -21,16 +21,13 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.14.0 \
-  --set installCRDs=true \
-  --set prometheus.enabled=true \
-  --set webhook.timeoutSeconds=30
+  --set crds.enabled=true
 ```
 
 ## Step 2: Configure Certificate Issuers
 
 ```yaml
-# Let's Encrypt production issuer (for internet-facing services)
+# Let's Encrypt production issuer for internet-facing services using HTTP-01
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -44,7 +41,26 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
+---
+# Let's Encrypt production issuer for wildcard certificates using DNS-01
+# Example below uses Cloudflare; replace the solver with your DNS provider if needed
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-dns
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: platform-team@company.com
+    privateKeySecretRef:
+      name: letsencrypt-dns-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token-secret # Secret is read from the cert-manager namespace by default
+              key: api-token
 ---
 # Internal CA issuer (for internal services)
 apiVersion: cert-manager.io/v1
@@ -53,7 +69,7 @@ metadata:
   name: internal-ca
 spec:
   ca:
-    secretName: internal-ca-key-pair
+    secretName: internal-ca-key-pair # Secret is read from the cert-manager namespace by default
 ```
 
 ## Step 3: Issue Application Certificates
@@ -81,14 +97,12 @@ spec:
 ```
 
 ```yaml
-# Ingress with automatic cert-manager certificate
+# Ingress using the certificate secret issued above
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: myapp
   namespace: production
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   tls:
     - secretName: myapp-tls-secret
@@ -110,41 +124,39 @@ spec:
 ## Step 4: Rotate Rancher's TLS Certificate
 
 ```bash
-# Rancher's own certificate is managed by cert-manager annotation
-# To rotate: update the Certificate resource or delete the secret to trigger re-issuance
+# If Rancher is using cert-manager-managed TLS (`ingress.tls.source=rancher` or `letsEncrypt`),
+# renew the Rancher Certificate resource. If Rancher is using `ingress.tls.source=secret`,
+# replace the `tls-rancher-ingress` secret with the new certificate and key instead.
 
-# Check Rancher certificate expiry
-kubectl get certificate -n cattle-system rancher
+# Check Rancher certificate resources and the ingress TLS secret
+kubectl get certificate -n cattle-system
 kubectl get secret tls-rancher-ingress -n cattle-system \
   -o jsonpath='{.data.tls\.crt}' | \
   base64 -d | openssl x509 -noout -dates
 
-# Force renewal before expiry
-kubectl annotate certificate rancher \
-  cert-manager.io/issue-temporary-certificate="true" \
-  -n cattle-system
+# Force renewal before expiry for cert-manager-managed Rancher certificates
+# Requires cmctl: https://cert-manager.io/docs/reference/cmctl/
+cmctl renew <rancher-certificate-name> -n cattle-system
 
-# Or delete the secret to force re-issuance
-kubectl delete secret tls-rancher-ingress -n cattle-system
-# cert-manager will automatically re-create it
+# Or update the secret when Rancher is using `ingress.tls.source=secret`
+kubectl -n cattle-system create secret tls tls-rancher-ingress \
+  --cert=tls.crt \
+  --key=tls.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# If the issuing CA changes, update `tls-ca` as well and restart the Rancher deployment
 ```
 
 ## Step 5: Rotate Kubernetes Component Certificates
 
-RKE2 rotates Kubernetes component certificates automatically and supports manual rotation:
+RKE2 automatically renews client and server certificates on startup when they are expired or within 120 days of expiry, and supports manual rotation:
 
 ```bash
 # Check certificate expiry dates
-openssl x509 -noout -dates \
-  -in /var/lib/rancher/rke2/server/tls/kube-apiserver/serving-ca.crt
+rke2 certificate check --output table
 
-# List all certificates and their expiry
-for cert in $(find /var/lib/rancher/rke2/server/tls -name "*.crt" 2>/dev/null); do
-  echo "--- $cert ---"
-  openssl x509 -noout -subject -dates -in "$cert" 2>/dev/null
-done
-
-# Rotate all certificates (requires temporary cluster downtime)
+# Rotate all client and server certificates on this node
+# In HA clusters, rotate one control-plane node at a time
 systemctl stop rke2-server
 
 rke2 certificate rotate
@@ -155,6 +167,7 @@ systemctl start rke2-server
 ## Step 6: Monitor Certificate Expiry
 
 ```yaml
+# Requires Prometheus Operator / kube-prometheus-stack CRDs
 # cert-manager exposes Prometheus metrics
 # Alert when certificate expires within 14 days
 apiVersion: monitoring.coreos.com/v1
@@ -197,7 +210,7 @@ spec:
 ## Step 7: Wildcard Certificate Automation
 
 ```yaml
-# Wildcard certificate via DNS-01 challenge (doesn't need public HTTP endpoint)
+# Wildcard certificate via DNS-01 challenge using the `letsencrypt-dns` issuer above
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -206,7 +219,7 @@ metadata:
 spec:
   secretName: wildcard-company-tls
   issuerRef:
-    name: letsencrypt-prod
+    name: letsencrypt-dns
     kind: ClusterIssuer
   dnsNames:
     - "*.company.com"
@@ -217,4 +230,4 @@ spec:
 
 ## Conclusion
 
-cert-manager automates the complete lifecycle of TLS certificates in Rancher-managed clusters. Application certificates are issued automatically when Ingresses are created and renewed before expiry without any manual intervention. RKE2 handles Kubernetes component certificate rotation with a simple `rke2 certificate rotate` command. The combination of cert-manager Prometheus metrics and PrometheusRule alerts ensures certificate expiry never causes unexpected outages-the team is notified weeks before expiry, with critical alerts for any renewal failures.
+cert-manager automates the lifecycle of application certificates, and it can also automate Rancher's own ingress certificate when Rancher is installed with a cert-manager-managed TLS source. Application certificates are issued and renewed automatically by cert-manager without manual intervention. RKE2 automatically renews Kubernetes client and server certificates on restart as they approach expiry, and supports manual rotation with `rke2 certificate rotate`. The combination of cert-manager Prometheus metrics and PrometheusRule alerts ensures certificate expiry never causes unexpected outages-the team is notified weeks before expiry, with critical alerts for any renewal failures.
