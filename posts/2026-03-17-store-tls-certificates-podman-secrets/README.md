@@ -10,7 +10,7 @@ Description: Learn how to securely store and deliver TLS certificates and privat
 
 > TLS private keys must be protected from exposure. Podman secrets provide a secure delivery mechanism that avoids baking certificates into image layers or exposing them via bind mounts.
 
-TLS certificates and private keys are essential for secure communications but require careful handling. Private keys should never be stored in container images or exposed through insecure volume mounts. Podman secrets ensure that TLS material is delivered securely and is only accessible inside the running container.
+TLS certificates and private keys are essential for secure communications but require careful handling. Private keys should never be stored in container images or exposed through insecure volume mounts. Podman secrets ensure that TLS material is delivered securely and is only mounted into containers that are granted access to it.
 
 ---
 
@@ -78,7 +78,22 @@ podman run -d \
   --secret apache_cert,target=/etc/ssl/certs/server.crt,mode=0444 \
   --secret apache_key,target=/etc/ssl/private/server.key,mode=0400 \
   -p 443:443 \
-  httpd:latest
+  -v ./httpd-ssl.conf:/usr/local/apache2/conf/extra/httpd-ssl.conf:ro \
+  httpd:latest \
+  httpd-foreground \
+    -C "LoadModule ssl_module modules/mod_ssl.so" \
+    -C "Listen 443" \
+    -c "Include conf/extra/httpd-ssl.conf"
+```
+
+Use an `httpd-ssl.conf` that references the mounted secret paths:
+
+```apache
+<VirtualHost *:443>
+    SSLEngine on
+    SSLCertificateFile "/etc/ssl/certs/server.crt"
+    SSLCertificateKeyFile "/etc/ssl/private/server.key"
+</VirtualHost>
 ```
 
 ## Full Certificate Chain
@@ -96,6 +111,7 @@ podman run -d \
   --secret privkey,target=/etc/nginx/ssl/privkey.pem,mode=0400 \
   --secret dhparam,target=/etc/nginx/ssl/dhparam.pem,mode=0444 \
   -p 443:443 \
+  -v ./nginx-fullchain.conf:/etc/nginx/conf.d/default.conf:ro \
   nginx:latest
 ```
 
@@ -119,20 +135,24 @@ podman run -d \
 ## Rotating TLS Certificates
 
 ```bash
-# When certificates are renewed, rotate the secrets
+# When certificates are renewed, rotate the secrets and recreate the container
 podman stop nginx-tls
+podman rm nginx-tls
 
-# Remove old secrets
-podman secret rm tls_cert tls_key
+# Replace the secrets with renewed certificates
+podman secret create --replace nginx_cert ./certs/renewed-server.crt
+podman secret create --replace nginx_key ./certs/renewed-server.key
 
-# Create new secrets with renewed certificates
-podman secret create tls_cert ./certs/renewed-server.crt
-podman secret create tls_key ./certs/renewed-server.key
-
-# Restart the container
-podman start nginx-tls
+# Recreate the container so it receives the updated secret data
+podman run -d \
+  --name nginx-tls \
+  --secret nginx_cert,target=/etc/nginx/ssl/server.crt,mode=0444 \
+  --secret nginx_key,target=/etc/nginx/ssl/server.key,mode=0400 \
+  -p 443:443 \
+  -v ./nginx-ssl.conf:/etc/nginx/conf.d/default.conf:ro \
+  nginx:latest
 ```
 
 ## Summary
 
-Store TLS certificates and private keys as Podman secrets to keep them out of image layers and insecure volume mounts. Use the `target` option to place certificates at the paths your web server expects, and set restrictive `mode` permissions, especially on private keys (0400). Regular rotation of TLS secrets when certificates are renewed ensures continuous secure communication without downtime.
+Store TLS certificates and private keys as Podman secrets to keep them out of image layers and insecure volume mounts. Use the `target` option to place certificates at the paths your web server expects, and set restrictive `mode` permissions, especially on private keys (0400). Regular rotation of TLS secrets when certificates are renewed keeps the container using current TLS material after it is recreated or rolled forward.
