@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, API Gateway, Usage Plans, API Key, Infrastructure as Code
 
-Description: Learn how to create API keys and usage plans for AWS API Gateway using OpenTofu to control access and apply rate limiting.
+Description: Learn how to create API keys and usage plans for AWS API Gateway using OpenTofu to require API keys on selected methods and apply rate limiting.
 
 ---
 
-API Gateway usage plans let you define throttling limits and quota settings for groups of clients. API keys identify clients and associate them with a usage plan, enabling per-client rate limiting and access control.
+API Gateway usage plans let you define throttling limits and quota settings for groups of clients. API keys identify clients and associate them with a usage plan, enabling per-client throttling and letting you require a valid key on selected methods.
 
 ---
 
@@ -20,9 +20,15 @@ resource "aws_api_gateway_rest_api" "api" {
   description = "My REST API"
 }
 
+resource "aws_api_gateway_resource" "items" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  parent_id   = aws_api_gateway_rest_api.api.root_resource_id
+  path_part   = "items"
+}
+
 resource "aws_api_gateway_deployment" "api" {
   rest_api_id = aws_api_gateway_rest_api.api.id
-  depends_on  = [aws_api_gateway_integration.root]
+  depends_on  = [aws_api_gateway_method.get_items]
 }
 
 resource "aws_api_gateway_stage" "prod" {
@@ -48,7 +54,7 @@ resource "aws_api_gateway_usage_plan" "standard" {
 
   throttle_settings {
     rate_limit  = 100  # requests per second
-    burst_limit = 200  # peak concurrent requests
+    burst_limit = 200  # maximum request burst over a short time window
   }
 
   quota_settings {
@@ -119,11 +125,11 @@ output "client_a_key" {
 
 ```bash
 tofu apply
-tofu output client_a_key
+tofu output -raw client_a_key
 ```
 
 ---
 
 ## Summary
 
-Create `aws_api_gateway_usage_plan` with throttle and quota settings, then create `aws_api_gateway_api_key` resources for each client. Link them with `aws_api_gateway_usage_plan_key`. Set `api_key_required = true` on methods that should enforce key validation. This pattern gives you fine-grained per-client rate limiting through infrastructure code.
+Create `aws_api_gateway_usage_plan` with throttle and quota settings, then create `aws_api_gateway_api_key` resources for each client. Link them with `aws_api_gateway_usage_plan_key`. Set `api_key_required = true` on methods that should require a valid key. This pattern gives you fine-grained per-client throttling through infrastructure code.
