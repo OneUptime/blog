@@ -16,13 +16,13 @@ End-to-end (E2E) testing validates your application from the user's perspective 
 
 ## Setting Up the E2E Test Environment
 
-Create a Containerfile for your E2E test runner with browser dependencies.
+Create a Containerfile for your E2E test runner with browser dependencies. Match the Playwright image tag to the version of `@playwright/test` installed in your project.
 
 ```dockerfile
 # Containerfile.e2e
 
-# E2E test runner image with Playwright and browsers
-FROM mcr.microsoft.com/playwright:v1.42.0-jammy
+# E2E test runner base image with Playwright browsers and system dependencies
+FROM mcr.microsoft.com/playwright:v1.59.1-noble
 
 WORKDIR /app
 
@@ -69,6 +69,9 @@ podman build -t myapp:e2e .
 # Build the E2E test runner image
 podman build -f Containerfile.e2e -t myapp-e2e:latest .
 
+# Create a host directory for Playwright artifacts
+mkdir -p ./test-results
+
 # Start the database
 podman run -d \
   --name e2e-db \
@@ -103,12 +106,10 @@ done
 podman run --rm \
   --network e2e-net \
   -e BASE_URL=http://e2e-app:8080 \
+  -v "$(pwd)/test-results:/app/test-results:Z" \
   myapp-e2e:latest
 
 TEST_EXIT=$?
-
-# Copy test results and screenshots out before cleanup
-podman cp e2e-app:/app/test-results ./test-results 2>/dev/null || true
 
 # Cleanup
 podman rm -f e2e-app e2e-db
@@ -275,13 +276,14 @@ jobs:
       # Run E2E tests
       - name: Run E2E tests
         run: |
+          mkdir -p test-results
           podman run --rm \
             --network e2e-test \
             -e BASE_URL=http://app:8080 \
             -v ${{ github.workspace }}/test-results:/app/test-results:Z \
             myapp-e2e:latest
 
-      # Upload test artifacts (screenshots, videos, reports)
+      # Upload Playwright artifacts (screenshots, videos, traces)
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
@@ -358,4 +360,4 @@ exit $FAILED
 
 ## Summary
 
-E2E testing with Podman in CI provides consistent browser environments that eliminate flakiness caused by environment differences. Build dedicated test runner images with Playwright or Cypress pre-installed, set up the full application stack using Podman networks or pods, and run your tests against the containerized application. Extract test artifacts like screenshots, videos, and reports for debugging failed tests. Parallel test execution across multiple containers can significantly reduce E2E test suite run times. The containerized approach ensures that your E2E tests run identically in local development and CI environments.
+E2E testing with Podman in CI provides consistent browser environments that eliminate flakiness caused by environment differences. Build dedicated test runner images with Playwright browsers and project dependencies or with official Cypress images, set up the full application stack using Podman networks or pods, and run your tests against the containerized application. Extract test artifacts like screenshots, videos, and reports for debugging failed tests. Parallel test execution across multiple containers can significantly reduce E2E test suite run times. The containerized approach ensures that your E2E tests run identically in local development and CI environments.
