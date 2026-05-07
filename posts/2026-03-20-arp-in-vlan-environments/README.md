@@ -13,7 +13,7 @@ VLANs segment a physical network into multiple logical broadcast domains. Since 
 ```text
 VLAN 10 (192.168.10.0/24)   ←→ VLAN 20 (192.168.20.0/24)
   ARP broadcasts stay in VLAN 10     ARP broadcasts stay in VLAN 20
-  Hosts can only ARP for 192.168.10.x  Hosts can only ARP for 192.168.20.x
+  Hosts normally ARP for on-link 192.168.10.x addresses  Hosts normally ARP for on-link 192.168.20.x addresses
 ```
 
 ## ARP Within a VLAN
@@ -31,7 +31,7 @@ To communicate between VLANs, packets must go through a layer 3 device (router o
 
 ```mermaid
 flowchart LR
-    A["Host A\n192.168.10.10\nVLAN 10"] -->|ARP for router's .10 gateway| R["L3 Router\n.10 GW for VLAN 10\n.20 GW for VLAN 20"]
+    A["Host A\n192.168.10.10\nVLAN 10"] -->|ARP for 192.168.10.1| R["L3 Router\n192.168.10.1 on VLAN 10\n192.168.20.1 on VLAN 20"]
     R -->|ARP for 192.168.20.20 on VLAN 20| B["Host B\n192.168.20.20\nVLAN 20"]
 ```
 
@@ -62,24 +62,27 @@ Now the router performs ARP on each VLAN sub-interface independently.
 
 ## ARP and VLAN Tags
 
-ARP packets in a VLAN-trunked environment are tagged with 802.1Q headers:
+On an 802.1Q trunk, ARP frames for tagged VLANs carry an 802.1Q header:
 
 ```text
 Ethernet Header:
   Destination: ff:ff:ff:ff:ff:ff
   Source: host_mac
-  EtherType: 0x8100 (802.1Q)
+  TPID: 0x8100 (802.1Q)
 
 802.1Q Tag:
   VLAN ID: 10
   Priority: 0
+
+Encapsulated EtherType:
+  0x0806 (ARP)
 
 ARP Payload: (standard ARP)
 ```
 
 ## Proxy ARP Across VLANs
 
-If proxy ARP is enabled on a router, it can respond to ARP requests on behalf of hosts in other subnets, making inter-VLAN routing transparent to clients:
+If proxy ARP is enabled on a router, it can answer ARP requests for reachable addresses on another interface, which can hide subnet boundaries from clients in specific designs:
 
 ```bash
 # Enable proxy ARP on a Linux router interface
@@ -90,13 +93,13 @@ echo 1 > /proc/sys/net/ipv4/conf/eth1.10/proxy_arp
 
 ## VLAN ARP Flooding Issue
 
-When a switch does not know the destination MAC, it floods the frame to all ports in the VLAN. Excessive ARP broadcasts can cause:
+When a host sends an ARP request, the switch floods that broadcast frame to all ports in the VLAN. Excessive ARP broadcasts can cause:
 
 - High CPU on switches (ARP storms)
 - Performance degradation for all hosts in the VLAN
 - Security exposure (all hosts see all ARP broadcasts)
 
-Mitigation: Enable ARP proxy/suppression at the gateway, or use /24 or smaller VLANs.
+Mitigation: Reduce the number of hosts per VLAN, or use network designs that support ARP suppression or proxying where appropriate.
 
 ## Checking VLAN ARP on Linux
 
