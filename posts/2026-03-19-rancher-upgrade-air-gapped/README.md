@@ -38,11 +38,12 @@ helm pull rancher-stable/rancher --version <TARGET_VERSION>
 
 This creates a file like `rancher-<TARGET_VERSION>.tgz` in your current directory.
 
-Also download the cert-manager chart if you use Rancher-generated certificates:
+Also download the cert-manager chart for the version currently running on your cluster if you use Rancher-generated certificates:
 
 ```bash
 helm repo add jetstack https://charts.jetstack.io
-helm pull jetstack/cert-manager --version v1.14.4
+helm repo update
+helm pull jetstack/cert-manager --version <CERT_MANAGER_VERSION>
 ```
 
 ## Step 3: Download the Container Images
@@ -59,6 +60,13 @@ wget https://github.com/rancher/rancher/releases/download/<TARGET_VERSION>/ranch
 wget https://github.com/rancher/rancher/releases/download/<TARGET_VERSION>/rancher-load-images.sh
 
 chmod +x rancher-save-images.sh rancher-load-images.sh
+
+# If you use Rancher-generated certificates, append the cert-manager images
+helm template cert-manager ./cert-manager-<CERT_MANAGER_VERSION>.tgz \
+  | awk '$1 ~ /image:/ {print $2}' \
+  | sed 's/\"//g' >> ./rancher-images.txt
+
+sort -u rancher-images.txt -o rancher-images.txt
 ```
 
 ### Save Images to a Tar Archive
@@ -71,15 +79,15 @@ This pulls all images and saves them into `rancher-images.tar.gz`. This process 
 
 ### Alternative: Use skopeo for Selective Mirroring
 
-If the full image list is too large, you can mirror only the images that changed between versions:
+If your private registry already contains the unchanged images from the currently running Rancher version, you can mirror only the new images:
 
 ```bash
 # Compare old and new image lists to find differences
-diff rancher-images-old.txt rancher-images.txt | grep "^>" | sed 's/^> //' > new-images.txt
+comm -13 <(sort rancher-images-old.txt) <(sort rancher-images.txt) > new-images.txt
 
 # Mirror only new images
 while IFS= read -r image; do
-  skopeo copy docker://$image docker://registry.internal.company/$image
+  skopeo copy --all "docker://$image" "docker://registry.internal.company/$image"
 done < new-images.txt
 ```
 
@@ -88,9 +96,10 @@ done < new-images.txt
 Transfer the following files to a machine inside the air-gapped network:
 
 - `rancher-<TARGET_VERSION>.tgz` (Helm chart)
+- `rancher-images.txt` (image list)
 - `rancher-images.tar.gz` (container images)
 - `rancher-load-images.sh` (image loading script)
-- `cert-manager-v1.14.4.tgz` (if applicable)
+- `cert-manager-<CERT_MANAGER_VERSION>.tgz` (only if you also plan to upgrade cert-manager separately)
 
 Use your approved transfer method (USB drive, secure file transfer, etc.).
 
@@ -134,8 +143,12 @@ Update your Helm values to reference the private registry. Edit `current-values.
 ```yaml
 hostname: rancher.internal.company
 replicas: 3
+image:
+  registry: registry.internal.company
 systemDefaultRegistry: registry.internal.company
 useBundledSystemChart: true
+certmanager:
+  version: <CERT_MANAGER_VERSION> # If you use Rancher-generated certificates
 ```
 
 Run the upgrade using the local chart file:
@@ -169,19 +182,18 @@ kubectl describe pod <pod-name> -n cattle-system
 
 Ensure the image exists in your private registry and that image pull secrets are configured.
 
-## Step 9: Update System Images ConfigMap
+## Step 9: Verify the System Default Registry Setting
 
-After upgrading, verify that the system images ConfigMap points to your private registry:
+After upgrading, verify that the `system-default-registry` setting points to your private registry:
 
 ```bash
-kubectl get configmap -n cattle-system
-kubectl get settings system-default-registry -o jsonpath='{.value}'
+kubectl get settings.management.cattle.io system-default-registry -o jsonpath='{.value}'
 ```
 
 If the system default registry is not set correctly:
 
 ```bash
-kubectl patch settings system-default-registry -p '{"value":"registry.internal.company"}'
+kubectl patch settings.management.cattle.io system-default-registry --type=merge -p '{"value":"registry.internal.company"}'
 ```
 
 ## Step 10: Verify the Upgrade
@@ -189,7 +201,7 @@ kubectl patch settings system-default-registry -p '{"value":"registry.internal.c
 Confirm the new version:
 
 ```bash
-kubectl get settings server-version -o jsonpath='{.value}' -n cattle-system
+kubectl get settings.management.cattle.io server-version -o jsonpath='{.value}'
 ```
 
 Check that all managed clusters are healthy:
