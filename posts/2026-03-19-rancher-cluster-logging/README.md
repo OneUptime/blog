@@ -17,7 +17,7 @@ Cluster-level logging in Rancher captures logs from all namespaces and workloads
 ## Understanding Cluster-Level vs Project-Level Logging
 
 - **ClusterOutput + ClusterFlow**: Collects logs from all namespaces. Only cluster admins can create these resources. They must be created in the `cattle-logging-system` namespace.
-- **Output + Flow**: Collects logs from a specific namespace. Project members can create these in their own namespaces.
+- **Output + Flow**: Collects logs from a specific namespace. Project owners can create these in their own namespaces, while project members can only view them.
 
 ## Step 1: Create a ClusterOutput
 
@@ -51,7 +51,7 @@ spec:
       total_limit_size: 2GB
       flush_interval: 5s
       flush_thread_count: 2
-      retry_max_interval: 30
+      retry_max_interval: 30s
       retry_forever: true
 ```
 
@@ -106,7 +106,7 @@ spec:
 
 ## Step 4: Filter Logs by Labels
 
-Filter logs based on pod or container labels:
+Filter logs based on pod labels:
 
 ```yaml
 apiVersion: logging.banzaicloud.io/v1beta1
@@ -143,7 +143,7 @@ spec:
         reserve_data: true
         remove_key_name_field: true
 
-    # Add Kubernetes metadata
+    # Add custom metadata
     - record_transformer:
         records:
           - cluster_name: "production-cluster"
@@ -220,7 +220,7 @@ spec:
       total_limit_size: 5GB
       flush_interval: 5s
       flush_thread_count: 4
-      retry_max_interval: 60
+      retry_max_interval: 60s
       retry_forever: true
       overflow_action: block
       flush_at_shutdown: true
@@ -253,7 +253,7 @@ kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentbit | tail
 
 ## Step 9: Monitor Logging Health
 
-Create Prometheus alerts for logging issues:
+After enabling logging metrics and ServiceMonitors, create Prometheus alerts for logging issues:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -268,23 +268,23 @@ spec:
   groups:
     - name: logging-alerts
       rules:
-        - alert: FluentdBufferFull
+        - alert: FluentdNodeDown
           expr: |
-            fluentd_output_status_buffer_total_bytes / fluentd_output_status_buffer_available_space_ratio > 0.9
+            up{job=~".*-fluentd-metrics", namespace="cattle-logging-system"} == 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Prometheus cannot scrape Fluentd"
+
+        - alert: FluentbitTooManyErrors
+          expr: |
+            rate(fluentbit_output_retries_failed_total{job=~".*-fluentbit-metrics", namespace="cattle-logging-system"}[10m]) > 0
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Fluentd buffer is nearly full"
-
-        - alert: FluentBitNotRunning
-          expr: |
-            count(up{job="fluent-bit"} == 1) < count(kube_node_info)
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: "Fluent Bit is not running on all nodes"
+            summary: "Fluent Bit output retries are failing"
 ```
 
 ## Summary
