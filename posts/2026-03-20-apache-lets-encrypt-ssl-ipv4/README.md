@@ -8,7 +8,7 @@ Description: Learn how to obtain and automatically renew a free Let's Encrypt TL
 
 ---
 
-Let's Encrypt provides free, automated TLS certificates via the ACME protocol. Certbot is the official ACME client that integrates directly with Apache to install and renew certificates with minimal manual work.
+Let's Encrypt provides free, automated TLS certificates via the ACME protocol. Certbot is a widely used ACME client recommended by Let's Encrypt that integrates directly with Apache to install and renew certificates with minimal manual work.
 
 ## Prerequisites
 
@@ -41,24 +41,23 @@ certbot --apache -d example.com -d www.example.com
 Certbot will:
 1. Verify domain ownership via an HTTP-01 challenge on port 80.
 2. Obtain a certificate from Let's Encrypt.
-3. Create a new SSL virtual host configuration.
+3. Create or update an SSL virtual host configuration.
 4. Configure automatic HTTP → HTTPS redirection.
 
 ## What Certbot Creates
 
-After running Certbot, you'll find an SSL configuration like this:
+After running Certbot, you'll find an SSL configuration like this (on Debian/Ubuntu, the generated file is often named similarly to this):
 
 ```apacheconf
 # /etc/apache2/sites-available/example.com-le-ssl.conf (auto-generated)
-<VirtualHost 0.0.0.0:443>
+<VirtualHost *:443>
     ServerName example.com
     ServerAlias www.example.com
     DocumentRoot /var/www/example
 
     SSLEngine on
-    SSLCertificateFile      /etc/letsencrypt/live/example.com/cert.pem
-    SSLCertificateKeyFile   /etc/letsencrypt/live/example.com/privkey.pem
-    SSLCertificateChainFile /etc/letsencrypt/live/example.com/chain.pem
+    SSLCertificateFile    /etc/letsencrypt/live/example.com/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/example.com/privkey.pem
 
     Include /etc/letsencrypt/options-ssl-apache.conf
 </VirtualHost>
@@ -66,10 +65,11 @@ After running Certbot, you'll find an SSL configuration like this:
 
 ## Binding to a Specific IPv4 Address
 
-If you want to restrict the certificate to one IPv4 address, edit the generated config:
+If you want Apache to bind the HTTPS virtual host to one IPv4 address, make sure the `Listen` directive and the generated virtual host both use that address:
 
 ```apacheconf
-# Change 0.0.0.0:443 to your specific IPv4 address
+Listen 203.0.113.10:443
+
 <VirtualHost 203.0.113.10:443>
     ServerName example.com
     # ... rest of SSL config
@@ -84,8 +84,8 @@ Certbot installs a systemd timer (or cron job) that renews certificates before e
 # Test the renewal process (dry run, no changes made)
 certbot renew --dry-run
 
-# Check the renewal timer
-systemctl status certbot.timer
+# If your installation uses systemd, list timers and look for certbot
+systemctl list-timers
 
 # Manually list all certificates and their expiry dates
 certbot certificates
@@ -107,6 +107,6 @@ certbot certificates
 ## Key Takeaways
 
 - `certbot --apache` automates certificate installation and Apache configuration.
-- Certificates renew automatically via the Certbot systemd timer every 60 days.
+- Certbot's scheduled renewal task runs periodically and renews certificates automatically when they are near expiry.
 - Use `certbot renew --dry-run` to verify renewal works before the actual expiry.
-- Edit the generated virtual host to bind to a specific IPv4 address if needed.
+- If you need Apache to listen on one IPv4 address only, update both the `Listen` directive and the generated virtual host.
