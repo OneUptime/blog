@@ -4,25 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, ARK, Game Server, Docker, Self-Hosted
 
-Description: Run a dedicated ARK Survival Evolved or ARK Survival Ascended server using Portainer.
+Description: Run a dedicated ARK: Survival Evolved server using Portainer.
 
 ## Introduction
 
-Running your own dedicated game server gives you full control over game settings, mods, player management, and performance. This guide walks through deploying this server using Docker via Portainer, giving you a visual interface to manage your game server.
+Running your own dedicated game server gives you full control over game settings, mods, player management, and performance. This guide walks through deploying an ARK: Survival Evolved server using Docker via Portainer, giving you a visual interface to manage your game server.
 
 ## Prerequisites
 
 - Portainer installed with Docker
 - At least 4-8 GB RAM (varies by game and player count)
 - Adequate disk space (10-50 GB)
-- Required ports open in firewall: 27015:27015/udp 7777:7777/udp 32330:32330/tcp
+- Required ports open in firewall: 7777/udp, 7778/udp, 27015/udp (and optionally 27020/tcp for RCON)
 
 ## Step 1: Open Required Firewall Ports
 
 ```bash
 # Open game server ports
 
-ufw allow 27015:27015/udp 7777:7777/udp 32330:32330/tcp
+ufw allow 7777,7778,27015/udp
+# Optional: open the RCON port if you plan to enable remote console access
+ufw allow 27020/tcp
 ufw reload
 ```
 
@@ -31,27 +33,28 @@ ufw reload
 Create a new stack in Portainer > Stacks > Add Stack:
 
 ```yaml
-# docker-compose.yml for Game Server
-version: "3.8"
+# docker-compose.yml for ARK: Survival Evolved
 
 services:
   game-server:
-    image: ich777/steamcmd:arksurvivalevolved
+    image: ich777/steamcmd:arkse
     container_name: game-server
     restart: unless-stopped
     ports:
-      - "27015:27015/udp 7777:7777/udp 32330:32330/tcp"
+      - "7777:7777/udp"
+      - "7778:7778/udp"
+      - "27015:27015/udp"
     volumes:
       # Persist game world and configuration data
-      - ark-data:/game-data
+      - ark-data:/serverdata/serverfiles
     environment:
-      SERVER_NAME=ARK Server SERVERPASSWORD=secret ADMINPASSWORD=adminpass MAXPLAYERS=20
-    healthcheck:
-      test: ["CMD", "true"]
-      interval: 60s
-      timeout: 30s
-      retries: 3
-      start_period: 300s
+      GAME_ID: "376030"
+      MAP: "TheIsland"
+      SERVER_NAME: "ARKServer"
+      SRV_PWD: "secret"
+      SRV_ADMIN_PWD: "adminpass"
+      GAME_PARAMS: "?MaxPlayers=20"
+      GAME_PARAMS_EXTRA: "-server -log"
     logging:
       driver: json-file
       options:
@@ -62,45 +65,43 @@ services:
   game-backup:
     image: alpine:latest
     container_name: game-backup
-    restart: "no"
+    restart: unless-stopped
     volumes:
-      - ark-data:/game-data:ro
+      - ark-data:/serverdata/serverfiles:ro
       - backup-data:/backups
     command: >
       sh -c "
         while true; do
-          DATE=\$(date +%Y%m%d_%H%M%S);
-          tar czf /backups/world-\$DATE.tar.gz -C /game-data .;
-          echo 'Backup created: world-'\$DATE'.tar.gz';
-          ls -t /backups/*.tar.gz | tail -n +8 | xargs rm -f;
+          if [ -d /serverdata/serverfiles/ShooterGame/Saved ]; then
+            DATE=$$(date +%Y%m%d_%H%M%S);
+            tar czf /backups/world-$$DATE.tar.gz -C /serverdata/serverfiles ShooterGame/Saved;
+            echo 'Backup created: world-'$$DATE'.tar.gz';
+            ls -t /backups/*.tar.gz | tail -n +8 | xargs rm -f;
+          else
+            echo 'Backup skipped: save directory not ready yet';
+          fi;
           sleep 21600;
         done
       "
-    networks:
-      - game-net
 
 volumes:
   ark-data:
   backup-data:
-
-networks:
-  game-net:
-    driver: bridge
 ```
 
 ## Step 3: Configure Server Settings
 
-Access the container via Portainer's console to configure settings:
+Use Portainer's console for in-container changes, and the Docker host for logs and stats:
 
 ```bash
-# Access container console via Portainer
-# Portainer > Containers > game-server > Console
+# Open a shell inside the container
+docker exec -it game-server bash
 
 # View server logs
-docker logs game-server -f --tail 100
+docker logs --tail 100 -f game-server
 
 # Check server status
-docker stats game-server
+docker stats --no-stream game-server
 ```
 
 ## Step 4: Monitor Server Performance
@@ -112,25 +113,19 @@ Track server performance through Portainer:
 3. Check **Logs** for server output and errors
 
 Optimal resource usage:
-- CPU: Below 80% under normal load
-- Memory: Configure server RAM to 70-80% of available
+- CPU: Sustained high CPU usage usually means the host is undersized
+- Memory: Keep enough free RAM available on the host to avoid swapping or OOM kills
 - Network: Monitor for unusual traffic spikes
 
-## Step 5: Configure Automatic Updates
+## Step 5: Apply Game Updates
 
-Many game server images support automatic updates:
+This image checks for game updates when the container starts, so restart or redeploy the container to apply the latest server build:
 
-```yaml
-# Add to environment variables
-environment:
-  - AUTO_UPDATE=true
-  - AUTO_REBOOT=true
-  - CRON_AUTO_UPDATE="0 4 * * *"  # Update daily at 4 AM
+```bash
+docker restart game-server
 ```
 
-Configure restart policy in Portainer:
-1. Go to **Containers** > edit container
-2. Set **Restart Policy** to "Unless stopped"
+The stack already sets the restart policy to `unless-stopped`.
 
 ## Step 6: Set Up Player Backups
 
@@ -141,12 +136,12 @@ Automate world backups to prevent data loss:
 # Manual backup trigger
 BACKUP_DIR="/game-backups"
 DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
 docker run --rm \
-  -v ark-data:/game-data:ro \
-  -v $BACKUP_DIR:/backup \
-  alpine tar czf /backup/world-$DATE.tar.gz -C /game-data .
+  -v ark-data:/serverdata/serverfiles:ro \
+  -v "$BACKUP_DIR":/backup \
+  alpine tar czf /backup/world-$DATE.tar.gz -C /serverdata/serverfiles ShooterGame/Saved
 
 echo "Backup saved: $BACKUP_DIR/world-$DATE.tar.gz"
 ```
@@ -156,14 +151,14 @@ echo "Backup saved: $BACKUP_DIR/world-$DATE.tar.gz"
 Admin commands and management:
 
 ```bash
-# Connect to server console (if supported)
-docker attach game-server
+# Open a shell inside the container
+docker exec -it game-server bash
 
-# Restart server without full container restart
-docker exec game-server /restart-server.sh
+# Restart the server container
+docker restart game-server
 
-# Check connected players (if applicable)
-docker logs game-server | grep "connected" | tail -20
+# Check recent server output
+docker logs --tail 200 game-server
 ```
 
 ## Security Considerations
