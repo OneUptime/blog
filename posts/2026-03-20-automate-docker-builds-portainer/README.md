@@ -4,18 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Automation, CI/CD, Watchtower, Build Automation
 
-Description: Automate Docker image builds with Buildx, push to a registry, and trigger Portainer deployments using webhooks and Watchtower.
+Description: Automate Docker image builds with Buildx, push to a registry, and trigger Portainer stack updates with the API and Watchtower.
 
 ## Introduction
 
-Automating Docker builds and deployments eliminates manual steps and ensures your containers are always running the latest code. This guide covers setting up automated builds with Docker Buildx, pushing to registries, and triggering Portainer redeployments via webhooks and Watchtower.
+Automating Docker builds and deployments eliminates manual steps and ensures your containers are always running the latest code. This guide covers setting up automated builds with Docker Buildx, pushing to registries, and triggering Portainer stack updates with the API while using Watchtower for simpler automatic updates.
 
-## Step 1: Set Up a Private Registry with Auto-Build
+## Step 1: Set Up a Registry
 
 ```yaml
-# docker-compose.yml - Private registry with build automation
-
-version: "3.8"
+# docker-compose.yml - Registry and optional BuildKit services
 
 networks:
   registry_net:
@@ -26,7 +24,7 @@ volumes:
   buildkitd_data:
 
 services:
-  # Private Docker Registry
+  # Registry service
   registry:
     image: registry:2
     container_name: private_registry
@@ -36,14 +34,12 @@ services:
     environment:
       - REGISTRY_HTTP_SECRET=registry_secret
       - REGISTRY_STORAGE_DELETE_ENABLED=true
-      # Enable pull-through cache for Docker Hub
-      - REGISTRY_PROXY_REMOTEURL=https://registry-1.docker.io
     volumes:
       - registry_data:/var/lib/registry
     networks:
       - registry_net
 
-  # BuildKit daemon for remote builds
+  # Optional BuildKit daemon for remote builds
   buildkitd:
     image: moby/buildkit:buildx-stable-1
     container_name: buildkitd
@@ -59,8 +55,8 @@ services:
 
 ```bash
 #!/bin/bash
-# /usr/local/bin/build-and-deploy.sh
-# Automated Docker build and Portainer deployment
+# ./build-and-deploy.sh
+# Automated Docker build and Portainer file-based stack deployment
 
 set -euo pipefail
 
@@ -132,21 +128,56 @@ push_image() {
 deploy_to_portainer() {
     log "Deploying to Portainer stack $STACK_ID"
 
-    RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
+    command -v jq >/dev/null || {
+        log "ERROR: jq is required to update Portainer stacks safely"
+        exit 1
+    }
+
+    STACK_DATA=$(
+        curl -fsS \
+            -H "X-API-Key: $PORTAINER_API_KEY" \
+            "$PORTAINER_URL/api/stacks/$STACK_ID"
+    )
+
+    ENDPOINT_ID=$(printf '%s' "$STACK_DATA" | jq -r '.EndpointId')
+    if [ -z "$ENDPOINT_ID" ] || [ "$ENDPOINT_ID" = "null" ]; then
+        log "ERROR: Unable to determine Portainer endpoint ID for stack $STACK_ID"
+        exit 1
+    fi
+    STACK_ENV=$(printf '%s' "$STACK_DATA" | jq -c \
+        --arg image_tag "$IMAGE_TAG" \
+        --arg app_version "$GIT_COMMIT" '
+        (.Env // [])
+        | map(select(.name != "IMAGE_TAG" and .name != "APP_VERSION"))
+        + [
+            {"name": "IMAGE_TAG", "value": $image_tag},
+            {"name": "APP_VERSION", "value": $app_version}
+          ]
+    ')
+    STACK_FILE=$(
+        curl -fsS \
+            -H "X-API-Key: $PORTAINER_API_KEY" \
+            "$PORTAINER_URL/api/stacks/$STACK_ID/file" \
+        | jq -r '.StackFileContent'
+    )
+    PAYLOAD=$(jq -n \
+        --arg stack_file "$STACK_FILE" \
+        --argjson env "$STACK_ENV" '
+        {
+          StackFileContent: $stack_file,
+          Env: $env,
+          RepullImageAndRedeploy: true
+        }
+    ')
+
+    RESPONSE=$(curl -sS -w "\n%{http_code}" -X PUT \
         -H "X-API-Key: $PORTAINER_API_KEY" \
         -H "Content-Type: application/json" \
-        "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=1" \
-        -d "{
-          \"env\": [
-            {\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\"},
-            {\"name\": \"APP_VERSION\", \"value\": \"$GIT_COMMIT\"}
-          ],
-          \"prune\": false,
-          \"pullImage\": true
-        }")
+        "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=$ENDPOINT_ID" \
+        -d "$PAYLOAD")
 
-    HTTP_STATUS=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -1)
+    HTTP_STATUS=$(printf '%s\n' "$RESPONSE" | tail -n 1)
+    BODY=$(printf '%s\n' "$RESPONSE" | sed '$d')
 
     if [ "$HTTP_STATUS" = "200" ]; then
         log "Deployment successful!"
@@ -179,7 +210,6 @@ Watchtower monitors running containers and automatically updates them when new i
 
 ```yaml
 # docker-compose.yml - Watchtower configuration
-version: "3.8"
 
 services:
   watchtower:
@@ -189,12 +219,14 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      # Check for updates every 5 minutes
-      - WATCHTOWER_SCHEDULE=*/5 * * * *
+      # Check for updates every 5 minutes (Watchtower uses a 6-field cron expression)
+      - "WATCHTOWER_SCHEDULE=0 */5 * * * *"
       # Remove old images after update
       - WATCHTOWER_CLEANUP=true
       # Only update containers with this label
       - WATCHTOWER_LABEL_ENABLE=true
+      # Only update containers in this scope
+      - WATCHTOWER_SCOPE=myapp-scope
       # Notify via email
       - WATCHTOWER_NOTIFICATIONS=email
       - WATCHTOWER_NOTIFICATION_EMAIL_FROM=watchtower@yourdomain.com
@@ -203,11 +235,13 @@ services:
       - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT=587
       - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER=your-email@gmail.com
       - WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD=your-app-password
-      # Include system start event in notifications
+      # Delay email notifications by 2 seconds
       - WATCHTOWER_NOTIFICATION_EMAIL_DELAY=2
       # HTTP API for triggering updates
       - WATCHTOWER_HTTP_API_TOKEN=watchtower_api_token
       - WATCHTOWER_HTTP_API_UPDATE=true
+      # Keep scheduled polls enabled when HTTP API mode is on
+      - WATCHTOWER_HTTP_API_PERIODIC_POLLS=true
     ports:
       - "8080:8080"
 
@@ -219,27 +253,27 @@ services:
     labels:
       # Watchtower will auto-update this container
       - "com.centurylinklabs.watchtower.enable=true"
-      # Or use specific image for comparison
+      # Scope this container to the Watchtower instance above
       - "com.centurylinklabs.watchtower.scope=myapp-scope"
 ```
 
-## Step 4: Trigger Watchtower via Webhook
+## Step 4: Trigger Watchtower via HTTP API
 
 ```bash
 # Trigger update check immediately after pushing new image
 curl -H "Authorization: Bearer watchtower_api_token" \
      http://watchtower-host:8080/v1/update
 
-# Trigger update for specific container
+# Trigger update for a specific image
 curl -H "Authorization: Bearer watchtower_api_token" \
-     http://watchtower-host:8080/v1/update/my_app
+     "http://watchtower-host:8080/v1/update?image=registry.yourdomain.com/myapp"
 ```
 
 ## Step 5: Multi-Architecture Builds
 
 ```bash
 # Build for multiple architectures (arm64 for Raspberry Pi + amd64 for servers)
-docker buildx create --use --name multiarch_builder
+docker buildx create --name multiarch_builder --driver docker-container --bootstrap --use
 
 docker buildx build \
     --platform linux/amd64,linux/arm64,linux/arm/v7 \
@@ -261,7 +295,7 @@ BUILD_TIME := $(shell date +%Y%m%d%H%M%S)
 IMAGE_TAG := $(BUILD_TIME)-$(GIT_COMMIT)
 IMAGE := $(REGISTRY)/$(APP_NAME):$(IMAGE_TAG)
 
-.PHONY: build push deploy all
+.PHONY: build push test deploy all
 
 build:
 	DOCKER_BUILDKIT=1 docker build -t $(IMAGE) -t $(REGISTRY)/$(APP_NAME):latest .
@@ -274,10 +308,10 @@ test:
 	docker run --rm -v "$(PWD):/app" -w /app python:3.12-slim \
 		sh -c "pip install -q -r requirements-test.txt && pytest tests/"
 
-deploy: push
+deploy:
 	./build-and-deploy.sh $(APP_NAME)
 
-all: test build push deploy
+all: test deploy
 ```
 
 ## Conclusion
