@@ -19,7 +19,7 @@ When logging stops working in Rancher, it can leave you unable to debug applicat
 Rancher's logging pipeline consists of:
 
 1. **Fluent Bit** (DaemonSet): Collects logs from container log files on each node.
-2. **Fluentd** (StatefulSet/Deployment): Receives logs from Fluent Bit, applies filters, and routes to outputs.
+2. **Fluentd** (StatefulSet): Receives logs from Fluent Bit, applies filters, and routes to outputs.
 3. **Logging Operator**: Watches Flow, ClusterFlow, Output, and ClusterOutput resources and generates Fluentd configuration.
 4. **Destination** (Elasticsearch, Loki, Splunk, etc.): Stores the logs.
 
@@ -72,7 +72,8 @@ kubectl exec -n cattle-logging-system <fluentbit-pod> -- ls -la /var/log/contain
 ### Check Fluent Bit Configuration
 
 ```bash
-kubectl exec -n cattle-logging-system <fluentbit-pod> -- cat /fluent-bit/etc/fluent-bit.conf
+kubectl get secret <logging-name>-fluentbit -n cattle-logging-system \
+  -o jsonpath="{.data['fluent-bit\.conf']}" | base64 --decode
 ```
 
 ### Common Fluent Bit Issues
@@ -112,14 +113,15 @@ Look for:
 The logging operator generates Fluentd configuration from Flow and Output resources:
 
 ```bash
-kubectl exec -n cattle-logging-system <fluentd-pod> -c fluentd -- cat /fluentd/etc/fluent.conf
+kubectl get secret <logging-name>-fluentd-app -n cattle-logging-system \
+  -o jsonpath="{.data['fluentd\.conf']}" | base64 --decode
 ```
 
 ### Check Buffer Status
 
 ```bash
 kubectl exec -n cattle-logging-system <fluentd-pod> -c fluentd -- ls -la /buffers/
-kubectl exec -n cattle-logging-system <fluentd-pod> -c fluentd -- du -sh /buffers/*
+kubectl exec -n cattle-logging-system <fluentd-pod> -c fluentd -- sh -c 'du -sh /buffers/*'
 ```
 
 If buffers are large, the destination may be unreachable or slow:
@@ -185,18 +187,18 @@ kubectl describe clusteroutput <name> -n cattle-logging-system
 ```bash
 # Test from within the Fluentd pod
 kubectl exec -n cattle-logging-system <fluentd-pod> -c fluentd -- \
-  curl -v https://elasticsearch.logging.svc:9200 -u elastic:password -k
+  ruby -rnet/http -ruri -ropenssl -e 'uri = URI("https://elasticsearch.logging.svc:9200"); req = Net::HTTP::Get.new(uri); req.basic_auth("elastic", "password"); Net::HTTP.start(uri.host, uri.port, use_ssl: true, verify_mode: OpenSSL::SSL::VERIFY_NONE) { |http| res = http.request(req); puts "HTTP #{res.code}"; puts res.body }'
 
 # Test DNS resolution
 kubectl exec -n cattle-logging-system <fluentd-pod> -c fluentd -- \
-  nslookup elasticsearch.logging.svc.cluster.local
+  ruby -rsocket -e 'puts Addrinfo.getaddrinfo("elasticsearch.logging.svc.cluster.local", nil).map(&:ip_address).uniq'
 ```
 
 ### Check for TLS Issues
 
 ```bash
 kubectl exec -n cattle-logging-system <fluentd-pod> -c fluentd -- \
-  openssl s_client -connect elasticsearch.logging.svc:9200 -showcerts
+  ruby -rsocket -ropenssl -e 'ctx = OpenSSL::SSL::SSLContext.new; ctx.verify_mode = OpenSSL::SSL::VERIFY_NONE; tcp = TCPSocket.new("elasticsearch.logging.svc", 9200); ssl = OpenSSL::SSL::SSLSocket.new(tcp, ctx); ssl.hostname = "elasticsearch.logging.svc" if ssl.respond_to?(:hostname=); ssl.connect; puts ssl.peer_cert.to_text; ssl.close; tcp.close'
 ```
 
 ### Verify Credentials
@@ -205,8 +207,9 @@ kubectl exec -n cattle-logging-system <fluentd-pod> -c fluentd -- \
 # Check if secrets exist
 kubectl get secrets -n cattle-logging-system | grep -i elastic\|splunk\|loki\|kafka
 
-# Verify secret content
-kubectl get secret <secret-name> -n cattle-logging-system -o jsonpath='{.data}' | base64 -d
+# Decode a specific key from the secret
+kubectl get secret <secret-name> -n cattle-logging-system \
+  -o jsonpath="{.data['<key>']}" | base64 --decode; echo
 ```
 
 ## Step 6: Troubleshoot Missing Logs
@@ -267,13 +270,13 @@ If troubleshooting identifies configuration issues that have been fixed:
 
 ```bash
 # Restart Fluent Bit
-kubectl rollout restart daemonset -n cattle-logging-system rancher-logging-fluentbit
+kubectl rollout restart daemonset/rancher-logging-fluentbit -n cattle-logging-system
 
 # Restart Fluentd
-kubectl rollout restart statefulset -n cattle-logging-system rancher-logging-fluentd
+kubectl rollout restart statefulset/rancher-logging-fluentd -n cattle-logging-system
 
 # Restart the logging operator
-kubectl rollout restart deployment -n cattle-logging-system rancher-logging
+kubectl rollout restart deployment/rancher-logging -n cattle-logging-system
 ```
 
 ## Step 9: Collect Diagnostic Information
@@ -323,7 +326,7 @@ buffer:
   total_limit_size: 2GB
   flush_interval: 5s
   flush_thread_count: 4
-  retry_max_interval: 30
+  retry_max_interval: 30s
 ```
 
 ## Summary
