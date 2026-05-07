@@ -62,9 +62,9 @@ The `:z` flag relabels the host directory with a shared SELinux label (`containe
 podman run -v /host/data:/container/data:Z my-image
 ```
 
-The `:Z` flag relabels the host directory with a private SELinux label unique to that specific container. Only one container should use this directory when using `:Z`.
+The `:Z` flag relabels the host directory with a private SELinux label for that specific container. Only one container should use this directory when using `:Z`, unless the containers are in the same Podman pod and share the same SELinux label.
 
-**Important warning:** The `:Z` flag changes SELinux labels on the host directory. Never use `:Z` on system directories like `/home`, `/etc`, `/usr`, or `/var`. This would relabel the entire directory and could break your host system. Always point to a specific subdirectory:
+**Important warning:** The `:z` and `:Z` flags change SELinux labels on the host directory. Never use them on system directories like `/home`, `/etc`, `/usr`, or `/var`. This would relabel the entire directory and could break your host system. Always point to a specific subdirectory:
 
 ```bash
 # Dangerous - never do this
@@ -136,15 +136,15 @@ podman volume inspect my-data
 
 This is often the simplest solution because it avoids SELinux issues entirely. The trade-off is that the data is stored in Podman's volume directory rather than a location you choose.
 
-## Fix 5: Disable SELinux Enforcement for a Container
+## Fix 5: Disable SELinux Separation for a Container
 
-If you need a quick workaround during development, you can disable SELinux enforcement for a specific container:
+If you need a quick workaround during development, you can disable SELinux label separation for a specific container:
 
 ```bash
 podman run --security-opt label=disable -v /host/data:/container/data my-image
 ```
 
-This tells Podman not to apply SELinux labels to the container process. The container will run without SELinux confinement.
+This tells Podman to turn off SELinux label separation for the container process.
 
 **Do not use this in production.** Disabling SELinux removes an important security layer. This should only be used for debugging.
 
@@ -165,7 +165,7 @@ To fix ownership issues with rootless Podman:
 podman unshare chown -R 0:0 /path/to/your/data
 ```
 
-This changes the ownership inside Podman's user namespace. On the host, the files will be owned by your subordinate UID range.
+This changes the ownership as seen inside Podman's user namespace. With the default rootless mapping, container UID 0 normally maps to your host user, while non-root container UIDs map through your subordinate UID range.
 
 Combine this with the SELinux fix:
 
@@ -216,7 +216,7 @@ podman run -v /opt/postgres-data:/var/lib/postgresql/data my-postgres
 **Mounting application configuration:**
 
 ```bash
-podman run -v /etc/my-app:/etc/my-app:z,ro my-image
+podman run -v /opt/my-app/config:/etc/my-app:z,ro my-image
 ```
 
 The `:z,ro` combines SELinux relabeling with a read-only mount.
