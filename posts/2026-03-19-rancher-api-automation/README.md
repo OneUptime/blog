@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, API, REST API, Automation
 
-Description: Practical guide to automating common Rancher operations using the API, including cluster provisioning, user onboarding, backup scheduling, and CI/CD integration.
+Description: Practical guide to automating common Rancher operations using the API, including user onboarding, namespace provisioning, health monitoring, scheduled cleanup, and CI/CD integration.
 
 Automating Rancher tasks through the API saves time, reduces human error, and ensures consistent operations across your infrastructure. This guide provides ready-to-use scripts for the most common automation scenarios.
 
@@ -22,7 +22,7 @@ RANCHER_TOKEN="${RANCHER_TOKEN:-}"
 rancher_get() {
   local endpoint="$1"
   local response
-  response=$(curl -s -k -w "\n%{http_code}" \
+  response=$(curl -s -w "\n%{http_code}" \
     -H "Authorization: Bearer ${RANCHER_TOKEN}" \
     "${RANCHER_URL}${endpoint}")
 
@@ -41,7 +41,7 @@ rancher_post() {
   local endpoint="$1"
   local data="$2"
   local response
-  response=$(curl -s -k -w "\n%{http_code}" -X POST \
+  response=$(curl -s -w "\n%{http_code}" -X POST \
     -H "Authorization: Bearer ${RANCHER_TOKEN}" \
     -H "Content-Type: application/json" \
     -d "$data" \
@@ -60,7 +60,7 @@ rancher_post() {
 
 rancher_delete() {
   local endpoint="$1"
-  curl -s -k -X DELETE \
+  curl -s -X DELETE \
     -H "Authorization: Bearer ${RANCHER_TOKEN}" \
     "${RANCHER_URL}${endpoint}"
 }
@@ -100,41 +100,63 @@ When a new team member joins, you need to create their user, assign roles, and g
 
 ```bash
 #!/bin/bash
+# onboard-user.sh
 source ./rancher-lib.sh
 
 onboard_user() {
   local username="$1"
   local display_name="$2"
-  local email="$3"
-  local password="$4"
-  local cluster_id="$5"
-  local role="${6:-cluster-member}"
+  local password="$3"
+  local cluster_id="$4"
+  local role="${5:-cluster-member}"
 
   echo "Creating user: ${username}"
   local user_response
-  user_response=$(rancher_post "/v3/users" '{
+  user_response=$(rancher_post "/apis/management.cattle.io/v3/users" '{
+    "apiVersion": "management.cattle.io/v3",
+    "kind": "User",
+    "metadata": {
+      "name": "'"${username}"'"
+    },
+    "displayName": "'"${display_name}"'",
     "username": "'"${username}"'",
-    "name": "'"${display_name}"'",
-    "password": "'"${password}"'",
     "mustChangePassword": true,
     "enabled": true
   }')
 
-  local user_id
-  user_id=$(echo "$user_response" | jq -r '.id')
-  echo "  User ID: ${user_id}"
+  local user_name
+  user_name=$(echo "$user_response" | jq -r '.metadata.name')
+  echo "  User name: ${user_name}"
+
+  echo "Creating password secret..."
+  rancher_post "/api/v1/namespaces/cattle-local-user-passwords/secrets" '{
+    "apiVersion": "v1",
+    "kind": "Secret",
+    "metadata": {
+      "name": "'"${user_name}"'",
+      "namespace": "cattle-local-user-passwords"
+    },
+    "type": "Opaque",
+    "stringData": {
+      "password": "'"${password}"'"
+    }
+  }' > /dev/null
 
   echo "Setting global role..."
-  rancher_post "/v3/globalRoleBindings" '{
-    "globalRoleId": "user",
-    "userId": "'"${user_id}"'"
+  rancher_post "/apis/management.cattle.io/v3/globalrolebindings" '{
+    "apiVersion": "management.cattle.io/v3",
+    "kind": "GlobalRoleBinding",
+    "globalRoleName": "user",
+    "userName": "'"${user_name}"'"
   }' > /dev/null
 
   echo "Granting ${role} access to cluster ${cluster_id}..."
-  rancher_post "/v3/clusterRoleTemplateBindings" '{
-    "clusterId": "'"${cluster_id}"'",
-    "roleTemplateId": "'"${role}"'",
-    "userId": "'"${user_id}"'"
+  rancher_post "/apis/management.cattle.io/v3/namespaces/${cluster_id}/clusterroletemplatebindings" '{
+    "apiVersion": "management.cattle.io/v3",
+    "kind": "ClusterRoleTemplateBinding",
+    "clusterName": "'"${cluster_id}"'",
+    "roleTemplateName": "'"${role}"'",
+    "userName": "'"${user_name}"'"
   }' > /dev/null
 
   echo "User ${username} onboarded successfully."
@@ -142,24 +164,24 @@ onboard_user() {
 
 # Usage
 
-onboard_user "jdoe" "Jane Doe" "jane@example.com" "TempPass123!" "c-m-abc12345" "cluster-member"
+onboard_user "jdoe" "Jane Doe" "TempPass123!" "c-m-abc12345" "cluster-member"
 ```
 
 ### Batch Onboarding from CSV
 
 ```bash
 #!/bin/bash
-source ./rancher-lib.sh
+source ./onboard-user.sh
 
-# users.csv format: username,display_name,email,cluster_id,role
-while IFS=',' read -r username display_name email cluster_id role; do
-  onboard_user "$username" "$display_name" "$email" "InitialPass!" "$cluster_id" "$role"
+# users.csv format: username,display_name,cluster_id,role
+while IFS=',' read -r username display_name cluster_id role; do
+  onboard_user "$username" "$display_name" "InitialPass!" "$cluster_id" "$role"
 done < users.csv
 ```
 
 ## Automating Namespace Provisioning
 
-Create a script that provisions namespaces with resource quotas and network policies:
+Create a script that provisions namespaces with resource quotas:
 
 ```bash
 #!/bin/bash
@@ -175,14 +197,11 @@ provision_namespace() {
   echo "Creating namespace: ${namespace}"
 
   # Create namespace
-  rancher_post "/k8s/clusters/${cluster_id}/v1/namespaces" '{
+  rancher_post "/k8s/clusters/${cluster_id}/api/v1/namespaces" '{
     "apiVersion": "v1",
     "kind": "Namespace",
     "metadata": {
       "name": "'"${namespace}"'",
-      "labels": {
-        "field.cattle.io/projectId": "'"${project_id}"'"
-      },
       "annotations": {
         "field.cattle.io/projectId": "'"${cluster_id}:${project_id}"'"
       }
@@ -190,12 +209,11 @@ provision_namespace() {
   }' > /dev/null
 
   # Apply resource quota
-  rancher_post "/k8s/clusters/${cluster_id}/v1/resourcequotas" '{
+  rancher_post "/k8s/clusters/${cluster_id}/api/v1/namespaces/${namespace}/resourcequotas" '{
     "apiVersion": "v1",
     "kind": "ResourceQuota",
     "metadata": {
-      "name": "'"${namespace}-quota"'",
-      "namespace": "'"${namespace}"'"
+      "name": "'"${namespace}-quota"'"
     },
     "spec": {
       "hard": {
@@ -240,21 +258,11 @@ check_cluster_health() {
 
     # Check node health
     local unhealthy_nodes
-    unhealthy_nodes=$(rancher_get "/v3/nodes?clusterId=${id}" | \
-      jq '[.data[] | select(.state != "active")] | length')
+    unhealthy_nodes=$(rancher_get "/k8s/clusters/${id}/api/v1/nodes" | \
+      jq '[.items[] | select(any(.status.conditions[]?; .type == "Ready" and .status != "True"))] | length')
 
     if [ "$unhealthy_nodes" -gt 0 ]; then
       send_alert "Cluster ${name} has ${unhealthy_nodes} unhealthy nodes"
-      issues_found=$((issues_found + 1))
-    fi
-
-    # Check component conditions
-    local failed_conditions
-    failed_conditions=$(rancher_get "/v3/clusters/${id}" | \
-      jq -r '[.conditions[] | select(.status != "True")] | length')
-
-    if [ "$failed_conditions" -gt 0 ]; then
-      send_alert "Cluster ${name} has ${failed_conditions} failing conditions"
       issues_found=$((issues_found + 1))
     fi
 
@@ -296,14 +304,28 @@ stages:
 
 deploy_to_staging:
   stage: deploy
-  image: curlimages/curl:latest
+  image: ubuntu:24.04
   script:
     - |
+      apt-get update
+      apt-get install -y ca-certificates curl jq
+
+      curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+      install -m 0755 kubectl /usr/local/bin/kubectl
+
       # Get kubeconfig from Rancher
-      curl -s -k \
+      curl -s \
         -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-        "${RANCHER_URL}/v3/clusters/${CLUSTER_ID}?action=generateKubeconfig" \
-        -X POST | jq -r '.config' > /tmp/kubeconfig
+        -H "Content-Type: application/json" \
+        -d "$(jq -n --arg cluster "$CLUSTER_ID" '{
+          apiVersion: "ext.cattle.io/v1",
+          kind: "Kubeconfig",
+          spec: {
+            clusters: [$cluster],
+            currentContext: $cluster
+          }
+        }')" \
+        "${RANCHER_URL}/apis/ext.cattle.io/v1/kubeconfigs" | jq -r '.status.value' > /tmp/kubeconfig
 
       export KUBECONFIG=/tmp/kubeconfig
 
@@ -328,16 +350,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install deployment tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
       - name: Deploy to production cluster
         env:
           RANCHER_URL: ${{ secrets.RANCHER_URL }}
           RANCHER_TOKEN: ${{ secrets.RANCHER_TOKEN }}
           CLUSTER_ID: ${{ secrets.CLUSTER_ID }}
         run: |
-          curl -s -k \
+          curl -s \
             -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-            "${RANCHER_URL}/v3/clusters/${CLUSTER_ID}?action=generateKubeconfig" \
-            -X POST | jq -r '.config' > /tmp/kubeconfig
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg cluster "$CLUSTER_ID" '{
+              apiVersion: "ext.cattle.io/v1",
+              kind: "Kubeconfig",
+              spec: {
+                clusters: [$cluster],
+                currentContext: $cluster
+              }
+            }')" \
+            "${RANCHER_URL}/apis/ext.cattle.io/v1/kubeconfigs" | jq -r '.status.value' > /tmp/kubeconfig
 
           export KUBECONFIG=/tmp/kubeconfig
           kubectl apply -f k8s/production/
@@ -345,7 +382,7 @@ jobs:
 
 ## Scheduled Cleanup Automation
 
-Clean up completed jobs, evicted pods, and expired resources:
+Clean up completed jobs:
 
 ```bash
 #!/bin/bash
@@ -356,16 +393,16 @@ cleanup_cluster() {
 
   echo "Cleaning up cluster: ${cluster_id}"
 
-  # Delete completed jobs older than 24 hours
+  # Delete completed jobs
   local old_jobs
-  old_jobs=$(rancher_get "/k8s/clusters/${cluster_id}/v1/batch.jobs" | \
-    jq -r '.data[] | select(.status.succeeded >= 1) | .metadata.name + "/" + .metadata.namespace')
+  old_jobs=$(rancher_get "/k8s/clusters/${cluster_id}/apis/batch/v1/jobs" | \
+    jq -r '.items[]? | select(.status.succeeded >= 1) | .metadata.namespace + "/" + .metadata.name')
 
   for job in $old_jobs; do
-    local name=$(echo "$job" | cut -d/ -f1)
-    local ns=$(echo "$job" | cut -d/ -f2)
+    local ns=$(echo "$job" | cut -d/ -f1)
+    local name=$(echo "$job" | cut -d/ -f2)
     echo "  Deleting completed job: ${ns}/${name}"
-    rancher_delete "/k8s/clusters/${cluster_id}/v1/batch.jobs/${ns}/${name}"
+    rancher_delete "/k8s/clusters/${cluster_id}/apis/batch/v1/namespaces/${ns}/jobs/${name}"
   done
 
   echo "Cleanup complete."
