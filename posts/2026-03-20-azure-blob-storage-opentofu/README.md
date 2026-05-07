@@ -19,7 +19,7 @@ resource "azurerm_storage_account" "app" {
   location            = azurerm_resource_group.app.location
 
   account_tier             = "Standard"
-  account_replication_type = "GRS"       # LRS, ZRS, GRS, GZRS, RA-GRS
+  account_replication_type = "GRS"       # LRS, GRS, RAGRS, ZRS, GZRS, RAGZRS
   account_kind             = "StorageV2" # Recommended for blobs
 
   # Security settings
@@ -33,7 +33,7 @@ resource "azurerm_storage_account" "app" {
   blob_properties {
     versioning_enabled       = true
     change_feed_enabled      = true
-    last_access_time_enabled = true  # Required for lifecycle tier-based rules
+    last_access_time_enabled = true  # Required only for lifecycle rules based on last access time
 
     delete_retention_policy {
       days = 30
@@ -57,19 +57,19 @@ resource "azurerm_storage_account" "app" {
 ```hcl
 resource "azurerm_storage_container" "uploads" {
   name                  = "uploads"
-  storage_account_name  = azurerm_storage_account.app.name
+  storage_account_id    = azurerm_storage_account.app.id
   container_access_type = "private"  # blob, container, or private
 }
 
 resource "azurerm_storage_container" "backups" {
   name                  = "backups"
-  storage_account_name  = azurerm_storage_account.app.name
+  storage_account_id    = azurerm_storage_account.app.id
   container_access_type = "private"
 }
 
 resource "azurerm_storage_container" "assets" {
   name                  = "assets"
-  storage_account_name  = azurerm_storage_account.app.name
+  storage_account_id    = azurerm_storage_account.app.id
   container_access_type = "private"  # Serve via CDN, not direct public access
 }
 ```
@@ -162,7 +162,9 @@ resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
   virtual_network_id    = azurerm_virtual_network.app.id
 }
 
-# Restrict access to private endpoint only
+# Private endpoints do not automatically block the public endpoint.
+# Use firewall rules to restrict access to the public endpoint.
+# The referenced subnet must have a Microsoft.Storage service endpoint enabled.
 
 resource "azurerm_storage_account_network_rules" "app" {
   storage_account_id = azurerm_storage_account.app.id
@@ -209,4 +211,4 @@ output "private_endpoint_ip" {
 
 ## Conclusion
 
-Azure Blob Storage with OpenTofu requires `allow_nested_items_to_be_public = false` and private endpoints for production security. Enable `versioning_enabled = true` and `delete_retention_policy` for data protection. The lifecycle management policy automatically tiers blobs from Hot to Cool to Archive, reducing storage costs by up to 80% for cold data. Use RBAC with managed identities rather than storage account keys - keys are symmetric secrets that can't be audited per-caller.
+Azure Blob Storage with OpenTofu should typically set `allow_nested_items_to_be_public = false` and combine private endpoints with firewall rules or disabled public network access for production security. Enable `versioning_enabled = true` and `delete_retention_policy` for data protection. The lifecycle management policy automatically tiers blobs from Hot to Cool to Archive, which can reduce storage costs for cold data. Use RBAC with managed identities rather than storage account keys, because Microsoft recommends Microsoft Entra ID-based authorization over Shared Key whenever possible.
