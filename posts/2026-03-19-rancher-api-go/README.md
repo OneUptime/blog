@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, API, REST API, Go, Automation
 
 Description: Learn how to interact with the Rancher API using Go, including building a client, managing clusters, handling pagination, and creating automation tools.
 
-Go is a natural choice for Rancher API integrations since Rancher itself is written in Go. This guide shows you how to build a Go client for the Rancher API, perform common operations, and create production-ready automation tools.
+Go is a natural choice for Rancher API integrations since Rancher itself is written in Go. This guide uses Rancher's previous v3 API (`/v3/...`) to build a Go client, perform common operations, and create automation tools. Rancher introduced the newer RK-API in v2.8, and starting with Rancher v2.14 legacy v3 API tokens are being phased out, so the examples below assume you are working specifically with the v3 API and a Rancher API key's Bearer Token.
 
 ## Setting Up the Project
 
@@ -19,7 +19,7 @@ go mod init rancher-client
 
 ## Basic API Client
 
-Start with a simple HTTP client that handles authentication and TLS:
+Start with a simple HTTP client that handles Bearer token authentication and optional TLS verification skipping:
 
 ```go
 package main
@@ -30,6 +30,7 @@ import (
     "fmt"
     "io"
     "net/http"
+    "net/url"
     "os"
     "strings"
     "time"
@@ -185,7 +186,7 @@ func (c *RancherClient) ListClusters() ([]Cluster, error) {
 }
 
 func (c *RancherClient) GetCluster(id string) (*Cluster, error) {
-    data, err := c.Get("/v3/clusters/" + id)
+    data, err := c.Get("/v3/clusters/" + url.PathEscape(id))
     if err != nil {
         return nil, err
     }
@@ -203,7 +204,7 @@ func (c *RancherClient) GetCluster(id string) (*Cluster, error) {
 
 ```go
 func (c *RancherClient) GetClusterNodes(clusterID string) ([]Node, error) {
-    data, err := c.Get("/v3/nodes?clusterId=" + clusterID)
+    data, err := c.Get("/v3/nodes?clusterId=" + url.QueryEscape(clusterID))
     if err != nil {
         return nil, err
     }
@@ -224,7 +225,7 @@ func (c *RancherClient) GetClusterNodes(clusterID string) ([]Node, error) {
 ```go
 func (c *RancherClient) GenerateKubeconfig(clusterID string) (string, error) {
     data, err := c.Post(
-        "/v3/clusters/"+clusterID+"?action=generateKubeconfig",
+        "/v3/clusters/"+url.PathEscape(clusterID)+"?action=generateKubeconfig",
         "{}",
     )
     if err != nil {
@@ -289,24 +290,39 @@ Handle paginated results automatically:
 ```go
 func (c *RancherClient) ListAll(endpoint string) ([]json.RawMessage, error) {
     var allItems []json.RawMessage
-    url := c.BaseURL + endpoint + "?limit=100"
+    pageURL, err := url.Parse(c.BaseURL + endpoint)
+    if err != nil {
+        return nil, fmt.Errorf("parsing endpoint: %w", err)
+    }
 
-    for url != "" {
-        req, err := http.NewRequest("GET", url, nil)
+    query := pageURL.Query()
+    if query.Get("limit") == "" {
+        query.Set("limit", "1000")
+    }
+    pageURL.RawQuery = query.Encode()
+
+    for pageURL != nil {
+        currentURL := pageURL.String()
+
+        req, err := http.NewRequest("GET", currentURL, nil)
         if err != nil {
-            return nil, err
+            return nil, fmt.Errorf("creating request: %w", err)
         }
         req.Header.Set("Authorization", "Bearer "+c.Token)
 
         resp, err := c.HTTPClient.Do(req)
         if err != nil {
-            return nil, err
+            return nil, fmt.Errorf("executing request: %w", err)
         }
 
         body, err := io.ReadAll(resp.Body)
         resp.Body.Close()
         if err != nil {
-            return nil, err
+            return nil, fmt.Errorf("reading response: %w", err)
+        }
+
+        if resp.StatusCode >= 400 {
+            return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
         }
 
         var page struct {
@@ -317,11 +333,20 @@ func (c *RancherClient) ListAll(endpoint string) ([]json.RawMessage, error) {
         }
 
         if err := json.Unmarshal(body, &page); err != nil {
-            return nil, err
+            return nil, fmt.Errorf("parsing page: %w", err)
         }
 
         allItems = append(allItems, page.Data...)
-        url = page.Pagination.Next
+        if page.Pagination.Next == "" {
+            pageURL = nil
+            continue
+        }
+
+        nextURL, err := url.Parse(page.Pagination.Next)
+        if err != nil {
+            return nil, fmt.Errorf("parsing next page URL: %w", err)
+        }
+        pageURL = pageURL.ResolveReference(nextURL)
     }
 
     return allItems, nil
@@ -340,7 +365,7 @@ func main() {
         os.Exit(1)
     }
 
-    client := NewRancherClient(rancherURL, rancherToken, true)
+    client := NewRancherClient(rancherURL, rancherToken, false)
 
     clusters, err := client.ListClusters()
     if err != nil {
@@ -392,7 +417,7 @@ Build and run:
 
 ```bash
 export RANCHER_URL="https://rancher.example.com"
-export RANCHER_TOKEN="token-xxxxx:yyyyyyyyyyyyyyyy"
+export RANCHER_TOKEN="<rancher-bearer-token>"
 
 go build -o rancher-health .
 ./rancher-health
@@ -451,4 +476,4 @@ func (c *RancherClient) doRequestTyped(method, endpoint string, body io.Reader) 
 
 ## Summary
 
-Go provides a strongly typed and performant way to interact with the Rancher API. Build a reusable client struct with methods for each resource type, define proper data structures for API responses, and implement pagination helpers for large datasets. Use custom error types for clean error handling, and compile your tools into standalone binaries for easy distribution across your team.
+Go provides a strongly typed and performant way to interact with Rancher's previous v3 API. Build a reusable client struct with methods for each resource type, define proper data structures for API responses, and implement pagination helpers for large datasets. Use custom error types for clean error handling, and compile your tools into standalone binaries for easy distribution across your team. For new automation on newer Rancher versions, prefer RK-API when possible.
