@@ -52,7 +52,7 @@ cat /etc/resolv.conf
 
 If you see `nameserver 127.0.0.53`, you have this problem.
 
-### Solution 1: Use the Resolved Stub Listener
+### Solution 1: Use the Resolved Upstream Configuration
 
 systemd-resolved also creates a file with the actual upstream DNS servers. Point Podman to use these instead.
 
@@ -85,20 +85,24 @@ dns_servers = ["8.8.8.8", "8.8.4.4", "1.1.1.1"]
 podman run --dns 8.8.8.8 --dns 8.8.4.4 myimage
 ```
 
-### Solution 4: Configure systemd-resolved to Listen on All Interfaces
+### Solution 4: Configure systemd-resolved to Listen on the Podman Bridge
 
 Edit the resolved configuration:
 
 ```bash
 sudo mkdir -p /etc/systemd/resolved.conf.d/
-sudo cat > /etc/systemd/resolved.conf.d/podman.conf << 'EOF'
+sudo tee /etc/systemd/resolved.conf.d/podman.conf >/dev/null << 'EOF'
 [Resolve]
 DNSStubListenerExtra=10.88.0.1
 EOF
 sudo systemctl restart systemd-resolved
 ```
 
-This makes resolved listen on the Podman bridge address, which containers can reach.
+This makes resolved listen on the Podman bridge address, which containers can reach. Then configure Podman or the container to use that bridge address:
+
+```bash
+podman run --dns 10.88.0.1 myimage
+```
 
 ## DNS Between Containers (aardvark-dns)
 
