@@ -12,43 +12,57 @@ Google Persistent Disk provides durable, high-performance block storage for Kube
 
 - A running Rancher instance
 - A GCP-based Kubernetes cluster (GKE or RKE on GCE VMs)
-- GCP service account with appropriate permissions
-- kubectl and Helm access to your cluster
+- GCP project access with permissions to manage IAM and Compute Engine disks
+- kubectl, git, and gcloud CLI access to your cluster and project
 
 ## Step 1: Configure IAM Permissions
 
-Create a service account with the required permissions:
+For GKE clusters, you can skip this step and go to Step 2. For self-managed Rancher clusters on GCE, use the official driver setup script to create a service account with the required permissions:
 
 ```bash
-gcloud iam service-accounts create gce-pd-csi-sa \
-  --display-name "GCE PD CSI Driver"
+export GOPATH="$HOME/go"
+mkdir -p "$GOPATH/src/sigs.k8s.io"
 
-gcloud projects add-iam-policy-binding <PROJECT_ID> \
-  --member "serviceAccount:gce-pd-csi-sa@<PROJECT_ID>.iam.gserviceaccount.com" \
-  --role "roles/compute.storageAdmin"
+git clone https://github.com/kubernetes-sigs/gcp-compute-persistent-disk-csi-driver \
+  "$GOPATH/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
 
-gcloud projects add-iam-policy-binding <PROJECT_ID> \
-  --member "serviceAccount:gce-pd-csi-sa@<PROJECT_ID>.iam.gserviceaccount.com" \
-  --role "roles/iam.serviceAccountUser"
+cd "$GOPATH/src/sigs.k8s.io/gcp-compute-persistent-disk-csi-driver"
+
+export PROJECT=<PROJECT_ID>
+export GCE_PD_SA_NAME=gce-pd-csi-sa
+export GCE_PD_SA_DIR="$HOME/gce-pd-csi-creds"
+mkdir -p "$GCE_PD_SA_DIR"
+export ENABLE_KMS=false
+export ENABLE_KMS_ADMIN=false
+
+./deploy/setup-project.sh
 ```
 
 ## Step 2: Install the GCE PD CSI Driver
 
-For GKE clusters, the CSI driver is pre-installed. For RKE clusters on GCE:
+For GKE Autopilot clusters, the CSI driver is already enabled. For GKE Standard clusters, enable it if needed:
+
+Set your default `gcloud` cluster location first, or add the cluster's `--zone` or `--region` flag to the command.
 
 ```bash
-helm repo add gce-pd-csi-driver https://kubernetes-sigs.github.io/gcp-compute-persistent-disk-csi-driver/charts
-helm repo update
+gcloud container clusters update <CLUSTER_NAME> \
+  --update-addons=GcePersistentDiskCsiDriver=ENABLED
+```
 
-helm install gce-pd-csi-driver gce-pd-csi-driver/gce-pd-csi-driver \
-  --namespace kube-system
+For self-managed Rancher clusters on GCE, deploy the upstream driver:
+
+```bash
+export GCE_PD_SA_DIR="$HOME/gce-pd-csi-creds"
+export GCE_PD_DRIVER_VERSION=stable-master
+
+./deploy/kubernetes/deploy-driver.sh
 ```
 
 Verify:
 
 ```bash
-kubectl get pods -n kube-system -l app=gcp-compute-persistent-disk-csi-driver
-kubectl get csidrivers | grep pd.csi.storage.gke.io
+kubectl get pods -A -l app=gcp-compute-persistent-disk-csi-driver
+kubectl get csidriver pd.csi.storage.gke.io
 ```
 
 ## Step 3: Create Storage Classes
@@ -61,7 +75,7 @@ metadata:
 provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-standard
-  fstype: ext4
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -75,7 +89,7 @@ metadata:
 provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-ssd
-  fstype: ext4
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -87,7 +101,7 @@ metadata:
 provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-balanced
-  fstype: ext4
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -99,7 +113,7 @@ metadata:
 provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-extreme
-  fstype: ext4
+  csi.storage.k8s.io/fstype: ext4
   provisioned-iops-on-create: "10000"
 reclaimPolicy: Retain
 allowVolumeExpansion: true
@@ -134,6 +148,19 @@ kubectl apply -f gcp-pvc.yaml
 ## Step 5: Deploy an Application
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: mongodb
+  ports:
+  - port: 27017
+    name: mongodb
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -196,6 +223,8 @@ volumeBindingMode: WaitForFirstConsumer
 
 ## Step 7: Configure Volume Snapshots
 
+On self-managed clusters, make sure the `VolumeSnapshot` CRDs and snapshot-controller are installed before using snapshot resources.
+
 Create a VolumeSnapshotClass:
 
 ```yaml
@@ -246,6 +275,8 @@ spec:
 
 Use Customer-Managed Encryption Keys:
 
+The Cloud KMS key must already grant the Compute Engine service agent encrypt/decrypt access. If you plan to use CMEK on a self-managed cluster, set `ENABLE_KMS=true` when running `./deploy/setup-project.sh`.
+
 ```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -261,39 +292,57 @@ volumeBindingMode: WaitForFirstConsumer
 
 ## Step 9: Configure ReadOnlyMany Volumes
 
-Create a snapshot and use it as a read-only volume for multiple pods:
+Create a snapshot-backed PVC in `ReadOnlyMany` mode and use it as a read-only volume for multiple pods:
 
 ```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+apiVersion: v1
+kind: PersistentVolumeClaim
 metadata:
-  name: pd-readonly
-provisioner: pd.csi.storage.gke.io
-parameters:
-  type: pd-ssd
-volumeBindingMode: Immediate
+  name: mongo-snapshot-readonly
+  namespace: default
+spec:
+  dataSource:
+    name: mongo-snapshot
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+  accessModes:
+    - ReadOnlyMany
+  storageClassName: pd-ssd
+  resources:
+    requests:
+      storage: 50Gi
 ```
 
 Mount as read-only:
 
 ```yaml
-apiVersion: v1
-kind: Pod
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: reader-pod
+  name: reader-pods
+  namespace: default
 spec:
-  containers:
-  - name: reader
-    image: nginx:latest
-    volumeMounts:
-    - name: data
-      mountPath: /data
-      readOnly: true
-  volumes:
-  - name: data
-    persistentVolumeClaim:
-      claimName: gcp-pvc
-      readOnly: true
+  replicas: 3
+  selector:
+    matchLabels:
+      app: reader-pods
+  template:
+    metadata:
+      labels:
+        app: reader-pods
+    spec:
+      containers:
+      - name: reader
+        image: nginx:latest
+        volumeMounts:
+        - name: data
+          mountPath: /data
+          readOnly: true
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: mongo-snapshot-readonly
+          readOnly: true
 ```
 
 ## Step 10: Monitor Google Persistent Disks
@@ -307,10 +356,11 @@ kubectl get pvc --all-namespaces
 kubectl describe pv <pv-name>
 
 # Check CSI driver
-kubectl get pods -n kube-system -l app=gcp-compute-persistent-disk-csi-driver
+kubectl get pods -A -l app=gcp-compute-persistent-disk-csi-driver
 
 # Check driver logs
-kubectl logs -n kube-system -l app=gcp-compute-persistent-disk-csi-driver --tail=50
+# Use kube-system on GKE or gce-pd-csi-driver for a manual deployment
+kubectl logs -n <driver-namespace> -l app=gcp-compute-persistent-disk-csi-driver --all-containers --tail=50
 
 # List disks via gcloud
 gcloud compute disks list --filter="name~pvc"
@@ -318,7 +368,7 @@ gcloud compute disks list --filter="name~pvc"
 
 ## Troubleshooting
 
-- **PVC Pending**: Verify IAM permissions and CSI driver status
+- **PVC Pending**: Verify CSI driver status, `StorageClass` parameters, and, on self-managed clusters, service account permissions
 - **Zone mismatch**: Use `WaitForFirstConsumer` and ensure nodes exist in the target zone
 - **Quota exceeded**: Check GCP disk quota in the project
 - **Attach limit**: GCE instances have a maximum number of attachable disks
