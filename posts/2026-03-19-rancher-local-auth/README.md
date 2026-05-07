@@ -12,11 +12,12 @@ Local authentication is Rancher's built-in user management system. It allows you
 
 - Rancher v2.6 or later
 - Admin access to Rancher
+- For the programmatic examples, `kubectl` configured against Rancher's Kubernetes API (Rancher v2.8+)
 - Understanding of Rancher's role-based access control
 
 ## Understanding Local Authentication
 
-Local authentication is enabled by default when you first install Rancher. The initial admin user created during setup uses local authentication. Even when an external auth provider is configured, local authentication remains available as a fallback, ensuring administrators can always access Rancher.
+Local authentication is enabled by default when you first install Rancher. The initial admin user created during setup uses local authentication. Even when an external auth provider is configured, Rancher recommends keeping a few local users available as a fallback in case the external provider is unavailable.
 
 ## Step 1: Access User Management
 
@@ -54,31 +55,40 @@ Confirm Password: <strong-password>
 
 4. Click **Create**.
 
-Create multiple users via the Rancher API:
+Create local users programmatically with the Rancher Kubernetes API (Rancher v2.8+):
 
 ```bash
-# Create a local user via API
+# Create the user resource
+kubectl create -f -<<EOF
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: jdoe
+displayName: "John Doe"
+username: "jdoe"
+description: "Backend developer"
+mustChangePassword: true
+EOF
 
-curl -s -k \
-  -X POST \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "jdoe",
-    "password": "SecureP@ssw0rd!",
-    "name": "John Doe",
-    "description": "Backend developer",
-    "mustChangePassword": true
-  }' \
-  "https://rancher.example.com/v3/users"
+# Set the user's password
+kubectl create -f -<<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jdoe
+  namespace: cattle-local-user-passwords
+type: Opaque
+stringData:
+  password: SecureP@ssw0rd!
+EOF
 ```
 
 ## Step 3: Configure Password Requirements
 
-Set password complexity requirements:
+Set the minimum password length:
 
 1. Navigate to **Global Settings**.
-2. Find the password-related settings.
+2. Find the `password-min-length` setting.
 
 ```bash
 # Set minimum password length
@@ -94,32 +104,38 @@ curl -s -k \
 
 Require users to change their password on first login:
 
-When creating users via the API, set `mustChangePassword` to `true`:
+When creating users programmatically, set `mustChangePassword` to `true` on the `User` resource:
 
 ```bash
-curl -s -k \
-  -X POST \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "newuser",
-    "password": "TemporaryP@ss1",
-    "name": "New User",
-    "mustChangePassword": true
-  }' \
-  "https://rancher.example.com/v3/users"
+kubectl create -f -<<EOF
+apiVersion: management.cattle.io/v3
+kind: User
+metadata:
+  name: newuser
+displayName: "New User"
+username: "newuser"
+mustChangePassword: true
+EOF
+
+kubectl create -f -<<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: newuser
+  namespace: cattle-local-user-passwords
+type: Opaque
+stringData:
+  password: TemporaryP@ss1
+EOF
 ```
 
 To force an existing user to change their password:
 
 ```bash
-# Update user to require password change
-curl -s -k \
-  -X PUT \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"mustChangePassword": true}' \
-  "https://rancher.example.com/v3/users/<user-id>"
+# Update the user to require a password change
+kubectl patch users.management.cattle.io newuser \
+  --type merge \
+  -p '{"mustChangePassword": true}'
 ```
 
 ## Step 5: Assign Cluster and Project Roles
@@ -174,27 +190,23 @@ Scope: No Scope (access all clusters)
 Expires: In 90 days
 ```
 
-Via the API:
+Via the Rancher Kubernetes API (Rancher v2.13+):
 
 ```bash
 # Create an API key
-curl -s -k \
-  -X POST \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "description": "CI/CD Pipeline Access",
-    "ttl": 7776000000
-  }' \
-  "https://rancher.example.com/v3/tokens"
+kubectl create -o jsonpath='{.status.value}' -f -<<EOF
+apiVersion: ext.cattle.io/v1
+kind: Token
+spec:
+  description: CI/CD Pipeline Access
+  ttl: 7776000000
+EOF
 ```
 
-The response includes the access key and secret key:
+The command prints the token value once:
 
-```json
-{
-  "token": "token-xxxxx:xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-}
+```plaintext
+token-xxxxx:xxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 ## Step 7: Disable and Delete Users
@@ -208,13 +220,10 @@ Manage user lifecycle:
 3. Click the three-dot menu and select **Deactivate**.
 
 ```bash
-# Disable via API
-curl -s -k \
-  -X PUT \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"enabled": false}' \
-  "https://rancher.example.com/v3/users/<user-id>"
+# Disable via Rancher Kubernetes API
+kubectl patch users.management.cattle.io jdoe \
+  --type merge \
+  -p '{"enabled": false}'
 ```
 
 ### Delete a User
@@ -224,11 +233,8 @@ curl -s -k \
 3. Confirm the deletion.
 
 ```bash
-# Delete via API
-curl -s -k \
-  -X DELETE \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  "https://rancher.example.com/v3/users/<user-id>"
+# Delete via Rancher Kubernetes API
+kubectl delete user jdoe
 ```
 
 ## Step 8: Reset Admin Password
@@ -239,79 +245,63 @@ If you lose the admin password, reset it using kubectl:
 # Reset the admin password
 kubectl -n cattle-system exec $(kubectl -n cattle-system get pods \
   -l app=rancher --no-headers | head -1 | awk '{ print $1 }') \
-  -- reset-password
+  -c rancher -- reset-password
 
 # The command outputs a new temporary password
-# New password for default admin user (user-xxxxx): <new-password>
+# New password for default administrator (user-xxxxx): <new-password>
 ```
 
-Alternatively, set a specific password:
+If the last administrator was deleted or deactivated, recreate a default administrator instead:
 
 ```bash
-# Get the admin user ID
-ADMIN_ID=$(kubectl -n cattle-system exec $(kubectl -n cattle-system get pods \
-  -l app=rancher --no-headers | head -1 | awk '{ print $1 }') \
-  -- loglevel --set info 2>&1 | grep -o 'user-[a-z0-9]*' | head -1)
-
-# Use the Rancher CLI to reset
+# Recreate a default administrator
 kubectl -n cattle-system exec $(kubectl -n cattle-system get pods \
   -l app=rancher --no-headers | head -1 | awk '{ print $1 }') \
-  -- reset-password
+  -c rancher -- ensure-default-admin
 ```
 
 ## Step 9: Configure Session Settings
 
-Manage session duration and behavior:
+Manage session duration:
 
 ```bash
-# Set session token TTL (in minutes, 0 for no expiry)
+# Set user session length (in minutes)
 curl -s -k \
   -X PUT \
   -H "Authorization: Bearer $RANCHER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"value": "960"}' \
-  "https://rancher.example.com/v3/settings/auth-token-max-ttl-minutes"
-
-# Set the maximum number of concurrent sessions
-curl -s -k \
-  -X PUT \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"value": "0"}' \
-  "https://rancher.example.com/v3/settings/kubeconfig-default-token-ttl-minutes"
+  "https://rancher.example.com/v3/settings/auth-user-session-ttl-minutes"
 ```
 
 ## Step 10: Audit Local User Activity
 
-Monitor user activity through Rancher logs:
+If Rancher API audit logging is enabled, inspect the audit log sidecar and review user and token resources:
 
 ```bash
-# View authentication events
-kubectl logs -l app=rancher -n cattle-system --tail=500 | \
-  grep -i "login\|auth\|user" | tail -20
+# View recent audit events
+kubectl -n cattle-system logs \
+  $(kubectl -n cattle-system get pods -l app=rancher --no-headers | head -1 | awk '{ print $1 }') \
+  -c rancher-audit-log --tail=200
 
 # List all users and their status
-curl -s -k \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  "https://rancher.example.com/v3/users" | \
-  jq '.data[] | {
+kubectl get users.management.cattle.io -o json | \
+  jq '.items[] | {
     username: .username,
-    name: .name,
+    displayName: .displayName,
     enabled: .enabled,
     principalIds: .principalIds,
-    created: .created
+    created: .metadata.creationTimestamp
   }'
 
-# List all API tokens
-curl -s -k \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  "https://rancher.example.com/v3/tokens" | \
-  jq '.data[] | {
-    name: .name,
-    userId: .userId,
-    description: .description,
-    expired: .expired,
-    expiresAt: .expiresAt
+# Rancher v2.13+: list all API tokens
+kubectl get tokens.ext.cattle.io -o json | \
+  jq '.items[] | {
+    name: .metadata.name,
+    userID: .spec.userID,
+    description: .spec.description,
+    expired: .status.expired,
+    expiresAt: .status.expiresAt
   }'
 ```
 
@@ -319,8 +309,8 @@ curl -s -k \
 
 Local authentication can coexist with external providers:
 
-- The admin user always has local auth access as a fallback.
-- Users can have both local and external identities.
+- Keep the local admin account active as a fallback.
+- Local and external users can coexist in the same Rancher installation.
 - If the external auth provider goes down, local accounts still work.
 
 To configure this:
@@ -333,7 +323,7 @@ To configure this:
 
 - **Use external auth for most users**: Local authentication is best used as a fallback, not the primary authentication method for large organizations.
 - **Keep admin local accounts**: Always maintain at least one local admin account for emergency access.
-- **Enforce strong passwords**: Set minimum password length and require complexity.
+- **Enforce strong passwords**: Set a strong minimum password length and require password changes when appropriate.
 - **Rotate API keys**: Set expiration dates on API keys and rotate them regularly.
 - **Audit regularly**: Review the user list and remove inactive accounts promptly.
 - **Limit admin accounts**: Keep the number of local admin accounts to the minimum necessary.
