@@ -8,7 +8,7 @@ Description: Enable IPv6 on AWS CloudFront distributions, configure Route 53 AAA
 
 ## Introduction
 
-AWS CloudFront supports IPv6 and can be enabled on existing or new distributions with a single setting. When IPv6 is enabled, CloudFront's edge locations respond to IPv6 client connections and serve content from cached or origin servers. The distribution receives both IPv4 and IPv6 traffic, and Route 53 alias records for CloudFront automatically include AAAA records.
+AWS CloudFront supports IPv6 and can be enabled on existing or new distributions with a single setting. When IPv6 is enabled, CloudFront's edge locations respond to IPv6 client connections and serve content from cached or origin servers. The distribution supports both IPv4 and IPv6 viewer traffic, but Route 53 alias records do not automatically create AAAA records for custom domain names, so you should create both A and AAAA alias records when you enable IPv6.
 
 ## Enable IPv6 on CloudFront Distribution
 
@@ -16,9 +16,9 @@ AWS CloudFront supports IPv6 and can be enabled on existing or new distributions
 DISTRIBUTION_ID="ABCDEFGHIJKLMNO"
 
 # Get current distribution config
-
 aws cloudfront get-distribution-config \
     --id "$DISTRIBUTION_ID" \
+    --query "DistributionConfig" \
     --output json > /tmp/dist-config.json
 
 # The ETag is needed for updates
@@ -27,14 +27,14 @@ ETAG=$(aws cloudfront get-distribution-config \
     --query "ETag" \
     --output text)
 
-# Enable IPv6 (IsIPV6Enabled: true in DistributionConfig)
-# Edit /tmp/dist-config.json and add "IsIPV6Enabled": true
+# Enable IPv6 (set IsIPV6Enabled to true)
+# Edit /tmp/dist-config.json and set "IsIPV6Enabled": true
 
 # Update distribution
 aws cloudfront update-distribution \
     --id "$DISTRIBUTION_ID" \
     --if-match "$ETAG" \
-    --distribution-config file:///tmp/dist-config-updated.json
+    --distribution-config file:///tmp/dist-config.json
 ```
 
 ## Terraform CloudFront with IPv6
@@ -92,7 +92,7 @@ resource "aws_cloudfront_distribution" "main" {
   tags = { Name = "ipv6-cdn" }
 }
 
-# Route 53 A record (IPv4) for CloudFront
+# Route 53 A alias record for CloudFront
 resource "aws_route53_record" "cdn_a" {
   zone_id = data.aws_route53_zone.main.zone_id
   name    = "cdn"
@@ -105,7 +105,7 @@ resource "aws_route53_record" "cdn_a" {
   }
 }
 
-# Route 53 AAAA record (IPv6) for CloudFront
+# Route 53 AAAA alias record for CloudFront
 resource "aws_route53_record" "cdn_aaaa" {
   zone_id = data.aws_route53_zone.main.zone_id
   name    = "cdn"
@@ -135,12 +135,12 @@ dig AAAA "$DIST_DOMAIN"
 curl -6 -I "https://cdn.example.com/"
 curl -6 "https://cdn.example.com/test.txt"
 
-# Check response headers (CloudFront adds X-Cache, etc.)
+# Check response headers (CloudFront adds headers such as X-Cache and Via)
 curl -6 -s -D- "https://cdn.example.com/" -o /dev/null | \
-    grep "X-Cache\|CF-Ray\|Server"
+    grep -E "X-Cache|Via|Server"
 
 # Test from IPv6 perspective
-curl -w "Protocol: %{remote_ip}\n" -6 -s -o /dev/null https://cdn.example.com/
+curl -w "Remote IP: %{remote_ip}\n" -6 -s -o /dev/null "https://cdn.example.com/"
 ```
 
 ## WAF with IPv6 on CloudFront
@@ -197,4 +197,4 @@ resource "aws_wafv2_ip_set" "blocked_ipv6" {
 
 ## Conclusion
 
-Enabling IPv6 on CloudFront is a single flag (`is_ipv6_enabled = true`) in Terraform or the console. After enabling, the distribution accepts IPv6 connections at all CloudFront edge locations globally. Create Route 53 AAAA ALIAS records pointing to the CloudFront domain to enable DNS resolution for IPv6 clients. The CloudFront zone ID for aliases is always `Z2FDTNDATAQYW2` regardless of region. WAF rules work equally for IPv4 and IPv6 traffic, and IP sets support both address families.
+Enabling IPv6 on CloudFront is a single flag (`is_ipv6_enabled = true`) in Terraform or the console. After enabling, the distribution can serve IPv6 viewer requests from CloudFront edge locations globally. If you're using Route 53 alias records with alternate domain names, create both A and AAAA ALIAS records pointing to the CloudFront domain to support IPv4 and IPv6 clients. The CloudFront zone ID for aliases is `Z2FDTNDATAQYW2`. WAF rules work equally for IPv4 and IPv6 traffic, and IP sets support both address families.
