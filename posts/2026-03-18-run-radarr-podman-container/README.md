@@ -49,13 +49,13 @@ podman run -d \
   --name radarr \
   -p 7878:7878 \
   -v ~/radarr/config:/config:Z \
-  -v ~/media/movies:/movies:Z \
-  -v ~/downloads:/downloads:Z \
+  -v ~/media/movies:/movies:z \
+  -v ~/downloads:/downloads:z \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/New_York \
   --restart unless-stopped \
-  docker.io/linuxserver/radarr:latest
+  lscr.io/linuxserver/radarr:latest
 ```
 
 Key flags explained:
@@ -64,8 +64,8 @@ Key flags explained:
 |------|---------|
 | `-p 7878:7878` | Exposes the Radarr web interface |
 | `-v ~/radarr/config:/config:Z` | Persists Radarr's database, settings, and logs |
-| `-v ~/media/movies:/movies:Z` | Gives Radarr access to your movie library |
-| `-v ~/downloads:/downloads:Z` | Allows Radarr to access completed downloads |
+| `-v ~/media/movies:/movies:z` | Gives Radarr access to your movie library |
+| `-v ~/downloads:/downloads:z` | Allows Radarr to access completed downloads |
 | `-e PUID=1000` / `-e PGID=1000` | Ensures files are created with your user's ownership |
 
 ---
@@ -186,13 +186,13 @@ podman run -d \
   --network media-net \
   -p 7878:7878 \
   -v ~/radarr/config:/config:Z \
-  -v ~/media/movies:/movies:Z \
-  -v ~/downloads:/downloads:Z \
+  -v ~/media/movies:/movies:z \
+  -v ~/downloads:/downloads:z \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/New_York \
   --restart unless-stopped \
-  docker.io/linuxserver/radarr:latest
+  lscr.io/linuxserver/radarr:latest
 ```
 
 On a shared network, use container names as hostnames. For example, if your download client container is named `transmission`, set the host field in Radarr to `transmission`.
@@ -229,7 +229,7 @@ podman logs -f radarr
 podman restart radarr
 
 # Update to the latest version
-podman pull docker.io/linuxserver/radarr:latest
+podman pull lscr.io/linuxserver/radarr:latest
 podman stop radarr
 podman rm radarr
 # Re-run the podman run command with the same flags
@@ -259,7 +259,7 @@ sudo systemctl start container-radarr.service
 
 ### Recommended Method (Quadlet)
 
-Create a file at `~/.config/containers/systemd/radarr.container` (rootless) or `/etc/containers/systemd/radarr.container` (root):
+Create a file at `~/.config/containers/systemd/radarr.container` for a rootless service. For a root service, place the file in `/etc/containers/systemd/radarr.container` and replace `%h` with absolute host paths:
 
 ```ini
 [Unit]
@@ -267,11 +267,11 @@ Description=Radarr Container
 
 [Container]
 ContainerName=radarr
-Image=docker.io/linuxserver/radarr:latest
+Image=lscr.io/linuxserver/radarr:latest
 PublishPort=7878:7878
 Volume=%h/radarr/config:/config:Z
-Volume=%h/media/movies:/movies:Z
-Volume=%h/downloads:/downloads:Z
+Volume=%h/media/movies:/movies:z
+Volume=%h/downloads:/downloads:z
 Environment=PUID=1000
 Environment=PGID=1000
 Environment=TZ=America/New_York
@@ -288,7 +288,6 @@ Then reload and start:
 ```bash
 systemctl --user daemon-reload
 systemctl --user start radarr.service
-systemctl --user enable radarr.service
 ```
 
 ---
