@@ -6,16 +6,16 @@ Tags: Ansible, IPv6, SLAAC, Sysctl, Networking, Linux
 
 Description: A guide to configuring IPv6 Stateless Address Autoconfiguration (SLAAC) behavior on Linux hosts using Ansible sysctl tasks.
 
-SLAAC allows IPv6 hosts to automatically configure their own addresses using Router Advertisement prefixes. Several sysctl parameters control SLAAC behavior, including whether to accept RAs, whether to generate temporary addresses for privacy, and how to build interface IDs. This guide manages these settings with Ansible.
+SLAAC allows IPv6 hosts to automatically configure their own addresses using Router Advertisement prefixes. Several sysctl parameters control SLAAC behavior, including whether to accept RAs, whether to generate temporary addresses for privacy, and how to build interface IDs. On Linux, some of these settings have functional defaults that depend on whether forwarding is enabled. This guide manages these settings with Ansible.
 
 ## Key SLAAC-Related sysctl Parameters
 
 | Parameter | Default | Purpose |
 |---|---|---|
-| `net.ipv6.conf.all.accept_ra` | 1 | Accept Router Advertisements |
-| `net.ipv6.conf.all.autoconf` | 1 | Enable SLAAC address generation |
-| `net.ipv6.conf.all.use_tempaddr` | 0 | Use privacy extensions (temporary addresses) |
-| `net.ipv6.conf.all.addr_gen_mode` | 0 | Address generation mode (EUI-64, stable, random) |
+| `net.ipv6.conf.all.accept_ra` | Enabled on hosts; disabled when forwarding is enabled | Accept Router Advertisements; use `2` to accept them even when forwarding is enabled |
+| `net.ipv6.conf.all.autoconf` | Enabled when RA prefix information is accepted | Enable SLAAC address generation |
+| `net.ipv6.conf.all.use_tempaddr` | 0 on most devices | Use privacy extensions (temporary addresses) |
+| `net.ipv6.conf.all.addr_gen_mode` | 0 | Address generation mode for link-local and autoconf addresses |
 
 ## Playbook: Configure SLAAC for Client Hosts
 
@@ -38,7 +38,6 @@ SLAAC allows IPv6 hosts to automatically configure their own addresses using Rou
       loop:
         - net.ipv6.conf.all.accept_ra
         - net.ipv6.conf.default.accept_ra
-        - net.ipv6.conf.eth0.accept_ra
 
     - name: Enable SLAAC address autoconfiguration
       ansible.posix.sysctl:
@@ -70,7 +69,7 @@ SLAAC allows IPv6 hosts to automatically configure their own addresses using Rou
 
 ## Playbook: Disable SLAAC on Server/Router Hosts
 
-Servers that route traffic should not use SLAAC - they need static IPv6 addresses:
+Servers and routers that use static IPv6 addressing often disable SLAAC:
 
 ```yaml
 # disable-slaac-servers.yml - Disable SLAAC on server/router hosts
@@ -80,7 +79,7 @@ Servers that route traffic should not use SLAAC - they need static IPv6 addresse
   become: true
 
   tasks:
-    - name: Disable SLAAC and accept_ra (servers use static addressing)
+    - name: Disable SLAAC and accept_ra (for statically addressed hosts)
       ansible.posix.sysctl:
         name: "{{ item.name }}"
         value: "{{ item.value }}"
@@ -110,9 +109,9 @@ Servers that route traffic should not use SLAAC - they need static IPv6 addresse
   become: false
 
   tasks:
-    - name: Get IPv6 addresses on primary interface
+    - name: Get dynamic global IPv6 addresses
       ansible.builtin.command:
-        cmd: "ip -6 addr show {{ ansible_default_ipv4.interface }} scope global"
+        cmd: "ip -6 addr show scope global dynamic"
       register: ipv6_addrs
       changed_when: false
 
@@ -123,8 +122,8 @@ Servers that route traffic should not use SLAAC - they need static IPv6 addresse
     - name: Assert SLAAC address exists
       ansible.builtin.assert:
         that:
-          - "'scope global' in ipv6_addrs.stdout"
-        fail_msg: "No global IPv6 address found - SLAAC may not be working"
+          - ipv6_addrs.stdout != ""
+        fail_msg: "No dynamic global IPv6 address found - SLAAC may not be working"
 ```
 
 ## Run
