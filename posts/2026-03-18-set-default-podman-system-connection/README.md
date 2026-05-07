@@ -8,9 +8,9 @@ Description: Learn how to set and manage the default Podman system connection to
 
 ---
 
-> Setting the right default connection means every Podman command automatically targets the correct host without requiring extra flags.
+> Setting the right default connection means remote Podman commands target the correct host without requiring extra connection flags.
 
-When you manage containers across multiple hosts, typing `--connection` with every command becomes tedious and error-prone. Setting a default Podman system connection ensures all commands target your preferred host automatically. This guide covers how to set, change, and manage default connections effectively.
+When you manage containers across multiple hosts, typing `--connection` with every command becomes tedious and error-prone. Setting a default Podman system connection ensures remote Podman commands target your preferred host automatically. On a Linux host with a local Podman engine, use `--remote` when you want commands to use the configured system connection. This guide covers how to set, change, and manage default connections effectively.
 
 ---
 
@@ -30,7 +30,7 @@ podman system connection ls --format "table {{.Name}}\t{{.URI}}\t{{.Default}}"
 podman system connection ls --format json | jq -r '.[] | select(.Default==true) | .Name'
 
 # Quick check: where do commands currently go
-podman info --format '{{.Host.Hostname}}'
+podman --remote info --format '{{.Host.Hostname}}'
 ```
 
 ## Setting a Default Connection
@@ -45,8 +45,8 @@ podman system connection default my-production-server
 podman system connection ls --format "table {{.Name}}\t{{.Default}}"
 
 # Test that commands now go to the new default
-podman info --format '{{.Host.Hostname}}'
-podman version --format '{{.Server.Version}}'
+podman --remote info --format '{{.Host.Hostname}}'
+podman --remote version --format '{{.Server.Version}}'
 ```
 
 ## Switching Between Defaults
@@ -56,15 +56,15 @@ Change the default connection when shifting between environments.
 ```bash
 # Switch to development environment
 podman system connection default dev-server
-echo "Now targeting: $(podman info --format '{{.Host.Hostname}}')"
+echo "Now targeting: $(podman --remote info --format '{{.Host.Hostname}}')"
 
 # Switch to staging environment
 podman system connection default staging-server
-echo "Now targeting: $(podman info --format '{{.Host.Hostname}}')"
+echo "Now targeting: $(podman --remote info --format '{{.Host.Hostname}}')"
 
 # Switch to production environment
 podman system connection default prod-server
-echo "Now targeting: $(podman info --format '{{.Host.Hostname}}')"
+echo "Now targeting: $(podman --remote info --format '{{.Host.Hostname}}')"
 ```
 
 ## Creating an Environment Switcher Script
@@ -101,7 +101,7 @@ esac
 
 # Display the active connection
 CURRENT=$(podman system connection ls --format json | jq -r '.[] | select(.Default==true) | .Name')
-HOST=$(podman info --format '{{.Host.Hostname}}' 2>/dev/null || echo "unreachable")
+HOST=$(podman --remote info --format '{{.Host.Hostname}}' 2>/dev/null || echo "unreachable")
 echo "Active connection: $CURRENT ($HOST)"
 ```
 
@@ -166,8 +166,8 @@ echo "URI: $URI"
 
 # Test connectivity
 echo -n "Connectivity: "
-if podman info --format '{{.Host.Hostname}}' > /dev/null 2>&1; then
-    HOSTNAME=$(podman info --format '{{.Host.Hostname}}')
+if podman --remote info --format '{{.Host.Hostname}}' > /dev/null 2>&1; then
+    HOSTNAME=$(podman --remote info --format '{{.Host.Hostname}}')
     echo "OK ($HOSTNAME)"
 else
     echo "FAILED"
@@ -176,8 +176,8 @@ fi
 
 # Test basic operations
 echo -n "Operations: "
-if podman version --format '{{.Server.Version}}' > /dev/null 2>&1; then
-    VERSION=$(podman version --format '{{.Server.Version}}')
+if podman --remote version --format '{{.Server.Version}}' > /dev/null 2>&1; then
+    VERSION=$(podman --remote version --format '{{.Server.Version}}')
     echo "OK (v$VERSION)"
 else
     echo "FAILED"
@@ -216,8 +216,8 @@ podman system connection add local \
     unix:///run/user/$(id -u)/podman/podman.sock
 podman system connection default local
 
-# Option 2: Remove all remote connections to fall back to local
-# (only if you want to remove all remotes)
+# Option 2: On Linux, unset remote environment variables and omit --remote
+unset CONTAINER_HOST CONTAINER_CONNECTION
 
 # Verify you are back on the local host
 podman info --format '{{.Host.Hostname}}'
@@ -225,4 +225,4 @@ podman info --format '{{.Host.Hostname}}'
 
 ## Summary
 
-Setting the default Podman system connection streamlines multi-host container management by eliminating the need for `--connection` flags on every command. Use `podman system connection default` to switch between environments, create helper scripts for quick switching, and leverage the CONTAINER_HOST variable for temporary overrides. Always validate the default after changing it to ensure your commands target the intended host.
+Setting the default Podman system connection streamlines multi-host container management by eliminating the need for `--connection` flags on remote Podman commands. Use `podman system connection default` to switch between environments, create helper scripts for quick switching, and leverage the CONTAINER_HOST variable for temporary overrides. Always validate the default after changing it to ensure your remote commands target the intended host.
