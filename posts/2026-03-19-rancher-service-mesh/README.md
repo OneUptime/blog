@@ -6,24 +6,25 @@ Tags: Rancher, Kubernetes, Service Mesh
 
 Description: Learn how to install and configure a service mesh in Rancher using Istio for advanced traffic management, observability, and security.
 
-A service mesh provides a dedicated infrastructure layer for handling service-to-service communication. It adds capabilities like traffic management, observability, mutual TLS, and circuit breaking without requiring changes to your application code. Rancher has built-in support for Istio, making it straightforward to deploy a service mesh. This guide walks through the setup.
+A service mesh provides a dedicated infrastructure layer for handling service-to-service communication. It adds capabilities like traffic management, observability, mutual TLS, and circuit breaking without requiring changes to your application code. Rancher can manage Istio deployments, though Rancher-Istio was deprecated in Rancher v2.12.0. This guide walks through the setup.
 
 ## Prerequisites
 
-- A running Rancher instance (v2.6 or later)
-- A managed Kubernetes cluster with at least 3 nodes
-- At least 4 CPU cores and 8 GB RAM available for Istio components
-- kubectl access to your cluster
+- A running Rancher instance (v2.6 or later; Rancher-Istio was deprecated in Rancher v2.12.0)
+- A managed Kubernetes cluster
+- Worker nodes with enough CPU and memory to run Istio components
+- Cluster-admin access in Rancher and kubectl access to your cluster
 
 ## Step 1: Install Istio via Rancher
 
-Rancher provides Istio as a built-in chart:
+Rancher versions that still include Rancher-Istio expose it through **Apps & Marketplace**:
 
 1. Navigate to your cluster in the Rancher dashboard.
-2. Go to **Apps** > **Charts**.
+2. Go to **Apps & Marketplace** > **Charts**.
 3. Search for **Istio**.
 4. Click **Install**.
 5. Configure installation options:
+   - If prompted, install `rancher-monitoring` so Kiali has Prometheus data
    - Enable or disable Kiali (visualization dashboard)
    - Enable or disable Jaeger (distributed tracing)
    - Configure resource limits
@@ -31,7 +32,7 @@ Rancher provides Istio as a built-in chart:
 
 ## Step 2: Install Istio via Helm
 
-Alternatively, install using istioctl or Helm:
+Alternatively, install using Helm:
 
 ```bash
 helm repo add istio https://istio-release.storage.googleapis.com/charts
@@ -41,15 +42,18 @@ helm repo update
 
 helm install istio-base istio/base \
   --namespace istio-system \
-  --create-namespace
+  --create-namespace \
+  --set defaultRevision=default
 
 # Install istiod (control plane)
 helm install istiod istio/istiod \
-  --namespace istio-system
+  --namespace istio-system \
+  --wait
 
 # Install ingress gateway
 helm install istio-ingress istio/gateway \
-  --namespace istio-system
+  --namespace istio-system \
+  --wait
 ```
 
 Verify the installation:
@@ -63,7 +67,7 @@ kubectl get pods -n istio-system
 Label namespaces to enable automatic sidecar injection:
 
 ```bash
-kubectl label namespace default istio-injection=enabled
+kubectl label namespace default istio-injection=enabled --overwrite
 ```
 
 Verify the label:
@@ -80,18 +84,42 @@ All new pods in the labeled namespace will automatically get an Envoy sidecar pr
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: frontend
+  name: frontend-v1
   namespace: default
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: frontend
+      version: v1
   template:
     metadata:
       labels:
         app: frontend
         version: v1
+    spec:
+      containers:
+      - name: frontend
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-v2
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: frontend
+        version: v2
     spec:
       containers:
       - name: frontend
@@ -161,7 +189,7 @@ spec:
 
 ## Step 6: Configure Traffic Splitting
 
-Split traffic between service versions for canary deployments:
+Update the `VirtualService` to split external traffic between service versions for canary deployments:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -171,16 +199,22 @@ metadata:
   namespace: default
 spec:
   hosts:
-  - frontend
+  - "myapp.example.com"
+  gateways:
+  - app-gateway
   http:
   - route:
     - destination:
         host: frontend
         subset: v1
+        port:
+          number: 80
       weight: 90
     - destination:
         host: frontend
         subset: v2
+        port:
+          number: 80
       weight: 10
 ---
 apiVersion: networking.istio.io/v1beta1
@@ -190,6 +224,9 @@ metadata:
   namespace: default
 spec:
   host: frontend
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
   subsets:
   - name: v1
     labels:
@@ -214,7 +251,7 @@ spec:
     mode: STRICT
 ```
 
-For cluster-wide enforcement:
+For cluster-wide enforcement in the default root namespace (`istio-system`):
 
 ```yaml
 apiVersion: security.istio.io/v1beta1
@@ -240,6 +277,8 @@ metadata:
 spec:
   host: backend-api
   trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
     connectionPool:
       tcp:
         maxConnections: 100
@@ -263,7 +302,7 @@ If Kiali was installed, access the service mesh visualization:
 kubectl port-forward svc/kiali -n istio-system 20001:20001
 ```
 
-Open `http://localhost:20001` in your browser to view:
+Open `https://localhost:20001` in your browser and sign in if prompted to view:
 
 - Service topology graphs
 - Traffic flow between services
@@ -297,11 +336,11 @@ spec:
 ## Troubleshooting
 
 - **Sidecar not injected**: Verify the namespace label: `kubectl get ns --show-labels`
-- **503 errors**: Check DestinationRule and VirtualService configurations
+- **503 errors**: Check DestinationRule and VirtualService configurations, especially `trafficPolicy.tls.mode` when mTLS is `STRICT`
 - **mTLS issues**: Verify PeerAuthentication policies: `kubectl get peerauthentication --all-namespaces`
 - **Gateway not working**: Check the Istio ingress gateway pod: `kubectl get pods -n istio-system`
 - **View Envoy config**: `kubectl exec <pod> -c istio-proxy -- pilot-agent request GET config_dump`
 
 ## Summary
 
-Setting up a service mesh with Istio in Rancher provides advanced traffic management, security through mutual TLS, and deep observability into your microservices architecture. Rancher simplifies the installation and management of Istio, while Kiali provides a visual dashboard for monitoring service mesh traffic. Start with basic traffic routing and gradually adopt features like circuit breaking, retries, and traffic splitting as your needs grow.
+Setting up a service mesh with Istio in Rancher provides advanced traffic management, security through mutual TLS, and deep observability into your microservices architecture. Rancher can simplify the installation and management of Istio, while Kiali provides a visual dashboard for monitoring service mesh traffic. Start with basic traffic routing and gradually adopt features like circuit breaking, retries, and traffic splitting as your needs grow.
