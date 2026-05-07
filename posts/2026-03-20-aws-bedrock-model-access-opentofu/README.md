@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Bedrock, Generative AI, LLM, Infrastructure as Code
 
-Description: Learn how to configure AWS Bedrock model access, knowledge bases, and guardrails for generative AI applications using OpenTofu.
+Description: Learn how to configure AWS Bedrock IAM access, knowledge bases, and guardrails for generative AI applications using OpenTofu.
 
 ## Introduction
 
-AWS Bedrock is a fully managed service for accessing foundation models from Amazon, Anthropic, Meta, and others. While model access requests require manual approval in the console, OpenTofu manages Bedrock knowledge bases, guardrails, and IAM policies for your AI applications.
+AWS Bedrock is a fully managed service for accessing foundation models from Amazon, Anthropic, Meta, and others. OpenTofu manages Bedrock knowledge bases, guardrails, and IAM policies for your AI applications, while third-party model subscriptions and Anthropic first-time-use requirements are handled through Amazon Bedrock and AWS Marketplace.
 
 ## IAM Policy for Bedrock Access
 
@@ -24,8 +24,8 @@ resource "aws_iam_policy" "bedrock_access" {
         Effect   = "Allow"
         Action   = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"]
         Resource = [
-          "arn:aws:bedrock:${var.region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0",
-          "arn:aws:bedrock:${var.region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0",
+          "arn:aws:bedrock:${var.region}::foundation-model/anthropic.claude-sonnet-4-5-20250929-v1:0",
+          "arn:aws:bedrock:${var.region}::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0",
           "arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v1"
         ]
       },
@@ -123,7 +123,8 @@ resource "aws_lambda_function" "ai_assistant" {
     variables = {
       BEDROCK_REGION   = var.region
       GUARDRAIL_ID     = aws_bedrock_guardrail.content_filter.guardrail_id
-      MODEL_ID         = "anthropic.claude-3-sonnet-20240229-v1:0"
+      GUARDRAIL_VERSION = aws_bedrock_guardrail.content_filter.version
+      MODEL_ID         = "anthropic.claude-sonnet-4-5-20250929-v1:0"
     }
   }
 }
@@ -139,4 +140,4 @@ tofu apply tfplan
 
 ## Summary
 
-AWS Bedrock provides access to powerful foundation models for generative AI. While model access itself requires console approval, OpenTofu manages the IAM policies, knowledge bases, guardrails, and application infrastructure that consume Bedrock - enabling reproducible AI application deployments.
+AWS Bedrock provides access to powerful foundation models for generative AI. OpenTofu manages the IAM policies, knowledge bases, guardrails, and application infrastructure that consume Bedrock, while model subscriptions and Anthropic first-time-use requirements are handled outside OpenTofu - enabling reproducible AI application deployments around Bedrock.
