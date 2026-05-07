@@ -12,7 +12,7 @@ Dynamic volume provisioning eliminates the need for cluster administrators to ma
 
 - A running Rancher instance (v2.6 or later)
 - A managed Kubernetes cluster
-- A storage backend with a CSI driver installed
+- A storage backend with a compatible CSI driver or dynamic provisioner installed
 - kubectl access to your cluster
 
 ## Understanding Dynamic Provisioning
@@ -42,9 +42,12 @@ Common CSI drivers include:
 - `pd.csi.storage.gke.io` - Google Persistent Disk
 - `csi.vsphere.vmware.com` - vSphere
 - `nfs.csi.k8s.io` - NFS
-- `rancher.io/local-path` - Local Path
+
+If you're using Rancher's Local Path Provisioner, its provisioner name is `rancher.io/local-path`, but it is not a CSI driver and does not appear in `kubectl get csidrivers`.
 
 ## Step 2: Create a StorageClass for Dynamic Provisioning
+
+The following example uses the AWS EBS CSI driver. Replace the provisioner and parameters for your own storage backend.
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -56,7 +59,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
   encrypted: "true"
 reclaimPolicy: Delete
 allowVolumeExpansion: true
@@ -88,7 +91,7 @@ spec:
 kubectl apply -f auto-pvc.yaml
 ```
 
-With `WaitForFirstConsumer`, the PVC stays Pending until a pod uses it. With `Immediate`, the PV is created right away.
+With `WaitForFirstConsumer`, volume binding and provisioning are delayed until a pod that uses the PVC is created. With `Immediate`, the PV is created right away.
 
 ## Step 4: Use the Default StorageClass
 
@@ -112,7 +115,7 @@ To prevent using the default, explicitly set `storageClassName: ""` to require m
 
 ## Step 5: Configure Multiple Storage Tiers
 
-Create different classes for different workload requirements:
+The following example shows different classes for AWS EBS:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -132,8 +135,6 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: standard
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
@@ -159,66 +160,75 @@ volumeBindingMode: WaitForFirstConsumer
 StatefulSets leverage volumeClaimTemplates for automatic per-replica provisioning:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: nginx
+  ports:
+  - name: web
+    port: 80
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: elasticsearch
+  name: web
   namespace: default
 spec:
-  serviceName: elasticsearch
+  serviceName: nginx
   replicas: 3
   selector:
     matchLabels:
-      app: elasticsearch
+      app: nginx
   template:
     metadata:
       labels:
-        app: elasticsearch
+        app: nginx
     spec:
       containers:
-      - name: elasticsearch
-        image: elasticsearch:8.10.0
+      - name: nginx
+        image: registry.k8s.io/nginx-slim:0.24
         ports:
-        - containerPort: 9200
-        - containerPort: 9300
-        env:
-        - name: discovery.type
-          value: single-node
+        - containerPort: 80
+          name: web
         volumeMounts:
-        - name: es-data
-          mountPath: /usr/share/elasticsearch/data
+        - name: www
+          mountPath: /usr/share/nginx/html
   volumeClaimTemplates:
   - metadata:
-      name: es-data
+      name: www
     spec:
       accessModes:
         - ReadWriteOnce
       storageClassName: fast
       resources:
         requests:
-          storage: 100Gi
+          storage: 10Gi
 ```
 
-This creates three PVCs (es-data-elasticsearch-0, es-data-elasticsearch-1, es-data-elasticsearch-2), each dynamically provisioned.
+This creates three PVCs (`www-web-0`, `www-web-1`, `www-web-2`), each dynamically provisioned.
 
 ## Step 7: Configure via the Rancher UI
 
-1. Navigate to your cluster in Rancher.
-2. Go to **Storage** > **StorageClasses**.
-3. Click **Create**.
-4. Select the provisioner from the dropdown.
-5. Configure parameters specific to your storage backend.
-6. Set reclaim policy and binding mode.
-7. Enable volume expansion if needed.
-8. Click **Create**.
+1. Click **☰ > Cluster Management**.
+2. Open the target cluster and click **Explore**.
+3. Go to **Storage** > **StorageClasses**.
+4. Click **Create**.
+5. Enter a name and select the provisioner.
+6. Configure parameters specific to your storage backend.
+7. Click **Create**.
 
-To create PVCs:
+To use the StorageClass with a StatefulSet in the Rancher UI:
 
-1. Go to **Storage** > **PersistentVolumeClaims**.
-2. Click **Create**.
-3. Select the StorageClass.
-4. Specify the requested size and access mode.
-5. Click **Create**.
+1. In the left navigation bar, click **Workload**.
+2. Click **Create** > **StatefulSet**.
+3. In **Volume Claim Templates**, click **Add Claim Template**.
+4. Select the StorageClass and mount point.
+5. Click **Launch**.
 
 ## Step 8: Restrict Dynamic Provisioning
 
@@ -268,21 +278,21 @@ kubectl describe pv <auto-created-pv-name>
 # Check PVC events
 kubectl describe pvc <pvc-name> -n <namespace>
 
-# Check CSI driver logs
-kubectl logs -n kube-system -l app=csi-controller --tail=100
+# Find the relevant storage controller or provisioner pods
+kubectl get pods --all-namespaces | grep -E 'csi|provisioner|storage'
+
+# Check logs from the relevant controller pod
+kubectl logs -n <namespace> <controller-pod-name> --tail=100
 
 # Verify StorageClass exists
 kubectl get storageclass
 
-# Check provisioner pods
-kubectl get pods --all-namespaces | grep csi
-
 # Look for provisioning events
-kubectl get events --all-namespaces --sort-by='.lastTimestamp' | grep -i provision
+kubectl get events --all-namespaces --sort-by='.metadata.creationTimestamp' | grep -i provision
 ```
 
 Common issues:
-- **No provisioner found**: CSI driver not installed
+- **No provisioner found**: Matching CSI driver or external provisioner is not installed, or the `StorageClass` provisioner name does not match
 - **Quota exceeded**: ResourceQuota limits reached
 - **Zone mismatch**: Use `WaitForFirstConsumer` binding mode
 - **Insufficient capacity**: Storage backend has no space
