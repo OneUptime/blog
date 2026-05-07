@@ -58,12 +58,12 @@ Examples:
 ```bash
 podman run -d --name myapp-prod-web nginx
 podman run -d --name myapp-prod-api my-api
-podman run -d --name myapp-prod-db postgres:16
+podman run -d --name myapp-prod-db -e POSTGRES_PASSWORD=change-me postgres:16
 podman run -d --name myapp-prod-cache redis:7
 
 podman run -d --name myapp-staging-web nginx
 podman run -d --name myapp-staging-api my-api
-podman run -d --name myapp-staging-db postgres:16
+podman run -d --name myapp-staging-db -e POSTGRES_PASSWORD=change-me postgres:16
 ```
 
 For scaled services, add an instance number:
@@ -257,6 +257,9 @@ if [ "$1" = "run" ]; then
   for i in "$@"; do
     if [ "$prev" = "--name" ]; then
       validate_container_name "$i" || exit 1
+    fi
+    if [[ "$i" == --name=* ]]; then
+      validate_container_name "${i#--name=}" || exit 1
     fi
     prev="$i"
   done
