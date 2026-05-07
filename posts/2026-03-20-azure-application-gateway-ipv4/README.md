@@ -12,7 +12,7 @@ Azure Application Gateway is a layer-7 load balancer with built-in SSL terminati
 
 ## Prerequisites
 
-- An Azure VNet with a dedicated subnet for Application Gateway (minimum /26 CIDR)
+- An Azure VNet with a dedicated subnet for Application Gateway (recommended /24 CIDR for Standard_v2)
 - Backend VMs or IPs to load balance
 - Azure CLI or Terraform
 
@@ -25,7 +25,7 @@ az network vnet subnet create \
   --resource-group rg-web \
   --vnet-name my-vnet \
   --name app-gw-subnet \
-  --address-prefix 10.0.3.0/26
+  --address-prefix 10.0.3.0/24
 
 # Step 2: Create a public IP for the frontend
 az network public-ip create \
@@ -47,7 +47,8 @@ az network application-gateway create \
   --http-settings-port 80 \
   --http-settings-protocol Http \
   --frontend-port 80 \
-  --routing-rule-type Basic
+  --routing-rule-type Basic \
+  --priority 100
 ```
 
 ## Adding Backend Pool Members
@@ -90,6 +91,21 @@ az network application-gateway http-settings update \
 Route traffic to different backends based on the URL path:
 
 ```bash
+# Create a separate backend pool and HTTP settings for API traffic
+az network application-gateway address-pool create \
+  --resource-group rg-web \
+  --gateway-name my-app-gw \
+  --name api-backend-pool \
+  --servers 10.0.1.20 10.0.1.21
+
+az network application-gateway http-settings create \
+  --resource-group rg-web \
+  --gateway-name my-app-gw \
+  --name api-http-settings \
+  --port 80 \
+  --protocol Http \
+  --cookie-based-affinity Disabled
+
 # Create URL path map for path-based routing
 az network application-gateway url-path-map create \
   --resource-group rg-web \
@@ -99,8 +115,17 @@ az network application-gateway url-path-map create \
   --rule-name api-rule \
   --address-pool api-backend-pool \
   --http-settings api-http-settings \
-  --default-address-pool web-backend-pool \
-  --default-http-settings web-http-settings
+  --default-address-pool appGatewayBackendPool \
+  --default-http-settings appGatewayBackendHttpSettings
+
+# Update the default rule to use path-based routing
+az network application-gateway rule update \
+  --resource-group rg-web \
+  --gateway-name my-app-gw \
+  --name rule1 \
+  --rule-type PathBasedRouting \
+  --url-path-map url-path-map \
+  --priority 100
 ```
 
 ## Enabling HTTPS with SSL Termination
@@ -114,12 +139,20 @@ az network application-gateway ssl-cert create \
   --cert-file cert.pfx \
   --cert-password MyPassword123
 
-# Add HTTPS frontend listener
+# Add an HTTPS frontend port
 az network application-gateway frontend-port create \
   --resource-group rg-web \
   --gateway-name my-app-gw \
   --name port-443 \
   --port 443
+
+# Update the default listener to use HTTPS with SSL termination
+az network application-gateway http-listener update \
+  --resource-group rg-web \
+  --gateway-name my-app-gw \
+  --name appGatewayHttpListener \
+  --frontend-port port-443 \
+  --ssl-cert my-ssl-cert
 ```
 
 ## Terraform Configuration
@@ -136,7 +169,9 @@ resource "azurerm_application_gateway" "main" {
     capacity = 2
   }
 
-  # ... (frontend_ip, backend_pool, http_settings, listener, routing_rule)
+  # ... (frontend_ip_configuration, frontend_port, gateway_ip_configuration,
+  #      backend_address_pool, backend_http_settings, http_listener,
+  #      request_routing_rule with priority)
 }
 ```
 
