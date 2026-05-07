@@ -8,102 +8,47 @@ Description: Configure containers in Portainer to automatically remove themselve
 
 ---
 
-Advanced container configuration in Portainer exposes Docker's full feature set through the web UI, allowing you to configure specialized settings without writing raw Docker commands.
+Portainer lets you expose Docker's auto-remove behavior through the container creation form, so short-lived containers can clean themselves up after they stop.
 
-## Accessing Advanced Container Settings
+## Accessing the Container Form
 
-When creating or editing a container in Portainer:
+When creating a container in Portainer:
 1. Navigate to **Containers > Add container**
-2. Fill in basic settings (image, name, ports)
-3. Expand the **Advanced container settings** section
+2. Fill in basic settings such as the image and container name
+3. In the **Actions** section, toggle **Auto remove** on
+4. Click **Deploy the container**
 
-## Device Mapping Configuration
+This setting tells Portainer to remove the container automatically once it exits, which is useful for one-off runs.
 
-```bash
-# Equivalent docker run command for device mapping
-
-docker run -d \
-  --device /dev/video0:/dev/video0 \
-  --device /dev/snd \
-  --name my-container \
-  myimage:latest
-```
-
-In Portainer UI: **Advanced settings > Runtime & Resources > Devices**
-
-## Sysctls Configuration
+## Equivalent Docker Command
 
 ```bash
-# Equivalent docker run for sysctl settings
-docker run -d \
-  --sysctl net.core.somaxconn=65535 \
-  --sysctl net.ipv4.tcp_tw_reuse=1 \
-  --name high-connection-server \
-  nginx:latest
+# Run a one-off container and remove it automatically when it exits
+docker run --rm --name temp-job busybox echo "done"
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > Sysctls**
+In Docker CLI, Portainer's **Auto remove** option maps to `docker run --rm`.
 
-## GPU Configuration (NVIDIA)
+## When to Use Auto-Remove
+
+Use auto-remove for short-lived containers such as ad hoc jobs, test runs, or temporary utilities. Avoid it when you need to inspect the stopped container afterward, because Docker removes the container when it exits.
+
+## Volume Behavior
 
 ```bash
-# Ensure nvidia-container-toolkit is installed on the host first
-# Then configure GPU access in Portainer
-
-# Equivalent docker run
-docker run -d \
-  --gpus all \
-  --name ml-training \
-  tensorflow/tensorflow:latest-gpu \
-  python train.py
+# Anonymous volumes are removed with the container, named volumes are kept
+docker run --rm \
+  -v /foo \
+  -v app-data:/data \
+  --name temp-job \
+  busybox true
 ```
 
-In Portainer UI: **Advanced settings > Runtime & Resources > GPUs**
+With `--rm`, Docker also removes anonymous volumes. Named volumes, such as `app-data:/data`, are not removed automatically.
 
-## Linux Capabilities
+## Restart Policy Caveat
 
-```bash
-# Drop all capabilities, add only what's needed (secure approach)
-docker run -d \
-  --cap-drop ALL \
-  --cap-add NET_BIND_SERVICE \
-  --cap-add CHOWN \
-  --name secure-nginx \
-  nginx:latest
-```
-
-## Shared Memory Size
-
-```bash
-# Increase shared memory for applications like browsers or ML frameworks
-docker run -d \
-  --shm-size=2g \
-  --name ml-worker \
-  pytorch/pytorch:latest
-```
-
-## DNS Settings
-
-```bash
-# Set custom DNS for a container
-docker run -d \
-  --dns 1.1.1.1 \
-  --dns 8.8.8.8 \
-  --dns-search example.com \
-  --name my-app \
-  myapp:latest
-```
-
-## Privileged Mode (Use Sparingly)
-
-```bash
-# Only use privileged mode when absolutely necessary
-# Privileged containers have full host access
-docker run -d \
-  --privileged \
-  --name system-tool \
-  systool:latest
-```
+Auto-remove should not be combined with a restart policy. Docker treats `--rm` and `--restart` as incompatible options, so leave the restart policy at **Never** when enabling auto-remove.
 
 ---
 
