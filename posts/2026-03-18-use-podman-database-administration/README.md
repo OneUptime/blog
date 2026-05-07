@@ -18,7 +18,7 @@ This guide covers practical database administration tasks using Podman, from bas
 
 ## Why Podman for Database Administration
 
-Running databases in containers gives you version isolation, easy upgrades, and reproducible environments. Podman adds rootless execution, eliminating the risk of a database container compromise escalating to root access on the host. Named volumes ensure data persists across container lifecycles, and Quadlet integration lets databases run as systemd services.
+Running databases in containers gives you version isolation, easy upgrades, and reproducible environments. Podman adds rootless execution, reducing the risk of a database container compromise escalating to root access on the host. Named volumes ensure data persists across container lifecycles, and Quadlet integration lets databases run as systemd services.
 
 ## Deploying PostgreSQL
 
@@ -78,7 +78,11 @@ Mount custom configuration files to tune database parameters:
 ```bash
 # PostgreSQL custom config
 
+mkdir -p ~/db-config
+podman volume create pgtuneddata
+
 cat > ~/db-config/postgresql.conf << 'EOF'
+listen_addresses = '*'
 max_connections = 200
 shared_buffers = 256MB
 effective_cache_size = 768MB
@@ -92,9 +96,11 @@ EOF
 
 podman run -d \
   --name postgres-tuned \
-  -p 5432:5432 \
+  -p 5440:5432 \
+  -e POSTGRES_USER=admin \
   -e POSTGRES_PASSWORD=securepass \
-  -v pgdata:/var/lib/postgresql/data:Z \
+  -e POSTGRES_DB=appdb \
+  -v pgtuneddata:/var/lib/postgresql/data:Z \
   -v ~/db-config/postgresql.conf:/etc/postgresql/postgresql.conf:ro,Z \
   docker.io/library/postgres:16-alpine \
   -c 'config_file=/etc/postgresql/postgresql.conf'
@@ -102,7 +108,7 @@ podman run -d \
 
 ## Automated Backups
 
-Create a backup script that runs as a Podman container:
+Create a backup script for a PostgreSQL container running under Podman:
 
 ```bash
 #!/bin/bash
@@ -110,6 +116,7 @@ Create a backup script that runs as a Podman container:
 BACKUP_DIR=/srv/backups/postgres
 DATE=$(date +%Y%m%d_%H%M%S)
 
+mkdir -p "${BACKUP_DIR}"
 podman exec postgres pg_dumpall -U admin > "${BACKUP_DIR}/full_backup_${DATE}.sql"
 
 # Keep only last 7 days of backups
@@ -136,6 +143,7 @@ Both PostgreSQL and MySQL support initialization scripts that run on first start
 
 ```bash
 mkdir -p ~/db-init
+podman volume create pginitdata
 
 cat > ~/db-init/01-schema.sql << 'EOF'
 CREATE TABLE users (
@@ -159,9 +167,11 @@ EOF
 
 podman run -d \
   --name postgres-init \
-  -p 5432:5432 \
+  -p 5441:5432 \
+  -e POSTGRES_USER=admin \
   -e POSTGRES_PASSWORD=securepass \
-  -v pgdata:/var/lib/postgresql/data:Z \
+  -e POSTGRES_DB=appdb \
+  -v pginitdata:/var/lib/postgresql/data:Z \
   -v ~/db-init:/docker-entrypoint-initdb.d:ro,Z \
   docker.io/library/postgres:16-alpine
 ```
@@ -172,32 +182,51 @@ Set up streaming replication with a primary and replica:
 
 ```bash
 podman network create db-network
+podman volume create pg-primary-data
+podman volume create pg-replica-data
 
 # Primary
 podman run -d \
   --name pg-primary \
   --network db-network \
-  -p 5432:5432 \
+  -p 5442:5432 \
   -e POSTGRES_PASSWORD=securepass \
-  -e POSTGRES_USER=replicator \
   -v pg-primary-data:/var/lib/postgresql/data:Z \
   docker.io/library/postgres:16-alpine
 
-# Configure replication on primary
-podman exec pg-primary psql -U replicator -c \
-  "ALTER SYSTEM SET wal_level = 'replica';"
-podman exec pg-primary psql -U replicator -c \
-  "ALTER SYSTEM SET max_wal_senders = 3;"
-podman exec pg-primary psql -U replicator -c \
+# Create a replication role and allow replication connections
+podman exec pg-primary psql -U postgres -c \
+  "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replpass';"
+podman exec pg-primary sh -c \
+  "echo 'host replication replicator all scram-sha-256' >> /var/lib/postgresql/data/pg_hba.conf"
+podman exec pg-primary psql -U postgres -c \
   "SELECT pg_reload_conf();"
+
+# Seed the replica with a base backup
+podman run --rm \
+  --network db-network \
+  -e PGPASSWORD=replpass \
+  -v pg-replica-data:/var/lib/postgresql/data:Z \
+  docker.io/library/postgres:16-alpine \
+  pg_basebackup -h pg-primary -D /var/lib/postgresql/data -U replicator -Fp -Xs -P -R
+
+# Start the replica
+podman run -d \
+  --name pg-replica \
+  --network db-network \
+  -v pg-replica-data:/var/lib/postgresql/data:Z \
+  docker.io/library/postgres:16-alpine
 ```
 
 ## Database Monitoring
 
-Run a monitoring container alongside your database:
+Run a monitoring container alongside your database on the same Podman network:
 
 ```bash
 # pgAdmin for PostgreSQL
+podman network exists db-network || podman network create db-network
+podman network connect db-network postgres
+
 podman run -d \
   --name pgadmin \
   --network db-network \
@@ -214,11 +243,11 @@ Monitor database performance metrics:
 podman stats postgres
 
 # Check PostgreSQL active connections
-podman exec postgres psql -U admin -c \
+podman exec postgres psql -U admin -d appdb -c \
   "SELECT count(*) as connections, state FROM pg_stat_activity GROUP BY state;"
 
 # Check database sizes
-podman exec postgres psql -U admin -c \
+podman exec postgres psql -U admin -d appdb -c \
   "SELECT datname, pg_size_pretty(pg_database_size(datname)) FROM pg_database ORDER BY pg_database_size(datname) DESC;"
 ```
 
@@ -227,6 +256,8 @@ podman exec postgres psql -U admin -c \
 Upgrade a database by running the new version alongside the old one:
 
 ```bash
+podman rename postgres postgres-old
+
 # Export from old version
 podman exec postgres-old pg_dumpall -U admin > /tmp/db_export.sql
 
