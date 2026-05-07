@@ -37,7 +37,7 @@ done
 
 # Export the full Swarm stack configuration
 docker stack ls
-docker stack config mystack > /tmp/swarm-stack.yml
+docker stack config --compose-file docker-compose.yml > /tmp/swarm-stack.yml
 ```
 
 ## Converting Swarm Services to Podman Pods
@@ -99,31 +99,48 @@ podman run -d \
 Replace Swarm's service management with systemd for automatic restarts and boot-time startup.
 
 ```bash
-# Generate systemd services for the entire pod
-podman generate systemd \
-  --new \
-  --name myapp-pod \
-  --files
+# Create Quadlet files for the pod and containers
+mkdir -p ~/.config/containers/systemd/
 
-# This creates:
-# pod-myapp-pod.service
-# container-myapp-db.service
-# container-myapp-web.service
+cat > ~/.config/containers/systemd/db-data.volume << 'EOF'
+[Volume]
+VolumeName=db-data
+EOF
 
-# Move the service files to the systemd directory
-mkdir -p ~/.config/systemd/user/
-mv pod-myapp-pod.service ~/.config/systemd/user/
-mv container-myapp-*.service ~/.config/systemd/user/
+cat > ~/.config/containers/systemd/myapp.pod << 'EOF'
+[Pod]
+PodName=myapp-pod
+PublishPort=8080:80
+EOF
 
-# Reload systemd and enable the pod service
+cat > ~/.config/containers/systemd/myapp-db.container << 'EOF'
+[Container]
+ContainerName=myapp-db
+Image=docker.io/library/postgres:16
+Environment=POSTGRES_PASSWORD=secret
+Volume=db-data.volume:/var/lib/postgresql/data
+Pod=myapp.pod
+EOF
+
+cat > ~/.config/containers/systemd/myapp-web.container << 'EOF'
+[Container]
+ContainerName=myapp-web
+Image=docker.io/myapp:latest
+Environment=DB_HOST=localhost
+Pod=myapp.pod
+EOF
+
+# Reload systemd and enable the generated services
 systemctl --user daemon-reload
-systemctl --user enable pod-myapp-pod.service
+systemctl --user enable myapp-pod.service myapp-db.service myapp-web.service
 
-# Start the pod through systemd
-systemctl --user start pod-myapp-pod.service
+# Start the pod and containers through systemd
+systemctl --user start myapp-pod.service
+systemctl --user start myapp-db.service myapp-web.service
 
 # Check the status
-systemctl --user status pod-myapp-pod.service
+systemctl --user status myapp-pod.service
+systemctl --user status myapp-db.service myapp-web.service
 
 # Enable lingering so services survive logout
 loginctl enable-linger $(whoami)
@@ -153,9 +170,9 @@ done
 # Run nginx as a load balancer
 cat > /tmp/nginx-lb.conf << 'NGINX'
 upstream backend {
-    server web-1:8080;
-    server web-2:8080;
-    server web-3:8080;
+    server web-1:80;
+    server web-2:80;
+    server web-3:80;
 }
 server {
     listen 80;
@@ -179,7 +196,7 @@ For multi-node orchestration, migrate Swarm services to Kubernetes.
 
 ```bash
 # Generate Kubernetes YAML from a running Podman pod
-podman generate kube myapp-pod > myapp-deployment.yaml
+podman kube generate myapp-pod > myapp-deployment.yaml
 
 # Review and edit the generated YAML
 cat myapp-deployment.yaml
@@ -213,7 +230,7 @@ spec:
       - name: web
         image: docker.io/myapp:latest
         ports:
-        - containerPort: 8080
+        - containerPort: 80
         env:
         - name: DB_HOST
           value: "myapp-db"
@@ -226,7 +243,7 @@ spec:
   type: LoadBalancer
   ports:
   - port: 8080
-    targetPort: 8080
+    targetPort: 80
   selector:
     app: myapp
 EOF
@@ -242,11 +259,11 @@ Convert Docker Swarm secrets to Podman secrets.
 # List Swarm secrets
 docker secret ls
 
-# Export a Swarm secret (if accessible)
-docker secret inspect my_secret | jq -r '.[0].Spec.Data' | base64 -d
+# Docker does not expose the secret value through docker secret inspect.
+# Recreate the secret from your original secret file or source value.
 
 # Create the equivalent Podman secret
-echo "my-secret-value" | podman secret create my_secret -
+printf '%s' "my-secret-value" | podman secret create my_secret -
 
 # Use the secret in a Podman container
 podman run -d \
@@ -294,4 +311,4 @@ echo "- Volumes: Migrate using tar export/import"
 
 ## Summary
 
-Migrating Docker Swarm services to Podman involves choosing the right orchestration approach for your needs. For single-node deployments, Podman pods with systemd service generation provide reliable container grouping and automatic restart capabilities. For multi-node orchestration with replicas and load balancing, Kubernetes is the natural successor to Docker Swarm, and Podman's `generate kube` command simplifies the transition. Migrate secrets with `podman secret create`, handle replicas with manual scaling or Kubernetes deployments, and use systemd for service lifecycle management.
+Migrating Docker Swarm services to Podman involves choosing the right orchestration approach for your needs. For single-node deployments, Podman pods with Quadlet and systemd provide reliable container grouping and automatic restart capabilities. For multi-node orchestration with replicas and load balancing, Kubernetes is the natural successor to Docker Swarm, and Podman's `kube generate` command simplifies the transition. Migrate secrets with `podman secret create`, handle replicas with manual scaling or Kubernetes deployments, and use systemd for service lifecycle management.
