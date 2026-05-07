@@ -8,7 +8,7 @@ Description: Add IPv6 IP configurations to Azure VM network interfaces, assign p
 
 ## Introduction
 
-Azure VMs get IPv6 addresses through their Network Interface Cards (NICs). Each NIC can have multiple IP configurations, and you add a secondary IPv6 IP configuration alongside the primary IPv4 configuration. This dual-stack NIC setup allows VMs to communicate over both IPv4 and IPv6. IPv6 configurations can use private addresses (within VNet subnets) and optionally public IPv6 addresses.
+Azure VMs get IPv6 addresses through their Network Interface Cards (NICs). Azure VMs aren't supported as IPv6-only, so you keep a primary IPv4 configuration and add IPv6 on a secondary IP configuration for dual-stack operation. Each NIC can have at most one private IPv6 address, and you can optionally associate a public IPv6 address with that IPv6 IP configuration.
 
 ## Add IPv6 to Existing VM NIC
 
@@ -129,7 +129,7 @@ resource "azurerm_linux_virtual_machine" "web" {
 
   admin_ssh_key {
     username   = "azureuser"
-    public_key = file("~/.ssh/id_rsa.pub")
+    public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
   }
 }
 
@@ -145,27 +145,34 @@ output "vm_public_ipv6" {
 ## Configure IPv6 Inside the VM
 
 ```bash
-# After VM provisioning, the VM OS needs to configure the IPv6 address
-# On Ubuntu/Debian, this happens automatically via DHCP
+# After VM provisioning, guest OS behavior depends on the image.
+# Supported Debian images in Azure are preconfigured for DHCPv6.
+# Ubuntu images may require enabling DHCPv6.
 
 # Verify inside the VM
 ip -6 addr show
 
-# If IPv6 address not showing (older OS versions):
-# Check if dhcpcd or netplan is handling the secondary NIC config
+# If the IPv6 address is not showing on Ubuntu 17.10+:
+sudo grep -qxF 'timeout 10;' /etc/dhcp/dhclient.conf || echo 'timeout 10;' | sudo tee -a /etc/dhcp/dhclient.conf
 
-# On Ubuntu with Netplan:
-cat /etc/netplan/50-cloud-init.yaml
-# Add if needed:
-# ethernets:
-#   eth0:
-#     dhcp4: true
-#     dhcp6: true
+sudo tee /etc/cloud/cloud.cfg.d/91-azure-network.cfg >/dev/null <<'EOF'
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+      dhcp6: true
+      match:
+        driver: hv_netvsc
+      set-name: eth0
+EOF
 
-sudo netplan apply
+sudo reboot
+
+# After reconnecting, verify IPv6 again
+ip -6 addr show
 
 # Test IPv6 from inside VM
-ping6 fd00:db8::1  # VNet gateway
 curl -6 https://ipv6.icanhazip.com
 ```
 
@@ -173,14 +180,14 @@ curl -6 https://ipv6.icanhazip.com
 
 ```bash
 # Add NIC IPv6 config to load balancer backend pool
-az network nic ip-config update \
+az network nic ip-config address-pool add \
     --resource-group "$RG" \
     --nic-name "$NIC_NAME" \
-    --name "ipv6-config" \
+    --ip-config-name "ipv6-config" \
     --lb-name lb-dualstack \
-    --lb-address-pools backendpool-dualstack
+    --address-pool backendpool-dualstack
 ```
 
 ## Conclusion
 
-Azure VM IPv6 requires adding a secondary IP configuration to the NIC with `private_ip_address_version = "IPv6"` and pointing to an IPv6 subnet. The IPv6 subnet must exist in the VNet's IPv6 address space. Public IPv6 access requires a Standard SKU public IP with `ip_version = "IPv6"`. Most modern Azure VM images (Ubuntu 22.04+, RHEL 8+, Windows Server 2022) configure IPv6 automatically via DHCPv6 when an IPv6 IP configuration is present on the NIC.
+Azure VM IPv6 requires keeping a primary IPv4 configuration and adding a secondary NIC IP configuration with `private_ip_address_version = "IPv6"` on a subnet that has an IPv6 prefix from the VNet's IPv6 address space. Each NIC can have at most one private IPv6 address. Public IPv6 access requires a Standard SKU public IP with `ip_version = "IPv6"`. Guest OS configuration varies by image: supported Debian images in Azure are preconfigured for DHCPv6, while Ubuntu and some other Linux images may require enabling DHCPv6 inside the VM.
