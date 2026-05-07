@@ -103,11 +103,13 @@ resource "azurerm_virtual_network_peering" "spoke_to_hub" {
 ```hcl
 provider "azurerm" {
   alias = "east_us"
+  features {}
   # ... configuration
 }
 
 provider "azurerm" {
   alias = "west_europe"
+  features {}
   # ... configuration
 }
 
@@ -164,10 +166,10 @@ az network vnet peering list \
   --output table
 
 # Test connectivity between peered VNets
-# From a VM in VNet A:
+# From a VM in VNet A, if NSGs and guest firewalls allow ICMP:
 ping <vm-private-ip-in-vnet-b>
 ```
 
 ## Conclusion
 
-Peering is non-transitive: if VNet A peers with hub, and hub peers with VNet B, VNet A cannot route to VNet B without direct peering or using Azure Firewall/NVA in the hub as a router. For hub-spoke architectures, set `allow_gateway_transit = true` on hub-to-spoke peerings and `use_remote_gateways = true` on spoke-to-hub peerings to allow spokes to use the hub's VPN or ExpressRoute gateway for on-premises connectivity. VNet address spaces must not overlap-plan IP ranges carefully before peering since address space changes require disconnecting and reconnecting peerings.
+Peering is non-transitive: if VNet A peers with hub, and hub peers with VNet B, VNet A cannot route to VNet B without direct peering or using Azure Firewall/NVA in the hub as a router. For hub-spoke architectures, set `allow_gateway_transit = true` on hub-to-spoke peerings and `use_remote_gateways = true` on spoke-to-hub peerings to allow spokes to use the hub's VPN or ExpressRoute gateway for on-premises connectivity. VNet address spaces must not overlap-plan IP ranges carefully before peering, and if you later resize a peered VNet address space, sync the peering so the remote VNet picks up the updated prefixes.
