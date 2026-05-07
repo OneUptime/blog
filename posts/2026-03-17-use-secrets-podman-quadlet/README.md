@@ -52,7 +52,7 @@ systemctl --user start my-app
 # Check the status
 systemctl --user status my-app
 
-# Enable to start on boot
+# Enable to start with the user systemd manager
 systemctl --user enable my-app
 ```
 
