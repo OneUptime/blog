@@ -10,7 +10,7 @@ Description: Learn how to create and configure containers using the Podman REST 
 
 > Creating containers through the Podman REST API gives you fine-grained control over every configuration option, from resource limits to network settings, all through simple HTTP requests.
 
-The Podman REST API lets you create containers programmatically with the same flexibility as the `podman run` command. You define the container configuration as a JSON payload and send it to the API endpoint. This guide walks through container creation from basic setups to advanced configurations with port mappings, volumes, environment variables, and resource constraints.
+The Podman REST API lets you create containers programmatically with the same flexibility as the `podman run` command. You define the container configuration as a JSON payload and send it to the API endpoint. The image must already exist in local Podman storage; if it does not, pull it first with `podman pull` or the image pull API. This guide walks through container creation from basic setups to advanced configurations with port mappings, volumes, environment variables, and resource constraints.
 
 ---
 
@@ -137,7 +137,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
     },
     "mounts": [
       {
-        "destination": "/var/lib/postgresql/data",
+        "target": "/var/lib/postgresql/data",
         "source": "pg-data",
         "type": "volume"
       }
@@ -158,10 +158,10 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
     "name": "web-with-content",
     "mounts": [
       {
-        "destination": "/usr/share/nginx/html",
+        "target": "/usr/share/nginx/html",
         "source": "/home/user/website",
         "type": "bind",
-        "options": ["ro"]
+        "readonly": true
       }
     ]
   }' \
@@ -231,7 +231,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
     "command": ["node", "server.js"],
     "mounts": [
       {
-        "destination": "/app",
+        "target": "/app",
         "source": "/home/user/my-node-app",
         "type": "bind"
       }
@@ -267,14 +267,14 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 Set automatic restart behavior for containers.
 
 ```bash
-# Create a container with a restart policy
+# Create a container with an on-failure restart policy
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
   -H "Content-Type: application/json" \
   -d '{
     "image": "docker.io/library/nginx:latest",
-    "name": "always-running",
-    "restart_policy": "always",
+    "name": "restart-on-failure",
+    "restart_policy": "on-failure",
     "restart_tries": 5
   }' \
   http://localhost/v4.0.0/libpod/containers/create
@@ -332,7 +332,8 @@ def podman_request(method, path, body=None):
     conn.request(method, path, body=data, headers=headers)
 
     response = conn.getresponse()
-    result = json.loads(response.read().decode())
+    raw = response.read()
+    result = json.loads(raw.decode()) if raw else None
     conn.close()
     return response.status, result
 
