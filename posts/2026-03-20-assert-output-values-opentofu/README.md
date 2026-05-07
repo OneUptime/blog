@@ -183,7 +183,7 @@ run "connection_info_has_correct_port" {
 
 ## Testing Sensitive Outputs
 
-Sensitive outputs can be referenced in assertions but their values are redacted in failure messages:
+Sensitive outputs can be referenced in assertions, but `error_message` should not include the sensitive value itself:
 
 ```hcl
 # modules/rds/outputs.tf
@@ -210,7 +210,7 @@ run "db_endpoint_is_populated" {
 
   assert {
     condition     = output.db_endpoint != ""
-    # Sensitive values are redacted in error messages
+    # Keep error_message static; referencing a sensitive value here suppresses the rendered message
     error_message = "Database endpoint should not be empty"
   }
 }
