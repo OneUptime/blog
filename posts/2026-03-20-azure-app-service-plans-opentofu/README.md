@@ -10,10 +10,10 @@ Description: Learn how to create and configure Azure App Service Plans with Open
 
 Azure App Service Plans define the compute resources for running App Service apps. OpenTofu manages App Service Plans with various tiers from Free to Isolated, supporting Windows and Linux workloads.
 
-## Step 1: Create a Basic App Service Plan
+## Step 1: Create a Premium v3 App Service Plan
 
 ```hcl
-# main.tf - Standard App Service Plan for production web apps
+# main.tf - Premium v3 App Service Plan for production web apps
 
 resource "azurerm_service_plan" "standard_plan" {
   name                = "my-app-service-plan"
@@ -36,19 +36,19 @@ resource "azurerm_service_plan" "standard_plan" {
 ## Step 2: Zone-Redundant Premium Plan
 
 ```hcl
-# Zone-redundant plan for high availability (requires Premium v2 or higher)
+# Zone-redundant plan for high availability on a supported Premium tier
 resource "azurerm_service_plan" "zone_redundant_plan" {
   name                = "ha-app-service-plan"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   os_type             = "Linux"
-  sku_name            = "P2v3"  # Premium v3, 2 vCores
+  sku_name            = "P2v3"  # Premium v3, 4 vCores
 
-  # Spreads instances across 3 availability zones automatically
+  # Azure distributes instances across available availability zones automatically
   zone_balancing_enabled = true
 
-  # Minimum 3 instances required for zone redundancy
-  worker_count = 3
+  # Minimum 2 instances required for zone redundancy
+  worker_count = 2
 }
 ```
 
@@ -79,9 +79,9 @@ variable "environment" {
 # Map environment to appropriate SKU
 locals {
   plan_sku = {
-    development = "B1"   # Basic - no autoscale or custom domains
-    staging     = "S1"   # Standard - autoscale, custom domains
-    production  = "P2v3" # Premium - VNet integration, larger scale
+    development = "B1"   # Basic - low-cost dedicated compute
+    staging     = "S1"   # Standard - autoscale, deployment slots
+    production  = "P2v3" # Premium - zone redundancy support, larger scale
   }
 }
 
@@ -126,4 +126,4 @@ output "service_plan_sku" {
 
 ## Summary
 
-Azure App Service Plans managed with OpenTofu provide the foundation for hosting web applications. Using environment-based SKU variables ensures development environments use cost-effective tiers while production uses Premium plans with zone redundancy and VNet integration.
+Azure App Service Plans managed with OpenTofu provide the foundation for hosting web applications. Using environment-based SKU variables ensures development environments use cost-effective tiers while production can use Premium plans with larger scale and support for zone-redundant deployments.
