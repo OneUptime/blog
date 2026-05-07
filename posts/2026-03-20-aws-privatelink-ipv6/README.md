@@ -8,77 +8,104 @@ Description: Configure AWS PrivateLink endpoint services to support IPv6 connect
 
 ## Introduction
 
-AWS PrivateLink IPv6 enables private IPv6 connectivity between cloud resources and on-premises or inter-VPC networks. Proper configuration requires setting up dual-stack support, IPv6 BGP sessions, and route advertisement.
+AWS PrivateLink IPv6 enables private IPv6 connectivity to services exposed through interface VPC endpoints. Proper configuration requires enabling IPv6 on the endpoint service, using dualstack Network Load Balancers on the provider side, and creating interface endpoints with compatible IP address and DNS settings.
 
 ## Prerequisites
 
-- VPC/VNet with dual-stack (IPv4 + IPv6) subnets
+- Service provider VPC and subnets with associated IPv6 CIDR blocks
+- Network Load Balancer configured with the `dualstack` IP address type
+- Consumer VPC subnets that are dual-stack for `dualstack` endpoints or IPv6-only for `ipv6` endpoints
 - An existing AWS account with appropriate IAM permissions
-- IPv6 address space allocated for the connection
 
 ## Step 1: Verify IPv6 Prerequisites
 
 ```bash
-# Check VPC has IPv6 CIDR
+# Check that the service VPC has an associated IPv6 CIDR block
+aws ec2 describe-vpcs \
+    --vpc-ids vpc-0123456789abcdef0 \
+    --query 'Vpcs[].{VpcId:VpcId,IPv6CIDRs:Ipv6CidrBlockAssociationSet[*].Ipv6CidrBlock}'
 
-aws ec2 describe-vpcs --query 'Vpcs[].{VpcId:VpcId, IPv6CIDRs:Ipv6CidrBlockAssociationSet}'
+# Check the endpoint service's currently supported IP address types
+aws ec2 describe-vpc-endpoint-service-configurations \
+    --service-ids vpce-svc-0123456789abcdef0 \
+    --query 'ServiceConfigurations[].{ServiceId:ServiceId,SupportedIpAddressTypes:SupportedIpAddressTypes}'
 ```
 
-## Step 2: Enable IPv6 on the Service
+## Step 2: Enable IPv6 on the Endpoint Service
 
 ```bash
-# Enable IPv6 for the relevant AWS service
-# (Command varies by specific service)
-aws ec2 describe-vpc-attribute     --vpc-id vpc-0123456789abcdef0     --attribute enableDnsSupport
+# The Network Load Balancer for the endpoint service must use dualstack
+aws elbv2 describe-load-balancers \
+    --load-balancer-arns arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/net/example/0123456789abcdef \
+    --query 'LoadBalancers[].{Arn:LoadBalancerArn,IpAddressType:IpAddressType}'
 
-# Associate IPv6 CIDR block
-aws ec2 associate-vpc-cidr-block     --vpc-id vpc-0123456789abcdef0     --amazon-provided-ipv6-cidr-block
+# If needed, switch the Network Load Balancer to dualstack
+aws elbv2 set-ip-address-type \
+    --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/net/example/0123456789abcdef \
+    --ip-address-type dualstack
+
+# Enable IPv6 support on the endpoint service
+aws ec2 modify-vpc-endpoint-service-configuration \
+    --service-id vpce-svc-0123456789abcdef0 \
+    --add-supported-ip-address-types ipv6
 ```
 
-## Step 3: Configure IPv6 BGP
+## Step 3: Create a Dual-Stack Interface Endpoint
 
 ```bash
-# Configure BGP for IPv6 on Direct Connect or VPN
-# For Direct Connect Virtual Interface:
-aws directconnect create-private-virtual-interface     --connection-id dxcon-XXXXX     --new-private-virtual-interface         virtualInterfaceName=ipv6-vif,        vlan=100,        asn=65000,        amazonAddress=,        customerAddress=,        addressFamily=ipv6,        virtualGatewayId=vgw-XXXXX
+# Create an interface endpoint that can use both IPv4 and IPv6
+aws ec2 create-vpc-endpoint \
+    --vpc-endpoint-type Interface \
+    --vpc-id vpc-0123456789abcdef0 \
+    --service-name com.amazonaws.vpce.us-east-1.vpce-svc-0123456789abcdef0 \
+    --subnet-ids subnet-0123456789abcdef0 subnet-0fedcba9876543210 \
+    --security-group-ids sg-0123456789abcdef0 \
+    --ip-address-type dualstack
 ```
 
-## Step 4: Add IPv6 Routes
+## Step 4: Configure DNS Record IP Type
 
 ```bash
-# Add IPv6 route to VPC route table
-aws ec2 create-route \
-    --route-table-id rtb-0123456789abcdef0 \
-    --destination-ipv6-cidr-block '::/0' \
-    --gateway-id igw-XXXXX
+# Configure the endpoint to return both A and AAAA records
+aws ec2 modify-vpc-endpoint \
+    --vpc-endpoint-id vpce-0123456789abcdef0 \
+    --dns-options DnsRecordIpType=dualstack
 ```
 
 ## Step 5: Test IPv6 Connectivity
 
 ```bash
-# Test from cloud instance
-ping6 -c 3 <on-premises-ipv6-address>
+# Confirm the endpoint is dualstack and inspect its DNS names
+aws ec2 describe-vpc-endpoints \
+    --vpc-endpoint-ids vpce-0123456789abcdef0 \
+    --query 'VpcEndpoints[].{State:State,IpAddressType:IpAddressType,DnsRecordIpType:DnsOptions.DnsRecordIpType,DnsNames:DnsEntries[*].DnsName}'
 
-# Verify route is learned
-aws ec2 describe-route-tables --route-table-ids rtb-XXX --query 'RouteTables[].Routes[?DestinationIpv6CidrBlock]'
+# Resolve AAAA records from a client in the VPC
+dig AAAA <vpc-endpoint-dns-name>
+
+# Example HTTPS test from a client in the VPC
+curl -6 https://<private-dns-name-or-endpoint-dns-name>
 ```
 
 ## Step 6: Terraform Example
 
 ```hcl
-# Terraform for AWS PrivateLink IPv6
-resource "aws_vpn_connection" "ipv6_vpn" {
-  vpn_gateway_id      = aws_vpn_gateway.main.id
-  customer_gateway_id = aws_customer_gateway.onprem.id
-  type                = "ipsec.1"
+# Terraform for an IPv6-capable interface VPC endpoint
+resource "aws_vpc_endpoint" "privatelink_ipv6" {
+  vpc_id             = aws_vpc.main.id
+  service_name       = "com.amazonaws.vpce.us-east-1.vpce-svc-0123456789abcdef0"
+  vpc_endpoint_type  = "Interface"
+  subnet_ids         = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+  security_group_ids = [aws_security_group.endpoint.id]
 
-  # Enable IPv6
-  local_ipv6_network_cidr  = "::/0"
-  remote_ipv6_network_cidr = "::/0"
-  tunnel_inside_ip_version = "ipv6"
+  ip_address_type = "dualstack"
+
+  dns_options {
+    dns_record_ip_type = "dualstack"
+  }
 }
 ```
 
 ## Conclusion
 
-AWS PrivateLink IPv6 requires enabling dual-stack at the subnet level, configuring IPv6 BGP sessions, and adding IPv6 routes in the relevant route tables. Test connectivity end-to-end after configuration. Use Terraform for declarative, repeatable deployments. Monitor IPv6 BGP session state and route advertisement with OneUptime's network health checks.
+AWS PrivateLink IPv6 requires enabling IPv6 on the endpoint service, ensuring its Network Load Balancers use the dualstack IP address type, and creating interface endpoints with compatible IP address and DNS settings. Test DNS resolution and application connectivity end-to-end after configuration. Use Terraform for declarative, repeatable deployments. Monitor endpoint health and DNS behavior with OneUptime's network health checks.
