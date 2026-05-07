@@ -49,7 +49,7 @@ Give each cluster a designated owner or owning team:
 2. Go to **Cluster > Cluster Members**.
 3. Click **Add**.
 4. Search for the team lead or the team's group in your identity provider.
-5. Select **Cluster Owner** as the role.
+5. Select **Owner** as the role.
 6. Click **Create**.
 
 **Via Terraform:**
@@ -101,71 +101,74 @@ Once projects exist, cluster owners can add team members:
 2. Go to **Project > Members**.
 3. Click **Add**.
 4. Search for team members or groups.
-5. Assign **Project Owner** to tech leads and **Project Member** to developers.
+5. Assign **Owner** to tech leads and **Member** to developers.
 6. Click **Create**.
 
 ## Step 5: Create a Delegated Admin Role
 
-If you want cluster owners to manage users but not have full cluster infrastructure access, create a custom role:
+If you want delegated administrators to manage users but not have full cluster infrastructure access, create a custom role:
 
 ```yaml
 apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: cluster-user-manager
-spec:
-  context: cluster
-  displayName: Cluster User Manager
-  rules:
-    # Manage cluster members
-    - apiGroups: ["management.cattle.io"]
-      resources: ["clusterroletemplatebindings"]
-      verbs: ["create", "get", "list", "watch", "update", "delete"]
-    # Manage projects
-    - apiGroups: ["management.cattle.io"]
-      resources: ["projects"]
-      verbs: ["create", "get", "list", "watch", "update", "delete"]
-    # Manage project members
-    - apiGroups: ["management.cattle.io"]
-      resources: ["projectroletemplatebindings"]
-      verbs: ["create", "get", "list", "watch", "update", "delete"]
-    # View cluster resources (read-only)
-    - apiGroups: [""]
-      resources: ["nodes", "namespaces", "events"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: ["apps"]
-      resources: ["deployments", "statefulsets", "daemonsets"]
-      verbs: ["get", "list", "watch"]
+context: cluster
+displayName: Cluster User Manager
+rules:
+  # Manage cluster members
+  - apiGroups: ["management.cattle.io"]
+    resources: ["clusterroletemplatebindings"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
+  # Manage projects
+  - apiGroups: ["management.cattle.io"]
+    resources: ["projects"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
+  # Manage project members
+  - apiGroups: ["management.cattle.io"]
+    resources: ["projectroletemplatebindings"]
+    verbs: ["create", "get", "list", "watch", "update", "delete"]
+  # View cluster resources (read-only)
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
 ```
 
 ```bash
+# Run this against the Rancher management cluster.
 kubectl apply -f cluster-user-manager.yaml
 ```
 
-This role allows someone to manage people and projects without being able to modify cluster infrastructure.
+This role allows someone to manage membership bindings and projects without full `Owner` access. If they need to use the membership pages in the Rancher dashboard, Rancher also documents additional global-resource permissions for user and role lookup.
 
 ## Step 6: Set Up Cross-Team Visibility
 
-Sometimes teams need read-only visibility into other teams' projects. The platform team can set up cross-team read access:
+Sometimes teams need read-only visibility into other teams' projects. The platform team can set up cross-team read access from the Rancher management cluster:
 
 ```bash
 #!/bin/bash
 # grant-cross-team-read-access.sh
+set -euo pipefail
 
 CLUSTER_ID="c-m-xxxxx"
+QA_GROUP="openldap_group://cn=qa-team,ou=groups,dc=example,dc=com"
 
 # Give the QA team read-only access to all projects
-for project in $(kubectl get projects.management.cattle.io -n $CLUSTER_ID -o jsonpath='{.items[*].metadata.name}'); do
-  cat <<EOF | kubectl apply -f -
+kubectl --namespace "$CLUSTER_ID" get projects.management.cattle.io \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.backingNamespace}{"\n"}{end}' |
+while read -r PROJECT_ID BACKING_NAMESPACE; do
+  cat <<EOF | kubectl create -f -
 apiVersion: management.cattle.io/v3
 kind: ProjectRoleTemplateBinding
 metadata:
   generateName: prtb-
-  namespace: $CLUSTER_ID
-spec:
-  projectName: "$CLUSTER_ID:$project"
-  roleTemplateId: "read-only"
-  groupPrincipalId: "openldap_group://cn=qa-team,ou=groups,dc=example,dc=com"
+  namespace: ${BACKING_NAMESPACE}
+projectName: "${CLUSTER_ID}:${PROJECT_ID}"
+roleTemplateName: read-only
+groupPrincipalName: "${QA_GROUP}"
 EOF
 done
 ```
@@ -197,6 +200,8 @@ Delegation works best with guardrails that prevent teams from making harmful cha
 
 **Resource quotas per project:**
 
+Project resources are managed on the Rancher management cluster:
+
 ```yaml
 apiVersion: management.cattle.io/v3
 kind: Project
@@ -204,6 +209,7 @@ metadata:
   name: p-xxxxx
   namespace: c-m-xxxxx
 spec:
+  clusterName: c-m-xxxxx
   displayName: web-app
   resourceQuota:
     limit:
@@ -212,7 +218,6 @@ spec:
       requestsMemory: "16Gi"
       limitsCpu: "16000m"
       limitsMemory: "32Gi"
-    usedLimit: {}
   namespaceDefaultResourceQuota:
     limit:
       pods: "50"
@@ -222,37 +227,23 @@ spec:
 
 **Limit the roles that cluster owners can assign:**
 
-```yaml
-apiVersion: management.cattle.io/v3
-kind: RoleTemplate
-metadata:
-  name: project-member
-spec:
-  context: project
-  locked: false    # Can be assigned
----
-apiVersion: management.cattle.io/v3
-kind: RoleTemplate
-metadata:
-  name: dangerous-role
-spec:
-  context: project
-  locked: true     # Cannot be assigned by cluster owners
-```
+Lock the roles you do not want assigned. In Rancher, a locked role is removed from the member-role drop-down and cannot be newly assigned. For example, if you want to stop teams from granting broad access, lock roles such as `Cluster Owner`, `Cluster Member`, or `Create Projects`, then provide a narrower custom role for new assignments.
 
 ## Step 9: Monitor Delegated Actions
 
 Track what delegated administrators do:
 
 ```bash
-# Monitor cluster role changes
-kubectl get events --all-namespaces --field-selector reason=ClusterRoleTemplateBindingChanged -w
+# Watch membership and project changes on the Rancher management cluster
+kubectl get clusterroletemplatebindings.management.cattle.io -A -w
+kubectl get projectroletemplatebindings.management.cattle.io -A -w
+kubectl get projects.management.cattle.io -A -w
 
-# Check audit logs for delegation actions
-grep -E "clusterroletemplatebindings|projectroletemplatebindings|projects" \
-  /var/log/rancher/audit/audit.log | \
-  jq -r 'select(.verb == "create" or .verb == "delete") | "\(.requestReceivedTimestamp) \(.user.username) \(.verb) \(.objectRef.resource)/\(.objectRef.name)"'
+# For Helm installs with Rancher API auditing enabled
+kubectl -n cattle-system logs -f <rancher-pod-name> rancher-audit-log
 ```
+
+For Docker installs, Rancher writes the API audit log to `/var/log/auditlog/rancher-api-audit.log` by default.
 
 ## Step 10: Scale the Model
 
