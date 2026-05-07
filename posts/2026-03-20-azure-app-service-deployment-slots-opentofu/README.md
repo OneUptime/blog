@@ -8,7 +8,7 @@ Description: Learn how to configure Azure App Service deployment slots with Open
 
 ## Overview
 
-Azure App Service deployment slots allow you to deploy to a staging slot, validate the application, and then swap it into production with zero downtime. OpenTofu manages the slot configuration and swap settings.
+Azure App Service deployment slots allow you to deploy to a staging slot, validate the application, and then swap it into production with zero downtime. OpenTofu manages the slot configuration, including which app settings stay with a specific slot during a swap.
 
 ## Step 1: Create the Production Web App
 
@@ -29,11 +29,23 @@ resource "azurerm_linux_web_app" "production" {
     always_on = true
   }
 
-  # Sticky settings are NOT swapped between slots
+  identity {
+    type = "SystemAssigned"
+  }
+
+  sticky_settings {
+    app_setting_names = [
+      "SLOT_NAME",
+      "DATABASE_URL",
+      "APPLICATIONINSIGHTS_CONNECTION_STRING",
+    ]
+  }
+
+  # Slot-specific settings should be marked as sticky
   app_settings = {
-    SLOT_NAME              = "production"
-    DATABASE_URL           = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.prod_db_url.versionless_id})"
-    APPLICATION_INSIGHTS_KEY = azurerm_application_insights.prod_insights.instrumentation_key
+    SLOT_NAME                          = "production"
+    DATABASE_URL                       = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.prod_db_url.versionless_id})"
+    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.prod_insights.connection_string
   }
 }
 ```
@@ -53,10 +65,15 @@ resource "azurerm_linux_web_app_slot" "staging" {
     always_on = true
   }
 
-  # Staging-specific settings
+  identity {
+    type = "SystemAssigned"
+  }
+
+  # Slot-specific settings for the staging slot
   app_settings = {
-    SLOT_NAME    = "staging"
-    DATABASE_URL = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.staging_db_url.versionless_id})"
+    SLOT_NAME                          = "staging"
+    DATABASE_URL                       = "@Microsoft.KeyVault(SecretUri=${azurerm_key_vault_secret.staging_db_url.versionless_id})"
+    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.staging_insights.connection_string
   }
 }
 ```
@@ -64,33 +81,26 @@ resource "azurerm_linux_web_app_slot" "staging" {
 ## Step 3: Configure Slot-Sticky Settings
 
 ```hcl
-# Define which settings are "sticky" (not swapped with the slot)
-resource "azurerm_web_app_active_slot" "swap_config" {
-  # Note: In OpenTofu, we define the target production slot
-  slot_id = azurerm_linux_web_app_slot.staging.id
+# Add this block to azurerm_linux_web_app.production
+sticky_settings {
+  app_setting_names = [
+    "SLOT_NAME",
+    "DATABASE_URL",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING",
+  ]
 }
 ```
 
-## Step 4: Auto-Swap Configuration
+## Step 4: Swap the Slot After Validation
 
-```hcl
-# Enable auto-swap: automatically swap staging to production after successful deploy
-resource "azurerm_linux_web_app_slot" "staging_autoswap" {
-  name           = "staging"
-  app_service_id = azurerm_linux_web_app.production.id
+Auto-swap isn't supported for App Service web apps on Linux. For Linux apps, promote the staging slot explicitly from your deployment pipeline after validation.
 
-  site_config {
-    auto_swap_slot_name = "production"  # Swap to production automatically
-
-    application_stack {
-      node_version = "20-lts"
-    }
-  }
-
-  app_settings = {
-    SLOT_NAME = "staging"
-  }
-}
+```bash
+az webapp deployment slot swap \
+  --resource-group <resource-group> \
+  --name my-app-production \
+  --slot staging \
+  --target-slot production
 ```
 
 ## Step 5: Multiple Slots for Different Environments
@@ -134,4 +144,4 @@ output "staging_url" {
 
 ## Summary
 
-Azure App Service deployment slots with OpenTofu enable blue-green deployments with zero downtime. The staging slot receives new code, gets validated, and then swaps with production. Sticky settings ensure production secrets and configuration stay with the production slot throughout the swap.
+Azure App Service deployment slots with OpenTofu enable blue-green deployments with zero downtime. The staging slot receives new code, gets validated, and then swaps with production. Sticky settings ensure slot-specific secrets and configuration stay with their slot throughout the swap.
