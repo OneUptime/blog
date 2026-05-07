@@ -15,9 +15,9 @@ The Rancher CLI is a standalone binary that lets you interact with your Rancher 
 The easiest way to get the correct CLI version is directly from your Rancher instance:
 
 1. Log into your Rancher UI
-2. Click the question mark icon or help menu in the bottom-left corner
-3. Click **CLI Downloads**
-4. Select the appropriate binary for your operating system
+2. Click the menu button (☰) in the upper-left corner
+3. Click **About** at the bottom of the navigation sidebar
+4. Under **CLI Downloads**, select the appropriate binary for your operating system
 
 This ensures version compatibility between the CLI and your server.
 
@@ -35,24 +35,22 @@ brew install rancher-cli
 
 On Arch Linux:
 
-```bash
-pacman -S rancher-cli
-```
+Rancher CLI is not available in the official Arch repositories. If you use the AUR, look for a community-maintained package such as `rancher-cli-bin`.
 
 ## Installing on Linux
 
 Download and install the binary:
 
 ```bash
-# Download the latest release (adjust version as needed)
+# Download the current stable release (adjust version as needed)
 
-curl -LO https://github.com/rancher/cli/releases/download/v2.8.0/rancher-linux-amd64-v2.8.0.tar.gz
+curl -LO https://github.com/rancher/cli/releases/download/v2.14.1/rancher-linux-amd64-v2.14.1.tar.gz
 
 # Extract the archive
-tar -xzf rancher-linux-amd64-v2.8.0.tar.gz
+tar -xzf rancher-linux-amd64-v2.14.1.tar.gz
 
 # Move the binary to your PATH
-sudo mv rancher-v2.8.0/rancher /usr/local/bin/rancher
+sudo mv rancher-v2.14.1/rancher /usr/local/bin/rancher
 
 # Make it executable
 sudo chmod +x /usr/local/bin/rancher
@@ -61,12 +59,12 @@ sudo chmod +x /usr/local/bin/rancher
 rancher --version
 ```
 
-For ARM-based Linux systems (like Raspberry Pi):
+For 64-bit ARM-based Linux systems (like a Raspberry Pi running a 64-bit OS):
 
 ```bash
-curl -LO https://github.com/rancher/cli/releases/download/v2.8.0/rancher-linux-arm64-v2.8.0.tar.gz
-tar -xzf rancher-linux-arm64-v2.8.0.tar.gz
-sudo mv rancher-v2.8.0/rancher /usr/local/bin/rancher
+curl -LO https://github.com/rancher/cli/releases/download/v2.14.1/rancher-linux-arm64-v2.14.1.tar.gz
+tar -xzf rancher-linux-arm64-v2.14.1.tar.gz
+sudo mv rancher-v2.14.1/rancher /usr/local/bin/rancher
 sudo chmod +x /usr/local/bin/rancher
 ```
 
@@ -82,24 +80,25 @@ brew install rancher-cli
 
 ```bash
 # For Intel Macs
-curl -LO https://github.com/rancher/cli/releases/download/v2.8.0/rancher-darwin-amd64-v2.8.0.tar.gz
+curl -LO https://github.com/rancher/cli/releases/download/v2.14.1/rancher-darwin-amd64-v2.14.1.tar.gz
 
 # For Apple Silicon Macs
-curl -LO https://github.com/rancher/cli/releases/download/v2.8.0/rancher-darwin-arm64-v2.8.0.tar.gz
+curl -LO https://github.com/rancher/cli/releases/download/v2.14.1/rancher-darwin-arm64-v2.14.1.tar.gz
 
-# Extract and install
-tar -xzf rancher-darwin-*-v2.8.0.tar.gz
-sudo mv rancher-v2.8.0/rancher /usr/local/bin/rancher
-chmod +x /usr/local/bin/rancher
+# Extract the archive you downloaded and install
+ARCHIVE="rancher-darwin-arm64-v2.14.1.tar.gz" # or rancher-darwin-amd64-v2.14.1.tar.gz
+tar -xzf "$ARCHIVE"
+sudo mv rancher-v2.14.1/rancher /usr/local/bin/rancher
+sudo chmod +x /usr/local/bin/rancher
 
 rancher --version
 ```
 
 ## Installing on Windows
 
-1. Download `rancher-windows-amd64-v2.8.0.zip` from the GitHub releases page
+1. Download `rancher-windows-amd64-v2.14.1.zip` from the GitHub releases page
 2. Extract the ZIP file
-3. Move `rancher.exe` to a directory in your PATH (e.g., `C:\Windows\System32` or a custom tools directory)
+3. Move `rancher.exe` from the extracted `rancher-v2.14.1` directory to a directory in your PATH (for example, a custom tools directory such as `C:\Tools\rancher`)
 4. Open a new Command Prompt or PowerShell and verify:
 
 ```powershell
@@ -110,13 +109,13 @@ Alternatively, using the command line:
 
 ```powershell
 # Download
-Invoke-WebRequest -Uri "https://github.com/rancher/cli/releases/download/v2.8.0/rancher-windows-amd64-v2.8.0.zip" -OutFile rancher.zip
+Invoke-WebRequest -Uri "https://github.com/rancher/cli/releases/download/v2.14.1/rancher-windows-amd64-v2.14.1.zip" -OutFile rancher.zip
 
 # Extract
 Expand-Archive rancher.zip -DestinationPath C:\rancher
 
 # Add to PATH
-$env:PATH += ";C:\rancher"
+$env:PATH += ";C:\rancher\rancher-v2.14.1"
 
 # Verify
 rancher --version
@@ -129,22 +128,22 @@ rancher --version
 Once installed, log in to your Rancher server:
 
 ```bash
-rancher login https://rancher.example.com
+rancher login https://rancher.example.com --token token-xxxxx:yyyyyyyyyyyyyyyy
 ```
 
-The CLI will prompt you for a Bearer Token. You can generate one from the Rancher UI under **Account & API Keys**.
+You can generate a Bearer Token from the Rancher UI under your user avatar's **API & Keys** section.
 
 To log in non-interactively (useful for scripts):
 
 ```bash
 rancher login https://rancher.example.com \
   --token token-xxxxx:yyyyyyyyyyyyyyyy \
-  --skip-verify
+  --context c-m-abc12345:p-xyz789
 ```
 
 ### Understanding the Configuration File
 
-After logging in, the CLI creates a configuration file at `~/.rancher/cli2.json`. This file contains:
+After logging in, the CLI creates a configuration file at `~/.rancher/cli2.json` (or `%USERPROFILE%\.rancher\cli2.json` on Windows). This file contains:
 
 ```json
 {
@@ -170,11 +169,14 @@ You can configure multiple Rancher servers by logging in with different names:
 # Log in to production
 rancher login https://rancher-prod.example.com \
   --token token-prod:xxxx \
-  --context c-m-prod:p-default
+  --context c-m-prod:p-default \
+  --name production
 
 # Log in to staging with a different server name
-rancher server add staging https://rancher-staging.example.com \
-  --token token-staging:xxxx
+rancher login https://rancher-staging.example.com \
+  --token token-staging:xxxx \
+  --context c-m-staging:p-default \
+  --name staging
 ```
 
 Switch between servers:
@@ -185,60 +187,30 @@ rancher server switch
 
 ### Configuring for Self-Signed Certificates
 
-If your Rancher server uses a self-signed certificate, you have two options.
-
-Skip TLS verification:
-
-```bash
-rancher login https://rancher.example.com --token ${TOKEN} --skip-verify
-```
-
-Provide the CA certificate:
+If your Rancher server uses a self-signed certificate, Rancher CLI prompts you to continue with the connection the first time you connect. For repeatable setups, provide the CA certificate:
 
 ```bash
 rancher login https://rancher.example.com \
-  --token ${TOKEN} \
+  --token ${RANCHER_TOKEN} \
   --cacert /path/to/ca.crt
 ```
 
 ### Setting Up Environment Variables
 
-For convenience, set these environment variables in your shell profile:
+For convenience in shell scripts, you can define environment variables and reference them explicitly:
 
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
 export RANCHER_URL="https://rancher.example.com"
 export RANCHER_TOKEN="token-xxxxx:yyyyyyyyyyyyyyyy"
-export RANCHER_SKIP_VERIFY=true
+export RANCHER_CACERT="/path/to/ca.crt"
+
+rancher login "$RANCHER_URL" --token "$RANCHER_TOKEN" --cacert "$RANCHER_CACERT"
 ```
 
 ## Setting Up Shell Completion
 
-### Bash Completion
-
-```bash
-# Generate completion script
-rancher completion bash | sudo tee /etc/bash_completion.d/rancher > /dev/null
-
-# Load immediately
-source /etc/bash_completion.d/rancher
-```
-
-### Zsh Completion
-
-```bash
-# Generate completion script
-rancher completion zsh > "${fpath[1]}/_rancher"
-
-# Reload completions
-autoload -U compinit && compinit
-```
-
-### Fish Completion
-
-```bash
-rancher completion fish > ~/.config/fish/completions/rancher.fish
-```
+Rancher CLI does not currently include a built-in `completion` subcommand, so shell completion scripts cannot be generated directly from the CLI.
 
 ## Verifying Your Setup
 
@@ -254,7 +226,7 @@ rancher clusters ls
 # Check current context
 rancher context current
 
-# Test kubectl proxy
+# Test Kubernetes API access
 rancher kubectl get nodes
 ```
 
@@ -262,7 +234,7 @@ rancher kubectl get nodes
 
 ### "x509: certificate signed by unknown authority"
 
-This means your Rancher server uses a certificate not trusted by your system. Use `--skip-verify` or provide the CA certificate with `--cacert`.
+This means your Rancher server uses a certificate not trusted by your system. Confirm the certificate when prompted, or provide the CA certificate with `--cacert` during login.
 
 ### "401 Unauthorized"
 
