@@ -72,7 +72,8 @@ resource "azurerm_data_factory_linked_service_azure_sql_database" "source_db" {
   name            = "SourceSQLDatabase"
   data_factory_id = azurerm_data_factory.main.id
 
-  # Use managed identity authentication instead of credentials
+  # The SQL server must have a Microsoft Entra admin, and the
+  # Data Factory identity must exist as a contained database user.
   use_managed_identity = true
   connection_string    = "data source=${var.sql_server_fqdn};initial catalog=${var.sql_database_name};"
 }
@@ -85,21 +86,33 @@ resource "azurerm_data_factory_linked_service_azure_blob_storage" "storage" {
   # Authenticate using managed identity
   use_managed_identity = true
   service_endpoint     = azurerm_storage_account.datalake.primary_blob_endpoint
+  storage_kind         = "StorageV2"
 }
 
-# Linked service for Snowflake (custom linked service via JSON)
+# Linked service for Azure Key Vault used by other linked services
+resource "azurerm_data_factory_linked_service_key_vault" "key_vault" {
+  name            = "KeyVaultLinkedService"
+  data_factory_id = azurerm_data_factory.main.id
+  key_vault_id    = azurerm_key_vault.main.id
+}
+
+# Linked service for Snowflake V2 (custom linked service via JSON)
 resource "azurerm_data_factory_linked_custom_service" "snowflake" {
   name            = "SnowflakeLinkedService"
   data_factory_id = azurerm_data_factory.main.id
-  type            = "Snowflake"
+  type            = "SnowflakeV2"
 
   type_properties_json = jsonencode({
-    connectionString = "jdbc:snowflake://${var.snowflake_account}.snowflakecomputing.com/?user=${var.snowflake_user}&db=${var.snowflake_database}&warehouse=${var.snowflake_warehouse}"
+    accountIdentifier = var.snowflake_account
+    database          = var.snowflake_database
+    warehouse         = var.snowflake_warehouse
+    authenticationType = "Basic"
+    user              = var.snowflake_user
     password = {
-      type  = "AzureKeyVaultSecret"
+      type = "AzureKeyVaultSecret"
       store = {
-        referenceName = "KeyVaultLinkedService"
-        type = "LinkedServiceReference"
+        referenceName = azurerm_data_factory_linked_service_key_vault.key_vault.name
+        type          = "LinkedServiceReference"
       }
       secretName = "snowflake-password"
     }
@@ -123,6 +136,7 @@ resource "azurerm_data_factory_integration_runtime_azure" "cloud" {
   name            = "CloudIntegrationRuntime"
   data_factory_id = azurerm_data_factory.main.id
   location        = "AutoResolve"
+  virtual_network_enabled = true
   description     = "Auto-resolve Azure IR for cloud data movement"
 }
 ```
@@ -138,7 +152,7 @@ resource "azurerm_role_assignment" "adf_storage_contributor" {
   principal_id         = azurerm_data_factory.main.identity[0].principal_id
 }
 
-# Grant access to Key Vault for secret retrieval
+# Grant access to Key Vault for secret retrieval when the vault uses Azure RBAC
 resource "azurerm_role_assignment" "adf_keyvault_access" {
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Secrets User"
@@ -149,7 +163,7 @@ resource "azurerm_role_assignment" "adf_keyvault_access" {
 ## Best Practices
 
 - Use managed identity authentication for linked services rather than storing credentials in ADF - it eliminates credential rotation overhead.
-- Enable the managed virtual network on Data Factory to keep data movement within your Azure network perimeter.
+- Enable the managed virtual network on Data Factory and provision Azure integration runtimes inside it to keep data movement within your Azure network perimeter.
 - Use Git integration to version control your pipeline definitions alongside your OpenTofu infrastructure code.
 - Monitor pipeline runs using ADF Monitor and set up alerts for pipeline failures.
 - Use managed private endpoints for linked services that support them to prevent data exfiltration.
