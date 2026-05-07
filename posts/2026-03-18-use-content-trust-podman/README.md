@@ -8,7 +8,7 @@ Description: Learn how to enable and use content trust in Podman to ensure that 
 
 ---
 
-> Content trust ensures that every image you pull is exactly what its publisher intended, protecting you from supply chain attacks and tampered images.
+> Content trust can ensure that images you pull match signatures from trusted publishers, protecting you from supply chain attacks and tampered images.
 
 Content trust in Podman verifies that container images come from trusted sources and have not been modified since they were published. This mechanism protects against supply chain attacks where an attacker replaces a legitimate image with a malicious one. Podman uses signature verification policies to implement content trust.
 
@@ -112,7 +112,7 @@ ls /etc/containers/registries.d/
 sudo tee /etc/containers/registries.d/registry-example.yaml > /dev/null << 'EOF'
 docker:
   registry.example.com:
-    sigstore: https://signatures.example.com/sigstore
+    lookaside: https://signatures.example.com/sigstore
 EOF
 ```
 
@@ -193,4 +193,4 @@ EOF
 
 ## Summary
 
-Content trust in Podman protects your container supply chain by verifying image signatures before pulling or running images. By configuring trust policies in `policy.json` and setting up signature sources, you can ensure that only images from verified publishers enter your environment. Start with a permissive policy for known registries and progressively tighten it as you establish signing workflows for your own images.
+Content trust in Podman protects your container supply chain by verifying image signatures when images are pulled, including when `podman run` needs to pull an image. By configuring trust policies in `policy.json` and setting up signature sources, you can ensure that only images from verified publishers enter your environment. Start with a permissive policy for known registries and progressively tighten it as you establish signing workflows for your own images.
