@@ -18,8 +18,8 @@ Importing a checkpoint is the counterpart to exporting one. You take a checkpoin
 
 Before importing a checkpoint, ensure:
 
-- Podman 3.0+ and CRIU 3.15+ are installed on the target host
-- The checkpoint file (`.tar.gz`) is accessible on the local filesystem
+- Podman and CRIU 3.11+ are installed on the target host
+- The checkpoint archive (`.tar.zst` by default, or `.tar.gz` if exported with gzip compression) is accessible on the local filesystem
 - The container's base image is available locally or from a registry
 - You have root access
 
@@ -127,7 +127,7 @@ sudo podman container restore --import=/tmp/web-app-checkpoint.tar.gz \
   -p 9090:80
 ```
 
-The `--publish` flag replaces the ports that the container originally published with a new set of port forwarding rules. This flag only works when used with `--import`.
+The `--publish` flag replaces the ports that the container originally published with a new set of port forwarding rules. This flag is available when restoring from a checkpoint image or when used with `--import`.
 
 ## Import from Remote Storage
 
@@ -162,7 +162,7 @@ sudo podman inspect web-app --format '{{range .Config.Env}}{{.}}{{"\n"}}{{end}}'
 # Check process state inside the container
 sudo podman exec web-app ps aux
 
-# Check logs (includes logs from before the checkpoint)
+# Check logs generated after restore
 sudo podman logs web-app
 
 # For web applications, test the endpoint
@@ -193,7 +193,7 @@ Common import errors and solutions:
 tar xzf /tmp/web-app-checkpoint.tar.gz config.dump -O 2>/dev/null | python3 -c "
 import sys, json
 config = json.load(sys.stdin)
-print(config.get('rootfs_image_name', 'unknown'))
+print(config.get('rootfsImageName', 'unknown'))
 "
 # Pull the image
 sudo podman pull <image-name>
