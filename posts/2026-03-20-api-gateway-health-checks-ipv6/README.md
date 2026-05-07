@@ -18,13 +18,14 @@ NGINX Plus supports active health checks; open-source NGINX uses passive checks.
 # nginx.conf - upstream pool with IPv6 backend addresses
 
 upstream api_backends {
+    # Shared state is required for NGINX Plus active health checks
+    zone api_backends 64k;
+
     # IPv6 backends in bracket notation
-    server [2001:db8::10]:8080;
-    server [2001:db8::11]:8080;
+    server [2001:db8::10]:8080 max_fails=3 fail_timeout=30s;
+    server [2001:db8::11]:8080 max_fails=3 fail_timeout=30s;
     server [2001:db8::12]:8080 backup;
 
-    # Passive health check: mark unhealthy after 3 failures
-    # within 30 seconds, recover after 10 seconds
     keepalive 16;
 }
 
@@ -34,17 +35,17 @@ server {
 
     location /api/ {
         proxy_pass http://api_backends;
-        # Health check via proxy_next_upstream
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        # These failure types count as unsuccessful attempts for passive checks
         proxy_next_upstream error timeout http_502 http_503;
         proxy_next_upstream_tries 2;
         proxy_connect_timeout 3s;
         proxy_read_timeout 10s;
-    }
 
-    # NGINX Plus active health check example
-    # location @health_check {
-    #     health_check interval=5s fails=3 passes=2 uri=/health;
-    # }
+        # NGINX Plus active health check example
+        # health_check uri=/health interval=5s fails=3 passes=2;
+    }
 }
 ```
 
@@ -55,7 +56,8 @@ Kong's health checker natively supports IPv6 upstream addresses.
 ```bash
 # Create an upstream with active health checks
 
-curl -X POST http://[::1]:8001/upstreams \
+curl -X POST http://127.0.0.1:8001/upstreams/ \
+  -H "Accept: application/json" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "ipv6-backend",
@@ -91,14 +93,18 @@ curl -X POST http://[::1]:8001/upstreams \
   }'
 
 # Add IPv6 target to the upstream
-curl -X POST http://[::1]:8001/upstreams/ipv6-backend/targets \
-  -d "target=[2001:db8::10]:8080" \
-  -d "weight=100"
+curl -X POST http://127.0.0.1:8001/upstreams/ipv6-backend/targets/ \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target": "[2001:db8::10]:8080",
+    "weight": 100
+  }'
 ```
 
 ## AWS API Gateway - Lambda Health Check Endpoint
 
-For AWS API Gateway backed by Lambda, implement a health endpoint that tests IPv6 connectivity to your downstream services.
+For AWS API Gateway backed by Lambda, implement a health endpoint in a Lambda function attached to dual-stack VPC subnets with outbound IPv6 enabled.
 
 ```python
 import socket
@@ -107,6 +113,7 @@ import json
 def health_handler(event, context):
     """
     Health check Lambda - verifies IPv6 connectivity to downstream.
+    Requires outbound IPv6 from dual-stack VPC subnets.
     """
     backend_host = "2001:db8::10"
     backend_port = 8080
@@ -136,14 +143,15 @@ def health_handler(event, context):
 backend api_ipv6
     balance roundrobin
     option tcp-check
-    # Health check sends a TCP SYN to each server
+    # With no tcp-check send/expect rules, this only verifies a TCP connection
     server api1 [2001:db8::10]:8080 check inter 3s fall 3 rise 2
     server api2 [2001:db8::11]:8080 check inter 3s fall 3 rise 2
 
 # HTTP health check
 backend api_ipv6_http
     balance roundrobin
-    option httpchk GET /health HTTP/1.1\r\nHost:\ backend.local
+    option httpchk GET /health HTTP/1.1
+    http-check send hdr Host backend.local
     server api1 [2001:db8::10]:8080 check inter 5s fall 3 rise 2
     server api2 [2001:db8::11]:8080 check inter 5s fall 3 rise 2
 ```
@@ -154,8 +162,8 @@ backend api_ipv6_http
 # Manually probe a backend health endpoint over IPv6
 curl -6 --max-time 3 http://[2001:db8::10]:8080/health
 
-# Check Kong's view of upstream health
-curl -6 http://[::1]:8001/upstreams/ipv6-backend/health
+# Check Kong's view of upstream health through the local Admin API
+curl http://127.0.0.1:8001/upstreams/ipv6-backend/health/
 
 # Watch NGINX error log for upstream health events
 tail -f /var/log/nginx/error.log | grep "upstream"
