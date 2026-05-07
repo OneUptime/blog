@@ -8,7 +8,7 @@ Description: Learn how to deploy Azure Database for PostgreSQL Flexible Server w
 
 ## Overview
 
-Azure Database for PostgreSQL Flexible Server provides a fully managed PostgreSQL database with more control over server parameters, cost optimization, and built-in HA. It supports VNet integration for private connectivity and zone-redundant high availability.
+Azure Database for PostgreSQL Flexible Server provides a fully managed PostgreSQL database with more control over server parameters, cost optimization, and built-in HA. It supports VNet integration for private connectivity and zone-redundant high availability in regions that support availability zones.
 
 ## Step 1: Create VNet and Subnet for Private Access
 
@@ -20,6 +20,7 @@ resource "azurerm_subnet" "postgres_subnet" {
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.2.0/24"]
+  service_endpoints    = ["Microsoft.Storage"]
 
   # Delegate the subnet to PostgreSQL flexible server
   delegation {
@@ -77,6 +78,7 @@ resource "azurerm_postgresql_flexible_server" "postgres" {
   # VNet integration via subnet delegation
   delegated_subnet_id    = azurerm_subnet.postgres_subnet.id
   private_dns_zone_id    = azurerm_private_dns_zone.postgres_dns.id
+  public_network_access_enabled = false
 
   # Backup retention
   backup_retention_days        = 7
@@ -99,7 +101,7 @@ resource "azurerm_postgresql_flexible_server_configuration" "max_connections" {
 resource "azurerm_postgresql_flexible_server_configuration" "shared_buffers" {
   name      = "shared_buffers"
   server_id = azurerm_postgresql_flexible_server.postgres.id
-  value     = "1024MB"
+  value     = "131072" # 1 GiB expressed as 8 KB pages
 }
 
 resource "azurerm_postgresql_flexible_server_configuration" "log_checkpoints" {
@@ -132,4 +134,4 @@ output "postgres_fqdn" {
 
 ## Summary
 
-Azure Database for PostgreSQL Flexible Server deployed with OpenTofu provides a fully managed, highly available PostgreSQL instance with VNet integration. Zone-redundant HA, geo-redundant backups, and configurable server parameters make it suitable for production workloads requiring both performance and resilience.
+Azure Database for PostgreSQL Flexible Server deployed with OpenTofu provides a fully managed, highly available PostgreSQL instance with VNet integration. Zone-redundant HA in supported regions, geo-redundant backups in paired regions, and configurable server parameters make it suitable for production workloads requiring both performance and resilience.
