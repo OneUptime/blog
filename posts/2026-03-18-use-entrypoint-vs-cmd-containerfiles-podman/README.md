@@ -143,9 +143,9 @@ The container always runs `python manage.py` but lets users specify which manage
 Make your container behave like a CLI tool:
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.23
 
-RUN apk add --no-cache curl jq
+RUN apk add --no-cache curl
 
 ENTRYPOINT ["curl"]
 CMD ["--help"]
@@ -160,7 +160,7 @@ podman build -t my-curl .
 podman run my-curl
 
 # Fetch a URL
-podman run my-curl -s https://api.example.com/status | jq
+podman run my-curl -s https://api.example.com/status
 ```
 
 ### Pattern 2: Entrypoint Script for Initialization
@@ -168,9 +168,10 @@ podman run my-curl -s https://api.example.com/status | jq
 Use an entrypoint script that performs setup before running the main command:
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
+RUN apk add --no-cache netcat-openbsd
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY . .
