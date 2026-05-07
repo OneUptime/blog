@@ -25,21 +25,24 @@ Before restricting access, understand what currently exists:
 kubectl get globalrolebindings -o custom-columns=\
 NAME:.metadata.name,\
 ROLE:.globalRoleName,\
-USER:.userName
+USER:.userName,\
+GROUP:.groupPrincipalName
 
 # List all cluster role bindings across clusters
 kubectl get clusterroletemplatebindings --all-namespaces -o custom-columns=\
 NAMESPACE:.metadata.namespace,\
 NAME:.metadata.name,\
-ROLE:.roleTemplateId,\
-USER:.userName
+ROLE:.roleTemplateName,\
+USER:.userName,\
+GROUP:.groupPrincipalName
 
 # List all project role bindings
 kubectl get projectroletemplatebindings --all-namespaces -o custom-columns=\
 NAMESPACE:.metadata.namespace,\
 NAME:.metadata.name,\
-ROLE:.roleTemplateId,\
-USER:.userName
+ROLE:.roleTemplateName,\
+USER:.userName,\
+GROUP:.groupPrincipalName
 ```
 
 Export the results and review them with your team leads to identify any excessive permissions.
@@ -48,9 +51,9 @@ Export the results and review them with your team leads to identify any excessiv
 
 By default, new users who log in through an external auth provider may receive the **Standard User** global role, which allows them to create clusters. Restrict this:
 
-1. Go to **Users & Authentication > Roles > Global**.
+1. Go to **Users & Authentication > Role Templates** and select the **Global** tab.
 2. Find the **Standard User** role.
-3. Click the **three-dot menu** and select **Edit**.
+3. Click the **three-dot menu** and select **Edit Config**.
 4. Uncheck **Yes: Default role for new users**.
 5. Click **Save**.
 
@@ -61,8 +64,7 @@ apiVersion: management.cattle.io/v3
 kind: GlobalRole
 metadata:
   name: user-base
-spec:
-  newUserDefault: true
+newUserDefault: true
 ```
 
 The User-Base role grants only login access. Users will need explicit assignments to access any clusters or projects.
@@ -78,16 +80,15 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: workload-viewer
-spec:
-  context: project
-  displayName: Workload Viewer
-  rules:
-    - apiGroups: ["", "apps", "batch"]
-      resources: ["pods", "deployments", "services", "jobs", "cronjobs", "statefulsets", "daemonsets"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: [""]
-      resources: ["pods/log"]
-      verbs: ["get"]
+context: project
+displayName: Workload Viewer
+rules:
+  - apiGroups: ["", "apps", "batch"]
+    resources: ["pods", "deployments", "services", "jobs", "cronjobs", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
 ```
 
 **Tier 2 - Deploy Only**: For developers who need to deploy and update applications but not manage infrastructure.
@@ -97,22 +98,21 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: app-deployer
-spec:
-  context: project
-  displayName: Application Deployer
-  rules:
-    - apiGroups: ["apps"]
-      resources: ["deployments", "deployments/scale"]
-      verbs: ["get", "list", "watch", "create", "update", "patch"]
-    - apiGroups: [""]
-      resources: ["services", "configmaps"]
-      verbs: ["get", "list", "watch", "create", "update", "patch"]
-    - apiGroups: ["", "apps", "batch"]
-      resources: ["pods", "replicasets", "statefulsets", "daemonsets", "jobs"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: [""]
-      resources: ["pods/log", "pods/exec"]
-      verbs: ["get", "create"]
+context: project
+displayName: Application Deployer
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: ["", "apps", "batch"]
+    resources: ["pods", "replicasets", "statefulsets", "daemonsets", "jobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log", "pods/exec"]
+    verbs: ["get", "create"]
 ```
 
 **Tier 3 - Full Project Management**: For team leads who manage their team's namespaces.
@@ -121,20 +121,22 @@ Use the built-in **Project Owner** role for this tier.
 
 ## Step 4: Remove Unnecessary Admin Accounts
 
-List all users with administrator access:
+List all direct administrator bindings:
 
 ```bash
 kubectl get globalrolebindings -o json | \
-  jq -r '.items[] | select(.globalRoleName == "admin") | .userName'
+  jq -r '.items[] | select(.globalRoleName == "admin") | (.userName // .groupPrincipalName)'
 ```
 
-Reduce the number of administrators to only those who genuinely need it. For each user who should not be an admin:
+Reduce the number of administrators to only those who genuinely need it. For each individual user who should not be an admin:
 
 1. Go to **Users & Authentication > Users**.
 2. Find the user and click **Edit Config**.
-3. Uncheck **Administrator** under **Global Permissions**.
+3. Uncheck **Administrator** in the **Built-in** section.
 4. Assign appropriate scoped roles instead.
 5. Click **Save**.
+
+If the administrator binding is assigned to a group instead of an individual user, go to **Users & Authentication > Groups**, edit the group, and remove **Administrator** there instead.
 
 ## Step 5: Configure Cluster-Level Least Privilege
 
@@ -145,45 +147,35 @@ apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: cluster-operator
-spec:
-  context: cluster
-  displayName: Cluster Operator
-  rules:
-    - apiGroups: [""]
-      resources: ["namespaces", "nodes", "persistentvolumes"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: ["storage.k8s.io"]
-      resources: ["storageclasses"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: ["networking.k8s.io"]
-      resources: ["ingressclasses"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: [""]
-      resources: ["events"]
-      verbs: ["get", "list", "watch"]
+context: cluster
+displayName: Cluster Operator
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingressclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
 ```
 
 This role lets operators see cluster-level resources without being able to modify them.
 
 ## Step 6: Deny Access by Default
 
-Configure Rancher so that users have no access to clusters or projects unless explicitly granted:
+Rancher already requires explicit cluster and project membership for users added after creation. To minimize automatic access, review the roles marked as defaults for cluster and project creators:
 
-1. Go to **Global Settings** in the Rancher UI.
-2. Set **cluster-default-role** to empty (no default cluster role).
-3. Set **project-default-role** to empty (no default project role).
+1. Go to **Users & Authentication > Role Templates**.
+2. On the **Cluster** tab, edit any role marked **Cluster Creator Default** and set it to **No** unless creators should receive it automatically.
+3. On the **Project/Namespaces** tab, edit any role marked **Project Creator Default** and set it to **No** unless creators should receive it automatically.
+4. Assign cluster or project roles explicitly to all other users.
 
-Via kubectl:
-
-```bash
-kubectl edit setting cluster-default-role
-# Set value to ""
-
-kubectl edit setting project-default-role
-# Set value to ""
-```
-
-This ensures that adding a user to the Rancher instance does not automatically grant them access to any cluster or project.
+This ensures that cluster and project access is granted intentionally rather than through overly broad creator defaults.
 
 ## Step 7: Restrict Sensitive Operations
 
@@ -193,26 +185,25 @@ Create project roles that explicitly exclude sensitive operations:
 apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
-  name: developer-no-secrets
-spec:
-  context: project
-  displayName: Developer (No Secrets Access)
-  rules:
-    - apiGroups: ["apps"]
-      resources: ["deployments", "statefulsets", "daemonsets"]
-      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-    - apiGroups: [""]
-      resources: ["services", "configmaps", "pods", "pods/log"]
-      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-    - apiGroups: ["batch"]
-      resources: ["jobs", "cronjobs"]
-      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-    - apiGroups: ["networking.k8s.io"]
-      resources: ["ingresses"]
-      verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  name: developer-no-direct-secrets
+context: project
+displayName: Developer (No Direct Secret Read Access)
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps", "pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ```
 
-Notice that `secrets` is deliberately omitted from the resources list. Only specific users or service accounts should have access to secrets.
+Notice that `secrets` is deliberately omitted from the resources list. This removes direct Secret API access, but it does not fully isolate Secrets: in Kubernetes, users who can create Pods or workload controllers can still expose Secrets mounted in that namespace. Use separate namespaces and tighter workload-creation controls if you need strict Secret isolation.
 
 ## Step 8: Implement Time-Based Access Reviews
 
@@ -222,42 +213,42 @@ Set up a regular process to review and clean up permissions:
 #!/bin/bash
 # audit-rbac.sh - Run monthly to identify excessive permissions
 
-echo "=== Users with Admin Global Role ==="
+echo "=== Admin Global Role Bindings ==="
 kubectl get globalrolebindings -o json | \
-  jq -r '.items[] | select(.globalRoleName == "admin") | "\(.userName) - \(.metadata.creationTimestamp)"'
+  jq -r '.items[] | select(.globalRoleName == "admin") | "\(.userName // .groupPrincipalName) - \(.metadata.creationTimestamp)"'
 
 echo ""
 echo "=== Cluster Owner Assignments ==="
 kubectl get clusterroletemplatebindings --all-namespaces -o json | \
-  jq -r '.items[] | select(.roleTemplateId == "cluster-owner") | "\(.userName) - \(.metadata.namespace)"'
+  jq -r '.items[] | select(.roleTemplateName == "cluster-owner") | "\(.userName // .groupPrincipalName) - \(.metadata.namespace)"'
 
 echo ""
-echo "=== Users With No Recent Activity ==="
-kubectl get users -o json | \
-  jq -r '.items[] | select(.status.conditions[]?.type == "LastLogin") | "\(.metadata.name) - Last login: \(.status.conditions[] | select(.type == "LastLogin") | .lastTransitionTime)"'
+echo "=== Users and Last Login Timestamps ==="
+kubectl get userattributes -o json | \
+  jq -r '.items[] | "\(.metadata.name) - Last login: \(.lastLogin // "never recorded")"'
 ```
 
 Make this script part of your monthly security review process.
 
 ## Step 9: Validate the Configuration
 
-After implementing least privilege, validate by testing each role tier:
+After implementing least privilege, validate by testing each role tier with a kubeconfig issued for a test user in that role:
 
 ```bash
 # Test Tier 1 - View Only (should succeed)
-kubectl auth can-i list pods -n dev --as=viewer-user
+kubectl --kubeconfig viewer-user.kubeconfig auth can-i list pods -n dev
 # yes
 
 # Test Tier 1 - View Only (should fail)
-kubectl auth can-i create deployments -n dev --as=viewer-user
+kubectl --kubeconfig viewer-user.kubeconfig auth can-i create deployments.apps -n dev
 # no
 
 # Test Tier 2 - Deploy Only (should succeed)
-kubectl auth can-i create deployments -n dev --as=deployer-user
+kubectl --kubeconfig deployer-user.kubeconfig auth can-i create deployments.apps -n dev
 # yes
 
 # Test Tier 2 - Deploy Only (should fail)
-kubectl auth can-i delete namespaces --as=deployer-user
+kubectl --kubeconfig deployer-user.kubeconfig auth can-i delete namespaces
 # no
 ```
 
