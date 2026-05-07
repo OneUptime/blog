@@ -4,20 +4,39 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, CloudTrail, Compliance, Infrastructure as Code
 
-Description: Learn how to create AWS CloudTrail organization trails with OpenTofu to capture API activity across all accounts in your AWS Organization for centralized auditing.
+Description: Learn how to create AWS CloudTrail organization trails with OpenTofu to capture management events and supported data events across your AWS Organization for centralized auditing.
 
-Organization trails automatically capture all API activity across every account in your AWS Organization and deliver logs to a central S3 bucket. Managing them in OpenTofu ensures consistent audit logging coverage with tamper-evident log validation.
+Organization trails automatically capture management events across every account in your AWS Organization and can also capture supported data events when you add event selectors. Create the trail from your organization management account and deliver logs to a central S3 bucket. Managing it in OpenTofu ensures consistent audit logging coverage with tamper-evident log validation.
 
 ## Organization Trail
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
+data "aws_partition" "current" {}
+
+data "aws_region" "current" {}
+
+data "aws_organizations_organization" "current" {}
+
+locals {
+  cloudtrail_name = "organization-trail"
+  cloudtrail_arn  = "arn:${data.aws_partition.current.partition}:cloudtrail:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:trail/${local.cloudtrail_name}"
+}
+
 resource "aws_cloudtrail" "organization" {
-  name                          = "organization-trail"
+  depends_on = [
+    aws_iam_role_policy.cloudtrail_cloudwatch,
+    aws_s3_bucket_object_lock_configuration.cloudtrail,
+    aws_s3_bucket_policy.cloudtrail
+  ]
+
+  name                          = local.cloudtrail_name
   s3_bucket_name                = aws_s3_bucket.cloudtrail.id
   include_global_service_events = true
   is_multi_region_trail         = true
   is_organization_trail         = true
-  enable_log_file_validation    = true  # SHA-256 hash for tamper detection
+  enable_log_file_validation    = true  # Delivers digest files for integrity validation
   kms_key_id                    = aws_kms_key.cloudtrail.arn
 
   # Capture all S3 data events
@@ -27,7 +46,7 @@ resource "aws_cloudtrail" "organization" {
 
     data_resource {
       type   = "AWS::S3::Object"
-      values = ["arn:aws:s3:::"]  # All S3 buckets
+      values = ["arn:aws:s3"]  # All S3 buckets
     }
   }
 
@@ -59,6 +78,14 @@ resource "aws_s3_bucket" "cloudtrail" {
   bucket = "org-cloudtrail-logs-${data.aws_caller_identity.current.account_id}"
 }
 
+resource "aws_s3_bucket_versioning" "cloudtrail" {
+  bucket = aws_s3_bucket.cloudtrail.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 resource "aws_s3_bucket_policy" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
 
@@ -66,21 +93,40 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AWSCloudTrailAclCheck"
+        Sid    = "AWSCloudTrailAclCheck20150319"
         Effect = "Allow"
         Principal = { Service = "cloudtrail.amazonaws.com" }
         Action   = "s3:GetBucketAcl"
         Resource = aws_s3_bucket.cloudtrail.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn" = local.cloudtrail_arn
+          }
+        }
       },
       {
-        Sid    = "AWSCloudTrailWrite"
+        Sid    = "AWSCloudTrailWrite20150319"
         Effect = "Allow"
         Principal = { Service = "cloudtrail.amazonaws.com" }
         Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/*"
+        Resource = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
         Condition = {
           StringEquals = {
             "s3:x-amz-acl" = "bucket-owner-full-control"
+            "aws:SourceArn" = local.cloudtrail_arn
+          }
+        }
+      },
+      {
+        Sid    = "AWSCloudTrailOrganizationWrite20150319"
+        Effect = "Allow"
+        Principal = { Service = "cloudtrail.amazonaws.com" }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${data.aws_organizations_organization.current.id}/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl" = "bucket-owner-full-control"
+            "aws:SourceArn" = local.cloudtrail_arn
           }
         }
       }
@@ -91,7 +137,8 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
 # Object lock to prevent log deletion (compliance)
 
 resource "aws_s3_bucket_object_lock_configuration" "cloudtrail" {
-  bucket = aws_s3_bucket.cloudtrail.id
+  bucket     = aws_s3_bucket.cloudtrail.id
+  depends_on = [aws_s3_bucket_versioning.cloudtrail]
 
   rule {
     default_retention {
@@ -105,10 +152,61 @@ resource "aws_s3_bucket_object_lock_configuration" "cloudtrail" {
 ## CloudWatch Log Group for CloudTrail
 
 ```hcl
+resource "aws_kms_key" "cloudtrail" {
+  description             = "KMS key for CloudTrail log encryption"
+  deletion_window_in_days = 30
+  enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EnableIamUserPermissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowCloudTrailEncryptLogs"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "kms:GenerateDataKey*"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn" = local.cloudtrail_arn
+          }
+          StringLike = {
+            "kms:EncryptionContext:aws:cloudtrail:arn" = "arn:${data.aws_partition.current.partition}:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/*"
+          }
+        }
+      },
+      {
+        Sid    = "AllowCloudTrailDescribeKey"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "kms:DescribeKey"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn" = local.cloudtrail_arn
+          }
+        }
+      }
+    ]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "cloudtrail" {
   name              = "/aws/cloudtrail/organization"
   retention_in_days = 90  # Keep in CloudWatch for 90 days for querying
-  kms_key_id        = aws_kms_key.cloudtrail.arn
 }
 
 resource "aws_iam_role" "cloudtrail_cloudwatch" {
@@ -129,11 +227,26 @@ resource "aws_iam_role_policy" "cloudtrail_cloudwatch" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
-      Resource = "${aws_cloudwatch_log_group.cloudtrail.arn}:*"
-    }]
+    Statement = [
+      {
+        Sid      = "AWSCloudTrailCreateLogStream20141101"
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream"]
+        Resource = [
+          "${aws_cloudwatch_log_group.cloudtrail.arn}:log-stream:${data.aws_caller_identity.current.account_id}_CloudTrail_${data.aws_region.current.region}*",
+          "${aws_cloudwatch_log_group.cloudtrail.arn}:log-stream:${data.aws_organizations_organization.current.id}_*"
+        ]
+      },
+      {
+        Sid      = "AWSCloudTrailPutLogEvents20141101"
+        Effect   = "Allow"
+        Action   = ["logs:PutLogEvents"]
+        Resource = [
+          "${aws_cloudwatch_log_group.cloudtrail.arn}:log-stream:${data.aws_caller_identity.current.account_id}_CloudTrail_${data.aws_region.current.region}*",
+          "${aws_cloudwatch_log_group.cloudtrail.arn}:log-stream:${data.aws_organizations_organization.current.id}_*"
+        ]
+      }
+    ]
   })
 }
 ```
@@ -141,8 +254,12 @@ resource "aws_iam_role_policy" "cloudtrail_cloudwatch" {
 ## CloudWatch Alarms for Security Events
 
 ```hcl
+resource "aws_sns_topic" "security_alerts" {
+  name = "cloudtrail-security-alerts"
+}
+
 # Alert on root account usage
-resource "aws_cloudwatch_metric_filter" "root_usage" {
+resource "aws_cloudwatch_log_metric_filter" "root_usage" {
   name           = "root-account-usage"
   log_group_name = aws_cloudwatch_log_group.cloudtrail.name
   pattern        = "{ $.userIdentity.type = \"Root\" && $.userIdentity.invokedBy NOT EXISTS && $.eventType != \"AwsServiceEvent\" }"
@@ -170,4 +287,4 @@ resource "aws_cloudwatch_metric_alarm" "root_usage" {
 
 ## Conclusion
 
-AWS CloudTrail organization trails in OpenTofu provide centralized, tamper-evident audit logging across all AWS accounts. Enable S3 and Lambda data events to capture data plane activity, use object lock on the S3 bucket for compliance-grade retention, stream to CloudWatch Logs for real-time querying, and create metric filters and alarms for critical security events like root account usage and console login failures.
+AWS CloudTrail organization trails in OpenTofu provide centralized, tamper-evident audit logging across AWS Organization accounts. Enable S3 and Lambda data events to capture supported data plane activity, use object lock on the S3 bucket for retention protection, stream to CloudWatch Logs for real-time querying, and create metric filters and alarms for critical security events like root account usage and console login failures.
