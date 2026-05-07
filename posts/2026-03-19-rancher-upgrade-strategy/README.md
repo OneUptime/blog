@@ -51,7 +51,7 @@ Define who approves upgrades:
 
 Document everything that the upgrade touches:
 
-```yaml
+```text
 Environment Inventory
 =====================
 Management Cluster:
@@ -85,10 +85,10 @@ Pre-Upgrade Checklist
 =====================
 [ ] Review release notes for target version
 [ ] Check support matrix for compatibility
-[ ] Verify upgrade path (no skipped versions)
+[ ] Verify the supported upgrade path for the target version
 [ ] Update cert-manager if required
 [ ] Take etcd snapshot of management cluster
-[ ] Run Rancher Backup operator
+[ ] Create a Rancher Backup custom resource
 [ ] Export Helm values
 [ ] Notify stakeholders of maintenance window
 [ ] Verify staging environment matches production
@@ -122,7 +122,7 @@ Pre-Upgrade Checklist
 
 rke2 etcd-snapshot save --name pre-upgrade-$(date +%Y%m%d)
 
-# Run Rancher Backup
+# Create Rancher Backup custom resource
 kubectl apply -f backup.yaml
 
 # Export Helm values
@@ -148,7 +148,7 @@ helm upgrade rancher rancher-stable/rancher \
 
 ```bash
 # Check version
-kubectl get settings server-version -o jsonpath='{.value}' -n cattle-system
+kubectl get settings.management.cattle.io server-version -o jsonpath='{.value}'
 
 # Check pods
 kubectl get pods -n cattle-system
@@ -178,10 +178,14 @@ Establish clear criteria for when to roll back:
 ### Rollback Procedure
 
 ```bash
-# Quick rollback via Helm
+# Restore Rancher state from a backup created with rancher-backup
+kubectl create -f restore.yaml
+
+# Roll back the Rancher Helm release
 helm rollback rancher -n cattle-system
 
-# If Helm rollback fails, restore etcd
+# If you must restore the RKE2 management cluster from an etcd snapshot,
+# stop rke2-server first and follow the full RKE2 restore procedure.
 rke2 server --cluster-reset \
   --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/pre-upgrade-<date>
 ```
@@ -244,7 +248,7 @@ Example health check script:
 ```bash
 #!/bin/bash
 echo "Checking Rancher version..."
-kubectl get settings server-version -o jsonpath='{.value}' -n cattle-system
+kubectl get settings.management.cattle.io server-version -o jsonpath='{.value}'
 
 echo "Checking pod health..."
 kubectl get pods -n cattle-system --no-headers | grep -v Running
