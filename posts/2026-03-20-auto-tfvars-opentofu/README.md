@@ -13,12 +13,11 @@ Files with the `.auto.tfvars` suffix are automatically loaded by OpenTofu withou
 ## How .auto.tfvars Works
 
 ```bash
-# Files automatically loaded (in alphabetical order):
+# Files automatically loaded:
 
 # 1. terraform.tfvars
 # 2. terraform.tfvars.json
-# 3. *.auto.tfvars (alphabetically)
-# 4. *.auto.tfvars.json (alphabetically)
+# 3. *.auto.tfvars and *.auto.tfvars.json (in lexical filename order)
 
 # All of these are loaded automatically:
 ls *.tfvars
@@ -58,7 +57,7 @@ enable_monitoring = true
 
 ## Alphabetical Loading Order
 
-Since `.auto.tfvars` files are loaded alphabetically, you can control overriding:
+Since `.auto.tfvars` and `.auto.tfvars.json` files are loaded in lexical filename order, you can control overriding:
 
 ```hcl
 # 01-base.auto.tfvars - Loaded first (base values)
@@ -119,13 +118,14 @@ tofu plan  # Automatically uses prod/env.auto.tfvars
 ## Combining auto.tfvars with -var-file
 
 ```bash
-# auto.tfvars files load automatically, then -var-file adds/overrides
+# auto.tfvars files load automatically, then command-line options can override them
 tofu plan -var-file="overrides.tfvars"
-# Loading order:
-# 1. terraform.tfvars (if exists)
-# 2. *.auto.tfvars (alphabetically)
-# 3. overrides.tfvars (from -var-file)
-# 4. -var flags
+# Overall precedence (later values win):
+# 1. Environment variables
+# 2. terraform.tfvars (if exists)
+# 3. terraform.tfvars.json (if exists)
+# 4. *.auto.tfvars and *.auto.tfvars.json (lexical order)
+# 5. -var and -var-file options, in the order provided
 
 # Override auto.tfvars values:
 tofu apply -var="instance_count=10"
