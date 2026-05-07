@@ -50,11 +50,11 @@ The container will still appear in `podman ps` as running. The nginx process ins
 
 When you use `--leave-running`, the following sequence occurs:
 
-1. **Freeze**: All processes in the container are frozen via the freezer cgroup. No code executes during this phase.
+1. **Freeze**: All processes in the container are frozen, typically by CRIU using ptrace or the freezer cgroup. No code executes during this phase.
 
 2. **Dump**: CRIU reads the process state, memory pages, file descriptors, and other state from the frozen processes. It writes this data to checkpoint image files.
 
-3. **Resume**: Instead of killing the processes (the default), Podman tells the freezer cgroup to thaw them. All processes resume execution.
+3. **Resume**: Instead of killing the processes (the default), Podman tells the runtime to resume them. All processes resume execution.
 
 The freeze duration depends on the container's memory footprint and the number of processes. For a typical web application using a few hundred megabytes of RAM, the freeze lasts a few hundred milliseconds to a few seconds.
 
@@ -160,11 +160,11 @@ The `--leave-running` checkpoint has a brief but measurable impact on the contai
 
 **During freeze**: Zero throughput. All processes are stopped. Incoming network packets are queued by the kernel's network stack.
 
-**Memory overhead**: CRIU reads memory pages from `/proc/[pid]/mem`. For large containers, this means reading potentially gigabytes of data from the proc filesystem.
+**Memory overhead**: CRIU identifies memory mappings through `/proc/[pid]/smaps`, `/proc/[pid]/map_files`, and `/proc/[pid]/pagemap`, then extracts the required pages from the process. For large containers, this means reading potentially gigabytes of memory data.
 
 **Disk I/O**: The checkpoint data is written to disk during the freeze. This competes with other I/O on the system.
 
-**After resume**: The container returns to normal performance immediately. There is no warmup period because processes resume from their existing state, including CPU caches (though L1/L2/L3 cache contents may have been evicted during the freeze).
+**After resume**: The container returns to normal performance immediately. There is no application startup warmup because processes resume from their existing state, although CPU cache contents are not guaranteed to be preserved.
 
 To minimize impact:
 
@@ -184,7 +184,7 @@ There are some important limitations to understand:
 
 **The checkpoint data is a point-in-time snapshot**. The container continues running and changing state after the checkpoint. If you restore from this snapshot, the restored container will be in the state it was at checkpoint time, not at restore time.
 
-**TCP connections**: Active TCP connections in the running container will continue normally. But if you restore from the checkpoint, those same connections will be in the state they were at checkpoint time. The remote endpoints will have moved on, potentially causing connection resets.
+**TCP connections**: Active TCP connections in the running container will continue normally, but Podman does not checkpoint established TCP connections by default. If you need to include them, use `--tcp-established` during checkpoint and restore, and test the workflow carefully because leaving tasks running can make TCP state inconsistent by the time you restore.
 
 **File-based state**: Files that the container modifies after the checkpoint will not be in the snapshot. If the container writes critical data to its filesystem, the snapshot will have the pre-write state.
 
