@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, CentOS, Docker, Kubernetes, Installation
 
-Description: A complete guide to installing Rancher on CentOS Stream 9 using Docker, including system configuration, Docker installation, and firewall setup.
+Description: A complete guide to installing Rancher on CentOS Stream 9 using Docker for testing and development, including system configuration, Docker installation, and firewall setup.
 
-CentOS Stream serves as the upstream development platform for Red Hat Enterprise Linux and is a popular choice for enterprise server deployments. This guide covers the full installation process for Rancher on CentOS Stream 9, from system preparation to a running Rancher instance.
+CentOS Stream serves as the upstream development platform for Red Hat Enterprise Linux and is a popular choice for enterprise server deployments. Because Rancher's single-container Docker install is intended for testing and development rather than production, this guide covers the full installation process for getting Rancher running on CentOS Stream 9 in a non-production environment.
 
 ## Prerequisites
 
@@ -51,13 +51,11 @@ getenforce
 
 ## Step 4: Install Required Dependencies
 
-Install packages needed for Docker:
+Install the packages needed to configure the Docker repository and download tools:
 
 ```bash
 sudo dnf install -y \
-  yum-utils \
-  device-mapper-persistent-data \
-  lvm2 \
+  dnf-plugins-core \
   curl \
   wget
 ```
@@ -106,12 +104,11 @@ docker run hello-world
 
 ## Step 6: Configure the Firewall
 
-CentOS Stream uses `firewalld`. Open the necessary ports:
+CentOS Stream uses `firewalld`. Open the required inbound ports for a Docker-based Rancher server:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=80/tcp
 sudo firewall-cmd --permanent --add-port=443/tcp
-sudo firewall-cmd --permanent --add-port=6443/tcp
 sudo firewall-cmd --reload
 ```
 
@@ -206,7 +203,6 @@ Complete the initial setup:
 
 1. Set a new admin password
 2. Configure the Rancher server URL
-3. Accept the terms and conditions
 
 ## CentOS Stream Specific Notes
 
@@ -247,4 +243,4 @@ sudo ss -tlnp | grep -E ':(80|443)'
 
 ## Conclusion
 
-You have successfully installed Rancher on CentOS Stream 9. CentOS Stream provides a stable and up-to-date platform that closely tracks RHEL releases, making it a solid choice for running Rancher in enterprise environments. From the Rancher dashboard, you can now create and manage Kubernetes clusters across your infrastructure.
+You have successfully installed Rancher on CentOS Stream 9. CentOS Stream provides a stable and up-to-date platform that closely tracks RHEL releases, making it a practical choice for testing Rancher with Docker. For production use, Rancher should be installed on a supported high-availability Kubernetes cluster rather than a single Docker container. From the Rancher dashboard, you can now create and manage Kubernetes clusters across your infrastructure.
