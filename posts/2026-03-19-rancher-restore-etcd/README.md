@@ -13,7 +13,7 @@ When a Kubernetes cluster experiences data corruption, accidental resource delet
 - A valid etcd snapshot (local or in S3)
 - Admin access to Rancher
 - SSH access to control plane nodes (for manual restoration)
-- kubectl access to the management cluster
+- kubectl access to the cluster you want to inspect or verify
 
 ## Step 1: Identify Available Snapshots
 
@@ -26,16 +26,10 @@ When a Kubernetes cluster experiences data corruption, accidental resource delet
 
 ### Via kubectl
 
-For RKE2 clusters:
+For RKE2 clusters on current releases:
 
 ```bash
-kubectl get etcdsnapshots.rke.cattle.io -n fleet-default
-```
-
-For RKE clusters:
-
-```bash
-kubectl get etcdbackups.management.cattle.io
+kubectl get etcdsnapshotfile
 ```
 
 ### On the Control Plane Node
@@ -58,8 +52,8 @@ The simplest way to restore is through the Rancher UI:
 3. Find the snapshot you want to restore from.
 4. Click the three-dot menu next to the snapshot.
 5. Select **Restore**.
-6. Confirm the restore operation.
-7. Wait for the cluster to reconcile.
+6. Select a restore type and confirm the restore operation.
+7. Wait for the cluster to return to **Active**.
 
 Rancher will handle stopping etcd, restoring the snapshot, and restarting the cluster components.
 
@@ -82,6 +76,8 @@ rke2 server \
   --cluster-reset \
   --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/SNAPSHOT_NAME
 ```
+
+If your RKE2 configuration already enables S3 snapshots and you are restoring a local file, add `--etcd-s3=false`.
 
 Start RKE2 again:
 
@@ -108,11 +104,13 @@ rke2 server \
   --cluster-reset-restore-path=/var/lib/rancher/rke2/server/db/snapshots/SNAPSHOT_NAME
 ```
 
+If your RKE2 configuration already enables S3 snapshots and you are restoring a local file, add `--etcd-s3=false`.
+
 3. Remove the old etcd data on the other control plane nodes:
 
 ```bash
 # Run on secondary control plane nodes
-rm -rf /var/lib/rancher/rke2/server/db/etcd
+rm -rf /var/lib/rancher/rke2/server/db/
 ```
 
 4. Start RKE2 on the first node:
@@ -143,26 +141,28 @@ rke2 server \
   --cluster-reset-restore-path=SNAPSHOT_NAME
 ```
 
-## Step 5: Restore RKE Clusters via Rancher API
+## Step 5: Restore RKE Clusters via CLI
 
-For RKE clusters, you can trigger a restore via the Rancher API:
+For RKE clusters, run the restore from an etcd node with the RKE CLI:
 
 ```bash
-curl -X POST \
-  'https://rancher.yourdomain.com/v3/clusters/CLUSTER_ID?action=restoreFromEtcdBackup' \
-  -H 'Authorization: Bearer YOUR_API_TOKEN' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "etcdBackupId": "BACKUP_ID"
-  }'
+rke etcd snapshot-restore --config cluster.yml --name SNAPSHOT_NAME
 ```
 
-Get the backup ID from:
+RKE assumes the local snapshot is stored in `/opt/rke/etcd-snapshots`.
+
+If the snapshot is stored in S3, pass the S3 settings to the restore command:
 
 ```bash
-curl -s \
-  'https://rancher.yourdomain.com/v3/etcdbackups?clusterId=CLUSTER_ID' \
-  -H 'Authorization: Bearer YOUR_API_TOKEN' | jq '.data[].id'
+rke etcd snapshot-restore \
+  --config cluster.yml \
+  --name SNAPSHOT_NAME \
+  --s3 \
+  --access-key YOUR_ACCESS_KEY \
+  --secret-key YOUR_SECRET_KEY \
+  --bucket-name etcd-snapshots \
+  --folder cluster-1 \
+  --s3-endpoint s3.amazonaws.com
 ```
 
 ## Step 6: Verify the Restore
@@ -172,17 +172,12 @@ After the restore completes, verify the cluster is healthy:
 ```bash
 kubectl get nodes
 kubectl get pods -A
-kubectl get cs
 ```
 
-Check etcd health:
+Check control plane readiness, including etcd:
 
 ```bash
-kubectl -n kube-system exec -it etcd-NODE_NAME -- \
-  etcdctl endpoint health \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key
+kubectl get --raw='/readyz?verbose'
 ```
 
 Verify workloads are running as expected:
@@ -238,17 +233,17 @@ On multi-node clusters, if quorum is lost, you must restore on a single node fir
 If a snapshot fails to restore, try an older snapshot. Verify snapshot integrity before restoring:
 
 ```bash
-ETCDCTL_API=3 etcdctl snapshot status SNAPSHOT_FILE --write-out=table
+etcdutl snapshot status SNAPSHOT_FILE -w table
 ```
 
 ### Nodes Not Rejoining
 
-If worker nodes do not rejoin after the restore, restart the kubelet on each worker:
+If worker nodes do not rejoin after the restore, restart the node agent on the affected workers. For RKE2 workers:
 
 ```bash
-systemctl restart rke2-agent  # or kubelet for RKE
+systemctl restart rke2-agent
 ```
 
 ## Conclusion
 
-Restoring etcd snapshots is a critical operation that can save your cluster from data loss. Whether you use the Rancher UI, CLI, or API, the process involves stopping the cluster, applying the snapshot, and verifying the restored state. Practice this procedure in a non-production environment so your team is ready when a real recovery is needed.
+Restoring etcd snapshots is a critical operation that can save your cluster from data loss. Whether you use the Rancher UI or CLI, the process involves stopping the cluster, applying the snapshot, and verifying the restored state. Practice this procedure in a non-production environment so your team is ready when a real recovery is needed.
