@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, IPv6, DNS, AAAA Records, Private DNS, Azure DNS
 
-Description: Create AAAA records in Azure DNS public and private zones, configure reverse DNS for IPv6 addresses, and manage dual-stack DNS entries for Azure resources.
+Description: Create AAAA records in Azure DNS public and private zones, understand current reverse DNS limitations for Azure public IPv6 addresses, and manage dual-stack DNS entries for Azure resources.
 
 ## Introduction
 
-Azure DNS fully supports IPv6 AAAA records in both public and private DNS zones. For dual-stack deployments, you maintain both A (IPv4) and AAAA (IPv6) records pointing to your Azure resources. Azure also supports reverse DNS (PTR records) for Azure public IPv6 addresses. Private DNS zones work the same way for internal IPv6 resolution within VNets.
+Azure DNS fully supports IPv6 AAAA records in both public and private DNS zones. For dual-stack deployments, you maintain both A (IPv4) and AAAA (IPv6) records pointing to your Azure resources. Azure supports reverse DNS (PTR records) for Azure public IPv4 addresses, but not for Azure-owned public IPv6 addresses. Private DNS zones also support AAAA records for internal IPv6 resolution within VNets.
 
 ## Create AAAA Records in Azure DNS
 
@@ -74,14 +74,14 @@ resource "azurerm_dns_aaaa_record" "www" {
   records = ["2001:db8::1", "2001:db8::2"]
 }
 
-# AAAA record pointing to Azure public IP (dynamic)
+# AAAA record pointing to Azure public IP
 resource "azurerm_dns_aaaa_record" "app" {
   name                = "app"
   zone_name           = azurerm_dns_zone.main.name
   resource_group_name = azurerm_resource_group.main.name
   ttl                 = 60
 
-  # Use the IPv6 address from the public IP resource
+  # Use the IPv6 address from a statically allocated IPv6 public IP resource
   records = [azurerm_public_ip.app_ipv6.ip_address]
 
   depends_on = [azurerm_public_ip.app_ipv6]
@@ -106,7 +106,7 @@ az network private-dns zone create \
     --resource-group "$RG" \
     --name "internal.example.com"
 
-# Link to VNet
+# Link to VNet (autoregistration creates A records for VMs; add AAAA records manually)
 az network private-dns link vnet create \
     --resource-group "$RG" \
     --zone-name "internal.example.com" \
@@ -129,40 +129,29 @@ az network private-dns record-set aaaa add-record \
 
 ## Reverse DNS for Azure Public IPv6
 
-```bash
-# Configure reverse DNS for Azure public IPv6
-# Azure allocates PTR records in ip6.arpa for public IPs
-
-# Set reverse DNS FQDN for IPv6 public IP
-az network public-ip update \
-    --resource-group "$RG" \
-    --name pip-web-ipv6 \
-    --reverse-fqdn "web.example.com."
-
-# Azure manages the reverse DNS zone for assigned IPv6 prefixes
-# Verify
-dig -x $(az network public-ip show -g "$RG" -n pip-web-ipv6 --query ipAddress -o tsv)
-```
+Azure DNS doesn't currently support reverse DNS (PTR records) for Azure-owned public IPv6 addresses. The `--reverse-fqdn` option on Azure public IP resources can be used for public IPv4 reverse DNS, but there's no supported Azure DNS configuration for Azure-owned IPv6 `ip6.arpa` PTR records.
 
 ## Verify DNS Configuration
 
 ```bash
 # Check AAAA records
-dig AAAA www.example.com @ns1-01.azure-dns.com
+dig www.example.com AAAA
 
 # Check both A and AAAA
-dig www.example.com A AAAA
+dig www.example.com A
+dig www.example.com AAAA
 
-# Check from Azure DNS servers
-az network dns zone list \
+# Show the Azure DNS nameservers assigned to the zone
+az network dns zone show \
     --resource-group "$RG" \
-    --query "[0].nameServers"
+    --name "$ZONE_NAME" \
+    --query "nameServers"
 
-# Query against Azure DNS nameservers
+# Query against one of the authoritative Azure DNS nameservers for the zone
 NS=$(az network dns zone show -g "$RG" -n "$ZONE_NAME" --query "nameServers[0]" -o tsv)
-dig AAAA www.example.com @"$NS"
+dig @"$NS" www.example.com AAAA
 ```
 
 ## Conclusion
 
-Azure DNS AAAA records are created with `az network dns record-set aaaa add-record` or `azurerm_dns_aaaa_record` in Terraform. Maintain both A and AAAA records for dual-stack services, pointing to the respective IPv4 and IPv6 public IP addresses. Private DNS zones support AAAA records for internal IPv6 resolution within VNets, with automatic registration linking VM IPv6 addresses to hostnames. Configure reverse DNS for public IPv6 addresses using the `--reverse-fqdn` parameter on public IP resources.
+Azure DNS AAAA records are created with `az network dns record-set aaaa add-record` or `azurerm_dns_aaaa_record` in Terraform. Maintain both A and AAAA records for dual-stack services, pointing to the respective IPv4 and IPv6 public IP addresses. Private DNS zones support AAAA records for internal IPv6 resolution within VNets, while Azure Private DNS autoregistration creates A records for VM primary NICs and doesn't create AAAA records automatically. Azure-owned public IPv6 addresses don't currently support reverse DNS with Azure DNS.
