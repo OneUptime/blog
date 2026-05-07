@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Monitoring, Event, Filtering
 
-Description: Learn how to filter Podman events by entity type to focus on containers, images, pods, volumes, or system events separately.
+Description: Learn how to filter Podman events by entity type to focus on containers, images, pods, volumes, networks, secrets, or system events separately.
 
 ---
 
 > Filtering events by type is the first step to cutting through noise and finding the signals that matter.
 
-Podman generates events for multiple entity types: containers, images, pods, volumes, and the system itself. In a busy environment, watching all events at once is overwhelming. By filtering events by type, you can focus on exactly the category of activity you care about. This guide shows you how to use type filters effectively.
+Podman generates events for multiple entity types: containers, images, pods, volumes, networks, secrets, and the system itself. In a busy environment, watching all events at once is overwhelming. By filtering events by type, you can focus on exactly the category of activity you care about. This guide shows you how to use type filters effectively.
 
 ---
 
 ## Understanding Event Types
 
-Podman supports five event types, each corresponding to a different entity:
+Podman supports several event types, each corresponding to a different entity:
 
 ```bash
 # Container events - lifecycle of containers
@@ -31,6 +31,12 @@ podman events --filter type=pod
 
 # Volume events - volume create, remove events
 podman events --filter type=volume
+
+# Network events - network create, connect, disconnect, remove events
+podman events --filter type=network
+
+# Secret events - secret create, remove events
+podman events --filter type=secret
 
 # System events - refresh, renumber events
 podman events --filter type=system
@@ -50,7 +56,7 @@ podman stop type-test-1
 podman rm type-test-1
 ```
 
-Container events include: attach, checkpoint, commit, create, exec, export, import, init, kill, mount, pause, prune, remove, rename, restart, restore, start, stop, sync, unmount, unpause.
+Container events include: attach, checkpoint, cleanup, commit, connect, create, died, disconnect, exec, exec_died, exited, export, import, init, kill, mount, pause, prune, remove, rename, restart, restore, start, stop, sync, unmount, unpause, update.
 
 ## Filtering for Image Events
 
@@ -66,7 +72,7 @@ podman tag alpine:latest myalpine:v1
 podman rmi myalpine:v1
 ```
 
-Image events include: pull, push, remove, save, tag, untag.
+Image events include: loadFromArchive, mount, pull, pull-error, push, remove, save, tag, unmount, untag.
 
 ## Filtering for Pod Events
 
@@ -93,7 +99,6 @@ podman events --filter type=volume
 
 # In another terminal, manage volumes
 podman volume create test-volume
-podman volume inspect test-volume
 podman volume rm test-volume
 ```
 
@@ -108,8 +113,8 @@ podman events --filter type=container --filter event=start
 # Image pull events from the last hour
 podman events --filter type=image --filter event=pull --since 1h
 
-# Container die events in JSON format
-podman events --filter type=container --filter event=die --format json
+# Container died events in JSON format
+podman events --filter type=container --filter event=died --format json
 ```
 
 ## Building a Multi-Type Event Monitor
@@ -130,7 +135,7 @@ echo "Logs directory: ${LOG_DIR}"
 podman events --format json | while IFS= read -r event; do
     event_type=$(echo "$event" | jq -r '.Type')
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // .Actor.ID')
+    name=$(echo "$event" | jq -r '.Name // .ID')
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
     # Route to type-specific log file
@@ -202,4 +207,4 @@ podman volume rm test-volume verify-vol 2>/dev/null
 
 ## Summary
 
-Filtering Podman events by type lets you focus on the specific category of activity you need to monitor. Whether you are tracking container lifecycles, image operations, pod management, or volume changes, the `--filter type=` flag narrows down the event stream to exactly what matters. Combined with other filters and JSON output, type filtering is a fundamental building block for effective Podman monitoring.
+Filtering Podman events by type lets you focus on the specific category of activity you need to monitor. Whether you are tracking container lifecycles, image operations, pod management, volume changes, network changes, or secret changes, the `--filter type=` flag narrows down the event stream to exactly what matters. Combined with other filters and JSON output, type filtering is a fundamental building block for effective Podman monitoring.
