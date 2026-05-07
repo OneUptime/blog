@@ -19,7 +19,7 @@ Traefik is a modern HTTP reverse proxy and load balancer designed for microservi
 Download the official Traefik image.
 
 ```bash
-# Pull the latest Traefik image
+# Pull the Traefik v3.0 image
 
 podman pull docker.io/library/traefik:v3.0
 
@@ -29,15 +29,15 @@ podman images | grep traefik
 
 ## Running a Basic Traefik Container
 
-Start Traefik with the dashboard enabled.
+Start Traefik with the dashboard enabled. The examples publish Traefik's HTTP and HTTPS entry points to high host ports so they work with rootless Podman without changing privileged port settings.
 
 ```bash
 # Run Traefik with the API dashboard enabled
 podman run -d \
   --name my-traefik \
-  -p 80:80 \
+  -p 8081:80 \
   -p 8080:8080 \
-  traefik:v3.0 \
+  docker.io/library/traefik:v3.0 \
   --api.dashboard=true \
   --api.insecure=true \
   --entrypoints.web.address=:80
@@ -85,8 +85,7 @@ log:
   level: INFO
 
 # Access logs
-accessLog:
-  filePath: "/var/log/traefik/access.log"
+accessLog: {}
 EOF
 
 # Create a dynamic config directory
@@ -95,12 +94,12 @@ mkdir -p ~/traefik-config/dynamic
 # Run Traefik with the static config
 podman run -d \
   --name traefik-static \
-  -p 80:80 \
-  -p 443:443 \
+  -p 8081:80 \
+  -p 8443:443 \
   -p 8080:8080 \
   -v ~/traefik-config/traefik.yml:/etc/traefik/traefik.yml:Z \
   -v ~/traefik-config/dynamic:/etc/traefik/dynamic:Z \
-  traefik:v3.0
+  docker.io/library/traefik:v3.0
 ```
 
 ## Dynamic Configuration for Routing
@@ -118,6 +117,14 @@ http:
       service: app-service
       entryPoints:
         - web
+
+    # Route HTTPS traffic for app.localhost to a backend service
+    app-secure-router:
+      rule: "Host(`app.localhost`)"
+      service: app-service
+      entryPoints:
+        - websecure
+      tls: {}
 
     # Route traffic for api.localhost to an API backend
     api-router:
@@ -157,7 +164,7 @@ http:
 EOF
 
 # Test the routing (add entries to /etc/hosts or use the Host header)
-curl -H "Host: app.localhost" http://localhost
+curl -H "Host: app.localhost" http://localhost:8081
 ```
 
 ## Setting Up TLS with Self-Signed Certificates
@@ -183,16 +190,16 @@ EOF
 # Run Traefik with TLS certificates mounted
 podman run -d \
   --name traefik-tls \
-  -p 80:80 \
-  -p 443:443 \
+  -p 8081:80 \
+  -p 8443:443 \
   -p 8080:8080 \
   -v ~/traefik-config/traefik.yml:/etc/traefik/traefik.yml:Z \
   -v ~/traefik-config/dynamic:/etc/traefik/dynamic:Z \
   -v ~/traefik-certs:/etc/traefik/certs:Z \
-  traefik:v3.0
+  docker.io/library/traefik:v3.0
 
 # Test HTTPS
-curl -k https://localhost
+curl -k -H "Host: app.localhost" https://localhost:8443
 ```
 
 ## Managing the Container
