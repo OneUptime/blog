@@ -75,14 +75,12 @@ podman info --format '{{.Host.Arch}} {{.Host.OS}} {{.Host.Kernel}}'
 Edge devices often have limited storage. Configure aggressive cleanup:
 
 ```bash
-mkdir -p ~/.config/containers
+mkdir -p ~/.config/containers ~/.local/bin ~/.local/state ~/.config/systemd/user
 
-# Use overlay with minimal layers
+# Use overlay storage for rootless containers
 cat > ~/.config/containers/storage.conf <<EOF
 [storage]
 driver = "overlay"
-runroot = "/run/user/$(id -u)/containers"
-graphroot = "/var/lib/containers/storage"
 
 [storage.options.overlay]
 mount_program = "/usr/bin/fuse-overlayfs"
@@ -92,19 +90,19 @@ EOF
 Create an automated cleanup script:
 
 ```bash
-cat > /usr/local/bin/podman-edge-cleanup.sh <<'EOF'
+cat > ~/.local/bin/podman-edge-cleanup.sh <<'EOF'
 #!/bin/bash
 # Remove stopped containers older than 1 hour
 podman container prune -f --filter "until=1h"
 # Remove unused images
-podman image prune -f
+podman image prune -a -f
 # Remove unused volumes
 podman volume prune -f
 # Log disk usage
-echo "$(date): $(podman system df --format '{{.Type}}\t{{.Size}}')" >> /var/log/podman-storage.log
+echo "$(date): $(podman system df --format '{{.Type}}: {{.Size}} ({{.Reclaimable}} reclaimable)')" >> ~/.local/state/podman-storage.log
 EOF
 
-chmod +x /usr/local/bin/podman-edge-cleanup.sh
+chmod +x ~/.local/bin/podman-edge-cleanup.sh
 ```
 
 Schedule it with a systemd timer:
@@ -128,9 +126,10 @@ Description=Podman Edge Cleanup
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/podman-edge-cleanup.sh
+ExecStart=/bin/bash -lc '$HOME/.local/bin/podman-edge-cleanup.sh'
 EOF
 
+systemctl --user daemon-reload
 systemctl --user enable --now podman-cleanup.timer
 ```
 
@@ -234,11 +233,14 @@ Enable the Podman REST API on the edge device for remote management:
 # On the edge device, enable the socket
 systemctl --user enable --now podman.socket
 
-# From a management station, connect via SSH tunnel
-ssh -L 2375:/run/user/1000/podman/podman.sock edge-device
+# From a management station, add an SSH-backed connection
+# Replace 1000 with the remote UID of podman-svc if it differs.
+podman system connection add \
+  --socket-path /run/user/1000/podman/podman.sock \
+  edge-device podman-svc@edge-device
 
-# Then use podman with the remote connection
-podman --url tcp://localhost:2375 ps
+# Then use podman with the saved connection
+podman --connection edge-device ps
 ```
 
 ### Fleet Management Script
@@ -325,7 +327,9 @@ podman run -d --name edge-app \
 Create a watchdog that restarts unhealthy containers:
 
 ```bash
-cat > /usr/local/bin/podman-watchdog.sh <<'EOF'
+mkdir -p ~/.local/bin ~/.config/systemd/user
+
+cat > ~/.local/bin/podman-watchdog.sh <<'EOF'
 #!/bin/bash
 # Check container health and restart if unhealthy
 CONTAINERS=$(podman ps --format '{{.Names}}')
@@ -340,7 +344,7 @@ for name in $CONTAINERS; do
 done
 EOF
 
-chmod +x /usr/local/bin/podman-watchdog.sh
+chmod +x ~/.local/bin/podman-watchdog.sh
 ```
 
 Schedule the watchdog:
@@ -364,9 +368,10 @@ Description=Podman Watchdog
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/podman-watchdog.sh
+ExecStart=/bin/bash -lc '$HOME/.local/bin/podman-watchdog.sh'
 EOF
 
+systemctl --user daemon-reload
 systemctl --user enable --now podman-watchdog.timer
 ```
 
@@ -374,20 +379,20 @@ systemctl --user enable --now podman-watchdog.timer
 
 ## NVIDIA Jetson GPU Containers
 
-For AI inference on NVIDIA Jetson devices:
+For AI inference on NVIDIA Jetson devices, use NVIDIA's recommended CDI flow with Podman:
 
 ```bash
-# Install NVIDIA Container Runtime
-sudo apt install -y nvidia-container-runtime
+# Install NVIDIA Container Toolkit
+sudo apt update
+sudo apt install -y nvidia-container-toolkit
 
-# Configure Podman to use NVIDIA runtime
-mkdir -p /etc/containers/oci/hooks.d
+# Generate a CDI specification for Podman
+sudo nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml
 
 # Run a GPU-accelerated container
 podman run --rm \
-  --device /dev/nvidia0:/dev/nvidia0 \
-  --device /dev/nvidiactl:/dev/nvidiactl \
-  --device /dev/nvidia-uvm:/dev/nvidia-uvm \
+  --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   nvcr.io/nvidia/l4t-pytorch:latest \
   python3 -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
 ```
