@@ -36,12 +36,12 @@ Lima provides a Podman-specific template:
 
 ```bash
 # Create a Lima instance with Podman support
-limactl start --name=podman template://podman
+limactl start --name=podman template:podman
 
 # This creates a VM with:
 # - Podman pre-installed
 # - Socket forwarding configured
-# - File sharing enabled for your home directory
+# - Read-only file sharing enabled for your home directory by default
 
 # Verify the instance is running
 limactl list
@@ -52,20 +52,17 @@ limactl shell podman podman --version
 
 ## Configuring Lima for Podman Desktop
 
-Connect Podman Desktop to the Lima instance:
+Connect the host-side Podman client to the Lima instance:
 
 ```bash
-# Get the Podman socket path from Lima
-limactl shell podman podman info --format '{{.Host.RemoteSocket.Path}}'
-
-# Set up the socket for Podman Desktop to detect
-export CONTAINER_HOST="unix:///Users/$(whoami)/.lima/podman/sock/podman.sock"
+# Get the host-side Podman socket path from Lima
+export CONTAINER_HOST=$(limactl list podman --format 'unix://{{.Dir}}/sock/podman.sock')
 
 # Test the connection from the host
-podman --url $CONTAINER_HOST info
+podman --url "$CONTAINER_HOST" info
 ```
 
-In Podman Desktop, go to **Settings > Resources** to add the Lima-based Podman connection if it is not detected automatically.
+Podman Desktop uses its Lima extension to detect compatible instances. If the `podman` instance is not shown, go to **Settings > Preferences > Extension: Lima**, verify the instance name and type, then disable and re-enable the extension.
 
 ## Customizing the Lima VM
 
@@ -76,6 +73,8 @@ Create a custom Lima configuration for your needs:
 images:
   - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
     arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
 cpus: 4
 memory: "8GiB"
 disk: "50GiB"
@@ -94,11 +93,14 @@ provision:
       #!/bin/bash
       apt-get update
       apt-get install -y podman
-      systemctl enable --now podman.socket
+  - mode: user
+    script: |
+      #!/bin/bash
+      systemctl --user enable --now podman.socket
 
 # Forward the Podman socket
 portForwards:
-  - guestSocket: "/run/podman/podman.sock"
+  - guestSocket: "/run/user/{{.UID}}/podman/podman.sock"
     hostSocket: "{{.Dir}}/sock/podman.sock"
 ```
 
@@ -132,7 +134,7 @@ exit
 
 ## File Sharing Between Host and VM
 
-Lima automatically shares your home directory with the VM:
+Lima automatically shares your home directory with the VM in read-only mode by default:
 
 ```bash
 # Files in your home directory are accessible inside the VM
@@ -145,7 +147,7 @@ limactl shell podman bash -c "
 "
 
 # The built image is available through the Podman socket
-podman --url unix:///Users/$(whoami)/.lima/podman/sock/podman.sock images
+podman --url "$(limactl list podman --format 'unix://{{.Dir}}/sock/podman.sock')" images
 ```
 
 ## Managing Lima Instances
@@ -166,7 +168,7 @@ limactl delete podman
 # Delete with force (stops first if running)
 limactl delete --force podman
 
-# Show instance details
+# Show diagnostic information
 limactl info
 ```
 
@@ -176,17 +178,17 @@ Lima can also run Kubernetes through k3s:
 
 ```bash
 # Start a Lima instance with k3s
-limactl start --name=k3s template://k3s
+limactl start --name=k3s template:k3s
 
 # Get the kubeconfig
-export KUBECONFIG="/Users/$(whoami)/.lima/k3s/copied-from-guest/kubeconfig.yaml"
+export KUBECONFIG="$(limactl list k3s --format '{{.Dir}}')/copied-from-guest/kubeconfig.yaml"
 
 # Verify Kubernetes is running
 kubectl get nodes
 kubectl get pods -A
 ```
 
-This k3s cluster will appear in Podman Desktop under Kubernetes contexts.
+After the instance starts, restart the Lima extension in Podman Desktop and set the kubeconfig path under **Settings > Preferences > Kubernetes** if it is not detected automatically. The cluster will then appear under Kubernetes contexts.
 
 ## Troubleshooting Lima with Podman Desktop
 
@@ -196,11 +198,11 @@ Common issues and fixes:
 # Check Lima instance status
 limactl list
 
-# View VM logs
-limactl shell podman journalctl -u podman.socket
+# View Podman socket logs inside the VM
+limactl shell podman journalctl --user -u podman.socket
 
 # Verify the socket is accessible
-ls -la /Users/$(whoami)/.lima/podman/sock/podman.sock
+ls -la "$(limactl list podman --format '{{.Dir}}')/sock/podman.sock"
 
 # Reset if the socket is broken
 limactl stop podman
@@ -212,4 +214,4 @@ limactl shell podman top -bn1 | head -20
 
 ## Summary
 
-Lima provides Podman Desktop with a flexible and configurable Linux VM backend on macOS. By using Lima, you gain control over VM resources, Linux distribution choice, and file sharing configuration. The integration with Podman Desktop is seamless once the socket is configured, and Lima also supports running lightweight Kubernetes clusters through k3s for a complete local development environment.
+Lima provides Podman Desktop with a flexible and configurable Linux VM backend on macOS. By using Lima, you gain control over VM resources, Linux distribution choice, and file sharing configuration. The integration with Podman Desktop is straightforward once the Lima instance is detected and the Podman socket is configured, and Lima also supports running lightweight Kubernetes clusters through k3s for a complete local development environment.
