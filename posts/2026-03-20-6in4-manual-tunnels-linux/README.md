@@ -62,7 +62,7 @@ ping6 2001:db8::1
 # Ping external IPv6 host
 ping6 2001:4860:4860::8888
 
-# Trace IPv6 path through tunnel
+# Trace IPv6 path to an external host over the tunnel
 traceroute -6 2001:4860:4860::8888
 
 # Capture tunnel traffic (look for proto 41)
@@ -110,19 +110,11 @@ networkctl status sit1
 
 auto sit1
 iface sit1 inet6 v4tunnel
-    address 2001:db8::2
-    netmask 64
+    address 2001:db8::2/64
     endpoint 198.51.100.1
     local 203.0.113.10
     ttl 64
     gateway 2001:db8::1
-
-    # Alternatively with up/down scripts:
-    up ip tunnel add sit1 mode sit remote 198.51.100.1 local 203.0.113.10 ttl 64
-    up ip link set sit1 up
-    up ip addr add 2001:db8::2/64 dev sit1
-    up ip -6 route add ::/0 via 2001:db8::1 dev sit1
-    down ip tunnel del sit1
 ```
 
 ## Multiple Tunnels
@@ -137,27 +129,28 @@ ip -6 route add 2001:db8:b::/48 via 2001:db8:b::1 dev sit2
 
 ## IPv6 Address Assignment with a /48 Prefix
 
-Tunnel brokers typically assign a /48 prefix for subnetting:
+Tunnel brokers often provide a routed /48 prefix for subnetting in addition to the tunnel /64:
 
 ```bash
-# Broker assigns: 2001:db8:abcd::/48
-# Tunnel interface: 2001:db8:abcd::/128 point-to-point address
-# LAN subnet: 2001:db8:abcd:1::/64
+# Tunnel link: 2001:db8:0:1::/64
+# Local tunnel address: 2001:db8:0:1::2/64
+# Remote tunnel endpoint: 2001:db8:0:1::1/64
+# Routed LAN prefix: 2001:db8:abcd::/48
 
 # Tunnel interface address
-sudo ip addr add 2001:db8:abcd::2/128 dev sit1
+sudo ip addr add 2001:db8:0:1::2/64 dev sit1
 
-# Route tunnel endpoint address
-sudo ip -6 route add 2001:db8:abcd::1/128 dev sit1
+# Default route via the broker's tunnel address
+sudo ip -6 route add ::/0 via 2001:db8:0:1::1 dev sit1
 
-# Default route
-sudo ip -6 route add ::/0 via 2001:db8:abcd::1 dev sit1
-
-# LAN interface - use /48 prefix
+# LAN interface - carve a /64 from the routed /48
 sudo ip addr add 2001:db8:abcd:1::1/64 dev eth1
 
-# Enable RA for LAN hosts
-sudo radvd  # or use systemd-networkd with IPv6SendRA=yes
+# Enable IPv6 forwarding
+sudo sysctl -w net.ipv6.conf.all.forwarding=1
+
+# Advertise the LAN prefix to hosts
+# Configure radvd, or use systemd-networkd with IPv6SendRA=yes
 ```
 
 ## Firewall Rules for 6in4
@@ -201,4 +194,4 @@ sudo ip link set sit1 mtu 1480
 
 ## Summary
 
-6in4 tunnels on Linux use `ip tunnel add sit1 mode sit remote <endpoint> local <your-ipv4> ttl 64`. Assign an IPv6 address and add the default IPv6 route through the tunnel. Make persistent with systemd-networkd (.netdev and .network files) or `/etc/network/interfaces` using `v4tunnel` type. Block protocol 41 from sources other than your tunnel broker endpoint. Note the MTU reduction (1480 for standard Ethernet) and configure accordingly to avoid PMTUD issues.
+6in4 tunnels on Linux use `ip tunnel add sit1 mode sit remote <endpoint> local <your-ipv4> ttl 64`. Assign an IPv6 address and add the default IPv6 route through the tunnel. If your broker also routes a /48 to you, keep the tunnel link on its own /64 and use /64 LAN subnets from the routed prefix. Make persistent with systemd-networkd (.netdev and .network files) or `/etc/network/interfaces` using `v4tunnel` type. Block protocol 41 from sources other than your tunnel broker endpoint. Note the MTU reduction (1480 for standard Ethernet) and configure accordingly to avoid PMTUD issues.
