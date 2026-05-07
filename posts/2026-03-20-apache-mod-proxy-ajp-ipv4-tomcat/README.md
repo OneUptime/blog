@@ -8,7 +8,7 @@ Description: Learn how to configure Apache's mod_proxy_ajp module to forward req
 
 ---
 
-AJP (Apache JServ Protocol) is a binary protocol optimized for communication between Apache and Java application servers like Tomcat. It is faster than HTTP for internal proxying because it avoids HTTP header parsing overhead and supports persistent connections natively.
+AJP (Apache JServ Protocol) is a binary protocol used for communication between Apache and Java application servers like Tomcat. It uses persistent TCP connections and a compact packet format for proxying between Apache and Tomcat.
 
 ## Enabling Required Modules
 
@@ -17,13 +17,16 @@ AJP (Apache JServ Protocol) is a binary protocol optimized for communication bet
 
 a2enmod proxy proxy_ajp
 
+# For the load balancing example, also enable the balancer modules
+a2enmod proxy_balancer lbmethod_byrequests
+
 # Verify they are loaded
-apachectl -M | grep proxy
+apachectl -M | grep -E 'proxy|lbmethod'
 ```
 
 ## Configuring Tomcat to Listen on AJP
 
-First, ensure Tomcat's AJP connector is enabled and listening on the IPv4 loopback or a specific internal IP.
+First, ensure Tomcat's AJP connector is enabled and listening on the IPv4 loopback or the specific internal IPv4 address that Apache will connect to.
 
 ```xml
 <!-- /opt/tomcat/conf/server.xml - Uncomment and configure the AJP connector -->
@@ -31,10 +34,10 @@ First, ensure Tomcat's AJP connector is enabled and listening on the IPv4 loopba
            address="127.0.0.1"
            port="8009"
            redirectPort="8443"
-           secretRequired="false" />
+           secret="YOUR_AJP_SECRET" />
 ```
 
-> In Tomcat 9.0.31+, `secretRequired="false"` is needed unless you configure an AJP secret.
+> In Tomcat 9.0.31+, the AJP connector requires a secret by default. Apache httpd 2.4.42+ can pass that secret with the `secret=` parameter on `ProxyPass` or `BalancerMember`.
 
 ## Basic Apache Proxy Configuration
 
@@ -51,7 +54,7 @@ First, ensure Tomcat's AJP connector is enabled and listening on the IPv4 loopba
 
     # Forward all requests to the Tomcat AJP connector
     # ajp://127.0.0.1:8009 is the Tomcat backend on the same server
-    ProxyPass        / ajp://127.0.0.1:8009/
+    ProxyPass        / ajp://127.0.0.1:8009/ secret=YOUR_AJP_SECRET
     ProxyPassReverse / ajp://127.0.0.1:8009/
 
     ErrorLog  ${APACHE_LOG_DIR}/myapp-error.log
@@ -68,7 +71,7 @@ If Tomcat runs on a different host, replace `127.0.0.1` with its IPv4 address.
     ServerName myapp.example.com
 
     # Forward to a remote Tomcat on the internal network
-    ProxyPass        / ajp://10.0.0.50:8009/
+    ProxyPass        / ajp://10.0.0.50:8009/ secret=YOUR_AJP_SECRET
     ProxyPassReverse / ajp://10.0.0.50:8009/
 </VirtualHost>
 ```
@@ -77,9 +80,9 @@ If Tomcat runs on a different host, replace `127.0.0.1` with its IPv4 address.
 
 ```apacheconf
 <Proxy "balancer://tomcat_cluster">
-    BalancerMember ajp://10.0.0.51:8009 loadfactor=1
-    BalancerMember ajp://10.0.0.52:8009 loadfactor=1
-    BalancerMember ajp://10.0.0.53:8009 loadfactor=1 status=+H  # Hot standby
+    BalancerMember ajp://10.0.0.51:8009 loadfactor=1 secret=YOUR_AJP_SECRET
+    BalancerMember ajp://10.0.0.52:8009 loadfactor=1 secret=YOUR_AJP_SECRET
+    BalancerMember ajp://10.0.0.53:8009 loadfactor=1 secret=YOUR_AJP_SECRET status=+H  # Hot standby
     ProxySet lbmethod=byrequests
 </Proxy>
 
@@ -102,7 +105,7 @@ iptables -A INPUT -p tcp --dport 8009 -j DROP
 
 ## Key Takeaways
 
-- Enable both `proxy` and `proxy_ajp` modules for AJP support in Apache.
-- Configure Tomcat's AJP connector to bind to a specific IPv4 address, not `0.0.0.0`.
+- Enable both `proxy` and `proxy_ajp` modules for AJP support in Apache. For load balancing, also enable `proxy_balancer` and `lbmethod_byrequests`.
+- Configure Tomcat's AJP connector to bind to a specific IPv4 address, not `0.0.0.0`, and protect it with a shared AJP secret.
 - Never expose Tomcat's AJP port to the public internet; restrict it with firewall rules.
 - Use `ProxyRequests Off` to prevent Apache from acting as a forward proxy.
