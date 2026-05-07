@@ -17,6 +17,24 @@ Azure Kubernetes Service (AKS) supports multiple node pools, allowing you to run
 ```hcl
 # main.tf
 
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = "my-rg"
+  location = var.location
+}
+
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = "my-aks-cluster"
   location            = azurerm_resource_group.rg.location
@@ -24,14 +42,14 @@ resource "azurerm_kubernetes_cluster" "aks" {
   dns_prefix          = "myaks"
 
   default_node_pool {
-    name                = "system"
-    node_count          = 2
-    vm_size             = "Standard_D2s_v3"
-    os_disk_size_gb     = 50
-    type                = "VirtualMachineScaleSets"
-    enable_auto_scaling = true
-    min_count           = 1
-    max_count           = 3
+    name                 = "system"
+    node_count           = 2
+    vm_size              = "Standard_D4s_v3"
+    os_disk_size_gb      = 50
+    type                 = "VirtualMachineScaleSets"
+    auto_scaling_enabled = true
+    min_count            = 1
+    max_count            = 3
   }
 
   identity {
@@ -52,9 +70,9 @@ resource "azurerm_kubernetes_cluster_node_pool" "workloads" {
   node_count            = 2
   mode                  = "User"
 
-  enable_auto_scaling = true
-  min_count           = 1
-  max_count           = 10
+  auto_scaling_enabled = true
+  min_count            = 1
+  max_count            = 10
 
   node_labels = {
     "workload-type" = "general"
@@ -76,9 +94,9 @@ resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   node_count            = 0
   mode                  = "User"
 
-  enable_auto_scaling = true
-  min_count           = 0
-  max_count           = 4
+  auto_scaling_enabled = true
+  min_count            = 0
+  max_count            = 4
 
   node_taints = ["sku=gpu:NoSchedule"]
 
