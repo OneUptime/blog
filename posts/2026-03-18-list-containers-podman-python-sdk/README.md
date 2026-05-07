@@ -24,6 +24,7 @@ from podman import PodmanClient
 with PodmanClient() as client:
     containers = client.containers.list()
     for container in containers:
+        container.reload()
         print(f"Name: {container.name}")
         print(f"ID: {container.short_id}")
         print(f"Status: {container.status}")
@@ -45,6 +46,7 @@ with PodmanClient() as client:
 
     print(f"Total containers: {len(all_containers)}")
     for container in all_containers:
+        container.reload()
         print(f"  {container.name}: {container.status}")
 ```
 
@@ -123,6 +125,7 @@ with PodmanClient() as client:
         filters={"ancestor": ["nginx:latest"]}
     )
     for c in nginx_containers:
+        c.reload()
         print(f"{c.name} uses image {c.image.tags}")
 ```
 
@@ -137,6 +140,7 @@ with PodmanClient() as client:
     containers = client.containers.list()
 
     for container in containers:
+        container.reload()
         # Basic attributes
         print(f"Name: {container.name}")
         print(f"ID: {container.id}")
@@ -161,7 +165,7 @@ with PodmanClient() as client:
 
     if containers:
         container = containers[0]
-        attrs = container.attrs
+        attrs = container.inspect()
 
         # Network settings
         network = attrs.get("NetworkSettings", {})
@@ -212,7 +216,7 @@ with PodmanClient() as client:
     containers = client.containers.list()
 
     for container in containers:
-        stats = container.stats(stream=False)
+        stats = container.stats(stream=False, decode=True)
 
         # CPU usage
         cpu_stats = stats.get("cpu_stats", {})
@@ -247,6 +251,7 @@ def container_dashboard():
         # Group by status
         status_groups = {}
         for container in containers:
+            container.reload()
             status = container.status
             if status not in status_groups:
                 status_groups[status] = []
@@ -288,6 +293,7 @@ def watch_containers(interval=5):
             containers = client.containers.list(all=True)
 
             for container in containers:
+                container.reload()
                 current_states[container.id] = {
                     "name": container.name,
                     "status": container.status
@@ -332,6 +338,7 @@ def export_container_list(output_file="containers.json"):
 
         container_data = []
         for c in containers:
+            c.reload()
             container_data.append({
                 "name": c.name,
                 "id": c.short_id,
