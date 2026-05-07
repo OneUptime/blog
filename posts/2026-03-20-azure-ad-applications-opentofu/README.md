@@ -21,10 +21,18 @@ terraform {
       source  = "hashicorp/azuread"
       version = "~> 2.47"
     }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.0"
+    }
   }
 }
 
 provider "azuread" {}
+
+provider "azurerm" {
+  features {}
+}
 
 data "azuread_client_config" "current" {}
 ```
@@ -35,7 +43,8 @@ data "azuread_client_config" "current" {}
 # main.tf - App registration for a web application
 resource "azuread_application" "web_app" {
   display_name     = "MyWebApplication"
-  identifier_uris  = ["api://mywebapp"]
+  identifier_uris  = ["api://${data.azuread_client_config.current.tenant_id}/mywebapp"]
+  owners           = [data.azuread_client_config.current.object_id]
   sign_in_audience = "AzureADMyOrg"  # Single tenant
 
   # Configure as a web application with redirect URIs
@@ -88,6 +97,7 @@ resource "azuread_application" "web_app" {
 resource "azuread_service_principal" "web_app_sp" {
   client_id                    = azuread_application.web_app.client_id
   app_role_assignment_required = false
+  owners                       = [data.azuread_client_config.current.object_id]
 
   tags = ["webapp", "production"]
 }
@@ -103,11 +113,17 @@ resource "azuread_application_password" "web_app_secret" {
   end_date       = "2027-01-01T00:00:00Z"
 }
 
+# Look up an existing Key Vault
+data "azurerm_key_vault" "kv" {
+  name                = "my-key-vault"
+  resource_group_name = "identity-rg"
+}
+
 # Store the secret in Key Vault
 resource "azurerm_key_vault_secret" "app_client_secret" {
   name         = "webapp-client-secret"
   value        = azuread_application_password.web_app_secret.value
-  key_vault_id = azurerm_key_vault.kv.id
+  key_vault_id = data.azurerm_key_vault.kv.id
 }
 ```
 
