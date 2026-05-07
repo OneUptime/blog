@@ -40,7 +40,7 @@ http_requests_total{method="GET",status="200"} 1234
 
 ## Step 2: Ensure Your Service Has a Named Port
 
-ServiceMonitors reference service ports by name. Make sure your Service has named ports:
+In the examples below, ServiceMonitors reference service ports by name, so make sure your Service has named ports:
 
 ```yaml
 apiVersion: v1
@@ -84,8 +84,8 @@ spec:
 
 Key fields:
 - **selector.matchLabels**: Must match the labels on your Service.
-- **endpoints[].port**: Must match a named port on your Service.
-- **labels.release: rancher-monitoring**: Required for Prometheus to discover this ServiceMonitor.
+- **endpoints[].port**: In this example, it must match a named port on your Service.
+- **labels.release: rancher-monitoring**: In the default Rancher Monitoring installation, this lets the cluster Prometheus discover the ServiceMonitor. If you installed the chart with a different release name or changed `serviceMonitorSelector`, use the matching label instead.
 
 Apply:
 
@@ -141,9 +141,10 @@ kubectl create secret generic metrics-credentials \
 ```yaml
 endpoints:
   - port: metrics
-    bearerTokenSecret:
-      name: metrics-token
-      key: token
+    authorization:
+      credentials:
+        name: metrics-token
+        key: token
 ```
 
 ### TLS Configuration
@@ -282,10 +283,10 @@ Open `http://localhost:9090/targets` and look for your service.
 
 If the target is not appearing, check:
 
-1. The ServiceMonitor has the `release: rancher-monitoring` label.
+1. In the default Rancher Monitoring installation, the ServiceMonitor has the `release: rancher-monitoring` label.
 2. The Service labels match the ServiceMonitor selector.
 3. The port name in the ServiceMonitor matches the Service port name.
-4. The namespace is accessible to Prometheus (check `serviceMonitorNamespaceSelector`).
+4. Prometheus can discover the ServiceMonitor namespace (check `serviceMonitorNamespaceSelector`), and the ServiceMonitor can discover the target Service namespace (check `namespaceSelector`).
 
 Check the Prometheus Operator logs for errors:
 
@@ -354,4 +355,4 @@ spec:
 
 ## Summary
 
-ServiceMonitors are the standard way to configure Prometheus scraping in Rancher. They work by selecting Kubernetes Services based on labels and defining how to scrape their metrics endpoints. Always include the `release: rancher-monitoring` label, use named service ports, and verify your targets appear in the Prometheus UI after creation.
+ServiceMonitors are the standard way to configure Prometheus scraping in Rancher. They work by selecting Kubernetes Services based on labels and defining how to scrape their metrics endpoints. In a default Rancher Monitoring installation, include the `release: rancher-monitoring` label, use named service ports for `endpoints[].port`, and verify your targets appear in the Prometheus UI after creation.
