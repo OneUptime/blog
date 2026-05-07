@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Longhorn, Kubernetes, Storage, Volumes, Operation
 
-Description: Learn how to attach and detach Longhorn volumes from nodes using the Longhorn UI, kubectl, and the Longhorn API for maintenance and debugging scenarios.
+Description: Learn how to attach and detach Longhorn volumes from nodes using the Longhorn UI and kubectl for maintenance and debugging scenarios.
 
 ## Introduction
 
@@ -13,7 +13,7 @@ Longhorn volumes are normally attached and detached automatically as pods that c
 ## Understanding Volume Attachment
 
 In Longhorn, a volume can be in one of the following states:
-- **Detached**: The volume exists but is not mounted to any node
+- **Detached**: The volume exists but is not attached to any node
 - **Attaching**: The volume is in the process of being attached
 - **Attached**: The volume is attached to a node and accessible
 - **Detaching**: The volume is being detached
@@ -55,17 +55,17 @@ kubectl get volumeattachments
 ### Attach a Volume
 
 1. Open the Longhorn UI
-2. Navigate to **Volume**
+2. Navigate to **Volumes**
 3. Find the volume you want to attach (it should be in **Detached** state)
 4. Click the three-dot menu (⋮) next to the volume
 5. Select **Attach**
 6. Choose the target node from the dropdown
-7. Check **Maintenance Mode** if you want to attach without making it available to pods
+7. Check **Maintenance Mode** if you want to attach without enabling the frontend
 8. Click **OK**
 
 ### Detach a Volume
 
-1. In the Longhorn UI, navigate to **Volume**
+1. In the Longhorn UI, navigate to **Volumes**
 2. Find the attached volume
 3. Ensure no pod is currently using the volume
 4. Click the three-dot menu (⋮) next to the volume
@@ -74,32 +74,29 @@ kubectl get volumeattachments
 
 ## Manual Attachment via kubectl
 
-Longhorn uses a `VolumeAttachment` custom resource for managing attachment state:
-
-```yaml
-# longhorn-volume-attachment.yaml - Manually attach a Longhorn volume to a node
-apiVersion: longhorn.io/v1beta2
-kind: VolumeAttachment
-metadata:
-  name: va-my-volume
-  namespace: longhorn-system
-spec:
-  volume: my-longhorn-volume   # Name of the Longhorn volume
-  attachmentTickets:
-    manual-ticket:
-      id: manual-ticket
-      type: longhorn-api
-      parameters:
-        # Specify the node to attach the volume to
-        nodeID: "worker-node-1"
-        disableFrontend: "false"
-```
+Longhorn stores manual attachment requests as tickets in the existing `volumeattachments.longhorn.io` custom resource for each volume:
 
 ```bash
-kubectl apply -f longhorn-volume-attachment.yaml
+# Add a manual attachment ticket to the existing VolumeAttachment for the volume
+kubectl patch volumeattachments.longhorn.io my-longhorn-volume -n longhorn-system \
+  --type merge \
+  -p '{
+    "spec": {
+      "attachmentTickets": {
+        "manual-ticket": {
+          "id": "manual-ticket",
+          "type": "longhorn-api",
+          "nodeID": "worker-node-1",
+          "parameters": {
+            "disableFrontend": "false"
+          }
+        }
+      }
+    }
+  }'
 
 # Check attachment status
-kubectl get volumeattachments.longhorn.io -n longhorn-system
+kubectl get volumeattachments.longhorn.io my-longhorn-volume -n longhorn-system -o yaml
 ```
 
 ## Manual Detachment via kubectl
@@ -107,8 +104,10 @@ kubectl get volumeattachments.longhorn.io -n longhorn-system
 To detach a volume that was manually attached:
 
 ```bash
-# Delete the VolumeAttachment resource to trigger detachment
-kubectl delete volumeattachment.longhorn.io va-my-volume -n longhorn-system
+# Remove the manual attachment ticket to trigger detachment
+kubectl patch volumeattachments.longhorn.io my-longhorn-volume -n longhorn-system \
+  --type json \
+  -p='[{"op":"remove","path":"/spec/attachmentTickets/manual-ticket"}]'
 ```
 
 ## Attaching a Volume for Data Access Without a Pod
@@ -120,8 +119,8 @@ Sometimes you need to access a volume's data for debugging or migration without 
 kubectl get volumes.longhorn.io -n longhorn-system
 
 # Step 2: Patch the volume to trigger attachment to a specific node
-# Using the Longhorn API via kubectl
-kubectl patch volume.longhorn.io my-volume -n longhorn-system \
+# Patch the Longhorn Volume custom resource
+kubectl patch volumes.longhorn.io my-volume -n longhorn-system \
   --type merge \
   -p '{"spec": {"nodeID": "worker-node-1"}}'
 
@@ -129,8 +128,8 @@ kubectl patch volume.longhorn.io my-volume -n longhorn-system \
 kubectl get volumes.longhorn.io my-volume -n longhorn-system -w
 
 # Step 4: SSH to the node and find the device
+# For volumes using the block device frontend, the device will appear as /dev/longhorn/my-volume
 ls /dev/longhorn/
-# The volume will appear as /dev/longhorn/my-volume
 
 # Step 5: Mount the device
 mount /dev/longhorn/my-volume /mnt/data
@@ -139,6 +138,11 @@ mount /dev/longhorn/my-volume /mnt/data
 
 # Step 7: Unmount before detaching
 umount /mnt/data
+
+# Step 8: Clear nodeID to detach the volume
+kubectl patch volumes.longhorn.io my-volume -n longhorn-system \
+  --type merge \
+  -p '{"spec": {"nodeID": ""}}'
 ```
 
 ## Checking Volume Attachment Status
@@ -151,22 +155,21 @@ kubectl get volumeattachments
 kubectl get volumes.longhorn.io -n longhorn-system
 
 # Get detailed volume information including attachment state
-kubectl describe volume.longhorn.io <volume-name> -n longhorn-system | grep -A 10 "Status:"
+kubectl describe volumes.longhorn.io <volume-name> -n longhorn-system | grep -A 10 "Status:"
 ```
 
 ## Handling Stuck Attachments
 
-If a volume is stuck in an attaching or detaching state:
+If a volume is stuck in an attaching or detaching state, inspect Longhorn's attachment tickets before making changes:
 
 ```bash
-# Force delete the VolumeAttachment if it is stuck
-kubectl get volumeattachments | grep <volume-name>
-kubectl delete volumeattachment <attachment-name>
+# Inspect the Longhorn VolumeAttachment CR for the affected volume
+kubectl get volumeattachments.longhorn.io <volume-name> -n longhorn-system -o yaml
 
-# Restart the Longhorn manager on the affected node
-kubectl delete pod -n longhorn-system \
-  -l app=longhorn-manager \
-  --field-selector spec.nodeName=<stuck-node>
+# Remove only a stale ticket after confirming no workload or operation still needs it
+kubectl patch volumeattachments.longhorn.io <volume-name> -n longhorn-system \
+  --type json \
+  -p='[{"op":"remove","path":"/spec/attachmentTickets/<ticket-name>"}]'
 ```
 
 ## Conclusion
