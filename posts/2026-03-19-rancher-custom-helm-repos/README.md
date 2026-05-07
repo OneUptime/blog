@@ -12,16 +12,18 @@ Rancher ships with several default Helm chart repositories, but most organizatio
 
 - A running Rancher instance (v2.7 or later)
 - A managed Kubernetes cluster registered in Rancher
-- Cluster admin or project owner access
+- Permissions to manage repositories in the target cluster
 - The URL of the Helm chart repository you want to add
 
 ## Understanding Repository Types
 
-Rancher supports two types of Helm repositories:
+Rancher supports three types of Helm repositories:
 
 1. **HTTP/HTTPS repositories**: Traditional Helm repositories served over HTTP, containing an `index.yaml` file that lists all available charts. Examples include Bitnami, Jetstack, and Grafana repositories.
 
-2. **Git repositories**: Charts stored in a Git repository. Rancher clones the repo and builds the chart index from the directory structure.
+2. **Git repositories**: Charts stored in a Git repository. Rancher clones the repo and indexes the Helm charts it finds in the repository.
+
+3. **OCI repositories**: Helm charts stored as OCI artifacts in a container registry. OCI-based chart repositories are supported in Rancher v2.9.0 and later.
 
 ## Step 1: Add a Repository via the Rancher UI
 
@@ -34,7 +36,7 @@ In the Rancher dashboard, select your cluster and go to **Apps > Repositories** 
 Click the **Create** button and fill in the details:
 
 - **Name**: A unique identifier for the repository (e.g., `bitnami`)
-- **Target**: Select **HTTP(S)** or **Git**
+- **Target**: Select **HTTP(S)**, **Git**, or **OCI Repository** (`OCI Repository` is available in Rancher v2.9.0 and later)
 
 ### For HTTP/HTTPS Repositories
 
@@ -51,11 +53,15 @@ Common repository URLs:
 | Ingress NGINX | `https://kubernetes.github.io/ingress-nginx` |
 | HashiCorp | `https://helm.releases.hashicorp.com` |
 
+### For OCI Repositories
+
+- **OCI Repository Host URL**: Enter the OCI URL (e.g., `oci://registry.example.com/charts`)
+- The endpoint should contain only OCI Helm chart artifacts
+
 ### For Git Repositories
 
 - **Git Repo URL**: Enter the Git repository URL (e.g., `https://github.com/my-org/helm-charts.git`)
-- **Git Branch**: Specify the branch (default: `main`)
-- **Chart Path**: The directory path within the repo where charts are stored (optional)
+- **Git Branch**: Specify a branch, or leave it blank to use the repository's default branch
 
 ### Authentication for Private Repositories
 
@@ -72,6 +78,11 @@ If the repository requires authentication, configure credentials:
 2. Choose between:
    - **Basic Auth**: Username and password/token
    - **SSH Key**: For SSH-based Git URLs
+
+**For OCI repositories**:
+
+1. Check **Authentication**
+2. Provide registry credentials with a username and password/token
 
 Click **Create** to add the repository.
 
@@ -129,7 +140,7 @@ spec:
 After adding the repository:
 
 1. Go to **Apps > Repositories** to see the new repository listed
-2. Check the **Status** column - it should show **Active** once the index has been downloaded
+2. Check the **State** column - it should show **Active** once Rancher has downloaded the repository
 3. Navigate to **Apps > Charts** and use the filter to select your new repository
 4. You should see charts from the new repository
 
@@ -141,7 +152,7 @@ If the status shows an error:
 
 ## Step 4: Configure Repository Refresh Interval
 
-By default, Rancher refreshes the repository index periodically. You can configure this in the repository settings or via YAML:
+Rancher refreshes the repository index periodically. In Rancher v2.10.0 and later, you can configure the refresh interval in seconds via YAML:
 
 ```yaml
 apiVersion: catalog.cattle.io/v1
@@ -150,7 +161,7 @@ metadata:
   name: bitnami
 spec:
   url: https://charts.bitnami.com/bitnami
-  forceUpdate: "2026-03-19T00:00:00Z"
+  refreshInterval: 3600
 ```
 
 To manually force a refresh:
@@ -180,29 +191,14 @@ Deleting a repository does not uninstall charts that were deployed from it. Exis
 
 ### Disable a Repository
 
-If you want to temporarily hide a repository's charts without deleting it:
+In Rancher v2.10.0 and later, you can temporarily disable a repository:
 
 1. Edit the repository
-2. Set the **Disabled** flag
+2. Set the **Enabled** field to `false`
 
-## Cluster vs. Namespace Repositories
+## Repository Scope
 
-Rancher supports two scopes:
-
-- **ClusterRepo**: Available to all namespaces in the cluster. Managed by cluster admins.
-- **Repo** (namespace-scoped): Only available within a specific namespace. Useful for project-specific charts.
-
-For namespace-scoped repositories:
-
-```yaml
-apiVersion: catalog.cattle.io/v1
-kind: Repo
-metadata:
-  name: project-charts
-  namespace: my-project
-spec:
-  url: https://charts.example.com/project
-```
+Rancher uses the cluster-scoped `ClusterRepo` resource for custom repositories. Repositories you add in **Apps > Repositories** are available in that cluster; Rancher does not use a namespace-scoped `Repo` resource for this feature.
 
 ## Hosting Your Own Helm Repository
 
@@ -230,4 +226,4 @@ helm repo index . --url https://charts.example.com
 
 ## Summary
 
-Adding custom Helm chart repositories in Rancher expands your application deployment options beyond the default charts. Rancher supports both HTTP/HTTPS and Git-based repositories, with authentication for private repositories. Whether you are integrating popular open-source chart collections or your organization's private charts, the process is straightforward through the Rancher UI or YAML-based ClusterRepo resources.
+Adding custom Helm chart repositories in Rancher expands your application deployment options beyond the default charts. Rancher supports HTTP/HTTPS, Git-based, and OCI-based repositories, with authentication for private repositories. Whether you are integrating popular open-source chart collections or your organization's private charts, the process is straightforward through the Rancher UI or YAML-based `ClusterRepo` resources.
