@@ -8,7 +8,7 @@ Description: Understand the 6to4 address space 2002::/16 (RFC 3056), how IPv4 ad
 
 ## Introduction
 
-`2002::/16` is the 6to4 address space defined in RFC 3056. 6to4 encapsulates IPv6 in IPv4 packets (proto 41), allowing IPv6 connectivity using the public IPv4 address of the host. The bits 2-5 of the /48 prefix encode the host's IPv4 address. Like Teredo, 6to4 is a legacy transition mechanism that should be disabled in modern deployments.
+`2002::/16` is the 6to4 address space defined in RFC 3056. 6to4 encapsulates IPv6 in IPv4 packets (proto 41), allowing IPv6 connectivity using the globally unique IPv4 address of the site or host. The next 32 bits of the /48 prefix encode the site's IPv4 address. Like Teredo, 6to4 is a legacy transition mechanism that should generally be avoided in modern deployments.
 
 ## Address Format
 
@@ -19,7 +19,7 @@ Description: Understand the 6to4 address space 2002::/16 (RFC 3056), how IPv4 ad
  +-----------+----------------+-----------+------------+
 
  Example:
-   Public IPv4: 203.0.113.42 = 0xCB00712A
+   Example IPv4: 203.0.113.42 = 0xCB00712A
    6to4 prefix: 2002:cb00:712a::/48
    Host address: 2002:cb00:712a::1/128
 
@@ -35,7 +35,7 @@ import socket
 SIXTO4_PREFIX = ipaddress.IPv6Network("2002::/16")
 
 def ipv4_to_6to4(ipv4_str: str) -> str:
-    """Generate the 6to4 /48 prefix for a given public IPv4 address."""
+    """Generate the 6to4 /48 prefix that embeds a given IPv4 address."""
     ipv4 = ipaddress.IPv4Address(ipv4_str)
     ipv4_int = int(ipv4)
 
@@ -75,11 +75,11 @@ print(parse_6to4_address("2002:cb00:712a::1"))
 
 ```text
 Problems with 6to4:
-  1. Anycast relay discovery: 6to4 uses anycast 192.88.99.1 for relay selection
-     - Anycast relays are unreliable and often operated by unknown parties
+  1. Anycast relay discovery: anycast 6to4 uses 192.88.99.1 for relay selection
+     - Anycast relays were operationally unreliable in practice
   2. Asymmetric routing: outbound and inbound paths differ
-  3. No NAT traversal: requires a public IPv4 address
-  4. RFC 7526 deprecated 192.88.99.0/24 anycast in 2015
+  3. No NAT traversal for end hosts: the 6to4 endpoint needs a globally unique IPv4 address
+  4. RFC 7526 deprecated 192.88.99.0/24 anycast in 2015, but not 2002::/16 itself
   5. Privacy: 6to4 address directly reveals your IPv4 address
 
 Recommendation: Disable 6to4 and use native IPv6 or explicit tunnels (6in4 with known endpoints)
@@ -103,10 +103,10 @@ ip6tables -A FORWARD -s 2002::/16 -j DROP
 ip6tables -A FORWARD -d 2002::/16 -j DROP
 
 # macOS
-networksetup -setv6off Wi-Fi  # Disable IPv6 (nuclear option)
-# Or more targeted: disable 6to4 via sysctl
+networksetup -setv6off "Wi-Fi"  # Disable IPv6 on this service (nuclear option)
+# If a 6to4 service exists, remove it in System Settings > Network
 ```
 
 ## Conclusion
 
-The `2002::/16` 6to4 space embeds a public IPv4 address in bits 16-47 of an IPv6 prefix. It was a useful transition mechanism before native IPv6 was widely available, but its reliance on anycast relays makes it unreliable and deprecated. Block 6to4 at your network boundary and disable it on hosts. Monitor for 6to4 traffic that indicates misconfigured or legacy systems with OneUptime.
+The `2002::/16` 6to4 space embeds an IPv4 address in bits 16-47 of an IPv6 prefix. It was a useful transition mechanism before native IPv6 was widely available, but its common reliance on anycast relays made many deployments unreliable, and RFC 7526 deprecated the `192.88.99.0/24` anycast relay prefix. Block 6to4 at your network boundary and disable it on hosts. Monitor for 6to4 traffic that indicates misconfigured or legacy systems with OneUptime.
