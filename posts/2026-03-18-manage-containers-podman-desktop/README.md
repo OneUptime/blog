@@ -80,7 +80,7 @@ podman pause my-nginx
 podman unpause my-nginx
 ```
 
-In Podman Desktop, each container row has action buttons for Start, Stop, Restart, and Delete. Click the appropriate button for the desired action.
+In Podman Desktop, each container row has action icons for Start, Stop, and Delete, with additional actions such as Restart available from the overflow menu. Click the appropriate action for the desired operation.
 
 ## Inspecting Container Details
 
