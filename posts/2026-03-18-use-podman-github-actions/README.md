@@ -85,10 +85,11 @@ jobs:
               -u ${{ github.actor }} \
               --password-stdin
 
-      # Build the image with proper tagging for GHCR
+      # Build the image with proper tagging and source metadata for GHCR
       - name: Build image
         run: |
           podman build \
+            --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
             -t ghcr.io/${{ github.repository }}:${{ github.sha }} \
             -t ghcr.io/${{ github.repository }}:latest \
             .
@@ -150,7 +151,8 @@ jobs:
       # Execute the integration test suite
       - name: Run integration tests
         run: |
-          curl --retry 10 --retry-delay 2 http://localhost:8080/health
+          curl --fail --retry 10 --retry-delay 2 --retry-connrefused \
+            http://localhost:8080/health
           podman run --rm --pod test-pod myapp:test npm run test:integration
 
       # Clean up the pod and all its containers
@@ -170,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        base-image: ["node:18", "node:20", "node:22"]
+        base-image: ["node:22", "node:24", "node:25"]
 
     steps:
       - name: Checkout code
