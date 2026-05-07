@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, firewalld, IPv4, Linux, Firewall, Security, Automation
 
-Description: Use Ansible's ansible.posix.firewalld module to manage IPv4 firewall rules on Linux hosts running firewalld, covering zone configuration, service allowances, port rules, and rich rules.
+Description: Use Ansible's ansible.posix.firewalld module to manage firewalld rules and IPv4-specific policies on Linux hosts running firewalld, covering zone configuration, service allowances, port rules, and rich rules.
 
 ## Introduction
 
-`ansible.posix.firewalld` manages firewalld zones and rules on RHEL, CentOS, Fedora, and similar Linux distributions. It is idempotent and supports immediate and permanent rule changes.
+`ansible.posix.firewalld` manages firewalld zones and rules on RHEL, CentOS, Fedora, and similar Linux distributions. Managed hosts need the firewalld Python bindings installed (`python3-firewall` or `python-firewall`, depending on the distribution). It is idempotent and supports immediate and permanent rule changes. Service and port allowances apply to the selected zone; use rich rules with `family='ipv4'` or IPv4 source bindings when you need matching that is explicitly limited to IPv4.
 
 ## Basic Service and Port Rules
 
@@ -59,16 +59,22 @@ Description: Use Ansible's ansible.posix.firewalld module to manage IPv4 firewal
 ## Zone Management
 
 ```yaml
-    - name: Move interface to trusted zone
+    - name: Assign interface to trusted zone
       ansible.posix.firewalld:
         zone: trusted
         interface: eth1
+        immediate: yes
         permanent: yes
         state: enabled
 
+    - name: Get current default zone
+      ansible.builtin.command: firewall-cmd --get-default-zone
+      register: current_default_zone
+      changed_when: false
+
     - name: Set default zone to dmz
       ansible.builtin.command: firewall-cmd --set-default-zone=dmz
-      changed_when: false
+      when: current_default_zone.stdout | trim != "dmz"
 ```
 
 ## Rich Rules - Block Specific IP
@@ -77,6 +83,7 @@ Description: Use Ansible's ansible.posix.firewalld module to manage IPv4 firewal
     - name: Block specific IPv4 address
       ansible.posix.firewalld:
         rich_rule: "rule family='ipv4' source address='203.0.113.5' drop"
+        immediate: yes
         permanent: yes
         state: enabled
         zone: public
@@ -84,6 +91,7 @@ Description: Use Ansible's ansible.posix.firewalld module to manage IPv4 firewal
     - name: Allow specific CIDR to reach port 5432
       ansible.posix.firewalld:
         rich_rule: "rule family='ipv4' source address='10.1.0.0/24' port port='5432' protocol='tcp' accept"
+        immediate: yes
         permanent: yes
         state: enabled
         zone: internal
@@ -96,6 +104,7 @@ Description: Use Ansible's ansible.posix.firewalld module to manage IPv4 firewal
       ansible.posix.firewalld:
         zone: internal
         source: 10.1.0.0/24
+        immediate: yes
         permanent: yes
         state: enabled
 
@@ -103,6 +112,7 @@ Description: Use Ansible's ansible.posix.firewalld module to manage IPv4 firewal
       ansible.posix.firewalld:
         zone: drop
         source: 192.0.2.0/24
+        immediate: yes
         permanent: yes
         state: enabled
 ```
@@ -113,6 +123,7 @@ Description: Use Ansible's ansible.posix.firewalld module to manage IPv4 firewal
     - name: Block Telnet
       ansible.posix.firewalld:
         port: 23/tcp
+        immediate: yes
         permanent: yes
         state: disabled
         zone: public
@@ -127,4 +138,4 @@ ansible-playbook -i inventory.ini configure_firewalld.yml
 
 ## Conclusion
 
-`ansible.posix.firewalld` provides idempotent firewalld management. Use `permanent: yes` to persist rules across reboots and follow with `firewall-cmd --reload` to activate them immediately. Use rich rules for CIDR-based IPv4 policies and source bindings to assign subnets to appropriate zones without requiring interface reassignment.
+`ansible.posix.firewalld` provides idempotent firewalld management. Use `permanent: yes` to persist rules across reboots. Use `immediate: yes` when you want permanent changes applied to the runtime configuration right away, or follow permanent-only changes with `firewall-cmd --reload`. Use rich rules for explicit IPv4 matching and source bindings to assign IPv4 subnets to appropriate zones without requiring interface reassignment.
