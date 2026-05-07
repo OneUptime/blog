@@ -89,10 +89,10 @@ sudo apt install iptables-persistent -y
 sudo netfilter-persistent save
 
 # Or manually save and restore
-sudo iptables-save > /etc/iptables/rules.v4
+sudo iptables-save -f /etc/iptables/rules.v4
 
-# Verify rules at boot with /etc/rc.local:
-# iptables-restore < /etc/iptables/rules.v4
+# Restore manually later:
+sudo iptables-restore < /etc/iptables/rules.v4
 ```
 
 ## Verifying ESP Traffic Flows
@@ -104,20 +104,21 @@ sudo iptables -L -n | grep -i "esp\|50"
 # Capture ESP traffic to confirm it's passing through
 sudo tcpdump -i eth0 -n proto 50
 
-# Expected: ESP packets like:
+# When NAT-T is not in use, expect ESP packets like:
 # 1.2.3.4 > 5.6.7.8: ESP(spi=0x12345678, seq=0x1)
 
-# Check connection tracking for ESP (conntrack doesn't track ESP by default)
-sudo conntrack -L | grep 50
+# Check kernel IPsec state/policy
+sudo ip xfrm state list
+sudo ip xfrm policy list
 ```
 
 ## Checking if ESP is Being Blocked
 
 ```bash
-# If ESP is blocked, tcpdump will show packets entering but not the SPI responses
+# If native ESP is blocked, tcpdump may show IKE on UDP 500/4500 but no protocol 50 packets
 sudo tcpdump -i eth0 -n 'proto 50 or (udp port 500 or udp port 4500)'
 
-# If only IKE (UDP 500) traffic shows and no ESP, the firewall is blocking ESP
+# If NAT-T is in use, encrypted payloads may appear only on UDP 4500 rather than as raw ESP
 
 # Check DROP counters
 sudo iptables -L FORWARD -n -v | grep DROP
@@ -131,4 +132,4 @@ sudo iptables -A INPUT -p ah -j ACCEPT
 sudo iptables -A OUTPUT -p ah -j ACCEPT
 ```
 
-Allowing ESP protocol (50) is the single most commonly forgotten step when setting up IPsec behind a firewall. Without it, IKE negotiates successfully but no encrypted data can flow.
+Allowing ESP protocol (50) is a commonly forgotten step when setting up IPsec behind a firewall without NAT-T. Without it, IKE may negotiate successfully but native ESP data cannot flow.
