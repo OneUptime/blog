@@ -34,7 +34,6 @@ Start by creating a pod that publishes all the ports you need:
 podman pod create \
   --name lamp-stack \
   -p 8080:80 \
-  -p 8443:443 \
   -p 3306:3306 \
   -p 8081:8081
 ```
