@@ -32,9 +32,9 @@ This command removes:
 - All pods
 - All images
 - All volumes
-- All networks (except the default bridge)
+- All networks
 - All build cache
-- All machine configurations (on macOS/Windows)
+- All Podman machines
 - Storage directories and their contents
 
 ## When to Use System Reset
@@ -181,6 +181,10 @@ systemctl --user stop podman.service
 
 # Try the reset again
 podman system reset --force
+
+# Restart the user services if you stopped them
+systemctl --user start podman.socket
+systemctl --user start podman.service
 
 # If reset still fails, manually clean the storage directory
 # WARNING: This is a last resort
