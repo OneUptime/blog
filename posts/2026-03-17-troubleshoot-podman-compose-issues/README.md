@@ -71,18 +71,16 @@ podman inspect project_web_1 --format '{{.NetworkSettings.Networks}}'
 #   - ./data:/app/data:Z
 
 # Fix 2: use --userns=keep-id to map the user
-# x-podman:
-#   podman_args:
-#     - "--userns=keep-id"
+# userns_mode: keep-id
 ```
 
 ## Compose File Version Warnings
 
 ```bash
-# Warning: unsupported compose file version
+# Warning: obsolete or unsupported compose file version
 
-# podman-compose supports version 2 and 3 syntax
-# Remove the version field or use a supported version
+# The Compose Specification treats the version field as obsolete
+# Remove the version field and let podman-compose use the current schema
 # version: "3.8"
 ```
 
