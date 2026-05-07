@@ -136,7 +136,7 @@ ip link show type bridge
 
 # Check if IP forwarding is enabled
 sysctl net.ipv4.ip_forward
-# Should be 1 for container networking
+# Should be 1 for rootful bridge networks that need external routing
 
 # Enable if disabled
 sudo sysctl -w net.ipv4.ip_forward=1
@@ -146,11 +146,11 @@ sudo sysctl -w net.ipv4.ip_forward=1
 
 | Problem | Check | Solution |
 |---------|-------|---------|
-| Cannot reach other containers | Same network? | `podman network connect` |
+| Cannot reach other containers | Same network? | `podman network connect mynetwork myapp` |
 | DNS not resolving names | DNS enabled? | Use custom network, not default |
-| Port not accessible | Port published? | Add `-p host:container` |
+| Port not accessible | Port published? | Add `-p hostPort:containerPort` |
 | No internet access | Internal network? | Remove `--internal` flag |
-| Rootless port < 1024 | Privileged port | Lower `ip_unprivileged_port_start` |
+| Rootless port < 1024 | Privileged port | Use a high host port or lower `net.ipv4.ip_unprivileged_port_start` |
 | Permission denied | Firewall? | Check iptables/nftables |
 
 ## Full Diagnostic Script
@@ -172,4 +172,4 @@ podman exec $CTR nslookup google.com > /dev/null 2>&1 && echo "DNS: OK" || echo 
 
 ## Summary
 
-Troubleshoot Podman container networking by systematically checking the container's network configuration, testing connectivity at each layer (gateway, external, DNS), verifying port publishing, and inspecting firewall rules. Ensure containers share a custom network for DNS-based discovery, IP forwarding is enabled on the host, and the correct network backend is functioning. Use `podman --log-level=debug` for detailed diagnostic output when standard checks do not reveal the issue.
+Troubleshoot Podman container networking by systematically checking the container's network configuration, testing connectivity at each layer (gateway, external, DNS), verifying port publishing, and inspecting firewall rules. Ensure containers share a custom network for DNS-based discovery, IP forwarding is enabled when required for rootful bridge routing, and the correct network backend is functioning. Use `podman --log-level=debug` for detailed diagnostic output when standard checks do not reveal the issue.
