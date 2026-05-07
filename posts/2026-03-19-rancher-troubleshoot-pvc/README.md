@@ -26,7 +26,7 @@ kubectl describe pvc <pvc-name> -n <namespace>
 Common PVC states:
 - **Pending**: PVC is waiting for a PV to bind
 - **Bound**: PVC is successfully bound to a PV
-- **Lost**: The underlying PV has been deleted
+- **Lost**: The PVC has lost its bound PV reference, often because the PV was deleted or became unavailable
 
 ## Step 2: Troubleshoot Pending PVCs
 
@@ -64,11 +64,11 @@ kubectl get storageclass
 kubectl get pvc <pvc-name> -n <namespace> -o jsonpath='{.spec.storageClassName}'
 ```
 
-If the StorageClass does not exist, create it or update the PVC to use an existing one.
+If the StorageClass does not exist, create it or recreate the PVC to reference an existing one.
 
 ### No Default StorageClass
 
-If the PVC does not specify a StorageClass and there is no default:
+If the PVC does not specify a StorageClass and there is no default, the claim remains without a class and dynamic provisioning will not happen until you specify one or a default becomes available:
 
 ```bash
 # Check for default StorageClass
@@ -98,7 +98,7 @@ PVCs with `volumeBindingMode: WaitForFirstConsumer` stay Pending until a pod use
 kubectl get storageclass <class-name> -o jsonpath='{.volumeBindingMode}'
 ```
 
-If this returns `WaitForFirstConsumer`, the PVC is expected to be Pending. Deploy a pod that uses the PVC to trigger binding.
+If this returns `WaitForFirstConsumer`, the PVC is expected to be Pending until a pod that uses it is created and scheduled.
 
 ## Step 4: Troubleshoot Mount Failures
 
@@ -136,16 +136,16 @@ Warning  FailedMount  MountVolume.MountDevice failed
 
 Causes and solutions:
 - Filesystem corruption
-- Missing node packages (nfs-common, iscsi-initiator)
+- Missing node packages (for example, NFS or iSCSI client utilities)
 - Permission issues
 
 ```bash
 # Check node logs (SSH to the node)
 journalctl -u kubelet | grep -i mount | tail -20
 
-# Verify required packages
-dpkg -l | grep nfs-common
-rpm -qa | grep iscsi-initiator
+# Verify required packages (package names vary by distro)
+dpkg -l | grep -E 'nfs-common|open-iscsi'
+rpm -qa | grep -E 'nfs-utils|iscsi-initiator-utils'
 ```
 
 ## Step 5: Troubleshoot Volume Detach Issues
@@ -156,8 +156,8 @@ Sometimes pods get stuck terminating because the volume cannot detach:
 # Check for stuck VolumeAttachments
 kubectl get volumeattachments
 
-# Force delete if needed (use with caution)
-kubectl delete volumeattachment <name> --grace-period=0
+# Delete only after confirming the storage backend no longer shows the volume as attached
+kubectl delete volumeattachment <name>
 
 # Check the node for stuck mounts
 # SSH to the node:
@@ -183,7 +183,7 @@ For PVs with Retain policy, manually clean up data and remove the claimRef.
 
 ## Step 7: Troubleshoot Zone/Topology Issues
 
-Volumes and pods must be in the same zone:
+For zonal volumes, volumes and pods must be in the same zone:
 
 ```bash
 # Check PV topology
