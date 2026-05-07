@@ -44,7 +44,7 @@ This dashboard shows:
 
 ## Step 3: Query CPU Metrics with PromQL
 
-Open the Prometheus UI from **Monitoring > Prometheus** and use these queries to analyze CPU usage:
+Open the Prometheus Graph UI from **Monitoring > Prometheus Graph** and use these queries to analyze CPU usage:
 
 ### Overall Cluster CPU Usage
 
@@ -198,39 +198,19 @@ spec:
 
 ## Step 7: Create a Custom Grafana Dashboard
 
-Build a focused CPU and memory dashboard by creating a ConfigMap:
+Build a focused CPU and memory dashboard by exporting the dashboard JSON model from Grafana and storing it in a ConfigMap:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: cluster-resources-dashboard
-  namespace: cattle-monitoring-system
+  namespace: cattle-dashboards
   labels:
     grafana_dashboard: "1"
 data:
-  cluster-resources.json: |
-    {
-      "dashboard": {
-        "title": "Cluster Resource Overview",
-        "panels": [
-          {
-            "title": "Cluster CPU Usage %",
-            "type": "gauge",
-            "targets": [{
-              "expr": "sum(rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) / sum(machine_cpu_cores) * 100"
-            }]
-          },
-          {
-            "title": "Cluster Memory Usage %",
-            "type": "gauge",
-            "targets": [{
-              "expr": "(1 - sum(node_memory_MemAvailable_bytes) / sum(node_memory_MemTotal_bytes)) * 100"
-            }]
-          }
-        ]
-      }
-    }
+  cluster-resources.json: |-
+    <paste-the-exported-dashboard-json-model-here>
 ```
 
 ## Step 8: Monitor Resource Quotas
@@ -261,7 +241,7 @@ kubectl top pods --all-namespaces --sort-by=cpu
 kubectl top pods -n my-namespace --sort-by=memory
 ```
 
-Note: The `kubectl top` command requires the Metrics Server to be installed, which Rancher typically deploys by default.
+Note: The `kubectl top` command requires the Metrics Server to be installed and working in the cluster.
 
 ## Summary
 
