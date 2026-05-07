@@ -19,13 +19,13 @@ Podman supports volume plugins that implement the Docker volume plugin API. Thes
 Volume plugins run as separate services and communicate with Podman over a Unix socket. They handle volume creation, mounting, and unmounting on specialized storage backends.
 
 ```bash
-# List available volume plugins
+# Inspect common plugin socket directories
 
 ls /run/containers/plugins/ 2>/dev/null
 ls /var/run/docker/plugins/ 2>/dev/null
 
-# Check if any plugins are registered
-podman info --format '{{ .Plugins.Volume }}'
+# Check configured Podman volume plugins
+podman volume reload
 ```
 
 ## Installing a Volume Plugin
@@ -33,7 +33,7 @@ podman info --format '{{ .Plugins.Volume }}'
 Most volume plugins are distributed as container images or standalone binaries:
 
 ```bash
-# Example: Install the local-persist plugin
+# Example: Install the deprecated local-persist plugin
 # Download and install the plugin binary
 sudo curl -fsSL https://github.com/MatchbookLab/local-persist/releases/latest/download/local-persist-linux-amd64 \
   -o /usr/local/bin/local-persist
@@ -44,6 +44,16 @@ sudo local-persist &
 
 # Verify the plugin socket exists
 ls /run/docker/plugins/local-persist.sock
+
+# Register the plugin socket with Podman in a containers.conf drop-in
+sudo mkdir -p /etc/containers/containers.conf.d
+sudo tee /etc/containers/containers.conf.d/local-persist.conf >/dev/null <<'EOF'
+[engine.volume_plugins]
+local-persist = "/run/docker/plugins/local-persist.sock"
+EOF
+
+# Reload volumes exposed by configured plugins
+podman volume reload
 ```
 
 ## Creating Volumes with a Plugin
@@ -98,6 +108,8 @@ podman run -d --name vol-plugin \
   -v /mnt/storage:/mnt/storage \
   my-volume-plugin:latest
 
+# Register the plugin socket in containers.conf before using it
+
 # Create volumes using the containerized plugin
 podman volume create --driver my-plugin \
   --opt path=/mnt/storage/vol1 \
@@ -122,4 +134,4 @@ podman volume ls --filter driver=myplugin
 
 ## Summary
 
-Volume plugins extend Podman's storage capabilities by integrating with specialized backends. Install plugins as binaries or containers, register them via Unix sockets, and use standard `podman volume` commands to manage plugin-backed volumes. Pass driver-specific options during volume creation to configure backend-specific features like replication, size limits, or storage tiers.
+Volume plugins extend Podman's storage capabilities by integrating with specialized backends. Install plugins as binaries or containers, register their Unix sockets in `containers.conf`, and use standard `podman volume` commands to manage plugin-backed volumes. Pass driver-specific options during volume creation to configure backend-specific features like replication, size limits, or storage tiers.
