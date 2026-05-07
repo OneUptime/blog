@@ -37,7 +37,7 @@ volumeBindingMode: WaitForFirstConsumer
 
 ## Step 2: Navigate to the Workloads Page
 
-In the Rancher dashboard, select your target cluster. From the left sidebar, click **Workloads** and then select **StatefulSets**.
+In the Rancher dashboard, select your target cluster. From the left sidebar, click **Workload**, click **Create**, and then select **StatefulSet**.
 
 ## Step 3: Create a New StatefulSet
 
@@ -45,8 +45,8 @@ Click the **Create** button. Fill in the basic configuration:
 
 - **Name**: Enter a name like `my-postgres`
 - **Namespace**: Select your target namespace
-- **Replicas**: Set the number of replicas (e.g., 3)
-- **Service Name**: Enter a headless service name like `my-postgres-headless` (Rancher can create this for you)
+- **Replicas**: Set replicas to `1` for this PostgreSQL example
+- **Service Name**: Enter a headless service name like `my-postgres-headless` (the YAML example below includes the required headless Service)
 
 ## Step 4: Configure the Container
 
@@ -79,7 +79,7 @@ This is the key differentiator for StatefulSets. Scroll to the **Volume Claim Te
 Then mount the volume in your container:
 
 - **Mount Point**: `/var/lib/postgresql/data`
-- **Sub Path**: `postgres` (recommended for PostgreSQL)
+- **Sub Path**: `postgres` (optional, if you want the database files in a subdirectory of the volume)
 
 ## Step 6: Configure the Update Strategy
 
@@ -92,9 +92,9 @@ Set the **Partition** value if you want to perform a staged rollout. Pods with a
 
 ## Step 7: Deploy the StatefulSet
 
-Click **Create** to deploy. Rancher will create the StatefulSet and its associated headless Service.
+Click **Create** to deploy. For stable pod DNS, the StatefulSet should use a matching headless Service.
 
-Watch the pods come up in order. StatefulSet pods are created sequentially (pod-0 first, then pod-1, then pod-2), and each pod must be Running and Ready before the next one is started.
+If you use more than one replica, watch the pods come up in order. StatefulSet pods are created sequentially (pod-0 first, then pod-1, then pod-2), and each pod must be Running and Ready before the next one is started.
 
 ## Alternative: Deploy via YAML
 
@@ -121,7 +121,7 @@ metadata:
   namespace: default
 spec:
   serviceName: my-postgres-headless
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: my-postgres
@@ -172,12 +172,12 @@ kubectl get statefulset my-postgres -n default
 kubectl get pods -l app=my-postgres -n default
 ```
 
-Each pod will have a predictable name: `my-postgres-0`, `my-postgres-1`, `my-postgres-2`.
+Each pod will have a predictable name such as `my-postgres-0`.
 
 Verify that PersistentVolumeClaims were created:
 
 ```bash
-kubectl get pvc -l app=my-postgres -n default
+kubectl get pvc -n default
 ```
 
 ## Accessing Individual Pods
@@ -198,12 +198,14 @@ my-postgres-0.my-postgres-headless.default.svc.cluster.local
 
 To scale up or down:
 
-1. Go to **Workloads > StatefulSets**
+1. Go to **Workload** and locate your StatefulSet
 2. Click the three-dot menu and select **Edit Config**
 3. Change the **Replicas** value
 4. Click **Save**
 
-When scaling down, pods are removed in reverse order (highest ordinal first). The associated PVCs are not deleted automatically, which preserves your data.
+For a plain `postgres:15` container like this example, keep replicas at `1` unless you configure PostgreSQL replication separately.
+
+When scaling down, pods are removed in reverse order (highest ordinal first). By default, the associated PVCs are not deleted automatically, which preserves your data.
 
 ## Summary
 
