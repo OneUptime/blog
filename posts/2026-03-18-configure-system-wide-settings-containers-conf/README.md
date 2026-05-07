@@ -8,9 +8,9 @@ Description: Learn how to configure system-wide Podman settings in containers.co
 
 ---
 
-> System-wide settings in containers.conf let administrators enforce consistent container behavior across every user on the system.
+> System-wide settings in containers.conf let administrators provide consistent container defaults across every user on the system.
 
-When managing a multi-user environment or a shared development server, you need container settings that apply uniformly. The system-wide `containers.conf` file at `/etc/containers/containers.conf` lets administrators define defaults that affect all users. This guide covers how to create, modify, and manage these global settings.
+When managing a multi-user environment or a shared development server, you need container settings that apply uniformly. The system-wide `containers.conf` file at `/etc/containers/containers.conf` lets administrators define defaults that are read for all users unless a later configuration file overrides them. This guide covers how to create, modify, and manage these global settings.
 
 ---
 
@@ -76,7 +76,7 @@ stop_timeout = 30
 runtime = "crun"
 
 # Default image pull policy
-pull_policy = "newer"
+pull_policy = "missing"
 
 # Enable parallel image layer pulls
 image_parallel_copies = 5
@@ -90,14 +90,14 @@ default_subnet = "10.88.0.0/16"
 EOF
 ```
 
-## Enforcing Security Settings
+## Setting Security Defaults
 
-System-wide configurations are useful for enforcing security policies.
+System-wide configurations are useful for setting security defaults.
 
 ```bash
-# Add security-related settings
-sudo tee -a /etc/containers/containers.conf > /dev/null << 'EOF'
-
+# Add security-related settings in a drop-in file
+sudo mkdir -p /etc/containers/containers.conf.d/
+sudo tee /etc/containers/containers.conf.d/50-security.conf > /dev/null << 'EOF'
 [containers]
 # Drop all capabilities and add only what is needed
 default_capabilities = [
@@ -116,7 +116,7 @@ default_capabilities = [
 
 # Disable privileged containers by default
 # Users must explicitly request privileged mode
-no_hosts = false
+privileged = false
 EOF
 ```
 
@@ -130,14 +130,14 @@ podman run --rm alpine cat /proc/self/status | grep -i cap
 Confirm that the global configuration is being read correctly.
 
 ```bash
-# Check which config files Podman is loading
-podman info --format '{{range .Host.ConfigFiles}}{{.}}{{"\n"}}{{end}}'
-
 # Verify the runtime setting
 podman info --format '{{.Host.OCIRuntime.Name}}'
 
 # Verify the log driver
 podman info --format '{{.Host.LogDriver}}'
+
+# Verify the network backend
+podman info --format '{{.Host.NetworkBackend}}'
 
 # Run a test container to confirm environment variables
 podman run --rm alpine env | grep TERM
@@ -158,18 +158,18 @@ Understand how system-wide settings interact with user-level overrides.
 # To see what a specific user is using:
 podman --log-level=debug info 2>&1 | grep "Reading"
 
-# Prevent users from overriding specific settings by
-# using a drop-in directory with higher priority
+# Use a system drop-in directory for settings that should override
+# earlier system-wide files
 sudo mkdir -p /etc/containers/containers.conf.d/
 
-# Create an enforced drop-in configuration
-sudo tee /etc/containers/containers.conf.d/99-enforced.conf > /dev/null << 'EOF'
+# Create a late system-wide drop-in configuration
+sudo tee /etc/containers/containers.conf.d/99-runtime.conf > /dev/null << 'EOF'
 [engine]
-# Enforce crun runtime for all users
+# Prefer crun runtime for all users
 runtime = "crun"
 EOF
 ```
 
 ## Summary
 
-System-wide `containers.conf` settings at `/etc/containers/containers.conf` provide administrators with centralized control over Podman behavior for all users. By configuring global defaults for security, networking, and runtime options, you ensure consistency across your environment. Remember that user-level configurations can override these defaults, so use drop-in files for settings that must be enforced.
+System-wide `containers.conf` settings at `/etc/containers/containers.conf` provide administrators with centralized defaults for Podman behavior. By configuring global defaults for security, networking, and runtime options, you ensure consistency across your environment. Remember that user-level configurations can override these defaults, so `containers.conf` is not a policy enforcement mechanism by itself.
