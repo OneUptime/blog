@@ -36,6 +36,13 @@ import json, sys
 with open(sys.argv[1]) as f:
     plan = json.load(f)
 
+def as_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
 violations = []
 
 for change in plan.get("resource_changes", []):
@@ -46,9 +53,11 @@ for change in plan.get("resource_changes", []):
     if "create" not in actions:
         continue
 
-    # Check: S3 buckets must have versioning enabled (AC-3, AU-11)
-    if rtype == "aws_s3_bucket" and not after.get("versioning"):
-        violations.append(f"FAIL [AU-11] {change['address']}: S3 bucket versioning not enabled")
+    # Check: S3 bucket versioning resources must enable versioning (AU-11)
+    if rtype == "aws_s3_bucket_versioning":
+        versioning = as_list(after.get("versioning_configuration"))
+        if not any(cfg.get("status") == "Enabled" for cfg in versioning if isinstance(cfg, dict)):
+            violations.append(f"FAIL [AU-11] {change['address']}: S3 bucket versioning not enabled")
 
     # Check: RDS instances must be encrypted (SC-28)
     if rtype == "aws_db_instance" and not after.get("storage_encrypted"):
@@ -57,7 +66,11 @@ for change in plan.get("resource_changes", []):
     # Check: Security groups must not allow 0.0.0.0/0 on port 22
     if rtype == "aws_security_group":
         for rule in after.get("ingress", []):
-            if "22" in str(rule.get("from_port", "")) and "0.0.0.0/0" in rule.get("cidr_blocks", []):
+            from_port = rule.get("from_port")
+            to_port = rule.get("to_port")
+            if from_port is None or to_port is None:
+                continue
+            if from_port <= 22 <= to_port and "0.0.0.0/0" in rule.get("cidr_blocks", []):
                 violations.append(f"FAIL [AC-17] {change['address']}: SSH open to internet")
 
 if violations:
@@ -86,23 +99,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
 
       - name: Run Plan for Drift Detection
         id: plan
         run: |
-          tofu init
-          tofu plan -detailed-exitcode -out=tfplan || echo "exit_code=$?" >> $GITHUB_OUTPUT
+          tofu init -input=false
+
+          set +e
+          tofu plan -refresh-only -input=false -detailed-exitcode -out=tfplan
+          exit_code=$?
+          set -e
+
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+          if [ "$exit_code" -eq 1 ]; then
+            exit 1
+          fi
+
           tofu show -json tfplan > plan.json
 
       - name: Check for Configuration Drift
         if: steps.plan.outputs.exit_code == '2'
         run: |
-          echo "DRIFT DETECTED - infrastructure differs from code"
-          jq -r '.resource_changes[] | select(.change.actions != ["no-op"]) | "\(.change.actions | join("+"))\t\(.address)"' plan.json
+          echo "DRIFT DETECTED - infrastructure differs from the recorded state"
+          jq -r '.resource_drift[]? | select(.change.actions != ["no-op"]) | "\(.change.actions | join("+"))\t\(.address)"' plan.json
           exit 1
 
       - name: Alert on Drift
-        if: failure()
+        if: failure() && steps.plan.outputs.exit_code == '2'
         uses: slackapi/slack-github-action@v1
         with:
           webhook: ${{ secrets.SLACK_SECURITY_WEBHOOK }}
@@ -124,10 +149,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
 
       - name: Export State
         run: |
-          tofu init
+          mkdir -p artifacts
+          tofu init -input=false
           tofu show -json > artifacts/state-$(date +%Y%m).json
 
       - name: Run Evidence Scripts
@@ -144,6 +171,8 @@ jobs:
 
 ```bash
 # Generate a comprehensive audit report
+mkdir -p reports
+
 python3 scripts/evidence-report.py \
   --state-file artifacts/state-$(date +%Y%m).json \
   --output-dir reports/ \
@@ -154,7 +183,7 @@ aws ses send-email \
   --from noreply@company.com \
   --to auditors@company.com \
   --subject "Monthly Compliance Report $(date +%B %Y)" \
-  --body "Please find the attached compliance evidence report."
+  --text "The monthly compliance evidence report has been generated and archived."
 ```
 
 ## Conclusion
