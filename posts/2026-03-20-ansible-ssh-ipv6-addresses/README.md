@@ -10,16 +10,16 @@ Ansible communicates with managed hosts over SSH by default. Connecting via IPv6
 
 ## Step 1: IPv6 Addresses in Ansible Inventory
 
-IPv6 addresses must be enclosed in brackets in the inventory file:
+Use the plain IPv6 literal for `ansible_host`. Brackets are only needed in SSH options that combine a host and port, such as `ProxyJump`:
 
 ```ini
 # inventory.ini - Hosts with IPv6 addresses
 
 [web_servers]
-# Direct IPv6 address (requires bracket notation)
-web-01 ansible_host=[2001:db8::10]
+# Direct IPv6 address
+web-01 ansible_host=2001:db8::10
 
-# Or use ansible_host with the IPv6 address
+# Another IPv6 address
 web-02 ansible_host=2001:db8::11
 
 # Full FQDN with IPv6 resolution
@@ -76,7 +76,7 @@ Host 2001:db8:*
     User ubuntu
     IdentityFile ~/.ssh/id_ed25519
     StrictHostKeyChecking no
-    # Force IPv6 binding
+    # Force IPv6 connections
     AddressFamily inet6
 
 # Named host with IPv6 address
@@ -92,8 +92,8 @@ Host web-prod-01
 # Test SSH connection to an IPv6 host
 ansible web-01 -m ping -i inventory.yaml
 
-# If using brackets in the inventory host line
-ansible '[2001:db8::10]' -m ping -i inventory.ini -u ubuntu
+# Test a literal IPv6 host with an inline inventory
+ansible all -i '2001:db8::10,' -m ping -u ubuntu --ssh-extra-args='-6'
 
 # Test with verbose output to see the SSH command used
 ansible web-01 -m ping -i inventory.yaml -vvv
@@ -102,31 +102,30 @@ ansible web-01 -m ping -i inventory.yaml -vvv
 ## Step 6: Use IPv6 Jump Hosts (Bastion)
 
 ```yaml
-# inventory with IPv6 jump host
-web-01:
-  ansible_host: "2001:db8:internal::10"
-  ansible_user: ubuntu
-  # Route SSH through an IPv6 jump host
-  ansible_ssh_common_args: >-
-    -o ProxyJump='ubuntu@[2001:db8:bastion::1]'
-    -o StrictHostKeyChecking=no
+# host_vars/web-01.yml - IPv6 jump host settings
+ansible_host: "2001:db8:10::10"
+ansible_user: ubuntu
+# Route SSH through an IPv6 jump host
+ansible_ssh_common_args: >-
+  -o ProxyJump='ubuntu@[2001:db8:20::1]'
+  -o StrictHostKeyChecking=no
 ```
 
 ## Step 7: Handle Mixed IPv4/IPv6 Fleets
 
-Use `ansible_host` dynamically from facts or external inventory:
+Set `ansible_host` in inventory or external inventory so Ansible chooses the right address before the first connection:
 
 ```yaml
-# dynamic-ipv6-inventory.yml - Use IPv6 when available, fall back to IPv4
----
-- name: Prefer IPv6 connectivity
-  hosts: all
-
-  pre_tasks:
-    - name: Set ansible_host to IPv6 if available
-      ansible.builtin.set_fact:
-        ansible_host: "{{ ansible_all_ipv6_addresses[0] }}"
-      when: ansible_all_ipv6_addresses | length > 0
+# inventory.yaml - Mixed IPv4/IPv6 inventory
+all:
+  hosts:
+    web-01:
+      ansible_host: "2001:db8::10"
+      ansible_user: ubuntu
+      ansible_ssh_extra_args: "-6"
+    web-02:
+      ansible_host: "192.0.2.25"
+      ansible_user: ubuntu
 ```
 
 ## Verify Connectivity Across the Fleet
@@ -139,4 +138,4 @@ ansible all -m ping -i inventory.yaml
 ansible all -m setup -a "filter=ansible_all_ipv6_addresses" -i inventory.yaml
 ```
 
-Connecting Ansible to IPv6 hosts is straightforward once the inventory syntax and SSH configuration are correct - using `-6` SSH extra args and bracket notation for addresses ensures reliable IPv6-only management.
+Connecting Ansible to IPv6 hosts is straightforward once the inventory syntax and SSH configuration are correct - using `-6` SSH args where needed and raw IPv6 literals in `ansible_host` (with brackets only in SSH options such as `ProxyJump`) ensures reliable IPv6-aware management.
