@@ -13,7 +13,7 @@ Authelia is an open-source authentication and authorization server that supports
 ## Prerequisites
 
 - Authelia deployed and accessible
-- Portainer Business Edition
+- Portainer CE or Business Edition
 - Domain names for both services
 
 ## Step 1: Register Portainer in Authelia
@@ -26,25 +26,36 @@ Add a client configuration to Authelia's `configuration.yml`:
 identity_providers:
   oidc:
     hmac_secret: "your-hmac-secret-min-64-chars"
-    issuer_private_key: |
-      -----BEGIN RSA PRIVATE KEY-----
-      <your-private-key>
-      -----END RSA PRIVATE KEY-----
+    jwks:
+      - key_id: "example"
+        algorithm: "RS256"
+        use: "sig"
+        key: |
+          -----BEGIN PRIVATE KEY-----
+          <your-private-key>
+          -----END PRIVATE KEY-----
 
     clients:
-      - id: portainer
-        description: Portainer Container Management
-        secret: "$pbkdf2-sha512$310000$..."  # bcrypt hash of your secret
+      - client_id: portainer
+        client_name: Portainer Container Management
+        client_secret: "$pbkdf2-sha512$310000$..."  # PBKDF2 hash of your secret
         public: false
         authorization_policy: two_factor     # Require 2FA for Portainer
+        require_pkce: false
+        pkce_challenge_method: ""
         redirect_uris:
-          - https://portainer.example.com/
+          - https://portainer.example.com
         scopes:
           - openid
           - profile
           - email
           - groups
-        userinfo_signing_algorithm: none
+        response_types:
+          - code
+        grant_types:
+          - authorization_code
+        access_token_signed_response_alg: none
+        userinfo_signed_response_alg: none
         token_endpoint_auth_method: client_secret_post
 ```
 
@@ -78,14 +89,15 @@ curl -X PUT \
   -d "{
     \"AuthenticationMethod\": 3,
     \"OAuthSettings\": {
+      \"AuthStyle\": 1,
       \"ClientID\": \"portainer\",
       \"ClientSecret\": \"$CLIENT_SECRET\",
       \"AuthorizationURI\": \"$AUTHELIA_URL/api/oidc/authorization\",
       \"AccessTokenURI\": \"$AUTHELIA_URL/api/oidc/token\",
       \"ResourceURI\": \"$AUTHELIA_URL/api/oidc/userinfo\",
-      \"RedirectURI\": \"https://portainer.example.com/\",
+      \"RedirectURI\": \"https://portainer.example.com\",
       \"UserIdentifier\": \"preferred_username\",
-      \"Scopes\": \"openid profile email groups\",
+      \"Scopes\": \"openid profile groups email\",
       \"OAuthAutoCreateUsers\": true
     }
   }" \
@@ -100,11 +112,12 @@ curl -X PUT \
 | Access Token URL | `https://auth.example.com/api/oidc/token` |
 | Resource URL | `https://auth.example.com/api/oidc/userinfo` |
 | User Identifier | `preferred_username` |
-| Scopes | `openid profile email groups` |
+| Scopes | `openid profile groups email` |
+| Auth Style | `In Params` |
 
 ## Authelia Access Policies
 
-Enforce MFA for Portainer access in Authelia's access control rules:
+If you're also protecting Portainer behind Authelia's access control integration, enforce MFA at the proxy layer with access control rules:
 
 ```yaml
 # authelia/configuration.yml
