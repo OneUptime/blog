@@ -73,7 +73,7 @@ sudo sysctl --system
 sysctl net.ipv4.ip_unprivileged_port_start
 ```
 
-The file under `/etc/sysctl.d/` is read at boot by systemd-sysctl. The `99-` prefix ensures it loads after other configuration files.
+The file under `/etc/sysctl.d/` is read at boot by systemd-sysctl. The `99-` prefix makes it load late in lexicographic order, so it can override earlier configuration files.
 
 ## Choosing the Right Port Value
 
@@ -109,15 +109,15 @@ sysctl net.ipv4.ip_unprivileged_port_start
 # Step 2: Run a rootless container on port 80
 podman run -d -p 80:80 --name web-test nginx
 
-# Step 3: Run a rootless container on port 443
-podman run -d -p 443:443 --name ssl-test nginx
+# Step 3: Run a rootless container bound to host port 443
+podman run -d -p 443:80 --name ssl-test nginx
 
 # Step 4: Verify both containers are running
 podman ps --format "table {{.Names}}\t{{.Ports}}\t{{.Status}}"
 
 # Step 5: Test connectivity
 curl -s http://localhost:80 | head -5
-curl -sk https://localhost:443 | head -5
+curl -s http://localhost:443 | head -5
 
 # Step 6: Clean up test containers
 podman rm -f web-test ssl-test
