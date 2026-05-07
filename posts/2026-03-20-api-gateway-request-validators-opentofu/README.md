@@ -8,7 +8,7 @@ Description: Learn how to define and attach request validators to AWS API Gatewa
 
 ---
 
-API Gateway request validators allow AWS to reject malformed requests before they reach your backend. You can validate query string parameters, headers, and request body content without writing any validation code in your Lambda functions or services.
+API Gateway request validators allow AWS to reject requests that are missing required parameters or have invalid request bodies before they reach your backend. You can validate required query string parameters, headers, and request body content without writing any validation code in your Lambda functions or services.
 
 ---
 
@@ -84,6 +84,8 @@ resource "aws_api_gateway_model" "order_model" {
 
 ## Link the Model to the Method
 
+Update the same method resource to include the request model:
+
 ```hcl
 resource "aws_api_gateway_method" "post_order" {
   rest_api_id          = aws_api_gateway_rest_api.api.id
@@ -91,6 +93,11 @@ resource "aws_api_gateway_method" "post_order" {
   http_method          = "POST"
   authorization        = "NONE"
   request_validator_id = aws_api_gateway_request_validator.body_and_params.id
+
+  request_parameters = {
+    "method.request.querystring.version" = true  # required query param
+    "method.request.header.X-Api-Key"    = false  # optional header
+  }
 
   request_models = {
     "application/json" = aws_api_gateway_model.order_model.name
