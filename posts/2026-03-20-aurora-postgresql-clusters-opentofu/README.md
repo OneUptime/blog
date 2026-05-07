@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Aurora, PostgreSQL, RDS, High Availability, Infrastructure as Code
 
-Description: Learn how to deploy Amazon Aurora PostgreSQL clusters with OpenTofu, including cluster and instance parameter groups, IAM authentication, and Performance Insights configuration.
+Description: Learn how to deploy Amazon Aurora PostgreSQL clusters with OpenTofu, including a cluster parameter group, IAM authentication, and Performance Insights configuration.
 
 ## Introduction
 
-Amazon Aurora PostgreSQL is a PostgreSQL-compatible relational database offering three times the throughput of standard PostgreSQL. It uses a distributed storage architecture that replicates data six ways across three Availability Zones, providing enterprise-grade durability with automatic failover in typically under 30 seconds.
+Amazon Aurora PostgreSQL is a PostgreSQL-compatible relational database that, with some workloads, can deliver up to three times the throughput of standard PostgreSQL. It uses a distributed storage architecture that replicates data six ways across three Availability Zones, providing enterprise-grade durability with service typically restored in under 60 seconds during failover, and often under 30 seconds.
 
 ## Prerequisites
 
