@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, Elastic IP, IPv4, EC2, Networking, OpenTofu
 
-Description: Learn how to allocate and associate Elastic IP addresses for IPv4 in AWS using the console, CLI, and OpenTofu.
+Description: Learn how to allocate and associate Elastic IP addresses for IPv4 in AWS using the CLI and OpenTofu.
 
 ---
 
-An Elastic IP (EIP) is a static public IPv4 address that you allocate from Amazon's pool and associate with EC2 instances or network interfaces. Unlike dynamic public IPs, an EIP persists until you explicitly release it.
+An Elastic IP (EIP) is a static public IPv4 address that you allocate from Amazon's pool or a custom IPv4 address pool and associate with EC2 instances or network interfaces. Unlike dynamic public IPs, an EIP persists until you explicitly release it.
 
 ---
 
@@ -95,7 +95,7 @@ aws ec2 describe-addresses
 # Disassociate an EIP
 aws ec2 disassociate-address --association-id eipassoc-0abc123
 
-# Release the EIP (stops billing)
+# Release the EIP to stop charges for that allocation
 aws ec2 release-address --allocation-id eipalloc-0abc12345
 ```
 
@@ -103,4 +103,4 @@ aws ec2 release-address --allocation-id eipalloc-0abc12345
 
 ## Summary
 
-Elastic IPs provide persistent static IPv4 addresses for AWS resources. Allocate them with `aws ec2 allocate-address --domain vpc`, associate them with instances or interfaces, and manage them in OpenTofu with `aws_eip` and `aws_eip_association`. Always release unused EIPs to avoid unnecessary charges.
+Elastic IPs provide persistent static IPv4 addresses for AWS resources. Allocate them with `aws ec2 allocate-address --domain vpc`, associate them with instances or interfaces, and manage them in OpenTofu with `aws_eip` and `aws_eip_association`. AWS charges for public IPv4 addresses, including Elastic IPs, so release unused allocations when you no longer need them.
