@@ -40,17 +40,16 @@ You need one of the following environments:
 
 ### RHEL 9 for s390x
 
-Podman is included in the base RHEL 9 repositories for s390x:
+Install the container tools meta-package:
 
 ```bash
-sudo dnf install -y podman podman-compose skopeo buildah
+sudo dnf install -y container-tools
 ```
 
 ### RHEL 8 for s390x
 
 ```bash
-sudo dnf module enable -y container-tools:rhel8
-sudo dnf install -y podman podman-compose skopeo buildah
+sudo dnf module install -y container-tools
 ```
 
 ### Ubuntu for s390x
@@ -112,11 +111,12 @@ podman pull docker.io/library/python:3.12
 podman pull docker.io/library/golang:1.22
 ```
 
-IBM also maintains s390x-optimized images:
+IBM also publishes images through IBM Cloud Container Registry:
 
 ```bash
-podman pull icr.io/ibmz/nginx:latest
-podman pull icr.io/ibmz/node:latest
+ibmcloud login
+ibmcloud cr region-set global
+ibmcloud cr images --include-ibm
 ```
 
 ---
@@ -167,18 +167,17 @@ podman exec -it postgres psql -U enterprise -d mainframe_app -c "SELECT version(
 
 ### Crypto Hardware Acceleration
 
-IBM Z includes dedicated cryptographic hardware (CPACF and Crypto Express). Containers can access this hardware for accelerated encryption:
+IBM Z includes dedicated cryptographic hardware such as CPACF and Crypto Express. For OpenSSL workloads, supported algorithms use CPACF automatically; Crypto Express availability depends on the host's Linux zcrypt configuration:
 
 ```bash
-# Check if crypto hardware is available
+# Check if Crypto Express hardware is available on the host
 cat /proc/driver/z90crypt 2>/dev/null || echo "z90crypt not available"
 lszcrypt 2>/dev/null || echo "lszcrypt not available"
 
-# Run a container with access to crypto devices
-podman run -d --name crypto-app \
-  --device /dev/z90crypt:/dev/z90crypt \
+# Run an OpenSSL benchmark inside a container
+podman run --rm \
   docker.io/library/ubuntu:24.04 \
-  bash -c "openssl speed aes-256-cbc"
+  bash -lc "apt-get update >/dev/null && apt-get install -y openssl >/dev/null && openssl speed aes-256-cbc"
 ```
 
 ### Exploiting z/Architecture Instructions
@@ -313,7 +312,7 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now enterprise-api
+systemctl --user start enterprise-api.service
 ```
 
 ---
@@ -329,15 +328,15 @@ podman stats --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\
 
 ### Integration with z/OS Monitoring
 
-Export container metrics to Prometheus for integration with existing monitoring:
+Export host metrics to Prometheus for integration with existing monitoring:
 
 ```bash
 # Run a Prometheus exporter
 podman run -d --name node-exporter \
-  -p 9100:9100 \
+  --net host \
   --pid host \
   -v /:/host:ro,rslave \
-  docker.io/prom/node-exporter:latest \
+  quay.io/prometheus/node-exporter:latest \
   --path.rootfs=/host
 ```
 
@@ -359,7 +358,7 @@ podman run -d --name critical-service \
 
 ### FIPS Mode
 
-IBM Z supports FIPS 140-2 compliant cryptography. Ensure your containers use FIPS-compliant libraries:
+IBM Z systems can run Linux distributions in FIPS mode. Ensure your containers use FIPS-compliant libraries:
 
 ```bash
 # Check if FIPS mode is enabled on the host
