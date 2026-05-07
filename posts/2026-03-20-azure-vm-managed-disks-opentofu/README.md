@@ -8,13 +8,14 @@ Description: Learn how to create and configure Azure Managed Disks with OpenTofu
 
 ## Introduction
 
-Azure Managed Disks are block-level storage volumes managed by Azure, eliminating the need to manage storage accounts. They come in four types: Standard HDD (archival/dev), Standard SSD (light production), Premium SSD (production workloads), and Ultra Disk (latency-sensitive databases). Managed Disks support encryption with platform-managed or customer-managed keys, incremental snapshots for backup, and disk bursting for handling traffic spikes.
+Azure Managed Disks are block-level storage volumes managed by Azure, eliminating the need to manage storage accounts. Common managed disk types include Standard HDD (archival/dev), Standard SSD (light production), Premium SSD (production workloads), Premium SSD v2 (high-performance configurable workloads), and Ultra Disk (latency-sensitive databases). Managed Disks support encryption with platform-managed or customer-managed keys, incremental snapshots for backup, and some disk types support disk bursting for handling traffic spikes.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - Azure credentials configured
 - A Resource Group and optionally an existing VM for data disk attachment
+- If using customer-managed keys, an Azure Key Vault in the same region as the Disk Encryption Set with soft delete and purge protection enabled
 
 ## Step 1: Create Premium SSD Managed Disk
 
@@ -23,15 +24,15 @@ resource "azurerm_managed_disk" "data" {
   name                 = "${var.project_name}-data-disk"
   location             = var.location
   resource_group_name  = var.resource_group_name
-  storage_account_type = "Premium_LRS"  # Premium_LRS, Standard_LRS, UltraSSD_LRS
+  storage_account_type = "Premium_LRS"
   create_option        = "Empty"
-  disk_size_gb         = 512
+  disk_size_gb         = 1024
 
-  # Enable disk bursting for Premium SSD
+  # On-demand bursting requires a Premium SSD larger than 512 GiB
   on_demand_bursting_enabled = true
 
-  # Zone for zone-redundant deployment
-  zones = ["1"]
+  # Optional availability zone for a zonal deployment
+  zone = "1"
 
   tags = {
     Name    = "${var.project_name}-data-disk"
@@ -51,11 +52,11 @@ resource "azurerm_managed_disk" "ultra" {
   create_option        = "Empty"
   disk_size_gb         = 1024
 
-  # Configure IOPS and throughput for Ultra Disk
-  disk_iops_read_write = 8000    # Up to 160,000 IOPS
-  disk_mbps_read_write = 512     # Up to 2,000 MB/s
+  # Configure provisioned IOPS and throughput for Ultra Disk
+  disk_iops_read_write = 8000    # Up to 400,000 IOPS
+  disk_mbps_read_write = 512     # Up to 10,000 MB/s
 
-  zones = ["1"]  # Ultra Disks require zone specification
+  zone = "1"  # Use the same availability zone as the VM for zonal deployments
 }
 ```
 
@@ -82,7 +83,7 @@ resource "azurerm_disk_encryption_set" "main" {
   }
 }
 
-# Grant encryption set access to Key Vault
+# Grant the disk encryption set access to the Key Vault when using access policies
 
 resource "azurerm_key_vault_access_policy" "disk_encryption" {
   key_vault_id = var.key_vault_id
@@ -100,6 +101,8 @@ resource "azurerm_managed_disk" "encrypted" {
   create_option          = "Empty"
   disk_size_gb           = 256
   disk_encryption_set_id = azurerm_disk_encryption_set.main.id
+
+  depends_on = [azurerm_key_vault_access_policy.disk_encryption]
 }
 ```
 
@@ -113,7 +116,7 @@ resource "azurerm_snapshot" "data_backup" {
   create_option       = "Copy"
   source_uri          = azurerm_managed_disk.data.id
 
-  # Incremental snapshot (recommended - only stores changes since last snapshot)
+  # The first incremental snapshot is a full copy; later snapshots store only changes
   incremental_enabled = true
 
   tags = {
@@ -148,10 +151,10 @@ tofu apply
 # Check disk performance metrics
 az monitor metrics list \
   --resource <disk-id> \
-  --metric "Composite Disk Read Operations/sec" "Composite Disk Write Operations/sec" \
+  --metrics "Composite Disk Read Operations/sec" "Composite Disk Write Operations/sec" \
   --interval PT1M
 
-# Resize a disk (requires VM deallocate if OS disk)
+# Resize a disk; data disks can often be expanded online, but OS disks require deallocation first
 az disk update \
   --resource-group <rg> \
   --name <disk-name> \
@@ -160,4 +163,4 @@ az disk update \
 
 ## Conclusion
 
-Use `incremental_enabled = true` for snapshots in production-incremental snapshots only store block-level changes since the last snapshot, dramatically reducing snapshot costs and creation time for large disks. Premium SSD v2 and Ultra Disk require zone specification and cannot be used with VMs in Availability Sets (only Availability Zones). Set `on_demand_bursting_enabled = true` on Premium SSD disks smaller than 512 GB to handle occasional IOPS spikes without permanently paying for larger disk sizes.
+Use `incremental_enabled = true` for snapshots in production: the first incremental snapshot is a full copy, and later snapshots store only block-level changes since the last snapshot, which can reduce snapshot storage costs. Premium SSD v2 disks can only be attached to zonal VMs in regions that support availability zones, and Ultra Disks don't support availability sets. Set `on_demand_bursting_enabled = true` on Premium SSD disks larger than 512 GiB to handle occasional IOPS spikes without permanently paying for a higher performance tier.
