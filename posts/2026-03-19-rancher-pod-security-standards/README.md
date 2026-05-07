@@ -6,12 +6,12 @@ Tags: Rancher, Kubernetes, Security, Pod Security
 
 Description: Learn how to configure Pod Security Standards in Rancher to enforce security baselines for pods using the built-in admission controller.
 
-Pod Security Standards (PSS) replace the deprecated Pod Security Policies in Kubernetes 1.25+. They provide three predefined security levels enforced through the Pod Security Admission (PSA) controller. Rancher supports PSS configuration through namespace labels and cluster-wide defaults. This guide covers setting up PSS in your Rancher-managed clusters.
+Pod Security Standards (PSS), enforced through the Pod Security Admission (PSA) controller, replace Pod Security Policies in Kubernetes 1.25+. They provide three predefined security levels enforced through the built-in admission controller. Rancher-managed clusters can use standard namespace labels, and Rancher provides cluster-level PSA configuration templates and defaults. This guide covers setting up PSS in your Rancher-managed clusters.
 
 ## Prerequisites
 
-- Rancher v2.7 or later
-- Kubernetes 1.23+ clusters (PSA is stable in 1.25+)
+- Rancher v2.7.2 or later
+- Kubernetes 1.23+ clusters (PSA is enabled by default in 1.23+ and stable in 1.25+)
 - Admin access to Rancher
 - kubectl access to the cluster
 
@@ -21,9 +21,9 @@ PSS defines three security levels:
 
 **Privileged**: Unrestricted policy. Allows all pod configurations. Use only for system-level workloads that truly need elevated access.
 
-**Baseline**: Minimally restrictive policy. Prevents known privilege escalations while remaining compatible with most workloads. Blocks hostNetwork, hostPID, privileged containers, and most host path mounts.
+**Baseline**: Minimally restrictive policy. Prevents known privilege escalations while remaining compatible with most workloads. Blocks hostNetwork, hostPID, hostIPC, privileged containers, and HostPath volumes.
 
-**Restricted**: Heavily restricted policy. Follows security best practices. Requires non-root users, drops all capabilities, and enforces read-only root filesystems.
+**Restricted**: Heavily restricted policy. Follows security best practices. Requires running as non-root, disallows privilege escalation, requires an approved seccomp profile, and requires dropping all capabilities.
 
 Each level can be applied in three modes:
 
@@ -55,21 +55,15 @@ This enforces baseline but warns on restricted violations, helping you prepare f
 
 ## Step 3: Configure PSS via Rancher UI
 
-1. Navigate to the downstream cluster in Rancher.
-2. Go to **Cluster** > **Projects/Namespaces**.
-3. Click on a namespace.
-4. Under **Pod Security Admission**, select the desired level and mode.
-5. Save the changes.
-
-For new namespaces:
-
-1. Click **Create Namespace**.
-2. In the creation form, set the Pod Security labels.
-3. Create the namespace.
+1. In the upper left corner, click **☰** > **Cluster Management**.
+2. To create or edit a PSA template, go to **Advanced** > **Pod Security Admissions**.
+3. Create a new template or edit an existing one, then configure the defaults and exemptions you want.
+4. Save the template.
+5. Assign the template to a downstream cluster during cluster creation under **Basics** > **Security**, or update an existing cluster with **⋮** > **Edit Config** and select the **Pod Security Admission Configuration Template**.
 
 ## Step 4: Set Cluster-Wide Defaults
 
-Configure default PSS for all new namespaces by setting up an AdmissionConfiguration. Create the configuration file:
+Configure default PSS for namespaces that do not set Pod Security labels by setting up an AdmissionConfiguration. Use `pod-security.admission.config.k8s.io/v1` on Kubernetes 1.25+; for Kubernetes 1.23 and 1.24, use `v1beta1` instead. Create the configuration file:
 
 ```yaml
 apiVersion: apiserver.config.k8s.io/v1
@@ -118,6 +112,8 @@ plugins:
       warn: restricted
       warn-version: latest
     exemptions:
+      usernames: []
+      runtimeClasses: []
       namespaces:
       - kube-system
       - cattle-system
@@ -130,23 +126,28 @@ Reference it in the RKE2 config:
 ```yaml
 # /etc/rancher/rke2/config.yaml
 
-kube-apiserver-arg:
-  - "admission-control-config-file=/etc/rancher/rke2/rancher-pss.yaml"
+pod-security-admission-config-file: /etc/rancher/rke2/rancher-pss.yaml
 ```
 
 ## Step 5: Exempt System Namespaces
 
-System namespaces typically need privileged access. Exempt them in the cluster-wide configuration (as shown above) or by labeling them explicitly:
+System namespaces often need a less restrictive policy. Exempt them in the cluster-wide configuration (as shown above), or set their namespace labels to `privileged` for all modes. The exact list depends on the Rancher components installed:
 
 ```bash
-kubectl label namespace kube-system \
-  pod-security.kubernetes.io/enforce=privileged
+kubectl label --overwrite namespace kube-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged
 
-kubectl label namespace cattle-system \
-  pod-security.kubernetes.io/enforce=privileged
+kubectl label --overwrite namespace cattle-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged
 
-kubectl label namespace cattle-fleet-system \
-  pod-security.kubernetes.io/enforce=privileged
+kubectl label --overwrite namespace cattle-fleet-system \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  pod-security.kubernetes.io/warn=privileged
 ```
 
 ## Step 6: Test PSS Enforcement
@@ -171,12 +172,11 @@ spec:
 kubectl apply -f test-violation.yaml
 ```
 
-Expected output when enforce is set to restricted:
+Expected result when enforce is set to restricted:
 
 ```plaintext
 Error from server (Forbidden): error when creating "test-violation.yaml":
-pods "test-violation" is forbidden: violates PodSecurity "restricted:latest":
-privileged (container "test" must not set securityContext.privileged=true)
+pods "test-violation" is forbidden: violates PodSecurity "restricted:latest": ...
 ```
 
 Deploy a compliant pod:
@@ -194,7 +194,8 @@ spec:
       type: RuntimeDefault
   containers:
   - name: test
-    image: nginx
+    image: busybox:1.36
+    command: ["sh", "-c", "sleep 3600"]
     securityContext:
       runAsUser: 1000
       allowPrivilegeEscalation: false
@@ -210,15 +211,16 @@ Roll out PSS gradually to avoid breaking existing workloads:
 1. **Phase 1 - Audit Only**: Apply restricted in audit mode to all namespaces:
 
 ```bash
-kubectl label namespace --all \
+kubectl label --overwrite namespace --all \
   pod-security.kubernetes.io/audit=restricted \
   pod-security.kubernetes.io/warn=restricted
 ```
 
-2. **Phase 2 - Review Violations**: Check audit logs for violations:
+2. **Phase 2 - Preview Enforcement**: Use server-side dry run to see which existing pods would violate the target policy:
 
 ```bash
-kubectl logs -n kube-system -l component=kube-apiserver | grep "pod-security"
+kubectl label --dry-run=server --overwrite namespace --all \
+  pod-security.kubernetes.io/enforce=restricted
 ```
 
 3. **Phase 3 - Fix Workloads**: Update workload manifests to comply with the target level.
@@ -233,7 +235,7 @@ kubectl label namespace production \
 
 ## Step 8: Monitor PSS Violations
 
-Set up monitoring for PSS audit events:
+Set up monitoring for Pod Security Admission violations:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -247,8 +249,9 @@ spec:
     rules:
     - alert: PodSecurityViolation
       expr: |
-        increase(apiserver_admission_webhook_rejection_count{
-          name="pod-security"
+        increase(pod_security_evaluations_total{
+          decision="deny",
+          mode=~"audit|enforce"
         }[5m]) > 0
       labels:
         severity: warning
