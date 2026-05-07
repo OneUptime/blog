@@ -14,18 +14,21 @@ AWS Application Load Balancers support IPv6 through a "dualstack" IP address typ
 
 ```bash
 # Create ALB with dualstack (IPv4 + IPv6) mode
+# The selected subnets must already have associated IPv6 CIDR blocks.
 
-aws elbv2 create-load-balancer \
+ALB_ARN=$(aws elbv2 create-load-balancer \
     --name my-dualstack-alb \
-    --subnets subnet-pub-a subnet-pub-b \
-    --security-groups sg-12345678 \
+    --subnets subnet-0abc1234def567890 subnet-0123456789abcdef0 \
+    --security-groups sg-0123456789abcdef0 \
     --scheme internet-facing \
     --type application \
     --ip-address-type dualstack \
-    --tags "Key=Name,Value=dualstack-alb"
+    --tags Key=Name,Value=dualstack-alb \
+    --query "LoadBalancers[0].LoadBalancerArn" \
+    --output text)
 
-# Or enable dualstack on existing ALB
-ALB_ARN="arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/my-alb/abc123"
+# Or, if updating an existing ALB, set its ARN instead:
+# ALB_ARN="arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-alb/50dc6c495c0c9188"
 
 aws elbv2 set-ip-address-type \
     --load-balancer-arn "$ALB_ARN" \
@@ -120,11 +123,11 @@ resource "aws_lb_listener" "https" {
   }
 }
 
-# DNS record - ALIAS to ALB (creates both A and AAAA records automatically)
+# DNS records - create both A and AAAA ALIAS records for a dualstack ALB
 resource "aws_route53_record" "www" {
   zone_id = aws_route53_zone.main.zone_id
   name    = "www"
-  type    = "A"  # Also creates AAAA via ALIAS
+  type    = "A"
 
   alias {
     name                   = aws_lb.main.dns_name
@@ -158,14 +161,14 @@ ALB_DNS=$(aws elbv2 describe-load-balancers \
 # Check AAAA record for ALB DNS
 dig AAAA "$ALB_DNS"
 
-# Test IPv6 connection to ALB
-curl -6 -I "https://${ALB_DNS}/"
+# Test IPv6 connection using your hostname
+curl -6 -I "https://www.example.com/"
 
-# Test with specific IPv6 address
+# Test with a specific ALB IPv6 address while preserving the hostname for TLS/SNI
 IPV6_ADDR=$(dig +short AAAA "$ALB_DNS" | head -1)
-curl -H "Host: www.example.com" "https://[${IPV6_ADDR}]/"
+curl -6 -I --resolve www.example.com:443:[${IPV6_ADDR}] https://www.example.com/
 ```
 
 ## Conclusion
 
-ALB dualstack mode (`ip_address_type = "dualstack"`) creates DNS records with both A and AAAA entries, enabling IPv6 clients to connect while maintaining full IPv4 support. The ALB handles IPv6 termination and can forward to IPv4-only backends, making it an effective IPv6 gateway for existing IPv4 workloads. Ensure the ALB's security group includes IPv6 rules for both HTTP (80) and HTTPS (443) - these are separate from IPv4 rules. Route53 ALIAS records for ALBs automatically include both address families.
+ALB dualstack mode (`ip_address_type = "dualstack"`) makes the ALB DNS name resolvable with both A and AAAA records, enabling IPv6 clients to connect while maintaining full IPv4 support. The ALB handles IPv6 termination and can forward to IPv4-only backends, making it an effective IPv6 gateway for existing IPv4 workloads. Ensure the ALB's security group includes IPv6 rules for both HTTP (80) and HTTPS (443) - these are separate from IPv4 rules. For a custom Route53 name, create both A and AAAA ALIAS records if you want clients to use both address families.
