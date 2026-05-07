@@ -16,16 +16,18 @@ Terraform is the industry standard for infrastructure as code, and while it is c
 
 ## Setting Up the Terraform Docker Provider
 
-Terraform does not have a dedicated Podman provider, but the Docker provider works with Podman through its Docker-compatible API socket. First, enable the Podman socket:
+While the Terraform Registry includes community Podman providers, the Docker provider also works with Podman through its Docker-compatible API socket. On Linux systems that use systemd, first enable the Podman socket:
 
 ```bash
 # Enable rootless Podman socket
 
 systemctl --user enable --now podman.socket
 
-# Verify the socket
+# Verify Podman is available
 podman info
-curl --unix-socket /run/user/$(id -u)/podman/podman.sock http://d/v4.0.0/libpod/info
+
+# Verify the API socket
+curl --unix-socket "$XDG_RUNTIME_DIR/podman/podman.sock" http://d/_ping
 ```
 
 Configure the Terraform provider to use the Podman socket:
@@ -52,6 +54,8 @@ variable "uid" {
 }
 ```
 
+If your user ID is not `1000`, set `uid` to match your actual user ID so the socket path resolves correctly.
+
 Initialize Terraform:
 
 ```bash
@@ -65,7 +69,7 @@ Pull and manage container images through Terraform:
 ```hcl
 # images.tf
 resource "docker_image" "app" {
-  name         = "myapp:latest"
+  name         = "myapp:${var.app_version}"
   keep_locally = true
 }
 
@@ -236,7 +240,7 @@ resource "docker_container" "nginx" {
   }
 
   volumes {
-    host_path      = abspath("./nginx/conf.d")
+    host_path      = "${path.root}/nginx/conf.d"
     container_path = "/etc/nginx/conf.d"
     read_only      = true
   }
@@ -249,7 +253,7 @@ resource "docker_container" "nginx" {
 
 ## Variables and Secrets
 
-Manage configuration with Terraform variables:
+Manage configuration with Terraform variables. Marking a variable as `sensitive` redacts it in CLI output, but Terraform still stores the value in state:
 
 ```hcl
 # variables.tf
@@ -268,7 +272,6 @@ variable "redis_password" {
 variable "app_version" {
   description = "Application version tag"
   type        = string
-  default     = "latest"
 }
 
 variable "environment" {
@@ -324,7 +327,7 @@ variable "name" {
   type = string
 }
 
-variable "image" {
+variable "image_id" {
   type = string
 }
 
@@ -343,7 +346,7 @@ variable "network_name" {
 
 resource "docker_container" "app" {
   name    = var.name
-  image   = var.image
+  image   = var.image_id
   restart = "always"
 
   networks_advanced {
@@ -370,7 +373,7 @@ Use the module:
 module "api_service" {
   source       = "./modules/web-app"
   name         = "api-service"
-  image        = "api:latest"
+  image_id     = docker_image.app.image_id
   port         = 3000
   network_name = docker_network.app_network.name
   env = {
