@@ -56,11 +56,11 @@ spec:
       total_limit_size: 2GB
       flush_interval: 3s
       flush_thread_count: 4
-      retry_max_interval: 30
+      retry_max_interval: 30s
       retry_forever: true
 ```
 
-### SASL Authentication
+### SASL/SCRAM Authentication
 
 ```yaml
 apiVersion: logging.banzaicloud.io/v1beta1
@@ -156,7 +156,7 @@ spec:
         key_name: log
         reserve_data: true
         remove_key_name_field: true
-        suppress_parse_error_log: true
+        emit_invalid_record_to_error: false
 
     - record_transformer:
         records:
@@ -213,14 +213,25 @@ This routes logs to topics like `kubernetes-production`, `kubernetes-staging`, e
 
 ## Step 5: Configure Message Key
 
-Set the Kafka message key for log ordering:
+Set the Kafka message key for log ordering by copying the pod name into a top-level field in the `ClusterFlow` and referencing that field from the Kafka output:
+
+```yaml
+spec:
+  filters:
+    - record_transformer:
+        enable_ruby: true
+        records:
+          - message_key: "${record.dig('kubernetes', 'pod_name')}"
+```
+
+Then reference that field in the Kafka output:
 
 ```yaml
 spec:
   kafka:
     brokers: kafka.example.com:9092
     default_topic: kubernetes-logs
-    message_key_key: kubernetes.pod_name
+    message_key_key: message_key
     format:
       type: json
 ```
@@ -229,7 +240,7 @@ This uses the pod name as the message key, ensuring all logs from the same pod g
 
 ## Step 6: Configure for Confluent Cloud
 
-For Confluent Cloud managed Kafka:
+For Confluent Cloud managed Kafka, use SASL/PLAIN over TLS:
 
 ```yaml
 apiVersion: logging.banzaicloud.io/v1beta1
@@ -252,7 +263,6 @@ spec:
         secretKeyRef:
           name: confluent-credentials
           key: api-secret
-    scram_mechanism: sha256
     format:
       type: json
     buffer:
@@ -265,7 +275,7 @@ spec:
 
 ## Step 7: Configure for Amazon MSK
 
-For Amazon Managed Streaming for Apache Kafka:
+For Amazon Managed Streaming for Apache Kafka with TLS encryption:
 
 ```yaml
 apiVersion: logging.banzaicloud.io/v1beta1
