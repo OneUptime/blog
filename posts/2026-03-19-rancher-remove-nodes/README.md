@@ -26,7 +26,7 @@ kubectl get nodes -o wide
 # Check what pods are running on the target node
 kubectl get pods -A --field-selector spec.nodeName=<NODE_NAME> -o wide
 
-# Check node resource usage
+# Check node resource usage (requires Metrics Server)
 kubectl top node <NODE_NAME>
 ```
 
@@ -35,8 +35,8 @@ kubectl top node <NODE_NAME>
 Before removing a node, ensure the remaining nodes have enough capacity:
 
 ```bash
-# Check overall cluster capacity
-kubectl top nodes
+# Check overall cluster capacity (requires Metrics Server)
+kubectl top node
 
 # Check resource requests vs capacity
 kubectl describe nodes | grep -A5 "Allocated resources"
@@ -69,7 +69,7 @@ Verify the node is cordoned:
 
 ```bash
 kubectl get node <NODE_NAME>
-# STATUS should show SchedulingDisabled
+# STATUS should include SchedulingDisabled
 ```
 
 ## Step 4: Drain the Node
@@ -83,8 +83,8 @@ Draining evicts all pods from the node, respecting pod disruption budgets:
 3. Configure drain options:
    - **Grace Period**: Time to wait for pods to terminate (default: 30 seconds)
    - **Timeout**: Maximum time for the drain operation
-   - **Ignore DaemonSets**: Should be enabled (DaemonSet pods cannot be rescheduled)
-   - **Delete Empty Dir Data**: Enable if pods use emptyDir volumes
+   - **Safe Mode**: Stops at blockers such as standalone pods or ephemeral local data
+   - **Aggressive Mode**: Deletes standalone pods and pods using `emptyDir`; use only if you accept the data loss
 
 ### Via kubectl
 
@@ -107,7 +107,7 @@ kubectl get pods -A --field-selector spec.nodeName=<NODE_NAME>
 Common blockers:
 
 - **Pods with PDB violations**: Ensure enough replicas exist on other nodes
-- **Pods with local storage**: Use `--delete-emptydir-data` or `--force`
+- **Pods with local storage**: Use `--delete-emptydir-data` only if you accept losing `emptyDir` data
 - **Standalone pods**: Pods not managed by a controller. Use `--force` to delete them
 
 ```bash
@@ -123,11 +123,15 @@ kubectl drain <NODE_NAME> \
 
 ### From the Rancher UI
 
+For Rancher-launched clusters and custom nodes that expose the **Delete** action:
+
 1. After draining, click the three-dot menu on the node
 2. Select **Delete**
 3. Confirm the deletion
 
 ### From kubectl
+
+`kubectl delete node` removes only the Kubernetes node object. If the kubelet or Rancher-managed node agent is still running, the node can re-register, so use this after the node has been drained and taken out of service.
 
 ```bash
 kubectl delete node <NODE_NAME>
@@ -146,34 +150,51 @@ Rancher will drain and remove the node automatically and clean up the infrastruc
 
 ### For Cloud-Managed Clusters
 
-For EKS, GKE, or AKS clusters, reduce the node group or pool size through the cluster configuration in Rancher.
+For EKS, GKE, or AKS clusters, reduce the node group or pool size by editing the cluster or the cloud provider configuration, depending on how the cluster is managed.
 
 ## Step 6: Clean Up the Removed Node
 
-If the node was part of a custom cluster, clean up the Rancher agent and Kubernetes components on the removed machine:
+If the node was removed from Rancher while it was still in `Active` state, Rancher automatically cleans up the node and you only need to restart the machine. Manual cleanup is mainly needed when the node is unreachable and the automatic cleanup process cannot run:
 
 ```bash
-# Stop and disable Rancher system agent
-sudo systemctl stop rancher-system-agent
-sudo systemctl disable rancher-system-agent
+# Remove Rancher system agent
+curl https://raw.githubusercontent.com/rancher/system-agent/main/system-agent-uninstall.sh > system-agent-uninstall.sh
+sudo sh system-agent-uninstall.sh
 
 # For RKE2 nodes
-sudo /usr/local/bin/rke2-uninstall.sh
+sudo rke2-uninstall.sh
 
-# For K3s nodes
+# For K3s server nodes
 sudo /usr/local/bin/k3s-uninstall.sh
-# or for agent nodes
+# or for K3s agent nodes
 sudo /usr/local/bin/k3s-agent-uninstall.sh
 ```
 
 Clean up remaining data:
 
 ```bash
-sudo rm -rf /var/lib/rancher
-sudo rm -rf /etc/rancher
-sudo rm -rf /var/lib/kubelet
-sudo rm -rf /etc/kubernetes
+sudo rm -rf /etc/ceph \
+  /etc/cni \
+  /etc/kubernetes \
+  /etc/rancher \
+  /etc/systemd/system/k3s \
+  /opt/cni \
+  /run/calico \
+  /run/flannel \
+  /run/secrets/kubernetes.io \
+  /usr/local/bin/k3s \
+  /var/lib/calico \
+  /var/lib/cni \
+  /var/lib/etcd \
+  /var/lib/kubelet \
+  /var/lib/rancher \
+  /var/lib/weave \
+  /var/log/containers \
+  /var/log/pods \
+  /var/run/calico
 ```
+
+Restart the node after cleanup to clear non-persistent network interfaces and iptables rules.
 
 ## Step 7: Verify Workload Health
 
@@ -187,7 +208,7 @@ kubectl get pods -A | grep -v Running | grep -v Completed
 kubectl get deployments -A
 
 # Check events for any issues
-kubectl get events -A --sort-by='.lastTimestamp' | tail -20
+kubectl get events -A --sort-by=.metadata.creationTimestamp | tail -20
 ```
 
 ## Removing etcd Nodes
@@ -201,7 +222,7 @@ Removing etcd nodes requires extra caution to maintain cluster quorum.
 - Remove only one etcd node at a time
 - Verify etcd health after each removal
 
-### Check etcd Health Before Removal
+### List etcd Members and Check Health Before Removal
 
 ```bash
 # For RKE2
@@ -211,6 +232,14 @@ sudo /var/lib/rancher/rke2/bin/etcdctl \
   --cert=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
   --key=/var/lib/rancher/rke2/server/tls/etcd/server-client.key \
   member list
+
+# Check cluster health
+sudo /var/lib/rancher/rke2/bin/etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
+  --key=/var/lib/rancher/rke2/server/tls/etcd/server-client.key \
+  endpoint health --cluster
 ```
 
 ### Remove the etcd Member
@@ -234,7 +263,7 @@ sudo /var/lib/rancher/rke2/bin/etcdctl \
   --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
   --cert=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
   --key=/var/lib/rancher/rke2/server/tls/etcd/server-client.key \
-  endpoint health
+  endpoint health --cluster
 ```
 
 ## Removing Control Plane Nodes
