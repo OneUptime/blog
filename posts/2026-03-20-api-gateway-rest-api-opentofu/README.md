@@ -15,6 +15,7 @@ API Gateway REST API provides a fully managed service for creating, publishing, 
 - OpenTofu v1.6+
 - AWS credentials with API Gateway and Lambda permissions
 - An existing Lambda function
+- If you enable API Gateway access logging, an API Gateway CloudWatch Logs role configured for the AWS account in that Region
 
 ## Step 1: Create REST API
 
@@ -69,13 +70,17 @@ resource "aws_lambda_permission" "api_gateway" {
   action        = "lambda:InvokeFunction"
   function_name = var.lambda_function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/${aws_api_gateway_method.get_users.http_method}${aws_api_gateway_resource.users.path}"
 }
 ```
 
 ## Step 3: Enable CORS
 
 ```hcl
+# For Lambda proxy integrations, your Lambda function must also return
+# Access-Control-Allow-Origin, Access-Control-Allow-Methods, and
+# Access-Control-Allow-Headers in its responses.
+
 # OPTIONS method for CORS preflight
 resource "aws_api_gateway_method" "users_options" {
   rest_api_id   = aws_api_gateway_rest_api.main.id
@@ -89,6 +94,7 @@ resource "aws_api_gateway_integration" "users_options" {
   resource_id = aws_api_gateway_resource.users.id
   http_method = aws_api_gateway_method.users_options.http_method
   type        = "MOCK"
+  passthrough_behavior = "NEVER"
 
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
@@ -130,9 +136,13 @@ resource "aws_api_gateway_deployment" "main" {
 
   triggers = {
     redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.users.id,
-      aws_api_gateway_method.get_users.id,
-      aws_api_gateway_integration.get_users.id,
+      aws_api_gateway_resource.users,
+      aws_api_gateway_method.get_users,
+      aws_api_gateway_integration.get_users,
+      aws_api_gateway_method.users_options,
+      aws_api_gateway_integration.users_options,
+      aws_api_gateway_method_response.users_options_200,
+      aws_api_gateway_integration_response.users_options,
     ]))
   }
 
@@ -148,6 +158,15 @@ resource "aws_api_gateway_stage" "prod" {
 
   access_log_settings {
     destination_arn = var.cloudwatch_log_group_arn
+    format          = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      resourcePath   = "$context.resourcePath"
+      status         = "$context.status"
+      responseLength = "$context.responseLength"
+    })
   }
 
   xray_tracing_enabled = true
