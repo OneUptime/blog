@@ -8,7 +8,7 @@ Description: Configure Azure Application Gateway v2 with dual-stack frontend IPs
 
 ## Introduction
 
-Azure Application Gateway v2 supports dual-stack configuration with both IPv4 and IPv6 frontend IP configurations. This enables IPv6 clients to connect to web applications while backends can remain IPv4-only. The Application Gateway also integrates with WAF (Web Application Firewall) which applies policies to both IPv4 and IPv6 traffic.
+Azure Application Gateway v2 supports dual-stack configuration with both IPv4 and IPv6 frontend IP configurations. This enables IPv6 clients to connect to web applications while backends can remain IPv4-only. The Application Gateway also integrates with WAF (Web Application Firewall), which applies managed protection to both IPv4 and IPv6 traffic, though some IPv6 WAF custom rule match conditions remain unsupported.
 
 ## Create Dual-Stack Application Gateway
 
@@ -16,19 +16,19 @@ Azure Application Gateway v2 supports dual-stack configuration with both IPv4 an
 RG="rg-appgw"
 LOCATION="eastus"
 
-# Create VNet with Application Gateway subnet (must be /24 or larger)
+az group create \
+    --name "$RG" \
+    --location "$LOCATION"
+
+# Create VNet with a dedicated dual-stack Application Gateway subnet (/24 is recommended for v2)
 
 az network vnet create \
     --resource-group "$RG" \
     --name vnet-appgw \
-    --address-prefixes "10.0.0.0/16" "fd00:agw::/48" \
+    --address-prefixes "10.0.0.0/16" "fd00:db8:deca::/48" \
+    --subnet-name subnet-appgw \
+    --subnet-prefixes "10.0.0.0/24" "fd00:db8:deca:1::/64" \
     --location "$LOCATION"
-
-az network vnet subnet create \
-    --resource-group "$RG" \
-    --vnet-name vnet-appgw \
-    --name subnet-appgw \
-    --address-prefixes "10.0.0.0/24" "fd00:agw:0:1::/64"
 
 # Create IPv6 public IP for Application Gateway frontend
 az network public-ip create \
@@ -36,14 +36,16 @@ az network public-ip create \
     --name pip-appgw-ipv6 \
     --version IPv6 \
     --sku Standard \
-    --allocation-method Static
+    --allocation-method Static \
+    --location "$LOCATION"
 
 az network public-ip create \
     --resource-group "$RG" \
     --name pip-appgw-ipv4 \
     --version IPv4 \
     --sku Standard \
-    --allocation-method Static
+    --allocation-method Static \
+    --location "$LOCATION"
 ```
 
 ## Terraform Application Gateway with IPv6
@@ -82,11 +84,6 @@ resource "azurerm_application_gateway" "main" {
   frontend_port {
     name = "port-80"
     port = 80
-  }
-
-  frontend_port {
-    name = "port-443"
-    port = 443
   }
 
   # Backend pool (IPv4 backends)
@@ -139,7 +136,7 @@ resource "azurerm_application_gateway" "main" {
     priority                   = 200
   }
 
-  # WAF configuration applies to all traffic
+  # WAF configuration applies to IPv4 and IPv6 client traffic
   waf_configuration {
     enabled          = true
     firewall_mode    = "Prevention"
@@ -166,13 +163,10 @@ echo "Application Gateway IPv6: $IPV6_ADDR"
 # Test HTTP over IPv6
 curl -6 "http://[${IPV6_ADDR}]/"
 
-# Test HTTPS over IPv6 (with host header)
-curl -6 -H "Host: www.example.com" "https://[${IPV6_ADDR}]/"
-
-# Check WAF is blocking malicious IPv6 requests
-curl -6 "http://[${IPV6_ADDR}]/admin.php?id=1 OR 1=1"
+# Check WAF is blocking a malicious IPv6 request (expect HTTP 403)
+curl -6 -i "http://[${IPV6_ADDR}]/admin.php?id=1%20OR%201=1"
 ```
 
 ## Conclusion
 
-Azure Application Gateway v2 supports dual-stack by adding both IPv4 and IPv6 frontend IP configurations with separate HTTP listeners. Create both IPv4 and IPv6 public IPs (Standard SKU, Static allocation) and configure a listener for each frontend IP. The WAF policy applies to all traffic regardless of protocol version. The Application Gateway subnet must support IPv6 by having an IPv6 CIDR block assigned - ensure the VNet and subnet have IPv6 address spaces configured before deploying the gateway.
+Azure Application Gateway v2 supports dual-stack by adding both IPv4 and IPv6 frontend IP configurations with separate HTTP listeners. Create both IPv4 and IPv6 public IPs (Standard SKU, Static allocation) and configure a listener for each frontend IP. WAF applies to both IPv4 and IPv6 client traffic, but some IPv6 custom rule match conditions remain unsupported. The Application Gateway subnet must support IPv6 by having an IPv6 CIDR block assigned - ensure the VNet and subnet have IPv6 address spaces configured before deploying the gateway.
