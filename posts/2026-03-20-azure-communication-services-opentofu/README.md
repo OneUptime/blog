@@ -13,6 +13,10 @@ Azure Communication Services (ACS) is a cloud platform for adding real-time comm
 ## Creating an ACS Resource
 
 ```hcl
+provider "azurerm" {
+  features {}
+}
+
 resource "azurerm_resource_group" "main" {
   name     = "rg-communication-${var.environment}"
   location = var.location
@@ -46,7 +50,7 @@ resource "azurerm_email_communication_service" "main" {
 
 ## Adding a Custom Domain
 
-Link a verified custom domain to your Email Communication Service.
+Create a customer-managed domain for your Email Communication Service. Azure returns DNS verification records that you must publish before using the domain for email.
 
 ```hcl
 resource "azurerm_email_communication_service_domain" "custom" {
@@ -61,21 +65,15 @@ resource "azurerm_email_communication_service_domain" "custom" {
 ## Linking Email to Communication Service
 
 ```hcl
-resource "azurerm_communication_service" "linked" {
-  name                = "acs-${var.app_name}-${var.environment}"
-  resource_group_name = azurerm_resource_group.main.name
-  data_location       = "United States"
-
-  # Link email domains
-  linked_email_service_ids = [
-    azurerm_email_communication_service_domain.custom.id
-  ]
+resource "azurerm_communication_service_email_domain_association" "main" {
+  communication_service_id = azurerm_communication_service.main.id
+  email_service_domain_id  = azurerm_email_communication_service_domain.custom.id
 }
 ```
 
 ## Event Grid Integration
 
-Route ACS events (SMS received, call ended) to Event Grid for downstream processing.
+Route ACS SMS events to Event Grid for downstream processing.
 
 ```hcl
 resource "azurerm_eventgrid_event_subscription" "acs_events" {
