@@ -27,7 +27,6 @@ Podman tracks several types of image events:
 # remove  - Image was removed
 # tag     - Image was tagged
 # untag   - Image was untagged
-# build   - Image was built (from Containerfile/Dockerfile)
 
 # Filter for all image events
 podman events --filter type=image
@@ -75,15 +74,22 @@ Track image tagging and untagging operations.
 # Monitor tag and untag events
 podman events --filter type=image --filter event=tag \
     --format '{{.Time}} TAG {{.Name}}' &
+TAG_WATCHER_PID=$!
 
 podman events --filter type=image --filter event=untag \
     --format '{{.Time}} UNTAG {{.Name}}' &
+UNTAG_WATCHER_PID=$!
+sleep 1
 
 # Perform tag operations
 podman tag alpine:latest myalpine:v1
 podman tag alpine:latest myalpine:v2
-podman untag myalpine:v2
+podman untag alpine:latest myalpine:v2
 podman rmi myalpine:v1 2>/dev/null
+
+# Stop the watchers
+sleep 2
+kill $TAG_WATCHER_PID $UNTAG_WATCHER_PID 2>/dev/null
 ```
 
 ## Building an Image Event Audit Log
@@ -99,9 +105,9 @@ echo "Auditing image operations to: ${AUDIT_FILE}"
 podman events --filter type=image --format json | \
 while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // .Name // "unknown"')
-    image_id=$(echo "$event" | jq -r '.Actor.ID // "unknown"')
-    timestamp=$(echo "$event" | jq -r '.time')
+    name=$(echo "$event" | jq -r '.Name // .Image // "unknown"')
+    image_id=$(echo "$event" | jq -r '.ID // "unknown"')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
     # Log the event
     log_entry=$(jq -n \
@@ -145,8 +151,8 @@ echo ""
 
 podman events --filter type=image --filter event=pull --format json | \
 while IFS= read -r event; do
-    image=$(echo "$event" | jq -r '.Actor.Attributes.name // .Name // "unknown"')
-    timestamp=$(echo "$event" | jq -r '.time')
+    image=$(echo "$event" | jq -r '.Name // .Image // "unknown"')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
     # Check if the image comes from an approved registry
     approved=false
@@ -199,14 +205,16 @@ podman events --since 24h --filter type=image \
     --format '  {{.Time}} {{.Status}} {{.Name}}' 2>/dev/null
 ```
 
-## Monitoring Image Build Events
+## Monitoring Image Events During Builds
 
-Track when images are built locally.
+Track image events that occur during local builds, such as pulling base images and tagging the final image.
 
 ```bash
-# Monitor build events
-podman events --filter type=image --filter event=build \
-    --format '{{.Time}} BUILD {{.Name}}'
+# Monitor image events while a build runs
+podman events --filter type=image \
+    --format '{{.Time}} {{.Status}} {{.Name}}' &
+WATCHER_PID=$!
+sleep 1
 
 # Create a simple Containerfile and build to generate events
 cat > /tmp/test-Containerfile << 'EOF'
@@ -219,6 +227,8 @@ podman build -t test-build:v1 -f /tmp/test-Containerfile /tmp/
 podman rmi test-build:v1
 
 # Clean up
+sleep 2
+kill $WATCHER_PID 2>/dev/null
 rm /tmp/test-Containerfile
 ```
 
@@ -248,14 +258,14 @@ echo ""
 echo "--- Images Pulled ---"
 podman events --since "${HOURS}h" --filter type=image --filter event=pull \
     --format json 2>/dev/null | \
-    jq -r '"  \(.time) \(.Actor.Attributes.name // .Name // "unknown")"'
+    jq -r '"  \(.Time) \(.Name // .Image // "unknown")"'
 echo ""
 
 # Images removed
 echo "--- Images Removed ---"
 podman events --since "${HOURS}h" --filter type=image --filter event=remove \
     --format json 2>/dev/null | \
-    jq -r '"  \(.time) \(.Actor.Attributes.name // .Name // "unknown")"'
+    jq -r '"  \(.Time) \(.Name // .Image // "unknown")"'
 echo ""
 
 # Current image count
@@ -275,8 +285,8 @@ WEBHOOK_URL="${1:-}"
 podman events --filter type=image --format json | \
 while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    image=$(echo "$event" | jq -r '.Actor.Attributes.name // .Name // "unknown"')
-    timestamp=$(echo "$event" | jq -r '.time')
+    image=$(echo "$event" | jq -r '.Name // .Image // "unknown"')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
     # Log locally
     echo "[${timestamp}] Image ${status}: ${image}"
@@ -310,4 +320,4 @@ rm -f /tmp/image-audit.jsonl
 
 ## Summary
 
-Monitoring image events with Podman provides critical visibility into the container image lifecycle. By tracking pulls, pushes, tags, builds, and removals, you can maintain a complete audit trail of image operations. Security monitoring for unapproved registries, disk usage tracking, and event forwarding to external systems ensure your image management is both secure and well-governed. Image event monitoring is a fundamental component of container supply chain security.
+Monitoring image events with Podman provides critical visibility into the container image lifecycle. By tracking pulls, pushes, tags, untags, saves, and removals, you can maintain a complete audit trail of image operations. Security monitoring for unapproved registries, disk usage tracking, and event forwarding to external systems ensure your image management is both secure and well-governed. Image event monitoring is a fundamental component of container supply chain security.
