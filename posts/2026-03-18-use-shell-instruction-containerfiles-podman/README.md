@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containerfile, Shell, Container Build, DevOps
 
-Description: Learn how to use the SHELL instruction in Containerfiles for Podman to change the default shell used for RUN, CMD, and ENTRYPOINT instructions in shell form.
+Description: Learn how to use the SHELL instruction in Containerfiles for Podman to change the default shell used for shell-form build instructions.
 
 ---
 
-> The SHELL instruction gives you control over which shell interprets your build commands, unlocking shell-specific features and enabling Windows container compatibility.
+> The SHELL instruction gives you control over which shell interprets your build commands, unlocking shell-specific features like pipefail and bash-only syntax.
 
-When you write a RUN instruction in shell form inside a Containerfile, Podman wraps it in a shell invocation. By default, that shell is `/bin/sh -c` on Linux. The SHELL instruction lets you change this default to any shell you prefer, whether that is bash for its richer feature set, ash for Alpine containers, or PowerShell for Windows containers. This guide covers how and when to use the SHELL instruction effectively with Podman.
+When you write a RUN instruction in shell form inside a Containerfile, Podman wraps it in a shell invocation. By default, that shell is `/bin/sh -c` on Linux. The SHELL instruction lets you change this default to another shell, such as bash for its richer feature set or ash for Alpine containers. With Podman's default OCI image format, treat SHELL primarily as a build-time tool for subsequent shell-form RUN instructions, because the shell setting is not persisted in OCI image metadata. This guide covers how and when to use the SHELL instruction effectively with Podman.
 
 ---
 
 ## What Is the SHELL Instruction?
 
-The SHELL instruction overrides the default shell used for the shell form of RUN, CMD, and ENTRYPOINT instructions. It does not affect the exec form (JSON array syntax), which bypasses the shell entirely.
+The Dockerfile and Containerfile reference defines the SHELL instruction for the shell form of RUN, CMD, and ENTRYPOINT instructions. In Podman and Buildah practice, though, you should rely on it mainly for subsequent shell-form RUN instructions. With Podman's default OCI output, the shell setting is not persisted in the saved image. It does not affect the exec form (JSON array syntax), which bypasses the shell entirely.
 
 The syntax is:
 
@@ -148,13 +148,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Without pipefail: this succeeds even if curl fails
+# Without pipefail: this can succeed even if curl fails
 SHELL ["/bin/sh", "-c"]
-RUN curl -sf https://nonexistent.example.com/file | cat > /dev/null || true
+RUN curl -sf https://nonexistent.example.com/file | cat > /dev/null
 
 # With pipefail: this correctly fails if curl fails
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-RUN curl -sf https://example.com/install.sh | bash
+RUN curl -sf https://nonexistent.example.com/file | cat > /dev/null
 ```
 
 The Hadolint Containerfile linter actually flags piped RUN instructions that do not use pipefail as a warning (DL4006), which shows how widely this practice is recommended.
@@ -173,7 +173,7 @@ SHELL ["/bin/bash", "-euxo", "pipefail", "-c"]
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 
 # Each command will be printed before execution due to -x flag
@@ -185,21 +185,19 @@ The `-x` flag prints each command before execution, and `-u` treats unset variab
 
 ## SHELL Interaction with ENTRYPOINT and CMD
 
-The SHELL instruction only affects the shell form of ENTRYPOINT and CMD. The exec form is unaffected:
+The Dockerfile reference says SHELL affects the shell form of ENTRYPOINT and CMD, while the exec form is unaffected. In Podman builds, however, you should not rely on SHELL to change the final image's CMD or ENTRYPOINT behavior. With the default OCI image format, the shell setting is not persisted in the saved image, so the safest pattern is to use SHELL mainly for RUN instructions and prefer the exec form for CMD and ENTRYPOINT:
 
 ```dockerfile
 FROM ubuntu:22.04
 
 SHELL ["/bin/bash", "-c"]
 
-# Shell form CMD - uses bash because of SHELL instruction
-CMD echo "This runs in bash"
-
-# Exec form CMD - runs directly, SHELL has no effect
-CMD ["echo", "This runs directly, no shell"]
+# Exec form ENTRYPOINT/CMD - explicit, SHELL has no effect
+ENTRYPOINT ["/bin/echo"]
+CMD ["This runs directly, no shell"]
 ```
 
-This distinction matters because the exec form is preferred for CMD and ENTRYPOINT in production. The SHELL instruction is primarily useful for RUN instructions during the build phase.
+This distinction matters because the exec form is preferred for CMD and ENTRYPOINT in production. If you need the shell setting preserved in image metadata for child builds, use `podman build --format docker ...`. The SHELL instruction is primarily useful for RUN instructions during the build phase.
 
 ## Practical Example: Building a Go Application
 
@@ -235,8 +233,8 @@ Notice that the SHELL instruction is only used in the builder stage. The final s
 
 ## Best Practices
 
-Use the SHELL instruction when you need bash-specific features like pipefail, arrays, or advanced string manipulation. Always enable pipefail when your RUN instructions contain pipes. In multi-stage builds, only change the shell in stages that need it. Remember that SHELL only affects shell form instructions, not exec form. Do not install bash in Alpine images just for the SHELL instruction unless you genuinely need bash features. Use `-euo pipefail` as your standard bash flags: `-e` exits on error, `-u` treats unset variables as errors, `-o pipefail` catches pipe failures. For production CMD and ENTRYPOINT, prefer the exec form which bypasses the shell entirely.
+Use the SHELL instruction when you need bash-specific features like pipefail, arrays, or advanced string manipulation in shell-form RUN instructions. Always enable pipefail when your RUN instructions contain pipes. In multi-stage builds, only change the shell in stages that need it. Remember that SHELL does not affect the exec form. With Podman's default OCI output, the shell setting is not persisted in the saved image, so do not rely on it for final-image CMD or ENTRYPOINT behavior unless you build with `--format docker`. Do not install bash in Alpine images just for the SHELL instruction unless you genuinely need bash features. Use `-euo pipefail` as your standard bash flags: `-e` exits on error, `-u` treats unset variables as errors, `-o pipefail` catches pipe failures. For production CMD and ENTRYPOINT, prefer the exec form which bypasses the shell entirely.
 
 ## Conclusion
 
-The SHELL instruction is a targeted tool that solves specific problems around shell compatibility and error handling during container builds. Its most common and valuable use case is enabling bash's pipefail option to catch failures in piped commands. By understanding when the shell form is used versus the exec form, you can apply the SHELL instruction precisely where it adds value without adding unnecessary complexity to your Containerfiles.
+The SHELL instruction is a targeted tool that solves specific problems around shell compatibility and error handling during container builds. Its most common and valuable use case in Podman is enabling bash's pipefail option to catch failures in piped RUN commands. By understanding when the shell form is used versus the exec form, and how Podman's default OCI output handles shell metadata, you can apply the SHELL instruction precisely where it adds value without adding unnecessary complexity to your Containerfiles.
