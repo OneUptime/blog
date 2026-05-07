@@ -8,7 +8,7 @@ Description: Learn how to configure API Gateway Lambda proxy integration with Op
 
 ## Introduction
 
-API Gateway Lambda proxy integration passes the entire HTTP request as a structured event to Lambda and expects a structured response with statusCode, headers, and body. Proxy integration is the most common pattern-it gives Lambda full control over the response without requiring API Gateway mapping templates. This post covers both REST API (v1) and HTTP API (v2) Lambda integrations, including permission setup and URL path parameter mapping.
+API Gateway Lambda proxy integration passes the entire HTTP request as a structured event to Lambda. For REST APIs and HTTP APIs using payload format `1.0`, Lambda returns a structured response with `statusCode`, `headers`, and `body`. For HTTP APIs using payload format `2.0`, API Gateway can infer a default `200` JSON response if Lambda does not return a `statusCode`. Proxy integration is the most common pattern-it gives Lambda full control over the response without requiring API Gateway mapping templates. This post covers both REST API (v1) and HTTP API (v2) Lambda integrations, including permission setup and URL path parameter mapping.
 
 ## Prerequisites
 
@@ -51,12 +51,19 @@ resource "aws_lambda_permission" "api_gateway" {
   action        = "lambda:InvokeFunction"
   function_name = var.lambda_function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*/*"
 }
 
 resource "aws_api_gateway_deployment" "main" {
   rest_api_id = aws_api_gateway_rest_api.main.id
-  depends_on  = [aws_api_gateway_integration.lambda]
+
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.proxy.id,
+      aws_api_gateway_method.proxy.id,
+      aws_api_gateway_integration.lambda.id,
+    ]))
+  }
 
   lifecycle {
     create_before_destroy = true
@@ -140,4 +147,4 @@ curl -X POST https://<api-id>.execute-api.<region>.amazonaws.com/prod/users \
 
 ## Conclusion
 
-Use HTTP API (v2) with `payload_format_version = "2.0"` for new Lambda integrations-it has lower latency, lower cost, and simpler request/response format than REST API. The `source_arn` in `aws_lambda_permission` should use `/*/*` to allow invocations from any stage and method; for tighter security, specify the exact stage and method. Always set `depends_on = [aws_api_gateway_integration.lambda]` in the deployment resource to ensure the integration is created before the deployment is triggered.
+Use HTTP API (v2) with `payload_format_version = "2.0"` for new Lambda integrations-it has lower latency, lower cost, and a simpler event/response model than REST API. For REST API Lambda permissions that need to allow any proxy path, use `/*/*/*` in `source_arn` to allow invocations from any stage, method, and resource path; for tighter security, specify the exact stage, method, and resource path or route key. For REST API deployments, prefer a `triggers` hash over `depends_on` so configuration changes create a new deployment instead of only enforcing resource ordering.
