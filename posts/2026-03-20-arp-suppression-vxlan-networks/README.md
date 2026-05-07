@@ -12,7 +12,7 @@ In VXLAN networks, ARP requests are flooded to all VTEPs as BUM (Broadcast, Unkn
 
 ## Enable ARP Proxy on Linux VXLAN
 
-Linux supports ARP proxy on VXLAN interfaces, which intercepts ARP requests and replies if the target IP is known:
+Linux supports ARP proxy on VXLAN interfaces, which can reply locally when the target IP is already known:
 
 ```bash
 # Create VXLAN with ARP proxy enabled
@@ -22,14 +22,14 @@ ip link add vxlan0 type vxlan \
     dstport 4789 \
     local 10.0.0.1 \
     dev eth0 \
-    proxy        # Enable ARP proxy/suppression
+    proxy        # Enable ARP proxy
 ```
 
 ## Enable ARP Proxy on Existing VXLAN
 
 ```bash
 # Enable ARP proxy on an existing VXLAN interface
-ip link set vxlan0 type vxlan proxy on
+ip link set dev vxlan0 type vxlan proxy
 
 # Verify
 ip -d link show vxlan0 | grep proxy
@@ -37,7 +37,7 @@ ip -d link show vxlan0 | grep proxy
 
 ## Populate the ARP Cache (Neighbor Table)
 
-For ARP suppression to work, the VTEP must know the MAC-to-IP mappings. Add them manually or through a control plane:
+For ARP suppression to work, the VTEP must know the IP-to-MAC mappings. Add them manually or through a control plane:
 
 ```bash
 # Add a static ARP entry for a remote VM
@@ -46,7 +46,7 @@ For ARP suppression to work, the VTEP must know the MAC-to-IP mappings. Add them
 ip neighbor add 10.200.0.10 lladdr aa:bb:cc:dd:ee:11 dev vxlan0 nud permanent
 
 # Also add the VXLAN FDB entry so the VTEP knows where to forward unicast frames
-bridge fdb add aa:bb:cc:dd:ee:11 dev vxlan0 dst 10.0.0.2 permanent
+bridge fdb add aa:bb:cc:dd:ee:11 dev vxlan0 static dst 10.0.0.2
 ```
 
 ## Verify ARP Suppression
@@ -56,12 +56,12 @@ bridge fdb add aa:bb:cc:dd:ee:11 dev vxlan0 dst 10.0.0.2 permanent
 ip neigh show dev vxlan0
 
 # Monitor ARP traffic
-tcpdump -i br-vxlan arp -n
+tcpdump -i vxlan0 arp -n
 
 # With ARP suppression:
 # - ARP requests for known IPs are answered locally
-# - No ARP request is flooded via VXLAN
-# - tcpdump should show fewer ARP broadcasts
+# - ARP requests for unknown IPs are still flooded via VXLAN
+# - tcpdump should show fewer ARP broadcasts on the VXLAN segment
 ```
 
 ## Control Plane Integration (BGP EVPN)
@@ -72,19 +72,18 @@ Production VXLAN deployments use BGP EVPN to distribute MAC-IP bindings automati
 With BGP EVPN:
 1. VM comes up with IP 10.200.0.10 and MAC aa:bb:cc:dd:ee:11
 2. Local VTEP advertises MAC-IP binding via BGP EVPN (type-2 route)
-3. All remote VTEPs receive the binding and populate their neighbor tables
-4. ARP suppression works automatically without manual configuration
+3. Remote VTEPs receive the binding and populate their proxy ARP/ND and forwarding tables
+4. Known ARP requests can then be answered locally without manual static configuration
 ```
 
 ## Open vSwitch ARP Suppression
 
-OVS has native ARP suppression support:
+Open vSwitch supports VXLAN tunneling, but it does not have a single `ovs-vsctl` bridge setting that enables ARP suppression by itself:
 
-```bash
-# Enable ARP responder in OVS
-ovs-vsctl set bridge br-vxlan other_config:mac-table-size=50000
-
-# OVS uses the learned FIB to answer ARP requests locally
+```text
+`other_config:mac-table-size` only changes MAC-learning capacity.
+In OVS-based VXLAN fabrics, ARP responder behavior is usually implemented
+by a higher-level control plane or controller-installed OpenFlow flows.
 ```
 
 ## Impact on Network Traffic
@@ -102,4 +101,4 @@ With ARP suppression:
 
 ## Conclusion
 
-ARP suppression dramatically reduces BUM flooding in large VXLAN deployments. Enable it with the `proxy` flag on the VXLAN interface and populate the neighbor table with static entries or via a control plane like BGP EVPN. Without ARP suppression, ARP floods scale linearly with the number of VMs and VTEPs. Production deployments should always use ARP suppression with an appropriate control plane for automatic MAC-IP distribution.
+ARP suppression dramatically reduces BUM flooding in large VXLAN deployments. On Linux, enable it with the `proxy` flag on the VXLAN interface and populate the neighbor and FDB state with static entries or via a control plane like BGP EVPN. Without ARP suppression, ARP floods scale linearly with the number of VMs and VTEPs. Known-IP ARP can then be answered locally, while unknown IPs are still flooded unless the fabric has complete binding knowledge. Production deployments typically pair proxy ARP/ND with an appropriate control plane for automatic MAC-IP distribution.
