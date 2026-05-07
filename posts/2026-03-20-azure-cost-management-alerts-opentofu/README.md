@@ -15,13 +15,14 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
   features {}
+  subscription_id = var.subscription_id
 }
 ```
 
@@ -36,8 +37,8 @@ resource "azurerm_consumption_budget_subscription" "monthly" {
   time_grain = "Monthly"
 
   time_period {
-    start_date = "2024-01-01T00:00:00Z"
-    # end_date is optional - budget recurs indefinitely if not set
+    start_date = "2026-05-01T00:00:00Z"
+    # end_date is optional - if omitted, Azure sets it to 10 years after start_date
   }
 
   notification {
@@ -85,10 +86,10 @@ resource "azurerm_consumption_budget_resource_group" "app" {
   time_grain = "Monthly"
 
   time_period {
-    start_date = "2024-01-01T00:00:00Z"
+    start_date = "2026-05-01T00:00:00Z"
   }
 
-  # Filter to specific service
+  # Filter to specific resource types
   filter {
     dimension {
       name     = "ResourceType"
@@ -121,7 +122,7 @@ resource "azurerm_consumption_budget_subscription" "by_team" {
   time_grain      = "Monthly"
 
   time_period {
-    start_date = "2024-01-01T00:00:00Z"
+    start_date = "2026-05-01T00:00:00Z"
   }
 
   # Budget for resources tagged with Team=backend
@@ -163,7 +164,7 @@ resource "azurerm_consumption_budget_subscription" "teams" {
   time_grain      = "Monthly"
 
   time_period {
-    start_date = "2024-01-01T00:00:00Z"
+    start_date = "2026-05-01T00:00:00Z"
   }
 
   filter {
