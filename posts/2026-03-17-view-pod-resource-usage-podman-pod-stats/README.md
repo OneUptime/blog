@@ -50,7 +50,7 @@ podman pod stats app-pod --no-stream
 ```bash
 # Use a custom format for specific metrics
 podman pod stats app-pod --no-stream \
-  --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}"
+  --format "table {{.Name}}\t{{.CPU}}\t{{.MemUsage}}\t{{.NetIO}}"
 
 # JSON output for programmatic parsing
 podman pod stats app-pod --no-stream --format json
@@ -63,7 +63,7 @@ podman pod stats app-pod --no-stream --format json
 podman pod stats --all --no-stream
 
 # Filter to see only pods with high CPU usage
-podman pod stats --all --no-stream --format "{{.Name}} {{.CPUPerc}}" | \
+podman pod stats --all --no-stream --format "{{.Name}} {{.CPU}}" | \
   awk '{if ($2+0 > 50) print $0}'
 ```
 
@@ -81,7 +81,7 @@ echo "timestamp,name,cpu,mem_usage,mem_pct,net_io,block_io,pids" > "$LOG_FILE"
 while true; do
   TIMESTAMP=$(date -Iseconds)
   podman pod stats "$POD_NAME" --no-stream \
-    --format "{{.Name}},{{.CPUPerc}},{{.MemUsage}},{{.MemPerc}},{{.NetIO}},{{.BlockIO}},{{.PIDs}}" | \
+    --format "{{.Name}},{{.CPU}},{{.MemUsage}},{{.Mem}},{{.NetIO}},{{.BlockIO}},{{.PIDS}}" | \
     while read line; do
       echo "$TIMESTAMP,$line" >> "$LOG_FILE"
     done
@@ -99,7 +99,7 @@ POD_NAME="app-pod"
 MEM_THRESHOLD=80
 
 podman pod stats "$POD_NAME" --no-stream \
-  --format "{{.Name}} {{.MemPerc}}" | while read name pct; do
+  --format "{{.Name}} {{.Mem}}" | while read name pct; do
   value=$(echo "$pct" | tr -d '%')
   if [ "$(echo "$value > $MEM_THRESHOLD" | bc)" -eq 1 ]; then
     echo "ALERT: $name using ${pct} memory"
