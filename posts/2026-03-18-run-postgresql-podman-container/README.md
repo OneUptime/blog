@@ -19,7 +19,7 @@ PostgreSQL is a powerful, open-source relational database known for its reliabil
 Download the official PostgreSQL image.
 
 ```bash
-# Pull the latest PostgreSQL image
+# Pull the PostgreSQL 16 image
 
 podman pull docker.io/library/postgres:16
 
@@ -37,7 +37,7 @@ podman run -d \
   --name my-postgres \
   -p 5432:5432 \
   -e POSTGRES_PASSWORD=my-secret-password \
-  postgres:16
+  docker.io/library/postgres:16
 
 # Confirm the container is running
 podman ps
@@ -60,7 +60,7 @@ podman run -d \
   -p 5433:5432 \
   -e POSTGRES_PASSWORD=my-secret-password \
   -v pg-data:/var/lib/postgresql/data:Z \
-  postgres:16
+  docker.io/library/postgres:16
 
 # Verify the volume is attached
 podman inspect pg-persistent --format '{{range .Mounts}}{{.Name}}{{end}}'
@@ -72,14 +72,16 @@ Set up a database and user automatically at startup.
 
 ```bash
 # Run PostgreSQL with a pre-created database and user
+podman volume create pg-app-data
+
 podman run -d \
   --name pg-app \
   -p 5434:5432 \
   -e POSTGRES_PASSWORD=admin-secret \
   -e POSTGRES_USER=appuser \
   -e POSTGRES_DB=myapp \
-  -v pg-data:/var/lib/postgresql/data:Z \
-  postgres:16
+  -v pg-app-data:/var/lib/postgresql/data:Z \
+  docker.io/library/postgres:16
 
 # Connect as the application user
 podman exec -it pg-app psql -U appuser -d myapp -c "\conninfo"
@@ -115,14 +117,16 @@ log_duration = on
 log_min_duration_statement = 1000
 EOF
 
-# Run PostgreSQL with custom config appended
+# Run PostgreSQL with a custom config file
+podman volume create pg-tuned-data
+
 podman run -d \
   --name pg-tuned \
   -p 5435:5432 \
   -e POSTGRES_PASSWORD=my-secret-password \
   -v ~/pg-config/custom-postgresql.conf:/etc/postgresql/custom.conf:Z \
-  -v pg-data:/var/lib/postgresql/data:Z \
-  postgres:16 \
+  -v pg-tuned-data:/var/lib/postgresql/data:Z \
+  docker.io/library/postgres:16 \
   -c 'config_file=/etc/postgresql/custom.conf'
 
 # Verify a custom setting
@@ -160,7 +164,7 @@ podman run -d \
   -e POSTGRES_PASSWORD=my-secret-password \
   -e POSTGRES_DB=myapp \
   -v ~/pg-init:/docker-entrypoint-initdb.d:Z \
-  postgres:16
+  docker.io/library/postgres:16
 ```
 
 ## Backup and Restore
@@ -175,7 +179,7 @@ podman exec pg-app pg_dumpall -U appuser > ~/pg-backup.sql
 podman exec pg-app pg_dump -U appuser -Fc myapp > ~/myapp-backup.dump
 
 # Restore from an SQL dump
-podman exec -i pg-app psql -U appuser -d myapp < ~/pg-backup.sql
+podman exec -i pg-app psql -U appuser -X -d postgres < ~/pg-backup.sql
 ```
 
 ## Managing the Container
@@ -195,8 +199,11 @@ podman start my-postgres
 # Remove the container
 podman rm -f my-postgres
 
-# Clean up the volume
-podman volume rm pg-data
+# Remove containers that use persistent volumes
+podman rm -f pg-persistent pg-app pg-tuned
+
+# Clean up the volumes
+podman volume rm pg-data pg-app-data pg-tuned-data
 ```
 
 ## Summary
