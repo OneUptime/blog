@@ -8,26 +8,24 @@ Description: Learn how to connect GitHub Container Registry (ghcr.io) to Portain
 
 ## Overview
 
-GitHub Container Registry (GHCR) at `ghcr.io` allows you to publish container images alongside your GitHub repositories. It integrates with GitHub Actions for automated builds. Portainer can authenticate with GHCR using a Personal Access Token (PAT).
+GitHub Container Registry (GHCR) at `ghcr.io` allows you to publish container images alongside your GitHub repositories. It integrates with GitHub Actions for automated builds. Portainer can authenticate with GHCR using a Personal Access Token (classic).
 
 ## Creating a GitHub Personal Access Token
 
 1. Go to **GitHub > Settings > Developer settings > Personal access tokens > Tokens (classic)**.
 2. Click **Generate new token (classic)**.
-3. Select scopes:
-   - `read:packages` - to pull images
-   - `write:packages` - if Portainer also needs to push
-   - `delete:packages` - optional, for cleanup
+3. Select scopes based on how you will add the registry in Portainer:
+   - `read:packages` - for a **Custom registry** used to pull private images
+   - `write:packages`, `delete:packages`, and `repo` - for Portainer Business Edition's **GitHub** registry provider
 4. Generate and copy the token.
 
 ## Adding GHCR to Portainer
 
-1. Go to **Settings > Registries** and click **Add registry**.
-2. Select **Custom registry** (or **GitHub** if available).
-3. Enter:
-   - **Registry URL**: `ghcr.io`
-   - **Username**: Your GitHub username
-   - **Password**: Your Personal Access Token
+1. Go to **Registries** and click **Add registry**.
+2. Select **Custom registry**. In Portainer Business Edition, you can also select **GitHub**.
+3. Enter the required details:
+   - For **Custom registry**: **Registry URL** `ghcr.io`, your GitHub username, and your Personal Access Token (classic)
+   - For **GitHub**: your GitHub username and Personal Access Token (classic); if the package belongs to an organization, enable **Use organisation registry** and enter the organization name
 4. Click **Add registry**.
 
 ## Testing GHCR Authentication
@@ -35,7 +33,7 @@ GitHub Container Registry (GHCR) at `ghcr.io` allows you to publish container im
 ```bash
 # Log in to GHCR via Docker CLI
 
-echo $GITHUB_TOKEN | docker login ghcr.io \
+echo $CR_PAT | docker login ghcr.io \
   -u your-github-username \
   --password-stdin
 
@@ -46,8 +44,6 @@ docker pull ghcr.io/your-org/your-image:latest
 ## Using GHCR in a Stack Compose File
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     # Portainer uses the stored GHCR credentials to pull this image
@@ -69,6 +65,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
