@@ -96,7 +96,7 @@ Confirm the rootless socket responds to API requests.
 ```bash
 # Ping the Podman API
 curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/_ping
+    http://localhost/libpod/_ping
 # Expected: OK
 
 # Get version information
@@ -140,17 +140,17 @@ Configure CI/CD tools to use the rootless socket.
 # DOCKER_HOST=unix:///run/user/<CI_USER_UID>/podman/podman.sock
 
 # For GitHub Actions self-hosted runners
-cat >> ~/.env << 'EOF'
-DOCKER_HOST=unix:///run/user/1000/podman/podman.sock
+cat >> ~/.env << EOF
+DOCKER_HOST=unix:///run/user/$(id -u)/podman/podman.sock
 EOF
 
 # For GitLab Runner
 # Edit /etc/gitlab-runner/config.toml and add:
-# environment = ["DOCKER_HOST=unix:///run/user/1000/podman/podman.sock"]
+# environment = ["DOCKER_HOST=unix:///run/user/<RUNNER_UID>/podman/podman.sock"]
 
 # Test that the CI user can access the socket
 sudo -u ci-user curl --unix-socket /run/user/$(id -u ci-user)/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/_ping
+    http://localhost/libpod/_ping
 ```
 
 ## Securing the Rootless Socket
@@ -177,8 +177,8 @@ Common issues and solutions specific to rootless operation.
 
 ```bash
 # Issue: "XDG_RUNTIME_DIR not set"
-# Solution: Ensure you have a proper login session
-export XDG_RUNTIME_DIR=/run/user/$(id -u)
+# Solution: Ensure you have a proper login session managed by systemd-logind
+loginctl user-status $(whoami)
 
 # Issue: Socket file not created
 # Check if the runtime directory exists
