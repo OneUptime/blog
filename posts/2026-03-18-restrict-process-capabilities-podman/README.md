@@ -27,7 +27,7 @@ podman run --rm docker.io/library/alpine:latest sh -c "cat /proc/1/status | grep
 ```bash
 # Decode the capability bitmask to human-readable names
 podman run --rm docker.io/library/alpine:latest sh -c "
-  apk add -q libcap &&
+  apk add -q libcap-utils &&
   capsh --decode=\$(cat /proc/1/status | grep CapEff | awk '{print \$2}')
 "
 ```
@@ -70,10 +70,12 @@ podman run --rm \
 After dropping all capabilities, add back only the ones your application needs.
 
 ```bash
-# Drop all capabilities, then add NET_BIND_SERVICE for a web server
+# Drop all capabilities, then add only what nginx needs
 podman run --rm -d \
   --cap-drop=ALL \
   --cap-add=NET_BIND_SERVICE \
+  --cap-add=SETGID \
+  --cap-add=SETUID \
   --name minimal-nginx \
   -p 8080:80 \
   docker.io/library/nginx:alpine
@@ -82,7 +84,7 @@ podman run --rm -d \
 ```bash
 # Verify the container is running with minimal capabilities
 podman exec minimal-nginx sh -c "
-  apk add -q libcap &&
+  apk add -q libcap-utils &&
   getpcaps 1
 "
 ```
@@ -92,7 +94,7 @@ podman exec minimal-nginx sh -c "
 Different applications require different capabilities. Here are common profiles.
 
 ```bash
-# Web server: only needs to bind to privileged ports
+# Web server: needs to bind to privileged ports and switch worker user/group
 podman run --rm -d \
   --cap-drop=ALL \
   --cap-add=NET_BIND_SERVICE \
@@ -156,7 +158,6 @@ podman inspect selective-drop --format '{{.EffectiveCaps}}'
 
 ```yaml
 # docker-compose.yml
-version: "3"
 services:
   web:
     image: docker.io/library/nginx:alpine
