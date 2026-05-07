@@ -74,15 +74,15 @@ podman run -d \
 ## Redis Authentication Secret
 
 ```bash
-# Create Redis auth password
-echo -n "redis-strong-password" | podman secret create redis_pass -
+# Create Redis auth config with the password
+printf "requirepass redis-strong-password\n" | podman secret create redis_conf -
 
 # Run Redis with secret-based authentication
 podman run -d \
   --name redis \
-  --secret redis_pass \
+  --secret redis_conf,target=/usr/local/etc/redis/redis.conf \
   redis:7 \
-  sh -c 'redis-server --requirepass "$(cat /run/secrets/redis_pass)"'
+  redis-server /usr/local/etc/redis/redis.conf
 ```
 
 ## Application Connecting to Database
@@ -130,4 +130,4 @@ podman run -d \
 
 ## Summary
 
-Store database passwords as Podman secrets using `podman secret create` and deliver them to containers via file mounts. Most official database images support the `_FILE` suffix convention (like `POSTGRES_PASSWORD_FILE`) to read credentials from files. This approach keeps passwords out of environment variable listings, process tables, and container inspection output, providing a significant security improvement over plain environment variables.
+Store database passwords as Podman secrets using `podman secret create` and deliver them to containers via file mounts. Many official database images support the `_FILE` suffix convention (like `POSTGRES_PASSWORD_FILE`) to read credentials from files. When the image reads the mounted secret file directly, this approach keeps passwords out of environment variable listings, process tables, and container inspection output, providing a significant security improvement over plain environment variables.
