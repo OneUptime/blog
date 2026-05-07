@@ -25,25 +25,26 @@ sudo dnf install nvidia-container-toolkit
 # On Ubuntu/Debian
 sudo apt install nvidia-container-toolkit
 
-# Configure the NVIDIA runtime for Podman
+# Generate a CDI specification for Podman
 sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 
 # Verify GPU is detected
 nvidia-smi
-podman run --rm --device nvidia.com/gpu=all docker.io/nvidia/cuda:12.3.1-base-ubuntu22.04 nvidia-smi
+podman run --rm --device nvidia.com/gpu=all --security-opt=label=disable docker.io/nvidia/cuda:12.3.1-base-ubuntu22.04 nvidia-smi
 ```
 
 ## Using CDI (Container Device Interface)
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   ml-training:
     image: docker.io/nvidia/cuda:12.3.1-runtime-ubuntu22.04
     command: nvidia-smi
     devices:
       - nvidia.com/gpu=all
+    security_opt:
+      - label=disable
 ```
 
 ```bash
@@ -62,18 +63,23 @@ services:
     devices:
       # Pass only GPU 0
       - nvidia.com/gpu=0
+    security_opt:
+      - label=disable
   inference:
     image: docker.io/nvidia/cuda:12.3.1-runtime-ubuntu22.04
     devices:
       # Pass only GPU 1
       - nvidia.com/gpu=1
+    security_opt:
+      - label=disable
 ```
 
 ## Using Device Passthrough
 
+For NVIDIA GPUs, CDI is the recommended approach because it injects both devices and driver libraries. Manual device passthrough is useful for custom setups where you manage the required host driver files yourself.
+
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   gpu-app:
     image: docker.io/nvidia/cuda:12.3.1-runtime-ubuntu22.04
@@ -81,26 +87,29 @@ services:
       - /dev/nvidia0:/dev/nvidia0
       - /dev/nvidiactl:/dev/nvidiactl
       - /dev/nvidia-uvm:/dev/nvidia-uvm
-    volumes:
-      - /usr/lib64/libnvidia-ml.so:/usr/lib64/libnvidia-ml.so:ro
+    security_opt:
+      - label=disable
 ```
 
 ## Machine Learning Workflow
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   jupyter:
     image: docker.io/nvidia/cuda:12.3.1-runtime-ubuntu22.04
     devices:
       - nvidia.com/gpu=all
+    security_opt:
+      - label=disable
     ports:
       - "8888:8888"
     volumes:
       - ./notebooks:/workspace
     command: >
-      bash -c "pip install jupyter torch torchvision &&
+      bash -c "apt-get update &&
+               apt-get install -y python3-pip &&
+               python3 -m pip install jupyter torch torchvision &&
                jupyter notebook --ip=0.0.0.0 --no-browser --allow-root"
 
   tensorboard:
@@ -114,16 +123,20 @@ services:
                tensorboard --logdir=/logs --host=0.0.0.0"
 ```
 
-## Using x-podman for GPU Args
+## Using Compose GPU Reservations
 
 ```yaml
 services:
   ml-app:
     image: docker.io/nvidia/cuda:12.3.1-runtime-ubuntu22.04
-    x-podman:
-      podman_args:
-        - "--device=nvidia.com/gpu=all"
-        - "--security-opt=label=disable"
+    command: nvidia-smi
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 ```
 
 ## Verifying GPU Access
@@ -136,7 +149,7 @@ podman-compose up -d
 podman-compose exec ml-training nvidia-smi
 
 # Check CUDA is available
-podman-compose exec ml-training python3 -c "import torch; print(torch.cuda.is_available())"
+podman-compose exec jupyter python3 -c "import torch; print(torch.cuda.is_available())"
 ```
 
 ## Summary
