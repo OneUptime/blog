@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, WAF, Web ACL, IP Allowlist, Custom Rules, Infrastructure as Code
 
-Description: Learn how to create AWS WAF Web ACLs with custom rules using OpenTofu, including IP allowlists, geographic restrictions, custom header validation, and bot management rules.
+Description: Learn how to create AWS WAF Web ACLs with custom rules using OpenTofu, including IP allowlists, geographic restrictions, and custom header validation.
 
 ## Introduction
 
@@ -140,12 +140,12 @@ resource "aws_wafv2_web_acl" "api" {
         statement {
           not_statement {
             statement {
-              byte_match_statement {
-                search_string = "X-Api-Key"
+              size_constraint_statement {
                 field_to_match {
                   single_header { name = "x-api-key" }
                 }
-                positional_constraint = "EXISTS"
+                comparison_operator = "GT"
+                size                = 0
                 text_transformation {
                   priority = 0
                   type     = "NONE"
@@ -176,7 +176,7 @@ resource "aws_wafv2_web_acl" "api" {
 }
 ```
 
-## Step 3: Regex Pattern for Content Validation
+## Step 3: Create a Regex Pattern Set for Content Validation
 
 ```hcl
 resource "aws_wafv2_regex_pattern_set" "malicious_patterns" {
@@ -193,10 +193,10 @@ resource "aws_wafv2_regex_pattern_set" "malicious_patterns" {
 }
 ```
 
-## Step 4: Associate with CloudFront (CLOUDFRONT scope)
+## Step 4: Create a CloudFront Web ACL (CLOUDFRONT scope)
 
 ```hcl
-# For CloudFront, scope must be CLOUDFRONT and resources deployed in us-east-1
+# For CloudFront, scope must be CLOUDFRONT and the Web ACL must be created in us-east-1
 resource "aws_wafv2_web_acl" "cloudfront" {
   provider = aws.us_east_1  # CloudFront WAF must be in us-east-1
 
