@@ -10,7 +10,7 @@ Description: Learn how to enable verbose container create events in Podman to ca
 
 > Verbose create events capture the full story of how a container was configured, turning event logs into a complete audit trail.
 
-By default, Podman create events contain only basic information about the container. Enabling verbose mode adds detailed configuration data to create events, including the full command line, environment variables, mount points, and other settings. This extra detail is invaluable for auditing, debugging, and understanding exactly how containers were configured. This guide shows you how to enable and use verbose container create events.
+By default, Podman create events contain only basic information about the container. In Podman 4.4 and later, enabling verbose mode adds detailed configuration data to create events, including the full command line, environment variables, mount points, and other settings. This extra detail is invaluable for auditing, debugging, and understanding exactly how containers were configured. This guide shows you how to enable and use verbose container create events.
 
 ---
 
@@ -24,7 +24,7 @@ First, observe what a standard create event looks like.
 podman run --rm --name verbose-test alpine echo "hello"
 
 # View the recent create event
-podman events --since 1m --filter event=create
+podman events --since 1m --filter event=create --stream=false
 ```
 
 The default create event shows the container name, ID, image, and timestamp but not the full configuration.
@@ -44,8 +44,11 @@ cat >> ~/.config/containers/containers.conf << 'EOF'
 events_container_create_inspect_data = true
 EOF
 
-# Verify Podman reads the configuration
-podman info --format '{{.Host.EventLogger}}'
+# Verify the verbose payload is present on a new create event
+podman create --name verbose-config-check alpine true
+podman events --since 1m --filter event=create --filter container=verbose-config-check \
+    --stream=false --format '{{.ContainerInspectData}}' | jq '.Config.CreateCommand'
+podman rm verbose-config-check
 ```
 
 ## Viewing Verbose Create Events
@@ -66,7 +69,8 @@ podman run -d --name verbose-demo \
     alpine sleep 300
 
 # View the verbose create event in JSON format
-podman events --since 1m --filter event=create --format json | jq '.'
+podman events --since 1m --filter event=create --filter container=verbose-demo \
+    --stream=false --format json | jq '.'
 ```
 
 ## Extracting Configuration from Verbose Events
@@ -75,12 +79,12 @@ The verbose event data includes the container inspection data at creation time.
 
 ```bash
 # Get the full create event with inspection data
-podman events --since 5m --filter event=create --format json | \
-    jq 'select(.Actor.Attributes.name == "verbose-demo")'
+podman events --since 5m --filter event=create --stream=false --format json | \
+    jq 'select(.Name == "verbose-demo")'
 
 # Extract specific configuration details
-podman events --since 5m --filter event=create --format json | \
-    jq 'select(.Actor.Attributes.name == "verbose-demo") | .Actor.Attributes'
+podman events --since 5m --filter event=create --stream=false --format json | \
+    jq 'select(.Name == "verbose-demo") | .ContainerInspectData.Config'
 ```
 
 ## Using Verbose Events for Auditing
@@ -96,18 +100,18 @@ echo "Generated: $(date)"
 echo ""
 
 # Get all create events from the last 24 hours
-podman events --since 24h --filter event=create --format json | \
+podman events --since 24h --filter event=create --stream=false --format json | \
 while IFS= read -r event; do
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unnamed"')
-    image=$(echo "$event" | jq -r '.Actor.Attributes.image // "unknown"')
-    timestamp=$(echo "$event" | jq -r '.time')
+    name=$(echo "$event" | jq -r '.Name // "unnamed"')
+    image=$(echo "$event" | jq -r '.Image // .ContainerInspectData.ImageName // "unknown"')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
     echo "Container: ${name}"
     echo "  Image: ${image}"
     echo "  Created: ${timestamp}"
 
     # Extract labels if available in verbose data
-    labels=$(echo "$event" | jq -r '.Actor.Attributes | to_entries[] | select(.key | startswith("label_")) | "  Label: \(.key | sub("label_";"")) = \(.value)"' 2>/dev/null)
+    labels=$(echo "$event" | jq -r '.ContainerInspectData.Config.Labels // {} | to_entries[] | "  Label: \(.key) = \(.value)"' 2>/dev/null)
     if [ -n "$labels" ]; then
         echo "$labels"
     fi
@@ -130,11 +134,11 @@ podman create --name compare-test \
 
 # View the event with standard format
 podman events --since 1m --filter event=create \
-    --format '{{.Time}} {{.Status}} {{.Name}}'
+    --stream=false --format '{{.Time}} {{.Status}} {{.Name}}'
 
 # View the same event with full JSON (verbose data included)
-podman events --since 1m --filter event=create --format json | \
-    jq 'select(.Actor.Attributes.name == "compare-test") | keys'
+podman events --since 1m --filter event=create --stream=false --format json | \
+    jq 'select(.Name == "compare-test") | keys'
 
 # Clean up
 podman rm compare-test
@@ -168,15 +172,19 @@ echo "Database: ${DB_FILE}"
 # Stream create events and store in database
 podman events --filter event=create --format json | \
 while IFS= read -r event; do
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unnamed"')
-    image=$(echo "$event" | jq -r '.Actor.Attributes.image // "unknown"')
-    timestamp=$(echo "$event" | jq -r '.time')
+    name=$(echo "$event" | jq -r '.Name // "unnamed"')
+    image=$(echo "$event" | jq -r '.Image // .ContainerInspectData.ImageName // "unknown"')
+    timestamp=$(echo "$event" | jq -r '.Time')
 
-    # Escape single quotes for SQL
-    safe_event=$(echo "$event" | sed "s/'/''/g")
-
-    sqlite3 "$DB_FILE" \
-        "INSERT INTO container_creates (timestamp, name, image, event_data) VALUES ('${timestamp}', '${name}', '${image}', '${safe_event}');"
+    sqlite3 "$DB_FILE" << SQL
+.parameter clear
+.parameter set :timestamp '$(printf '%s' "$timestamp" | sed "s/'/''/g")'
+.parameter set :name '$(printf '%s' "$name" | sed "s/'/''/g")'
+.parameter set :image '$(printf '%s' "$image" | sed "s/'/''/g")'
+.parameter set :event_data '$(printf '%s' "$event" | sed "s/'/''/g")'
+INSERT INTO container_creates (timestamp, name, image, event_data)
+VALUES (:timestamp, :name, :image, :event_data);
+SQL
 
     echo "Stored: ${name} (${image})"
 done
@@ -197,8 +205,8 @@ podman run --rm \
     alpine cat /run/secrets/db-password
 
 # If you must use env vars, be aware they appear in verbose events
-# Restrict access to the events log file or journal
-chmod 600 "$(podman info --format '{{.Store.EventsLogFilePath}}')" 2>/dev/null
+# Restrict access to the events log file if you use the file events logger,
+# or restrict access to the systemd journal when using the default journald logger.
 ```
 
 ## Disabling Verbose Events
@@ -210,8 +218,11 @@ If you need to turn off verbose events:
 # Set events_container_create_inspect_data = false
 # or remove the line entirely
 
-# Verify the change
-podman info --format '{{.Host.EventLogger}}'
+# Verify the change by creating a new container and checking that no inspect data is attached
+podman create --name verbose-disabled-check alpine true
+podman events --since 1m --filter event=create --filter container=verbose-disabled-check \
+    --stream=false --format '{{.ContainerInspectData}}'
+podman rm verbose-disabled-check
 ```
 
 ## Cleanup
