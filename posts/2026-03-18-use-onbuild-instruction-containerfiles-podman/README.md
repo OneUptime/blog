@@ -18,7 +18,7 @@ When multiple projects share the same build patterns, you often end up duplicati
 
 The ONBUILD instruction registers a build trigger in the image metadata. The instruction itself does nothing during the current build. Instead, it fires when another Containerfile uses this image as its base with the FROM instruction.
 
-The syntax wraps any valid Containerfile instruction:
+The syntax wraps another Containerfile instruction:
 
 ```dockerfile
 ONBUILD <INSTRUCTION>
@@ -31,7 +31,7 @@ ONBUILD COPY . /app
 ONBUILD RUN npm install
 ```
 
-These instructions are stored in the image but only execute when a downstream image inherits from it.
+These instructions are stored in the image but only execute when a downstream image inherits from it. Most build instructions can be used this way, but there are a few limitations covered later in this guide.
 
 ## How ONBUILD Works
 
@@ -45,7 +45,7 @@ Let us see this in action.
 
 ## Important: Use Docker Format with ONBUILD
 
-Podman defaults to the OCI image format, which does not support the ONBUILD instruction. If you build with the default format, ONBUILD triggers will be silently ignored. You must use the Docker format by passing `--format docker` to `podman build`, or by setting the environment variable `BUILDAH_FORMAT=docker`.
+Podman defaults to the OCI image format, which does not support the ONBUILD instruction. If you build with the default format, Podman warns that the ONBUILD instruction will be ignored. You must use the Docker format by passing `--format docker` to `podman build`, or by setting the environment variable `BUILDAH_FORMAT=docker`.
 
 ## Building a Reusable Node.js Base Image
 
@@ -73,14 +73,14 @@ Build the base image:
 podman build --format docker -t my-node-base -f base/Containerfile .
 ```
 
-Now any Node.js project can use this base with a minimal Containerfile:
+Now any Node.js project that includes `package-lock.json` can use this base with a minimal Containerfile:
 
 ```dockerfile
 # app/Containerfile
 FROM my-node-base
 ```
 
-That is it. When this child image is built, Podman automatically executes the ONBUILD triggers, which copy the package files, install dependencies, and copy the application code.
+That is it. When this child image is built, Podman automatically executes the ONBUILD triggers, which copy `package.json` and `package-lock.json`, install dependencies, and copy the application code.
 
 ```bash
 cd my-node-app
@@ -104,7 +104,7 @@ CMD ["node", "server.js"]
 You can view the ONBUILD triggers registered in an image:
 
 ```bash
-podman inspect my-node-base --format '{{json .Config.OnBuild}}' | jq
+podman image inspect my-node-base --format '{{json .Config.OnBuild}}' | jq
 ```
 
 This will output:
@@ -152,7 +152,7 @@ For Go applications, ONBUILD can standardize the entire build process:
 
 ```dockerfile
 # go-base/Containerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.22-alpine
 
 WORKDIR /app
 
@@ -161,14 +161,10 @@ ONBUILD RUN go mod download && go mod verify
 ONBUILD COPY . .
 ONBUILD RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /server .
 
-FROM alpine:3.19
-
-ONBUILD COPY --from=builder /server /server
-
-ENTRYPOINT ["/server"]
+CMD ["/server"]
 ```
 
-Note that ONBUILD with multi-stage builds requires careful consideration. The ONBUILD triggers in each stage only fire when a child image uses that specific stage. In practice, this limits ONBUILD's usefulness with multi-stage builds.
+Note that ONBUILD with multi-stage builds requires careful consideration. If you want to use `ONBUILD COPY --from=build ...`, the `build` stage must be defined in the child Containerfile where the ONBUILD trigger fires. In practice, this limits ONBUILD's usefulness with multi-stage builds.
 
 ## ONBUILD with Validation
 
@@ -180,8 +176,9 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Ensure child images have required files
-ONBUILD COPY package.json ./
+ONBUILD COPY package*.json ./
 ONBUILD RUN test -f package.json || (echo "package.json is required" && exit 1)
+ONBUILD RUN test -f package-lock.json || (echo "package-lock.json is required for npm ci" && exit 1)
 ONBUILD RUN npm ci --omit=dev
 ONBUILD COPY . .
 
@@ -211,7 +208,7 @@ ONBUILD RUN pip install --no-cache-dir -r requirements.txt
 ONBUILD COPY . .
 
 # Run linting as part of every child build
-ONBUILD RUN pylint --errors-only **/*.py || true
+ONBUILD RUN find . -name '*.py' -exec pylint --errors-only {} + || true
 
 # Run tests as part of every child build
 ONBUILD RUN pytest --tb=short || echo "WARNING: Tests failed"
@@ -221,9 +218,10 @@ CMD ["python", "main.py"]
 
 ## Instructions That Cannot Use ONBUILD
 
-There are two instructions that cannot be used with ONBUILD:
+There are a few limitations on what can be used with ONBUILD:
 
 - `ONBUILD FROM` is not allowed because it would change the base image of the child.
+- `ONBUILD MAINTAINER` is not allowed.
 - `ONBUILD ONBUILD` is not allowed because triggers do not chain. An ONBUILD trigger in a base image does not propagate to grandchild images.
 
 This means ONBUILD only affects direct children, not all descendants.
@@ -242,7 +240,7 @@ When ONBUILD triggers cause build failures, the error messages can be confusing 
 
 ```bash
 # View what triggers are set
-podman inspect my-base --format '{{json .Config.OnBuild}}' | jq
+podman image inspect my-base --format '{{json .Config.OnBuild}}' | jq
 
 # View the history to understand all layers
 podman history my-base
