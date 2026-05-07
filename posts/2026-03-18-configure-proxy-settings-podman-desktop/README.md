@@ -18,9 +18,11 @@ In corporate environments, direct internet access is often unavailable and all o
 
 Podman Desktop uses proxy settings at three levels:
 
-1. **System-level**: Inherited from your OS proxy settings.
+1. **System-level**: Inherited from your OS proxy settings when Podman Desktop is set to use the system proxy.
 2. **Podman engine-level**: Configured in containers.conf for image operations.
 3. **Container-level**: Passed to running containers as environment variables.
+
+On Linux, Podman Desktop proxy settings do not affect Podman itself; configure Podman with environment variables or `containers.conf`.
 
 ```bash
 # Check if system proxy variables are set
@@ -35,12 +37,12 @@ echo "NO_PROXY: $NO_PROXY"
 Podman Desktop provides proxy settings in its preferences:
 
 1. Open Podman Desktop and go to **Settings** (gear icon).
-2. Navigate to the **Proxy** section.
-3. Enable the proxy toggle.
-4. Enter your HTTP proxy URL (e.g., `http://proxy.company.com:8080`).
+2. Navigate to **Proxy** from the left navigation pane.
+3. Select **System**, **Manual**, or **Disabled**.
+4. If you select **Manual**, enter your HTTP proxy URL (e.g., `http://proxy.company.com:8080`).
 5. Enter your HTTPS proxy URL (often the same as HTTP).
-6. Add no-proxy exceptions for internal addresses.
-7. Click **Save** to apply the settings.
+6. Add bypass proxy entries for internal addresses.
+7. Click **Update** to apply the settings, then confirm the notification.
 
 ## Setting Proxy via Environment Variables
 
@@ -163,23 +165,28 @@ CMD ["node", "server.js"]
 
 ## Configuring Proxy for the Podman Machine (macOS)
 
-On macOS, the Podman machine VM also needs proxy settings:
+On macOS, configure the Podman Desktop proxy settings and restart the Podman machine from **Settings > Resources**. To pass proxy settings into containers running inside the Podman machine, edit `containers.conf` inside the VM:
 
 ```bash
 # SSH into the Podman machine
 podman machine ssh
 
-# Set proxy inside the VM
-sudo bash -c 'cat >> /etc/environment << EOF
-HTTP_PROXY=http://proxy.company.com:8080
-HTTPS_PROXY=http://proxy.company.com:8080
-NO_PROXY=localhost,127.0.0.1
-EOF'
+# Edit the rootless containers.conf file inside the VM
+mkdir -p ~/.config/containers
 
-# Restart the Podman machine to apply
+cat >> ~/.config/containers/containers.conf << 'EOF'
+[containers]
+http_proxy = true
+env = [
+  "http_proxy=http://proxy.company.com:8080",
+  "https_proxy=http://proxy.company.com:8080",
+  "no_proxy=localhost,127.0.0.1"
+]
+EOF
+
 exit
-podman machine stop
-podman machine start
+
+# Restart the Podman machine from Podman Desktop Settings > Resources
 ```
 
 ## Proxy with Authentication
