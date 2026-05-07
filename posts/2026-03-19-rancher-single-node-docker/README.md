@@ -6,7 +6,7 @@ Tags: Rancher, Docker, Kubernetes, Installation
 
 Description: A step-by-step guide to installing Rancher Server on a single node using Docker for quick development and testing environments.
 
-Rancher is a powerful open-source platform for managing Kubernetes clusters. One of the fastest ways to get Rancher up and running is by deploying it as a Docker container on a single node. This approach is ideal for development, testing, and small-scale production environments where high availability is not a strict requirement.
+Rancher is a powerful open-source platform for managing Kubernetes clusters. One of the fastest ways to get Rancher up and running is by deploying it as a Docker container on a single node. This approach is ideal for development and testing environments where you want to evaluate Rancher quickly.
 
 In this guide, you will learn how to install Rancher on a single node using Docker, configure persistent storage, and access the Rancher UI.
 
@@ -14,9 +14,10 @@ In this guide, you will learn how to install Rancher on a single node using Dock
 
 Before you begin, make sure you have:
 
-- A Linux server (Ubuntu, CentOS, Debian, or similar) with at least 4 GB of RAM and 2 CPU cores
-- Docker installed (version 20.10 or later)
-- A domain name or IP address pointing to your server
+- A 64-bit x86 Linux server (Ubuntu, CentOS, Debian, or similar) that meets Rancher's current installation requirements
+- Docker installed, using a version validated for your Rancher release in the Rancher support matrix
+- The `net.bridge.bridge-nf-call-iptables=1` sysctl setting applied on the host
+- A DNS name or static IP address that clients can use to reach your server
 - Ports 80 and 443 open on your firewall
 
 ## Step 1: Install Docker
@@ -42,7 +43,7 @@ sudo usermod -aG docker $USER
 newgrp docker
 ```
 
-## Step 2: Create a Persistent Volume for Rancher Data
+## Step 2: Create Persistent Storage for Rancher Data
 
 Rancher stores its data including cluster configurations, user accounts, and settings. To ensure this data persists across container restarts, create a directory on the host:
 
@@ -138,10 +139,11 @@ After logging in, you should see the Rancher dashboard. From here you can:
 - Import existing clusters
 - Deploy workloads and manage resources
 
-Verify Rancher is healthy by checking the container logs:
+Verify Rancher is healthy by confirming the container is still running and reviewing the recent logs:
 
 ```bash
-docker logs rancher 2>&1 | grep -i "ready"
+docker ps
+docker logs rancher 2>&1 | tail -20
 ```
 
 ## Backing Up Rancher Data
@@ -150,18 +152,18 @@ Since all Rancher data is stored in `/opt/rancher`, you can back it up by stoppi
 
 ```bash
 docker stop rancher
-tar czf rancher-backup-$(date +%Y%m%d).tar.gz /opt/rancher
+sudo tar czf rancher-backup-$(date +%Y%m%d).tar.gz /opt/rancher
 docker start rancher
 ```
 
 ## Upgrading Rancher
 
-To upgrade Rancher to a newer version:
+To upgrade Rancher to a newer version, pull the specific image tag that you want to run and then recreate the container with the same persistent storage:
 
 ```bash
 docker stop rancher
 docker rm rancher
-docker pull rancher/rancher:latest
+docker pull rancher/rancher:<rancher-version-tag>
 
 docker run -d \
   --name rancher \
@@ -170,18 +172,19 @@ docker run -d \
   -p 443:443 \
   -v /opt/rancher:/var/lib/rancher \
   --privileged \
-  rancher/rancher:latest
+  rancher/rancher:<rancher-version-tag>
 ```
 
-Your data will be preserved because it is stored in the mounted volume.
+Your data will be preserved because it is stored in the mounted volume. If you used custom certificates or extra environment variables when you first deployed Rancher, include those same options when you start the new container.
 
 ## Troubleshooting
 
 If Rancher does not start properly, check the following:
 
 - **Port conflicts**: Ensure no other service is using ports 80 or 443
-- **Insufficient resources**: Rancher needs at least 4 GB of RAM
-- **Docker version**: Make sure Docker is version 20.10 or later
+- **Insufficient resources**: Make sure the host meets Rancher's current installation requirements
+- **Docker version**: Use a Docker version validated for your Rancher release in the Rancher support matrix
+- **Kernel networking**: Ensure the `net.bridge.bridge-nf-call-iptables=1` sysctl setting is applied
 - **Firewall rules**: Ensure ports 80 and 443 are open
 
 View detailed logs:
@@ -192,4 +195,4 @@ docker logs rancher --tail 100
 
 ## Conclusion
 
-You have successfully installed Rancher on a single node using Docker. This setup provides a quick way to get started with Rancher for managing Kubernetes clusters. For production environments that require high availability, consider deploying Rancher on a multi-node Kubernetes cluster using Helm.
+You have successfully installed Rancher on a single node using Docker. This setup provides a quick way to get started with Rancher for managing Kubernetes clusters in development and testing environments. For production use, deploy Rancher on a high-availability Kubernetes cluster using Helm.
