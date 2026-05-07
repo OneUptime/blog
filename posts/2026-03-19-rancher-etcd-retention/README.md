@@ -6,12 +6,12 @@ Tags: Rancher, Kubernetes, etcd, Backup
 
 Description: Learn how to configure etcd snapshot retention policies in Rancher to balance storage usage with recovery point coverage.
 
-etcd snapshots can accumulate quickly and consume significant disk space if retention is not properly configured. Rancher lets you control how many snapshots to keep and how often they are taken for both RKE and RKE2 clusters. This guide covers configuring retention policies to balance storage with recovery needs.
+etcd snapshots can accumulate quickly and consume significant disk space if retention is not properly configured. Rancher lets you control how many snapshots to keep and how often they are taken for RKE2 clusters, and older Rancher releases expose equivalent settings for RKE1 clusters. This guide covers configuring retention policies to balance storage with recovery needs.
 
 ## Prerequisites
 
-- Rancher v2.5 or later
-- RKE or RKE2 managed clusters
+- Rancher v2.5 or later for RKE2 clusters
+- RKE2 managed clusters, or an older Rancher release that still supports RKE1 clusters
 - Admin access to Rancher
 
 ## Step 1: Understand Retention Settings
@@ -29,7 +29,7 @@ The combination determines your recovery window. For example, snapshots every 6 
 2. Find the RKE2 cluster and click the three-dot menu.
 3. Select **Edit Config**.
 4. Navigate to the **etcd** section.
-5. Set **Snapshot Schedule Cron** to your desired interval:
+5. Set the recurring snapshot cron schedule to your desired interval:
    - `0 */6 * * *` for every 6 hours
    - `0 */12 * * *` for every 12 hours
    - `0 0 * * *` for daily
@@ -62,25 +62,21 @@ kubectl apply -f cluster.yaml
 
 ## Step 4: Configure Retention for RKE Clusters
 
-For RKE clusters, update the cluster configuration through the Rancher API or UI:
+For RKE1 clusters on older Rancher releases, update the cluster configuration through the Rancher API or UI. RKE1 reached end of life on July 31, 2025, and Rancher v2.12 and later no longer support downstream RKE1 clusters:
 
 ```yaml
 services:
   etcd:
-    snapshot: true
-    creation: "6h"
-    retention: "72h"
     backup_config:
-      enabled: true
       interval_hours: 6
       retention: 12
 ```
 
-The `retention` field in `backup_config` specifies the number of snapshots to keep. The `retention` under `etcd` specifies the time duration.
+The `backup_config.retention` field specifies the number of snapshots to keep. Legacy `services.etcd.creation` and `services.etcd.retention` settings were used in RKE releases before v0.2.0.
 
 ## Step 5: Configure S3 Retention Separately
 
-When using S3 for etcd snapshots, you can set separate retention for local and S3 snapshots:
+When using S3 for etcd snapshots on RKE2 clusters, `snapshotRetention` controls scheduled local snapshots. In Rancher versions that expose the underlying RKE2 `etcd-s3-retention` setting, you can set S3 retention separately:
 
 ```yaml
 spec:
@@ -92,10 +88,12 @@ spec:
         bucket: etcd-snapshots
         region: us-east-1
         endpoint: s3.amazonaws.com
-        cloudCredentialName: s3-credential
+        cloudCredentialName: fleet-default:s3-credential
+    machineGlobalConfig:
+      etcd-s3-retention: 10
 ```
 
-The `snapshotRetention` applies to both local and S3 snapshots. For additional S3-level retention, use S3 lifecycle policies:
+The `snapshotRetention` setting controls scheduled local snapshot retention. `etcd-s3-retention` configures S3 retention separately when supported by your Rancher/RKE2 version. If your version does not expose separate S3 retention, use S3 lifecycle policies:
 
 ```bash
 aws s3api put-bucket-lifecycle-configuration \
@@ -108,7 +106,7 @@ aws s3api put-bucket-lifecycle-configuration \
         "Filter": {"Prefix": ""},
         "Expiration": {"Days": 90},
         "Transitions": [
-          {"Days": 30, "StorageClass": "STANDARD_IA"},
+          {"Days": 31, "StorageClass": "STANDARD_IA"},
           {"Days": 60, "StorageClass": "GLACIER"}
         ]
       }
@@ -147,7 +145,7 @@ du -sh /var/lib/rancher/rke2/server/db/snapshots/
 du -sh /opt/rke/etcd-snapshots/
 ```
 
-Set up an alert for disk space:
+Set up an alert for the filesystem that contains your snapshot directory:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -170,6 +168,8 @@ spec:
         summary: "etcd snapshot disk usage above 85%"
 ```
 
+Adjust the `mountpoint` label to match the filesystem that backs your snapshot directory.
+
 ## Step 8: Clean Up Old Snapshots Manually
 
 If you need to manually clean up snapshots that were not deleted by the retention policy:
@@ -177,18 +177,18 @@ If you need to manually clean up snapshots that were not deleted by the retentio
 ### On RKE2 Nodes
 
 ```bash
-# List snapshots sorted by date
-ls -lt /var/lib/rancher/rke2/server/db/snapshots/
+# List snapshots visible to this node
+rke2 etcd-snapshot ls
 
-# Delete specific old snapshots
-rm /var/lib/rancher/rke2/server/db/snapshots/etcd-snapshot-old-date*
+# Delete specific snapshots by name
+rke2 etcd-snapshot delete <SNAPSHOT-NAME>
 ```
 
 ### Via the Rancher UI
 
 1. Navigate to the cluster.
 2. Go to **Snapshots**.
-3. Select the snapshots you want to delete.
+3. If your Rancher version exposes snapshot actions there, select the snapshots you want to delete.
 4. Click **Delete**.
 
 ### In S3
@@ -200,17 +200,17 @@ aws s3 rm s3://etcd-snapshots/cluster-1/ --recursive \
 
 ## Step 9: Verify Retention Is Working
 
-After the retention policy has had time to take effect, verify that old snapshots are being cleaned up:
+After the retention policy has had time to take effect, verify that older scheduled snapshots are being cleaned up:
 
 ```bash
-# Check local snapshot count
-ls /var/lib/rancher/rke2/server/db/snapshots/ | wc -l
+# Check snapshots visible to this node
+rke2 etcd-snapshot ls
 
-# Check S3 snapshot count
-aws s3 ls s3://etcd-snapshots/cluster-1/ | wc -l
+# Check all tracked snapshot files in the cluster
+kubectl get etcdsnapshotfile
 ```
 
-The counts should not exceed your configured retention value (plus a small buffer for in-progress operations).
+Recurring snapshot retention is enforced per node, not cluster-wide, and on-demand snapshots are not pruned automatically.
 
 ## Best Practices
 
