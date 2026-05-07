@@ -8,7 +8,7 @@ Description: Learn how to configure CORS (Cross-Origin Resource Sharing) on API 
 
 ## Introduction
 
-CORS allows browsers to make requests to APIs hosted on different domains. For API Gateway, CORS requires handling the preflight OPTIONS request (returning appropriate headers) and including CORS headers in actual responses. HTTP API (v2) has built-in CORS configuration that handles OPTIONS automatically. REST API (v1) requires manual OPTIONS method setup with mock integration or Lambda handling. Misconfigured CORS is one of the most common issues when building browser-based applications.
+CORS allows browsers to make requests to APIs hosted on different domains. For API Gateway, CORS requires handling the preflight OPTIONS request (returning appropriate headers) and including CORS headers in actual responses. HTTP API (v2) has built-in CORS configuration that handles OPTIONS automatically in most cases, though APIs with an authorized `$default` route still need an unauthenticated `OPTIONS /{proxy+}` route. REST API (v1) requires manual OPTIONS method setup with mock integration or Lambda handling. Misconfigured CORS is one of the most common issues when building browser-based applications.
 
 ## Prerequisites
 
@@ -47,10 +47,11 @@ resource "aws_api_gateway_method" "options" {
 }
 
 resource "aws_api_gateway_integration" "options" {
-  rest_api_id = aws_api_gateway_rest_api.main.id
-  resource_id = aws_api_gateway_resource.resource.id
-  http_method = aws_api_gateway_method.options.http_method
-  type        = "MOCK"  # No backend needed for preflight
+  rest_api_id          = aws_api_gateway_rest_api.main.id
+  resource_id          = aws_api_gateway_resource.resource.id
+  http_method          = aws_api_gateway_method.options.http_method
+  type                 = "MOCK"  # No backend needed for preflight
+  passthrough_behavior = "NEVER"
 
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
@@ -81,6 +82,8 @@ resource "aws_api_gateway_integration_response" "options" {
   http_method = aws_api_gateway_method.options.http_method
   status_code = aws_api_gateway_method_response.options_200.status_code
 
+  depends_on = [aws_api_gateway_integration.options]
+
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization,X-Api-Key'"
     "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,DELETE,OPTIONS'"
@@ -89,6 +92,8 @@ resource "aws_api_gateway_integration_response" "options" {
   }
 }
 ```
+
+This config handles the preflight request only; your REST API's actual method responses must also return `Access-Control-Allow-Origin`, or your backend must return it when you use a proxy integration.
 
 ## Step 3: Deploy
 
@@ -109,4 +114,4 @@ curl -X OPTIONS https://<api-id>.execute-api.<region>.amazonaws.com/prod/resourc
 
 ## Conclusion
 
-Use HTTP API (v2) with built-in `cors_configuration` whenever possible-it handles OPTIONS preflight automatically and is far simpler than manually configuring OPTIONS methods for each REST API resource. Never use `allow_origins = ["*"]` in production with `allow_credentials = true`-this combination is rejected by browsers. For REST API, ensure CORS headers are included in both the method response (declaring they exist) and the integration response (setting their values); forgetting either causes CORS failures.
+Use HTTP API (v2) with built-in `cors_configuration` whenever possible-it handles OPTIONS preflight automatically in most cases and is far simpler than manually configuring OPTIONS methods for each REST API resource. Never use `allow_origins = ["*"]` in production with `allow_credentials = true`-this combination is rejected by browsers. For REST API non-proxy integrations, ensure CORS headers are included in both the method response (declaring they exist) and the integration response (setting their values), and make sure actual method responses return `Access-Control-Allow-Origin`; forgetting any of these causes CORS failures.
