@@ -16,25 +16,25 @@ Connecting these networks directly causes routing chaos. You have several option
 
 ## Step 1: Audit Both Networks
 
-Before any changes, document all used address space:
+Before any changes, document allocated subnets and scan for active hosts:
 
 ```bash
 # Scan each network for active hosts
-
-nmap -sn 10.0.0.0/8 --open -oG /tmp/company-a-hosts.txt
+nmap -sn -n 10.0.0.0/8 -oN /tmp/company-a-hosts.txt
 
 # Extract just IPs
-awk '/Up$/{print $2}' /tmp/company-a-hosts.txt > /tmp/company-a-ips.txt
+awk '/Nmap scan report/{print $5}' /tmp/company-a-hosts.txt > /tmp/company-a-ips.txt
 
-# Find which subnets are actually in use
-cat /tmp/company-a-ips.txt | python3 -c "
+# Get a quick view of discovered addresses
+python3 -c "
 import sys
-from ipaddress import ip_address, ip_network
-ips = [ip_address(line.strip()) for line in sys.stdin]
+from ipaddress import ip_address
+ips = sorted(ip_address(line.strip()) for line in sys.stdin if line.strip())
 print(f'Hosts found: {len(ips)}')
-print(f'Lowest IP: {min(ips)}')
-print(f'Highest IP: {max(ips)}')
-"
+if ips:
+    print(f'Lowest IP: {ips[0]}')
+    print(f'Highest IP: {ips[-1]}')
+" < /tmp/company-a-ips.txt
 ```
 
 ## Step 2: Option A - Use NAT to Connect Overlapping Networks
@@ -92,7 +92,7 @@ for new_net in company_b_new:
 Re-addressing a live network requires careful phasing:
 
 ```text
-Phase 1: Add new IP addresses to all servers (dual-stack period)
+Phase 1: Add new IP addresses to all servers (dual-address period)
   - Servers get BOTH old and new IPs
   - Update DNS to point to new IPs
 
@@ -148,4 +148,4 @@ print(f"Overlap: {company_a_range.overlaps(company_b_range)}")
 
 ## Conclusion
 
-IPv4 address conflicts in mergers can be handled three ways: NAT translation at the network boundary (quick but complex), re-addressing one network (cleanest but time-consuming), or MPLS VRFs for true isolation. For short-term connectivity, NAT translation provides the quickest solution. For long-term integration, re-address one organization using the other half of 10.0.0.0/8 or switching to 172.16.0.0/12. Always audit both networks first and establish addressing governance to prevent future overlaps.
+IPv4 address conflicts in mergers can be handled three ways: NAT translation at the network boundary (quick but complex), re-addressing one network (cleanest but time-consuming), or MPLS VRFs for true isolation. For short-term connectivity, NAT translation often provides the quickest solution. For long-term integration, re-address one organization into non-overlapping RFC 1918 space, such as a dedicated half of 10.0.0.0/8 if that space is available, or 172.16.0.0/12. Always audit both networks first and establish addressing governance to prevent future overlaps.
