@@ -8,7 +8,7 @@ Description: Step-by-step guide to creating and enforcing AppArmor profiles on c
 
 ## Introduction
 
-How to Configure AppArmor Profiles in Rancher is a critical security capability for hardening Rancher-managed Kubernetes environments. This guide provides practical implementation steps for security teams and platform engineers.
+Configuring AppArmor profiles in Rancher-managed Kubernetes environments is a practical way to harden Linux workloads. In Rancher, AppArmor is configured on the Linux nodes and then referenced from Kubernetes manifests for the workloads you deploy.
 
 ## Why This Matters
 
@@ -22,57 +22,44 @@ How to Configure AppArmor Profiles in Rancher addresses these challenges by addi
 
 ## Prerequisites
 
-- Rancher v2.7+ cluster with cluster admin access
-- Kubernetes 1.26+
-- Helm 3.x
+- A Rancher-managed Linux cluster with cluster admin access
+- Kubernetes 1.33+ and `kubectl` access to the cluster
+- Access to each Linux worker node to load AppArmor profiles
+- AppArmor enabled on the nodes, with the AppArmor tools installed
 - Understanding of Linux security concepts
 
 ## Step 1: Assess Current Security Posture
 
 ```bash
-# Run a basic security audit
-
-kubectl get pods --all-namespaces -o json | jq -r '
-  .items[] | 
-  select(
-    .spec.containers[].securityContext.runAsRoot == true or
-    .spec.containers[].securityContext.privileged == true
-  ) |
-  [.metadata.namespace, .metadata.name] |
-  @csv'
-
-# Check for pods running as root
-kubectl get pods --all-namespaces -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,USER:.spec.securityContext.runAsUser'
-
-# Check privileged pods
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.containers[].securityContext.privileged==true) | 
-  .metadata.namespace + "/" + .metadata.name'
+# Verify that AppArmor is enabled and the tooling is present on every node.
+# This example assumes node names match host names and are reachable over SSH.
+NODES=($( kubectl get node -o jsonpath='{.items[*].status.addresses[?(.type == "Hostname")].address}' ))
+for NODE in "${NODES[@]}"; do
+  echo "== $NODE =="
+  ssh "$NODE" 'cat /sys/module/apparmor/parameters/enabled && command -v apparmor_parser && sudo cat /sys/kernel/security/apparmor/profiles | sort | head'
+done
 ```
 
-## Step 2: Configure Security Feature
+## Step 2: Create and Load an AppArmor Profile
 
-```yaml
-# security-feature-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: security-config
-  namespace: kube-system
-data:
-  config.yaml: |
-    # Security feature configuration
-    enabled: true
-    level: "strict"
-    
-    # Audit settings
-    audit:
-      enabled: true
-      outputPath: /var/log/security-audit.log
-    
-    # Alert settings
-    alerts:
-      enabled: true
-      webhook: "https://alerts.example.com/security"
+```bash
+# Load this profile on every Linux node.
+# This example assumes node names match host names and are reachable over SSH.
+NODES=($( kubectl get node -o jsonpath='{.items[*].status.addresses[?(.type == "Hostname")].address}' ))
+for NODE in "${NODES[@]}"; do
+  ssh "$NODE" 'sudo apparmor_parser -q <<EOF
+#include <tunables/global>
+
+profile k8s-apparmor-example-deny-write flags=(attach_disconnected) {
+  #include <abstractions/base>
+
+  file,
+
+  # Deny all file writes.
+  deny /** w,
+}
+EOF'
+done
 ```
 
 ## Step 3: Apply Pod Security Standards
@@ -89,129 +76,86 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest
     pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
 ```
 
-## Step 4: Configure Security Context for Workloads
+## Step 4: Configure AppArmor for the Workload
 
 ```yaml
-# secure-deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
+# hello-apparmor.yaml
+apiVersion: v1
+kind: Pod
 metadata:
-  name: secure-app
+  name: hello-apparmor
   namespace: production
 spec:
-  template:
-    spec:
-      # Pod-level security context
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 3000
-        fsGroup: 2000
-        seccompProfile:
-          type: RuntimeDefault
-      
-      containers:
-      - name: app
-        image: registry.example.com/app:latest
-        
-        # Container-level security context
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL            # Drop all Linux capabilities
-            add:
-            - NET_BIND_SERVICE  # Only add what's needed
-        
-        # Required volume for writable locations
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
-        - name: cache
-          mountPath: /app/cache
-      
-      volumes:
-      - name: tmp
-        emptyDir: {}
-      - name: cache
-        emptyDir: {}
+  securityContext:
+    appArmorProfile:
+      type: Localhost
+      localhostProfile: k8s-apparmor-example-deny-write
+    seccompProfile:
+      type: RuntimeDefault
+
+  containers:
+  - name: hello
+    image: busybox:1.36
+    command: ["sh", "-c", "echo 'Hello AppArmor!' && sleep 1h"]
+
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
 ```
 
-## Step 5: Install Security Tooling
+## Step 5: Deploy the Workload
 
 ```bash
-# Install via Helm
-helm repo add security-charts https://charts.example.com/security
-helm repo update
+kubectl apply -f namespace-security-labels.yaml
+kubectl apply -f hello-apparmor.yaml
 
-helm install security-tool security-charts/security-tool   --namespace security-system   --create-namespace   --set rules.enabled=true   --set alerting.enabled=true   --set alerting.slack.webhook=YOUR_WEBHOOK_URL
-
-kubectl get pods -n security-system
+kubectl get pod hello-apparmor -n production
 ```
 
-## Step 6: Create Alert Rules
+## Step 6: Test the Profile
 
-```yaml
-# security-prometheus-rules.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: security-alerts
-  namespace: cattle-monitoring-system
-spec:
-  groups:
-  - name: security.alerts
-    rules:
-    - alert: PrivilegedContainerDetected
-      expr: |
-        kube_pod_container_info{container!=""} * on(pod, namespace)
-        kube_pod_spec_container_security_context_privileged{privileged="true"} > 0
-      for: 0m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Privileged container in {{ $labels.namespace }}/{{ $labels.pod }}"
-    
-    - alert: ContainerRunningAsRoot
-      expr: |
-        kube_pod_container_status_running * on(pod, namespace)
-        kube_pod_container_info{container_id!=""} and
-        kube_pod_spec_container_security_context_run_as_user{run_as_user="0"} > 0
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Container running as root in {{ $labels.namespace }}"
+```bash
+# This write should be denied by the AppArmor profile.
+kubectl exec -n production hello-apparmor -- touch /tmp/test
 ```
 
 ## Step 7: Verify Security Controls
 
 ```bash
 #!/bin/bash
-# security-verification.sh
+# apparmor-verification.sh
 
-echo "=== Security Control Verification ==="
+echo "=== AppArmor Verification ==="
 
-echo "1. Checking for privileged containers..."
-PRIV_COUNT=$(kubectl get pods --all-namespaces -o json |   jq '[.items[].spec.containers[].securityContext.privileged // false | select(.)] | length')
-echo "   Privileged containers: $PRIV_COUNT"
-
-echo ""
-echo "2. Checking namespaces with Pod Security Standards..."
-kubectl get namespaces -o custom-columns='NAME:.metadata.name,PSS:.metadata.labels[pod-security\.kubernetes\.io/enforce]'
+echo "1. Checking the AppArmor profile applied to the pod..."
+kubectl exec -n production hello-apparmor -- cat /proc/1/attr/current
 
 echo ""
-echo "3. Checking for host network pods..."
-kubectl get pods --all-namespaces -o json |   jq -r '.items[] | select(.spec.hostNetwork==true) | 
-  .metadata.namespace + "/" + .metadata.name'
+echo "2. Checking Pod Security labels on the namespace..."
+kubectl get namespace production --show-labels
+
+echo ""
+echo "3. Checking that the profile is loaded on the scheduled node..."
+NODE=$(kubectl get pod -n production hello-apparmor -o jsonpath='{.spec.nodeName}')
+HOSTNAME=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(.type == "Hostname")].address}')
+ssh "$HOSTNAME" "sudo cat /sys/kernel/security/apparmor/profiles | grep k8s-apparmor-example-deny-write"
+
+echo ""
+echo "4. Checking recent pod events..."
+kubectl describe pod -n production hello-apparmor
 
 echo "=== Verification Complete ==="
 ```
 
 ## Conclusion
 
-Implementing How to Configure AppArmor Profiles in Rancher on Rancher adds an important layer of defense to your Kubernetes security posture. Combine with other security controls (network policies, RBAC, admission webhooks) for comprehensive defense-in-depth. Regular security audits and automated compliance checks ensure controls remain effective over time.
+Implementing AppArmor profiles in Rancher adds an important layer of defense to your Kubernetes security posture. Because Rancher-managed clusters rely on the underlying Kubernetes nodes for AppArmor enforcement, make sure the profile is loaded everywhere the workload can schedule. Combine AppArmor with other security controls (network policies, RBAC, admission webhooks) for comprehensive defense-in-depth. Regular security audits and automated compliance checks ensure controls remain effective over time.
