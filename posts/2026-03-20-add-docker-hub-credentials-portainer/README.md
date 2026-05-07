@@ -8,26 +8,26 @@ Description: Learn how to add Docker Hub credentials to Portainer to pull privat
 
 ## Why Add Docker Hub Credentials?
 
-Docker Hub enforces rate limits on anonymous pulls (100 pulls per 6 hours for unauthenticated users, 200 for free accounts). Authenticated pulls use your account's higher limits. Additionally, private Docker Hub repositories require credentials to pull images.
+Docker Hub enforces rate limits on pulls (100 pulls per 6 hours for unauthenticated users, 200 pulls per 6 hours for Docker Personal accounts). Authenticated pulls use your account's limits. Additionally, private Docker Hub repositories require credentials to pull images.
 
 ## Steps to Add Docker Hub Credentials
 
 1. Log in to Portainer as an administrator.
-2. Go to **Settings** in the left sidebar.
-3. Click **Registries**.
-4. Click **Add registry**.
-5. Select **DockerHub** as the registry provider.
-6. Enter your Docker Hub **username** and **password** (or access token).
-7. Click **Add registry**.
+2. Go to **Registries** in the left sidebar.
+3. Click **Add registry**.
+4. Select **DockerHub** as the registry provider.
+5. Enter a registry **name**, your Docker Hub **username**, and your Docker Hub **access token**.
+6. Click **Test connection**.
+7. After the test succeeds, click **Add registry**.
 
 ## Using Access Tokens Instead of Passwords
 
 Docker Hub supports access tokens as a more secure alternative to passwords:
 
-1. Log in to [hub.docker.com](https://hub.docker.com).
-2. Go to **Account Settings > Security**.
-3. Click **New Access Token**, give it a name, and copy the token.
-4. Use this token as the **password** field in Portainer.
+1. Log in to [Docker Home](https://app.docker.com).
+2. Go to **Account settings > Personal access tokens**.
+3. Click **Generate new token**, give it a name, and copy the token.
+4. Use this token in the **DockerHub access token** field in Portainer.
 
 ```bash
 # Test your credentials via CLI before adding to Portainer
@@ -40,19 +40,20 @@ docker login -u your-username
 
 After adding the registry, you need to make it available in your environments:
 
-1. Go to **Environments** and select your environment.
-2. Scroll to **Registries** and enable the Docker Hub registry for that environment.
+1. Select your environment in Portainer.
+2. Go to **Host > Registries** for Docker environments, or **Swarm/Cluster > Registries** for those environment types.
+3. Find the Docker Hub registry, click **Manage access**, and grant access to the appropriate users, teams, or namespaces for that environment.
 
 ## Using Credentials When Pulling Images
 
-When deploying a container or stack in Portainer, the registry credentials are automatically used when pulling images from Docker Hub. For stacks, ensure your image reference matches the registry:
+When deploying a stack that references a private Docker Hub image, use the standard Docker Hub image name:
 
 ```yaml
 version: "3.8"
 
 services:
   app:
-    # Portainer will use the stored Docker Hub credentials to pull this image
+    # Example private Docker Hub image reference
     image: your-dockerhub-username/private-image:latest
 ```
 
@@ -60,7 +61,7 @@ services:
 
 ```bash
 # Verify your Docker Hub login works from the CLI
-docker login docker.io -u your-username -p your-access-token
+echo 'your-access-token' | docker login --username your-username --password-stdin
 
 # Test pulling a private image
 docker pull your-username/private-image:latest
