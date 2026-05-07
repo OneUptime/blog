@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Key Vault, Secret, Key, OpenTofu, Security
 
-Description: Learn how to create and manage Azure Key Vault keys, secrets, and certificates with OpenTofu for secure secret management and cryptographic key storage.
+Description: Learn how to create and manage Azure Key Vault keys and secrets with OpenTofu for secure secret management and cryptographic key storage.
 
 ## Overview
 
@@ -24,18 +24,18 @@ resource "azurerm_key_vault" "kv" {
   soft_delete_retention_days = 90
   purge_protection_enabled   = true
 
-  # Access policy for the deploying service principal
+  # Access policy for the identity running OpenTofu
   access_policy {
     tenant_id = data.azurerm_client_config.current.tenant_id
     object_id = data.azurerm_client_config.current.object_id
 
-    key_permissions    = ["Get", "List", "Create", "Delete", "Update", "Import", "Backup", "Restore", "Recover", "Purge"]
+    key_permissions    = ["Get", "List", "Create", "Delete", "Update", "Import", "Backup", "Restore", "Recover", "Purge", "GetRotationPolicy"]
     secret_permissions = ["Get", "List", "Set", "Delete", "Backup", "Restore", "Recover", "Purge"]
   }
 }
 ```
 
-## Step 2: Create RSA Keys
+## Step 2: Create Keys
 
 ```hcl
 # Create an RSA key for encryption operations
@@ -54,7 +54,7 @@ resource "azurerm_key_vault_key" "rsa_key" {
     "unwrapKey",
   ]
 
-  # Set key expiry and rotation
+  # Set key activation and expiry dates
   not_before_date = "2026-01-01T00:00:00Z"
   expiration_date = "2027-01-01T00:00:00Z"
 }
@@ -137,4 +137,4 @@ output "rsa_key_id" {
 
 ## Summary
 
-Azure Key Vault keys and secrets managed with OpenTofu centralize secret storage and cryptographic key management. Use `random_password` to generate strong credentials and store them directly in Key Vault, avoiding the need to handle sensitive values in your pipeline or state file beyond initial creation.
+Azure Key Vault keys and secrets managed with OpenTofu centralize secret storage and cryptographic key management. Use `random_password` to generate strong credentials and store them directly in Key Vault, but remember that secret values managed with `value` are still written to OpenTofu state, so your state backend and access controls must be secured appropriately.
