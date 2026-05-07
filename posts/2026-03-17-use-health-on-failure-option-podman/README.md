@@ -8,7 +8,7 @@ Description: Learn how to use the --health-on-failure option in Podman to automa
 
 ---
 
-> The `--health-on-failure` option tells Podman what action to take automatically when a container's health check fails, enabling self-healing containers.
+> The `--health-on-failure` option tells Podman what action to take automatically when a container transitions to an unhealthy state, enabling self-healing containers.
 
 By default, Podman simply marks a container as unhealthy when health checks fail but takes no further action. The `--health-on-failure` option changes this behavior, allowing Podman to automatically restart, stop, or kill unhealthy containers.
 
@@ -62,17 +62,18 @@ podman run -d \
   my-web-app:latest
 ```
 
-## Combining with Restart Policy
+## Using with Restart Policy
+
+Do not combine `--health-on-failure restart` with the `--restart` flag. If the container is managed by systemd, use the restart policy there and choose `kill` or `stop` for the health failure action:
 
 ```bash
-# Use health-on-failure with restart policy for maximum resilience
+# Use health-on-failure with systemd restart policies
 podman run -d \
   --name resilient-service \
-  --restart on-failure:5 \
   --health-cmd "curl -f http://localhost:3000/health || exit 1" \
   --health-interval 20s \
   --health-retries 3 \
-  --health-on-failure restart \
+  --health-on-failure kill \
   resilient-service:latest
 ```
 
@@ -102,7 +103,7 @@ podman run -d --name critical-service \
 
 ```bash
 # Check the configured on-failure action
-podman inspect --format='{{.Config.Healthcheck}}' self-healing-app
+podman inspect --format='{{.Config.HealthcheckOnFailureAction}}' self-healing-app
 ```
 
 ## Summary
