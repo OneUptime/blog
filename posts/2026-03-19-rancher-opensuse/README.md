@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, openSUSE, Docker, Kubernetes, Installation
 
-Description: A step-by-step guide to installing Rancher on openSUSE Leap using Docker, including zypper package management and system configuration.
+Description: A step-by-step guide to installing Rancher on openSUSE Leap using Docker for testing and development, including zypper package management and system configuration.
 
-openSUSE is the community distribution from SUSE and has a natural affinity with Rancher since SUSE acquired Rancher Labs. openSUSE Leap provides a stable, enterprise-aligned distribution that shares its codebase with SUSE Linux Enterprise Server. This guide covers installing Rancher on openSUSE Leap 15.5 or later using Docker.
+openSUSE is the community distribution from SUSE and has a natural affinity with Rancher since SUSE acquired Rancher Labs. openSUSE Leap provides a stable, enterprise-aligned distribution that shares its codebase with SUSE Linux Enterprise Server. This guide covers installing Rancher on openSUSE Leap 15.5 or later using Docker for testing and development. For production use, Rancher recommends installing on a high-availability Kubernetes cluster instead of a single Docker container.
 
 ## Prerequisites
 
@@ -26,12 +26,9 @@ sudo zypper refresh
 sudo zypper update -y
 ```
 
-## Step 2: Disable Swap
+## Step 2: Review Swap Settings
 
-```bash
-sudo swapoff -a
-sudo sed -i '/ swap / s/^/#/' /etc/fstab
-```
+For a single-node Rancher Docker install, Rancher does not require swap to be disabled. If you later use this host as a Kubernetes node, follow that Kubernetes distribution's swap requirements.
 
 ## Step 3: Install Required Dependencies
 
@@ -46,10 +43,10 @@ sudo zypper install -y \
 
 ## Step 4: Install Docker
 
-openSUSE provides Docker in its official repositories:
+openSUSE provides Docker in its official repositories, and Rancher only needs the Docker Engine package for this install:
 
 ```bash
-sudo zypper install -y docker docker-compose
+sudo zypper install -y docker
 ```
 
 Enable and start Docker:
@@ -75,13 +72,11 @@ docker run hello-world
 
 ## Step 5: Configure the Firewall
 
-openSUSE uses `firewalld` by default. Open the required ports:
+openSUSE uses `firewalld` by default. Open the published Rancher ports:
 
 ```bash
 sudo firewall-cmd --permanent --add-port=80/tcp
 sudo firewall-cmd --permanent --add-port=443/tcp
-sudo firewall-cmd --permanent --add-port=6443/tcp
-sudo firewall-cmd --permanent --zone=public --add-masquerade
 sudo firewall-cmd --reload
 ```
 
@@ -91,45 +86,17 @@ Verify the rules:
 sudo firewall-cmd --list-all
 ```
 
-## Step 6: Configure Kernel Modules
+## Step 6: Review Kernel Settings
 
-Load the required modules:
+A single-node Rancher Docker install does not require extra `br_netfilter`, `overlay`, or Kubernetes-specific sysctl tuning on the host. If you later run K3s or RKE2 on this machine, configure those kernel modules and sysctl settings according to that distribution's documentation.
 
-```bash
-cat <<EOF | sudo tee /etc/modules-load.d/rancher.conf
-br_netfilter
-overlay
-EOF
+## Step 7: Review AppArmor
 
-sudo modprobe br_netfilter
-sudo modprobe overlay
-```
-
-Set sysctl parameters:
-
-```bash
-cat <<EOF | sudo tee /etc/sysctl.d/99-rancher.conf
-net.bridge.bridge-nf-call-iptables = 1
-net.bridge.bridge-nf-call-ip6tables = 1
-net.ipv4.ip_forward = 1
-EOF
-
-sudo sysctl --system
-```
-
-## Step 7: Configure AppArmor
-
-openSUSE uses AppArmor by default. Check its status:
+openSUSE uses AppArmor by default. Rancher does not require AppArmor to be disabled or set to complain mode, but you can check its status:
 
 ```bash
 sudo systemctl status apparmor
 sudo aa-status
-```
-
-If you encounter issues with Rancher containers, you can set AppArmor to complain mode for Docker:
-
-```bash
-sudo aa-complain /etc/apparmor.d/usr.sbin.docker*
 ```
 
 ## Step 8: Configure Docker Logging
@@ -143,8 +110,7 @@ sudo tee /etc/docker/daemon.json <<EOF
   "log-opts": {
     "max-size": "10m",
     "max-file": "3"
-  },
-  "storage-driver": "overlay2"
+  }
 }
 EOF
 
@@ -194,14 +160,10 @@ Complete the setup:
 
 **SUSE ecosystem integration**: Since Rancher is a SUSE product, openSUSE provides excellent compatibility. You can also use RKE2 (Rancher Kubernetes Engine) for provisioning downstream clusters, which is SUSE's hardened Kubernetes distribution.
 
-**Btrfs file system**: openSUSE often uses Btrfs as the default file system. Docker works well with Btrfs, but you may want to use overlay2 instead for better performance:
+**Btrfs file system**: openSUSE often uses Btrfs as the default file system. Docker can run on Btrfs-backed systems, and `overlay2` is generally preferred when supported. Check the current Docker storage configuration with:
 
 ```bash
-# Check current filesystem
-
-df -T /
-
-# The daemon.json already specifies overlay2 as the storage driver
+docker info | grep -E 'Storage Driver|Backing Filesystem'
 ```
 
 **YaST integration**: You can use YaST for some configuration tasks:
@@ -263,4 +225,4 @@ df -h
 
 ## Conclusion
 
-You have successfully installed Rancher on openSUSE Leap. Given that Rancher is part of the SUSE family, openSUSE provides one of the most natural platforms for running Rancher. The tight integration between the SUSE ecosystem and Rancher ensures smooth operation and excellent support for your Kubernetes management needs.
+You have successfully installed Rancher on openSUSE Leap for a testing or development environment. Given that Rancher is part of the SUSE family, openSUSE provides one of the most natural platforms for trying Rancher. For production use, install Rancher on a supported high-availability Kubernetes cluster instead of a single Docker container.
