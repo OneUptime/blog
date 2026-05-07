@@ -10,7 +10,7 @@ Description: Learn how to install and use Podman on SUSE Linux Enterprise Server
 
 > SUSE Linux Enterprise ships Podman as its primary container engine. This guide covers installing and configuring Podman on SLES, managing container workloads, and using SUSE-specific tools for enterprise container deployments.
 
-SUSE Linux Enterprise Server (SLES) is one of the leading enterprise Linux distributions, widely deployed in regulated industries, SAP environments, and high-performance computing. SUSE has embraced Podman as the supported container engine for SLES, replacing Docker in SLES 15 SP3 and later. Podman integrates with SUSE's enterprise tooling and provides the rootless, daemonless container runtime that enterprise security teams prefer.
+SUSE Linux Enterprise Server (SLES) is one of the leading enterprise Linux distributions, widely deployed in regulated industries, SAP environments, and high-performance computing. SUSE has embraced Podman as the supported container engine for SLES; it has been supported since SLES 15 SP2 and is the recommended container runtime for current SLES releases. Podman integrates with SUSE's enterprise tooling and provides the rootless, daemonless container runtime that enterprise security teams prefer.
 
 This guide walks through setting up and using Podman on SUSE Linux Enterprise Server.
 
@@ -18,16 +18,16 @@ This guide walks through setting up and using Podman on SUSE Linux Enterprise Se
 
 ## Installing Podman on SLES
 
-On SUSE Linux Enterprise Server 15 SP4 and later, Podman is available from the Containers module. First, activate the module:
+On SUSE Linux Enterprise Server 15, Podman is available from the Containers module. Use the service pack and architecture values that match your system. For example, on SLES 15 SP7 x86_64, activate the module with:
 
 ```bash
-sudo SUSEConnect -p sle-module-containers/15.5/x86_64
+sudo SUSEConnect -p sle-module-containers/15.7/x86_64
 ```
 
 Install Podman and companion tools:
 
 ```bash
-sudo zypper install -y podman podman-compose buildah skopeo
+sudo zypper install -y podman buildah skopeo
 ```
 
 Verify the installation:
@@ -37,15 +37,15 @@ podman --version
 podman info
 ```
 
-On openSUSE Leap or Tumbleweed, Podman is in the default repositories:
+On openSUSE Tumbleweed, Podman is in the default repositories:
 
 ```bash
-sudo zypper install -y podman podman-compose buildah
+sudo zypper install -y podman buildah skopeo
 ```
 
 ## Configuring Rootless Containers
 
-Set up rootless container support for your user:
+Install helper packages commonly used with rootless containers:
 
 ```bash
 sudo zypper install -y slirp4netns fuse-overlayfs
@@ -63,6 +63,8 @@ Add mappings if needed:
 ```bash
 sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
 ```
+
+Log out and back in, or restart the user session, after changing subuid and subgid mappings.
 
 Enable user lingering for persistent rootless services:
 
@@ -89,9 +91,9 @@ EOF
 Pull SUSE-based images:
 
 ```bash
-podman pull registry.suse.com/bci/bci-base:latest
-podman pull registry.suse.com/bci/bci-python:3.11
-podman pull registry.suse.com/bci/bci-nodejs:20
+podman pull registry.suse.com/bci/bci-base:15.7
+podman pull registry.suse.com/bci/python:3.11
+podman pull registry.suse.com/bci/nodejs:22
 ```
 
 SUSE Base Container Images (BCI) are freely available and designed for enterprise use.
@@ -101,7 +103,7 @@ SUSE Base Container Images (BCI) are freely available and designed for enterpris
 Run a basic container using a SUSE base image:
 
 ```bash
-podman run -it --rm registry.suse.com/bci/bci-base:latest bash
+podman run -it --rm registry.suse.com/bci/bci-base:15.7 bash
 ```
 
 Deploy a web server:
@@ -132,7 +134,7 @@ podman run -d --name postgres \
 Create images based on SUSE BCI for enterprise deployments:
 
 ```dockerfile
-FROM registry.suse.com/bci/bci-python:3.11
+FROM registry.suse.com/bci/python:3.11
 
 WORKDIR /app
 
@@ -161,7 +163,7 @@ podman images
 Create a Node.js application image:
 
 ```dockerfile
-FROM registry.suse.com/bci/bci-nodejs:20
+FROM registry.suse.com/bci/nodejs:22
 
 WORKDIR /app
 COPY package*.json ./
@@ -182,10 +184,10 @@ SLES can use AppArmor for container security. Check the AppArmor status:
 sudo aa-status
 ```
 
-Podman integrates with AppArmor automatically. Run a container with a specific AppArmor profile:
+Podman integrates with AppArmor automatically. Run a container with a specific AppArmor profile loaded on the host:
 
 ```bash
-podman run -d --security-opt apparmor=container-default myapp:latest
+podman run -d --security-opt apparmor=your-profile-name myapp:latest
 ```
 
 For containers that need additional capabilities:
@@ -212,7 +214,8 @@ Create production services using Quadlet on SLES:
 
 [Container]
 ContainerName=enterprise-app
-Image=registry.suse.com/my-org/enterprise-app:latest
+Image=registry.example.com/my-org/enterprise-app:latest
+Network=enterprise.network
 PublishPort=8080:8000
 Volume=app-data:/app/data
 Environment=ENV=production
@@ -234,7 +237,6 @@ Create a Quadlet network:
 ```ini
 # /etc/containers/systemd/enterprise.network
 [Network]
-NetworkName=enterprise
 Driver=bridge
 Subnet=10.89.0.0/24
 ```
@@ -258,6 +260,7 @@ podman pod create --name erp-stack \
 
 podman run -d --pod erp-stack --name erp-db \
   -e POSTGRES_PASSWORD=enterprise_secret \
+  -e POSTGRES_DB=erp \
   -v erpdata:/var/lib/postgresql/data \
   docker.io/library/postgres:16
 
@@ -326,7 +329,7 @@ Configure storage for enterprise workloads:
 podman system info --format '{{.Store.GraphDriverName}}'
 ```
 
-For high-performance storage, configure the overlay driver with native diff:
+For high-performance storage, configure the overlay driver explicitly:
 
 ```toml
 # /etc/containers/storage.conf
