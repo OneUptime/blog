@@ -12,16 +12,16 @@ Microsoft Teams is widely used in enterprise environments for team communication
 
 - Rancher v2.6 or later with the Monitoring chart installed.
 - Cluster admin permissions.
-- A Microsoft Teams workspace with permission to add connectors to channels.
+- A Microsoft Teams workspace with permission to add or manage incoming webhooks for channels.
 
 ## Step 1: Create a Teams Incoming Webhook
 
 1. Open Microsoft Teams and navigate to the channel where you want to receive alerts.
-2. Click the three-dot menu on the channel name and select **Connectors** (or **Manage channel > Connectors**).
-3. Find **Incoming Webhook** and click **Configure**.
+2. In the new Teams client, click the three-dot menu on the channel name and select **Manage channel**, then **Edit**. In Classic Teams, select **Connectors** from the channel menu.
+3. Search for **Incoming Webhook** and click **Add**. If prompted, click **Configure**.
 4. Give the webhook a name like "Rancher Alerts" and optionally upload an icon.
 5. Click **Create**.
-6. Copy the webhook URL. It will look like: `https://outlook.office.com/webhook/...`.
+6. Copy the webhook URL. It will typically look like: `https://xxxxx.webhook.office.com/...`.
 
 ## Step 2: Create a Secret for the Webhook URL
 
@@ -30,20 +30,17 @@ Store the Teams webhook URL as a Kubernetes secret:
 ```bash
 kubectl create secret generic alertmanager-teams-secret \
   --namespace cattle-monitoring-system \
-  --from-literal=webhook-url='https://outlook.office.com/webhook/your-webhook-url'
+  --from-literal=webhook-url='https://xxxxx.webhook.office.com/your-webhook-url'
 ```
 
 ## Step 3: Configure Alertmanager for Microsoft Teams
 
-Alertmanager does not have a native Microsoft Teams integration, so you need to use the generic webhook receiver with Teams-compatible message formatting. However, the simplest approach is to use the `msteams` receiver through the webhook configuration.
+Alertmanager does not have a native Microsoft Teams integration, so you need to use a webhook receiver that points to a `prometheus-msteams` service, which converts Alertmanager webhooks into Teams-compatible messages.
 
 Configure the monitoring chart values:
 
 ```yaml
 alertmanager:
-  alertmanagerSpec:
-    secrets:
-      - alertmanager-teams-secret
   config:
     route:
       receiver: "teams-notifications"
@@ -175,33 +172,60 @@ data:
     {{ end }}
 ```
 
-Mount the template in the prometheus-msteams deployment:
+Mount the template in the `prometheus-msteams` deployment and set `TEMPLATE_FILE`:
 
 ```yaml
+env:
+  - name: TEMPLATE_FILE
+    value: /etc/prometheus-msteams/card.tmpl
 volumes:
   - name: config
     configMap:
       name: prometheus-msteams-config
 volumeMounts:
   - name: config
-    mountPath: /etc/prometheus-msteams/
+    mountPath: /etc/prometheus-msteams/card.tmpl
+    subPath: card.tmpl
 ```
 
 ## Step 6: Route Alerts to Different Teams Channels
 
-To send alerts to multiple Teams channels, create separate webhooks and adapter endpoints:
+To send alerts to multiple Teams channels, replace the single-webhook environment variables with a connector configuration file:
 
 ```bash
-kubectl create secret generic teams-platform-webhook \
-  --namespace cattle-monitoring-system \
-  --from-literal=webhook-url='https://outlook.office.com/webhook/platform-channel-url'
-
-kubectl create secret generic teams-devops-webhook \
-  --namespace cattle-monitoring-system \
-  --from-literal=webhook-url='https://outlook.office.com/webhook/devops-channel-url'
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prometheus-msteams-connectors
+  namespace: cattle-monitoring-system
+type: Opaque
+stringData:
+  config.yml: |
+    connectors:
+      - default: "https://xxxxx.webhook.office.com/webhookb2/default-channel-url"
+      - platform: "https://xxxxx.webhook.office.com/webhookb2/platform-channel-url"
+      - devops: "https://xxxxx.webhook.office.com/webhookb2/devops-channel-url"
+EOF
 ```
 
-Configure separate request URIs in the adapter and route accordingly in Alertmanager:
+Mount the connector configuration in the adapter deployment:
+
+```yaml
+env:
+  - name: CONFIG_FILE
+    value: /etc/prometheus-msteams/config.yml
+volumes:
+  - name: connectors
+    secret:
+      secretName: prometheus-msteams-connectors
+volumeMounts:
+  - name: connectors
+    mountPath: /etc/prometheus-msteams/config.yml
+    subPath: config.yml
+```
+
+Route alerts to the generated request paths in Alertmanager:
 
 ```yaml
 alertmanager:
@@ -211,20 +235,23 @@ alertmanager:
       routes:
         - receiver: "teams-platform"
           matchers:
-            - team = platform
+            - team = "platform"
         - receiver: "teams-devops"
           matchers:
-            - team = devops
+            - team = "devops"
     receivers:
       - name: "teams-default"
         webhook_configs:
           - url: "http://prometheus-msteams.cattle-monitoring-system.svc:2000/default"
+            send_resolved: true
       - name: "teams-platform"
         webhook_configs:
           - url: "http://prometheus-msteams.cattle-monitoring-system.svc:2000/platform"
+            send_resolved: true
       - name: "teams-devops"
         webhook_configs:
           - url: "http://prometheus-msteams.cattle-monitoring-system.svc:2000/devops"
+            send_resolved: true
 ```
 
 ## Step 7: Test the Integration
@@ -240,7 +267,7 @@ metadata:
   namespace: cattle-monitoring-system
   labels:
     app: rancher-monitoring
-    release: rancher-monitoring
+    release: rancher-monitoring # replace this if your monitoring Helm release uses a different name
 spec:
   groups:
     - name: test
@@ -272,10 +299,10 @@ kubectl logs -n cattle-monitoring-system -l app=prometheus-msteams
 
 Common issues:
 
-- **Webhook URL expired**: Microsoft Teams webhook URLs can expire. Create a new connector if needed.
+- **Webhook URL needs to be updated**: Microsoft is rolling out connector URL changes. Update the webhook URL or recreate the Incoming Webhook if needed.
 - **Message formatting errors**: Check the adapter logs for template rendering errors.
-- **Network connectivity**: Ensure the cluster can reach `outlook.office.com` on port 443.
+- **Network connectivity**: Ensure the cluster can reach the Microsoft Teams webhook host (for example `*.webhook.office.com`) on port 443.
 
 ## Summary
 
-Microsoft Teams integration with Rancher alerts requires deploying a webhook adapter (prometheus-msteams) since Alertmanager does not have native Teams support. Set up Teams incoming webhooks, deploy the adapter, configure Alertmanager to route alerts through the adapter, and use custom message templates for rich notification cards.
+Microsoft Teams integration with Rancher alerts requires deploying a webhook adapter (prometheus-msteams) since Alertmanager does not have native Teams support. Set up Teams incoming webhooks, deploy the adapter, configure Alertmanager to route alerts through the adapter, and use a connector configuration file when routing alerts to multiple Teams channels.
