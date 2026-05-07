@@ -8,7 +8,7 @@ Description: Learn how to obtain and use JWT tokens to authenticate with the Por
 
 ## JWT Authentication Flow
 
-Portainer's API uses JWT (JSON Web Tokens) for authentication. The flow is:
+Portainer's API supports JWT (JSON Web Tokens) authentication through the `/api/auth` endpoint. The flow is:
 
 ```mermaid
 sequenceDiagram
@@ -122,14 +122,22 @@ for env in environments:
 
 ## JWT Token Expiry
 
-Portainer JWT tokens expire after **8 hours** by default. For long-running scripts, re-authenticate when the token expires:
+Portainer JWT tokens are valid for **8 hours** by default. Administrators can change the session lifetime, so re-authenticate when the token expires:
 
 ```bash
-# Check if token is expired (decode JWT payload)
-echo "your.jwt.token" | cut -d. -f2 | base64 -d 2>/dev/null | jq '.exp'
+# Check if token is expired (JWT payloads use base64url encoding)
+echo "your.jwt.token" | jq -R '
+  split(".")[1]
+  | gsub("-"; "+")
+  | gsub("_"; "/")
+  + (if (length % 4) == 2 then "==" elif (length % 4) == 3 then "=" else "" end)
+  | @base64d
+  | fromjson
+  | .exp
+'
 # Compare exp (Unix timestamp) with current time: date +%s
 ```
 
 ## Conclusion
 
-JWT authentication is the primary method for Portainer API access in automation scripts. Always store tokens securely (not in code), handle expiry by re-authenticating, and consider using API tokens (access tokens) for long-lived integrations.
+JWT authentication is a supported method for Portainer API access in automation scripts. Always store tokens securely (not in code), handle expiry by re-authenticating, and prefer API tokens (access tokens) for long-lived integrations.
