@@ -14,6 +14,7 @@ AWS Security Hub provides a comprehensive view of security alerts and compliance
 
 - OpenTofu v1.6+
 - AWS credentials with Security Hub and Organizations permissions
+- AWS Config enabled and recording required resource types for the standards you plan to enable
 - GuardDuty enabled (recommended)
 
 ## Step 1: Enable Security Hub
@@ -43,10 +44,10 @@ resource "aws_securityhub_standards_subscription" "cis_1_4" {
   standards_arn = "arn:aws:securityhub:${var.region}::standards/cis-aws-foundations-benchmark/v/1.4.0"
 }
 
-# PCI DSS (if applicable)
+# PCI DSS v4.0.1 (if applicable)
 resource "aws_securityhub_standards_subscription" "pci_dss" {
   depends_on    = [aws_securityhub_account.main]
-  standards_arn = "arn:aws:securityhub:${var.region}::standards/pci-dss/v/3.2.1"
+  standards_arn = "arn:aws:securityhub:${var.region}::standards/pci-dss/v/4.0.1"
 }
 ```
 
@@ -55,6 +56,7 @@ resource "aws_securityhub_standards_subscription" "pci_dss" {
 ```hcl
 # Enable finding aggregation to centralize findings from all regions
 resource "aws_securityhub_finding_aggregator" "main" {
+  depends_on   = [aws_securityhub_account.main]
   linking_mode = "ALL_REGIONS"  # or "SPECIFIED_REGIONS"
 
   # For SPECIFIED_REGIONS:
@@ -78,14 +80,36 @@ resource "aws_cloudwatch_event_rule" "security_hub_critical" {
         Severity = {
           Label = ["CRITICAL", "HIGH"]
         }
-        RecordState    = ["ACTIVE"]
-        WorkflowStatus = ["NEW"]
+        RecordState = ["ACTIVE"]
+        Workflow = {
+          Status = ["NEW"]
+        }
       }
     }
   })
 }
 
+data "aws_iam_policy_document" "security_hub_sns" {
+  statement {
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    resources = [var.security_sns_topic_arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "security_hub_events" {
+  arn    = var.security_sns_topic_arn
+  policy = data.aws_iam_policy_document.security_hub_sns.json
+}
+
 resource "aws_cloudwatch_event_target" "security_hub_sns" {
+  depends_on = [aws_sns_topic_policy.security_hub_events]
   rule      = aws_cloudwatch_event_rule.security_hub_critical.name
   target_id = "security-hub-alert"
   arn       = var.security_sns_topic_arn
@@ -112,6 +136,7 @@ resource "aws_securityhub_organization_admin_account" "main" {
 
 # Auto-enable for new organization members
 resource "aws_securityhub_organization_configuration" "main" {
+  depends_on            = [aws_securityhub_organization_admin_account.main]
   auto_enable           = true
   auto_enable_standards = "DEFAULT"  # Enable default standards for new accounts
 }
@@ -124,9 +149,8 @@ tofu init
 tofu plan
 tofu apply
 
-# View security score
-aws securityhub get-finding-statistics \
-  --group-by-attribute "Severity.Label"
+# Verify Security Hub is enabled
+aws securityhub describe-hub
 ```
 
 ## Conclusion
