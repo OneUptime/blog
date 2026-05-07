@@ -8,7 +8,7 @@ Description: Learn how to set up automatic SSL certificate renewal for Portainer
 
 ---
 
-SSL certificates expire every 90 days if you use Let's Encrypt. Manually renewing them is error-prone and easy to forget. This guide covers two approaches to automating SSL renewal for Portainer: using Traefik (which handles renewal automatically) and using Certbot with renewal hooks to reload Portainer.
+Let's Encrypt's default certificates expire every 90 days. Manually renewing them is error-prone and easy to forget. This guide covers three common ways to automate SSL for Portainer: using Traefik (which handles renewal automatically), using Certbot with renewal hooks to reload the TLS endpoint, and configuring Portainer to use externally managed certificates.
 
 ---
 
@@ -45,9 +45,24 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_letsencrypt:/letsencrypt
+  portainer:
+    image: portainer/portainer-ce:sts
+    container_name: portainer
+    command: -H unix:///var/run/docker.sock
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.example.com`)"
+      - "traefik.http.routers.portainer.entrypoints=websecure"
+      - "traefik.http.routers.portainer.tls.certresolver=letsencrypt"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
 
 volumes:
   traefik_letsencrypt:
+  portainer_data:
 ```
 
 Traefik renews certificates automatically when they're within 30 days of expiry - no cron jobs needed.
@@ -76,7 +91,7 @@ sudo certbot certificates
 
 ---
 
-### Create a Renewal Hook to Restart Portainer's Nginx
+### Create a Renewal Hook to Reload Nginx
 
 ```bash
 # /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
@@ -85,9 +100,6 @@ sudo certbot certificates
 
 echo "Certificate renewed. Reloading Nginx..."
 systemctl reload nginx
-
-# If Portainer is behind a Docker-managed Nginx container:
-docker exec nginx nginx -s reload
 
 echo "Reload complete at $(date)"
 ```
@@ -101,14 +113,14 @@ chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 ### Test Certbot Auto-Renewal
 
 ```bash
-# Dry-run renewal to verify the process works
-sudo certbot renew --dry-run
+# Dry-run renewal to verify the process works, including deploy hooks
+sudo certbot renew --dry-run --run-deploy-hooks
 
 # Check the systemd timer for automatic renewal
-systemctl status certbot.timer
+sudo systemctl status certbot.timer
 
 # View renewal logs
-sudo journalctl -u certbot
+sudo journalctl -u certbot.service -u certbot.timer
 ```
 
 ---
@@ -118,24 +130,19 @@ sudo journalctl -u certbot
 If you manage certificates externally, update Portainer to use them.
 
 ```bash
-# Stop Portainer
-docker stop portainer
+# Recreate Portainer with your certificate and key mounted into /certs
+docker rm -f portainer
 
-# Copy new certificates to the Portainer data volume
-docker run --rm \
+docker run -d \
+  -p 9443:9443 -p 8000:8000 \
+  --name portainer \
+  --restart always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  -v /etc/letsencrypt:/certs \
-  alpine \
-  cp /certs/live/portainer.example.com/fullchain.pem /data/certs/cert.pem
-
-docker run --rm \
-  -v portainer_data:/data \
-  -v /etc/letsencrypt:/certs \
-  alpine \
-  cp /certs/live/portainer.example.com/privkey.pem /data/certs/key.pem
-
-# Start Portainer with custom cert paths
-docker start portainer
+  -v /path/to/your/certs:/certs:ro \
+  portainer/portainer-ce:sts \
+  --sslcert /certs/portainer.crt \
+  --sslkey /certs/portainer.key
 ```
 
 ---
@@ -148,4 +155,4 @@ Set up an SSL expiry check in OneUptime to alert you if any certificate is withi
 
 ## Summary
 
-The simplest path to automated SSL for Portainer is deploying Traefik as a reverse proxy. Traefik handles Let's Encrypt certificates and renewals automatically with zero maintenance. For Nginx-based setups, Certbot with renewal hooks in `/etc/letsencrypt/renewal-hooks/deploy/` provides reliable automation. Always test renewals with `--dry-run` before relying on them in production.
+The simplest path to automated SSL for Portainer is deploying Traefik as a reverse proxy. Traefik handles Let's Encrypt certificates and renewals automatically with zero maintenance. For Nginx-based setups, Certbot with renewal hooks in `/etc/letsencrypt/renewal-hooks/deploy/` provides reliable automation. Always test renewals with `--dry-run --run-deploy-hooks` before relying on them in production.
