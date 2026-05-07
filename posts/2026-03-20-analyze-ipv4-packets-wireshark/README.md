@@ -30,7 +30,7 @@ ip.src == 192.168.1.100
 # Filter by destination subnet
 ip.dst == 10.0.0.0/8
 
-# Filter by TTL less than 10 (may indicate spoofing or loop)
+# Filter by TTL less than 10
 ip.ttl < 10
 
 # Show fragmented packets
@@ -59,16 +59,16 @@ When you click a packet in Wireshark, expand "Internet Protocol Version 4" to se
 - **Fragment Offset**: Position in original datagram (×8 bytes)
 - **Time to Live**: Remaining hop count
 - **Protocol**: Upper-layer protocol number
-- **Header Checksum**: Validity indicator (green = valid)
+- **Header Checksum**: Header-only checksum; Wireshark may annotate it as correct or invalid when checksum validation is enabled
 - **Source/Destination**: IP addresses
 
 ## Exporting Data with tshark (CLI)
 
 ```bash
-# Print all IPv4 packet fields in JSON
-tshark -i eth0 -T json -e ip.src -e ip.dst -e ip.ttl -e ip.proto \
+# Print selected IPv4 packet fields in JSON
+tshark -i eth0 -c 10 -T json -e ip.src -e ip.dst -e ip.ttl -e ip.proto \
   -e ip.flags.df -e ip.flags.mf -e ip.frag_offset \
-  -Y "ip" 2>/dev/null | head -60
+  -Y "ip" 2>/dev/null
 
 # Export to CSV for analysis
 tshark -r capture.pcap -T fields \
@@ -85,7 +85,7 @@ Wireshark's Statistics menu provides a Protocol Hierarchy view showing what frac
 tshark -r capture.pcap -q -z io,phs
 ```
 
-## Finding Retransmissions and Errors
+## Finding ICMP Errors
 
 ```bash
 # Find ICMP unreachable messages (may indicate routing or firewall issues)
@@ -96,6 +96,6 @@ tshark -r capture.pcap -Y "icmp.type == 3" -T fields \
 ## Key Takeaways
 
 - Use capture filters (BPF) before recording; use display filters after for flexible analysis.
-- The IPv4 header panel shows all fields with validity indicators.
+- The IPv4 header panel shows the IPv4 fields, and Wireshark can annotate checksum validity when validation is enabled.
 - `tshark` provides Wireshark's dissection power from the command line, useful in automation.
 - Protocol hierarchy statistics quickly reveal what traffic dominates a capture.
