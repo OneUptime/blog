@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Service Bus, Messaging, Queue, Topic, Infrastructure as Code
 
-Description: Learn how to provision Azure Service Bus namespaces, queues, topics, subscriptions, and authorization rules using OpenTofu for reliable asynchronous messaging between services.
+Description: Learn how to provision Azure Service Bus namespaces, queues, topics, subscriptions, subscription rules, and RBAC assignments using OpenTofu for reliable asynchronous messaging between services.
 
 ---
 
-Azure Service Bus provides enterprise messaging with queues for point-to-point and topics for publish-subscribe patterns. OpenTofu manages the namespace, queues, topics, subscriptions, and RBAC assignments for a fully configured messaging infrastructure.
+Azure Service Bus provides enterprise messaging with queues for point-to-point and topics for publish-subscribe patterns. OpenTofu manages the namespace, queues, topics, subscriptions, subscription rules, and RBAC assignments for a fully configured messaging infrastructure.
 
 ## Service Bus Architecture
 
@@ -39,9 +39,12 @@ resource "azurerm_servicebus_namespace" "main" {
   sku                 = var.environment == "production" ? "Premium" : "Standard"
 
   # Premium SKU features: private endpoints, dedicated capacity
-  capacity = var.environment == "production" ? 1 : 0
+  capacity = var.environment == "production" ? 2 : 0
 
-  # Disable local authentication - use Azure AD only
+  # Premium namespace partitioning is configured at the namespace level
+  premium_messaging_partitions = var.environment == "production" ? 2 : 0
+
+  # Disable local authentication - use Microsoft Entra ID only
   local_auth_enabled = false
 
   minimum_tls_version = "1.2"
@@ -70,7 +73,7 @@ resource "azurerm_servicebus_queue" "orders" {
   requires_duplicate_detection         = true
   duplicate_detection_history_time_window = "PT10M"
 
-  enable_partitioning = var.environment == "production"
+  partitioning_enabled = var.environment == "production"
 }
 
 resource "azurerm_servicebus_queue" "orders_dlq_processor" {
@@ -79,6 +82,7 @@ resource "azurerm_servicebus_queue" "orders_dlq_processor" {
 
   max_size_in_megabytes = 1024
   default_message_ttl   = "P7D"
+  partitioning_enabled  = var.environment == "production"
 }
 ```
 
@@ -92,7 +96,7 @@ resource "azurerm_servicebus_topic" "events" {
 
   max_size_in_megabytes   = 5120
   default_message_ttl     = "P7D"
-  enable_partitioning     = var.environment == "production"
+  partitioning_enabled    = var.environment == "production"
   support_ordering        = false
 }
 
@@ -104,13 +108,15 @@ resource "azurerm_servicebus_subscription" "inventory" {
 
   dead_lettering_on_filter_evaluation_error = true
   dead_lettering_on_message_expiration      = true
+}
 
-  # SQL filter - only receive order-related events
-  rule {
-    name        = "order-events-only"
-    filter_type = "SqlFilter"
-    sql_filter  = "EventType LIKE 'Order%'"
-  }
+# New subscriptions start with a $Default rule that matches all messages.
+# Replace or remove it separately if you want this filter to be exclusive.
+resource "azurerm_servicebus_subscription_rule" "inventory_order_events" {
+  name            = "order-events-only"
+  subscription_id = azurerm_servicebus_subscription.inventory.id
+  filter_type     = "SqlFilter"
+  sql_filter      = "user.EventType LIKE 'Order%'"
 }
 
 resource "azurerm_servicebus_subscription" "notifications" {
@@ -142,8 +148,8 @@ resource "azurerm_role_assignment" "consumer" {
 
 ## Best Practices
 
-- Use `local_auth_enabled = false` to require Azure AD authentication - this prevents the use of SAS keys, which are harder to rotate and audit than managed identity assignments.
-- Set `max_delivery_count` and enable dead-letter queues - without a DLQ, poison messages can block queue processing indefinitely. Dead-lettering after N failures gives visibility into problematic messages.
-- Use `enable_partitioning = true` for high-throughput production queues - partitioned queues distribute load across multiple message brokers, dramatically increasing throughput.
+- Use `local_auth_enabled = false` to require Microsoft Entra ID authentication - this prevents the use of SAS keys, which are harder to rotate and audit than managed identity assignments.
+- Set `max_delivery_count` and `dead_lettering_on_message_expiration = true` - queues and subscriptions already have built-in dead-letter queues, and these settings ensure failed or expired messages are retained for inspection.
+- Use `partitioning_enabled = true` for high-throughput queues and topics, and set `premium_messaging_partitions` higher than `1` when you use the Premium SKU - partitioned entities distribute load across multiple message brokers and increase throughput.
 - Set appropriate `lock_duration` (30-300 seconds) based on your processing time - if processing takes longer than the lock duration, the message is redelivered to another consumer.
-- Grant RBAC roles at the queue or topic level rather than the namespace level - this limits each service to only the queues it needs, following the principle of least privilege.
+- Grant RBAC roles at the queue, topic, or subscription level rather than the namespace level - this limits each service to only the entities it needs, following the principle of least privilege.
