@@ -46,7 +46,7 @@ podman unshare cat /proc/self/uid_map
 
 # This means:
 # Container UID 0 maps to host UID 1000 (your user)
-# Container UIDs 1-65536 map to host UIDs 100000-165536
+# Container UIDs 1-65536 map to host UIDs 100000-165535
 
 # Show the GID mapping
 podman unshare cat /proc/self/gid_map
@@ -80,11 +80,11 @@ podman unshare chown 1000:1000 ~/app-data
 
 # Now check from the host -- it shows a high UID
 ls -lan ~/app-data
-# Output: drwxr-xr-x 101000 101000
-# (100000 + 1000 = 101000 on the host)
+# Output: drwxr-xr-x 100999 100999
+# (container UID 1000 maps to host UID 100999)
 
 # Verify from inside a container running as UID 1000
-podman run --rm --user 1000:1000 -v ~/app-data:/data alpine touch /data/test.txt
+podman run --rm --user 1000:1000 -v ~/app-data:/data:Z alpine touch /data/test.txt
 # This now succeeds
 ```
 
@@ -104,7 +104,7 @@ podman unshare sh -c "touch ~/app-data/app-file && chown 33:33 ~/app-data/app-fi
 # Verify from the host
 ls -lan ~/app-data/
 # root-file owned by 1000:1000 (your user, maps to container root)
-# app-file owned by 100033:100033 (maps to container UID 33, e.g., www-data)
+# app-file owned by 100032:100032 (maps to container UID 33, e.g., www-data)
 ```
 
 ## Debugging Container File Access
@@ -113,7 +113,7 @@ When a container reports "permission denied" on a file, use `podman unshare` to 
 
 ```bash
 # Scenario: A container cannot read a config file
-podman run --rm -v ~/config:/etc/app:ro alpine cat /etc/app/settings.conf
+podman run --rm -v ~/config:/etc/app:ro,Z alpine cat /etc/app/settings.conf
 # Output: Permission denied
 
 # Debug: Check ownership from the container perspective
@@ -146,7 +146,7 @@ podman unshare ls -la ~/pgdata
 
 # Run PostgreSQL with the correctly owned directory
 podman run -d --name postgres \
-  -v ~/pgdata:/var/lib/postgresql/data \
+  -v ~/pgdata:/var/lib/postgresql/data:Z \
   -e POSTGRES_PASSWORD=secret \
   postgres:16
 
@@ -167,10 +167,10 @@ podman unshare whoami
 podman unshare touch /etc/test-file 2>&1
 # Output: Permission denied (you are still an unprivileged user on the host)
 
-# The namespace is temporary and isolated
-podman unshare cat /proc/self/status | grep -i seccomp
+# Inspect the user namespace Podman created for this command
+podman unshare readlink /proc/self/ns/user
 ```
 
 ## Summary
 
-`podman unshare` is the essential debugging tool for rootless Podman volume and permission issues. It enters the same user namespace your containers use, letting you see file ownership from the container perspective. Use `podman unshare chown` to fix bind mount permissions, `podman unshare ls -la` to diagnose ownership problems, and `podman unshare bash` for interactive debugging sessions. The command is safe because it operates within your user's subordinate UID/GID ranges and cannot escalate privileges on the host.
+`podman unshare` is the essential debugging tool for rootless Podman volume and permission issues. It enters the same user namespace your containers use, letting you see file ownership from the container perspective. Use `podman unshare chown` to fix bind mount permissions, `podman unshare ls -la` to diagnose ownership problems, and `podman unshare` for interactive debugging sessions. The command is safe because it operates within your user's subordinate UID/GID ranges and cannot escalate privileges on the host.
