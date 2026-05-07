@@ -8,12 +8,12 @@ Description: Create AAAA records in AWS Route 53, configure alias records for IP
 
 ## Introduction
 
-AWS Route 53 fully supports IPv6 through AAAA record types and ALIAS records that automatically follow IPv6-capable AWS resource endpoints. For dual-stack deployments, you typically have both A (IPv4) and AAAA (IPv6) records pointing to the same resources. Route 53 health checks, routing policies, and latency-based routing all work with IPv6 endpoints.
+AWS Route 53 fully supports IPv6 through AAAA record types and ALIAS records that automatically follow IPv6-capable AWS resource endpoints. For dual-stack deployments, you typically have both A (IPv4) and AAAA (IPv6) records pointing to the same resources. Route 53 routing policies and latency-based routing work with AAAA records, and Route 53 health checks can target IPv6 endpoints when you specify the endpoint by IPv6 address.
 
 ## Create AAAA Records
 
 ```bash
-ZONE_ID="/hostedzone/ABCDEFGHIJKLMN"
+ZONE_ID="ZABCDEFGHIJKLMN"
 
 # Create AAAA record for a static IPv6 address
 
@@ -139,7 +139,7 @@ resource "aws_route53_record" "api_aaaa_eu" {
 ```hcl
 # Health check for IPv6 endpoint
 resource "aws_route53_health_check" "ipv6_endpoint" {
-  fqdn              = "api.example.com"
+  fqdn              = "server.example.com"
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
@@ -147,10 +147,10 @@ resource "aws_route53_health_check" "ipv6_endpoint" {
   request_interval  = 30
 
   # Route 53 health checkers can use IPv6
-  # Specify an IPv6 IP address directly
-  ip_address = "2001:db8::1"
+  # Specify the endpoint's IPv6 address directly
+  ip_address = aws_instance.web.ipv6_addresses[0]
 
-  tags = { Name = "api-ipv6-health" }
+  tags = { Name = "server-ipv6-health" }
 }
 ```
 
@@ -160,8 +160,9 @@ resource "aws_route53_health_check" "ipv6_endpoint" {
 # Check AAAA records
 dig AAAA www.example.com
 
-# Check both A and AAAA in one query
-dig www.example.com A AAAA
+# Check both A and AAAA records
+dig A www.example.com
+dig AAAA www.example.com
 
 # Query from specific DNS server
 dig AAAA www.example.com @8.8.8.8
@@ -180,4 +181,4 @@ aws route53 list-resource-record-sets \
 
 ## Conclusion
 
-Route 53 AAAA records are the foundation of IPv6 DNS - create them alongside A records for every dual-stack service. ALIAS records for AWS resources (ALB, NLB, CloudFront) automatically resolve to the correct IPv4 or IPv6 address based on the resource's configuration. Use latency-based, geolocation, and weighted routing policies with AAAA records just as you would with A records. Route 53 health checks support IPv6 endpoints, enabling automatic failover for IPv6 services.
+Route 53 AAAA records are the foundation of IPv6 DNS - create them alongside A records for every dual-stack service. ALIAS records for AWS resources (ALB, NLB, CloudFront) automatically resolve to the correct IPv4 or IPv6 address based on the resource's configuration. Use latency-based, geolocation, and weighted routing policies with AAAA records just as you would with A records. Route 53 health checks can probe IPv6 endpoints when you specify a public IPv6 address, enabling automatic failover for IPv6 services.
