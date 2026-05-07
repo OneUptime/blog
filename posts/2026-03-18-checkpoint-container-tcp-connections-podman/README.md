@@ -55,12 +55,12 @@ sudo podman run -d --name tcp-server -p 8080:80 docker.io/library/nginx:alpine
 curl -s http://localhost:8080/ | head -3
 ```
 
-Now create a long-lived TCP connection. In one terminal, use `curl` with keep-alive or a WebSocket connection:
+Now create a long-lived TCP connection. In one terminal, open a socket and keep it idle:
 
 ```bash
 # Keep a connection open (in a separate terminal)
-curl -s --keepalive-time 60 -N http://localhost:8080/ > /dev/null &
-CURL_PID=$!
+bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080; sleep 300' &
+TCP_HOLDER_PID=$!
 ```
 
 With an active connection, a standard checkpoint will fail:
@@ -124,14 +124,14 @@ Combine `--tcp-established` with `--export` for migration scenarios:
 ```bash
 sudo podman container checkpoint tcp-server \
   --tcp-established \
-  --export=/tmp/tcp-server-checkpoint.tar.gz
+  --export=/tmp/tcp-server-checkpoint.tar.zst
 ```
 
 On the target host, restore with:
 
 ```bash
 sudo podman container restore \
-  --import=/tmp/tcp-server-checkpoint.tar.gz \
+  --import=/tmp/tcp-server-checkpoint.tar.zst \
   --tcp-established
 ```
 
@@ -152,13 +152,12 @@ sudo podman run -d --name app-server \
   -e DB_PORT=5432 \
   docker.io/library/python:3.11-slim \
   python3 -c "
-import socket, time
+import os, socket, time
 # Simulate a persistent DB connection
+db_host = os.environ.get('DB_HOST', 'db.example.com')
+db_port = int(os.environ.get('DB_PORT', '5432'))
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-try:
-    s.connect(('db.example.com', 5432))
-except:
-    pass
+s.connect((db_host, db_port))
 while True:
     time.sleep(1)
 "
@@ -179,11 +178,11 @@ The shorter the time between checkpoint and restore, the more likely TCP connect
 # Export, transfer, and restore as quickly as possible
 sudo podman container checkpoint app \
   --tcp-established \
-  --export=/tmp/app.tar.gz
+  --export=/tmp/app.tar.zst
 
 # Immediately transfer and restore
-scp /tmp/app.tar.gz target:/tmp/ && \
-ssh target "sudo podman container restore --import=/tmp/app.tar.gz --tcp-established"
+scp /tmp/app.tar.zst target:/tmp/ && \
+ssh target "sudo podman container restore --import=/tmp/app.tar.zst --tcp-established"
 ```
 
 ### Handle Connection Recovery in Your Application
@@ -225,7 +224,7 @@ sudo podman run -d --name keepalive-app \
   docker.io/library/alpine sleep 3600
 ```
 
-These settings make the container detect dead TCP connections within about 60 seconds after restore, rather than the default Linux timeout of over 2 hours.
+For sockets with TCP keepalive enabled, these settings make the container detect dead TCP connections within about 60 seconds after restore, rather than the default Linux timeout of over 2 hours.
 
 ## Leave-Running with TCP Connections
 
@@ -235,7 +234,7 @@ You can combine `--tcp-established` with `--leave-running` to snapshot TCP conne
 sudo podman container checkpoint web-app \
   --tcp-established \
   --leave-running \
-  --export=/tmp/web-app-live-snapshot.tar.gz
+  --export=/tmp/web-app-live-snapshot.tar.zst
 ```
 
 The running container's TCP connections continue uninterrupted. The snapshot contains the TCP state at the moment of the freeze. If you restore from this snapshot later, the connections in the restored container will likely be stale, but the running original is unaffected.
@@ -268,7 +267,7 @@ uname -r
 Before checkpointing, inspect the container's TCP connections to understand what will be captured:
 
 ```bash
-# List TCP connections in the container
+# List TCP connections in the container, if the image includes ss
 sudo podman exec tcp-server ss -tnp
 
 # Or using nsenter for more detail
