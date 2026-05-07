@@ -19,25 +19,34 @@ Init containers are short-lived containers that perform initialization work befo
 ```bash
 # Create a pod
 
-podman pod create --name app-pod -p 8080:80
+podman pod create --name app-pod -p 8080:80 -v app-config:/tmp/shared
 
-# Run an init container that sets up configuration
-podman run --pod app-pod --init-ctr always --name init-config \
+# Create an init container that sets up configuration
+podman create --pod app-pod --init-ctr always --name init-config \
   docker.io/library/alpine \
-  sh -c "echo 'server_name=myapp' > /tmp/shared/config.ini"
+  sh -c "mkdir -p /tmp/shared && echo 'server_name=myapp' > /tmp/shared/config.ini"
+
+# Create the main application container
+podman create --pod app-pod --name app docker.io/library/alpine \
+  sh -c "cat /tmp/shared/config.ini && sleep 3600"
+
+# Start the pod
+podman pod start app-pod
 ```
 
-The `--init-ctr` flag marks the container as an init container. The value `always` means it runs every time the pod starts.
+The `--init-ctr` flag marks the container as an init container. The value `always` means it runs every time the pod starts with `podman pod start`. Init containers must be created while the pod is stopped.
 
 ## Init Container Types
 
 ```bash
+podman pod create --name init-types-pod
+
 # 'always' - runs every time the pod starts
-podman run --pod app-pod --init-ctr always --name setup \
+podman create --pod init-types-pod --init-ctr always --name setup \
   docker.io/library/alpine echo "Running setup"
 
 # 'once' - runs only on the first pod start
-podman run --pod app-pod --init-ctr once --name first-run \
+podman create --pod init-types-pod --init-ctr once --name first-run \
   docker.io/library/alpine echo "First time initialization"
 ```
 
@@ -47,13 +56,8 @@ podman run --pod app-pod --init-ctr once --name first-run \
 # Create a pod for a web application
 podman pod create --name web-pod -p 5000:5000
 
-# Start the database first
-podman run -d --pod web-pod --name db \
-  -e POSTGRES_PASSWORD=secret \
-  docker.io/library/postgres:16-alpine
-
-# Run an init container that waits for the database and runs migrations
-podman run --pod web-pod --init-ctr always --name migrate \
+# Create an init container that waits for an external database and runs migrations
+podman create --pod web-pod --init-ctr always --name migrate \
   docker.io/library/alpine \
   sh -c "
     echo 'Waiting for database...'
@@ -63,8 +67,10 @@ podman run --pod web-pod --init-ctr always --name migrate \
   "
 
 # The main application starts after migrations complete
-podman run -d --pod web-pod --name app docker.io/library/alpine \
+podman create --pod web-pod --name app docker.io/library/alpine \
   sh -c "echo 'App starting after init' && sleep 3600"
+
+podman pod start web-pod
 ```
 
 ## Use Case: Downloading Configuration
@@ -73,16 +79,16 @@ podman run -d --pod web-pod --name app docker.io/library/alpine \
 # Init container that fetches configuration before the app starts
 podman pod create --name config-pod -v shared-data:/data
 
-podman run --pod config-pod --init-ctr always --name fetch-config \
-  -v shared-data:/data \
+podman create --pod config-pod --init-ctr always --name fetch-config \
   docker.io/library/alpine \
   sh -c "echo '{\"setting\": \"value\"}' > /data/config.json && echo 'Config downloaded'"
 
 # Main container uses the downloaded configuration
-podman run -d --pod config-pod --name app \
-  -v shared-data:/data \
+podman create --pod config-pod --name app \
   docker.io/library/alpine \
   sh -c "cat /data/config.json && sleep 3600"
+
+podman pod start config-pod
 ```
 
 ## Verifying Init Container Execution
@@ -100,8 +106,14 @@ podman logs init-config
 
 ```bash
 # If an init container exits with a non-zero code, the pod will not start
-podman run --pod app-pod --init-ctr always --name bad-init \
+podman pod create --name fail-pod
+
+podman create --pod fail-pod --init-ctr always --name bad-init \
   docker.io/library/alpine sh -c "echo 'failing' && exit 1"
+
+podman create --pod fail-pod --name app docker.io/library/alpine sleep 3600
+
+podman pod start fail-pod
 
 # Check the exit code
 podman inspect bad-init --format '{{.State.ExitCode}}'
