@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Caddy, Web Server, Reverse Proxy, HTTPS
 
-Description: Learn how to run Caddy web server in a Podman container with automatic HTTPS, reverse proxying, and a simple Caddyfile configuration.
+Description: Learn how to run Caddy web server in a Podman container with static file serving, reverse proxying, and a simple Caddyfile configuration.
 
 ---
 
-> Caddy in Podman provides a modern web server with automatic HTTPS and zero-config TLS in a lightweight, rootless container.
+> Caddy in Podman provides a modern web server with automatic HTTPS support in a lightweight, rootless container.
 
-Caddy is a powerful, enterprise-ready web server with automatic HTTPS as its standout feature. It handles TLS certificate provisioning and renewal automatically, making it an excellent choice for serving websites and acting as a reverse proxy. Running Caddy in a Podman container gives you a secure, isolated web server with minimal configuration. This guide covers static file serving, reverse proxying, custom Caddyfile configurations, and persistent data.
+Caddy is a powerful, enterprise-ready web server with automatic HTTPS as its standout feature. When you configure a domain name and make ports 80 and 443 externally reachable, it handles TLS certificate provisioning and renewal automatically, making it an excellent choice for serving websites and acting as a reverse proxy. Running Caddy in a Podman container gives you a secure, isolated web server with minimal configuration. This guide covers static file serving, reverse proxying, custom Caddyfile configurations, and persistent data.
 
 ---
 
@@ -36,7 +36,6 @@ Start Caddy serving the default welcome page.
 podman run -d \
   --name my-caddy \
   -p 8080:80 \
-  -p 8443:443 \
   caddy:2
 
 # Check the container is running
@@ -61,7 +60,7 @@ cat > ~/caddy-site/index.html <<'EOF'
 <head><title>Caddy on Podman</title></head>
 <body>
   <h1>Hello from Caddy running in Podman!</h1>
-  <p>Serving static files with automatic HTTPS.</p>
+  <p>Serving static files from a Podman container.</p>
 </body>
 </html>
 EOF
@@ -87,30 +86,30 @@ mkdir -p ~/caddy-config
 
 # Write a custom Caddyfile
 cat > ~/caddy-config/Caddyfile <<'EOF'
-# Listen on port 80 (use domain name for automatic HTTPS)
+# Listen on port 80 for local HTTP testing
 :80 {
-    # Set the root directory for static files
-    root * /usr/share/caddy
+	# Set the root directory for static files
+	root * /usr/share/caddy
 
-    # Enable file serving
-    file_server
+	# Enable file serving
+	file_server
 
-    # Enable gzip compression
-    encode gzip
+	# Enable gzip compression
+	encode gzip
 
-    # Custom headers
-    header {
-        X-Frame-Options "DENY"
-        X-Content-Type-Options "nosniff"
-        X-XSS-Protection "1; mode=block"
-        -Server
-    }
+	# Custom headers
+	header {
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		X-XSS-Protection "1; mode=block"
+		-Server
+	}
 
-    # Access logging
-    log {
-        output stdout
-        format console
-    }
+	# Access logging
+	log {
+		output stdout
+		format console
+	}
 }
 EOF
 
@@ -118,7 +117,7 @@ EOF
 podman run -d \
   --name caddy-custom \
   -p 8082:80 \
-  -v ~/caddy-config/Caddyfile:/etc/caddy/Caddyfile:Z \
+  -v ~/caddy-config:/etc/caddy:Z \
   -v ~/caddy-site:/usr/share/caddy:Z \
   caddy:2
 
@@ -132,25 +131,27 @@ Configure Caddy to proxy requests to backend services.
 
 ```bash
 # Write a reverse proxy Caddyfile
-cat > ~/caddy-config/Caddyfile-proxy <<'EOF'
+mkdir -p ~/caddy-proxy-config
+
+cat > ~/caddy-proxy-config/Caddyfile <<'EOF'
 :80 {
-    # Reverse proxy to a backend application
-    reverse_proxy /api/* host.containers.internal:3000
+	# Reverse proxy to a backend application
+	reverse_proxy /api/* host.containers.internal:3000
 
-    # Reverse proxy with load balancing
-    reverse_proxy /app/* host.containers.internal:4000 host.containers.internal:4001 {
-        lb_policy round_robin
-        health_uri /health
-        health_interval 10s
-    }
+	# Reverse proxy with load balancing
+	reverse_proxy /app/* host.containers.internal:4000 host.containers.internal:4001 {
+		lb_policy round_robin
+		health_uri /health
+		health_interval 10s
+	}
 
-    # Serve static files for everything else
-    root * /usr/share/caddy
-    file_server
+	# Serve static files for everything else
+	root * /usr/share/caddy
+	file_server
 
-    log {
-        output stdout
-    }
+	log {
+		output stdout
+	}
 }
 EOF
 
@@ -158,14 +159,14 @@ EOF
 podman run -d \
   --name caddy-proxy \
   -p 8083:80 \
-  -v ~/caddy-config/Caddyfile-proxy:/etc/caddy/Caddyfile:Z \
+  -v ~/caddy-proxy-config:/etc/caddy:Z \
   -v ~/caddy-site:/usr/share/caddy:Z \
   caddy:2
 ```
 
 ## Persistent Data and Certificates
 
-Store Caddy's data directory (certificates, OCSP staples) persistently.
+Store Caddy's data directory persistently. This is where Caddy stores certificates, private keys, OCSP staples, and other managed TLS assets when automatic HTTPS is enabled.
 
 ```bash
 # Create volumes for Caddy data and config
@@ -176,8 +177,7 @@ podman volume create caddy-config-vol
 podman run -d \
   --name caddy-persistent \
   -p 8084:80 \
-  -p 8444:443 \
-  -v ~/caddy-config/Caddyfile:/etc/caddy/Caddyfile:Z \
+  -v ~/caddy-config:/etc/caddy:Z \
   -v ~/caddy-site:/usr/share/caddy:Z \
   -v caddy-data:/data:Z \
   -v caddy-config-vol:/config:Z \
