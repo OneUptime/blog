@@ -28,10 +28,10 @@ kubectl create secret generic alertmanager-smtp-secret \
 ## Step 2: Configure Alertmanager via the Rancher UI
 
 1. Navigate to your cluster in the Rancher UI.
-2. Go to **Monitoring > Advanced > Alertmanager Configs**.
-3. Click **Create** to create a new AlertmanagerConfig or edit the default configuration.
+2. If you're on Rancher v2.6.5 or later, go to **Monitoring > Alerting > AlertManagerConfigs**. On earlier v2.6 releases, go to **Monitoring > Receiver**.
+3. Create a new email receiver configuration or edit an existing one.
 
-Alternatively, you can configure it through the monitoring chart values.
+Alternatively, if you want to manage the full Alertmanager YAML or use `smtp_auth_password_file`, configure it through the monitoring chart values in the next step.
 
 ## Step 3: Configure SMTP Settings in the Monitoring Chart
 
@@ -147,7 +147,7 @@ alertmanager:
       Summary: {{ .Annotations.summary }}
       Description: {{ .Annotations.description }}
       Started: {{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}
-      {{ if .EndsAt }}Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}{{ end }}
+      {{ if eq .Status "resolved" }}Resolved: {{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}{{ end }}
       ---
       {{ end }}
       {{ end }}
@@ -161,7 +161,7 @@ receivers:
     email_configs:
       - to: "team@example.com"
         send_resolved: true
-        html: '{{ template "custom_email_body" . }}'
+        text: '{{ template "custom_email_body" . }}'
         headers:
           Subject: '{{ template "custom_email_subject" . }}'
 ```
@@ -251,7 +251,7 @@ Navigate to `http://localhost:9093/#/status` to see the active configuration.
 Check Alertmanager logs for SMTP errors:
 
 ```bash
-kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=alertmanager
+kubectl logs -n cattle-monitoring-system -l app.kubernetes.io/name=alertmanager -c alertmanager
 ```
 
 ## Troubleshooting
@@ -260,7 +260,7 @@ Common issues and solutions:
 
 - **Connection refused**: Verify the SMTP host and port. Check if the cluster network allows outbound SMTP connections.
 - **Authentication failed**: Double-check the username and password. For Gmail, ensure you are using an App Password.
-- **TLS handshake error**: Try setting `smtp_require_tls: false` if your SMTP server uses implicit TLS on port 465 instead of STARTTLS on port 587.
+- **TLS handshake error**: Make sure the SMTP port matches the TLS mode. Port 587 typically uses STARTTLS, while port 465 uses implicit TLS. In current Alertmanager versions, port 465 is auto-detected for implicit TLS; if needed, set `smtp_force_implicit_tls: true` instead of disabling TLS.
 - **Emails not received**: Check spam folders and verify the sender address is not blocked.
 
 ## Summary
