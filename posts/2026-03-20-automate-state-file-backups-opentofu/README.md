@@ -55,16 +55,23 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
 
 ## Cross-Region Replication
 
-Replicate state files to a second region for disaster recovery:
+Assuming you've already configured an aliased DR provider and the required replication IAM role, replicate state files to a second region for disaster recovery:
 
 ```hcl
 resource "aws_s3_bucket_replication_configuration" "state" {
   bucket = aws_s3_bucket.state.id
   role   = aws_iam_role.replication.arn
 
+  depends_on = [
+    aws_s3_bucket_versioning.state,
+    aws_s3_bucket_versioning.state_dr,
+  ]
+
   rule {
     id     = "replicate-to-dr"
     status = "Enabled"
+
+    filter {}
 
     destination {
       bucket        = aws_s3_bucket.state_dr.arn
@@ -87,11 +94,11 @@ resource "aws_s3_bucket_versioning" "state_dr" {
 
 ## Scheduled State Snapshot Script
 
-Create dated backups of all state files for easy point-in-time recovery:
+Create dated backups of state files stored in a fixed environment/component layout for easy point-in-time recovery:
 
 ```bash
 #!/bin/bash
-# backup_state_files.sh - Create dated snapshots of all state files
+# backup_state_files.sh - Create dated snapshots of state files in a fixed layout
 
 BUCKET="my-company-tofu-state"
 BACKUP_BUCKET="my-company-tofu-state-backups"
@@ -105,12 +112,12 @@ for env in "${ENVIRONMENTS[@]}"; do
     BACKUP_KEY="backups/${DATE}/${env}/${component}/terraform.tfstate"
 
     # Check if state file exists
-    if aws s3 ls "s3://${BUCKET}/${STATE_KEY}" 2>/dev/null; then
+    if aws s3api head-object --bucket "${BUCKET}" --key "${STATE_KEY}" >/dev/null 2>&1; then
       echo "Backing up: ${STATE_KEY}"
       aws s3 cp \
         "s3://${BUCKET}/${STATE_KEY}" \
         "s3://${BACKUP_BUCKET}/${BACKUP_KEY}" \
-        --server-side-encryption AES256
+        --sse AES256
     fi
   done
 done
@@ -143,8 +150,8 @@ tofu state push /tmp/restore.tfstate
 ## State Backup Notification
 
 ```hcl
-# Alert when a state file hasn't been modified in 7 days
-# (might indicate a stuck deployment)
+# Schedule a daily stale-state check.
+# A separate target such as Lambda must inspect object age and send the alert.
 resource "aws_cloudwatch_event_rule" "stale_state_check" {
   name                = "check-stale-state"
   schedule_expression = "rate(1 day)"
