@@ -29,7 +29,7 @@ Understanding the Linux audio stack helps you choose the right approach:
 pactl info 2>/dev/null | head -5
 
 # For PipeWire
-pw-cli info 2>/dev/null | head -5
+pw-cli info all 2>/dev/null | head -5
 
 # List ALSA devices
 aplay -l 2>/dev/null
@@ -93,19 +93,19 @@ echo $XDG_RUNTIME_DIR/pulse/native
 
 # Run a container with PulseAudio access
 podman run --rm -it \
-  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native:Z \
+  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native \
   -e PULSE_SERVER=unix:/run/user/1000/pulse/native \
   fedora:latest \
   bash -c "dnf install -y pulseaudio-utils && pactl info"
 
 # Play audio through PulseAudio
 podman run --rm -it \
-  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native:Z \
+  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native \
   -e PULSE_SERVER=unix:/run/user/1000/pulse/native \
   fedora:latest \
-  bash -c "dnf install -y pulseaudio-utils && \
-           paplay /usr/share/sounds/freedesktop/stereo/bell.oga 2>/dev/null || \
-           echo 'Playing test sound...'"
+  bash -c "dnf install -y pulseaudio-utils sox && \
+           sox -n -r 44100 -c 2 /tmp/test.wav synth 1 sine 440 && \
+           paplay /tmp/test.wav"
 ```
 
 ### Sharing PulseAudio Cookie for Authentication
@@ -115,8 +115,8 @@ Some PulseAudio configurations require an authentication cookie:
 ```bash
 # Share the PulseAudio cookie along with the socket
 podman run --rm -it \
-  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native:Z \
-  -v $HOME/.config/pulse/cookie:/root/.config/pulse/cookie:ro,Z \
+  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native \
+  -v $HOME/.config/pulse/cookie:/root/.config/pulse/cookie:ro \
   -e PULSE_SERVER=unix:/run/user/1000/pulse/native \
   -e PULSE_COOKIE=/root/.config/pulse/cookie \
   fedora:latest \
@@ -130,13 +130,13 @@ PipeWire is the default audio system on modern Linux distributions like Fedora a
 ```bash
 # Share the PipeWire socket
 podman run --rm -it \
-  -v /run/user/$(id -u)/pipewire-0:/run/user/1000/pipewire-0:Z \
-  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native:Z \
+  -v /run/user/$(id -u)/pipewire-0:/run/user/1000/pipewire-0 \
+  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native \
   -e XDG_RUNTIME_DIR=/run/user/1000 \
   -e PULSE_SERVER=unix:/run/user/1000/pulse/native \
   fedora:latest \
   bash -c "dnf install -y pipewire-utils pulseaudio-utils && \
-           pw-cli info 2>/dev/null && pactl info"
+           pw-cli info all >/dev/null && pactl info"
 ```
 
 ## Practical Example: Audio Recording and Processing
@@ -156,6 +156,7 @@ def record_audio(filename, duration=5, sample_rate=44100):
         "arecord",
         "-d", str(duration),
         "-f", "cd",           # CD quality (16-bit, 44100 Hz, stereo)
+        "-r", str(sample_rate),
         "-t", "wav",
         filename
     ]
@@ -243,21 +244,21 @@ podman run --rm -it \
 ```bash
 # Run text-to-speech with audio output via PulseAudio
 podman run --rm -it \
-  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native:Z \
+  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native \
   -e PULSE_SERVER=unix:/run/user/1000/pulse/native \
   ubuntu:22.04 \
   bash -c "apt-get update && apt-get install -y espeak-ng pulseaudio-utils && \
            espeak-ng 'Hello from inside a Podman container'"
 ```
 
-## Running a Media Server in a Container
+## Running Audio Streaming Tools in a Container
 
 ```bash
-# Run an Icecast streaming server with audio input
+# Run an FFmpeg container with audio input for streaming
 podman run --rm -it \
   --device /dev/snd:/dev/snd \
   -p 8000:8000 \
-  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native:Z \
+  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native \
   -e PULSE_SERVER=unix:/run/user/1000/pulse/native \
   ubuntu:22.04 \
   bash -c "apt-get update && apt-get install -y ffmpeg pulseaudio-utils && \
@@ -272,7 +273,7 @@ For maximum compatibility, you can provide both ALSA and PulseAudio access:
 # Full audio access with both ALSA and PulseAudio
 podman run --rm -it \
   --device /dev/snd:/dev/snd \
-  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native:Z \
+  -v /run/user/$(id -u)/pulse/native:/run/user/1000/pulse/native \
   -e PULSE_SERVER=unix:/run/user/1000/pulse/native \
   --group-add keep-groups \
   ubuntu:22.04 \
@@ -311,7 +312,7 @@ podman run --rm -it \
 # Use the PulseAudio socket method instead of direct ALSA access
 
 # SELinux blocking audio access
-sudo setsebool -P container_use_devices on
+sudo setsebool -P container_use_devices=true
 ```
 
 ## Conclusion
