@@ -27,12 +27,12 @@ with PodmanClient() as client:
     for network in networks:
         print(f"Name: {network.name}")
         print(f"ID: {network.short_id}")
-        print(f"Driver: {network.attrs.get('Driver', 'unknown')}")
-        print(f"Scope: {network.attrs.get('Scope', 'unknown')}")
+        print(f"Driver: {network.attrs.get('driver', 'unknown')}")
+        print(f"Internal: {network.attrs.get('internal', False)}")
         print("---")
 ```
 
-Podman always includes a default `podman` bridge network.
+Podman includes a default bridge network that is usually named `podman`, unless the default network name has been changed in `containers.conf`.
 
 ## Creating Networks
 
@@ -74,10 +74,9 @@ with PodmanClient() as client:
     )
 
     print(f"Network: {network.name}")
-    ipam = network.attrs.get("IPAM", {})
-    for config in ipam.get("Config", []):
-        print(f"  Subnet: {config.get('Subnet')}")
-        print(f"  Gateway: {config.get('Gateway')}")
+    for subnet in network.attrs.get("subnets", []):
+        print(f"  Subnet: {subnet.get('subnet')}")
+        print(f"  Gateway: {subnet.get('gateway')}")
 ```
 
 ### Creating Internal Networks
@@ -95,7 +94,7 @@ with PodmanClient() as client:
     )
 
     print(f"Internal network: {network.name}")
-    print(f"Internal: {network.attrs.get('Internal', False)}")
+    print(f"Internal: {network.attrs.get('internal', False)}")
 ```
 
 ### Creating Networks with Labels
@@ -116,7 +115,7 @@ with PodmanClient() as client:
         }
     )
 
-    print(f"Labels: {network.attrs.get('Labels', {})}")
+    print(f"Labels: {network.attrs.get('labels', {})}")
 ```
 
 ## Inspecting Networks
@@ -132,22 +131,21 @@ with PodmanClient() as client:
     attrs = network.attrs
     print(f"Name: {network.name}")
     print(f"ID: {network.id}")
-    print(f"Driver: {attrs.get('Driver')}")
-    print(f"Scope: {attrs.get('Scope')}")
-    print(f"Internal: {attrs.get('Internal', False)}")
+    print(f"Driver: {attrs.get('driver')}")
+    print(f"Internal: {attrs.get('internal', False)}")
 
     # IPAM configuration
-    ipam = attrs.get("IPAM", {})
-    print(f"IPAM Driver: {ipam.get('Driver', 'default')}")
-    for config in ipam.get("Config", []):
-        print(f"  Subnet: {config.get('Subnet')}")
-        print(f"  Gateway: {config.get('Gateway')}")
+    ipam_options = attrs.get("ipam_options", {})
+    print(f"IPAM Driver: {ipam_options.get('driver', 'default')}")
+    for subnet in attrs.get("subnets", []):
+        print(f"  Subnet: {subnet.get('subnet')}")
+        print(f"  Gateway: {subnet.get('gateway')}")
 
     # Connected containers
-    containers = attrs.get("Containers", {})
+    containers = attrs.get("containers", {})
     print(f"Connected containers: {len(containers)}")
     for cid, info in containers.items():
-        print(f"  {info.get('Name', cid[:12])}: {info.get('IPv4Address', 'N/A')}")
+        print(f"  {info.get('name', cid[:12])}: {info.get('interfaces', {})}")
 ```
 
 ## Connecting Containers to Networks
@@ -291,19 +289,19 @@ from podman import PodmanClient
 with PodmanClient() as client:
     # Filter by driver
     bridge_nets = client.networks.list(
-        filters={"driver": ["bridge"]}
+        filters={"driver": "bridge"}
     )
     print(f"Bridge networks: {len(bridge_nets)}")
 
     # Filter by label
     prod_nets = client.networks.list(
-        filters={"label": ["environment=production"]}
+        filters={"label": "environment=production"}
     )
     print(f"Production networks: {len(prod_nets)}")
 
     # Filter by name
     app_nets = client.networks.list(
-        filters={"name": ["app"]}
+        names=["app"]
     )
     print(f"App networks: {len(app_nets)}")
 ```
