@@ -128,11 +128,11 @@ You can pass custom configuration by mounting a config file:
 max_connections = 50
 innodb_buffer_pool_size = 256M
 slow_query_log = 1
-slow_query_log_file = /var/log/mysql/slow.log
+slow_query_log_file = slow.log
 long_query_time = 1
 log_queries_not_using_indexes = 1
 general_log = 1
-general_log_file = /var/log/mysql/general.log
+general_log_file = general.log
 ```
 
 ```bash
@@ -166,7 +166,7 @@ podman run -d \
   mongo:7
 
 # Connect using mongosh
-podman exec -it mongo-dev mongosh -u admin -p adminpass
+podman exec -it mongo-dev mongosh -u admin -p adminpass --authenticationDatabase admin myapp_dev
 ```
 
 ### MongoDB Initialization Script
@@ -302,6 +302,13 @@ set -e
 CONTAINER_NAME="test-postgres-$$"
 DB_PORT=15432
 
+cleanup() {
+  echo "Cleaning up test database..."
+  podman rm -f "$CONTAINER_NAME" > /dev/null 2>&1 || true
+}
+
+trap cleanup EXIT
+
 echo "Starting test database..."
 podman run -d \
   --name "$CONTAINER_NAME" \
@@ -314,13 +321,12 @@ podman run -d \
 # Wait for PostgreSQL to be ready
 echo "Waiting for database to accept connections..."
 for i in $(seq 1 30); do
-  if podman exec "$CONTAINER_NAME" pg_isready -U test > /dev/null 2>&1; then
+  if podman exec "$CONTAINER_NAME" pg_isready -U test -d test_db > /dev/null 2>&1; then
     echo "Database is ready."
     break
   fi
   if [ "$i" -eq 30 ]; then
     echo "Database failed to start within 30 seconds."
-    podman rm -f "$CONTAINER_NAME"
     exit 1
   fi
   sleep 1
@@ -333,14 +339,12 @@ DATABASE_URL="postgresql://test:test@localhost:$DB_PORT/test_db" \
 
 # Run the tests
 echo "Running integration tests..."
+set +e
 DATABASE_URL="postgresql://test:test@localhost:$DB_PORT/test_db" \
-  npm test -- --testPathPattern=integration
+  npm test -- --testPathPatterns=integration
 
 TEST_EXIT_CODE=$?
-
-# Clean up
-echo "Cleaning up test database..."
-podman rm -f "$CONTAINER_NAME"
+set -e
 
 exit $TEST_EXIT_CODE
 ```
@@ -354,7 +358,7 @@ Podman makes it easy to back up and restore database data:
 podman exec postgres-dev \
   pg_dump -U devuser myapp_dev > backup.sql
 
-# Restore from backup into a new container
+# Restore from backup into the running container
 podman exec -i postgres-dev \
   psql -U devuser myapp_dev < backup.sql
 
@@ -387,6 +391,7 @@ podman volume rm pgdata
 podman volume prune
 
 # Back up a volume to a tar file
+mkdir -p ./backups
 podman run --rm \
   -v pgdata:/source:ro \
   -v ./backups:/backup:Z \
