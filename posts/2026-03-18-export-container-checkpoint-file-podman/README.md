@@ -37,7 +37,7 @@ sudo podman run -d --name web-app docker.io/library/nginx:alpine
 sleep 3
 
 # Checkpoint and export to a file
-sudo podman container checkpoint web-app --export=/tmp/web-app-checkpoint.tar.gz
+sudo podman container checkpoint web-app --compress=gzip --export=/tmp/web-app-checkpoint.tar.gz
 ```
 
 The command checkpoints the container and writes the archive to the specified path. The container is stopped after the export completes.
@@ -88,23 +88,23 @@ You can export to any writable location:
 
 ```bash
 # Export to a specific directory
-sudo podman container checkpoint my-app --export=/backups/checkpoints/my-app-$(date +%Y%m%d-%H%M%S).tar.gz
+sudo podman container checkpoint my-app --compress=gzip --export=/backups/checkpoints/my-app-$(date +%Y%m%d-%H%M%S).tar.gz
 
 # Export to a shared filesystem
-sudo podman container checkpoint my-app --export=/nfs/shared/checkpoints/my-app.tar.gz
+sudo podman container checkpoint my-app --compress=gzip --export=/nfs/shared/checkpoints/my-app.tar.gz
 
 # Export to a temporary directory
-sudo podman container checkpoint my-app --export=$(mktemp /tmp/checkpoint-XXXXXX.tar.gz)
+sudo podman container checkpoint my-app --compress=gzip --export=$(mktemp /tmp/checkpoint-XXXXXX.tar.gz)
 ```
 
-The directory must exist and be writable by root. The file extension does not matter to Podman, but `.tar.gz` is conventional since the file is a gzipped tar archive.
+The directory must exist and be writable by root. The file extension does not matter to Podman. Current Podman versions use zstd compression by default, so use `--compress=gzip` when you want a gzipped `.tar.gz` archive.
 
 ## Exporting Without Stopping the Container
 
 By default, the checkpoint operation stops the container. If you want to export a checkpoint while keeping the container running, use the `--leave-running` flag:
 
 ```bash
-sudo podman container checkpoint web-app --export=/tmp/web-app-snapshot.tar.gz --leave-running
+sudo podman container checkpoint web-app --compress=gzip --export=/tmp/web-app-snapshot.tar.gz --leave-running
 ```
 
 This creates the export file but the container continues running after the checkpoint. The container is briefly frozen during the state capture but resumes immediately. This is covered in more detail in the guide on checkpointing without stopping.
@@ -114,7 +114,7 @@ This creates the export file but the container continues running after the check
 If your container has active TCP connections that you want to preserve across the export/import cycle, add the `--tcp-established` flag:
 
 ```bash
-sudo podman container checkpoint web-app --export=/tmp/web-app-tcp.tar.gz --tcp-established
+sudo podman container checkpoint web-app --compress=gzip --export=/tmp/web-app-tcp.tar.gz --tcp-established
 ```
 
 This tells CRIU to include TCP socket state in the checkpoint. The connections can be restored on the target host, though the remote endpoints must still be reachable.
@@ -127,7 +127,7 @@ The checkpoint file size is primarily determined by:
 
 **Filesystem diff**: Any files created or modified inside the container add to the archive size. Log files, caches, and temporary files all count.
 
-**Compression**: The archive is gzipped, so the actual file size depends on how compressible the data is. Random data (encryption keys, compressed images) does not compress well. Text-heavy memory content compresses significantly.
+**Compression**: With `--compress=gzip`, the archive is gzipped, so the actual file size depends on how compressible the data is. Random data (encryption keys, compressed images) does not compress well. Text-heavy memory content compresses significantly.
 
 Check memory usage before exporting to estimate the file size:
 
@@ -158,6 +158,7 @@ mkdir -p "${BACKUP_DIR}"
 
 # Export checkpoint without stopping the container
 sudo podman container checkpoint "${CONTAINER_NAME}" \
+  --compress=gzip \
   --export="${BACKUP_FILE}" \
   --leave-running
 
@@ -208,6 +209,7 @@ CONTAINERS=("database" "app-server" "cache" "web-frontend")
 for container in "${CONTAINERS[@]}"; do
   echo "Exporting ${container}..."
   sudo podman container checkpoint "${container}" \
+    --compress=gzip \
     --export="${EXPORT_DIR}/${container}.tar.gz"
 done
 
@@ -234,4 +236,4 @@ echo "Full stack checkpoint: /tmp/full-stack-checkpoint.tar.gz"
 
 ## Conclusion
 
-Exporting a container checkpoint to a file creates a portable, self-contained snapshot of the container's runtime state. The exported archive includes CRIU process images, container configuration, network state, and filesystem changes. This file can be transferred to another host for migration, stored for backup purposes, or used for repeated restores from the same state. Key considerations are disk space for large containers, archive integrity verification, and understanding that volumes are not included in the export.
+Exporting a container checkpoint to a file creates a portable, self-contained snapshot of the container's runtime state. The exported archive includes CRIU process images, container configuration, network state, filesystem changes, and associated volume contents unless you use `--ignore-volumes`. This file can be transferred to another host for migration, stored for backup purposes, or used for repeated restores from the same state. Key considerations are disk space for large containers, archive integrity verification, and understanding whether you want to include or exclude volumes.
