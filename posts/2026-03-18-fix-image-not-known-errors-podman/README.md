@@ -10,7 +10,7 @@ Description: A thorough guide to resolving 'image not known' errors in Podman, c
 
 > The "image not known" error in Podman means the container runtime cannot find the image you referenced. This can be caused by missing registry prefixes, separate rootless and rootful image stores, short name ambiguity, or corrupted local storage.
 
-When Podman tells you an image is "not known," it is not being vague. It is telling you that it searched its local storage for the image reference you provided and found nothing. This happens more often with Podman than with Docker because Podman does not default to Docker Hub as the only registry, because rootless and rootful modes have separate image stores, and because Podman is stricter about image naming.
+When Podman tells you an image is "not known," it is not being vague. It is telling you that the image reference could not be matched in the local image store at the point Podman tried to use it. This happens more often with Podman than with Docker because Podman does not default to Docker Hub as the only registry, because rootless and rootful modes have separate image stores, and because Podman is stricter about image naming.
 
 This guide covers every common scenario that produces this error and how to resolve each one.
 
@@ -63,13 +63,19 @@ EOF
 
 Podman supports short name aliases that map common names to their fully qualified equivalents. When you pull an image using a short name for the first time, Podman may prompt you to select a registry. The selection is cached in a local alias file.
 
-View existing aliases:
+View packaged or administrator-defined aliases. The exact filename can vary by distribution, so check the drop-in directory:
 
 ```bash
-cat /etc/containers/registries.conf.d/shortnames.conf
+ls /etc/containers/registries.conf.d/
 ```
 
-Or for rootless, check:
+For machine-generated aliases, rootful Podman uses:
+
+```bash
+cat /var/cache/containers/short-name-aliases.conf
+```
+
+Or for rootless Podman, check:
 
 ```bash
 cat ~/.cache/containers/short-name-aliases.conf
@@ -198,7 +204,7 @@ podman pull --platform linux/amd64 docker.io/library/nginx:latest
 
 ## Image References in Podman Compose and Pods
 
-When using `podman-compose` or pod YAML files, image references must match exactly what is in your local store. A common mistake is using `image: nginx` in a compose file when the locally stored image has the full name `docker.io/library/nginx`.
+When using `podman-compose` or pod YAML files, short image names are still subject to Podman's short-name resolution rules. In local-only workflows or environments without an interactive prompt, using `image: nginx` can fail or resolve differently from the image you expected, while `docker.io/library/nginx` is unambiguous.
 
 In your `docker-compose.yml` or pod spec, use the fully qualified name:
 
