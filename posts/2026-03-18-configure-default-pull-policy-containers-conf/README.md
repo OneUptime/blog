@@ -16,7 +16,7 @@ Every time you run a container, Podman decides whether to pull the image from a 
 
 ## Understanding Pull Policies
 
-Podman supports four pull policy options.
+Podman supports three default pull policy options in `containers.conf`. The `podman run` and `podman create` `--pull` flag also supports `newer` as a per-command option.
 
 ```bash
 # Check the current default pull policy
@@ -27,11 +27,13 @@ info = json.load(sys.stdin)
 print('Current pull policy:', info.get('host', {}).get('pullPolicy', 'not set'))
 "
 
-# The four pull policy options:
+# The containers.conf pull_policy options:
 # always  - Always pull the image from the registry
 # missing - Only pull if the image is not in local storage (default)
-# newer   - Pull if the registry has a newer version
 # never   - Never pull; fail if image is not local
+#
+# The --pull flag also supports:
+# newer   - Pull if the registry has a newer version
 ```
 
 ## Setting the Pull Policy
@@ -45,7 +47,7 @@ mkdir -p ~/.config/containers
 cat > ~/.config/containers/containers.conf << 'EOF'
 [engine]
 # Default pull policy for all podman run and podman create commands
-# Options: always, missing, newer, never
+# Options: always, missing, never
 pull_policy = "missing"
 EOF
 ```
@@ -98,21 +100,14 @@ podman run --rm alpine echo "Always pulling latest"
 # but increases network usage and startup time
 ```
 
-## Using "newer" Policy
+## Using "newer" Per Command
 
-The `newer` policy provides a balance between freshness and speed.
+The `newer` policy provides a balance between freshness and speed when used with the `--pull` flag.
 
 ```bash
-# Set pull policy to "newer"
-cat > ~/.config/containers/containers.conf << 'EOF'
-[engine]
-# Pull only if the registry has a newer version
-# Compares local digest with remote digest
-pull_policy = "newer"
-EOF
-
-# This checks the registry but only downloads if changed
-podman run --rm alpine echo "Checking for newer version"
+# This checks the registry but only downloads if changed.
+# An image is considered newer when the remote digest differs.
+podman run --pull=newer --rm alpine echo "Checking for newer version"
 
 # Ideal for development environments where you want
 # fresh images without always downloading unchanged layers
@@ -174,7 +169,8 @@ Select the best policy based on your environment.
 # pull_policy = "always"
 
 # For staging (balance freshness and speed)
-# pull_policy = "newer"
+# pull_policy = "missing"
+# Use --pull=newer when you want an explicit registry freshness check
 
 # For air-gapped environments (no network access)
 # pull_policy = "never"
@@ -185,4 +181,4 @@ podman run --rm alpine echo "Pull policy test successful"
 
 ## Summary
 
-The pull policy in `containers.conf` controls when Podman fetches images from registries. Choose `missing` for fast local development, `always` for CI/CD pipelines that need the latest images, `newer` for a balanced approach, or `never` for air-gapped environments. You can always override the default per command using the `--pull` flag, making it safe to set a conservative default in your configuration.
+The pull policy in `containers.conf` controls when Podman fetches images from registries. Choose `missing` for fast local development, `always` for CI/CD pipelines that need the latest images, or `never` for air-gapped environments. You can always override the default per command using the `--pull` flag, including `--pull=newer` when you want a registry freshness check, making it safe to set a conservative default in your configuration.
