@@ -14,6 +14,7 @@ AWS EC2 instances can be launched with IPv6 addresses automatically or have IPv6
 
 ```bash
 # Launch EC2 instance with IPv6 address
+# Requires a subnet with an associated IPv6 CIDR block
 
 aws ec2 run-instances \
     --image-id ami-12345678 \
@@ -97,7 +98,7 @@ resource "aws_security_group" "web" {
     from_port        = 22
     to_port          = 22
     protocol         = "tcp"
-    ipv6_cidr_blocks = ["2001:db8:admin::/48"]
+    ipv6_cidr_blocks = ["2001:db8:1234::/48"]
   }
 
   egress {
@@ -118,34 +119,38 @@ output "instance_ipv6" {
 
 ```bash
 # After launch, verify IPv6 is configured in the OS
-# (On Amazon Linux 2023 and Ubuntu, this happens automatically)
+# (On Amazon Linux 2023, this usually happens automatically)
 
 # Check current IPv6 addresses
 ip -6 addr show
 
 # If IPv6 address is assigned in AWS but not in OS:
-# Check if DHCPv6 is running
-systemctl status dhclient 2>/dev/null || \
-    cat /etc/dhcpcd.conf 2>/dev/null
+# Check which network manager is controlling the interface
+systemctl --no-pager status systemd-networkd 2>/dev/null || \
+    systemctl --no-pager status NetworkManager 2>/dev/null
 
-# On Amazon Linux 2/2023: modify network config
+# On Amazon Linux 2: modify network config
 # /etc/sysconfig/network-scripts/ifcfg-eth0
 # Add: IPV6INIT=yes
 # Add: DHCPV6C=yes
+#
+# On Amazon Linux 2023, amazon-ec2-net-utils uses systemd-networkd
+# and configures IPv4/IPv6 automatically.
 
 # On Ubuntu/Debian with netplan:
-cat << 'EOF' > /etc/netplan/60-ipv6.yaml
+IFACE=$(ip -o route show default | awk '{print $5; exit}')
+sudo tee /etc/netplan/60-ipv6.yaml > /dev/null <<EOF
 network:
   version: 2
   ethernets:
-    eth0:
+    ${IFACE}:
       dhcp4: true
       dhcp6: true
 EOF
 sudo netplan apply
 
 # Verify connectivity
-ping6 -c 3 2001:4860:4860::8888
+ping -6 -c 3 2001:4860:4860::8888
 curl -6 -s https://ipv6.icanhazip.com
 ```
 
@@ -167,4 +172,4 @@ echo "My IPv6 address: $IPV6"
 
 ## Conclusion
 
-EC2 instances get IPv6 addresses from their subnet's IPv6 CIDR block, either automatically at launch (when `assign_ipv6_address_on_creation` is enabled on the subnet) or manually assigned. Unlike IPv4 private addresses, EC2 IPv6 addresses are globally routable and don't require NAT. Ensure security groups have explicit IPv6 rules (`ipv6_cidr_blocks = ["::/0"]`) since IPv4 and IPv6 rules are independent. Inside the instance, verify the OS is configured to use DHCPv6 to accept the assigned IPv6 address.
+EC2 instances get IPv6 addresses from their subnet's IPv6 CIDR block, either because the subnet is configured to auto-assign them at launch or because you explicitly request them at launch or assign them later. Public IPv6 addresses don't require NAT. Ensure security groups have explicit IPv6 rules (`ipv6_cidr_blocks = ["::/0"]`) since IPv4 and IPv6 rules are independent. Inside the instance, verify the OS networking stack is configured for IPv6/DHCPv6.
