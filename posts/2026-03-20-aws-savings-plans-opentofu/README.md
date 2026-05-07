@@ -6,25 +6,27 @@ Tags: OpenTofu, AWS, Savings Plans, Cost Optimization, Infrastructure as Code
 
 Description: Learn how to purchase and manage AWS Savings Plans with OpenTofu to reduce compute costs by committing to consistent usage in exchange for discounted rates.
 
-AWS Savings Plans offer up to 72% savings compared to On-Demand pricing in exchange for a 1 or 3-year commitment to a consistent usage amount. Managing Savings Plans purchases in OpenTofu keeps financial commitments version-controlled and reviewable.
+AWS Savings Plans offer up to 72% savings compared to On-Demand pricing in exchange for a 1 or 3-year commitment to a consistent usage amount. Managing Savings Plans purchases in OpenTofu keeps financial commitments version-controlled and reviewable, but active Savings Plans can't be canceled after purchase.
 
 ## Types of Savings Plans
 
 - **Compute Savings Plans**: Most flexible, apply to any EC2 instance, Fargate, and Lambda across regions and instance families. Up to 66% savings.
 - **EC2 Instance Savings Plans**: Highest discount (up to 72%), but tied to a specific instance family and region.
-- **SageMaker Savings Plans**: Apply to SageMaker usage.
+- **Database Savings Plans**: Apply to eligible AWS database services. Up to 35% savings.
+- **SageMaker AI Savings Plans**: Apply to SageMaker AI instance usage. Up to 64% savings.
 
 ## Purchasing a Savings Plan
 
 ```hcl
-resource "aws_savingsplans_plan" "compute" {
-  savings_plan_type = "Compute"
-  payment_option    = "NoUpfront"  # NoUpfront, PartialUpfront, AllUpfront
-  commitment        = "100.00"     # USD per hour commitment
-
-  # Term length
-  term_duration_in_seconds = 31536000  # 1 year (31536000s)
-  # For 3 years: 94608000
+resource "aws_savingsplans_savings_plan" "compute" {
+  # The offering ID determines the plan type, payment option, and term.
+  # Example lookup:
+  # aws savingsplans describe-savings-plans-offerings \
+  #   --plan-types Compute \
+  #   --payment-options "No Upfront" \
+  #   --durations 31536000
+  savings_plan_offering_id = "00000000-0000-0000-0000-000000000000"
+  commitment               = "100.00"  # USD per hour commitment
 
   tags = {
     Purpose     = "EC2 and Fargate compute savings"
@@ -37,25 +39,28 @@ resource "aws_savingsplans_plan" "compute" {
 ## EC2 Instance Savings Plan
 
 ```hcl
-resource "aws_savingsplans_plan" "ec2" {
-  savings_plan_type     = "EC2Instance"
-  payment_option        = "PartialUpfront"
-  commitment            = "50.00"  # Per hour
-
-  # EC2 Instance plans are region-specific
-  # Must be purchased in the correct region
-
-  term_duration_in_seconds = 31536000  # 1 year
+resource "aws_savingsplans_savings_plan" "ec2" {
+  # EC2 Instance plans are tied to a specific region and instance family.
+  # Query a matching offering ID first, for example:
+  # aws savingsplans describe-savings-plans-offerings \
+  #   --plan-types EC2Instance \
+  #   --payment-options "Partial Upfront" \
+  #   --durations 31536000 \
+  #   --filters name=region,values=us-east-1 name=instanceFamily,values=m7g
+  savings_plan_offering_id = "11111111-1111-1111-1111-111111111111"
+  commitment               = "50.00"  # USD per hour commitment
 }
 ```
 
 ## Understanding Commitment Sizing
 
-Before purchasing, analyze your current On-Demand spend:
+Before purchasing, generate a fresh recommendation set and analyze your current On-Demand spend:
 
 ```bash
-# Use AWS Cost Explorer API (or console) to get recommendations
+# Request a fresh set of Savings Plans recommendations
+aws ce start-savings-plans-purchase-recommendation-generation
 
+# Then retrieve the recommendation details
 aws ce get-savings-plans-purchase-recommendation \
   --savings-plans-type COMPUTE_SP \
   --term-in-years ONE_YEAR \
@@ -64,16 +69,13 @@ aws ce get-savings-plans-purchase-recommendation \
 ```
 
 ```hcl
-# Output the current Savings Plans for reference
-data "aws_savingsplans_plans" "existing" {
-  filter {
-    name   = "state"
-    values = ["active"]
-  }
+# Look up an existing Savings Plan by ID
+data "aws_savingsplans_savings_plan" "existing" {
+  savings_plan_id = "sp-12345678901234567"
 }
 
-output "active_savings_plans" {
-  value = data.aws_savingsplans_plans.existing.plans[*].commitment
+output "existing_savings_plan_commitment" {
+  value = data.aws_savingsplans_savings_plan.existing.commitment
 }
 ```
 
@@ -82,11 +84,9 @@ output "active_savings_plans" {
 Tag Savings Plans for cost allocation reporting:
 
 ```hcl
-resource "aws_savingsplans_plan" "tagged" {
-  savings_plan_type        = "Compute"
-  payment_option           = "NoUpfront"
+resource "aws_savingsplans_savings_plan" "tagged" {
+  savings_plan_offering_id = "22222222-2222-2222-2222-222222222222"
   commitment               = "200.00"
-  term_duration_in_seconds = 31536000
 
   tags = {
     CostCenter  = "engineering"
@@ -103,13 +103,13 @@ resource "aws_savingsplans_plan" "tagged" {
 resource "aws_budgets_budget" "savings_plan_coverage" {
   name         = "savings-plan-coverage"
   budget_type  = "SAVINGS_PLANS_COVERAGE"
-  limit_amount = "80"  # Alert if coverage drops below 80%
+  limit_amount = "100.0"
   limit_unit   = "PERCENTAGE"
   time_unit    = "MONTHLY"
 
   notification {
     comparison_operator        = "LESS_THAN"
-    threshold                  = 80
+    threshold                  = 80  # Alert if coverage drops below 80%
     threshold_type             = "PERCENTAGE"
     notification_type          = "ACTUAL"
     subscriber_email_addresses = ["finops@example.com"]
@@ -119,7 +119,7 @@ resource "aws_budgets_budget" "savings_plan_coverage" {
 resource "aws_budgets_budget" "savings_plan_utilization" {
   name         = "savings-plan-utilization"
   budget_type  = "SAVINGS_PLANS_UTILIZATION"
-  limit_amount = "100"
+  limit_amount = "100.0"
   limit_unit   = "PERCENTAGE"
   time_unit    = "MONTHLY"
 
