@@ -49,28 +49,20 @@ production
 ```yaml
 # roles/ipv6_config/tasks/main.yml - Core IPv6 configuration tasks
 ---
-- name: Configure IPv6 address via Netplan
+- name: Configure IPv6 address and DNS via Netplan
   ansible.builtin.template:
     src: netplan-ipv6.yaml.j2
     dest: /etc/netplan/60-ipv6.yaml
     mode: "0600"
   notify: Apply Netplan
+```
 
-- name: Enable IPv6 sysctl settings
-  ansible.posix.sysctl:
-    name: "{{ item.name }}"
-    value: "{{ item.value }}"
-    state: present
-    sysctl_file: /etc/sysctl.d/99-ipv6.conf
-  loop:
-    - { name: net.ipv6.conf.all.forwarding, value: "0" }
-    - { name: net.ipv6.conf.all.accept_ra, value: "1" }
-
-- name: Update DNS search to include IPv6 resolver
-  ansible.builtin.lineinfile:
-    path: /etc/resolv.conf
-    line: "nameserver 2001:4860:4860::8888"
-    insertafter: EOF
+```yaml
+# roles/ipv6_config/handlers/main.yml - Apply Netplan after configuration changes
+---
+- name: Apply Netplan
+  ansible.builtin.command:
+    cmd: netplan apply
 ```
 
 ## Phase 1: Canary Deployment
@@ -93,24 +85,18 @@ production
     - ipv6_config
 
   post_tasks:
-    - name: Wait for IPv6 address to appear
-      ansible.builtin.wait_for:
-        timeout: 30
-
-    - name: Verify IPv6 address is assigned
+    - name: Wait for a global IPv6 address to appear
       ansible.builtin.command:
         cmd: ip -6 addr show scope global
       register: ipv6_check
       changed_when: false
-
-    - name: Fail if no IPv6 address
-      ansible.builtin.fail:
-        msg: "IPv6 address not assigned after rollout"
-      when: "'scope global' not in ipv6_check.stdout"
+      retries: 6
+      delay: 5
+      until: ipv6_check.stdout != ""
 
     - name: Test IPv6 external connectivity
       ansible.builtin.command:
-        cmd: ping6 -c 3 -W 5 2001:4860:4860::8888
+        cmd: ping -6 -c 3 -W 5 2001:4860:4860::8888
       changed_when: false
 ```
 
@@ -122,7 +108,7 @@ production
 - name: Phase 2 - IPv6 Staging Deployment
   hosts: staging
   become: true
-  # Deploy in batches of 5 (or 20% per batch)
+  # Deploy in batches equal to 20% of the staging group
   serial: "20%"
 
   roles:
@@ -143,7 +129,7 @@ production
   become: true
   # Deploy in batches of 10
   serial: 10
-  # Stop if more than 5% of hosts fail
+  # With serial: 10, this aborts if any host in the current batch fails
   max_fail_percentage: 5
 
   roles:
@@ -170,11 +156,10 @@ production
         state: absent
       notify: Apply Netplan
 
-    - name: Remove IPv6 sysctl settings
-      ansible.builtin.file:
-        path: /etc/sysctl.d/99-ipv6.conf
-        state: absent
-      notify: Apply sysctl
+  handlers:
+    - name: Apply Netplan
+      ansible.builtin.command:
+        cmd: netplan apply
 ```
 
 ## Execute the Rollout
