@@ -12,7 +12,7 @@ Google Cloud Platform offers reliable and performant virtual machines through Co
 
 - A Google Cloud account with a project and billing enabled
 - Google Cloud SDK (gcloud CLI) installed and configured
-- A domain name (optional but recommended)
+- A domain name (recommended)
 - Sufficient quota for creating VM instances in your chosen region
 
 ## Step 1: Set Your Project and Region
@@ -25,11 +25,11 @@ gcloud config set compute/zone us-central1-a
 
 ## Step 2: Create a Firewall Rule
 
-Create a firewall rule that allows HTTP, HTTPS, and Kubernetes API traffic:
+Create a firewall rule that allows SSH, HTTP, and HTTPS traffic:
 
 ```bash
 gcloud compute firewall-rules create rancher-allow-traffic \
-  --allow tcp:22,tcp:80,tcp:443,tcp:6443 \
+  --allow tcp:22,tcp:80,tcp:443 \
   --source-ranges 0.0.0.0/0 \
   --target-tags rancher-server \
   --description "Allow traffic for Rancher server"
@@ -76,7 +76,9 @@ gcloud compute ssh rancher-server
 ## Step 6: Install K3s
 
 ```bash
-curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=<supported-k3s-version> sh -s - server \
+  --cluster-init \
+  --write-kubeconfig-mode 644
 ```
 
 Verify the node is ready:
@@ -94,7 +96,7 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 ## Step 7: Install Helm
 
 ```bash
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 ```
 
 ## Step 8: Install cert-manager
@@ -112,7 +114,9 @@ helm install cert-manager jetstack/cert-manager \
 Wait for the pods to be ready:
 
 ```bash
-kubectl get pods -n cert-manager
+kubectl rollout status deployment/cert-manager -n cert-manager
+kubectl rollout status deployment/cert-manager-cainjector -n cert-manager
+kubectl rollout status deployment/cert-manager-webhook -n cert-manager
 ```
 
 ## Step 9: Install Rancher
@@ -126,7 +130,7 @@ kubectl create namespace cattle-system
 helm install rancher rancher-stable/rancher \
   --namespace cattle-system \
   --set hostname=rancher.example.com \
-  --set bootstrapPassword=admin \
+  --set bootstrapPassword=your-bootstrap-password \
   --set replicas=1
 ```
 
@@ -135,11 +139,11 @@ helm install rancher rancher-stable/rancher \
 Set up a DNS A record pointing to your static IP. If you use Google Cloud DNS:
 
 ```bash
-gcloud dns record-sets create rancher.example.com \
+gcloud dns record-sets create rancher.example.com. \
   --zone=your-dns-zone \
   --type=A \
   --ttl=300 \
-  --rrdatas=$(gcloud compute addresses describe rancher-ip --region us-central1 --format='get(address)')
+  --rrdatas="$(gcloud compute addresses describe rancher-ip --region us-central1 --format='get(address)')"
 ```
 
 ## Step 11: Verify the Installation
@@ -149,15 +153,15 @@ kubectl -n cattle-system rollout status deploy/rancher
 kubectl -n cattle-system get pods
 ```
 
-Navigate to `https://rancher.example.com` in your browser. Log in with the bootstrap password and set your new admin password.
+Navigate to `https://rancher.example.com` in your browser. If you are using Rancher-generated certificates, your browser may show a security warning. Log in with the bootstrap password and set your new admin password.
 
 ## Using the Google Cloud Node Driver
 
-Rancher includes a built-in Google Compute Engine node driver. After logging in, go to Cluster Management, click Create, and select Google GCE. Provide your service account credentials as a JSON key file. Rancher will provision GCE instances as Kubernetes nodes for new clusters.
+Rancher includes a built-in Google Compute Engine node driver, but it is not enabled by default. After logging in, go to Cluster Management, open Drivers, activate the Google GCE node driver, and create a Google cloud credential with your service account JSON key file. You can then create a Google GCE cluster, and Rancher will provision the GCE instances for it.
 
 ## Performance Considerations
 
-For a single-node Rancher installation managing a small number of clusters, an e2-standard-2 (2 vCPU, 8 GB RAM) is sufficient. For larger deployments managing many clusters, consider upgrading to e2-standard-4 or higher. Use SSD persistent disks for better I/O performance.
+For proof-of-concept or small non-production installations, an e2-standard-2 (2 vCPU, 8 GB RAM) can work. For production, Rancher recommends a highly available setup, and its current K3s sizing guidance starts at 4 vCPUs and 16 GB RAM per node for small deployments. Use SSD persistent disks for better I/O performance.
 
 ## Cleanup
 
