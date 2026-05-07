@@ -10,7 +10,7 @@ When managing multiple Kubernetes clusters through Rancher, you often need to en
 
 ## Prerequisites
 
-- Rancher v2.7+ with administrator access
+- Rancher v2.8+ with administrator access
 - Multiple downstream clusters managed by Rancher
 - An external authentication provider configured
 - Users or groups that need scoped access
@@ -20,38 +20,39 @@ When managing multiple Kubernetes clusters through Rancher, you often need to en
 Users can access a cluster in Rancher only if one of the following is true:
 
 1. They have the **Administrator** global role (which grants access to everything).
-2. They have a **Cluster Role Template Binding** for that specific cluster.
-3. They have a **Project Role Template Binding** within a project on that cluster.
+2. They have a custom **GlobalRole** that grants **inheritedClusterRoles** on downstream clusters.
+3. They have a **Cluster Role Template Binding** for that specific cluster.
+4. They have a **Project Role Template Binding** within a project on that cluster.
 
 If none of these conditions are met, the user cannot see or interact with the cluster.
 
-## Step 1: Remove Default Cluster Access
+## Step 1: Review Default Cluster-Wide Access on Global Roles
 
-Rancher may assign default cluster roles to new users. Remove this behavior:
+Rancher does not grant access to existing clusters to non-administrative users by default. However, a GlobalRole can grant permissions on every downstream cluster through `inheritedClusterRoles`. Review any default global roles and remove cluster-wide inherited roles you do not want new users to receive:
 
-1. Go to **Global Settings** (hamburger menu > **Global Settings**).
-2. Find the `cluster-default-role` setting.
-3. Edit it and set the value to an empty string.
-4. Click **Save**.
+1. Go to **Users & Authentication > Role Templates** and select the **Global** tab.
+2. Review the roles marked as default for new users.
+3. If a custom default global role includes inherited cluster roles, edit or replace it.
 
 Via kubectl:
 
 ```bash
-kubectl patch settings cluster-default-role -p '{"value": ""}'
+kubectl get globalroles.management.cattle.io \
+  -o custom-columns=NAME:.metadata.name,NEW_USER_DEFAULT:.newUserDefault,INHERITED_CLUSTER_ROLES:.inheritedClusterRoles
 ```
 
-This ensures that new users do not automatically gain access to any cluster.
+Only global roles that should grant access to every downstream cluster should have `inheritedClusterRoles` set.
 
 ## Step 2: Remove the Standard User Global Role as Default
 
-The **Standard User** global role allows users to create new clusters and view existing ones. Change the default:
+For users who sign in through an external authentication provider, Rancher assigns the **Standard User** global role by default. This role allows users to log in and create clusters, so remove it if you want login-only access by default:
 
-1. Go to **Users & Authentication > Roles > Global**.
+1. Go to **Users & Authentication > Role Templates** and select the **Global** tab.
 2. Find **Standard User**.
-3. Click the three-dot menu and select **Edit**.
-4. Uncheck **Yes: Default role for new users**.
+3. Click the three-dot menu and select **Edit Config**.
+4. Set **New User Default** to **No**.
 5. Click **Save**.
-6. Ensure **User-Base** is the only default global role.
+6. If you want login-only access by default, ensure **User-Base** is the only default global role.
 
 ## Step 3: Grant Access to a Specific Cluster
 
@@ -59,14 +60,14 @@ Now grant access to individual clusters on a per-user or per-group basis.
 
 **Via the UI:**
 
-1. Navigate to the target cluster by clicking it in the cluster list.
-2. Go to **Cluster > Cluster Members**.
-3. Click **Add**.
+1. Click **☰ > Cluster Management**.
+2. Go to the target cluster and click **⋮ > Edit Config**.
+3. In the **Member Roles** tab, click **Add Member**.
 4. Search for the user or group.
-5. Select the appropriate cluster role (Cluster Member, Read-Only, or a custom role).
+5. Select the appropriate cluster role (for example, **Cluster Member** or a custom cluster role).
 6. Click **Create**.
 
-The user will only see this specific cluster in their Rancher dashboard.
+If this is their only cluster or project membership, the user will only see this specific cluster in their Rancher dashboard.
 
 **Via kubectl:**
 
@@ -76,14 +77,13 @@ kind: ClusterRoleTemplateBinding
 metadata:
   generateName: crtb-
   namespace: c-m-xxxxx  # cluster ID
-spec:
-  clusterName: c-m-xxxxx
-  roleTemplateId: cluster-member
-  userPrincipalId: "local://u-xxxxx"
+clusterName: c-m-xxxxx
+roleTemplateName: cluster-member
+userPrincipalName: "local://u-xxxxx"
 ```
 
 ```bash
-kubectl apply -f cluster-access.yaml
+kubectl create -f cluster-access.yaml
 ```
 
 ## Step 4: Restrict Access Using Groups
@@ -167,27 +167,31 @@ curl -s 'https://<rancher-url>/v3/clusters' \
   -H 'Authorization: Bearer <user-api-token>' | jq '.data[] | {name, id}'
 ```
 
-The output should only contain clusters where the user has a role binding.
+The output should only contain clusters where the user has a cluster or project role binding.
 
 ## Step 7: Revoke Cluster Access
 
-To remove a user's access to a cluster:
+To remove a user's cluster membership:
 
 **Via the UI:**
-1. Navigate to the cluster.
-2. Go to **Cluster > Cluster Members**.
-3. Find the user or group.
+1. Click **☰ > Cluster Management**.
+2. Go to the cluster and click **⋮ > Edit Config**.
+3. In the **Member Roles** tab, find the user or group.
 4. Click the three-dot menu and select **Delete**.
 
 **Via kubectl:**
 
 ```bash
 # Find the binding
-kubectl get clusterroletemplatebindings -n <cluster-id> | grep <username>
+kubectl get clusterroletemplatebindings.management.cattle.io -n <cluster-id> \
+  -o custom-columns=NAME:.metadata.name,USER:.userName,USER_PRINCIPAL:.userPrincipalName,GROUP:.groupName,GROUP_PRINCIPAL:.groupPrincipalName,ROLE:.roleTemplateName \
+  | grep <username-or-group>
 
 # Delete it
-kubectl delete clusterroletemplatebinding <binding-name> -n <cluster-id>
+kubectl delete clusterroletemplatebindings.management.cattle.io <binding-name> -n <cluster-id>
 ```
+
+If the user also has project memberships on the same cluster, remove the related **ProjectRoleTemplateBindings** as well. Rancher retains project access when only cluster membership is revoked.
 
 ## Step 8: Audit Cluster Access
 
@@ -195,21 +199,30 @@ Regularly audit who has access to each cluster:
 
 ```bash
 #!/bin/bash
-# List access for each cluster
+# List cluster-level and project-level access for each cluster
 for cluster in $(kubectl get clusters.management.cattle.io -o jsonpath='{.items[*].metadata.name}'); do
   echo "=== Cluster: $cluster ==="
-  kubectl get clusterroletemplatebindings -n $cluster \
-    -o custom-columns=USER:.userName,GROUP:.groupPrincipalName,ROLE:.roleTemplateId
+
+  echo "-- ClusterRoleTemplateBindings --"
+  kubectl get clusterroletemplatebindings.management.cattle.io -n "$cluster" \
+    -o custom-columns=USER:.userName,USER_PRINCIPAL:.userPrincipalName,GROUP:.groupName,GROUP_PRINCIPAL:.groupPrincipalName,ROLE:.roleTemplateName
+
+  echo "-- ProjectRoleTemplateBindings --"
+  for project_ns in $(kubectl get projects.management.cattle.io -n "$cluster" -o jsonpath='{.items[*].status.backingNamespace}'); do
+    kubectl get projectroletemplatebindings.management.cattle.io -n "$project_ns" \
+      -o custom-columns=PROJECT:.projectName,USER:.userName,USER_PRINCIPAL:.userPrincipalName,GROUP:.groupName,GROUP_PRINCIPAL:.groupPrincipalName,ROLE:.roleTemplateName
+  done
+
   echo ""
 done
 ```
 
 ## Best Practices
 
-- **Default deny**: Ensure no default cluster roles are assigned to new users.
+- **Default deny**: Remove broad default global permissions and avoid default global roles with `inheritedClusterRoles`.
 - **Use groups**: Map cluster access to identity provider groups for easier management.
 - **Separate environments**: Never give development teams access to production clusters unless they have an operational role.
-- **Read-only for most**: Give read-only cluster access to stakeholders who need visibility without the ability to make changes.
+- **Read-only where possible**: Use project **Read Only** or custom cluster roles for stakeholders who need visibility without the ability to make changes.
 - **Regular audits**: Run monthly audits to identify and remove stale cluster access.
 - **Use Terraform**: Manage access as code so that changes are tracked, reviewed, and reproducible.
 
