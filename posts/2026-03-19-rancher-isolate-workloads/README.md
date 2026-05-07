@@ -26,7 +26,7 @@ Effective workload isolation covers four areas:
 
 ## Step 1: RBAC Isolation
 
-RBAC isolation is built into Rancher's project model. When users are assigned to a project, they can only access namespaces within that project.
+RBAC isolation is built into Rancher's project model. By default, users assigned only project-scoped roles can access namespaces within that project.
 
 Verify isolation is working:
 
@@ -41,34 +41,33 @@ kubectl get pods -n project-a-namespace
 # Lists pods successfully
 ```
 
-Ensure no user has both project memberships unless intentional:
+Ensure no user has both project memberships unless intentional. Rancher `ProjectRoleTemplateBinding` objects live in the Rancher management cluster, so run the next command against that kubeconfig context:
 
 ```bash
 # Find users with roles in multiple projects
 kubectl get projectroletemplatebindings --all-namespaces -o json | \
-  jq -r '[.items[] | {user: (.userName // .groupPrincipalName), project: .projectName}] |
+  jq -r '[.items[] | {user: (.userName // .userPrincipalName // .groupName // .groupPrincipalName // .serviceAccount), project: .projectName}] |
   group_by(.user) | .[] | select(length > 1) |
   "\(.[0].user) is in projects: \([.[].project] | join(", "))"'
 ```
 
 ## Step 2: Network Isolation via Rancher
 
-Enable project network isolation through the Rancher UI:
+Enable project network isolation at the cluster level through the Rancher UI:
 
-1. Navigate to your cluster.
-2. Go to **Cluster > Projects/Namespaces**.
-3. Click the three-dot menu on the project.
-4. Select **Edit Config**.
-5. Check **Enable Project Network Isolation**.
-6. Click **Save**.
+1. Click **☰ > Cluster Management**.
+2. Go to the cluster you want to configure and click the three-dot menu.
+3. Select **Edit Config**.
+4. In the cluster configuration, enable **Project Network Isolation**.
+5. Click **Save**.
 
-Rancher creates NetworkPolicy objects that restrict traffic to within the project's namespaces.
+When supported by the cluster's CNI, Rancher disables inter-project communication. The `system` project is excluded from this isolation by default.
 
 ## Step 3: Network Isolation via NetworkPolicy
 
-For more granular control, create custom NetworkPolicy resources:
+For more granular control, create custom NetworkPolicy resources. Because `NetworkPolicy` is namespace-scoped, apply these policies in each namespace that belongs to the project:
 
-**Default deny all ingress and egress for a project:**
+**Default deny all ingress and egress in a project namespace:**
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -83,7 +82,7 @@ spec:
     - Egress
 ```
 
-**Allow traffic within the same project:**
+**Allow traffic within the same project across labeled namespaces:**
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -108,10 +107,9 @@ spec:
               project: team-a
     # Allow DNS
     - to:
-        - namespaceSelector: {}
-          podSelector:
+        - namespaceSelector:
             matchLabels:
-              k8s-app: kube-dns
+              kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
           port: 53
@@ -150,7 +148,7 @@ spec:
 
 ## Step 4: Resource Isolation
 
-Prevent one project from starving another of resources:
+Rancher `Project` resources live in the Rancher management cluster, not the downstream cluster. Apply them there to enforce project-level quotas:
 
 ```yaml
 # Project A - allocated 40% of cluster resources
@@ -160,6 +158,7 @@ metadata:
   name: p-team-a
   namespace: c-m-xxxxx
 spec:
+  clusterName: c-m-xxxxx
   displayName: team-a
   resourceQuota:
     limit:
@@ -177,6 +176,7 @@ metadata:
   name: p-team-b
   namespace: c-m-xxxxx
 spec:
+  clusterName: c-m-xxxxx
   displayName: team-b
   resourceQuota:
     limit:
@@ -232,8 +232,17 @@ metadata:
   name: api-server
   namespace: team-a-production
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
+      containers:
+        - name: api-server
+          image: nginx:1.27
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -270,7 +279,7 @@ spec:
 
 ## Step 6: Storage Isolation
 
-Prevent projects from accessing each other's persistent data:
+Separate storage provisioning and limit storage consumption per project:
 
 ```yaml
 # Create a StorageClass per project
@@ -278,15 +287,11 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: team-a-storage
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
 parameters:
   type: gp3
   encrypted: "true"
-allowedTopologies:
-  - matchLabelExpressions:
-      - key: project
-        values:
-          - team-a
 ```
 
 Use ResourceQuota to limit storage per project:
@@ -342,22 +347,27 @@ echo "=== Workload Isolation Verification ==="
 echo ""
 echo "1. Network Isolation Test"
 # Create a test pod in team-a namespace
-kubectl run nettest -n team-a-production --image=busybox --restart=Never -- sleep 3600
-sleep 5
+kubectl run nettest -n team-a-production --image=busybox:1.36 --restart=Never -- sleep 3600
+kubectl wait --for=condition=Ready pod/nettest -n team-a-production --timeout=60s
 
-# Try to reach a service in team-b namespace
-kubectl exec nettest -n team-a-production -- wget -qO- --timeout=3 \
-  http://service.team-b-production.svc.cluster.local 2>&1 || \
+# Replace "service" with an actual Service name in team-b-production
+if kubectl exec -n team-a-production nettest -- \
+  wget -qO- --timeout=3 http://service.team-b-production.svc.cluster.local >/dev/null 2>&1; then
+  echo "  FAIL: team-a can reach team-b services"
+else
   echo "  PASS: Cannot reach team-b services from team-a"
+fi
 
-kubectl delete pod nettest -n team-a-production
+kubectl delete pod nettest -n team-a-production --ignore-not-found
 
 # 2. Check RBAC isolation
 echo ""
 echo "2. RBAC Isolation Test"
-kubectl auth can-i list pods -n team-b-production --as=team-a-user && \
-  echo "  FAIL: team-a-user can access team-b" || \
+if kubectl auth can-i list pods -n team-b-production --as=team-a-user --quiet; then
+  echo "  FAIL: team-a-user can access team-b"
+else
   echo "  PASS: team-a-user cannot access team-b"
+fi
 
 # 3. Check resource quotas
 echo ""
