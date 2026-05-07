@@ -8,7 +8,7 @@ Description: A deep dive into configuring and optimizing the overlay storage dri
 
 ---
 
-> The overlay storage driver is the fastest and most efficient option for Podman container storage. Properly configured, it delivers near-native filesystem performance with minimal overhead.
+> The overlay storage driver is one of the fastest and most efficient general-purpose options for Podman container storage. Properly configured, it delivers near-native filesystem performance with minimal overhead.
 
 The storage driver determines how Podman manages image layers and container filesystems. It affects every operation from pulling images to reading files inside a running container. The overlay driver uses the Linux kernel's OverlayFS to stack filesystem layers efficiently, providing copy-on-write semantics with excellent performance. This guide covers how to configure, optimize, and troubleshoot the overlay driver for both rootful and rootless Podman deployments.
 
@@ -77,7 +77,7 @@ podman info --format '{{.Store.GraphDriverName}}'
 The overlay driver requires specific kernel features:
 
 ```bash
-# Check kernel version (4.0+ for basic overlay, 5.11+ for rootless)
+# Check kernel version for rootless native overlay support (5.12.9+)
 uname -r
 
 # Verify OverlayFS is available
@@ -94,7 +94,7 @@ sudo modprobe overlay
 echo "overlay" | sudo tee /etc/modules-load.d/overlay.conf
 ```
 
-For rootless Podman without kernel 5.11+, you need fuse-overlayfs:
+For rootless Podman on kernels earlier than 5.12.9, you need fuse-overlayfs:
 
 ```bash
 # Install fuse-overlayfs
@@ -107,8 +107,8 @@ sudo dnf install -y fuse-overlayfs
 # Verify installation
 fuse-overlayfs --version
 
-# Configure in storage.conf for rootless
-# ~/.config/containers/storage.conf
+# If ~/.config/containers/storage.conf already exists,
+# configure mount_program explicitly for rootless
 ```
 
 ```toml
@@ -154,7 +154,7 @@ sudo mount /dev/sdX /mnt/data
 
 ## Enable Metacopy for Faster Copy-on-Write
 
-Metacopy is an overlay optimization that copies only file metadata during copy-up, deferring data copy until the file is actually read or written:
+Metacopy is an overlay optimization that copies only file metadata during metadata-only copy-up, deferring data copy until the file is later opened for write:
 
 ```toml
 # storage.conf
@@ -165,18 +165,15 @@ mountopt = "nodev,metacopy=on"
 Verify metacopy is active:
 
 ```bash
-# Check if metacopy is enabled in the kernel
+# Check if metacopy is enabled by default in the kernel
 cat /sys/module/overlay/parameters/metacopy
-# "Y" means enabled
-
-# Enable metacopy at kernel level
-echo "Y" | sudo tee /sys/module/overlay/parameters/metacopy
+# "Y" means enabled by default
 
 # Make persistent via kernel parameter
-# Add to /etc/default/grub: overlay.metacopy=Y
+# Add to /etc/default/grub: overlay.metacopy=on
 ```
 
-Metacopy significantly speeds up container creation because large files in lower layers are not copied until they are actually modified. This is especially beneficial for images with large static assets.
+Metacopy reduces copy-up overhead for workloads that change metadata on large files, because data is only copied up if the file is later opened for write. This is especially useful when containers frequently change ownership or mode bits without rewriting file contents.
 
 ---
 
@@ -193,16 +190,15 @@ mountopt = "nodev,metacopy=on"
 # For volatile workloads (faster, but crash-unsafe)
 # mountopt = "nodev,metacopy=on,volatile"
 
-# For redirect_dir (required for some rename operations)
-# mountopt = "nodev,metacopy=on,redirect_dir=on"
+# For redirect_dir (for some rename operations, incompatible with metacopy)
+# mountopt = "nodev,redirect_dir=on"
 ```
 
-The `volatile` option disables fsync on the upper layer, improving write performance at the cost of crash consistency. Use it for ephemeral workloads like CI/CD builds:
+The `volatile` option maps to `fsync=volatile`, omitting sync calls to the upper filesystem and improving write performance at the cost of crash consistency. Use it for ephemeral workloads like CI/CD builds:
 
 ```bash
 # Run a build container with volatile overlay
-podman run --rm \
-  --storage-opt "overlay.mountopt=volatile" \
+podman --storage-opt "overlay.mountopt=nodev,metacopy=on,volatile" run --rm \
   build-image make build
 ```
 
@@ -214,10 +210,10 @@ The number and size of layers affect overlay performance. Optimize your image la
 
 ```bash
 # Check layer count for an image
-podman image inspect your-image --format '{{len .RootFS.Layers}}'
+podman image inspect --format '{{len .RootFS.Layers}}' your-image
 
 # View layer sizes
-podman history your-image --format "table {{.Size}}\t{{.CreatedBy}}"
+podman history --format "{{.Size}}\t{{.CreatedBy}}" your-image
 
 # Squash layers to reduce overhead
 podman build --squash -t your-image:optimized .
@@ -248,15 +244,11 @@ Rootless Podman has specific overlay requirements:
 driver = "overlay"
 graphroot = "/home/user/.local/share/containers/storage"
 
-[storage.options]
-# UID/GID mapping size
-size = 65536
-
 [storage.options.overlay]
-# For kernel 5.11+: native overlay (best performance)
-mount_program = ""
+# For Podman 3.1+ on kernel 5.12.9+: native overlay (best performance)
+# Omit mount_program to use native overlay
 
-# For older kernels: fuse-overlayfs
+# For older kernels or when native overlay is unavailable: fuse-overlayfs
 # mount_program = "/usr/bin/fuse-overlayfs"
 ```
 
@@ -278,7 +270,7 @@ Compare rootless overlay performance:
 ```bash
 # Benchmark native overlay vs fuse-overlayfs
 echo "--- Native Overlay ---"
-# Set mount_program = "" in storage.conf
+# Remove or comment out mount_program in storage.conf
 time podman run --rm alpine:latest dd if=/dev/zero of=/tmp/test bs=1M count=100
 
 echo "--- fuse-overlayfs ---"
@@ -287,7 +279,7 @@ podman system reset
 time podman run --rm alpine:latest dd if=/dev/zero of=/tmp/test bs=1M count=100
 ```
 
-Native overlay is 2-3x faster than fuse-overlayfs for I/O-heavy workloads.
+Native overlay generally outperforms fuse-overlayfs for I/O-heavy workloads.
 
 ---
 
@@ -310,12 +302,11 @@ sudo apt-get install -y fuse-overlayfs
 
 # Error: "mounting overlay: permission denied"
 # Solution: Check kernel version for rootless support
-uname -r  # Need 5.11+ for rootless native overlay
+uname -r  # Need 5.12.9+ for rootless native overlay
 
 # General troubleshooting: reset and reconfigure
 podman system reset
 # Edit storage.conf
-podman system migrate
 podman info | grep -A5 graphDriver
 ```
 
@@ -366,4 +357,4 @@ echo "=== Check Complete ==="
 
 ## Conclusion
 
-The overlay storage driver is the optimal choice for Podman container storage. For rootful Podman, it works out of the box on modern kernels with XFS (ftype=1) or ext4 filesystems. For rootless Podman, kernel 5.11+ enables native overlay support with near-rootful performance, while fuse-overlayfs serves as a capable fallback for older kernels. Enable metacopy for faster copy-on-write operations, use the volatile mount option for ephemeral workloads, and minimize layer count in your images. With proper configuration, the overlay driver delivers filesystem performance that is nearly indistinguishable from native host filesystem access.
+The overlay storage driver is the preferred general-purpose choice for Podman container storage. For rootful Podman, it works out of the box on modern kernels with XFS (ftype=1) or ext4 filesystems. For rootless Podman, Podman 3.1+ on kernel 5.12.9+ enables native overlay support with near-rootful performance, while fuse-overlayfs serves as a capable fallback for older kernels. Enable metacopy for metadata-heavy copy-up workloads, use the volatile mount option for ephemeral workloads, and minimize layer count in your images. With proper configuration, the overlay driver delivers filesystem performance that is nearly indistinguishable from native host filesystem access.
