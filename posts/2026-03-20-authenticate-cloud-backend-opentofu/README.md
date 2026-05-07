@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Cloud Backend, Authentication, Terraform Cloud, API Tokens
 
-Description: Learn how to authenticate OpenTofu with the Terraform Cloud backend using API tokens, environment variables, and CI/CD-specific authentication methods.
+Description: Learn how to authenticate OpenTofu with the Terraform Cloud backend using API tokens, environment variables, credentials files, and CI/CD secret management methods.
 
 ## Introduction
 
-Authentication with the Terraform Cloud backend requires an API token that grants access to your organization's workspaces and state. OpenTofu supports multiple authentication methods: interactive login, environment variables, credentials files, and OIDC-based dynamic tokens for CI/CD. Choosing the right method depends on where OpenTofu runs.
+Authentication with the Terraform Cloud backend requires an API token that grants access to your organization's workspaces and state. OpenTofu supports multiple ways to supply that token: interactive login, environment variables, credentials files, and CI/CD secret injection. Choosing the right method depends on where OpenTofu runs.
 
 ## Authentication Methods Overview
 
-```hcl
+```text
 Method                    | Use Case
 --------------------------|----------------------------------------
 tofu login                | Interactive: developer machines
 TF_TOKEN_* env var        | CI/CD: GitHub Actions, GitLab CI
 credentials.tfrc.json     | Persistent: shared CI/CD agents
-OIDC / Dynamic tokens     | GitHub Actions, HashiCorp Vault
+setup-opentofu input      | GitHub Actions
 ```
 
 ## Method 1: Interactive Login
@@ -56,8 +56,9 @@ tofu init  # Should succeed without prompting for credentials
 
 ## Method 3: Credentials File
 
+File: `~/.terraform.d/credentials.tfrc.json`
+
 ```json
-// ~/.terraform.d/credentials.tfrc.json
 {
   "credentials": {
     "app.terraform.io": {
@@ -70,15 +71,15 @@ tofu init  # Should succeed without prompting for credentials
 }
 ```
 
-```bash
-# Also settable via CLI config file
-# ~/.terraform.rc
-# credentials "app.terraform.io" {
-#   token = "your-token"
-# }
+Also settable via the OpenTofu CLI config file, for example `~/.tofurc`:
+
+```hcl
+credentials "app.terraform.io" {
+  token = "your-token"
+}
 ```
 
-## Method 4: GitHub Actions with OIDC
+## Method 4: GitHub Actions with a Token Secret
 
 ```yaml
 # .github/workflows/deploy.yml
@@ -92,7 +93,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write   # Required for OIDC
       contents: read
 
     steps:
@@ -100,8 +100,8 @@ jobs:
 
       - uses: opentofu/setup-opentofu@v1
         with:
-          tofu_version: '1.7.0'
-          # Provide token directly - most common approach
+          tofu_version: '1.11.6'
+          # Provide token from GitHub Actions secrets
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: OpenTofu Init
@@ -112,16 +112,19 @@ jobs:
 
 ```bash
 # Team tokens provide access to all workspaces the team can access
-# Generate via: Organization → Teams → [Team Name] → Token
+# Generate via: Organization Settings → API Tokens → Team Tokens
 
 # Generate programmatically via API
 curl -X POST \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/teams/$TEAM_ID/authentication-token" \
+  "https://app.terraform.io/api/v2/teams/$TEAM_ID/authentication-tokens" \
   -d '{
     "data": {
-      "type": "authentication-tokens"
+      "type": "authentication-tokens",
+      "attributes": {
+        "description": "CI token"
+      }
     }
   }'
 
@@ -132,7 +135,8 @@ export TF_TOKEN_app_terraform_io="team-token-value"
 ## Method 6: Organization Tokens
 
 ```bash
-# Organization tokens provide full access to all workspaces
+# Organization tokens are for organization-level administration
+# They cannot start runs or create configuration versions
 # Use for administrative scripts, not regular deployments
 
 curl -X POST \
@@ -141,7 +145,7 @@ curl -X POST \
   "https://app.terraform.io/api/v2/organizations/my-company/authentication-token" \
   -d '{
     "data": {
-      "type": "authentication-tokens"
+      "type": "authentication-token"
     }
   }'
 ```
@@ -151,34 +155,24 @@ curl -X POST \
 ```text
 Token Type         | Scope                     | Recommended For
 -------------------|---------------------------|------------------
-User Token         | User's access + teams     | Developer machines
+User Token         | User's permissions        | Developer machines
 Team Token         | Team's workspaces         | CI/CD pipelines
-Organization Token | All workspaces (admin)    | Admin scripts
-Workspace Token    | Single workspace          | Per-workspace CI/CD
+Organization Token | Org-level admin only      | Admin scripts
 ```
 
-## Workspace-Specific Tokens
+## Workspace-Specific Access
 
 ```bash
-# Create a token scoped to a single workspace
-curl -X POST \
-  -H "Authorization: Bearer $TF_TOKEN" \
-  -H "Content-Type: application/vnd.api+json" \
-  "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/authentication-token" \
-  -d '{
-    "data": {
-      "type": "authentication-tokens"
-    }
-  }'
-
-# Use workspace-scoped token (least privilege for per-workspace CI/CD)
-export TF_TOKEN_app_terraform_io="workspace-scoped-token"
-tofu init  # Works only for the specified workspace
+# HCP Terraform/OpenTofu CLI does not expose a separate workspace token type
+# For least privilege, use a team token from a team that only has access
+# to the target workspace
+export TF_TOKEN_app_terraform_io="team-token-value"
+tofu init  # Uses the workspace permissions granted to that team
 ```
 
 ## CI/CD Secret Management
 
-```yaml
+```text
 # GitHub Actions: store token as secret
 # Settings → Secrets → Actions → New repository secret: TF_API_TOKEN
 
@@ -201,18 +195,13 @@ withCredentials([string(credentialsId: 'tf-cloud-token', variable: 'TF_TOKEN')])
 ## Verifying Authentication
 
 ```bash
-# Test authentication works
-tofu login  # Check if already logged in
-# Expected: "The new credentials will be used for all future requests"
+# Test backend authentication
+tofu init  # Should complete without prompting for credentials
 
 # Test API access directly
 curl -H "Authorization: Bearer $TF_TOKEN" \
   "https://app.terraform.io/api/v2/account/details" | \
-  jq '.data.attributes.username'
-
-# Test workspace access
-tofu init
-tofu workspace show  # Should print workspace name without error
+  jq -r '.data.attributes.username'
 ```
 
 ## Token Rotation
@@ -223,12 +212,15 @@ tofu workspace show  # Should print workspace name without error
 # 2. Update secret in CI/CD system
 # 3. Revoke old token
 
-# Revoke a specific token
+# Revoke a team or user token by token ID
 curl -X DELETE \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
   "https://app.terraform.io/api/v2/authentication-tokens/$TOKEN_ID"
+
+# Organization tokens are revoked by organization name:
+# DELETE /api/v2/organizations/my-company/authentication-token
 ```
 
 ## Conclusion
 
-For developer machines, use `tofu login` to store credentials interactively. For CI/CD pipelines, use the `TF_TOKEN_app_terraform_io` environment variable set from a secrets manager - team tokens for shared pipelines, workspace-specific tokens for maximum least-privilege isolation. The `opentofu/setup-opentofu` GitHub Actions action accepts a `cli_config_credentials_token` parameter that handles credential file creation automatically, making it the simplest authentication method for GitHub Actions workflows.
+For developer machines, use `tofu login` to store credentials interactively. For CI/CD pipelines, use the `TF_TOKEN_app_terraform_io` environment variable set from a secrets manager - team tokens for shared pipelines, and team tokens scoped to a single workspace when you need the narrowest practical access. The `opentofu/setup-opentofu` GitHub Actions action accepts a `cli_config_credentials_token` parameter that handles credential file creation automatically, making it the simplest authentication method for GitHub Actions workflows.
