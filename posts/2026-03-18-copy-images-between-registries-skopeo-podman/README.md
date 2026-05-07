@@ -8,9 +8,9 @@ Description: Learn how to use Skopeo alongside Podman to copy container images b
 
 ---
 
-> Skopeo lets you copy images directly between registries, saving bandwidth, disk space, and time compared to the traditional pull-tag-push workflow.
+> Skopeo lets you copy images between registries without storing them in local container storage first, saving disk space and workflow time compared to the traditional pull-tag-push workflow.
 
-Moving container images between registries is a common task in production environments. Whether you are migrating from Docker Hub to a private registry or syncing images across environments, Skopeo provides a streamlined approach. Unlike traditional methods that require pulling an image locally before pushing it elsewhere, Skopeo copies images directly between registries. This guide shows you how to combine Skopeo with Podman for efficient image management.
+Moving container images between registries is a common task in production environments. Whether you are migrating from Docker Hub to a private registry or syncing images across environments, Skopeo provides a streamlined approach. Unlike traditional methods that require pulling an image into local container storage before pushing it elsewhere, Skopeo copies images between registries without that local storage step. This guide shows you how to combine Skopeo with Podman for efficient image management.
 
 ---
 
@@ -54,7 +54,7 @@ Common transport types include:
 
 ## Copying Images Between Public Registries
 
-You can copy images from one public registry to another without authentication if both allow public access.
+You can copy images from one registry to another without authentication only if the source allows anonymous pulls and the destination allows anonymous pushes.
 
 ```bash
 # Copy an nginx image from Docker Hub to Quay.io
@@ -71,7 +71,7 @@ skopeo copy \
 
 ## Copying with Authentication via Podman
 
-When working with private registries, you can leverage Podman's authentication. Skopeo reads the same auth file that Podman uses.
+When working with private registries, you can leverage Podman's authentication. Skopeo uses the same containers auth configuration that Podman uses.
 
 ```bash
 # Log in to the source registry using Podman
@@ -87,7 +87,7 @@ skopeo copy \
 
 # You can also specify the auth file explicitly
 skopeo copy \
-  --authfile ~/.config/containers/auth.json \
+  --authfile "${XDG_RUNTIME_DIR}/containers/auth.json" \
   docker://source-registry.example.com/myapp:v2.1 \
   docker://dest-registry.example.com/myapp:v2.1
 ```
