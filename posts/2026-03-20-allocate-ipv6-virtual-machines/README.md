@@ -8,31 +8,31 @@ Description: Implement IPv6 address allocation strategies for virtual machines u
 
 ## Introduction
 
-Allocating IPv6 addresses to virtual machines requires choosing between SLAAC (automatic from MAC), DHCPv6 (assigned by server), or static assignment. Each approach has trade-offs for address predictability, IPAM tracking, and operational complexity. This guide covers practical allocation strategies for VM environments, including IPAM integration.
+Allocating IPv6 addresses to virtual machines requires choosing between SLAAC (address autoconfiguration from router-advertised prefixes), DHCPv6 (assigned by server), or static assignment. Each approach has trade-offs for address predictability, IPAM tracking, and operational complexity. This guide covers practical allocation strategies for VM environments, including IPAM integration.
 
 ## Address Allocation Strategies
 
 ```text
 Strategy 1: SLAAC (Stateless Address Autoconfiguration)
-├─ VM generates address from MAC using EUI-64
-├─ Predictable if MAC is known
-├─ No DHCPv6 server needed
-└─ Hard to track in IPAM without MAC→IP correlation
+├─ VM forms an address from a router-advertised /64 plus an interface ID
+├─ Predictable only if the guest uses modified EUI-64 and the MAC is known
+├─ No DHCPv6 server needed, but router advertisements are required
+└─ Hard to track in IPAM without correlating the chosen IID back to the VM
 
 Strategy 2: DHCPv6 Stateful
 ├─ DHCPv6 server assigns address from pool
 ├─ Can reserve specific address per VM (by DUID)
-├─ IPAM records DHCPv6 leases
+├─ Lease data can be synchronized into IPAM
 └─ Requires DHCPv6 server infrastructure
 
 Strategy 3: Static (IPAM-assigned)
-├─ IPAM allocates next available /128 from prefix
+├─ IPAM allocates the next available IPv6 address from a prefix
 ├─ Passed to VM via cloud-init, Terraform, or Ansible
 ├─ Most traceable - IPAM owns the record
 └─ Requires automation for scalability
 ```
 
-## SLAAC: Predict IPv6 from MAC Address
+## SLAAC: Predict an EUI-64-Based IPv6 Address from a MAC Address
 
 ```python
 #!/usr/bin/env python3
@@ -41,59 +41,68 @@ Strategy 3: Static (IPAM-assigned)
 import ipaddress
 
 def eui64_from_mac(mac: str) -> str:
-    """Generate EUI-64 identifier from MAC address."""
+    """Generate a modified EUI-64 interface ID from a MAC address."""
     mac_bytes = [int(b, 16) for b in mac.split(":")]
     # Insert ff:fe in the middle
     eui64 = mac_bytes[:3] + [0xff, 0xfe] + mac_bytes[3:]
-    # Flip the U/L bit (7th bit of first byte)
+    # Flip the U/L bit in the first byte
     eui64[0] ^= 0x02
     return ":".join(f"{b:02x}" for b in eui64)
 
 def slaac_address(prefix: str, mac: str) -> str:
-    """Compute SLAAC IPv6 address for a prefix and MAC."""
+    """Compute an EUI-64-based SLAAC IPv6 address for a /64 prefix and MAC."""
     net = ipaddress.ip_network(prefix)
+    if net.version != 6 or net.prefixlen != 64:
+        raise ValueError("SLAAC EUI-64 examples require a /64 IPv6 prefix")
+
     eui64 = eui64_from_mac(mac)
     # Combine /64 prefix with EUI-64 interface ID
-    prefix_int = int(net.network_address)
-    iid_int = int(ipaddress.ip_address(f"::{''.join(eui64.split(':'))}"))
-    addr = ipaddress.ip_address(prefix_int | iid_int)
+    iid_int = int(eui64.replace(":", ""), 16)
+    addr = ipaddress.IPv6Address(int(net.network_address) | iid_int)
     return str(addr)
 
-# Example: VM with MAC 52:54:00:ab:cd:01 on prefix 2001:db8:vms::/64
+# Example: guest uses modified EUI-64 with MAC 52:54:00:ab:cd:01
+# on prefix 2001:db8:100::/64
 
 mac = "52:54:00:ab:cd:01"
-prefix = "2001:db8:vms::/64"
+prefix = "2001:db8:100::/64"
 ipv6 = slaac_address(prefix, mac)
 print(f"SLAAC address: {ipv6}")
-# Output: 2001:db8:vms::5054:ff:feab:cd01
+# Output: 2001:db8:100:0:5054:ff:feab:cd01
 ```
 
 ## DHCPv6 Reservations by DUID
 
 ```bash
-# ISC DHCP / Kea: reserve IPv6 by DUID (linked to VM's identity)
-
-# Kea DHCPv6 reservation by DUID
-# /etc/kea/kea-dhcp6.conf
-cat >> /etc/kea/kea-dhcp6.conf << 'EOF'
+# /etc/kea/kea-dhcp6.conf (excerpt)
 {
   "Dhcp6": {
-    "reservations": [
+    "subnet6": [
       {
-        "hw-address": "52:54:00:ab:cd:01",
-        "ip-addresses": ["2001:db8:vms::10"],
-        "hostname": "myvm1"
-      },
-      {
-        "hw-address": "52:54:00:ab:cd:02",
-        "ip-addresses": ["2001:db8:vms::11"],
-        "hostname": "myvm2"
+        "id": 1,
+        "subnet": "2001:db8:100::/64",
+        "pools": [
+          { "pool": "2001:db8:100::100 - 2001:db8:100::1ff" }
+        ],
+        "reservations": [
+          {
+            "duid": "00:03:00:01:52:54:00:ab:cd:01",
+            "ip-addresses": ["2001:db8:100::10"],
+            "hostname": "myvm1"
+          },
+          {
+            "duid": "00:03:00:01:52:54:00:ab:cd:02",
+            "ip-addresses": ["2001:db8:100::11"],
+            "hostname": "myvm2"
+          }
+        ]
       }
     ]
   }
 }
-EOF
-
+# Validate the config before restarting the service
+kea-dhcp6 -t /etc/kea/kea-dhcp6.conf
+# Service name varies by distro; this is the Debian/Ubuntu unit name
 systemctl restart kea-dhcp6-server
 ```
 
@@ -104,42 +113,56 @@ systemctl restart kea-dhcp6-server
 # vm_ipv6_allocator.py
 
 import pynetbox
-import ipaddress
 
 nb = pynetbox.api("https://netbox.example.com", token="your-token")
 
-def allocate_ipv6_for_vm(vm_name: str, prefix_id: int, dns_name: str = "") -> str:
-    """Allocate next available IPv6 from a NetBox prefix for a VM."""
+def allocate_ipv6_for_vm(
+    vm_id: int,
+    vm_interface_id: int,
+    prefix_id: int,
+    dns_name: str = "",
+) -> str:
+    """Allocate next available IPv6 from a NetBox prefix for a VM interface."""
+
+    prefix = nb.ipam.prefixes.get(prefix_id)
+    if prefix is None:
+        raise ValueError(f"NetBox prefix {prefix_id} was not found")
+
+    vm = nb.virtualization.virtual_machines.get(vm_id)
+    if vm is None:
+        raise ValueError(f"NetBox VM {vm_id} was not found")
+
+    vm_interface = nb.virtualization.interfaces.get(vm_interface_id)
+    if vm_interface is None:
+        raise ValueError(f"NetBox VM interface {vm_interface_id} was not found")
+    if vm_interface.virtual_machine.id != vm.id:
+        raise ValueError(
+            f"VM interface {vm_interface_id} does not belong to VM {vm_id}"
+        )
 
     # Get next available IP from the prefix
-    prefix = nb.ipam.prefixes.get(prefix_id)
     available = prefix.available_ips.create({
         "status": "active",
         "dns_name": dns_name,
-        "description": f"Allocated to VM: {vm_name}",
+        "description": f"Allocated to VM: {vm.name}",
     })
 
-    ipv6_address = available["address"]
+    # Assign the IP to the VM interface, then set it as the VM's primary IPv6
+    available.assigned_object_type = "virtualization.vminterface"
+    available.assigned_object_id = vm_interface.id
+    available.save()
 
-    # Create or update the VM record with the allocated IP
-    vms = nb.virtualization.virtual_machines.filter(name=vm_name)
-    if vms:
-        vm = vms[0]
-        # Add the IP address to the VM's primary_ip6
-        ip_obj = nb.ipam.ip_addresses.get(address=ipv6_address)
-        if ip_obj:
-            nb.virtualization.virtual_machines.update([{
-                "id": vm.id,
-                "primary_ip6": ip_obj.id,
-            }])
+    vm.primary_ip6 = available.id
+    vm.save()
 
-    print(f"Allocated {ipv6_address} to VM {vm_name}")
-    return ipv6_address
+    print(f"Allocated {available.address} to VM {vm.name}")
+    return available.address
 
 # Example usage
 ipv6 = allocate_ipv6_for_vm(
-    vm_name="webserver-01",
-    prefix_id=42,  # NetBox prefix ID for 2001:db8:vms::/64
+    vm_id=101,            # NetBox VM ID
+    vm_interface_id=205,  # NetBox VM interface ID
+    prefix_id=42,         # NetBox prefix ID for 2001:db8:100::/64
     dns_name="webserver-01.example.com",
 )
 ```
@@ -152,8 +175,10 @@ ipv6 = allocate_ipv6_for_vm(
 terraform {
   required_providers {
     netbox = {
-      source  = "e-breuninger/netbox"
-      version = "~> 3.0"
+      source = "e-breuninger/netbox"
+    }
+    libvirt = {
+      source = "dmacvicar/libvirt"
     }
   }
 }
@@ -163,12 +188,16 @@ provider "netbox" {
   api_token  = var.netbox_token
 }
 
+provider "libvirt" {
+  uri = "qemu:///system"
+}
+
 # Allocate IPv6 for each VM
 resource "netbox_available_ip_address" "vm_ipv6" {
-  count     = var.vm_count
-  prefix_id = var.ipv6_prefix_id    # NetBox prefix for VM allocation
-  status    = "active"
-  dns_name  = "vm-${count.index}.example.com"
+  count       = var.vm_count
+  prefix_id   = var.ipv6_prefix_id
+  status      = "active"
+  dns_name    = "vm-${count.index}.example.com"
   description = "VM ${count.index} IPv6 address"
 }
 
@@ -176,46 +205,115 @@ output "vm_ipv6_addresses" {
   value = netbox_available_ip_address.vm_ipv6[*].ip_address
 }
 
-# Use the allocated IPs in VM definitions
-resource "libvirt_domain" "vm" {
-  count = var.vm_count
-  name  = "vm-${count.index}"
-  memory = 2048
-
-  network_interface {
-    network_name = "default"
-  }
-
-  # Configure IPv6 via cloud-init using allocated address
-  cloudinit = libvirt_cloudinit_disk.vm_init[count.index].id
-}
-
 resource "libvirt_cloudinit_disk" "vm_init" {
   count = var.vm_count
-  name  = "vm-${count.index}-init.iso"
-  user_data = templatefile("cloud-init.yaml.tpl", {
+  name  = "vm-${count.index}-seed"
+
+  user_data = <<-EOF
+    #cloud-config
+    hostname: vm-${count.index}
+  EOF
+
+  meta_data = yamlencode({
+    "instance-id"    = "vm-${count.index}"
+    "local-hostname" = "vm-${count.index}"
+  })
+
+  network_config = templatefile("network-config.yaml.tpl", {
     ipv6_address = netbox_available_ip_address.vm_ipv6[count.index].ip_address
     ipv6_gateway = var.ipv6_gateway
   })
+}
+
+resource "libvirt_volume" "vm_cloudinit" {
+  count = var.vm_count
+  name  = "vm-${count.index}-seed.iso"
+  pool  = var.libvirt_pool
+
+  create = {
+    content = {
+      url = libvirt_cloudinit_disk.vm_init[count.index].path
+    }
+  }
+}
+
+# Assumes a bootable disk already exists for each VM in var.vm_disk_names
+resource "libvirt_domain" "vm" {
+  count       = var.vm_count
+  name        = "vm-${count.index}"
+  type        = "kvm"
+  memory      = 2048
+  memory_unit = "MiB"
+  vcpu        = 2
+
+  os = {
+    type         = "hvm"
+    type_arch    = "x86_64"
+    type_machine = "q35"
+  }
+
+  devices = {
+    disks = [
+      {
+        source = {
+          volume = {
+            pool   = var.libvirt_pool
+            volume = var.vm_disk_names[count.index]
+          }
+        }
+        target = {
+          bus = "virtio"
+          dev = "vda"
+        }
+      },
+      {
+        device = "cdrom"
+        source = {
+          volume = {
+            pool   = libvirt_volume.vm_cloudinit[count.index].pool
+            volume = libvirt_volume.vm_cloudinit[count.index].name
+          }
+        }
+        target = {
+          bus = "sata"
+          dev = "sda"
+        }
+      }
+    ]
+
+    interfaces = [
+      {
+        type  = "network"
+        model = { type = "virtio" }
+        source = {
+          network = {
+            network = "default"
+          }
+        }
+      }
+    ]
+  }
+
+  running = true
 }
 ```
 
 ## Cloud-init: Apply Allocated IPv6 to VM
 
 ```yaml
-# cloud-init.yaml.tpl (Terraform template)
-#cloud-config
-network:
-  version: 2
-  ethernets:
-    eth0:
-      dhcp4: true
+# network-config.yaml.tpl (cloud-init NoCloud network-config)
+version: 2
+ethernets:
+  eth0:  # Replace with the guest's actual interface name if needed
+    dhcp4: true
+    addresses:
+      - "${ipv6_address}"
+    routes:
+      - to: default
+        via: "${ipv6_gateway}"
+    nameservers:
       addresses:
-        - "${ipv6_address}"
-      gateway6: "${ipv6_gateway}"
-      nameservers:
-        addresses:
-          - "2001:db8::53"
+        - "2001:db8::53"
 ```
 
 ## Bulk Allocation Script
@@ -233,6 +331,8 @@ def bulk_allocate_from_csv(csv_file: str, prefix_id: int) -> list:
     """Allocate IPv6 addresses for VMs listed in CSV."""
     results = []
     prefix = nb.ipam.prefixes.get(prefix_id)
+    if prefix is None:
+        raise ValueError(f"NetBox prefix {prefix_id} was not found")
 
     with open(csv_file) as f:
         reader = csv.DictReader(f)
@@ -245,9 +345,9 @@ def bulk_allocate_from_csv(csv_file: str, prefix_id: int) -> list:
             })
             results.append({
                 "vm_name": vm_name,
-                "ipv6": allocated["address"],
+                "ipv6": allocated.address,
             })
-            print(f"  {vm_name}: {allocated['address']}")
+            print(f"  {vm_name}: {allocated.address}")
 
     return results
 
@@ -256,4 +356,4 @@ def bulk_allocate_from_csv(csv_file: str, prefix_id: int) -> list:
 
 ## Conclusion
 
-IPv6 address allocation for VMs involves three approaches: SLAAC (predictable from MAC, no server needed), DHCPv6 reservations (by DUID/MAC in Kea or ISC DHCP), and IPAM-driven static assignment (most traceable). The SLAAC EUI-64 algorithm is deterministic - knowing a VM's MAC lets you predict its SLAAC address for a given /64 prefix. For production environments, IPAM integration via NetBox or similar tools provides centralized tracking of which VM holds which IPv6 address. Terraform and cloud-init work together for automated allocation: Terraform queries the IPAM API for the next available IPv6, then passes it to cloud-init for configuration during VM boot.
+IPv6 address allocation for VMs involves three common approaches: SLAAC, DHCPv6 reservations, and IPAM-driven static assignment. When a guest uses modified EUI-64 for SLAAC, knowing its MAC lets you predict the resulting IPv6 address for a given /64 prefix, but many modern guests use stable or temporary interface identifiers instead. For production environments, IPAM integration via NetBox or similar tools provides centralized tracking of which VM holds which IPv6 address. Terraform and cloud-init work together for automated allocation: Terraform queries the IPAM API for the next available IPv6, then passes it to cloud-init network-config for configuration during VM boot.
