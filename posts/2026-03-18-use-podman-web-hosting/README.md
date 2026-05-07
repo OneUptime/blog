@@ -10,7 +10,7 @@ Description: Learn how to use Podman to host websites and web applications using
 
 > Podman provides a secure, daemonless approach to web hosting that eliminates the risks of running a privileged Docker daemon while giving you full control over your web infrastructure.
 
-Web hosting has traditionally required careful server configuration, package management, and security hardening. Podman simplifies this process by letting you run web servers in isolated containers without needing root privileges. Whether you are hosting a static site, a dynamic web application, or multiple virtual hosts, Podman gives you a lightweight and secure foundation.
+Web hosting has traditionally required careful server configuration, package management, and security hardening. Podman simplifies this process by letting you run web servers in isolated containers without a long-running daemon, and many common setups can run without root privileges. Whether you are hosting a static site, a dynamic web application, or multiple virtual hosts, Podman gives you a lightweight and secure foundation.
 
 This guide walks you through setting up web hosting with Podman, covering everything from basic Nginx containers to multi-site configurations with TLS termination.
 
@@ -18,7 +18,7 @@ This guide walks you through setting up web hosting with Podman, covering everyt
 
 ## Why Podman for Web Hosting
 
-Podman runs containers without a central daemon, which means there is no single point of failure. Its rootless mode lets unprivileged users run containers, reducing the attack surface of your web server. Combined with systemd integration through Quadlet, Podman containers can start on boot, restart on failure, and behave like native system services.
+Podman runs containers without a central daemon, so container lifecycle does not depend on a long-running privileged service. Its rootless mode lets unprivileged users run many container workloads, reducing the attack surface of your web server. Combined with systemd integration through Quadlet, Podman containers can start on boot, restart on failure, and behave like native system services.
 
 ## Setting Up a Basic Nginx Container
 
@@ -31,10 +31,10 @@ podman run -d \
   --name web-server \
   -p 8080:80 \
   -v ./html:/usr/share/nginx/html:ro,Z \
-  nginx:stable-alpine
+  docker.io/library/nginx:stable-alpine
 ```
 
-The `:Z` suffix handles SELinux relabeling automatically. Place your website files in the `./html` directory and they will be served immediately.
+The `:Z` suffix handles SELinux relabeling automatically for a single container. Use `:z` instead if multiple containers need to share the same host content. Place your website files in the `./html` directory and they will be served immediately.
 
 ## Serving a Static Website
 
@@ -58,7 +58,7 @@ podman run -d \
   --name my-static-site \
   -p 8080:80 \
   -v ~/mysite/html:/usr/share/nginx/html:ro,Z \
-  nginx:stable-alpine
+  docker.io/library/nginx:stable-alpine
 ```
 
 Visit `http://localhost:8080` to see your site live.
@@ -98,27 +98,27 @@ podman run -d \
   -p 8080:80 \
   -v ~/mysite/nginx.conf:/etc/nginx/conf.d/default.conf:ro,Z \
   -v ~/mysite/html:/usr/share/nginx/html:ro,Z \
-  nginx:stable-alpine
+  docker.io/library/nginx:stable-alpine
 ```
 
 ## Hosting Multiple Sites with a Reverse Proxy
 
-When hosting multiple sites, use an Nginx reverse proxy container that routes traffic to backend containers. First, create a shared Podman network:
+When hosting multiple sites, use an Nginx reverse proxy container that routes traffic to backend containers. Because the proxy below publishes port 80 on the host, these examples use rootful Podman. First, create a shared Podman network:
 
 ```bash
-podman network create web-network
+sudo podman network create web-network
 ```
 
 Run two backend site containers:
 
 ```bash
-podman run -d --name site-a --network web-network \
+sudo podman run -d --name site-a --network web-network \
   -v ~/sites/site-a:/usr/share/nginx/html:ro,Z \
-  nginx:stable-alpine
+  docker.io/library/nginx:stable-alpine
 
-podman run -d --name site-b --network web-network \
+sudo podman run -d --name site-b --network web-network \
   -v ~/sites/site-b:/usr/share/nginx/html:ro,Z \
-  nginx:stable-alpine
+  docker.io/library/nginx:stable-alpine
 ```
 
 Create a reverse proxy configuration:
@@ -144,26 +144,27 @@ server {
 Run the proxy container:
 
 ```bash
-podman run -d --name reverse-proxy \
+sudo podman run -d --name reverse-proxy \
   --network web-network \
   -p 80:80 \
   -v ~/proxy/nginx.conf:/etc/nginx/conf.d/default.conf:ro,Z \
-  nginx:stable-alpine
+  docker.io/library/nginx:stable-alpine
 ```
 
 ## Adding TLS with Let's Encrypt
 
-Use Certbot to obtain certificates and mount them into your container:
+Use Certbot to obtain certificates before starting the HTTPS container, or stop anything already listening on port 80 while Certbot runs. Because Certbot stores the live certificate files as symlinks, mount the full `/etc/letsencrypt` tree into your container:
 
 ```bash
 sudo certbot certonly --standalone -d example.com
 
-podman run -d --name web-tls \
+sudo podman run -d --name web-tls \
+  --security-opt label=disable \
   -p 443:443 -p 80:80 \
-  -v /etc/letsencrypt/live/example.com:/certs:ro,Z \
+  -v /etc/letsencrypt:/etc/letsencrypt:ro \
   -v ~/mysite/nginx-tls.conf:/etc/nginx/conf.d/default.conf:ro,Z \
   -v ~/mysite/html:/usr/share/nginx/html:ro,Z \
-  nginx:stable-alpine
+  docker.io/library/nginx:stable-alpine
 ```
 
 The TLS Nginx config:
@@ -179,8 +180,8 @@ server {
     listen 443 ssl;
     server_name example.com;
 
-    ssl_certificate /certs/fullchain.pem;
-    ssl_certificate_key /certs/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
 
     root /usr/share/nginx/html;
     index index.html;
@@ -196,7 +197,7 @@ Create a Quadlet file so your web server starts automatically on boot:
 [Container]
 Image=docker.io/library/nginx:stable-alpine
 PublishPort=8080:80
-Volume=./html:/usr/share/nginx/html:ro,Z
+Volume=%h/mysite/html:/usr/share/nginx/html:ro,Z
 AutoUpdate=registry
 
 [Service]
@@ -207,12 +208,12 @@ TimeoutStartSec=30
 WantedBy=default.target
 ```
 
-Enable and start the service:
+Reload systemd, start the service, and enable lingering so the user service can start at boot:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user start web-server
-systemctl --user enable web-server
+systemctl --user start web-server.service
+loginctl enable-linger $USER
 ```
 
 ## Hosting a Dynamic Application
