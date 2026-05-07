@@ -44,10 +44,10 @@ NIC_ID=$(az vm show -g "$RG" -n vm-web-01 --query "networkProfile.networkInterfa
 
 az network nic list-effective-nsg \
     --ids "$NIC_ID" \
-    --query "effectiveSecurityRules[?contains(sourceAddressPrefix, ':') || contains(destinationAddressPrefix, ':')].{name:name, direction:direction, access:access, src:sourceAddressPrefix, dst:destinationAddressPrefix, port:destinationPortRange}"
+    --query "effectiveSecurityRules[].{name:name, direction:direction, access:access, protocol:protocol, src:sourceAddressPrefix, dst:destinationAddressPrefix, port:destinationPortRange}"
 
-# Common issue: No IPv6 rules allowing inbound traffic
-# Fix: Add explicit IPv6 rules to NSG
+# Common issue: The effective rule set doesn't allow the IPv6 flow you expect
+# Fix: Add or adjust the rule that should allow that flow
 
 az network nsg rule create \
     --resource-group "$RG" \
@@ -67,12 +67,12 @@ az network nsg rule create \
 # Check effective routes on NIC
 az network nic show-effective-route-table \
     --ids "$NIC_ID" \
-    --query "value[?contains(addressPrefix[0], ':')].{prefix:addressPrefix, nextHop:nextHopIpAddress, type:source}"
+    --query "value[?contains(addressPrefix[0], ':')].{prefix:addressPrefix, nextHopType:nextHopType, source:source, state:state}"
 
-# Expected: ::/0 route pointing to internet gateway
-# If missing: subnet route table doesn't have IPv6 default route
+# Review whether the expected IPv6 route is present and active
+# Effective routes combine Azure default routes, user-defined routes, and BGP-propagated routes
 
-# Check route table
+# Check subnet-associated route table for IPv6 UDRs
 ROUTE_TABLE_ID=$(az network vnet subnet show \
     --resource-group "$RG" \
     --vnet-name vnet-main \
@@ -82,29 +82,16 @@ ROUTE_TABLE_ID=$(az network vnet subnet show \
 if [ -n "$ROUTE_TABLE_ID" ]; then
     az network route-table show \
         --ids "$ROUTE_TABLE_ID" \
-        --query "routes[?contains(addressPrefix, ':')]"
+        --query "routes[?contains(addressPrefix, ':')].{name:name, prefix:addressPrefix, nextHopType:nextHopType, nextHopIp:nextHopIpAddress}"
 fi
 ```
 
 ## Step 4: Use IP Flow Verify
 
 ```bash
-# Test specific IPv6 flow with Network Watcher
-VM_ID=$(az vm show -g "$RG" -n vm-web-01 --query id -o tsv)
-
-# Test inbound HTTP over IPv6
-az network watcher test-ip-flow \
-    --direction Inbound \
-    --protocol TCP \
-    --local-ip "fd00:db8::10" \
-    --local-port 80 \
-    --remote-ip "2001:db8:client::1" \
-    --remote-port 50000 \
-    --nic "$NIC_ID" \
-    --vm "$VM_ID"
-
-# Access: Allow → NSG rules are correct
-# Access: Deny → Check which rule is blocking (ruleName in output)
+# Azure CLI IP flow verify currently documents IPv4-only tuple syntax for
+# --local and --remote. For IPv6 troubleshooting, use effective NSG rules
+# (Step 2) and test-connectivity against the target IPv6 address (Step 6).
 ```
 
 ## Step 5: Check DNS Resolution for IPv6
@@ -120,7 +107,7 @@ az network private-dns record-set aaaa list \
     --zone-name internal.example.com
 
 # Check if Azure-provided DNS returns AAAA
-nslookup -type=AAAA myvm.internal.cloudapp.net
+nslookup -type=AAAA myservice.example.com 168.63.129.16
 
 # Verify VNet-linked private DNS zones
 az network private-dns link vnet list \
@@ -133,17 +120,18 @@ az network private-dns link vnet list \
 ```bash
 # Connection troubleshoot tool
 SOURCE_VM_ID=$(az vm show -g "$RG" -n vm-source --query id -o tsv)
-DEST_VM_ID=$(az vm show -g "$RG" -n vm-dest --query id -o tsv)
+DEST_NIC_ID=$(az vm show -g "$RG" -n vm-dest --query "networkProfile.networkInterfaces[0].id" -o tsv)
+DEST_IPV6=$(az network nic show --ids "$DEST_NIC_ID" \
+    --query "ipConfigurations[?privateIPAddressVersion=='IPv6'].privateIPAddress | [0]" -o tsv)
 
 az network watcher test-connectivity \
-    --resource-group NetworkWatcherRG \
     --source-resource "$SOURCE_VM_ID" \
-    --dest-resource "$DEST_VM_ID" \
+    --dest-address "$DEST_IPV6" \
     --dest-port 80 \
-    --protocol TCP
+    --protocol Tcp
 
-# If unreachable: check hops in output for where it fails
-# Connection status shows exact hop where traffic is blocked
+# If unreachable: inspect hops and reported issues in output
+# Connection troubleshoot shows route and security-rule failures on the path
 ```
 
 ## Diagnostic Checklist
@@ -172,17 +160,17 @@ az network vnet subnet show --ids "$SUBNET_ID" --query "addressPrefixes[?contain
 
 # 3. NSG IPv6 rules
 echo ""
-echo "3. NSG IPv6 rules:"
+echo "3. Effective NSG rules:"
 az network nic list-effective-nsg --ids "$NIC_ID" \
-    --query "effectiveSecurityRules[?contains(sourceAddressPrefix, ':') || sourceAddressPrefix=='::/0'].{name:name, dir:direction, access:access}" 2>/dev/null
+    --query "effectiveSecurityRules[].{name:name, dir:direction, access:access, proto:protocol, src:sourceAddressPrefix, dst:destinationAddressPrefix, port:destinationPortRange}" 2>/dev/null
 
-# 4. Default route
+# 4. IPv6 effective routes
 echo ""
-echo "4. Default IPv6 route:"
+echo "4. IPv6 effective routes:"
 az network nic show-effective-route-table --ids "$NIC_ID" \
-    --query "value[?addressPrefix[0]=='::/0']" 2>/dev/null
+    --query "value[?contains(addressPrefix[0], ':')].{prefix:addressPrefix, nextHopType:nextHopType, source:source, state:state}" 2>/dev/null
 ```
 
 ## Conclusion
 
-Azure IPv6 troubleshooting follows a layered approach: verify the NIC has an IPv6 IP configuration, check the subnet has an IPv6 CIDR, confirm NSG rules explicitly allow IPv6 traffic, and verify route tables have `::/0` entries. Azure Network Watcher's IP flow verify tool quickly identifies which NSG rule is blocking specific IPv6 flows, saving time compared to manual rule analysis. Use `az network nic show-effective-route-table` and `az network nic list-effective-nsg` to see the actual applied configuration rather than just the configured resources.
+Azure IPv6 troubleshooting follows a layered approach: verify the NIC has an IPv6 IP configuration, check the subnet has an IPv6 CIDR, confirm the effective NSG rules allow the IPv6 flow you expect, and verify the effective route table contains the IPv6 routes required for the path you're testing. Use `az network nic show-effective-route-table` and `az network nic list-effective-nsg` to see the actual applied configuration rather than just the configured resources, and use connection troubleshoot to identify route or security-rule failures along an IPv6 path.
