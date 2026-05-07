@@ -8,15 +8,15 @@ Description: A comprehensive guide to resolving storage migration errors in Podm
 
 ---
 
-> Storage migration errors in Podman typically occur after version upgrades or when switching storage drivers. This guide covers every scenario and provides clear solutions for each.
+> Storage migration errors in Podman typically occur after version upgrades or when switching storage drivers. This guide covers common scenarios and provides clear solutions for each.
 
-Podman stores container images, layers, and metadata in a local database. When you upgrade Podman or change storage configurations, the system sometimes needs to migrate this data to a new format. When that migration fails, you can end up locked out of your containers entirely. This guide explains why storage migration errors happen and how to fix them.
+Podman stores container metadata in a local database and uses containers/storage for image and layer storage. When you upgrade Podman or change storage configurations, the system sometimes needs to migrate this data to a new format. When that migration fails, you can end up locked out of your containers entirely. This guide explains why storage migration errors happen and how to fix them.
 
 ---
 
 ## Why Storage Migration Errors Occur
 
-Podman uses a BoltDB database to track image layers, containers, and their metadata. When the internal schema changes between Podman versions, a migration step runs automatically. Migration errors happen when:
+Podman uses a local libpod database to track containers, pods, volumes, and related metadata. Older installations may still use the legacy BoltDB database, while current Podman releases use SQLite and can migrate legacy BoltDB databases. When the internal schema changes between Podman versions, a migration step runs automatically. Migration errors happen when:
 
 - The database file is corrupted
 - Another Podman process holds a lock on the database
@@ -70,14 +70,14 @@ ls -la ~/.local/share/containers/storage/libpod/
 
 ## Fixes for Common Scenarios
 
-### 1. Corrupted BoltDB Database
+### 1. Corrupted Podman Database
 
-The most common migration error comes from a corrupted BoltDB file. This often happens after a system crash or power loss during a write operation.
+The most common migration error comes from a corrupted Podman database file. This often happens after a system crash or power loss during a write operation.
 
-The database file is typically located at:
+The database files are typically located at:
 
-- Rootful: `/var/lib/containers/storage/libpod/bolt_state.db`
-- Rootless: `~/.local/share/containers/storage/libpod/bolt_state.db`
+- Rootful: `/var/lib/containers/storage/db.sql` or legacy `/var/lib/containers/storage/libpod/bolt_state.db`
+- Rootless: `~/.local/share/containers/storage/db.sql` or legacy `~/.local/share/containers/storage/libpod/bolt_state.db`
 
 If the database is corrupted beyond repair, the safest approach is a full reset:
 
@@ -92,11 +92,11 @@ podman system reset --force
 podman load -i backup.tar
 ```
 
-If `podman save` also fails, you can try manually backing up the image layers:
+If `podman save` also fails, you can make a last-resort copy of the raw storage directory before resetting. This is not a `podman load` archive, but it preserves the files for later manual recovery:
 
 ```bash
-# Copy the raw storage directory
-cp -r ~/.local/share/containers/storage/overlay-images ~/image-backup/
+# Copy the raw rootless storage directory
+cp -a ~/.local/share/containers/storage ~/containers-storage-backup/
 
 # Then reset
 podman system reset --force
@@ -113,8 +113,8 @@ find ~/.local/share/containers/storage/ -name "*.lock" -ls
 # Check for running Podman processes
 ps aux | grep podman
 
-# Kill any zombie Podman processes
-pkill -9 -f "podman|conmon|crun"
+# Stop stuck Podman-related processes
+pkill -f "podman|conmon|crun"
 ```
 
 After killing stale processes, remove the lock files:
@@ -150,7 +150,7 @@ To avoid this issue when intentionally switching drivers, always reset storage f
 
 ```bash
 # Step 1: Export images you want to keep
-podman save -o images-backup.tar $(podman images -q)
+podman save --multi-image-archive -o images-backup.tar $(podman images -q)
 
 # Step 2: Reset storage
 podman system reset --force
@@ -190,9 +190,8 @@ If you downgrade Podman to an older version, the database may contain schema ent
 # Check installed version
 podman --version
 
-# Check what version created the database
-# Look at the database metadata
-cat ~/.local/share/containers/storage/libpod/bolt_state.db | strings | head -20
+# Check database files
+ls -la ~/.local/share/containers/storage/db.sql ~/.local/share/containers/storage/libpod/ 2>/dev/null
 ```
 
 The only reliable fix for downgrade conflicts is to reset storage:
@@ -236,8 +235,8 @@ If disk space is the issue, free up space and try again:
 # Remove dangling images and stopped containers
 podman system prune --all --force
 
-# If that fails due to the migration error, manually clean up
-rm -rf ~/.local/share/containers/storage/overlay-containers/*/userdata/
+# If that fails due to the migration error, clean up external storage remainders
+podman system prune --external --force
 ```
 
 If disk space is not the issue, a full reset is the safest path:
