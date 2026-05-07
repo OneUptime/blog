@@ -8,7 +8,7 @@ Description: Learn how to use the -auto-approve flag in OpenTofu to skip the int
 
 ## Introduction
 
-The `-auto-approve` flag skips the interactive "yes/no" confirmation prompt in `tofu apply` and `tofu destroy`. It's required for automated pipelines where no human is present to type "yes", but must be used carefully in production environments.
+The `-auto-approve` flag skips the interactive "yes/no" confirmation prompt in `tofu apply` and `tofu destroy`. It's commonly used in automated pipelines when `tofu apply` is creating a new plan or when running `tofu destroy`, but must be used carefully in production environments.
 
 ## Basic Usage
 
@@ -34,7 +34,7 @@ With `-auto-approve`, this prompt is skipped entirely.
 
 ## Safe Usage Pattern
 
-Always plan before auto-approve apply:
+Always plan before an automated apply:
 
 ```bash
 # Step 1: Create and review the plan
@@ -43,18 +43,28 @@ tofu plan -out=deployment.tfplan
 # Step 2: Human reviews the plan (in CI: stored as artifact)
 # ...review happens here...
 
-# Step 3: Apply the pre-reviewed plan without prompts
-tofu apply -auto-approve deployment.tfplan
+# Step 3: Apply the pre-reviewed plan
+# Saved plan files do not prompt for approval
+tofu apply deployment.tfplan
 ```
 
 ## CI/CD Usage
 
 ```yaml
-# GitHub Actions: safe auto-approve pattern
+# GitHub Actions: safe plan-and-apply pattern
 jobs:
   plan:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set Up OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Init
+        run: tofu init -input=false
+
       - name: Plan
         run: tofu plan -out=plan.tfplan
 
@@ -66,22 +76,33 @@ jobs:
 
   apply:
     needs: plan
-    environment: production  # Requires manual approval in GitHub
+    runs-on: ubuntu-latest
+    environment: production  # Can require manual approval in GitHub when protection rules are configured
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set Up OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Init
+        run: tofu init -input=false
+
       - name: Download Plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: tfplan
+          path: .
 
-      - name: Apply (Auto-Approved because plan was pre-reviewed)
-        run: tofu apply -auto-approve plan.tfplan
+      - name: Apply (Saved plan files do not prompt for approval)
+        run: tofu apply plan.tfplan
 ```
 
 ## Combining with Other Flags
 
 ```bash
 # Apply saved plan without prompts
-tofu apply -auto-approve plan.tfplan
+tofu apply plan.tfplan
 
 # Apply with variables, no prompts
 tofu apply -auto-approve -var-file=prod.tfvars
@@ -94,7 +115,7 @@ tofu apply -refresh-only -auto-approve
 
 **Appropriate use cases:**
 - CI/CD pipelines with proper plan review gates
-- Applying pre-reviewed plan files
+- Non-interactive applies that generate a plan at runtime
 - Non-production automated environments
 - One-time setup scripts for scratch environments
 
@@ -126,4 +147,4 @@ fi
 
 ## Conclusion
 
-`-auto-approve` is essential for CI/CD automation but should never replace human review for production changes. The safe pattern is to create a plan, have a human review it (or use a CI environment approval gate), then apply the pre-reviewed plan file with `-auto-approve`. This gives you automation without sacrificing the safety of human review.
+`-auto-approve` is useful for CI/CD automation but should never replace human review for production changes. The safe pattern is to create a plan, have a human review it (or use a CI environment approval gate), then apply the pre-reviewed plan file. Saved plan files do not prompt for approval, so `-auto-approve` is unnecessary in that final step. This gives you automation without sacrificing the safety of human review.
