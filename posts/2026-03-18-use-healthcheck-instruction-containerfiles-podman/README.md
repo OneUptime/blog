@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Containerfile, HealthCheck, Container Monitoring, DevOps
 
-Description: Learn how to use the HEALTHCHECK instruction in Containerfiles for Podman to monitor container health, detect failures, and enable automatic recovery.
+Description: Learn how to use the HEALTHCHECK instruction in Containerfiles for Podman to monitor container health, detect failures, and integrate with automatic recovery policies.
 
 ---
 
@@ -39,7 +39,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN apk add --no-cache curl \
+  && npm ci --omit=dev
 COPY . .
 
 EXPOSE 3000
@@ -49,7 +50,7 @@ HEALTHCHECK CMD curl -f http://localhost:3000/health || exit 1
 CMD ["node", "server.js"]
 ```
 
-This health check uses curl to hit the `/health` endpoint. If the request fails (non-200 status code or connection error), the `|| exit 1` ensures the health check reports a failure.
+This health check uses curl to hit the `/health` endpoint. If the request returns an HTTP 4xx/5xx response or the connection fails, the `|| exit 1` ensures the health check reports a failure.
 
 Build and run it:
 
@@ -107,7 +108,7 @@ For database containers, you can check connectivity using the database client:
 FROM postgres:16-alpine
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=5 \
-  CMD pg_isready -U postgres -d mydb || exit 1
+  CMD pg_isready -U postgres -d postgres || exit 1
 ```
 
 PostgreSQL ships with `pg_isready`, a utility designed specifically for health checking. The longer start period accounts for database initialization time.
@@ -185,7 +186,7 @@ RUN apk add --no-cache curl
 
 WORKDIR /app
 COPY . .
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY healthcheck.sh /usr/local/bin/healthcheck.sh
 RUN chmod +x /usr/local/bin/healthcheck.sh
@@ -230,7 +231,7 @@ podman inspect web --format '{{.State.Health.Status}}'
 # View health check logs (last 5 results)
 podman inspect web --format '{{json .State.Health}}' | jq
 
-# Watch health status in real time
+# Run the health check manually
 podman healthcheck run web
 
 # List containers with health status
@@ -241,7 +242,7 @@ The `podman healthcheck run` command manually triggers a health check, which is 
 
 ## Health Checks with Podman Compose
 
-When using podman-compose, you can define health checks in your compose file and use them for dependency ordering:
+When using a Compose provider with Podman, you can define health checks in your compose file and use them for dependency ordering:
 
 ```yaml
 services:
@@ -270,11 +271,11 @@ services:
       retries: 3
 ```
 
-The `depends_on` with `condition: service_healthy` ensures the API container only starts after the database is confirmed healthy.
+The Compose specification defines `condition: service_healthy`, but actual behavior with Podman depends on the compose provider and version you use.
 
 ## Health Checks with Systemd Integration
 
-Podman integrates with systemd through Quadlet, and health checks work well in this context. Create a Quadlet container file to manage your service:
+Podman integrates with systemd through Quadlet, and health checks work well in this context when you pair them with a health failure action and a systemd restart policy. Create a Quadlet container file to manage your service:
 
 ```ini
 # ~/.config/containers/systemd/web.container
@@ -283,6 +284,7 @@ Image=my-web-app
 ContainerName=web
 HealthCmd=curl -f http://localhost:3000/health || exit 1
 HealthInterval=15s
+HealthOnFailure=kill
 HealthRetries=3
 
 [Service]
@@ -306,7 +308,7 @@ podman run -d --name web \
   --health-cmd="curl -f http://localhost:3000/health || exit 1" \
   --health-interval=15s \
   --health-retries=3 \
-  --restart=on-failure \
+  --health-on-failure=restart \
   my-web-app
 ```
 
@@ -316,4 +318,4 @@ Keep health checks lightweight so they do not consume significant resources on e
 
 ## Conclusion
 
-The HEALTHCHECK instruction transforms your containers from black boxes into observable services with built-in monitoring. By defining meaningful health checks, you enable Podman and orchestration tools to detect failures automatically and take corrective action. Start with a simple HTTP check for web services, and evolve your health checks as you better understand your application's failure modes.
+The HEALTHCHECK instruction transforms your containers from black boxes into observable services with built-in monitoring. By defining meaningful health checks, you enable Podman and orchestration tools to detect failures automatically and, when combined with health-failure actions or service manager policies, take corrective action. Start with a simple HTTP check for web services, and evolve your health checks as you better understand your application's failure modes.
