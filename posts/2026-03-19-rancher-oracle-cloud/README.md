@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, Oracle Cloud, Cloud, Installation
 
 Description: A practical guide to deploying Rancher on an Oracle Cloud Infrastructure compute instance.
 
-Oracle Cloud Infrastructure (OCI) offers competitive pricing and a generous free tier that includes compute instances suitable for running Rancher. This guide covers the complete process of setting up Rancher on an OCI compute instance, from creating the infrastructure to accessing the Rancher dashboard.
+Oracle Cloud Infrastructure (OCI) offers competitive pricing and flexible compute shapes for running Rancher. This guide covers the complete process of setting up Rancher on an OCI compute instance, from creating the infrastructure to accessing the Rancher dashboard.
 
 ## Prerequisites
 
@@ -22,7 +22,9 @@ Set commonly used values as environment variables:
 
 ```bash
 export COMPARTMENT_ID="ocid1.compartment.oc1..your-compartment-id"
-export AVAILABILITY_DOMAIN="Uocm:US-ASHBURN-AD-1"
+export AVAILABILITY_DOMAIN=$(oci iam availability-domain list \
+  --compartment-id $COMPARTMENT_ID \
+  --query 'data[0].name' --raw-output)
 ```
 
 ## Step 2: Create a Virtual Cloud Network
@@ -81,6 +83,17 @@ SL_ID=$(oci network security-list create \
   --query 'data.id' --raw-output)
 ```
 
+Associate the route table and security list with the subnet:
+
+```bash
+oci network subnet update \
+  --subnet-id $SUBNET_ID \
+  --route-table-id $RT_ID \
+  --security-list-ids "[\"$SL_ID\"]" \
+  --force \
+  --wait-for-state AVAILABLE
+```
+
 ## Step 4: Launch the Compute Instance
 
 Find the Ubuntu 22.04 image for your region:
@@ -100,32 +113,36 @@ IMAGE_ID=$(oci compute image list \
 Create the instance:
 
 ```bash
-oci compute instance launch \
+INSTANCE_ID=$(oci compute instance launch \
   --compartment-id $COMPARTMENT_ID \
   --availability-domain $AVAILABILITY_DOMAIN \
   --display-name rancher-server \
   --image-id $IMAGE_ID \
   --shape VM.Standard.E4.Flex \
-  --shape-config '{"ocpus":2,"memoryInGBs":16}' \
+  --shape-config '{"ocpus":4,"memoryInGBs":16}' \
   --subnet-id $SUBNET_ID \
   --assign-public-ip true \
   --ssh-authorized-keys-file ~/.ssh/id_rsa.pub \
-  --boot-volume-size-in-gbs 50
+  --boot-volume-size-in-gbs 50 \
+  --wait-for-state RUNNING \
+  --query 'data.id' --raw-output)
 ```
 
 Retrieve the public IP address:
 
 ```bash
-oci compute instance list-vnics \
+PUBLIC_IP=$(oci compute instance list-vnics \
   --compartment-id $COMPARTMENT_ID \
-  --instance-id <instance-id> \
-  --query 'data[0]."public-ip"' --raw-output
+  --instance-id $INSTANCE_ID \
+  --query 'data[0]."public-ip"' --raw-output)
+
+echo $PUBLIC_IP
 ```
 
 ## Step 5: SSH into the Instance
 
 ```bash
-ssh ubuntu@<public-ip>
+ssh ubuntu@$PUBLIC_IP
 ```
 
 ## Step 6: Install K3s, Helm, and Rancher
@@ -133,14 +150,16 @@ ssh ubuntu@<public-ip>
 Install K3s:
 
 ```bash
-curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+curl -sfL https://get.k3s.io | sudo sh -s - --write-kubeconfig-mode 0644
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 ```
 
 Install Helm:
 
 ```bash
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
 ```
 
 Install cert-manager:
@@ -177,8 +196,8 @@ Configure your DNS to point to the instance public IP and access `https://ranche
 
 ## Using OCI Free Tier
 
-OCI offers Always Free compute instances that can run Rancher for testing. The ARM-based Ampere A1 instances provide up to 4 OCPUs and 24 GB of RAM in the free tier, which is more than sufficient for a Rancher server.
+OCI offers Always Free compute instances, but the guide above uses the x86_64 `VM.Standard.E4.Flex` shape because Rancher's current installation requirements are for 64-bit x86 nodes. The ARM-based Ampere A1 instances provide up to 4 OCPUs and 24 GB of RAM in the free tier, but Rancher documents ARM64 as experimental, so they are best reserved for non-production testing.
 
 ## Summary
 
-Rancher is now running on Oracle Cloud Infrastructure. OCI provides competitive pricing and a generous free tier, making it an excellent platform for hosting your Rancher management server. You can import existing clusters or create new ones from the Rancher dashboard.
+Rancher is now running on Oracle Cloud Infrastructure. OCI provides competitive pricing and flexible compute options for hosting your Rancher management server. You can import existing clusters or create new ones from the Rancher dashboard.
