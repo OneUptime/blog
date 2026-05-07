@@ -10,7 +10,7 @@ Rancher backups contain sensitive configuration data including cluster credentia
 
 ## Prerequisites
 
-- Rancher v2.5 or later with the Backup Operator installed
+- Rancher with the Backup Operator installed
 - kubectl access with cluster admin privileges
 - OpenSSL or a similar tool for generating encryption keys
 
@@ -26,7 +26,7 @@ This generates a 256-bit key encoded in base64.
 
 ## Step 2: Create an Encryption Config Secret
 
-The Backup Operator uses a Kubernetes EncryptionConfiguration format for its encryption key. Create the encryption configuration file:
+The Backup Operator uses a Kubernetes `EncryptionConfiguration` for backup encryption. Create the encryption configuration file:
 
 ```yaml
 apiVersion: apiserver.config.k8s.io/v1
@@ -62,7 +62,7 @@ kind: Backup
 metadata:
   name: rancher-encrypted-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 10
   encryptionConfigSecretName: rancher-backup-encryption
 ```
@@ -83,7 +83,7 @@ kind: Backup
 metadata:
   name: rancher-encrypted-daily-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 30
   schedule: "0 2 * * *"
   encryptionConfigSecretName: rancher-backup-encryption
@@ -102,21 +102,24 @@ spec:
 Check that the backup was created with encryption:
 
 ```bash
-kubectl get backups.resources.cattle.io rancher-encrypted-backup -o yaml
+kubectl get backup rancher-encrypted-daily-backup -o jsonpath='{.status.filename}{"\n"}'
 ```
 
-The status should show the backup completed successfully. To verify the file is actually encrypted, download the backup file and try to read it without the key. An encrypted backup will not be readable as a standard tar archive:
+The backup should complete successfully, and the filename should end with `.enc`. To verify the encrypted content, download that exact backup file and inspect one of the Secret entries inside it:
 
 ```bash
-aws s3 cp s3://rancher-backups/encrypted-daily/rancher-encrypted-daily-backup.tar.gz .
-tar -tzf rancher-encrypted-daily-backup.tar.gz
+BACKUP_FILE=$(kubectl get backup rancher-encrypted-daily-backup -o jsonpath='{.status.filename}')
+aws s3 cp "s3://rancher-backups/encrypted-daily/${BACKUP_FILE}" .
+tar -tzf "${BACKUP_FILE}" | head
+SECRET_FILE=$(tar -tzf "${BACKUP_FILE}" | grep '^secrets\.#v1/' | head -n1)
+tar -xOf "${BACKUP_FILE}" "${SECRET_FILE}"
 ```
 
-The tar command should fail or show garbled content, confirming the data is encrypted.
+The archive remains a valid gzip-compressed tar file, but encrypted Secret entries will appear as a quoted encrypted blob instead of a normal Secret manifest.
 
 ## Step 6: Restore an Encrypted Backup
 
-When restoring an encrypted backup, you must provide the same encryption secret. Create the Restore resource:
+When restoring an encrypted backup, you must provide the same encryption secret and the exact backup filename, including the `.enc` suffix. Create the Restore resource:
 
 ```yaml
 apiVersion: resources.cattle.io/v1
@@ -124,7 +127,7 @@ kind: Restore
 metadata:
   name: rancher-encrypted-restore
 spec:
-  backupFilename: rancher-encrypted-daily-backup-2026-03-19.tar.gz
+  backupFilename: rancher-encrypted-daily-backup-<uid>-<timestamp>.tar.gz.enc
   encryptionConfigSecretName: rancher-backup-encryption
   storageLocation:
     s3:
@@ -183,10 +186,10 @@ The encryption key itself must be stored securely. Consider the following practi
 
 - Store a copy of the encryption key in a separate, secure location (e.g., a hardware security module or a secrets vault).
 - Never store the encryption key in the same location as the backups.
-- Use RBAC to restrict access to the encryption secret in Kubernetes.
+- If you run the Backup Operator with a custom least-privilege service account, use RBAC to scope access to the encryption secret in Kubernetes.
 - Document which key version was used for which backups.
 
-Apply RBAC restrictions to the secret:
+For a custom least-privilege deployment, you can scope access to the secret like this:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
