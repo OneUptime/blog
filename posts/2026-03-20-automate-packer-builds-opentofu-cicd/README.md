@@ -27,6 +27,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  id-token: write
+
 env:
   AWS_REGION: us-east-1
 
@@ -39,12 +43,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - name: Check changes
         id: changes
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
-          echo "app=$(git diff --name-only HEAD~1 HEAD | grep -q '^app/' && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "infra=$(git diff --name-only HEAD~1 HEAD | grep -q '^infrastructure/' && echo true || echo false)" >> $GITHUB_OUTPUT
+          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            CHANGED_FILES=$(git ls-files)
+          else
+            CHANGED_FILES=$(git diff --name-only "$BEFORE_SHA" "$GITHUB_SHA")
+          fi
+
+          echo "$CHANGED_FILES" | grep -q '^app/' && APP_CHANGED=true || APP_CHANGED=false
+          echo "$CHANGED_FILES" | grep -q '^infrastructure/' && INFRA_CHANGED=true || INFRA_CHANGED=false
+
+          echo "app=$APP_CHANGED" >> "$GITHUB_OUTPUT"
+          echo "infra=$INFRA_CHANGED" >> "$GITHUB_OUTPUT"
 
   build-image:
     needs: detect-changes
@@ -94,7 +109,7 @@ jobs:
             --overwrite
 
           aws ssm put-parameter \
-            --name "/images/app-server/${{ steps.version.outputs.app-version }}" \
+            --name "/images/app-server/${{ steps.version.outputs.version }}" \
             --value "${{ steps.build.outputs.ami-id }}" \
             --type String \
             --overwrite
@@ -106,7 +121,7 @@ jobs:
       (needs.build-image.result == 'success' ||
        needs.detect-changes.outputs.infra-changed == 'true')
     runs-on: ubuntu-latest
-    environment: production
+    environment: staging
     steps:
       - uses: actions/checkout@v4
 
@@ -127,7 +142,8 @@ jobs:
       - name: OpenTofu Plan
         run: |
           tofu -chdir=infrastructure plan \
-            -var="environment=prod" \
+            -var="environment=staging" \
+            -var="app_version=latest" \
             -out=tfplan
 
       - name: OpenTofu Apply
@@ -138,6 +154,11 @@ jobs:
 
 ```hcl
 # packer/web-server.pkr.hcl
+variable "git_sha" {
+  type    = string
+  default = env("GITHUB_SHA")
+}
+
 build {
   sources = ["source.amazon-ebs.web_server"]
 
@@ -149,7 +170,7 @@ build {
     strip_path = true
     custom_data = {
       version = var.app_version
-      git_sha = "${env("GITHUB_SHA")}"
+      git_sha = var.git_sha
     }
   }
 }
@@ -180,7 +201,7 @@ APP_VERSION="1.2.3"
 STAGING_AMI=$(aws ssm get-parameter --name "/images/app-server/${APP_VERSION}" --query 'Parameter.Value' --output text)
 
 # Deploy to production with this specific version
-tofu apply -var="app_version=${APP_VERSION}" -auto-approve
+tofu -chdir=infrastructure apply -var="environment=prod" -var="app_version=${APP_VERSION}" -auto-approve
 ```
 
 ## Conclusion
