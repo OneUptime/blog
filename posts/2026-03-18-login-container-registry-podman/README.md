@@ -10,7 +10,7 @@ Description: A practical guide to logging in to container registries with Podman
 
 > Logging in to a container registry is the first step to pulling private images and pushing your own.
 
-Most container registries require authentication before you can pull private images or push new ones. Podman provides the `podman login` command to handle registry authentication, storing credentials securely for future use. This guide covers all the ways to authenticate with container registries in Podman.
+Most container registries require authentication before you can pull private images or push new ones. Podman provides the `podman login` command to handle registry authentication, storing credentials in an auth file for future use. This guide covers all the ways to authenticate with container registries in Podman.
 
 ---
 
@@ -73,11 +73,11 @@ Podman stores credentials in an auth file. You can control where this file is st
 
 ```bash
 # Default auth file location
-# Rootful: /run/containers/0/auth.json
-# Rootless: ${XDG_RUNTIME_DIR}/containers/auth.json
+# Linux: ${XDG_RUNTIME_DIR}/containers/auth.json
+# Windows/macOS: $HOME/.config/containers/auth.json
 
-# View the default auth file path
-podman login docker.io --get-login 2>&1
+# View the auth file path used during login
+podman login docker.io --verbose
 
 # Store credentials in a custom auth file
 podman login docker.io --authfile /path/to/custom-auth.json
@@ -95,7 +95,7 @@ Check if you are currently logged in to a registry.
 podman login docker.io --get-login
 # Returns the username if logged in
 
-# View stored credentials (the file contains base64-encoded tokens)
+# View stored credentials (the file contains base64-encoded credentials)
 cat ${XDG_RUNTIME_DIR}/containers/auth.json | python3 -m json.tool
 
 # Test login by pulling a private image
