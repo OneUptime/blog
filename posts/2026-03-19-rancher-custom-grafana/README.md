@@ -33,7 +33,7 @@ In the panel editor:
 ```plaintext
 Query: sum(rate(container_cpu_usage_seconds_total{namespace="$namespace", container!=""}[5m])) by (pod)
 Legend: {{ pod }}
-Unit: short
+Unit: cores
 ```
 
 ### Gauge Panel for Memory Percentage
@@ -73,7 +73,9 @@ Variables make dashboards interactive by allowing users to filter data:
 Name: namespace
 Type: Query
 Data source: Prometheus
-Query: label_values(kube_pod_info, namespace)
+Query type: Label values
+Metric: kube_pod_info
+Label: namespace
 Sort: Alphabetical (asc)
 ```
 
@@ -83,7 +85,9 @@ Sort: Alphabetical (asc)
 Name: pod
 Type: Query
 Data source: Prometheus
-Query: label_values(kube_pod_info{namespace="$namespace"}, pod)
+Query type: Label values
+Metric: kube_pod_info{namespace="$namespace"}
+Label: pod
 Sort: Alphabetical (asc)
 Multi-value: enabled
 Include All option: enabled
@@ -95,10 +99,12 @@ Include All option: enabled
 Name: node
 Type: Query
 Data source: Prometheus
-Query: label_values(kube_node_info, node)
+Query type: Label values
+Metric: kube_node_info
+Label: node
 ```
 
-Reference variables in your queries using `$namespace`, `$pod`, or `$node`.
+Reference variables in your queries using `$namespace`, `$pod`, or `$node`. If you enable **Multi-value** or **Include All option**, use regex matchers such as `namespace=~"$namespace"` or `pod=~"$pod"` instead of `=`.
 
 ## Step 4: Save and Export the Dashboard
 
@@ -112,12 +118,12 @@ To export the dashboard as JSON for version control:
 2. Click **JSON Model** in the left sidebar.
 3. Copy the JSON content.
 
-Alternatively, use the Grafana API:
+Alternatively, use the authenticated Grafana API:
 
 ```bash
 kubectl port-forward -n cattle-monitoring-system svc/rancher-monitoring-grafana 3000:80
 
-curl -s http://localhost:3000/api/dashboards/uid/YOUR_DASHBOARD_UID | jq '.dashboard' > my-dashboard.json
+curl -s -u YOUR_GRAFANA_USERNAME:YOUR_GRAFANA_PASSWORD http://localhost:3000/api/dashboards/uid/YOUR_DASHBOARD_UID | jq '.dashboard' > my-dashboard.json
 ```
 
 ## Step 5: Provision Dashboards via ConfigMap
@@ -129,11 +135,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: custom-app-dashboard
-  namespace: cattle-monitoring-system
+  namespace: cattle-dashboards
   labels:
     grafana_dashboard: "1"
-  annotations:
-    grafana_folder: "Custom Applications"
 data:
   app-overview.json: |
     {
@@ -146,7 +150,7 @@ data:
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "fieldConfig": {
-            "defaults": { "unit": "short" }
+            "defaults": { "unit": "cores" }
           },
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
           "targets": [{
@@ -181,16 +185,18 @@ Apply the ConfigMap:
 kubectl apply -f custom-app-dashboard.yaml
 ```
 
-The Grafana sidecar automatically detects ConfigMaps with the `grafana_dashboard: "1"` label and loads them as dashboards.
+By default in Rancher Monitoring, the Grafana sidecar watches ConfigMaps with the `grafana_dashboard: "1"` label in the `cattle-dashboards` namespace and loads them as dashboards.
 
 ## Step 6: Organize Dashboards into Folders
 
-Use the `grafana_folder` annotation to organize dashboards:
+Folder-based organization for ConfigMap-provisioned dashboards is not enabled by default in Rancher Monitoring. To organize provisioned dashboards into folders, first enable the Grafana sidecar settings `grafana.sidecar.dashboards.folderAnnotation` and `grafana.sidecar.dashboards.provider.foldersFromFilesStructure=true` in the Monitoring chart.
+
+After that, annotate the ConfigMap with the configured folder annotation. With the sidecar's default annotation name, it looks like this:
 
 ```yaml
 metadata:
   annotations:
-    grafana_folder: "Team A Dashboards"
+    k8s-sidecar-target-directory: "Team A Dashboards"
 ```
 
 Different teams can have their own folders:
@@ -210,10 +216,10 @@ Grafana has a large library of community dashboards. To import one:
 5. Select the Prometheus data source and click **Import**.
 
 Popular dashboard IDs for Kubernetes:
-- **315** - Kubernetes cluster monitoring
-- **6417** - Kubernetes pods monitoring
+- **315** - Kubernetes cluster monitoring (via Prometheus)
+- **6417** - Kubernetes Cluster (Prometheus)
 - **1860** - Node Exporter Full
-- **13105** - Kubernetes Ingress Controller
+- **9614** - NGINX Ingress controller
 
 To persist an imported dashboard, export its JSON and create a ConfigMap as shown in Step 5.
 
@@ -226,11 +232,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: sli-dashboard
-  namespace: cattle-monitoring-system
+  namespace: cattle-dashboards
   labels:
     grafana_dashboard: "1"
-  annotations:
-    grafana_folder: "SRE"
 data:
   sli.json: |
     {
@@ -274,4 +278,4 @@ data:
 
 ## Summary
 
-Custom Grafana dashboards in Rancher can be created through the Grafana UI for quick prototyping or provisioned through Kubernetes ConfigMaps for persistence and version control. Use dashboard variables for interactivity, organize dashboards into folders for different teams, and import community dashboards for common monitoring scenarios. Always export and store dashboard JSON in ConfigMaps to ensure they persist across pod restarts.
+Custom Grafana dashboards in Rancher can be created through the Grafana UI for quick prototyping or provisioned through Kubernetes ConfigMaps for persistence and version control. Use dashboard variables for interactivity, import community dashboards for common monitoring scenarios, and store dashboard JSON in ConfigMaps in the `cattle-dashboards` namespace so dashboards persist across pod restarts. If you want ConfigMap-provisioned dashboards grouped into Grafana folders, enable folder-based sidecar provisioning in the Monitoring chart first.
