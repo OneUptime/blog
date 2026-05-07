@@ -73,7 +73,7 @@ podman info --format '{{.Host.EventLogger}}'
 podman run --rm alpine echo "journald test"
 
 # View events through podman
-podman events --since 1m
+podman events --since 1m --stream=false
 
 # View events through journalctl
 journalctl --user -t podman --since "1 minute ago"
@@ -92,11 +92,11 @@ The file backend writes events to a plain text file. This is useful on systems w
 # After changing the config, verify
 podman info --format '{{.Host.EventLogger}}'
 
-# The default file location for rootless Podman is:
-# ~/.local/share/containers/storage/events/events.log
+# By default, file events are stored under:
+# <tmpdir>/events/events.log
 
 # Check if the events file exists
-ls -la ~/.local/share/containers/storage/events/ 2>/dev/null
+ls -la "${XDG_RUNTIME_DIR:-/run/user/$UID}/libpod/tmp/events/" 2>/dev/null
 ```
 
 ## Setting the None Backend
@@ -112,8 +112,8 @@ The none backend disables event logging entirely. Use this only when you need ma
 # Verify the setting
 podman info --format '{{.Host.EventLogger}}'
 
-# Note: podman events will return immediately with no output
-podman events --since 1h
+# Note: podman events will report no events
+podman events --since 1h --stream=false
 ```
 
 ## Runtime Override with --events-backend
@@ -136,11 +136,9 @@ podman --events-backend=none run --rm alpine echo "no events"
 When using the file backend, you can configure where the log file is stored.
 
 ```bash
-# Check the default events log path
-podman info --format '{{.Store.EventsLogFilePath}}'
-
-# The events log file path can be configured in storage.conf
-# or via containers.conf engine options
+# Set the events log file path in containers.conf
+# [engine]
+# events_logfile_path = "/var/tmp/podman-events.log"
 ```
 
 ## Configuring Event Log File Size
@@ -150,10 +148,7 @@ The file backend supports a maximum log file size to prevent unbounded growth.
 ```bash
 # Set maximum events log file size in containers.conf
 # [engine]
-# events_log_file_size = 1000000  # Size in bytes (approximately 1MB)
-
-# Check current setting
-podman info --format '{{.Store.EventsLogFileSize}}'
+# events_logfile_max_size = "1m"
 ```
 
 ## Comparing Backend Performance
@@ -195,13 +190,11 @@ After changing the backend, always verify the change took effect.
 # Full verification script
 echo "=== Events Logger Configuration ==="
 echo "Current backend: $(podman info --format '{{.Host.EventLogger}}')"
-echo "Events log file path: $(podman info --format '{{.Store.EventsLogFilePath}}')"
-echo "Events log file size: $(podman info --format '{{.Store.EventsLogFileSize}}')"
 
 # Test event generation
 podman run --rm alpine echo "config test" 2>/dev/null
 echo "Recent events:"
-podman events --since 30s --format '{{.Time}} {{.Status}} {{.Name}}'
+podman events --since 30s --stream=false --format '{{.Time}} {{.Status}} {{.Name}}'
 ```
 
 ## Cleanup
