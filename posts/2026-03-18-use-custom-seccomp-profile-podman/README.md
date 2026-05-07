@@ -8,7 +8,7 @@ Description: Learn how to create and apply custom seccomp profiles in Podman to 
 
 ---
 
-> Seccomp profiles act as a syscall firewall, blocking dangerous operations before they ever reach the kernel.
+> Seccomp profiles act as a syscall firewall, blocking dangerous operations before the kernel executes them.
 
 Seccomp (Secure Computing Mode) filters limit the system calls a process can make to the Linux kernel. Podman applies a default seccomp profile that blocks around 50 dangerous syscalls, but you can write a custom profile to tighten restrictions further or allow specific syscalls your application needs.
 
@@ -18,7 +18,7 @@ This guide covers creating, applying, and testing custom seccomp profiles with P
 
 ## How Seccomp Works
 
-Seccomp profiles are JSON files that define a whitelist or blacklist of system calls. When a container process attempts a blocked syscall, the kernel either returns an error or terminates the process.
+Seccomp profiles are JSON files that define a whitelist or blacklist of system calls. When a container process attempts a blocked syscall, the kernel can return an error, terminate the process, or take another configured action such as logging the event.
 
 ```bash
 # Check if seccomp is enabled in your kernel
@@ -26,8 +26,7 @@ Seccomp profiles are JSON files that define a whitelist or blacklist of system c
 # The output should include CONFIG_SECCOMP=y
 grep CONFIG_SECCOMP /boot/config-$(uname -r)
 
-# View the default seccomp profile that Podman uses
-# Podman ships with a built-in default profile
+# Check whether Podman reports seccomp support on this host
 podman info --format '{{.Host.Security.SECCOMPEnabled}}'
 ```
 
@@ -104,7 +103,7 @@ podman run --rm \
 
 ## Creating a Profile That Blocks Specific Syscalls
 
-Instead of allowlisting, you can start with the default and block specific syscalls.
+Instead of allowlisting, you can create an allow-by-default profile and block specific syscalls.
 
 ```bash
 # Create a profile that blocks network-related syscalls
@@ -151,7 +150,7 @@ podman run -d --name seccomp-test \
   docker.io/library/alpine:latest sleep 3600
 
 # Inspect the container to confirm the seccomp profile path
-podman inspect seccomp-test --format '{{.HostConfig.SecurityOpt}}'
+podman inspect seccomp-test --format '{{ index .Config.Annotations "io.podman.annotations.seccomp" }}'
 
 # Clean up
 podman stop seccomp-test && podman rm seccomp-test
