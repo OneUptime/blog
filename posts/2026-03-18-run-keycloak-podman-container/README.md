@@ -36,8 +36,8 @@ Start Keycloak in development mode for quick testing.
 podman run -d \
   --name my-keycloak \
   -p 8080:8080 \
-  -e KEYCLOAK_ADMIN=admin \
-  -e KEYCLOAK_ADMIN_PASSWORD=admin-secret \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+  -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin-secret \
   quay.io/keycloak/keycloak:latest start-dev
 
 # Wait for Keycloak to start (takes about 30 seconds)
@@ -61,9 +61,11 @@ Use a PostgreSQL database for persistent Keycloak data.
 
 ```bash
 # Create a pod for Keycloak and PostgreSQL
+podman rm -f my-keycloak
+
 podman pod create \
   --name keycloak-pod \
-  -p 8081:8080
+  -p 8080:8080
 
 # Run PostgreSQL in the pod
 podman run -d \
@@ -82,8 +84,8 @@ sleep 5
 podman run -d \
   --pod keycloak-pod \
   --name keycloak-app \
-  -e KEYCLOAK_ADMIN=admin \
-  -e KEYCLOAK_ADMIN_PASSWORD=admin-secret \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+  -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin-secret \
   -e KC_DB=postgres \
   -e KC_DB_URL=jdbc:postgresql://localhost:5432/keycloak \
   -e KC_DB_USERNAME=keycloak \
