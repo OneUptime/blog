@@ -8,19 +8,19 @@ Description: Learn how ARP cache entries expire on Linux, how timeouts are confi
 
 ## ARP Cache Entry Lifecycle
 
-ARP cache entries do not last forever. Linux manages the lifecycle through several states:
+ARP cache entries do not last forever. Linux can move entries through several states:
 
 ```text
 INCOMPLETE → REACHABLE → STALE → DELAY → PROBE → FAILED
 ```
 
-| State | Description | Typical Duration |
+| State | Description | Typical Timing / Trigger |
 |-------|-------------|-----------------|
-| REACHABLE | Recently confirmed | base_reachable_time (~30s) |
-| STALE | Not verified recently | gc_stale_time (~60s) |
+| REACHABLE | Recently confirmed | randomized around `base_reachable_time_ms` (15–45s by default) |
+| STALE | Valid but not verified recently | no fixed timeout; revalidated on use |
 | DELAY | Waiting before probing | delay_first_probe_time (~5s) |
-| PROBE | Sending unicast probes | retrans_time × ucast_solicit |
-| FAILED | All probes failed | removed from cache |
+| PROBE | Reconfirming reachability | retrans_time_ms × ucast_solicit |
+| FAILED | Neighbor validation failed | after the probe budget is exhausted |
 
 ## Key Kernel Parameters
 
@@ -51,7 +51,7 @@ sysctl net.ipv4.neigh.default.base_reachable_time_ms
 
 ### `gc_stale_time`
 
-How long (in seconds) a STALE entry is kept before garbage collection removes it:
+How often (in seconds) the kernel checks for stale neighbor entries. When an entry is stale, Linux resolves it again before sending data to it:
 
 ```bash
 sysctl net.ipv4.neigh.default.gc_stale_time
@@ -60,7 +60,7 @@ sysctl net.ipv4.neigh.default.gc_stale_time
 
 ### `delay_first_probe_time`
 
-Seconds to wait in DELAY state before sending the first unicast probe:
+Seconds to wait in DELAY state before sending the first probe:
 
 ```bash
 sysctl net.ipv4.neigh.default.delay_first_probe_time
@@ -69,7 +69,7 @@ sysctl net.ipv4.neigh.default.delay_first_probe_time
 
 ### `ucast_solicit`
 
-Number of unicast ARP probes before marking as FAILED:
+Number of unicast ARP probes Linux sends in PROBE state while reconfirming a known neighbor:
 
 ```bash
 sysctl net.ipv4.neigh.default.ucast_solicit
@@ -78,7 +78,7 @@ sysctl net.ipv4.neigh.default.ucast_solicit
 
 ## Tuning ARP Cache Parameters
 
-### Increase Reachability Time (Reduce ARP Traffic)
+### Tune Reachability and Stale-Entry Checks
 
 For stable environments where MAC addresses rarely change:
 
@@ -86,14 +86,14 @@ For stable environments where MAC addresses rarely change:
 # Increase reachable time to 5 minutes
 sudo sysctl -w net.ipv4.neigh.default.base_reachable_time_ms=300000
 
-# Increase stale time
+# Adjust how often the kernel checks for stale neighbor entries
 sudo sysctl -w net.ipv4.neigh.default.gc_stale_time=120
 ```
 
 ### Persist Changes in `/etc/sysctl.conf`
 
 ```bash
-cat >> /etc/sysctl.conf << 'EOF'
+sudo tee -a /etc/sysctl.conf > /dev/null << 'EOF'
 net.ipv4.neigh.default.base_reachable_time_ms = 300000
 net.ipv4.neigh.default.gc_stale_time = 120
 EOF
@@ -112,9 +112,9 @@ sudo sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=60000
 Linux also has GC (Garbage Collection) thresholds for the ARP table size:
 
 ```bash
-sysctl net.ipv4.neigh.default.gc_thresh1  # Min entries (GC not triggered below this)
-sysctl net.ipv4.neigh.default.gc_thresh2  # Soft limit (GC starts)
-sysctl net.ipv4.neigh.default.gc_thresh3  # Hard limit (GC runs immediately)
+sysctl net.ipv4.neigh.default.gc_thresh1  # Minimum entries to keep
+sysctl net.ipv4.neigh.default.gc_thresh2  # Soft threshold; GC becomes more aggressive
+sysctl net.ipv4.neigh.default.gc_thresh3  # Maximum non-permanent entries
 ```
 
 For large networks (e.g., /22 or bigger):
@@ -127,9 +127,9 @@ sudo sysctl -w net.ipv4.neigh.default.gc_thresh3=4096
 
 ## Key Takeaways
 
-- REACHABLE entries transition to STALE after ~30 seconds by default.
-- STALE entries are kept ~60 seconds, then probed or removed.
-- `gc_thresh` parameters control the maximum size of the ARP cache.
+- REACHABLE entries transition to STALE after a randomized interval based on `base_reachable_time_ms` (15–45 seconds by default) if there is no positive feedback.
+- STALE entries are revalidated on use; `gc_stale_time` controls how often the kernel checks for stale neighbors.
+- `gc_thresh1`, `gc_thresh2`, and `gc_thresh3` control ARP cache garbage collection behavior and capacity.
 - Increase thresholds on routers or hypervisors with many neighbors to prevent ARP cache overflow.
 
 **Related Reading:**
