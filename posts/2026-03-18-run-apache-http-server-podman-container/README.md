@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Apache, HTTPD, Web Server
 
-Description: Learn how to run Apache HTTP Server inside a Podman container with virtual hosts, SSL, and custom modules.
+Description: Learn how to run Apache HTTP Server inside a Podman container with virtual hosts and custom modules.
 
 ---
 
 > Apache HTTP Server in Podman delivers a battle-tested web server with full module support in a portable, rootless container.
 
-Apache HTTP Server (httpd) remains one of the most popular and feature-rich web servers available. Running it inside a Podman container lets you maintain consistent configurations, quickly spin up isolated instances, and leverage the full power of Apache modules without installing anything on the host. This guide covers everything from basic setup to virtual hosts and SSL termination.
+Apache HTTP Server (httpd) remains one of the most popular and feature-rich web servers available. Running it inside a Podman container lets you maintain consistent configurations, quickly spin up isolated instances, and leverage the full power of Apache modules without installing anything on the host. This guide covers everything from basic setup to virtual hosts.
 
 ---
 
@@ -120,6 +120,10 @@ mkdir -p ~/apache-sites/site-a ~/apache-sites/site-b
 echo "<h1>Site A</h1>" > ~/apache-sites/site-a/index.html
 echo "<h1>Site B</h1>" > ~/apache-sites/site-b/index.html
 
+# Enable the virtual hosts configuration from the main Apache config
+grep -q '^Include conf/extra/httpd-vhosts.conf' ~/apache-config/httpd.conf || \
+  echo 'Include conf/extra/httpd-vhosts.conf' >> ~/apache-config/httpd.conf
+
 # Create a virtual hosts configuration file
 cat > ~/apache-config/vhosts.conf <<'EOF'
 # Virtual host for Site A
@@ -147,6 +151,7 @@ EOF
 podman run -d \
   --name apache-vhosts \
   -p 8083:80 \
+  -v ~/apache-config/httpd.conf:/usr/local/apache2/conf/httpd.conf:Z \
   -v ~/apache-config/vhosts.conf:/usr/local/apache2/conf/extra/httpd-vhosts.conf:Z \
   -v ~/apache-sites:/usr/local/apache2/htdocs:Z \
   httpd:latest
@@ -167,8 +172,8 @@ podman logs my-apache
 # Reload Apache configuration gracefully
 podman exec my-apache apachectl graceful
 
-# Check running Apache processes inside the container
-podman exec my-apache ps aux
+# Check running Apache processes in the container
+podman top my-apache
 
 # Stop and remove the container
 podman stop my-apache
