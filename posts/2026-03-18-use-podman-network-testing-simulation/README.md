@@ -53,7 +53,7 @@ podman network create \
   test-net-internal
 ```
 
-The `--internal` flag prevents external network access, creating a fully isolated environment.
+The `--internal` flag removes the default route and restricts DNS lookups to container names on that network, creating an isolated environment without external network access by default.
 
 ## Multi-Container Network Testing
 
@@ -92,34 +92,35 @@ print(f'HTTP Status: {response.status}')
 
 ### Cross-Network Communication Testing
 
-Test connectivity between different networks:
+Test connectivity between different networks. A container attached to both can reach each network, but containers on separate networks remain isolated unless you add routing explicitly:
 
 ```bash
 # Create two networks
-podman network create net-alpha --subnet 10.50.0.0/24
-podman network create net-beta --subnet 10.60.0.0/24
+podman network create --subnet 10.50.0.0/24 net-alpha
+podman network create --subnet 10.60.0.0/24 net-beta
 
 # Container only on net-alpha
 podman run -d --name alpha-only \
   --network net-alpha \
-  alpine sleep infinity
+  alpine sleep 3600
 
-# Container on both networks (acts as a router/bridge)
+# Container on both networks (can reach both networks itself)
 podman run -d --name bridge-host \
   --network net-alpha \
-  alpine sleep infinity
+  alpine sleep 3600
 podman network connect net-beta bridge-host
 
 # Container only on net-beta
 podman run -d --name beta-only \
   --network net-beta \
-  alpine sleep infinity
+  alpine sleep 3600
 
 # Test: alpha-only cannot reach beta-only directly
 podman exec alpha-only ping -c 1 -W 2 beta-only 2>&1 || echo "Expected: cannot reach"
 
-# Test: bridge-host can reach both
-podman exec bridge-host ping -c 1 web-server 2>&1 || echo "Check connectivity"
+# Test: bridge-host can reach containers on both networks
+podman exec bridge-host ping -c 1 alpha-only
+podman exec bridge-host ping -c 1 beta-only
 ```
 
 ## Simulating Network Conditions
@@ -150,7 +151,7 @@ RUN dnf install -y \
 
 RUN pip3 install requests aiohttp
 
-ENTRYPOINT ["/bin/bash"]
+CMD ["/bin/bash"]
 ```
 
 ```bash
@@ -204,8 +205,8 @@ podman run --rm -it \
     curl -o /dev/null -w "Speed: %{speed_download} bytes/sec\n" \
       http://target-server/
 
-    # Test with iperf3
-    # iperf3 -c target-server
+    # For a more meaningful throughput test, run against an iperf3 server
+    # iperf3 -c iperf-server
   '
 ```
 
@@ -278,9 +279,7 @@ podman stop iperf-server && podman rm iperf-server
 """Network testing framework using Podman."""
 
 import subprocess
-import json
 import time
-import sys
 
 class NetworkTestEnvironment:
     """Create and manage network test environments."""
@@ -298,7 +297,7 @@ class NetworkTestEnvironment:
         )
         print(f"Created network: {self.network}")
 
-    def add_server(self, name, image, port, command=None):
+    def add_server(self, name, image, command=None):
         """Add a server container."""
         cmd = ["podman", "run", "-d",
                "--name", f"{self.name}-{name}",
@@ -354,9 +353,9 @@ class NetworkTestEnvironment:
 env = NetworkTestEnvironment("net-test")
 env.setup()
 
-env.add_server("web", "nginx:latest", 80)
-env.add_server("client", "fedora:latest", 0,
-               ["sleep", "infinity"])
+env.add_server("web", "nginx:latest")
+env.add_server("client", "nettools",
+               ["sleep", "3600"])
 
 time.sleep(3)  # Wait for containers to start
 
@@ -387,24 +386,38 @@ podman run --rm \
     pip3 install httpx
     python3 -c "
 import httpx
+import asyncio
 import time
 import statistics
 
 url = \"http://load-target:80/\"
+request_count = 100
+concurrency = 10
 results = []
 
-print(\"Starting load test...\")
-for i in range(100):
-    start = time.time()
-    response = httpx.get(url)
-    elapsed = (time.time() - start) * 1000
-    results.append(elapsed)
+async def fetch(client, sem):
+    async with sem:
+        start = time.perf_counter()
+        response = await client.get(url)
+        response.raise_for_status()
+        elapsed = (time.perf_counter() - start) * 1000
+        results.append(elapsed)
 
+async def main():
+    sem = asyncio.Semaphore(concurrency)
+    async with httpx.AsyncClient() as client:
+        await asyncio.gather(*(fetch(client, sem) for _ in range(request_count)))
+
+print(\"Starting load test...\")
+asyncio.run(main())
+
+sorted_results = sorted(results)
 print(f\"Requests: {len(results)}\")
+print(f\"Concurrency: {concurrency}\")
 print(f\"Avg: {statistics.mean(results):.1f}ms\")
 print(f\"P50: {statistics.median(results):.1f}ms\")
-print(f\"P95: {sorted(results)[94]:.1f}ms\")
-print(f\"P99: {sorted(results)[98]:.1f}ms\")
+print(f\"P95: {sorted_results[94]:.1f}ms\")
+print(f\"P99: {sorted_results[98]:.1f}ms\")
 print(f\"Max: {max(results):.1f}ms\")
 "
   '
@@ -423,7 +436,7 @@ podman network create --subnet 10.100.0.0/24 public-net
 podman network create --subnet 10.101.0.0/24 --internal service-net
 podman network create --subnet 10.102.0.0/24 --internal data-net
 
-# API Gateway (public + service)
+# Public entry point placeholder (public + service)
 podman run -d --name api-gateway \
   --network public-net \
   -p 8080:80 \
@@ -458,7 +471,7 @@ podman run -d --name test-db \
 podman network connect data-net user-service
 
 echo "Microservice network topology created"
-echo "API Gateway: http://localhost:8080"
+echo "Public entry point: http://localhost:8080"
 echo ""
 echo "Network topology:"
 echo "  public-net:  api-gateway"
@@ -468,7 +481,7 @@ echo "  data-net:    user-service, test-db"
 
 ## Firewall Rule Testing
 
-Test iptables and nftables rules in isolated environments:
+Test firewall rules in isolated environments:
 
 ```bash
 podman run --rm -it \
@@ -499,13 +512,13 @@ podman run --rm -it \
 echo "Cleaning up network test environment..."
 
 # Stop and remove all test containers
-for container in $(podman ps -a --format '{{.Names}}' | grep -E '^(test-|net-test|load-)'); do
+for container in $(podman ps -a --format '{{.Names}}' | grep -E '^(web-server|app-server|alpha-only|bridge-host|beta-only|target-server|packet-capture|iperf-server|load-target|api-gateway|user-service|test-db|net-test-.*)$'); do
     podman rm -f "$container" 2>/dev/null
     echo "  Removed container: $container"
 done
 
 # Remove test networks
-for network in $(podman network ls --format '{{.Name}}' | grep -E '(test-net|frontend-net|backend-net|database-net)'); do
+for network in $(podman network ls --format '{{.Name}}' | grep -E '^(frontend-net|backend-net|database-net|dns-test-net|net-alpha|net-beta|test-net.*|public-net|service-net|data-net)$'); do
     podman network rm "$network" 2>/dev/null
     echo "  Removed network: $network"
 done
