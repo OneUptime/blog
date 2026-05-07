@@ -24,8 +24,8 @@ Image signing creates a cryptographic signature that can be verified before depl
 
 # 1. Build the image in CI
 # 2. Push the image to a registry
-# 3. Sign the image with a private key
-# 4. Verification happens at deployment time using the public key
+# 3. Sign the image, preferably by digest
+# 4. Verification happens at deployment time using the expected public key or identity
 
 # The two main approaches:
 # - cosign (Sigstore): Modern, keyless signing or key-based signing
@@ -60,7 +60,8 @@ TAG="${COMMIT_SHA}"
 
 # Build and push the image with Podman
 podman build -t "${IMAGE}:${TAG}" .
-podman push "${IMAGE}:${TAG}"
+podman push --digestfile image.digest "${IMAGE}:${TAG}"
+DIGEST=$(cat image.digest)
 
 # Generate a key pair (do this once, store the private key securely)
 # cosign generate-key-pair
@@ -68,12 +69,12 @@ podman push "${IMAGE}:${TAG}"
 
 # Sign the image using the private key
 # The COSIGN_PASSWORD environment variable holds the key password
-cosign sign --key cosign.key "${IMAGE}:${TAG}"
+cosign sign --yes --key cosign.key "${IMAGE}@${DIGEST}"
 
-echo "Image signed successfully: ${IMAGE}:${TAG}"
+echo "Image signed successfully: ${IMAGE}@${DIGEST}"
 
 # Verify the signature using the public key
-cosign verify --key cosign.pub "${IMAGE}:${TAG}"
+cosign verify --key cosign.pub "${IMAGE}@${DIGEST}"
 ```
 
 ## Keyless Signing with Cosign and OIDC
@@ -86,19 +87,25 @@ Use keyless signing in CI for simpler key management. This uses OIDC tokens from
 # Uses the CI provider's OIDC identity instead of a static key
 
 REGISTRY="docker.io/myorg"
-IMAGE="${REGISTRY}/myapp:${COMMIT_SHA}"
+IMAGE="${REGISTRY}/myapp"
+TAG="${COMMIT_SHA}"
 
 # Build and push the image
-podman build -t "${IMAGE}" .
-podman push "${IMAGE}"
+podman build -t "${IMAGE}:${TAG}" .
+podman push --digestfile image.digest "${IMAGE}:${TAG}"
+DIGEST=$(cat image.digest)
 
 # Keyless sign using the CI provider's OIDC token
-# This works automatically in GitHub Actions, GitLab CI, etc.
-COSIGN_EXPERIMENTAL=1 cosign sign "${IMAGE}"
+# This works automatically in GitHub Actions; configure an OIDC token
+# for other CI systems.
+cosign sign --yes "${IMAGE}@${DIGEST}"
 
 # The signature is stored in the registry alongside the image
 # Verification uses the Sigstore transparency log
-COSIGN_EXPERIMENTAL=1 cosign verify "${IMAGE}"
+cosign verify \
+  --certificate-identity "https://github.com/myorg/myapp/.github/workflows/sign.yml@refs/heads/main" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  "${IMAGE}@${DIGEST}"
 ```
 
 ## GitHub Actions with Cosign Signing
@@ -117,6 +124,7 @@ jobs:
   build-sign:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       packages: write
       id-token: write  # Required for keyless signing
 
@@ -125,7 +133,7 @@ jobs:
 
       # Install cosign
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4.1.0
 
       # Log in to GHCR
       - name: Login to GHCR
@@ -143,21 +151,25 @@ jobs:
       # Push the image
       - name: Push image
         run: |
-          podman push ghcr.io/${{ github.repository }}:${{ github.sha }}
+          podman push \
+            --digestfile image.digest \
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
 
       # Sign the image with keyless signing (uses GitHub OIDC)
       - name: Sign image
         run: |
+          DIGEST=$(cat image.digest)
           cosign sign --yes \
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}@${DIGEST}
 
       # Verify the signature
       - name: Verify signature
         run: |
+          DIGEST=$(cat image.digest)
           cosign verify \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity-regexp "github.com/${{ github.repository }}" \
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/sign.yml@refs/heads/main" \
+            ghcr.io/${{ github.repository }}@${DIGEST}
 ```
 
 ## Signing with GPG Keys
@@ -184,8 +196,11 @@ GPG_FINGERPRINT=$(gpg --list-keys --with-colons ci-signer@example.com | \
   grep '^fpr' | head -1 | cut -d: -f10)
 echo "GPG Key Fingerprint: ${GPG_FINGERPRINT}"
 
-# Configure Podman to sign images when pushing
-# Create the signing policy
+# Export the public key used by deployment targets for verification
+mkdir -p /etc/pki/containers
+gpg --armor --export ci-signer@example.com > /etc/pki/containers/signer.pub
+
+# Create the verification policy used when pulling images
 mkdir -p /etc/containers
 cat > /etc/containers/policy.json << 'EOF'
 {
@@ -206,13 +221,17 @@ EOF
 mkdir -p /etc/containers/registries.d
 cat > /etc/containers/registries.d/default.yaml << EOF
 default-docker:
-  sigstore: https://sigstore.example.com/signatures
-  sigstore-staging: file:///var/lib/containers/sigstore
+  lookaside: https://sigstore.example.com/signatures
+  lookaside-staging: file:///var/lib/containers/sigstore
 docker:
   registry.example.com:
-    sigstore: https://sigstore.example.com/signatures
-    sigstore-staging: file:///var/lib/containers/sigstore
+    lookaside: https://sigstore.example.com/signatures
+    lookaside-staging: file:///var/lib/containers/sigstore
 EOF
+
+# Sign while pushing the image to the registry
+podman push --sign-by "${GPG_FINGERPRINT}" \
+  registry.example.com/myorg/myapp:${COMMIT_SHA}
 ```
 
 ## Verifying Signatures Before Deployment
