@@ -30,7 +30,7 @@ kubectl create secret generic datadog-api-secret \
 
 ## Step 3: Create a ClusterOutput for Datadog
 
-Rancher's logging operator supports Datadog through the Fluentd Datadog plugin via the HTTP output:
+Rancher's logging operator supports Datadog through the Fluentd Datadog output plugin:
 
 ```yaml
 apiVersion: logging.banzaicloud.io/v1beta1
@@ -49,8 +49,8 @@ spec:
     dd_sourcecategory: kubernetes
     dd_tags: "cluster:production,environment:prod"
     host: http-intake.logs.datadoghq.com
-    port: 443
-    ssl_port: 443
+    port: "443"
+    ssl_port: "443"
     use_ssl: true
     buffer:
       type: file
@@ -59,7 +59,7 @@ spec:
       total_limit_size: 2GB
       flush_interval: 5s
       flush_thread_count: 2
-      retry_max_interval: 60
+      retry_max_interval: 60s
       retry_forever: true
 ```
 
@@ -84,15 +84,16 @@ spec:
     - parser:
         parse:
           type: json
-        key_name: log
         reserve_data: true
         remove_key_name_field: true
-        suppress_parse_error_log: true
+        emit_invalid_record_to_error: false
 
     - record_transformer:
         records:
           - cluster_name: "production"
-            dd_tags: "cluster:production,environment:prod"
+
+  match:
+    - select: {}
 
   globalOutputRefs:
     - datadog-output
@@ -100,32 +101,46 @@ spec:
 
 ## Step 5: Add Kubernetes Tags for Datadog
 
-Enrich logs with Kubernetes metadata as Datadog tags:
+If you want to enrich the cluster-wide flow with Kubernetes metadata as Datadog tags, update the `ClusterFlow` from Step 4 instead of creating a second `ClusterFlow`:
 
 ```yaml
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterFlow
 metadata:
-  name: tagged-datadog-logs
+  name: all-to-datadog
   namespace: cattle-logging-system
 spec:
   filters:
+    - parser:
+        parse:
+          type: json
+        reserve_data: true
+        remove_key_name_field: true
+        emit_invalid_record_to_error: false
+
     - record_transformer:
         enable_ruby: true
         records:
-          - dd_tags: >-
+          - cluster_name: "production"
+          - ddtags: >-
               cluster:production,
+              environment:prod,
               namespace:${record.dig("kubernetes", "namespace_name")},
               pod:${record.dig("kubernetes", "pod_name")},
               container:${record.dig("kubernetes", "container_name")}
           - ddsource: "kubernetes"
           - service: "${record.dig('kubernetes', 'labels', 'app') || record.dig('kubernetes', 'container_name')}"
 
+  match:
+    - select: {}
+
   globalOutputRefs:
     - datadog-output
 ```
 
 ## Step 6: Route Different Logs with Different Tags
+
+If you want separate routing for infrastructure and application logs, replace the single cluster-wide `ClusterFlow` with the following two `ClusterFlow` resources so each log line matches only one flow:
 
 ```yaml
 # Infrastructure logs
@@ -141,11 +156,20 @@ spec:
         namespaces:
           - kube-system
           - cattle-system
+          - cattle-logging-system
   filters:
+    - parser:
+        parse:
+          type: json
+        reserve_data: true
+        remove_key_name_field: true
+        emit_invalid_record_to_error: false
     - record_transformer:
+        enable_ruby: true
         records:
-          - ddsource: "kubernetes-infra"
-          - dd_tags: "team:platform,layer:infrastructure"
+          - ddsource: "kubernetes"
+          - ddtags: "cluster:production,environment:prod,team:platform,layer:infrastructure"
+          - service: "${record.dig('kubernetes', 'labels', 'app') || record.dig('kubernetes', 'container_name')}"
   globalOutputRefs:
     - datadog-output
 ---
@@ -164,10 +188,18 @@ spec:
           - cattle-logging-system
     - select: {}
   filters:
+    - parser:
+        parse:
+          type: json
+        reserve_data: true
+        remove_key_name_field: true
+        emit_invalid_record_to_error: false
     - record_transformer:
+        enable_ruby: true
         records:
-          - ddsource: "kubernetes-app"
-          - dd_tags: "team:engineering,layer:application"
+          - ddsource: "kubernetes"
+          - ddtags: "cluster:production,environment:prod,team:engineering,layer:application"
+          - service: "${record.dig('kubernetes', 'labels', 'app') || record.dig('kubernetes', 'container_name')}"
   globalOutputRefs:
     - datadog-output
 ```
@@ -223,7 +255,8 @@ Archives allow you to rehydrate historical logs for investigation without keepin
 Check Fluentd logs:
 
 ```bash
-kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd | grep -i datadog
+kubectl get pods -n cattle-logging-system | grep fluentd
+kubectl logs -n cattle-logging-system <fluentd-pod-name> -c fluentd | grep -i datadog
 ```
 
 In Datadog:
