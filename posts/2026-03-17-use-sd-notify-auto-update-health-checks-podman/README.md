@@ -104,24 +104,50 @@ package main
 
 import (
     "net"
-    "os"
     "net/http"
+    "os"
+    "time"
 )
 
 func main() {
     // Initialize the application
     setupDatabase()
-    setupRoutes()
+
+    http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+        w.WriteHeader(http.StatusOK)
+    })
 
     // Start the HTTP server
-    go http.ListenAndServe(":3000", nil)
+    go func() {
+        if err := http.ListenAndServe(":3000", nil); err != nil {
+            os.Exit(1)
+        }
+    }()
 
     // Verify the server is accepting connections
     // then notify systemd
+    waitForServer("127.0.0.1:3000", 10*time.Second)
     notifyReady()
 
     // Block forever
     select {}
+}
+
+func setupDatabase() {
+    // Initialize database connections here.
+}
+
+func waitForServer(addr string, timeout time.Duration) {
+    deadline := time.Now().Add(timeout)
+    for time.Now().Before(deadline) {
+        conn, err := net.DialTimeout("tcp", addr, time.Second)
+        if err == nil {
+            conn.Close()
+            return
+        }
+        time.Sleep(200 * time.Millisecond)
+    }
+    os.Exit(1)
 }
 
 func notifyReady() {
