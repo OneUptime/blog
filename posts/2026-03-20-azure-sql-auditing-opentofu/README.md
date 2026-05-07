@@ -46,7 +46,7 @@ resource "azurerm_mssql_server_extended_auditing_policy" "server_audit" {
   # Retain audit logs for 90 days
   retention_in_days = 90
 
-  # Enable audit for all event types
+  # Enable the auditing policy
   enabled = true
 }
 ```
@@ -69,24 +69,18 @@ resource "azurerm_mssql_database" "app_db" {
   sku_name  = "S1"
 }
 
-# Database-level auditing to Log Analytics
+# Enable database audit events for Azure Monitor
 resource "azurerm_mssql_database_extended_auditing_policy" "db_audit" {
-  database_id                             = azurerm_mssql_database.app_db.id
-  log_monitoring_enabled                  = true
-
-  # Send to Log Analytics workspace
-  storage_endpoint                        = azurerm_storage_account.audit_storage.primary_blob_endpoint
-  storage_account_access_key              = azurerm_storage_account.audit_storage.primary_access_key
-  storage_account_access_key_is_secondary = false
-  retention_in_days                       = 90
-  enabled                                 = true
+  database_id            = azurerm_mssql_database.app_db.id
+  log_monitoring_enabled = true
+  enabled                = true
 }
 ```
 
 ## Step 4: Diagnostic Settings for Log Analytics
 
 ```hcl
-# Diagnostic settings route audit logs to Log Analytics
+# Diagnostic settings route audit events and metrics to Log Analytics
 resource "azurerm_monitor_diagnostic_setting" "sql_diagnostics" {
   name               = "sql-audit-diagnostics"
   target_resource_id = azurerm_mssql_database.app_db.id
@@ -96,13 +90,8 @@ resource "azurerm_monitor_diagnostic_setting" "sql_diagnostics" {
     category = "SQLSecurityAuditEvents"
   }
 
-  enabled_log {
-    category = "SQLInsights"
-  }
-
-  metric {
+  enabled_metric {
     category = "Basic"
-    enabled  = true
   }
 }
 ```
@@ -115,7 +104,7 @@ output "audit_storage_endpoint" {
 }
 
 output "log_analytics_workspace_id" {
-  value = azurerm_log_analytics_workspace.law.workspace_id
+  value = azurerm_log_analytics_workspace.law.id
 }
 ```
 
