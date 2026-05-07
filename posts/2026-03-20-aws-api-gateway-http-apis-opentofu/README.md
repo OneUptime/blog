@@ -6,7 +6,7 @@ Tags: OpenTofu, AWS, API Gateway, HTTP API, Lambda, Infrastructure as Code
 
 Description: Learn how to create AWS API Gateway HTTP APIs with OpenTofu for low-latency, cost-effective API hosting with JWT authorization, CORS, and Lambda integrations.
 
-HTTP APIs are the next-generation API Gateway offering - up to 60% cheaper and 60% faster than REST APIs, with simpler configuration. They support JWT authorizers, CORS configuration, automatic deployments, and Lambda proxy integrations. Use HTTP APIs for new projects unless you specifically need REST API features like request validation models or API caching.
+HTTP APIs are a newer API Gateway offering with lower cost, lower latency, and simpler configuration than REST APIs. They support JWT authorizers, CORS configuration, automatic deployments, and Lambda proxy integrations. Use HTTP APIs for new projects unless you specifically need REST API features like request validation models or API caching.
 
 ## HTTP API with Lambda Integration
 
@@ -36,7 +36,7 @@ resource "aws_apigatewayv2_integration" "lambda" {
   integration_uri  = aws_lambda_function.api.invoke_arn
 
   payload_format_version = "2.0"  # HTTP API uses format 2.0 (simpler event structure)
-  timeout_milliseconds   = 29000  # Max 29 seconds
+  timeout_milliseconds   = 29000  # HTTP APIs support up to 30 seconds
 }
 
 # Route: GET /users
@@ -59,7 +59,7 @@ resource "aws_apigatewayv2_route" "create_user" {
   authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
 }
 
-# Catch-all route for 404 handling
+# Catch-all route for application-level 404 handling
 resource "aws_apigatewayv2_route" "default" {
   api_id    = aws_apigatewayv2_api.main.id
   route_key = "$default"
@@ -131,11 +131,26 @@ resource "aws_lambda_permission" "api_gateway" {
 ```hcl
 locals {
   routes = {
-    "GET /users"         = aws_lambda_function.list_users.invoke_arn
-    "POST /users"        = aws_lambda_function.create_user.invoke_arn
-    "GET /users/{id}"    = aws_lambda_function.get_user.invoke_arn
-    "PUT /users/{id}"    = aws_lambda_function.update_user.invoke_arn
-    "DELETE /users/{id}" = aws_lambda_function.delete_user.invoke_arn
+    "GET /users" = {
+      invoke_arn    = aws_lambda_function.list_users.invoke_arn
+      function_name = aws_lambda_function.list_users.function_name
+    }
+    "POST /users" = {
+      invoke_arn    = aws_lambda_function.create_user.invoke_arn
+      function_name = aws_lambda_function.create_user.function_name
+    }
+    "GET /users/{id}" = {
+      invoke_arn    = aws_lambda_function.get_user.invoke_arn
+      function_name = aws_lambda_function.get_user.function_name
+    }
+    "PUT /users/{id}" = {
+      invoke_arn    = aws_lambda_function.update_user.invoke_arn
+      function_name = aws_lambda_function.update_user.function_name
+    }
+    "DELETE /users/{id}" = {
+      invoke_arn    = aws_lambda_function.delete_user.invoke_arn
+      function_name = aws_lambda_function.delete_user.function_name
+    }
   }
 }
 
@@ -144,7 +159,7 @@ resource "aws_apigatewayv2_integration" "functions" {
 
   api_id                 = aws_apigatewayv2_api.main.id
   integration_type       = "AWS_PROXY"
-  integration_uri        = each.value
+  integration_uri        = each.value.invoke_arn
   payload_format_version = "2.0"
 }
 
@@ -157,6 +172,17 @@ resource "aws_apigatewayv2_route" "functions" {
 
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
+}
+
+# Allow API Gateway to invoke each Lambda function
+resource "aws_lambda_permission" "functions" {
+  for_each = local.routes
+
+  statement_id  = "AllowHTTPAPIInvoke-${md5(each.key)}"
+  action        = "lambda:InvokeFunction"
+  function_name = each.value.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.main.execution_arn}/*/*"
 }
 ```
 
@@ -177,7 +203,6 @@ resource "aws_apigatewayv2_api_mapping" "main" {
   api_id      = aws_apigatewayv2_api.main.id
   domain_name = aws_apigatewayv2_domain_name.main.id
   stage       = aws_apigatewayv2_stage.production.id
-  api_mapping_key = ""  # Maps to the root path
 }
 ```
 
