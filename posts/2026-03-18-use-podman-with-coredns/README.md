@@ -19,7 +19,7 @@ CoreDNS is a fast, flexible DNS server written in Go. It serves as the default D
 Start with a basic CoreDNS deployment:
 
 ```bash
-mkdir -p ~/coredns/config
+mkdir -p ~/coredns/config/zones
 ```
 
 Create the Corefile (CoreDNS configuration):
@@ -46,6 +46,8 @@ podman run -d \
   -p 53:53/udp \
   -p 53:53/tcp \
   -p 8080:8080 \
+  -p 8181:8181 \
+  -p 9153:9153 \
   -v ~/coredns/config:/etc/coredns:ro,Z \
   coredns/coredns:latest \
   -conf /etc/coredns/Corefile
@@ -73,8 +75,8 @@ internal.example.com:53 {
 }
 
 # Development zone
-dev.local:53 {
-    file /etc/coredns/zones/dev.local.db
+dev.example.test:53 {
+    file /etc/coredns/zones/dev.example.test.db
     log
     errors
 }
@@ -119,13 +121,13 @@ _postgres._tcp.db IN SRV 10 100 5432 db.internal.example.com.
 ```
 
 ```dns
-; ~/coredns/config/zones/dev.local.db
-$ORIGIN dev.local.
-@       IN SOA  ns1.dev.local. admin.dev.local. (
+; ~/coredns/config/zones/dev.example.test.db
+$ORIGIN dev.example.test.
+@       IN SOA  ns1.dev.example.test. admin.dev.example.test. (
             2024010101 3600 600 86400 300
         )
 
-@       IN NS   ns1.dev.local.
+@       IN NS   ns1.dev.example.test.
 ns1     IN A    127.0.0.1
 
 ; Local development services
@@ -140,9 +142,8 @@ Use the etcd plugin for dynamic service discovery:
 
 ```text
 # Corefile with etcd backend
-services.local:53 {
+services.example.test:53 {
     etcd {
-        stubzones
         path /skydns
         endpoint http://etcd:2379
     }
@@ -154,6 +155,7 @@ services.local:53 {
 .:53 {
     forward . 8.8.8.8
     cache 120
+    health :8080
 }
 ```
 
@@ -161,21 +163,21 @@ Register services in etcd:
 
 ```bash
 # Register an API service
-podman exec etcd etcdctl put /skydns/local/services/api/instance1 \
+podman exec etcd etcdctl put /skydns/test/example/services/api/instance1 \
   '{"host":"172.20.0.10","port":8080,"priority":10,"weight":100}'
 
-podman exec etcd etcdctl put /skydns/local/services/api/instance2 \
+podman exec etcd etcdctl put /skydns/test/example/services/api/instance2 \
   '{"host":"172.20.0.11","port":8080,"priority":10,"weight":100}'
 
 # Register a database service
-podman exec etcd etcdctl put /skydns/local/services/db/primary \
+podman exec etcd etcdctl put /skydns/test/example/services/db/primary \
   '{"host":"172.20.0.20","port":5432,"priority":10}'
 
 # Now query the service
-dig @localhost api.services.local
+dig @localhost api.services.example.test
 # Returns: 172.20.0.10 and 172.20.0.11
 
-dig @localhost SRV api.services.local
+dig @localhost api.services.example.test SRV
 # Returns SRV records with port information
 ```
 
@@ -199,10 +201,11 @@ services:
       - etcd
 
   etcd:
-    image: quay.io/coreos/etcd:v3.5.12
+    image: quay.io/coreos/etcd:v3.5.21
     restart: always
     command:
       - /usr/local/bin/etcd
+      - --data-dir=/etcd-data
       - --listen-client-urls=http://0.0.0.0:2379
       - --advertise-client-urls=http://etcd:2379
     volumes:
@@ -218,7 +221,7 @@ CoreDNS is highly extensible through plugins. Here are useful configurations:
 
 ```text
 # Rewrite queries
-rewrite.example.com:53 {
+.:53 {
     rewrite name old-api.example.com new-api.example.com
     forward . 8.8.8.8
 }
@@ -241,7 +244,7 @@ example.com:53 {
     file /etc/coredns/zones/external.db
 }
 
-# DNS over HTTPS forwarding
+# DNS over TLS forwarding
 .:53 {
     forward . tls://1.1.1.1 tls://1.0.0.1 {
         tls_servername cloudflare-dns.com
@@ -296,11 +299,11 @@ for entry in "${SERVICES[@]}"; do
 
     if curl -sf "http://${ip}:${port}/health" > /dev/null 2>&1; then
         # Service is healthy, ensure DNS record exists
-        podman exec etcd etcdctl put "/skydns/local/services/${name}/active" \
+        podman exec etcd etcdctl --endpoints="${ETCD_ENDPOINT}" put "/skydns/test/example/services/${name}/active" \
           "{\"host\":\"${ip}\",\"port\":${port}}"
     else
         # Service is unhealthy, remove DNS record
-        podman exec etcd etcdctl del "/skydns/local/services/${name}/active"
+        podman exec etcd etcdctl --endpoints="${ETCD_ENDPOINT}" del "/skydns/test/example/services/${name}/active"
         echo "WARNING: ${name} at ${ip}:${port} is unhealthy"
     fi
 done
@@ -328,7 +331,8 @@ curl -s http://localhost:9153/metrics | head -30
 # coredns_dns_requests_total - Total DNS requests
 # coredns_dns_responses_total - Total DNS responses by code
 # coredns_dns_request_duration_seconds - Query latency
-# coredns_cache_hits_total - Cache hit rate
+# coredns_cache_hits_total - Cache hits
+# coredns_cache_requests_total - Total cache lookups
 ```
 
 Add to your Prometheus configuration:
