@@ -71,10 +71,10 @@ For better isolation, create an Xauthority file specific to the container:
 # generate-xauth.sh
 
 XAUTH_FILE=$(mktemp /tmp/.podman-xauth-XXXXXX)
-DISPLAY_NUM=$(echo $DISPLAY | sed 's/^://' | sed 's/\..*//')
 
 # Extract and modify the auth entry
-xauth nlist :${DISPLAY_NUM} | sed 's/^..../ffff/' | xauth -f "$XAUTH_FILE" nmerge -
+xauth nlist "$DISPLAY" | sed 's/^..../ffff/' | xauth -f "$XAUTH_FILE" nmerge -
+chmod 644 "$XAUTH_FILE"
 
 echo "Generated Xauthority: $XAUTH_FILE"
 
@@ -186,6 +186,7 @@ podman run --rm \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --device /dev/dri \
+  --group-add keep-groups \
   -v ~/Documents:/home/appuser/Documents:Z \
   fedora:latest \
   bash -c '
@@ -216,6 +217,7 @@ podman run --rm \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --device /dev/dri \
+  --group-add keep-groups \
   -v ~/Pictures:/home/artist/Pictures:Z \
   inkscape-pod
 ```
@@ -297,7 +299,7 @@ Limit which users can connect:
 # Remove blanket access
 xhost -
 
-# Allow only the container's UID
+# Allow only the host user that the container process maps to
 xhost +si:localuser:$(id -un)
 ```
 
@@ -312,6 +314,7 @@ podman run --rm -it \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --device /dev/dri \
+  --group-add keep-groups \
   fedora:latest \
   bash -c '
     dnf install -y glx-utils mesa-dri-drivers
@@ -327,6 +330,7 @@ podman run --rm -it \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --device /dev/dri \
+  --group-add keep-groups \
   fedora:latest \
   bash -c '
     dnf install -y glx-utils mesa-dri-drivers
@@ -386,9 +390,9 @@ shift
 XAUTH_FILE=$(mktemp /tmp/.podman-xauth-XXXXXX)
 trap "rm -f $XAUTH_FILE" EXIT
 
-DISPLAY_NUM=$(echo $DISPLAY | sed 's/^://' | sed 's/\..*//')
-xauth nlist :${DISPLAY_NUM} 2>/dev/null | sed 's/^..../ffff/' | \
+xauth nlist "$DISPLAY" 2>/dev/null | sed 's/^..../ffff/' | \
   xauth -f "$XAUTH_FILE" nmerge - 2>/dev/null
+chmod 644 "$XAUTH_FILE"
 
 podman run --rm -it \
   -e DISPLAY=$DISPLAY \
@@ -396,6 +400,7 @@ podman run --rm -it \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   -v "$XAUTH_FILE":/tmp/.Xauthority:ro \
   --device /dev/dri \
+  --group-add keep-groups \
   --shm-size=256m \
   "$IMAGE" "$@"
 ```
