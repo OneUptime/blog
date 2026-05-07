@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, IPv6, DNS, AAAA Records, BIND, Automation
 
-Description: A guide to deploying IPv6 AAAA DNS records using Ansible, covering both BIND zone file management and dynamic DNS APIs.
+Description: A guide to deploying IPv6 AAAA DNS records using Ansible, covering both BIND zone file management and DNS provider APIs.
 
-Managing IPv6 DNS records with Ansible ensures AAAA records are created, updated, and verified consistently across your DNS infrastructure. This guide covers BIND zone file management, community.dns modules, and dynamic DNS APIs.
+Managing IPv6 DNS records with Ansible ensures AAAA records are created, updated, and verified consistently across your DNS infrastructure. This guide covers BIND zone file management, provider modules, and dynamic DNS updates.
 
 ## Method 1: Managing BIND Zone Files
 
@@ -17,29 +17,51 @@ Managing IPv6 DNS records with Ansible ensures AAAA records are created, updated
 - name: Add AAAA record to BIND zone file
   ansible.builtin.blockinfile:
     path: /etc/bind/zones/db.example.com
-    marker: "# {mark} ANSIBLE MANAGED - {{ item.name }} AAAA"
+    marker: "; {mark} ANSIBLE MANAGED - {{ item.name }} AAAA"
     block: |
       {{ item.name }}  IN  AAAA  {{ item.ipv6 }}
     insertafter: "; AAAA Records"
   loop: "{{ aaaa_records }}"
   notify: Reload BIND
 
-- name: Increment BIND zone serial number
+- name: Read current BIND zone file
+  ansible.builtin.slurp:
+    path: /etc/bind/zones/db.example.com
+  register: bind_zone_file
+
+- name: Calculate next BIND zone serial number
+  ansible.builtin.set_fact:
+    bind_zone_serial_next: >-
+      {{
+        [
+          (
+            (
+              bind_zone_file.content
+              | b64decode
+              | regex_search('(?m)^\\s*([0-9]+)\\s*;\\s*Serial\\s*$', '\\1')
+              | first
+            ) | int
+          ) + 1,
+          ('%Y%m%d01' | strftime | int)
+        ] | max
+      }}
+
+- name: Update BIND zone serial number
   ansible.builtin.replace:
     path: /etc/bind/zones/db.example.com
-    # Match the serial (a 10-digit number) and increment it
-    regexp: '(\d{10})\s+; Serial'
-    replace: "{{ '%Y%m%d01' | strftime }}\t\t\t; Serial"
+    # Use a YYYYMMDDNN serial and ensure it always increases
+    regexp: '(?m)^(\s*)([0-9]+)(\s*;\s*Serial\s*)$'
+    replace: '\1{{ bind_zone_serial_next }}\3'
   notify: Reload BIND
 ```
 
-## Method 2: Using community.dns for Cloudflare/Route 53
+## Method 2: Using Provider Modules for Cloudflare/Route 53
 
 ```yaml
 # tasks/cloud-dns-aaaa.yml - Create AAAA records via DNS provider APIs
 ---
 - name: Create AAAA records in Cloudflare
-  community.dns.cloudflare_dns:
+  community.general.cloudflare_dns:
     zone: "example.com"
     record: "{{ item.name }}"
     type: AAAA
@@ -51,7 +73,7 @@ Managing IPv6 DNS records with Ansible ensures AAAA records are created, updated
   when: dns_provider == "cloudflare"
 
 - name: Create AAAA records in AWS Route 53
-  community.aws.route53:
+  amazon.aws.route53:
     state: present
     zone: "example.com"
     record: "{{ item.name }}.example.com"
