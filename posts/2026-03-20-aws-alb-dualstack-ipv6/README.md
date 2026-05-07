@@ -12,14 +12,16 @@ AWS Application Load Balancer (ALB) supports dual-stack mode, allowing it to acc
 
 - A VPC with IPv6 CIDR block assigned
 - Subnets with IPv6 CIDR blocks
-- Internet gateway attached to VPC
+- For internet-facing ALBs, an internet gateway and subnet route tables that route IPv6 traffic (`::/0`)
+- Security groups and network ACLs that allow IPv6 traffic
 
 ## Enabling Dual-Stack via AWS Console
 
 1. Navigate to EC2 → Load Balancers
 2. Select your ALB
-3. Under "Attributes" → "Edit attributes"
+3. On the **Network mapping** tab, choose **Edit IP address type**
 4. Set **IP address type** to `dualstack`
+5. Save the changes
 
 ## Terraform Configuration
 
@@ -52,6 +54,35 @@ resource "aws_subnet" "public_b" {
   assign_ipv6_address_on_creation = true
   availability_zone               = "us-east-1b"
   map_public_ip_on_launch         = true
+}
+
+# Internet gateway and IPv4/IPv6 routes for internet-facing access
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  route {
+    ipv6_cidr_block = "::/0"
+    gateway_id      = aws_internet_gateway.main.id
+  }
+}
+
+resource "aws_route_table_association" "public_a" {
+  subnet_id      = aws_subnet.public_a.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "public_b" {
+  subnet_id      = aws_subnet.public_b.id
+  route_table_id = aws_route_table.public.id
 }
 
 # Application Load Balancer with dual-stack
@@ -120,6 +151,8 @@ aws elbv2 describe-load-balancers \
 
 ## Verifying Dual-Stack ALB
 
+After your ALB listener and healthy targets are in place, verify IPv4 and IPv6 connectivity:
+
 ```bash
 # Verify ALB has AAAA record
 dig AAAA main-alb-123456789.us-east-1.elb.amazonaws.com
@@ -156,6 +189,6 @@ resource "aws_lb_target_group" "main" {
 }
 ```
 
-**Note**: For IP-type target groups, you can specify IPv6 targets by providing their IPv6 addresses.
+**Note**: For IP-type target groups, set `ip_address_type = "ipv6"` and register IPv6 target addresses. IPv6 target groups can be used only with a dual-stack load balancer.
 
-AWS ALB's dual-stack mode requires minimal configuration change - just setting `ip_address_type = "dualstack"` and ensuring subnets have IPv6 CIDRs - making it one of the easiest ways to add IPv6 support to existing workloads.
+AWS ALB's dual-stack mode requires only a few focused changes - setting `ip_address_type = "dualstack"`, using IPv6-enabled subnets, and ensuring routing, security groups, and network ACLs allow IPv6 traffic - making it one of the easiest ways to add IPv6 support to existing workloads.
