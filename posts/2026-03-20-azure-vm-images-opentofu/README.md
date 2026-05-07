@@ -8,13 +8,14 @@ Description: Learn how to create and manage Azure VM images with OpenTofu, inclu
 
 ## Introduction
 
-Azure VM images are snapshots of generalized VM configurations used to create multiple identical VMs. Managed images are the simplest form-captured from a generalized VM and usable within a single region. For multi-region distribution and versioning, images should be stored in Azure Compute Gallery. Azure Image Builder provides a fully managed pipeline for creating customized VM images using Packer-like templates with built-in Azure integration.
+Azure VM images capture VM or disk state so you can create multiple identical VMs. Managed images are the simplest legacy form-captured from a generalized VM or prepared disk and usable within a single region. For multi-region distribution and versioning, images should be stored in Azure Compute Gallery. Azure Image Builder provides a fully managed pipeline for creating customized VM images using Packer-like templates with built-in Azure integration.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - Azure credentials configured
 - A generalized VM or VHD to capture from
+- The required resource providers registered if you plan to use Azure Image Builder (`Microsoft.VirtualMachineImages`, `Microsoft.Compute`, `Microsoft.KeyVault`, `Microsoft.Storage`, `Microsoft.Network`, and `Microsoft.ContainerInstance`)
 
 ## Step 1: Create Managed Image from Generalized VM
 
@@ -22,7 +23,9 @@ Azure VM images are snapshots of generalized VM configurations used to create mu
 # First, generalize the VM (run on Linux VM):
 
 # sudo waagent -deprovision+user -force
-# Then from Azure CLI: az vm generalize --resource-group <rg> --name <vm-name>
+# Then from Azure CLI:
+# az vm deallocate --resource-group <rg> --name <vm-name>
+# az vm generalize --resource-group <rg> --name <vm-name>
 
 resource "azurerm_image" "app_server" {
   name                      = "${var.project_name}-app-image"
@@ -70,7 +73,7 @@ resource "azurerm_linux_virtual_machine" "from_image" {
 ## Step 2: Image from OS Disk Snapshot
 
 ```hcl
-# Create snapshot from OS disk
+# Create snapshot from OS managed disk
 resource "azurerm_snapshot" "os_disk" {
   name                = "${var.project_name}-os-snapshot"
   location            = var.location
@@ -79,7 +82,27 @@ resource "azurerm_snapshot" "os_disk" {
   source_uri          = var.os_disk_id
 }
 
-# Create managed image from snapshot
+# Restore managed disks from the snapshots
+resource "azurerm_managed_disk" "os_from_snapshot" {
+  name                 = "${var.project_name}-os-from-snapshot"
+  location             = var.location
+  resource_group_name  = var.resource_group_name
+  storage_account_type = "Premium_LRS"
+  create_option        = "Copy"
+  source_resource_id   = azurerm_snapshot.os_disk.id
+  os_type              = "Linux"
+}
+
+resource "azurerm_managed_disk" "data_from_snapshot" {
+  name                 = "${var.project_name}-data-from-snapshot"
+  location             = var.location
+  resource_group_name  = var.resource_group_name
+  storage_account_type = "Premium_LRS"
+  create_option        = "Copy"
+  source_resource_id   = var.data_disk_snapshot_id
+}
+
+# Create managed image from the restored disks
 resource "azurerm_image" "from_snapshot" {
   name                = "${var.project_name}-snapshot-image"
   location            = var.location
@@ -88,14 +111,16 @@ resource "azurerm_image" "from_snapshot" {
   os_disk {
     os_type         = "Linux"
     os_state        = "Generalized"
-    managed_disk_id = azurerm_snapshot.os_disk.id
+    managed_disk_id = azurerm_managed_disk.os_from_snapshot.id
+    storage_type    = "Premium_LRS"
     caching         = "ReadWrite"
   }
 
   # Include data disk snapshots
   data_disk {
     lun             = 0
-    managed_disk_id = var.data_disk_snapshot_id
+    managed_disk_id = azurerm_managed_disk.data_from_snapshot.id
+    storage_type    = "Premium_LRS"
     caching         = "ReadWrite"
   }
 }
@@ -117,41 +142,60 @@ resource "azurerm_role_assignment" "image_builder" {
   principal_id         = azurerm_user_assigned_identity.image_builder.principal_id
 }
 
-resource "azurerm_image_builder_template" "ubuntu" {
-  name                = "${var.project_name}-ubuntu-template"
-  location            = var.location
-  resource_group_name = var.resource_group_name
+# Azure Image Builder template via AzAPI
+resource "azapi_resource" "ubuntu" {
+  type      = "Microsoft.VirtualMachineImages/imageTemplates@2024-02-01"
+  name      = "${var.project_name}-ubuntu-template"
+  parent_id = var.resource_group_id
+  location  = var.location
 
   identity {
-    type = "UserAssigned"
+    type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.image_builder.id]
   }
 
-  source {
-    type      = "PlatformImage"
-    publisher = "Canonical"
-    offer     = "0001-com-ubuntu-server-jammy"
-    sku       = "22_04-lts-gen2"
-    version   = "latest"
-  }
+  body = {
+    properties = {
+      source = {
+        type      = "PlatformImage"
+        publisher = "Canonical"
+        offer     = "0001-com-ubuntu-server-jammy"
+        sku       = "22_04-lts-gen2"
+        version   = "latest"
+      }
 
-  customize {
-    type = "Shell"
-    inline = [
-      "sudo apt-get update",
-      "sudo apt-get install -y nginx",
-      "sudo systemctl enable nginx"
-    ]
-  }
+      customize = [
+        {
+          type = "Shell"
+          inline = [
+            "sudo apt-get update",
+            "sudo apt-get install -y nginx",
+            "sudo systemctl enable nginx"
+          ]
+        }
+      ]
 
-  distribute {
-    type               = "SharedImage"
-    gallery_image_id   = azurerm_shared_image.app.id
-    replication_regions = [var.location, var.secondary_location]
-
-    versioning {
-      scheme = "Latest"
-      major  = 1
+      distribute = [
+        {
+          type           = "SharedImage"
+          galleryImageId = var.gallery_image_id
+          runOutputName  = "ubuntu"
+          targetRegions = [
+            {
+              name               = var.location
+              storageAccountType = "Standard_LRS"
+            },
+            {
+              name               = var.secondary_location
+              storageAccountType = "Standard_LRS"
+            }
+          ]
+          versioning = {
+            scheme = "Latest"
+            major  = 1
+          }
+        }
+      ]
     }
   }
 }
@@ -167,7 +211,14 @@ tofu apply
 # Trigger image build
 az image builder run \
   --resource-group <rg> \
-  --name <template-name>
+  --name <template-name> \
+  --no-wait
+
+# Wait for the build to finish
+az image builder wait \
+  --resource-group <rg> \
+  --name <template-name> \
+  --custom "lastRunStatus.runState!='Running'"
 
 # Check build status
 az image builder show \
@@ -175,9 +226,11 @@ az image builder show \
   --name <template-name> \
   --query "lastRunStatus"
 
-# List available images
-az image list \
+# List available gallery image versions
+az sig image-version list \
   --resource-group <rg> \
+  --gallery-name <gallery-name> \
+  --gallery-image-definition <image-definition> \
   --output table
 ```
 
