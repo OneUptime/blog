@@ -44,18 +44,21 @@ resource "azurerm_storage_data_lake_gen2_filesystem" "raw_data" {
   name               = "raw-data"
   storage_account_id = azurerm_storage_account.adls.id
 
-  # Set default ACLs applied to new files and directories
+  # Set default ACLs on the filesystem root for new files and directories
   ace {
+    scope       = "default"
     type        = "user"
     permissions = "rwx"
   }
 
   ace {
+    scope       = "default"
     type        = "group"
     permissions = "r-x"
   }
 
   ace {
+    scope       = "default"
     type        = "other"
     permissions = "---"
   }
