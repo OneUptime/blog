@@ -8,14 +8,14 @@ Description: Deploy Apache Airflow, the workflow orchestration platform, as a Do
 
 ## Introduction
 
-Apache Airflow is the industry-standard platform for authoring, scheduling, and monitoring data pipelines as DAGs (Directed Acyclic Graphs). The official Docker Compose setup makes it deployable via Portainer, giving your data engineering team a self-hosted orchestration platform.
+Apache Airflow is the industry-standard platform for authoring, scheduling, and monitoring data pipelines as DAGs (Directed Acyclic Graphs). The official Docker Compose quick-start makes it deployable via Portainer, giving your data engineering team a self-hosted orchestration platform.
 
 ## Prerequisites
 
-- Portainer CE or BE installed
+- Portainer CE or BE managing a Docker Standalone environment
 - Host with at least 4 GB RAM (8 GB recommended)
 - Docker Engine 20.10+
-- Docker Compose v2
+- Docker Compose v2.14.0+
 
 ## Step 1: Prepare the Environment
 
@@ -24,20 +24,20 @@ Apache Airflow is the industry-standard platform for authoring, scheduling, and 
 
 mkdir -p /opt/airflow/{dags,logs,plugins,config}
 
-# Set AIRFLOW_UID (required by official image)
-echo -e "AIRFLOW_UID=$(id -u)" > /opt/airflow/.env
+# Print the UID you will use for AIRFLOW_UID in Portainer
+id -u
 
 # Set correct ownership
 chown -R $(id -u):0 /opt/airflow/{dags,logs,plugins,config}
 ```
+
+In Portainer's stack creation screen, add an environment variable named `AIRFLOW_UID` with the value returned by `id -u`.
 
 ## Step 2: Create the Docker Compose Stack
 
 Navigate to **Stacks** → **Add Stack** → **Web Editor** in Portainer:
 
 ```yaml
-version: "3.8"
-
 x-airflow-common: &airflow-common
   image: apache/airflow:2.9.3
   environment: &airflow-common-env
@@ -48,7 +48,8 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__FERNET_KEY: ""
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
     AIRFLOW__WEBSERVER__SECRET_KEY: "your_secret_key_here"
     _PIP_ADDITIONAL_REQUIREMENTS: ""
   volumes:
@@ -69,7 +70,6 @@ services:
   # PostgreSQL - Airflow metadata database
   airflow-db:
     image: postgres:16
-    container_name: airflow-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: airflow
@@ -87,7 +87,6 @@ services:
   # Redis - Celery message broker
   airflow-redis:
     image: redis:7.2-bookworm
-    container_name: airflow-redis
     restart: unless-stopped
     expose:
       - 6379
@@ -102,11 +101,14 @@ services:
   # Airflow Webserver - UI
   airflow-webserver:
     <<: *airflow-common
-    container_name: airflow-webserver
     command: webserver
     ports:
       - "8080:8080"
     restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
@@ -116,9 +118,12 @@ services:
   # Airflow Scheduler - triggers DAG runs
   airflow-scheduler:
     <<: *airflow-common
-    container_name: airflow-scheduler
     command: scheduler
     restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
       interval: 30s
@@ -128,14 +133,32 @@ services:
   # Airflow Worker - executes tasks
   airflow-worker:
     <<: *airflow-common
-    container_name: airflow-worker
     command: celery worker
     restart: unless-stopped
     environment:
       <<: *airflow-common-env
       DUMB_INIT_SETSID: "0"
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", 'celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Airflow Triggerer - runs deferrable tasks
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
       interval: 30s
       timeout: 10s
       retries: 5
@@ -143,19 +166,17 @@ services:
   # Airflow Init - initializes the database
   airflow-init:
     <<: *airflow-common
-    container_name: airflow-init
-    entrypoint: /bin/bash
-    command:
-      - -c
-      - |
-        airflow db migrate
-        airflow users create \
-          --username admin \
-          --firstname Admin \
-          --lastname User \
-          --role Admin \
-          --email admin@example.com \
-          --password admin
+    command: version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+      _AIRFLOW_WWW_USER_FIRSTNAME: Admin
+      _AIRFLOW_WWW_USER_LASTNAME: User
+      _AIRFLOW_WWW_USER_EMAIL: admin@example.com
+      _AIRFLOW_WWW_USER_ROLE: Admin
     restart: on-failure
 
 volumes:
@@ -216,16 +237,16 @@ with DAG(
     )
 ```
 
-Airflow automatically detects DAGs in the `/dags` directory.
+Airflow automatically detects DAGs in the `/opt/airflow/dags` directory.
 
 ## Step 6: Scale Workers
 
-To add more workers via Portainer:
+To add more workers on Docker Standalone:
 
-1. Open the stack and click **Edit**
-2. Increase the `airflow-worker` replica count
-3. Or manually run: `docker compose up -d --scale airflow-worker=3`
+1. Save the same Compose file on the Docker host
+2. Run: `AIRFLOW_UID=$(id -u) docker compose up -d --scale airflow-worker=3`
+3. Refresh the stack view in Portainer to confirm the additional worker containers
 
 ## Conclusion
 
-Apache Airflow deployed via Portainer gives your data team a powerful, self-hosted workflow orchestration platform. The CeleryExecutor setup with Redis and PostgreSQL is production-ready, and Portainer makes it easy to monitor each service's health, view logs, and scale workers as your pipeline workload grows.
+Apache Airflow deployed via Portainer gives your data team a powerful, self-hosted workflow orchestration platform. The CeleryExecutor setup with Redis and PostgreSQL is a solid quick-start for evaluation and internal self-hosted use, and Portainer makes it easy to monitor each container's health, view logs, and keep the stack updated as your pipeline workload grows.
