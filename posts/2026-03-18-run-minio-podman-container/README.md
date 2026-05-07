@@ -21,7 +21,7 @@ Download the official Minio image.
 ```bash
 # Pull the latest Minio image
 
-podman pull docker.io/minio/minio:latest
+podman pull quay.io/minio/minio:latest
 
 # Verify the image
 podman images | grep minio
@@ -39,7 +39,7 @@ podman run -d \
   -p 9001:9001 \
   -e MINIO_ROOT_USER=minioadmin \
   -e MINIO_ROOT_PASSWORD=minioadmin123 \
-  minio/minio:latest server /data --console-address ":9001"
+  quay.io/minio/minio:latest server /data --console-address ":9001"
 
 # Check the container is running
 podman ps
@@ -69,7 +69,7 @@ podman run -d \
   -e MINIO_ROOT_USER=minioadmin \
   -e MINIO_ROOT_PASSWORD=minioadmin123 \
   -v minio-data:/data:Z \
-  minio/minio:latest server /data --console-address ":9001"
+  quay.io/minio/minio:latest server /data --console-address ":9001"
 
 # Verify the volume
 podman volume inspect minio-data
@@ -81,27 +81,28 @@ Install and configure the Minio client for command-line operations.
 
 ```bash
 # Pull the Minio client image
-podman pull docker.io/minio/mc:latest
+podman pull quay.io/minio/mc:latest
+
+# Create a volume for Minio client configuration
+podman volume create mc-config
 
 # Configure the client to connect to our Minio instance
 podman run --rm \
-  --name mc-config \
-  --entrypoint="" \
   -v mc-config:/root/.mc:Z \
-  minio/mc:latest \
-  mc alias set local http://host.containers.internal:9000 minioadmin minioadmin123
+  quay.io/minio/mc:latest \
+  alias set local http://host.containers.internal:9000 minioadmin minioadmin123
 
 # Create a bucket
 podman run --rm \
   -v mc-config:/root/.mc:Z \
-  minio/mc:latest \
-  mc mb local/my-bucket
+  quay.io/minio/mc:latest \
+  mb local/my-bucket
 
 # List all buckets
 podman run --rm \
   -v mc-config:/root/.mc:Z \
-  minio/mc:latest \
-  mc ls local/
+  quay.io/minio/mc:latest \
+  ls local/
 ```
 
 ## Working with Objects Using curl
@@ -111,21 +112,25 @@ Interact with Minio using the S3-compatible REST API.
 ```bash
 # Create a bucket using the API
 curl -s -X PUT http://localhost:9000/test-bucket \
-  -u minioadmin:minioadmin123
+  --aws-sigv4 "aws:amz:us-east-1:s3" \
+  -u "minioadmin:minioadmin123"
 
 # Upload a file
 echo "Hello from Minio on Podman!" > /tmp/hello.txt
 curl -s -X PUT http://localhost:9000/test-bucket/hello.txt \
-  -u minioadmin:minioadmin123 \
+  --aws-sigv4 "aws:amz:us-east-1:s3" \
+  -u "minioadmin:minioadmin123" \
   -T /tmp/hello.txt
 
 # Download the file
 curl -s http://localhost:9000/test-bucket/hello.txt \
-  -u minioadmin:minioadmin123
+  --aws-sigv4 "aws:amz:us-east-1:s3" \
+  -u "minioadmin:minioadmin123"
 
 # List objects in a bucket
 curl -s http://localhost:9000/test-bucket \
-  -u minioadmin:minioadmin123
+  --aws-sigv4 "aws:amz:us-east-1:s3" \
+  -u "minioadmin:minioadmin123"
 ```
 
 ## Custom Minio Configuration
@@ -134,6 +139,8 @@ Configure Minio with environment variables for advanced settings.
 
 ```bash
 # Run Minio with custom configuration
+podman volume create minio-custom-data
+
 podman run -d \
   --name minio-custom \
   -p 9004:9000 \
@@ -142,8 +149,9 @@ podman run -d \
   -e MINIO_ROOT_PASSWORD=my-strong-password-123 \
   -e MINIO_BROWSER=on \
   -e MINIO_REGION_NAME=us-east-1 \
-  -v minio-data:/data:Z \
-  minio/minio:latest server /data --console-address ":9001"
+  -e MINIO_PROMETHEUS_AUTH_TYPE=public \
+  -v minio-custom-data:/data:Z \
+  quay.io/minio/minio:latest server /data --console-address ":9001"
 
 # Verify the custom configuration
 curl -s http://localhost:9004/minio/health/live
@@ -172,9 +180,14 @@ EOF
 # Apply the policy using mc
 podman run --rm \
   -v mc-config:/root/.mc:Z \
+  quay.io/minio/mc:latest \
+  mb local/public-bucket
+
+podman run --rm \
+  -v mc-config:/root/.mc:Z \
   -v /tmp/public-read-policy.json:/tmp/policy.json:Z \
-  minio/mc:latest \
-  mc anonymous set-json /tmp/policy.json local/public-bucket
+  quay.io/minio/mc:latest \
+  anonymous set-json /tmp/policy.json local/public-bucket
 ```
 
 ## Monitoring Minio
@@ -184,15 +197,13 @@ Check the health and metrics of your Minio instance.
 ```bash
 # Check server health
 curl -s http://localhost:9000/minio/health/live
-curl -s http://localhost:9000/minio/health/ready
+curl -s http://localhost:9000/minio/health/cluster
 
 # Get Prometheus-compatible metrics
-curl -s http://localhost:9000/minio/v2/metrics/cluster \
-  -u minioadmin:minioadmin123 | head -30
+curl -s http://localhost:9004/minio/v2/metrics/cluster | head -30
 
-# Check storage information via the API
-curl -s http://localhost:9000/minio/health/cluster \
-  -u minioadmin:minioadmin123
+# Check read quorum
+curl -s http://localhost:9000/minio/health/cluster/read
 ```
 
 ## Managing the Container
@@ -209,7 +220,7 @@ podman start my-minio
 
 # Remove containers and volumes
 podman rm -f my-minio minio-persistent minio-custom
-podman volume rm minio-data mc-config
+podman volume rm minio-data minio-custom-data mc-config
 ```
 
 ## Summary
