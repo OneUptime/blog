@@ -14,6 +14,7 @@ API Gateway canary deployments allow you to send a configurable percentage of tr
 
 - OpenTofu v1.6+
 - An existing API Gateway REST API with a deployed stage
+- An API Gateway CloudWatch Logs role configured for the Region if you want to enable access logging
 - AWS credentials with API Gateway permissions
 
 ## Step 1: Create a New Deployment for Canary
@@ -57,6 +58,14 @@ resource "aws_api_gateway_stage" "prod" {
 
   access_log_settings {
     destination_arn = var.cloudwatch_log_group_arn
+    format = jsonencode({
+      requestId         = "$context.requestId"
+      extendedRequestId = "$context.extendedRequestId"
+      requestTime       = "$context.requestTime"
+      httpMethod        = "$context.httpMethod"
+      resourcePath      = "$context.resourcePath"
+      status            = "$context.status"
+    })
   }
 
   tags = {
@@ -65,10 +74,10 @@ resource "aws_api_gateway_stage" "prod" {
 }
 ```
 
-## Step 3: Monitor Canary vs Stable Metrics
+## Step 3: Monitor Rollout Metrics
 
 ```hcl
-# Alarm on canary error rate
+# Alarm on stage-level 5XX error rate during the rollout
 resource "aws_cloudwatch_metric_alarm" "canary_errors" {
   alarm_name          = "${var.project_name}-api-canary-errors"
   comparison_operator = "GreaterThanThreshold"
@@ -77,7 +86,7 @@ resource "aws_cloudwatch_metric_alarm" "canary_errors" {
   namespace           = "AWS/ApiGateway"
   period              = 60
   statistic           = "Average"
-  threshold           = 0.05  # Alert if canary error rate > 5%
+  threshold           = 0.05  # Alert if stage 5XX error rate > 5%
 
   dimensions = {
     ApiName = var.api_name
@@ -86,40 +95,42 @@ resource "aws_cloudwatch_metric_alarm" "canary_errors" {
 
   # Trigger rollback procedure
   alarm_actions = [var.rollback_sns_topic_arn]
+  treat_missing_data = "notBreaching"
 }
 ```
 
 ## Step 4: Promote or Roll Back Canary
 
 ```bash
-# To promote canary to 100% (full rollout)
+# To send 100% of traffic to the canary temporarily
 aws apigateway update-stage \
   --rest-api-id <api-id> \
   --stage-name prod \
-  --patch-operations op=replace,path=/canarySettings/percentTraffic,value=100
+  --patch-operations op=replace,path=/canarySettings/percentTraffic,value=100.0
 
-# Promote canary (makes canary the new base deployment)
+# Promote canary (copies the canary deployment and stage variables to the stage)
 aws apigateway update-stage \
   --rest-api-id <api-id> \
   --stage-name prod \
-  --patch-operations op=copy,from=/canarySettings/deploymentId,path=/deploymentId
+  --patch-operations '[{"op":"replace","path":"/canarySettings/percentTraffic","value":"0.0"},{"op":"copy","from":"/canarySettings/stageVariableOverrides","path":"/variables"},{"op":"copy","from":"/canarySettings/deploymentId","path":"/deploymentId"}]'
 
 # Delete canary settings after promotion
-aws apigateway delete-stage-canary-settings \
-  --rest-api-id <api-id> \
-  --stage-name prod
-
-# To roll back - just set percent to 0
 aws apigateway update-stage \
   --rest-api-id <api-id> \
   --stage-name prod \
-  --patch-operations op=replace,path=/canarySettings/percentTraffic,value=0
+  --patch-operations '[{"op":"remove","path":"/canarySettings"}]'
+
+# To stop sending traffic to the canary immediately
+aws apigateway update-stage \
+  --rest-api-id <api-id> \
+  --stage-name prod \
+  --patch-operations op=replace,path=/canarySettings/percentTraffic,value=0.0
 ```
 
-## Step 5: Automate Canary Progression with Lambda
+## Step 5: Schedule Canary Progression
 
 ```hcl
-# Lambda function to progressively increase canary traffic
+# EventBridge rule to trigger a Lambda function that progressively increases canary traffic
 resource "aws_cloudwatch_event_rule" "canary_progression" {
   name                = "${var.project_name}-canary-progression"
   description         = "Progressively increase canary traffic every 10 minutes"
@@ -142,4 +153,4 @@ tofu apply
 
 ## Conclusion
 
-API Gateway canary deployments provide risk mitigation for API changes by allowing real-traffic validation before full rollout. Start with 5-10% traffic, monitor error rates and latency for 15-30 minutes, then gradually increase. Use stage variable overrides to route canary traffic to a different Lambda alias for testing new code independently. Always have rollback procedures ready before starting any canary deployment.
+API Gateway canary deployments provide risk mitigation for API changes by allowing real-traffic validation before full rollout. Start with 5-10% traffic, monitor stage-level error rates and latency for 15-30 minutes, and review the canary-specific `/Canary` access and execution logs before gradually increasing traffic. Use stage variable overrides to route canary traffic to a different Lambda alias for testing new code independently. Always have rollback procedures ready before starting any canary deployment.
