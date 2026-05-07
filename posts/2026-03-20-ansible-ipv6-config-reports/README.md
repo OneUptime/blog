@@ -20,12 +20,6 @@ Ansible's template module, combined with fact gathering, makes it straightforwar
   gather_facts: true
 
   tasks:
-    - name: Get assigned IPv6 addresses
-      ansible.builtin.command:
-        cmd: ip -6 addr show scope global
-      register: ipv6_addrs
-      changed_when: false
-
     - name: Get IPv6 routes
       ansible.builtin.command:
         cmd: ip -6 route show
@@ -47,6 +41,7 @@ Ansible's template module, combined with fact gathering, makes it straightforwar
         ipv6_report:
           hostname: "{{ inventory_hostname }}"
           ipv6_addresses: "{{ ansible_all_ipv6_addresses }}"
+          ipv6_routes: "{{ ipv6_routes.stdout_lines }}"
           forwarding: "{{ sysctl_values.results[0].stdout }}"
           accept_ra: "{{ sysctl_values.results[1].stdout }}"
           disabled: "{{ sysctl_values.results[2].stdout }}"
@@ -65,17 +60,23 @@ Ansible's template module, combined with fact gathering, makes it straightforwar
 
   tasks:
     - name: Write JSON report
-      ansible.builtin.copy:
-        content: |
-          {{ hostvars | dict2items
-             | selectattr('value.ipv6_report', 'defined')
-             | map(attribute='value.ipv6_report')
-             | list | to_nice_json }}
+      ansible.builtin.template:
+        src: ipv6-report.json.j2
         dest: "/tmp/ipv6-config-report.json"
 
     - name: Display report
       ansible.builtin.debug:
         msg: "Report written to /tmp/ipv6-config-report.json"
+```
+
+Template:
+
+```json
+{# templates/ipv6-report.json.j2 #}
+{{ hostvars | dict2items
+   | selectattr('value.ipv6_report', 'defined')
+   | map(attribute='value.ipv6_report')
+   | list | to_nice_json }}
 ```
 
 ## Step 3: Generate an HTML Report
@@ -111,7 +112,7 @@ Template:
 </head>
 <body>
 <h1>IPv6 Configuration Report</h1>
-<p>Generated: {{ ansible_date_time.iso8601 }}</p>
+<p>Generated: {{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}</p>
 <table>
   <tr><th>Hostname</th><th>IPv6 Addresses</th><th>Forwarding</th><th>Accept RA</th><th>IPv6 Disabled</th></tr>
 {% for host, vars in hostvars.items() if vars.ipv6_report is defined %}
@@ -137,6 +138,10 @@ Template:
 ```yaml
 # generate-csv-report.yml
 ---
+- name: Generate CSV IPv6 report
+  hosts: localhost
+  gather_facts: false
+
   tasks:
     - name: Write CSV report
       ansible.builtin.template:
