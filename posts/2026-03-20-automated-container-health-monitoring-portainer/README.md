@@ -19,8 +19,6 @@ Define health checks in your Docker Compose files to let Docker know how to test
 ```yaml
 # webapp-with-healthcheck-stack.yml
 
-version: "3.8"
-
 services:
   webapp:
     image: myapp:latest
@@ -28,7 +26,7 @@ services:
     ports:
       - "8080:8080"
     healthcheck:
-      # Test: send HTTP request to health endpoint
+      # Test: send HTTP request to health endpoint (requires curl in the image)
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s      # how often to run the check
       timeout: 10s       # max time a single check can take
@@ -66,6 +64,7 @@ Poll the Portainer API to identify unhealthy containers across all environments.
 
 ```python
 #!/usr/bin/env python3
+# Requires: pip install requests
 # check_container_health.py - monitor health status via Portainer API
 
 import requests
@@ -73,7 +72,7 @@ import json
 from datetime import datetime
 
 PORTAINER_URL = "https://portainer.example.com"
-API_KEY = "ptr_your_api_key_here"
+API_KEY = "your_portainer_api_key_here"
 HEADERS = {"X-API-Key": API_KEY}
 
 def get_environments():
@@ -91,8 +90,8 @@ def get_unhealthy_containers(env_id: int) -> list:
     containers = r.json()
     return [
         c for c in containers
-        if c.get("Status", "").startswith("unhealthy") or
-           "Restarting" in c.get("Status", "")
+        if "unhealthy" in c.get("Status", "") or
+           c.get("State") == "restarting"
     ]
 
 def main():
@@ -129,7 +128,7 @@ if __name__ == "__main__":
 # auto-restart-unhealthy.sh - restart unhealthy containers via Portainer API
 
 PORTAINER_URL="https://portainer.example.com"
-API_KEY="ptr_your_api_key_here"
+API_KEY="your_portainer_api_key_here"
 
 # Get environments
 ENV_IDS=$(curl -s -H "X-API-Key: $API_KEY" \
@@ -145,7 +144,7 @@ import sys, json
 containers = json.load(sys.stdin)
 for c in containers:
     if 'unhealthy' in c.get('Status', ''):
-        print(c['Id'][:12], c['Names'][0])
+        print(c['Id'], c['Names'][0])
 ")
 
   while IFS=' ' read -r CONTAINER_ID CONTAINER_NAME; do
@@ -164,7 +163,7 @@ done
 
 ```bash
 # Run health check every 5 minutes via cron
-*/5 * * * * /usr/local/bin/check_container_health.py | logger -t portainer-health
+*/5 * * * * /usr/local/bin/check_container_health.py 2>&1 | logger -t portainer-health
 ```
 
 ---
