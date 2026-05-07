@@ -103,19 +103,19 @@ from podman import PodmanClient
 with PodmanClient() as client:
     # Filter by label
     production_volumes = client.volumes.list(
-        filters={"label": ["environment=production"]}
+        filters={"label": "environment=production"}
     )
     print(f"Production volumes: {len(production_volumes)}")
 
     # Filter by driver
     local_volumes = client.volumes.list(
-        filters={"driver": ["local"]}
+        filters={"driver": "local"}
     )
     print(f"Local volumes: {len(local_volumes)}")
 
     # Filter by name pattern
     db_volumes = client.volumes.list(
-        filters={"name": ["database"]}
+        filters={"name": "database"}
     )
     print(f"Database volumes: {len(db_volumes)}")
 ```
@@ -216,9 +216,11 @@ Create a backup container that archives volume data:
 ```python
 from podman import PodmanClient
 from datetime import datetime
+import os
 
 def backup_volume(volume_name, backup_dir="/tmp/backups"):
     """Backup a volume to a tar archive."""
+    os.makedirs(backup_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_file = f"{volume_name}_{timestamp}.tar.gz"
 
@@ -406,7 +408,7 @@ class VolumeManager:
     def list_managed(self):
         """List only volumes managed by this tool."""
         return self.client.volumes.list(
-            filters={"label": ["managed_by=volume-manager"]}
+            filters={"label": "managed_by=volume-manager"}
         )
 
     def cleanup_expired(self, dry_run=True):
