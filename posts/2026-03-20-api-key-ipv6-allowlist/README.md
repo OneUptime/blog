@@ -16,7 +16,7 @@ When working with IPv6 addresses in security contexts:
 - IPv6 addresses contain colons and may include brackets in URLs
 - IPv4-mapped IPv6 addresses (`::ffff:x.x.x.x`) must be normalized
 - IPv6 CIDR notation uses a slash: `2001:db8::/32`
-- A /64 IPv6 subnet contains trillions of addresses - rate limit at /64 level
+- A /64 IPv6 subnet contains about 18 quintillion addresses - often rate limit IPv6 clients at the /64 level
 
 ## Configuration Example
 
@@ -64,13 +64,17 @@ def get_rate_limit_key(client_ip: str) -> str:
     """Return rate limit key, grouping /64 subnets for IPv6."""
     try:
         addr = ipaddress.ip_address(client_ip)
+        # Treat IPv4-mapped IPv6 addresses as plain IPv4.
+        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
+
         if isinstance(addr, ipaddress.IPv6Address):
             # Group entire /64 subnet under one rate limit key
             # This prevents bypassing rate limits by using different addresses in same /64
-            network = ipaddress.ip_network(f"{client_ip}/64", strict=False)
+            network = ipaddress.ip_network(f"{addr}/64", strict=False)
             return f"ratelimit:ipv6:{network.network_address}"
         else:
-            return f"ratelimit:ipv4:{client_ip}"
+            return f"ratelimit:ipv4:{addr}"
     except ValueError:
         return f"ratelimit:unknown:{client_ip}"
 
@@ -102,4 +106,4 @@ Use [OneUptime](https://oneuptime.com) to monitor authentication endpoint availa
 
 ## Conclusion
 
-How to Handle IPv6 in API Key Allowlists requires understanding IPv6 address formats, normalizing IPv4-mapped addresses, and applying security policies at the /64 subnet level for IPv6 since individual users may have trillions of addresses within their prefix.
+How to Handle IPv6 in API Key Allowlists requires understanding IPv6 address formats, normalizing IPv4-mapped addresses, and often applying security policies at the /64 subnet level for IPv6 since a /64 contains about 18 quintillion addresses.
