@@ -10,7 +10,7 @@ Description: Learn how to deploy and manage IPv4 Access Control Lists on Cisco I
 
 ```bash
 ansible-galaxy collection install cisco.ios
-pip install ansible netmiko
+pip install ansible
 ```
 
 ## Step 2: Define ACLs in Playbook Variables
@@ -29,29 +29,34 @@ pip install ansible netmiko
         acl_type: extended
         ace_list:
           - sequence: 10
+            remarks:
+              - "Block RFC 1918 - 10.x.x.x"
             grant: deny
             protocol: ip
             source:
-              host: 10.0.0.0/8
+              address: 10.0.0.0
+              wildcard_bits: 0.255.255.255
             destination:
               any: true
-            remark: "Block RFC 1918 - 10.x.x.x"
           - sequence: 20
+            remarks:
+              - "Block RFC 1918 - 172.x.x.x"
             grant: deny
             protocol: ip
             source:
-              host: 172.16.0.0/12
+              address: 172.16.0.0
+              wildcard_bits: 0.15.255.255
             destination:
               any: true
-            remark: "Block RFC 1918 - 172.x.x.x"
           - sequence: 100
+            remarks:
+              - "Permit everything else"
             grant: permit
             protocol: ip
             source:
               any: true
             destination:
               any: true
-            remark: "Permit everything else"
 
       - name: PERMIT_WEB_TRAFFIC
         acl_type: extended
@@ -73,7 +78,7 @@ pip install ansible netmiko
             destination:
               any: true
               port_protocol:
-                eq: 443
+                eq: "443"
           - sequence: 100
             grant: deny
             protocol: ip
@@ -95,19 +100,15 @@ pip install ansible netmiko
       loop: "{{ acls }}"
 
     - name: Apply ACL to interface
-      cisco.ios.ios_interfaces:
+      cisco.ios.ios_acl_interfaces:
         config:
           - name: GigabitEthernet0/0
+            access_groups:
+              - afi: ipv4
+                acls:
+                  - name: BLOCK_RFC1918_INBOUND
+                    direction: in
         state: merged
-      # ACL application via raw command
-
-    - name: Apply ACL to interface
-      cisco.ios.ios_command:
-        commands:
-          - "conf t"
-          - "interface GigabitEthernet0/0"
-          - "ip access-group BLOCK_RFC1918_INBOUND in"
-          - "end"
 
     - name: Save configuration
       cisco.ios.ios_command:
@@ -140,7 +141,7 @@ pip install ansible netmiko
 ## Step 4: Remove Specific ACE Entries
 
 ```yaml
-# Remove specific ACE (Access Control Entry) by sequence number
+# Remove a specific ACE by replacing the ACL without that sequence number
 ---
 - name: Remove specific ACE from ACL
   hosts: router01
@@ -155,9 +156,26 @@ pip install ansible netmiko
               - name: BLOCK_RFC1918_INBOUND
                 acl_type: extended
                 aces:
-                  - sequence: 10
+                  - sequence: 20
+                    remarks:
+                      - "Block RFC 1918 - 172.x.x.x"
                     grant: deny
-        state: deleted
+                    protocol: ip
+                    source:
+                      address: 172.16.0.0
+                      wildcard_bits: 0.15.255.255
+                    destination:
+                      any: true
+                  - sequence: 100
+                    remarks:
+                      - "Permit everything else"
+                    grant: permit
+                    protocol: ip
+                    source:
+                      any: true
+                    destination:
+                      any: true
+        state: replaced
 ```
 
 ## Step 5: Replace an Entire ACL
@@ -195,7 +213,7 @@ pip install ansible netmiko
                     destination:
                       any: true
                       port_protocol:
-                        eq: 443
+                        eq: "443"
                   - sequence: 30
                     grant: permit
                     protocol: tcp
@@ -204,7 +222,7 @@ pip install ansible netmiko
                     destination:
                       any: true
                       port_protocol:
-                        eq: 8080
+                        eq: "8080"
                   - sequence: 100
                     grant: deny
                     protocol: ip
@@ -212,7 +230,7 @@ pip install ansible netmiko
                       any: true
                     destination:
                       any: true
-        state: replaced   # Replaces the entire ACL
+        state: replaced   # Replaces the ACE list for this ACL
 ```
 
 ## Step 6: Run the Playbook
@@ -230,4 +248,4 @@ ansible-playbook -i inventory/hosts.yml playbooks/deploy_acls.yml --limit router
 
 ## Conclusion
 
-Ansible's `cisco.ios.ios_acls` module enables declarative ACL management on Cisco IOS. Define ACEs in YAML under the `config.acls.aces` key, use `state: merged` to add entries and `state: deleted` to remove specific ACEs. The `state: replaced` option overwrites the entire ACL with the new definition. Always test with `--check` before applying, and verify with `show ip access-lists` after deployment.
+Ansible's `cisco.ios.ios_acls` module enables declarative ACL management on Cisco IOS. Define ACEs in YAML under the `config.acls.aces` key, use `state: merged` to add ACLs or new ACEs, use `state: replaced` to rewrite the ACE list for a specific ACL, and use `state: deleted` to remove ACLs. Use `cisco.ios.ios_acl_interfaces` to bind an ACL to an interface. Always test with `--check` before applying, and verify with `show ip access-lists` after deployment.
