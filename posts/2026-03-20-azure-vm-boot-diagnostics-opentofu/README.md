@@ -8,13 +8,14 @@ Description: Learn how to configure Azure VM Boot Diagnostics with OpenTofu to c
 
 ## Introduction
 
-Azure VM Boot Diagnostics captures the VM's serial console output and periodic screenshots during startup, enabling you to troubleshoot boot failures without console access. It also enables Azure Serial Console, which provides emergency interactive access to VMs even when SSH/RDP and the network are unavailable. Boot Diagnostics is free when using a managed storage account (enabled automatically) or can write to a custom storage account for longer retention.
+Azure VM Boot Diagnostics captures the VM's serial console output and screenshots during startup, enabling you to troubleshoot boot failures without network access. It is also required for Azure Serial Console, which provides emergency interactive access to VMs even when SSH/RDP and the network are unavailable. For Linux VMs, interactive Serial Console sign-in also requires a password-authenticated user account inside the guest. Azure recommends managed storage for Boot Diagnostics, and the Azure portal enables it by default for new VMs.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - Azure credentials configured
 - An Azure Resource Group and Storage Account (optional for custom storage)
+- A password-authenticated Linux user account if you want to sign in through Azure Serial Console
 
 ## Step 1: Enable Boot Diagnostics with Managed Storage
 
@@ -48,7 +49,7 @@ resource "azurerm_linux_virtual_machine" "main" {
 
   # Enable boot diagnostics with Azure-managed storage (recommended)
   boot_diagnostics {
-    # Omit storage_account_uri to use managed storage (free)
+    # Omit storage_account_uri to use managed storage
   }
 
   tags = {
@@ -67,13 +68,13 @@ resource "azurerm_storage_account" "boot_diagnostics" {
   account_tier             = "Standard"
   account_replication_type = "LRS"  # LRS is sufficient for diagnostics
 
-  # Allow public blob access for diagnostics portal viewing
+  # Keep anonymous blob access disabled; portal access uses Azure authentication
   allow_nested_items_to_be_public = false
 
-  # Lifecycle management for cost control
+  # Optional soft-delete retention for deleted blobs
   blob_properties {
     delete_retention_policy {
-      days = 30  # Keep boot diagnostic data for 30 days
+      days = 30  # Retain deleted blobs for 30 days after deletion
     }
   }
 
@@ -171,25 +172,26 @@ tofu init
 tofu plan
 tofu apply
 
-# View boot diagnostics (serial console output)
+# View the boot diagnostics serial log
 
 az vm boot-diagnostics get-boot-log \
   --resource-group <rg> \
   --name <vm-name>
 
-# Get screenshot URL
+# Get SAS URIs for the boot diagnostics serial log and screenshot
 az vm boot-diagnostics get-boot-log-uris \
   --resource-group <rg> \
   --name <vm-name>
 
 # Access Serial Console in Azure Portal:
 # VM > Help > Serial Console
-# Or via Azure CLI:
+# Or via Azure CLI (the serial-console extension auto-installs on first use):
+# For Linux interactive sign-in, the VM must have a password-authenticated user account.
 az serial-console connect \
   --resource-group <rg> \
-  --vm-name <vm-name>
+  --name <vm-name>
 ```
 
 ## Conclusion
 
-Always enable Boot Diagnostics in production-omit `storage_account_uri` to use Azure-managed storage at no cost without managing storage accounts. Boot Diagnostics is the prerequisite for Azure Serial Console, which provides emergency VM access when the OS hangs or SSH becomes unavailable. For Scale Sets, use a shared storage account rather than individual accounts per instance. Combine Boot Diagnostics with Azure Monitor Agent for comprehensive VM observability: Boot Diagnostics for startup/crash debugging, Azure Monitor for runtime metrics and logs.
+Always enable Boot Diagnostics in production-omit `storage_account_uri` inside the `boot_diagnostics` block to use Azure-managed storage without managing a storage account. Boot Diagnostics is required for Azure Serial Console, and for Linux VMs you also need a password-authenticated user account to sign in interactively. For Scale Sets, use a shared storage account rather than individual accounts per instance. Combine Boot Diagnostics with Azure Monitor Agent for comprehensive VM observability: Boot Diagnostics for startup/crash debugging, Azure Monitor for runtime metrics and logs.
