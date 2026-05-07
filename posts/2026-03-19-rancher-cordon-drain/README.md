@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, Node Management
 
 Description: Learn how to cordon and drain Kubernetes nodes using the Rancher UI and kubectl for maintenance operations.
 
-Cordoning and draining nodes are essential operations for Kubernetes cluster maintenance. Cordoning marks a node as unschedulable, preventing new pods from being placed on it. Draining goes further by evicting all running pods from the node. This guide shows you how to perform both operations through Rancher and kubectl.
+Cordoning and draining nodes are essential operations for Kubernetes cluster maintenance. Cordoning marks a node as unschedulable, preventing new pods from being placed on it. Draining goes further by cordoning the node and evicting the pods that Kubernetes can safely remove from it. This guide shows you how to perform both operations through Rancher and kubectl.
 
 ## When to Cordon and Drain
 
@@ -21,7 +21,7 @@ Common scenarios that require cordoning and draining:
 ## Understanding the Difference
 
 - **Cordon**: Marks the node as `SchedulingDisabled`. Existing pods continue to run, but no new pods will be scheduled on the node.
-- **Drain**: Cordons the node AND evicts all non-DaemonSet pods, moving them to other available nodes.
+- **Drain**: Cordons the node AND evicts drainable pods. Workloads managed by controllers such as ReplicaSets, Jobs, and StatefulSets are typically recreated on other available nodes.
 - **Uncordon**: Removes the `SchedulingDisabled` status, allowing pods to be scheduled again.
 
 ## Cordoning a Node
@@ -62,13 +62,13 @@ kubectl get node <NODE_NAME>
 4. Select **Drain**
 5. Configure drain options in the dialog:
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| Grace Period | Seconds to wait for pod termination | 30 |
-| Timeout | Maximum seconds for the drain operation | 60 |
-| Ignore DaemonSets | Skip DaemonSet-managed pods | Yes |
-| Delete Empty Dir Data | Delete pods using emptyDir volumes | No |
-| Force | Force deletion of unmanaged pods | No |
+| Option | Description |
+|--------|-------------|
+| Grace Period | Seconds to wait for pod termination |
+| Timeout | Maximum seconds for the drain operation |
+| Ignore DaemonSets | Skip DaemonSet-managed pods |
+| Delete Empty Dir Data | Continue even if pods use `emptyDir` volumes, which deletes that local data |
+| Force | Continue even if pods do not declare a controller |
 
 6. Click **Drain**
 
@@ -116,13 +116,13 @@ kubectl get pods -A -o wide -w
 
 ```bash
 # See events related to the drain
-kubectl get events -A --field-selector reason=Evicted --sort-by='.lastTimestamp'
+kubectl get events -A --field-selector reason=Evicted --sort-by='.metadata.creationTimestamp'
 ```
 
 ### Verify All Pods Are Evicted
 
 ```bash
-# Only DaemonSet pods should remain
+# Only DaemonSet and mirror pods should remain
 kubectl get pods -A --field-selector spec.nodeName=<NODE_NAME>
 ```
 
@@ -159,17 +159,17 @@ Pods using `emptyDir` volumes will block the drain unless `--delete-emptydir-dat
 ```bash
 # Find pods with emptyDir
 kubectl get pods -A --field-selector spec.nodeName=<NODE_NAME> -o json | \
-  jq '.items[] | select(.spec.volumes[]? | .emptyDir) | .metadata.name'
+  jq -r '.items[] | select(any(.spec.volumes[]?; has("emptyDir"))) | "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
 ### Standalone Pods
 
-Pods not managed by a ReplicaSet, Deployment, or StatefulSet will block the drain unless `--force` is used:
+Pods that are neither mirror pods nor managed by a ReplicationController, ReplicaSet, DaemonSet, StatefulSet, or Job will block the drain unless `--force` is used:
 
 ```bash
 # Find standalone pods
 kubectl get pods -A --field-selector spec.nodeName=<NODE_NAME> -o json | \
-  jq '.items[] | select(.metadata.ownerReferences == null) | .metadata.name'
+  jq -r '.items[] | select((.metadata.annotations["kubernetes.io/config.mirror"] | not) and (((.metadata.ownerReferences // []) | any(.kind == "ReplicationController" or .kind == "ReplicaSet" or .kind == "DaemonSet" or .kind == "StatefulSet" or .kind == "Job")) | not)) | "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
 Note: Force-deleting standalone pods means they will not be rescheduled.
@@ -285,7 +285,7 @@ kubectl drain <NODE_NAME> \
 
 ## Best Practices
 
-- Always cordon before draining to prevent race conditions with the scheduler
+- Remember that drain already cordons the node; cordon earlier if you want to stop new scheduling before you begin maintenance
 - Use appropriate grace periods for your workloads
 - Monitor PDB status before draining to predict failures
 - Drain one node at a time in a cluster to maintain capacity
