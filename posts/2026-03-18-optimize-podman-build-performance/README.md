@@ -204,19 +204,16 @@ podman build --jobs 4 -t your-app:latest .
 For CI/CD pipelines where local layer caches are not preserved between runs, use registry-based caching:
 
 ```bash
-# Pull the previous build to use as cache source
-podman pull your-registry.com/app:cache || true
-
-# Build using the pulled image as cache (--layers is required for --cache-from)
+# Build using a registry cache (--layers is required for --cache-from and --cache-to)
 podman build \
   --layers \
   --cache-from=your-registry.com/app:cache \
+  --cache-to=your-registry.com/app:cache \
   -t your-registry.com/app:latest \
-  -t your-registry.com/app:cache \
   .
 
-# Push the cache image for next build
-podman push your-registry.com/app:cache
+# Push the final image
+podman push your-registry.com/app:latest
 ```
 
 This technique is especially effective in CI systems like GitHub Actions, GitLab CI, or Jenkins where build agents do not retain state between runs.
@@ -328,25 +325,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Podman cache
-        uses: actions/cache@v4
-        with:
-          path: /var/lib/containers
-          key: podman-${{ hashFiles('**/Dockerfile', '**/requirements.txt') }}
-          restore-keys: podman-
-
       - name: Build image
         run: |
           podman build \
             --layers \
             --cache-from=ghcr.io/${{ github.repository }}:cache \
-            -t ${{ github.repository }}:${{ github.sha }} \
+            --cache-to=ghcr.io/${{ github.repository }}:cache \
+            -t ghcr.io/${{ github.repository }}:${{ github.sha }} \
             .
 
-      - name: Push cache layer
+      - name: Push image
         if: github.ref == 'refs/heads/main'
         run: |
-          podman push ${{ github.repository }}:cache
+          podman push ghcr.io/${{ github.repository }}:${{ github.sha }}
 ```
 
 ---
