@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Podman Desktop, Minikube, Kubernetes, Local Development
 
-Description: Learn how to set up and use Minikube with Podman Desktop as the container runtime for local Kubernetes development and testing.
+Description: Learn how to set up and use Minikube with Podman as the driver and Podman Desktop for local Kubernetes development and testing.
 
 ---
 
 > Minikube with Podman as the driver gives you a feature-rich local Kubernetes cluster without depending on Docker, complete with dashboard access and addon support.
 
-Minikube is one of the most popular tools for running Kubernetes locally. It supports multiple drivers including Podman, allowing you to use Podman Desktop as your container management layer while Minikube provides the Kubernetes control plane. This guide covers setting up Minikube with Podman and managing it through Podman Desktop.
+Minikube is one of the most popular tools for running Kubernetes locally. It supports multiple drivers including Podman. Minikube documents the Podman driver as experimental, but it allows you to use Podman Desktop as your container management layer while Minikube provides the Kubernetes control plane. This guide covers setting up Minikube with Podman and managing it through Podman Desktop.
 
 ---
 
 ## Prerequisites
 
-Install Minikube and configure it for Podman:
+Install Minikube and make sure `kubectl` and Podman are available:
 
 ```bash
 # Install Minikube on macOS
@@ -24,11 +24,14 @@ Install Minikube and configure it for Podman:
 brew install minikube
 
 # Or download directly for Linux
-# curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-# sudo install minikube-linux-amd64 /usr/local/bin/minikube
+# curl -LO https://github.com/kubernetes/minikube/releases/latest/download/minikube-linux-amd64
+# sudo install minikube-linux-amd64 /usr/local/bin/minikube && rm minikube-linux-amd64
 
 # Verify the installation
 minikube version
+
+# Check that kubectl is available
+kubectl version --client
 
 # Check that Podman is available
 podman --version
@@ -63,9 +66,9 @@ minikube start --driver=podman \
   --memory=8192 \
   --disk-size=50g
 
-# Start with a specific Kubernetes version
+# Start with an explicit Kubernetes version selection
 minikube start --driver=podman \
-  --kubernetes-version=v1.29.0
+  --kubernetes-version=stable
 
 # Verify the cluster is running
 minikube status
@@ -77,8 +80,8 @@ kubectl get nodes
 Once Minikube starts, Podman Desktop reflects the cluster:
 
 1. Open Podman Desktop and check the **Containers** section to see Minikube containers.
-2. Navigate to the **Kubernetes** section to see the Minikube context.
-3. The Minikube context will be automatically set as the active context.
+2. Open **Settings > Kubernetes** or use the status bar to verify that the Minikube context appears.
+3. Select the Minikube context as the current context if it is not already active.
 4. You can view pods, deployments, and services running in the cluster.
 
 ## Deploying Applications
@@ -88,7 +91,7 @@ Deploy applications to your Minikube cluster:
 ```bash
 # Create a deployment
 kubectl create deployment hello-minikube \
-  --image=kicbase/echo-server:1.0
+  --image=registry.k8s.io/echoserver:1.10
 
 # Expose it as a service
 kubectl expose deployment hello-minikube \
@@ -155,12 +158,11 @@ podman save my-app:latest | minikube image load -
 # List images available in Minikube
 minikube image ls
 
-# Use the image in a deployment (set imagePullPolicy to Never)
+# Use the image in a deployment (set imagePullPolicy to IfNotPresent or Never)
 kubectl create deployment my-app \
-  --image=my-app:latest \
-  -- /bin/sh -c "echo running"
+  --image=my-app:latest
 kubectl patch deployment my-app -p \
-  '{"spec":{"template":{"spec":{"containers":[{"name":"my-app","imagePullPolicy":"Never"}]}}}}'
+  '{"spec":{"template":{"spec":{"containers":[{"name":"my-app","image":"my-app:latest","imagePullPolicy":"IfNotPresent"}]}}}}'
 ```
 
 ## Managing Multiple Profiles
@@ -195,7 +197,7 @@ minikube logs
 # SSH into the Minikube node
 minikube ssh
 
-# Check the Podman socket
+# Check the Podman connection and runtime details
 podman system info
 
 # Restart the cluster if it gets stuck
@@ -209,4 +211,4 @@ minikube start --driver=podman
 
 ## Summary
 
-Minikube with Podman Desktop provides a full-featured local Kubernetes environment with addon support, built-in dashboard, and multi-profile management. The Podman driver eliminates the Docker dependency while maintaining full compatibility with Kubernetes features. Podman Desktop adds visual management on top, making it easy to monitor both the containers backing Minikube and the Kubernetes resources running inside it.
+Minikube with Podman Desktop provides a local Kubernetes environment with addon support, a built-in dashboard, and multi-profile management. The Podman driver removes the Docker dependency while still supporting core Minikube workflows, and Podman Desktop adds visual management on top so you can monitor both the containers backing Minikube and the Kubernetes resources running inside it.
