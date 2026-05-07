@@ -8,7 +8,7 @@ Description: Configure AWS VPC route tables with IPv6 routes, including default 
 
 ## Introduction
 
-AWS route tables control IPv6 traffic routing just as they do for IPv4, but IPv6 routes must be added separately. A public subnet needs a `::/0` route via an Internet Gateway to allow inbound and outbound IPv6 traffic. A private subnet that needs outbound-only IPv6 access uses an Egress-Only Internet Gateway (EIGW). Without IPv6 routes, IPv6-assigned instances cannot communicate.
+AWS route tables control IPv6 traffic routing just as they do for IPv4, but IPv6 routes must be added separately. A public subnet needs a `::/0` route via an Internet Gateway to allow inbound and outbound IPv6 traffic. A private subnet that needs outbound-only IPv6 access uses an Egress-Only Internet Gateway (EIGW). Without the appropriate IPv6 routes, IPv6-assigned instances cannot reach the internet over IPv6.
 
 ## Add IPv6 Route to Existing Route Table
 
@@ -117,7 +117,7 @@ Isolated Subnet Route Table:
 # Check all route tables in VPC for IPv6 routes
 aws ec2 describe-route-tables \
     --filters "Name=vpc-id,Values=$VPC_ID" \
-    --query "RouteTables[*].{RTID:RouteTableId, Routes:Routes[?DestinationIpv6CidrBlock!=null].{Dest:DestinationIpv6CidrBlock, Target:GatewayId}}"
+    --query "RouteTables[*].{RTID:RouteTableId, Routes:Routes[?DestinationIpv6CidrBlock!=null].{Dest:DestinationIpv6CidrBlock, GatewayId:GatewayId, EgressOnlyInternetGatewayId:EgressOnlyInternetGatewayId}}"
 
 # From an EC2 instance, test IPv6 routing
 # SSH into an instance in the public subnet:
@@ -125,9 +125,13 @@ curl -6 -s https://ipv6.icanhazip.com
 # If returns an IPv6 address: routing works
 
 # Check if instance has IPv6 address
-curl http://169.254.169.254/latest/meta-data/network/interfaces/macs/
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/meta-data/network/interfaces/macs/
 # Get MAC then:
-curl "http://169.254.169.254/latest/meta-data/network/interfaces/macs/MAC/ipv6s"
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+    "http://169.254.169.254/latest/meta-data/network/interfaces/macs/MAC/ipv6s"
 ```
 
 ## CloudFormation Route Configuration
