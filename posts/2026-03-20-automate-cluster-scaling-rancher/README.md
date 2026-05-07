@@ -8,7 +8,7 @@ Description: Automate cluster scaling in Rancher using Cluster Autoscaler for no
 
 ## Introduction
 
-Cluster scaling automation in Rancher operates at three levels: pod scaling (more replicas of existing pods), vertical pod scaling (more CPU/memory per pod), and node scaling (adding/removing nodes from the cluster). Each level requires different tools and configurations. Automating all three creates a fully elastic cluster that scales with demand and shrinks during off-peak hours.
+Cluster scaling automation in Rancher spans three core targets: horizontal pod scaling (more replicas of existing pods), vertical pod scaling (more CPU/memory per pod), and node scaling (adding/removing nodes from the cluster). KEDA complements horizontal pod scaling with event-driven triggers. Each level requires different tools and configurations. Combining them creates a fully elastic cluster that scales with demand and shrinks during off-peak hours.
 
 ## Level 1: Horizontal Pod Autoscaler (HPA)
 
@@ -57,23 +57,25 @@ spec:
 
 ## Level 2: Vertical Pod Autoscaler (VPA)
 
+Use VPA on workloads that are not also using HPA on CPU or memory.
+
 ```yaml
 # VPA adjusts CPU/memory requests based on actual usage history
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
-  name: api-server-vpa
+  name: batch-worker-vpa
   namespace: production
 spec:
   targetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: api-server
+    name: batch-worker
   updatePolicy:
-    updateMode: "Auto"    # Recreate pods with new resource requests
+    updateMode: "Recreate"    # Use an explicit mode; "Auto" is deprecated
   resourcePolicy:
     containerPolicies:
-      - containerName: api
+      - containerName: worker
         minAllowed:
           cpu: 100m
           memory: 128Mi
@@ -85,10 +87,13 @@ spec:
 
 ## Level 3: Cluster Autoscaler
 
-```yaml
+```bash
 # Cluster Autoscaler on AWS (EC2 node groups)
+helm repo add autoscaler https://kubernetes.github.io/autoscaler
+helm repo update
 helm install cluster-autoscaler autoscaler/cluster-autoscaler \
   --namespace kube-system \
+  --set cloudProvider=aws \
   --set autoDiscovery.clusterName=production-cluster \
   --set awsRegion=us-east-1 \
   --set rbac.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::ACCOUNT:role/ClusterAutoscalerRole
@@ -100,10 +105,10 @@ helm install cluster-autoscaler autoscaler/cluster-autoscaler \
 # k8s.io/cluster-autoscaler/node-template/resources/ephemeral-storage = 100Gi
 ```
 
-For bare-metal with Rancher's Machine Provisioning:
+For Rancher-provisioned RKE2 clusters backed by vSphere VMs, set autoscaling bounds on the machine pool and run Cluster Autoscaler with the Cluster API provider:
 
 ```yaml
-# RKE2 cluster with machine pools and auto-scaling
+# RKE2 machine pool with autoscaling bounds for Cluster Autoscaler (cloudProvider=clusterapi)
 apiVersion: provisioning.cattle.io/v1
 kind: Cluster
 metadata:
@@ -116,13 +121,13 @@ spec:
         machineConfigRef:
           kind: VmwarevsphereConfig
           name: worker-vm
-        roles: [worker]
+        workerRole: true
         # Rancher machine pool auto-scaling
-        minSize: 3
-        maxSize: 10
+        autoscalingMinSize: 3
+        autoscalingMaxSize: 10
 ```
 
-## Level 4: KEDA Event-Driven Scaling
+## Event-Driven Scaling with KEDA
 
 ```yaml
 # Scale workers based on Kafka queue depth
@@ -156,8 +161,10 @@ spec:
   triggers:
     - type: rabbitmq
       metadata:
+        protocol: auto
+        mode: QueueLength
         queueName: processing-queue
-        queueLength: "10"    # 1 pod per 10 messages
+        value: "10"    # 1 pod per 10 messages
         hostFromEnv: RABBITMQ_URI
 ```
 
@@ -191,14 +198,13 @@ spec:
 kubectl get hpa -n production -w
 
 # Check Cluster Autoscaler logs
-kubectl logs -n kube-system \
-  -l app=cluster-autoscaler \
+kubectl logs -n kube-system deployment/cluster-autoscaler \
   --tail=50 | grep -i "scale"
 
 # View scaling events
 kubectl get events -n production \
-  --field-selector reason=SuccessfulRescale \
-  --sort-by='.lastTimestamp'
+  --field-selector involvedObject.kind=HorizontalPodAutoscaler,reason=SuccessfulRescale \
+  --sort-by='.metadata.creationTimestamp'
 
 # KEDA scaler status
 kubectl get scaledobjects -n production
@@ -207,4 +213,4 @@ kubectl describe scaledobject kafka-consumer-scaler -n production
 
 ## Conclusion
 
-Automated cluster scaling in Rancher combines HPA for steady-state metric-based scaling, VPA for right-sizing pod resource requests, Cluster Autoscaler for node-level elasticity, and KEDA for event-driven workloads. Configure scale-down conservatively (longer stabilization windows) to avoid flapping, and use KEDA for queue-based workloads that need more precise scaling than CPU/memory metrics provide. Monitor scaling events through Grafana dashboards to validate that the scaling parameters match actual traffic patterns.
+Automated cluster scaling in Rancher combines HPA for steady-state metric-based scaling, VPA for right-sizing pod resource requests on workloads that are not using CPU/memory HPA, Cluster Autoscaler for node-level elasticity, and KEDA for event-driven pod scaling. Configure scale-down conservatively (longer stabilization windows) to avoid flapping, and use KEDA for queue-based workloads that need more precise scaling than CPU/memory metrics provide. Monitor scaling events through Grafana dashboards to validate that the scaling parameters match actual traffic patterns.
