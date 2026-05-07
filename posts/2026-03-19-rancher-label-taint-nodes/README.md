@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, Node Management
 
 Description: A practical guide to using node labels and taints in Rancher to control workload scheduling and node specialization.
 
-Node labels and taints are powerful Kubernetes mechanisms for controlling where pods run. Labels categorize nodes and enable node selectors and affinity rules. Taints repel pods unless they have matching tolerations. This guide shows you how to manage labels and taints through the Rancher UI and kubectl.
+Node labels and taints are powerful Kubernetes mechanisms for controlling where pods run. Labels categorize nodes and enable node selectors and affinity rules. Taints repel pods unless they have matching tolerations. This guide shows you how to manage labels and taints through the Rancher UI, when node editing is available for your cluster type, and via kubectl.
 
 ## Understanding Labels and Taints
 
@@ -25,12 +25,11 @@ Node labels and taints are powerful Kubernetes mechanisms for controlling where 
 1. Log in to the Rancher UI
 2. Navigate to your cluster
 3. Go to **Nodes**
-4. Click on the node name to open its details
-5. Click **Edit** or the pencil icon
-6. In the **Labels** section, add key-value pairs:
+4. Open the node's **⋮** menu and click **Edit**
+5. In the **Labels** section, add key-value pairs:
    - Key: `environment`
    - Value: `production`
-7. Click **Save**
+6. Click **Save**
 
 ### Adding Labels via kubectl
 
@@ -173,13 +172,12 @@ spec:
 
 1. Navigate to your cluster
 2. Go to **Nodes**
-3. Click on the node name
-4. Click **Edit**
-5. In the **Taints** section, add:
+3. Open the node's **⋮** menu and click **Edit**
+4. In the **Taints** section, add:
    - Key: `dedicated`
    - Value: `gpu`
    - Effect: `NoSchedule`
-6. Click **Save**
+5. Click **Save**
 
 ### Adding Taints via kubectl
 
@@ -218,7 +216,7 @@ kubectl taint nodes <NODE_NAME> dedicated-
 
 ## Using Tolerations for Tainted Nodes
 
-Pods must have matching tolerations to be scheduled on tainted nodes:
+Pods must have matching tolerations to be scheduled on tainted nodes. If you also use a node selector, the node must have the matching label:
 
 ```yaml
 apiVersion: apps/v1
@@ -278,7 +276,7 @@ tolerations:
 ```bash
 # Taint and label GPU nodes
 kubectl taint nodes gpu-node-1 dedicated=gpu:NoSchedule
-kubectl label nodes gpu-node-1 gpu=nvidia-a100
+kubectl label nodes gpu-node-1 dedicated=gpu gpu=nvidia-a100
 ```
 
 ### Dedicated Database Nodes
