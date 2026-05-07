@@ -18,9 +18,9 @@ Podman on macOS requires a Linux virtual machine to run containers, since contai
 
 Podman machine creates a lightweight Linux VM using one of several backends:
 
-- **Apple Hypervisor Framework** (default on macOS 12.0 and later): Uses the native macOS virtualization API
-- **QEMU**: The traditional backend, still available as a fallback
-- **libkrun**: An alternative lightweight VM backend
+- **libkrun** (default on current Podman releases for macOS): A lightweight VM provider
+- **Apple Hypervisor Framework**: Uses the native macOS virtualization APIs and is available as an alternative provider
+- **QEMU**: The traditional backend used by older Podman versions and still relevant when troubleshooting older installations
 
 Check which backend your machine is using:
 
@@ -51,37 +51,30 @@ If the download fails due to network issues, you can download the image manually
 
 ```bash
 # Check what image URL Podman is trying to download
-podman machine init --log-level=debug 2>&1 | grep -i "downloading\|url"
+podman --log-level=debug machine init 2>&1 | grep -i "downloading\|url"
 
 # Download manually with curl (supports resume)
-curl -C - -L -o fedora-coreos.qcow2 <image-url>
+curl -C - -L -o podman-machine-image.raw.zst <image-url>
 
 # Initialize with the local image
-podman machine init --image ./fedora-coreos.qcow2
+podman machine init --image ./podman-machine-image.raw.zst
 ```
 
 ### 2. Hypervisor Framework Permission Denied
 
-macOS requires permission to use the Hypervisor framework. If Podman cannot access it:
+macOS requires the process using the Hypervisor framework to have the proper entitlement. If Podman cannot access it:
 
 ```bash
-# Check if your user has hypervisor access
-# This should not throw an error
-/usr/bin/hv_test 2>&1 || echo "Hypervisor access denied"
+# Check whether Hypervisor APIs are available on this Mac
+sysctl kern.hv_support
+# Should output: kern.hv_support: 1
 ```
 
 Fixes:
 
-- Make sure Podman (or Terminal) is not blocked in **System Settings > Privacy & Security > Developer Tools**
-- If you installed Podman via Homebrew, try re-adding terminal permissions
-- On managed devices, your IT admin may need to grant hypervisor entitlements
-
-Check if the Hypervisor framework is functional:
-
-```bash
-sysctl kern.hv_support
-# Should output: kern.hv_support: 1
-```
+- If QEMU reports `HV_DENIED`, reinstall or update QEMU and Podman, or use the official Podman installer whose QEMU binary is tested with Podman
+- If you are using a custom or locally built hypervisor binary, sign it with the `com.apple.security.hypervisor` entitlement
+- On managed devices, your IT admin may need to allow software that uses Apple's Hypervisor framework
 
 If it shows 0, your Mac does not support hardware virtualization (this is uncommon on modern Macs).
 
@@ -214,8 +207,8 @@ Podman communicates with the VM over SSH. If SSH fails:
 podman machine ssh echo "Connection successful"
 
 # If that fails, check the SSH key
-ls -la ~/.ssh/podman-machine-default
-ls -la ~/.ssh/podman-machine-default.pub
+podman machine inspect --format '{{.SSHConfig.IdentityPath}}'
+ls -la "$(podman machine inspect --format '{{.SSHConfig.IdentityPath}}')"
 
 # Regenerate SSH keys by recreating the machine
 podman machine rm podman-machine-default --force
@@ -232,7 +225,7 @@ Sometimes the machine gets stuck and will not respond to start or stop commands:
 podman machine stop
 
 # If that does not work, kill the underlying processes
-pkill -f "vfkit\|qemu\|gvproxy"
+pkill -f "vfkit\|krunkit\|qemu\|gvproxy"
 
 # Then stop and restart
 podman machine stop
@@ -252,7 +245,7 @@ When nothing else works, do a complete clean installation:
 
 ```bash
 # Remove all machines
-podman machine rm --all --force
+podman machine reset --force
 
 # Remove all Podman configuration
 rm -rf ~/.config/containers/
@@ -268,7 +261,7 @@ podman machine start
 
 # Verify everything works
 podman info
-podman run hello-world
+podman run docker.io/library/hello-world
 ```
 
 ## Diagnostic Commands
@@ -297,9 +290,9 @@ ls -la ~/.local/share/containers/podman/machine/
 cat ~/.config/containers/podman/machine/*/logs/* 2>/dev/null | tail -50
 
 # Debug startup
-podman machine start --log-level=debug 2>&1 | tail -100
+podman --log-level=debug machine start 2>&1 | tail -100
 ```
 
 ## Conclusion
 
-Podman machine startup failures on macOS usually come down to hypervisor access issues, corrupted VM images, resource constraints, or breaking changes from macOS updates. The most reliable fix is to remove the existing machine with `podman machine rm --force`, reinitialize it with `podman machine init`, and start fresh. Keep Podman updated via Homebrew, and after macOS upgrades, expect that you may need to recreate your VM. For persistent issues, switching between the Apple Hypervisor and QEMU backends can help isolate the problem.
+Podman machine startup failures on macOS usually come down to hypervisor access issues, corrupted VM images, resource constraints, or breaking changes from macOS updates. The most reliable fix is to remove the existing machine with `podman machine rm --force`, reinitialize it with `podman machine init`, and start fresh. Keep Podman updated via Homebrew, and after macOS upgrades, expect that you may need to recreate your VM. For persistent issues, switching between the default provider and the Apple Hypervisor provider can help isolate the problem.
