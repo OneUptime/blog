@@ -43,6 +43,9 @@ curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-contai
 sudo dnf install -y nvidia-container-toolkit
 
 # For Ubuntu/Debian
+sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+  ca-certificates curl gnupg2
+
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
   sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 
@@ -68,7 +71,8 @@ nvidia-ctk cdi list
 
 # Test GPU access in a Podman container
 podman run --rm --device nvidia.com/gpu=all \
-  nvidia/cuda:12.3.1-base-ubuntu22.04 nvidia-smi
+  --security-opt=label=disable \
+  ubuntu nvidia-smi -L
 ```
 
 ### Run AI Lab with NVIDIA GPU
@@ -79,8 +83,9 @@ podman run -d \
   --name ai-gpu-server \
   -p 8080:8080 \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   -v ~/ai-models:/models:ro \
-  ghcr.io/ggerganov/llama.cpp:server-cuda \
+  ghcr.io/ggml-org/llama.cpp:server-cuda \
   --model /models/mistral-7b-instruct-q4_k_m.gguf \
   --host 0.0.0.0 \
   --port 8080 \
@@ -103,8 +108,9 @@ podman logs ai-gpu-server 2>&1 | grep -i "gpu\|cuda\|offload"
 
 ```bash
 # Install ROCm on Ubuntu 22.04
+# After configuring the official ROCm package repository for your Ubuntu release:
 sudo apt update
-sudo apt install -y rocm-dev rocm-libs
+sudo apt install -y rocm
 
 # Add your user to the render and video groups
 sudo usermod -aG render,video $USER
@@ -121,7 +127,7 @@ rocminfo | grep -A2 "Agent "
 podman run --rm \
   --device /dev/kfd \
   --device /dev/dri \
-  --group-add video \
+  --group-add keep-groups \
   rocm/rocm-terminal rocminfo
 
 # Start the inference server with AMD GPU support
@@ -130,9 +136,9 @@ podman run -d \
   -p 8080:8080 \
   --device /dev/kfd \
   --device /dev/dri \
-  --group-add video \
+  --group-add keep-groups \
   -v ~/ai-models:/models:ro \
-  ghcr.io/ggerganov/llama.cpp:server-rocm \
+  ghcr.io/ggml-org/llama.cpp:server-rocm \
   --model /models/mistral-7b-instruct-q4_k_m.gguf \
   --host 0.0.0.0 \
   --port 8080 \
@@ -163,12 +169,12 @@ for layers in 0 10 20 35; do
   echo "Testing with $layers GPU layers..."
   podman run --rm \
     --device nvidia.com/gpu=all \
+    --security-opt=label=disable \
     -v ~/ai-models:/models:ro \
-    ghcr.io/ggerganov/llama.cpp:server-cuda \
-    --model /models/mistral-7b-instruct-q4_k_m.gguf \
-    --n-gpu-layers $layers \
-    --prompt "Hello world" \
-    --n-predict 50 2>&1 | grep "eval time"
+    --entrypoint /app/llama-bench \
+    ghcr.io/ggml-org/llama.cpp:full-cuda \
+    -m /models/mistral-7b-instruct-q4_k_m.gguf \
+    -ngl $layers
 done
 ```
 
