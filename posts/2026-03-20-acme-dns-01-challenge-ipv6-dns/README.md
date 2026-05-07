@@ -15,26 +15,25 @@ The DNS-01 challenge is the most flexible ACME validation method - it requires n
 ```text
 DNS-01 Validation Flow:
 Client creates TXT record → Let's Encrypt queries DNS → Certificate issued
-No inbound connections needed → Perfect for IPv6-only servers
+No inbound HTTP access needed → Useful for IPv6-only services
 ```
 
-Unlike HTTP-01, the Let's Encrypt servers query DNS (which is network-agnostic). Your server needs no open inbound ports.
+Unlike HTTP-01, Let's Encrypt validates control by querying DNS TXT records. Your application server needs no open inbound HTTP ports.
 
 ## Prerequisites: DNS Provider API Access
 
-DNS-01 requires programmatic DNS record creation. Gather your DNS provider API credentials:
+For automated issuance and renewal, DNS-01 requires programmatic DNS record creation. Gather your DNS provider API credentials:
 
 ```bash
-# Example: Check available certbot DNS plugins
-
-pip3 list | grep certbot-dns
+# Example: Check installed certbot DNS plugins
+certbot plugins
 
 # Install the plugin for your provider
 pip3 install certbot-dns-cloudflare    # Cloudflare
 pip3 install certbot-dns-route53       # AWS Route 53
 pip3 install certbot-dns-google        # Google Cloud DNS
 pip3 install certbot-dns-digitalocean  # DigitalOcean
-pip3 install certbot-dns-godaddy       # GoDaddy
+pip3 install certbot-dns-rfc2136       # RFC 2136 / BIND-compatible DNS
 ```
 
 ## Configuring Cloudflare DNS-01
@@ -44,12 +43,12 @@ Create an API token with DNS edit permissions for your zone:
 ```bash
 # Store Cloudflare credentials securely
 sudo mkdir -p /etc/letsencrypt/secrets
-cat > /etc/letsencrypt/secrets/cloudflare.ini << 'EOF'
+sudo tee /etc/letsencrypt/secrets/cloudflare.ini > /dev/null << 'EOF'
 # Cloudflare API token with Zone:DNS:Edit permission
 dns_cloudflare_api_token = your_cloudflare_api_token_here
 EOF
 
-# Restrict file permissions (certbot requires this)
+# Restrict file permissions (certbot warns if this is too permissive)
 sudo chmod 600 /etc/letsencrypt/secrets/cloudflare.ini
 sudo chown root:root /etc/letsencrypt/secrets/cloudflare.ini
 ```
@@ -80,7 +79,6 @@ sudo certbot certonly \
 Route 53 uses IAM permissions rather than API keys:
 
 ```json
-// IAM policy for certbot Route 53 DNS-01
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -104,8 +102,8 @@ Route 53 uses IAM permissions rather than API keys:
 ```
 
 ```bash
-# Configure AWS credentials
-aws configure
+# Configure AWS credentials for the account that will run certbot
+sudo aws configure
 
 # Obtain certificate via Route 53 DNS-01
 sudo certbot certonly \
@@ -137,7 +135,7 @@ sudo certbot certonly \
 
 Create the TXT record on your IPv6 DNS server:
 
-```bash
+```text
 # For BIND DNS server (named)
 # Add to your zone file:
 _acme-challenge.yourdomain.example.com. 300 IN TXT "verification-token-here"
@@ -160,8 +158,9 @@ curl https://get.acme.sh | sh -s email=admin@example.com
 # Set Cloudflare credentials
 export CF_Token="your_cloudflare_api_token"
 
-# Issue certificate via DNS-01
+# Issue Let's Encrypt certificate via DNS-01
 ~/.acme.sh/acme.sh --issue \
+  --server letsencrypt \
   --dns dns_cf \
   --domain yourdomain.example.com \
   --domain "*.yourdomain.example.com"
@@ -174,7 +173,7 @@ export CF_Token="your_cloudflare_api_token"
 DNS-01 challenges can fail if DNS hasn't propagated when Let's Encrypt checks:
 
 ```bash
-# Manually check TXT record from Let's Encrypt's DNS servers
+# Manually check TXT record through public IPv6 resolvers
 # Google's DNS (IPv6 capable)
 dig TXT _acme-challenge.yourdomain.example.com @2001:4860:4860::8888
 
