@@ -66,7 +66,7 @@ sudo systemctl start podman.socket
 # Verify the socket is active
 sudo systemctl status podman.socket
 
-# The socket is created at the standard Docker location
+# The rootful Podman socket is created here
 ls -la /run/podman/podman.sock
 
 # Create a symlink at the Docker socket path for maximum compatibility
@@ -109,13 +109,12 @@ systemctl --user start podman.socket
 export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"
 
 # Docker Compose now works with Podman
-docker-compose version
-docker-compose up -d
-docker-compose ps
+docker compose version
+docker compose up -d
+docker compose ps
 
 # Example docker-compose.yml works unchanged
 cat > docker-compose.yml << 'EOF'
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:latest
@@ -125,7 +124,7 @@ services:
     image: docker.io/library/redis:7
 EOF
 
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Configuring the Socket for Development Tools
@@ -134,11 +133,12 @@ Set up the Podman socket for common development tools.
 
 ```bash
 # VS Code Dev Containers - set in settings.json
-# "docker.host": "unix:///run/user/1000/podman/podman.sock"
+# "containers.environment": {
+#   "DOCKER_HOST": "unix:///run/user/1000/podman/podman.sock"
+# }
 
 # Testcontainers (Java/Python/Go)
 # Set the environment variable
-export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE="${XDG_RUNTIME_DIR}/podman/podman.sock"
 export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"
 
 # Testcontainers also needs the Ryuk container to be disabled
@@ -159,11 +159,11 @@ print(client.version())
 
 ## Setting Up a TCP Socket
 
-For remote access or tools that need a TCP connection, configure a TCP listener.
+For local tools that need a TCP connection, configure a TCP listener.
 
 ```bash
-# Run the Podman API service on a TCP port
-podman system service --time=0 tcp:0.0.0.0:2375 &
+# Run the Podman API service on a local TCP port
+podman system service --time=0 tcp://127.0.0.1:2375 &
 
 # Set DOCKER_HOST to use TCP
 export DOCKER_HOST="tcp://localhost:2375"
@@ -171,7 +171,7 @@ export DOCKER_HOST="tcp://localhost:2375"
 # Test the TCP connection
 curl http://localhost:2375/v1.40/version | jq .
 
-# For secure remote access, use SSH instead of TCP
+# For secure remote access, use SSH instead of an unauthenticated TCP listener
 export DOCKER_HOST="ssh://user@remote-host:22/run/user/1000/podman/podman.sock"
 ```
 
