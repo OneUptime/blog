@@ -2,11 +2,11 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, AWS, Azure, GCP, API Gateway, Rate Limiting, Throttling, Infrastructure as Code
+Tags: OpenTofu, AWS, Azure, API Gateway, Rate Limiting, Throttling, Infrastructure as Code
 
-Description: Learn how to configure API throttling and rate limiting across AWS API Gateway, Azure API Management, and GCP API Gateway using OpenTofu to protect backends from traffic spikes.
+Description: Learn how to configure API throttling and rate limiting across AWS API Gateway and Azure API Management using OpenTofu to protect backends from traffic spikes.
 
-API throttling prevents abuse, protects backend services from traffic spikes, and ensures fair usage across clients. Each cloud provider has distinct mechanisms - AWS API Gateway uses usage plans and stage-level throttling, Azure APIM uses rate-limit policies, and GCP API Gateway uses quota configurations. Managing throttling in OpenTofu ensures limits are consistently applied and documented.
+API throttling prevents abuse, protects backend services from traffic spikes, and ensures fair usage across clients. Each cloud provider has distinct mechanisms - AWS API Gateway uses usage plans and stage-level throttling, while Azure APIM uses rate-limit policies. Managing throttling in OpenTofu ensures limits are consistently applied and documented.
 
 ## AWS API Gateway Throttling
 
@@ -57,8 +57,6 @@ resource "aws_api_gateway_method_settings" "search" {
   settings {
     throttling_burst_limit = 100   # Lower limit for expensive search endpoint
     throttling_rate_limit  = 50
-    caching_enabled        = true
-    cache_ttl_in_seconds   = 300
   }
 }
 ```
@@ -114,7 +112,7 @@ resource "aws_api_gateway_usage_plan" "pro_tier" {
 ## AWS WAF Rate-Based Rule (Layer 7 Throttling)
 
 ```hcl
-# WAF rate limiting at CloudFront/ALB level (before API Gateway)
+# WAF rate limiting for a Regional REST API stage or ALB
 resource "aws_wafv2_web_acl" "api" {
   name  = "api-rate-limiting"
   scope = "REGIONAL"
@@ -151,6 +149,11 @@ resource "aws_wafv2_web_acl" "api" {
     sampled_requests_enabled   = true
   }
 }
+
+resource "aws_wafv2_web_acl_association" "api_stage" {
+  resource_arn = aws_api_gateway_stage.production.arn
+  web_acl_arn  = aws_wafv2_web_acl.api.arn
+}
 ```
 
 ## Azure API Management Rate Limiting Policy
@@ -164,13 +167,16 @@ resource "azurerm_api_management_api_policy" "rate_limited" {
   xml_content = <<-XML
     <policies>
       <inbound>
-        <!-- Rate limit by subscription key: 100 calls per 60 seconds -->
-        <rate-limit calls="100" renewal-period="60">
-          <api name="${azurerm_api_management_api.main.name}" />
-        </rate-limit>
+        <base />
 
-        <!-- Monthly quota per subscription -->
-        <quota calls="50000" renewal-period="2592000" />
+        <!-- Rate limit by subscription: 100 calls per 60 seconds -->
+        <rate-limit calls="100" renewal-period="60" />
+
+        <!-- 30-day quota per subscription -->
+        <quota-by-key calls="50000"
+                      renewal-period="2592000"
+                      counter-key="@(context.Subscription != null ? context.Subscription.Id : context.Request.IpAddress)"
+                      increment-condition="@(context.Subscription != null)" />
 
         <!-- IP-based rate limiting for unauthenticated endpoints -->
         <rate-limit-by-key calls="30"
@@ -179,7 +185,6 @@ resource "azurerm_api_management_api_policy" "rate_limited" {
                            increment-condition="@(context.Response.StatusCode == 200)"
                            remaining-calls-header-name="X-Rate-Limit-Remaining"
                            retry-after-header-name="Retry-After" />
-        <base />
       </inbound>
       <backend>
         <base />
@@ -192,14 +197,14 @@ resource "azurerm_api_management_api_policy" "rate_limited" {
 }
 ```
 
-## CloudWatch Alarms for Throttling
+## CloudWatch Alarms for Error Rates and Traffic Spikes
 
 ```hcl
-resource "aws_cloudwatch_metric_alarm" "api_throttled" {
-  alarm_name          = "api-gateway-throttled-requests"
+resource "aws_cloudwatch_metric_alarm" "http_api_4xx" {
+  alarm_name          = "http-api-4xx-errors"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
-  metric_name         = "4XXError"
+  metric_name         = "4xx"
   namespace           = "AWS/ApiGateway"
   period              = 60
   statistic           = "Sum"
@@ -210,25 +215,30 @@ resource "aws_cloudwatch_metric_alarm" "api_throttled" {
     Stage = aws_apigatewayv2_stage.production.name
   }
 
-  alarm_description = "High rate of 4xx errors - possible throttling or abuse"
+  alarm_description = "High rate of HTTP API client errors - sustained 429 responses can indicate throttling"
   alarm_actions     = [aws_sns_topic.alerts.arn]
 }
 
-resource "aws_cloudwatch_metric_alarm" "throttle_count" {
-  alarm_name          = "api-gateway-throttle-count"
+resource "aws_cloudwatch_metric_alarm" "rest_api_request_count" {
+  alarm_name          = "rest-api-request-count"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  metric_name         = "Count"  # Use explicit Count for REST APIs
+  metric_name         = "Count"
   namespace           = "AWS/ApiGateway"
   period              = 300
-  statistic           = "Sum"
+  statistic           = "SampleCount"
   threshold           = 1000
 
-  alarm_description = "API Gateway request volume spiking"
+  dimensions = {
+    ApiName = aws_api_gateway_rest_api.main.name
+    Stage   = aws_api_gateway_stage.production.stage_name
+  }
+
+  alarm_description = "REST API request volume spiking"
   alarm_actions     = [aws_sns_topic.alerts.arn]
 }
 ```
 
 ## Conclusion
 
-API throttling in OpenTofu protects backend services and enforces fair usage policies across clients. In AWS, combine stage-level defaults with per-route overrides for expensive operations, and use usage plans to enforce per-client quotas. Add WAF rate-based rules for IP-level throttling before requests reach API Gateway. In Azure APIM, use rate-limit and quota policies for subscription-based enforcement and rate-limit-by-key for IP-based throttling. Always create CloudWatch alarms on throttling metrics to distinguish legitimate traffic spikes from abuse.
+API throttling in OpenTofu protects backend services and enforces fair usage policies across clients. In AWS, combine stage-level defaults with per-route overrides for expensive operations, and use usage plans to enforce per-client quotas. Add WAF rate-based rules for IP-level throttling before requests reach your REST API stage or ALB. In Azure APIM, use rate-limit and quota-by-key policies for subscription-based enforcement and rate-limit-by-key for IP-based throttling. Always create CloudWatch alarms on client-error and request-volume metrics, or on access-log-derived 429 metrics when you need throttling-specific alerts, to distinguish legitimate traffic spikes from abuse.
