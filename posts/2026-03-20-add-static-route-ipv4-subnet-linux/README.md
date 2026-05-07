@@ -45,7 +45,7 @@ Lower metric = higher priority. Use metrics to prefer one route over another:
 # Primary route via eth0, metric 100
 sudo ip route add 10.10.0.0/16 via 192.168.1.254 dev eth0 metric 100
 
-# Backup route via eth1, metric 200 (only used if primary is gone)
+# Secondary route via eth1, metric 200 (preferred only if the lower-metric route is unavailable)
 sudo ip route add 10.10.0.0/16 via 192.168.2.254 dev eth1 metric 200
 ```
 
@@ -64,7 +64,7 @@ sudo ip route add 10.10.0.0/16 \
 # Confirm the route is in the table
 ip route show 10.10.0.0/16
 
-# Test reachability using the new route
+# Show which route the kernel will use for this destination
 ip route get 10.10.5.1
 ```
 
