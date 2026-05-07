@@ -25,7 +25,7 @@ resource "azurerm_storage_account" "storage" {
 
 resource "azurerm_storage_container" "uploads" {
   name                  = "uploads"
-  storage_account_name  = azurerm_storage_account.storage.name
+  storage_account_id    = azurerm_storage_account.storage.id
   container_access_type = "private"
 }
 ```
@@ -38,7 +38,7 @@ data "azurerm_storage_account_sas" "account_sas" {
   connection_string = azurerm_storage_account.storage.primary_connection_string
   https_only        = true
 
-  # Restrict to blob and queue services only
+  # Restrict to the blob service only
   services {
     blob  = true
     queue = false
@@ -46,7 +46,7 @@ data "azurerm_storage_account_sas" "account_sas" {
     file  = false
   }
 
-  # Allow operations on service, container, and object levels
+  # Allow operations at the container and object levels
   resource_types {
     service   = false
     container = true
@@ -70,16 +70,16 @@ data "azurerm_storage_account_sas" "account_sas" {
     filter  = false
   }
 
-  # Restrict to specific IP range
-  ip_address = "203.0.113.0/24"
+  # Restrict to a specific IP address range
+  ip_addresses = "203.0.113.10-203.0.113.20"
 }
 ```
 
 ## Step 3: Generate a Container-Level SAS Token
 
 ```hcl
-# Blob-specific SAS for a single container
-data "azurerm_storage_blob_sas" "container_sas" {
+# Blob container SAS for a single container
+data "azurerm_storage_account_blob_container_sas" "container_sas" {
   connection_string = azurerm_storage_account.storage.primary_connection_string
   container_name    = azurerm_storage_container.uploads.name
   https_only        = true
@@ -89,16 +89,16 @@ data "azurerm_storage_blob_sas" "container_sas" {
   expiry = timeadd(timestamp(), "1h")  # Valid for 1 hour
 
   permissions {
-    read   = false
-    add    = true
-    create = true
-    write  = true
-    delete = false
-    list   = false
-    tag    = false
-    move   = false
-    execute = false
-    ownership = false
+    read        = false
+    add         = true
+    create      = true
+    write       = true
+    delete      = false
+    list        = false
+    tags        = false
+    move        = false
+    execute     = false
+    ownership   = false
     permissions = false
   }
 }
@@ -110,11 +110,11 @@ data "azurerm_storage_blob_sas" "container_sas" {
 # Store the generated SAS token in Key Vault for secure consumption
 resource "azurerm_key_vault_secret" "upload_sas" {
   name         = "upload-sas-token"
-  value        = data.azurerm_storage_account_sas.account_sas.sas
+  value        = data.azurerm_storage_account_blob_container_sas.container_sas.sas
   key_vault_id = azurerm_key_vault.kv.id
 
-  # Expire the secret to match the SAS expiry
-  expiration_date = "2026-12-31T23:59:59Z"
+  # Expire the secret on the same one-hour schedule as the SAS token
+  expiration_date = timeadd(timestamp(), "1h")
 
   tags = {
     purpose = "blob-upload-access"
@@ -126,9 +126,9 @@ resource "azurerm_key_vault_secret" "upload_sas" {
 
 ```hcl
 output "sas_url" {
-  value       = "${azurerm_storage_account.storage.primary_blob_endpoint}${data.azurerm_storage_account_sas.account_sas.sas}"
+  value       = "${azurerm_storage_account.storage.primary_blob_endpoint}${azurerm_storage_container.uploads.name}${data.azurerm_storage_account_blob_container_sas.container_sas.sas}"
   sensitive   = true
-  description = "Full SAS URL for blob access"
+  description = "Full SAS URL for the uploads container"
 }
 ```
 
