@@ -22,21 +22,21 @@ az network vnet subnet create \
   --resource-group $RESOURCE_GROUP \
   --vnet-name $VNET_NAME \
   --name web-subnet \
-  --address-prefix 10.100.1.0/24
+  --address-prefixes 10.100.1.0/24
 
 # Add an app tier subnet
 az network vnet subnet create \
   --resource-group $RESOURCE_GROUP \
   --vnet-name $VNET_NAME \
   --name app-subnet \
-  --address-prefix 10.100.2.0/24
+  --address-prefixes 10.100.2.0/24
 
 # Add a database subnet
 az network vnet subnet create \
   --resource-group $RESOURCE_GROUP \
   --vnet-name $VNET_NAME \
   --name db-subnet \
-  --address-prefix 10.100.3.0/24
+  --address-prefixes 10.100.3.0/24
 ```
 
 ## Listing Subnets in a VNet
@@ -46,7 +46,7 @@ az network vnet subnet create \
 az network vnet subnet list \
   --resource-group $RESOURCE_GROUP \
   --vnet-name $VNET_NAME \
-  --query '[].{Name:name, CIDR:addressPrefix, Available:ipConfigurations}' \
+  --query '[].{Name:name, CIDR:addressPrefix}' \
   --output table
 ```
 
@@ -60,13 +60,13 @@ Azure reserves 5 IP addresses in every subnet:
 | x.x.x.1 | Default gateway |
 | x.x.x.2 | Azure DNS mapping |
 | x.x.x.3 | Azure DNS mapping |
-| x.x.x.255 | Broadcast address |
+| Last IP in the subnet range | Reserved by Azure |
 
 A /24 subnet provides 256 - 5 = **251 usable host addresses**.
 
 ## Subnet Delegation for Azure Services
 
-Subnet delegation assigns a subnet exclusively to an Azure service:
+Subnet delegation gives an Azure service explicit permission to use a subnet:
 
 ```bash
 # Delegate a subnet to Azure Kubernetes Service
@@ -74,7 +74,7 @@ az network vnet subnet create \
   --resource-group $RESOURCE_GROUP \
   --vnet-name $VNET_NAME \
   --name aks-subnet \
-  --address-prefix 10.100.10.0/22 \
+  --address-prefixes 10.100.10.0/22 \
   --delegations Microsoft.ContainerService/managedClusters
 
 # Delegate to App Service Environment
@@ -82,7 +82,7 @@ az network vnet subnet create \
   --resource-group $RESOURCE_GROUP \
   --vnet-name $VNET_NAME \
   --name ase-subnet \
-  --address-prefix 10.100.20.0/24 \
+  --address-prefixes 10.100.20.0/24 \
   --delegations Microsoft.Web/hostingEnvironments
 ```
 
@@ -109,22 +109,22 @@ az network vnet subnet create \
   --resource-group $RESOURCE_GROUP \
   --vnet-name $VNET_NAME \
   --name GatewaySubnet \
-  --address-prefix 10.100.255.0/27
+  --address-prefixes 10.100.255.0/27
 ```
 
-Use at least /27 for gateway subnets; /29 is the minimum but /27 is recommended.
+Use /27 or larger for gateway subnets. A /29 is only applicable to the Basic SKU.
 
 ## Updating a Subnet's Address Prefix
 
-You can resize an existing empty subnet:
+You can resize a subnet if the new range still includes any assigned IP addresses:
 
 ```bash
-# Expand a subnet from /24 to /23 (requires no existing resources)
+# Expand a subnet from /24 to /23 (the new range must still include any allocated IPs)
 az network vnet subnet update \
   --resource-group $RESOURCE_GROUP \
   --vnet-name $VNET_NAME \
   --name web-subnet \
-  --address-prefix 10.100.0.0/23
+  --address-prefixes 10.100.0.0/23
 ```
 
 ## Subnet Planning Example
@@ -141,4 +141,4 @@ VNet: 10.100.0.0/16
 
 ## Conclusion
 
-Use `az network vnet subnet create` with `--address-prefix` to add subnets inside a VNet. Delegate subnets for Azure-managed services, add service endpoints for direct PaaS access, and always create a dedicated `GatewaySubnet` if you plan to use VPN or ExpressRoute.
+Use `az network vnet subnet create` with `--address-prefixes` to add subnets inside a VNet. Delegate subnets for Azure-managed services, add service endpoints for direct PaaS access, and always create a dedicated `GatewaySubnet` if you plan to use VPN or ExpressRoute.
