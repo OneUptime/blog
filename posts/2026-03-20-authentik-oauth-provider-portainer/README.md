@@ -54,7 +54,7 @@ TOKEN=$(curl -s -X POST \
   -d '{"username":"admin","password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-AUTHENTIK_BASE="https://authentik.example.com/application/o/portainer"
+AUTHENTIK_BASE="https://authentik.example.com"
 
 curl -X PUT \
   https://localhost:9443/api/settings \
@@ -65,9 +65,9 @@ curl -X PUT \
     \"OAuthSettings\": {
       \"ClientID\": \"portainer-client-id\",
       \"ClientSecret\": \"your-authentik-client-secret\",
-      \"AuthorizationURI\": \"$AUTHENTIK_BASE/authorize/\",
-      \"AccessTokenURI\": \"$AUTHENTIK_BASE/token/\",
-      \"ResourceURI\": \"$AUTHENTIK_BASE/userinfo/\",
+      \"AuthorizationURI\": \"$AUTHENTIK_BASE/application/o/authorize/\",
+      \"AccessTokenURI\": \"$AUTHENTIK_BASE/application/o/token/\",
+      \"ResourceURI\": \"$AUTHENTIK_BASE/application/o/userinfo/\",
       \"RedirectURI\": \"https://portainer.example.com/\",
       \"UserIdentifier\": \"email\",
       \"Scopes\": \"openid email profile\",
@@ -81,18 +81,18 @@ curl -X PUT \
 
 | Portainer Field | Authentik Value |
 |-----------------|----------------|
-| Authorization URL | `https://authentik.example.com/application/o/portainer/authorize/` |
-| Access Token URL | `https://authentik.example.com/application/o/portainer/token/` |
-| Resource URL | `https://authentik.example.com/application/o/portainer/userinfo/` |
+| Authorization URL | `https://authentik.example.com/application/o/authorize/` |
+| Access Token URL | `https://authentik.example.com/application/o/token/` |
+| Resource URL | `https://authentik.example.com/application/o/userinfo/` |
 | User Identifier | `email` or `preferred_username` |
 
-## Configure Group-Based Access via Authentik Policies
+## Configure Group-Based Access via Authentik Bindings
 
-In Authentik, use policies to restrict Portainer access:
+In Authentik, use application bindings to restrict Portainer access:
 
-1. In the Portainer application, go to **Policy Bindings**
-2. Add a policy: **Group Membership Policy** → Only allow members of `portainer-users` group
-3. Users not in the group will be shown an error page instead of the login prompt
+1. In the Portainer application, go to **Policy/Group/User Bindings**
+2. Add the `portainer-users` group as a binding for the application
+3. Users who are not in that group will be denied access to the application
 
 ## Verify the Login Flow
 
