@@ -8,9 +8,9 @@ Description: A troubleshooting guide for diagnosing and fixing cgroup-related er
 
 ---
 
-> "Every cgroup error in rootless Podman has a specific cause and a specific fix."
+> "Most cgroup errors in rootless Podman have a specific cause and a specific fix."
 
-cgroup errors are among the most common problems when running rootless Podman. They manifest as failed container starts, ignored resource limits, or cryptic permission denied messages. This guide walks through the most frequent cgroup errors, explains why they happen, and provides exact commands to fix each one.
+cgroup errors are among the most common problems when running rootless Podman. They manifest as failed container starts, ignored resource limits, or cryptic permission denied messages. This guide walks through the most frequent cgroup errors, explains why they happen, and provides commands to fix each one.
 
 ---
 
@@ -90,11 +90,11 @@ This error means your user does not have permission to create or write to cgroup
 
 ```bash
 # Check your user cgroup hierarchy
-ls -la /sys/fs/cgroup/user.slice/user-$(id -u).slice/
+ls -la /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/
 
 # Check which controllers are available
-cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.controllers
-# If empty, delegation is not configured
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
+# If a needed controller is missing, delegation is not configured for that controller
 
 # Fix: Enable controller delegation
 sudo mkdir -p /etc/systemd/system/user@.service.d
@@ -106,11 +106,12 @@ EOF
 
 # Apply the changes
 sudo systemctl daemon-reload
+# Then log out and log back in, or restart the user manager if safe on your host
 sudo systemctl restart user@$(id -u).service
 
 # Verify controllers are now available
-cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.controllers
-# Should show: cpu cpuset io memory pids
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
+# Should include the delegated controllers supported by your kernel, such as cpu cpuset io memory pids
 ```
 
 ## Error: "failed to write to cgroup.subtree_control"
@@ -122,12 +123,13 @@ This error indicates that a controller cannot be enabled in a cgroup subtree:
 cat /sys/fs/cgroup/cgroup.subtree_control
 cat /sys/fs/cgroup/user.slice/cgroup.subtree_control
 cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.subtree_control
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.subtree_control
 
 # If a needed controller is missing, it was not delegated
 # Fix: Ensure the controller is delegated (see delegation fix above)
 
 # Also check for threaded cgroup issues
-cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.type
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.type
 # Should be "domain" not "threaded"
 ```
 
@@ -144,7 +146,7 @@ stat -fc %T /sys/fs/cgroup/
 sudo grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=1"
 
 # For Debian/Ubuntu using GRUB
-sudo sed -i 's/GRUB_CMDLINE_LINUX=""/GRUB_CMDLINE_LINUX="systemd.unified_cgroup_hierarchy=1"/' /etc/default/grub
+sudo sed -i 's/^\(GRUB_CMDLINE_LINUX="[^"]*\)"/\1 systemd.unified_cgroup_hierarchy=1"/' /etc/default/grub
 sudo update-grub
 
 # Reboot to apply
@@ -157,4 +159,4 @@ podman info --format '{{.Host.CgroupsVersion}}'
 
 ## Summary
 
-cgroup errors in rootless Podman almost always trace back to three root causes: running cgroups v1 instead of v2, missing controller delegation for user sessions, or the user systemd instance not running. Diagnose by checking the cgroup version with `stat -fc %T /sys/fs/cgroup/`, verifying controller availability with `cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.controllers`, and ensuring `XDG_RUNTIME_DIR` is set. Fix delegation by adding a systemd override at `/etc/systemd/system/user@.service.d/delegate.conf` and restart the user service. When all else fails, `podman system reset` clears corrupted state.
+cgroup errors in rootless Podman almost always trace back to three root causes: running cgroups v1 instead of v2, missing controller delegation for user sessions, or the user systemd instance not running. Diagnose by checking the cgroup version with `stat -fc %T /sys/fs/cgroup/`, verifying controller availability with `cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers`, and ensuring `XDG_RUNTIME_DIR` is set. Fix delegation by adding a systemd override at `/etc/systemd/system/user@.service.d/delegate.conf` and logging out and back in or restarting the user service. When all else fails, `podman system reset` can clear corrupted Podman storage state, but it will not fix host cgroup configuration and it removes Podman's containers, pods, images, networks, and volumes.
