@@ -8,7 +8,7 @@ Description: Learn how to create and manage pods in Podman Desktop to group rela
 
 ---
 
-> Pods let you group related containers that share networking and storage, mirroring the Kubernetes pod model right on your local machine.
+> Pods let you group related containers that share networking and can use shared volumes, mirroring the Kubernetes pod model right on your local machine.
 
 Pods are one of the most powerful features in Podman, allowing you to bundle multiple containers into a single manageable unit. Podman Desktop provides a graphical interface to create, inspect, and manage pods without memorizing CLI flags. This guide walks you through creating pods using both the Podman Desktop UI and the underlying CLI commands.
 
@@ -27,19 +27,20 @@ podman --version
 podman pod ls
 ```
 
-Every pod includes an "infra" container that holds the shared namespaces. This small container runs automatically and keeps the pod alive even if your application containers restart.
+By default, each Podman pod includes an "infra" container that holds the shared namespaces. This small container runs automatically and keeps the pod alive even if your application containers restart.
 
 ## Creating a Pod via Podman Desktop UI
 
 To create a pod in Podman Desktop, follow these steps:
 
-1. Open Podman Desktop and navigate to the **Pods** section in the left sidebar.
-2. Click the **Create Pod** button in the top-right corner.
-3. Enter a name for your pod (e.g., `my-web-app`).
-4. Configure port mappings if your containers need to be accessible externally.
-5. Click **Create** to initialize the pod.
+1. Open Podman Desktop and navigate to the **Containers** section in the left sidebar.
+2. Select the containers you want to group into a pod.
+3. Click the **Create Pod** button.
+4. Enter a name for your pod (e.g., `my-web-app`).
+5. Check that the correct ports are exposed if your containers need to be accessible externally.
+6. Click **Create Pod** to initialize the pod.
 
-Once the pod is created, you can add containers to it by selecting the pod and choosing **Add Container**.
+Once the pod is created, you can view it in the **Pods** section.
 
 ## Creating a Pod via the CLI
 
@@ -109,7 +110,7 @@ spec:
 
 ```bash
 # Create the pod from YAML
-podman play kube my-pod.yaml
+podman kube play my-pod.yaml
 
 # Verify the pod and its containers are running
 podman pod ps
@@ -149,11 +150,11 @@ podman pod rm -f my-web-app
 podman pod rm -f --all
 
 # Clean up generated YAML resources
-podman play kube --down my-pod.yaml
+podman kube down my-pod.yaml
 ```
 
 In Podman Desktop, you can right-click a pod and select **Delete** to achieve the same result.
 
 ## Summary
 
-Pods in Podman Desktop provide a convenient way to group related containers that share networking and resources. Whether you use the graphical interface or the CLI, pods simplify multi-container development by mirroring the Kubernetes pod model locally. By defining pods in YAML, you can also ensure your local setup translates directly to production Kubernetes deployments.
+Pods in Podman Desktop provide a convenient way to group related containers that share a network namespace and can use shared volumes or resource limits. Whether you use the graphical interface or the CLI, pods simplify multi-container development by mirroring the Kubernetes pod model locally. By defining pods in YAML, you can also create a Kubernetes-style manifest that is easier to adapt for production Kubernetes deployments.
