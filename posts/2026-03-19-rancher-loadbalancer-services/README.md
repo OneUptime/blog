@@ -46,20 +46,21 @@ kubectl get svc app-loadbalancer -w
 
 ## Step 2: Create via the Rancher UI
 
-1. Navigate to your cluster in the Rancher dashboard.
-2. Go to **Service Discovery** > **Services**.
-3. Click **Create**.
-4. Select **LoadBalancer** as the service type.
-5. Configure:
+1. In the Rancher dashboard, click **☰ > Cluster Management**.
+2. Open your cluster and click **Explore**.
+3. Go to **Service Discovery** > **Services**.
+4. Click **Create**.
+5. Select **LoadBalancer** as the service type.
+6. Configure:
    - **Name**: `app-loadbalancer`
    - **Namespace**: `default`
    - **Selectors**: `app = my-app`
    - **Port**: `80` -> `8080`
-6. Click **Create**.
+7. Click **Create**.
 
 ## Step 3: Configure AWS-Specific Load Balancer
 
-For AWS EKS clusters managed by Rancher, use annotations to configure the load balancer type:
+For EKS clusters managed by Rancher that use the AWS Load Balancer Controller, use annotations like these to provision a Network Load Balancer (NLB):
 
 ```yaml
 apiVersion: v1
@@ -68,10 +69,9 @@ metadata:
   name: aws-nlb-service
   namespace: default
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: nlb
-    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
-    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
 spec:
   type: LoadBalancer
   selector:
@@ -86,7 +86,7 @@ For an internal load balancer:
 ```yaml
 metadata:
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-scheme: internal
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internal"
 ```
 
 ## Step 4: Configure Azure-Specific Load Balancer
@@ -122,7 +122,7 @@ metadata:
 
 ## Step 5: Configure GCP-Specific Load Balancer
 
-For GKE clusters:
+For GKE clusters, a `LoadBalancer` Service is external by default. To create a backend service-based external load balancer:
 
 ```yaml
 apiVersion: v1
@@ -131,8 +131,7 @@ metadata:
   name: gcp-lb-service
   namespace: default
   annotations:
-    cloud.google.com/neg: '{"ingress": true}'
-    networking.gke.io/load-balancer-type: Internal
+    cloud.google.com/l4-rbs: "enabled"
 spec:
   type: LoadBalancer
   selector:
@@ -140,6 +139,14 @@ spec:
   ports:
   - port: 80
     targetPort: 8080
+```
+
+For an internal load balancer:
+
+```yaml
+metadata:
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
 ```
 
 ## Step 6: Restrict Source IP Ranges
@@ -190,7 +197,7 @@ spec:
 
 ## Step 8: Assign a Static IP
 
-Request a specific external IP (must be pre-provisioned in your cloud provider):
+Static IP assignment is provider-specific. The legacy `spec.loadBalancerIP` field was deprecated in Kubernetes v1.24, so prefer your cloud provider's supported annotations. For example, in AKS you can reference a pre-created Public IP by name:
 
 ```yaml
 apiVersion: v1
@@ -198,9 +205,11 @@ kind: Service
 metadata:
   name: static-ip-lb
   namespace: default
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-resource-group: my-node-resource-group
+    service.beta.kubernetes.io/azure-pip-name: myAKSPublicIP
 spec:
   type: LoadBalancer
-  loadBalancerIP: 35.200.100.50
   selector:
     app: my-app
   ports:
@@ -241,7 +250,7 @@ Check the service status and external IP:
 ```bash
 kubectl get svc app-loadbalancer -n default
 kubectl describe svc app-loadbalancer -n default
-kubectl get events --field-selector involvedObject.name=app-loadbalancer
+kubectl get events -n default --field-selector involvedObject.name=app-loadbalancer
 ```
 
 Test external access:
