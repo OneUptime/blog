@@ -2,9 +2,9 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTofu, AWS, Azure, GCP, API Gateway, Custom Domain, TLS, Infrastructure as Code
+Tags: OpenTofu, AWS, Azure, API Gateway, API Management, Custom Domain, TLS, Infrastructure as Code
 
-Description: Learn how to configure custom domains for AWS API Gateway, Azure API Management, and GCP API Gateway using OpenTofu with TLS certificates and DNS routing.
+Description: Learn how to configure custom domains for AWS API Gateway and Azure API Management using OpenTofu with TLS certificates and DNS routing.
 
 Custom domains replace the default auto-generated API Gateway URLs (like `abc123.execute-api.us-east-1.amazonaws.com`) with branded, memorable URLs like `api.yourcompany.com`. Managing custom domains in OpenTofu ensures consistent TLS certificate management and DNS routing alongside your API configuration.
 
@@ -84,6 +84,7 @@ resource "aws_route53_record" "api" {
 resource "aws_api_gateway_domain_name" "api" {
   domain_name              = "api.${var.domain_name}"
   regional_certificate_arn = aws_acm_certificate_validation.api.certificate_arn
+  security_policy          = "TLS_1_2"
 
   endpoint_configuration {
     types = ["REGIONAL"]
@@ -125,10 +126,28 @@ resource "azurerm_key_vault_certificate" "apim" {
       key_type   = "RSA"
       reuse_key  = false
     }
+    lifetime_action {
+      action {
+        action_type = "AutoRenew"
+      }
+
+      trigger {
+        days_before_expiry = 30
+      }
+    }
     secret_properties {
       content_type = "application/x-pkcs12"
     }
     x509_certificate_properties {
+      key_usage = [
+        "cRLSign",
+        "dataEncipherment",
+        "digitalSignature",
+        "keyAgreement",
+        "keyCertSign",
+        "keyEncipherment",
+      ]
+
       subject            = "CN=api.${var.domain_name}"
       validity_in_months = 12
       subject_alternative_names {
@@ -146,18 +165,28 @@ resource "azurerm_api_management" "main" {
   publisher_email     = "api-team@example.com"
   sku_name            = "Premium_1"
 
-  hostname_configuration {
-    proxy {
-      host_name                    = "api.${var.domain_name}"
-      key_vault_id                 = azurerm_key_vault_certificate.apim.secret_id
-      negotiate_client_certificate = false
-      ssl_keyvault_identity_client_id = azurerm_api_management.main.identity[0].principal_id
-    }
-  }
-
   identity {
     type = "SystemAssigned"
   }
+}
+
+resource "azurerm_key_vault_access_policy" "apim" {
+  key_vault_id = azurerm_key_vault.main.id
+  tenant_id    = azurerm_api_management.main.identity[0].tenant_id
+  object_id    = azurerm_api_management.main.identity[0].principal_id
+
+  secret_permissions = ["Get", "List"]
+}
+
+resource "azurerm_api_management_custom_domain" "main" {
+  api_management_id = azurerm_api_management.main.id
+
+  gateway {
+    host_name                = "api.${var.domain_name}"
+    key_vault_certificate_id = azurerm_key_vault_certificate.apim.versionless_secret_id
+  }
+
+  depends_on = [azurerm_key_vault_access_policy.apim]
 }
 ```
 
@@ -182,6 +211,23 @@ resource "aws_acm_certificate" "envs" {
   }
 }
 
+resource "aws_route53_record" "cert_validation_envs" {
+  for_each = local.api_domains
+
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = tolist(aws_acm_certificate.envs[each.key].domain_validation_options)[0].resource_record_name
+  type    = tolist(aws_acm_certificate.envs[each.key].domain_validation_options)[0].resource_record_type
+  records = [tolist(aws_acm_certificate.envs[each.key].domain_validation_options)[0].resource_record_value]
+  ttl     = 60
+}
+
+resource "aws_acm_certificate_validation" "envs" {
+  for_each = local.api_domains
+
+  certificate_arn         = aws_acm_certificate.envs[each.key].arn
+  validation_record_fqdns = [aws_route53_record.cert_validation_envs[each.key].fqdn]
+}
+
 resource "aws_apigatewayv2_domain_name" "envs" {
   for_each = local.api_domains
 
@@ -192,6 +238,14 @@ resource "aws_apigatewayv2_domain_name" "envs" {
     endpoint_type   = "REGIONAL"
     security_policy = "TLS_1_2"
   }
+}
+
+resource "aws_apigatewayv2_api_mapping" "envs" {
+  for_each = local.api_domains
+
+  api_id      = var.api_ids[each.key]
+  domain_name = aws_apigatewayv2_domain_name.envs[each.key].id
+  stage       = var.stage_ids[each.key]
 }
 
 resource "aws_route53_record" "api_envs" {
@@ -211,4 +265,4 @@ resource "aws_route53_record" "api_envs" {
 
 ## Conclusion
 
-API Gateway custom domains in OpenTofu replace auto-generated URLs with branded endpoints. For AWS, use ACM for certificate provisioning with DNS validation via Route53, then create an alias record pointing to the API Gateway regional endpoint. Use base_path_mapping to host multiple API versions under a single domain. In Azure APIM, use Key Vault certificates with system-assigned managed identity for automatic certificate rotation. Always use TLS_1_2 security policy and Regional endpoints (rather than Edge) for most use cases to avoid certificate region constraints.
+API Gateway custom domains in OpenTofu replace auto-generated URLs with branded endpoints. For AWS, use ACM for certificate provisioning with DNS validation via Route53, then create an alias record pointing to the API Gateway regional endpoint. Use base_path_mapping to host multiple API versions under a single domain. In Azure APIM, use Key Vault certificates with a system-assigned managed identity and a versionless Key Vault secret ID so API Management can pick up renewed certificate versions automatically. HTTP APIs require the `TLS_1_2` security policy; for REST APIs, `TLS_1_2` is a safe default and newer enhanced security policies are also available. Regional endpoints avoid the `us-east-1` certificate requirement of Edge-optimized custom domains.
