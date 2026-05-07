@@ -49,11 +49,10 @@ spec:
         parse:
           type: json
           time_key: timestamp
-          time_format: "%Y-%m-%dT%H:%M:%S.%NZ"
+          time_format: "%iso8601"
         key_name: log
         reserve_data: true
         remove_key_name_field: true
-        suppress_parse_error_log: true
         emit_invalid_record_to_error: false
   globalOutputRefs:
     - elasticsearch-output
@@ -63,8 +62,7 @@ Parameters explained:
 - **key_name**: The field containing the raw log line to parse.
 - **reserve_data**: Keep original fields alongside parsed fields.
 - **remove_key_name_field**: Remove the original raw `log` field after parsing.
-- **suppress_parse_error_log**: Do not log parse errors (useful when not all lines are JSON).
-- **emit_invalid_record_to_error**: Do not emit unparseable records to the error stream.
+- **emit_invalid_record_to_error**: Do not emit unparseable records to Fluentd's `@ERROR` label.
 
 ## Step 2: Parse Logs with Regular Expressions
 
@@ -134,18 +132,17 @@ filters:
       max_bytes: 500000
 ```
 
-For custom multi-line patterns, configure Fluent Bit's multiline parser through the logging chart values:
+For custom multi-line patterns, configure Fluent Bit's multiline parser through the Rancher logging chart's `fluentbitAgentOverlay` values:
 
 ```yaml
-fluentbit:
-  config:
-    customParsers: |
-      [MULTILINE_PARSER]
-          name          java_multiline
-          type          regex
-          flush_timeout 1000
-          rule          "start_state"  "/^\d{4}-\d{2}-\d{2}/"  "cont"
-          rule          "cont"         "/^\s+at|^\s+\.\.\./"    "cont"
+fluentbitAgentOverlay:
+  customParsers: |
+    [MULTILINE_PARSER]
+        name          java_multiline
+        type          regex
+        flush_timeout 1000
+        rule          "start_state"  "/^\d{4}-\d{2}-\d{2}/"  "cont"
+        rule          "cont"         "/^\s+at|^\s+\.\.\./"    "cont"
 ```
 
 ## Step 4: Parse Key-Value Pair Logs
@@ -189,7 +186,6 @@ filters:
       key_name: log
       reserve_data: true
       remove_key_name_field: true
-      suppress_parse_error_log: true
 ```
 
 ## Step 6: Type Casting Parsed Fields
@@ -245,7 +241,7 @@ filters:
       parse:
         type: json
         time_key: timestamp
-        time_format: "%Y-%m-%dT%H:%M:%S.%NZ"
+        time_format: "%iso8601"
         keep_time_key: true
         utc: true
       key_name: log
@@ -264,15 +260,17 @@ Test your parser configuration:
 1. Deploy a test pod that generates known log output:
 
 ```bash
-kubectl run parse-test --rm -it --image=busybox -- sh -c '
-echo "{\"timestamp\":\"2026-03-19T10:00:00Z\",\"level\":\"INFO\",\"message\":\"test message\",\"status\":200}"
+kubectl run parse-test --restart=Never --image=busybox -- /bin/sh -c '
+echo "{\"timestamp\":\"2026-03-19T10:00:00Z\",\"level\":\"INFO\",\"message\":\"test message\",\"status\":200}";
+sleep 30
 '
 ```
 
-2. Check Fluentd logs for parsing results:
+2. Check Fluentd logs for parser errors or configuration issues:
 
 ```bash
-kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd | grep parse-test
+kubectl get pods -n cattle-logging-system
+kubectl logs -n cattle-logging-system <fluentd-pod> -c fluentd --tail=200
 ```
 
 3. Query the destination to verify fields are structured correctly.
@@ -280,8 +278,7 @@ kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluen
 ## Step 10: Performance Considerations
 
 - JSON parsing is faster than regex parsing. Use JSON when possible.
-- `suppress_parse_error_log: true` prevents log spam when not all lines match the parser.
-- `emit_invalid_record_to_error: false` prevents unparseable records from clogging the error stream.
+- `emit_invalid_record_to_error: false` avoids routing intentionally ignored records to Fluentd's `@ERROR` label.
 - Heavy regex patterns can impact Fluentd CPU usage. Test with production-like log volumes.
 - Multi-line parsing increases memory usage. Set appropriate `max_lines` and `max_bytes` limits.
 
