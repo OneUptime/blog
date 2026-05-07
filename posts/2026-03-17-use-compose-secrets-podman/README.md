@@ -10,7 +10,7 @@ Description: Learn how to use the Compose secrets directive with Podman to secur
 
 > Compose secrets mount sensitive data as files inside containers, keeping passwords and keys out of environment variables and image layers.
 
-The Compose `secrets` directive provides a secure way to pass sensitive information like passwords, API keys, and certificates to containers. Instead of using environment variables, secrets are mounted as files, reducing the risk of accidental exposure in logs or process listings.
+The Compose `secrets` directive provides a secure way to pass sensitive information like passwords, API keys, and certificates to containers. Instead of using environment variables, secrets are mounted as files, reducing the risk of accidental exposure in logs or the process environment.
 
 ---
 
@@ -99,6 +99,12 @@ secrets:
 
 ## Using Secrets with Custom Permissions
 
+For `podman-compose`, `uid`, `gid`, and `mode` are applied to external Podman secrets. File-based secrets are mounted from the host file and do not have their ownership or mode remapped by the Compose provider.
+
+```bash
+echo -n "private-key-data" | podman secret create tls_key -
+```
+
 ```yaml
 services:
   app:
@@ -108,11 +114,11 @@ services:
         target: /etc/ssl/private/app.key
         uid: "0"
         gid: "0"
-        mode: 0400
+        mode: 0o400
 
 secrets:
   tls_key:
-    file: ./secrets/tls.key
+    external: true
 ```
 
 ## Reading Secrets in Application Code
@@ -133,13 +139,13 @@ api_key = read_secret("api_key")
 ## Secrets vs Environment Variables
 
 ```yaml
-# Environment variables - visible in process listing and logs
+# Environment variables - visible in the process environment and easy to log
 services:
   app:
     environment:
       DB_PASSWORD: exposed_in_env  # Less secure
 
-# Secrets - mounted as files, not visible in process listing
+# Secrets - mounted as files, not stored directly in the process environment
 services:
   app:
     secrets:
@@ -148,4 +154,4 @@ services:
 
 ## Summary
 
-Compose secrets mount sensitive data as files under `/run/secrets/` inside containers. Define secrets with `file:` to reference local files, and use custom targets for specific mount paths. Secrets are more secure than environment variables because they are not visible in process listings or container inspect output.
+Compose secrets mount sensitive data as files under `/run/secrets/` inside containers. Define secrets with `file:` to reference local files, and use custom targets for specific mount paths. Secrets are more secure than environment variables because secret values are not stored directly in the process environment or container inspect output.
