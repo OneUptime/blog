@@ -36,11 +36,11 @@ resource "aws_ec2_client_vpn_endpoint" "main" {
     cloudwatch_log_stream = aws_cloudwatch_log_stream.vpn.name
   }
 
-  # Enable split tunneling to only route VPC traffic through VPN
+  # With split tunnel, only routes in the Client VPN route table go through the VPN
   split_tunnel = true
 
-  dns_servers      = ["10.0.0.2"]  # VPC DNS resolver
-  transport_protocol = "udp"       # udp is faster than tcp
+  dns_servers        = [cidrhost(var.vpc_cidr, 2)]  # AmazonProvidedDNS for the VPC
+  transport_protocol = "udp"                        # UDP is the default transport protocol
 
   tags = {
     Name        = "${var.app_name}-client-vpn"
@@ -52,7 +52,7 @@ resource "aws_ec2_client_vpn_endpoint" "main" {
 
 ## Associating with Subnets
 
-Associate the VPN endpoint with subnets in your VPC.
+Associate the VPN endpoint with subnets in different Availability Zones in your VPC.
 
 ```hcl
 resource "aws_ec2_client_vpn_network_association" "subnet_1" {
@@ -78,14 +78,13 @@ resource "aws_ec2_client_vpn_authorization_rule" "vpc_access" {
   description            = "Allow all users to access VPC"
 }
 
-# Restrict access to a specific CIDR to a specific AD group
-resource "aws_ec2_client_vpn_authorization_rule" "prod_db" {
-  client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.main.id
-  target_network_cidr    = "10.0.10.0/24"  # DB subnet
-  access_group_id        = var.dba_group_id
-  authorize_all_groups   = false
-  description            = "DBA group access to DB subnet"
-}
+# Alternative: replace the broader all-users rule with a group-scoped rule when you need segmentation
+# resource "aws_ec2_client_vpn_authorization_rule" "prod_db" {
+#   client_vpn_endpoint_id = aws_ec2_client_vpn_endpoint.main.id
+#   target_network_cidr    = "10.0.10.0/24"  # DB subnet
+#   access_group_id        = var.dba_group_id
+#   description            = "DBA group access to DB subnet"
+# }
 ```
 
 ## CloudWatch Logging
