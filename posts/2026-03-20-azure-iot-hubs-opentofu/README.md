@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, IoT Hub, IoT, Device Management, Infrastructure as Code
 
-Description: Learn how to create Azure IoT Hubs, configure device endpoints, and set up message routing to Event Hubs and Storage using OpenTofu.
+Description: Learn how to create Azure IoT Hubs, configure shared access policies and consumer groups on the built-in Event Hubs-compatible endpoint, and set up message routing to Storage using OpenTofu.
 
 ## Introduction
 
@@ -98,7 +98,7 @@ resource "azurerm_storage_account" "iot_data" {
 
 resource "azurerm_storage_container" "telemetry" {
   name                  = "telemetry"
-  storage_account_name  = azurerm_storage_account.iot_data.name
+  storage_account_id    = azurerm_storage_account.iot_data.id
   container_access_type = "private"
 }
 
@@ -113,6 +113,17 @@ resource "azurerm_iothub_endpoint_storage_container" "telemetry" {
   container_name             = azurerm_storage_container.telemetry.name
   encoding                   = "JSON"
   file_name_format           = "{iothub}/{partition}/{YYYY}/{MM}/{DD}/{HH}/{mm}"
+}
+
+resource "azurerm_iothub_route" "telemetry" {
+  resource_group_name = azurerm_resource_group.iot.name
+  iothub_name         = azurerm_iothub.main.name
+  name                = "telemetry-storage"
+
+  source         = "DeviceMessages"
+  condition      = "true"
+  endpoint_names = [azurerm_iothub_endpoint_storage_container.telemetry.name]
+  enabled        = true
 }
 ```
 
@@ -143,4 +154,4 @@ tofu apply tfplan
 
 ## Summary
 
-Azure IoT Hub provides reliable, secure device connectivity at scale. OpenTofu manages the hub, shared access policies, consumer groups, and message routing endpoints - creating a complete, code-driven IoT backend infrastructure.
+Azure IoT Hub provides reliable, secure device connectivity at scale. OpenTofu manages the hub, shared access policies, consumer groups on the built-in Event Hubs-compatible endpoint, and storage routing endpoints and routes - creating a complete, code-driven IoT backend infrastructure.
