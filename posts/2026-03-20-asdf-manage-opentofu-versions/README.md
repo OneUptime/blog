@@ -13,22 +13,30 @@ asdf is a universal version manager that supports dozens of programming language
 ## Installing asdf
 
 ```bash
-# Clone asdf
+# Clone and build asdf from source
 
-git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.14.0
+git clone https://github.com/asdf-vm/asdf.git --branch v0.19.0
+cd asdf
+make
+mkdir -p "$HOME/bin"
+cp ./asdf "$HOME/bin/"
 
 # Add to shell (bash)
-echo '. "$HOME/.asdf/asdf.sh"' >> ~/.bashrc
-echo '. "$HOME/.asdf/completions/asdf.bash"' >> ~/.bashrc
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bash_profile
+echo 'export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"' >> ~/.bash_profile
+echo '. <(asdf completion bash)' >> ~/.bashrc
+source ~/.bash_profile
 source ~/.bashrc
 
 # For Zsh
-echo '. "$HOME/.asdf/asdf.sh"' >> ~/.zshrc
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+echo 'export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 
 # Via Homebrew (macOS)
 brew install asdf
-echo '. $(brew --prefix asdf)/libexec/asdf.sh' >> ~/.zshrc
+echo 'export PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"' >> ~/.zshrc
+source ~/.zshrc
 ```
 
 ## Installing the OpenTofu Plugin
@@ -64,14 +72,14 @@ asdf list opentofu
 ## Setting the OpenTofu Version
 
 ```bash
-# Set the global default version
-asdf global opentofu 1.9.0
+# Set the default version in your home directory
+asdf set -u opentofu 1.9.0
 
-# Set the local version for a specific project
+# Set the version for a specific project
 cd /path/to/your/project
-asdf local opentofu 1.8.5
+asdf set opentofu 1.8.5
 
-# This creates a .tool-versions file
+# This creates or updates a .tool-versions file
 cat .tool-versions
 # opentofu 1.8.5
 
@@ -86,7 +94,7 @@ tofu version
 cat .tool-versions
 ```
 
-```hcl
+```text
 nodejs 20.11.0
 python 3.12.0
 opentofu 1.9.0
@@ -121,7 +129,7 @@ asdf resolves versions in this order:
 1. `ASDF_OPENTOFU_VERSION` environment variable
 2. `.tool-versions` in current directory
 3. `.tool-versions` in parent directories
-4. Global version (`~/.tool-versions`)
+4. Home directory `.tool-versions` file (`$HOME/.tool-versions`)
 
 ```bash
 # Override via environment variable
@@ -142,14 +150,14 @@ asdf current opentofu
 asdf list opentofu
 
 # Where is the binary?
-asdf which opentofu
+asdf which tofu
 ```
 
 ## Reshimming After Installation
 
 ```bash
-# If tofu command not found after install, reshim
-asdf reshim opentofu
+# If tofu command not found after install, reshim that version
+asdf reshim opentofu 1.9.0
 
 # Verify
 which tofu
