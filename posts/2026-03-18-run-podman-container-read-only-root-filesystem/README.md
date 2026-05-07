@@ -10,15 +10,15 @@ Description: Learn how to run Podman containers with a read-only root filesystem
 
 > A read-only root filesystem is one of the simplest and most effective ways to harden your container against tampering and malware persistence.
 
-Running containers with a read-only root filesystem prevents any process inside the container from writing to the filesystem. This is a fundamental security practice that stops attackers from modifying binaries, injecting malicious scripts, or persisting backdoors within a compromised container. Podman makes this straightforward with a single flag.
+Running containers with a read-only root filesystem prevents processes inside the container from writing to the image-backed root filesystem. Writable tmpfs mounts or volumes can still be added for paths that need runtime data. This is a fundamental security practice that stops attackers from modifying binaries, injecting malicious scripts, or persisting backdoors within the container's root filesystem. Podman makes this straightforward with a single flag.
 
 ---
 
 ## Why Use a Read-Only Root Filesystem
 
-When a container's root filesystem is writable, any process running inside it can modify system files, install packages, or create new executables. By making the root filesystem read-only, you ensure that the container image remains exactly as built. This reduces the attack surface significantly.
+When a container's root filesystem is writable, processes with sufficient privileges inside it can modify system files, install packages, or create new executables. By making the root filesystem read-only, you ensure that the image-backed container filesystem remains exactly as built. This reduces the attack surface significantly.
 
-Common benefits include preventing malware from writing to disk, ensuring configuration drift cannot occur at runtime, and making containers more predictable in production environments.
+Common benefits include preventing malware from writing to the image-backed filesystem, reducing configuration drift at runtime, and making containers more predictable in production environments.
 
 ## Running a Container with --read-only
 
@@ -30,7 +30,7 @@ The simplest way to launch a read-only container is with the `--read-only` flag.
 podman run --rm --read-only --name secure-nginx docker.io/library/nginx:alpine
 ```
 
-This will likely fail because nginx needs to write to certain directories. You need to allow writes to specific paths using tmpfs mounts.
+This will likely fail because nginx needs to write to certain directories such as its cache directory. You need to allow writes to specific paths using tmpfs mounts.
 
 ```bash
 # Run nginx with read-only root but writable tmpfs for required paths
@@ -150,4 +150,4 @@ podman rm secure-nginx secure-app 2>/dev/null
 
 ## Summary
 
-Running Podman containers with a read-only root filesystem is a simple but powerful security measure. By combining the `--read-only` flag with targeted tmpfs mounts or volume binds for directories that genuinely need write access, you maintain application functionality while preventing unauthorized filesystem modifications. This practice should be a default in any production container deployment.
+Running Podman containers with a read-only root filesystem is a simple but powerful security measure. By combining the `--read-only` flag with targeted tmpfs mounts or volume binds for directories that genuinely need write access, you maintain application functionality while preventing unauthorized root filesystem modifications. This practice should be a default in any production container deployment.
