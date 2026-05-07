@@ -8,7 +8,7 @@ Description: Learn how to enable the Podman REST API in rootless mode so non-roo
 
 ---
 
-> Running the Podman REST API in rootless mode gives you full container management capabilities without requiring root access, improving security and reducing your attack surface.
+> Running the Podman REST API in rootless mode gives you broad container management capabilities without requiring root access, improving security and reducing your attack surface.
 
 Podman's rootless mode is one of its defining features. It lets regular users run containers without root privileges, which significantly reduces security risks. The REST API also supports rootless operation, giving you programmatic access to containers running in your user namespace. This guide covers everything you need to set up and use the Podman REST API as a non-root user.
 
@@ -22,7 +22,7 @@ Key differences between root and rootless API operation:
 
 - The socket path is under the user's runtime directory instead of `/run/podman/`
 - Port binding below 1024 requires additional configuration
-- Network namespaces use `slirp4netns` or `pasta` instead of CNI/netavark bridge networking
+- Rootless networking uses `pasta` by default, or `slirp4netns` if configured, instead of the rootful default bridge network
 - Storage uses the user's home directory instead of `/var/lib/containers/`
 
 ## Prerequisites
@@ -32,8 +32,8 @@ Ensure your system supports rootless containers.
 ```bash
 # Check that your user has subordinate UID/GID ranges
 
-grep $USER /etc/subuid
-grep $USER /etc/subgid
+grep "^${USER}:" /etc/subuid
+grep "^${USER}:" /etc/subgid
 
 # Expected output format: username:100000:65536
 # This means your user can map 65536 UIDs starting at 100000
@@ -46,20 +46,28 @@ If these entries are missing, add them.
 sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 $USER
 
 # Verify the changes
-grep $USER /etc/subuid
-grep $USER /etc/subgid
+grep "^${USER}:" /etc/subuid
+grep "^${USER}:" /etc/subgid
 ```
 
-You also need `slirp4netns` or `pasta` for rootless networking.
+You also need `pasta` or `slirp4netns` for rootless networking.
 
 ```bash
+# Install pasta on Ubuntu/Debian
+sudo apt-get install -y passt
+
+# Install pasta on Fedora/RHEL
+sudo dnf install -y passt
+
 # Install slirp4netns on Ubuntu/Debian
 sudo apt-get install -y slirp4netns
 
 # Install slirp4netns on Fedora/RHEL
 sudo dnf install -y slirp4netns
 
-# Verify it works
+# Verify your selected tool works
+pasta --version
+# Or, if you are using slirp4netns instead
 slirp4netns --version
 ```
 
@@ -170,7 +178,7 @@ You can also bind the rootless API to a TCP port above 1024.
 
 ```bash
 # Start on a high port (no root needed)
-podman system service --time 0 tcp:127.0.0.1:8080
+podman system service --time 0 tcp://127.0.0.1:8080
 
 # Test it
 curl http://localhost:8080/v4.0.0/libpod/info
@@ -236,7 +244,7 @@ docker info
 Rootless containers have some networking differences that affect API usage.
 
 ```bash
-# By default, rootless containers use slirp4netns for networking
+# By default, current Podman releases use pasta for rootless networking
 # Published ports work but use a userspace proxy
 
 # Run a container with a published port
@@ -300,4 +308,4 @@ journalctl --user -u podman.service -n 30 --no-pager
 
 ## Conclusion
 
-Running the Podman REST API in rootless mode provides a secure way to manage containers without root privileges. Use systemd user units with lingering enabled for production deployments, and remember that the socket path differs from the root-mode path. The Docker-compatible endpoints work seamlessly with rootless mode, so existing tools and libraries integrate without modification. With rootless networking and storage handled transparently, you get the same functionality as root mode with a significantly smaller attack surface.
+Running the Podman REST API in rootless mode provides a secure way to manage containers without root privileges. Use systemd user units with lingering enabled for production deployments, and remember that the socket path differs from the root-mode path. The Docker-compatible endpoints work seamlessly with rootless mode, so existing tools and libraries integrate without modification. With rootless networking and storage handled transparently, you get most day-to-day container management functionality with a significantly smaller attack surface.
