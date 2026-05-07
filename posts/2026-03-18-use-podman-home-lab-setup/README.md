@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Home Lab, Self-Hosting, Container, Homelab
 
-Description: Learn how to build a home lab using Podman to run services like DNS, VPN, dashboards, and monitoring tools in rootless containers on a single machine.
+Description: Learn how to build a home lab using Podman to run services like DNS, VPN, dashboards, and monitoring tools on a single machine, using rootless containers where practical.
 
 ---
 
@@ -26,7 +26,7 @@ A typical home lab includes several categories of services:
 - Productivity: note-taking, bookmarks, password management
 - Infrastructure: container registry, backup services
 
-Podman handles all of these in rootless containers, so you do not need to give any service root access to your host.
+Podman can run many of these in rootless containers, but services that need privileged ports or extra kernel networking capabilities may still require additional host configuration or rootful containers.
 
 ## Setting Up the Foundation
 
@@ -35,6 +35,14 @@ Start by creating a dedicated network for your home lab services:
 ```bash
 podman network create homelab
 ```
+
+If you want rootless containers to bind directly to DNS and HTTP/S on ports `53`, `80`, and `443`, lower the unprivileged port floor on the host first:
+
+```bash
+sudo sysctl -w net.ipv4.ip_unprivileged_port_start=53
+```
+
+Make this change persistent in `/etc/sysctl.d/` if you want these services to keep working after a reboot.
 
 Set your default container configuration for consistent behavior:
 
@@ -63,7 +71,6 @@ podman run -d \
   -e TZ=America/New_York \
   -e WEBPASSWORD=adminpass \
   -v pihole-data:/etc/pihole:Z \
-  -v pihole-dns:/etc/dnsmasq.d:Z \
   docker.io/pihole/pihole:latest
 ```
 
@@ -71,9 +78,11 @@ Access the Pi-hole dashboard at `http://localhost:8053/admin`. Point your router
 
 ## Reverse Proxy with Traefik
 
-Traefik automatically discovers containers and routes traffic to them:
+Traefik routes traffic to your services based on configuration files:
 
 ```bash
+mkdir -p ~/homelab/traefik/dynamic
+
 cat > ~/homelab/traefik/traefik.yml << 'EOF'
 api:
   dashboard: true
@@ -129,6 +138,8 @@ podman run -d \
 Set up a dashboard to see all your services at a glance:
 
 ```bash
+mkdir -p ~/homelab/homepage
+
 cat > ~/homelab/homepage/services.yaml << 'EOF'
 - Network:
     - Pi-hole:
@@ -136,7 +147,7 @@ cat > ~/homelab/homepage/services.yaml << 'EOF'
         description: DNS ad blocking
         icon: pi-hole
     - Traefik:
-        href: http://localhost:8081
+        href: http://localhost:8081/dashboard/
         description: Reverse proxy
         icon: traefik
 - Monitoring:
@@ -154,6 +165,7 @@ podman run -d \
   --name homepage \
   --network homelab \
   -p 3000:3000 \
+  -e HOMEPAGE_ALLOWED_HOSTS=localhost:3000 \
   -v ~/homelab/homepage:/app/config:Z \
   ghcr.io/gethomepage/homepage:latest
 ```
@@ -168,7 +180,7 @@ podman run -d \
   --network homelab \
   -p 3001:3001 \
   -v uptime-kuma-data:/app/data:Z \
-  docker.io/louislam/uptime-kuma:latest
+  docker.io/louislam/uptime-kuma:2
 ```
 
 Access at `http://localhost:3001` and add monitors for each of your services.
@@ -178,6 +190,8 @@ Access at `http://localhost:3001` and add monitors for each of your services.
 ```bash
 # Prometheus
 
+mkdir -p ~/homelab/prometheus
+
 cat > ~/homelab/prometheus/prometheus.yml << 'EOF'
 global:
   scrape_interval: 15s
@@ -186,9 +200,6 @@ scrape_configs:
   - job_name: 'node'
     static_configs:
       - targets: ['node-exporter:9100']
-  - job_name: 'cadvisor'
-    static_configs:
-      - targets: ['cadvisor:8080']
 EOF
 
 podman run -d \
@@ -205,8 +216,8 @@ podman run -d \
   --network homelab \
   -p 9100:9100 \
   --pid=host \
-  -v /:/host:ro \
-  docker.io/prom/node-exporter:latest \
+  -v /:/host:ro,rslave \
+  quay.io/prometheus/node-exporter:latest \
   --path.rootfs=/host
 
 # Grafana
@@ -221,7 +232,7 @@ podman run -d \
 
 ## WireGuard VPN
 
-Access your home lab remotely through a WireGuard VPN container. Note that WireGuard requires loading kernel modules, so you must load the `wireguard` module on the host first (`sudo modprobe wireguard`) and run the container as root:
+Access your home lab remotely through a WireGuard VPN container. This service needs extra networking privileges, so run it rootful. If your host does not already have the required kernel modules loaded, load them first on the host or mount `/lib/modules` and keep `SYS_MODULE` enabled:
 
 ```bash
 sudo podman run -d \
@@ -234,8 +245,10 @@ sudo podman run -d \
   -e TZ=America/New_York \
   -e SERVERURL=your.domain.com \
   -e PEERS=phone,laptop,tablet \
+  -v /lib/modules:/lib/modules:ro \
   -v wireguard-config:/config:Z \
-  docker.io/linuxserver/wireguard:latest
+  --sysctl=net.ipv4.conf.all.src_valid_mark=1 \
+  lscr.io/linuxserver/wireguard:latest
 ```
 
 ## Password Manager with Vaultwarden
@@ -254,7 +267,11 @@ podman run -d \
 
 ## Managing All Services with Quadlet
 
-Create Quadlet files for automatic startup:
+Create Quadlet files for the services you want to start automatically:
+
+```bash
+mkdir -p ~/.config/containers/systemd
+```
 
 ```ini
 # ~/.config/containers/systemd/pihole.container
@@ -267,7 +284,6 @@ PublishPort=8053:80
 Environment=TZ=America/New_York
 Environment=WEBPASSWORD=adminpass
 Volume=pihole-data:/etc/pihole:Z
-Volume=pihole-dns:/etc/dnsmasq.d:Z
 
 [Service]
 Restart=always
@@ -283,11 +299,12 @@ NetworkName=homelab
 Driver=bridge
 ```
 
-Enable all services:
+Repeat the same pattern for any other service you want Quadlet to manage, then reload systemd and start the units you created:
 
 ```bash
+sudo loginctl enable-linger "$USER"
 systemctl --user daemon-reload
-systemctl --user enable --now pihole uptime-kuma grafana homepage
+systemctl --user start pihole
 ```
 
 ## Conclusion
