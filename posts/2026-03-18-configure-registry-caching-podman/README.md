@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Registry, Caching, Performance, Mirror
 
-Description: Learn how to set up registry caching in Podman to speed up image pulls, reduce bandwidth usage, and enable offline container workflows.
+Description: Learn how to set up registry caching in Podman to speed up image pulls, reduce bandwidth usage, and support previously cached image pulls during limited-connectivity workflows.
 
 ---
 
@@ -210,13 +210,23 @@ podman logs --tail 20 docker-cache
 Manage disk space used by the cache.
 
 ```bash
-# Run garbage collection on the cache
-podman exec docker-cache \
-  /bin/registry garbage-collect /etc/docker/registry/config.yml
+# Stop the cache before garbage collection to avoid writes during cleanup
+podman stop docker-cache
 
 # Run garbage collection in dry-run mode first
-podman exec docker-cache \
+podman run --rm \
+  -v registry-cache:/var/lib/registry \
+  docker.io/library/registry:2 \
   /bin/registry garbage-collect --dry-run /etc/docker/registry/config.yml
+
+# Run garbage collection on the cache
+podman run --rm \
+  -v registry-cache:/var/lib/registry \
+  docker.io/library/registry:2 \
+  /bin/registry garbage-collect /etc/docker/registry/config.yml
+
+# Restart the cache
+podman start docker-cache
 
 # Clear the entire cache (start fresh)
 podman stop docker-cache
@@ -231,19 +241,41 @@ podman volume create registry-cache
 Ensure the cache starts automatically on boot.
 
 ```bash
-# Generate a systemd service file
-mkdir -p ~/.config/systemd/user
+# Create a Quadlet unit for the cache
+mkdir -p ~/.config/containers/systemd
 
-podman generate systemd --name docker-cache --new \
-  > ~/.config/systemd/user/container-docker-cache.service
+cat > ~/.config/containers/systemd/docker-cache.container <<'EOF'
+[Unit]
+Description=Podman Docker Hub registry cache
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=docker-cache
+Image=docker.io/library/registry:2
+PublishPort=5000:5000
+Volume=registry-cache:/var/lib/registry
+Environment=REGISTRY_PROXY_REMOTEURL=https://registry-1.docker.io
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Remove the manually started container if it already exists; the volume is kept
+podman rm -f docker-cache
 
 # Enable and start the service
 systemctl --user daemon-reload
-systemctl --user enable container-docker-cache.service
-systemctl --user start container-docker-cache.service
+systemctl --user enable --now docker-cache.service
+
+# Keep the user service running after logout and allow it to start at boot
+loginctl enable-linger "$USER"
 
 # Check the status
-systemctl --user status container-docker-cache.service
+systemctl --user status docker-cache.service
 ```
 
 ## Cache with Authenticated Upstream
@@ -262,9 +294,9 @@ podman run -d \
   --restart always \
   docker.io/library/registry:2
 
-# This avoids Docker Hub rate limits by using authenticated pulls
+# This uses authenticated Docker Hub pulls, which can provide higher pull limits
 ```
 
 ## Summary
 
-Registry caching in Podman is implemented by running local pull-through cache registries and configuring them as mirrors in `registries.conf`. This approach reduces pull times for previously fetched images, saves network bandwidth, and can work around rate limits on public registries. You can cache multiple upstream registries independently, configure TTL and cleanup policies, and run the cache as a systemd service for automatic startup. Authenticated upstream configurations help avoid rate limits on registries like Docker Hub.
+Registry caching in Podman is implemented by running local pull-through cache registries and configuring them as mirrors in `registries.conf`. This approach reduces pull times for previously fetched images, saves network bandwidth, and reduces repeated pulls against public registries. You can cache multiple upstream registries independently, configure TTL and cleanup policies, and run the cache as a systemd service for automatic startup. Authenticated upstream configurations can provide higher pull limits on registries like Docker Hub.
