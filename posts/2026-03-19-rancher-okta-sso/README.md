@@ -7,6 +7,7 @@ Tags: Rancher, Kubernetes, Authentication, SSO, Okta, SAML
 Description: Step-by-step instructions for integrating Okta single sign-on with Rancher using SAML 2.0 for enterprise authentication.
 
 Okta is a leading identity management platform used by many organizations. Integrating Okta with Rancher allows your teams to use their Okta credentials for Kubernetes cluster access through SAML-based single sign-on. This guide provides detailed steps for setting up the integration.
+Rancher's Okta integration supports only service provider-initiated logins, so users start from the Rancher login page instead of launching Rancher directly from an Okta app tile.
 
 ## Prerequisites
 
@@ -138,6 +139,14 @@ Now configure Rancher to use Okta:
 2. Navigate to **Users & Authentication** then **Auth Provider**.
 3. Select **Okta** from the list.
 
+Generate a private key and certificate for Rancher if you do not already have one:
+
+```bash
+openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 \
+  -keyout rancher-saml.key \
+  -out rancher-saml.crt
+```
+
 Enter the configuration details:
 
 ```plaintext
@@ -145,24 +154,16 @@ Display Name Field: displayName
 User Name Field: userName
 UID Field: uid
 Groups Field: groups
-Entity ID: https://rancher.example.com/v1-saml/okta/saml/metadata
 Rancher API Host: https://rancher.example.com
-IdP Metadata: (paste the downloaded Okta metadata XML)
+Private Key / Certificate: (paste or upload the Rancher private key and certificate)
+Metadata XML: (paste or upload the downloaded Okta metadata XML)
 ```
 
-Or manually enter:
-
-```plaintext
-IdP Entity ID: http://www.okta.com/xxxxx
-SAML SSO URL: https://your-org.okta.com/app/xxxxx/sso/saml
-IDP Certificate: (paste the Okta X.509 certificate)
-```
-
-## Step 7: Test the Integration
+## Step 7: Enable and Test the Integration
 
 Test the Okta SSO configuration:
 
-1. Click the **Test** button in Rancher.
+1. Click **Enable** in Rancher.
 2. You will be redirected to the Okta login page.
 3. Enter your Okta credentials.
 4. Verify you are redirected back to Rancher with correct user information.
@@ -177,15 +178,12 @@ If the test fails:
 
 ```bash
 # Check Rancher logs
-kubectl logs -l app=rancher -n cattle-system --tail=200 | grep -i "saml\|okta"
+kubectl logs -l app=rancher -n cattle-system --tail=200 | grep -Ei "saml|okta"
 ```
 
 ## Step 8: Enable Okta Authentication
 
-After successful testing:
-
-1. Click **Enable** to activate Okta SSO.
-2. Confirm the action.
+After a successful sign-in test, Rancher keeps Okta authentication enabled.
 
 The Rancher login page now shows a **Log in with Okta** button.
 
@@ -194,8 +192,10 @@ The Rancher login page now shows a **Log in with Okta** button.
 Configure role mappings for Okta groups:
 
 1. Navigate to **Users & Authentication** then **Groups**.
-2. Search for Okta groups.
-3. Assign Rancher roles.
+2. Search for the Okta group and open its configuration.
+3. Assign the required global permissions or custom roles.
+
+If you need more restrictive access than the default **Standard User** permissions, change the **New User Default** role or create a custom global role before assigning it to an Okta group.
 
 Global role mappings:
 
@@ -203,15 +203,15 @@ Global role mappings:
 Okta Group: Platform-Engineers -> Administrator
 Okta Group: DevOps-Team -> Standard User
 Okta Group: Developers -> Standard User
-Okta Group: Auditors -> User-Base (read-only)
+Okta Group: Auditors -> Custom read-only global role
 ```
 
 Cluster-level mappings:
 
-1. Navigate to a specific cluster.
-2. Go to **Cluster Members** then **Add**.
-3. Search for the Okta group.
-4. Assign the cluster role.
+1. Go to **Cluster Management** and open the target cluster.
+2. Click **⋮** then **Edit Config**.
+3. Open **Member Roles** and click **Add Member**.
+4. Search for the Okta group and assign the cluster role.
 
 ```plaintext
 Okta Group: App-Team-Backend -> Cluster Member (production-cluster)
@@ -228,14 +228,16 @@ Fine-tune your Okta integration:
 Configure how long Rancher sessions last:
 
 ```bash
-# Set auth token max TTL (in minutes)
-curl -s -k \
+# Set the user session TTL (in minutes)
+curl -s \
   -X PUT \
   -H "Authorization: Bearer $RANCHER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"value": "960"}' \
-  "https://rancher.example.com/v3/settings/auth-token-max-ttl-minutes"
+  "https://rancher.example.com/v3/settings/auth-user-session-ttl-minutes"
 ```
+
+If your Rancher version also exposes `auth-user-session-idle-ttl-minutes`, set it to a value less than or equal to `auth-user-session-ttl-minutes` when you want an inactivity timeout.
 
 ### Okta MFA Integration
 
