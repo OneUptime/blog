@@ -24,20 +24,20 @@ Machine pools are the next-generation approach to node management in Rancher. Wh
 Begin the cluster creation process:
 
 1. Go to **Cluster Management** and click **Create**.
-2. Select your infrastructure provider (Amazon EC2, Azure, vSphere, etc.).
-3. Choose **RKE2** or **K3s** as the Kubernetes distribution.
+2. Choose **RKE2** or **K3s** as the Kubernetes distribution.
+3. Select your infrastructure provider (Amazon EC2, Azure, vSphere, etc.).
 4. Enter the cluster name.
 
 ```plaintext
 Cluster Name: production-rke2
-Kubernetes Version: v1.28.x+rke2r1
+Kubernetes Version: select a supported Rancher-listed release
 ```
 
 ## Step 2: Create the First Machine Pool
 
 Configure the control plane machine pool:
 
-1. In the **Machine Pools** section, the first pool is created automatically.
+1. In the **Machine Pools** section, configure the initial pool.
 2. Configure it for control plane and etcd roles.
 
 ```plaintext
@@ -74,21 +74,18 @@ Cloud Provider Settings:
 
 Set up advanced options for each machine pool:
 
-### Auto Scaling
+### Auto Replace and Drain Behavior
 
-Configure drain and replacement behavior:
+Configure automatic replacement and drain behavior:
 
 ```plaintext
+Auto Replace: 5m
 Drain Before Delete: Yes
-Max Unhealthy: 1
-Machine Deploy Strategy: RollingUpdate
-Max Surge: 1
-Max Unavailable: 0
 ```
 
 ### Cloud-Init / User Data
 
-Add custom initialization scripts:
+If your selected infrastructure provider exposes a cloud-init or user-data field, add custom initialization scripts:
 
 ```yaml
 #cloud-config
@@ -96,17 +93,17 @@ package_update: true
 packages:
   - nfs-common
   - open-iscsi
-runcmd:
-  - systemctl enable --now iscsid
-  - echo "vm.max_map_count=262144" >> /etc/sysctl.conf
-  - sysctl -p
 write_files:
   - path: /etc/sysctl.d/90-kubelet.conf
     content: |
+      vm.max_map_count=262144
       vm.overcommit_memory=1
       vm.panic_on_oom=0
       kernel.panic=10
       kernel.panic_on_oops=1
+runcmd:
+  - systemctl enable --now iscsid
+  - sysctl --system
 ```
 
 ## Step 5: Configure Machine Pool Labels and Taints
@@ -117,8 +114,8 @@ Add Kubernetes labels and taints through the machine pool configuration:
 # Labels
 
 labels:
-  topology.kubernetes.io/zone: us-east-1a
-  node.kubernetes.io/pool: workers
+  pool-zone: us-east-1a
+  node-pool: workers
   workload-class: general-purpose
 
 # Taints
@@ -140,7 +137,7 @@ Set up automatic health checking for machine pools:
 
 ```yaml
 # Machine Health Check configuration
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineHealthCheck
 metadata:
   name: worker-health-check
@@ -149,16 +146,19 @@ spec:
   clusterName: production-rke2
   selector:
     matchLabels:
-      cluster.x-k8s.io/pool-name: workers
-  unhealthyConditions:
-    - type: Ready
-      status: "False"
-      timeout: 300s
-    - type: Ready
-      status: Unknown
-      timeout: 300s
-  maxUnhealthy: "40%"
-  nodeStartupTimeout: 600s
+      cluster.x-k8s.io/deployment-name: workers
+  checks:
+    nodeStartupTimeoutSeconds: 600
+    unhealthyNodeConditions:
+      - type: Ready
+        status: "False"
+        timeoutSeconds: 300
+      - type: Ready
+        status: Unknown
+        timeoutSeconds: 300
+  remediation:
+    triggerIf:
+      unhealthyLessThanOrEqualTo: 40%
 ```
 
 ## Step 7: Scale Machine Pools
@@ -189,10 +189,10 @@ Update machine configurations with rolling updates:
 
 1. Edit the cluster configuration.
 2. Modify the machine pool settings (instance type, disk size, user data, etc.).
-3. Set the rolling update strategy.
+3. If you manage the underlying Cluster API `MachineDeployment` directly, set a rolling update strategy.
 
 ```yaml
-# Rolling update configuration
+# MachineDeployment rolling update configuration
 spec:
   strategy:
     type: RollingUpdate
@@ -237,7 +237,7 @@ Remove a machine pool from a cluster:
 2. Click the delete icon next to the machine pool.
 3. Click **Save**.
 
-Rancher will drain all nodes in the pool before deleting the machines. Ensure sufficient capacity exists in other pools to handle the displaced workloads.
+If **Drain Before Delete** is enabled for the pool, Rancher drains the nodes before deleting the machines. Ensure sufficient capacity exists in other pools to handle the displaced workloads.
 
 To recreate a pool with updated specifications:
 
@@ -255,22 +255,16 @@ Pool: workers-us-east-1a
   Count: 3
   Region: us-east-1
   Availability Zone: us-east-1a
-  Labels:
-    topology.kubernetes.io/zone: us-east-1a
 
 Pool: workers-us-east-1b
   Count: 3
   Region: us-east-1
   Availability Zone: us-east-1b
-  Labels:
-    topology.kubernetes.io/zone: us-east-1b
 
 Pool: workers-us-east-1c
   Count: 3
   Region: us-east-1
   Availability Zone: us-east-1c
-  Labels:
-    topology.kubernetes.io/zone: us-east-1c
 ```
 
 ## Best Practices
