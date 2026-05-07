@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, DHCP, Windows Server, Automation, PowerShell, IPv4, Network Management
 
-Description: Learn how to automate DHCP scope creation and management on Windows Server using Ansible with the win_shell module and PowerShell DHCP cmdlets.
+Description: Learn how to automate DHCP scope creation and management on Windows Server using Ansible with the win_powershell module and PowerShell DHCP cmdlets.
 
 ---
 
-Windows Server DHCP can be automated with Ansible using PowerShell's `DhcpServer` module via `win_shell` or `win_powershell` tasks.
+Windows Server DHCP can be automated with Ansible using PowerShell's `DhcpServer` module via `win_powershell` tasks.
 
 ## Prerequisites
 
@@ -17,11 +17,14 @@ Windows Server DHCP can be automated with Ansible using PowerShell's `DhcpServer
 
 collections:
   - ansible.windows
-  - community.windows
 ```
 
 ```bash
-ansible-galaxy collection install ansible.windows community.windows
+ansible-galaxy collection install -r requirements.yml
+```
+
+```bash
+pip install "pywinrm>=0.3.0"
 ```
 
 ## Inventory for Windows DHCP Server
@@ -74,6 +77,7 @@ ansible_winrm_server_cert_validation=ignore
               -State Active
             Write-Output "Created scope {{ item.scope_id }}"
           } else {
+            $Ansible.Changed = $false
             Write-Output "Scope {{ item.scope_id }} already exists"
           }
       loop: "{{ dhcp_scopes }}"
@@ -81,10 +85,26 @@ ansible_winrm_server_cert_validation=ignore
     - name: Set DHCP options (gateway and DNS)
       ansible.windows.win_powershell:
         script: |
-          Set-DhcpServerv4OptionValue `
-            -ScopeId "{{ item.scope_id }}" `
-            -Router "{{ item.gateway }}" `
-            -DnsServer {{ item.dns | join(',') }}
+          $desiredRouter = @("{{ item.gateway }}")
+          $desiredDns = @('{{ item.dns | to_json }}' | ConvertFrom-Json)
+          $currentOptions = Get-DhcpServerv4OptionValue -ScopeId "{{ item.scope_id }}" -OptionId 3,6 -ErrorAction SilentlyContinue
+
+          $currentRouter = @($currentOptions | Where-Object OptionId -eq 3 | Select-Object -ExpandProperty Value)
+          $currentDns = @($currentOptions | Where-Object OptionId -eq 6 | Select-Object -ExpandProperty Value)
+
+          $routerMatches = (($currentRouter | ForEach-Object { $_.ToString() }) -join ',') -eq ($desiredRouter -join ',')
+          $dnsMatches = (($currentDns | ForEach-Object { $_.ToString() }) -join ',') -eq (($desiredDns | ForEach-Object { $_.ToString() }) -join ',')
+
+          if ($routerMatches -and $dnsMatches) {
+            $Ansible.Changed = $false
+            Write-Output "Options for scope {{ item.scope_id }} already match"
+          } else {
+            Set-DhcpServerv4OptionValue `
+              -ScopeId "{{ item.scope_id }}" `
+              -Router $desiredRouter `
+              -DnsServer $desiredDns
+            Write-Output "Updated options for scope {{ item.scope_id }}"
+          }
       loop: "{{ dhcp_scopes }}"
 ```
 
@@ -106,12 +126,20 @@ ansible_winrm_server_cert_validation=ignore
 ```yaml
     - name: Deactivate test scope
       ansible.windows.win_powershell:
-        script: Set-DhcpServerv4Scope -ScopeId "10.10.0.0" -State Inactive
+        script: |
+          $scope = Get-DhcpServerv4Scope -ScopeId "10.10.0.0"
+          if ($scope.State -ne "Inactive") {
+            Set-DhcpServerv4Scope -ScopeId "10.10.0.0" -State Inactive
+            Write-Output "Deactivated scope 10.10.0.0"
+          } else {
+            $Ansible.Changed = $false
+            Write-Output "Scope 10.10.0.0 is already inactive"
+          }
 ```
 
 ## Key Takeaways
 
-- Use `ansible.windows.win_powershell` with PowerShell DHCP cmdlets (`Add-DhcpServerv4Scope`, `Set-DhcpServerv4OptionValue`) to manage Windows DHCP idempotently.
+- Use `ansible.windows.win_powershell` with PowerShell DHCP cmdlets (`Add-DhcpServerv4Scope`, `Set-DhcpServerv4OptionValue`) to manage Windows DHCP from Ansible.
 - Store Windows credentials in Ansible Vault; use WinRM with NTLM or Kerberos transport.
-- Check for scope existence before creating to make tasks idempotent (PowerShell's `Get-DhcpServerv4Scope -ErrorAction SilentlyContinue`).
+- With `win_powershell`, set `$Ansible.Changed = $false` when no update is required so tasks stay idempotent.
 - Loop over a `dhcp_scopes` variable list to manage multiple scopes with a single task.
