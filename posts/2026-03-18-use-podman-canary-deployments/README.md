@@ -67,6 +67,7 @@ echo "Canary image pushed: ${REGISTRY}/${APP}:canary"
 ## Simple Canary with Podman and Nginx
 
 Implement a basic canary deployment using Podman containers and Nginx for traffic splitting.
+This example assumes the application image listens on port `8080`, exposes a `/health` endpoint, and includes `wget` so the container health check can run inside the container.
 
 ```bash
 #!/bin/bash
@@ -80,12 +81,22 @@ podman network create canary-net
 podman run -d \
   --name app-stable \
   --network canary-net \
+  --health-cmd 'wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1' \
+  --health-interval 10s \
+  --health-retries 3 \
+  --health-timeout 3s \
+  --health-start-period 15s \
   myapp:stable
 
 # Run the canary version (handles 10% of traffic)
 podman run -d \
   --name app-canary \
   --network canary-net \
+  --health-cmd 'wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1' \
+  --health-interval 10s \
+  --health-retries 3 \
+  --health-timeout 3s \
+  --health-start-period 15s \
   myapp:canary
 
 # Create Nginx configuration for traffic splitting
@@ -119,14 +130,14 @@ podman run -d \
   --network canary-net \
   -p 80:80 \
   -v /tmp/nginx-canary.conf:/etc/nginx/conf.d/default.conf:ro,Z \
-  nginx:alpine
+  docker.io/library/nginx:alpine
 
 echo "Canary deployment active: 90% stable, 10% canary"
 ```
 
 ## Health Checking the Canary
 
-Monitor the canary deployment and decide whether to promote or rollback.
+Monitor the canary deployment and decide whether to promote or rollback using Podman's health check support.
 
 ```bash
 #!/bin/bash
@@ -153,13 +164,15 @@ for i in $(seq 1 $CHECK_COUNT); do
     echo "CHECK ${checks}: FAIL - Container not running"
     failures=$((failures + 1))
   else
-    # Check the health endpoint
-    HEALTH=$(podman exec "$CANARY_CONTAINER" \
-      wget -qO- http://localhost:8080/health 2>/dev/null)
-    if echo "$HEALTH" | grep -q '"status":"ok"'; then
+    # Inspect the canary container's health status
+    HEALTH_STATUS=$(podman inspect "$CANARY_CONTAINER" \
+      --format '{{.State.Health.Status}}' 2>/dev/null)
+    if [ "$HEALTH_STATUS" = "healthy" ]; then
       echo "CHECK ${checks}: PASS"
+    elif [ "$HEALTH_STATUS" = "starting" ]; then
+      echo "CHECK ${checks}: STARTING"
     else
-      echo "CHECK ${checks}: FAIL - Unhealthy response"
+      echo "CHECK ${checks}: FAIL - Health status: ${HEALTH_STATUS:-unknown}"
       failures=$((failures + 1))
     fi
   fi
@@ -206,9 +219,30 @@ podman rm app-stable
 podman run -d \
   --name app-stable \
   --network canary-net \
+  --health-cmd 'wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1' \
+  --health-interval 10s \
+  --health-retries 3 \
+  --health-timeout 3s \
+  --health-start-period 15s \
   "${REGISTRY}/${APP}:stable"
 
-# Remove the canary container
+# Update Nginx to send all traffic to the new stable container
+cat > /tmp/nginx-canary.conf << 'NGINX'
+upstream backend {
+    server app-stable:8080;
+}
+server {
+    listen 80;
+    location / {
+        proxy_pass http://backend;
+        proxy_set_header Host $host;
+    }
+}
+NGINX
+
+podman exec lb nginx -s reload
+
+# Remove the canary container after traffic has been shifted away from it
 podman stop app-canary
 podman rm app-canary
 
@@ -248,11 +282,11 @@ echo "Canary rolled back. All traffic going to stable."
 
 ## Kubernetes Canary with Podman-Built Images
 
-Use Podman in CI to build images for Kubernetes canary deployments.
+Use Podman in CI to build images for Kubernetes canary workloads. In Kubernetes, traffic shifting is typically handled by a Service selector, an Ingress or Gateway, or a service mesh rather than by the `Deployment` object alone.
 
 ```yaml
 # k8s/canary-deployment.yaml
-# Canary deployment in Kubernetes using Podman-built images
+# Canary workload in Kubernetes using Podman-built images
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -279,6 +313,8 @@ spec:
             - containerPort: 8080
 ```
 
+If you want the stable Service to send some traffic to the canary, the Service selector should match the shared `app: myapp` label and omit the `track` label.
+
 ```bash
 #!/bin/bash
 # CI script: Build and deploy canary to Kubernetes
@@ -296,4 +332,4 @@ kubectl rollout status deployment/myapp-canary --timeout=120s
 
 ## Summary
 
-Canary deployments reduce the risk of releasing new versions by gradually exposing them to production traffic. Podman handles the image building and tagging in CI, while the deployment strategy manages traffic splitting between stable and canary versions. Whether you use a simple Nginx-based approach or Kubernetes with service meshes, the workflow remains the same: build with Podman, deploy the canary, monitor health, and either promote or rollback. Automated health checks are essential for making this process reliable and fast.
+Canary deployments reduce the risk of releasing new versions by gradually exposing them to production traffic. Podman handles the image building and tagging in CI, while the deployment strategy manages traffic splitting between stable and canary versions. Whether you use a simple Nginx-based approach or Kubernetes with Services, Ingress or Gateway resources, or service meshes, the workflow remains the same: build with Podman, deploy the canary, monitor health, and either promote or rollback. Automated health checks are essential for making this process reliable and fast.
