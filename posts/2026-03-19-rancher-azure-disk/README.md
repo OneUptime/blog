@@ -11,27 +11,29 @@ Azure Disk provides high-performance, durable block storage for Kubernetes workl
 ## Prerequisites
 
 - A running Rancher instance
-- An Azure-based Kubernetes cluster (AKS or RKE on Azure VMs)
+- An Azure-based Kubernetes cluster (AKS or a self-managed Rancher/RKE cluster on Azure VMs)
 - Azure CLI configured with appropriate permissions
 - kubectl and Helm access to your cluster
+- For self-managed clusters, Azure cloud-provider configuration and an identity with permission to create and attach managed disks
 
 ## Step 1: Install the Azure Disk CSI Driver
 
-For AKS clusters, the CSI driver is typically pre-installed. For RKE clusters on Azure, install it:
+For AKS clusters, use the managed Azure Disk CSI driver. For self-managed Rancher or RKE clusters on Azure, install the upstream driver:
 
 ```bash
 helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
 helm repo update
 
 helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver \
-  --namespace kube-system
+  --namespace kube-system \
+  --set snapshot.enabled=true
 ```
 
 Verify the installation:
 
 ```bash
 kubectl get pods -n kube-system -l app=csi-azuredisk-controller
-kubectl get csidrivers | grep disk.csi.azure.com
+kubectl get csidriver disk.csi.azure.com
 ```
 
 ## Step 2: Create Azure Disk Storage Classes
@@ -107,6 +109,19 @@ kubectl apply -f azure-disk-pvc.yaml
 ## Step 4: Deploy an Application with Azure Disk
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    name: mysql
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -146,13 +161,17 @@ spec:
           storage: 50Gi
 ```
 
+```bash
+kubectl apply -f mysql.yaml
+```
+
 ## Step 5: Configure Disk Caching
 
 Azure Disk supports different caching modes:
 
-- **None**: No caching, best for write-heavy workloads
-- **ReadOnly**: Caches reads, good for read-heavy workloads
-- **ReadWrite**: Caches both reads and writes (only for OS disks)
+- **None**: No host caching, required for Premium SSD v2 and Ultra disks, and common for write-heavy workloads
+- **ReadOnly**: Caches reads, good for read-heavy or mixed workloads
+- **ReadWrite**: Caches reads and writes, but it is deprecated and should only be used when the application handles persistence correctly
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -169,7 +188,7 @@ volumeBindingMode: WaitForFirstConsumer
 
 ## Step 6: Enable Encryption
 
-Use Azure-managed or customer-managed keys for encryption:
+Azure managed disks are encrypted at rest by default. To use customer-managed keys, specify a disk encryption set:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -186,6 +205,8 @@ volumeBindingMode: WaitForFirstConsumer
 ```
 
 ## Step 7: Configure Volume Snapshots
+
+Make sure the VolumeSnapshot CRDs and snapshot controller are available in your cluster. On AKS, enable the snapshot controller. On self-managed clusters, install the VolumeSnapshot CRDs in addition to enabling the chart's snapshot components before creating snapshots.
 
 Create a VolumeSnapshotClass:
 
@@ -253,7 +274,7 @@ allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 ```
 
-ZRS replicates data across three availability zones, providing higher durability.
+ZRS is supported for Premium SSD and Standard SSD managed disks and replicates data across three availability zones, providing higher durability.
 
 ## Step 10: Monitor Azure Disk Storage
 
@@ -269,7 +290,7 @@ kubectl get pods -n kube-system -l app=csi-azuredisk-controller
 kubectl describe pv <pv-name>
 
 # Check CSI driver logs
-kubectl logs -n kube-system -l app=csi-azuredisk-controller --tail=50
+kubectl logs -n kube-system -l app=csi-azuredisk-controller --all-containers=true --tail=50
 
 # Check Azure CLI for disk details
 az disk list --resource-group <rg-name> --output table
@@ -277,7 +298,7 @@ az disk list --resource-group <rg-name> --output table
 
 ## Troubleshooting
 
-- **PVC Pending**: Check CSI driver is running and Azure credentials are configured
+- **PVC Pending**: Check CSI driver is running and, on self-managed clusters, that Azure cloud-provider credentials and disk permissions are configured
 - **Attach errors**: Azure VMs have limits on the number of attached disks
 - **Wrong zone**: Use `WaitForFirstConsumer` binding mode
 - **Slow performance**: Check the SKU type and caching mode
