@@ -47,16 +47,16 @@ For development and testing, a self-signed certificate works well. Generate one 
 mkdir -p ~/certs
 
 openssl req -x509 \
-  -nodes \
+  -noenc \
   -days 365 \
   -newkey rsa:2048 \
   -keyout ~/certs/server.key \
   -out ~/certs/server.crt \
   -subj "/C=US/ST=State/L=City/O=Organization/CN=example.com" \
-  -addext "subjectAltName=DNS:example.com,DNS:*.example.com,IP:127.0.0.1"
+  -addext "subjectAltName=DNS:example.com,DNS:*.example.com,DNS:localhost,IP:127.0.0.1"
 ```
 
-The `-addext` flag adds Subject Alternative Names (SANs), which modern browsers require. The wildcard entry `*.example.com` covers all subdomains.
+The `-addext` flag adds Subject Alternative Names (SANs), which modern browsers require. The wildcard entry `*.example.com` covers first-level subdomains such as `api.example.com`.
 
 Verify the certificate:
 
@@ -186,7 +186,7 @@ For production use, you need a certificate from a trusted Certificate Authority.
 ```bash
 openssl req -new \
   -newkey rsa:2048 \
-  -nodes \
+  -noenc \
   -keyout ~/certs/production.key \
   -out ~/certs/production.csr \
   -subj "/C=US/ST=State/L=City/O=YourCompany/CN=yourdomain.com" \
