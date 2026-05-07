@@ -35,11 +35,11 @@ docker run --rm -it \
   podman run --rm docker.io/library/alpine echo "Hello from Podman inside Docker"
 ```
 
-The `--privileged` flag is required because Docker's default security model restricts the namespace operations that Podman needs.
+The `--privileged` flag is often required because Docker's default security model restricts the namespace and mount operations that Podman needs.
 
 ## Rootless Podman Inside Docker
 
-For a more secure setup, run as a non-root user:
+To avoid running the inner Podman process as root, run as a non-root user:
 
 ```bash
 docker run --rm -it \
@@ -52,7 +52,7 @@ docker run --rm -it \
 
 ## Building a Custom Image
 
-Create a Dockerfile that combines Docker and Podman tooling:
+Create a Dockerfile that adds build tools and the Podman Python SDK:
 
 ```dockerfile
 FROM quay.io/podman/stable
@@ -65,11 +65,8 @@ RUN dnf install -y \
     curl \
     jq \
     python3 \
-    python3-pip \
+    python3-podman \
     && dnf clean all
-
-# Install Podman Python SDK
-RUN pip3 install podman
 
 # Configure containers storage
 RUN mkdir -p /home/podman/.config/containers && \
@@ -180,23 +177,38 @@ Write Python scripts that use the Podman SDK inside Docker containers:
 #!/usr/bin/env python3
 """Build script using Podman Python SDK inside Docker."""
 
+import os
 import subprocess
 import sys
+import time
+
+PODMAN_SOCKET = "unix:///tmp/podman.sock"
 
 def ensure_podman_socket():
     """Start the Podman socket for SDK communication."""
-    subprocess.run(
-        ["podman", "system", "service", "--time=0"],
+    socket_path = PODMAN_SOCKET.removeprefix("unix://")
+    try:
+        os.unlink(socket_path)
+    except FileNotFoundError:
+        pass
+
+    subprocess.Popen(
+        ["podman", "system", "service", "--time=0", PODMAN_SOCKET],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True
     )
+    for _ in range(50):
+        if os.path.exists(socket_path):
+            return
+        time.sleep(0.1)
+    raise RuntimeError("Podman service socket did not start")
 
 def build_and_test():
     """Build and test using the Podman Python SDK."""
     from podman import PodmanClient
 
-    with PodmanClient() as client:
+    with PodmanClient(base_url=PODMAN_SOCKET) as client:
         print(f"Podman version: {client.version()['Version']}")
 
         # Build the image
