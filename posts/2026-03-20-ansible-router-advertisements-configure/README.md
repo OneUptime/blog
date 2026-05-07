@@ -31,9 +31,9 @@ radvd_interfaces:
     adv_send_advert: true
     # MaxRtrAdvInterval: max seconds between RAs (default 600)
     max_rtr_adv_interval: 30
-    # AdvManagedFlag: set to true if using DHCPv6 for addresses
+    # AdvManagedFlag: advertise that addresses are available via DHCPv6
     adv_managed_flag: false
-    # AdvOtherConfigFlag: set to true if using DHCPv6 for other options (DNS)
+    # AdvOtherConfigFlag: advertise that other configuration is available via DHCPv6
     adv_other_config_flag: false
     # Router lifetime in seconds (0 = not a default router)
     adv_default_lifetime: 1800
@@ -63,10 +63,11 @@ radvd_interfaces:
     validate: "radvd --configtest -C %s"  # Validate before applying
   notify: Restart radvd
 
-- name: Enable IPv6 forwarding (required for radvd to send RAs)
+- name: Enable IPv6 forwarding (required when the host is acting as an IPv6 router)
   ansible.posix.sysctl:
     name: net.ipv6.conf.all.forwarding
     value: "1"
+    sysctl_set: true
     state: present
     sysctl_file: /etc/sysctl.d/99-ipv6.conf
     reload: true
@@ -92,10 +93,10 @@ interface {{ iface.name }} {
     # Maximum interval between RAs in seconds
     MaxRtrAdvInterval {{ iface.max_rtr_adv_interval }};
 
-    # M flag: clients should use DHCPv6 for address assignment
+    # M flag: advertise that addresses are available via DHCPv6
     AdvManagedFlag {{ iface.adv_managed_flag | ternary('on', 'off') }};
 
-    # O flag: clients should use DHCPv6 for other configuration (DNS, etc.)
+    # O flag: advertise that other configuration is available via DHCPv6
     AdvOtherConfigFlag {{ iface.adv_other_config_flag | ternary('on', 'off') }};
 
     # How long this router is valid as default gateway (seconds)
@@ -145,7 +146,7 @@ ansible-playbook site.yml -i inventory.ini
 # Verify radvd is running and sending RAs
 ansible router-01 -m command -a "systemctl status radvd" --become
 
-# On a client: check for received RA-derived IPv6 address
+# On a client: check for a received global IPv6 address
 ip -6 addr show eth0 | grep "scope global"
 
 # Capture RA packets on the interface
