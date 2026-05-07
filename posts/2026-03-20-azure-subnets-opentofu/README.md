@@ -8,7 +8,7 @@ Description: Learn how to create Azure subnets with OpenTofu including service e
 
 ## Introduction
 
-Subnets divide an Azure VNet into smaller address ranges. Resources like VMs, AKS nodes, and App Service plans are deployed into subnets. OpenTofu manages subnets with service endpoints and delegations for PaaS service integration.
+Subnets divide an Azure VNet into smaller address ranges. Resources like VMs and AKS nodes are deployed into subnets, and App Service can integrate with delegated subnets. OpenTofu manages subnets with service endpoints and delegations for PaaS service integration.
 
 ## Basic Subnets
 
@@ -26,19 +26,19 @@ resource "azurerm_subnet" "private" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.2.0/24"]
 
-  # Service endpoints enable private access to Azure PaaS services
+  # Service endpoints secure subnet traffic to supported Azure PaaS public endpoints
   service_endpoints = ["Microsoft.Sql", "Microsoft.Storage", "Microsoft.KeyVault"]
 }
 ```
 
-## AKS Subnet with Node Pool Delegation
+## AKS Node Pool Subnet
 
 ```hcl
 resource "azurerm_subnet" "aks_nodes" {
   name                 = "snet-aks-nodes"
   resource_group_name  = var.resource_group_name
   virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = ["10.0.10.0/22"]  # /22 allows up to 1022 node IPs
+  address_prefixes     = ["10.0.10.0/22"]  # /22 provides 1,019 usable IPs before AKS-specific IP planning
 
   service_endpoints = ["Microsoft.ContainerRegistry"]
 }
@@ -114,4 +114,4 @@ output "all_subnet_ids"    { value = { for k, v in azurerm_subnet.all : k => v.i
 
 ## Conclusion
 
-Plan your subnet address spaces carefully before deployment-Azure does not allow changing subnet address prefixes after resources are deployed. Use service endpoints to enable private access to Azure PaaS services and service delegation for integration with Azure-native services like App Service.
+Plan your subnet address spaces carefully before deployment. If resources are already deployed in a subnet, you must move or delete them before changing the subnet address range. Use service endpoints to secure access to supported Azure PaaS public endpoints and service delegation for integration with Azure-native services like App Service.
