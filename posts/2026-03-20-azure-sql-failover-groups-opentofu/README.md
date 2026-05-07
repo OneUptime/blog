@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, SQL, Failover, OpenTofu, High Availability, Disaster Recovery
 
-Description: Learn how to configure Azure SQL Failover Groups with OpenTofu for automatic geo-replication and seamless failover between primary and secondary SQL servers.
+Description: Learn how to configure Azure SQL Failover Groups with OpenTofu for geo-replication and listener-based failover between primary and secondary SQL servers.
 
 ## Overview
 
-Azure SQL Failover Groups provide automatic failover with a consistent connection endpoint that applications can use regardless of whether the primary or secondary server is active. This simplifies DR setup for Azure SQL Database.
+Azure SQL Failover Groups provide consistent connection endpoints and can be configured for Microsoft-managed failover between regions. This simplifies DR setup for Azure SQL Database.
 
 ## Step 1: Create Primary and Secondary SQL Servers
 
@@ -37,6 +37,11 @@ resource "azurerm_mssql_server" "secondary" {
   version                      = "12.0"
   administrator_login          = "sqladmin"
   administrator_login_password = var.sql_admin_password
+
+  azuread_administrator {
+    login_username = "AzureAD Admin"
+    object_id      = var.aad_admin_object_id
+  }
 }
 ```
 
@@ -75,14 +80,14 @@ resource "azurerm_mssql_failover_group" "failover" {
     id = azurerm_mssql_server.secondary.id
   }
 
-  # Automatic failover policy
+  # Microsoft-managed failover policy
   read_write_endpoint_failover_policy {
     mode          = "Automatic"
-    # Failover after 60 minutes of primary unavailability
+    # Allow Microsoft-managed failover after 60 minutes during a qualifying outage
     grace_minutes = 60
   }
 
-  # Read-only endpoint routes to the secondary for read workloads
+  # Allow the read-only listener to fail over to the primary during Microsoft-managed failover
   readonly_endpoint_failover_policy_enabled = true
 }
 ```
@@ -123,4 +128,4 @@ output "read_only_endpoint" {
 
 ## Summary
 
-Azure SQL Failover Groups with OpenTofu provide automatic geo-failover with transparent connection strings. Applications connect to the failover group endpoint rather than individual server endpoints, ensuring they automatically connect to the current primary after a failover event.
+Azure SQL Failover Groups with OpenTofu provide geo-replication with stable listener endpoints. Applications connect to the failover group endpoint rather than individual server endpoints, so they continue to target the current primary after a failover once DNS refreshes.
