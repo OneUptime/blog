@@ -86,8 +86,8 @@ podman run -d --name web2 --network host \
 
 # Solution: configure the application to use a different port
 podman run -d --name web2 --network host \
-  -e NGINX_PORT=8081 \
-  docker.io/library/nginx:latest
+  docker.io/library/nginx:latest \
+  sh -c "sed -i 's/listen       80;/listen       8081;/' /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
 ```
 
 ## Host Networking in Rootless Mode
@@ -108,8 +108,9 @@ sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
 ```bash
 # Use host networking for network diagnostic tools
 podman run --rm --network host \
+  --cap-add NET_RAW --cap-add NET_ADMIN \
   docker.io/library/alpine:latest \
-  sh -c "apk add --no-cache tcpdump && tcpdump -i eth0 -c 10"
+  sh -c "apk add --no-cache tcpdump && tcpdump -i any -c 10"
 
 # Check host network configuration from a container
 podman run --rm --network host \
@@ -120,7 +121,7 @@ podman run --rm --network host \
 ## Security Considerations
 
 Host networking removes network isolation. The container can:
-- See all host network traffic
+- See host network interfaces and, with sufficient capabilities, capture host traffic
 - Bind to any available port
 - Access all host network interfaces
 
