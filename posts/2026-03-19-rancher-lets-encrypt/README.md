@@ -12,7 +12,7 @@ Running Rancher with a valid SSL certificate from Let's Encrypt eliminates brows
 
 Before you begin, ensure you have:
 
-- A running Kubernetes cluster (v1.25 or later) with at least 3 nodes
+- A running Kubernetes cluster on a Rancher-supported Kubernetes version. For a production HA installation like this guide, use at least 3 nodes
 - `kubectl` and Helm 3 installed
 - A fully qualified domain name (FQDN) with a DNS A record pointing to your cluster's load balancer or ingress IP
 - An NGINX Ingress Controller installed on the cluster
@@ -39,26 +39,21 @@ The DNS record must be active and pointing to the correct IP before Let's Encryp
 
 cert-manager handles the automatic issuance and renewal of Let's Encrypt certificates.
 
-Apply the cert-manager CRDs:
-
-```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml
-```
-
 Add the Jetstack Helm repository:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
+helm repo add jetstack https://charts.jetstack.io --force-update
 helm repo update
 ```
 
-Install cert-manager:
+Install cert-manager and its CRDs:
 
 ```bash
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --version v1.14.4
+  --version v1.20.2 \
+  --set crds.enabled=true
 ```
 
 Wait for cert-manager to be ready:
@@ -69,67 +64,9 @@ kubectl get pods -n cert-manager
 
 All pods should be in the Running state before proceeding.
 
-## Step 3: Create a Let's Encrypt ClusterIssuer
+## Step 3: Rancher Creates the Let's Encrypt Issuer Automatically
 
-Create a ClusterIssuer resource that tells cert-manager how to request certificates from Let's Encrypt. Start with the staging issuer for testing:
-
-```yaml
-# letsencrypt-staging.yaml
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt-staging
-spec:
-  acme:
-    server: https://acme-staging-v02.api.letsencrypt.org/directory
-    email: your-email@example.com
-    privateKeySecretRef:
-      name: letsencrypt-staging
-    solvers:
-      - http01:
-          ingress:
-            class: nginx
-```
-
-Apply it:
-
-```bash
-kubectl apply -f letsencrypt-staging.yaml
-```
-
-Once you have verified that everything works with the staging issuer, create the production issuer:
-
-```yaml
-# letsencrypt-production.yaml
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt-production
-spec:
-  acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: your-email@example.com
-    privateKeySecretRef:
-      name: letsencrypt-production
-    solvers:
-      - http01:
-          ingress:
-            class: nginx
-```
-
-Apply it:
-
-```bash
-kubectl apply -f letsencrypt-production.yaml
-```
-
-Verify the issuer is ready:
-
-```bash
-kubectl get clusterissuer
-```
-
-Both issuers should show `Ready: True`.
+When you install Rancher with `--set ingress.tls.source=letsEncrypt`, the Rancher Helm chart creates a namespaced `Issuer` for you. You do not need to create a `ClusterIssuer` manually for this workflow.
 
 ## Step 4: Add the Rancher Helm Repository
 
@@ -146,7 +83,17 @@ kubectl create namespace cattle-system
 
 ## Step 6: Install Rancher with Let's Encrypt
 
-First test with the staging issuer to avoid hitting Let's Encrypt rate limits:
+First test with the staging environment to avoid hitting Let's Encrypt rate limits. Staging certificates are not trusted by browsers, so use this only to validate the ACME flow.
+
+On new Rancher installations starting from v2.9.0, the default `agent-tls-mode` is `strict`. In that case, create the `tls-ca` secret with the CA chain that signs the Rancher certificate:
+
+```bash
+kubectl create secret generic tls-ca \
+  --namespace cattle-system \
+  --from-file=cacerts.pem
+```
+
+Then install Rancher:
 
 ```bash
 helm install rancher rancher-stable/rancher \
@@ -157,7 +104,8 @@ helm install rancher rancher-stable/rancher \
   --set ingress.tls.source=letsEncrypt \
   --set letsEncrypt.email=your-email@example.com \
   --set letsEncrypt.ingress.class=nginx \
-  --set letsEncrypt.environment=staging
+  --set letsEncrypt.environment=staging \
+  --set privateCA=true
 ```
 
 Wait for the deployment:
@@ -169,6 +117,8 @@ kubectl rollout status deployment rancher -n cattle-system
 Check the certificate status:
 
 ```bash
+kubectl get issuer -n cattle-system
+kubectl describe issuer rancher -n cattle-system
 kubectl get certificate -n cattle-system
 kubectl describe certificate tls-rancher-ingress -n cattle-system
 ```
@@ -182,6 +132,12 @@ Once the staging certificate is successfully issued, upgrade to production:
 kubectl delete certificate tls-rancher-ingress -n cattle-system
 kubectl delete secret tls-rancher-ingress -n cattle-system
 
+# If you created tls-ca for the staging CA chain, replace it with the production CA chain
+kubectl delete secret tls-ca -n cattle-system --ignore-not-found
+kubectl create secret generic tls-ca \
+  --namespace cattle-system \
+  --from-file=cacerts.pem
+
 # Upgrade Rancher to use production Let's Encrypt
 helm upgrade rancher rancher-stable/rancher \
   --namespace cattle-system \
@@ -191,7 +147,8 @@ helm upgrade rancher rancher-stable/rancher \
   --set ingress.tls.source=letsEncrypt \
   --set letsEncrypt.email=your-email@example.com \
   --set letsEncrypt.ingress.class=nginx \
-  --set letsEncrypt.environment=production
+  --set letsEncrypt.environment=production \
+  --set privateCA=true
 ```
 
 ## Step 8: Verify the Certificate
@@ -199,11 +156,13 @@ helm upgrade rancher rancher-stable/rancher \
 Check that the production certificate has been issued:
 
 ```bash
+kubectl get issuer -n cattle-system
+kubectl describe issuer rancher -n cattle-system
 kubectl get certificate -n cattle-system
 kubectl describe certificate tls-rancher-ingress -n cattle-system
 ```
 
-The certificate should show `Ready: True` and the issuer should be `letsencrypt-production`.
+The `rancher` Issuer and the `tls-rancher-ingress` Certificate should both show `Ready: True`.
 
 You can also verify from the command line:
 
@@ -217,7 +176,7 @@ Navigate to `https://rancher.yourdomain.com` in your browser. You should see a v
 
 ## Using DNS-01 Challenge
 
-If port 80 is not available or you need wildcard certificates, use the DNS-01 challenge instead. This example uses Cloudflare as the DNS provider:
+Rancher's built-in `ingress.tls.source=letsEncrypt` workflow uses the HTTP-01 challenge. If port 80 is not available or you need wildcard certificates, issue the certificate separately with cert-manager using DNS-01, then configure Rancher to use `ingress.tls.source=secret` instead. This example uses Cloudflare as the DNS provider:
 
 ```yaml
 # letsencrypt-dns.yaml
@@ -248,9 +207,11 @@ kubectl create secret generic cloudflare-api-token \
   --from-literal=api-token=YOUR_CLOUDFLARE_API_TOKEN
 ```
 
+After cert-manager issues the certificate, provide it to Rancher as the `tls-rancher-ingress` secret and install Rancher with `--set ingress.tls.source=secret`.
+
 ## Certificate Renewal
 
-Let's Encrypt certificates are valid for 90 days. cert-manager automatically renews them 30 days before expiration. Monitor the renewal status:
+Let's Encrypt certificates are currently valid for 90 days. cert-manager automatically renews them before expiration. Monitor the renewal status:
 
 ```bash
 kubectl get certificate -n cattle-system
@@ -261,9 +222,10 @@ kubectl describe certificate tls-rancher-ingress -n cattle-system | grep -A5 "Re
 
 ```bash
 # Check cert-manager logs
-kubectl logs -l app=cert-manager -n cert-manager --tail=50
+kubectl logs deploy/cert-manager -n cert-manager --tail=50
 
-# Check certificate status
+# Check issuer and certificate status
+kubectl describe issuer rancher -n cattle-system
 kubectl describe certificate tls-rancher-ingress -n cattle-system
 
 # Check certificate request
@@ -274,10 +236,10 @@ kubectl describe certificaterequest -n cattle-system
 kubectl get challenges -n cattle-system
 
 # Verify ingress configuration
-kubectl get ingress -n cattle-system -o yaml
+kubectl get ingress rancher -n cattle-system -o yaml
 
-# Test HTTP-01 challenge accessibility
-curl -v http://rancher.yourdomain.com/.well-known/acme-challenge/test
+# Inspect ACME challenge details
+kubectl describe challenges -n cattle-system
 ```
 
 Common issues:
