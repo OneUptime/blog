@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Agent, Security, TLS, Authentication
 
-Description: Set up a shared secret between the Portainer server and Portainer Agent to secure agent communications.
+Description: Set up the same shared secret on the Portainer server and Portainer Agent to authenticate agent connections.
 
 ---
 
@@ -12,83 +12,91 @@ How to Configure the Agent Secret Between Portainer Server and Agent is an impor
 
 ## Overview
 
-The Portainer Agent communicates with the Portainer server on TCP port 9001. Proper configuration and troubleshooting of the agent is essential for uninterrupted container management.
+The Portainer Agent listens on TCP port 9001 and the Portainer server connects to it over HTTPS. By default, the first Portainer instance to claim an agent becomes the only server that can manage it. If you configure `AGENT_SECRET` on the Portainer server, you must set the same value on the Portainer Agent at container start time.
 
 ## Common Configuration Steps
 
 ```bash
-# Check agent container status
+# If either command prints nothing, AGENT_SECRET is not set on that container
+docker inspect --format '{{join .Config.Env "\n"}}' portainer | grep '^AGENT_SECRET='
+docker inspect --format '{{join .Config.Env "\n"}}' portainer_agent | grep '^AGENT_SECRET='
 
-docker ps --filter name=portainer_agent
+# When starting or redeploying Portainer Server, set AGENT_SECRET
+docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
+  -e AGENT_SECRET='replace-with-a-long-random-secret' \
+  portainer/portainer-ce:lts
 
-# View agent logs for errors
+# When starting or redeploying the agent, use the exact same AGENT_SECRET value
+docker run -d -p 9001:9001 --name portainer_agent --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -e AGENT_SECRET='replace-with-a-long-random-secret' \
+  portainer/agent:lts
+
+# View agent logs for claim or authentication errors
 docker logs portainer_agent --tail 50 2>&1
-
-# Verify port 9001 is listening
-ss -tlnp | grep 9001
-# or
-netstat -tlnp | grep 9001
 ```
 
 ## Network Connectivity Test
 
-```bash
-# From the Portainer server, test connectivity to the agent
-nc -zv <agent-host-ip> 9001
-# Expected: Connection succeeded
+Portainer expects the environment URL in the form `<agent-host-ip>:9001` without a protocol prefix.
 
-# Test with curl (should get a response)
-curl -k https://<agent-host-ip>:9001 2>&1 | head -5
+```bash
+# From the Portainer server, confirm the agent port is reachable
+nc -zv <agent-host-ip> 9001
+
+# On the agent host, confirm the agent is listening on TCP/9001
+ss -tlnp | grep 9001
 ```
 
 ## Firewall Configuration
 
 ```bash
-# Allow port 9001 (UFW)
-sudo ufw allow from <portainer-server-ip> to any port 9001 proto tcp
+# Allow port 9001 only from the Portainer server host (UFW)
+sudo ufw allow proto tcp from <portainer-server-ip> to any port 9001
 
-# Allow port 9001 (firewalld)
+# Allow port 9001 only from the Portainer server host (firewalld)
 sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="<portainer-server-ip>" port port="9001" protocol="tcp" accept'
 sudo firewall-cmd --reload
 
-# IPTables rule
+# Allow port 9001 only from the Portainer server host (iptables)
 sudo iptables -A INPUT -s <portainer-server-ip> -p tcp --dport 9001 -j ACCEPT
 ```
 
 ## SELinux Context Fix (RHEL/CentOS)
 
+Portainer's Docker agent instructions assume SELinux is disabled. If you must run with SELinux enforcing, redeploy the agent container with `--privileged`.
+
 ```bash
-# Check for SELinux denials
-sudo ausearch -c 'docker' --raw | audit2allow -M portainer-agent
-sudo semodule -i portainer-agent.pp
-
-# Or temporarily disable enforcement for testing
-sudo setenforce 0
-
-# Add correct context for Docker socket
-sudo chcon -Rt svirt_sandbox_file_t /var/run/docker.sock
+docker stop portainer_agent
+docker rm portainer_agent
+docker run -d --privileged -p 9001:9001 --name portainer_agent --restart=always \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+  -e AGENT_SECRET='replace-with-a-long-random-secret' \
+  portainer/agent:lts
 ```
 
 ## Agent Version Compatibility
 
+Always match the agent version to the Portainer server version. If the server is on an LTS release, use the same LTS tag for the agent instead of blindly using `latest`.
+
 ```bash
-# Check current agent version
+# Check the image tags currently in use
+docker inspect portainer --format '{{.Config.Image}}'
 docker inspect portainer_agent --format '{{.Config.Image}}'
 
-# Check Portainer server version
-curl -s https://localhost:9443/api/status --insecure | python3 -c "
-import sys, json
-status = json.load(sys.stdin)
-print(f'Server version: {status.get(\"Version\", \"unknown\")}')
-"
-
-# Update agent to match server version
-docker stop portainer_agent && docker container rm portainer_agent
-docker pull portainer/agent:latest
+# Replace lts with the same Portainer release tag used by the server, if different
+docker stop portainer_agent
+docker rm portainer_agent
+docker pull portainer/agent:lts
 docker run -d -p 9001:9001 --name portainer_agent --restart=always \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-  portainer/agent:latest
+  -e AGENT_SECRET='replace-with-a-long-random-secret' \
+  portainer/agent:lts
 ```
 
 ---
