@@ -6,17 +6,19 @@ Tags: Rancher, Kubernetes, RKE2, Cluster Management
 
 Description: A complete guide to creating an RKE2 cluster through the Rancher UI with production-ready configuration.
 
-RKE2, also known as RKE Government, is the next-generation Kubernetes distribution from Rancher. It combines the ease of use of RKE with the security focus of K3s, providing a FIPS-compliant, CIS-hardened Kubernetes distribution that does not depend on Docker. This guide walks you through creating an RKE2 cluster using the Rancher management UI.
+RKE2, also known as RKE Government, is Rancher's enterprise-ready next-generation Kubernetes distribution. It combines the ease of use of RKE with the security focus of K3s, providing defaults and configuration options for CIS hardening while enabling FIPS 140-2 compliance, and it does not depend on Docker. This guide walks you through creating an RKE2 cluster using the Rancher management UI.
 
 ## Prerequisites
 
-- A running Rancher installation (v2.7 or later)
-- At least one Linux node with:
+- A supported Rancher Manager release
+- Linux nodes with:
   - Minimum 4 GB RAM and 2 CPUs
-  - A supported OS (Ubuntu 20.04+, RHEL 8+, SLES 15+)
+  - Unique hostnames
+  - A supported Linux distribution (see the RKE2 support matrix)
   - Systemd-based init system
   - SSH or console access
 - Network connectivity between nodes and to the Rancher server
+- If NetworkManager is enabled, configure it to ignore CNI-managed interfaces
 - No Docker required (RKE2 uses containerd)
 
 ## Step 1: Prepare the Nodes
@@ -58,15 +60,17 @@ sudo sysctl --system
 | 6443 | TCP | Kubernetes API |
 | 10250 | TCP | kubelet metrics |
 | 2379-2380 | TCP | etcd |
-| 8472 | UDP | Canal/VXLAN |
+| 8472 | UDP | Canal VXLAN (if using Canal) |
 | 30000-32767 | TCP | NodePort services |
+
+Additional CNI-specific ports may be required for Calico, Cilium, Flannel, or WireGuard; review the RKE2 requirements for the plugin you select.
 
 ## Step 2: Create the Cluster in Rancher
 
 1. Log in to the Rancher UI
 2. Navigate to **Cluster Management**
 3. Click **Create**
-4. Under **Use existing nodes and create a cluster using RKE2/K3s**, select **Custom**
+4. Select **Custom**
 
 ## Step 3: Configure Cluster Settings
 
@@ -85,30 +89,33 @@ Under the cluster configuration section, set:
 Select the network plugin:
 
 - **Canal** (default): Flannel networking with Calico network policies
-- **Calico**: Full Calico CNI
+- **Calico**: Networking and network policy with BGP or VXLAN options
 - **Cilium**: eBPF-based networking
-- **Multus**: For multiple network interfaces per pod
+- **Flannel**: Simple VXLAN-based pod networking
+- **Multus**: Secondary CNI for multiple interfaces per pod; use it alongside a primary CNI
 
 #### Cloud Provider
 
 Select your cloud provider if applicable:
 
-- **Default**: No cloud provider integration
+- **None**: No cloud provider integration
 - **AWS**: Enables AWS cloud features
 - **Azure**: Enables Azure cloud features
+- **GCE**: Enables Google Compute Engine cloud features
 - **vSphere**: Enables vSphere integration
+- **Custom**: Configure another cloud provider in cluster YAML if needed
 
-#### Default Security Pod Policy
+#### Pod Security Admission Configuration Template
 
-RKE2 supports Pod Security Standards:
+Rancher lets you assign a Pod Security Admission configuration template:
 
-- **Unrestricted**: No restrictions (default)
-- **Baseline**: Prevents known privilege escalations
-- **Restricted**: Heavily restricted, follows security best practices
+- **rancher-privileged**: Most permissive built-in template
+- **rancher-restricted**: Heavily restricted built-in template
+- **Custom template**: Use a custom PSA template if your Rancher admins created one
 
 ### Registry Mirror
 
-Configure a registry mirror if needed:
+For custom-node clusters, place this in `/etc/rancher/rke2/registries.yaml` on each node that will pull images:
 
 ```yaml
 mirrors:
@@ -139,19 +146,22 @@ etcd-s3-secret-key: <SECRET_KEY>
 
 ### Audit Logging
 
-Enable Kubernetes audit logging:
+Enable Kubernetes audit logging by providing an audit policy file and kube-apiserver arguments:
 
 ```yaml
 kube-apiserver-arg:
+  - audit-policy-file=/etc/rancher/rke2/audit-policy.yaml
   - audit-log-path=/var/lib/rancher/rke2/server/logs/audit.log
   - audit-log-maxage=30
   - audit-log-maxbackup=10
   - audit-log-maxsize=100
 ```
 
+Make sure `/etc/rancher/rke2/audit-policy.yaml` exists on the control-plane nodes, or provide it through Rancher cluster YAML.
+
 ### Agent Environment Variables
 
-Add environment variables for nodes if needed (e.g., proxy settings):
+Add environment variables for the cluster agent and system agent if needed (for example, proxy settings):
 
 ```yaml
 agentEnvVars:
@@ -193,6 +203,8 @@ curl -fL https://rancher.yourdomain.com/system-agent-install.sh | sudo sh -s - \
 
 Run this on each worker node.
 
+Depending on your Rancher certificate setup, the generated command may also include `--ca-checksum <CHECKSUM>`.
+
 ## Step 6: Monitor Provisioning
 
 Watch the cluster provisioning in the Rancher UI:
@@ -226,10 +238,11 @@ kubectl get pods -n kube-system
 Expected system pods include:
 
 - `rke2-coredns`
-- `rke2-ingress-nginx`
+- `rke2-ingress-nginx` or `rke2-traefik`
 - `rke2-metrics-server`
 - `cloud-controller-manager` (if cloud provider is configured)
-- Canal/Calico/Cilium pods (based on CNI selection)
+- Canal/Calico/Cilium/Flannel pods (based on CNI selection)
+- Multus pods (if enabled)
 
 ## Step 8: Post-Creation Setup
 
@@ -239,19 +252,7 @@ Navigate to the cluster in Rancher, go to **Apps**, and install the **Monitoring
 
 ### Configure Storage
 
-Set up a storage class for persistent workloads:
-
-```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: local-path
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: rancher.io/local-path
-reclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer
-```
+Install a CSI driver or storage provisioner appropriate for your platform. For local storage, Rancher's `local-path-provisioner` is a common option.
 
 ### Set Up Projects and RBAC
 
@@ -262,8 +263,8 @@ Organize namespaces into projects and configure user access through the Rancher 
 - **Node not registering**: Check the system-agent service with `systemctl status rancher-system-agent`. Verify network connectivity to the Rancher server.
 - **RKE2 service failing**: Check `journalctl -u rke2-server` for errors. Common issues include port conflicts and SELinux policies.
 - **Cluster stuck in Provisioning**: Look at the Rancher server logs and the provisioning logs in the cluster view.
-- **CNI issues**: Verify that VXLAN port 8472/UDP is open between all nodes.
+- **CNI issues**: Verify that the CNI-specific ports required by your selected plugin are open between all nodes.
 
 ## Conclusion
 
-Creating an RKE2 cluster in Rancher provides a production-ready, security-hardened Kubernetes distribution with minimal setup. RKE2 does not require Docker, comes CIS-hardened by default, and supports FIPS compliance, making it an excellent choice for enterprise and government environments. The Rancher UI simplifies the entire process to configuring options, running registration commands on your nodes, and waiting for the cluster to become active.
+Creating an RKE2 cluster in Rancher provides a production-ready Kubernetes distribution with minimal setup. RKE2 does not require Docker, supports CIS hardening profiles, and enables FIPS 140-2 compliance, making it a strong choice for enterprise and government environments. The Rancher UI simplifies the entire process to configuring options, running registration commands on your nodes, and waiting for the cluster to become active.
