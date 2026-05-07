@@ -10,7 +10,7 @@ Description: Learn how to leverage user namespaces in Podman to map container ro
 
 > User namespaces are the reason Podman can run containers as root inside while being completely unprivileged on the host.
 
-User namespaces remap user and group IDs between the container and the host. Root (UID 0) inside the container maps to an unprivileged user on the host, which means even if an attacker escapes the container, they land as a powerless user. Podman's rootless mode relies entirely on this mechanism, and even rootful Podman can use it for additional security.
+User namespaces remap user and group IDs between the container and the host. Root (UID 0) inside the container maps to an unprivileged user on the host, which reduces the impact of a container breakout because container root is not host root. Podman's rootless mode relies on this mechanism for UID/GID isolation, and even rootful Podman can use it for additional security.
 
 ---
 
@@ -33,7 +33,7 @@ cat /etc/subgid
 
 ## Rootless Podman and User Namespaces
 
-Rootless Podman automatically uses user namespaces. No special configuration is needed.
+Rootless Podman automatically uses user namespaces, but the user still needs subordinate UID/GID ranges configured in `/etc/subuid` and `/etc/subgid`.
 
 ```bash
 # Run a rootless container and check the UID mapping
@@ -51,6 +51,9 @@ echo "Container PID on host: $CPID"
 
 # Check what user that PID runs as on the host
 ps -o user,pid,comm -p "$CPID" 2>/dev/null || echo "PID may not be visible in rootless mode"
+
+# Stop the container so later --userns=auto examples can allocate a fresh range
+podman stop userns-test
 ```
 
 ## Configuring User Namespace Mappings
@@ -72,16 +75,16 @@ podman run --rm \
 ```
 
 ```bash
-# Keep the container UID as the host UID (disable remapping)
+# Map the current rootless user's UID/GID to the same values inside the container
 podman run --rm \
   --userns=keep-id \
   docker.io/library/alpine:latest \
-  sh -c "id && ls -la /proc/self/uid_map"
+  sh -c "id && cat /proc/self/uid_map"
 ```
 
 ## Using keep-id for Development
 
-The `keep-id` option maps your host UID to the same UID inside the container, which is useful for volume mounts during development.
+The `keep-id` option maps your host UID/GID to the same UID/GID inside the container, which is useful for volume mounts during development.
 
 ```bash
 # Create a directory with files owned by your user
@@ -106,6 +109,7 @@ Even when running Podman as root, you can add user namespace isolation.
 
 ```bash
 # Run a rootful container with user namespace remapping
+# Requires a `containers` entry in /etc/subuid and /etc/subgid for --userns=auto
 sudo podman run --rm \
   --userns=auto \
   docker.io/library/alpine:latest \
@@ -113,7 +117,8 @@ sudo podman run --rm \
 ```
 
 ```bash
-# Configure automatic user namespace for all rootful containers
+# Configure automatic user namespace as a default in containers.conf
+# This is system-wide unless overridden by a user-specific containers.conf
 # Edit /etc/containers/containers.conf
 # [containers]
 # userns = "auto"
@@ -179,8 +184,8 @@ cat /etc/subgid
 ## User Namespaces in Podman Compose
 
 ```yaml
-# docker-compose.yml
-version: "3"
+# compose.yaml
+# Support for userns_mode values depends on the compose provider used by `podman compose`
 services:
   app:
     image: docker.io/library/python:3.12-slim
@@ -203,4 +208,4 @@ rm -rf /tmp/userns-dev
 
 ## Summary
 
-User namespaces are a cornerstone of Podman's security model. They ensure that even root inside a container has no special privileges on the host. Rootless Podman uses user namespaces by default, making it the most secure way to run containers. For rootful Podman, enable user namespace remapping with `--userns=auto` to add this critical isolation layer. Use `--userns=keep-id` during development to maintain file ownership consistency between the host and container.
+User namespaces are a cornerstone of Podman's security model. They ensure that even root inside a container does not automatically become root on the host. Rootless Podman uses user namespaces by default, making it a strong default for running containers without host root privileges. For rootful Podman, enable user namespace remapping with `--userns=auto` to add this critical isolation layer. Use `--userns=keep-id` during development to maintain file ownership consistency between the host and container.
