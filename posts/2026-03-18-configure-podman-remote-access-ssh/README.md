@@ -10,7 +10,7 @@ Description: Learn how to configure secure SSH-based remote access to Podman for
 
 > SSH-based remote access turns Podman into a secure, distributed container management tool without exposing any ports to the network.
 
-Podman uses SSH as its transport layer for remote connections, providing encrypted communication without needing to expose the Podman API over the network. This approach leverages existing SSH infrastructure for authentication and encryption. This guide covers the complete setup of SSH-based remote access from key generation to production hardening.
+Podman can use SSH as its transport layer for remote connections, providing encrypted communication without needing to expose the Podman API over the network. This approach leverages existing SSH infrastructure for authentication and encryption. This guide covers the complete setup of SSH-based remote access from key generation to production hardening.
 
 ---
 
@@ -81,7 +81,7 @@ Tune SSH settings for better remote Podman performance.
 # Add an SSH config entry for the Podman remote host
 cat >> ~/.ssh/config << 'EOF'
 
-Host podman-remote
+Host remote-host
     HostName remote-host.example.com
     User podman-user
     IdentityFile ~/.ssh/podman-remote
@@ -103,7 +103,7 @@ mkdir -p ~/.ssh/sockets
 chmod 700 ~/.ssh/sockets
 
 # Test the SSH config entry
-ssh podman-remote "podman version"
+ssh remote-host "podman version"
 ```
 
 ## Restricting SSH Access for Podman
@@ -227,7 +227,7 @@ ssh -i ~/.ssh/podman-remote podman-user@remote-host \
 # Problem: Slow connection
 # Enable SSH multiplexing (see SSH config section above)
 # Test with multiplexing active
-ssh -O check podman-remote 2>&1
+ssh -O check remote-host 2>&1
 
 # Problem: "error connecting to remote host"
 # Check the connection URI is correct
