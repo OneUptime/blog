@@ -8,13 +8,12 @@ Description: Learn how to configure AWS Config Rules with OpenTofu to continuous
 
 ## Introduction
 
-AWS Config continuously records resource configurations and evaluates them against rules. Config Rules can use AWS-managed rules (over 200 pre-built) or custom Lambda-backed rules to check configurations like S3 bucket encryption, security group rules, and IAM password policies. Non-compliant resources are flagged for remediation.
+AWS Config continuously records resource configurations and evaluates them against rules. Config Rules can use AWS-managed rules or custom rules to check configurations like S3 bucket encryption, security group rules, and IAM password policies. Non-compliant resources are flagged for remediation.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS Config recorder enabled
-- AWS credentials with Config permissions
+- AWS credentials with permissions to create AWS Config, IAM, and S3 resources
 
 ## Step 1: Enable AWS Config Recorder
 
@@ -49,13 +48,41 @@ resource "aws_iam_role_policy_attachment" "config" {
 
 # S3 bucket for Config delivery
 
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3_bucket" "config" {
   bucket = "${var.project_name}-config-${data.aws_caller_identity.current.account_id}"
 }
 
+resource "aws_iam_role_policy" "config_s3" {
+  name = "${var.project_name}-config-s3-access"
+  role = aws_iam_role.config.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetBucketAcl",
+          "s3:ListBucket"
+        ]
+        Resource = aws_s3_bucket.config.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject"
+        ]
+        Resource = "${aws_s3_bucket.config.arn}/*"
+      }
+    ]
+  })
+}
+
 resource "aws_config_delivery_channel" "main" {
   name           = "${var.project_name}-config-delivery"
-  s3_bucket_name = aws_s3_bucket.config.id
+  s3_bucket_name = aws_s3_bucket.config.bucket
 
   depends_on = [aws_config_configuration_recorder.main]
 }
@@ -64,7 +91,11 @@ resource "aws_config_configuration_recorder_status" "main" {
   name       = aws_config_configuration_recorder.main.name
   is_enabled = true
 
-  depends_on = [aws_config_delivery_channel.main]
+  depends_on = [
+    aws_config_delivery_channel.main,
+    aws_iam_role_policy_attachment.config,
+    aws_iam_role_policy.config_s3
+  ]
 }
 ```
 
@@ -114,7 +145,7 @@ resource "aws_config_config_rule" "ebs_encryption" {
 # CloudTrail must be enabled
 resource "aws_config_config_rule" "cloudtrail_enabled" {
   name        = "cloud-trail-enabled"
-  description = "CloudTrail must be enabled with log file validation"
+  description = "CloudTrail must be enabled and use the expected S3 bucket"
 
   source {
     owner             = "AWS"
@@ -132,11 +163,12 @@ resource "aws_config_config_rule" "cloudtrail_enabled" {
 ## Step 3: Enable Conformance Pack
 
 ```hcl
-# Deploy CIS AWS Benchmark conformance pack
+# Deploy CIS AWS Foundations Benchmark v1.4 Level 1 conformance pack
+# Download the sample template from the AWS Config Rules repository first.
 resource "aws_config_conformance_pack" "cis" {
   name = "${var.project_name}-cis-benchmark"
 
-  template_s3_uri = "s3://aws-configservice-us-east-1/conformance-packs/Operational-Best-Practices-for-CIS-Critical-Security-Controls-v8-IG1.yaml"
+  template_body = file("${path.module}/Operational-Best-Practices-for-CIS-AWS-v1.4-Level1.yaml")
 
   depends_on = [aws_config_configuration_recorder.main]
 }
@@ -145,23 +177,23 @@ resource "aws_config_conformance_pack" "cis" {
 ## Step 4: Configure Automatic Remediation
 
 ```hcl
-# Auto-remediate: Enable encryption on non-compliant S3 buckets
-resource "aws_config_remediation_configuration" "s3_encryption" {
+# Remediate: Block public read/write access on non-compliant S3 buckets
+resource "aws_config_remediation_configuration" "s3_public_access" {
   config_rule_name = aws_config_config_rule.s3_public_access.name
 
   resource_type  = "AWS::S3::Bucket"
   target_type    = "SSM_DOCUMENT"
-  target_id      = "AWS-EnableS3BucketEncryption"
+  target_id      = "AWS-DisableS3BucketPublicReadWrite"
   automatic      = false  # Set to true for automatic remediation
 
   parameter {
-    name           = "BucketName"
-    resource_value = "RESOURCE_ID"
+    name         = "AutomationAssumeRole"
+    static_value = var.remediation_role_arn
   }
 
   parameter {
-    name         = "SSEAlgorithm"
-    static_value = "AES256"
+    name           = "S3BucketName"
+    resource_value = "RESOURCE_ID"
   }
 }
 ```
@@ -174,10 +206,10 @@ tofu plan
 tofu apply
 
 # Check compliance summary
-aws config get-compliance-summary-by-config-rule \
+aws configservice describe-compliance-by-config-rule \
   --config-rule-names s3-bucket-public-read-prohibited
 ```
 
 ## Conclusion
 
-AWS Config Rules provide continuous compliance monitoring that catches drift between infrastructure changes and your security baseline. Start with the CIS AWS Benchmark conformance pack for comprehensive coverage across the most impactful security controls. Enable automatic remediation selectively for low-risk, well-understood fixes (like enabling S3 encryption), but require manual approval for remediations that could impact availability, like modifying security group rules.
+AWS Config Rules provide continuous compliance monitoring that catches drift between infrastructure changes and your security baseline. Start with the CIS AWS Benchmark conformance pack for comprehensive coverage across the most impactful security controls. Enable automatic remediation selectively for low-risk, well-understood fixes (like blocking public S3 access), but require manual approval for remediations that could impact availability, like modifying security group rules.
