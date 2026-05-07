@@ -16,7 +16,7 @@ Containers are ephemeral by nature. When a container is removed, all data writte
 
 ## Understanding Podman Volumes
 
-Podman volumes are managed storage directories on the host that are mounted into containers. Unlike bind mounts, volumes are fully managed by Podman, which means they are portable, easy to back up, and independent of the host's directory structure.
+Podman volumes are managed storage directories on the host that are mounted into containers. Unlike bind mounts, volumes are managed by Podman, so your container definitions do not need to reference a specific host path and the underlying storage location is handled by Podman.
 
 Key characteristics of Podman volumes:
 
@@ -192,11 +192,10 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
     "env": {
       "POSTGRES_PASSWORD": "secret"
     },
-    "mounts": [
+    "volumes": [
       {
-        "destination": "/var/lib/postgresql/data",
-        "source": "app-data",
-        "type": "volume"
+        "name": "app-data",
+        "dest": "/var/lib/postgresql/data"
       }
     ]
   }' \
@@ -228,7 +227,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
     "image": "docker.io/library/alpine:latest",
     "name": "log-writer",
     "command": ["sh", "-c", "while true; do date >> /logs/app.log; sleep 5; done"],
-    "mounts": [{"destination": "/logs", "source": "shared-logs", "type": "volume"}]
+    "volumes": [{"name": "shared-logs", "dest": "/logs"}]
   }' \
   http://localhost/v4.0.0/libpod/containers/create
 
@@ -240,7 +239,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
     "image": "docker.io/library/alpine:latest",
     "name": "log-reader",
     "command": ["tail", "-f", "/logs/app.log"],
-    "mounts": [{"destination": "/logs", "source": "shared-logs", "type": "volume", "options": ["ro"]}]
+    "volumes": [{"name": "shared-logs", "dest": "/logs", "options": ["ro"]}]
   }' \
   http://localhost/v4.0.0/libpod/containers/create
 ```
@@ -255,7 +254,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X DELETE \
   http://localhost/v4.0.0/libpod/volumes/my-data
 
-# Force remove a volume even if in use
+# Force remove a volume and any containers using it
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X DELETE \
   "http://localhost/v4.0.0/libpod/volumes/my-data?force=true"
@@ -263,15 +262,20 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 
 ## Pruning Unused Volumes
 
-Remove all volumes not currently mounted by any container.
+Remove unused volumes. By default, the libpod prune endpoint removes unused anonymous volumes. Use the `all` filter to include named volumes.
 
 ```bash
-# Prune dangling volumes
+# Prune unused anonymous volumes (libpod default)
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
   http://localhost/v4.0.0/libpod/volumes/prune
 
-# Prune with a label filter
+# Prune all unused volumes, including named volumes
+curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  -X POST \
+  "http://localhost/v4.0.0/libpod/volumes/prune?filters={\"all\":[\"true\"]}"
+
+# Prune unused volumes with a label filter
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
   "http://localhost/v4.0.0/libpod/volumes/prune?filters={\"label\":[\"env=dev\"]}"
@@ -286,6 +290,7 @@ import json
 import os
 import socket
 import http.client
+from urllib.parse import quote
 
 class PodmanVolumeClient:
     def __init__(self):
@@ -314,7 +319,7 @@ class PodmanVolumeClient:
     def list_volumes(self, filters=None):
         path = f'{self.base}/volumes/json'
         if filters:
-            path += f'?filters={json.dumps(filters)}'
+            path += f'?filters={quote(json.dumps(filters), safe="")}'
         return self._request('GET', path)
 
     def inspect(self, name):
@@ -324,8 +329,11 @@ class PodmanVolumeClient:
         return self._request('DELETE',
             f'{self.base}/volumes/{name}?force={str(force).lower()}')
 
-    def prune(self):
-        return self._request('POST', f'{self.base}/volumes/prune')
+    def prune(self, filters=None):
+        path = f'{self.base}/volumes/prune'
+        if filters:
+            path += f'?filters={quote(json.dumps(filters), safe="")}'
+        return self._request('POST', path)
 
     def exists(self, name):
         status, _ = self._request('GET', f'{self.base}/volumes/{name}/exists')
@@ -348,8 +356,8 @@ status, volumes = client.list_volumes()
 for vol in volumes:
     print(f"  {vol['Name']:20s} {vol.get('Mountpoint', 'N/A')}")
 
-# Clean up dev volumes
-status, pruned = client.prune()
+# Clean up unused dev volumes by label
+status, pruned = client.prune({"label": ["env=dev"]})
 print(f"Pruned volumes: {pruned}")
 ```
 
