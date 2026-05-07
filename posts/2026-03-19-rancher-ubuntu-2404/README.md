@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Ubuntu, Docker, Kubernetes, Installation
 
-Description: A step-by-step guide to installing Rancher on Ubuntu 24.04 LTS, covering system preparation, Docker setup, and Rancher deployment.
+Description: A step-by-step guide to installing Rancher on Ubuntu 24.04 LTS for testing or development, covering system preparation, Docker setup, and Rancher deployment.
 
-Ubuntu 24.04 LTS (Noble Numbat) is the latest long-term support release from Canonical, bringing updated kernel versions, improved security features, and better container support. This guide walks you through installing Rancher on a fresh Ubuntu 24.04 server using Docker.
+Ubuntu 24.04 LTS (Noble Numbat) is the latest long-term support release from Canonical, bringing updated kernel versions, improved security features, and better container support. This guide walks you through installing Rancher on a fresh Ubuntu 24.04 server using Docker for testing or development. Rancher does not support single-node Docker installs for production environments.
 
 ## Prerequisites
 
@@ -37,11 +37,8 @@ Install prerequisite packages:
 
 ```bash
 sudo apt install -y \
-  apt-transport-https \
   ca-certificates \
-  curl \
-  gnupg \
-  lsb-release
+  curl
 ```
 
 ## Step 3: Install Docker
@@ -49,10 +46,18 @@ sudo apt install -y \
 Ubuntu 24.04 ships with a newer version of the Linux kernel that works well with Docker. Add the official Docker repository:
 
 ```bash
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 ```
 
 Install Docker Engine:
@@ -120,14 +125,16 @@ sudo sysctl --system
 
 ## Step 6: Configure the Firewall
 
-Ubuntu 24.04 uses `nftables` as the default firewall backend. Configure it using UFW:
+If UFW is enabled on your server, allow SSH before enabling the firewall and open Rancher's published ports:
 
 ```bash
+sudo ufw allow OpenSSH
 sudo ufw allow 80/tcp
 sudo ufw allow 443/tcp
-sudo ufw allow 6443/tcp
 sudo ufw enable
 ```
+
+Docker publishes container ports using its own firewall rules, so review Docker's firewall behavior if you rely on UFW for access control.
 
 ## Step 7: Configure Docker Logging
 
@@ -142,8 +149,7 @@ sudo tee /etc/docker/daemon.json <<EOF
   "log-opts": {
     "max-size": "10m",
     "max-file": "3"
-  },
-  "storage-driver": "overlay2"
+  }
 }
 EOF
 
@@ -175,7 +181,7 @@ docker run -d \
 
 ## Step 10: Get the Bootstrap Password
 
-Wait approximately one minute for Rancher to start, then retrieve the bootstrap password:
+Wait a few minutes for Rancher to start, then retrieve the bootstrap password:
 
 ```bash
 docker logs rancher 2>&1 | grep "Bootstrap Password:"
@@ -189,7 +195,6 @@ Complete the setup wizard:
 
 1. Set a new admin password
 2. Configure the Rancher server URL to match your DNS name or IP
-3. Accept the terms and conditions
 
 ## Step 12: Verify the Installation
 
@@ -259,4 +264,4 @@ sudo ss -tlnp | grep -E ':(80|443)'
 
 ## Conclusion
 
-You have successfully installed Rancher on Ubuntu 24.04 LTS. This latest Ubuntu release provides a modern kernel with excellent container support, making it a solid platform for running Rancher. With Ubuntu 24.04 receiving security updates until April 2029, you have a long-term stable foundation for your Kubernetes management needs.
+You have successfully installed Rancher on Ubuntu 24.04 LTS for testing or development. This latest Ubuntu release provides a modern kernel with excellent container support, making it a solid platform for evaluating Rancher on a single node. With Ubuntu 24.04 receiving security updates until April 2029, you have a long-term stable foundation for lab and non-production Kubernetes management work.
