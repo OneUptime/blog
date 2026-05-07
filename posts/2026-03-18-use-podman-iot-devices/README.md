@@ -54,7 +54,7 @@ sudo systemctl reboot
 
 ```bash
 sudo apt update
-sudo apt install -y podman fuse-overlayfs slirp4netns
+sudo apt install -y podman fuse-overlayfs slirp4netns uidmap
 ```
 
 ### Verify Installation
@@ -217,8 +217,10 @@ IoT containers often need access to hardware interfaces like I2C, SPI, GPIO, and
 
 ```bash
 podman run -d --name i2c-sensor \
+  --runtime crun \
   --device /dev/i2c-1:/dev/i2c-1 \
   --group-add keep-groups \
+  -v sensor-data:/data:Z \
   iot/sensor-reader:latest
 ```
 
@@ -258,7 +260,6 @@ Create a complete IoT data pipeline using pods:
 ```bash
 # Create a pod for the IoT stack
 podman pod create --name iot-stack \
-  -p 1883:1883 \
   -p 8080:8080
 
 # MQTT Broker
@@ -319,6 +320,7 @@ TimeoutStartSec=120
 WantedBy=default.target
 EOF
 
+sudo loginctl enable-linger "$USER"
 systemctl --user daemon-reload
 systemctl --user enable --now iot-app
 systemctl --user enable --now podman-auto-update.timer
@@ -336,10 +338,10 @@ echo "Pushing update to $DEVICE..."
 scp "$IMAGE_TAR" iot@$DEVICE:/tmp/update.tar
 
 ssh iot@$DEVICE bash <<'REMOTE'
-  podman load -i /tmp/update.tar
+  LOAD_OUTPUT=$(podman load -i /tmp/update.tar)
   systemctl --user restart iot-app
   rm /tmp/update.tar
-  echo "Update applied: $(podman images --format '{{.Repository}}:{{.Tag}}' | head -1)"
+  echo "Update applied: $LOAD_OUTPUT"
 REMOTE
 ```
 
@@ -354,8 +356,6 @@ Run containers with a read-only filesystem:
 ```bash
 podman run -d --name secure-iot \
   --read-only \
-  --tmpfs /tmp \
-  --tmpfs /run \
   -v iot-data:/data:Z \
   iot/sensor-reader:latest
 ```
@@ -365,9 +365,9 @@ podman run -d --name secure-iot \
 ```bash
 podman run -d --name hardened \
   --cap-drop ALL \
-  --cap-add NET_BIND_SERVICE \
   --security-opt no-new-privileges \
   --read-only \
+  -v iot-data:/data:Z \
   iot/sensor-reader:latest
 ```
 
@@ -379,6 +379,7 @@ podman network create --internal iot-internal
 
 # Only the gateway container has external access
 podman run -d --name gateway \
+  --network bridge \
   --network iot-internal \
   -p 8443:8443 \
   iot/gateway:latest
@@ -387,6 +388,7 @@ podman run -d --name gateway \
 podman run -d --name sensor \
   --network iot-internal \
   --device /dev/i2c-1:/dev/i2c-1 \
+  -v sensor-data:/data:Z \
   iot/sensor-reader:latest
 ```
 
@@ -397,7 +399,7 @@ Resource Monitoring
 ### Lightweight Monitoring Script
 
 ```bash
-cat > /usr/local/bin/iot-monitor.sh <<'EOF'
+sudo tee /usr/local/bin/iot-monitor.sh > /dev/null <<'EOF'
 #!/bin/bash
 # Collect device and container metrics
 DEVICE_ID=$(hostname)
@@ -414,7 +416,7 @@ CONTAINER_COUNT=$(podman ps -q | wc -l)
 echo "{\"device\":\"$DEVICE_ID\",\"timestamp\":\"$TIMESTAMP\",\"cpu_temp\":$((CPU_TEMP/1000)),\"mem_free_kb\":$MEM_FREE,\"disk_free_kb\":$DISK_FREE,\"containers\":$CONTAINER_COUNT}"
 EOF
 
-chmod +x /usr/local/bin/iot-monitor.sh
+sudo chmod +x /usr/local/bin/iot-monitor.sh
 ```
 
 ---
