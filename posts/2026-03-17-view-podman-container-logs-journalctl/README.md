@@ -47,23 +47,23 @@ journalctl --user -u webapp.service --since today
 ## Priority Filtering
 
 ```bash
-# Show only error messages
+# Show errors and higher-priority messages
 journalctl --user -u webapp.service -p err
 
 # Show warnings and above
 journalctl --user -u webapp.service -p warning
 
-# Show only critical and emergency
+# Show critical and higher-priority messages
 journalctl --user -u webapp.service -p crit
 ```
 
 ## Output Formatting
 
 ```bash
-# JSON output for parsing
+# One-line JSON per entry
 journalctl --user -u webapp.service -o json
 
-# One-line JSON per entry
+# Pretty-printed JSON
 journalctl --user -u webapp.service -o json-pretty
 
 # Short format with timestamps
