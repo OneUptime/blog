@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Alpine Linux, Static Routes, Networking, Routing, /etc/network/interfaces
 
-Description: Add persistent static routes on Alpine Linux using the ip route command and /etc/network/interfaces post-up directives or the Alpine-specific iproute2 configuration.
+Description: Add persistent static routes on Alpine Linux using the ip route command and /etc/network/interfaces post-up directives or OpenRC startup scripts.
 
 ## Introduction
 
-Alpine Linux uses a minimal network configuration stack based on `/etc/network/interfaces` with BusyBox `ip` commands for route management. Static routes are added temporarily with `ip route add` or persistently via `post-up` directives in the interfaces file.
+Alpine Linux uses `ifupdown-ng` with `/etc/network/interfaces` by default. Static routes are added temporarily with `ip route add` or persistently via `post-up` directives in the interfaces file or an OpenRC startup script.
 
 ## Add a Temporary Route
 
@@ -18,7 +18,7 @@ Alpine Linux uses a minimal network configuration stack based on `/etc/network/i
 ip route add 192.168.2.0/24 via 10.0.0.1
 
 # Add using BusyBox route command (legacy)
-route add -net 192.168.2.0/24 gw 10.0.0.1
+route add -net 192.168.2.0 netmask 255.255.255.0 gw 10.0.0.1
 
 # View routing table
 ip route show
@@ -82,7 +82,7 @@ iface eth0 inet dhcp
 
 ## Docker/Container Alpine
 
-In Alpine containers, routes are often added via environment variables or startup scripts since there is no init system:
+In Alpine containers, routes are often added in an entrypoint or startup script since there is typically no init system. The container must also be started with `--cap-add=NET_ADMIN` (or equivalent), because Docker drops that capability by default:
 
 ```dockerfile
 # Dockerfile
@@ -91,6 +91,8 @@ RUN apk add --no-cache iproute2
 CMD ["/bin/sh", "-c", "ip route add 192.168.2.0/24 via 10.0.0.1; exec myapp"]
 ```
 
+Run the container with something like `docker run --cap-add=NET_ADMIN ...` so the `ip route add` command can modify the container's routing table.
+
 ## Conclusion
 
-Alpine Linux static routes use `ip route add` for temporary configuration and `post-up` directives in `/etc/network/interfaces` for persistence. The minimal Alpine environment means no NetworkManager or Netplan - stick with the interfaces file or OpenRC local scripts for persistent routing. The `/etc/local.d/*.start` pattern integrates cleanly with Alpine's OpenRC init system.
+Alpine Linux static routes use `ip route add` for temporary configuration and `post-up` directives in `/etc/network/interfaces` for persistence. The default Alpine setup uses `ifupdown-ng` and OpenRC rather than Netplan, so the interfaces file or OpenRC local scripts are straightforward options for persistent routing. The `/etc/local.d/*.start` pattern integrates cleanly with Alpine's OpenRC init system.
