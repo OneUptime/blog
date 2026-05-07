@@ -8,7 +8,7 @@ Description: Automate IPv6 OSPFv3 configuration across network devices using Ans
 
 ## Introduction
 
-OSPFv3 is the IPv6 routing protocol for link-state interior gateway routing. Automating its configuration ensures consistent area assignments, passive interface settings, and authentication across all routers in your network.
+OSPFv3 is the IPv6 routing protocol for link-state interior gateway routing. Automating its configuration ensures consistent area assignments, passive interface settings, and redistribution settings across all routers in your network.
 
 ## Step 1: OSPFv3 Policy Definition
 
@@ -17,7 +17,7 @@ OSPFv3 is the IPv6 routing protocol for link-state interior gateway routing. Aut
 
 ospf:
   process_id: 1
-  router_id: 10.0.0.1   # IPv4 router-id required for OSPFv3
+  router_id: 10.0.0.1   # 32-bit router ID required for OSPFv3
   areas:
     - id: 0
       interfaces:
@@ -96,8 +96,12 @@ router ospfv3 {{ ospf.process_id }}
 {% if iface.passive is defined and iface.passive %}
    passive
 {% else %}
-   cost {{ iface.cost | default(10) }}
-   network point-to-point
+{% if iface.cost is defined %}
+   cost {{ iface.cost }}
+{% endif %}
+{% if iface.network_type is defined %}
+   network {{ iface.network_type }}
+{% endif %}
 {% endif %}
   !
 {% endfor %}
@@ -105,7 +109,7 @@ router ospfv3 {{ ospf.process_id }}
 {% endfor %}
 {% if ospf.redistribute is defined %}
 {% for redist in ospf.redistribute %}
- redistribute {{ redist.type }} metric {{ redist.metric }}
+ redistribute {{ redist.type }} metric {{ redist.metric }}{% if redist.metric_type is defined %} metric-type {{ redist.metric_type }}{% endif %}
 {% endfor %}
 {% endif %}
 !
@@ -121,7 +125,7 @@ import re
 def verify_ospfv3_neighbors(host: str) -> dict:
     """Check OSPFv3 neighbor adjacencies."""
     device = {
-        "device_type": "cisco_iosxr",
+        "device_type": "cisco_xr",
         "host": host,
         "username": "admin",
         "password": "secret",
@@ -133,18 +137,18 @@ def verify_ospfv3_neighbors(host: str) -> dict:
     # Parse neighbors
     neighbors = []
     for line in output.splitlines():
-        # Match lines with neighbor info
-        m = re.search(r'([\da-fA-F:]+)\s+\d+\s+FULL', line)
+        # Match summary lines from "show ospfv3 neighbor"
+        m = re.search(r'^\s*(\d{1,3}(?:\.\d{1,3}){3})\s+\d+\s+(FULL/\s*\S+)', line)
         if m:
             neighbors.append({
                 "neighbor_id": m.group(1),
-                "state": "FULL",
+                "state": re.sub(r"\s+", "", m.group(2)),
             })
 
     return {"host": host, "neighbors": neighbors, "count": len(neighbors)}
 
 # Verify all routers
-routers = ["2001:db8::r1", "2001:db8::r2", "2001:db8::r3"]
+routers = ["2001:db8::1", "2001:db8::2", "2001:db8::3"]
 for router in routers:
     result = verify_ospfv3_neighbors(router)
     print(f"{router}: {result['count']} FULL neighbors")
@@ -157,11 +161,11 @@ for router in routers:
 ```bash
 # Check OSPFv3 database after deployment
 ansible -i inventory/hosts.yml ospf_routers -m cisco.iosxr.iosxr_command \
-    -a "commands='show ospfv3 database summary'"
+    -a "commands='show ospfv3 database database-summary'"
 
-# Check route table for OSPF routes
+# Check IPv6 route table for OSPF-learned routes
 ansible -i inventory/hosts.yml ospf_routers -m cisco.iosxr.iosxr_command \
-    -a "commands='show ipv6 route ospf'"
+    -a "commands='show route ipv6 unicast'"
 
 # Full playbook deployment
 ansible-playbook playbooks/deploy_ospfv3.yml -v
