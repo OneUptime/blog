@@ -84,6 +84,9 @@ spec:
           value: "localhost"
         - name: DATABASE_PORT
           value: "5432"
+      envFrom:
+        - configMapRef:
+            name: app-config
     - name: database
       image: docker.io/library/postgres:16
       env:
