@@ -18,8 +18,13 @@ Understanding what ends up in state.
 # This stores the password in state as a plaintext value
 
 resource "aws_db_instance" "main" {
-  identifier = "myapp-db"
-  password   = var.db_password  # ends up in terraform.tfstate as plaintext
+  identifier          = "myapp-db"
+  allocated_storage   = 20
+  engine              = "postgres"
+  instance_class      = "db.t3.micro"
+  username            = "admin"
+  password            = var.db_password  # ends up in terraform.tfstate as plaintext
+  skip_final_snapshot = true
 }
 
 # terraform.tfstate (contains the secret)
@@ -41,9 +46,12 @@ Write-only attributes are sent to the provider but never stored in state.
 
 ```hcl
 resource "aws_db_instance" "main" {
-  identifier = "myapp-db"
-  engine     = "postgres"
-  username   = "admin"
+  identifier          = "myapp-db"
+  allocated_storage   = 20
+  engine              = "postgres"
+  instance_class      = "db.t3.micro"
+  username            = "admin"
+  skip_final_snapshot = true
 
   # Use write-only attribute - never stored in state
   password_wo         = var.db_password
@@ -62,9 +70,12 @@ ephemeral "aws_secretsmanager_secret_version" "db_pass" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier = "myapp-db"
-  engine     = "postgres"
-  username   = "admin"
+  identifier          = "myapp-db"
+  allocated_storage   = 20
+  engine              = "postgres"
+  instance_class      = "db.t3.micro"
+  username            = "admin"
+  skip_final_snapshot = true
 
   # Combine ephemeral source + write-only attribute
   password_wo         = ephemeral.aws_secretsmanager_secret_version.db_pass.secret_string
@@ -72,7 +83,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-## Solution 3: External Secret Store Integration
+## Solution 3: External Secret Store Integration (OpenTofu 1.11+)
 
 Create secrets in a secret manager separately from the database.
 
@@ -83,20 +94,20 @@ resource "aws_secretsmanager_secret" "db_password" {
   description = "RDS master password"
 }
 
-# Store a random password in the secret
-resource "random_password" "db" {
+# Generate a random password in memory
+ephemeral "random_password" "db" {
   length  = 32
   special = true
 }
 
 resource "aws_secretsmanager_secret_version" "db_password" {
-  secret_id     = aws_secretsmanager_secret.db_password.id
-  secret_string = random_password.db.result
+  secret_id                = aws_secretsmanager_secret.db_password.id
+  secret_string_wo         = ephemeral.random_password.db.result
+  secret_string_wo_version = 1
 }
 
-# NOTE: random_password.db.result IS stored in state
-# For higher security, generate passwords externally and inject via
-# write-only attributes or ephemeral resources
+# NOTE: secret_string_wo is write-only, so the secret value is not stored in state
+# Increment secret_string_wo_version when you rotate the password
 ```
 
 ## Solution 4: Encrypt Your State Backend
@@ -117,6 +128,8 @@ terraform {
   encryption {
     key_provider "aws_kms" "main" {
       kms_key_id = "arn:aws:kms:us-east-1:123456789012:key/my-key"
+      region     = "us-east-1"
+      key_spec   = "AES_256"
     }
 
     method "aes_gcm" "default" {
@@ -140,7 +153,7 @@ tofu state pull | jq '.resources[].instances[].attributes | keys[]' | \
   grep -i "password\|secret\|key\|token"
 
 # If found, plan to migrate to write-only attributes or ephemeral resources
-# and manually remove from state using tofu state rm + reimport
+# and, if needed, remove bindings with tofu state rm and re-import with tofu import
 ```
 
 ## Summary
