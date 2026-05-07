@@ -95,7 +95,7 @@ COPY --from=busybox:musl /bin/busybox /bin/busybox
 
 ## ADD Instruction Basics
 
-ADD does everything COPY does, plus two additional features: automatic tar extraction and URL downloading.
+ADD behaves like COPY for ordinary files and directories from the build context, plus automatic tar extraction and URL downloading.
 
 ```dockerfile
 # Basic file add (same as COPY)
@@ -139,7 +139,7 @@ ADD can download files from URLs:
 ADD https://example.com/config.json /app/config.json
 ```
 
-However, this feature has significant drawbacks and is generally discouraged. Files downloaded via ADD URL cannot benefit from build cache invalidation based on content changes, the downloaded file gets a permission of 600, and you cannot remove the downloaded file in the same layer to save space.
+However, this feature has significant drawbacks and is generally discouraged. Files downloaded via ADD URL cannot benefit from build cache invalidation based on content changes, the downloaded file gets a permission of 600, and you cannot remove the downloaded file in the same layer to save space. Podman's Containerfile documentation also allows remote file URLs with COPY, but the same recommendation applies: use RUN with a download tool when you need a remote file.
 
 A better approach uses RUN with curl or wget:
 
@@ -153,7 +153,7 @@ With RUN, you can chain commands to verify checksums, set permissions, and clean
 
 ```dockerfile
 RUN curl -fsSL https://example.com/tool-v1.2.tar.gz -o /tmp/tool.tar.gz && \
-    echo "sha256:abc123... /tmp/tool.tar.gz" | sha256sum -c - && \
+    echo "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /tmp/tool.tar.gz" | sha256sum -c - && \
     tar xzf /tmp/tool.tar.gz -C /usr/local/bin/ && \
     rm /tmp/tool.tar.gz
 ```
@@ -171,8 +171,9 @@ COPY config.json /app/config.json  # File copied as-is
 # Copies a tar file without extracting
 COPY archive.tar.gz /app/archive.tar.gz  # Archive preserved
 
-# Cannot download from URLs
-# COPY https://example.com/file.txt /app/  # ERROR: not supported
+# Podman's Containerfile syntax allows remote URLs with COPY,
+# but RUN with curl or wget is usually better for downloads
+# COPY https://example.com/file.txt /app/file.txt
 
 # --- ADD behavior ---
 
@@ -270,7 +271,7 @@ WORKDIR /app
 
 # Copy only dependency files first
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Then copy source code
 COPY --chown=node:node src/ ./src/
@@ -350,7 +351,7 @@ This reduces the build context size and prevents accidental inclusion of sensiti
 # Mistake 1: Using ADD when COPY would suffice
 ADD app.py /app/app.py  # Use COPY instead
 
-# Mistake 2: Using ADD for URL downloads
+# Mistake 2: Using ADD or COPY for URL downloads
 ADD https://example.com/data.csv /app/data.csv
 # Use RUN with curl instead
 
@@ -365,4 +366,4 @@ RUN chown appuser:appuser /app/app.py  # Extra layer
 
 ## Conclusion
 
-The choice between COPY and ADD is straightforward: use COPY as your default for all file transfer operations. It is explicit, predictable, and does exactly what its name suggests. Reserve ADD for the one scenario where it provides genuine value: automatically extracting local tar archives into your image. Avoid ADD for URL downloads entirely, using RUN with curl or wget instead for better control over permissions, caching, and cleanup. Following this simple guideline makes your Containerfiles clearer, your builds more predictable, and your images more efficient.
+The choice between COPY and ADD is straightforward: use COPY as your default for all file transfer operations. It is explicit, predictable, and does exactly what its name suggests. Reserve ADD for the one scenario where it provides genuine value: automatically extracting local tar archives into your image. Avoid ADD or COPY for URL downloads, using RUN with curl or wget instead for better control over permissions, caching, and cleanup. Following this simple guideline makes your Containerfiles clearer, your builds more predictable, and your images more efficient.
