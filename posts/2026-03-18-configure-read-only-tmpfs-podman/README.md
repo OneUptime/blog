@@ -8,15 +8,15 @@ Description: Learn how to configure tmpfs mounts with read-only options in Podma
 
 ---
 
-> Tmpfs mounts give containers the writable space they need without ever touching persistent storage, keeping your security posture tight.
+> Tmpfs mounts give containers the writable space they need without persisting it in the container filesystem, keeping your security posture tight.
 
-When running containers with a read-only root filesystem, applications often still need writable temporary directories. Tmpfs mounts provide in-memory filesystems that disappear when the container stops, leaving no trace on disk. This guide covers how to configure tmpfs mounts in Podman with fine-grained control over size, permissions, and read-only behavior.
+When running containers with a read-only root filesystem, applications often still need writable temporary directories. Tmpfs mounts provide temporary filesystems that disappear when the container stops. On Linux, tmpfs data can use swap unless swap is disabled, so avoid treating tmpfs as guaranteed RAM-only storage for secrets. This guide covers how to configure tmpfs mounts in Podman with fine-grained control over size, permissions, and read-only behavior.
 
 ---
 
 ## Understanding Tmpfs in Podman
 
-A tmpfs mount creates a filesystem backed by RAM. Data written to a tmpfs mount never hits disk, making it ideal for sensitive temporary files, caches, and runtime data. When the container is removed, the tmpfs content vanishes completely.
+A tmpfs mount creates a filesystem backed by memory and, when enabled, swap. Data written to a tmpfs mount does not persist in the container filesystem, making it useful for temporary files, caches, and runtime data. When the container is removed, the tmpfs content vanishes.
 
 ```bash
 # Run a container with a basic tmpfs mount at /tmp
@@ -65,7 +65,7 @@ podman run --rm -it \
 ```
 
 ```bash
-# Create a tmpfs with world-readable but not writable permissions (mode 755)
+# Create a tmpfs with world-readable permissions and writes limited to the owner (mode 755)
 podman run --rm -it \
   --tmpfs /app/cache:rw,size=32m,mode=755 \
   docker.io/library/alpine:latest \
@@ -82,7 +82,7 @@ podman run --rm -it \
   --tmpfs /secure-dir:ro,size=1m \
   docker.io/library/alpine:latest \
   sh -c "touch /secure-dir/test 2>&1 || echo 'Cannot write to read-only tmpfs'"
-# Expected output: Cannot write to read-only tmpfs
+# Expected output includes: Cannot write to read-only tmpfs
 ```
 
 ## Combining Read-Only Root with Writable Tmpfs
@@ -103,7 +103,7 @@ podman run --rm -d \
 
 ```bash
 # Verify the container is running with the correct mounts
-podman inspect node-app --format '{{json .Mounts}}' | python3 -m json.tool
+podman inspect node-app --format '{{json .HostConfig.Tmpfs}}' | python3 -m json.tool
 ```
 
 ## Using Tmpfs with noexec and nosuid
@@ -141,7 +141,6 @@ podman exec node-app mount | grep tmpfs
 
 ```yaml
 # docker-compose.yml
-version: "3"
 services:
   app:
     image: docker.io/library/python:3.12-slim
