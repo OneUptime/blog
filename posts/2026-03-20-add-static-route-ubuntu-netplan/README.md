@@ -71,8 +71,7 @@ routes:
 ```yaml
 routes:
   - to: 10.50.0.0/16
-    via: 0.0.0.0      # No gateway - use interface directly
-    on-link: true
+    scope: link       # No gateway - use interface directly
 ```
 
 ## Host Route (/32)
@@ -92,10 +91,10 @@ ip route show
 # Check specific route
 ip route get 192.168.2.100
 
-# Check networkd managed the route
+# If using systemd-networkd, check interface status
 networkctl status eth0
 ```
 
 ## Conclusion
 
-Netplan static routes are configured in the `routes` section under the network interface. Use `to` for the destination network and `via` for the gateway. Apply with `netplan apply`. Routes are persistent and automatically applied at boot by systemd-networkd or NetworkManager.
+Netplan static routes are configured in the `routes` section under the network interface. Use `to` for the destination network and `via` when the route goes through a gateway. Apply with `netplan apply`. Routes are persistent and automatically applied at boot by systemd-networkd or NetworkManager.
