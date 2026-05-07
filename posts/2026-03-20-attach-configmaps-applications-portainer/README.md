@@ -13,24 +13,24 @@ ConfigMaps store non-sensitive configuration data as key-value pairs. They decou
 ## Creating a ConfigMap in Portainer
 
 1. Select your Kubernetes environment.
-2. Go to **ConfigMaps** (or **Configs & Secrets > ConfigMaps**).
-3. Click **Add ConfigMap**.
+2. Go to **ConfigMaps & Secrets** and make sure the **ConfigMaps** tab is selected.
+3. Click **Add with form**.
 4. Enter a name, namespace, and key-value pairs.
-5. Click **Create**.
+5. Click **Create ConfigMap**.
 
 ## Attaching a ConfigMap to an Application
 
 When deploying or editing an application in Portainer:
 
-1. Scroll to the **Configuration** or **Environment variables** section.
-2. Click **Add environment variable** or **Add configuration**.
-3. Select **ConfigMap** as the source.
-4. Choose the ConfigMap and key (or select all keys).
+1. Scroll to the **ConfigMaps** section.
+2. Select the ConfigMap you want to make available to the application.
+3. By default, Portainer exposes all keys from the ConfigMap as environment variables.
+4. Use **Override** if you want to mount specific keys as files instead.
 
 ## Usage Pattern 1: Single Key from ConfigMap
 
 ```yaml
-# Mount a single key from a ConfigMap as an env var
+# Load a single key from a ConfigMap as an env var
 
 env:
   - name: DATABASE_URL
@@ -77,14 +77,14 @@ kubectl create configmap nginx-config \
 
 # Create from multiple files
 kubectl create configmap app-configs \
-  --from-file=./config/               # All files in directory become keys
+  --from-file=./config/               # All regular files in the directory become keys
   --namespace=production
 ```
 
 ## Updating a ConfigMap
 
 ```bash
-# Update a ConfigMap (pods must restart to pick up changes)
+# Update a ConfigMap (applications using env vars must restart to pick up changes)
 kubectl edit configmap app-config --namespace=production
 
 # Or recreate it
@@ -93,9 +93,9 @@ kubectl create configmap app-config \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-## Making Applications Auto-Reload ConfigMap Changes
+## Picking Up ConfigMap Changes
 
-By default, mounted ConfigMap files update automatically (within ~60 seconds), but environment variable injections require a pod restart:
+Mounted ConfigMap files are updated automatically, but not instantly; with default kubelet settings the delay can be up to about 2 minutes. ConfigMap values consumed through environment variables require a pod restart:
 
 ```bash
 # Force a rolling restart to pick up ConfigMap changes
