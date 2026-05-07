@@ -57,10 +57,10 @@ aws ecr create-repository \
   --repository-name myapp \
   --region us-east-1
 
-# Create with image scanning enabled
-aws ecr create-repository \
-  --repository-name myapp \
-  --image-scanning-configuration scanOnPush=true \
+# Configure scan on push for this repository at the registry level
+aws ecr put-registry-scanning-configuration \
+  --scan-type BASIC \
+  --rules '[{"scanFrequency":"SCAN_ON_PUSH","repositoryFilters":[{"filter":"myapp","filterType":"WILDCARD"}]}]' \
   --region us-east-1
 
 # List existing repositories
