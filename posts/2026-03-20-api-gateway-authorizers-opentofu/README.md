@@ -70,7 +70,7 @@ resource "aws_api_gateway_authorizer" "token" {
   authorizer_result_ttl_in_seconds = 300  # Cache result for 5 minutes
 
   # Optional: regex validation before invoking Lambda
-  identity_validation_expression = "^Bearer [-0-9a-zA-Z._]*$"
+  identity_validation_expression = "^Bearer [-A-Za-z0-9._~+/]+=*$"
 }
 
 # IAM role allowing API Gateway to invoke the authorizer Lambda
@@ -140,8 +140,8 @@ resource "aws_api_gateway_method" "protected" {
   authorization = "COGNITO_USER_POOLS"
   authorizer_id = aws_api_gateway_authorizer.cognito.id
 
-  # Only allow specific Cognito app clients
-  authorization_scopes = ["email", "openid"]
+  # Require an access token with a configured OAuth scope
+  authorization_scopes = ["photos/read"]
 }
 ```
 
