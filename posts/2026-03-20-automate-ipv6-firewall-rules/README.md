@@ -8,7 +8,7 @@ Description: Automate IPv6 firewall rule deployment using Ansible and Python scr
 
 ## Introduction
 
-Managing ip6tables or nftables rules manually on many servers is fragile. Automation with Ansible and nftables JSON policies enables consistent, auditable firewall state across your entire fleet.
+Managing ip6tables or nftables rules manually on many servers is fragile. Automation with Ansible and YAML policy definitions for nftables enables consistent, auditable firewall state across your entire fleet.
 
 ## Step 1: nftables IPv6 Policy Definition
 
@@ -37,7 +37,7 @@ firewall:
               protocol: icmpv6
               action: accept
             - comment: "Allow SSH from management subnet"
-              src: "2001:db8:mgmt::/48"
+              src: "2001:db8:100::/48"
               dport: 22
               protocol: tcp
               action: accept
@@ -59,6 +59,7 @@ def generate_nftables_conf(policy_file: str) -> str:
 
     lines = []
     for table in policy["firewall"]["tables"]:
+        lines.append(f"destroy table {table['family']} {table['name']}")
         lines.append(f"table {table['family']} {table['name']} {{")
 
         for chain in table["chains"]:
@@ -68,20 +69,24 @@ def generate_nftables_conf(policy_file: str) -> str:
 
             for rule in chain.get("rules", []):
                 parts = []
-                if "comment" in rule:
-                    parts.append(f"# {rule['comment']}")
+                protocol = rule.get("protocol")
                 if "iifname" in rule:
                     parts.append(f"iifname {rule['iifname']}")
                 if "ct_state" in rule:
-                    states = ", ".join(rule["ct_state"])
-                    parts.append(f"ct state {{ {states} }}")
-                if "protocol" in rule:
-                    parts.append(f"meta l4proto {rule['protocol']}")
+                    states = ",".join(rule["ct_state"])
+                    parts.append(f"ct state {states}")
+                if protocol and not ("dport" in rule and protocol in {"tcp", "udp"}):
+                    parts.append(f"meta l4proto {protocol}")
                 if "src" in rule:
                     parts.append(f"ip6 saddr {rule['src']}")
                 if "dport" in rule:
-                    parts.append(f"tcp dport {rule['dport']}")
+                    if protocol not in {"tcp", "udp"}:
+                        raise ValueError("dport requires protocol tcp or udp")
+                    parts.append(f"{protocol} dport {rule['dport']}")
                 parts.append(rule["action"])
+                if "comment" in rule:
+                    comment = rule["comment"].replace('"', '\\"')
+                    parts.append(f'comment "{comment}"')
                 lines.append(f"    {' '.join(parts)}")
 
             lines.append("  }")
@@ -92,7 +97,7 @@ def generate_nftables_conf(policy_file: str) -> str:
 if __name__ == "__main__":
     conf = generate_nftables_conf("policies/ipv6_firewall.yml")
     print(conf)
-    with open("/etc/nftables_ipv6.conf", "w") as f:
+    with open("/tmp/nftables_ipv6.conf", "w") as f:
         f.write(conf)
 ```
 
@@ -108,11 +113,14 @@ if __name__ == "__main__":
   tasks:
     - name: Generate nftables configuration
       command: python3 scripts/generate_nftables.py
+      args:
+        chdir: "{{ playbook_dir }}/.."
       delegate_to: localhost
+      run_once: true
 
     - name: Copy nftables config
       copy:
-        src: /etc/nftables_ipv6.conf
+        src: /tmp/nftables_ipv6.conf
         dest: /etc/nftables.d/ipv6.conf
         validate: "nft -c -f %s"  # Validate before installing
 
@@ -130,7 +138,7 @@ if __name__ == "__main__":
         fail_msg: "SSH rule not found in nftables output"
 
     - name: Save rules for persistence
-      command: nft list ruleset > /etc/nftables.conf
+      shell: nft list ruleset > /etc/nftables.conf
 ```
 
 ## Step 4: ip6tables Alternative
@@ -158,7 +166,7 @@ ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 ip6tables -A INPUT -p ipv6-icmp -j ACCEPT
 
 # Allow SSH from management subnet
-ip6tables -A INPUT -s 2001:db8:mgmt::/48 -p tcp --dport 22 -j ACCEPT
+ip6tables -A INPUT -s 2001:db8:100::/48 -p tcp --dport 22 -j ACCEPT
 
 # Allow HTTPS
 ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
