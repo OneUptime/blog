@@ -20,7 +20,7 @@ Rancher includes several built-in global roles:
 
 - **Administrator**: Full access to the entire Rancher instance, including all clusters, projects, settings, and user management.
 - **Standard User**: Can create new clusters and is granted cluster owner access to clusters they create. Can log in and access available clusters and projects.
-- **User-Base**: The minimum role assigned to all authenticated users. Controls basic login access.
+- **User-Base**: Provides the minimum basic login access that other global permissions build on.
 
 Additional built-in global roles include:
 - **Manage Catalogs**: Allows managing Helm chart repositories
@@ -34,7 +34,8 @@ Before creating new roles, review what already exists:
 1. Log in to the Rancher UI as an administrator.
 2. Click the **hamburger menu**.
 3. Go to **Users & Authentication**.
-4. Click the **Roles** tab and select the **Global** sub-tab.
+4. In the left navigation bar, click **Role Templates**.
+5. Select the **Global** tab.
 
 This lists all built-in and custom global roles. Review the permissions of each to identify gaps.
 
@@ -42,10 +43,10 @@ This lists all built-in and custom global roles. Review the permissions of each 
 
 Let us create a global role that allows a user to manage authentication configuration but nothing else.
 
-1. On the **Global** roles tab, click **Create Global Role**.
+1. On the **Role Templates** page, make sure the **Global** tab is selected, then click **Create Global Role**.
 2. Fill in the basic information:
    - **Name**: `auth-manager`
-   - **Description**: `Can manage authentication providers and user sessions`
+   - **Description**: `Can manage authentication providers`
 3. Under **Grant Resources**, add rules for authentication management:
    - **New Rule**: Select the API resources related to authentication.
 4. Configure the permissions:
@@ -53,11 +54,6 @@ Let us create a global role that allows a user to manage authentication configur
 ```plaintext
 Resource: authconfigs
 Verbs: get, list, watch, update
-```
-
-```plaintext
-Resource: users
-Verbs: get, list, watch
 ```
 
 5. Click **Create**.
@@ -71,29 +67,21 @@ apiVersion: management.cattle.io/v3
 kind: GlobalRole
 metadata:
   name: catalog-viewer
-spec:
-  displayName: Catalog Viewer
-  description: "Can view Helm chart repositories and their contents"
-  rules:
-    - apiGroups:
-        - "catalog.cattle.io"
-      resources:
-        - clusterrepos
-        - operations
-      verbs:
-        - get
-        - list
-        - watch
-    - apiGroups:
-        - "catalog.cattle.io"
-      resources:
-        - apps
-      verbs:
-        - get
-        - list
-        - watch
-  newUserDefault: false
-  builtin: false
+displayName: Catalog Viewer
+description: "Can view Helm chart repositories and catalog resources"
+rules:
+  - apiGroups:
+      - "catalog.cattle.io"
+    resources:
+      - clusterrepos
+      - operations
+      - releases
+      - apps
+    verbs:
+      - get
+      - list
+      - watch
+newUserDefault: false
 ```
 
 Apply the manifest:
@@ -111,46 +99,71 @@ apiVersion: management.cattle.io/v3
 kind: GlobalRole
 metadata:
   name: cluster-provisioner
-spec:
-  displayName: Cluster Provisioner
-  description: "Can create and manage clusters but not manage users or settings"
-  rules:
+displayName: Cluster Provisioner
+description: "Can create clusters using Rancher provisioning resources but not manage users or settings"
+rules:
+  - apiGroups:
+      - "management.cattle.io"
+    resources:
+      - clusters
+    verbs:
+      - create
+  - apiGroups:
+      - "provisioning.cattle.io"
+    resources:
+      - clusters
+    verbs:
+      - create
+  - apiGroups:
+      - "management.cattle.io"
+    resources:
+      - templates
+      - templateversions
+      - nodedrivers
+      - kontainerdrivers
+      - podsecurityadmissionconfigurationtemplates
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "catalog.cattle.io"
+    resources:
+      - clusterrepos
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - "rke-machine-config.cattle.io"
+    resources:
+      - "*"
+    verbs:
+      - create
+  - apiGroups:
+      - "rke.cattle.io"
+    resources:
+      - etcdsnapshots
+    verbs:
+      - get
+      - list
+      - watch
+namespacedRules:
+  cattle-global-data:
     - apiGroups:
-        - "management.cattle.io"
+        - ""
       resources:
-        - clusters
+        - secrets
       verbs:
         - create
-        - get
-        - list
-        - watch
-        - update
-        - delete
+  fleet-default:
     - apiGroups:
-        - "management.cattle.io"
+        - ""
       resources:
-        - nodepools
-        - nodes
+        - secrets
       verbs:
         - create
-        - get
-        - list
-        - watch
-        - update
-        - delete
-    - apiGroups:
-        - "provisioning.cattle.io"
-      resources:
-        - clusters
-      verbs:
-        - create
-        - get
-        - list
-        - watch
-        - update
-        - delete
-  newUserDefault: false
-  builtin: false
+newUserDefault: false
 ```
 
 ```bash
@@ -159,22 +172,23 @@ kubectl apply -f cluster-provisioner-role.yaml
 
 ## Step 5: Set a Global Role as Default for New Users
 
-When a new user logs in for the first time, Rancher assigns them default global roles. You can configure which roles are assigned by default.
+When a user from an external authentication provider logs in for the first time, Rancher assigns them the default global roles. You can configure which roles are assigned by default.
 
 Via the UI:
 
-1. Go to **Users & Authentication > Roles > Global**.
-2. Find the role you want to set as default.
-3. Click the **three-dot menu** and select **Edit**.
+1. Go to **Users & Authentication > Role Templates**.
+2. Make sure the **Global** tab is selected, then find the role you want to set as default.
+3. Click the **three-dot menu** and select **Edit Config**.
 4. Check the **Yes: Default role for new users** option.
 5. Click **Save**.
 
-Via kubectl, set `newUserDefault: true` in the GlobalRole spec:
+Via kubectl, set `newUserDefault: true` on the GlobalRole:
 
 ```yaml
-spec:
-  newUserDefault: true
+newUserDefault: true
 ```
+
+For local users, Rancher does not apply default global roles automatically; you assign global permissions when you create or edit the user.
 
 Be cautious with this setting. Only roles with minimal permissions should be set as defaults.
 
@@ -183,10 +197,10 @@ Be cautious with this setting. Only roles with minimal permissions should be set
 1. Go to **Users & Authentication > Users**.
 2. Find the user and click the **three-dot menu**.
 3. Select **Edit Config**.
-4. Under **Global Permissions**, check or uncheck the desired global roles.
+4. Under **Global Permissions**, use the **Built-in** and **Custom** sections to check or uncheck the desired global roles.
 5. Click **Save**.
 
-Via the API:
+Via the v3 API:
 
 ```bash
 curl -X POST \
@@ -201,7 +215,7 @@ curl -X POST \
 
 ## Step 7: Assign Global Roles to Groups
 
-For LDAP or SAML-based authentication, assign global roles to groups:
+For LDAP or SAML-based authentication, assign global roles to groups with the v3 API:
 
 ```bash
 curl -X POST \
@@ -236,12 +250,11 @@ apiVersion: management.cattle.io/v3
 kind: GlobalRole
 metadata:
   name: settings-viewer
-spec:
-  displayName: Settings Viewer
-  rules:
-    - apiGroups: ["management.cattle.io"]
-      resources: ["settings"]
-      verbs: ["get", "list", "watch"]
+displayName: Settings Viewer
+rules:
+  - apiGroups: ["management.cattle.io"]
+    resources: ["settings"]
+    verbs: ["get", "list", "watch"]
 ```
 
 **User Manager** - can manage users and their role assignments:
@@ -251,12 +264,14 @@ apiVersion: management.cattle.io/v3
 kind: GlobalRole
 metadata:
   name: user-manager
-spec:
-  displayName: User Manager
-  rules:
-    - apiGroups: ["management.cattle.io"]
-      resources: ["users", "globalrolebindings"]
-      verbs: ["get", "list", "watch", "create", "update", "delete"]
+displayName: User Manager
+rules:
+  - apiGroups: ["management.cattle.io"]
+    resources: ["users", "globalrolebindings"]
+    verbs: ["*"]
+  - apiGroups: ["management.cattle.io"]
+    resources: ["globalroles"]
+    verbs: ["get", "list", "watch"]
 ```
 
 ## Best Practices
