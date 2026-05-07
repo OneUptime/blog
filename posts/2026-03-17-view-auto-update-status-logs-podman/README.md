@@ -33,7 +33,7 @@ worker.service          789abc123def    localhost/worker:latest             loca
 
 Status values:
 - **pending** - A newer image is available
-- **true** - Was updated in the last run
+- **true** - Updated during a real auto-update run
 - **false** - No update needed
 - **failed** - Update attempted but failed
 
@@ -79,7 +79,7 @@ journalctl --user -u webapp.service | grep -i "start\|stop\|restart"
 # Get auto-update status in JSON format
 podman auto-update --dry-run --format json
 
-# Parse with jq to find pending updates
+# Parse with Python to find pending updates
 podman auto-update --dry-run --format json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
