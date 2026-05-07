@@ -8,9 +8,9 @@ Description: Learn how to use the --userns=auto option in Podman to automaticall
 
 ---
 
-> The `--userns=auto` option automatically assigns each container a unique UID range from your subordinate IDs, ensuring containers cannot access each other's files even if compromised.
+> The `--userns=auto` option automatically assigns each container a unique UID range from your subordinate IDs, helping prevent containers from sharing the same host UID ownership for their files.
 
-By default, all rootless containers share the same UID mapping. If one container is compromised, it could potentially access files created by another container. The `auto` mode solves this by giving each container its own unique, non-overlapping UID range.
+By default, rootless containers map root in the container to the UID of the user invoking Podman. If one container is compromised, it could potentially access files created by another container when those files are reachable and permissions allow it. The `auto` mode helps solve this by giving each container its own unique, non-overlapping UID range.
 
 ---
 
@@ -46,7 +46,7 @@ podman rm -f auto1 auto2
 ## Configuring the Auto Range Size
 
 ```bash
-# By default, auto allocates 65536 UIDs per container
+# By default, auto estimates the range size from the image
 # You can specify a smaller range to fit more containers
 podman run --rm --userns=auto:size=10000 alpine:latest cat /proc/self/uid_map
 
@@ -60,13 +60,13 @@ podman run --rm --userns=auto:size=131072 alpine:latest cat /proc/self/uid_map
 ## Prerequisites for Auto Mode
 
 ```bash
-# Auto mode requires a large subuid/subgid range
+# In rootless mode, auto uses your subuid/subgid ranges
 # Check your current allocation
 grep "$USER" /etc/subuid
 
 # For running multiple containers with auto, you need enough IDs
-# Example: 10 containers * 65536 UIDs = 655360 UIDs needed
-# Ensure your subuid range is large enough
+# Example: 10 containers with size=65536 need 655360 UIDs
+# Ensure your subuid and subgid ranges are large enough
 sudo usermod --del-subuids 100000-165535 $USER
 sudo usermod --add-subuids 100000-1065535 $USER
 sudo usermod --del-subgids 100000-165535 $USER
@@ -93,7 +93,8 @@ podman run -d \
   postgres:15
 
 # Each service has its own UID range
-# A compromise of the web container cannot access database files
+# A compromise of the web container cannot use the same host UID mapping
+# as the database container's root user
 ```
 
 ## Configuring Auto Mode Globally
@@ -137,9 +138,9 @@ podman run --rm --userns=auto builder:latest make integration-test
 # Great for development, not for inter-container isolation
 
 # auto: unique UID range per container
-# Maximum isolation, ideal for production and multi-tenant
+# Stronger UID/GID isolation, ideal for production and multi-tenant
 ```
 
 ## Summary
 
-The `--userns=auto` option provides maximum inter-container isolation by assigning each container a unique, non-overlapping UID range from your subordinate ID allocation. This prevents a compromised container from accessing files belonging to other containers. It requires a sufficiently large subuid/subgid range and can be configured globally in `containers.conf`. Use auto mode for production workloads, multi-tenant environments, and any scenario where container isolation is a priority.
+The `--userns=auto` option provides stronger inter-container UID/GID isolation by assigning each container a unique, non-overlapping UID range from your subordinate ID allocation. This helps prevent a compromised container from accessing files belonging to other containers through the same host UID mapping. It requires a sufficiently large subuid/subgid range and can be configured globally in `containers.conf`. Use auto mode for production workloads, multi-tenant environments, and any scenario where container isolation is a priority.
