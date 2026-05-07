@@ -8,9 +8,9 @@ Description: A comprehensive guide to optimizing Podman container network perfor
 
 ---
 
-> Network performance is often the invisible bottleneck in containerized applications. The difference between default networking and optimized networking can be a 10x improvement in throughput and a 5x reduction in latency.
+> Network performance is often the invisible bottleneck in containerized applications. The difference between default networking and optimized networking can be a substantial improvement in throughput and latency.
 
-Podman supports multiple network modes, each with different performance characteristics. The default bridge networking adds overhead from network address translation and virtual bridge processing. For performance-critical applications, understanding and tuning network configuration is essential. This guide covers every network optimization technique available in Podman, from simple mode selection to advanced kernel tuning.
+Podman supports multiple network modes, each with different performance characteristics. The default rootful bridge networking adds overhead from network address translation and virtual bridge processing. For performance-critical applications, understanding and tuning network configuration is essential. This guide covers common Podman network optimization techniques, from simple mode selection to advanced kernel tuning.
 
 ---
 
@@ -100,7 +100,7 @@ podman network create --subnet 10.100.0.0/16 large-net
 
 ## Switch from slirp4netns to pasta
 
-For rootless Podman, the default network mode can be `slirp4netns`, which is slower. Switch to `pasta` for significantly better performance:
+For rootless Podman, the default network mode can be `slirp4netns` on older installations or custom configurations, which is slower. Switch to `pasta` for significantly better performance:
 
 ```bash
 # Check current rootless network mode
@@ -143,7 +143,7 @@ DNS lookups inside containers can add latency to every outbound connection. Opti
 podman run --dns=8.8.8.8 --dns=1.1.1.1 your-image
 
 # Disable DNS search domains to speed up resolution
-podman run --dns-search="" your-image
+podman run --dns-search=. your-image
 
 # Use host DNS resolution directly
 podman run --network=host your-image
@@ -153,16 +153,18 @@ For applications making many DNS queries, run a local DNS cache:
 
 ```bash
 # Run dnsmasq as a caching DNS resolver
+podman network create --subnet 10.91.0.0/24 dns-net
+
 podman run -d --name dns-cache \
-  -p 5353:53/udp \
-  -p 5353:53/tcp \
+  --network dns-net \
+  --ip 10.91.0.53 \
   --cap-add NET_ADMIN \
   drpsychick/dnsmasq:latest \
   --cache-size=10000 \
   --no-negcache
 
 # Point containers at the cache
-podman run --dns=10.88.0.2 your-image
+podman run --network dns-net --dns=10.91.0.53 your-image
 ```
 
 ---
@@ -262,7 +264,7 @@ podman run \
 How you publish ports affects performance:
 
 ```bash
-# Standard port publish (goes through iptables/nftables)
+# Standard bridge port publish uses firewall/NAT rules
 podman run -p 8080:8080 your-image
 
 # Bind to specific interface to avoid unnecessary routing
@@ -338,4 +340,4 @@ sudo nsenter -t $CPID -n ip -s link show eth0 | grep -E "dropped|errors"
 
 ## Conclusion
 
-Network performance optimization in Podman ranges from simple mode selection to deep kernel parameter tuning. For maximum performance, use host networking. For rootless deployments, switch from slirp4netns to pasta. Use pods for inter-container communication to avoid bridge overhead. Tune MTU, DNS, and TCP parameters for your workload profile. Always benchmark before and after changes to quantify improvements. The right network configuration can eliminate the network overhead that containerization introduces, giving you near-native performance with container isolation benefits.
+Network performance optimization in Podman ranges from simple mode selection to deep kernel parameter tuning. For maximum performance, use host networking. For rootless deployments still using slirp4netns, switch to pasta. Use pods for inter-container communication to avoid bridge overhead. Tune MTU, DNS, and TCP parameters for your workload profile. Always benchmark before and after changes to quantify improvements. The right network configuration can reduce the network overhead that containerization introduces, giving you near-native performance where isolation requirements allow it.
