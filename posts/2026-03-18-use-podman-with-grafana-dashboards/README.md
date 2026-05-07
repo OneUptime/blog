@@ -35,7 +35,7 @@ Access Grafana at `http://localhost:3000` and log in with the credentials you se
 
 ## Full Monitoring Stack
 
-Deploy Grafana alongside Prometheus and other monitoring tools:
+Deploy Grafana alongside Prometheus and host monitoring tools:
 
 ```yaml
 # monitoring-stack.yml
@@ -69,15 +69,13 @@ services:
       - prometheus
 
   node-exporter:
-    image: prom/node-exporter:latest
+    image: quay.io/prometheus/node-exporter:latest
     restart: always
     pid: host
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
     command:
-      - '--path.procfs=/host/proc'
-      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/host'
+    volumes:
+      - /:/host:ro,rslave
 
 volumes:
   prometheus-data:
@@ -85,7 +83,28 @@ volumes:
 ```
 
 ```bash
-GRAFANA_PASSWORD=securepass podman-compose -f monitoring-stack.yml up -d
+GRAFANA_PASSWORD=securepass podman compose -f monitoring-stack.yml up -d
+```
+
+`podman compose` uses an external Compose provider such as `docker-compose` or `podman-compose`, so make sure one is installed.
+
+Configure Prometheus to scrape itself and Node Exporter:
+
+```yaml
+# prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - prometheus:9090
+
+  - job_name: node-exporter
+    static_configs:
+      - targets:
+          - node-exporter:9100
 ```
 
 ## Provisioning Data Sources
@@ -102,12 +121,6 @@ datasources:
     access: proxy
     url: http://prometheus:9090
     isDefault: true
-    editable: false
-
-  - name: Loki
-    type: loki
-    access: proxy
-    url: http://loki:3100
     editable: false
 ```
 
@@ -130,25 +143,28 @@ providers:
       foldersFromFilesStructure: true
 ```
 
-## Creating a Container Monitoring Dashboard
+## Creating a Podman Host Monitoring Dashboard
 
-Create a dashboard JSON file for container monitoring:
+Create a dashboard JSON file for host monitoring:
 
 ```json
 {
   "dashboard": {
-    "title": "Container Monitoring",
-    "tags": ["podman", "containers"],
+    "uid": "podman-host-monitoring",
+    "title": "Podman Host Monitoring",
+    "tags": ["podman", "host"],
     "timezone": "browser",
+    "schemaVersion": 41,
+    "version": 1,
     "panels": [
       {
-        "title": "Container CPU Usage",
+        "title": "CPU Usage",
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
         "targets": [
           {
-            "expr": "rate(container_cpu_usage_seconds_total[5m]) * 100",
-            "legendFormat": "{{name}}"
+            "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))",
+            "legendFormat": "CPU"
           }
         ],
         "fieldConfig": {
@@ -162,33 +178,33 @@ Create a dashboard JSON file for container monitoring:
         }
       },
       {
-        "title": "Container Memory Usage",
+        "title": "Memory Usage",
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
         "targets": [
           {
-            "expr": "container_memory_usage_bytes",
-            "legendFormat": "{{name}}"
+            "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+            "legendFormat": "Memory"
           }
         ],
         "fieldConfig": {
           "defaults": {
-            "unit": "bytes"
+            "unit": "percent"
           }
         }
       },
       {
-        "title": "Container Network I/O",
+        "title": "Network I/O",
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
         "targets": [
           {
-            "expr": "rate(container_network_receive_bytes_total[5m])",
-            "legendFormat": "{{name}} - rx"
+            "expr": "sum by (device) (rate(node_network_receive_bytes_total{device!=\"lo\"}[5m]))",
+            "legendFormat": "{{device}} - rx"
           },
           {
-            "expr": "rate(container_network_transmit_bytes_total[5m])",
-            "legendFormat": "{{name}} - tx"
+            "expr": "sum by (device) (rate(node_network_transmit_bytes_total{device!=\"lo\"}[5m]))",
+            "legendFormat": "{{device}} - tx"
           }
         ],
         "fieldConfig": {
@@ -198,13 +214,13 @@ Create a dashboard JSON file for container monitoring:
         }
       },
       {
-        "title": "Running Containers",
+        "title": "Running Processes",
         "type": "stat",
         "gridPos": {"h": 4, "w": 6, "x": 12, "y": 8},
         "targets": [
           {
-            "expr": "count(container_last_seen)",
-            "legendFormat": "Total"
+            "expr": "node_procs_running",
+            "legendFormat": "Processes"
           }
         ]
       }
@@ -214,11 +230,12 @@ Create a dashboard JSON file for container monitoring:
       "to": "now"
     },
     "refresh": "10s"
-  }
+  },
+  "overwrite": true
 }
 ```
 
-Save this as `grafana/dashboards/container-monitoring.json`.
+Save this as `grafana/dashboards/podman-host-monitoring.json`.
 
 ## Application Performance Dashboard
 
@@ -227,7 +244,11 @@ Create a dashboard for application metrics:
 ```json
 {
   "dashboard": {
+    "uid": "application-performance",
     "title": "Application Performance",
+    "timezone": "browser",
+    "schemaVersion": 41,
+    "version": 1,
     "panels": [
       {
         "title": "Request Rate",
@@ -271,8 +292,14 @@ Create a dashboard for application metrics:
           "defaults": {"unit": "percent"}
         }
       }
-    ]
-  }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "10s"
+  },
+  "overwrite": true
 }
 ```
 
@@ -294,7 +321,7 @@ podman run -d \
   -e GF_SMTP_HOST=smtp.example.com:587 \
   -e GF_SMTP_USER=alerts@example.com \
   -e GF_SMTP_PASSWORD=smtppassword \
-  -e GF_ALERTING_ENABLED=true \
+  -e GF_UNIFIED_ALERTING_ENABLED=true \
   grafana/grafana:latest
 ```
 
@@ -309,22 +336,38 @@ Back up Grafana data and dashboards:
 BACKUP_DIR="/backups/grafana/$(date +%Y%m%d)"
 mkdir -p "$BACKUP_DIR"
 
-# Export dashboards via API
+# Export dashboards via the current HTTP API
 GRAFANA_URL="http://localhost:3000"
-API_KEY="your-api-key"
+GRAFANA_TOKEN="your-service-account-token"
 
-# Get all dashboard UIDs
-curl -s -H "Authorization: Bearer $API_KEY" \
-  "$GRAFANA_URL/api/search?type=dash-db" | \
-  jq -r '.[].uid' | while read uid; do
-    echo "Exporting dashboard: $uid"
-    curl -s -H "Authorization: Bearer $API_KEY" \
-      "$GRAFANA_URL/api/dashboards/uid/$uid" \
-      > "$BACKUP_DIR/dashboard-$uid.json"
+continue_token=""
+
+while :; do
+  continue_args=()
+  if [ -n "$continue_token" ]; then
+    continue_args+=(--data-urlencode "continue=$continue_token")
+  fi
+
+  response=$(curl -s -G -H "Authorization: Bearer $GRAFANA_TOKEN" \
+    --data-urlencode "limit=1000" \
+    "${continue_args[@]}" \
+    "$GRAFANA_URL/apis/dashboard.grafana.app/v1/namespaces/default/dashboards")
+
+  echo "$response" | jq -r '.items[]?.metadata.name' | while read -r dashboard_name; do
+    echo "Exporting dashboard: $dashboard_name"
+    curl -s -H "Authorization: Bearer $GRAFANA_TOKEN" \
+      "$GRAFANA_URL/apis/dashboard.grafana.app/v1/namespaces/default/dashboards/$dashboard_name" \
+      > "$BACKUP_DIR/dashboard-$dashboard_name.json"
+  done
+
+  continue_token=$(echo "$response" | jq -r '.metadata.continue // empty')
+  [ -n "$continue_token" ] || break
 done
 
 # Back up the Grafana volume
-podman volume export grafana-data > "$BACKUP_DIR/grafana-volume.tar"
+podman stop grafana
+podman volume export grafana-data --output "$BACKUP_DIR/grafana-volume.tar"
+podman start grafana
 
 echo "Backup saved to $BACKUP_DIR"
 ```
@@ -332,12 +375,14 @@ echo "Backup saved to $BACKUP_DIR"
 Restore from backup:
 
 ```bash
-# Restore the volume
-podman volume create grafana-data
+# Stop Grafana before restoring the volume contents
+podman stop grafana
+
+# Restore the volume contents
 podman volume import grafana-data /backups/grafana/20240101/grafana-volume.tar
 
-# Restart Grafana
-podman restart grafana
+# Start Grafana again
+podman start grafana
 ```
 
 ## Embedding Dashboards
@@ -355,7 +400,7 @@ podman run -d \
   grafana/grafana:latest
 ```
 
-Then embed dashboards in your application using iframes or the Grafana embedding API.
+Then embed dashboards in your application using iframes.
 
 ## Conclusion
 
