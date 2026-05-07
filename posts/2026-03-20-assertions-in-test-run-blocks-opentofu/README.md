@@ -70,7 +70,7 @@ assert {
 
 ```hcl
 assert {
-  condition     = contains(["us-east-1", "us-west-2"], aws_s3_bucket.this.region)
+  condition     = contains(["us-east-1", "us-west-2"], aws_s3_bucket.this.bucket_region)
   error_message = "Bucket must be in a US region"
 }
 ```
@@ -104,7 +104,7 @@ assert {
 
 ## Multiple Assertions per Run Block
 
-Add as many `assert` blocks as needed. All are evaluated; failures accumulate rather than stopping on the first failure:
+Add as many `assert` blocks as needed. OpenTofu evaluates all `assert` blocks in the `run` block:
 
 ```hcl
 run "security_group_configuration" {
@@ -162,4 +162,4 @@ run "plan_check_tags" {
 
 ## Conclusion
 
-Good assertions are concise, focused on one concern, and produce error messages that tell you exactly what went wrong without digging through logs. Combine them with OpenTofu's `expect_failures` feature to cover both success and error paths comprehensively.
+Good assertions are concise, focused on one concern, and produce error messages that tell you exactly what went wrong without digging through logs. Combine them with OpenTofu's `expect_failures` feature to cover both success paths and expected custom-condition failure paths comprehensively.
