@@ -8,9 +8,9 @@ Description: A step-by-step guide to installing Podman and configuring a local c
 
 ---
 
-> Podman gives you everything Docker does for local development, without a daemon running in the background and without requiring root privileges.
+> Podman gives you much of what Docker does for local development, without a daemon running in the background and without requiring root privileges for rootless containers.
 
-Containers have become the standard way to build, test, and ship software. Most developers reach for Docker out of habit, but Podman offers a compelling alternative. It runs containers without a central daemon process, supports rootless mode out of the box, and its CLI is command-compatible with Docker. If you can type `docker run`, you already know how to type `podman run`.
+Containers have become the standard way to build, test, and ship software. Most developers reach for Docker out of habit, but Podman offers a compelling alternative. It runs containers without a central daemon process, supports rootless mode out of the box, and its CLI is comparable to Docker's. If you can type `docker run`, you already know how to type `podman run`.
 
 This guide walks through installing Podman on all three major operating systems, configuring it for everyday development work, and running your first containerized application.
 
@@ -18,9 +18,9 @@ This guide walks through installing Podman on all three major operating systems,
 
 ## Why Podman Over Docker
 
-Docker relies on a long-running background daemon (`dockerd`) that listens for API requests and manages containers. That daemon typically runs as root, which has security implications. Podman takes a different approach. Each `podman` command forks its own process, creates the container, and exits. There is no persistent daemon. Containers run under your user account by default, which reduces the attack surface.
+Docker relies on a long-running background daemon (`dockerd`) that listens for API requests and manages containers. That daemon typically runs as root, which has security implications. Podman takes a different approach. Podman does not depend on a central long-running daemon to create and manage containers. Containers run under your user account by default when you use Podman as a regular user, which reduces the attack surface.
 
-From a developer experience perspective, the two tools are nearly interchangeable. Podman supports the same Dockerfile syntax, the same image registries, and the same CLI flags. You can even alias `docker` to `podman` and most workflows will not notice the difference.
+From a developer experience perspective, the two tools are nearly interchangeable. Podman supports the same Dockerfile syntax, the same image registries, and many of the same CLI flags. You can even alias `docker` to `podman` and most workflows will not notice the difference.
 
 ## Installing Podman on macOS
 
@@ -41,7 +41,7 @@ podman machine start
 podman info
 ```
 
-The `podman machine init` command creates a VM with sensible defaults: 1 CPU, 2 GB of memory, and 100 GB of disk. You can customize these at creation time.
+The `podman machine init` command creates a VM with sensible defaults: 1 CPU, 2 GB of memory, and 10 GB of disk unless your containers configuration overrides them. You can customize these at creation time.
 
 ```bash
 # Create a machine with more resources for heavier workloads
@@ -226,7 +226,6 @@ sudo dnf install podman-compose
 Create a `docker-compose.yml` for a typical web application stack:
 
 ```yaml
-version: "3.8"
 services:
   app:
     image: docker.io/library/node:20-slim
