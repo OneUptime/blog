@@ -8,7 +8,7 @@ Description: Assign static private and public IPv4 addresses to Azure virtual ma
 
 ## Introduction
 
-By default, Azure assigns dynamic private IP addresses to VM NICs. The IP can change if the VM is deallocated (stopped and started). Static private IP addresses prevent this and are required for DNS servers, domain controllers, firewalls, and other infrastructure VMs.
+By default, Azure assigns dynamic private IP addresses to VM NICs. In Azure Resource Manager, the private IP remains assigned unless the NIC is deleted, moved to a different subnet, or the allocation method is changed. Static private IP addresses let you choose a specific address and are commonly used for DNS servers, domain controllers, firewalls, and other infrastructure VMs.
 
 ## Assigning a Static Private IPv4 Address
 
@@ -64,8 +64,7 @@ az network public-ip create \
   --resource-group $RESOURCE_GROUP \
   --name app-vm-pip \
   --sku Standard \
-  --allocation-method Static \
-  --location eastus
+  --allocation-method Static
 
 # Associate with the NIC's IP configuration
 az network nic ip-config update \
@@ -90,10 +89,10 @@ az network nic ip-config create \
   --vnet-name prod-vnet
 ```
 
-Configure this secondary IP on the OS:
+For a quick test, configure this secondary IP temporarily on the OS:
 
 ```bash
-# Inside the VM (Ubuntu), add the secondary IP
+# Inside the VM (Ubuntu), add the secondary IP until the next reboot
 sudo ip addr add 10.100.2.11/24 dev eth0
 ```
 
@@ -122,8 +121,7 @@ az network nic ip-config update \
   --resource-group $RESOURCE_GROUP \
   --nic-name vm-nic \
   --name ipconfig1 \
-  --set privateIPAllocationMethod=Dynamic \
-  --remove privateIPAddress
+  --private-ip-address ""
 ```
 
 ## Conclusion
