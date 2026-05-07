@@ -19,17 +19,14 @@ Podman supports two container image formats: OCI (Open Container Initiative) and
 Podman can build and store images in OCI or Docker format.
 
 ```bash
-# Check the current default image format
+# Check the format setting in user configuration
 
-podman info --format json | python3 -c "
-import sys, json
-info = json.load(sys.stdin)
-print('Image format info available in build defaults')
-"
+grep -E '^[[:space:]]*image_default_format' ~/.config/containers/containers.conf 2>/dev/null || \
+  echo "No user-level image_default_format setting found"
 
 # Two image formats:
 # OCI    - Open Container Initiative format (industry standard)
-# Docker - Docker v2 format (legacy but widely supported)
+# v2s2   - Docker v2 schema 2 format (legacy but widely supported)
 
 # Check the format of an existing image
 podman pull alpine:latest
@@ -47,8 +44,8 @@ mkdir -p ~/.config/containers
 cat > ~/.config/containers/containers.conf << 'EOF'
 [engine]
 # Default image format for podman build
-# Options: oci, docker
-# OCI is the standard format; Docker for legacy compatibility
+# Options: oci, v2s2, v2s1
+# OCI is the standard format; v2s2 is Docker v2 schema 2
 image_default_format = "oci"
 EOF
 
@@ -98,7 +95,7 @@ cat > ~/.config/containers/containers.conf << 'EOF'
 [engine]
 # Docker v2 format for compatibility with
 # older registries and Docker-specific tools
-image_default_format = "docker"
+image_default_format = "v2s2"
 EOF
 
 # Build an image in Docker format
@@ -174,7 +171,7 @@ Understand which registries support which formats.
 # podman push my-image:latest registry.example.com/my-image:latest
 
 # If push fails with format errors, try the other format
-# podman push --format docker my-image:latest registry.example.com/my-image:latest
+# podman push --format v2s2 my-image:latest registry.example.com/my-image:latest
 # podman push --format oci my-image:latest registry.example.com/my-image:latest
 ```
 
@@ -197,8 +194,8 @@ podman build --format oci -t convert-test /tmp/convert-test/
 # Save as Docker format using skopeo (if available)
 # skopeo copy containers-storage:convert-test docker-archive:/tmp/docker-image.tar
 
-# Push in Docker format even if built as OCI
-# podman push --format docker convert-test registry.example.com/convert-test:latest
+# Push in Docker v2 schema 2 format even if built as OCI
+# podman push --format v2s2 convert-test registry.example.com/convert-test:latest
 
 # Inspect the manifest to see current format
 podman image inspect convert-test --format '{{.ManifestType}}'
@@ -223,7 +220,7 @@ Select the best format for your workflow.
 # - Working with older Docker-based tooling
 # - Pushing to registries that only support Docker format
 # - Sharing images with Docker users
-# - Need Docker-specific manifest features
+# - Need Docker v2 schema 2 manifests
 
 # Recommended default for most users:
 cat > ~/.config/containers/containers.conf << 'EOF'
