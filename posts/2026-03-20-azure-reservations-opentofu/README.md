@@ -19,7 +19,7 @@ terraform {
     }
     azapi = {
       source  = "Azure/azapi"
-      version = "~> 1.0"
+      version = "~> 2.0"
     }
   }
 }
@@ -27,6 +27,8 @@ terraform {
 provider "azurerm" {
   features {}
 }
+
+provider "azapi" {}
 ```
 
 ## VM Reservation
@@ -38,11 +40,11 @@ provider "azurerm" {
 
 resource "azapi_resource" "vm_reservation" {
   type      = "Microsoft.Capacity/reservationOrders@2022-11-01"
-  name      = "production-vm-reservation"
-  location  = "global"
-  parent_id = "/subscriptions/${var.subscription_id}"
+  name      = var.vm_reservation_order_id  # Must be a GUID
+  location  = "eastus"
+  parent_id = "/"  # Reservation orders are tenant-scoped
 
-  body = jsonencode({
+  body = {
     sku = {
       name = "Standard_D4s_v5"
     }
@@ -50,16 +52,16 @@ resource "azapi_resource" "vm_reservation" {
       reservedResourceType = "VirtualMachines"
       term                 = "P1Y"  # P1Y = 1 year, P3Y = 3 years
       billingPlan          = "Monthly"  # Monthly or Upfront
+      billingScopeId       = "/subscriptions/${var.subscription_id}"
+      displayName          = "production-vm-reservation"
       quantity             = 5  # Number of instances
-      appliedScopes        = ["Shared"]  # Shared or specific subscription/resource group
       appliedScopeType     = "Shared"
-      location             = "eastus"
 
       reservedResourceProperties = {
         instanceFlexibility = "On"  # Instance size flexibility
       }
     }
-  })
+  }
 }
 ```
 
@@ -68,35 +70,34 @@ resource "azapi_resource" "vm_reservation" {
 ```hcl
 resource "azapi_resource" "sql_reservation" {
   type      = "Microsoft.Capacity/reservationOrders@2022-11-01"
-  name      = "production-sql-reservation"
-  location  = "global"
-  parent_id = "/subscriptions/${var.subscription_id}"
+  name      = var.sql_reservation_order_id  # Must be a GUID
+  location  = "eastus"
+  parent_id = "/"  # Reservation orders are tenant-scoped
 
-  body = jsonencode({
+  body = {
     sku = {
-      name = "GP_Gen5"
+      # Discover the exact SQL reservation SKU for your deployment type,
+      # performance tier, and region from the reservation catalog first.
+      name = var.sql_reservation_sku
     }
     properties = {
       reservedResourceType = "SqlDatabases"
       term                 = "P3Y"  # 3 year for maximum savings
       billingPlan          = "Monthly"
-      quantity             = 2
-      appliedScopes        = ["Shared"]
+      billingScopeId       = "/subscriptions/${var.subscription_id}"
+      displayName          = "production-sql-reservation"
+      quantity             = var.sql_reservation_quantity
       appliedScopeType     = "Shared"
-      location             = "eastus"
-
-      reservedResourceProperties = {
-        productType = "SQLAzureGPGen5"
-        vcoresCount = 8
-      }
     }
-  })
+  }
 }
 ```
 
 ## Using Azure CLI for Reservation Purchase
 
 ```bash
+# Requires the Azure CLI reservations extension (preview; auto-installs on first use)
+
 # Get available reservation offers
 az reservations catalog show \
   --subscription-id <sub-id> \
@@ -105,15 +106,17 @@ az reservations catalog show \
 
 # Purchase a reservation
 az reservations reservation-order purchase \
-  --reservation-order-name "prod-vm-reservation" \
+  --reservation-order-id <reservation-order-id> \
   --reserved-resource-type VirtualMachines \
+  --display-name "prod-vm-reservation" \
   --sku "Standard_D4s_v5" \
   --applied-scope-type Shared \
-  --billing-scope "/subscriptions/<sub-id>" \
+  --billing-scope <sub-id> \
   --quantity 5 \
   --term P1Y \
   --billing-plan Monthly \
-  --location eastus
+  --location eastus \
+  --instance-flexibility On
 ```
 
 ## Cost Budget for Reservation Coverage
@@ -121,17 +124,18 @@ az reservations reservation-order purchase \
 ```hcl
 resource "azurerm_consumption_budget_subscription" "vm_budget" {
   name            = "vm-cost-budget"
-  subscription_id = var.subscription_id
+  subscription_id = "/subscriptions/${var.subscription_id}"
 
   amount     = 10000
   time_grain = "Monthly"
 
   time_period {
-    start_date = "2024-01-01T00:00:00Z"
+    start_date = "2026-05-01T00:00:00Z"  # Use the first day of the current month
   }
 
   filter {
-    resource_type {
+    dimension {
+      name     = "ResourceType"
       operator = "In"
       values   = ["Microsoft.Compute/virtualMachines"]
     }
@@ -150,8 +154,8 @@ resource "azurerm_consumption_budget_subscription" "vm_budget" {
 
 ## Reserved Instance Exchange and Return
 
-Azure allows exchanging reservations for different sizes within the same family (if Instance Size Flexibility is enabled). Manage this through the Azure portal or CLI, not OpenTofu, as it involves stateful financial transactions.
+Azure allows self-service exchanges and refunds for eligible reservations. Instance Size Flexibility is a separate capability that lets VM reservations apply to other sizes in the same flexibility group. Manage exchanges and returns through the Azure portal or reservation APIs/CLI, not OpenTofu, as they are financial transactions subject to Azure reservation policy.
 
 ## Conclusion
 
-Azure Reservations in OpenTofu provide documented, reviewable financial commitments. Use the azapi provider for reservation purchases until native azurerm support is available, enable instance size flexibility to automatically apply savings to different VM sizes within the same family, and monitor reservation utilization in the Azure Cost Management portal. Share reservations at the subscription or billing account level for maximum utilization.
+Azure Reservations in OpenTofu provide documented, reviewable financial commitments. Use the azapi provider for reservation purchases until native azurerm support is available, enable instance size flexibility to automatically apply savings to different VM sizes within the same family, and monitor reservation utilization in the Azure Cost Management portal. Use shared scope across eligible subscriptions in the billing context for maximum utilization.
