@@ -23,13 +23,14 @@ import socket
 
 def connect_ipv6_only(host: str, port: int):
     # AF_INET6 explicitly - fails if no AAAA record
-    results = socket.getaddrinfo(
-        host, port,
-        family=socket.AF_INET6,
-        type=socket.SOCK_STREAM
-    )
-    if not results:
-        raise ConnectionError("No IPv6 address available")
+    try:
+        results = socket.getaddrinfo(
+            host, port,
+            family=socket.AF_INET6,
+            type=socket.SOCK_STREAM
+        )
+    except socket.gaierror as exc:
+        raise ConnectionError("No IPv6 address available") from exc
     af, socktype, proto, canonname, sockaddr = results[0]
     sock = socket.socket(af, socktype, proto)
     sock.connect(sockaddr)
@@ -69,7 +70,11 @@ def connect_with_source(dest_host: str, dest_port: int, src_addr: str):
     sock.bind((src_addr, 0, 0, 0))  # (addr, port, flowinfo, scope_id)
 
     # Resolve destination
-    results = socket.getaddrinfo(dest_host, dest_port, family=socket.AF_INET6)
+    results = socket.getaddrinfo(
+        dest_host, dest_port,
+        family=socket.AF_INET6,
+        type=socket.SOCK_STREAM
+    )
     sock.connect(results[0][4])
     return sock
 
@@ -127,7 +132,7 @@ public class AddressPreference {
 # Prefer IPv4 for ALL connections
 java -Djava.net.preferIPv4Stack=true Application
 
-# Prefer IPv6 addresses from DNS (still tries IPv4 if no IPv6)
+# Prefer IPv6 addresses when both families are available
 java -Djava.net.preferIPv6Addresses=true Application
 ```
 
@@ -137,12 +142,12 @@ java -Djava.net.preferIPv6Addresses=true Application
 const dns = require('dns');
 const net = require('net');
 
-// Force IPv6 DNS resolution
+// Resolve with the system resolver, but only return IPv6
 async function resolveIPv6(hostname) {
     return new Promise((resolve, reject) => {
-        dns.resolve6(hostname, (err, addresses) => {
+        dns.lookup(hostname, { family: 6 }, (err, address) => {
             if (err) reject(err);
-            else resolve(addresses[0]);
+            else resolve(address);
         });
     });
 }
@@ -153,8 +158,7 @@ async function connectIPv6(hostname, port) {
     return new Promise((resolve, reject) => {
         const socket = net.createConnection({
             host: addr,
-            port: port,
-            family: 6  // Force IPv6 socket type
+            port: port
         });
         socket.on('connect', () => resolve(socket));
         socket.on('error', reject);
@@ -166,7 +170,7 @@ const http = require('http');
 http.get({
     hostname: 'example.com',
     port: 80,
-    family: 6,  // AF_INET6
+    family: 6,  // Resolve hostname as IPv6 only
     path: '/'
 }, (res) => {
     console.log('Status:', res.statusCode);
@@ -180,24 +184,13 @@ package main
 
 import (
     "context"
-    "net"
     "fmt"
+    "net"
 )
 
 func main() {
-    // Force IPv6-only dialer
-    dialer := &net.Dialer{
-        // Resolver that only returns IPv6 addresses
-        Resolver: &net.Resolver{
-            PreferGo: true,
-            Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-                d := net.Dialer{}
-                return d.DialContext(ctx, "udp6", address)
-            },
-        },
-    }
-
     // Connect using tcp6 (IPv6 only)
+    dialer := &net.Dialer{}
     conn, err := dialer.DialContext(context.Background(), "tcp6", "example.com:80")
     if err != nil {
         fmt.Printf("IPv6 connection failed: %v\n", err)
@@ -207,7 +200,11 @@ func main() {
     fmt.Printf("Connected from %s\n", conn.LocalAddr())
 
     // Bind to specific source address
-    localAddr, _ := net.ResolveTCPAddr("tcp6", "[2001:db8::10]:0")
+    localAddr, err := net.ResolveTCPAddr("tcp6", "[2001:db8::10]:0")
+    if err != nil {
+        fmt.Printf("Resolve source address failed: %v\n", err)
+        return
+    }
     dialerWithSrc := &net.Dialer{LocalAddr: localAddr}
     conn2, err := dialerWithSrc.DialContext(context.Background(), "tcp6", "[2001:db8::1]:80")
     if err == nil {
@@ -221,35 +218,17 @@ func main() {
 
 ```python
 import asyncio
-import socket
 
-async def happy_eyeballs(host: str, port: int, timeout: float = 0.25):
-    """Try IPv6, fall back to IPv4 after timeout."""
-    loop = asyncio.get_event_loop()
-
-    # Resolve both
-    results = await loop.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-
-    # Separate IPv6 and IPv4
-    ipv6 = [r for r in results if r[0] == socket.AF_INET6]
-    ipv4 = [r for r in results if r[0] == socket.AF_INET]
-
-    # Try IPv6 first, fall back to IPv4 after timeout
-    if ipv6:
-        try:
-            return await asyncio.wait_for(
-                asyncio.open_connection(*ipv6[0][4][:2]),
-                timeout=timeout
-            )
-        except (asyncio.TimeoutError, ConnectionRefusedError):
-            pass
-
-    if ipv4:
-        return await asyncio.open_connection(*ipv4[0][4][:2])
-
-    raise ConnectionError(f"Cannot connect to {host}:{port}")
+async def happy_eyeballs(host: str, port: int, delay: float = 0.25):
+    """Use asyncio's Happy Eyeballs support for dual-stack fallback."""
+    return await asyncio.open_connection(
+        host,
+        port,
+        happy_eyeballs_delay=delay,
+        interleave=1
+    )
 ```
 
 ## Conclusion
 
-Application-level address preference control gives fine-grained control beyond system policy. Specify `family=socket.AF_INET6` (or `AF_INET`) in `getaddrinfo()` calls to restrict the address family. Bind a socket to a specific source address to override RFC 6724 source selection. Java uses `java.net.preferIPv4Stack` and `preferIPv6Addresses` system properties for global control. Node.js accepts a `family` option in `net.createConnection()`. Go's `net.Dialer` supports `LocalAddr` for source binding and `tcp6`/`tcp4` network strings for family restriction. For best dual-stack compatibility, implement Happy Eyeballs (RFC 8305) which tries IPv6 first and falls back to IPv4 after a short timeout.
+Application-level address preference control gives fine-grained control beyond system policy. Specify `family=socket.AF_INET6` (or `AF_INET`) in `getaddrinfo()` calls to restrict the address family. Bind a socket to a specific source address to override RFC 6724 source selection. Java uses `java.net.preferIPv4Stack` and `preferIPv6Addresses` system properties for global control. Node.js accepts a `family` option in connection and HTTP client APIs to restrict hostname resolution to IPv4 or IPv6. Go's `net.Dialer` supports `LocalAddr` for source binding and `tcp6`/`tcp4` network strings for family restriction. For best dual-stack compatibility, use a Happy Eyeballs implementation such as asyncio's built-in `happy_eyeballs_delay`, which staggers IPv6 and IPv4 connection attempts with a short delay.
