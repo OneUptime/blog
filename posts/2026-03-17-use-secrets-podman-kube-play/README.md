@@ -107,9 +107,8 @@ podman kube play pod-with-env-secrets.yaml
 ## Using Pre-Created Podman Secrets
 
 ```bash
-# Create secrets using Podman first
-echo -n "my-password" | podman secret create db_password -
-echo -n "my-api-key" | podman secret create api_key -
+# Create a Podman secret from a Kubernetes Secret manifest first
+podman secret create app-secrets secret.yaml
 
 # Reference them in the pod YAML using Podman secret names
 ```
@@ -125,13 +124,13 @@ spec:
     - name: app
       image: my-app:latest
       volumeMounts:
-        - name: db-pass
-          mountPath: /run/secrets/db_password
-          subPath: db_password
+        - name: app-secrets
+          mountPath: /run/secrets
+          readOnly: true
   volumes:
-    - name: db-pass
+    - name: app-secrets
       secret:
-        secretName: db_password
+        secretName: app-secrets
 ```
 
 ## Combined Manifest
