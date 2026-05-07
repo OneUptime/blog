@@ -14,18 +14,18 @@ Before you begin, make sure you have:
 
 - A running Rancher installation (v2.6 or later)
 - An API key with sufficient permissions (see our guide on generating API keys)
-- curl or any HTTP client installed
+- curl and jq installed, or another HTTP/JSON client
 - Basic familiarity with REST APIs
 
 ## Understanding the Rancher API Structure
 
-The Rancher API follows a RESTful design and is available at your Rancher server URL under the `/v3` path. All cluster-related endpoints are under `/v3/clusters`.
+The examples in this guide use Rancher's previous v3 API, which remains available at your Rancher server URL under the `/v3` path. Cluster resources are listed under `/v3/clusters`, and related node, namespace, and action URLs are exposed through each cluster's `links` and `actions` maps.
 
 ```plaintext
 https://your-rancher-server/v3/clusters
 ```
 
-Every API request requires authentication using a Bearer token or Basic authentication with your API key credentials.
+Every API request requires authentication using an API key. You can send it as a Bearer token or use Basic authentication with your API key credentials.
 
 ## Setting Up Authentication
 
@@ -36,6 +36,8 @@ export RANCHER_URL="https://rancher.example.com"
 export RANCHER_TOKEN="token-xxxxx:yyyyyyyyyyyyyyyyyyyyyyyy"
 ```
 
+The examples below use `-k` to allow self-signed or otherwise untrusted certificates. Omit it when your Rancher server presents a trusted certificate.
+
 You can verify your authentication by hitting the API root:
 
 ```bash
@@ -44,7 +46,7 @@ curl -s -k \
   "${RANCHER_URL}/v3"
 ```
 
-A successful response returns the API schema with available resource types.
+A successful response returns the API root with links to available resource types.
 
 ## Listing All Clusters
 
@@ -88,15 +90,15 @@ curl -s -k \
 
 ## Checking Cluster Conditions
 
-Cluster conditions tell you whether various components are healthy:
+Cluster conditions give you the cluster's high-level lifecycle and readiness state:
 
 ```bash
 curl -s -k \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/clusters/${CLUSTER_ID}" | jq '.conditions[] | {type, status, message}'
+  "${RANCHER_URL}/v3/clusters/${CLUSTER_ID}" | jq '(.conditions // [])[] | {type, status, message}'
 ```
 
-This helps you diagnose issues with etcd, the controller manager, the scheduler, or node connectivity.
+This helps you diagnose whether the cluster is ready, pending, waiting, or otherwise unhealthy.
 
 ## Updating Cluster Configuration
 
@@ -112,19 +114,7 @@ curl -s -k -X PUT \
   "${RANCHER_URL}/v3/clusters/${CLUSTER_ID}"
 ```
 
-To enable or disable cluster monitoring:
-
-```bash
-curl -s -k -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "answers": {
-      "operator-init.enabled": "true"
-    }
-  }' \
-  "${RANCHER_URL}/v3/clusters/${CLUSTER_ID}?action=enableMonitoring"
-```
+In Rancher v2.6+ and current releases, monitoring is deployed as the `rancher-monitoring` application (Monitoring V2) rather than through a cluster-level `enableMonitoring` action in the `/v3/clusters` API.
 
 ## Listing Cluster Nodes
 
@@ -155,7 +145,7 @@ curl -s -k \
 
 ## Rotating Certificates
 
-If you need to rotate cluster certificates:
+For Rancher-launched Kubernetes clusters, you can rotate cluster certificates:
 
 ```bash
 curl -s -k -X POST \
@@ -215,7 +205,7 @@ while IFS='|' read -r id name state; do
 
   unhealthy=$(curl -s -k \
     -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-    "${RANCHER_URL}/v3/clusters/${id}" | jq '[.conditions[] | select(.status != "True")] | length')
+    "${RANCHER_URL}/v3/clusters/${id}" | jq '[(.conditions // [])[] | select(.status != "True")] | length')
   echo "  Unhealthy conditions: ${unhealthy}"
   echo ""
 done <<< "${clusters}"
