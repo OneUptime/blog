@@ -27,7 +27,7 @@ podman run -d \
   -p 2379:2379 \
   -p 2380:2380 \
   -v etcd-data:/etcd-data:Z \
-  quay.io/coreos/etcd:v3.5.12 \
+  quay.io/coreos/etcd:v3.5.30 \
   /usr/local/bin/etcd \
   --name node1 \
   --data-dir /etcd-data \
@@ -56,7 +56,7 @@ For production, deploy an etcd cluster with three or more nodes for fault tolera
 version: "3"
 services:
   etcd1:
-    image: quay.io/coreos/etcd:v3.5.12
+    image: quay.io/coreos/etcd:v3.5.30
     restart: always
     ports:
       - "2379:2379"
@@ -75,7 +75,7 @@ services:
       - --initial-cluster-token=my-etcd-cluster
 
   etcd2:
-    image: quay.io/coreos/etcd:v3.5.12
+    image: quay.io/coreos/etcd:v3.5.30
     restart: always
     volumes:
       - etcd2-data:/etcd-data
@@ -92,7 +92,7 @@ services:
       - --initial-cluster-token=my-etcd-cluster
 
   etcd3:
-    image: quay.io/coreos/etcd:v3.5.12
+    image: quay.io/coreos/etcd:v3.5.30
     restart: always
     volumes:
       - etcd3-data:/etcd-data
@@ -115,12 +115,11 @@ volumes:
 ```
 
 ```bash
-podman-compose -f etcd-cluster.yml up -d
+podman compose -f etcd-cluster.yml up -d
 
 # Check cluster health
-podman exec etcd-cluster_etcd1_1 etcdctl \
-  --endpoints=http://etcd1:2379,http://etcd2:2379,http://etcd3:2379 \
-  endpoint health
+podman compose -f etcd-cluster.yml exec etcd1 \
+  etcdctl endpoint health --cluster
 ```
 
 ## Using etcd for Configuration Management
@@ -281,12 +280,12 @@ BACKUP_FILE="$BACKUP_DIR/etcd-snapshot-$TIMESTAMP.db"
 
 mkdir -p "$BACKUP_DIR"
 
-podman exec etcd etcdctl snapshot save /tmp/snapshot.db
+podman exec etcd etcdctl --endpoints=http://localhost:2379 snapshot save /tmp/snapshot.db
 podman cp etcd:/tmp/snapshot.db "$BACKUP_FILE"
 
 echo "Backup saved to $BACKUP_FILE"
 echo "Snapshot status:"
-podman exec etcd etcdctl snapshot status /tmp/snapshot.db --write-out=table
+podman exec etcd etcdutl --write-out=table snapshot status /tmp/snapshot.db
 
 # Remove backups older than 7 days
 find "$BACKUP_DIR" -name "etcd-snapshot-*.db" -mtime +7 -delete
@@ -302,25 +301,33 @@ BACKUP_FILE="$1"
 
 podman stop etcd
 podman rm etcd
+podman volume rm etcd-data
+podman volume create etcd-data
 
 podman run --rm \
   -v "$BACKUP_FILE:/tmp/snapshot.db:ro,Z" \
   -v etcd-data:/etcd-data:Z \
-  quay.io/coreos/etcd:v3.5.12 \
+  quay.io/coreos/etcd:v3.5.30 \
   /usr/local/bin/etcdutl snapshot restore /tmp/snapshot.db \
-  --data-dir /etcd-data
+  --name node1 \
+  --data-dir /etcd-data \
+  --initial-cluster node1=http://localhost:2380 \
+  --initial-advertise-peer-urls http://localhost:2380
 
 # Restart etcd with the restored data
 podman run -d \
   --name etcd \
   --restart always \
   -p 2379:2379 \
+  -p 2380:2380 \
   -v etcd-data:/etcd-data:Z \
-  quay.io/coreos/etcd:v3.5.12 \
+  quay.io/coreos/etcd:v3.5.30 \
   /usr/local/bin/etcd \
+  --name node1 \
   --data-dir /etcd-data \
   --listen-client-urls http://0.0.0.0:2379 \
-  --advertise-client-urls http://localhost:2379
+  --advertise-client-urls http://localhost:2379 \
+  --listen-peer-urls http://0.0.0.0:2380
 
 echo "etcd restored from $BACKUP_FILE"
 ```
