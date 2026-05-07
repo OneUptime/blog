@@ -8,43 +8,45 @@ Description: Configure Apache HTTP Server to disable IPv6 listening and bind exc
 
 ## Introduction
 
-Apache listens on IPv6 by default (`:::80`) on dual-stack systems, which on Linux also accepts IPv4 connections (due to IPV6_V6ONLY being off). Explicitly binding to IPv4 only improves clarity, avoids confusion, and is required on IPv4-only infrastructure.
+Apache listens on all addresses by default. On dual-stack Linux systems, this often appears as `:::80`, and that socket may also accept IPv4 connections through IPv4-mapped IPv6 addresses. Explicitly binding to IPv4 only improves clarity and avoids confusion on IPv4-only infrastructure.
 
 ## Understanding Default Apache Behavior
 
 On a typical Linux system with Apache default config:
 
 ```bash
-# Default: Apache listens on all IPv6 addresses (which includes IPv4 via dual-stack)
+# Default: Apache listens on all addresses. On many Linux systems,
+# this appears as an IPv6 socket that also accepts IPv4.
 
 sudo ss -tlnp | grep apache2
 # LISTEN 0 511 :::80 :::*  users:(("apache2",...))
-# This :::80 accepts BOTH IPv4 and IPv6 connections on most Linux systems
+# On many Linux systems, this :::80 listener accepts BOTH IPv4 and IPv6 connections
 ```
 
 ## Disabling IPv6 and Binding IPv4 Only
 
-Edit `ports.conf` to replace IPv6 wildcard with IPv4:
+Edit `ports.conf` to use explicit IPv4 addresses in the `Listen` directives:
 
 ```apache
 # /etc/apache2/ports.conf (Ubuntu/Debian)
 
-# Remove the default IPv6 wildcard:
-# Listen 80  ← this becomes :::80 on dual-stack systems
+# Replace generic listeners such as:
+# Listen 80
+# Listen 443
 
-# Replace with explicit IPv4 wildcard:
+# With explicit IPv4 listeners:
 Listen 0.0.0.0:80
 Listen 0.0.0.0:443
 ```
 
-Update virtual host definitions to use IPv4:
+Virtual host definitions usually do not need to change:
 
 ```apache
 # /etc/apache2/sites-available/000-default.conf
 
-# Old: <VirtualHost *:80>
-# New: bind explicitly to IPv4 wildcard
-<VirtualHost 0.0.0.0:80>
+# <VirtualHost> matching does not control what Apache listens on.
+# Leaving *:80 here is fine when Listen is already IPv4-only.
+<VirtualHost *:80>
     ServerName example.com
     DocumentRoot /var/www/html
 </VirtualHost>
@@ -52,7 +54,7 @@ Update virtual host definitions to use IPv4:
 
 ## Disabling IPv6 at the OS Level (Optional)
 
-For complete IPv6 removal at the kernel level:
+To disable IPv6 on Linux interfaces as well:
 
 ```bash
 # /etc/sysctl.conf or /etc/sysctl.d/99-disable-ipv6.conf
@@ -72,28 +74,23 @@ sudo sysctl -p /etc/sysctl.d/99-disable-ipv6.conf
 ```bash
 # After restarting Apache, verify only IPv4 is listening
 sudo systemctl restart apache2
-sudo ss -tlnp | grep apache2
+sudo ss -4 -tlnp | grep apache2
 
 # Desired output (IPv4 only):
 # LISTEN 0 511 0.0.0.0:80 0.0.0.0:*  users:(("apache2",...))
 
-# Confirm no IPv6 listener
-sudo ss -tlnp | grep ':::80'
+# Confirm Apache has no IPv6 listener
+sudo ss -6 -tlnp | grep apache2
 # Should return no output
 ```
 
-## Using Apache's AddressFamily Directive (MPM Worker/Event)
+## About Apache's AddressFamily Directive
 
-Some configurations support the `AddressFamily` directive in virtual hosts:
+Apache HTTP Server does not provide a standard `AddressFamily` directive for this. The supported way is to use explicit IPv4 `Listen` directives:
 
 ```apache
-# This is NOT a standard Apache directive but available in some distros
-# The recommended way is always via Listen directive
-
-<VirtualHost 0.0.0.0:80>
-    ServerName example.com
-    DocumentRoot /var/www/html
-</VirtualHost>
+Listen 0.0.0.0:80
+Listen 0.0.0.0:443
 ```
 
 ## Testing IPv4-Only Access
@@ -102,11 +99,11 @@ Some configurations support the `AddressFamily` directive in virtual hosts:
 # Test IPv4 access (should work)
 curl -4 http://example.com
 
-# Test IPv6 access (should fail or time out)
+# Test IPv6 access (if the host resolves to an AAAA record, this should fail)
 curl -6 http://example.com
-# Expected: curl: (7) Failed to connect to example.com: Connection refused
+# Exact error varies by DNS and network path, but the IPv6 request should not succeed
 ```
 
 ## Conclusion
 
-To make Apache IPv4-only, change `Listen 80` to `Listen 0.0.0.0:80` in `ports.conf` and update VirtualHost addresses to match. For total IPv6 isolation, also disable IPv6 at the kernel level with sysctl. Always validate with `ss -tlnp` after restarting to confirm no `:::80` listeners remain.
+To make Apache IPv4-only, change `Listen` directives such as `Listen 80` to explicit IPv4 addresses like `Listen 0.0.0.0:80` in `ports.conf`. Name-based `<VirtualHost *:80>` blocks can stay as they are, because `Listen` controls the listener. If you also want IPv6 disabled on Linux interfaces, apply the sysctl settings. Always validate with `ss -4` and `ss -6` after restarting to confirm Apache is listening only on IPv4.
