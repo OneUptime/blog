@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, API, REST API, curl
 
-Description: Practical guide to interacting with the Rancher API using curl, covering authentication, CRUD operations, error handling, and scripting patterns.
+Description: Practical guide to interacting with Rancher's previous `/v3` API using curl, covering authentication, CRUD operations, error handling, and scripting patterns.
 
-curl is the most widely available HTTP client and is perfect for quick API interactions, debugging, and shell scripts. This guide shows you how to use curl effectively with the Rancher API for every common operation.
+curl is the most widely available HTTP client and is perfect for quick API interactions, debugging, and shell scripts. This guide shows you how to use curl effectively with Rancher's previous `/v3` API for common operations. Rancher v2.8.0 introduced the newer Rancher Kubernetes API (RK-API), but the `/v3` API is still available.
 
 ## Setting Up
 
@@ -131,6 +131,8 @@ curl -s -k -X POST \
 
 ### Create a Namespace
 
+If you want Rancher to associate the namespace with a project, include the `field.cattle.io/projectId` annotation.
+
 ```bash
 CLUSTER_ID="c-m-abc12345"
 
@@ -141,7 +143,10 @@ curl -s -k -X POST \
     "apiVersion": "v1",
     "kind": "Namespace",
     "metadata": {
-      "name": "my-namespace"
+      "name": "my-namespace",
+      "annotations": {
+        "field.cattle.io/projectId": "c-m-abc12345:p-xyz789"
+      }
     }
   }' \
   "${RANCHER_URL}/k8s/clusters/${CLUSTER_ID}/v1/namespaces"
@@ -220,6 +225,8 @@ curl -s -k -X POST \
 ```
 
 ### Rotate Certificates
+
+If the cluster exposes the action, you can call it directly:
 
 ```bash
 curl -s -k -X POST \
@@ -345,4 +352,4 @@ curl -s -k \
 
 ## Summary
 
-curl is a versatile tool for working with the Rancher API. Use GET for reading, POST for creating, PUT for updating, and DELETE for removing resources. Always capture HTTP status codes for proper error handling. Build reusable shell functions to reduce repetition, and combine curl with jq for powerful data extraction and transformation. These patterns form the foundation for any Rancher automation script.
+curl is a versatile tool for working with the Rancher API. Use GET for reading, POST for creating, PUT for updating, and DELETE for removing resources. Always capture HTTP status codes for proper error handling. Build reusable shell functions to reduce repetition, and combine curl with jq for powerful data extraction and transformation. These patterns form the foundation for automation against Rancher's previous `/v3` API.
