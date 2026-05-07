@@ -52,9 +52,6 @@ On hosts that do not need IPv6, disable it entirely:
     # Disable redirect acceptance (prevents redirect attacks)
     - { name: net.ipv6.conf.all.accept_redirects, value: "0" }
     - { name: net.ipv6.conf.default.accept_redirects, value: "0" }
-    # Enable privacy extensions to prevent address tracking
-    - { name: net.ipv6.conf.all.use_tempaddr, value: "2" }
-    - { name: net.ipv6.conf.default.use_tempaddr, value: "2" }
 
 - name: Apply all sysctl settings
   ansible.builtin.command:
@@ -88,7 +85,7 @@ On hosts that do not need IPv6, disable it entirely:
     ctstate: ESTABLISHED,RELATED
     jump: ACCEPT
 
-- name: Allow ICMPv6 (required types only per RFC 4890)
+- name: Allow essential ICMPv6 control traffic
   ansible.builtin.iptables:
     ip_version: ipv6
     chain: INPUT
@@ -100,11 +97,14 @@ On hosts that do not need IPv6, disable it entirely:
     - 2    # Packet Too Big (PMTUD)
     - 3    # Time Exceeded
     - 4    # Parameter Problem
+    - 130  # Multicast Listener Query
+    - 131  # Multicast Listener Report
+    - 132  # Multicast Listener Done
     - 133  # Router Solicitation
     - 134  # Router Advertisement
     - 135  # Neighbor Solicitation
     - 136  # Neighbor Advertisement
-    - 137  # Redirect
+    - 143  # Multicast Listener Report v2
 
 - name: Block all other ICMPv6
   ansible.builtin.iptables:
@@ -113,13 +113,13 @@ On hosts that do not need IPv6, disable it entirely:
     protocol: ipv6-icmp
     jump: DROP
 
-- name: Block DHCPv6 server messages to clients (port 546)
+- name: Block DHCPv6 server and relay replies to clients (UDP 547 -> 546)
   ansible.builtin.iptables:
     ip_version: ipv6
     chain: INPUT
     protocol: udp
+    source_port: "547"
     destination_port: "546"
-    source: "fe80::/10"
     jump: DROP
 
 - name: Set INPUT default policy to DROP
@@ -134,8 +134,14 @@ On hosts that do not need IPv6, disable it entirely:
     chain: FORWARD
     policy: DROP
 
-- name: Save ip6tables rules persistently
-  ansible.builtin.command:
+- name: Set OUTPUT default policy to ACCEPT
+  ansible.builtin.iptables:
+    ip_version: ipv6
+    chain: OUTPUT
+    policy: ACCEPT
+
+- name: Export current ip6tables rules to a file
+  ansible.builtin.shell:
     cmd: ip6tables-save > /etc/ip6tables.rules
   changed_when: true
 ```
