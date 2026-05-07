@@ -32,8 +32,9 @@ exporters:
   otlp:
     endpoint: "your-backend:4317"
   file/debug:
-    path: /tmp/traces.json
+    path: /tmp/traces.jsonl
     format: json
+    append: true
 
 service:
   pipelines:
@@ -58,61 +59,102 @@ processors:
         type: latency
         latency:
           threshold_ms: 2000
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [tail_sampling, batch]
+      exporters: [otlp, file/debug]
 ```
 
 This gives you a targeted set of problematic traces ready for analysis.
 
 ## Step 2: Extract and Format a Single Trace for Analysis
 
-Raw OTLP JSON is verbose. LLMs work best when you trim the noise and present the essential structure. Here's a Python script that transforms a trace into a concise, readable format:
+Raw OTLP JSON is verbose, and collector exports are typically batches rather than single traces. LLMs work best when you trim the noise and present the essential structure. Here's a Python script that extracts one trace from an OTLP JSON batch and transforms it into a concise, readable format:
 
 ```python
 import json
-from collections import defaultdict
 
-def format_trace_for_llm(trace_json):
-    """Convert OTLP trace JSON into a concise format for LLM analysis."""
+SPAN_KIND = {
+    0: "UNSPECIFIED",
+    1: "INTERNAL",
+    2: "SERVER",
+    3: "CLIENT",
+    4: "PRODUCER",
+    5: "CONSUMER",
+}
+
+SPAN_STATUS = {
+    0: "UNSET",
+    1: "OK",
+    2: "ERROR",
+}
+
+def decode_any_value(value):
+    """Decode an OTLP AnyValue object into a plain Python value."""
+    for field in (
+        "stringValue",
+        "boolValue",
+        "intValue",
+        "doubleValue",
+        "bytesValue",
+        "arrayValue",
+        "kvlistValue",
+    ):
+        if field in value:
+            return value[field]
+    return None
+
+def format_trace_for_llm(traces_data, trace_id):
+    """Extract one OTLP trace and convert it into a concise LLM-friendly format."""
     spans = []
-    
-    for resource_span in trace_json.get("resourceSpans", []):
+
+    for resource_span in traces_data.get("resourceSpans", []):
         service_name = ""
         for attr in resource_span.get("resource", {}).get("attributes", []):
             if attr["key"] == "service.name":
-                service_name = attr["value"].get("stringValue", "")
-        
+                service_name = decode_any_value(attr["value"]) or ""
+
         for scope_span in resource_span.get("scopeSpans", []):
             for span in scope_span.get("spans", []):
+                if span["traceId"] != trace_id:
+                    continue
+
                 formatted = {
                     "service": service_name,
                     "name": span["name"],
-                    "kind": span.get("kind", "INTERNAL"),
-                    "status": span.get("status", {}).get("code", "OK"),
+                    "kind": SPAN_KIND.get(span.get("kind", 1), "INTERNAL"),
+                    "status": SPAN_STATUS.get(
+                        span.get("status", {}).get("code", 0),
+                        "UNSET",
+                    ),
                     "duration_ms": (
-                        int(span["endTimeUnixNano"]) - 
+                        int(span["endTimeUnixNano"]) -
                         int(span["startTimeUnixNano"])
                     ) / 1_000_000,
                     "attributes": {
-                        attr["key"]: list(attr["value"].values())[0]
+                        attr["key"]: decode_any_value(attr["value"])
                         for attr in span.get("attributes", [])
                     },
                     "events": [
                         {
-                            "name": e["name"],
+                            "name": event["name"],
                             "attributes": {
-                                a["key"]: list(a["value"].values())[0]
-                                for a in e.get("attributes", [])
-                            }
+                                attr["key"]: decode_any_value(attr["value"])
+                                for attr in event.get("attributes", [])
+                            },
                         }
-                        for e in span.get("events", [])
+                        for event in span.get("events", [])
                     ],
-                    "parent_span_id": span.get("parentSpanId", None),
+                    "parent_span_id": span.get("parentSpanId") or None,
                     "span_id": span["spanId"],
                 }
-                spans.append(formatted)
-    
-    # Sort by start time for readability
-    spans.sort(key=lambda s: s["duration_ms"], reverse=True)
-    return spans
+                spans.append((int(span["startTimeUnixNano"]), formatted))
+
+    spans.sort(key=lambda item: item[0])
+    return [span for _, span in spans]
 ```
 
 The output looks something like this:
@@ -170,8 +212,8 @@ Analyze this trace and provide:
 1. ROOT CAUSE: What specific operation failed or degraded, and why? Be precise 
    about the service, operation, and error.
 
-2. BLAST RADIUS: What upstream services were affected? How many users likely 
-   experienced this?
+2. BLAST RADIUS: What upstream services were affected by this trace? Which
+   request path failed as a result?
 
 3. TIMELINE: Reconstruct what happened in chronological order, with durations.
 
@@ -206,49 +248,83 @@ from watchdog.events import FileSystemEventHandler
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 class TraceAnalyzer(FileSystemEventHandler):
+    def __init__(self):
+        self._offset = 0
+
     def on_modified(self, event):
-        if not event.src_path.endswith("traces.json"):
+        if event.is_directory or not event.src_path.endswith("traces.jsonl"):
             return
-        
+
         with open(event.src_path) as f:
-            for line in f:
-                trace = json.loads(line)
-                if self._has_errors(trace):
-                    analysis = self._analyze(trace)
-                    self._send_to_slack(analysis)
-    
-    def _has_errors(self, trace):
-        for rs in trace.get("resourceSpans", []):
+            if self._offset > os.path.getsize(event.src_path):
+                self._offset = 0
+
+            f.seek(self._offset)
+
+            while True:
+                line_offset = f.tell()
+                line = f.readline()
+
+                if not line:
+                    break
+
+                # Wait for the collector to finish writing the current JSONL record.
+                if not line.endswith("\n"):
+                    f.seek(line_offset)
+                    break
+
+                traces_data = json.loads(line)
+                for trace_id in self._error_trace_ids(traces_data):
+                    analysis = self._analyze(traces_data, trace_id)
+                    self._send_to_slack(trace_id, analysis)
+
+            self._offset = f.tell()
+
+    def _error_trace_ids(self, traces_data):
+        trace_ids = set()
+
+        for rs in traces_data.get("resourceSpans", []):
             for ss in rs.get("scopeSpans", []):
                 for span in ss.get("spans", []):
                     status = span.get("status", {})
-                    if status.get("code") == 2:  # ERROR
-                        return True
-        return False
-    
-    def _analyze(self, trace):
-        formatted = format_trace_for_llm(trace)
+                    if status.get("code") == 2:  # STATUS_CODE_ERROR
+                        trace_ids.add(span["traceId"])
+
+        return trace_ids
+
+    def _analyze(self, traces_data, trace_id):
+        formatted = format_trace_for_llm(traces_data, trace_id)
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": ANALYSIS_PROMPT.format(
-                    trace_json=json.dumps(formatted, indent=2)
-                )}
+                {
+                    "role": "system",
+                    "content": ANALYSIS_PROMPT.format(
+                        trace_json=json.dumps(formatted, indent=2)
+                    ),
+                }
             ],
             temperature=0.1  # Low temperature for factual analysis
         )
         return response.choices[0].message.content
-    
-    def _send_to_slack(self, analysis):
-        # Send to your incident channel
+
+    def _send_to_slack(self, trace_id, analysis):
+        # Send the trace ID and analysis to your incident channel
         pass
 
 observer = Observer()
 observer.schedule(TraceAnalyzer(), "/tmp/", recursive=False)
 observer.start()
+
+try:
+    while True:
+        time.sleep(1)
+finally:
+    observer.stop()
+    observer.join()
 ```
 
-You can swap `gpt-4o` for any model. Local models like Llama 3 work surprisingly well for this since the task is primarily pattern matching on structured data, not creative generation. If you're running open source infrastructure, keeping the LLM local means your trace data never leaves your network.
+You can swap `gpt-4o` for another chat-compatible model. Local models like Llama 3 work surprisingly well for this since the task is primarily pattern matching on structured data, not creative generation. If you're running open source infrastructure, keeping the LLM local means your trace data never leaves your network.
 
 ## Step 5: Enrich Traces with Context Before Analysis
 
@@ -309,7 +385,7 @@ The sweet spot is augmentation, not replacement. The LLM handles the tedious wor
 
 ## Using This with OneUptime
 
-OneUptime's OpenTelemetry backend stores all your trace data and supports OTLP export. You can query traces via the API, pipe them through the formatting script above, and get LLM-powered analysis directly in your incident workflow. Since OneUptime is open source and free to self-host, your trace data stays on your infrastructure - which matters when you're sending production data to an LLM.
+OneUptime's OpenTelemetry backend stores your trace data and accepts OTLP ingest. You can query traces via the API, pipe them through the formatting script above, and get LLM-powered analysis directly in your incident workflow. If you're self-hosting OneUptime, your trace data stays on your infrastructure - which matters when you're sending production data to an LLM.
 
 The MCP (Model Context Protocol) server we recently shipped takes this further: it lets AI agents query your OneUptime traces, metrics, and logs directly. Instead of building a custom pipeline, the agent can pull the relevant trace, analyze it, and suggest a fix - all in one conversation.
 
