@@ -15,7 +15,7 @@ Managing bond slaves at runtime allows you to replace failed NICs, add capacity,
 ```bash
 # Method 1: Using ip link (modern)
 
-ip link set eth2 down                          # Slave must be down before adding
+ip link set eth2 down                          # Optional precaution on live systems
 ip link set eth2 master bond0
 ip link set eth2 up
 
@@ -43,18 +43,18 @@ cat /proc/net/bonding/bond0
 ## Safe Procedure for Live Bond (Minimizing Risk)
 
 ```bash
-# For active-backup: first ensure primary is active and healthy
-cat /proc/net/bonding/bond0 | grep "Active Slave"
+# For active-backup: identify the currently active slave first
+cat /proc/net/bonding/bond0 | grep "Currently Active Slave"
 
 # If removing the currently active slave:
-# 1. Force failover to another slave first
+# 1. Force failover to another already-enslaved slave (its link must be up)
 echo eth1 > /sys/class/net/bond0/bonding/active_slave
 
 # 2. Now safely remove eth0
 ip link set eth0 nomaster
 
 # 3. Verify traffic is flowing on eth1
-cat /proc/net/bonding/bond0 | grep "Active Slave"
+cat /proc/net/bonding/bond0 | grep "Currently Active Slave"
 ```
 
 ## Checking Bond Slave Status
@@ -65,7 +65,7 @@ cat /proc/net/bonding/bond0
 
 # Output includes:
 # Bonding Mode: active-backup
-# Primary Slave: eth0 (primary_reselect failure)
+# Primary Slave: eth0
 # Currently Active Slave: eth0
 # 
 # Slave Interface: eth0
@@ -95,7 +95,7 @@ iface eth2 inet manual
 
 ```bash
 # Add new slave
-nmcli connection add type ethernet ifname eth2 con-name bond0-slave3 master bond0
+nmcli connection add type ethernet ifname eth2 con-name bond0-slave3 controller bond0
 nmcli connection up bond0-slave3
 
 # Remove slave
@@ -121,7 +121,7 @@ cat /proc/net/bonding/bond0
 
 ## Key Takeaways
 
-- A slave interface must be brought down (`ip link set down`) before adding it to a bond with `ip link set master`.
+- You can add a slave with `ip link set <iface> master <bond>`; bringing it down first is a common precaution on live systems.
 - Remove a slave with `ip link set <iface> nomaster` - it becomes a standalone interface again.
-- In active-backup mode, manually failover to another slave before removing the currently active slave.
+- In active-backup mode, you can manually failover to another healthy slave before removing the currently active slave.
 - Use `cat /proc/net/bonding/bond0` to verify slave state and active slave after changes.
