@@ -13,12 +13,12 @@ Running Rancher in a single-node configuration works for testing and development
 - Three Linux servers (Ubuntu 22.04 recommended) with at least 4 GB RAM and 2 CPU cores each
 - Network connectivity between all three nodes
 - SSH access to all nodes
-- A domain name pointing to all three nodes (or a load balancer)
+- A load balancer in front of all three nodes, plus a domain name pointing to the load balancer
 - A fixed IP address for each node
 
 ## Architecture Overview
 
-In this setup, all three nodes run K3s as server (control plane) nodes with embedded etcd for distributed data storage. Rancher runs on top of this cluster with three replicas, one on each node. If any single node goes down, the remaining two maintain quorum and continue operating.
+In this setup, all three nodes run K3s as server (control plane) nodes with embedded etcd for distributed data storage. Rancher runs on top of this cluster with three replicas spread across the cluster. If any single node goes down, the remaining two maintain quorum and continue operating.
 
 Node layout:
 
@@ -97,11 +97,7 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 kubectl get nodes
 ```
 
-You should see all three nodes in Ready status. Check etcd health:
-
-```bash
-kubectl get pods -n kube-system | grep etcd
-```
+You should see all three nodes in `Ready` status with the `control-plane` and `etcd` roles.
 
 ## Step 5: Install Helm
 
@@ -146,7 +142,7 @@ helm install rancher rancher-stable/rancher \
   --set replicas=3
 ```
 
-The `replicas=3` setting ensures Rancher runs one pod on each node for high availability.
+The `replicas=3` setting deploys three Rancher server replicas for high availability. Rancher uses pod anti-affinity to spread replicas across nodes when possible.
 
 ## Step 8: Verify Rancher HA
 
@@ -162,21 +158,16 @@ Verify that pods are distributed across nodes:
 kubectl -n cattle-system get pods -o wide
 ```
 
-You should see three Rancher pods, each running on a different node.
+You should see three Rancher pods. In a healthy three-node cluster, they should normally be scheduled across the three nodes.
 
 ## Step 9: Configure DNS
 
-Set up DNS to point to all three node IPs. You can create either:
+Set up DNS so the Rancher hostname points to a load balancer in front of the three nodes. The load balancer should forward TCP/80 and TCP/443 to all three nodes.
 
-- Three A records for the same hostname, one for each node IP (DNS round-robin)
-- A single A record pointing to a load balancer in front of the nodes
-
-For DNS round-robin:
+Example:
 
 ```plaintext
-rancher.example.com  A  192.168.1.101
-rancher.example.com  A  192.168.1.102
-rancher.example.com  A  192.168.1.103
+rancher.example.com  A  192.168.1.200
 ```
 
 ## Step 10: Access Rancher
@@ -193,7 +184,7 @@ To verify high availability, you can simulate a node failure by shutting down on
 sudo systemctl stop k3s
 ```
 
-Access the Rancher UI through one of the remaining nodes. It should continue to function normally. Restart the stopped node to rejoin the cluster:
+Access the Rancher UI through `https://rancher.example.com`. It should continue to function normally while the load balancer routes traffic to the healthy nodes. Restart the stopped node to rejoin the cluster:
 
 ```bash
 sudo systemctl start k3s
