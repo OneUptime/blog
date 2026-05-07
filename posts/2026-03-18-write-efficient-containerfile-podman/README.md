@@ -18,12 +18,12 @@ Podman uses Containerfiles (also compatible with Dockerfiles) to build images. W
 
 ## Understanding Image Layers
 
-Every instruction in a Containerfile creates a new layer in the resulting image. Each layer is cached and can be reused in subsequent builds. Understanding this layering mechanism is the first step toward writing efficient Containerfiles.
+Filesystem-changing instructions in a Containerfile, such as `COPY`, `ADD`, and `RUN`, create layers in the resulting image. Podman caches intermediate build layers by default, so they can be reused in subsequent builds. Understanding this layering mechanism is the first step toward writing efficient Containerfiles.
 
 ```dockerfile
-# Each of these instructions creates a separate layer
+# COPY and RUN instructions here create separate filesystem layers
 
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package.json .
 RUN npm install
@@ -31,7 +31,7 @@ COPY . .
 RUN npm run build
 ```
 
-When you rebuild this image, Podman checks each layer from top to bottom. If a layer and all layers before it have not changed, the cached version is used. This means the order of your instructions matters significantly for build performance.
+When you rebuild this image, Podman processes the instructions from top to bottom. If an instruction and the files it depends on have not changed, the cached result can be reused. This means the order of your instructions matters significantly for build performance.
 
 ## Ordering Instructions for Cache Efficiency
 
@@ -96,7 +96,7 @@ Multi-stage builds are one of the most powerful techniques for creating efficien
 
 ```dockerfile
 # Stage 1: Build
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY go.mod go.sum ./
@@ -105,7 +105,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o server .
 
 # Stage 2: Runtime
-FROM alpine:3.19
+FROM alpine:3.23
 
 RUN apk --no-cache add ca-certificates
 WORKDIR /app
@@ -123,20 +123,20 @@ The final image contains only the compiled binary and a minimal Alpine base, not
 Your base image has an outsized impact on the final image size and security posture. Prefer minimal base images whenever possible.
 
 ```dockerfile
-# Full image: ~900MB
-FROM node:20
+# Full image
+FROM node:24
 
-# Slim variant: ~200MB
-FROM node:20-slim
+# Slim variant
+FROM node:24-slim
 
-# Alpine variant: ~130MB
-FROM node:20-alpine
+# Alpine variant
+FROM node:24-alpine
 
-# Distroless: ~120MB with fewer vulnerabilities
-FROM gcr.io/distroless/nodejs20-debian12
+# Distroless runtime image
+FROM gcr.io/distroless/nodejs24-debian13
 ```
 
-Alpine-based images are significantly smaller but use musl libc instead of glibc, which can cause compatibility issues with some native modules. Test your application thoroughly when switching base images.
+Slim, Alpine, and distroless variants are often smaller than the full image, although exact sizes vary by architecture and over time. Alpine-based images use musl libc instead of glibc, which can cause compatibility issues with some native modules. Test your application thoroughly when switching base images.
 
 ## Using .containerignore Files
 
@@ -154,7 +154,7 @@ coverage
 .vscode
 ```
 
-Without a `.containerignore` file, Podman sends the entire directory to the build daemon, including potentially large directories like `node_modules` or `.git`.
+Without a `.containerignore` file, Podman uses the full build context directory when evaluating `COPY` and `ADD`, including potentially large directories like `node_modules` or `.git`.
 
 ## Leveraging Build Arguments and Environment Variables
 
@@ -185,7 +185,7 @@ podman build --build-arg APP_VERSION=2.1.0 -t myapp:2.1.0 .
 Always run your containers as a non-root user. This is a fundamental security practice that limits the damage an attacker can do if they compromise your application.
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 COPY --chown=node:node . .
@@ -198,7 +198,7 @@ CMD ["node", "server.js"]
 
 ## Adding Health Checks
 
-Health checks let Podman and orchestration tools know whether your application is actually working, not just running.
+Health checks let Podman and other tooling that reads container health status know whether your application is actually working, not just running.
 
 ```dockerfile
 FROM nginx:alpine
@@ -219,7 +219,7 @@ Here is a complete, production-ready Containerfile that applies all the principl
 
 ```dockerfile
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -230,7 +230,7 @@ COPY . .
 RUN npm run build && npm prune --omit=dev
 
 # Production stage
-FROM node:20-alpine
+FROM node:24-alpine
 
 RUN apk --no-cache add tini
 
