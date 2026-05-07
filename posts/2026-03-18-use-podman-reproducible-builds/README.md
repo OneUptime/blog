@@ -30,13 +30,13 @@ The foundation of reproducible builds is a precisely defined build environment. 
 FROM golang:1.22
 
 # Good: digest is immutable
-FROM golang:1.22@sha256:a4f7958f4e2daa03857208e718d1b9cd9f1a629aed2ee3c6b29ee1db9b8e81a1
+FROM golang:1.22@sha256:1cf6c45ba39db9fd6db16922041d074a63c935556a05c5ccb62d181034df7f02
 ```
 
 Find the digest of an image:
 
 ```bash
-podman inspect --format='{{.Digest}}' golang:1.22
+podman image inspect --format='{{.Digest}}' golang:1.22
 ```
 
 ## Locking Dependencies
@@ -52,11 +52,12 @@ go mod vendor
 ```
 
 ```dockerfile
-FROM golang:1.22@sha256:a4f7958f...
+FROM golang:1.22@sha256:1cf6c45ba39db9fd6db16922041d074a63c935556a05c5ccb62d181034df7f02
 
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY vendor/ ./vendor/
+COPY . .
 
 # Build using vendored dependencies only
 RUN go build -mod=vendor -o /app ./cmd/server
@@ -65,7 +66,7 @@ RUN go build -mod=vendor -o /app ./cmd/server
 For Node.js:
 
 ```dockerfile
-FROM node:20@sha256:abc123...
+FROM node:20@sha256:8f693eaa7e0a8e71560c9a82b55fd54c2ae920a2ba5d2cde28bac7d1c01c9ba5
 
 WORKDIR /src
 COPY package.json package-lock.json ./
@@ -80,13 +81,14 @@ RUN npm run build
 For Python:
 
 ```dockerfile
-FROM python:3.12@sha256:def456...
+FROM python:3.12@sha256:29cdc34ede8cd9716d1f40a8200447355ae210c05a539c1b0262ccc5fcaf183c
 
 WORKDIR /src
 COPY requirements.txt ./
 
 # Use hash verification
-RUN pip install --no-cache-dir --require-hashes -r requirements.txt
+RUN python -m pip install --no-cache-dir --require-hashes -r requirements.txt
+RUN python -m pip install --no-cache-dir build
 
 COPY . .
 RUN python -m build
@@ -112,7 +114,7 @@ RUN CGO_ENABLED=0 go build \
     -o /app ./cmd/server
 ```
 
-The `-trimpath` flag removes filesystem paths from the binary, and `-buildid=` sets an empty build ID instead of a timestamp-based one.
+The `-trimpath` flag removes filesystem paths from the binary, and `-buildid=` clears the Go toolchain build ID from the linked binary.
 
 For C/C++ with GCC:
 
@@ -150,7 +152,7 @@ Here is a full example that brings all the techniques together:
 
 ```dockerfile
 # Containerfile.reproducible
-FROM rust:1.77@sha256:abc123def456 AS builder
+FROM rust:1.77@sha256:83101f6985c93e1e6501b3375de188ee3d2cbb89968bcc91611591f9f447bd42 AS builder
 
 # Set deterministic build environment
 ARG SOURCE_DATE_EPOCH
@@ -163,16 +165,15 @@ WORKDIR /src
 # Copy and lock dependencies first
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
+    cargo build --release --locked && \
     rm -rf src
 
 # Copy source and build
 COPY src/ ./src/
-RUN touch src/main.rs && \
-    cargo build --release
+RUN cargo build --release --locked
 
 # Minimal runtime image
-FROM scratch
+FROM debian:bookworm-slim@sha256:f9c6a2fd2ddbc23e336b6257a5245e31f996953ef06cd13a59fa0a1df2d5c252
 COPY --from=builder /src/target/release/myapp /myapp
 ENTRYPOINT ["/myapp"]
 ```
@@ -202,7 +203,7 @@ podman build \
   .
 
 # Generate and save the image digest
-DIGEST=$(podman inspect --format='{{.Digest}}' "myapp:$COMMIT_SHA")
+DIGEST=$(podman image inspect --format='{{.Digest}}' "myapp:$COMMIT_SHA")
 echo "Image digest: $DIGEST"
 echo "$DIGEST" > build-digest.txt
 
@@ -223,7 +224,7 @@ The ultimate test of reproducibility is building the same commit on different ma
 
 set -euo pipefail
 
-COMMIT="$1"
+COMMIT_SHA=$(git rev-parse HEAD)
 
 # Build twice
 echo "First build..."
@@ -232,7 +233,7 @@ DIGEST_1=$(cat build-digest.txt)
 SHA256_1=$(cat build-sha256.txt)
 
 # Clean up
-podman rmi "myapp:$COMMIT" -f
+podman rmi "myapp:$COMMIT_SHA" -f
 podman system prune -f
 
 echo "Second build..."
@@ -279,10 +280,13 @@ Even with reproducible builds, recording provenance metadata adds an extra layer
 #!/bin/bash
 # generate-provenance.sh
 
-COMMIT=$(git rev-parse HEAD)
+set -euo pipefail
+
+COMMIT_SHA=$(git rev-parse HEAD)
 BUILDER=$(hostname)
 BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-DIGEST=$(podman inspect --format='{{.Digest}}' myapp:latest)
+SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
+DIGEST=$(podman image inspect --format='{{.Digest}}' "myapp:$COMMIT_SHA")
 
 cat > provenance.json <<EOF
 {
@@ -290,7 +294,7 @@ cat > provenance.json <<EOF
   "buildTime": "$BUILD_TIME",
   "source": {
     "repository": "$(git remote get-url origin)",
-    "commit": "$COMMIT",
+    "commit": "$COMMIT_SHA",
     "branch": "$(git rev-parse --abbrev-ref HEAD)"
   },
   "image": {
