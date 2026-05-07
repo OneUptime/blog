@@ -10,7 +10,7 @@ Description: A detailed guide to exporting Podman container filesystems and impo
 
 > Moving containers between hosts does not require a registry. Learn how to export and import Podman containers using simple tar archives for fast, flexible container migration.
 
-There are times when you need to move a container's filesystem from one machine to another without going through a registry. Maybe you are debugging an issue and want to capture the exact state of a production container. Maybe you are migrating workloads to new hardware. Or maybe you are working in an air-gapped environment with no registry access. Podman's export and import commands handle all of these scenarios.
+There are times when you need to move a container's filesystem from one machine to another without going through a registry. Maybe you are debugging an issue and want to capture the exact filesystem state of a production container. Maybe you are migrating workloads to new hardware. Or maybe you are working in an air-gapped environment with no registry access. Podman's export and import commands handle all of these scenarios.
 
 ---
 
@@ -168,7 +168,7 @@ podman run -d \
 
 ## Practical Use Case: Debugging a Production Container
 
-When a production container is misbehaving, you can capture its exact state for debugging on a development machine:
+When a production container is misbehaving, you can capture its exact filesystem state for debugging on a development machine:
 
 ```bash
 # On production
@@ -207,13 +207,14 @@ fi
 
 echo "Migrating container '$CONTAINER' to $REMOTE_HOST"
 
-# Get the container's CMD
-CMD=$(podman inspect "$CONTAINER" --format '{{join .Config.Cmd " "}}')
+# Get the container's CMD as a JSON array so argument boundaries are preserved
+CMD_JSON=$(podman inspect "$CONTAINER" --format '{{json .Config.Cmd}}')
+CMD_CHANGE=$(printf 'CMD %s' "$CMD_JSON" | base64 | tr -d '\n')
 
 # Stream export directly to remote host and import
 podman export "$CONTAINER" | \
     ssh "$REMOTE_USER@$REMOTE_HOST" \
-    "podman import --change 'CMD $CMD' - ${CONTAINER}:migrated"
+    "podman import --change \"\$(printf '%s' '$CMD_CHANGE' | base64 -d)\" - '${CONTAINER}:migrated'"
 
 if [ $? -eq 0 ]; then
     echo "Migration successful. Image '${CONTAINER}:migrated' created on $REMOTE_HOST"
