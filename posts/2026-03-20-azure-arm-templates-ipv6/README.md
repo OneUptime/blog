@@ -125,6 +125,17 @@ output ipv6Address string = nic.properties.ipConfigurations[1].properties.privat
         {
             "type": "Microsoft.Network/publicIPAddresses",
             "apiVersion": "2022-07-01",
+            "name": "pip-lb-ipv4",
+            "location": "[resourceGroup().location]",
+            "sku": { "name": "Standard" },
+            "properties": {
+                "publicIPAllocationMethod": "Static",
+                "publicIPAddressVersion": "IPv4"
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2022-07-01",
             "name": "pip-lb-ipv6",
             "location": "[resourceGroup().location]",
             "sku": { "name": "Standard" },
@@ -139,7 +150,10 @@ output ipv6Address string = nic.properties.ipConfigurations[1].properties.privat
             "name": "lb-dualstack",
             "location": "[resourceGroup().location]",
             "sku": { "name": "Standard" },
-            "dependsOn": ["[resourceId('Microsoft.Network/publicIPAddresses', 'pip-lb-ipv6')]"],
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', 'pip-lb-ipv4')]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', 'pip-lb-ipv6')]"
+            ],
             "properties": {
                 "frontendIPConfigurations": [
                     {
@@ -160,6 +174,15 @@ output ipv6Address string = nic.properties.ipConfigurations[1].properties.privat
                     }
                 ],
                 "backendAddressPools": [{ "name": "backend-pool" }],
+                "probes": [
+                    {
+                        "name": "tcp-probe-ipv6",
+                        "properties": {
+                            "protocol": "Tcp",
+                            "port": 80
+                        }
+                    }
+                ],
                 "loadBalancingRules": [
                     {
                         "name": "rule-http-ipv6",
@@ -169,6 +192,9 @@ output ipv6Address string = nic.properties.ipConfigurations[1].properties.privat
                             },
                             "backendAddressPool": {
                                 "id": "[concat(resourceId('Microsoft.Network/loadBalancers', 'lb-dualstack'), '/backendAddressPools/backend-pool')]"
+                            },
+                            "probe": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', 'lb-dualstack'), '/probes/tcp-probe-ipv6')]"
                             },
                             "protocol": "Tcp",
                             "frontendPort": 80,
@@ -205,4 +231,4 @@ az deployment group validate \
 
 ## Conclusion
 
-ARM templates and Bicep support all Azure IPv6 resources through the same property names as the REST API. Key properties: `addressPrefixes` arrays include IPv6 CIDRs alongside IPv4, `publicIPAddressVersion: 'IPv6'` for IPv6 public IPs, and `privateIPAddressVersion: 'IPv6'` for NIC IP configurations. Use Bicep for cleaner syntax compared to raw JSON ARM templates. Templates enable repeatable dual-stack deployments across environments, ensuring consistent IPv6 configuration in development, staging, and production.
+ARM templates and Bicep support Azure IPv6-enabled networking resources through the same property names as the REST API. Key properties: `addressPrefixes` arrays include IPv6 CIDRs alongside IPv4, `publicIPAddressVersion: 'IPv6'` for IPv6 public IPs, and `privateIPAddressVersion: 'IPv6'` for NIC IP configurations. Use Bicep for cleaner syntax compared to raw JSON ARM templates. Templates enable repeatable dual-stack deployments across environments, ensuring consistent IPv6 configuration in development, staging, and production.
