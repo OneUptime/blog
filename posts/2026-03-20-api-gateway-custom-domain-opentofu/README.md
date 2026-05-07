@@ -125,8 +125,8 @@ resource "aws_route53_record" "api" {
 ## Step 5: HTTP API Custom Domain
 
 ```hcl
-# For HTTP API (v2), use apigatewayv2 resources
-resource "aws_apigatewayv2_domain_name" "main" {
+# For HTTP API (v2), use apigatewayv2 resources instead of the REST API resources above
+resource "aws_apigatewayv2_domain_name" "http_api" {
   domain_name = "api.${var.domain_name}"
 
   domain_name_configuration {
@@ -136,11 +136,23 @@ resource "aws_apigatewayv2_domain_name" "main" {
   }
 }
 
-resource "aws_apigatewayv2_api_mapping" "main" {
-  api_id      = var.http_api_id
-  domain_name = aws_apigatewayv2_domain_name.main.id
-  stage       = "prod"
+resource "aws_apigatewayv2_api_mapping" "http_api" {
+  api_id          = var.http_api_id
+  domain_name     = aws_apigatewayv2_domain_name.http_api.id
+  stage           = "prod"
   api_mapping_key = "v2"  # Results in api.example.com/v2
+}
+
+resource "aws_route53_record" "api_http" {
+  zone_id = var.route53_zone_id
+  name    = "api.${var.domain_name}"
+  type    = "A"
+
+  alias {
+    name                   = aws_apigatewayv2_domain_name.http_api.domain_name_configuration[0].target_domain_name
+    zone_id                = aws_apigatewayv2_domain_name.http_api.domain_name_configuration[0].hosted_zone_id
+    evaluate_target_health = false
+  }
 }
 ```
 
