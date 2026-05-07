@@ -67,8 +67,9 @@ db.todos.createIndex({ priority: 1 });
 
 ## Building the Express API
 
+`api/package.json`:
+
 ```json
-// api/package.json
 {
   "name": "mern-api",
   "version": "1.0.0",
@@ -229,7 +230,7 @@ API Containerfile:
 ```dockerfile
 # Containerfile.api
 
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 
 WORKDIR /app
 
@@ -250,32 +251,84 @@ CMD ["npx", "nodemon", "--watch", ".", "server.js"]
 
 Create a React application with API integration:
 
+`frontend/package.json`:
+
 ```json
-// frontend/package.json
 {
   "name": "mern-frontend",
   "version": "1.0.0",
   "private": true,
-  "proxy": "http://localhost:3001",
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "vite": "^8.0.0"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test"
-  },
-  "browserslist": {
-    "production": [">0.2%", "not dead", "not op_mini all"],
-    "development": ["last 1 chrome version", "last 1 firefox version"]
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   }
 }
 ```
 
+`frontend/vite.config.js`:
+
+```javascript
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: '0.0.0.0',
+    port: 3000,
+    proxy: {
+      '/api': 'http://localhost:3001'
+    },
+    watch: {
+      usePolling: true
+    }
+  }
+});
+```
+
+`frontend/index.html`:
+
+```html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MERN Todo App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+```
+
+`frontend/src/main.jsx`:
+
 ```jsx
-// frontend/src/App.js
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './App.jsx';
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);
+```
+
+```jsx
+// frontend/src/App.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 
 const API_BASE = '/api';
@@ -443,7 +496,7 @@ Frontend Containerfile:
 
 ```dockerfile
 # Containerfile.fe
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 
 WORKDIR /app
 
@@ -455,9 +508,6 @@ RUN npm install
 COPY frontend/ .
 
 EXPOSE 3000
-
-# Set the watchOptions for polling (needed in containers)
-ENV WATCHPACK_POLLING=true
 
 # Start the React development server
 CMD ["npm", "start"]
@@ -493,6 +543,7 @@ podman run -d \
   --pod mern-stack \
   --name mern-api \
   -v ./api:/app:Z \
+  -v mern-api-node-modules:/app/node_modules:copy \
   -e MONGO_URI="mongodb://admin:adminpass@localhost:27017/mernapp?authSource=admin" \
   mern-api
 
@@ -512,22 +563,22 @@ For production, you can build the React app and serve it from Express:
 ```dockerfile
 # Containerfile.prod
 # Stage 1: Build the React frontend
-FROM node:20-bookworm-slim AS frontend-build
+FROM node:24-bookworm-slim AS frontend-build
 WORKDIR /app
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm install
 COPY frontend/ .
 RUN npm run build
 
 # Stage 2: Build the production API server
-FROM node:20-bookworm-slim
+FROM node:24-bookworm-slim
 WORKDIR /app
 COPY api/package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 COPY api/ .
 
 # Copy the built React files into a public directory
-COPY --from=frontend-build /app/build ./public
+COPY --from=frontend-build /app/dist ./public
 
 # Add static file serving to Express
 # (In production, add: app.use(express.static('public')) to server.js)
@@ -575,6 +626,7 @@ case "${1:-help}" in
     podman build -t mern-api -f Containerfile.api . -q
     podman run -d --pod mern-stack --name mern-api \
       -v ./api:/app:Z \
+      -v mern-api-node-modules:/app/node_modules:copy \
       -e MONGO_URI="mongodb://admin:adminpass@localhost:27017/mernapp?authSource=admin" \
       mern-api
     podman build -t mern-frontend -f Containerfile.fe . -q
