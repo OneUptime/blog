@@ -124,7 +124,7 @@ echo "All configuration artifacts pushed"
 
 ## Consuming Configuration in Deployments
 
-On the target machine or in a CI/CD pipeline, pull the configuration artifact.
+On the target machine or in a CI/CD pipeline, pull the configuration artifact into the local artifact store and extract it for the deployment.
 
 ```bash
 #!/bin/bash
@@ -133,14 +133,20 @@ On the target machine or in a CI/CD pipeline, pull the configuration artifact.
 ENVIRONMENT="${DEPLOY_ENV:-staging}"
 CONFIG_VERSION="${CONFIG_VERSION:-v1.0}"
 REGISTRY="registry.example.com"
+ARTIFACT="${REGISTRY}/myorg/myservice-config:${ENVIRONMENT}-${CONFIG_VERSION}"
+TARGET_DIR="./config/${ENVIRONMENT}"
 
 # Pull the configuration artifact
 echo "Pulling configuration for ${ENVIRONMENT}..."
-podman artifact pull "${REGISTRY}/myorg/myservice-config:${ENVIRONMENT}-${CONFIG_VERSION}"
+podman artifact pull "${ARTIFACT}"
 
 # Inspect to verify the config was pulled correctly
-podman artifact inspect "${REGISTRY}/myorg/myservice-config:${ENVIRONMENT}-${CONFIG_VERSION}" | \
-    jq -r '.layers[].annotations["org.opencontainers.image.title"]'
+podman artifact inspect "${ARTIFACT}" | \
+    jq -r '.Manifest.layers[].annotations["org.opencontainers.image.title"]'
+
+# Extract the configuration files for the deployment
+mkdir -p "${TARGET_DIR}"
+podman artifact extract "${ARTIFACT}" "${TARGET_DIR}"
 ```
 
 ## Versioning Configuration
@@ -156,7 +162,7 @@ sed -i 's/pool_size: 50/pool_size: 75/' app-config-production.yaml
 podman artifact add registry.example.com/myorg/myservice-config:v1.1 app-config-production.yaml
 
 # Always update the latest tag
-podman artifact add registry.example.com/myorg/myservice-config:latest app-config-production.yaml
+podman artifact add --replace registry.example.com/myorg/myservice-config:latest app-config-production.yaml
 
 # Push all versions
 podman artifact push registry.example.com/myorg/myservice-config:v1.0
@@ -166,33 +172,38 @@ podman artifact push registry.example.com/myorg/myservice-config:latest
 
 ## Automating Configuration Updates
 
-Build a script that checks for configuration updates and applies them.
+Build a script that pulls the latest configuration and applies it when the artifact digest changes.
 
 ```bash
 #!/bin/bash
-# Check for configuration updates and pull if newer version available
+# Pull the latest configuration and apply it if the artifact digest changed
 
 ARTIFACT="registry.example.com/myorg/myservice-config:latest"
 DIGEST_FILE="/var/run/config-digest"
+TARGET_DIR="/etc/myservice"
 
-# Get the current remote digest
-REMOTE_DIGEST=$(podman artifact inspect "$ARTIFACT" 2>/dev/null | jq -r '.layers[0].digest')
+# Pull the latest artifact into the local store
+podman artifact pull "$ARTIFACT"
+
+# Read the current artifact digest from the local store
+CURRENT_DIGEST=$(podman artifact inspect "$ARTIFACT" --format '{{.Digest}}')
 
 # Compare with the last known digest
 if [ -f "$DIGEST_FILE" ]; then
-    LOCAL_DIGEST=$(cat "$DIGEST_FILE")
-    if [ "$REMOTE_DIGEST" = "$LOCAL_DIGEST" ]; then
+    PREVIOUS_DIGEST=$(cat "$DIGEST_FILE")
+    if [ "$CURRENT_DIGEST" = "$PREVIOUS_DIGEST" ]; then
         echo "Configuration is up to date"
         exit 0
     fi
 fi
 
-# Pull the updated configuration
-echo "New configuration detected, pulling..."
-podman artifact pull "$ARTIFACT"
+# Extract the updated configuration
+echo "New configuration detected, extracting..."
+mkdir -p "$TARGET_DIR"
+podman artifact extract "$ARTIFACT" "$TARGET_DIR"
 
 # Save the new digest
-echo "$REMOTE_DIGEST" > "$DIGEST_FILE"
+echo "$CURRENT_DIGEST" > "$DIGEST_FILE"
 echo "Configuration updated successfully"
 ```
 
