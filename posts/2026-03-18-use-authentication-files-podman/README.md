@@ -10,7 +10,7 @@ Description: A detailed guide to understanding and managing authentication files
 
 > Authentication files store your registry credentials and are the key to seamless pulls and pushes in Podman.
 
-Podman uses JSON-formatted authentication files to store registry credentials. These files are created when you run `podman login` and are referenced automatically during pull and push operations. Understanding how these files work gives you fine-grained control over credential management, especially in CI/CD and multi-registry environments.
+Podman uses JSON-formatted authentication files to store or reference registry credentials. These files are created when you run `podman login` and are referenced automatically during pull and push operations. Understanding how these files work gives you fine-grained control over credential management, especially in CI/CD and multi-registry environments.
 
 ---
 
@@ -19,24 +19,22 @@ Podman uses JSON-formatted authentication files to store registry credentials. T
 Podman looks for authentication files in several locations.
 
 ```bash
-# Rootless Podman (most common)
-
-# Default: ${XDG_RUNTIME_DIR}/containers/auth.json
+# Linux default: ${XDG_RUNTIME_DIR}/containers/auth.json
 echo "Default auth file: ${XDG_RUNTIME_DIR}/containers/auth.json"
 
-# Rootful Podman (running as root)
-# Default: /run/containers/0/auth.json
+# Persistent per-user location that Podman can also read
+ls -la ~/.config/containers/auth.json 2>/dev/null
 
 # Docker-compatible location (also checked by Podman)
 ls -la ~/.docker/config.json 2>/dev/null
 
-# Check which file Podman is using
-podman info --format '{{.Store}}'
+# Show which file is used during login
+podman login --verbose docker.io
 ```
 
 ## Auth File Structure
 
-The auth file is a JSON document containing base64-encoded credentials.
+The auth file is a JSON document that commonly contains base64-encoded credentials.
 
 ```bash
 # View the structure of an existing auth file
@@ -162,6 +160,8 @@ EOF
 # Secure the file
 chmod 600 "$AUTH_FILE"
 
+export REGISTRY_AUTH_FILE="$AUTH_FILE"
+
 echo "Auth file created at: $AUTH_FILE"
 ```
 
@@ -215,4 +215,4 @@ echo "*.auth" >> .gitignore
 
 ## Summary
 
-Authentication files in Podman are JSON documents that store base64-encoded registry credentials. They are created automatically by `podman login` and can also be created manually or shared from Docker. You can use custom auth files per operation with the `--authfile` flag, which is useful for CI/CD pipelines and multi-project environments. Always set restrictive file permissions and never commit auth files to version control.
+Authentication files in Podman are JSON documents that store base64-encoded registry credentials or reference credential helpers. They are created automatically by `podman login` and can also be created manually or shared from Docker. You can use custom auth files per operation with the `--authfile` flag, which is useful for CI/CD pipelines and multi-project environments. Always set restrictive file permissions and never commit auth files to version control.
