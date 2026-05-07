@@ -36,11 +36,26 @@ resource "aws_iam_role_policy" "step_functions" {
       {
         Effect   = "Allow"
         Action   = ["lambda:InvokeFunction"]
-        Resource = [aws_lambda_function.process.arn, aws_lambda_function.notify.arn]
+        Resource = [
+          aws_lambda_function.validate.arn,
+          aws_lambda_function.payment.arn,
+          aws_lambda_function.notify.arn
+        ]
       },
       {
         Effect   = "Allow"
-        Action   = ["logs:CreateLogDelivery", "logs:PutLogEvents", "logs:DescribeLogGroups"]
+        Action   = [
+          "logs:CreateLogDelivery",
+          "logs:CreateLogStream",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutLogEvents",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+          "logs:DescribeLogGroups"
+        ]
         Resource = "*"
       }
     ]
@@ -119,6 +134,33 @@ resource "aws_cloudwatch_event_rule" "start_workflow" {
   event_pattern = jsonencode({
     source      = ["myapp.orders"]
     detail-type = ["OrderCreated"]
+  })
+}
+
+resource "aws_iam_role" "eventbridge_sfn" {
+  name = "${var.name}-eventbridge-sfn-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "events.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "eventbridge_sfn" {
+  name = "${var.name}-eventbridge-sfn-policy"
+  role = aws_iam_role.eventbridge_sfn.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["states:StartExecution"]
+      Resource = aws_sfn_state_machine.order_processing.arn
+    }]
   })
 }
 
