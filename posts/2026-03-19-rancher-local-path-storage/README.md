@@ -16,12 +16,12 @@ Local Path Provisioner enables dynamic provisioning of local storage on Kubernet
 
 ## Understanding Local Path Storage
 
-Local Path Provisioner creates hostPath-based persistent volumes on the node where the pod is scheduled. Key characteristics:
+Local Path Provisioner can create `hostPath`- or `local`-based persistent volumes on the node where the pod is scheduled, depending on configuration. Key characteristics:
 
 - Storage is tied to a specific node
 - Data does not survive node failure
-- Provides the best performance since there is no network overhead
-- Supports ReadWriteOnce access mode only
+- Can provide good performance since there is no network storage hop
+- Node-local configurations are typically used with `ReadWriteOnce`; `sharedFileSystemPath` can also support `ReadOnlyMany` and `ReadWriteMany`
 
 ## Step 1: Check for Existing Local Path Provisioner
 
@@ -39,7 +39,7 @@ If you see a `local-path` StorageClass, it is already available.
 For clusters without it, install using kubectl:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.26/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
 ```
 
 Verify the installation:
@@ -52,21 +52,23 @@ kubectl get storageclass local-path
 ## Step 3: Install via Helm
 
 ```bash
-helm repo add local-path-provisioner https://github.com/rancher/local-path-provisioner/releases
-helm repo update
+git clone https://github.com/rancher/local-path-provisioner.git
+cd local-path-provisioner
 
-helm install local-path-provisioner local-path-provisioner/local-path-provisioner \
+helm install local-path-storage \
   --namespace local-path-storage \
   --create-namespace \
+  ./deploy/chart/local-path-provisioner/ \
   --set storageClass.defaultClass=true
 ```
 
 ## Step 4: Configure the Storage Path
 
-By default, volumes are created under `/opt/local-path-provisioner`. Customize this by editing the ConfigMap:
+When installed from the upstream manifest or chart, volumes are created under `/opt/local-path-provisioner` by default. K3s uses the path configured by `--default-local-storage-path`. Customize this by editing the ConfigMap:
 
 ```bash
 kubectl edit configmap local-path-config -n local-path-storage
+# On K3s, use `-n kube-system`
 ```
 
 Modify the config:
@@ -192,6 +194,7 @@ spec:
 ```
 
 Each StatefulSet replica gets its own local volume on its scheduled node.
+Create a headless Service named `cache` before applying the StatefulSet, because `serviceName` must reference an existing Service.
 
 ## Step 8: Configure Reclaim Policy
 
@@ -209,7 +212,7 @@ volumeBindingMode: WaitForFirstConsumer
 
 ## Step 9: Set Up Node Affinity
 
-Since local storage is node-specific, use node affinity to ensure pods are scheduled on the correct node:
+If you want a new local volume to be created on a specific node, apply node affinity to the first pod that consumes an unbound PVC:
 
 ```yaml
 apiVersion: apps/v1
@@ -245,8 +248,10 @@ spec:
       volumes:
       - name: data
         persistentVolumeClaim:
-          claimName: local-pvc
+          claimName: local-pvc-pinned
 ```
+
+Create `local-pvc-pinned` first. Reusing an already-bound PVC can make the pod unschedulable if its volume was created on a different node.
 
 ## Step 10: Monitor Local Path Storage
 
@@ -260,9 +265,11 @@ kubectl get pvc --all-namespaces -o custom-columns='NAME:.metadata.name,CLASS:.s
 
 # Check provisioner logs
 kubectl logs -n local-path-storage -l app=local-path-provisioner
+# On K3s, use `-n kube-system`
 
 # Check disk usage on a node (SSH to the node)
 df -h /opt/local-path-provisioner
+# On K3s, check the path configured by `--default-local-storage-path`
 
 # Check which node a PV is on
 kubectl get pv -o custom-columns='NAME:.metadata.name,NODE:.spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[0].values[0]'
