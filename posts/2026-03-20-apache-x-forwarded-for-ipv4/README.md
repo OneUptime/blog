@@ -8,7 +8,7 @@ Description: Configure Apache to correctly parse and trust X-Forwarded-For heade
 
 ## Introduction
 
-When Apache sits behind a reverse proxy (Nginx, AWS ALB, Cloudflare), the client IP in `REMOTE_ADDR` is the proxy's IP. The `X-Forwarded-For` header contains the real client IPv4. Apache's `mod_remoteip` extracts the real client IP from this header, enabling accurate logging and access control.
+When Apache sits behind a reverse proxy (Nginx, AWS ALB, Cloudflare), the client IP in `REMOTE_ADDR` is the proxy's IP. The `X-Forwarded-For` header typically contains the client IPv4 and may include a comma-separated list of proxy IPv4 addresses. Apache's `mod_remoteip` extracts the client IP from this header, enabling accurate logging and access control.
 
 ## Enabling mod_remoteip
 
@@ -18,8 +18,8 @@ When Apache sits behind a reverse proxy (Nginx, AWS ALB, Cloudflare), the client
 sudo a2enmod remoteip
 sudo systemctl reload apache2
 
-# On RHEL/CentOS - mod_remoteip is usually included in the base install
-# Add to /etc/httpd/conf.modules.d/00-base.conf:
+# On RHEL/CentOS, the module is typically packaged with httpd.
+# If it is not already loaded, add a file under /etc/httpd/conf.modules.d/ with:
 # LoadModule remoteip_module modules/mod_remoteip.so
 ```
 
@@ -31,22 +31,22 @@ Add to your virtual host or `apache2.conf`:
 # /etc/apache2/conf-available/remoteip.conf
 
 <IfModule mod_remoteip.c>
-    # The header containing the real client IP
+    # The header containing the client IP chain
     RemoteIPHeader X-Forwarded-For
     
-    # Trust only these proxy IPs to set the X-Forwarded-For header
-    # Only accept the header from known, trusted proxies
-    RemoteIPTrustedProxy 10.0.0.0/8
-    RemoteIPTrustedProxy 172.16.0.0/12
-    RemoteIPTrustedProxy 192.168.0.0/16
+    # Trust only your actual internal proxy subnets
+    # Replace these example private ranges with the exact proxy networks you control
+    RemoteIPInternalProxy 10.0.0.0/8
+    RemoteIPInternalProxy 172.16.0.0/12
+    RemoteIPInternalProxy 192.168.0.0/16
     
-    # For AWS ALB: trust the ALB subnet
-    RemoteIPTrustedProxy 10.0.2.0/24
+    # For AWS ALB on a private subnet: trust the ALB subnet
+    RemoteIPInternalProxy 10.0.2.0/24
     
-    # For Cloudflare: trust Cloudflare's IP ranges
+    # For Cloudflare: trust Cloudflare's public proxy IP ranges
     # RemoteIPTrustedProxy 103.21.244.0/22
     # RemoteIPTrustedProxy 103.22.200.0/22
-    # (add all Cloudflare ranges from cloudflare.com/ips-v4)
+    # (add all Cloudflare ranges from https://www.cloudflare.com/ips-v4)
 </IfModule>
 ```
 
@@ -59,7 +59,7 @@ sudo systemctl reload apache2
 
 ## Using RemoteIPProxyProtocol (HAProxy/Nginx)
 
-If your proxy uses the PROXY protocol instead of X-Forwarded-For:
+If your proxy uses the PROXY protocol instead of `X-Forwarded-For` (Apache HTTP Server 2.4.31+):
 
 ```apache
 <VirtualHost *:80>
@@ -71,24 +71,21 @@ If your proxy uses the PROXY protocol instead of X-Forwarded-For:
 
 ## Updating the Access Log Format
 
-After enabling `mod_remoteip`, update the `LogFormat` to use `%a` (the remote IP after proxy extraction):
+After enabling `mod_remoteip`, update the `LogFormat` to use `%a` (the client IP after proxy extraction):
 
 ```apache
 # /etc/apache2/apache2.conf
 
-# Default combined format uses %h (hostname before remoteip processing)
-# Change to %a to log the real client IP
-LogFormat "%a %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined
-
-# Note: %h performs DNS lookup, %a is the raw IP (faster)
-# The combined format already uses %h; to show real client IP, use:
-LogFormat "%{X-Forwarded-For}i %l %u %t \"%r\" %>s %O" xforwardedfor
+# The default combined format uses %h, which can log a hostname
+# Use %a to always log the client IP after mod_remoteip processing
+LogFormat "%a %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
 ```
 
 Or create a custom log format:
 
 ```apache
-LogFormat "%a %{X-Forwarded-For}i %l %u %t \"%r\" %>s %b" combined_proxy
+# Log the rewritten client IP plus the trusted proxy chain processed by mod_remoteip
+LogFormat "%a %{remoteip-proxy-ip-list}n %l %u %t \"%r\" %>s %b" combined_proxy
 CustomLog /var/log/apache2/access.log combined_proxy
 ```
 
@@ -101,8 +98,7 @@ With `mod_remoteip` active, Apache's `Require ip` directive uses the extracted r
     <RequireAll>
         Require method GET POST
         # These CIDR ranges now refer to real client IPs (not proxy IPs)
-        Require ip 203.0.113.0/24
-        Require ip 10.100.0.0/16
+        Require ip 203.0.113.0/24 10.100.0.0/16
     </RequireAll>
 </Location>
 ```
@@ -112,8 +108,8 @@ With `mod_remoteip` active, Apache's `Require ip` directive uses the extracted r
 Test that the real IP is being extracted:
 
 ```apache
-# Add a CGI handler or use mod_status to verify
-<Location /test-ip>
+# Use mod_status to inspect the rewritten client address locally
+<Location /server-status>
     SetHandler server-status
     Require local
 </Location>
@@ -130,12 +126,12 @@ echo "X-Forwarded-For: " . ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? 'not present') .
 echo "REMOTE_HOST: " . ($_SERVER['REMOTE_HOST'] ?? 'not present') . "\n";
 ```
 
-Send a test request from behind the proxy and verify `REMOTE_ADDR` shows the client IP, not the proxy IP.
+Send a test request through the proxy and verify `REMOTE_ADDR` in the PHP output shows the client IP, not the proxy IP.
 
 ## Security Consideration
 
-Never trust `X-Forwarded-For` from unknown sources. A malicious client can set this header to spoof IP addresses. The `RemoteIPTrustedProxy` directive limits trust to only the specified proxy addresses - only their `X-Forwarded-For` values are processed.
+Never trust `X-Forwarded-For` from unknown sources. A malicious client can set this header to spoof IP addresses. The `RemoteIPInternalProxy` and `RemoteIPTrustedProxy` directives limit trust to only the specified proxy addresses - only their `X-Forwarded-For` values are processed.
 
 ## Conclusion
 
-`mod_remoteip` is the modern, built-in Apache solution for real client IP extraction. Configure it with a strict `RemoteIPTrustedProxy` list, update your log format to use `%a`, and verify access control rules use real client IPs rather than proxy IPs.
+`mod_remoteip` is the modern, built-in Apache solution for real client IP extraction. Configure it with a strict proxy trust list using `RemoteIPInternalProxy` or `RemoteIPTrustedProxy` as appropriate, update your log format to use `%a`, and verify access control rules use real client IPs rather than proxy IPs.
