@@ -4,57 +4,53 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Kubernetes, Environment, kubeconfig, DevOps
 
-Description: Connect a Kubernetes cluster to Portainer using the agent or kubeconfig for container orchestration management.
+Description: Connect a Kubernetes cluster to Portainer using the Agent, Edge Agent, or kubeconfig import for container orchestration management.
 
 ---
 
-Adding environments to Portainer allows centralized management of containers across different infrastructure types. Each environment type has specific connection requirements.
+When connecting a Kubernetes environment to Portainer, you can install the Portainer Agent on the cluster, deploy the Portainer Edge Agent, or import an existing cluster from a kubeconfig file. The Agent and kubeconfig import paths are legacy options, and Portainer recommends the Edge Agent for most new deployments.
 
 ## Prerequisites
 
 - Portainer running and accessible
-- Target environment accessible from the Portainer server
-- Appropriate credentials or connection details
+- A working and up to date Kubernetes cluster
+- If using the Portainer Agent: `kubectl` access and cluster-admin rights on the cluster
+- If importing kubeconfig: a self-contained kubeconfig file with `current-context`; kubeconfig import requires Portainer Business Edition and a load balancer-enabled cluster
 
 ## Adding the Environment via the UI
 
 1. Log in to Portainer as an administrator
 2. Navigate to **Environments** in the left sidebar
 3. Click **Add environment**
-4. Select the appropriate environment type
-5. Fill in the connection details
-6. Click **Connect**
+4. Select **Kubernetes** and click **Start Wizard**
+5. Choose the connection method that matches your setup:
+   - **Edge Agent Standard** or **Edge Agent Async** for new deployments
+   - **Agent** to install the Portainer Agent on the cluster
+   - **Import** to upload a kubeconfig file in Portainer Business Edition
+6. Fill in the connection details and click **Connect**
 
-## Adding via API
+## Using the API
 
 ```bash
 TOKEN=$(curl -s -X POST \
   https://localhost:9443/api/auth \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"yourpassword"}' \
+  -d '{"Username":"admin","Password":"yourpassword"}' \
   --insecure | python3 -c "import sys,json; print(json.load(sys.stdin)['jwt'])")
 
-# Add environment via API
+# Portainer's documented create-environment API examples cover Docker environments.
+# For Kubernetes environments, use the UI workflow above, then verify the new
+# environment via the API.
 
-curl -X POST \
-  https://localhost:9443/api/endpoints \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "Name": "my-environment",
-    "EndpointCreationType": 1,
-    "URL": "unix:///var/run/docker.sock"
-  }' \
-  --insecure
-
-# List all environments
+# List Kubernetes environments
 curl -s https://localhost:9443/api/endpoints \
   -H "Authorization: Bearer $TOKEN" \
   --insecure | python3 -c "
 import sys, json
 envs = json.load(sys.stdin)
 for e in envs:
-    print(f'  ID: {e[\"Id\"]}, Name: {e[\"Name\"]}, Type: {e.get(\"Type\",\"?\")}')
+    if e.get('Type') in (5, 6, 7):
+        print(f'  ID: {e[\"Id\"]}, Name: {e[\"Name\"]}, Type: {e[\"Type\"]}, Status: {e.get(\"Status\", \"?\")}')
 "
 ```
 
@@ -62,27 +58,27 @@ for e in envs:
 
 | Type | Value | Description |
 |------|-------|-------------|
-| Docker standalone (socket) | 1 | Local Docker via socket |
-| Agent | 2 | Remote via Portainer Agent |
-| Azure ACI | 3 | Azure Container Instances |
-| Docker standalone (API) | 4 | Remote Docker via TCP |
-| Kubernetes | 7 | K8s via agent or kubeconfig |
+| Local Kubernetes | 5 | Local Kubernetes environment |
+| Agent on Kubernetes | 6 | Portainer Agent deployed on a Kubernetes cluster |
+| Edge Agent on Kubernetes | 7 | Portainer Edge Agent deployed on a Kubernetes cluster |
 
 ## Verify the Connection
 
 After adding the environment, verify it shows as healthy:
 
 ```bash
-# Check environment status
+# Check Kubernetes environment status
 curl -s https://localhost:9443/api/endpoints \
   -H "Authorization: Bearer $TOKEN" \
   --insecure | python3 -c "
 import sys, json
+status_map = {1: 'Up', 2: 'Down', 3: 'Provisioning', 4: 'Error'}
+type_map = {5: 'Local Kubernetes', 6: 'Agent on Kubernetes', 7: 'Edge Agent on Kubernetes'}
 envs = json.load(sys.stdin)
 for e in envs:
-    status = e.get('Status', 0)
-    status_str = 'Online' if status == 1 else 'Offline'
-    print(f'{e[\"Name\"]}: {status_str}')
+    etype = e.get('Type')
+    if etype in type_map:
+        print(f'{e[\"Name\"]}: {type_map[etype]} - {status_map.get(e.get(\"Status\"), \"Unknown\")}')
 "
 ```
 
