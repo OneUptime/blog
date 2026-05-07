@@ -109,9 +109,6 @@ kind: Service
 metadata:
   name: web-app-lb
   namespace: default
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: nlb
-    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
 spec:
   selector:
     app: web-app
@@ -121,9 +118,11 @@ spec:
   type: LoadBalancer
 ```
 
+Provider-specific annotations or `loadBalancerClass` settings depend on your cloud or load balancer implementation.
+
 ## Step 5: Configure Ingress-Based Load Balancing
 
-For Layer 7 load balancing with path-based routing:
+For Layer 7 load balancing with path-based routing, make sure your cluster has an ingress controller installed:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -131,9 +130,6 @@ kind: Ingress
 metadata:
   name: web-app-ingress
   namespace: default
-  annotations:
-    nginx.ingress.kubernetes.io/load-balance: "round_robin"
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
 spec:
   ingressClassName: nginx
   rules:
@@ -149,9 +145,11 @@ spec:
               number: 80
 ```
 
+The `ingressClassName` must match an `IngressClass` available in your cluster.
+
 ## Step 6: Configure Load Balancing via the Rancher UI
 
-1. Navigate to your cluster in the Rancher dashboard.
+1. In the Rancher dashboard, go to **Cluster Management**, select your cluster, and click **Explore**.
 2. Go to **Service Discovery** > **Services**.
 3. Click **Create**.
 4. Select the service type (ClusterIP, NodePort, or LoadBalancer).
@@ -186,13 +184,13 @@ spec:
         - containerPort: 80
         readinessProbe:
           httpGet:
-            path: /healthz
+            path: /
             port: 80
           initialDelaySeconds: 5
           periodSeconds: 10
         livenessProbe:
           httpGet:
-            path: /healthz
+            path: /
             port: 80
           initialDelaySeconds: 15
           periodSeconds: 20
@@ -232,22 +230,22 @@ spec:
 
 ## Step 9: Monitor Load Balancing
 
-Check the distribution of traffic across pods:
+Check the service backends and configuration:
 
 ```bash
-kubectl get endpoints web-app-clusterip -n default
+kubectl get endpointslices -l kubernetes.io/service-name=web-app-clusterip -n default
 kubectl describe svc web-app-clusterip -n default
 ```
 
 View the pod distribution:
 
 ```bash
-kubectl get pods -l app=web-app -o wide
+kubectl get pods -l app=web-app -o wide -n default
 ```
 
 ## Step 10: Configure Horizontal Pod Autoscaling
 
-Scale pods automatically based on load:
+Scale pods automatically based on load. This requires the resource metrics API, typically provided by Metrics Server:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -277,12 +275,12 @@ kubectl apply -f hpa.yaml
 
 ## Troubleshooting
 
-- Check service endpoints: `kubectl get endpoints <service-name>`
-- Verify pod readiness: `kubectl get pods -l app=web-app`
-- Test internal load balancing: `kubectl run test --image=busybox --rm -it -- wget -qO- http://web-app-clusterip`
-- Check external LB status: `kubectl describe svc web-app-lb`
-- Review load balancer events: `kubectl get events --field-selector involvedObject.name=web-app-lb`
+- Check service endpoints: `kubectl get endpointslices -l kubernetes.io/service-name=<service-name> -n <namespace>`
+- Verify pod readiness: `kubectl get pods -l app=web-app -n default`
+- Test internal load balancing: `kubectl run test -n default --image=busybox --restart=Never --rm -it -- wget -qO- http://web-app-clusterip`
+- Check external LB status: `kubectl describe svc web-app-lb -n default`
+- Review load balancer events: `kubectl get events -n default --field-selector involvedObject.name=web-app-lb`
 
 ## Summary
 
-Rancher provides flexible load balancing options for Kubernetes workloads. Internal services use ClusterIP for automatic round-robin distribution, while external traffic can be managed through NodePort, LoadBalancer services, or Ingress controllers. Combined with health checks and autoscaling, you can build a resilient and scalable architecture for your applications.
+Rancher provides flexible load balancing options for Kubernetes workloads. Internal services use ClusterIP to distribute traffic across ready endpoints, while external traffic can be managed through NodePort, LoadBalancer services, or Ingress controllers. Combined with health checks and autoscaling, you can build a resilient and scalable architecture for your applications.
