@@ -47,9 +47,13 @@ resource "aws_vpc" "main" {
   }
 }
 
-# Output the assigned IPv6 CIDR for use in subnet configs
+# Output values for verification or reuse
 output "vpc_ipv6_cidr" {
   value = aws_vpc.main.ipv6_cidr_block
+}
+
+output "vpc_id" {
+  value = aws_vpc.main.id
 }
 ```
 
