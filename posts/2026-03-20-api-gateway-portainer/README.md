@@ -2,20 +2,18 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Portainer, Docker, API Gateway, Kong, Traefik, Microservice, Security
+Tags: Portainer, Docker, API Gateway, Kong, Microservice, Security
 
-Description: Deploy Kong or Traefik as a production-ready API gateway with rate limiting, authentication plugins, and analytics using Portainer.
+Description: Deploy Kong as a production-ready API gateway with rate limiting, authentication plugins, and monitoring using Portainer.
 
 ## Introduction
 
-An API gateway manages all incoming API traffic, enforcing security policies, rate limits, and routing rules in a single place. This guide covers deploying Kong Gateway - the most feature-rich open-source API gateway - alongside Portainer for management and visibility.
+An API gateway manages all incoming API traffic, enforcing security policies, rate limits, and routing rules in a single place. This guide covers deploying Kong Gateway alongside Portainer for management and visibility.
 
 ## Step 1: Deploy Kong Gateway with PostgreSQL
 
 ```yaml
 # docker-compose.yml - Kong API Gateway
-
-version: "3.8"
 
 networks:
   kong_net:
@@ -39,13 +37,14 @@ services:
     networks:
       - kong_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kong"]
+      test: ["CMD", "pg_isready", "-U", "kong", "-d", "kong"]
       interval: 10s
+      timeout: 5s
       retries: 5
 
   # Kong database migrations
   kong_migrations:
-    image: kong:3.6
+    image: kong:3.9.1
     command: kong migrations bootstrap
     environment:
       - KONG_DATABASE=postgres
@@ -62,17 +61,19 @@ services:
 
   # Kong gateway
   kong:
-    image: kong:3.6
+    image: kong:3.9.1
     container_name: kong
     restart: unless-stopped
     depends_on:
       kong_db:
         condition: service_healthy
+      kong_migrations:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"   # HTTP proxy
       - "8443:8443"   # HTTPS proxy
-      - "8001:8001"   # Admin API (restrict in production)
-      - "8444:8444"   # Admin API HTTPS
+      - "127.0.0.1:8001:8001"   # Admin API HTTP
+      - "127.0.0.1:8444:8444"   # Admin API HTTPS
     environment:
       - KONG_DATABASE=postgres
       - KONG_PG_HOST=kong_db
@@ -83,30 +84,9 @@ services:
       - KONG_ADMIN_ACCESS_LOG=/dev/stdout
       - KONG_PROXY_ERROR_LOG=/dev/stderr
       - KONG_ADMIN_ERROR_LOG=/dev/stderr
-      - KONG_ADMIN_LISTEN=0.0.0.0:8001
-      - KONG_ADMIN_GUI_URL=http://localhost:8002
+      - KONG_ADMIN_LISTEN=0.0.0.0:8001, 0.0.0.0:8444 ssl
     networks:
       - kong_net
-
-  # Konga - Kong Admin UI
-  konga:
-    image: pantsel/konga:latest
-    container_name: konga
-    restart: unless-stopped
-    ports:
-      - "1337:1337"
-    environment:
-      - NODE_ENV=production
-      - DB_ADAPTER=postgres
-      - DB_HOST=kong_db
-      - DB_PORT=5432
-      - DB_USER=kong
-      - DB_PASSWORD=kong_password
-      - DB_DATABASE=konga
-    networks:
-      - kong_net
-    depends_on:
-      - kong_db
 ```
 
 ## Step 2: Configure Kong Routes and Services
@@ -132,19 +112,27 @@ curl -X POST http://localhost:8001/services/user-service/routes \
 
 # Add another service
 curl -X POST http://localhost:8001/services \
-  -d "name=order-service" \
-  -d "url=http://order_service:8003"
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "order-service",
+    "url": "http://order_service:8003"
+  }'
 
 # Route for order service
 curl -X POST http://localhost:8001/services/order-service/routes \
-  -d "paths[]=/api/v1/orders" \
-  -d "strip_path=false"
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "order-route",
+    "paths": ["/api/v1/orders"],
+    "strip_path": false,
+    "protocols": ["http", "https"]
+  }'
 ```
 
 ## Step 3: Add Rate Limiting Plugin
 
 ```bash
-# Global rate limiting (applies to all routes)
+# Global rate limiting (applies to all routes on this Kong node)
 curl -X POST http://localhost:8001/plugins \
   -H "Content-Type: application/json" \
   -d '{
@@ -152,9 +140,7 @@ curl -X POST http://localhost:8001/plugins \
     "config": {
       "minute": 100,
       "hour": 1000,
-      "policy": "redis",
-      "redis_host": "redis",
-      "redis_port": 6379
+      "policy": "local"
     }
   }'
 
@@ -187,7 +173,7 @@ curl -X POST http://localhost:8001/consumers/my-application/jwt \
   -d "algorithm=HS256" \
   -d "secret=my-secret-key"
 
-# Get the key_id
+# Get the credential key
 curl http://localhost:8001/consumers/my-application/jwt | jq '.data[0].key'
 ```
 
@@ -196,15 +182,27 @@ curl http://localhost:8001/consumers/my-application/jwt | jq '.data[0].key'
 ```bash
 # Add headers to all requests
 curl -X POST http://localhost:8001/plugins \
-  -d "name=request-transformer" \
-  -d "config.add.headers=X-Gateway:Kong" \
-  -d "config.add.headers=X-Request-Time:$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "request-transformer",
+    "config": {
+      "add": {
+        "headers": ["X-Gateway:Kong"]
+      }
+    }
+  }'
 
 # Remove sensitive response headers
 curl -X POST http://localhost:8001/plugins \
-  -d "name=response-transformer" \
-  -d "config.remove.headers=Server" \
-  -d "config.remove.headers=X-Powered-By"
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "response-transformer",
+    "config": {
+      "remove": {
+        "headers": ["Server", "X-Powered-By"]
+      }
+    }
+  }'
 ```
 
 ## Step 6: Add Prometheus Monitoring
@@ -243,4 +241,4 @@ docker logs -f kong 2>&1 | grep "HTTP/1"
 
 ## Conclusion
 
-Kong Gateway provides enterprise-grade API management for your microservices. With Portainer managing the containers, you get both powerful API governance (rate limiting, authentication, transformation) and operational visibility. The Konga UI simplifies Kong administration, while Portainer handles container lifecycle management, log viewing, and health monitoring. For production deployments, consider Kong's declarative configuration (deck) to version-control your gateway configuration.
+Kong Gateway provides enterprise-grade API management for your microservices. With Portainer managing the containers, you get both powerful API governance (rate limiting, authentication, transformation) and operational visibility. Portainer handles container lifecycle management, log viewing, and health monitoring. For production deployments, consider Kong's declarative configuration (decK) to version-control your gateway configuration.
