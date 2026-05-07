@@ -18,26 +18,44 @@ Configure Apollo Server 4 to accept GraphQL requests from IPv6 clients with prop
 
 ## Configuration
 
-Each framework has specific ways to bind to IPv6 interfaces. The general pattern is to use `::` as the bind address, which is the IPv6 equivalent of `0.0.0.0`.
+Each framework has specific ways to bind to IPv6 interfaces. The general pattern is to use `::` as the bind address, which is the IPv6 unspecified address. On many platforms, binding to `::` also accepts IPv4 connections unless IPv6-only mode is enabled.
 
 ```bash
 # Verify IPv6 is available on your system
 
 ip -6 addr show
-ping6 -c 3 ::1
+ping -6 -c 3 ::1
 ```
 
 ## Step-by-Step Setup
 
 ### 1. Bind to IPv6 Interfaces
 
-Most servers accept `::` as the host to listen on all IPv6 interfaces:
+Most servers accept `::` as the host to listen on all IPv6 interfaces. Apollo Server 4 passes these settings through its `listen` option:
 
 ```javascript
-// Node.js example
-server.listen(4000, '::', () => {
-    console.log('Server listening on [::]:4000');
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
+
+const typeDefs = `#graphql
+  type Query {
+    hello: String!
+  }
+`;
+
+const resolvers = {
+    Query: {
+        hello: () => 'world',
+    },
+};
+
+const server = new ApolloServer({ typeDefs, resolvers });
+
+const { url } = await startStandaloneServer(server, {
+    listen: { host: '::', port: 4000, ipv6Only: false },
 });
+
+console.log(`Server ready at ${url}`);
 ```
 
 ```python
@@ -60,7 +78,7 @@ function getClientIP(req) {
 
 ### 3. Firewall Configuration
 
-Ensure your firewall allows incoming connections on the required port over IPv6:
+Ensure your firewall allows incoming connections on the required port over IPv6. If you use UFW, make sure IPv6 is enabled in `/etc/default/ufw`:
 
 ```bash
 # UFW
@@ -82,7 +100,7 @@ example.com.  300  IN  AAAA  2001:db8::1
 
 ```bash
 # Test over IPv6
-curl -6 http://[2001:db8::1]:4000/graphql   -H "Content-Type: application/json"   -d '{"query": "{ __typename }"}'
+curl -6 http://[2001:db8::1]:4000/   -H "Content-Type: application/json"   -d '{"query": "{ __typename }"}'
 
 # Verify IPv6 is used
 curl -6 -v http://[::1]:4000/ 2>&1 | grep "Connected"
