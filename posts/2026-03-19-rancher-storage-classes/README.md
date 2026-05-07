@@ -25,7 +25,7 @@ A StorageClass provides a way to describe different tiers of storage. Each class
 kubectl get storageclass
 ```
 
-Most Rancher-managed clusters come with a default StorageClass. The default is marked with `(default)` in the output.
+Depending on the cluster and provider, you may already have a default StorageClass. The default is marked with `(default)` in the output.
 
 ## Step 2: Create a Storage Class via kubectl
 
@@ -34,11 +34,10 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-storage
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  fsType: ext4
-  iopsPerGB: "50"
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -50,12 +49,12 @@ kubectl apply -f fast-storage-class.yaml
 
 ## Step 3: Create a Storage Class via the Rancher UI
 
-1. Navigate to your cluster in the Rancher dashboard.
-2. Go to **Storage** > **StorageClasses**.
+1. In the Rancher dashboard, go to **Cluster Management**, open your cluster, and click **Explore**.
+2. Go to **Storage** > **Storage Classes**.
 3. Click **Create**.
 4. Configure:
    - **Name**: `fast-storage`
-   - **Provisioner**: Select from the dropdown (e.g., AWS EBS, Azure Disk, etc.)
+   - **Provisioner**: Select from the dropdown (e.g., Amazon EBS Disk, Azure Disk, etc.)
    - **Reclaim Policy**: `Delete` or `Retain`
    - **Volume Binding Mode**: `WaitForFirstConsumer` or `Immediate`
    - **Allow Volume Expansion**: Enable
@@ -75,7 +74,7 @@ kubectl patch storageclass <current-default> -p '{"metadata": {"annotations": {"
 kubectl patch storageclass fast-storage -p '{"metadata": {"annotations": {"storageclass.kubernetes.io/is-default-class": "true"}}}'
 ```
 
-PVCs that do not specify a StorageClass will use the default.
+PVCs that do not specify a StorageClass will use the default if one exists.
 
 ## Step 5: Create Storage Classes for Different Tiers
 
@@ -86,7 +85,7 @@ metadata:
   name: standard
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
 reclaimPolicy: Delete
@@ -97,10 +96,10 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: premium
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: io2
-  iopsPerGB: "100"
+  iops: "5000"
 reclaimPolicy: Retain
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -109,7 +108,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: archive
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: sc1
 reclaimPolicy: Delete
@@ -187,12 +186,13 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: zone-restricted
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
+volumeBindingMode: WaitForFirstConsumer
 allowedTopologies:
 - matchLabelExpressions:
-  - key: topology.kubernetes.io/zone
+  - key: topology.ebs.csi.aws.com/zone
     values:
     - us-east-1a
     - us-east-1b
@@ -220,7 +220,7 @@ kubectl get pods --all-namespaces | grep -i csi
 - **Zone mismatch**: Use `WaitForFirstConsumer` binding mode
 - **Provisioner not found**: Verify the CSI driver is installed
 - **Volume expansion fails**: Ensure `allowVolumeExpansion: true` is set
-- **Default class conflicts**: Only one StorageClass should be marked as default
+- **Default class conflicts**: Try to keep only one StorageClass marked as default; if multiple defaults exist, Kubernetes uses the most recently created default for PVCs without `storageClassName`
 
 ## Summary
 
