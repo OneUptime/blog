@@ -10,7 +10,7 @@ Description: Learn how to safely migrate Podman storage when upgrading between m
 
 > A Podman version upgrade without proper storage migration planning can leave you with inaccessible images and broken containers.
 
-When upgrading Podman across major versions, storage format changes can render existing containers, images, and volumes inaccessible. The `podman system migrate` command helps transition your storage to the new format, but a well-planned migration strategy is essential for production environments. This guide covers the complete migration workflow from preparation to verification.
+When upgrading Podman across major versions, changes in container metadata, runtime configuration, or rootless user namespace mappings can affect existing containers. The `podman system migrate` command helps migrate existing containers to the current Podman version, but a well-planned migration strategy is essential for production environments. This guide covers the complete migration workflow from preparation to verification.
 
 ---
 
@@ -51,7 +51,7 @@ if [ "$RUNNING" -gt 0 ]; then
 fi
 
 # Check for running pods
-PODS=$(podman pod ps -q | wc -l | tr -d ' ')
+PODS=$(podman pod ps --filter status=running -q | wc -l | tr -d ' ')
 echo "Running pods: $PODS"
 
 # Show current storage usage
@@ -109,14 +109,13 @@ podman ps -a
 ```
 
 The migrate command performs these operations:
-- Updates storage metadata to the new format
-- Reconfigures the storage driver if needed
-- Migrates container state data
-- Updates runtime configurations
+- Migrates existing containers to the latest Podman version when needed
+- Stops running containers and the rootless pause process so namespace changes can take effect
+- Updates container runtime configuration, such as moving containers to a new OCI runtime when `--new-runtime` is used
 
 ## Migrating Storage Drivers
 
-If you need to switch storage drivers during migration, update the configuration first.
+If you need to switch storage drivers during migration, export the data you need first. Podman requires `podman system reset` before changing storage configuration fields such as `driver`; the reset removes local pods, containers, images, networks, volumes, and the configured storage directories.
 
 ```bash
 # View current storage configuration
@@ -126,7 +125,10 @@ cat /etc/containers/storage.conf
 cat ~/.config/containers/storage.conf 2>/dev/null
 
 # To switch from vfs to overlay (example)
-# First, edit the storage configuration
+# First, reset the current storage before changing the driver
+podman system reset --force
+
+# Then edit the storage configuration
 mkdir -p ~/.config/containers
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
@@ -136,8 +138,10 @@ driver = "overlay"
 mount_program = "/usr/bin/fuse-overlayfs"
 EOF
 
-# Then run the migration
-podman system migrate
+# Reimport saved images after the reset
+for tarfile in /var/backup/podman-migration-*/*.tar; do
+    podman load -i "$tarfile"
+done
 ```
 
 ## Handling Migration Errors
