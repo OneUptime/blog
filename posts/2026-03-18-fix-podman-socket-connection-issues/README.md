@@ -182,10 +182,10 @@ If the socket is not working on macOS:
 ```bash
 # Check the socket location
 ls -la /var/run/docker.sock 2>/dev/null
-ls -la $HOME/.local/share/containers/podman/machine/podman.sock 2>/dev/null
+podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}'
 
 # Set DOCKER_HOST to the correct socket
-export DOCKER_HOST="unix://$HOME/.local/share/containers/podman/machine/podman.sock"
+export DOCKER_HOST="unix://$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')"
 ```
 
 If the machine is running but the socket is not forwarded, restart the machine:
@@ -237,13 +237,13 @@ export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock
 export TESTCONTAINERS_RYUK_DISABLED=true
 ```
 
-The `TESTCONTAINERS_RYUK_DISABLED=true` variable is important because Podman does not fully support the Ryuk container that Testcontainers uses for cleanup.
+The `TESTCONTAINERS_RYUK_DISABLED=true` variable is important for rootless Podman because Ryuk needs privileges that are not available in some rootless environments.
 
 For Java-based Testcontainers, create a `~/.testcontainers.properties` file:
 
 ```properties
+docker.client.strategy=org.testcontainers.dockerclient.EnvironmentAndSystemPropertyClientProviderStrategy
 docker.host=unix\:///run/user/1000/podman/podman.sock
-ryuk.container.privileged=true
 testcontainers.reuse.enable=true
 ```
 
@@ -264,7 +264,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 
 # Test Docker-compatible API endpoint
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  http://localhost/v1.41/info 2>/dev/null | python3 -m json.tool | head -20
+  http://localhost/v1.40/info 2>/dev/null | python3 -m json.tool | head -20
 
 # Test with podman directly
 podman --remote info
