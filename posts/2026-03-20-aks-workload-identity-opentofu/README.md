@@ -8,7 +8,7 @@ Description: Learn how to configure AKS Workload Identity with OpenTofu to enabl
 
 ## What is AKS Workload Identity?
 
-AKS Workload Identity allows Kubernetes pods to authenticate with Azure services using Azure Active Directory (AAD) identities, replacing the need for application-level secrets or connection strings. It leverages OpenID Connect (OIDC) federation to bind a Kubernetes service account to an Azure managed identity.
+AKS Workload Identity allows Kubernetes pods to authenticate with Azure services using Microsoft Entra ID identities, replacing the need for application-level secrets or connection strings. It leverages OpenID Connect (OIDC) federation to bind a Kubernetes service account to an Azure managed identity.
 
 ## Prerequisites
 
@@ -55,7 +55,7 @@ resource "azurerm_user_assigned_identity" "workload_identity" {
   resource_group_name = azurerm_resource_group.rg.name
 }
 
-# Grant the identity access to Azure Key Vault (example permission)
+# Grant the identity access to an Azure RBAC-enabled Key Vault (example permission)
 resource "azurerm_role_assignment" "kv_reader" {
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets User"
@@ -80,14 +80,29 @@ resource "azurerm_federated_identity_credential" "workload_fed" {
   # The Kubernetes service account subject
   subject = "system:serviceaccount:default:my-app-sa"
 
-  # Azure AD audience for workload identity
+  # Microsoft Entra token exchange audience for workload identity
   audience = ["api://AzureADTokenExchange"]
 }
 ```
 
 ## Step 4: Deploy the Kubernetes Service Account
 
+Configure the Kubernetes provider so OpenTofu can create Kubernetes resources, then create the annotated service account. Pods that use this service account must also set the label `azure.workload.identity/use: "true"` in their pod template so the workload identity webhook mutates the pod.
+
 ```hcl
+# Read the AKS cluster connection details for the Kubernetes provider
+data "azurerm_kubernetes_cluster" "aks" {
+  name                = azurerm_kubernetes_cluster.aks.name
+  resource_group_name = azurerm_resource_group.rg.name
+}
+
+provider "kubernetes" {
+  host                   = data.azurerm_kubernetes_cluster.aks.kube_config[0].host
+  client_certificate     = base64decode(data.azurerm_kubernetes_cluster.aks.kube_config[0].client_certificate)
+  client_key             = base64decode(data.azurerm_kubernetes_cluster.aks.kube_config[0].client_key)
+  cluster_ca_certificate = base64decode(data.azurerm_kubernetes_cluster.aks.kube_config[0].cluster_ca_certificate)
+}
+
 # Deploy the annotated Kubernetes service account via OpenTofu
 resource "kubernetes_service_account" "app_sa" {
   metadata {
@@ -97,10 +112,6 @@ resource "kubernetes_service_account" "app_sa" {
     # These annotations link the service account to the managed identity
     annotations = {
       "azure.workload.identity/client-id" = azurerm_user_assigned_identity.workload_identity.client_id
-    }
-
-    labels = {
-      "azure.workload.identity/use" = "true"
     }
   }
 }
@@ -123,7 +134,7 @@ output "managed_identity_client_id" {
 
 ## How It Works
 
-When a pod uses the annotated service account, the AKS workload identity webhook injects the OIDC token as an environment variable. The application SDK uses this token to exchange for an Azure AD access token via the federated credential, granting access to Azure services without any stored secrets.
+When a pod uses the annotated service account and includes the `azure.workload.identity/use: "true"` label, the AKS workload identity webhook injects Azure-specific environment variables and a projected service account token volume. The application SDK uses that projected token to exchange for a Microsoft Entra access token via the federated credential, granting access to Azure services without any stored secrets.
 
 ## Summary
 
