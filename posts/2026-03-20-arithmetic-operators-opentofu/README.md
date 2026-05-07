@@ -124,15 +124,14 @@ variable "service_count" {
   default = 4
 }
 
-resource "aws_security_group_rule" "services" {
+resource "aws_vpc_security_group_ingress_rule" "services" {
   count = var.service_count
 
-  type              = "ingress"
-  from_port         = var.base_port + count.index
-  to_port           = var.base_port + count.index
-  protocol          = "tcp"
   security_group_id = aws_security_group.app.id
-  cidr_blocks       = ["10.0.0.0/8"]
+  cidr_ipv4         = "10.0.0.0/8"
+  from_port         = var.base_port + count.index
+  ip_protocol       = "tcp"
+  to_port           = var.base_port + count.index
 
   description = "Service ${count.index} on port ${var.base_port + count.index}"
 }
@@ -147,27 +146,24 @@ variable "total_nodes" {
 }
 
 locals {
-  # Reserve 20% capacity for surge
+  # Allocate 80% on-demand and 20% spot capacity
   on_demand_count = floor(var.total_nodes * 0.8)   # 8 on-demand
   spot_count      = ceil(var.total_nodes * 0.2)    # 2 spot
 }
 ```
 
-## Integer vs Float Division
+## Whole Numbers vs Fractional Results
 
 ```hcl
 locals {
-  # In OpenTofu, division may produce floats
-  result_float = 10 / 3   # 3.3333...
+  # In OpenTofu, division can produce fractional numbers
+  result_fraction = 10 / 3   # 3.3333...
 
-  # Use floor() to truncate to integer
-  result_int = floor(10 / 3)   # 3
+  # Use floor() to round down to a whole number
+  result_floor = floor(10 / 3)   # 3
 
-  # Use ceil() to round up
+  # Use ceil() to round up to a whole number
   result_ceil = ceil(10 / 3)   # 4
-
-  # Use round() for nearest integer
-  result_round = round(10 / 3)  # 3
 }
 ```
 
@@ -196,4 +192,4 @@ resource "aws_subnet" "all" {
 
 ## Conclusion
 
-Arithmetic operators in OpenTofu enable dynamic calculation of resource properties directly in your configuration. Common use cases include calculating resource counts from base values, computing storage sizes with overhead, determining port ranges, scaling autoscaling group limits, and offsetting CIDR blocks. Use the `floor()`, `ceil()`, and `round()` functions to convert floating-point arithmetic results to integers when required by resource attributes that expect whole numbers.
+Arithmetic operators in OpenTofu enable dynamic calculation of resource properties directly in your configuration. Common use cases include calculating resource counts from base values, computing storage sizes with overhead, determining port ranges, scaling autoscaling group limits, and offsetting CIDR blocks. Use the `floor()` and `ceil()` functions to convert fractional results to whole numbers when required by resource arguments or meta-arguments that expect them.
