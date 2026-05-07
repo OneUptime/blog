@@ -14,13 +14,13 @@ CronJobs in Kubernetes allow you to run tasks on a schedule, similar to cron on 
 - A managed Kubernetes cluster registered in Rancher
 - Access to a project and namespace
 
-## Step 1: Navigate to CronJobs
+## Step 1: Navigate to the Workload View
 
-Log in to your Rancher dashboard, select your cluster, and navigate to **Workloads > CronJobs** from the left sidebar.
+Log in to your Rancher dashboard. Click **☰ > Cluster Management**, open the cluster where you want to deploy the CronJob, and click **Explore**. In the left navigation bar, click **Workload**.
 
 ## Step 2: Create a New CronJob
 
-Click the **Create** button to open the CronJob creation form.
+Click the **Create** button, then choose **CronJob**.
 
 Fill in the basic details:
 
@@ -150,7 +150,7 @@ spec:
 
 ## Step 7: Verify the CronJob
 
-Check the CronJob in the Rancher UI under **Workloads > CronJobs**. You will see:
+Check the CronJob in Rancher from the cluster's **Workload** view. You will see:
 
 - The schedule
 - The last scheduled time
@@ -168,17 +168,17 @@ kubectl get cronjob db-backup-cron -n default
 To run the CronJob immediately without waiting for the next scheduled time:
 
 ```bash
-kubectl create job --from=cronjob/db-backup-cron manual-backup -n default
+kubectl create job manual-backup --from=cronjob/db-backup-cron -n default
 ```
 
 This creates a one-off Job from the CronJob template.
 
 ## Monitoring Job Runs
 
-View the jobs created by your CronJob:
+View the jobs in the namespace, including the ones created by your CronJob:
 
 ```bash
-kubectl get jobs -l job-name -n default
+kubectl get jobs -n default
 ```
 
 Check logs from the most recent job:
@@ -187,14 +187,14 @@ Check logs from the most recent job:
 kubectl logs job/db-backup-cron-28457320 -n default
 ```
 
-In Rancher, you can view job logs by navigating to **Workloads > Jobs** and clicking on the job name.
+In Rancher, you can view job logs from the cluster's **Workload** view by opening the Job created by the CronJob.
 
 ## Suspending a CronJob
 
 To temporarily stop a CronJob from creating new jobs:
 
-1. Go to **Workloads > CronJobs**
-2. Click the three-dot menu and select **Edit Config**
+1. Go to the cluster's **Workload** view
+2. Find the CronJob, click the three-dot menu, and select **Edit Config**
 3. Check the **Suspend** option
 4. Click **Save**
 
