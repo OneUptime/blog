@@ -16,7 +16,7 @@ When a virtual machine starts for the first time, Cloud-Init reads the **user-da
 
 ## Complete Cloud-Init Script
 
-The following user-data script installs Docker Engine, deploys Portainer Business Edition (swap for CE if preferred), configures the firewall, and leaves a ready-to-use Portainer instance:
+The following user-data script installs Docker Engine, deploys Portainer Community Edition, and leaves a ready-to-use Portainer instance:
 
 ```yaml
 #cloud-config
@@ -33,7 +33,6 @@ packages:
   - curl
   - gnupg
   - lsb-release
-  - ufw
 
 runcmd:
   # 1. Install Docker Engine
@@ -50,18 +49,12 @@ runcmd:
   - >
     docker run -d
     --name portainer
-    --restart always
+    --restart=always
     -p 8000:8000
     -p 9443:9443
     -v /var/run/docker.sock:/var/run/docker.sock
     -v portainer_data:/data
-    portainer/portainer-ce:latest
-
-  # 5. Allow Portainer ports through UFW
-  - ufw allow 9443/tcp
-  - ufw allow 8000/tcp
-  - ufw allow 22/tcp
-  - ufw --force enable
+    portainer/portainer-ce:lts
 
 # Write a README to /root so operators know Portainer is ready
 write_files:
@@ -74,13 +67,14 @@ write_files:
 
 ## Using with AWS EC2
 
-When launching an EC2 instance via the AWS Console or CLI, paste the user-data in the Advanced Details section:
+When launching an EC2 instance via the AWS Console or CLI, paste the user-data in the Advanced Details section and use a security group that allows inbound TCP 9443 (and 8000 only if you need Edge agents):
 
 ```bash
 # Launch EC2 with user-data from a file
 aws ec2 run-instances \
-  --image-id ami-0c55b159cbfafe1f0 \
+  --image-id ami-xxxxxxxxxxxxxxxxx \
   --instance-type t3.small \
+  --count 1 \
   --key-name my-key \
   --security-group-ids sg-0abc123 \
   --user-data file://portainer-cloud-init.yaml
@@ -93,7 +87,7 @@ For repeatable infrastructure, pass the Cloud-Init script via Terraform:
 ```hcl
 # terraform/main.tf
 resource "aws_instance" "portainer_node" {
-  ami           = "ami-0c55b159cbfafe1f0"
+  ami           = "ami-xxxxxxxxxxxxxxxxx" # Replace with a current Ubuntu or Debian AMI for your AWS Region
   instance_type = "t3.small"
 
   # Read the cloud-init file and pass it as user_data
@@ -117,9 +111,9 @@ You will be prompted to set an admin password and configure your first environme
 
 ## Tips for Production
 
-- Store the admin password as a cloud provider secret and inject it via Cloud-Init environment variables
+- Store the admin password as a cloud provider secret and pass it to Portainer with `--admin-password-file` during first boot
 - Use a private Docker registry for pulling custom images alongside Portainer
-- For Swarm clusters, run this Cloud-Init on all manager nodes and join workers via a separate script that calls `docker swarm join`
+- For Swarm clusters, initialize or join the swarm with separate Cloud-Init steps, then deploy Portainer once using Portainer's Docker Swarm installation method
 
 ## Summary
 
