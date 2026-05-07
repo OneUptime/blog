@@ -12,7 +12,7 @@ The Horizontal Pod Autoscaler (HPA) automatically adjusts the number of pod repl
 
 ## Prerequisites
 
-- Metrics Server must be installed in the cluster for CPU/memory-based autoscaling.
+- Metrics Server must be installed in the cluster, and server metrics must be enabled for the environment in Portainer.
 
 ```bash
 # Install Metrics Server (if not already installed)
@@ -20,31 +20,31 @@ The Horizontal Pod Autoscaler (HPA) automatically adjusts the number of pod repl
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 
 # Verify Metrics Server is working
-kubectl top nodes
+kubectl top node
 ```
 
 ## Enabling Auto-Scaling in Portainer
 
 When deploying an application:
 
-1. Scroll to the **Auto-scaling** section.
-2. Toggle **Enable auto-scaling** to On.
+1. Scroll to the **Deployment** section.
+2. Toggle **Enable auto scaling for this application** on.
 3. Configure:
-   - **Minimum replicas**: The floor for scaling down.
-   - **Maximum replicas**: The ceiling for scaling up.
-   - **Target CPU utilization**: Percentage at which to scale up (e.g., 70%).
-4. Click **Deploy**.
+   - **Minimum instances**: The floor for scaling down.
+   - **Maximum instances**: The ceiling for scaling up.
+   - **Target CPU usage**: The target average CPU usage across replicas (for example, 70%).
+4. Click **Deploy application**.
 
 ## What Portainer Creates
 
-Portainer creates an HPA resource targeting your Deployment:
+Portainer's application form creates a CPU-based HPA resource targeting your Deployment:
 
 ```yaml
 # HPA created by Portainer
-apiVersion: autoscaling/v2
+apiVersion: autoscaling/v1
 kind: HorizontalPodAutoscaler
 metadata:
-  name: my-app-hpa
+  name: my-app
   namespace: production
 spec:
   scaleTargetRef:
@@ -53,32 +53,39 @@ spec:
     name: my-app          # Target deployment
   minReplicas: 2
   maxReplicas: 10
+  targetCPUUtilizationPercentage: 70  # Target average CPU utilization
+```
+
+## Adding Memory-Based Scaling
+
+Portainer's form exposes CPU-based autoscaling. To add memory-based scaling, edit the generated HPA after deployment and switch it to `autoscaling/v2`, for example:
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-app
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: my-app
+  minReplicas: 2
+  maxReplicas: 10
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 70  # Scale up when CPU > 70%
-```
-
-## Adding Memory-Based Scaling
-
-```yaml
-# Add memory scaling alongside CPU
-metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80  # Scale up when memory > 80%
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80  # Target average memory utilization
 ```
 
 ## Managing HPA via CLI
@@ -86,22 +93,22 @@ metrics:
 ```bash
 # Create an HPA targeting a deployment
 kubectl autoscale deployment my-app \
-  --min=2 --max=10 --cpu-percent=70 \
+  --min=2 --max=10 --cpu=70% \
   --namespace=production
 
 # View HPA status and current replica count
 kubectl get hpa --namespace production
 
 # Describe HPA for detailed scaling events
-kubectl describe hpa my-app-hpa --namespace production
+kubectl describe hpa my-app --namespace production
 
 # Delete an HPA
-kubectl delete hpa my-app-hpa --namespace production
+kubectl delete hpa my-app --namespace production
 ```
 
 ## Scaling Behavior Tuning
 
-Prevent rapid scale-down with stabilization windows:
+To customize stabilization windows or scaling policies, edit the HPA to `autoscaling/v2` and add `behavior`:
 
 ```yaml
 spec:
@@ -123,4 +130,4 @@ spec:
 
 ## Conclusion
 
-Auto-scaling in Portainer enables your applications to handle variable load without manual intervention. Always set both CPU requests (required by HPA for calculations) and reasonable min/max replica bounds to prevent over-scaling.
+Auto-scaling in Portainer enables your applications to handle variable load without manual intervention. Always set CPU requests for CPU-based scaling, and set memory requests as well if you extend the HPA to scale on memory. Also choose reasonable min/max replica bounds to prevent over-scaling.
