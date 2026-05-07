@@ -13,7 +13,7 @@ Manually configuring ACLs on dozens of switches is error-prone. Ansible automate
 ## Inventory File
 
 ```ini
-# /etc/ansible/hosts
+# hosts
 
 [access_switches]
 sw-01 ansible_host=10.0.1.1
@@ -25,7 +25,7 @@ core-01 ansible_host=10.0.0.1
 
 [all:vars]
 ansible_network_os=cisco.ios.ios
-ansible_connection=network_cli
+ansible_connection=ansible.netcommon.network_cli
 ansible_user=admin
 ansible_password="{{ vault_switch_password }}"
 ```
@@ -46,8 +46,25 @@ acls:
           wildcard_bits: 0.255.255.255
         destination:
           any: true
-        remarks: "Block spoofed RFC1918 from external"
+        remarks:
+          - "Block spoofed RFC1918 from external"
       - sequence: 20
+        grant: deny
+        protocol: ip
+        source:
+          address: 172.16.0.0
+          wildcard_bits: 0.15.255.255
+        destination:
+          any: true
+      - sequence: 30
+        grant: deny
+        protocol: ip
+        source:
+          address: 192.168.0.0
+          wildcard_bits: 0.0.255.255
+        destination:
+          any: true
+      - sequence: 40
         grant: permit
         protocol: ip
         source:
@@ -70,7 +87,7 @@ acls:
         config:
           - afi: ipv4
             acls: "{{ acls }}"
-        state: merged
+        state: replaced
 
     - name: Apply ACL to interface inbound
       cisco.ios.ios_config:
@@ -94,7 +111,14 @@ acls:
     - name: Assert ACL exists
       assert:
         that:
-          - acl_facts.gathered | selectattr('afi','eq','ipv4') | list | length > 0
+          - >
+            'BLOCK_RFC1918_INBOUND' in
+            (acl_facts.gathered
+            | selectattr('afi', 'equalto', 'ipv4')
+            | map(attribute='acls')
+            | flatten
+            | map(attribute='name')
+            | list)
         fail_msg: "ACL not found on {{ inventory_hostname }}"
 ```
 
@@ -115,5 +139,5 @@ ansible-playbook -i hosts deploy-acls.yml --limit sw-01
 
 - Store ACL definitions in `group_vars` or `host_vars` YAML files for easy version control and review.
 - Use `--check --diff` to preview changes before applying them to production switches.
-- The `cisco.ios.ios_acls` module is idempotent: rerunning the playbook only changes what differs.
+- The `cisco.ios.ios_acls` task is idempotent when ACE sequence numbers are defined: rerunning the playbook only changes what differs.
 - Store switch credentials in Ansible Vault to keep secrets out of plaintext inventory files.
