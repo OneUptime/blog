@@ -17,12 +17,11 @@ Apache's `mod_proxy` and `mod_proxy_http` modules turn Apache into a powerful re
 
 sudo a2enmod proxy
 sudo a2enmod proxy_http
-sudo a2enmod proxy_balancer
 sudo a2enmod headers
-sudo a2enmod rewrite
+sudo a2enmod ssl
 
 # Verify modules are loaded
-apache2ctl -M | grep proxy
+apache2ctl -M | grep -E 'proxy|headers|ssl'
 ```
 
 ## Basic Reverse Proxy Configuration
@@ -36,7 +35,7 @@ apache2ctl -M | grep proxy
     # Disable forward proxy (security: prevent using Apache as open proxy)
     ProxyRequests Off
 
-    # Preserve original Host header
+    # Preserve original Host header when the backend expects it
     ProxyPreserveHost On
 
     # Forward all requests to the IPv4 backend
@@ -44,8 +43,8 @@ apache2ctl -M | grep proxy
     ProxyPassReverse / http://192.168.1.10:8080/
 
     # Pass real client IP to backend
-    RequestHeader set X-Real-IP %{REMOTE_ADDR}s
-    RequestHeader set X-Forwarded-For %{X-Forwarded-For}e
+    RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"
+    # mod_proxy_http adds X-Forwarded-For, X-Forwarded-Host, and X-Forwarded-Server by default
     RequestHeader set X-Forwarded-Proto http
 
     ErrorLog  /var/log/apache2/app-error.log
@@ -60,7 +59,8 @@ Forward only certain paths to the backend:
 ```apache
 <VirtualHost *:80>
     ServerName example.com
-    DocumentRoot /var/www/html  # Serve static files locally
+    # Serve static files locally
+    DocumentRoot /var/www/html
 
     # Forward /api/ requests to backend
     ProxyPass        /api/ http://192.168.1.10:8080/api/
@@ -104,7 +104,7 @@ Apache terminates SSL and proxies plain HTTP to the backend:
 <VirtualHost *:80>
     ServerName api.example.com
 
-    # Connection timeout to backend (default 300s)
+    # Timeout for proxied requests (defaults to TimeOut, 60s in Apache 2.4)
     ProxyTimeout 60
 
     <Proxy http://192.168.1.10:8080/>
@@ -123,14 +123,16 @@ Apache terminates SSL and proxies plain HTTP to the backend:
 For backends serving HTTPS:
 
 ```bash
-sudo a2enmod proxy_connect
+sudo a2enmod proxy
+sudo a2enmod proxy_http
 sudo a2enmod ssl
 ```
 
 ```apache
-# Proxy to HTTPS backend (SSL passthrough)
+# Proxy to an HTTPS backend
 SSLProxyEngine On
-SSLProxyVerify none   # For self-signed backend certs (disable in production)
+# For self-signed backend certs; use certificate verification in production
+SSLProxyVerify none
 ProxyPass        /    https://192.168.1.10:8443/
 ProxyPassReverse /    https://192.168.1.10:8443/
 ```
@@ -141,8 +143,8 @@ ProxyPassReverse /    https://192.168.1.10:8443/
 # Verify proxy is working
 curl -v http://app.example.com/api/health
 
-# Check headers being forwarded to backend
-curl -v http://app.example.com/ 2>&1 | grep -i "x-forwarded\|x-real"
+# Generate a request, then confirm X-Forwarded-* and X-Real-IP in backend application logs
+curl -v http://app.example.com/
 
 # Test proxy config syntax
 sudo apache2ctl configtest
@@ -150,4 +152,4 @@ sudo apache2ctl configtest
 
 ## Conclusion
 
-Apache mod_proxy makes reverse proxying straightforward with `ProxyPass` and `ProxyPassReverse` directives. Always disable forward proxying with `ProxyRequests Off`, enable `ProxyPreserveHost On` for correct virtual host routing on backends, and set `X-Forwarded-Proto` when terminating SSL. Use `ProxyTimeout` and connection pool settings to match your backend's performance profile.
+Apache mod_proxy makes reverse proxying straightforward with `ProxyPass` and `ProxyPassReverse` directives. Always disable forward proxying with `ProxyRequests Off`, use `ProxyPreserveHost On` only when the backend needs the original `Host` header, and set `X-Forwarded-Proto` when terminating SSL. Use `ProxyTimeout` and connection pool settings to match your backend's performance profile.
