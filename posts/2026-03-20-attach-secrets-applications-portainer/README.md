@@ -8,24 +8,24 @@ Description: Learn how to create Kubernetes Secrets and securely attach them to 
 
 ## What Are Kubernetes Secrets?
 
-Kubernetes Secrets store sensitive data such as passwords, API tokens, TLS certificates, and SSH keys. Unlike ConfigMaps, Secrets are base64-encoded and can be restricted via RBAC. Portainer provides a UI to create and attach Secrets to applications.
+Kubernetes Secrets store sensitive data such as passwords, API tokens, TLS certificates, and SSH keys. Unlike ConfigMaps, Secrets are intended for confidential data, but base64 encoding does not encrypt them. By default, Secret objects are stored unencrypted unless you enable encryption at rest, and access should be restricted with RBAC. Portainer provides a UI to create and attach Secrets to applications.
 
 ## Creating a Secret in Portainer
 
 1. Select your Kubernetes environment.
-2. Go to **ConfigMaps & Secrets** (or **Secrets** in the sidebar).
-3. Click **Add secret**.
+2. Go to **ConfigMaps & Secrets** and select the **Secrets** tab.
+3. Click **Add with form**.
 4. Select the secret type (`Opaque` for generic key-value secrets).
 5. Enter a name, namespace, and key-value pairs.
-6. Click **Create**.
+6. Click **Create Secret**.
 
 ## Attaching a Secret to an Application
 
 When deploying or editing an application in Portainer:
 
-1. Scroll to **Configuration** or **Environment variables**.
-2. Select **Secret** as the source for a variable.
-3. Choose the Secret name and key.
+1. Open the application's form and scroll to the **Secrets** section.
+2. Select the Secret you want to make available to the application.
+3. Portainer exposes all keys from the Secret as environment variables by default; use **Override** if you need to mount keys as files instead.
 
 ## Usage Pattern 1: Single Key from Secret
 
@@ -95,19 +95,19 @@ kubectl create secret docker-registry registry-pull \
 ```bash
 # Get a secret's base64-encoded value
 kubectl get secret app-secrets -n production \
-  -o jsonpath='{.data.db-password}'
+  -o jsonpath="{.data['db-password']}"
 
 # Decode it
 kubectl get secret app-secrets -n production \
-  -o jsonpath='{.data.db-password}' | base64 -d
+  -o jsonpath="{.data['db-password']}" | base64 -d
 ```
 
 ## Security Best Practices
 
-- **Encrypt Secrets at rest**: Enable `EncryptionConfiguration` in your cluster for etcd encryption.
+- **Encrypt Secrets at rest**: Enable encryption at rest for Secret data in etcd, typically using the API server `EncryptionConfiguration`.
 - **Use RBAC**: Restrict which service accounts and users can read Secrets.
 - **Consider external secret managers**: Use Vault, AWS Secrets Manager, or GCP Secret Manager with the External Secrets Operator for production workloads.
-- **Never commit Secrets to Git**: Use `.gitignore` and sealed secrets instead.
+- **Never commit plaintext Secrets to Git**: If you store secret-related manifests in Git, use an encrypted workflow such as Sealed Secrets instead.
 
 ## Conclusion
 
