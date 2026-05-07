@@ -45,6 +45,8 @@ After (decomposed):
   modules/monitoring/     → CloudWatch, alarms
 ```
 
+If you are refactoring an existing live module rather than starting fresh, add `moved` blocks as you split resources into child modules so OpenTofu preserves state instead of planning replacements.
+
 ## Example: Before and After
 
 ### Before (God Module)
@@ -97,16 +99,17 @@ module "data" {
 
 ## Testing Single-Responsibility Modules
 
-Smaller modules are easier to unit test:
+Smaller modules are easier to validate and test in isolation:
 
 ```bash
-# Test just the networking module
-cd modules/networking
-tofu init && tofu validate && tofu plan -var="vpc_cidr=10.0.0.0/16" -var="environment=test"
+# Validate just the networking module
+(cd modules/networking && tofu init -backend=false && tofu validate)
 
-# Test just the security module (with mock inputs)
-cd modules/security
-tofu init && tofu validate
+# If the module includes *.tofutest.hcl files, run its tests
+(cd modules/networking && tofu init -backend=false && tofu test -var="vpc_cidr=10.0.0.0/16" -var="environment=test")
+
+# Validate just the security module
+(cd modules/security && tofu init -backend=false && tofu validate)
 ```
 
 ## Guidelines for Module Size
