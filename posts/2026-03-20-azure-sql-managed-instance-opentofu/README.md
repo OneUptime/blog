@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, SQL, Managed Instance, OpenTofu, Database, Infrastructure
 
-Description: Learn how to deploy Azure SQL Managed Instance with OpenTofu, including VNet integration, subnet delegation, and high availability configuration.
+Description: Learn how to deploy Azure SQL Managed Instance with OpenTofu, including VNet integration, subnet delegation, and managed database configuration.
 
 ## Overview
 
@@ -12,7 +12,7 @@ Azure SQL Managed Instance is a fully managed SQL Server instance deployed into 
 
 ## Step 1: Create the VNet and Dedicated Subnet
 
-SQL Managed Instance requires a dedicated subnet with specific delegations and route tables.
+SQL Managed Instance requires a dedicated subnet, subnet delegation, and associated network resources.
 
 ```hcl
 # main.tf - VNet and subnet for SQL Managed Instance
@@ -49,19 +49,19 @@ resource "azurerm_subnet" "sql_mi_subnet" {
 ## Step 2: Create Network Security Group and Route Table
 
 ```hcl
-# NSG for SQL MI - specific rules are required
+# SQL MI requires an associated NSG; Azure manages the required service rules
 resource "azurerm_network_security_group" "sql_mi_nsg" {
   name                = "sql-mi-nsg"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 }
 
-# Route table for SQL MI management traffic
+# SQL MI requires an associated route table; Azure manages the required routes
 resource "azurerm_route_table" "sql_mi_rt" {
   name                          = "sql-mi-route-table"
   location                      = azurerm_resource_group.rg.location
   resource_group_name           = azurerm_resource_group.rg.name
-  disable_bgp_route_propagation = false
+  bgp_route_propagation_enabled = true
 }
 
 resource "azurerm_subnet_network_security_group_association" "sql_mi_nsg_assoc" {
@@ -136,4 +136,4 @@ output "sql_mi_fqdn" {
 
 ## Summary
 
-Azure SQL Managed Instance with OpenTofu requires careful network configuration including subnet delegation, NSG rules, and route tables. Once deployed, it provides a fully managed SQL Server environment with VNet isolation, making it ideal for lift-and-shift migrations from on-premises SQL Server.
+Azure SQL Managed Instance with OpenTofu requires careful network configuration including subnet delegation, plus an associated NSG and route table. Once deployed, it provides a fully managed SQL Server environment with VNet isolation, making it ideal for lift-and-shift migrations from on-premises SQL Server.
