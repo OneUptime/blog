@@ -12,7 +12,7 @@ Putting all infrastructure resources in a single `main.tf` file or a single stat
 
 ## Signs You Need to Split
 
-```hcl
+```text
 Warning signs your configuration is too monolithic:
 - main.tf is more than 500 lines
 - tofu state list returns more than 200 resources
