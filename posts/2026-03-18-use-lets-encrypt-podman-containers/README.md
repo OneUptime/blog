@@ -72,8 +72,8 @@ podman run -d \
   -p 80:80 \
   -p 443:443 \
   -v ~/letsencrypt/nginx/conf.d:/etc/nginx/conf.d:ro,Z \
-  -v ~/letsencrypt/certbot/conf:/etc/letsencrypt:ro,Z \
-  -v ~/letsencrypt/certbot/www:/var/www/certbot:ro,Z \
+  -v ~/letsencrypt/certbot/conf:/etc/letsencrypt:ro,z \
+  -v ~/letsencrypt/certbot/www:/var/www/certbot:ro,z \
   docker.io/library/nginx:alpine
 ```
 
@@ -83,8 +83,8 @@ Run Certbot in a container to obtain the certificate:
 
 ```bash
 podman run --rm \
-  -v ~/letsencrypt/certbot/conf:/etc/letsencrypt:Z \
-  -v ~/letsencrypt/certbot/www:/var/www/certbot:Z \
+  -v ~/letsencrypt/certbot/conf:/etc/letsencrypt:z \
+  -v ~/letsencrypt/certbot/www:/var/www/certbot:z \
   docker.io/certbot/certbot certonly \
   --webroot \
   --webroot-path=/var/www/certbot \
@@ -185,8 +185,8 @@ mkdir -p ~/.local/bin
 cat > ~/.local/bin/certbot-renew.sh << 'SCRIPT'
 #!/bin/bash
 podman run --rm \
-  -v "$HOME/letsencrypt/certbot/conf:/etc/letsencrypt:Z" \
-  -v "$HOME/letsencrypt/certbot/www:/var/www/certbot:Z" \
+  -v "$HOME/letsencrypt/certbot/conf:/etc/letsencrypt:z" \
+  -v "$HOME/letsencrypt/certbot/www:/var/www/certbot:z" \
   docker.io/certbot/certbot renew --quiet
 
 podman exec nginx-proxy nginx -s reload
@@ -194,16 +194,17 @@ SCRIPT
 chmod +x ~/.local/bin/certbot-renew.sh
 ```
 
-Enable the timer:
+If you want the user timer to keep running after logout and across reboots, enable lingering, then enable the timer:
 
 ```bash
+loginctl enable-linger "$USER"
 systemctl --user daemon-reload
 systemctl --user enable --now certbot-renew.timer
 ```
 
 ## Approach 2: Caddy with Automatic HTTPS
 
-Caddy has a built-in ACME client and manages Let's Encrypt certificates automatically with no additional configuration.
+Caddy has a built-in ACME client and manages HTTPS certificates automatically with no additional configuration.
 
 ### Create the Caddyfile
 
@@ -242,7 +243,7 @@ podman run -d \
   docker.io/library/caddy:2-alpine
 ```
 
-Caddy automatically obtains a certificate from Let's Encrypt, configures HTTPS, and renews the certificate before it expires. No timer, no script, no additional configuration.
+Caddy automatically obtains and renews a publicly trusted certificate, configures HTTPS, and redirects HTTP to HTTPS. No timer, no script, no additional configuration.
 
 ## Approach 3: Traefik with ACME
 
@@ -335,7 +336,7 @@ EOF
 chmod 600 ~/letsencrypt/cloudflare.ini
 
 podman run --rm \
-  -v ~/letsencrypt/certbot/conf:/etc/letsencrypt:Z \
+  -v ~/letsencrypt/certbot/conf:/etc/letsencrypt:z \
   -v ~/letsencrypt/cloudflare.ini:/etc/cloudflare.ini:ro,Z \
   docker.io/certbot/dns-cloudflare certonly \
   --dns-cloudflare \
