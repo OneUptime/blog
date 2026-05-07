@@ -22,29 +22,25 @@ For image updates, combine this with a CI step that updates the image tag in the
 
 ## Approach 2: Registry Webhook → Portainer Webhook
 
-Link a Docker Hub automated build to a Portainer stack webhook:
+Link a Docker Hub webhook to a Portainer stack webhook:
 
 ```mermaid
 graph LR
     GitPush[Git Push] --> DockerHub[Docker Hub Build]
     DockerHub --> RegistryWebhook[Registry Webhook]
-    RegistryWebhook --> Bridge[Webhook Bridge Service]
-    Bridge --> PortainerWebhook[Portainer Stack Webhook]
+    RegistryWebhook --> PortainerWebhook[Portainer Stack Webhook]
 ```
 
-Docker Hub webhooks send a POST to a URL when a new image is pushed. Since Docker Hub sends a specific payload format, use a small bridge service to forward it to Portainer:
+Docker Hub webhooks send a POST to a URL when a new image is pushed. Docker Hub automated builds require a Pro, Team, or Business subscription. Portainer stack webhooks can be configured directly as the destination URL in Docker Hub, so a bridge service is not required. Portainer documents stack webhooks as a Business Edition feature on non-Edge environments:
 
 ```bash
-# Simple bridge using a serverless function or tiny Node.js app
-
-# Docker Hub sends POST to your-bridge.example.com/hook
-# Bridge forwards to Portainer webhook URL
+# Docker Hub sends POST directly to the Portainer stack webhook URL
 curl -X POST "$PORTAINER_WEBHOOK_URL"
 ```
 
 ## Approach 3: Full Automation Script
 
-A self-contained build-and-deploy script for use in any CI system or as a cron job:
+A self-contained build-and-deploy script for use in any CI system or as a cron job when the Portainer stack is deployed from Git:
 
 ```bash
 #!/bin/bash
@@ -66,7 +62,7 @@ git pull origin main
 # Build image with build number
 BUILD_TAG="$(git rev-parse --short HEAD)"
 log "Building $IMAGE_NAME:$BUILD_TAG"
-docker build -t "$IMAGE_NAME:$BUILD_TAG" -t "$IMAGE_NAME:latest" .
+docker build --pull -t "$IMAGE_NAME:$BUILD_TAG" -t "$IMAGE_NAME:latest" .
 
 # Push to registry
 docker push "$IMAGE_NAME:$BUILD_TAG"
@@ -79,50 +75,68 @@ TOKEN=$(curl -s -X POST "$PORTAINER_URL/api/auth" \
   -d "{\"Username\":\"$PORTAINER_USER\",\"Password\":\"$PORTAINER_PASSWORD\"}" \
   | jq -r .jwt)
 
-# Get stack ID
-STACK_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "$PORTAINER_URL/api/stacks" | \
-  jq -r --arg name "$STACK_NAME" '.[] | select(.Name==$name) | .Id')
+if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+  log "ERROR: Failed to authenticate with Portainer"
+  exit 1
+fi
 
-if [ -z "$STACK_ID" ]; then
+# Get stack details
+STACK_JSON=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "$PORTAINER_URL/api/stacks" | \
+  jq -c --arg name "$STACK_NAME" '.[] | select(.Name==$name)' | \
+  head -n 1)
+
+if [ -z "$STACK_JSON" ]; then
   log "ERROR: Stack '$STACK_NAME' not found"
   exit 1
 fi
 
-# Trigger redeploy with latest images
-curl -fsS -X POST \
+STACK_ID=$(jq -r '.Id // empty' <<<"$STACK_JSON")
+ENDPOINT_ID=$(jq -r '.EndpointId // empty' <<<"$STACK_JSON")
+
+# Trigger redeploy with image re-pull
+REDEPLOY_URL="$PORTAINER_URL/api/stacks/$STACK_ID/git/redeploy"
+if [ -n "$ENDPOINT_ID" ]; then
+  REDEPLOY_URL="$REDEPLOY_URL?endpointId=$ENDPOINT_ID"
+fi
+
+curl -fsS -X PUT \
   -H "Authorization: Bearer $TOKEN" \
-  "$PORTAINER_URL/api/stacks/$STACK_ID/images/update?pullImage=true"
+  -H "Content-Type: application/json" \
+  -d '{"RepullImageAndRedeploy":true}' \
+  "$REDEPLOY_URL"
 
 log "Deployment triggered for stack $STACK_NAME (ID: $STACK_ID)"
 ```
 
-## Approach 4: Portainer API Token for Automation
+## Approach 4: Portainer Access Token for Automation
 
-Use a long-lived API token instead of username/password for automation:
+Use an access token instead of username/password for automation:
 
 ```bash
-# Create an API token in Portainer:
+# Create an access token in Portainer:
 # My Account > Access Tokens > Add access token
 
 # Use the token directly - no auth step needed
-curl -s -X POST \
-  -H "x-api-key: YOUR_API_TOKEN" \
-  "$PORTAINER_URL/api/stacks/$STACK_ID/images/update?pullImage=true"
+curl -fsS -X PUT \
+  -H "X-API-KEY: YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"RepullImageAndRedeploy":true}' \
+  "$PORTAINER_URL/api/stacks/$STACK_ID/git/redeploy?endpointId=$ENDPOINT_ID"
 ```
 
-API tokens are more secure than passwords in CI because they can be scoped and revoked independently.
+Access tokens are more secure than passwords in CI because they avoid embedding a user password and can be revoked independently. They inherit the permissions of the Portainer user that created them.
 
 ## Watching Deployment Logs
 
-After triggering a redeploy, watch container logs to verify the new version started:
+After triggering a redeploy, watch logs to verify the new version started. For Docker Swarm stacks, run this on a Swarm manager node:
 
 ```bash
-# Wait for the new container to start
+# Wait for the updated service task to start
 sleep 5
 
-# Stream logs from the newly deployed service
-docker service logs --follow my-app_api 2>&1 | head -50
+# Stream the last 50 log lines from the service
+docker service logs --follow --tail 50 my-app_api
 ```
 
 ## Scheduling Nightly Rebuilds
