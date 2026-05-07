@@ -8,9 +8,9 @@ Description: Learn how to run MariaDB in a Podman container with persistent stor
 
 ---
 
-> MariaDB in Podman provides a MySQL-compatible database engine running securely in a rootless container with full data persistence.
+> MariaDB in Podman provides a MySQL-compatible database engine that can run securely in a rootless container with full data persistence.
 
-MariaDB is a community-developed fork of MySQL that offers improved performance, additional storage engines, and full MySQL compatibility. Running it inside a Podman container gives you a portable, consistent database that is quick to set up and easy to manage. This guide covers basic usage, persistence, custom configuration, and initialization scripts.
+MariaDB is a community-developed fork of MySQL that offers improved performance, additional storage engines, and broad MySQL compatibility. Running it inside a Podman container gives you a portable, consistent database that is quick to set up and easy to manage. This guide covers basic usage, persistence, custom configuration, and initialization scripts.
 
 ---
 
@@ -19,7 +19,7 @@ MariaDB is a community-developed fork of MySQL that offers improved performance,
 Download the official MariaDB image.
 
 ```bash
-# Pull the latest MariaDB image
+# Pull the MariaDB 11 image
 
 podman pull docker.io/library/mariadb:11
 
@@ -72,6 +72,8 @@ Use environment variables to set up application credentials.
 
 ```bash
 # Run MariaDB with a pre-created database and user
+podman volume create mariadb-app-data
+
 podman run -d \
   --name mariadb-app \
   -p 3308:3306 \
@@ -79,7 +81,7 @@ podman run -d \
   -e MARIADB_DATABASE=myapp \
   -e MARIADB_USER=appuser \
   -e MARIADB_PASSWORD=app-secret \
-  -v mariadb-data:/var/lib/mysql:Z \
+  -v mariadb-app-data:/var/lib/mysql:Z \
   mariadb:11
 
 # Connect as the application user
@@ -108,7 +110,7 @@ collation-server = utf8mb4_unicode_ci
 
 # Logging
 slow_query_log = 1
-slow_query_log_file = /var/log/mysql/slow.log
+slow_query_log_file = /var/lib/mysql/slow.log
 long_query_time = 2
 
 # InnoDB settings
@@ -117,12 +119,14 @@ innodb_flush_log_at_trx_commit = 2
 EOF
 
 # Run MariaDB with custom config
+podman volume create mariadb-tuned-data
+
 podman run -d \
   --name mariadb-tuned \
   -p 3309:3306 \
   -e MARIADB_ROOT_PASSWORD=my-secret-password \
   -v ~/mariadb-config/custom.cnf:/etc/mysql/conf.d/custom.cnf:Z \
-  -v mariadb-data:/var/lib/mysql:Z \
+  -v mariadb-tuned-data:/var/lib/mysql:Z \
   mariadb:11
 
 # Verify custom settings
@@ -188,10 +192,10 @@ podman stop my-mariadb
 podman start my-mariadb
 
 # Remove containers and volumes
-podman rm -f my-mariadb mariadb-persistent mariadb-app
-podman volume rm mariadb-data
+podman rm -f my-mariadb mariadb-persistent mariadb-app mariadb-tuned mariadb-init
+podman volume rm mariadb-data mariadb-app-data mariadb-tuned-data
 ```
 
 ## Summary
 
-Running MariaDB in a Podman container delivers a MySQL-compatible database engine with easy setup and management. Named volumes ensure data persistence, custom configuration files let you tune performance, and initialization scripts automate schema setup. MariaDB's additional features like Aria storage engine and thread pool are all available inside the container. Podman's rootless execution provides extra security, making this a solid choice for development databases and staging environments.
+Running MariaDB in a Podman container delivers a MySQL-compatible database engine with easy setup and management. Named volumes ensure data persistence, custom configuration files let you tune performance, and initialization scripts automate schema setup. MariaDB's additional features like Aria storage engine and thread pool are all available inside the container. When you run Podman rootless, it provides extra security, making this a solid choice for development databases and staging environments.
