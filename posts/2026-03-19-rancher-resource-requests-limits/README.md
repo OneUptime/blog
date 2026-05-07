@@ -16,18 +16,18 @@ Resource requests and limits are fundamental to running stable Kubernetes worklo
 
 ## Understanding Requests vs. Limits
 
-**Requests** are the resources guaranteed to the container. The Kubernetes scheduler uses requests to decide which node can fit the pod. If a node does not have enough unrequested resources, the pod will not be scheduled there.
+**Requests** are the resources a container asks for. The Kubernetes scheduler uses requests to decide which node can fit the pod. If a node does not have enough allocatable resources available to satisfy those requests, the pod will not be scheduled there.
 
 **Limits** are the maximum resources a container can use. If a container exceeds its memory limit, it is killed (OOMKilled). If it exceeds its CPU limit, it is throttled.
 
 | Resource | Request | Limit |
 |----------|---------|-------|
-| CPU | Guaranteed minimum | Maximum allowed (throttled if exceeded) |
-| Memory | Guaranteed minimum | Maximum allowed (OOMKilled if exceeded) |
+| CPU | Requested amount used for scheduling | Maximum allowed (throttled if exceeded) |
+| Memory | Requested amount used for scheduling | Maximum allowed (OOMKilled if exceeded) |
 
 ## Step 1: Navigate to Workload Configuration
 
-In the Rancher dashboard, select your cluster and navigate to **Workloads > Deployments** (or any workload type). Click **Create** for a new workload, or click the three-dot menu and select **Edit Config** for an existing one.
+In the Rancher dashboard, click **☰ > Cluster Management**, open your cluster with **Explore**, and then go to **Workload**. Select **Deployment** (or another workload type). Click **Create** for a new workload, or click the three-dot menu and select **Edit Config** for an existing one.
 
 ## Step 2: Set Resource Requests and Limits via the UI
 
@@ -132,7 +132,7 @@ spec:
         memory: 64Mi
 ```
 
-This ensures every container in the namespace gets at least 100m CPU and 128Mi memory by default, and cannot exceed 2 CPU and 2Gi memory.
+This sets default requests of 100m CPU and 128Mi memory, default limits of 250m CPU and 256Mi memory, and enforces per-container minimums of 50m CPU and 64Mi memory and maximums of 2 CPU and 2Gi memory.
 
 ## Step 5: Set Namespace-Level Quotas with ResourceQuotas
 
@@ -153,7 +153,7 @@ spec:
     pods: "20"
 ```
 
-In Rancher, you can set project-level resource quotas under **Cluster Management > Projects/Namespaces**. Click on a project and configure resource quotas in the project settings.
+In Rancher, you can set project-level resource quotas by going to **☰ > Cluster Management**, opening your cluster with **Explore**, and then selecting **Cluster > Projects/Namespaces**. In **Group by Project** view, choose your project, click **Edit Config**, and configure **Resource Quotas**.
 
 ## Guidelines for Setting Values
 
@@ -210,17 +210,17 @@ resources:
 
 ## Monitoring Resource Usage
 
-Rancher provides built-in monitoring when the Monitoring chart is installed:
+Rancher provides built-in monitoring when the `rancher-monitoring` chart is installed:
 
-1. Navigate to **Monitoring > Grafana**
-2. Look at the **Kubernetes / Compute Resources / Pod** dashboard
+1. Click **☰ > Cluster Management**, open your cluster with **Explore**, and then go to **Monitoring > Grafana**
+2. Look at a built-in pod compute resources dashboard, such as **Kubernetes / Compute Resources / Pod**
 3. Compare actual usage against requests and limits
 
 Using kubectl:
 
 ```bash
-kubectl top pods -n default
-kubectl top nodes
+kubectl top pod -n default
+kubectl top node
 ```
 
 Check if any pods have been OOMKilled:
