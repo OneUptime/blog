@@ -16,16 +16,18 @@ Virtualization platforms create virtual switches (vSwitches) that bridge VMs to 
 
 VMware vSwitch has security policies that affect ARP:
 
-| Policy | Default | ARP Impact |
+| Policy | Default (vSphere 7.0+) | ARP Impact |
 |--------|---------|-----------|
-| Promiscuous Mode | Reject | VMs only see their own ARP traffic |
-| MAC Address Changes | Accept | VMs can change their MAC |
-| Forged Transmits | Accept | VMs can send ARP with different MAC |
+| Promiscuous Mode | Reject | VMs cannot sniff frames not addressed to them, though ARP broadcasts still arrive normally |
+| MAC Address Changes | Reject | If a guest changes its effective MAC, inbound traffic to that new MAC can be dropped |
+| Forged Transmits | Reject | Outbound frames, including ARP, are dropped if the source MAC does not match the vNIC's effective MAC |
+
+On older vSphere 6.x environments, `MAC Address Changes` and `Forged Transmits` were commonly `Accept` by default.
 
 ```text
 When "Forged Transmits = Reject":
-- vSwitch drops ARP packets where source MAC ≠ VM's registered MAC
-- Prevents ARP spoofing from inside VMs
+- vSwitch drops outbound frames, including ARP, where source MAC ≠ VM's effective MAC
+- Prevents MAC spoofing from inside VMs
 ```
 
 ### Configuring VMware Security Policies
@@ -44,90 +46,90 @@ Get-VirtualSwitch -Name "vSwitch0" |
 
 When a VM migrates from one host to another via vMotion:
 
-1. VM gets a new MAC address association on the new host
-2. VMware sends **gratuitous ARP** on behalf of the VM
-3. All switches update their MAC tables
+1. The VM's MAC address becomes active on the destination host
+2. If `Notify Switches` is enabled, ESXi sends **RARP** on behalf of the VM
+3. Upstream physical switches relearn the VM's location in their MAC tables
 4. Traffic flows to the new host
 
-This is transparent to the VM and completes in milliseconds.
+This is typically transparent to the VM when upstream switches relearn the MAC promptly.
 
 ## KVM/libvirt ARP Behavior
 
-### Linux Bridge (Default Mode)
+### Linux Bridge (Default libvirt Network)
 
-KVM VMs connected via `virbr0` (Linux bridge) share a broadcast domain:
+On many libvirt hosts, the default `virbr0` network is a Linux bridge used for NAT. Guests on that network still share a broadcast domain with each other:
 
 ```bash
-# View the bridge and connected VMs
-brctl show
+# View the bridge device
+ip -details link show dev virbr0
 
-# Show ARP table for the bridge
+# View interfaces attached to the bridge
+ip link show master virbr0
+
+# Show neighbor table entries for the bridge
 ip neigh show dev virbr0
 
-# The bridge acts as a switch - VMs ARP directly to each other
+# Guests on the same bridge still ARP directly to each other
 ```
 
 ### Check VM ARP Traffic
 
 ```bash
 # Capture ARP on the bridge interface
-sudo tcpdump -n -e arp -i virbr0
+sudo tcpdump -n -e -i virbr0 arp
 
 # Capture on a specific VM's tap interface
-sudo tcpdump -n -e arp -i vnet0
+sudo tcpdump -n -e -i vnet0 arp
 ```
 
 ### MACVTAP Mode
 
-In MACVTAP mode, each VM has its own MAC address directly on the physical NIC:
+In MACVTAP mode, guest traffic bypasses a Linux bridge and appears directly connected to the physical network:
 
 ```bash
-# List VM network interfaces (tap/macvtap)
+# List VM network interfaces and MAC addresses
 virsh domiflist vm-name
 
-# Check MAC address
-virsh domifaddr vm-name
+# Show host-side macvtap devices
+ip link show type macvtap
 ```
 
 ### ARP After VM Migration (KVM)
 
-After a KVM live migration, send gratuitous ARP to update network:
+After a KVM live migration, some environments rely on an unsolicited ARP from the guest to refresh neighbor caches:
 
 ```bash
 # Inside the VM after migration
-arping -A -c 3 -I eth0 192.168.1.100
-
-# Or using virsh network
-virsh net-update default
+arping -U -c 3 -I eth0 192.168.1.100
 ```
 
 ## ARP and Promiscuous Mode
 
-For monitoring VMs or virtual network appliances, promiscuous mode allows a VM to see all ARP broadcasts:
+For host-side packet capture or bridge-based appliances, promiscuous mode allows an interface to receive frames not addressed to its own MAC:
 
 ```bash
 # Enable promiscuous mode on a Linux bridge interface
-ip link set virbr0 promisc on
+ip link set dev virbr0 promisc on
 
 # Verify
-ip link show virbr0 | grep PROMISC
+ip link show dev virbr0 | grep PROMISC
 ```
 
 ## Common ARP Issues in Virtualized Environments
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
-| VM can't reach gateway | vSwitch drops forged transmits | Allow forged transmits |
-| ARP after vMotion fails | Gratuitous ARP not propagated | Check portgroup settings |
-| Stale ARP after VM restart | Old MAC in physical switch | Flush ARP cache on switch |
+| VM loses connectivity after guest MAC change | vSwitch rejects MAC changes or forged transmits | Allow the required security policies on that port group |
+| Connectivity after vMotion fails | Upstream switch did not relearn the VM MAC from RARP | Check `Notify Switches` and upstream switch MAC learning |
+| Stale ARP after failover | Peers still cache the old IP-to-MAC mapping | Clear neighbor cache or send unsolicited ARP |
 | Containers in VM can't ARP | Double NAT or bridge isolation | Check container bridge settings |
 
 ## Key Takeaways
 
-- VMware vSwitch security policies (Forged Transmits, MAC Changes) directly affect ARP.
-- VMware sends gratuitous ARP automatically after vMotion to update L2 tables.
-- KVM/Linux bridge forwards ARP normally between VMs on the same bridge.
-- After VM live migration, gratuitous ARP may need to be sent manually in KVM environments.
+- VMware vSwitch security policies directly affect whether guests can send or receive traffic after MAC changes.
+- VMware uses RARP, not gratuitous ARP, for switch notification after vMotion when `Notify Switches` is enabled.
+- The default libvirt `virbr0` network is NAT-backed, but guests on it still ARP directly with each other.
+- In some KVM environments, sending an unsolicited ARP from the guest after live migration helps refresh neighbor caches.
 
 **Related Reading:**
 
