@@ -22,8 +22,8 @@ When running multiple services with podman-compose, viewing logs from all contai
 podman-compose logs
 
 # Output includes the service name as a prefix
-# web_1  | 172.16.0.1 - - [17/Mar/2026] "GET / HTTP/1.1" 200
-# db_1   | 2026-03-17 LOG:  database system is ready
+# [web] | 172.16.0.1 - - [17/Mar/2026] "GET / HTTP/1.1" 200
+# [db]  | 2026-03-17 LOG:  database system is ready
 ```
 
 ## Following Logs in Real Time
@@ -79,7 +79,7 @@ podman-compose logs -f web api
 
 ```bash
 # Check logs for a service that exited with an error
-podman-compose ps -a
+podman-compose ps
 # Look for services with exit code != 0
 
 # View the full logs for the failing service
