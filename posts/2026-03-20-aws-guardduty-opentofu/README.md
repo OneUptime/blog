@@ -13,31 +13,13 @@ AWS GuardDuty is a managed threat detection service that analyzes CloudTrail eve
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with GuardDuty and Organizations permissions
+- AWS credentials with permissions for GuardDuty, S3, EventBridge, SNS, IAM, and AWS Organizations
 
 ## Step 1: Enable GuardDuty Detector
 
 ```hcl
 resource "aws_guardduty_detector" "main" {
   enable = true
-
-  datasources {
-    s3_logs {
-      enable = true  # Analyze S3 data plane events
-    }
-    kubernetes {
-      audit_logs {
-        enable = true  # Analyze EKS audit logs
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          enable = true  # Scan EBS volumes for malware
-        }
-      }
-    }
-  }
 
   finding_publishing_frequency = "SIX_HOURS"  # FIFTEEN_MINUTES, ONE_HOUR, or SIX_HOURS
 
@@ -46,11 +28,31 @@ resource "aws_guardduty_detector" "main" {
     Environment = var.environment
   }
 }
+
+resource "aws_guardduty_detector_feature" "s3_data_events" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"  # Analyze S3 data plane events
+}
+
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"  # Analyze EKS audit logs
+}
+
+resource "aws_guardduty_detector_feature" "ebs_malware_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EBS_MALWARE_PROTECTION"
+  status      = "ENABLED"  # Scan EBS volumes for malware
+}
 ```
 
 ## Step 2: Add Trusted IP List (Whitelist)
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3_bucket" "guardduty_lists" {
   bucket = "${var.project_name}-guardduty-lists-${data.aws_caller_identity.current.account_id}"
 }
@@ -73,11 +75,36 @@ resource "aws_guardduty_ipset" "trusted" {
 ## Step 3: Configure Findings via EventBridge
 
 ```hcl
-# Route HIGH severity GuardDuty findings to SNS
+# Route HIGH and CRITICAL severity GuardDuty findings to SNS
+
+data "aws_iam_policy_document" "guardduty_sns" {
+  statement {
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    resources = [var.security_sns_topic_arn]
+
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:SourceArn"
+      values   = [aws_cloudwatch_event_rule.guardduty_high_findings.arn]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "guardduty_sns" {
+  arn    = var.security_sns_topic_arn
+  policy = data.aws_iam_policy_document.guardduty_sns.json
+}
 
 resource "aws_cloudwatch_event_rule" "guardduty_high_findings" {
   name        = "${var.project_name}-guardduty-high-severity"
-  description = "Alert on HIGH severity GuardDuty findings"
+  description = "Alert on HIGH and CRITICAL severity GuardDuty findings"
 
   event_pattern = jsonencode({
     source        = ["aws.guardduty"]
@@ -89,6 +116,7 @@ resource "aws_cloudwatch_event_rule" "guardduty_high_findings" {
 }
 
 resource "aws_cloudwatch_event_target" "guardduty_sns" {
+  depends_on = [aws_sns_topic_policy.guardduty_sns]
   rule      = aws_cloudwatch_event_rule.guardduty_high_findings.name
   target_id = "guardduty-alert"
   arn       = var.security_sns_topic_arn
@@ -98,7 +126,7 @@ resource "aws_cloudwatch_event_target" "guardduty_sns" {
       severity    = "$.detail.severity"
       type        = "$.detail.type"
       description = "$.detail.description"
-      account     = "$.account"
+      account     = "$.detail.accountId"
       region      = "$.region"
     }
     input_template = "\"GuardDuty ALERT: <type> in account <account> (<region>). Severity: <severity>. <description>\""
@@ -109,33 +137,36 @@ resource "aws_cloudwatch_event_target" "guardduty_sns" {
 ## Step 4: Multi-Account Organization Setup
 
 ```hcl
-# Designate an admin account for Organization-wide GuardDuty
+# Run this in the AWS Organizations management account
 resource "aws_guardduty_organization_admin_account" "main" {
   admin_account_id = var.security_account_id
 }
 
-# In the admin account: configure organization settings
+# Run the following in the delegated GuardDuty administrator account
 resource "aws_guardduty_organization_configuration" "main" {
-  auto_enable_organization_members = "ALL"  # or "NEW"
   detector_id                      = aws_guardduty_detector.main.id
+  auto_enable_organization_members = "ALL"  # or "NEW" / "NONE"
+}
 
-  datasources {
-    s3_logs {
-      auto_enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          auto_enable = true
-        }
-      }
-    }
-  }
+resource "aws_guardduty_organization_configuration_feature" "s3_data_events" {
+  depends_on  = [aws_guardduty_organization_configuration.main]
+  detector_id  = aws_guardduty_detector.main.id
+  name         = "S3_DATA_EVENTS"
+  auto_enable  = "ALL"
+}
+
+resource "aws_guardduty_organization_configuration_feature" "eks_audit_logs" {
+  depends_on  = [aws_guardduty_organization_configuration.main]
+  detector_id  = aws_guardduty_detector.main.id
+  name         = "EKS_AUDIT_LOGS"
+  auto_enable  = "ALL"
+}
+
+resource "aws_guardduty_organization_configuration_feature" "ebs_malware_protection" {
+  depends_on  = [aws_guardduty_organization_configuration.main]
+  detector_id  = aws_guardduty_detector.main.id
+  name         = "EBS_MALWARE_PROTECTION"
+  auto_enable  = "ALL"
 }
 ```
 
