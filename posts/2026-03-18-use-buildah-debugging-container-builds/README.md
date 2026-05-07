@@ -46,7 +46,7 @@ buildah run $container -- apt-get update
 echo "Exit code: $?"
 
 # Step 3: If something goes wrong, inspect the state
-buildah run $container -- cat /etc/apt/sources.list.d/*.list 2>/dev/null || echo "No extra sources"
+buildah run $container -- sh -c "cat /etc/apt/sources.list /etc/apt/sources.list.d/* 2>/dev/null" || echo "No apt sources found"
 
 # Step 4: Try the fix
 buildah run $container -- apt-get install -y --no-install-recommends libpq-dev
