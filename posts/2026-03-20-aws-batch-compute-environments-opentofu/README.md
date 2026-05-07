@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Batch, Compute, HPC, Infrastructure as Code
 
-Description: Learn how to create AWS Batch managed and unmanaged compute environments with EC2 and Fargate launch types using OpenTofu.
+Description: Learn how to create AWS Batch managed compute environments with EC2, Spot, and Fargate compute resources using OpenTofu.
 
 ## Introduction
 
-AWS Batch manages the provisioning of compute resources for batch processing workloads. Compute Environments define the instance types, VPC, and capacity limits available to your jobs. OpenTofu manages these as code for reproducible batch infrastructure.
+AWS Batch manages the provisioning of compute resources for batch processing workloads. Compute Environments define the compute resources, VPC, and capacity limits available to your jobs. OpenTofu manages these as code for reproducible batch infrastructure.
 
 ## IAM Roles
 
 ```hcl
-# Service role for Batch to manage EC2 instances
+# Service role for Batch to manage compute resources
 
 resource "aws_iam_role" "batch_service" {
   name = "aws-batch-service-role"
@@ -31,6 +31,32 @@ resource "aws_iam_role" "batch_service" {
 resource "aws_iam_role_policy_attachment" "batch_service" {
   role       = aws_iam_role.batch_service.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole"
+}
+
+resource "aws_iam_service_linked_role" "ec2_spot" {
+  aws_service_name = "spot.amazonaws.com"
+}
+
+resource "aws_iam_service_linked_role" "ec2_spot_fleet" {
+  aws_service_name = "spotfleet.amazonaws.com"
+}
+
+resource "aws_iam_role" "spot_fleet" {
+  name = "AmazonEC2SpotFleetTaggingRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "spotfleet.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "spot_fleet" {
+  role       = aws_iam_role.spot_fleet.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole"
 }
 
 # Instance profile for EC2 instances in the compute environment
@@ -62,15 +88,15 @@ resource "aws_iam_role_policy_attachment" "ecs_instance" {
 
 ```hcl
 resource "aws_batch_compute_environment" "ec2" {
-  compute_environment_name = "${var.app_name}-ec2-${var.environment}"
-  type                     = "MANAGED"
-  service_role             = aws_iam_role.batch_service.arn
-  state                    = "ENABLED"
+  name         = "${var.app_name}-ec2-${var.environment}"
+  type         = "MANAGED"
+  service_role = aws_iam_role.batch_service.arn
+  state        = "ENABLED"
 
   compute_resources {
-    type      = "EC2"
-    min_vcpus = 0
-    max_vcpus = 256
+    type          = "EC2"
+    min_vcpus     = 0
+    max_vcpus     = 256
     desired_vcpus = 0
 
     instance_type = ["m5.large", "m5.xlarge", "m5.2xlarge", "c5.large", "c5.xlarge"]
@@ -89,6 +115,8 @@ resource "aws_batch_compute_environment" "ec2" {
     Environment = var.environment
     ManagedBy   = "opentofu"
   }
+
+  depends_on = [aws_iam_role_policy_attachment.batch_service]
 }
 ```
 
@@ -96,9 +124,9 @@ resource "aws_batch_compute_environment" "ec2" {
 
 ```hcl
 resource "aws_batch_compute_environment" "spot" {
-  compute_environment_name = "${var.app_name}-spot-${var.environment}"
-  type                     = "MANAGED"
-  service_role             = aws_iam_role.batch_service.arn
+  name         = "${var.app_name}-spot-${var.environment}"
+  type         = "MANAGED"
+  service_role = aws_iam_role.batch_service.arn
 
   compute_resources {
     type                = "SPOT"
@@ -108,11 +136,18 @@ resource "aws_batch_compute_environment" "spot" {
     min_vcpus = 0
     max_vcpus = 512
 
-    instance_type      = ["optimal"]  # let AWS choose best instance families
+    instance_type      = ["default_x86_64"]  # let AWS choose current x86_64 instance families
     subnets            = var.private_subnet_ids
     security_group_ids = [aws_security_group.batch.id]
     instance_role      = aws_iam_instance_profile.ecs_instance.arn
   }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.batch_service,
+    aws_iam_role_policy_attachment.spot_fleet,
+    aws_iam_service_linked_role.ec2_spot,
+    aws_iam_service_linked_role.ec2_spot_fleet
+  ]
 }
 ```
 
@@ -120,9 +155,9 @@ resource "aws_batch_compute_environment" "spot" {
 
 ```hcl
 resource "aws_batch_compute_environment" "fargate" {
-  compute_environment_name = "${var.app_name}-fargate-${var.environment}"
-  type                     = "MANAGED"
-  service_role             = aws_iam_role.batch_service.arn
+  name         = "${var.app_name}-fargate-${var.environment}"
+  type         = "MANAGED"
+  service_role = aws_iam_role.batch_service.arn
 
   compute_resources {
     type               = "FARGATE"
@@ -130,6 +165,8 @@ resource "aws_batch_compute_environment" "fargate" {
     subnets            = var.private_subnet_ids
     security_group_ids = [aws_security_group.batch.id]
   }
+
+  depends_on = [aws_iam_role_policy_attachment.batch_service]
 }
 ```
 
