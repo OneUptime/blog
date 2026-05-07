@@ -22,7 +22,7 @@ resource "aws_iot_thing_type" "sensor" {
   }
 
   tags = {
-    Environment = var.environment
+    Environment = "production"
     ManagedBy   = "opentofu"
   }
 }
@@ -45,7 +45,7 @@ resource "aws_iot_thing_group" "building_a" {
   }
 
   tags = {
-    Environment = var.environment
+    Environment = "production"
     ManagedBy   = "opentofu"
   }
 }
@@ -83,6 +83,22 @@ resource "aws_iot_thing_group_membership" "sensor_001" {
 
 resource "aws_iot_certificate" "sensor_001" {
   active = true
+}
+
+# Create an IoT policy for the device certificate
+resource "aws_iot_policy" "device_policy" {
+  name = "sensor-001-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = ["iot:Connect"]
+        Resource = ["*"]
+      }
+    ]
+  })
 }
 
 # Attach policy to certificate
@@ -145,4 +161,4 @@ tofu apply tfplan
 
 ## Summary
 
-AWS IoT Core Things provide a cloud registry for your physical devices. OpenTofu manages thing types, groups, individual things, and their certificate associations - enabling fleet provisioning and device lifecycle management as code.
+AWS IoT Core Things provide a cloud registry for your physical devices. OpenTofu manages thing types, groups, individual things, and their certificate associations - enabling device registry and lifecycle management as code.
