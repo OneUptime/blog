@@ -8,13 +8,13 @@ Description: Learn why applying without a saved plan is risky and how to enforce
 
 ## Introduction
 
-Running `tofu apply` without a saved plan file means OpenTofu generates and applies a new plan in one step - giving you no opportunity to verify what will happen before it happens. Between when you ran `tofu plan` and when you run `tofu apply`, someone else might have changed the configuration, or the cloud API might return different results. A saved plan file guarantees apply matches exactly what was reviewed.
+Running `tofu apply` without a saved plan file means OpenTofu generates and applies a new plan in one step - giving you no opportunity to verify what will happen before it happens. Between when you ran `tofu plan` and when you run `tofu apply`, someone else might have changed the configuration, or the cloud API might return different results. A saved plan file makes `tofu apply` use the exact actions captured in the reviewed plan instead of generating a new one at apply time.
 
 ## The Risk: Plan Drift Between Review and Apply
 
 What can change between an unsaved plan and apply.
 
-```hcl
+```text
 Timeline without saved plan:
 09:00 - You run: tofu plan  → shows: 1 resource to create
 09:01 - Colleague merges a change that adds: destroy production database
@@ -62,14 +62,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Init OpenTofu
+        run: tofu init -input=false
+
       - name: Run tofu plan
         id: plan
         run: |
-          tofu plan -out=plan.tfplan -detailed-exitcode
-          echo "changed=$?" >> $GITHUB_OUTPUT
-        continue-on-error: true
+          set +e
+          tofu plan -input=false -out=plan.tfplan -detailed-exitcode
+          exitcode=$?
+          echo "changed=$exitcode" >> "$GITHUB_OUTPUT"
+          if [ "$exitcode" -eq 1 ]; then
+            exit 1
+          fi
+          exit 0
 
       - name: Upload plan artifact
+        if: steps.plan.outputs.changed == '2'
         uses: actions/upload-artifact@v4
         with:
           name: tofu-plan
@@ -80,9 +89,12 @@ jobs:
     needs: plan
     if: needs.plan.outputs.plan-changed == '2'  # only if there are changes
     runs-on: ubuntu-latest
-    environment: production  # requires manual approval
+    environment: production  # can require manual approval if required reviewers are configured
     steps:
       - uses: actions/checkout@v4
+
+      - name: Init OpenTofu
+        run: tofu init -input=false
 
       - name: Download plan artifact
         uses: actions/download-artifact@v4
@@ -99,9 +111,12 @@ Atlantis automatically enforces the plan-then-apply pattern.
 
 ```yaml
 # atlantis.yaml
+version: 3
+
 projects:
   - name: production
     dir: environments/prod
+    terraform_distribution: opentofu
     workflow: safe-apply
 
 workflows:
@@ -109,12 +124,10 @@ workflows:
     plan:
       steps:
         - init
-        - plan:
-            extra_args: ["-out", "plan.tfplan"]
+        - plan
     apply:
       steps:
-        - apply:
-            extra_args: ["plan.tfplan"]  # always applies saved plan
+        - apply
 ```
 
 ## Making Plans Expirable
@@ -148,4 +161,4 @@ tofu apply "$PLAN_FILE"
 
 ## Summary
 
-Always use `tofu plan -out=plan.tfplan` followed by `tofu apply plan.tfplan` in any environment where the plan was reviewed. The saved plan file is a cryptographic commitment - it captures the exact set of changes OpenTofu will make, and applying it executes precisely those changes regardless of what changed in the configuration afterward. Enforce this pattern in CI/CD by passing plan files as artifacts between pipeline stages and requiring manual approval before the apply stage.
+Always use `tofu plan -out=plan.tfplan` followed by `tofu apply plan.tfplan` in any environment where the plan was reviewed. The saved plan file is an opaque artifact that captures the exact actions OpenTofu decided on at plan time, and applying it tells OpenTofu to use that saved plan instead of generating a new one from whatever configuration is present later. Enforce this pattern in CI/CD by passing plan files as artifacts between pipeline stages and requiring manual approval before the apply stage.
