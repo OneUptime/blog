@@ -132,14 +132,15 @@ from podman import PodmanClient
 import threading
 import queue
 
-def stream_container_logs(client, container_name, log_queue):
+def stream_container_logs(container_name, log_queue):
     """Stream logs from a container into a shared queue."""
     try:
-        container = client.containers.get(container_name)
-        for log_line in container.logs(stream=True, follow=True):
-            line = log_line.decode("utf-8").strip()
-            if line:
-                log_queue.put((container_name, line))
+        with PodmanClient() as client:
+            container = client.containers.get(container_name)
+            for log_line in container.logs(stream=True, follow=True):
+                line = log_line.decode("utf-8").strip()
+                if line:
+                    log_queue.put((container_name, line))
     except Exception as e:
         log_queue.put((container_name, f"ERROR: {e}"))
 
@@ -147,26 +148,27 @@ def aggregate_logs(container_names):
     """Aggregate logs from multiple containers."""
     log_queue = queue.Queue()
 
-    with PodmanClient() as client:
-        threads = []
-        for name in container_names:
-            t = threading.Thread(
-                target=stream_container_logs,
-                args=(client, name, log_queue),
-                daemon=True
-            )
-            t.start()
-            threads.append(t)
+    threads = []
+    for name in container_names:
+        t = threading.Thread(
+            target=stream_container_logs,
+            args=(name, log_queue),
+            daemon=True
+        )
+        t.start()
+        threads.append(t)
 
-        print("Aggregating logs from:", ", ".join(container_names))
-        try:
-            while True:
+    print("Aggregating logs from:", ", ".join(container_names))
+    try:
+        while True:
+            try:
                 container_name, message = log_queue.get(timeout=1)
-                print(f"[{container_name}] {message}")
-        except KeyboardInterrupt:
-            print("\nStopped aggregation.")
-        except queue.Empty:
-            pass
+            except queue.Empty:
+                continue
+
+            print(f"[{container_name}] {message}")
+    except KeyboardInterrupt:
+        print("\nStopped aggregation.")
 
 # Usage
 
