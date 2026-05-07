@@ -29,7 +29,7 @@ getenforce
 # View the SELinux label of a running container process
 podman run --rm -d --name label-test docker.io/library/alpine:latest sleep 3600
 podman inspect label-test --format '{{.ProcessLabel}}'
-# Expected output: system_u:system_r:container_t:s0:c...,c...
+# Expected output includes container_t and MCS categories, for example: system_u:system_r:container_t:s0:c...,c...
 ```
 
 ## Default Container Security Labels
@@ -74,10 +74,10 @@ podman inspect level-test --format '{{.ProcessLabel}}'
 
 ## Sharing Labels Between Containers
 
-If two containers need to share files, they must have the same MCS label.
+If you want to share privately relabeled content between containers, give them the same MCS label.
 
 ```bash
-# Create a shared volume
+# Create a named volume
 podman volume create shared-data
 
 # Run two containers with the same MCS label so they can share data
@@ -99,16 +99,16 @@ podman run --rm \
 
 ## Disabling SELinux Labeling
 
-In development environments, you may need to disable SELinux labeling for a container.
+In development environments, you may need to disable SELinux label separation for a container.
 
 ```bash
-# Disable SELinux label enforcement for a specific container
+# Disable SELinux label separation for a specific container
 podman run --rm -d \
   --security-opt label=disable \
   --name no-selinux \
   docker.io/library/alpine:latest sleep 3600
 
-# Verify no process label is assigned
+# Inspect the process label
 podman inspect no-selinux --format '{{.ProcessLabel}}'
 ```
 
@@ -144,7 +144,7 @@ ls -lZ /tmp/podman-selinux-test/
 # View SELinux contexts inside a container
 podman run --rm \
   -v /tmp/podman-selinux-test:/data:Z \
-  docker.io/library/alpine:latest \
+  registry.access.redhat.com/ubi9/ubi \
   ls -lZ /data/
 ```
 
