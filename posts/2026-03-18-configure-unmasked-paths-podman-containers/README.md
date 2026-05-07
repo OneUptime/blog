@@ -12,6 +12,8 @@ Description: Learn how to unmask default-hidden filesystem paths in Podman conta
 
 Podman masks several `/proc` and `/sys` paths by default to prevent containers from reading sensitive host information. However, certain workloads such as monitoring agents, hardware diagnostic tools, and system utilities need access to these paths to function correctly. Podman provides the `--security-opt unmask=` flag to selectively expose masked paths.
 
+Unmasking removes Podman's default mask for the path, but normal kernel permissions, capabilities, and host kernel support still apply.
+
 This guide explains when and how to unmask paths in Podman containers while maintaining reasonable security.
 
 ---
@@ -48,7 +50,7 @@ Use `--security-opt unmask=` to expose a specific masked path to the container.
 podman run --rm \
   --security-opt unmask=/proc/timer_list \
   docker.io/library/alpine:latest \
-  sh -c "cat /proc/timer_list | head -20"
+  sh -c "head -20 /proc/timer_list 2>/dev/null || echo 'timer_list unavailable'"
 
 # Verify that other paths remain masked
 podman run --rm \
@@ -59,26 +61,25 @@ podman run --rm \
 
 ## Unmasking Multiple Paths
 
-Specify the flag multiple times to unmask several paths.
+Specify several paths separated by colons to unmask multiple paths.
 
 ```bash
 # Unmask multiple paths for a system monitoring container
 podman run --rm \
-  --security-opt unmask=/proc/timer_list \
-  --security-opt unmask=/proc/sched_debug \
+  --security-opt unmask=/proc/timer_list:/proc/sched_debug \
   docker.io/library/alpine:latest \
   sh -c "
     echo '--- timer_list (first 5 lines) ---'
-    cat /proc/timer_list 2>/dev/null | head -5 || echo 'unavailable'
+    head -5 /proc/timer_list 2>/dev/null || echo 'unavailable'
     echo '--- sched_debug (first 5 lines) ---'
-    cat /proc/sched_debug 2>/dev/null | head -5 || echo 'unavailable'
+    head -5 /proc/sched_debug 2>/dev/null || echo 'unavailable'
   "
 
 ```
 
 ## Unmasking All Paths
 
-Use `unmask=ALL` to remove all default path masking. This is the least restrictive option.
+Use `unmask=ALL` to remove all default path masking and default read-only path restrictions. This is the least restrictive option.
 
 ```bash
 # Unmask all default masked paths at once
@@ -87,31 +88,28 @@ podman run --rm \
   docker.io/library/alpine:latest \
   sh -c "
     echo '--- All paths unmasked ---'
-    cat /proc/timer_list 2>/dev/null | head -3 || echo 'timer_list: N/A'
-    cat /proc/sched_debug 2>/dev/null | head -3 || echo 'sched_debug: N/A'
-    ls /sys/firmware 2>/dev/null | head -3 || echo 'firmware: N/A'
+    head -3 /proc/timer_list 2>/dev/null || echo 'timer_list: N/A'
+    head -3 /proc/sched_debug 2>/dev/null || echo 'sched_debug: N/A'
+    ls /sys/firmware 2>/dev/null || echo 'firmware: N/A'
   "
 ```
 
 ## Practical Example: Monitoring Agent Container
 
-Monitoring agents like Prometheus node exporter need access to system metrics that are normally masked.
+Monitoring agents like Prometheus node exporter often need access to host namespaces and host filesystem data. Unmasking only applies to Podman's default masked paths; common files such as `/proc/stat`, `/proc/meminfo`, and `/proc/cpuinfo` are not masked by default.
 
 ```bash
 # Run a monitoring container with the paths it needs unmasked
 podman run -d \
   --name monitoring-agent \
-  --security-opt unmask=/proc/timer_list \
-  --security-opt unmask=/proc/sched_debug \
-  --security-opt unmask=/proc/stat \
-  --security-opt unmask=/proc/meminfo \
-  --security-opt unmask=/proc/cpuinfo \
+  --security-opt unmask=/proc/timer_list:/proc/sched_debug \
   docker.io/library/alpine:latest \
   sh -c "
     # Simulate a monitoring loop that reads system metrics
     while true; do
       cat /proc/stat > /dev/null 2>&1
       cat /proc/meminfo > /dev/null 2>&1
+      head -1 /proc/sched_debug > /dev/null 2>&1 || true
       sleep 10
     done
   "
@@ -120,6 +118,7 @@ podman run -d \
 podman exec monitoring-agent sh -c "
   echo 'CPU stats:' && head -1 /proc/stat
   echo 'Memory:' && head -1 /proc/meminfo
+  head -1 /proc/sched_debug > /dev/null 2>&1 && echo 'sched_debug: accessible' || echo 'sched_debug: unavailable'
 "
 
 # Clean up
@@ -134,14 +133,13 @@ When unmasking paths, compensate by tightening other security settings.
 # Unmask needed paths but harden everything else
 podman run --rm \
   --security-opt unmask=/proc/timer_list \
-  --security-opt unmask=/proc/stat \
   --cap-drop ALL \
   --security-opt no-new-privileges \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid \
   docker.io/library/alpine:latest \
   sh -c "
-    echo 'Unmasked /proc/stat:' && head -1 /proc/stat
+    echo 'Readable /proc/stat:' && head -1 /proc/stat
     echo 'No new privs:' && grep NoNewPrivs /proc/self/status
     echo 'Read-only FS:' && touch /test 2>&1 || echo 'filesystem is read-only'
   "
@@ -154,8 +152,7 @@ Always confirm that unmasking worked as expected.
 ```bash
 # Start a container with specific paths unmasked
 podman run -d --name unmask-verify \
-  --security-opt unmask=/proc/timer_list \
-  --security-opt unmask=/proc/sched_debug \
+  --security-opt unmask=/proc/timer_list:/proc/sched_debug \
   docker.io/library/alpine:latest sleep 3600
 
 # Inspect the container to see the maskedPaths list
