@@ -8,7 +8,7 @@ Description: Learn how to containerize and run Node.js applications with Podman,
 
 ---
 
-> Containerizing Node.js applications with Podman gives you reproducible builds, consistent environments, and rootless execution by default. No Docker daemon required.
+> Containerizing Node.js applications with Podman gives you reproducible builds, consistent environments, and support for rootless execution. No Docker daemon required.
 
 Node.js is one of the most popular runtime environments for building web applications and APIs. Running Node.js applications inside Podman containers provides environment consistency across development, staging, and production, eliminates dependency conflicts, and takes advantage of Podman's rootless architecture for better security. This guide covers everything from running a simple Node.js app to building production-optimized container images with multi-stage builds.
 
@@ -102,7 +102,7 @@ Create a `Containerfile` (Podman's equivalent of a Dockerfile - both names work)
 # Basic Node.js container image
 
 # Use the official Node.js LTS Alpine image for a small footprint
-FROM docker.io/library/node:20-alpine
+FROM docker.io/library/node:24-alpine
 
 # Create a non-root user for security
 # Alpine uses addgroup/adduser instead of groupadd/useradd
@@ -191,8 +191,9 @@ For production deployments, use a multi-stage build to minimize image size and r
 # Multi-stage build for a production Node.js application
 
 # ---- Stage 1: Build ----
-# Use the full Node.js image for building (includes build tools)
-FROM docker.io/library/node:20-alpine AS builder
+# Use the Node.js LTS Alpine image for building
+# Add packages like python3, make, and g++ here if native dependencies require them
+FROM docker.io/library/node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -210,11 +211,11 @@ COPY . .
 # RUN npm run build
 
 # Remove devDependencies to keep only production modules
-RUN npm prune --production
+RUN npm prune --omit=dev
 
 # ---- Stage 2: Runtime ----
 # Use a minimal base image for the final container
-FROM docker.io/library/node:20-alpine AS runtime
+FROM docker.io/library/node:24-alpine AS runtime
 
 # Install dumb-init for proper signal handling in containers
 # Node.js does not handle PID 1 responsibilities well on its own
@@ -335,8 +336,9 @@ podman run -d \
   --name nodeapp-dev \
   -p 3000:3000 \
   -v ~/nodeapp:/app:Z \
+  -w /app \
   -e NODE_ENV=development \
-  docker.io/library/node:20-alpine \
+  docker.io/library/node:24-alpine \
   npx nodemon server.js
 ```
 
@@ -397,14 +399,15 @@ podman rm nodeapp
 # Generate the systemd unit file
 podman generate systemd --name nodeapp --new --files
 
-# Install and enable
-sudo mv container-nodeapp.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable container-nodeapp.service
-sudo systemctl start container-nodeapp.service
+# Install and enable as a user service for rootless Podman
+mkdir -p ~/.config/systemd/user
+mv container-nodeapp.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable container-nodeapp.service
+systemctl --user start container-nodeapp.service
 
 # Check status
-sudo systemctl status container-nodeapp.service
+systemctl --user status container-nodeapp.service
 ```
 
 ---
