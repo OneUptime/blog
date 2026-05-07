@@ -8,7 +8,7 @@ Description: Learn how to run Wayland-native and XWayland applications inside Po
 
 ---
 
-> Wayland is the modern display protocol replacing X11 on Linux desktops. Running Wayland applications in Podman containers offers better security isolation than X11 while delivering smoother graphics performance.
+> Wayland is the modern display protocol replacing X11 on Linux desktops. Running Wayland applications in Podman containers offers better security isolation than X11 while preserving native desktop integration.
 
 Wayland addresses many of the security limitations of X11 by design. Each application gets its own rendering surface, and applications cannot snoop on each other's input or output. Running Wayland applications in containers adds another layer of isolation. This guide covers how to set up and run Wayland-native applications in Podman containers.
 
@@ -57,7 +57,7 @@ podman run --rm -it \
 
 ### With GPU Acceleration
 
-Most Wayland applications need GPU access for rendering:
+Many Wayland applications need GPU access for accelerated rendering:
 
 ```bash
 podman run --rm -it \
@@ -67,8 +67,8 @@ podman run --rm -it \
   --device /dev/dri \
   fedora:latest \
   bash -c '
-    dnf install -y mesa-dri-drivers weston
-    weston-info
+    dnf install -y mesa-dri-drivers wayland-utils
+    wayland-info
   '
 ```
 
@@ -287,7 +287,23 @@ podman run --rm \
   bash -c '
     dnf install -y mpv pipewire-utils mesa-dri-drivers
     pw-cli info
-    # mpv --vo=gpu --gpu-context=wayland video.mp4
+    # mpv --ao=pipewire --vo=gpu --gpu-context=wayland video.mp4
+  '
+```
+
+For applications that use the PulseAudio compatibility layer provided by PipeWire, mount the PulseAudio socket instead:
+
+```bash
+podman run --rm \
+  -e WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
+  -e XDG_RUNTIME_DIR=/tmp/runtime-dir \
+  -v $XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/tmp/runtime-dir/$WAYLAND_DISPLAY:ro \
+  -v $XDG_RUNTIME_DIR/pulse/native:/tmp/runtime-dir/pulse/native:ro \
+  --device /dev/dri \
+  fedora:latest \
+  bash -c '
+    dnf install -y mpv mesa-dri-drivers
+    mpv --ao=pulse --vo=gpu --gpu-context=wayland video.mp4
   '
 ```
 
@@ -309,13 +325,14 @@ podman run --rm -it \
 
 ## Wayland Security Compared to X11
 
-Wayland provides better security than X11 for containerized applications:
+Wayland provides better default isolation than X11 for containerized applications:
 
 ```bash
-# With X11: container can see ALL windows and ALL keystrokes
-# With Wayland: container only sees its own rendering surface
+# With X11: access to the X11 socket can expose other windows and input
+# With Wayland: clients do not get global access through the core protocol
 
-# Verify isolation - this should fail on Wayland (but works on X11)
+# Verify isolation - this should fail on compositors that do not expose
+# privileged screenshot protocols to regular clients
 podman run --rm -it \
   -e WAYLAND_DISPLAY=$WAYLAND_DISPLAY \
   -e XDG_RUNTIME_DIR=/tmp/runtime-dir \
@@ -323,8 +340,8 @@ podman run --rm -it \
   fedora:latest \
   bash -c '
     dnf install -y grim
-    # Screenshot will only capture this app window, not the whole screen
-    grim test.png 2>&1 || echo "Cannot capture other windows (this is expected)"
+    # grim requires compositor support for the screencopy protocol
+    grim test.png 2>&1 || echo "Cannot capture the desktop without compositor support or permission"
   '
 ```
 
@@ -361,6 +378,7 @@ shift
 RUNTIME_DIR="/tmp/runtime-dir"
 
 podman run --rm -it \
+  --userns=keep-id \
   -e WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}" \
   -e XDG_RUNTIME_DIR="$RUNTIME_DIR" \
   -e GDK_BACKEND=wayland \
