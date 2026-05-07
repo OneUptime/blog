@@ -300,7 +300,7 @@ server {
             return 401;
         }
 
-        proxy_pass http://unix:/run/podman/podman.sock;
+        proxy_pass http://unix:/run/podman/podman.sock:/;
         proxy_buffering off;
     }
 }
@@ -313,10 +313,10 @@ curl -H "Authorization: Bearer your-secret-token-here" \
 
 ## Registry Authentication
 
-The Podman API also supports container registry authentication for pulling and pushing images:
+The Podman API also supports checking container registry credentials and passing registry authentication for pulling and pushing images:
 
 ```bash
-# Authenticate with a registry
+# Check credentials with a registry without storing them on disk
 curl -s --unix-socket /run/podman/podman.sock \
   -X POST \
   -H "Content-Type: application/json" \
@@ -331,7 +331,7 @@ curl -s --unix-socket /run/podman/podman.sock \
 For pulling private images, pass credentials with the pull request using the `X-Registry-Auth` header with a base64-encoded JSON object:
 
 ```bash
-AUTH=$(echo '{"username":"myuser","password":"mypassword"}' | base64)
+AUTH=$(printf '%s' '{"username":"myuser","password":"mypassword","serveraddress":"registry.example.com"}' | base64 -w0)
 
 curl -s --unix-socket /run/podman/podman.sock \
   -X POST \
