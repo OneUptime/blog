@@ -91,7 +91,11 @@ podman exec mongodb mongodump --archive=/tmp/backup.archive
 podman cp mongodb:/tmp/backup.archive /srv/backups/mongo-$(date +%Y%m%d).archive
 
 # Redis backup
+LASTSAVE=$(podman exec redis redis-cli LASTSAVE)
 podman exec redis redis-cli BGSAVE
+while [ "$(podman exec redis redis-cli LASTSAVE)" = "$LASTSAVE" ]; do
+  sleep 1
+done
 podman cp redis:/data/dump.rdb /srv/backups/redis-$(date +%Y%m%d).rdb
 ```
 
@@ -157,13 +161,13 @@ Podman supports CRIU-based checkpointing for saving and restoring container stat
 
 ```bash
 # Checkpoint a running container (saves process state)
-podman container checkpoint my-api --export=/srv/backups/my-api-checkpoint.tar.gz
+podman container checkpoint my-api --compress=gzip --export=/srv/backups/my-api-checkpoint.tar.gz
 
 # Restore on the same or different machine
 podman container restore --import=/srv/backups/my-api-checkpoint.tar.gz
 
 # Checkpoint without stopping (keep running)
-podman container checkpoint my-api --leave-running --export=/srv/backups/my-api-live.tar.gz
+podman container checkpoint my-api --leave-running --compress=gzip --export=/srv/backups/my-api-live.tar.gz
 ```
 
 ## Comprehensive Backup Script
@@ -196,8 +200,11 @@ if podman container exists postgres; then
 fi
 
 if podman container exists redis; then
+  LASTSAVE=$(podman exec redis redis-cli LASTSAVE)
   podman exec redis redis-cli BGSAVE 2>/dev/null
-  sleep 2
+  while [ "$(podman exec redis redis-cli LASTSAVE)" = "$LASTSAVE" ]; do
+    sleep 1
+  done
   podman cp redis:/data/dump.rdb "${BACKUP_DIR}/databases/redis.rdb" 2>/dev/null
   log "Redis backup complete"
 fi
@@ -289,7 +296,7 @@ podman run --rm \
   -v /srv/backups:/backups:ro \
   -e MC_HOST_remote=https://ACCESS_KEY:SECRET_KEY@s3.example.com \
   docker.io/minio/mc:latest \
-  cp "/backups/$(basename $BACKUP_FILE)" remote/container-backups/
+  cp "/backups/$(basename "$BACKUP_FILE")" remote/container-backups/
 ```
 
 ## Restore Procedure
