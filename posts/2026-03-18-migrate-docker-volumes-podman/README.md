@@ -31,7 +31,7 @@ podman info | grep graphRoot
 
 # Podman rootless volume storage
 podman info | grep graphRoot
-# Typically: ~/.local/share/containers/storage
+# Typically: $XDG_DATA_HOME/containers/storage or ~/.local/share/containers/storage
 
 # List Docker volumes and their mount points
 docker volume ls
@@ -162,18 +162,30 @@ sudo podman volume create mydata
 PODMAN_VOL=$(sudo podman volume inspect mydata | jq -r '.[0].Mountpoint')
 
 # Copy data directly from Docker volume to Podman volume
-sudo cp -a /var/lib/docker/volumes/mydata/_data/* "$PODMAN_VOL/"
+sudo cp -a /var/lib/docker/volumes/mydata/_data/. "$PODMAN_VOL/"
 
-# Fix ownership if needed (important for rootless Podman migration)
-sudo chown -R $(id -u):$(id -g) "$PODMAN_VOL"
+# Fix ownership only if needed by the UID/GID your container runs as
+APP_UID=1000
+APP_GID=1000
+sudo chown -R "${APP_UID}:${APP_GID}" "$PODMAN_VOL"
 
 # Verify
 sudo podman run --rm -v mydata:/data:ro alpine ls -la /data
 ```
 
+For rootless Podman, prefer the tar export/import method above. If you need to unpack an archive directly into a rootless volume, do it from Podman's user namespace.
+
+```bash
+podman volume create mydata
+podman unshare sh -c '
+  PODMAN_VOL=$(podman volume inspect mydata | jq -r ".[0].Mountpoint")
+  tar xzf /tmp/mydata-backup.tar.gz -C "$PODMAN_VOL"
+'
+```
+
 ## Migrating Bind Mounts
 
-Bind mounts do not need migration since they reference host filesystem paths directly. Just update your run commands.
+Bind mounts do not need migration since they reference host filesystem paths directly. Just update your run commands and, on SELinux systems, add the appropriate Podman relabel option such as `:Z` or `:z` if the container cannot access the path.
 
 ```bash
 # Docker bind mount
@@ -182,7 +194,7 @@ docker run -d \
   --name myapp \
   myimage:latest
 
-# Podman equivalent - exactly the same syntax
+# Podman equivalent - same basic syntax
 podman run -d \
   -v /host/data:/container/data \
   --name myapp \
