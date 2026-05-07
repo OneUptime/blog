@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, VPC, Prefix Lists, IPv4, Security Group, Networking
 
-Description: Create and use AWS managed prefix lists to group IPv4 CIDR blocks for reuse across security groups and route tables, simplifying firewall rule management.
+Description: Create and use customer-managed prefix lists to group IPv4 CIDR blocks for reuse across security groups and route tables, simplifying firewall rule management.
 
 ## Introduction
 
-AWS Managed Prefix Lists are named, versioned collections of CIDR blocks. Instead of repeating the same list of IPs in dozens of security group rules, you reference a single prefix list. When an IP range changes, you update the prefix list once and all referencing rules update automatically.
+Customer-managed prefix lists are named, versioned collections of CIDR blocks. Instead of repeating the same list of IPs in dozens of security group rules, you reference a single prefix list. When an IP range changes, you update the prefix list once and all referencing rules update automatically.
 
 ## Creating a Prefix List
 
@@ -24,7 +24,7 @@ aws ec2 create-managed-prefix-list \
     Cidr=198.51.100.0/25,Description="London Office"
 ```
 
-Note the returned `PrefixListId` (e.g., `pl-0123456789abcdef0`) - you'll use it in security group rules.
+Note the returned `PrefixListId` (e.g., `pl-0123456789abcdef0`) - you'll use it in security group rules and routes.
 
 ## Viewing and Managing Prefix Lists
 
@@ -59,14 +59,13 @@ aws ec2 modify-managed-prefix-list \
 # Allow HTTPS from the prefix list (no need to list each CIDR)
 aws ec2 authorize-security-group-ingress \
   --group-id sg-0123456789abcdef0 \
-  --ip-permissions \
-    IpProtocol=tcp,FromPort=443,ToPort=443,PrefixListIds=[{PrefixListId=pl-0123456789abcdef0}]
+  --ip-permissions 'IpProtocol=tcp,FromPort=443,ToPort=443,PrefixListIds=[{PrefixListId=pl-0123456789abcdef0}]'
 ```
 
 ## Using a Prefix List in a Route Table
 
 ```bash
-# Add a route that uses a prefix list as the destination
+# Add a route in a subnet route table that uses a prefix list as the destination
 aws ec2 create-route \
   --route-table-id rtb-0123456789abcdef0 \
   --destination-prefix-list-id pl-0123456789abcdef0 \
@@ -79,13 +78,13 @@ AWS provides predefined prefix lists for its own services (e.g., S3, DynamoDB) t
 
 ```bash
 # Find AWS-managed prefix lists (e.g., for S3 in us-east-1)
-aws ec2 describe-prefix-lists \
-  --query "PrefixLists[?PrefixListName=='com.amazonaws.us-east-1.s3']"
+aws ec2 describe-managed-prefix-lists \
+  --filters Name=owner-id,Values=AWS Name=prefix-list-name,Values=com.amazonaws.us-east-1.s3
 ```
 
-## Sharing Prefix Lists with RAM
+## Sharing Customer-Managed Prefix Lists with RAM
 
-Prefix lists can be shared across AWS accounts using Resource Access Manager:
+Customer-managed prefix lists can be shared across AWS accounts using Resource Access Manager:
 
 ```bash
 # Share a prefix list with another account
@@ -97,4 +96,4 @@ aws ram create-resource-share \
 
 ## Conclusion
 
-AWS prefix lists eliminate redundant CIDR entries across security groups and route tables. They are especially valuable for organizations with many environments that share the same trusted IP ranges, reducing the risk of inconsistent firewall rules.
+Managed prefix lists eliminate redundant CIDR entries across security groups and route tables. They are especially valuable for organizations with many environments that share the same trusted IP ranges, reducing the risk of inconsistent firewall rules.
