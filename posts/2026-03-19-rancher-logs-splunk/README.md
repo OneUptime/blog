@@ -25,7 +25,7 @@ Splunk is a widely used enterprise log management and analytics platform. Ranche
 6. Review and click **Submit**.
 7. Copy the generated HEC token.
 
-Ensure the HEC is enabled globally:
+On Splunk Enterprise, ensure the HEC is enabled globally:
 1. Go to **Settings > Data Inputs > HTTP Event Collector**.
 2. Click **Global Settings**.
 3. Set **All Tokens** to **Enabled**.
@@ -68,7 +68,7 @@ spec:
       total_limit_size: 2GB
       flush_interval: 5s
       flush_thread_count: 2
-      retry_max_interval: 60
+      retry_max_interval: 60s
       retry_forever: true
 ```
 
@@ -88,7 +88,7 @@ spec:
         key_name: log
         reserve_data: true
         remove_key_name_field: true
-        suppress_parse_error_log: true
+        emit_invalid_record_to_error: false
 
     - record_transformer:
         records:
@@ -191,7 +191,7 @@ spec:
 
 ## Step 6: Configure Splunk Cloud
 
-For Splunk Cloud, use the provided HEC endpoint:
+For Splunk Cloud, use the HEC host provided for your deployment:
 
 ```yaml
 spec:
@@ -207,45 +207,45 @@ spec:
           key: hec-token
 ```
 
+The exact hostname format depends on the deployment. AWS commonly uses `http-inputs-<host>.splunkcloud.com`, while GCP and GovCloud deployments use `http-inputs.<host>...`.
+
 ## Step 7: Add Kubernetes Metadata to Splunk Events
 
-Enrich log events with Kubernetes metadata for better search in Splunk:
+To derive Splunk `host`, `source`, and `sourcetype` from Kubernetes metadata, replace the static `source` and `sourcetype` settings in the `ClusterOutput` with key-based settings and populate those keys in the flow:
 
 ```yaml
+# In the ClusterOutput
+spec:
+  splunkHec:
+    host_key: splunk_host
+    source_key: splunk_source
+    sourcetype_key: splunk_sourcetype
+---
+# In the ClusterFlow
 spec:
   filters:
     - record_transformer:
         enable_ruby: true
         records:
-          - host: "${record.dig('kubernetes', 'host')}"
-            source: "kubernetes:${record.dig('kubernetes', 'namespace_name')}/${record.dig('kubernetes', 'pod_name')}"
-            sourcetype: "${record.dig('kubernetes', 'container_name')}"
-
-    - record_transformer:
-        records:
-          - cluster: "production-us-east-1"
+          - splunk_host: "${record.dig('kubernetes', 'host')}"
+            splunk_source: "kubernetes:${record.dig('kubernetes', 'namespace_name')}/${record.dig('kubernetes', 'pod_name')}"
+            splunk_sourcetype: "${record.dig('kubernetes', 'container_name')}"
+            cluster: "production-us-east-1"
             environment: "production"
 ```
 
 ## Step 8: Configure Acknowledgment
 
-For guaranteed delivery, enable HEC acknowledgment:
-
-```yaml
-spec:
-  splunkHec:
-    use_ack: true
-    channel: "your-channel-id"
-```
-
-Note: HEC acknowledgment requires indexer acknowledgment to be enabled in Splunk.
+HEC indexer acknowledgment is configured on the Splunk HEC token itself, not with `use_ack` or `channel` fields in Rancher's `splunkHec` output. Splunk Enterprise supports HEC indexer acknowledgment on a token, but Splunk Cloud only supports it for AWS Kinesis Firehose. For Rancher logging, durability comes from the Fluentd buffer and retry settings configured in the `ClusterOutput`.
 
 ## Step 9: Verify Log Delivery
 
 Check Fluentd logs:
 
 ```bash
-kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd | grep -i splunk
+kubectl logs -n cattle-logging-system \
+  "$(kubectl get pods -n cattle-logging-system -o name | grep fluentd | head -n1)" \
+  -c fluentd | grep -i splunk
 ```
 
 Search in Splunk:
