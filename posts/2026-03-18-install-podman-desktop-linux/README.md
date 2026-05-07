@@ -19,7 +19,7 @@ Unlike macOS and Windows, Podman on Linux runs containers natively without a VM.
 Before installing, ensure your system meets the minimum requirements:
 
 - A 64-bit Linux distribution
-- Podman 4.x or later (5.x recommended)
+- A stable Podman version
 - At least 2 GB of RAM
 - A graphical desktop environment (GNOME, KDE, etc.)
 
@@ -55,8 +55,8 @@ podman --version
 ### Fedora
 
 ```bash
-# Podman is pre-installed on Fedora, but ensure it is up to date
-sudo dnf update -y podman
+# Install Podman or ensure it is present
+sudo dnf install -y podman
 
 # Verify installation
 podman --version
@@ -74,9 +74,9 @@ podman --version
 
 ## Step 2: Install Podman Desktop
 
-### Method A: Flatpak (Recommended for All Distributions)
+### Method A: Flatpak (Recommended for Most Distributions)
 
-Flatpak provides a universal installation method that works across all Linux distributions.
+Flatpak provides the recommended installation method for most Linux distributions.
 
 ```bash
 # Install Flatpak if not already present
@@ -87,51 +87,53 @@ sudo apt-get install -y flatpak
 sudo dnf install -y flatpak
 
 # Add the Flathub repository
-flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
 
 # Install Podman Desktop
-flatpak install -y flathub io.podman_desktop.PodmanDesktop
+flatpak install -y --user flathub io.podman_desktop.PodmanDesktop
 
 # Launch Podman Desktop
 flatpak run io.podman_desktop.PodmanDesktop
 ```
 
-### Method B: Download the AppImage
+### Method B: Download the Flatpak Bundle
 
-AppImage bundles work on any Linux distribution without installation.
+Use the Flatpak bundle if you cannot install directly from Flathub.
 
 ```bash
-# Download the latest Podman Desktop AppImage
-# Visit the download page
+# Download the latest Podman Desktop Flatpak bundle
 xdg-open https://podman-desktop.io/downloads
 
-# After downloading, make it executable
-chmod +x podman-desktop-*.AppImage
+# After downloading, install the bundle
+cd ~/Downloads
+flatpak install -y --user ~/Downloads/podman-desktop-*.flatpak
 
-# Run the AppImage
-./podman-desktop-*.AppImage
+# Launch Podman Desktop
+flatpak run io.podman_desktop.PodmanDesktop
 ```
 
-### Method C: Fedora (DNF/RPM)
+### Method C: Download the Compressed Tar File
 
 ```bash
-# Install from the Fedora repositories if available
+# Download the latest Podman Desktop tar.gz package
+xdg-open https://podman-desktop.io/downloads
+
+# Extract the archive
+cd ~/Downloads
+tar -xzf podman-desktop-*.tar.gz
+
+# Run the extracted Podman Desktop binary
+./podman-desktop
+```
+
+### Method D: RHEL 10 (DNF)
+
+```bash
+# Enable the RHEL 10 extensions repository
+sudo subscription-manager repos --enable rhel-10-for-$(arch)-extensions-rpms
+
+# Install Podman Desktop
 sudo dnf install -y podman-desktop
-
-# Or download the RPM package from the releases page
-# and install manually
-sudo dnf install -y ./podman-desktop-*.rpm
-```
-
-### Method D: Ubuntu/Debian (DEB Package)
-
-```bash
-# Download the .deb package from the releases page
-# Then install it
-sudo dpkg -i podman-desktop-*.deb
-
-# Fix any dependency issues
-sudo apt-get install -f
 ```
 
 ## Step 3: Launch and Initial Setup
@@ -152,7 +154,7 @@ On first launch, Podman Desktop will:
 2. Connect to the Podman engine
 3. Show the dashboard with containers, images, and pods
 
-Since Linux runs Podman natively, there is no machine initialization step.
+When using native Linux Podman, there is no machine initialization step.
 
 ## Verifying the Installation
 
@@ -173,7 +175,7 @@ The test container should appear in both the CLI output and the Podman Desktop G
 
 ## Enabling Rootless Containers
 
-Podman on Linux defaults to rootless mode, which is more secure.
+When you run Podman as a regular Linux user, it uses rootless mode, which is more secure.
 
 ```bash
 # Verify rootless mode is working
@@ -211,17 +213,14 @@ Keep Podman Desktop up to date.
 
 ```bash
 # Update via Flatpak
-flatpak update io.podman_desktop.PodmanDesktop
+flatpak update --user io.podman_desktop.PodmanDesktop
 
-# Update via DNF (Fedora)
+# Update via DNF (RHEL 10)
 sudo dnf update podman-desktop
 
-# Update via APT (Ubuntu/Debian)
-sudo apt-get update && sudo apt-get upgrade podman-desktop
-
-# For AppImage, download the latest version from the website
+# For the tar.gz package, download the latest version from the website
 ```
 
 ## Summary
 
-Installing Podman Desktop on Linux is straightforward with multiple options including Flatpak (universal), AppImage (no installation needed), and native packages for Fedora and Ubuntu. Since Podman runs natively on Linux without a VM, the setup is simpler than on macOS or Windows. After installing the Podman engine and Podman Desktop, you get a graphical interface that connects directly to your local Podman instance. Rootless containers work out of the box on most distributions, providing a secure default configuration.
+Installing Podman Desktop on Linux is straightforward with multiple options including Flatpak, a Flatpak bundle, a compressed tar file, and native packages for RHEL 10. Since Podman usually runs natively on Linux without a VM, the setup is simpler than on macOS or Windows. After installing the Podman engine and Podman Desktop, you get a graphical interface that connects directly to your local Podman instance. Rootless containers work out of the box on most distributions when Podman is run as a regular user, providing a secure default configuration.
