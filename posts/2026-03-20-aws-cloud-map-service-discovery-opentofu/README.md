@@ -8,7 +8,7 @@ Description: Learn how to create AWS Cloud Map namespaces and services for autom
 
 ## Introduction
 
-AWS Cloud Map is a service registry that lets your applications discover cloud resources by name. Services register their locations (IP, port, ARN), and consumers look them up via DNS or API calls. OpenTofu manages namespaces, services, and service instances as code.
+AWS Cloud Map is a service registry that lets your applications discover cloud resources by name. Services register attributes such as IP addresses, ports, and custom metadata, and consumers look them up via DNS or API calls. OpenTofu manages namespaces, services, and service instances as code.
 
 ## Creating a Private DNS Namespace
 
@@ -30,7 +30,7 @@ resource "aws_service_discovery_private_dns_namespace" "internal" {
 ## Creating a Public DNS Namespace
 
 ```hcl
-# Public DNS namespace (accessible from the internet)
+# Public DNS namespace (requires a registered public domain)
 resource "aws_service_discovery_public_dns_namespace" "external" {
   name        = "api.example.com"
   description = "Public DNS namespace for external services"
@@ -53,12 +53,8 @@ resource "aws_service_discovery_service" "payments" {
       type = "A"  # returns IP addresses
     }
 
-    # Return all healthy instances (MULTIVALUE) or use round-robin (WEIGHTED)
+    # Return up to eight healthy instances (MULTIVALUE) or one randomly selected instance (WEIGHTED)
     routing_policy = "MULTIVALUE"
-  }
-
-  health_check_custom_config {
-    failure_threshold = 1
   }
 }
 ```
