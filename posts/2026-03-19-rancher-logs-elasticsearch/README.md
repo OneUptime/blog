@@ -59,7 +59,11 @@ spec:
     port: 9200
     scheme: https
     ssl_verify: true
-    ca_file: /fluentd/etc/secret/elasticsearch-tls/ca.crt
+    ca_file:
+      mountFrom:
+        secretKeyRef:
+          name: elasticsearch-tls
+          key: ca.crt
     user: elastic
     password:
       valueFrom:
@@ -71,7 +75,6 @@ spec:
     logstash_dateformat: "%Y.%m.%d"
     include_tag_key: true
     tag_key: "@log_name"
-    type_name: "_doc"
     reconnect_on_error: true
     reload_on_failure: true
     reload_connections: false
@@ -108,15 +111,24 @@ spec:
 Route logs to different indices based on namespace:
 
 ```yaml
+# ClusterFlow
+spec:
+  filters:
+    - record_transformer:
+        enable_ruby: true
+        records:
+          - target_index: "kubernetes-${record.dig(\"kubernetes\", \"namespace_name\")}"
+---
+# ClusterOutput
 spec:
   elasticsearch:
     logstash_format: false
-    index_name: "kubernetes-${$.kubernetes.namespace_name}"
+    target_index_key: target_index
 ```
 
 ### Index Templates
 
-Create an Elasticsearch index template for optimal settings. Use the Elasticsearch API or Kibana:
+Create an Elasticsearch index template for daily `kubernetes-*` indices. Use the Elasticsearch API or Kibana:
 
 ```json
 {
@@ -125,8 +137,7 @@ Create an Elasticsearch index template for optimal settings. Use the Elasticsear
     "settings": {
       "number_of_shards": 3,
       "number_of_replicas": 1,
-      "index.lifecycle.name": "kubernetes-logs-policy",
-      "index.lifecycle.rollover_alias": "kubernetes-logs"
+      "index.lifecycle.name": "kubernetes-logs-policy"
     },
     "mappings": {
       "properties": {
@@ -162,7 +173,7 @@ spec:
         key_name: log
         reserve_data: true
         remove_key_name_field: true
-        suppress_parse_error_log: true
+        emit_invalid_record_to_error: false
 
     - record_transformer:
         records:
@@ -174,7 +185,7 @@ spec:
 
 ## Step 6: Configure for Amazon OpenSearch
 
-For Amazon OpenSearch Service (formerly Amazon Elasticsearch):
+If your Amazon OpenSearch Service domain uses the internal user database and HTTP basic authentication:
 
 ```yaml
 apiVersion: logging.banzaicloud.io/v1beta1
@@ -183,7 +194,7 @@ metadata:
   name: opensearch-output
   namespace: cattle-logging-system
 spec:
-  elasticsearch:
+  opensearch:
     host: search-my-domain-xxxxxxxxxx.us-east-1.es.amazonaws.com
     port: 443
     scheme: https
@@ -196,7 +207,6 @@ spec:
           key: password
     logstash_format: true
     logstash_prefix: kubernetes
-    type_name: "_doc"
     buffer:
       type: file
       path: /buffers/opensearch
@@ -241,25 +251,15 @@ spec:
 
 ## Step 8: Configure Index Lifecycle Management
 
-Set up ILM policies to manage log retention. In Elasticsearch, create an ILM policy:
+Set up ILM policies to manage log retention. For daily `logstash`-style indices, create an ILM policy without rollover:
 
 ```json
 {
   "policy": {
     "phases": {
-      "hot": {
-        "min_age": "0ms",
-        "actions": {
-          "rollover": {
-            "max_size": "50GB",
-            "max_age": "1d"
-          }
-        }
-      },
       "warm": {
         "min_age": "7d",
         "actions": {
-          "shrink": { "number_of_shards": 1 },
           "forcemerge": { "max_num_segments": 1 }
         }
       },
@@ -279,17 +279,18 @@ Set up ILM policies to manage log retention. In Elasticsearch, create an ILM pol
 Check Fluentd logs for Elasticsearch output status:
 
 ```bash
-kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluentd | grep elasticsearch
+kubectl get pods -n cattle-logging-system
+kubectl logs -n cattle-logging-system <fluentd-pod-name> -c fluentd | grep elasticsearch
 ```
 
 Verify data in Elasticsearch:
 
 ```bash
 # Check index count
-curl -s https://elasticsearch:9200/_cat/indices/kubernetes-* -u elastic:password
+curl -s https://elasticsearch.logging.svc.cluster.local:9200/_cat/indices/kubernetes-* -u elastic:password -k
 
 # Query recent logs
-curl -s https://elasticsearch:9200/kubernetes-*/_search?size=1 -u elastic:password | jq '.hits.hits[0]'
+curl -s https://elasticsearch.logging.svc.cluster.local:9200/kubernetes-*/_search?size=1 -u elastic:password -k | jq '.hits.hits[0]'
 ```
 
 ## Troubleshooting
