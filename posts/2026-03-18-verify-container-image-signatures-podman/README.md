@@ -16,7 +16,7 @@ Signing images is only useful if you actually verify those signatures before run
 
 ## How Signature Verification Works
 
-When Podman pulls an image, it checks the trust policy in `policy.json`. If the policy requires a signature, Podman downloads the signature from the configured sigstore location, verifies it against the specified public key, and only completes the pull if the signature is valid.
+When Podman pulls an image, it checks the trust policy in `policy.json`. If the policy requires a signature, Podman downloads the signature from the configured lookaside signature storage, verifies it against the specified public key, and only completes the pull if the signature is valid.
 
 ## Setting Up Public Keys for Verification
 
@@ -28,7 +28,7 @@ First, install the public keys of your trusted image signers.
 sudo mkdir -p /etc/pki/containers
 
 # Import a public key from a file
-sudo cp container-signer-public.gpg /etc/pki/containers/
+sudo cp container-signer-public.gpg /etc/pki/containers/container-signer.gpg
 
 # Or import from a GPG keyring
 gpg --export container-signer@example.com | sudo tee /etc/pki/containers/container-signer.gpg > /dev/null
@@ -86,9 +86,9 @@ Tell Podman where to find signatures for verification.
 sudo tee /etc/containers/registries.d/myregistry.yaml > /dev/null << 'EOF'
 docker:
   registry.example.com:
-    sigstore: https://sigstore.example.com/signatures
+    lookaside: https://sigstore.example.com/signatures
   localhost:5000:
-    sigstore: file:///var/lib/containers/sigstore
+    lookaside: file:///var/lib/containers/sigstore
 EOF
 ```
 
@@ -98,7 +98,8 @@ EOF
 # Start a local registry for testing
 podman run --rm -d -p 5000:5000 --name test-registry docker.io/library/registry:2
 
-# Push a signed image
+# Pull and push a signed image
+podman pull docker.io/library/alpine:latest
 podman tag docker.io/library/alpine:latest localhost:5000/alpine:signed
 podman push --tls-verify=false \
   --sign-by container-signer@example.com \
@@ -135,29 +136,39 @@ podman pull --tls-verify=false localhost:5000/alpine:unsigned 2>&1 || \
 # Install skopeo if needed
 # sudo dnf install -y skopeo
 
-# Inspect the signatures of an image
-skopeo inspect --raw docker://localhost:5000/alpine:signed --tls-verify=false
+# Save the raw manifest for standalone verification
+skopeo inspect --raw --tls-verify=false docker://localhost:5000/alpine:signed > manifest.json
 
-# Standalone signature verification with skopeo
+# Verify a local signature blob after copying it out of the lookaside store
 skopeo standalone-verify \
+  --public-key-file /etc/pki/containers/container-signer.gpg \
   manifest.json \
   localhost:5000/alpine:signed \
-  /etc/pki/containers/container-signer.gpg \
-  signature-file 2>/dev/null || echo "Use skopeo for advanced verification"
+  any \
+  /path/to/signature
 ```
 
 ## Verifying Red Hat Container Images
 
-Red Hat images come pre-signed and can be verified on RHEL/Fedora systems.
+Red Hat publishes pre-signed images, but you still need a trust policy and lookaside configuration to enforce verification on RHEL/Fedora systems.
 
 ```bash
-# Red Hat provides pre-configured signature verification
 # Check if the Red Hat signing key is installed
 ls /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release 2>/dev/null && \
   echo "Red Hat signing key found"
 
-# View Red Hat registry trust configuration
-cat /etc/containers/registries.d/default.yaml 2>/dev/null
+# Require signatures for registry.access.redhat.com
+sudo podman image trust set \
+  --signature-policy /etc/containers/policy.json \
+  --pubkeysfile /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release \
+  registry.access.redhat.com
+
+# Configure the Red Hat signature lookaside location
+sudo tee /etc/containers/registries.d/registry.access.redhat.com.yaml > /dev/null << 'EOF'
+docker:
+  registry.access.redhat.com:
+    lookaside: https://access.redhat.com/webassets/docker/content/sigstore
+EOF
 
 # Pull a verified Red Hat image
 podman pull registry.access.redhat.com/ubi9/ubi-minimal:latest
@@ -194,7 +205,7 @@ fi
 ```bash
 # Make the script executable and test it
 chmod +x verify-image.sh
-./verify-image.sh docker.io/library/alpine:latest
+./verify-image.sh localhost:5000/alpine:signed
 ```
 
 ## Debugging Verification Issues
@@ -221,4 +232,4 @@ rm -f verify-image.sh
 
 ## Summary
 
-Verifying container image signatures with Podman closes the trust loop between image publishers and consumers. By configuring trust policies that require signatures, setting up public key paths, and specifying signature lookup locations, you create an automated verification gate that prevents unsigned or tampered images from running. Always test your verification setup by confirming that signed images pull successfully and unsigned images are rejected.
+Verifying container image signatures with Podman closes the trust loop between image publishers and consumers. By configuring trust policies that require signatures, setting up public key paths, and specifying signature lookup locations, you create an automated verification gate that prevents unsigned or tampered images from being pulled from the registries you protect. Always test your verification setup by confirming that signed images pull successfully and unsigned images are rejected.
