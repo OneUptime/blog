@@ -12,7 +12,7 @@ Description: Learn how to diagnose and fix 'invalid reference format' errors in 
 
 You try to pull or run an image and Podman rejects it with "Error: invalid reference format." This error tells you that the image reference (name, tag, or digest) is malformed. It does not tell you what specifically is wrong with it, which makes debugging frustrating.
 
-The image reference format follows strict rules: it can contain lowercase letters, digits, separators (periods, hyphens, underscores), a single forward slash for namespacing, a colon for the tag, and an at-sign for the digest. Anything outside this format triggers the error.
+The image reference format follows strict rules: repository path components use lowercase letters, digits, and separators (periods, hyphens, underscores), forward slashes separate the registry, namespace, and repository path, a colon separates the tag, and an at-sign separates the digest. Anything outside this format triggers the error.
 
 ---
 
@@ -31,7 +31,7 @@ nginx
 nginx:latest
 docker.io/library/nginx:1.25
 registry.example.com/my-team/my-app:v1.2.3
-my-registry.io/app@sha256:abc123...
+my-registry.io/app@sha256:abc123def456789abc123def456789abc123def456789abc123def456789abcd
 ```
 
 Examples of invalid references:
@@ -40,7 +40,7 @@ Examples of invalid references:
 My-App:latest          # uppercase letters
 nginx: latest          # space after colon
 my app:v1              # space in name
-nginx:latest:extra     # multiple colons
+nginx:latest:extra     # extra colon in the tag
 ./my-image             # starts with dot-slash
 ```
 
@@ -63,7 +63,7 @@ podman run "$IMAGE"
 Whitespace can sneak in from many sources:
 
 ```bash
-# Reading from a file with trailing newline
+# Reading from a file with trailing spaces or embedded newlines
 IMAGE=$(cat image-name.txt)
 # Fix: trim whitespace
 IMAGE=$(cat image-name.txt | tr -d '[:space:]')
@@ -91,7 +91,8 @@ podman run my-app:$TAG
 # This becomes: podman run my-app:v1.0 beta
 # Podman tries to run image "my-app:v1.0" with command "beta"
 
-# Good - quote the variable
+# Good - sanitize and quote the variable
+TAG="v1.0-beta"
 podman run "my-app:$TAG"
 ```
 
@@ -119,13 +120,13 @@ TAG=""
 podman run "my-app:${TAG:-latest}"
 ```
 
-## Fix 3: Use Lowercase Image Names
+## Fix 3: Use Lowercase Repository Names
 
-Container image names must be lowercase. This is enforced by the OCI specification:
+Container repository names must be lowercase. Tags may contain uppercase letters, but keeping generated tags lowercase is often simpler:
 
 ```bash
 # Bad
-podman build -t MyApp:Latest .
+podman build -t MyApp:latest .
 # Error: invalid reference format
 
 # Good
@@ -194,7 +195,7 @@ podman pull my-app:sha256:abc123def456
 podman pull my-app@sha256:abc123def456789abc123def456789abc123def456789abc123def456789abcd
 ```
 
-The digest must be a valid SHA256 hash (64 hexadecimal characters).
+For `sha256` references, the digest value must be a valid SHA256 hash (64 hexadecimal characters).
 
 ## Fix 7: Fix Docker Compose and Podman Compose Issues
 
@@ -229,7 +230,7 @@ CI/CD systems often introduce subtle formatting issues:
 **GitHub Actions:**
 
 ```yaml
-# Bad - multiline output in variable
+# Bad - unquoted expansion and unsanitized tag data
 - name: Build
   run: |
     IMAGE=$(echo $GITHUB_REPOSITORY | tr '[:upper:]' '[:lower:]')
@@ -270,8 +271,8 @@ echo "Length: ${#IMAGE}"
 echo -n "$IMAGE" | cat -A
 
 # Validate the reference format manually
-# A valid reference matches this pattern:
-# [a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*(:[a-zA-Z0-9._-]+)?
+# A simple repository[:tag] reference matches this pattern:
+# [a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*(:[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127})?
 
 # Try pulling with a known-good reference first
 podman pull docker.io/library/alpine:latest
@@ -288,8 +289,13 @@ validate_image_ref() {
         echo "Error: empty image reference" >&2
         return 1
     fi
-    if [[ "$ref" =~ [[:upper:]] ]]; then
-        echo "Error: image reference must be lowercase: $ref" >&2
+    local name_part="${ref%%@*}"
+    local last_component="${name_part##*/}"
+    if [[ "$last_component" == *:* ]]; then
+        name_part="${name_part%:*}"
+    fi
+    if [[ "$name_part" =~ [[:upper:]] ]]; then
+        echo "Error: repository name must be lowercase: $name_part" >&2
         return 1
     fi
     if [[ "$ref" =~ [[:space:]] ]]; then
