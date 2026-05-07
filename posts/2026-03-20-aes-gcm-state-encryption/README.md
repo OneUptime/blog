@@ -8,7 +8,7 @@ Description: Learn how AES-GCM works as the encryption method in OpenTofu state 
 
 ## Introduction
 
-AES-GCM (Advanced Encryption Standard with Galois/Counter Mode) is the encryption algorithm used by OpenTofu for state and plan file encryption. It provides both confidentiality and data integrity (authenticated encryption), making it resistant to tampering. This guide explains the method configuration and its options.
+AES-GCM (Advanced Encryption Standard with Galois/Counter Mode) is the only currently supported encryption method in OpenTofu for state and plan file encryption at rest. It provides both confidentiality and data integrity (authenticated encryption), making it resistant to tampering. This guide explains the method configuration and its options.
 
 ## Why AES-GCM?
 
@@ -34,20 +34,20 @@ terraform {
     method "aes_gcm" "my_method" {
       keys = key_provider.pbkdf2.my_key
 
-      # Optional: additional authenticated data (AAD) for extra protection
-      # aad = "my-unique-aad-string"
+      # Optional: additional authenticated data (AAD) as bytes
+      # aad = [1, 2, 3, 4]
     }
 
     # Apply to state files
     state {
       method  = method.aes_gcm.my_method
-      enforced = true  # Fail if encryption cannot be applied
+      enforced = true  # Optional safeguard after migration is complete
     }
 
     # Apply to plan files
     plan {
       method  = method.aes_gcm.my_method
-      enforced = true
+      enforced = true  # Optional safeguard after migration is complete
     }
   }
 }
@@ -55,7 +55,7 @@ terraform {
 
 ## Understanding Key Size
 
-AES-GCM with different key providers uses different key sizes:
+AES-GCM accepts 16-, 24-, or 32-byte keys. Here are two common 256-bit examples:
 
 ```hcl
 # PBKDF2 with 256-bit key (default)
@@ -65,11 +65,11 @@ key_provider "pbkdf2" "key_256" {
   key_length = 32  # 32 bytes = 256 bits
 }
 
-# AWS KMS data keys are 256-bit by default
+# AWS KMS example requesting a 256-bit data key
 key_provider "aws_kms" "key" {
   kms_key_id = "alias/my-key"
   region     = "us-east-1"
-  key_spec   = "AES_256"  # Explicitly specify 256-bit
+  key_spec   = "AES_256"  # Request a 256-bit data key
 }
 ```
 
@@ -114,19 +114,24 @@ terraform {
 
 ## Enforced vs Non-Enforced Encryption
 
-The `enforced` parameter controls behavior when encryption fails:
+The `enforced` parameter is optional. When set to `true`, it prevents unencrypted writes if encryption configuration is missing and forbids using the `unencrypted` method in a fallback chain:
 
 ```hcl
 state {
   method   = method.aes_gcm.my_method
-  enforced = true   # Default: true - fail if encryption cannot be applied
+  enforced = true   # Optional safeguard after migration is complete
 }
 
-# With enforced = false, OpenTofu will read unencrypted state
-# Useful during migration from unencrypted to encrypted state
+# During migration back to unencrypted state, disable or remove enforced
+# and use the unencrypted method as the primary method.
+method "unencrypted" "migrate" {}
+
 state {
-  method   = method.aes_gcm.my_method
-  enforced = false  # Allow reading unencrypted state (migration mode)
+  method   = method.unencrypted.migrate
+  enforced = false
+  fallback {
+    method = method.aes_gcm.my_method
+  }
 }
 ```
 
@@ -134,36 +139,36 @@ state {
 
 When OpenTofu writes state:
 
-1. Key provider generates or retrieves a data key
-2. AES-GCM encrypts the state JSON with the data key
-3. The encrypted state and key metadata are stored together
-4. A nonce (random) is generated for each encryption operation
+1. The key provider derives, generates, or retrieves key material
+2. AES-GCM encrypts the state payload with that key material
+3. The encrypted payload and key provider metadata are stored together
+4. A random nonce is generated for each encryption operation
 
 When OpenTofu reads state:
 
 1. The key provider metadata is extracted
-2. The key provider decrypts or retrieves the data key
-3. AES-GCM decrypts and verifies the state
+2. The key provider reconstructs or retrieves the key material
+3. AES-GCM decrypts and verifies the payload
 4. OpenTofu parses the decrypted JSON
 
 ## Verifying the Encrypted State Format
 
 ```bash
-# View the raw encrypted state (binary/base64)
-cat terraform.tfstate | head -5
+# Inspect the stored encrypted state wrapper
+head -20 terraform.tfstate
 
-# Verify OpenTofu can still read it
+# Verify OpenTofu can still read it with the configured encryption block
 tofu state list
 tofu show
 ```
 
 ## Performance Considerations
 
-AES-GCM with hardware acceleration is very fast:
-- A 1MB state file encrypts in < 1ms on modern hardware
-- No meaningful performance impact on OpenTofu operations
-- Key derivation (PBKDF2) takes 100-500ms per operation, not per byte
+AES-GCM is efficient, but exact performance depends on hardware, state size, and key provider configuration:
+- PBKDF2 intentionally adds computational cost through its `iterations` setting
+- Exact throughput depends on CPU capabilities and the selected key provider
+- OpenTofu warns that AES-GCM has key-saturation limits, so long-lived keys should be rotated or derived securely
 
 ## Conclusion
 
-AES-GCM is an excellent choice for state file encryption, providing both confidentiality and integrity guarantees. The OpenTofu encryption framework makes it straightforward to combine AES-GCM with any supported key provider. Use `enforced = true` in production to ensure state is never stored unencrypted, and configure fallback methods during key rotation to maintain smooth operations.
+AES-GCM is an excellent choice for state file encryption, providing both confidentiality and integrity guarantees. The OpenTofu encryption framework makes it straightforward to combine AES-GCM with any supported key provider. After migration, consider `enforced = true` in production to prevent unencrypted writes if encryption configuration is missing, and configure fallback methods during key rotation to maintain smooth operations.
