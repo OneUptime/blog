@@ -128,13 +128,13 @@ podman push --tls-verify=false \
 find /var/lib/containers/sigstore -type f -name "signature-*"
 ```
 
-## Inspecting Image Signatures
+## Inspecting Signing Configuration
 
 ```bash
-# View the raw signature data
+# View the configured image trust policy
 podman image trust show
 
-# Use skopeo to inspect signatures
+# Use skopeo to inspect the image manifest
 skopeo inspect --raw docker://localhost:5000/alpine:signed 2>/dev/null
 ```
 
@@ -187,6 +187,13 @@ cp container-signer-public.gpg /var/www/html/keys/
 # Or install it system-wide on verification hosts
 sudo mkdir -p /etc/pki/containers
 sudo cp /tmp/container-signer.gpg /etc/pki/containers/
+
+# Configure verification hosts to require signatures from this key
+sudo podman image trust set \
+  --signature-policy /etc/containers/policy.json \
+  --type signedBy \
+  --pubkeysfile /etc/pki/containers/container-signer.gpg \
+  registry.example.com
 ```
 
 ## Cleanup
@@ -199,4 +206,4 @@ rm -f /tmp/Containerfile container-signer-public.gpg
 
 ## Summary
 
-Signing container images with Podman establishes cryptographic trust in your container supply chain. By generating dedicated GPG keys, configuring signature storage, and signing images during push operations, you ensure that every image can be verified before deployment. Integrate signing into your CI/CD pipeline to make it automatic and consistent, and distribute your public keys to all environments that need to verify your images.
+Signing container images with Podman establishes cryptographic trust in your container supply chain. By generating dedicated GPG keys, configuring signature storage, and signing images during push operations, you ensure that every image can be verified by environments configured to require those signatures. Integrate signing into your CI/CD pipeline to make it automatic and consistent, and distribute your public keys to all environments that need to verify your images.
