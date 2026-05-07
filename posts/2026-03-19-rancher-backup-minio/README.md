@@ -28,7 +28,6 @@ Create a values file for the MinIO installation. Save as `minio-values.yaml`:
 
 ```yaml
 mode: standalone
-replicas: 1
 persistence:
   enabled: true
   size: 50Gi
@@ -118,7 +117,7 @@ kind: Backup
 metadata:
   name: rancher-backup-minio
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 10
   storageLocation:
     s3:
@@ -130,7 +129,7 @@ spec:
       credentialSecretNamespace: cattle-resources-system
 ```
 
-Apply the backup:
+After enabling TLS in Step 8, apply the backup:
 
 ```bash
 kubectl apply -f backup-minio.yaml
@@ -146,7 +145,7 @@ kind: Backup
 metadata:
   name: rancher-daily-minio-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   retentionCount: 30
   schedule: "0 2 * * *"
   storageLocation:
@@ -161,13 +160,13 @@ spec:
 
 ## Step 8: Enable TLS for MinIO
 
-For production, enable TLS on MinIO. Generate a TLS certificate and create a secret:
+Before applying the Backup resource, enable TLS on MinIO. Generate a TLS certificate and create a secret:
 
 ```bash
-kubectl create secret tls minio-tls \
+kubectl create secret generic minio-tls \
   -n minio-system \
-  --cert=tls.crt \
-  --key=tls.key
+  --from-file=public.crt=tls.crt \
+  --from-file=private.key=tls.key
 ```
 
 Update the MinIO Helm values to enable TLS:
@@ -186,7 +185,7 @@ helm upgrade minio minio/minio \
   -f minio-values.yaml
 ```
 
-When using TLS with a valid certificate, remove `insecureTLSSkipVerify` from the Backup resource and use the HTTPS endpoint.
+If you are using a self-signed or private CA certificate, keep `insecureTLSSkipVerify: true` or provide `endpointCA`. When the certificate is trusted by the Rancher Backup Operator, you can remove `insecureTLSSkipVerify`.
 
 ## Step 9: Verify Backups
 
@@ -201,7 +200,7 @@ List objects in the MinIO bucket:
 ```bash
 kubectl run minio-mc --rm -it --image=minio/mc --restart=Never -- \
   sh -c '
-    mc alias set myminio http://minio.minio-system.svc:9000 rancher-backup backuppassword123
+    mc --insecure alias set myminio https://minio.minio-system.svc:9000 rancher-backup backuppassword123
     mc ls myminio/rancher-backups/backups/
   '
 ```
@@ -231,8 +230,11 @@ This provides data redundancy and higher availability for your backup storage.
 Verify the MinIO service is accessible from the cattle-resources-system namespace:
 
 ```bash
-kubectl run test-conn --rm -it --image=busybox --restart=Never -- \
-  wget -qO- http://minio.minio-system.svc:9000/minio/health/live
+kubectl run test-conn -n cattle-resources-system --rm -it --image=minio/mc --restart=Never -- \
+  sh -c '
+    mc --insecure alias set myminio https://minio.minio-system.svc:9000 minioadmin minioadmin123
+    mc ls myminio/
+  '
 ```
 
 ### Bucket Not Found
@@ -244,7 +246,9 @@ Ensure the bucket name matches exactly. Bucket names are case-sensitive.
 Monitor MinIO storage usage and expand the PersistentVolume if needed:
 
 ```bash
-kubectl exec -n minio-system deploy/minio -- df -h /data
+kubectl exec -n minio-system \
+  "$(kubectl get pod -n minio-system -l app=minio,release=minio -o jsonpath='{.items[0].metadata.name}')" -- \
+  df -h /export
 ```
 
 ## Conclusion
