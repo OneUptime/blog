@@ -15,6 +15,8 @@ Cisco IOS implements 6in4 tunnels using a `tunnel` interface with `tunnel mode i
 ```text
 ! Tunnel from Router-A (203.0.113.10) to Tunnel Broker (198.51.100.1)
 
+Router(config)# ipv6 unicast-routing
+
 Router(config)# interface Tunnel0
 Router(config-if)# description 6in4 to Tunnel Broker
 Router(config-if)# ipv6 address 2001:db8::2/64
@@ -67,12 +69,11 @@ Router# ping ipv6 2001:4860:4860::8888
 ! LAN interface - provides IPv6 to hosts
 Router(config)# interface GigabitEthernet0/1
 Router(config-if)# ipv6 address 2001:db8:abcd:1::1/64
-Router(config-if)# ipv6 nd ra-interval 60        ! Send Router Advertisements
+Router(config-if)# ipv6 nd ra interval 60        ! Send Router Advertisements
 Router(config-if)# no shutdown
 
-! Route the delegated /48 prefix through the tunnel
-! (Tunnel broker typically assigns a /48)
-Router(config)# ipv6 route 2001:db8:abcd::/48 Tunnel0 2001:db8::1
+! Use subnets from the delegated /48 on LAN interfaces
+! (Tunnel broker typically routes the /48 to your tunnel endpoint)
 
 ! Or use default route to send all IPv6 through tunnel
 Router(config)# ipv6 route ::/0 Tunnel0 2001:db8::1
@@ -85,25 +86,25 @@ Router(config)# ipv6 route ::/0 Tunnel0 2001:db8::1
 Router-A(config)# ipv6 unicast-routing
 
 Router-A(config)# interface Tunnel0
-Router-A(config-if)# ipv6 address 2001:db8:link::1/64
+Router-A(config-if)# ipv6 address 2001:db8:0:1::1/64
 Router-A(config-if)# tunnel source 203.0.113.10
 Router-A(config-if)# tunnel mode ipv6ip
 Router-A(config-if)# tunnel destination 198.51.100.20   ! Router-B's IPv4
 Router-A(config-if)# ipv6 mtu 1480
 
-Router-A(config)# ipv6 route 2001:db8:siteB::/48 Tunnel0 2001:db8:link::2
+Router-A(config)# ipv6 route 2001:db8:200::/48 Tunnel0 2001:db8:0:1::2
 
 ! ===== Router-B (right side) =====
 Router-B(config)# ipv6 unicast-routing
 
 Router-B(config)# interface Tunnel0
-Router-B(config-if)# ipv6 address 2001:db8:link::2/64
+Router-B(config-if)# ipv6 address 2001:db8:0:1::2/64
 Router-B(config-if)# tunnel source 198.51.100.20
 Router-B(config-if)# tunnel mode ipv6ip
 Router-B(config-if)# tunnel destination 203.0.113.10   ! Router-A's IPv4
 Router-B(config-if)# ipv6 mtu 1480
 
-Router-B(config)# ipv6 route 2001:db8:siteA::/48 Tunnel0 2001:db8:link::1
+Router-B(config)# ipv6 route 2001:db8:100::/48 Tunnel0 2001:db8:0:1::1
 ```
 
 ## MTU and PMTUD
@@ -115,7 +116,7 @@ Router-B(config)# ipv6 route 2001:db8:siteA::/48 Tunnel0 2001:db8:link::1
 Router(config-if)# ipv6 mtu 1480
 
 ! Alternatively, enable TCP MSS clamping
-Router(config-if)# ipv6 tcp adjust-mss 1440
+Router(config-if)# ipv6 tcp adjust-mss 1420
 
 ! Check effective MTU
 Router# show interface Tunnel0 | include MTU
@@ -126,7 +127,7 @@ Router# show interface Tunnel0 | include MTU
 ```text
 ! Allow only expected tunnel broker's protocol 41, block all others
 Router(config)# ip access-list extended PROTECT-PROTO41
-Router(config-ext-nacl)# permit 41 host 198.51.100.1 any  ! Broker → us
+Router(config-ext-nacl)# permit 41 host 198.51.100.1 host 203.0.113.10  ! Broker → us
 Router(config-ext-nacl)# deny 41 any any log              ! Block others
 Router(config-ext-nacl)# permit ip any any                ! Pass other traffic
 
@@ -143,9 +144,6 @@ Router# show interface Tunnel0
 ! Check IPv6 routing
 Router# show ipv6 route
 
-! Debug tunnel (verbose - use in lab only)
-Router# debug tunnel
-
 ! Check if IPv4 path to broker exists
 Router# ping 198.51.100.1
 Router# traceroute 198.51.100.1
@@ -153,12 +151,13 @@ Router# traceroute 198.51.100.1
 ! Common issues:
 ! 1. "Tunnel0 is down" → IPv4 source/destination unreachable
 ! 2. "no route to host" IPv6 → missing ipv6 route or tunnel down
-! 3. Large packet drops → MTU not set to 1480
+! 3. Large packet drops → MTU/PMTUD mismatch
 
-! Capture protocol 41 (requires SPAN or inline capture)
-Router# debug ip packet detail 41
+! Debug protocol 41 in software (verbose - use in lab only)
+Router(config)# access-list 141 permit 41 host 198.51.100.1 host 203.0.113.10
+Router# debug ip packet 141 detail
 ```
 
 ## Summary
 
-Cisco IOS 6in4 uses `tunnel mode ipv6ip` on a tunnel interface with `tunnel source` (local IPv4) and `tunnel destination` (remote IPv4). Set `ipv6 mtu 1480` on the tunnel to account for the 20-byte IPv4 overhead. Add IPv6 routes pointing to the tunnel interface. For site-to-site tunnels, configure symmetrically on both routers. Restrict protocol 41 at the WAN interface using an ACL allowing only the authorized tunnel endpoint. Use `show interface Tunnel0` and `ping ipv6` to verify the tunnel is operational.
+Cisco IOS 6in4 uses `tunnel mode ipv6ip` on a tunnel interface with `tunnel source` (local IPv4) and `tunnel destination` (remote IPv4). Enable `ipv6 unicast-routing`, set `ipv6 mtu 1480` on the tunnel to account for the 20-byte IPv4 overhead, and add IPv6 routes pointing to the tunnel interface. For site-to-site tunnels, configure symmetrically on both routers. Restrict protocol 41 at the WAN interface using an ACL allowing only the authorized tunnel endpoint. Use `show interface Tunnel0` and `ping ipv6` to verify the tunnel is operational.
