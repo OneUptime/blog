@@ -6,7 +6,7 @@ Tags: Azure, Terraform, IPv6, Dual-Stack, VNet, Networking
 
 Description: A guide to creating an Azure Virtual Network with dual-stack (IPv4 and IPv6) address space and subnets using Terraform.
 
-Azure supports dual-stack Virtual Networks where both IPv4 and IPv6 address spaces coexist. VMs and services in these VNets can be assigned both address families, enabling gradual IPv6 migration or full dual-stack deployments.
+Azure supports dual-stack Virtual Networks where both IPv4 and IPv6 address spaces coexist. VMs and supported services in these VNets can be assigned both address families, enabling gradual IPv6 migration or full dual-stack deployments.
 
 ## Step 1: Configure the Azure Provider
 
@@ -50,8 +50,8 @@ resource "azurerm_virtual_network" "main" {
 
   # Specify both IPv4 and IPv6 address spaces
   address_space = [
-    "10.0.0.0/16",          # IPv4 address space
-    "ace:cab:deca::/48"      # IPv6 address space (use ULA or BYOIP)
+    "10.0.0.0/16",           # IPv4 address space
+    "fd12:3456:789a::/48"    # IPv6 address space (use ULA or an organization-owned global prefix)
   ]
 
   tags = {
@@ -74,7 +74,7 @@ resource "azurerm_subnet" "web" {
   # Both IPv4 and IPv6 prefixes for the subnet
   address_prefixes = [
     "10.0.1.0/24",
-    "ace:cab:deca:deed::/64"
+    "fd12:3456:789a:deed::/64"
   ]
 }
 
@@ -85,7 +85,7 @@ resource "azurerm_subnet" "app" {
 
   address_prefixes = [
     "10.0.2.0/24",
-    "ace:cab:deca:beef::/64"
+    "fd12:3456:789a:beef::/64"
   ]
 }
 ```
@@ -148,13 +148,14 @@ resource "azurerm_network_interface" "main" {
 ## Step 7: Apply and Verify
 
 ```bash
+terraform init
 terraform apply
 
 # Check VNet address spaces
 az network vnet show \
   --resource-group rg-ipv6-network \
   --name vnet-dual-stack \
-  --query addressSpace
+  --query 'addressSpace.addressPrefixes'
 
 # Check subnet prefixes
 az network vnet subnet list \
