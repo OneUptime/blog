@@ -14,6 +14,7 @@ Migrating storage between clusters is a common requirement when upgrading infras
 - kubectl access to both clusters
 - Sufficient storage capacity on the destination cluster
 - Network connectivity between clusters (for some methods)
+- VolumeSnapshot CRDs/controller and CSI drivers with snapshot support (for the snapshot method)
 
 ## Step 1: Assess Your Migration Requirements
 
@@ -84,6 +85,8 @@ kind: Pod
 metadata:
   name: rsync-source
   namespace: default
+  labels:
+    app: rsync-source
 spec:
   containers:
   - name: rsync
@@ -119,11 +122,27 @@ kind: Pod
 metadata:
   name: rsync-destination
   namespace: default
+  labels:
+    app: rsync-destination
 spec:
   containers:
   - name: rsync
     image: instrumentisto/rsync-ssh:latest
-    command: ["sleep", "infinity"]
+    command:
+    - sh
+    - -c
+    - |
+      cat >/tmp/rsyncd.conf <<'EOF'
+      uid = 0
+      gid = 0
+      use chroot = no
+      [destination]
+        path = /data
+        read only = false
+      EOF
+      rsync --daemon --no-detach --config=/tmp/rsyncd.conf
+    ports:
+    - containerPort: 873
     volumeMounts:
     - name: dest-data
       mountPath: /data
@@ -133,20 +152,24 @@ spec:
       claimName: destination-pvc
 ```
 
-Use port-forwarding and rsync to copy data:
+Expose the destination pod temporarily and use rsync to copy data:
 
 ```bash
-# Terminal 1: Port-forward the destination pod
-kubectl port-forward --context=destination-cluster rsync-destination 2222:22
+# Destination cluster: expose the rsync pod with a temporary service
+kubectl expose pod/rsync-destination --context=destination-cluster \
+  --name=rsync-destination --type=LoadBalancer --port=873 --target-port=873
 
-# Terminal 2: Copy data via the source pod
+# Check the external address of the temporary service
+kubectl get svc --context=destination-cluster rsync-destination
+
+# Source cluster: copy data to the destination rsync daemon
 kubectl exec --context=source-cluster rsync-source -- \
-  rsync -avz --progress /data/ rsync://destination-host:2222/data/
+  rsync -avz --progress /data/ rsync://<destination-service-address>/destination
 ```
 
 ## Step 4: Method 3 - Using kubectl cp
 
-For smaller volumes, use kubectl cp:
+For smaller volumes, use kubectl cp if the pods have `tar` installed:
 
 ```bash
 # Create a tar of the source data
@@ -164,7 +187,7 @@ kubectl exec --context=destination-cluster dest-pod -- tar xzf /tmp/data-backup.
 
 ## Step 5: Method 4 - Using Cloud Snapshots
 
-If both clusters are on the same cloud provider:
+If both clusters are on the same cloud provider, use CSI drivers that can access the same underlying snapshot backend, and have VolumeSnapshot support installed:
 
 ```bash
 # Create a volume snapshot on source cluster
@@ -181,21 +204,21 @@ spec:
 EOF
 
 # Wait for snapshot to be ready
-kubectl get volumesnapshot migration-snapshot -o jsonpath='{.status.readyToUse}'
+kubectl get volumesnapshot --context=source-cluster -n default migration-snapshot -o jsonpath='{.status.readyToUse}'
 ```
 
-Get the snapshot handle and create a PV on the destination cluster referencing it:
+Get the snapshot handle and create a pre-provisioned VolumeSnapshotContent and VolumeSnapshot on the destination cluster referencing it:
 
 ```bash
 # Get snapshot handle
-SNAPSHOT_HANDLE=$(kubectl get volumesnapshotcontent \
-  $(kubectl get volumesnapshot migration-snapshot -o jsonpath='{.status.boundVolumeSnapshotContentName}') \
+SNAPSHOT_HANDLE=$(kubectl get volumesnapshotcontent --context=source-cluster \
+  $(kubectl get volumesnapshot --context=source-cluster -n default migration-snapshot -o jsonpath='{.status.boundVolumeSnapshotContentName}') \
   -o jsonpath='{.status.snapshotHandle}')
 
-echo $SNAPSHOT_HANDLE
+echo "$SNAPSHOT_HANDLE"
 ```
 
-Create a VolumeSnapshotContent and VolumeSnapshot on the destination cluster referencing the snapshot handle, then create a PVC from the snapshot.
+Create a VolumeSnapshotContent and VolumeSnapshot on the destination cluster referencing the snapshot handle, then create a PVC from that VolumeSnapshot using the `dataSource` field.
 
 ## Step 6: Method 5 - Using an Intermediate NFS Share
 
@@ -285,14 +308,14 @@ For databases, use native tools for consistent migration:
 
 ```bash
 # PostgreSQL
-kubectl exec --context=source-cluster pg-pod -- pg_dump -U postgres mydb > mydb.sql
+kubectl exec --context=source-cluster pg-pod -- sh -c 'PGPASSWORD="<postgres-password>" pg_dump -U postgres mydb' > mydb.sql
 kubectl cp mydb.sql --context=destination-cluster default/pg-pod:/tmp/mydb.sql
-kubectl exec --context=destination-cluster pg-pod -- psql -U postgres mydb < /tmp/mydb.sql
+kubectl exec --context=destination-cluster pg-pod -- sh -c 'PGPASSWORD="<postgres-password>" psql -U postgres mydb < /tmp/mydb.sql'
 
 # MySQL
-kubectl exec --context=source-cluster mysql-pod -- mysqldump -u root -p mydb > mydb.sql
+kubectl exec --context=source-cluster mysql-pod -- sh -c 'mysqldump -u root --password="<mysql-password>" mydb' > mydb.sql
 kubectl cp mydb.sql --context=destination-cluster default/mysql-pod:/tmp/mydb.sql
-kubectl exec --context=destination-cluster mysql-pod -- mysql -u root -p mydb < /tmp/mydb.sql
+kubectl exec --context=destination-cluster mysql-pod -- sh -c 'mysql -u root --password="<mysql-password>" mydb < /tmp/mydb.sql'
 ```
 
 ## Step 10: Clean Up Source Cluster
