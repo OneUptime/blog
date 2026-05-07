@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Monitoring, Event, Filtering, Status
 
-Description: Learn how to filter Podman events by event status to monitor specific lifecycle states like start, stop, die, and more.
+Description: Learn how to filter Podman events by event status to monitor specific lifecycle states like start, stop, died, and more.
 
 ---
 
 > Filtering by event status lets you focus on exactly the container state transitions that matter to your operations.
 
-Podman containers go through many state transitions during their lifecycle. Each transition generates an event with a specific status. By filtering on event status, you can monitor only the transitions you care about - whether that is containers starting, stopping unexpectedly, running out of memory, or being removed. This guide covers all the event statuses available in Podman and how to filter for them effectively.
+Podman containers go through many state transitions during their lifecycle. Each transition generates an event with a specific status. By filtering on event status, you can monitor only the transitions you care about - whether that is containers starting, stopping unexpectedly, changing health status, or being removed. This guide covers the main container event statuses available in Podman and how to filter for them effectively.
 
 ---
 
@@ -21,19 +21,31 @@ Podman containers emit events with the following statuses:
 ```bash
 # Lifecycle statuses
 
+# attach   - Container was attached to
+# checkpoint - Container was checkpointed
+# cleanup  - Container resources were cleaned up
+# connect  - Container network was connected
 # create   - Container was created
+# disconnect - Container network was disconnected
+# exited   - Container process exited
+# died     - Container process exited (die is accepted as a Docker-compatible alias)
+# import   - Container was imported
 # init     - Container was initialized
 # start    - Container started running
 # stop     - Container was stopped gracefully
-# die      - Container process exited
 # remove   - Container was removed
 # rename   - Container was renamed
 # restart  - Container was restarted
+# prune    - Containers were pruned
+# restore  - Container was restored
+# sync     - Container state was synchronized
+# update   - Container configuration was updated
 
 # Runtime statuses
 # pause    - Container was paused
 # unpause  - Container was unpaused
 # exec     - A command was executed in the container
+# exec_died - An exec session exited
 # kill     - Container received a signal
 
 # Storage statuses
@@ -58,7 +70,7 @@ podman events --filter event=start
 podman run -d --name status-test alpine sleep 120
 ```
 
-## Filtering for Stop and Die Events
+## Filtering for Stop and Died Events
 
 These are critical for detecting container shutdowns and crashes.
 
@@ -66,20 +78,20 @@ These are critical for detecting container shutdowns and crashes.
 # Monitor graceful stops
 podman events --filter event=stop
 
-# Monitor container deaths (process exited)
-podman events --filter event=die
+# Monitor container exits
+podman events --filter event=died
 
-# Monitor both stop and die events together
-podman events --filter event=stop --filter event=die
+# Monitor both stop and died events together
+podman events --filter event=stop --filter event=died
 ```
 
-The difference between stop and die is important: `stop` means a graceful shutdown was requested, while `die` means the container process exited (which could be normal or a crash).
+The difference between stop and died is important: `stop` means a graceful shutdown was requested, while `died` means the container process exited (which could be normal or a crash). Podman also accepts `event=die` as a Docker-compatible alias for `event=died`.
 
 ```bash
 # Generate a stop event
 podman stop status-test
 
-# Generate a die event from a crash
+# Generate a died event from a crash
 podman run --name crash-test alpine sh -c "exit 1"
 ```
 
@@ -138,19 +150,23 @@ ALERT_LOG="/tmp/podman-alerts.log"
 
 echo "Monitoring for critical container events..."
 
-# Watch for die, oom, and kill events
+# Watch for died and kill events
 podman events --format json \
-    --filter event=die \
+    --filter event=died \
     --filter event=kill | \
 while IFS= read -r event; do
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // "unknown"')
+    name=$(echo "$event" | jq -r '.Name // "unknown"')
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
 
     case "$status" in
-        die)
-            # Check the exit code
-            exit_code=$(podman inspect --format '{{.State.ExitCode}}' "$name" 2>/dev/null || echo "unknown")
+        died)
+            # Use the event's exit code when Podman includes it, otherwise inspect the container
+            exit_code=$(echo "$event" | jq -r '.ContainerExitCode // empty')
+            if [ -z "$exit_code" ] && [ "$name" != "unknown" ]; then
+                exit_code=$(podman inspect --format '{{.State.ExitCode}}' "$name" 2>/dev/null || echo "unknown")
+            fi
+            exit_code=${exit_code:-unknown}
             alert="CRITICAL: Container '${name}' died with exit code ${exit_code}"
             ;;
         kill)
@@ -170,8 +186,8 @@ done
 Review past events filtered by status for incident investigation.
 
 ```bash
-# Find all container deaths in the last 24 hours
-podman events --filter event=die --since 24h
+# Find all container exits in the last 24 hours
+podman events --filter event=died --since 24h
 
 # Find all container starts in a specific time window
 podman events --filter event=start \
@@ -208,4 +224,4 @@ podman rm -f status-test crash-test exec-test health-test 2>/dev/null
 
 ## Summary
 
-Filtering Podman events by status gives you precise control over what container state transitions you monitor. From tracking starts and stops for lifecycle management, to watching die events for crash detection, to monitoring exec events for security auditing, status filtering is a powerful tool. By combining status filters with container filters and time ranges, you can build targeted monitoring that focuses on exactly the events that matter to your operations.
+Filtering Podman events by status gives you precise control over what container state transitions you monitor. From tracking starts and stops for lifecycle management, to watching died events for crash detection, to monitoring exec events for security auditing, status filtering is a powerful tool. By combining status filters with container filters and time ranges, you can build targeted monitoring that focuses on exactly the events that matter to your operations.
