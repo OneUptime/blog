@@ -12,31 +12,34 @@ Rancher UI Extensions let you add custom pages, resource views, and functionalit
 
 You need the following tools installed:
 
-- Node.js 16+ and npm or yarn
+- Node.js 16 and yarn
 - Git
-- Access to a Rancher v2.7+ instance with Extensions support enabled
+- Access to a Rancher v2.7, v2.8, or v2.9 instance with Extensions support enabled
 
 ## Setting Up the Development Environment
 
-### Step 1: Install the Rancher Shell Extension Creator
+### Step 1: Install the Rancher Extension Creator
 
-The `@rancher/shell` package provides the tools for creating and building extensions:
+Rancher publishes the extension generator through `npm init @rancher/extension` (backed by the `@rancher/create-extension` package). Use the tag that matches your Rancher version:
 
 ```bash
-# Create a new extension project
+# Rancher v2.7 / v2.8
+npm init @rancher/extension@legacy-v1 my-extension
 
-npx @rancher/create-extension my-extension
+# Rancher v2.9
+npm init @rancher/extension@legacy-v2 my-extension
 
 cd my-extension
 ```
 
-This scaffolds a project with the following structure:
+This scaffolds a development app with an extension package under `pkg/`, for example:
 
 ```plaintext
 my-extension/
   pkg/
     my-extension/
       index.ts
+      package.json
       product.ts
   package.json
   tsconfig.json
@@ -52,7 +55,7 @@ yarn install
 ### Step 3: Start the Development Server
 
 ```bash
-yarn dev
+API=https://<your-rancher-instance> yarn dev
 ```
 
 This starts a local development server that proxies requests to your Rancher instance. Open the URL shown in the terminal and log in with your Rancher credentials.
@@ -66,29 +69,17 @@ Edit `pkg/my-extension/index.ts`:
 ```typescript
 import { importTypes } from '@rancher/auto-import';
 import { IPlugin } from '@shell/core/types';
+import extensionRouting from './routing/extension-routing';
 
-const onEnter = (store: any, config: any) => {
-  // Called when the extension is loaded
-  console.log('My Extension loaded');
-};
-
-const onLeave = (store: any, config: any) => {
-  // Called when the extension is unloaded
-  console.log('My Extension unloaded');
-};
-
-const extension: IPlugin = {
-  name: 'my-extension',
-  routes: [],
-  stores: [],
-  onEnter,
-  onLeave,
-};
-
-export default extension;
+export default function(plugin: IPlugin) {
+  importTypes(plugin);
+  plugin.metadata = require('./package.json');
+  plugin.addProduct(require('./product'));
+  plugin.addRoutes(extensionRouting);
+}
 ```
 
-### Register a Product (Top-Level Menu Item)
+### Register a Product (Cluster-Level Menu Item)
 
 Create `pkg/my-extension/product.ts`:
 
@@ -105,7 +96,7 @@ export function init($plugin: IPlugin, store: any) {
   // Register a new product in the side navigation
   product({
     icon: 'gear',
-    inStore: 'management',
+    inStore: 'cluster',
     weight: 100,
     to: {
       name: `c-cluster-${$plugin.name}-overview`,
@@ -116,7 +107,7 @@ export function init($plugin: IPlugin, store: any) {
   // Register a virtual resource type
   virtualType({
     name: 'overview',
-    labelKey: 'Overview',
+    label: 'Overview',
     route: {
       name: `c-cluster-${$plugin.name}-overview`,
       params: { product: $plugin.name }
@@ -148,15 +139,11 @@ Create `pkg/my-extension/pages/overview.vue`:
       <table>
         <tr>
           <td>Name</td>
-          <td>{{ currentCluster.spec.displayName }}</td>
+          <td>{{ currentCluster.nameDisplay || currentCluster.metadata?.name }}</td>
         </tr>
         <tr>
           <td>State</td>
-          <td>{{ currentCluster.metadata.state.name }}</td>
-        </tr>
-        <tr>
-          <td>Provider</td>
-          <td>{{ currentCluster.status.provider }}</td>
+          <td>{{ currentCluster.stateDisplay || currentCluster.metadata?.state?.name || 'Unknown' }}</td>
         </tr>
       </table>
     </div>
@@ -197,7 +184,7 @@ export default {
         },
         {
           label: 'Namespaces',
-          value: new Set(this.pods.map(p => p.metadata?.namespace)).size
+          value: new Set(this.pods.map(p => p.metadata?.namespace).filter(Boolean)).size
         }
       ];
     }
@@ -234,31 +221,23 @@ export default {
 
 ### Register Routes
 
-Update `pkg/my-extension/index.ts` to include routes:
+Create `pkg/my-extension/routing/extension-routing.js`:
 
 ```typescript
-import { importTypes } from '@rancher/auto-import';
-import { IPlugin } from '@shell/core/types';
+import OverviewPage from '../pages/overview.vue';
 
 const routes = [
   {
     name: 'c-cluster-my-extension-overview',
     path: '/c/:cluster/my-extension/overview',
-    component: () => import('./pages/overview.vue'),
+    component: OverviewPage,
     meta: {
       product: 'my-extension',
-      cluster: true,
     }
   }
 ];
 
-const extension: IPlugin = {
-  name: 'my-extension',
-  routes,
-  stores: [],
-};
-
-export default extension;
+export default routes;
 ```
 
 ## Adding Custom Resource Views
@@ -273,44 +252,39 @@ Create `pkg/my-extension/list/my-resource.vue`:
     :schema="schema"
     :rows="rows"
     :headers="headers"
+    :loading="loading"
+    :force-update-live-and-delayed="forceUpdateLiveAndDelayed"
   />
 </template>
 
 <script>
 import ResourceTable from '@shell/components/ResourceTable';
+import ResourceFetch from '@shell/mixins/resource-fetch';
 
 export default {
   name: 'MyResourceList',
   components: { ResourceTable },
+  mixins: [ResourceFetch],
 
   props: {
     resource: {
       type: String,
       required: true,
+    },
+    schema: {
+      type: Object,
+      required: true,
     }
   },
 
   async fetch() {
-    this.rows = await this.$store.dispatch('cluster/findAll', {
-      type: this.resource,
-    });
-    this.schema = this.$store.getters['cluster/schemaFor'](this.resource);
-  },
-
-  data() {
-    return {
-      rows: [],
-      schema: null,
-    };
+    this.$initializeFetchData(this.resource);
+    await this.$fetchType(this.resource);
   },
 
   computed: {
     headers() {
-      return [
-        { name: 'name', label: 'Name', value: 'metadata.name' },
-        { name: 'namespace', label: 'Namespace', value: 'metadata.namespace' },
-        { name: 'age', label: 'Age', value: 'metadata.creationTimestamp' },
-      ];
+      return this.$store.getters['type-map/headersFor'](this.schema);
     }
   }
 };
@@ -322,20 +296,28 @@ export default {
 ### Custom Action on Resources
 
 ```typescript
-// pkg/my-extension/config/table-actions.ts
-export function init($plugin: IPlugin, store: any) {
-  const { configureType } = $plugin.DSL(store, $plugin.name);
+// pkg/my-extension/index.ts
+import { importTypes } from '@rancher/auto-import';
+import { IPlugin, ActionLocation, ActionOpts } from '@shell/core/types';
+import extensionRouting from './routing/extension-routing';
 
-  configureType('apps.deployment', {
-    customActions: [
-      {
-        action: 'restartDeployment',
-        label: 'Restart',
-        icon: 'icon-refresh',
-        enabled: (resource: any) => resource.metadata?.state?.name === 'active',
+export default function(plugin: IPlugin) {
+  importTypes(plugin);
+  plugin.metadata = require('./package.json');
+  plugin.addProduct(require('./product'));
+  plugin.addRoutes(extensionRouting);
+
+  plugin.addAction(
+    ActionLocation.TABLE,
+    { resource: ['apps.deployment'] },
+    {
+      label: 'Restart',
+      multiple: true,
+      invoke(opts: ActionOpts, values: any[]) {
+        console.log('Selected deployments', opts, values);
       }
-    ]
-  });
+    }
+  );
 }
 ```
 
@@ -349,57 +331,45 @@ yarn build-pkg my-extension
 
 This creates a production bundle in the `dist-pkg` directory.
 
-### Create a Helm Chart for Distribution
+### Create Helm Chart Assets for Distribution
 
 ```bash
-yarn build-helm my-extension
+yarn publish-pkgs -s "my-organization/my-extension-repo" -b "gh-pages"
 ```
 
-The Helm chart is generated in `charts/my-extension/`.
+This bundles the extension, generates the chart assets in `charts/`, packages them under `assets/`, and writes the repository index files needed by Rancher.
 
-### Publish to a Helm Repository
+### Publish to a Public Repository
 
 ```bash
-# Package the chart
-helm package charts/my-extension -d dist-charts/
-
-# Push to your chart repository
-helm push dist-charts/my-extension-*.tgz oci://registry.example.com/charts
+git add ./tmp/*
+git commit -m 'Add extension charts'
+git push origin gh-pages
 ```
 
 ## Deploying the Extension
 
-### Deploy via Helm
+### Add the Repository to Rancher
 
-```bash
-helm install my-extension oci://registry.example.com/charts/my-extension \
-  --namespace cattle-ui-plugin-system \
-  --create-namespace
-```
+After publishing the generated assets, use the repository URL for that branch, for example `https://<organization>.github.io/<repository>`.
 
 ### Deploy via the Rancher UI
 
-1. Go to **Extensions** in the Rancher sidebar
-2. Click **Install from Helm Repository**
-3. Add your Helm chart repository URL
-4. Select and install your extension
+1. Go to **Apps** > **Repositories** and add your published repository URL
+2. Open **Extensions** in the Rancher sidebar
+3. Select the **Available** tab
+4. Find your extension and install it
 
 ## Testing Your Extension
 
 ### Unit Tests
 
-```bash
-yarn test
-```
+The generated scaffold does not include a `test` script by default. Add your preferred test runner and a `test` script to `package.json` before running unit tests.
 
 ### End-to-End Testing
 
-Use Cypress for E2E testing:
-
-```bash
-yarn test:e2e
-```
+The scaffold also does not include Cypress or a `test:e2e` script by default. Add your preferred E2E runner and script before running end-to-end tests.
 
 ## Summary
 
-Building Rancher UI Extensions involves scaffolding a project with the Rancher extension creator, defining products and routes, creating Vue components for custom pages, and packaging everything as a Helm chart for distribution. The extension system provides access to the Rancher store for data fetching, built-in UI components like ResourceTable, and a DSL for registering navigation items and resource configurations.
+Building Rancher UI Extensions involves scaffolding a development app with the Rancher extension creator, defining products and routes through the Extensions API, creating Vue components for custom pages and resource views, and publishing the generated chart assets for Rancher to consume. The extension system provides access to the Rancher store for data fetching, built-in UI components like `ResourceTable`, and APIs such as the DSL helpers and `addAction` for extending navigation and table behavior.
