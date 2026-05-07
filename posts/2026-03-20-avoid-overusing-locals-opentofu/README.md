@@ -25,15 +25,19 @@ locals {
 
 # Used in multiple resources - locals are justified
 resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
   tags = merge(local.common_tags, { Name = "main-vpc" })
 }
 
 resource "aws_subnet" "public" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "10.0.1.0/24"
   tags = merge(local.common_tags, { Name = "public-subnet" })
 }
 
-resource "aws_instance" "web" {
-  tags = merge(local.common_tags, { Name = "web-server" })
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+  tags   = merge(local.common_tags, { Name = "main-igw" })
 }
 ```
 
@@ -48,6 +52,7 @@ locals {
 
 # Use var.aws_region directly instead
 resource "aws_vpc" "main" {
+  cidr_block = var.vpc_cidr_block
   # region = local.region  # Bad - extra indirection
   region = var.aws_region   # Better - direct
 }
@@ -62,13 +67,15 @@ locals {
 }
 
 resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
   tags = {
     Name = local.vpc_name  # Used once - not worth a local
   }
 }
 
 # BETTER: Inline it or use it more than once
-resource "aws_vpc" "main" {
+resource "aws_vpc" "main_inline" {
+  cidr_block = "10.0.0.0/16"
   tags = {
     Name = "${var.project}-${var.environment}-vpc"  # Clear enough inline
   }
@@ -93,6 +100,7 @@ locals {
 }
 
 resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
   tags = {
     Name = "${local.name_prefix}-vpc"
   }
@@ -131,7 +139,7 @@ USE locals when:
 ✅ The same value is used in 3+ places
 ✅ An expression is complex enough to benefit from naming
 ✅ You need to name a concept for documentation purposes
-✅ A computation is expensive and should happen once
+✅ A computed value would be cumbersome to repeat inline
 ✅ You want to centralize a value that might change
 
 AVOID locals when:
@@ -169,6 +177,7 @@ locals {
 # Use directly where it's clear
 resource "aws_s3_bucket" "state" {
   bucket = "${local.name_prefix}-state"   # Using useful local
+  tags   = local.all_tags                 # Reusing merged tags local
   region = var.aws_region                 # Direct reference, no local needed
 }
 ```
