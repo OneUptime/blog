@@ -8,13 +8,13 @@ Description: Learn how to provision and validate SSL/TLS certificates using AWS 
 
 ## Introduction
 
-AWS Certificate Manager (ACM) provisions, manages, and deploys SSL/TLS certificates for use with AWS services. ACM certificates are free for use with integrated services (ALB, CloudFront, API Gateway), automatically renew before expiration, and support both DNS and email validation. DNS validation via Route 53 is fully automatable with OpenTofu.
+AWS Certificate Manager (ACM) provisions, manages, and deploys SSL/TLS certificates for use with AWS services. ACM public certificates are free to use with integrated services (ALB, CloudFront, API Gateway). For OpenTofu-managed ACM requests, you can use DNS or email validation; DNS validation via Route 53 is fully automatable, and ACM can automatically renew DNS-validated certificates that remain in use.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- A Route 53 hosted zone for your domain
-- AWS credentials with ACM and Route 53 permissions
+- A public Route 53 hosted zone for your domain
+- AWS credentials with ACM, Route 53, and Elastic Load Balancing permissions (and CloudFront permissions if you use Step 5)
 
 ## Step 1: Request Certificate with DNS Validation
 
@@ -29,7 +29,7 @@ resource "aws_acm_certificate" "main" {
   validation_method = "DNS"  # DNS validation for automation; EMAIL is manual
 
   lifecycle {
-    create_before_destroy = true  # Required for certificate rotation
+    create_before_destroy = true  # Recommended for certificate rotation
   }
 
   tags = {
@@ -45,18 +45,19 @@ resource "aws_acm_certificate" "main" {
 # Create CNAME records for DNS validation
 
 resource "aws_route53_record" "cert_validation" {
+  # example.com and *.example.com share the same validation record.
   for_each = {
-    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
+    for dvo in aws_acm_certificate.main.domain_validation_options : replace(dvo.domain_name, "*.", "") => {
       name   = dvo.resource_record_name
       record = dvo.resource_record_value
       type   = dvo.resource_record_type
-    }
+    }...
   }
 
   zone_id         = var.route53_zone_id
-  name            = each.value.name
-  type            = each.value.type
-  records         = [each.value.record]
+  name            = each.value[0].name
+  type            = each.value[0].type
+  records         = [each.value[0].record]
   ttl             = 60
   allow_overwrite = true  # Allow overwriting if the record exists
 }
@@ -67,7 +68,7 @@ resource "aws_acm_certificate_validation" "main" {
   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
 
   timeouts {
-    create = "5m"
+    create = "75m"
   }
 }
 ```
@@ -79,7 +80,7 @@ resource "aws_lb_listener" "https" {
   load_balancer_arn = var.alb_arn
   port              = "443"
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"  # TLS 1.3 policy
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"  # TLS 1.3 and TLS 1.2 policy
 
   # Use the validated certificate
   certificate_arn = aws_acm_certificate_validation.main.certificate_arn
@@ -136,6 +137,16 @@ resource "aws_acm_certificate" "cloudfront" {
   }
 }
 
+resource "aws_acm_certificate_validation" "cloudfront" {
+  provider = aws.us_east_1
+
+  certificate_arn = aws_acm_certificate.cloudfront.arn
+  validation_record_fqdns = [
+    for dvo in aws_acm_certificate.cloudfront.domain_validation_options :
+    aws_route53_record.cert_validation[replace(dvo.domain_name, "*.", "")].fqdn
+  ]
+}
+
 resource "aws_cloudfront_distribution" "main" {
   # ...
   viewer_certificate {
@@ -161,4 +172,4 @@ aws acm describe-certificate \
 
 ## Conclusion
 
-ACM DNS validation via Route 53 is the recommended approach-it fully automates validation and renewal without manual intervention. The `create_before_destroy = true` lifecycle rule is critical for certificate rotation, ensuring a new certificate is validated and attached before the old one is removed. Always use the `aws_acm_certificate_validation` resource as a dependency for any resources that use the certificate to prevent deployment of services with unvalidated certificates.
+ACM DNS validation via Route 53 is the recommended approach because it automates validation and, for certificates that remain in use, renewal without manual intervention. The `create_before_destroy = true` lifecycle rule helps with certificate rotation by creating a replacement certificate before the existing one is destroyed. Always use the `aws_acm_certificate_validation` resource as a dependency for any resources that use the certificate to prevent deployment of services with unvalidated certificates.
