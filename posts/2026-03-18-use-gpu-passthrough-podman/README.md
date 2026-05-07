@@ -18,7 +18,7 @@ Running GPU-accelerated workloads inside containers has become essential for mod
 
 GPU passthrough allows a container to directly access the host's GPU hardware. Unlike CPU-based emulation, passthrough gives the container near-native performance by mapping the GPU device files and driver stack into the container's namespace.
 
-There are two primary approaches to GPU passthrough in Podman:
+Two common approaches to GPU passthrough in Podman are:
 
 1. **Device file mapping** - Passing `/dev/dri/*` or `/dev/nvidia*` device files directly into the container.
 2. **CDI (Container Device Interface)** - A standardized specification for describing how devices should be made available to containers.
@@ -66,40 +66,49 @@ The most straightforward method is using the `--device` flag to map GPU device f
 
 ### Intel and AMD GPUs (DRI Devices)
 
-For Intel and AMD GPUs that use the Direct Rendering Infrastructure:
+For Intel GPUs and AMD graphics or video workloads that use the Direct Rendering Infrastructure:
 
 ```bash
 # Pass the entire /dev/dri directory to the container
 podman run --rm -it \
-  --device /dev/dri:/dev/dri \
+  --device /dev/dri \
   fedora:latest \
   bash -c "ls -la /dev/dri/"
 ```
 
-You can also pass specific device nodes if you only need render access:
+You can also pass specific device nodes if you only need the render node:
 
 ```bash
-# Pass only the render node for compute workloads
+# Pass only the render node for workloads that do not need the full DRI device set
 podman run --rm -it \
-  --device /dev/dri/renderD128:/dev/dri/renderD128 \
+  --device /dev/dri/renderD128 \
   my-compute-image:latest \
   python3 run_inference.py
 ```
 
-### NVIDIA GPUs
-
-For NVIDIA GPUs, you need to pass multiple device files:
+For AMD compute workloads that use ROCm, pass both `/dev/kfd` and `/dev/dri`:
 
 ```bash
-# Pass all NVIDIA device files
+# AMD ROCm workloads need both /dev/kfd and /dev/dri
 podman run --rm -it \
-  --device /dev/nvidia0:/dev/nvidia0 \
-  --device /dev/nvidiactl:/dev/nvidiactl \
-  --device /dev/nvidia-modeset:/dev/nvidia-modeset \
-  --device /dev/nvidia-uvm:/dev/nvidia-uvm \
-  --device /dev/nvidia-uvm-tools:/dev/nvidia-uvm-tools \
-  nvidia/cuda:12.3.0-runtime-ubuntu22.04 \
-  nvidia-smi
+  --device /dev/kfd \
+  --device /dev/dri \
+  rocm/dev-ubuntu-22.04:7.1.1-complete \
+  rocminfo
+```
+
+### NVIDIA GPUs
+
+For NVIDIA GPUs, direct device mapping exposes the character devices, but CDI via the NVIDIA Container Toolkit is usually the more reliable option for real workloads:
+
+```bash
+# Directly expose NVIDIA device nodes
+podman run --rm -it \
+  --device /dev/nvidia0 \
+  --device /dev/nvidiactl \
+  --device /dev/nvidia-uvm \
+  ubuntu:22.04 \
+  bash -c "ls -la /dev/nvidia*"
 ```
 
 ### Multi-GPU Systems
@@ -109,42 +118,51 @@ If your system has multiple GPUs, you can selectively pass specific GPUs:
 ```bash
 # Pass only the first GPU (index 0)
 podman run --rm -it \
-  --device /dev/nvidia0:/dev/nvidia0 \
-  --device /dev/nvidiactl:/dev/nvidiactl \
-  --device /dev/nvidia-uvm:/dev/nvidia-uvm \
-  nvidia/cuda:12.3.0-runtime-ubuntu22.04 \
-  nvidia-smi
+  --device /dev/nvidia0 \
+  --device /dev/nvidiactl \
+  --device /dev/nvidia-uvm \
+  ubuntu:22.04 \
+  bash -c "ls -la /dev/nvidia*"
 
 # Pass both GPUs on a dual-GPU system
 podman run --rm -it \
-  --device /dev/nvidia0:/dev/nvidia0 \
-  --device /dev/nvidia1:/dev/nvidia1 \
-  --device /dev/nvidiactl:/dev/nvidiactl \
-  --device /dev/nvidia-uvm:/dev/nvidia-uvm \
-  nvidia/cuda:12.3.0-runtime-ubuntu22.04 \
-  nvidia-smi
+  --device /dev/nvidia0 \
+  --device /dev/nvidia1 \
+  --device /dev/nvidiactl \
+  --device /dev/nvidia-uvm \
+  ubuntu:22.04 \
+  bash -c "ls -la /dev/nvidia*"
 ```
 
 ## Using the NVIDIA Container Toolkit with Podman
 
-The NVIDIA Container Toolkit provides a more integrated experience by automatically handling device mapping and driver library mounting.
+The NVIDIA Container Toolkit provides a more integrated experience by automatically handling device mapping and driver library mounting. For Podman, NVIDIA recommends using CDI, and the `nvidia-container-toolkit-base` package is sufficient for CDI-only setups.
 
 ```bash
-# Install the NVIDIA Container Toolkit
-# Add the repository
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.repo | \
+# Install the NVIDIA Container Toolkit base package
+# On Fedora/RHEL-like systems:
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | \
   sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo
+sudo dnf install -y nvidia-container-toolkit-base
 
-# Install the toolkit
-sudo dnf install -y nvidia-container-toolkit
+# On Ubuntu/Debian:
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+  sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit-base
 
-# Generate CDI specification for your GPUs
-sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
-
-# Verify the CDI spec was created
+# On NVIDIA Container Toolkit v1.18.0 and later, the CDI spec is generated
+# automatically at /var/run/cdi/nvidia.yaml. Verify that CDI devices are visible:
 nvidia-ctk cdi list
+
+# If you need to regenerate the CDI spec:
+sudo systemctl restart nvidia-cdi-refresh.service
 ```
+
+If your system still has `/usr/share/containers/oci/hooks.d/oci-nvidia-hook.json`, remove it or avoid setting `NVIDIA_VISIBLE_DEVICES` so it does not conflict with CDI.
 
 Once the CDI spec is generated, you can use the `--device` flag with CDI identifiers:
 
@@ -152,14 +170,16 @@ Once the CDI spec is generated, you can use the `--device` flag with CDI identif
 # Run a container with all NVIDIA GPUs using CDI
 podman run --rm -it \
   --device nvidia.com/gpu=all \
-  nvidia/cuda:12.3.0-runtime-ubuntu22.04 \
-  nvidia-smi
+  --security-opt=label=disable \
+  ubuntu \
+  nvidia-smi -L
 
 # Run with a specific GPU using CDI
 podman run --rm -it \
   --device nvidia.com/gpu=0 \
-  nvidia/cuda:12.3.0-runtime-ubuntu22.04 \
-  nvidia-smi
+  --security-opt=label=disable \
+  ubuntu \
+  nvidia-smi -L
 ```
 
 ## Security Considerations
@@ -167,22 +187,19 @@ podman run --rm -it \
 When passing GPUs through to containers, keep these security practices in mind:
 
 ```bash
-# Run rootless containers when possible for better isolation
+# Rootless containers that rely on group access need supplementary groups preserved
 podman run --rm -it \
-  --device /dev/dri:/dev/dri \
-  --user 1000:1000 \
+  --device /dev/dri \
+  --group-add keep-groups \
   my-gpu-image:latest \
   python3 my_script.py
 
-# Use --security-opt to apply SELinux labels if needed
-podman run --rm -it \
-  --device /dev/dri:/dev/dri \
-  --security-opt label=type:container_runtime_t \
-  my-gpu-image:latest \
-  python3 my_script.py
+# On SELinux systems using direct device mapping, allow containers to access
+# device nodes from inside the container
+sudo setsebool -P container_use_devices=true
 ```
 
-For rootless Podman, the user running the container must have permission to access the GPU device files. Add the user to the appropriate group:
+For rootless Podman, the user running the container must have permission to access the GPU device files. If access is granted through group membership only, use `--group-add keep-groups` when launching the container; Podman documents this as available with the `crun` OCI runtime. Add the user to the appropriate group:
 
 ```bash
 # For Intel/AMD GPUs (DRI devices)
@@ -200,20 +217,22 @@ Once your container is running, verify that the GPU is accessible:
 # For NVIDIA GPUs - run nvidia-smi
 podman run --rm -it \
   --device nvidia.com/gpu=all \
-  nvidia/cuda:12.3.0-runtime-ubuntu22.04 \
-  nvidia-smi
+  --security-opt=label=disable \
+  ubuntu \
+  nvidia-smi -L
 
-# For Intel GPUs - check with vainfo
+# For Intel GPUs - confirm that the DRI device nodes are visible
 podman run --rm -it \
-  --device /dev/dri:/dev/dri \
-  intel-media-va-driver:latest \
-  vainfo
+  --device /dev/dri \
+  fedora:latest \
+  bash -c "ls -la /dev/dri/"
 
-# For AMD GPUs - check with clinfo
+# For AMD ROCm workloads - check with rocminfo
 podman run --rm -it \
-  --device /dev/dri:/dev/dri \
-  rocm/dev-ubuntu-22.04:latest \
-  clinfo
+  --device /dev/kfd \
+  --device /dev/dri \
+  rocm/dev-ubuntu-22.04:7.1.1-complete \
+  rocminfo
 ```
 
 ## Troubleshooting Common Issues
@@ -231,7 +250,12 @@ groups $USER
 # Check if SELinux is blocking access (on Fedora/RHEL)
 sudo ausearch -m avc -ts recent | grep nvidia
 # If SELinux is blocking, create a policy or set permissive mode for testing
-sudo setsebool -P container_use_devices on
+sudo setsebool -P container_use_devices=true
+
+# Check that NVIDIA CDI devices are registered
+nvidia-ctk cdi list
+# If CDI devices are missing, regenerate the CDI spec
+sudo systemctl restart nvidia-cdi-refresh.service
 
 # For rootless podman, check subuid/subgid mapping
 podman unshare cat /proc/self/uid_map
@@ -239,4 +263,4 @@ podman unshare cat /proc/self/uid_map
 
 ## Conclusion
 
-GPU passthrough with Podman is a powerful capability that brings hardware acceleration into containerized workflows. By using device file mapping or the CDI specification, you can give containers direct access to GPU resources with minimal overhead. Start with the `--device` flag for simple setups, and consider the NVIDIA Container Toolkit and CDI for production environments where you need automated device discovery and configuration. With rootless support and strong security defaults, Podman makes GPU-accelerated containers both accessible and secure.
+GPU passthrough with Podman is a powerful capability that brings hardware acceleration into containerized workflows. By using device file mapping or the CDI specification, you can give containers direct access to GPU resources with minimal overhead. Start with direct device mapping for simple DRI-based setups, and use the NVIDIA Container Toolkit and CDI for NVIDIA workloads or when you need automated device discovery and configuration. With rootless support and strong security defaults, Podman makes GPU-accelerated containers both accessible and secure.
