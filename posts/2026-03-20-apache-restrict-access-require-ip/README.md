@@ -8,7 +8,7 @@ Description: Use Apache's Require ip directive to restrict access to virtual hos
 
 ## Introduction
 
-Apache 2.4's `mod_authz_host` replaces the old `Allow`/`Deny` directives with the unified `Require ip` syntax. It provides cleaner, more readable access control based on IPv4 addresses and CIDR notation.
+Apache 2.4's `mod_authz_host` replaces the old `Allow`/`Deny` directives with the unified `Require ip` syntax. It provides cleaner, more readable access control based on IPv4 addresses and CIDR notation. If Apache is behind a reverse proxy or load balancer, `Require ip` matches the proxy's address unless `mod_remoteip` is configured.
 
 ## Basic Require ip Configuration
 
@@ -21,9 +21,12 @@ Apache 2.4's `mod_authz_host` replaces the old `Allow`/`Deny` directives with th
 
     # Restrict entire site to specific IPs
     <Location />
-        Require ip 192.168.1.0/24    # Internal network
-        Require ip 10.0.0.5          # Admin workstation
-        Require ip 203.0.113.10      # VPN exit node
+        # Internal network
+        Require ip 192.168.1.0/24
+        # Admin workstation
+        Require ip 10.0.0.5
+        # VPN exit node
+        Require ip 203.0.113.10
     </Location>
 </VirtualHost>
 ```
@@ -91,15 +94,17 @@ Use `RequireAny` for OR logic (either IP OR password):
 
 ## Denying Specific IPs (NOT Logic)
 
-Use `RequireNot` to block specific addresses:
+Use `Require not` to block specific addresses:
 
 ```apache
 <Directory /var/www/html>
     # Allow all except blocked IPs
     <RequireAll>
         Require all granted
-        RequireNot ip 198.51.100.0/24   # Block specific bad subnet
-        RequireNot ip 203.0.113.99       # Block specific abusive IP
+        # Block specific bad subnet
+        Require not ip 198.51.100.0/24
+        # Block specific abusive IP
+        Require not ip 203.0.113.99
     </RequireAll>
 </Directory>
 ```
@@ -134,19 +139,19 @@ Require ip 192.168.1.0/24
 ## Verifying Access Control
 
 ```bash
-# Test from an allowed IP
+# Test from an allowed IPv4 client
 curl -4 http://admin.example.com/
 
-# Test from a blocked IP (should return 403)
+# Test from a client that has a blocked source IP assigned locally (should return 403)
 curl --interface 198.51.100.100 http://admin.example.com/
 
 # Check Apache authorization logs
 sudo tail -f /var/log/apache2/error.log | grep "client denied"
 
 # Verify config syntax
-sudo apache2ctl configtest
+sudo apachectl configtest
 ```
 
 ## Conclusion
 
-Apache 2.4's `Require ip` is the modern, clean way to implement IPv4-based access control. It integrates naturally with the `AuthConfig` system through `RequireAll` and `RequireAny`, enabling combinations of IP restrictions and authentication. Replace all legacy `Order`/`Allow`/`Deny` directives when upgrading to Apache 2.4+ for consistent and maintainable access policies.
+Apache 2.4's `Require ip` is the modern, clean way to implement IPv4-based access control. It integrates naturally with Apache's authorization framework through `RequireAll` and `RequireAny`, enabling combinations of IP restrictions and authentication. Replace all legacy `Order`/`Allow`/`Deny` directives when upgrading to Apache 2.4+ for consistent and maintainable access policies.
