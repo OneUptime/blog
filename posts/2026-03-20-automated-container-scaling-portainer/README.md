@@ -27,7 +27,7 @@ graph LR
 
 ## Step 1: Deploy a Metrics Stack via Portainer
 
-Deploy cAdvisor and Prometheus to collect container CPU/memory metrics.
+Deploy cAdvisor as a global Swarm service and Prometheus to collect container CPU/memory metrics.
 
 ```yaml
 # metrics-stack.yml
@@ -36,30 +36,73 @@ version: "3.8"
 
 services:
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    restart: unless-stopped
+    image: ghcr.io/google/cadvisor:latest
+    command:
+      - "--docker_only=true"
     ports:
-      - "8080:8080"
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: host
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
+      - /var/run:/var/run
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+    deploy:
+      mode: global
+      labels:
+        prometheus-job: cadvisor
 
   prometheus:
     image: prom/prometheus:latest
-    restart: unless-stopped
     ports:
       - "9090:9090"
-    volumes:
-      - prometheus_config:/etc/prometheus
-      - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - prometheus_data:/prometheus
+    configs:
+      - source: prometheus_yml
+        target: /etc/prometheus/prometheus.yml
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+configs:
+  prometheus_yml:
+    file: ./prometheus.yml
 
 volumes:
-  prometheus_config:
   prometheus_data:
+```
+
+Create a matching `prometheus.yml` file alongside `metrics-stack.yml`:
+
+```yaml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: cadvisor
+    dockerswarm_sd_configs:
+      - host: unix:///var/run/docker.sock
+        role: tasks
+    relabel_configs:
+      - source_labels: [__meta_dockerswarm_task_desired_state]
+        regex: running
+        action: keep
+      - source_labels: [__meta_dockerswarm_service_label_prometheus_job]
+        regex: cadvisor
+        action: keep
+      - source_labels: [__meta_dockerswarm_service_label_prometheus_job]
+        target_label: job
 ```
 
 ---
@@ -130,7 +173,10 @@ def scale_service(service_name: str, replicas: int):
 ```python
 def get_cpu_usage(service_name: str) -> float:
     """Get average CPU usage % for a service from Prometheus."""
-    query = f'avg(rate(container_cpu_usage_seconds_total{{name=~".*{service_name}.*"}}[2m])) * 100'
+    query = (
+        "avg(rate(container_cpu_usage_seconds_total"
+        f'{{job="cadvisor",container_label_com_docker_swarm_service_name="{service_name}"}}[2m])) * 100'
+    )
     r = requests.get(
         "http://prometheus:9090/api/v1/query",
         params={"query": query}
