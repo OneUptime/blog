@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, API Gateway, Throttling, Rate Limiting, Usage Plans, Infrastructure as Code
 
-Description: Learn how to configure API Gateway throttling with OpenTofu to protect backends from traffic spikes and enforce rate limits per client using usage plans and API keys.
+Description: Learn how to configure API Gateway throttling with OpenTofu to protect backends from traffic spikes and configure per-client throttling and quotas using usage plans and API keys.
 
 ## Introduction
 
-API Gateway throttling protects backend services from being overwhelmed by limiting request rates. There are three levels of throttling: account-level defaults (10,000 RPS, 5,000 burst), stage-level settings, and per-method settings. Usage Plans with API Keys enable per-client rate limiting and quota enforcement. When throttled, API Gateway returns HTTP 429 Too Many Requests with a `Retry-After` header.
+API Gateway throttling protects backend services from being overwhelmed by limiting request rates. API Gateway applies account-level throttling per Region and lets you configure stage-level and per-method throttling targets. Usage Plans with API Keys add per-client throttling and quotas on a best-effort basis. Account-level defaults are typically 10,000 RPS, but some Regions default to 2,500 RPS, and the burst quota is determined by API Gateway. When throttled, API Gateway returns HTTP 429 Too Many Requests.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ resource "aws_api_gateway_method_settings" "throttle" {
 
   settings {
     throttling_rate_limit  = 1000   # Steady-state RPS
-    throttling_burst_limit = 500    # Max concurrent requests
+    throttling_burst_limit = 500    # Burst capacity
   }
 }
 
@@ -51,6 +51,8 @@ resource "aws_api_gateway_method_settings" "expensive_endpoint" {
 
 ## Step 2: Usage Plans with API Keys
 
+Usage plan throttling and quotas apply per API key on methods where `api_key_required = true`.
+
 ```hcl
 resource "aws_api_gateway_usage_plan" "standard" {
   name        = "${var.project_name}-standard-plan"
@@ -62,12 +64,12 @@ resource "aws_api_gateway_usage_plan" "standard" {
   }
 
   throttle_settings {
-    rate_limit  = 100   # 100 RPS per key
+    rate_limit  = 100   # 100 RPS target per key
     burst_limit = 50
   }
 
   quota_settings {
-    limit  = 10000  # 10K requests per day
+    limit  = 10000  # 10K requests per day target
     period = "DAY"
   }
 }
@@ -96,14 +98,15 @@ tofu init
 tofu plan
 tofu apply
 
-# Test throttling behavior
+# Test throttling behavior by sending concurrent requests
 for i in {1..20}; do
   curl -s -o /dev/null -w "%{http_code}\n" \
-    -H "x-api-key: <api-key>" \
-    https://<api-id>.execute-api.<region>.amazonaws.com/prod/resource
+    -H "X-API-Key: <api-key>" \
+    https://<api-id>.execute-api.<region>.amazonaws.com/prod/reports &
 done
+wait
 
-# Check usage plan quotas
+# Check usage against the plan quota
 aws apigateway get-usage \
   --usage-plan-id <plan-id> \
   --start-date 2026-03-01 \
@@ -112,4 +115,4 @@ aws apigateway get-usage \
 
 ## Conclusion
 
-Stage-level throttling uses a token bucket algorithm where `rate_limit` is the refill rate and `burst_limit` is the bucket size-clients can burst above the rate limit until tokens are exhausted. Usage Plans require API key authentication (`authorization = "API_KEY"` on methods); any client with a valid key is subject to its plan's limits. Monitor `5XXError` and `ThrottledRequests` CloudWatch metrics to detect when clients are being throttled more than expected and adjust limits accordingly.
+Stage-level throttling uses a token bucket algorithm where `rate_limit` is the refill rate and `burst_limit` is the bucket size; clients can burst above the steady-state rate until tokens are exhausted. Usage Plans apply per-client throttling and quota targets to methods with `api_key_required = true`; like other API Gateway throttling controls, these targets are applied on a best-effort basis. Monitor `4XXError` (especially `429` responses) and `5XXError` CloudWatch metrics to detect when clients are being throttled more than expected and adjust limits accordingly.
