@@ -8,15 +8,14 @@ Description: Learn how to configure Apache mod_ssl to enable HTTPS on a specific
 
 ---
 
-`mod_ssl` is Apache's built-in module for handling TLS/SSL connections. Binding HTTPS to a specific IPv4 address is essential when your server hosts multiple IPs and you need granular control over which address serves secure traffic.
+`mod_ssl` is Apache's module for handling TLS/SSL connections. Binding HTTPS to a specific IPv4 address is essential when your server hosts multiple IPs and you need granular control over which address serves secure traffic.
 
 ## Prerequisites
 
 ```bash
-# Enable mod_ssl and the SSL site
+# On Debian/Ubuntu, enable mod_ssl
 
 a2enmod ssl
-a2ensite default-ssl
 
 # Verify mod_ssl is loaded
 apache2ctl -M | grep ssl
@@ -26,19 +25,27 @@ apache2ctl -M | grep ssl
 
 ```bash
 # Generate a private key and self-signed certificate valid for 365 days
-openssl req -x509 -nodes -days 365 \
+openssl req -x509 -noenc -days 365 \
   -newkey rsa:2048 \
   -keyout /etc/ssl/private/mysite.key \
   -out /etc/ssl/certs/mysite.crt \
-  -subj "/CN=mysite.example.com/O=My Org/C=US"
+  -subj "/CN=mysite.example.com/O=My Org/C=US" \
+  -addext "subjectAltName = DNS:mysite.example.com"
 ```
 
 ## Configuring the SSL Virtual Host
 
 ```apacheconf
+# /etc/apache2/ports.conf
+# Replace any existing wildcard Listen 80/443 lines with these
+Listen 192.168.1.10:80
+<IfModule ssl_module>
+    Listen 192.168.1.10:443
+</IfModule>
+
 # /etc/apache2/sites-available/mysite-ssl.conf
 
-# Bind the SSL virtual host to a specific IPv4 address (192.168.1.10) on port 443
+# Match the SSL virtual host to the specific IPv4 address and port
 <VirtualHost 192.168.1.10:443>
     ServerName mysite.example.com
     DocumentRoot /var/www/mysite
@@ -56,7 +63,7 @@ openssl req -x509 -nodes -days 365 \
     # Use a strong cipher suite (TLS 1.2)
     SSLCipherSuite HIGH:!aNULL:!MD5:!3DES
 
-    # Prefer server cipher order over client order
+    # Prefer server cipher order over client order for TLS 1.2 and earlier
     SSLHonorCipherOrder on
 
     # Enable HSTS to force HTTPS in browsers (max-age in seconds)
@@ -85,10 +92,11 @@ Add a plain HTTP virtual host that permanently redirects to HTTPS.
 ```bash
 # Enable the required module and sites
 a2enmod headers
-a2ensite mysite.conf mysite-ssl.conf
+a2ensite mysite.conf
+a2ensite mysite-ssl.conf
 
 # Test configuration
-apachectl configtest
+apache2ctl configtest
 
 # Apply changes
 systemctl reload apache2
@@ -97,7 +105,7 @@ systemctl reload apache2
 ## Verifying TLS
 
 ```bash
-# Check the certificate and supported TLS versions
+# Check the certificate and negotiated TLS details
 openssl s_client -connect 192.168.1.10:443 -servername mysite.example.com
 
 # Scan for weak protocols or ciphers
@@ -106,7 +114,7 @@ nmap --script ssl-enum-ciphers -p 443 192.168.1.10
 
 ## Key Takeaways
 
-- Bind the `<VirtualHost>` to `ip:443` to restrict HTTPS to a specific IPv4 address.
+- Replace wildcard `Listen` directives with the target IP and use a matching `<VirtualHost ip:443>` block to restrict HTTPS to a specific IPv4 address.
 - Disable TLS 1.0 and 1.1 with `SSLProtocol -all +TLSv1.2 +TLSv1.3`.
 - Use `Header always set Strict-Transport-Security` (requires `mod_headers`) for HSTS.
-- Always test with `apachectl configtest` before reloading to avoid downtime.
+- Always test with `apache2ctl configtest` before reloading to avoid downtime.
