@@ -77,8 +77,8 @@ LXD containers use more resources but provide a full system environment:
 ```bash
 # LXD: set resource limits
 lxc launch ubuntu:22.04 my-server
-lxc config set my-server limits.cpu 2
-lxc config set my-server limits.memory 1GB
+lxc config set my-server limits.cpu=2
+lxc config set my-server limits.memory=1GB
 
 # Check resource usage
 lxc info my-server
@@ -127,7 +127,7 @@ lxc network create mybridge
 lxc launch ubuntu:22.04 my-server --network mybridge
 
 # Assign static IP
-lxc config device set my-server eth0 ipv4.address 10.0.0.100
+lxc config device set my-server eth0 ipv4.address=10.0.0.100
 
 # Port forwarding
 lxc config device add my-server http proxy \
@@ -222,9 +222,9 @@ LXD provides security through AppArmor, seccomp, and user namespace mapping:
 
 ```bash
 # LXD security
-lxc config set my-server security.nesting false
-lxc config set my-server security.privileged false
-lxc config set my-server security.idmap.isolated true
+lxc config set my-server security.nesting=false
+lxc config set my-server security.privileged=false
+lxc config set my-server security.idmap.isolated=true
 ```
 
 ## Migration and Snapshots
@@ -236,14 +236,14 @@ podman container checkpoint myapp --export=/tmp/myapp.tar.gz
 podman container restore --import=/tmp/myapp.tar.gz
 ```
 
-LXD has built-in live migration and snapshot support:
+LXD has built-in instance migration and snapshot support:
 
 ```bash
 # LXD snapshots
 lxc snapshot my-server before-upgrade
 lxc restore my-server before-upgrade
 
-# Live migration between hosts
+# Move an instance between hosts
 lxc move my-server remote-host:my-server
 ```
 
@@ -263,7 +263,7 @@ lxc move my-server remote-host:my-server
 - You are migrating from virtual machines and want lighter resource usage
 - Your applications expect a traditional server environment
 - You need VM-like isolation with container performance
-- You want built-in live migration between hosts
+- You want built-in migration between hosts
 - You need ZFS or Btrfs storage backend support
 - You are managing infrastructure where each container replaces a VM
 
