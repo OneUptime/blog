@@ -10,7 +10,7 @@ Description: Learn how to use the Podman REST API to list, filter, and inspect c
 
 > Listing containers through the Podman REST API lets you build monitoring dashboards, automation scripts, and management tools that interact with your container infrastructure programmatically.
 
-Once you have the Podman REST API enabled, one of the most fundamental operations is listing containers. The API provides flexible filtering and detailed inspection capabilities that go beyond what the CLI offers. This guide covers all the ways to query container information through the API, from simple listings to advanced filtered queries.
+Once you have the Podman REST API enabled, one of the most fundamental operations is listing containers. The API provides flexible filtering and detailed inspection capabilities for programmatic workflows. This guide covers all the ways to query container information through the API, from simple listings to advanced filtered queries.
 
 ---
 
@@ -26,7 +26,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 
 # List all running containers using the Docker-compatible endpoint
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  http://localhost/v1.41/containers/json
+  http://localhost/v1.40/containers/json
 ```
 
 The response is a JSON array where each element represents a container with fields like `Id`, `Names`, `Image`, `State`, `Status`, and `Created`.
@@ -42,7 +42,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 
 # Docker-compatible endpoint
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v1.41/containers/json?all=true"
+  "http://localhost/v1.40/containers/json?all=true"
 ```
 
 ## Limiting Results
@@ -61,28 +61,36 @@ The `filters` parameter accepts a JSON object to narrow down results. Filters su
 
 ```bash
 # Filter by container status (running, exited, paused, etc.)
-curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/json?filters={\"status\":[\"running\"]}"
+curl -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data-urlencode 'filters={"status":["running"]}' \
+  http://localhost/v4.0.0/libpod/containers/json
 
 # Filter by container name
-curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/json?all=true&filters={\"name\":[\"web\"]}"
+curl -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data 'all=true' \
+  --data-urlencode 'filters={"name":["web"]}' \
+  http://localhost/v4.0.0/libpod/containers/json
 
 # Filter by image name
-curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/json?all=true&filters={\"ancestor\":[\"nginx\"]}"
+curl -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data 'all=true' \
+  --data-urlencode 'filters={"ancestor":["nginx"]}' \
+  http://localhost/v4.0.0/libpod/containers/json
 
 # Filter by label
-curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/json?all=true&filters={\"label\":[\"app=web\"]}"
+curl -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data 'all=true' \
+  --data-urlencode 'filters={"label":["app=web"]}' \
+  http://localhost/v4.0.0/libpod/containers/json
 ```
 
 You can combine multiple filters.
 
 ```bash
 # Filter by status AND label
-curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/json?filters={\"status\":[\"running\"],\"label\":[\"env=production\"]}"
+curl -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data-urlencode 'filters={"status":["running"],"label":["env=production"]}' \
+  http://localhost/v4.0.0/libpod/containers/json
 ```
 
 ## Filtering by Network and Volume
@@ -91,12 +99,16 @@ Additional filter options let you find containers attached to specific networks 
 
 ```bash
 # Filter by network name
-curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/json?all=true&filters={\"network\":[\"my-network\"]}"
+curl -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data 'all=true' \
+  --data-urlencode 'filters={"network":["my-network"]}' \
+  http://localhost/v4.0.0/libpod/containers/json
 
 # Filter by volume
-curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/json?all=true&filters={\"volume\":[\"my-volume\"]}"
+curl -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data 'all=true' \
+  --data-urlencode 'filters={"volume":["my-volume"]}' \
+  http://localhost/v4.0.0/libpod/containers/json
 ```
 
 ## Inspecting a Single Container
@@ -128,9 +140,9 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   "http://localhost/v4.0.0/libpod/containers/my-container/logs?stdout=true&tail=50"
 
-# Get logs since a timestamp
+# Get logs since a Unix timestamp
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/my-container/logs?stdout=true&since=2026-03-18T00:00:00Z"
+  "http://localhost/v4.0.0/libpod/containers/my-container/logs?stdout=true&since=1773792000"
 ```
 
 ## Getting Container Stats
@@ -139,8 +151,10 @@ The stats endpoint provides real-time resource usage information.
 
 ```bash
 # Get current stats for a container (one-shot)
-curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/my-container/stats?stream=false"
+curl -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data-urlencode 'containers=my-container' \
+  --data 'stream=false' \
+  http://localhost/v4.0.0/libpod/containers/stats
 
 # The response includes CPU, memory, network I/O, and block I/O stats
 ```
@@ -155,8 +169,9 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   "http://localhost/v4.0.0/libpod/containers/my-container/top"
 
 # With custom ps arguments
-curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/my-container/top?ps_args=-eo pid,user,comm"
+curl -G --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
+  --data-urlencode 'ps_args=-eo pid,user,comm' \
+  http://localhost/v4.0.0/libpod/containers/my-container/top
 ```
 
 ## Using Python to List Containers
@@ -167,6 +182,7 @@ Here is a complete Python script that lists and formats container information.
 import json
 import socket
 import http.client
+import urllib.parse
 
 class PodmanClient:
     def __init__(self, socket_path):
@@ -183,11 +199,14 @@ class PodmanClient:
         return data
 
     def list_containers(self, all_containers=False, filters=None):
-        path = '/v4.0.0/libpod/containers/json?'
+        path = '/v4.0.0/libpod/containers/json'
+        query = {}
         if all_containers:
-            path += 'all=true&'
+            query['all'] = 'true'
         if filters:
-            path += f'filters={json.dumps(filters)}'
+            query['filters'] = json.dumps(filters, separators=(',', ':'))
+        if query:
+            path += '?' + urllib.parse.urlencode(query)
         return self._request('GET', path)
 
     def inspect_container(self, name_or_id):
@@ -216,7 +235,7 @@ print(f"\nRunning web containers: {len(filtered)}")
 
 ## Using the Docker SDK with Podman
 
-The Python Docker SDK works seamlessly with the Podman API.
+The Python Docker SDK can work with Podman's Docker-compatible API for common container operations.
 
 ```python
 import os
@@ -265,4 +284,4 @@ curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 
 ## Conclusion
 
-The Podman REST API provides comprehensive endpoints for listing and inspecting containers. You can filter by status, name, image, labels, networks, and volumes to find exactly the containers you need. Combined with the inspect, logs, stats, and top endpoints, you have all the information necessary to build monitoring tools, dashboards, and automation scripts. The Docker-compatible endpoints ensure that existing tools and SDKs work with minimal changes, giving you flexibility in how you integrate container management into your workflows.
+The Podman REST API provides comprehensive endpoints for listing and inspecting containers. You can filter by status, name, image, labels, networks, and volumes to find exactly the containers you need. Combined with the inspect, logs, stats, and top endpoints, you have all the information necessary to build monitoring tools, dashboards, and automation scripts. The Docker-compatible endpoints also let many existing tools and SDKs work with minimal changes, giving you flexibility in how you integrate container management into your workflows.
