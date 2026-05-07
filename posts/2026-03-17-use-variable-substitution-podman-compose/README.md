@@ -19,7 +19,6 @@ podman-compose supports shell-style variable substitution in compose files. You 
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:${NGINX_VERSION}
@@ -43,10 +42,9 @@ Use `:-` to provide a default when a variable is unset or empty.
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
-    # Default to alpine if TAG is not set
+    # Default to 3.12-slim if TAG is not set
     image: docker.io/library/python:${TAG:-3.12-slim}
     ports:
       # Default to port 8080
@@ -69,11 +67,10 @@ TAG=3.11-slim PORT=9090 podman-compose up -d
 
 ## Required Variables with Error Messages
 
-Use `?` to fail with an error if a variable is not set.
+Use `:?` to fail with an error if a variable is not set or is empty.
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   db:
     image: docker.io/library/postgres:16-alpine
@@ -109,7 +106,6 @@ EXPOSED_PORT=8080
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
     image: ${REGISTRY}/python:${PYTHON_TAG}
@@ -136,7 +132,6 @@ services:
 
 ```yaml
 # Variables work in most compose fields
-version: "3.8"
 services:
   app:
     image: ${REGISTRY}/${IMAGE}:${TAG}
