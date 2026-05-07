@@ -15,33 +15,30 @@ Automate IPv6 address usage audits to detect unused allocations, unauthorized ad
 ```bash
 # Ensure IPv6 is enabled and functional
 
-ip -6 addr show
-ping6 -c 3 ::1
+ip -6 address show
+ping -6 -c 3 ::1
 
-# Install required dependencies
-pip install ipaddress netaddr  # Python
-# or
-npm install ipaddr.js          # JavaScript
+# The Python examples below use the standard library ipaddress module,
+# so no extra Python packages are required.
 ```
 
 ## Step 2: Core Implementation
 
 ```python
 import ipaddress
-from typing import Optional
 
 def check_ipv6_subnet(client_ip: str, allowed_prefix: str) -> bool:
     """Check if an IPv6 address is within an allowed subnet."""
     try:
-        addr = ipaddress.ip_address(client_ip)
-        network = ipaddress.ip_network(allowed_prefix, strict=False)
+        addr = ipaddress.IPv6Address(client_ip)
+        network = ipaddress.IPv6Network(allowed_prefix, strict=False)
         return addr in network
     except ValueError:
         return False
 
 # Example usage
 allowed_networks = [
-    "2001:db8:trusted::/48",
+    "2001:db8:1000::/48",
     "::1/128",
     "fe80::/10",
 ]
@@ -54,8 +51,8 @@ def is_allowed(client_ip: str) -> bool:
     return False
 
 # Tests
-print(is_allowed("2001:db8:trusted::1"))   # True
-print(is_allowed("2001:db8:unknown::1"))   # False
+print(is_allowed("2001:db8:1000::1"))      # True
+print(is_allowed("2001:db8:2000::1"))      # False
 print(is_allowed("::1"))                   # True
 ```
 
@@ -67,7 +64,7 @@ ipv6:
   enabled: true
   networks:
     - prefix: "2001:db8::/32"
-      description: "Internal network"
+      description: "Documentation example prefix"
       action: allow
     - prefix: "::/0"
       description: "Default"
@@ -77,8 +74,8 @@ ipv6:
 ## Step 4: Apply and Verify
 
 ```bash
-# Apply configuration
-python3 configure.py --config config.yaml
+# Save the Step 2 example as audit_ipv6.py, then run it
+python3 audit_ipv6.py
 
 # Verify functionality
 python3 -c "
@@ -89,12 +86,13 @@ print(f'{addr} in {net}: {addr in net}')
 "
 
 # Test connectivity
-curl -6 http://[::1]:8080/health
+curl -g -6 http://[::1]:8080/health
 ```
 
 ## Step 5: Monitoring
 
 ```python
+import ipaddress
 import logging
 
 logger = logging.getLogger(__name__)
@@ -102,7 +100,7 @@ logger = logging.getLogger(__name__)
 def log_ipv6_access(client_ip: str, allowed: bool):
     """Log IPv6 access attempts."""
     try:
-        addr = ipaddress.ip_address(client_ip)
+        addr = ipaddress.IPv6Address(client_ip)
         logger.info({
             "client_ip": client_ip,
             "ip_version": addr.version,
@@ -115,4 +113,4 @@ def log_ipv6_access(client_ip: str, allowed: bool):
 
 ## Conclusion
 
-Automate IPv6 Address Audits requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's  module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
+Automate IPv6 Address Audits requires understanding IPv6 address structure, CIDR notation, and address classification. Use Python's `ipaddress` module for validation and subnet matching. Log all IPv6 access attempts for security auditing. Monitor your implementation with OneUptime to detect access pattern anomalies.
