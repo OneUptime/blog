@@ -33,7 +33,7 @@ cat /etc/subgid
 podman unshare cat /proc/self/uid_map
 # Typical output:
 #          0       1000          1    <- container root = your host UID
-#          1     100000      65536    <- container 1-65536 = host 100000-165536
+#          1     100000      65536    <- container 1-65536 = host 100000-165535
 ```
 
 ## Error: "cannot find UID/GID mappings"
@@ -127,9 +127,8 @@ podman system reset --force
 # Recreate the storage with correct settings
 podman run --rm alpine echo "Storage reset successful"
 
-# Another cause: stale lock files
-rm -rf ~/.local/share/containers/storage/libpod/
-podman system migrate
+# Another cause: lock numbering changed
+podman system renumber
 ```
 
 ## Diagnosing UID Mapping Conflicts
@@ -149,9 +148,9 @@ podman unshare cat /proc/self/gid_map
 podman info --format '{{.Host.IDMappings.UIDMap}}'
 podman info --format '{{.Host.IDMappings.GIDMap}}'
 
-# If mappings look wrong, check the containers.conf
+# If mappings look wrong, check the storage.conf
 cat ~/.config/containers/storage.conf 2>/dev/null
-cat /etc/containers/storage.conf | grep -A5 "idmap"
+grep -A5 "remap" /etc/containers/storage.conf
 ```
 
 ## Resetting After Major Changes
