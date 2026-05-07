@@ -10,7 +10,7 @@ Description: Learn how to securely store and deliver API keys to Podman containe
 
 > API keys leaked through environment variables, logs, or image layers can lead to unauthorized access and significant security breaches. Podman secrets keep them safe.
 
-API keys for third-party services, payment processors, cloud providers, and internal APIs are high-value targets for attackers. Using Podman secrets ensures these keys are delivered securely to containers without appearing in process listings, inspect output, or shell history.
+API keys for third-party services, payment processors, cloud providers, and internal APIs are high-value targets for attackers. Using Podman secrets helps deliver these keys to containers without storing them in image layers or source control, and file-mounted secrets avoid exposing the values as container environment variables.
 
 ---
 
@@ -19,12 +19,12 @@ API keys for third-party services, payment processors, cloud providers, and inte
 ```bash
 # Create a secret from an API key value
 
-echo -n "sk-live-abc123def456ghi789" | podman secret create stripe_api_key -
+printf '%s' "$STRIPE_API_KEY" | podman secret create stripe_api_key -
 
 # Create secrets for multiple services
-echo -n "SG.sendgrid-key-here" | podman secret create sendgrid_key -
-echo -n "AKIAIOSFODNN7EXAMPLE" | podman secret create aws_access_key -
-echo -n "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" | podman secret create aws_secret_key -
+printf '%s' "$SENDGRID_API_KEY" | podman secret create sendgrid_key -
+printf '%s' "$AWS_ACCESS_KEY_ID" | podman secret create aws_access_key -
+printf '%s' "$AWS_SECRET_ACCESS_KEY" | podman secret create aws_secret_key -
 ```
 
 ## Using API Keys as File Mounts
@@ -45,7 +45,7 @@ podman run -d \
 ## Using API Keys as Environment Variables
 
 ```bash
-# Expose API keys as environment variables
+# Expose API keys as environment variables when the application requires it
 podman run -d \
   --name my-api-service \
   --secret stripe_api_key,type=env,target=STRIPE_API_KEY \
@@ -57,8 +57,8 @@ podman run -d \
 
 ```bash
 # Store AWS credentials
-echo -n "AKIAIOSFODNN7EXAMPLE" | podman secret create aws_access_key_id -
-echo -n "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" | podman secret create aws_secret_access_key -
+printf '%s' "$AWS_ACCESS_KEY_ID" | podman secret create aws_access_key_id -
+printf '%s' "$AWS_SECRET_ACCESS_KEY" | podman secret create aws_secret_access_key -
 
 # Use as environment variables for AWS SDK
 podman run -d \
@@ -118,4 +118,4 @@ podman run -d \
 
 ## Summary
 
-Store API keys as Podman secrets to prevent exposure through environment variable listings, container inspection, process tables, and shell history. Use file mounts for maximum security, or environment variables when your application requires them. For JSON credential files like GCP service accounts, store the entire file as a secret and mount it at the expected path. Always integrate secret creation into your CI/CD pipeline for automated, secure deployments.
+Store API keys as Podman secrets to keep them out of image layers and source control. Use file mounts for maximum security, or environment variables when your application requires them. Create secrets from files, stdin, or CI/CD variables instead of typing literal secret values into shell commands. For JSON credential files like GCP service accounts, store the entire file as a secret and mount it at the expected path. Always integrate secret creation into your CI/CD pipeline for automated, secure deployments.
