@@ -36,7 +36,7 @@ podman run -d \
   -p 5000:5000 \
   -v mirror-data:/var/lib/registry \
   --restart always \
-  registry:2
+  docker.io/library/registry:2
 
 # Verify the registry is running
 curl -s http://localhost:5000/v2/_catalog | jq .
@@ -174,8 +174,8 @@ insecure = true
 EOF
 
 # Now Podman will try the mirror first, then fall back to Docker Hub
-podman pull nginx:1.25
-# This pulls from mirror.internal.com:5000 first
+podman pull docker.io/library/nginx:1.25
+# This tries mirror.internal.com:5000/library/nginx:1.25 first
 ```
 
 ## Scheduling Automatic Mirror Updates
@@ -187,6 +187,7 @@ Keep your mirror current with a systemd timer or cron job.
 sudo tee /etc/systemd/system/mirror-sync.service << 'EOF'
 [Unit]
 Description=Container Image Mirror Sync
+Wants=network-online.target
 After=network-online.target
 
 [Service]
