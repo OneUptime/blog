@@ -8,7 +8,7 @@ Description: Learn how to break up large monolithic OpenTofu state files into sm
 
 ## Introduction
 
-A monolithic state file that manages hundreds or thousands of resources creates several problems: every plan must refresh all resources (slow), any apply locks the entire state (bottleneck), a single mistake can affect unrelated resources (large blast radius), and different teams cannot work independently. The solution is state decomposition.
+A monolithic state file that manages hundreds or thousands of resources creates several problems: by default, every plan refreshes all resources (slow), and if your backend supports locking, an apply locks the entire state (bottleneck). A single mistake can affect unrelated resources (large blast radius), and different teams cannot work independently. The solution is state decomposition.
 
 ## Symptoms of a Monolithic State Problem
 
@@ -66,9 +66,9 @@ infrastructure/
     └── analytics/terraform.tfstate
 ```
 
-## Sharing Values Between State Files with remote_state
+## Sharing Values Between State Files with `terraform_remote_state`
 
-Use the `terraform_remote_state` data source to read outputs from other state files.
+Use the `terraform_remote_state` data source to read root module outputs from other state files.
 
 ```hcl
 # In applications/main.tf
@@ -83,7 +83,7 @@ data "terraform_remote_state" "networking" {
 }
 
 resource "aws_instance" "app" {
-  # Use the VPC ID from the networking state
+  # Use a private subnet ID from the networking state
   subnet_id = data.terraform_remote_state.networking.outputs.private_subnet_ids[0]
   # ...
 }
@@ -114,7 +114,7 @@ resource "aws_instance" "app" {
 ## Target Resource Counts
 
 ```text
-Recommended state file sizes:
+Practical state file size heuristics:
 - Under 100 resources: ideal
 - 100-500 resources: acceptable
 - 500-1000 resources: consider splitting
@@ -129,4 +129,4 @@ Splitting boundaries:
 
 ## Summary
 
-Large monolithic state files cause slow plans, apply bottlenecks, large blast radii, and team conflicts. Split state by infrastructure layer (networking → cluster → databases → applications) or by team ownership. Use SSM parameters or direct variable injection rather than `terraform_remote_state` to share values between state files - this reduces coupling and allows teams to work independently. Keep state files under 500 resources for optimal performance and minimal blast radius.
+Large monolithic state files cause slow plans, apply bottlenecks, large blast radii, and team conflicts. Split state by infrastructure layer (networking → cluster → databases → applications) or by team ownership. When possible, use SSM parameters or direct variable injection rather than `terraform_remote_state` to share values between state files - this reduces coupling and allows teams to work independently. As a practical heuristic, keep state files under 500 resources when possible to improve performance and reduce blast radius.
