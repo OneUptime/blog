@@ -20,18 +20,18 @@ This guide explains how to disable seccomp in Podman, when it makes sense to do 
 
 Certain tools and workloads require syscalls that the default seccomp profile blocks. Common scenarios include:
 
-- Running `strace` or `perf` for debugging and profiling
-- Containers that use `ptrace` for process inspection
+- Running `perf`, eBPF tracing tools, or other profilers that need restricted syscalls such as `perf_event_open` or `bpf`
+- Containers that use `ptrace` for process inspection with a custom or older seccomp profile that blocks it
 - Legacy applications that rely on older or unusual syscalls
 - Kernel module loading or system-level testing
 
 ```bash
-# Demonstrate a seccomp restriction - strace needs ptrace syscalls
+# Demonstrate a seccomp restriction - perf needs perf_event_open
 
 # This will fail under the default seccomp profile in many configurations
 podman run --rm docker.io/library/alpine:latest \
-  sh -c "apk add --no-cache strace && strace -e trace=open echo hello" \
-  2>&1 || echo "strace may be restricted by seccomp"
+  sh -c "apk add --no-cache perf && perf stat true" \
+  2>&1 || echo "perf may be restricted by seccomp or kernel settings"
 ```
 
 ## Disabling Seccomp with --security-opt
@@ -46,11 +46,11 @@ podman run --rm \
   docker.io/library/alpine:latest \
   echo "Running with seccomp disabled"
 
-# Now strace works without restriction
+# Now perf_event_open is no longer blocked by seccomp
 podman run --rm \
   --security-opt seccomp=unconfined \
   docker.io/library/alpine:latest \
-  sh -c "apk add --no-cache strace && strace -e trace=write echo hello 2>&1 | head -20"
+  sh -c "apk add --no-cache perf && perf stat true 2>&1 | head -20"
 ```
 
 ## Verifying Seccomp Is Disabled
@@ -73,7 +73,7 @@ podman run --rm \
 
 ## Practical Example: Debugging with strace
 
-One of the most common reasons to disable seccomp is to run strace inside a container.
+One reason to disable seccomp is to run strace inside a container when the active seccomp profile blocks `ptrace`. With current Podman defaults, adding `SYS_PTRACE` is usually the important part when strace needs to attach to an existing process.
 
 ```bash
 # Run a debugging container with seccomp disabled and SYS_PTRACE added
@@ -95,11 +95,10 @@ Performance tools like `perf` often need unrestricted syscall access.
 
 ```bash
 # Run a container for performance profiling
-# The perf tool requires access to performance counters and ptrace
+# The perf tool requires access to performance monitoring operations
 podman run --rm \
   --security-opt seccomp=unconfined \
-  --cap-add SYS_PTRACE \
-  --cap-add SYS_ADMIN \
+  --cap-add PERFMON \
   docker.io/library/ubuntu:latest \
   bash -c "
     apt-get update -qq && apt-get install -y -qq linux-tools-generic 2>/dev/null
@@ -127,7 +126,7 @@ services:
 EOF
 
 # Start the service with podman-compose
-# podman-compose up -d -f /tmp/debug-compose.yml
+# podman-compose -f /tmp/debug-compose.yml up -d
 echo "Compose file created at /tmp/debug-compose.yml"
 ```
 
