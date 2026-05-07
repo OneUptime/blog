@@ -21,7 +21,7 @@ resource "aws_api_gateway_rest_api" "main" {
     types = ["REGIONAL"]  # REGIONAL, EDGE, or PRIVATE
   }
 
-  # Request body size limit (10 MB)
+  # Minimum response size to compress (0 = compress all responses)
   minimum_compression_size = 0
 
   tags = {
@@ -55,6 +55,15 @@ resource "aws_api_gateway_integration" "get_users" {
   type                    = "AWS_PROXY"  # Pass full request to Lambda
   uri                     = aws_lambda_function.users.invoke_arn
 }
+
+# Allow API Gateway to invoke the Lambda function
+resource "aws_lambda_permission" "api_gateway" {
+  statement_id  = "AllowAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.users.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*"
+}
 ```
 
 ## Cognito Authorizer
@@ -73,26 +82,37 @@ resource "aws_api_gateway_authorizer" "cognito" {
 ## Request Validation
 
 ```hcl
-resource "aws_api_gateway_request_validator" "body_and_params" {
-  name                        = "validate-body-and-params"
+resource "aws_api_gateway_request_validator" "body_only" {
+  name                        = "validate-body"
   rest_api_id                 = aws_api_gateway_rest_api.main.id
   validate_request_body       = true
-  validate_request_parameters = true
+  validate_request_parameters = false
 }
 
 # POST /users with body validation
 resource "aws_api_gateway_method" "create_user" {
-  rest_api_id          = aws_api_gateway_rest_api.main.id
-  resource_id          = aws_api_gateway_resource.users.id
-  http_method          = "POST"
-  authorization        = "COGNITO_USER_POOLS"
-  authorizer_id        = aws_api_gateway_authorizer.cognito.id
-  request_validator_id = aws_api_gateway_request_validator.body_and_params.id
+  rest_api_id           = aws_api_gateway_rest_api.main.id
+  resource_id           = aws_api_gateway_resource.users.id
+  http_method           = "POST"
+  authorization         = "COGNITO_USER_POOLS"
+  authorizer_id         = aws_api_gateway_authorizer.cognito.id
+  api_key_required      = true
+  request_validator_id  = aws_api_gateway_request_validator.body_only.id
 
   # Define expected request model
   request_models = {
     "application/json" = aws_api_gateway_model.create_user.name
   }
+}
+
+# Lambda integration for POST /users
+resource "aws_api_gateway_integration" "create_user" {
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  resource_id             = aws_api_gateway_resource.users.id
+  http_method             = aws_api_gateway_method.create_user.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.users.invoke_arn
 }
 
 resource "aws_api_gateway_model" "create_user" {
@@ -122,8 +142,13 @@ resource "aws_api_gateway_deployment" "main" {
   triggers = {
     redeployment = sha1(jsonencode([
       aws_api_gateway_resource.users.id,
+      aws_api_gateway_authorizer.cognito.id,
       aws_api_gateway_method.get_users.id,
       aws_api_gateway_integration.get_users.id,
+      aws_api_gateway_request_validator.body_only.id,
+      aws_api_gateway_model.create_user.id,
+      aws_api_gateway_method.create_user.id,
+      aws_api_gateway_integration.create_user.id,
     ]))
   }
 
@@ -138,6 +163,7 @@ resource "aws_api_gateway_stage" "production" {
   stage_name    = "production"
 
   # Enable access logging to CloudWatch
+  # Requires an aws_api_gateway_account CloudWatch role in this Region
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_access.arn
     format = jsonencode({
@@ -145,7 +171,7 @@ resource "aws_api_gateway_stage" "production" {
       ip             = "$context.identity.sourceIp"
       requestTime    = "$context.requestTime"
       httpMethod     = "$context.httpMethod"
-      routeKey       = "$context.routeKey"
+      resourcePath   = "$context.resourcePath"
       status         = "$context.status"
       responseLength = "$context.responseLength"
       latency        = "$context.integrationLatency"
@@ -188,8 +214,8 @@ resource "aws_api_gateway_usage_plan" "basic" {
   }
 
   throttle_settings {
-    burst_limit = 100   # Max concurrent requests
-    rate_limit  = 50    # Requests per second
+    burst_limit = 100   # Maximum request burst over a short period
+    rate_limit  = 50    # Steady-state requests per second
   }
 
   quota_settings {
@@ -207,4 +233,4 @@ resource "aws_api_gateway_usage_plan_key" "mobile_app" {
 
 ## Conclusion
 
-AWS API Gateway REST APIs in OpenTofu provide fully managed API hosting with built-in authentication, request validation, throttling, and caching. Use Cognito authorizers for JWT-based authentication, request models with JSON Schema for input validation, usage plans and API keys for rate limiting per-client, and access logging to CloudWatch for troubleshooting. Always set create_before_destroy on deployments to avoid downtime during API updates.
+AWS API Gateway REST APIs in OpenTofu provide fully managed API hosting with built-in authentication, request validation, throttling, and caching. Use Cognito authorizers for JWT-based authentication, request models with JSON Schema for input validation, usage plans and API keys for best-effort per-client throttling, and access logging to CloudWatch for troubleshooting. Always set create_before_destroy on deployments so API Gateway can order redeployments correctly during updates.
