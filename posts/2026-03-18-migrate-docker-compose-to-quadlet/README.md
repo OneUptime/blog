@@ -20,7 +20,7 @@ This guide walks through converting a Docker Compose application to Quadlet step
 
 Quadlet reads `.container`, `.network`, `.volume`, and `.pod` files from specific directories and generates systemd unit files. For user services, these files go in `~/.config/containers/systemd/`. For system services, they go in `/etc/containers/systemd/`.
 
-After placing the files, run `systemctl daemon-reload` to generate the units, then manage them with standard systemctl commands.
+After placing the files, run `systemctl --user daemon-reload` for user services, or `systemctl daemon-reload` for system services, to generate the units. Then manage them with standard systemctl commands.
 
 ## Starting Docker Compose Application
 
@@ -29,12 +29,11 @@ Here is a typical Docker Compose application to migrate:
 ```yaml
 # docker-compose.yml
 
-version: "3.9"
 services:
   web:
     image: nginx:stable-alpine
     ports:
-      - "80:80"
+      - "8080:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
@@ -200,7 +199,7 @@ After=api.service
 Image=docker.io/library/nginx:stable-alpine
 ContainerName=web
 Network=app.network
-PublishPort=80:80
+PublishPort=8080:80
 Volume=%h/myapp/nginx.conf:/etc/nginx/conf.d/default.conf:ro,Z
 AutoUpdate=registry
 
@@ -221,8 +220,11 @@ systemctl --user daemon-reload
 # Start all services
 systemctl --user start db cache api web
 
-# Enable for boot
+# Enable for automatic start with the user service manager
 systemctl --user enable db cache api web
+
+# Start user services at boot, even before the user logs in
+loginctl enable-linger "$USER"
 
 # Verify status
 systemctl --user status db cache api web
@@ -335,10 +337,27 @@ NetworkName=app-network
 Driver=bridge
 EOF
 
+# Volumes
+cat > "${QUADLET_DIR}/pgdata.volume" << 'EOF'
+[Volume]
+VolumeName=pgdata
+EOF
+
+cat > "${QUADLET_DIR}/uploads.volume" << 'EOF'
+[Volume]
+VolumeName=uploads
+EOF
+
+cat > "${QUADLET_DIR}/redis-data.volume" << 'EOF'
+[Volume]
+VolumeName=redis-data
+EOF
+
 # Database
 cat > "${QUADLET_DIR}/db.container" << 'EOF'
 [Unit]
 Description=PostgreSQL Database
+
 [Container]
 Image=docker.io/library/postgres:16-alpine
 ContainerName=db
@@ -346,9 +365,82 @@ Network=app.network
 Environment=POSTGRES_DB=appdb
 Environment=POSTGRES_USER=appuser
 Environment=POSTGRES_PASSWORD=apppass
-Volume=pgdata:/var/lib/postgresql/data:Z
+Volume=pgdata.volume:/var/lib/postgresql/data:Z
+AutoUpdate=registry
+
 [Service]
 Restart=always
+TimeoutStartSec=60
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Cache
+cat > "${QUADLET_DIR}/cache.container" << 'EOF'
+[Unit]
+Description=Redis Cache
+
+[Container]
+Image=docker.io/library/redis:7-alpine
+ContainerName=cache
+Network=app.network
+Volume=redis-data.volume:/data:Z
+Exec=redis-server --appendonly yes
+AutoUpdate=registry
+
+[Service]
+Restart=always
+TimeoutStartSec=30
+
+[Install]
+WantedBy=default.target
+EOF
+
+# API
+cat > "${QUADLET_DIR}/api.container" << 'EOF'
+[Unit]
+Description=Application API
+Requires=db.service cache.service
+After=db.service cache.service
+
+[Container]
+Image=my-api:latest
+ContainerName=api
+Network=app.network
+Environment=DATABASE_URL=postgresql://appuser:apppass@db:5432/appdb
+Environment=REDIS_URL=redis://cache:6379
+Environment=LOG_LEVEL=info
+Volume=uploads.volume:/app/uploads:Z
+AutoUpdate=local
+
+[Service]
+Restart=always
+TimeoutStartSec=30
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Web
+cat > "${QUADLET_DIR}/web.container" << 'EOF'
+[Unit]
+Description=Nginx Web Server
+Requires=api.service
+After=api.service
+
+[Container]
+Image=docker.io/library/nginx:stable-alpine
+ContainerName=web
+Network=app.network
+PublishPort=8080:80
+Volume=%h/myapp/nginx.conf:/etc/nginx/conf.d/default.conf:ro,Z
+AutoUpdate=registry
+
+[Service]
+Restart=always
+TimeoutStartSec=30
+
 [Install]
 WantedBy=default.target
 EOF
