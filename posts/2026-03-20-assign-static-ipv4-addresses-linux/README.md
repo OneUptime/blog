@@ -16,13 +16,14 @@ The `ip` command sets an address immediately but the change is lost on reboot:
 sudo ip addr add 192.168.1.100/24 dev eth0
 
 # Set the default gateway
-sudo ip route add default via 192.168.1.1
+sudo ip route add default via 192.168.1.1 dev eth0
 
 # Verify the assignment
 ip addr show eth0
 ip route show
 
-# Remove the address
+# Remove the default route and address
+sudo ip route del default via 192.168.1.1 dev eth0
 sudo ip addr del 192.168.1.100/24 dev eth0
 ```
 
@@ -92,14 +93,14 @@ DNS=8.8.8.8
 DNS=1.1.1.1
 ```
 
-Enable and start:
+Enable and start the services:
 
 ```bash
-sudo systemctl enable systemd-networkd
-sudo systemctl restart systemd-networkd
+sudo systemctl enable --now systemd-networkd
+sudo systemctl enable --now systemd-resolved
 ```
 
-## Legacy Method: /etc/network/interfaces (Debian)
+## Legacy Method: /etc/network/interfaces (Debian, with resolvconf for DNS)
 
 ```text
 auto eth0
@@ -132,5 +133,5 @@ ping -c 3 8.8.8.8       # Internet
 
 - Use `ip addr add` for temporary changes; use config files for persistence.
 - Ubuntu 18.04+ uses Netplan; Fedora/RHEL use NetworkManager (nmcli).
-- Always set a default gateway and at least one DNS server alongside the IP.
+- Set a default gateway if the host needs to reach other networks, and configure DNS servers if name resolution is required.
 - Verify with `ip addr show` and `ip route show` after applying changes.
