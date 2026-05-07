@@ -52,14 +52,14 @@ Click the **Install** button to open the installation form.
 
 Rancher provides two ways to configure chart values:
 
-**Form View**: A user-friendly form generated from the chart's `questions.yaml` or `values.schema.json`. Fill in the fields as needed:
+**Form View**: For Rancher and Partner charts that include a `questions.yaml` file, Rancher can render a user-friendly form. If the chart exposes form fields, fill them in as needed:
 
 - **Architecture**: Select `standalone` or `replication`
 - **Password**: Set the Redis password
 - **Persistence**: Enable or disable persistent storage
 - **Storage Size**: Set the PVC size (e.g., `8Gi`)
 
-**YAML View**: Click the **Edit YAML** tab to directly edit the `values.yaml` file:
+**YAML View**: Click the **Edit YAML** tab to directly edit the chart values:
 
 ```yaml
 architecture: replication
