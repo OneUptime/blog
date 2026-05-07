@@ -8,7 +8,7 @@ Description: Configure asymmetric routing on Linux by adjusting reverse path fil
 
 ## Introduction
 
-Asymmetric routing occurs when packets from A to B take a different path than packets from B to A. Linux's reverse path filtering (rp_filter) blocks packets that arrive on an interface different from the one the kernel would use to send a reply. For legitimate asymmetric routing scenarios, you must relax or disable rp_filter.
+Asymmetric routing occurs when packets from A to B take a different path than packets from B to A. In strict mode, Linux's reverse path filtering (rp_filter) blocks packets that arrive on an interface different from the one the kernel would use as the best reverse path. For legitimate asymmetric routing scenarios, you must relax or disable rp_filter.
 
 ## Check Current rp_filter Settings
 
@@ -23,8 +23,8 @@ sysctl net.ipv4.conf.all.rp_filter
 
 # Values:
 # 0 = No filtering
-# 1 = Strict mode (packet must return via same interface)
-# 2 = Loose mode (packet source must be in any routing table)
+# 1 = Strict mode (source must be reachable via the incoming interface's best reverse path)
+# 2 = Loose mode (source must be reachable via any interface)
 ```
 
 ## Disable rp_filter for Asymmetric Routing
@@ -37,7 +37,10 @@ sysctl -w net.ipv4.conf.eth1.rp_filter=2
 # Or disable entirely (value 0) - less safe
 sysctl -w net.ipv4.conf.eth0.rp_filter=0
 
-# The 'all' key takes effect for newly created interfaces
+# Use 'default' as the template for newly created interfaces
+sysctl -w net.ipv4.conf.default.rp_filter=2
+
+# rp_filter uses the higher value of 'all' and the per-interface setting
 sysctl -w net.ipv4.conf.all.rp_filter=2
 ```
 
@@ -45,7 +48,8 @@ sysctl -w net.ipv4.conf.all.rp_filter=2
 
 ```bash
 # Add to /etc/sysctl.conf or /etc/sysctl.d/99-routing.conf
-cat >> /etc/sysctl.d/99-routing.conf << 'EOF'
+cat > /etc/sysctl.d/99-routing.conf << 'EOF'
+net.ipv4.conf.default.rp_filter = 2
 net.ipv4.conf.all.rp_filter = 2
 net.ipv4.conf.eth0.rp_filter = 2
 net.ipv4.conf.eth1.rp_filter = 2
@@ -61,8 +65,10 @@ Traffic from Client A comes in via eth0, reply goes out via eth1 (multi-homed se
 
 ```bash
 # Configure routing tables for each ISP
-ip route add default via 10.0.0.1 table 100
-ip route add default via 10.0.1.1 table 200
+ip route add 10.0.0.0/24 dev eth0 src 10.0.0.5 table 100
+ip route add default via 10.0.0.1 dev eth0 table 100
+ip route add 10.0.1.0/24 dev eth1 src 10.0.1.5 table 200
+ip route add default via 10.0.1.1 dev eth1 table 200
 
 # Policy rules for correct reply routing
 ip rule add from 10.0.0.5 table 100
@@ -77,13 +83,14 @@ sysctl -w net.ipv4.conf.eth1.rp_filter=2
 
 ```bash
 # Count packets dropped by rp_filter
-ip -s route show table local | grep -A2 broadcast
+nstat -az | grep -i IPReversePathFilter
 
-# Use conntrack statistics
-conntrack -S
+# Check which interface the kernel would use back to a source IP
+ip route get 198.51.100.10
 
-# Check interface drop counters
-ip -s link show eth0 | grep -A2 RX
+# Log martian packets for more detail
+sysctl -w net.ipv4.conf.all.log_martians=1
+dmesg --follow | grep -i martian
 ```
 
 ## rp_filter Modes Summary
