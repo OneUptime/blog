@@ -16,7 +16,7 @@ After adding OCI artifacts to your local Podman artifact store, the next step is
 
 ## Prerequisites
 
-You need Podman 5.x or later and access to an OCI-compliant registry.
+You need Podman 5.4 or later and access to an OCI-compliant registry.
 
 ```bash
 # Verify Podman version
