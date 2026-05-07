@@ -28,7 +28,7 @@ Verify connectivity:
 
 ```bash
 curl -s --unix-socket /run/podman/podman.sock \
-  http://localhost/v4.0.0/libpod/info | jq .host.os
+  http://localhost/v5.0.0/libpod/info | jq .host.os
 ```
 
 ## The Stats Endpoint
@@ -38,7 +38,7 @@ The Podman REST API provides container statistics through two main endpoints:
 ### All Containers Stats (Libpod)
 
 ```text
-GET /v4.0.0/libpod/containers/stats
+GET /v5.0.0/libpod/containers/stats
 ```
 
 This endpoint supports the following query parameters:
@@ -46,11 +46,12 @@ This endpoint supports the following query parameters:
 - **stream** (boolean): Continuously stream stats. Defaults to true.
 - **containers** (array): Names or IDs of containers to report on.
 - **interval** (integer): Time in seconds between stats reports. Defaults to 5.
+- **all** (boolean): Include all containers, not just running ones. Defaults to false.
 
 ### Single Container Stats (Compat)
 
 ```text
-GET /v4.0.0/containers/{name}/stats
+GET /v1.40/containers/{name}/stats
 ```
 
 The Docker-compatible endpoint supports:
@@ -64,41 +65,54 @@ To get a one-time snapshot of a container's resource usage:
 
 ```bash
 curl -s --unix-socket /run/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/stats?stream=false&containers=my-container" | jq .
+  "http://localhost/v5.0.0/libpod/containers/stats?stream=false&containers=my-container" | jq .
 ```
 
-The response contains detailed resource metrics:
+The response wraps the stats in a `Stats` array:
 
 ```json
 {
-  "CPU": 25.5,
-  "AvgCPU": 12.3,
-  "MemUsage": 134217728,
-  "MemLimit": 536870912,
-  "MemPerc": 25.0,
-  "NetInput": 1048576,
-  "NetOutput": 524288,
-  "BlockInput": 2097152,
-  "BlockOutput": 1048576,
-  "PIDs": 12,
-  "ContainerID": "abc123def456",
-  "Name": "my-container"
+  "Stats": [
+    {
+      "AvgCPU": 12.3,
+      "ContainerID": "abc123def456",
+      "Name": "my-container",
+      "CPU": 25.5,
+      "MemUsage": 134217728,
+      "MemLimit": 536870912,
+      "MemPerc": 25.0,
+      "Network": {
+        "eth0": {
+          "RxBytes": 1048576,
+          "TxBytes": 524288,
+          "RxPackets": 1024,
+          "TxPackets": 768,
+          "RxErrors": 0,
+          "TxErrors": 0,
+          "RxDropped": 0,
+          "TxDropped": 0
+        }
+      },
+      "BlockInput": 2097152,
+      "BlockOutput": 1048576,
+      "PIDs": 12
+    }
+  ]
 }
 ```
 
 ## Understanding the Stats Response
 
-Each stats response includes the following fields:
+Each object inside the `Stats` array includes the following fields:
 
 | Field | Description |
 |-------|-------------|
 | CPU | Current CPU usage percentage |
 | AvgCPU | Average CPU usage over the container lifetime |
 | MemUsage | Current memory usage in bytes |
-| MemLimit | Memory limit in bytes (0 means no limit) |
+| MemLimit | Effective memory limit in bytes |
 | MemPerc | Memory usage as a percentage of the limit |
-| NetInput | Total bytes received over the network |
-| NetOutput | Total bytes sent over the network |
+| Network | Per-interface network statistics keyed by interface name |
 | BlockInput | Total bytes read from block devices |
 | BlockOutput | Total bytes written to block devices |
 | PIDs | Number of processes running in the container |
@@ -110,9 +124,9 @@ To continuously monitor container resource usage, use the streaming mode:
 ```bash
 curl -s --unix-socket /run/podman/podman.sock \
   --no-buffer \
-  "http://localhost/v4.0.0/libpod/containers/stats?stream=true&containers=my-container" | \
+  "http://localhost/v5.0.0/libpod/containers/stats?stream=true&containers=my-container" | \
   while read -r line; do
-    echo "$line" | jq '{cpu: .CPU, mem_mb: (.MemUsage / 1048576), pids: .PIDs}'
+    echo "$line" | jq '.Stats[0] | {cpu: .CPU, mem_mb: (.MemUsage / 1048576), pids: .PIDs}'
   done
 ```
 
@@ -130,10 +144,10 @@ To monitor all running containers at once:
 
 ```bash
 curl -s --unix-socket /run/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/stats?stream=false" | jq .
+  "http://localhost/v5.0.0/libpod/containers/stats?stream=false" | jq .
 ```
 
-The response includes an array of stats objects, one for each running container. This is more efficient than making individual requests for each container.
+The response includes a `Stats` array with one stats object for each running container. This is more efficient than making individual requests for each container.
 
 ## Building a Simple Monitoring Script
 
@@ -143,7 +157,7 @@ Here is a bash script that monitors container resource usage and alerts when thr
 #!/bin/bash
 
 SOCKET="/run/podman/podman.sock"
-API="http://localhost/v4.0.0/libpod"
+API="http://localhost/v5.0.0/libpod"
 CPU_THRESHOLD=80
 MEM_THRESHOLD=90
 
@@ -157,7 +171,7 @@ check_stats() {
     return 1
   fi
 
-  echo "$stats" | jq -c '.[]' | while read -r container; do
+  echo "$stats" | jq -c '.Stats[]' | while read -r container; do
     NAME=$(echo "$container" | jq -r '.Name')
     CPU=$(echo "$container" | jq '.CPU')
     MEM_PERC=$(echo "$container" | jq '.MemPerc')
@@ -189,19 +203,21 @@ done
 
 ## Calculating CPU Usage Percentage
 
-When using the Docker-compatible stats endpoint, you may need to calculate CPU percentage manually from raw values:
+When using the Docker-compatible stats endpoint, calculate CPU percentage from two streamed samples:
 
 ```bash
 curl -s --unix-socket /run/podman/podman.sock \
-  "http://localhost/v1.41/containers/my-container/stats?stream=false&one-shot=true" | \
+  --no-buffer \
+  "http://localhost/v1.40/containers/my-container/stats?stream=true" | \
+  head -n 2 | tail -n 1 | \
   jq '{
     cpu_percent: ((.cpu_stats.cpu_usage.total_usage - .precpu_stats.cpu_usage.total_usage) /
                   (.cpu_stats.system_cpu_usage - .precpu_stats.system_cpu_usage) *
                   (.cpu_stats.online_cpus // 1) * 100),
     memory_usage_mb: (.memory_stats.usage / 1048576),
     memory_limit_mb: (.memory_stats.limit / 1048576),
-    network_rx_mb: ([.networks[].rx_bytes] | add / 1048576),
-    network_tx_mb: ([.networks[].tx_bytes] | add / 1048576)
+    network_rx_mb: (([.networks[]?.rx_bytes] | add // 0) / 1048576),
+    network_tx_mb: (([.networks[]?.tx_bytes] | add // 0) / 1048576)
   }'
 ```
 
@@ -221,10 +237,10 @@ PREV_OUT=0
 
 while true; do
   STATS=$(curl -s --unix-socket "$SOCKET" \
-    "http://localhost/v4.0.0/libpod/containers/stats?stream=false&containers=$CONTAINER")
+    "http://localhost/v5.0.0/libpod/containers/stats?stream=false&containers=$CONTAINER")
 
-  NET_IN=$(echo "$STATS" | jq '.NetInput')
-  NET_OUT=$(echo "$STATS" | jq '.NetOutput')
+  NET_IN=$(echo "$STATS" | jq '[.Stats[0].Network[]?.RxBytes] | add // 0')
+  NET_OUT=$(echo "$STATS" | jq '[.Stats[0].Network[]?.TxBytes] | add // 0')
 
   if [ "$PREV_IN" -ne 0 ]; then
     IN_RATE=$(( (NET_IN - PREV_IN) / INTERVAL ))
@@ -244,10 +260,10 @@ The Docker-compatible endpoint provides a different response format that matches
 
 ```bash
 curl -s --unix-socket /run/podman/podman.sock \
-  "http://localhost/v1.41/containers/my-container/stats?stream=false&one-shot=true" | jq .
+  "http://localhost/v1.40/containers/my-container/stats?stream=false&one-shot=true" | jq .
 ```
 
-This format includes more granular data such as per-CPU usage, detailed memory breakdown (cache, RSS, swap), and per-interface network statistics. Use this endpoint if you need compatibility with existing Docker monitoring tools.
+This format includes raw cumulative CPU counters, memory usage and limit, and per-interface network statistics. Use this endpoint if you need compatibility with existing Docker monitoring tools.
 
 ## Error Handling
 
@@ -257,16 +273,16 @@ Common error scenarios when fetching stats:
 # Container not found
 
 curl -s -o /dev/null -w "%{http_code}" --unix-socket /run/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/stats?stream=false&containers=nonexistent"
+  "http://localhost/v5.0.0/libpod/containers/stats?stream=false&containers=nonexistent"
 # Returns: 404
 
-# Container not running
+# Invalid one-shot usage
 curl -s -o /dev/null -w "%{http_code}" --unix-socket /run/podman/podman.sock \
-  "http://localhost/v4.0.0/libpod/containers/stats?stream=false&containers=stopped-container"
-# Returns: 409 (Conflict - container is not running)
+  "http://localhost/v1.40/containers/my-container/stats?stream=true&one-shot=true"
+# Returns: 400
 ```
 
-Always verify the container state before attempting to fetch stats in automated workflows.
+Always verify container names and query parameters before attempting to fetch stats in automated workflows.
 
 ## Performance Tips
 
