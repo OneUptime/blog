@@ -4,19 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Network Watcher, Flow Logs, Diagnostic, Monitoring, Infrastructure as Code
 
-Description: Learn how to configure Azure Network Watcher with OpenTofu to enable NSG flow logs, connection monitoring, and network diagnostic capabilities for your Azure infrastructure.
+Description: Learn how to configure Azure Network Watcher with OpenTofu to enable virtual network flow logs, connection monitoring, and network diagnostic capabilities for your Azure infrastructure.
 
 ## Introduction
 
-Azure Network Watcher provides tools to monitor, diagnose, and gain insights into Azure network infrastructure. Key features include NSG Flow Logs (capture all network flows through NSGs for traffic analysis), Connection Monitor (continuously test connectivity between sources and destinations), IP Flow Verify (test if traffic is allowed or denied by NSG rules), and Packet Capture (capture packets from VMs for deep analysis). Network Watcher is automatically enabled per region and requires no explicit creation.
+Azure Network Watcher provides tools to monitor, diagnose, and gain insights into Azure network infrastructure. Key features include flow logs (capture network flows for traffic analysis), Connection Monitor (continuously test connectivity between sources and destinations), IP Flow Verify (test if traffic is allowed or denied by NSG rules), and Packet Capture (capture packets from VMs for deep analysis). By default, Network Watcher is automatically enabled in a region when you create or update a virtual network there, unless automatic enablement was previously disabled for the subscription.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - Azure credentials configured
-- NSGs and VMs to monitor
+- Microsoft.Insights resource provider registered
+- An existing Network Watcher in the target region
+- Virtual networks and VMs to monitor
+- Network Watcher Agent installed on Azure source VMs for Connection Monitor and packet capture
 
-## Step 1: Enable NSG Flow Logs
+## Step 1: Enable Virtual Network Flow Logs
 
 ```hcl
 # Storage account for flow log data
@@ -26,6 +29,7 @@ resource "azurerm_storage_account" "flow_logs" {
   resource_group_name      = var.resource_group_name
   location                 = var.location
   account_tier             = "Standard"
+  account_kind             = "StorageV2"
   account_replication_type = "LRS"
   min_tls_version          = "TLS1_2"
 
@@ -35,21 +39,23 @@ resource "azurerm_storage_account" "flow_logs" {
   }
 }
 
-# Network Watcher (auto-created per region, import or reference)
+# Reference an existing Network Watcher in the target region.
+# In auto-enabled subscriptions this is typically NetworkWatcher_<regionName> in NetworkWatcherRG.
 data "azurerm_network_watcher" "main" {
-  name                = "NetworkWatcher_${var.location}"
-  resource_group_name = "NetworkWatcherRG"  # Default resource group
+  name                = var.network_watcher_name
+  resource_group_name = var.network_watcher_resource_group_name
 }
 
-resource "azurerm_network_watcher_flow_log" "nsg" {
+resource "azurerm_network_watcher_flow_log" "vnet" {
   network_watcher_name = data.azurerm_network_watcher.main.name
   resource_group_name  = data.azurerm_network_watcher.main.resource_group_name
-  name                 = "${var.project_name}-nsg-flow-log"
+  name                 = "${var.project_name}-vnet-flow-log"
 
-  network_security_group_id = var.nsg_id
-  storage_account_id        = azurerm_storage_account.flow_logs.id
-  enabled                   = true
-  version                   = 2  # Version 2 includes byte/packet counts
+  # Use a virtual network, subnet, or NIC ID for new flow logs.
+  target_resource_id = var.virtual_network_id
+  storage_account_id = azurerm_storage_account.flow_logs.id
+  enabled            = true
+  version            = 2  # Version 2 includes throughput information
 
   retention_policy {
     enabled = true
@@ -60,13 +66,13 @@ resource "azurerm_network_watcher_flow_log" "nsg" {
   traffic_analytics {
     enabled               = true
     workspace_id          = var.log_analytics_workspace_id
-    workspace_region      = var.location
+    workspace_region      = var.location  # Workspace must be in the same region as the flow log
     workspace_resource_id = var.log_analytics_workspace_resource_id
     interval_in_minutes   = 10  # 10 or 60 minute aggregation intervals
   }
 
   tags = {
-    Name = "${var.project_name}-flow-log"
+    Name = "${var.project_name}-vnet-flow-log"
   }
 }
 ```
@@ -74,6 +80,7 @@ resource "azurerm_network_watcher_flow_log" "nsg" {
 ## Step 2: Connection Monitor
 
 ```hcl
+# The source Azure VM must already have the Network Watcher Agent VM extension installed.
 resource "azurerm_network_connection_monitor" "main" {
   name               = "${var.project_name}-connection-monitor"
   network_watcher_id = data.azurerm_network_watcher.main.id
@@ -157,24 +164,24 @@ resource "azurerm_network_connection_monitor" "main" {
 }
 ```
 
-## Step 3: Flow Log for All NSGs
+## Step 3: Flow Logs for Multiple Virtual Networks
 
 ```hcl
-variable "nsg_ids" {
-  description = "Map of NSG name to NSG ID"
+variable "vnet_ids" {
+  description = "Map of virtual network name to virtual network ID"
   type        = map(string)
 }
 
-resource "azurerm_network_watcher_flow_log" "all_nsgs" {
-  for_each = var.nsg_ids
+resource "azurerm_network_watcher_flow_log" "all_vnets" {
+  for_each = var.vnet_ids
 
-  network_watcher_name      = data.azurerm_network_watcher.main.name
-  resource_group_name       = data.azurerm_network_watcher.main.resource_group_name
-  name                      = "${each.key}-flow-log"
-  network_security_group_id = each.value
-  storage_account_id        = azurerm_storage_account.flow_logs.id
-  enabled                   = true
-  version                   = 2
+  network_watcher_name = data.azurerm_network_watcher.main.name
+  resource_group_name  = data.azurerm_network_watcher.main.resource_group_name
+  name                 = "${each.key}-flow-log"
+  target_resource_id   = each.value
+  storage_account_id   = azurerm_storage_account.flow_logs.id
+  enabled              = true
+  version              = 2
 
   retention_policy {
     enabled = true
@@ -194,17 +201,20 @@ resource "azurerm_network_watcher_flow_log" "all_nsgs" {
 ## Step 4: Deploy
 
 ```bash
+# Register the resource provider required for virtual network flow logs.
+az provider register --namespace Microsoft.Insights --wait
+
 tofu init
 tofu plan
 tofu apply
 
-# IP flow verify - test if traffic is allowed
+# IP flow verify - test if inbound HTTPS traffic is allowed to the VM
 az network watcher test-ip-flow \
   --vm <vm-id> \
   --direction Inbound \
   --protocol TCP \
-  --local 10.0.1.5:0 \
-  --remote 203.0.113.1:443
+  --local 10.0.1.5:443 \
+  --remote 203.0.113.1:60000
 
 # Next hop - trace routing path
 az network watcher show-next-hop \
@@ -212,7 +222,7 @@ az network watcher show-next-hop \
   --source-ip 10.0.1.5 \
   --dest-ip 8.8.8.8
 
-# Initiate packet capture
+# Initiate packet capture (requires the Network Watcher Agent VM extension)
 az network watcher packet-capture create \
   --resource-group <rg> \
   --vm <vm-name> \
@@ -222,4 +232,4 @@ az network watcher packet-capture create \
 
 ## Conclusion
 
-Enable NSG Flow Logs version 2 with Traffic Analytics on all production NSGs-it provides insights into top talkers, allowed/denied flows, and unusual traffic patterns without requiring packet capture. Traffic Analytics requires a Log Analytics workspace and aggregates flow data every 10 or 60 minutes; use 10-minute intervals for near real-time visibility. Connection Monitor with the Network Watcher agent (installed via VM Extension) provides end-to-end latency and packet loss measurements between any two Azure or on-premises endpoints, making it the preferred tool for proactive connectivity monitoring.
+Use virtual network flow logs version 2 with Traffic Analytics for new deployments. Azure no longer allows creation of new NSG flow logs, so virtual network flow logs are the supported replacement for monitoring traffic patterns across production virtual networks, subnets, or NICs without requiring packet capture. Traffic Analytics requires a Log Analytics workspace and aggregates flow data every 10 or 60 minutes; use 10-minute intervals for near real-time visibility. Connection Monitor with the Network Watcher agent on Azure source VMs provides end-to-end latency and packet loss measurements to supported Azure and hybrid destinations, making it a strong tool for proactive connectivity monitoring.
