@@ -25,7 +25,7 @@ az network route-table create \
     --disable-bgp-route-propagation true
 
 # Add IPv6 default route through NVA
-NVA_IPV4="10.0.0.100"  # NVA's IPv4 private IP (Azure UDR next-hops are IPv4)
+NVA_NEXT_HOP_IP="10.0.0.100"  # Example NVA private IP used as the next hop
 
 az network route-table route create \
     --resource-group "$RG" \
@@ -33,16 +33,16 @@ az network route-table route create \
     --name route-ipv6-default \
     --address-prefix "::/0" \
     --next-hop-type VirtualAppliance \
-    --next-hop-ip-address "$NVA_IPV4"
+    --next-hop-ip-address "$NVA_NEXT_HOP_IP"
 
-# Add route for specific IPv6 prefix to internet
+# Add IPv4 default route through NVA
 az network route-table route create \
     --resource-group "$RG" \
     --route-table-name rt-spoke-ipv6 \
     --name route-ipv4-default \
     --address-prefix "0.0.0.0/0" \
     --next-hop-type VirtualAppliance \
-    --next-hop-ip-address "$NVA_IPV4"
+    --next-hop-ip-address "$NVA_NEXT_HOP_IP"
 
 # Associate route table with subnet
 az network vnet subnet update \
@@ -63,33 +63,20 @@ resource "azurerm_route_table" "spoke" {
   resource_group_name           = azurerm_resource_group.main.name
   disable_bgp_route_propagation = true
 
-  # IPv4 default route through Azure Firewall
+  # IPv4 default route through the NVA
   route {
     name                   = "route-default-ipv4"
     address_prefix         = "0.0.0.0/0"
     next_hop_type          = "VirtualAppliance"
-    next_hop_in_ip_address = azurerm_firewall.hub.ip_configuration[0].private_ip_address
+    next_hop_in_ip_address = "10.0.0.100"
   }
 
-  # IPv6 default route through Azure Firewall (uses IPv4 next-hop address)
+  # IPv6 default route through the NVA
   route {
     name                   = "route-default-ipv6"
     address_prefix         = "::/0"
     next_hop_type          = "VirtualAppliance"
-    next_hop_in_ip_address = azurerm_firewall.hub.ip_configuration[0].private_ip_address
-  }
-
-  # Override hub VNet route to stay local
-  route {
-    name           = "route-hub-ipv4"
-    address_prefix = "10.0.0.0/16"
-    next_hop_type  = "VirtualNetworkGateway"
-  }
-
-  route {
-    name           = "route-hub-ipv6"
-    address_prefix = "fd00:hub::/48"
-    next_hop_type  = "VirtualNetworkGateway"
+    next_hop_in_ip_address = "10.0.0.100"
   }
 
   tags = { Name = "spoke-route-table" }
@@ -120,28 +107,28 @@ NIC_ID=$(az vm show \
 # Show effective routes including IPv6
 az network nic show-effective-route-table \
     --ids "$NIC_ID" \
-    --query "value[?addressPrefix[0] contains ':'].{prefix:addressPrefix, type:source, nextHop:nextHopIpAddress}"
+    --query "value[?contains(addressPrefix[0], ':')].{prefix:addressPrefix[0], source:source, nextHopType:nextHopType, nextHopIp:nextHopIpAddress[0]}"
 ```
 
 ## Hub-Spoke UDR Design for IPv6
 
 ```text
-Hub VNet (fd00:hub::/48)
-  ├── AzureFirewallSubnet: fd00:hub:0:1::/64
-  └── GatewaySubnet: fd00:hub:0:2::/64
+Hub VNet (fd00:100::/48)
+  ├── NVA subnet: fd00:100:1::/64
+  └── GatewaySubnet: fd00:100:2::/64
 
-Spoke A VNet (fd00:spoke-a::/48)
-  ├── Route table: ::/0 → Azure Firewall private IP
+Spoke A VNet (fd00:101::/48)
+  ├── Route table: ::/0 → NVA private IP
   └── workloads
 
-Spoke B VNet (fd00:spoke-b::/48)
-  ├── Route table: ::/0 → Azure Firewall private IP
+Spoke B VNet (fd00:102::/48)
+  ├── Route table: ::/0 → NVA private IP
   └── workloads
 
-Note: IPv6 UDR next-hop must be IPv4 address in Azure
-The firewall uses IPv4 address as next-hop but inspects IPv6 traffic
+Note: Use a directly reachable private IP address for the VirtualAppliance next hop
+The NVA itself must support IPv6 forwarding for dual-stack traffic
 ```
 
 ## Conclusion
 
-Azure UDRs for IPv6 use the same mechanism as IPv4 routes - create route entries with `::/0` or specific IPv6 prefixes and assign them to subnets. A key Azure limitation: the next-hop IP address for `VirtualAppliance` routes must be an IPv4 address even when routing IPv6 traffic. The NVA or Azure Firewall with that IPv4 address can inspect and forward IPv6 packets. Check effective routes on NICs with `az network nic show-effective-route-table` to verify IPv6 UDR overrides are applied correctly.
+Azure UDRs for IPv6 use the same mechanism as IPv4 routes - create route entries with `::/0` or specific IPv6 prefixes and assign them to subnets. For `VirtualAppliance` routes, specify a directly reachable private IP address for the NVA and make sure the appliance is configured to forward IPv6 traffic. Use a general NVA for IPv6 inspection rather than Azure Firewall, because Azure Firewall doesn't currently support IPv6 traffic inspection. Check effective routes on NICs with `az network nic show-effective-route-table` to verify IPv6 UDR overrides are applied correctly.
