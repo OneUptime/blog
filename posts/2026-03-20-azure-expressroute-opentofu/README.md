@@ -8,12 +8,12 @@ Description: Learn how to configure Azure ExpressRoute resources with OpenTofu t
 
 ## Introduction
 
-Azure ExpressRoute establishes private, dedicated connections between on-premises networks and Azure through connectivity providers or directly at colocation facilities. Unlike VPN over the internet, ExpressRoute provides consistent latency, up to 100 Gbps bandwidth, and does not traverse the public internet. ExpressRoute supports two peering types: Azure Private Peering (connects to Azure VNets) and Microsoft Peering (connects to Microsoft 365 and Azure public services).
+Azure ExpressRoute establishes private, dedicated connections between on-premises networks and Azure through connectivity providers or directly at colocation facilities. Unlike VPN over the internet, ExpressRoute provides consistent latency and does not traverse the public internet. Provider-provisioned circuits support bandwidths up to 10 Gbps, while ExpressRoute Direct supports 10 Gbps, 100 Gbps, or 400 Gbps connectivity. ExpressRoute supports two peering types: Azure Private Peering (connects to Azure VNets) and Microsoft Peering (connects to Microsoft 365 and Azure public services).
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- An ExpressRoute circuit provisioned by a connectivity provider
+- An ExpressRoute connectivity provider selected for your target peering location
 - Azure credentials with Network permissions
 - BGP ASN from your network team
 
@@ -49,6 +49,7 @@ output "service_key" {
 
 ```hcl
 # Wait for provider to provision the circuit before configuring peering
+# For managed Layer 3 provider circuits, the connectivity provider configures routing for you
 
 resource "azurerm_express_route_circuit_peering" "private" {
   peering_type                  = "AzurePrivatePeering"
@@ -77,14 +78,7 @@ resource "azurerm_subnet" "gateway" {
   address_prefixes     = ["10.0.255.0/27"]
 }
 
-resource "azurerm_public_ip" "er_gateway" {
-  name                = "${var.project_name}-er-gateway-pip"
-  location            = var.location
-  resource_group_name = var.resource_group_name
-  allocation_method   = "Static"
-  sku                 = "Standard"
-}
-
+# Azure manages the public IP for ExpressRoute gateways
 resource "azurerm_virtual_network_gateway" "expressroute" {
   name                = "${var.project_name}-er-gateway"
   location            = var.location
@@ -94,7 +88,6 @@ resource "azurerm_virtual_network_gateway" "expressroute" {
 
   ip_configuration {
     name                          = "default"
-    public_ip_address_id          = azurerm_public_ip.er_gateway.id
     private_ip_address_allocation = "Dynamic"
     subnet_id                     = azurerm_subnet.gateway.id
   }
@@ -110,7 +103,7 @@ resource "azurerm_virtual_network_gateway_connection" "expressroute" {
   virtual_network_gateway_id = azurerm_virtual_network_gateway.expressroute.id
   express_route_circuit_id   = azurerm_express_route_circuit.main.id
 
-  # Enable FastPath to bypass the gateway for data path (requires ErGw3AZ or UltraPerformance)
+  # Enable FastPath to bypass the gateway for data forwarding on supported gateway SKUs
   express_route_gateway_bypass = false
 }
 ```
@@ -151,4 +144,4 @@ az network express-route peering show \
 
 ## Conclusion
 
-ExpressRoute circuits take 3-5 business days for providers to provision after you share the service key-plan accordingly in project timelines. Use zone-redundant gateway SKUs (`ErGw1AZ`, `ErGw2AZ`, `ErGw3AZ`) for production to protect against availability zone failures. For the highest resilience, deploy two circuits from different providers in different peering locations and configure both for active-active BGP. ExpressRoute Global Reach allows on-premises sites connected to different ExpressRoute circuits to communicate with each other through the Azure backbone, eliminating the need for dedicated on-premises cross-site links.
+Provider provisioning time varies after you share the service key, so plan for lead time in project timelines and wait until `serviceProviderProvisioningState` is `Provisioned` before you continue. Use zone-redundant gateway SKUs (`ErGw1AZ`, `ErGw2AZ`, `ErGw3AZ`) for production to protect against availability zone failures. For the highest resilience, deploy two circuits from different providers in different peering locations and configure both for active-active BGP. ExpressRoute Global Reach allows on-premises sites connected to different ExpressRoute circuits to communicate with each other through the Azure backbone, eliminating the need for dedicated on-premises cross-site links.
