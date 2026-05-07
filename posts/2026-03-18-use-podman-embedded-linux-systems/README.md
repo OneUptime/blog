@@ -10,7 +10,7 @@ Description: Learn to run Podman on embedded Linux systems built with Yocto and 
 
 > Embedded Linux systems power everything from industrial controllers to medical devices and automotive infotainment. Adding Podman to these systems brings container isolation and updatability to firmware that traditionally required full reflashing for every update. With Podman, you can update application logic independently of the base operating system, reducing downtime and deployment risk.
 
-Embedded Linux differs from server Linux in important ways. The operating system image is typically built from source using tools like the Yocto Project or Buildroot. Storage is measured in megabytes rather than gigabytes. The root filesystem may be read-only. Despite these constraints, Podman's modular design allows it to be integrated into embedded Linux builds and run containers even on systems with as little as 256MB of RAM and 1GB of storage.
+Embedded Linux differs from server Linux in important ways. The operating system image is typically built from source using tools like the Yocto Project or Buildroot. Storage is measured in megabytes rather than gigabytes. The root filesystem may be read-only. Despite these constraints, Podman's modular design allows it to be integrated into embedded Linux builds on resource-constrained systems, provided the required kernel features and writable storage layout are planned up front.
 
 ---
 
@@ -35,11 +35,12 @@ The Yocto Project is the most common build system for custom embedded Linux. Pod
 ### Setting Up the Layers
 
 ```bash
-# In your Yocto build directory
+# From your Yocto source checkout
 
 cd poky
 git clone https://git.yoctoproject.org/meta-virtualization
 git clone https://git.openembedded.org/meta-openembedded
+source oe-init-build-env
 
 # Add layers to bblayers.conf
 bitbake-layers add-layer ../meta-openembedded/meta-oe
@@ -57,24 +58,24 @@ Add Podman and its dependencies to your image:
 cat >> conf/local.conf <<EOF
 # Container runtime
 IMAGE_INSTALL:append = " podman podman-compose skopeo"
+IMAGE_INSTALL:append = " netavark aardvark-dns"
 IMAGE_INSTALL:append = " slirp4netns fuse-overlayfs"
-IMAGE_INSTALL:append = " cni"
 IMAGE_INSTALL:append = " kernel-modules"
 
-# Required kernel features
-DISTRO_FEATURES:append = " virtualization"
+# Required distro features for podman and meta-virtualization
+DISTRO_FEATURES:append = " virtualization seccomp ipv6"
 
 # Storage driver support
 DISTRO_FEATURES:append = " overlayfs"
 
 # Rootless container support
-IMAGE_INSTALL:append = " shadow-subids"
+PACKAGECONFIG:append:pn-podman = " rootless"
 EOF
 ```
 
 ### Kernel Configuration
 
-Ensure your kernel config includes the necessary features for containers:
+If you are using `linux-yocto`, you can add common container feature sets from `local.conf`:
 
 ```bash
 cat >> conf/local.conf <<EOF
@@ -115,6 +116,15 @@ CONFIG_NF_CONNTRACK=y
 EOF
 ```
 
+Then include the fragment from your kernel recipe or `.bbappend`:
+
+```bash
+cat > recipes-kernel/linux/linux-yocto_%.bbappend <<EOF
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+SRC_URI += "file://containers.cfg"
+EOF
+```
+
 ### Building the Image
 
 ```bash
@@ -135,17 +145,16 @@ make menuconfig
 
 Navigate to:
 - Target packages > System tools > podman
-- Target packages > Networking > slirp4netns
-- Kernel > Enable namespaces, cgroups, overlayfs
+- Inside the `podman` options, select the `slirp4netns` network backend for rootless networking
+- Linux Kernel > enable namespaces, cgroups, overlayfs, veth, and bridge/netfilter support in your kernel config
 
 Or add to your defconfig:
 
 ```bash
 cat >> configs/myboard_defconfig <<EOF
 BR2_PACKAGE_PODMAN=y
-BR2_PACKAGE_SLIRP4NETNS=y
+BR2_PACKAGE_PODMAN_NET_SLIRP4NETNS=y
 BR2_PACKAGE_FUSE_OVERLAYFS=y
-BR2_PACKAGE_SHADOW=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="board/myboard/linux.config"
 EOF
 ```
@@ -173,7 +182,6 @@ graphroot = "/var/lib/containers/storage"
 
 [storage.options]
 additionalimagestores = []
-size = ""
 
 [storage.options.overlay]
 mount_program = "/usr/bin/fuse-overlayfs"
@@ -188,11 +196,9 @@ Many embedded systems use a read-only root filesystem for reliability. Configure
 # Mount a writable data partition
 mount /dev/mmcblk0p3 /data
 
-# Symlink Podman storage to writable partition
+# Keep temporary runtime state on /run and move persistent storage to /data
 mkdir -p /data/containers/storage
-mkdir -p /data/containers/run
 ln -s /data/containers/storage /var/lib/containers/storage
-ln -s /data/containers/run /run/containers
 ```
 
 Or configure through storage.conf:
@@ -202,7 +208,7 @@ cat > /etc/containers/storage.conf <<EOF
 [storage]
 driver = "overlay"
 graphroot = "/data/containers/storage"
-runroot = "/data/containers/run"
+runroot = "/run/containers/storage"
 
 [storage.options.overlay]
 mount_program = "/usr/bin/fuse-overlayfs"
@@ -241,7 +247,7 @@ For the smallest possible images, use scratch as the base:
 
 ```dockerfile
 # Build on a development machine for the target architecture
-FROM docker.io/library/golang:1.22 AS builder
+FROM docker.io/library/golang:1.25 AS builder
 WORKDIR /app
 COPY . .
 RUN CGO_ENABLED=0 GOARCH=arm64 go build -ldflags="-s -w" -o /app/controller .
@@ -272,9 +278,9 @@ CMD ["/app/myapp"]
 ### Alpine-Based Images for Embedded
 
 ```dockerfile
-FROM docker.io/library/alpine:3.19
+FROM docker.io/library/alpine:3.23
 RUN apk add --no-cache python3 py3-pip && \
-    pip install --no-cache-dir flask && \
+    python3 -m pip install --no-cache-dir flask && \
     apk del py3-pip
 WORKDIR /app
 COPY app.py .
@@ -314,7 +320,7 @@ cat > /etc/systemd/system/container-preload.service <<EOF
 [Unit]
 Description=Load pre-installed container images
 After=local-fs.target
-ConditionPathExists=/data/containers/preload
+ConditionPathExistsGlob=/data/containers/preload/*.tar
 
 [Service]
 Type=oneshot
@@ -356,7 +362,7 @@ podman run -d --name "$APP_NAME" \
   -v /data/app:/data:Z \
   "$NEW_TAG"
 
-# Verify health
+# Verify health (requires a HEALTHCHECK in the image)
 sleep 10
 if podman healthcheck run "$APP_NAME" 2>/dev/null; then
   echo "Update successful, removing rollback"
@@ -382,13 +388,13 @@ After=local-fs.target network.target
 [Container]
 Image=localhost/controller:latest
 Volume=/data/app:/data:Z
-Device=/dev/ttyS0:/dev/ttyS0
+AddDevice=/dev/ttyS0:/dev/ttyS0
 Environment=DEVICE_SERIAL=%m
 Network=host
 
 [Service]
 Restart=always
-WatchdogSec=60
+RestartSec=5
 TimeoutStartSec=30
 
 [Install]
