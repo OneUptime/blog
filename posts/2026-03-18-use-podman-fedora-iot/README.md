@@ -24,7 +24,7 @@ Fedora IoT supports ARM (aarch64) and x86_64 architectures. Download the raw ima
 # Write the image to an SD card (e.g., for Raspberry Pi)
 
 sudo arm-image-installer \
-  --image=Fedora-IoT-39-aarch64.raw.xz \
+  --image=Fedora-IoT-raw-44-20260427.0.aarch64.raw.xz \
   --target=rpi4 \
   --media=/dev/sdX \
   --addkey=/path/to/your/ssh-key.pub \
@@ -34,15 +34,15 @@ sudo arm-image-installer \
 For x86_64 devices, use the ISO installer or write the raw image directly:
 
 ```bash
-xzcat Fedora-IoT-39-x86_64.raw.xz | sudo dd of=/dev/sdX bs=4M status=progress
+xzcat Fedora-IoT-raw-44-20260427.0.x86_64.raw.xz | sudo dd of=/dev/sdX bs=4M status=progress
 ```
 
 ## Initial System Setup
 
-After booting your device, connect via SSH and verify the system:
+After booting a raw-image-based device, connect via SSH and verify the system:
 
 ```bash
-ssh user@fedora-iot-device
+ssh root@fedora-iot-device
 rpm-ostree status
 podman --version
 ```
@@ -78,9 +78,6 @@ podman run -d \
   --name mqtt-broker \
   --restart=always \
   -p 1883:1883 \
-  -p 9001:9001 \
-  -v mqtt-data:/mosquitto/data:Z \
-  -v mqtt-config:/mosquitto/config:Z \
   docker.io/library/eclipse-mosquitto:latest
 ```
 
@@ -100,6 +97,7 @@ For production IoT deployments, run containers as systemd services using Quadlet
 [Container]
 ContainerName=sensor-collector
 Image=docker.io/library/python:3.12-slim
+Exec=python3 -m http.server 5000 --directory /app/data
 PublishPort=5000:5000
 Volume=/var/data/sensors:/app/data:Z
 Environment=DEVICE_ID=gateway-01
@@ -199,13 +197,14 @@ podman run -d --network iot-net --name app my-iot-app:latest
 
 ## Managing Updates on IoT Devices
 
-Fedora IoT supports automatic OS updates through rpm-ostree, and Podman supports automatic container image updates. Enable both for a fully self-updating device:
+Fedora IoT supports automatic OS updates through rpm-ostree, and Podman supports automatic container image updates for containers managed by systemd or Quadlet. Set `AutomaticUpdatePolicy=stage` in `/etc/rpm-ostreed.conf`, then enable both timers:
 
 ```bash
-# Enable OS auto-updates
+# Reload rpm-ostreed after setting AutomaticUpdatePolicy=stage
+sudo rpm-ostree reload
 sudo systemctl enable --now rpm-ostreed-automatic.timer
 
-# Enable container auto-updates
+# Enable container auto-updates for systemd/Quadlet-managed containers
 sudo systemctl enable --now podman-auto-update.timer
 ```
 
@@ -280,18 +279,18 @@ podman run -d --pod iot-gateway --name grafana \
 
 ## Monitoring and Logging
 
-Set up centralized logging for your IoT containers:
+Inspect container logs:
 
 ```bash
-journalctl -u sensor-collector.service -f
+sudo journalctl -u sensor-collector.service -f
 podman logs --follow mqtt-broker
 ```
 
-Export container health information:
+Inspect container state:
 
 ```bash
-podman healthcheck run sensor-collector
-podman inspect --format '{{.State.Health.Status}}' sensor-collector
+sudo systemctl status sensor-collector.service
+sudo podman container inspect --format '{{.State.Status}}' sensor-collector
 ```
 
 ## Conclusion
