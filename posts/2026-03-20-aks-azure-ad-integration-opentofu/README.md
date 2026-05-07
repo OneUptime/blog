@@ -36,7 +36,6 @@ resource "azurerm_kubernetes_cluster" "aad" {
   location            = var.location
   resource_group_name = var.resource_group_name
   dns_prefix          = var.project_name
-  kubernetes_version  = "1.28"
 
   default_node_pool {
     name                = "system"
@@ -54,8 +53,6 @@ resource "azurerm_kubernetes_cluster" "aad" {
 
   # Azure AD integration (managed AAD)
   azure_active_directory_role_based_access_control {
-    managed = true
-
     # Cluster admin groups have full cluster access
     admin_group_object_ids = [data.azuread_group.cluster_admins.object_id]
 
@@ -105,8 +102,8 @@ resource "azurerm_role_assignment" "developer_namespace" {
 ## Step 3: Kubernetes RBAC with AAD Groups
 
 ```hcl
-# After cluster creation, apply Kubernetes RBAC ClusterRoleBindings
-resource "kubernetes_cluster_role_binding" "developer_view" {
+# Optional: apply Kubernetes RBAC bindings when you want to author access as Kubernetes manifests
+resource "kubernetes_cluster_role_binding_v1" "developer_view" {
   metadata {
     name = "aad-developers-view"
   }
@@ -146,8 +143,7 @@ resource "azurerm_kubernetes_cluster" "workload_identity" {
   }
 
   azure_active_directory_role_based_access_control {
-    managed            = true
-    azure_rbac_enabled = true
+    azure_rbac_enabled     = true
     admin_group_object_ids = [data.azuread_group.cluster_admins.object_id]
   }
 
@@ -170,9 +166,8 @@ resource "azurerm_user_assigned_identity" "app" {
 
 # Federated credential links Kubernetes ServiceAccount to managed identity
 resource "azurerm_federated_identity_credential" "app" {
-  name                = "${var.project_name}-app-federated"
-  resource_group_name = var.resource_group_name
-  parent_id           = azurerm_user_assigned_identity.app.id
+  name                      = "${var.project_name}-app-federated"
+  user_assigned_identity_id = azurerm_user_assigned_identity.app.id
 
   issuer  = azurerm_kubernetes_cluster.workload_identity.oidc_issuer_url
   subject = "system:serviceaccount:production:app-service-account"
@@ -193,17 +188,17 @@ az aks get-credentials \
   --resource-group <rg> \
   --name <cluster-name>
 
-# First kubectl command triggers AAD login via browser/device code
+# On AKS 1.24+, interactive sign-in uses the exec/kubelogin flow automatically
 kubectl get nodes
 
 # Check current identity
 kubectl auth whoami
 
-# Get admin credentials (emergency only)
+# Get admin credentials (break-glass only; re-enable local accounts first if disabled)
 az aks get-credentials \
   --resource-group <rg> \
   --name <cluster-name> \
-  --admin  # Only works if local_account_disabled = false
+  --admin
 ```
 
 ## Conclusion
