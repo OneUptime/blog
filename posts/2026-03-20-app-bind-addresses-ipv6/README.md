@@ -8,7 +8,7 @@ Description: Configure application listen and bind addresses to support IPv6 acr
 
 ## Introduction
 
-Many applications default to binding on IPv4 only (`0.0.0.0`), preventing IPv6 clients from connecting. To accept IPv6 connections, applications must bind to the IPv6 wildcard address (`::`) or specific IPv6 addresses. This guide covers bind address configuration for common services.
+Many applications are configured to bind on IPv4 addresses only, preventing IPv6 clients from connecting. To accept IPv6 connections, applications must bind to the IPv6 wildcard address (`::`) or specific IPv6 addresses. This guide covers bind address configuration for common services.
 
 ## Understanding Bind Addresses
 
@@ -50,17 +50,19 @@ server {
 
 ```apache
 # /etc/apache2/ports.conf
+# Listen on all interfaces; on most platforms this covers IPv4 and IPv6
 Listen 80
-Listen [::]:80
 
 Listen 443
-Listen [::]:443
 
-# Or listen on all interfaces (IPv4 + IPv6 depending on OS)
-Listen *:80
+# If your Apache build uses separate IPv4 and IPv6 sockets, configure both explicitly:
+# Listen 0.0.0.0:80
+# Listen [::]:80
+# Listen 0.0.0.0:443
+# Listen [::]:443
 
-# Verify with ss after restart
-# ss -tlnp | grep apache
+# Verify IPv6 listeners after restart
+# ss -6 -tlnp
 ```
 
 ## PostgreSQL: Accepting IPv6 Connections
@@ -85,12 +87,12 @@ host    all     all     ::1/128             md5
 host    all     all     2001:db8::/32       md5
 
 # Allow all IPv6 (less secure)
-host    all     all     ::/0                md5
+host    all     all     ::0/0               md5
 ```
 
 ```bash
 sudo systemctl restart postgresql
-sudo ss -tlnp | grep 5432  # Should show :::5432
+sudo ss -6 -tlnp | grep 5432  # Should show an IPv6 listener on port 5432
 ```
 
 ## Redis: IPv6 Bind Address
@@ -109,32 +111,31 @@ bind 2001:db8::10
 
 ```bash
 sudo systemctl restart redis-server
-sudo ss -tlnp | grep 6379
+sudo ss -6 -tlnp | grep 6379
 ```
 
 ## Node.js: Setting Bind Address
 
 ```javascript
 const http = require('http');
-const net = require('net');
 
 // HTTP server - bind to IPv6 wildcard
 const server = http.createServer((req, res) => {
   res.end('Hello from IPv6');
 });
 
-// '::' = all IPv6 interfaces; with dual-stack OS, also accepts IPv4
+// '::' = all IPv6 interfaces; in most operating systems, this may also accept IPv4
 server.listen(3000, '::', () => {
   console.log('Listening on [::]:3000');
 });
 
-// Express equivalent
+// Express equivalent (separate app/process)
 const express = require('express');
 const app = express();
-app.listen(3000, '::', () => console.log('Express on [::]:3000'));
+app.listen(3001, '::', () => console.log('Express on [::]:3001'));
 
-// To bind to specific IPv6 address
-app.listen(3000, '2001:db8::10', () => console.log('Bound to 2001:db8::10'));
+// To bind Express to a specific IPv6 address instead, replace '::' with '2001:db8::10':
+// app.listen(3001, '2001:db8::10', () => console.log('Express on [2001:db8::10]:3001'));
 ```
 
 ## Python Flask/Gunicorn: IPv6 Binding
@@ -168,11 +169,13 @@ services:
   webapp:
     image: nginx
     ports:
+      # Requires Docker IPv6 support on the host/daemon
       # Expose on both IPv4 and IPv6
       - "0.0.0.0:80:80"    # IPv4
       - "[::]:80:80"        # IPv6
-      # Or shorthand (depends on Docker daemon configuration)
-      - "80:80"
+      # Or use the shorthand below instead of the two lines above; with Docker IPv6 enabled,
+      # it publishes on both IPv4 and IPv6 by default.
+      # - "80:80"
 ```
 
 ## Verifying Bind Addresses
@@ -183,14 +186,14 @@ After configuring, verify applications are listening on IPv6:
 # Show all listening TCP sockets with process names
 ss -tlnp
 
-# Filter for IPv6 listeners
-ss -tlnp | grep ':::'
+# Show only IPv6 listening TCP sockets
+ss -6 -tlnp
 
-# Expected output:
-# LISTEN  0  128  *:80   *:*  users:(("nginx",pid=1234,fd=6))
-# LISTEN  0  128  :::80  :::* users:(("nginx",pid=1234,fd=7))
+# Example output format varies by ss version, but you should see the service port
+# in the IPv6 listener table, for example:
+# LISTEN  0  128  [::]:80  [::]:*  users:(("nginx",pid=1234,fd=7))
 ```
 
 ## Conclusion
 
-Binding applications to IPv6 requires changing the listen address from `0.0.0.0` to `::` (or both). For web servers, add parallel `listen [::]:port` directives. For databases and caches, include `::` or `::1` in the bind address list. Always verify with `ss -tlnp` that `:::port` entries appear after configuration changes.
+Binding applications to IPv6 requires adding an IPv6 listen address such as `::` or a specific IPv6 address, and in some cases keeping a separate IPv4 listener as well. For web servers, add parallel `listen [::]:port` directives where required. For databases and caches, include `::` or `::1` in the bind address list. Always verify with `ss -6 -tlnp` that an IPv6 listener appears for the expected port after configuration changes.
