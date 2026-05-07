@@ -18,9 +18,9 @@ This guide provides a detailed comparison of both runtimes across architecture, 
 
 ## Architectural Overview
 
-Podman is a user-facing tool that handles the full container lifecycle: pulling images, building containers, running them, and managing networks and volumes. It operates without a daemon and runs containers as direct child processes.
+Podman is a user-facing tool that handles the full container lifecycle: pulling images, building containers, running them, and managing networks and volumes. It operates without a central daemon, using `conmon` to monitor container processes.
 
-containerd is a daemon-based runtime that provides a core set of container operations. It is designed to be embedded in higher-level systems. Docker uses containerd as its runtime backend, and Kubernetes uses it as its default container runtime through the CRI (Container Runtime Interface).
+containerd is a daemon-based runtime that provides a core set of container operations. It is designed to be embedded in higher-level systems. Docker uses containerd as its runtime backend, and many Kubernetes distributions use it as their container runtime through the CRI (Container Runtime Interface).
 
 ```text
 Podman architecture:
@@ -125,8 +125,8 @@ sudo ctr images rm docker.io/library/nginx:latest
 
 containerd is the default runtime for most Kubernetes distributions:
 
-```yaml
-# Kubernetes node configuration with containerd
+```toml
+# Kubernetes node configuration with containerd 1.x
 # /etc/containerd/config.toml
 version = 2
 
@@ -147,9 +147,9 @@ Podman does not serve as a Kubernetes node runtime, but it can generate and cons
 
 ```bash
 # Podman Kubernetes integration
-podman generate kube myapp > myapp.yaml
-podman play kube myapp.yaml
-podman play kube --down myapp.yaml
+podman kube generate myapp > myapp.yaml
+podman kube play myapp.yaml
+podman kube play --down myapp.yaml
 ```
 
 ## Networking
@@ -200,7 +200,7 @@ podman run -d --pod myapp --name web nginx
 podman run -d --pod myapp --name api my-api
 ```
 
-containerd does not have a native pod concept at the CLI level. Pods are managed by Kubernetes through the CRI interface.
+containerd does not provide a Podman-style pod workflow at the CLI level. Kubernetes pods are managed through the CRI interface.
 
 ## When to Choose Podman
 
