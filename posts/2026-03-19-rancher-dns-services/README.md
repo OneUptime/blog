@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, DNS, Service Discovery
 
 Description: A guide to setting up and configuring DNS for services in Rancher-managed Kubernetes clusters using CoreDNS.
 
-DNS is a critical component of Kubernetes networking, enabling pods and services to discover and communicate with each other using human-readable names. Rancher-managed clusters use CoreDNS as the default DNS provider. This guide covers how DNS works in Rancher and how to customize it for your needs.
+DNS is a critical component of Kubernetes networking, enabling pods and services to discover and communicate with each other using human-readable names. Rancher-managed RKE2 clusters use CoreDNS as the default DNS provider, and modern RKE clusters do as well. This guide covers how DNS works in Kubernetes clusters managed through Rancher and how to customize it for your needs.
 
 ## Prerequisites
 
@@ -38,7 +38,7 @@ You should see CoreDNS pods in Running state and a service with a ClusterIP.
 Create a test pod and verify DNS works:
 
 ```bash
-kubectl run dns-test --image=busybox:1.36 --rm -it -- sh
+kubectl run dns-test --image=busybox:1.36 --restart=Never --rm -it -- sh
 ```
 
 Inside the pod:
@@ -75,7 +75,7 @@ View the current CoreDNS configuration:
 kubectl get configmap coredns -n kube-system -o yaml
 ```
 
-The default Corefile looks like:
+A typical Corefile looks like:
 
 ```plaintext
 .:53 {
@@ -105,6 +105,8 @@ Add custom DNS records by editing the CoreDNS ConfigMap:
 ```bash
 kubectl edit configmap coredns -n kube-system
 ```
+
+On RKE2 clusters, make persistent CoreDNS changes through a `HelmChartConfig` for `rke2-coredns`; direct edits to the generated ConfigMap can be overwritten by the add-on manager.
 
 Add a `hosts` plugin for static entries:
 
@@ -253,35 +255,75 @@ db-2.db-headless.default.svc.cluster.local
 
 ## Step 9: Enable DNS Autoscaling
 
-For large clusters, scale CoreDNS automatically:
+For large clusters, scale CoreDNS automatically. RKE2-based Rancher clusters deploy CoreDNS with the autoscaler by default. If your cluster does not already include it, deploy the autoscaler with:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-dns-autoscaler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system:kube-dns-autoscaler
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["list", "watch"]
+- apiGroups: [""]
+  resources: ["replicationcontrollers/scale"]
+  verbs: ["get", "update"]
+- apiGroups: ["apps"]
+  resources: ["deployments/scale", "replicasets/scale"]
+  verbs: ["get", "update"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system:kube-dns-autoscaler
+subjects:
+- kind: ServiceAccount
+  name: kube-dns-autoscaler
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: system:kube-dns-autoscaler
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dns-autoscaler
+  name: kube-dns-autoscaler
   namespace: kube-system
+  labels:
+    k8s-app: kube-dns-autoscaler
 spec:
-  replicas: 1
   selector:
     matchLabels:
-      k8s-app: dns-autoscaler
+      k8s-app: kube-dns-autoscaler
   template:
     metadata:
       labels:
-        k8s-app: dns-autoscaler
+        k8s-app: kube-dns-autoscaler
     spec:
+      priorityClassName: system-cluster-critical
       containers:
       - name: autoscaler
-        image: registry.k8s.io/cpa/cluster-proportional-autoscaler:v1.8.9
+        image: registry.k8s.io/cpa/cluster-proportional-autoscaler:1.8.4
         command:
         - /cluster-proportional-autoscaler
         - --namespace=kube-system
-        - --configmap=dns-autoscaler
-        - --target=deployment/coredns
-        - --default-params={"linear":{"coresPerReplica":256,"nodesPerReplica":16,"min":2}}
+        - --configmap=kube-dns-autoscaler
+        - --target=Deployment/coredns
+        - --default-params={"linear":{"coresPerReplica":256,"nodesPerReplica":16,"preventSinglePointFailure":true,"includeUnschedulableNodes":true}}
         - --logtostderr=true
         - --v=2
+      serviceAccountName: kube-dns-autoscaler
 ```
 
 ## Troubleshooting
@@ -290,7 +332,7 @@ spec:
 - **Slow DNS**: Reduce ndots value or adjust cache TTL in CoreDNS config
 - **External DNS not working**: Verify forward configuration in Corefile
 - **Check CoreDNS logs**: `kubectl logs -n kube-system -l k8s-app=kube-dns`
-- **Test resolution**: `kubectl run test --image=busybox --rm -it -- nslookup <service-name>`
+- **Test resolution**: `kubectl run test --image=busybox --restart=Never --rm -it -- nslookup <service-name>`
 
 ## Summary
 
