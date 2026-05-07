@@ -8,7 +8,7 @@ Description: Configure AWS Network ACLs (NACLs) with IPv6 rules, understand stat
 
 ## Introduction
 
-AWS Network ACLs (NACLs) are subnet-level stateless firewalls that apply rules to all traffic entering or leaving a subnet. Unlike security groups which are stateful, NACLs require explicit rules for both inbound and outbound traffic, including return traffic. For IPv6, NACLs need separate entries with IPv6 CIDR blocks, and the default NACL must be updated to allow IPv6 traffic.
+AWS Network ACLs (NACLs) are subnet-level stateless firewalls that apply rules to all traffic entering or leaving a subnet. Unlike security groups which are stateful, NACLs require explicit rules for both inbound and outbound traffic, including return traffic. For IPv6, NACLs need separate entries with IPv6 CIDR blocks. The default NACL adds allow-all IPv6 rules only when the VPC has an associated IPv6 CIDR block, and if you've already modified the default NACL you might need to add IPv6 rules yourself.
 
 ## Understanding NACL Stateless Behavior
 
@@ -56,7 +56,7 @@ aws ec2 create-network-acl-entry \
     --rule-action allow \
     --egress
 
-# Allow all IPv6 outbound for instances to initiate connections
+# Optionally allow all IPv6 outbound for instances to initiate connections
 aws ec2 create-network-acl-entry \
     --network-acl-id "$NACL_ID" \
     --rule-number 200 \
@@ -137,7 +137,7 @@ resource "aws_network_acl" "public" {
     to_port         = 65535
   }
 
-  # Allow ICMPv6 inbound (NDP, PMTUD)
+  # Allow all ICMPv6 inbound
   ingress {
     rule_no         = 300
     protocol        = "58"
@@ -145,6 +145,8 @@ resource "aws_network_acl" "public" {
     ipv6_cidr_block = "::/0"
     from_port       = 0
     to_port         = 0
+    icmp_type       = -1
+    icmp_code       = -1
   }
 
   # ============ OUTBOUND RULES ============
@@ -176,21 +178,22 @@ resource "aws_network_acl" "public" {
 ## Default NACL Behavior
 
 ```bash
-# Default NACL allows ALL traffic (IPv4 and IPv6)
+# Default NACL allows all IPv4 traffic, and adds IPv6 allow rules
+# after the VPC has an associated IPv6 CIDR block
 # When you create a custom NACL, it DENIES ALL by default
 
 # Check default NACL rules
 aws ec2 describe-network-acls \
     --filters "Name=vpc-id,Values=$VPC_ID" \
-    --query "NetworkAcls[?IsDefault==\`true\`].Entries[*].{Rule:RuleNumber, Protocol:Protocol, IPv6:CidrIpv6, Action:RuleAction}"
+    --query "NetworkAcls[?IsDefault==\`true\`].Entries[*].{Rule:RuleNumber,Egress:Egress,Protocol:Protocol,IPv4:CidrBlock,IPv6:Ipv6CidrBlock,Action:RuleAction}"
 
-# Default rules:
-# Rule 32767: DENY all (*) IPv4
-# Rule 32767: DENY all (*) IPv6
-# Rule 100: ALLOW all IPv4 (in default NACL)
-# Rule 101: ALLOW all IPv6 (in default NACL)
+# Default rules (each exists separately for ingress and egress):
+# Rule 100: ALLOW all IPv4
+# Rule 101: ALLOW all IPv6 (only if the VPC has an associated IPv6 CIDR block)
+# Rule 32767: DENY all IPv4
+# Rule 32768: DENY all IPv6
 ```
 
 ## Conclusion
 
-AWS NACLs are stateless, requiring explicit rules for both inbound and outbound traffic including ephemeral return ports. For IPv6, all IPv4 rules must have corresponding IPv6 versions with `ipv6_cidr_block`. Always include ICMPv6 rules (protocol `58`) to allow NDP and Path MTU Discovery. Rule ordering matters - NACLs process rules from lowest to highest number and stop at the first match. Use paired rule numbers (100 for IPv4, 101 for IPv6) to keep corresponding rules adjacent and easy to audit.
+AWS NACLs are stateless, requiring explicit rules for both inbound and outbound traffic including ephemeral return ports. For dual-stack subnets, any rule you want to apply to IPv6 traffic needs a corresponding IPv6 entry with `ipv6_cidr_block`. If your workload needs ICMPv6 control traffic, include the appropriate ICMPv6 rules; for internet-reachable workloads, allow ICMPv6 Packet Too Big messages so Path MTU Discovery can work. Rule ordering matters - NACLs process rules from lowest to highest number and stop at the first match. Use paired rule numbers (100 for IPv4, 101 for IPv6) to keep corresponding rules adjacent and easy to audit.
