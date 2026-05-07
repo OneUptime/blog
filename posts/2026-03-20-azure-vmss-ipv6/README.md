@@ -8,7 +8,7 @@ Description: Configure Azure Virtual Machine Scale Sets with dual-stack IPv4 and
 
 ## Introduction
 
-Azure VM Scale Sets (VMSS) support dual-stack IPv6 networking by adding an IPv6 IP configuration to the scale set's NIC profile. As the scale set scales out, new VMs automatically receive both IPv4 and IPv6 addresses from the configured subnets. This is essential for autoscaling web applications that need to serve IPv6 clients.
+Azure VM Scale Sets (VMSS) support dual-stack IPv6 networking by adding an IPv6 IP configuration to the scale set's NIC profile. As the scale set scales out, new VMs automatically receive both IPv4 and IPv6 addresses from the configured dual-stack subnet. For dual-stack load balancing, attach an NSG to the subnet or NIC and allow Azure Load Balancer health probes, including IPv6 probes. This is essential for autoscaling web applications that need to serve IPv6 clients.
 
 ## Terraform VMSS with Dual-Stack Networking
 
@@ -34,9 +34,14 @@ resource "azurerm_lb" "vmss" {
   }
 }
 
-resource "azurerm_lb_backend_address_pool" "vmss" {
+resource "azurerm_lb_backend_address_pool" "vmss_ipv4" {
   loadbalancer_id = azurerm_lb.vmss.id
-  name            = "backend-vmss"
+  name            = "backend-vmss-ipv4"
+}
+
+resource "azurerm_lb_backend_address_pool" "vmss_ipv6" {
+  loadbalancer_id = azurerm_lb.vmss.id
+  name            = "backend-vmss-ipv6"
 }
 
 resource "azurerm_lb_rule" "http_ipv4" {
@@ -46,7 +51,7 @@ resource "azurerm_lb_rule" "http_ipv4" {
   frontend_port                  = 80
   backend_port                   = 80
   frontend_ip_configuration_name = "frontend-ipv4"
-  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.vmss.id]
+  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.vmss_ipv4.id]
   probe_id                       = azurerm_lb_probe.http.id
 }
 
@@ -57,7 +62,7 @@ resource "azurerm_lb_rule" "http_ipv6" {
   frontend_port                  = 80
   backend_port                   = 80
   frontend_ip_configuration_name = "frontend-ipv6"
-  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.vmss.id]
+  backend_address_pool_ids       = [azurerm_lb_backend_address_pool.vmss_ipv6.id]
   probe_id                       = azurerm_lb_probe.http.id
 }
 
@@ -66,7 +71,7 @@ resource "azurerm_lb_probe" "http" {
   name            = "http-probe"
   protocol        = "Http"
   port            = 80
-  request_path    = "/health"
+  request_path    = "/"
 }
 
 # VM Scale Set with dual-stack
@@ -82,7 +87,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "web" {
 
   admin_ssh_key {
     username   = "azureuser"
-    public_key = file("~/.ssh/id_rsa.pub")
+    public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
   }
 
   source_image_reference {
@@ -106,7 +111,7 @@ resource "azurerm_linux_virtual_machine_scale_set" "web" {
       primary                                = true
       subnet_id                              = azurerm_subnet.web.id
       version                                = "IPv4"
-      load_balancer_backend_address_pool_ids = [azurerm_lb_backend_address_pool.vmss.id]
+      load_balancer_backend_address_pool_ids = [azurerm_lb_backend_address_pool.vmss_ipv4.id]
     }
 
     ip_configuration {
@@ -115,8 +120,12 @@ resource "azurerm_linux_virtual_machine_scale_set" "web" {
       subnet_id = azurerm_subnet.web.id
       version   = "IPv6"
       # Backend pool association for IPv6 traffic
-      load_balancer_backend_address_pool_ids = [azurerm_lb_backend_address_pool.vmss.id]
+      load_balancer_backend_address_pool_ids = [azurerm_lb_backend_address_pool.vmss_ipv6.id]
     }
+  }
+
+  lifecycle {
+    ignore_changes = [instances]
   }
 
   # Custom data script for initial configuration
@@ -129,11 +138,10 @@ resource "azurerm_linux_virtual_machine_scale_set" "web" {
   EOF
   )
 
-  # Autoscaling profile
-  automatic_instance_repair {
-    enabled      = true
-    grace_period = "PT30M"
-  }
+  depends_on = [
+    azurerm_lb_rule.http_ipv4,
+    azurerm_lb_rule.http_ipv6,
+  ]
 
   tags = { Name = "web-vmss" }
 }
@@ -197,4 +205,4 @@ curl -6 "http://[${IPV6_LB}]/"
 
 ## Conclusion
 
-Azure VMSS dual-stack requires configuring two IP configurations in the NIC profile - one IPv4 (primary) and one IPv6. Both IP configurations can be associated with load balancer backend pools to receive traffic from the respective IPv4 and IPv6 LB frontend rules. New instances added during scale-out automatically receive both IPv4 and IPv6 addresses. The Standard Load Balancer with separate IPv4 and IPv6 frontend configurations handles traffic distribution to the VMSS backend pool for both protocols.
+Azure VMSS dual-stack requires configuring two IP configurations in the NIC profile - one IPv4 (primary) and one IPv6. Each IP configuration should be associated with its matching load balancer backend pool so the IPv4 and IPv6 frontend rules can target the same VMSS without requiring Floating IP. New instances added during scale-out automatically receive both IPv4 and IPv6 addresses. The Standard Load Balancer with separate IPv4 and IPv6 frontend configurations handles traffic distribution for both protocols, and an attached NSG must allow Azure Load Balancer probes for IPv6 health checks to succeed.
