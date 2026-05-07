@@ -8,31 +8,40 @@ Description: Enable IPv6 for AWS Lambda functions, configure VPC-attached functi
 
 ## Introduction
 
-AWS Lambda supports IPv6 in two contexts: Lambda Function URLs with dualstack mode (enabling direct IPv6 invocation), and VPC-connected Lambda functions that can use IPv6-enabled subnets to make outbound IPv6 connections. IPv6 in Lambda is particularly useful for functions that call IPv6-only endpoints or need to operate in IPv6-only VPC environments.
+AWS Lambda supports IPv6 in two contexts: Lambda Function URLs, which are dual-stack by default and support direct IPv6 invocation, and VPC-connected Lambda functions that can make outbound IPv6 connections from dual-stack subnets when `Ipv6AllowedForDualStack` is enabled. IPv6 in Lambda is particularly useful for functions that call IPv6-only endpoints from dual-stack VPC environments.
 
 ## Lambda Function URLs with IPv6
 
 ```bash
-# Create a Lambda function URL with dualstack mode
-
-FUNCTION_ARN="arn:aws:lambda:us-east-1:123456789:function:my-function"
+# Create a Lambda function URL
+FUNCTION_NAME="my-function"
 
 aws lambda create-function-url-config \
-    --function-name my-function \
+    --function-name "$FUNCTION_NAME" \
     --auth-type NONE \
     --invoke-mode BUFFERED
 
-# Enable dualstack on function URL (HTTP/2 with IPv6)
-aws lambda update-function-url-config \
-    --function-name my-function \
-    --invoke-mode BUFFERED
+# For AWS CLI-created public function URLs, add both permissions
+aws lambda add-permission \
+    --function-name "$FUNCTION_NAME" \
+    --statement-id FunctionURLAllowPublicAccess \
+    --action lambda:InvokeFunctionUrl \
+    --principal "*" \
+    --function-url-auth-type NONE
+
+aws lambda add-permission \
+    --function-name "$FUNCTION_NAME" \
+    --statement-id FunctionURLInvokeAllowPublicAccess \
+    --action lambda:InvokeFunction \
+    --principal "*" \
+    --invoked-via-function-url
 
 # Get the function URL
 aws lambda get-function-url-config \
-    --function-name my-function \
+    --function-name "$FUNCTION_NAME" \
     --query "FunctionUrl"
 
-# Test IPv6 access to function URL
+# Function URLs are dual-stack by default, so IPv6 clients can invoke them directly
 FUNCTION_URL="https://abc123.lambda-url.us-east-1.on.aws/"
 curl -6 "$FUNCTION_URL"
 ```
@@ -53,10 +62,11 @@ resource "aws_lambda_function" "api" {
   # VPC configuration for IPv6 outbound
   vpc_config {
     subnet_ids = [
-      aws_subnet.private_a.id,  # IPv6-enabled subnets
+      aws_subnet.private_a.id,  # Dual-stack subnets
       aws_subnet.private_b.id,
     ]
     security_group_ids = [aws_security_group.lambda.id]
+    ipv6_allowed_for_dual_stack = true
   }
 
   environment {
@@ -68,7 +78,7 @@ resource "aws_lambda_function" "api" {
   tags = { Name = "ipv6-api-lambda" }
 }
 
-# Function URL for direct IPv6 invocation
+# Function URL for direct invocation (dual-stack by default)
 resource "aws_lambda_function_url" "api" {
   function_name      = aws_lambda_function.api.function_name
   authorization_type = "AWS_IAM"
@@ -112,8 +122,8 @@ output "function_url" {
 const https = require('https');
 
 exports.handler = async (event) => {
-    // This Lambda is in a VPC with IPv6-enabled subnets
-    // and Egress-Only IGW for IPv6 outbound
+    // This Lambda is in dual-stack subnets with
+    // ipv6_allowed_for_dual_stack enabled
 
     const options = {
         hostname: 'ipv6.icanhazip.com',
@@ -144,38 +154,39 @@ exports.handler = async (event) => {
 };
 ```
 
-## API Gateway with IPv6 (via CloudFront)
+## API Gateway with IPv6
 
 ```bash
-# API Gateway itself doesn't natively support IPv6 directly
-# Use CloudFront in front of API Gateway for IPv6
+# API Gateway HTTP APIs can expose dual-stack endpoints directly
 
-# 1. Create API Gateway HTTP API
+# 1. Create API Gateway HTTP API with dual-stack IP address support
 API_ID=$(aws apigatewayv2 create-api \
     --name ipv6-api \
     --protocol-type HTTP \
+    --ip-address-type dualstack \
     --query "ApiId" \
     --output text)
 
-# 2. Create CloudFront distribution pointing to API Gateway
-# Set is_ipv6_enabled = true in CloudFront
-# Use API Gateway invoke URL as origin
+# 2. Get the API endpoint and confirm the IP address type
+aws apigatewayv2 get-api \
+    --api-id "$API_ID" \
+    --query "{ApiEndpoint:ApiEndpoint,IpAddressType:IpAddressType}"
 ```
 
 ## Lambda VPC IPv6 Outbound
 
 ```bash
 # For Lambda in VPC to make IPv6 outbound calls:
-# 1. Lambda must be in IPv6-enabled subnet
-# 2. Subnet route table must have ::/0 → EIGW
-# 3. Lambda security group must allow IPv6 egress
+# 1. Lambda must be in dual-stack subnets
+# 2. Enable Ipv6AllowedForDualStack on the function VPC config
+# 3. Subnet route table must have ::/0 → EIGW for outbound-only internet access
+# 4. Lambda security group must allow IPv6 egress
 
-# Verify Lambda can reach IPv6 endpoints
-# Add test code to the function:
-# const { exec } = require('child_process');
-# exec('curl -6 https://ipv6.icanhazip.com', callback)
+aws lambda update-function-configuration \
+    --function-name my-function \
+    --vpc-config Ipv6AllowedForDualStack=true,SubnetIds=subnet-12345678,subnet-abcdef12,SecurityGroupIds=sg-12345678
 ```
 
 ## Conclusion
 
-Lambda IPv6 support comes through two paths: Function URLs that can be accessed over IPv6 directly (when in dualstack mode), and VPC-connected functions that can make outbound IPv6 connections through IPv6-enabled subnets with Egress-Only Internet Gateways. For public IPv6 access to API-style Lambda functions, put CloudFront (with `is_ipv6_enabled = true`) in front of Lambda Function URLs or API Gateway. Lambda functions themselves have no IPv4/IPv6 settings - IPv6 behavior depends entirely on the VPC and subnet configuration.
+Lambda IPv6 support comes through two paths: Function URLs, which are dual-stack by default and can be accessed over IPv4 or IPv6, and VPC-connected functions that can make outbound IPv6 connections through dual-stack subnets when `Ipv6AllowedForDualStack` is enabled. For public IPv6 access to API-style Lambda functions, use Lambda Function URLs or configure API Gateway with a dualstack IP address type. CloudFront is optional, not required for IPv6 support. For VPC-connected functions, IPv6 behavior depends on the function's VPC configuration plus the subnet routing and security group rules.
