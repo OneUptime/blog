@@ -16,7 +16,7 @@ Podman is a daemonless container engine that offers a Docker-compatible REST API
 
 ## Understanding the Podman REST API
 
-Podman provides a REST API that is largely compatible with the Docker Engine API. This means tools and libraries built for Docker can often work with Podman by simply pointing them at the Podman API socket. The API supports two sets of endpoints: the Podman-native endpoints under `/v4.0.0/libpod/` and the Docker-compatible endpoints under `/v1.41/`.
+Podman provides a REST API that is largely compatible with the Docker Engine API. This means tools and libraries built for Docker can often work with Podman by simply pointing them at the Podman API socket. The API supports two sets of endpoints: the Podman-native Libpod endpoints, such as `/v4.0.0/libpod/`, and the Docker-compatible endpoints, such as `/v1.40/`.
 
 The API service can listen on either a Unix socket or a TCP port, depending on your needs. Unix sockets are the default and recommended approach for local access, while TCP listeners are useful for remote management.
 
@@ -37,7 +37,7 @@ sudo dnf install -y podman
 podman --version
 ```
 
-You should see output like `podman version 4.9.3` or later.
+You should see output such as `podman version 4.9.3`, depending on your distribution.
 
 ## Starting the API Service Manually
 
@@ -69,13 +69,13 @@ If you need remote access to the API, you can bind it to a TCP port instead of a
 
 ```bash
 # Start the API on TCP port 8080, listening on all interfaces
-podman system service --time 0 tcp:0.0.0.0:8080
+podman system service --time 0 tcp://0.0.0.0:8080
 
 # Start the API on TCP port 8080, listening only on localhost
-podman system service --time 0 tcp:127.0.0.1:8080
+podman system service --time 0 tcp://127.0.0.1:8080
 ```
 
-**Warning**: Exposing the Podman API over TCP without TLS gives anyone with network access full control over your containers. Always restrict access with firewall rules or use a reverse proxy with TLS in production environments.
+**Warning**: Exposing the Podman API over TCP without mutual TLS gives anyone with network access full control over your containers. Prefer SSH forwarding for remote access, or restrict access with firewall rules and require client authentication in production environments.
 
 ## Verifying the API Is Running
 
@@ -96,7 +96,7 @@ A successful response returns a JSON object with system information including th
 curl --unix-socket /tmp/podman.sock http://localhost/version
 
 # You can also use the Docker-compatible endpoint
-curl --unix-socket /tmp/podman.sock http://localhost/v1.41/info
+curl --unix-socket /tmp/podman.sock http://localhost/v1.40/info
 ```
 
 ## Using systemd to Manage the API Service
@@ -133,7 +133,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/podman system service --time 0 tcp:127.0.0.1:8080
+ExecStart=/usr/bin/podman system service --time 0 tcp://127.0.0.1:8080
 Restart=always
 RestartSec=5
 
@@ -183,12 +183,14 @@ for c in containers:
 When exposing the API over TCP, take steps to secure it.
 
 ```bash
-# Use a reverse proxy like nginx with TLS
+# Use a reverse proxy like nginx with mutual TLS
 # Example nginx configuration snippet:
 # server {
 #     listen 443 ssl;
 #     ssl_certificate /etc/ssl/certs/podman.crt;
 #     ssl_certificate_key /etc/ssl/private/podman.key;
+#     ssl_client_certificate /etc/ssl/certs/client-ca.crt;
+#     ssl_verify_client on;
 #     location / {
 #         proxy_pass http://127.0.0.1:8080;
 #     }
@@ -230,4 +232,4 @@ If you receive permission errors, ensure your user has the necessary privileges 
 
 ## Conclusion
 
-Enabling the Podman REST API unlocks programmatic access to all container management operations. You can start the API manually for quick testing, use systemd for production deployments, and choose between Unix sockets for local access or TCP for remote management. The Docker-compatible endpoints make it straightforward to integrate Podman with existing tools and workflows. Always secure the API when exposing it beyond localhost, using TLS, SSH tunnels, or firewall rules to protect your container environment.
+Enabling the Podman REST API unlocks programmatic access to all container management operations. You can start the API manually for quick testing, use systemd for production deployments, and choose between Unix sockets for local access or TCP for remote management. The Docker-compatible endpoints make it straightforward to integrate Podman with existing tools and workflows. Always secure the API when exposing it beyond localhost, using mutual TLS, SSH tunnels, or firewall rules to protect your container environment.
