@@ -11,12 +11,13 @@ Rancher's custom cluster option lets you build a Kubernetes cluster on your own 
 ## Prerequisites
 
 - A running Rancher installation (v2.7 or later)
-- At least one Linux node (Ubuntu 20.04+, RHEL 8+, or SLES 15+) with:
+- One or more supported Linux nodes for the Kubernetes distribution you choose. Verify the current Rancher support matrix for validated operating system versions.
   - Minimum 4 GB RAM and 2 CPUs per node
-  - A supported container runtime (containerd)
   - Network connectivity between all nodes
-  - SSH access to each node
-- Ports 6443, 9345, 10250, 2379, 2380 open between nodes
+  - Shell or console access to each node
+  - RKE2 and K3s install and manage `containerd` for you, so you do not need to preinstall Docker
+- Connectivity from each node to the Rancher server on port 443
+- The required ports for your chosen Kubernetes distribution and CNI open between nodes. For a typical RKE2 cluster, this includes `6443/TCP`, `9345/TCP`, `10250/TCP`, `2379-2380/TCP`, plus CNI-specific ports such as `8472/UDP` and `9099/TCP` for Canal or `4789/UDP` for Calico VXLAN
 
 ## Step 1: Access the Cluster Creation Wizard
 
@@ -64,13 +65,13 @@ If your nodes are running on a cloud provider, select the appropriate cloud prov
 
 ### Private Registry
 
-If you use a private container registry, configure it in the advanced options:
+If you use a private container registry, configure it in the cluster settings. For RKE2 or K3s, a minimal `registries.yaml` mirror configuration looks like:
 
 ```yaml
 mirrors:
   docker.io:
     endpoint:
-      - https://registry.yourdomain.com
+      - "https://registry.yourdomain.com"
 ```
 
 ### Authorized Cluster Endpoint
@@ -107,7 +108,7 @@ curl -fL https://rancher.yourdomain.com/system-agent-install.sh | \
   --etcd --controlplane
 ```
 
-SSH into each control plane node and run the command:
+Log in to each control plane node and run the command:
 
 ```bash
 ssh user@node1
@@ -142,7 +143,7 @@ Back in the Rancher UI, watch the cluster provisioning progress:
 
 1. Navigate to **Cluster Management**
 2. Click on your new cluster
-3. Watch the provisioning status change from `Provisioning` to `Active`
+3. Watch the cluster status until it becomes `Active`
 
 You can also check progress from the command line if you have kubectl access:
 
@@ -181,23 +182,11 @@ After the cluster is created, configure additional features:
 
 ### Enable Monitoring
 
-Navigate to your cluster in Rancher, go to **Apps**, and install the **Monitoring** chart to get Prometheus and Grafana dashboards.
+Navigate to your cluster in Rancher, open **Cluster Tools**, and install **Monitoring** to get Prometheus and Grafana dashboards.
 
 ### Configure Storage
 
-Set up a default storage class for persistent volumes:
-
-```yaml
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: local-storage
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: rancher.io/local-path
-reclaimPolicy: Delete
-volumeBindingMode: WaitForFirstConsumer
-```
+Set up or verify a default storage class for persistent volumes. K3s includes the `local-path` storage class by default. On RKE2, install a CSI driver or storage platform such as Longhorn before setting a default storage class.
 
 ### Set Up Namespaces and Projects
 
