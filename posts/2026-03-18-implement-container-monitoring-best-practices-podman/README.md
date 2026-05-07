@@ -59,6 +59,7 @@ In a Containerfile:
 FROM docker.io/library/node:20-alpine
 WORKDIR /app
 COPY . .
+RUN apk add --no-cache curl
 RUN npm ci --production
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=60s \
@@ -129,6 +130,7 @@ app.get('/health', async (req, res) => {
 Deploy a complete monitoring stack:
 
 ```bash
+mkdir -p ~/monitoring
 podman network create monitoring
 
 # Prometheus
@@ -136,6 +138,9 @@ cat > ~/monitoring/prometheus.yml << 'EOF'
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
 
 scrape_configs:
   - job_name: 'prometheus'
@@ -156,13 +161,31 @@ scrape_configs:
     metrics_path: '/metrics'
 EOF
 
+cat > ~/monitoring/alerts.yml << 'EOF'
+groups: []
+EOF
+
 podman run -d \
   --name prometheus \
   --network monitoring \
   -p 9090:9090 \
   -v ~/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z \
+  -v ~/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro,Z \
   -v prometheus-data:/prometheus:Z \
   docker.io/prom/prometheus:latest
+
+# cAdvisor for container metrics
+podman run -d \
+  --name cadvisor \
+  --network monitoring \
+  -p 8080:8080 \
+  --privileged \
+  --device /dev/kmsg \
+  -v /:/rootfs:ro \
+  -v /var/run:/var/run:ro \
+  -v /sys:/sys:ro \
+  -v /var/lib/containers:/var/lib/containers:ro \
+  gcr.io/cadvisor/cadvisor:latest
 
 # Node Exporter for host metrics
 podman run -d \
@@ -341,7 +364,7 @@ groups:
   - name: container_alerts
     rules:
       - alert: ContainerHighCPU
-        expr: container_cpu_usage_seconds_total > 0.8
+        expr: sum by (name) (rate(container_cpu_usage_seconds_total{name!=""}[5m])) > 0.8
         for: 5m
         labels:
           severity: warning
@@ -357,7 +380,7 @@ groups:
           summary: "High memory usage on {{ $labels.name }}"
 
       - alert: ContainerRestarting
-        expr: increase(container_restart_count[1h]) > 3
+        expr: changes(container_start_time_seconds{name!=""}[1h]) > 3
         labels:
           severity: critical
         annotations:
@@ -372,6 +395,12 @@ groups:
           summary: "High error rate on {{ $labels.job }}"
 ```
 
+Reload Prometheus after updating the rules file:
+
+```bash
+podman kill --signal HUP prometheus
+```
+
 ## Quadlet for Monitoring Stack
 
 ```ini
@@ -379,9 +408,10 @@ groups:
 [Container]
 Image=docker.io/prom/prometheus:latest
 ContainerName=prometheus
-Network=monitoring.network
+Network=monitoring
 PublishPort=9090:9090
-Volume=~/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
+Volume=%h/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
+Volume=%h/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro,Z
 Volume=prometheus-data:/prometheus:Z
 
 [Service]
