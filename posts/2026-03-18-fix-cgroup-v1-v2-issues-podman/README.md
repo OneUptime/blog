@@ -10,7 +10,7 @@ Description: A detailed guide to diagnosing and fixing cgroup v1 vs v2 compatibi
 
 > Control groups (cgroups) manage resource allocation for containers. The transition from cgroup v1 to v2 has introduced compatibility issues that affect Podman container startup, resource limits, and rootless operation. This guide explains how to identify and fix these issues.
 
-Linux control groups (cgroups) are the kernel mechanism that containers use to limit CPU, memory, I/O, and other resources. The Linux kernel supports two versions: cgroup v1 and cgroup v2. Most modern distributions have switched to cgroup v2 as the default, but many container images, applications, and tools still expect cgroup v1. This mismatch causes containers to fail to start, resource limits to be ignored, or cryptic errors about missing cgroup controllers.
+Linux control groups (cgroups) are the kernel mechanism that containers use to limit CPU, memory, I/O, and other resources. The Linux kernel supports two versions: cgroup v1 and cgroup v2. Most modern distributions have switched to cgroup v2 as the default, but some older container runtimes, applications, and tools that inspect `/sys/fs/cgroup` directly still expect cgroup v1. This mismatch causes containers to fail to start, resource limits to be ignored, or cryptic errors about missing cgroup controllers.
 
 ---
 
@@ -24,13 +24,13 @@ The first step in troubleshooting is identifying which cgroup version your syste
 mount | grep cgroup
 ```
 
-If you see `cgroup2` in the output, your system uses cgroup v2:
+If you see a single `cgroup2` mount at `/sys/fs/cgroup`, your system uses the unified cgroup v2 hierarchy:
 
 ```text
 cgroup2 on /sys/fs/cgroup type cgroup2 (rw,nosuid,nodev,noexec,relatime)
 ```
 
-If you see multiple `cgroup` mounts (one per controller), you are on cgroup v1:
+If you see multiple `cgroup` mounts (one per controller), you are on a cgroup v1 or hybrid hierarchy:
 
 ```text
 cgroup on /sys/fs/cgroup/cpu type cgroup (rw,nosuid,nodev,noexec,relatime,cpu)
@@ -43,7 +43,7 @@ A more direct check:
 stat -fc %T /sys/fs/cgroup/
 ```
 
-Output `cgroup2fs` means v2. Output `tmpfs` means v1.
+Output `cgroup2fs` means unified v2. Output `tmpfs` means a legacy or hybrid hierarchy; in hybrid mode, a cgroup v2 mount may also exist below `/sys/fs/cgroup/unified`.
 
 You can also check through Podman:
 
@@ -64,7 +64,7 @@ This happens when a cgroup v2 controller is not enabled for your user's cgroup s
 Check which controllers are available:
 
 ```bash
-cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.controllers
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
 ```
 
 If controllers like `cpu`, `memory`, or `io` are missing, they need to be delegated.
@@ -75,7 +75,7 @@ Create or edit the systemd configuration for user delegates:
 
 ```bash
 sudo mkdir -p /etc/systemd/system/user@.service.d/
-sudo cat > /etc/systemd/system/user@.service.d/delegate.conf << 'EOF'
+cat << 'EOF' | sudo tee /etc/systemd/system/user@.service.d/delegate.conf > /dev/null
 [Service]
 Delegate=cpu cpuset io memory pids
 EOF
@@ -96,7 +96,7 @@ sudo systemctl restart user@$(id -u).service
 Verify the controllers are now available:
 
 ```bash
-cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/cgroup.controllers
+cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers
 ```
 
 ### Error: Failed to Create Container with Resource Limits
@@ -115,7 +115,7 @@ This occurs when rootless Podman tries to set resource limits but the cgroup con
 If you have applications that require cgroup v1, you can switch the system to use v1 by adding a kernel parameter:
 
 ```bash
-sudo grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0"
+sudo grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0 systemd.legacy_systemd_cgroup_controller=1"
 ```
 
 On systems using GRUB directly:
@@ -123,7 +123,7 @@ On systems using GRUB directly:
 ```bash
 sudo vim /etc/default/grub
 # Add to GRUB_CMDLINE_LINUX:
-# systemd.unified_cgroup_hierarchy=0
+# systemd.unified_cgroup_hierarchy=0 systemd.legacy_systemd_cgroup_controller=1
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 ```
 
@@ -142,7 +142,7 @@ sudo reboot
 
 ### Use Hybrid Mode
 
-Hybrid mode mounts both cgroup v1 and v2 simultaneously. This provides compatibility with older tools while allowing newer ones to use v2:
+Hybrid mode mounts both cgroup v1 and v2 simultaneously. This provides compatibility with older tools while allowing newer ones to use v2. On systemd releases that still support these kernel parameters, disable the unified hierarchy but keep systemd off the legacy cgroup controller:
 
 ```bash
 sudo grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=0 systemd.legacy_systemd_cgroup_controller=0"
@@ -278,7 +278,7 @@ podman --log-level=debug run --memory 512m myimage 2>&1 | grep -i cgroup
 
 ### Fedora / RHEL 9+
 
-These use cgroup v2 by default with `crun` as the runtime. They should work out of the box with rootless Podman. If controllers are not delegated, apply the systemd delegate fix.
+Fedora and RHEL 9 use cgroup v2 by default. RHEL 9 uses `crun` as the default runtime; Fedora commonly uses `crun`, but you should verify with `podman info`. They should work out of the box with rootless Podman. If controllers are not delegated, apply the systemd delegate fix.
 
 ### Ubuntu 22.04+
 
@@ -290,7 +290,7 @@ sudo apt install crun podman
 
 ### CentOS/RHEL 7-8
 
-These use cgroup v1 by default. Podman works with `runc` and `cgroupfs` manager. To switch to v2, update the kernel parameters as described above.
+RHEL 8 uses cgroup v1 by default and RHEL 8's default runtime is `runc`; CentOS 7 also uses cgroup v1 by default. Rootless Podman has limited cgroup support on cgroup v1, so use cgroup v2 if you need rootless resource limits. To switch to v2, update the kernel parameters as described above.
 
 ## Conclusion
 
