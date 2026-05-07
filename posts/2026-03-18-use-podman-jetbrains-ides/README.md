@@ -10,7 +10,7 @@ Description: A guide to configuring JetBrains IDEs like IntelliJ IDEA, PyCharm, 
 
 > JetBrains IDEs have built-in Docker integration that works with Podman once you expose the Podman API socket and configure the IDE connection settings.
 
-JetBrains IDEs such as IntelliJ IDEA, PyCharm, WebStorm, and GoLand all ship with Docker integration out of the box. This integration lets you run applications inside containers, use container-based interpreters, and manage images directly from the IDE. While Docker is the default, Podman can serve as a drop-in replacement. This post covers how to set up Podman as the container engine for JetBrains IDEs on Linux, macOS, and Windows.
+JetBrains IDEs such as IntelliJ IDEA Ultimate, PyCharm Professional, WebStorm, and GoLand ship with Docker integration out of the box. This integration lets you run applications inside containers, use container-based interpreters, and manage images directly from the IDE. While Docker is the default, Podman can serve as a drop-in replacement. This post covers how to set up Podman as the container engine for JetBrains IDEs on Linux, macOS, and Windows.
 
 ---
 
@@ -20,7 +20,7 @@ You need the following before starting:
 
 - A JetBrains IDE (2022.3 or later recommended for best Podman compatibility)
 - Podman 4.0 or later
-- The Docker plugin enabled in your JetBrains IDE (it ships pre-installed)
+- The Docker plugin enabled in your JetBrains IDE (it is bundled in WebStorm, GoLand, PyCharm Professional, and IntelliJ IDEA Ultimate; install it manually in Community editions)
 
 Install and start Podman on your system:
 
@@ -28,7 +28,7 @@ Install and start Podman on your system:
 # macOS
 
 brew install podman
-podman machine init
+podman machine init --rootful=true
 podman machine start
 
 # Ubuntu/Debian
@@ -68,7 +68,7 @@ On macOS, Podman runs inside a Linux VM. You need to find the socket path that t
 podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}'
 
 # The output will be something like:
-# /Users/yourname/.local/share/containers/podman/machine/podman.sock
+# /var/folders/.../T/podman/podman-machine-default-api.sock
 
 # Alternatively, set DOCKER_HOST for broader compatibility
 export DOCKER_HOST="unix://$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}')"
@@ -76,18 +76,15 @@ export DOCKER_HOST="unix://$(podman machine inspect --format '{{.ConnectionInfo.
 
 ### Windows Setup
 
-On Windows, Podman exposes a named pipe. After initializing and starting the Podman machine, find the connection details:
+On Windows, Podman runs inside a VM as well. After initializing and starting the Podman machine, inspect the available connection details:
 
 ```powershell
 # Start the Podman machine
-podman machine init
+podman machine init --rootful=true
 podman machine start
 
-# List connections to find the socket/pipe path
+# List available Podman connections
 podman system connection list
-
-# The default pipe is typically:
-# npipe:////./pipe/podman-machine-default
 ```
 
 ## Configuring the JetBrains IDE
@@ -97,11 +94,11 @@ Open your JetBrains IDE and navigate to the Docker connection settings.
 1. Go to **Settings/Preferences** (Ctrl+Alt+S or Cmd+,)
 2. Navigate to **Build, Execution, Deployment > Docker**
 3. Click the **+** button to add a new Docker connection
-4. Select the connection type based on your operating system
+4. In current JetBrains IDE versions, select **Podman**. If your IDE does not show a Podman option, use the OS-specific fallback settings below.
 
 ### Linux Configuration
 
-Select **Unix socket** and enter the Podman socket path:
+On Linux, newer JetBrains IDEs can usually detect Podman directly. If you need the manual fallback, select **Unix socket** and enter:
 
 ```text
 unix:///run/user/1000/podman/podman.sock
@@ -111,23 +108,17 @@ Replace `1000` with your actual user ID (run `id -u` to find it).
 
 ### macOS Configuration
 
-Select **Unix socket** and enter the path from the `podman machine inspect` command:
+On macOS, select **Podman** and choose the running Podman machine. If you need the manual fallback, use the exact socket path from the `podman machine inspect` command:
 
 ```text
-unix:///Users/yourname/.local/share/containers/podman/machine/podman.sock
+unix:///var/folders/.../T/podman/podman-machine-default-api.sock
 ```
-
-Alternatively, if you have Podman Desktop installed, you can select **Podman** from the connection type dropdown in newer JetBrains IDE versions.
 
 ### Windows Configuration
 
-Select **TCP socket** or **Named pipe** and enter:
+On Windows, select **Podman** and choose the running Podman machine. If you need manual fallback details, use the connection information reported by `podman system connection list` rather than assuming a fixed named pipe.
 
-```text
-npipe:////./pipe/podman-machine-default
-```
-
-After entering the connection details, click **Test Connection**. You should see a success message with the Podman version.
+After selecting the connection or entering the fallback details, click **Test Connection**. You should see a success message with the Podman version.
 
 ## Using Container-Based Interpreters
 
@@ -160,23 +151,28 @@ RUN pip install --no-cache-dir \
 
 PyCharm will build the image using Podman and configure the interpreter to run inside the resulting container.
 
-### Node.js Interpreter in WebStorm
+### Node.js Runtime in WebStorm
 
-1. Go to **Settings > Languages & Frameworks > Node.js**
-2. Click the **...** button next to the Node interpreter field
+Make sure the Node.js Remote Interpreter plugin is installed.
+
+1. Go to **Settings > Languages & Frameworks > JavaScript Runtime**
+2. Click the **...** button next to the Node runtime field
 3. Click **+** and select **Add Remote**
 4. Choose **Docker** and select your Podman connection
 5. Pick an image like `node:20-bookworm`
 
 ### Java/Kotlin in IntelliJ IDEA
 
-For Java projects, you can configure the JDK to run inside a container:
+For Java projects, use a Docker run target to run and debug the application inside a container:
 
-1. Go to **File > Project Structure > SDKs**
-2. Click **+** and select **Add JDK**
-3. Choose **Download JDK** and pick a Docker-based option
+1. Go to **Run > Edit Configurations**
+2. Select your existing **Application** run configuration
+3. Expand the **Run on** list and select **Docker**
+4. Pull or select an image such as `eclipse-temurin:21-jdk`
 
-Or use a run configuration that executes inside a container:
+IntelliJ IDEA will detect the JDK in the container and run the application there.
+
+Or use a Dockerfile run configuration that builds and runs a container:
 
 ```dockerfile
 FROM eclipse-temurin:21-jdk
@@ -232,13 +228,13 @@ services:
       - "6379:6379"
 ```
 
-To use this with Podman, install `podman-compose`:
+To use this with Podman, make sure a Compose provider is available. Current `podman compose` is a thin wrapper around an external provider such as `docker-compose` or `podman-compose`:
 
 ```bash
-pip install podman-compose
+podman compose version
 ```
 
-Then in your IDE, create a **Docker Compose** run configuration pointing at the compose file.
+If that command fails, install a Compose provider and try again. Then in your IDE, create a **Docker Compose** run configuration pointing at the compose file.
 
 ## Integrating Podman with Build Tools
 
@@ -302,27 +298,31 @@ systemctl --user restart podman.socket
 This typically means the socket path is wrong. Double-check with:
 
 ```bash
-# Verify the socket exists
+# On Linux, verify the rootless socket exists
 ls -la $XDG_RUNTIME_DIR/podman/podman.sock
 
-# Test the API manually with curl
+# On macOS, print the current host socket path
+podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}'
+
+# On Linux, test the API manually with curl
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock http://localhost/_ping
 ```
 
 **Volumes not syncing changes on macOS:**
 
-The Podman machine VM may need volume mounts configured:
+Your home directory is mounted into the Podman machine by default. If your project lives elsewhere, recreate the machine with an additional mount:
 
 ```bash
-# Stop the machine and add a mount
+# Recreate the machine with an explicit mount
 podman machine stop
-podman machine init --volume /Users:/Users
+podman machine rm -f
+podman machine init --rootful=true -v /path/on/host:/path/in/vm
 podman machine start
 ```
 
-**Slow image pulls:**
+**Short image names resolving unexpectedly:**
 
-Configure registry mirrors in Podman's configuration:
+Configure search registries in Podman's configuration:
 
 ```bash
 # Edit the registries configuration
@@ -336,4 +336,4 @@ EOF
 
 ## Conclusion
 
-JetBrains IDEs work well with Podman once the API socket is configured. The key is enabling the Podman socket service, pointing the IDE at the correct socket path, and ensuring volume mounts are set up properly on macOS. From there, you can use container-based interpreters, run configurations, and Docker Compose workflows just as you would with Docker. The rootless nature of Podman adds a security benefit without requiring changes to your development workflow.
+JetBrains IDEs work well with Podman once the Podman API is available. The key is starting the Podman socket or machine, then either selecting Podman directly in the IDE or using the reported socket path when you need a manual connection. From there, you can use container-based interpreters, run configurations, and Docker Compose workflows much as you would with Docker. The rootless nature of Podman adds a security benefit without requiring major changes to your development workflow.
