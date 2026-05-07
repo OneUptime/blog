@@ -15,6 +15,7 @@ AWS VPC Flow Logs capture information about IP traffic flowing through network i
 ```bash
 VPC_ID="vpc-12345678"
 LOG_GROUP="/aws/vpc/flowlogs"
+ROLE_NAME="VPCFlowLogsRole"
 
 # Create CloudWatch log group
 
@@ -22,7 +23,7 @@ aws logs create-log-group --log-group-name "$LOG_GROUP"
 
 # Create IAM role for flow logs
 ROLE_ARN=$(aws iam create-role \
-    --role-name VPCFlowLogsRole \
+    --role-name "$ROLE_NAME" \
     --assume-role-policy-document '{
         "Version": "2012-10-17",
         "Statement": [{
@@ -34,7 +35,26 @@ ROLE_ARN=$(aws iam create-role \
     --query "Role.Arn" \
     --output text)
 
-# Enable flow logs with IPv6 fields
+# Grant the role permission to publish flow logs to CloudWatch Logs
+aws iam put-role-policy \
+    --role-name "$ROLE_NAME" \
+    --policy-name VPCFlowLogsPermissions \
+    --policy-document '{
+        "Version": "2012-10-17",
+        "Statement": [{
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+                "logs:DescribeLogGroups",
+                "logs:DescribeLogStreams"
+            ],
+            "Resource": "*"
+        }]
+    }'
+
+# Enable flow logs with a custom format that includes the IP address family
 aws ec2 create-flow-logs \
     --resource-type VPC \
     --resource-ids "$VPC_ID" \
@@ -42,7 +62,7 @@ aws ec2 create-flow-logs \
     --log-destination-type cloud-watch-logs \
     --log-group-name "$LOG_GROUP" \
     --deliver-logs-permission-arn "$ROLE_ARN" \
-    --log-format '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${windowstart} ${windowend} ${action} ${flowlogstatus} ${pkt-srcaddr} ${pkt-dstaddr} ${tcp-flags}'
+    --log-format '${version} ${account-id} ${interface-id} ${srcaddr} ${dstaddr} ${srcport} ${dstport} ${protocol} ${packets} ${bytes} ${start} ${end} ${action} ${log-status} ${type}'
 ```
 
 ## Terraform Flow Logs with IPv6 Fields
@@ -56,8 +76,8 @@ resource "aws_flow_log" "vpc" {
   traffic_type    = "ALL"
   vpc_id          = aws_vpc.main.id
 
-  # Custom format including IPv6-relevant fields
-  log_format = "$${version} $${account-id} $${interface-id} $${srcaddr} $${dstaddr} $${srcport} $${dstport} $${protocol} $${packets} $${bytes} $${action} $${flow-direction} $${pkt-src-aws-service} $${pkt-dst-aws-service}"
+  # Custom format including the IP address family for IPv4/IPv6 filtering
+  log_format = "$${version} $${account-id} $${interface-id} $${srcaddr} $${dstaddr} $${srcport} $${dstport} $${protocol} $${packets} $${bytes} $${start} $${end} $${action} $${log-status} $${type}"
 
   tags = { Name = "vpc-flow-logs" }
 }
@@ -86,7 +106,7 @@ resource "aws_iam_role_policy" "flow_logs" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+      Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogGroups", "logs:DescribeLogStreams"]
       Effect   = "Allow"
       Resource = "*"
     }]
@@ -100,35 +120,35 @@ resource "aws_iam_role_policy" "flow_logs" {
 # CloudWatch Logs Insights queries for IPv6 traffic
 
 # All IPv6 traffic
-fields srcaddr, dstaddr, srcport, dstport, protocol, bytes, action
-| filter srcaddr like /:/
+fields srcAddr, dstAddr, srcPort, dstPort, protocol, bytes, action
+| filter srcAddr like /:/
 | sort bytes desc
 | limit 100
 
-# IPv6 traffic rejected by security groups
-fields srcaddr, dstaddr, dstport, bytes
-| filter srcaddr like /:/ and action = "REJECT"
-| stats sum(bytes) as total_bytes by srcaddr
+# Rejected IPv6 traffic
+fields srcAddr, dstAddr, dstPort, bytes
+| filter srcAddr like /:/ and action = "REJECT"
+| stats sum(bytes) as total_bytes by srcAddr
 | sort total_bytes desc
 | limit 20
 
 # Top IPv6 destinations
-fields dstaddr, bytes
-| filter dstaddr like /:/
-| stats sum(bytes) as total_bytes by dstaddr
+fields dstAddr, bytes
+| filter dstAddr like /:/
+| stats sum(bytes) as total_bytes by dstAddr
 | sort total_bytes desc
 | limit 10
 
 # IPv6 traffic to specific port (e.g., 443)
-fields srcaddr, dstaddr, bytes
-| filter srcaddr like /:/ and dstport = 443
-| stats sum(bytes) as total by srcaddr
+fields srcAddr, dstAddr, bytes
+| filter srcAddr like /:/ and dstPort = 443
+| stats sum(bytes) as total by srcAddr
 | sort total desc
 
 # Security: Detect IPv6 port scanning (many ports from one source)
-fields srcaddr, dstport
-| filter srcaddr like /:/
-| stats count_distinct(dstport) as ports_scanned by srcaddr
+fields srcAddr, dstPort
+| filter srcAddr like /:/
+| stats count_distinct(dstPort) as ports_scanned by srcAddr
 | filter ports_scanned > 10
 | sort ports_scanned desc
 ```
@@ -136,45 +156,55 @@ fields srcaddr, dstport
 ## Query IPv6 Flows in Athena (S3 Flow Logs)
 
 ```sql
--- Create Athena table for flow logs
-CREATE EXTERNAL TABLE vpc_flow_logs (
+-- Create Athena table for default-format flow logs
+CREATE EXTERNAL TABLE IF NOT EXISTS vpc_flow_logs (
     version INT,
-    account STRING,
-    interfaceid STRING,
-    sourceaddress STRING,
-    destinationaddress STRING,
-    sourceport INT,
-    destinationport INT,
-    protocol INT,
-    numpackets INT,
-    numbytes BIGINT,
-    starttime INT,
-    endtime INT,
+    account_id STRING,
+    interface_id STRING,
+    srcaddr STRING,
+    dstaddr STRING,
+    srcport INT,
+    dstport INT,
+    protocol BIGINT,
+    packets BIGINT,
+    bytes BIGINT,
+    start BIGINT,
+    `end` BIGINT,
     action STRING,
-    logstatus STRING
+    log_status STRING
 )
-ROW FORMAT DELIMITED FIELDS TERMINATED BY ' '
-LOCATION 's3://my-flow-logs-bucket/AWSLogs/123456789/vpcflowlogs/us-east-1/';
+PARTITIONED BY (`date` DATE)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ' '
+LOCATION 's3://my-flow-logs-bucket/AWSLogs/123456789012/vpcflowlogs/us-east-1/'
+TBLPROPERTIES ("skip.header.line.count"="1");
+
+-- Add at least one partition before querying
+ALTER TABLE vpc_flow_logs
+ADD PARTITION (`date`='2026-03-20')
+LOCATION 's3://my-flow-logs-bucket/AWSLogs/123456789012/vpcflowlogs/us-east-1/2026/03/20/';
 
 -- Query all IPv6 traffic
-SELECT sourceaddress, destinationaddress, destinationport,
-       SUM(numbytes) as total_bytes
+SELECT srcaddr, dstaddr, dstport,
+       SUM(bytes) AS total_bytes
 FROM vpc_flow_logs
-WHERE sourceaddress LIKE '%:%'  -- IPv6 addresses contain ':'
-GROUP BY sourceaddress, destinationaddress, destinationport
+WHERE `date` = DATE('2026-03-20')
+  AND srcaddr LIKE '%:%'  -- IPv6 addresses contain ':'
+GROUP BY srcaddr, dstaddr, dstport
 ORDER BY total_bytes DESC
 LIMIT 20;
 
 -- Find rejected IPv6 connections
-SELECT sourceaddress, destinationaddress, destinationport,
-       COUNT(*) as attempts
+SELECT srcaddr, dstaddr, dstport,
+       COUNT(*) AS attempts
 FROM vpc_flow_logs
-WHERE sourceaddress LIKE '%:%'
+WHERE `date` = DATE('2026-03-20')
+  AND srcaddr LIKE '%:%'
   AND action = 'REJECT'
-GROUP BY sourceaddress, destinationaddress, destinationport
+GROUP BY srcaddr, dstaddr, dstport
 ORDER BY attempts DESC;
 ```
 
 ## Conclusion
 
-VPC Flow Logs capture IPv6 traffic using the same format as IPv4, with IPv6 addresses recorded in the `srcaddr` and `dstaddr` fields. Filter IPv6 flows in CloudWatch Insights using `filter srcaddr like /:/` since IPv6 addresses always contain colons. In Athena, use `WHERE sourceaddress LIKE '%:%'`. Custom log formats can include additional fields like `flow-direction` and `pkt-src-aws-service` for richer analysis. Monitor IPv6 REJECT actions to identify misconfigured security groups or NACLs blocking legitimate IPv6 traffic.
+VPC Flow Logs capture IPv6 traffic using the same format as IPv4, with IPv6 addresses recorded in the `srcaddr` and `dstaddr` fields. Filter IPv6 flows in CloudWatch Logs Insights using `filter srcAddr like /:/` since IPv6 addresses always contain colons. In Athena, use `WHERE srcaddr LIKE '%:%'`, or filter on the `type` field if your custom log format includes it. Custom log formats can include additional fields like `type`, `flow-direction`, and `pkt-src-aws-service` for richer analysis. Monitor IPv6 REJECT actions to identify misconfigured security groups or NACLs blocking legitimate IPv6 traffic.
