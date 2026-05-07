@@ -8,7 +8,7 @@ Description: Use the Ansible cisco.nxos.nxos_config module to configure IPv4 int
 
 ## Introduction
 
-The `cisco.nxos.nxos_config` module manages Cisco Nexus (NX-OS) configuration via NX-API or SSH. It is idempotent and supports lines-based configuration with parent context, similar to ios_config.
+The `cisco.nxos.nxos_config` module manages Cisco Nexus (NX-OS) configuration via NX-API or SSH. It supports lines-based configuration with parent context, similar to `ios_config`, and is idempotent when you use full-form commands that match the running configuration.
 
 ## Inventory
 
@@ -19,8 +19,8 @@ nexus1 ansible_host=192.168.1.30
 [nexus_switches:vars]
 ansible_user=admin
 ansible_password=AdminPass
-ansible_network_os=nxos
-ansible_connection=network_cli
+ansible_network_os=cisco.nxos.nxos
+ansible_connection=ansible.netcommon.network_cli
 ```
 
 ## Configure IPv4 on Nexus Interface
@@ -37,15 +37,15 @@ ansible_connection=network_cli
     - name: Enable features
       cisco.nxos.nxos_config:
         lines:
-          - feature ospf
-          - feature bgp
           - feature interface-vlan
+          - feature ospf
+          - feature hsrp
 
     - name: Configure SVI for VLAN 10
       cisco.nxos.nxos_config:
         lines:
           - description Corp LAN
-          - ip address 10.1.10.1/24
+          - ip address 10.1.10.2/24
           - no shutdown
         parents: interface Vlan10
 
@@ -85,15 +85,21 @@ ansible_connection=network_cli
 ## Configure HSRPv2
 
 ```yaml
-    - name: Configure HSRP on SVI
+    - name: Set HSRP version on SVI
       cisco.nxos.nxos_config:
         lines:
           - hsrp version 2
-          - hsrp 1
+        parents: interface Vlan10
+
+    - name: Configure HSRP group on SVI
+      cisco.nxos.nxos_config:
+        lines:
           - ip 10.1.10.1
           - priority 110
           - preempt
-        parents: interface Vlan10
+        parents:
+          - interface Vlan10
+          - hsrp 1
 ```
 
 ## Backup and Save
@@ -104,7 +110,6 @@ ansible_connection=network_cli
         backup: yes
         backup_options:
           dir_path: ./backups/
-        lines: []
 
     - name: Save running config
       cisco.nxos.nxos_config:
@@ -121,4 +126,4 @@ ansible-playbook -i inventory.ini configure_nexus_ipv4.yml
 
 ## Conclusion
 
-`cisco.nxos.nxos_config` provides idempotent IPv4 configuration for Cisco Nexus running NX-OS. Enable required NX-OS features (interface-vlan, ospf, bgp) before configuring interfaces that depend on them. Use `parents` for VLANs, SVIs, and routing protocol contexts, and always run with `--check --diff` first to preview changes.
+`cisco.nxos.nxos_config` can provide idempotent IPv4 configuration for Cisco Nexus running NX-OS when you use full-form commands that match the running configuration. Enable required NX-OS features (interface-vlan, ospf, hsrp) before configuring interfaces that depend on them. Use `parents` for VLANs, SVIs, routing protocol contexts, and nested HSRP group configuration, and always run with `--check --diff` first to preview changes.
