@@ -21,7 +21,7 @@ The order of instructions in your Containerfile directly impacts cache efficienc
 ```dockerfile
 # BAD: This invalidates the npm install cache on every code change
 
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY . .
 RUN npm ci
@@ -31,14 +31,14 @@ CMD ["node", "dist/index.js"]
 
 ```dockerfile
 # GOOD: Dependencies are cached separately from source code
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 # Layer 1: Copy only package files (changes infrequently)
 COPY package.json package-lock.json ./
 
 # Layer 2: Install dependencies (cached when packages unchanged)
-RUN npm ci --production
+RUN npm ci
 
 # Layer 3: Copy source code (changes frequently)
 COPY . .
@@ -56,7 +56,7 @@ Smaller images transfer faster and have less to cache.
 ```dockerfile
 # Multi-stage build: separate build and runtime stages
 # Stage 1: Build environment with all dev tools
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -64,13 +64,13 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Minimal production image
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
 # Copy only the build output and production dependencies
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
-RUN npm ci --production --ignore-scripts
+RUN npm ci --omit=dev --ignore-scripts
 
 # The final image is much smaller
 CMD ["node", "dist/index.js"]
@@ -115,7 +115,7 @@ time podman build -t myapp:test .
 
 ## Registry-Based Layer Caching
 
-Pull the previous build from the registry to reuse its layers.
+Use a registry-backed cache repository to reuse layers across CI runs.
 
 ```bash
 #!/bin/bash
@@ -124,21 +124,20 @@ Pull the previous build from the registry to reuse its layers.
 
 REGISTRY="docker.io/myorg"
 IMAGE="${REGISTRY}/myapp"
+CACHE_IMAGE="${REGISTRY}/myapp-cache"
 TAG="${COMMIT_SHA}"
 
-# Pull the latest image to use as a cache source
-echo "Pulling cache image..."
-podman pull "${IMAGE}:latest" 2>/dev/null || true
-
-# Build using the cached layers
+# Build using a remote cache repository
 echo "Building with cache..."
 time podman build \
-  --cache-from "${IMAGE}:latest" \
+  --layers \
+  --cache-from "${CACHE_IMAGE}" \
+  --cache-to "${CACHE_IMAGE}" \
   --tag "${IMAGE}:${TAG}" \
   --tag "${IMAGE}:latest" \
   .
 
-# Push (the new latest becomes the cache for the next build)
+# Push the final image tags
 podman push "${IMAGE}:${TAG}"
 podman push "${IMAGE}:latest"
 ```
@@ -151,7 +150,7 @@ Podman can build independent stages in parallel.
 # Containerfile with independent stages that can build in parallel
 
 # Stage 1: Build the frontend
-FROM node:20-alpine AS frontend
+FROM node:24-alpine AS frontend
 WORKDIR /frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -159,7 +158,7 @@ COPY frontend/ .
 RUN npm run build
 
 # Stage 2: Build the backend (independent of frontend)
-FROM golang:1.22-alpine AS backend
+FROM golang:1.26-alpine AS backend
 WORKDIR /backend
 COPY backend/go.* ./
 RUN go mod download
@@ -167,7 +166,7 @@ COPY backend/ .
 RUN CGO_ENABLED=0 go build -o server .
 
 # Stage 3: Combine into the final image
-FROM alpine:3.19
+FROM alpine:3.22
 COPY --from=frontend /frontend/dist /srv/static
 COPY --from=backend /backend/server /usr/local/bin/server
 CMD ["server"]
@@ -186,11 +185,11 @@ time podman build \
 
 ## Use BuildKit-Style Cache Mounts
 
-Mount cache directories to persist package manager caches between builds.
+Mount cache directories to persist package manager caches between builds on the same builder cache storage.
 
 ```dockerfile
 # Containerfile with cache mounts for package manager caches
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 COPY package*.json ./
@@ -198,7 +197,7 @@ COPY package*.json ./
 # Mount the npm cache directory so it persists between builds
 # This avoids re-downloading packages on every build
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --production
+    npm ci
 
 COPY . .
 RUN npm run build
@@ -208,7 +207,7 @@ CMD ["node", "dist/index.js"]
 
 ```dockerfile
 # Go example with module cache
-FROM golang:1.22-alpine
+FROM golang:1.26-alpine
 WORKDIR /app
 
 COPY go.* ./
