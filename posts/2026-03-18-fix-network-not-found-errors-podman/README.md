@@ -18,10 +18,10 @@ This guide walks through each scenario and provides clear solutions.
 
 ## Understanding Podman Networking Backends
 
-Podman supports two networking backends:
+Podman 4.x supports two networking backends:
 
 - **CNI** (Container Network Interface): The original backend, using plugins in `/usr/libexec/cni/` or `/opt/cni/bin/` with configuration files in `/etc/cni/net.d/`.
-- **Netavark**: The newer default backend (since Podman 4.0+), with its own configuration format stored in Podman's network directory.
+- **Netavark**: The newer default backend (since Podman 4.0+), with its own configuration format stored in Podman's network directory. Current upstream Podman releases use Netavark; CNI was deprecated in Podman 4.x and removed from the main upstream path in Podman 5.
 
 Check which backend you are using:
 
@@ -47,7 +47,7 @@ For more detail:
 podman network inspect podman
 ```
 
-The default network is named `podman`. If even this network is missing, your Podman installation has a configuration problem.
+For rootful Podman, the default bridge network is usually named `podman`. Rootless Podman commonly uses `pasta` as the default networking tool instead of the rootful `podman` bridge network, so a missing `podman` network is only a configuration problem when your setup is expected to use that bridge network.
 
 ## Creating a Missing Network
 
@@ -85,8 +85,10 @@ Rootful network configs (Netavark):
 
 Rootless network configs (Netavark):
 ```text
-~/.config/containers/networks/
+$graphroot/networks/
 ```
+
+By default, rootless `graphroot` is usually `$HOME/.local/share/containers/storage`, so rootless Netavark networks are commonly under `$HOME/.local/share/containers/storage/networks/`.
 
 For CNI backend, the paths are:
 
@@ -104,7 +106,7 @@ Verify where your networks are stored:
 
 ```bash
 # Rootless
-ls ~/.config/containers/networks/
+ls "$(podman info --format '{{.Store.GraphRoot}}')/networks/"
 
 # Rootful
 sudo ls /etc/containers/networks/
@@ -125,7 +127,7 @@ If you see network files here but Podman cannot find them, your Podman version i
 
 ### Option 1: Switch Back to CNI
 
-Edit the containers configuration to use CNI. For rootless, edit `~/.config/containers/containers.conf`:
+On Podman 4.x systems that still include CNI support and CNI plugins, edit the containers configuration to use CNI. For rootless, edit `~/.config/containers/containers.conf`:
 
 ```ini
 [network]
@@ -133,6 +135,8 @@ network_backend = "cni"
 ```
 
 For rootful, edit `/etc/containers/containers.conf`.
+
+After changing the backend, reset Podman's state and recreate networks so Podman does not keep using network data from the previous backend.
 
 ### Option 2: Recreate Networks Under Netavark
 
@@ -145,7 +149,7 @@ podman ps -a --format "{{.Names}} {{.Networks}}"
 # Remove containers (or stop them first)
 podman rm -a -f
 
-# Reset the network configuration
+# Reset Podman's state, including containers, images, volumes, and networks
 podman system reset
 
 # Recreate your custom networks
@@ -159,7 +163,7 @@ Network configuration files can become corrupted, especially after system crashe
 For Netavark, inspect the JSON configuration:
 
 ```bash
-cat ~/.config/containers/networks/mynetwork.json
+cat "$(podman info --format '{{.Store.GraphRoot}}')/networks/mynetwork.json"
 ```
 
 A valid network config looks like:
@@ -186,7 +190,7 @@ A valid network config looks like:
 If the file is corrupted, delete it and recreate the network:
 
 ```bash
-rm ~/.config/containers/networks/mynetwork.json
+rm "$(podman info --format '{{.Store.GraphRoot}}')/networks/mynetwork.json"
 podman network create mynetwork
 ```
 
@@ -221,17 +225,17 @@ networks:
 
 ## Network Not Found After System Reboot
 
-Some rootless network configurations may not persist across reboots if they rely on runtime directories. Verify that your network files are in the correct persistent location:
+Rootless network configurations should be stored under the rootless graphroot. If Podman was run with a custom network configuration directory under a runtime path, those files may not persist across reboots. Verify that your network files are in the correct persistent location:
 
 ```bash
 # These should persist
-ls ~/.config/containers/networks/
+ls "$(podman info --format '{{.Store.GraphRoot}}')/networks/"
 
 # This is runtime-only and may be cleared
 ls /run/user/$(id -u)/containers/networks/ 2>/dev/null
 ```
 
-If your networks are in the runtime directory, they will be lost on reboot. Recreate them or ensure they are stored in the config directory.
+If your networks are in the runtime directory, they will be lost on reboot. Recreate them or ensure they are stored under the rootless graphroot.
 
 ## Debugging Network Issues
 
