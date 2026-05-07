@@ -11,7 +11,7 @@ Storage quotas prevent any single namespace or team from consuming all available
 ## Prerequisites
 
 - A running Rancher instance (v2.6 or later)
-- A managed Kubernetes cluster with dynamic provisioning configured
+- A managed Kubernetes cluster with persistent storage available (dynamic provisioning is recommended)
 - kubectl access to your cluster
 
 ## Step 1: Create a Namespace-Level Storage Quota
@@ -65,20 +65,21 @@ kubectl apply -f tiered-quota.yaml
 
 ## Step 3: Configure Storage Quotas via Rancher UI
 
-1. Navigate to your cluster in Rancher.
-2. Go to **Cluster** > **Projects/Namespaces**.
-3. Select or create a project.
-4. Click **Edit** on the project.
-5. Under **Resource Quotas**, configure:
-   - **Storage Requests**: Set the limit (e.g., 500Gi)
+1. In Rancher, click **☰** > **Cluster Management**.
+2. Open your cluster and click **Explore**.
+3. Go to **Cluster** > **Projects/Namespaces**.
+4. Switch to **Group by Project** view if needed.
+5. Select a project and click **Edit Config**.
+6. Under **Resource Quotas**, configure:
+   - **Storage Reservation**: Set the limit (e.g., 500Gi)
    - **Persistent Volume Claims**: Set the maximum count
-6. Click **Save**.
+7. Click **Save**.
 
-Rancher project quotas are distributed across namespaces within the project.
+Rancher project quotas let you set both a project-wide limit and a namespace default limit for namespaces in the project.
 
-## Step 4: Set Default Storage Limits with LimitRange
+## Step 4: Set Per-PVC Storage Limits with LimitRange
 
-Enforce default PVC sizes:
+Enforce minimum and maximum PVC sizes:
 
 ```yaml
 apiVersion: v1
@@ -93,10 +94,6 @@ spec:
       storage: 50Gi
     min:
       storage: 1Gi
-    default:
-      storage: 10Gi
-    defaultRequest:
-      storage: 5Gi
 ```
 
 ```bash
@@ -106,25 +103,24 @@ kubectl apply -f storage-limits.yaml
 This ensures:
 - No PVC can request more than 50Gi
 - No PVC can request less than 1Gi
-- PVCs without a size default to 10Gi
 
 ## Step 5: Configure Project-Level Quotas in Rancher
 
 Rancher projects allow you to set quotas that apply across multiple namespaces:
 
-1. Go to **Cluster Management** > select your cluster.
-2. Go to **Projects/Namespaces**.
-3. Click **Create Project** or edit an existing one.
+1. Go to **Cluster Management**, open your cluster, and click **Explore**.
+2. Go to **Cluster** > **Projects/Namespaces**.
+3. In **Group by Project** view, click **Create Project** or edit an existing project with **Edit Config**.
 4. Under **Resource Quotas**, add:
-   - **Project Limit**: Total storage for the entire project
-   - **Namespace Default Limit**: Default per-namespace allocation
+   - **Project Limit**: Overall resource limit for the project
+   - **Namespace Default Limit**: Default quota propagated to each namespace in the project
 5. Click **Create** or **Save**.
 
 Example project quota configuration:
 - Project limit: 1000Gi total storage, 50 PVCs
 - Namespace default: 200Gi storage, 10 PVCs
 
-Each namespace in the project gets up to 200Gi unless overridden.
+Each namespace receives the namespace default limit unless you override it, and the combined namespace limits should not exceed the project limit.
 
 ## Step 6: Monitor Storage Quota Usage
 
@@ -149,7 +145,7 @@ kubectl get resourcequota --all-namespaces
 
 ## Step 7: Set Up Quota Alerts
 
-Create a monitoring alert for storage quota usage:
+If Rancher Monitoring is installed, create a monitoring alert for storage quota usage:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -183,7 +179,7 @@ spec:
 
 ## Step 8: Enforce Storage Policies with OPA/Gatekeeper
 
-Create policies that enforce storage rules beyond what quotas provide:
+For Gatekeeper v3.18+ on Kubernetes v1.30+, create policies that enforce storage rules beyond what quotas provide:
 
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1
@@ -203,14 +199,12 @@ spec:
               type: string
   targets:
   - target: admission.k8s.gatekeeper.sh
-    rego: |
-      package k8smaxpvcsize
-      violation[{"msg": msg}] {
-        input.review.object.kind == "PersistentVolumeClaim"
-        requested := input.review.object.spec.resources.requests.storage
-        max := input.parameters.maxSize
-        msg := sprintf("PVC size %v exceeds maximum allowed size %v", [requested, max])
-      }
+    code:
+    - engine: K8sNativeValidation
+      source:
+        validations:
+        - expression: 'object == null || !has(object.spec.resources.requests.storage) || quantity(string(object.spec.resources.requests.storage)).compareTo(quantity(string(variables.params.maxSize))) <= 0'
+          messageExpression: '"PVC size " + string(object.spec.resources.requests.storage) + " exceeds maximum allowed size " + string(variables.params.maxSize)'
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: K8sMaxPVCSize
@@ -231,11 +225,13 @@ spec:
 When a PVC creation fails due to quota:
 
 ```bash
-# Check the error
-kubectl describe pvc new-pvc -n team-alpha
+# Attempt to create the PVC
+kubectl apply -f new-pvc.yaml
 
-# Error: exceeded quota: storage-quota, requested: requests.storage=100Gi,
-# used: requests.storage=450Gi, limited: requests.storage=500Gi
+# Error from server (Forbidden): error when creating "new-pvc.yaml":
+# persistentvolumeclaims "new-pvc" is forbidden: exceeded quota: storage-quota,
+# requested: requests.storage=100Gi, used: requests.storage=450Gi,
+# limited: requests.storage=500Gi
 
 # Review current usage
 kubectl describe resourcequota storage-quota -n team-alpha
@@ -257,26 +253,24 @@ Generate a report of storage usage across all namespaces:
 
 ```bash
 #!/bin/bash
-echo "Namespace | Used Storage | Quota Limit | PVCs Used | PVC Limit"
-echo "----------|-------------|-------------|-----------|----------"
+echo "Namespace | Quota | Used Storage | Quota Limit | PVCs Used | PVC Limit"
+echo "----------|-------|--------------|-------------|-----------|----------"
 
-for ns in $(kubectl get resourcequota --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' | sort -u); do
-  USED=$(kubectl get resourcequota -n $ns -o jsonpath='{.items[0].status.used.requests\.storage}' 2>/dev/null)
-  HARD=$(kubectl get resourcequota -n $ns -o jsonpath='{.items[0].status.hard.requests\.storage}' 2>/dev/null)
-  PVC_USED=$(kubectl get resourcequota -n $ns -o jsonpath='{.items[0].status.used.persistentvolumeclaims}' 2>/dev/null)
-  PVC_HARD=$(kubectl get resourcequota -n $ns -o jsonpath='{.items[0].status.hard.persistentvolumeclaims}' 2>/dev/null)
-  echo "$ns | ${USED:-N/A} | ${HARD:-N/A} | ${PVC_USED:-N/A} | ${PVC_HARD:-N/A}"
+kubectl get resourcequota --all-namespaces \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{"|"}{.metadata.name}{"|"}{.status.used.requests\.storage}{"|"}{.status.hard.requests\.storage}{"|"}{.status.used.persistentvolumeclaims}{"|"}{.status.hard.persistentvolumeclaims}{"\n"}{end}' |
+while IFS='|' read -r NS QUOTA USED HARD PVC_USED PVC_HARD; do
+  echo "$NS | $QUOTA | ${USED:-N/A} | ${HARD:-N/A} | ${PVC_USED:-N/A} | ${PVC_HARD:-N/A}"
 done
 ```
 
 ## Troubleshooting
 
 - **Quota not enforced**: Ensure the ResourceQuota is in the correct namespace
-- **Cannot create PVC**: Check quota usage with `kubectl describe resourcequota`
+- **Cannot create PVC**: Check the error returned by `kubectl apply` or `kubectl create`, then review `kubectl describe resourcequota`
 - **Per-class quota not working**: Verify the StorageClass name matches exactly in the quota spec
 - **Project quota not applying**: Check Rancher project configuration and namespace membership
-- **LimitRange conflicts**: Ensure min/max/default values are consistent
+- **LimitRange conflicts**: Ensure min/max values are consistent
 
 ## Summary
 
-Storage quotas in Rancher provide essential governance for multi-tenant Kubernetes environments. By combining namespace-level ResourceQuotas, per-StorageClass limits, LimitRanges for default sizing, and Rancher project-level quotas, you can control storage consumption effectively. Monitoring quota usage and setting up alerts ensures you catch capacity issues before they impact your teams.
+Storage quotas in Rancher provide essential governance for multi-tenant Kubernetes environments. By combining namespace-level ResourceQuotas, per-StorageClass limits, LimitRanges for per-PVC size boundaries, and Rancher project-level quotas, you can control storage consumption effectively. Monitoring quota usage and setting up alerts ensures you catch capacity issues before they impact your teams.
