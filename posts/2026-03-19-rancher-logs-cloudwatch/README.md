@@ -6,13 +6,13 @@ Tags: Rancher, Kubernetes, Logging, CloudWatch
 
 Description: Configure Rancher to send Kubernetes cluster logs to Amazon CloudWatch Logs for centralized log management on AWS.
 
-Amazon CloudWatch Logs is a fully managed log management service that integrates natively with AWS infrastructure. If your Kubernetes clusters run on AWS, sending logs to CloudWatch provides seamless integration with other AWS services like CloudWatch Alarms, Lambda, and CloudWatch Insights. This guide covers configuring Rancher's logging stack to forward logs to CloudWatch.
+Amazon CloudWatch Logs is a fully managed log management service that integrates natively with AWS infrastructure. If your Kubernetes clusters run on AWS, sending logs to CloudWatch provides seamless integration with other AWS services like CloudWatch Alarms, Lambda, and CloudWatch Logs Insights. This guide covers configuring Rancher's logging stack to forward logs to CloudWatch.
 
 ## Prerequisites
 
 - Rancher v2.6 or later with the Logging chart installed.
 - An AWS account with CloudWatch Logs access.
-- IAM credentials or an IAM role with `logs:CreateLogGroup`, `logs:CreateLogStream`, and `logs:PutLogEvents` permissions.
+- IAM credentials or an IAM role with `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents`, `logs:DescribeLogGroups`, and `logs:DescribeLogStreams` permissions.
 - Cluster admin permissions.
 
 ## Step 1: Create IAM Policy
@@ -92,11 +92,13 @@ spec:
 
 ### Using IRSA (EKS)
 
-First, annotate the Fluentd service account:
+First, annotate the Fluentd service account and restart the Fluentd StatefulSet so the pods pick up the IRSA environment variables:
 
 ```bash
-kubectl annotate serviceaccount -n cattle-logging-system rancher-logging-fluentd \
+kubectl annotate serviceaccount -n cattle-logging-system rancher-logging-root-fluentd \
   eks.amazonaws.com/role-arn=arn:aws:iam::123456789012:role/FluentdCloudWatchRole
+
+kubectl rollout restart statefulset/rancher-logging-root-fluentd -n cattle-logging-system
 ```
 
 Then use a simpler output configuration:
@@ -105,7 +107,7 @@ Then use a simpler output configuration:
 apiVersion: logging.banzaicloud.io/v1beta1
 kind: ClusterOutput
 metadata:
-  name: cloudwatch-irsa-output
+  name: cloudwatch-output
   namespace: cattle-logging-system
 spec:
   cloudwatch:
@@ -172,6 +174,7 @@ spec:
           key: aws-secret-access-key
     buffer:
       type: file
+      tags: "$.kubernetes.namespace_name,$.kubernetes.pod_name"
       path: /buffers/cloudwatch-ns
       chunk_limit_size: 2MB
       flush_interval: 5s
@@ -197,13 +200,13 @@ aws logs put-retention-policy \
   --retention-in-days 30
 ```
 
-Common retention periods: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653 days.
+Common retention periods: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653 days.
 
-## Step 7: Configure CloudWatch Insights
+## Step 7: Configure CloudWatch Logs Insights
 
-After logs are flowing to CloudWatch, use CloudWatch Insights for querying:
+After logs are flowing to CloudWatch, use CloudWatch Logs Insights for querying:
 
-```bash
+```text
 # Find error logs
 
 fields @timestamp, @message
@@ -267,7 +270,7 @@ Or via AWS CLI:
 ```bash
 aws logs get-log-events \
   --log-group-name /kubernetes/production-cluster \
-  --log-stream-name kubernetes.production.my-pod \
+  --log-stream-name '<replace-with-an-actual-stream-name>' \
   --limit 10
 ```
 
@@ -277,8 +280,8 @@ aws logs get-log-events \
 - **Region mismatch**: Ensure the region in the output matches your CloudWatch region.
 - **Throttling**: CloudWatch has API rate limits. Increase `flush_interval` to reduce API calls.
 - **Log group not created**: Verify `auto_create_stream: true` or create the log group manually.
-- **IRSA not working**: Check the service account annotation and IAM role trust policy.
+- **IRSA not working**: Check the service account annotation and IAM role trust policy. If you added the annotation after Fluentd was already running, restart the `rancher-logging-root-fluentd` StatefulSet so new pods receive the IRSA environment variables.
 
 ## Summary
 
-Sending logs to CloudWatch from Rancher involves configuring a ClusterOutput with AWS credentials (or IRSA) and CloudWatch settings. Organize logs using log groups per namespace and streams per pod. Use CloudWatch Insights for querying and CloudWatch Alarms for alerting on log patterns. Configure retention policies on the AWS side to manage storage costs.
+Sending logs to CloudWatch from Rancher involves configuring a ClusterOutput with AWS credentials (or IRSA) and CloudWatch settings. Organize logs using log groups per namespace and streams per pod. Use CloudWatch Logs Insights for querying and CloudWatch Alarms for alerting on log patterns. Configure retention policies on the AWS side to manage storage costs.
