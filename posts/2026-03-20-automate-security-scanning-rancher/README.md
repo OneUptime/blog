@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Security Scanning, Trivy, Falco, CIS, Kubernetes, Vulnerability Management
 
-Description: Automate security scanning in Rancher using Trivy for container image vulnerabilities, CIS benchmark scanning for cluster hardening, NeuVector for runtime scanning, and integrate findings into...
+Description: Automate security scanning in Rancher using Trivy for container image vulnerabilities, CIS benchmark scanning for cluster hardening, Falco for runtime threat detection, and integrate findings into...
 
 ## Introduction
 
@@ -21,7 +21,7 @@ helm install trivy-operator aqua/trivy-operator \
   --create-namespace \
   --set trivy.ignoreUnfixed=true \
   --set operator.scanJobTimeout=5m \
-  --set operator.concurrentScanJobsLimit=10 \
+  --set operator.scanJobsConcurrentLimit=10 \
   --set compliance.failEntriesLimit=10
 ```
 
@@ -30,12 +30,12 @@ helm install trivy-operator aqua/trivy-operator \
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: trivy-operator
+  name: trivy-operator-trivy-config
   namespace: trivy-system
 data:
   scanJob.tolerations: '[{"operator":"Exists"}]'
   # Severity thresholds
-  vulnerabilityReports.scanner.severity: "MEDIUM,HIGH,CRITICAL"
+  trivy.severity: "MEDIUM,HIGH,CRITICAL"
   # Compliance standards
   compliance.failEntriesLimit: "10"
 ```
@@ -43,42 +43,16 @@ data:
 ## Step 2: Automated CIS Benchmark Scanning
 
 ```yaml
-# Schedule weekly CIS benchmark scans
-apiVersion: batch/v1
-kind: CronJob
+# Schedule weekly compliance scans using the CIS benchmark profile
+apiVersion: compliance.cattle.io/v1
+kind: ClusterScan
 metadata:
-  name: cis-benchmark-weekly
-  namespace: cattle-system
+  name: weekly-cis
 spec:
-  schedule: "0 6 * * 0"    # Every Sunday at 6 AM
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: cis-scanner-sa
-          containers:
-            - name: cis-scanner
-              image: myregistry/rancher-cis-scanner:latest
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  kubectl apply -f - <<EOF
-                  apiVersion: cis.cattle.io/v1
-                  kind: ClusterScan
-                  metadata:
-                    name: weekly-cis-$(date +%Y%m%d)
-                  spec:
-                    scanProfileName: rke2-cis-1.24-profile
-                  EOF
-                  # Wait for scan to complete
-                  kubectl wait --for=condition=complete \
-                    clusterscan/weekly-cis-$(date +%Y%m%d) \
-                    --timeout=30m
-                  # Export results
-                  kubectl get clusterscansummary weekly-cis-$(date +%Y%m%d) \
-                    -o json > /results/cis-scan-$(date +%Y%m%d).json
-          restartPolicy: OnFailure
+  scanProfileName: cis-1.10-profile
+  scheduledScanConfig:
+    cronSchedule: "0 6 * * 0"    # Every Sunday at 6 AM
+    retentionCount: 3
 ```
 
 ## Step 3: CI/CD Pipeline Image Scanning
@@ -94,6 +68,9 @@ on:
 jobs:
   scan-image:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -101,16 +78,18 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Run Trivy scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
+          scan-type: 'image'
           image-ref: myapp:${{ github.sha }}
-          format: 'table'
-          exit-code: '1'              # Fail build on CRITICAL
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          exit-code: '1'              # Fail build on HIGH/CRITICAL
           ignore-unfixed: true
           severity: 'CRITICAL,HIGH'
 
       - name: Upload SARIF results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-results.sarif
@@ -125,19 +104,13 @@ helm install falco falcosecurity/falco \
   --namespace falco-system \
   --create-namespace \
   --set tty=true \
-  --set falco.grpc.enabled=true \
-  --set falcoctl.artifact.install.enabled=true
+  -f falco-values.yaml
 ```
 
 ```yaml
-# Custom Falco rules for Rancher environment
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: falco-custom-rules
-  namespace: falco-system
-data:
-  custom_rules.yaml: |
+# falco-values.yaml: custom Falco rules for Rancher environment
+customRules:
+  rancher-rules.yaml: |-
     # Alert on privilege escalation
     - rule: Privilege Escalation via sudo
       desc: Detect sudo usage in containers
@@ -154,12 +127,12 @@ data:
       output: "Sensitive file read in container (file=%fd.name user=%user.name)"
       priority: WARNING
 
-    # Alert on network scanning
-    - rule: Network Port Scanning
-      desc: Detect port scanning from containers
-      condition: outbound and evt.type = connect and fd.sport < 1024 and container
-      output: "Port scanning detected from container"
-      priority: CRITICAL
+    # Alert on network scanning tools
+    - rule: Network Scanning Tool Launched
+      desc: Detect common network scanning tools started in containers
+      condition: spawned_process and container and proc.name in (nmap, masscan, zmap)
+      output: "Network scanning tool launched in container (user=%user.name cmd=%proc.cmdline)"
+      priority: WARNING
 ```
 
 ## Step 5: Vulnerability Reports Dashboard
@@ -180,7 +153,7 @@ spec:
       rules:
         - alert: CriticalVulnerabilityDetected
           expr: |
-            sum(trivy_image_vulnerabilities{severity="CRITICAL"}) > 0
+            sum(trivy_image_vulnerabilities{severity="Critical"}) > 0
           for: 0m
           annotations:
             summary: "Critical vulnerability detected in deployed images"
@@ -189,7 +162,7 @@ spec:
 
         - alert: HighVulnerabilityCount
           expr: |
-            sum(trivy_image_vulnerabilities{severity="HIGH"}) > 20
+            sum(trivy_image_vulnerabilities{severity="High"}) > 20
           for: 1h
           annotations:
             summary: "High vulnerability count exceeds threshold"
@@ -201,12 +174,14 @@ spec:
 
 ```bash
 #!/bin/bash
-# auto_remediate.sh - Quarantine pods with critical vulnerabilities
+# auto_remediate.sh - Label pods with critical vulnerabilities for quarantine
 
 # Get pods with critical vulnerabilities
 CRITICAL_PODS=$(kubectl get vulnerabilityreports -A -o json | \
-  jq -r '.items[] | select(.report.summary.criticalCount > 0) |
-    "\(.metadata.namespace)/\(.metadata.labels["trivy-operator.pod.name"])"')
+  jq -r '.items[]
+    | select(.report.summary.criticalCount > 0)
+    | select(.metadata.labels["trivy-operator.resource.kind"] == "Pod")
+    | "\(.metadata.namespace)/\(.metadata.labels["trivy-operator.resource.name"])"')
 
 for pod_ref in $CRITICAL_PODS; do
   NAMESPACE=$(echo $pod_ref | cut -d'/' -f1)
@@ -214,17 +189,19 @@ for pod_ref in $CRITICAL_PODS; do
 
   echo "CRITICAL vulnerability in pod $POD (namespace: $NAMESPACE)"
 
-  # Add label to quarantine (prevents traffic routing)
+  # Add label to quarantine. Pair this with a NetworkPolicy that isolates
+  # pods matching security-quarantine=true.
   kubectl label pod "$POD" -n "$NAMESPACE" \
     security-quarantine=true \
     --overwrite
 
   # Notify security team
   curl -X POST "$SLACK_WEBHOOK" \
+    -H "Content-Type: application/json" \
     -d "{\"text\": \"Security quarantine: pod $POD in $NAMESPACE has CRITICAL vulnerabilities\"}"
 done
 ```
 
 ## Conclusion
 
-Automated security scanning in Rancher creates continuous visibility into vulnerabilities across the entire Kubernetes environment. Trivy Operator scans running containers continuously, CIS benchmark scans run weekly to catch configuration drift, and CI/CD pipeline scanning blocks critical vulnerabilities before deployment. Falco provides runtime threat detection for active attack indicators. Feed all findings into a central dashboard and alert on critical issues immediately-automated remediation (quarantine) for pods with critical CVEs reduces exposure time.
+Automated security scanning in Rancher creates continuous visibility into vulnerabilities across the entire Kubernetes environment. Trivy Operator automatically scans deployed workloads as cluster state changes, scheduled compliance scans catch configuration drift, and CI/CD pipeline scanning blocks critical vulnerabilities before deployment. Falco provides runtime threat detection for active attack indicators. Feed all findings into a central dashboard and alert on critical issues immediately-automated remediation (quarantine) for pods with critical CVEs reduces exposure time.
