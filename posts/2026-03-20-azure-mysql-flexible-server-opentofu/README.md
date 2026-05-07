@@ -34,7 +34,7 @@ resource "azurerm_subnet" "mysql_subnet" {
 }
 
 resource "azurerm_private_dns_zone" "mysql_dns" {
-  name                = "my-mysql.private.mysql.database.azure.com"
+  name                = "my-mysql.mysql.database.azure.com"
   resource_group_name = azurerm_resource_group.rg.name
 }
 
@@ -95,21 +95,24 @@ resource "azurerm_mysql_flexible_server" "mysql" {
 ```hcl
 # Tune MySQL server parameters for performance
 resource "azurerm_mysql_flexible_server_configuration" "slow_query_log" {
-  name      = "slow_query_log"
-  server_id = azurerm_mysql_flexible_server.mysql.id
-  value     = "ON"
+  name                = "slow_query_log"
+  resource_group_name = azurerm_resource_group.rg.name
+  server_name         = azurerm_mysql_flexible_server.mysql.name
+  value               = "ON"
 }
 
 resource "azurerm_mysql_flexible_server_configuration" "long_query_time" {
-  name      = "long_query_time"
-  server_id = azurerm_mysql_flexible_server.mysql.id
-  value     = "2"  # Log queries taking more than 2 seconds
+  name                = "long_query_time"
+  resource_group_name = azurerm_resource_group.rg.name
+  server_name         = azurerm_mysql_flexible_server.mysql.name
+  value               = "2"  # Log queries taking more than 2 seconds
 }
 
 resource "azurerm_mysql_flexible_server_configuration" "max_connections" {
-  name      = "max_connections"
-  server_id = azurerm_mysql_flexible_server.mysql.id
-  value     = "200"
+  name                = "max_connections"
+  resource_group_name = azurerm_resource_group.rg.name
+  server_name         = azurerm_mysql_flexible_server.mysql.name
+  value               = "200"
 }
 ```
 
