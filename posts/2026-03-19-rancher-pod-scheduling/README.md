@@ -21,7 +21,7 @@ Node selectors are the simplest way to constrain pods to specific nodes. They us
 
 ### Label Your Nodes
 
-First, add labels to your nodes. In Rancher, go to **Cluster Management > Nodes**, click the three-dot menu on a node, and select **Edit Config**. Add labels such as:
+First, add labels to your nodes. In Rancher, click **Cluster Management**, open the cluster with **Explore**, go to **Nodes**, click the three-dot menu on a node, and select **Edit**. Add labels such as:
 
 - `disktype: ssd`
 - `env: production`
@@ -154,7 +154,7 @@ spec:
               topologyKey: kubernetes.io/hostname
 ```
 
-In Rancher, configure this in the **Pod Scheduling** section under **Advanced** in the workload form.
+In Rancher, configure this in the workload form's scheduling options.
 
 ## Method 4: Taints and Tolerations
 
@@ -162,7 +162,7 @@ Taints prevent pods from being scheduled on nodes unless the pod has a matching 
 
 ### Add a Taint to a Node
 
-In Rancher, go to **Cluster Management > Nodes**, edit the node, and add a taint:
+In Rancher, click **Cluster Management**, open the cluster with **Explore**, go to **Nodes**, edit the node, and add a taint:
 
 - **Key**: `dedicated`
 - **Value**: `gpu-workloads`
@@ -195,11 +195,13 @@ spec:
           effect: NoSchedule
 ```
 
+A toleration allows the pod to be scheduled onto matching tainted nodes, but it does not guarantee placement there. If you want the workload to run only on those nodes, combine the toleration with a node selector or node affinity rule.
+
 ### Taint Effects
 
 - **NoSchedule**: New pods without a matching toleration will not be scheduled
 - **PreferNoSchedule**: Soft version of NoSchedule; the scheduler tries to avoid the node
-- **NoExecute**: Existing pods without a matching toleration are evicted
+- **NoExecute**: Pods without a matching toleration are not scheduled onto the node, and any existing pods without a matching toleration are evicted
 
 ## Method 5: Topology Spread Constraints
 
@@ -276,4 +278,4 @@ Look for events like `FailedScheduling` to understand why the scheduler could no
 
 ## Summary
 
-Rancher provides a comprehensive interface for configuring pod scheduling rules. Use node selectors for simple label matching, node affinity for expressive requirements, pod affinity and anti-affinity for inter-pod relationships, taints and tolerations for node dedication, and topology spread constraints for even distribution. Combining these methods gives you fine-grained control over where your workloads run across the cluster.
+Rancher provides a comprehensive interface for configuring pod scheduling rules. Use node selectors for simple label matching, node affinity for expressive requirements, pod affinity and anti-affinity for inter-pod relationships, taints and tolerations to repel pods from specific nodes or allow placement on tainted nodes, and topology spread constraints for even distribution. Combining these methods gives you fine-grained control over where your workloads run across the cluster.
