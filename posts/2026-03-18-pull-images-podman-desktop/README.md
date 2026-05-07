@@ -10,7 +10,7 @@ Description: Learn how to pull container images from registries using Podman Des
 
 > Pulling container images with Podman Desktop gives you a visual way to search, download, and manage images from any OCI-compliant registry.
 
-Before you can run a container, you need to pull its image from a registry. Podman Desktop provides a graphical interface for pulling images that shows download progress, image details, and available tags. This post covers pulling images from various registries using both Podman Desktop and the CLI.
+Before you can run a container, you need to pull its image from a registry. Podman Desktop provides a graphical interface for pulling images that shows download progress and image details. This post covers pulling images from various registries using both Podman Desktop and the CLI.
 
 ---
 
@@ -42,7 +42,7 @@ podman pull docker.io/library/postgres:16-alpine
 podman pull registry.access.redhat.com/ubi9/ubi:latest
 
 # Pull from GitHub Container Registry
-podman pull ghcr.io/actions/runner:latest
+podman pull ghcr.io/actions/actions-runner:latest
 
 # Pull from Quay.io
 podman pull quay.io/podman/hello:latest
@@ -93,13 +93,13 @@ For reproducible deployments, pull images by their content digest.
 
 ```bash
 # Pull a specific image by digest
-podman pull docker.io/library/nginx@sha256:abc123def456...
+podman pull docker.io/library/nginx@sha256:6e23479198b998e5e25921dff8455837c7636a67111a04a635cf1bb363d199dc
 
 # Find the digest of an image you have pulled
 podman inspect docker.io/library/nginx:latest --format '{{.Digest}}'
 
 # Use the digest in your Containerfile for reproducibility
-# FROM docker.io/library/nginx@sha256:abc123def456...
+# FROM docker.io/library/nginx@sha256:6e23479198b998e5e25921dff8455837c7636a67111a04a635cf1bb363d199dc
 ```
 
 ## Pulling Multiple Images
