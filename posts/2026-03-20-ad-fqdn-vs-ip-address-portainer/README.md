@@ -8,107 +8,101 @@ Description: Understand when to use FQDN versus IP address for Active Directory 
 
 ---
 
-When configuring Active Directory authentication in Portainer, you must decide whether to connect using a domain controller's FQDN or its IP address. This choice has significant implications for TLS validation and DNS failover.
+When configuring Active Directory authentication in Portainer Business Edition, you must decide whether to connect using a domain controller's FQDN or its IP address. In Portainer's LDAP/AD settings, the controller is stored as `LDAPSettings.URL` in `host:port` format. This choice has significant implications for TLS validation and name resolution.
 
 ## Why FQDN is Strongly Recommended
 
-Using the FQDN of the domain controller (`dc01.corp.example.com`) rather than an IP address is required when:
+Using the FQDN of the domain controller (`dc01.corp.example.com`) rather than an IP address is strongly recommended when:
 - Using LDAPS (LDAP over TLS) with valid certificates
-- The AD SSL certificate contains the hostname in its Subject Alternative Name
-- You want DNS-based failover to replica domain controllers
+- The AD LDAPS certificate contains the exact hostname Portainer connects to in its Subject Alternative Name
+- You want to avoid hard-coding a controller IP and keep the option to repoint a stable hostname later
 
-```bash
-# CORRECT: Using FQDN with LDAPS
-
-# The AD SSL cert is issued to dc01.corp.example.com
-# TLS validation succeeds because hostname matches the cert
-curl -X PUT https://localhost:9443/api/settings \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "LDAPSettings": {
-      "URLs": ["ldaps://dc01.corp.example.com:636"],
-      "TLSConfig": {"TLS": true, "TLSSkipVerify": false}
-    }
-  }' --insecure
-
-# PROBLEMATIC: Using IP address with LDAPS
-# TLS validation FAILS because cert was issued to the hostname, not the IP
-# (unless the cert also contains the IP in SANs)
-# "LDAPSettings": {"URLs": ["ldaps://192.168.1.10:636"]}
+```json
+{
+  "LDAPSettings": {
+    "URL": "dc01.corp.example.com:636",
+    "TLSConfig": { "TLS": true, "TLSSkipVerify": false },
+    "StartTLS": false
+  }
+}
 ```
+
+Using `192.168.1.10:636` for LDAPS is problematic unless the certificate also contains that IP address in its Subject Alternative Name.
 
 ## When IP Addresses Work
 
 IP addresses are acceptable only when:
-- Using plain LDAP (port 389, unencrypted) - not recommended for production
+- Using plain LDAP without TLS (typically port 389) - not recommended for production
 - The SSL certificate includes the IP address as a Subject Alternative Name
 - You've set `TLSSkipVerify: true` - only appropriate for testing
 
-```bash
-# Using IP with TLSSkipVerify (development/testing only)
-curl -X PUT https://localhost:9443/api/settings \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "LDAPSettings": {
-      "URLs": ["ldaps://192.168.1.10:636"],
-      "TLSConfig": {"TLS": true, "TLSSkipVerify": true}
-    }
-  }' --insecure
-# WARNING: TLSSkipVerify disables certificate validation - not for production
+```json
+{
+  "LDAPSettings": {
+    "URL": "192.168.1.10:636",
+    "TLSConfig": { "TLS": true, "TLSSkipVerify": true },
+    "StartTLS": false
+  }
+}
 ```
+
+If you use StartTLS on port `389` instead of LDAPS on port `636`, the same hostname-versus-IP certificate matching rules still apply.
 
 ## DNS Resolution inside the Container
 
-Portainer runs inside Docker. The Portainer container must be able to resolve the FQDN:
+Portainer runs inside Docker. The Portainer container, or a helper container using the same Docker DNS settings, must be able to resolve the FQDN:
 
 ```bash
-# Test DNS resolution from inside the Portainer container
-docker exec portainer nslookup dc01.corp.example.com
+# Test resolution using the same DNS settings you plan to give Portainer
+docker run --rm \
+  --dns 192.168.1.5 \
+  --dns-search corp.example.com \
+  alpine:3.21 \
+  nslookup dc01.corp.example.com
 
-# If DNS fails, add a custom DNS server to Docker
-docker stop portainer && docker container rm portainer
+# If DNS fails, recreate Portainer with explicit DNS settings
+docker stop portainer
+docker container rm portainer
 
 docker run -d \
   -p 8000:8000 \
   -p 9443:9443 \
   --name portainer \
   --restart=always \
-  --dns 192.168.1.5 \           # Corporate DNS server
+  --dns 192.168.1.5 \
   --dns-search corp.example.com \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
-  portainer/portainer-ce:latest
+  portainer/portainer-ee:sts
 ```
 
 ## Using a DNS Alias (CNAME) for Resilience
 
-Point Portainer at a CNAME that can be updated to switch between DCs:
+Point Portainer at a CNAME only if the certificate presented by the domain controller is also valid for that exact alias:
 
-```bash
-# In your DNS: ldap.corp.example.com -> dc01.corp.example.com
-# If DC1 fails, update the CNAME to point to DC2
-# Portainer configuration never needs to change
-
-# Configure Portainer with the CNAME
-"URLs": ["ldaps://ldap.corp.example.com:636"]
+```json
+{
+  "LDAPSettings": {
+    "URL": "ldap.corp.example.com:636"
+  }
+}
 ```
+
+If the certificate only contains `dc01.corp.example.com`, connecting to `ldap.corp.example.com` will still fail TLS validation.
 
 ## Multi-DC Configuration
 
 For AD environments with multiple domain controllers:
 
-```bash
-# Configure multiple DC URLs for automatic failover
-"LDAPSettings": {
-  "URLs": [
-    "ldaps://dc01.corp.example.com:636",
-    "ldaps://dc02.corp.example.com:636",
-    "ldaps://dc03.corp.example.com:636"
-  ]
+```json
+{
+  "LDAPSettings": {
+    "URL": "dc01.corp.example.com:636"
+  }
 }
 ```
+
+When automating via Portainer's settings API, the AD controller value is stored as a single `LDAPSettings.URL`. If you need to move to another domain controller, update that value or repoint a stable DNS name that is also covered by the certificate.
 
 ## Verify Hostname Resolution
 
@@ -116,8 +110,12 @@ For AD environments with multiple domain controllers:
 # From the Docker host, verify DNS works
 host dc01.corp.example.com
 
-# From inside the container
-docker exec portainer /bin/sh -c "nslookup dc01.corp.example.com"
+# From a helper container using the same DNS settings
+docker run --rm \
+  --dns 192.168.1.5 \
+  --dns-search corp.example.com \
+  alpine:3.21 \
+  nslookup dc01.corp.example.com
 
 # Check the certificate SAN for the IP (if needed)
 openssl s_client -connect dc01.corp.example.com:636 </dev/null 2>/dev/null | \
