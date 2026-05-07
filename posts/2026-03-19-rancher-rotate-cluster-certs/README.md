@@ -11,7 +11,7 @@ Kubernetes clusters use TLS certificates for internal communication between comp
 ## Prerequisites
 
 - Rancher v2.5 or later
-- RKE or RKE2 managed clusters
+- RKE or RKE2 managed clusters (RKE1 is end-of-life, and Rancher 2.12.0 and later no longer manage downstream RKE1 clusters)
 - Admin access to Rancher
 - SSH access to cluster nodes (for manual operations)
 
@@ -20,25 +20,21 @@ Kubernetes clusters use TLS certificates for internal communication between comp
 ### Via Rancher UI
 
 1. Navigate to the cluster.
-2. In the cluster dashboard, check for certificate expiration warnings.
-3. Rancher displays alerts when certificates are approaching expiration.
+2. Review the cluster status, alerts, and recent events for certificate-related warnings.
+3. If you are using Rancher to rotate certificates, schedule the work during a maintenance window because components will restart.
 
 ### Via kubectl
 
-Check the API server certificate:
+On RKE2 clusters, check for certificate expiration warning events:
 
 ```bash
-kubectl get configmap -n kube-system extension-apiserver-authentication \
-  -o jsonpath='{.data.client-ca-file}' | openssl x509 -noout -dates
+kubectl get events -A --field-selector reason=CertificateExpirationWarning
 ```
 
 ### On RKE2 Nodes
 
 ```bash
-for cert in /var/lib/rancher/rke2/server/tls/*.crt; do
-  echo "=== $cert ==="
-  openssl x509 -in "$cert" -noout -dates 2>/dev/null
-done
+rke2 certificate check --output table
 ```
 
 ### On RKE Nodes
@@ -60,29 +56,37 @@ Rancher provides a one-click certificate rotation for RKE clusters:
 4. Choose the rotation scope:
    - **Rotate all Service Certificates**: Rotates all internal cluster certificates.
    - **Rotate an Individual Service**: Rotate certificates for a specific component (etcd, kubelet, kube-apiserver, etc.).
-5. Click **Rotate**.
+5. Click **Save**.
 
 Rancher will orchestrate the rotation across all nodes, restarting components as needed.
 
 ### Via the Rancher API
 
 ```bash
-curl -X POST \
+curl -u 'ACCESS_KEY:SECRET_KEY' -X POST \
   'https://rancher.yourdomain.com/v3/clusters/CLUSTER_ID?action=rotateCertificates' \
-  -H 'Authorization: Bearer YOUR_API_TOKEN' \
   -H 'Content-Type: application/json' \
   -d '{
-    "services": ["etcd", "kubelet", "kube-apiserver", "kube-controller-manager", "kube-scheduler", "kube-proxy"]
+    "services": [
+      "etcd",
+      "kubelet",
+      "kube-apiserver",
+      "kube-controller-manager",
+      "kube-scheduler",
+      "kube-proxy"
+    ]
   }'
 ```
 
+Rancher's v3 API exposes actions on the cluster resource. In practice, you should fetch the cluster resource first and follow the URL in its `actions.rotateCertificates` map entry instead of hard-coding deeper API paths.
+
 ## Step 3: Rotate Certificates for RKE2 Clusters
 
-RKE2 handles certificate rotation differently. On the control plane node:
+For Rancher-launched RKE2 clusters, Rancher can rotate the auto-generated certificates from the same **Rotate Certificates** action in the UI. If you are performing the work directly on a node, RKE2 also supports manual rotation.
 
 ### Automatic Rotation on Restart
 
-RKE2 automatically rotates certificates that are within 90 days of expiry when the service is restarted:
+RKE2 automatically renews certificates that are expired or within 120 days of expiry when the service is restarted. On releases prior to the May 2025 RKE2 releases, the renewal threshold was 90 days.
 
 ```bash
 systemctl restart rke2-server
@@ -90,15 +94,14 @@ systemctl restart rke2-server
 
 ### Force Certificate Rotation
 
-To force rotation regardless of expiration date:
+To generate new certificates and keys regardless of expiration date:
 
 ```bash
 # Stop RKE2
-
 systemctl stop rke2-server
 
-# Delete the existing certificates (they will be regenerated)
-rm -f /var/lib/rancher/rke2/server/tls/dynamic-cert.json
+# Rotate certificates
+rke2 certificate rotate
 
 # Start RKE2
 systemctl start rke2-server
@@ -112,7 +115,7 @@ On each worker node:
 systemctl restart rke2-agent
 ```
 
-The agent will automatically obtain new certificates from the server.
+The agent will automatically renew its certificates from the server when it restarts.
 
 ## Step 4: Rotate etcd Certificates
 
@@ -122,41 +125,34 @@ etcd certificates are critical for cluster data integrity:
 
 1. Go to **Cluster Management** > **Rotate Certificates**.
 2. Select **etcd** as the service.
-3. Click **Rotate**.
+3. Click **Save**.
 
 ### Manually (RKE2)
 
 ```bash
+# Stop RKE2
 systemctl stop rke2-server
 
-# Back up existing etcd certs
-cp -r /var/lib/rancher/rke2/server/tls/etcd /var/lib/rancher/rke2/server/tls/etcd.bak
+# Rotate only the etcd certificates
+rke2 certificate rotate --service etcd
 
-# Remove etcd certs (they will be regenerated)
-rm /var/lib/rancher/rke2/server/tls/etcd/server-client.crt
-rm /var/lib/rancher/rke2/server/tls/etcd/server-client.key
-rm /var/lib/rancher/rke2/server/tls/etcd/peer-server-client.crt
-rm /var/lib/rancher/rke2/server/tls/etcd/peer-server-client.key
-
+# Start RKE2
 systemctl start rke2-server
 ```
+
+On older multi-server RKE2 releases, rotate etcd servers before rotating other server or agent nodes.
 
 ## Step 5: Verify Rotated Certificates
 
 After rotation, verify the new certificates:
 
 ```bash
-# Check API server certificate
+# On RKE2 nodes, check the node certificates and their expiration dates
+rke2 certificate check --output table
+
+# Check the API server certificate presented on this node
 echo | openssl s_client -connect localhost:6443 2>/dev/null | \
   openssl x509 -noout -dates -subject
-
-# Check etcd certificate
-openssl x509 -in /var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
-  -noout -dates
-
-# Check kubelet certificate
-openssl x509 -in /var/lib/rancher/rke2/server/tls/client-kubelet.crt \
-  -noout -dates
 ```
 
 Verify cluster health after rotation:
@@ -169,13 +165,12 @@ kubectl cluster-info
 
 ## Step 6: Handle Multi-Node Rotation
 
-For multi-node clusters, certificates should be rotated in a rolling fashion:
+For multi-node clusters, certificates should be rotated in a controlled sequence:
 
-1. Rotate on the first control plane node.
-2. Verify the node is healthy.
-3. Rotate on the next control plane node.
-4. Continue until all control plane nodes are done.
-5. Rotate on worker nodes (can be done in parallel).
+1. If you are rotating through Rancher, use the UI action and let Rancher orchestrate the rollout.
+2. For manual rotation on older RKE2 releases, rotate etcd servers first, then control plane servers, then agents.
+3. Verify each node is healthy before continuing.
+4. Restart worker nodes after server-side certificate changes so they pick up fresh client certificates.
 
 Monitor the cluster during rotation:
 
@@ -185,26 +180,23 @@ kubectl get nodes -w
 
 ## Step 7: Update kubeconfig Files
 
-After certificate rotation, kubeconfig files may need to be regenerated:
+After certificate rotation, kubeconfig files may need to be redistributed:
 
 ### For RKE2
 
 ```bash
-# The kubeconfig is automatically updated
 cat /etc/rancher/rke2/rke2.yaml
 ```
 
+If you use this file outside the node, copy the updated file again after rotating the `admin` certificate or CA, and replace `127.0.0.1` with the server IP or DNS name.
+
 ### For Users
 
-Users who have downloaded kubeconfig from Rancher should download a new copy:
-
-1. In Rancher, navigate to the cluster.
-2. Click **Kubeconfig File**.
-3. Download the updated kubeconfig.
+Users who rely on a node-generated admin kubeconfig should receive an updated copy after `admin` or CA rotation.
 
 ## Step 8: Set Up Certificate Monitoring
 
-Monitor certificate expiration across all clusters:
+For RKE2, enable `supervisor-metrics: true` and alert on the `rke2_certificate_expiration_seconds` metric:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -218,25 +210,20 @@ spec:
     rules:
     - alert: ClusterCertExpiring
       expr: |
-        apiserver_client_certificate_expiration_seconds_count > 0
-        and
-        histogram_quantile(0.01, rate(apiserver_client_certificate_expiration_seconds_bucket[5m])) < 2592000
+        min by (subject, usage) (rke2_certificate_expiration_seconds) < 2592000
       labels:
         severity: warning
       annotations:
-        summary: "Cluster certificates expiring within 30 days"
+        summary: "RKE2 certificate expiring within 30 days"
 ```
 
-Create a script to check certificates across all clusters:
+Create a script to check RKE2 certificates across all nodes in a cluster:
 
 ```bash
 #!/bin/bash
 for node in $(kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'); do
   echo "=== Node: $node ==="
-  ssh $node 'for cert in /var/lib/rancher/rke2/server/tls/*.crt; do
-    expiry=$(openssl x509 -in "$cert" -noout -enddate 2>/dev/null | cut -d= -f2)
-    echo "$cert: $expiry"
-  done' 2>/dev/null
+  ssh "$node" 'sudo rke2 certificate check --output table' 2>/dev/null
 done
 ```
 
@@ -257,17 +244,17 @@ Restart the node's RKE2 service to trigger certificate re-negotiation.
 
 ### API Server Returns Certificate Errors
 
-Clear the dynamic certificate cache:
+Check the server log and inspect the current certificate state:
 
 ```bash
-rm /var/lib/rancher/rke2/server/tls/dynamic-cert.json
-systemctl restart rke2-server
+journalctl -u rke2-server -f
+rke2 certificate check --output table
 ```
 
 ### kubectl Returns Authentication Errors
 
-Download a fresh kubeconfig from Rancher after certificate rotation.
+If you are using the node-generated admin kubeconfig, copy a fresh `/etc/rancher/rke2/rke2.yaml` after rotating the `admin` certificate or CA.
 
 ## Conclusion
 
-Regular certificate rotation is essential for maintaining the security and availability of your Rancher-managed clusters. By using Rancher's built-in rotation features for RKE clusters and RKE2's automatic rotation on restart, you can keep certificates current with minimal disruption. Combine rotation with monitoring to prevent unexpected expirations.
+Regular certificate rotation is essential for maintaining the security and availability of your Rancher-managed clusters. By using Rancher's built-in rotation features for RKE clusters and RKE2's renewal-on-restart behavior or `rke2 certificate rotate`, you can keep certificates current with minimal disruption. Combine rotation with monitoring to prevent unexpected expirations.
