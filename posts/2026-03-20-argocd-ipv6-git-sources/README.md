@@ -8,24 +8,27 @@ Description: Configure ArgoCD to connect to Git repositories over IPv6, includin
 
 ## Introduction
 
-ArgoCD connects to Git repositories as application sources for GitOps deployments. When Git servers are on IPv6 networks, ArgoCD must be configured to connect using IPv6 URLs. This involves adding repositories with IPv6 addresses in the URL, configuring TLS certificates for IPv6-addressed HTTPS endpoints, and ensuring the ArgoCD cluster's DNS can resolve Git hostnames to AAAA records.
+ArgoCD connects to Git repositories as application sources for GitOps deployments. When Git servers are on IPv6 networks, ArgoCD can connect using literal IPv6 URLs or hostnames that resolve to AAAA records. This involves adding repositories with IPv6 addresses in the URL, configuring TLS trust for HTTPS endpoints, and ensuring the ArgoCD cluster's DNS can resolve Git hostnames to AAAA records.
 
 ## Add a Git Repository with IPv6 HTTPS URL
 
 ```bash
 # ArgoCD CLI: add a Git repository over IPv6
 
-argocd repo add "https://[2001:db8::git]:443/org/myrepo.git" \
+argocd repo add "https://[2001:db8::1]:443/org/myrepo.git" \
     --username git \
     --password "$GIT_TOKEN" \
     --insecure-skip-server-verification    # Only for testing
 
+# If the Git server uses a self-signed certificate or custom CA,
+# add the CA certificate for the HTTPS server first
+argocd cert add-tls gitea.example.com --from /tmp/git-ca.crt
+
 # With TLS certificate verification (recommended for production)
 argocd repo add "https://gitea.example.com/org/myrepo.git" \
-    --tls-client-cert-path /tmp/git-ca.crt \
     --username git \
     --password "$GIT_TOKEN"
-# Hostname must resolve to AAAA record for IPv6 connectivity
+# Hostname must resolve to an AAAA record for IPv6 connectivity
 
 # List repositories
 argocd repo list
@@ -44,14 +47,10 @@ metadata:
     argocd.argoproj.io/secret-type: repository
 stringData:
   # HTTPS repository with IPv6 address
-  url: "https://[2001:db8::git]:443/org/myrepo.git"
+  url: "https://[2001:db8::1]:443/org/myrepo.git"
   username: git
   password: "your-token"
-  # TLS CA for the IPv6 Git server
-  tlsClientCertData: |
-    -----BEGIN CERTIFICATE-----
-    ...
-    -----END CERTIFICATE-----
+  # Configure custom CA trust separately in argocd-tls-certs-cm
   insecure: "false"
 ```
 
@@ -71,8 +70,8 @@ metadata:
   labels:
     argocd.argoproj.io/secret-type: repository
 stringData:
-  # SSH URL with IPv6 address (bracket notation in URL is NOT standard for SSH)
-  # Use hostname that resolves to AAAA instead
+  # SSH URL over IPv6
+  # Hostnames that resolve to AAAA records are usually the easiest option
   url: "ssh://git@gitserver.example.com/org/myrepo.git"
   sshPrivateKey: |
     -----BEGIN OPENSSH PRIVATE KEY-----
@@ -82,16 +81,14 @@ stringData:
 ```
 
 ```bash
-# For SSH with IPv6, configure DNS to return AAAA record for gitserver.example.com
-# OR configure the ArgoCD known_hosts for the IPv6 server
+# For SSH with IPv6, configure DNS to return an AAAA record for gitserver.example.com
+# and add the server's SSH host keys to ArgoCD
 
 # Get SSH host key from IPv6 Git server
-ssh-keyscan -6 2001:db8::git
+ssh-keyscan -6 gitserver.example.com | argocd cert add-ssh --batch
 
-# Add to ArgoCD known hosts
-argocd cert add-ssh "[2001:db8::git]:22" --batch < /dev/stdin << 'EOF'
-2001:db8::git ssh-rsa AAAAB3Nz...
-EOF
+# If you need a literal IPv6 SSH URL instead of a hostname, use ssh:// with brackets
+# Example: ssh://git@[2001:db8::1]/org/myrepo.git
 ```
 
 ## ArgoCD Application Using IPv6 Repository
@@ -108,7 +105,7 @@ spec:
 
   source:
     # Repository added above with IPv6 URL
-    repoURL: "https://[2001:db8::git]:443/org/myrepo.git"
+    repoURL: "https://[2001:db8::1]:443/org/myrepo.git"
     targetRevision: main
     path: kubernetes/overlays/production
 
@@ -124,44 +121,28 @@ spec:
 
 ## ArgoCD Network Configuration for IPv6
 
-```yaml
+```bash
 # Ensure ArgoCD's repo-server pod can reach IPv6 Git servers
-# Check the Kubernetes cluster's DNS supports AAAA records
+# For hostname-based URLs, the Kubernetes cluster's DNS must return AAAA records
+# ArgoCD does not require a separate "force IPv6" setting for outbound Git connections
 
-# Test DNS resolution from ArgoCD pod
+# Test end-to-end connectivity to a literal IPv6 Git URL from the repo-server pod
 kubectl exec -n argocd deployment/argocd-repo-server -- \
-    nslookup gitserver.example.com
-# Should show IPv6 address
-
-# Check connectivity to IPv6 Git server
-kubectl exec -n argocd deployment/argocd-repo-server -- \
-    curl -6 -v "https://[2001:db8::git]:443"
-
-# If cluster is IPv6-only: ensure ArgoCD components use IPv6
-# argocd-server ConfigMap:
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  # Force IPv6 for outbound connections
-  server.listen: "[::]:8080"
+    git ls-remote "https://[2001:db8::1]:443/org/myrepo.git"
 ```
 
-## Configure ArgoCD cm for IPv6 Repo Server
+## Configure ArgoCD TLS Trust for IPv6 Git Server
 
 ```yaml
-# argocd-cm ConfigMap additions
+# argocd-tls-certs-cm.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-tls-certs-cm
   namespace: argocd
 data:
-  # TLS configuration for IPv6 Git servers
-  # Custom CA for self-signed certificates on IPv6 endpoints
-  tls.certs.data: |
+  # Custom CA for a hostname that resolves to an AAAA record
+  gitea.example.com: |
     -----BEGIN CERTIFICATE-----
     MIIBxxx...   # CA cert for IPv6 Git server
     -----END CERTIFICATE-----
@@ -173,20 +154,20 @@ data:
 # Check ArgoCD repo-server logs for connection errors
 kubectl logs -n argocd deployment/argocd-repo-server | grep -i "err\|ipv6\|connect"
 
-# Test Git clone directly from repo-server pod
+# Test Git access directly from repo-server pod using a literal IPv6 URL
 kubectl exec -n argocd deployment/argocd-repo-server -- \
-    git ls-remote "https://[2001:db8::git]:443/org/myrepo.git"
+    git ls-remote "https://[2001:db8::1]:443/org/myrepo.git"
 
-# Check if IPv6 is available in the pod
+# Test hostname-based access that depends on AAAA resolution
 kubectl exec -n argocd deployment/argocd-repo-server -- \
-    ip -6 addr show
+    git ls-remote "https://gitea.example.com/org/myrepo.git"
 
-# Verify TLS certificate includes IPv6 SAN
-openssl s_client -connect "[2001:db8::git]:443" -6 </dev/null 2>&1 | \
+# Verify TLS certificate includes an IPv6 SAN when using a literal IPv6 HTTPS URL
+openssl s_client -connect "[2001:db8::1]:443" -6 </dev/null 2>&1 | \
     openssl x509 -noout -text | grep -A3 "Subject Alternative"
-# Should show: IP Address:2001:db8::git
+# Should show: IP Address:2001:db8::1
 ```
 
 ## Conclusion
 
-ArgoCD connects to Git repositories over IPv6 using HTTPS URLs with bracket notation (`https://[2001:db8::git]:443/`) or SSH URLs with hostnames resolving to AAAA records. Repository secrets reference these URLs and include TLS certificates or SSH keys. The ArgoCD `argocd-cm` ConfigMap accepts custom CA certificates for IPv6 Git servers with self-signed TLS. For SSH over IPv6, add the server's host key to ArgoCD's known_hosts using `argocd cert add-ssh`. Ensure the Kubernetes cluster's DNS returns AAAA records for Git hostnames when using hostnames rather than literal IPv6 addresses in repository URLs.
+ArgoCD connects to Git repositories over IPv6 using HTTPS URLs with bracket notation (`https://[2001:db8::1]:443/`) or SSH URLs that use either hostnames resolving to AAAA records or bracketed IPv6 literals in `ssh://` form. Repository secrets reference these URLs and include repository credentials or SSH keys. Custom HTTPS trust for Git servers is configured through the ArgoCD `argocd-tls-certs-cm` ConfigMap or the `argocd cert add-tls` command. For SSH over IPv6, add the server's host key to ArgoCD's known_hosts using `argocd cert add-ssh`. Ensure the Kubernetes cluster's DNS returns AAAA records for Git hostnames when using hostnames rather than literal IPv6 addresses in repository URLs.
