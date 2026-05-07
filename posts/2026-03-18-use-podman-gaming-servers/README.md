@@ -29,6 +29,7 @@ podman volume create minecraft-data
 
 podman run -d \
   --name minecraft \
+  --label type=gameserver \
   -p 25565:25565 \
   -e EULA=TRUE \
   -e MEMORY=2G \
@@ -57,6 +58,7 @@ Run a modded Minecraft server using Forge:
 ```bash
 podman run -d \
   --name minecraft-modded \
+  --label type=gameserver \
   -p 25566:25565 \
   -e EULA=TRUE \
   -e MEMORY=4G \
@@ -80,6 +82,7 @@ podman volume create valheim-data
 
 podman run -d \
   --name valheim \
+  --label type=gameserver \
   -p 2456-2458:2456-2458/udp \
   -e SERVER_NAME="Podman Valheim" \
   -e WORLD_NAME="PodmanWorld" \
@@ -96,13 +99,18 @@ podman run -d \
 ```bash
 podman volume create terraria-data
 
+podman run -it --rm \
+  -p 7777:7777 \
+  -v terraria-data:/root/.local/share/Terraria/Worlds:Z \
+  docker.io/ryshe/terraria:latest \
+  -world /root/.local/share/Terraria/Worlds/PodmanWorld.wld \
+  -autocreate 2
+
 podman run -d \
   --name terraria \
+  --label type=gameserver \
   -p 7777:7777 \
   -e WORLD_FILENAME=PodmanWorld.wld \
-  -e AUTOCREATE=2 \
-  -e DIFFICULTY=1 \
-  -e MAXPLAYERS=8 \
   -v terraria-data:/root/.local/share/Terraria/Worlds:Z \
   docker.io/ryshe/terraria:latest
 ```
@@ -114,6 +122,7 @@ podman volume create cs2-data
 
 podman run -d \
   --name cs2-server \
+  --label type=gameserver \
   -p 27015:27015/tcp \
   -p 27015:27015/udp \
   -p 27020:27020/udp \
@@ -135,6 +144,7 @@ podman volume create factorio-data
 
 podman run -d \
   --name factorio \
+  --label type=gameserver \
   -p 34197:34197/udp \
   -p 27015:27015/tcp \
   -v factorio-data:/factorio:Z \
@@ -152,7 +162,7 @@ Game servers can be resource-hungry. Use Podman's resource controls to prevent o
 podman run -d \
   --name game-server \
   --memory=4g \
-  --memory-swap=4g \
+  --memory-swap=8g \
   --cpus=2.0 \
   --cpu-shares=1024 \
   game-image
@@ -177,9 +187,9 @@ DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p "${BACKUP_DIR}"
 
 # Backup Minecraft
+podman exec minecraft rcon-cli save-off
 podman exec minecraft rcon-cli save-all
 sleep 5
-podman exec minecraft rcon-cli save-off
 podman run --rm \
   -v minecraft-data:/source:ro \
   -v "${BACKUP_DIR}":/backup:Z \
@@ -229,14 +239,14 @@ case "$1" in
     podman restart "$2"
     ;;
   status)
-    podman ps --filter "name=$2" --format "{{.Names}}: {{.Status}}"
+    podman ps -a --filter "name=$2" --format "{{.Names}}: {{.Status}}"
     ;;
   logs)
     podman logs -f --tail 50 "$2"
     ;;
   all-status)
     echo "=== Game Server Status ==="
-    podman ps --filter "label=type=gameserver" \
+    podman ps -a --filter "label=type=gameserver" \
       --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     ;;
   *)
@@ -247,7 +257,7 @@ esac
 
 ## Running as systemd Services
 
-Ensure game servers start on boot and restart after crashes:
+For a rootless user service that should start on boot, enable lingering once with `loginctl enable-linger "$USER"`, then use a Quadlet like:
 
 ```ini
 # ~/.config/containers/systemd/minecraft.container
@@ -268,6 +278,11 @@ TimeoutStopSec=60
 
 [Install]
 WantedBy=default.target
+```
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now minecraft.service
 ```
 
 ## Conclusion
