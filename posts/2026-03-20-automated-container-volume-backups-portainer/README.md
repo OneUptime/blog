@@ -37,6 +37,8 @@ services:
       - POSTGRES_PASSWORD=secret
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    labels:
+      - "docker-volume-backup.stop-during-backup=postgres"
     restart: unless-stopped
 
   volume-backup:
@@ -46,23 +48,22 @@ services:
       - AWS_S3_BUCKET_NAME=my-volume-backups
       - AWS_ACCESS_KEY_ID=<your-access-key>
       - AWS_SECRET_ACCESS_KEY=<your-secret-key>
-      - AWS_ENDPOINT=https://s3.amazonaws.com
+      - AWS_ENDPOINT=s3.amazonaws.com
       # Backup schedule - every night at 03:00
-      - BACKUP_CRON_EXPRESSION=0 3 * * *
+      - "BACKUP_CRON_EXPRESSION=0 3 * * *"
       # Retention policy
       - BACKUP_RETENTION_DAYS=30
+      - BACKUP_PRUNING_PREFIX=postgres-data-
       # Stop the app container during backup to ensure consistency
-      - BACKUP_STOP_CONTAINER_LABEL=backup.stop-during-backup
+      - BACKUP_STOP_DURING_BACKUP_LABEL=postgres
       # Prefix for backup archive files
-      - BACKUP_FILENAME=postgres-data-%Y-%m-%dT%H-%M-%S
+      - BACKUP_FILENAME=postgres-data-%Y-%m-%dT%H-%M-%S.{{ .Extension }}
     volumes:
       # Mount the volume to back up (read-only)
       - postgres-data:/backup/postgres-data:ro
       # Docker socket for container stop/start during backup
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
-    labels:
-      - "backup.stop-during-backup=true"
 
 volumes:
   postgres-data:
@@ -74,10 +75,10 @@ Add the following label to any container whose volume should be quiesced during 
 
 ```yaml
 labels:
-  - "backup.stop-during-backup=true"
+  - "docker-volume-backup.stop-during-backup=postgres"
 ```
 
-The backup container will stop labeled containers, snapshot the volume, then restart them. Downtime is typically under 10 seconds for most workloads.
+The backup container will stop labeled containers, archive the mounted volume contents, then restart them. Downtime depends on how long the backup takes for your workload and dataset size.
 
 ## Step 3: Verify Backup Archives
 
@@ -96,13 +97,13 @@ To restore a volume from a backup:
 
 ```bash
 # Download the archive
-aws s3 cp s3://my-volume-backups/postgres-data-2026-03-20T03-00-00.tar.gz .
+aws s3 cp s3://my-volume-backups/postgres-data-2026-03-20T03-00-00.tar.gz ./
 
 # Create a fresh volume and restore
 docker run --rm \
-  -v postgres-data-restore:/data \
-  -v $(pwd):/backup \
-  alpine tar xzf /backup/postgres-data-2026-03-20T03-00-00.tar.gz -C /data
+  -v postgres-data-restore:/backup/postgres-data \
+  -v $(pwd):/archive:ro \
+  alpine tar -xvzf /archive/postgres-data-2026-03-20T03-00-00.tar.gz
 ```
 
 ## Step 5: Monitor Backup Status
@@ -111,10 +112,10 @@ The backup container writes logs visible in Portainer's **Container Logs** view.
 
 ```yaml
 environment:
-  - NOTIFICATION_URLS=https://your-webhook.example.com
+  - NOTIFICATION_URLS=generic+https://your-webhook.example.com
   - NOTIFICATION_LEVEL=error  # Only alert on failures
 ```
 
 ## Summary
 
-Automated volume backups via Portainer require no external schedulers or scripts - just a sidecar container running alongside your applications. By combining volume mounts, Docker socket access, and configurable schedules, you get consistent, encrypted backups shipped to any S3-compatible storage with minimal setup effort.
+Automated volume backups via Portainer require no external schedulers or scripts - just a sidecar container running alongside your applications. By combining volume mounts, Docker socket access, and configurable schedules, you get consistent backups shipped to S3-compatible storage with minimal setup effort.
