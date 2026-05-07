@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Machine Learning, Model Serving, Kubernetes, MLOps, Infrastructure as Code
 
-Description: Learn how to build production-grade AI model serving infrastructure on Kubernetes using OpenTofu, including load balancing, auto-scaling, and monitoring.
+Description: Learn how to build Kubernetes-based AI model serving infrastructure on EKS using OpenTofu, including GPU node groups, load balancing, and auto-scaling.
 
 ## Introduction
 
-Production ML model serving requires more than a single container. You need load balancing, horizontal scaling, health checks, GPU node pools, and monitoring. OpenTofu provisions this complete serving stack on Kubernetes.
+Production ML model serving requires more than a single container. You need load balancing, horizontal scaling, health checks, GPU node pools, and supporting cluster add-ons. OpenTofu provisions the core serving infrastructure on Kubernetes.
 
 ## GPU Node Pool (EKS)
 
@@ -17,14 +17,15 @@ resource "aws_eks_node_group" "gpu" {
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "gpu-serving"
   node_role_arn   = aws_iam_role.node.arn
+  ami_type        = "AL2023_x86_64_NVIDIA"
 
   instance_types = ["g4dn.xlarge"]  # NVIDIA T4 GPU
   capacity_type  = "ON_DEMAND"
 
   scaling_config {
-    desired_size = 1
+    desired_size = 2
     max_size     = 5
-    min_size     = 0
+    min_size     = 1
   }
 
   subnet_ids = var.private_subnet_ids
@@ -41,6 +42,8 @@ resource "aws_eks_node_group" "gpu" {
   }
 }
 ```
+
+On EKS AL2023 NVIDIA AMIs, install the NVIDIA Kubernetes device plugin separately so Kubernetes advertises `nvidia.com/gpu` resources to the scheduler.
 
 ## Model Serving Deployment
 
@@ -130,6 +133,8 @@ resource "kubernetes_deployment_v1" "model_server" {
 
 ## Service and HPA
 
+This example assumes Metrics Server is installed for CPU metrics and Cluster Autoscaler can grow the node group between `min_size` and `max_size`.
+
 ```hcl
 resource "kubernetes_service_v1" "model_server" {
   metadata {
@@ -160,7 +165,7 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "model_server" {
 
   spec {
     min_replicas = 1
-    max_replicas = 10
+    max_replicas = 5
 
     scale_target_ref {
       api_version = "apps/v1"
@@ -192,4 +197,4 @@ tofu apply tfplan
 
 ## Summary
 
-Production AI model serving requires GPU node pools, health-checked deployments, HPA for scaling, and monitoring. OpenTofu manages the complete Kubernetes-based serving stack - from GPU node groups to HPA configurations - giving you reproducible, production-ready model serving infrastructure.
+Production AI model serving requires GPU node pools, health-checked deployments, HPA for scaling, and supporting cluster add-ons for GPU scheduling and metrics collection. OpenTofu manages the Kubernetes-based serving foundation - from GPU node groups to HPA configurations - giving you reproducible model serving infrastructure.
