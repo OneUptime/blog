@@ -12,6 +12,7 @@ TLS certificates used by the Rancher management server have expiration dates and
 
 - Rancher v2.5 or later
 - kubectl and Helm 3 access
+- cmctl access (if you use cert-manager)
 - Admin access to the Rancher management cluster
 - New TLS certificate and key (for custom certificates)
 
@@ -35,23 +36,23 @@ You can also check via the Rancher UI by inspecting the browser's certificate de
 
 ## Step 2: Rotate Let's Encrypt Certificates
 
-If you use Let's Encrypt with cert-manager, certificates are rotated automatically. However, you can force a renewal:
+If you use Let's Encrypt with cert-manager, certificates are rotated automatically. However, you can force an early renewal:
 
 ```bash
-kubectl delete secret tls-rancher-ingress -n cattle-system
+cmctl renew -n cattle-system tls-rancher-ingress
 ```
 
-cert-manager will automatically detect the missing secret and request a new certificate. Monitor the renewal:
+Monitor the renewal:
 
 ```bash
 kubectl get certificates -n cattle-system
-kubectl describe certificate tls-rancher-ingress -n cattle-system
+cmctl status certificate tls-rancher-ingress -n cattle-system
 ```
 
 Check cert-manager logs if the renewal does not happen:
 
 ```bash
-kubectl logs -n cert-manager -l app=cert-manager
+kubectl logs -n cert-manager deploy/cert-manager --all-pods=true --tail=50
 ```
 
 ## Step 3: Rotate Custom TLS Certificates
@@ -74,59 +75,51 @@ Sign the CSR with your CA or submit it to your certificate authority.
 
 ### Update the TLS Secret
 
-Delete the old secret and create a new one:
+Update the existing secret:
 
 ```bash
-kubectl delete secret tls-rancher-ingress -n cattle-system
-
 kubectl create secret tls tls-rancher-ingress \
   -n cattle-system \
   --cert=rancher-new.crt \
-  --key=rancher-new.key
+  --key=rancher-new.key \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 If you have a CA bundle, update the CA secret as well:
 
 ```bash
-kubectl delete secret tls-ca -n cattle-system
-
 kubectl create secret generic tls-ca \
   -n cattle-system \
-  --from-file=cacerts.pem=ca-chain.crt
+  --from-file=cacerts.pem=ca-chain.crt \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-### Restart Rancher to Pick Up the New Certificate
+### Restart Rancher If the CA Changed
 
 ```bash
 kubectl rollout restart deployment rancher -n cattle-system
 kubectl rollout status deployment rancher -n cattle-system
 ```
 
-## Step 4: Update the CA Certificate for Internal Communication
+## Step 4: Verify the `cacerts` Setting After a CA Change
 
-If you changed the CA, update the `cacerts` setting in Rancher:
+If you changed the CA, Rancher updates the `cacerts` setting after the Rancher pods restart. Verify that it matches the new CA certificate chain at `https://<RANCHER_SERVER_URL>/v3/settings/cacerts`.
 
-```bash
-kubectl -n cattle-system patch setting cacerts \
-  --type='merge' \
-  -p "{\"value\":\"$(cat ca-chain.crt)\"}"
-```
-
-Or through the Rancher UI:
+You can also verify it through the Rancher UI:
 
 1. Go to **Global Settings**.
 2. Find the **cacerts** setting.
-3. Update with the new CA certificate chain.
-4. Save.
+3. Confirm it matches the new CA certificate chain.
 
 ## Step 5: Update Downstream Cluster Agents
 
-After rotating the Rancher TLS certificate, downstream cluster agents need to trust the new certificate. If the CA changed, update the agents:
+After rotating the Rancher TLS certificate, downstream cluster agents need to trust the new certificate. If the CA changed, force Rancher to redeploy the agents for each downstream cluster from the management cluster:
 
 ```bash
-kubectl rollout restart deployment cattle-cluster-agent -n cattle-system
-kubectl rollout restart daemonset cattle-node-agent -n cattle-system
+kubectl annotate clusters.management.cattle.io <CLUSTER_ID> io.cattle.agent.force.deploy=true
 ```
+
+If you use Fleet-managed downstream clusters, also select **Force Update** in **Continuous Delivery** so `fleet-agent` picks up the new CA.
 
 On each downstream cluster, verify connectivity:
 
@@ -143,16 +136,16 @@ echo | openssl s_client -connect rancher.yourdomain.com:443 -servername rancher.
   openssl x509 -noout -dates -subject
 ```
 
-Verify from within the cluster:
+Verify the updated secret inside the cluster:
 
 ```bash
-kubectl run cert-check --rm -it --image=alpine --restart=Never -- \
-  sh -c 'apk add openssl && echo | openssl s_client -connect rancher.cattle-system.svc:443 2>/dev/null | openssl x509 -noout -dates'
+kubectl get secret tls-rancher-ingress -n cattle-system -o jsonpath='{.data.tls\.crt}' | \
+  base64 -d | openssl x509 -noout -dates -subject
 ```
 
 ## Step 7: Set Up Certificate Expiration Monitoring
 
-Prevent future certificate emergencies by monitoring expiration:
+If you already scrape the Rancher endpoint with a blackbox exporter probe, monitor expiration with:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -222,7 +215,7 @@ Clear your browser cache and cookies. The old certificate may be cached.
 
 ### Downstream Clusters Disconnect After CA Change
 
-If the CA changed, downstream agents need the new CA. Re-import the cluster or restart the agents with the new CA.
+If the CA changed, force a redeploy of the Rancher agents so Rancher updates the `CATTLE_CA_CHECKSUM`. For Fleet-managed clusters, also use **Force Update** in **Continuous Delivery**.
 
 ### cert-manager Fails to Renew
 
@@ -230,7 +223,7 @@ Check cert-manager logs and the Certificate resource status:
 
 ```bash
 kubectl describe certificate tls-rancher-ingress -n cattle-system
-kubectl logs -n cert-manager -l app=cert-manager --tail=50
+kubectl logs -n cert-manager deploy/cert-manager --all-pods=true --tail=50
 ```
 
 Common issues include DNS validation failures or rate limiting from Let's Encrypt.
