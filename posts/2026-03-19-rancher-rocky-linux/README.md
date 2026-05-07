@@ -6,7 +6,9 @@ Tags: Rancher, Rocky Linux, Docker, Kubernetes, Installation
 
 Description: A step-by-step guide to installing Rancher on Rocky Linux 9 using Docker, covering system preparation, Docker setup, firewall configuration, and deployment.
 
-Rocky Linux was created as a direct replacement for CentOS Linux after Red Hat shifted CentOS to a rolling release model. It maintains full binary compatibility with RHEL, making it an excellent choice for enterprise workloads including Rancher. This guide covers the complete process of installing Rancher on Rocky Linux 9.
+Rocky Linux was created as a direct replacement for CentOS Linux after Red Hat shifted CentOS to a rolling release model. It maintains full binary compatibility with RHEL, making it an excellent choice for enterprise workloads including Rancher. This guide covers the complete process of installing Rancher on Rocky Linux 9 for development and testing with Docker.
+
+Rancher's single-node Docker installation is intended for development and testing only, not production.
 
 ## Prerequisites
 
@@ -42,40 +44,40 @@ sudo sed -i '/ swap / s/^/#/' /etc/fstab
 
 ## Step 3: Configure SELinux
 
-Set SELinux to permissive mode for Rancher:
+Install Rancher's SELinux policy package so Rancher can run with SELinux enabled:
 
 ```bash
-sudo setenforce 0
-sudo sed -i 's/^SELINUX=enforcing/SELINUX=permissive/' /etc/selinux/config
+cat <<EOF | sudo tee /etc/yum.repos.d/rancher.repo
+[rancher]
+name=Rancher
+baseurl=https://rpm.rancher.io/rancher/production/centos/9/noarch
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.rancher.io/public.key
+EOF
+
+sudo dnf install -y rancher-selinux
 ```
 
 ## Step 4: Install Required Dependencies
 
 ```bash
 sudo dnf install -y \
-  yum-utils \
-  device-mapper-persistent-data \
-  lvm2 \
+  dnf-plugins-core \
   curl \
   wget \
   tar
 ```
 
-## Step 5: Remove Podman and Buildah
+## Step 5: Add the Docker Repository
 
-Rocky Linux ships with Podman by default. Remove it to avoid conflicts with Docker:
+Add the official Docker repository for RHEL-compatible systems:
 
 ```bash
-sudo dnf remove -y podman buildah containers-common
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 ```
 
 ## Step 6: Install Docker
-
-Add the Docker repository:
-
-```bash
-sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-```
 
 Install Docker Engine:
 
@@ -86,65 +88,32 @@ sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin d
 Enable and start Docker:
 
 ```bash
-sudo systemctl enable docker
-sudo systemctl start docker
-```
-
-Add your user to the Docker group:
-
-```bash
-sudo usermod -aG docker $USER
-newgrp docker
+sudo systemctl enable --now docker
 ```
 
 Verify Docker:
 
 ```bash
-docker --version
-docker run hello-world
+sudo docker --version
+sudo docker run hello-world
 ```
 
 ## Step 7: Configure the Firewall
 
-Open the required ports using firewalld:
+Rancher's installation requirements note that `firewalld` can conflict with Kubernetes networking plugins, so disable it before starting Rancher:
 
 ```bash
-sudo firewall-cmd --permanent --add-port=80/tcp
-sudo firewall-cmd --permanent --add-port=443/tcp
-sudo firewall-cmd --permanent --add-port=6443/tcp
-sudo firewall-cmd --permanent --zone=public --add-masquerade
-sudo firewall-cmd --reload
+sudo systemctl disable --now firewalld
 ```
 
-## Step 8: Configure Kernel Modules
+## Step 8: Configure Kernel Networking
 
-Load and persist the required kernel modules:
+Apply the sysctl setting Rancher requires for Docker-based installs:
 
 ```bash
-cat <<EOF | sudo tee /etc/modules-load.d/rancher.conf
-br_netfilter
-overlay
-ip_vs
-ip_vs_rr
-ip_vs_wrr
-ip_vs_sh
-EOF
-
 sudo modprobe br_netfilter
-sudo modprobe overlay
-sudo modprobe ip_vs
-sudo modprobe ip_vs_rr
-sudo modprobe ip_vs_wrr
-sudo modprobe ip_vs_sh
-```
-
-Configure sysctl parameters:
-
-```bash
 cat <<EOF | sudo tee /etc/sysctl.d/99-rancher.conf
 net.bridge.bridge-nf-call-iptables = 1
-net.bridge.bridge-nf-call-ip6tables = 1
-net.ipv4.ip_forward = 1
 EOF
 
 sudo sysctl --system
@@ -179,7 +148,7 @@ sudo mkdir -p /opt/rancher
 Deploy Rancher using Docker:
 
 ```bash
-docker run -d \
+sudo docker run -d \
   --name rancher \
   --restart=unless-stopped \
   -p 80:80 \
@@ -192,7 +161,7 @@ docker run -d \
 ## Step 12: Retrieve the Bootstrap Password
 
 ```bash
-docker logs rancher 2>&1 | grep "Bootstrap Password:"
+sudo docker logs rancher 2>&1 | grep "Bootstrap Password:"
 ```
 
 If the password has not appeared yet, wait another minute and try again.
@@ -209,11 +178,11 @@ Complete the setup:
 
 ## Rocky Linux Specific Considerations
 
-**FIPS mode**: Rocky Linux supports FIPS 140-2 mode. If FIPS is enabled on your server, ensure you are using a Rancher version that supports FIPS compliance.
+**FIPS mode**: If your Rocky Linux server is running with FIPS enabled, verify that the Rancher version you deploy supports your required compliance mode.
 
 **Cockpit**: Rocky Linux often comes with Cockpit installed on port 9090. This does not conflict with Rancher, but be aware of it when managing your server.
 
-**Package compatibility**: Since Rocky Linux is binary compatible with RHEL, you can use the CentOS Docker repository without issues:
+**Package compatibility**: Rocky Linux 9 is RHEL-compatible, so the RHEL Docker repository is the appropriate Docker Engine repository for this setup. You can confirm the OS release with:
 
 ```bash
 cat /etc/os-release | grep -i rocky
@@ -224,9 +193,10 @@ cat /etc/os-release | grep -i rocky
 Create regular backups:
 
 ```bash
-docker stop rancher
+sudo mkdir -p /backup
+sudo docker stop rancher
 sudo tar czf /backup/rancher-backup-$(date +%Y%m%d).tar.gz /opt/rancher
-docker start rancher
+sudo docker start rancher
 ```
 
 ## Troubleshooting
@@ -237,13 +207,13 @@ docker start rancher
 sudo systemctl status docker
 
 # View Rancher container logs
-docker logs rancher --tail 100
+sudo docker logs rancher --tail 100
 
 # Check SELinux denials
 sudo ausearch -m avc -ts recent
 
-# Check firewall configuration
-sudo firewall-cmd --list-all
+# Check firewalld status
+sudo systemctl status firewalld
 
 # Monitor resources
 top -bn1 | head -20
@@ -252,4 +222,4 @@ free -h
 
 ## Conclusion
 
-You have successfully installed Rancher on Rocky Linux 9. Rocky Linux provides an enterprise-grade, RHEL-compatible platform that is well suited for running Rancher and managing Kubernetes clusters. With its community-driven development and long support lifecycle, Rocky Linux is a reliable foundation for your container management infrastructure.
+You have successfully installed Rancher on Rocky Linux 9 for development or testing with Docker. Rocky Linux provides an enterprise-grade, RHEL-compatible platform that is well suited for running Rancher and managing Kubernetes clusters. With its community-driven development and long support lifecycle, Rocky Linux is a reliable foundation for your container management infrastructure.
