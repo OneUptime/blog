@@ -33,9 +33,9 @@ podman login registry.example.com
 
 Your registry must have the delete API enabled. For Docker Distribution registries, ensure the `REGISTRY_STORAGE_DELETE_ENABLED=true` environment variable is set.
 
-## Deleting a Single Image Tag
+## Deleting a Single Image Reference
 
-The basic `skopeo delete` command removes a specific tag from a registry.
+The basic `skopeo delete` command deletes the manifest referenced by a tag or digest. In current Skopeo versions, deleting by tag resolves that tag to a digest first, so other tags that point to the same manifest may be affected too.
 
 ```bash
 # Delete a specific tag from a private registry
@@ -54,7 +54,7 @@ skopeo delete \
 
 ## Deleting by Digest
 
-Deleting by tag only removes the tag reference. To remove the actual image layers, delete by digest.
+Deleting by digest makes the exact manifest being deleted explicit. The registry removes the manifest reference, and unreferenced layers are reclaimed later by garbage collection.
 
 ```bash
 # First, get the digest of the image
@@ -178,4 +178,4 @@ fi
 
 ## Summary
 
-Skopeo delete provides a command-line method for removing container images from registries. You can delete by tag or by digest, script bulk cleanups based on naming patterns or age, and integrate deletion into automated maintenance workflows. Always remember to run garbage collection on your registry after deletions to reclaim disk space. Combine Skopeo delete with Podman authentication for seamless access to private registries, and always implement safety checks to avoid accidentally removing images that are still in use.
+Skopeo delete provides a command-line method for removing container image manifests from registries. You can delete by tag or by digest, script bulk cleanups based on naming patterns or age, and integrate deletion into automated maintenance workflows. Always remember to run garbage collection on your registry after deletions to reclaim disk space. Combine Skopeo delete with Podman authentication for seamless access to private registries, and always implement safety checks to avoid accidentally removing images that are still in use.
