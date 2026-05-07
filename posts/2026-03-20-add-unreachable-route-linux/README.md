@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Routing, iproute2, ICMP, Networking, Security
 
-Description: Add an unreachable route on Linux to drop traffic to specific destinations while sending ICMP network unreachable messages back to the sender.
+Description: Add an unreachable route on Linux to drop traffic to specific destinations while sending ICMP host unreachable messages back to the sender.
 
 ## Introduction
 
-An `unreachable` route drops packets to a destination and sends an ICMP "network unreachable" message (type 3, code 0) back to the originating host. Unlike `blackhole` routes, the sender is notified that the destination is unreachable, which can be useful for explicit rejection of traffic in controlled environments.
+An `unreachable` route drops packets to a destination and sends an ICMP "host unreachable" message (type 3, code 1) back to the originating host. Unlike `blackhole` routes, the sender is notified that the destination is unreachable, which can be useful for explicit rejection of traffic in controlled environments.
 
 ## Add an Unreachable Route
 
 ```bash
-# Drop traffic to 10.99.0.0/24 and send ICMP unreachable
+# Drop traffic to 10.99.0.0/24 and send ICMP host unreachable
 
 ip route add unreachable 10.99.0.0/24
 ```
@@ -24,15 +24,15 @@ ip route add unreachable 10.99.0.0/24
 # Show routes of type unreachable
 ip route show type unreachable
 
-# Test - sender receives ICMP unreachable
+# Test - sender receives a host-unreachable error
 ping -c 3 10.99.0.1
-# Expected: "Network is unreachable" or ICMP error from the local host
+# Expected: a host-unreachable error from the local host
 ```
 
 ## Unreachable for a Single Host
 
 ```bash
-# Send ICMP unreachable for a specific host
+# Send ICMP host unreachable for a specific host
 ip route add unreachable 10.0.5.100/32
 ```
 
@@ -41,9 +41,9 @@ ip route add unreachable 10.0.5.100/32
 | Type | Packet fate | ICMP sent |
 |---|---|---|
 | `blackhole` | Dropped silently | No |
-| `unreachable` | Dropped | ICMP 3/0 - Net Unreachable |
-| `prohibit` | Dropped | ICMP 3/9 - Admin Prohibited |
-| `throw` | Continues lookup in next table | No |
+| `unreachable` | Dropped | ICMP 3/1 - Host Unreachable |
+| `prohibit` | Dropped | ICMP 3/13 - Comm Administratively Prohibited |
+| `throw` | Terminates lookup in the current table | ICMP 3/0 - Net Unreachable if no later rule matches |
 
 ## Use Unreachable in Policy Routing
 
@@ -65,6 +65,9 @@ ip route del unreachable 10.99.0.0/24
 
 ```ini
 # /etc/systemd/network/10-eth0.network
+[Match]
+Name=eth0
+
 [Route]
 Destination=10.99.0.0/24
 Type=unreachable
