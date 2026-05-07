@@ -17,11 +17,11 @@ A custom app catalog in Rancher lets you provide a curated set of applications f
 
 ## Understanding Rancher Catalogs
 
-A Rancher catalog is essentially a Helm chart repository with an optional Rancher-specific structure. Rancher adds features on top of standard Helm charts:
+A Rancher custom catalog is typically either a standard HTTP-based Helm chart repository or a Git repository with a Rancher-specific chart layout. Rancher adds features on top of standard Helm charts:
 
 - **questions.yaml**: Generates a form-based UI for chart configuration
 - **app-readme.md**: Provides a summary shown in the Rancher UI
-- **Chart annotations**: Control chart visibility and categories
+- **Chart annotations and keywords**: Set UI defaults, dependencies, and categories
 
 ## Step 1: Create the Catalog Structure
 
@@ -53,7 +53,7 @@ my-catalog/
 └── README.md
 ```
 
-Alternatively, use the standard Helm repository structure without version directories, where each chart has its own folder at the top level.
+For a traditional Helm repository, package each chart and publish the resulting `.tgz` archives with an `index.yaml` instead of using version directories in Git.
 
 ## Step 2: Create a Helm Chart
 
@@ -74,7 +74,6 @@ maintainers:
     email: platform@example.com
 annotations:
   catalog.cattle.io/display-name: My Web Application
-  catalog.cattle.io/certified: partner
   catalog.cattle.io/namespace: default
   catalog.cattle.io/release-name: my-web-app
 ```
@@ -82,10 +81,11 @@ annotations:
 Key Rancher annotations:
 
 - `catalog.cattle.io/display-name`: Friendly name shown in the UI
-- `catalog.cattle.io/certified`: `rancher`, `partner`, or `experimental`
-- `catalog.cattle.io/namespace`: Default installation namespace
-- `catalog.cattle.io/release-name`: Default release name
-- `catalog.cattle.io/auto-install`: Dependencies to auto-install
+- `catalog.cattle.io/namespace`: Fixed installation namespace
+- `catalog.cattle.io/release-name`: Fixed release name
+- `catalog.cattle.io/auto-install`: Install another chart and version before this chart
+
+Use the `keywords` field in `Chart.yaml` to define categories in the Rancher UI.
 
 ### values.yaml
 
@@ -173,7 +173,7 @@ questions:
     required: false
     label: "Enable Ingress"
     group: "Networking"
-    show_subquestion_if: true
+    show_subquestion_if: "true"
     subquestions:
       - variable: ingress.hostname
         default: ""
@@ -207,7 +207,7 @@ questions:
     type: boolean
     label: "Enable Persistence"
     group: "Storage"
-    show_subquestion_if: true
+    show_subquestion_if: "true"
     subquestions:
       - variable: persistence.size
         default: "1Gi"
@@ -226,6 +226,7 @@ questions:
 | Type | Description |
 |------|-------------|
 | `string` | Text input |
+| `multiline` | Multi-line text input |
 | `int` | Integer input |
 | `boolean` | Checkbox |
 | `enum` | Dropdown with predefined options |
@@ -234,6 +235,7 @@ questions:
 | `storageclass` | StorageClass selector |
 | `pvc` | PVC selector |
 | `secret` | Secret selector |
+| `cloudcredential` | Cloud credential selector |
 
 ## Step 4: Create an app-readme.md
 
@@ -303,14 +305,14 @@ spec:
 Push your catalog structure to a Git repository and add it to Rancher as a Git-based repository:
 
 ```bash
-git init
+git init -b main
 git add .
 git commit -m "Initial catalog"
 git remote add origin https://github.com/my-org/rancher-catalog.git
 git push -u origin main
 ```
 
-In Rancher, go to **Apps > Repositories** and add the Git repository.
+In the target cluster's dashboard in Rancher, go to **Apps > Repositories** and add the Git repository.
 
 ### Option B: Helm Repository
 
@@ -328,11 +330,11 @@ Host the files on any HTTP server and add the URL in Rancher.
 
 ## Step 7: Verify in Rancher
 
-1. Go to **Apps > Charts**
+1. In the target cluster, go to **Apps > Charts**
 2. Filter by your repository name
-3. Your custom chart should appear with the display name and icon
-4. Click on it to see the questions form and README
+3. Your custom chart should appear with the display name from `Chart.yaml`
+4. Click on it to see the questions form and chart documentation
 
 ## Summary
 
-Creating a custom app catalog in Rancher lets you provide standardized, self-service application deployment for your teams. The `questions.yaml` file generates an intuitive configuration form, while standard Helm templating handles the underlying Kubernetes resources. Host your catalog in a Git repository or as a traditional Helm repository, and add it to Rancher for immediate availability across your clusters.
+Creating a custom app catalog in Rancher lets you provide standardized, self-service application deployment for your teams. The `questions.yaml` file generates an intuitive configuration form, while standard Helm templating handles the underlying Kubernetes resources. Host your catalog in a Git repository or as a traditional Helm repository, and add it to Rancher to make it available on the target cluster.
