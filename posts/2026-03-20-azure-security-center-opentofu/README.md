@@ -8,9 +8,9 @@ Description: Learn how to configure Azure Security Center (Microsoft Defender fo
 
 ## Overview
 
-Azure Security Center (now part of Microsoft Defender for Cloud) provides unified security management with continuous security assessment, actionable recommendations, and threat protection. OpenTofu manages the core configuration settings.
+Azure Security Center, now Microsoft Defender for Cloud, provides unified security management with continuous security assessment, actionable recommendations, and threat protection. OpenTofu manages the core configuration settings.
 
-## Step 1: Configure Security Center Pricing
+## Step 1: Configure Defender for Cloud Pricing
 
 ```hcl
 # main.tf - Enable Defender for Cloud standard tier on key resource types
@@ -48,19 +48,16 @@ resource "azurerm_security_center_contact" "contact" {
 }
 ```
 
-## Step 3: Auto-Provisioning of Security Agents
+## Step 3: Legacy Auto-Provisioning Note
+
+The legacy `azurerm_security_center_auto_provisioning` resource manages automatic installation of the Log Analytics agent (MMA). That auto-provisioning capability was deprecated with the November 2024 retirement of the Log Analytics agent, so it should not be used in new OpenTofu configurations.
+
+## Step 4: Connect VM Security Data to a Log Analytics Workspace
 
 ```hcl
-# Automatically install the monitoring agent on new VMs
-resource "azurerm_security_center_auto_provisioning" "auto_provision" {
-  auto_provision = "On"  # "Off" to disable
-}
-```
+data "azurerm_subscription" "current" {}
 
-## Step 4: Connect to Log Analytics Workspace
-
-```hcl
-# Log Analytics workspace to receive Security Center data
+# Log Analytics workspace for Defender for Cloud VM security data
 resource "azurerm_log_analytics_workspace" "security_law" {
   name                = "security-center-workspace"
   location            = azurerm_resource_group.rg.location
@@ -69,7 +66,7 @@ resource "azurerm_log_analytics_workspace" "security_law" {
   retention_in_days   = 90
 }
 
-# Link Security Center to the workspace
+# Map VM security data to the workspace
 resource "azurerm_security_center_workspace" "sc_workspace" {
   scope        = "/subscriptions/${data.azurerm_subscription.current.subscription_id}"
   workspace_id = azurerm_log_analytics_workspace.security_law.id
@@ -79,37 +76,47 @@ resource "azurerm_security_center_workspace" "sc_workspace" {
 ## Step 5: Configure Security Alerts Integration
 
 ```hcl
-# Send Security Center alerts to a Logic App for notification workflow
-resource "azurerm_monitor_action_group" "security_alerts" {
+# Send high-severity Defender for Cloud alerts to a Logic App workflow
+resource "azurerm_security_center_automation" "security_alerts" {
   name                = "security-center-alerts"
+  location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  short_name          = "seculerts"
 
-  email_receiver {
-    name          = "security-team"
-    email_address = "security-team@example.com"
+  action {
+    type        = "LogicApp"
+    resource_id = azurerm_logic_app_workflow.security_notifications.id
+    trigger_url = var.logic_app_trigger_url
   }
 
-  webhook_receiver {
-    name        = "pagerduty"
-    service_uri = var.pagerduty_webhook_url
+  source {
+    event_source = "Alerts"
+
+    rule_set {
+      rule {
+        property_path  = "properties.metadata.severity"
+        operator       = "Equals"
+        expected_value = "High"
+        property_type  = "String"
+      }
+    }
   }
+
+  scopes = [data.azurerm_subscription.current.id]
 }
 ```
 
 ## Step 6: Policy Assignment for CIS Compliance
 
 ```hcl
-# Assign Azure Security Benchmark policy initiative
-resource "azurerm_subscription_policy_assignment" "azure_security_benchmark" {
-  name                 = "azure-security-benchmark"
+# Assign the built-in CIS Azure Foundations initiative
+resource "azurerm_subscription_policy_assignment" "cis_azure_foundations" {
+  name                 = "cis-azure-foundations"
   subscription_id      = data.azurerm_subscription.current.id
-  # Built-in Azure Security Benchmark initiative
-  policy_definition_id = "/providers/Microsoft.Authorization/policySetDefinitions/1f3afdf9-d0c9-4c3d-847f-89da613e70a8"
-  display_name         = "Azure Security Benchmark"
+  policy_definition_id = "/providers/Microsoft.Authorization/policySetDefinitions/470a962c-86a0-433b-803a-3c176b5ce79c"
+  display_name         = "CIS Azure Foundations v3.0.0"
 }
 ```
 
 ## Summary
 
-Azure Security Center configured with OpenTofu establishes a security baseline for your Azure subscription. Auto-provisioning ensures all VMs get the monitoring agent, the Log Analytics workspace centralizes security data, and security contacts ensure the right people are notified when threats are detected.
+Microsoft Defender for Cloud configured with OpenTofu establishes a security baseline for your Azure subscription. Defender plan pricing enables workload protection, the Log Analytics workspace can receive VM security data, workflow automation can route high-severity alerts, and policy assignments help track compliance requirements such as CIS Azure Foundations.
