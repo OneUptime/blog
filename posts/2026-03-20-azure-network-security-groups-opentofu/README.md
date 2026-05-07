@@ -8,7 +8,7 @@ Description: Learn how to create Azure Network Security Groups with OpenTofu to 
 
 ## Introduction
 
-Azure Network Security Groups (NSGs) filter network traffic with inbound and outbound security rules. They can be associated with subnets or individual network interfaces. OpenTofu manages NSGs with both inline and separate security rules.
+Azure Network Security Groups (NSGs) filter network traffic with inbound and outbound security rules. They can be associated with subnets or individual network interfaces. OpenTofu can manage NSGs with either inline security rules or separate security rule resources, but you should not mix both approaches for the same NSG.
 
 ## NSG with Inline Rules
 
@@ -60,7 +60,7 @@ resource "azurerm_network_security_group" "web" {
 
 ## Separate Security Rule Resources
 
-For modular management, use separate `azurerm_network_security_rule` resources:
+For modular management, use separate `azurerm_network_security_rule` resources. This example creates an explicit rule for Azure Load Balancer health probes on port `8080`; for public client traffic through a load balancer, use `Internet` or specific client CIDRs because Azure preserves the original client source IP:
 
 ```hcl
 resource "azurerm_network_security_group" "app" {
@@ -69,15 +69,15 @@ resource "azurerm_network_security_group" "app" {
   resource_group_name = var.resource_group_name
 }
 
-resource "azurerm_network_security_rule" "app_from_alb" {
-  name                        = "allow-from-load-balancer"
+resource "azurerm_network_security_rule" "app_health_probe" {
+  name                        = "allow-load-balancer-health-probe"
   priority                    = 100
   direction                   = "Inbound"
   access                      = "Allow"
   protocol                    = "Tcp"
   source_port_range           = "*"
   destination_port_range      = "8080"
-  source_address_prefix       = "AzureLoadBalancer"  # Azure service tag
+  source_address_prefix       = "AzureLoadBalancer"  # Azure service tag for health probes
   destination_address_prefix  = "*"
   resource_group_name         = var.resource_group_name
   network_security_group_name = azurerm_network_security_group.app.name
