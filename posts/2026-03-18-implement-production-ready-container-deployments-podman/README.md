@@ -54,7 +54,7 @@ Build minimal images to reduce attack surface:
 ```dockerfile
 # Multi-stage build for minimal production image
 
-FROM docker.io/library/node:20 AS builder
+FROM docker.io/library/node:24 AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -62,7 +62,7 @@ COPY . .
 RUN npm run build
 RUN npm prune --production
 
-FROM docker.io/library/node:20-alpine
+FROM docker.io/library/node:24-alpine
 RUN addgroup -g 1001 app && adduser -u 1001 -G app -D app
 
 WORKDIR /app
@@ -111,6 +111,8 @@ podman run -d --name api \
   my-api:1.2.3
 
 # Reverse proxy: bridges app-net and web-net
+# Rootless Podman cannot bind host ports below 1024 unless the host allows it
+# with net.ipv4.ip_unprivileged_port_start or redirects traffic from a low port.
 podman run -d --name proxy \
   --network app-net \
   --network web-net \
@@ -333,10 +335,10 @@ echo "Date: $(date)"
 
 # 1. Check for available updates
 echo "Checking for updates..."
-UPDATES=$(podman auto-update --dry-run)
+UPDATES=$(podman auto-update --dry-run --format "{{.Unit}} {{.Image}} {{.Updated}}")
 echo "$UPDATES"
 
-if echo "$UPDATES" | grep -q "false"; then
+if ! echo "$UPDATES" | awk '$NF == "pending" { found=1 } END { exit !found }'; then
   echo "No updates available."
   exit 0
 fi
@@ -460,7 +462,7 @@ echo "=== Pre-Deployment Checks ==="
 check "Quadlet files exist" "ls ~/.config/containers/systemd/*.container"
 check "Networks defined" "ls ~/.config/containers/systemd/*.network"
 check "Secrets created" "podman secret ls | grep -q db_password"
-check "Images available" "podman image exists my-api:stable"
+check "Images available" "podman image exists registry.example.com/myteam/my-api:stable"
 check "Volumes exist" "podman volume exists pgdata"
 check "Backup script exists" "test -x ~/bin/production-backup.sh"
 check "Monitoring config exists" "test -f ~/monitoring/prometheus.yml"
