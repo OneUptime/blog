@@ -21,7 +21,7 @@ Download the official Elasticsearch image.
 ```bash
 # Pull the Elasticsearch 8.x image
 
-podman pull docker.io/library/elasticsearch:8.12.0
+podman pull docker.elastic.co/elasticsearch/elasticsearch:8.12.0
 
 # Verify the image
 podman images | grep elasticsearch
@@ -40,7 +40,7 @@ podman run -d \
   -e "discovery.type=single-node" \
   -e "xpack.security.enabled=false" \
   -e "ES_JAVA_OPTS=-Xms512m -Xmx512m" \
-  elasticsearch:8.12.0
+  docker.elastic.co/elasticsearch/elasticsearch:8.12.0
 
 # Wait for Elasticsearch to start
 sleep 15
@@ -65,7 +65,7 @@ podman run -d \
   -e "xpack.security.enabled=false" \
   -e "ES_JAVA_OPTS=-Xms1g -Xmx1g" \
   -v es-data:/usr/share/elasticsearch/data:Z \
-  elasticsearch:8.12.0
+  docker.elastic.co/elasticsearch/elasticsearch:8.12.0
 
 # Verify the volume is attached
 podman volume inspect es-data
@@ -104,14 +104,17 @@ path.data: /usr/share/elasticsearch/data
 path.logs: /usr/share/elasticsearch/logs
 EOF
 
+# Create a separate volume for the custom node
+podman volume create es-custom-data
+
 # Run with custom config
 podman run -d \
   --name es-custom \
   -p 9202:9200 \
   -e "ES_JAVA_OPTS=-Xms1g -Xmx1g" \
   -v ~/es-config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:Z \
-  -v es-data:/usr/share/elasticsearch/data:Z \
-  elasticsearch:8.12.0
+  -v es-custom-data:/usr/share/elasticsearch/data:Z \
+  docker.elastic.co/elasticsearch/elasticsearch:8.12.0
 ```
 
 ## Indexing and Searching Documents
@@ -188,9 +191,9 @@ podman start my-elasticsearch
 
 # Remove containers and volumes
 podman rm -f my-elasticsearch es-persistent es-custom
-podman volume rm es-data
+podman volume rm es-data es-custom-data
 ```
 
 ## Summary
 
-Running Elasticsearch in a Podman container provides a self-contained search engine with predictable resource usage and easy configuration. Single-node mode is perfect for development, while custom configuration files let you set up cluster names, node roles, and index settings. Named volumes preserve your indices across restarts, and JVM heap settings give you direct control over memory allocation. Podman's rootless execution adds security, making this setup ideal for development, testing, and small-scale deployments.
+Running Elasticsearch in a Podman container provides a self-contained search engine with predictable resource usage and easy configuration. Single-node mode is perfect for development, while custom configuration files let you set up cluster names, node names, and index settings. Named volumes preserve your indices across restarts, and JVM heap settings give you direct control over memory allocation. Podman's rootless execution adds security, making this setup ideal for development, testing, and small-scale deployments.
