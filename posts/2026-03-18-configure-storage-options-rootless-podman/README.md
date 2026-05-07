@@ -62,8 +62,9 @@ pull_options = {enable_partial_images = "true", use_hard_links = "false", ostree
 # Mount options optimized for rootless
 mountopt = "nodev,metacopy=on"
 
-# Ignore chown errors that occur due to user namespace mapping
-ignore_chown_errors = "true"
+# Use only in single-UID environments without subordinate ID ranges.
+# This squashes image UIDs/GIDs to the user's UID/GID.
+# ignore_chown_errors = "true"
 
 # Use fuse-overlayfs if kernel overlay is not available
 # mount_program = "/usr/bin/fuse-overlayfs"
@@ -90,7 +91,7 @@ cat /etc/subgid | grep $(whoami)
 # sudo usermod --add-subgids 100000-165535 $(whoami)
 
 # Verify the mapping range
-# You need at least 65536 subordinate IDs
+# 65536 subordinate IDs is the common recommended range for broad image compatibility
 podman info --format '{{.Host.IDMappings.UIDMap}}'
 podman info --format '{{.Host.IDMappings.GIDMap}}'
 
@@ -103,15 +104,15 @@ podman info --format '{{.Host.IDMappings.GIDMap}}'
 Configure storage to work around rootless permission constraints.
 
 ```bash
-# Enable ignore_chown_errors for rootless overlay
+# Enable ignore_chown_errors only for single-UID rootless environments
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
 driver = "overlay"
 
 [storage.options.overlay]
-# Essential for rootless: ignore chown errors
-# When running rootless, some chown operations fail
-# because the user does not have the target UID/GID
+# Use this only when subordinate UID/GID mappings are unavailable.
+# It lets pulls proceed by storing all image files as the user's UID/GID,
+# which removes UID/GID separation inside the image.
 ignore_chown_errors = "true"
 
 # Force a permission mask on overlay layers
@@ -149,7 +150,6 @@ pull_options = {enable_partial_images = "true", use_hard_links = "false", ostree
 
 [storage.options.overlay]
 mountopt = "nodev,metacopy=on"
-ignore_chown_errors = "true"
 EOF
 
 # Test pull performance
@@ -173,24 +173,25 @@ df -h "$GRAPH_ROOT"
 NEW_PATH="/fast-ssd/$(whoami)/containers/storage"
 mkdir -p "$NEW_PATH"
 
+# Reset existing storage before changing storage.conf
+podman system reset --force
+
 # Update configuration
-cat > ~/.config/containers/storage.conf << 'EOF'
+cat > ~/.config/containers/storage.conf << EOF
 [storage]
 driver = "overlay"
 
 # Point to faster storage
-graphroot = "/fast-ssd/containers/storage"
+graphroot = "$NEW_PATH"
 
 # Keep runtime data on tmpfs for speed
 runroot = "$XDG_RUNTIME_DIR/containers"
 
 [storage.options.overlay]
 mountopt = "nodev,metacopy=on"
-ignore_chown_errors = "true"
 EOF
 
-# Reset and verify
-podman system reset --force
+# Verify
 podman info --format '{{.Store.GraphRoot}}'
 ```
 
@@ -250,4 +251,4 @@ podman run --rm alpine echo "Rootless storage OK"
 
 ## Summary
 
-Rootless Podman requires careful storage configuration to handle user namespace mapping and permission constraints. Enable `ignore_chown_errors` for the overlay driver, ensure subordinate UID/GID mappings are configured in `/etc/subuid` and `/etc/subgid`, and use `metacopy=on` for performance. Place `graphroot` on a fast filesystem while keeping `runroot` on tmpfs. Regular cleanup with `podman system prune` prevents storage bloat in rootless environments.
+Rootless Podman requires careful storage configuration to handle user namespace mapping and permission constraints. Ensure subordinate UID/GID mappings are configured in `/etc/subuid` and `/etc/subgid`, use `ignore_chown_errors` only in single-UID environments where subordinate ID mappings are unavailable, and use `metacopy=on` where your overlay implementation supports it. Place `graphroot` on a fast filesystem while keeping `runroot` on tmpfs. Regular cleanup with `podman system prune` prevents storage bloat in rootless environments.
