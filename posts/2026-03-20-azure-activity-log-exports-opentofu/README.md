@@ -6,7 +6,7 @@ Tags: OpenTofu, Azure, Activity Logs, Monitoring, Compliance, Infrastructure as 
 
 Description: Learn how to export Azure Activity Logs to Log Analytics, Storage Accounts, and Event Hubs using OpenTofu for centralized audit logging and compliance.
 
-Azure Activity Logs record all subscription-level events including resource creation, deletion, configuration changes, and security events. Exporting them to a centralized destination ensures your audit trail is preserved and queryable. Managing exports in OpenTofu ensures every subscription has consistent log routing from day one.
+Azure Activity Logs record subscription-level control plane events including resource creation, deletion, configuration changes, service health events, and security alerts. Azure retains these events for 90 days by default. Exporting them to a centralized destination ensures your audit trail is preserved and queryable. Managing exports in OpenTofu ensures every subscription has consistent log routing from day one.
 
 ## Provider Configuration
 
@@ -15,12 +15,13 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
+  subscription_id = var.subscription_id
   features {}
 }
 ```
@@ -53,7 +54,7 @@ resource "azurerm_monitor_diagnostic_setting" "activity_logs" {
   }
 
   enabled_log {
-    category = "Security"  # Security Center alerts
+    category = "Security"  # Microsoft Defender for Cloud alerts
   }
 
   enabled_log {
@@ -69,7 +70,7 @@ resource "azurerm_monitor_diagnostic_setting" "activity_logs" {
   }
 
   enabled_log {
-    category = "Policy"  # Azure Policy evaluations
+    category = "Policy"  # Azure Policy effect actions
   }
 
   enabled_log {
@@ -108,17 +109,30 @@ resource "azurerm_monitor_diagnostic_setting" "activity_to_storage" {
 
   enabled_log {
     category = "Administrative"
-    retention_policy {
-      enabled = true
-      days    = 365  # Keep 1 year in storage
-    }
   }
 
   enabled_log {
     category = "Security"
-    retention_policy {
-      enabled = true
-      days    = 365
+  }
+}
+
+# Diagnostic setting retention was retired; use a storage management policy instead.
+resource "azurerm_storage_management_policy" "audit_logs_retention" {
+  storage_account_id = azurerm_storage_account.audit_logs.id
+
+  rule {
+    name    = "delete-activity-logs-after-365-days"
+    enabled = true
+
+    filters {
+      prefix_match = ["insights-activity-logs/resourceId=/SUBSCRIPTIONS/"]
+      blob_types   = ["blockBlob"]
+    }
+
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 365
+      }
     }
   }
 }
@@ -136,21 +150,20 @@ resource "azurerm_eventhub_namespace" "logs" {
 }
 
 resource "azurerm_eventhub" "activity_logs" {
-  name                = "azure-activity-logs"
-  namespace_name      = azurerm_eventhub_namespace.logs.name
-  resource_group_name = azurerm_resource_group.monitoring.name
+  name              = "azure-activity-logs"
+  namespace_id      = azurerm_eventhub_namespace.logs.id
   partition_count     = 4
   message_retention   = 7
 }
 
-resource "azurerm_eventhub_authorization_rule" "logs_sender" {
-  name                = "activity-log-sender"
+# Diagnostic settings require a namespace SAS rule with Manage, Send, and Listen.
+resource "azurerm_eventhub_namespace_authorization_rule" "logs_sender" {
+  name                = "activity-log-stream-access"
   namespace_name      = azurerm_eventhub_namespace.logs.name
-  eventhub_name       = azurerm_eventhub.activity_logs.name
   resource_group_name = azurerm_resource_group.monitoring.name
-  listen              = false
+  listen              = true
   send                = true
-  manage              = false
+  manage              = true
 }
 
 resource "azurerm_monitor_diagnostic_setting" "activity_to_eventhub" {
@@ -158,7 +171,7 @@ resource "azurerm_monitor_diagnostic_setting" "activity_to_eventhub" {
   target_resource_id = "/subscriptions/${var.subscription_id}"
 
   eventhub_name                  = azurerm_eventhub.activity_logs.name
-  eventhub_authorization_rule_id = azurerm_eventhub_authorization_rule.logs_sender.id
+  eventhub_authorization_rule_id = azurerm_eventhub_namespace_authorization_rule.logs_sender.id
 
   enabled_log {
     category = "Administrative"
@@ -173,12 +186,13 @@ resource "azurerm_monitor_diagnostic_setting" "activity_to_eventhub" {
 ## Alert on Critical Activity Log Events
 
 ```hcl
-# Alert on policy assignment changes
+# Alert on policy assignment creates and updates
 resource "azurerm_monitor_activity_log_alert" "policy_change" {
   name                = "policy-assignment-changed"
   resource_group_name = azurerm_resource_group.monitoring.name
+  location            = "Global"
   scopes              = ["/subscriptions/${var.subscription_id}"]
-  description         = "Alert when a policy assignment is created, modified, or deleted"
+  description         = "Alert when a policy assignment is created or modified"
 
   criteria {
     category       = "Administrative"
@@ -190,10 +204,11 @@ resource "azurerm_monitor_activity_log_alert" "policy_change" {
   }
 }
 
-# Alert on role assignment changes
+# Alert on role assignment creates and updates
 resource "azurerm_monitor_activity_log_alert" "rbac_change" {
   name                = "rbac-assignment-changed"
   resource_group_name = azurerm_resource_group.monitoring.name
+  location            = "Global"
   scopes              = ["/subscriptions/${var.subscription_id}"]
 
   criteria {
@@ -209,4 +224,4 @@ resource "azurerm_monitor_activity_log_alert" "rbac_change" {
 
 ## Conclusion
 
-Azure Activity Log exports in OpenTofu provide a complete audit trail of all subscription-level events. Export to Log Analytics for 90-day queryable retention, to Storage Accounts for long-term compliance archival, and to Event Hubs for real-time SIEM integration. Create Activity Log alerts for high-priority security events like RBAC and policy changes to get immediate notification of privileged actions.
+Azure Activity Log exports in OpenTofu provide a centralized audit trail of subscription-level control plane events. Export to Log Analytics for 90-day queryable retention, to Storage Accounts for long-term compliance archival, and to Event Hubs for real-time SIEM integration. Create Activity Log alerts for high-priority security events like RBAC and policy assignment changes to get immediate notification of privileged actions.
