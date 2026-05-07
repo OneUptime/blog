@@ -12,12 +12,12 @@ Knowing who changed what, when, and why is essential for compliance and incident
 
 ## Layer 1: Git as the Source of Truth
 
-Every change to infrastructure configuration is a commit. Enforce meaningful commit messages and use signed commits:
+Every change to infrastructure configuration is a commit. Enforce meaningful commit messages and sign commits:
 
 ```bash
-# Require signed commits in your repository
+# Sign commits by default in this repository
 
-git config --global commit.gpgsign true
+git config commit.gpgsign true
 
 # View infrastructure change history
 git log --oneline -- "environments/prod/**/*.tf"
@@ -28,14 +28,14 @@ git log -p -- "environments/prod/vpc/main.tf"
 
 ## Layer 2: Saving Plan Output to a File
 
-Save structured plan output so reviewers can audit what will change before applying:
+Save structured plan output so reviewers can audit what will change before applying. Store the JSON securely because it can contain sensitive values in plain text:
 
 ```bash
 # Save binary plan file
 tofu plan -out=tfplan.binary
 
 # Convert to JSON for structured logging
-tofu show -json tfplan.binary > tfplan.json
+tofu show -json -plan=tfplan.binary > tfplan.json
 
 # Extract a summary of changes
 cat tfplan.json | jq '[.resource_changes[] | select(.change.actions != ["no-op"]) | {address, actions: .change.actions}]'
@@ -47,6 +47,7 @@ Capture all apply output in structured format for audit systems:
 
 ```bash
 # Save apply output with timestamp
+mkdir -p apply-logs
 TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
 tofu apply -json tfplan.binary | tee "apply-logs/apply-${TIMESTAMP}.json"
 
@@ -57,14 +58,14 @@ aws s3 cp "apply-logs/apply-${TIMESTAMP}.json" \
 
 ## Layer 4: CI/CD Pipeline Audit Trail
 
-GitHub Actions provides a built-in audit log. Capture structured metadata in each run:
+GitHub Actions preserves workflow run history, logs, and artifacts. Capture structured metadata in each run:
 
 ```yaml
 # .github/workflows/infra.yml
 - name: Tofu Apply
   id: apply
   run: |
-    tofu apply -json -auto-approve tfplan.binary | tee apply-output.json
+    tofu apply -json tfplan.binary | tee apply-output.json
     echo "applied_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
     echo "actor=${{ github.actor }}" >> $GITHUB_OUTPUT
     echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
@@ -79,10 +80,10 @@ GitHub Actions provides a built-in audit log. Capture structured metadata in eac
 
 ## Layer 5: Cloud Provider Audit Logs
 
-Every resource change by OpenTofu is also recorded in the cloud provider's audit service:
+AWS control plane changes made by OpenTofu are also recorded in CloudTrail:
 
 ```hcl
-# Enable AWS CloudTrail for API-level auditing of all changes
+# Enable AWS CloudTrail for API-level auditing of management-plane changes
 resource "aws_cloudtrail" "infra_audit" {
   name                          = "opentofu-audit"
   s3_bucket_name                = aws_s3_bucket.audit.id
@@ -104,10 +105,10 @@ resource "aws_cloudtrail" "infra_audit" {
 
 ## Layer 6: Querying the Audit Trail
 
-Use Athena to query CloudTrail logs for all OpenTofu-initiated changes:
+Use Athena to query CloudTrail logs for infrastructure changes:
 
 ```sql
--- Find all EC2 instance creations in the last 7 days
+-- Find selected EC2 and VPC write events in the last 7 days
 SELECT eventtime, useridentity.arn, requestparameters
 FROM cloudtrail_logs
 WHERE eventname IN ('RunInstances', 'CreateSecurityGroup', 'CreateSubnet')
@@ -117,4 +118,4 @@ ORDER BY eventtime DESC;
 
 ## Conclusion
 
-A complete OpenTofu audit trail combines Git commit history (who changed the code), saved plan files (what was planned), structured apply logs (what was applied), and cloud provider audit services (what API calls were made). Together these layers satisfy most compliance frameworks including SOC 2, PCI-DSS, and ISO 27001 requirements for infrastructure change management.
+A complete OpenTofu audit trail combines Git commit history (who changed the code), saved plan files (what was planned), structured apply logs (what was applied), and cloud provider audit services (what API calls were made). Together these layers help satisfy infrastructure change management and auditability requirements in frameworks such as SOC 2, PCI-DSS, and ISO 27001.
