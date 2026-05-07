@@ -46,10 +46,10 @@ curl -o /dev/null -s -w "%{http_code}" \
 
 ## Stopping a Container
 
-Stop a running container gracefully. The API sends SIGTERM and waits for the container to exit before sending SIGKILL.
+Stop a running container gracefully. By default, the API sends SIGTERM and waits for the container to exit before sending SIGKILL, unless the container was configured with a different stop signal.
 
 ```bash
-# Stop a container with the default timeout (10 seconds)
+# Stop a container with its configured stop timeout
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
   http://localhost/v4.0.0/libpod/containers/my-nginx/stop
@@ -82,7 +82,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 # Restart with a custom stop timeout
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
-  "http://localhost/v4.0.0/libpod/containers/my-nginx/restart?t=15"
+  "http://localhost/v4.0.0/libpod/containers/my-nginx/restart?timeout=15"
 ```
 
 ## Killing a Container
@@ -130,7 +130,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 
 ## Waiting for a Container to Exit
 
-The wait endpoint blocks until a container stops and returns the exit code.
+By default, the wait endpoint blocks until a container stops and returns the exit code.
 
 ```bash
 # Wait for a container to finish
@@ -144,7 +144,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   "http://localhost/v4.0.0/libpod/containers/my-task/wait?condition=stopped"
 ```
 
-Valid conditions include `configured`, `created`, `exited`, `healthy`, `initialized`, `paused`, `removing`, `running`, `stopped`, `stopping`, and `unhealthy`.
+For conditions other than `stopped` and `exited`, the API returns `-1` when the condition is met. Valid conditions include `created`, `initialized`, `running`, `paused`, `stopped`, `exited`, `removing`, and `stopping`.
 
 ## Removing a Container
 
@@ -164,7 +164,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 # Remove a container and its associated volumes
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X DELETE \
-  "http://localhost/v4.0.0/libpod/containers/my-nginx?force=true&v=true"
+  "http://localhost/v4.0.0/libpod/containers/my-nginx?force=true&volumes=true"
 ```
 
 ## Pruning Stopped Containers
@@ -180,7 +180,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
 # Prune with a label filter (only remove containers with specific labels)
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
-  "http://localhost/v4.0.0/libpod/containers/prune?filters={\"label\":[\"env=dev\"]}"
+  "http://localhost/v4.0.0/libpod/containers/prune?filters=%7B%22label%22%3A%5B%22env%3Ddev%22%5D%7D"
 ```
 
 ## Checking Container Health
@@ -213,22 +213,22 @@ All lifecycle operations are also available through Docker-compatible endpoints.
 # Start using Docker-compatible endpoint
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
-  http://localhost/v1.41/containers/my-nginx/start
+  http://localhost/v1.40/containers/my-nginx/start
 
 # Stop
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
-  "http://localhost/v1.41/containers/my-nginx/stop?t=10"
+  "http://localhost/v1.40/containers/my-nginx/stop?t=10"
 
 # Restart
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X POST \
-  http://localhost/v1.41/containers/my-nginx/restart
+  http://localhost/v1.40/containers/my-nginx/restart
 
 # Remove
 curl --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
   -X DELETE \
-  "http://localhost/v1.41/containers/my-nginx?force=true"
+  "http://localhost/v1.40/containers/my-nginx?force=true"
 ```
 
 ## Managing Container Lifecycle with Python
