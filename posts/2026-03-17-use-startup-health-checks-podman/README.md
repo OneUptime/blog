@@ -35,10 +35,10 @@ podman run -d \
 ## How Startup Health Checks Work
 
 ```bash
-# Phase 1: Startup check runs until it succeeds or retries are exhausted
+# Phase 1: Startup check runs until it succeeds or the container is restarted
 # - Uses --health-startup-cmd
 # - Runs at --health-startup-interval frequency
-# - Allows --health-startup-retries failures
+# - Restarts the container after --health-startup-retries failed attempts
 #
 # Phase 2: Regular health check takes over after startup succeeds
 # - Uses --health-cmd
@@ -56,8 +56,8 @@ podman run -d \
   --health-retries 3 \
   phased-health-app:latest
 
-# Startup phase: checks every 3s, up to 40 retries (2 minutes max)
-# Running phase: checks every 15s, fails after 3 consecutive failures
+# Startup phase: checks every 3s, up to 40 failed attempts before restart (about 2 minutes)
+# Running phase: checks every 15s, becomes unhealthy after 3 consecutive failures
 ```
 
 ## Use Cases for Startup Health Checks
@@ -103,10 +103,10 @@ podman run -d --name startup-check-app \
   --health-interval 15s \
   startup-check-app:latest
 
-# Startup checks are preferred because they use a different endpoint
+# Startup checks are useful when you need a different endpoint
 # and can have their own interval and retry settings
 ```
 
 ## Summary
 
-Startup health checks in Podman provide a dedicated probe for container initialization that is separate from the regular health check. This is preferred over the start period approach because you can use a different command, interval, and retry count specifically tuned for your application startup. Once the startup check passes, Podman switches to the regular health check for ongoing monitoring.
+Startup health checks in Podman provide a dedicated probe for container initialization that is separate from the regular health check. This is useful when you need a different command and interval specifically tuned for your application startup, with a retry count that controls when Podman restarts the container if startup keeps failing. Once the startup check passes, Podman switches to the regular health check for ongoing monitoring.
