@@ -12,11 +12,15 @@ A security audit of your container environment identifies risks before attackers
 
 ## Step 1: Run Docker Bench for Security
 
-Docker Bench is the industry-standard CIS Docker Benchmark audit tool:
+Docker Bench is a CIS Docker Benchmark audit tool. Build the image locally first, because the published `docker/docker-bench-security` image is out of date:
 
 ```bash
-# Run Docker Bench for Security
+# Build Docker Bench for Security locally
+git clone https://github.com/docker/docker-bench-security.git
+cd docker-bench-security
+docker build --no-cache -t docker-bench-security .
 
+# Run Docker Bench for Security
 docker run --rm \
   --net host \
   --pid host \
@@ -30,10 +34,23 @@ docker run --rm \
   -v /var/lib:/var/lib:ro \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   --label docker_bench_security \
-  docker/docker-bench-security
+  docker-bench-security
 
-# Save results to file
-docker run --rm ... docker/docker-bench-security > /tmp/docker-bench-$(date +%Y%m%d).txt
+# Save console output to file
+docker run --rm \
+  --net host \
+  --pid host \
+  --userns host \
+  --cap-add audit_control \
+  -e DOCKER_CONTENT_TRUST=$DOCKER_CONTENT_TRUST \
+  -v /etc:/etc:ro \
+  -v /usr/bin/containerd:/usr/bin/containerd:ro \
+  -v /usr/bin/runc:/usr/bin/runc:ro \
+  -v /usr/lib/systemd:/usr/lib/systemd:ro \
+  -v /var/lib:/var/lib:ro \
+  -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  --label docker_bench_security \
+  docker-bench-security > /tmp/docker-bench-$(date +%Y%m%d).txt
 ```
 
 ## Step 2: Audit Running Containers for Common Issues
@@ -113,15 +130,15 @@ echo "=== AUDIT COMPLETE ==="
 echo "=== EXPOSED PORTS ==="
 docker ps --format "table {{.Names}}\t{{.Ports}}" | sort
 
-# Check for containers exposing dangerous ports to 0.0.0.0 (all interfaces)
+# Check for containers publishing sensitive container ports to all interfaces
 docker ps -q | while read id; do
   name=$(docker inspect "$id" --format '{{.Name}}')
   ports=$(docker inspect "$id" --format '{{json .NetworkSettings.Ports}}')
 
-  # Check for databases exposed externally
+  # Check for database and search service ports published externally
   for port in 5432 3306 27017 6379 9200 2181; do
-    if echo "$ports" | grep -q "\"0.0.0.0\".*$port"; then
-      echo "CRITICAL: $name exposes port $port to all interfaces (0.0.0.0)"
+    if echo "$ports" | jq -e --arg port "$port/tcp" '.[$port][]? | select(.HostIp=="0.0.0.0" or .HostIp=="::")' >/dev/null 2>&1; then
+      echo "CRITICAL: $name publishes container port $port to all interfaces"
     fi
   done
 done
@@ -136,7 +153,7 @@ docker ps --format "{{.Image}}" | sort -u | while read image; do
   echo "Scanning: $image"
 
   # Count critical and high CVEs
-  result=$(trivy image --quiet --format json "$image" 2>/dev/null)
+  result=$(trivy image --quiet --scanners vuln --format json "$image" 2>/dev/null)
   critical=$(echo "$result" | jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' 2>/dev/null || echo 0)
   high=$(echo "$result" | jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' 2>/dev/null || echo 0)
 
@@ -216,4 +233,4 @@ echo "Report saved to: $REPORT_FILE"
 
 ## Conclusion
 
-Regular security audits catch configuration drift before it becomes a breach. Docker Bench for Security provides a CIS-benchmark-based score for your host and containers. Custom audit scripts let you check organization-specific policies. The most critical items to check are privileged containers, containers with Docker socket mounts, databases exposed to all interfaces, containers without resource limits, and containers running as root. Run audits on a schedule - at least weekly in production - and integrate them into your CI/CD pipeline using Portainer's webhook triggers.
+Regular security audits catch configuration drift before it becomes a breach. Docker Bench for Security provides CIS-benchmark-based checks for your host and containers. Custom audit scripts let you check organization-specific policies. The most critical items to check are privileged containers, containers with Docker socket mounts, databases exposed to all interfaces, containers without resource limits, and containers running as root. Run audits on a schedule - at least weekly in production - and integrate them into your CI/CD pipeline. In Portainer, you can review container details in the Inspect view and use webhooks for supported redeploy or update workflows.
