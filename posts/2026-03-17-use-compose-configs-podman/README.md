@@ -4,13 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, podman-compose, CONFIG, Configuration
 
-Description: Learn how to use the Compose configs directive with Podman to mount configuration files into containers.
+Description: Learn how to use the Compose configs directive with Podman and a Compose provider that supports configs.
 
 ---
 
 > Compose configs inject non-sensitive configuration files into containers, keeping your images generic and your settings external.
 
 The `configs` directive in Compose files provides a way to mount configuration files into containers without baking them into the image. This is ideal for application config files, nginx configurations, and other non-sensitive settings that vary between environments.
+
+Podman runs Compose workloads through an external Compose provider. The examples below require a provider that implements Compose `configs`, such as Docker Compose connected to the Podman socket through `podman compose`. The standalone `podman-compose` Python project does not currently implement service `configs`; use bind mounts with `podman-compose` if you need the same result there.
 
 ---
 
@@ -19,7 +21,6 @@ The `configs` directive in Compose files provides a way to mount configuration f
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -51,8 +52,8 @@ server {
 }
 EOF
 
-# Deploy with the config
-podman-compose up -d
+# Deploy with a Compose provider that supports configs
+podman compose up -d
 
 # Verify the config is mounted
 podman exec project_web_1 cat /etc/nginx/conf.d/default.conf
@@ -62,7 +63,6 @@ podman exec project_web_1 cat /etc/nginx/conf.d/default.conf
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
     image: docker.io/library/python:3.12-slim
@@ -97,6 +97,8 @@ configs:
 
 ## Config with Custom Permissions
 
+The Compose Specification defines `uid`, `gid`, and `mode` for configs. Docker Compose does not implement these attributes for configs sourced from local files because it uses a bind mount under the hood.
+
 ```yaml
 services:
   web:
@@ -129,7 +131,6 @@ database:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
     image: docker.io/library/python:3.12-slim
@@ -144,10 +145,10 @@ configs:
 
 ```bash
 # Use dev config (default)
-podman-compose up -d
+podman compose up -d
 
 # Use production config
-ENV=prod podman-compose up -d
+ENV=prod podman compose up -d
 ```
 
 ## Configs vs Bind Mounts
@@ -159,7 +160,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
-# Config - snapshot at deploy time (good for production-like setups)
+# Config - declared as application configuration (provider behavior varies)
 services:
   web:
     configs:
@@ -169,4 +170,4 @@ services:
 
 ## Summary
 
-Compose configs mount external configuration files into containers at deploy time. Use them for nginx configs, application settings, and other non-sensitive files that should not be baked into images. Configs support custom mount paths and permissions, and can be swapped per environment using variable substitution.
+Compose configs mount external configuration files into containers. Use them for nginx configs, application settings, and other non-sensitive files that should not be baked into images. Configs support custom mount paths, and the Compose Specification defines custom permissions where the provider supports them. Configs can be swapped per environment using variable substitution.
