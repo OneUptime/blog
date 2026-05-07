@@ -8,7 +8,7 @@ Description: Learn how Skopeo and Podman share authentication credentials and ho
 
 ---
 
-> Skopeo and Podman share the same authentication file, so a single `podman login` gives Skopeo access to your private registries automatically.
+> Skopeo and Podman use the same authentication configuration by default, so a single `podman login` makes those credentials available to Skopeo automatically.
 
 Working with private container registries requires authentication. One of the key advantages of the Podman ecosystem is that Skopeo, Podman, and Buildah all share the same authentication configuration. This means you can log in once with Podman and use those credentials seamlessly across all three tools. This guide covers how authentication works, where credentials are stored, and how to manage auth across different scenarios.
 
@@ -16,19 +16,22 @@ Working with private container registries requires authentication. One of the ke
 
 ## How Shared Authentication Works
 
-Podman, Skopeo, and Buildah all read from the same authentication file by default.
+Podman, Skopeo, and Buildah use the same primary auth file and credential search path by default.
 
 ```bash
-# The default auth file location
+# On Linux, the primary read/write auth file is:
+#   ${XDG_RUNTIME_DIR}/containers/auth.json
+# Additional credentials may also be read from:
+#   ${XDG_CONFIG_HOME}/containers/auth.json (usually ~/.config/containers/auth.json)
+#   ~/.docker/config.json
+#   ~/.dockercfg
 
-# On Linux: ${XDG_RUNTIME_DIR}/containers/auth.json
-# Fallback: ~/.config/containers/auth.json
+# Check the primary auth file location
+AUTH_FILE="${REGISTRY_AUTH_FILE:-${XDG_RUNTIME_DIR}/containers/auth.json}"
+echo "$AUTH_FILE"
 
-# Check where your auth file is stored
-echo "${XDG_RUNTIME_DIR}/containers/auth.json"
-
-# View the current auth configuration (credentials are base64-encoded)
-cat ~/.config/containers/auth.json | jq .
+# View the current primary auth configuration if it exists
+[ -f "$AUTH_FILE" ] && jq . "$AUTH_FILE"
 ```
 
 ## Logging In with Podman for Skopeo
@@ -49,7 +52,7 @@ podman login ghcr.io -u YOUR_GITHUB_USERNAME
 # Log in to AWS ECR (using the token from AWS CLI)
 aws ecr get-login-password --region us-east-1 | \
   podman login --username AWS --password-stdin \
-  123456789.dkr.ecr.us-east-1.amazonaws.com
+  123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # Verify - Skopeo can now access the registry without extra auth
 skopeo inspect docker://registry.example.com/myapp:latest
@@ -113,8 +116,9 @@ podman login quay.io
 podman login ghcr.io
 podman login registry.example.com
 
-# View all stored credentials
-cat ~/.config/containers/auth.json | jq 'keys'
+# View all stored registry entries from the primary auth file
+AUTH_FILE="${REGISTRY_AUTH_FILE:-${XDG_RUNTIME_DIR}/containers/auth.json}"
+jq '.auths | keys' "$AUTH_FILE"
 
 # The auth file structure looks like this:
 # {
@@ -141,13 +145,14 @@ In CI/CD pipelines, manage credentials carefully using environment variables and
 # ci-auth-setup.sh - Set up registry auth for CI/CD
 
 # Create a temporary auth file for this pipeline run
-AUTH_FILE=$(mktemp /tmp/auth-XXXXXX.json)
+AUTH_DIR=$(mktemp -d)
+AUTH_FILE="$AUTH_DIR/auth.json"
 
 # Log in using CI/CD secrets (environment variables set by the CI system)
-podman login \
+echo "$REGISTRY_PASS" | podman login \
   --authfile "$AUTH_FILE" \
   --username "$REGISTRY_USER" \
-  --password "$REGISTRY_PASS" \
+  --password-stdin \
   registry.example.com
 
 # Use Skopeo with the temporary auth file
@@ -157,7 +162,7 @@ skopeo copy \
   "docker://registry.example.com/myapp:${CI_COMMIT_SHA}"
 
 # Clean up the auth file after use
-rm -f "$AUTH_FILE"
+rm -rf "$AUTH_DIR"
 echo "Auth file cleaned up."
 ```
 
@@ -166,15 +171,15 @@ echo "Auth file cleaned up."
 Some registries use tokens instead of username/password pairs.
 
 ```bash
-# Log in to GitHub Container Registry with a personal access token
-echo "$GITHUB_TOKEN" | podman login ghcr.io \
+# Log in to GitHub Container Registry with a personal access token (classic)
+echo "$CR_PAT" | podman login ghcr.io \
   --username "$GITHUB_USERNAME" \
   --password-stdin
 
 # Log in to GitLab Container Registry with a deploy token
-podman login registry.gitlab.com \
-  --username "deploy-token-user" \
-  --password "$GITLAB_DEPLOY_TOKEN"
+echo "$GITLAB_DEPLOY_TOKEN" | podman login registry.gitlab.com \
+  --username "$GITLAB_DEPLOY_USER" \
+  --password-stdin
 
 # Skopeo can now access both registries
 skopeo inspect docker://ghcr.io/myorg/myapp:latest
@@ -188,9 +193,10 @@ skopeo copy \
 When authentication fails, here are common debugging steps.
 
 ```bash
-# Check if the auth file exists and has content
-ls -la ~/.config/containers/auth.json
-cat ~/.config/containers/auth.json | jq .
+# Check if the primary auth file exists and has content
+AUTH_FILE="${REGISTRY_AUTH_FILE:-${XDG_RUNTIME_DIR}/containers/auth.json}"
+ls -la "$AUTH_FILE"
+jq . "$AUTH_FILE"
 
 # Test authentication with a simple inspect
 skopeo inspect docker://registry.example.com/myapp:latest 2>&1
@@ -208,4 +214,4 @@ skopeo --debug inspect docker://registry.example.com/myapp:latest
 
 ## Summary
 
-Skopeo and Podman share a unified authentication system through a common auth file. A single `podman login` grants Skopeo access to the same registries without additional configuration. You can manage credentials for multiple registries, use custom auth files for isolated environments, pass credentials directly for automation, and integrate token-based authentication for cloud registries. This shared approach simplifies credential management and ensures consistent access across the entire Podman toolchain.
+Skopeo and Podman share a unified authentication system through a common auth configuration and credential lookup path. A single `podman login` grants Skopeo access to the same registries without additional configuration. You can manage credentials for multiple registries, use custom auth files for isolated environments, pass credentials directly for automation, and integrate token-based authentication for cloud registries. This shared approach simplifies credential management and ensures consistent access across the entire Podman toolchain.
