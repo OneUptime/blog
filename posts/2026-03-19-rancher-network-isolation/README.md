@@ -11,20 +11,21 @@ Network isolation between projects prevents pods in one project from communicati
 ## Prerequisites
 
 - Rancher v2.7+ with cluster owner or administrator access
-- A CNI plugin that supports NetworkPolicy (Calico, Canal, Cilium, or Weave)
+- A CNI plugin that supports NetworkPolicy (Calico, Canal, or Cilium; Weave applies only to older RKE1 clusters)
+- For imported clusters, Kubernetes NetworkPolicy must already be enabled on the cluster before you enable Rancher Project Network Isolation
 - Multiple projects with workloads
 - Understanding of your traffic flow requirements
 
 ## Step 1: Verify CNI Support for NetworkPolicy
 
-Not all CNI plugins support NetworkPolicy. Check your cluster's CNI:
+Not all CNI plugins support NetworkPolicy. For common Rancher CNIs, you can check:
 
 ```bash
 # Check which CNI is installed
 
-kubectl get pods -n kube-system -l k8s-app=canal -o name 2>/dev/null && echo "Canal CNI detected"
-kubectl get pods -n kube-system -l k8s-app=calico-node -o name 2>/dev/null && echo "Calico CNI detected"
-kubectl get pods -n kube-system -l k8s-app=cilium -o name 2>/dev/null && echo "Cilium CNI detected"
+kubectl get pods -n kube-system -l k8s-app=canal -o jsonpath='{.items[0].metadata.name}' 2>/dev/null | grep -q . && echo "Canal CNI detected"
+kubectl get pods -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}' 2>/dev/null | grep -q . && echo "Calico CNI detected"
+kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}' 2>/dev/null | grep -q . && echo "Cilium CNI detected"
 ```
 
 If your CNI does not support NetworkPolicy (for example, Flannel without Canal), network policies will have no effect. You will need to switch to a supported CNI.
@@ -35,22 +36,20 @@ Rancher has a built-in feature to isolate network traffic between projects:
 
 **Via the UI:**
 
-1. Navigate to your cluster.
-2. Go to **Cluster > Projects/Namespaces**.
-3. Click the three-dot menu on the project you want to isolate.
-4. Select **Edit Config**.
-5. Enable **Project Network Isolation**.
-6. Click **Save**.
+1. Click **☰ > Cluster Management**.
+2. Go to the cluster you want to configure and click **⋮ > Edit Config**.
+3. In the cluster configuration, enable **Project Network Isolation**.
+4. Click **Save**.
 
-Repeat for each project that should be isolated.
+This setting applies to inter-project communication for the cluster.
 
 **What this does:**
 
-Rancher creates NetworkPolicy resources in each namespace of the project that:
+When project network isolation is enabled, Rancher isolates traffic so that:
 
 - Allow all traffic between namespaces within the same project
 - Deny all traffic from namespaces in other projects
-- Allow traffic from the Rancher system namespaces
+- Allow traffic from namespaces in the `system` project
 
 ## Step 3: Create Custom Default-Deny Policies
 
@@ -178,6 +177,8 @@ spec:
           port: 8080
 ```
 
+If you use Cilium with Rancher project network isolation, Rancher documents an additional `CiliumNetworkPolicy` for ingress routing across nodes.
+
 ## Step 7: Allow Monitoring and Logging
 
 Monitoring systems need to scrape metrics from all projects:
@@ -238,7 +239,7 @@ This allows team-b pods to reach team-a's API gateway on port 8080 but nothing e
 
 ## Step 9: Allow External Traffic
 
-Allow pods to reach external services (outside the cluster):
+Allow pods to reach a specific external service CIDR:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -251,17 +252,13 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Allow traffic to external IPs (outside cluster CIDRs)
+    # Allow traffic to a specific public CIDR
     - to:
         - ipBlock:
-            cidr: 0.0.0.0/0
-            except:
-              - 10.0.0.0/8
-              - 172.16.0.0/12
-              - 192.168.0.0/16
+            cidr: 203.0.113.0/24
 ```
 
-Adjust the except list to match your cluster's pod and service CIDRs.
+Replace `203.0.113.0/24` with the public CIDR of the external service you actually need to reach. Kubernetes documents `ipBlock` for cluster-external IPs, so validate behavior with your CNI before relying on broad internet-allow rules.
 
 ## Step 10: Apply Network Policies Across All Namespaces
 
@@ -272,6 +269,7 @@ Use a script to apply consistent network policies across a project:
 # apply-network-isolation.sh
 
 PROJECT_LABEL=$1  # e.g., "team-a"
+EXTERNAL_CIDR=${2:-203.0.113.0/24}  # e.g., a public CIDR for an external service
 
 NAMESPACES=$(kubectl get namespaces -l project=$PROJECT_LABEL -o jsonpath='{.items[*].metadata.name}')
 
@@ -328,11 +326,11 @@ spec:
         - {protocol: UDP, port: 53}
         - {protocol: TCP, port: 53}
 ---
-# Allow external egress
+# Allow external egress to a specific public CIDR
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-external
+  name: allow-external-egress
   namespace: $ns
 spec:
   podSelector: {}
@@ -340,8 +338,7 @@ spec:
   egress:
     - to:
         - ipBlock:
-            cidr: 0.0.0.0/0
-            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+            cidr: $EXTERNAL_CIDR
 EOF
 
   echo "  Done."
@@ -402,9 +399,9 @@ kubectl get pods -n kube-system -l k8s-app=kube-dns --show-labels
 
 ```bash
 # Check the external egress policy
-kubectl describe networkpolicy allow-external -n <ns>
+kubectl describe networkpolicy allow-external-egress -n <ns>
 
-# Verify the except list does not accidentally block the destination
+# Verify that the destination IP falls within the allowed external CIDR
 ```
 
 ## Best Practices
