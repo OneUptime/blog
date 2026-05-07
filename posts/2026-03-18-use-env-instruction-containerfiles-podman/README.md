@@ -18,7 +18,7 @@ This guide covers how to use ENV effectively in Podman Containerfiles, including
 
 ## Basic Syntax
 
-The ENV instruction has two forms:
+The ENV instruction has two preferred forms, plus a legacy form:
 
 ```dockerfile
 # Form 1: Single variable
@@ -49,7 +49,7 @@ RUN echo "Building ${APP_NAME} version ${APP_VERSION}"
 
 Unlike ARG, which only exists during the build, ENV variables persist in the final image. They are available to:
 
-- All subsequent RUN, CMD, and ENTRYPOINT instructions during the build
+- Subsequent build instructions that support environment replacement, and shell commands in RUN instructions
 - Any process running inside the container at runtime
 - Child processes spawned by the container's main process
 
