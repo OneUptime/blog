@@ -10,7 +10,7 @@ Description: Learn how to diagnose and fix common Podman Desktop connection issu
 
 > Most Podman Desktop connection issues stem from socket misconfigurations, stopped Podman machines, or stale processes, all of which are straightforward to diagnose and fix.
 
-Podman Desktop relies on a connection to the Podman engine to function. When this connection breaks, you may see errors like "Unable to connect to Podman" or containers failing to start. This guide covers systematic troubleshooting for the most common connection issues on Linux, macOS, and Windows.
+Podman Desktop relies on a connection to the Podman engine to function. When this connection breaks, you may see errors like "Unable to connect to Podman" or containers failing to start. This guide covers systematic troubleshooting for the most common connection issues on Linux and macOS, with many Podman machine checks also applying to Windows.
 
 ---
 
@@ -108,10 +108,11 @@ stat /run/user/$(id -u)/podman/podman.sock
 echo $XDG_RUNTIME_DIR
 # Should be /run/user/$(id -u)
 
-# Fix permissions if needed
-chmod 600 /run/user/$(id -u)/podman/podman.sock
+# If the socket is owned by another user, restart the rootless socket
+systemctl --user restart podman.socket
 
-# Ensure lingering is enabled for your user
+# If the socket must be available outside an active login session,
+# enable lingering for your user
 sudo loginctl enable-linger $(whoami)
 
 # Verify user session
@@ -155,7 +156,7 @@ podman run --rm alpine nslookup google.com
 podman network ls
 podman network inspect podman
 
-# Reset the default network
+# Reset the default network after stopping or removing containers that use it
 podman network rm podman 2>/dev/null
 podman network create podman
 
@@ -176,7 +177,7 @@ podman system reset
 # Less destructive: just prune unused resources
 podman system prune -af
 
-# Clear temporary files
+# Migrate containers after a Podman upgrade or user namespace change
 podman system migrate
 
 # On macOS, reset the machine completely
@@ -190,17 +191,11 @@ podman machine start
 Podman Desktop itself produces logs for debugging:
 
 ```bash
-# macOS log location
-ls ~/Library/Application\ Support/Podman\ Desktop/logs/
+# Open Podman Desktop's Troubleshooting view
+# Help > Troubleshooting > Logs
+# Optional: use Gather Logs to save all logs as a zip file
 
-# Linux log location
-ls ~/.local/share/Podman\ Desktop/logs/
-
-# View recent log entries
-tail -100 ~/Library/Application\ Support/Podman\ Desktop/logs/podman-desktop.log 2>/dev/null || \
-  tail -100 ~/.local/share/Podman\ Desktop/logs/podman-desktop.log
-
-# Open Developer Tools in Podman Desktop
+# Open Developer Tools in Podman Desktop if you need UI errors
 # View menu > Toggle Developer Tools
 # Check the Console tab for JavaScript errors
 ```
@@ -245,6 +240,7 @@ podman machine stop && podman machine start
 # Restart Podman Desktop after fixing the connection
 
 # Containers cannot access the network
+# Stop or remove containers using the default network first
 podman network rm podman && podman network create podman
 ```
 
