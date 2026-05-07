@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Storage, OpenTofu, Terraform, BLOB, Infrastructure
 
-Description: Learn how to create and configure Azure Blob Storage containers with OpenTofu, including access tiers, versioning, and container-level settings.
+Description: Learn how to create and configure Azure Blob Storage containers with OpenTofu, including access levels, versioning, and container-level settings.
 
 ## Overview
 
@@ -43,6 +43,8 @@ resource "azurerm_storage_account" "storage" {
   location                 = azurerm_resource_group.rg.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
+  # Required if any container should allow anonymous blob or container reads
+  allow_nested_items_to_be_public = true
 
   # Enable blob versioning and soft delete
   blob_properties {
@@ -75,21 +77,21 @@ resource "random_string" "suffix" {
 # Create multiple containers with different access levels
 resource "azurerm_storage_container" "public_assets" {
   name                  = "public-assets"
-  storage_account_name  = azurerm_storage_account.storage.name
+  storage_account_id    = azurerm_storage_account.storage.id
   # "blob" access allows anonymous read for blobs, but not container listing
   container_access_type = "blob"
 }
 
 resource "azurerm_storage_container" "private_data" {
   name                  = "private-data"
-  storage_account_name  = azurerm_storage_account.storage.name
+  storage_account_id    = azurerm_storage_account.storage.id
   # "private" requires authentication for all operations
   container_access_type = "private"
 }
 
 resource "azurerm_storage_container" "backups" {
   name                  = "backups"
-  storage_account_name  = azurerm_storage_account.storage.name
+  storage_account_id    = azurerm_storage_account.storage.id
   container_access_type = "private"
 }
 ```
@@ -119,7 +121,7 @@ resource "azurerm_storage_container" "containers" {
   for_each = local.containers
 
   name                  = each.key
-  storage_account_name  = azurerm_storage_account.storage.name
+  storage_account_id    = azurerm_storage_account.storage.id
   container_access_type = each.value.access_type
 }
 ```
