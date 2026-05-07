@@ -38,7 +38,7 @@ Check per-process memory:
 
 ```bash
 # Average memory per Apache worker in MB
-ps -ylC apache2 --sort:rss | awk '{sum+=$8; count++} END {print sum/count/1024 " MB avg"}'
+ps -C apache2 -o rss= | awk '{sum+=$1; count++} END {if (count) print sum/count/1024 " MB avg"}'
 ```
 
 Example: 512 MB RAM, 20 MB per process → `MaxRequestWorkers 25` (leave headroom for OS).
@@ -53,7 +53,7 @@ Example: 512 MB RAM, 20 MB per process → `MaxRequestWorkers 25` (leave headroo
     MinSpareServers      5       # Minimum idle workers kept warm
     MaxSpareServers     10       # Maximum idle workers before killing extras
     MaxRequestWorkers   50       # Hard cap on concurrent connections
-    MaxConnectionsPerChild 1000  # Restart workers after N requests (prevents memory leaks)
+    MaxConnectionsPerChild 1000  # Recycle child processes after N connections (prevents memory leaks)
 </IfModule>
 ```
 
@@ -97,11 +97,11 @@ With `mpm_event`, keep-alive connections are handled by a dedicated listener thr
 ## Monitoring Under Load
 
 ```bash
-# Show active connections and their states
-apachectl status | head -30
+# Show machine-readable server status (requires mod_status)
+curl -s http://127.0.0.1/server-status?auto | head -30
 
-# Count connections by state via ss
-ss -tn | awk '{print $1}' | sort | uniq -c | sort -rn
+# Count IPv4 connections on ports 80/443 by TCP state
+ss -4tanH state all '( sport = :80 or sport = :443 )' | awk '{print $1}' | sort | uniq -c | sort -rn
 
 # Watch error log for MaxRequestWorkers hits
 tail -f /var/log/apache2/error.log | grep "MaxRequestWorkers"
@@ -112,4 +112,4 @@ tail -f /var/log/apache2/error.log | grep "MaxRequestWorkers"
 - Calculate `MaxRequestWorkers` based on available RAM divided by per-process memory.
 - Use `mpm_event` with `KeepAlive On` for the best performance under IPv4 high-traffic loads.
 - Keep `KeepAliveTimeout` low (2-5 seconds) on busy servers to free workers quickly.
-- Set `MaxConnectionsPerChild` to recycle workers and prevent long-term memory bloat.
+- Set `MaxConnectionsPerChild` to recycle child processes and prevent long-term memory bloat.
