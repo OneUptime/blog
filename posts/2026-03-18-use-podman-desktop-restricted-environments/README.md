@@ -8,9 +8,9 @@ Description: Learn how to configure and use Podman Desktop in restricted corpora
 
 ---
 
-> Podman Desktop works in restricted environments where Docker cannot, thanks to its rootless architecture and flexible configuration options for proxies, registries, and offline operation.
+> Podman Desktop can work well in restricted environments when paired with Podman's rootless engine and user-level configuration for proxies, registries, and offline image workflows.
 
-Many enterprise environments impose restrictions on network access, software installation, and system permissions. Podman Desktop is well-suited for these environments because it runs rootless by default and supports offline workflows, proxy configurations, and custom registry mirrors. This guide covers the strategies and configurations needed to use Podman Desktop effectively behind firewalls and in locked-down systems.
+Many enterprise environments impose restrictions on network access, software installation, and system permissions. Podman is well-suited for these environments because it runs rootless by default and supports offline workflows, proxy configurations, and custom registries. Podman Desktop can still be used as the UI, but on Linux it connects to the native rootless Podman connection rather than managing Podman configuration directly, while on macOS and Windows it uses a Podman machine. This guide covers the strategies and configurations needed to use Podman Desktop effectively behind firewalls and in locked-down systems.
 
 ---
 
@@ -48,7 +48,7 @@ podman info --format '{{.Host.Security.Rootless}}'
 podman info --format '{{.Store.GraphRoot}}'
 
 # Run a container without any elevated privileges
-podman run --rm alpine echo "Running rootless"
+podman run --rm docker.io/library/alpine echo "Running rootless"
 
 # Check user namespace mappings
 podman unshare cat /proc/self/uid_map
@@ -60,11 +60,13 @@ In air-gapped environments, pre-load images from external media:
 
 ```bash
 # On a machine with internet access, save required images
-podman pull nginx:alpine
-podman pull postgres:16-alpine
-podman pull node:18-alpine
+podman pull docker.io/library/nginx:alpine
+podman pull docker.io/library/postgres:16-alpine
+podman pull docker.io/library/node:18-alpine
 podman save -m -o offline-images.tar \
-  nginx:alpine postgres:16-alpine node:18-alpine
+  docker.io/library/nginx:alpine \
+  docker.io/library/postgres:16-alpine \
+  docker.io/library/node:18-alpine
 
 # Transfer offline-images.tar to the restricted machine via USB or file share
 
@@ -75,13 +77,14 @@ podman load -i offline-images.tar
 podman images
 ```
 
-## Setting Up a Local Registry Mirror
+## Setting Up a Local Registry
 
-Run a local registry to serve images within your restricted network:
+Run a local registry to serve images within your restricted network. On macOS and Windows with Podman Desktop, make the `registries.conf` change inside `podman machine ssh` and restart the Podman machine afterward; on Linux, edit the host file directly:
 
 ```bash
 # Save the registry image on an internet-connected machine
-podman save registry:2 -o registry.tar
+podman pull docker.io/library/registry:2
+podman save -o registry.tar docker.io/library/registry:2
 
 # Load it on the restricted network
 podman load -i registry.tar
@@ -91,13 +94,10 @@ podman run -d \
   --name local-registry \
   -p 5000:5000 \
   -v registry-data:/var/lib/registry \
-  registry:2
+  docker.io/library/registry:2
 
-# Push pre-loaded images to the local registry
-podman tag nginx:alpine localhost:5000/nginx:alpine
-podman push localhost:5000/nginx:alpine
-
-# Configure Podman to use the local registry
+# Configure Podman to trust the local registry before pushing to it
+mkdir -p ~/.config/containers
 cat > ~/.config/containers/registries.conf << 'EOF'
 unqualified-search-registries = ["localhost:5000"]
 
@@ -105,54 +105,60 @@ unqualified-search-registries = ["localhost:5000"]
 location = "localhost:5000"
 insecure = true
 EOF
+
+# Push pre-loaded images to the local registry
+podman tag docker.io/library/nginx:alpine localhost:5000/nginx:alpine
+podman push localhost:5000/nginx:alpine
 ```
 
 ## Configuring Proxy Settings
 
-Set up proxy access for environments that route through corporate proxies:
+Set up proxy access for environments that route through corporate proxies. On Linux, Podman Desktop proxy settings do not configure Podman itself, so set Podman's configuration directly. On macOS and Windows, make the same `containers.conf` change inside `podman machine ssh` and restart the Podman machine afterward:
 
 ```bash
 # Set proxy environment variables for Podman
 mkdir -p ~/.config/containers
 cat > ~/.config/containers/containers.conf << 'EOF'
 [engine]
-# HTTP proxy for container operations
-http_proxy = "http://proxy.corporate.com:8080"
-https_proxy = "http://proxy.corporate.com:8080"
-no_proxy = "localhost,127.0.0.1,.corporate.com,10.0.0.0/8"
+env = [
+  "http_proxy=http://proxy.corporate.com:8080",
+  "https_proxy=http://proxy.corporate.com:8080",
+  "no_proxy=localhost,127.0.0.1,.corporate.com,10.0.0.0/8",
+]
 
-[engine.env]
-http_proxy = "http://proxy.corporate.com:8080"
-https_proxy = "http://proxy.corporate.com:8080"
-no_proxy = "localhost,127.0.0.1,.corporate.com"
+[containers]
+http_proxy = true
 EOF
 
 # Set environment variables for image pulls
 export HTTP_PROXY="http://proxy.corporate.com:8080"
 export HTTPS_PROXY="http://proxy.corporate.com:8080"
-export NO_PROXY="localhost,127.0.0.1,.corporate.com"
+export NO_PROXY="localhost,127.0.0.1,.corporate.com,10.0.0.0/8"
 
 # Test connectivity through the proxy
-podman pull alpine
+podman pull docker.io/library/alpine
 ```
 
 ## Installing Custom CA Certificates
 
-For TLS-inspecting proxies that use custom certificate authorities:
+For TLS-inspecting proxies that use custom certificate authorities, trust the CA appropriately. On macOS and Windows with Podman Desktop, add the CA inside the Podman machine instead of trusting it only on the host:
 
 ```bash
-# Copy your corporate CA certificate
+# Trust a custom CA for a specific registry
 mkdir -p ~/.config/containers/certs.d/registry.corporate.com
 cp /path/to/corporate-ca.crt \
   ~/.config/containers/certs.d/registry.corporate.com/ca.crt
 
-# For system-wide trust on Linux
+# On macOS or Windows with Podman Desktop, copy the CA into the Podman machine
+cat /path/to/corporate-ca.crt | \
+  podman machine ssh podman-machine-default "cat > corporate-ca.crt"
+podman machine ssh podman-machine-default \
+  sudo cp corporate-ca.crt /etc/pki/ca-trust/source/anchors/corporate-ca.crt
+podman machine ssh podman-machine-default sudo update-ca-trust
+
+# For system-wide trust on RHEL, Fedora, or CentOS when you have admin access
 sudo cp /path/to/corporate-ca.crt /etc/pki/ca-trust/source/anchors/
 sudo update-ca-trust
-
-# For macOS, add to the system keychain
-sudo security add-trusted-cert -d -r trustRoot \
-  -k /Library/Keychains/System.keychain /path/to/corporate-ca.crt
 ```
 
 ## Managing Storage Quotas
@@ -163,12 +169,12 @@ When disk space is limited, configure storage carefully:
 # Check current storage usage
 podman system df
 
-# Set storage limits in storage.conf
+# Set storage location and rootless overlay options in storage.conf
 mkdir -p ~/.config/containers
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
 driver = "overlay"
-graphroot = "/home/user/.local/share/containers/storage"
+graphroot = "$HOME/.local/share/containers/storage"
 
 [storage.options.overlay]
 # Use fuse-overlayfs for rootless
@@ -184,14 +190,15 @@ podman image prune -af
 
 ## Running Without Internet Access
 
-For fully air-gapped operation:
+For fully air-gapped operation, point Podman at your internal registry and block the external registries you know should not be used:
 
 ```bash
-# Disable all external registry access
+# Prefer your local registry for short names
+mkdir -p ~/.config/containers
 cat > ~/.config/containers/registries.conf << 'EOF'
 unqualified-search-registries = ["localhost:5000"]
 
-# Block all external registries
+# Block specific external registries
 [[registry]]
 location = "docker.io"
 blocked = true
@@ -206,10 +213,10 @@ location = "localhost:5000"
 insecure = true
 EOF
 
-# All pulls will now only work from localhost:5000
+# Unqualified pulls now resolve to localhost:5000, and pulls from docker.io or quay.io are blocked
 podman pull localhost:5000/nginx:alpine
 ```
 
 ## Summary
 
-Podman Desktop excels in restricted environments thanks to its rootless architecture and flexible configuration. By pre-loading images for air-gapped operation, configuring proxies for corporate networks, and setting up local registry mirrors, you can maintain a productive container workflow even with significant restrictions. Custom CA certificate support and storage management round out the capabilities needed for enterprise deployment.
+Podman Desktop can fit restricted environments when paired with Podman's rootless engine and the right registry, proxy, and certificate configuration. By pre-loading images for air-gapped operation, configuring proxies for corporate networks, and setting up a local registry, you can maintain a productive container workflow even with significant restrictions. On Linux, apply these settings to Podman itself; on macOS and Windows, make the equivalent changes inside the Podman machine.
