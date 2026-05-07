@@ -94,7 +94,7 @@ podman exec my-kafka /opt/kafka/bin/kafka-topics.sh \
 Send and receive messages through Kafka topics.
 
 ```bash
-# Produce messages to a topic (type messages and press Enter, Ctrl+C to exit)
+# Produce one message to a topic
 echo "Hello Kafka from Podman!" | podman exec -i my-kafka \
   /opt/kafka/bin/kafka-console-producer.sh \
   --topic my-events \
@@ -147,7 +147,7 @@ podman run -d \
 Check the health and status of your Kafka broker.
 
 ```bash
-# Describe the broker configuration
+# Show broker API versions
 podman exec my-kafka /opt/kafka/bin/kafka-broker-api-versions.sh \
   --bootstrap-server localhost:9092 | head -5
 
@@ -157,9 +157,8 @@ podman exec my-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
   --bootstrap-server localhost:9092
 
 # View topic partition offsets
-podman exec my-kafka /opt/kafka/bin/kafka-run-class.sh \
-  kafka.tools.GetOffsetShell \
-  --broker-list localhost:9092 \
+podman exec my-kafka /opt/kafka/bin/kafka-get-offsets.sh \
+  --bootstrap-server localhost:9092 \
   --topic my-events
 
 # Check Kafka logs for errors
