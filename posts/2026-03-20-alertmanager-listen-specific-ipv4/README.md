@@ -8,7 +8,7 @@ Description: Configure Prometheus Alertmanager to listen on a specific IPv4 addr
 
 ## Introduction
 
-Alertmanager handles alerts sent by Prometheus, routing them to email, Slack, PagerDuty, or other receivers. By default it binds to 0.0.0.0:9093. Binding to a specific IPv4 limits exposure and enables targeted firewall rules.
+Alertmanager handles alerts sent by Prometheus, routing them to email, Slack, PagerDuty, or other receivers. By default it listens on `:9093`, which typically exposes it on all network interfaces. Binding to a specific IPv4 limits exposure and enables targeted firewall rules.
 
 ## Installation and Binding Configuration
 
@@ -38,7 +38,7 @@ User=alertmanager
 ExecStart=/usr/local/bin/alertmanager \
   --config.file=/etc/alertmanager/alertmanager.yml \
   --web.listen-address=10.0.0.5:9093 \
-  --cluster.listen-address=10.0.0.5:9094 \
+  --cluster.listen-address= \
   --storage.path=/var/lib/alertmanager \
   --web.external-url=http://10.0.0.5:9093
 
@@ -68,11 +68,11 @@ route:
   repeat_interval: 4h
   receiver: 'email-alerts'
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: 'pagerduty-critical'
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: 'email-alerts'
 
 receivers:
@@ -86,10 +86,10 @@ receivers:
       - routing_key: 'your-pagerduty-routing-key'
 
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ['alertname', 'instance']
 ```
 
@@ -125,4 +125,4 @@ curl -s http://10.0.0.5:9093/api/v2/alerts | python3 -m json.tool
 
 ## Conclusion
 
-Set Alertmanager's bind address with `--web.listen-address=ip:9093`. Configure notification routing in `alertmanager.yml` with `route` and `receivers`. Restrict port 9093 with firewall rules-only Prometheus and admin workstations need access. Use `amtool check-config` to validate configuration and `amtool alert add` to test alert routing before a real incident.
+Set Alertmanager's bind address with `--web.listen-address=ip:9093`. Configure notification routing in `alertmanager.yml` with `route` and `receivers`. Restrict port 9093 with firewall rules; only Prometheus and admin workstations need access. Use `amtool check-config` to validate configuration and `amtool alert add` to test alert routing before a real incident.
