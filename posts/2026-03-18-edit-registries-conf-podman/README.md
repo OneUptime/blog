@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Registry, Configuration, TOML
 
-Description: Learn how to edit the registries.conf file to control how Podman discovers, authenticates, and connects to container registries.
+Description: Learn how to edit the registries.conf file to control how Podman discovers, resolves, and connects to container registries.
 
 ---
 
-> The registries.conf file is the single source of truth for how Podman interacts with container registries.
+> The registries.conf file is the primary configuration file for how Podman resolves image registry names, mirrors, and registry security settings.
 
-The `registries.conf` file is a TOML-formatted configuration file that dictates how Podman resolves image names, connects to registries, and handles mirrors and security settings. Editing this file correctly is essential for any non-trivial Podman deployment. This guide covers the file structure, common edits, and best practices.
+The `registries.conf` file is a TOML-formatted configuration file that dictates how Podman resolves image names, connects to registries, and handles mirrors and registry security settings. Editing this file correctly is essential for any non-trivial Podman deployment. This guide covers the file structure, common edits, and best practices.
 
 ---
 
@@ -31,13 +31,13 @@ mkdir -p ~/.config/containers
 ```
 
 ```bash
-# Check which file Podman is actually using
+# Check the configured registries Podman reports
 podman info --format '{{.Registries}}'
 ```
 
 ## Understanding the TOML Structure
 
-The `registries.conf` file uses TOML syntax. Here is the complete structure of the file with all major sections.
+The `registries.conf` file uses TOML syntax. Here is a common structure of the file with the sections you are most likely to edit.
 
 ```toml
 # /etc/containers/registries.conf
@@ -91,7 +91,7 @@ Here are the most common modifications you will make to registries.conf.
 # After:
 # unqualified-search-registries = ["docker.io", "quay.io", "ghcr.io"]
 
-# Use sed to append a registry to the search list
+# Use sed to update the exact one-registry example above
 sudo sed -i 's/unqualified-search-registries = \["docker.io"\]/unqualified-search-registries = ["docker.io", "quay.io"]/' /etc/containers/registries.conf
 ```
 
@@ -137,7 +137,7 @@ You can override system settings without modifying the system file.
 # Create a user-level registries.conf
 cat > ~/.config/containers/registries.conf <<'EOF'
 # User-level registry configuration
-# This overrides /etc/containers/registries.conf
+# Podman uses this file instead of /etc/containers/registries.conf for this user
 
 unqualified-search-registries = ["ghcr.io", "docker.io"]
 
@@ -185,4 +185,4 @@ stat /etc/containers/registries.conf
 
 ## Summary
 
-The `registries.conf` file is a TOML configuration file that controls Podman's registry behavior. It supports system-wide and user-level overrides, per-registry configuration blocks with mirrors and security settings, and an ordered search list for unqualified image names. Always back up before editing, validate the TOML syntax after changes, and use `podman info` to confirm your configuration is active.
+The `registries.conf` file is a TOML configuration file that controls Podman's registry resolution behavior. It supports system-wide and user-level configuration, per-registry configuration blocks with mirrors and security settings, and an ordered search list for unqualified image names. Always back up before editing, validate the TOML syntax after changes, and use `podman info` to confirm your configuration is active.
