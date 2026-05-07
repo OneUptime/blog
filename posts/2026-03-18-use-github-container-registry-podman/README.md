@@ -14,31 +14,29 @@ GitHub Container Registry (ghcr.io) allows you to host container images alongsid
 
 ---
 
-## Adding ghcr.io to Search Registries
+## Using Fully Qualified ghcr.io Image Names
 
-Include ghcr.io in your Podman search configuration.
+You usually do not need to add ghcr.io to Podman's search registries. Podman recommends fully qualified image references, which all examples in this guide use.
 
 ```bash
 # Check current search registries
 
-podman info --format '{{.Registries.Search}}'
+podman info -f '{{index .Registries "search"}}'
 
-# Add ghcr.io to the configuration
-sudo tee -a /etc/containers/registries.conf <<'EOF'
-
-[[registry]]
-prefix = "ghcr.io"
-location = "ghcr.io"
-EOF
+# Fully qualified ghcr.io references work without changing registries.conf
+podman pull ghcr.io/github/super-linter:latest
 ```
 
 ## Authenticating to ghcr.io
 
-GitHub Container Registry uses personal access tokens (PATs) for authentication.
+GitHub Container Registry uses personal access tokens (classic) for command-line authentication.
 
 ```bash
-# Create a PAT at https://github.com/settings/tokens
-# Required scopes: read:packages, write:packages, delete:packages
+# Create a PAT (classic) at https://github.com/settings/tokens
+# Scopes depend on the task:
+# read:packages to pull images
+# write:packages to push images
+# delete:packages to delete images
 
 # Login with your PAT
 echo "$GITHUB_PAT" | podman login ghcr.io \
@@ -55,7 +53,7 @@ Pull public and private images from GitHub Container Registry.
 
 ```bash
 # Pull a public image
-podman pull ghcr.io/actions/runner:latest
+podman pull ghcr.io/github/super-linter:latest
 
 # Pull from a specific user or organization
 podman pull ghcr.io/myorg/myapp:latest
@@ -98,31 +96,34 @@ Podman works in GitHub Actions for building and pushing to ghcr.io.
 
 ```yaml
 # .github/workflows/build-push.yml
-# This is a GitHub Actions workflow file
+name: Build and Push Container Image
+on:
+  push:
+    branches: [main]
 
-# name: Build and Push Container Image
-# on:
-#   push:
-#     branches: [main]
-
-# jobs:
-#   build:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#       - name: Login and push with Podman
-#         run: |
-#           echo "${{ secrets.GITHUB_TOKEN }}" | \
-#             podman login ghcr.io \
-#               --username ${{ github.actor }} \
-#               --password-stdin
-#           podman build -t ghcr.io/${{ github.repository }}:${{ github.sha }} .
-#           podman push ghcr.io/${{ github.repository }}:${{ github.sha }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login and push with Podman
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            podman login ghcr.io \
+              --username ${{ github.actor }} \
+              --password-stdin
+          podman build -t ghcr.io/${{ github.repository }}:${{ github.sha }} .
+          podman push ghcr.io/${{ github.repository }}:${{ github.sha }}
 ```
 
 ```bash
 # The GITHUB_TOKEN is automatically available in GitHub Actions
-# It has permissions scoped to the repository
+# Grant the job packages: write so Podman can push to ghcr.io
+# If the package already exists, link it to the repository so
+# GITHUB_TOKEN can push to it
 ```
 
 ## Managing Image Visibility
@@ -130,7 +131,10 @@ Podman works in GitHub Actions for building and pushing to ghcr.io.
 Control whether your ghcr.io images are public or private.
 
 ```bash
-# By default, images pushed to ghcr.io are private
+# When you first publish a package from the command line,
+# the default visibility is private
+# Packages created by a workflow with GITHUB_TOKEN inherit
+# the repository visibility and permissions model
 # To make an image public, use the GitHub web interface:
 # 1. Go to your profile > Packages
 # 2. Select the package
@@ -148,7 +152,7 @@ Use skopeo to inspect images without pulling them.
 
 ```bash
 # Inspect a public image
-skopeo inspect docker://ghcr.io/actions/runner:latest
+skopeo inspect docker://ghcr.io/github/super-linter:latest
 
 # Inspect a private image (requires authentication)
 skopeo inspect --creds "myuser:${GITHUB_PAT}" \
@@ -166,13 +170,15 @@ Remove old or unused images from the registry.
 # Use the GitHub API to delete image versions
 # List versions of a package
 curl -s -H "Authorization: Bearer ${GITHUB_PAT}" \
-  -H "Accept: application/vnd.github.v3+json" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
   "https://api.github.com/user/packages/container/myapp/versions" | \
   python3 -m json.tool | head -30
 
 # Delete a specific version by ID
 curl -X DELETE -H "Authorization: Bearer ${GITHUB_PAT}" \
-  -H "Accept: application/vnd.github.v3+json" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
   "https://api.github.com/user/packages/container/myapp/versions/VERSION_ID"
 ```
 
@@ -181,6 +187,8 @@ curl -X DELETE -H "Authorization: Bearer ${GITHUB_PAT}" \
 Build and push multi-architecture images.
 
 ```bash
+# Building for a non-native architecture requires emulation software on the host
+
 # Create a multi-platform manifest
 podman manifest create ghcr.io/myusername/myapp:latest
 
@@ -188,16 +196,16 @@ podman manifest create ghcr.io/myusername/myapp:latest
 podman build --platform linux/amd64 \
   -t ghcr.io/myusername/myapp:latest-amd64 .
 podman manifest add ghcr.io/myusername/myapp:latest \
-  ghcr.io/myusername/myapp:latest-amd64
+  containers-storage:ghcr.io/myusername/myapp:latest-amd64
 
 # Build for arm64
 podman build --platform linux/arm64 \
   -t ghcr.io/myusername/myapp:latest-arm64 .
 podman manifest add ghcr.io/myusername/myapp:latest \
-  ghcr.io/myusername/myapp:latest-arm64
+  containers-storage:ghcr.io/myusername/myapp:latest-arm64
 
 # Push the multi-platform manifest
-podman manifest push ghcr.io/myusername/myapp:latest \
+podman manifest push --all ghcr.io/myusername/myapp:latest \
   docker://ghcr.io/myusername/myapp:latest
 ```
 
@@ -220,4 +228,4 @@ podman push ghcr.io/myusername/myapp:latest
 
 ## Summary
 
-GitHub Container Registry (ghcr.io) integrates container image hosting with your GitHub repositories. Podman supports ghcr.io fully through standard registry authentication using personal access tokens or the automatic GITHUB_TOKEN in GitHub Actions. You can push public and private images, build multi-platform manifests, and manage image lifecycle through the GitHub API. Link images to repositories using OCI labels in your Dockerfile for better discoverability.
+GitHub Container Registry (ghcr.io) integrates container image hosting with your GitHub repositories. Podman supports ghcr.io fully through standard registry authentication using personal access tokens (classic) or the automatic GITHUB_TOKEN in GitHub Actions. You can push public and private images, build multi-platform manifests, and manage image lifecycle through the GitHub API. Link images to repositories using OCI labels in your Dockerfile for better discoverability.
