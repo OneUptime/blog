@@ -41,7 +41,7 @@ cat /proc/devices
 # 116   - ALSA sound
 # 166   - ttyACM (USB CDC ACM)
 # 188   - ttyUSB (USB serial)
-# 189   - USB device (raw access)
+# 189   - USB device nodes (/dev/bus/usb; check /proc/devices)
 # 195   - nvidia (GPU)
 # 226   - DRI (GPU render nodes)
 #
@@ -58,7 +58,7 @@ The `--device-cgroup-rule` flag uses the following syntax:
 ```
 
 Where:
-- **TYPE**: `c` for character devices, `b` for block devices
+- **TYPE**: `c` for character devices, `b` for block devices, `a` for all devices
 - **MAJOR**: The major device number (or `*` for any)
 - **MINOR**: The minor device number (or `*` for any)
 - **ACCESS**: A combination of `r` (read), `w` (write), `m` (mknod/create)
@@ -166,9 +166,11 @@ podman run --rm -it \
 # Find the KFD major number:
 ls -la /dev/kfd
 # Then use it in the cgroup rule
+KFD_MAJOR=$(stat -c '%t' /dev/kfd)
+KFD_MAJOR=$((16#$KFD_MAJOR))
 podman run --rm -it \
   --device-cgroup-rule='c 226:* rwm' \
-  --device-cgroup-rule='c 234:* rwm' \
+  --device-cgroup-rule="c ${KFD_MAJOR}:* rwm" \
   -v /dev:/dev \
   rocm/dev-ubuntu-22.04:6.0 \
   rocm-smi
@@ -249,9 +251,11 @@ podman run --rm -it \
   --device-cgroup-rule='c 188:* rwm' \
   fedora:latest bash
 
-# AVOID: Wildcard major and minor (allows access to ALL character devices)
-# This is essentially the same as --privileged for device access
+# AVOID: Wildcard major and minor for character devices
 # podman run --rm -it --device-cgroup-rule='c *:* rwm' fedora:latest bash
+
+# AVOID: Type 'a' with wildcard major and minor allows all devices
+# podman run --rm -it --device-cgroup-rule='a *:* rwm' fedora:latest bash
 
 # BETTER: Restrict to specific minor numbers if you know them
 podman run --rm -it \
@@ -269,7 +273,7 @@ podman run --rm -it \
   fedora:latest bash
 ```
 
-## Cgroup Rules in Podman Compose / Quadlet
+## Cgroup Rules in Quadlet
 
 For persistent configurations, you can use Quadlet files (systemd integration for Podman):
 
@@ -282,9 +286,9 @@ cat > ~/.config/containers/systemd/iot-dev.container << 'EOF'
 Image=fedora:latest
 # Device cgroup rules for IoT development
 AddDevice=/dev/ttyUSB0
-DeviceCgroupRule=c 188:* rwm
-DeviceCgroupRule=c 166:* rwm
-DeviceCgroupRule=c 81:* rwm
+PodmanArgs=--device-cgroup-rule="c 188:* rwm"
+PodmanArgs=--device-cgroup-rule="c 166:* rwm"
+PodmanArgs=--device-cgroup-rule="c 81:* rwm"
 Volume=/dev:/dev
 
 [Service]
