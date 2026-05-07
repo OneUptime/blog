@@ -8,7 +8,7 @@ Description: Create and manage Azure public IPv6 addresses, assign them to VMs a
 
 ## Introduction
 
-Azure public IPv6 addresses provide globally routable IPv6 connectivity for VMs, load balancers, and gateways. Like Azure public IPv4, IPv6 public IPs use the Standard SKU (Basic SKU has limited IPv6 support). Azure can also allocate IPv6 public IP prefixes, allowing you to reserve a contiguous range of IPv6 addresses.
+Azure public IPv6 addresses provide globally routable IPv6 connectivity for VMs, load balancers, and gateways. Azure public IPv6 addresses use static allocation with the Standard SKU. Basic SKU public IPs were retired on September 30, 2025. Azure can also allocate IPv6 public IP prefixes, allowing you to reserve a contiguous range of IPv6 addresses.
 
 ## Create Public IPv6 Address
 
@@ -86,6 +86,7 @@ output "public_ipv6" {
 az network public-ip prefix create \
     --resource-group "$RG" \
     --name pip-prefix-ipv6 \
+    --location "$LOCATION" \
     --version IPv6 \
     --length 127 \
     --sku Standard
@@ -129,7 +130,7 @@ az network public-ip show \
 ## Attach IPv6 Public IP to VM NIC
 
 ```bash
-# Update NIC IP configuration to use IPv6 public IP
+# Update an existing secondary IPv6 NIC IP configuration to use the IPv6 public IP
 az network nic ip-config update \
     --resource-group "$RG" \
     --nic-name nic-web-01 \
@@ -146,4 +147,4 @@ az network nic ip-config show \
 
 ## Conclusion
 
-Azure public IPv6 addresses require the Standard SKU and Static allocation method. Create IPv6 public IPs with `--version IPv6 --sku Standard --allocation-method Static`. Assign DNS labels to IPv6 public IPs for use in DNS records. For production workloads, use zone-redundant IPv6 public IPs with `--zone 1 2 3`. IPv6 public IP prefixes allow reserving contiguous blocks, which is useful for whitelist management and predictable address allocation for multiple services.
+Azure public IPv6 addresses require the Standard SKU and Static allocation method. Create IPv6 public IPs with `--version IPv6 --sku Standard --allocation-method Static`. Assign DNS labels to IPv6 public IPs for use in DNS records. For production workloads in regions that support Availability Zones, use zone-redundant IPv6 public IPs with `--zone 1 2 3`. IPv6 public IP prefixes allow reserving contiguous blocks, which is useful for whitelist management and predictable address allocation for multiple services.
