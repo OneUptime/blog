@@ -18,7 +18,7 @@ resource "azurerm_storage_account" "files" {
   resource_group_name = azurerm_resource_group.app.name
   location            = azurerm_resource_group.app.location
 
-  account_tier             = "Premium"    # Premium for low-latency (<1ms)
+  account_tier             = "Premium"    # Premium SSD shares for low-latency workloads
   account_replication_type = "LRS"        # or ZRS for zone redundancy
   account_kind             = "FileStorage" # Required for Premium Azure Files
 
@@ -26,11 +26,16 @@ resource "azurerm_storage_account" "files" {
   min_tls_version                 = "TLS1_2"
   allow_nested_items_to_be_public = false
 
+  # Optional: enable Microsoft Entra Kerberos (preview) for SMB identity-based authentication
+  azure_files_authentication {
+    directory_type = "AADKERB"
+  }
+
   # SMB security settings
   share_properties {
     smb {
       versions                        = ["SMB3.1.1"]
-      authentication_types            = ["Kerberos"]
+      authentication_types            = ["NTLMv2", "Kerberos"]
       kerberos_ticket_encryption_type = ["AES-256"]
       channel_encryption_type         = ["AES-256-GCM"]
     }
@@ -50,10 +55,11 @@ resource "azurerm_storage_account" "files" {
 # SMB file share (Windows compatible)
 
 resource "azurerm_storage_share" "app_data" {
-  name                 = "app-data"
-  storage_account_name = azurerm_storage_account.files.name
-  quota                = 100  # GB - soft quota (Premium)
-  enabled_protocol     = "SMB"
+  name               = "app-data"
+  storage_account_id = azurerm_storage_account.files.id
+  access_tier        = "Premium"
+  quota              = 128  # GiB provisioned size for a Premium share
+  enabled_protocol   = "SMB"
 
   acl {
     id = "app-read"
@@ -68,10 +74,11 @@ resource "azurerm_storage_share" "app_data" {
 
 # NFS file share (Linux compatible, requires Premium tier)
 resource "azurerm_storage_share" "linux_data" {
-  name                 = "linux-data"
-  storage_account_name = azurerm_storage_account.files.name
-  quota                = 500
-  enabled_protocol     = "NFS"
+  name               = "linux-data"
+  storage_account_id = azurerm_storage_account.files.id
+  access_tier        = "Premium"
+  quota              = 512
+  enabled_protocol   = "NFS"
 }
 ```
 
@@ -109,7 +116,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "files" {
   virtual_network_id    = azurerm_virtual_network.app.id
 }
 
-# Restrict access to private endpoint only
+# Restrict the public endpoint while allowing trusted Azure services such as Azure File Sync
 resource "azurerm_storage_account_network_rules" "files" {
   storage_account_id = azurerm_storage_account.files.id
   default_action     = "Deny"
@@ -120,24 +127,25 @@ resource "azurerm_storage_account_network_rules" "files" {
 ## RBAC Access to File Share
 
 ```hcl
-# Grant VM managed identity access to the file share
+# Grant share-level SMB access to specific Microsoft Entra identities
+# Requires Azure Files identity-based authentication to be enabled on the storage account
 resource "azurerm_role_assignment" "files_contributor" {
-  scope                = azurerm_storage_account.files.id
+  scope                = azurerm_storage_share.app_data.rbac_scope_id
   role_definition_name = "Storage File Data SMB Share Contributor"
-  principal_id         = azurerm_linux_virtual_machine.app.identity[0].principal_id
+  principal_id         = var.files_contributor_principal_id
 }
 
 resource "azurerm_role_assignment" "files_reader" {
-  scope                = azurerm_storage_account.files.id
+  scope                = azurerm_storage_share.app_data.rbac_scope_id
   role_definition_name = "Storage File Data SMB Share Reader"
-  principal_id         = azurerm_user_assigned_identity.readonly.principal_id
+  principal_id         = var.files_reader_principal_id
 }
 ```
 
 ## Azure File Sync Configuration
 
 ```hcl
-# Azure File Sync replicates on-premises file servers with Azure Files
+# Azure File Sync synchronizes Windows Server file shares with an SMB Azure file share
 resource "azurerm_storage_sync" "main" {
   name                = "${var.environment}-file-sync"
   resource_group_name = azurerm_resource_group.app.name
@@ -171,6 +179,7 @@ resource "azurerm_linux_virtual_machine" "app" {
 
   custom_data = base64encode(<<-EOF
     #!/bin/bash
+    apt-get update
     apt-get install -y cifs-utils
 
     # Mount SMB share using storage account key
@@ -178,9 +187,12 @@ resource "azurerm_linux_virtual_machine" "app" {
     SHARE_NAME="${azurerm_storage_share.app_data.name}"
     STORAGE_KEY="${azurerm_storage_account.files.primary_access_key}"
 
-    mkdir -p /mnt/appdata
+    mkdir -p /mnt/appdata /etc/smbcredentials
 
-    echo "//${azurerm_storage_account.files.name}.file.core.windows.net/$SHARE_NAME /mnt/appdata cifs vers=3.0,username=$STORAGE_ACCOUNT,password=$STORAGE_KEY,dir_mode=0755,file_mode=0644,serverino 0 0" >> /etc/fstab
+    printf "username=%s\npassword=%s\n" "$STORAGE_ACCOUNT" "$STORAGE_KEY" > /etc/smbcredentials/${STORAGE_ACCOUNT}.cred
+    chmod 600 /etc/smbcredentials/${STORAGE_ACCOUNT}.cred
+
+    echo "//${azurerm_storage_account.files.name}.file.core.windows.net/$SHARE_NAME /mnt/appdata cifs vers=3.1.1,credentials=/etc/smbcredentials/${STORAGE_ACCOUNT}.cred,serverino,nosharesock,actimeo=30,mfsymlinks,_netdev,nofail 0 0" >> /etc/fstab
 
     mount -a
   EOF
@@ -206,4 +218,4 @@ output "nfs_mount_path" {
 
 ## Conclusion
 
-Azure Files with OpenTofu provides managed SMB and NFS file shares without server administration. Use Premium tier (`account_kind = "FileStorage"`) for sub-millisecond latency required by workloads migrating from local NAS. Deploy private endpoints so all file access stays within the VNet - never traversing the internet. Use Azure AD Kerberos authentication (`authentication_types = ["Kerberos"]`) for user-level access control instead of storage account keys, enabling per-user audit trails in Azure Monitor.
+Azure Files with OpenTofu provides managed SMB and NFS file shares without server administration. Use Premium tier (`account_kind = "FileStorage"`) for SSD-backed shares with consistent low latency, typically within single-digit milliseconds for most I/O operations. Deploy private endpoints and restrict the storage account public endpoint when you want SMB and NFS data access to stay on private network paths. If you enable Azure Files identity-based authentication, use Microsoft Entra Kerberos (preview) with share-level RBAC for user-level SMB access instead of relying solely on storage account keys.
