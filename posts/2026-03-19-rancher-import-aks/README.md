@@ -12,9 +12,11 @@ Azure Kubernetes Service (AKS) is Microsoft's managed Kubernetes offering. Impor
 
 - A running Rancher installation (v2.7 or later)
 - An existing AKS cluster in Azure
+- Local accounts enabled on the AKS cluster
 - Azure CLI (`az`) installed and configured
 - `kubectl` installed
-- An Azure service principal or managed identity with appropriate permissions
+- `cluster-admin` access in the AKS cluster
+- An Azure service principal with appropriate permissions if you want Rancher to import the cluster as an AKS cluster type
 - Network connectivity from the AKS cluster to the Rancher server
 
 ## Step 1: Configure kubectl for the AKS Cluster
@@ -36,14 +38,14 @@ kubectl get nodes
 kubectl cluster-info
 ```
 
-## Step 2: Create an Azure Service Principal
+## Step 2: Create an Azure Service Principal (AKS-Type Import Only)
 
-Rancher needs Azure credentials to manage the AKS cluster. Create a service principal:
+If you want Rancher to import and manage the cluster as an AKS cluster type, Rancher needs Azure credentials to manage the cluster. Create a service principal:
 
 ```bash
 az ad sp create-for-rbac \
   --name rancher-aks-import \
-  --role "Azure Kubernetes Service Contributor" \
+  --role "Contributor" \
   --scopes /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/<RESOURCE_GROUP>
 ```
 
@@ -64,7 +66,7 @@ Save these values. You will also need your Azure Subscription ID:
 az account show --query id -o tsv
 ```
 
-## Step 3: Create a Cloud Credential in Rancher
+## Step 3: Create a Cloud Credential in Rancher (AKS-Type Import Only)
 
 1. Log in to the Rancher UI
 2. Navigate to **Cluster Management > Cloud Credentials**
@@ -87,7 +89,7 @@ az account show --query id -o tsv
 3. Select **Azure AKS**
 4. Select your Azure cloud credential
 5. Choose the resource group containing your AKS cluster
-6. Rancher lists available AKS clusters
+6. Rancher lists available AKS clusters; if your cluster does not appear immediately, wait and refresh because existing AKS clusters can take some time to show up
 7. Select your cluster and click **Register**
 
 ### Option B: Import as a Generic Cluster
@@ -115,7 +117,7 @@ kubectl get pods -n cattle-system -w
 kubectl get pods -n cattle-fleet-system -w
 ```
 
-The cluster status in Rancher progresses from `Waiting` to `Active`.
+The cluster status in Rancher should progress to `Active`.
 
 ## Step 6: Verify the Import
 
@@ -133,7 +135,7 @@ kubectl get nodes -o wide
 In the Rancher UI:
 
 - Verify the cluster dashboard displays correct information
-- Check node pools and node counts
+- If you used AKS-type import, verify the node pool configuration and node counts
 - Verify the Kubernetes version matches
 - Test kubectl access through the Rancher UI shell
 
@@ -146,17 +148,16 @@ When imported as an AKS cluster type, Rancher provides enhanced management:
 View AKS node pools and their configurations:
 
 1. Navigate to the cluster
-2. Go to **Nodes**
-3. View node pool details including VM size, node count, and autoscaling settings
+2. Open **Edit Config**
+3. Review node pool details including VM size, node count, and autoscaling settings
 
 ### Azure Integration
 
 With AKS-type import, Rancher can display:
 
 - Azure resource group information
-- Network profile details
-- Azure AD integration status
-- Node pool scaling options
+- Network profile details such as the network plugin and load balancer settings
+- Node pool scaling and autoscaling settings
 
 ## Step 8: Set Up RBAC and Projects
 
@@ -167,13 +168,13 @@ Configure access control:
 3. Add users or groups with appropriate roles
 4. Create projects and assign namespaces
 
-If your AKS cluster uses Azure AD integration, you can configure Rancher to work alongside Azure AD authentication.
+If your AKS cluster uses Microsoft Entra ID integration, make sure local accounts are enabled before importing it into Rancher.
 
 ## Step 9: Install Monitoring
 
 Deploy the Rancher monitoring stack:
 
-1. Go to **Apps** in the cluster
+1. Go to **Cluster Tools** or **Apps > Charts** in the cluster
 2. Install the **Monitoring** chart
 3. Configure resource limits appropriate for your cluster size
 
@@ -220,7 +221,7 @@ Rancher agents work with both Azure CNI and kubenet networking plugins. No addit
 
 - **Authentication errors**: Verify the service principal credentials and role assignments. Check that the service principal has not expired.
 - **Agent pods failing**: Check pod logs with `kubectl logs -l app=cattle-cluster-agent -n cattle-system`. Verify DNS resolution and outbound network connectivity.
-- **AKS API errors**: Ensure the service principal has `Azure Kubernetes Service Contributor` role on the resource group or subscription.
+- **AKS API errors**: Ensure the service principal has the `Contributor` role on the resource group or subscription.
 - **Cluster stuck in Pending**: Check the Rancher server logs for error messages. Verify the cloud credential is valid.
 
 ## Conclusion
