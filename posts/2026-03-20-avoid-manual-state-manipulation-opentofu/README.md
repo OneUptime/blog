@@ -21,13 +21,13 @@ vim terraform.tfstate  # NEVER do this
 # or
 sed -i 's/old-bucket-name/new-bucket-name/' terraform.tfstate  # NEVER do this
 
-# The state file contains checksums and version metadata
-# Manual edits corrupt these and break subsequent operations
+# The state file includes lineage, serial, and version metadata
+# Manual edits can corrupt the structure and break later operations
 ```
 
 ## Moving Resources: tofu state mv
 
-Use `state mv` to rename resources or move them between modules.
+If you need to move state explicitly, use `state mv` to rename resources or move them between modules. For most refactors, prefer `moved` blocks in configuration.
 
 ```bash
 # Rename a resource (when you rename it in HCL)
@@ -69,10 +69,10 @@ tofu state rm module.old_module
 Force recreation of a specific resource.
 
 ```bash
-# Mark for replacement (legacy approach)
+# Mark for replacement (deprecated approach)
 tofu taint aws_instance.web
 
-# Better: specify at plan time (OpenTofu 1.2+)
+# Better: preview the replacement explicitly
 tofu plan -replace=aws_instance.web
 
 # Apply the replacement
@@ -81,20 +81,23 @@ tofu apply -replace=aws_instance.web
 
 ## Pulling and Pushing State
 
-Carefully migrate state between backends.
+Use pull/push for inspection, backup, or rare manual recovery. For normal backend migrations, prefer `tofu init -migrate-state`.
 
 ```bash
-# Pull the current remote state to inspect it
+# Pull the current state to inspect it or create a backup
 tofu state pull > backup.tfstate
 
-# Make a backup before any risky operation
+# If you're using local state, you can also copy the file directly
 cp terraform.tfstate terraform.tfstate.backup.$(date +%Y%m%d%H%M%S)
 
-# After migrating backend configuration, push a known good state
-# (use with extreme caution - this overwrites remote state)
+# For normal backend migrations, prefer the built-in migration workflow
+tofu init -migrate-state
+
+# Push a known good state only for rare manual recovery
+# (use with extreme caution - this overwrites the current backend state)
 tofu state push backup.tfstate
 
-# Always use -force flag only if you understand what you're overwriting
+# Use -force only if you understand the lineage and serial checks you're bypassing
 tofu state push -force backup.tfstate
 ```
 
@@ -124,4 +127,4 @@ tofu state push restored.tfstate
 
 ## Summary
 
-Manual state file editing is never the right approach. Use `tofu state mv` for renames and module restructuring, `tofu state rm` for removing resources from management, `-replace` for forcing recreation, and `state pull/push` for state migration. Always back up state before any state manipulation operation, and always run `tofu plan` afterward to verify no unexpected changes. Enable S3 versioning (or equivalent) on your state backend so you can always restore a previous version.
+Manual state file editing is never the right approach. Use `moved` blocks for most refactors, `tofu state mv` when you need an explicit state move, `tofu state rm` for removing resources from management, `-replace` for forcing recreation, and `state pull/push` only for inspection or rare manual recovery. Use `tofu init -migrate-state` for normal backend migrations. Always back up state before any state manipulation operation, and always run `tofu plan` afterward to verify no unexpected changes. Enable S3 versioning (or equivalent) on your state backend so you can always restore a previous version.
