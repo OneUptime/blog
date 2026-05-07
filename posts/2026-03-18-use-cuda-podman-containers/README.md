@@ -29,7 +29,7 @@ The host driver version determines the maximum CUDA version you can use. The CUD
 
 nvidia-smi
 # Look for "CUDA Version: 12.x" in the top-right corner
-# This is the MAXIMUM CUDA version supported, not the installed version
+# This is the CUDA driver API version supported by the driver, not the CUDA Toolkit version installed in the container
 ```
 
 ## Setting Up CUDA Support
@@ -76,6 +76,7 @@ podman pull nvidia/cuda:12.3.0-devel-ubuntu22.04
 mkdir -p /tmp/cuda-demo
 cat > /tmp/cuda-demo/vector_add.cu << 'EOF'
 #include <stdio.h>
+#include <stdlib.h>
 #include <cuda_runtime.h>
 
 // CUDA kernel for vector addition
@@ -151,6 +152,7 @@ EOF
 # Compile and run inside a CUDA devel container
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   -v /tmp/cuda-demo:/workspace:Z \
   nvidia/cuda:12.3.0-devel-ubuntu22.04 \
   bash -c "cd /workspace && nvcc -o vector_add vector_add.cu && ./vector_add"
@@ -194,10 +196,11 @@ podman build -t my-cuda-app:latest -f /tmp/cuda-demo/Containerfile /tmp/cuda-dem
 # Run the compiled application
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   my-cuda-app:latest
 ```
 
-### Multi-Stage Build for Python CUDA Applications
+### Containerfile for Python CUDA Applications
 
 ```bash
 cat > /tmp/cuda-demo/Containerfile.python << 'EOF'
@@ -276,6 +279,7 @@ EOF
 # Run the benchmark
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   -v /tmp/cuda-demo:/workspace:Z \
   cuda-python:latest \
   python3 /workspace/cupy_bench.py
@@ -289,13 +293,14 @@ When running CUDA containers, understanding memory limits is important:
 # Check available GPU memory from inside a container
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   nvidia/cuda:12.3.0-base-ubuntu22.04 \
   nvidia-smi --query-gpu=memory.total,memory.used,memory.free --format=csv
 
-# Set a GPU memory limit using CUDA environment variables
+# Limit which GPUs are visible to CUDA applications
 podman run --rm -it \
   --device nvidia.com/gpu=all \
-  -e CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps \
+  --security-opt=label=disable \
   -e CUDA_VISIBLE_DEVICES=0 \
   nvidia/cuda:12.3.0-runtime-ubuntu22.04 \
   nvidia-smi
@@ -309,18 +314,15 @@ The host driver version determines which CUDA versions you can use in containers
 # Check driver and CUDA compatibility
 nvidia-smi | head -3
 
-# Common driver to CUDA version mappings:
-# Driver 525.x -> CUDA 12.0
-# Driver 530.x -> CUDA 12.1
-# Driver 535.x -> CUDA 12.2
-# Driver 545.x -> CUDA 12.3
-# Driver 550.x -> CUDA 12.4
+# CUDA 12.3 images normally require a driver from the 545 branch or newer.
+# CUDA minor-version compatibility can allow CUDA 12.x applications to run on
+# older 525+ drivers, but newer toolkit features may still require a newer driver.
 
 # You can run older CUDA versions with newer drivers (backward compatible)
 # For example, with driver 545.x:
-podman run --rm --device nvidia.com/gpu=all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
-podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
-podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
+podman run --rm --device nvidia.com/gpu=all --security-opt=label=disable nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
+podman run --rm --device nvidia.com/gpu=all --security-opt=label=disable nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+podman run --rm --device nvidia.com/gpu=all --security-opt=label=disable nvidia/cuda:12.3.0-base-ubuntu22.04 nvidia-smi
 # All three will work due to backward compatibility
 ```
 
@@ -330,19 +332,18 @@ podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.3.0-base-ubuntu22.04 
 # Enable CUDA error checking
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   -e CUDA_LAUNCH_BLOCKING=1 \
   nvidia/cuda:12.3.0-devel-ubuntu22.04 \
   bash
 
-# Inside the container, use cuda-memcheck for memory debugging
-# cuda-memcheck ./my_cuda_app
-
-# Use compute-sanitizer (newer replacement for cuda-memcheck)
+# Inside the container, use Compute Sanitizer for memory debugging
 # compute-sanitizer --tool memcheck ./my_cuda_app
 
-# Enable verbose CUDA driver logging
+# Enable synchronous launches and stable device ordering while debugging
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   -e CUDA_LAUNCH_BLOCKING=1 \
   -e CUDA_DEVICE_ORDER=PCI_BUS_ID \
   nvidia/cuda:12.3.0-devel-ubuntu22.04 \
@@ -364,6 +365,7 @@ nvidia-ctk cdi generate --output=$HOME/.config/cdi/nvidia.yaml
 # Run a CUDA container rootless
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   nvidia/cuda:12.3.0-base-ubuntu22.04 \
   nvidia-smi
 ```
@@ -380,6 +382,7 @@ nvidia-smi  # Check your driver version
 # GPU devices are not passed through correctly
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   nvidia/cuda:12.3.0-base-ubuntu22.04 \
   bash -c "ls -la /dev/nvidia* && nvidia-smi"
 
@@ -391,6 +394,7 @@ nvidia-smi
 # Verify CUDA is functional with a simple test
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   nvidia/cuda:12.3.0-devel-ubuntu22.04 \
   bash -c 'cat > /tmp/test.cu << "INNER_EOF"
 #include <stdio.h>
