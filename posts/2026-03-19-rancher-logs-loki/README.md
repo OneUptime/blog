@@ -19,31 +19,88 @@ Grafana Loki is a horizontally scalable log aggregation system designed to be co
 If you do not have Loki running, install it via Helm:
 
 ```bash
-helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo update
-
-helm install loki grafana/loki \
-  --namespace logging \
-  --create-namespace \
-  --set loki.auth_enabled=false \
-  --set loki.storage.type=filesystem \
-  --set singleBinary.replicas=1 \
-  --set singleBinary.resources.requests.cpu=200m \
-  --set singleBinary.resources.requests.memory=256Mi
 ```
 
-For production, use the distributed mode with object storage:
+```yaml
+# values-loki-dev.yaml
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  useTestSchema: true
+
+deploymentMode: Monolithic
+
+singleBinary:
+  replicas: 1
+
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+```
 
 ```bash
-helm install loki grafana/loki \
+helm install loki grafana-community/loki \
   --namespace logging \
   --create-namespace \
-  --set loki.storage.type=s3 \
-  --set loki.storage.s3.endpoint=s3.amazonaws.com \
-  --set loki.storage.s3.region=us-east-1 \
-  --set loki.storage.s3.bucketnames=my-loki-bucket \
-  --set loki.storage.s3.access_key_id=AKIAIOSFODNN7EXAMPLE \
-  --set loki.storage.s3.secret_access_key=wJalrXUtnFEMI/K7MDENG
+  -f values-loki-dev.yaml
+```
+
+For production, use object storage and multiple replicas:
+
+```yaml
+# values-loki-prod.yaml
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 3
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage:
+    type: s3
+    bucketNames:
+      chunks: my-loki-chunks
+      ruler: my-loki-ruler
+      admin: my-loki-admin
+    s3:
+      endpoint: s3.amazonaws.com
+      region: us-east-1
+      accessKeyId: <your-access-key-id>
+      secretAccessKey: <your-secret-access-key>
+      s3ForcePathStyle: false
+
+deploymentMode: Monolithic
+
+singleBinary:
+  replicas: 3
+
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+```
+
+```bash
+helm install loki grafana-community/loki \
+  --namespace logging \
+  --create-namespace \
+  -f values-loki-prod.yaml
 ```
 
 ## Step 2: Create a ClusterOutput for Loki
@@ -56,14 +113,13 @@ metadata:
   namespace: cattle-logging-system
 spec:
   loki:
-    url: http://loki.logging.svc.cluster.local:3100
+    url: http://loki-gateway.logging.svc.cluster.local
     labels:
       cluster: production
-    extract_kubernetes_labels: true
     remove_keys:
       - logtag
       - kubernetes
-    configure_kubernetes_labels: false
+    configure_kubernetes_labels: true
     buffer:
       type: file
       path: /buffers/loki
@@ -71,7 +127,7 @@ spec:
       total_limit_size: 2GB
       flush_interval: 5s
       flush_thread_count: 2
-      retry_max_interval: 30
+      retry_max_interval: 30s
       retry_forever: true
 ```
 
@@ -104,19 +160,20 @@ Loki uses labels for indexing, so proper label configuration is crucial for quer
 ```yaml
 spec:
   loki:
-    url: http://loki.logging.svc.cluster.local:3100
+    url: http://loki-gateway.logging.svc.cluster.local
     labels:
       cluster: production
       job: kubernetes
     extra_labels:
       environment: production
-    extract_kubernetes_labels: true
+    configure_kubernetes_labels: true
     drop_single_key: true
 ```
 
 Important label guidelines:
 - Keep the number of unique label combinations (cardinality) low.
-- Good labels: namespace, pod name, container name, app label.
+- Good labels: cluster, namespace, application/service, environment.
+- Pod names and most Kubernetes labels can be useful for troubleshooting, but use them sparingly because they increase cardinality.
 - Avoid high-cardinality labels: request IDs, timestamps, user IDs.
 
 ## Step 5: Configure for Grafana Cloud Loki
@@ -138,7 +195,7 @@ metadata:
   namespace: cattle-logging-system
 spec:
   loki:
-    url: https://logs-prod-us-central1.grafana.net
+    url: https://<your-logs-endpoint>
     username:
       valueFrom:
         secretKeyRef:
@@ -151,7 +208,7 @@ spec:
           key: password
     labels:
       cluster: production
-    extract_kubernetes_labels: true
+    configure_kubernetes_labels: true
     buffer:
       type: file
       path: /buffers/grafana-cloud
@@ -165,11 +222,11 @@ spec:
 Add Loki as a data source in Grafana:
 
 1. Open Grafana from **Monitoring > Grafana**.
-2. Go to **Configuration > Data Sources**.
-3. Click **Add data source**.
+2. Go to **Connections > Add new connection**.
+3. Search for **Loki**.
 4. Select **Loki**.
-5. Set the URL to `http://loki.logging.svc.cluster.local:3100`.
-6. Click **Save & Test**.
+5. Set the URL to `http://loki-gateway.logging.svc.cluster.local`.
+6. Click **Save & test**.
 
 Or configure it through the monitoring chart:
 
@@ -178,7 +235,7 @@ grafana:
   additionalDataSources:
     - name: Loki
       type: loki
-      url: http://loki.logging.svc.cluster.local:3100
+      url: http://loki-gateway.logging.svc.cluster.local
       access: proxy
       isDefault: false
 ```
@@ -205,7 +262,7 @@ Use LogQL to query logs in Grafana's Explore view:
 count_over_time({namespace="production"} |= "ERROR" [5m])
 
 # Top error-producing pods
-topk(10, count_over_time({namespace="production"} |= "ERROR" [1h]) by (pod))
+topk(10, sum by (pod) (count_over_time({namespace="production"} |= "ERROR" [1h])))
 ```
 
 ## Step 8: Set Up Log-Based Alerts in Grafana
@@ -218,11 +275,11 @@ Create alerts based on log patterns:
 4. Enter a LogQL query:
 
 ```logql
-count_over_time({namespace="production"} |= "ERROR" [5m]) > 50
+sum(count_over_time({namespace="production"} |= "ERROR" [5m])) > 50
 ```
 
 5. Set the evaluation interval and conditions.
-6. Configure notification channels.
+6. Configure contact points or notification policies.
 
 ## Step 9: Configure Loki Retention
 
@@ -234,10 +291,14 @@ limits_config:
   retention_period: 720h  # 30 days
 
 compactor:
+  working_directory: /var/loki/compactor
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
+  delete_request_store: filesystem  # use s3/gcs/azure to match your backend
 ```
+
+Retention with the Compactor requires a 24h index period, which the Helm values above set via TSDB.
 
 ## Step 10: Verify Log Delivery
 
@@ -249,17 +310,34 @@ kubectl logs -n cattle-logging-system -l app.kubernetes.io/name=fluentd -c fluen
 
 Query Loki directly:
 
-```bash
-kubectl port-forward -n logging svc/loki 3100:3100
+In a separate terminal, start a port-forward to the Loki gateway:
 
-curl -s "http://localhost:3100/loki/api/v1/query?query={cluster=\"production\"}&limit=5" | jq '.data.result'
+```bash
+kubectl port-forward -n logging svc/loki-gateway 3100:80
+```
+
+Then query Loki:
+
+```bash
+curl -G -s "http://localhost:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={cluster="production"}' \
+  --data-urlencode 'limit=5' \
+  --data-urlencode 'since=1h' | jq '.data.result'
 ```
 
 Check Loki health:
 
+In a separate terminal, start a port-forward to the Loki service:
+
 ```bash
-curl -s http://localhost:3100/ready
-curl -s http://localhost:3100/metrics | grep loki_ingester_streams_created_total
+kubectl port-forward -n logging svc/loki 3101:3100
+```
+
+Then check the readiness and metrics endpoints:
+
+```bash
+curl -s http://localhost:3101/ready
+curl -s http://localhost:3101/metrics | grep loki_ingester_streams_created_total
 ```
 
 ## Troubleshooting
