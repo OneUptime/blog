@@ -23,16 +23,10 @@ resource "aws_route53_health_check" "primary_deep" {
   failure_threshold = 3
   request_interval  = 10  # 10-second intervals for faster detection
 
-  # Multi-region health check for global accuracy
+  # Multi-region endpoint health check with latency graphs
   measure_latency                 = true
   enable_sni                      = true
   regions                         = ["us-east-1", "eu-west-1", "ap-southeast-1"]
-
-  # CloudWatch alarm integration for metric-based health
-  cloudwatch_alarm_name   = aws_cloudwatch_metric_alarm.primary_5xx.alarm_name
-  cloudwatch_alarm_region = "us-east-1"
-
-  insufficient_data_health_status = "Unhealthy"
 
   tags = { Name = "primary-deep-health-check" }
 }
@@ -81,10 +75,10 @@ resource "aws_route53_record" "passive" {
 }
 ```
 
-## Step 3: SNS Notification for Failover Events
+## Step 3: SNS Notification for Health Check Failures
 
 ```hcl
-# Alert when failover occurs
+# Alert when the primary health check fails
 resource "aws_cloudwatch_metric_alarm" "route53_failover" {
   alarm_name          = "route53-health-check-failed"
   comparison_operator = "LessThanThreshold"
@@ -99,7 +93,7 @@ resource "aws_cloudwatch_metric_alarm" "route53_failover" {
     HealthCheckId = aws_route53_health_check.primary_deep.id
   }
 
-  alarm_description = "Primary health check failed - failover to passive occurred"
+  alarm_description = "Primary health check failed - Route53 failover condition detected"
   alarm_actions     = [aws_sns_topic.failover_notifications.arn]
   ok_actions        = [aws_sns_topic.failover_notifications.arn]
 }
@@ -130,7 +124,7 @@ resource "aws_route53_health_check" "passive_readiness" {
   tags = { Name = "passive-readiness-check" }
 }
 
-# CloudWatch alarm if passive becomes unhealthy (both fail = complete outage)
+# CloudWatch alarm if passive becomes unhealthy (failover target unavailable)
 resource "aws_cloudwatch_metric_alarm" "passive_unhealthy" {
   alarm_name          = "passive-site-unhealthy"
   comparison_operator = "LessThanThreshold"
@@ -152,4 +146,4 @@ resource "aws_cloudwatch_metric_alarm" "passive_unhealthy" {
 
 ## Summary
 
-Active-passive failover configured with OpenTofu uses Route53 health checks with 10-second intervals for rapid failure detection. The failover routing policy automatically promotes the SECONDARY record when the PRIMARY health check fails, typically within 60-90 seconds. Monitoring the passive environment separately with a readiness alarm prevents silent failures where the standby is also unhealthy, ensuring the failover target is ready before the primary fails.
+Active-passive failover configured with OpenTofu uses Route53 health checks with 10-second intervals for rapid endpoint failure detection. The failover routing policy returns the SECONDARY record when Route53 considers the PRIMARY record unhealthy, but client-visible failover timing also depends on DNS caching. Monitoring the passive environment separately with a readiness alarm helps detect silent failures where the standby is also unhealthy, but that separate alarm does not control Route53 routing.
