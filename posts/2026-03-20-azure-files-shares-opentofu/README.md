@@ -36,9 +36,9 @@ resource "azurerm_storage_account" "files" {
 
 ```hcl
 resource "azurerm_storage_share" "data" {
-  name                 = "app-data"
-  storage_account_name = azurerm_storage_account.files.name
-  quota                = 100  # GB
+  name               = "app-data"
+  storage_account_id = azurerm_storage_account.files.id
+  quota              = 100  # GB
 }
 ```
 
@@ -48,10 +48,10 @@ resource "azurerm_storage_share" "data" {
 
 ```hcl
 resource "azurerm_storage_share" "hot" {
-  name                 = "hot-data"
-  storage_account_name = azurerm_storage_account.files.name
-  quota                = 500
-  access_tier          = "Hot"
+  name               = "hot-data"
+  storage_account_id = azurerm_storage_account.files.id
+  quota              = 500
+  access_tier        = "Hot"
 }
 ```
 
@@ -62,10 +62,19 @@ resource "azurerm_storage_share" "hot" {
 ```bash
 # Get the storage account key
 
-STORAGE_KEY=$(az storage account keys list   --account-name myfilesstorage   --resource-group storage-rg   --query '[0].value' -o tsv)
+STORAGE_KEY=$(az storage account keys list \
+  --account-name myfilesstorage \
+  --resource-group storage-rg \
+  --query '[0].value' -o tsv)
+
+# Create the mount point
+sudo mkdir -p /mnt/azure-files
 
 # Mount via SMB
-sudo mount -t cifs   //myfilesstorage.file.core.windows.net/app-data   /mnt/azure-files   -o username=myfilesstorage,password=${STORAGE_KEY},vers=3.0
+sudo mount -t cifs \
+  //myfilesstorage.file.core.windows.net/app-data \
+  /mnt/azure-files \
+  -o username=myfilesstorage,password=${STORAGE_KEY},vers=3.0
 ```
 
 ---
@@ -76,20 +85,28 @@ sudo mount -t cifs   //myfilesstorage.file.core.windows.net/app-data   /mnt/azur
 apiVersion: v1
 kind: PersistentVolume
 metadata:
+  annotations:
+    pv.kubernetes.io/provisioned-by: file.csi.azure.com
   name: azure-files-pv
 spec:
   capacity:
     storage: 100Gi
   accessModes:
     - ReadWriteMany
-  azureFile:
-    secretName: azure-files-secret
-    shareName: app-data
-    readOnly: false
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: azurefile-csi
+  csi:
+    driver: file.csi.azure.com
+    volumeHandle: "storage-rg#myfilesstorage#app-data"
+    volumeAttributes:
+      shareName: app-data
+    nodeStageSecretRef:
+      name: azure-files-secret
+      namespace: default
 ```
 
 ---
 
 ## Summary
 
-Use `azurerm_storage_account` and `azurerm_storage_share` to declare Azure Files storage in OpenTofu. Set the quota in GB and access tier to match your workload requirements. Mount shares from Linux with `cifs` or consume them as Kubernetes Persistent Volumes for shared storage across pods.
+Use `azurerm_storage_account` and `azurerm_storage_share` to declare Azure Files storage in OpenTofu. Set the quota in GB and access tier to match your workload requirements. Mount shares from Linux with `cifs` or consume them through the Azure Files CSI driver in Kubernetes for shared storage across pods.
