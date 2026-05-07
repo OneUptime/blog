@@ -8,9 +8,9 @@ Description: Learn how to configure and use the VFS storage driver with Podman f
 
 ---
 
-> The VFS storage driver provides maximum compatibility by using simple directory copies instead of filesystem-level layering, working on any Linux filesystem.
+> The VFS storage driver provides broad compatibility by using simple directory copies instead of filesystem-level layering, without depending on overlayfs support.
 
-While the overlay driver is recommended for most environments, the VFS (Virtual File System) driver serves as a universal fallback. VFS works by creating a complete copy of each layer, making it slower and more disk-intensive but compatible with every filesystem. This guide explains when to use VFS and how to configure it properly.
+While the overlay driver is recommended for most environments, the VFS (Virtual File System) driver serves as a fallback when overlay is unavailable or impractical. VFS works by copying a parent layer into a new directory for each layer, making it slower and more disk-intensive than overlay. This guide explains when to use VFS and how to configure it properly.
 
 ---
 
@@ -24,11 +24,11 @@ VFS is the right choice in specific scenarios.
 podman info --format '{{.Store.GraphDriverName}}'
 
 # Scenarios where VFS is appropriate:
-# 1. Network filesystems (NFS, CIFS) that do not support overlay
-# 2. Encrypted filesystems (ecryptfs) incompatible with overlay
-# 3. Nested container environments (containers inside containers)
+# 1. Rootless environments where fuse-overlayfs is not available
+# 2. Nested container or CI environments where overlay is unavailable or too slow
+# 3. Systems where overlay cannot be used for the current workload
 # 4. Testing and debugging storage issues
-# 5. Systems with very old kernels (pre-3.18)
+# 5. Situations where compatibility matters more than performance
 
 # Check your filesystem type
 df -T "$(podman info --format '{{.Store.GraphRoot}}')"
@@ -39,23 +39,24 @@ df -T "$(podman info --format '{{.Store.GraphRoot}}')"
 Set up VFS as the storage driver.
 
 ```bash
-# Create storage configuration
+# Create storage configuration directory
 mkdir -p ~/.config/containers
+
+# If you're switching from another driver, reset storage before changing driver
+# This removes all local containers, images, networks, and volumes
+podman system reset --force
 
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
 # Use VFS storage driver
 # VFS makes complete copies of each layer
-# Compatible with all filesystems
+# Does not rely on overlayfs support
 driver = "vfs"
 
 [storage.options.vfs]
 # VFS has minimal configuration options
 # No special filesystem support required
 EOF
-
-# Reset storage when switching from another driver
-podman system reset --force
 
 # Verify VFS is active
 podman info --format '{{.Store.GraphDriverName}}'
@@ -72,13 +73,13 @@ podman pull alpine:latest
 # Check disk usage - VFS uses more space than overlay
 podman system df
 
-# VFS directory structure
+# VFS stores layer directories under vfs/dir
 GRAPH_ROOT=$(podman info --format '{{.Store.GraphRoot}}')
 echo "Graph root: $GRAPH_ROOT"
-ls "$GRAPH_ROOT/vfs/" 2>/dev/null | head -10
+ls "$GRAPH_ROOT/vfs/dir/" 2>/dev/null | head -10
 
-# Each layer is a complete directory copy
-# Unlike overlay, there is no shared layer mechanism
+# Each layer directory is a complete copy of its parent plus changes
+# Unlike overlay, there is no copy-on-write layer mount
 du -sh "$GRAPH_ROOT/vfs/" 2>/dev/null
 ```
 
@@ -87,48 +88,57 @@ du -sh "$GRAPH_ROOT/vfs/" 2>/dev/null
 podman pull alpine:3.18 2>/dev/null
 podman pull alpine:3.19 2>/dev/null
 
-# With VFS, shared layers are duplicated
+# With VFS, layer contents are copied rather than mounted with copy-on-write
 podman system df -v 2>/dev/null | head -15
 
 # Check total storage used
+GRAPH_ROOT=$(podman info --format '{{.Store.GraphRoot}}')
 du -sh "$GRAPH_ROOT" 2>/dev/null
 ```
 
-## VFS on Network Filesystems
+## VFS with Network-Mounted Home Directories
 
-Configure VFS for NFS or CIFS mounted storage.
+If your home directory is on NFS or another network filesystem, keep Podman storage on a local filesystem.
 
 ```bash
-# Example: Configure VFS for NFS-backed storage
+# Example: keep VFS storage on a local filesystem even if $HOME is on NFS
+mkdir -p ~/.config/containers
+
+# Reset before changing storage settings
+podman system reset --force
+
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
 driver = "vfs"
 
-# Point storage to an NFS mount
-# Ensure the NFS mount is reliable and has low latency
-graphroot = "/nfs/containers/storage"
+# Podman does not support container storage on NFS.
+# Point graphroot at a local filesystem instead.
+graphroot = "/var/tmp/$USER-podman-storage"
 runroot = "$XDG_RUNTIME_DIR/containers"
 
 [storage.options.vfs]
 # No special options needed
 EOF
 
-# Note: Keep runroot on a local filesystem for performance
+# On SELinux systems, label the new graphroot like the default rootless path
+# sudo semanage fcontext -a -e $HOME/.local/share/containers /var/tmp/$USER-podman-storage
+# sudo restorecon -R -v /var/tmp/$USER-podman-storage
+
+# Keep graphroot and runroot on local filesystems
 # Runtime data needs fast access and is ephemeral
 
-# Reset and verify
-podman system reset --force
+# Verify
 podman info --format '{{.Store.GraphDriverName}}'
 podman info --format '{{.Store.GraphRoot}}'
 ```
 
 ## VFS in Nested Container Environments
 
-Use VFS when running Podman inside containers.
+VFS can be useful when running Podman inside containers.
 
 ```bash
-# VFS is often required for Docker-in-Docker or Podman-in-Podman
-# The inner container engine cannot use overlay on an overlay filesystem
+# VFS is a useful fallback for Docker-in-Docker or Podman-in-Podman
+# when overlay is unavailable or fuse-overlayfs is too slow
 
 # Example: Running Podman inside a Podman container
 podman run --rm -it \
@@ -137,7 +147,7 @@ podman run --rm -it \
     quay.io/podman/stable \
     podman info --format '{{.Store.GraphDriverName}}'
 
-# If the inner Podman uses VFS, configure it explicitly
+# If you want the inner Podman to use VFS, configure it explicitly
 cat > /tmp/inner-storage.conf << 'EOF'
 [storage]
 driver = "vfs"
@@ -169,7 +179,7 @@ podman container prune -f
 # Remove unused volumes
 podman volume prune -f
 
-# Full system cleanup
+# Prune any remaining unused data
 podman system prune -a -f
 
 # Check disk usage after cleanup
@@ -198,7 +208,7 @@ Understand and mitigate VFS performance limitations.
 # - Slower image pulls (full layer copies)
 # - More disk I/O during container creation
 # - Higher disk usage (no layer sharing)
-# - Slower container startup
+# - Slower container creation and startup
 
 # Benchmark container startup with VFS
 time podman run --rm alpine echo "VFS startup test"
@@ -219,22 +229,19 @@ Migrate to a more efficient driver when possible.
 
 ```bash
 # Save important images before switching
-podman save -o /tmp/my-images.tar $(podman images -q) 2>/dev/null
+podman save --multi-image-archive -o /tmp/my-images.tar $(podman images -q)
+
+# Reset storage before changing drivers
+podman system reset --force
 
 # Switch to overlay driver
 cat > ~/.config/containers/storage.conf << 'EOF'
 [storage]
 driver = "overlay"
-
-[storage.options.overlay]
-mountopt = "nodev,metacopy=on"
 EOF
 
-# Reset storage
-podman system reset --force
-
 # Restore images
-podman load -i /tmp/my-images.tar 2>/dev/null
+podman load -i /tmp/my-images.tar
 
 # Verify the switch
 podman info --format '{{.Store.GraphDriverName}}'
@@ -245,4 +252,4 @@ podman system df
 
 ## Summary
 
-The VFS storage driver is Podman's universal fallback, working on any filesystem including NFS, ecryptfs, and nested container environments. It trades performance and disk efficiency for maximum compatibility by creating full copies of each layer. Use VFS when overlay is not available, but manage disk space aggressively with regular `podman system prune` operations. When your environment supports overlay, switch to it for significantly better performance and disk usage.
+The VFS storage driver is Podman's fallback when overlay or fuse-overlayfs is unavailable or impractical, especially in some rootless and nested-container environments. It trades performance and disk efficiency for compatibility by copying each parent layer into a new directory. If your home directory is on NFS, keep Podman storage on a local filesystem. When your environment supports overlay, switch to it for significantly better performance and disk usage.
