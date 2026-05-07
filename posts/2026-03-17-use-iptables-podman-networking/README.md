@@ -10,13 +10,13 @@ Description: Learn how to use iptables rules to control and inspect network traf
 
 > iptables gives you low-level control over packet filtering for Podman container traffic on Linux hosts.
 
-Podman relies on the host networking stack for container connectivity. On systems that use iptables as the packet filter, you can write rules that apply to container traffic. This is useful for logging, rate limiting, restricting access, and debugging network issues.
+Podman relies on the host networking stack for container connectivity. On rootful bridge networks where Podman uses iptables for firewall rules, you can write rules that apply to container traffic. This is useful for logging, rate limiting, restricting access, and debugging network issues.
 
 ---
 
 ## How Podman Uses iptables
 
-When you publish a port, Podman sets up NAT rules so that host traffic is forwarded to the container. These rules appear in the `nat` and `filter` tables.
+When you publish a port on a managed bridge network, Podman sets up NAT rules so that host traffic is forwarded to the container. On an iptables-based setup, these rules appear in the `nat` and `filter` tables.
 
 ```bash
 # View NAT rules related to container port forwarding
@@ -43,14 +43,14 @@ sudo iptables -L FORWARD -n -v
 ## Restricting Access to a Published Port
 
 ```bash
+CONTAINER_IP=$(podman inspect myapp --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+
 # Allow only a specific source IP to reach port 9090
-sudo iptables -I FORWARD -p tcp --dport 80 -d $(podman inspect myapp \
-  --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}') \
+sudo iptables -I FORWARD 1 -p tcp --dport 80 -d "$CONTAINER_IP" \
   -s 192.168.1.50 -j ACCEPT
 
 # Drop all other traffic to the container port
-sudo iptables -I FORWARD -p tcp --dport 80 -d $(podman inspect myapp \
-  --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}') \
+sudo iptables -I FORWARD 2 -p tcp --dport 80 -d "$CONTAINER_IP" \
   -j DROP
 ```
 
@@ -70,13 +70,14 @@ sudo journalctl -k --grep "PODMAN-TRAFFIC" --no-pager -n 20
 ## Rate Limiting Connections
 
 ```bash
-# Limit incoming connections to 10 per minute per source IP
-sudo iptables -I FORWARD -p tcp --dport 80 \
+# Limit incoming new connections to 10 per minute per source IP
+sudo iptables -I FORWARD 1 -p tcp --dport 80 \
   -d "$CONTAINER_IP" \
   -m conntrack --ctstate NEW \
-  -m limit --limit 10/min --limit-burst 20 -j ACCEPT
+  -m hashlimit --hashlimit-upto 10/min --hashlimit-burst 20 \
+  --hashlimit-mode srcip --hashlimit-name myapp-http -j ACCEPT
 
-sudo iptables -A FORWARD -p tcp --dport 80 \
+sudo iptables -I FORWARD 2 -p tcp --dport 80 \
   -d "$CONTAINER_IP" \
   -m conntrack --ctstate NEW -j DROP
 ```
