@@ -10,7 +10,7 @@ Description: Learn how to use Podman on Fedora CoreOS, an automatically updating
 
 > Fedora CoreOS ships with Podman pre-installed and is purpose-built for containers. This guide walks you through leveraging Podman on this minimal, immutable operating system for production container workloads.
 
-Fedora CoreOS (FCOS) is a minimal, automatically updating operating system built specifically for running containerized workloads securely and at scale. Unlike traditional Linux distributions, FCOS follows an immutable infrastructure model where the base OS is read-only and all applications run inside containers. Podman comes pre-installed as the default container runtime, making FCOS an ideal platform for container-native deployments.
+Fedora CoreOS (FCOS) is a minimal, automatically updating operating system built specifically for running containerized workloads securely and at scale. Unlike traditional Linux distributions, FCOS follows an immutable infrastructure model where the base OS is read-only in normal operation and application workloads are typically run inside containers. Podman comes pre-installed as the default container runtime, making FCOS an ideal platform for container-native deployments.
 
 This guide covers everything you need to know about using Podman effectively on Fedora CoreOS, from initial provisioning to running production workloads.
 
@@ -18,7 +18,7 @@ This guide covers everything you need to know about using Podman effectively on 
 
 ## Understanding Fedora CoreOS
 
-Fedora CoreOS differs from traditional distributions in several key ways. The operating system uses an immutable filesystem with automatic updates delivered through OSTree. You do not install packages with dnf in the traditional sense. Instead, you provision the system using Ignition configs at first boot and run all your workloads as containers.
+Fedora CoreOS differs from traditional distributions in several key ways. The operating system uses an immutable filesystem with automatic updates delivered through OSTree. You do not install packages with dnf in the traditional sense. Instead, you provision the system using Ignition configs at first boot and typically run your workloads as containers.
 
 Since Podman is baked into the base image, you can start running containers immediately after provisioning.
 
@@ -48,10 +48,10 @@ Compile this Butane config into an Ignition config:
 butane --pretty --strict config.bu > config.ign
 ```
 
-Launch the instance with the Ignition config. On a cloud provider or with QEMU:
+Provide the Ignition config to the machine at first boot. If you are installing FCOS directly to a disk, you can embed it during install:
 
 ```bash
-coreos-installer install /dev/sda --ignition-file config.ign
+sudo coreos-installer install /dev/sda --ignition-file config.ign
 ```
 
 ## Verifying the Podman Installation
@@ -152,6 +152,10 @@ storage:
             - job_name: 'prometheus'
               static_configs:
                 - targets: ['localhost:9090']
+systemd:
+  units:
+    - name: monitoring.service
+      enabled: true
 ```
 
 This ensures your monitoring stack is running immediately after the machine boots for the first time.
@@ -218,17 +222,12 @@ storage:
 Then mount this storage into your containers:
 
 ```bash
-podman run -d -v /var/data:/data:Z docker.io/library/postgres:16
+podman run -d -e POSTGRES_PASSWORD=secret -v /var/data:/var/lib/postgresql/data:Z docker.io/library/postgres:16
 ```
 
 ## Networking Considerations
 
-FCOS uses firewalld by default. If your containers expose ports, ensure the firewall allows traffic:
-
-```bash
-sudo firewall-cmd --add-port=8080/tcp --permanent
-sudo firewall-cmd --reload
-```
+FCOS does not ship `firewalld` by default. If you need host-level firewalling, configure it explicitly instead of assuming `firewall-cmd` is available.
 
 For rootless containers, note that ports below 1024 require root privileges or sysctl adjustments:
 
@@ -256,19 +255,19 @@ podman run -it --rm docker.io/library/alpine:latest sh
 Inspect container logs through systemd when using Quadlet:
 
 ```bash
-journalctl -u webapp.service -f
+sudo journalctl -u webapp.service -f
 ```
 
 Check Podman events:
 
 ```bash
-podman events --since 1h
+sudo podman events --since 1h
 ```
 
 Enter a running container for debugging:
 
 ```bash
-podman exec -it webapp /bin/sh
+sudo podman exec -it webapp /bin/sh
 ```
 
 ## Conclusion
