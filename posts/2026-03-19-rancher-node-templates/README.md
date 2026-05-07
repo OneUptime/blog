@@ -6,11 +6,11 @@ Tags: Rancher, Kubernetes, Node Templates, Cloud Credentials
 
 Description: A practical guide to creating and managing node templates in Rancher for standardized node provisioning across cloud providers.
 
-Node templates in Rancher define the machine configuration used when provisioning nodes for your Kubernetes clusters. They specify instance types, disk sizes, operating systems, and cloud-specific settings. This guide covers how to create, manage, and use node templates effectively.
+In Rancher releases that still support node templates, they define the machine configuration used when provisioning nodes for Rancher-launched Kubernetes clusters. They specify instance types, disk sizes, operating systems, and cloud-specific settings. This guide covers how to create, manage, and use node templates effectively.
 
 ## Prerequisites
 
-- Rancher v2.6 or later
+- Rancher v2.6 through v2.11 (Rancher v2.12+ no longer supports provisioning or managing downstream RKE1 node templates)
 - Cloud credentials configured for your target provider (AWS, Azure, GCP, vSphere, etc.)
 - Standard user or admin permissions
 - Understanding of your cloud provider's instance types and networking
@@ -24,8 +24,8 @@ Node templates are reusable machine configurations that define the cloud provide
 Access the node template management area:
 
 1. Log in to Rancher.
-2. Click on your user avatar in the top-right corner.
-3. Select **Node Templates** from the dropdown menu.
+2. Click **☰ > Cluster Management**.
+3. Click **RKE1 Configuration > Node Templates**.
 
 You will see a list of existing node templates organized by cloud provider.
 
@@ -99,8 +99,8 @@ Folder: /dc01/vm/kubernetes
 Network: VM Network
 CPUs: 4
 Memory: 8192 MB
-Disk Size: 80 GB
-Cloud Config:
+Disk Size: 81920 MB
+Cloud Init:
 ```
 
 Add cloud-init configuration for vSphere nodes:
@@ -128,11 +128,11 @@ Add Kubernetes labels and taints to your node template:
 ```yaml
 # Example labels
 
-node-role.kubernetes.io/worker: "true"
-topology.kubernetes.io/zone: us-east-1a
-node.kubernetes.io/instance-type: t3.large
+role: worker
 team: platform
 environment: production
+nodeclass: general-purpose
+zone: us-east-1a
 ```
 
 Add taints if the nodes should only run specific workloads:
@@ -151,10 +151,10 @@ Add taints if the nodes should only run specific workloads:
 
 Configure Docker settings in the node template:
 
-1. Under **Engine Options**, set the Docker version and storage driver.
+1. Under **Engine Options**, set the Docker install URL and storage driver.
 
 ```plaintext
-Docker Version: 24.0.x
+Docker Install URL: default
 Storage Driver: overlay2
 Log Driver: json-file
 Log Options:
@@ -200,23 +200,18 @@ Change: Region from us-east-1 to us-west-2
 
 ## Step 8: Manage Template Permissions
 
-Control who can use each node template:
+Understand how Rancher handles node template ownership:
 
-1. Node templates are owned by the user who created them by default.
-2. To share a template, click the three-dot menu and select **Edit**.
-3. Under **Template Access**, change the scope.
-
-Options include:
-
-- **Private**: Only the creator can use this template.
-- **Public**: All users in the Rancher installation can use this template.
+1. Node templates are bound to the user profile that created them.
+2. Non-admin users cannot share node templates with other non-admin users.
+3. Rancher administrators can view and manage all node templates from **Cluster Management > RKE1 Configuration > Node Templates**.
 
 ```bash
-# List all node templates via API
+# List node templates visible to the current API token
 curl -s -k \
   -H "Authorization: Bearer $RANCHER_TOKEN" \
   "https://rancher.example.com/v3/nodeTemplates" | \
-  jq '.data[] | {id: .id, name: .name, driver: .driver, creator: .creatorId}'
+  jq '.data[] | {id: .id, name: .name, creatorId: .creatorId}'
 ```
 
 ## Step 9: Use Node Templates in Cluster Creation
@@ -247,14 +242,21 @@ Pool 3 - GPU Workers:
 
 ## Step 10: Clean Up Unused Templates
 
-Periodically review and remove unused node templates:
+Periodically review node templates and remove any that are no longer referenced by node pools:
 
 ```bash
-# List node templates and their usage
+# List node templates visible to the current API token
 curl -s -k \
   -H "Authorization: Bearer $RANCHER_TOKEN" \
   "https://rancher.example.com/v3/nodeTemplates" | \
-  jq '.data[] | {name: .name, id: .id, useCount: .useCount}'
+  jq '.data[] | {name: .name, id: .id, creatorId: .creatorId}'
+
+# Find node pools using a specific template before deleting it
+curl -s -k \
+  -H "Authorization: Bearer $RANCHER_TOKEN" \
+  "https://rancher.example.com/v3/nodePools" | \
+  jq --arg templateId "cattle-global-nt:nt-xxxxx" \
+    '.data[] | select(.nodeTemplateId == $templateId) | {clusterId: .clusterId, hostnamePrefix: .hostnamePrefix, quantity: .quantity}'
 
 # Delete an unused template
 curl -s -k \
@@ -273,4 +275,4 @@ curl -s -k \
 
 ## Conclusion
 
-Node templates in Rancher streamline the process of provisioning consistent and well-configured cluster nodes. By creating standardized templates for different use cases and cloud providers, you reduce manual configuration errors and speed up cluster deployment. Take the time to design your template library thoughtfully, and it will pay dividends as your Kubernetes infrastructure scales.
+In Rancher releases that still support node templates, they streamline the process of provisioning consistent and well-configured cluster nodes. By creating standardized templates for different use cases and cloud providers, you reduce manual configuration errors and speed up cluster deployment. Take the time to design your template library thoughtfully, and it will pay dividends as your Kubernetes infrastructure scales.
