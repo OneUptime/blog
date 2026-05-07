@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, NLB, IPv6, Network Load Balancer, Dual-Stack, Cloud
 
-Description: A guide to configuring AWS Network Load Balancer with IPv6 support, including dual-stack listeners and IPv6 target registration.
+Description: A guide to configuring AWS Network Load Balancer with IPv6 support, including dual-stack load balancers and IPv6 target registration.
 
-AWS Network Load Balancer (NLB) supports IPv6 through dual-stack mode, enabling it to accept connections from IPv6 clients and forward traffic to IPv6 targets. NLB operates at Layer 4 and preserves the client source IP, including IPv6 addresses.
+AWS Network Load Balancer (NLB) supports IPv6 through dual-stack mode, enabling it to accept connections from IPv6 clients and forward traffic to IPv6 targets. NLB operates at Layer 4 and can preserve the client source IP for same-family connections, including IPv6 clients reaching IPv6 targets.
 
 ## NLB IPv6 Terraform Configuration
 
@@ -28,6 +28,27 @@ resource "aws_subnet" "public_a" {
   map_public_ip_on_launch         = true
 }
 
+# Security group for the NLB
+resource "aws_security_group" "nlb" {
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    from_port        = 443
+    to_port          = 443
+    protocol         = "tcp"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+
+  egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::/0"]
+  }
+}
+
 # Network Load Balancer with dual-stack
 resource "aws_lb" "nlb" {
   name               = "main-nlb"
@@ -36,6 +57,7 @@ resource "aws_lb" "nlb" {
 
   # Enable dual-stack for NLB
   ip_address_type = "dualstack"
+  security_groups = [aws_security_group.nlb.id]
 
   subnet_mapping {
     subnet_id = aws_subnet.public_a.id
@@ -62,6 +84,8 @@ resource "aws_lb_target_group" "main" {
   protocol    = "TCP"
   vpc_id      = aws_vpc.main.id
   target_type = "instance"
+  # Registered instances must have a primary IPv6 address
+  ip_address_type = "ipv6"
 
   health_check {
     protocol = "TCP"
@@ -95,7 +119,7 @@ resource "aws_lb_target_group" "ipv6_targets" {
 # Register an IPv6 target
 resource "aws_lb_target_group_attachment" "ipv6_target" {
   target_group_arn = aws_lb_target_group.ipv6_targets.arn
-  target_id        = "2001:db8::10"   # IPv6 address of target
+  target_id        = "2001:db8::10"   # Example only; use an IPv6 address from your VPC or peered VPC CIDR
   port             = 80
   availability_zone = "all"
 }
@@ -121,6 +145,7 @@ aws elbv2 create-target-group \
   --ip-address-type ipv6
 
 # Register IPv6 target
+# Use an IPv6 address from your VPC or peered VPC CIDR
 aws elbv2 register-targets \
   --target-group-arn arn:aws:elasticloadbalancing:... \
   --targets Id=2001:db8::10,Port=443
@@ -128,33 +153,31 @@ aws elbv2 register-targets \
 
 ## NLB Source IP Preservation with IPv6
 
-NLB preserves the client source IP (unlike ALB which uses X-Forwarded-For):
+NLB can preserve the client source IP for same-family connections. With dual-stack NLBs, IPv6 client IP preservation works for IPv6 clients reaching IPv6 targets, but IPv4-to-IPv6 or IPv6-to-IPv4 translation replaces the client IP with an NLB address:
 
 ```bash
-# On target instances, check access logs to see IPv6 client IPs
+# On IPv6 targets, IPv6 clients appear directly in access logs
 # /var/log/nginx/access.log
 # 2001:db8::client - - [20/Mar/2026:10:00:00 +0000] "GET / HTTP/1.1" 200 1234
 
-# Configure application to handle IPv6 client IPs
-# In nginx:
-# real_ip_header X-Real-IP;   (not needed with NLB - IP is in connection)
+# NLB does not add X-Forwarded-For headers.
+# For IPv4-to-IPv6 or IPv6-to-IPv4 translation, use Proxy Protocol v2
+# if the application needs the original client IP.
 ```
 
 ## Security Groups for IPv6 NLB Targets
 
-NLB requires security groups on target instances to allow IPv6 traffic:
+When the NLB has an associated security group, reference that security group from the targets. This works even when client IP preservation is enabled:
 
 ```hcl
 resource "aws_security_group" "target" {
   vpc_id = aws_vpc.main.id
 
   ingress {
-    from_port        = 443
-    to_port          = 443
-    protocol         = "tcp"
-    # NLB source is the NLB node IPs
-    cidr_blocks      = ["10.0.0.0/16"]
-    ipv6_cidr_blocks = [aws_vpc.main.ipv6_cidr_block]
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.nlb.id]
   }
 }
 ```
@@ -172,4 +195,4 @@ nc -6 -w 5 main-nlb-xxx.elb.amazonaws.com 443 && echo "Connected"
 curl -6 -v https://main-nlb-xxx.elb.amazonaws.com/
 ```
 
-AWS NLB's dual-stack mode is ideal for Layer 4 services that need to preserve the real IPv6 client source address, such as syslog receivers, custom TCP protocols, and applications that use source IP for authentication.
+AWS NLB's dual-stack mode is ideal for Layer 4 services that need to preserve the real IPv6 client source address for IPv6 clients, such as syslog receivers, custom TCP protocols, and applications that use source IP for authentication.
