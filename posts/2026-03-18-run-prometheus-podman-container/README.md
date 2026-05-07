@@ -103,6 +103,17 @@ Use a named volume to persist your time-series data.
 # Create a volume for Prometheus data
 podman volume create prometheus-data
 
+# Add retention settings to the Prometheus configuration
+cat >> ~/prometheus-config/prometheus.yml <<'EOF'
+
+# Storage retention settings
+storage:
+  tsdb:
+    retention:
+      time: 30d
+      size: 10GB
+EOF
+
 # Run Prometheus with persistent storage and retention settings
 podman run -d \
   --name prometheus-persistent \
@@ -112,11 +123,11 @@ podman run -d \
   prom/prometheus:latest \
   --config.file=/etc/prometheus/prometheus.yml \
   --storage.tsdb.path=/prometheus \
-  --storage.tsdb.retention.time=30d \
-  --storage.tsdb.retention.size=10GB
+  --web.console.libraries=/usr/share/prometheus/console_libraries \
+  --web.console.templates=/usr/share/prometheus/consoles
 
 # Verify the storage settings
-curl -s http://localhost:9092/api/v1/status/flags | python3 -m json.tool | head -20
+curl -s http://localhost:9092/api/v1/status/config | python3 -m json.tool | head -40
 ```
 
 ## Adding Alerting Rules
@@ -166,6 +177,8 @@ scrape_configs:
 EOF
 
 # Run Prometheus with alerting rules
+podman stop prometheus-persistent
+
 podman run -d \
   --name prometheus-alerts \
   -p 9093:9090 \
@@ -205,7 +218,7 @@ Common management operations.
 podman logs my-prometheus
 
 # Reload configuration without restarting
-curl -X POST http://localhost:9090/-/reload
+podman kill --signal SIGHUP my-prometheus
 
 # Stop and start
 podman stop my-prometheus
