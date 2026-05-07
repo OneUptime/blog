@@ -14,7 +14,7 @@ Portainer's snapshot feature captures a point-in-time view of each environment's
 
 ## Step 1: Trigger Environment Snapshots via API
 
-Portainer Business Edition supports explicit snapshot triggering. For CE, you can query current state as a substitute.
+Portainer exposes explicit snapshot endpoints in its API. Triggering snapshots requires an administrator API key.
 
 ```bash
 #!/bin/bash
@@ -52,7 +52,7 @@ echo "All snapshots updated."
 
 ## Step 2: Generate an Environment Report
 
-Query the Portainer API to build a comprehensive report on each environment's resources.
+Query the Portainer API to build a comprehensive report on each Docker-compatible environment's resources.
 
 ```python
 #!/usr/bin/env python3
@@ -60,11 +60,13 @@ Query the Portainer API to build a comprehensive report on each environment's re
 
 import requests
 import json
+import sys
 from datetime import datetime
 
 PORTAINER_URL = "https://portainer.example.com"
 API_KEY = "ptr_your_api_key_here"
 HEADERS = {"X-API-Key": API_KEY}
+DOCKER_ENDPOINT_TYPES = {1, 2, 4}
 
 def get_container_stats(env_id: int) -> dict:
     """Get container counts by status for an environment."""
@@ -91,7 +93,7 @@ def get_stack_count(env_id: int) -> int:
     r = requests.get(
         f"{PORTAINER_URL}/api/stacks",
         headers=HEADERS,
-        params={"filters": json.dumps({"EndpointID": env_id})}
+        params={"filters": json.dumps({"EndpointID": str(env_id)})}
     )
     return len(r.json()) if r.ok else 0
 
@@ -116,6 +118,9 @@ def generate_report():
     }
 
     for env in environments:
+        if env.get("Type") not in DOCKER_ENDPOINT_TYPES:
+            continue
+
         env_id = env["Id"]
         containers = get_container_stats(env_id)
         images = get_image_count(env_id)
@@ -139,7 +144,8 @@ if __name__ == "__main__":
     filename = f"portainer-report-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
     with open(filename, "w") as f:
         json.dump(report, f, indent=2)
-    print(f"\nReport saved to: {filename}")
+    # Keep stdout machine-readable for pipes such as email or Pushgateway exports.
+    print(f"\nReport saved to: {filename}", file=sys.stderr)
 ```
 
 ---
@@ -155,18 +161,21 @@ if __name__ == "__main__":
 
 ## Step 4: Export Reports to a Dashboard
 
-Pipe the report data to Prometheus or a time-series database for trending.
+Pipe the report data to a Prometheus Pushgateway or another time-series database for trending.
 
 ```bash
 # Push metrics to Prometheus Pushgateway
 python3 portainer-report.py | python3 -c "
 import sys, json
 report = json.load(sys.stdin)
+print('# HELP portainer_containers_running Running containers per environment')
+print('# TYPE portainer_containers_running gauge')
+print('# HELP portainer_containers_stopped Stopped containers per environment')
+print('# TYPE portainer_containers_stopped gauge')
 for env in report['environments']:
-    name = env['name'].replace(' ', '_').lower()
+    name = env['name'].replace('\\\\', r'\\\\').replace('\\n', r'\\n').replace('\"', r'\\\"')
     running = env['containers']['running']
     stopped = env['containers']['stopped']
-    print(f'# HELP portainer_containers_running Running containers per environment')
     print(f'portainer_containers_running{{env=\"{name}\"}} {running}')
     print(f'portainer_containers_stopped{{env=\"{name}\"}} {stopped}')
 " | curl --data-binary @- http://pushgateway:9091/metrics/job/portainer
