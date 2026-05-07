@@ -66,15 +66,17 @@ sudo apt-get install -y podman
 
 ```bash
 # Pull the ROCm development image
-podman pull rocm/dev-ubuntu-22.04:6.0
+podman pull rocm/dev-ubuntu-22.04:latest
 
 # Run with GPU access and verify
+# For rootless Podman, keep the caller's supplementary groups inside the container
+# (this requires the crun OCI runtime)
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
   --security-opt seccomp=unconfined \
-  --group-add video \
-  rocm/dev-ubuntu-22.04:6.0 \
+  --group-add keep-groups \
+  rocm/dev-ubuntu-22.04:latest \
   bash -c "rocm-smi && echo '---' && rocminfo | head -40"
 ```
 
@@ -82,19 +84,20 @@ podman run --rm -it \
 
 ```bash
 # Development image - includes compilers (hipcc), headers, and libraries
-podman pull rocm/dev-ubuntu-22.04:6.0
+podman pull rocm/dev-ubuntu-22.04:latest
 
 # PyTorch with ROCm
-podman pull rocm/pytorch:rocm6.0_ubuntu22.04_py3.10_pytorch_2.1.1
+podman pull rocm/pytorch:latest
 
 # TensorFlow with ROCm
-podman pull rocm/tensorflow:rocm6.0-tf2.15-dev
+podman pull rocm/tensorflow:latest
 
 # JAX with ROCm
-podman pull rocm/jax:rocm6.0-jax0.4.23-py3.10
+podman pull rocm/jax-community:latest
 
-# Minimal terminal image for monitoring
-podman pull rocm/rocm-terminal:6.0
+# Small terminal image with the prerequisites to build HIP applications
+# but without the full ROCm library set
+podman pull rocm/rocm-terminal:latest
 ```
 
 ## Writing and Compiling HIP Code
@@ -106,7 +109,7 @@ HIP is AMD's GPU programming language that mirrors CUDA syntax. Code written in 
 ```bash
 # Create a HIP source file
 mkdir -p /tmp/rocm-demo
-cat > /tmp/rocm-demo/vector_add.hip << 'EOF'
+cat > /tmp/rocm-demo/vector_add.hip.cpp << 'EOF'
 #include <hip/hip_runtime.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -130,7 +133,7 @@ int main() {
     printf("Compute Units: %d\n", prop.multiProcessorCount);
     printf("Global Memory: %.1f GB\n", prop.totalGlobalMem / 1073741824.0);
     printf("Max Threads Per Block: %d\n", prop.maxThreadsPerBlock);
-    printf("GCN Architecture: gfx%x\n", prop.gcnArch);
+    printf("Architecture: %s\n", prop.gcnArchName);
 
     // Allocate host memory
     float *h_a = (float*)malloc(size);
@@ -184,10 +187,10 @@ podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
   --security-opt seccomp=unconfined \
-  --group-add video \
+  --group-add keep-groups \
   -v /tmp/rocm-demo:/workspace:Z \
-  rocm/dev-ubuntu-22.04:6.0 \
-  bash -c "cd /workspace && hipcc -o vector_add vector_add.hip && ./vector_add"
+  rocm/dev-ubuntu-22.04:latest \
+  bash -c "cd /workspace && hipcc -o vector_add vector_add.hip.cpp && ./vector_add"
 ```
 
 ## Using ROCm Math Libraries
@@ -274,9 +277,9 @@ podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
   --security-opt seccomp=unconfined \
-  --group-add video \
+  --group-add keep-groups \
   -v /tmp/rocm-demo:/workspace:Z \
-  rocm/dev-ubuntu-22.04:6.0 \
+  rocm/dev-ubuntu-22.04:latest \
   bash -c "cd /workspace && hipcc -o rocblas_gemm rocblas_gemm.cpp -lrocblas && ./rocblas_gemm"
 ```
 
@@ -292,7 +295,8 @@ import time
 
 # ROCm uses the CUDA API through HIP translation
 print(f"PyTorch version: {torch.__version__}")
-print(f"ROCm (HIP) available: {torch.cuda.is_available()}")
+print(f"CUDA/HIP backend available: {torch.cuda.is_available()}")
+print(f"HIP runtime: {torch.version.hip}")
 print(f"GPU count: {torch.cuda.device_count()}")
 
 if torch.cuda.is_available():
@@ -346,10 +350,12 @@ EOF
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
+  --ipc=host \
+  --shm-size 8G \
   --security-opt seccomp=unconfined \
-  --group-add video \
+  --group-add keep-groups \
   -v /tmp/rocm-demo:/workspace:Z \
-  rocm/pytorch:rocm6.0_ubuntu22.04_py3.10_pytorch_2.1.1 \
+  rocm/pytorch:latest \
   python3 /workspace/train_model.py
 ```
 
@@ -357,7 +363,7 @@ podman run --rm -it \
 
 ```bash
 cat > /tmp/rocm-demo/Containerfile << 'EOF'
-FROM rocm/dev-ubuntu-22.04:6.0
+FROM rocm/dev-ubuntu-22.04:latest
 
 # Install additional development tools
 RUN apt-get update && apt-get install -y \
@@ -394,22 +400,21 @@ podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
   --security-opt seccomp=unconfined \
-  --group-add video \
+  --group-add keep-groups \
   -v /tmp/rocm-demo:/workspace:Z \
-  rocm/dev-ubuntu-22.04:6.0 \
-  bash -c "cd /workspace && hipcc -o vector_add vector_add.hip && \
+  rocm/dev-ubuntu-22.04:latest \
+  bash -c "cd /workspace && hipcc -o vector_add vector_add.hip.cpp && \
            rocprof --stats ./vector_add"
 
-# Profile with hardware counters
+# Collect an HSA-level trace
 podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
   --security-opt seccomp=unconfined \
-  --group-add video \
-  --cap-add SYS_ADMIN \
+  --group-add keep-groups \
   -v /tmp/rocm-demo:/workspace:Z \
-  rocm/dev-ubuntu-22.04:6.0 \
-  bash -c "cd /workspace && hipcc -o vector_add vector_add.hip && \
+  rocm/dev-ubuntu-22.04:latest \
+  bash -c "cd /workspace && hipcc -o vector_add vector_add.hip.cpp && \
            rocprof --hsa-trace ./vector_add"
 ```
 
@@ -421,18 +426,18 @@ podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
   --security-opt seccomp=unconfined \
-  --group-add video \
+  --group-add keep-groups \
   -e HIP_VISIBLE_DEVICES=0 \
-  -e HSA_OVERRIDE_GFX_VERSION=11.0.0 \
+  -e ROCR_VISIBLE_DEVICES=0 \
   -e GPU_MAX_HEAP_SIZE=100 \
-  -e GPU_MAX_ALLOC_PERCENT=100 \
-  rocm/dev-ubuntu-22.04:6.0 \
+  -e GPU_SINGLE_ALLOC_PERCENT=100 \
+  rocm/dev-ubuntu-22.04:latest \
   rocminfo
 
 # HIP_VISIBLE_DEVICES: Controls which GPUs are visible (like CUDA_VISIBLE_DEVICES)
-# HSA_OVERRIDE_GFX_VERSION: Override the reported GPU architecture (useful for unsupported GPUs)
+# ROCR_VISIBLE_DEVICES: Controls which GPU indices or UUIDs the ROCr runtime exposes
 # GPU_MAX_HEAP_SIZE: Maximum heap size as percentage of total memory
-# GPU_MAX_ALLOC_PERCENT: Maximum single allocation as percentage of total memory
+# GPU_SINGLE_ALLOC_PERCENT: Maximum single allocation as percentage of total memory
 ```
 
 ## Troubleshooting
@@ -443,8 +448,8 @@ podman run --rm -it \
   --device /dev/kfd:/dev/kfd \
   --device /dev/dri:/dev/dri \
   --security-opt seccomp=unconfined \
-  --group-add video \
-  rocm/dev-ubuntu-22.04:6.0 \
+  --group-add keep-groups \
+  rocm/dev-ubuntu-22.04:latest \
   bash -c "hipconfig --full && echo '---' && hipcc --version"
 
 # Permission issues with /dev/kfd
@@ -452,16 +457,8 @@ podman run --rm -it \
 ls -la /dev/kfd
 # Should be: crw-rw---- 1 root render ...
 
-# If rocminfo shows "HSA_STATUS_ERROR_OUT_OF_RESOURCES"
-# Try setting the override GFX version for consumer GPUs
-podman run --rm -it \
-  --device /dev/kfd:/dev/kfd \
-  --device /dev/dri:/dev/dri \
-  --security-opt seccomp=unconfined \
-  --group-add video \
-  -e HSA_OVERRIDE_GFX_VERSION=10.3.0 \
-  rocm/dev-ubuntu-22.04:6.0 \
-  rocminfo
+# On SELinux systems with Podman, allow containers to use passed-through GPU devices
+sudo setsebool -P container_use_devices=true
 
 # Check kernel messages for GPU errors
 dmesg | grep -i "amdgpu\|kfd" | tail -20
@@ -469,4 +466,4 @@ dmesg | grep -i "amdgpu\|kfd" | tail -20
 
 ## Conclusion
 
-ROCm in Podman containers provides a powerful open-source GPU computing environment that is easy to set up and reproduce. The HIP programming model offers near-identical syntax to CUDA, making it accessible to developers familiar with NVIDIA's ecosystem. With pre-built container images for popular frameworks like PyTorch and TensorFlow, you can get GPU-accelerated workloads running on AMD hardware quickly. The combination of Podman's rootless security model and ROCm's open-source stack gives you a secure, transparent, and high-performance computing environment.
+ROCm in Podman containers provides a powerful open-source GPU computing environment that is easy to set up and reproduce. The HIP programming model offers near-identical syntax to CUDA, making it accessible to developers familiar with NVIDIA's ecosystem. With pre-built container images for popular frameworks like PyTorch and TensorFlow, you can get GPU-accelerated workloads running on AMD hardware quickly. The combination of Podman's daemonless, rootless-capable model and ROCm's open-source stack gives you a secure, transparent, and high-performance computing environment.
