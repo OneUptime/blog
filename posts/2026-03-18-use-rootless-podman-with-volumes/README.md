@@ -28,6 +28,7 @@ podman volume inspect mydata
 
 # Run a container with the named volume mounted
 podman run -d --name db \
+  -e POSTGRES_PASSWORD=example \
   -v mydata:/var/lib/postgresql/data \
   postgres:16
 
@@ -48,13 +49,18 @@ Bind mounts let you share specific host directories with containers. This is whe
 # Create a host directory for the mount
 mkdir -p ~/podman-data/webapp
 
-# This may fail with permission errors inside the container
-podman run --rm -v ~/podman-data/webapp:/data alpine ls -la /data
+# This may fail with permission errors if the container runs as a non-root user
+podman run --rm --user 1000:1000 \
+  -v ~/podman-data/webapp:/data \
+  alpine touch /data/test.txt
 
 # Check what UID the container process runs as
-podman run --rm -v ~/podman-data/webapp:/data alpine id
+podman run --rm --user 1000:1000 \
+  -v ~/podman-data/webapp:/data \
+  alpine id
 
-# The container root (UID 0) maps to your host UID
+# In rootless Podman, container UID 0 maps to your host UID,
+# and higher container UIDs map into your subordinate UID/GID range
 # Verify the mapping
 podman unshare cat /proc/self/uid_map
 ```
@@ -68,14 +74,18 @@ The most common volume issue in rootless Podman is "Permission denied" when a co
 # That maps to a different UID on the host due to user namespaces
 
 # Option 1: Use podman unshare to set ownership correctly
-podman unshare chown 1000:1000 ~/podman-data/webapp
+podman unshare chown -R 1000:1000 ~/podman-data/webapp
 
 # Verify the ownership from the host perspective
-ls -la ~/podman-data/
+ls -ldn ~/podman-data/webapp
 
 # Verify the ownership from the container perspective
-podman run --rm -v ~/podman-data/webapp:/data alpine ls -la /data
+podman run --rm --user 1000:1000 \
+  -v ~/podman-data/webapp:/data \
+  alpine sh -c "touch /data/hello.txt && ls -la /data"
 ```
+
+On the host, the directory may appear owned by a subordinate UID/GID rather than your login user because rootless Podman applies user namespace mappings.
 
 ## Using the :Z and :z SELinux Options
 
@@ -92,12 +102,12 @@ podman run --rm -v ~/podman-data/webapp:/data:Z alpine touch /data/test.txt
 ls -laZ ~/podman-data/webapp
 ```
 
-## Using the :U Flag for Automatic UID Mapping
+## Using the :U Flag for Automatic Ownership Changes
 
-Podman provides the `:U` flag to automatically chown the volume contents to match the container user:
+Podman provides the `:U` flag to recursively change ownership on the host to match the container user:
 
 ```bash
-# The :U flag adjusts ownership to match the container UID
+# The :U flag adjusts host ownership to match the container UID
 podman run --rm \
   -v ~/podman-data/webapp:/data:U \
   --user 1000:1000 \
@@ -112,7 +122,7 @@ podman run --rm \
 
 ## Working with tmpfs Mounts
 
-For temporary data that does not need to persist, tmpfs mounts avoid all permission issues:
+For temporary data that does not need to persist, tmpfs mounts avoid host bind-mount ownership issues:
 
 ```bash
 # Mount a tmpfs volume at /tmp inside the container
@@ -163,4 +173,4 @@ podman run --rm -v mydata-restored:/data alpine ls -la /data
 
 ## Summary
 
-Rootless Podman volumes work reliably once you understand UID namespace remapping. Named volumes are the easiest approach since Podman handles permissions automatically. For bind mounts, use `podman unshare chown` to fix ownership from the container perspective, apply the `:U` flag for automatic UID adjustment, and add `:z` or `:Z` on SELinux systems. Use `podman volume export` and `podman volume import` to back up and restore your persistent data.
+Rootless Podman volumes work reliably once you understand UID namespace remapping. Named volumes are the easiest approach since Podman handles permissions automatically. For bind mounts, use `podman unshare chown` to fix ownership from the container perspective, apply the `:U` flag for automatic ownership changes, and add `:z` or `:Z` on SELinux systems. Use `podman volume export` and `podman volume import` to back up and restore your persistent data.
