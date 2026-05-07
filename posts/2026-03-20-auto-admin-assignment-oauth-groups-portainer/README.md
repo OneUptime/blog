@@ -8,14 +8,14 @@ Description: Configure Portainer to automatically grant administrator privileges
 
 ---
 
-Instead of manually promoting OAuth users to administrators, Portainer BE can automatically grant admin role to users whose IdP groups match a configured admin group name.
+Instead of manually promoting OAuth users to administrators, Portainer BE can automatically grant admin role to users whose IdP group claim values match a configured admin-group regex.
 
 ## How Admin Auto-Assignment Works
 
 When a user logs in via OAuth:
-1. Portainer checks the `groups` claim in the userinfo response
-2. If the user's groups include the configured admin group, they are granted the Administrator role
-3. If the user is removed from the admin group in the IdP, they lose admin access on next login
+1. Portainer checks the configured OAuth claim values for the user, commonly the `groups` claim
+2. If the claim values match one of the configured admin-group regexes, they are granted the Administrator role
+3. Admin assignment is based on the current claim values returned by the IdP during authentication
 
 ## Configure Admin Group in Portainer
 
@@ -44,9 +44,12 @@ curl -X PUT \
       "UserIdentifier": "email",
       "Scopes": "openid profile email groups",
       "OAuthAutoCreateUsers": true,
-      "OAuthTeamMemberships": true,
-      "TeamMembershipClaim": "groups",
-      "AdminGroupName": "portainer-admins"
+      "OAuthAutoMapTeamMemberships": true,
+      "TeamMemberships": {
+        "OAuthClaimName": "groups",
+        "AdminAutoPopulate": true,
+        "AdminGroupClaimsRegexList": ["^portainer-admins$"]
+      }
     }
   }' \
   --insecure
@@ -54,14 +57,26 @@ curl -X PUT \
 
 ## Set Up the Admin Group in Your IdP
 
-### Azure AD
+### Microsoft Entra ID (Azure AD)
 
 ```powershell
-# Create a security group for Portainer admins
-New-AzureADGroup -DisplayName "portainer-admins" -MailEnabled $false -SecurityEnabled $true -MailNickName "portainer-admins"
+# Connect to Microsoft Entra PowerShell first
+Connect-Entra -Scopes 'Group.ReadWrite.All'
+
+# Create a security group for Portainer admins.
+# For Microsoft Entra ID, use the group's Object ID in Portainer's
+# AdminGroupClaimsRegexList instead of the display name.
+$groupParams = @{
+  DisplayName = 'portainer-admins'
+  MailEnabled = $false
+  SecurityEnabled = $true
+  MailNickName = 'NotSet'
+}
+$group = New-EntraGroup @groupParams
 
 # Add admin users
-Add-AzureADGroupMember -ObjectId "<group-id>" -RefObjectId "<user-id>"
+$user = Get-EntraUser -UserId 'admin@example.com'
+Add-EntraGroupMember -GroupId $group.Id -MemberId $user.Id
 ```
 
 ### Keycloak
@@ -69,14 +84,14 @@ Add-AzureADGroupMember -ObjectId "<group-id>" -RefObjectId "<user-id>"
 1. Navigate to **Groups** in your realm
 2. Create a group named `portainer-admins`
 3. Add users who should have admin access
-4. Ensure the group name claim mapper returns this group name
+4. Ensure a Group Membership mapper returns a `groups` claim; if it uses full group paths, match that full path in Portainer or use a regex
 
 ### Testing the Admin Group Claim
 
 ```bash
 # After getting an OAuth token, check the groups returned
 curl -H "Authorization: Bearer <access-token>" \
-  https://idp.example.com/userinfo | python3 -m json.tool
+  https://idp.example.com/oauth/userinfo | python3 -m json.tool
 
 # Look for output like:
 # {
@@ -103,10 +118,11 @@ for u in users:
 
 ## Security Considerations
 
-- The `AdminGroupName` setting is case-sensitive - ensure exact match with the IdP group name
+- `AdminGroupClaimsRegexList` uses regex matching - ensure the expression matches the exact claim value returned by your IdP
+- For Microsoft Entra ID, use the group's Object ID in the regex instead of the display name
 - Use a dedicated IdP group for Portainer admins, separate from general IT admin groups
 - Regularly audit IdP group membership for the admin group
-- Keep at least one local admin account active as a fallback
+- Keep the initial local admin account available as a fallback
 
 ---
 
