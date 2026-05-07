@@ -8,13 +8,13 @@ Description: Configure AWS Direct Connect private virtual interfaces (VIFs) to c
 
 ## Introduction
 
-AWS Direct Connect IPv6 enables private IPv6 connectivity between cloud resources and on-premises or inter-VPC networks. Proper configuration requires setting up dual-stack support, IPv6 BGP sessions, and route advertisement.
+AWS Direct Connect IPv6 enables private IPv6 connectivity between on-premises networks and resources in one or more VPCs. Proper configuration requires setting up dual-stack support, IPv6 BGP sessions, and route advertisement.
 
 ## Prerequisites
 
-- VPC/VNet with dual-stack (IPv4 + IPv6) subnets
-- An existing AWS account with appropriate IAM permissions
-- IPv6 address space allocated for the connection
+- VPC with dual-stack (IPv4 + IPv6) subnets
+- An existing AWS account with appropriate IAM permissions and a Direct Connect connection
+- IPv6 address space allocated for the VPC and on-premises network
 
 ## Step 1: Verify IPv6 Prerequisites
 
@@ -24,42 +24,51 @@ AWS Direct Connect IPv6 enables private IPv6 connectivity between cloud resource
 aws ec2 describe-vpcs --query 'Vpcs[].{VpcId:VpcId, IPv6CIDRs:Ipv6CidrBlockAssociationSet}'
 ```
 
-## Step 2: Enable IPv6 on the Service
+## Step 2: Enable IPv6 on the VPC and Subnets
 
 ```bash
-# Enable IPv6 for the relevant AWS service
-# (Command varies by specific service)
-aws ec2 describe-vpc-attribute     --vpc-id vpc-0123456789abcdef0     --attribute enableDnsSupport
+# Associate IPv6 CIDR block with the VPC
+aws ec2 associate-vpc-cidr-block \
+    --vpc-id vpc-0123456789abcdef0 \
+    --amazon-provided-ipv6-cidr-block
 
-# Associate IPv6 CIDR block
-aws ec2 associate-vpc-cidr-block     --vpc-id vpc-0123456789abcdef0     --amazon-provided-ipv6-cidr-block
+# Associate a /64 IPv6 CIDR block with the subnet
+aws ec2 associate-subnet-cidr-block \
+    --subnet-id subnet-0123456789abcdef0 \
+    --ipv6-cidr-block 2001:db8:1234:1a00::/64
 ```
 
 ## Step 3: Configure IPv6 BGP
 
 ```bash
-# Configure BGP for IPv6 on Direct Connect or VPN
-# For Direct Connect Virtual Interface:
-aws directconnect create-private-virtual-interface     --connection-id dxcon-XXXXX     --new-private-virtual-interface         virtualInterfaceName=ipv6-vif,        vlan=100,        asn=65000,        amazonAddress=,        customerAddress=,        addressFamily=ipv6,        virtualGatewayId=vgw-XXXXX
+# Create an IPv6 private VIF to a virtual private gateway; AWS auto-assigns the IPv6 BGP peer addresses
+aws directconnect create-private-virtual-interface \
+    --connection-id dxcon-XXXXX \
+    --new-private-virtual-interface \
+        virtualInterfaceName=ipv6-vif,vlan=100,asn=65000,addressFamily=ipv6,virtualGatewayId=vgw-XXXXX
 ```
 
 ## Step 4: Add IPv6 Routes
 
 ```bash
-# Add IPv6 route to VPC route table
-aws ec2 create-route \
+# Enable route propagation from the virtual private gateway to the VPC route table
+aws ec2 enable-vgw-route-propagation \
     --route-table-id rtb-0123456789abcdef0 \
-    --destination-ipv6-cidr-block '::/0' \
-    --gateway-id igw-XXXXX
+    --gateway-id vgw-XXXXX
 ```
 
 ## Step 5: Test IPv6 Connectivity
 
 ```bash
-# Test from cloud instance
-ping6 -c 3 <on-premises-ipv6-address>
+# Verify the IPv6 BGP peer is up
+aws directconnect describe-virtual-interfaces \
+    --virtual-interface-id dxvif-XXXXX \
+    --query 'virtualInterfaces[].bgpPeers[].{AddressFamily:addressFamily,BGPStatus:bgpStatus,BGPPeerState:bgpPeerState}'
 
-# Verify route is learned
+# Test from a dual-stack EC2 instance
+ping -6 -c 3 <on-premises-ipv6-address>
+
+# Verify the propagated IPv6 route is present
 aws ec2 describe-route-tables --route-table-ids rtb-XXX --query 'RouteTables[].Routes[?DestinationIpv6CidrBlock]'
 ```
 
@@ -67,18 +76,16 @@ aws ec2 describe-route-tables --route-table-ids rtb-XXX --query 'RouteTables[].R
 
 ```hcl
 # Terraform for AWS Direct Connect IPv6
-resource "aws_vpn_connection" "ipv6_vpn" {
-  vpn_gateway_id      = aws_vpn_gateway.main.id
-  customer_gateway_id = aws_customer_gateway.onprem.id
-  type                = "ipsec.1"
-
-  # Enable IPv6
-  local_ipv6_network_cidr  = "::/0"
-  remote_ipv6_network_cidr = "::/0"
-  tunnel_inside_ip_version = "ipv6"
+resource "aws_dx_private_virtual_interface" "ipv6_vif" {
+  connection_id  = aws_dx_connection.main.id
+  name           = "ipv6-vif"
+  vlan           = 100
+  address_family = "ipv6"
+  bgp_asn        = 65000
+  vpn_gateway_id = aws_vpn_gateway.main.id
 }
 ```
 
 ## Conclusion
 
-AWS Direct Connect IPv6 requires enabling dual-stack at the subnet level, configuring IPv6 BGP sessions, and adding IPv6 routes in the relevant route tables. Test connectivity end-to-end after configuration. Use Terraform for declarative, repeatable deployments. Monitor IPv6 BGP session state and route advertisement with OneUptime's network health checks.
+AWS Direct Connect IPv6 requires enabling dual-stack on the VPC and subnets, configuring IPv6 BGP sessions, and ensuring the relevant route tables contain the required IPv6 routes. Test connectivity end-to-end after configuration. Use Terraform for declarative, repeatable deployments. Monitor IPv6 BGP session state and route advertisement with OneUptime's network health checks.
