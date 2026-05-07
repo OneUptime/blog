@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Apache, Mod_proxy_balancer, Load Balancing, IPv4, High Availability, HTTP
 
-Description: Configure Apache mod_proxy_balancer to distribute HTTP traffic across multiple IPv4 backend servers with round-robin, traffic-weighted, and session-sticky algorithms.
+Description: Configure Apache mod_proxy_balancer to distribute HTTP traffic across multiple IPv4 backend servers with request-count scheduling, traffic-based balancing, and sticky sessions.
 
 ## Introduction
 
-Apache's `mod_proxy_balancer` adds load balancing capabilities on top of `mod_proxy`. It supports multiple scheduling algorithms, health monitoring, and session persistence through sticky sessions.
+Apache's `mod_proxy_balancer` adds load balancing capabilities on top of `mod_proxy`. It supports multiple scheduling algorithms and session persistence through sticky sessions. Dynamic health checks are provided separately by `mod_proxy_hcheck`.
 
 ## Enabling Required Modules
 
@@ -16,16 +16,17 @@ Apache's `mod_proxy_balancer` adds load balancing capabilities on top of `mod_pr
 sudo a2enmod proxy
 sudo a2enmod proxy_http
 sudo a2enmod proxy_balancer
-sudo a2enmod lbmethod_byrequests   # Round-robin
+sudo a2enmod lbmethod_byrequests   # Request-count scheduling
 sudo a2enmod lbmethod_bytraffic    # Traffic-based
-sudo a2enmod lbmethod_bybusyness   # Busyness-based
+sudo a2enmod lbmethod_bybusyness   # Pending-request based
 sudo a2enmod headers
-sudo a2enmod slotmem_shm           # Required by proxy_balancer
+sudo a2enmod status                # Required for balancer-manager
+sudo a2enmod slotmem_shm           # Shared memory provider for balancer state
 
 sudo systemctl reload apache2
 ```
 
-## Basic Round-Robin Load Balancer
+## Basic Request-Count Load Balancer
 
 ```apache
 # /etc/apache2/sites-available/load-balancer.conf
@@ -41,7 +42,7 @@ sudo systemctl reload apache2
         BalancerMember http://192.168.1.11:8080
         BalancerMember http://192.168.1.12:8080
 
-        # Balancing algorithm: distribute by request count (round-robin)
+        # Balancing algorithm: distribute by request count
         ProxySet lbmethod=byrequests
     </Proxy>
 
@@ -153,4 +154,4 @@ curl http://app.example.com/balancer-manager
 
 ## Conclusion
 
-Apache `mod_proxy_balancer` provides flexible load balancing with multiple algorithms, weights, and session persistence. Use `byrequests` for uniform backends, `loadfactor` for capacity-weighted distribution, and `stickysession` for stateful applications. The balancer-manager interface enables runtime monitoring and member management without reloading Apache.
+Apache `mod_proxy_balancer` provides flexible load balancing with multiple algorithms, weights, and session persistence. Use `byrequests` for request-count-based distribution across similar backends, `loadfactor` for capacity-weighted distribution, and `stickysession` for stateful applications. The balancer-manager interface enables runtime monitoring and member management without reloading Apache.
