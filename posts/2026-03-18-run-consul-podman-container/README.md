@@ -8,7 +8,7 @@ Description: Learn how to run HashiCorp Consul in a Podman container for service
 
 ---
 
-> Consul in Podman provides service discovery, health checking, and a distributed key-value store in a rootless container.
+> Consul in Podman provides service discovery, health checking, and a distributed key-value store in a container that can run rootless.
 
 HashiCorp Consul is a service networking platform that provides service discovery, configuration management, and health checking for distributed systems. Running it in a Podman container gives you an isolated, portable Consul agent or server ready for development and testing. This guide covers single-node setup, service registration, the KV store, health checks, and the web UI.
 
@@ -37,7 +37,7 @@ podman run -d \
   --name my-consul \
   -p 8500:8500 \
   -p 8600:8600/udp \
-  hashicorp/consul:latest agent -dev -client=0.0.0.0 -ui
+  docker.io/hashicorp/consul:latest agent -dev -node=consul -client=0.0.0.0 -ui
 
 # Check the container is running
 podman ps
@@ -46,7 +46,7 @@ podman ps
 curl -s http://localhost:8500/v1/status/leader
 
 # Access the Consul UI
-echo "Open http://localhost:8500 in your browser"
+echo "Open http://localhost:8500/ui in your browser"
 ```
 
 ## Persistent Data Storage
@@ -57,13 +57,13 @@ Use volumes to persist Consul data across restarts.
 # Create a volume for Consul data
 podman volume create consul-data
 
-# Run Consul with persistent storage
+# Run Consul in single-server mode with persistent storage
 podman run -d \
   --name consul-persistent \
   -p 8501:8500 \
   -p 8601:8600/udp \
   -v consul-data:/consul/data:Z \
-  hashicorp/consul:latest agent -dev -client=0.0.0.0 -ui
+  docker.io/hashicorp/consul:latest agent -server -bootstrap-expect=1 -node=consul-persistent -client=0.0.0.0 -ui -data-dir=/consul/data
 
 # Verify the volume
 podman volume inspect consul-data
@@ -81,10 +81,10 @@ curl -s -X PUT http://localhost:8500/v1/agent/service/register \
     "ID": "web-1",
     "Name": "web",
     "Tags": ["primary", "v1"],
-    "Address": "10.0.0.10",
-    "Port": 8080,
+    "Address": "127.0.0.1",
+    "Port": 8500,
     "Check": {
-      "HTTP": "http://10.0.0.10:8080/health",
+      "HTTP": "http://127.0.0.1:8500/v1/status/leader",
       "Interval": "10s",
       "Timeout": "5s"
     }
@@ -97,8 +97,8 @@ curl -s -X PUT http://localhost:8500/v1/agent/service/register \
     "ID": "web-2",
     "Name": "web",
     "Tags": ["secondary", "v1"],
-    "Address": "10.0.0.11",
-    "Port": 8080
+    "Address": "127.0.0.1",
+    "Port": 8500
   }'
 
 # List all registered services
@@ -155,7 +155,7 @@ datacenter = "dc1"
 # Data directory
 data_dir = "/consul/data"
 
-# Client address for the HTTP API
+# Client address for HTTP, DNS, and gRPC interfaces
 client_addr = "0.0.0.0"
 
 # Server mode
@@ -184,14 +184,17 @@ ports {
 enable_local_script_checks = true
 EOF
 
+# Create a separate volume for this Consul server data
+podman volume create consul-custom-data
+
 # Run Consul with custom config
 podman run -d \
   --name consul-custom \
   -p 8502:8500 \
   -p 8602:8600/udp \
   -v ~/consul-config/consul.hcl:/consul/config/consul.hcl:Z \
-  -v consul-data:/consul/data:Z \
-  hashicorp/consul:latest agent -config-file=/consul/config/consul.hcl
+  -v consul-custom-data:/consul/data:Z \
+  docker.io/hashicorp/consul:latest agent -config-file=/consul/config/consul.hcl
 
 # Verify the cluster members
 podman exec consul-custom consul members
@@ -223,7 +226,7 @@ podman logs my-consul
 # Check cluster members
 podman exec my-consul consul members
 
-# Force a leader election (single-node dev mode)
+# List the Raft peers
 podman exec my-consul consul operator raft list-peers
 
 # Stop and start
@@ -232,9 +235,9 @@ podman start my-consul
 
 # Remove containers and volumes
 podman rm -f my-consul consul-persistent consul-custom
-podman volume rm consul-data
+podman volume rm consul-data consul-custom-data
 ```
 
 ## Summary
 
-Running Consul in a Podman container gives you a complete service networking platform with service discovery, health checking, and a distributed key-value store. The dev mode server is ideal for local development and testing, while custom configurations support production-like setups. The HTTP API enables service registration and KV operations, and the DNS interface provides transparent service discovery. The built-in web UI offers visual management of services and configuration. Podman's rootless mode provides security isolation for your service mesh infrastructure.
+Running Consul in a Podman container gives you a complete service networking platform with service discovery, health checking, and a distributed key-value store. The dev mode server is ideal for local development and testing, while custom configurations support production-like setups. The HTTP API enables service registration and KV operations, and the DNS interface provides transparent service discovery. The built-in web UI offers visual management of services and configuration. When Podman is run rootless, it adds another layer of isolation for your service mesh infrastructure.
