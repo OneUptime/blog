@@ -12,6 +12,8 @@ Description: Learn how to monitor container resource usage over time with Podman
 
 While Podman events track lifecycle changes, monitoring resource usage over time gives you performance data - CPU consumption, memory usage, network throughput, and disk I/O. By collecting these metrics periodically, you can identify trends, detect resource leaks, and right-size your containers. This guide shows you how to track container resource usage over time using Podman.
 
+Note: Rootless Podman environments may not be able to report network usage statistics in `podman stats`.
+
 ---
 
 ## Real-Time Resource Monitoring with podman stats
@@ -64,14 +66,24 @@ while [ $SECONDS -lt $END_TIME ]; do
     stats=$(podman stats --no-stream --format json "$CONTAINER" 2>/dev/null)
 
     if [ -n "$stats" ]; then
-        cpu=$(echo "$stats" | jq -r '.[0].cpu_percent // "0"')
-        mem_usage=$(echo "$stats" | jq -r '.[0].mem_usage // "0"')
-        mem_limit=$(echo "$stats" | jq -r '.[0].mem_limit // "0"')
-        mem_percent=$(echo "$stats" | jq -r '.[0].mem_percent // "0"')
-        net_in=$(echo "$stats" | jq -r '.[0].net_input // "0"')
-        net_out=$(echo "$stats" | jq -r '.[0].net_output // "0"')
-        block_in=$(echo "$stats" | jq -r '.[0].block_input // "0"')
-        block_out=$(echo "$stats" | jq -r '.[0].block_output // "0"')
+        read -r cpu mem_usage mem_limit mem_percent net_in net_out block_in block_out < <(
+            echo "$stats" | jq -r '
+                .[0] as $s |
+                (($s.mem_usage // "0 / 0") | split(" / ")) as $mem |
+                (($s.netio // "0 / 0") | split(" / ")) as $net |
+                (($s.blocki // "0 / 0") | split(" / ")) as $block |
+                [
+                    ($s.cpu_percent // "0"),
+                    ($mem[0] // "0"),
+                    ($mem[1] // "0"),
+                    ($s.mem_percent // "0"),
+                    ($net[0] // "0"),
+                    ($net[1] // "0"),
+                    ($block[0] // "0"),
+                    ($block[1] // "0")
+                ] | @tsv
+            '
+        )
 
         echo "${timestamp},${CONTAINER},${cpu},${mem_usage},${mem_limit},${mem_percent},${net_in},${net_out},${block_in},${block_out}" >> "$OUTPUT"
         echo "[${timestamp}] CPU: ${cpu} | MEM: ${mem_percent} (${mem_usage}/${mem_limit})"
@@ -120,7 +132,7 @@ while true; do
 
     # Get stats for all containers
     podman stats --no-stream --format json 2>/dev/null | \
-    jq -r '.[] | [.name, .cpu_percent, .mem_percent, .net_input, .net_output] | @tsv' | \
+    jq -r '.[] | [.name, .cpu_percent, .mem_percent, ((.netio // "0 / 0") | split(" / ")[0]), ((.netio // "0 / 0") | split(" / ")[1])] | @tsv' | \
     while IFS=$'\t' read -r name cpu mem net_in net_out; do
         printf "%-20s %8s %8s %12s %12s\n" "$name" "$cpu" "$mem" "$net_in" "$net_out"
     done
@@ -149,8 +161,8 @@ while true; do
     jq -r '.[] | [.name, .cpu_percent, .mem_percent] | @tsv' | \
     while IFS=$'\t' read -r name cpu_str mem_str; do
         # Extract numeric values
-        cpu=$(echo "$cpu_str" | tr -d '%')
-        mem=$(echo "$mem_str" | tr -d '%')
+        cpu=$(echo "$cpu_str" | tr -d '%' | awk '/^[0-9]+([.][0-9]+)?$/ {print; next} {print 0}')
+        mem=$(echo "$mem_str" | tr -d '%' | awk '/^[0-9]+([.][0-9]+)?$/ {print; next} {print 0}')
 
         # Check thresholds using awk for float comparison
         cpu_alert=$(awk "BEGIN {print ($cpu > $CPU_THRESHOLD) ? 1 : 0}")
@@ -189,7 +201,7 @@ while true; do
         echo "# TYPE podman_container_memory_percent gauge"
 
         podman stats --no-stream --format json 2>/dev/null | \
-        jq -r '.[] | "podman_container_cpu_percent{name=\"\(.name)\"} \(.cpu_percent | gsub("%";""))\npodman_container_memory_percent{name=\"\(.name)\"} \(.mem_percent | gsub("%";""))"'
+        jq -r '.[] | def metric_number: tostring | gsub("%";"") | if test("^[0-9]+(\\.[0-9]+)?$") then . else "0" end; "podman_container_cpu_percent{name=\"\(.name)\"} \(.cpu_percent | metric_number)\npodman_container_memory_percent{name=\"\(.name)\"} \(.mem_percent | metric_number)"'
     } > "${METRICS_FILE}.tmp"
 
     mv "${METRICS_FILE}.tmp" "$METRICS_FILE"
