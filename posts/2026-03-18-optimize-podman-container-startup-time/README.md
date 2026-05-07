@@ -28,7 +28,7 @@ podman events --filter event=start --format '{{.Time}}' &
 podman run --rm your-image echo "started"
 ```
 
-You can also use `podman system connection` to inspect timing at each stage. Record your baseline so you can measure improvements as you apply each optimization.
+You can also use `podman events` with the `create`, `init`, `start`, and `died` event timestamps to understand where time is being spent. Record your baseline so you can measure improvements as you apply each optimization.
 
 ---
 
@@ -137,7 +137,7 @@ exec "$@"
 
 ---
 
-## Use --init for Faster Signal Handling
+## Use --init for Reliable Signal Handling
 
 Podman supports an init process that handles zombie reaping and signal forwarding. This avoids the overhead of a full init system while ensuring clean startup and shutdown:
 
@@ -146,7 +146,7 @@ Podman supports an init process that handles zombie reaping and signal forwardin
 podman run --init --rm your-image
 ```
 
-This adds about 1ms of overhead but prevents zombie process accumulation that can slow down container operations over time.
+This adds a small extra process, so benchmark it for latency-critical containers, but it prevents zombie process accumulation that can slow down container operations over time.
 
 ---
 
@@ -184,19 +184,24 @@ docs/
 
 ## Configure Storage Driver for Speed
 
-The storage driver affects how quickly layers are mounted. The overlay driver with native diff is fastest:
+The storage driver affects how quickly layers are mounted. Use the overlay driver when your system supports it, and check whether native overlay diff is available:
 
 ```bash
 # Check current storage driver
 podman info --format '{{.Store.GraphDriverName}}'
 
-# Configure overlay with native diff in containers.conf
+# Check whether native overlay diff is enabled
+podman info --format '{{index .Store.GraphStatus "Native Overlay Diff"}}'
+```
+
+For rootless Podman on systems that cannot use kernel overlay directly, configure `fuse-overlayfs` in `storage.conf`:
+
+```toml
 # Edit ~/.config/containers/storage.conf
 [storage]
 driver = "overlay"
 
 [storage.options.overlay]
-# Use native diff for faster layer operations
 mount_program = "/usr/bin/fuse-overlayfs"
 ```
 
@@ -214,7 +219,7 @@ which fuse-overlayfs
 
 ## Use --read-only for Faster Filesystem Setup
 
-If your container does not need to write to the root filesystem, mark it as read-only. This skips the copy-on-write setup for the upper layer:
+If your container does not need to write to the root filesystem, mark it as read-only. Podman mounts the container root filesystem read-only and, by default, provides writable tmpfs mounts for common temporary paths:
 
 ```bash
 # Read-only root filesystem, tmpfs for writable paths
@@ -224,7 +229,7 @@ podman run --read-only \
   your-image
 ```
 
-This reduces both startup time and memory overhead because the runtime does not need to prepare a writable overlay.
+This can reduce accidental writes and temporary disk I/O. Benchmark it for your workload, because the main documented behavior is the read-only root filesystem rather than a guaranteed startup-time improvement.
 
 ---
 
@@ -250,19 +255,22 @@ Be cautious with security-related flags. Only disable security features in contr
 
 ---
 
-## Use podman create + podman start
+## Use podman create + podman init + podman start
 
-Splitting container creation and starting into two steps lets you pre-create containers:
+Splitting container creation, initialization, and starting into separate steps lets you pre-create and pre-initialize containers:
 
 ```bash
-# Pre-create the container (does filesystem setup)
+# Pre-create the container
 CID=$(podman create --name my-app your-image)
 
-# Later, start instantly (just launches the process)
+# Initialize the container (mounts filesystems, creates the OCI spec, and initializes networking)
+podman init "$CID"
+
+# Later, start the initialized container
 podman start "$CID"
 ```
 
-This pattern works well for autoscaling scenarios where you can maintain a pool of pre-created containers ready to start immediately.
+This pattern works well for autoscaling scenarios where you can maintain a pool of initialized containers ready to start immediately.
 
 ---
 
@@ -296,4 +304,4 @@ echo "Average startup time: ${avg}ms"
 
 ## Conclusion
 
-Podman container startup optimization is a combination of image size reduction, entrypoint efficiency, storage driver configuration, and runtime flag tuning. Start by measuring your baseline, then apply changes incrementally. The biggest gains typically come from switching to smaller base images and pre-pulling images. For latency-sensitive workloads, the `create` then `start` pattern combined with read-only filesystems can bring startup times under 100ms. Each millisecond saved compounds across every container start in your infrastructure.
+Podman container startup optimization is a combination of image size reduction, entrypoint efficiency, storage driver configuration, and runtime flag tuning. Start by measuring your baseline, then apply changes incrementally. The biggest gains typically come from switching to smaller base images and pre-pulling images. For latency-sensitive workloads, the `create`, `init`, then `start` pattern combined with read-only filesystems can bring startup times under 100ms. Each millisecond saved compounds across every container start in your infrastructure.
