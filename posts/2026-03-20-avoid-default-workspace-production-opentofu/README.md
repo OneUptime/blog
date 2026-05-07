@@ -41,10 +41,10 @@ tofu workspace new staging
 tofu workspace select staging
 tofu apply  # applies to staging
 
-# Later, opens a new terminal
-# Workspace is default again (didn't select staging)
+# Later, runs from a different initialized working directory
+# that points at the same backend
 tofu workspace show
-# default  ← accidentally back to default = production
+# default  ← this working directory is back on default
 
 tofu apply  # accidentally applies to production!
 ```
@@ -56,17 +56,17 @@ Add a check that fails if run in the default workspace.
 ```hcl
 # main.tf
 # Fail if someone runs from the default workspace
-resource "null_resource" "workspace_check" {
-  count = terraform.workspace == "default" ? 1 : 0
-
-  # This will fail with a clear error message
-  triggers = {
-    error = "ERROR: Never use the 'default' workspace. Use 'staging' or 'production'."
+resource "terraform_data" "workspace_check" {
+  lifecycle {
+    precondition {
+      condition     = terraform.workspace != "default"
+      error_message = "ERROR: Never use the 'default' workspace. Use 'staging' or 'production'."
+    }
   }
 }
 ```
 
-Or use a local with a validation.
+Or use a local with a precondition.
 
 ```hcl
 locals {
@@ -74,10 +74,15 @@ locals {
   workspace_valid    = contains(local.allowed_workspaces, terraform.workspace)
 }
 
-# This will fail at plan time if workspace is default
-resource "null_resource" "workspace_guard" {
-  triggers = {
-    workspace = local.workspace_valid ? terraform.workspace : tobool("Invalid workspace '${terraform.workspace}'. Must be one of: ${join(", ", local.allowed_workspaces)}")
+# This will fail at plan time if workspace is not explicitly allowed
+resource "terraform_data" "workspace_guard" {
+  input = terraform.workspace
+
+  lifecycle {
+    precondition {
+      condition     = local.workspace_valid
+      error_message = "Invalid workspace '${terraform.workspace}'. Must be one of: ${join(", ", local.allowed_workspaces)}"
+    }
   }
 }
 ```
