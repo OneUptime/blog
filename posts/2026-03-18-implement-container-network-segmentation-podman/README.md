@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Networking, Security, Network Segmentation, Container
 
-Description: Learn how to implement network segmentation with Podman using custom networks, internal networks, firewall rules, and isolation strategies to protect container communication.
+Description: Learn how to implement network segmentation with Podman using custom networks, internal networks, and isolation strategies to protect container communication.
 
 ---
 
@@ -12,21 +12,21 @@ Description: Learn how to implement network segmentation with Podman using custo
 
 By default, containers on the same network can communicate freely with each other. In a production environment, this means a compromised web server could directly access your database. Network segmentation addresses this by placing containers on separate networks and controlling which networks can talk to each other.
 
-This guide covers implementing network segmentation with Podman using custom networks, internal networks, and firewall rules.
+This guide covers implementing network segmentation with Podman using custom networks and internal networks.
 
 ---
 
 ## Default Networking Behavior
 
-When you create containers without specifying a network, Podman places them on the default network where all containers can reach each other:
+When you create rootful containers without specifying a network, Podman places them on the default bridge network where containers can reach each other by IP address:
 
 ```bash
 # Both containers can communicate
 
 podman run -d --name web nginx
-podman run -d --name db postgres:16
+podman run -d --name db -e POSTGRES_PASSWORD=secret postgres:16
 
-# web can reach db and vice versa - this may not be desirable
+# web can reach db and vice versa by IP address - this may not be desirable
 ```
 
 ## Creating Segmented Networks
@@ -38,10 +38,10 @@ Separate containers into purpose-specific networks:
 podman network create frontend
 
 # Backend network: internal services only
-podman network create backend
+podman network create --internal backend
 
 # Database network: data stores only
-podman network create database
+podman network create --internal database
 
 # List networks
 podman network ls
@@ -58,6 +58,7 @@ podman run -d \
   --network database \
   -v pgdata:/var/lib/postgresql/data:Z \
   -e POSTGRES_PASSWORD=secret \
+  -e POSTGRES_DB=app \
   postgres:16
 
 # API: bridges backend and database networks
@@ -96,12 +97,14 @@ Create networks that cannot reach the internet:
 ```bash
 # Internal network: no external access
 podman network create --internal db-internal
+podman network create app-external
 
 # Containers on internal networks can talk to each other
 # but cannot access the internet
 podman run -d \
   --name db \
   --network db-internal \
+  -e POSTGRES_PASSWORD=secret \
   postgres:16
 
 podman run -d \
@@ -114,12 +117,12 @@ podman run -d \
 Verify isolation:
 
 ```bash
-# This should fail (no internet access)
-podman exec db curl -s http://example.com
-# curl: Could not resolve host: example.com
+# This should fail (external names are not resolved on internal networks)
+podman exec db getent hosts example.com
 
 # This should succeed (internal communication)
-podman exec api psql -h db -U postgres -c 'SELECT 1'
+podman run --rm --network db-internal -e PGPASSWORD=secret postgres:16 \
+  psql -h db -U postgres -c 'SELECT 1'
 ```
 
 ## Network Architecture Examples
@@ -134,6 +137,7 @@ podman network create tier-web
 # Tier 1: Database (most isolated)
 podman run -d --name postgres \
   --network tier-db \
+  -e POSTGRES_PASSWORD=secret \
   postgres:16
 
 # Tier 2: Application (bridges db and web tiers)
@@ -155,6 +159,7 @@ podman run -d --name nginx \
 ```bash
 # Shared infrastructure network
 podman network create --internal infra
+podman network create gateway-public
 
 # Service-specific networks
 podman network create --internal svc-orders
@@ -164,6 +169,7 @@ podman network create --internal svc-payments
 # Shared database
 podman run -d --name shared-db \
   --network infra \
+  -e POSTGRES_PASSWORD=secret \
   postgres:16
 
 # Each service gets its own network plus infra access
@@ -187,6 +193,7 @@ podman run -d --name gateway \
   --network svc-orders \
   --network svc-users \
   --network svc-payments \
+  --network gateway-public \
   -p 8080:8080 \
   api-gateway
 ```
@@ -240,7 +247,7 @@ Use pods for tightly coupled services that share a network:
 # Database pod on internal network
 podman pod create --name db-pod --network tier-db
 
-podman run -d --pod db-pod --name postgres postgres:16
+podman run -d --pod db-pod --name postgres -e POSTGRES_PASSWORD=secret postgres:16
 podman run -d --pod db-pod --name pgbouncer pgbouncer
 
 # Application pod bridging networks
@@ -280,6 +287,7 @@ Subnet=10.10.3.0/24
 # ~/.config/containers/systemd/db.container
 [Container]
 Image=docker.io/library/postgres:16
+Environment=POSTGRES_PASSWORD=secret
 Network=db-internal.network
 # Only accessible from db-internal network
 
@@ -341,24 +349,28 @@ Test that network segmentation works as expected:
 
 echo "=== Network Segmentation Verification ==="
 
-# Test: web should reach api
+# Test: a client with web-tier networks should reach api
 echo -n "web -> api: "
-podman exec web curl -sf http://api:3000/health > /dev/null 2>&1 && \
+podman run --rm --network frontend --network backend curlimages/curl:8.7.1 \
+  -sf http://api:3000/health > /dev/null 2>&1 && \
   echo "CONNECTED (expected)" || echo "BLOCKED"
 
-# Test: web should NOT reach db
+# Test: a client with web-tier networks should NOT reach db
 echo -n "web -> db: "
-podman exec web pg_isready -h db > /dev/null 2>&1 && \
+podman run --rm --network frontend --network backend postgres:16 \
+  pg_isready -h db > /dev/null 2>&1 && \
   echo "CONNECTED (VIOLATION!)" || echo "BLOCKED (expected)"
 
-# Test: api should reach db
+# Test: a client with api-tier networks should reach db
 echo -n "api -> db: "
-podman exec api pg_isready -h db > /dev/null 2>&1 && \
+podman run --rm --network backend --network database postgres:16 \
+  pg_isready -h db > /dev/null 2>&1 && \
   echo "CONNECTED (expected)" || echo "BLOCKED"
 
-# Test: db should NOT reach internet
+# Test: a client with db-tier network should NOT reach internet
 echo -n "db -> internet: "
-podman exec db curl -sf --connect-timeout 3 http://example.com > /dev/null 2>&1 && \
+podman run --rm --network database alpine:3.20 \
+  wget -qO- --timeout=3 http://example.com > /dev/null 2>&1 && \
   echo "CONNECTED (VIOLATION!)" || echo "BLOCKED (expected)"
 ```
 
