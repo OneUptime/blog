@@ -12,7 +12,7 @@ Microsoft Azure provides a robust cloud platform for running Kubernetes workload
 
 - An Azure account with an active subscription
 - Azure CLI installed and configured (`az login` completed)
-- A domain name (optional but recommended)
+- A DNS hostname that resolves to the VM public IP (for testing, a name such as `<public-ip>.sslip.io` also works)
 - SSH key pair for VM access
 
 ## Step 1: Create a Resource Group
@@ -27,7 +27,7 @@ az group create \
 
 ## Step 2: Create a Network Security Group
 
-Create a network security group with the required rules:
+Create a network security group with the required access rules for this setup:
 
 ```bash
 az network nsg create \
@@ -56,14 +56,6 @@ az network nsg rule create \
   --name allow-https \
   --priority 300 \
   --destination-port-ranges 443 \
-  --protocol Tcp
-
-az network nsg rule create \
-  --resource-group rancher-rg \
-  --nsg-name rancher-nsg \
-  --name allow-k8s-api \
-  --priority 400 \
-  --destination-port-ranges 6443 \
   --protocol Tcp
 ```
 
@@ -151,7 +143,7 @@ helm install rancher rancher-stable/rancher \
   --set replicas=1
 ```
 
-Replace `rancher.example.com` with your actual domain name.
+Replace `rancher.example.com` with a hostname that resolves to the VM public IP. For a proof-of-concept, you can use `<public-ip>.sslip.io`.
 
 ## Step 9: Configure DNS
 
@@ -174,11 +166,11 @@ kubectl -n cattle-system rollout status deploy/rancher
 kubectl -n cattle-system get pods
 ```
 
-Open `https://rancher.example.com` in your browser. Log in with the bootstrap password and configure your admin credentials.
+Open `https://rancher.example.com` in your browser. If you use Rancher's default certificate configuration, your browser will warn because the certificate is self-signed. Log in with the bootstrap password and configure your admin credentials.
 
 ## Using the Azure Node Driver
 
-Once Rancher is running, you can use the built-in Azure node driver to provision managed Kubernetes clusters. In the Rancher UI, navigate to Cluster Management and select Create. Choose Azure as the infrastructure provider and supply your Azure subscription ID, client ID, client secret, and tenant ID. Rancher will create and manage Azure VMs as Kubernetes nodes automatically.
+Once Rancher is running, you can use Rancher to provision RKE2 or K3s clusters on Azure Virtual Machines. In the Rancher UI, navigate to Cluster Management and select Create. Toggle to RKE2/K3s, choose Azure, create or select your Azure cloud credentials, and define machine pools. Rancher will create Azure VMs and install Kubernetes on them automatically.
 
 ## Cleanup
 
