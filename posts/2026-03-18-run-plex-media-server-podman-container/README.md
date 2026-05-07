@@ -115,6 +115,10 @@ Hardware transcoding uses your GPU or CPU's built-in media engine to transcode v
 # Check if the render device exists on the host
 ls -la /dev/dri/
 
+# Stop and remove the existing container before recreating it with GPU access
+podman stop plex
+podman rm plex
+
 # Run Plex with access to the Intel GPU for hardware transcoding
 podman run -d \
   --name plex \
@@ -136,14 +140,19 @@ The `--device /dev/dri:/dev/dri` flag passes the GPU rendering devices into the 
 
 ### NVIDIA GPU
 
-For NVIDIA GPUs, install the NVIDIA Container Toolkit on the host, then use the CDI device flag:
+For NVIDIA GPUs, install the NVIDIA Container Toolkit on the host, make sure the CDI devices are available with `nvidia-ctk cdi list`, then use the CDI device flag. Podman 4.1 or later is required for CDI devices in `--device`:
 
 ```bash
+# Stop and remove the existing container before recreating it with GPU access
+podman stop plex
+podman rm plex
+
 # Run Plex with NVIDIA GPU access
 podman run -d \
   --name plex \
   --network host \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   -v ~/plex/config:/config:Z \
   -v ~/plex/transcode:/transcode:Z \
   -v ~/plex/movies:/data/movies:Z \
@@ -211,6 +220,7 @@ Use Quadlet, the recommended way to run Podman containers under systemd (note th
 sudo mkdir -p /etc/containers/systemd
 
 # Create a Quadlet container file
+# Replace /home/your-user with your actual home directory.
 sudo tee /etc/containers/systemd/plex.container > /dev/null <<'EOF'
 [Unit]
 Description=Plex Media Server Container
@@ -219,17 +229,17 @@ Description=Plex Media Server Container
 ContainerName=plex
 Image=docker.io/linuxserver/plex:latest
 Network=host
-Volume=~/plex/config:/config:Z
-Volume=~/plex/transcode:/transcode:Z
-Volume=~/plex/movies:/data/movies:Z
-Volume=~/plex/tvshows:/data/tvshows:Z
-Volume=~/plex/music:/data/music:Z
+Volume=/home/your-user/plex/config:/config:Z
+Volume=/home/your-user/plex/transcode:/transcode:Z
+Volume=/home/your-user/plex/movies:/data/movies:Z
+Volume=/home/your-user/plex/tvshows:/data/tvshows:Z
+Volume=/home/your-user/plex/music:/data/music:Z
 Environment=TZ=America/New_York
 Environment=PUID=1000
 Environment=PGID=1000
 
 [Service]
-Restart=unless-stopped
+Restart=always
 
 [Install]
 WantedBy=default.target
@@ -237,7 +247,7 @@ EOF
 
 # Reload systemd and start the service
 sudo systemctl daemon-reload
-sudo systemctl enable --now plex.service
+sudo systemctl start plex.service
 
 # Verify the service is running
 sudo systemctl status plex.service
