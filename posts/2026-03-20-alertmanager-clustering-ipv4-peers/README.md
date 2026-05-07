@@ -115,10 +115,12 @@ done
 # Allow cluster gossip between Alertmanager nodes
 for am_ip in 10.0.0.1 10.0.0.2 10.0.0.3; do
   sudo iptables -A INPUT -p tcp --dport 9094 -s $am_ip -j ACCEPT
+  sudo iptables -A INPUT -p udp --dport 9094 -s $am_ip -j ACCEPT
 done
 
 sudo iptables -A INPUT -p tcp --dport 9093 -j DROP
 sudo iptables -A INPUT -p tcp --dport 9094 -j DROP
+sudo iptables -A INPUT -p udp --dport 9094 -j DROP
 ```
 
 ## Verifying Cluster Status
