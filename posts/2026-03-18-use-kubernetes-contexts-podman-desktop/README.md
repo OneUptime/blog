@@ -40,9 +40,9 @@ Podman Desktop reads your kubeconfig and displays available contexts:
 
 1. Open Podman Desktop and navigate to **Settings**.
 2. Go to the **Kubernetes** section.
-3. You will see a list of all configured contexts.
-4. The currently active context is highlighted with an indicator.
-5. Click any context to switch to it.
+3. You will see a list of configured contexts.
+4. The currently active context is shown in the list.
+5. Click the **Set as Current Context** icon next to the context you want to use.
 
 The status bar at the bottom of Podman Desktop also shows the active context.
 
@@ -67,7 +67,7 @@ kubectl config current-context
 kubectl cluster-info
 ```
 
-In Podman Desktop, simply click on the desired context in the Kubernetes settings to switch.
+In Podman Desktop, click the **Set as Current Context** icon for the desired context in the Kubernetes settings to switch.
 
 ## Creating New Contexts
 
@@ -110,7 +110,7 @@ cp ~/.kube/config ~/.kube/config.backup
 mv ~/.kube/merged-config ~/.kube/config
 ```
 
-Podman Desktop reads the `KUBECONFIG` environment variable, so all merged contexts will appear automatically.
+Podman Desktop uses the kubeconfig file configured in **Settings > Preferences > Kubernetes**. After you flatten the merged output into that file, the merged contexts appear in the UI.
 
 ## Setting Default Namespaces per Context
 
@@ -132,7 +132,7 @@ kubectl config view --minify | grep namespace
 Keep your context list clean and organized:
 
 ```bash
-# Rename a context by creating a new one and deleting the old
+# Rename a context
 kubectl config rename-context old-name new-name
 
 # Delete a context you no longer need
@@ -147,7 +147,7 @@ kubectl config delete-user old-user
 
 ## Using Contexts with Podman Desktop Kubernetes Features
 
-When you deploy to Kubernetes from Podman Desktop, it uses the active context:
+When you deploy to Kubernetes from Podman Desktop, select or confirm the Kubernetes context you want to use before deploying:
 
 ```bash
 # Ensure the correct context is active before deploying
@@ -161,7 +161,7 @@ kubectl apply -f my-app.yaml
 kubectl get pods -n default
 ```
 
-Podman Desktop shows the active context in the deployment dialog, so you can confirm the target before deploying.
+Podman Desktop lets you select the Kubernetes context in the deployment flow, so you can confirm the target before deploying.
 
 ## Troubleshooting Context Issues
 
