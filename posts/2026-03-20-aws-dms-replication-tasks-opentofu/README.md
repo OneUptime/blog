@@ -9,6 +9,7 @@ Description: Learn how to create AWS Database Migration Service replication inst
 ## Introduction
 
 AWS DMS migrates data between database engines or helps replicate data continuously using Change Data Capture (CDC). OpenTofu manages replication instances, source and target endpoints, and migration tasks as code.
+Before applying this configuration, make sure the required AWS DMS service roles already exist in your AWS account, including `dms-vpc-role` and `dms-cloudwatch-logs-role`.
 
 ## Replication Subnet Group
 
@@ -32,7 +33,6 @@ resource "aws_dms_replication_instance" "main" {
   replication_instance_id     = "${var.app_name}-dms-instance"
   replication_instance_class  = "dms.t3.medium"
   allocated_storage           = 50  # GB
-  engine_version              = "3.5.3"
 
   replication_subnet_group_id = aws_dms_replication_subnet_group.main.id
   vpc_security_group_ids      = [aws_security_group.dms.id]
@@ -73,9 +73,6 @@ resource "aws_dms_endpoint" "source" {
     heartbeat_frequency             = 5
     heartbeat_schema                = "dms_heartbeat"
     map_boolean_as_boolean          = false
-    max_file_size                   = 1024
-    plugin_name                     = "pglogical"
-    slot_name                       = "dms_slot"
   }
 
   tags = {
@@ -118,7 +115,6 @@ resource "aws_dms_replication_task" "full_load_and_cdc" {
   target_endpoint_arn      = aws_dms_endpoint.target.endpoint_arn
   migration_type           = "full-load-and-cdc"  # or "full-load" or "cdc"
   table_mappings           = file("${path.module}/table-mappings.json")
-  replication_task_settings = file("${path.module}/task-settings.json")
 
   tags = {
     Environment = var.environment
