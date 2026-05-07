@@ -169,7 +169,8 @@ cp -a /tmp/bulk-app/* $mountpoint/app/
 
 # Set permissions recursively
 chmod -R 755 $mountpoint/app/bin/
-chmod -R 644 $mountpoint/app/conf/
+find $mountpoint/app/conf -type d -exec chmod 755 {} \;
+find $mountpoint/app/conf -type f -exec chmod 644 {} \;
 
 # Verify the structure
 find $mountpoint/app -type f -exec ls -la {} \;
