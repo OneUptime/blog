@@ -202,8 +202,9 @@ RUN npm run build
 # Production stage (much smaller)
 FROM docker.io/library/node:20-alpine
 WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
 CMD ["node", "dist/server.js"]
 ```
 
@@ -229,7 +230,7 @@ podman image prune -f
 
 # Remove unused volumes
 echo "Removing unused volumes..."
-podman volume prune -f
+podman volume prune -a -f
 
 # Remove unused networks
 echo "Removing unused networks..."
@@ -333,7 +334,7 @@ graphroot = "/data/containers/storage"
 
 ```bash
 # Migrate existing storage
-podman system reset  # Warning: removes all containers and images
+podman system reset  # Warning: removes pods, containers, images, networks, volumes, build cache, machines, and storage directories
 # Or manually move and update config
 ```
 
