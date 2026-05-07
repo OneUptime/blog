@@ -23,7 +23,7 @@ A container is more than just a running process. It consists of several layers:
 - **Container metadata** including environment variables, port mappings, volume mounts, and restart policies.
 - **Mounted volumes** that hold persistent data outside the container filesystem.
 
-A complete backup strategy addresses all of these. This post focuses on backing up the container itself, meaning the writable layer and its metadata. Volume backups and image backups are covered in separate guides.
+A complete backup strategy addresses all of these. This post focuses on backing up the container filesystem and metadata. Volume backups and image backups are covered in separate guides.
 
 ## Listing Containers Before Backup
 
@@ -43,13 +43,13 @@ b2c3d4e5f6a1 postgres-db Exited (0) 1 hour ago docker.io/library/postgres:16
 
 ## Exporting a Container to a Tar Archive
 
-The most direct way to back up a container is to export its filesystem to a tar archive. This captures the entire filesystem state, including the base image layers and all changes in the writable layer:
+The most direct way to back up a container is to export its filesystem to a tar archive. This captures the merged container filesystem, including files from the base image and changes in the writable layer, but it does not preserve the original image layer history:
 
 ```bash
 podman export web-app -o /backups/web-app-$(date +%Y%m%d-%H%M%S).tar
 ```
 
-This works on both running and stopped containers. For running containers, Podman captures a snapshot of the filesystem at that moment.
+This works on both running and stopped containers. For running containers, Podman exports the filesystem as it exists during the export; stop or quiesce containers first when you need an application-consistent backup.
 
 You can also pipe the output to compress it:
 
@@ -67,7 +67,7 @@ The `podman export` command captures the filesystem but not the container config
 podman inspect web-app > /backups/web-app-inspect-$(date +%Y%m%d-%H%M%S).json
 ```
 
-The inspect output contains everything: environment variables, port bindings, volume mounts, network settings, resource limits, and entrypoint configuration. To extract just the essential run parameters:
+The inspect output contains the low-level container configuration, including environment variables, port bindings, volume mounts, network settings, resource limits, and entrypoint configuration. To extract just the essential run parameters:
 
 ```bash
 podman inspect web-app --format '
@@ -137,7 +137,7 @@ podman run -d \
     nginx -g "daemon off;"
 ```
 
-One important caveat: when you import a container filesystem as an image, it becomes a flat, single-layer image. The original image layer history is lost. This means the restored image will be larger and will not share layers with other images on the system.
+One important caveat: when you import a container filesystem as an image, it becomes a flat, single-layer image. The original image layer history is lost. This can make the restored image use more storage than a layered image that shares base layers with other images on the system.
 
 ## Generating a Restore Script Automatically
 
@@ -178,15 +178,15 @@ EOF
 chmod +x "$BACKUP_DIR/${CONTAINER_NAME}-restore.sh"
 ```
 
-This way, each backup comes with its own restore script, making recovery straightforward even months later.
+This gives each backup a restore starting point. Review the generated script before relying on it, especially for mounts, networks, users, labels, host IP bindings, entrypoints, and arguments that need shell quoting.
 
 ## Backup Retention and Storage
 
 Backups are only useful if you can find them and they are not consuming all your disk space. Implement a retention policy:
 
 ```bash
-# Remove backups older than 30 days
-find /backups/podman -type d -mtime +30 -exec rm -rf {} +
+# Remove timestamped backup directories older than 30 days
+find /backups/podman -mindepth 1 -maxdepth 1 -type d -mtime +30 -exec rm -rf {} +
 
 # Keep only the last 10 backups
 ls -dt /backups/podman/*/ | tail -n +11 | xargs rm -rf
@@ -211,7 +211,7 @@ A backup you cannot restore is not a backup. Periodically test your backups:
 
 BACKUP_FILE="$1"
 
-# Test that the archive is valid
+# Test that the compressed archive is valid
 if gzip -t "$BACKUP_FILE" 2>/dev/null; then
     echo "Archive integrity: OK"
 else
