@@ -256,7 +256,7 @@ kubectl get pods -o wide  # find which node the pod is on
 mount | grep nfs
 
 # Check CSI driver logs
-kubectl logs -n kube-system -l app=csi-nfs-controller --tail=50
+kubectl logs -n kube-system -l app=csi-nfs-controller -c nfs --tail=50
 ```
 
 ## Troubleshooting
@@ -269,4 +269,4 @@ kubectl logs -n kube-system -l app=csi-nfs-controller --tail=50
 
 ## Summary
 
-NFS storage in Rancher provides a straightforward solution for shared storage across pods, supporting the ReadWriteMany access mode that block storage cannot offer. Using the NFS CSI driver enables dynamic provisioning, eliminating the need to manually create PVs. NFS is well-suited for shared configuration, media files, and applications that need concurrent access from multiple pods.
+NFS storage in Rancher provides a straightforward solution for shared storage across pods, supporting the ReadWriteMany access mode that many block storage backends do not offer. Using the NFS CSI driver enables dynamic provisioning, eliminating the need to manually create PVs. NFS is well-suited for shared configuration, media files, and applications that need concurrent access from multiple pods.
