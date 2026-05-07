@@ -8,7 +8,7 @@ Description: Learn how to configure Podman to prevent container escape attacks a
 
 ---
 
-> Every container escape exploit relies on some form of excessive privilege. Remove the privileges, and you close the escape routes.
+> Many container escape exploits rely on some form of excessive privilege. Remove unnecessary privileges, and you close many escape routes.
 
 Container escape is the most severe container security threat. It occurs when a process inside a container breaks out of its isolation boundaries and gains access to the host system. Podman's rootless architecture and extensive security options make it one of the most escape-resistant container runtimes available. This guide covers the key configurations to prevent container escape.
 
@@ -57,6 +57,7 @@ podman run --rm -d \
   --cap-add=CHOWN \
   --cap-add=SETGID \
   --cap-add=SETUID \
+  --cap-add=NET_BIND_SERVICE \
   --name escape-proof \
   docker.io/library/nginx:alpine
 
@@ -136,6 +137,7 @@ Never mount sensitive host paths into containers.
 # -v /sys:/host/sys    # Host sys filesystem
 
 # Instead, mount only the specific directory needed
+mkdir -p /tmp/app-data
 podman run --rm \
   -v /tmp/app-data:/data:Z,ro \
   docker.io/library/alpine:latest \
@@ -147,7 +149,9 @@ podman run --rm \
 Block system calls that are commonly used in escape exploits.
 
 ```bash
-# Create a seccomp profile that blocks dangerous syscalls
+# Create a small demo seccomp profile that blocks dangerous syscalls.
+# For production, start from Podman's default seccomp profile and
+# tighten it for your workload instead of replacing it with a short denylist.
 cat > /tmp/anti-escape-seccomp.json << 'EOF'
 {
   "defaultAction": "SCMP_ACT_ALLOW",
@@ -168,7 +172,7 @@ cat > /tmp/anti-escape-seccomp.json << 'EOF'
 }
 EOF
 
-# Run with the anti-escape seccomp profile
+# Run with the demo seccomp profile
 podman run --rm \
   --security-opt seccomp=/tmp/anti-escape-seccomp.json \
   docker.io/library/alpine:latest \
@@ -206,7 +210,6 @@ podman run --rm -d \
   --tmpfs /tmp:rw,size=32m,noexec,nosuid \
   --cap-drop=ALL \
   --security-opt no-new-privileges \
-  --security-opt seccomp=/tmp/anti-escape-seccomp.json \
   --userns=auto \
   --memory=512m \
   --pids-limit=100 \
@@ -228,4 +231,4 @@ rm -f /tmp/anti-escape-seccomp.json
 
 ## Summary
 
-Preventing container escape requires a layered approach. Never use privileged mode, drop all unnecessary capabilities, enable no-new-privileges, use read-only filesystems, leverage user namespaces, restrict host mounts, apply seccomp filters, and avoid sharing host namespaces. Podman's rootless mode provides a strong baseline, and these additional configurations make container escape practically impossible. Apply all these measures together for defense in depth.
+Preventing container escape requires a layered approach. Never use privileged mode, drop all unnecessary capabilities, enable no-new-privileges, use read-only filesystems, leverage user namespaces, restrict host mounts, apply seccomp filters, and avoid sharing host namespaces. Podman's rootless mode provides a strong baseline, and these additional configurations make container escape much harder. Apply all these measures together for defense in depth.
