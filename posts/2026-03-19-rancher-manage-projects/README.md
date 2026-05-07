@@ -40,10 +40,12 @@ Every cluster starts with two built-in projects:
 5. Optionally configure:
    - **Resource Quotas**: Set limits on CPU, memory, and other resources
    - **Container Default Resource Limit**: Set default resource requests and limits for containers
-   - **Pod Security Policy** (deprecated) or PSA labels
+   - **Pod Security Policy** (if your cluster still supports PSPs; PSA is configured at the cluster level)
 6. Click **Create**.
 
 ## Step 2: Create a Project via kubectl
+
+Project resources are created on the Rancher management cluster.
 
 ```yaml
 apiVersion: management.cattle.io/v3
@@ -68,7 +70,7 @@ spec:
 ```
 
 ```bash
-kubectl apply -f project.yaml
+kubectl create -f project.yaml
 ```
 
 ## Step 3: Create a Project via the Rancher API
@@ -104,6 +106,8 @@ curl -X POST 'https://<rancher-url>/v3/projects' \
 
 **Via kubectl:**
 
+Create the namespace on the downstream cluster that the project belongs to.
+
 ```yaml
 apiVersion: v1
 kind: Namespace
@@ -111,8 +115,6 @@ metadata:
   name: api-production
   annotations:
     field.cattle.io/projectId: "c-m-xxxxx:p-xxxxx"
-  labels:
-    field.cattle.io/projectId: "p-xxxxx"
 ```
 
 ```bash
@@ -156,7 +158,6 @@ resourceQuota:
     services: "100"
     servicesLoadBalancers: "10"
     servicesNodePorts: "20"
-  usedLimit: {}
 namespaceDefaultResourceQuota:
   limit:
     pods: "100"
@@ -183,10 +184,9 @@ Navigate to **Cluster > Projects/Namespaces** to see all projects, their namespa
 **Via kubectl:**
 
 ```bash
-# List all projects in a cluster
+# List all projects for a cluster from the Rancher management cluster
 
-kubectl get projects.management.cattle.io -n c-m-xxxxx \
-  -o custom-columns=NAME:.metadata.name,DISPLAY:.spec.displayName,NAMESPACES:.metadata.annotations.'field\.cattle\.io/namespacesCount'
+kubectl --namespace c-m-xxxxx get projects
 ```
 
 **Via the API:**
@@ -231,7 +231,7 @@ Deleting a project removes the project container but does not delete the namespa
 kubectl delete projects.management.cattle.io <project-name> -n <cluster-id>
 ```
 
-After deletion, the namespaces will move to the **Default** project. You may want to reassign them or clean them up.
+After deletion, the namespaces remain on the cluster and appear in **Not in a Project** until you reassign them or clean them up.
 
 ## Step 11: Manage Projects with Terraform
 
