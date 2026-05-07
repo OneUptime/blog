@@ -10,7 +10,7 @@ Description: Learn to use Podman's --leave-running and --pre-checkpoint options 
 
 > Keeping a container running after a checkpoint means you can capture its state for backup, cloning, or migration without interrupting the service it provides.
 
-In production environments, stopping a container to take a checkpoint is often unacceptable. Users experience downtime, requests are dropped, and dependent services may fail. Podman provides mechanisms to checkpoint a container while it continues to serve traffic, making checkpoint/restore practical for production workloads.
+In production environments, stopping a container to take a checkpoint is often unacceptable. Users experience downtime, requests are dropped, and dependent services may fail. Podman provides mechanisms to checkpoint a root container while it continues to serve traffic, making checkpoint/restore practical for production workloads that CRIU can handle.
 
 ---
 
@@ -110,14 +110,24 @@ You will see a spike in latency (or timeouts) during the freeze phase, followed 
 For containers with large memory footprints, the freeze time can be significant. Podman supports a `--pre-checkpoint` (or `-P`) flag that dumps the container's memory information only while leaving the container running. A subsequent checkpoint using `--with-previous` then only needs to capture the memory pages that changed since the pre-checkpoint, resulting in a much shorter freeze:
 
 ```bash
-# Step 1: Pre-checkpoint - copies memory pages while container runs (no freeze)
-sudo podman container checkpoint my-app --pre-checkpoint
+# Step 1: Pre-checkpoint - copies memory pages while the container keeps running
+sudo podman container checkpoint my-app \
+  --pre-checkpoint \
+  --export=/tmp/my-app-pre-checkpoint.tar.gz
 
 # Step 2: Final checkpoint with reference to the pre-checkpoint - shorter freeze
 sudo podman container checkpoint my-app \
   --with-previous \
   --leave-running \
   --export=/tmp/my-app-checkpoint.tar.gz
+```
+
+If you later restore the exported incremental checkpoint on another host, import both archives:
+
+```bash
+sudo podman container restore \
+  --import-previous=/tmp/my-app-pre-checkpoint.tar.gz \
+  --import=/tmp/my-app-checkpoint.tar.gz
 ```
 
 The `--pre-checkpoint` flag relies on the Linux kernel's soft-dirty bit, which may not be available on all systems depending on the architecture and kernel configuration. Note that `--pre-checkpoint` and `--leave-running` cannot be used together on the same command, as `--pre-checkpoint` already implies the container keeps running.
@@ -250,4 +260,4 @@ fi
 
 ## Conclusion
 
-Keeping a container running after a checkpoint is achieved with the `--leave-running` flag. The container experiences a brief freeze while CRIU captures its state, then resumes immediately. This enables live backups, container cloning, and pre-migration snapshots without service interruption. The freeze duration is proportional to the container's memory usage. For services that cannot tolerate any downtime, combine the checkpoint with load balancer draining. Multiple sequential checkpoints of the same running container create a time series of snapshots that can each be independently restored.
+Keeping a container running after a checkpoint is achieved with the `--leave-running` flag. The container experiences a brief freeze while CRIU captures its state, then resumes immediately. This enables live backups, container cloning, and pre-migration snapshots without fully stopping the container. The freeze duration depends on factors such as memory pages to dump, storage I/O, CPU, and CRIU/runtime behavior. For services that cannot tolerate any downtime, combine the checkpoint with load balancer draining. Multiple sequential checkpoints of the same running container create a time series of snapshots that can each be independently restored.
