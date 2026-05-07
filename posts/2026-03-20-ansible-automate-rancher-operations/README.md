@@ -4,33 +4,34 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Ansible, Automation, Infrastructure as Code, DevOps, Kubernetes
 
-Description: Automate Rancher cluster management, user provisioning, and application deployments using Ansible playbooks with the Rancher API.
+Description: Automate Rancher cluster management, user provisioning, and application deployments using Ansible playbooks with Rancher and Kubernetes APIs.
 
 ## Introduction
 
-Ansible is an agentless automation tool that works well for orchestrating Rancher operations via its REST API. Unlike Terraform, Ansible is better suited for procedural tasks: running health checks, rotating credentials, deploying applications in sequence, and performing pre/post migration steps.
+Ansible is an agentless automation tool that works well for orchestrating Rancher operations through Rancher and Kubernetes APIs. Unlike Terraform, Ansible is better suited for procedural tasks: running health checks, rotating credentials, deploying applications in sequence, and performing pre/post migration steps.
 
 ## Prerequisites
 
-- Ansible 2.12+
-- `kubectl` and a valid kubeconfig
-- Rancher API token
+- Ansible 2.16+
+- Python 3.9+ with the Kubernetes Python client, `PyYAML`, and `jsonpatch` installed on the control node
+- A valid kubeconfig
+- Rancher project ID
 
-## Step 1: Install Required Ansible Collections
+## Step 1: Install Required Ansible Dependencies
 
 ```bash
-# Install the Kubernetes and community.general collections
+# Install the Kubernetes collection and Python dependencies used by the playbooks
 
 ansible-galaxy collection install kubernetes.core
-ansible-galaxy collection install community.general
+python3 -m pip install kubernetes PyYAML jsonpatch
 ```
 
 ## Step 2: Configure Inventory and Variables
 
 ```yaml
 # inventory/group_vars/all.yml
-rancher_url: "https://rancher.example.com"
-rancher_token: "{{ lookup('env', 'RANCHER_TOKEN') }}"
+kubeconfig_path: "~/.kube/rancher.yaml"
+project_id: "c-m-abc123:p-12345"
 
 clusters:
   - name: production
@@ -53,26 +54,25 @@ clusters:
     environment: "production"
 
   tasks:
-    - name: Create namespace via Rancher API
-      ansible.builtin.uri:
-        url: "{{ rancher_url }}/v3/cluster/{{ cluster_id }}/namespace"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ rancher_token }}"
-          Content-Type: "application/json"
-        body_format: json
-        body:
-          name: "{{ app_name }}-{{ environment }}"
-          projectId: "{{ project_id }}"
-          labels:
-            environment: "{{ environment }}"
-            app: "{{ app_name }}"
-        status_code: [200, 201]
+    - name: Create namespace in a Rancher project
+      kubernetes.core.k8s:
+        kubeconfig: "{{ kubeconfig_path }}"
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: "{{ app_name }}-{{ environment }}"
+            annotations:
+              field.cattle.io/projectId: "{{ project_id }}"
+            labels:
+              environment: "{{ environment }}"
+              app: "{{ app_name }}"
       register: namespace_result
 
     - name: Display namespace creation result
       debug:
-        msg: "Created namespace: {{ namespace_result.json.name }}"
+        msg: "Created namespace: {{ namespace_result.result.metadata.name }}"
 ```
 
 ## Step 4: Deploy an Application with Ansible
@@ -85,15 +85,16 @@ clusters:
   gather_facts: false
 
   tasks:
-    - name: Apply Kubernetes manifests using kubectl
+    - name: Apply Kubernetes manifests
       kubernetes.core.k8s:
         kubeconfig: "{{ kubeconfig_path }}"
         state: present
-        definition: "{{ lookup('template', 'templates/deployment.yaml.j2') }}"
+        template: templates/deployment.yaml.j2
 
     - name: Wait for deployment to be ready
       kubernetes.core.k8s_info:
         kubeconfig: "{{ kubeconfig_path }}"
+        api_version: apps/v1
         kind: Deployment
         name: "{{ app_name }}"
         namespace: "{{ app_namespace }}"
@@ -109,7 +110,7 @@ clusters:
         kind: Pod
         namespace: "{{ app_namespace }}"
         label_selectors:
-          - app={{ app_name }}
+          - "app = {{ app_name }}"
       register: pod_info
 
     - name: Print pod status
@@ -121,16 +122,17 @@ clusters:
 ## Step 5: Run the Playbook
 
 ```bash
-# Set the Rancher token as an environment variable
-export RANCHER_TOKEN="token-xxxxx:yyyyy"
+# Set the kubeconfig used by the playbooks
+export KUBECONFIG="$HOME/.kube/rancher.yaml"
 
 # Run the provisioning playbook
 ansible-playbook playbooks/provision-namespace.yml \
-  -e "cluster_id=c-m-abc123" \
+  -e "kubeconfig_path=$KUBECONFIG" \
   -e "project_id=c-m-abc123:p-12345"
 
 # Deploy the application
 ansible-playbook playbooks/deploy-app.yml \
+  -e "kubeconfig_path=$KUBECONFIG" \
   -e "app_name=myapp" \
   -e "app_namespace=myapp-production"
 ```
