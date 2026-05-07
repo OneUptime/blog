@@ -97,7 +97,7 @@ Launch the load balancer:
 podman run -d \
   --name nginx-lb \
   --network lb-net \
-  -p 80:80 \
+  -p 8080:80 \
   -v ~/nginx-lb/conf.d:/etc/nginx/conf.d:ro,Z \
   docker.io/library/nginx:alpine
 ```
@@ -106,7 +106,7 @@ Test load distribution:
 
 ```bash
 for i in $(seq 1 6); do
-  curl -s http://localhost
+  curl -s http://localhost:8080
 done
 ```
 
@@ -225,7 +225,7 @@ Key configuration details:
 podman run -d \
   --name haproxy-lb \
   --network lb-net \
-  -p 80:80 \
+  -p 8081:80 \
   -v ~/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro,Z \
   docker.io/library/haproxy:alpine
 ```
@@ -258,7 +258,7 @@ balance random
 
 ### HAProxy Stats Dashboard
 
-Access the HAProxy stats page at `http://localhost/stats`. This shows real-time information about each backend, including connection counts, response times, and health status.
+Access the HAProxy stats page at `http://localhost:8081/stats`. This shows real-time information about each backend, including connection counts, response times, and health status.
 
 ## Scaling Backends Dynamically
 
@@ -286,7 +286,7 @@ podman exec nginx-lb nginx -s reload
 For HAProxy, add the server line and reload:
 
 ```bash
-podman exec haproxy-lb kill -s HUP 1
+podman kill --signal HUP haproxy-lb
 ```
 
 ### Removing a Backend
@@ -351,17 +351,16 @@ cat > ~/lb-monitor.sh << 'SCRIPT'
 #!/bin/bash
 echo "=== Backend Status ==="
 for i in 1 2 3; do
-  STATUS=$(podman exec nginx-lb curl -s -o /dev/null -w "%{http_code}" http://backend-$i:80/ 2>/dev/null)
-  if [ "$STATUS" = "200" ]; then
-    echo "backend-$i: UP (HTTP $STATUS)"
+  if podman exec nginx-lb wget -q -O /dev/null http://backend-$i:80/ 2>/dev/null; then
+    echo "backend-$i: UP"
   else
-    echo "backend-$i: DOWN (HTTP $STATUS)"
+    echo "backend-$i: DOWN"
   fi
 done
 
 echo ""
 echo "=== Load Balancer Response ==="
-curl -s -o /dev/null -w "HTTP %{http_code} - Response time: %{time_total}s\n" http://localhost
+curl -s -o /dev/null -w "HTTP %{http_code} - Response time: %{time_total}s\n" http://localhost:8080
 SCRIPT
 chmod +x ~/lb-monitor.sh
 ```
@@ -382,7 +381,7 @@ Create a Quadlet file for the load balancer:
 ContainerName=nginx-lb
 Image=docker.io/library/nginx:alpine
 Network=lb-net
-PublishPort=80:80
+PublishPort=8080:80
 Volume=%h/nginx-lb/conf.d:/etc/nginx/conf.d:ro,Z
 
 [Service]
