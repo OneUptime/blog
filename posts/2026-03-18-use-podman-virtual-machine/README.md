@@ -37,7 +37,7 @@ On Ubuntu or Debian:
 
 ```bash
 sudo apt install -y qemu-kvm libvirt-daemon-system libvirt-clients \
-  bridge-utils virt-manager
+  bridge-utils virt-manager cloud-image-utils
 sudo usermod -aG libvirt $USER
 sudo usermod -aG kvm $USER
 ```
@@ -45,7 +45,7 @@ sudo usermod -aG kvm $USER
 On Fedora:
 
 ```bash
-sudo dnf install -y @virtualization
+sudo dnf install -y @virtualization cloud-utils-cloud-localds
 sudo systemctl enable --now libvirtd
 ```
 
@@ -56,11 +56,11 @@ Download a cloud image and create a VM:
 ```bash
 # Download Fedora cloud image
 
-wget https://download.fedoraproject.org/pub/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-40-1.14.x86_64.qcow2
+wget https://dl.fedoraproject.org/pub/fedora/linux/releases/42/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-42-1.1.x86_64.qcow2
 
 # Create a larger disk from the cloud image
 qemu-img create -f qcow2 -F qcow2 \
-  -b Fedora-Cloud-Base-40-1.14.x86_64.qcow2 \
+  -b Fedora-Cloud-Base-Generic-42-1.1.x86_64.qcow2 \
   podman-vm.qcow2 20G
 ```
 
@@ -75,14 +75,13 @@ users:
     groups: users
     shell: /bin/bash
     ssh_authorized_keys:
-      - $(cat ~/.ssh/id_rsa.pub)
+      - $(cat ~/.ssh/*.pub | head -n 1)
 packages:
   - podman
   - podman-compose
   - slirp4netns
+  - passt
   - fuse-overlayfs
-runcmd:
-  - systemctl enable --now podman.socket
 EOF
 
 cloud-localds cloud-init.iso cloud-init.yaml
@@ -95,9 +94,9 @@ qemu-system-x86_64 \
   -m 4096 \
   -smp 2 \
   -enable-kvm \
-  -drive file=podman-vm.qcow2,format=qcow2 \
+  -drive file=podman-vm.qcow2,format=qcow2,if=virtio \
   -cdrom cloud-init.iso \
-  -net nic -net user,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080 \
+  -nic user,model=virtio,hostfwd=tcp::2222-:22,hostfwd=tcp::8080-:8080 \
   -nographic
 ```
 
@@ -113,9 +112,9 @@ ssh -p 2222 developer@localhost
 
 ### Creating the VM
 
-1. Download an ISO for your preferred Linux distribution (Ubuntu Server 24.04 or Fedora Server 40 recommended).
+1. Download an ISO for your preferred Linux distribution (Ubuntu Server 24.04 or Fedora Server 42 recommended).
 2. Create a new VM in VirtualBox with at least 2 CPUs, 4GB RAM, and 20GB disk.
-3. Enable nested virtualization in VM settings:
+3. Nested virtualization is not required for Podman. Only enable it if you plan to run another hypervisor inside the guest:
 
 ```bash
 VBoxManage modifyvm "PodmanVM" --nested-hw-virt on
@@ -127,10 +126,10 @@ After installing the Linux distribution, SSH into the VM and install Podman:
 
 ```bash
 # Ubuntu/Debian
-sudo apt update && sudo apt install -y podman
+sudo apt update && sudo apt install -y podman passt
 
 # Fedora
-sudo dnf install -y podman
+sudo dnf install -y podman passt
 ```
 
 ### Port Forwarding
@@ -149,13 +148,13 @@ Mount a host directory inside the VM for sharing code:
 ```bash
 VBoxManage sharedfolder add "PodmanVM" \
   --name "projects" \
-  --hostpath "/home/user/projects" \
-  --automount
+  --hostpath "/home/user/projects"
 ```
 
-Inside the VM, mount the shared folder:
+Inside the VM, after installing VirtualBox Guest Additions, mount the shared folder:
 
 ```bash
+sudo mkdir -p /mnt/projects
 sudo mount -t vboxsf projects /mnt/projects
 ```
 
@@ -218,7 +217,7 @@ For containers that need to communicate with each other inside the VM:
 podman network create devnet
 
 podman run -d --name api --network devnet \
-  docker.io/library/node:20-alpine sleep infinity
+  docker.io/library/node:20-alpine tail -f /dev/null
 
 podman run -d --name db --network devnet \
   -e POSTGRES_PASSWORD=secret \
@@ -228,7 +227,7 @@ podman run -d --name db --network devnet \
 Containers on the same Podman network can reach each other by name:
 
 ```bash
-podman exec api ping db
+podman exec api ping -c 1 db
 ```
 
 ---
@@ -240,15 +239,14 @@ One of the biggest advantages of running Podman in a VM is the ability to snapsh
 ### With QEMU/KVM
 
 ```bash
-# Create a snapshot
-virsh snapshot-create-as PodmanVM clean-state \
-  --description "Fresh Podman environment with base images"
+# With the VM powered off, create a snapshot
+qemu-img snapshot -c clean-state podman-vm.qcow2
 
 # List snapshots
-virsh snapshot-list PodmanVM
+qemu-img snapshot -l podman-vm.qcow2
 
 # Restore a snapshot
-virsh snapshot-revert PodmanVM clean-state
+qemu-img snapshot -a clean-state podman-vm.qcow2
 ```
 
 ### With VirtualBox
@@ -283,8 +281,7 @@ For QEMU/KVM, use virtio drivers for better disk and network performance:
 ```bash
 qemu-system-x86_64 \
   -drive file=podman-vm.qcow2,format=qcow2,if=virtio \
-  -net nic,model=virtio \
-  -net user,hostfwd=tcp::2222-:22 \
+  -nic user,model=virtio,hostfwd=tcp::2222-:22 \
   ...
 ```
 
@@ -296,15 +293,15 @@ Inside the VM, use the overlay storage driver for best performance:
 podman info --format '{{.Store.GraphDriverName}}'
 ```
 
-If it shows `vfs` instead of `overlay`, configure it:
+If it shows `vfs` instead of `overlay`, reset rootless storage before changing drivers:
 
 ```bash
+podman system reset
 mkdir -p ~/.config/containers
 cat > ~/.config/containers/storage.conf <<EOF
 [storage]
 driver = "overlay"
 EOF
-podman system reset
 ```
 
 ---
@@ -316,7 +313,7 @@ For reproducible VM environments, use Vagrant:
 ```ruby
 # Vagrantfile
 Vagrant.configure("2") do |config|
-  config.vm.box = "fedora/40-cloud-base"
+  config.vm.box = "fedora/42-cloud-base"
   config.vm.hostname = "podman-dev"
 
   config.vm.network "forwarded_port", guest: 8080, host: 8080
@@ -328,7 +325,7 @@ Vagrant.configure("2") do |config|
   end
 
   config.vm.provision "shell", inline: <<-SHELL
-    dnf install -y podman podman-compose slirp4netns
+    dnf install -y podman podman-compose passt
     loginctl enable-linger vagrant
   SHELL
 end
