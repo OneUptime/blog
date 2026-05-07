@@ -57,7 +57,7 @@ podman save docker.io/library/nginx:latest | gzip > /backups/images/nginx-latest
 You can save multiple images into a single archive:
 
 ```bash
-podman save -o /backups/images/web-stack.tar \
+podman save --multi-image-archive -o /backups/images/web-stack.tar \
     docker.io/library/nginx:latest \
     docker.io/library/redis:7 \
     docker.io/library/postgres:16
@@ -72,15 +72,18 @@ Tags can change, but image IDs are immutable. For critical images, save by ID to
 ```bash
 # Get the image ID
 IMAGE_ID=$(podman inspect docker.io/library/nginx:latest --format '{{.Id}}')
+IMAGE_ID_SHORT=${IMAGE_ID#sha256:}
 
 # Save by ID
-podman save -o /backups/images/nginx-${IMAGE_ID:0:12}.tar "$IMAGE_ID"
+podman save -o /backups/images/nginx-${IMAGE_ID_SHORT:0:12}.tar "$IMAGE_ID"
 ```
 
 When saving by ID, include a manifest file so you know what the image was:
 
 ```bash
-podman inspect docker.io/library/nginx:latest > /backups/images/nginx-${IMAGE_ID:0:12}-manifest.json
+IMAGE_ID=$(podman inspect docker.io/library/nginx:latest --format '{{.Id}}')
+IMAGE_ID_SHORT=${IMAGE_ID#sha256:}
+podman inspect docker.io/library/nginx:latest > /backups/images/nginx-${IMAGE_ID_SHORT:0:12}-manifest.json
 ```
 
 ## Batch Backup of All Images
@@ -181,7 +184,7 @@ podman tag docker.io/library/nginx:latest localhost:5000/nginx:latest
 podman push localhost:5000/nginx:latest --tls-verify=false
 ```
 
-For rootless Podman, you may need to add the registry to the unqualified search list or configure it as an insecure registry in `/etc/containers/registries.conf`:
+To avoid passing `--tls-verify=false` each time, configure the local registry as insecure in `/etc/containers/registries.conf`, or in `$HOME/.config/containers/registries.conf` for a rootless-only configuration:
 
 ```toml
 [[registry]]
@@ -204,7 +207,7 @@ For small environments or air-gapped systems, `podman save` is simpler. For larg
 
 ## Verifying Image Backups
 
-Verify that saved images can be loaded successfully:
+Verify that compressed saved images can be loaded successfully:
 
 ```bash
 #!/bin/bash
@@ -229,8 +232,8 @@ IMAGE_NAME=$(echo "$LOADED" | grep "Loaded image" | sed 's/Loaded image: //')
 if [ -n "$IMAGE_NAME" ]; then
     echo "Loaded successfully: $IMAGE_NAME"
 
-    # Verify the image works by running a simple command
-    podman run --rm "$IMAGE_NAME" echo "Image verification passed" 2>/dev/null
+    # Verify the image exists in local storage after loading
+    podman image exists "$IMAGE_NAME"
 
     # Clean up the test image if desired
     # podman rmi "$IMAGE_NAME"
