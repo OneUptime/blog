@@ -24,7 +24,10 @@ Add a Prometheus client library to your application to expose metrics. Here are 
 package main
 
 import (
+    "log"
     "net/http"
+    "time"
+
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -58,16 +61,37 @@ func init() {
 }
 
 func main() {
-    http.Handle("/metrics", promhttp.Handler())
-    http.ListenAndServe(":9090", nil)
+    appMux := http.NewServeMux()
+    appMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        start := time.Now()
+        activeConnections.Inc()
+        defer activeConnections.Dec()
+
+        w.WriteHeader(http.StatusOK)
+        _, _ = w.Write([]byte("ok\n"))
+
+        httpRequestsTotal.WithLabelValues(r.Method, "/", "200").Inc()
+        httpRequestDuration.WithLabelValues(r.Method, "/").Observe(time.Since(start).Seconds())
+    })
+
+    metricsMux := http.NewServeMux()
+    metricsMux.Handle("/metrics", promhttp.Handler())
+
+    go func() {
+        log.Fatal(http.ListenAndServe(":9090", metricsMux))
+    }()
+
+    log.Fatal(http.ListenAndServe(":8080", appMux))
 }
 ```
 
 ### Python (Flask)
 
 ```python
-from flask import Flask
-from prometheus_client import Counter, Histogram, Gauge, generate_latest
+import time
+
+from flask import Flask, request
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
 
 app = Flask(__name__)
 
@@ -83,14 +107,25 @@ REQUEST_LATENCY = Histogram(
     ['method', 'endpoint']
 )
 
-ACTIVE_USERS = Gauge(
-    'active_users',
-    'Number of active users'
+ACTIVE_CONNECTIONS = Gauge(
+    'active_connections',
+    'Number of active connections'
 )
 
-@app.route('/metrics')
-def metrics():
-    return generate_latest()
+@app.route('/')
+def index():
+    start = time.time()
+    ACTIVE_CONNECTIONS.inc()
+    try:
+        return 'ok', 200
+    finally:
+        REQUEST_COUNT.labels(request.method, request.path, '200').inc()
+        REQUEST_LATENCY.labels(request.method, request.path).observe(time.time() - start)
+        ACTIVE_CONNECTIONS.dec()
+
+if __name__ == '__main__':
+    start_http_server(9090)
+    app.run(host='0.0.0.0', port=8080)
 ```
 
 ### Node.js
@@ -100,6 +135,7 @@ const client = require('prom-client');
 const express = require('express');
 
 const app = express();
+const metricsApp = express();
 const register = new client.Registry();
 
 client.collectDefaultMetrics({ register });
@@ -118,12 +154,33 @@ const httpRequestDuration = new client.Histogram({
   registers: [register],
 });
 
-app.get('/metrics', async (req, res) => {
+const activeConnections = new client.Gauge({
+  name: 'active_connections',
+  help: 'Number of active connections',
+  registers: [register],
+});
+
+app.get('/', (req, res) => {
+  const start = process.hrtime.bigint();
+  activeConnections.inc();
+
+  res.on('finish', () => {
+    const duration = Number(process.hrtime.bigint() - start) / 1e9;
+    httpRequestsTotal.labels(req.method, '/', String(res.statusCode)).inc();
+    httpRequestDuration.labels(req.method, '/').observe(duration);
+    activeConnections.dec();
+  });
+
+  res.send('ok');
+});
+
+metricsApp.get('/metrics', async (req, res) => {
   res.set('Content-Type', register.contentType);
   res.end(await register.metrics());
 });
 
-app.listen(9090);
+app.listen(8080);
+metricsApp.listen(9090);
 ```
 
 ## Step 2: Deploy Your Application with Metrics Port
@@ -204,7 +261,7 @@ kubectl apply -f my-app-servicemonitor.yaml
 kubectl port-forward -n cattle-monitoring-system svc/rancher-monitoring-prometheus 9090:9090
 ```
 
-Open Prometheus UI and query your custom metric:
+Send a few requests to your application, then open Prometheus UI and query your custom metric:
 
 ```promql
 http_requests_total{job="my-app"}
@@ -255,7 +312,7 @@ spec:
 
         - alert: NoActiveConnections
           expr: |
-            active_connections{job="my-app"} == 0
+            sum(active_connections{job="my-app"}) == 0
           for: 5m
           labels:
             severity: warning
@@ -301,11 +358,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: my-app-dashboard
-  namespace: cattle-monitoring-system
+  namespace: cattle-dashboards
   labels:
     grafana_dashboard: "1"
-  annotations:
-    grafana_folder: "Application Dashboards"
 data:
   my-app.json: |
     {
@@ -356,7 +411,7 @@ data:
 
 ## Step 8: Use Annotations for Auto-Discovery
 
-An alternative to creating ServiceMonitors manually is to use pod annotations for metric discovery. Configure additional scrape configs in Prometheus:
+An alternative to creating ServiceMonitors manually is to use pod annotations for metric discovery. Configure additional scrape configs in the `rancher-monitoring` Helm values:
 
 ```yaml
 prometheus:
