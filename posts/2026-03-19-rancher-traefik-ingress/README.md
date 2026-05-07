@@ -19,7 +19,7 @@ Traefik is a modern, cloud-native reverse proxy and ingress controller that inte
 
 ## Step 1: Check If Traefik Is Already Installed
 
-K3s clusters deployed through Rancher include Traefik by default. Verify its status:
+K3s clusters deployed through Rancher include Traefik by default unless it has been disabled. Verify its status:
 
 ```bash
 kubectl get pods -n kube-system | grep traefik
@@ -41,7 +41,7 @@ helm install traefik traefik/traefik \
   --create-namespace \
   --set ports.web.port=8000 \
   --set ports.websecure.port=8443 \
-  --set service.type=LoadBalancer
+  --set service.spec.type=LoadBalancer
 ```
 
 For bare-metal setups:
@@ -50,7 +50,7 @@ For bare-metal setups:
 helm install traefik traefik/traefik \
   --namespace traefik \
   --create-namespace \
-  --set service.type=NodePort \
+  --set service.spec.type=NodePort \
   --set ports.web.nodePort=30080 \
   --set ports.websecure.nodePort=30443
 ```
@@ -100,7 +100,7 @@ kubectl apply -f my-app-ingress.yaml
 
 ## Step 5: Use Traefik IngressRoute CRD
 
-Traefik provides its own Custom Resource Definition (CRD) called IngressRoute, which offers more advanced features:
+Traefik provides its own Custom Resource Definition (CRD) called IngressRoute, which offers more advanced features. These examples use the current `traefik.io/v1alpha1` API group used by Traefik v3:
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
@@ -218,18 +218,9 @@ spec:
       weight: 20
 ```
 
-## Step 9: Enable the Traefik Dashboard
+## Step 9: Access the Traefik Dashboard
 
-The Traefik dashboard provides a visual overview of routes and services:
-
-```bash
-helm upgrade traefik traefik/traefik \
-  --namespace traefik \
-  --set dashboard.enabled=true \
-  --set dashboard.ingressRoute=true
-```
-
-Access the dashboard using port forwarding:
+The Traefik dashboard provides a visual overview of routes and services. The Helm chart does not expose it by default, so for quick local access use port forwarding:
 
 ```bash
 kubectl port-forward -n traefik $(kubectl get pods -n traefik -l app.kubernetes.io/name=traefik -o name) 9000:9000
@@ -239,7 +230,7 @@ Then open `http://localhost:9000/dashboard/` in your browser.
 
 ## Step 10: Configure HTTPS Redirect
 
-Force all HTTP traffic to HTTPS:
+Redirect HTTP traffic for a route to HTTPS:
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
@@ -250,6 +241,7 @@ metadata:
 spec:
   redirectScheme:
     scheme: https
+    port: "443"
     permanent: true
 ---
 apiVersion: traefik.io/v1alpha1
@@ -266,8 +258,8 @@ spec:
     middlewares:
     - name: redirect-https
     services:
-    - name: noop@internal
-      kind: TraefikService
+    - name: my-app-service
+      port: 80
 ```
 
 ## Troubleshooting
