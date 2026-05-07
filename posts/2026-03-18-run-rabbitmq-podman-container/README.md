@@ -8,7 +8,7 @@ Description: Learn how to run RabbitMQ in a Podman container with the management
 
 ---
 
-> RabbitMQ in Podman gives you a production-ready message broker with a built-in management dashboard running in a rootless container.
+> RabbitMQ in Podman gives you a full-featured message broker with a built-in management dashboard running in a rootless container.
 
 RabbitMQ is one of the most widely deployed open-source message brokers, supporting AMQP, MQTT, and STOMP protocols. Running it in a Podman container lets you spin up a message broker instantly with the management UI enabled, persistent message storage, and custom configurations. This guide covers setup, the management plugin, persistence, and basic messaging operations.
 
@@ -21,7 +21,7 @@ Download the official RabbitMQ image with the management plugin included.
 ```bash
 # Pull RabbitMQ with the management UI
 
-podman pull docker.io/library/rabbitmq:3-management
+podman pull docker.io/library/rabbitmq:4-management
 
 # Verify the image
 podman images | grep rabbitmq
@@ -39,7 +39,7 @@ podman run -d \
   -p 15672:15672 \
   -e RABBITMQ_DEFAULT_USER=admin \
   -e RABBITMQ_DEFAULT_PASS=admin-secret \
-  rabbitmq:3-management
+  docker.io/library/rabbitmq:4-management
 
 # Check that the container is running
 podman ps
@@ -65,7 +65,7 @@ curl -s -u admin:admin-secret http://localhost:15672/api/overview | python3 -m j
 
 ## Persistent Message Storage
 
-Use a named volume to persist messages and configuration.
+Use a named volume to persist broker data.
 
 ```bash
 # Create a volume for RabbitMQ data
@@ -79,7 +79,7 @@ podman run -d \
   -e RABBITMQ_DEFAULT_USER=admin \
   -e RABBITMQ_DEFAULT_PASS=admin-secret \
   -v rabbitmq-data:/var/lib/rabbitmq:Z \
-  rabbitmq:3-management
+  docker.io/library/rabbitmq:4-management
 
 # Verify persistence
 podman volume inspect rabbitmq-data
@@ -125,8 +125,8 @@ podman run -d \
   -p 5674:5672 \
   -p 15674:15672 \
   -v ~/rabbitmq-config/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:Z \
-  -v rabbitmq-data:/var/lib/rabbitmq:Z \
-  rabbitmq:3-management
+  -v rabbitmq-custom-data:/var/lib/rabbitmq:Z \
+  docker.io/library/rabbitmq:4-management
 ```
 
 ## Working with Queues and Messages
@@ -148,7 +148,7 @@ curl -s -u admin:admin-secret \
   -X POST "http://localhost:15672/api/exchanges/%2F/amq.default/publish" \
   -H 'Content-Type: application/json' \
   -d '{
-    "properties": {},
+    "properties": {"delivery_mode": 2},
     "routing_key": "my-task-queue",
     "payload": "Hello from Podman RabbitMQ!",
     "payload_encoding": "string"
@@ -178,11 +178,11 @@ podman exec my-rabbitmq rabbitmq-plugins list
 # Enable the shovel plugin for message transfer between brokers
 podman exec my-rabbitmq rabbitmq-plugins enable rabbitmq_shovel rabbitmq_shovel_management
 
-# Enable the delayed message exchange plugin (if available)
+# Enable the consistent hash exchange plugin
 podman exec my-rabbitmq rabbitmq-plugins enable rabbitmq_consistent_hash_exchange
 
 # Verify enabled plugins
-podman exec my-rabbitmq rabbitmq-plugins list --enabled
+podman exec my-rabbitmq rabbitmq-plugins list -e
 ```
 
 ## Managing the Container
@@ -202,9 +202,9 @@ podman start my-rabbitmq
 
 # Remove containers and volumes
 podman rm -f my-rabbitmq rabbitmq-persistent rabbitmq-custom
-podman volume rm rabbitmq-data
+podman volume rm rabbitmq-data rabbitmq-custom-data
 ```
 
 ## Summary
 
-Running RabbitMQ in a Podman container gives you a full-featured message broker with the management dashboard available out of the box. The management UI on port 15672 provides visual queue monitoring, connection tracking, and message publishing. Named volumes persist your queues and messages, while custom configuration files let you tune memory limits, connection settings, and virtual hosts. Podman's rootless execution adds a security layer, making this setup suitable for development, testing, and lightweight production messaging.
+Running RabbitMQ in a Podman container gives you a full-featured message broker with the management dashboard available out of the box. The management UI on port 15672 provides visual queue monitoring, connection tracking, and message publishing. Named volumes persist broker data, including durable queues and persistent messages, while custom configuration files let you tune memory limits, connection settings, and virtual hosts. Podman's rootless execution adds a security layer, making this setup suitable for development, testing, and local messaging environments.
