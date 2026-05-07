@@ -19,18 +19,33 @@ Container images often contain vulnerabilities inherited from base images, outda
 Install Trivy on your system:
 
 ```bash
-# On Fedora/RHEL
+# On Fedora
 
 sudo dnf install -y trivy
 
+# On RHEL/CentOS
+cat << EOF | sudo tee -a /etc/yum.repos.d/trivy.repo
+[trivy]
+name=Trivy repository
+baseurl=https://aquasecurity.github.io/trivy-repo/rpm/releases/\$basearch/
+gpgcheck=1
+enabled=1
+gpgkey=https://aquasecurity.github.io/trivy-repo/rpm/public.key
+EOF
+sudo dnf -y update
+sudo dnf -y install trivy
+
 # On Ubuntu/Debian
-sudo apt-get install wget gnupg lsb-release
+sudo apt-get install wget gnupg
 wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
 echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
 sudo apt-get update && sudo apt-get install trivy
 
+# Enable the rootless Podman API socket for local image scanning
+systemctl --user enable --now podman.socket
+
 # Or run Trivy itself as a container
-alias trivy="podman run --rm -v /var/run/podman/podman.sock:/var/run/docker.sock:ro -v trivy-cache:/root/.cache/ aquasec/trivy"
+alias trivy="podman run --rm --security-opt label=disable -v $XDG_RUNTIME_DIR/podman/podman.sock:/var/run/docker.sock -v trivy-cache:/root/.cache/ aquasec/trivy"
 ```
 
 ## Scanning Podman Images
@@ -38,20 +53,20 @@ alias trivy="podman run --rm -v /var/run/podman/podman.sock:/var/run/docker.sock
 Scan an image for vulnerabilities:
 
 ```bash
-# Scan a local Podman image
-trivy image myapp:latest
+# Scan a local Podman image (requires podman.socket or podman system service)
+trivy image --image-src podman myapp:latest
 
 # Scan with specific severity filter
-trivy image --severity HIGH,CRITICAL myapp:latest
+trivy image --image-src podman --severity HIGH,CRITICAL myapp:latest
 
 # Scan a remote image
 trivy image docker.io/nginx:latest
 
 # Output in JSON format
-trivy image --format json --output results.json myapp:latest
+trivy image --image-src podman --format json --output results.json myapp:latest
 
 # Output in table format with details
-trivy image --format table myapp:latest
+trivy image --image-src podman --format table myapp:latest
 ```
 
 ## Integrating Scanning into Build Workflow
@@ -73,6 +88,7 @@ podman build -t "${IMAGE_NAME}:${IMAGE_TAG}" .
 
 echo "Scanning image for vulnerabilities..."
 if trivy image \
+  --image-src podman \
   --severity "$SEVERITY_THRESHOLD" \
   --exit-code 1 \
   --no-progress \
@@ -80,7 +96,7 @@ if trivy image \
     echo "Scan passed: no $SEVERITY_THRESHOLD vulnerabilities found"
 else
     echo "Scan FAILED: $SEVERITY_THRESHOLD vulnerabilities detected"
-    echo "Run 'trivy image ${IMAGE_NAME}:${IMAGE_TAG}' for details"
+    echo "Run 'trivy image --image-src podman ${IMAGE_NAME}:${IMAGE_TAG}' for details"
     exit 1
 fi
 ```
@@ -98,16 +114,16 @@ Trivy can scan for multiple types of issues:
 
 ```bash
 # Scan for vulnerabilities only
-trivy image --scanners vuln myapp:latest
+trivy image --image-src podman --scanners vuln myapp:latest
 
 # Scan for misconfigurations in the Containerfile
-trivy config .
+trivy config --misconfig-scanners dockerfile .
 
 # Scan for exposed secrets
-trivy image --scanners secret myapp:latest
+trivy image --image-src podman --scanners secret myapp:latest
 
 # Scan for all issue types
-trivy image --scanners vuln,secret,misconfig myapp:latest
+trivy image --image-src podman --scanners vuln,secret,misconfig myapp:latest
 
 # Scan a filesystem (useful for scanning before building)
 trivy fs --scanners vuln,secret .
@@ -122,10 +138,14 @@ Create a policy file to ignore specific vulnerabilities or set thresholds:
 vulnerabilities:
   - id: CVE-2023-12345
     statement: "Not exploitable in our configuration"
-    expires: 2025-12-31
+    expired_at: 2025-12-31
 
   - id: CVE-2023-67890
     statement: "Mitigated by network policy"
+```
+
+```bash
+trivy image --image-src podman --ignorefile .trivyignore.yaml myapp:latest
 ```
 
 Or use a simple ignore file:
@@ -138,7 +158,7 @@ CVE-2023-67890
 ```
 
 ```bash
-trivy image --ignorefile .trivyignore myapp:latest
+trivy image --image-src podman --ignorefile .trivyignore myapp:latest
 ```
 
 ## Scanning in CI/CD Pipelines
@@ -153,6 +173,10 @@ on: [push, pull_request]
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -160,18 +184,21 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y podman
 
       - name: Build image
-        run: podman build -t myapp:${{ github.sha }} .
+        run: podman build -t localhost/myapp:${{ github.sha }} .
+
+      - name: Save image as a tar archive
+        run: podman save -o myapp.tar localhost/myapp:${{ github.sha }}
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: myapp:${{ github.sha }}
+          input: /github/workspace/myapp.tar
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -184,18 +211,20 @@ Create detailed vulnerability reports:
 ```bash
 # HTML report
 trivy image --format template \
-  --template "@/usr/local/share/trivy/templates/html.tpl" \
+  --image-src podman \
+  --template "@contrib/html.tpl" \
   --output report.html \
   myapp:latest
 
 # JSON report for processing
-trivy image --format json --output scan-results.json myapp:latest
+trivy image --image-src podman --format json --output scan-results.json myapp:latest
 
 # SARIF format for GitHub Security
-trivy image --format sarif --output results.sarif myapp:latest
+trivy image --image-src podman --format sarif --output results.sarif myapp:latest
 
 # Custom template
 trivy image --format template \
+  --image-src podman \
   --template '{{range .Results}}{{range .Vulnerabilities}}{{.VulnerabilityID}} {{.Severity}} {{.PkgName}} {{.InstalledVersion}} -> {{.FixedVersion}}{{"\n"}}{{end}}{{end}}' \
   myapp:latest
 ```
@@ -207,13 +236,14 @@ Scan base images to choose the most secure foundation:
 ```bash
 #!/bin/bash
 # compare-base-images.sh
+# Requires jq
 
 IMAGES=(
     "alpine:3.19"
     "ubuntu:24.04"
     "fedora:40"
     "debian:bookworm-slim"
-    "distroless/static-debian12"
+    "gcr.io/distroless/static-debian12"
 )
 
 echo "Base Image Vulnerability Comparison"
@@ -221,8 +251,8 @@ echo "===================================="
 
 for image in "${IMAGES[@]}"; do
     podman pull "$image" > /dev/null 2>&1
-    CRITICAL=$(trivy image --severity CRITICAL --quiet --format json "$image" | jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0')
-    HIGH=$(trivy image --severity HIGH --quiet --format json "$image" | jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0')
+    CRITICAL=$(trivy image --image-src podman --severity CRITICAL --quiet --format json "$image" | jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0')
+    HIGH=$(trivy image --image-src podman --severity HIGH --quiet --format json "$image" | jq '[.Results[]?.Vulnerabilities // [] | length] | add // 0')
     echo "$image - Critical: $CRITICAL, High: $HIGH"
 done
 ```
@@ -232,7 +262,7 @@ done
 Scan your Containerfile for security best practices:
 
 ```bash
-trivy config --severity HIGH,CRITICAL .
+trivy config --misconfig-scanners dockerfile --severity HIGH,CRITICAL .
 ```
 
 Common issues Trivy detects:
@@ -258,10 +288,10 @@ Generate a Software Bill of Materials alongside scanning:
 
 ```bash
 # Generate SBOM in SPDX format
-trivy image --format spdx-json --output sbom.spdx.json myapp:latest
+trivy image --image-src podman --format spdx-json --output sbom.spdx.json myapp:latest
 
 # Generate SBOM in CycloneDX format
-trivy image --format cyclonedx --output sbom.cdx.json myapp:latest
+trivy image --image-src podman --format cyclonedx --output sbom.cdx.json myapp:latest
 
 # Scan an existing SBOM for vulnerabilities
 trivy sbom sbom.cdx.json
@@ -274,12 +304,13 @@ Create a workflow that suggests fixes for vulnerabilities:
 ```bash
 #!/bin/bash
 # remediate.sh
+# Requires jq and column
 
 IMAGE="$1"
 
 echo "Scanning $IMAGE for fixable vulnerabilities..."
 
-trivy image --format json "$IMAGE" | jq -r '
+trivy image --image-src podman --format json "$IMAGE" | jq -r '
   .Results[]? |
   .Vulnerabilities[]? |
   select(.FixedVersion != null and .FixedVersion != "") |
