@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Self-Hosting, Container, Privacy, Open Source
 
-Description: Learn how to deploy self-hosted alternatives to cloud services using Podman, including email, git hosting, project management, and collaboration tools in rootless containers.
+Description: Learn how to deploy self-hosted alternatives to cloud services using Podman, including git hosting, project management, note-taking, monitoring, and collaboration tools in rootless containers.
 
 ---
 
@@ -12,13 +12,13 @@ Description: Learn how to deploy self-hosted alternatives to cloud services usin
 
 Self-hosting means running your own instances of services that you would otherwise rely on cloud providers for. This gives you data sovereignty, privacy, and often better performance for local use. Podman is well suited for self-hosting because it requires no privileged daemon, supports automatic updates, and integrates with systemd for reliable service management.
 
-This guide covers deploying popular self-hosted services with Podman, from git hosting to project management and communication tools.
+This guide covers deploying popular self-hosted services with Podman, from git hosting to project management, documentation, and monitoring tools.
 
 ---
 
 ## Why Self-Host with Podman
 
-Self-hosting with Podman provides three key advantages. First, rootless containers mean no service runs with root privileges, limiting the damage from any security issue. Second, Podman's daemonless architecture means fewer moving parts and less resource overhead. Third, Quadlet integration ensures your services start on boot and restart on failure without additional tooling.
+Self-hosting with Podman provides three key advantages. First, rootless Podman runs containers without a root-privileged daemon, and container processes cannot have more privileges than the user who launched them. Second, Podman's daemonless architecture means fewer moving parts and less resource overhead. Third, Quadlet integration lets you manage startup and restarts with systemd without additional tooling.
 
 ## Git Hosting with Gitea
 
@@ -56,9 +56,13 @@ A self-hosted bookmark manager:
 podman run -d \
   --name linkding \
   -p 9090:9090 \
+  -e LD_SUPERUSER_NAME=admin \
+  -e LD_SUPERUSER_PASSWORD=change-this-password \
   -v linkding-data:/etc/linkding/data:Z \
   docker.io/sissbruecker/linkding:latest
 ```
+
+Open `http://localhost:9090` and sign in with the configured superuser.
 
 ## Note-Taking with Outline
 
@@ -82,13 +86,25 @@ podman run -d --pod outline \
 podman run -d --pod outline \
   --name outline-app \
   -e DATABASE_URL=postgres://outline:outlinepass@127.0.0.1:5432/outline \
+  -e PGSSLMODE=disable \
   -e REDIS_URL=redis://127.0.0.1:6379 \
   -e URL=http://localhost:3000 \
+  -e FORCE_HTTPS=false \
   -e SECRET_KEY=$(openssl rand -hex 32) \
   -e UTILS_SECRET=$(openssl rand -hex 32) \
+  -e FILE_STORAGE=local \
+  -e FILE_STORAGE_LOCAL_ROOT_DIR=/var/lib/outline/data \
+  -e OIDC_CLIENT_ID=outline \
+  -e OIDC_CLIENT_SECRET=replace-with-your-client-secret \
+  -e OIDC_AUTH_URI=https://id.example.com/authorize \
+  -e OIDC_TOKEN_URI=https://id.example.com/oauth/token \
+  -e OIDC_USERINFO_URI=https://id.example.com/userinfo \
+  -e 'OIDC_SCOPES=openid profile email' \
   -v outline-data:/var/lib/outline/data:Z \
   docker.io/outlinewiki/outline:latest
 ```
+
+Replace the OIDC placeholder values with your provider details before signing in to Outline.
 
 ## Project Management with Planka
 
@@ -114,8 +130,7 @@ podman run -d --pod planka \
   -e DEFAULT_ADMIN_PASSWORD=adminpass \
   -e DEFAULT_ADMIN_NAME=Admin \
   -e DEFAULT_ADMIN_USERNAME=admin \
-  -v planka-uploads:/app/public/user-avatars:Z \
-  -v planka-attachments:/app/private/attachments:Z \
+  -v planka-data:/app/data:Z \
   ghcr.io/plankanban/planka:latest
 ```
 
@@ -140,9 +155,10 @@ Monitor and display the status of all your services:
 ```bash
 podman run -d \
   --name uptime-kuma \
+  --restart=always \
   -p 3001:3001 \
   -v uptime-kuma-data:/app/data:Z \
-  docker.io/louislam/uptime-kuma:latest
+  docker.io/louislam/uptime-kuma:2
 ```
 
 ## Recipe Manager with Mealie
@@ -154,6 +170,7 @@ podman run -d \
   --name mealie \
   -p 9925:9000 \
   -e ALLOW_SIGNUP=true \
+  -e BASE_URL=http://localhost:9925 \
   -e TZ=America/New_York \
   -v mealie-data:/app/data:Z \
   ghcr.io/mealie-recipes/mealie:latest
@@ -176,6 +193,7 @@ podman run -d --pod shlink \
   --name shlink-app \
   -e DEFAULT_DOMAIN=short.example.com \
   -e IS_HTTPS_ENABLED=false \
+  -e INITIAL_API_KEY=change-this-api-key \
   -e DB_DRIVER=postgres \
   -e DB_HOST=127.0.0.1 \
   -e DB_NAME=shlink \
@@ -184,18 +202,13 @@ podman run -d --pod shlink \
   docker.io/shlinkio/shlink:stable
 ```
 
+Use the `INITIAL_API_KEY` value with the Shlink web client, or generate a key later with `podman exec -it shlink-app shlink api-key:generate`.
+
 ## Automatic Updates
 
-Configure automatic container updates for your self-hosted services:
+Configure automatic container updates for your systemd-managed services. `podman auto-update` relies on containers being started by systemd units, such as the Quadlet example below.
 
 ```bash
-# Label containers for auto-update
-
-podman run -d \
-  --name gitea-app \
-  --label io.containers.autoupdate=registry \
-  docker.io/gitea/gitea:latest
-
 # Check for updates
 podman auto-update --dry-run
 
@@ -232,4 +245,4 @@ WantedBy=default.target
 
 ## Conclusion
 
-Self-hosting with Podman gives you full ownership of your services and data without the complexity of managing a container daemon. Each service runs in an isolated, rootless container that starts automatically on boot through systemd integration. Start with the services you use most frequently and expand your self-hosted infrastructure at your own pace.
+Self-hosting with Podman gives you full ownership of your services and data without the complexity of managing a container daemon. Each service runs in an isolated, rootless container that can be started automatically and restarted on failure through systemd integration. Start with the services you use most frequently and expand your self-hosted infrastructure at your own pace.
