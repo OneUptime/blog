@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Infrastructure as Code, IaC, API Gateway, Serverless
 
-Description: Learn how to create and configure an AWS API Gateway (REST or HTTP API) using OpenTofu, including routes, integrations, and deployment stages.
+Description: Learn how to create and configure an AWS HTTP API Gateway using OpenTofu, including routes, integrations, and deployment stages.
 
 ## Introduction
 
@@ -14,7 +14,7 @@ AWS API Gateway is a fully managed service that enables you to create, publish, 
 
 - OpenTofu v1.6+
 - AWS credentials configured
-- An existing Lambda function or backend service
+- An existing Lambda function
 
 ## Step 1: Configure the Provider
 
@@ -65,7 +65,7 @@ resource "aws_apigatewayv2_api" "main" {
 resource "aws_apigatewayv2_integration" "lambda" {
   api_id             = aws_apigatewayv2_api.main.id
   integration_type   = "AWS_PROXY"
-  integration_uri    = var.lambda_function_arn
+  integration_uri    = var.lambda_invoke_arn
   integration_method = "POST"
 
   # Payload format version
@@ -171,4 +171,4 @@ tofu apply
 
 ## Conclusion
 
-You have successfully set up an AWS HTTP API Gateway using OpenTofu. The configuration includes CORS, Lambda integration, multiple routes, production stage with auto-deploy, and CloudWatch logging. For REST APIs requiring request validation, authorizers, or usage plans, consider `aws_api_gateway_rest_api` resources instead.
+You have successfully set up an AWS HTTP API Gateway using OpenTofu. The configuration includes CORS, Lambda integration, multiple routes, production stage with auto-deploy, and CloudWatch logging. For REST APIs requiring request validation or usage plans, consider `aws_api_gateway_rest_api` resources instead.
