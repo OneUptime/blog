@@ -16,18 +16,18 @@ Working with container registries is a fundamental part of any container workflo
 
 ## How Podman Handles Registry Authentication
 
-Podman stores registry credentials in a JSON file rather than relying on a background daemon. By default, credentials are stored at:
+Podman stores registry credentials in a JSON file rather than relying on a background daemon. On Linux, the default read/write credentials file is:
 
-- Rootful: `/run/containers/0/auth.json`
-- Rootless: `${XDG_RUNTIME_DIR}/containers/auth.json` (typically `/run/user/1000/containers/auth.json`)
+- `${XDG_RUNTIME_DIR}/containers/auth.json` (typically `/run/user/$UID/containers/auth.json`)
 
-You can also find credentials at the legacy Docker-compatible location:
+Podman can also read credentials from other locations, including the persistent containers auth file and the legacy Docker-compatible location:
 
 ```bash
+~/.config/containers/auth.json
 ~/.docker/config.json
 ```
 
-Podman checks both locations. Check where your credentials are stored:
+Check whether Podman has a stored login for a registry:
 
 ```bash
 podman login --get-login docker.io 2>&1
@@ -100,13 +100,13 @@ echo 'export REGISTRY_AUTH_FILE=$HOME/.config/containers/auth.json' >> ~/.bashrc
 
 ### 3. Docker Hub Rate Limiting
 
-Docker Hub imposes pull rate limits: 100 pulls per 6 hours for anonymous users and 200 pulls per 6 hours for authenticated users. If you hit these limits, you will see:
+Docker Hub imposes pull rate limits: 100 pulls per 6 hours for anonymous users and 200 pulls per 6 hours for authenticated Docker Personal users. Docker Pro, Team, and Business users are not subject to the 6-hour pull rate limit. If you hit these limits, you will see:
 
 ```text
 Error: initializing source: toomanyrequests: You have reached your pull rate limit
 ```
 
-Authenticate to increase your limit:
+Authenticate to use your account's limit:
 
 ```bash
 podman login docker.io -u yourusername
@@ -154,7 +154,7 @@ sudo cp my-registry-ca.crt /usr/local/share/ca-certificates/
 sudo update-ca-certificates
 ```
 
-Alternatively, configure Podman to trust the specific registry. Edit `/etc/containers/registries.conf.d/myregistry.conf`:
+Alternatively, configure Podman to allow insecure connections for the specific registry. Edit `/etc/containers/registries.conf.d/myregistry.conf`:
 
 ```toml
 [[registry]]
@@ -189,29 +189,29 @@ For rootless users, create `~/.config/containers/registries.conf` with the same 
 
 ### 6. Credential Helper Issues
 
-Podman supports credential helpers like `docker-credential-secretservice` or `docker-credential-pass` for secure credential storage. If a helper is configured but not installed, you will get errors:
+Podman supports credential helpers like `docker-credential-secretservice` or `docker-credential-pass` for secure credential storage. Podman supports the `credHelpers` format, but not Docker's global `credsStore` setting. If a helper is configured but not installed, you will get errors:
 
 Check the configured helper:
 
 ```bash
 cat ${REGISTRY_AUTH_FILE:-${XDG_RUNTIME_DIR}/containers/auth.json} 2>/dev/null
-cat ~/.docker/config.json 2>/dev/null | grep credsStore
+cat ~/.docker/config.json 2>/dev/null | grep credHelpers
 ```
 
-If you see `"credsStore": "secretservice"` but the helper is not installed:
+If you see `"credHelpers": {"registry.example.com": "secretservice"}` but the helper is not installed:
 
 ```bash
 # Install the credential helper
 # Fedora / RHEL
 sudo dnf install docker-credential-secretservice
 
-# Or remove the credStore setting to use plain file storage
-# Edit auth.json and remove the "credsStore" line
+# Or remove the credHelpers entry to use plain file storage
+# Edit auth.json or config.json and remove the "credHelpers" entry
 ```
 
 ### 7. GitHub Container Registry (ghcr.io) Authentication
 
-GitHub Container Registry requires a Personal Access Token with the `read:packages` scope:
+GitHub Container Registry requires a Personal Access Token (classic) with the `read:packages` scope for private packages you need to pull:
 
 ```bash
 # Create a token at https://github.com/settings/tokens
@@ -265,8 +265,8 @@ podman system info --format '{{.Registries}}'
 # Verbose login for debugging
 podman login docker.io --verbose
 
-# Check all registries configuration
-podman info --format '{{range .Registries.Search}}{{.}}{{end}}'
+# Check configured search registries
+podman info --format '{{range index .Registries "search"}}{{.}}{{"\n"}}{{end}}'
 
 # Remove all stored credentials and start fresh
 podman logout --all
