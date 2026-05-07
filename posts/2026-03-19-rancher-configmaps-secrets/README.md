@@ -18,7 +18,7 @@ While environment variables are good for simple key-value configuration, many ap
 
 ### Create a ConfigMap with File Content
 
-In Rancher, navigate to **Storage > ConfigMaps** and click **Create**:
+In Rancher, navigate to **More Resources > Core > ConfigMaps** and click **Create**:
 
 - **Name**: `nginx-config`
 - **Namespace**: `default`
@@ -137,7 +137,7 @@ This adds `default.conf` to the existing `/etc/nginx/conf.d/` directory without 
 
 ### Create a Secret with File Content
 
-Secrets work similarly to ConfigMaps but are base64-encoded and stored more securely.
+Secrets work similarly to ConfigMaps but are intended for sensitive data. Values in the `data` field are base64-encoded, so you should still use RBAC and encryption at rest to protect them.
 
 In Rancher, navigate to **Storage > Secrets** and click **Create**:
 
@@ -189,7 +189,7 @@ Via the Rancher UI:
 2. Click **Add Volume** and select **Secret**
 3. Select the Secret name
 4. Set the mount path
-5. Optionally mark it as read-only
+5. Secret volumes are mounted read-only; if the UI offers a read-only option, leave it enabled
 
 Via YAML:
 
@@ -263,8 +263,8 @@ volumes:
         - secret:
             name: app-credentials
             items:
-              - key: db-password
-                path: credentials/db-password
+              - key: db-config.yaml
+                path: credentials/db-config.yaml
         - configMap:
             name: feature-flags
             items:
@@ -282,15 +282,15 @@ volumeMounts:
 
 Result:
 - `/etc/app/app.conf`
-- `/etc/app/credentials/db-password`
+- `/etc/app/credentials/db-config.yaml`
 - `/etc/app/flags.json`
 
 ## Automatic Updates
 
-ConfigMaps and Secrets mounted as volumes are automatically updated when the source data changes (with a delay of up to a minute). However, this has caveats:
+ConfigMaps and Secrets mounted as volumes are automatically updated when the source data changes, but the update is eventually consistent rather than immediate and can take up to the kubelet sync period plus cache propagation delay. However, this has caveats:
 
 - Files mounted via `subPath` are not automatically updated
-- The application must watch for file changes or be restarted to pick up new values
+- The application must re-read the files, watch for file changes, or be restarted to pick up new values
 - Environment variables from ConfigMaps and Secrets are not updated without a pod restart
 
 To force a restart after updating a ConfigMap:
