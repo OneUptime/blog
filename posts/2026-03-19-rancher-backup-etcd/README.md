@@ -19,11 +19,11 @@ etcd is the backbone of every Kubernetes cluster, storing all cluster state incl
 
 For RKE2/K3s clusters managed by Rancher:
 
-1. Log in to Rancher and navigate to the downstream cluster.
-2. Click on the cluster name, then go to **Cluster Management**.
-3. Click the three-dot menu and select **Edit Config**.
+1. Log in to Rancher.
+2. Click **☰ > Cluster Management**.
+3. Go to the downstream cluster, click the three-dot menu, and select **Edit Config**.
 4. Scroll to the **etcd** section.
-5. Enable **Recurring etcd Snapshots**.
+5. Ensure **Recurring etcd Snapshots** is enabled.
 6. Configure the snapshot interval and retention count.
 7. Click **Save**.
 
@@ -35,8 +35,6 @@ For RKE clusters, etcd snapshot configuration is part of the cluster YAML. Edit 
 services:
   etcd:
     snapshot: true
-    creation: "6h"
-    retention: "24h"
     backup_config:
       enabled: true
       interval_hours: 6
@@ -63,8 +61,6 @@ spec:
       snapshotScheduleCron: "0 */6 * * *"
       snapshotRetention: 5
       disableSnapshots: false
-    etcdSnapshotCreate:
-      generation: 1
 ```
 
 ## Step 4: Take a Manual etcd Snapshot
@@ -75,7 +71,7 @@ spec:
 2. Go to **Snapshots** under the cluster menu.
 3. Click **Snapshot Now** to take an immediate snapshot.
 
-### Via kubectl for RKE2
+### Via the RKE2 CLI
 
 On an RKE2 control plane node, run:
 
@@ -100,10 +96,10 @@ Navigate to the cluster and go to **Snapshots** to see all available snapshots w
 
 ### Via kubectl
 
-For RKE2 clusters:
+For Rancher-provisioned RKE2/K3s clusters, list the Rancher `ETCDSnapshot` resources from the management cluster:
 
 ```bash
-kubectl get etcdsnapshots.rke.cattle.io -n fleet-default
+kubectl get etcdsnapshots.rke.cattle.io -n CLUSTER_NAMESPACE
 ```
 
 For RKE clusters:
@@ -157,15 +153,22 @@ spec:
         region: us-east-1
         endpoint: s3.amazonaws.com
         folder: cluster-1
-        cloudCredentialName: s3-credential
+        cloudCredentialName: fleet-default:s3-credential-secret
 ```
 
-Create the cloud credential in Rancher first:
+Create the referenced secret first. `cloudCredentialName` must be in `namespace:name` format:
 
-1. Go to **Cluster Management** > **Cloud Credentials**.
-2. Click **Create**.
-3. Select **Amazon** and enter your S3 credentials.
-4. Save and note the credential name.
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: s3-credential-secret
+  namespace: fleet-default
+type: Opaque
+stringData:
+  accessKey: YOUR_ACCESS_KEY
+  secretKey: YOUR_SECRET_KEY
+```
 
 ## Step 7: Verify etcd Snapshot Integrity
 
@@ -174,8 +177,9 @@ After a snapshot is taken, verify it is valid:
 ```bash
 # On the RKE2 control plane node
 
-ETCDCTL_API=3 etcdctl snapshot status /var/lib/rancher/rke2/server/db/snapshots/SNAPSHOT_NAME \
-  --write-out=table
+/var/lib/rancher/rke2/bin/etcdutl snapshot status \
+  /var/lib/rancher/rke2/server/db/snapshots/SNAPSHOT_NAME \
+  -w table
 ```
 
 Expected output shows hash, revision, total keys, and total size:
@@ -190,7 +194,7 @@ Expected output shows hash, revision, total keys, and total size:
 
 ## Step 8: Monitor etcd Snapshot Health
 
-Set up monitoring to alert when snapshots fail or are too old:
+For RKE2, enable `supervisor-metrics: true` so snapshot metrics are exposed, then alert when snapshots stop succeeding:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -204,12 +208,12 @@ spec:
     rules:
     - alert: EtcdSnapshotTooOld
       expr: |
-        (time() - etcd_snapshot_last_success_timestamp_seconds) > 25200
+        increase(rke2_etcd_snapshot_save_duration_seconds_count{status="success"}[7h]) == 0
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "etcd snapshot is more than 7 hours old"
+        summary: "No successful RKE2 etcd snapshot in the last 7 hours"
 ```
 
 ## Snapshot Storage Locations
