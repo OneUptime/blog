@@ -65,13 +65,13 @@ Secure the registry with TLS encryption.
 
 ```bash
 # Create a directory for certificates
-mkdir -p /opt/registry/certs
+mkdir -p "$HOME/registry/certs"
 
 # Generate a self-signed certificate
 openssl req -newkey rsa:4096 -nodes -sha256 \
-  -keyout /opt/registry/certs/registry.key \
+  -keyout "$HOME/registry/certs/registry.key" \
   -x509 -days 365 \
-  -out /opt/registry/certs/registry.crt \
+  -out "$HOME/registry/certs/registry.crt" \
   -subj "/CN=registry.example.com" \
   -addext "subjectAltName=DNS:registry.example.com,IP:192.168.1.100"
 
@@ -84,16 +84,16 @@ podman run -d \
   --name private-registry \
   -p 5000:5000 \
   -v registry-data:/var/lib/registry \
-  -v /opt/registry/certs:/certs:ro \
+  -v "$HOME/registry/certs:/certs:ro" \
   -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.crt \
   -e REGISTRY_HTTP_TLS_KEY=/certs/registry.key \
   --restart always \
   docker.io/library/registry:2
 
 # Install the certificate for Podman
-sudo mkdir -p /etc/containers/certs.d/registry.example.com:5000
-sudo cp /opt/registry/certs/registry.crt \
-  /etc/containers/certs.d/registry.example.com:5000/ca.crt
+mkdir -p "$HOME/.config/containers/certs.d/registry.example.com:5000"
+cp "$HOME/registry/certs/registry.crt" \
+  "$HOME/.config/containers/certs.d/registry.example.com:5000/ca.crt"
 
 # Test the TLS connection
 podman pull registry.example.com:5000/alpine:latest
@@ -105,17 +105,17 @@ Protect the registry with username and password authentication.
 
 ```bash
 # Create a directory for auth files
-mkdir -p /opt/registry/auth
+mkdir -p "$HOME/registry/auth"
 
 # Install htpasswd (part of httpd-tools or apache2-utils)
 sudo dnf install -y httpd-tools 2>/dev/null || \
   sudo apt-get install -y apache2-utils
 
 # Create a password file with a user
-htpasswd -Bbn admin secretpassword > /opt/registry/auth/htpasswd
+htpasswd -Bbn admin secretpassword > "$HOME/registry/auth/htpasswd"
 
 # Add additional users
-htpasswd -Bbn developer devpassword >> /opt/registry/auth/htpasswd
+htpasswd -Bbn developer devpassword >> "$HOME/registry/auth/htpasswd"
 
 # Stop the old registry
 podman stop private-registry
@@ -126,8 +126,8 @@ podman run -d \
   --name private-registry \
   -p 5000:5000 \
   -v registry-data:/var/lib/registry \
-  -v /opt/registry/certs:/certs:ro \
-  -v /opt/registry/auth:/auth:ro \
+  -v "$HOME/registry/certs:/certs:ro" \
+  -v "$HOME/registry/auth:/auth:ro" \
   -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.crt \
   -e REGISTRY_HTTP_TLS_KEY=/certs/registry.key \
   -e REGISTRY_AUTH=htpasswd \
@@ -148,9 +148,9 @@ For advanced settings, use a registry configuration file.
 
 ```bash
 # Create a registry configuration file
-mkdir -p /opt/registry/config
+mkdir -p "$HOME/registry/config"
 
-cat > /opt/registry/config/config.yml <<'EOF'
+cat > "$HOME/registry/config/config.yml" <<'EOF'
 version: 0.1
 log:
   level: info
@@ -183,9 +183,9 @@ podman run -d \
   --name private-registry \
   -p 5000:5000 \
   -v registry-data:/var/lib/registry \
-  -v /opt/registry/certs:/certs:ro \
-  -v /opt/registry/auth:/auth:ro \
-  -v /opt/registry/config/config.yml:/etc/docker/registry/config.yml:ro \
+  -v "$HOME/registry/certs:/certs:ro" \
+  -v "$HOME/registry/auth:/auth:ro" \
+  -v "$HOME/registry/config/config.yml:/etc/docker/registry/config.yml:ro" \
   --restart always \
   docker.io/library/registry:2
 ```
@@ -209,9 +209,16 @@ curl -s https://registry.example.com:5000/v2/ && echo "Registry is healthy"
 # View registry logs
 podman logs private-registry
 
-# Garbage collect unused image layers
-podman exec private-registry \
+# Garbage collect unused image layers with the registry stopped
+podman stop private-registry
+podman run --rm \
+  -v registry-data:/var/lib/registry \
+  -v "$HOME/registry/certs:/certs:ro" \
+  -v "$HOME/registry/auth:/auth:ro" \
+  -v "$HOME/registry/config/config.yml:/etc/docker/registry/config.yml:ro" \
+  docker.io/library/registry:2 \
   /bin/registry garbage-collect /etc/docker/registry/config.yml
+podman start private-registry
 ```
 
 ## Running the Registry as a Systemd Service
@@ -219,16 +226,38 @@ podman exec private-registry \
 Make the registry start automatically on boot.
 
 ```bash
-# Generate a systemd service for the registry container
-podman generate systemd --name private-registry --new \
-  > ~/.config/systemd/user/container-private-registry.service
+# Create a Quadlet unit for the registry container
+mkdir -p ~/.config/containers/systemd
+
+cat > ~/.config/containers/systemd/private-registry.container <<'EOF'
+[Unit]
+Description=Private container registry
+
+[Container]
+ContainerName=private-registry
+Image=docker.io/library/registry:2
+PublishPort=5000:5000
+Volume=registry-data:/var/lib/registry
+Volume=%h/registry/certs:/certs:ro
+Volume=%h/registry/auth:/auth:ro
+Volume=%h/registry/config/config.yml:/etc/docker/registry/config.yml:ro
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
 
 # Enable and start the service
-systemctl --user enable container-private-registry.service
-systemctl --user start container-private-registry.service
+podman stop private-registry 2>/dev/null
+podman rm private-registry 2>/dev/null
+systemctl --user daemon-reload
+systemctl --user enable --now private-registry.service
+sudo loginctl enable-linger "$USER"
 
 # Check the service status
-systemctl --user status container-private-registry.service
+systemctl --user status private-registry.service
 ```
 
 ## Summary
