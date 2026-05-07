@@ -8,13 +8,13 @@ Description: Learn how to create an API Gateway WebSocket API with OpenTofu to e
 
 ## Introduction
 
-API Gateway WebSocket APIs maintain persistent connections between clients and your backend, enabling real-time bidirectional communication without polling. AWS manages connection lifecycle-your Lambda functions handle `$connect`, `$disconnect`, and custom message routing events. Connection IDs allow you to push messages to connected clients at any time.
+API Gateway WebSocket APIs maintain persistent connections between clients and your backend, enabling real-time bidirectional communication without polling. AWS manages connection lifecycle-your Lambda functions handle `$connect`, `$disconnect`, and custom message routing events. Connection IDs allow you to push messages to connected clients while the connection remains open.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- AWS credentials with API Gateway v2 and Lambda permissions
-- A DynamoDB table to store connection IDs
+- AWS credentials with API Gateway v2, Lambda, DynamoDB, and IAM permissions
+- Lambda functions for the `$connect`, `$disconnect`, and custom routes
 
 ## Step 1: Create DynamoDB Table for Connection Management
 
@@ -57,7 +57,7 @@ resource "aws_apigatewayv2_api" "websocket" {
 ## Step 3: Create Lambda Integrations and Routes
 
 ```hcl
-# IAM role for WebSocket Lambda functions
+# IAM role attached to the Lambda functions used by these WebSocket routes
 
 resource "aws_iam_role" "websocket_lambda" {
   name = "${var.project_name}-websocket-lambda-role"
@@ -72,6 +72,10 @@ resource "aws_iam_role" "websocket_lambda" {
   })
 }
 
+# These integrations assume the Lambda functions already exist and that
+# their API Gateway invoke ARNs and Lambda function ARNs are passed in
+# through variables.
+
 # Connect route - triggered when client connects
 resource "aws_apigatewayv2_integration" "connect" {
   api_id             = aws_apigatewayv2_api.websocket.id
@@ -84,6 +88,14 @@ resource "aws_apigatewayv2_route" "connect" {
   api_id    = aws_apigatewayv2_api.websocket.id
   route_key = "$connect"
   target    = "integrations/${aws_apigatewayv2_integration.connect.id}"
+}
+
+resource "aws_lambda_permission" "connect" {
+  statement_id  = "AllowWebSocketConnectInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.connect_lambda_function_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.websocket.execution_arn}/*/$connect"
 }
 
 # Disconnect route
@@ -100,6 +112,14 @@ resource "aws_apigatewayv2_route" "disconnect" {
   target    = "integrations/${aws_apigatewayv2_integration.disconnect.id}"
 }
 
+resource "aws_lambda_permission" "disconnect" {
+  statement_id  = "AllowWebSocketDisconnectInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.disconnect_lambda_function_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.websocket.execution_arn}/*/$disconnect"
+}
+
 # Custom message route for chat messages
 resource "aws_apigatewayv2_integration" "sendmessage" {
   api_id             = aws_apigatewayv2_api.websocket.id
@@ -112,6 +132,14 @@ resource "aws_apigatewayv2_route" "sendmessage" {
   api_id    = aws_apigatewayv2_api.websocket.id
   route_key = "sendMessage"  # Matches when request body contains {"action": "sendMessage"}
   target    = "integrations/${aws_apigatewayv2_integration.sendmessage.id}"
+}
+
+resource "aws_lambda_permission" "sendmessage" {
+  statement_id  = "AllowWebSocketSendMessageInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = var.sendmessage_lambda_function_arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.websocket.execution_arn}/*/sendMessage"
 }
 ```
 
@@ -129,7 +157,7 @@ resource "aws_iam_role_policy" "websocket_callback" {
         Effect = "Allow"
         Action = ["execute-api:ManageConnections"]
         # ARN pattern for sending messages to connections
-        Resource = "${aws_apigatewayv2_api.websocket.execution_arn}/*/@connections/*"
+        Resource = "${aws_apigatewayv2_stage.prod.execution_arn}/POST/@connections/*"
       },
       {
         Effect = "Allow"
@@ -177,4 +205,4 @@ wscat -c wss://{api-id}.execute-api.us-east-1.amazonaws.com/prod
 
 ## Conclusion
 
-WebSocket APIs on API Gateway handle connection lifecycle management, allowing Lambda functions to focus on business logic. Store connection IDs in DynamoDB to broadcast messages to multiple clients. The `execute-api:ManageConnections` permission enables Lambda to push messages to any connected client using the POST callback URL pattern. Use connection TTL in DynamoDB to automatically clean up stale connection records.
+WebSocket APIs on API Gateway handle connection lifecycle management, allowing Lambda functions to focus on business logic. Store connection IDs in DynamoDB to broadcast messages to multiple clients. The `execute-api:ManageConnections` permission enables Lambda to push messages to any connected client using the POST callback URL pattern. Use connection TTL in DynamoDB to eventually clean up stale connection records.
