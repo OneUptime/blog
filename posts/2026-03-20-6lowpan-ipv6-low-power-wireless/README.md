@@ -17,7 +17,7 @@ IEEE 802.15.4 has severe constraints:
 - **Minimum usable payload**: ~80-100 bytes after MAC headers and security
 - IPv6 requires a **minimum MTU of 1280 bytes**
 - IPv6 headers alone are **40 bytes** (fixed) + extension headers
-- Link-layer security adds 21+ bytes
+- Link-layer security can add up to 21 bytes
 
 6LoWPAN bridges this gap with adaptation layer techniques.
 
@@ -25,7 +25,7 @@ IEEE 802.15.4 has severe constraints:
 
 ```mermaid
 flowchart TB
-    IP["IPv6 Network\n1280+ byte MTU"] <--> GW["6LoWPAN Border Router\n(Fragmentation & Compression)"]
+    IP["IPv6 Network\n1280+ byte MTU"] <--> GW["6LoWPAN Border Router\n(IPv6 <-> 802.15.4)"]
     GW <--> M1["IEEE 802.15.4 Mesh Network\n127 byte frames"]
     M1 <--> N1["Sensor Node"]
     M1 <--> N2["Actuator Node"]
@@ -34,12 +34,12 @@ flowchart TB
 
 ## Key 6LoWPAN Techniques
 
-### 1. Header Compression (RFC 6282 - IPHC)
+### 1. Header Compression (RFC 6282 - LOWPAN_IPHC)
 
-IPHC (IP Header Compression) can compress a 40-byte IPv6 header down to as few as 2-3 bytes by:
-- Inferring the IPv6 prefix from context (stored by both endpoints)
-- Inferring addresses from the IEEE 802.15.4 MAC address (EUI-64)
-- Eliding fields that have constant values in most IoT traffic (hop limit, traffic class)
+LOWPAN_IPHC can compress a 40-byte IPv6 header down to as few as 2 bytes in the best case by:
+- Inferring the IPv6 prefix from shared context or a link-local prefix
+- Inferring interface identifiers from the IEEE 802.15.4 address
+- Eliding or compactly encoding fields with common values, such as a zero traffic class/flow label or hop limits of 1, 64, or 255
 
 ```text
 Uncompressed IPv6 header: 40 bytes
@@ -51,43 +51,44 @@ Savings: ~33-38 bytes per packet
 
 Since IPv6 requires 1280 bytes MTU and 802.15.4 only supports ~90 bytes payload:
 - 6LoWPAN splits IPv6 packets into multiple 802.15.4 fragments
-- Each fragment has a 6LoWPAN fragmentation header (4 bytes: datagram size + tag + offset)
+- The first fragment carries a 4-byte fragmentation header (datagram size + tag), and subsequent fragments carry a 5-byte header that also includes the offset
 - The receiving node reassembles before passing to IPv6
 
 ### 3. Mesh Addressing
 
-For multi-hop networks, 6LoWPAN provides a mesh addressing header that allows frames to be forwarded multiple hops within the 802.15.4 network before reaching the 6LoWPAN border router.
+For multi-hop networks, 6LoWPAN provides a mesh addressing header that allows frames to be forwarded multiple hops within the 802.15.4 network before reaching another 6LoWPAN node or a border router.
 
-## Dispatch Byte
+## First Header Byte
 
-Every 6LoWPAN frame starts with a "dispatch byte" that identifies the type of 6LoWPAN frame:
+The first 6LoWPAN encapsulation byte identifies the header type. Plain IPv6 and LOWPAN_IPHC use dispatch values, while mesh and fragmentation use their own type patterns:
 
 | Pattern | Meaning |
 |---|---|
-| `00 xxxxxx` | Not a 6LoWPAN frame (e.g., raw NALP) |
-| `01 000000` | Uncompressed IPv6 |
+| `00 xxxxxx` | NALP (not a LoWPAN frame) |
+| `01 000001` | Uncompressed IPv6 |
 | `01 1xxxxx` | LOWPAN_IPHC compressed header |
-| `11 000xxx` | Mesh addressing header |
-| `11 000xxx` + `11 0x xxxx` | Fragmentation |
+| `10 xxxxxx` | Mesh addressing header |
+| `11 000xxx` | First fragmentation header (FRAG1) |
+| `11 100xxx` | Subsequent fragmentation header (FRAGN) |
 
 ## 6LoWPAN in Practice with Linux
 
 The Linux kernel includes 6LoWPAN support through the `ieee802154` subsystem:
 
 ```bash
-# Check if 6LoWPAN kernel modules are available
+# Check if 6LoWPAN kernel support is loaded
 
-lsmod | grep lowpan
+lsmod | grep 6lowpan
 # or
-modprobe -v lowpan
+modprobe -v ieee802154_6lowpan
 
 # Create a 6LoWPAN interface on an 802.15.4 radio
-# (requires 802.15.4 hardware, e.g., atusb, cc2531)
+# (requires supported 802.15.4 hardware, e.g., atusb, mcr20a)
 ip link add link wpan0 name lowpan0 type lowpan
 ip link set wpan0 up
 ip link set lowpan0 up
 
-# Assign an IPv6 address (derived from EUI-64 of 802.15.4 address)
+# Inspect the auto-generated link-local IPv6 address
 ip -6 addr show lowpan0
 ```
 
@@ -100,13 +101,14 @@ iwpan dev wpan0 set pan_id 0xabcd
 iwpan dev wpan0 set short_addr 0x0001
 
 # Enable 6LoWPAN adaptation
+ip link set wpan0 up
 ip link set lowpan0 up
 
-# The 6LoWPAN address is auto-derived from the MAC address
+# The link-local IPv6 address is auto-derived from the extended MAC address
 ip -6 addr show lowpan0
 # inet6 fe80::... link (derived from 802.15.4 EUI-64)
 ```
 
 ## Conclusion
 
-6LoWPAN makes IPv6 viable for the most constrained IoT devices by providing header compression, fragmentation, and mesh addressing as an adaptation layer between IPv6 and IEEE 802.15.4. The result is a fully addressable IPv6 end-to-end path from the internet to a sensor node with a tiny battery and a sub-100-byte radio frame size. This is the foundation for Thread, Matter, and other modern IoT protocols.
+6LoWPAN makes IPv6 viable for the most constrained IoT devices by providing header compression, fragmentation, and mesh addressing as an adaptation layer between IPv6 and IEEE 802.15.4. The result is a fully addressable IPv6 end-to-end path from the internet to a sensor node with a tiny battery and a sub-100-byte radio frame size. This is the foundation for Thread, and for Matter deployments that run over Thread.
