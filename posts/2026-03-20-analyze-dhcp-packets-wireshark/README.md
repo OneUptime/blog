@@ -20,33 +20,33 @@ port 67 or port 68
 
 ```text
 # Show all DHCP packets
-bootp
+dhcp
 
 # Filter by message type
-bootp.option.dhcp == 1   # DHCPDISCOVER
-bootp.option.dhcp == 2   # DHCPOFFER
-bootp.option.dhcp == 3   # DHCPREQUEST
-bootp.option.dhcp == 5   # DHCPACK
-bootp.option.dhcp == 6   # DHCPNAK
+dhcp.option.dhcp == 1   # DHCPDISCOVER
+dhcp.option.dhcp == 2   # DHCPOFFER
+dhcp.option.dhcp == 3   # DHCPREQUEST
+dhcp.option.dhcp == 5   # DHCPACK
+dhcp.option.dhcp == 6   # DHCPNAK
 
 # Filter by client MAC
-bootp.hw.mac_addr == aa:bb:cc:dd:ee:ff
+dhcp.hw.mac_addr == aa:bb:cc:dd:ee:ff
 
 # Filter by offered IP
-bootp.ip.your == 192.168.1.105
+dhcp.ip.your == 192.168.1.105
 
 # Show packets with specific option (e.g., option 43)
-bootp.option.type == 43
+dhcp.option.type == 43
 ```
 
 ## Reading the DHCP Dissection
 
-When you click a DHCP packet in Wireshark and expand "Bootstrap Protocol (DHCP)":
+When you click a DHCP packet in Wireshark and expand "Dynamic Host Configuration Protocol":
 
-- **Message type**: 1=Boot Request, 2=Boot Reply
+- **BOOTP op code**: 1=Boot Request, 2=Boot Reply
 - **Client IP address**: 0.0.0.0 for new requests
 - **Your (client) IP address**: Offered/Assigned IP
-- **Next server IP address**: TFTP server (option 66/siaddr)
+- **Next server IP address**: `siaddr`, the next bootstrap/PXE server IP if one is provided
 - **Client MAC address**: Hardware address of client
 - **Options section**:
   - Option 53: DHCP Message Type
@@ -60,19 +60,19 @@ When you click a DHCP packet in Wireshark and expand "Bootstrap Protocol (DHCP)"
 
 ```bash
 # Show DHCP message type and key fields for each packet
-tshark -r capture.pcap -Y "bootp" \
+tshark -r capture.pcap -Y "dhcp" \
     -T fields \
     -e frame.number \
     -e ip.src \
     -e ip.dst \
-    -e bootp.option.dhcp \
-    -e bootp.ip.your \
-    -e bootp.option.router \
-    -e bootp.option.domain_name_server \
+    -e dhcp.option.dhcp \
+    -e dhcp.ip.your \
+    -e dhcp.option.router \
+    -e dhcp.option.domain_name_server \
     -E header=y -E separator=,
 
 # Statistics: count each DHCP message type
-tshark -r capture.pcap -q -z bootp,stat
+tshark -r capture.pcap -q -z dhcp,stat
 ```
 
 ## Following a Complete DORA Conversation
@@ -80,26 +80,26 @@ tshark -r capture.pcap -q -z bootp,stat
 In Wireshark:
 1. Click any DHCP packet from your client.
 2. Right-click → **Follow** → **UDP Stream**.
-3. All four DORA messages for that client will be shown in sequence.
+3. The packets in that UDP conversation will be shown in sequence.
 
 Or filter by transaction ID:
 ```text
-bootp.id == 0x12345678
+dhcp.id == 0x12345678
 ```
 
 ## Identifying Issues in Wireshark
 
 | Observation | Diagnosis |
 |-------------|-----------|
-| Discovers only (no offers) | DHCP server unreachable |
+| Discovers only (no offers) | DHCP server or relay unreachable, or replies blocked |
 | NAK message | Client's IP invalid for current network |
-| Multiple offers from different IPs | Rogue DHCP server |
+| Multiple offers from different IPs | Multiple DHCP servers present; investigate for a rogue server if unexpected |
 | Offer with wrong gateway | Misconfigured server |
 | Missing option 3 (router) | No default gateway delivered |
 
 ## Key Takeaways
 
-- Use `bootp` as the display filter in Wireshark for all DHCP traffic.
+- Use `dhcp` as the display filter in Wireshark for DHCP traffic.
 - Click the Options section to verify every DHCP option value delivered to the client.
-- `tshark -q -z bootp,stat` provides a quick count of each DHCP message type in a capture.
-- Filter by `bootp.hw.mac_addr` to isolate a single client's complete DHCP conversation.
+- `tshark -q -z dhcp,stat` provides a quick count of each DHCP message type in a capture.
+- Filter by `dhcp.hw.mac_addr` to isolate a single client's complete DHCP conversation.
