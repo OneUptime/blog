@@ -19,7 +19,7 @@ WireGuard has rapidly become the go-to VPN solution for Linux users thanks to it
 Before you begin, make sure you have the following in place:
 
 - A Linux host with Podman installed (version 4.0 or later recommended).
-- Root or sudo access (WireGuard requires `NET_ADMIN` and `SYS_MODULE` capabilities).
+- Root or sudo access (WireGuard requires `NET_ADMIN`; `SYS_MODULE` is only needed if the container must load kernel modules).
 - The WireGuard kernel module available on the host (`modprobe wireguard`).
 - A basic understanding of public/private key cryptography.
 
@@ -38,7 +38,7 @@ sudo modprobe wireguard
 lsmod | grep wireguard
 ```
 
-If you see output showing `wireguard` in the list, you are ready to proceed. On most modern kernels (5.6 and later), WireGuard is built in and this step may already be satisfied.
+If you see output showing `wireguard` in the list, you are ready to proceed. On modern kernels (5.6 and later), WireGuard is included in the mainline kernel and this step may already be satisfied.
 
 ---
 
@@ -48,6 +48,7 @@ You need a key pair for the server (the container) and one for each client that 
 
 ```bash
 # Generate the server private key and derive the public key
+umask 077
 wg genkey | tee server_private.key | wg pubkey > server_public.key
 
 # Generate a client key pair
@@ -70,10 +71,10 @@ Create a directory to hold your WireGuard configuration, then write the server c
 
 ```bash
 # Create a directory for WireGuard config on the host
-mkdir -p ~/wireguard-config
+mkdir -p ~/wireguard-config/wg_confs
 
 # Create the server configuration file
-cat > ~/wireguard-config/wg0.conf << 'EOF'
+cat > ~/wireguard-config/wg_confs/wg0.conf << 'EOF'
 [Interface]
 # The server private key generated in Step 2
 PrivateKey = <SERVER_PRIVATE_KEY>
@@ -120,7 +121,7 @@ podman run -d \
   -e PGID=1000 \
   -e TZ=UTC \
   --restart unless-stopped \
-  docker.io/linuxserver/wireguard:latest
+  lscr.io/linuxserver/wireguard:latest
 ```
 
 Key flags explained:
@@ -224,7 +225,7 @@ To ensure WireGuard starts automatically on boot, generate a systemd unit file. 
 podman generate systemd --name wireguard --new --files
 
 # Move the generated file to the systemd directory
-sudo mv container-wireguard.service /etc/systemd/system/
+sudo mv -Z container-wireguard.service /etc/systemd/system/
 
 # Reload systemd and enable the service
 sudo systemctl daemon-reload
