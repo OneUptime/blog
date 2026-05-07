@@ -8,9 +8,9 @@ Description: A hands-on guide to using Podman for Node.js development, covering 
 
 ---
 
-> Podman keeps your Node.js development environment isolated and reproducible, so you never have to worry about node version mismatches or global package conflicts again.
+> Podman keeps your Node.js development environment isolated and reproducible, so you spend far less time dealing with node version mismatches or global package conflicts.
 
-Node.js development has a well-known problem: version drift. One project needs Node 18, another needs Node 20, and a third depends on a specific npm version. Tools like nvm help, but they only manage the Node binary. System-level dependencies, native modules, and global packages still cause trouble. Running Node.js inside Podman containers eliminates all of these issues. Each project gets its own complete environment, and your host machine stays clean.
+Node.js development has a well-known problem: version drift. One project needs Node 22, another needs Node 24, and a third depends on a specific npm version. Tools like nvm help, but they only manage the Node binary. System-level dependencies, native modules, and global packages still cause trouble. Running Node.js inside Podman containers isolates most of these issues per project. Each project gets its own complete environment, and your host machine stays clean.
 
 This guide walks through practical Podman workflows for Node.js, from running simple scripts to building full-stack applications with databases.
 
@@ -21,18 +21,18 @@ This guide walks through practical Podman workflows for Node.js, from running si
 The official Node.js images come in several variants:
 
 ```bash
-# Full image - Debian-based, includes build tools for native modules
+# Full image - Debian-based, includes more common packages
 
-podman pull docker.io/library/node:20
+podman pull docker.io/library/node:24
 
 # Slim image - smaller Debian-based, no build tools
-podman pull docker.io/library/node:20-slim
+podman pull docker.io/library/node:24-slim
 
 # Alpine image - smallest, but native modules may need extra work
-podman pull docker.io/library/node:20-alpine
+podman pull docker.io/library/node:24-alpine
 ```
 
-For development, `node:20-slim` works well for most projects. If your project uses native modules (like `bcrypt`, `sharp`, or `sqlite3`), use the full `node:20` image or install build tools in the slim image.
+For development, `node:24-slim` works well for most projects. If your project uses native modules (like `bcrypt`, `sharp`, or `sqlite3`), the full `node:24` image can reduce the amount of extra setup, or you can install the required build tools in the slim image.
 
 ## Running a Node.js Script
 
@@ -43,12 +43,12 @@ The quickest way to run Node.js code in Podman:
 podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
-  docker.io/library/node:20-slim \
+  docker.io/library/node:24-slim \
   node index.js
 
 # Start an interactive Node.js REPL
 podman run -it --rm \
-  docker.io/library/node:20-slim \
+  docker.io/library/node:24-slim \
   node
 ```
 
@@ -103,15 +103,15 @@ app.listen(PORT, "0.0.0.0", () => {
 Create a `Containerfile`:
 
 ```dockerfile
-FROM docker.io/library/node:20-slim
+FROM docker.io/library/node:24-slim
 
 WORKDIR /app
 
 # Copy package files first for layer caching
-COPY package.json package-lock.json* ./
+COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
 # Copy application code
 COPY . .
@@ -162,7 +162,7 @@ This mounts your source code into the container but uses the container's own `no
 podman run --rm \
   -v $(pwd):/app:Z \
   -w /app \
-  docker.io/library/node:20-slim \
+  docker.io/library/node:24-slim \
   npm install
 
 # Now node_modules exists on the host too
@@ -175,22 +175,22 @@ This installs Linux-compatible binaries, which may not work if your host is macO
 Next.js works well with Podman. Create a `Containerfile` for Next.js development:
 
 ```dockerfile
-FROM docker.io/library/node:20-slim
+FROM docker.io/library/node:24-slim
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm ci
+COPY package*.json ./
+RUN npm install
 
 COPY . .
 
 EXPOSE 3000
 
 # Next.js dev server with hot reload
-CMD ["npx", "next", "dev"]
+CMD ["npx", "next", "dev", "--webpack"]
 ```
 
-Run with the proper environment variables for hot module replacement:
+Run with webpack-based polling for hot module replacement:
 
 ```bash
 # Build the image
@@ -206,14 +206,13 @@ podman run -it --rm \
   nextjs-dev
 ```
 
-The `WATCHPACK_POLLING=true` environment variable enables polling-based file watching, which is necessary when the source code is mounted from the host because filesystem events do not always propagate across the mount boundary.
+The `WATCHPACK_POLLING=true` environment variable enables polling-based file watching for webpack, which is helpful when the source code is mounted from the host because filesystem events do not always propagate across the mount boundary. Next.js uses Turbopack by default now, so this example explicitly uses `--webpack` for a polling-based workflow.
 
 ## Multi-Container Setup with a Database
 
-Most Node.js applications need a database. Here is a `docker-compose.yml` for an Express app with MongoDB:
+Most Node.js applications need a database. Here is a `compose.yaml` for an Express app with MongoDB:
 
 ```yaml
-version: "3.8"
 services:
   app:
     build: .
@@ -242,14 +241,16 @@ volumes:
 Start the stack:
 
 ```bash
-podman-compose up -d
+podman compose up -d
 
 # Check logs
-podman-compose logs -f app
+podman compose logs -f app
 
 # Connect to MongoDB shell
-podman-compose exec mongo mongosh
+podman compose exec mongo mongosh
 ```
+
+`podman compose` is a wrapper around an installed Compose provider such as `docker-compose` or `podman-compose`, so make sure one is available on your system.
 
 ## Running Tests
 
@@ -288,6 +289,8 @@ podman run -it --rm \
   node --inspect=0.0.0.0:9229 server.js
 ```
 
+Only expose the inspector on a trusted local machine. Binding it to `0.0.0.0` is convenient for container debugging, but it is not safe to leave reachable from untrusted networks.
+
 Then open `chrome://inspect` in Chrome or attach VS Code's debugger to `localhost:9229`. Your VS Code `launch.json` for attaching:
 
 ```json
@@ -306,43 +309,41 @@ Then open `chrome://inspect` in Chrome or attach VS Code's debugger to `localhos
 Run your tests against different Node.js versions without installing any of them locally:
 
 ```bash
-# Test against Node.js 18 LTS
-podman run --rm -v $(pwd):/app:Z -w /app \
-  docker.io/library/node:18-slim \
-  bash -c "npm ci && npm test"
-
-# Test against Node.js 20 LTS
-podman run --rm -v $(pwd):/app:Z -w /app \
-  docker.io/library/node:20-slim \
-  bash -c "npm ci && npm test"
-
-# Test against Node.js 22
+# Test against Node.js 22 LTS
 podman run --rm -v $(pwd):/app:Z -w /app \
   docker.io/library/node:22-slim \
-  bash -c "npm ci && npm test"
+  sh -c "npm install && npm test"
+
+# Test against Node.js 24 LTS
+podman run --rm -v $(pwd):/app:Z -w /app \
+  docker.io/library/node:24-slim \
+  sh -c "npm install && npm test"
+
+# Test against Node.js 25 Current
+podman run --rm -v $(pwd):/app:Z -w /app \
+  docker.io/library/node:25-slim \
+  sh -c "npm install && npm test"
 ```
 
 ## Building a Production Image
 
-Once development is done, build a lean production image:
+Once development is done, create `Containerfile.prod` and build a lean production image:
 
 ```dockerfile
 # Multi-stage build for production
-FROM docker.io/library/node:20-slim AS builder
+FROM docker.io/library/node:24-slim AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci
-COPY . .
-RUN npm run build
+COPY package*.json ./
+RUN npm install --omit=dev
 
-FROM docker.io/library/node:20-slim
+FROM docker.io/library/node:24-slim
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
-COPY --from=builder /app/dist ./dist
+COPY package.json ./
+COPY --from=deps /app/node_modules ./node_modules
+COPY server.js ./
 EXPOSE 3000
 USER node
-CMD ["node", "dist/server.js"]
+CMD ["node", "server.js"]
 ```
 
 ```bash
@@ -355,4 +356,4 @@ podman run --rm -p 3000:3000 express-prod
 
 ## Conclusion
 
-Podman fits naturally into Node.js development workflows. The critical detail to get right is the `node_modules` handling: use an anonymous volume to keep the container's dependencies separate from the host. Beyond that, the patterns are straightforward. Mount your source code, expose your ports, and use nodemon or your framework's built-in dev server for auto-reloading. For multi-container stacks with databases, `podman-compose` reads the same `docker-compose.yml` files you already know. The result is a development environment that works identically across every developer's machine.
+Podman fits naturally into Node.js development workflows. The critical detail to get right is the `node_modules` handling: use an anonymous volume to keep the container's dependencies separate from the host. Beyond that, the patterns are straightforward. Mount your source code, expose your ports, and use nodemon or your framework's built-in dev server for auto-reloading. For multi-container stacks with databases, `podman compose` can use the same Compose files you already know, as long as a Compose provider is installed. The result is a development environment that works consistently across every developer's machine.
