@@ -8,14 +8,14 @@ Description: Learn how to capture, filter, and analyze SIP signaling and RTP med
 
 ---
 
-SIP (Session Initiation Protocol) handles call setup and teardown, while RTP carries the actual voice/video media. Wireshark has built-in VoIP analysis tools that let you follow SIP dialogs, reconstruct RTP streams, and even play back captured audio.
+SIP (Session Initiation Protocol) handles call setup and teardown, while RTP carries the actual voice/video media. Wireshark has built-in VoIP analysis tools that let you follow SIP dialogs, analyze RTP streams, and even play back captured audio for supported codecs.
 
 ---
 
 ## Capture SIP/RTP Traffic
 
 ```bash
-# Capture on the SIP port (5060 UDP/TCP) and RTP range
+# Capture on the default SIP port (5060 UDP/TCP) and a common RTP UDP range
 
 sudo tcpdump -i eth0 -w voip-capture.pcap \
   'port 5060 or (udp portrange 10000-20000)'
@@ -53,22 +53,22 @@ sip.Call-ID == "abc123@192.168.1.5"
 
 1. Apply the `sip` filter.
 2. Right-click on a SIP INVITE packet.
-3. Select **Follow** → **UDP Stream** to see the full SIP dialog.
+3. Select **Follow** → **SIP Call** to see the full SIP dialog.
 
-Or use **Telephony** → **SIP Flows** to get a visual ladder diagram.
+Or use **Telephony** → **SIP Flows**, select the call, and click **Flow Sequence** to get a visual ladder diagram.
 
 ---
 
 ## Display Filters for RTP
 
 ```text
-# Show all RTP traffic
+# Show decoded RTP traffic
 rtp
 
 # Filter by SSRC (synchronization source)
 rtp.ssrc == 0xDEADBEEF
 
-# Show RTP packets with specific payload type (0 = PCMU/G.711)
+# Show RTP packets with specific payload type (0 = PCMU, G.711 mu-law)
 rtp.p_type == 0
 ```
 
@@ -78,17 +78,17 @@ rtp.p_type == 0
 
 1. Open **Telephony** → **VoIP Calls**.
 2. Select a call and click **Flow Sequence** to see SIP/RTP ladder diagram.
-3. Click **Play Streams** to replay captured RTP audio.
+3. Click **Play Streams** to open RTP Player and replay supported RTP audio.
 
 ---
 
 ## Check for Common VoIP Issues
 
 ```text
-# 403 Forbidden - authentication failure
+# 403 Forbidden - request understood but refused
 sip.Status-Code == 403
 
-# 408 Request Timeout - server not responding
+# 408 Request Timeout - no timely response
 sip.Status-Code == 408
 
 # 486 Busy Here - called party busy
@@ -102,4 +102,4 @@ sip.Status-Code == 486
 
 ## Summary
 
-Use the `sip` and `rtp` display filters to isolate VoIP traffic in Wireshark. The **Telephony** menu provides specialized tools including SIP flow diagrams, RTP stream analysis, and audio playback. Match SIP dialogs by `Call-ID` to trace individual calls from INVITE through BYE, and inspect RTP sequence numbers and timestamps to diagnose jitter and packet loss.
+Use the `sip` display filter and the `rtp` filter for decoded RTP streams to isolate VoIP traffic in Wireshark. The **Telephony** menu provides specialized tools including SIP flow diagrams, RTP stream analysis, and audio playback for supported codecs. Match SIP dialogs by `Call-ID` to trace individual calls from INVITE through BYE, and inspect RTP sequence numbers and timestamps to diagnose jitter and packet loss.
