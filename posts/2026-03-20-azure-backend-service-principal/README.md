@@ -41,9 +41,10 @@ terraform {
     container_name       = "tfstate"
     key                  = "prod/terraform.tfstate"
 
-    subscription_id = "SUBSCRIPTION_ID"
-    tenant_id       = "TENANT_ID"
-    client_id       = "CLIENT_ID"  # SP appId
+    subscription_id   = "SUBSCRIPTION_ID"
+    tenant_id         = "TENANT_ID"
+    client_id         = "CLIENT_ID"  # SP appId
+    use_azuread_auth  = true
     # client_secret in environment variable, not here
   }
 }
@@ -85,6 +86,7 @@ terraform {
     container_name       = "tfstate"
     key                  = "prod/terraform.tfstate"
 
+    use_azuread_auth            = true
     subscription_id      = "SUBSCRIPTION_ID"
     tenant_id            = "TENANT_ID"
     client_id            = "CLIENT_ID"
@@ -96,7 +98,7 @@ terraform {
 
 ## Step 4: Assign Required Permissions
 
-The Service Principal needs specific RBAC roles:
+The Service Principal needs the `Storage Blob Data Contributor` RBAC role:
 
 ```hcl
 # Storage Blob Data Contributor: Read, write, and delete state files
@@ -106,10 +108,10 @@ resource "azurerm_role_assignment" "state_contributor" {
   principal_id         = azuread_service_principal.opentofu.object_id
 }
 
-# If using Azure AD authentication for storage
-resource "azurerm_role_assignment" "state_reader" {
+# Alternatively, scope the same role to the container for least privilege
+resource "azurerm_role_assignment" "state_contributor_container" {
   scope                = azurerm_storage_container.state.resource_manager_id
-  role_definition_name = "Storage Blob Data Reader"
+  role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azuread_service_principal.opentofu.object_id
 }
 ```
@@ -152,9 +154,10 @@ az ad sp credential list \
   --query '[*].{EndDate:endDateTime, KeyId:keyId}' \
   --output table
 
-# Create a new secret before expiration
+# Append a new secret before expiration
 az ad sp credential reset \
   --id "SP_APP_ID" \
+  --append \
   --end-date "2027-01-01"
 ```
 
