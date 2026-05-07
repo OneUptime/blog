@@ -10,7 +10,7 @@ Description: Learn how to pass custom CLI arguments to Podman through Quadlet us
 
 > Extend Quadlet container configuration beyond its built-in directives by passing custom Podman CLI arguments through GlobalArgs and PodmanArgs.
 
-Quadlet provides dedicated directives for common container options, but Podman has many more flags than Quadlet exposes natively. The `PodmanArgs` and `GlobalArgs` directives let you pass any additional CLI arguments directly to Podman.
+Quadlet provides dedicated directives for common container options, but Podman has many more flags than Quadlet exposes natively. The `PodmanArgs` and `GlobalArgs` directives let you pass additional CLI arguments directly to Podman when you need raw Podman options.
 
 ---
 
@@ -21,7 +21,7 @@ Quadlet provides dedicated directives for common container options, but Podman h
 
 ## Using PodmanArgs
 
-PodmanArgs appends flags to the `podman run` command:
+PodmanArgs appends flags to the `podman run` command, before the image name:
 
 ```ini
 # ~/.config/containers/systemd/myapp.container
@@ -34,10 +34,10 @@ Image=docker.io/myorg/myapp:latest
 PublishPort=3000:3000
 
 # Pass additional flags to podman run
-PodmanArgs=--shm-size=256m
-PodmanArgs=--memory=1g
 PodmanArgs=--cpus=2.0
-PodmanArgs=--ulimit=nofile=65536:65536
+PodmanArgs=--cpu-shares=512
+PodmanArgs=--no-hosts
+PodmanArgs=--oom-score-adj=100
 
 [Service]
 Restart=on-failure
@@ -67,6 +67,8 @@ podman --log-level=debug --storage-driver=overlay run ...
 
 ## Common PodmanArgs Use Cases
 
+The following are valid `podman run` flags that can be passed through `PodmanArgs`. When Quadlet has a dedicated directive for the same option, prefer the Quadlet directive because it is understood by the generator.
+
 ### Setting Shared Memory Size
 
 ```ini
@@ -83,7 +85,7 @@ PodmanArgs=--device=/dev/dri:/dev/dri
 
 ```ini
 PodmanArgs=--ulimit=nofile=65536:65536
-PodmanArgs=--ulimit=nproc=4096:4096
+PodmanArgs=--pids-limit=4096
 ```
 
 ### Adding Sysctl Options
@@ -139,4 +141,4 @@ PodmanArgs=--dns=8.8.8.8
 
 ## Summary
 
-`PodmanArgs` and `GlobalArgs` in Quadlet let you pass any Podman CLI flags that do not have dedicated Quadlet directives. Use `PodmanArgs` for `podman run` flags like memory limits, capabilities, ulimits, and sysctls. Use `GlobalArgs` for Podman-level flags like log level and storage driver. Check the generated unit with `systemctl cat` to verify the arguments are applied correctly.
+`PodmanArgs` and `GlobalArgs` in Quadlet let you pass Podman CLI flags through to the generated command. Use `PodmanArgs` for additional `podman run` flags, and prefer dedicated Quadlet directives when they exist for options like memory limits, capabilities, ulimits, sysctls, DNS, hostnames, and entrypoints. Use `GlobalArgs` for Podman-level flags like log level and storage driver. Check the generated unit with `systemctl cat` to verify the arguments are applied correctly.
