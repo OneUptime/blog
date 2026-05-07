@@ -20,7 +20,7 @@ Start by reading the full error message:
 sudo journalctl -xeu apache2 --no-pager | tail -30
 sudo journalctl -xeu httpd --no-pager | tail -30
 
-# Run apachectl for immediate feedback
+# Run apache2ctl for immediate feedback
 sudo apache2ctl start
 # Expected error: AH00072: make_sock: could not bind to address ...
 
@@ -34,7 +34,7 @@ The most common cause:
 
 ```bash
 # Find what's using port 80
-sudo ss -tlnp | grep ':80'
+sudo ss -4 -tlnp | grep ':80'
 sudo lsof -i :80
 
 # Example output:
@@ -79,7 +79,7 @@ If the `Listen` directive specifies a specific IPv4 address that isn't configure
 
 ```bash
 # List all IPv4 addresses on the server
-ip addr show | grep 'inet '
+ip -4 addr show | grep 'inet '
 
 # If 203.0.113.10 is in your Listen directive but not assigned:
 # Temporary fix (lost on reboot)
@@ -91,24 +91,20 @@ sudo ip addr add 203.0.113.10/24 dev eth0
 
 ## Cause 4: Permission Denied on Ports Below 1024
 
-Non-root users cannot bind to ports 80 or 443:
+On Linux by default, binding to ports 80 or 443 requires root or `CAP_NET_BIND_SERVICE`:
 
 ```bash
-# Check Apache's user
-grep '^User\|^Group' /etc/apache2/apache2.conf
+# Check Apache's configured user and group
+grep -E '^(User|Group)' /etc/apache2/apache2.conf
 
-# Option A: Ensure Apache starts as root (master process) and drops privileges
-# This is the default - verify apache2.service runs as root initially
-sudo systemctl cat apache2 | grep User
+# Option A: Start Apache with its normal service manager so it can bind first
+sudo systemctl start apache2
 
 # Option B: Grant Apache the capability to bind to low ports
 sudo setcap cap_net_bind_service=+ep /usr/sbin/apache2
 
-# Option C: Use authbind
-sudo apt install authbind
-sudo touch /etc/authbind/byport/80 /etc/authbind/byport/443
-sudo chmod 500 /etc/authbind/byport/{80,443}
-sudo chown www-data /etc/authbind/byport/{80,443}
+# Option C: Use a non-privileged port such as 8080 instead
+# Change Listen 80 to Listen 8080, then restart Apache
 ```
 
 ## Cause 5: Duplicate Listen Directives in Configuration
@@ -124,18 +120,19 @@ grep -rn '^Listen' /etc/apache2/
 # Fix: remove the duplicate, keeping only ports.conf
 ```
 
-## Cause 6: SELinux or AppArmor Blocking
+## Cause 6: SELinux Blocking
 
-On RHEL/CentOS with SELinux:
+On RHEL/CentOS with SELinux, this is usually relevant when Apache is configured for a non-standard HTTP port:
 
 ```bash
 # Check if SELinux is blocking Apache
-sudo ausearch -m avc -ts recent | grep apache
+sudo ausearch -m avc -ts recent -c httpd -i
 
-# Allow Apache to bind to port 80
-sudo semanage port -a -t http_port_t -p tcp 80
-# or for non-standard ports
-sudo semanage port -a -t http_port_t -p tcp 8080
+# Verify which ports SELinux already allows for Apache
+sudo semanage port -l | grep http_port_t
+
+# If Apache is listening on a non-standard port such as 3131, allow it
+sudo semanage port -a -t http_port_t -p tcp 3131
 ```
 
 ## Verifying the Fix
@@ -144,10 +141,10 @@ sudo semanage port -a -t http_port_t -p tcp 8080
 # After resolution:
 sudo apache2ctl configtest   # Must show: Syntax OK
 sudo systemctl start apache2
-sudo ss -tlnp | grep apache2
-# Expected: LISTEN 0 511 0.0.0.0:80 0.0.0.0:*
+sudo ss -4 -tlnp | grep ':80'
+# Expected: a LISTEN entry for 0.0.0.0:80 owned by Apache
 ```
 
 ## Conclusion
 
-Apache bind errors follow a predictable diagnostic path: check the error log for the exact message, use `ss -tlnp` to identify the conflicting process, verify the target IP is assigned, and check for permission issues. The most common fix is stopping a conflicting service (often Nginx) or removing a stale process that still holds the socket.
+Apache bind errors follow a predictable diagnostic path: check the error log for the exact message, use `ss -4 -tlnp` to identify the conflicting process, verify the target IP is assigned, and check for permission issues. The most common fix is stopping a conflicting service (often Nginx) or removing a stale process that still holds the socket.
