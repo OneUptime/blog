@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Linux, Networking, IPv4, ip command, Virtual IP, Network Configuration
 
-Description: Add multiple IPv4 addresses to a single Linux network interface using ip addr add, including secondary addresses, label aliases, and how to make them persistent.
+Description: Add multiple IPv4 addresses to a single Linux network interface using ip addr add, including secondary addresses, labels, and how to make them persistent.
 
 ## Introduction
 
@@ -13,7 +13,7 @@ Linux allows a single physical interface to host multiple IPv4 addresses simulta
 ## Adding a Second IP Address
 
 ```bash
-# Primary address (already assigned)
+# If the interface does not already have an address, add one first
 
 sudo ip addr add 192.168.1.100/24 dev eth0
 
@@ -36,19 +36,19 @@ Output:
     inet 10.0.0.5/8 brd 10.255.255.255 scope global secondary eth0
 ```
 
-The second and subsequent addresses are marked **secondary**.
+Additional IPv4 addresses are typically marked **secondary**.
 
 ## Using Labels for Identification
 
 Labels help identify the purpose of each address:
 
 ```bash
-# Add address with a label (format: interface:N)
+# Add address with a label (format: interface:suffix)
 sudo ip addr add 192.168.1.110/24 dev eth0 label eth0:web
 sudo ip addr add 192.168.1.111/24 dev eth0 label eth0:db
 
-# View labels
-ip addr show dev eth0 | grep label
+# View labeled addresses
+ip addr show dev eth0 label 'eth0:*'
 ```
 
 ## Practical Use Case: Virtual Hosting
@@ -95,19 +95,14 @@ network:
 ```text
 auto eth0
 iface eth0 inet static
-    address 192.168.1.100
-    netmask 255.255.255.0
+    address 192.168.1.100/24
     gateway 192.168.1.1
 
-auto eth0:1
-iface eth0:1 inet static
-    address 192.168.1.101
-    netmask 255.255.255.0
+iface eth0 inet static
+    address 192.168.1.101/24
 
-auto eth0:2
-iface eth0:2 inet static
-    address 192.168.1.102
-    netmask 255.255.255.0
+iface eth0 inet static
+    address 192.168.1.102/24
 ```
 
 ## Adding Many IPs with a Loop
