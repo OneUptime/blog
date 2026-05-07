@@ -8,14 +8,14 @@ Description: Learn how to define and manage custom Azure RBAC roles using OpenTo
 
 ---
 
-Azure's built-in roles cover broad scenarios, but production environments often need more granular control. Custom roles let you define exactly which actions are allowed or denied, enabling true least-privilege access. OpenTofu makes custom role definitions reproducible and shareable across your organization.
+Azure's built-in roles cover broad scenarios, but production environments often need more granular control. Custom roles let you define exactly which actions are allowed, enabling true least-privilege access. OpenTofu makes custom role definitions reproducible and shareable across your organization.
 
 ## When to Use Custom Roles
 
 Use custom roles when:
 - Built-in roles grant more permissions than needed.
 - You need to combine permissions from multiple built-in roles into a single role.
-- You want to explicitly deny specific actions while allowing everything else.
+- You want to start with broad permissions and exclude specific actions from that role definition.
 
 ## Creating a Basic Custom Role
 
@@ -53,12 +53,6 @@ resource "azurerm_role_definition" "vm_operator" {
       "Microsoft.Compute/virtualMachines/powerOff/action",
       "Microsoft.Resources/subscriptions/resourceGroups/read",
     ]
-
-    # Explicitly block any deletion actions
-    not_actions = [
-      "Microsoft.Compute/virtualMachines/delete",
-      "Microsoft.Compute/virtualMachines/write",
-    ]
   }
 
   # Scopes where this role can be assigned
@@ -70,7 +64,7 @@ resource "azurerm_role_definition" "vm_operator" {
 
 ## Creating a Custom Role for a CI/CD Pipeline
 
-This role grants exactly what a deployment pipeline needs - no more, no less.
+This example shows one way to scope a deployment pipeline role.
 
 ```hcl
 # cicd_role.tf
@@ -126,7 +120,7 @@ resource "azurerm_role_assignment" "cicd_assignment" {
 
 ## Scoping Custom Roles to Resource Groups
 
-For tighter control, scope custom roles to specific resource groups rather than the entire subscription.
+If you want a custom role to be assignable only within a specific resource group, define it at that resource group scope instead of the entire subscription.
 
 ```hcl
 # scoped_role.tf
@@ -144,7 +138,7 @@ resource "azurerm_role_definition" "app_admin" {
   permissions {
     actions     = ["*"]
     not_actions = [
-      # Prevent deletion of the resource group itself
+      # Exclude resource group deletion from this role
       "Microsoft.Resources/subscriptions/resourceGroups/delete",
     ]
   }
@@ -159,6 +153,6 @@ resource "azurerm_role_definition" "app_admin" {
 
 - Version custom role definitions in git alongside the infrastructure that uses them.
 - Use descriptive names and `description` fields - future team members will thank you.
-- Test role permissions using `az role assignment list` and the Azure portal's "Check Access" feature before assigning to production principals.
+- Verify role assignments with `az role assignment list` and review effective access in the Azure portal's "Check Access" feature before assigning to production principals.
 - Custom roles count against Azure's limit of 5,000 custom roles per tenant - consolidate where possible.
 - Periodically review and remove unused custom roles to reduce the attack surface.
