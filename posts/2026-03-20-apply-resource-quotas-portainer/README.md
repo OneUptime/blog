@@ -8,7 +8,7 @@ Description: Learn how to apply CPU, memory, and object count quotas to Portaine
 
 Resource Quotas in Docker Environments
 
-For Docker standalone and Swarm environments, Portainer applies resource limits at the container level through its deployment forms and security policies.
+For Docker standalone and Swarm environments, Portainer does not use Kubernetes-style namespace ResourceQuotas. Instead, it lets you apply resource reservations and limits to individual containers or services through its deployment and configuration forms.
 
 Resource Quotas in Kubernetes Environments
 
@@ -16,20 +16,20 @@ Kubernetes environments support namespace-level ResourceQuotas. Portainer expose
 
 ## Setting Quotas During Namespace Creation
 
-1. Go to **Namespaces > Add namespace**.
+1. Go to **Namespaces > Add with form**.
 2. Enable **Resource assignment**.
 3. Configure:
    - **CPU limit**: Maximum CPU across all pods in the namespace.
    - **Memory limit**: Maximum memory across all pods.
-   - **Load balancer quota**: Maximum number of LoadBalancer services.
-4. Click **Create namespace**.
+4. If your cluster setup allows external load balancers, enable **Load Balancer quota** and set the maximum number of LoadBalancer services.
+5. Click **Create namespace**.
 
 ### Setting Quotas on Existing Namespaces
 
 1. Click on a namespace in the namespace list.
-2. Click **Edit** or scroll to **Resource assignment**.
+2. Scroll to **Resource assignment**.
 3. Update the quota values.
-4. Click **Save**.
+4. Click **Update namespace**.
 
 ## YAML-Based Resource Quota
 
@@ -69,7 +69,7 @@ spec:
 
 ## LimitRange for Default Resource Requests
 
-Pair ResourceQuota with LimitRange to ensure every pod declares resource requests:
+Pair ResourceQuota with LimitRange to ensure containers get default resource requests and limits when they are omitted from pod specs:
 
 ```yaml
 apiVersion: v1
@@ -100,7 +100,7 @@ spec:
 # Check current quota usage in a namespace
 kubectl describe resourcequota production-quota --namespace=production
 
-# Get quota usage as percentage
+# Get selected quota usage and limits as JSON
 kubectl get resourcequota production-quota \
   --namespace=production -o json | \
   jq '{
