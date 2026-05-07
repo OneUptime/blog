@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Registry, Mirror, Caching
 
-Description: Learn how to set up registry mirrors in Podman to improve pull performance, enable offline access, and add redundancy to your container workflow.
+Description: Learn how to set up registry mirrors in Podman to improve pull performance, enable offline access to cached images, and add redundancy to your container workflow.
 
 ---
 
 > Registry mirrors reduce pull times and provide fallback options when the primary registry is slow or unavailable.
 
-Registry mirrors are alternate locations that host copies of container images from a primary registry. Configuring mirrors in Podman allows you to pull images from a local cache or a geographically closer server, improving speed and reliability. This guide explains how to set up and manage registry mirrors.
+Registry mirrors are alternate locations that host copies of container images from a primary registry. Configuring mirrors in Podman allows you to pull images from a local cache or a geographically closer server, improving speed and reliability. For offline use, the mirror must already contain the images you need. This guide explains how to set up and manage registry mirrors.
 
 ---
 
@@ -166,12 +166,12 @@ insecure = false
 
 ## Disabling Fallback to Primary
 
-If you want Podman to only use the mirror and never fall back to the primary registry, you can omit the primary location or block it.
+If you want Podman to only use the local registry and never fall back to the primary registry, configure the local registry as the registry location instead of as a mirror.
 
 ```toml
 # /etc/containers/registries.conf
 
-# Air-gapped environment: only use the local mirror
+# Air-gapped environment: remap docker.io references to the local registry
 [[registry]]
 prefix = "docker.io"
 location = "local-mirror.internal:5000"
@@ -179,4 +179,4 @@ location = "local-mirror.internal:5000"
 
 ## Summary
 
-Registry mirrors in Podman provide faster image pulls, offline capability, and redundancy. You configure them in `registries.conf` as mirror blocks under a registry entry. Podman tries mirrors in order and falls back to the primary location if all mirrors fail. For production, use TLS-enabled mirrors and verify your configuration with debug-level logging.
+Registry mirrors in Podman provide faster image pulls, offline capability for cached images, and redundancy. You configure them in `registries.conf` as mirror blocks under a registry entry. Podman tries mirrors in order and falls back to the primary location if all mirrors fail. For production, use TLS-enabled mirrors and verify your configuration with debug-level logging.
