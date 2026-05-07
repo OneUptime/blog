@@ -36,7 +36,7 @@ cat api-deployment.yaml
 ```bash
 # Check the replicas field in the generated YAML
 grep -A 1 "replicas:" api-deployment.yaml
-# Output: replicas: 3
+# Output:   replicas: 3
 ```
 
 ## Different Replica Counts for Different Environments
@@ -82,12 +82,12 @@ podman generate kube --type deployment --replicas 3 --service api-server > full-
 kubectl apply -f api-deployment.yaml
 
 # Verify the replica count
-kubectl get deployment api-server-deployment
-# NAME                    READY   UP-TO-DATE   AVAILABLE   AGE
-# api-server-deployment   3/3     3            3           10s
+kubectl get deployment api-server-pod-deployment
+# NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
+# api-server-pod-deployment   3/3     3            3           10s
 
 # List all pods
-kubectl get pods -l app=api-server
+kubectl get pods -l app=api-server-pod
 ```
 
 ## Scaling After Deployment
@@ -95,11 +95,11 @@ kubectl get pods -l app=api-server
 ```bash
 # The generated YAML sets the initial replica count
 # You can scale up or down after deployment
-kubectl scale deployment api-server-deployment --replicas=10
+kubectl scale deployment api-server-pod-deployment --replicas=10
 
 # Or use autoscaling
-kubectl autoscale deployment api-server-deployment \
-  --min=3 --max=10 --cpu-percent=80
+kubectl autoscale deployment api-server-pod-deployment \
+  --min=3 --max=10 --cpu=80%
 ```
 
 ## Summary
