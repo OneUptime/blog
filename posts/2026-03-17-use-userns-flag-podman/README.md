@@ -21,7 +21,7 @@ Podman's `--userns` flag controls how user namespaces are configured for a conta
 
 podman run --rm --userns=host alpine:latest id
 # Container UID 0 = Host UID 0 (if running as root)
-# Container UID matches your host UID (if rootless)
+# Container UID 0 maps to your host UID (if rootless)
 
 # keep-id: Map your host UID to the same UID inside the container
 podman run --rm --userns=keep-id alpine:latest id
@@ -29,9 +29,9 @@ podman run --rm --userns=keep-id alpine:latest id
 
 # auto: Automatically allocate a unique UID mapping
 podman run --rm --userns=auto alpine:latest id
-# Uses a unique range from your subuid allocations
+# Uses a unique range from configured subordinate UID/GID allocations
 
-# nomap: Do not map the user (Podman 4.1+)
+# nomap: Do not map the current rootless user's UID/GID (Podman 4.1+)
 podman run --rm --userns=nomap alpine:latest id
 ```
 
@@ -39,14 +39,14 @@ podman run --rm --userns=nomap alpine:latest id
 
 ```bash
 # Host mode disables user namespace remapping
-# Useful when you need exact UID matching with host files
+# Useful when you need the caller's user namespace rather than a private mapping
 podman run --rm \
   --userns=host \
   -v /var/log:/host-logs:ro \
   alpine:latest ls -la /host-logs
 
 # WARNING: In rootful Podman, host mode means container root = real root
-# In rootless Podman, host mode means container runs as your user
+# In rootless Podman, container root maps to the invoking user on the host
 ```
 
 ## Using keep-id Mode
@@ -115,4 +115,4 @@ podman inspect --format='{{.HostConfig.UsernsMode}}' my-container
 
 ## Summary
 
-The `--userns` flag in Podman controls user namespace behavior. Use `host` for direct UID passthrough, `keep-id` for development with bind mounts where your host UID should be preserved, and `auto` for maximum isolation with unique UID ranges per container. Each mode serves different use cases, from development convenience to production security. Understanding when to use each mode helps you balance security isolation with operational requirements.
+The `--userns` flag in Podman controls user namespace behavior. Use `host` to run in the caller's user namespace, `keep-id` for development with bind mounts where your host UID should be preserved, and `auto` for maximum isolation with unique UID ranges per container. Each mode serves different use cases, from development convenience to production security. Understanding when to use each mode helps you balance security isolation with operational requirements.
