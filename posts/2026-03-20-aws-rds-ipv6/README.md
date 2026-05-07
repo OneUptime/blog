@@ -8,7 +8,7 @@ Description: Enable dual-stack mode on AWS RDS instances to support IPv6 databas
 
 ## Introduction
 
-AWS RDS supports IPv6 connections through dual-stack DB instances. When enabled, RDS creates both IPv4 and IPv6 DNS endpoints. Applications can connect to RDS over IPv6, which is useful when database clients are in IPv6-only subnets or when you want to eliminate IPv4 dependency for database connections.
+AWS RDS supports IPv6 connections through dual-stack DB instances for supported engine versions and Regions. When enabled, clients use the same DB endpoint, which can resolve to both A and AAAA records. Applications can connect to RDS over IPv6, which is useful when database clients are in IPv6-only subnets or when you want to reduce IPv4 dependency for database connections.
 
 ## Enable Dual-Stack on RDS Instance
 
@@ -21,7 +21,7 @@ aws rds create-db-instance \
     --engine postgres \
     --master-username admin \
     --master-user-password MyPassword123! \
-    --db-subnet-group-name my-ipv6-subnet-group \
+    --db-subnet-group-name ipv6-subnet-group \
     --vpc-security-group-ids sg-12345678 \
     --network-type DUAL \
     --allocated-storage 20
@@ -32,16 +32,16 @@ aws rds modify-db-instance \
     --network-type DUAL \
     --apply-immediately
 
-# Get IPv6 endpoint
+# Get the DB endpoint hostname and network type
 aws rds describe-db-instances \
     --db-instance-identifier mydb \
-    --query "DBInstances[0].{Endpoint:Endpoint, NetworkType:NetworkType}"
+    --query "DBInstances[0].{Endpoint:Endpoint.Address, NetworkType:NetworkType}"
 ```
 
 ## Create RDS Subnet Group with IPv6
 
 ```bash
-# RDS subnet group must include IPv6-enabled subnets
+# Each subnet in the RDS subnet group must have an associated IPv6 CIDR block
 aws rds create-db-subnet-group \
     --db-subnet-group-name ipv6-subnet-group \
     --db-subnet-group-description "Subnet group with IPv6 support" \
@@ -59,7 +59,7 @@ aws rds create-db-subnet-group \
 resource "aws_db_subnet_group" "main" {
   name       = "main-db-subnet-group"
   subnet_ids = [
-    aws_subnet.private_a.id,  # Must be IPv6-enabled subnets
+    aws_subnet.private_a.id,  # Each subnet must have an associated IPv6 CIDR block
     aws_subnet.private_b.id,
     aws_subnet.private_c.id,
   ]
@@ -70,7 +70,7 @@ resource "aws_db_subnet_group" "main" {
 resource "aws_db_instance" "postgres" {
   identifier        = "mydb"
   engine            = "postgres"
-  engine_version    = "15.4"
+  engine_version    = "15"
   instance_class    = "db.t3.micro"
   allocated_storage = 20
 
@@ -122,13 +122,13 @@ resource "aws_security_group" "rds" {
 }
 
 output "rds_endpoint" {
-  value = aws_db_instance.postgres.endpoint
+  value = aws_db_instance.postgres.address
 }
 
-output "rds_ipv6_address" {
-  description = "Connect with IPv6 using this address"
-  value       = aws_db_instance.postgres.endpoint
-  # DNS resolves to both IPv4 and IPv6 when network_type = DUAL
+output "rds_dual_stack_hostname" {
+  description = "Use this hostname for both IPv4 and IPv6 connections"
+  value       = aws_db_instance.postgres.address
+  # DNS resolves to both A and AAAA records when network_type = DUAL
 }
 ```
 
@@ -138,14 +138,14 @@ output "rds_ipv6_address" {
 import psycopg2
 import socket
 
-# Get the IPv6 address for the RDS endpoint
-rds_endpoint = "mydb.cluster-xyz.us-east-1.rds.amazonaws.com"
+# Use the standard RDS instance endpoint hostname
+rds_endpoint = "mydb.xyz.us-east-1.rds.amazonaws.com"
 
-# Resolve to IPv6
-addrs = socket.getaddrinfo(rds_endpoint, 5432, socket.AF_INET6)
+# Resolve the endpoint's IPv6 address
+addrs = socket.getaddrinfo(rds_endpoint, 5432, socket.AF_INET6, socket.SOCK_STREAM)
 print(f"IPv6 address: {addrs[0][4][0]}")
 
-# Connect using IPv6 (getaddrinfo prefers IPv6 when available)
+# Connect using the endpoint hostname; the client stack selects IPv4 or IPv6
 conn = psycopg2.connect(
     host=rds_endpoint,
     port=5432,
@@ -163,21 +163,20 @@ conn.close()
 ## Verify IPv6 RDS Connectivity
 
 ```bash
-# Get the RDS IPv6 endpoint
+# Get the RDS endpoint
 ENDPOINT="mydb.xyz.us-east-1.rds.amazonaws.com"
 
 # Check if AAAA record exists
-dig AAAA "$ENDPOINT"
+dig "$ENDPOINT" AAAA
 
 # Test TCP connection over IPv6
 nc -6 -z -v "$ENDPOINT" 5432
-# Or:
-curl -6 "telnet://${ENDPOINT}:5432"
 
-# Connect with psql over IPv6
-psql "host=${ENDPOINT} port=5432 user=admin dbname=myapp sslmode=require"
+# Resolve one IPv6 address and force psql to use it for a one-off test
+IPV6_ADDR=$(dig +short "$ENDPOINT" AAAA | head -n 1)
+psql "host=${ENDPOINT} hostaddr=${IPV6_ADDR} port=5432 user=admin dbname=myapp sslmode=require"
 ```
 
 ## Conclusion
 
-RDS dual-stack mode (`network_type = "DUAL"`) creates RDS instances that respond to both IPv4 and IPv6 connections using the same endpoint DNS name. The DNS name resolves to both A and AAAA records, allowing applications to connect over whichever protocol is preferred. RDS subnet groups must include IPv6-enabled subnets. Security groups must have explicit IPv6 rules allowing database port access. Applications connecting to RDS over IPv6 need no code changes - the connection string hostname resolves to an IPv6 address automatically when Happy Eyeballs or explicit IPv6 preference is configured.
+RDS dual-stack mode (`network_type = "DUAL"`) lets supported RDS engine versions accept both IPv4 and IPv6 connections by using the same endpoint DNS name. That DNS name can resolve to both A and AAAA records, allowing applications to connect over whichever protocol the client stack selects. RDS subnet groups must include subnets with associated IPv6 CIDR blocks. Security groups must have explicit IPv6 rules allowing database port access. Applications can continue using the DB endpoint hostname, while client OS address selection and driver configuration determine whether IPv4 or IPv6 is used.
