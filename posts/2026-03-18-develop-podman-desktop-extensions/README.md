@@ -10,7 +10,7 @@ Description: Learn how to develop custom extensions for Podman Desktop to add ne
 
 > Building your own Podman Desktop extension lets you integrate custom tools, automate workflows, and share new capabilities with the Podman community.
 
-Podman Desktop extensions are built using TypeScript and packaged as OCI images. The extension API provides hooks into the container lifecycle, UI components, and Kubernetes operations. This guide walks you through creating a basic extension from scratch, packaging it, and testing it in Podman Desktop.
+Podman Desktop extensions can be written in TypeScript or JavaScript and packaged as OCI images. The extension API provides hooks into the container lifecycle, UI components, and Kubernetes operations. This guide walks you through creating a basic extension from scratch, packaging it, and testing it in Podman Desktop.
 
 ---
 
@@ -33,15 +33,16 @@ npm install --save-dev @podman-desktop/api typescript @types/node
 
 The key files in an extension are:
 
-- `package.json` - Extension metadata and activation events
+- `package.json` - Extension metadata and contribution points
 - `src/extension.ts` - Main entry point with activate/deactivate functions
 - `Containerfile` - Packages the extension as an OCI image
+- `icon.png` - Extension icon referenced by the metadata
 
 ## Setting Up the Project
 
 Configure the TypeScript and package settings:
 
-```json
+```jsonc
 // tsconfig.json
 {
   "compilerOptions": {
@@ -67,6 +68,7 @@ Update your `package.json` with extension metadata:
   "displayName": "My Custom Extension",
   "description": "A custom extension for Podman Desktop",
   "version": "1.0.0",
+  "icon": "icon.png",
   "publisher": "myusername",
   "engines": {
     "podman-desktop": ">=1.0.0"
@@ -106,7 +108,7 @@ export async function activate(
     'my-extension.hello',
     async () => {
       // Show a notification to the user
-      podmanDesktopAPI.window.showInformationMessage(
+      await podmanDesktopAPI.window.showInformationMessage(
         'Hello from my Podman Desktop extension!'
       );
     }
@@ -142,8 +144,8 @@ export function registerContainerMonitor(
 ): void {
   // Listen for container start events
   const onStart = podmanDesktopAPI.containerEngine.onEvent((event) => {
-    if (event.Type === 'container' && event.status === 'start') {
-      console.log(`Container started: ${event.Actor?.Attributes?.name}`);
+    if (event.type === 'container' && event.status === 'start') {
+      console.log(`Container started: ${event.id}`);
     }
   });
 
@@ -158,6 +160,12 @@ Create a Containerfile to package the extension:
 ```dockerfile
 # Containerfile
 FROM scratch
+
+# Add the required Podman Desktop extension metadata
+LABEL org.opencontainers.image.title="My Custom Extension" \
+      org.opencontainers.image.description="A custom extension for Podman Desktop" \
+      org.opencontainers.image.vendor="podman-desktop" \
+      io.podman-desktop.api.version=">= 1.0.0"
 
 # Copy the extension metadata
 COPY package.json /extension/package.json
@@ -197,6 +205,8 @@ You can also test during development by using the watch mode:
 npm run watch
 ```
 
+To load the local folder while you iterate, enable development mode in **Settings > Preferences > Extensions**, then go to **Extensions > Local Extensions** and click **Add a local folder extension...**.
+
 ## Publishing the Extension
 
 Push your extension to an OCI registry:
@@ -220,11 +230,7 @@ Troubleshoot extension issues during development:
 
 ```bash
 # Check Podman Desktop logs for extension output
-# macOS log location:
-tail -f ~/Library/Application\ Support/Podman\ Desktop/logs/podman-desktop.log
-
-# Linux log location:
-tail -f ~/.local/share/Podman\ Desktop/logs/podman-desktop.log
+# Open Help > Troubleshooting, then select the Logs tab.
 
 # Use the Developer Tools in Podman Desktop
 # View > Toggle Developer Tools (Ctrl+Shift+I)
