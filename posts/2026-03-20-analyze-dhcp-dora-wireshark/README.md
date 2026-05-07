@@ -20,7 +20,7 @@ DHCP uses a four-step handshake known as DORA - Discover, Offer, Request, Acknow
 sudo wireshark -i eth0 -k
 
 # Or capture with tcpdump and open in Wireshark later
-sudo tcpdump -i eth0 -w dhcp-capture.pcap port 67 or port 68
+sudo tcpdump -i eth0 -w dhcp-capture.pcap 'udp port 67 or udp port 68'
 wireshark dhcp-capture.pcap
 ```
 
@@ -29,32 +29,32 @@ wireshark dhcp-capture.pcap
 ## Apply a Wireshark Display Filter
 
 ```text
-# Show only DHCP/BOOTP packets
-bootp
+# Show only DHCP packets
+dhcp
 
 # Show only DHCP Discover messages
-bootp.option.dhcp == 1
+dhcp.option.dhcp == 1
 
 # Show only DHCP Offer messages
-bootp.option.dhcp == 2
+dhcp.option.dhcp == 2
 
 # Show only DHCP Request messages
-bootp.option.dhcp == 3
+dhcp.option.dhcp == 3
 
 # Show only DHCP Acknowledge messages
-bootp.option.dhcp == 5
+dhcp.option.dhcp == 5
 ```
 
 ---
 
 ## Understanding the DORA Messages
 
-| Step        | Direction          | Description                                         |
-|-------------|--------------------|-----------------------------------------------------|
-| Discover    | Client → Broadcast | Client requests an IP; sent to 255.255.255.255      |
-| Offer       | Server → Client    | Server offers an IP with lease time and options     |
-| Request     | Client → Broadcast | Client formally requests the offered IP             |
-| Acknowledge | Server → Client    | Server confirms the lease                           |
+| Step        | Direction                   | Description                                         |
+|-------------|-----------------------------|-----------------------------------------------------|
+| Discover    | Client → Broadcast          | Client requests an IP; sent to 255.255.255.255      |
+| Offer       | Server → Client or Broadcast | Server offers an IP with lease time and options   |
+| Request     | Client → Broadcast          | Client formally requests the offered IP             |
+| Acknowledge | Server → Client or Broadcast | Server confirms the lease                         |
 
 ---
 
@@ -75,25 +75,25 @@ bootp.option.dhcp == 5
 
 **Acknowledge:**
 - Confirms the IP, lease duration, and options
-- `nak` instead of `ack` indicates a rejection
+- `DHCPNAK` instead of `DHCPACK` indicates a rejection
 
 ---
 
 ## Diagnose DHCP Issues
 
-```bash
-# Check for DHCP NAK responses
-bootp.option.dhcp == 6
+```text
+# Check for DHCPNAK responses
+dhcp.option.dhcp == 6
 
-# Filter by specific MAC address
-eth.src == aa:bb:cc:dd:ee:ff
+# Filter by specific client MAC address
+dhcp.hw.mac_addr == aa:bb:cc:dd:ee:ff
 
 # Filter by transaction ID to follow one full DORA
-bootp.id == 0x12345678
+dhcp.id == 0x12345678
 ```
 
 ---
 
 ## Summary
 
-Use Wireshark with the `bootp` display filter to isolate and inspect DHCP DORA traffic. Match packets by `xid` (transaction ID) to follow a single client exchange. Look at `yiaddr`, Option 50, and Option 54 to verify address assignment, and watch for DHCP NAK messages which indicate lease rejections.
+Use Wireshark with the `dhcp` display filter to isolate and inspect DHCP DORA traffic. Match packets by `xid` (transaction ID) to follow a single client exchange. Look at `yiaddr`, Option 50, and Option 54 to verify address assignment, and watch for DHCP NAK messages which indicate lease rejections.
