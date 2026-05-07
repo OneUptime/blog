@@ -85,7 +85,7 @@ resource "azurerm_private_dns_srv_record" "app_service" {
 ## Step 3: Private DNS for Azure Services (Private Endpoints)
 
 ```hcl
-# Required Private DNS zones for Azure services
+# Recommended Private DNS zones for selected Azure services
 locals {
   private_dns_zones = {
     "blob"  = "privatelink.blob.core.windows.net"
@@ -116,7 +116,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "services" {
   registration_enabled  = false  # No auto-registration for service zones
 }
 
-# Private Endpoint DNS config (auto-created by private endpoint)
+# Private Endpoint DNS integration
 resource "azurerm_private_endpoint" "storage" {
   name                = "${var.project_name}-storage-pe"
   location            = var.location
@@ -130,7 +130,7 @@ resource "azurerm_private_endpoint" "storage" {
     is_manual_connection           = false
   }
 
-  # Auto-register in private DNS zone
+  # Associate the private endpoint with the private DNS zone
   private_dns_zone_group {
     name = "blob-dns-group"
     private_dns_zone_ids = [azurerm_private_dns_zone.services["blob"].id]
@@ -153,7 +153,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "multi_vnet" {
   resource_group_name   = var.resource_group_name
   private_dns_zone_name = azurerm_private_dns_zone.main.name
   virtual_network_id    = each.value
-  registration_enabled  = false  # Only one VNet can have registration enabled per zone
+  registration_enabled  = false  # Set to true only if this VNet should auto-register and is not already linked to another registration-enabled private zone
 }
 ```
 
@@ -177,4 +177,4 @@ az network private-dns record-set list \
 
 ## Conclusion
 
-Only one VNet per Private DNS Zone can have `registration_enabled = true`-only that VNet's VMs auto-register their hostnames. All other linked VNets can resolve names but don't register. The Private DNS Zone names for Azure services are fixed (e.g., `privatelink.blob.core.windows.net`)-always use these exact zone names when integrating with Private Endpoints. Use `private_dns_zone_group` on Private Endpoints to automatically create A records in the zone when the endpoint is created, rather than managing records manually.
+A virtual network can be linked to only one Private DNS Zone with `registration_enabled = true`, but a Private DNS Zone can have multiple registration-enabled VNet links. Linked VNets with `registration_enabled = false` can still resolve names but won't auto-register VM records. When you use Private DNS Zones with Azure Private Endpoints, use the recommended zone name for that service and subresource (for example, `privatelink.blob.core.windows.net` for Blob Storage in Azure public cloud). Use `private_dns_zone_group` on Private Endpoints to let Azure manage the private DNS A records when the endpoint is created or deleted, rather than managing records manually.
