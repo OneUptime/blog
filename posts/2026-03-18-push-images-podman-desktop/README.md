@@ -98,8 +98,8 @@ To push images through the graphical interface:
 2. Find the image you want to push in the list
 3. Click the three-dot menu on the image row
 4. Select "Push Image"
-5. Confirm the registry reference
-6. Click "Push" to start uploading
+5. Confirm the selected image tag
+6. Click "Push image" to start uploading
 
 Podman Desktop shows upload progress as the layers are pushed to the registry.
 
@@ -185,7 +185,7 @@ Confirm the image was pushed successfully.
 podman rmi registry.example.com/myorg/my-app:v1.0
 podman pull registry.example.com/myorg/my-app:v1.0
 
-# Inspect the remote image
+# Inspect the pulled image
 podman inspect registry.example.com/myorg/my-app:v1.0 | \
     python3 -m json.tool | head -20
 
