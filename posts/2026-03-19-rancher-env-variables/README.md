@@ -20,7 +20,7 @@ The simplest approach is setting environment variables directly on the container
 
 ### Via the Rancher UI
 
-1. Navigate to **Workloads > Deployments** and click **Create** (or edit an existing workload)
+1. Navigate to **Workload**, click **Create**, and choose **Deployment** (or edit an existing workload)
 2. Scroll to the **Environment Variables** section in the container configuration
 3. Click **Add Variable**
 4. Enter the **Key** (e.g., `APP_ENV`) and **Value** (e.g., `production`)
@@ -66,7 +66,7 @@ ConfigMaps store non-sensitive configuration data that can be shared across mult
 
 ### Step 1: Create a ConfigMap
 
-In Rancher, navigate to **Storage > ConfigMaps** and click **Create**:
+In Rancher, navigate to **More Resources > Core > ConfigMaps** and click **Create**:
 
 - **Name**: `app-config`
 - **Namespace**: `default`
@@ -286,7 +286,7 @@ spec:
                   optional: true
 ```
 
-The `optional: true` flag prevents the pod from failing if the referenced ConfigMap or Secret does not exist.
+In this example, the `optional: true` flag prevents the pod from failing if the referenced ConfigMap or key does not exist.
 
 ## Verifying Environment Variables
 
