@@ -24,7 +24,7 @@ The `podman system df` command provides a summary of disk usage across all Podma
 podman system df
 ```
 
-This shows a table with four categories: Images, Containers, Local Volumes, and Build Cache. Each row displays the total count, active count, total size, and reclaimable space.
+This shows a table with categories such as Images, Containers, and Local Volumes. Each row displays the total count, active count, total size, and reclaimable space.
 
 ## Detailed Disk Usage
 
@@ -49,7 +49,7 @@ podman system df --format '{{.Type}}\t{{.Total}}\t{{.Size}}\t{{.Reclaimable}}'
 podman system df --format json
 
 # Parse JSON output with jq to get reclaimable space
-podman system df --format json | jq '.[].ReclaimableSize'
+podman system df --format json | jq '.[].Reclaimable'
 ```
 
 ## Checking Individual Image Sizes
@@ -64,10 +64,7 @@ podman images --sort size --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{
 podman images --sort size --format '{{.Repository}}:{{.Tag}} - {{.Size}}' | tail -10
 
 # Show total disk usage of all images
-podman images --format '{{.Size}}' | awk '{
-    # Convert human-readable sizes to bytes for summing
-    print $0
-}'
+podman images --format json | jq '[.[].size] | add'
 ```
 
 ## Checking Container Disk Usage
@@ -82,7 +79,7 @@ podman ps -a --size --format "table {{.Names}}\t{{.Size}}\t{{.Status}}"
 podman ps -a --size --format '{{.Names}}: {{.Size}}' | sort -t: -k2 -h
 
 # Check disk usage of a specific container
-podman inspect --format '{{.SizeRw}}' my-container
+podman container inspect --size --format '{{.SizeRw}}' my-container
 ```
 
 ## Checking Volume Disk Usage
@@ -125,7 +122,7 @@ DATA=$(podman system df --format json 2>/dev/null)
 IMAGES_SIZE=$(echo "$DATA" | jq -r '.[0].Size // "0"')
 CONTAINERS_SIZE=$(echo "$DATA" | jq -r '.[1].Size // "0"')
 VOLUMES_SIZE=$(echo "$DATA" | jq -r '.[2].Size // "0"')
-RECLAIMABLE=$(echo "$DATA" | jq -r '.[0].ReclaimableSize // "0"')
+RECLAIMABLE=$(echo "$DATA" | jq -r '.[0].Reclaimable // "0"')
 
 # Log the data
 echo "${TIMESTAMP} images=${IMAGES_SIZE} containers=${CONTAINERS_SIZE} volumes=${VOLUMES_SIZE} reclaimable=${RECLAIMABLE}" >> "$LOG_FILE"
@@ -141,8 +138,8 @@ Configure alerts when Podman storage exceeds a threshold.
 #!/bin/bash
 # podman-disk-alert.sh - Alert when Podman disk usage exceeds threshold
 
-# Set threshold in gigabytes
-THRESHOLD_GB=50
+# Set threshold as filesystem usage percentage
+THRESHOLD_PERCENT=80
 
 # Get the graph root directory
 GRAPH_ROOT=$(podman info --format '{{.Store.GraphRoot}}')
@@ -150,7 +147,7 @@ GRAPH_ROOT=$(podman info --format '{{.Store.GraphRoot}}')
 # Check available space on the filesystem containing the graph root
 USED_PERCENT=$(df "$GRAPH_ROOT" | tail -1 | awk '{print $5}' | tr -d '%')
 
-if [ "$USED_PERCENT" -gt 80 ]; then
+if [ "$USED_PERCENT" -gt "$THRESHOLD_PERCENT" ]; then
     echo "WARNING: Podman storage filesystem is ${USED_PERCENT}% full"
     echo "Graph Root: $GRAPH_ROOT"
     echo ""
