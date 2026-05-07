@@ -57,7 +57,7 @@ Use `pidstat` to monitor per-process CPU usage over time:
 # Get the container's main PID
 CPID=$(podman inspect --format '{{.State.Pid}}' my-container)
 
-# Monitor all processes in the container's process tree
+# Monitor the container's main process and its threads
 pidstat -t -p $CPID 1 60
 
 # Monitor CPU, I/O, and memory together
@@ -76,11 +76,12 @@ podman stats --no-stream --format \
   "{{.Name}}: {{.MemUsage}} ({{.MemPerc}})"
 
 # Detailed memory breakdown from cgroups
-CONTAINER_ID=$(podman inspect --format '{{.Id}}' my-container)
+CGROUP_PATH=$(podman inspect --format '{{.State.CgroupPath}}' my-container)
+CGROUP="/sys/fs/cgroup/${CGROUP_PATH#/}"
 
 # For cgroups v2
-cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/user.slice/libpod-${CONTAINER_ID}.scope/memory.current
-cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/user.slice/libpod-${CONTAINER_ID}.scope/memory.stat
+cat "$CGROUP/memory.current"
+cat "$CGROUP/memory.stat"
 ```
 
 Read the memory stat file for a breakdown:
@@ -130,7 +131,7 @@ DURATION=${2:-300}  # Default 5 minutes
 INTERVAL=5
 
 echo "Tracking memory for $CONTAINER over ${DURATION}s"
-echo "timestamp,rss_bytes,cache_bytes"
+echo "timestamp,mem_usage"
 
 END=$(($(date +%s) + DURATION))
 while [ $(date +%s) -lt $END ]; do
@@ -166,11 +167,11 @@ Use `iotop` to see I/O per process:
 # Get container PID
 CPID=$(podman inspect --format '{{.State.Pid}}' my-container)
 
-# Watch I/O for container processes
+# Watch I/O for the container's main process
 sudo iotop -p $CPID -b -d 2 -n 30
 
-# Use strace to profile syscall-level I/O
-sudo strace -p $CPID -e trace=read,write,open,close -c
+# Use strace to profile syscall-level I/O for the main process
+sudo strace -f -p $CPID -e trace=read,write,open,openat,close -c
 ```
 
 Profile filesystem operations inside the container:
@@ -190,6 +191,8 @@ podman run --rm -it your-image sh -c '
 ## Profile Network Usage
 
 Network profiling shows bandwidth consumption and connection patterns:
+
+Note: `podman stats` cannot report network usage in some rootless environments. Enter the container's network namespace when you need connection-level details.
 
 ```bash
 # Network I/O from podman stats
@@ -333,7 +336,7 @@ podman stats --no-stream --format \
 while true; do
   TIMESTAMP=$(date +%s)
   podman stats --no-stream --format json | \
-    jq --arg ts "$TIMESTAMP" '.[] | {timestamp: $ts, name, cpu_percent, mem_usage, net_io, block_io, pids}' \
+    jq --arg ts "$TIMESTAMP" '.[] | {timestamp: $ts, name, cpu_percent, mem_usage, mem_percent, netio, blocki, pids}' \
     >> /var/log/container-metrics.jsonl
   sleep 10
 done
