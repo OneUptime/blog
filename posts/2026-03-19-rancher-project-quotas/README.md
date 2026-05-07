@@ -6,7 +6,7 @@ Tags: Rancher, Kubernetes, Project, Resource Quota, Namespace
 
 Description: A practical guide to configuring resource quotas for Rancher projects to control CPU, memory, and object consumption across namespaces.
 
-Resource quotas in Rancher projects prevent any single team from consuming more than their fair share of cluster resources. When you set a project-level quota, Rancher distributes it across the project's namespaces and enforces limits on CPU, memory, pods, and other resources. This guide shows how to configure project resource quotas effectively.
+Resource quotas in Rancher projects prevent any single team from consuming more than their fair share of cluster resources. When you set a project-level quota, Rancher enforces the overall project limit and propagates the namespace default limit to the project's namespaces. This guide shows how to configure project resource quotas effectively.
 
 ## Prerequisites
 
@@ -32,14 +32,22 @@ Before configuring quotas, calculate how to distribute cluster resources:
 
 kubectl describe nodes | grep -A 5 "Capacity:"
 
-# Check current resource usage
-kubectl top nodes
+# Check current resource usage (requires Metrics Server)
+kubectl top node
 
 # Summarize allocatable resources
 kubectl get nodes -o json | \
-  jq '{
-    totalCPU: [.items[].status.allocatable.cpu | rtrimstr("m") | tonumber] | add,
-    totalMemory: [.items[].status.allocatable.memory | rtrimstr("Ki") | tonumber] | add
+  jq 'def cpu_to_m:
+        if endswith("m") then sub("m$"; "") | tonumber else tonumber * 1000 end;
+      def mem_to_ki:
+        if endswith("Ki") then sub("Ki$"; "") | tonumber
+        elif endswith("Mi") then sub("Mi$"; "") | tonumber * 1024
+        elif endswith("Gi") then sub("Gi$"; "") | tonumber * 1024 * 1024
+        else tonumber
+        end;
+      {
+    totalCpuMillicores: ([.items[].status.allocatable.cpu | cpu_to_m] | add),
+    totalMemoryKi: ([.items[].status.allocatable.memory | mem_to_ki] | add)
   }'
 ```
 
@@ -70,6 +78,8 @@ A common approach is to reserve 20% of cluster resources for system workloads an
 8. Click **Save**.
 
 ## Step 3: Set Quotas via kubectl
+
+Run this against the Rancher management cluster. `Project` resources live there, even for managed downstream clusters.
 
 ```yaml
 apiVersion: management.cattle.io/v3
@@ -154,16 +164,16 @@ When a namespace needs more resources than the default, override the quota for t
 
 1. Go to **Cluster > Projects/Namespaces**.
 2. Find the namespace within the project.
-3. Click the three-dot menu and select **Edit**.
+3. Click the three-dot menu and select **Edit Config**.
 4. Modify the resource limits for this specific namespace.
 5. Click **Save**.
 
-The namespace's limit cannot exceed the project's total limit minus what is allocated to other namespaces.
+The namespace limits must stay within the configured project limits.
 
 Via kubectl, edit the ResourceQuota in the namespace directly:
 
 ```bash
-kubectl edit resourcequota -n <namespace-name>
+kubectl edit resourcequota/<quota-name> -n <namespace-name>
 ```
 
 ## Step 6: Monitor Quota Usage
@@ -208,10 +218,10 @@ Options for handling this:
 3. **Help the team optimize** by identifying unused resources.
 
 ```bash
-# Find pods in Completed or Error state that can be cleaned up
+# Find pods that are not Running or Pending and may be candidates for cleanup
 kubectl get pods -n <namespace-name> --field-selector=status.phase!=Running,status.phase!=Pending
 
-# Find deployments scaled to zero that consume quota for ConfigMaps/Secrets
+# Find deployments scaled to zero that may be candidates for cleanup
 kubectl get deployments -n <namespace-name> -o json | \
   jq '.items[] | select(.spec.replicas == 0) | .metadata.name'
 ```
@@ -233,7 +243,7 @@ spec:
       rules:
         - alert: ResourceQuotaUsageHigh
           expr: |
-            kube_resourcequota{type="used"} / kube_resourcequota{type="hard"} > 0.8
+            kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"} > 0.8
           for: 10m
           labels:
             severity: warning
@@ -242,7 +252,7 @@ spec:
             description: "Namespace {{ $labels.namespace }} is using more than 80% of its {{ $labels.resource }} quota."
         - alert: ResourceQuotaUsageCritical
           expr: |
-            kube_resourcequota{type="used"} / kube_resourcequota{type="hard"} > 0.95
+            kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"} > 0.95
           for: 5m
           labels:
             severity: critical
@@ -279,7 +289,7 @@ done
 - **Always set quotas**: Every project should have resource quotas to prevent any team from consuming unlimited resources.
 - **Set namespace defaults**: Configure namespace default limits so that new namespaces automatically get quotas.
 - **Leave headroom**: Do not allocate 100% of cluster resources. Leave 10-20% for system overhead and burst capacity.
-- **Use requests and limits**: Set both CPU/memory requests and limits to enable proper scheduling and prevent over-commitment.
+- **Use requests and limits**: Set both CPU/memory requests and limits to enable proper scheduling and cap resource usage. If you set CPU or memory quotas, make sure workloads define the matching fields or set container default resource limits in Rancher.
 - **Monitor usage**: Regularly check quota utilization and adjust based on actual consumption patterns.
 - **Communicate limits**: Make sure teams know their quotas and how to request increases.
 - **Automate reviews**: Script quarterly quota reviews to ensure allocations match actual needs.
