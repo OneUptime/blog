@@ -10,7 +10,7 @@ Description: Learn how to use Podman for security testing, including container i
 
 > Podman's rootless architecture and built-in security features make it an excellent platform for security testing. From scanning container images for vulnerabilities to building isolated penetration testing labs, Podman provides the tools security teams need.
 
-Security testing is a critical part of the software development lifecycle. Podman contributes to security testing in two ways: its own security-first design reduces the attack surface compared to daemon-based runtors, and it provides an ideal platform for running security testing tools in isolated environments. This guide covers both defensive and offensive security testing with Podman.
+Security testing is a critical part of the software development lifecycle. Podman contributes to security testing in two ways: its own security-first design reduces the attack surface compared to daemon-based runtimes, and it provides an ideal platform for running security testing tools in isolated environments. This guide covers both defensive and offensive security testing with Podman.
 
 ---
 
@@ -119,15 +119,15 @@ sys.exit(scan_multiple_images(images))
 ### Scanning with Grype
 
 ```bash
-# Scan with Grype
+# Scan with Grype directly from a registry
 podman run --rm \
   anchore/grype:latest \
-  docker.io/library/python:3.11
+  registry:docker.io/library/python:3.11
 
 # JSON output for automation
 podman run --rm \
   anchore/grype:latest \
-  -o json docker.io/library/python:3.11 > grype-report.json
+  -o json registry:docker.io/library/python:3.11 > grype-report.json
 ```
 
 ## Podman Security Configuration Audit
@@ -286,36 +286,26 @@ podman run --rm -it \
 ### Demonstrating Rootless Isolation
 
 ```bash
-# Show that rootless Podman cannot access host resources
+# Show how a rootless container is isolated in a user namespace
 podman run --rm -it alpine sh -c '
-  echo "=== Running as UID $(id -u) ==="
+  echo "=== UID mapping inside the container ==="
+  cat /proc/self/uid_map
   echo ""
-  echo "Cannot access host filesystem:"
-  ls /etc/shadow 2>&1 || echo "  /etc/shadow: not accessible"
-  echo ""
-  echo "Cannot modify system:"
+  echo "Rootless containers still have limited kernel privileges:"
   mount -t tmpfs none /mnt 2>&1 || echo "  mount: not permitted"
 '
 ```
 
-### Comparing Rootless vs Rootful Security
+### Inspecting Rootless Security Properties
 
 ```python
 #!/usr/bin/env python3
-"""Compare security properties of rootless vs rootful containers."""
+"""Inspect security properties of a rootless container."""
 
 import subprocess
 
-def check_capability(container_cmd, cap_name):
-    """Check if a capability is available."""
-    result = subprocess.run(
-        container_cmd + ["grep", cap_name, "/proc/self/status"],
-        capture_output=True, text=True
-    )
-    return result.returncode == 0
-
-def compare_security():
-    """Compare rootless and rootful container security."""
+def inspect_security():
+    """Inspect security properties of a rootless container."""
     tests = [
         ("UID mapping", ["cat", "/proc/self/uid_map"]),
         ("Capabilities", ["cat", "/proc/self/status"]),
@@ -335,7 +325,7 @@ def compare_security():
         for line in result.stdout.strip().splitlines()[:5]:
             print(f"  {line}")
 
-compare_security()
+inspect_security()
 ```
 
 ## Secrets Management Testing
@@ -424,7 +414,7 @@ echo "=================================="
 
 # Check 1: Non-root user
 echo -n "Non-root user: "
-USER=$(podman inspect "$IMAGE" --format '{{.Config.User}}' 2>/dev/null)
+USER=$(podman image inspect "$IMAGE" --format '{{.User}}' 2>/dev/null)
 if [ -z "$USER" ] || [ "$USER" = "0" ] || [ "$USER" = "root" ]; then
     echo "FAIL (running as root)"
 else
@@ -442,7 +432,7 @@ fi
 
 # Check 3: No SUID binaries
 echo -n "SUID binaries: "
-SUID_COUNT=$(podman run --rm "$IMAGE" find / -perm -4000 -type f 2>/dev/null | wc -l)
+SUID_COUNT=$(podman run --rm --entrypoint find "$IMAGE" / -perm -4000 -type f 2>/dev/null | wc -l)
 if [ "$SUID_COUNT" -eq 0 ]; then
     echo "PASS (none found)"
 else
@@ -463,7 +453,7 @@ fi
 
 # Check 5: Shell access
 echo -n "Shell access: "
-podman run --rm "$IMAGE" sh -c "exit 0" 2>/dev/null
+podman run --rm --entrypoint sh "$IMAGE" -c "exit 0" 2>/dev/null
 if [ $? -eq 0 ]; then
     echo "INFO (shell available)"
 else
@@ -508,8 +498,8 @@ class SecurityPipeline:
         """Check if image runs as root."""
         print(f"[2/4] Checking user configuration...")
         result = subprocess.run(
-            ["podman", "inspect", self.image,
-             "--format", "{{.Config.User}}"],
+            ["podman", "image", "inspect", self.image,
+             "--format", "{{.User}}"],
             capture_output=True, text=True
         )
         user = result.stdout.strip()
@@ -535,7 +525,7 @@ class SecurityPipeline:
         """Check for hardcoded secrets in environment."""
         print(f"[4/4] Checking for exposed secrets...")
         result = subprocess.run(
-            ["podman", "inspect", self.image,
+            ["podman", "image", "inspect", self.image,
              "--format", "{{json .Config.Env}}"],
             capture_output=True, text=True
         )
