@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, SNS, Notification, Infrastructure as Code, Pub/Sub
 
-Description: Learn how to create AWS SNS topics, configure subscriptions for email, SQS, Lambda, and HTTP endpoints, and manage access policies with OpenTofu.
+Description: Learn how to create AWS SNS topics, configure subscriptions for email, SQS, and Lambda, and manage access policies with OpenTofu.
 
 ## Introduction
 
@@ -108,6 +108,7 @@ resource "aws_sns_topic_subscription" "lambda_alerts" {
   topic_arn = aws_sns_topic.alerts.arn
   protocol  = "lambda"
   endpoint  = aws_lambda_function.alert_processor.arn
+  depends_on = [aws_lambda_permission.sns_invoke]
 }
 
 # Grant SNS permission to invoke the Lambda
