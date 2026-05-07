@@ -26,16 +26,16 @@ Helm deployments can fail for many reasons, including incorrect values, missing 
 ### Check Release Status via CLI
 
 ```bash
-helm list -n default --all
+helm list -n default
 ```
 
-The `--all` flag shows releases in all states, including failed ones.
+This shows failed releases. If you are using Helm 3 and need to include every release state, add `--all`.
 
 ```bash
-helm status my-app -n default
+helm status my-app -n default --show-desc
 ```
 
-This shows the release status and any error messages.
+This shows the release status and description, including any error message.
 
 ### View Release History
 
@@ -136,7 +136,7 @@ Look for events like:
 
 ```bash
 kubectl describe namespace default | grep -A 20 "Resource Quotas"
-kubectl get events -n default --sort-by=.lastTimestamp
+kubectl get events -n default --sort-by=.metadata.creationTimestamp
 ```
 
 **Fix**:
@@ -188,15 +188,14 @@ no persistent volumes available for this claim
 **Diagnose**:
 
 ```bash
-# Check for hook pods
-
-kubectl get pods -n default | grep -E "(pre-install|post-install|pre-upgrade|post-upgrade)"
-
-# View hook pod logs
-kubectl logs <hook-pod-name> -n default
+# List hook manifests for the release
+helm get hooks my-app -n default
 
 # Check hook job status
 kubectl get jobs -n default
+
+# View hook job logs
+kubectl logs job/<hook-job-name> -n default
 ```
 
 **Fix**:
@@ -284,7 +283,8 @@ kubectl get crd | grep my-app
 
 2. Some charts require manual CRD updates:
    ```bash
-   kubectl apply -f https://raw.githubusercontent.com/chart-repo/crds/main/crd.yaml
+   helm show crds my-chart > crds.yaml
+   kubectl apply -f crds.yaml
    ```
 
 ## Step 3: General Debugging Commands
@@ -293,7 +293,7 @@ A comprehensive set of commands for diagnosing any Helm failure:
 
 ```bash
 # Release overview
-helm status my-app -n default
+helm status my-app -n default --show-desc
 helm history my-app -n default
 helm get values my-app -n default
 helm get manifest my-app -n default
@@ -303,7 +303,7 @@ kubectl get pods -l app.kubernetes.io/instance=my-app -n default -o wide
 kubectl describe pods -l app.kubernetes.io/instance=my-app -n default
 
 # Events (sorted by time)
-kubectl get events -n default --sort-by=.lastTimestamp | tail -30
+kubectl get events -n default --sort-by=.metadata.creationTimestamp | tail -30
 
 # Logs from all pods
 kubectl logs -l app.kubernetes.io/instance=my-app -n default --all-containers --tail=50
@@ -327,7 +327,7 @@ If the release is in a bad state and cannot be upgraded or rolled back:
 # Uninstall the release
 helm uninstall my-app -n default
 
-# Clean up any remaining resources
+# Clean up common remaining namespaced resources
 kubectl delete all -l app.kubernetes.io/instance=my-app -n default
 kubectl delete pvc -l app.kubernetes.io/instance=my-app -n default
 kubectl delete configmap -l app.kubernetes.io/instance=my-app -n default
@@ -339,24 +339,23 @@ helm install my-app my-chart -n default -f values.yaml
 
 ### Fix a Stuck Release
 
-If a release is stuck in `pending-install` or `pending-upgrade`:
+If a release is stuck in `pending-upgrade`, first inspect the revision history. If Helm still allows a rollback:
 
 ```bash
-# Find the release secret
-kubectl get secrets -n default -l owner=helm,name=my-app
+# Check the revision history
+helm history my-app -n default
 
-# Delete the pending secret (the one with status=pending-*)
-kubectl delete secret sh.helm.release.v1.my-app.v3 -n default
-
-# Now you can retry the operation
-helm upgrade my-app my-chart -n default -f values.yaml
+# Roll back to the last successful revision
+helm rollback my-app <revision> -n default
 ```
+
+If a release is stuck in `pending-install`, uninstall it with `--no-hooks` and reinstall it.
 
 ## Best Practices for Preventing Failures
 
 1. Always use `--dry-run` before installing or upgrading in production
-2. Use `helm diff` to preview changes before applying them
-3. Set `--atomic` for automatic rollback on failure
+2. Use the `helm diff` plugin or `helm upgrade --dry-run` to preview changes before applying them
+3. Set `--rollback-on-failure` for automatic cleanup or rollback on failure
 4. Configure proper health checks in your chart templates
 5. Test chart deployments in a staging environment first
 6. Keep chart values in version control
@@ -365,4 +364,4 @@ helm upgrade my-app my-chart -n default -f values.yaml
 
 ## Summary
 
-Troubleshooting Helm deployments in Rancher requires a systematic approach: check the release status, identify the specific failure scenario, diagnose using kubectl and Helm CLI commands, and apply the appropriate fix. Most failures fall into common categories like image pull errors, resource constraints, PVC issues, and template rendering problems. Rancher provides visibility into release status through its UI, while the Helm CLI and kubectl give you the tools to dig deeper into the root cause. Use preventive measures like dry runs, atomic upgrades, and staging environments to minimize production failures.
+Troubleshooting Helm deployments in Rancher requires a systematic approach: check the release status, identify the specific failure scenario, diagnose using kubectl and Helm CLI commands, and apply the appropriate fix. Most failures fall into common categories like image pull errors, resource constraints, PVC issues, and template rendering problems. Rancher provides visibility into release status through its UI, while the Helm CLI and kubectl give you the tools to dig deeper into the root cause. Use preventive measures like dry runs, rollback-on-failure, and staging environments to minimize production failures.
