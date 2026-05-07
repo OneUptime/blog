@@ -32,7 +32,7 @@ In Rancher, Alertmanager is configured through the monitoring Helm chart values.
 2. Find `rancher-monitoring` and click the three-dot menu.
 3. Select **Upgrade** and switch to YAML view.
 
-Alternatively, you can directly edit the Alertmanager secret:
+Alternatively, you can directly inspect the Alertmanager secret:
 
 ```bash
 kubectl get secret alertmanager-rancher-monitoring-alertmanager \
@@ -61,7 +61,7 @@ The `resolve_timeout` determines how long Alertmanager waits before marking an a
 
 ## Step 3: Configure the Routing Tree
 
-The routing tree determines which receiver handles each alert. Routes are evaluated top-down, and the first match wins:
+The routing tree determines which receiver handles each alert. Routes are evaluated top-down. By default, Alertmanager stops after the first matching sibling route unless `continue: true` is set:
 
 ```yaml
 alertmanager:
@@ -270,14 +270,14 @@ Route alerts differently based on time (business hours vs. off-hours):
 alertmanager:
   config:
     route:
-      receiver: "default"
+      receiver: "default-receiver"
       routes:
-        - receiver: "business-hours"
+        - receiver: "warning-alerts"
           matchers:
             - severity = warning
           active_time_intervals:
             - business-hours
-        - receiver: "pagerduty-oncall"
+        - receiver: "critical-alerts"
           matchers:
             - severity = critical
 
@@ -325,13 +325,18 @@ Set up alerts for Alertmanager issues:
   annotations:
     summary: "Alertmanager is failing to send notifications"
 
-- alert: AlertmanagerClusterNotSettled
-  expr: alertmanager_cluster_members != count(up{job="alertmanager"})
-  for: 10m
+- alert: AlertmanagerMembersInconsistent
+  expr: |
+    max_over_time(alertmanager_cluster_members[5m])
+      < on (namespace, service, cluster) group_left
+    count by (namespace, service, cluster) (
+      max_over_time(alertmanager_cluster_members[5m])
+    )
+  for: 15m
   labels:
-    severity: warning
+    severity: critical
   annotations:
-    summary: "Alertmanager cluster is not fully settled"
+    summary: "An Alertmanager cluster member cannot see all expected peers"
 ```
 
 ## Summary
