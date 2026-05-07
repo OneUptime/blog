@@ -12,48 +12,17 @@ Compliance reporting in Kubernetes environments is time-consuming when done manu
 
 ## Step 1: CIS Benchmark Automated Reports
 
-```bash
-# Schedule regular CIS benchmark scans
-
-kubectl apply -f - <<EOF
-apiVersion: batch/v1
-kind: CronJob
+```yaml
+# Schedule a monthly Rancher compliance scan. Leaving scanProfileName
+# unset lets the operator choose the default profile for the cluster.
+apiVersion: compliance.cattle.io/v1
+kind: ClusterScan
 metadata:
-  name: cis-monthly-scan
-  namespace: cattle-system
+  name: monthly-compliance-scan
 spec:
-  schedule: "0 2 1 * *"    # First of every month
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: cis-report-sa
-          containers:
-            - name: scanner
-              image: myregistry/cis-reporter:latest
-              command:
-                - /bin/sh
-                - -c
-                - |
-                  # Trigger CIS scan
-                  kubectl apply -f - <<SCAN_EOF
-                  apiVersion: cis.cattle.io/v1
-                  kind: ClusterScan
-                  metadata:
-                    name: compliance-$(date +%Y%m)
-                  spec:
-                    scanProfileName: rke2-cis-1.24-profile
-                  SCAN_EOF
-
-                  # Wait for completion
-                  kubectl wait --for=condition=complete \
-                    clusterscan/compliance-$(date +%Y%m) --timeout=1h
-
-                  # Export to S3
-                  kubectl get clusterscansummary compliance-$(date +%Y%m) -o json | \
-                    aws s3 cp - s3://compliance-reports/cis/$(date +%Y%m).json
-          restartPolicy: OnFailure
-EOF
+  scheduledScanConfig:
+    cronSchedule: "0 2 1 * *"    # First of every month
+    retentionCount: 12
 ```
 
 ## Step 2: RBAC Compliance Report
@@ -62,20 +31,19 @@ EOF
 # rbac_compliance_report.py
 import subprocess
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def generate_rbac_report(cluster_contexts: list) -> dict:
     report = {
-        'generated': datetime.utcnow().isoformat(),
+        'generated': datetime.now(timezone.utc).isoformat(),
         'clusters': {}
     }
 
     for ctx in cluster_contexts:
         cluster_data = {
             'cluster_admin_bindings': [],
-            'privileged_namespaces': [],
-            'service_accounts_with_cluster_roles': [],
-            'users_without_mfa': []
+            'privileged_pods': [],
+            'service_accounts_with_cluster_roles': []
         }
 
         # Find cluster-admin bindings
@@ -83,7 +51,7 @@ def generate_rbac_report(cluster_contexts: list) -> dict:
             'kubectl', '--context', ctx,
             'get', 'clusterrolebindings',
             '-o', 'json'
-        ], capture_output=True, text=True)
+        ], capture_output=True, text=True, check=True)
 
         bindings = json.loads(result.stdout)
         for binding in bindings['items']:
@@ -93,19 +61,54 @@ def generate_rbac_report(cluster_contexts: list) -> dict:
                         'name': binding['metadata']['name'],
                         'subjects': binding.get('subjects', [])
                     })
+            for subject in binding.get('subjects', []):
+                if subject.get('kind') == 'ServiceAccount':
+                    cluster_data['service_accounts_with_cluster_roles'].append({
+                        'binding_kind': 'ClusterRoleBinding',
+                        'binding': binding['metadata']['name'],
+                        'namespace': subject.get('namespace'),
+                        'name': subject.get('name'),
+                        'cluster_role': binding['roleRef']['name']
+                    })
+
+        # Find namespaced RoleBindings that reference ClusterRoles
+        result = subprocess.run([
+            'kubectl', '--context', ctx,
+            'get', 'rolebindings', '-A',
+            '-o', 'json'
+        ], capture_output=True, text=True, check=True)
+
+        bindings = json.loads(result.stdout)
+        for binding in bindings['items']:
+            if binding['roleRef'].get('kind') != 'ClusterRole':
+                continue
+            for subject in binding.get('subjects', []):
+                if subject.get('kind') == 'ServiceAccount':
+                    cluster_data['service_accounts_with_cluster_roles'].append({
+                        'binding_kind': 'RoleBinding',
+                        'binding': binding['metadata']['name'],
+                        'namespace': subject.get('namespace', binding['metadata']['namespace']),
+                        'name': subject.get('name'),
+                        'cluster_role': binding['roleRef']['name']
+                    })
 
         # Find privileged pods
         result = subprocess.run([
             'kubectl', '--context', ctx,
             'get', 'pods', '-A',
             '-o', 'json'
-        ], capture_output=True, text=True)
+        ], capture_output=True, text=True, check=True)
 
         pods = json.loads(result.stdout)
         for pod in pods['items']:
-            for container in pod['spec'].get('containers', []):
+            containers = (
+                pod['spec'].get('initContainers', []) +
+                pod['spec'].get('containers', []) +
+                pod['spec'].get('ephemeralContainers', [])
+            )
+            for container in containers:
                 if container.get('securityContext', {}).get('privileged'):
-                    cluster_data['privileged_namespaces'].append({
+                    cluster_data['privileged_pods'].append({
                         'namespace': pod['metadata']['namespace'],
                         'pod': pod['metadata']['name'],
                         'container': container['name']
@@ -131,6 +134,7 @@ spec:
     spec:
       template:
         spec:
+          serviceAccountName: compliance-report-sa
           containers:
             - name: reporter
               image: myregistry/compliance-reporter:latest
@@ -150,6 +154,7 @@ spec:
 
                   # Send notification
                   curl -X POST "$SLACK_WEBHOOK" \
+                    -H "Content-Type: application/json" \
                     -d "{\"text\": \"Weekly vulnerability compliance report generated: $(date)\"}"
           restartPolicy: OnFailure
 ```
@@ -158,48 +163,73 @@ spec:
 
 ```python
 # audit_log_analysis.py - Analyze K8s audit logs for compliance
+import json
 
 def analyze_audit_logs(log_file: str) -> dict:
     """Extract compliance-relevant events from audit log"""
     findings = {
-        'privileged_exec': [],
+        'pod_exec': [],
         'secret_access': [],
         'rbac_changes': [],
         'failed_auth': [],
         'admin_activity': []
     }
 
-    with open(log_file) as f:
+    with open(log_file, encoding='utf-8') as f:
         for line in f:
-            entry = json.loads(line)
+            if not line.strip():
+                continue
 
-            # Track exec into privileged pods
+            entry = json.loads(line)
+            user = entry.get('user', {}).get('username', 'unknown')
+            groups = entry.get('user', {}).get('groups', [])
+            object_ref = entry.get('objectRef', {})
+
+            # Track exec into pods
             if (entry.get('verb') == 'create' and
-                'exec' in entry.get('requestURI', '')):
-                findings['privileged_exec'].append({
+                object_ref.get('subresource') == 'exec'):
+                findings['pod_exec'].append({
                     'timestamp': entry['requestReceivedTimestamp'],
-                    'user': entry['user']['username'],
-                    'pod': entry['requestURI']
+                    'user': user,
+                    'namespace': object_ref.get('namespace'),
+                    'pod': object_ref.get('name')
                 })
 
             # Track secret access
-            if (entry.get('objectRef', {}).get('resource') == 'secrets' and
+            if (object_ref.get('resource') == 'secrets' and
                 entry.get('verb') in ['get', 'list']):
                 findings['secret_access'].append({
                     'timestamp': entry['requestReceivedTimestamp'],
-                    'user': entry['user']['username'],
-                    'namespace': entry['objectRef'].get('namespace'),
-                    'secret': entry['objectRef'].get('name')
+                    'user': user,
+                    'namespace': object_ref.get('namespace'),
+                    'secret': object_ref.get('name')
                 })
 
             # Track RBAC changes
-            if entry.get('objectRef', {}).get('apiGroup') == 'rbac.authorization.k8s.io':
-                if entry.get('verb') in ['create', 'update', 'delete']:
+            if object_ref.get('apiGroup') == 'rbac.authorization.k8s.io':
+                if entry.get('verb') in ['create', 'update', 'patch', 'delete']:
                     findings['rbac_changes'].append({
                         'timestamp': entry['requestReceivedTimestamp'],
-                        'user': entry['user']['username'],
-                        'action': f"{entry['verb']} {entry['objectRef']['resource']}/{entry['objectRef'].get('name')}"
+                        'user': user,
+                        'action': f"{entry['verb']} {object_ref['resource']}/{object_ref.get('name')}"
                     })
+
+            # Track failed authentication attempts
+            if entry.get('responseStatus', {}).get('code') == 401:
+                findings['failed_auth'].append({
+                    'timestamp': entry['requestReceivedTimestamp'],
+                    'user': user,
+                    'request': entry.get('requestURI')
+                })
+
+            # Track activity by cluster-admin users
+            if user == 'system:admin' or 'system:masters' in groups:
+                findings['admin_activity'].append({
+                    'timestamp': entry['requestReceivedTimestamp'],
+                    'user': user,
+                    'verb': entry.get('verb'),
+                    'request': entry.get('requestURI')
+                })
 
     return findings
 ```
@@ -216,7 +246,8 @@ mkdir -p "$EVIDENCE_DIR"
 echo "Collecting compliance evidence..."
 
 # 1. Cluster configuration
-kubectl cluster-info dump > "$EVIDENCE_DIR/cluster-info.json"
+kubectl cluster-info dump --all-namespaces \
+  --output-directory="$EVIDENCE_DIR/cluster-info"
 
 # 2. RBAC configuration
 kubectl get clusterrolebindings -o json > "$EVIDENCE_DIR/clusterrolebindings.json"
@@ -225,21 +256,26 @@ kubectl get rolebindings -A -o json > "$EVIDENCE_DIR/rolebindings.json"
 # 3. Network policies
 kubectl get networkpolicies -A -o json > "$EVIDENCE_DIR/networkpolicies.json"
 
-# 4. Pod security configuration
+# 4. Pod security configuration (including Pod Security Admission labels)
 kubectl get namespaces -o json > "$EVIDENCE_DIR/namespaces.json"
 
-# 5. Secret encryption status
-kubectl get --raw /api/v1/namespaces/kube-system | \
-  grep -i "encryption" > "$EVIDENCE_DIR/encryption-status.txt"
+# 5. Secret encryption evidence (self-managed control planes)
+kubectl -n kube-system get pods -l component=kube-apiserver -o json \
+  > "$EVIDENCE_DIR/kube-apiserver-pods.json"
+printf '%s\n' \
+  "Verify --encryption-provider-config in kube-apiserver command or args as described in the Kubernetes encryption-at-rest documentation." \
+  > "$EVIDENCE_DIR/encryption-at-rest-check.txt"
 
 # 6. Vulnerability reports
 kubectl get vulnerabilityreports -A -o json > "$EVIDENCE_DIR/vulnerability-reports.json"
 
-# 7. CIS scan results
-kubectl get clusterscansummaries -o json > "$EVIDENCE_DIR/cis-results.json"
+# 7. Compliance scan results
+kubectl get clusterscanreports.compliance.cattle.io -o json \
+  > "$EVIDENCE_DIR/compliance-scan-reports.json"
 
 # Package evidence
-tar czf "audit-evidence-$(date +%Y%m%d).tar.gz" "$EVIDENCE_DIR"
+tar czf "audit-evidence-$(date +%Y%m%d).tar.gz" \
+  -C /tmp "$(basename "$EVIDENCE_DIR")"
 aws s3 cp "audit-evidence-$(date +%Y%m%d).tar.gz" s3://audit-evidence/
 
 echo "Evidence collected: audit-evidence-$(date +%Y%m%d).tar.gz"
@@ -252,22 +288,25 @@ echo "Evidence collected: audit-evidence-$(date +%Y%m%d).tar.gz"
 # Using data from Trivy Operator + CIS Benchmark
 
 panels:
-  - title: "Overall Security Score"
+  - title: "Overall Compliance Score"
     type: stat
     targets:
       - expr: |
-          (sum(cis_benchmark_pass_count) /
-           sum(cis_benchmark_total_count)) * 100
+          (sum(compliance_scan_num_tests_pass{scan_name!="manual"}) /
+           sum(compliance_scan_num_tests_total{scan_name!="manual"})) * 100
 
   - title: "Critical Vulnerabilities Trend"
     type: timeseries
     targets:
-      - expr: sum(trivy_image_vulnerabilities{severity="CRITICAL"})
+      - expr: sum(trivy_image_vulnerabilities{severity="Critical"})
 
   - title: "Clusters Passing CIS Benchmark"
     type: gauge
     targets:
-      - expr: sum(cis_benchmark_pass_count) / count(kube_node_info)
+      - expr: |
+          count(max by (cluster_name) (
+            compliance_scan_num_tests_fail{scan_name!="manual"} == 0
+          ))
 ```
 
 ## Compliance Framework Coverage
@@ -281,4 +320,4 @@ panels:
 
 ## Conclusion
 
-Automating compliance reporting in Rancher transforms audit preparation from a multi-week manual process into an on-demand click. Schedule CIS benchmark scans monthly, generate RBAC reports weekly, and run vulnerability summaries daily. When auditors arrive, run the evidence collection script to package all required artifacts. The Grafana compliance dashboard provides continuous visibility for security teams, while automated reports deliver consistent, timestamped evidence that satisfies external auditors.
+Automating compliance reporting in Rancher transforms audit preparation from a multi-week manual process into an on-demand click. Schedule CIS benchmark scans monthly, generate RBAC reports weekly, and run vulnerability summaries weekly. When auditors arrive, run the evidence collection script to package all required artifacts. The Grafana compliance dashboard provides continuous visibility for security teams, while automated reports deliver consistent, timestamped evidence that satisfies external auditors.
