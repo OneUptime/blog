@@ -19,9 +19,9 @@ MySQL is the world's most popular open-source relational database. Running it in
 Download the official MySQL image.
 
 ```bash
-# Pull the official MySQL 8.0 image
+# Pull the official MySQL 8.4 LTS image
 
-podman pull docker.io/library/mysql:8.0
+podman pull docker.io/library/mysql:8.4
 
 # Verify the image
 podman images | grep mysql
@@ -37,7 +37,7 @@ podman run -d \
   --name my-mysql \
   -p 3306:3306 \
   -e MYSQL_ROOT_PASSWORD=my-secret-password \
-  mysql:8.0
+  docker.io/library/mysql:8.4
 
 # Check that the container is running
 podman ps
@@ -60,7 +60,7 @@ podman run -d \
   -p 3307:3306 \
   -e MYSQL_ROOT_PASSWORD=my-secret-password \
   -v mysql-data:/var/lib/mysql:Z \
-  mysql:8.0
+  docker.io/library/mysql:8.4
 
 # Verify the volume is in use
 podman volume inspect mysql-data
@@ -72,6 +72,8 @@ Use environment variables to automatically create a database and user.
 
 ```bash
 # Run MySQL with a pre-created database and user
+podman volume create mysql-app-data
+
 podman run -d \
   --name mysql-app \
   -p 3308:3306 \
@@ -79,8 +81,8 @@ podman run -d \
   -e MYSQL_DATABASE=myapp \
   -e MYSQL_USER=appuser \
   -e MYSQL_PASSWORD=app-secret \
-  -v mysql-data:/var/lib/mysql:Z \
-  mysql:8.0
+  -v mysql-app-data:/var/lib/mysql:Z \
+  docker.io/library/mysql:8.4
 
 # Connect as the new user and verify the database exists
 podman exec -it mysql-app mysql -uappuser -papp-secret myapp -e "SHOW TABLES;"
@@ -100,7 +102,6 @@ cat > ~/mysql-config/custom.cnf <<'EOF'
 # Performance tuning
 innodb_buffer_pool_size = 256M
 max_connections = 200
-query_cache_size = 0
 
 # Character set and collation
 character-set-server = utf8mb4
@@ -108,7 +109,7 @@ collation-server = utf8mb4_unicode_ci
 
 # Logging
 slow_query_log = 1
-slow_query_log_file = /var/log/mysql/slow.log
+slow_query_log_file = /var/lib/mysql/slow.log
 long_query_time = 2
 
 # Binary logging for replication readiness
@@ -117,13 +118,15 @@ server-id = 1
 EOF
 
 # Run MySQL with the custom configuration
+podman volume create mysql-tuned-data
+
 podman run -d \
   --name mysql-tuned \
   -p 3309:3306 \
   -e MYSQL_ROOT_PASSWORD=my-secret-password \
   -v ~/mysql-config/custom.cnf:/etc/mysql/conf.d/custom.cnf:Z \
-  -v mysql-data:/var/lib/mysql:Z \
-  mysql:8.0
+  -v mysql-tuned-data:/var/lib/mysql:Z \
+  docker.io/library/mysql:8.4
 
 # Verify the custom settings are loaded
 podman exec -it mysql-tuned mysql -uroot -pmy-secret-password \
@@ -160,7 +163,7 @@ podman run -d \
   -e MYSQL_ROOT_PASSWORD=my-secret-password \
   -e MYSQL_DATABASE=myapp \
   -v ~/mysql-init:/docker-entrypoint-initdb.d:Z \
-  mysql:8.0
+  docker.io/library/mysql:8.4
 ```
 
 ## Backup and Restore
@@ -193,7 +196,7 @@ podman start my-mysql
 podman rm -f my-mysql
 
 # Clean up the volume if no longer needed
-podman volume rm mysql-data
+podman volume rm mysql-data mysql-app-data mysql-tuned-data
 ```
 
 ## Summary
