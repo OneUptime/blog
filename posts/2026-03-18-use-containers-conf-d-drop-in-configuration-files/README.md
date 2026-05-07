@@ -21,13 +21,14 @@ Podman reads drop-in files from specific directories.
 ```bash
 # Drop-in directory locations (processed in order):
 
-# 1. /usr/share/containers/containers.conf.d/  (vendor drop-ins)
-# 2. /etc/containers/containers.conf.d/         (system-wide drop-ins)
-# 3. ~/.config/containers/containers.conf.d/    (user-level drop-ins)
+# 1. /etc/containers/containers.conf.d/              (system-wide drop-ins)
+# 2. /etc/containers/containers.rootless.conf.d/     (rootless system drop-ins)
+# 3. /etc/containers/containers.rootless.conf.d/$UID/ (per-user rootless system drop-ins)
+# 4. ~/.config/containers/containers.conf.d/         (user-level drop-ins)
 
 # Check if drop-in directories exist
-ls -la /usr/share/containers/containers.conf.d/ 2>/dev/null
 ls -la /etc/containers/containers.conf.d/ 2>/dev/null
+ls -la /etc/containers/containers.rootless.conf.d/ 2>/dev/null
 ls -la ~/.config/containers/containers.conf.d/ 2>/dev/null
 
 # Files are loaded in alphabetical order within each directory
@@ -196,8 +197,8 @@ ls ~/.config/containers/containers.conf.d/*.disabled 2>/dev/null
 Confirm that drop-in files are being loaded and merged correctly.
 
 ```bash
-# Check which configuration files Podman loads
-podman info --format '{{range .Host.ConfigFiles}}{{.}}{{"\n"}}{{end}}'
+# Check configuration loading in debug output
+podman --log-level=debug info 2>&1 | grep -E "Merged|Reading configuration|containers.conf"
 
 # Verify specific settings from drop-in files
 podman info --format '{{.Host.OCIRuntime.Name}}'
@@ -216,18 +217,20 @@ Understand how drop-in files are merged.
 
 ```bash
 # Merge order (lowest to highest priority):
-# 1. /usr/share/containers/containers.conf       (vendor defaults)
-# 2. /usr/share/containers/containers.conf.d/*   (vendor drop-ins)
-# 3. /etc/containers/containers.conf             (system admin config)
-# 4. /etc/containers/containers.conf.d/*         (system admin drop-ins)
-# 5. ~/.config/containers/containers.conf        (user config)
-# 6. ~/.config/containers/containers.conf.d/*    (user drop-ins)
+# 1. /usr/share/containers/containers.conf                 (vendor defaults)
+# 2. /etc/containers/containers.conf                       (system admin config)
+# 3. /etc/containers/containers.conf.d/*                   (system admin drop-ins)
+# 4. /etc/containers/containers.rootless.conf              (rootless system config)
+# 5. /etc/containers/containers.rootless.conf.d/*          (rootless system drop-ins)
+# 6. /etc/containers/containers.rootless.conf.d/$UID/*     (per-user rootless system drop-ins)
+# 7. ~/.config/containers/containers.conf                  (user config)
+# 8. ~/.config/containers/containers.conf.d/*              (user drop-ins)
 
 # Within each directory, files are loaded alphabetically
 # Use numeric prefixes to control order
 
-# Example: System admin can enforce settings that users cannot override
-# by using a high-priority system drop-in
+# Example: System admin can provide defaults that users may override
+# with their own user-level containers.conf or drop-ins
 
 # Verify the effective configuration
 podman info --format json | python3 -c "
