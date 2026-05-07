@@ -26,7 +26,7 @@ resource "azurerm_route_table" "aks" {
   name                          = "${var.project_name}-aks-rt"
   location                      = var.location
   resource_group_name           = var.resource_group_name
-  disable_bgp_route_propagation = false  # Allow BGP for on-premises routing
+  bgp_route_propagation_enabled = true  # Allow BGP for on-premises routing
 
   tags = {
     Name = "${var.project_name}-aks-route-table"
@@ -49,33 +49,50 @@ resource "azurerm_subnet_route_table_association" "aks" {
 ## Step 2: Create AKS Cluster with kubenet
 
 ```hcl
+resource "azurerm_user_assigned_identity" "aks" {
+  name                = "${var.project_name}-aks-identity"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+}
+
+# With OpenTofu, grant the AKS identity access before cluster creation
+resource "azurerm_role_assignment" "aks_subnet" {
+  scope                = azurerm_subnet.aks.id
+  role_definition_name = "Network Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks.principal_id
+}
+
+resource "azurerm_role_assignment" "aks_route_table" {
+  scope                = azurerm_route_table.aks.id
+  role_definition_name = "Network Contributor"
+  principal_id         = azurerm_user_assigned_identity.aks.principal_id
+}
+
 resource "azurerm_kubernetes_cluster" "kubenet" {
   name                = "${var.project_name}-aks"
   location            = var.location
   resource_group_name = var.resource_group_name
   dns_prefix          = var.project_name
-  kubernetes_version  = "1.28"
+  kubernetes_version  = var.kubernetes_version  # Use a supported AKS minor version, such as 1.35
 
   default_node_pool {
-    name                = "system"
-    vm_size             = "Standard_D4s_v3"
-    node_count          = 3
-    min_count           = 3
-    max_count           = 10
-    enable_auto_scaling = true
+    name                 = "system"
+    vm_size              = "Standard_D4s_v3"
+    node_count           = 3
+    min_count            = 3
+    max_count            = 10
+    auto_scaling_enabled = true
 
     vnet_subnet_id = azurerm_subnet.aks.id
-    max_pods       = 110  # kubenet supports up to 110 pods per node
+    max_pods       = 110  # Default for kubenet; configurable up to 250
 
     os_disk_type = "Ephemeral"
     zones        = ["1", "2", "3"]
-
-    # Associate with the route table for pod routing
-    pod_subnet_id = null  # Not used with kubenet
   }
 
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.aks.id]
   }
 
   network_profile {
@@ -90,13 +107,12 @@ resource "azurerm_kubernetes_cluster" "kubenet" {
   tags = {
     Name = "${var.project_name}-aks-kubenet"
   }
-}
 
-# AKS needs permission to manage the route table for pod routes
-resource "azurerm_role_assignment" "aks_route_table" {
-  scope                = azurerm_route_table.aks.id
-  role_definition_name = "Network Contributor"
-  principal_id         = azurerm_kubernetes_cluster.kubenet.identity[0].principal_id
+  depends_on = [
+    azurerm_subnet_route_table_association.aks,
+    azurerm_role_assignment.aks_subnet,
+    azurerm_role_assignment.aks_route_table,
+  ]
 }
 ```
 
@@ -110,7 +126,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "app" {
   node_count            = 3
   min_count             = 2
   max_count             = 20
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
 
   vnet_subnet_id = azurerm_subnet.aks.id
   max_pods       = 110
@@ -155,7 +171,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
 ```
 
 ## Step 5: Deploy
@@ -179,10 +195,10 @@ az network route-table route list \
 # Check pod networking (pods use 10.244.x.x IPs)
 kubectl get pods -A -o wide
 
-# Test Calico network policy
-kubectl run test --image=busybox -it --rm --restart=Never -- wget -qO- http://backend-service
+# Test Calico network policy (this should be blocked from the default namespace)
+kubectl run test --image=busybox -it --rm --restart=Never -- wget -qO- http://backend-service.production.svc.cluster.local
 ```
 
 ## Conclusion
 
-kubenet is recommended when subnet IP space is limited or when your workloads don't need direct pod-level access from outside the cluster. The key limitation is that pod IPs (from `pod_cidr`) are not directly routable from on-premises or peered VNets-if pods need to be directly addressable externally, use Azure CNI. Always grant AKS `Network Contributor` on the route table-without this, AKS cannot add the per-node pod CIDR routes, and cross-node pod communication will fail. The route table must be associated with the AKS node subnet before cluster creation.
+kubenet can still be useful when subnet IP space is limited or when your workloads don't need direct pod-level addressing, but AKS retires kubenet on March 31, 2028, so plan accordingly. The key limitation is that pod IPs (from `pod_cidr`) are not directly addressable the way Azure CNI pod IPs are-if pods need direct pod-level reachability, use Azure CNI. When you bring your own subnet and route table with OpenTofu, use a user-assigned managed identity and grant it `Network Contributor` on both the AKS subnet and the route table before cluster creation. The route table must be associated with the AKS node subnet before cluster creation.
