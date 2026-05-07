@@ -16,14 +16,14 @@ Ubuntu Server is one of the most widely deployed Linux distributions for cloud a
 
 ## Installing Podman on Ubuntu Server
 
-Podman is available in the default Ubuntu repositories starting with Ubuntu 22.04. Install it directly:
+Podman is available in the official Ubuntu repositories for Ubuntu 20.10 and newer. Install it directly:
 
 ```bash
 sudo apt update
 sudo apt install -y podman
 ```
 
-For Ubuntu 24.04 LTS and later, you get a recent version of Podman from the default repos:
+On Ubuntu 24.04 LTS and later, the packaged `podman-compose` provider is also available:
 
 ```bash
 sudo apt install -y podman podman-compose
@@ -75,11 +75,11 @@ Enable the user lingering so rootless containers survive after you log out:
 sudo loginctl enable-linger $USER
 ```
 
-Set up the XDG_RUNTIME_DIR if it is not already configured:
+For rootless user services, verify that your login session has `XDG_RUNTIME_DIR` set automatically:
 
 ```bash
-echo 'export XDG_RUNTIME_DIR=/run/user/$(id -u)' >> ~/.bashrc
-source ~/.bashrc
+echo $XDG_RUNTIME_DIR
+ls -ld /run/user/$(id -u)
 ```
 
 ## Configuring Container Registries
@@ -136,7 +136,7 @@ If you are transitioning from Docker, Podman is designed to be a drop-in replace
 
 # docker run               podman run
 # docker build             podman build
-# docker-compose           podman-compose
+# docker-compose           podman compose
 # docker ps                podman ps
 # docker images            podman images
 ```
@@ -262,7 +262,7 @@ systemctl --user enable --now devdb.service
 
 ## Using Podman Compose
 
-Podman supports Docker Compose files through podman-compose:
+On Ubuntu 24.04 LTS and later, Podman can use Docker Compose files through the packaged `podman-compose` provider:
 
 ```bash
 sudo apt install -y podman-compose
@@ -301,10 +301,10 @@ volumes:
 Run the stack:
 
 ```bash
-podman-compose up -d
-podman-compose ps
-podman-compose logs -f
-podman-compose down
+podman compose up -d
+podman compose ps
+podman compose logs -f
+podman compose down
 ```
 
 ## Firewall Configuration
@@ -338,10 +338,15 @@ podman stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
 
 ## Container Auto-Updates
 
-Enable automatic container updates:
+Enable automatic container updates for the same systemd scope that owns your services:
 
 ```bash
+# Rootful services
 sudo systemctl enable --now podman-auto-update.timer
+sudo podman auto-update --dry-run
+
+# Rootless user services
+systemctl --user enable --now podman-auto-update.timer
 podman auto-update --dry-run
 ```
 
