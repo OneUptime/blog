@@ -27,11 +27,14 @@ kubectl rollout history deployment/my-app -n default
 Output:
 
 ```plaintext
+deployment.apps/my-app
 REVISION  CHANGE-CAUSE
-1         Initial deployment
-2         Updated image to v1.1
-3         Updated image to v1.2
+1         <none>
+2         <none>
+3         <none>
 ```
+
+The `CHANGE-CAUSE` column shows the `kubernetes.io/change-cause` annotation for each revision. Kubernetes does not set this annotation automatically.
 
 To see the details of a specific revision:
 
@@ -45,18 +48,16 @@ This is the simplest method for most users.
 
 ### Step 1: Navigate to the Deployment
 
-Go to **Workloads > Deployments** in the Rancher dashboard and find the deployment you want to roll back.
+In the Rancher dashboard, go to **Cluster Management**, open the cluster, click **Explore**, then go to **Workload** and find the deployment you want to roll back.
 
-### Step 2: View Revision History
+### Step 2: Open the Rollback Dialog
 
-Click on the deployment name to see its details. Look for the **Revision History** or **Conditions** section, which shows past revisions.
+Click the three-dot menu next to the deployment and select **Rollback**. Rancher shows the available revisions for that workload.
 
 ### Step 3: Roll Back
 
-1. Click the three-dot menu next to the deployment
-2. Select **Rollback**
-3. Choose the revision you want to revert to from the dropdown
-4. Click **Rollback** to confirm
+1. Choose the revision you want to revert to from the dropdown
+2. Click **Rollback** to confirm
 
 Rancher will initiate a rollback by updating the Deployment to match the selected revision's pod template.
 
@@ -98,8 +99,8 @@ deployment "my-app" successfully rolled out
 
 You can also "roll back" by manually editing the deployment to use the previous configuration:
 
-1. In Rancher, go to **Workloads > Deployments**
-2. Click the three-dot menu and select **Edit YAML**
+1. In Rancher, go to **Workload**
+2. Find the deployment, click the three-dot menu, and select **Edit YAML**
 3. Change the container image or other fields back to the desired version
 4. Click **Save**
 
@@ -151,6 +152,8 @@ kubectl rollout undo statefulset/my-statefulset -n default
 kubectl rollout undo statefulset/my-statefulset -n default --to-revision=2
 ```
 
+StatefulSets store revision history in `ControllerRevision` objects rather than ReplicaSets. If a broken rolling update leaves a Pod stuck and not Ready, reverting the template may not be enough; you may also need to delete the affected Pods so the StatefulSet recreates them from the reverted template.
+
 In Rancher, StatefulSet rollbacks follow the same UI workflow as Deployments.
 
 ## Rolling Back DaemonSets
@@ -169,7 +172,7 @@ If a rollback itself fails (e.g., the previous image is no longer available):
 1. Check the pod events:
 
 ```bash
-kubectl describe pod -l app=my-app -n default
+kubectl describe pods -l app=my-app -n default
 ```
 
 2. Look for errors like `ImagePullBackOff` or `CrashLoopBackOff`
@@ -193,7 +196,7 @@ spec:
   progressDeadlineSeconds: 300
 ```
 
-If the deployment does not make progress within this time, it is marked as failed.
+If the deployment does not make progress within this time, Kubernetes marks the Deployment as failed to progress.
 
 ### Configure Readiness Probes
 
@@ -225,12 +228,12 @@ spec:
       maxSurge: 1
 ```
 
-Setting `maxUnavailable: 0` ensures no old pods are removed until new pods are ready, making it safe to roll back if the new pods fail.
+Setting `maxUnavailable: 0` ensures the Deployment keeps the full desired number of available pods during the rollout, reducing risk if the new pods fail.
 
 ## Best Practices
 
 1. Always set `revisionHistoryLimit` to a reasonable value (10-20)
-2. Use descriptive annotations with `kubectl annotate` to record change causes
+2. Use the `kubernetes.io/change-cause` annotation to record change causes in rollout history
 3. Test rollback procedures in staging before production
 4. Monitor deployments after updates and roll back quickly if issues arise
 5. Use readiness probes to catch failures early in the rollout
