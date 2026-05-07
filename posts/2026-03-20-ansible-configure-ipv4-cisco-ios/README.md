@@ -4,12 +4,12 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Cisco IOS, IPv4, Network Automation, Playbook
 
-Description: Learn how to write an Ansible playbook using the cisco.ios collection to configure IPv4 addresses on Cisco IOS router and switch interfaces.
+Description: Learn how to write an Ansible playbook using the cisco.ios collection to configure IPv4 addresses on Cisco IOS router interfaces and Layer 3 switch interfaces.
 
 ## Step 1: Install Ansible and Cisco IOS Collection
 
 ```bash
-pip install ansible
+python3 -m pip install --user ansible
 
 # Install the Cisco IOS collection
 
@@ -33,10 +33,10 @@ all:
           ansible_host: 192.168.1.2
       vars:
         ansible_network_os: cisco.ios.ios
-        ansible_connection: network_cli
+        ansible_connection: ansible.netcommon.network_cli
         ansible_user: admin
         ansible_password: "{{ vault_password }}"
-        ansible_become: yes
+        ansible_become: true
         ansible_become_method: enable
         ansible_become_password: "{{ vault_enable_password }}"
 ```
@@ -51,7 +51,7 @@ all:
   gather_facts: false
 
   vars:
-    interfaces:
+    default_interfaces:
       - name: GigabitEthernet0/0
         description: "LAN Interface"
         ip_address: "192.168.10.1"
@@ -72,7 +72,7 @@ all:
             ipv4:
               - address: "{{ item.ip_address }}/{{ item.prefix_length }}"
         state: merged
-      loop: "{{ interfaces }}"
+      loop: "{{ interfaces | default(default_interfaces) }}"
 
     - name: Configure interface descriptions
       cisco.ios.ios_interfaces:
@@ -81,7 +81,7 @@ all:
             description: "{{ item.description }}"
             enabled: true
         state: merged
-      loop: "{{ interfaces }}"
+      loop: "{{ interfaces | default(default_interfaces) }}"
 
     - name: Save running configuration
       cisco.ios.ios_command:
@@ -128,7 +128,7 @@ interfaces:
     prefix_length: 30
 ```
 
-The playbook uses `{{ interfaces }}` which Ansible fills from host_vars automatically.
+The playbook uses `{{ interfaces | default(default_interfaces) }}` so Ansible uses `host_vars` when present and falls back to the inline example otherwise.
 
 ## Step 5: Run the Playbook
 
@@ -155,6 +155,20 @@ ansible-playbook -i inventory/hosts.yml playbooks/configure_interfaces.yml -v
   hosts: cisco_routers
   gather_facts: false
 
+  vars:
+    default_interfaces:
+      - name: GigabitEthernet0/0
+        description: "LAN Interface"
+        ip_address: "192.168.10.1"
+        prefix_length: 24
+        state: present
+
+      - name: GigabitEthernet0/1
+        description: "WAN to ISP"
+        ip_address: "203.0.113.2"
+        prefix_length: 30
+        state: present
+
   tasks:
     - name: Get interface brief
       cisco.ios.ios_command:
@@ -165,9 +179,10 @@ ansible-playbook -i inventory/hosts.yml playbooks/configure_interfaces.yml -v
     - name: Check for expected IPs
       assert:
         that:
-          - "'192.168.10.1' in intf_output.stdout[0]"
-        fail_msg: "Expected IP 192.168.10.1 not found!"
-        success_msg: "Interface configured correctly"
+          - item.ip_address in intf_output.stdout[0]
+        fail_msg: "Expected IP {{ item.ip_address }} not found on {{ item.name }}!"
+        success_msg: "Interface {{ item.name }} is configured correctly"
+      loop: "{{ interfaces | default(default_interfaces) }}"
 ```
 
 ```bash
