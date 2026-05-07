@@ -55,6 +55,16 @@ variable "team_name" {
   type        = string
   description = "Name of the owning team for tagging"
 }
+
+variable "app_name" {
+  type        = string
+  description = "Application name used in resource naming and tags"
+}
+
+# provider.tf
+provider "aws" {
+  region = var.region
+}
 ```
 
 ## Replace with Data Sources
@@ -62,13 +72,13 @@ variable "team_name" {
 Use data sources for values that can be looked up dynamically.
 
 ```hcl
-# Get account ID dynamically instead of hardcoding it
+# Get account ID dynamically and reference the configured region when needed
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 # GOOD: Dynamic values from data sources
 resource "aws_s3_bucket" "app" {
-  bucket = "my-company-app-${var.environment}-${data.aws_region.current.name}"
+  bucket = "my-company-app-${var.environment}-${data.aws_region.current.region}"
 
   tags = {
     Environment = var.environment
@@ -99,9 +109,15 @@ locals {
 }
 
 resource "aws_db_instance" "main" {
-  identifier           = "${local.name_prefix}-db"
-  multi_az             = local.is_production  # computed from environment
-  deletion_protection  = local.is_production
+  identifier                  = "${local.name_prefix}-db"
+  allocated_storage           = 20
+  engine                      = "postgres"
+  instance_class              = "db.t3.micro"
+  username                    = "appadmin"
+  manage_master_user_password = true
+  skip_final_snapshot         = true
+  multi_az                    = local.is_production  # computed from environment
+  deletion_protection         = local.is_production
 
   tags = local.common_tags  # reuse computed tags
 }
@@ -114,7 +130,8 @@ AMI IDs are region-specific and change over time.
 ```hcl
 # BAD: Hardcoded AMI
 resource "aws_instance" "app" {
-  ami = "ami-0c55b159cbfafe1f0"  # region-specific, becomes outdated
+  ami           = "ami-0c55b159cbfafe1f0"  # region-specific, becomes outdated
+  instance_type = "t3.micro"
 }
 
 # GOOD: Dynamic AMI lookup
@@ -129,7 +146,8 @@ data "aws_ami" "amazon_linux_2" {
 }
 
 resource "aws_instance" "app" {
-  ami = data.aws_ami.amazon_linux_2.id  # always current, works in any region
+  ami           = data.aws_ami.amazon_linux_2.id  # selects the latest matching AMI in the configured region
+  instance_type = "t3.micro"
 }
 ```
 
@@ -138,12 +156,12 @@ resource "aws_instance" "app" {
 Provide environment-specific values through var files.
 
 ```hcl
-# dev.tfvars
+# environments/dev.tfvars
 environment = "dev"
 team_name   = "platform"
 app_name    = "myapp"
 
-# prod.tfvars
+# environments/prod.tfvars
 environment = "prod"
 team_name   = "platform"
 app_name    = "myapp"
@@ -157,4 +175,4 @@ tofu apply -var-file=environments/prod.tfvars
 
 ## Summary
 
-Hardcoded values reduce configuration reusability and create maintenance burden when values change. Replace hardcoded regions with the `aws_region` data source, account IDs with `aws_caller_identity`, AMI IDs with `aws_ami` data source lookups, and environment-specific values with variables and var files. Use locals to derive repeated computed values from these inputs. The result is a configuration that works across any environment or account by providing a different set of variable values.
+Hardcoded values reduce configuration reusability and create maintenance burden when values change. Replace hardcoded provider regions with variables such as `var.region`, use the `aws_region` data source when you need the configured region inside expressions, replace account IDs with `aws_caller_identity`, use `aws_ami` data source lookups for region-specific machine images, and provide environment-specific values with variables and var files. Use locals to derive repeated computed values from these inputs. The result is a configuration that works across any environment or account by providing a different set of variable values.
