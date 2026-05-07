@@ -28,6 +28,24 @@ resource "azurerm_key_vault" "kv" {
   soft_delete_retention_days  = 90
   purge_protection_enabled    = true
 }
+
+# Grant the identity running OpenTofu permission to create and manage the key
+resource "azurerm_key_vault_access_policy" "current_user" {
+  key_vault_id = azurerm_key_vault.kv.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = data.azurerm_client_config.current.object_id
+
+  key_permissions = [
+    "Create",
+    "Delete",
+    "Get",
+    "GetRotationPolicy",
+    "Purge",
+    "Recover",
+    "SetRotationPolicy",
+    "Update",
+  ]
+}
 ```
 
 ## Step 2: Create the Encryption Key
@@ -40,7 +58,7 @@ resource "azurerm_key_vault_key" "storage_key" {
   key_type     = "RSA"
   key_size     = 2048
 
-  # Key operations required for storage encryption
+  # Supported key operations for this RSA key
   key_opts = [
     "decrypt",
     "encrypt",
@@ -58,6 +76,10 @@ resource "azurerm_key_vault_key" "storage_key" {
     expire_after         = "P180D"  # Key expires after 180 days
     notify_before_expiry = "P29D"
   }
+
+  depends_on = [
+    azurerm_key_vault_access_policy.current_user
+  ]
 }
 ```
 
@@ -75,6 +97,12 @@ resource "azurerm_storage_account" "encrypted_storage" {
   # System-assigned identity used to authenticate with Key Vault
   identity {
     type = "SystemAssigned"
+  }
+
+  lifecycle {
+    ignore_changes = [
+      customer_managed_key
+    ]
   }
 }
 
@@ -95,13 +123,11 @@ resource "azurerm_key_vault_access_policy" "storage_kv_policy" {
 ## Step 4: Enable CMK Encryption
 
 ```hcl
-# Configure storage account to use the CMK for encryption
+# Configure the existing storage account to use the CMK for encryption
 resource "azurerm_storage_account_customer_managed_key" "cmk" {
   storage_account_id = azurerm_storage_account.encrypted_storage.id
-  key_vault_id       = azurerm_key_vault.kv.id
-  key_name           = azurerm_key_vault_key.storage_key.name
-  # Leave key_version empty to auto-use the latest key version
-  key_version        = null
+  # Use the versionless key URI so Azure Storage can automatically use new key versions
+  key_vault_key_id   = azurerm_key_vault_key.storage_key.versionless_id
 
   depends_on = [
     azurerm_key_vault_access_policy.storage_kv_policy
@@ -117,11 +143,11 @@ output "storage_account_id" {
 }
 
 output "encryption_key_id" {
-  value       = azurerm_key_vault_key.storage_key.id
-  description = "Key Vault key ID used for storage encryption"
+  value       = azurerm_key_vault_key.storage_key.versionless_id
+  description = "Versionless Key Vault key ID used for storage encryption"
 }
 ```
 
 ## Summary
 
-Configuring Azure Storage with Customer-Managed Keys via OpenTofu provides full control over your encryption keys while meeting compliance requirements. The key components are: Key Vault with purge protection, an RSA key with rotation policy, a storage account with managed identity, and a CMK binding via Key Vault access policy.
+Configuring Azure Storage with Customer-Managed Keys via OpenTofu provides full control over your encryption keys while meeting compliance requirements. The key components are: Key Vault with purge protection, Key Vault access policies for the identity running OpenTofu and the storage account identity, an RSA key with rotation policy, and a CMK binding that uses the versionless key URI for automatic key-version updates.
