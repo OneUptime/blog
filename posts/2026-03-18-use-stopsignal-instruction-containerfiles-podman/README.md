@@ -118,7 +118,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 
 # Use SIGINT because our app handles it
@@ -161,7 +161,7 @@ process.on('SIGINT', () => {
 
 ## STOPSIGNAL with Python Applications
 
-Python applications commonly use SIGTERM, but you might want SIGINT for applications that use KeyboardInterrupt:
+Python applications commonly use SIGTERM, but you might want SIGINT for applications that are already written to handle it gracefully:
 
 ```dockerfile
 FROM python:3.12-slim
@@ -181,23 +181,24 @@ Python signal handling:
 ```python
 import signal
 import sys
-import time
+import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
-server = None
+server = HTTPServer(('0.0.0.0', 8000), SimpleHTTPRequestHandler)
 
 def shutdown_handler(signum, frame):
     print(f"Received signal {signum}, shutting down...")
-    if server:
-        server.shutdown()
-    sys.exit(0)
+    threading.Thread(target=server.shutdown, daemon=True).start()
 
 signal.signal(signal.SIGINT, shutdown_handler)
 signal.signal(signal.SIGTERM, shutdown_handler)
 
-server = HTTPServer(('0.0.0.0', 8000), SimpleHTTPRequestHandler)
 print("Server starting on port 8000")
-server.serve_forever()
+try:
+    server.serve_forever()
+finally:
+    server.server_close()
+    sys.exit(0)
 ```
 
 ## STOPSIGNAL with Java Applications
@@ -229,13 +230,13 @@ Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 
 ## Overriding STOPSIGNAL at Runtime
 
-You can override the stop signal when running a container:
+You can override the stop signal when creating a container, or send a different signal manually:
 
 ```bash
 # Override with a different signal
 podman run -d --stop-signal SIGINT --name my-app my-image
 
-# Or when stopping
+# Or send a one-off signal manually
 podman kill --signal SIGQUIT my-app
 ```
 
@@ -278,7 +279,7 @@ services:
     stop_grace_period: 30s
 ```
 
-The `stop_grace_period` in compose is equivalent to `podman stop --timeout`.
+The `stop_grace_period` in compose controls the same grace period as `podman stop --time`.
 
 ## Best Practices
 
