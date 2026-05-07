@@ -70,8 +70,8 @@ resource "azurerm_dns_mx_record" "mail" {
   }
 }
 
-# TXT record for domain verification
-resource "azurerm_dns_txt_record" "verification" {
+# TXT record for DMARC policy
+resource "azurerm_dns_txt_record" "dmarc" {
   name                = "_dmarc"
   zone_name           = azurerm_dns_zone.main.name
   resource_group_name = azurerm_resource_group.dns.name
@@ -103,7 +103,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "vnet" {
   resource_group_name   = azurerm_resource_group.dns.name
   private_dns_zone_name = azurerm_private_dns_zone.internal.name
   virtual_network_id    = azurerm_virtual_network.main.id
-  registration_enabled  = true  # Auto-register VMs in this zone
+  registration_enabled  = true  # Auto-register Azure VMs in this zone
 }
 
 # Private A record for internal database
@@ -132,7 +132,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "storage_blob" {
   virtual_network_id    = azurerm_virtual_network.main.id
 }
 
-# DNS A record created automatically by private endpoint
+# Private endpoint with automatic private DNS record management
 resource "azurerm_private_endpoint" "storage" {
   name                = "pe-storage-${var.environment}"
   location            = var.location
@@ -165,7 +165,7 @@ output "dns_name_servers" {
 ## Best Practices
 
 - After creating an Azure DNS zone, update your domain registrar's NS records with the Azure name servers shown in `name_servers` output.
-- Create Private DNS zones for all Azure PaaS services accessed via Private Endpoints - without them, DNS resolution bypasses Private Endpoints and routes through the public internet.
-- Enable `registration_enabled = true` on private zone VNet links to auto-register VMs with their hostnames.
-- Use TTL of 60s for records that may change (ALB endpoints, database failovers) and 300-3600s for stable records.
-- Manage DNS records for all environments from the same zone via naming conventions (`app-dev`, `app-staging`, `app`) rather than separate zones per environment.
+- Create the recommended Private DNS zones for Azure PaaS services accessed via Private Endpoints so clients resolve the private endpoint IP instead of the service's public endpoint.
+- Enable `registration_enabled = true` on private zone VNet links to auto-register Azure VMs with their hostnames.
+- Use TTL of 60s for records that may change frequently (load-balanced endpoints, database failovers) and 300-3600s for stable records.
+- Choose zone boundaries and naming conventions based on your delegation, access-control, and isolation requirements; `app-dev`, `app-staging`, and separate subdomains are all valid patterns.
