@@ -298,16 +298,18 @@ sleep 5
 podman healthcheck run "${SERVICE}"
 ```
 
-Or use Podman's built-in auto-update:
+Or use Podman's built-in auto-update with a systemd-managed container and a fully qualified image:
 
 ```bash
-# Label containers for auto-update
-podman run -d --name api \
-  --label io.containers.autoupdate=registry \
-  my-api:latest
-
 # Enable auto-update timer
 systemctl --user enable --now podman-auto-update.timer
+```
+
+```ini
+# ~/.config/containers/systemd/api.container
+[Container]
+Image=registry.example.com/my-api:latest
+AutoUpdate=registry
 ```
 
 ## Step 7: Replace Swarm Configs
