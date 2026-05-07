@@ -40,7 +40,7 @@ print('DNS:', host.get('dns', {}))
 # CNI: Traditional plugin-based backend
 # - Broad plugin ecosystem
 # - Compatible with older configurations
-# - Uses dnsmasq for DNS
+# - Uses plugin-based DNS when configured
 ```
 
 ## Configuring Netavark Backend
@@ -49,8 +49,8 @@ Set netavark as the default network backend.
 
 ```bash
 # Verify netavark and aardvark-dns are installed
-which netavark 2>/dev/null && echo "netavark found"
-which aardvark-dns 2>/dev/null && echo "aardvark-dns found"
+command -v netavark >/dev/null || test -x /usr/libexec/podman/netavark && echo "netavark found"
+command -v aardvark-dns >/dev/null || test -x /usr/libexec/podman/aardvark-dns && echo "aardvark-dns found"
 
 # Configure netavark in containers.conf
 mkdir -p ~/.config/containers
@@ -114,7 +114,7 @@ podman info --format '{{.Host.NetworkBackend}}'
 
 ## Configuring DNS Settings
 
-Control DNS behavior for container name resolution.
+Control default upstream DNS servers for containers.
 
 ```bash
 # Configure DNS with netavark backend
@@ -122,6 +122,7 @@ cat > ~/.config/containers/containers.conf << 'EOF'
 [network]
 network_backend = "netavark"
 
+[containers]
 # Default DNS servers for containers
 dns_servers = [
     "8.8.8.8",
@@ -207,4 +208,4 @@ podman run --rm alpine ping -c 2 8.8.8.8
 
 ## Summary
 
-The network backend setting in `containers.conf` controls how Podman handles container networking. Netavark is the modern default with built-in DNS via aardvark-dns and better IPv6 support, while CNI provides compatibility with existing plugin ecosystems. Configure DNS servers, default subnets, and subnet pools in the `[network]` section. When switching backends, always reset container and network state first with `podman system reset`.
+The network backend setting in `containers.conf` controls how Podman handles container networking. Netavark is the modern default with built-in DNS via aardvark-dns and better IPv6 support, while CNI provides compatibility with existing plugin ecosystems. Configure default subnets and subnet pools in the `[network]` section, and default container DNS servers in the `[containers]` section. When switching backends with existing containers or pods, reset container and network state with `podman system reset`.
