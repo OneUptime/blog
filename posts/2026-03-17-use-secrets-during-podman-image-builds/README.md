@@ -37,8 +37,9 @@ FROM node:18-alpine
 
 WORKDIR /app
 COPY package*.json ./
+COPY .npmrc ./
 
-# Mount the secret during npm install
+# Mount the secret during npm install for an .npmrc that uses ${NPM_TOKEN}
 RUN --mount=type=secret,id=npm_token \
     NPM_TOKEN=$(cat /run/secrets/npm_token) \
     npm install
@@ -64,8 +65,10 @@ In the Containerfile:
 FROM golang:1.21-alpine
 
 RUN apk add --no-cache git openssh-client
+WORKDIR /src
+COPY go.mod go.sum ./
 
-# Use the SSH key to clone private repos
+# Use the SSH key to download private modules
 RUN --mount=type=secret,id=ssh_key \
     mkdir -p /root/.ssh && \
     cp /run/secrets/ssh_key /root/.ssh/id_ed25519 && \
