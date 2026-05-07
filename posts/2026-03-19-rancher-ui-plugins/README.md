@@ -10,7 +10,7 @@ Rancher UI plugins extend the dashboard with custom functionality, resource type
 
 ## Plugin Architecture Overview
 
-Rancher UI plugins are Vue.js applications that run within the Rancher dashboard shell. They are loaded dynamically and have access to:
+Rancher UI plugins are packaged Vue.js extensions that run within the Rancher dashboard shell. They are loaded dynamically and have access to:
 
 - **The Rancher Store**: Vuex store with cluster data, user info, and configuration
 - **The Plugin DSL**: Methods for registering products, types, and navigation items
@@ -21,8 +21,10 @@ Rancher UI plugins are Vue.js applications that run within the Rancher dashboard
 
 ### Initialize the Project
 
+For Rancher v2.10 and later:
+
 ```bash
-npx @rancher/create-extension my-plugin
+npm init @rancher/extension@latest my-plugin
 cd my-plugin
 yarn install
 ```
@@ -35,9 +37,14 @@ my-plugin/
     my-plugin/
       index.ts              # Plugin entry point
       product.ts            # Product registration
-      types.ts              # Custom type definitions
+      package.json          # Extension metadata
+      routing/
+        extension-routing.ts
       pages/                # Page components
       components/           # Reusable components
+      detail/               # Custom detail views
+      edit/                 # Custom create/edit views
+      list/                 # Custom list views
       models/               # Resource model overrides
       store/                # Custom Vuex stores
       l10n/                 # Translations
@@ -56,41 +63,51 @@ The Plugin DSL provides methods for registering your plugin with the Rancher she
 // product.ts
 import { IPlugin } from '@shell/core/types';
 
+const BLANK_CLUSTER = '_';
+
 export function init($plugin: IPlugin, store: any) {
   const {
     product,
     basicType,
     virtualType,
-    configureType,
-    weightType,
-    headers,
   } = $plugin.DSL(store, $plugin.name);
 
   // Register product in the top navigation
   product({
-    icon: 'cluster',
-    inStore: 'management', // or 'cluster' for cluster-scoped
+    icon: 'gear',
+    inStore: 'management',
     weight: 100,
     to: {
-      name: `c-cluster-${$plugin.name}-overview`,
-      params: { product: $plugin.name }
+      name: `${$plugin.name}-c-cluster-overview`,
+      params: {
+        product: $plugin.name,
+        cluster: BLANK_CLUSTER
+      }
     }
   });
 
-  // Register resource types
+  // Register pages
   virtualType({
     name: 'overview',
+    labelKey: 'nav.overview',
     route: {
-      name: `c-cluster-${$plugin.name}-overview`,
-      params: { product: $plugin.name }
+      name: `${$plugin.name}-c-cluster-overview`,
+      params: {
+        product: $plugin.name,
+        cluster: BLANK_CLUSTER
+      }
     }
   });
 
   virtualType({
     name: 'settings',
+    labelKey: 'nav.settings',
     route: {
-      name: `c-cluster-${$plugin.name}-settings`,
-      params: { product: $plugin.name }
+      name: `${$plugin.name}-c-cluster-settings`,
+      params: {
+        product: $plugin.name,
+        cluster: BLANK_CLUSTER
+      }
     }
   });
 
@@ -109,15 +126,30 @@ export function init($plugin: IPlugin, store: any) {
     icon: 'gear',
     inStore: 'cluster',
     weight: 90,
+    to: {
+      name: `c-cluster-${$plugin.name}-resource`,
+      params: {
+        product: $plugin.name,
+        resource: 'my.company.io.myresource'
+      }
+    }
   });
 
-  // Register a CRD type
+  // Register a CRD-backed type
   configureType('my.company.io.myresource', {
     isCreatable: true,
     isEditable: true,
     isRemovable: true,
     showAge: true,
     showState: true,
+    canYaml: true,
+    customRoute: {
+      name: `c-cluster-${$plugin.name}-resource`,
+      params: {
+        product: $plugin.name,
+        resource: 'my.company.io.myresource'
+      }
+    }
   });
 
   // Set display weight (order in navigation)
@@ -213,9 +245,9 @@ export default class MyResource extends SteveModel {
   // Custom state color
   get stateColor() {
     const state = this.stateDisplay;
-    if (state === 'Ready') return 'success';
-    if (state === 'Processing') return 'info';
-    return 'warning';
+    if (state === 'Ready') return 'text-success';
+    if (state === 'Processing') return 'text-info';
+    return 'text-warning';
   }
 
   // Available actions in the context menu
@@ -225,7 +257,7 @@ export default class MyResource extends SteveModel {
     actions.unshift({
       action: 'customAction',
       label: 'Run Diagnostics',
-      icon: 'icon-search',
+      icon: 'icon icon-search',
       enabled: this.stateDisplay === 'Ready',
     });
 
@@ -233,20 +265,11 @@ export default class MyResource extends SteveModel {
   }
 
   // Implement the custom action
-  customAction() {
-    this.$dispatch('cluster/request', {
+  async customAction() {
+    return await this.$dispatch('request', {
       url: `/apis/my.company.io/v1/namespaces/${this.metadata.namespace}/myresources/${this.metadata.name}/diagnostics`,
       method: 'POST'
     });
-  }
-
-  // Custom detail page tabs
-  get detailTabs() {
-    return [
-      { name: 'overview', label: 'Overview', weight: 100 },
-      { name: 'config', label: 'Configuration', weight: 90 },
-      { name: 'logs', label: 'Logs', weight: 80 },
-    ];
   }
 }
 ```
@@ -260,42 +283,42 @@ Define custom columns for resource list views:
 import { IPlugin } from '@shell/core/types';
 
 export function init($plugin: IPlugin, store: any) {
-  const { headers, configureType } = $plugin.DSL(store, $plugin.name);
+  const { headers } = $plugin.DSL(store, $plugin.name);
 
   headers('my.company.io.myresource', [
     {
       name: 'name',
-      labelKey: 'Name',
-      value: 'metadata.name',
-      sort: ['metadata.name'],
+      label: 'Name',
+      value: 'nameDisplay',
+      sort: ['nameSort'],
       width: 200,
     },
     {
       name: 'status',
-      labelKey: 'Status',
+      label: 'Status',
       value: 'stateDisplay',
-      sort: ['stateDisplay'],
+      sort: ['stateSort', 'nameSort'],
       width: 120,
-      formatter: 'BadgeState',
+      formatter: 'BadgeStateFormatter',
     },
     {
       name: 'version',
-      labelKey: 'Version',
+      label: 'Version',
       value: 'spec.version',
       sort: ['spec.version'],
     },
     {
       name: 'replicas',
-      labelKey: 'Replicas',
+      label: 'Replicas',
       value: 'spec.replicas',
       sort: ['spec.replicas:desc'],
       width: 100,
     },
     {
       name: 'age',
-      labelKey: 'Age',
-      value: 'metadata.creationTimestamp',
-      sort: ['metadata.creationTimestamp'],
+      label: 'Age',
+      value: 'creationTimestamp',
+      sort: ['creationTimestamp:desc'],
       formatter: 'LiveDate',
       width: 120,
     }
@@ -386,6 +409,11 @@ export default {
   },
   mixins: [CreateEditView],
 
+  created() {
+    this.value.metadata = this.value.metadata || {};
+    this.value.spec = this.value.spec || {};
+  },
+
   data() {
     return {
       tierOptions: [
@@ -421,20 +449,20 @@ nav:
   settings: "Settings"
 ```
 
-Load translations in your plugin entry:
+Use the standard extension entry:
 
 ```typescript
 // index.ts
 import { importTypes } from '@rancher/auto-import';
 import { IPlugin } from '@shell/core/types';
+import extensionRouting from './routing/extension-routing';
 
-const extension: IPlugin = {
-  name: 'my-plugin',
-  routes: [...],
-  stores: [],
-};
-
-export default extension;
+export default function(plugin: IPlugin) {
+  importTypes(plugin);
+  plugin.metadata = require('./package.json');
+  plugin.addProduct(require('./product'));
+  plugin.addRoutes(extensionRouting);
+}
 ```
 
 ## Development Workflow
@@ -460,14 +488,10 @@ Use Vue DevTools in your browser to inspect the Vuex store, component hierarchy,
 # Build the plugin package
 yarn build-pkg my-plugin
 
-# Build a Helm chart
-yarn build-helm my-plugin
-
-# Package and publish
-helm package charts/my-plugin
-helm push my-plugin-1.0.0.tgz oci://registry.example.com/charts
+# Generate Helm assets for a public GitHub repo
+yarn publish-pkgs -s "my-organization/my-plugin-repo" -b "gh-pages"
 ```
 
 ## Summary
 
-Developing Rancher UI plugins involves using the Plugin DSL to register products and resource types, creating Vue components for pages and forms, defining custom resource models for behavior overrides, and packaging everything as a Helm chart. The plugin architecture provides full access to the Rancher store for data fetching, pre-built shell components for consistent UI, and internationalization support. Start with simple virtual types and pages, then progress to custom CRD management with models, list columns, and edit forms.
+Developing Rancher UI plugins involves using the Plugin DSL to register products and resource types, creating Vue components for pages and forms, defining custom resource models for behavior overrides, and packaging everything as a Helm-distributed extension. The plugin architecture provides full access to the Rancher store for data fetching, pre-built shell components for consistent UI, and internationalization support. Start with simple virtual types and pages, then progress to custom CRD management with models, list columns, and edit forms.
