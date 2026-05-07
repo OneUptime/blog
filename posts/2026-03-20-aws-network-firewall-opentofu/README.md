@@ -16,7 +16,7 @@ AWS Network Firewall is a managed stateful firewall service that provides fine-g
 - AWS credentials with Network Firewall permissions
 - A VPC with dedicated firewall subnets
 
-## Step 1: Create a Firewall Policy
+## Step 1: Create a Stateless Rule Group
 
 ```hcl
 # Stateless rule group for fast-path traffic decisions
@@ -144,6 +144,14 @@ resource "aws_networkfirewall_firewall" "main" {
 
 ```hcl
 # Send firewall logs to CloudWatch for analysis
+resource "aws_cloudwatch_log_group" "firewall" {
+  name = "/aws/network-firewall/flow"
+}
+
+resource "aws_cloudwatch_log_group" "firewall_alerts" {
+  name = "/aws/network-firewall/alert"
+}
+
 resource "aws_networkfirewall_logging_configuration" "main" {
   firewall_arn = aws_networkfirewall_firewall.main.arn
 
@@ -177,4 +185,4 @@ tofu apply
 
 ## Conclusion
 
-You have deployed AWS Network Firewall with stateless rules for fast-path processing and stateful domain allowlisting for egress control. Route your VPC traffic through the firewall endpoints using Gateway Load Balancer routes or VPC ingress routing to enforce inspection on all traffic flows.
+You have deployed AWS Network Firewall with stateless rules for fast-path processing and stateful domain allowlisting for egress control. Route your VPC traffic through the firewall endpoints by updating your VPC route tables, including VPC ingress routing where applicable, to enforce inspection on the traffic flows you want to inspect.
