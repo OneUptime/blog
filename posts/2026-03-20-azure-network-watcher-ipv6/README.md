@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, IPv6, Network Watcher, Diagnostic, Flow Logs, Troubleshooting
 
-Description: Use Azure Network Watcher tools to diagnose IPv6 connectivity issues, analyze IPv6 flow logs, verify NSG rules for IPv6 traffic, and trace IPv6 packet paths.
+Description: Use Azure Network Watcher tools to diagnose IPv6 connectivity issues, analyze IPv6 flow logs, verify network security rules, and trace packet paths.
 
 ## Introduction
 
-Azure Network Watcher provides a suite of diagnostic tools for IPv6 troubleshooting: IP flow verify checks if traffic is allowed or denied, connection troubleshoot tests end-to-end connectivity, and flow logs capture IPv6 traffic data. These tools are essential for diagnosing IPv6 connectivity issues without needing to access individual VMs.
+Azure Network Watcher provides a suite of diagnostic tools for IPv6 troubleshooting: IP flow verify checks how traffic is evaluated by security rules, connection troubleshoot tests end-to-end connectivity, and flow logs capture IP traffic data. These tools are essential for diagnosing IPv6 connectivity issues without needing to access individual VMs.
 
 ## Enable Network Watcher
 
 ```bash
-# Network Watcher is automatically created per region
+# Network Watcher is automatically enabled per region unless you opted out
 
 # Verify it exists
 az network watcher list \
@@ -26,10 +26,10 @@ az network watcher configure \
     --enabled true
 ```
 
-## IP Flow Verify for IPv6 Traffic
+## IP Flow Verify
 
 ```bash
-# Test if IPv6 traffic is allowed from source to destination
+# Test if traffic is allowed from source to destination
 VM_ID=$(az vm show \
     --resource-group "$RG" \
     --name vm-web-01 \
@@ -41,14 +41,12 @@ NIC_ID=$(az vm show \
     --query "networkProfile.networkInterfaces[0].id" \
     --output tsv)
 
-# Verify inbound IPv6 HTTP traffic
+# Verify inbound HTTP traffic to the VM
 az network watcher test-ip-flow \
     --direction Inbound \
     --protocol TCP \
-    --local-ip "fd00:db8:0:1::10" \
-    --local-port 80 \
-    --remote-ip "2001:db8:client::1" \
-    --remote-port 50000 \
+    --local "10.0.0.4:80" \
+    --remote "198.51.100.10:*" \
     --nic "$NIC_ID" \
     --vm "$VM_ID"
 
@@ -57,10 +55,10 @@ az network watcher test-ip-flow \
 # ruleName: The NSG rule that made the decision
 ```
 
-## Connection Troubleshoot for IPv6
+## Connection Troubleshoot
 
 ```bash
-# Test connectivity between two VMs over IPv6
+# Test connectivity between two VMs
 SOURCE_VM_ID=$(az vm show \
     --resource-group "$RG" \
     --name vm-source \
@@ -72,7 +70,6 @@ DEST_VM_ID=$(az vm show \
     --query id --output tsv)
 
 az network watcher test-connectivity \
-    --resource-group NetworkWatcherRG \
     --source-resource "$SOURCE_VM_ID" \
     --dest-resource "$DEST_VM_ID" \
     --dest-port 80 \
@@ -81,7 +78,7 @@ az network watcher test-connectivity \
 # The output shows:
 # connectionStatus: Reachable/Unreachable
 # avgLatencyInMs: Round-trip latency
-# hops: Each hop in the path with IPv6 addresses
+# hops: Each hop in the path
 ```
 
 ## Enable IPv6 Flow Logs
@@ -104,30 +101,35 @@ NSG_ID=$(az network nsg show \
     --name nsg-web \
     --query id --output tsv)
 
-# Enable flow logs (captures IPv4 and IPv6)
-az network watcher flow-log create \
+# New NSG flow logs can't be created after 2025-06-30.
+# Update an existing NSG flow log to enable logging and Traffic Analytics.
+az network watcher flow-log update \
     --resource-group NetworkWatcherRG \
+    --location eastus \
     --name flowlog-web \
     --nsg "$NSG_ID" \
     --storage-account "$STORAGE_ID" \
     --enabled true \
+    --format JSON \
+    --log-version 2 \
     --retention 7 \
-    --traffic-analytics-workspace-id "/subscriptions/xxx/resourceGroups/rg-law/providers/Microsoft.OperationalInsights/workspaces/law-main" \
-    --traffic-analytics-interval 10
+    --traffic-analytics true \
+    --workspace "/subscriptions/xxx/resourceGroups/rg-law/providers/Microsoft.OperationalInsights/workspaces/law-main" \
+    --interval 10
 ```
 
 ## Analyze IPv6 Flow Logs
 
 ```bash
 # Flow log JSON format (version 2)
-# IPv6 entries have "::" in source/destination addresses
+# IPv6 entries contain ":" in source/destination addresses
 
 # Example flow log entry for IPv6:
 # "flows": [{
 #   "mac": "000D3A....",
 #   "flowTuples": [
 #     "1234567890,2001:db8::100,fd00:db8::10,50000,80,T,I,A,B,,,,"
-#     # timestamp, src_ip, dst_ip, src_port, dst_port, protocol, direction, action
+#     # timestamp, src_ip, dst_ip, src_port, dst_port, protocol, direction, action, flow_state, packets_sent, bytes_sent, packets_received, bytes_received
 #   ]
 # }]
 ```
@@ -147,9 +149,11 @@ resource "azurerm_network_watcher_flow_log" "web" {
   resource_group_name  = data.azurerm_network_watcher.main.resource_group_name
   name                 = "flowlog-web"
 
-  network_security_group_id = azurerm_network_security_group.web.id
-  storage_account_id        = azurerm_storage_account.flow_logs.id
-  enabled                   = true
+  # Existing NSG flow logs only. New NSG flow logs can't be created after 2025-06-30.
+  target_resource_id = azurerm_network_security_group.web.id
+  storage_account_id = azurerm_storage_account.flow_logs.id
+  enabled            = true
+  version            = 2
 
   retention_policy {
     enabled = true
@@ -169,7 +173,7 @@ resource "azurerm_network_watcher_flow_log" "web" {
 ## Query IPv6 Traffic in Log Analytics
 
 ```kusto
-// KQL query for IPv6 flow logs in Log Analytics
+// KQL query for IPv6 traffic in NSG flow logs in Log Analytics
 AzureNetworkAnalytics_CL
 | where TimeGenerated > ago(1h)
 | where SrcIP_s contains ":" or DestIP_s contains ":"  // IPv6 addresses
@@ -180,4 +184,4 @@ AzureNetworkAnalytics_CL
 
 ## Conclusion
 
-Azure Network Watcher's IP flow verify tool (`az network watcher test-ip-flow`) tests whether specific IPv6 flows are allowed by NSGs, returning the exact rule name that permits or denies the traffic. Connection troubleshoot tests end-to-end IPv6 connectivity between VMs. NSG flow logs capture IPv6 traffic alongside IPv4, identifiable by the `:` in IP addresses. Use Log Analytics KQL queries with `SrcIP_s contains ":"` to filter IPv6 flows for security and performance analysis.
+Azure Network Watcher's IP flow verify tool (`az network watcher test-ip-flow`) tests whether specific traffic is allowed by NSGs, returning the exact rule name that permits or denies the traffic. Connection troubleshoot tests end-to-end reachability between VMs. Existing NSG flow logs capture IPv6 traffic alongside IPv4, identifiable by the `:` in IP addresses, but new NSG flow logs can't be created after June 30, 2025. Use Log Analytics KQL queries with `SrcIP_s contains ":"` to filter IPv6 flows for security and performance analysis.
