@@ -10,13 +10,13 @@ Description: Learn how to use podman system prune to reclaim disk space by remov
 
 > A single prune command can reclaim gigabytes of wasted disk space by cleaning up the container resources you have forgotten about.
 
-Over time, Podman environments accumulate stopped containers, dangling images, unused volumes, and stale build cache. These unused resources silently consume disk space and can eventually fill up your filesystem. The `podman system prune` command provides a comprehensive cleanup mechanism that removes all unused resources in one operation.
+Over time, Podman environments accumulate stopped containers and pods, dangling images, unused volumes, and stale build cache. These unused resources silently consume disk space and can eventually fill up your filesystem. The `podman system prune` command provides a comprehensive cleanup mechanism that removes unused resources in one operation.
 
 ---
 
 ## Basic System Prune
 
-The default prune command removes stopped containers, unused networks, dangling images, and build cache.
+The default prune command removes stopped containers, stopped pods, unused networks, dangling images, and dangling build cache.
 
 ```bash
 # Prune unused resources (will prompt for confirmation)
@@ -37,13 +37,13 @@ To perform a more aggressive cleanup that includes volumes, add the `--volumes` 
 # Prune all unused resources including volumes
 podman system prune --volumes -f
 
-# WARNING: This removes unnamed volumes that may contain data
+# WARNING: This removes unused volumes that may contain data
 # Always verify what will be removed before running this in production
 ```
 
 ## Pruning All Unused Images
 
-By default, prune only removes dangling images (those without tags). To remove all images not associated with a running container, use the `--all` flag.
+By default, prune only removes dangling images (those without tags). To remove all images not associated with any container, use the `--all` flag.
 
 ```bash
 # Remove all unused images, not just dangling ones
@@ -134,9 +134,9 @@ echo "Stopped containers: $CONTAINERS"
 DANGLING=$(podman images --filter dangling=true -q | wc -l | tr -d ' ')
 echo "Dangling images: $DANGLING"
 
-# Dangling volumes
+# Unused volumes (only removed by system prune when --volumes is used)
 VOLUMES=$(podman volume ls --filter dangling=true -q | wc -l | tr -d ' ')
-echo "Dangling volumes: $VOLUMES"
+echo "Unused volumes: $VOLUMES"
 
 # Show reclaimable space
 echo ""
