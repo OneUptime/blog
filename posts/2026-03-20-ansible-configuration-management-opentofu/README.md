@@ -46,8 +46,10 @@ output "ansible_vars" {
   hosts: app_servers
   become: yes
 
-  vars_files:
-    - "{{ playbook_dir }}/../vars/opentofu-outputs.yml"
+  pre_tasks:
+    - name: Load OpenTofu outputs
+      include_vars:
+        file: "{{ playbook_dir }}/../vars/opentofu-outputs.json"
 
   roles:
     - common
@@ -65,26 +67,35 @@ output "ansible_vars" {
 #!/bin/bash
 # scripts/sync-tofu-to-ansible.sh
 
+set -euo pipefail
+
 TOFU_DIR="${1:-./infrastructure}"
 ANSIBLE_VARS_DIR="${2:-./ansible/vars}"
 
-# Get OpenTofu outputs as JSON
-OUTPUTS=$(cd "$TOFU_DIR" && tofu output -json)
+mkdir -p "$ANSIBLE_VARS_DIR"
 
-# Convert to Ansible vars YAML format
-echo "$OUTPUTS" | python3 -c "
-import json, sys, yaml
+# Get OpenTofu outputs as JSON and flatten them into Ansible vars
+tofu -chdir="$TOFU_DIR" output -json | python3 -c '
+import json, sys
 
 outputs = json.load(sys.stdin)
 ansible_vars = {}
+
 for key, output in outputs.items():
-    if not output.get('sensitive', False):
-        ansible_vars[key] = output['value']
+    if output.get("sensitive", False):
+        continue
 
-print(yaml.dump(ansible_vars, default_flow_style=False))
-" > "${ANSIBLE_VARS_DIR}/opentofu-outputs.yml"
+    value = output["value"]
+    if key == "ansible_vars" and isinstance(value, dict):
+        ansible_vars.update(value)
+    else:
+        ansible_vars[key] = value
 
-echo "Ansible vars written to ${ANSIBLE_VARS_DIR}/opentofu-outputs.yml"
+json.dump(ansible_vars, sys.stdout, indent=2)
+sys.stdout.write("\n")
+' > "${ANSIBLE_VARS_DIR}/opentofu-outputs.json"
+
+echo "Ansible vars written to ${ANSIBLE_VARS_DIR}/opentofu-outputs.json"
 ```
 
 ## Ansible Role for App Server Configuration
@@ -173,33 +184,38 @@ jobs:
     outputs:
       tofu-applied: ${{ steps.apply.outputs.applied }}
     steps:
+      - uses: actions/checkout@v5
+      - uses: opentofu/setup-opentofu@v1
+
       - name: OpenTofu Apply
         id: apply
         run: |
-          tofu init && tofu apply -auto-approve
-          echo "applied=true" >> $GITHUB_OUTPUT
+          tofu -chdir=infrastructure init
+          tofu -chdir=infrastructure apply -auto-approve
+          echo "applied=true" >> "$GITHUB_OUTPUT"
 
       - name: Generate Ansible vars
         run: |
-          tofu output -json | python3 scripts/outputs-to-yaml.py > ansible/vars/infra.yml
+          bash scripts/sync-tofu-to-ansible.sh infrastructure ansible/vars
 
       - name: Upload vars as artifact
         uses: actions/upload-artifact@v4
         with:
           name: ansible-vars
-          path: ansible/vars/infra.yml
+          path: ansible/vars/opentofu-outputs.json
 
   configure:
     needs: infrastructure
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
         with:
           name: ansible-vars
           path: ansible/vars/
 
       - name: Run Ansible
-        run: ansible-playbook -i inventory/hosts.py playbooks/site.yml
+        run: ansible-playbook -i inventory/hosts.py playbooks/site.yml --extra-vars "@ansible/vars/opentofu-outputs.json"
 ```
 
 ## Conclusion
