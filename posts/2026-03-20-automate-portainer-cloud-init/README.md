@@ -23,7 +23,7 @@ Cloud-init uses a YAML file called user-data that's passed to instances at launc
 
 ```yaml
 #cloud-config
-# This comment is required - it identifies this as a cloud-init file
+# The #cloud-config header is required - it identifies this as a cloud-init file
 
 # System configuration
 
@@ -40,7 +40,7 @@ packages:
 users:
   - default
   - name: portainer-admin
-    groups: [docker, sudo]
+    groups: [sudo]
     shell: /bin/bash
     sudo: ['ALL=(ALL) NOPASSWD:ALL']
     ssh_authorized_keys:
@@ -66,6 +66,8 @@ packages:
   - ca-certificates
   - gnupg
   - lsb-release
+  - openssl
+  - ufw
 
 # Write configuration files
 write_files:
@@ -87,21 +89,21 @@ write_files:
   # Portainer docker-compose configuration
   - path: /opt/portainer/docker-compose.yml
     content: |
-      version: "3.8"
       services:
         portainer:
-          image: portainer/portainer-ce:2.19.4
+          image: portainer/portainer-ce:lts
           container_name: portainer
           restart: always
+          command:
+            - --admin-password-file
+            - /run/secrets/portainer-admin-password
           ports:
-            - "9000:9000"
             - "9443:9443"
             - "8000:8000"
           volumes:
             - /var/run/docker.sock:/var/run/docker.sock
             - portainer-data:/data
-          environment:
-            - PORTAINER_ADMIN_PASSWORD_HASH=${PORTAINER_ADMIN_HASH}
+            - /opt/portainer/admin_password.txt:/run/secrets/portainer-admin-password:ro
           logging:
             driver: json-file
             options:
@@ -125,6 +127,12 @@ write_files:
       
       echo "=== Installing Docker Compose Plugin ==="
       apt-get install -y docker-compose-plugin 2>/dev/null || true
+
+      echo "=== Generating Portainer admin password ==="
+      if [ ! -s /opt/portainer/admin_password.txt ]; then
+        printf 'P0rtainer!%s' "$(openssl rand -hex 12)" > /opt/portainer/admin_password.txt
+        chmod 600 /opt/portainer/admin_password.txt
+      fi
       
       echo "=== Starting Portainer ==="
       cd /opt/portainer
@@ -141,7 +149,8 @@ write_files:
       done
       
       echo "=== Portainer deployment complete ==="
-      echo "Access Portainer at: https://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):9443"
+      echo "Initial Portainer admin password saved to: /opt/portainer/admin_password.txt"
+      echo "Access Portainer at: https://<your-server-ip>:9443"
     owner: root:root
     permissions: '0755'
   
@@ -152,7 +161,6 @@ write_files:
       # Configure UFW firewall
       ufw allow ssh
       ufw allow 9443/tcp comment "Portainer HTTPS"
-      ufw allow 9000/tcp comment "Portainer HTTP"
       ufw allow 8000/tcp comment "Portainer Edge Agent"
       ufw --force enable
     owner: root:root
@@ -165,22 +173,6 @@ runcmd:
   
   # Configure firewall
   - [bash, /opt/portainer/setup-firewall.sh]
-  
-  # Add default user to docker group
-  - [usermod, -aG, docker, ubuntu]
-  
-  # Set up log rotation
-  - |
-    cat > /etc/logrotate.d/portainer << 'EOF'
-    /opt/portainer/logs/*.log {
-        daily
-        rotate 7
-        compress
-        delaycompress
-        missingok
-        notifempty
-    }
-    EOF
 
 # Send notification when complete
 phone_home:
@@ -201,7 +193,7 @@ USERDATA
 
 # Launch EC2 instance with user-data
 aws ec2 run-instances \
-  --image-id ami-0c55b159cbfafe1f0 \
+  --image-id resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id \
   --instance-type t3.medium \
   --key-name my-key-pair \
   --security-group-ids sg-12345678 \
@@ -211,6 +203,7 @@ aws ec2 run-instances \
 
 # Check instance status
 aws ec2 describe-instances \
+  --region us-east-1 \
   --filters "Name=tag:Name,Values=portainer-server" \
   --query 'Reservations[].Instances[].{ID:InstanceId,State:State.Name,IP:PublicIpAddress}'
 ```
@@ -221,14 +214,14 @@ aws ec2 describe-instances \
 # Using Hetzner Cloud CLI (hcloud)
 hcloud server create \
   --name portainer-server \
-  --type cx21 \
+  --type cpx22 \
   --image ubuntu-22.04 \
   --ssh-key my-key \
   --user-data-from-file portainer-userdata.yaml \
   --location nbg1
 
-# Watch the server creation
-hcloud server create --help
+# Check the server status
+hcloud server describe portainer-server
 ```
 
 ## Step 5: DigitalOcean Droplet Deployment
@@ -260,20 +253,25 @@ write_files:
   - path: /opt/portainer-agent/deploy.sh
     content: |
       #!/bin/bash
+      set -euo pipefail
+
       # Install Docker
       curl -fsSL https://get.docker.com | sh
       
       # Deploy Portainer Edge Agent
-      # Replace EDGE_KEY with your actual edge key from Portainer UI
+      # Replace EDGE_ID and EDGE_KEY with the values from the Portainer UI
       docker run -d \
-        --name portainer-agent \
+        --name portainer_edge_agent \
         --restart always \
         -v /var/run/docker.sock:/var/run/docker.sock \
         -v /var/lib/docker/volumes:/var/lib/docker/volumes \
-        -p 9001:9001 \
-        portainer/agent:latest \
-        -H tcp://portainer.example.com:8000 \
-        --key ${PORTAINER_EDGE_KEY}
+        -v /:/host \
+        -v portainer_agent_data:/data \
+        -e EDGE=1 \
+        -e EDGE_ID=your-edge-id \
+        -e EDGE_KEY=your-edge-key \
+        -e EDGE_INSECURE_POLL=1 \
+        portainer/agent:lts
     permissions: '0755'
 
 runcmd:
