@@ -16,30 +16,22 @@ When your application consists of multiple containerized microservices, understa
 
 ## Deploying Jaeger All-in-One
 
-For development and small deployments, Jaeger provides an all-in-one image that includes the collector, query service, and UI:
+For development and small deployments, Jaeger provides an all-in-one configuration that includes the collector and query/UI in a single container image:
 
 ```bash
 podman run -d \
   --name jaeger \
   --restart always \
-  -p 6831:6831/udp \
-  -p 6832:6832/udp \
-  -p 5778:5778 \
   -p 16686:16686 \
   -p 4317:4317 \
   -p 4318:4318 \
-  -p 14250:14250 \
-  -p 14268:14268 \
-  -p 14269:14269 \
-  jaegertracing/all-in-one:latest
+  jaegertracing/jaeger:2.17.0
 ```
 
 Key ports:
-- `6831/udp` - Jaeger agent compact thrift
 - `4317` - OpenTelemetry gRPC
 - `4318` - OpenTelemetry HTTP
 - `16686` - Jaeger UI
-- `14268` - Jaeger collector HTTP
 
 Access the Jaeger UI at `http://localhost:16686`.
 
@@ -48,7 +40,8 @@ Access the Jaeger UI at `http://localhost:16686`.
 Add tracing to a Python Flask application:
 
 ```bash
-pip install opentelemetry-api opentelemetry-sdk \
+pip install flask requests \
+    opentelemetry-api opentelemetry-sdk \
     opentelemetry-exporter-otlp-proto-grpc \
     opentelemetry-instrumentation-flask \
     opentelemetry-instrumentation-requests
@@ -58,6 +51,7 @@ pip install opentelemetry-api opentelemetry-sdk \
 # app.py
 
 from flask import Flask, request, jsonify
+import os
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -69,9 +63,12 @@ import requests as req_lib
 import time
 
 # Configure tracing
-resource = Resource.create({"service.name": "api-gateway"})
+resource = Resource.create({"service.name": os.getenv("OTEL_SERVICE_NAME", "api-gateway")})
 provider = TracerProvider(resource=resource)
-exporter = OTLPSpanExporter(endpoint="http://jaeger:4317", insecure=True)
+exporter = OTLPSpanExporter(
+    endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317"),
+    insecure=True,
+)
 provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 
@@ -112,28 +109,40 @@ if __name__ == '__main__':
 
 ## Instrumenting a Node.js Service
 
+Install the required packages:
+
+```bash
+npm install express @opentelemetry/api @opentelemetry/resources \
+    @opentelemetry/sdk-trace-node @opentelemetry/sdk-trace-base \
+    @opentelemetry/exporter-trace-otlp-grpc \
+    @opentelemetry/semantic-conventions \
+    @opentelemetry/instrumentation \
+    @opentelemetry/instrumentation-http \
+    @opentelemetry/instrumentation-express
+```
+
 ```javascript
 // tracing.js
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
 
-const provider = new NodeTracerProvider({
-    resource: new Resource({
-        [ATTR_SERVICE_NAME]: 'inventory-service',
-    }),
-});
-
 const exporter = new OTLPTraceExporter({
-    url: 'http://jaeger:4317',
+    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://jaeger:4317',
 });
 
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+const provider = new NodeTracerProvider({
+    resource: resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'inventory-service',
+    }),
+    spanProcessors: [new BatchSpanProcessor(exporter)],
+});
+
 provider.register();
 
 registerInstrumentations({
@@ -158,7 +167,7 @@ const tracer = trace.getTracer('inventory-service');
 app.get('/check', (req, res) => {
     const span = tracer.startSpan('check-stock-levels');
 
-    const items = (req.query.items || '').split(',');
+    const items = (req.query.items || '').split(',').filter(Boolean);
     span.setAttribute('items.count', items.length);
 
     // Simulate inventory check
@@ -184,7 +193,7 @@ Deploy the complete traced application stack:
 version: "3"
 services:
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/jaeger:2.17.0
     restart: always
     ports:
       - "16686:16686"
@@ -233,7 +242,7 @@ services:
 
 ## Production Jaeger Deployment
 
-For production, use separate components with persistent storage:
+For production, use explicit configuration with external storage and version-pinned images:
 
 ```yaml
 # jaeger-production.yml
@@ -249,27 +258,18 @@ services:
     volumes:
       - es-data:/usr/share/elasticsearch/data
 
-  jaeger-collector:
-    image: jaegertracing/jaeger-collector:latest
-    restart: always
-    ports:
-      - "14268:14268"
-      - "4317:4317"
-      - "4318:4318"
-    environment:
-      SPAN_STORAGE_TYPE: elasticsearch
-      ES_SERVER_URLS: http://elasticsearch:9200
-    depends_on:
-      - elasticsearch
-
-  jaeger-query:
-    image: jaegertracing/jaeger-query:latest
+  jaeger:
+    image: jaegertracing/jaeger:2.17.0
     restart: always
     ports:
       - "16686:16686"
-    environment:
-      SPAN_STORAGE_TYPE: elasticsearch
-      ES_SERVER_URLS: http://elasticsearch:9200
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./jaeger-elasticsearch.yml:/jaeger/config.yml:ro,Z
+    command:
+      - "--config"
+      - "/jaeger/config.yml"
     depends_on:
       - elasticsearch
 
@@ -277,9 +277,51 @@ volumes:
   es-data:
 ```
 
+```yaml
+# jaeger-elasticsearch.yml
+service:
+  extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [jaeger_storage_exporter]
+
+extensions:
+  healthcheckv2:
+    use_v2: true
+    http:
+
+  jaeger_query:
+    storage:
+      traces: elasticsearch_storage
+
+  jaeger_storage:
+    backends:
+      elasticsearch_storage:
+        elasticsearch:
+          server_urls:
+            - http://elasticsearch:9200
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: elasticsearch_storage
+```
+
 ## Querying Traces via API
 
-Use the Jaeger API to query traces programmatically:
+Use the Jaeger query service's JSON API to query traces programmatically:
 
 ```bash
 # Get all services
@@ -297,49 +339,27 @@ curl -s "http://localhost:16686/api/traces?service=api-gateway&operation=POST%20
 
 ## Sampling Strategies
 
-Configure trace sampling to manage volume in production:
+With OpenTelemetry SDKs, sampling is typically configured in the SDK via standard environment variables:
 
 ```bash
-# Create a sampling strategies file
-cat > /tmp/sampling-strategies.json << 'EOF'
-{
-  "default_strategy": {
-    "type": "probabilistic",
-    "param": 0.1
-  }
-}
-EOF
-
-podman run -d \
-  --name jaeger \
-  -v /tmp/sampling-strategies.json:/etc/jaeger/sampling-strategies.json:ro,Z \
-  -e SAMPLING_STRATEGIES_FILE=/etc/jaeger/sampling-strategies.json \
-  jaegertracing/all-in-one:latest
+export OTEL_TRACES_SAMPLER=parentbased_traceidratio
+export OTEL_TRACES_SAMPLER_ARG=0.1
 ```
 
-For more control, use a per-service sampling configuration:
+For more control, set different sampling ratios per service:
 
-```json
-{
-  "service_strategies": [
-    {
-      "service": "api-gateway",
-      "type": "probabilistic",
-      "param": 0.5
-    },
-    {
-      "service": "payment-service",
-      "type": "probabilistic",
-      "param": 1.0
-    }
-  ],
-  "default_strategy": {
-    "type": "probabilistic",
-    "param": 0.1
-  }
-}
+```yaml
+api-gateway:
+  environment:
+    OTEL_TRACES_SAMPLER: parentbased_traceidratio
+    OTEL_TRACES_SAMPLER_ARG: "0.5"
+
+payment-service:
+  environment:
+    OTEL_TRACES_SAMPLER: parentbased_traceidratio
+    OTEL_TRACES_SAMPLER_ARG: "1.0"
 ```
 
 ## Conclusion
 
-Jaeger with Podman makes distributed tracing accessible for containerized microservice architectures. The all-in-one deployment is perfect for development, while separate collector, query, and storage components scale for production use. With OpenTelemetry instrumentation libraries available for every major language, adding tracing to your services requires minimal code changes. The visibility that distributed tracing provides into request flows, latency bottlenecks, and error propagation makes it an essential tool for operating microservices reliably.
+Jaeger with Podman makes distributed tracing accessible for containerized microservice architectures. The all-in-one deployment is perfect for development, while version-pinned configurations with external storage support production use. With OpenTelemetry instrumentation libraries available for every major language, adding tracing to your services requires minimal code changes. The visibility that distributed tracing provides into request flows, latency bottlenecks, and error propagation makes it an essential tool for operating microservices reliably.
