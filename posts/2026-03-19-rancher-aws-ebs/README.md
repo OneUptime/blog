@@ -6,18 +6,18 @@ Tags: Rancher, Kubernetes, Storage, AWS EBS
 
 Description: A step-by-step guide to configuring AWS EBS volumes for persistent storage in Rancher-managed Kubernetes clusters.
 
-Amazon Elastic Block Store (EBS) provides scalable, high-performance block storage for Kubernetes workloads running on AWS. Rancher supports EBS storage through both the in-tree driver and the EBS CSI driver. This guide covers setting up both options.
+Amazon Elastic Block Store (EBS) provides scalable, high-performance block storage for Kubernetes workloads running on AWS. Rancher-managed clusters should use the AWS EBS CSI driver for new storage classes. Existing in-tree `kubernetes.io/aws-ebs` volumes can be migrated, but new provisioning should use the CSI driver.
 
 ## Prerequisites
 
 - A running Rancher instance
-- An AWS-based Kubernetes cluster (EKS or RKE on EC2)
-- Proper IAM permissions for EBS operations
+- An AWS-based Kubernetes cluster with Linux worker nodes on EC2 (for example, EKS or RKE on EC2)
+- IAM permissions for the EBS CSI driver
 - kubectl and Helm access to your cluster
 
 ## Step 1: Configure IAM Permissions
 
-Your cluster nodes need IAM permissions for EBS operations. Attach this policy to the node IAM role:
+The EBS CSI driver needs IAM permissions for EBS operations. On EKS, attach these permissions to the IAM role used by the `ebs-csi-controller-sa` service account. On self-managed EC2 clusters, attach the equivalent permissions to the instance profile used by the driver:
 
 ```json
 {
@@ -30,20 +30,27 @@ Your cluster nodes need IAM permissions for EBS operations. Attach this policy t
         "ec2:DeleteVolume",
         "ec2:AttachVolume",
         "ec2:DetachVolume",
+        "ec2:ModifyVolume",
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeSnapshots",
+        "ec2:DescribeTags",
         "ec2:DescribeVolumes",
+        "ec2:DescribeVolumesModifications",
         "ec2:DescribeVolumeStatus",
         "ec2:CreateSnapshot",
         "ec2:DeleteSnapshot",
-        "ec2:DescribeSnapshots",
         "ec2:CreateTags",
-        "ec2:DescribeInstances",
-        "ec2:DescribeAvailabilityZones"
+        "ec2:DeleteTags"
       ],
       "Resource": "*"
     }
   ]
 }
 ```
+
+If you use a customer-managed KMS key, also grant the driver `kms:Decrypt`, `kms:GenerateDataKeyWithoutPlaintext`, and `kms:CreateGrant` on that key. If you use an EC2 instance profile instead of IRSA, make sure the driver can reach IMDS.
 
 ## Step 2: Install the EBS CSI Driver
 
@@ -53,10 +60,11 @@ Install the AWS EBS CSI driver using Helm:
 helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
 helm repo update
 
-helm install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
-  --namespace kube-system \
-  --set controller.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::123456789012:role/EBS_CSI_DriverRole"
+helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
+  --namespace kube-system
 ```
+
+If you use IRSA on EKS, add the service account annotation to the Helm install: `--set controller.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::123456789012:role/EBS_CSI_DriverRole"`.
 
 Verify the installation:
 
@@ -79,7 +87,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
   encrypted: "true"
   iops: "3000"
   throughput: "125"
@@ -94,7 +102,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: io2
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
   encrypted: "true"
   iops: "10000"
 reclaimPolicy: Retain
@@ -108,7 +116,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: st1
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 ```
@@ -138,9 +146,24 @@ spec:
 kubectl apply -f ebs-claim.yaml
 ```
 
+Because these storage classes use `WaitForFirstConsumer`, this PVC remains `Pending` until a Pod references it.
+
 ## Step 5: Deploy an Application with EBS Storage
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+    name: postgres
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -182,6 +205,12 @@ spec:
           storage: 50Gi
 ```
 
+```bash
+kubectl apply -f postgres.yaml
+```
+
+Wait until the StatefulSet is running so the `postgres-data-postgres-0` PVC is bound before taking a snapshot.
+
 ## Step 6: Configure Encrypted Volumes
 
 Enable encryption with a custom KMS key:
@@ -194,6 +223,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
+  csi.storage.k8s.io/fstype: ext4
   encrypted: "true"
   kmsKeyId: arn:aws:kms:us-east-1:123456789012:key/abcd-1234-efgh-5678
 reclaimPolicy: Retain
@@ -202,7 +232,7 @@ volumeBindingMode: WaitForFirstConsumer
 
 ## Step 7: Configure Volume Snapshots
 
-Create a VolumeSnapshotClass for EBS:
+Create a VolumeSnapshotClass for EBS. Make sure the snapshot CRDs and snapshot controller are installed in the cluster first, because the EBS CSI Helm chart does not install them:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
@@ -213,7 +243,7 @@ driver: ebs.csi.aws.com
 deletionPolicy: Retain
 ```
 
-Take a snapshot:
+Take a snapshot of the bound PVC created by the StatefulSet (`postgres-data-postgres-0` in this example):
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
@@ -224,7 +254,7 @@ metadata:
 spec:
   volumeSnapshotClassName: ebs-snapshot-class
   source:
-    persistentVolumeClaimName: ebs-claim
+    persistentVolumeClaimName: postgres-data-postgres-0
 ```
 
 ## Step 8: Restore from a Snapshot
@@ -241,7 +271,7 @@ spec:
   storageClassName: ebs-gp3
   resources:
     requests:
-      storage: 20Gi
+      storage: 50Gi
   dataSource:
     name: ebs-snapshot
     kind: VolumeSnapshot
@@ -280,7 +310,7 @@ kubectl get pvc --all-namespaces
 kubectl get pv -o custom-columns='NAME:.metadata.name,CAPACITY:.spec.capacity.storage,CLASS:.spec.storageClassName,STATUS:.status.phase'
 
 # Check CSI driver logs
-kubectl logs -n kube-system -l app=ebs-csi-controller --tail=50
+kubectl logs -n kube-system deployment/ebs-csi-controller -c ebs-plugin --tail=50
 
 # Describe a PV to see the EBS volume ID
 kubectl describe pv <pv-name> | grep VolumeHandle
