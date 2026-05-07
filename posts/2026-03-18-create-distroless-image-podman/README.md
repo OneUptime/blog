@@ -8,7 +8,7 @@ Description: Learn how to create minimal, secure distroless container images wit
 
 ---
 
-> Distroless images strip away the operating system and keep only your application, dramatically reducing your attack surface and image size.
+> Distroless images strip away the traditional Linux distribution contents and keep only your application, dramatically reducing your attack surface and image size.
 
 Traditional container images include a full Linux distribution with package managers, shells, and utilities that your application never uses in production. Distroless images take a different approach by including only the application and its runtime dependencies, nothing else. No shell, no package manager, no unnecessary libraries. This guide shows you how to build distroless images with Podman for various languages and runtimes.
 
@@ -24,22 +24,22 @@ The benefits are significant. The attack surface is dramatically reduced because
 
 Google maintains a set of distroless base images at `gcr.io/distroless/`. These are the most popular distroless images and cover common runtimes:
 
-- `gcr.io/distroless/static-debian12` for statically compiled binaries
-- `gcr.io/distroless/base-debian12` for dynamically linked binaries that need glibc
-- `gcr.io/distroless/java21-debian12` for Java applications
-- `gcr.io/distroless/nodejs22-debian12` for Node.js applications
-- `gcr.io/distroless/python3-debian12` for Python applications
+- `gcr.io/distroless/static-debian13` for statically compiled binaries
+- `gcr.io/distroless/base-debian13` for dynamically linked binaries that need glibc
+- `gcr.io/distroless/java21-debian13` for Java applications
+- `gcr.io/distroless/nodejs22-debian13` for Node.js applications
+- `gcr.io/distroless/python3-debian13` for Python applications
 
 Each image also has a `-nonroot` variant that runs as a non-root user by default.
 
 ## Go Application with Distroless
 
-Go is the ideal language for distroless images because Go produces statically linked binaries by default. Here is a complete example:
+Go is the ideal language for distroless images because it can produce statically linked binaries when CGO is disabled. Here is a complete example:
 
 ```dockerfile
 # Build stage
 
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -53,7 +53,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -o /server ./cmd/server
 
 # Runtime stage - distroless
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 
 COPY --from=builder /server /server
 
@@ -95,7 +95,7 @@ COPY src ./src
 RUN mvn package -DskipTests -B
 
 # Runtime stage - distroless
-FROM gcr.io/distroless/java21-debian12:nonroot
+FROM gcr.io/distroless/java21-debian13:nonroot
 
 COPY --from=builder /app/target/app.jar /app.jar
 
@@ -103,7 +103,7 @@ EXPOSE 8080
 
 USER nonroot:nonroot
 
-ENTRYPOINT ["java", "-jar", "/app.jar"]
+CMD ["/app.jar"]
 ```
 
 The distroless Java image includes the JRE and required native libraries but nothing else. You cannot shell into this container or install debugging tools at runtime.
@@ -114,7 +114,7 @@ Node.js applications need the Node.js runtime:
 
 ```dockerfile
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
@@ -124,7 +124,7 @@ RUN npm ci --omit=dev
 COPY . .
 
 # Runtime stage - distroless
-FROM gcr.io/distroless/nodejs22-debian12:nonroot
+FROM gcr.io/distroless/nodejs22-debian13:nonroot
 
 WORKDIR /app
 
@@ -145,7 +145,7 @@ Python distroless images require extra care since Python applications often have
 
 ```dockerfile
 # Build stage
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
@@ -155,7 +155,7 @@ RUN pip install --no-cache-dir --target=/app/deps -r requirements.txt
 COPY . .
 
 # Runtime stage - distroless
-FROM gcr.io/distroless/python3-debian12:nonroot
+FROM gcr.io/distroless/python3-debian13:nonroot
 
 WORKDIR /app
 
@@ -167,7 +167,7 @@ EXPOSE 8000
 
 USER nonroot:nonroot
 
-ENTRYPOINT ["python3", "/app/main.py"]
+CMD ["/app/main.py"]
 ```
 
 The key is installing Python packages into a target directory and then copying them to the distroless image. Set PYTHONPATH so Python can find the installed packages.
@@ -177,7 +177,7 @@ The key is installing Python packages into a target directory and then copying t
 Like Go, Rust can produce statically linked binaries, making it an excellent fit for distroless:
 
 ```dockerfile
-FROM rust:1.77-slim AS builder
+FROM rust:1.94-slim-trixie AS builder
 
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
@@ -187,7 +187,7 @@ RUN apt-get update && apt-get install -y musl-tools && \
     rustup target add x86_64-unknown-linux-musl && \
     cargo build --release --target x86_64-unknown-linux-musl
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/myapp /myapp
 
@@ -206,7 +206,7 @@ Since distroless images have no shell, traditional debugging approaches do not w
 
 ```bash
 # Use the debug variant for troubleshooting (not production)
-podman run -it --entrypoint /busybox/sh gcr.io/distroless/base-debian12:debug
+podman run -it --entrypoint=sh gcr.io/distroless/base-debian13:debug
 ```
 
 **Ephemeral containers with Podman:** You can attach a debug container to the same network namespace:
@@ -247,10 +247,10 @@ One of the benefits of distroless is a dramatically smaller vulnerability surfac
 
 ```bash
 # Scan a regular image
-podman run --rm aquasec/trivy image node:20
+podman run --rm aquasec/trivy image node:22
 
 # Scan a distroless image
-podman run --rm aquasec/trivy image gcr.io/distroless/nodejs22-debian12
+podman run --rm aquasec/trivy image gcr.io/distroless/nodejs22-debian13
 ```
 
 The distroless image will have far fewer CVEs because it contains far fewer packages.
@@ -260,7 +260,7 @@ The distroless image will have far fewer CVEs because it contains far fewer pack
 You can create your own minimal images without using Google's distroless base by starting from scratch and adding only what you need:
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache ca-certificates tzdata
 
@@ -295,4 +295,4 @@ Always use multi-stage builds with distroless images. The build stage includes a
 
 ## Conclusion
 
-Distroless images represent the minimal viable container: just your application and what it needs to run. By stripping away the operating system layer, you get smaller images, a reduced attack surface, and cleaner security scans. The trade-off is reduced debuggability at runtime, which you mitigate through application-level observability and debug image variants. For production workloads where security matters, distroless should be your default choice.
+Distroless images represent the minimal viable container: just your application and what it needs to run. By stripping away the traditional distribution layer, you get smaller images, a reduced attack surface, and cleaner security scans. The trade-off is reduced debuggability at runtime, which you mitigate through application-level observability and debug image variants. For production workloads where security matters, distroless should be your default choice.
