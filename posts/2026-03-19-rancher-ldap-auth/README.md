@@ -62,7 +62,7 @@ ldapsearch -x -H ldap://ldap.example.com:389 \
   -w "<password>" \
   -b "ou=groups,dc=example,dc=com" \
   "(cn=developers)" \
-  objectClass member
+  objectClass member uniqueMember
 ```
 
 Common LDAP schemas:
@@ -97,7 +97,7 @@ For StartTLS instead of LDAPS:
 
 ```plaintext
 Port: 389
-TLS: ☑ Enabled
+TLS: ☐ Disabled
 StartTLS: ☑ Enabled
 ```
 
@@ -107,13 +107,12 @@ Set up how Rancher finds users in your directory:
 
 ```plaintext
 User Search Base: ou=users,dc=example,dc=com
-Username Attribute: uid
-User Login Attribute: uid
-User Object Class: inetOrgPerson
-User Name Attribute: cn
+Login Attribute: uid
+Object Class: inetOrgPerson
+Username Attribute: cn
 User Member Attribute: memberOf
-Search Attribute: uid|cn|mail
-User Enabled Attribute: (leave blank for most LDAP servers)
+Search Attribute: uid|sn|givenName
+User Enabled Attribute: (leave blank for most OpenLDAP servers)
 ```
 
 ## Step 6: Configure Group Search Settings
@@ -125,7 +124,7 @@ Group Search Base: ou=groups,dc=example,dc=com
 Group Object Class: groupOfNames
 Group Name Attribute: cn
 Group DN Attribute: entryDN
-Group Member User Attribute: dn
+Group Member User Attribute: entryDN
 Group Member Mapping Attribute: member
 Group Search Attribute: cn
 Nested Group Membership: ☐ Disabled (enable only if needed)
@@ -133,13 +132,15 @@ Nested Group Membership: ☐ Disabled (enable only if needed)
 
 ## Step 7: Test the Configuration
 
-Before enabling, test with a known user:
+To test and apply the configuration with a known user:
 
-1. Click the **Test** button.
+1. Click **Enable**.
 2. Enter a valid LDAP username and password.
-3. Verify the returned user information is correct.
+3. Click **Authenticate With OpenLDAP**.
 
-If the test fails, enable debug logging:
+The LDAP user used for this step is mapped to the local principal account and assigned administrator privileges in Rancher.
+
+If the test fails, inspect Rancher logs for LDAP errors:
 
 ```bash
 # Check Rancher logs for LDAP errors
@@ -150,7 +151,7 @@ Common test failures and fixes:
 
 ```plaintext
 Error: "Invalid credentials"
-Fix: Verify the bind DN and password. Use the full DN, not just the username.
+Fix: Verify the service account DN and password, and verify the test user's credentials. Use the full service account DN, not just the username.
 
 Error: "No such object"
 Fix: Check the User Search Base and Group Search Base DN paths.
@@ -161,12 +162,9 @@ Fix: Verify network connectivity and firewall rules for LDAP/LDAPS ports.
 
 ## Step 8: Enable LDAP Authentication
 
-Once testing succeeds:
+After successful authentication, Rancher enables OpenLDAP authentication.
 
-1. Click **Enable** to activate LDAP authentication.
-2. Confirm the action.
-
-The Rancher login page will now show an LDAP login option alongside local authentication.
+The Rancher login page will now show an LDAP login option alongside local authentication. You can still log in with the local `admin` account if LDAP is unavailable.
 
 ## Step 9: Assign Roles to LDAP Groups
 
@@ -202,27 +200,14 @@ For project-level roles:
 
 ## Step 10: Configure LDAP Failover
 
-Set up multiple LDAP servers for high availability:
-
-In the Rancher configuration, you can specify additional LDAP servers:
-
-```plaintext
-Primary Server: ldap1.example.com:636
-```
-
-If your LDAP infrastructure uses DNS-based failover:
-
-```bash
-# Configure LDAP SRV records
-_ldaps._tcp.example.com.  IN SRV 0 100 636 ldap1.example.com.
-_ldaps._tcp.example.com.  IN SRV 1 100 636 ldap2.example.com.
-```
-
-Then use the domain name in Rancher:
+For high availability, point Rancher at a highly available LDAP endpoint such as a load balancer or virtual IP:
 
 ```plaintext
 Hostname: ldap.example.com
+Port: 636
 ```
+
+Back `ldap.example.com` with your LDAP redundancy mechanism rather than relying on SRV records, because Rancher connects to the configured host and port directly.
 
 ## Securing Your LDAP Integration
 
@@ -236,12 +221,11 @@ openssl rand -base64 32
 openssl s_client -connect ldap.example.com:636 -showcerts < /dev/null 2>/dev/null | \
   openssl x509 -noout -dates -subject
 
-# Test with TLS verification
-ldapsearch -x -H ldaps://ldap.example.com:636 \
+# Test LDAPS with certificate verification
+LDAPTLS_CACERT=/path/to/ca.pem ldapsearch -x -H ldaps://ldap.example.com:636 \
   -D "cn=rancher-svc,ou=service-accounts,dc=example,dc=com" \
   -w "<password>" \
   -b "dc=example,dc=com" \
-  -ZZ \
   "(uid=testuser)"
 ```
 
