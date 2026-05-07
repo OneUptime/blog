@@ -42,7 +42,8 @@ IMAGES=(
   "docker.io/library/node:20-alpine"
 )
 
-EXPORT_DIR="./transfer-bundle-$(date +%Y%m%d)"
+BUNDLE_NAME="transfer-bundle-$(date +%Y%m%d)"
+EXPORT_DIR="./$BUNDLE_NAME"
 mkdir -p "$EXPORT_DIR/images"
 
 for image in "${IMAGES[@]}"; do
@@ -74,21 +75,21 @@ Always scan images for vulnerabilities before transferring them into the air-gap
 ```bash
 # Install and run Trivy for vulnerability scanning
 for tar in "$EXPORT_DIR"/images/*.tar; do
-  echo "Scanning $(basename $tar)..."
-  podman load -i "$tar"
-  image_name=$(podman images --format '{{.Repository}}:{{.Tag}}' | head -1)
-  trivy image "$image_name" --severity HIGH,CRITICAL
+  echo "Scanning $(basename "$tar")..."
+  trivy image --input "$tar" --severity HIGH,CRITICAL
 done
 ```
 
 ### Creating a Checksummed Bundle
 
 ```bash
-cd "$EXPORT_DIR"
-sha256sum images/*.tar > SHA256SUMS
-tar czf "../transfer-bundle-$(date +%Y%m%d).tar.gz" .
-cd ..
-sha256sum "transfer-bundle-$(date +%Y%m%d).tar.gz" > "transfer-bundle-$(date +%Y%m%d).tar.gz.sha256"
+BUNDLE_NAME=$(basename "$EXPORT_DIR")
+(
+  cd "$EXPORT_DIR"
+  sha256sum images/*.tar > SHA256SUMS
+)
+tar czf "$BUNDLE_NAME.tar.gz" "$BUNDLE_NAME"
+sha256sum "$BUNDLE_NAME.tar.gz" > "$BUNDLE_NAME.tar.gz.sha256"
 ```
 
 ---
@@ -127,14 +128,14 @@ First, include the registry image in your transfer bundle:
 
 ```bash
 # On the connected side, add registry to your pull list
-podman pull docker.io/library/registry:2
-podman save -o registry_2.tar docker.io/library/registry:2
+podman pull docker.io/library/registry:3
+podman save -o registry_3.tar docker.io/library/registry:3
 ```
 
 On the air-gapped side:
 
 ```bash
-podman load -i registry_2.tar
+podman load -i registry_3.tar
 ```
 
 ### Running the Private Registry
@@ -159,7 +160,7 @@ podman run -d --name registry \
   -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.crt \
   -e REGISTRY_HTTP_TLS_KEY=/certs/registry.key \
   -e REGISTRY_STORAGE_DELETE_ENABLED=true \
-  docker.io/library/registry:2
+  docker.io/library/registry:3
 ```
 
 ### Distributing the CA Certificate
@@ -183,10 +184,11 @@ REGISTRY="registry.internal:5000"
 
 for tar in images/*.tar; do
   echo "Loading $tar..."
-  podman load -i "$tar"
-
-  # Get the image name from the loaded image
-  image=$(podman images --sort created --format '{{.Repository}}:{{.Tag}}' | head -1)
+  image=$(podman load -i "$tar" | sed -n 's/^Loaded image(s):  *//p; s/^Loaded image:  *//p' | head -1)
+  if [ -z "$image" ]; then
+    echo "Failed to determine the loaded image name for $tar"
+    exit 1
+  fi
 
   # Tag for the internal registry
   basename=$(echo "$image" | sed 's|docker.io/library/||; s|docker.io/||')
@@ -277,7 +279,7 @@ EOF
 On the connected side, download wheel files for transfer:
 
 ```bash
-pip download -r requirements.txt -d ./wheels/
+python -m pip wheel -r requirements.txt -w ./wheels/
 ```
 
 Transfer the wheels directory along with your image bundle. Then build inside the air-gapped network:
@@ -291,10 +293,11 @@ podman push registry.internal:5000/myapp:v1.0
 
 ```bash
 # On connected side
-npm pack --pack-destination ./npm-cache/
-# Or cache all dependencies
 npm ci --cache ./npm-cache/
-tar czf npm-cache.tar.gz npm-cache/
+tar czf npm-cache.tar.gz npm-cache/ package.json package-lock.json
+
+# Inside the air-gapped build environment
+npm ci --offline --cache ./npm-cache/
 ```
 
 ---
@@ -303,7 +306,7 @@ tar czf npm-cache.tar.gz npm-cache/
 
 ### Verifying Image Integrity
 
-Create a verification script that runs after loading images:
+Create a verification script that runs after extracting the bundle:
 
 ```bash
 #!/bin/bash
@@ -311,7 +314,7 @@ Create a verification script that runs after loading images:
 MANIFEST="MANIFEST.txt"
 
 echo "Verifying image integrity..."
-while IFS='  ' read -r expected_sha filename image_ref; do
+while read -r expected_sha filename _image_ref; do
   [[ "$expected_sha" =~ ^# ]] && continue
   [[ -z "$expected_sha" ]] && continue
 
@@ -335,11 +338,11 @@ Sign images before transfer and verify inside the air-gapped network:
 # On connected side - sign the image
 cosign sign --key cosign.key docker.io/myorg/myapp:v1.0
 
-# Transfer the signature along with the image
-cosign save docker.io/myorg/myapp:v1.0 --dir ./signatures/
+# Save the signed image and signatures for transfer
+cosign save docker.io/myorg/myapp:v1.0 --dir ./signed-image/
 
-# On air-gapped side - verify
-cosign verify --key cosign.pub --local registry.internal:5000/myapp:v1.0
+# On air-gapped side - verify offline
+cosign verify --key cosign.pub --offline --local-image ./signed-image
 ```
 
 ---
@@ -362,8 +365,11 @@ sha256sum -c SHA256SUMS || exit 1
 
 # Load and push new images
 for tar in images/*.tar; do
-  podman load -i "$tar"
-  image=$(podman images --sort created --format '{{.Repository}}:{{.Tag}}' | head -1)
+  image=$(podman load -i "$tar" | sed -n 's/^Loaded image(s):  *//p; s/^Loaded image:  *//p' | head -1)
+  if [ -z "$image" ]; then
+    echo "Failed to determine the loaded image name for $tar"
+    exit 1
+  fi
   basename=$(echo "$image" | sed 's|docker.io/library/||; s|docker.io/||')
   podman tag "$image" "registry.internal:5000/$basename"
   podman push "registry.internal:5000/$basename"
