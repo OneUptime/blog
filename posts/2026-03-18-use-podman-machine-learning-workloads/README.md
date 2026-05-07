@@ -10,7 +10,7 @@ Description: Learn how to use Podman to run machine learning workloads in contai
 
 > Podman containers for machine learning provide reproducible training environments, GPU passthrough for accelerated computation, and isolated inference serving that scales predictably.
 
-Machine learning workflows demand precise control over software versions, library dependencies, and hardware access. A model that trains successfully with one combination of CUDA, cuDNN, and PyTorch versions may fail silently with another. Podman solves this by encapsulating the entire ML stack in a container, including GPU drivers and libraries, ensuring that experiments are reproducible and deployable. The rootless architecture of Podman is particularly valuable in shared computing environments where multiple data scientists need GPU access without root privileges.
+Machine learning workflows demand precise control over software versions, library dependencies, and hardware access. A model that trains successfully with one combination of CUDA, cuDNN, and PyTorch versions may fail silently with another. Podman solves this by encapsulating the user-space ML stack in a container, including CUDA and framework libraries, while relying on the host GPU driver through CDI, ensuring that experiments are reproducible and deployable. The rootless architecture of Podman is particularly valuable in shared computing environments where multiple data scientists need GPU access without root privileges.
 
 ---
 
@@ -109,7 +109,7 @@ podman run --rm \
   --shm-size=8g \
   --memory 32g \
   --cpus 8.0 \
-  -v $(pwd)/data:/workspace/data:ro,Z \
+  -v $(pwd)/data:/workspace/data:Z \
   -v $(pwd)/models:/workspace/models:Z \
   -v $(pwd)/logs:/workspace/logs:Z \
   -v $(pwd)/train.py:/workspace/train.py:ro,Z \
@@ -134,7 +134,7 @@ def get_device():
     if torch.cuda.is_available():
         device = torch.device('cuda')
         print(f"Using GPU: {torch.cuda.get_device_name(0)}")
-        print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_mem / 1e9:.1f} GB")
+        print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
     else:
         device = torch.device('cpu')
         print("Using CPU")
@@ -244,12 +244,16 @@ RUN pip3 install --no-cache-dir \
 
 EXPOSE 8888
 
-CMD ["jupyter", "lab", \
-     "--ip=0.0.0.0", \
+ENTRYPOINT ["jupyter", "lab"]
+
+CMD ["--ip=0.0.0.0", \
      "--port=8888", \
      "--no-browser", \
-     "--allow-root", \
-     "--NotebookApp.token=''"]
+     "--allow-root"]
+```
+
+```bash
+podman build -t ml-jupyter:latest -f Containerfile.jupyter .
 ```
 
 ```bash
@@ -264,7 +268,7 @@ podman run --rm -d \
   ml-jupyter:latest
 ```
 
-Access at `http://localhost:8888`.
+Run `podman logs jupyter-ml` and open the tokenized Jupyter URL that it prints.
 
 ## Model Serving with Podman
 
@@ -274,7 +278,11 @@ Deploy trained models for inference:
 FROM python:3.12-slim
 
 RUN pip install --no-cache-dir \
-    torch==2.2.0 --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.2.0 \
+    torchvision==0.17.0 \
+    --index-url https://download.pytorch.org/whl/cpu
+
+RUN pip install --no-cache-dir \
     flask \
     gunicorn
 
@@ -284,6 +292,10 @@ WORKDIR /app
 EXPOSE 8080
 
 CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "serve:app"]
+```
+
+```bash
+podman build -t ml-serving:latest -f Containerfile.serving .
 ```
 
 ```python
@@ -298,6 +310,30 @@ import torchvision.transforms as transforms
 app = Flask(__name__)
 
 model = None
+
+class SimpleNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 32, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(64 * 7 * 7, 128),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(128, 10),
+        )
+
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
 
 def load_model():
     global model
@@ -372,7 +408,7 @@ for i in "${!EXPERIMENTS[@]}"; do
       --device nvidia.com/gpu=all \
       --security-opt=label=disable \
       --shm-size=8g \
-      -v $(pwd)/data:/workspace/data:ro,Z \
+      -v $(pwd)/data:/workspace/data:Z \
       -v $(pwd)/results/$exp_name:/workspace/models:Z \
       -v $(pwd)/train.py:/workspace/train.py:ro,Z \
       ml-pytorch:latest \
