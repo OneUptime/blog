@@ -10,7 +10,7 @@ Description: Learn to install and manage Podman on headless Linux servers, cover
 
 > Headless servers are the backbone of production infrastructure. Podman's daemonless, rootless architecture makes it an excellent choice for running containers on servers where you manage everything through SSH and the command line. No Docker daemon, no root privileges, no unnecessary attack surface.
 
-Most production containers run on headless servers, machines with no graphical interface that you access exclusively through SSH. Podman is particularly well-suited for this environment because it does not require a long-running daemon process. Each container runs as a direct child process, which simplifies process management, logging, and integration with systemd.
+Most production containers run on headless servers, machines with no graphical interface that you access exclusively through SSH. Podman is particularly well-suited for this environment because it does not require a long-running daemon process. Each container is launched without a central daemon and monitored by its own `conmon` process, which simplifies process management, logging, and integration with systemd.
 
 ---
 
@@ -33,7 +33,7 @@ sudo dnf install -y podman
 
 ```bash
 sudo apt update
-sudo apt install -y podman slirp4netns fuse-overlayfs
+sudo apt install -y podman slirp4netns fuse-overlayfs uidmap
 ```
 
 Verify the installation:
@@ -129,6 +129,10 @@ podman generate systemd --new --name myapp \
   --restart-policy=always \
   > ~/.config/systemd/user/container-myapp.service
 
+# Stop and remove the original container before handing control to systemd
+podman stop myapp
+podman rm myapp
+
 # Enable and start the service
 systemctl --user daemon-reload
 systemctl --user enable --now container-myapp.service
@@ -137,7 +141,7 @@ systemctl --user enable --now container-myapp.service
 systemctl --user status container-myapp.service
 ```
 
-The `--new` flag means systemd will create a fresh container each time the service starts, using the same `podman run` arguments. This ensures clean startups.
+The `--new` flag means systemd will create a fresh container each time the service starts, using the same `podman run` arguments. This ensures clean startups, but you should stop and remove the original container before starting the unit to avoid name or port conflicts.
 
 ### Using Quadlet (Podman 4.4+)
 
@@ -185,6 +189,7 @@ Description=PostgreSQL Database
 
 [Container]
 Image=docker.io/library/postgres:16-alpine
+ContainerName=postgres
 Volume=pgdata:/var/lib/postgresql/data:Z
 Environment=POSTGRES_USER=app
 Environment=POSTGRES_PASSWORD=secret
