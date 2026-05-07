@@ -203,17 +203,17 @@ echo "Kubeconfig written to cicd-kubeconfig.yaml"
 
 ## Step 6: Configure Rancher API Access for CI/CD
 
-Alternatively, use a Rancher API key scoped to specific clusters:
+Alternatively, on Rancher v2.8+, if your CI/CD system needs to call Rancher itself, use a dedicated Rancher user with access only to the target cluster or project and create an API key with no scope. Scoped API keys are for the downstream cluster Kubernetes API, not Rancher's own API:
 
 1. Log in to Rancher as the CI/CD user (create a dedicated local user for this).
 2. Go to **User Avatar > Account & API Keys**.
 3. Click **Create API Key**.
 4. Set a description like `CI/CD Pipeline - Production Cluster`.
 5. Set an expiration date.
-6. Set the scope to the specific cluster.
+6. Leave the scope unset.
 7. Save the key securely.
 
-Use the API key in your pipeline:
+Use the API key in your pipeline to generate a kubeconfig for the target cluster:
 
 ```bash
 # In your CI/CD pipeline
@@ -221,10 +221,34 @@ export RANCHER_URL="https://rancher.example.com"
 export RANCHER_TOKEN="token-xxxxx:xxxxxxxxxxxxxxxxxxxx"
 export CLUSTER_ID="c-m-xxxxx"
 
-# Get kubeconfig from Rancher
-curl -s "${RANCHER_URL}/v3/clusters/${CLUSTER_ID}?action=generateKubeconfig" \
-  -X POST \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" | jq -r '.config' > kubeconfig.yaml
+cat > rancher-api-kubeconfig.yaml <<EOF
+apiVersion: v1
+kind: Config
+clusters:
+  - name: rancher
+    cluster:
+      server: ${RANCHER_URL}
+users:
+  - name: rancher
+    user:
+      token: ${RANCHER_TOKEN}
+contexts:
+  - name: rancher
+    context:
+      cluster: rancher
+      user: rancher
+current-context: rancher
+EOF
+
+kubectl --kubeconfig rancher-api-kubeconfig.yaml create \
+  -o jsonpath='{.status.value}' \
+  -f - <<EOF > kubeconfig.yaml
+apiVersion: ext.cattle.io/v1
+kind: Kubeconfig
+spec:
+  clusters:
+    - ${CLUSTER_ID}
+EOF
 
 export KUBECONFIG=kubeconfig.yaml
 kubectl apply -f deployment.yaml
@@ -272,26 +296,28 @@ rules:
 
 ## Step 8: Integrate with Rancher's Project RBAC
 
-Register the CI/CD service account within Rancher's project model:
+If your CI/CD system authenticates to Rancher as a dedicated Rancher user, integrate that user with Rancher's project model:
 
 ```yaml
 apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: cicd-deployer-template
-spec:
-  context: project
-  displayName: CI/CD Deployer
-  rules:
-    - apiGroups: ["apps"]
-      resources: ["deployments"]
-      verbs: ["get", "list", "watch", "create", "update", "patch"]
-    - apiGroups: [""]
-      resources: ["services", "configmaps", "pods", "pods/log", "events"]
-      verbs: ["get", "list", "watch"]
+context: project
+displayName: CI/CD Deployer
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
 ```
 
-Then assign a Rancher user (representing the CI/CD system) to the project with this custom role.
+Then assign that Rancher user to the project with this custom role.
 
 ## Step 9: Verify Pipeline Permissions
 
