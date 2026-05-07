@@ -74,7 +74,7 @@ podman rm -f myapp
 
 The `-f` flag forces removal even if the container is running. It sends SIGTERM first, then SIGKILL after the stop timeout (default 10 seconds). Use this carefully in production.
 
-For a graceful stop followed by removal:
+To also remove containers that depend on it:
 
 ```bash
 podman rm --depend -f myapp
@@ -231,14 +231,18 @@ Clean up the previous deployment:
 podman-compose down
 ```
 
-This stops and removes all containers, networks, and volumes defined in the compose file.
+This stops and removes the containers and networks defined in the compose file. To also remove named volumes declared in the compose file and anonymous volumes attached to containers, use `podman-compose down -v`.
 
 If `podman-compose down` itself fails, manually remove the containers:
 
 ```bash
 podman-compose down --remove-orphans
 # Or force it
-podman rm -f $(podman ps -a --filter "label=com.docker.compose.project" -q)
+PROJECT_NAME="myproject"
+CONTAINERS=$(podman ps -a --filter "label=io.podman.compose.project=$PROJECT_NAME" -q)
+if [ -n "$CONTAINERS" ]; then
+  podman rm -f $CONTAINERS
+fi
 ```
 
 ## Preventing the Issue
