@@ -8,31 +8,30 @@ Description: Configure AWS EKS clusters to use IPv6 for pod networking, enabling
 
 ## Introduction
 
-AWS EKS supports IPv6 pod networking using the AWS VPC CNI plugin. In IPv6 mode, each pod gets a unique IPv6 address from the VPC's IPv6 CIDR block, eliminating the IPv4 address exhaustion problem common in large clusters. IPv6 EKS clusters are IPv6-only for pods but still use IPv4 for control plane communication and some services.
+AWS EKS supports IPv6 pod networking using the AWS VPC CNI plugin. In IPv6 mode, each pod gets a unique IPv6 address from a delegated prefix in the VPC subnet, eliminating the IPv4 address exhaustion problem common in large clusters. IPv6 EKS clusters are single-stack IPv6 for pods and services, while nodes still have both IPv4 and IPv6 addresses and pods get a host-local IPv4 address for outbound communication with IPv4 endpoints.
 
 ## Create IPv6 EKS Cluster
 
 ```bash
-# Create EKS cluster with IPv6 IP family
-
-eksctl create cluster \
-    --name ipv6-cluster \
-    --version 1.29 \
-    --region us-east-1 \
-    --node-type t3.medium \
-    --nodes 3 \
-    --ip-family IPv6
-
-# Or using AWS CLI with eksctl config file:
+# Create EKS cluster with IPv6 IP family using an eksctl config file
 cat << 'EOF' > /tmp/eks-ipv6-cluster.yaml
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 metadata:
   name: ipv6-cluster
   region: us-east-1
-  version: "1.29"
+  version: "1.35"
 kubernetesNetworkConfig:
   ipFamily: IPv6
+addons:
+  - name: vpc-cni
+    version: latest
+  - name: coredns
+    version: latest
+  - name: kube-proxy
+    version: latest
+iam:
+  withOIDC: true
 managedNodeGroups:
   - name: managed-workers
     instanceType: t3.medium
@@ -50,21 +49,25 @@ eksctl create cluster -f /tmp/eks-ipv6-cluster.yaml
 # Get kubeconfig
 aws eks update-kubeconfig --name ipv6-cluster --region us-east-1
 
-# Check node IPv6 addresses
-kubectl get nodes -o wide
-# INTERNAL-IP column should show IPv6 addresses
+# Check default pods
+kubectl get pods -n kube-system -o wide
+# IP column should show IPv6 addresses
+
+# Check node address families
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.addresses[*]}{.type}={.address}{" "}{end}{"\n"}{end}'
+# Nodes should have both IPv4 and IPv6 addresses
 
 # Deploy a test pod
 kubectl run test --image=nginx --port=80
 kubectl get pod test -o wide
-# POD-IP should be an IPv6 address
+# IP column should be an IPv6 address
 
-# Verify pod has IPv6 address
-kubectl exec test -- ip -6 addr show
+# Verify pod IP directly
+kubectl get pod test -o jsonpath='{.status.podIP}{"\n"}'
 
-# Check pods in a namespace
+# Check pods in all namespaces
 kubectl get pods -A -o wide | grep -v "^NAMESPACE" | \
-    awk '{print $2, $8}' | head -20
+    awk '{print $2, $7}' | head -20
 ```
 
 ## Configure Services for IPv6
@@ -84,8 +87,7 @@ spec:
       targetPort: 80
   type: ClusterIP
 
-  # For IPv6-only clusters, the ClusterIP will be IPv6
-  # For dual-stack clusters, specify ipFamilies
+  # EKS IPv6 clusters are single-stack for pods and services
   ipFamilies:
     - IPv6
   ipFamilyPolicy: SingleStack
@@ -125,15 +127,16 @@ spec:
 ## Load Balancer Service for IPv6
 
 ```yaml
-# lb-service-ipv6.yaml - LoadBalancer with IPv6
+# lb-service-ipv6.yaml - Network LoadBalancer with IPv6 client support
 apiVersion: v1
 kind: Service
 metadata:
   name: web-lb
   namespace: default
   annotations:
-    # Use dualstack for ALB that accepts both IPv4 and IPv6
+    # Use a dualstack NLB so clients can connect over IPv4 or IPv6
     service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
     service.beta.kubernetes.io/aws-load-balancer-ip-address-type: "dualstack"
 spec:
@@ -142,23 +145,38 @@ spec:
   ports:
     - port: 80
       targetPort: 80
-    - port: 443
-      targetPort: 443
   type: LoadBalancer
 ```
 
 ## AWS Load Balancer Controller for IPv6
 
 ```bash
+# Create IAM policy and service account for AWS Load Balancer Controller
+curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.14.1/docs/install/iam_policy.json
+
+aws iam create-policy \
+    --policy-name AWSLoadBalancerControllerIAMPolicy \
+    --policy-document file://iam_policy.json
+
+eksctl create iamserviceaccount \
+    --cluster=ipv6-cluster \
+    --namespace=kube-system \
+    --name=aws-load-balancer-controller \
+    --attach-policy-arn=arn:aws:iam::<AWS_ACCOUNT_ID>:policy/AWSLoadBalancerControllerIAMPolicy \
+    --override-existing-serviceaccounts \
+    --region us-east-1 \
+    --approve
+
 # Install AWS Load Balancer Controller
 helm repo add eks https://aws.github.io/eks-charts
-helm repo update
+helm repo update eks
 
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
-    --namespace kube-system \
+    -n kube-system \
     --set clusterName=ipv6-cluster \
     --set serviceAccount.create=false \
-    --set serviceAccount.name=aws-load-balancer-controller
+    --set serviceAccount.name=aws-load-balancer-controller \
+    --version 1.14.0
 
 # Verify installation
 kubectl get deployment -n kube-system aws-load-balancer-controller
@@ -167,20 +185,24 @@ kubectl get deployment -n kube-system aws-load-balancer-controller
 ## Troubleshoot IPv6 Pod Networking
 
 ```bash
-# Check VPC CNI plugin configuration
-kubectl -n kube-system get configmap amazon-vpc-cni -o yaml
-
-# Check CNI IP family setting
-kubectl -n kube-system get configmap amazon-vpc-cni -o jsonpath='{.data.IP_FAMILY}'
-# Should return "IPv6"
+# Check VPC CNI IPv6 settings on the aws-node daemonset
+kubectl -n kube-system describe daemonset aws-node | grep -E 'ENABLE_IPv6|ENABLE_PREFIX_DELEGATION'
+# Should show ENABLE_IPv6=true and ENABLE_PREFIX_DELEGATION=true
 
 # Check pod IP allocation
-kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.podIP}{"\n"}{end}'
+kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" "}{.status.podIP}{"\n"}{end}'
+
+# Check the cluster's service IPv6 CIDR
+aws eks describe-cluster \
+    --name ipv6-cluster \
+    --region us-east-1 \
+    --query 'cluster.kubernetesNetworkConfig.serviceIpv6Cidr' \
+    --output text
 
 # Test IPv6 pod-to-pod communication
-kubectl exec pod-a -- ping6 -c 3 <pod-b-ipv6-address>
+kubectl exec pod-a -- ping -6 -c 3 <pod-b-ipv6-address>
 ```
 
 ## Conclusion
 
-AWS EKS IPv6 mode assigns each pod a unique IPv6 address from the VPC's `/56` block, eliminating IPv4 exhaustion. Enable IPv6 at cluster creation with `--ip-family IPv6` - it cannot be changed after creation. Services in IPv6 clusters get IPv6 ClusterIPs. Use the AWS Load Balancer Controller with the `dualstack` annotation for ALBs that accept IPv6 client connections. Verify pod networking with `kubectl get pods -o wide` and confirm IPv6 addresses appear in the POD-IP column.
+AWS EKS IPv6 mode assigns pods IPv6 addresses from a `/80` prefix delegated to each node, eliminating IPv4 exhaustion concerns for pod networking. Enable IPv6 at cluster creation with `ipFamily: IPv6` - it cannot be changed after creation. Services in IPv6 clusters get IPv6 ClusterIPs, while nodes remain dual-stack and pods use host-local IPv4 for outbound IPv4 access. Use the AWS Load Balancer Controller with IP targets and `dualstack` annotations when exposing IPv6 Pods through an AWS load balancer. Verify pod networking with `kubectl get pods -o wide` and confirm IPv6 addresses appear in the `IP` column.
