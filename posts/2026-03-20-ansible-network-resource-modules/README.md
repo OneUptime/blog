@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Ansible, Network Automation, Resource Modules, Idempotent, Cisco IOS, BGP, VLAN
 
-Description: Learn how to use Ansible network resource modules to manage network device configuration idempotently, including interfaces, VLANs, BGP, and ACLs on Cisco IOS and other platforms.
+Description: Learn how to use Ansible network resource modules to manage network device configuration idempotently, including interfaces, VLANs, and BGP on Cisco IOS.
 
 ---
 
-Ansible network resource modules provide a structured, idempotent way to manage network configuration using `state` parameters: `merged`, `replaced`, `overridden`, `deleted`, and `gathered`.
+Ansible network resource modules provide a structured, idempotent way to manage network configuration using common `state` parameters such as `merged`, `replaced`, `overridden`, `deleted`, and `gathered`.
 
 Resource Module States
 
 | State | Behavior |
 |-------|----------|
 | `merged` | Add/update only specified config |
-| `replaced` | Replace entire resource config |
-| `overridden` | Replace all resources (global replace) |
-| `deleted` | Remove specified config |
-| `gathered` | Read config into Ansible facts |
+| `replaced` | Replace the specified resource config subsection |
+| `overridden` | Replace all existing config for the resource |
+| `deleted` | Remove specified config and restore defaults where applicable |
+| `gathered` | Read config into structured data returned by the module |
 
 ## Managing Interfaces (cisco.ios.ios_interfaces)
 
@@ -62,7 +62,8 @@ Resource Module States
   cisco.ios.ios_bgp_global:
     config:
       as_number: "65001"
-      router_id: 10.0.0.1
+      router_id:
+        address: 10.0.0.1
       neighbors:
         - neighbor_address: 10.0.0.2
           remote_as: "65100"
@@ -126,6 +127,6 @@ Resource Module States
 ## Key Takeaways
 
 - Network resource modules are idempotent: re-running a playbook with `merged` only changes what differs.
-- Use `gathered` state to pull existing config into Ansible facts before making changes.
-- `replaced` updates the entire resource (e.g., all VLANs) while `merged` only touches specified items.
+- Use `gathered` state to pull existing config into structured data you can register and inspect before making changes.
+- `replaced` updates only the specified resource subsection, while `overridden` replaces the full resource definition and `merged` only touches specified items.
 - Install collections with `ansible-galaxy collection install cisco.ios` before using Cisco IOS modules.
