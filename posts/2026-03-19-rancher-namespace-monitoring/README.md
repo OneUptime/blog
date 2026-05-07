@@ -11,12 +11,12 @@ In large Kubernetes clusters, monitoring every namespace equally can be overwhel
 ## Prerequisites
 
 - Rancher v2.6 or later with the Monitoring chart installed.
-- Cluster admin or project owner permissions.
+- Cluster admin permissions to update the Monitoring app configuration, plus access to create resources in the target namespaces.
 - At least one application deployed in a target namespace.
 
 ## Step 1: Configure Prometheus to Discover Namespace Resources
 
-By default, Rancher's Prometheus is configured to discover ServiceMonitors and PodMonitors across all namespaces. Verify this setting:
+By default, Rancher's Prometheus is configured to discover ServiceMonitors, PodMonitors, and PrometheusRules across all namespaces. Verify these settings:
 
 ```yaml
 prometheus:
@@ -35,12 +35,18 @@ prometheus:
         release: rancher-monitoring
 ```
 
-An empty `serviceMonitorNamespaceSelector` means all namespaces are watched. To restrict to specific namespaces:
+An empty `serviceMonitorNamespaceSelector` means all namespaces are watched. To restrict discovery to specific namespaces:
 
 ```yaml
 prometheus:
   prometheusSpec:
     serviceMonitorNamespaceSelector:
+      matchLabels:
+        monitoring: enabled
+    podMonitorNamespaceSelector:
+      matchLabels:
+        monitoring: enabled
+    ruleNamespaceSelector:
       matchLabels:
         monitoring: enabled
 ```
@@ -105,8 +111,8 @@ spec:
             team: production
             namespace: production
           annotations:
-            summary: "Production pod {{ $labels.pod }} is not ready"
-            description: "Pod {{ $labels.pod }} has been in {{ $labels.phase }} state for 10 minutes."
+            summary: "Production pod {{ $labels.pod }} is pending or unknown"
+            description: "Pod {{ $labels.pod }} has been in {{ $labels.phase }} phase for 10 minutes."
 
         - alert: ProductionHighErrorRate
           expr: |
@@ -118,6 +124,7 @@ spec:
           labels:
             severity: critical
             team: production
+            namespace: production
           annotations:
             summary: "High error rate in production for {{ $labels.service }}"
             description: "Error rate is {{ $value | humanizePercentage }}."
@@ -132,6 +139,7 @@ spec:
           labels:
             severity: warning
             team: production
+            namespace: production
           annotations:
             summary: "High memory usage for pod {{ $labels.pod }} in production"
             description: "Memory usage is {{ $value | humanizePercentage }} of limit."
@@ -146,11 +154,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: production-namespace-dashboard
-  namespace: cattle-monitoring-system
+  namespace: cattle-dashboards
   labels:
     grafana_dashboard: "1"
-  annotations:
-    grafana_folder: "Namespace Dashboards"
 data:
   production.json: |
     {
@@ -197,7 +203,7 @@ data:
           "type": "timeseries",
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
           "targets": [{
-            "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"production\"}[1h])",
+            "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"production\"}[1h]))",
             "legendFormat": "{{ pod }}"
           }]
         }
@@ -230,13 +236,13 @@ Monitor quota usage with PromQL:
 # CPU request quota usage percentage
 
 kube_resourcequota{namespace="production", type="used", resource="requests.cpu"}
-/
+/ ignoring(type)
 kube_resourcequota{namespace="production", type="hard", resource="requests.cpu"}
 * 100
 
 # Pod count quota usage
 kube_resourcequota{namespace="production", type="used", resource="pods"}
-/
+/ ignoring(type)
 kube_resourcequota{namespace="production", type="hard", resource="pods"}
 * 100
 ```
@@ -246,7 +252,7 @@ Add quota alerts:
 ```yaml
 - alert: NamespaceQuotaNearLimit
   expr: |
-    kube_resourcequota{type="used"} / kube_resourcequota{type="hard"} > 0.9
+    kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"} > 0.9
   for: 5m
   labels:
     severity: warning
@@ -262,15 +268,17 @@ Configure Alertmanager to route namespace-specific alerts to the appropriate tea
 ```yaml
 alertmanager:
   config:
+    global:
+      slack_api_url_file: /etc/alertmanager/secrets/slack/api-url
     route:
       receiver: "default"
       routes:
         - receiver: "production-team"
           matchers:
-            - namespace = production
+            - 'namespace="production"'
         - receiver: "staging-team"
           matchers:
-            - namespace = staging
+            - 'namespace="staging"'
     receivers:
       - name: "default"
         slack_configs:
@@ -285,9 +293,9 @@ alertmanager:
           - channel: "#staging-alerts"
 ```
 
-## Step 7: Monitor Network Policies per Namespace
+## Step 7: Monitor Namespace Network Traffic
 
-If you use NetworkPolicies, monitor network traffic for specific namespaces:
+If you want namespace-level network visibility, monitor traffic for specific namespaces:
 
 ```promql
 # Inbound traffic to namespace
