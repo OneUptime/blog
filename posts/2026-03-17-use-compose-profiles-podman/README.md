@@ -19,7 +19,6 @@ Profiles allow you to tag services in your compose file and selectively activate
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -103,7 +102,6 @@ unset COMPOSE_PROFILES
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   test-runner:
     image: docker.io/library/python:3.12-slim
@@ -117,10 +115,10 @@ services:
 ## Profile-Specific Tear Down
 
 ```bash
-# Stop only the services in the debug profile
+# Stop services in the debug profile and services without profiles
 podman-compose --profile debug down
 
-# Stop all services including profiled ones
+# Stop services included by both profiles and services without profiles
 podman-compose --profile debug --profile monitoring down
 ```
 
@@ -128,7 +126,6 @@ podman-compose --profile debug --profile monitoring down
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
     image: docker.io/library/node:20-alpine
