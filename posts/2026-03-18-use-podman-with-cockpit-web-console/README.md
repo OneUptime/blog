@@ -149,30 +149,33 @@ podman inspect --format='{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}
 
 ## Setting Up Cockpit for Remote Management
 
+> **Note:** Cockpit's multi-machine host switcher is deprecated as of Cockpit 322, but existing `machines.d` configurations still work.
+
 Configure Cockpit to manage containers on remote servers:
 
 ```bash
-# On the remote server, ensure cockpit is running
+# On the machine you open in your browser, ensure cockpit is running
 sudo systemctl enable --now cockpit.socket
 
-# On your management workstation, add the remote server
+# Additional hosts added through Cockpit's host switcher are reached over SSH
+# from that machine; they do not need cockpit.socket enabled just to be added
 # Navigate to https://management-server:9090
 # Click "Add new host" and enter the remote server's address
 ```
 
-You can also use SSH to connect to Cockpit on remote machines:
+You can also preconfigure machines for Cockpit's host switcher:
 
 ```ini
 # /etc/cockpit/machines.d/remote-servers.json
 {
     "web-server-1": {
         "address": "192.168.1.10",
-        "color": "#00ff00",
+        "color": "green",
         "visible": true
     },
     "web-server-2": {
         "address": "192.168.1.11",
-        "color": "#0000ff",
+        "color": "blue",
         "visible": true
     }
 }
@@ -209,7 +212,7 @@ The Cockpit interface shows a dropdown to switch between "User containers" and "
 
 ## Integrating with Systemd Services
 
-> **Note:** The `podman generate systemd` command is deprecated since Podman 4.7. For new deployments, consider using Quadlet files placed in `~/.config/containers/systemd/` (rootless) or `/etc/containers/systemd/` (rootful) instead. The example below still works but may be removed in a future Podman release.
+> **Note:** The `podman generate systemd` command is deprecated. For new deployments, use Quadlet files placed in `~/.config/containers/systemd/` (rootless) or `/etc/containers/systemd/` (rootful) instead. The example below still works, but the command is in maintenance mode and only receives urgent bug fixes.
 
 Cockpit's system services view can show Podman containers managed by systemd:
 
@@ -239,7 +242,7 @@ Origins = https://admin.example.com
 IdleTimeout = 30
 EOF
 
-# Restrict access by group
+# Disallow specific users
 sudo tee /etc/cockpit/disallowed-users << 'EOF'
 guest
 testuser
