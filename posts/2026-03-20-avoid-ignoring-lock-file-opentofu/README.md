@@ -8,7 +8,7 @@ Description: Learn why the OpenTofu dependency lock file is critical for reprodu
 
 ## Introduction
 
-The `.terraform.lock.hcl` file records the exact provider versions and cryptographic hashes that OpenTofu used during initialization. Ignoring or not committing this file means provider versions can silently change between runs, breaking reproducibility and creating a class of hard-to-debug issues.
+The `.terraform.lock.hcl` file records the exact provider versions OpenTofu selected during initialization, along with cryptographic hashes used to verify provider packages. Ignoring or not committing this file means provider versions can silently change between runs, breaking reproducibility and creating a class of hard-to-debug issues.
 
 ## What the Lock File Contains
 
@@ -39,9 +39,9 @@ provider "registry.opentofu.org/hashicorp/kubernetes" {
 
 ## What Happens Without the Lock File
 
-Without committing the lock file, provider versions drift silently.
+Without committing the lock file, provider versions can drift silently.
 
-```hcl
+```text
 Scenario: Lock file is in .gitignore
 
 Developer A runs tofu init on Monday:
@@ -83,14 +83,14 @@ git commit -m "Add/update provider lock file"
 
 ## Updating the Lock File
 
-Update provider versions intentionally when ready.
+Update provider versions intentionally when ready, and refresh lock entries when needed.
 
 ```bash
 # Update all providers to newest versions matching constraints
 tofu init -upgrade
 
-# Update a specific provider only
-tofu init -upgrade -lock=true
+# Refresh a specific provider entry only
+tofu providers lock registry.opentofu.org/hashicorp/aws
 
 # After upgrading, review the diff
 git diff .terraform.lock.hcl
@@ -114,7 +114,7 @@ tofu providers lock \
   -platform=darwin_arm64 \
   -platform=darwin_amd64
 
-# This is necessary when:
+# This is especially useful when:
 # - Developers use macOS (darwin_arm64)
 # - CI/CD runs on Linux (linux_amd64)
 # Both need to verify the same lock file
@@ -126,9 +126,8 @@ tofu providers lock \
 # init validates that providers match the lock file
 tofu init
 
-# If a provider hash doesn't match:
-# Error: Failed to verify provider package
-# The checksum for provider "registry.opentofu.org/hashicorp/aws" ... does not match
+# If a provider package doesn't match any recorded checksum,
+# tofu init fails and refuses to install it.
 # This prevents tampered providers from being used
 ```
 
