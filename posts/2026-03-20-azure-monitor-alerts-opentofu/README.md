@@ -21,7 +21,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.85"
+      version = "~> 4.0"
     }
   }
 }
@@ -87,7 +87,7 @@ resource "azurerm_monitor_metric_alert" "app_service_5xx" {
   name                = "app-service-5xx-errors"
   resource_group_name = azurerm_resource_group.monitoring.name
   scopes              = [azurerm_linux_web_app.app.id]
-  description         = "5xx error rate is elevated"
+  description         = "5xx error count is elevated"
   severity            = 1
 
   criteria {
@@ -109,16 +109,16 @@ resource "azurerm_monitor_metric_alert" "app_service_5xx" {
 
 ## Multi-Resource Alerts
 
-Use dynamic scope to apply an alert to multiple resources matching a subscription/resource group/type filter.
+Use a subscription or resource group scope to apply an alert to multiple resources of the same type in a single Azure region.
 
 ```hcl
 # dynamic_alerts.tf
 resource "azurerm_monitor_metric_alert" "all_vms_cpu" {
   name                = "all-vms-high-cpu"
   resource_group_name = azurerm_resource_group.monitoring.name
-  # Scope to the subscription - alert applies to all matching resources
+  # Scope to the subscription - alert applies to all matching VMs in one region
   scopes              = ["/subscriptions/${var.subscription_id}"]
-  description         = "Any VM in the subscription has high CPU"
+  description         = "Any VM in the selected region has high CPU"
   severity            = 2
 
   dynamic_criteria {
@@ -145,25 +145,25 @@ resource "azurerm_monitor_metric_alert" "all_vms_cpu" {
 
 ```hcl
 # log_alerts.tf
-resource "azurerm_monitor_scheduled_query_rules_alert_v2" "error_rate" {
-  name                = "app-error-rate-alert"
+resource "azurerm_monitor_scheduled_query_rules_alert_v2" "error_count" {
+  name                = "app-error-count-alert"
   location            = var.location
   resource_group_name = azurerm_resource_group.monitoring.name
   scopes              = [azurerm_log_analytics_workspace.main.id]
-  description         = "Alert when error rate exceeds threshold"
+  description         = "Alert when 5xx error count exceeds threshold"
   severity            = 1
 
-  # KQL query to detect errors
+  # KQL query to detect 5xx responses
   criteria {
     query = <<-QUERY
       AppRequests
-      | where ResultCode >= 500
-      | summarize ErrorCount = count() by bin(TimeGenerated, 5m)
-      | where ErrorCount > 20
+      | where toint(ResultCode) >= 500
+      | summarize ErrorCount = sum(ItemCount) by bin(TimeGenerated, 5m)
     QUERY
 
-    time_aggregation_method = "Count"
-    threshold               = 0
+    time_aggregation_method = "Total"
+    metric_measure_column   = "ErrorCount"
+    threshold               = 20
     operator                = "GreaterThan"
 
     failing_periods {
@@ -185,6 +185,6 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "error_rate" {
 
 - Use descriptive alert names with resource type and condition so the alert is self-documenting.
 - Set alert severity appropriately - save severity 0 and 1 for critical conditions that require immediate human action.
-- Use `auto_mitigate = true` (the default) so alerts automatically resolve when the condition clears.
+- Use `auto_mitigate = true` for metric alerts (the default), and set `auto_mitigation_enabled = true` on scheduled query rules if you want log alerts to auto-resolve when the condition clears.
 - Test action groups by using the "Test Action Group" feature in the Azure portal after deploying.
 - Group related alerts together by tagging them with the same service name for easier management.
