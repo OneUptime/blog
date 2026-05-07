@@ -180,7 +180,7 @@ openssl s_client -connect registry.company.com:443 -CAfile corporate-ca.crt </de
 podman pull --log-level=debug registry.company.com/my-image:latest 2>&1 | \
   grep -i "cert\|tls\|x509"
 
-# Check what certificates Podman is using
+# Check registry configuration Podman is using
 podman info --format '{{.Registries}}'
 
 # List configured certificate directories
