@@ -36,7 +36,7 @@ Start Grafana with default settings.
 podman run -d \
   --name my-grafana \
   -p 3000:3000 \
-  grafana/grafana:latest
+  docker.io/grafana/grafana:latest
 
 # Check the container is running
 podman ps
@@ -59,7 +59,7 @@ podman run -d \
   --name grafana-persistent \
   -p 3001:3000 \
   -v grafana-data:/var/lib/grafana:Z \
-  grafana/grafana:latest
+  docker.io/grafana/grafana:latest
 
 # Verify the volume
 podman volume inspect grafana-data
@@ -71,6 +71,8 @@ Configure Grafana using environment variables.
 
 ```bash
 # Run Grafana with custom admin credentials and settings
+podman volume create grafana-custom-data
+
 podman run -d \
   --name grafana-custom \
   -p 3002:3000 \
@@ -78,9 +80,9 @@ podman run -d \
   -e GF_SECURITY_ADMIN_PASSWORD=my-grafana-secret \
   -e GF_USERS_ALLOW_SIGN_UP=false \
   -e GF_SERVER_ROOT_URL=http://localhost:3002 \
-  -e GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource \
-  -v grafana-data:/var/lib/grafana:Z \
-  grafana/grafana:latest
+  -e GF_PLUGINS_PREINSTALL=grafana-clock-panel,grafana-simple-json-datasource \
+  -v grafana-custom-data:/var/lib/grafana:Z \
+  docker.io/grafana/grafana:latest
 
 # Verify the custom admin can log in
 curl -s -u myadmin:my-grafana-secret http://localhost:3002/api/org | python3 -m json.tool
@@ -117,17 +119,18 @@ datasources:
     jsonData:
       index: 'app-logs-*'
       timeField: '@timestamp'
-      esVersion: '8.0.0'
 EOF
 
 # Run Grafana with provisioned data sources
+podman volume create grafana-provisioned-data
+
 podman run -d \
   --name grafana-provisioned \
   -p 3003:3000 \
   -e GF_SECURITY_ADMIN_PASSWORD=admin-secret \
   -v ~/grafana-provisioning:/etc/grafana/provisioning:Z \
-  -v grafana-data:/var/lib/grafana:Z \
-  grafana/grafana:latest
+  -v grafana-provisioned-data:/var/lib/grafana:Z \
+  docker.io/grafana/grafana:latest
 
 # Verify data sources were provisioned
 sleep 5
@@ -214,9 +217,9 @@ podman start my-grafana
 
 # Remove containers and volumes
 podman rm -f my-grafana grafana-persistent grafana-custom grafana-provisioned
-podman volume rm grafana-data
+podman volume rm grafana-data grafana-custom-data grafana-provisioned-data
 ```
 
 ## Summary
 
-Running Grafana in a Podman container gives you a complete observability dashboard that is easy to deploy and configure. Environment variables control admin credentials and plugin installation, while provisioning files automate data source and dashboard setup as code. Named volumes preserve your dashboards and settings across restarts. The Grafana API enables programmatic management of your monitoring platform. Podman's rootless execution provides security isolation, making this setup suitable for development monitoring, staging dashboards, and production observability stacks.
+Running Grafana in a Podman container gives you a complete observability dashboard that is easy to deploy and configure. Environment variables control admin credentials and plugin pre-installation, while provisioning files automate data source and dashboard setup as code. Named volumes preserve your dashboards and settings across restarts. The Grafana API enables programmatic management of your monitoring platform. Podman's rootless execution provides security isolation, making this setup suitable for development monitoring, staging dashboards, and production observability stacks.
