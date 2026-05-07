@@ -38,11 +38,9 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
-  # Email verification message
+  # Email verification mode
   verification_message_template {
     default_email_option = "CONFIRM_WITH_CODE"
-    email_subject        = "Your verification code for ${var.app_name}"
-    email_message        = "Your verification code is {####}"
   }
 
   tags = {
@@ -73,7 +71,7 @@ resource "aws_cognito_user_pool" "mfa" {
 resource "aws_cognito_user_pool" "with_attrs" {
   name = "${var.app_name}-users-${var.environment}"
 
-  # Custom user attributes (prefix with custom:)
+  # Custom user attributes (use the bare name here; Cognito exposes them as custom:<name>)
   schema {
     name                     = "tenant_id"
     attribute_data_type      = "String"
@@ -92,6 +90,8 @@ resource "aws_cognito_user_pool" "with_attrs" {
     attribute_data_type = "String"
     mutable             = true
     required            = false
+
+    string_attribute_constraints {}
   }
 }
 ```
@@ -117,9 +117,9 @@ resource "aws_cognito_user_pool" "ses_email" {
 # Custom domain for the hosted UI
 
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "auth.example.com"
-  user_pool_id = aws_cognito_user_pool.main.id
-  certificate_arn = var.acm_certificate_arn  # required for custom domains
+  domain          = "auth.example.com"
+  user_pool_id    = aws_cognito_user_pool.main.id
+  certificate_arn = var.acm_certificate_arn  # required for custom domains; ACM certificate must be in us-east-1
 }
 
 # Or use a Cognito-provided prefix domain (no certificate needed)
@@ -135,6 +135,7 @@ resource "aws_cognito_user_pool_domain" "prefix" {
 variable "app_name"         { type = string }
 variable "environment"      { type = string }
 variable "ses_identity_arn" { type = string }
+variable "acm_certificate_arn" { type = string }
 
 output "user_pool_id" {
   value = aws_cognito_user_pool.main.id
