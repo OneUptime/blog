@@ -8,43 +8,40 @@ Description: Learn how to find and navigate the Portainer API documentation to s
 
 ## Where to Find the Portainer API Docs
 
-Portainer exposes a Swagger UI for interactive API documentation. There are two ways to access it:
+Portainer publishes versioned API documentation. There are two ways to access it:
 
-### 1. Built-In Swagger UI
+### 1. Official Documentation Landing Page
 
-Navigate to `http(s)://<your-portainer-url>/api/documentation` in your browser. This serves the interactive Swagger UI where you can browse all endpoints and make test requests.
+Navigate to `https://docs.portainer.io/api/docs` in your browser. This page links to the current API reference for both Portainer Community Edition (CE) and Business Edition (BE).
 
-### 2. Official Online Documentation
+### 2. Versioned Online API Reference
 
-The latest Portainer API documentation is available at:
+The version-specific Portainer API reference is available at:
 ```text
-https://app.swaggerhub.com/apis/portainer/portainer-ce/
+https://api-docs.portainer.io/?edition=<ce-or-ee>&version=<your-portainer-version>
 ```
 
-## Exploring the Swagger UI
+## Exploring the API Docs
 
-The Swagger UI groups endpoints by resource type:
+The API reference groups endpoints by tag. Common groups include:
 
 - **Auth** - JWT authentication
 - **Users** - User management
 - **Teams** - Team management
 - **Endpoints** - Environment management
 - **Stacks** - Stack deployment
-- **Containers** - Container operations
-- **Images** - Image management
 - **Registries** - Registry management
 - **Settings** - Global settings
+- **Templates** - Application and custom templates
 
-## Authenticating in the Swagger UI
+## Authenticating Against the API
 
-To make API calls directly from Swagger:
-
-1. First, get a JWT token:
+To call authenticated endpoints, first get a JWT token:
 
 ```bash
 # Get a JWT token from the API
 
-curl -X POST "http://localhost:9000/api/auth" \
+curl -X POST "https://<your-portainer-host>/api/auth" \
   -H "Content-Type: application/json" \
   -d '{
     "username": "admin",
@@ -53,11 +50,13 @@ curl -X POST "http://localhost:9000/api/auth" \
 # Response: {"jwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."}
 ```
 
-2. In Swagger UI, click **Authorize**.
-3. Enter `Bearer <your-jwt-token>`.
-4. Click **Authorize**.
+Then include the token in your requests as:
 
-You can now make authenticated API calls directly from the Swagger interface.
+```text
+Authorization: Bearer <your-jwt-token>
+```
+
+You can now make authenticated API calls against the Portainer API.
 
 ## API Base URL
 
@@ -71,8 +70,8 @@ https://<your-portainer-host>/api/
 ```text
 GET    /api/endpoints          - List all environments
 GET    /api/endpoints/{id}     - Get environment details
-GET    /api/stacks             - List all stacks
-POST   /api/stacks             - Create a new stack
+GET    /api/stacks             - List stacks visible to the current user
+POST   /api/stacks?type={1|2}&method={string|file|repository}&endpointId={endpointId} - Deploy a new stack
 PUT    /api/stacks/{id}        - Update a stack
 DELETE /api/stacks/{id}        - Delete a stack
 GET    /api/users              - List users
@@ -83,13 +82,19 @@ GET    /api/registries         - List registries
 ## Downloading the OpenAPI Spec
 
 ```bash
-# Download the OpenAPI spec for code generation or testing
-curl -o portainer-openapi.json \
-  http://localhost:9000/api/documentation/swagger.json
+# Download the OpenAPI spec that matches your Portainer edition and version
+# Set EDITION="ee" for Portainer Business Edition
+EDITION="ce"
+PORTAINER_VERSION=$(curl -s "https://<your-portainer-host>/api/system/status" | jq -r '.Version')
+
+SPEC_PATH=$(curl -s "https://api-docs.portainer.io/${EDITION}-versions.json" | jq -r --arg v "$PORTAINER_VERSION" '.[] | select(.id == $v) | .file')
+
+curl -o portainer-openapi.yaml \
+  "https://api-docs.portainer.io/${SPEC_PATH}"
 
 # Use with OpenAPI generators
 openapi-generator-cli generate \
-  -i portainer-openapi.json \
+  -i portainer-openapi.yaml \
   -g python \
   -o ./portainer-client
 ```
@@ -100,9 +105,9 @@ Portainer API versioning follows the Portainer release version. Ensure you're re
 
 ```bash
 # Check Portainer version
-curl http://localhost:9000/api/system/status | jq '.Version'
+curl "https://<your-portainer-host>/api/system/status" | jq -r '.Version'
 ```
 
 ## Conclusion
 
-The Portainer API Swagger documentation is your primary reference for automation. Start by exploring the built-in Swagger UI at `/api/documentation`, then use the JWT authentication flow to make live API calls and test your scripts.
+The Portainer API documentation is your primary reference for automation. Start with `https://docs.portainer.io/api/docs` or the versioned reference at `api-docs.portainer.io`, then use the JWT authentication flow to test your scripts against the `/api/` endpoints.
