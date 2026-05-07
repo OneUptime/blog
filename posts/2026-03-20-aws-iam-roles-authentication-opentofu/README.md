@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, IAM Roles, Authentication, Security
 
-Description: Learn how to configure OpenTofu to authenticate with AWS using IAM roles via assume_role, EC2 instance profiles, and ECS task roles for secure, credential-free deployments.
+Description: Learn how to configure OpenTofu to authenticate with AWS using IAM roles via assume_role, EC2 instance profiles, and ECS task roles for secure deployments without hard-coded credentials.
 
 ## Introduction
 
-IAM role authentication is the most secure way to give OpenTofu access to AWS. Rather than embedding static access keys in configuration or environment variables, you delegate trust to an IAM role-which can be assumed by EC2 instances, ECS tasks, GitHub Actions runners, or any other AWS identity.
+IAM role authentication is the most secure way to give OpenTofu access to AWS. Rather than embedding static access keys in configuration or environment variables, you delegate trust to an IAM role, which can be assumed by another trusted principal or exposed to workloads through EC2 instance profiles and ECS task roles.
 
 ## Assuming a Role via the Provider
 
@@ -25,8 +25,8 @@ provider "aws" {
     # A name to identify this session in CloudTrail logs
     session_name = "opentofu-deploy"
 
-    # Optional: set an expiry for the temporary credentials
-    duration_seconds = 3600  # 1 hour
+    # Optional: set the session duration for the temporary credentials
+    duration = "1h"
   }
 }
 ```
@@ -50,13 +50,13 @@ resource "aws_iam_role" "opentofu_deploy" {
       {
         Effect = "Allow"
         Principal = {
-          # Allow assumption from your AWS account (for EC2/ECS IAM roles)
+          # Allow callers from the trusted AWS account
           AWS = "arn:aws:iam::111111111111:root"
         }
         Action    = "sts:AssumeRole"
         Condition = {
-          StringEquals = {
-            # Restrict to specific role (prevent confused deputy attacks)
+          ArnEquals = {
+            # Restrict assumption to a specific role in that account
             "aws:PrincipalArn" = "arn:aws:iam::111111111111:role/CI-Runner-Role"
           }
         }
@@ -87,6 +87,8 @@ resource "aws_iam_role_policy" "opentofu_deploy" {
   })
 }
 ```
+
+If the caller is in another AWS account, that caller also needs an identity-based policy that allows `sts:AssumeRole` on this role.
 
 ## Using an EC2 Instance Profile
 
@@ -150,4 +152,4 @@ resource "aws_s3_bucket" "prod_data" {
 
 ## Conclusion
 
-IAM role authentication eliminates static credentials entirely-the gold standard for secure AWS access. Whether you use EC2 instance profiles, ECS task roles, or cross-account assume_role, the pattern is the same: delegate trust to a role and let AWS handle temporary credential rotation automatically.
+IAM role authentication replaces long-lived access keys in your OpenTofu configuration with temporary credentials. Whether you use EC2 instance profiles, ECS task roles, or cross-account assume_role, the pattern is the same: delegate trust to a role and let AWS handle temporary credential rotation automatically.
