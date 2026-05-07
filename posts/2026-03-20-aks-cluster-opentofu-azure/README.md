@@ -13,6 +13,7 @@ Azure Kubernetes Service (AKS) simplifies deploying managed Kubernetes clusters 
 ## Prerequisites
 
 - OpenTofu v1.6+
+- Azure CLI and kubectl installed
 - Azure credentials configured
 - Existing VNet and subnets
 
@@ -23,11 +24,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
-    }
-    azuread = {
-      source  = "hashicorp/azuread"
-      version = "~> 2.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -50,17 +47,17 @@ resource "azurerm_kubernetes_cluster" "main" {
 
   # System node pool (required)
   default_node_pool {
-    name                = "system"
-    node_count          = 1
-    vm_size             = "Standard_D4s_v5"
-    os_disk_size_gb     = 128
-    os_disk_type        = "Managed"
-    vnet_subnet_id      = var.subnet_id
-    enable_auto_scaling = true
-    min_count           = 1
-    max_count           = 3
-    type                = "VirtualMachineScaleSets"
-    zones               = ["1", "2", "3"]
+    name                 = "system"
+    node_count           = 3
+    vm_size              = "Standard_D4s_v5"
+    os_disk_size_gb      = 128
+    os_disk_type         = "Managed"
+    vnet_subnet_id       = var.subnet_id
+    auto_scaling_enabled = true
+    min_count            = 3
+    max_count            = 6
+    type                 = "VirtualMachineScaleSets"
+    zones                = ["1", "2", "3"]
 
     node_labels = {
       "node-role" = "system"
@@ -79,7 +76,6 @@ resource "azurerm_kubernetes_cluster" "main" {
   # Azure RBAC
   role_based_access_control_enabled = true
   azure_active_directory_role_based_access_control {
-    managed                = true
     azure_rbac_enabled     = true
     admin_group_object_ids = [var.admin_group_id]
   }
@@ -134,8 +130,9 @@ resource "azurerm_kubernetes_cluster_node_pool" "app" {
   vm_size               = "Standard_D8s_v5"
   os_disk_size_gb       = 128
   vnet_subnet_id        = var.app_subnet_id
-  enable_auto_scaling   = true
-  min_count             = 2
+  auto_scaling_enabled  = true
+  node_count            = 3
+  min_count             = 3
   max_count             = 20
   zones                 = ["1", "2", "3"]
   mode                  = "User"
@@ -172,6 +169,10 @@ output "cluster_name" {
   value = azurerm_kubernetes_cluster.main.name
 }
 
+output "resource_group_name" {
+  value = var.resource_group_name
+}
+
 output "kube_config" {
   value     = azurerm_kubernetes_cluster.main.kube_config_raw
   sensitive = true
@@ -188,4 +189,4 @@ tofu apply
 
 ## Conclusion
 
-You have successfully deployed an AKS cluster using OpenTofu with Azure RBAC, system and user node pools across availability zones, Azure CNI networking, and Microsoft Defender integration. Use the Azure CNI network plugin for production workloads requiring advanced networking features like network policies and Azure Private Link integration.
+You have successfully deployed an AKS cluster using OpenTofu with Azure RBAC, system and user node pools across availability zones, Azure CNI networking, and Microsoft Defender integration. This example uses Azure CNI Node Subnet networking with Azure network policies. For new production deployments, review the current AKS CNI guidance: Azure CNI Overlay is recommended for most scenarios, while Azure CNI Pod Subnet is the recommended flat-networking option.
