@@ -36,6 +36,12 @@ provider "helm" {
   }
 }
 
+provider "kubernetes" {
+  host                   = var.cluster_endpoint
+  cluster_ca_certificate = base64decode(var.cluster_ca_cert)
+  token                  = var.cluster_token
+}
+
 resource "kubernetes_namespace" "argocd" {
   metadata {
     name = "argocd"
@@ -54,30 +60,33 @@ resource "helm_release" "argocd" {
 
   values = [
     yamlencode({
-      server = {
-        # Disable internal TLS - let ingress handle it
-        extraArgs = ["--insecure"]
+      configs = {
+        params = {
+          # Disable internal TLS - let ingress handle it
+          "server.insecure" = true
+        }
 
+        # Configure admin password as bcrypt hash
+        secret = {
+          argocdServerAdminPassword = var.argocd_admin_password_bcrypt
+        }
+      }
+
+      server = {
         ingress = {
-          enabled = true
+          enabled          = true
+          ingressClassName = "nginx"
           annotations = {
-            "kubernetes.io/ingress.class"      = "nginx"
-            "cert-manager.io/cluster-issuer"   = "letsencrypt-prod"
+            "cert-manager.io/cluster-issuer"                = "letsencrypt-prod"
+            "nginx.ingress.kubernetes.io/backend-protocol" = "HTTP"
           }
-          hosts = [var.argocd_hostname]
-          tls = [
+          hostname = var.argocd_hostname
+          extraTls = [
             {
               secretName = "argocd-server-tls"
               hosts      = [var.argocd_hostname]
             }
           ]
-        }
-      }
-
-      # Configure admin password as bcrypt hash
-      configs = {
-        secret = {
-          argocdServerAdminPassword = var.argocd_admin_password_bcrypt
         }
       }
 
@@ -98,6 +107,7 @@ resource "helm_release" "argocd" {
 ```hcl
 # repositories.tf
 # Add a private Git repository using SSH
+# Use an SSH URL such as git@github.com:org/repo.git
 resource "kubernetes_secret" "repo_credentials" {
   metadata {
     name      = "repo-credentials"
@@ -116,6 +126,8 @@ resource "kubernetes_secret" "repo_credentials" {
 ```
 
 ## Creating ArgoCD Projects and Applications
+
+Because `kubernetes_manifest` resolves custom resource schemas during planning, install ArgoCD first with `tofu apply -target=helm_release.argocd`, then run a full `tofu apply` after the ArgoCD CRDs exist.
 
 ```hcl
 # applications.tf
@@ -140,7 +152,7 @@ resource "kubernetes_manifest" "production_project" {
         }
       ]
       clusterResourceWhitelist = [
-        { group = "*", kind = "Namespace" }
+        { group = "", kind = "Namespace" }
       ]
     }
   }
@@ -183,7 +195,7 @@ resource "kubernetes_manifest" "app" {
 ## Best Practices
 
 - Use ArgoCD Projects to create boundaries between teams - a misconfigured production Application can't accidentally deploy to another team's namespace.
-- Enable `selfHeal = true` so ArgoCD immediately reverts manual kubectl changes - this ensures Git is always the truth.
+- Enable `selfHeal = true` so ArgoCD automatically reconciles manual kubectl changes - this ensures Git is always the truth.
 - Store the ArgoCD admin password as a bcrypt hash, not plaintext, in your OpenTofu configuration.
 - Use ArgoCD's App of Apps pattern - a root Application that deploys other Applications - for managing large numbers of services.
 - Regularly review sync statuses and set up Slack/webhook notifications for failed syncs.
