@@ -22,7 +22,7 @@ A user can access a project in Rancher if:
 2. They have **Cluster Owner** access (which grants access to all projects in the cluster).
 3. They have the **Administrator** global role.
 
-Users with only **Cluster Member** access can view cluster-level resources and create new projects, but they cannot access existing projects unless explicitly added.
+Users with only **Cluster Member** access can view cluster-level resources and create new projects, but they cannot access existing projects unless explicitly added. If they create a project themselves, Rancher automatically assigns them **Project Owner** on that project.
 
 ## Step 1: Plan Your Project Structure
 
@@ -64,33 +64,41 @@ Repeat for each team's project.
 For each project, add only the team members who should have access:
 
 1. Navigate to the project (click the project name under **Projects/Namespaces**).
-2. Go to **Project > Members**.
-3. Click **Add**.
-4. Search for the user or group.
-5. Select the appropriate role:
+2. Open the project menu and select **Edit Config**.
+3. Go to the **Members** tab.
+4. Click **Add**.
+5. Search for the user or group.
+6. Select the appropriate role:
    - **Project Owner** for the team lead
    - **Project Member** for developers
    - **Read-Only** for stakeholders
-6. Click **Create**.
+7. Click **Create**.
 
 **Example assignment via the API:**
 
 ```bash
 # Add frontend-team group as Project Members to the frontend project
+# Replace <project-backing-namespace> with the project's status.backingNamespace value
 
-curl -X POST 'https://<rancher-url>/v3/projectroletemplatebindings' \
+curl -X POST 'https://<rancher-url>/apis/management.cattle.io/v3/namespaces/<project-backing-namespace>/projectroletemplatebindings' \
   -H 'Authorization: Bearer <api-token>' \
   -H 'Content-Type: application/json' \
   -d '{
-    "projectId": "c-m-xxxxx:p-frontend",
-    "roleTemplateId": "project-member",
-    "groupPrincipalId": "openldap_group://cn=frontend-team,ou=groups,dc=example,dc=com"
+    "apiVersion": "management.cattle.io/v3",
+    "kind": "ProjectRoleTemplateBinding",
+    "metadata": {
+      "generateName": "prtb-",
+      "namespace": "<project-backing-namespace>"
+    },
+    "projectName": "c-m-xxxxx:p-frontend",
+    "roleTemplateName": "project-member",
+    "groupPrincipalName": "openldap_group://cn=frontend-team,ou=groups,dc=example,dc=com"
   }'
 ```
 
 ## Step 4: Remove Cluster Member Access
 
-If users currently have **Cluster Member** access, they can see cluster-level resources and potentially create new projects. To restrict them to only project-level access:
+If users currently have **Cluster Member** access, they can see cluster-level resources and create new projects, automatically becoming **Project Owner** on projects they create. To restrict them to only project-level access:
 
 1. Go to **Cluster > Cluster Members**.
 2. Find users or groups that should only have project access.
@@ -100,26 +108,26 @@ The users will retain access to their specific projects through their project ro
 
 ## Step 5: Give Project-Only Access with Cluster Visibility
 
-Sometimes users need minimal cluster visibility (to see the cluster in the Rancher dashboard) without broad cluster permissions. Create a minimal cluster role:
+Sometimes users need minimal cluster visibility (to see the cluster in the Rancher dashboard) without broad cluster permissions. Create a minimal cluster role on the Rancher management cluster:
 
 ```yaml
 apiVersion: management.cattle.io/v3
 kind: RoleTemplate
 metadata:
   name: cluster-viewer-minimal
-spec:
-  context: cluster
-  displayName: Cluster Viewer (Minimal)
-  rules:
-    - apiGroups: [""]
-      resources: ["namespaces"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: [""]
-      resources: ["nodes"]
-      verbs: ["get", "list", "watch"]
+context: cluster
+displayName: Cluster Viewer (Minimal)
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
 ```
 
 ```bash
+# Apply this to the Rancher management cluster
 kubectl apply -f cluster-viewer-minimal.yaml
 ```
 
@@ -168,7 +176,7 @@ resource "rancher2_project_role_template_binding" "frontend_lead" {
 
 ## Step 7: Verify the Restrictions
 
-Log in as a frontend team member and verify:
+Log in as a frontend team member and use that user's Rancher-generated kubeconfig to verify:
 
 ```bash
 # Should succeed (frontend namespace is in their project)
@@ -188,12 +196,13 @@ In the Rancher UI, the user should only see the `frontend-team` project and its 
 Sometimes a user needs read-only access to another team's project for debugging or collaboration. Add them with the **Read-Only** project role:
 
 1. Navigate to the other team's project.
-2. Go to **Project > Members**.
-3. Click **Add**.
-4. Add the user with the **Read-Only** role.
-5. Click **Create**.
+2. Open the project menu and select **Edit Config**.
+3. Go to the **Members** tab.
+4. Click **Add**.
+5. Add the user with the **Read-Only** role.
+6. Click **Create**.
 
-The user can now view resources in both projects but can only modify resources in their own.
+The user can now view resources in both projects. However, Rancher documents an important caveat: if the user already has a **Project Owner** or **Project Member** role in another project in the same cluster, they still inherit namespace creation permissions and may be able to create namespaces in the read-only project.
 
 ## Step 9: Audit Project Access
 
@@ -206,9 +215,10 @@ for ns in $(kubectl get projects.management.cattle.io --all-namespaces -o jsonpa
   cluster=$(echo $ns | cut -d'/' -f1)
   project=$(echo $ns | cut -d'/' -f2)
   display=$(kubectl get projects.management.cattle.io $project -n $cluster -o jsonpath='{.spec.displayName}')
+  backing_namespace=$(kubectl get projects.management.cattle.io $project -n $cluster -o jsonpath='{.status.backingNamespace}')
   echo "=== Project: $display (Cluster: $cluster) ==="
-  kubectl get projectroletemplatebindings -n $cluster -o json | \
-    jq -r ".items[] | select(.projectName == \"$cluster:$project\") | \"\(.userName // .groupPrincipalName) -> \(.roleTemplateId)\""
+  kubectl get projectroletemplatebindings -n $backing_namespace -o json | \
+    jq -r '.items[] | "\(.userName // .userPrincipalName // .groupName // .groupPrincipalName) -> \(.roleTemplateName)"'
   echo ""
 done
 ```
@@ -218,9 +228,9 @@ done
 - **One project per team**: Align projects with team boundaries for clean access separation.
 - **Use groups**: Assign project roles to identity provider groups so that onboarding and offboarding is handled through your directory service.
 - **Minimal cluster access**: If project-level access is sufficient, do not grant cluster-level roles.
-- **Read-only for cross-team**: When teams need to see each other's resources, use read-only project roles.
+- **Read-only for cross-team**: When teams need to see each other's resources, use read-only project roles, but remember that users who are **Project Owners** or **Project Members** elsewhere in the same cluster still inherit namespace creation permissions.
 - **Audit quarterly**: Review project membership to remove inactive users and adjust roles as teams change.
 
 ## Conclusion
 
-Restricting users to specific projects in Rancher creates natural isolation between teams. Each team works in their own namespaces without visibility into or access to other teams' resources. By combining project-level role assignments with minimal cluster access, you build a secure multi-team environment where access is explicit, auditable, and aligned with your organization's structure.
+Restricting users to specific projects in Rancher creates natural isolation between teams. Each team works in their own namespaces without visibility into or access to other teams' resources unless you explicitly grant it. By combining project-level role assignments with minimal cluster access, you build a secure multi-team environment where access is explicit, auditable, and aligned with your organization's structure.
