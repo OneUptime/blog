@@ -14,7 +14,7 @@ Upgrading Rancher in a production environment requires careful planning to avoid
 - Helm 3 installed
 - `kubectl` access to the Rancher management cluster
 - A load balancer or ingress controller in front of Rancher
-- A recent etcd backup of the management cluster
+- A recent backup of the cluster running Rancher; if the management cluster uses embedded etcd, take a recent etcd snapshot
 
 ## Understanding Zero-Downtime Upgrades
 
@@ -34,12 +34,19 @@ If the output is `1`, you need to scale up before proceeding:
 helm get values rancher -n cattle-system -o yaml > current-values.yaml
 ```
 
-Edit `current-values.yaml` and set `replicas: 3`, then apply:
+Get the currently deployed Rancher chart version:
+
+```bash
+helm ls -n cattle-system
+```
+
+Edit `current-values.yaml` and set `replicas: 3`, then apply the change without upgrading Rancher yet:
 
 ```bash
 helm upgrade rancher rancher-stable/rancher \
   --namespace cattle-system \
-  --values current-values.yaml
+  --values current-values.yaml \
+  --version <current-rancher-version>
 ```
 
 Wait for all replicas to be ready:
@@ -56,25 +63,21 @@ Verify that the deployment uses a rolling update strategy with proper settings:
 kubectl get deployment rancher -n cattle-system -o jsonpath='{.spec.strategy}'
 ```
 
-The ideal configuration for zero downtime is:
+For Rancher installed from the official Helm chart, you should see a rolling update strategy. With more than one replica, the chart uses:
 
 ```yaml
 strategy:
   type: RollingUpdate
   rollingUpdate:
-    maxUnavailable: 0
+    maxUnavailable: 1
     maxSurge: 1
 ```
 
-Setting `maxUnavailable: 0` ensures no pods are removed before new ones are ready. You can patch the deployment if needed:
-
-```bash
-kubectl patch deployment rancher -n cattle-system -p '{"spec":{"strategy":{"rollingUpdate":{"maxUnavailable":0,"maxSurge":1}}}}'
-```
+With three replicas, this still leaves remaining Rancher pods serving traffic while the rollout proceeds. Because Rancher is Helm-managed, a one-off `kubectl patch` to the deployment will be overwritten by the next `helm upgrade`.
 
 ## Step 3: Verify Pod Disruption Budget
 
-Create or verify a PodDisruptionBudget to protect against too many pods going down simultaneously:
+Create or verify a PodDisruptionBudget to protect against voluntary disruptions such as node drains during the upgrade:
 
 ```yaml
 apiVersion: policy/v1
@@ -97,7 +100,7 @@ kubectl apply -f rancher-pdb.yaml
 
 ## Step 4: Back Up Before Upgrading
 
-Take an etcd snapshot of the management cluster:
+Back up the cluster running Rancher before upgrading. For an RKE2 management cluster with embedded etcd, you can take an etcd snapshot:
 
 ```bash
 # For RKE2
@@ -120,12 +123,13 @@ helm search repo rancher-stable/rancher --versions | head -5
 
 ## Step 6: Perform the Rolling Upgrade
 
-Run the Helm upgrade with your existing values:
+Run the Helm upgrade with your existing values and the specific target version you selected:
 
 ```bash
 helm upgrade rancher rancher-stable/rancher \
   --namespace cattle-system \
   --values current-values.yaml \
+  --version <target-version> \
   --wait \
   --timeout 10m
 ```
@@ -178,7 +182,7 @@ If you see consistent `200` responses throughout the upgrade, you have achieved 
 After the rollout completes, confirm the new version:
 
 ```bash
-kubectl get settings server-version -o jsonpath='{.value}' -n cattle-system
+kubectl get settings.management.cattle.io server-version -o jsonpath='{.value}'
 ```
 
 Check that all components are healthy:
@@ -190,17 +194,17 @@ kubectl get deployments -n cattle-system
 
 Log in to the Rancher UI and verify that all managed clusters are active and agents are connected.
 
-## Step 10: Update Cluster Agents
+## Step 10: Verify Downstream Cluster Agents
 
-Downstream cluster agents will update automatically, but you can monitor the process:
+After upgrading Rancher, confirm that the cluster agent is healthy on each downstream cluster:
 
 ```bash
-kubectl get deployments -n cattle-system -l app=cattle-cluster-agent
+kubectl --context <downstream-cluster-context> -n cattle-system get deployment cattle-cluster-agent
 ```
 
 ## Handling Issues During the Upgrade
 
-If a new pod fails to become ready, the rolling update will pause automatically because of `maxUnavailable: 0`. Check the failing pod:
+If a new pod fails to become ready, the rollout will stop making progress until the readiness issue is fixed. Check the failing pod:
 
 ```bash
 kubectl describe pod <pod-name> -n cattle-system
@@ -218,7 +222,7 @@ The rollback also uses the rolling update strategy, so it will be zero-downtime 
 ## Best Practices for Zero-Downtime Upgrades
 
 - Always run at least 3 Rancher replicas in production.
-- Use `maxUnavailable: 0` to prevent any service gaps.
+- Use multiple replicas and verify the Rancher deployment is using a `RollingUpdate` strategy before upgrading.
 - Set up a PodDisruptionBudget to protect against node drains during the upgrade.
 - Configure proper readiness probes on the Rancher deployment.
 - Use the `--wait` flag with Helm to catch failures early.
@@ -227,4 +231,4 @@ The rollback also uses the rolling update strategy, so it will be zero-downtime 
 
 ## Conclusion
 
-Zero-downtime Rancher upgrades are achievable with a high-availability deployment, a proper rolling update strategy, and careful monitoring. By running multiple replicas, setting `maxUnavailable: 0`, and using pod disruption budgets, you can upgrade Rancher without any interruption to your teams or managed clusters.
+Zero-downtime Rancher upgrades are achievable with a high-availability deployment, a proper rolling update strategy, and careful monitoring. By running multiple replicas, using the Helm chart's rolling update behavior, and using pod disruption budgets, you can upgrade Rancher without any interruption to your teams or managed clusters.
