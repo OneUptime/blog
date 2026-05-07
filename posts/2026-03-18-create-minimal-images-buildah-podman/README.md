@@ -25,9 +25,7 @@ podman pull alpine:3.19
 podman pull gcr.io/distroless/static-debian12
 
 podman images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" \
-  --filter "reference=ubuntu" \
-  --filter "reference=debian" \
-  --filter "reference=alpine"
+  --filter "reference=ubuntu|debian|alpine|distroless"
 
 # Typical sizes:
 # ubuntu:22.04           ~77MB
@@ -156,9 +154,10 @@ buildah rm $container
 # Build an image with many layers
 container=$(buildah from alpine:3.19)
 buildah run $container -- apk add --no-cache python3
-buildah run $container -- apk add --no-cache py3-pip
-buildah run $container -- pip install --no-cache-dir flask
-buildah copy $container /tmp/goapp/main.go /app/placeholder.txt
+buildah run $container -- apk add --no-cache py3-flask
+mkdir -p /tmp/goapp
+echo "placeholder" > /tmp/goapp/placeholder.txt
+buildah copy $container /tmp/goapp/placeholder.txt /app/placeholder.txt
 
 # Commit with --squash to merge all layers into one
 buildah commit --squash $container squashed-app:latest
@@ -183,8 +182,15 @@ podman rmi squashed-app:latest unsquashed-app:latest
 # Build with a full image, then copy to distroless
 
 # Build stage
-builder=$(buildah from python:3.12-slim)
-buildah run $builder -- pip install --no-cache-dir flask gunicorn
+builder=$(buildah from debian:12-slim)
+buildah run $builder -- bash -c "\
+  apt-get update && \
+  apt-get install -y --no-install-recommends python3-venv gcc libpython3-dev && \
+  python3 -m venv /venv && \
+  /venv/bin/pip install --upgrade pip setuptools wheel && \
+  /venv/bin/pip install --no-cache-dir flask gunicorn && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/*"
 
 echo 'from flask import Flask; app = Flask(__name__)
 @app.route("/")
@@ -193,10 +199,10 @@ buildah copy $builder /tmp/distroless_app.py /app/app.py
 
 # Runtime stage with distroless
 runtime=$(buildah from gcr.io/distroless/python3-debian12)
-buildah copy --from $builder $runtime /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+buildah copy --from $builder $runtime /venv /venv
 buildah copy --from $builder $runtime /app /app
 buildah config --workingdir /app $runtime
-buildah config --entrypoint '["python3", "app.py"]' $runtime
+buildah config --entrypoint '["/venv/bin/python3", "app.py"]' $runtime
 
 buildah commit $runtime distroless-flask:latest
 podman images distroless-flask --format "{{.Size}}"
