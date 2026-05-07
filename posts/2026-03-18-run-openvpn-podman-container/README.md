@@ -103,7 +103,7 @@ Key flags explained:
 | `--cap-add NET_ADMIN` | Allows the container to manage network interfaces and routing |
 | `-v openvpn-data:/etc/openvpn:Z` | Mounts the PKI and config volume with SELinux relabeling |
 | `-p 1194:1194/udp` | Publishes the standard OpenVPN UDP port |
-| `--restart unless-stopped` | Automatically restarts the container after a reboot |
+| `--restart unless-stopped` | Restarts the container if it exits; use the systemd setup below for reliable boot startup |
 
 ---
 
@@ -219,6 +219,10 @@ Make OpenVPN start automatically on boot using Quadlet, the recommended way to r
 # Create the Quadlet directory
 sudo mkdir -p /etc/containers/systemd
 
+# Stop and remove the manually started container if you created it in Step 4.
+# The named volume keeps the OpenVPN configuration and PKI data.
+podman rm -f openvpn
+
 # Create a Quadlet container file
 sudo tee /etc/containers/systemd/openvpn.container > /dev/null <<'EOF'
 [Unit]
@@ -235,7 +239,7 @@ Volume=openvpn-data:/etc/openvpn:Z
 PublishPort=1194:1194/udp
 
 [Service]
-Restart=unless-stopped
+Restart=always
 
 [Install]
 WantedBy=default.target
@@ -274,6 +278,12 @@ podman run -d \
   -p 443:1194/tcp \
   --restart unless-stopped \
   docker.io/kylemanna/openvpn:latest
+
+# Re-export client profiles so they use the updated TCP connection settings
+podman run --rm \
+  -v openvpn-data:/etc/openvpn:Z \
+  docker.io/kylemanna/openvpn:latest \
+  ovpn_getclient client1 > client1.ovpn
 ```
 
 ---
