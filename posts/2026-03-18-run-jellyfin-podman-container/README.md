@@ -95,7 +95,7 @@ The setup wizard will guide you through:
 
 Hardware transcoding dramatically reduces CPU usage when converting video formats on the fly.
 
-### Intel Quick Sync (VA-API)
+### Intel GPU (VA-API)
 
 ```bash
 # Verify the render device exists on the host
@@ -128,6 +128,12 @@ Dashboard > Playback > Transcoding
 
 ### NVIDIA GPU
 
+Before using the NVIDIA CDI device name, install NVIDIA Container Toolkit support and generate the CDI specification:
+
+```bash
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+```
+
 ```bash
 # Run Jellyfin with NVIDIA GPU access
 podman run -d \
@@ -139,8 +145,6 @@ podman run -d \
   -v ~/media/movies:/media/movies:ro,Z \
   -v ~/media/tvshows:/media/tvshows:ro,Z \
   -e TZ=America/New_York \
-  -e NVIDIA_VISIBLE_DEVICES=all \
-  -e NVIDIA_DRIVER_CAPABILITIES=compute,video,utility \
   --restart unless-stopped \
   docker.io/jellyfin/jellyfin:latest
 ```
@@ -151,7 +155,7 @@ Then set hardware acceleration to "NVIDIA NVENC" in the transcoding settings.
 
 ## Step 5: Configure Networking for Discovery
 
-If you want Jellyfin to be discoverable by clients on the local network (like the Jellyfin mobile app), use host networking or publish the discovery ports:
+If you want Jellyfin to be discoverable by clients on the local network (like the Jellyfin mobile app), use host networking or publish the Jellyfin client discovery port. DLNA requires the DLNA plugin and host networking:
 
 ```bash
 # Option 1: Run with host networking for full local discovery
@@ -166,12 +170,11 @@ podman run -d \
   --restart unless-stopped \
   docker.io/jellyfin/jellyfin:latest
 
-# Option 2: Publish only the discovery ports alongside the web ports
+# Option 2: Publish the client discovery port alongside the web ports
 podman run -d \
   --name jellyfin \
   -p 8096:8096 \
   -p 8920:8920 \
-  -p 1900:1900/udp \
   -p 7359:7359/udp \
   -v ~/jellyfin/config:/config:Z \
   -v ~/jellyfin/cache:/cache:Z \
@@ -182,7 +185,7 @@ podman run -d \
   docker.io/jellyfin/jellyfin:latest
 ```
 
-Port 1900/udp handles DLNA discovery and port 7359/udp handles Jellyfin client discovery.
+Port 7359/udp handles Jellyfin client discovery. Port 1900/udp is used by DLNA/SSDP when the DLNA plugin is installed; with containers, Jellyfin's DLNA documentation recommends host networking for DLNA discovery.
 
 ---
 
@@ -212,18 +215,46 @@ podman rm jellyfin
 
 ## Running as a Systemd Service
 
-```bash
-# Generate a systemd unit file
-podman generate systemd --name jellyfin --new --files
+Current Podman documentation recommends Quadlet files for running containers under systemd.
 
-# Install and enable
-sudo mv container-jellyfin.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable container-jellyfin.service
-sudo systemctl start container-jellyfin.service
+```bash
+# Create a user-level Quadlet file
+mkdir -p ~/.config/containers/systemd
+$EDITOR ~/.config/containers/systemd/jellyfin.container
+```
+
+Use this content:
+
+```ini
+[Container]
+Image=docker.io/jellyfin/jellyfin:latest
+ContainerName=jellyfin
+PublishPort=8096:8096/tcp
+PublishPort=7359:7359/udp
+Volume=%h/jellyfin/config:/config:Z
+Volume=%h/jellyfin/cache:/cache:Z
+Volume=%h/media/movies:/media/movies:ro,Z
+Volume=%h/media/tvshows:/media/tvshows:ro,Z
+Volume=%h/media/music:/media/music:ro,Z
+Environment=TZ=America/New_York
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+# Reload and start the generated service
+systemctl --user daemon-reload
+systemctl --user start jellyfin.service
+
+# Optional: allow the user service to start without an active login session
+loginctl enable-linger "$USER"
 
 # Check status
-sudo systemctl status container-jellyfin.service
+systemctl --user status jellyfin.service
 ```
 
 ---
