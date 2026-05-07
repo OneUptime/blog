@@ -148,8 +148,8 @@ podman port web
 # List all containers with their port mappings
 podman ps --format "{{.Names}}\t{{.Ports}}"
 
-# Check if a specific port is in use
-podman ps --filter "publish=8080"
+# Check if a specific published port appears in running containers
+podman ps --format "{{.Names}}\t{{.Ports}}" | grep 8080
 
 # Detailed network information
 podman inspect web --format '{{.NetworkSettings.Ports}}'
@@ -164,7 +164,7 @@ Common issues and solutions:
 lsof -i :8080
 
 # Check if the container service is actually listening
-podman exec web ss -tlnp
+podman exec web sh -c "apk add --no-cache iproute2 >/dev/null && ss -tlnp"
 
 # Verify the container is running
 podman ps -a --filter name=web
@@ -173,7 +173,7 @@ podman ps -a --filter name=web
 podman logs web
 
 # Test connectivity from inside the container
-podman exec web curl -s localhost:80
+podman exec web wget -qO- http://localhost:80
 ```
 
 ## Summary
