@@ -4,15 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Terraform, IPv6, Public IP, Networking, Infrastructure as Code
 
-Description: A guide to creating and managing Azure Standard IPv6 Public IP addresses with Terraform for use with VMs, load balancers, and firewalls.
+Description: A guide to creating and managing Azure Standard IPv6 Public IP addresses with Terraform for use with VMs, load balancers, and application gateways.
 
-Azure Public IP addresses can be assigned either IPv4 or IPv6 addresses. IPv6 Public IPs are Standard SKU only and are assigned dynamically from Microsoft's public IPv6 ranges. They are used to expose VMs and load balancers to the internet over IPv6.
+Azure Public IP addresses can be created with either IPv4 or IPv6 addresses. For current deployments, IPv6 Public IPs use Standard SKU with Static allocation, and Azure assigns them from Microsoft's public IPv6 ranges. They are used to expose VMs and load balancers to the internet over IPv6.
 
 ## Prerequisites
 
 - Azure subscription with sufficient quota
 - Terraform >= 1.3 with `hashicorp/azurerm` provider ~> 3.0
 - A resource group
+- For VM NIC attachment, an existing dual-stack virtual network/subnet and an IPv4 public IP
 
 ## Step 1: Create IPv6 Public IP Addresses
 
@@ -31,13 +32,13 @@ resource "azurerm_public_ip" "ipv6_primary" {
   location            = local.location
   resource_group_name = local.rg_name
 
-  # Must be Standard for IPv6 (Basic SKU does not support IPv6 standalone)
+  # Use Standard for IPv6 public IPs in current deployments
   sku = "Standard"
 
   # Specify IPv6 address version
   ip_version = "IPv6"
 
-  # IPv6 public IPs must use Static allocation with Standard SKU
+  # Standard IPv6 public IPs use Static allocation
   allocation_method = "Static"
 
   # Optional: specify a DNS label for a AAAA record
@@ -94,7 +95,8 @@ output "service_ipv6_addresses" {
 ## Step 3: Attach IPv6 Public IP to a VM NIC
 
 ```hcl
-# nic.tf - Attach IPv6 public IP to a network interface
+# nic.tf - Attach IPv6 public IP to a dual-stack network interface
+# Assumes an existing dual-stack subnet and IPv4 public IP resource
 resource "azurerm_network_interface" "dual_stack" {
   name                = "nic-dual-stack"
   location            = local.location
@@ -139,9 +141,9 @@ dig AAAA myapp-ipv6.eastus.cloudapp.azure.com
 
 ## Important Constraints
 
-- IPv6 public IPs require **Standard SKU**
-- IPv6 public IPs require **Static** allocation
-- A NIC can have at most one IPv6 public IP per IP configuration
-- Azure Firewall and some other services require dual Public IPs (one IPv4 + one IPv6)
+- For current deployments, IPv6 public IPs use **Standard SKU**
+- Standard IPv6 public IPs use **Static** allocation
+- A NIC can have only one IPv6 IP configuration, with at most one IPv6 public IP attached
+- Application Gateway and some other dual-stack services require separate Public IP resources for IPv4 and IPv6
 
 Azure IPv6 Public IPs are foundational for any Azure resource that needs to be directly reachable over IPv6 from the internet, including load balancers, application gateways, and directly exposed VMs.
