@@ -17,10 +17,10 @@ The most direct solution is limiting how many resources OpenTofu creates concurr
 ```bash
 # Default parallelism is 10; reduce for throttle-prone operations
 
-tofu apply -parallelism=5 -out=tfplan
+tofu apply -parallelism=5
 
 # For very large applies with many IAM/S3 calls
-tofu apply -parallelism=3 tfplan
+tofu apply -parallelism=3
 ```
 
 ## AWS Provider Retry Configuration
@@ -31,19 +31,16 @@ The AWS provider has built-in retry logic that you can tune.
 provider "aws" {
   region = var.region
 
-  # Maximum number of retries for API calls
-  max_retries = 10  # default is 25; increase for heavily throttled environments
+  retry_mode = "adaptive"
 
-  # Custom endpoints are useful for retry debugging
-  # endpoints {
-  #   ec2 = "https://ec2.us-east-1.amazonaws.com"
-  # }
+  # Maximum number of retries for API calls
+  max_retries = 30  # default is 25; increase for heavily throttled environments
 }
 ```
 
 ## Splitting Large Configurations
 
-Break a monolithic configuration into smaller, targeted modules that can be applied independently.
+Break a monolithic configuration into smaller configurations that can be applied independently.
 
 ```text
 infrastructure/
@@ -57,21 +54,21 @@ Apply each component separately:
 
 ```bash
 # Apply networking first (fewer API calls)
-tofu apply -target=module.networking
+tofu -chdir=infrastructure/networking apply
 
 # Then security
-tofu apply -target=module.security
+tofu -chdir=infrastructure/security apply
 
 # Then compute (most resources, reduce parallelism)
-tofu apply -parallelism=5 -target=module.compute
+tofu -chdir=infrastructure/compute apply -parallelism=5
 ```
 
 ## Using -target for Surgical Applies
 
-During large creates, use `-target` to apply subsets of resources.
+During large creates, use `-target` only for exceptional cases when you need to apply or recover a subset of resources.
 
 ```bash
-# Apply just IAM resources first (to avoid concurrent IAM limit)
+# Apply just IAM resources first (exceptional use, not a routine workflow)
 tofu apply -target=aws_iam_role.app -target=aws_iam_policy.app
 
 # Then the rest
@@ -87,10 +84,9 @@ If applying from a script, add exponential backoff retry logic.
 # scripts/apply-with-retry.sh
 
 MAX_ATTEMPTS=5
-ATTEMPT=0
+ATTEMPT=1
 
-until tofu apply -parallelism=5 tfplan; do
-  ATTEMPT=$((ATTEMPT + 1))
+until tofu apply -parallelism=5 -auto-approve; do
   if [[ $ATTEMPT -ge $MAX_ATTEMPTS ]]; then
     echo "Apply failed after $MAX_ATTEMPTS attempts"
     exit 1
@@ -98,6 +94,7 @@ until tofu apply -parallelism=5 tfplan; do
 
   WAIT=$((2 ** ATTEMPT))  # 2, 4, 8, 16 seconds
   echo "Apply failed (attempt $ATTEMPT/$MAX_ATTEMPTS). Retrying in ${WAIT}s..."
+  ATTEMPT=$((ATTEMPT + 1))
   sleep "$WAIT"
 done
 
@@ -133,4 +130,4 @@ resource "aws_instance" "app" {
 
 ## Summary
 
-API throttling during large OpenTofu applies can be mitigated by reducing parallelism, splitting configurations into smaller modules, applying with `-target` selectively, and adding retry logic in scripts. The `time_sleep` resource handles IAM eventual consistency issues that can cause cascading failures.
+API throttling during large OpenTofu applies can be mitigated by reducing parallelism, splitting configurations into smaller configurations, using `-target` selectively for exceptional cases, and adding retry logic in scripts. The `time_sleep` resource handles IAM eventual consistency issues that can cause cascading failures.
