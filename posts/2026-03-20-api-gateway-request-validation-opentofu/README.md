@@ -39,6 +39,8 @@ resource "aws_api_gateway_request_validator" "params_only" {
 
 ## Step 2: Define Request Body Model (JSON Schema)
 
+API Gateway validates the request body only when the request `Content-Type` matches a configured request model. If you want the same schema to apply regardless of content type, use `$default` instead of `application/json`.
+
 ```hcl
 # JSON Schema model for the request body
 resource "aws_api_gateway_model" "create_user" {
@@ -137,6 +139,57 @@ resource "aws_api_gateway_gateway_response" "missing_auth" {
 ```
 
 ## Step 5: Deploy
+
+For REST APIs, updates to methods, models, request validators, and gateway responses do not take effect until you deploy the API to a stage.
+
+```hcl
+resource "aws_api_gateway_deployment" "request_validation" {
+  rest_api_id = var.api_gateway_id
+
+  triggers = {
+    redeployment = sha1(jsonencode({
+      validators = {
+        full = {
+          validate_request_body       = aws_api_gateway_request_validator.full.validate_request_body
+          validate_request_parameters = aws_api_gateway_request_validator.full.validate_request_parameters
+        }
+        params_only = {
+          validate_request_body       = aws_api_gateway_request_validator.params_only.validate_request_body
+          validate_request_parameters = aws_api_gateway_request_validator.params_only.validate_request_parameters
+        }
+      }
+      model_schema = aws_api_gateway_model.create_user.schema
+      method = {
+        request_models       = aws_api_gateway_method.create_user.request_models
+        request_parameters   = aws_api_gateway_method.create_user.request_parameters
+        request_validator_id = aws_api_gateway_method.create_user.request_validator_id
+      }
+      gateway_responses = {
+        bad_request = {
+          response_templates  = aws_api_gateway_gateway_response.bad_request.response_templates
+          response_parameters = aws_api_gateway_gateway_response.bad_request.response_parameters
+        }
+        bad_request_parameters = {
+          response_templates  = aws_api_gateway_gateway_response.missing_auth.response_templates
+          response_parameters = aws_api_gateway_gateway_response.missing_auth.response_parameters
+        }
+      }
+    }))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_api_gateway_stage" "prod" {
+  rest_api_id   = var.api_gateway_id
+  deployment_id = aws_api_gateway_deployment.request_validation.id
+  stage_name    = "prod"
+}
+```
+
+If your deployment and stage are managed outside this module, redeploy the existing stage after `tofu apply`.
 
 ```bash
 tofu init
