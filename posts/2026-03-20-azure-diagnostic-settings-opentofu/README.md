@@ -15,12 +15,13 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.0"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
+  subscription_id = var.subscription_id
   features {}
 }
 ```
@@ -43,7 +44,7 @@ resource "azurerm_monitor_diagnostic_setting" "app_service" {
   log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
 
   enabled_log {
-    category = "AppServiceHTTPLogs"         # HTTP request/response logs
+    category = "AppServiceHTTPLogs"         # Web server logs
   }
 
   enabled_log {
@@ -51,16 +52,15 @@ resource "azurerm_monitor_diagnostic_setting" "app_service" {
   }
 
   enabled_log {
-    category = "AppServiceAppLogs"          # Application error logs
+    category = "AppServiceAppLogs"          # Application logs for supported runtimes
   }
 
   enabled_log {
-    category = "AppServiceAuditLogs"        # Auth/access audit logs
+    category = "AppServiceAuditLogs"        # FTP and Kudu login activity
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 ```
@@ -120,14 +120,12 @@ resource "azurerm_monitor_diagnostic_setting" "sql_db" {
     category = "Blocks"
   }
 
-  metric {
+  enabled_metric {
     category = "Basic"
-    enabled  = true
   }
 
-  metric {
+  enabled_metric {
     category = "InstanceAndAppAdvanced"
-    enabled  = true
   }
 }
 ```
@@ -160,9 +158,8 @@ resource "azurerm_monitor_diagnostic_setting" "key_vault" {
     category = "AzurePolicyEvaluationDetails"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 ```
@@ -199,9 +196,8 @@ resource "azurerm_monitor_diagnostic_setting" "resources" {
     }
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 ```
@@ -251,13 +247,12 @@ resource "azurerm_monitor_diagnostic_setting" "aks" {
     category = "cluster-autoscaler"
   }
 
-  metric {
+  enabled_metric {
     category = "AllMetrics"
-    enabled  = true
   }
 }
 ```
 
 ## Conclusion
 
-Azure Diagnostic Settings in OpenTofu ensure every resource ships logs and metrics to your central observability platform. Use Log Analytics for real-time querying, Storage Accounts for long-term compliance archival, and Event Hubs for SIEM integration. Enable audit logs on security-sensitive resources like Key Vault and SQL, and create reusable patterns with for_each and dynamic blocks to apply consistent diagnostic settings across all resources of the same type.
+Azure Diagnostic Settings in OpenTofu ensure every resource ships logs and metrics to your central observability platform. Use Log Analytics for real-time querying, Storage Accounts for long-term compliance archival, and Event Hubs for SIEM integration. Enable audit logs on security-sensitive resources like Key Vault, and remember that Azure SQL Database auditing must be enabled separately before `SQLSecurityAuditEvents` can be routed with diagnostic settings. Create reusable patterns with for_each and dynamic blocks to apply consistent diagnostic settings across all resources of the same type.
