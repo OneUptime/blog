@@ -13,20 +13,49 @@ The AWS Network Load Balancer (NLB) operates at Layer 4 and supports both IPv4 a
 ```hcl
 # vpc.tf - VPC with IPv6 CIDR
 
+data "aws_availability_zones" "available" {}
+
 resource "aws_vpc" "main" {
   cidr_block                       = "10.0.0.0/16"
   assign_generated_ipv6_cidr_block = true
   tags = { Name = "main-vpc" }
 }
 
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+  tags   = { Name = "main-igw" }
+}
+
 resource "aws_subnet" "public" {
-  count             = 2
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.${count.index + 1}.0/24"
-  ipv6_cidr_block   = cidrsubnet(aws_vpc.main.ipv6_cidr_block, 8, count.index)
-  availability_zone = data.aws_availability_zones.available.names[count.index]
+  count                           = 2
+  vpc_id                          = aws_vpc.main.id
+  cidr_block                      = "10.0.${count.index + 1}.0/24"
+  ipv6_cidr_block                 = cidrsubnet(aws_vpc.main.ipv6_cidr_block, 8, count.index)
+  availability_zone               = data.aws_availability_zones.available.names[count.index]
   assign_ipv6_address_on_creation = true
   tags = { Name = "public-${count.index}" }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  route {
+    ipv6_cidr_block = "::/0"
+    gateway_id      = aws_internet_gateway.main.id
+  }
+
+  tags = { Name = "public-rt" }
+}
+
+resource "aws_route_table_association" "public" {
+  count          = length(aws_subnet.public)
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
 }
 ```
 
@@ -45,7 +74,7 @@ resource "aws_lb" "nlb" {
   # Enable both IPv4 and IPv6
   ip_address_type = "dualstack"
 
-  # NLBs do not use security groups - traffic filtering is at the subnet/NACL level
+  # Security groups are optional for NLBs; this example omits them
   enable_cross_zone_load_balancing = true
 
   tags = {
@@ -68,8 +97,10 @@ resource "aws_lb_target_group" "tcp" {
   protocol = "TCP"
   vpc_id   = aws_vpc.main.id
 
-  # For client IP preservation with NLB, use IP target type
-  target_type = "ip"
+  # This example registers targets by private IPv4 address.
+  # For IPv6 backend targets, set ip_address_type = "ipv6" and register IPv6 addresses.
+  target_type     = "ip"
+  ip_address_type = "ipv4"
 
   health_check {
     protocol            = "TCP"
@@ -110,7 +141,7 @@ resource "aws_lb_target_group_attachment" "app" {
   count            = length(aws_instance.app)
   target_group_arn = aws_lb_target_group.tcp.arn
 
-  # Use the instance's private IPv4 (or IPv6 if target_type = "ip" and IPv6 is configured)
+  # Register the instance's private IPv4 address in this IPv4 target group
   target_id = aws_instance.app[count.index].private_ip
   port      = 443
 }
@@ -126,14 +157,15 @@ NLB_DNS=$(terraform output -raw nlb_dns_name)
 dig A "$NLB_DNS"
 dig AAAA "$NLB_DNS"
 
-# Test TCP connectivity over IPv6
-curl -6 --resolve "$NLB_DNS:443:[<AAAA-IP>]" https://$NLB_DNS/ -k -v
+# If your backend speaks HTTPS, test end-to-end over IPv6
+curl -6 -k -v "https://$NLB_DNS/"
 ```
 
 ## IPv6 Client IP Preservation
 
-NLBs preserve the client's source IP. For IPv6 clients:
-- **Target type `instance`**: Source IP preserved at the instance
-- **Target type `ip`**: Also preserved; ensure your application handles IPv6 client IPs
+Client IP preservation with NLB depends on the target type, protocol, and whether traffic stays in the same IP family:
+- **Target type `instance`**: Client IP preservation is enabled by default
+- **Target type `ip`** with `TCP` or `TLS`: Client IP preservation is disabled by default; enable `preserve_client_ip.enabled` if you need it
+- **Dual-stack translation**: Client IP preservation only works when the client and target use the same IP version, so IPv6-to-IPv4 and IPv4-to-IPv6 flows show the NLB node IP at the target
 
-NLBs are the recommended choice for latency-sensitive TCP/UDP workloads that need IPv6 support, providing static Elastic IP assignment and full client IP preservation.
+NLBs are the recommended choice for latency-sensitive TCP/UDP workloads that need IPv6 support, providing optional static IPv4 addresses via Elastic IP assignment and client IP preservation when the target group configuration supports it.
