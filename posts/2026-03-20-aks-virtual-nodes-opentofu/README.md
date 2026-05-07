@@ -8,7 +8,7 @@ Description: Learn how to configure AKS Virtual Nodes with OpenTofu to burst wor
 
 ## Introduction
 
-AKS Virtual Nodes use the Virtual Kubelet to schedule pods to Azure Container Instances (ACI) as if they were running on regular nodes. This enables instant scaling (no VM provisioning time) and true serverless billing (pay per second of pod execution). Virtual Nodes are ideal for burst workloads, batch jobs, and event-driven scaling where you need fast scale-out without pre-provisioning nodes. They require Azure CNI networking and a dedicated ACI subnet.
+AKS Virtual Nodes use the Virtual Kubelet to schedule pods to Azure Container Instances (ACI) as if they were running on regular nodes. This guide uses the AKS Virtual Nodes add-on exposed by the `aci_connector_linux` block in the AzureRM provider. This enables instant scaling (no VM provisioning time) and true serverless billing (pay per second of pod execution). Virtual Nodes are ideal for burst workloads, batch jobs, and event-driven scaling where you need fast scale-out without pre-provisioning nodes. They require Azure CNI networking and a dedicated ACI subnet.
 
 ## Prerequisites
 
@@ -32,7 +32,10 @@ resource "azurerm_subnet" "aci" {
 
     service_delegation {
       name    = "Microsoft.ContainerInstance/containerGroups"
-      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+        "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
+      ]
     }
   }
 }
@@ -42,7 +45,7 @@ resource "azurerm_kubernetes_cluster" "virtual_nodes" {
   location            = var.location
   resource_group_name = var.resource_group_name
   dns_prefix          = var.project_name
-  kubernetes_version  = "1.28"
+  kubernetes_version  = "1.35"
 
   default_node_pool {
     name                = "system"
@@ -74,6 +77,15 @@ resource "azurerm_kubernetes_cluster" "virtual_nodes" {
     Name = "${var.project_name}-aks-virtual-nodes"
   }
 }
+
+# Grant the virtual node connector identity access to the delegated ACI subnet.
+resource "azurerm_role_assignment" "aci_subnet_network_contributor" {
+  scope                            = azurerm_subnet.aci.id
+  role_definition_name             = "Network Contributor"
+  principal_id                     = azurerm_kubernetes_cluster.virtual_nodes.aci_connector_linux[0].connector_identity[0].object_id
+  principal_type                   = "ServicePrincipal"
+  skip_service_principal_aad_check = true
+}
 ```
 
 ## Step 2: Deploy Pods to Virtual Nodes
@@ -84,7 +96,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api-burst
-  namespace: production
 spec:
   replicas: 5
   selector:
@@ -98,13 +109,13 @@ spec:
       # Schedule on virtual nodes (ACI)
       nodeSelector:
         kubernetes.io/role: agent
-        beta.kubernetes.io/os: linux
+        kubernetes.io/os: linux
         type: virtual-kubelet
 
       tolerations:
         - key: virtual-kubelet.io/provider
-          operator: Equal
-          value: azure
+          operator: Exists
+        - key: azure.com/aci
           effect: NoSchedule
 
       containers:
@@ -124,7 +135,7 @@ spec:
 ## Step 3: KEDA with Virtual Nodes for Event-Driven Scaling
 
 ```hcl
-# KEDA scales pods to virtual nodes based on events (queue depth, etc.)
+# KEDA scales a deployment that is already configured to run on virtual nodes.
 # Install KEDA via Helm after cluster creation
 resource "helm_release" "keda" {
   name             = "keda"
@@ -143,24 +154,23 @@ apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
   name: queue-processor-scaledobject
-  namespace: production
 spec:
   scaleTargetRef:
     name: queue-processor
   minReplicaCount: 0   # Scale to zero when queue is empty
-  maxReplicaCount: 100 # Burst to ACI
+  maxReplicaCount: 100
   triggers:
     - type: azure-servicebus
       metadata:
         queueName: work-queue
-        namespace: myservicebus
+        connectionFromEnv: SERVICEBUS_CONNECTION_STRING
         messageCount: "5"  # 1 replica per 5 messages
 ```
 
-## Step 4: HPA with Virtual Node Bursting
+## Step 4: HPA for a Virtual-Node Deployment
 
 ```yaml
-# kubernetes/hpa.yaml - scale normal pods first, burst to ACI
+# kubernetes/hpa.yaml - HPA scales a deployment that already targets virtual nodes
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -169,9 +179,9 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: api-server
+    name: api-burst
   minReplicas: 3
-  maxReplicas: 50  # Some pods go to virtual nodes when regular nodes are full
+  maxReplicas: 50
   metrics:
     - type: Resource
       resource:
@@ -198,7 +208,7 @@ kubectl get nodes
 # Look for node named "virtual-node-aci-linux"
 
 # Deploy to virtual nodes
-kubectl apply -f burst-deployment.yaml
+kubectl apply -f kubernetes/burst-deployment.yaml
 
 # Check pods on virtual node
 kubectl get pods -o wide | grep virtual-node
@@ -206,4 +216,4 @@ kubectl get pods -o wide | grep virtual-node
 
 ## Conclusion
 
-Virtual Nodes are best suited for stateless, batch, or burst workloads-ACI doesn't support persistent volumes, DaemonSets, or many Kubernetes primitives. Pods on Virtual Nodes start in 10-15 seconds versus 3-5 minutes for new VM nodes, making them ideal for queue-based workloads with KEDA. ACI pricing is per-second based on vCPU and memory, which is cost-effective for short-lived workloads but more expensive than VMs for continuously running workloads. Use pod priority and affinity to schedule critical production pods on VM nodes first, only spilling to Virtual Nodes during bursts.
+Virtual Nodes are best suited for stateless, batch, or burst workloads. They don't support DaemonSets or Kubernetes PersistentVolumes/PersistentVolumeClaims, though Azure Files can still be mounted as an inline volume. They provide quick pod provisioning compared with waiting for new VM nodes, making them useful for queue-based workloads with KEDA. ACI pricing is per-second based on requested vCPU and memory, which is cost-effective for short-lived workloads but more expensive than VMs for continuously running workloads. Use separate deployments, node selectors, tolerations, and pod priority/affinity so critical production pods stay on VM-backed node pools while burstable workloads target Virtual Nodes.
