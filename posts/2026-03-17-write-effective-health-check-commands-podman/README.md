@@ -30,18 +30,21 @@ A good health check should:
 podman run -d --name web-app \
   --health-cmd "curl -f http://localhost:8080/health || exit 1" \
   --health-interval 15s \
+  --health-timeout 5s \
   web-app:latest
 
 # Using wget when curl is not available
 podman run -d --name alpine-app \
-  --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1" \
+  --health-cmd "wget --no-verbose --tries=1 --timeout=5 --spider http://localhost:3000/health || exit 1" \
   --health-interval 15s \
+  --health-timeout 5s \
   alpine-app:latest
 
 # Check with timeout to avoid hanging
 podman run -d --name timeout-check \
   --health-cmd "curl -sf --max-time 5 http://localhost:8080/health || exit 1" \
   --health-interval 20s \
+  --health-timeout 6s \
   my-app:latest
 ```
 
@@ -52,18 +55,21 @@ podman run -d --name timeout-check \
 podman run -d --name postgres \
   --health-cmd "pg_isready -U postgres -d mydb || exit 1" \
   --health-interval 30s \
+  --health-timeout 5s \
   postgres:15
 
 # MySQL connection check
 podman run -d --name mysql \
-  --health-cmd "mysqladmin ping -h localhost -u root --password=\$MYSQL_ROOT_PASSWORD || exit 1" \
+  --health-cmd 'mysqladmin ping -h localhost -u root --password="$MYSQL_ROOT_PASSWORD" || exit 1' \
   --health-interval 30s \
+  --health-timeout 5s \
   mysql:8
 
 # Redis ping check
 podman run -d --name redis \
   --health-cmd "redis-cli ping | grep -q PONG || exit 1" \
   --health-interval 15s \
+  --health-timeout 5s \
   redis:7
 ```
 
@@ -74,12 +80,14 @@ podman run -d --name redis \
 podman run -d --name worker \
   --health-cmd "test -f /tmp/worker-heartbeat && find /tmp/worker-heartbeat -mmin -2 | grep -q . || exit 1" \
   --health-interval 60s \
+  --health-timeout 5s \
   worker-app:latest
 
 # Check a gRPC service
 podman run -d --name grpc-service \
-  --health-cmd "grpc_health_probe -addr=localhost:50051 || exit 1" \
+  --health-cmd "grpc_health_probe -addr=localhost:50051 -connect-timeout=2s -rpc-timeout=3s || exit 1" \
   --health-interval 15s \
+  --health-timeout 5s \
   grpc-service:latest
 ```
 
@@ -90,12 +98,14 @@ podman run -d --name grpc-service \
 podman run -d --name multi-check \
   --health-cmd "curl -sf http://localhost:8080/health && test -f /app/config.yaml || exit 1" \
   --health-interval 30s \
+  --health-timeout 5s \
   multi-dep-app:latest
 
 # Script-based health check for complex logic
 podman run -d --name script-check \
   --health-cmd "/app/healthcheck.sh || exit 1" \
   --health-interval 30s \
+  --health-timeout 5s \
   script-app:latest
 ```
 
