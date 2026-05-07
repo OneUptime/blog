@@ -31,10 +31,12 @@ podman build -t myapp:test .
 podman run --rm \
   --name unit-tests \
   myapp:test npm test
+TEST_EXIT_CODE=$?
 
 # The exit code from the container propagates to the CI system
 # A non-zero exit code will fail the CI job
-echo "Tests completed with exit code: $?"
+echo "Tests completed with exit code: $TEST_EXIT_CODE"
+exit $TEST_EXIT_CODE
 ```
 
 ## Using a Dedicated Test Stage in the Containerfile
@@ -61,9 +63,9 @@ CMD ["npm", "test"]
 # Stage 3: Production image (slim, no test deps)
 FROM node:20-alpine AS production
 WORKDIR /app
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules ./node_modules
 COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
 CMD ["node", "dist/index.js"]
 ```
 
@@ -198,14 +200,20 @@ PID_TYPE=$!
 # Wait for all test suites and collect exit codes
 FAILED=0
 
-wait $PID_UNIT || FAILED=1
-echo "Unit tests: $([ $? -eq 0 ] && echo PASSED || echo FAILED)"
+wait $PID_UNIT
+STATUS_UNIT=$?
+echo "Unit tests: $([ $STATUS_UNIT -eq 0 ] && echo PASSED || echo FAILED)"
+[ $STATUS_UNIT -eq 0 ] || FAILED=1
 
-wait $PID_LINT || FAILED=1
-echo "Lint check: $([ $? -eq 0 ] && echo PASSED || echo FAILED)"
+wait $PID_LINT
+STATUS_LINT=$?
+echo "Lint check: $([ $STATUS_LINT -eq 0 ] && echo PASSED || echo FAILED)"
+[ $STATUS_LINT -eq 0 ] || FAILED=1
 
-wait $PID_TYPE || FAILED=1
-echo "Type check: $([ $? -eq 0 ] && echo PASSED || echo FAILED)"
+wait $PID_TYPE
+STATUS_TYPE=$?
+echo "Type check: $([ $STATUS_TYPE -eq 0 ] && echo PASSED || echo FAILED)"
+[ $STATUS_TYPE -eq 0 ] || FAILED=1
 
 # Exit with failure if any suite failed
 exit $FAILED
