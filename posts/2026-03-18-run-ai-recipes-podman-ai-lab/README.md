@@ -27,14 +27,14 @@ podman machine set --cpus 6 --memory 12288
 podman machine start
 
 # Verify at least one model is downloaded
-podman machine ssh ls /var/lib/containers/ai-lab/models/
+podman machine ssh ls /home/user/ai-lab/models/
 ```
 
 ## Browsing Available Recipes
 
 ### Accessing the Recipe Catalog
 
-1. Open Podman Desktop and navigate to **AI Lab > Recipes**.
+1. Open Podman Desktop and navigate to **AI Apps > Recipe Catalog**.
 2. Browse the catalog of available recipes.
 
 Common recipes include:
@@ -56,7 +56,11 @@ Common recipes include:
 
 ```bash
 # Monitor the recipe containers as they start
-podman ps --filter "label=ai-lab-recipe" \
+podman pod ps --filter "label=ai-lab-recipe-id=chatbot" \
+  --format "table {{.Name}}\t{{.Status}}\t{{.Labels}}"
+
+POD_NAME=$(podman pod ps --filter "label=ai-lab-recipe-id=chatbot" --format "{{.Name}}" | head -1)
+podman ps --filter "pod=$POD_NAME" \
   --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 
 # A typical chatbot recipe runs two containers:
@@ -64,21 +68,23 @@ podman ps --filter "label=ai-lab-recipe" \
 # 2. Web frontend (chat UI)
 
 # Check logs of the model server
-podman logs $(podman ps --filter "label=ai-lab-recipe-server" -q) 2>&1 | tail -10
+podman logs $(podman ps --filter "pod=$POD_NAME" --filter "name=llamacpp-server" -q) 2>&1 | tail -10
 
 # Check logs of the frontend
-podman logs $(podman ps --filter "label=ai-lab-recipe-frontend" -q) 2>&1 | tail -10
+podman logs $(podman ps --filter "pod=$POD_NAME" --filter "name=streamlit-chat-app" -q) 2>&1 | tail -10
 ```
 
 ### Accessing the Recipe Frontend
 
 ```bash
 # Find the frontend port
-podman ps --filter "label=ai-lab-recipe-frontend" --format "{{.Ports}}"
+POD_NAME=$(podman pod ps --filter "label=ai-lab-recipe-id=chatbot" --format "{{.Name}}" | head -1)
+podman ps --filter "pod=$POD_NAME" --format "table {{.Names}}\t{{.Ports}}"
 
 # The recipe frontend is typically available at:
-# http://localhost:8501 (for Streamlit-based recipes)
-# http://localhost:3000 (for React-based recipes)
+# http://localhost:8501 (for Streamlit-based recipes run manually)
+# If you started the recipe from Podman Desktop, use the
+# AI App Details "Open AI App" button because the UI can assign a random port.
 
 # Open it in your default browser
 # On macOS
@@ -99,13 +105,13 @@ The RAG (Retrieval-Augmented Generation) recipe lets you chat with your own docu
 # 3. Web frontend (chat UI with document upload)
 
 # After starting the RAG recipe from the UI, verify all containers are running
-podman ps --filter "label=ai-lab-recipe" \
-  --format "table {{.Names}}\t{{.Status}}"
+podman pod ps --filter "label=ai-lab-recipe-id=rag" \
+  --format "table {{.Name}}\t{{.Status}}"
 
 # Upload documents through the web frontend:
 # 1. Open the RAG frontend in your browser
-# 2. Click "Upload Documents"
-# 3. Select PDF, TXT, or Markdown files
+# 2. Click "Upload Document"
+# 3. Select a PDF or TXT file
 # 4. Wait for document indexing to complete
 # 5. Ask questions about your uploaded documents
 ```
@@ -114,17 +120,20 @@ podman ps --filter "label=ai-lab-recipe" \
 
 ```bash
 # List all running recipe containers
-podman ps --filter "label=ai-lab-recipe" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+podman pod ps --filter "label=ai-lab-recipe-id" --format "table {{.Name}}\t{{.Status}}\t{{.Labels}}"
+
+POD_NAME=$(podman pod ps --filter "label=ai-lab-recipe-id=chatbot" --format "{{.Name}}" | head -1)
+podman ps --filter "pod=$POD_NAME" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 # Check resource usage of recipe containers
-podman stats --filter "label=ai-lab-recipe" --no-stream \
-  --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}"
+podman pod stats --no-stream "$POD_NAME" \
+  --format "table {{.Name}}\t{{.CPU}}\t{{.MemUsage}}"
 
-# Stop a running recipe (stops all containers in the recipe)
-podman stop $(podman ps --filter "label=ai-lab-recipe=chatbot" -q)
+# Stop a running recipe pod (stops all containers in the recipe)
+podman pod stop $(podman pod ps --filter "label=ai-lab-recipe-id=chatbot" -q)
 
-# Remove stopped recipe containers
-podman rm $(podman ps -a --filter "label=ai-lab-recipe=chatbot" -q)
+# Remove a stopped recipe pod
+podman pod rm $(podman pod ps -a --filter "label=ai-lab-recipe-id=chatbot" -q)
 ```
 
 ## Customizing Recipes
@@ -141,9 +150,10 @@ cd ai-lab-recipes
 ls recipes/
 
 # Each recipe contains:
-# - Containerfile (for building the frontend)
-# - app.py or similar (the application code)
-# - requirements.txt (Python dependencies)
+# - ai-lab.yaml (recipe metadata)
+# - app/Containerfile (for building the frontend)
+# - app/*.py or similar (the application code)
+# - app/requirements.txt (Python dependencies)
 # - README.md (documentation)
 ```
 
@@ -151,26 +161,28 @@ ls recipes/
 
 ```bash
 # Navigate to a recipe directory
-cd ai-lab-recipes/recipes/chatbot
+cd ai-lab-recipes/recipes/natural_language_processing/chatbot
 
 # Modify the application code
-# For example, change the system prompt in app.py
+# For example, change the system prompt in app/chatbot_ui.py
 
 # Build the custom frontend container
-podman build -t my-custom-chatbot:latest .
+podman build -t my-custom-chatbot:latest app/
 
 # Run your custom recipe manually
 # First, start the model server
 podman run -d --name recipe-model-server \
-  -p 8080:8080 \
-  -v /var/lib/containers/ai-lab/models:/models:ro \
-  ghcr.io/containers/ai-lab-model-service:latest \
-  --model /models/mistral-7b-instruct-q4_0.gguf
+  -p 8001:8001 \
+  -v /home/user/ai-lab/models/mistral-7b-instruct-q4_0.gguf:/models/mistral-7b-instruct-q4_0.gguf:ro \
+  -e MODEL_PATH=/models/mistral-7b-instruct-q4_0.gguf \
+  -e HOST=0.0.0.0 \
+  -e PORT=8001 \
+  quay.io/ai-lab/llamacpp_python:latest
 
 # Then start your custom frontend, connecting it to the model server
 podman run -d --name recipe-frontend \
   -p 8501:8501 \
-  -e MODEL_ENDPOINT=http://host.containers.internal:8080 \
+  -e MODEL_ENDPOINT=http://host.containers.internal:8001 \
   my-custom-chatbot:latest
 ```
 
@@ -181,18 +193,19 @@ podman run -d --name recipe-frontend \
 podman ps --format "{{.Ports}}" | sort
 
 # Check if containers in the recipe are crashing
-podman ps -a --filter "label=ai-lab-recipe" \
+POD_NAME=$(podman pod ps -a --filter "label=ai-lab-recipe-id=chatbot" --format "{{.Name}}" | head -1)
+podman ps -a --filter "pod=$POD_NAME" \
   --format "table {{.Names}}\t{{.Status}}\t{{.ExitCode}}"
 
 # View detailed logs from a failing container
-podman logs --tail 50 $(podman ps -a --filter "label=ai-lab-recipe" --filter "status=exited" -q --latest)
+podman logs --tail 50 $(podman ps -a --filter "pod=$POD_NAME" --filter "status=exited" -q | head -1)
 
 # If the model server runs out of memory, use a smaller model
 # Stop the recipe and restart with a smaller quantized model
 
 # Clean up all recipe containers and start fresh
-podman stop $(podman ps --filter "label=ai-lab-recipe" -q) 2>/dev/null
-podman rm $(podman ps -a --filter "label=ai-lab-recipe" -q) 2>/dev/null
+podman pod stop $(podman pod ps --filter "label=ai-lab-recipe-id" -q) 2>/dev/null
+podman pod rm $(podman pod ps -a --filter "label=ai-lab-recipe-id" -q) 2>/dev/null
 ```
 
 ## Summary
