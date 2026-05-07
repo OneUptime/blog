@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Reserved Instances, Cost Optimization, Infrastructure as Code
 
-Description: Learn how to purchase and manage AWS Reserved Instances with OpenTofu for RDS, ElastiCache, and other services to reduce costs with 1 or 3-year commitments.
+Description: Learn how to purchase and manage AWS Reserved Instances with OpenTofu for RDS, ElastiCache, and related AWS reservation controls to reduce costs with 1 or 3-year commitments.
 
-Reserved Instances (RIs) provide discounts up to 75% compared to On-Demand pricing for RDS, ElastiCache, Redshift, and OpenSearch in exchange for usage commitments. EC2 compute is better served by Savings Plans, but database services still use RIs.
+Reserved Instances (RIs) and reserved nodes provide discounted pricing for services like RDS, ElastiCache, Redshift, and Amazon OpenSearch Service in exchange for one- or three-year commitments. AWS also offers Savings Plans, including Database Savings Plans for several managed data services, but RDS and ElastiCache still have service-specific RI purchase flows you can manage with OpenTofu.
 
 ## RDS Reserved Instances
 
@@ -24,7 +24,7 @@ resource "aws_db_instance" "main" {
 # Purchase a reserved instance for the RDS class
 
 resource "aws_rds_reserved_instance" "main" {
-  reserved_instance_id     = "production-rds-ri"
+  reservation_id           = "production-rds-ri"
   offering_id              = data.aws_rds_reserved_instance_offering.main.offering_id
   instance_count           = 1
 
@@ -46,16 +46,16 @@ data "aws_rds_reserved_instance_offering" "main" {
 
 ```hcl
 data "aws_elasticache_reserved_cache_node_offering" "redis" {
-  cache_node_type   = "cache.r7g.large"
-  duration          = "1yr"
-  offering_type     = "No Upfront"
+  cache_node_type     = "cache.r7g.large"
+  duration            = "P1Y"
+  offering_type       = "No Upfront"
   product_description = "redis"
 }
 
 resource "aws_elasticache_reserved_cache_node" "redis" {
-  reserved_cache_node_id     = "production-redis-ri"
   reserved_cache_nodes_offering_id = data.aws_elasticache_reserved_cache_node_offering.redis.offering_id
-  cache_node_count           = 2  # 1 primary + 1 replica
+  id                               = "production-redis-ri"
+  cache_node_count                 = 2  # 1 primary + 1 replica
 
   tags = {
     Purpose = "Production Redis cost reduction"
@@ -76,24 +76,9 @@ resource "aws_opensearch_domain" "main" {
   }
   # ... other settings ...
 }
-
-# Purchase reserved instances for OpenSearch
-resource "aws_opensearch_reserved_instance" "main" {
-  reserved_instance_id = "production-opensearch-ri"
-  offering_id          = data.aws_opensearch_reserved_instance_offering.main.offering_id
-  instance_count       = 3
-
-  tags = {
-    Purpose = "Production OpenSearch cost reduction"
-  }
-}
-
-data "aws_opensearch_reserved_instance_offering" "main" {
-  instance_type   = "r6g.large.search"
-  duration        = 31536000
-  payment_option  = "NO_UPFRONT"
-}
 ```
+
+Amazon OpenSearch Service supports Reserved Instances, but the AWS provider for OpenTofu documents `aws_opensearch_domain` for domain management and does not expose `aws_opensearch_reserved_instance` purchase resources. Purchase OpenSearch RIs separately with the AWS console, AWS CLI, or an SDK.
 
 ## Capacity Reservations for EC2 (Guaranteed Capacity)
 
@@ -120,9 +105,22 @@ resource "aws_ec2_capacity_reservation" "app" {
 resource "aws_budgets_budget" "ri_utilization" {
   name         = "reserved-instance-utilization"
   budget_type  = "RI_UTILIZATION"
-  limit_amount = "100"
+  limit_amount = "100.0"
   limit_unit   = "PERCENTAGE"
   time_unit    = "MONTHLY"
+
+  cost_types {
+    include_credit             = false
+    include_discount           = false
+    include_other_subscription = false
+    include_recurring          = false
+    include_refund             = false
+    include_subscription       = true
+    include_support            = false
+    include_tax                = false
+    include_upfront            = false
+    use_blended                = false
+  }
 
   cost_filter {
     name   = "Service"
@@ -141,4 +139,4 @@ resource "aws_budgets_budget" "ri_utilization" {
 
 ## Conclusion
 
-AWS Reserved Instances in OpenTofu give you cost-optimized database and search infrastructure. Use RIs for RDS, ElastiCache, and OpenSearch where Savings Plans don't apply, match the reserved instance class exactly to your running instances, and monitor utilization to ensure you're not paying for idle reservations. Set budget alerts to catch underutilization before it becomes a cost leak.
+AWS Reserved Instances in OpenTofu give you cost-optimized database infrastructure. Use the provider-backed RI resources for RDS and ElastiCache, treat EC2 Capacity Reservations as a separate capacity feature, and check each service's matching rules before you buy. RDS and ElastiCache reservations can be size-flexible within supported families, OpenSearch RIs are tied to the exact instance type, and AWS also offers Database Savings Plans for these services. Set budget alerts to catch underutilization before it becomes a cost leak.
