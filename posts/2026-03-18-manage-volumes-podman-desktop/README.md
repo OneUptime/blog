@@ -80,10 +80,10 @@ podman inspect my-postgres --format '{{.Mounts}}'
 For development workflows, bind mounts map a host directory directly into the container:
 
 ```bash
-# Mount your local source code into a Node.js container
+# Mount your local project into a Node.js container
 podman run -d \
   --name dev-server \
-  -v /Users/nawazdhandala/Projects/myapp/src:/app/src:Z \
+  -v /home/nawazdhandala/Projects/myapp:/app:Z \
   -p 3000:3000 \
   node:18-alpine sh -c "cd /app && npm start"
 ```
@@ -141,10 +141,10 @@ podman volume rm app-uploads
 # Remove all unused volumes
 podman volume prune -f
 
-# Force remove a volume even if referenced
+# Force remove a volume and any containers using it
 podman volume rm -f db-data
 
-# Remove all volumes
+# Remove all volumes that are not in use
 podman volume rm --all
 ```
 
