@@ -25,7 +25,7 @@ podman system connection list
 
 # The connection list shows configured remote machines
 # NAME        URI                                    IDENTITY
-# server1     ssh://user@server1:22/run/podman/podman.sock  ~/.ssh/id_rsa
+# server1     ssh://user@server1:22/run/user/1000/podman/podman.sock  ~/.ssh/id_ed25519
 ```
 
 ## Setting Up the Remote Server
@@ -91,17 +91,13 @@ podman --connection server1 info
 
 ## Connecting via Podman Desktop
 
-Podman Desktop can manage remote connections through its UI:
+Podman Desktop can manage remote connections from the Podman system connection list:
 
 1. Open Podman Desktop and go to **Settings**.
-2. Navigate to **Resources** or **Podman Connections**.
-3. Click **Add Connection** or **Create New**.
-4. Enter the SSH connection details:
-   - Host: `remote-server.example.com`
-   - User: `user`
-   - Port: `22`
-   - SSH Key: path to your private key
-5. Click **Connect** to establish the connection.
+2. Navigate to the Podman extension settings.
+3. Enable loading remote system connections over SSH.
+4. Make sure the remote connection appears in `podman system connection list`.
+5. Open the **Containers** or **Images** section to confirm the remote environment is visible.
 
 The remote machine's containers and images will appear in Podman Desktop.
 
@@ -211,8 +207,8 @@ ssh user@remote-server.example.com \
 ssh user@remote-server.example.com \
   "systemctl --user restart podman.socket"
 
-# Check for firewall issues
-ssh user@remote-server.example.com "ss -tlnp | grep podman"
+# Check that SSH can reach the remote host
+ssh -o BatchMode=yes user@remote-server.example.com "echo SSH OK"
 
 # Remove and re-add a broken connection
 podman system connection remove server1
