@@ -22,7 +22,7 @@ resource "azurerm_cdn_frontdoor_profile" "main" {
   name                = "afd-${var.app_name}-${var.environment}"
   resource_group_name = azurerm_resource_group.afd.name
 
-  # Standard_AzureFrontDoor or Premium_AzureFrontDoor (for WAF and Private Link)
+  # Standard_AzureFrontDoor or Premium_AzureFrontDoor (Premium is required for Private Link and managed WAF rule sets)
   sku_name = "Standard_AzureFrontDoor"
 
   tags = {
@@ -103,10 +103,13 @@ resource "azurerm_cdn_frontdoor_route" "app" {
   name                          = "route-app"
   cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.main.id
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.app.id
-  cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.primary.id]
+  cdn_frontdoor_origin_ids = [
+    azurerm_cdn_frontdoor_origin.primary.id,
+    azurerm_cdn_frontdoor_origin.secondary.id
+  ]
   cdn_frontdoor_rule_set_ids    = [azurerm_cdn_frontdoor_rule_set.main.id]
 
-  supported_protocols    = ["Https"]
+  supported_protocols    = ["Http", "Https"]
   https_redirect_enabled = true
   patterns_to_match      = ["/*"]
   forwarding_protocol    = "HttpsOnly"
@@ -128,7 +131,13 @@ resource "azurerm_cdn_frontdoor_rule_set" "main" {
 }
 
 resource "azurerm_cdn_frontdoor_rule" "add_cache_header" {
-  name                      = "add-cache-header"
+  depends_on = [
+    azurerm_cdn_frontdoor_origin_group.app,
+    azurerm_cdn_frontdoor_origin.primary,
+    azurerm_cdn_frontdoor_origin.secondary
+  ]
+
+  name                      = "addcacheheader"
   cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.main.id
   order                     = 1
 
