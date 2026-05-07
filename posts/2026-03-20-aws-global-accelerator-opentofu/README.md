@@ -8,7 +8,7 @@ Description: Learn how to create an AWS Global Accelerator with OpenTofu to impr
 
 ## Introduction
 
-AWS Global Accelerator provides two static Anycast IP addresses that route user traffic through the AWS global network to the nearest AWS Region, reducing latency by up to 60% compared to public internet routing. It's ideal for globally distributed applications, gaming, VoIP, and services requiring static IPs with automatic failover between regions.
+AWS Global Accelerator provides two static Anycast IP addresses that route user traffic onto the AWS global network at the edge location closest to the user and then to the optimal healthy regional endpoint, improving application performance by up to 60% compared to public internet routing. It's ideal for globally distributed applications, gaming, VoIP, and services requiring static IPs with automatic failover between regions.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ AWS Global Accelerator provides two static Anycast IP addresses that route user 
 ```hcl
 resource "aws_globalaccelerator_accelerator" "main" {
   name            = "${var.project_name}-accelerator"
-  ip_address_type = "IPV4"  # or "DUAL_STACK" for IPv4 + IPv6
+  ip_address_type = "IPV4"  # or "DUAL_STACK" if your endpoints and DNS records also support IPv6
   enabled         = true
 
   attributes {
@@ -37,7 +37,7 @@ resource "aws_globalaccelerator_accelerator" "main" {
 
 output "static_ips" {
   value       = aws_globalaccelerator_accelerator.main.ip_sets[0].ip_addresses
-  description = "Static Anycast IPs - point DNS to these"
+  description = "Static Anycast IPv4 addresses for A records"
 }
 ```
 
@@ -45,7 +45,7 @@ output "static_ips" {
 
 ```hcl
 resource "aws_globalaccelerator_listener" "https" {
-  accelerator_arn = aws_globalaccelerator_accelerator.main.id
+  accelerator_arn = aws_globalaccelerator_accelerator.main.arn
   protocol        = "TCP"
 
   port_range {
@@ -68,13 +68,11 @@ resource "aws_globalaccelerator_listener" "https" {
 # Primary region endpoint group (us-east-1)
 
 resource "aws_globalaccelerator_endpoint_group" "us_east_1" {
-  listener_arn                  = aws_globalaccelerator_listener.https.id
-  endpoint_group_region         = "us-east-1"
-  traffic_dial_percentage       = 100  # 100% in normal operation
-  health_check_path             = "/health"
-  health_check_protocol         = "HTTPS"
-  health_check_interval_seconds = 30
-  threshold_count               = 3  # Unhealthy after 3 failed checks
+  listener_arn            = aws_globalaccelerator_listener.https.arn
+  endpoint_group_region   = "us-east-1"
+  traffic_dial_percentage = 100  # 100% in normal operation
+
+  # For ALB endpoints, configure health checks on the load balancer target groups.
 
   endpoint_configuration {
     endpoint_id                    = var.us_east_1_alb_arn
@@ -85,13 +83,9 @@ resource "aws_globalaccelerator_endpoint_group" "us_east_1" {
 
 # Secondary region endpoint group (eu-west-1) for geographic proximity
 resource "aws_globalaccelerator_endpoint_group" "eu_west_1" {
-  listener_arn                  = aws_globalaccelerator_listener.https.id
-  endpoint_group_region         = "eu-west-1"
-  traffic_dial_percentage       = 100
-  health_check_path             = "/health"
-  health_check_protocol         = "HTTPS"
-  health_check_interval_seconds = 30
-  threshold_count               = 3
+  listener_arn            = aws_globalaccelerator_listener.https.arn
+  endpoint_group_region   = "eu-west-1"
+  traffic_dial_percentage = 100
 
   endpoint_configuration {
     endpoint_id                    = var.eu_west_1_alb_arn
@@ -110,7 +104,7 @@ resource "aws_route53_record" "accelerator" {
   type    = "A"
 
   # Point to Global Accelerator static IPs directly
-  # (Not an alias - Global Accelerator provides real IPs)
+  # Add a matching AAAA record if you use DUAL_STACK
   records = aws_globalaccelerator_accelerator.main.ip_sets[0].ip_addresses
   ttl     = 60
 }
@@ -123,10 +117,10 @@ tofu init
 tofu plan
 tofu apply
 
-# Test which region traffic routes to
-curl -v https://api.example.com 2>&1 | grep -i "x-amzn-trace-id"
+# Test the endpoint through Global Accelerator
+curl -I https://api.example.com
 ```
 
 ## Conclusion
 
-Global Accelerator delivers the most benefit for users geographically distant from your primary AWS region-the AWS private backbone significantly outperforms public internet routing across continents. Configure `traffic_dial_percentage = 0` on secondary regions during normal operation and use it for emergency failover, or use percentage-based routing for active-active multi-region deployments. The static IPs simplify firewall allowlisting compared to ALB DNS names that can change over time.
+Global Accelerator delivers the most benefit for users geographically distant from your primary AWS region-the AWS private backbone significantly outperforms public internet routing across continents. Configure `traffic_dial_percentage = 0` on secondary regions during normal operation if you want them idle for normal traffic while still available for failover, or use percentage-based routing for active-active multi-region deployments. The static IPs simplify firewall allowlisting compared to ALB DNS names that can change over time.
