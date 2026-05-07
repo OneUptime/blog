@@ -8,63 +8,75 @@ Description: Analyze TCP retransmission patterns to distinguish between fast ret
 
 ## Introduction
 
-Not all TCP retransmissions are equal. Fast retransmits (triggered by 3 dup ACKs) represent mild loss quickly recovered. Spurious retransmits occur when packets arrive out of order and the sender re-sends unnecessarily. Timeout retransmits indicate severe packet loss or congestion. Distinguishing these patterns tells you how serious the problem is and where to look.
+Not all TCP retransmissions are equal. Fast retransmits (classically triggered after 3 duplicate ACKs) represent mild loss quickly recovered. Spurious retransmits happen when the sender infers loss incorrectly, often because packets arrived out of order. Timeout retransmits indicate more serious loss recovery driven by the retransmission timer. Distinguishing these patterns tells you how serious the problem is and where to look.
 
 ## Types of TCP Retransmissions
 
 | Type | Trigger | Severity | CWND Action |
 |---|---|---|---|
-| Fast Retransmit | 3 duplicate ACKs | Mild | CWND ÷ 2 |
-| SACK Retransmit | SACK blocks show gaps | Mild | CWND ÷ 2 |
-| Spurious Retransmit | Reordering, not loss | False positive | CWND restored |
+| Fast Retransmit | 3 duplicate ACKs | Mild | Enter recovery; sending window reduced |
+| SACK Retransmit | SACK blocks show missing data | Mild | Window reduced during recovery |
+| Spurious Retransmit | Reordering or another false loss signal | False positive | May be undone if detected |
 | Timeout Retransmit | RTO expires | Severe | CWND = 1 MSS |
 
-## Counting Each Type in Kernel
+## Counting Retransmission Signals in Kernel
 
 ```bash
 # Get all retransmission-related counters
 
-nstat -a | grep -iE "retrans|timeout|spurious|sack" | grep -v "^#"
+nstat -az | grep -iE "retrans|timeout|spurious|sack" | grep -v "^#"
 
 # Key counters:
 # TcpRetransSegs: Total retransmitted segments (all types)
-# TcpExtTCPFastRetrans: Fast retransmissions (3 dup ACKs)
-# TcpExtTCPSlowStartRetrans: Timeout retransmissions (most severe)
-# TcpExtTCPSpuriousRtxHostQueues: Spurious retransmits detected
-# TcpExtTCPSackFailures: SACK retransmit failures
+# TcpExtTCPFastRetrans: Retransmitted segments sent outside the Loss state
+# TcpExtTCPSlowStartRetrans: Retransmitted segments sent in the Loss state
+# TcpExtTCPTimeouts: RTO expirations
+# TcpExtTCPSackRecovery: Times TCP entered SACK-based recovery
+# TcpExtTCPSpuriousRTOs: Spurious RTOs detected by F-RTO
+# TcpExtTCPSpuriousRtxHostQueues: Retransmits avoided because data was still queued locally
 
-# Calculate what percentage are severe (timeout) vs mild (fast)
-FAST=$(nstat -z 2>/dev/null | awk '/TcpExtTCPFastRetrans/{print $2+0}')
-SLOW=$(nstat -z 2>/dev/null | awk '/TcpExtTCPSlowStartRetrans/{print $2+0}')
-TOTAL=$(nstat -z 2>/dev/null | awk '/TcpRetransSegs/{print $2+0}')
-echo "Fast retransmits: $FAST"
-echo "Timeout retransmits: $SLOW"
-echo "Total: $TOTAL"
+# Compare fast retransmits, loss-state retransmits, and RTO expirations
+nstat -asz TcpExtTCPFastRetrans TcpExtTCPSlowStartRetrans TcpExtTCPTimeouts TcpRetransSegs 2>/dev/null | awk '
+/TcpExtTCPFastRetrans/ {fast=$2}
+/TcpExtTCPSlowStartRetrans/ {loss=$2}
+/TcpExtTCPTimeouts/ {rtos=$2}
+/TcpRetransSegs/ {total=$2}
+END {
+    print "Fast retransmits:", fast+0
+    print "Loss-state retransmits:", loss+0
+    print "RTO expirations:", rtos+0
+    print "Total retransmitted segments:", total+0
+}'
 ```
 
 ## Monitoring Retransmission Rate
 
 ```bash
 #!/bin/bash
-# Track retransmission rate over time
+# Track retransmission rate over time using absolute counters
 
-PREV_RETRANS=0
-PREV_SEGS=0
+get_counters() {
+    nstat -asz TcpRetransSegs TcpExtTCPOrigDataSent 2>/dev/null | awk '
+    /TcpRetransSegs/ {retrans=$2}
+    /TcpExtTCPOrigDataSent/ {orig=$2}
+    END {print retrans+0, orig+0}'
+}
+
+read PREV_RETRANS PREV_ORIG < <(get_counters)
 
 while true; do
-    RETRANS=$(nstat -z 2>/dev/null | awk '/TcpRetransSegs/{print $2+0}')
-    SEGS=$(nstat -z 2>/dev/null | awk '/TcpOutSegs/{print $2+0}')
+    read RETRANS ORIG < <(get_counters)
 
     DELTA_RETRANS=$((RETRANS - PREV_RETRANS))
-    DELTA_SEGS=$((SEGS - PREV_SEGS))
+    DELTA_ORIG=$((ORIG - PREV_ORIG))
 
-    if [ $DELTA_SEGS -gt 0 ]; then
-        RATE=$(echo "scale=2; $DELTA_RETRANS * 100 / $DELTA_SEGS" | bc)
-        echo "$(date +%H:%M:%S) Retransmit rate: $RATE% ($DELTA_RETRANS/$DELTA_SEGS)"
+    if [ "$DELTA_ORIG" -gt 0 ]; then
+        RATE=$(awk -v r="$DELTA_RETRANS" -v s="$DELTA_ORIG" 'BEGIN {printf "%.2f", (r * 100) / s}')
+        echo "$(date +%H:%M:%S) Retransmit rate: $RATE% ($DELTA_RETRANS/$DELTA_ORIG original data segments)"
     fi
 
     PREV_RETRANS=$RETRANS
-    PREV_SEGS=$SEGS
+    PREV_ORIG=$ORIG
     sleep 5
 done
 ```
@@ -74,14 +86,17 @@ done
 ```text
 # In Wireshark:
 
-# All retransmissions (any type)
+# Standard retransmissions
 tcp.analysis.retransmission
 
-# Fast retransmits (triggered by dup ACKs - mild)
+# Suspected fast retransmits
 tcp.analysis.fast_retransmission
 
-# Spurious retransmissions (send-then-receive-before-RTO)
+# Suspected spurious retransmissions (data was already ACKed)
 tcp.analysis.spurious_retransmission
+
+# All retransmission-related categories
+tcp.analysis.retransmission or tcp.analysis.fast_retransmission or tcp.analysis.spurious_retransmission
 
 # View retransmit statistics:
 # Statistics → TCP Stream Graphs → Time-Sequence (Stevens)
@@ -94,17 +109,17 @@ tcp.analysis.spurious_retransmission
 ## Interpreting Patterns
 
 ```bash
-# Pattern 1: Mostly fast retransmits (< 1% of segments)
+# Pattern 1: Mostly fast retransmits (< 1% of original data segments)
 # → Normal behavior, occasional loss with quick recovery
 # → No action needed if throughput is acceptable
 
-# Pattern 2: Mostly timeout retransmits
+# Pattern 2: Many loss-state retransmits and rising RTO expirations
 # → Severe congestion or unreliable link
 # → Investigate: check interface errors, reduce traffic, check routing
 
 # Pattern 3: Many spurious retransmits
-# → High packet reordering (ECMP, satellite, wireless)
-# → Fix: increase tcp_reordering tolerance
+# → Often packet reordering (ECMP, satellite, wireless)
+# → On Linux senders, consider increasing tcp_reordering tolerance
 sysctl -w net.ipv4.tcp_reordering=6
 
 # Pattern 4: Periodic retransmit spikes
@@ -114,4 +129,4 @@ sysctl -w net.ipv4.tcp_reordering=6
 
 ## Conclusion
 
-TCP retransmission analysis is most useful when you classify by type rather than counting all retransmissions together. A 1% fast retransmit rate is acceptable; any timeout retransmissions are concerning. High spurious retransmit rates indicate reordering, not true loss - increasing `tcp_reordering` tolerance prevents unnecessary CWND reductions. Monitor continuously with the rate script to detect when retransmissions start increasing.
+TCP retransmission analysis is most useful when you classify by type rather than counting all retransmissions together. A low fast retransmit rate can be normal; persistent loss-state retransmits or rising RTO counts are more concerning. High spurious retransmit rates often indicate reordering rather than true loss - increasing `tcp_reordering` on a Linux sender can reduce unnecessary recovery. Monitor continuously with the rate script to detect when retransmissions start increasing.
