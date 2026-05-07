@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, IPv6, Egress-Only Internet Gateway, VPC, Security, Private Subnet
 
-Description: Configure an AWS Egress-Only Internet Gateway (EIGW) to allow private subnet instances to initiate outbound IPv6 connections while blocking all inbound IPv6 traffic.
+Description: Configure an AWS Egress-Only Internet Gateway (EIGW) to allow private subnet instances to initiate outbound IPv6 connections while blocking unsolicited inbound IPv6 connections from the internet.
 
 ## Introduction
 
@@ -19,8 +19,8 @@ Private Subnet Instance (2600:1f14::100):
   - Mechanism: EIGW uses stateful tracking, allows only response traffic
 
 vs Internet Gateway (public subnets):
-  - Allows both inbound and outbound IPv6 connections
-  - External hosts CAN initiate connections
+  - Can allow both inbound and outbound IPv6 connections
+  - External hosts CAN initiate connections if routes and security controls allow it
 ```
 
 ## Create Egress-Only Internet Gateway
@@ -105,9 +105,9 @@ ping6 -c 3 2001:4860:4860::8888
 # Should succeed (outbound allowed)
 
 # Test that inbound is blocked
-# From an external host, try to connect to the private IPv6 address:
-# curl https://[2600:1f14::private-ip]/
-# Should fail (no inbound connections allowed)
+# From an external host, try to connect to the instance's IPv6 address:
+# curl https://[2600:1f14::instance-ipv6]/
+# Should fail (EIGW blocks internet-initiated inbound connections)
 ```
 
 ## Security Group Considerations
