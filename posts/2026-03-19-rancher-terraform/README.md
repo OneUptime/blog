@@ -12,7 +12,7 @@ Terraform by HashiCorp is the industry standard for Infrastructure as Code (IaC)
 
 - Terraform 1.5 or later installed
 - AWS CLI configured with appropriate credentials
-- A domain name for Rancher (optional but recommended)
+- A DNS-resolvable hostname for Rancher (a domain name is recommended)
 - Basic familiarity with Terraform syntax
 
 ## Step 1: Set Up the Project Structure
@@ -37,10 +37,6 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
-    }
-    ssh = {
-      source  = "loafoe/ssh"
-      version = "~> 2.6"
     }
   }
 }
@@ -184,13 +180,19 @@ Create a script that runs on the instance to install K3s, Helm, and Rancher:
 
 ```hcl
 # provisioner.tf
-resource "null_resource" "install_rancher" {
+resource "terraform_data" "install_rancher" {
   depends_on = [aws_eip.rancher]
+
+  triggers_replace = [
+    aws_instance.rancher.id,
+    aws_eip.rancher.public_ip,
+    var.rancher_hostname,
+  ]
 
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file(var.ssh_private_key_path)
+    private_key = file(pathexpand(var.ssh_private_key_path))
     host        = aws_eip.rancher.public_ip
   }
 
@@ -200,23 +202,21 @@ resource "null_resource" "install_rancher" {
 
       # Install K3s
       "curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644",
-      "sleep 30",
       "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml",
+      "kubectl wait --for=condition=Ready node --all --timeout=300s",
 
       # Install Helm
-      "curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash",
+      "curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash",
 
       # Install cert-manager
-      "helm repo add jetstack https://charts.jetstack.io",
+      "helm repo add jetstack https://charts.jetstack.io --force-update",
       "helm repo update",
-      "helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --set crds.enabled=true",
-      "sleep 30",
+      "helm upgrade --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --set crds.enabled=true --wait --timeout 10m",
 
       # Install Rancher
-      "helm repo add rancher-stable https://releases.rancher.com/server-charts/stable",
+      "helm repo add rancher-stable https://releases.rancher.com/server-charts/stable --force-update",
       "helm repo update",
-      "kubectl create namespace cattle-system",
-      "helm install rancher rancher-stable/rancher --namespace cattle-system --set hostname=${var.rancher_hostname} --set bootstrapPassword=${var.rancher_bootstrap_password} --set replicas=1",
+      "helm upgrade --install rancher rancher-stable/rancher --namespace cattle-system --create-namespace --set hostname=${var.rancher_hostname} --set bootstrapPassword=${var.rancher_bootstrap_password} --set replicas=1 --wait --timeout 10m",
     ]
   }
 }
