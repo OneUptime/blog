@@ -129,15 +129,16 @@ podman run --rm \
 Create a `docker-compose.yml` for Rails with PostgreSQL and Redis:
 
 ```yaml
-version: "3.8"
 services:
   web:
     build: .
     command: bundle exec rails server -b 0.0.0.0
+    stdin_open: true
+    tty: true
     ports:
       - "3000:3000"
     volumes:
-      - .:/app:Z
+      - .:/app:z
       - gem-cache:/usr/local/bundle
     environment:
       DATABASE_URL: postgres://rails:rails@db:5432/rails_dev
@@ -167,7 +168,7 @@ services:
     build: .
     command: bundle exec sidekiq
     volumes:
-      - .:/app:Z
+      - .:/app:z
       - gem-cache:/usr/local/bundle
     environment:
       DATABASE_URL: postgres://rails:rails@db:5432/rails_dev
@@ -182,37 +183,39 @@ volumes:
   pgdata:
 ```
 
+Current Podman releases expose Compose as `podman compose`, which uses an external provider such as `podman-compose` or `docker-compose` under the hood.
+
 Start everything:
 
 ```bash
 # Start all services
-podman-compose up -d
+podman compose up -d
 
 # Set up the database
-podman-compose exec web rails db:create
-podman-compose exec web rails db:migrate
-podman-compose exec web rails db:seed
+podman compose exec web rails db:create
+podman compose exec web rails db:migrate
+podman compose exec web rails db:seed
 
 # Open a Rails console
-podman-compose exec web rails console
+podman compose exec web rails console
 
 # View logs
-podman-compose logs -f web
+podman compose logs -f web
 ```
 
 ## Rails with Live Reloading
 
-Rails automatically reloads code in development mode. However, file change detection across container mounts can be unreliable. Enable polling-based file watching in your Rails configuration:
+Rails automatically reloads code in development mode. However, file change detection across container mounts can be unreliable. Switch Rails to the non-evented file watcher in your Rails configuration:
 
 ```ruby
 # config/environments/development.rb
 Rails.application.configure do
-  # Use polling for file changes inside containers
+  # Use the non-evented file watcher inside containers
   config.file_watcher = ActiveSupport::FileUpdateChecker
 end
 ```
 
-This makes Rails poll for file changes instead of relying on filesystem events, which works reliably across mount boundaries.
+This makes Rails check watched paths instead of relying on filesystem events, which works more reliably across mount boundaries.
 
 ## Running the Rails Console
 
@@ -220,7 +223,7 @@ The Rails console is essential for debugging and data exploration:
 
 ```bash
 # Open a Rails console
-podman-compose exec web rails console
+podman compose exec web rails console
 
 # Or without compose
 podman run -it --rm \
@@ -235,16 +238,16 @@ podman run -it --rm \
 
 ```bash
 # Run the full test suite with Minitest
-podman-compose exec web rails test
+podman compose exec web rails test
 
 # Run RSpec tests
-podman-compose exec web bundle exec rspec
+podman compose exec web bundle exec rspec
 
 # Run a specific test file
-podman-compose exec web bundle exec rspec spec/models/user_spec.rb
+podman compose exec web bundle exec rspec spec/models/user_spec.rb
 
 # Run tests with verbose output
-podman-compose exec web bundle exec rspec --format documentation
+podman compose exec web bundle exec rspec --format documentation
 
 # Run tests in a standalone container
 podman run --rm \
@@ -253,18 +256,19 @@ podman run --rm \
   -w /app \
   -e RAILS_ENV=test \
   ruby-dev \
-  bash -c "rails db:test:prepare && bundle exec rspec"
+  bash -c "bundle exec rails db:prepare && bundle exec rspec"
 ```
 
 ## Debugging Ruby in a Container
 
 ### Using Pry or IRB
 
-Add `pry` or `debug` to your Gemfile:
+Add the gems you plan to use to your Gemfile:
 
 ```ruby
 # Gemfile
 group :development, :test do
+  gem 'debug'
   gem 'pry'
   gem 'pry-byebug'
 end
@@ -277,16 +281,16 @@ Insert a breakpoint in your code:
 binding.pry
 ```
 
-Make sure your container runs with `-it` for interactive debugging. When using compose, attach to the container:
+Make sure your container runs with `-it` for interactive debugging. When using compose, keep `stdin_open: true` and `tty: true` on the service, then attach to the container:
 
 ```bash
 # Attach to the web container for interactive debugging
-podman attach $(podman-compose ps -q web)
+podman attach $(podman compose ps -q web)
 ```
 
 ### Using the Ruby Debug Gem
 
-Ruby 3.1+ includes the `debug` gem. For remote debugging:
+Ruby 3.1+ ships the `debug` gem as a bundled gem, and adding it to your `Gemfile` keeps it available under Bundler. For remote debugging:
 
 ```bash
 podman run -it --rm \
@@ -308,19 +312,19 @@ Common Rails commands through Podman:
 
 ```bash
 # Generate a model
-podman-compose exec web rails generate model User name:string email:string
+podman compose exec web rails generate model User name:string email:string
 
 # Run migrations
-podman-compose exec web rails db:migrate
+podman compose exec web rails db:migrate
 
 # Generate a controller
-podman-compose exec web rails generate controller Api::Users index show
+podman compose exec web rails generate controller Api::Users index show
 
 # Run a rake task
-podman-compose exec web rails assets:precompile
+podman compose exec web rails assets:precompile
 
 # Check routes
-podman-compose exec web rails routes
+podman compose exec web rails routes
 ```
 
 ## Testing Against Multiple Ruby Versions
@@ -391,4 +395,4 @@ podman run --rm -p 3000:3000 -e RAILS_ENV=production -e SECRET_KEY_BASE=abc123 m
 
 ## Conclusion
 
-Podman provides a clean foundation for Ruby and Rails development. The essential patterns are: cache gems in a named volume mapped to `/usr/local/bundle`, use `podman-compose` for the full stack (app, database, Redis, background workers), and enable polling-based file watching for reliable code reloading across mount boundaries. Once set up, the experience is nearly identical to developing directly on the host, but with the guarantee that every developer and every CI run uses exactly the same environment.
+Podman provides a clean foundation for Ruby and Rails development. The essential patterns are: cache gems in a named volume mapped to `/usr/local/bundle`, use `podman compose` for the full stack (app, database, Redis, background workers), and switch Rails to the non-evented file watcher when filesystem events are unreliable across container mounts. Once set up, the experience is nearly identical to developing directly on the host, but with the guarantee that every developer and every CI run uses exactly the same environment.
