@@ -60,7 +60,7 @@ podman run --rm -it \
   -e DISPLAY=$DISPLAY \
   -e XAUTHORITY=/tmp/.Xauthority \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
-  -v $XAUTHORITY:/tmp/.Xauthority:ro \
+  -v ${XAUTHORITY:-$HOME/.Xauthority}:/tmp/.Xauthority:ro \
   fedora:latest \
   bash -c '
     dnf install -y xclock
@@ -153,6 +153,7 @@ podman run --rm -it \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --device /dev/dri \
+  --group-add keep-groups \
   fedora:latest \
   bash -c '
     dnf install -y glx-utils mesa-dri-drivers
@@ -170,7 +171,7 @@ For NVIDIA GPUs, use the NVIDIA Container Toolkit with Podman:
 sudo dnf install -y nvidia-container-toolkit
 
 # Configure Podman for NVIDIA
-sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+sudo nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml
 
 # Run with GPU access
 podman run --rm -it \
@@ -178,7 +179,7 @@ podman run --rm -it \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --device nvidia.com/gpu=all \
   --security-opt=label=disable \
-  nvidia/cuda:12.0-base \
+  ubuntu:24.04 \
   bash -c '
     nvidia-smi
   '
@@ -192,6 +193,7 @@ podman run --rm -it \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --device /dev/dri \
   --device /dev/kfd \
+  --group-add keep-groups \
   fedora:latest \
   bash -c '
     dnf install -y mesa-dri-drivers glx-utils
@@ -209,6 +211,7 @@ Share PulseAudio for sound inside containers:
 podman run --rm -it \
   -e DISPLAY=$DISPLAY \
   -e PULSE_SERVER=unix:/tmp/pulse/native \
+  -e PULSE_COOKIE=/tmp/pulse/cookie \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   -v $XDG_RUNTIME_DIR/pulse/native:/tmp/pulse/native:ro \
   -v ~/.config/pulse/cookie:/tmp/pulse/cookie:ro \
@@ -268,6 +271,7 @@ podman run --rm \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --device /dev/dri \
+  --group-add keep-groups \
   -v firefox-profile:/home/firefox/.mozilla:Z \
   --shm-size=2g \
   firefox-container
@@ -298,6 +302,7 @@ podman run --rm \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --device /dev/dri \
+  --group-add keep-groups \
   -v vscode-config:/home/developer/.config/Code:Z \
   -v $(pwd):/home/developer/workspace:Z \
   --shm-size=2g \
@@ -326,6 +331,7 @@ podman run --rm \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix:ro \
   --device /dev/dri \
+  --group-add keep-groups \
   -v ~/Pictures:/home/artist/Pictures:Z \
   gimp-container
 ```
@@ -353,7 +359,7 @@ Create `.desktop` files to launch containerized apps like native applications:
 [Desktop Entry]
 Name=Firefox (Container)
 Comment=Firefox running in a Podman container
-Exec=bash -c 'podman run --rm -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix:ro --device /dev/dri -v firefox-profile:/home/firefox/.mozilla:Z --shm-size=2g firefox-container'
+Exec=bash -c "podman run --rm -e DISPLAY=\\$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix:ro --device /dev/dri --group-add keep-groups -v firefox-profile:/home/firefox/.mozilla:Z --shm-size=2g firefox-container"
 Icon=firefox
 Type=Application
 Categories=Network;WebBrowser;
