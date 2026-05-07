@@ -48,7 +48,7 @@ data "azurerm_subscription" "current" {}
 resource "azurerm_role_assignment" "reader_user" {
   scope                = data.azurerm_subscription.current.id
   role_definition_name = "Reader"
-  # Use the user's object ID from Azure AD
+  # Use the user's object ID from Microsoft Entra ID
   principal_id         = var.user_object_id
 }
 
@@ -85,10 +85,11 @@ resource "azurerm_role_assignment" "storage_blob_access" {
   principal_id         = azurerm_user_assigned_identity.app_identity.principal_id
 }
 
-# Grant Key Vault secrets access
+# Grant Key Vault secrets access on an RBAC-enabled Key Vault
 resource "azurerm_role_assignment" "keyvault_access" {
   scope                = azurerm_key_vault.app_kv.id
   role_definition_name = "Key Vault Secrets User"
+  # Requires azurerm_key_vault.app_kv.enable_rbac_authorization = true
   principal_id         = azurerm_user_assigned_identity.app_identity.principal_id
 }
 ```
@@ -99,14 +100,14 @@ For consistency and to avoid issues with display name changes, use role definiti
 
 ```hcl
 # roles_by_id.tf
-# Look up a built-in role by name to get its ID
+# Look up a built-in role by name to get its scoped resource ID
 data "azurerm_role_definition" "storage_contributor" {
   name = "Storage Account Contributor"
 }
 
 resource "azurerm_role_assignment" "storage_contrib_assignment" {
   scope              = azurerm_storage_account.app_storage.id
-  role_definition_id = data.azurerm_role_definition.storage_contributor.role_definition_resource_id
+  role_definition_id = data.azurerm_role_definition.storage_contributor.id
   principal_id       = var.service_principal_object_id
 }
 ```
@@ -116,17 +117,17 @@ resource "azurerm_role_assignment" "storage_contrib_assignment" {
 ```hcl
 # variables.tf
 variable "user_object_id" {
-  description = "Azure AD Object ID of the user to grant Reader access"
+  description = "Microsoft Entra ID object ID of the user to grant Reader access"
   type        = string
 }
 
 variable "dev_group_object_id" {
-  description = "Azure AD Object ID of the developer group"
+  description = "Microsoft Entra ID object ID of the developer group"
   type        = string
 }
 
 variable "service_principal_object_id" {
-  description = "Object ID of the service principal"
+  description = "Microsoft Entra ID object ID of the service principal"
   type        = string
 }
 
@@ -161,5 +162,5 @@ resource "azurerm_role_assignment" "app_assignments" {
 
 - Always assign roles at the narrowest scope possible - prefer resource group or resource scope over subscription scope.
 - Avoid assigning `Owner` - prefer `Contributor` plus specific data-plane roles.
-- Use Azure AD groups for user role assignments rather than assigning roles directly to individuals.
-- Regularly audit assignments using `tofu plan` to catch drift from manually added roles.
+- Use Microsoft Entra ID groups for user role assignments rather than assigning roles directly to individuals.
+- Regularly audit managed role assignments using `tofu plan` to catch drift from out-of-band changes.
