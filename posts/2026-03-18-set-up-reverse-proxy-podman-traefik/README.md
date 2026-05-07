@@ -20,7 +20,7 @@ This guide covers how to set up Traefik as a reverse proxy in a Podman environme
 
 You will need:
 
-- Podman 4.0 or later
+- Podman 4.0 or later for the manual setup, or Podman 4.6 or later if you want to use Quadlet for the systemd section
 - A Linux system with systemd support
 - Basic understanding of container networking and HTTP routing
 
@@ -34,7 +34,7 @@ podman --version
 
 Traefik uses a concept of providers to discover services. The most common providers are:
 
-- **Docker/Podman provider**: Reads container labels to configure routes
+- **Docker provider**: Reads container labels through a Docker-compatible API, such as the Podman socket
 - **File provider**: Reads routing rules from YAML or TOML files
 - **HTTP provider**: Fetches configuration from an HTTP endpoint
 
@@ -133,14 +133,14 @@ podman run -d \
 podman run -d \
   --name traefik \
   --network traefik-net \
-  -p 80:80 \
+  -p 8081:80 \
   -p 8080:8080 \
   -v ~/traefik/config/traefik.yml:/etc/traefik/traefik.yml:ro,Z \
   -v ~/traefik/dynamic:/etc/traefik/dynamic:ro,Z \
   docker.io/library/traefik:v3.0
 ```
 
-Port 8080 exposes the Traefik dashboard, which provides a visual overview of all configured routers and services.
+Port 8081 exposes the web entrypoint in a way that works with rootless Podman. If you run Podman as root or configure the host to allow unprivileged low ports, you can publish `80:80` instead. Port 8080 exposes the Traefik dashboard, which provides a visual overview of all configured routers and services.
 
 ## Approach 2: Using the Podman Socket
 
@@ -205,10 +205,10 @@ podman run -d \
 podman run -d \
   --name traefik \
   --network traefik-net \
-  -p 80:80 \
+  -p 8081:80 \
   -p 8080:8080 \
   -v ~/traefik/config/traefik.yml:/etc/traefik/traefik.yml:ro,Z \
-  -v /run/user/$(id -u)/podman/podman.sock:/var/run/podman/podman.sock:Z \
+  -v /run/user/$(id -u)/podman/podman.sock:/var/run/podman/podman.sock \
   docker.io/library/traefik:v3.0
 ```
 
@@ -281,11 +281,13 @@ sudo sh -c 'echo "127.0.0.1 app1.example.com app2.example.com" >> /etc/hosts'
 Test routing:
 
 ```bash
-curl http://app1.example.com
-curl http://app2.example.com
+curl http://app1.example.com:8081
+curl http://app2.example.com:8081
 ```
 
-Access the Traefik dashboard at `http://localhost:8080` to see all configured routers, services, and middleware.
+If you published `80:80` instead, you can omit the port from the URLs.
+
+Access the Traefik dashboard at `http://localhost:8080/dashboard/` to see all configured routers, services, and middleware.
 
 ## Updating Configuration Dynamically
 
@@ -325,7 +327,7 @@ cat > ~/.config/containers/systemd/traefik.container << 'EOF'
 ContainerName=traefik
 Image=docker.io/library/traefik:v3.0
 Network=traefik-net
-PublishPort=80:80
+PublishPort=8081:80
 PublishPort=8080:8080
 Volume=%h/traefik/config/traefik.yml:/etc/traefik/traefik.yml:ro,Z
 Volume=%h/traefik/dynamic:/etc/traefik/dynamic:ro,Z
@@ -338,7 +340,7 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable traefik.service
+systemctl --user enable --now traefik.service
 loginctl enable-linger $USER
 ```
 
