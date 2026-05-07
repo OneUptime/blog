@@ -26,17 +26,14 @@ apache2ctl -M | grep remoteip
 ```apache
 # /etc/apache2/conf-available/remoteip.conf
 
-# Load mod_remoteip
-LoadModule remoteip_module modules/mod_remoteip.so
-
-# Define trusted proxy IPs (your load balancers, CDN IPs)
+# Define the header that carries the client IP
 RemoteIPHeader X-Forwarded-For
 
-# Trust specific proxy IPv4 addresses
+# Trust specific proxy IPv4 addresses or ranges
 RemoteIPTrustedProxy 192.168.1.1        # Internal load balancer
-RemoteIPTrustedProxy 10.0.0.0/8         # Internal network
+RemoteIPTrustedProxy 10.0.0.0/8         # Internal proxy network
 
-# Trust a specific CDN IP range (e.g., Cloudflare)
+# Example CDN IPv4 ranges; use your provider's full current published list
 RemoteIPTrustedProxy 103.21.244.0/22
 RemoteIPTrustedProxy 103.22.200.0/22
 ```
@@ -50,10 +47,10 @@ sudo systemctl reload apache2
 
 ## Using RemoteIPInternalProxy
 
-For proxies that don't add themselves to X-Forwarded-For:
+For proxies that should be allowed to pass internal/private client IPv4 addresses:
 
 ```apache
-# Internal proxies that are transparent (pass the header but don't add themselves)
+# Internal proxies whose forwarded client IPs may be private RFC1918 addresses
 RemoteIPInternalProxy 10.0.0.0/8
 RemoteIPInternalProxy 172.16.0.0/12
 RemoteIPInternalProxy 192.168.0.0/16
@@ -71,35 +68,38 @@ RemoteIPTrustedProxy 10.0.0.1  # Your load balancer
 
 ## Updating Access Log Format
 
-After enabling mod_remoteip, `%h` (hostname/IP) in log format automatically uses the real client IP:
+After enabling mod_remoteip, the standard combined format still works, and `%a` / `%{c}a` let you log both the rewritten client IP and the underlying proxy IP explicitly:
 
 ```apache
 # /etc/apache2/conf-available/remoteip.conf
 
-# Standard combined log format - %h now shows real client IP
-LogFormat "%h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined
+# Standard combined log format - %h reflects the rewritten client IP when HostnameLookups is Off
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
 
-# Extended format showing both real IP and proxy chain
-LogFormat "%a %{c}a %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined_extended
-# %a  = client IP (after mod_remoteip processing)
+# Extended format showing the client IP, connection IP, and trusted proxy list
+LogFormat "%a %{c}a %{remoteip-proxy-ip-list}n %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined_extended
+# %a = client IP after mod_remoteip processing
 # %{c}a = underlying connection IP (the proxy's IP)
+# %{remoteip-proxy-ip-list}n = intermediate trusted proxies processed by mod_remoteip
 ```
 
 ## Verifying mod_remoteip Is Working
 
 ```apache
-# Add a temporary debug header to verify
+# Add a temporary debug header to verify (requires mod_headers)
 <VirtualHost *:80>
     ServerName app.example.com
 
     # Echo the remote IP back in a response header (for debugging only)
-    Header always set X-Debug-Remote-Addr "%{REMOTE_ADDR}s"
-
-    ProxyPass / http://192.168.1.10:8080/
+    Header always set X-Debug-Remote-Addr "expr=%{REMOTE_ADDR}"
 </VirtualHost>
 ```
 
 ```bash
+# If mod_headers is not already enabled
+sudo a2enmod headers
+sudo systemctl reload apache2
+
 # Make a request through the proxy chain and check the header
 curl -v http://app.example.com/ 2>&1 | grep X-Debug-Remote-Addr
 
