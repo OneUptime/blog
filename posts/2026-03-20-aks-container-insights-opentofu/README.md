@@ -14,7 +14,7 @@ AKS Container Insights provides deep visibility into AKS cluster performance and
 
 - OpenTofu v1.6+
 - Azure credentials configured
-- A Log Analytics Workspace
+- An Azure resource group and subnet for AKS
 
 ## Step 1: Create Log Analytics Workspace
 
@@ -54,26 +54,31 @@ resource "azurerm_kubernetes_cluster" "monitored" {
   location            = var.location
   resource_group_name = var.resource_group_name
   dns_prefix          = var.project_name
-  kubernetes_version  = "1.28"
 
   default_node_pool {
-    name                = "system"
-    vm_size             = "Standard_D4s_v3"
-    node_count          = 3
-    min_count           = 3
-    max_count           = 10
-    enable_auto_scaling = true
-    vnet_subnet_id      = var.subnet_id
+    name                 = "system"
+    vm_size              = "Standard_D4s_v3"
+    node_count           = 3
+    min_count            = 3
+    max_count            = 10
+    auto_scaling_enabled = true
+    vnet_subnet_id       = var.subnet_id
   }
 
   identity {
     type = "SystemAssigned"
   }
 
-  # Enable Container Insights (OMS Agent)
+  # Enable Container Insights using the Azure Monitor add-on
   oms_agent {
     log_analytics_workspace_id      = azurerm_log_analytics_workspace.aks.id
     msi_auth_for_monitoring_enabled = true  # Use managed identity for auth
+  }
+
+  # Enable the managed Prometheus metrics profile on the cluster
+  monitor_metrics {
+    annotations_allowed = null
+    labels_allowed      = null
   }
 
   network_profile {
@@ -84,6 +89,47 @@ resource "azurerm_kubernetes_cluster" "monitored" {
   tags = {
     Name = "${var.project_name}-aks-monitored"
   }
+}
+
+# DCR required for Container Insights when managed identity auth is enabled
+resource "azurerm_monitor_data_collection_rule" "aks_logs" {
+  name                = "${var.project_name}-aks-logs-dcr"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+
+  destinations {
+    log_analytics {
+      workspace_resource_id = azurerm_log_analytics_workspace.aks.id
+      name                  = "ciworkspace"
+    }
+  }
+
+  data_flow {
+    streams      = ["Microsoft-ContainerInsights-Group-Default"]
+    destinations = ["ciworkspace"]
+  }
+
+  data_sources {
+    extension {
+      name           = "ContainerInsightsExtension"
+      extension_name = "ContainerInsights"
+      streams        = ["Microsoft-ContainerInsights-Group-Default"]
+      extension_json = jsonencode({
+        dataCollectionSettings = {
+          interval               = "1m"
+          namespaceFilteringMode = "Off"
+          namespaces             = []
+          enableContainerLogV2   = true
+        }
+      })
+    }
+  }
+}
+
+resource "azurerm_monitor_data_collection_rule_association" "aks_logs" {
+  name                    = "ContainerInsightsExtension"
+  target_resource_id      = azurerm_kubernetes_cluster.monitored.id
+  data_collection_rule_id = azurerm_monitor_data_collection_rule.aks_logs.id
 }
 ```
 
@@ -98,12 +144,21 @@ resource "azurerm_monitor_workspace" "prometheus" {
   location            = var.location
 }
 
-# Enable managed Prometheus scraping
-resource "azurerm_monitor_data_collection_rule" "aks_prometheus" {
-  name                = "${var.project_name}-aks-prometheus-dcr"
+# Data collection endpoint for managed Prometheus
+resource "azurerm_monitor_data_collection_endpoint" "aks_prometheus" {
+  name                = "${var.project_name}-aks-prometheus-dce"
   resource_group_name = var.resource_group_name
   location            = var.location
   kind                = "Linux"
+}
+
+# Enable managed Prometheus scraping
+resource "azurerm_monitor_data_collection_rule" "aks_prometheus" {
+  name                        = "${var.project_name}-aks-prometheus-dcr"
+  resource_group_name         = var.resource_group_name
+  location                    = var.location
+  data_collection_endpoint_id = azurerm_monitor_data_collection_endpoint.aks_prometheus.id
+  kind                        = "Linux"
 
   destinations {
     monitor_account {
@@ -144,11 +199,17 @@ resource "azurerm_monitor_metric_alert" "node_cpu" {
   severity            = 2
 
   criteria {
-    metric_namespace = "Insights.Container/nodes"
-    metric_name      = "cpuUsagePercentage"
+    metric_namespace = "Microsoft.ContainerService/managedClusters"
+    metric_name      = "node_cpu_usage_percentage"
     aggregation      = "Average"
     operator         = "GreaterThan"
     threshold        = 80
+
+    dimension {
+      name     = "node"
+      operator = "Include"
+      values   = ["*"]
+    }
   }
 
   action {
@@ -156,24 +217,31 @@ resource "azurerm_monitor_metric_alert" "node_cpu" {
   }
 }
 
-# Alert on pod OOM kills
-resource "azurerm_monitor_metric_alert" "pod_oom" {
+# Alert on pod OOM kills using managed Prometheus
+resource "azurerm_monitor_alert_prometheus_rule_group" "pod_oom" {
   name                = "${var.project_name}-pod-oom-kills"
+  location            = var.location
   resource_group_name = var.resource_group_name
-  scopes              = [azurerm_kubernetes_cluster.monitored.id]
+  scopes              = [azurerm_monitor_workspace.prometheus.id]
+  cluster_name        = azurerm_kubernetes_cluster.monitored.name
   description         = "Alert when pods are OOM killed"
-  severity            = 1
+  rule_group_enabled  = true
+  interval            = "PT1M"
 
-  criteria {
-    metric_namespace = "Insights.Container/pods"
-    metric_name      = "oomKilledContainerCount"
-    aggregation      = "Average"
-    operator         = "GreaterThan"
-    threshold        = 0
-  }
+  rule {
+    alert   = "KubeContainerOOMKilledCount"
+    enabled = true
+    expression = <<EOF
+sum by (container, namespace, cluster) (
+  kube_pod_container_status_terminated_reason{reason="OOMKilled", cluster="${azurerm_kubernetes_cluster.monitored.name}"}
+) > 0
+EOF
+    for      = "PT5M"
+    severity = 1
 
-  action {
-    action_group_id = var.action_group_id
+    action {
+      action_group_id = var.action_group_id
+    }
   }
 }
 ```
@@ -185,14 +253,16 @@ tofu init
 tofu plan
 tofu apply
 
+# Data can take about 10-15 minutes to appear after the cluster becomes ready
+
 # Query container logs in Log Analytics
 az monitor log-analytics query \
-  --workspace <workspace-id> \
-  --analytics-query "ContainerLog | where TimeGenerated > ago(1h) | take 10"
+  --workspace <workspace-guid> \
+  --analytics-query "ContainerLogV2 | where TimeGenerated > ago(1h) | take 10"
 
 # Check node performance
 az monitor log-analytics query \
-  --workspace <workspace-id> \
+  --workspace <workspace-guid> \
   --analytics-query "Perf | where ObjectName == 'K8SNode' | summarize avg(CounterValue) by Computer"
 
 # Live container logs in kubectl
@@ -201,4 +271,4 @@ kubectl logs -n production deployment/api-server -f
 
 ## Conclusion
 
-Enable `msi_auth_for_monitoring_enabled = true` to use managed identity for the OMS agent rather than workspace keys, simplifying secret management. Container Insights generates significant log volume in large clusters-use log filtering with the Data Collection Rule API to exclude verbose container logs from specific namespaces or containers. Enable Azure Managed Prometheus alongside Container Insights: Container Insights excels at cluster health and Kubernetes events, while Prometheus captures application-level custom metrics. Use Log Analytics workbooks (pre-built at `portal.azure.com`) for cluster overview dashboards without writing custom queries.
+Enable `msi_auth_for_monitoring_enabled = true` to use managed identity for the monitoring add-on rather than workspace keys, simplifying secret management. Container Insights generates significant log volume in large clusters, so use namespace filtering, ConfigMap annotations, or DCR transformations to reduce noisy log collection. Enable Azure Managed Prometheus alongside Container Insights: Container Insights excels at cluster health and Kubernetes events, while Prometheus captures application-level custom metrics. Use the prebuilt Container Insights workbooks in the Azure portal for cluster overview dashboards without writing custom queries.
