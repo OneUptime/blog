@@ -8,20 +8,19 @@ Description: Configure AWS Lambda functions to access IPv6 resources within VPCs
 
 ## Introduction
 
-AWS Lambda IPv6 Support enables serverless workloads to operate in IPv6 and dual-stack environments. The configuration varies by platform but involves enabling IPv6 on the underlying network, configuring function runtime environment, and validating IPv6 client connectivity.
+AWS Lambda IPv6 support covers two different paths: inbound IPv6 requests to Lambda function URLs, and outbound IPv6 connections from functions attached to dual-stack VPC subnets. To use outbound IPv6, Lambda must be connected to dual-stack subnets and configured to allow IPv6 traffic.
 
-## Step 1: Enable IPv6 on the Platform
+## Step 1: Enable IPv6 for Lambda
 
 ```bash
-# Platform-specific IPv6 enablement
+# Lambda function URLs are dual stack and support IPv4 and IPv6
+dig AAAA <url-id>.lambda-url.<region>.on.aws
 
-# Most serverless platforms use the underlying cloud provider's network
-
-# Check if the platform's public endpoint has IPv6
-dig AAAA your-function-url.example.com
-
-# For VPC-integrated functions, ensure VPC subnet has IPv6
-# (refer to platform documentation)
+# To make outbound IPv6 connections from Lambda, attach the function to a VPC
+# with dual-stack subnets and enable IPv6 in the function VPC configuration
+aws lambda update-function-configuration \
+  --function-name my-function \
+  --vpc-config SubnetIds=subnet-0123456789abcdef0,subnet-0fedcba9876543210,SecurityGroupIds=sg-0123456789abcdef0,Ipv6AllowedForDualStack=true
 ```
 
 ## Step 2: Handle IPv6 Client Addresses in Functions
@@ -31,12 +30,16 @@ dig AAAA your-function-url.example.com
 import ipaddress
 
 def handler(event, context):
-    # Extract client IP (varies by platform)
+    # Extract client IP from a Lambda function URL or API Gateway event
+    headers = event.get("headers", {})
     client_ip = (
         event.get("requestContext", {})
+             .get("http", {})
+             .get("sourceIp")
+        or event.get("requestContext", {})
              .get("identity", {})
              .get("sourceIp")
-        or event.get("headers", {}).get("X-Forwarded-For", "").split(",")[0].strip()
+        or headers.get("x-forwarded-for", headers.get("X-Forwarded-For", "")).split(",")[0].strip()
         or "unknown"
     )
 
@@ -61,7 +64,8 @@ def handler(event, context):
 import urllib.request
 
 def call_ipv6_endpoint():
-    """Make HTTP request to an IPv6 endpoint from serverless."""
+    """Make HTTP request to an IPv6 endpoint from Lambda."""
+    # Requires Lambda to be attached to dual-stack VPC subnets with IPv6 enabled
     # URL with bracketed IPv6 address
     url = "http://[2001:db8::1]/api/health"
 
@@ -71,7 +75,7 @@ def call_ipv6_endpoint():
     except Exception as e:
         return f"Error: {e}"
 
-# Or with requests library
+# Or with requests if you package it with your function or a Lambda layer
 import requests
 
 def call_ipv6_with_requests():
@@ -82,25 +86,27 @@ def call_ipv6_with_requests():
 ## Step 4: Test IPv6 Connectivity
 
 ```bash
-# Test that your serverless endpoint accepts IPv6
-curl -6 https://your-function-url.example.com/
+# Test that your Lambda function URL accepts IPv6
+curl -6 https://<url-id>.lambda-url.<region>.on.aws/
 
 # Test with explicit IPv6 address
-curl --resolve "your-function-url.example.com:443:2001:db8::1"     https://your-function-url.example.com/
+curl --resolve "<url-id>.lambda-url.<region>.on.aws:443:[2001:db8::1]" \
+  https://<url-id>.lambda-url.<region>.on.aws/
 
 # Check IPv6 DNS
-dig AAAA your-function-url.example.com
+dig AAAA <url-id>.lambda-url.<region>.on.aws
 ```
 
 ## Step 5: Environment Variable Configuration
 
 ```bash
 # Set environment variables for IPv6 endpoints
-# (Platform-specific - shown as generic examples)
 
-BACKEND_URL="http://[2001:db8::backend]/api"
+BACKEND_URL="http://[2001:db8::10]/api"
 DATABASE_HOST="2001:db8::db"
+```
 
+```python
 # In your function code
 import os
 backend_url = os.environ.get("BACKEND_URL", "http://[::1]/api")
@@ -131,4 +137,4 @@ def log_ipv6_metrics(client_ip: str):
 
 ## Conclusion
 
-AWS Lambda IPv6 Support works best when the underlying network has IPv6 enabled at the VPC/subnet level. Extract client IPv6 addresses from platform-specific request contexts, normalize IPv4-mapped addresses, and use bracket notation for IPv6 URLs in outbound requests. Monitor serverless function invocations from IPv6 clients with OneUptime to track adoption and error rates.
+AWS Lambda IPv6 support has two parts: Lambda function URLs are dual stack for inbound requests, and outbound IPv6 requires a VPC-attached function with dual-stack subnets and IPv6 enabled in the function VPC configuration. Extract client IPv6 addresses from the Lambda event context, normalize IPv4-mapped addresses, and use bracket notation for IPv6 URLs in outbound requests. Monitor Lambda invocations from IPv6 clients with OneUptime to track adoption and error rates.
