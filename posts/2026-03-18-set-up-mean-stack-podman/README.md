@@ -91,7 +91,6 @@ db.articles.createIndex({ createdAt: -1 });
 Create the Express.js backend application:
 
 ```json
-// api/package.json
 {
   "name": "mean-api",
   "version": "1.0.0",
@@ -252,7 +251,6 @@ CMD ["npx", "nodemon", "server.js"]
 Generate a new Angular application (or use an existing one). Here is a minimal setup:
 
 ```json
-// frontend/package.json
 {
   "name": "mean-frontend",
   "version": "1.0.0",
@@ -283,7 +281,6 @@ Generate a new Angular application (or use an existing one). Here is a minimal s
 Create a proxy configuration to forward API requests to the Express backend:
 
 ```json
-// frontend/proxy.conf.json
 {
   "/api": {
     "target": "http://localhost:3000",
@@ -400,7 +397,7 @@ podman build -t mean-api -f Containerfile.api .
 podman run -d \
   --pod mean-stack \
   --name mean-api \
-  -v ./api:/app:Z \
+  -v ./api/server.js:/app/server.js:Z \
   -e MONGO_URI="mongodb://admin:adminpass@localhost:27017/meanapp?authSource=admin" \
   mean-api
 
@@ -469,7 +466,7 @@ start() {
 
     podman build -t mean-api -f Containerfile.api . -q
     podman run -d --pod mean-stack --name mean-api \
-      -v ./api:/app:Z \
+      -v ./api/server.js:/app/server.js:Z \
       -e MONGO_URI="mongodb://admin:adminpass@localhost:27017/meanapp?authSource=admin" \
       mean-api
 
