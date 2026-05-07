@@ -60,7 +60,7 @@ resource "azurerm_storage_account" "storage" {
 # Create individual queues for different workloads
 resource "azurerm_storage_queue" "order_queue" {
   name                 = "order-processing"
-  storage_account_name = azurerm_storage_account.storage.name
+  storage_account_id   = azurerm_storage_account.storage.id
 
   # Set metadata for queue identification
   metadata = {
@@ -71,7 +71,7 @@ resource "azurerm_storage_queue" "order_queue" {
 
 resource "azurerm_storage_queue" "notification_queue" {
   name                 = "notifications"
-  storage_account_name = azurerm_storage_account.storage.name
+  storage_account_id   = azurerm_storage_account.storage.id
 
   metadata = {
     purpose = "email-notifications"
@@ -80,7 +80,7 @@ resource "azurerm_storage_queue" "notification_queue" {
 
 resource "azurerm_storage_queue" "dead_letter_queue" {
   name                 = "order-processing-dlq"
-  storage_account_name = azurerm_storage_account.storage.name
+  storage_account_id   = azurerm_storage_account.storage.id
 
   metadata = {
     purpose = "dead-letter-queue-for-orders"
@@ -105,7 +105,7 @@ resource "azurerm_storage_queue" "queues" {
   for_each = local.queues
 
   name                 = each.key
-  storage_account_name = azurerm_storage_account.storage.name
+  storage_account_id   = azurerm_storage_account.storage.id
 
   metadata = {
     purpose = each.value.purpose
@@ -126,7 +126,7 @@ resource "azurerm_role_assignment" "queue_contributor" {
 # Grant a separate consumer service read-only message access
 resource "azurerm_role_assignment" "queue_reader" {
   scope                = azurerm_storage_account.storage.id
-  role_definition_name = "Storage Queue Data Message Processor"
+  role_definition_name = "Storage Queue Data Reader"
   principal_id         = var.consumer_service_principal_id
 }
 ```
