@@ -12,15 +12,15 @@ Apache's access logs are your primary source for security auditing, traffic anal
 
 ## Default Log Formats
 
-Apache ships with two built-in formats:
+Apache documentation commonly uses two standard access log formats:
 
 ```apache
 # combined: includes referer and user agent
 
-LogFormat "%h %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\"" combined
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
 
 # common: basic format
-LogFormat "%h %l %u %t \"%r\" %>s %O" common
+LogFormat "%h %l %u %t \"%r\" %>s %b" common
 
 # %h = hostname or IP of the remote client
 # %l = ident (usually -)
@@ -28,48 +28,49 @@ LogFormat "%h %l %u %t \"%r\" %>s %O" common
 # %t = time of request
 # %r = first line of request
 # %>s = final status code
-# %O = bytes sent
+# %b = response size in bytes, excluding HTTP headers
 ```
 
 ## Enabling IP Logging (Not Hostname Resolution)
 
-Disable hostname lookups to log raw IPv4 addresses (faster):
+Disable hostname lookups so `%h` logs client IP addresses instead of reverse-DNS hostnames (faster):
 
 ```apache
 # /etc/apache2/apache2.conf or httpd.conf
 
-# Disable reverse DNS lookups - log IP addresses directly
+# Disable reverse DNS lookups so %h logs IP addresses directly
 HostnameLookups Off
 ```
 
 ## Custom Log Format with IPv4 Focus
 
 ```apache
-# /etc/apache2/conf-available/logging.conf
+# Put this in a loaded Apache config file
 
-# Detailed format: client IP, forwarded IPs, timing, upstream
-LogFormat "%a %{c}a %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Agent}i\" %D" detailed
+# Detailed format: client IP, connection IP, response size, timing
+LogFormat "%a %{c}a %l %u %t \"%r\" %>s %B \"%{Referer}i\" \"%{User-Agent}i\" %D" detailed
 # %a  = client IP (real IP after mod_remoteip processing)
 # %{c}a = underlying connection IP (load balancer IP)
+# %B  = response size in bytes, excluding HTTP headers
 # %D  = time to serve in microseconds
 
 # JSON format for log aggregation systems
-LogFormat "{ \"time\": \"%{%Y-%m-%dT%H:%M:%S}t\", \"client_ip\": \"%a\", \"connection_ip\": \"%{c}a\", \"method\": \"%m\", \"uri\": \"%U\", \"status\": %>s, \"bytes\": %O, \"duration_us\": %D }" json_access
+LogFormat "{ \"time\": \"%{%Y-%m-%dT%H:%M:%S}t\", \"client_ip\": \"%a\", \"connection_ip\": \"%{c}a\", \"method\": \"%m\", \"uri\": \"%U\", \"status\": %>s, \"bytes\": %B, \"duration_us\": %D }" json_access
 ```
 
 ## Logging Real Client IP Behind a Load Balancer
 
-Enable `mod_remoteip` to unwrap `X-Forwarded-For`:
+On Debian/Ubuntu, enable `mod_remoteip` to process `X-Forwarded-For`:
 
 ```bash
 sudo a2enmod remoteip
 ```
 
 ```apache
-# /etc/apache2/conf-available/remoteip.conf
+# Put this in a loaded Apache config file
 RemoteIPHeader X-Forwarded-For
-RemoteIPTrustedProxy 10.0.0.1    # Your load balancer
-RemoteIPTrustedProxy 10.0.0.2
+RemoteIPInternalProxy 10.0.0.1    # Your load balancer
+RemoteIPInternalProxy 10.0.0.2
 ```
 
 Now `%a` in log format shows the real client IPv4, while `%{c}a` shows the load balancer's IP.
