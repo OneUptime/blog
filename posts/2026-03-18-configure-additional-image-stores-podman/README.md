@@ -23,7 +23,7 @@ Additional image stores provide read-only access to shared images.
 
 podman info --format '{{.Store.GraphRoot}}'
 
-# Additional image stores are read-only overlay stores
+# Additional image stores are read-only container image stores
 # that Podman checks before pulling from a registry
 
 # How it works:
@@ -50,7 +50,9 @@ graphroot = "/shared/containers/storage"
 runroot = "/run/shared-containers"
 
 [storage.options.overlay]
-mountopt = "nodev,metacopy=on"
+mount_program = "/usr/bin/fuse-overlayfs"
+mountopt = "nodev"
+force_mask = "shared"
 EOF
 
 # Pull common base images into the shared store
@@ -58,9 +60,6 @@ sudo CONTAINERS_STORAGE_CONF=/tmp/shared-storage.conf podman pull alpine:latest
 sudo CONTAINERS_STORAGE_CONF=/tmp/shared-storage.conf podman pull nginx:latest
 sudo CONTAINERS_STORAGE_CONF=/tmp/shared-storage.conf podman pull python:3-slim
 sudo CONTAINERS_STORAGE_CONF=/tmp/shared-storage.conf podman pull node:lts-alpine
-
-# Set read-only permissions for the shared store
-sudo chmod -R 755 /shared/containers/storage
 
 # Clean up temporary config
 sudo rm /tmp/shared-storage.conf
@@ -90,12 +89,14 @@ additionalimagestores = [
 ]
 
 [storage.options.overlay]
-mountopt = "nodev,metacopy=on"
-ignore_chown_errors = "true"
+mountopt = "nodev"
 EOF
 
-# Reset storage to pick up the new configuration
-podman system reset --force
+# Start a new Podman command to pick up the new configuration
+# If you are changing the storage driver for initialized storage, follow the
+# podman system reset documentation before editing storage.conf.
+# Do not run podman system reset unless you intend to remove local containers,
+# images, volumes, and storage directories.
 
 # Verify the additional store is configured
 podman info --format json | python3 -c "
@@ -119,10 +120,10 @@ podman images
 # This should not trigger a download if the image is in the shared store
 podman run --rm alpine echo "Running from shared store"
 
-# Verify the image came from the additional store
+# Verify the image can be inspected from local storage
 podman image inspect alpine:latest --format '{{.Id}}' 2>/dev/null
 
-# Check that no local copy was created
+# Confirm the user's writable store stayed small
 du -sh ~/.local/share/containers/storage/ 2>/dev/null
 ```
 
@@ -145,8 +146,7 @@ additionalimagestores = [
 ]
 
 [storage.options.overlay]
-mountopt = "nodev,metacopy=on"
-ignore_chown_errors = "true"
+mountopt = "nodev"
 EOF
 
 # Podman checks stores in the listed order:
@@ -175,6 +175,11 @@ cat > "$STORAGE_CONF" << EOF
 driver = "overlay"
 graphroot = "/shared/containers/storage"
 runroot = "/run/shared-containers"
+
+[storage.options.overlay]
+mount_program = "/usr/bin/fuse-overlayfs"
+mountopt = "nodev"
+force_mask = "shared"
 EOF
 
 # Pull latest versions of base images
@@ -225,8 +230,8 @@ podman --log-level=debug info 2>&1 | grep -i "additional\|store" | head -10
 # Verify the configuration file syntax
 podman info > /dev/null 2>&1 && echo "Config valid" || echo "Config error"
 
-# Reset and retry if issues persist
-podman system reset --force
+# If you intentionally want to remove all local Podman storage, reset and retry
+# podman system reset --force
 podman images
 ```
 
