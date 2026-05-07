@@ -19,9 +19,9 @@ GitHub authentication in Rancher allows your team members to log in using their 
 
 Register Rancher as an OAuth application in GitHub:
 
-1. Go to your GitHub organization's settings page.
+1. In GitHub, go to **Settings**.
 2. Navigate to **Developer settings** then **OAuth Apps**.
-3. Click **New OAuth App** (or for a personal account, go to **Settings** > **Developer settings** > **OAuth Apps**).
+3. Click **New OAuth App**.
 
 Fill in the application details:
 
@@ -65,43 +65,39 @@ Client ID: xxxxxxxxxxxxxxxxxxxxxxx
 Client Secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-For GitHub Enterprise Server, also provide:
+For GitHub Enterprise Server, select the private GitHub Enterprise option and provide:
 
 ```plaintext
 GitHub Enterprise Host: github.company.com
-GitHub Enterprise API: https://github.company.com/api/v3
-TLS: ☑ Enabled
-Certificate: (paste the CA certificate if using self-signed certs)
 ```
 
 ## Step 4: Configure Access Restrictions
 
-Set which GitHub users and organizations can access Rancher:
+Set which GitHub users and groups can access Rancher:
 
 1. Under **Site Access**, select the access level:
 
 ```plaintext
-☐ Allow any GitHub user (not recommended for production)
-☑ Restrict access to specific GitHub users, organizations, or teams
+☐ Allow any valid user
+☐ Allow members of clusters and projects, plus authorized users & groups
+☑ Restrict access to only the authorized users & groups
 ```
 
-2. Add authorized organizations and teams:
+2. Add authorized users and groups:
 
-```yaml
-Authorized Organizations:
+```plaintext
+Authorized Users & Groups:
   - my-company-org
-
-Authorized Teams:
   - my-company-org/platform-team
   - my-company-org/developers
   - my-company-org/devops
 ```
 
-## Step 5: Test the Configuration
+## Step 5: Authenticate with GitHub
 
-Test GitHub authentication before enabling:
+Authenticate with GitHub before enabling:
 
-1. Click the **Test** button.
+1. Click **Authenticate with GitHub**.
 2. You will be redirected to GitHub to authorize the Rancher application.
 3. Log in with your GitHub credentials if prompted.
 4. Authorize the application.
@@ -156,17 +152,14 @@ GitHub Team: my-company-org/frontend-team -> Cluster Member (staging)
 
 For organizations using GitHub Enterprise Server:
 
-1. In the GitHub auth configuration, toggle **GitHub Enterprise**.
-2. Enter your GitHub Enterprise details:
+1. In the GitHub auth configuration, select the private GitHub Enterprise installation option.
+2. Enter your GitHub Enterprise host:
 
 ```plaintext
-Hostname: github.company.com
-TLS: ☑ Enabled
-Certificate: (paste the CA certificate)
+GitHub Enterprise Host: github.company.com
 ```
 
-3. Create the OAuth application on your GitHub Enterprise instance at:
-   `https://github.company.com/settings/applications/new`
+3. Create the OAuth application on your GitHub Enterprise instance from **Settings** > **Developer settings** > **OAuth Apps**.
 
 4. Use the same callback URL format:
    `https://rancher.example.com/verify-auth`
@@ -174,11 +167,11 @@ Certificate: (paste the CA certificate)
 Test connectivity:
 
 ```bash
-# Verify GitHub Enterprise API is accessible from Rancher
+# Verify the GitHub Enterprise API is reachable from Rancher and that TLS validation succeeds
 
 kubectl exec -it $(kubectl get pod -l app=rancher -n cattle-system -o jsonpath='{.items[0].metadata.name}') \
   -n cattle-system -- \
-  curl -sk "https://github.company.com/api/v3" | head -5
+  curl -sS "https://github.company.com/api/v3" | head -5
 ```
 
 ## Step 9: Manage User Sessions
@@ -186,16 +179,16 @@ kubectl exec -it $(kubectl get pod -l app=rancher -n cattle-system -o jsonpath='
 Configure session settings for GitHub-authenticated users:
 
 ```bash
-# Set session token TTL (in minutes)
+# Set user session TTL (in minutes)
 curl -s -k \
   -X PUT \
   -H "Authorization: Bearer $RANCHER_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"value": "960"}' \
-  "https://rancher.example.com/v3/settings/auth-token-max-ttl-minutes"
+  "https://rancher.example.com/v3/settings/auth-user-session-ttl-minutes"
 ```
 
-When a user's GitHub access is revoked (removed from the organization or team), their next authentication attempt will fail. Existing sessions will remain active until they expire.
+When a user's GitHub access is revoked (removed from the organization or team), future access will fail once their GitHub membership no longer satisfies Rancher's Site Access rules. Existing permissions can persist until the user logs out, the session expires, or an administrator refreshes group memberships.
 
 To immediately revoke access:
 
@@ -215,10 +208,10 @@ kubectl logs -l app=rancher -n cattle-system --tail=200 | grep -i "github\|auth\
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | Callback URL mismatch | URL in GitHub app does not match Rancher | Verify the callback URL is exactly `https://rancher.example.com/verify-auth` |
-| Organization not found | User is not a public member | Users must be public members or configure organization visibility |
+| Organization or team not found | User is not in the expected org/team, or the OAuth app has not been approved for the organization | Verify org/team membership and approve the OAuth app for the organization if OAuth app access restrictions are enabled |
 | Token expired | GitHub token expired | User needs to re-authenticate |
 | Rate limiting | Too many API calls to GitHub | Check GitHub API rate limits and consider caching |
-| SSL error (Enterprise) | Certificate not trusted | Add the CA certificate to the Rancher configuration |
+| SSL error (Enterprise) | Rancher does not trust the GitHub Enterprise certificate chain | Use a certificate Rancher trusts, or add the issuing CA to the Rancher server trust store |
 
 To verify GitHub API connectivity:
 
