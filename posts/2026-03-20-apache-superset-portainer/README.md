@@ -67,41 +67,128 @@ services:
       timeout: 5s
       retries: 5
 
-  # Superset - main application
-  superset-app:
+  # Superset init - applies migrations and creates the admin user
+  superset-init:
     image: apache/superset:4.0.2
-    container_name: superset-app
-    restart: unless-stopped
+    container_name: superset-init
     depends_on:
       superset-db:
         condition: service_healthy
       superset-redis:
         condition: service_healthy
-    ports:
-      - "8088:8088"
     environment:
       # Must be a long random string
-      SECRET_KEY: "your_generated_secret_key_here"
-      # Database connection for Superset metadata
+      SUPERSET_SECRET_KEY: "your_generated_secret_key_here"
       SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://superset:supersetpassword@superset-db:5432/superset
-      # Redis for caching
-      REDIS_URL: redis://superset-redis:6379/0
-      SUPERSET_LOAD_EXAMPLES: "no"
+      REDIS_HOST: superset-redis
+      REDIS_PORT: 6379
+      REDIS_RESULTS_DB: 1
+      CELERY_BROKER_URL: redis://superset-redis:6379/0
+      CELERY_RESULT_BACKEND: redis://superset-redis:6379/1
     volumes:
       - superset_home:/app/superset_home
     networks:
       - superset-net
     command: >
       sh -c "
+        cat >/app/pythonpath/superset_config.py <<'EOF'
+        import os
+        from flask_caching.backends.rediscache import RedisCache
+
+        SECRET_KEY = os.environ['SUPERSET_SECRET_KEY']
+        SQLALCHEMY_DATABASE_URI = os.environ['SQLALCHEMY_DATABASE_URI']
+
+        class CeleryConfig:
+            broker_url = os.environ['CELERY_BROKER_URL']
+            imports = ('superset.sql_lab',)
+            result_backend = os.environ['CELERY_RESULT_BACKEND']
+            worker_prefetch_multiplier = 1
+            task_acks_late = False
+
+        CELERY_CONFIG = CeleryConfig
+        RESULTS_BACKEND = RedisCache(
+            host=os.environ['REDIS_HOST'],
+            port=int(os.environ.get('REDIS_PORT', '6379')),
+            db=int(os.environ.get('REDIS_RESULTS_DB', '1')),
+            key_prefix='superset_results',
+        )
+        CACHE_CONFIG = {
+            'CACHE_TYPE': 'RedisCache',
+            'CACHE_DEFAULT_TIMEOUT': 300,
+            'CACHE_KEY_PREFIX': 'superset_',
+            'CACHE_REDIS_HOST': os.environ['REDIS_HOST'],
+            'CACHE_REDIS_PORT': int(os.environ.get('REDIS_PORT', '6379')),
+            'CACHE_REDIS_DB': int(os.environ.get('REDIS_RESULTS_DB', '1')),
+        }
+        DATA_CACHE_CONFIG = CACHE_CONFIG
+        EOF
         superset db upgrade &&
         superset fab create-admin \
           --username admin \
-          --firstname Admin \
-          --lastname User \
+          --firstname Superset \
+          --lastname Admin \
           --email admin@superset.com \
           --password admin &&
-        superset init &&
-        gunicorn --bind 0.0.0.0:8088 --workers 4 --timeout 120 'superset.app:create_app()'
+        superset init
+      "
+
+  # Superset - main application
+  superset-app:
+    image: apache/superset:4.0.2
+    container_name: superset-app
+    restart: unless-stopped
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    ports:
+      - "8088:8088"
+    environment:
+      # Must be a long random string
+      SUPERSET_SECRET_KEY: "your_generated_secret_key_here"
+      SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://superset:supersetpassword@superset-db:5432/superset
+      REDIS_HOST: superset-redis
+      REDIS_PORT: 6379
+      REDIS_RESULTS_DB: 1
+      CELERY_BROKER_URL: redis://superset-redis:6379/0
+      CELERY_RESULT_BACKEND: redis://superset-redis:6379/1
+    volumes:
+      - superset_home:/app/superset_home
+    networks:
+      - superset-net
+    command: >
+      sh -c "
+        cat >/app/pythonpath/superset_config.py <<'EOF'
+        import os
+        from flask_caching.backends.rediscache import RedisCache
+
+        SECRET_KEY = os.environ['SUPERSET_SECRET_KEY']
+        SQLALCHEMY_DATABASE_URI = os.environ['SQLALCHEMY_DATABASE_URI']
+
+        class CeleryConfig:
+            broker_url = os.environ['CELERY_BROKER_URL']
+            imports = ('superset.sql_lab',)
+            result_backend = os.environ['CELERY_RESULT_BACKEND']
+            worker_prefetch_multiplier = 1
+            task_acks_late = False
+
+        CELERY_CONFIG = CeleryConfig
+        RESULTS_BACKEND = RedisCache(
+            host=os.environ['REDIS_HOST'],
+            port=int(os.environ.get('REDIS_PORT', '6379')),
+            db=int(os.environ.get('REDIS_RESULTS_DB', '1')),
+            key_prefix='superset_results',
+        )
+        CACHE_CONFIG = {
+            'CACHE_TYPE': 'RedisCache',
+            'CACHE_DEFAULT_TIMEOUT': 300,
+            'CACHE_KEY_PREFIX': 'superset_',
+            'CACHE_REDIS_HOST': os.environ['REDIS_HOST'],
+            'CACHE_REDIS_PORT': int(os.environ.get('REDIS_PORT', '6379')),
+            'CACHE_REDIS_DB': int(os.environ.get('REDIS_RESULTS_DB', '1')),
+        }
+        DATA_CACHE_CONFIG = CACHE_CONFIG
+        EOF
+        exec /usr/bin/run-server.sh
       "
 
   # Celery worker for async queries
@@ -110,17 +197,55 @@ services:
     container_name: superset-worker
     restart: unless-stopped
     depends_on:
-      - superset-db
-      - superset-redis
+      superset-init:
+        condition: service_completed_successfully
     environment:
-      SECRET_KEY: "your_generated_secret_key_here"
+      SUPERSET_SECRET_KEY: "your_generated_secret_key_here"
       SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://superset:supersetpassword@superset-db:5432/superset
-      REDIS_URL: redis://superset-redis:6379/0
+      REDIS_HOST: superset-redis
+      REDIS_PORT: 6379
+      REDIS_RESULTS_DB: 1
+      CELERY_BROKER_URL: redis://superset-redis:6379/0
+      CELERY_RESULT_BACKEND: redis://superset-redis:6379/1
     volumes:
       - superset_home:/app/superset_home
     networks:
       - superset-net
-    command: celery --app=superset.tasks.celery_app:app worker --loglevel=info
+    command: >
+      sh -c "
+        cat >/app/pythonpath/superset_config.py <<'EOF'
+        import os
+        from flask_caching.backends.rediscache import RedisCache
+
+        SECRET_KEY = os.environ['SUPERSET_SECRET_KEY']
+        SQLALCHEMY_DATABASE_URI = os.environ['SQLALCHEMY_DATABASE_URI']
+
+        class CeleryConfig:
+            broker_url = os.environ['CELERY_BROKER_URL']
+            imports = ('superset.sql_lab',)
+            result_backend = os.environ['CELERY_RESULT_BACKEND']
+            worker_prefetch_multiplier = 1
+            task_acks_late = False
+
+        CELERY_CONFIG = CeleryConfig
+        RESULTS_BACKEND = RedisCache(
+            host=os.environ['REDIS_HOST'],
+            port=int(os.environ.get('REDIS_PORT', '6379')),
+            db=int(os.environ.get('REDIS_RESULTS_DB', '1')),
+            key_prefix='superset_results',
+        )
+        CACHE_CONFIG = {
+            'CACHE_TYPE': 'RedisCache',
+            'CACHE_DEFAULT_TIMEOUT': 300,
+            'CACHE_KEY_PREFIX': 'superset_',
+            'CACHE_REDIS_HOST': os.environ['REDIS_HOST'],
+            'CACHE_REDIS_PORT': int(os.environ.get('REDIS_PORT', '6379')),
+            'CACHE_REDIS_DB': int(os.environ.get('REDIS_RESULTS_DB', '1')),
+        }
+        DATA_CACHE_CONFIG = CACHE_CONFIG
+        EOF
+        exec celery --app=superset.tasks.celery_app:app worker -O fair -l INFO
+      "
 
 volumes:
   superset_redis_data:
@@ -146,7 +271,7 @@ networks:
 
 ## Step 5: Connect a Database
 
-1. Go to **Settings** → **Database Connections** → **+ Database**
+1. Go to **Settings** → **Data: Database Connections** → **+ Database**
 2. Select your database type (PostgreSQL, MySQL, BigQuery, etc.)
 3. For PostgreSQL:
    ```text
@@ -158,7 +283,7 @@ networks:
 
 1. **Datasets** → **+ Dataset**
 2. Select the database and schema
-3. Choose a table or enter a custom SQL query
+3. Choose a table. For a virtual dataset, create the SQL in **SQL Lab** and save it as a dataset
 4. Click **Add**
 
 ## Step 7: Build a Chart
@@ -167,7 +292,7 @@ networks:
 2. Select your dataset
 3. Choose a chart type (Bar, Line, Pie, Table, etc.)
 4. Drag metrics and dimensions into the configuration
-5. Click **Update Chart** → **Save**
+5. Click **Run** → **Save**
 
 ## Step 8: Create a Dashboard
 
@@ -181,19 +306,19 @@ networks:
 For databases not included in the base image:
 
 ```bash
-# Access the running container
-docker exec -it superset-app pip install mysqlclient
+# Temporary until the container is recreated
+docker exec -u 0 -it superset-app pip install oracledb
 
 # Or add to a custom Dockerfile
 FROM apache/superset:4.0.2
 USER root
-RUN pip install mysqlclient cx_Oracle pydruid
+RUN pip install oracledb pydruid
 USER superset
 ```
 
 ## Step 10: Enable Async Queries
 
-Large queries should run asynchronously. In `superset_config.py`:
+SQL Lab async execution is already handled by the Celery worker in the stack above. To enable global async queries for dashboards and Explore in Superset 4.0.2, add this to `superset_config.py`:
 
 ```python
 FEATURE_FLAGS = {
@@ -206,7 +331,7 @@ GLOBAL_ASYNC_QUERIES_REDIS_CONFIG = {
 }
 ```
 
-Mount this as a config file in your compose volume.
+Write this into the same `/app/pythonpath/superset_config.py` file used by the stack above.
 
 ## Conclusion
 
