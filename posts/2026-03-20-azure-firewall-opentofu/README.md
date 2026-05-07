@@ -45,8 +45,7 @@ resource "azurerm_firewall_policy" "main" {
   threat_intelligence_mode = "Alert"  # Alert or Deny
 
   dns {
-    proxy_enabled = true  # Enable DNS proxy for FQDN-based rules
-    servers       = ["168.63.129.16"]  # Azure DNS
+    proxy_enabled = true  # Required for FQDNs in network rules; use the firewall IP as client DNS
   }
 
   tags = { Environment = var.environment }
@@ -84,7 +83,7 @@ resource "azurerm_firewall_policy_rule_collection_group" "main" {
     }
   }
 
-  # Application rules - FQDN based (requires DNS proxy)
+  # Application rules - FQDN and FQDN tag based
   application_rule_collection {
     name     = "allow-web"
     priority = 200
@@ -93,11 +92,7 @@ resource "azurerm_firewall_policy_rule_collection_group" "main" {
     rule {
       name             = "allow-windows-update"
       source_addresses = ["10.0.0.0/8"]
-      destination_fqdns = [
-        "*.update.microsoft.com",
-        "*.windowsupdate.com",
-        "go.microsoft.com"
-      ]
+      destination_fqdn_tags = ["WindowsUpdate"]
       protocols {
         type = "Https"
         port = 443
@@ -108,7 +103,7 @@ resource "azurerm_firewall_policy_rule_collection_group" "main" {
       name             = "allow-azure-services"
       source_addresses = ["10.0.0.0/8"]
       destination_fqdn_tags = [
-        "AzureMonitor",
+        "AzureBackup",
         "WindowsVirtualDesktop"
       ]
       protocols {
@@ -145,7 +140,7 @@ resource "azurerm_firewall" "main" {
   resource_group_name = azurerm_resource_group.hub.name
   location            = azurerm_resource_group.hub.location
   sku_name            = "AZFW_VNet"
-  sku_tier            = "Standard"  # Basic, Standard, or Premium
+  sku_tier            = "Standard"  # Basic also requires AzureFirewallManagementSubnet and a management IP config
   firewall_policy_id  = azurerm_firewall_policy.main.id
   zones               = ["1", "2", "3"]
 
@@ -197,4 +192,4 @@ output "firewall_public_ip" {
 
 ## Conclusion
 
-Azure Firewall with OpenTofu requires a dedicated AzureFirewallSubnet, a firewall policy with rule collections, and route tables that force spoke subnet traffic through the firewall's private IP. Use Firewall Policy (rather than classic firewall rules) for centrally managed, hierarchical rule sets. Enable the DNS proxy for FQDN-based application rules. Use zone-redundant deployment (zones = ["1", "2", "3"]) for production availability.
+Azure Firewall with OpenTofu requires a dedicated AzureFirewallSubnet, a firewall policy with rule collections, and route tables that force spoke subnet traffic through the firewall's private IP. Use Firewall Policy (rather than classic firewall rules) for centrally managed, hierarchical rule sets. Application rules can use FQDNs directly; enable DNS proxy when you use FQDNs in network rules, and point clients at the firewall for DNS. Use zone-redundant deployment (zones = ["1", "2", "3"]) in availability zone-supported regions for production availability.
