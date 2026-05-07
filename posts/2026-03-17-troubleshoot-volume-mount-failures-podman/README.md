@@ -25,7 +25,7 @@ When a Podman container fails to start due to a volume mount error, the cause co
 # Error: OCI runtime error: container_linux.go: permission denied
 
 # Volume in use
-# Error: volume already exists and is in use
+# Error: volume mydata is being used by the following container(s)
 
 # Invalid mount option
 # Error: invalid mount option "invalid"
@@ -116,6 +116,9 @@ podman system df
 
 # Clean up unused resources
 podman system prune
+
+# Include unused volumes only if their data can be removed
+# podman system prune --volumes
 ```
 
 ## Step 7: Debug with Verbose Output
@@ -126,7 +129,7 @@ podman --log-level=debug run --rm \
   -v /home/user/data:/data \
   docker.io/library/alpine:latest ls /data 2>&1 | head -50
 
-# Check container events for mount errors
+# Check recent mount/unmount events
 podman events --filter event=mount --since 1h
 ```
 
@@ -138,7 +141,7 @@ df -T /home/user/data
 
 # Some filesystems may not support certain operations
 # For example, NFS might not support SELinux labels
-mount | grep $(df --output=source /home/user/data | tail -1)
+findmnt -T /home/user/data -o SOURCE,FSTYPE,OPTIONS
 ```
 
 ## Quick Fix Reference
@@ -149,7 +152,7 @@ mount | grep $(df --output=source /home/user/data | tail -1)
 | Permission denied | UID mismatch or SELinux | Use `:Z,U` options |
 | Volume in use | Container still attached | `podman rm` the container |
 | Invalid mount option | Typo in options | Check option spelling |
-| No space left on device | Disk full | `podman system prune` |
+| No space left on device | Disk full | Free space; use `podman system prune` for unused resources |
 
 ## Summary
 
