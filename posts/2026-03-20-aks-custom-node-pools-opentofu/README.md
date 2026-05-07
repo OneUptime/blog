@@ -13,6 +13,7 @@ AKS node pools are groups of VMs with the same configuration within a Kubernetes
 ## Prerequisites
 
 - OpenTofu v1.6+
+- Azure CLI and kubectl installed
 - Azure credentials with AKS permissions
 - A Resource Group and Virtual Network with subnets
 
@@ -24,7 +25,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   location            = var.location
   resource_group_name = var.resource_group_name
   dns_prefix          = var.project_name
-  kubernetes_version  = "1.28"
+  kubernetes_version  = "1.35"
 
   # System node pool (required)
   default_node_pool {
@@ -33,12 +34,12 @@ resource "azurerm_kubernetes_cluster" "main" {
     node_count          = 2
     min_count           = 2
     max_count           = 5
-    enable_auto_scaling = true
+    auto_scaling_enabled = true
 
     vnet_subnet_id = var.system_subnet_id
     zones          = ["1", "2", "3"]
 
-    # Taint system pool to prevent user workloads
+    # Taint the default system pool to prevent user workloads
     only_critical_addons_enabled = true
 
     os_disk_size_gb      = 128
@@ -83,7 +84,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "app" {
   node_count            = 3
   min_count             = 2
   max_count             = 20
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
 
   vnet_subnet_id = var.app_subnet_id
   zones          = ["1", "2", "3"]
@@ -108,7 +109,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   node_count            = 0  # Start with 0, scale when needed
   min_count             = 0
   max_count             = 5
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
 
   vnet_subnet_id = var.gpu_subnet_id
   zones          = ["1"]  # GPUs may not be in all zones
@@ -134,7 +135,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "memory" {
   node_count            = 2
   min_count             = 1
   max_count             = 10
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
 
   vnet_subnet_id = var.app_subnet_id
   zones          = ["1", "2", "3"]
@@ -156,7 +157,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "blue" {
   kubernetes_cluster_id = azurerm_kubernetes_cluster.main.id
   vm_size               = "Standard_D4s_v3"
   node_count            = 5
-  kubernetes_version    = "1.28"  # Pin to specific version for blue/green upgrade
+  orchestrator_version  = "1.35"  # Pin to a supported version for staged upgrades
 
   upgrade_settings {
     max_surge = "1"  # Add 1 node at a time during upgrades
@@ -183,7 +184,13 @@ az aks get-credentials \
 # List node pools
 kubectl get nodes -L agentpool,workload-type
 
-# Scale a specific node pool
+# Manually scale a specific node pool (disable autoscaler first)
+az aks nodepool update \
+  --resource-group <rg> \
+  --cluster-name <cluster-name> \
+  --name gpu \
+  --disable-cluster-autoscaler
+
 az aks nodepool scale \
   --resource-group <rg> \
   --cluster-name <cluster-name> \
@@ -193,4 +200,4 @@ az aks nodepool scale \
 
 ## Conclusion
 
-Use `only_critical_addons_enabled = true` on system node pools to prevent user workloads from running alongside Kubernetes system components, reducing risk of resource starvation on critical cluster services. Use `os_disk_type = "Ephemeral"` for node pools when possible-ephemeral OS disks use VM host cache and provide better read performance, lower latency, and zero OS disk cost. Set GPU node pools to `min_count = 0` with Cluster Autoscaler to scale down to zero during idle periods, dramatically reducing GPU costs.
+Use `only_critical_addons_enabled = true` on the default system node pool to prevent user workloads from running alongside Kubernetes system components, reducing risk of resource starvation on critical cluster services. Use `os_disk_type = "Ephemeral"` for node pools when possible-ephemeral OS disks use local VM storage instead of remote Azure Storage, which lowers latency and speeds up reimaging, node scaling, and cluster upgrades. Set GPU node pools to `min_count = 0` with Cluster Autoscaler to allow scale-down to zero during idle periods, reducing GPU costs.
