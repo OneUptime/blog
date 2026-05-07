@@ -8,7 +8,7 @@ Description: Learn how to deploy containerized applications on AWS App Runner wi
 
 ## Introduction
 
-AWS App Runner is a fully managed service for deploying containerized web applications and APIs. It automatically handles load balancing, TLS, scaling from zero, health checks, and continuous deployment from ECR or source code. App Runner is simpler than ECS/Fargate for stateless web services that don't require fine-grained networking control.
+AWS App Runner is a fully managed service for deploying containerized web applications and APIs. It automatically handles load balancing, TLS, health checks, and automatic scaling, and it can automatically deploy from source code or private ECR repositories in the same AWS account. App Runner is simpler than ECS/Fargate for stateless web services that don't require fine-grained networking control. As of 2026, App Runner is only available to existing AWS customers.
 
 ## Prerequisites
 
@@ -91,7 +91,7 @@ resource "aws_apprunner_service" "main" {
       }
     }
 
-    auto_deployments_enabled = true  # Auto-deploy when new image is pushed
+    auto_deployments_enabled = true  # Auto-deploy for images in the same AWS account's ECR repository
   }
 
   instance_configuration {
@@ -125,7 +125,7 @@ resource "aws_apprunner_auto_scaling_configuration_version" "main" {
   auto_scaling_configuration_name = "${var.project_name}-scaling"
 
   max_concurrency = 100   # Max concurrent requests per instance
-  min_size        = 1     # Minimum number of instances
+  min_size        = 1     # Minimum provisioned instances (App Runner doesn't scale to zero automatically)
   max_size        = 10    # Maximum number of instances
 
   tags = {
@@ -135,6 +135,8 @@ resource "aws_apprunner_auto_scaling_configuration_version" "main" {
 ```
 
 ## Step 3: Connect to VPC for Database Access
+
+If your service needs private database access, create a VPC connector and update the existing `aws_apprunner_service.main` resource like this:
 
 ```hcl
 resource "aws_apprunner_vpc_connector" "main" {
@@ -147,12 +149,8 @@ resource "aws_apprunner_vpc_connector" "main" {
   }
 }
 
-resource "aws_apprunner_service" "with_vpc" {
-  service_name = "${var.project_name}-app"
-
-  source_configuration {
-    # ... same as above
-  }
+resource "aws_apprunner_service" "main" {
+  # ... existing configuration from Step 1 ...
 
   network_configuration {
     egress_configuration {
@@ -170,6 +168,31 @@ resource "aws_apprunner_custom_domain_association" "main" {
   domain_name          = "api.${var.domain_name}"
   service_arn          = aws_apprunner_service.main.arn
   enable_www_subdomain = false
+}
+
+resource "aws_route53_record" "app_runner_domain" {
+  zone_id = var.route53_zone_id
+  name    = aws_apprunner_custom_domain_association.main.domain_name
+  type    = "CNAME"
+  ttl     = 300
+  records = [aws_apprunner_custom_domain_association.main.dns_target]
+}
+
+resource "aws_route53_record" "app_runner_validation" {
+  for_each = {
+    for record in aws_apprunner_custom_domain_association.main.certificate_validation_records :
+    record.name => {
+      name  = record.name
+      type  = record.type
+      value = record.value
+    }
+  }
+
+  zone_id = var.route53_zone_id
+  name    = each.value.name
+  type    = each.value.type
+  ttl     = 300
+  records = [each.value.value]
 }
 
 output "app_runner_url" {
@@ -192,4 +215,4 @@ aws apprunner describe-service \
 
 ## Conclusion
 
-App Runner is ideal for simple web services and APIs that need automatic scaling and TLS without managing ECS, ALBs, or Fargate directly. It scales from zero when there's no traffic (important for cost), but has a cold start penalty of a few seconds on the first request. Use VPC connectors when your application needs to access private resources like RDS or ElastiCache, and enable automatic deployments for seamless CI/CD integration.
+App Runner is ideal for simple web services and APIs that need automatic scaling and TLS without managing ECS, ALBs, or Fargate directly. It doesn't scale to zero automatically; instead, you control baseline capacity with `min_size`, and you can pause the service when you want compute capacity reduced to zero. Use VPC connectors when your application needs to access private resources like RDS or ElastiCache, and enable automatic deployments when you're deploying from source code or a same-account ECR repository.
