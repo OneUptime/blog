@@ -10,7 +10,7 @@ Description: Learn how to configure Visual Studio Code Dev Containers to work wi
 
 > Podman offers a rootless, daemonless alternative to Docker that integrates seamlessly with VS Code Dev Containers once you know how to set it up.
 
-VS Code Dev Containers let you define your entire development environment as code, spinning up isolated containers with all the tools, runtimes, and dependencies your project needs. While Docker has been the default container runtime for this workflow, Podman is an increasingly popular alternative. Podman runs without a background daemon, supports rootless containers out of the box, and maintains CLI compatibility with Docker. This post walks you through configuring Podman as the container engine for VS Code Dev Containers on Linux, macOS, and Windows.
+VS Code Dev Containers let you define your entire development environment as code, spinning up isolated containers with all the tools, runtimes, and dependencies your project needs. While Docker has been the default container runtime for this workflow, Podman is an increasingly popular alternative. Podman runs without a background daemon, supports rootless containers out of the box, and is mostly CLI-compatible with Docker. This post walks you through configuring Podman as the container engine for VS Code Dev Containers on Linux, macOS, and Windows.
 
 ---
 
@@ -20,7 +20,7 @@ Before getting started, make sure you have the following installed on your syste
 
 - Visual Studio Code (1.74 or later)
 - The Dev Containers extension (`ms-vscode-remote.remote-containers`)
-- Podman (4.0 or later)
+- Podman (5.0 or later)
 
 On macOS and Windows, Podman runs inside a lightweight Linux virtual machine. You need to initialize and start that machine before VS Code can connect.
 
@@ -59,27 +59,26 @@ VS Code Dev Containers defaults to Docker as its container runtime. You need to 
   // Tell Dev Containers to use Podman instead of Docker
   "dev.containers.dockerPath": "podman",
 
-  // Use Podman Compose if you need multi-container setups
+  // Use podman-compose as the Compose provider for multi-container setups
   "dev.containers.dockerComposePath": "podman-compose"
 }
 ```
 
-These two settings redirect all container commands from `docker` to `podman`. Since Podman is CLI-compatible with Docker, most commands work without modification.
+These settings tell the Dev Containers extension to use `podman` for container commands and `podman-compose` for Compose workflows. Since Podman is mostly CLI-compatible with Docker, most commands work without modification.
 
 ## Setting Up the Docker Socket Compatibility
 
-Some VS Code extensions and Dev Container features expect a Docker socket at `/var/run/docker.sock`. On macOS and Windows, enable the Podman socket with the following commands:
+Some tools inside or alongside your dev container expect a Docker-compatible API socket. The Dev Containers extension itself talks to the container CLI, but if a tool specifically needs API access, expose the Podman socket instead of assuming `/var/run/docker.sock`. On macOS and Windows:
 
 ```bash
-# Enable the Podman socket on macOS/Windows
-# This creates a Docker-compatible API endpoint
-podman machine stop
-podman machine set --rootful
+# Start the Podman machine
 podman machine start
 
-# Verify the socket is available
+# Inspect the connection URI Podman exposes
 podman system connection list
 ```
+
+If a workflow specifically requires rootful containers, `podman machine set --rootful` switches the machine's forwarded API socket to the rootful Podman service.
 
 On Linux, you can enable the Podman socket as a systemd user service:
 
@@ -91,12 +90,7 @@ systemctl --user enable --now podman.socket
 echo $XDG_RUNTIME_DIR/podman/podman.sock
 ```
 
-You can optionally create a symlink so tools expecting the Docker socket find Podman instead:
-
-```bash
-# Create a symlink for Docker socket compatibility on Linux
-sudo ln -sf /run/user/$(id -u)/podman/podman.sock /var/run/docker.sock
-```
+For Docker-aware tools on Linux, point `DOCKER_HOST` at this socket instead of creating a global `/var/run/docker.sock` symlink.
 
 ## Creating a Dev Container Configuration
 
@@ -188,7 +182,7 @@ Then reference it in your `devcontainer.json`:
 
 ## Multi-Container Development with Podman Compose
 
-For projects that need multiple services (such as an application server and a database), you can use `podman-compose`. Install it first:
+For projects that need multiple services (such as an application server and a database), Podman's `podman compose` support relies on an external provider such as `podman-compose`. Install `podman-compose` first:
 
 ```bash
 # Install podman-compose
@@ -198,14 +192,13 @@ pip install podman-compose
 Create a `docker-compose.yml` file in your `.devcontainer` directory:
 
 ```yaml
-version: "3.8"
 services:
   app:
     build:
       context: ..
       dockerfile: .devcontainer/Containerfile
     volumes:
-      - ..:/workspace:cached
+      - ..:/workspace
     command: sleep infinity
     ports:
       - "3000:3000"
@@ -249,7 +242,7 @@ Podman's rootless mode maps user IDs differently than Docker. If you see permiss
 # Check the current UID mapping
 podman unshare cat /proc/self/uid_map
 
-# If needed, add userns_mode to your devcontainer.json
+# If needed, add Podman run arguments to your devcontainer.json
 # "runArgs": ["--userns=keep-id"]
 ```
 
@@ -271,7 +264,7 @@ Make sure the Podman machine is running and has enough resources:
 # Check the machine status
 podman machine info
 
-# Increase resources if needed
+# On providers that support these options, increase resources if needed
 podman machine stop
 podman machine set --cpus 4 --memory 8192
 podman machine start
@@ -291,4 +284,4 @@ export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
 
 ## Conclusion
 
-Podman is a capable drop-in replacement for Docker when used with VS Code Dev Containers. The key steps are pointing VS Code at the `podman` binary, enabling the Podman socket for API compatibility, and adding `--userns=keep-id` to handle rootless UID mapping. Once configured, you get the same containerized development experience with the added benefits of rootless execution and no background daemon. If you run into edge cases, the Podman and VS Code Dev Containers GitHub repositories both have active issue trackers where you can find solutions.
+Podman is a capable Docker alternative for VS Code Dev Containers. The key steps are pointing VS Code at the `podman` binary, using a Compose provider such as `podman-compose` when you need multi-container setups, and exposing the Podman API socket only for tools that specifically need Docker-compatible API access. On Linux, `--userns=keep-id` can help when rootless bind mounts run into UID-mapping issues. Once configured, you get the same containerized development experience with the added benefits of rootless execution and no background daemon. If you run into edge cases, the Podman and VS Code Dev Containers GitHub repositories both have active issue trackers where you can find solutions.
