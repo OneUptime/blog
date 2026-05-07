@@ -93,15 +93,15 @@ podman run -d \
 
 # 1. podman inspect output
 podman inspect --format='{{.Config.Env}}' my-app
-# The secret env var is NOT listed here
+# The secret value is masked here, for example DB_PASSWORD=*******
 
 # 2. Command line history
 # Unlike: podman run -e DB_PASSWORD=secret my-app:latest
 # The value is not in your shell history
 
 # However, env vars ARE visible to:
-# - All processes inside the container
-# - /proc/<pid>/environ inside the container
+# - The container process and its child processes
+# - /proc/<pid>/environ inside the container, subject to process permissions
 # For maximum security, use file mounts instead
 ```
 
