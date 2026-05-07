@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Notary, Image Trust, Content Trust, Container Security
 
-Description: Learn how to use Notary with Podman to establish image trust through content signing and verification, ensuring only trusted images are deployed.
+Description: Learn how to use Podman's native image trust controls alongside Notary's TUF metadata workflow, so only trusted images are deployed.
 
 ---
 
-> Notary provides a trust framework for your Podman container images, ensuring that every image pulled from a registry has been signed by a trusted publisher and has not been modified in transit.
+> Notary provides a TUF-based trust framework for publishing signed metadata, but Podman does not natively verify Notary v1 metadata when it pulls images.
 
-Container image trust is a fundamental security requirement for production deployments. Notary, based on The Update Framework (TUF), provides a robust system for signing and verifying container image content. It protects against several attack vectors including compromised registry servers, man-in-the-middle attacks, and replay attacks. Integrating Notary with Podman ensures that your container runtime only accepts images that have been explicitly signed and verified.
+Container image trust is a fundamental security requirement for production deployments. Notary, based on The Update Framework (TUF), provides a robust system for signing and verifying trust metadata, and it protects against several attack vectors including compromised registry servers, man-in-the-middle attacks, and replay attacks. Podman, however, enforces image trust through its own signature policy and signature storage mechanisms, so a Podman workflow must configure those native controls separately from any Notary server.
 
 ---
 
@@ -18,63 +18,24 @@ Container image trust is a fundamental security requirement for production deplo
 
 Notary implements The Update Framework, which uses a hierarchy of cryptographic keys to establish trust. The key hierarchy includes:
 
-- Root key: The master key that signs all other keys (kept offline)
-- Targets key: Signs the actual container image metadata
-- Snapshot key: Signs a collection of all target metadata
-- Timestamp key: Provides freshness guarantees to prevent replay attacks
+- Root key: Signs the root metadata that defines the trusted keys for the other top-level roles and should be kept strongly protected
+- Targets key: Signs the targets metadata that maps image tags to trusted manifest metadata
+- Snapshot key: Signs the snapshot metadata that records versions of the targets metadata
+- Timestamp key: Signs the timestamp metadata that gives clients freshness guarantees against replay attacks
 
 This separation of concerns means that compromising a single key does not compromise the entire trust chain.
 
 ## Setting Up a Notary Server
 
-Deploy Notary alongside your container registry:
+For legacy Docker Content Trust workflows, Docker's official docs recommend starting the sample Notary stack from the upstream repository:
 
-```yaml
-# notary-stack.yml
-
-version: "3"
-services:
-  notary-server:
-    image: notary:server
-    restart: always
-    ports:
-      - "4443:4443"
-    volumes:
-      - ./notary/server-config.json:/etc/notary/server-config.json:ro
-      - ./notary/fixtures:/etc/notary/fixtures:ro
-    depends_on:
-      - notary-db
-
-  notary-signer:
-    image: notary:signer
-    restart: always
-    volumes:
-      - ./notary/signer-config.json:/etc/notary/signer-config.json:ro
-      - ./notary/fixtures:/etc/notary/fixtures:ro
-    depends_on:
-      - notary-db
-
-  notary-db:
-    image: mariadb:10.11
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: notarydbpass
-      MYSQL_DATABASE: notaryserver
-    volumes:
-      - notary-db-data:/var/lib/mysql
-
-  registry:
-    image: registry:2
-    restart: always
-    ports:
-      - "5000:5000"
-    volumes:
-      - registry-data:/var/lib/registry
-
-volumes:
-  notary-db-data:
-  registry-data:
+```bash
+git clone https://github.com/theupdateframework/notary.git
+cd notary
+docker compose up -d
 ```
+
+The upstream Notary v1 project was archived on July 30, 2025, and Docker marks the official image as deprecated, so this setup is appropriate only for legacy workflows that still require a Notary server.
 
 Notary server configuration:
 
@@ -82,19 +43,24 @@ Notary server configuration:
 {
     "server": {
         "http_addr": ":4443",
-        "tls_key_file": "/etc/notary/fixtures/notary-server.key",
-        "tls_cert_file": "/etc/notary/fixtures/notary-server.crt"
+        "tls_key_file": "./notary-server.key",
+        "tls_cert_file": "./notary-server.crt"
     },
     "trust_service": {
         "type": "remote",
-        "hostname": "notary-signer",
+        "hostname": "notarysigner",
         "port": "7899",
-        "tls_ca_file": "/etc/notary/fixtures/root-ca.crt",
-        "key_algorithm": "ecdsa"
+        "tls_ca_file": "./root-ca.crt",
+        "key_algorithm": "ecdsa",
+        "tls_client_cert": "./notary-server.crt",
+        "tls_client_key": "./notary-server.key"
+    },
+    "logging": {
+        "level": "debug"
     },
     "storage": {
         "backend": "mysql",
-        "db_url": "root:notarydbpass@tcp(notary-db:3306)/notaryserver"
+        "db_url": "server@tcp(mysql:3306)/notaryserver?parseTime=True"
     }
 }
 ```
@@ -105,11 +71,11 @@ Initialize content trust for a container image repository:
 
 ```bash
 # Initialize trust for a repository using the notary CLI
-# Note: Podman does not support the DOCKER_CONTENT_TRUST environment variable.
-# Use the notary CLI directly and Podman's native policy.json for trust enforcement.
-notary -s https://notary.example.com:4443 init registry.example.com/myapp
+# Podman uses its own trust policy rather than Docker Content Trust.
+notary -s https://notary.example.com:4443 init -p registry.example.com/myapp
 
-# This generates the root, targets, snapshot, and timestamp keys
+# This generates a root key if one does not already exist, plus local targets
+# and snapshot keys. The timestamp key is managed by the Notary server.
 # Keep the root key secure and offline
 ```
 
@@ -121,16 +87,17 @@ Sign and push a trusted image:
 # Build the image
 podman build -t registry.example.com/myapp:v1.0.0 .
 
-# Push and sign the image using Podman's native GPG signing
+# Push and sign the image using Podman's native simple-signing support
 podman push --sign-by image-signing@example.com \
   registry.example.com/myapp:v1.0.0
 
-# Or sign using notary directly
-notary addhash \
+# If you also maintain Notary metadata for legacy clients, publish the
+# tag-to-manifest mapping separately with the notary CLI.
+notary -s https://notary.example.com:4443 addhash -p \
   registry.example.com/myapp \
   v1.0.0 \
-  <sha256-digest> \
-  --publish
+  <manifest-size> \
+  --sha256 <manifest-sha256>
 ```
 
 ## Configuring Podman for Trust Verification
@@ -138,15 +105,15 @@ notary addhash \
 Configure Podman to verify image signatures:
 
 ```yaml
-# /etc/containers/registries.d/default.yaml
+# /etc/containers/registries.d/registry.yaml
 docker:
   registry.example.com:
-    sigstore: https://notary.example.com/signatures
-    use-sigstore-attachments: true
+    lookaside: https://signatures.example.com
 ```
 
+`/etc/containers/policy.json`:
+
 ```json
-// /etc/containers/policy.json
 {
     "default": [
         {
@@ -172,7 +139,7 @@ docker:
 }
 ```
 
-With this configuration, Podman rejects any unsigned image from `registry.example.com`:
+With this configuration, Podman rejects any image from `registry.example.com` unless it carries a valid simple-signing signature made by the trusted GPG key:
 
 ```bash
 # This will succeed if the image is signed
@@ -180,7 +147,7 @@ podman pull registry.example.com/myapp:v1.0.0
 
 # This will fail if the image is not signed
 podman pull registry.example.com/untrusted:latest
-# Error: image trust policy rejection
+# Error: Source image rejected
 ```
 
 ## GPG-Based Image Signing with Podman
@@ -190,41 +157,50 @@ Podman supports GPG-based image signing natively:
 ```bash
 # Generate a GPG key for image signing
 gpg --quick-generate-key image-signing@example.com
+```
 
-# Configure signing for a registry
+Serve `/var/lib/containers/sigstore` over HTTP or HTTPS as `https://signatures.example.com`, and configure Podman to write new signatures to that local staging directory:
+
+```yaml
 # /etc/containers/registries.d/registry.yaml
 docker:
   registry.example.com:
-    sigstore: file:///var/lib/containers/sigstore
+    lookaside: https://signatures.example.com
+    lookaside-staging: file:///var/lib/containers/sigstore
+```
 
+```bash
 # Sign an image with GPG
 podman push --sign-by image-signing@example.com \
   registry.example.com/myapp:v1.0.0
 
 # Verify the signature
 podman pull registry.example.com/myapp:v1.0.0
-# Podman automatically verifies against the policy
+# Podman verifies the signature against policy.json and the configured lookaside store
 ```
 
 ## Delegation and Team Workflows
 
-Notary supports delegation, allowing different team members to sign different image tags:
+Notary supports delegation for its own TUF metadata, allowing different team members to sign different image tags. Podman still verifies its native signatures separately:
 
 ```bash
+# Rotate the snapshot key to the server so delegated publishers do not need it locally
+notary -s https://notary.example.com:4443 key rotate registry.example.com/myapp snapshot -r
+
 # Add a delegation for the "releases" role
-notary delegation add \
+notary -s https://notary.example.com:4443 delegation add -p \
   registry.example.com/myapp \
   targets/releases \
-  --paths "" \
-  --key delegation.crt
+  delegation.crt \
+  --all-paths
 
-# Sign as a delegated signer
-notary addhash \
+# Publish a tag from the delegated role
+notary -s https://notary.example.com:4443 addhash -p \
   registry.example.com/myapp \
   v1.0.0 \
-  <sha256-digest> \
-  --roles targets/releases \
-  --publish
+  <manifest-size> \
+  --sha256 <manifest-sha256> \
+  --roles targets/releases
 ```
 
 ## Build and Sign Pipeline
@@ -251,12 +227,12 @@ echo "=== Pushing and signing ==="
 podman push --sign-by "$GPG_KEY" "${IMAGE}:${VERSION}"
 
 echo "=== Verifying trust ==="
-# Reset local image to force pull with verification
+# Reset the local image to force a fresh pull and policy verification
 podman rmi "${IMAGE}:${VERSION}" 2>/dev/null || true
 podman pull "${IMAGE}:${VERSION}"
 
-echo "=== Trust chain verified ==="
-echo "Image ${IMAGE}:${VERSION} is built, scanned, signed, and verified"
+echo "=== Podman signature policy verified ==="
+echo "Image ${IMAGE}:${VERSION} is built, scanned, signed, and verified by Podman's trust policy"
 ```
 
 ## Monitoring Trust Status
@@ -295,13 +271,13 @@ Rotate signing keys periodically:
 
 ```bash
 # Rotate the targets key
-notary key rotate registry.example.com/myapp targets
+notary -s https://notary.example.com:4443 key rotate registry.example.com/myapp targets
 
-# Rotate the snapshot key
-notary key rotate registry.example.com/myapp snapshot
+# Rotate the snapshot key to be server-managed when using delegations
+notary -s https://notary.example.com:4443 key rotate registry.example.com/myapp snapshot -r
 
-# Rotate the timestamp key (usually managed by the server)
-notary key rotate registry.example.com/myapp timestamp --server-managed
+# Rotate the timestamp key (always managed by the server)
+notary -s https://notary.example.com:4443 key rotate registry.example.com/myapp timestamp -r
 ```
 
 ## Emergency Key Revocation
@@ -309,17 +285,15 @@ notary key rotate registry.example.com/myapp timestamp --server-managed
 If a signing key is compromised:
 
 ```bash
-# Remove the compromised delegation
-notary delegation remove \
+# Remove a compromised delegation key from all delegation roles in the repository
+notary -s https://notary.example.com:4443 delegation purge -p \
   registry.example.com/myapp \
-  targets/releases \
-  --key compromised-key-id \
-  --publish
+  --key compromised-key-id
 
-# Generate new keys and re-sign all images
-notary key rotate registry.example.com/myapp targets --publish
+# Rotate the main targets key if the repository signing key is compromised
+notary -s https://notary.example.com:4443 key rotate registry.example.com/myapp targets
 ```
 
 ## Conclusion
 
-Notary and Podman together provide a robust image trust framework based on The Update Framework. By signing images at build time and verifying signatures at pull time, you create a chain of trust that prevents unauthorized or tampered images from running in your environment. Podman's native support for signature policies means verification can be enforced at the container runtime level, not just as a CI check. Combined with key delegation for team workflows and key rotation for ongoing security, Notary provides enterprise-grade image trust that scales with your organization.
+Notary and Podman can both participate in an image trust workflow, but they solve different parts of the problem. Notary manages TUF metadata for legacy Docker Content Trust-style clients, while Podman enforces pull-time trust through `policy.json` plus its native signature storage and verification features. By signing images at build time, serving the corresponding signatures, and verifying them at pull time, you prevent unauthorized or tampered images from running in your environment. If you still rely on Notary, publish its metadata separately and treat it as a legacy component now that Notary v1 has been archived.
