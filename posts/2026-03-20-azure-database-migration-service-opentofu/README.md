@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Database Migration, DMS, PostgreSQL, Infrastructure as Code
 
-Description: Learn how to provision Azure Database Migration Service and configure online migration projects using OpenTofu.
+Description: Learn how to provision Azure Database Migration Service (classic) and configure PostgreSQL migration projects using OpenTofu.
 
 ## Introduction
 
-Azure Database Migration Service (DMS) enables online and offline migrations to Azure managed databases. OpenTofu manages DMS instances, migration projects, and the supporting networking infrastructure as code.
+Azure Database Migration Service (classic DMS) enables online and offline migrations to Azure managed databases. OpenTofu manages DMS instances, migration projects, and the supporting networking infrastructure as code.
 
 ## Enabling Required APIs
 
@@ -40,14 +40,6 @@ resource "azurerm_subnet" "dms" {
   resource_group_name  = azurerm_resource_group.migration.name
   virtual_network_name = azurerm_virtual_network.dms.name
   address_prefixes     = ["10.50.0.0/24"]
-
-  delegation {
-    name = "dms-delegation"
-    service_delegation {
-      name    = "Microsoft.DataMigration/dataMigrationServices"
-      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
-    }
-  }
 }
 ```
 
@@ -60,8 +52,8 @@ resource "azurerm_database_migration_service" "main" {
   resource_group_name = azurerm_resource_group.migration.name
   subnet_id           = azurerm_subnet.dms.id
 
-  # Standard tier for offline migrations; Premium for online (CDC) migrations
-  sku_name = "Standard_1vCores"
+  # Premium tier is required for PostgreSQL online migrations in DMS classic
+  sku_name = "Premium_4vCores"
 
   tags = {
     Environment = var.environment
@@ -115,14 +107,16 @@ resource "azurerm_postgresql_flexible_server_database" "app_db" {
 }
 ```
 
-## Firewall Rule for Source Access
+## Firewall Rule for DMS Access
 
 ```hcl
 resource "azurerm_postgresql_flexible_server_firewall_rule" "dms" {
   name             = "allow-dms"
   server_id        = azurerm_postgresql_flexible_server.target.id
-  start_ip_address = var.dms_source_ip
-  end_ip_address   = var.dms_source_ip
+
+  # 0.0.0.0 allows Azure-internal services such as DMS to reach the public endpoint.
+  start_ip_address = "0.0.0.0"
+  end_ip_address   = "0.0.0.0"
 }
 ```
 
@@ -148,4 +142,4 @@ tofu apply tfplan
 
 ## Summary
 
-Azure Database Migration Service orchestrates data movement to Azure managed databases. OpenTofu provisions the DMS instance, migration project, VNet delegation, target database, and firewall rules - creating a repeatable migration infrastructure that can be used across environments.
+Azure Database Migration Service (classic) orchestrates data movement to Azure managed databases. OpenTofu provisions the DMS instance, migration project, virtual network, target database, and firewall rule - creating a repeatable migration infrastructure that can be used across environments.
