@@ -18,12 +18,12 @@ Many developers use Chromebooks as secondary or even primary development machine
 
 Before you begin, make sure your Chromebook meets these requirements:
 
-- ChromeOS version 89 or later
-- Linux development environment enabled (Settings > Advanced > Developers > Linux development environment)
+- A Chromebook that supports the Linux development environment
+- Linux development environment enabled (Settings > About ChromeOS > Developers > Linux development environment)
 - At least 4GB of RAM (8GB recommended for running multiple containers)
 - At least 10GB of disk space allocated to the Linux environment
 
-To enable the Linux environment, open ChromeOS Settings, navigate to Advanced > Developers, and click "Turn on" next to Linux development environment. ChromeOS will download and set up a Debian container automatically.
+To enable the Linux environment, open ChromeOS Settings, navigate to About ChromeOS > Developers, and click "Set up" next to Linux development environment. ChromeOS will download and set up a Debian environment automatically.
 
 ---
 
@@ -42,38 +42,28 @@ Verify the installation:
 podman --version
 ```
 
-You should see output like `podman version 4.3.1` or later depending on your Debian release.
+You should see output like `podman version 4.x` or `podman version 5.x` depending on the Debian release in your Linux environment.
 
 ### Configuring Registries
 
-By default, Podman on Debian may not have container registries configured. Create or edit the registries configuration:
+The examples in this guide already use fully qualified image names such as `docker.io/library/nginx:alpine`, so no registry changes are required. If you want to use short names such as `nginx:alpine`, configure only registries you trust:
 
 ```bash
 sudo mkdir -p /etc/containers
 sudo tee /etc/containers/registries.conf <<EOF
-unqualified-search-registries = ['docker.io', 'quay.io', 'ghcr.io']
+unqualified-search-registries = ["docker.io"]
 EOF
 ```
 
 ### Setting Up Storage
 
-Configure the storage driver for the ChromeOS environment. The `overlay` driver works well with Crostini:
-
-```bash
-sudo tee /etc/containers/storage.conf <<EOF
-[storage]
-driver = "overlay"
-
-[storage.options.overlay]
-mount_program = "/usr/bin/fuse-overlayfs"
-EOF
-```
-
-Install fuse-overlayfs if it is not already present:
+Install `fuse-overlayfs` if it is not already present:
 
 ```bash
 sudo apt install -y fuse-overlayfs
 ```
+
+Rootless Podman uses `fuse-overlayfs` automatically when it is available. If you already ran Podman before installing it, run `podman system reset` once before pulling images so Podman can switch from `vfs` to `overlay`.
 
 ---
 
@@ -109,7 +99,7 @@ Verify it is running:
 podman ps
 ```
 
-Open the Chrome browser on your Chromebook and navigate to `http://localhost:8080`. ChromeOS automatically forwards ports from the Linux environment to the Chrome browser.
+Open the Chrome browser on your Chromebook and navigate to `http://localhost:8080`. ChromeOS forwards `localhost` ports into Crostini, so services listening in the Linux environment are typically reachable from Chrome on the same port.
 
 ### Custom Web Content
 
@@ -120,8 +110,8 @@ mkdir -p ~/website
 echo '<h1>Hello from Podman on ChromeOS</h1>' > ~/website/index.html
 
 podman run -d --name mysite \
-  -p 8080:80 \
-  -v ~/website:/usr/share/nginx/html:ro,Z \
+  -p 8081:80 \
+  -v ~/website:/usr/share/nginx/html:ro \
   docker.io/library/nginx:alpine
 ```
 
@@ -137,7 +127,7 @@ podman run -d --name devdb \
   -e POSTGRES_USER=developer \
   -e POSTGRES_PASSWORD=devpassword \
   -e POSTGRES_DB=myapp \
-  -v pgdata:/var/lib/postgresql/data:Z \
+  -v pgdata:/var/lib/postgresql/data \
   docker.io/library/postgres:16-alpine
 ```
 
@@ -152,23 +142,21 @@ psql -h localhost -U developer -d myapp
 
 ## Using Podman Compose on ChromeOS
 
-For multi-container applications, install podman-compose:
+For multi-container applications, install a Compose provider:
 
 ```bash
-sudo apt install -y python3-pip
-pip3 install podman-compose
+sudo apt install -y podman-compose
 ```
 
 Create a `docker-compose.yml` file for a typical development stack:
 
 ```yaml
-version: "3.8"
 services:
   web:
     image: docker.io/library/node:20-alpine
     working_dir: /app
     volumes:
-      - ./app:/app:Z
+      - ./app:/app
     ports:
       - "3000:3000"
     command: sh -c "npm install && npm start"
@@ -180,7 +168,7 @@ services:
       POSTGRES_PASSWORD: apppass
       POSTGRES_DB: appdb
     volumes:
-      - pgdata:/var/lib/postgresql/data:Z
+      - pgdata:/var/lib/postgresql/data
 
 volumes:
   pgdata:
@@ -189,7 +177,7 @@ volumes:
 Start the stack:
 
 ```bash
-podman-compose up -d
+podman compose up -d
 ```
 
 ---
@@ -229,12 +217,13 @@ podman system info | grep -A 5 store
 
 ### Permission Errors with Volumes
 
-If you encounter permission errors when mounting volumes, use the `:Z` suffix to apply SELinux labels, or adjust the UID mapping:
+If you encounter permission errors when mounting volumes, the usual issue on ChromeOS is UID/GID ownership rather than SELinux labels. Let Podman adjust ownership for the container with the `:U` suffix:
 
 ```bash
-podman unshare chown -R 1000:1000 ~/mydata
-podman run -v ~/mydata:/data:Z myimage
+podman run -v ~/mydata:/data:U myimage
 ```
+
+If you prefer to fix ownership yourself, use `podman unshare chown` with the UID and GID expected by the container image.
 
 ### Network Connectivity Issues
 
