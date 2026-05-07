@@ -16,7 +16,7 @@ Prometheus is the backbone of Rancher's monitoring stack. While Rancher installs
 
 ## Understanding Prometheus in Rancher
 
-Rancher deploys Prometheus using the Prometheus Operator. This means configuration is managed through Custom Resource Definitions (CRDs) rather than raw configuration files. The primary CRD is the `Prometheus` resource in the `cattle-monitoring-system` namespace.
+Rancher deploys Prometheus using the Prometheus Operator. This means configuration is managed through Custom Resource Definitions (CRDs) rather than raw configuration files. By default, the primary custom resource is the `Prometheus` resource in the `cattle-monitoring-system` namespace.
 
 ## Step 1: Access Prometheus Configuration
 
@@ -174,7 +174,7 @@ This is configured automatically by Rancher but can be customized if you use an 
 
 ## Step 10: Apply Configuration Changes
 
-After modifying the values, click **Upgrade** to apply the changes. Prometheus will restart with the new configuration.
+After modifying the values, click **Upgrade** to apply the changes. The Prometheus Operator will reconcile the new configuration, and some changes trigger a rolling restart of the Prometheus pods.
 
 Verify the restart completed successfully:
 
@@ -188,7 +188,11 @@ Check the Prometheus configuration was applied:
 kubectl port-forward -n cattle-monitoring-system svc/rancher-monitoring-prometheus 9090:9090
 ```
 
-Then open `http://localhost:9090/config` in your browser to see the active configuration.
+Then inspect the active configuration:
+
+```bash
+curl http://localhost:9090/api/v1/status/config
+```
 
 ## Verifying Configuration via CLI
 
