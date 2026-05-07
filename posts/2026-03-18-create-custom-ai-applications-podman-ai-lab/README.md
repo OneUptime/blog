@@ -20,16 +20,17 @@ While the built-in recipes in Podman AI Lab cover common use cases, many project
 # Ensure Podman and AI Lab are set up with a downloaded model
 
 podman info --format '{{.Version.Version}}'
-podman machine ssh ls /var/lib/containers/ai-lab/models/
+podman machine ssh ls /home/user/ai-lab/models/
 
 # Verify a model inference server is running or start one
 podman run -d --name ai-backend \
-  -p 8080:8080 \
-  -v /var/lib/containers/ai-lab/models:/models:ro \
-  ghcr.io/containers/ai-lab-model-service:latest \
-  --model /models/mistral-7b-instruct-q4_0.gguf \
-  --ctx-size 4096 \
-  --threads 4
+  -p 8080:8000 \
+  -v /home/user/ai-lab/models/mistral-7b-instruct-q4_0.gguf:/models/mistral-7b-instruct-q4_0.gguf:ro \
+  -e MODEL_PATH=/models/mistral-7b-instruct-q4_0.gguf \
+  -e HOST=0.0.0.0 \
+  -e PORT=8000 \
+  -e LLAMA_ARG_ALIAS=local-model \
+  quay.io/ramalama/ramalama-llama-server:latest
 ```
 
 ## Building a Custom FastAPI Application
@@ -41,7 +42,7 @@ podman run -d --name ai-backend \
 mkdir -p ~/ai-app && cd ~/ai-app
 
 # Create the project structure
-mkdir -p app templates static
+mkdir -p app
 
 # The final structure will look like:
 # ai-app/
@@ -50,8 +51,6 @@ mkdir -p app templates static
 # ├── app/
 # │   ├── main.py
 # │   └── llm_client.py
-# └── templates/
-#     └── index.html
 ```
 
 ### Create the LLM Client
@@ -64,6 +63,7 @@ import os
 
 # Use environment variable for the model endpoint
 MODEL_URL = os.getenv("MODEL_ENDPOINT", "http://localhost:8080")
+MODEL_NAME = os.getenv("MODEL_NAME", "local-model")
 
 async def generate_response(prompt: str, system_prompt: str = "") -> str:
     """Send a prompt to the local inference server and return the response."""
@@ -76,6 +76,7 @@ async def generate_response(prompt: str, system_prompt: str = "") -> str:
         response = await client.post(
             f"{MODEL_URL}/v1/chat/completions",
             json={
+                "model": MODEL_NAME,
                 "messages": messages,
                 "temperature": 0.7,
                 "max_tokens": 1024,
@@ -190,6 +191,7 @@ podman build -t my-ai-app:latest ~/ai-app/
 podman run -d --name my-ai-app \
   -p 8000:8000 \
   -e MODEL_ENDPOINT=http://host.containers.internal:8080 \
+  -e MODEL_NAME=local-model \
   my-ai-app:latest
 
 # Verify both containers are running
@@ -209,22 +211,24 @@ cat << 'EOF' > ~/ai-app/compose.yaml
 # Docker Compose file for the custom AI application stack
 services:
   model-server:
-    image: ghcr.io/containers/ai-lab-model-service:latest
+    image: quay.io/ramalama/ramalama-llama-server:latest
     ports:
-      - "8080:8080"
+      - "8080:8000"
     volumes:
-      - /var/lib/containers/ai-lab/models:/models:ro
-    command: >
-      --model /models/mistral-7b-instruct-q4_0.gguf
-      --ctx-size 4096
-      --threads 4
+      - /home/user/ai-lab/models/mistral-7b-instruct-q4_0.gguf:/models/mistral-7b-instruct-q4_0.gguf:ro
+    environment:
+      - MODEL_PATH=/models/mistral-7b-instruct-q4_0.gguf
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LLAMA_ARG_ALIAS=local-model
 
   ai-app:
     build: .
     ports:
       - "8000:8000"
     environment:
-      - MODEL_ENDPOINT=http://model-server:8080
+      - MODEL_ENDPOINT=http://model-server:8000
+      - MODEL_NAME=local-model
     depends_on:
       - model-server
 EOF
