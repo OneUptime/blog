@@ -8,27 +8,67 @@ Description: Configure the AWS Load Balancer Controller (formerly ALB Ingress Co
 
 ## Introduction
 
-The AWS Load Balancer Controller provisions Application Load Balancers (ALBs) and Network Load Balancers (NLBs) for Kubernetes Ingress and Service resources on EKS. For IPv6, the controller creates dual-stack or IPv6-only ALBs using the `dualstack` or `dualstack-without-public-ipv4` IP address type. This requires the VPC and subnets to be IPv6-enabled and the EKS cluster to be configured with dual-stack pod networking.
+The AWS Load Balancer Controller provisions Application Load Balancers (ALBs) and Network Load Balancers (NLBs) for Kubernetes Ingress and Service resources on EKS. For IPv6, the controller creates dual-stack or public-IPv6-only ALBs using the `dualstack` or `dualstack-without-public-ipv4` IP address type. This requires the VPC and subnets to be IPv6-enabled, and the EKS cluster to be created with the `IPv6` IP family. Amazon EKS doesn't support dual-stacked Pods or Services, so the load balancer must target `IPv6` Pods in `ip` mode.
 
 ## Prerequisites: EKS Cluster with IPv6
 
 ```bash
-# Create an EKS cluster with dual-stack networking
+# Create an EKS cluster with the IPv6 IP family
+cat >ipv6-cluster.yaml <<'EOF'
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
 
-eksctl create cluster \
-    --name my-cluster \
+metadata:
+  name: my-cluster
+  region: us-east-1
+  version: "1.28"
+
+kubernetesNetworkConfig:
+  ipFamily: IPv6
+
+addons:
+  - name: vpc-cni
+    version: latest
+  - name: coredns
+    version: latest
+  - name: kube-proxy
+    version: latest
+
+iam:
+  withOIDC: true
+
+managedNodeGroups:
+  - name: my-nodegroup
+    instanceType: m5.large
+    desiredCapacity: 3
+EOF
+
+eksctl create cluster -f ipv6-cluster.yaml
+
+# Verify Pods and Services use IPv6 addresses
+kubectl get pods -n kube-system -o wide
+kubectl get services -n kube-system -o wide
+
+# Install AWS Load Balancer Controller with IRSA
+curl -o iam-policy.json \
+    https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.3.0/docs/install/iam_policy.json
+
+aws iam create-policy \
+    --policy-name AWSLoadBalancerControllerIAMPolicy \
+    --policy-document file://iam-policy.json
+
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+eksctl create iamserviceaccount \
+    --cluster=my-cluster \
+    --namespace=kube-system \
+    --name=aws-load-balancer-controller \
+    --attach-policy-arn=arn:aws:iam::${ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy \
+    --override-existing-serviceaccounts \
     --region us-east-1 \
-    --version 1.28 \
-    --node-type m5.large \
-    --nodes 3 \
-    --vpc-cidr 10.0.0.0/16 \
-    --kubernetes-network-config ipFamily=ipv6
+    --approve
 
-# Verify cluster has IPv6 pod CIDR
-kubectl get node -o yaml | grep -A5 "podCIDRs"
-# Should show both IPv4 and IPv6 CIDRs
-
-# Install AWS Load Balancer Controller
+# Use AWS Load Balancer Controller v2.3.1 or later for IPv6 Pod support
 helm repo add eks https://aws.github.io/eks-charts
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
     -n kube-system \
@@ -90,15 +130,13 @@ spec:
 
 ```yaml
 # The AWS Load Balancer Controller creates target groups that register
-# pod IPs. In dual-stack clusters, pods have IPv6 addresses.
+# Pod IPs. In Amazon EKS IPv6 clusters, Pods have IPv6 addresses.
 
-# Configure target type (IP mode - registers pod IPs directly)
+# Configure target type (IP mode is required for IPv6 Pods on EKS)
 metadata:
   annotations:
     alb.ingress.kubernetes.io/target-type: ip
-    # For IPv6 pods:
-    # The controller automatically uses the pod's IPv6 address for targeting
-    # when the ALB is dual-stack and the pod has IPv6
+    # Instance mode is not supported for routing to IPv6 Pods on EKS
 
     # Target group protocol
     alb.ingress.kubernetes.io/backend-protocol: HTTP
@@ -108,7 +146,7 @@ metadata:
 ## Service Annotation for IPv6 NLB
 
 ```yaml
-# service-nlb-ipv6.yaml - NLB with IPv6 via Service type
+# service-nlb-ipv6.yaml - NLB with dual-stack frontend and IPv6 Pod targets
 
 apiVersion: v1
 kind: Service
@@ -124,10 +162,9 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-subnets: "subnet-xxxx,subnet-yyyy"
 spec:
   type: LoadBalancer
-  # Service dual-stack for internal routing
-  ipFamilyPolicy: PreferDualStack
+  # Amazon EKS IPv6 clusters use single-stack IPv6 Services
+  ipFamilyPolicy: SingleStack
   ipFamilies:
-    - IPv4
     - IPv6
   selector:
     app: myapp
@@ -188,7 +225,7 @@ aws ec2 describe-security-groups --group-ids sg-xxxx \
 ## Verify ALB IPv6 Operation
 
 ```bash
-# Check ALB was created with dual-stack
+# Check the Ingress has an ALB hostname
 kubectl describe ingress myapp -n production | grep -E "LoadBalancer|Address"
 
 # Get ALB DNS name
@@ -207,11 +244,12 @@ aws elbv2 describe-target-health \
     --query 'TargetHealthDescriptions[].Target'
 # Should show pod IPv6 addresses
 
-# Check ALB listener has IPv6
-aws elbv2 describe-listeners \
-    --load-balancer-arn "arn:aws:elasticloadbalancing:us-east-1:xxx:loadbalancer/app/myapp/xxx"
+# Check ALB IP address type in AWS
+aws elbv2 describe-load-balancers \
+    --load-balancer-arns "arn:aws:elasticloadbalancing:us-east-1:xxx:loadbalancer/app/myapp/xxx" \
+    --query 'LoadBalancers[].{DNSName:DNSName,IpAddressType:IpAddressType,Scheme:Scheme}'
 ```
 
 ## Conclusion
 
-The AWS Load Balancer Controller creates dual-stack ALBs for Kubernetes Ingress resources when annotated with `alb.ingress.kubernetes.io/ip-address-type: dualstack`. This requires VPC subnets with IPv6 CIDR blocks and security group rules allowing IPv6 traffic. In dual-stack EKS clusters, the controller registers pod IPv6 addresses in target groups, enabling ALB to forward traffic directly to pods over IPv6. The `dualstack-without-public-ipv4` option creates an IPv6-only public ALB without public IPv4 addresses, reducing costs and simplifying IPv6-only ingress. Always ensure the Kubernetes service's `ipFamilyPolicy: PreferDualStack` aligns with the ALB's dual-stack configuration for consistent IPv6 routing.
+The AWS Load Balancer Controller creates dual-stack ALBs for Kubernetes Ingress resources when annotated with `alb.ingress.kubernetes.io/ip-address-type: dualstack`. This requires VPC subnets with IPv6 CIDR blocks, IPv6 routing, and security group rules allowing IPv6 traffic. In Amazon EKS clusters created with the `IPv6` IP family, the controller registers Pod IPv6 addresses in target groups when you use `ip` mode, enabling ALB to forward traffic directly to Pods over IPv6. The `dualstack-without-public-ipv4` option creates a public ALB that exposes only public IPv6 addresses, reducing public IPv4 usage and simplifying IPv6-first ingress. On Amazon EKS, keep the Kubernetes Service single-stack `IPv6` even when the external ALB or NLB frontend is dual-stack.
