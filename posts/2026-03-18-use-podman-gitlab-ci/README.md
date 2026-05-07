@@ -8,15 +8,15 @@ Description: Learn how to integrate Podman into GitLab CI pipelines for building
 
 ---
 
-> GitLab CI and Podman together eliminate the need for Docker-in-Docker, simplifying your pipeline architecture while improving security.
+> GitLab CI and Podman can eliminate the need for Docker-in-Docker, simplifying your pipeline architecture while improving security.
 
-GitLab CI is a powerful CI/CD platform built into GitLab, and using Podman as your container engine eliminates the complexities of Docker-in-Docker (DinD). Podman runs without a daemon, which means you do not need privileged containers or a sidecar service. This guide shows you how to set up Podman in GitLab CI for common container workflows.
+GitLab CI is a powerful CI/CD platform built into GitLab, and using Podman as your container engine can eliminate the complexities of Docker-in-Docker (DinD). Podman runs without a daemon, so you do not need a Docker daemon sidecar service, but whether you can also avoid privileged containers depends on how your runner is configured. This guide shows you how to set up Podman in GitLab CI for common container workflows.
 
 ---
 
 ## Configuring the GitLab CI Runner for Podman
 
-First, you need a runner environment where Podman is available. You can use a shell executor on a machine with Podman installed, or use a container image that includes Podman.
+First, you need a runner environment where Podman is available. You can use a shell executor on a machine with Podman installed, or configure a container-based runner to support Podman and use a container image that includes it. Using a Podman image alone is not enough; the runner still needs a compatible Podman setup.
 
 ```yaml
 # .gitlab-ci.yml
@@ -32,9 +32,9 @@ stages:
 
 # Global variables for the pipeline
 variables:
-  # Tell Podman to use vfs storage driver in CI (works without kernel modules)
+  # Use vfs when overlay or fuse-overlayfs is unavailable in the runner environment
   STORAGE_DRIVER: vfs
-  # Disable color output for cleaner CI logs
+  # Build Docker-format image manifests instead of the default OCI format
   BUILDAH_FORMAT: docker
 ```
 
@@ -170,21 +170,16 @@ If you prefer a shell executor, configure your GitLab runner to use Podman direc
 
 ```bash
 #!/bin/bash
-# /etc/gitlab-runner/config.toml snippet for shell executor
-# [[runners]]
-#   name = "podman-runner"
-#   executor = "shell"
-#   [runners.custom_build_dir]
-#     enabled = true
+# Create the runner in GitLab first, then copy its runner authentication token.
+# Configure the runner's "podman" tag when you create it in GitLab.
 
 # Register the runner with shell executor
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.example.com/" \
-  --registration-token "YOUR_TOKEN" \
+  --token "glrt-YOUR_RUNNER_AUTH_TOKEN" \
   --executor "shell" \
-  --description "Podman Shell Runner" \
-  --tag-list "podman"
+  --description "Podman Shell Runner"
 ```
 
 ```yaml
@@ -201,4 +196,4 @@ build-shell:
 
 ## Summary
 
-Podman in GitLab CI removes the need for Docker-in-Docker and privileged containers, making your pipelines simpler and more secure. You can build images, run tests, push to GitLab Container Registry, and manage multi-container integration tests all without a container daemon. Whether you use the container-based executor with a Podman image or a shell executor on a Podman-enabled host, the workflow remains clean and maintainable.
+Podman in GitLab CI can remove the need for Docker-in-Docker, and with the right runner setup it can also avoid privileged containers, making your pipelines simpler and more secure. You can build images, run tests, push to GitLab Container Registry, and manage multi-container integration tests all without a container daemon. Whether you use a shell executor on a Podman-enabled host or a container-based executor that is already configured to support Podman, the workflow remains clean and maintainable.
