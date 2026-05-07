@@ -171,10 +171,10 @@ RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 ```
 
-**Using exec form incorrectly:**
+**Using shell form instead of exec form:**
 
 ```dockerfile
-# Bad - runs in a shell that exits
+# Bad - runs through /bin/sh -c, which affects arguments and signals
 ENTRYPOINT /entrypoint.sh
 
 # Good - runs directly
@@ -196,11 +196,11 @@ my-app &
 exec my-app
 ```
 
-The `exec` keyword is critical. Without it, your shell script becomes PID 1, runs `my-app` in the background, finishes the script, and the container exits because PID 1 (the script) has completed.
+The `exec` keyword is critical in this pattern. Without it, your shell script becomes PID 1, runs `my-app` in the background, finishes the script, and the container exits because PID 1 (the script) has completed.
 
 ## Fix 6: Handle Signal Propagation
 
-When using shell form (`CMD my-app` instead of `CMD ["my-app"]`), the shell becomes PID 1, and signals like SIGTERM are not forwarded to your application. This can cause containers to appear to exit unexpectedly during orchestration restarts.
+When using shell form (`CMD my-app` instead of `CMD ["my-app"]`), the shell becomes PID 1, and signals like SIGTERM are not forwarded to your application. This can cause containers to fail to shut down gracefully and then be killed during orchestration restarts.
 
 Always use exec form in your Dockerfile:
 
