@@ -11,14 +11,14 @@ Understanding how individual pods consume cluster resources is essential for rig
 ## Prerequisites
 
 - Rancher v2.6 or later with the Monitoring chart installed.
-- Kubernetes Metrics Server deployed (included by default in Rancher-managed clusters).
+- Kubernetes Metrics Server deployed if you want to use the Rancher usage columns or the `kubectl top` commands in Step 8.
 - Cluster view or project member permissions.
 
 ## Step 1: View Pod Resources in the Rancher UI
 
 1. Navigate to your cluster in the Rancher UI.
 2. Go to **Workload > Pods** or navigate through **Workload > Deployments** and click into a specific deployment.
-3. Each pod shows its current CPU and memory usage alongside its requests and limits.
+3. If resource metrics are available, each pod shows its current CPU and memory usage alongside its requests and limits.
 4. Click on a pod name to see detailed resource metrics, container statuses, and events.
 
 ## Step 2: Use the Grafana Pod Dashboard
@@ -48,15 +48,15 @@ sum(rate(container_cpu_usage_seconds_total{container!="", pod!=""}[5m])) by (nam
 ### Top 10 CPU Consuming Pods
 
 ```promql
-topk(10, sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (namespace, pod))
+topk(10, sum(rate(container_cpu_usage_seconds_total{container!="", pod!=""}[5m])) by (namespace, pod))
 ```
 
 ### Pod CPU Usage vs Requests
 
 ```promql
-sum(rate(container_cpu_usage_seconds_total{container!="", pod="my-pod"}[5m]))
+sum(rate(container_cpu_usage_seconds_total{container!="", namespace="my-namespace", pod="my-pod"}[5m])) by (namespace, pod)
 /
-sum(kube_pod_container_resource_requests{resource="cpu", pod="my-pod"})
+sum(kube_pod_container_resource_requests{resource="cpu", namespace="my-namespace", pod="my-pod"}) by (namespace, pod)
 ```
 
 ### Pods Exceeding CPU Requests
@@ -80,7 +80,7 @@ sum(container_memory_working_set_bytes{container!="", pod!=""}) by (namespace, p
 ### Top 10 Memory Consuming Pods
 
 ```promql
-topk(10, sum(container_memory_working_set_bytes{container!=""}) by (namespace, pod))
+topk(10, sum(container_memory_working_set_bytes{container!="", pod!=""}) by (namespace, pod))
 ```
 
 ### Pods Near Memory Limits
@@ -98,8 +98,8 @@ topk(10, sum(container_memory_working_set_bytes{container!=""}) by (namespace, p
 ```promql
 count by (namespace, pod) (
   kube_pod_container_info{container!=""}
-  unless
-  kube_pod_container_resource_limits{resource="memory"}
+  unless on (namespace, pod, container)
+  kube_pod_container_resource_limits{resource="memory", container!=""}
 )
 ```
 
@@ -140,7 +140,9 @@ kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"} > 0
 ### Pods Not Ready
 
 ```promql
-kube_pod_status_ready{condition="true"} == 0
+kube_pod_status_ready{condition="false"} == 1
+and on (namespace, pod)
+kube_pod_status_phase{phase=~"Pending|Running|Unknown"} == 1
 ```
 
 ### OOMKilled Containers
@@ -182,7 +184,7 @@ spec:
 
         - alert: PodFrequentRestart
           expr: |
-            increase(kube_pod_container_status_restarts_total[1h]) > 5
+            sum(increase(kube_pod_container_status_restarts_total[1h])) by (namespace, pod) > 5
           for: 5m
           labels:
             severity: warning
@@ -212,13 +214,15 @@ spec:
 
         - alert: PodNotReady
           expr: |
-            kube_pod_status_phase{phase=~"Pending|Unknown"} > 0
+            kube_pod_status_ready{condition="false"} == 1
+            and on (namespace, pod)
+            kube_pod_status_phase{phase=~"Pending|Running|Unknown"} == 1
           for: 15m
           labels:
             severity: warning
           annotations:
             summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready"
-            description: "Pod has been in {{ $labels.phase }} state for more than 15 minutes."
+            description: "Pod has been not ready for more than 15 minutes."
 ```
 
 Apply the rules:
