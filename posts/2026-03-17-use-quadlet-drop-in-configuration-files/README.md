@@ -16,7 +16,7 @@ Systemd drop-in files let you override specific settings in a unit file without 
 
 ## How Drop-In Files Work
 
-Drop-in files are placed in a directory named after the service with a `.d` suffix. They extend or override the generated unit file.
+Drop-in files are placed in a directory named after the service or Quadlet file with a `.d` suffix. They extend or override the generated unit file or the source Quadlet configuration.
 
 ## Creating a Drop-In for a Quadlet Service
 
@@ -66,23 +66,27 @@ ExecStopPost=/bin/sh -c 'echo "Container stopped at $(date)" >> /tmp/webapp.log'
 
 ## Environment-Specific Overrides
 
-Keep a base Quadlet file and use drop-ins for different environments:
+Keep a base Quadlet file and use Quadlet drop-ins for different environments:
 
 ```ini
 # Production override
-# ~/.config/systemd/user/webapp.service.d/production.conf
-[Service]
+# ~/.config/containers/systemd/webapp.container.d/production.conf
+[Container]
 Environment=NODE_ENV=production
 Environment=LOG_LEVEL=warn
+
+[Service]
 RestartSec=5
 ```
 
 ```ini
 # Development override
-# ~/.config/systemd/user/webapp.service.d/development.conf
-[Service]
+# ~/.config/containers/systemd/webapp.container.d/development.conf
+[Container]
 Environment=NODE_ENV=development
 Environment=LOG_LEVEL=debug
+
+[Service]
 RestartSec=1
 ```
 
