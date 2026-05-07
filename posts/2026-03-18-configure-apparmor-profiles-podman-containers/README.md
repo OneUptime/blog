@@ -143,18 +143,18 @@ podman run --rm \
 
 ## Using Complain Mode for Testing
 
-Before enforcing a profile, test it in complain mode to log violations without blocking them.
+Before enforcing a profile, test it in complain mode to log violations from missing allow rules without blocking them. Explicit `deny` rules are still enforced in complain mode.
 
 ```bash
 # Set the profile to complain mode for testing
-# Violations are logged but not denied
+# Missing allow rules are logged but not denied; explicit deny rules are still enforced
 sudo aa-complain /etc/apparmor.d/podman-webapp
 
 # Run your container and exercise its functionality
 podman run --rm \
   --security-opt apparmor=podman-webapp \
   docker.io/library/ubuntu:latest \
-  bash -c "ls /root; cat /etc/shadow 2>/dev/null; echo 'Complain mode test complete'"
+  bash -c "touch /var/log/complain-test; rm -f /var/log/complain-test; echo 'Complain mode test complete'"
 
 # Check the logs for violations that would be blocked in enforce mode
 sudo dmesg | grep "apparmor.*ALLOWED" | tail -10
