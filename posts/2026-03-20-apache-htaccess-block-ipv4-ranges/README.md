@@ -12,14 +12,14 @@ Apache's `.htaccess` files allow directory-level access control without modifyin
 
 ## Enabling .htaccess Override
 
-Before `.htaccess` rules work, the main Apache configuration must permit overrides.
+Before `.htaccess` rules work, the main Apache configuration must permit the directives you want to use.
 
 ```apacheconf
 # /etc/apache2/sites-available/mysite.conf
 
 <Directory /var/www/mysite>
-    # Allow .htaccess files to override access control
-    AllowOverride AuthConfig Limit
+    # Allow Require-based access control and ErrorDocument in .htaccess
+    AllowOverride AuthConfig FileInfo
     Require all granted
 </Directory>
 ```
@@ -46,7 +46,7 @@ Before `.htaccess` rules work, the main Apache configuration must permit overrid
     Require not ip 198.51.100.5
     Require not ip 203.0.113.42
     # Block the entire 198.51.100.0/24 CIDR range
-    Require not ip 198.51.100
+    Require not ip 198.51.100.0/24
 </RequireAll>
 ```
 
@@ -67,13 +67,13 @@ To restrict a path to a set of trusted IPs (e.g., an admin panel):
 ## Combining Allow and Deny for an Admin Path
 
 ```apacheconf
+# /var/www/mysite/admin/.htaccess
+
 # Protect /admin from all IPs except trusted ones
-<Location /admin>
-    <RequireAny>
-        Require ip 203.0.113.10
-        Require ip 192.168.1.0/24
-    </RequireAny>
-</Location>
+<RequireAny>
+    Require ip 203.0.113.10
+    Require ip 192.168.1.0/24
+</RequireAny>
 ```
 
 ## Legacy Syntax (Apache 2.2)
@@ -104,4 +104,4 @@ ErrorDocument 403 /errors/blocked.html
 - Use `Require not ip` (Apache 2.4+) to block individual IPs or CIDR ranges.
 - `Require all granted` + `Require not ip` blocks specific IPs while allowing everyone else.
 - `RequireAny` creates an allowlist (only listed IPs are permitted).
-- Set `AllowOverride Limit` in the main config to allow `.htaccess` access control rules.
+- Set `AllowOverride AuthConfig` in the main config to allow `.htaccess` access control rules, and add `FileInfo` if you also use `ErrorDocument`.
