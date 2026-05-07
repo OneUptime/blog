@@ -18,9 +18,9 @@ Podman Desktop runs natively on Windows and provides a full graphical interface 
 
 Verify your system meets these requirements:
 
-- Windows 10 version 2004 or later, or Windows 11
+- Windows 10 Build 19043 or later, or Windows 11
 - WSL2 enabled (recommended) or Hyper-V
-- At least 4 GB of RAM (8 GB recommended)
+- At least 6 GB of RAM for the Podman machine (8 GB recommended)
 - At least 2 GB of free disk space
 - Hardware virtualization enabled in BIOS
 
@@ -38,18 +38,17 @@ systeminfo | findstr /i "Virtualization"
 
 ## Step 1: Enable WSL2
 
-WSL2 is required for Podman Desktop on Windows. Enable it if not already active.
+WSL2 is recommended for Podman Desktop on Windows. Enable it if not already active.
 
 ```powershell
-# Enable WSL feature (run PowerShell as Administrator)
-wsl --install
+# Enable WSL feature without installing a default Linux distribution (run PowerShell as Administrator)
+wsl --update
+wsl --install --no-distribution
 
-# This installs WSL2 with the default Ubuntu distribution
 # Restart your computer when prompted
 
 # After restart, verify WSL2 is active
-wsl --version
-wsl --list --verbose
+wsl --status
 ```
 
 If WSL was already installed but using version 1, upgrade it.
@@ -80,10 +79,7 @@ start https://podman-desktop.io/downloads
 
 ```powershell
 # Install using the Windows Package Manager
-winget install RedHat.PodmanDesktop
-
-# Verify the installation
-podman-desktop --version
+winget install -e --id RedHat.Podman-Desktop
 ```
 
 ### Method C: Install with Chocolatey
@@ -91,9 +87,6 @@ podman-desktop --version
 ```powershell
 # Install using Chocolatey
 choco install podman-desktop
-
-# Verify the installation
-podman-desktop --version
 ```
 
 ## Step 3: Install the Podman Engine
@@ -128,13 +121,10 @@ podman machine list
 
 ## Step 5: Launch and Configure Podman Desktop
 
-Launch Podman Desktop from the Start menu or command line.
+Launch Podman Desktop from the Start menu.
 
 ```powershell
-# Launch from command line
-podman-desktop
-
-# Or search for "Podman Desktop" in the Start menu
+# Search for "Podman Desktop" in the Start menu
 ```
 
 The first-launch wizard will:
@@ -150,7 +140,7 @@ Run a quick test to confirm everything works.
 
 ```powershell
 # Test from the command line
-podman run --rm docker.io/library/hello-world
+podman run docker.io/library/hello-world
 
 # Check Podman system info
 podman info
@@ -166,16 +156,11 @@ You should also see the container in the Podman Desktop GUI under the Containers
 Enable Docker socket compatibility for tools expecting Docker.
 
 ```powershell
-# Stop the current machine
-podman machine stop
-
-# Reinitialize with rootful mode for Docker socket
-podman machine rm
-podman machine init --rootful
-podman machine start
-
-# Verify Docker compatibility
-podman info | findstr "sock"
+# In Podman Desktop, enable:
+# Settings > Preferences > Docker Compatibility
+#
+# Then open Settings > Docker Compatibility to view the socket mapping
+# and select a Docker-compatible CLI context.
 ```
 
 ## Configuring WSL2 Resources
@@ -208,7 +193,7 @@ Keep your installation current.
 
 ```powershell
 # Update with Winget
-winget upgrade RedHat.PodmanDesktop
+winget upgrade -e --id RedHat.Podman-Desktop
 
 # Or check for updates in the app
 # Help > Check for Updates
@@ -216,4 +201,4 @@ winget upgrade RedHat.PodmanDesktop
 
 ## Summary
 
-Installing Podman Desktop on Windows requires WSL2 and the Podman engine. Install WSL2 first, then install Podman Desktop using the official installer, Winget, or Chocolatey. Initialize a Podman machine to create the Linux VM where containers run, then launch Podman Desktop for the graphical interface. You can configure machine resources, enable Docker compatibility, and tune WSL2 settings for your workload. Podman Desktop provides a complete container management solution on Windows without Docker Desktop licensing requirements.
+Installing Podman Desktop on Windows requires a Linux VM through WSL2 or Hyper-V and the Podman engine. Install WSL2 first, then install Podman Desktop using the official installer, Winget, or Chocolatey. Initialize a Podman machine to create the Linux VM where containers run, then launch Podman Desktop for the graphical interface. You can configure machine resources, enable Docker compatibility, and tune WSL2 settings for your workload. Podman Desktop provides a complete container management solution on Windows without Docker Desktop licensing requirements.
