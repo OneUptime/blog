@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, OpenAI, Generative AI, LLM, Infrastructure as Code
 
-Description: Learn how to provision Azure OpenAI Service accounts, deploy models like GPT-4, and configure private endpoints using OpenTofu.
+Description: Learn how to provision Azure OpenAI Service accounts, deploy models like GPT-4o and GPT-4o mini, and configure private endpoints using OpenTofu.
 
 ## Introduction
 
-Azure OpenAI Service provides REST API access to OpenAI's models including GPT-4, GPT-3.5-Turbo, and DALL-E. OpenTofu manages the Cognitive Services account, model deployments, and access policies as code.
+Azure OpenAI Service provides REST API access to OpenAI's models including GPT-4o, GPT-4o mini, embedding models, and image generation models. OpenTofu manages the Cognitive Services account, model deployments, and access policies as code.
 
 ## Creating the Azure OpenAI Resource
 
@@ -25,7 +25,7 @@ resource "azurerm_cognitive_account" "openai" {
   kind                  = "OpenAI"
   sku_name              = "S0"
 
-  # Restrict to approved networks only
+  # Required for network ACLs and private endpoints
   custom_subdomain_name = "${var.app_name}-${var.environment}"
 
   network_acls {
@@ -50,47 +50,44 @@ resource "azurerm_cognitive_deployment" "gpt4o" {
   cognitive_account_id = azurerm_cognitive_account.openai.id
 
   model {
-    format  = "OpenAI"
-    name    = "gpt-4o"
-    version = "2024-05-13"
+    format = "OpenAI"
+    name   = "gpt-4o"
   }
 
-  scale {
-    type     = "Standard"
+  sku {
+    name     = "Standard"
     capacity = 30  # tokens per minute (TPM) in thousands
   }
 }
 
-# GPT-3.5-Turbo for lower-cost use cases
-resource "azurerm_cognitive_deployment" "gpt35" {
-  name                 = "gpt-35-turbo"
+# GPT-4o mini for lower-cost use cases
+resource "azurerm_cognitive_deployment" "gpt4o_mini" {
+  name                 = "gpt-4o-mini"
   cognitive_account_id = azurerm_cognitive_account.openai.id
 
   model {
-    format  = "OpenAI"
-    name    = "gpt-35-turbo"
-    version = "0125"
+    format = "OpenAI"
+    name   = "gpt-4o-mini"
   }
 
-  scale {
-    type     = "Standard"
+  sku {
+    name     = "Standard"
     capacity = 100
   }
 }
 
-# Text embedding model
-resource "azurerm_cognitive_deployment" "ada_embedding" {
-  name                 = "text-embedding-ada-002"
+# Third-generation text embedding model
+resource "azurerm_cognitive_deployment" "embedding" {
+  name                 = "text-embedding-3-small"
   cognitive_account_id = azurerm_cognitive_account.openai.id
 
   model {
-    format  = "OpenAI"
-    name    = "text-embedding-ada-002"
-    version = "2"
+    format = "OpenAI"
+    name   = "text-embedding-3-small"
   }
 
-  scale {
-    type     = "Standard"
+  sku {
+    name     = "Standard"
     capacity = 50
   }
 }
@@ -119,7 +116,7 @@ resource "azurerm_private_endpoint" "openai" {
 ```hcl
 data "azurerm_client_config" "current" {}
 
-# Grant current principal Cognitive Services User role
+# Grant current principal the Azure OpenAI user role
 resource "azurerm_role_assignment" "openai_user" {
   scope                = azurerm_cognitive_account.openai.id
   role_definition_name = "Cognitive Services OpenAI User"
@@ -130,11 +127,27 @@ resource "azurerm_role_assignment" "openai_user" {
 ## Variables and Outputs
 
 ```hcl
-variable "app_name"          { type = string }
-variable "environment"       { type = string }
-variable "location"          { type = string  default = "East US" }
-variable "allowed_ip_ranges" { type = list(string)  default = [] }
-variable "private_subnet_id" { type = string }
+variable "app_name" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
+variable "location" {
+  type    = string
+  default = "East US"
+}
+
+variable "allowed_ip_ranges" {
+  type    = list(string)
+  default = []
+}
+
+variable "private_subnet_id" {
+  type = string
+}
 
 output "openai_endpoint" {
   value = azurerm_cognitive_account.openai.endpoint
@@ -156,4 +169,4 @@ tofu apply tfplan
 
 ## Summary
 
-Azure OpenAI Service provides enterprise-grade access to GPT and embedding models with private networking and Azure RBAC. OpenTofu manages the Cognitive Services account, model deployments at specified capacities, private endpoints, and access roles - creating a secure, reproducible AI infrastructure.
+Azure OpenAI Service provides enterprise-grade access to chat and embedding models with private networking and Azure RBAC. OpenTofu manages the Cognitive Services account, model deployments at specified capacities, private endpoints, and access roles - creating a secure, reproducible AI infrastructure.
