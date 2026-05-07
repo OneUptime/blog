@@ -8,9 +8,9 @@ Description: Learn how to set up the systemd timer that automatically runs podma
 
 ---
 
-> Automate container image updates by enabling the podman-auto-update systemd timer, which periodically checks for and applies image updates.
+> Automate container image updates by enabling the podman-auto-update systemd timer, which periodically checks for and applies image updates for containers configured with an auto-update policy.
 
-Podman ships with a systemd timer and service pair that automatically runs `podman auto-update` on a schedule. Enabling this timer keeps your containers running the latest images without manual intervention.
+Podman ships with a systemd timer and service pair that automatically runs `podman auto-update` on a schedule. Enabling this timer keeps containers configured with `io.containers.autoupdate` or a Quadlet `AutoUpdate` setting running the latest images without manual intervention.
 
 ---
 
@@ -118,4 +118,4 @@ journalctl --user -u podman-auto-update.timer --since "7 days ago"
 
 ## Summary
 
-The `podman-auto-update.timer` automates image update checks on a schedule. Enable it with `systemctl enable --now`, customize the schedule with a timer drop-in file, and monitor results through `journalctl`. The timer works with both rootless and rootful container configurations.
+The `podman-auto-update.timer` automates image update checks on a schedule for containers configured with an auto-update policy. Enable it with `systemctl enable --now`, customize the schedule with a timer drop-in file, and monitor results through `journalctl`. The timer works with both rootless and rootful container configurations.
