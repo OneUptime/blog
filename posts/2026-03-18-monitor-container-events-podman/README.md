@@ -19,7 +19,7 @@ Container events provide a detailed record of everything happening in your Podma
 Podman tracks events for containers, images, pods, volumes, and the system itself. Each event includes a timestamp, the entity type, the entity ID, and the event status.
 
 ```bash
-# View all recent events
+# Stream new events
 
 podman events
 
@@ -47,7 +47,7 @@ Each container lifecycle generates multiple events in sequence:
 # Create a container and observe the full lifecycle
 podman run -d --name lifecycle-test alpine sleep 30
 
-# Stop the container to trigger stop and die events
+# Stop the container to trigger stop events
 podman stop lifecycle-test
 
 # Remove the container to trigger a remove event
@@ -68,7 +68,7 @@ podman events --filter event=start
 # Filter for stop events only
 podman events --filter event=stop
 
-# Filter for die events (unexpected termination)
+# Filter for died events
 podman events --filter event=die
 
 # Filter for remove events
@@ -87,7 +87,7 @@ podman events --since 1h
 podman events --since 30m
 
 # View events since a specific timestamp
-podman events --since "2026-03-18T10:00:00"
+podman events --since "2026-03-18T10:00:00Z"
 ```
 
 ## Filtering Events by Container
@@ -131,9 +131,9 @@ echo "Logging to ${LOG_FILE}"
 # Stream events in JSON format and append to log file
 podman events --format json | while read -r event; do
     # Add a human-readable timestamp prefix
-    timestamp=$(echo "$event" | jq -r '.time')
+    timestamp=$(echo "$event" | jq -r '.Time')
     status=$(echo "$event" | jq -r '.Status')
-    name=$(echo "$event" | jq -r '.Actor.Attributes.name // .Actor.ID')
+    name=$(echo "$event" | jq -r '.Name // .ID')
 
     # Log the event
     echo "[${timestamp}] ${status} - ${name}" | tee -a "${LOG_FILE}"
