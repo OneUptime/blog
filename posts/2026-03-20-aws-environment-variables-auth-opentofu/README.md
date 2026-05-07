@@ -69,18 +69,18 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           # Use OIDC (preferred) instead of static keys
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
           aws-region: us-east-1
 
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
         with:
-          tofu_version: "1.7.0"
+          tofu_version: "1.11.6"
 
       - run: tofu init
       - run: tofu apply -auto-approve
@@ -94,20 +94,17 @@ The `configure-aws-credentials` action sets the standard environment variables; 
 # .gitlab-ci.yml
 variables:
   AWS_DEFAULT_REGION: "us-east-1"
+  # Define AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_SESSION_TOKEN
+  # as masked CI/CD variables in GitLab's UI; jobs inherit them automatically.
 
 deploy:
   stage: deploy
-  image: ghcr.io/opentofu/opentofu:1.7.0
+  image: ghcr.io/opentofu/opentofu:1.11.6
   script:
     - tofu init
     - tofu apply -auto-approve
-  # Inject credentials from GitLab CI/CD variables (masked)
   environment:
     name: production
-  variables:
-    AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
-    AWS_SESSION_TOKEN: $AWS_SESSION_TOKEN
 ```
 
 ## Priority of Authentication Methods
@@ -116,19 +113,20 @@ The AWS provider checks for credentials in this order:
 
 ```mermaid
 flowchart TD
-    A[Static credentials in provider block] --> B[Environment variables]
-    B --> C[AWS credentials file / named profile]
-    C --> D[Container credentials - ECS/EKS]
-    D --> E[EC2 instance metadata IMDS]
+    A[Parameters in provider configuration] --> B[Environment variables]
+    B --> C[Shared credentials files]
+    C --> D[Shared configuration files]
+    D --> E[Container credentials]
+    E --> F[Instance profile credentials and Region]
 ```
 
 Environment variables take precedence over credential files and instance metadata, which makes them reliable for CI overrides.
 
 ## Security Best Practices
 
-**Never hardcode credentials in `.tf` files.** If credentials appear in HCL, they end up in state files and version control.
+**Never hardcode credentials in `.tf` files.** OpenTofu recommends using environment variables to keep provider credentials out of your version-controlled OpenTofu code.
 
-**Use short-lived credentials.** Prefer OIDC or assumed roles over long-term access keys. If you must use access keys, set a short expiry and rotate them regularly.
+**Use short-lived credentials.** Prefer OIDC or assumed roles over long-term access keys. If you must use long-term access keys, rotate them regularly and scope their permissions as narrowly as possible.
 
 **Mask credentials in CI.** Configure `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` as masked/secret variables in your CI platform so they never appear in logs.
 
