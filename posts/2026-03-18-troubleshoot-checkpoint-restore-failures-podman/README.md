@@ -80,10 +80,10 @@ sudo ln -s /path/to/criu /usr/sbin/criu
 **Error message:**
 
 ```text
-Error: checkpointing container: CRIU too old: requires at least version 31600
+Error: checkpointing container: CRIU too old: requires at least version 31100
 ```
 
-**Cause**: Podman requires a minimum CRIU version. The version number is encoded as major * 10000 + minor * 100 + patch. Version 31600 means 3.16.0.
+**Cause**: Podman requires a minimum CRIU version. The version number is encoded as major * 10000 + minor * 100 + patch. Version 31100 means 3.11.0. Some features require newer CRIU versions; for example, restoring a container into a pod requires CRIU 3.16 or later.
 
 **Solution**:
 
@@ -97,7 +97,7 @@ sudo dnf update criu
 # On Ubuntu, you may need to build from source for a newer version
 git clone https://github.com/checkpoint-restore/criu.git
 cd criu
-git checkout v3.19  # or latest stable
+git checkout v4.2  # or another current stable release
 make
 sudo make install
 ```
@@ -155,7 +155,7 @@ or
 Error: checkpointing container: permission denied
 ```
 
-**Cause**: Checkpoint/restore requires root privileges. CRIU needs to access `/proc` entries and manipulate kernel state that is restricted to root.
+**Cause**: Podman checkpoint/restore currently works with root containers. CRIU needs to access `/proc` entries and manipulate kernel state that is restricted unless the process has the required capabilities.
 
 **Solution**:
 
@@ -168,7 +168,7 @@ su -
 podman container checkpoint my-container
 ```
 
-Rootless Podman does not support checkpoint/restore in most configurations. This is a fundamental limitation because CRIU needs capabilities that unprivileged users do not have.
+Rootless Podman does not support checkpoint/restore in most configurations. CRIU has limited non-root support when granted capabilities such as `CAP_CHECKPOINT_RESTORE`, but Podman's documented checkpoint workflow is for root containers.
 
 ## SELinux Denials
 
@@ -304,7 +304,7 @@ sudo podman container restore --import=/tmp/checkpoint.tar.gz
 **Error message:**
 
 ```text
-Error: rootlessport: cannot expose privileged port 80
+Error: bind: address already in use
 ```
 
 or
