@@ -160,7 +160,7 @@ podman artifact inspect registry.example.com/myorg/app-config:v1.0 | python3 -m 
 
 # Check the layers and their filenames
 podman artifact inspect registry.example.com/myorg/app-config:v1.0 | \
-    jq -r '.layers[].annotations["org.opencontainers.image.title"]'
+    jq -r '.Manifest.layers[].annotations["org.opencontainers.image.title"]'
 ```
 
 ## Pulling Artifacts in CI/CD
@@ -176,9 +176,9 @@ ARTIFACT="registry.example.com/myorg/deploy-config:${DEPLOY_VERSION}"
 echo "Pulling deployment configuration..."
 podman artifact pull "$ARTIFACT"
 
-# Extract the configuration for use in the pipeline
+# Inspect the configuration metadata for use in the pipeline
 echo "Configuration artifact pulled successfully"
-podman artifact inspect "$ARTIFACT" | jq '.layers[] | .annotations'
+podman artifact inspect "$ARTIFACT" | jq '.Manifest.layers[] | .annotations'
 ```
 
 ## Summary
