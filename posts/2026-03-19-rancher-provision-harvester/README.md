@@ -11,24 +11,20 @@ Harvester is an open-source hyper-converged infrastructure (HCI) platform built 
 ## Prerequisites
 
 - A running Rancher installation (v2.7 or later)
-- A Harvester cluster (v1.1 or later) registered in Rancher
+- A Harvester cluster registered in Rancher (`v1.2.0+` is recommended for newer RKE2 releases with the Harvester cloud provider)
 - VM images uploaded to Harvester
 - Sufficient Harvester resources (CPU, memory, storage)
-- Network configuration in Harvester (VM networks and/or management network)
+- A Harvester VLAN network for the guest nodes, with DHCP or Managed DHCP available
 
 ## Step 1: Register Harvester in Rancher
 
 If your Harvester cluster is not yet registered with Rancher:
 
-1. In the Harvester UI, go to **Settings > Rancher Manager**
-2. Enter your Rancher server URL
-3. Follow the registration process
+1. In Rancher, go to **Virtualization Management**
+2. Click **Import Existing** and create the Harvester cluster entry
+3. In the Harvester UI, set the `cluster-registration-url` setting to the registration URL that Rancher provides
 
-Alternatively, import Harvester from Rancher:
-
-1. Go to **Virtualization Management** in Rancher
-2. Click **Import Existing**
-3. Follow the import wizard
+Alternatively, if you already have the registration URL, you can set it directly on the Harvester cluster and complete the import flow from Rancher.
 
 Verify the Harvester cluster shows as `Active` in Rancher under **Virtualization Management**.
 
@@ -51,7 +47,7 @@ Wait for the image to download and become `Active`.
 
 ### Create a VM Network
 
-If you need a separate network for the Kubernetes cluster:
+The Harvester node driver requires a VLAN network for the guest Kubernetes nodes:
 
 1. Go to **Networks** in Harvester
 2. Click **Create**
@@ -59,6 +55,7 @@ If you need a separate network for the Kubernetes cluster:
    - **Name**: `k8s-network`
    - **VLAN ID**: Your VLAN ID
    - **Cluster Network**: Select the cluster network
+4. Ensure the network can hand out addresses to the VMs, either through DHCP or Harvester Managed DHCP
 
 ### Create Cloud Credentials
 
@@ -67,14 +64,15 @@ In Rancher:
 1. Go to **Cluster Management > Cloud Credentials**
 2. Click **Create**
 3. Select **Harvester**
-4. Select the Harvester cluster
+4. Select **Imported Harvester Cluster**
 5. Name the credential and click **Create**
 
 ## Step 3: Create the Kubernetes Cluster
 
-1. Go to **Cluster Management**
+1. Go to **Cluster Management > Clusters**
 2. Click **Create**
-3. Select **Harvester** under the node driver options
+3. Toggle to **RKE2/K3s**
+4. Select **Harvester** under the node driver options
 
 ## Step 4: Configure Cluster Settings
 
@@ -82,7 +80,9 @@ In Rancher:
 
 - **Cluster Name**: Enter a name (e.g., `harvester-prod-cluster`)
 - **Cloud Credential**: Select your Harvester credential
-- **Kubernetes Version**: Select an RKE2 or K3s version
+- **Kubernetes Version**: Select an RKE2 version (or K3s if you are following the experimental Harvester K3s path)
+- **Namespace**: Choose the Harvester namespace for the VMs and keep all guest cluster nodes in the same namespace
+- **SSH User**: Use the default user for the image (for example, `ubuntu` for Ubuntu cloud images)
 
 ### Machine Pools
 
@@ -128,6 +128,7 @@ Add cloud-init configuration for node customization:
 package_update: true
 packages:
   - qemu-guest-agent
+  - iptables
   - nfs-common
 runcmd:
   - systemctl enable --now qemu-guest-agent
@@ -137,14 +138,15 @@ runcmd:
 
 ### Network Data
 
-If using static IP addressing:
+If using DHCP on the VLAN network:
 
 ```yaml
-network:
-  version: 2
-  ethernets:
-    enp1s0:
-      dhcp4: true
+version: 1
+config:
+  - type: physical
+    name: enp1s0
+    subnets:
+      - type: dhcp
 ```
 
 ## Step 5: Configure Networking
@@ -159,32 +161,31 @@ Choose the network plugin:
 
 ### Harvester Cloud Provider
 
-Enable the Harvester cloud provider for native integration. This is typically auto-configured when using the Harvester node driver. It enables:
+For RKE2 clusters, select **Harvester** as the cloud provider. Rancher then deploys the Harvester cloud controller manager and CSI driver automatically. It enables:
 
 - Harvester load balancer integration
 - Harvester CSI storage provisioning
-- VM lifecycle management
 
 ### Load Balancer Configuration
 
 The Harvester cloud provider supports DHCP and pool-based load balancers:
 
 ```yaml
-# The Harvester cloud provider automatically provisions load balancers
-
-# for Kubernetes Services of type LoadBalancer
+metadata:
+  annotations:
+    cloudprovider.harvesterhci.io/ipam: pool
 ```
 
 Configure an IP pool in Harvester for load balancer IPs:
 
-1. In Harvester, go to **Settings**
-2. Configure **vip-pools** with an IP range for load balancers
+1. In Harvester, go to **Networks > IP Pools**
+2. Create an IP pool with an address range that the guest cluster can use for `LoadBalancer` services
 
 ## Step 6: Configure Storage
 
 ### Harvester CSI Driver
 
-The Harvester CSI driver is automatically configured when using the Harvester cloud provider. It creates a default storage class:
+When you provision an RKE2 cluster with the Harvester cloud provider selected, the Harvester CSI driver is deployed automatically and creates a default storage class:
 
 ```bash
 kubectl get storageclasses
@@ -213,8 +214,8 @@ Review all settings and click **Create**. The provisioning process:
 
 1. Creates VMs on the Harvester cluster
 2. Configures VMs with cloud-init
-3. Installs RKE2 or K3s
-4. Deploys Rancher and Harvester cloud agents
+3. Installs the selected Kubernetes distribution
+4. Deploys Rancher agents and, when selected, the Harvester cloud provider and CSI components
 5. Registers the cluster in Rancher
 
 This takes approximately 10 to 20 minutes.
@@ -271,7 +272,22 @@ Test load balancer:
 
 ```bash
 kubectl create deployment nginx --image=nginx
-kubectl expose deployment nginx --port=80 --type=LoadBalancer
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  annotations:
+    cloudprovider.harvesterhci.io/ipam: pool
+spec:
+  selector:
+    app: nginx
+  ports:
+    - port: 80
+      targetPort: 80
+  type: LoadBalancer
+EOF
+
 kubectl get svc nginx
 ```
 
@@ -296,7 +312,7 @@ Configure the Rancher backup operator for cluster data protection.
 - **VM fails to start**: Check Harvester VM events and logs. Verify the image is valid and resources are available.
 - **Cloud-init not applying**: Ensure the image supports cloud-init and qemu-guest-agent is installed.
 - **CSI driver issues**: Check the Harvester CSI driver pods and logs in `kube-system`.
-- **Load balancer not getting IP**: Verify the vip-pools configuration in Harvester settings.
+- **Load balancer not getting IP**: Verify the IP Pool configuration in Harvester and the `cloudprovider.harvesterhci.io/ipam` annotation on the `LoadBalancer` service.
 - **Network connectivity**: Check that the VM network is properly configured and has DHCP or static IP assignment.
 
 ## Conclusion
