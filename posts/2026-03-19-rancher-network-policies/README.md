@@ -71,7 +71,9 @@ spec:
   - Egress
   egress:
   - to:
-    - namespaceSelector: {}
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
@@ -137,7 +139,7 @@ kubectl label namespace cattle-monitoring-system purpose=monitoring
 
 ## Step 6: Allow Ingress Controller Traffic
 
-Allow traffic from the ingress controller to reach your applications:
+Allow traffic from the namespace where your ingress controller runs to reach your applications. This example uses `ingress-nginx`; if your cluster uses Traefik or another controller, adjust the namespace selector accordingly:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -155,15 +157,15 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          app.kubernetes.io/name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
     ports:
     - protocol: TCP
       port: 8080
 ```
 
-## Step 7: Restrict Egress to Specific External IPs
+## Step 7: Restrict Egress to Specific IP Ranges
 
-Allow pods to reach only specific external endpoints:
+Allow pods to reach only specific internal and external IP ranges:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -191,10 +193,11 @@ spec:
 
 ## Step 8: Create Policies via the Rancher UI
 
-1. Navigate to your cluster in the Rancher dashboard.
-2. Go to **Policy** > **Network Policies**.
-3. Click **Create**.
+1. Navigate to your cluster in the Rancher dashboard and click **Explore**.
+2. Open the `production` namespace in Cluster Explorer.
+3. Create a `NetworkPolicy` resource using the form or **Create from YAML**, depending on your Rancher version.
 4. Configure:
+   - **Kind**: `NetworkPolicy`
    - **Name**: `allow-frontend-to-backend`
    - **Namespace**: `production`
    - **Pod Selector**: `app = backend`
@@ -236,9 +239,13 @@ spec:
     - protocol: TCP
       port: 5432
   - to:
-    - namespaceSelector: {}
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
+      port: 53
+    - protocol: TCP
       port: 53
 ```
 
@@ -257,10 +264,10 @@ kubectl get networkpolicies -n production
 kubectl describe networkpolicy database-policy -n production
 
 # Test connectivity (should succeed)
-kubectl run test --image=busybox --rm -it --labels="tier=backend" -n production -- wget -qO- --timeout=5 http://db-service:5432
+kubectl run test-backend --image=busybox --restart=Never --rm -it --labels="tier=backend" -n production --command -- nc -z -v -w 5 db-service 5432
 
 # Test connectivity (should fail)
-kubectl run test --image=busybox --rm -it --labels="tier=frontend" -n production -- wget -qO- --timeout=5 http://db-service:5432
+kubectl run test-frontend --image=busybox --restart=Never --rm -it --labels="tier=frontend" -n production --command -- nc -z -v -w 5 db-service 5432
 ```
 
 ## Troubleshooting
@@ -269,7 +276,7 @@ kubectl run test --image=busybox --rm -it --labels="tier=frontend" -n production
 - **All traffic blocked**: Ensure you have a DNS egress rule
 - **Cannot reach ingress controller**: Add a rule allowing traffic from the ingress namespace
 - **Debug with logs**: Check CNI plugin logs for denied connections
-- **Policy order**: Network Policies are additive; if any policy allows traffic, it is permitted
+- **Policy evaluation**: Network Policies are additive within ingress and egress, but pod-to-pod traffic is allowed only when the source pod's egress policy and the destination pod's ingress policy both allow it
 
 ## Summary
 
