@@ -54,7 +54,8 @@ module "networking" {
 # Reference networking module outputs in a resource
 
 resource "aws_eks_cluster" "main" {
-  name = "my-cluster"
+  name     = "my-cluster"
+  role_arn = aws_iam_role.eks_cluster.arn
 
   vpc_config {
     # Use module output directly
@@ -126,18 +127,18 @@ output "database_endpoint" {
 
 ---
 
-## Listing All Module Outputs
+## Listing Root Module Outputs
 
 ```bash
-# After tofu apply, see all outputs including module outputs
+# After tofu apply, see all root module outputs
 tofu output
 
-# Get a specific module's output value
+# Get a specific root output value
 tofu output vpc_id
 # "vpc-0abc123"
 
-# Get nested module output (if nested modules expose outputs)
-# tofu output -json | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2))"
+# Show the root module outputs in JSON format
+tofu output -json | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin), indent=2))"
 ```
 
 ---
