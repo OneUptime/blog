@@ -8,7 +8,7 @@ Description: Learn how to gracefully stop a Podman pod and all of its containers
 
 ---
 
-> Stopping a pod sends a SIGTERM to each container, giving them time to shut down gracefully before forcing termination.
+> By default, stopping a pod sends a SIGTERM to each container, giving them time to shut down gracefully before forcing termination.
 
 When you stop a pod, Podman sends a termination signal to each container in the pod. Containers are given a grace period to clean up before being forcefully stopped. This ensures databases can flush writes, web servers can finish in-flight requests, and applications can release resources.
 
@@ -29,20 +29,20 @@ podman pod ls --filter name=my-pod
 
 ```bash
 # Give containers 30 seconds to shut down gracefully
-podman pod stop --timeout 30 my-pod
+podman pod stop --time 30 my-pod
 
 # Use a shorter timeout for quick shutdowns
-podman pod stop --timeout 5 my-pod
+podman pod stop --time 5 my-pod
 
-# Timeout of 0 sends SIGKILL immediately
-podman pod stop --timeout 0 my-pod
+# Timeout of 0 forces termination immediately after SIGTERM
+podman pod stop --time 0 my-pod
 ```
 
 ## Stopping a Pod by ID
 
 ```bash
 # Get the pod ID
-POD_ID=$(podman pod ls --filter name=my-pod --format '{{.Id}}')
+POD_ID=$(podman pod ls --filter name=my-pod --format '{{.ID}}')
 
 # Stop using the ID
 podman pod stop "$POD_ID"
@@ -77,7 +77,7 @@ podman ps -a --filter pod=my-pod --format "{{.Names}}\t{{.ExitCode}}\t{{.Status}
 POD_NAME="my-pod"
 
 echo "Stopping pod: $POD_NAME"
-podman pod stop --timeout 15 "$POD_NAME"
+podman pod stop --time 15 "$POD_NAME"
 
 # Verify all containers are stopped
 RUNNING=$(podman ps --filter pod="$POD_NAME" -q | wc -l)
@@ -90,4 +90,4 @@ fi
 
 ## Summary
 
-Use `podman pod stop` to gracefully shut down all containers in a pod. Set a `--timeout` to control the grace period before forced termination. Check exit codes after stopping to verify clean shutdowns and diagnose any issues.
+Use `podman pod stop` to gracefully shut down all containers in a pod. Set `--time` to control the grace period before forced termination. Check exit codes after stopping to verify clean shutdowns and diagnose any issues.
