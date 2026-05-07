@@ -21,11 +21,12 @@ RKE2 provides several advantages over RKE1:
 
 ## Prerequisites
 
-- An existing Rancher installation running on an RKE1 cluster
+- An existing Rancher v2.5.0 or later installation running on an RKE1 cluster
 - New infrastructure for the RKE2 cluster (at least 3 server nodes recommended)
 - Helm 3 and kubectl installed
 - S3-compatible storage for backups
-- DNS control for the Rancher hostname
+- DNS control for the Rancher hostname; the migrated cluster must use the same Rancher hostname/server URL
+- A Rancher-supported Kubernetes version on the target RKE2 cluster; do not change Rancher or Kubernetes versions during the migration
 
 ## Step 1: Document the Current RKE Setup
 
@@ -34,7 +35,7 @@ Record your current configuration:
 ```bash
 # Rancher version
 
-kubectl get settings server-version -o jsonpath='{.value}' -n cattle-system
+kubectl get settings.management.cattle.io server-version -o jsonpath='{.value}'
 
 # Helm values
 helm get values rancher -n cattle-system -o yaml > rke-rancher-values.yaml
@@ -62,11 +63,15 @@ Install the backup operator on the RKE cluster:
 helm repo add rancher-charts https://charts.rancher.io
 helm repo update
 
+CHART_VERSION=<RANCHER_BACKUP_VERSION_COMPATIBLE_WITH_YOUR_RANCHER_VERSION>
+
 helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
-  -n cattle-resources-system --create-namespace
+  -n cattle-resources-system --create-namespace \
+  --version $CHART_VERSION
 
 helm install rancher-backup rancher-charts/rancher-backup \
-  -n cattle-resources-system
+  -n cattle-resources-system \
+  --version $CHART_VERSION
 ```
 
 Create S3 credentials:
@@ -86,7 +91,7 @@ kind: Backup
 metadata:
   name: rke-to-rke2-backup
 spec:
-  resourceSetName: rancher-resource-set
+  resourceSetName: rancher-resource-set-full
   storageLocation:
     s3:
       bucketName: rancher-backups
@@ -102,6 +107,8 @@ kubectl get backups rke-to-rke2-backup -w
 ```
 
 ## Step 3: Build the RKE2 Cluster
+
+Use a fixed registration address or load balancer in front of the RKE2 server nodes. It must forward TCP 9345 for node registration and TCP 6443 for the Kubernetes API.
 
 ### Install RKE2 on the First Server Node
 
@@ -138,7 +145,7 @@ curl -sfL https://get.rke2.io | sh -
 mkdir -p /etc/rancher/rke2
 
 cat > /etc/rancher/rke2/config.yaml <<EOF
-server: https://<FIRST_NODE_IP>:9345
+server: https://<LOAD_BALANCER_IP>:9345
 token: <NODE_TOKEN>
 tls-san:
   - rancher.yourdomain.com
@@ -164,54 +171,24 @@ Verify the cluster:
 kubectl get nodes
 ```
 
-## Step 4: Install cert-manager on the RKE2 Cluster
+## Step 4: Install the Backup Operator on the RKE2 Cluster
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.crds.yaml
+CHART_VERSION=<RANCHER_BACKUP_VERSION_COMPATIBLE_WITH_YOUR_RANCHER_VERSION>
 
-helm repo add jetstack https://charts.jetstack.io
+helm repo add rancher-charts https://charts.rancher.io
 helm repo update
 
-helm install cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --create-namespace \
-  --version v1.14.4
-```
-
-## Step 5: Install Rancher on the RKE2 Cluster
-
-Use the same version and similar values as the RKE installation:
-
-```bash
-helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
-helm repo update
-
-helm install rancher rancher-stable/rancher \
-  --namespace cattle-system \
-  --create-namespace \
-  --set hostname=rancher.yourdomain.com \
-  --set replicas=3 \
-  --set bootstrapPassword=admin \
-  --version <SAME_VERSION_AS_RKE>
-```
-
-Wait for deployment:
-
-```bash
-kubectl rollout status deployment rancher -n cattle-system
-```
-
-## Step 6: Restore the Backup
-
-### Install the Backup Operator on RKE2
-
-```bash
 helm install rancher-backup-crd rancher-charts/rancher-backup-crd \
-  -n cattle-resources-system --create-namespace
+  -n cattle-resources-system --create-namespace \
+  --version $CHART_VERSION
 
 helm install rancher-backup rancher-charts/rancher-backup \
-  -n cattle-resources-system
+  -n cattle-resources-system \
+  --version $CHART_VERSION
 ```
+
+## Step 5: Restore the Backup
 
 ### Create S3 Credentials
 
@@ -231,6 +208,7 @@ metadata:
   name: rke-to-rke2-restore
 spec:
   backupFilename: rke-to-rke2-backup-<timestamp>.tar.gz
+  prune: false
   storageLocation:
     s3:
       bucketName: rancher-backups
@@ -243,17 +221,72 @@ spec:
 ```bash
 kubectl apply -f restore.yaml
 kubectl get restores rke-to-rke2-restore -w
+kubectl logs -n cattle-resources-system --tail 100 -f -l app.kubernetes.io/instance=rancher-backup
 ```
 
-Restart Rancher after the restore:
+After the restore is `Completed`, and before bringing up Rancher on the new cluster, edit the restored local cluster object so Rancher can detect the distribution change:
 
 ```bash
-kubectl rollout restart deployment rancher -n cattle-system
+kubectl edit clusters.management.cattle.io local
+```
+
+Make these changes before saving:
+
+- Change `status.driver` to `imported`
+- Remove `status.provider`
+- Remove the entire `status.version` map
+- Remove the `provider.cattle.io` label from `metadata.labels`
+- Remove the `management.cattle.io/current-cluster-controllers-version` annotation from `metadata.annotations`
+- Remove `spec.rke2Config` or `spec.k3sConfig` if either field is present
+
+## Step 6: Install cert-manager and Rancher on the RKE2 Cluster
+
+Install a cert-manager version supported by your Rancher release:
+
+```bash
+CERT_MANAGER_VERSION=<CERT_MANAGER_VERSION_SUPPORTED_BY_YOUR_RANCHER_RELEASE>
+
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.crds.yaml
+
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+helm install cert-manager jetstack/cert-manager \
+  --namespace cert-manager \
+  --create-namespace \
+  --version ${CERT_MANAGER_VERSION}
+```
+
+Use the same Rancher version and values as the RKE installation. Make sure your kubeconfig points to the new RKE2 cluster before running the install:
+
+```bash
+helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
+helm repo update
+
+helm install rancher rancher-stable/rancher \
+  --namespace cattle-system \
+  --create-namespace \
+  -f rke-rancher-values.yaml \
+  --set hostname=rancher.yourdomain.com \
+  --version <SAME_RANCHER_VERSION_AS_RKE>
+```
+
+Wait for deployment:
+
+```bash
+kubectl rollout status deployment rancher -n cattle-system
 ```
 
 ## Step 7: Update DNS and Verify
 
 Switch your DNS records to point to the RKE2 cluster load balancer.
+
+After traffic is redirected, scale the original Rancher deployment to zero so downstream agents stop contacting it:
+
+```bash
+# Against the original RKE cluster
+kubectl scale deployment rancher -n cattle-system --replicas=0
+```
 
 Log in to the Rancher UI and verify:
 
@@ -274,12 +307,14 @@ helm uninstall rancher -n cattle-system
 rke remove --config cluster.yml
 ```
 
-Keep backups for at least 30 days.
+Copy any RKE etcd snapshots you want to keep off-cluster before running `rke remove`, because it removes local snapshots and can also remove RKE-managed snapshots stored on S3.
+
+Keep your external backups for at least 30 days.
 
 ## Troubleshooting
 
 - **Agent connection issues**: Downstream agents may take several minutes to reconnect. If they remain disconnected, re-deploy the agent manifests from the Rancher UI.
-- **Webhook conflicts**: Delete stale webhook configurations if they cause API errors.
+- **Webhook conflicts**: If webhook-related API errors persist after the restore, inspect the Rancher and `rancher-backup` logs before removing any stale webhook resources.
 - **Storage class differences**: If the RKE2 cluster uses different storage classes, update PVC references accordingly.
 
 ## Conclusion
