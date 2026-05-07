@@ -76,7 +76,7 @@ journalctl --user -u podman.service --no-pager -n 50 | grep -i "error\|fatal\|pa
 podman info --format '{{.Store.GraphRoot}}' 2>&1
 
 # Try running the service manually to see detailed errors
-podman system service --time 5 --log-level debug 2>&1 | head -50
+podman --log-level debug system service --time 5 2>&1 | head -50
 
 # If storage is corrupted, migrate or reset
 podman system migrate 2>&1
@@ -119,7 +119,7 @@ file /run/user/$(id -u)/podman/podman.sock
 
 # Test the socket directly
 curl -v --unix-socket /run/user/$(id -u)/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/_ping 2>&1
+    http://localhost/libpod/_ping 2>&1
 
 # Check if another process is holding the socket
 fuser /run/user/$(id -u)/podman/podman.sock 2>/dev/null
@@ -135,7 +135,7 @@ systemctl --user start podman.socket
 
 # Test again
 curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/_ping
+    http://localhost/libpod/_ping
 ```
 
 ## Storage-Related Issues
@@ -173,8 +173,8 @@ Get more detail from Podman for difficult issues.
 # Run commands with debug logging
 podman --log-level debug info 2>&1 | tail -30
 
-# Run the service with trace logging
-podman --log-level trace system service --time 10 2>&1 | head -100
+# Run the service with debug logging
+podman --log-level debug system service --time 10 2>&1 | head -100
 
 # Enable debug logging for a specific operation
 podman --log-level debug run --rm alpine echo "debug test" 2>&1
@@ -199,7 +199,7 @@ sudo ls -la /run/podman/podman.sock
 
 # Test the rootful API
 sudo curl --unix-socket /run/podman/podman.sock \
-    http://localhost/v4.0.0/libpod/_ping
+    http://localhost/libpod/_ping
 
 # Restart the rootful service
 sudo systemctl restart podman.socket
@@ -248,7 +248,7 @@ echo ""
 # API test
 echo "--- API Test ---"
 if [ -S "$SOCKET" ]; then
-    RESULT=$(curl -s --max-time 5 --unix-socket "$SOCKET" http://localhost/v4.0.0/libpod/_ping 2>&1)
+    RESULT=$(curl -s --max-time 5 --unix-socket "$SOCKET" http://localhost/libpod/_ping 2>&1)
     echo "Ping: $RESULT"
 else
     echo "Ping: SKIPPED (no socket)"
