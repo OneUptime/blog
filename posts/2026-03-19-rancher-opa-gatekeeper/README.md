@@ -6,11 +6,11 @@ Tags: Rancher, Kubernetes, Security, OPA, Gatekeeper
 
 Description: Learn how to deploy and configure OPA Gatekeeper in Rancher-managed clusters to enforce custom policies using the Rego policy language.
 
-OPA Gatekeeper brings the power of the Open Policy Agent (OPA) to Kubernetes as a native admission controller. It lets you define custom policies using the Rego language and enforce them across your clusters. Rancher supports Gatekeeper deployment and management through its UI. This guide covers setting up Gatekeeper and creating policies.
+OPA Gatekeeper brings the power of the Open Policy Agent (OPA) to Kubernetes as a native admission controller. It lets you define custom policies using the Rego language and enforce them across your clusters. On Rancher versions that still include the deprecated OPA Gatekeeper integration, Rancher can deploy Gatekeeper through its UI. You can also install Gatekeeper directly with Helm on any Rancher-managed cluster. This guide covers setting up Gatekeeper and creating policies.
 
 ## Prerequisites
 
-- Rancher v2.5 or later
+- A Rancher-managed cluster
 - kubectl access with cluster admin privileges
 - Helm 3 installed
 - Basic familiarity with Kubernetes admission controllers
@@ -19,12 +19,15 @@ OPA Gatekeeper brings the power of the Open Policy Agent (OPA) to Kubernetes as 
 
 ### Via Rancher UI
 
-1. Navigate to the downstream cluster.
-2. Go to **Apps & Marketplace** > **Charts**.
-3. Search for **OPA Gatekeeper**.
-4. Click **Install**.
-5. Configure the namespace (default: `gatekeeper-system`).
-6. Click **Install**.
+On Rancher versions that still include the deprecated OPA Gatekeeper integration:
+
+1. Click **☰** > **Cluster Management**.
+2. Find the downstream cluster and click **Explore**.
+3. In the left navigation menu, go to **Apps** > **Charts**.
+4. Search for **OPA Gatekeeper**.
+5. Click **Install**.
+6. Configure the namespace (default: `gatekeeper-system`).
+7. Click **Install**.
 
 ### Via Helm
 
@@ -134,7 +137,7 @@ Try creating a namespace without the required labels:
 kubectl create namespace test-no-labels
 ```
 
-Expected output:
+Expected output is similar to:
 
 ```plaintext
 Error from server (Forbidden): admission webhook "validation.gatekeeper.sh" denied the request:
@@ -177,6 +180,12 @@ spec:
           container.securityContext.privileged == true
           msg := sprintf("Privileged init containers are not allowed: %v", [container.name])
         }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.ephemeralContainers[_]
+          container.securityContext.privileged == true
+          msg := sprintf("Privileged ephemeral containers are not allowed: %v", [container.name])
+        }
 ```
 
 ```yaml
@@ -193,6 +202,13 @@ spec:
     - kube-system
     - cattle-system
     - gatekeeper-system
+```
+
+Apply them:
+
+```bash
+kubectl apply -f block-privileged-template.yaml
+kubectl apply -f block-privileged-constraint.yaml
 ```
 
 ## Step 6: Create a Policy to Restrict Image Registries
@@ -228,6 +244,18 @@ spec:
           msg := sprintf("Container %v uses image %v which is not from an allowed repository", [container.name, container.image])
         }
 
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          not startswith_any(container.image, input.parameters.repos)
+          msg := sprintf("Init container %v uses image %v which is not from an allowed repository", [container.name, container.image])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.ephemeralContainers[_]
+          not startswith_any(container.image, input.parameters.repos)
+          msg := sprintf("Ephemeral container %v uses image %v which is not from an allowed repository", [container.name, container.image])
+        }
+
         startswith_any(str, prefixes) {
           prefix := prefixes[_]
           startswith(str, prefix)
@@ -251,6 +279,13 @@ spec:
     repos:
     - "your-registry.example.com/"
     - "docker.io/library/"
+```
+
+Apply them:
+
+```bash
+kubectl apply -f allowed-repos-template.yaml
+kubectl apply -f allowed-repos-constraint.yaml
 ```
 
 ## Step 7: Use Dry Run Mode for Testing
@@ -293,12 +328,14 @@ kubectl get constraints -o yaml | grep -A 10 "violations"
 Check Gatekeeper metrics:
 
 ```bash
-kubectl get --raw /metrics -n gatekeeper-system | grep gatekeeper
+kubectl -n gatekeeper-system port-forward deployment/gatekeeper-audit 8888:8888
+# in another terminal
+curl -s http://127.0.0.1:8888/metrics | grep gatekeeper_
 ```
 
 Key metrics:
-- `gatekeeper_violations`: Number of policy violations detected.
-- `gatekeeper_constraint_template_status`: Status of constraint templates.
+- `gatekeeper_violations`: Number of audited policy violations detected.
+- `gatekeeper_audit_duration_seconds`: Duration of each audit run.
 
 ## Step 9: Use the Gatekeeper Policy Library
 
@@ -306,7 +343,7 @@ Instead of writing all policies from scratch, use the Gatekeeper policy library:
 
 ```bash
 git clone https://github.com/open-policy-agent/gatekeeper-library.git
-kubectl apply -f gatekeeper-library/library/
+kubectl apply -k gatekeeper-library/library
 ```
 
 This provides pre-built templates for common policies like container limits, host networking restrictions, and read-only root filesystem requirements.
