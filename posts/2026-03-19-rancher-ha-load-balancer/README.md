@@ -6,11 +6,11 @@ Tags: Rancher, Kubernetes, High Availability, Load Balancer, Installation
 
 Description: Configure Rancher high availability with an external load balancer for production-grade reliability and traffic distribution.
 
-A load balancer in front of your Rancher HA cluster provides a single entry point, health checking, and automatic failover. Instead of DNS round-robin, traffic is routed through a dedicated load balancer that only sends requests to healthy nodes. This guide covers setting up a Rancher HA cluster with both a software-based load balancer (Nginx) and cloud load balancer options.
+A load balancer in front of your Rancher HA cluster provides a single entry point, automatic failover, and passive or active health checking depending on the load balancer. Instead of DNS round-robin, traffic is routed through a dedicated load balancer that sends requests only to nodes it still considers healthy. This guide covers setting up a Rancher HA cluster with both a software-based load balancer (Nginx) and cloud load balancer options.
 
 ## Prerequisites
 
-- Three servers for the Rancher cluster (Ubuntu 22.04, 4 GB RAM, 2 CPUs each)
+- Three servers for the Rancher cluster (Ubuntu 22.04; for a small production Rancher management cluster, at least 4 vCPUs and 16 GB RAM per node)
 - One additional server for the Nginx load balancer (or a cloud load balancer)
 - Network connectivity between all servers
 - A domain name
@@ -92,7 +92,9 @@ helm install cert-manager jetstack/cert-manager \
   --set crds.enabled=true
 
 # Wait for cert-manager
-kubectl -n cert-manager wait --for=condition=ready pod -l app=cert-manager --timeout=120s
+kubectl -n cert-manager rollout status deploy/cert-manager
+kubectl -n cert-manager rollout status deploy/cert-manager-webhook
+kubectl -n cert-manager rollout status deploy/cert-manager-cainjector
 
 # Install Rancher
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
@@ -117,13 +119,15 @@ Install Nginx:
 
 ```bash
 sudo apt update
-sudo apt install -y nginx
+sudo apt install -y nginx libnginx-mod-stream
 ```
 
 Create the load balancer configuration:
 
 ```bash
 sudo tee /etc/nginx/nginx.conf > /dev/null <<'EOF'
+include /etc/nginx/modules-enabled/*.conf;
+
 worker_processes auto;
 
 events {
@@ -148,15 +152,15 @@ stream {
     server {
         listen 443;
         proxy_pass rancher_https;
-        proxy_timeout 30s;
-        proxy_connect_timeout 5s;
+        proxy_timeout 1800s;
+        proxy_connect_timeout 30s;
     }
 
     server {
         listen 80;
         proxy_pass rancher_http;
-        proxy_timeout 30s;
-        proxy_connect_timeout 5s;
+        proxy_timeout 1800s;
+        proxy_connect_timeout 30s;
     }
 }
 EOF
@@ -174,30 +178,61 @@ sudo systemctl enable nginx
 
 If you are running on a cloud provider, you can use their managed load balancer instead of Nginx.
 
-### AWS Application Load Balancer
+### AWS Network Load Balancer
 
 ```bash
-# Create a target group
+# Create target groups
 aws elbv2 create-target-group \
-  --name rancher-tg \
-  --protocol HTTPS \
+  --name rancher-tcp-443 \
+  --protocol TCP \
   --port 443 \
   --vpc-id vpc-xxxxxxxx \
   --target-type instance \
-  --health-check-protocol HTTPS \
-  --health-check-path /healthz
+  --health-check-protocol TCP \
+  --health-check-port 80 \
+  --health-check-interval-seconds 10 \
+  --healthy-threshold-count 3 \
+  --unhealthy-threshold-count 3
+
+aws elbv2 create-target-group \
+  --name rancher-tcp-80 \
+  --protocol TCP \
+  --port 80 \
+  --vpc-id vpc-xxxxxxxx \
+  --target-type instance \
+  --health-check-protocol TCP \
+  --health-check-interval-seconds 10 \
+  --healthy-threshold-count 3 \
+  --unhealthy-threshold-count 3
 
 # Register targets
 aws elbv2 register-targets \
-  --target-group-arn <target-group-arn> \
+  --target-group-arn <443-target-group-arn> \
+  --targets Id=i-node1 Id=i-node2 Id=i-node3
+
+aws elbv2 register-targets \
+  --target-group-arn <80-target-group-arn> \
   --targets Id=i-node1 Id=i-node2 Id=i-node3
 
 # Create the load balancer
 aws elbv2 create-load-balancer \
   --name rancher-lb \
+  --type network \
   --subnets subnet-xxx subnet-yyy \
-  --security-groups sg-xxxxxxxx \
   --scheme internet-facing
+
+# Create listeners
+aws elbv2 create-listener \
+  --load-balancer-arn <load-balancer-arn> \
+  --protocol TCP \
+  --port 443 \
+  --default-actions Type=forward,TargetGroupArn=<443-target-group-arn>
+
+aws elbv2 create-listener \
+  --load-balancer-arn <load-balancer-arn> \
+  --protocol TCP \
+  --port 80 \
+  --default-actions Type=forward,TargetGroupArn=<80-target-group-arn>
 ```
 
 ### DigitalOcean Load Balancer
@@ -206,8 +241,8 @@ aws elbv2 create-load-balancer \
 doctl compute load-balancer create \
   --name rancher-lb \
   --region nyc3 \
-  --forwarding-rules "entry_protocol:https,entry_port:443,target_protocol:https,target_port:443,tls_passthrough:true" \
-  --health-check "protocol:https,port:443,path:/healthz,check_interval_seconds:10,response_timeout_seconds:5,healthy_threshold:3,unhealthy_threshold:3" \
+  --forwarding-rules "entry_protocol:http,entry_port:80,target_protocol:http,target_port:80 entry_protocol:https,entry_port:443,target_protocol:https,target_port:443,tls_passthrough:true" \
+  --health-check "protocol:http,port:80,path:/ping,check_interval_seconds:10,response_timeout_seconds:5,healthy_threshold:3,unhealthy_threshold:3" \
   --droplet-ids node1-id,node2-id,node3-id
 ```
 
@@ -232,7 +267,7 @@ ssh ubuntu@192.168.1.101
 sudo systemctl stop k3s
 ```
 
-The load balancer detects the failure and routes traffic to the remaining healthy nodes. Rancher continues to operate normally.
+The load balancer detects failed connections and routes new traffic to the remaining healthy nodes. Rancher continues to operate normally.
 
 Restart the node:
 
@@ -242,7 +277,7 @@ sudo systemctl start k3s
 
 ## Health Check Configuration
 
-The load balancer uses the `/healthz` endpoint on each node to determine health. This endpoint returns a 200 status when the node is healthy. Configure your health checks to poll this endpoint every 10 seconds with a timeout of 5 seconds.
+For a K3s-based Rancher install, Traefik exposes the `/ping` endpoint. Managed load balancers that support HTTP or HTTPS health checks can poll `/ping` every 10 seconds with a 5 second timeout. The Nginx configuration above uses passive TCP failure detection with `max_fails` and `fail_timeout` rather than actively polling an HTTP endpoint.
 
 ## SSL Termination Options
 
@@ -250,7 +285,7 @@ You have two options for SSL handling:
 
 1. **TLS Passthrough** (recommended): The load balancer passes encrypted traffic directly to the backend nodes. This is the simplest configuration and lets Rancher handle its own certificates.
 
-2. **SSL Termination at the Load Balancer**: The load balancer decrypts traffic and forwards plain HTTP to the backend nodes. This requires installing your SSL certificate on the load balancer.
+2. **SSL Termination at the Load Balancer**: The load balancer decrypts traffic and forwards plain HTTP to the backend nodes. For Rancher, install with `--set tls=external`, point the load balancer to port 80 on the nodes, and make sure it sends the `Host`, `X-Forwarded-Proto`, `X-Forwarded-Port`, and `X-Forwarded-For` headers.
 
 ## Summary
 
