@@ -41,6 +41,7 @@ With CDI, the same operation becomes:
 # The CDI way: clean and declarative
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   nvidia/cuda:12.3.0-base-ubuntu22.04 \
   nvidia-smi
 ```
@@ -49,20 +50,21 @@ CDI moves all the complexity into a specification file that is generated once an
 
 ## CDI Specification Locations
 
-Podman looks for CDI specifications in these directories:
+Podman looks for CDI specifications in configured spec directories. Common locations are:
 
 ```bash
-# System-wide CDI specs (for root containers)
-/etc/cdi/
-/var/run/cdi/
+# Static CDI specs
+# /etc/cdi/
 
-# User-specific CDI specs (for rootless containers)
-~/.config/cdi/
+# Generated CDI specs
+# /var/run/cdi/
+
+# Podman's global option can be used to add or override spec directories
+podman --cdi-spec-dir=/etc/cdi --cdi-spec-dir=/var/run/cdi run ...
 
 # List all CDI specs on the system
 ls -la /etc/cdi/ 2>/dev/null
 ls -la /var/run/cdi/ 2>/dev/null
-ls -la ~/.config/cdi/ 2>/dev/null
 ```
 
 ## CDI Specification Format
@@ -117,10 +119,10 @@ The key sections are:
 The most common CDI use case is with NVIDIA GPUs:
 
 ```bash
-# Generate the NVIDIA CDI specification
-sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+# Generate the NVIDIA CDI specification manually
+sudo nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml
 
-# For rootless Podman
+# For a user-managed spec directory, add the directory with --cdi-spec-dir
 mkdir -p ~/.config/cdi
 nvidia-ctk cdi generate --output=$HOME/.config/cdi/nvidia.yaml
 
@@ -135,12 +137,14 @@ nvidia-ctk cdi list
 # Use a CDI device in a container
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   nvidia/cuda:12.3.0-base-ubuntu22.04 \
   nvidia-smi
 
 # Use a specific GPU
 podman run --rm -it \
   --device nvidia.com/gpu=0 \
+  --security-opt=label=disable \
   nvidia/cuda:12.3.0-base-ubuntu22.04 \
   nvidia-smi
 ```
@@ -149,13 +153,13 @@ podman run --rm -it \
 
 ```bash
 # View the generated CDI spec (it is quite detailed)
-cat /etc/cdi/nvidia.yaml | head -60
+cat /var/run/cdi/nvidia.yaml | head -60
 
 # The spec includes:
 # - All /dev/nvidia* device nodes
 # - NVIDIA driver libraries from /usr/lib
 # - NVIDIA utility binaries (nvidia-smi, etc.)
-# - Required hooks for GPU initialization
+# - Required OCI edits for GPU initialization
 # - Environment variables for CUDA
 ```
 
@@ -388,11 +392,10 @@ try:
     print(f'Valid YAML. Kind: {spec.get(\"kind\")}, Devices: {len(spec.get(\"devices\", []))}')
 except Exception as e:
     print(f'Error: {e}')
-" /etc/cdi/nvidia.yaml
+" /var/run/cdi/nvidia.yaml
 
-# List all CDI devices recognized by Podman
-# This shows all devices from all CDI specs
-podman run --rm --device=? 2>&1 || true
+# List NVIDIA CDI devices and any CDI spec loading errors
+nvidia-ctk --debug cdi list
 ```
 
 ## CDI with Podman Compose
@@ -422,12 +425,12 @@ EOF
 # podman-compose -f /tmp/compose-cdi.yaml up
 ```
 
-## CDI with Kubernetes and Podman
+## CDI with Kubernetes and CDI-Compatible Runtimes
 
-CDI is also supported in Kubernetes environments. When using Podman as a CRI-O backend:
+CDI is also supported in Kubernetes environments through CRI implementations such as CRI-O and containerd. With NVIDIA GPUs, a device plugin or GPU Operator normally advertises the `nvidia.com/gpu` resource:
 
 ```bash
-# Kubernetes pod spec with CDI annotations
+# Kubernetes pod spec requesting an NVIDIA GPU resource
 cat > /tmp/cdi-pod.yaml << 'EOF'
 apiVersion: v1
 kind: Pod
@@ -448,10 +451,12 @@ EOF
 
 ```bash
 # List all installed CDI specs
-ls -la /etc/cdi/ ~/.config/cdi/ /var/run/cdi/ 2>/dev/null
+ls -la /etc/cdi/ /var/run/cdi/ 2>/dev/null
 
 # Regenerate NVIDIA CDI spec after driver update
-sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+sudo systemctl restart nvidia-cdi-refresh.service
+# Or generate it manually:
+sudo nvidia-ctk cdi generate --output=/var/run/cdi/nvidia.yaml
 
 # Remove a CDI spec
 sudo rm /etc/cdi/usb-serial.yaml
@@ -486,11 +491,13 @@ ls -la /dev/your-device
 # Ensure the user can read the CDI spec file
 ls -la /etc/cdi/your-spec.yaml
 
-# CDI spec not picked up by rootless Podman
-# Rootless Podman may not read /etc/cdi/
-# Place specs in ~/.config/cdi/ instead
+# CDI spec in a custom directory is not picked up by Podman
+# Add the directory with --cdi-spec-dir or configure cdi_spec_dirs in containers.conf
 mkdir -p ~/.config/cdi
 cp /etc/cdi/your-spec.yaml ~/.config/cdi/
+podman --cdi-spec-dir=$HOME/.config/cdi run --rm \
+  --device custom.io/serial=arduino \
+  fedora:latest echo "CDI spec found"
 ```
 
 ## Conclusion
