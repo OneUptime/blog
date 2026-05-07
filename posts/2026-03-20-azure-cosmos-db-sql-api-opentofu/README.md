@@ -27,9 +27,7 @@ resource "azurerm_cosmosdb_account" "cosmos" {
 
   # Consistency policy - choose based on your needs
   consistency_policy {
-    consistency_level       = "Session"  # Balance between consistency and performance
-    max_interval_in_seconds = 5
-    max_staleness_prefix    = 100
+    consistency_level = "Session"  # Balance between consistency and performance
   }
 
   # Primary region
@@ -44,12 +42,8 @@ resource "azurerm_cosmosdb_account" "cosmos" {
     failover_priority = 1
   }
 
-  # Enable server-side encryption
+  # Disable virtual network filtering in this example
   is_virtual_network_filter_enabled = false
-
-  capabilities {
-    name = "EnableServerless"  # Remove for provisioned throughput
-  }
 }
 ```
 
@@ -63,7 +57,7 @@ resource "azurerm_cosmosdb_sql_database" "app_db" {
   account_name        = azurerm_cosmosdb_account.cosmos.name
 
   # Shared throughput at database level (all containers share this)
-  # Remove for per-container throughput or serverless
+  # Remove for per-container throughput
   throughput = 400
 }
 ```
@@ -77,10 +71,10 @@ resource "azurerm_cosmosdb_sql_container" "users" {
   resource_group_name   = azurerm_resource_group.rg.name
   account_name          = azurerm_cosmosdb_account.cosmos.name
   database_name         = azurerm_cosmosdb_sql_database.app_db.name
-  partition_key_path    = "/userId"  # Partition key for distribution
+  partition_key_paths   = ["/userId"]  # Partition key for distribution
   partition_key_version = 1
 
-  # TTL: -1 disables TTL, positive value sets default TTL in seconds
+  # TTL: omit to disable TTL, or set -1 to keep TTL enabled with no default expiry
   default_ttl = -1
 
   # Indexing policy: automatic indexing on all paths by default
@@ -107,7 +101,7 @@ resource "azurerm_cosmosdb_sql_container" "orders" {
   resource_group_name = azurerm_resource_group.rg.name
   account_name        = azurerm_cosmosdb_account.cosmos.name
   database_name       = azurerm_cosmosdb_sql_database.app_db.name
-  partition_key_path  = "/customerId"
+  partition_key_paths = ["/customerId"]
 
   # Set TTL for automatic expiry of old orders (90 days)
   default_ttl = 7776000
@@ -129,7 +123,12 @@ output "cosmos_primary_key" {
 }
 
 output "cosmos_connection_strings" {
-  value     = azurerm_cosmosdb_account.cosmos.connection_strings
+  value = {
+    primary            = azurerm_cosmosdb_account.cosmos.primary_sql_connection_string
+    secondary          = azurerm_cosmosdb_account.cosmos.secondary_sql_connection_string
+    primary_readonly   = azurerm_cosmosdb_account.cosmos.primary_readonly_sql_connection_string
+    secondary_readonly = azurerm_cosmosdb_account.cosmos.secondary_readonly_sql_connection_string
+  }
   sensitive = true
 }
 ```
