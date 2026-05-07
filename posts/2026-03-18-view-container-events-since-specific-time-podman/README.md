@@ -10,7 +10,7 @@ Description: Learn how to view Podman container events since a specific time to 
 
 > Time-based event filtering is the cornerstone of incident investigation - knowing what happened since a specific moment tells the story of any outage.
 
-When investigating an incident or reviewing container activity, you often need to see events starting from a specific point in time. Podman's `--since` flag lets you look back at events from a relative duration or an absolute timestamp. This guide covers all the ways to filter Podman events by start time.
+When investigating an incident or reviewing container activity, you often need to see events starting from a specific point in time. Podman's `--since` flag lets you look back at events from a relative duration or an absolute timestamp, and `--stream=false` makes the command exit after showing historical results. This guide covers all the ways to filter Podman events by start time.
 
 ---
 
@@ -21,16 +21,16 @@ The simplest way to look back is using a relative time offset.
 ```bash
 # View events from the last 5 minutes
 
-podman events --since 5m
+podman events --since 5m --stream=false
 
 # View events from the last hour
-podman events --since 1h
+podman events --since 1h --stream=false
 
 # View events from the last 30 seconds
-podman events --since 30s
+podman events --since 30s --stream=false
 
 # View events from the last 2 hours
-podman events --since 2h
+podman events --since 2h --stream=false
 ```
 
 ## Using Absolute Timestamps with --since
@@ -39,13 +39,13 @@ For precise incident investigation, use absolute timestamps.
 
 ```bash
 # View events since a specific date and time
-podman events --since "2026-03-18T10:00:00"
+podman events --since "2026-03-18T10:00:00" --stream=false
 
 # View events since a specific date (midnight)
-podman events --since "2026-03-18"
+podman events --since "2026-03-18" --stream=false
 
 # View events since a specific time with timezone
-podman events --since "2026-03-18T10:00:00-05:00"
+podman events --since "2026-03-18T10:00:00-05:00" --stream=false
 ```
 
 ## Generating Test Events for Demonstration
@@ -61,7 +61,7 @@ sleep 2
 podman run --rm --name since-test-3 alpine echo "third"
 
 # Note the timestamps
-echo "Current time: $(date '+%Y-%m-%dT%H:%M:%S')"
+echo "Current time: $(date '+%Y-%m-%dT%H:%M:%S%:z')"
 ```
 
 ## Investigating Events Since an Incident
@@ -81,24 +81,24 @@ echo ""
 
 # Get all events since the incident
 echo "--- All Events ---"
-podman events --since "$INCIDENT_TIME" \
+podman events --since "$INCIDENT_TIME" --stream=false \
     --format '{{.Time}} [{{.Type}}] {{.Status}} {{.Name}}'
 
 echo ""
 echo "--- Container Deaths ---"
-podman events --since "$INCIDENT_TIME" \
+podman events --since "$INCIDENT_TIME" --stream=false \
     --filter event=die \
     --format '{{.Time}} {{.Name}}'
 
 echo ""
 echo "--- Container Stops ---"
-podman events --since "$INCIDENT_TIME" \
+podman events --since "$INCIDENT_TIME" --stream=false \
     --filter event=stop \
     --format '{{.Time}} {{.Name}}'
 
 echo ""
 echo "--- Event Count by Status ---"
-podman events --since "$INCIDENT_TIME" --format json | \
+podman events --since "$INCIDENT_TIME" --stream=false --format json | \
     jq -r '.Status' | sort | uniq -c | sort -rn
 ```
 
@@ -108,16 +108,16 @@ Narrow down time-based queries with additional filters.
 
 ```bash
 # Container starts since a specific time
-podman events --since 1h --filter event=start
+podman events --since 1h --stream=false --filter event=start
 
 # Events for a specific container since a specific time
-podman events --since 1h --filter container=myapp
+podman events --since 1h --stream=false --filter container=myapp
 
 # Only container events since a time (exclude image, volume events)
-podman events --since 1h --filter type=container
+podman events --since 1h --stream=false --filter type=container
 
 # Die events for a specific container since a time
-podman events --since 1h --filter event=die --filter container=myapp
+podman events --since 1h --stream=false --filter event=die --filter container=myapp
 ```
 
 ## Getting Events in JSON Since a Time
@@ -126,15 +126,15 @@ JSON output combined with time filtering is ideal for automated analysis.
 
 ```bash
 # JSON events from the last hour
-podman events --since 1h --format json
+podman events --since 1h --stream=false --format json
 
 # Process events since a time with jq
-podman events --since 1h --format json | \
-    jq '{time: .Time, type: .Type, status: .Status, name: .Name}'
+podman events --since 1h --stream=false --format json | \
+    jq '{time: .time, type: .Type, status: .Status, name: .Name}'
 
 # Count events per container since a time
-podman events --since 1h --format json | \
-    jq -r '.Actor.Attributes.name // .Name' | sort | uniq -c | sort -rn
+podman events --since 1h --stream=false --filter type=container --format json | \
+    jq -r '.Name' | sort | uniq -c | sort -rn
 ```
 
 ## Building a Historical Event Viewer
@@ -151,25 +151,25 @@ echo "Showing events since: ${DURATION} ago"
 echo ""
 
 # Summary statistics
-total=$(podman events --since "$DURATION" --format json 2>/dev/null | wc -l)
+total=$(podman events --since "$DURATION" --stream=false --format json 2>/dev/null | wc -l)
 echo "Total events: ${total}"
 echo ""
 
 # Events by type
 echo "Events by type:"
-podman events --since "$DURATION" --format json 2>/dev/null | \
+podman events --since "$DURATION" --stream=false --format json 2>/dev/null | \
     jq -r '.Type' | sort | uniq -c | sort -rn
 echo ""
 
 # Events by status
 echo "Events by status:"
-podman events --since "$DURATION" --format json 2>/dev/null | \
+podman events --since "$DURATION" --stream=false --format json 2>/dev/null | \
     jq -r '.Status' | sort | uniq -c | sort -rn
 echo ""
 
 # Timeline of events
 echo "Event timeline:"
-podman events --since "$DURATION" \
+podman events --since "$DURATION" --stream=false \
     --format '{{.Time}} | {{.Type}} | {{.Status}} | {{.Name}}'
 ```
 
@@ -187,18 +187,18 @@ Podman accepts several time formats with the `--since` flag.
 
 ```bash
 # Relative durations
-podman events --since 30s    # seconds
-podman events --since 5m     # minutes
-podman events --since 2h     # hours
+podman events --since 30s --stream=false    # seconds
+podman events --since 5m --stream=false     # minutes
+podman events --since 2h --stream=false     # hours
 
 # ISO 8601 timestamps
-podman events --since "2026-03-18T10:00:00"
+podman events --since "2026-03-18T10:00:00" --stream=false
 
 # Date only (defaults to midnight)
-podman events --since "2026-03-18"
+podman events --since "2026-03-18" --stream=false
 
 # With timezone offset
-podman events --since "2026-03-18T10:00:00-07:00"
+podman events --since "2026-03-18T10:00:00-07:00" --stream=false
 ```
 
 ## Streaming Events Since a Starting Point
