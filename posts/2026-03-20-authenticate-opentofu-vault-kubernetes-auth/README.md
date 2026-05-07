@@ -20,14 +20,13 @@ resource "vault_auth_backend" "kubernetes" {
   path = "kubernetes"
 }
 
-# Configure with the Kubernetes cluster's CA and host
+# Configure with the Kubernetes cluster's host and CA bundle
 resource "vault_kubernetes_auth_backend_config" "config" {
   backend            = vault_auth_backend.kubernetes.path
   kubernetes_host    = "https://kubernetes.default.svc.cluster.local"
-  # Vault running inside the cluster can use:
   kubernetes_ca_cert = file("${path.module}/k8s-ca.crt")
-  # Or let Vault discover it from the token reviewer's service account
-  disable_iss_validation = true
+  # Use the login JWT for TokenReview instead of Vault's local service account token.
+  disable_local_ca_jwt = true
 }
 
 # Create a role for the CI/CD service account
@@ -35,11 +34,12 @@ resource "vault_kubernetes_auth_backend_role" "opentofu_cicd" {
   backend                          = vault_auth_backend.kubernetes.path
   role_name                        = "opentofu-cicd"
   bound_service_account_names      = ["opentofu-runner"]
-  bound_service_account_namespaces = ["ci-cd", "argocd"]
+  bound_service_account_namespaces = ["ci-cd"]
   token_policies                   = ["opentofu-policy"]
   token_ttl                        = 3600
   token_max_ttl                    = 14400
-  audience                         = "vault"
+  # Set audience = "vault" when you use a projected service account token with that audience.
+  # audience = "vault"
 }
 ```
 
@@ -50,13 +50,10 @@ resource "kubernetes_service_account" "opentofu_runner" {
   metadata {
     name      = "opentofu-runner"
     namespace = "ci-cd"
-    annotations = {
-      "vault.hashicorp.com/role" = "opentofu-cicd"
-    }
   }
 }
 
-# RBAC - only needs to read its own token (for Kubernetes 1.24+)
+# If Vault uses the login JWT for TokenReview, this service account needs system:auth-delegator.
 resource "kubernetes_cluster_role_binding" "token_review" {
   metadata {
     name = "opentofu-runner-token-review"
@@ -81,12 +78,19 @@ resource "kubernetes_cluster_role_binding" "token_review" {
 provider "vault" {
   address = "http://vault.vault.svc.cluster.local:8200"
 
-  auth_login_kubernetes {
-    role = "opentofu-cicd"
-    # JWT token path (auto-mounted by Kubernetes)
-    jwt  = file("/var/run/secrets/kubernetes.io/serviceaccount/token")
-    # Or for projected service account tokens:
-    # jwt  = file("/var/run/secrets/vault/token")
+  # Avoid requiring auth/token/create on the Kubernetes login token.
+  skip_child_token = true
+
+  auth_login {
+    path = "auth/kubernetes/login"
+
+    parameters = {
+      role = "opentofu-cicd"
+      # JWT token path (auto-mounted by Kubernetes)
+      jwt = file("/var/run/secrets/kubernetes.io/serviceaccount/token")
+      # Or for projected service account tokens:
+      # jwt = file("/var/run/secrets/vault/token")
+    }
   }
 }
 ```
@@ -95,7 +99,7 @@ provider "vault" {
 
 ```yaml
 # tekton/pipeline-run.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: TaskRun
 metadata:
   name: opentofu-apply
@@ -111,7 +115,7 @@ spec:
         env:
           - name: VAULT_ADDR
             value: "http://vault.vault.svc.cluster.local:8200"
-          # VAULT_TOKEN obtained by Vault agent sidecar or auth_login_kubernetes
+          # No static VAULT_TOKEN is required when the Vault provider logs in with Kubernetes auth.
 ```
 
 ## Argo CD Integration with Vault Agent
@@ -122,9 +126,15 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: opentofu-runner
+  namespace: ci-cd
 spec:
+  selector:
+    matchLabels:
+      app: opentofu-runner
   template:
     metadata:
+      labels:
+        app: opentofu-runner
       annotations:
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "opentofu-cicd"
@@ -133,31 +143,52 @@ spec:
           {{- with secret "aws/creds/opentofu-role" -}}
           export AWS_ACCESS_KEY_ID="{{ .Data.access_key }}"
           export AWS_SECRET_ACCESS_KEY="{{ .Data.secret_key }}"
-          export AWS_SESSION_TOKEN="{{ .Data.security_token }}"
+          export AWS_SESSION_TOKEN="{{ .Data.session_token }}"
           {{- end }}
+    spec:
+      serviceAccountName: opentofu-runner
+      containers:
+        - name: tofu
+          image: ghcr.io/opentofu/opentofu:latest
 ```
 
-## Projected Service Account Tokens (Kubernetes 1.21+)
+## Projected Service Account Tokens
 
 ```yaml
-# pod.yaml - mount a projected token with vault audience
-volumes:
-  - name: vault-token
-    projected:
-      sources:
-        - serviceAccountToken:
-            audience: vault
-            expirationSeconds: 7200
-            path: token
+# pod spec fragment - mount a projected token with vault audience
+spec:
+  serviceAccountName: opentofu-runner
+  containers:
+    - name: tofu
+      image: ghcr.io/opentofu/opentofu:latest
+      volumeMounts:
+        - name: vault-token
+          mountPath: /var/run/secrets/vault
+          readOnly: true
+  volumes:
+    - name: vault-token
+      projected:
+        sources:
+          - serviceAccountToken:
+              audience: vault
+              expirationSeconds: 7200
+              path: token
 ```
 
 ```hcl
 provider "vault" {
   address = "http://vault.vault.svc:8200"
 
-  auth_login_kubernetes {
-    role = "opentofu-cicd"
-    jwt  = file("/var/run/secrets/vault/token")
+  skip_child_token = true
+
+  auth_login {
+    path = "auth/kubernetes/login"
+
+    parameters = {
+      role = "opentofu-cicd"
+      # Use this with a Vault role that sets audience = "vault".
+      jwt  = file("/var/run/secrets/vault/token")
+    }
   }
 }
 ```
