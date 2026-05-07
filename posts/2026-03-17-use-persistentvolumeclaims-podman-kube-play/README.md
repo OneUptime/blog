@@ -28,7 +28,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      # Podman ignores the size but the field is required for valid YAML
+      # Podman only requires the PVC name, but this keeps the manifest Kubernetes-compatible
       storage: 10Gi
 ---
 apiVersion: v1
@@ -152,4 +152,4 @@ podman volume rm postgres-data
 
 ## Summary
 
-Podman maps Kubernetes PersistentVolumeClaims to named volumes when using `podman kube play`. This provides durable storage that persists across pod restarts. Define PVCs in your YAML, reference them in volume mounts, and Podman handles the volume lifecycle automatically.
+Podman maps Kubernetes PersistentVolumeClaims to named volumes when using `podman kube play`. This provides durable storage that persists across pod restarts. Define PVCs in your YAML, reference them in volume mounts, and Podman handles volume creation automatically.
