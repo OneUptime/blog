@@ -10,7 +10,7 @@ Description: Learn how to configure the default container log driver in containe
 
 > Choosing the right log driver ensures your container logs are captured reliably and stored in a format that integrates with your monitoring infrastructure.
 
-Podman supports multiple log drivers that control how container stdout and stderr are captured and stored. The default log driver can be set in `containers.conf`, affecting all containers unless overridden at runtime. This guide covers each available log driver and helps you choose the right one for your environment.
+Podman supports multiple log drivers that control how container stdout and stderr are captured and stored. The default log driver can be set in `containers.conf`, affecting all containers unless overridden at runtime. This guide covers the common log drivers and helps you choose the right one for your environment.
 
 ---
 
@@ -24,10 +24,14 @@ Podman provides several log driver options.
 podman info --format '{{.Host.LogDriver}}'
 
 # Available log drivers:
-# k8s-file  - Kubernetes-compatible JSON file logging (default)
+# k8s-file  - Kubernetes-compatible JSON file logging
 # journald  - Log to systemd journal
 # none      - Disable logging entirely
-# passthrough - Pass logs directly to the terminal (Podman 4.0+)
+# passthrough - Pass logs directly to the standard streams (Podman 4.0+)
+# passthrough-tty - Like passthrough, but also allowed on a TTY
+#
+# Podman uses journald by default when the systemd journal is readable
+# and writable; otherwise it uses k8s-file.
 ```
 
 ## Configuring the k8s-file Driver
@@ -44,7 +48,7 @@ cat > ~/.config/containers/containers.conf << 'EOF'
 # Logs are stored as JSON files alongside the container storage
 log_driver = "k8s-file"
 
-# Maximum log file size before rotation (default: unlimited)
+# Maximum log file size before truncation (default: unlimited)
 # log_size_max = 1048576
 EOF
 
@@ -82,13 +86,14 @@ EOF
 systemctl is-active systemd-journald 2>/dev/null && echo "journald is running"
 
 # Run a container with journald logging
-podman run --rm --name journal-test alpine echo "Testing journald driver"
+podman run --name journal-test alpine echo "Testing journald driver"
 
 # View logs via journalctl
 journalctl CONTAINER_NAME=journal-test --no-pager 2>/dev/null | tail -5
 
-# View logs via podman logs (works regardless of driver)
-# podman logs journal-test
+# View logs via podman logs
+podman logs journal-test
+podman rm journal-test
 ```
 
 ## Configuring Log Size Limits
@@ -96,14 +101,14 @@ journalctl CONTAINER_NAME=journal-test --no-pager 2>/dev/null | tail -5
 Prevent container logs from consuming excessive disk space.
 
 ```bash
-# Configure log rotation with k8s-file driver
+# Configure a log size limit with k8s-file driver
 cat > ~/.config/containers/containers.conf << 'EOF'
 [containers]
 log_driver = "k8s-file"
 
 # Maximum size of each log file in bytes
 # -1 = unlimited (default)
-# Set to 10MB for rotation
+# Set to 10MB
 log_size_max = 10485760
 EOF
 
@@ -173,7 +178,7 @@ Choose the best driver for your use case.
 # k8s-file: Best for Kubernetes compatibility and file-based access
 # - Logs stored as JSON files
 # - Easy to parse and forward to log aggregators
-# - Supports log rotation
+# - Supports a log size limit
 
 # journald: Best for systemd-based systems
 # - Integrated with journalctl
@@ -191,4 +196,4 @@ podman run --rm alpine echo "Log driver verification complete"
 
 ## Summary
 
-The default log driver in `containers.conf` controls how Podman captures container output. Use `k8s-file` for Kubernetes-compatible JSON logging with optional size limits, `journald` for systemd integration, or `none` when logging is handled externally. Set the default in the `[containers]` section and override per container using `--log-driver` when needed. Always configure `log_size_max` to prevent runaway log files from filling your disk.
+The default log driver in `containers.conf` controls how Podman captures container output. Use `k8s-file` for Kubernetes-compatible JSON logging with optional size limits, `journald` for systemd integration, or `none` when logging is handled externally. Set the default in the `[containers]` section and override per container using `--log-driver` when needed. For file-based logging, configure `log_size_max` to prevent runaway log files from filling your disk.
