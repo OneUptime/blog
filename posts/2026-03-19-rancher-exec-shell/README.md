@@ -20,9 +20,9 @@ Sometimes you need to get inside a running container to debug an issue, inspect 
 ### Step 1: Navigate to the Pod
 
 1. Log in to the Rancher dashboard and select your cluster
-2. Navigate to **Workloads > Pods**
+2. Navigate to **Workload > Pods**
 3. Find the pod you want to access
-4. Alternatively, go to **Workloads > Deployments**, click a deployment name, and find the pod in the **Pods** tab
+4. Alternatively, go to **Workload > Deployments**, click a deployment name, and find the pod in the **Pods** tab
 
 ### Step 2: Open the Shell
 
@@ -71,7 +71,7 @@ Type `exit` or press `Ctrl+D` to close the shell session. This does not affect t
 
 ### Basic Shell Access
 
-Open the kubectl shell from the Rancher UI (click the **kubectl** button), or use your local kubectl:
+Open the kubectl shell from the Rancher UI (click the **Kubectl Shell** button), or use your local kubectl:
 
 ```bash
 kubectl exec -it my-app-pod-abc123 -n default -- /bin/bash
@@ -115,7 +115,7 @@ Test if a service is reachable from within the container:
 
 ```bash
 # Using curl (if available)
-curl -v http://database-service:5432
+curl -v http://api-service:8080/health
 
 # Using wget (if curl is not available)
 wget -qO- http://api-service:8080/health
@@ -183,7 +183,7 @@ If your container image is minimal (distroless or scratch-based) and does not in
 kubectl debug -it my-app-pod-abc123 --image=busybox --target=my-container -n default
 ```
 
-This attaches a new container with debugging tools to the existing pod, sharing the same process namespace and network.
+This adds a new container with debugging tools to the existing pod. It shares the pod's network namespace, and `--target` requests access to the target container's process namespace when the container runtime supports it.
 
 For more comprehensive debugging tools:
 
@@ -196,6 +196,8 @@ The `netshoot` image includes tools like curl, dig, tcpdump, nmap, and more.
 ## Copying Files To and From Containers
 
 Sometimes you need to copy files for analysis:
+
+These commands require the `tar` binary to be present in the container image.
 
 ### Copy from Container to Local Machine
 
@@ -217,10 +219,10 @@ kubectl cp default/my-app-pod-abc123:/app/data.json ./data.json -c my-container
 
 ## Security Considerations
 
-1. Limit who can exec into production containers using RBAC. In Rancher, configure roles under **Cluster Management > RBAC**.
+1. Limit who can exec into production containers using Rancher cluster and project roles together with Kubernetes RBAC.
 2. Avoid running containers as root in production. Changes made inside a container are ephemeral and lost when the pod restarts.
 3. Do not install unnecessary tools inside production containers. Use ephemeral debug containers instead.
-4. Audit exec sessions. Rancher logs user actions, and you can enable Kubernetes audit logging for compliance.
+4. Audit exec access by enabling Rancher API audit logging and Kubernetes audit logging when you need compliance records.
 
 ## Troubleshooting Shell Access
 
@@ -242,11 +244,11 @@ The container must be in a Running state. Check the pod status:
 kubectl get pod my-app-pod-abc123 -n default
 ```
 
-If the pod is in CrashLoopBackOff, you cannot exec into it. View logs with `--previous` instead.
+If the pod is in CrashLoopBackOff, `kubectl exec` may not work reliably because the container is repeatedly exiting. View previous logs with `--previous` instead, or use an ephemeral debug container.
 
 ### Timeout Issues
 
-If the shell connection times out, check your network connectivity to the cluster and ensure the Rancher agent is healthy on the target node.
+If the shell connection times out, check your network connectivity to the cluster and make sure any proxy or load balancer in front of Rancher allows long-lived websocket connections for exec sessions.
 
 ## Summary
 
