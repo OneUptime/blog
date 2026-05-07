@@ -19,7 +19,7 @@ Grafana Loki is a log aggregation system designed to be cost-effective and easy 
 Create the necessary directories and configuration:
 
 ```bash
-mkdir -p ~/loki/{config,data}
+mkdir -p ~/loki/config ~/loki/data/alloy
 ```
 
 Create the Loki configuration:
@@ -33,6 +33,7 @@ server:
   http_listen_port: 3100
 
 common:
+  instance_addr: 127.0.0.1
   path_prefix: /loki
   storage:
     filesystem:
@@ -59,10 +60,6 @@ limits_config:
   max_query_length: 0h
   max_query_parallelism: 2
 
-storage_config:
-  filesystem:
-    directory: /loki/storage
-
 analytics:
   reporting_enabled: false
 ```
@@ -86,62 +83,53 @@ Verify it is running:
 curl -s http://localhost:3100/ready
 ```
 
-## Deploying Promtail for Log Collection
+## Deploying Grafana Alloy for Log Collection
 
-Promtail is Loki's log collector agent. It discovers and ships container logs to Loki:
+Promtail reached end-of-life on March 2, 2026. For new Loki deployments, Grafana recommends Grafana Alloy as the log collection agent. The following Alloy configuration reads Podman container logs from journald and ships them to Loki:
 
-```yaml
-# ~/loki/config/promtail-config.yml
-server:
-  http_listen_port: 9080
+```alloy
+# ~/loki/config/alloy-config.alloy
+loki.write "local" {
+  endpoint {
+    url = "http://127.0.0.1:3100/loki/api/v1/push"
+  }
+}
 
-positions:
-  filename: /tmp/positions.yaml
+loki.relabel "podman" {
+  forward_to = []
 
-clients:
-  - url: http://loki:3100/loki/api/v1/push
+  rule {
+    source_labels = ["__journal_container_name"]
+    target_label  = "container"
+  }
 
-scrape_configs:
-  - job_name: containers
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: containers
-          __path__: /var/log/containers/*.log
+  rule {
+    source_labels = ["__journal_container_id_full"]
+    target_label  = "container_id"
+  }
+}
 
-  - job_name: podman
-    journal:
-      labels:
-        job: podman
-      path: /var/log/journal
-
-    relabel_configs:
-      - source_labels: ['__journal_container_name']
-        target_label: 'container'
-      - source_labels: ['__journal_container_id_full']
-        target_label: 'container_id'
-
-  - job_name: syslog
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: syslog
-          __path__: /var/log/messages
+loki.source.journal "podman" {
+  forward_to    = [loki.write.local.receiver]
+  relabel_rules = loki.relabel.podman.rules
+  labels        = {job = "podman"}
+}
 ```
 
-Run Promtail:
+Run Grafana Alloy:
 
 ```bash
-podman run -d \
-  --name promtail \
+sudo podman run -d \
+  --name alloy \
   --restart always \
-  -v ~/loki/config/promtail-config.yml:/etc/promtail/config.yml:ro,Z \
-  -v /var/log:/var/log:ro \
+  --network host \
+  -v ~/loki/config/alloy-config.alloy:/etc/alloy/config.alloy:ro,Z \
+  -v ~/loki/data/alloy:/var/lib/alloy/data:Z \
+  -v /var/log/journal:/var/log/journal:ro \
   -v /run/log/journal:/run/log/journal:ro \
-  grafana/promtail:latest \
-  -config.file=/etc/promtail/config.yml
+  -v /etc/machine-id:/etc/machine-id:ro \
+  docker.io/grafana/alloy:latest \
+  run --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
 ```
 
 ## Complete Loki Stack with Compose
@@ -162,13 +150,20 @@ services:
       - loki-data:/loki
     command: -config.file=/etc/loki/local-config.yaml
 
-  promtail:
-    image: grafana/promtail:latest
+  alloy:
+    image: docker.io/grafana/alloy:latest
     restart: always
+    network_mode: host
     volumes:
-      - ./loki/config/promtail-config.yml:/etc/promtail/config.yml:ro
-      - /var/log:/var/log:ro
-    command: -config.file=/etc/promtail/config.yml
+      - ./loki/config/alloy-config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+    command:
+      - run
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
     depends_on:
       - loki
 
@@ -187,6 +182,7 @@ services:
 
 volumes:
   loki-data:
+  alloy-data:
   grafana-data:
 ```
 
@@ -281,37 +277,42 @@ sum(rate({container="myapp"} |= "error" [5m]))
 / sum(rate({container="myapp"} [5m]))
 
 # Top log sources by volume
-topk(10, sum(rate({job="containers"}[5m])) by (container))
+topk(10, sum(rate({container=~".+"}[5m])) by (container))
 ```
 
 ## Collecting Podman Container Logs
 
-Configure Promtail to collect logs from Podman's log directory:
+If your containers use Podman's `k8s-file` log driver instead of the default `journald` driver, add file scraping for `ctr.log`. On rootful systems the log path is typically `/var/lib/containers/storage/...`; rootless Podman uses `$HOME/.local/share/containers/storage/...`.
 
-```yaml
-# promtail-podman.yml
-scrape_configs:
-  - job_name: podman-containers
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: podman
-          __path__: /var/lib/containers/storage/overlay-containers/*/userdata/ctr.log
+```alloy
+# Add to alloy-config.alloy
+loki.source.file "podman_logs" {
+  targets = [
+    {
+      __path__ = "/var/lib/containers/storage/overlay-containers/*/userdata/ctr.log",
+      job      = "podman-file",
+    },
+  ]
+  tail_from_end = true
+  forward_to    = [loki.process.podman_cri.receiver]
 
-    pipeline_stages:
-      - json:
-          expressions:
-            log: log
-            stream: stream
-            time: time
-      - labels:
-          stream:
-      - timestamp:
-          source: time
-          format: RFC3339Nano
-      - output:
-          source: log
+  file_match {
+    enabled     = true
+    sync_period = "10s"
+  }
+}
+
+loki.process "podman_cri" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.cri {}
+
+  stage.labels {
+    values = {
+      stream = "",
+    }
+  }
+}
 ```
 
 ## Retention and Compaction
@@ -319,7 +320,7 @@ scrape_configs:
 Configure log retention in Loki:
 
 ```yaml
-# Add to loki-config.yml
+# Add the compactor block and add retention_period under the existing limits_config block
 compactor:
   working_directory: /loki/compactor
   compaction_interval: 10m
@@ -329,12 +330,16 @@ compactor:
   delete_request_store: filesystem
 
 limits_config:
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+  max_query_length: 0h
+  max_query_parallelism: 2
   retention_period: 744h  # 31 days
 ```
 
 ## Alerting with Loki
 
-Configure alerting rules in Loki:
+If you enable Loki's ruler and configure an Alertmanager URL, alerting rules can look like this:
 
 ```yaml
 # loki/rules/alerts.yml
@@ -362,4 +367,4 @@ groups:
 
 ## Conclusion
 
-Loki provides a lightweight, efficient approach to log aggregation that pairs well with Podman containers. Its label-based indexing keeps storage costs low while LogQL provides powerful querying capabilities. The tight integration with Grafana means you can explore logs alongside metrics in the same dashboard. For teams already using Prometheus and Grafana, adding Loki creates a complete observability stack with minimal additional complexity. The combination of Promtail for collection, Loki for storage, and Grafana for visualization gives you everything needed for production-grade container log management.
+Loki provides a lightweight, efficient approach to log aggregation that pairs well with Podman containers. Its label-based indexing keeps storage costs low while LogQL provides powerful querying capabilities. The tight integration with Grafana means you can explore logs alongside metrics in the same dashboard. For teams already using Prometheus and Grafana, adding Loki creates a complete observability stack with minimal additional complexity. The combination of Grafana Alloy for collection, Loki for storage, and Grafana for visualization gives you everything needed for production-grade container log management.
