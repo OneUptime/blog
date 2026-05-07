@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Cluster Provisioning, Automation, DevOps, Infrastructure
 
-Description: Learn how to automate Kubernetes cluster provisioning in Rancher using the Rancher API, Terraform provider, and cluster templates.
+Description: Learn how to automate Kubernetes cluster provisioning in Rancher using the Rancher API and Terraform/OpenTofu provider.
 
 ---
 
-Rancher supports automating cluster provisioning through its API and the official Rancher Terraform/OpenTofu provider. This enables repeatable, version-controlled cluster creation across cloud providers and bare metal.
+Rancher supports automating cluster provisioning through the Rancher Kubernetes API and the official Rancher Terraform/OpenTofu provider. This enables repeatable, version-controlled cluster creation across cloud providers and bare metal.
 
 ---
 
@@ -21,7 +21,7 @@ terraform {
   required_providers {
     rancher2 = {
       source  = "rancher/rancher2"
-      version = "~> 4.1"
+      version = "~> 14.0"
     }
   }
 }
@@ -42,24 +42,24 @@ provider "rancher2" {
 resource "rancher2_machine_config_v2" "worker" {
   generate_name = "worker-"
   amazonec2_config {
-    ami                = "ami-0c55b159cbfafe1f0"
+    ami                = "<AMI_ID>"
     region             = "us-east-1"
     instance_type      = "t3.medium"
-    security_group     = [aws_security_group.rancher_nodes.name]
-    subnet_id          = aws_subnet.private.id
-    vpc_id             = aws_vpc.main.id
+    security_group     = ["<AWS_SECURITY_GROUP>"]
+    subnet_id          = "<SUBNET_ID>"
+    vpc_id             = "<VPC_ID>"
     zone               = "a"
   }
 }
 
 resource "rancher2_cluster_v2" "prod" {
   name               = "prod-cluster"
-  kubernetes_version = "v1.28.8+rke2r1"
+  kubernetes_version = "<RKE2_VERSION>"
 
   rke_config {
     machine_pools {
       name                         = "control-plane"
-      cloud_credential_secret_name = rancher2_cloud_credential.aws.name
+      cloud_credential_secret_name = rancher2_cloud_credential.aws.id
       control_plane_role           = true
       etcd_role                    = true
       worker_role                  = false
@@ -72,7 +72,7 @@ resource "rancher2_cluster_v2" "prod" {
 
     machine_pools {
       name                         = "workers"
-      cloud_credential_secret_name = rancher2_cloud_credential.aws.name
+      cloud_credential_secret_name = rancher2_cloud_credential.aws.id
       control_plane_role           = false
       etcd_role                    = false
       worker_role                  = true
@@ -105,15 +105,47 @@ resource "rancher2_cloud_credential" "aws" {
 ## Use the Rancher API Directly
 
 ```bash
-# Create a cluster via the Rancher API
+# Create a cluster via the Rancher Kubernetes API
 curl -X POST \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
   -H "Content-Type: application/json" \
-  https://rancher.example.com/v3/clusters \
+  https://rancher.example.com/apis/provisioning.cattle.io/v1/namespaces/fleet-default/clusters \
   -d '{
-    "name": "dev-cluster",
-    "rkeConfig": {
-      "kubernetesVersion": "v1.28.8+rke2r1"
+    "apiVersion": "provisioning.cattle.io/v1",
+    "kind": "Cluster",
+    "metadata": {
+      "name": "dev-cluster",
+      "namespace": "fleet-default"
+    },
+    "spec": {
+      "cloudCredentialSecretName": "<CLOUD_CREDENTIAL_SECRET_NAME>",
+      "kubernetesVersion": "<RKE2_VERSION>",
+      "rkeConfig": {
+        "machinePools": [
+          {
+            "name": "control-plane",
+            "controlPlaneRole": true,
+            "etcdRole": true,
+            "workerRole": false,
+            "quantity": 3,
+            "machineConfigRef": {
+              "kind": "Amazonec2Config",
+              "name": "<CONTROL_PLANE_MACHINE_CONFIG_NAME>"
+            }
+          },
+          {
+            "name": "workers",
+            "controlPlaneRole": false,
+            "etcdRole": false,
+            "workerRole": true,
+            "quantity": 3,
+            "machineConfigRef": {
+              "kind": "Amazonec2Config",
+              "name": "<WORKER_MACHINE_CONFIG_NAME>"
+            }
+          }
+        ]
+      }
     }
   }'
 ```
@@ -132,4 +164,4 @@ rancher clusters kubeconfig prod-cluster > ~/.kube/prod-config
 
 ## Summary
 
-Use the `rancher/rancher2` OpenTofu provider to declare clusters as code with `rancher2_cluster_v2`. Define separate machine pools for control plane and worker roles, attach cloud credentials via `rancher2_cloud_credential`, and apply with `tofu apply`. This approach makes cluster provisioning repeatable, reviewable through pull requests, and consistent across environments.
+Use the `rancher/rancher2` Terraform/OpenTofu provider to declare clusters as code with `rancher2_cluster_v2`. Define separate machine pools for control plane and worker roles, attach cloud credentials via `rancher2_cloud_credential`, and apply with `tofu apply`. This approach makes cluster provisioning repeatable, reviewable through pull requests, and consistent across environments.
