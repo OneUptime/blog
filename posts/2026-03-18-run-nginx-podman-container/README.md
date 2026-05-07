@@ -8,7 +8,7 @@ Description: Learn how to run Nginx as a web server and reverse proxy inside a P
 
 ---
 
-> Nginx in a Podman container gives you a lightweight, rootless web server ready for production traffic in seconds.
+> Nginx in a Podman container gives you a lightweight web server that can run rootless and be ready for production traffic in seconds.
 
 Nginx is one of the most widely used web servers and reverse proxies in the world. Running it inside a Podman container lets you isolate your web server, manage configurations declaratively, and deploy consistently across environments. This guide walks you through pulling the Nginx image, running it with custom configurations, serving static content, and setting up reverse proxying - all using Podman.
 
@@ -36,7 +36,7 @@ Launch a simple Nginx container that serves the default welcome page.
 podman run -d \
   --name my-nginx \
   -p 8080:80 \
-  nginx:latest
+  docker.io/library/nginx:latest
 
 # Verify the container is running
 podman ps
@@ -66,8 +66,8 @@ EOF
 podman run -d \
   --name nginx-static \
   -p 8081:80 \
-  -v ~/my-website:/usr/share/nginx/html:Z \
-  nginx:latest
+  -v ~/my-website:/usr/share/nginx/html:z \
+  docker.io/library/nginx:latest
 
 # Verify your custom page is served
 curl http://localhost:8081
@@ -118,8 +118,8 @@ podman run -d \
   --name nginx-custom \
   -p 8082:80 \
   -v ~/nginx-config/nginx.conf:/etc/nginx/nginx.conf:Z \
-  -v ~/my-website:/usr/share/nginx/html:Z \
-  nginx:latest
+  -v ~/my-website:/usr/share/nginx/html:z \
+  docker.io/library/nginx:latest
 
 # Test that the custom config is loaded
 podman exec nginx-custom nginx -t
@@ -164,7 +164,7 @@ podman run -d \
   --name nginx-proxy \
   -p 8083:80 \
   -v ~/nginx-config/reverse-proxy.conf:/etc/nginx/nginx.conf:Z \
-  nginx:latest
+  docker.io/library/nginx:latest
 ```
 
 ## Managing the Nginx Container
@@ -190,4 +190,4 @@ podman rm -f my-nginx
 
 ## Summary
 
-Running Nginx in a Podman container provides a clean, isolated web server environment that is easy to configure and manage. You can serve static content by mounting local directories, apply custom Nginx configurations for fine-tuned control, and set up reverse proxying to backend services. Because Podman runs rootless by default, your Nginx container benefits from an extra layer of security compared to traditional installations. Combine volume mounts with custom configs to build a portable, reproducible web server setup that works identically across development and production.
+Running Nginx in a Podman container provides a clean, isolated web server environment that is easy to configure and manage. You can serve static content by mounting local directories, apply custom Nginx configurations for fine-tuned control, and set up reverse proxying to backend services. When you run Podman as a non-root user, your Nginx container benefits from rootless container isolation compared to traditional installations. Combine volume mounts with custom configs to build a portable, reproducible web server setup that works identically across development and production.
