@@ -10,7 +10,7 @@ Description: A comprehensive guide to using Azure Container Registry with Podman
 
 > Azure Container Registry integrates deeply with Azure services, and Podman connects to it using standard registry authentication.
 
-Azure Container Registry (ACR) is a managed container registry service from Microsoft Azure. It supports Docker and OCI image formats, making it fully compatible with Podman. ACR provides geo-replication, vulnerability scanning, and integration with Azure Kubernetes Service. This guide covers how to configure and use ACR with Podman.
+Azure Container Registry (ACR) is a managed container registry service from Microsoft Azure. It supports Docker and OCI image formats, making it fully compatible with Podman. ACR provides geo-replication and integration with Azure Kubernetes Service, and it can integrate with Microsoft Defender for Cloud for vulnerability assessment. This guide covers how to configure and use ACR with Podman.
 
 ---
 
@@ -58,7 +58,6 @@ There are several ways to authenticate Podman with ACR.
 
 ```bash
 # Method 1: Using Azure CLI credentials
-az acr login --name myacrregistry --expose-token 2>/dev/null
 ACR_TOKEN=$(az acr login --name myacrregistry --expose-token --query accessToken -o tsv)
 echo "$ACR_TOKEN" | podman login myacrregistry.azurecr.io \
   --username 00000000-0000-0000-0000-000000000000 \
@@ -150,9 +149,9 @@ az acr repository show-tags --name myacrregistry \
 # Show image details
 az acr repository show --name myacrregistry --image myapp:latest
 
-# Delete an image tag
-az acr repository delete --name myacrregistry \
-  --image myapp:v1.0 --yes
+# Untag an image tag
+az acr repository untag --name myacrregistry \
+  --image myapp:v1.0
 ```
 
 ## Configuring ACR in registries.conf
@@ -183,7 +182,7 @@ az acr replication create \
 # List replications
 az acr replication list --registry myacrregistry --output table
 
-# Podman automatically connects to the nearest replica
+# Azure routes requests to an appropriate replica
 # when using the registry's FQDN
 ```
 
@@ -223,4 +222,4 @@ echo "Deployed: ${ACR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
 
 ## Summary
 
-Azure Container Registry works with Podman through standard Docker registry authentication. You can authenticate using Azure CLI tokens, admin credentials, or service principals for CI/CD. ACR provides features like geo-replication, vulnerability scanning, and integration with Azure Kubernetes Service. Use service principals for automated workflows and the Azure CLI for image lifecycle management.
+Azure Container Registry works with Podman through standard Docker registry authentication. You can authenticate using Azure CLI tokens, admin credentials, or service principals for CI/CD. ACR provides features like geo-replication and integration with Azure Kubernetes Service, and it can integrate with Microsoft Defender for Cloud for vulnerability assessment. Use service principals for automated workflows and the Azure CLI for image lifecycle management.
