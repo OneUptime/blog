@@ -1,12 +1,12 @@
-# How to Set Up Rancher with an External Database
+# How to Set Up Rancher on K3s with an External Database
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Rancher, Kubernetes, Database, High Availability, Installation
 
-Description: Configure Rancher to use an external MySQL or PostgreSQL database for improved reliability and easier backups.
+Description: Configure the K3s cluster that runs Rancher to use an external MySQL or PostgreSQL database for improved reliability and easier backups.
 
-By default, K3s uses an embedded SQLite or etcd database. For production Rancher deployments, using an external database provides better reliability, easier backup and restore procedures, and separation of concerns between compute and storage. This guide covers setting up Rancher with both external MySQL and PostgreSQL databases.
+By default, single-server K3s uses an embedded SQLite database. For production Rancher deployments on K3s, using an external database for the K3s datastore provides better reliability, easier backup and restore procedures, and separation of concerns between compute and storage. This guide covers setting up Rancher on K3s with both external MySQL and PostgreSQL databases.
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ K3s Node 1 --+
 K3s Node 2 --+
 ```
 
-The K3s nodes use the external database instead of embedded etcd for cluster state storage. Rancher runs on top of the K3s cluster.
+The K3s server nodes use the external database for cluster state storage. Rancher runs on top of the K3s cluster.
 
 ## Option A: Setting Up with MySQL
 
@@ -70,7 +70,7 @@ On the first K3s node:
 ssh ubuntu@192.168.1.101
 
 curl -sfL https://get.k3s.io | sh -s - server \
-  --datastore-endpoint="mysql://k3s:YourSecurePassword123!@tcp(db-server:3306)/k3s" \
+  --datastore-endpoint='mysql://k3s:YourSecurePassword123!@tcp(db-server:3306)/k3s' \
   --write-kubeconfig-mode 644 \
   --tls-san rancher.example.com
 ```
@@ -81,13 +81,13 @@ On additional K3s nodes, use the same datastore endpoint:
 ssh ubuntu@192.168.1.102
 
 curl -sfL https://get.k3s.io | sh -s - server \
-  --datastore-endpoint="mysql://k3s:YourSecurePassword123!@tcp(db-server:3306)/k3s" \
+  --datastore-endpoint='mysql://k3s:YourSecurePassword123!@tcp(db-server:3306)/k3s' \
   --write-kubeconfig-mode 644 \
   --tls-san rancher.example.com \
-  --token <node-token>
+  --token <server-token>
 ```
 
-The node token is found on the first node at `/var/lib/rancher/k3s/server/node-token`.
+If you did not set `--token` on the first server, you can retrieve the generated server token from `/var/lib/rancher/k3s/server/token`.
 
 ## Option B: Setting Up with PostgreSQL
 
@@ -132,7 +132,7 @@ On the first node:
 ssh ubuntu@192.168.1.101
 
 curl -sfL https://get.k3s.io | sh -s - server \
-  --datastore-endpoint="postgres://k3s:YourSecurePassword123!@db-server:5432/k3s?sslmode=disable" \
+  --datastore-endpoint='postgres://k3s:YourSecurePassword123!@db-server:5432/k3s?sslmode=disable' \
   --write-kubeconfig-mode 644 \
   --tls-san rancher.example.com
 ```
@@ -143,10 +143,10 @@ On additional nodes:
 ssh ubuntu@192.168.1.102
 
 curl -sfL https://get.k3s.io | sh -s - server \
-  --datastore-endpoint="postgres://k3s:YourSecurePassword123!@db-server:5432/k3s?sslmode=disable" \
+  --datastore-endpoint='postgres://k3s:YourSecurePassword123!@db-server:5432/k3s?sslmode=disable' \
   --write-kubeconfig-mode 644 \
   --tls-san rancher.example.com \
-  --token <node-token>
+  --token <server-token>
 ```
 
 For production environments, change `sslmode=disable` to `sslmode=require` or `sslmode=verify-full` with the appropriate CA certificate.
@@ -182,7 +182,9 @@ helm install cert-manager jetstack/cert-manager \
   --set crds.enabled=true
 
 # Wait for cert-manager
-kubectl -n cert-manager wait --for=condition=ready pod -l app=cert-manager --timeout=120s
+kubectl -n cert-manager rollout status deploy/cert-manager
+kubectl -n cert-manager rollout status deploy/cert-manager-webhook
+kubectl -n cert-manager rollout status deploy/cert-manager-cainjector
 
 # Install Rancher
 helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
@@ -205,7 +207,7 @@ kubectl -n cattle-system get pods -o wide
 
 ## Database Backup Strategies
 
-With an external database, you can use standard database backup tools independently of the K3s cluster.
+With an external database, you can use standard database backup tools independently of the K3s cluster. In addition to backing up the database itself, also back up the K3s server token at `/var/lib/rancher/k3s/server/token`, because K3s requires the same token value when restoring the cluster.
 
 ### MySQL Backup
 
@@ -230,9 +232,9 @@ pg_dump -h db-server -U k3s k3s > k3s-backup-$(date +%Y%m%d).sql
 
 For production deployments, managed database services reduce operational overhead:
 
-- **Amazon RDS**: Use `--datastore-endpoint="mysql://user:pass@rds-endpoint.rds.amazonaws.com:3306/k3s"`
-- **Azure Database for MySQL**: Use `--datastore-endpoint="mysql://user:pass@tcp(server.mysql.database.azure.com:3306)/k3s?tls=true"`
-- **Google Cloud SQL**: Use the Cloud SQL Proxy for secure connections
+- **Amazon RDS**: Use the standard K3s MySQL or PostgreSQL datastore format with your RDS endpoint, for example `--datastore-endpoint='mysql://user:pass@tcp(rds-endpoint.rds.amazonaws.com:3306)/k3s'`
+- **Azure Database for MySQL**: Use `--datastore-endpoint='mysql://user:pass@tcp(server.mysql.database.azure.com:3306)/k3s'` and configure datastore TLS with K3s datastore certificate flags if your service requires a custom CA or client certificates
+- **Google Cloud SQL**: Use the Cloud SQL Auth Proxy for secure connections, then point K3s at the local proxy endpoint
 
 Managed services provide automated backups, high availability, read replicas, and maintenance patches.
 
@@ -246,4 +248,4 @@ For most Rancher deployments:
 
 ## Summary
 
-You have configured Rancher with an external database, separating the cluster state from the compute nodes. This architecture simplifies backups, enables independent scaling of compute and storage, and provides a more robust foundation for production Rancher deployments. Whether you choose MySQL or PostgreSQL, the external database approach gives you greater control over your data management strategy.
+You have configured a K3s cluster for Rancher with an external database, separating the cluster state from the compute nodes. This architecture simplifies backups, enables independent scaling of compute and storage, and provides a more robust foundation for production Rancher deployments. Whether you choose MySQL or PostgreSQL, the external database approach gives you greater control over your data management strategy.
