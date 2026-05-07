@@ -6,19 +6,20 @@ Tags: Rancher, Kubernetes, Storage, vSphere
 
 Description: A step-by-step guide to configuring VMware vSphere storage for persistent volumes in Rancher-managed Kubernetes clusters.
 
-VMware vSphere is one of the most common virtualization platforms for on-premises Kubernetes deployments. Rancher supports vSphere storage through the vSphere CSI driver, enabling dynamic provisioning of VMDKs as persistent volumes. This guide covers the complete setup.
+VMware vSphere is one of the most common virtualization platforms for on-premises Kubernetes deployments. Rancher supports vSphere storage through the vSphere CSI driver, enabling dynamic provisioning of VMDKs as persistent volumes when the vSphere cloud provider and CSI components are configured. This guide covers the complete setup.
 
 ## Prerequisites
 
 - A running Rancher instance
 - A Kubernetes cluster running on vSphere VMs (RKE or RKE2)
-- vSphere 7.0 or later with vSAN, VMFS, or NFS datastores
+- vSphere 7.0 Update 1 or later with vSAN, VMFS, or NFS datastores
+- The vSphere cloud provider/CPI enabled so cluster nodes are initialized with a ProviderID before CSI is installed
 - vCenter credentials with appropriate permissions
-- kubectl and Helm access to your cluster
+- kubectl access to your cluster
 
 ## Step 1: Configure vSphere Permissions
 
-Create a vSphere role with the required permissions:
+Create a vSphere role with the permissions required for your vSphere CSI deployment, including:
 
 - **Datastore**: Allocate space, Browse datastore, Low level file operations
 - **Virtual Machine > Configuration**: Add existing disk, Add new disk, Remove disk
@@ -52,18 +53,12 @@ kubectl apply -f vsphere-secret.yaml
 
 ## Step 3: Install the vSphere CSI Driver
 
-```bash
-helm repo add vsphere-csi https://kubernetes-sigs.github.io/vsphere-csi-driver/charts
-helm repo update
+For Rancher-managed RKE2 clusters, enable the vSphere cloud provider and install the Rancher `vSphere CPI` chart before installing the `vSphere CSI` chart from `Apps > Charts`.
 
-helm install vsphere-csi vsphere-csi/vsphere-csi \
-  --namespace vmware-system-csi
-```
-
-Or apply the official manifests:
+If you are deploying the upstream driver manifests manually on a vanilla cluster, apply the official manifests:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/vsphere-csi-driver/v3.1.0/manifests/vanilla/vsphere-csi-driver.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/vsphere-csi-driver/v3.7.0/manifests/vanilla/vsphere-csi-driver.yaml
 ```
 
 Verify the installation:
@@ -84,8 +79,8 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: csi.vsphere.vmware.com
 parameters:
-  datastoreurl: "ds:///vmfs/volumes/datastore1/"
-  fstype: ext4
+  datastoreurl: "ds:///vmfs/volumes/<datastore-uuid>/"
+  csi.storage.k8s.io/fstype: "ext4"
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -101,7 +96,7 @@ metadata:
 provisioner: csi.vsphere.vmware.com
 parameters:
   storagepolicyname: "vSAN Default Storage Policy"
-  fstype: ext4
+  csi.storage.k8s.io/fstype: "ext4"
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -163,6 +158,19 @@ kubectl apply -f vsphere-pvc.yaml
 ## Step 7: Deploy an Application
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-with-vsphere
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: app-with-vsphere
+  ports:
+  - name: http
+    port: 80
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -182,6 +190,9 @@ spec:
       containers:
       - name: app
         image: nginx:latest
+        ports:
+        - containerPort: 80
+          name: http
         volumeMounts:
         - name: data
           mountPath: /data
@@ -209,7 +220,7 @@ metadata:
 provisioner: csi.vsphere.vmware.com
 parameters:
   storagepolicyname: "vSAN File Policy"
-  fstype: nfs4
+  csi.storage.k8s.io/fstype: "nfs4"
 reclaimPolicy: Delete
 ```
 
@@ -231,6 +242,12 @@ spec:
 ```
 
 ## Step 9: Configure Volume Snapshots
+
+Volume snapshots require the `VolumeSnapshot` CRDs and snapshot-controller. If your Kubernetes distribution has not already installed them, deploy the compatible snapshot components first:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kubernetes-sigs/vsphere-csi-driver/v3.7.0/manifests/vanilla/deploy-csi-snapshot-components.sh | bash
+```
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
@@ -280,9 +297,9 @@ kubectl get pvc -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,VOLU
 - **CSI driver not starting**: Verify vCenter credentials in the secret
 - **PVC Pending**: Check storage policy exists and has capacity
 - **Attach failed**: Verify VM hardware compatibility and SCSI controller limits
-- **Datastore not found**: Check the datastoreurl parameter matches vCenter
+- **Datastore not found**: Check the datastoreurl parameter matches the datastore URL shown in vCenter
 - **Permission denied**: Verify the vSphere user has the required role
 
 ## Summary
 
-vSphere storage in Rancher provides enterprise-grade persistent storage for on-premises Kubernetes deployments. The vSphere CSI driver enables dynamic provisioning backed by VMFS, vSAN, or NFS datastores, with support for storage policies, volume expansion, and snapshots. By mapping Kubernetes StorageClasses to vSphere storage policies, you can offer different storage tiers to your development teams while maintaining centralized storage management.
+vSphere storage in Rancher provides enterprise-grade persistent storage for on-premises Kubernetes deployments. The vSphere CSI driver enables dynamic provisioning backed by VMFS, vSAN, or NFS datastores, with support for storage policies, volume expansion, and CSI snapshots when the snapshot components are installed. By mapping Kubernetes StorageClasses to vSphere storage policies, you can offer different storage tiers to your development teams while maintaining centralized storage management.
