@@ -28,7 +28,7 @@ Data flows between stages through shared volumes, with each container reading fr
 
 ## Building Pipeline Stage Images
 
-Each pipeline stage gets its own container image. Here is an example ETL pipeline for processing CSV data.
+Each pipeline stage gets its own container image. Here is an example ETL pipeline for processing JSON data.
 
 The extraction stage:
 
@@ -57,12 +57,14 @@ def extract(source_url, output_dir):
 
     response = requests.get(source_url, timeout=30)
     response.raise_for_status()
+    data = response.json()
+    os.makedirs(output_dir, exist_ok=True)
 
     output_file = os.path.join(output_dir, "raw_data.json")
     with open(output_file, 'w') as f:
-        json.dump(response.json(), f)
+        json.dump(data, f)
 
-    record_count = len(response.json()) if isinstance(response.json(), list) else 1
+    record_count = len(data) if isinstance(data, list) else 1
     print(f"[{datetime.now()}] Extracted {record_count} records to {output_file}")
 
     # Write metadata for the next stage
@@ -108,15 +110,17 @@ def transform(input_dir, output_dir):
     with open(input_file) as f:
         data = json.load(f)
 
-    df = pd.DataFrame(data)
+    df = pd.json_normalize(data)
+    os.makedirs(output_dir, exist_ok=True)
 
     # Apply transformations
     df.columns = [col.strip().lower().replace(' ', '_') for col in df.columns]
     df = df.drop_duplicates()
-    df = df.dropna(thresh=len(df.columns) * 0.5)
+    required_non_null = max(1, (len(df.columns) + 1) // 2)
+    df = df.dropna(thresh=required_non_null)
 
     for col in df.select_dtypes(include=['object']).columns:
-        df[col] = df[col].str.strip()
+        df[col] = df[col].apply(lambda value: value.strip() if isinstance(value, str) else value)
 
     output_file = os.path.join(output_dir, "transformed_data.csv")
     df.to_csv(output_file, index=False)
@@ -221,11 +225,10 @@ rm -rf "$WORK_DIR"
 
 ## Pipeline with Compose
 
-For pipelines that need shared services like databases, use Podman Compose:
+For pipelines that need shared services like databases, use Podman's `podman compose` wrapper:
 
 ```yaml
 # pipeline-compose.yml
-version: "3"
 services:
   postgres:
     image: postgres:16
@@ -233,6 +236,11 @@ services:
       POSTGRES_USER: pipeline
       POSTGRES_PASSWORD: pipepass
       POSTGRES_DB: warehouse
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pipeline -d warehouse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -269,6 +277,8 @@ services:
     volumes:
       - pipeline-data:/data
     depends_on:
+      postgres:
+        condition: service_healthy
       transform:
         condition: service_completed_successfully
 
@@ -278,7 +288,7 @@ volumes:
 ```
 
 ```bash
-SOURCE_URL="https://api.example.com/data" podman-compose -f pipeline-compose.yml up
+SOURCE_URL="https://api.example.com/data" podman compose -f pipeline-compose.yml up
 ```
 
 ## Branching Pipelines
@@ -301,19 +311,26 @@ podman run --rm \
 
 # Branch A and B in parallel
 podman run --rm \
-  -v "$WORK_DIR/extracted:/input:ro,Z" \
+  -v "$WORK_DIR/extracted:/input:ro,z" \
   -v "$WORK_DIR/branch-a:/output:Z" \
   transform-a:latest &
 PID_A=$!
 
 podman run --rm \
-  -v "$WORK_DIR/extracted:/input:ro,Z" \
+  -v "$WORK_DIR/extracted:/input:ro,z" \
   -v "$WORK_DIR/branch-b:/output:Z" \
   transform-b:latest &
 PID_B=$!
 
 # Wait for both branches
-wait $PID_A $PID_B
+BRANCH_FAILED=0
+wait "$PID_A" || BRANCH_FAILED=1
+wait "$PID_B" || BRANCH_FAILED=1
+
+if [ "$BRANCH_FAILED" -ne 0 ]; then
+  echo "A branch failed"
+  exit 1
+fi
 
 # Merge results
 podman run --rm \
@@ -336,6 +353,8 @@ Implement checkpointing so failed pipelines can resume from the last successful 
 PIPELINE_ID="$1"
 WORK_DIR="/var/lib/pipelines/$PIPELINE_ID"
 CHECKPOINT_FILE="$WORK_DIR/.checkpoint"
+
+mkdir -p "$WORK_DIR"
 
 get_checkpoint() {
     if [ -f "$CHECKPOINT_FILE" ]; then
