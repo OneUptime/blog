@@ -8,17 +8,16 @@ Description: Learn how to use .auto.tfvars files for automatic variable loading 
 
 ---
 
-Files ending in `.auto.tfvars` or `.auto.tfvars.json` are automatically loaded by OpenTofu in addition to `terraform.tfvars`. This naming pattern is useful for organizing variables into logical groups that are always applied, or for injecting variables from external tooling without modifying the base `terraform.tfvars`.
+Files ending in `.auto.tfvars` or `.auto.tfvars.json` are automatically loaded by OpenTofu in addition to `terraform.tfvars` and `terraform.tfvars.json`. This naming pattern is useful for organizing variables into logical groups that are always applied, or for injecting variables from external tooling without modifying the base `terraform.tfvars`.
 
 ---
 
 ## How .auto.tfvars Works
 
-OpenTofu automatically loads these files in alphabetical order:
+OpenTofu automatically loads these files in this order:
 1. `terraform.tfvars`
 2. `terraform.tfvars.json`
-3. All `*.auto.tfvars` files (alphabetically)
-4. All `*.auto.tfvars.json` files (alphabetically)
+3. All `*.auto.tfvars` and `*.auto.tfvars.json` files (in lexical filename order)
 
 ```text
 project/
@@ -93,9 +92,9 @@ cat ci-generated.auto.tfvars
 
 ---
 
-## Alphabetical Loading Order Matters
+## Lexical Loading Order Matters
 
-When multiple `.auto.tfvars` files set the same variable, the later file (alphabetically) wins:
+When multiple `.auto.tfvars` files set the same variable, the later file in lexical filename order wins:
 
 ```hcl
 # a-defaults.auto.tfvars
@@ -130,4 +129,4 @@ ci-*.auto.tfvars
 
 ## Summary
 
-`.auto.tfvars` files are automatically loaded by OpenTofu, making them useful for splitting configuration into logical groups or injecting CI/CD-generated values without modifying existing files. Files are loaded alphabetically, so later files override earlier ones for the same variable. Use this pattern for team-specific defaults, per-environment tag files, or CI pipeline variable injection.
+`.auto.tfvars` files are automatically loaded by OpenTofu, making them useful for splitting configuration into logical groups or injecting CI/CD-generated values without modifying existing files. Auto-loaded variable files are processed in lexical filename order, so later files override earlier ones for the same variable. Use this pattern for team-specific defaults, per-environment tag files, or CI pipeline variable injection.
