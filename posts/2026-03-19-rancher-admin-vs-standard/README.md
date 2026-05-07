@@ -13,6 +13,7 @@ Rancher distinguishes between administrators who manage the platform and standar
 - Rancher v2.7+ installation
 - Access to the initial administrator account
 - An external authentication provider configured
+- `kubectl` access to Rancher management resources for the `GlobalRole` and audit commands below
 - A plan for who should have administrative access
 
 ## Understanding the Role Difference
@@ -54,7 +55,7 @@ During Rancher's first setup, you create an initial admin account. Secure this a
 3. Change the password to a strong, unique value.
 4. Set up two-factor authentication if your auth provider supports it.
 
-Create a second admin account as a backup:
+Create a second local admin account as a backup:
 
 1. Go to **Users & Authentication > Users**.
 2. Click **Create**.
@@ -64,56 +65,28 @@ Create a second admin account as a backup:
 
 ## Step 3: Set Standard User as the Default Role
 
-Configure new users to receive the Standard User role when they first log in:
+Configure new external users to receive the Standard User role when they first log in:
 
-1. Go to **Users & Authentication > Roles > Global**.
-2. Find the **Standard User** role.
-3. Click the three-dot menu and select **Edit**.
+1. Go to **Users & Authentication > Role Templates**.
+2. On the **Global** tab, find the **Standard User** role.
+3. Click the three-dot menu and select **Edit Config**.
 4. Check **Yes: Default role for new users**.
 5. Click **Save**.
 
-Alternatively, if you want new users to have no access by default (more restrictive):
+Alternatively, if you want new users to have log-in access only by default (more restrictive):
 
 1. Uncheck **Standard User** as a default.
 2. Ensure only **User-Base** is the default.
-3. Manually assign roles as needed.
+3. Manually assign cluster, project, or additional global roles as needed.
 
-## Step 4: Create a Restricted Standard User Role
+## Step 4: Use User-Base for a More Restricted Default
 
-The built-in Standard User role allows cluster creation, which you may want to restrict. Create a custom global role:
+The built-in Standard User role allows cluster creation. If you want users to be able to sign in without being able to create clusters, use the built-in **User-Base** permission set as the default instead of **Standard User**.
 
-```yaml
-apiVersion: management.cattle.io/v3
-kind: GlobalRole
-metadata:
-  name: restricted-standard-user
-spec:
-  displayName: Restricted Standard User
-  description: "Can log in and access assigned clusters/projects but cannot create clusters"
-  newUserDefault: true
-  rules:
-    - apiGroups: ["management.cattle.io"]
-      resources: ["preferences"]
-      verbs: ["*"]
-    - apiGroups: ["management.cattle.io"]
-      resources: ["settings"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: ["management.cattle.io"]
-      resources: ["clusters"]
-      verbs: ["get", "list", "watch"]
-    - apiGroups: ["management.cattle.io"]
-      resources: ["catalogs", "templates", "templateversions"]
-      verbs: ["get", "list", "watch"]
-```
-
-```bash
-kubectl apply -f restricted-standard-user.yaml
-```
-
-Then remove **Standard User** as a default:
-
-1. Go to **Users & Authentication > Roles > Global**.
-2. Edit **Standard User** and uncheck the default option.
+1. Go to **Users & Authentication > Role Templates**.
+2. On the **Global** tab, edit **Standard User** and set **Default role for new users** to **No**.
+3. Edit **User-Base** and set **Default role for new users** to **Yes**.
+4. Assign cluster and project roles separately after the user logs in.
 
 ## Step 5: Assign Admin Role to Specific Users
 
@@ -125,11 +98,11 @@ When a new platform team member joins:
 4. Under **Global Permissions**, check **Administrator**.
 5. Click **Save**.
 
-Via the API:
+Via the legacy v3 API:
 
 ```bash
-curl -X POST 'https://<rancher-url>/v3/globalrolebindings' \
-  -H 'Authorization: Bearer <api-token>' \
+curl -u '<access-key>:<secret-key>' \
+  -X POST 'https://<rancher-url>/v3/globalrolebindings' \
   -H 'Content-Type: application/json' \
   -d '{
     "globalRoleId": "admin",
@@ -144,42 +117,26 @@ When someone leaves the platform team:
 1. Go to **Users & Authentication > Users**.
 2. Find the user and click **Edit Config**.
 3. Under **Global Permissions**, uncheck **Administrator**.
-4. Check **Standard User** or your custom restricted role.
+4. Check **Standard User** or **User-Base**, depending on whether the user should still be able to create clusters.
 5. Click **Save**.
 
 The change takes effect immediately. The user will lose access to platform management features on their next page load.
 
+If the user's admin access comes from a group assignment, remove them from the identity-provider group or remove the group's admin binding as well.
+
 ## Step 7: Create an Intermediate Platform Role
 
-For users who need more than standard access but should not be full administrators, create a platform operator role:
+For users who need more than standard access but should not be full administrators, create a platform operator role that makes them a `cluster-owner` on all downstream clusters. Assign it in addition to **User-Base** or **Standard User** so the user can still log in to Rancher.
 
 ```yaml
 apiVersion: management.cattle.io/v3
 kind: GlobalRole
 metadata:
   name: platform-operator
-spec:
-  displayName: Platform Operator
-  description: "Can manage clusters and catalogs but cannot manage users or global settings"
-  rules:
-    - apiGroups: ["management.cattle.io"]
-      resources: ["clusters"]
-      verbs: ["create", "get", "list", "watch", "update", "delete"]
-    - apiGroups: ["management.cattle.io"]
-      resources: ["nodepools", "nodes"]
-      verbs: ["create", "get", "list", "watch", "update", "delete"]
-    - apiGroups: ["provisioning.cattle.io"]
-      resources: ["clusters"]
-      verbs: ["create", "get", "list", "watch", "update", "delete"]
-    - apiGroups: ["catalog.cattle.io"]
-      resources: ["clusterrepos", "apps", "operations"]
-      verbs: ["*"]
-    - apiGroups: ["management.cattle.io"]
-      resources: ["catalogs", "templates", "templateversions"]
-      verbs: ["*"]
-    - apiGroups: ["management.cattle.io"]
-      resources: ["preferences", "settings"]
-      verbs: ["get", "list", "watch"]
+displayName: Platform Operator
+description: "Can manage all downstream clusters but cannot manage Rancher users, authentication, or global settings"
+inheritedClusterRoles:
+  - cluster-owner
 ```
 
 ```bash
@@ -190,22 +147,24 @@ kubectl apply -f platform-operator.yaml
 
 Regularly check who has admin access:
 
-```bash
-# List all administrators
+If a group principal appears in the output, review that identity-provider group's membership separately to determine effective admin access.
 
-echo "=== Current Administrators ==="
+```bash
+# List current administrator and standard-user role bindings
+
+echo "=== Current Administrator Bindings ==="
 kubectl get globalrolebindings -o json | \
-  jq -r '.items[] | select(.globalRoleName == "admin") | "\(.userName)\t\(.metadata.creationTimestamp)"' | \
+  jq -r '.items[] | select(.globalRoleName == "admin") | [(.userName // .groupPrincipalName), .metadata.creationTimestamp] | @tsv' | \
   column -t -s $'\t'
 
 echo ""
-echo "=== Standard Users ==="
+echo "=== Standard User Bindings ==="
 kubectl get globalrolebindings -o json | \
-  jq -r '.items[] | select(.globalRoleName == "user") | "\(.userName)"'
+  jq -r '.items[] | select(.globalRoleName == "user") | (.userName // .groupPrincipalName)'
 
 echo ""
-echo "Total admins: $(kubectl get globalrolebindings -o json | jq '[.items[] | select(.globalRoleName == "admin")] | length')"
-echo "Total standard users: $(kubectl get globalrolebindings -o json | jq '[.items[] | select(.globalRoleName == "user")] | length')"
+echo "Total admin bindings: $(kubectl get globalrolebindings -o json | jq '[.items[] | select(.globalRoleName == "admin")] | length')"
+echo "Total standard user bindings: $(kubectl get globalrolebindings -o json | jq '[.items[] | select(.globalRoleName == "user")] | length')"
 ```
 
 ## Step 9: Configure Role-Based UI Experience
