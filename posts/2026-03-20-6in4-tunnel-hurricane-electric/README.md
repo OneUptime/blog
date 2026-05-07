@@ -24,16 +24,19 @@ Hurricane Electric's Tunnelbroker.net provides free 6in4 tunnels that encapsulat
 
 # Verify your public IPv4 is accessible (HE will test it):
 curl -4 https://ifconfig.me
-# Must be a public IP, not NAT
+# HE uses your public IPv4 endpoint.
+# If you're behind NAT, the NAT device must allow and forward IP protocol 41.
 ```
 
 ## Linux Configuration
 
 ```bash
 # Create 6in4 tunnel interface (protocol 41 = IPv6-in-IPv4)
+# HE's server IPv4: 216.66.88.98
+# Your public IPv4: 203.0.113.10
 sudo ip tunnel add he-ipv6 mode sit \
-  remote 216.66.88.98 \          # HE's server IPv4
-  local 203.0.113.10 \           # Your public IPv4
+  remote 216.66.88.98 \
+  local 203.0.113.10 \
   ttl 255
 
 sudo ip link set he-ipv6 up
@@ -43,7 +46,7 @@ sudo ip link set he-ipv6 mtu 1480
 sudo ip address add 2001:470:1f14:XXX::2/64 dev he-ipv6
 
 # Add default IPv6 route through tunnel
-sudo ip -6 route add ::/0 dev he-ipv6 metric 1
+sudo ip -6 route add ::/0 via 2001:470:1f14:XXX::1 dev he-ipv6 metric 1
 ```
 
 ## Persistent Configuration (Debian/Ubuntu)
@@ -58,10 +61,8 @@ iface he-ipv6 inet6 v4tunnel
     endpoint 216.66.88.98       # HE server IPv4
     local 203.0.113.10          # Your public IPv4
     ttl 255
+    mtu 1480
     gateway 2001:470:1f14:XXX::1
-    pre-up ip tunnel add he-ipv6 mode sit remote 216.66.88.98 local 203.0.113.10 ttl 255
-    pre-up ip link set he-ipv6 mtu 1480
-    post-down ip tunnel del he-ipv6
 ```
 
 ## Netplan Configuration (Ubuntu 18.04+)
@@ -111,7 +112,7 @@ ip -6 route show
 # Should have: ::/0 via 2001:470:1f14:XXX::1 dev he-ipv6
 
 # Test MTU (tunnel adds 20 bytes overhead)
-ping -6 -s 1452 -M do 2001:4860:4860::8888
+ping -6 -s 1432 -M do 2001:4860:4860::8888
 ```
 
 ## Conclusion
