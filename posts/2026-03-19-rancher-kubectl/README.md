@@ -17,7 +17,7 @@ The simplest approach is using the Rancher CLI to proxy kubectl commands:
 
 rancher login https://rancher.example.com --token ${RANCHER_TOKEN}
 
-# Switch to the target cluster
+# Switch to the target project context
 rancher context switch
 
 # Run kubectl commands through Rancher
@@ -30,9 +30,9 @@ This method routes all requests through the Rancher server, so you do not need a
 
 ## Method 2: Downloading kubeconfig from the Rancher UI
 
-1. Log into Rancher and navigate to the cluster you want to access
-2. Click the **Kubectl Shell** button or go to the cluster dashboard
-3. Click the **Download KubeConfig** button in the top right
+1. Log into Rancher and go to **Cluster Management**
+2. Find the cluster you want to access and open the **⋮** menu at the end of the row
+3. Click **Download KubeConfig**
 4. Save the file to `~/.kube/config` or a custom location
 
 Then use kubectl normally:
@@ -42,14 +42,27 @@ export KUBECONFIG=~/Downloads/my-cluster.yaml
 kubectl get nodes
 ```
 
+If your Rancher admins have disabled automatic token generation in downloaded kubeconfigs, the Rancher CLI must be installed and available in your `PATH` when you run `kubectl`.
+
 ## Method 3: Generating kubeconfig via the API
 
 ```bash
 CLUSTER_ID="c-m-abc12345"
 
-curl -s -k -X POST \
+cat <<EOF | curl -sS -X POST \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/clusters/${CLUSTER_ID}?action=generateKubeconfig" | jq -r '.config' > ~/.kube/rancher-cluster.yaml
+  -H "Content-Type: application/json" \
+  --data-binary @- \
+  "${RANCHER_URL}/apis/ext.cattle.io/v1/kubeconfigs" | jq -r '.status.value' > ~/.kube/rancher-cluster.yaml
+{
+  "apiVersion": "ext.cattle.io/v1",
+  "kind": "Kubeconfig",
+  "spec": {
+    "clusters": ["${CLUSTER_ID}"],
+    "currentContext": "${CLUSTER_ID}"
+  }
+}
+EOF
 
 export KUBECONFIG=~/.kube/rancher-cluster.yaml
 kubectl get nodes
@@ -57,14 +70,15 @@ kubectl get nodes
 
 ## Method 4: Direct API Server Access
 
-If you have network access to the cluster API server, you can use the Authorized Cluster Endpoint (ACE). This bypasses the Rancher server entirely:
+If your cluster has an Authorized Cluster Endpoint (ACE) and you have network access to the cluster API server, you can bypass the Rancher server entirely:
 
-1. Enable the ACE in Rancher under **Cluster Management > Cluster > Edit Config > Advanced Options**
-2. Download the kubeconfig with ACE endpoints included
-3. Set the context to use the direct endpoint
+1. Enable or configure the ACE for the cluster. On Rancher-launched RKE clusters it is enabled by default, while RKE2 and K3s clusters require ACE to be enabled manually.
+2. Download a fresh kubeconfig with the ACE contexts included
+3. Switch to the direct ACE context. If you configured an FQDN, Rancher creates a `<CLUSTER_NAME>-fqdn` context. Otherwise it creates `<CLUSTER_NAME>-<NODE_NAME>` contexts.
 
 ```bash
-kubectl config use-context my-cluster-direct
+kubectl config get-contexts
+kubectl config use-context my-cluster-fqdn
 kubectl get nodes
 ```
 
@@ -79,10 +93,21 @@ When working with several Rancher-managed clusters, organize your kubeconfig fil
 ```bash
 # Generate kubeconfigs for each cluster
 for cluster_id in c-m-abc12345 c-m-def67890 c-m-ghi11111; do
-  curl -s -k -X POST \
+  cat <<EOF | curl -sS -X POST \
     -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-    "${RANCHER_URL}/v3/clusters/${cluster_id}?action=generateKubeconfig" | \
-    jq -r '.config' > ~/.kube/rancher-${cluster_id}.yaml
+    -H "Content-Type: application/json" \
+    --data-binary @- \
+    "${RANCHER_URL}/apis/ext.cattle.io/v1/kubeconfigs" | jq -r '.status.value' \
+    > ~/.kube/rancher-${cluster_id}.yaml
+{
+  "apiVersion": "ext.cattle.io/v1",
+  "kind": "Kubeconfig",
+  "spec": {
+    "clusters": ["${cluster_id}"],
+    "currentContext": "${cluster_id}"
+  }
+}
+EOF
 done
 
 # Merge all kubeconfigs
@@ -106,9 +131,9 @@ kubectl --context staging get pods
 ### Rename Contexts for Clarity
 
 ```bash
-kubectl config rename-context c-m-abc12345 production
-kubectl config rename-context c-m-def67890 staging
-kubectl config rename-context c-m-ghi11111 development
+kubectl config rename-context <CURRENT_CONTEXT_NAME> production
+kubectl config rename-context <ANOTHER_CONTEXT_NAME> staging
+kubectl config rename-context <THIRD_CONTEXT_NAME> development
 ```
 
 ## Using kubectl with Rancher Projects
@@ -162,7 +187,7 @@ kubectl exec -it $(kubectl get pod -l app=nginx -o jsonpath='{.items[0].metadata
 # Describe a pod for events and conditions
 kubectl describe pod $(kubectl get pod -l app=nginx -o jsonpath='{.items[0].metadata.name}')
 
-# Check pod resource usage
+# Check pod and node resource usage (requires Metrics Server)
 kubectl top pods
 kubectl top nodes
 ```
@@ -236,12 +261,23 @@ If it points to the Rancher server, make sure Rancher is reachable. If it points
 
 ### "Unauthorized" Errors
 
-Your Rancher token may have expired. Regenerate the kubeconfig:
+Your kubeconfig token may have expired. Download a fresh kubeconfig from the UI or regenerate one through the API:
 
 ```bash
-curl -s -k -X POST \
+cat <<EOF | curl -sS -X POST \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/clusters/${CLUSTER_ID}?action=generateKubeconfig" | jq -r '.config' > ~/.kube/config
+  -H "Content-Type: application/json" \
+  --data-binary @- \
+  "${RANCHER_URL}/apis/ext.cattle.io/v1/kubeconfigs" | jq -r '.status.value' > ~/.kube/config
+{
+  "apiVersion": "ext.cattle.io/v1",
+  "kind": "Kubeconfig",
+  "spec": {
+    "clusters": ["${CLUSTER_ID}"],
+    "currentContext": "${CLUSTER_ID}"
+  }
+}
+EOF
 ```
 
 ### Certificate Errors
@@ -262,4 +298,4 @@ If kubectl is slow, the requests may be routing through Rancher. Use the Authori
 
 ## Summary
 
-There are multiple ways to use kubectl with Rancher-managed clusters: through the Rancher CLI proxy, with downloaded kubeconfigs, via API-generated configs, or through direct API server access. For day-to-day work, use merged kubeconfig files with named contexts. For automation, generate kubeconfigs through the API. Set up aliases and shell completion to speed up your workflow, and use the Authorized Cluster Endpoint when you need the fastest possible connection.
+There are multiple ways to use kubectl with Rancher-managed clusters: through the Rancher CLI proxy, with downloaded kubeconfigs, via API-generated configs, or through direct API server access. For day-to-day work, use merged kubeconfig files with named contexts. For automation, generate kubeconfigs through the API. Set up aliases to speed up your workflow, and use the Authorized Cluster Endpoint when you need the fastest possible connection.
