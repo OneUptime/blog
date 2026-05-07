@@ -16,11 +16,13 @@ Rancher's monitoring stack includes Grafana with pre-built dashboards for Kubern
 
 ## Step 1: Access Grafana from the Rancher UI
 
-1. Log in to Rancher and select your cluster.
-2. In the left navigation menu, click **Monitoring**.
-3. Click the **Grafana** link to open the Grafana UI.
+1. Log in to Rancher.
+2. In the upper-left corner, click **☰ > Cluster Management**.
+3. On the **Clusters** page, open your cluster with **Explore**.
+4. In the left navigation menu, click **Monitoring**.
+5. Click **Grafana** to open the Grafana UI.
 
-Rancher proxies the Grafana UI through its own authentication, so you are automatically logged in with your Rancher credentials.
+When you access Grafana through the Rancher Dashboard UI, Rancher grants eligible users the Grafana Viewer role by default. If you need administrator access inside Grafana, log in with the Grafana admin account configured for the chart.
 
 ## Step 2: Explore Default Dashboards
 
@@ -38,7 +40,7 @@ Rancher installs several pre-configured dashboards. Navigate to **Dashboards > B
 
 By default, Grafana is configured to use the in-cluster Prometheus as its primary data source. To verify or modify data source settings:
 
-1. In Grafana, go to **Configuration > Data Sources**.
+1. In Grafana, go to **Connections > Data sources**.
 2. Click on the **Prometheus** data source.
 3. Verify the URL is set to the internal Prometheus service, typically: `http://rancher-monitoring-prometheus.cattle-monitoring-system.svc:9090`.
 
@@ -84,19 +86,16 @@ Several Grafana settings can be configured through the monitoring chart values:
 ```yaml
 grafana:
   grafana.ini:
-    server:
-      root_url: "https://rancher.example.com/api/v1/namespaces/cattle-monitoring-system/services/http:rancher-monitoring-grafana:80/proxy/"
-    auth:
-      disable_login_form: true
-    auth.proxy:
-      enabled: true
-      header_name: X-WEBAUTH-USER
-      header_property: username
-      auto_sign_up: true
     users:
       auto_assign_org_role: Viewer
+    auth:
+      disable_login_form: false
+    auth.basic:
+      enabled: false
     dashboards:
       default_home_dashboard_path: /tmp/dashboards/rancher-default-home.json
+    security:
+      allow_embedding: true
 ```
 
 ## Step 7: Configure Dashboard Refresh Intervals
@@ -123,7 +122,7 @@ grafana:
       enabled: true
       label: grafana_dashboard
       labelValue: "1"
-      searchNamespace: cattle-monitoring-system
+      searchNamespace: cattle-dashboards
 ```
 
 To allow dashboard ConfigMaps from all namespaces:
@@ -137,41 +136,48 @@ grafana:
 
 ## Step 9: Organize Dashboards into Folders
 
-You can organize dashboards into folders using annotations on ConfigMaps:
+You can organize dashboards into folders by enabling folder discovery from the filesystem and using an annotation on the dashboard ConfigMap:
+
+```yaml
+grafana:
+  sidecar:
+    dashboards:
+      folderAnnotation: k8s-sidecar-target-directory
+      provider:
+        foldersFromFilesStructure: true
+```
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: my-custom-dashboard
-  namespace: cattle-monitoring-system
+  namespace: cattle-dashboards
   labels:
     grafana_dashboard: "1"
   annotations:
-    grafana_folder: "Custom Dashboards"
+    k8s-sidecar-target-directory: "custom-dashboards"
 data:
-  my-dashboard.json: |
-    {
-      "dashboard": { ... }
-    }
+  my-dashboard.json: |-
+    <copied-dashboard-json>
 ```
 
-The `grafana_folder` annotation tells the sidecar which folder to place the dashboard in.
+The `k8s-sidecar-target-directory` annotation is the default folder annotation used by the sidecar. If you change `grafana.sidecar.dashboards.folderAnnotation`, use that annotation key instead.
 
 ## Step 10: Configure Notification Channels in Grafana
 
 While Rancher's Alertmanager handles most alerting, Grafana can also send notifications directly:
 
-1. In Grafana, go to **Alerting > Contact Points**.
+1. In Grafana, go to **Alerts & IRM > Alerting > Contact points**.
 2. Click **Add contact point**.
 3. Configure the notification channel (email, Slack, PagerDuty, etc.).
 4. Test the notification by clicking **Test**.
 
-Note that Rancher recommends using Alertmanager for alerting rather than Grafana alerts, as Alertmanager integrates more tightly with the Prometheus ecosystem.
+Rancher Monitoring also deploys Alertmanager, which is the default Prometheus alert routing component in the stack. For most Rancher-managed alerting workflows, configure receivers and routes in Alertmanager.
 
 ## Step 11: Configure Anonymous Access (Optional)
 
-If you want to share dashboard links with users who do not have Rancher accounts:
+If you expose Grafana outside Rancher and want read-only access without individual Grafana logins:
 
 ```yaml
 grafana:
@@ -182,7 +188,7 @@ grafana:
       org_role: Viewer
 ```
 
-Use this setting with caution in production environments, as it allows unauthenticated access to monitoring data.
+Use this setting with caution in production environments. Accessing Grafana through the Rancher Dashboard UI still depends on Rancher and Kubernetes permissions.
 
 ## Verifying Grafana Configuration
 
