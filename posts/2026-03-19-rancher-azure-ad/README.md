@@ -10,8 +10,8 @@ Microsoft Azure Active Directory (now Microsoft Entra ID) is the cloud-based ide
 
 ## Prerequisites
 
-- Rancher v2.6 or later with admin access
-- An Azure AD tenant with Global Administrator or Application Administrator privileges
+- Rancher v2.7 or later with admin access
+- An Azure AD tenant where you can register applications and grant Microsoft Graph application permissions
 - The Rancher server accessible via HTTPS
 - Azure CLI or access to the Azure Portal
 
@@ -55,7 +55,7 @@ Generate a client secret for the application:
 ```plaintext
 Description: Rancher Authentication
 
-Expires: 24 months
+Expires: Select an expiration period that matches your secret rotation policy
 ```
 
 4. Click **Add** and immediately copy the **Value** field. This is the client secret and cannot be retrieved later.
@@ -71,26 +71,14 @@ Set up the required API permissions:
 1. In the app registration, click **API permissions**.
 2. Click **Add a permission**.
 3. Select **Microsoft Graph**.
-4. Choose **Delegated permissions** and add:
-
-```yaml
-Delegated Permissions:
-  - openid
-  - profile
-  - User.Read
-```
-
-5. Click **Add a permission** again.
-6. Select **Microsoft Graph** then **Application permissions** and add:
+4. Choose **Application permissions** and add:
 
 ```yaml
 Application Permissions:
   - Directory.Read.All
-  - Group.Read.All
-  - User.Read.All
 ```
 
-7. Click **Grant admin consent for [your organization]** and confirm.
+5. Click **Grant admin consent for [your organization]** and confirm.
 
 Alternatively, configure permissions using the Azure CLI:
 
@@ -99,17 +87,13 @@ Alternatively, configure permissions using the Azure CLI:
 
 APP_ID="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 
-# Add Microsoft Graph permissions
+# Add Microsoft Graph application permission: Directory.Read.All
 az ad app permission add \
   --id $APP_ID \
   --api 00000003-0000-0000-c000-000000000000 \
-  --api-permissions \
-    e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope \
-    14dad69e-099b-42c9-810b-d002981feec1=Scope \
-    7ab1d382-f21e-4acd-a863-ba3e13f7da61=Role \
-    5b567255-7703-4780-807c-7be8301ae99b=Role
+  --api-permissions 7ab1d382-f21e-4acd-a863-ba3e13f7da61=Role
 
-# Grant admin consent
+# Grant admin consent (requires Global Administrator)
 az ad app permission admin-consent --id $APP_ID
 ```
 
@@ -121,23 +105,21 @@ Set up the Azure AD auth provider in Rancher:
 2. Navigate to **Users & Authentication** then **Auth Provider**.
 3. Select **Azure AD**.
 
-Enter the configuration details:
+For the standard Rancher endpoint option, enter:
 
 ```plaintext
 Tenant ID: yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy
 Application ID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 Application Secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 Endpoint: https://login.microsoftonline.com/
+```
+
+Only use Graph, Token, and Auth endpoint fields if you select a custom endpoint configuration in Rancher:
+
+```plaintext
 Graph Endpoint: https://graph.microsoft.com
 Token Endpoint: https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token
 Auth Endpoint: https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/authorize
-```
-
-For government cloud environments:
-
-```plaintext
-Endpoint: https://login.microsoftonline.us/
-Graph Endpoint: https://graph.microsoft.us
 ```
 
 ## Step 6: Test the Configuration
@@ -163,7 +145,7 @@ Common issues:
 |-------|----------|
 | Redirect URI mismatch | Verify the redirect URI matches exactly in Azure AD and Rancher |
 | Admin consent not granted | Grant admin consent for the API permissions in Azure AD |
-| Groups not returned | Enable group claims in the Azure AD app registration |
+| Groups not returned | Configure group claims in the Azure AD app registration, or use **Groups assigned to the application** if users belong to many groups |
 
 ## Step 7: Enable Group Claims
 
@@ -171,13 +153,11 @@ Configure Azure AD to send group claims:
 
 1. In the app registration, click **Token configuration**.
 2. Click **Add groups claim**.
-3. Select the group types:
+3. For most Rancher setups, select **Security groups** and keep the claim format as **Group ID**:
 
 ```plaintext
-☑ Security groups
-☑ Directory roles
-☐ Groups assigned to the application
-Group ID: ☑ Emit groups as role claims
+Security groups
+Group ID
 ```
 
 For organizations with many groups, use the application filter:
@@ -222,28 +202,15 @@ For cluster-level access:
 Azure AD client secrets have expiration dates. Plan for rotation:
 
 1. Before the current secret expires, create a new secret in Azure AD.
-2. Update the secret in Rancher:
-
-```bash
-# Update Azure AD configuration via API
-curl -s -k \
-  -X PUT \
-  -H "Authorization: Bearer $RANCHER_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "applicationSecret": "new-secret-value"
-  }' \
-  "https://rancher.example.com/v3/azureADConfigs/azuread"
-```
-
+2. In Rancher, go to **Users & Authentication** then **Auth Provider**, open **Azure AD**, and replace **Application Secret** with the new value.
 3. Test authentication with the new secret.
 4. Remove the old secret from Azure AD.
 
 Set a calendar reminder for secret expiration:
 
 ```bash
-# Check secret expiration date
-az ad app credential list --id $APP_ID --query "[].{description:displayName, endDate:endDateTime}" -o table
+# List the application's credential metadata
+az ad app credential list --id $APP_ID -o table
 ```
 
 ## Best Practices
