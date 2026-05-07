@@ -10,7 +10,7 @@ Description: Learn how to use .env files and env_file directives in podman-compo
 
 > Environment files keep sensitive configuration out of your compose files and make it easy to switch between environments.
 
-Managing environment variables through files keeps secrets out of version control and lets you switch between development, staging, and production configurations by swapping a single file. podman-compose supports both `.env` files for compose-level variables and `env_file` directives for container-level variables.
+Managing environment variables through files can keep secrets out of version control when those files are excluded, and lets you switch between development, staging, and production configurations by swapping a single file. podman-compose supports both `.env` files for compose-level variables and `env_file` directives for container-level variables.
 
 ---
 
@@ -28,7 +28,7 @@ DB_PASSWORD=devsecret
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
+name: project
 services:
   db:
     image: docker.io/library/postgres:${POSTGRES_VERSION}-alpine
@@ -61,13 +61,13 @@ SECRET_KEY=mysecretkey123
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
+name: project
 services:
   app:
     image: docker.io/library/node:20-alpine
     env_file:
       - app.env
-    command: node server.js
+    command: ["node", "-e", "setInterval(() => {}, 1000)"]
 ```
 
 ```bash
@@ -83,7 +83,6 @@ podman exec project_app_1 env | grep NODE_ENV
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
     image: docker.io/library/node:20-alpine
@@ -91,7 +90,7 @@ services:
       - common.env
       - app.env
       - secrets.env
-    command: node server.js
+    command: ["node", "-e", "setInterval(() => {}, 1000)"]
 ```
 
 Later files override values from earlier files.
@@ -111,12 +110,12 @@ DEBUG=false
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
     image: docker.io/library/node:20-alpine
     env_file:
       - ${ENV_FILE:-dev.env}
+    command: ["node", "-e", "setInterval(() => {}, 1000)"]
 ```
 
 ```bash
@@ -131,7 +130,6 @@ ENV_FILE=prod.env podman-compose up -d
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   app:
     image: docker.io/library/node:20-alpine
@@ -140,6 +138,7 @@ services:
     environment:
       # Inline values override env_file values
       - LOG_LEVEL=warn
+    command: ["node", "-e", "setInterval(() => {}, 1000)"]
 ```
 
 ## Verifying Environment Variables
