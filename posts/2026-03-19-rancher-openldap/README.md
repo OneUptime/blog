@@ -87,7 +87,8 @@ ldapsearch -x -H ldaps://ldap.example.com:636 \
   -D "cn=rancher-bind,ou=service-accounts,dc=example,dc=com" \
   -w "<password>" \
   -b "dc=example,dc=com" \
-  "(objectClass=*)" -s base
+  -s base \
+  "(objectClass=*)"
 
 # Search for a user
 ldapsearch -x -H ldaps://ldap.example.com:636 \
@@ -105,9 +106,9 @@ ldapsearch -x -H ldaps://ldap.example.com:636 \
   "(objectClass=groupOfNames)" \
   cn member
 
-# Export the CA certificate
+# Capture the presented certificate chain for inspection
 openssl s_client -connect ldap.example.com:636 -showcerts </dev/null 2>/dev/null | \
-  openssl x509 -outform PEM > openldap-ca.pem
+  sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > openldap-chain.pem
 ```
 
 ## Step 4: Configure OpenLDAP in Rancher
@@ -124,7 +125,7 @@ Enter the connection settings:
 Hostname or IP Address: ldap.example.com
 Port: 636
 TLS: ☑ Enabled
-Certificate: (paste the OpenLDAP CA certificate)
+Certificate: (paste the OpenLDAP CA certificate, concatenated with any intermediate certificates, in PEM format)
 Service Account Distinguished Name: cn=rancher-bind,ou=service-accounts,dc=example,dc=com
 Service Account Password: <password>
 ```
@@ -135,15 +136,14 @@ Set the user search parameters:
 
 ```plaintext
 User Search Base: ou=users,dc=example,dc=com
-Username Attribute: uid
-User Login Attribute: uid
-User Object Class: inetOrgPerson
-User Name Attribute: cn
+Object Class: inetOrgPerson
+Username Attribute: cn
+Login Attribute: uid
 User Member Attribute: memberOf
 Search Attribute: uid|cn|mail
 ```
 
-If your OpenLDAP does not use the `memberOf` overlay, leave **User Member Attribute** blank and rely on group-side membership lookups.
+If your OpenLDAP entries do not expose `memberOf`, Rancher can still resolve groups from the group-side membership mapping in the next step, but enabling the overlay makes those memberships available directly on user entries.
 
 ## Step 6: Configure Group Search
 
@@ -151,19 +151,19 @@ Set the group search parameters:
 
 ```plaintext
 Group Search Base: ou=groups,dc=example,dc=com
-Group Object Class: groupOfNames
-Group Name Attribute: cn
+Object Class: groupOfNames
+Name Attribute: cn
 Group DN Attribute: entryDN
-Group Member User Attribute: dn
+Group Member User Attribute: entryDN
 Group Member Mapping Attribute: member
-Group Search Attribute: cn
+Search Attribute: cn
 Nested Group Membership: ☐ Disabled
 ```
 
 For `groupOfUniqueNames` (used by some OpenLDAP configurations):
 
 ```plaintext
-Group Object Class: groupOfUniqueNames
+Object Class: groupOfUniqueNames
 Group Member Mapping Attribute: uniqueMember
 ```
 
@@ -172,38 +172,33 @@ Group Member Mapping Attribute: uniqueMember
 The `memberOf` overlay in OpenLDAP automatically maintains reverse group membership on user entries. This improves performance:
 
 ```bash
-# Enable memberOf overlay
-ldapmodify -x -H ldaps://ldap.example.com:636 \
-  -D "cn=admin,cn=config" \
-  -w "<config-password>" <<EOF
-dn: cn=module,cn=config
-changetype: add
-objectClass: olcModuleList
-olcModulePath: /usr/lib/ldap
-olcModuleLoad: memberof.la
+# Enable memberOf overlay on the OpenLDAP host
+# Adjust the module DN and database index to match your server.
+ldapmodify -Y EXTERNAL -H ldapi:/// <<EOF
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: memberof
 
 dn: olcOverlay=memberof,olcDatabase={1}mdb,cn=config
 changetype: add
 objectClass: olcOverlayConfig
 objectClass: olcMemberOf
 olcOverlay: memberof
-olcMemberOfRefInt: TRUE
-olcMemberOfDangling: ignore
-olcMemberOfGroupOC: groupOfNames
-olcMemberOfMemberAD: member
-olcMemberOfMemberOfAD: memberOf
 EOF
 ```
+
+If your directory uses `groupOfUniqueNames`, set the overlay to use `groupOfUniqueNames` and `uniqueMember` instead of the default `groupOfNames` and `member`.
 
 ## Step 8: Test and Enable
 
 Test the OpenLDAP configuration:
 
-1. Click **Test** in the Rancher UI.
-2. Enter a valid OpenLDAP username and password.
+1. Click **Enable** in the Rancher UI.
+2. When Rancher prompts you to authenticate with OpenLDAP, enter a valid OpenLDAP username and password.
 3. Verify the returned user details and group memberships.
 
-If testing succeeds, click **Enable** to activate OpenLDAP authentication.
+If authentication succeeds, OpenLDAP authentication is enabled and the authenticated OpenLDAP user is mapped to the local principal account with administrator privileges.
 
 Troubleshoot failures:
 
