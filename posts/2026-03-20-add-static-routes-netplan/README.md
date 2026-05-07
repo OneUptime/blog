@@ -115,10 +115,10 @@ netplan apply
 # Check routes
 ip route show
 
-# Trace specific destination
+# Check route selection for a specific destination
 ip route get 192.168.50.1
 ```
 
 ## Conclusion
 
-Netplan static routes go under the `routes` key for each interface. Each route needs at minimum `to` (destination) and `via` (gateway). Optional fields include `metric`, `type` (blackhole, unreachable), and `from` (source hint). Apply with `netplan apply` and verify with `ip route show`.
+Netplan static routes go under the `routes` key for each interface. Each route needs at minimum `to` (destination). Routed entries typically also include `via` (gateway). Optional fields include `metric`, `type` (blackhole, unreachable), and `from` (source hint). Apply with `netplan apply` and verify with `ip route show`.
