@@ -56,7 +56,8 @@ spec:
   selector:
     app: backend-api
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 80
 ```
 
@@ -75,7 +76,7 @@ backend-api.default.svc.cluster.local    # fully qualified
 ## Step 2: Verify DNS Discovery
 
 ```bash
-kubectl run dns-test --image=busybox:1.36 --rm -it -- sh
+kubectl run dns-test --image=busybox:1.36 --restart=Never --rm -it -- sh
 ```
 
 Inside the pod:
@@ -88,10 +89,10 @@ wget -qO- http://backend-api/
 
 ## Step 3: Environment Variable Discovery
 
-Kubernetes injects service information as environment variables into pods that start after the service is created:
+Kubernetes injects same-namespace service information as environment variables into pods that start after the service is created:
 
 ```bash
-kubectl run env-test --image=busybox --rm -it -- env | grep BACKEND
+kubectl run env-test --image=busybox --restart=Never --rm -i -- env | grep BACKEND
 ```
 
 Output:
@@ -183,7 +184,7 @@ spec:
 DNS resolution returns all pod IPs:
 
 ```bash
-kubectl run test --image=busybox --rm -it -- nslookup db-headless
+kubectl run test --image=busybox --restart=Never --rm -it -- nslookup db-headless
 ```
 
 Individual pods are addressable:
@@ -209,14 +210,15 @@ spec:
   externalName: api.external-provider.com
 ```
 
-Now pods can use `external-api.default.svc.cluster.local` to reach the external API.
+Now pods can use `external-api.default.svc.cluster.local` to resolve the external hostname through cluster DNS.
 
 ## Step 7: Service Discovery via Rancher UI
 
-1. Navigate to your cluster in Rancher.
-2. Go to **Service Discovery** > **Services**.
-3. Here you can view all services and their endpoints.
-4. Click on a service to see its details, including:
+1. In Rancher, go to **Cluster Management**.
+2. Open the target cluster with **Explore**.
+3. Go to **Service Discovery** > **Services**.
+4. Here you can view all services and their endpoints.
+5. Click on a service to see its details, including:
    - ClusterIP address
    - DNS name
    - Endpoints (pod IPs)
@@ -245,20 +247,20 @@ spec:
     targetPort: 8080
 ```
 
-Query services by label:
+Query services by label and inspect their backing EndpointSlices:
 
 ```bash
 kubectl get svc -l tier=backend
 kubectl get svc -l app=payments
-kubectl get endpoints -l app=payments
+kubectl get endpointslice -l kubernetes.io/service-name=payments-v2
 ```
 
 ## Step 9: Service Discovery with SRV Records
 
-SRV records provide port information along with IP addresses:
+SRV records provide port information along with IP addresses for named service ports:
 
 ```bash
-kubectl run test --image=busybox --rm -it -- sh
+kubectl run test --image=busybox --restart=Never --rm -it -- sh
 ```
 
 Inside the pod:
@@ -278,14 +280,14 @@ Check the health of service discovery components:
 
 kubectl get pods -n kube-system -l k8s-app=kube-dns
 
-# Check service endpoints
-kubectl get endpoints --all-namespaces
+# Check service EndpointSlices
+kubectl get endpointslice --all-namespaces
 
-# Verify DNS resolution timing
-kubectl run test --image=busybox --rm -it -- time nslookup backend-api
+# Verify DNS resolution
+kubectl run test --image=busybox --restart=Never --rm -it -- nslookup backend-api
 
-# Check for endpoint changes
-kubectl get events --field-selector reason=EndpointsUpdated
+# Watch for EndpointSlice changes
+kubectl get endpointslice -l kubernetes.io/service-name=backend-api -w
 ```
 
 ## Troubleshooting
