@@ -24,9 +24,10 @@ Configure Podman to use the file events logger.
 mkdir -p ~/.config/containers/
 
 # Set file as the events logger
-cat > ~/.config/containers/containers.conf << 'EOF'
+cat > ~/.config/containers/containers.conf << EOF
 [engine]
 events_logger = "file"
+events_logfile_path = "${HOME}/.local/share/containers/podman/events/events.log"
 EOF
 
 # Verify the change
@@ -38,17 +39,17 @@ podman info --format '{{.Host.EventLogger}}'
 The file backend writes events to a specific file path.
 
 ```bash
-# Check where events are stored
-podman info --format '{{.Store.EventsLogFilePath}}'
+# The path is controlled by events_logfile_path in containers.conf.
+# If it is not set, Podman uses a path under its per-boot temporary directory.
 
-# The default location for rootless Podman is typically:
-# ~/.local/share/containers/storage/events/events.log
+# For a persistent rootless location, configure an explicit path:
+# events_logfile_path = "/home/YOUR_USER/.local/share/containers/podman/events/events.log"
 
-# For rootful Podman:
-# /var/lib/containers/storage/events/events.log
+# For rootful Podman, configure an absolute path such as:
+# events_logfile_path = "/var/lib/containers/podman/events/events.log"
 
 # Check if the file exists and its size
-EVENTS_FILE=$(podman info --format '{{.Store.EventsLogFilePath}}')
+EVENTS_FILE="$HOME/.local/share/containers/podman/events/events.log"
 ls -lh "$EVENTS_FILE" 2>/dev/null || echo "Events file does not exist yet"
 ```
 
@@ -71,9 +72,9 @@ Since events are stored in a plain text file, you can read them with standard to
 
 ```bash
 # Get the events file path
-EVENTS_FILE=$(podman info --format '{{.Store.EventsLogFilePath}}')
+EVENTS_FILE="$HOME/.local/share/containers/podman/events/events.log"
 
-# View the raw events file
+# View the raw JSON Lines events file
 cat "$EVENTS_FILE"
 
 # View the last 20 events
@@ -107,36 +108,37 @@ The file backend supports a maximum log file size to prevent the file from growi
 
 ```bash
 # Set maximum events log file size in containers.conf
-cat > ~/.config/containers/containers.conf << 'EOF'
+cat > ~/.config/containers/containers.conf << EOF
 [engine]
 events_logger = "file"
+events_logfile_path = "${HOME}/.local/share/containers/podman/events/events.log"
 
 # Maximum size in bytes before rotation
 # Default is 1MB (1000000 bytes)
 # Set to 5MB
-events_log_file_size = 5000000
+events_logfile_max_size = "5m"
 EOF
 
 # Verify the setting
-podman info --format '{{.Store.EventsLogFileSize}}'
+podman info --log-level=debug 2>&1 | grep -i EventsLogFileMaxSize
 ```
 
 ## Parsing the Events File
 
-The file format is structured and can be parsed with standard text tools.
+The file format is JSON Lines and can be parsed with standard JSON tools.
 
 ```bash
 # Get the events file
-EVENTS_FILE=$(podman info --format '{{.Store.EventsLogFilePath}}')
+EVENTS_FILE="$HOME/.local/share/containers/podman/events/events.log"
 
-# Count events by type
-awk '{print $3}' "$EVENTS_FILE" | sort | uniq -c | sort -rn
+# Count events by status
+jq -r '.Status' "$EVENTS_FILE" | sort | uniq -c | sort -rn
 
-# Find all die events
-grep " die " "$EVENTS_FILE"
+# Find all exited events
+jq -c 'select(.Status == "exited" or .Status == "died")' "$EVENTS_FILE"
 
 # Extract timestamps of start events
-grep " start " "$EVENTS_FILE" | awk '{print $1}'
+jq -r 'select(.Status == "start") | .Time' "$EVENTS_FILE"
 ```
 
 ## Managing the Events File
@@ -147,7 +149,7 @@ Unlike journald, the file backend requires manual management.
 #!/bin/bash
 # manage-events-file.sh - Manage the Podman events log file
 
-EVENTS_FILE=$(podman info --format '{{.Store.EventsLogFilePath}}')
+EVENTS_FILE="$HOME/.local/share/containers/podman/events/events.log"
 
 echo "Events file: ${EVENTS_FILE}"
 
@@ -168,7 +170,7 @@ For long-running systems, set up log rotation to manage the events file.
 ```bash
 # Create a logrotate configuration for Podman events
 # For rootless: this goes in a user cron job or timer
-EVENTS_FILE=$(podman info --format '{{.Store.EventsLogFilePath}}')
+EVENTS_FILE="$HOME/.local/share/containers/podman/events/events.log"
 
 cat > /tmp/podman-events-logrotate.conf << EOF
 ${EVENTS_FILE} {
@@ -191,7 +193,7 @@ logrotate -d /tmp/podman-events-logrotate.conf
 #!/bin/bash
 # file-event-monitor.sh - Monitor Podman events via the file backend
 
-EVENTS_FILE=$(podman info --format '{{.Store.EventsLogFilePath}}')
+EVENTS_FILE="$HOME/.local/share/containers/podman/events/events.log"
 
 if [ ! -f "$EVENTS_FILE" ]; then
     echo "Events file not found. Generating a test event..."
@@ -204,13 +206,12 @@ echo "---"
 
 # Use tail -f to follow new events
 tail -f "$EVENTS_FILE" | while IFS= read -r line; do
-    # Parse the event line
-    timestamp=$(echo "$line" | awk '{print $1}')
-    event_type=$(echo "$line" | awk '{print $3}')
+    # Parse the JSON event line
+    event_type=$(printf '%s\n' "$line" | jq -r '.Status // empty')
 
     # Highlight critical events
     case "$event_type" in
-        die|oom)
+        died|exited)
             echo "CRITICAL: $line"
             ;;
         stop|kill)
@@ -248,4 +249,4 @@ podman rm -f file-test-3 2>/dev/null
 
 ## Summary
 
-The file events logger in Podman provides a simple, dependency-free way to store container events. Events are written to a plain text file that can be read with standard Unix tools, managed with logrotate, and parsed with grep, awk, or any text processing tool. While it lacks the structured querying capabilities of journald, the file backend is portable, straightforward, and works on any system regardless of init system. It is an excellent choice for minimal environments, containers, and simple monitoring setups.
+The file events logger in Podman provides a simple, dependency-free way to store container events. Events are written to a JSON Lines text file that can be read with standard Unix tools, managed with logrotate, and parsed with JSON processing tools such as jq. While it lacks the structured querying capabilities of journald, the file backend is portable, straightforward, and works on any system regardless of init system. It is an excellent choice for minimal environments, containers, and simple monitoring setups.
