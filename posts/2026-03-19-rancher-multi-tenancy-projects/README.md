@@ -56,13 +56,14 @@ Create a project for each tenant with isolation and quotas:
 #!/bin/bash
 # create-tenant.sh
 
+# Run this script with kubectl pointed at the Rancher management cluster.
 TENANT_NAME=$1
 CLUSTER_ID="c-m-xxxxx"
 CPU_QUOTA=${2:-"8000m"}
 MEM_QUOTA=${3:-"16Gi"}
 POD_QUOTA=${4:-"100"}
 
-cat <<EOF | kubectl apply -f -
+cat <<EOF | kubectl create -f -
 apiVersion: management.cattle.io/v3
 kind: Project
 metadata:
@@ -79,7 +80,6 @@ spec:
       requestsMemory: "${MEM_QUOTA}"
       limitsCpu: "$((${CPU_QUOTA%m} * 2))m"
       limitsMemory: "$((${MEM_QUOTA%Gi} * 2))Gi"
-    usedLimit: {}
   namespaceDefaultResourceQuota:
     limit:
       pods: "$((${POD_QUOTA} / 2))"
@@ -104,6 +104,7 @@ Each tenant should only see their own project. Assign roles accordingly:
 
 ```hcl
 # Terraform example for tenant RBAC
+# Example assumes data.rancher2_principal.* lookups use type = "group".
 
 resource "rancher2_project_role_template_binding" "alpha_owner" {
   name               = "alpha-owner"
@@ -138,19 +139,9 @@ resource "rancher2_project_role_template_binding" "beta_members" {
 
 Prevent network communication between tenant projects:
 
-```bash
-# Enable network isolation for each tenant project
-for project_id in $(kubectl get projects.management.cattle.io -n $CLUSTER_ID -o jsonpath='{.items[*].metadata.name}'); do
-  display=$(kubectl get projects.management.cattle.io $project_id -n $CLUSTER_ID -o jsonpath='{.spec.displayName}')
-  if [[ $display == tenant-* ]]; then
-    echo "Enabling network isolation for: $display"
-    kubectl patch projects.management.cattle.io $project_id -n $CLUSTER_ID \
-      --type merge -p '{"spec":{"enableProjectMonitoring":false}}'
-  fi
-done
-```
+Project Network Isolation is a cluster-level Rancher setting, not a field on individual `Project` objects. Enable the **Project Network Isolation** option when creating or editing the cluster. For imported clusters, Rancher requires Kubernetes `NetworkPolicy` support to be enabled on the cluster before you turn on Project Network Isolation.
 
-Alternatively, create explicit NetworkPolicy resources:
+Alternatively, or for finer-grained control, create explicit NetworkPolicy resources:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -164,30 +155,42 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow traffic from same project namespaces
+    # Allow traffic from namespaces for the same tenant
     - from:
         - namespaceSelector:
             matchLabels:
-              field.cattle.io/projectId: "p-alpha"
-    # Allow traffic from shared-platform project (monitoring, ingress)
+              tenant: "alpha"
+    # Allow traffic from shared services namespaces
     - from:
         - namespaceSelector:
-            matchLabels:
-              field.cattle.io/projectId: "p-shared"
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - monitoring
+                  - logging
+                  - ingress
   egress:
-    # Allow traffic to same project namespaces
+    # Allow traffic to namespaces for the same tenant
     - to:
         - namespaceSelector:
             matchLabels:
-              field.cattle.io/projectId: "p-alpha"
-    # Allow traffic to shared-platform project
+              tenant: "alpha"
+    # Allow traffic to shared services namespaces
     - to:
         - namespaceSelector:
-            matchLabels:
-              field.cattle.io/projectId: "p-shared"
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - monitoring
+                  - logging
+                  - ingress
     # Allow DNS resolution
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -254,16 +257,17 @@ Automate the process of creating new tenants:
 # onboard-tenant.sh
 
 TENANT=$1
+MGMT_CONTEXT=${MGMT_CONTEXT:-"rancher-management"}
+DOWNSTREAM_CONTEXT=${DOWNSTREAM_CONTEXT:-"shared-cluster"}
 CLUSTER_ID="c-m-xxxxx"
 CPU=$2
 MEMORY=$3
-AUTH_GROUP=$4
 
 echo "=== Onboarding tenant: $TENANT ==="
 
-# 1. Create the project
+# 1. Create the project on the Rancher management cluster
 echo "Creating project..."
-PROJECT_NAME=$(kubectl apply -f - -o jsonpath='{.metadata.name}' <<EOF
+PROJECT_NAME=$(kubectl --context "${MGMT_CONTEXT}" create -f - -o jsonpath='{.metadata.name}' <<EOF
 apiVersion: management.cattle.io/v3
 kind: Project
 metadata:
@@ -277,7 +281,6 @@ spec:
       pods: "100"
       requestsCpu: "${CPU}"
       requestsMemory: "${MEMORY}"
-    usedLimit: {}
   namespaceDefaultResourceQuota:
     limit:
       pods: "50"
@@ -291,7 +294,7 @@ echo "Project created: $PROJECT_NAME"
 # 2. Create default namespaces
 for env in production staging; do
   echo "Creating namespace: ${TENANT}-${env}"
-  kubectl apply -f - <<EOF
+  kubectl --context "${DOWNSTREAM_CONTEXT}" apply -f - <<EOF
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -299,7 +302,6 @@ metadata:
   annotations:
     field.cattle.io/projectId: "${CLUSTER_ID}:${PROJECT_NAME}"
   labels:
-    field.cattle.io/projectId: "${PROJECT_NAME}"
     tenant: "${TENANT}"
     environment: "${env}"
 EOF
@@ -308,7 +310,7 @@ done
 # 3. Apply network isolation
 echo "Applying network isolation..."
 for ns in ${TENANT}-production ${TENANT}-staging; do
-  kubectl apply -f - <<EOF
+  kubectl --context "${DOWNSTREAM_CONTEXT}" apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -322,13 +324,27 @@ spec:
         - namespaceSelector:
             matchLabels:
               tenant: "${TENANT}"
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: ["monitoring", "logging", "ingress"]
   egress:
     - to:
         - namespaceSelector:
             matchLabels:
               tenant: "${TENANT}"
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: ["monitoring", "logging", "ingress"]
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -344,7 +360,7 @@ done
 # 4. Apply LimitRange defaults
 echo "Applying default resource limits..."
 for ns in ${TENANT}-production ${TENANT}-staging; do
-  kubectl apply -f - <<EOF
+  kubectl --context "${DOWNSTREAM_CONTEXT}" apply -f - <<EOF
 apiVersion: v1
 kind: LimitRange
 metadata:
