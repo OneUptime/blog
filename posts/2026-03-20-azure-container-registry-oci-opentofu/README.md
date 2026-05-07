@@ -8,7 +8,7 @@ Description: Learn how to use Azure Container Registry as an OCI registry for di
 
 ## Introduction
 
-Azure Container Registry (ACR) is OCI-compliant and supports storing arbitrary OCI artifacts alongside container images. For Azure-centric organizations, ACR offers Azure AD authentication, geo-replication, private endpoints, and integration with existing Azure infrastructure - making it ideal for OpenTofu provider and module distribution.
+Azure Container Registry (ACR) is OCI-compliant and supports storing arbitrary OCI artifacts alongside container images. For Azure-centric organizations, ACR offers Microsoft Entra ID authentication, geo-replication, private endpoints, and integration with existing Azure infrastructure - making it ideal for OpenTofu provider and module distribution.
 
 ## Creating ACR for OpenTofu
 
@@ -26,7 +26,7 @@ resource "azurerm_container_registry" "opentofu" {
   location            = azurerm_resource_group.opentofu.location
   sku                 = "Premium"  # Required for geo-replication and private endpoints
 
-  admin_enabled = false  # Use Azure AD, not admin credentials
+  admin_enabled = false  # Use Microsoft Entra ID, not admin credentials
 
   tags = {
     Purpose = "opentofu-registry"
@@ -61,7 +61,7 @@ resource "azurerm_private_endpoint" "acr" {
 ## Authentication
 
 ```bash
-# Authenticate using Azure CLI (uses your Azure AD identity)
+# Authenticate using Azure CLI (uses your Microsoft Entra ID identity)
 az acr login --name mycompanyopentofu
 
 # For service principals (CI/CD)
@@ -70,9 +70,10 @@ az acr login \
   --username "$SERVICE_PRINCIPAL_ID" \
   --password "$SERVICE_PRINCIPAL_SECRET"
 
-# Using Docker credential helper
-# docker login mycompanyopentofu.azurecr.io
-# with username/password from service principal
+# Using docker login with service principal credentials
+docker login mycompanyopentofu.azurecr.io \
+  --username "$SERVICE_PRINCIPAL_ID" \
+  --password "$SERVICE_PRINCIPAL_SECRET"
 ```
 
 ## Assigning ACR Roles
@@ -82,7 +83,7 @@ az acr login \
 resource "azurerm_role_assignment" "acr_push" {
   scope                = azurerm_container_registry.opentofu.id
   role_definition_name = "AcrPush"
-  principal_id         = azurerm_service_principal.cicd.object_id
+  principal_id         = azuread_service_principal.cicd.object_id
 }
 
 # Role assignment for workload identities (pull)
@@ -103,6 +104,7 @@ resource "azurerm_role_assignment" "acr_pull" {
 ```bash
 #!/bin/bash
 # push-provider-to-acr.sh
+# Requires ORAS v1.3.0+
 
 set -euo pipefail
 
@@ -137,15 +139,30 @@ tofu providers mirror \
   -platform=linux_arm64 \
   "$WORK_DIR/mirror/"
 
-cd "$WORK_DIR/mirror/registry.opentofu.org/${PROVIDER_NAMESPACE}/${PROVIDER_TYPE}/"
+MIRROR_DIR="$WORK_DIR/mirror/registry.opentofu.org/${PROVIDER_NAMESPACE}/${PROVIDER_TYPE}"
+ACR_REPO="${ACR_REGISTRY}/opentofu-providers/${PROVIDER_NAMESPACE}/${PROVIDER_TYPE}"
 
-ACR_REPO="${ACR_REGISTRY}/opentofu-providers/${PROVIDER_NAMESPACE}-${PROVIDER_TYPE}"
+oras push \
+  --artifact-type application/vnd.opentofu.provider-target \
+  --artifact-platform linux/amd64 \
+  --oci-layout "$WORK_DIR/layout:linux_amd64" \
+  "${MIRROR_DIR}/terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_amd64.zip:archive/zip"
 
-oras push "${ACR_REPO}:${PROVIDER_VERSION}" \
-  --config /dev/null:application/vnd.opentofu.provider.config.v1+json \
-  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_amd64.zip:application/vnd.opentofu.provider.v1.linux.amd64" \
-  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_arm64.zip:application/vnd.opentofu.provider.v1.linux.arm64" \
-  "terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_SHA256SUMS:application/vnd.opentofu.provider.v1.shasums"
+oras push \
+  --artifact-type application/vnd.opentofu.provider-target \
+  --artifact-platform linux/arm64 \
+  --oci-layout "$WORK_DIR/layout:linux_arm64" \
+  "${MIRROR_DIR}/terraform-provider-${PROVIDER_TYPE}_${PROVIDER_VERSION}_linux_arm64.zip:archive/zip"
+
+oras manifest index create \
+  --artifact-type="application/vnd.opentofu.provider" \
+  --oci-layout "$WORK_DIR/layout:${PROVIDER_VERSION}" \
+  linux_amd64 \
+  linux_arm64
+
+oras cp \
+  --from-oci-layout "$WORK_DIR/layout:${PROVIDER_VERSION}" \
+  "${ACR_REPO}:${PROVIDER_VERSION}"
 
 echo "Pushed: ${ACR_REPO}:${PROVIDER_VERSION}"
 ```
@@ -156,41 +173,44 @@ echo "Pushed: ${ACR_REPO}:${PROVIDER_VERSION}"
 #!/bin/bash
 # push-module-to-acr.sh
 
-MODULE_NAME="${1:?Usage: $0 <module-dir> <version>}"
+set -euo pipefail
+
+MODULE_DIR="${1:?Usage: $0 <module-dir> <version>}"
 VERSION="${2:?}"
 ACR_NAME="mycompanyopentofu"
 ACR_REGISTRY="${ACR_NAME}.azurecr.io"
+MODULE_NAME="$(basename "$MODULE_DIR")"
+WORK_DIR=$(mktemp -d)
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 az acr login --name "$ACR_NAME"
 
-tar -czf "${MODULE_NAME}-${VERSION}.tgz" \
-  --exclude='.terraform' \
-  --exclude='*.tfstate*' \
-  --exclude='.git' \
-  -C "$MODULE_NAME" .
+(
+  cd "$MODULE_DIR"
+  zip -r "$WORK_DIR/${MODULE_NAME}-${VERSION}.zip" . \
+    -x '.terraform/*' '*.tfstate*' '.git/*'
+)
 
 ACR_REPO="${ACR_REGISTRY}/opentofu-modules/${MODULE_NAME}"
 
-oras push "${ACR_REPO}:${VERSION}" \
-  --config /dev/null:application/vnd.opentofu.module.config.v1+json \
-  "${MODULE_NAME}-${VERSION}.tgz:application/vnd.opentofu.module.v1.tar+gzip"
+oras push \
+  --artifact-type=application/vnd.opentofu.modulepkg \
+  "${ACR_REPO}:${VERSION}" \
+  "$WORK_DIR/${MODULE_NAME}-${VERSION}.zip:archive/zip"
 
-oras tag "${ACR_REGISTRY}" \
-  "opentofu-modules/${MODULE_NAME}:${VERSION}" \
-  "opentofu-modules/${MODULE_NAME}:latest"
+oras tag "${ACR_REPO}:${VERSION}" latest
 
-rm "${MODULE_NAME}-${VERSION}.tgz"
 echo "Pushed: ${ACR_REPO}:${VERSION}"
 ```
 
 ## Configuring OpenTofu to Use ACR
 
 ```hcl
-# ~/.terraform.rc
+# ~/.tofurc
 
 provider_installation {
   oci_mirror {
-    url     = "oci://mycompanyopentofu.azurecr.io/opentofu-providers"
+    repository_template = "mycompanyopentofu.azurecr.io/opentofu-providers/${namespace}/${type}"
     include = ["registry.opentofu.org/hashicorp/*"]
   }
 
@@ -203,7 +223,7 @@ provider_installation {
 ```hcl
 # For modules in ACR
 module "vpc" {
-  source = "oci://mycompanyopentofu.azurecr.io/opentofu-modules/azure-vnet:2.1.0"
+  source = "oci://mycompanyopentofu.azurecr.io/opentofu-modules/azure-vnet?tag=2.1.0"
 
   name                = "production"
   resource_group_name = azurerm_resource_group.main.name
@@ -214,20 +234,22 @@ module "vpc" {
 ## ACR Token Scopes for Fine-Grained Access
 
 ```bash
-# Create ACR token for read-only access to specific repositories
-az acr token create \
-  --name "opentofu-readonly" \
-  --registry "$ACR_NAME" \
-  --scope-map "opentofu-providers-pull"
+ACR_NAME="mycompanyopentofu"
 
 # Create scope map
 az acr scope-map create \
   --name "opentofu-providers-pull" \
   --registry "$ACR_NAME" \
-  --repository "opentofu-providers/hashicorp-azurerm" content/read \
-  --repository "opentofu-providers/hashicorp-kubernetes" content/read
+  --repository "opentofu-providers/hashicorp/azurerm" content/read \
+  --repository "opentofu-providers/hashicorp/kubernetes" content/read
+
+# Create ACR token for read-only access to specific repositories
+az acr token create \
+  --name "opentofu-readonly" \
+  --registry "$ACR_NAME" \
+  --scope-map "opentofu-providers-pull"
 ```
 
 ## Conclusion
 
-Azure Container Registry provides Azure AD authentication, geo-replication, private endpoints, and repository-scoped tokens for OpenTofu provider and module distribution. The `AcrPush` and `AcrPull` built-in roles cover most use cases, while ACR tokens provide fine-grained access to specific repositories. For CI/CD systems, use a service principal with `AcrPush` role; for developer machines and workloads, use `az acr login` with individual Azure AD identities or `AcrPull` role assignments on managed identities.
+Azure Container Registry provides Microsoft Entra ID authentication, geo-replication, private endpoints, and repository-scoped tokens for OpenTofu provider and module distribution. The `AcrPush` and `AcrPull` built-in roles cover most use cases, while ACR tokens provide fine-grained access to specific repositories. For CI/CD systems, use a service principal with `AcrPush` role; for developer machines and workloads, use `az acr login` with individual Microsoft Entra ID identities or `AcrPull` role assignments on managed identities.
