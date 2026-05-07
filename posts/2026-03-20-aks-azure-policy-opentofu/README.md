@@ -8,13 +8,15 @@ Description: Learn how to configure Azure Policy for AKS with OpenTofu to enforc
 
 ## Introduction
 
-Azure Policy for AKS uses OPA Gatekeeper as an admission controller to enforce policies on Kubernetes resources at creation and update time. Policies can deny non-compliant resources (Deny effect), audit existing resources (Audit effect), or automatically remediate them. Built-in policy initiatives include Kubernetes cluster pod security baseline standards and restricted standards, covering common security requirements like privileged container restrictions, host path mounts, and required resource limits.
+Azure Policy for AKS uses OPA Gatekeeper as an admission controller to enforce policies on Kubernetes resources at creation and update time. Policies can deny non-compliant resources (Deny effect), audit them (Audit effect), or mutate supported resources. Built-in policy initiatives include Kubernetes cluster pod security baseline standards and restricted standards, covering common security requirements like privileged container restrictions, host path mounts, and required resource limits.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
+- Azure CLI v2.12+ and `kubectl`
 - Azure credentials with AKS and Policy permissions
-- An existing AKS cluster or create one with the Policy add-on
+- The `Microsoft.PolicyInsights` resource provider registered in your subscription
+- An AKS cluster running a currently supported Kubernetes version, or create one with the Policy add-on
 
 ## Step 1: Enable Azure Policy Add-on on AKS
 
@@ -24,7 +26,6 @@ resource "azurerm_kubernetes_cluster" "policy_enabled" {
   location            = var.location
   resource_group_name = var.resource_group_name
   dns_prefix          = var.project_name
-  kubernetes_version  = "1.28"
 
   default_node_pool {
     name                = "system"
@@ -71,7 +72,7 @@ resource "azurerm_resource_policy_assignment" "k8s_baseline" {
       value = "deny"  # deny, audit, or disabled
     }
     excludedNamespaces = {
-      value = ["kube-system", "gatekeeper-system", "azure-arc"]
+      value = ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"]
     }
   })
 }
@@ -87,7 +88,7 @@ resource "azurerm_resource_policy_assignment" "require_limits" {
       value = "deny"
     }
     excludedNamespaces = {
-      value = ["kube-system"]
+      value = ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"]
     }
     cpuLimit = {
       value = "2000m"
@@ -107,28 +108,45 @@ resource "azurerm_policy_definition" "require_labels" {
   name         = "${var.project_name}-require-k8s-labels"
   policy_type  = "Custom"
   mode         = "Microsoft.Kubernetes.Data"  # Mode for AKS policies
-  display_name = "Require environment label on pods"
+  display_name = "Require labels on pods"
+
+  parameters = jsonencode({
+    effect = {
+      type = "String"
+      metadata = {
+        displayName = "Effect"
+      }
+      allowedValues = ["audit", "Audit", "deny", "Deny", "disabled", "Disabled"]
+      defaultValue  = "deny"
+    }
+  })
 
   policy_rule = jsonencode({
     if = {
-      allOf = [
-        {
-          field = "type"
-          equals = "Microsoft.Kubernetes/connectedClusters"
-        }
+      field = "type"
+      in = [
+        "Microsoft.Kubernetes/connectedClusters",
+        "Microsoft.ContainerService/managedClusters"
       ]
     }
     then = {
-      effect = "deny"
+      effect = "[parameters('effect')]"
       details = {
         templateInfo = {
           sourceType = "PublicURL"
-          url        = "https://raw.githubusercontent.com/Azure/azure-policy/master/built-in-references/Kubernetes/require-labels/template.yaml"
+          url        = "https://raw.githubusercontent.com/open-policy-agent/gatekeeper-library/master/library/general/requiredlabels/template.yaml"
         }
         apiGroups = [""]
         kinds     = ["Pod"]
+        excludedNamespaces = ["kube-system", "gatekeeper-system", "azure-arc", "azure-extensions-usage-system"]
+        labelSelector      = {}
         values = {
-          labelsList = ["environment", "app", "version"]
+          labels = [
+            { key = "environment" },
+            { key = "app" },
+            { key = "version" }
+          ]
+          message = "Pods must define environment, app, and version labels."
         }
       }
     }
@@ -148,27 +166,20 @@ resource "azurerm_resource_policy_assignment" "require_labels" {
 
 ## Step 4: Policy Compliance Reporting
 
-```hcl
-# Alert when policy compliance drops
-resource "azurerm_monitor_metric_alert" "policy_noncompliant" {
-  name                = "${var.project_name}-policy-noncompliant-alert"
-  resource_group_name = var.resource_group_name
-  scopes              = [azurerm_kubernetes_cluster.policy_enabled.id]
-  description         = "Alert when Kubernetes pods are non-compliant with policy"
-  severity            = 2
+Azure Policy compliance data for AKS comes from Policy Insights, and policy state change notifications are routed through Event Grid rather than AKS metrics.
 
-  criteria {
-    metric_namespace = "Microsoft.ContainerService/managedClusters"
-    metric_name      = "cluster_autoscaler_unschedulable_pods_count"  # Example metric
-    aggregation      = "Average"
-    operator         = "GreaterThan"
-    threshold        = 5
-  }
+```bash
+# Trigger a fresh policy evaluation for the resource group
+az policy state trigger-scan --resource-group <resource-group-name>
 
-  action {
-    action_group_id = var.alert_action_group_id
-  }
-}
+# Summarize policy compliance for the AKS cluster
+az policy state summarize --resource <aks-resource-id>
+
+# List non-compliant policy states for the AKS cluster
+az policy state list \
+  --resource <aks-resource-id> \
+  --filter "complianceState eq 'NonCompliant'" \
+  --output table
 ```
 
 ## Step 5: Deploy
@@ -178,22 +189,12 @@ tofu init
 tofu plan
 tofu apply
 
-# Check policy compliance
-az policy state summarize \
-  --resource <aks-resource-id> \
-  --query "results.nonCompliantResources"
-
-# List non-compliant resources
-az policy state list \
-  --resource <aks-resource-id> \
-  --filter "complianceState eq 'NonCompliant'" \
-  --output table
-
-# Check Gatekeeper status in cluster
-kubectl get constrainttemplate
-kubectl get constraints
+# Check Gatekeeper templates and constraints in the cluster
+kubectl get constrainttemplates
+kubectl get k8sazurecontainerlimits
+kubectl get k8srequiredlabels
 ```
 
 ## Conclusion
 
-Azure Policy for AKS runs as OPA Gatekeeper inside the cluster-deploying it may take 15-20 minutes after enabling the add-on as Gatekeeper syncs policies. Always include system namespaces (`kube-system`, `gatekeeper-system`) in `excludedNamespaces` to avoid breaking cluster operations. Start with `effect = "audit"` to assess current compliance before switching to `effect = "deny"`-Audit mode reports violations without blocking deployments, giving teams time to remediate existing workloads. Use policy initiatives (sets of related policies) rather than individual policies to enforce comprehensive security baselines with a single assignment.
+Azure Policy for AKS uses OPA Gatekeeper inside the cluster, and policy assignments and compliance results can take around 15 minutes to sync after you enable the add-on. Always include system namespaces (`kube-system`, `gatekeeper-system`, `azure-arc`) in `excludedNamespaces` to avoid breaking cluster operations. Start with `effect = "audit"` to assess current compliance before switching to `effect = "deny"`. Audit mode reports violations without blocking deployments, giving teams time to remediate existing workloads. Use policy initiatives (sets of related policies) rather than individual policies to enforce comprehensive security baselines with a single assignment.
