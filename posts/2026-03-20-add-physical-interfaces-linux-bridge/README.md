@@ -8,12 +8,13 @@ Description: Add one or more physical network interfaces to a Linux bridge to cr
 
 ## Introduction
 
-Adding physical interfaces to a bridge makes them "bridge ports." The bridge learns MAC addresses and forwards frames between ports, creating a virtual switch. This is used for connecting virtual machines to physical networks, bridging two network segments, and aggregating interfaces.
+Adding physical interfaces to a bridge makes them "bridge ports." The bridge learns MAC addresses and forwards frames between ports, creating a virtual switch. This is used for connecting virtual machines to physical networks, bridging two network segments, and attaching multiple interfaces to the same Layer 2 domain.
 
 ## Add a Physical Interface to an Existing Bridge
 
 ```bash
-# First flush the IP from the physical interface (if it has one)
+# If the physical interface has an IP and you want Layer 3 on the bridge,
+# flush it from the physical interface first
 
 ip addr flush dev eth0
 
@@ -29,7 +30,7 @@ bridge link show
 
 ## Check Port State
 
-When STP is disabled, ports immediately enter forwarding state. With STP enabled, ports go through listening → learning → forwarding:
+When STP is disabled, a bridge port typically shows `state forwarding` once the link is up. With STP enabled, a forwarding port goes through listening → learning → forwarding, while a non-forwarding port may remain blocking:
 
 ```bash
 # Show all bridge ports and their states
@@ -47,7 +48,7 @@ ip link set eth0 master br0
 ip link set eth1 master br0
 
 # Verify both ports are on the bridge
-bridge link show br br0
+ip link show master br0
 ```
 
 ## Remove a Port from the Bridge
@@ -62,10 +63,10 @@ ip addr add 192.168.1.100/24 dev eth0
 
 ## Set Port Priority
 
-Bridge port priority influences which port STP selects as the designated port:
+Bridge port priority influences STP root-port and designated-port selection:
 
 ```bash
-# Set port priority (lower = more preferred, range 0-63, default 32)
+# Set port priority (lower = more preferred, valid range 0-255)
 bridge link set dev eth0 priority 16
 ```
 
@@ -96,13 +97,13 @@ bridge vlan del dev eth0 vid 1
 After adding ports and generating traffic, the bridge learns MAC addresses:
 
 ```bash
-# Show learned MAC addresses
+# Show MAC entries for br0
 bridge fdb show br br0
 
 # Show only dynamic entries (learned from traffic)
-bridge fdb show br br0 | grep "master br0"
+bridge fdb show br br0 dynamic
 ```
 
 ## Conclusion
 
-Adding physical interfaces to a Linux bridge with `ip link set <dev> master <bridge>` creates bridge ports that forward traffic at Layer 2. Always flush the IP from physical interfaces before adding them to a bridge - the IP moves to the bridge interface itself. Multiple ports create a virtual switch where the bridge forwards frames based on learned MAC addresses.
+Adding physical interfaces to a Linux bridge with `ip link set <dev> master <bridge>` creates bridge ports that forward traffic at Layer 2. If a physical interface already has an IP address and you want the bridge interface to handle Layer 3, remove the IP from the bridge port and assign it to the bridge interface. Multiple ports create a virtual switch where the bridge forwards frames based on learned MAC addresses.
