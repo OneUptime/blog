@@ -4,55 +4,64 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Function, IPv6, Serverless, VNet Integration, Dual-Stack
 
-Description: Configure Azure Functions with VNet integration for IPv6 connectivity and dual-stack outbound networking.
+Description: Configure Azure Functions for inbound IPv6 and preview outbound IPv6 connectivity on supported hosting plans.
 
 ## Introduction
 
-Azure Functions IPv6 enables serverless workloads to operate in IPv6 and dual-stack environments. The configuration varies by platform but involves enabling IPv6 on the underlying network, configuring function runtime environment, and validating IPv6 client connectivity.
+Azure Functions inherits IPv6 behavior from Azure App Service. On supported hosting plans, inbound IPv6 is controlled by the function app's DNS behavior, while outbound IPv6 to public endpoints is currently a separate capability. Virtual Network integration is outbound-only, uses an IPv4 delegated subnet, and public outbound IPv6 doesn't work when application traffic is routed through the virtual network.
 
 ## Step 1: Enable IPv6 on the Platform
 
 ```bash
-# Platform-specific IPv6 enablement
+# Publish AAAA records for the default *.azurewebsites.net hostname
+az resource update \
+  --resource-group <resource-group> \
+  --name <function-app-name> \
+  --resource-type "Microsoft.Web/sites" \
+  --set properties.ipMode="IPv4AndIPv6"
 
-# Most serverless platforms use the underlying cloud provider's network
+# IPMode is a DNS setting. The app can still receive both IPv4 and IPv6 traffic.
 
-# Check if the platform's public endpoint has IPv6
-dig AAAA your-function-url.example.com
+# For IPv6-only DNS responses, use IPv6 instead.
+az resource update \
+  --resource-group <resource-group> \
+  --name <function-app-name> \
+  --resource-type "Microsoft.Web/sites" \
+  --set properties.ipMode="IPv6"
 
-# For VPC-integrated functions, ensure VPC subnet has IPv6
-# (refer to platform documentation)
+# Check that the function app hostname now has an AAAA record
+dig AAAA <function-app-name>.azurewebsites.net
 ```
 
 ## Step 2: Handle IPv6 Client Addresses in Functions
 
 ```python
-# Python serverless handler example
 import ipaddress
+import azure.functions as func
 
-def handler(event, context):
-    # Extract client IP (varies by platform)
-    client_ip = (
-        event.get("requestContext", {})
-             .get("identity", {})
-             .get("sourceIp")
-        or event.get("headers", {}).get("X-Forwarded-For", "").split(",")[0].strip()
-        or "unknown"
-    )
+app = func.FunctionApp()
+
+@app.route(route="client-ip", auth_level=func.AuthLevel.ANONYMOUS)
+def client_ip(req: func.HttpRequest) -> func.HttpResponse:
+    # App Service forwards the client chain in X-Forwarded-For.
+    forwarded_for = req.headers.get("x-forwarded-for", "")
+    client_ip = forwarded_for.split(",")[0].strip() or "unknown"
 
     # Normalize IPv4-mapped IPv6
     try:
         addr = ipaddress.ip_address(client_ip)
         if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
             client_ip = str(addr.ipv4_mapped)
-        is_ipv6 = isinstance(addr, ipaddress.IPv6Address) and not addr.ipv4_mapped
+            is_ipv6 = False
+        else:
+            is_ipv6 = addr.version == 6
     except ValueError:
         is_ipv6 = False
 
-    return {
-        "statusCode": 200,
-        "body": f"Client IP: {client_ip}, IPv6: {is_ipv6}"
-    }
+    return func.HttpResponse(
+        f"Client IP: {client_ip}, IPv6: {is_ipv6}",
+        status_code=200,
+    )
 ```
 
 ## Step 3: Make Outbound IPv6 Requests
@@ -61,9 +70,8 @@ def handler(event, context):
 import urllib.request
 
 def call_ipv6_endpoint():
-    """Make HTTP request to an IPv6 endpoint from serverless."""
-    # URL with bracketed IPv6 address
-    url = "http://[2001:db8::1]/api/health"
+    """Make HTTP request to an IPv6-capable public endpoint."""
+    url = "https://your-ipv6-enabled-host.example.com/api/health"
 
     try:
         with urllib.request.urlopen(url, timeout=10) as response:
@@ -71,39 +79,56 @@ def call_ipv6_endpoint():
     except Exception as e:
         return f"Error: {e}"
 
-# Or with requests library
+# If you use an IPv6 literal, enclose it in brackets.
+def call_ipv6_literal():
+    url = "http://[2001:db8::1]/api/health"  # Replace with a reachable IPv6 address
+    with urllib.request.urlopen(url, timeout=10) as response:
+        return response.read().decode()
+
+# Or with requests library (add requests to requirements.txt)
 import requests
 
 def call_ipv6_with_requests():
-    response = requests.get("http://[2001:db8::1]/api", timeout=10)
+    response = requests.get("https://your-ipv6-enabled-host.example.com/api", timeout=10)
     return response.json()
 ```
 
 ## Step 4: Test IPv6 Connectivity
 
 ```bash
-# Test that your serverless endpoint accepts IPv6
-curl -6 https://your-function-url.example.com/
+# Test that the function app accepts IPv6
+curl -6 https://<function-app-name>.azurewebsites.net/
 
-# Test with explicit IPv6 address
-curl --resolve "your-function-url.example.com:443:2001:db8::1"     https://your-function-url.example.com/
+# Test a custom hostname against an explicit IPv6 address
+# Replace 2001:db8::1 with the hostname's actual IPv6 address.
+curl --resolve "your-function-url.example.com:443:[2001:db8::1]" \
+  https://your-function-url.example.com/
 
 # Check IPv6 DNS
-dig AAAA your-function-url.example.com
+dig AAAA <function-app-name>.azurewebsites.net
 ```
 
 ## Step 5: Environment Variable Configuration
 
 ```bash
-# Set environment variables for IPv6 endpoints
-# (Platform-specific - shown as generic examples)
+# Linux function apps must opt in to outbound IPv6 preview.
+# Windows function apps have outbound IPv6 enabled by default.
+az functionapp config appsettings set \
+  --resource-group <resource-group> \
+  --name <function-app-name> \
+  --settings WEBSITE_NETWORK_LINUX_OUTBOUND_DISABLE_IPV6=false
 
-BACKEND_URL="http://[2001:db8::backend]/api"
-DATABASE_HOST="2001:db8::db"
+# Set application settings for your own IPv6-capable backends
+az functionapp config appsettings set \
+  --resource-group <resource-group> \
+  --name <function-app-name> \
+  --settings BACKEND_URL="https://your-ipv6-enabled-host.example.com/api"
+```
 
-# In your function code
+```python
 import os
-backend_url = os.environ.get("BACKEND_URL", "http://[::1]/api")
+
+backend_url = os.environ.get("BACKEND_URL")
 ```
 
 ## Step 6: Monitoring and Logging
@@ -131,4 +156,4 @@ def log_ipv6_metrics(client_ip: str):
 
 ## Conclusion
 
-Azure Functions IPv6 works best when the underlying network has IPv6 enabled at the VPC/subnet level. Extract client IPv6 addresses from platform-specific request contexts, normalize IPv4-mapped addresses, and use bracket notation for IPv6 URLs in outbound requests. Monitor serverless function invocations from IPv6 clients with OneUptime to track adoption and error rates.
+Azure Functions IPv6 is configured through Azure App Service rather than by enabling IPv6 on a delegated VNet integration subnet. For inbound traffic, use `IPMode` and confirm that DNS returns AAAA records. For outbound traffic, IPv6 to public endpoints is currently separate from VNet-routed traffic, so validate routing behavior before relying on dual-stack egress. Extract client IPs from forwarded headers, normalize IPv4-mapped addresses, and use bracket notation only when you call IPv6 literals directly. Monitor serverless function invocations from IPv6 clients with OneUptime to track adoption and error rates.
