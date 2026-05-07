@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: macOS, Static Routes, Route, Networking, Routing, Network Configuration
 
-Description: Add temporary and persistent static routes on macOS using the route command and System Preferences, or via networksetup for scripted configuration.
+Description: Add temporary and persistent static routes on macOS using the route command, a launch daemon, or `networksetup` for per-service additional routes.
 
 ## Introduction
 
-macOS supports static routes through the `route` command (BSD-style) and through Network Preferences. Routes added with `route add` are temporary and lost on reboot. For persistent routes, use a launch daemon or the `networksetup` command.
+macOS supports temporary static routes through the `route` command (BSD-style). Routes added with `route add` are temporary and lost on reboot. For persistent routes, use a launch daemon or `networksetup` to configure per-service additional routes.
 
 ## Add a Temporary Static Route
 
@@ -73,17 +73,17 @@ EOF
 sudo launchctl load /Library/LaunchDaemons/com.local.staticRoutes.plist
 ```
 
-## Using networksetup for Interface-Specific Routes
+## Using networksetup for Per-Service Routes
 
 ```bash
-# Add a static route on a specific service
-networksetup -addroute "Wi-Fi" 192.168.2.0 255.255.255.0 10.0.0.1
+# Set the additional route list on a specific service
+sudo networksetup -setadditionalroutes "Wi-Fi" 192.168.2.0 255.255.255.0 10.0.0.1
 
 # Show routes for a service
 networksetup -getadditionalroutes "Wi-Fi"
 
-# Remove a route
-networksetup -removeroute "Wi-Fi" 192.168.2.0 255.255.255.0 10.0.0.1
+# Clear all additional routes for the service
+sudo networksetup -setadditionalroutes "Wi-Fi"
 ```
 
 ## Verify
@@ -101,4 +101,4 @@ traceroute 192.168.2.1
 
 ## Conclusion
 
-macOS uses BSD-style `route add` for temporary routes. For persistence, use a launch daemon that runs at boot, or `networksetup -addroute` which stores routes in Network Preferences per-service. The `netstat -rn -f inet` command shows the IPv4 routing table. macOS routing is managed per network service (Wi-Fi, Ethernet) through the System Configuration framework.
+macOS uses BSD-style `route add` for temporary routes. For persistence, use a launch daemon that runs at boot, or `networksetup -setadditionalroutes` to configure per-service additional routes. The `netstat -rn -f inet` command shows the IPv4 routing table. macOS can also store additional routes per network service (Wi-Fi, Ethernet) through the System Configuration framework.
