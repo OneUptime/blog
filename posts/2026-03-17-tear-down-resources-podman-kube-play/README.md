@@ -48,7 +48,7 @@ Resources removed by `--down`:
 - The infra container for each pod
 
 Resources that persist after `--down`:
-- Named volumes (PersistentVolumeClaims)
+- Named volumes (PersistentVolumeClaims), unless you use `--force`
 - Podman secrets
 - Downloaded images
 - Networks
@@ -85,10 +85,10 @@ podman kube play multi-app.yaml
 podman kube play --down multi-app.yaml
 ```
 
-## Force Flag for Stubborn Resources
+## Force Flag for PersistentVolumeClaims
 
 ```bash
-# If a normal tear down fails, use --force
+# Tear down the deployment and remove volumes linked to PersistentVolumeClaims
 podman kube play --down --force deployment.yaml
 ```
 
@@ -100,7 +100,7 @@ podman volume ls
 podman volume rm my-pvc-volume
 
 # Remove unused images
-podman image prune -f
+podman image prune -a -f
 
 # Remove secrets
 podman secret rm my-secret
@@ -141,4 +141,4 @@ chmod +x redeploy.sh
 
 ## Summary
 
-Use `podman kube play --down` with your original YAML file to stop and remove pods and containers. Named volumes and secrets persist after tear down, so you must remove them separately if needed. This makes redeploy cycles fast and predictable.
+Use `podman kube play --down` with your original YAML file to stop and remove pods and containers. Named volumes and secrets persist after tear down unless you use `--force` for PersistentVolumeClaim volumes, so you must remove remaining resources separately if needed. This makes redeploy cycles fast and predictable.
