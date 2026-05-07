@@ -132,26 +132,11 @@ Build images for multiple CPU architectures using Podman manifests.
 
 FULL_IMAGE="${REGISTRY}/${NAMESPACE}/${IMAGE_NAME}"
 
-# Create a manifest list for the multi-arch image
-podman manifest create "${FULL_IMAGE}:${COMMIT_SHA}"
-
-# Build for amd64
+# Build both architectures into a single manifest list
 podman build \
-  --platform linux/amd64 \
-  --tag "${FULL_IMAGE}:${COMMIT_SHA}-amd64" \
+  --platform linux/amd64,linux/arm64 \
+  --manifest "${FULL_IMAGE}:${COMMIT_SHA}" \
   .
-
-# Build for arm64
-podman build \
-  --platform linux/arm64 \
-  --tag "${FULL_IMAGE}:${COMMIT_SHA}-arm64" \
-  .
-
-# Add both architectures to the manifest
-podman manifest add "${FULL_IMAGE}:${COMMIT_SHA}" \
-  "${FULL_IMAGE}:${COMMIT_SHA}-amd64"
-podman manifest add "${FULL_IMAGE}:${COMMIT_SHA}" \
-  "${FULL_IMAGE}:${COMMIT_SHA}-arm64"
 
 # Push the manifest list (includes both architectures)
 podman manifest push "${FULL_IMAGE}:${COMMIT_SHA}" \
