@@ -24,7 +24,7 @@ Before optimizing, identify where the time is being spent. Run your build with t
 time podman build -t myapp:latest .
 
 # Enable verbose logging to see each step
-podman build --log-level=debug -t myapp:latest . 2>&1 | tee build.log
+podman --log-level=debug build -t myapp:latest . 2>&1 | tee build.log
 ```
 
 Look for steps that take the longest. Common culprits are large build contexts, cache misses, and heavy dependency installation steps.
@@ -33,7 +33,7 @@ Look for steps that take the longest. Common culprits are large build contexts, 
 
 ### 1. Reduce Build Context Size
 
-The build context is everything in the directory you pass to `podman build`. Podman sends the entire context to the build process before starting. A large context means a slow start.
+The build context is everything in the directory you pass to `podman build`. Podman makes the context available to the build process and applies ignore rules before `COPY` and `ADD` instructions. A large context means a slow start.
 
 Check your build context size:
 
@@ -70,7 +70,7 @@ The impact can be dramatic. A Node.js project with `node_modules` in the context
 
 ```bash
 # Verify the context size after adding .containerignore
-# This simulates what gets sent
+# This gives a rough estimate for simple ignore files
 tar cf - --exclude-from=.containerignore . | wc -c | numfmt --to=iec
 ```
 
@@ -81,7 +81,7 @@ Podman caches each layer of your image. When a layer changes, all subsequent lay
 Bad ordering (cache invalidated on every code change):
 
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY . .
 RUN npm install
@@ -92,7 +92,7 @@ CMD ["node", "dist/index.js"]
 Optimized ordering (dependencies cached separately from code):
 
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -107,7 +107,7 @@ The same principle applies to other languages:
 
 ```dockerfile
 # Python - cache pip install
-FROM python:3.11-slim
+FROM python:3.13-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -117,7 +117,7 @@ CMD ["python", "app.py"]
 
 ```dockerfile
 # Go - cache module download
-FROM golang:1.21
+FROM golang:1.26
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -132,7 +132,7 @@ Multi-stage builds reduce the final image size and can speed up builds by separa
 
 ```dockerfile
 # Stage 1: Build
-FROM node:18 AS builder
+FROM node:24 AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -140,7 +140,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Runtime (much smaller image)
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
@@ -151,7 +151,7 @@ CMD ["node", "dist/index.js"]
 For Go applications, the savings are even more dramatic:
 
 ```dockerfile
-FROM golang:1.21 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -169,22 +169,22 @@ Large base images take longer to pull and consume more disk space. Choose the sm
 
 ```dockerfile
 # Instead of this (900MB+)
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 # Use this (5MB)
-FROM alpine:3.18
+FROM alpine:3.22
 
 # For Node.js: instead of this (350MB)
-FROM node:18
+FROM node:24
 
 # Use this (50MB)
-FROM node:18-alpine
+FROM node:24-alpine
 
 # For Python: instead of this (400MB)
-FROM python:3.11
+FROM python:3.13
 
 # Use this (50MB)
-FROM python:3.11-alpine
+FROM python:3.13-alpine
 ```
 
 ### 5. Combine and Minimize RUN Commands
@@ -216,7 +216,7 @@ Podman supports BuildKit-style cache mounts that persist package manager caches 
 
 ```dockerfile
 # Cache npm packages
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
@@ -226,7 +226,7 @@ RUN npm run build
 
 ```dockerfile
 # Cache pip packages
-FROM python:3.11-slim
+FROM python:3.13-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
@@ -236,7 +236,7 @@ CMD ["python", "app.py"]
 
 ```dockerfile
 # Cache Go modules
-FROM golang:1.21
+FROM golang:1.26
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
@@ -249,21 +249,21 @@ RUN --mount=type=cache,target=/root/.cache/go-build go build -o main .
 If your Dockerfile has independent stages, they can be built in parallel:
 
 ```dockerfile
-FROM node:18-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
-FROM golang:1.21 AS backend-builder
+FROM golang:1.26 AS backend-builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN go build -o server .
 
-FROM alpine:3.18
+FROM alpine:3.22
 COPY --from=backend-builder /app/server /usr/local/bin/
 COPY --from=frontend-builder /app/frontend/dist /var/www/static/
 CMD ["server"]
@@ -310,7 +310,7 @@ podman run -d -p 5000:5000 \
 
 ### 10. Avoid Unnecessary Rebuilds
 
-Use `--build-arg` to pass values that do not affect caching:
+Place cache-busting build arguments after expensive cached layers:
 
 ```dockerfile
 # Bad: This busts the cache every time
@@ -319,7 +319,7 @@ RUN echo "Built on $BUILD_DATE" > /build-info.txt
 RUN npm ci  # This gets rebuilt every time because the layer above changed
 
 # Good: Put cache-busting arguments after cached layers
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
