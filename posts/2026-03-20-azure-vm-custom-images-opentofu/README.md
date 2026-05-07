@@ -13,7 +13,7 @@ Custom VM images (golden images) bake application dependencies, OS hardening, an
 ## Prerequisites
 
 - OpenTofu v1.6+
-- A generalized VM or managed disk to create images from
+- A managed image, snapshot, or existing VM to use as the image source
 - Azure credentials with Compute Gallery permissions
 
 ## Step 1: Create Azure Compute Gallery
@@ -43,9 +43,9 @@ resource "azurerm_shared_image" "app" {
     sku       = "production"
   }
 
-  # Supported features
-  hyper_v_generation = "V2"
-  architecture       = "x64"
+  # Match the source VM/image
+  hyper_v_generation = var.hyper_v_generation
+  architecture       = var.image_architecture
 
   tags = {
     Name = "${var.project_name}-app-image-definition"
@@ -63,7 +63,7 @@ resource "azurerm_shared_image_version" "v1" {
   resource_group_name = var.resource_group_name
   location            = var.location
 
-  # Source: managed image or snapshot
+  # Source: managed image (use os_disk_snapshot_id for a snapshot)
   managed_image_id = var.source_managed_image_id
 
   target_region {
@@ -78,7 +78,7 @@ resource "azurerm_shared_image_version" "v1" {
     storage_account_type   = "Standard_LRS"
   }
 
-  # Exclude from latest to test before promoting
+  # Include in latest immediately; set to true while testing if needed
   exclude_from_latest = false
 }
 ```
@@ -123,7 +123,7 @@ resource "azurerm_linux_virtual_machine" "from_custom_image" {
 ## Step 4: Create Image from Existing VM
 
 ```hcl
-# Step 1: Capture the VM (must be generalized first with waagent -deprovision)
+# Step 1: Capture the VM into a managed image (the source VM must be generalized first)
 resource "azurerm_image" "captured" {
   name                = "${var.project_name}-captured-image"
   location            = var.location
@@ -141,7 +141,14 @@ resource "azurerm_image" "captured" {
 ## Step 5: Deploy
 
 ```bash
-# Generalize the source VM before capturing (destroys the VM)
+# For Linux sources, run this inside the source VM first
+sudo waagent -deprovision+user
+
+# Deallocate the VM, then mark it generalized (irreversible; you can't restart it)
+az vm deallocate \
+  --resource-group <rg> \
+  --name <vm-name>
+
 az vm generalize \
   --resource-group <rg> \
   --name <vm-name>
@@ -160,4 +167,4 @@ az sig image-version list \
 
 ## Conclusion
 
-Always generalize (sysprep/waagent -deprovision) the source VM before creating an image-ungeneralized images contain machine-specific identifiers that cause problems with multiple VMs. Use Azure Compute Gallery over simple managed images for production: it supports replication, versioning, and sharing. Set `exclude_from_latest = true` on new image versions during testing, then set it to `false` after validation to promote the version to "latest". Replicate images to all regions where VMs will be deployed to reduce deployment time and avoid cross-region data transfer costs.
+Generalize (sysprep/waagent -deprovision) the source VM when you need a generalized image or when creating a legacy managed image from a VM; Azure Compute Gallery also supports specialized images. Use Azure Compute Gallery over simple managed images for production: it supports replication, versioning, and sharing. Set `exclude_from_latest = true` on new image versions during testing, then set it to `false` after validation to promote the version to "latest". Replicate images to all regions where VMs will be deployed to reduce deployment time and avoid cross-region data transfer costs.
