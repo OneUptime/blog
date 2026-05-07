@@ -33,25 +33,25 @@ Log in to the Rancher UI and navigate to the role management section:
 
 1. Click the **hamburger menu** (three horizontal lines) in the top-left corner.
 2. Select **Users & Authentication** under the **Configuration** section.
-3. Click on the **Roles** tab to see all existing roles.
+3. In the left navigation bar, click **Role Templates** to see all existing role templates.
 
-You will see three sub-tabs: **Global**, **Cluster**, and **Project**. Each tab lets you manage roles at that scope.
+You will see three tabs: **Global**, **Cluster**, and **Project/Namespaces**. Each tab lets you manage roles at that scope.
 
 ## Step 2: Create a Custom Cluster Role
 
-Let us create a custom cluster role that allows a user to view all workloads but only manage deployments.
+Let us create a custom cluster role that allows a user to view deployments, daemonsets, statefulsets, and replicasets, but only manage deployments.
 
-1. Click the **Cluster** tab under Roles.
+1. Click the **Cluster** tab under **Role Templates**.
 2. Click **Create Cluster Role** in the top-right corner.
 3. Fill in the following fields:
    - **Name**: `deployment-manager`
-   - **Description**: `Can view all workloads and manage deployments`
+   - **Description**: `Can view deployments, daemonsets, statefulsets, and replicasets, and manage deployments`
 4. Under **Grant Resources**, add the following rules:
 
-For viewing all workloads:
+For viewing deployments, daemonsets, statefulsets, and replicasets:
 
 ```yaml
-apiGroups: ["apps", "extensions"]
+apiGroups: ["apps"]
 resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
 verbs: ["get", "list", "watch"]
 ```
@@ -60,8 +60,16 @@ For managing deployments:
 
 ```yaml
 apiGroups: ["apps"]
-resources: ["deployments", "deployments/scale"]
+resources: ["deployments"]
 verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+```
+
+For scaling deployments:
+
+```yaml
+apiGroups: ["apps"]
+resources: ["deployments/scale"]
+verbs: ["get", "update", "patch"]
 ```
 
 5. Click **Create** to save the role.
@@ -81,7 +89,6 @@ spec:
   rules:
     - apiGroups:
         - "apps"
-        - "extensions"
       resources:
         - deployments
         - daemonsets
@@ -95,7 +102,6 @@ spec:
         - "apps"
       resources:
         - deployments
-        - deployments/scale
       verbs:
         - get
         - list
@@ -104,6 +110,14 @@ spec:
         - update
         - patch
         - delete
+    - apiGroups:
+        - "apps"
+      resources:
+        - deployments/scale
+      verbs:
+        - get
+        - update
+        - patch
 ```
 
 Apply this manifest:
@@ -112,14 +126,14 @@ Apply this manifest:
 kubectl apply -f custom-cluster-role.yaml
 ```
 
-The role will now appear in the Rancher UI under **Cluster Roles**.
+The role will now appear in the Rancher UI under **Role Templates > Cluster**.
 
 ## Step 4: Create a Custom Project Role
 
 Project roles are scoped to namespaces within a Rancher project. Create a project role for managing ConfigMaps and Secrets:
 
-1. Go to **Users & Authentication > Roles > Project**.
-2. Click **Create Project Role**.
+1. Go to **Users & Authentication > Role Templates > Project/Namespaces**.
+2. Click **Create Project/Namespaces Role**.
 3. Set the name to `config-manager`.
 4. Add these rules:
 
@@ -159,7 +173,7 @@ spec:
 
 ## Step 5: Create Roles That Inherit From Existing Roles
 
-Rancher allows custom roles to inherit permissions from other roles. This is useful when you want to extend a built-in role with additional permissions.
+Rancher allows custom cluster and project roles to inherit permissions from other roles. This is useful when you want to extend a built-in role with additional permissions.
 
 ```yaml
 apiVersion: management.cattle.io/v3
@@ -193,7 +207,7 @@ This role inherits all permissions from the built-in `project-member` role and a
 Once the custom role exists, assign it to a user:
 
 1. Navigate to the cluster or project where you want to assign the role.
-2. Click on **Cluster Members** or **Project Members**.
+2. Click on **Cluster Members** or open the project's **Members** tab.
 3. Click **Add**.
 4. Search for the user by name or email.
 5. Select your custom role from the **Cluster/Project Permissions** dropdown.
@@ -229,9 +243,9 @@ When designing custom roles, keep these guidelines in mind:
 
 If a user reports they cannot perform an action that should be allowed by their custom role:
 
-1. Check the role assignment under **Cluster Members** or **Project Members**.
+1. Check the role assignment under **Cluster Members** or the project's **Members** tab.
 2. Verify the role template exists with `kubectl get roletemplates <role-name> -o yaml`.
-3. Check if a more restrictive role or policy is overriding the permissions.
+3. Check whether another authorizer, admission policy, or external policy is blocking the action. Rancher and Kubernetes RBAC permissions are additive and do not have deny rules.
 4. Review the Rancher audit logs for denied API requests.
 
 ## Conclusion
