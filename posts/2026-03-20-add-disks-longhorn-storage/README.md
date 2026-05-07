@@ -8,7 +8,7 @@ Description: Step-by-step guide for adding new disks to Kubernetes nodes and reg
 
 ## Introduction
 
-As your storage needs grow, you will need to add more disk capacity to your Longhorn cluster. This can be done by adding new disks to existing nodes or by adding new nodes entirely. This guide focuses on the process of attaching new physical or virtual disks to existing nodes and registering them with Longhorn.
+As your storage needs grow, you will need to add more disk capacity to your Longhorn cluster. This can be done by adding new disks to existing nodes or by adding new nodes entirely. This guide focuses on the process of attaching new physical or virtual disks to existing nodes, mounting them on the host, and registering them as filesystem-type disks with Longhorn.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ blkid /dev/sdb
 
 ## Step 2: Format the Disk
 
-Format the new disk with a filesystem compatible with Longhorn (ext4 recommended):
+Format the new disk or partition with a filesystem compatible with Longhorn (ext4 recommended):
 
 ```bash
 # Option 1: Format the entire disk directly (no partition table)
@@ -63,8 +63,13 @@ mkfs.ext4 -L longhorn-disk1 /dev/sdb1
 # Create the directory where Longhorn will store data
 mkdir -p /mnt/longhorn-disk1
 
+# Use the device you formatted in Step 2:
+# - /dev/sdb if you formatted the whole disk
+# - /dev/sdb1 if you created a partition
+DEVICE=/dev/sdb
+
 # Mount the disk (temporary, to test)
-mount /dev/sdb /mnt/longhorn-disk1
+mount $DEVICE /mnt/longhorn-disk1
 
 # Verify the mount
 df -h /mnt/longhorn-disk1
@@ -73,8 +78,11 @@ df -h /mnt/longhorn-disk1
 ## Step 4: Configure Persistent Mount via /etc/fstab
 
 ```bash
-# Get the disk UUID (preferred over device name)
-UUID=$(blkid -s UUID -o value /dev/sdb)
+# Use the same device you mounted in Step 3
+DEVICE=/dev/sdb
+
+# Get the filesystem UUID (preferred over device name)
+UUID=$(blkid -s UUID -o value $DEVICE)
 echo "Disk UUID: $UUID"
 
 # Add to /etc/fstab for persistent mount across reboots
@@ -92,13 +100,14 @@ The `nofail` option ensures the system boots even if the disk is temporarily una
 ### Via Longhorn UI
 
 1. Open the Longhorn UI
-2. Navigate to **Node**
+2. Navigate to **Nodes**
 3. Find the node where you added the disk
 4. Click the three-dot menu (⋮)
 5. Select **Edit Node and Disks**
 6. Click **Add Disk**
 7. Fill in the details:
    - **Name**: `disk1` (unique name for this disk)
+   - **Disk Type**: `Filesystem`
    - **Path**: `/mnt/longhorn-disk1`
    - **Storage Reserved**: How much space to reserve (e.g., 5 GiB)
    - **Tags**: Optional tags like `ssd` or `hdd`
@@ -120,6 +129,7 @@ spec:
     # Keep existing default disk
     default-disk-abc123:
       allowScheduling: true
+      diskType: filesystem
       evictionRequested: false
       path: /var/lib/longhorn
       storageReserved: 5368709120   # 5 GiB reserved
@@ -127,6 +137,7 @@ spec:
     # Add the new disk
     disk1:
       allowScheduling: true
+      diskType: filesystem
       evictionRequested: false
       path: /mnt/longhorn-disk1     # Path must exist on the node
       storageReserved: 10737418240  # Reserve 10 GiB
@@ -135,7 +146,8 @@ spec:
 ```
 
 ```bash
-# Note: Do not overwrite existing disks - GET and PATCH instead
+# Note: Do not create a new Node manifest from scratch.
+# Export the existing resource first so you keep the current disks.
 kubectl get nodes.longhorn.io worker-node-1 -n longhorn-system -o yaml > node-config.yaml
 
 # Edit node-config.yaml to add the new disk under spec.disks
@@ -155,6 +167,7 @@ kubectl patch nodes.longhorn.io worker-node-1 \
       "disks": {
         "disk1": {
           "allowScheduling": true,
+          "diskType": "filesystem",
           "evictionRequested": false,
           "path": "/mnt/longhorn-disk1",
           "storageReserved": 10737418240,
@@ -178,16 +191,16 @@ kubectl get nodes.longhorn.io worker-node-1 \
 
 In the Longhorn UI, navigate to **Dashboard** - the total storage should reflect the new disk capacity.
 
-## Adding Disks at Scale with DaemonSet
+## Preparing Disks at Scale
 
-For adding the same disk path to all nodes simultaneously:
+For preparing the same disk path on multiple nodes simultaneously:
 
 ```bash
 # Script to prepare disks on all nodes (run on each node or via ansible)
 cat << 'EOF' > prepare-disk.sh
 #!/bin/bash
 # Format and mount the disk
-DISK="/dev/sdb"
+DISK="/dev/sdb"  # Use /dev/sdb1 instead if you created a partition
 MOUNT_POINT="/mnt/longhorn-disk1"
 
 mkfs.ext4 -L longhorn-disk1 $DISK
