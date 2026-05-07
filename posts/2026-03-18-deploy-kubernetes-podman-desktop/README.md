@@ -10,7 +10,7 @@ Description: Learn how to deploy your containerized applications to Kubernetes d
 
 > Podman Desktop bridges the gap between local container development and Kubernetes deployment, letting you go from local pods to production clusters seamlessly.
 
-Podman Desktop includes built-in Kubernetes integration that allows you to generate YAML manifests from your running containers and deploy them to any connected cluster. This workflow eliminates the need to manually write deployment files from scratch, accelerating the path from development to production.
+Podman Desktop includes built-in Kubernetes integration that allows you to generate YAML manifests from your running containers and deploy them to a connected cluster. This workflow eliminates the need to manually write deployment files from scratch, accelerating the path from development to production.
 
 ---
 
@@ -44,7 +44,7 @@ podman run -d --name my-web-app \
   nginx:alpine
 
 # Generate Kubernetes YAML from the container
-podman generate kube my-web-app > my-web-app.yaml
+podman kube generate my-web-app > my-web-app.yaml
 
 # View the generated YAML
 cat my-web-app.yaml
@@ -67,18 +67,18 @@ podman run -d --pod fullstack-app --name db \
   postgres:16-alpine
 
 # Generate YAML for the entire pod
-podman generate kube fullstack-app > fullstack-app.yaml
+podman kube generate fullstack-app > fullstack-app.yaml
 ```
 
 ## Deploying from Podman Desktop UI
 
 Podman Desktop provides a visual deployment workflow:
 
-1. Navigate to the **Pods** or **Containers** section.
-2. Select the pod or container you want to deploy.
-3. Click the **Deploy to Kubernetes** button (Kubernetes icon).
-4. Review the generated YAML manifest in the editor.
-5. Select the target Kubernetes context from the dropdown.
+1. Select the target Kubernetes context.
+2. Navigate to the **Pods** or **Containers** section.
+3. Open the overflow menu for the pod or container you want to deploy.
+4. Select **Deploy to Kubernetes**.
+5. Optionally select a namespace and expose the service locally when a port is exposed correctly.
 6. Click **Deploy** to apply the manifest to your cluster.
 
 Podman Desktop will report the deployment status and any errors.
@@ -95,15 +95,15 @@ kubectl apply -f my-web-app.yaml
 kubectl get pods
 
 # Check pod details
-kubectl describe pod my-web-app
+kubectl describe pod my-web-app-pod
 
 # View pod logs
-kubectl logs my-web-app
+kubectl logs my-web-app-pod
 ```
 
 ## Adding Services for External Access
 
-The generated YAML typically creates pods but not services. Add a service for external access:
+The generated YAML creates a pod by default. You can use `podman kube generate --service` to include a service, or add one manually for external access:
 
 ```bash
 # Create a service YAML for your deployment
@@ -114,7 +114,7 @@ metadata:
   name: my-web-app-service
 spec:
   selector:
-    app: my-web-app
+    app: my-web-app-pod
   ports:
     - protocol: TCP
       port: 80
@@ -135,13 +135,13 @@ Kubernetes clusters need to pull images from a registry:
 
 ```bash
 # Tag your local image for a registry
-podman tag my-app:latest ghcr.io/myuser/my-app:v1.0.0
+podman tag nginx:alpine ghcr.io/myuser/my-web-app:v1.0.0
 
 # Push the image
-podman push ghcr.io/myuser/my-app:v1.0.0
+podman push ghcr.io/myuser/my-web-app:v1.0.0
 
 # Update the YAML to reference the registry image
-sed -i 's|image: my-app:latest|image: ghcr.io/myuser/my-app:v1.0.0|' my-web-app.yaml
+sed -i 's|image: docker.io/library/nginx:alpine|image: ghcr.io/myuser/my-web-app:v1.0.0|' my-web-app.yaml
 
 # Reapply the updated manifest
 kubectl apply -f my-web-app.yaml
@@ -164,7 +164,7 @@ kubectl get pods -w
 kubectl top pods
 
 # View events for troubleshooting
-kubectl get events --sort-by='.lastTimestamp'
+kubectl get events --sort-by=.metadata.creationTimestamp
 ```
 
 ## Cleaning Up Kubernetes Resources
@@ -177,7 +177,7 @@ kubectl delete -f my-web-app.yaml
 kubectl delete -f my-web-app-service.yaml
 
 # Or delete by name
-kubectl delete pod my-web-app
+kubectl delete pod my-web-app-pod
 kubectl delete svc my-web-app-service
 ```
 
