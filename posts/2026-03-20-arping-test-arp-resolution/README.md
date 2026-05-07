@@ -15,12 +15,14 @@ Description: Learn how to use the arping utility to test ARP resolution, detect 
 ```bash
 # Ubuntu/Debian
 
-sudo apt install arping
+sudo apt install iputils-arping
 
 # RHEL/CentOS
 sudo yum install iputils
 
 # macOS
+# Homebrew installs a different arping implementation.
+# The examples below are for Linux iputils arping.
 brew install arping
 ```
 
@@ -102,7 +104,7 @@ done
 | `-U` | Unsolicited ARP mode (gratuitous ARP request) |
 | `-q` | Quiet mode (no output) |
 | `-s src_ip` | Set source IP address |
-| `-t timeout` | Wait this many ms for reply |
+| `-w deadline` | Exit after this many seconds |
 
 ## Script: Sweep ARP Across a Subnet
 
