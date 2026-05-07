@@ -30,9 +30,11 @@ Create a values file for AWS:
 ```yaml
 # values-aws.yaml
 
-provider: aws
-aws:
-  region: us-east-1
+provider:
+  name: aws
+env:
+  - name: AWS_DEFAULT_REGION
+    value: us-east-1
 domainFilters:
   - example.com
 policy: sync
@@ -55,23 +57,47 @@ helm install external-dns external-dns/external-dns \
   -f values-aws.yaml
 ```
 
-Alternatively, use a secret for credentials:
+Alternatively, if you are not using EKS IAM Roles for Service Accounts, use a secret for credentials:
+
+```ini
+# credentials
+[default]
+aws_access_key_id = AKIAXXXXXXXX
+aws_secret_access_key = XXXXXXXXXXXX
+```
 
 ```bash
-kubectl create secret generic aws-credentials \
-  --from-literal=aws_access_key_id=AKIAXXXXXXXX \
-  --from-literal=aws_secret_access_key=XXXXXXXXXXXX \
+kubectl create secret generic external-dns \
+  --from-file=my_credentials=./credentials \
   -n external-dns
 ```
+
+Then update `values-aws.yaml` to mount the credentials file:
+
+```yaml
+env:
+  - name: AWS_DEFAULT_REGION
+    value: us-east-1
+  - name: AWS_SHARED_CREDENTIALS_FILE
+    value: /etc/aws/credentials/my_credentials
+extraVolumes:
+  - name: aws-credentials
+    secret:
+      secretName: external-dns
+extraVolumeMounts:
+  - name: aws-credentials
+    mountPath: /etc/aws/credentials
+    readOnly: true
+```
+
+If you use this method, you can omit the `serviceAccount.annotations` block.
 
 ## Step 3: Configure ExternalDNS for Cloudflare
 
 ```yaml
 # values-cloudflare.yaml
-provider: cloudflare
-cloudflare:
-  apiToken: ""
-  proxied: false
+provider:
+  name: cloudflare
 env:
   - name: CF_API_TOKEN
     valueFrom:
@@ -109,9 +135,11 @@ helm install external-dns external-dns/external-dns \
 
 ```yaml
 # values-gcp.yaml
-provider: google
-google:
-  project: my-gcp-project
+provider:
+  name: google
+env:
+  - name: GOOGLE_APPLICATION_CREDENTIALS
+    value: /etc/secrets/service-account/credentials.json
 domainFilters:
   - example.com
 policy: sync
@@ -120,6 +148,16 @@ txtOwnerId: my-rancher-cluster
 sources:
   - service
   - ingress
+extraArgs:
+  google-project: my-gcp-project
+extraVolumes:
+  - name: google-service-account
+    secret:
+      secretName: google-credentials
+extraVolumeMounts:
+  - name: google-service-account
+    mountPath: /etc/secrets/service-account
+    readOnly: true
 ```
 
 Create a service account key and store it as a secret:
@@ -128,6 +166,15 @@ Create a service account key and store it as a secret:
 kubectl create secret generic google-credentials \
   --from-file=credentials.json=./service-account-key.json \
   -n external-dns
+```
+
+Install:
+
+```bash
+helm install external-dns external-dns/external-dns \
+  --namespace external-dns \
+  --create-namespace \
+  -f values-gcp.yaml
 ```
 
 ## Step 5: Verify the Installation
@@ -161,7 +208,7 @@ spec:
     targetPort: 8080
 ```
 
-ExternalDNS will automatically create an A record pointing `webapp.example.com` to the load balancer's external IP.
+ExternalDNS will automatically create a DNS record for `webapp.example.com`. Depending on the provider and load balancer, this may be an A/AAAA, CNAME, or provider-specific alias record.
 
 ## Step 7: Create an Ingress with DNS
 
@@ -174,6 +221,7 @@ metadata:
   name: my-app-ingress
   namespace: default
   annotations:
+    external-dns.alpha.kubernetes.io/hostname: app.example.com
     external-dns.alpha.kubernetes.io/ttl: "300"
 spec:
   ingressClassName: nginx
@@ -190,7 +238,7 @@ spec:
               number: 80
 ```
 
-ExternalDNS creates an A record for `app.example.com` pointing to the ingress controller's external IP.
+ExternalDNS creates a DNS record for `app.example.com` using the ingress host. Depending on the provider and ingress endpoint, this may be an A/AAAA, CNAME, or provider-specific alias record.
 
 ## Step 8: Configure Multiple Hostnames
 
@@ -226,6 +274,7 @@ For safety in production, start with `upsert-only`:
 ```bash
 helm upgrade external-dns external-dns/external-dns \
   --namespace external-dns \
+  --reuse-values \
   --set policy=upsert-only
 ```
 
