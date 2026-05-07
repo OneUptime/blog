@@ -10,7 +10,7 @@ Description: Learn how to set up a local AI model serving infrastructure using P
 
 > Serving AI models locally with Podman gives you a production-grade inference API without cloud costs or data leakage.
 
-Running your own model server lets you serve AI models through a standard API endpoint that any application can consume. Podman is ideal for this because it runs containers without a daemon and supports rootless operation. This guide covers setting up model serving with different backends, configuring for performance, and managing multiple models.
+Running your own model server lets you serve AI models through a standard API endpoint that any application can consume. Podman is ideal for this because it runs containers without a daemon and supports rootless operation. This guide covers setting up model serving with llama.cpp, configuring for performance, and managing multiple models.
 
 ---
 
@@ -28,6 +28,10 @@ mkdir -p ~/ai-models
 curl -L -o ~/ai-models/mistral-7b-instruct-q4_k_m.gguf \
   "https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
 
+# Download a second model for the multiple-model example
+curl -L -o ~/ai-models/codellama-7b-instruct-q4_k_m.gguf \
+  "https://huggingface.co/TheBloke/CodeLlama-7B-Instruct-GGUF/resolve/main/codellama-7b-instruct.Q4_K_M.gguf"
+
 # Verify the download
 ls -lh ~/ai-models/
 ```
@@ -42,7 +46,7 @@ podman run -d \
   --name llama-server \
   -p 8080:8080 \
   -v ~/ai-models:/models:ro \
-  ghcr.io/ggerganov/llama.cpp:server \
+  ghcr.io/ggml-org/llama.cpp:server \
   --model /models/mistral-7b-instruct-q4_k_m.gguf \
   --host 0.0.0.0 \
   --port 8080 \
@@ -70,7 +74,7 @@ podman run -d \
   -v ~/ai-models:/models:ro \
   --cpus 6 \
   --memory 8g \
-  ghcr.io/ggerganov/llama.cpp:server \
+  ghcr.io/ggml-org/llama.cpp:server \
   --model /models/mistral-7b-instruct-q4_k_m.gguf \
   --host 0.0.0.0 \
   --port 8080 \
@@ -124,7 +128,7 @@ podman run -d \
   -p 8081:8080 \
   -v ~/ai-models:/models:ro \
   --cpus 4 --memory 6g \
-  ghcr.io/ggerganov/llama.cpp:server \
+  ghcr.io/ggml-org/llama.cpp:server \
   --model /models/mistral-7b-instruct-q4_k_m.gguf \
   --host 0.0.0.0 --port 8080 \
   --ctx-size 4096 --threads 4
@@ -135,7 +139,7 @@ podman run -d \
   -p 8082:8080 \
   -v ~/ai-models:/models:ro \
   --cpus 4 --memory 6g \
-  ghcr.io/ggerganov/llama.cpp:server \
+  ghcr.io/ggml-org/llama.cpp:server \
   --model /models/codellama-7b-instruct-q4_k_m.gguf \
   --host 0.0.0.0 --port 8080 \
   --ctx-size 8192 --threads 4
@@ -148,7 +152,7 @@ podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 ```bash
 # Check resource consumption of all model servers
-podman stats --no-stream --filter "name=model-" \
+podman stats --no-stream model-chat model-code \
   --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}"
 
 # Monitor a specific server in real time
@@ -186,19 +190,20 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-Type=forking
+Type=simple
 Restart=on-failure
 RestartSec=10
 ExecStartPre=-/usr/bin/podman stop llama-server
 ExecStartPre=-/usr/bin/podman rm llama-server
-ExecStart=/usr/bin/podman run -d --name llama-server \
+ExecStart=/usr/bin/podman run --replace --name llama-server \
   -p 8080:8080 \
   -v %h/ai-models:/models:ro \
   --cpus 6 --memory 8g \
-  ghcr.io/ggerganov/llama.cpp:server \
+  ghcr.io/ggml-org/llama.cpp:server \
   --model /models/mistral-7b-instruct-q4_k_m.gguf \
   --host 0.0.0.0 --port 8080 --ctx-size 4096 --threads 6
 ExecStop=/usr/bin/podman stop llama-server
+ExecStopPost=-/usr/bin/podman rm llama-server
 
 [Install]
 WantedBy=default.target
