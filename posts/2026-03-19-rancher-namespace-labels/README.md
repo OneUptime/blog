@@ -129,7 +129,8 @@ metadata:
     created-date: "2026-03-19"
     review-date: "2026-06-19"
 
-    # Rancher-managed annotations (do not modify)
+    # Rancher project assignment annotation
+    # Used when assigning a namespace to a Rancher project
     field.cattle.io/projectId: "c-m-xxxxx:p-xxxxx"
 ```
 
@@ -183,11 +184,11 @@ spec:
 ```
 
 ```yaml
-# Block traffic from development namespaces
+# Allow traffic from namespaces whose environment label is not development
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: deny-from-dev
+  name: allow-non-development
   namespace: api-production
 spec:
   podSelector: {}
@@ -328,10 +329,10 @@ done
 - **Establish conventions early**: Define your labeling scheme before creating namespaces. Retrofitting labels is harder.
 - **Use consistent keys**: Standardize on key names across the organization (for example, always `environment`, never `env`).
 - **Keep labels short**: Label values should be concise. Use annotations for longer text.
-- **Do not modify Rancher annotations**: Labels and annotations prefixed with `field.cattle.io` are managed by Rancher. Modifying them can cause unexpected behavior.
+- **Handle Rancher metadata carefully**: Rancher uses `field.cattle.io/projectId` for project assignment. Only change Rancher-managed metadata intentionally and according to Rancher documentation.
 - **Automate labeling**: Use scripts, Terraform, or admission webhooks to enforce label standards.
 - **Audit regularly**: Check for missing or inconsistent labels as part of your operational review.
-- **Use labels for policy**: Leverage labels in NetworkPolicy, PSA, and resource quota selectors.
+- **Use labels for policy**: Leverage labels in NetworkPolicy and PSA rules.
 
 ## Conclusion
 
