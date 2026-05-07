@@ -53,7 +53,7 @@ podman pod start "$POD_ID"
 ## Starting Multiple Pods
 
 ```bash
-# Start all stopped pods
+# Start all exited pods
 podman pod ls --filter status=exited -q | xargs -r podman pod start
 
 # Start specific pods by name
