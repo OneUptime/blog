@@ -18,7 +18,7 @@ This guide covers setting up .NET development workflows inside Podman containers
 
 ## Choosing a .NET Base Image
 
-Microsoft publishes official .NET images in two main categories:
+Microsoft publishes official .NET images in three common categories:
 
 ```bash
 # SDK image - includes the compiler, CLI tools, and runtime (for development)
@@ -63,6 +63,9 @@ podman run --rm \
   -w /app \
   mcr.microsoft.com/dotnet/sdk:8.0 \
   dotnet new webapi -n MyApi --no-https
+
+# Change into the project directory
+cd MyApi
 ```
 
 Create `Program.cs` for a minimal API:
@@ -107,6 +110,8 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0
 
 WORKDIR /app
 
+ENV DOTNET_USE_POLLING_FILE_WATCHER=1
+
 # Copy project files first for NuGet restore caching
 COPY *.csproj ./
 RUN dotnet restore
@@ -131,10 +136,11 @@ podman run -it --rm \
   -v $(pwd):/app:Z \
   -p 5000:5000 \
   -e ASPNETCORE_ENVIRONMENT=Development \
+  -e DOTNET_USE_POLLING_FILE_WATCHER=1 \
   dotnet-dev
 ```
 
-The `dotnet watch run` command watches for file changes and automatically rebuilds and restarts the application. This gives you a smooth live-reloading experience.
+The `dotnet watch run` command watches for file changes and automatically rebuilds and restarts the application. The `DOTNET_USE_POLLING_FILE_WATCHER=1` setting is important when watching mounted source code from inside a container.
 
 ## Caching NuGet Packages
 
@@ -150,6 +156,7 @@ podman run -it --rm \
   -v nuget-cache:/root/.nuget \
   -w /app \
   -p 5000:5000 \
+  -e DOTNET_USE_POLLING_FILE_WATCHER=1 \
   mcr.microsoft.com/dotnet/sdk:8.0 \
   dotnet watch run --urls http://0.0.0.0:5000
 ```
@@ -170,6 +177,7 @@ services:
       - nuget-cache:/root/.nuget
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
       ConnectionStrings__DefaultConnection: "Server=db;Database=MyAppDb;User=sa;Password=YourStr0ngP@ssword;TrustServerCertificate=True"
     depends_on:
       - db
@@ -203,6 +211,7 @@ services:
       - nuget-cache:/root/.nuget
     environment:
       ASPNETCORE_ENVIRONMENT: Development
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
       ConnectionStrings__DefaultConnection: "Host=db;Database=myapp;Username=dotnet;Password=dotnet"
     depends_on:
       - db
@@ -226,16 +235,16 @@ volumes:
 Start the stack:
 
 ```bash
-podman-compose up -d
+podman compose up -d
 
-# Run Entity Framework migrations
-podman-compose exec api dotnet ef database update
+# After the database container is accepting connections, run Entity Framework migrations
+podman compose exec api dotnet ef database update
 
 # Or create a migration
-podman-compose exec api dotnet ef migrations add InitialCreate
+podman compose exec api dotnet ef migrations add InitialCreate
 
 # View logs
-podman-compose logs -f api
+podman compose logs -f api
 ```
 
 ## Entity Framework Core Workflows
@@ -244,19 +253,19 @@ Managing EF Core migrations inside containers:
 
 ```bash
 # Install the EF Core CLI tool (inside the container)
-podman-compose exec api dotnet tool install --global dotnet-ef
+podman compose exec api dotnet tool install --tool-path /usr/local/bin dotnet-ef
 
 # Add a migration
-podman-compose exec api dotnet ef migrations add AddUserTable
+podman compose exec api dotnet ef migrations add AddUserTable
 
 # Apply migrations
-podman-compose exec api dotnet ef database update
+podman compose exec api dotnet ef database update
 
 # Generate a SQL script for review
-podman-compose exec api dotnet ef migrations script -o migration.sql
+podman compose exec api dotnet ef migrations script -o migration.sql
 
 # Revert the last migration
-podman-compose exec api dotnet ef migrations remove
+podman compose exec api dotnet ef migrations remove
 ```
 
 ## Running Tests
@@ -291,24 +300,29 @@ podman run -it --rm \
   -v $(pwd):/app:Z \
   -v nuget-cache:/root/.nuget \
   -w /app \
+  -e DOTNET_USE_POLLING_FILE_WATCHER=1 \
   mcr.microsoft.com/dotnet/sdk:8.0 \
   dotnet watch test
 ```
 
 ## Debugging .NET in a Container
 
-Enable the .NET debugger inside the container for VS Code:
+Install `vsdbg` in the container and then attach from VS Code:
 
 ```bash
-# Run the container with the debugger port exposed
+# Run the application container and give it a stable name for `podman exec`
 podman run -it --rm \
+  --name myapi-debug \
   -v $(pwd):/app:Z \
   -v nuget-cache:/root/.nuget \
   -w /app \
   -p 5000:5000 \
   -e ASPNETCORE_ENVIRONMENT=Development \
   mcr.microsoft.com/dotnet/sdk:8.0 \
-  bash -c "dotnet tool install -g dotnet-debugger-extensions 2>/dev/null; dotnet run --urls http://0.0.0.0:5000"
+  dotnet run --urls http://0.0.0.0:5000
+
+# In another terminal, install the VS Code debugger inside the running container
+podman exec -it myapi-debug sh -c "apt-get update && apt-get install -y curl && curl -sSL https://aka.ms/getvsdbgsh | /bin/sh /dev/stdin -v latest -l /vsdbg"
 ```
 
 For VS Code, install the C# Dev Kit extension and use this `launch.json` for attaching to a container process:
@@ -322,9 +336,9 @@ For VS Code, install the C# Dev Kit extension and use this `launch.json` for att
   "pipeTransport": {
     "pipeCwd": "${workspaceFolder}",
     "pipeProgram": "podman",
-    "pipeArgs": ["exec", "-i", "<container_name>"],
-    "debuggerPath": "/root/.dotnet/tools/dotnet-debugger",
-    "quoteArgs": false
+    "pipeArgs": ["exec", "-i", "myapi-debug", "sh", "-c"],
+    "debuggerPath": "/vsdbg/vsdbg",
+    "quoteArgs": true
   },
   "sourceFileMap": {
     "/app": "${workspaceFolder}"
@@ -335,6 +349,8 @@ For VS Code, install the C# Dev Kit extension and use this `launch.json` for att
 ## Building a Production Image
 
 Multi-stage builds are standard practice for .NET applications:
+
+Save this as `Containerfile.prod`:
 
 ```dockerfile
 # Stage 1: Build and publish
@@ -381,23 +397,29 @@ podman run --rm -p 5000:5000 my-dotnet-app:prod
 
 ## Testing Against Multiple .NET Versions
 
+If your project multi-targets supported .NET versions, set `TargetFrameworks` in the project file and test each target with the matching SDK image:
+
+```xml
+<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+```
+
 ```bash
-# Test with .NET 6
-podman run --rm -v $(pwd):/app:Z -w /app \
-  mcr.microsoft.com/dotnet/sdk:6.0 \
-  dotnet test
-
-# Test with .NET 7
-podman run --rm -v $(pwd):/app:Z -w /app \
-  mcr.microsoft.com/dotnet/sdk:7.0 \
-  dotnet test
-
-# Test with .NET 8
+# Test the net8.0 target with .NET 8 SDK
 podman run --rm -v $(pwd):/app:Z -w /app \
   mcr.microsoft.com/dotnet/sdk:8.0 \
-  dotnet test
+  dotnet test -f net8.0
+
+# Test the net9.0 target with .NET 9 SDK
+podman run --rm -v $(pwd):/app:Z -w /app \
+  mcr.microsoft.com/dotnet/sdk:9.0 \
+  dotnet test -f net9.0
+
+# Test the net10.0 target with .NET 10 SDK
+podman run --rm -v $(pwd):/app:Z -w /app \
+  mcr.microsoft.com/dotnet/sdk:10.0 \
+  dotnet test -f net10.0
 ```
 
 ## Conclusion
 
-Podman works well for .NET development across all project types. The `dotnet watch` command provides live reloading out of the box when you mount your source code into the container. Cache NuGet packages in a named volume for fast dependency restoration. For database work, `podman-compose` manages the full stack with SQL Server or PostgreSQL. Multi-stage builds with the SDK image for building and the ASP.NET runtime image for production keep your deployment images lean. The daemonless, rootless nature of Podman aligns well with the enterprise environments where .NET is commonly deployed.
+Podman works well for .NET development across all project types. The `dotnet watch` command provides live reloading when you mount your source code into the container and enable polling for mounted volumes. Cache NuGet packages in a named volume for fast dependency restoration. For database work, `podman compose` manages the full stack with SQL Server or PostgreSQL. Multi-stage builds with the SDK image for building and the ASP.NET runtime image for production keep your deployment images lean. The daemonless, rootless nature of Podman aligns well with the enterprise environments where .NET is commonly deployed.
