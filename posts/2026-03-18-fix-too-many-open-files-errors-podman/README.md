@@ -34,7 +34,7 @@ A typical default soft limit is 1024, which is far too low for many server appli
 
 ## Why Podman Containers Hit This Limit
 
-When Podman launches a container, it inherits ulimit values from the host or from Podman's default configuration. In rootless mode, Podman runs under your user account, so it inherits your user's ulimit settings. If those are set low, every container you launch will also have low limits.
+When Podman launches a container, it uses ulimit values from Podman's defaults, from `containers.conf`, or from values you pass on the command line. For `nofile`, current Podman defaults to 1048576 when it is not otherwise configured, but in rootless mode that value is capped by the invoking user's hard limit. If your user's hard limit is low, rootless containers cannot raise `nofile` above it.
 
 The error typically looks like this in container logs:
 
@@ -81,7 +81,7 @@ After saving this file, all new containers will use these defaults automatically
 
 ## Fix 3: Increase Host-Level Limits
 
-If the host itself has low limits, container limits cannot exceed them. First, check the system-wide limit:
+If the host itself has low limits, container limits can still fail. First, check the system-wide file handle limit:
 
 ```bash
 cat /proc/sys/fs/file-max
@@ -97,6 +97,19 @@ To make it persistent across reboots, add it to `/etc/sysctl.conf` or a file in 
 
 ```bash
 echo "fs.file-max = 2097152" | sudo tee /etc/sysctl.d/99-file-max.conf
+sudo sysctl --system
+```
+
+For per-process `nofile` values above 1048576, also check the kernel ceiling:
+
+```bash
+cat /proc/sys/fs/nr_open
+```
+
+If your requested hard limit is higher than `fs.nr_open`, raise `fs.nr_open` as well:
+
+```bash
+echo "fs.nr_open = 2097152" | sudo tee /etc/sysctl.d/99-nr-open.conf
 sudo sysctl --system
 ```
 
@@ -182,14 +195,14 @@ cat /proc/<PID>/limits | grep "open files"
 If the count is close to the limit, you have confirmed the issue. If the count is low but you still see errors, the problem might be in a child process. Check all processes in the container:
 
 ```bash
-podman top my-container -eo pid,args
+podman top my-container pid args
 ```
 
 Then inspect each PID's file descriptor count.
 
 ## Choosing the Right Limit Value
 
-Setting the limit to an extremely high value like 1048576 is generally safe on modern systems. The kernel allocates file descriptor structures on demand, so a high limit does not consume memory by itself. However, a runaway process could exhaust system resources if limits are set too high. A value of 65535 is a reasonable default for most applications. Database servers and high-traffic web servers may need higher values.
+Setting the limit to a high value like 1048576 is generally safe for modern applications that use `poll`, `epoll`, or similar APIs. The kernel allocates file descriptor structures on demand, so a high limit does not consume memory by itself. However, a runaway process could exhaust system resources if limits are set too high, and older applications that use `select(2)` can have problems with file descriptors above 1023. A value of 65535 is a reasonable default for most applications. Database servers and high-traffic web servers may need higher values.
 
 ## Conclusion
 
