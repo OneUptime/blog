@@ -8,12 +8,13 @@ Description: Learn how to manage API Gateway stages and deployments with OpenTof
 
 ## Introduction
 
-API Gateway stages represent a snapshot of your API deployment. Multiple stages can exist simultaneously (dev, staging, prod), each with its own URL, throttling settings, logging configuration, and stage variables. Deployments are snapshots of the API configuration; a stage points to a specific deployment. Managing this in OpenTofu requires careful use of `create_before_destroy` lifecycle rules to avoid downtime during updates.
+API Gateway stages are named references to your API deployments. Multiple stages can exist simultaneously (dev, staging, prod), each with its own URL, throttling settings, logging configuration, and stage variables. Deployments are snapshots of the API configuration; a stage points to a specific deployment. Managing this in OpenTofu requires careful use of `create_before_destroy` lifecycle rules to avoid downtime during updates.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
 - AWS credentials with API Gateway permissions
+- If you enable execution logging, API Gateway account-level CloudWatch logging permissions configured with `cloudWatchRoleArn`
 
 ## Step 1: Multiple Stages for Environments
 
@@ -25,12 +26,12 @@ resource "aws_api_gateway_rest_api" "main" {
 resource "aws_api_gateway_deployment" "main" {
   rest_api_id = aws_api_gateway_rest_api.main.id
 
-  # Force new deployment when API changes
+  # Force a new deployment when dependent API configuration changes
   triggers = {
     redeployment = sha1(jsonencode([
-      aws_api_gateway_resource.main.id,
-      aws_api_gateway_method.main.id,
-      aws_api_gateway_integration.main.id,
+      aws_api_gateway_resource.main,
+      aws_api_gateway_method.main,
+      aws_api_gateway_integration.main,
     ]))
   }
 
@@ -103,11 +104,13 @@ tofu init
 tofu plan
 tofu apply
 
-# Get stage URL
+# Get stage details
 aws apigateway get-stage \
   --rest-api-id <api-id> \
-  --stage-name prod \
-  --query "invokeUrl"
+  --stage-name prod
+
+# REST API invoke URL format:
+# https://<api-id>.execute-api.<region>.amazonaws.com/prod/
 
 # List deployments
 aws apigateway get-deployments \
@@ -117,4 +120,4 @@ aws apigateway get-deployments \
 
 ## Conclusion
 
-Use `triggers` with `sha1(jsonencode(...))` in the deployment resource to automatically create new deployments when API resources, methods, or integrations change-without this, OpenTofu won't detect API configuration changes that require redeployment. The `create_before_destroy = true` lifecycle ensures the new deployment exists before the old one is removed, preventing downtime. Stage variables allow the same deployment to behave differently across environments by passing environment-specific configuration to Lambda or other backends.
+Use `triggers` with `sha1(jsonencode(...))` in the deployment resource to automatically create new deployments when the dependent API resources, methods, or integrations change; without this, OpenTofu won't detect API configuration changes that require redeployment. The `create_before_destroy = true` lifecycle helps OpenTofu create the replacement deployment before removing the previous one, which avoids API Gateway redeployment errors and service interruption. Stage variables allow the same API configuration to behave differently across environments when your integrations or mapping templates reference those variables.
