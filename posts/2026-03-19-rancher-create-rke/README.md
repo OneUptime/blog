@@ -6,34 +6,29 @@ Tags: Rancher, Kubernetes, RKE, Cluster Management
 
 Description: Learn how to create and configure an RKE (Rancher Kubernetes Engine) cluster using the Rancher management UI.
 
-RKE (Rancher Kubernetes Engine) is a CNCF-certified Kubernetes distribution that runs entirely within Docker containers. While RKE2 is the newer successor, RKE remains widely used and fully supported. This guide shows you how to create an RKE cluster through the Rancher UI.
+RKE (Rancher Kubernetes Engine) is a CNCF-certified Kubernetes distribution that runs entirely within Docker containers. While RKE2 is the newer successor, RKE1 is now a legacy option: it reached end of life on July 31, 2025, and Rancher 2.12.0 and later no longer support provisioning or managing downstream RKE1 clusters. This guide applies to Rancher environments that still support RKE1, such as Rancher v2.11.x.
 
 ## Prerequisites
 
-- A running Rancher installation (v2.7 or later)
+- A running Rancher installation that still supports RKE1 provisioning (for example, Rancher v2.11.x)
 - At least one Linux node with:
-  - Docker installed (20.10 or later)
+  - Docker installed using a supported version from the Rancher/RKE support matrix
   - Minimum 4 GB RAM and 2 CPUs
   - SSH access configured
-  - A supported OS (Ubuntu 20.04+, RHEL 8+, SLES 15+)
+  - A supported 64-bit Linux OS from the Rancher/RKE support matrix
 - Network connectivity between all nodes and to the Rancher server
 
 ## Step 1: Prepare the Nodes
 
 ### Install Docker
 
-On each node, install Docker:
+On each node, install a Rancher-supported upstream Docker release:
 
 ```bash
-# Ubuntu/Debian
-
-curl -fsSL https://get.docker.com | sh
+# Replace <DOCKER_VERSION> with a supported major.minor version
+# from the Rancher/RKE support matrix.
+curl -fsSL https://releases.rancher.com/install-docker/<DOCKER_VERSION>.sh | sh
 sudo usermod -aG docker $USER
-
-# RHEL/CentOS
-sudo yum install -y docker
-sudo systemctl enable docker
-sudo systemctl start docker
 ```
 
 Verify Docker is running:
@@ -44,28 +39,18 @@ docker version
 
 ### Configure Node Requirements
 
-Disable swap on all nodes:
+Disable swap on worker nodes:
 
 ```bash
 sudo swapoff -a
 sudo sed -i '/swap/d' /etc/fstab
 ```
 
-Load required kernel modules:
+Load the required bridge module:
 
 ```bash
 cat <<EOF | sudo tee /etc/modules-load.d/rke.conf
 br_netfilter
-ip6_udp_tunnel
-ip_set
-ip_set_hash_ip
-ip_set_hash_net
-ip_tables
-ip_vs
-ip_vs_rr
-ip_vs_wrr
-ip_vs_sh
-nf_conntrack
 EOF
 
 sudo modprobe br_netfilter
@@ -85,24 +70,26 @@ sudo sysctl --system
 
 ### Open Required Ports
 
-Ensure the following ports are open between nodes:
+Ensure the required Rancher and cluster ports are open:
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
-| 22 | TCP | SSH |
-| 2376 | TCP | Docker daemon |
-| 2379-2380 | TCP | etcd |
+| 443 | TCP | Nodes to the Rancher URL (the Rancher server directly, or an external Rancher load balancer) |
+| 2379-2380 | TCP | etcd client and peer traffic |
 | 6443 | TCP | Kubernetes API |
 | 8472 | UDP | Canal/Flannel VXLAN |
+| 9099 | TCP | Canal/Flannel local liveness/readiness checks |
 | 10250 | TCP | kubelet |
-| 10254 | TCP | Ingress controller |
+| 10254 | TCP | Ingress controller local liveness/readiness checks |
+
+If you plan to enable Rancher Monitoring later, also allow TCP port `9796` on each node.
 
 ## Step 2: Create the Cluster in Rancher
 
 1. Log in to the Rancher UI
 2. Click **Cluster Management** in the left sidebar
 3. Click **Create**
-4. Select **RKE1** under the custom cluster options
+4. Select **Custom** to create an RKE cluster
 
 ## Step 3: Configure Cluster Settings
 
@@ -122,7 +109,7 @@ Select the CNI plugin:
 - **Canal** (default): Combines Flannel for networking and Calico for network policy
 - **Calico**: Full Calico implementation
 - **Flannel**: Simple overlay networking
-- **Weave**: Mesh networking
+- **Weave**: Mesh networking (deprecated for Kubernetes v1.27+)
 
 ### Cloud Provider
 
@@ -149,19 +136,21 @@ Password: registry-password
 Choose the authorization mode:
 
 - **RBAC** (recommended): Role-Based Access Control
-- You can also enable Pod Security Policies (deprecated in newer Kubernetes versions)
+- PodSecurityPolicy support is only available on older Kubernetes versions; PodSecurityPolicy was removed in Kubernetes v1.25
 
 ### Audit Logging
 
 Enable audit logging to track API requests:
 
 ```yaml
-audit_log:
-  enabled: true
-  configuration:
-    max_age: 30
-    max_backup: 10
-    max_size: 100
+services:
+  kube-api:
+    audit_log:
+      enabled: true
+      configuration:
+        max_age: 30
+        max_backup: 10
+        max_size: 100
 ```
 
 ### etcd Settings
@@ -236,7 +225,7 @@ kubectl cluster-info
 Verify each component:
 
 - All nodes show as `Ready`
-- System pods (coredns, canal/calico, metrics-server) are running
+- System pods (coredns, your selected CNI plugin, metrics-server) are running
 - Ingress controller is deployed
 
 ## Step 8: Post-Creation Configuration
@@ -246,14 +235,14 @@ Verify each component:
 Test the cluster with a sample deployment:
 
 ```bash
-kubectl create deployment nginx --image=nginx --replicas=3
-kubectl expose deployment nginx --port=80 --type=LoadBalancer
+kubectl create deployment nginx --image=nginx --replicas=3 --port=80
+kubectl expose deployment nginx --port=80 --target-port=80 --type=LoadBalancer
 kubectl get svc nginx
 ```
 
 ### Enable Monitoring
 
-Install the monitoring stack from the Rancher Apps page to get Prometheus and Grafana dashboards.
+Install the monitoring stack from **Cluster Tools** or **Apps > Charts** to get Prometheus and Grafana dashboards.
 
 ### Configure Backups
 
@@ -266,9 +255,9 @@ Verify that etcd backups are running on schedule:
 
 - **Node not joining**: Verify Docker is running and the node can reach the Rancher server. Check `docker logs` on the rancher-agent container.
 - **etcd health issues**: Ensure an odd number of etcd nodes (1, 3, or 5) and check etcd logs.
-- **Networking problems**: Verify the CNI plugin pods are running and that required ports are open between nodes.
+- **Networking problems**: Verify the CNI plugin pods are running and that the required ports are open between nodes and to the Rancher server.
 - **Provisioning timeout**: Check Rancher server logs for errors related to the cluster provisioning.
 
 ## Conclusion
 
-Creating an RKE cluster in Rancher is a guided process that handles the complexity of Kubernetes installation for you. Prepare your nodes with Docker and networking requirements, configure the cluster settings in the Rancher UI, run the registration commands on your nodes, and Rancher takes care of provisioning the entire Kubernetes cluster. For new deployments, consider RKE2 as it is the actively developed successor, but RKE remains a solid and well-supported option.
+Creating an RKE cluster in Rancher is a guided process that handles the complexity of Kubernetes installation for you. Prepare your nodes with Docker and networking requirements, configure the cluster settings in the Rancher UI, run the registration commands on your nodes, and Rancher takes care of provisioning the entire Kubernetes cluster. For new deployments, use RKE2 as the actively developed successor; RKE1 is now a legacy option for Rancher environments that still support it.
