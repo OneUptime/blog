@@ -72,10 +72,14 @@ alertmanager:
 
 ## Step 4: Route Alerts to Different Channels
 
-Send critical alerts to a dedicated channel and warnings to a general channel:
+Because each Slack incoming webhook is tied to a single channel, use a separate webhook URL for each destination channel. Assuming you created `slack-critical-webhook` and `slack-warnings-webhook` secrets, route critical alerts to a dedicated channel and warnings to a general channel:
 
 ```yaml
 alertmanager:
+  alertmanagerSpec:
+    secrets:
+      - slack-critical-webhook
+      - slack-warnings-webhook
   config:
     route:
       receiver: "slack-warnings"
@@ -85,17 +89,18 @@ alertmanager:
       routes:
         - receiver: "slack-critical"
           matchers:
-            - severity = critical
+            - severity = "critical"
           repeat_interval: 1h
           continue: false
         - receiver: "slack-warnings"
           matchers:
-            - severity = warning
+            - severity = "warning"
           repeat_interval: 4h
     receivers:
       - name: "slack-critical"
         slack_configs:
-          - channel: "#critical-alerts"
+          - api_url_file: /etc/alertmanager/secrets/slack-critical-webhook/webhook-url
+            channel: "#critical-alerts"
             send_resolved: true
             color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
             title: ':rotating_light: [CRITICAL] {{ .CommonLabels.alertname }}'
@@ -108,7 +113,8 @@ alertmanager:
               {{ end }}
       - name: "slack-warnings"
         slack_configs:
-          - channel: "#kubernetes-alerts"
+          - api_url_file: /etc/alertmanager/secrets/slack-warnings-webhook/webhook-url
+            channel: "#kubernetes-alerts"
             send_resolved: true
             color: '{{ if eq .Status "firing" }}warning{{ else }}good{{ end }}'
             title: ':warning: [WARNING] {{ .CommonLabels.alertname }}'
@@ -121,7 +127,7 @@ alertmanager:
 
 ## Step 5: Use Rich Message Formatting
 
-Slack supports rich message formatting with attachments. Configure a more detailed message format:
+Slack supports rich message formatting with attachments. With incoming webhooks, the detailed formatting below works, but the default channel, username, and icon come from the Slack app configuration. Configure a more detailed message format:
 
 ```yaml
 receivers:
@@ -129,8 +135,6 @@ receivers:
     slack_configs:
       - channel: "#kubernetes-alerts"
         send_resolved: true
-        icon_emoji: ":kubernetes:"
-        username: "Rancher Alertmanager"
         title: '{{ .CommonLabels.alertname }}'
         title_link: "https://rancher.example.com"
         text: >-
