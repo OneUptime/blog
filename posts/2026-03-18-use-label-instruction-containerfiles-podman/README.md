@@ -16,7 +16,7 @@ Container images are the building blocks of modern application deployment. But w
 
 ## What Is the LABEL Instruction?
 
-The LABEL instruction adds key-value metadata pairs to a container image. These labels do not affect the runtime behavior of the container. Instead, they serve as annotations that tools, registries, and operators can query to understand what an image contains, who built it, and how it should be used.
+The LABEL instruction adds key-value metadata pairs to a container image. In most cases, these labels do not affect the container's application behavior at runtime. Instead, they serve as annotations that tools, registries, and operators can query to understand what an image contains, who built it, and how it should be used.
 
 The basic syntax is straightforward:
 
@@ -43,7 +43,7 @@ LABEL description="A Node.js API server for order processing"
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 
 EXPOSE 3000
@@ -61,7 +61,7 @@ The output will display all labels associated with the image as a JSON object, l
 
 ## Combining Multiple Labels
 
-Each LABEL instruction creates a new layer in the image. To minimize layers and keep images lean, combine multiple labels into a single instruction:
+If you have several related labels, you can combine them into a single instruction to keep the Containerfile compact and the metadata grouped together:
 
 ```dockerfile
 FROM python:3.12-slim
@@ -80,11 +80,11 @@ COPY . .
 CMD ["python", "main.py"]
 ```
 
-This approach produces a single layer for all your labels, keeping the image size as small as possible.
+This approach keeps related metadata in one place and makes the Containerfile easier to scan.
 
-## OCI Standard Labels
+## OCI Standard Metadata Keys
 
-The Open Container Initiative (OCI) defines a set of pre-defined label keys under the `org.opencontainers.image` namespace. Using these standardized keys ensures compatibility with container registries, CI/CD tools, and orchestration platforms:
+The Open Container Initiative (OCI) defines a set of standardized metadata keys under the `org.opencontainers.image` namespace. Using these keys ensures compatibility with container registries, CI/CD tools, and orchestration platforms:
 
 ```dockerfile
 FROM golang:1.22-alpine AS builder
@@ -113,7 +113,7 @@ COPY --from=builder /server /server
 ENTRYPOINT ["/server"]
 ```
 
-Some of the most commonly used OCI labels include `title`, `description`, `version`, `authors`, `source`, `licenses`, `created`, and `revision`. Adopting these keys makes your images interoperable with a wide ecosystem of tools.
+Some of the most commonly used OCI keys include `title`, `description`, `version`, `authors`, `source`, `licenses`, `created`, and `revision`. Adopting these keys makes your images interoperable with a wide ecosystem of tools.
 
 ## Dynamic Labels with Build Arguments
 
@@ -133,7 +133,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
 
 WORKDIR /app
 COPY . .
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 CMD ["node", "index.js"]
 ```
@@ -180,13 +180,12 @@ podman ps --filter label=environment=staging
 
 ## Labels for Container Orchestration
 
-When using Podman with systemd or Kubernetes, labels play an important role. For example, you can generate systemd unit files from labeled containers:
+When using Podman with systemd or Kubernetes, labels can also drive automation. For example, Podman's auto-update feature can use the `io.containers.autoupdate` label when the resulting container is managed by systemd:
 
 ```dockerfile
 FROM nginx:alpine
 
 LABEL io.containers.autoupdate="registry" \
-      io.podman.compose.project="web-stack" \
       environment="production" \
       tier="frontend"
 
@@ -194,12 +193,12 @@ COPY nginx.conf /etc/nginx/nginx.conf
 COPY html/ /usr/share/nginx/html/
 ```
 
-The `io.containers.autoupdate` label tells Podman's auto-update feature to check the registry for newer versions of this image. This is a Podman-specific label that integrates with `podman auto-update`.
+The `io.containers.autoupdate` label tells Podman's auto-update feature to check the registry for newer versions of a container created from this image when it is managed by systemd. This is a Podman-specific label that integrates with `podman auto-update`.
 
 ## Best Practices
 
-When working with labels, keep these guidelines in mind. First, always use namespaced keys for custom labels to avoid collisions. A reverse domain notation like `com.yourcompany.yourapp.key` works well. Second, prefer OCI standard labels over custom ones when a standard key exists for your use case. Third, combine labels into a single LABEL instruction to reduce image layers. Fourth, use build arguments for values that change between builds, such as timestamps and commit hashes. Fifth, document your labeling conventions so your team applies them consistently. Sixth, avoid storing sensitive information in labels since they are visible to anyone who can inspect the image.
+When working with labels, keep these guidelines in mind. First, always use namespaced keys for custom labels to avoid collisions. A reverse domain notation like `com.yourcompany.yourapp.key` works well. Second, prefer OCI standard metadata keys over custom ones when a standard key exists for your use case. Third, combine related labels into a single LABEL instruction to keep the Containerfile concise. Fourth, use build arguments for values that change between builds, such as timestamps and commit hashes. Fifth, document your labeling conventions so your team applies them consistently. Sixth, avoid storing sensitive information in labels since they are visible to anyone who can inspect the image.
 
 ## Conclusion
 
-The LABEL instruction is a simple but powerful tool for making your container images self-documenting. By adopting OCI standard labels, injecting dynamic metadata through build arguments, and leveraging Podman's filtering capabilities, you can build a container image management workflow that scales with your organization. Start by adding a few essential labels to your Containerfiles, then expand your labeling strategy as your needs grow.
+The LABEL instruction is a simple but powerful tool for making your container images self-documenting. By adopting OCI standard metadata keys, injecting dynamic metadata through build arguments, and leveraging Podman's filtering capabilities, you can build a container image management workflow that scales with your organization. Start by adding a few essential labels to your Containerfiles, then expand your labeling strategy as your needs grow.
