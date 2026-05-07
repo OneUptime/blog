@@ -13,7 +13,7 @@ DigitalOcean is known for its simplicity and developer-friendly approach to clou
 - A DigitalOcean account with API access
 - The `doctl` CLI tool installed and authenticated
 - An SSH key added to your DigitalOcean account
-- A domain name (optional but recommended)
+- A DNS name for Rancher, such as a subdomain you control or an `<droplet-ip>.sslip.io` hostname
 
 ## Step 1: Create a Droplet
 
@@ -37,7 +37,7 @@ doctl compute droplet get rancher-server --format PublicIPv4 --no-header
 
 ## Step 2: Configure the Firewall
 
-Create a firewall to control traffic to your Droplet:
+Create a firewall to control traffic to your Droplet. This example also exposes port `6443` if you plan to access the K3s API from another machine:
 
 ```bash
 DROPLET_ID=$(doctl compute droplet get rancher-server --format ID --no-header)
@@ -57,8 +57,10 @@ ssh root@<droplet-ip>
 
 ## Step 4: Install K3s
 
+Install a Rancher-supported K3s version. Replace `<RANCHER_SUPPORTED_K3S_VERSION>` with a K3s release from the Rancher Support Matrix:
+
 ```bash
-curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=<RANCHER_SUPPORTED_K3S_VERSION> sh -s - server --cluster-init --write-kubeconfig-mode=644
 ```
 
 Confirm K3s is running:
@@ -114,7 +116,7 @@ helm install rancher rancher-stable/rancher \
 
 ## Step 8: Set Up DNS
 
-Add a DNS A record for your domain pointing to the Droplet IP. If you manage DNS through DigitalOcean:
+Add a DNS A record for your domain pointing to the Droplet IP. If you use a real domain and manage DNS through DigitalOcean:
 
 ```bash
 doctl compute domain records create example.com \
@@ -132,23 +134,23 @@ Wait for the deployment to finish:
 kubectl -n cattle-system rollout status deploy/rancher
 ```
 
-Open `https://rancher.example.com` in your browser. Accept the certificate warning if using self-signed certificates, log in with the bootstrap password, and set your admin password.
+Open `https://rancher.example.com` or the hostname you configured in your browser. Accept the certificate warning if using self-signed certificates, log in with the bootstrap password, and set your admin password.
 
-## Step 10: Enable the DigitalOcean Node Driver
+## Step 10: Create a DigitalOcean Cluster from Rancher
 
-Rancher has a built-in DigitalOcean node driver. To use it for provisioning clusters:
+Rancher includes a built-in DigitalOcean provisioning driver. To use it for cluster provisioning:
 
 1. Navigate to Cluster Management in the Rancher UI
-2. Click Create and select DigitalOcean
-3. Enter your DigitalOcean API token
-4. Configure the Droplet size, region, and OS image for worker nodes
-5. Define your node pools and create the cluster
+2. Click Cloud Credentials, click Create, and select DigitalOcean
+3. Enter your DigitalOcean API token and save the cloud credential
+4. Return to Clusters, click Create, switch to RKE2/K3s, and select DigitalOcean
+5. Select the cloud credential, define your machine pools and roles, and create the cluster
 
-Rancher will automatically provision Droplets and configure them as Kubernetes nodes.
+Rancher will provision the Droplets and install Kubernetes on them automatically.
 
 ## Using a Reserved IP
 
-For production use, assign a Reserved IP to ensure your Rancher server address stays the same even if you recreate the Droplet:
+If you want a stable public IP for your Rancher server, assign a Reserved IP:
 
 ```bash
 doctl compute reserved-ip create --region nyc3
@@ -169,4 +171,4 @@ doctl compute firewall delete <firewall-id> --force
 
 ## Summary
 
-Rancher is now running on your DigitalOcean Droplet. You have a fully functional Kubernetes management platform that can provision and manage clusters across DigitalOcean and other providers. The DigitalOcean node driver makes it particularly easy to create new clusters with Droplets as worker nodes directly from the Rancher interface.
+Rancher is now running on your DigitalOcean Droplet in a single-node setup that is well suited for evaluation and testing. You have a functional Kubernetes management platform that can provision and manage clusters across DigitalOcean and other providers. Rancher's DigitalOcean provisioning driver makes it easy to create new clusters with Droplets directly from the Rancher interface.
