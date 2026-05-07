@@ -8,7 +8,7 @@ Description: Learn how to run Gitea in a Podman container for a lightweight, sel
 
 ---
 
-> Gitea in Podman provides a lightweight, self-hosted Git service with a web interface in a rootless container with minimal resource usage.
+> Gitea in Podman provides a lightweight, self-hosted Git service with a web interface and minimal resource usage.
 
 Gitea is a painless, self-hosted Git service written in Go. It is lightweight, fast, and provides a feature-rich web interface similar to GitHub. Running Gitea in a Podman container gives you a portable Git hosting platform that is easy to deploy, back up, and manage. This guide covers setup, persistent storage, SSH access, database backends, and administrative tasks.
 
@@ -43,7 +43,7 @@ podman run -d \
   -e GITEA__database__DB_TYPE=sqlite3 \
   -e GITEA__server__ROOT_URL=http://localhost:3000/ \
   -v gitea-data:/data:Z \
-  gitea/gitea:latest
+  docker.io/gitea/gitea:latest
 
 # Check the container is running
 podman ps
@@ -100,7 +100,7 @@ podman run -d \
   -e GITEA__server__SSH_DOMAIN=localhost \
   -e GITEA__server__SSH_PORT=2223 \
   -v gitea-app-data:/data:Z \
-  gitea/gitea:latest
+  docker.io/gitea/gitea:latest
 
 # Wait for Gitea to start
 sleep 10
@@ -129,7 +129,7 @@ podman run -d \
   -e GITEA__ui__DEFAULT_THEME=gitea-dark \
   -e GITEA__log__LEVEL=Info \
   -v gitea-data:/data:Z \
-  gitea/gitea:latest
+  docker.io/gitea/gitea:latest
 ```
 
 ## Creating Repositories via the API
@@ -195,20 +195,20 @@ Use the Gitea CLI for administrative tasks.
 
 ```bash
 # Create an admin user from the command line
-podman exec -it my-gitea gitea admin user create \
+podman exec -u git -it my-gitea gitea --config /data/gitea/conf/app.ini admin user create \
   --username admin \
   --password admin-password \
   --email admin@example.com \
   --admin
 
 # List all users
-podman exec -it my-gitea gitea admin user list
+podman exec -u git -it my-gitea gitea --config /data/gitea/conf/app.ini admin user list
 
 # Regenerate Git hooks for all repositories
-podman exec -it my-gitea gitea admin repo-sync-releases
+podman exec -u git -it my-gitea gitea --config /data/gitea/conf/app.ini admin regenerate hooks
 
 # Check Gitea doctor for issues
-podman exec -it my-gitea gitea doctor check
+podman exec -u git -it my-gitea gitea --config /data/gitea/conf/app.ini doctor check
 ```
 
 ## Managing the Containers
@@ -235,4 +235,4 @@ podman volume rm gitea-data gitea-pg-data gitea-app-data
 
 ## Summary
 
-Running Gitea in a Podman container provides a lightweight, self-hosted Git platform with a web interface, issue tracking, pull requests, and SSH access. The built-in SQLite database is suitable for small teams, while PostgreSQL supports larger deployments. Environment variables give you full control over Gitea's configuration, and the REST API enables automated repository and user management. Named volumes preserve your repositories and settings across container restarts. Podman's rootless execution keeps your Git hosting secure and isolated.
+Running Gitea in a Podman container provides a lightweight, self-hosted Git platform with a web interface, issue tracking, pull requests, and SSH access. The built-in SQLite database is suitable for small teams, while PostgreSQL supports larger deployments. Environment variables give you full control over Gitea's configuration, and the REST API enables automated repository and user management. Named volumes preserve your repositories and settings across container restarts. Running Podman rootless, when supported by your host configuration, helps keep your Git hosting isolated.
