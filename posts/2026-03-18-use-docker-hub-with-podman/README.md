@@ -21,10 +21,10 @@ Docker Hub should already be in your default search registries.
 ```bash
 # Check if docker.io is in the search list
 
-podman info --format '{{.Registries.Search}}'
+podman info --format '{{index .Registries "search"}}'
 
-# If not, add it to registries.conf
-sudo tee -a /etc/containers/registries.conf <<'EOF'
+# If not, add or update the search list in registries.conf
+sudo tee /etc/containers/registries.conf.d/010-dockerhub.conf <<'EOF'
 unqualified-search-registries = ["docker.io"]
 EOF
 ```
@@ -75,12 +75,11 @@ Docker Hub enforces pull rate limits for anonymous and free users.
 ```bash
 # Check your current rate limit status
 # First, get an auth token
-TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/alpine:pull" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
 
 # Check rate limit headers
-curl -s -H "Authorization: Bearer $TOKEN" \
-  -D - -o /dev/null \
-  https://registry-1.docker.io/v2/library/alpine/manifests/latest 2>&1 | \
+curl -sI -H "Authorization: Bearer $TOKEN" \
+  https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest 2>&1 | \
   grep -i "ratelimit"
 ```
 
@@ -100,8 +99,10 @@ podman tag myapp:latest docker.io/myusername/myapp:v1.0
 podman push docker.io/myusername/myapp:latest
 podman push docker.io/myusername/myapp:v1.0
 
-# Push all tags for an image
-podman push --all-tags docker.io/myusername/myapp
+# Push each tag you want to publish
+for tag in latest v1.0; do
+  podman push "docker.io/myusername/myapp:${tag}"
+done
 ```
 
 ## Searching Docker Hub
