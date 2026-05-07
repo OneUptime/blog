@@ -8,9 +8,9 @@ Description: Learn how to configure auto-healing infrastructure using OpenTofu t
 
 ## Overview
 
-Auto-healing infrastructure automatically detects unhealthy components and replaces them. OpenTofu configures auto-healing at multiple levels: EC2 instance replacement via ASG, Kubernetes pod restarts, and managed database failover.
+Auto-healing infrastructure automatically detects unhealthy components and replaces them. OpenTofu configures the AWS and Kubernetes resources that provide auto-healing at multiple levels: EC2 instance replacement via Auto Scaling groups, native EC2 recovery for supported standalone instances, Kubernetes pod restarts, and managed database failover.
 
-## Step 1: Auto Scaling Group with Instance Recovery
+## Step 1: Auto Scaling Group with Instance Replacement
 
 ```hcl
 # main.tf - ASG with comprehensive auto-healing
@@ -28,19 +28,19 @@ resource "aws_autoscaling_group" "self_healing" {
   health_check_type         = "ELB"
   health_check_grace_period = 300
 
-  # Enable instance refresh circuit breaker
+  # Enable instance refresh rollback if the new instances fail health checks
   instance_refresh {
     strategy = "Rolling"
     preferences {
       min_healthy_percentage = 90
-      auto_rollback          = true  # Rollback if health check fails
+      auto_rollback          = true
     }
     triggers = ["tag"]
   }
 
   launch_template {
     id      = aws_launch_template.app.id
-    version = "$Latest"
+    version = aws_launch_template.app.latest_version
   }
 
   tag {
@@ -50,7 +50,7 @@ resource "aws_autoscaling_group" "self_healing" {
   }
 }
 
-# CloudWatch alarm to trigger additional healing actions
+# CloudWatch alarm to alert on unhealthy load balancer targets
 resource "aws_cloudwatch_metric_alarm" "unhealthy_hosts" {
   alarm_name          = "asg-unhealthy-hosts"
   comparison_operator = "GreaterThanThreshold"
@@ -70,10 +70,12 @@ resource "aws_cloudwatch_metric_alarm" "unhealthy_hosts" {
 }
 ```
 
-## Step 2: EC2 Instance Recovery
+## Step 2: EC2 Instance Recovery for Standalone Instances
 
 ```hcl
-# CloudWatch alarm triggers EC2 auto-recovery for system failures
+# CloudWatch alarm triggers EC2 auto-recovery for supported standalone instances
+data "aws_region" "current" {}
+
 resource "aws_cloudwatch_metric_alarm" "instance_recovery" {
   alarm_name          = "ec2-instance-recovery"
   comparison_operator = "GreaterThanOrEqualToThreshold"
@@ -88,14 +90,12 @@ resource "aws_cloudwatch_metric_alarm" "instance_recovery" {
     InstanceId = aws_instance.app.id
   }
 
-  # EC2 native recovery action - migrates to healthy hardware
-  alarm_actions = ["arn:aws:automate:us-east-1:ec2:recover"]
-
-  # Also send notification
   alarm_actions = [
-    "arn:aws:automate:us-east-1:ec2:recover",
+    "arn:aws:automate:${data.aws_region.current.name}:ec2:recover",
     aws_sns_topic.alerts.arn
   ]
+
+  treat_missing_data = "missing"
 }
 ```
 
@@ -107,10 +107,19 @@ resource "kubernetes_deployment" "self_healing" {
   metadata {
     name      = "self-healing-app"
     namespace = "production"
+    labels = {
+      app = "self-healing-app"
+    }
   }
 
   spec {
     replicas = 3
+
+    selector {
+      match_labels = {
+        app = "self-healing-app"
+      }
+    }
 
     strategy {
       type = "RollingUpdate"
@@ -121,6 +130,12 @@ resource "kubernetes_deployment" "self_healing" {
     }
 
     template {
+      metadata {
+        labels = {
+          app = "self-healing-app"
+        }
+      }
+
       spec {
         # Restart policy (default is Always for Deployments)
         restart_policy = "Always"
@@ -164,7 +179,7 @@ resource "kubernetes_deployment" "self_healing" {
   }
 }
 
-# Horizontal Pod Autoscaler ensures desired replicas maintained
+# Horizontal Pod Autoscaler keeps a minimum replica floor and scales on CPU utilization
 resource "kubernetes_horizontal_pod_autoscaler_v2" "self_healing" {
   metadata {
     name      = "self-healing-app-hpa"
@@ -200,12 +215,15 @@ resource "kubernetes_horizontal_pod_autoscaler_v2" "self_healing" {
 ```hcl
 # RDS Multi-AZ for automatic database failover
 resource "aws_db_instance" "auto_healing" {
-  identifier     = "app-db-auto-healing"
-  engine         = "postgres"
-  instance_class = "db.r6g.large"
-  multi_az       = true
+  identifier                  = "app-db-auto-healing"
+  allocated_storage           = 100
+  engine                      = "postgres"
+  instance_class              = "db.r6g.large"
+  multi_az                    = true
+  username                    = "appadmin"
+  manage_master_user_password = true
 
-  # Enable enhanced monitoring for faster failure detection
+  # Enhanced Monitoring provides OS-level metrics for troubleshooting
   monitoring_interval = 15
   monitoring_role_arn = aws_iam_role.rds_monitoring.arn
 
@@ -213,7 +231,7 @@ resource "aws_db_instance" "auto_healing" {
   performance_insights_enabled = true
 }
 
-# CloudWatch alarm for RDS failover events
+# EventBridge rule for RDS failover completion events
 resource "aws_cloudwatch_event_rule" "rds_failover" {
   name        = "rds-failover-event"
   description = "Capture RDS failover events"
@@ -221,12 +239,19 @@ resource "aws_cloudwatch_event_rule" "rds_failover" {
     source      = ["aws.rds"]
     detail-type = ["RDS DB Instance Event"]
     detail = {
+      SourceArn = [aws_db_instance.auto_healing.arn]
       EventID = ["RDS-EVENT-0049"]  # Multi-AZ failover complete
     }
   })
+}
+
+resource "aws_cloudwatch_event_target" "rds_failover_alerts" {
+  rule      = aws_cloudwatch_event_rule.rds_failover.name
+  target_id = "SendFailoverAlert"
+  arn       = aws_sns_topic.alerts.arn
 }
 ```
 
 ## Summary
 
-Auto-healing infrastructure configured with OpenTofu operates across multiple layers: ASG replaces terminated EC2 instances within minutes, CloudWatch EC2 recovery migrates failed instances to healthy hardware without data loss, and Kubernetes liveness probes restart containers that become deadlocked. RDS Multi-AZ provides 60-120 second automatic database failover. Together, these mechanisms ensure most failure scenarios are resolved automatically without paging on-call engineers.
+Auto-healing infrastructure configured with OpenTofu operates across multiple layers: Auto Scaling groups replace unhealthy EC2 instances automatically, CloudWatch EC2 recovery can recover supported standalone instances onto healthy hardware, and Kubernetes liveness probes restart containers that become deadlocked. RDS Multi-AZ typically provides 60-120 second automatic database failover. Together, these mechanisms reduce manual intervention for common failure scenarios while still benefiting from monitoring and alerting.
