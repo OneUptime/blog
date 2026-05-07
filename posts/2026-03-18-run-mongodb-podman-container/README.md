@@ -98,8 +98,6 @@ cat > ~/mongo-config/mongod.conf <<'EOF'
 # MongoDB custom configuration
 storage:
   dbPath: /data/db
-  journal:
-    enabled: true
   wiredTiger:
     engineConfig:
       cacheSizeGB: 0.5
@@ -123,7 +121,7 @@ podman run -d \
   -e MONGO_INITDB_ROOT_USERNAME=admin \
   -e MONGO_INITDB_ROOT_PASSWORD=admin-secret \
   -v ~/mongo-config/mongod.conf:/etc/mongod.conf:Z \
-  -v mongo-data:/data/db:Z \
+  -v mongo-custom-data:/data/db:Z \
   mongo:7 --config /etc/mongod.conf
 ```
 
@@ -198,8 +196,8 @@ podman stop my-mongo
 podman start my-mongo
 
 # Remove containers and volumes
-podman rm -f my-mongo mongo-auth mongo-persistent
-podman volume rm mongo-data
+podman rm -f my-mongo mongo-auth mongo-persistent mongo-custom mongo-init
+podman volume rm mongo-data mongo-custom-data
 ```
 
 ## Summary
