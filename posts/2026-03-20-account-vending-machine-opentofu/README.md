@@ -6,7 +6,7 @@ Tags: OpenTofu, Account Vending Machine, AWS Organizations, Automation, Infrastr
 
 Description: Learn how to build an Account Vending Machine with OpenTofu to automate the provisioning of new AWS accounts with standardized baselines.
 
-An Account Vending Machine (AVM) automates the creation and bootstrapping of new AWS accounts. It creates the account, places it in the right OU, applies baseline security controls, and provisions shared infrastructure - all triggered by a single configuration change.
+An Account Vending Machine (AVM) automates the creation and bootstrapping of new AWS accounts. In practice, because AWS account creation is asynchronous and OpenTofu provider configurations must use values known before apply, account creation and post-creation bootstrapping usually run as separate stages: the first stage creates the account and places it in the right OU, and a follow-up stage assumes a role in that account to apply baseline security controls and shared infrastructure.
 
 ## Architecture
 
@@ -16,22 +16,21 @@ flowchart TD
     B --> C[Create AWS Account]
     C --> D[Place in correct OU]
     D --> E[Apply SCPs]
-    E --> F[Bootstrap baseline resources]
-    F --> G[Notify team via Slack]
+    E --> F[Output new account ID]
+    F --> G[Bootstrap baseline resources in a follow-up stage]
+    G --> H[Notify team via Slack]
 ```
 
 ## Account Request File
 
-```hcl
-# accounts/new-team-sandbox.hcl
-
-locals {
-  account_name  = "mycompany-new-team-sandbox"
-  email         = "aws+new-team@mycompany.com"
-  ou            = "Sandbox"
-  cost_center   = "engineering-new-team"
-  owner_email   = "alice@mycompany.com"
-  vpc_cidr      = "10.50.0.0/16"
+```json
+{
+  "account_name": "mycompany-new-team-sandbox",
+  "email": "aws+new-team@mycompany.com",
+  "parent_ou_id": "ou-xxxx-yyyyyyyy",
+  "cost_center": "engineering-new-team",
+  "owner_email": "alice@mycompany.com",
+  "vpc_cidr": "10.50.0.0/16"
 }
 ```
 
@@ -56,60 +55,36 @@ resource "aws_organizations_account" "new" {
   close_on_deletion = false
 }
 
-# Step 2: Wait for the account to be fully active
-resource "time_sleep" "wait_for_account" {
-  depends_on      = [aws_organizations_account.new]
-  create_duration = "60s"
-}
-
-# Step 3: Assume role in the new account
-provider "aws" {
-  alias  = "new_account"
-  region = var.region
-
-  assume_role {
-    role_arn = "arn:aws:iam::${aws_organizations_account.new.id}:role/OrganizationAccountAccessRole"
-  }
-}
-
-# Step 4: Create baseline VPC
-resource "aws_vpc" "baseline" {
-  provider             = aws.new_account
-  cidr_block           = var.vpc_cidr
-  enable_dns_hostnames = true
-  depends_on           = [time_sleep.wait_for_account]
-  tags                 = { Name = "baseline-vpc" }
-}
-
-# Step 5: Enable AWS Config
-resource "aws_config_configuration_recorder" "baseline" {
-  provider  = aws.new_account
-  name      = "default"
-  role_arn  = aws_iam_role.config.arn
-  depends_on = [time_sleep.wait_for_account]
-}
-
-# Step 6: Enable Security Hub
-resource "aws_securityhub_account" "baseline" {
-  provider   = aws.new_account
-  depends_on = [time_sleep.wait_for_account]
+# Step 2: Export the new account ID for a follow-up bootstrap stage
+output "account_id" {
+  value = aws_organizations_account.new.id
 }
 ```
 
 ## Root Configuration
 
 ```hcl
-# main.tf - Vend a new account by adding a module call
-module "new_team_sandbox" {
-  source = "./modules/account-vending"
+# main.tf - Vend accounts from request files
+provider "aws" {
+  region = "us-east-1"
+}
 
-  account_name  = "mycompany-new-team-sandbox"
-  email         = "aws+new-team@mycompany.com"
-  parent_ou_id  = aws_organizations_organizational_unit.sandbox.id
-  cost_center   = "engineering-new-team"
-  owner_email   = "alice@mycompany.com"
-  vpc_cidr      = "10.50.0.0/16"
-  region        = "us-east-1"
+locals {
+  account_requests = {
+    for filename in fileset(path.module, "accounts/*.json") :
+    trimsuffix(trimprefix(filename, "accounts/"), ".json") => jsondecode(file("${path.module}/${filename}"))
+  }
+}
+
+module "account_vending" {
+  for_each = local.account_requests
+  source   = "./modules/account-vending"
+
+  account_name = each.value.account_name
+  email        = each.value.email
+  parent_ou_id = each.value.parent_ou_id
+  cost_center  = each.value.cost_center
+  owner_email  = each.value.owner_email
 }
 ```
 
@@ -120,7 +95,7 @@ module "new_team_sandbox" {
 on:
   push:
     paths:
-      - 'accounts/*.hcl'
+      - 'accounts/*.json'
     branches: [main]
 
 jobs:
@@ -128,12 +103,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
       - name: Apply Account Vending
         run: |
-          tofu init
-          tofu apply -auto-approve
+          tofu init -input=false
+          tofu apply -input=false -auto-approve
 ```
 
 ## Conclusion
 
-An Account Vending Machine with OpenTofu codifies the account creation process into a repeatable, reviewable pipeline. Adding an account is as simple as adding a module call (or a configuration file), creating a PR, getting it reviewed, and merging. The pipeline handles account creation, OU placement, and baseline resource provisioning automatically.
+An Account Vending Machine with OpenTofu codifies the account creation process into a repeatable, reviewable pipeline. Adding an account is as simple as adding a configuration file, creating a PR, getting it reviewed, and merging. The first pipeline handles account creation and OU placement, and the resulting account ID can then drive a follow-up bootstrap stage for baseline resource provisioning.
