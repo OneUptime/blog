@@ -54,13 +54,11 @@ For this example, we will run two simple web applications as backend services. Y
 podman run -d \
   --name app1 \
   --network proxy-net \
-  -e "APP_NAME=Application One" \
   docker.io/library/nginx:alpine
 
 podman run -d \
   --name app2 \
   --network proxy-net \
-  -e "APP_NAME=Application Two" \
   docker.io/library/httpd:alpine
 ```
 
@@ -124,12 +122,12 @@ Now launch the Nginx container with the custom configuration mounted and the app
 podman run -d \
   --name nginx-proxy \
   --network proxy-net \
-  -p 80:80 \
+  -p 8080:80 \
   -v ~/nginx-proxy/conf.d:/etc/nginx/conf.d:ro,Z \
   docker.io/library/nginx:alpine
 ```
 
-The `-v` flag mounts your configuration directory into the container. The `:ro` option makes it read-only inside the container, and `:Z` handles SELinux relabeling if your system uses it.
+The `-v` flag mounts your configuration directory into the container. The `:ro` option makes it read-only inside the container, and `:Z` handles SELinux relabeling if your system uses it. This example publishes host port `8080` so it works with rootless Podman; if you are running rootful Podman or have configured low-port binding, you can use `80:80` instead.
 
 ## Testing the Reverse Proxy
 
@@ -142,8 +140,8 @@ sudo sh -c 'echo "127.0.0.1 app1.example.com app2.example.com" >> /etc/hosts'
 Now send requests to each virtual host:
 
 ```bash
-curl -H "Host: app1.example.com" http://localhost
-curl -H "Host: app2.example.com" http://localhost
+curl -H "Host: app1.example.com" http://localhost:8080
+curl -H "Host: app2.example.com" http://localhost:8080
 ```
 
 Each request should return the response from the corresponding backend container.
@@ -203,7 +201,7 @@ server {
 Monitor the proxy with:
 
 ```bash
-curl http://localhost/health
+curl http://localhost:8080/health
 ```
 
 ## Reloading Configuration Without Downtime
@@ -230,7 +228,7 @@ cat > ~/.config/containers/systemd/nginx-proxy.container << 'EOF'
 ContainerName=nginx-proxy
 Image=docker.io/library/nginx:alpine
 Network=proxy-net
-PublishPort=80:80
+PublishPort=8080:80
 Volume=%h/nginx-proxy/conf.d:/etc/nginx/conf.d:ro,Z
 
 [Service]
@@ -241,7 +239,7 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable nginx-proxy.service
+systemctl --user enable --now nginx-proxy.service
 loginctl enable-linger $USER
 ```
 
