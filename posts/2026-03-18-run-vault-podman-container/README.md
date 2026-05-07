@@ -38,8 +38,9 @@ podman run -d \
   -p 8200:8200 \
   -e VAULT_DEV_ROOT_TOKEN_ID=my-root-token \
   -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
+  -e VAULT_ADDR=http://127.0.0.1:8200 \
   --cap-add IPC_LOCK \
-  hashicorp/vault:latest
+  docker.io/hashicorp/vault:latest
 
 # Check the container is running
 podman ps
@@ -84,15 +85,15 @@ Run Vault commands directly inside the container.
 ```bash
 # Store a secret using the CLI
 podman exec -e VAULT_TOKEN=my-root-token vault-dev \
-  vault kv put secret/myapp/api key=abc123 endpoint=https://api.example.com
+  vault kv put -mount=secret myapp/api key=abc123 endpoint=https://api.example.com
 
 # Read the secret
 podman exec -e VAULT_TOKEN=my-root-token vault-dev \
-  vault kv get secret/myapp/api
+  vault kv get -mount=secret myapp/api
 
 # List secrets
 podman exec -e VAULT_TOKEN=my-root-token vault-dev \
-  vault kv list secret/myapp
+  vault kv list -mount=secret myapp
 
 # Check Vault status
 podman exec vault-dev vault status
@@ -124,7 +125,7 @@ listener "tcp" {
 disable_mlock = true
 
 # API address
-api_addr = "http://0.0.0.0:8200"
+api_addr = "http://127.0.0.1:8201"
 
 # UI
 ui = true
@@ -137,12 +138,17 @@ podman run -d \
   --cap-add IPC_LOCK \
   -v ~/vault-config/vault.hcl:/vault/config/vault.hcl:Z \
   -v vault-data:/vault/data:Z \
-  hashicorp/vault:latest server
+  docker.io/hashicorp/vault:latest server
 
-# Initialize Vault (only needed once)
+# Initialize and unseal Vault (only needed once)
 sleep 3
-curl -s -X POST $VAULT_ADDR:8201/v1/sys/init \
-  -d '{"secret_shares": 1, "secret_threshold": 1}' | python3 -m json.tool
+export VAULT_ADDR='http://localhost:8201'
+curl -s -X POST $VAULT_ADDR/v1/sys/init \
+  -d '{"secret_shares": 1, "secret_threshold": 1}' | tee ~/vault-init.json | python3 -m json.tool
+
+VAULT_UNSEAL_KEY=$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path.home().joinpath("vault-init.json").read_text())["keys_base64"][0])')
+curl -s -X POST $VAULT_ADDR/v1/sys/unseal \
+  -d "{\"key\": \"$VAULT_UNSEAL_KEY\"}" | python3 -m json.tool
 ```
 
 ## Creating Vault Policies
@@ -155,12 +161,16 @@ podman exec -e VAULT_TOKEN=my-root-token vault-dev \
   vault policy write myapp-readonly - <<'EOF'
 # Allow reading secrets under myapp/
 path "secret/data/myapp/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
 }
 
-# Deny access to everything else
-path "secret/*" {
-  capabilities = ["deny"]
+# Allow listing secret names under myapp/
+path "secret/metadata/myapp" {
+  capabilities = ["list"]
+}
+
+path "secret/metadata/myapp/*" {
+  capabilities = ["list"]
 }
 EOF
 
@@ -192,7 +202,7 @@ podman exec -e VAULT_TOKEN=my-root-token vault-dev \
 
 # Encrypt data using the transit engine
 podman exec -e VAULT_TOKEN=my-root-token vault-dev \
-  vault write transit/encrypt/my-encryption-key plaintext=$(echo "secret data" | base64)
+  vault write transit/encrypt/my-encryption-key plaintext=$(printf "secret data" | base64)
 
 # List all secret engines
 podman exec -e VAULT_TOKEN=my-root-token vault-dev \
