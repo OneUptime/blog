@@ -24,9 +24,9 @@ ip route add blackhole 192.168.99.0/24
 # Confirm the blackhole route was installed
 ip route show type blackhole
 
-# Test - ping should fail silently (no response, no ICMP errors)
+# Test from the local host - ping should fail immediately; blackhole routes do not emit ICMP
 ping -c 3 192.168.99.1
-# Expected: 100% packet loss with no error messages
+# Expected: ping: connect: Invalid argument
 ```
 
 ## Blackhole a Single Host
@@ -41,8 +41,8 @@ ip route add blackhole 10.0.0.50/32
 | Type | Behavior | ICMP Response |
 |---|---|---|
 | `blackhole` | Drops silently | None |
-| `unreachable` | Drops + ICMP net unreachable | ICMP type 3 code 0 |
-| `prohibit` | Drops + ICMP prohibited | ICMP type 3 code 9/10 |
+| `unreachable` | Drops + ICMP host unreachable | Host Unreachable |
+| `prohibit` | Drops + ICMP communication administratively prohibited | Communication Administratively Prohibited |
 
 ```bash
 # Compare route types
@@ -54,7 +54,7 @@ ip route add prohibit 10.3.0.0/24        # ICMP prohibited
 ## Use Cases
 
 ```bash
-# Block a known malicious network
+# Block traffic to a known malicious destination network
 ip route add blackhole 185.234.0.0/16
 
 # Block multiple prefixes (loop example)
@@ -88,4 +88,4 @@ Type=blackhole
 
 ## Conclusion
 
-Blackhole routes provide silent traffic dropping without ICMP feedback, making them ideal for null-routing attack sources or blocking unwanted prefixes. Use `ip route add blackhole <prefix>` for immediate effect. For persistence, add the command to system startup scripts or use systemd-networkd route configuration.
+Blackhole routes provide silent traffic dropping without ICMP feedback, making them ideal for null-routing traffic to specific prefixes or blocking unwanted destinations. Use `ip route add blackhole <prefix>` for immediate effect. For persistence, add the command to system startup scripts or use systemd-networkd route configuration.
