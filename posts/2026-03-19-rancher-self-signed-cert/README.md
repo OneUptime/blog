@@ -13,10 +13,9 @@ Rancher is one of the most popular open-source platforms for managing Kubernetes
 Before you begin, make sure you have the following in place:
 
 - A Linux server (Ubuntu 22.04 or later recommended) with at least 4 GB of RAM and 2 CPU cores
-- Docker installed on the server
 - Helm 3 installed on your local machine or the server
 - kubectl installed and configured
-- A domain name or IP address for accessing Rancher
+- A DNS hostname for accessing Rancher
 
 ## Step 1: Install K3s as the Underlying Kubernetes Cluster
 
@@ -81,7 +80,7 @@ IP.1 = 192.168.1.100
 EOF
 ```
 
-Replace `rancher.example.com` with your actual domain and `192.168.1.100` with your server IP address.
+Replace `rancher.example.com` with the DNS hostname you will use for Rancher and `192.168.1.100` with your server IP address if you want to include an IP SAN.
 
 Sign the server certificate with your CA:
 
@@ -91,25 +90,9 @@ openssl x509 -req -in tls.csr -CA ca.crt -CAkey ca.key \
   -extfile extfile.cnf
 ```
 
-## Step 3: Install cert-manager
+## Step 3: cert-manager Is Not Required for This Setup
 
-Rancher uses cert-manager for certificate management. Install it using Helm:
-
-```bash
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm install cert-manager jetstack/cert-manager \
-  --namespace cert-manager \
-  --create-namespace \
-  --set crds.enabled=true
-```
-
-Verify that cert-manager pods are running:
-
-```bash
-kubectl get pods -n cert-manager
-```
+When you install Rancher with your own certificate files by setting `ingress.tls.source=secret`, Rancher does not require cert-manager. cert-manager is only needed when Rancher is configured to generate its own certificates or request Let's Encrypt certificates.
 
 ## Step 4: Create the TLS Secret
 
@@ -146,7 +129,7 @@ helm install rancher rancher-stable/rancher \
   --set privateCA=true
 ```
 
-Replace `rancher.example.com` with your actual hostname.
+Replace `rancher.example.com` with your actual DNS hostname.
 
 ## Step 6: Verify the Installation
 
@@ -202,7 +185,7 @@ If you encounter issues, check the Rancher pod logs:
 kubectl -n cattle-system logs -l app=rancher --tail=100
 ```
 
-Common issues include incorrect hostnames in the certificate SAN fields and cert-manager not being ready before Rancher starts. Make sure your certificate CN or SAN entries match the hostname you configured in the Helm values.
+Common issues include incorrect hostnames in the certificate SAN fields and missing or incorrect private CA settings. Make sure your certificate CN or SAN entries match the hostname you configured in the Helm values, and if your certificate is signed by your own CA, confirm that the `tls-ca` secret exists and `privateCA=true` is set.
 
 ## Summary
 
