@@ -14,7 +14,7 @@ You need the following before you begin:
 
 - A running Rancher server (v2.6+)
 - An API token with cluster creation permissions
-- curl and jq installed on your machine
+- curl, jq, and kubectl installed on your machine
 
 Set up your environment variables:
 
@@ -22,6 +22,8 @@ Set up your environment variables:
 export RANCHER_URL="https://rancher.example.com"
 export RANCHER_TOKEN="token-xxxxx:yyyyyyyyyyyyyyyy"
 ```
+
+For each example below, replace the hardcoded `kubernetesVersion` with a version supported by your Rancher release.
 
 ## Creating a Custom Cluster (RKE2)
 
@@ -68,17 +70,30 @@ curl -s -k -X POST \
 After the cluster is created, generate the node registration command:
 
 ```bash
-CLUSTER_ID="my-rke2-cluster"
+CLUSTER_NAME="my-rke2-cluster"
+MGMT_CLUSTER_ID=""
+REGISTRATION_JSON=""
 
-# Get the cluster registration token
+while [ -z "${MGMT_CLUSTER_ID}" ]; do
+  MGMT_CLUSTER_ID=$(curl -s -k \
+    -H "Authorization: Bearer ${RANCHER_TOKEN}" \
+    "${RANCHER_URL}/v1/provisioning.cattle.io.clusters/fleet-default/${CLUSTER_NAME}" \
+    | jq -r '.status.clusterName // empty')
+  sleep 2
+done
 
-curl -s -k \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/clusterregistrationtokens?clusterId=${CLUSTER_ID}" | jq '.data[0] | {
-    nodeCommand: .nodeCommand,
-    insecureNodeCommand: .insecureCommand,
-    manifestUrl: .manifestUrl
-  }'
+while [ -z "${REGISTRATION_JSON}" ]; do
+  REGISTRATION_JSON=$(curl -s -k \
+    -H "Authorization: Bearer ${RANCHER_TOKEN}" \
+    "${RANCHER_URL}/v3/clusterregistrationtokens?clusterId=${MGMT_CLUSTER_ID}" | jq -c '[.data[] | select(.name=="default-token")][0] | select(.nodeCommand != null and .nodeCommand != "") | {
+      nodeCommand: .nodeCommand,
+      insecureNodeCommand: .insecureNodeCommand,
+      manifestUrl: .manifestUrl
+    }')
+  sleep 2
+done
+
+echo "${REGISTRATION_JSON}" | jq
 ```
 
 ### Step 3: Register Nodes
@@ -86,25 +101,18 @@ curl -s -k \
 Run the registration command on each node. For control plane nodes:
 
 ```bash
-# On the node, run the command from the previous step with roles
-curl -fL https://rancher.example.com/system-agent-install.sh | \
-  sudo sh -s - \
-  --server https://rancher.example.com \
-  --label 'cattle.io/os=linux' \
-  --token xxxxxxxxxx \
-  --etcd --controlplane
+NODE_COMMAND=$(echo "${REGISTRATION_JSON}" | jq -r '.nodeCommand')
+
+sh -c "${NODE_COMMAND} --etcd --controlplane"
 ```
 
 For worker nodes:
 
 ```bash
-curl -fL https://rancher.example.com/system-agent-install.sh | \
-  sudo sh -s - \
-  --server https://rancher.example.com \
-  --label 'cattle.io/os=linux' \
-  --token xxxxxxxxxx \
-  --worker
+sh -c "${NODE_COMMAND} --worker"
 ```
+
+If your Rancher server uses self-signed certificates and you have not configured `cacerts`, use `insecureNodeCommand` instead of `nodeCommand`.
 
 ## Creating a K3s Cluster
 
@@ -123,9 +131,6 @@ curl -s -k -X POST \
     "spec": {
       "kubernetesVersion": "v1.28.9+k3s1",
       "rkeConfig": {
-        "machineGlobalConfig": {
-          "cni": "flannel"
-        },
         "upgradeStrategy": {
           "controlPlaneConcurrency": "1",
           "workerConcurrency": "1"
@@ -160,12 +165,27 @@ curl -s -k -X POST \
 ### Step 2: Get the Import Command
 
 ```bash
-# Wait a few seconds for the registration token to be generated
-sleep 5
+CLUSTER_NAME="imported-cluster"
+MGMT_CLUSTER_ID=""
+IMPORT_MANIFEST_URL=""
 
-curl -s -k \
-  -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  "${RANCHER_URL}/v3/clusterregistrationtokens?clusterId=imported-cluster" | jq -r '.data[0].manifestUrl'
+while [ -z "${MGMT_CLUSTER_ID}" ]; do
+  MGMT_CLUSTER_ID=$(curl -s -k \
+    -H "Authorization: Bearer ${RANCHER_TOKEN}" \
+    "${RANCHER_URL}/v1/provisioning.cattle.io.clusters/fleet-default/${CLUSTER_NAME}" \
+    | jq -r '.status.clusterName // empty')
+  sleep 2
+done
+
+while [ -z "${IMPORT_MANIFEST_URL}" ]; do
+  IMPORT_MANIFEST_URL=$(curl -s -k \
+    -H "Authorization: Bearer ${RANCHER_TOKEN}" \
+    "${RANCHER_URL}/v3/clusterregistrationtokens?clusterId=${MGMT_CLUSTER_ID}" \
+    | jq -r '.data[] | select(.name=="default-token") | .manifestUrl // empty')
+  sleep 2
+done
+
+echo "${IMPORT_MANIFEST_URL}"
 ```
 
 ### Step 3: Apply the Manifest on the Target Cluster
@@ -173,18 +193,18 @@ curl -s -k \
 Run this on the cluster you want to import:
 
 ```bash
-kubectl apply -f https://rancher.example.com/v3/import/xxxxxxxxxx.yaml
+kubectl apply -f "${IMPORT_MANIFEST_URL}"
 ```
 
 For clusters with self-signed certificates:
 
 ```bash
-curl --insecure -sfL https://rancher.example.com/v3/import/xxxxxxxxxx.yaml | kubectl apply -f -
+curl --insecure -sfL "${IMPORT_MANIFEST_URL}" | kubectl apply -f -
 ```
 
 ## Creating Clusters with Node Pools (Cloud Providers)
 
-For cloud-hosted clusters, you first need to create cloud credentials and node templates, then reference them in the cluster creation.
+For cloud-hosted clusters, you first need to create cloud credentials and machine configuration objects, then reference them in the cluster creation.
 
 ### Step 1: Create Cloud Credentials
 
@@ -203,6 +223,8 @@ curl -s -k -X POST \
   }' \
   "${RANCHER_URL}/v3/cloudCredentials"
 ```
+
+Create the machine config objects for each pool separately in the same namespace as the cluster (typically `fleet-default`), then reference those object names in `machineConfigRef`.
 
 ### Step 2: Create the Cluster with Machine Pools
 
@@ -263,7 +285,7 @@ CLUSTER_NAME="my-rke2-cluster"
 while true; do
   state=$(curl -s -k \
     -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-    "${RANCHER_URL}/v1/provisioning.cattle.io.clusters/fleet-default/${CLUSTER_NAME}" | jq -r '.status.conditions[] | select(.type=="Ready") | .status')
+    "${RANCHER_URL}/v1/provisioning.cattle.io.clusters/fleet-default/${CLUSTER_NAME}" | jq -r '([.status.conditions[]? | select(.type=="Ready") | .status][0]) // "Unknown"')
 
   echo "Cluster state: ${state}"
 
@@ -281,9 +303,9 @@ done
 Add metadata to your cluster for organizational purposes:
 
 ```bash
-curl -s -k -X PUT \
+curl -s -k -X PATCH \
   -H "Authorization: Bearer ${RANCHER_TOKEN}" \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/merge-patch+json" \
   -d '{
     "metadata": {
       "labels": {
