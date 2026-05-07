@@ -23,9 +23,9 @@ Sigstore consists of several components: cosign for signing and verifying artifa
 ```bash
 # Install cosign on Linux
 
-curl -sSfL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
+sudo curl -sSfL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 \
   -o /usr/local/bin/cosign
-chmod +x /usr/local/bin/cosign
+sudo chmod +x /usr/local/bin/cosign
 
 # Or install on macOS
 # brew install cosign
@@ -53,6 +53,7 @@ ls -la cosign.key cosign.pub
 
 ```bash
 # Sign an image in a registry
+podman pull docker.io/library/alpine:latest
 podman tag docker.io/library/alpine:latest localhost:5000/alpine:cosigned
 
 # Push the image first
@@ -60,7 +61,7 @@ podman push --tls-verify=false localhost:5000/alpine:cosigned
 
 # Sign the image with cosign
 cosign sign --key cosign.key \
-  --allow-insecure-registry \
+  --allow-http-registry \
   localhost:5000/alpine:cosigned
 ```
 
@@ -69,14 +70,14 @@ cosign sign --key cosign.key \
 ```bash
 # Verify an image signature using the public key
 cosign verify --key cosign.pub \
-  --allow-insecure-registry \
+  --allow-http-registry \
   localhost:5000/alpine:cosigned
 ```
 
 ```bash
 # Verify and display the signature payload
 cosign verify --key cosign.pub \
-  --allow-insecure-registry \
+  --allow-http-registry \
   localhost:5000/alpine:cosigned | python3 -m json.tool
 ```
 
@@ -85,15 +86,19 @@ cosign verify --key cosign.pub \
 Keyless signing uses OIDC providers (GitHub, Google, Microsoft) for identity.
 
 ```bash
+# Tag and push the image first
+podman tag docker.io/library/alpine:latest localhost:5000/alpine:keyless
+podman push --tls-verify=false localhost:5000/alpine:keyless
+
 # Keyless signing (opens browser for OIDC authentication)
-cosign sign --allow-insecure-registry \
+cosign sign --allow-http-registry \
   localhost:5000/alpine:keyless
 
 # Keyless verification (checks the transparency log)
 cosign verify \
   --certificate-identity signer@example.com \
   --certificate-oidc-issuer https://accounts.google.com \
-  --allow-insecure-registry \
+  --allow-http-registry \
   localhost:5000/alpine:keyless
 ```
 
@@ -102,6 +107,13 @@ cosign verify \
 Podman supports Sigstore signature verification natively through its policy system.
 
 ```bash
+# Enable Sigstore attachments for the registry
+sudo tee /etc/containers/registries.d/registry-example.yaml > /dev/null << 'EOF'
+docker:
+  registry.example.com:
+    use-sigstore-attachments: true
+EOF
+
 # Configure policy for Sigstore verification with a key file
 sudo tee /etc/containers/policy.json > /dev/null << 'EOF'
 {
@@ -112,10 +124,14 @@ sudo tee /etc/containers/policy.json > /dev/null << 'EOF'
   ],
   "transports": {
     "docker": {
-      "registry.example.com": [
+      "registry.example.com/myapp": [
         {
           "type": "sigstoreSigned",
-          "keyPath": "/etc/pki/containers/cosign.pub"
+          "keyPath": "/etc/pki/containers/cosign.pub",
+          "signedIdentity": {
+            "type": "exactRepository",
+            "dockerRepository": "registry.example.com/myapp"
+          }
         }
       ]
     }
@@ -140,15 +156,19 @@ sudo tee /etc/containers/policy.json > /dev/null << 'EOF'
   ],
   "transports": {
     "docker": {
-      "ghcr.io/myorg": [
+      "registry.example.com/myapp": [
         {
           "type": "sigstoreSigned",
           "fulcio": {
             "caPath": "/etc/pki/containers/fulcio-root.pem",
-            "oidcIssuer": "https://token.actions.githubusercontent.com",
-            "subjectEmail": "build@github.com"
+            "oidcIssuer": "https://accounts.google.com",
+            "subjectEmail": "signer@example.com"
           },
-          "rekorPublicKeyPath": "/etc/pki/containers/rekor-public.pem"
+          "rekorPublicKeyPath": "/etc/pki/containers/rekor-public.pem",
+          "signedIdentity": {
+            "type": "exactRepository",
+            "dockerRepository": "registry.example.com/myapp"
+          }
         }
       ]
     }
@@ -160,9 +180,13 @@ EOF
 ## Adding Annotations to Signatures
 
 ```bash
+# Tag and push the image first
+podman tag docker.io/library/alpine:latest localhost:5000/alpine:annotated
+podman push --tls-verify=false localhost:5000/alpine:annotated
+
 # Sign with custom annotations for additional metadata
 cosign sign --key cosign.key \
-  --allow-insecure-registry \
+  --allow-http-registry \
   -a "build-id=12345" \
   -a "git-sha=abc123" \
   -a "environment=production" \
@@ -170,7 +194,7 @@ cosign sign --key cosign.key \
 
 # Verify and view annotations
 cosign verify --key cosign.pub \
-  --allow-insecure-registry \
+  --allow-http-registry \
   localhost:5000/alpine:annotated | python3 -m json.tool
 ```
 
@@ -187,8 +211,8 @@ TAG="${CI_COMMIT_SHA:-latest}"
 podman build -t "${IMAGE}:${TAG}" .
 podman push "${IMAGE}:${TAG}"
 
-# Sign with cosign (key stored as CI secret)
-cosign sign --key env://COSIGN_PRIVATE_KEY \
+# Sign with cosign (key stored as CI secret, password in COSIGN_PASSWORD)
+cosign sign --yes --key env://COSIGN_PRIVATE_KEY \
   -a "ci-pipeline=${CI_PIPELINE_ID:-local}" \
   -a "commit=${CI_COMMIT_SHA:-none}" \
   "${IMAGE}:${TAG}"
@@ -200,19 +224,17 @@ echo "Image signed: ${IMAGE}:${TAG}"
 
 ```bash
 # List all signatures attached to an image
-cosign tree localhost:5000/alpine:cosigned --allow-insecure-registry 2>/dev/null || \
-  echo "Use 'cosign tree' to view the signature tree"
+cosign tree localhost:5000/alpine:cosigned --allow-http-registry
 
-# View the signature manifest
-cosign triangulate localhost:5000/alpine:cosigned --allow-insecure-registry 2>/dev/null
+# Download the signature payloads
+cosign download signature localhost:5000/alpine:cosigned --allow-http-registry | python3 -m json.tool
 ```
 
 ## Checking the Transparency Log
 
 ```bash
-# Search the Rekor transparency log for your signatures
-rekor-cli search --email signer@example.com 2>/dev/null || \
-  echo "Install rekor-cli to search the transparency log"
+# Search the Rekor transparency log for your signatures (requires rekor-cli)
+rekor-cli search --email signer@example.com
 ```
 
 ## Cleanup
