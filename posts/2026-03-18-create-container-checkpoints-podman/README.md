@@ -29,7 +29,7 @@ Think of it as hibernation for containers. When you close a laptop lid, the OS s
 
 ## Prerequisites
 
-Container checkpointing requires CRIU, which must be installed on the host:
+Container checkpointing requires CRIU 3.11 or later, which must be installed on the host:
 
 ```bash
 # Fedora/RHEL/CentOS
@@ -43,12 +43,12 @@ sudo apt-get install criu
 criu --version
 ```
 
-CRIU requires root privileges, so checkpointing works with rootful Podman (run with `sudo`). Rootless checkpointing has limited support and depends on your kernel version and CRIU version.
+Podman checkpointing currently works with root containers only, so run the container and checkpoint commands with `sudo`.
 
-Check that your system supports checkpointing:
+Check that your Podman build includes CRIU support:
 
 ```bash
-sudo podman info | grep -i checkpoint
+sudo podman info | grep -i criu
 ```
 
 ## Creating a Basic Checkpoint
@@ -88,14 +88,16 @@ By default, checkpointing stops the container. To checkpoint without stopping:
 sudo podman container checkpoint counter --leave-running
 ```
 
-This creates a snapshot of the state while the container continues to run. Useful for creating periodic snapshots without service interruption.
+This creates a snapshot of the state while the container continues to run. Use this carefully: restoring a checkpoint taken with `--leave-running` can fail or restore stale state if the running container changes files or TCP connection state after the checkpoint is written.
 
 ### Export checkpoint to a tar archive
 
 To save the checkpoint as a portable file:
 
 ```bash
-sudo podman container checkpoint counter --export /tmp/counter-checkpoint.tar.gz
+sudo podman container checkpoint counter \
+    --compress=gzip \
+    --export /tmp/counter-checkpoint.tar.gz
 ```
 
 This creates a self-contained archive that includes the checkpoint data and the container filesystem. You can move this file to another machine and restore it there.
@@ -162,6 +164,7 @@ curl http://localhost:5000/
 
 # Checkpoint the container with TCP connections
 sudo podman container checkpoint flask-app \
+    --compress=gzip \
     --tcp-established \
     --export /tmp/flask-checkpoint.tar.gz
 
@@ -201,6 +204,7 @@ Before deploying an update, checkpoint the running container. If the update fail
 ```bash
 # Checkpoint before update
 sudo podman container checkpoint production-app \
+    --compress=gzip \
     --export /backups/pre-update-$(date +%Y%m%d-%H%M%S).tar.gz \
     --leave-running
 
@@ -228,6 +232,7 @@ CHECKPOINT_FILE="$BACKUP_DIR/$(date +%Y%m%d-%H%M%S).tar.gz"
 
 sudo podman container checkpoint "$CONTAINER" \
     --leave-running \
+    --compress=gzip \
     --export "$CHECKPOINT_FILE"
 
 echo "Checkpoint saved: $CHECKPOINT_FILE"
@@ -244,6 +249,7 @@ Capture the state of a misbehaving container for later analysis:
 # Capture state without stopping
 sudo podman container checkpoint buggy-app \
     --leave-running \
+    --compress=gzip \
     --export /tmp/debug-snapshot.tar.gz
 
 # Later, restore on a debug machine and attach
@@ -266,10 +272,11 @@ Run with `sudo`. Full checkpointing requires root privileges.
 
 ### "Error checkpointing container: failed to checkpoint"
 
-Check CRIU logs for details:
+Keep CRIU's temporary files and inspect the generated logs:
 
 ```bash
-sudo journalctl -u criu --no-pager | tail -20
+sudo podman container checkpoint buggy-app --keep
+sudo find /var/lib/containers/storage -name dump.log -o -name restore.log
 ```
 
 Common causes include unsupported kernel features, containers using device files, or containers with complex namespace configurations.
@@ -280,4 +287,4 @@ Add the `--tcp-established` flag when the container has active network connectio
 
 ## Conclusion
 
-Container checkpointing with Podman and CRIU captures the complete runtime state of a container, not just its filesystem. This enables instant rollbacks, zero-downtime migration, and precise debugging of production issues. While it requires rootful Podman and CRIU, the capability to freeze and resume containers exactly where they left off is powerful for any environment where continuity matters.
+Container checkpointing with Podman and CRIU captures the complete runtime state of a container, not just its filesystem. This enables fast rollbacks, container migration, and precise debugging of production issues. While it requires rootful Podman and CRIU, the capability to freeze and resume containers exactly where they left off is powerful for any environment where continuity matters.
