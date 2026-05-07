@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Portainer, Docker, Alpine Linux, Image Optimization, Security
 
-Description: Use Alpine Linux-based Docker images in Portainer to significantly reduce container sizes and improve security.
+Description: Use Alpine Linux-based Docker images in Portainer to reduce container sizes and help reduce attack surface.
 
 ## Introduction
 
-Use Alpine Linux-based Docker images in Portainer to significantly reduce container sizes and improve security. This comprehensive guide walks through deployment, configuration, and maintenance using Portainer's visual management interface.
+Use Alpine Linux-based Docker images in Portainer to reduce container sizes and help reduce attack surface. This comprehensive guide walks through deployment, configuration, and maintenance using Portainer's visual management interface.
 
 ## Prerequisites
 
 - Portainer installed (CE or BE)
-- Docker environment connected to Portainer
+- Docker Standalone environment connected to Portainer
 - Appropriate hardware resources
 - Basic Docker and networking knowledge
 
@@ -37,13 +37,12 @@ docker info
 Navigate to **Stacks** > **Add Stack** in Portainer:
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
+# compose.yaml
 
 services:
   # Main application service
   app:
-    image: app-image:latest
+    image: app-image:alpine
     container_name: app
     restart: always
     ports:
@@ -56,13 +55,15 @@ services:
       - SECRET_KEY=${SECRET_KEY}
       - DATABASE_URL=postgresql://appuser:${DB_PASSWORD}@postgres:5432/appdb
       - REDIS_URL=redis://redis:6379
+      - APP_URL=${APP_URL}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -115,12 +116,17 @@ services:
 
 volumes:
   app-data:
+    name: app-data
   app-config:
+    name: app-config
   postgres-data:
+    name: postgres-data
   redis-data:
+    name: redis-data
 
 networks:
   app-net:
+    name: app-net
     driver: bridge
 ```
 
@@ -140,16 +146,13 @@ ADMIN_EMAIL=admin@example.com
 After deployment, run the initial setup:
 
 ```bash
-# Access via Portainer container console
+# Access via Portainer container console, or from the Docker host
 
-# Run database migrations
-docker exec app ./manage.py migrate
-
-# Create initial admin user
-docker exec -it app ./manage.py createsuperuser
+# Open a shell in the application container for any image-specific first-run setup
+docker exec -it app sh
 
 # Verify deployment
-curl http://localhost:8080/api/health
+curl -f http://localhost:8080/health
 ```
 
 ## Step 5: Configure SSL/TLS
@@ -164,8 +167,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./certs:/etc/nginx/certs:ro
+      - /opt/app/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/app/nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - app
     networks:
@@ -208,17 +211,20 @@ DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p "$BACKUP_DIR/$DATE"
 
 # Backup PostgreSQL database
-docker exec app-postgres pg_dump -U appuser appdb |   gzip > "$BACKUP_DIR/$DATE/database.sql.gz"
+docker exec app-postgres pg_dump -U appuser appdb | gzip > "$BACKUP_DIR/$DATE/database.sql.gz"
 
 # Backup application data volumes
-for volume in app-data app-config; do
-  docker run --rm     -v ${volume}:/source:ro     -v "$BACKUP_DIR/$DATE":/backup     alpine tar czf "/backup/${volume}.tar.gz" -C /source .
+for volume in app-data app-config redis-data; do
+  docker run --rm \
+    -v "${volume}:/source:ro" \
+    -v "$BACKUP_DIR/$DATE:/backup" \
+    alpine tar czf "/backup/${volume}.tar.gz" -C /source .
 done
 
 echo "Backup complete in $BACKUP_DIR/$DATE"
 
 # Clean up old backups (keep 7 days)
-find $BACKUP_DIR -maxdepth 1 -type d -mtime +7 | xargs rm -rf
+find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf {} +
 ```
 
 ## Step 7: Monitoring and Alerting
@@ -234,13 +240,16 @@ Set up external monitoring:
 ```yaml
 services:
   uptime-kuma:
-    image: louislam/uptime-kuma:latest
+    image: louislam/uptime-kuma:2
     container_name: uptime-kuma
     restart: always
     ports:
       - "3001:3001"
     volumes:
       - uptime-data:/app/data
+
+volumes:
+  uptime-data:
 ```
 
 ## Updating to New Versions
@@ -261,15 +270,15 @@ Safely update the application:
 docker logs app --tail 100
 
 # Database connection issues
-docker exec app pg_isready -h postgres -U appuser
+docker exec app-postgres pg_isready -U appuser -d appdb
 
 # Permission issues
 docker exec app ls -la /app/data
 
 # Network connectivity
-docker exec app curl -I http://postgres:5432
+docker run --rm --network app-net alpine nc -zv postgres 5432
 ```
 
 ## Conclusion
 
-Deploying Alpine-Based Images for Smaller Containers in Portainer via Portainer provides a streamlined, manageable approach to running this application in your infrastructure. With persistent storage for data, automated backups, SSL termination, and Portainer's visual management capabilities, this deployment is production-ready. The modular docker-compose structure makes it easy to customize and scale as your needs evolve.
+Deploying Alpine-Based Images for Smaller Containers in Portainer via Portainer provides a streamlined, manageable approach to running this application in your infrastructure. With persistent storage for data, automated backups, SSL termination, and Portainer's visual management capabilities, this deployment is production-ready. The modular compose structure makes it easy to customize and maintain as your needs evolve.
