@@ -4,33 +4,40 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Vagrant, Development Environment, Container, DevOps
 
-Description: Learn how to use Podman as a provider for Vagrant to create lightweight, container-based development environments that are faster and more resource-efficient than virtual machines.
+Description: Learn how to use Podman with Vagrant's Docker provider to create lightweight, container-based development environments that are faster and more resource-efficient than virtual machines.
 
 ---
 
-> Using Podman as a Vagrant provider gives you the familiar Vagrant workflow with container-speed performance, creating development environments that start in seconds instead of minutes.
+> Using Podman with Vagrant's Docker provider gives you the familiar Vagrant workflow with container-speed performance, creating development environments that start in seconds instead of minutes.
 
-Vagrant has long been the standard tool for creating reproducible development environments. Traditionally it uses virtual machine providers like VirtualBox or VMware, but these are heavyweight and slow to start. Podman can serve as a Vagrant provider, giving you the familiar `vagrant up` and `vagrant ssh` workflow while using containers instead of virtual machines. The result is development environments that launch almost instantly, use a fraction of the resources, and still provide the isolation developers expect.
+Vagrant has long been the standard tool for creating reproducible development environments. Traditionally it uses virtual machine providers like VirtualBox or VMware, but these are heavyweight and slow to start. Podman can power Vagrant's built-in Docker provider, giving you the familiar `vagrant up` workflow and, with an SSH-capable image, `vagrant ssh` while using containers instead of virtual machines. The result is development environments that launch almost instantly, use a fraction of the resources, and still provide the isolation developers expect.
 
 ---
 
 ## Setting Up Vagrant with Podman
 
-First, install Vagrant and the Docker provider (which works with Podman):
+First, install Vagrant and Podman. Vagrant ships with a Docker provider, which can work with Podman:
 
 ```bash
-# Install Vagrant
+# Install Vagrant and Podman on Fedora
 
-sudo dnf install vagrant  # Fedora/RHEL
-# or
-sudo apt-get install vagrant  # Ubuntu/Debian
+sudo dnf install -y dnf-plugins-core
+sudo dnf config-manager addrepo --from-repofile=https://rpm.releases.hashicorp.com/fedora/hashicorp.repo
+sudo dnf -y install vagrant podman
 
-# Ensure Podman is installed and the socket is running
+# or on Ubuntu/Debian
+wget -O - https://apt.releases.hashicorp.com/gpg | \
+  sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | \
+  sudo tee /etc/apt/sources.list.d/hashicorp.list
+sudo apt update && sudo apt install -y vagrant podman
+
+# If you are using the Docker CLI against Podman's API socket:
 systemctl --user enable --now podman.socket
 export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
 ```
 
-Vagrant's built-in Docker provider communicates with Podman through its Docker-compatible API, so no additional plugins are needed.
+Vagrant's built-in Docker provider does not require any Vagrant plugins. It does invoke `docker` subcommands under the hood, so make sure a Docker-compatible `docker` command is available on your `PATH` when using Podman, for example via the `podman-docker` compatibility package on distributions that provide it.
 
 ## Basic Vagrantfile with Podman
 
@@ -41,38 +48,37 @@ Create a `Vagrantfile` that uses the Docker provider:
 Vagrant.configure("2") do |config|
   config.vm.provider "docker" do |d|
     d.image = "fedora:40"
-    d.has_ssh = true
     d.remains_running = true
-    d.cmd = ["/usr/sbin/init"]
-    d.create_args = ["--privileged"]
+    d.cmd = ["sleep", "infinity"]
   end
-
-  config.ssh.username = "vagrant"
-  config.ssh.password = "vagrant"
 end
 ```
 
-However, for a better experience, build a custom image that includes SSH and the vagrant user:
+A stock Fedora image is fine for a basic container, but it does not include an SSH server or a `vagrant` user. If you want `vagrant ssh`, synced folders over `rsync`, or SSH-based provisioners, build a custom image that includes them:
 
 ```dockerfile
 # Dockerfile.vagrant
 FROM fedora:40
 
 RUN dnf install -y \
+    curl \
     openssh-server \
     openssh-clients \
-    sudo \
     passwd \
+    python3 \
+    rsync \
+    sudo \
     && dnf clean all
 
 # Create vagrant user
 RUN useradd -m -s /bin/bash vagrant && \
     echo "vagrant:vagrant" | chpasswd && \
-    echo "vagrant ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/vagrant
+    echo "vagrant ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/vagrant && \
+    chmod 0440 /etc/sudoers.d/vagrant
 
 # Configure SSH
 RUN ssh-keygen -A
-RUN mkdir -p /home/vagrant/.ssh && \
+RUN mkdir -p /home/vagrant/.ssh /run/sshd && \
     chmod 700 /home/vagrant/.ssh
 
 # Add Vagrant insecure key
@@ -143,6 +149,7 @@ Vagrant.configure("2") do |config|
       d.has_ssh = true
       d.remains_running = true
       d.name = "vagrant-db"
+      d.cmd = ["/bin/bash", "-lc", "if id postgres >/dev/null 2>&1 && [ -s /var/lib/pgsql/data/PG_VERSION ]; then su - postgres -c 'postgres -D /var/lib/pgsql/data' & fi; exec /usr/sbin/sshd -D"]
       d.ports = ["5432:5432"]
     end
 
@@ -151,8 +158,9 @@ Vagrant.configure("2") do |config|
 
     db.vm.provision "shell", inline: <<-SHELL
       dnf install -y postgresql-server postgresql
-      postgresql-setup --initdb
-      systemctl enable --now postgresql
+      if [ ! -s /var/lib/pgsql/data/PG_VERSION ]; then
+        postgresql-setup --initdb
+      fi
     SHELL
   end
 end
@@ -160,7 +168,7 @@ end
 
 ## Using Vagrant Provisioners
 
-Vagrant provisioners work the same way with Podman as with VM providers:
+SSH-based Vagrant provisioners work much the same way with a Podman-backed container as they do with a VM provider:
 
 ```ruby
 # Vagrantfile
@@ -199,6 +207,8 @@ Vagrant.configure("2") do |config|
 end
 ```
 
+The `ansible` provisioner runs `ansible-playbook` on the Vagrant host, so Ansible still needs to be installed on the machine running Vagrant.
+
 ## Synced Folders
 
 Map host directories into the container:
@@ -222,6 +232,8 @@ Vagrant.configure("2") do |config|
     rsync__exclude: [".git/", "node_modules/"]
 end
 ```
+
+If you force `type: "rsync"`, make sure `rsync` is installed on both the host and the image.
 
 ## Language-Specific Development Environments
 
@@ -254,7 +266,7 @@ end
 
 ## Vagrant Commands Reference
 
-The standard Vagrant commands work with the Podman provider:
+The standard Vagrant commands work with this Podman-backed Docker setup:
 
 ```bash
 # Start the environment
@@ -284,7 +296,7 @@ vagrant reload
 
 ## Helper Script
 
-Create a wrapper to ensure the Podman socket is available:
+Create a wrapper to ensure the Podman socket is available and to default new environments to the Docker provider:
 
 ```bash
 #!/bin/bash
@@ -297,8 +309,9 @@ if ! systemctl --user is-active podman.socket > /dev/null 2>&1; then
 fi
 
 export DOCKER_HOST="unix:///run/user/$(id -u)/podman/podman.sock"
+export VAGRANT_DEFAULT_PROVIDER=docker
 
-vagrant "$@" --provider=docker
+vagrant "$@"
 ```
 
 ```bash
@@ -309,11 +322,11 @@ chmod +x vagrant-podman.sh
 
 ## Comparison with VM-Based Vagrant
 
-The Podman provider trades some features for speed:
+A Podman-backed Vagrant environment trades some features for speed:
 
 ```text
-Feature              | VirtualBox Provider | Podman Provider
----------------------|--------------------|-----------------
+Feature              | VirtualBox Provider | Podman-Backed Docker Provider
+---------------------|--------------------|-------------------------------
 Start time           | 30-120 seconds     | 2-5 seconds
 Memory overhead      | 512MB+ per VM      | ~50MB per container
 Disk overhead        | 2GB+ per VM        | Shared layers
