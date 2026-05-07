@@ -39,10 +39,13 @@ If `nvidia-smi` does not work, install the NVIDIA drivers first:
 
 ```bash
 # On Fedora/RHEL
+# Enable RPM Fusion or your distribution's NVIDIA driver repository first
 sudo dnf install -y akmod-nvidia xorg-x11-drv-nvidia-cuda
 
 # On Ubuntu
-sudo apt-get install -y nvidia-driver-545
+sudo apt-get update
+sudo apt-get install -y ubuntu-drivers-common
+sudo ubuntu-drivers install
 
 # Reboot after installation
 sudo reboot
@@ -101,12 +104,17 @@ nvidia-ctk cdi list
 cat /etc/cdi/nvidia.yaml
 ```
 
-For rootless Podman, you can generate the CDI spec in user space:
+For rootless Podman, the system-wide CDI spec can still be used if the user can read it. If you generate the CDI spec in user space, point Podman at that directory:
 
 ```bash
 # Generate CDI spec for rootless use
 mkdir -p ~/.config/cdi
 nvidia-ctk cdi generate --output=$HOME/.config/cdi/nvidia.yaml
+podman --cdi-spec-dir=$HOME/.config/cdi run --rm \
+  --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
+  nvidia/cuda:12.3.0-base-ubuntu22.04 \
+  nvidia-smi
 ```
 
 ## Running Your First NVIDIA GPU Container
@@ -117,6 +125,7 @@ With everything configured, run a basic container to verify GPU access:
 # Run nvidia-smi inside a container
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   nvidia/cuda:12.3.0-base-ubuntu22.04 \
   nvidia-smi
 
@@ -203,6 +212,7 @@ EOF
 # Run the training script in a GPU container
 podman run --rm -it \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   -v /tmp/gpu-demo:/workspace:Z \
   pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime \
   python /workspace/train.py
@@ -216,12 +226,14 @@ On multi-GPU systems, you can assign specific GPUs to different containers:
 # Run on GPU 0 only
 podman run --rm -it \
   --device nvidia.com/gpu=0 \
+  --security-opt=label=disable \
   nvidia/cuda:12.3.0-base-ubuntu22.04 \
   nvidia-smi
 
 # Run on GPU 1 only
 podman run --rm -it \
   --device nvidia.com/gpu=1 \
+  --security-opt=label=disable \
   nvidia/cuda:12.3.0-base-ubuntu22.04 \
   nvidia-smi
 ```
@@ -260,6 +272,7 @@ podman run -d \
   --pod ml-pod \
   --name jupyter-gpu \
   --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
   -v /home/$USER/notebooks:/workspace:Z \
   pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime \
   jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root \
@@ -303,8 +316,14 @@ sudo modprobe nvidia
 # Error: "permission denied" on /dev/nvidia*
 # For rootless podman, ensure proper device permissions
 ls -la /dev/nvidia*
-# Add user to the video group
+# If access depends on supplementary groups, add the user to the video group and pass groups into the container
 sudo usermod -aG video $USER
+podman run --rm \
+  --group-add keep-groups \
+  --device nvidia.com/gpu=all \
+  --security-opt=label=disable \
+  nvidia/cuda:12.3.0-base-ubuntu22.04 \
+  nvidia-smi
 
 # SELinux blocking GPU access (Fedora/RHEL)
 sudo setsebool -P container_use_devices on
