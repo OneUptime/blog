@@ -58,7 +58,8 @@ buildah containers --format "table {{.ContainerName}}\t{{.ImageName}}\t{{.Contai
 # Run a command inside the working container
 # This is similar to the RUN instruction in a Containerfile
 buildah run my-builder -- apt-get update
-buildah run my-builder -- apt-get install -y curl wget
+buildah run my-builder -- apt-get install -y curl wget python3
+buildah run my-builder -- useradd -r appuser
 
 # Run multiple commands
 buildah run my-builder -- bash -c "echo 'Hello from Buildah' > /hello.txt"
@@ -77,7 +78,7 @@ buildah copy my-builder /tmp/myconfig.txt /etc/myapp/config.txt
 
 # Copy a directory
 mkdir -p /tmp/app-files
-echo "app code" > /tmp/app-files/main.py
+echo 'print("app code")' > /tmp/app-files/main.py
 buildah copy my-builder /tmp/app-files /opt/app/
 
 # Verify the files were copied
