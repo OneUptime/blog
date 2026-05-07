@@ -32,31 +32,46 @@ gcloud compute addresses describe web-static-ip \
 ## Assigning the Static IP at Instance Creation
 
 ```bash
+STATIC_IP=$(gcloud compute addresses describe web-static-ip \
+  --project=$PROJECT_ID \
+  --region=$REGION \
+  --format="get(address)")
+
 gcloud compute instances create web-vm-01 \
   --project=$PROJECT_ID \
   --zone=us-central1-a \
   --machine-type=e2-medium \
   --image-family=debian-12 \
   --image-project=debian-cloud \
-  --address=web-static-ip \
+  --address=$STATIC_IP \
   --subnet=web-subnet
 ```
 
 ## Assigning a Static IP to an Existing Instance
 
 ```bash
+STATIC_IP=$(gcloud compute addresses describe web-static-ip \
+  --project=$PROJECT_ID \
+  --region=$REGION \
+  --format="get(address)")
+
+ACCESS_CONFIG_NAME=$(gcloud compute instances describe web-vm-01 \
+  --project=$PROJECT_ID \
+  --zone=us-central1-a \
+  --format="get(networkInterfaces[0].accessConfigs[0].name)")
+
 # First, delete the current access config (removes the ephemeral IP)
 gcloud compute instances delete-access-config web-vm-01 \
   --project=$PROJECT_ID \
   --zone=us-central1-a \
-  --access-config-name="External NAT"
+  --access-config-name="$ACCESS_CONFIG_NAME"
 
 # Add the static IP as the new access config
 gcloud compute instances add-access-config web-vm-01 \
   --project=$PROJECT_ID \
   --zone=us-central1-a \
-  --access-config-name="External NAT" \
-  --address=web-static-ip
+  --access-config-name="$ACCESS_CONFIG_NAME" \
+  --address=$STATIC_IP
 ```
 
 ## Promoting an Ephemeral IP to Static
@@ -123,11 +138,11 @@ gcloud compute addresses delete web-static-ip \
   --quiet
 ```
 
-Note: You cannot release an IP that is currently in use by an instance.
+Note: With the gcloud CLI or API, you can release an IP even if it is in use. If it is attached to a resource, it remains attached until that resource is deleted.
 
 ## Billing Note
 
-Static IPs that are reserved but not attached to a running instance incur a small hourly charge. Release unused IPs to avoid unnecessary costs.
+Static external IPv4 addresses incur charges. Reserved addresses that aren't assigned to a resource are charged at a higher rate than addresses that are in use. Release unused IPs to avoid unnecessary costs.
 
 ## Conclusion
 
