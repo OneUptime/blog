@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Security, Signature Verification, Policy
 
-Description: Learn how to configure granular signature verification policies in Podman to enforce image trust at the registry, repository, and tag level.
+Description: Learn how to configure granular signature verification policies in Podman to enforce image trust at the registry, repository, and image-reference level.
 
 ---
 
 > A well-crafted verification policy turns Podman into a gatekeeper that only allows cryptographically verified images through.
 
-Podman's signature verification policies provide fine-grained control over which images are trusted. You can configure different verification requirements per registry, per repository, or even per image tag. This guide covers advanced policy configurations that go beyond basic allow/reject rules.
+Podman's signature verification policies provide fine-grained control over which images are trusted. You can configure different verification requirements per registry, per repository, or even for a fully expanded image reference such as `registry.example.com/myorg/myapp:stable`. This guide covers advanced policy configurations that go beyond basic allow/reject rules.
 
 ---
 
 ## Policy Configuration Overview
 
-Podman evaluates policies from most specific to least specific. A rule for `registry.example.com/myorg/myapp` takes precedence over `registry.example.com/myorg`, which takes precedence over `registry.example.com`.
+Podman evaluates policies from most specific to least specific. A rule for `registry.example.com/myorg/myapp:stable` takes precedence over `registry.example.com/myorg/myapp`, which takes precedence over `registry.example.com/myorg`, which takes precedence over `registry.example.com`.
 
 ```bash
 # View the current policy configuration
@@ -169,15 +169,15 @@ Set up signature lookup locations for each registry.
 # Create registry-specific signature configurations
 sudo mkdir -p /etc/containers/registries.d
 
-# Internal registry with local signature storage
+# Internal registry with simple-signing signature storage
 sudo tee /etc/containers/registries.d/internal.yaml > /dev/null << 'EOF'
 docker:
   registry.internal.example.com:
-    sigstore: https://signatures.internal.example.com/sigstore
-    sigstore-staging: file:///var/lib/containers/sigstore
+    lookaside: https://signatures.internal.example.com/sigstore
+    lookaside-staging: file:///var/lib/containers/sigstore
 EOF
 
-# GitHub Container Registry with web-based signature storage
+# GitHub Container Registry with sigstore attachments stored in the registry
 sudo tee /etc/containers/registries.d/ghcr.yaml > /dev/null << 'EOF'
 docker:
   ghcr.io:
@@ -246,9 +246,14 @@ podman pull docker.io/library/alpine:latest && \
   echo "PASS: Allowed pull succeeded"
 
 # Test pulling from a blocked registry
-podman pull docker.io/randomuser/image:latest 2>&1 && \
-  echo "UNEXPECTED: Pull should have been blocked" || \
-  echo "PASS: Blocked pull was rejected"
+if podman pull quay.io/podman/hello:latest > /tmp/podman-policy-test.log 2>&1; then
+  echo "UNEXPECTED: Pull should have been blocked"
+elif grep -qi "rejected" /tmp/podman-policy-test.log; then
+  echo "PASS: Blocked pull was rejected by policy"
+else
+  echo "FAIL: Pull failed for a reason other than policy rejection"
+  cat /tmp/podman-policy-test.log
+fi
 ```
 
 ## Viewing Effective Trust Configuration
