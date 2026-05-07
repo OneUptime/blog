@@ -8,12 +8,12 @@ Description: Learn how to configure AKS with Application Gateway Ingress Control
 
 ## Introduction
 
-The Application Gateway Ingress Controller (AGIC) uses an Azure Application Gateway as the Kubernetes Ingress controller, translating Kubernetes Ingress resources into Application Gateway routing rules. This provides enterprise-grade L7 routing (path-based, hostname-based), SSL/TLS termination with auto-renewal, WAF protection, and integration with Azure AD authentication-all managed through standard Kubernetes Ingress manifests. The add-on mode creates and manages the Application Gateway lifecycle automatically.
+The Application Gateway Ingress Controller (AGIC) uses an Azure Application Gateway as the Kubernetes Ingress controller, translating Kubernetes Ingress resources into Application Gateway routing rules. This provides enterprise-grade L7 routing (path-based, hostname-based), TLS termination, and WAF protection through standard Kubernetes Ingress manifests. In add-on mode, AKS manages the AGIC deployment; when you supply `gateway_id`, AGIC manages routing on an existing Application Gateway rather than creating one. By default, AGIC assumes full ownership of the Application Gateway configuration and overwrites settings that aren't defined through Kubernetes Ingress resources.
 
 ## Prerequisites
 
 - OpenTofu v1.6+
-- Azure credentials with AKS and Application Gateway permissions
+- Azure credentials with permission to manage AKS, Application Gateway, and role assignments
 - A VNet with subnets for AKS and Application Gateway
 
 ## Step 1: Create Application Gateway and AKS with AGIC
@@ -26,6 +26,10 @@ resource "azurerm_subnet" "appgw" {
   resource_group_name  = var.resource_group_name
   virtual_network_name = var.vnet_name
   address_prefixes     = ["10.0.3.0/24"]
+}
+
+data "azurerm_resource_group" "appgw" {
+  name = var.resource_group_name
 }
 
 resource "azurerm_public_ip" "appgw" {
@@ -42,9 +46,8 @@ resource "azurerm_application_gateway" "main" {
   resource_group_name = var.resource_group_name
 
   sku {
-    name     = "WAF_v2"
-    tier     = "WAF_v2"
-    capacity = 2  # 2 instances for HA (or use autoscaling)
+    name = "WAF_v2"
+    tier = "WAF_v2"
   }
 
   autoscale_configuration {
@@ -115,7 +118,6 @@ resource "azurerm_kubernetes_cluster" "agic" {
   location            = var.location
   resource_group_name = var.resource_group_name
   dns_prefix          = var.project_name
-  kubernetes_version  = "1.28"
 
   default_node_pool {
     name                = "system"
@@ -146,11 +148,19 @@ resource "azurerm_kubernetes_cluster" "agic" {
   }
 }
 
-# Grant AKS identity Contributor on Application Gateway
-resource "azurerm_role_assignment" "agic_appgw" {
-  scope                = azurerm_application_gateway.main.id
-  role_definition_name = "Contributor"
-  principal_id         = azurerm_kubernetes_cluster.agic.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id
+# Grant the AGIC managed identity access to the Application Gateway resource group
+resource "azurerm_role_assignment" "agic_appgw_reader" {
+  scope                            = data.azurerm_resource_group.appgw.id
+  role_definition_name             = "Reader"
+  principal_id                     = azurerm_kubernetes_cluster.agic.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "agic_appgw_network_contributor" {
+  scope                            = data.azurerm_resource_group.appgw.id
+  role_definition_name             = "Network Contributor"
+  principal_id                     = azurerm_kubernetes_cluster.agic.ingress_application_gateway[0].ingress_application_gateway_identity[0].object_id
+  skip_service_principal_aad_check = true
 }
 ```
 
@@ -168,12 +178,12 @@ metadata:
     appgw.ingress.kubernetes.io/ssl-redirect: "true"
     appgw.ingress.kubernetes.io/connection-draining: "true"
     appgw.ingress.kubernetes.io/connection-draining-timeout: "30"
-    appgw.ingress.kubernetes.io/waf-policy-for-path: /subscriptions/.../providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/my-policy
+    appgw.ingress.kubernetes.io/waf-policy-for-path: "/subscriptions/.../providers/Microsoft.Network/applicationGatewayWebApplicationFirewallPolicies/my-policy"
 spec:
   tls:
     - hosts:
         - api.example.com
-      secretName: api-tls-secret  # Or use appgw.ingress.kubernetes.io/appgw-ssl-certificate
+      secretName: api-tls-secret  # Omit spec.tls if you use appgw.ingress.kubernetes.io/appgw-ssl-certificate instead
   rules:
     - host: api.example.com
       http:
@@ -220,4 +230,4 @@ az network application-gateway show-backend-health \
 
 ## Conclusion
 
-AGIC translates Kubernetes Ingress resources into Application Gateway configuration in real-time-changes propagate within 30-60 seconds. Use `appgw.ingress.kubernetes.io/ssl-redirect: "true"` to automatically redirect HTTP to HTTPS at the Application Gateway level. For TLS certificates, use cert-manager with Let's Encrypt to automate certificate renewal and store certs as Kubernetes secrets, or use the `appgw.ingress.kubernetes.io/appgw-ssl-certificate` annotation to reference certificates already uploaded to Application Gateway. Enable WAF in Prevention mode after validating no false positives in Detection mode.
+AGIC translates Kubernetes Ingress resources into Application Gateway configuration and continuously reconciles changes through Azure Resource Manager. Use `appgw.ingress.kubernetes.io/ssl-redirect: "true"` to automatically redirect HTTP to HTTPS at the Application Gateway level when TLS is configured. For TLS certificates, use cert-manager with Let's Encrypt to automate certificate renewal and store certs as Kubernetes secrets, or omit the `tls` block and use the `appgw.ingress.kubernetes.io/appgw-ssl-certificate` annotation to reference certificates already uploaded to Application Gateway. Enable WAF in Prevention mode after validating no false positives in Detection mode.
