@@ -91,13 +91,14 @@ class TestIPv6Routing:
 
 class TestIPv6MTU:
 
-    @pytest.mark.parametrize("size", [1280, 1400, 1480])
-    def test_mtu(self, size):
+    @pytest.mark.parametrize("packet_size", [1280, 1400, 1480])
+    def test_mtu(self, packet_size):
+        payload_size = packet_size - 48  # 40-byte IPv6 header + 8-byte ICMPv6 Echo header
         result = subprocess.run(
-            ["ping6", "-c", "1", "-M", "do", "-s", str(size), "-W", "3", "::1"],
+            ["ping6", "-c", "1", "-M", "do", "-s", str(payload_size), "-W", "3", "::1"],
             capture_output=True,
         )
-        assert result.returncode == 0, f"MTU test failed at {size} bytes"
+        assert result.returncode == 0, f"MTU test failed at {packet_size}-byte IPv6 packet"
 ```
 
 ## Robot Framework IPv6 Tests
@@ -167,7 +168,7 @@ jobs:
         run: pip install pytest
 
       - name: Run IPv6 tests
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short --junit-xml=test-report.xml
 
       - name: Upload test report
         if: always()
@@ -181,7 +182,7 @@ jobs:
 
 ```makefile
 # Makefile
-.PHONY: lab-up lab-down test test-connectivity test-routing
+.PHONY: lab-up lab-down test test-connectivity test-routing test-mtu
 
 lab-up:
 	sudo bash scripts/setup-lab.sh
@@ -189,9 +190,13 @@ lab-up:
 lab-down:
 	sudo bash scripts/teardown-lab.sh
 
-test: lab-up
-	pytest tests/ -v
-	$(MAKE) lab-down
+test:
+	@sudo bash scripts/setup-lab.sh && { \
+		status=0; \
+		pytest tests/ -v || status=$$?; \
+		sudo bash scripts/teardown-lab.sh || exit $$?; \
+		exit $$status; \
+	}
 
 test-connectivity:
 	pytest tests/test_ipv6_lab.py::TestIPv6Reachability -v
@@ -205,4 +210,4 @@ test-mtu:
 
 ## Conclusion
 
-Automated IPv6 lab testing with pytest provides fast feedback on configuration changes. Parameterized tests efficiently cover multiple nodes and services. Robot Framework adds human-readable test cases for documentation and non-programmer collaboration. GitHub Actions CI/CD runs tests on every commit by setting up namespace-based labs in the runner. The key pattern: `setup_lab → run_tests → teardown_lab` in a make target or CI step ensures tests always start from a known-good state.
+Automated IPv6 lab testing with pytest provides fast feedback on configuration changes. Parameterized tests efficiently cover multiple nodes and services. Robot Framework adds human-readable test cases for documentation and non-programmer collaboration. GitHub Actions CI/CD runs tests on pushes to `main` and on pull requests by setting up namespace-based labs in the runner. The key pattern: `setup_lab → run_tests → teardown_lab` in a make target or CI step ensures tests always start from a known-good state.
