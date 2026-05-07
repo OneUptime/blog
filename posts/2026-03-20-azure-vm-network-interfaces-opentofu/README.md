@@ -8,7 +8,7 @@ Description: Learn how to configure Azure VM Network Interfaces with OpenTofu, i
 
 ## Introduction
 
-Azure Network Interfaces (NICs) connect VMs to Virtual Networks and control network settings including IP addresses, DNS servers, network security groups, and accelerated networking. A VM can have multiple NICs for network segmentation (e.g., separating management, application, and storage traffic). Accelerated Networking uses SR-IOV to bypass the host vSwitch, reducing latency to ~25 microseconds and increasing throughput to the VM's full bandwidth allocation.
+Azure Network Interfaces (NICs) connect VMs to Virtual Networks and control network settings including IP addresses, DNS servers, network security groups, and accelerated networking. A VM can have multiple NICs for network segmentation (e.g., separating management, application, and storage traffic). Accelerated Networking uses SR-IOV so most packets go directly between the guest and the physical NIC, reducing latency and CPU utilization while improving throughput.
 
 ## Prerequisites
 
@@ -25,10 +25,10 @@ resource "azurerm_network_interface" "main" {
   resource_group_name = var.resource_group_name
 
   # Enable Accelerated Networking (requires supported VM size)
-  enable_accelerated_networking = true
+  accelerated_networking_enabled = true
 
   # Enable IP forwarding for network appliances (NVAs, routers)
-  enable_ip_forwarding = false
+  ip_forwarding_enabled = false
 
   ip_configuration {
     name                          = "primary"
@@ -94,7 +94,7 @@ resource "azurerm_network_interface" "management" {
   name                          = "${var.project_name}-mgmt-nic"
   location                      = var.location
   resource_group_name           = var.resource_group_name
-  enable_accelerated_networking = true
+  accelerated_networking_enabled = true
 
   ip_configuration {
     name                          = "mgmt"
@@ -109,13 +109,13 @@ resource "azurerm_network_interface" "application" {
   name                          = "${var.project_name}-app-nic"
   location                      = var.location
   resource_group_name           = var.resource_group_name
-  enable_accelerated_networking = true
+  accelerated_networking_enabled = true
 
   ip_configuration {
     name                          = "app"
     subnet_id                     = var.application_subnet_id
     private_ip_address_allocation = "Dynamic"
-    primary                       = false
+    primary                       = true
   }
 }
 
@@ -200,4 +200,4 @@ az network nic show-effective-route-table \
 
 ## Conclusion
 
-Enable `enable_accelerated_networking = true` on NICs for all production VMs running on supported sizes (generally D/E/F/N series v3+)-this single setting can reduce network latency by 60-70% and dramatically improve throughput. The maximum number of NICs per VM depends on the VM size; check `az vm list-skus` for the `MaxNetworkInterfaces` capability. When using multiple NICs, configure routing rules inside the OS (using `ip route` on Linux) to route return traffic for each NIC through its corresponding gateway-Azure does not handle this automatically.
+Enable `accelerated_networking_enabled = true` on NICs for production VMs that use a supported VM size and guest OS. Microsoft documents lower latency, lower jitter, and reduced CPU utilization because most packets bypass the host virtual switch. The maximum number of NICs per VM depends on the VM size; check `az vm list-skus` for the `MaxNetworkInterfaces` capability. When using multiple NICs, Azure uses the primary NIC for default outbound traffic, so configure routing rules inside the guest OS (using `ip route` on Linux) when traffic must return through a specific NIC.
