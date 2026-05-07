@@ -20,7 +20,7 @@ Create a script that provisions a complete development environment:
 
 ```python
 from podman import PodmanClient
-from podman.errors import NotFound, APIError
+from podman.errors import NotFound
 import time
 
 class EnvironmentProvisioner:
@@ -52,7 +52,7 @@ class EnvironmentProvisioner:
             container = self._create_service(svc_config)
             self.containers.append(container)
 
-        # Wait for all containers to be healthy
+        # Wait for all containers to be running
         self._wait_for_ready()
         print(f"Environment '{env_name}' is ready")
 
@@ -96,7 +96,7 @@ class EnvironmentProvisioner:
         # Remove existing container
         try:
             existing = self.client.containers.get(name)
-            existing.stop()
+            existing.stop(ignore=True)
             existing.remove()
         except NotFound:
             pass
@@ -148,7 +148,7 @@ class EnvironmentProvisioner:
         """Remove all provisioned resources."""
         for container in self.containers:
             try:
-                container.stop()
+                container.stop(ignore=True)
                 container.remove()
                 print(f"  Removed container: {container.name}")
             except Exception as e:
@@ -374,7 +374,7 @@ def apply_update(client, update):
     try:
         # Stop and remove old container
         old_container = client.containers.get(name)
-        old_container.stop()
+        old_container.stop(ignore=True)
         old_container.remove()
 
         # Create new container with updated image
