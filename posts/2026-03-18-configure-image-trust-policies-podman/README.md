@@ -16,7 +16,7 @@ Podman uses a policy-based system to decide whether an image is trustworthy befo
 
 ## The Policy Configuration File
 
-Podman reads trust policies from `/etc/containers/policy.json` for system-wide settings and `~/.config/containers/policy.json` for user-level settings.
+Podman reads trust policies from `~/.config/containers/policy.json` if it exists; otherwise it uses `/etc/containers/policy.json` for system-wide settings.
 
 ```bash
 # View the system-wide policy
@@ -161,7 +161,10 @@ sudo tee /etc/containers/policy.json > /dev/null << 'EOF'
       "ghcr.io/myorg": [
         {
           "type": "sigstoreSigned",
-          "keyPath": "/etc/pki/containers/cosign-public.key"
+          "keyPath": "/etc/pki/containers/cosign-public.key",
+          "signedIdentity": {
+            "type": "matchRepository"
+          }
         }
       ]
     }
@@ -182,8 +185,10 @@ sudo mkdir -p /etc/containers/registries.d
 sudo tee /etc/containers/registries.d/myregistry.yaml > /dev/null << 'EOF'
 docker:
   registry.example.com:
-    sigstore: https://sigstore.example.com/signatures
-    sigstore-staging: file:///var/lib/containers/sigstore
+    lookaside: https://sigstore.example.com/signatures
+    lookaside-staging: file:///var/lib/containers/sigstore
+  ghcr.io/myorg:
+    use-sigstore-attachments: true
 EOF
 ```
 
@@ -199,12 +204,12 @@ ls -la /etc/containers/registries.d/
 podman image trust show
 
 # Set trust for a specific registry using the CLI
-podman image trust set -t signedBy \
+sudo podman image trust set --signature-policy /etc/containers/policy.json -t signedBy \
   --pubkeysfile /etc/pki/containers/container-signer.gpg \
   registry.example.com
 
 # Set a default reject policy via CLI
-podman image trust set -t reject default
+sudo podman image trust set --signature-policy /etc/containers/policy.json -t reject default
 ```
 
 ## Per-User Trust Policies
