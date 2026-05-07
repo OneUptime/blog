@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, Azure, Virtual Machine, Compute, Infrastructure as Code
 
-Description: Learn how to create an Azure Virtual Machine with OpenTofu including OS disk, network interface, and SSH key configuration.
+Description: Learn how to create an Azure Virtual Machine with OpenTofu including OS disk, attached network interface, and SSH key configuration.
 
 ## Introduction
 
-Azure Virtual Machines provide IaaS compute for workloads that require full OS control. This guide creates a Linux VM with managed OS disk, public IP, and network interface.
+Azure Virtual Machines provide IaaS compute for workloads that require full OS control. This guide shows the core configuration for a Linux VM with a managed OS disk, an attached network interface, and SSH key authentication.
 
 ## Core Configuration
 
@@ -20,7 +20,7 @@ resource "azurerm_linux_virtual_machine" "main" {
   size                = var.vm_size  # e.g., "Standard_B2s"
   admin_username      = "azureuser"
 
-  network_interface_ids = [azurerm_network_interface.main.id]
+  network_interface_ids = var.network_interface_ids
 
   admin_ssh_key {
     username   = "azureuser"
@@ -52,16 +52,24 @@ resource "azurerm_linux_virtual_machine" "main" {
 
 ```hcl
 variable "resource_group_name" { type = string }
-variable "location"            { type = string; default = "East US" }
-variable "environment"         { type = string }
-variable "name"                { type = string }
+
+variable "location" {
+  type    = string
+  default = "East US"
+}
+
+variable "environment"           { type = string }
+variable "name"                  { type = string }
+variable "network_interface_ids" { type = list(string) }
+variable "ssh_public_key"        { type = string }
+variable "vm_size"               { type = string }
 ```
 
 ## Outputs
 
 ```hcl
-output "id"   { value = azurerm_resource_type.main.id }
-output "name" { value = azurerm_resource_type.main.name }
+output "id"   { value = azurerm_linux_virtual_machine.main.id }
+output "name" { value = azurerm_linux_virtual_machine.main.name }
 ```
 
 ## Conclusion
