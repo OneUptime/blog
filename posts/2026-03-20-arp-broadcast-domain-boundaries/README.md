@@ -22,7 +22,7 @@ ARP requests are sent to the **broadcast MAC address** (`ff:ff:ff:ff:ff:ff`). Ev
 
 **Routers are the boundary of broadcast domains.** ARP broadcasts never cross a router.
 
-## Example: ARP Confined to One Subnet
+## Example: ARP Confined to One Broadcast Domain
 
 ```text
 Network Diagram:
@@ -33,7 +33,7 @@ Network Diagram:
 ```
 
 - Host A can ARP for Host B (same broadcast domain)
-- Host A **cannot** ARP for Host C (different subnet - router in the way)
+- Host A **cannot** ARP for Host C (different broadcast domain - router in the way)
 - To reach Host C, Host A sends traffic to the router's MAC (default gateway)
 
 ## ARP and VLAN Boundaries
@@ -66,10 +66,11 @@ import ipaddress
 
 def broadcast_domain_info(cidr):
     net = ipaddress.ip_network(cidr, strict=False)
+    usable_hosts = net.num_addresses if net.prefixlen >= 31 else net.num_addresses - 2
     print(f"Network:       {net}")
     print(f"Broadcast:     {net.broadcast_address}")
-    print(f"Host count:    {net.num_addresses - 2}")
-    print(f"ARP requests per full sweep: {net.num_addresses - 2}")
+    print(f"Host count:    {usable_hosts}")
+    print(f"ARP requests per full sweep: {usable_hosts}")
 
 broadcast_domain_info('10.0.0.0/22')
 ```
@@ -81,7 +82,7 @@ broadcast_domain_info('10.0.0.0/22')
 
 # On Host A (192.168.1.10), try to ARP for 192.168.2.20
 arping -I eth0 192.168.2.20
-# Should fail (no reply) because router blocks ARP broadcasts
+# Should fail (no reply, unless proxy ARP is enabled) because ARP is link-local and routers do not forward ARP broadcasts
 
 # Verify the router (192.168.1.1) is in the same broadcast domain
 arping -I eth0 192.168.1.1
@@ -90,14 +91,14 @@ arping -I eth0 192.168.1.1
 
 ## ARP in Overlay Networks (VXLAN, GENEVE)
 
-In VXLAN environments, ARP broadcasts are encapsulated in UDP and sent as unicast between VTEPs. This extends the broadcast domain across Layer 3 boundaries:
+In VXLAN and GENEVE environments, ARP broadcasts are encapsulated inside the overlay tunnel and carried across the Layer 3 underlay. Depending on the control plane, broadcast and unknown-unicast traffic may use multicast or head-end replication to reach remote tunnel endpoints:
 
 ```bash
-# Check VXLAN ARP flood/learning state
+# Inspect VXLAN forwarding database entries
 bridge fdb show dev vxlan0
 ```
 
-ARP suppression can prevent flooding in VXLAN fabrics by having the VTEP answer ARP requests locally from a cached IP-MAC database.
+In overlays with a control plane such as EVPN, ARP suppression can reduce flooding by having the VTEP answer ARP requests locally from a learned IP-to-MAC table.
 
 ## Key Takeaways
 
