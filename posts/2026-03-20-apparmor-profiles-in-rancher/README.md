@@ -8,7 +8,7 @@ Description: Learn how to apply AppArmor profiles to containers in Rancher-manag
 
 ---
 
-AppArmor is a Linux kernel security module that restricts program capabilities using per-program profiles. In Rancher-managed Kubernetes clusters, you can apply AppArmor profiles to pods to limit what system calls and resources a container can access, reducing the impact of a container escape.
+AppArmor is a Linux kernel security module that restricts program capabilities using per-program profiles. In Rancher-managed Kubernetes clusters, you can apply AppArmor profiles to pods to limit what files, capabilities, and network access a container can use, reducing the impact of a container escape.
 
 ---
 
@@ -28,10 +28,10 @@ ssh node01 "sudo aa-status"
 
 ## Load a Custom AppArmor Profile on Nodes
 
-AppArmor profiles must be loaded on each node before pods can reference them.
+AppArmor profiles must be loaded on each node that may run the pod before pods can reference them.
 
 ```bash
-# Example profile: restrict nginx to only read /etc/nginx and /var/www
+# Example profile: custom profile for an nginx container
 cat > /etc/apparmor.d/k8s-nginx <<'EOF'
 #include <tunables/global>
 
@@ -59,36 +59,38 @@ sudo aa-status | grep k8s-nginx
 
 ## Apply an AppArmor Profile to a Pod
 
-Use the `container.apparmor.security.beta.kubernetes.io` annotation:
+Use the `appArmorProfile` field in the container `securityContext`:
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
   name: nginx-secured
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/nginx: localhost/k8s-nginx
 spec:
   containers:
     - name: nginx
       image: nginx:alpine
+      securityContext:
+        appArmorProfile:
+          type: Localhost
+          localhostProfile: k8s-nginx
       ports:
         - containerPort: 80
 ```
 
-The annotation format is:
-`container.apparmor.security.beta.kubernetes.io/<container-name>: localhost/<profile-name>`
+For a node-local profile in a container security context, set:
+`containers[].securityContext.appArmorProfile.type: Localhost`
+`containers[].securityContext.appArmorProfile.localhostProfile: <profile-name>`
 
 ---
 
 ## Deploy via Rancher UI
 
-1. In Rancher, navigate to the cluster and open **Workloads** → **Pods**.
-2. Click **Create** and switch to the **YAML** editor.
-3. Paste the pod manifest above with the AppArmor annotation.
-4. Click **Create**.
+1. In Rancher, go to **Cluster Management**, open the cluster with **Explore**, and use **Create from YAML**.
+2. Paste the pod manifest above with the AppArmor `securityContext`.
+3. Click **Create**.
 
-Or use Rancher's **Security** → **Pod Security** settings to apply cluster-wide policies.
+Rancher's Pod Security Admission settings can enforce broader cluster-wide pod security policies, but you still need to specify the AppArmor profile in the workload manifest.
 
 ---
 
@@ -104,14 +106,18 @@ kubectl exec nginx-secured -- cat /proc/1/attr/current
 ## Use a Runtime Default Profile
 
 ```yaml
-annotations:
-  container.apparmor.security.beta.kubernetes.io/mycontainer: runtime/default
+spec:
+  containers:
+    - name: mycontainer
+      securityContext:
+        appArmorProfile:
+          type: RuntimeDefault
 ```
 
-`runtime/default` applies the container runtime's default AppArmor profile, which is a reasonable baseline for most workloads.
+`RuntimeDefault` applies the container runtime's default AppArmor profile, which is a reasonable baseline for most workloads.
 
 ---
 
 ## Summary
 
-Load AppArmor profiles on each Kubernetes node using `apparmor_parser`, then reference them in pod annotations with `container.apparmor.security.beta.kubernetes.io/<container>: localhost/<profile>`. Use Rancher's YAML editor or Helm charts to deploy secured workloads. Use `runtime/default` for a no-configuration security baseline, or write custom profiles for workloads with specific access requirements.
+Load AppArmor profiles on each Kubernetes node using `apparmor_parser`, then reference them in a pod or container `securityContext` with `appArmorProfile`. Use Rancher's YAML editor or Helm charts to deploy secured workloads. Use `RuntimeDefault` for a no-configuration security baseline, or write custom profiles for workloads with specific access requirements.
