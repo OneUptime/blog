@@ -19,7 +19,7 @@ Podman's checkpoint feature lets you take a snapshot of a running container at a
 Before you can checkpoint a container, you need:
 
 - Podman 3.0 or later installed
-- CRIU 3.15 or later installed and passing `sudo criu check`
+- CRIU 3.11 or later installed and passing `sudo criu check`
 - Root access (checkpoint/restore requires elevated privileges)
 - A running container to checkpoint
 
@@ -132,7 +132,7 @@ This outputs a JSON representation of the process tree at the time of the checkp
 
 ## Checkpoint with Verbose Output
 
-For troubleshooting or understanding what happens during a checkpoint, enable verbose logging:
+For troubleshooting or understanding what happens during a checkpoint, capture the command output:
 
 ```bash
 sudo podman container checkpoint counter 2>&1 | tee checkpoint.log
@@ -214,7 +214,13 @@ for c in app1 app2 app3; do
 done
 ```
 
-There is no built-in command to checkpoint all containers at once, but a simple loop handles it. Be aware that checkpointing multiple containers is not atomic. There will be a time gap between each checkpoint, which matters if the containers are communicating with each other.
+You can also checkpoint all running containers with Podman's built-in `--all` option:
+
+```bash
+sudo podman container checkpoint --all
+```
+
+Be aware that checkpointing multiple containers is not atomic. There will be a time gap between each checkpoint, which matters if the containers are communicating with each other.
 
 ## Error Handling
 
