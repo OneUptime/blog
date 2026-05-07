@@ -25,7 +25,7 @@ The ARG instruction declares a build-time variable with an optional default valu
 
 ARG VERSION=1.0.0
 
-# ARG without a default (must be provided at build time)
+# ARG without a default (empty unless provided at build time)
 ARG API_ENDPOINT
 
 # Using the ARG value
@@ -44,7 +44,7 @@ podman build -t myapp .
 # Override the default
 podman build --build-arg VERSION=2.1.0 -t myapp:2.1.0 .
 
-# Required ARG (no default) - build fails if not provided
+# Provide a value for an ARG without a default
 podman build --build-arg API_ENDPOINT=https://api.example.com -t myapp .
 ```
 
@@ -156,19 +156,24 @@ Key differences:
 |---------|-----|-----|
 | Available during build | Yes | Yes |
 | Available at runtime | No | Yes |
-| Stored in image metadata | No (after build) | Yes |
+| Stored in image config | No | Yes |
 | Can appear before FROM | Yes | No |
 | Overridable at build time | Yes (--build-arg) | No |
 | Overridable at run time | No | Yes (-e flag) |
 
 ## Predefined Build Arguments
 
-Podman provides several predefined ARG values that you can use without declaring them:
+Podman provides several platform-related ARG values for multi-architecture builds. Declare them inside each build stage where you want to use them:
 
 ```dockerfile
 FROM alpine:3.19
 
-# These are available automatically
+# Declare platform ARGs before using them in this stage
+ARG TARGETPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
+ARG BUILDPLATFORM
+
 RUN echo "Target platform: ${TARGETPLATFORM}"
 RUN echo "Target OS: ${TARGETOS}"
 RUN echo "Target architecture: ${TARGETARCH}"
@@ -179,9 +184,11 @@ Available predefined arguments:
 - `TARGETPLATFORM` - platform of the build result (e.g., `linux/amd64`)
 - `TARGETOS` - OS component of TARGETPLATFORM (e.g., `linux`)
 - `TARGETARCH` - architecture component (e.g., `amd64`, `arm64`)
+- `TARGETVARIANT` - variant component of TARGETPLATFORM when applicable
 - `BUILDPLATFORM` - platform of the build host
 - `BUILDOS` - OS of the build host
 - `BUILDARCH` - architecture of the build host
+- `BUILDVARIANT` - variant component of BUILDPLATFORM when applicable
 
 ## Practical Patterns
 
@@ -359,12 +366,12 @@ podman build --secret id=db_password,src=./db_password.txt -t myapp .
 
 ## Cache Behavior
 
-Changing an ARG value invalidates the cache for that layer and all subsequent layers:
+Changing an ARG value invalidates the cache from the first instruction that uses it, and all subsequent layers:
 
 ```dockerfile
 FROM node:20-alpine
 
-# Changing APP_VERSION invalidates everything below
+# Changing APP_VERSION can invalidate subsequent RUN instructions
 ARG APP_VERSION=1.0.0
 
 WORKDIR /app
