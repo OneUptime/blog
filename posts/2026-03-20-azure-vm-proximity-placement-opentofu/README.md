@@ -8,7 +8,7 @@ Description: Learn how to configure Azure Proximity Placement Groups with OpenTo
 
 ## Introduction
 
-Azure Proximity Placement Groups (PPGs) ensure that VMs are placed in the same Azure datacenter to minimize network latency between them. This is essential for high-performance computing (HPC), tightly-coupled applications where microseconds matter, and multi-tier applications where database, application, and cache servers need maximum proximity. PPGs work with both individual VMs and VM Scale Sets, and can span Availability Zones within the same region.
+Azure Proximity Placement Groups (PPGs) ensure that VMs are placed in the same Azure datacenter to minimize network latency between them. This is essential for high-performance computing (HPC), tightly-coupled applications where microseconds matter, and multi-tier applications where database, application, and cache servers need maximum proximity. PPGs work with individual VMs, Availability Sets, and VM Scale Sets. They can also be used with Availability Zones, but a single PPG cannot span zones.
 
 ## Prerequisites
 
@@ -110,7 +110,7 @@ resource "azurerm_availability_set" "ppg" {
   proximity_placement_group_id = azurerm_proximity_placement_group.main.id
   managed                      = true
 
-  # Within PPG, fault domain count is typically 2
+  # Fault domain limits vary by region; this example uses 2
   platform_fault_domain_count  = 2
   platform_update_domain_count = 5
 }
@@ -122,7 +122,6 @@ resource "azurerm_linux_virtual_machine" "ha_app" {
   resource_group_name          = var.resource_group_name
   location                     = var.location
   size                         = "Standard_D4s_v3"
-  proximity_placement_group_id = azurerm_proximity_placement_group.main.id
   availability_set_id          = azurerm_availability_set.ppg.id
 
   network_interface_ids           = [azurerm_network_interface.ha[count.index].id]
@@ -211,4 +210,4 @@ az ppg show \
 
 ## Conclusion
 
-PPGs pin all VMs to the same physical cluster within a datacenter, which can limit capacity during high-demand periods. If Azure cannot place a new VM in the PPG location, the deployment fails-start with the largest VMs first (the "anchor" VM) to secure placement in the physical cluster. PPGs do not guarantee network bandwidth between VMs; for guaranteed bandwidth, use Accelerated Networking (`enable_accelerated_networking = true` on NICs). PPGs can reduce latency from ~1-2ms to sub-millisecond, which matters for applications doing thousands of internal round-trips per request.
+PPGs are a colocation constraint for the same datacenter, which can limit capacity during high-demand periods. If Azure cannot place a new VM in the PPG, the deployment can fail. To reduce that risk, specify the required VM sizes up front when possible; if a deployment fails, retry with the VM size that failed deployed first. PPGs do not guarantee network bandwidth between VMs; use Accelerated Networking (`accelerated_networking_enabled = true` on supported NICs) together with appropriately sized VMs to improve networking performance. PPGs can reduce VM-to-VM latency for tightly coupled workloads, which matters for applications doing thousands of internal round-trips per request.
