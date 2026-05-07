@@ -19,18 +19,23 @@ Podman uses `containers.conf` as its primary configuration file to define defaul
 Podman reads `containers.conf` from multiple locations, with later files overriding earlier ones.
 
 ```bash
-# Check which configuration files Podman is currently using
+# Check configuration loading with debug output
 
-podman info --format '{{.Host.ConfigFiles}}'
+podman --log-level=debug info 2>&1 | grep -i containers.conf
 
 # The search order (lowest to highest priority):
 # 1. /usr/share/containers/containers.conf   (vendor/package defaults)
 # 2. /etc/containers/containers.conf          (system-wide admin overrides)
-# 3. ~/.config/containers/containers.conf     (user-level overrides)
+# 3. /etc/containers/containers.conf.d/*.conf (system-wide drop-ins)
+# 4. /etc/containers/containers.rootless.conf and rootless drop-ins
+# 5. $XDG_CONFIG_HOME/containers/containers.conf
+#    (or ~/.config/containers/containers.conf when XDG_CONFIG_HOME is unset)
+# 6. $XDG_CONFIG_HOME/containers/containers.conf.d/*.conf
+#    (or ~/.config/containers/containers.conf.d/*.conf when XDG_CONFIG_HOME is unset)
 ```
 
 ```bash
-# View the currently active merged configuration
+# View detailed active Podman system information
 podman info --format json | python3 -m json.tool
 ```
 
@@ -74,12 +79,12 @@ EOF
 Each section controls a different aspect of Podman behavior.
 
 ```bash
-# View all available options with their defaults
-# The [containers] section controls container runtime defaults
-podman info --format '{{.Host.OCIRuntime.Name}}'
+# Inspect active settings related to common containers.conf sections
+# The [containers] section controls container creation defaults
+podman info --format '{{.Host.LogDriver}}'
 
 # The [engine] section controls the Podman engine itself
-podman info --format '{{.Store.GraphDriverName}}'
+podman info --format '{{.Host.OCIRuntime.Name}}'
 
 # The [network] section controls networking defaults
 podman info --format '{{.Host.NetworkBackend}}'
@@ -87,7 +92,9 @@ podman info --format '{{.Host.NetworkBackend}}'
 
 ```bash
 # A practical example: set crun as the default runtime
-cat >> ~/.config/containers/containers.conf << 'EOF'
+mkdir -p ~/.config/containers/containers.conf.d
+
+cat > ~/.config/containers/containers.conf.d/99-runtime.conf << 'EOF'
 
 [engine]
 # Use crun for better performance and lower memory usage
@@ -133,4 +140,4 @@ diff /usr/share/containers/containers.conf ~/.config/containers/containers.conf
 
 ## Summary
 
-The `containers.conf` file is Podman's primary configuration mechanism, using a layered TOML format with vendor, system, and user-level files. By understanding the file hierarchy and key sections - containers, engine, and network - you can customize Podman to fit your exact workflow. Always validate changes with `podman info` and keep backups of working configurations.
+The `containers.conf` file is Podman's primary configuration mechanism, using a layered TOML format with vendor, system, rootless, and user-level files. By understanding the file hierarchy and key sections - containers, engine, and network - you can customize Podman to fit your exact workflow. Always validate changes with `podman info` and keep backups of working configurations.
