@@ -10,7 +10,7 @@ Description: Learn how to configure timeout settings in Podman for container ope
 
 > Properly configured timeouts prevent hung operations from blocking your workflows while giving slow operations enough time to complete.
 
-Podman has several timeout settings that affect container startup, shutdown, API service idle time, and network operations. Getting these right is important: too short and legitimate operations fail; too long and hung processes waste resources. This guide covers every timeout you can configure in Podman and how to set them for your environment.
+Podman has several timeout and retry settings that affect container shutdown, API service idle time, health checks, and image pulls. Getting these right is important: too short and legitimate operations fail; too long and hung processes waste resources. This guide covers the main timeout-related settings you can configure in Podman and how to set them for your environment.
 
 ---
 
@@ -19,12 +19,15 @@ Podman has several timeout settings that affect container startup, shutdown, API
 The Podman system service has an idle timeout that controls how long it runs without activity.
 
 ```bash
-# Start the service with a 60-second idle timeout (default)
+# Start the service with the default 5-second idle timeout
 
-podman system service --time 60
+podman system service --time 5
 
 # Run the service indefinitely (no timeout)
 podman system service --time 0
+
+# Set a 60-second idle timeout
+podman system service --time 60
 
 # Set a 5-minute idle timeout
 podman system service --time 300
@@ -54,6 +57,9 @@ podman stop --time 30 my-container
 # Stop immediately (send SIGKILL right away)
 podman stop --time 0 my-container
 
+# Wait indefinitely for a graceful stop
+podman stop --time -1 my-container
+
 # Set the default stop timeout when creating a container
 podman run -d --stop-timeout 30 --name graceful-app nginx:alpine
 
@@ -64,26 +70,26 @@ stop_timeout = 30
 EOF
 ```
 
-## Container Init Timeout
+## Container Init Binary
 
-Configure how long Podman waits for a container's init process to start.
+Configure the init binary Podman uses when `--init` is enabled.
 
 ```bash
-# Run a container with an init process and custom timeout
+# Run a container with an init process
 podman run -d --init --name init-app nginx:alpine
 
-# The init timeout can be configured in containers.conf
+# The init binary path can be configured in containers.conf
 mkdir -p ~/.config/containers
 cat >> ~/.config/containers/containers.conf << 'EOF'
-[engine]
-# Timeout for container init in seconds
+[containers]
+# Path to the container init binary
 init_path = "/usr/libexec/podman/catatonit"
 EOF
 ```
 
-## Pull Timeout
+## Pull Retry Settings
 
-Configure timeouts for image pull operations.
+Configure retry behavior for image pull operations. Podman does not expose a dedicated per-pull timeout flag, but retries and retry delays help with transient registry or network failures.
 
 ```bash
 # Pull with a retry count (helps with slow connections)
@@ -92,15 +98,16 @@ podman pull --retry 3 docker.io/library/nginx:latest
 # Configure pull retry delay
 podman pull --retry-delay 5s docker.io/library/nginx:latest
 
-# Set pull-related timeouts in registries.conf
-cat >> ~/.config/containers/registries.conf << 'EOF'
-# Increase timeout for slow registries
-[[registry]]
-location = "slow-registry.example.com"
+# Set pull-related retry defaults in containers.conf
+mkdir -p ~/.config/containers
+cat >> ~/.config/containers/containers.conf << 'EOF'
+[engine]
+retry = 3
+retry_delay = "5s"
 EOF
 
-# For large images on slow connections, use environment variables
-CONTAINERS_REGISTRIES_CONF=~/.config/containers/registries.conf \
+# For one-off pull retry defaults, use a custom containers.conf
+CONTAINERS_CONF=~/.config/containers/containers.conf \
     podman pull large-image:latest
 ```
 
@@ -116,9 +123,12 @@ curl --unix-socket /run/user/$(id -u)/podman/podman.sock \
     http://localhost/v4.0.0/libpod/containers/json
 
 # For remote connections, set SSH timeout
-podman --connection remote-host \
+podman --remote \
     --url ssh://user@host/run/user/1000/podman/podman.sock \
     ps
+
+# Or use a named connection
+podman --connection remote-host ps
 
 # Configure SSH connection timeout in ~/.ssh/config
 cat >> ~/.ssh/config << 'EOF'
@@ -169,6 +179,7 @@ Configure timeouts for Podman-managed systemd units.
 
 ```bash
 # Set timeouts in the Podman systemd service unit
+mkdir -p ~/.config/systemd/user/podman.service.d
 cat > ~/.config/systemd/user/podman.service.d/timeouts.conf << 'EOF'
 [Service]
 # Time to wait for the service to start
@@ -189,13 +200,13 @@ systemctl --user daemon-reload
 
 ## Network Connection Timeouts
 
-Configure timeouts for container networking operations.
+Configure DNS settings for containers and use command-level timeouts for network checks. Podman does not expose a general container network timeout setting in `containers.conf`.
 
 ```bash
-# Set DNS timeout in containers.conf
+# Set DNS servers in containers.conf
 mkdir -p ~/.config/containers
 cat >> ~/.config/containers/containers.conf << 'EOF'
-[network]
+[containers]
 # DNS servers for containers
 dns_servers = ["8.8.8.8", "8.8.4.4"]
 EOF
@@ -221,8 +232,11 @@ cat > "$CONFIG_DIR/containers.conf" << 'EOF'
 [engine]
 # Default stop timeout for containers (seconds)
 stop_timeout = 30
+service_timeout = 0
+retry = 3
+retry_delay = "5s"
 
-[network]
+[containers]
 dns_servers = ["8.8.8.8", "8.8.4.4"]
 EOF
 
@@ -243,6 +257,7 @@ systemctl --user daemon-reload
 echo "Timeout configuration applied:"
 echo "  Container stop timeout: 30s"
 echo "  Service idle timeout: disabled (runs forever)"
+echo "  Pull retries: 3 with 5s delay"
 echo "  Service start timeout: 60s"
 echo "  Service stop timeout: 30s"
 echo "  Restart delay: 10s"
@@ -250,4 +265,4 @@ echo "  Restart delay: 10s"
 
 ## Summary
 
-Timeout configuration is a critical aspect of running Podman reliably. Configure the system service timeout based on your usage pattern (0 for always-on, shorter for on-demand), set container stop timeouts to match application shutdown requirements, and tune health check timeouts for accurate monitoring. Use containers.conf for container-level settings and systemd drop-in files for service-level controls to build a timeout strategy that balances responsiveness with reliability.
+Timeout configuration is a critical aspect of running Podman reliably. Configure the system service timeout based on your usage pattern (0 for always-on, shorter for on-demand), set container stop timeouts to match application shutdown requirements, and tune health check timeouts for accurate monitoring. Use containers.conf for container-level and engine-level settings and systemd drop-in files for service-level controls to build a timeout strategy that balances responsiveness with reliability.
