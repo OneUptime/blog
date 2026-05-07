@@ -26,11 +26,13 @@ kubectl logs -n cattle-resources-system -l app.kubernetes.io/name=rancher-backup
 
 Common causes and solutions:
 
-**Insufficient RBAC permissions**: Reinstall the CRDs:
+**Insufficient RBAC permissions**: Upgrade or reinstall the Rancher Backups charts using a chart version supported for your Rancher version:
 
 ```bash
-helm upgrade rancher-backup-crd rancher-charts/rancher-backup-crd \
-  -n cattle-resources-system
+helm upgrade --install rancher-backup-crd rancher-charts/rancher-backup-crd \
+  -n cattle-resources-system --create-namespace --version <chart-version>
+helm upgrade --install rancher-backup rancher-charts/rancher-backup \
+  -n cattle-resources-system --version <chart-version>
 ```
 
 **Image pull errors**: Check if the image is accessible:
@@ -76,7 +78,12 @@ kubectl get secret s3-creds -n cattle-resources-system -o jsonpath='{.data.secre
 Test S3 connectivity from within the cluster:
 
 ```bash
-kubectl run s3-test --rm -it --image=amazon/aws-cli --restart=Never -- \
+AWS_ACCESS_KEY_ID=$(kubectl get secret s3-creds -n cattle-resources-system -o jsonpath='{.data.accessKey}' | base64 -d)
+AWS_SECRET_ACCESS_KEY=$(kubectl get secret s3-creds -n cattle-resources-system -o jsonpath='{.data.secretKey}' | base64 -d)
+
+kubectl run s3-test --rm -it --image=amazon/aws-cli --restart=Never \
+  --env="AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" \
+  --env="AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" -- \
   s3 ls s3://rancher-backups/ \
   --endpoint-url https://s3.amazonaws.com \
   --region us-east-1
@@ -104,8 +111,8 @@ kubectl exec -n cattle-resources-system deploy/rancher-backup -- \
 ```
 
 Solutions:
-- Increase the PersistentVolume size for the operator.
-- Use external storage (S3) which has no practical size limit.
+- If you use PVC storage, increase the PersistentVolume size for the operator.
+- Use external S3-compatible object storage so the operator PVC is not the bottleneck.
 - Check for excessive custom resources that may be inflating the backup.
 
 ### Issue 5: Scheduled Backups Not Running
@@ -128,13 +135,7 @@ kubectl get pods -n cattle-resources-system -w
 
 ### Issue 6: Restore Fails with Version Mismatch
 
-The Rancher version on the target must match the version when the backup was taken. Check the backup metadata:
-
-```bash
-kubectl logs -n cattle-resources-system -l app.kubernetes.io/name=rancher-backup | grep version
-```
-
-Install the matching Rancher version before attempting the restore.
+The Rancher version used for the restore must match the version that created the backup. If you are migrating to a new cluster, restore the backup first, then install that same Rancher version on the target cluster. Using a backup restore to change Rancher versions is not supported.
 
 ### Issue 7: Restore Fails with Encryption Error
 
@@ -147,10 +148,10 @@ kubectl get restores.resources.cattle.io restore-name -o yaml
 Verify the encryption secret exists and contains the correct key:
 
 ```bash
-kubectl get secret rancher-backup-encryption -n cattle-resources-system
+kubectl get secret YOUR_ENCRYPTION_SECRET -n cattle-resources-system -o yaml
 ```
 
-Ensure you are using the exact same encryption configuration that was used during backup. Key names and values must match exactly.
+Ensure you are using the exact same encryption configuration that was used during backup. The Restore resource must reference the same `encryptionConfigSecretName`, and the Secret in `cattle-resources-system` must contain the `encryption-provider-config.yaml` key.
 
 ### Issue 8: Resources Conflict During Restore
 
@@ -160,7 +161,7 @@ If the restore encounters existing resources:
 kubectl logs -n cattle-resources-system -l app.kubernetes.io/name=rancher-backup | grep conflict
 ```
 
-The operator attempts to update existing resources, but some conflicts may require manual intervention. You can delete the conflicting resources before retrying:
+The operator attempts to update existing resources, but some conflicts may require manual intervention. On migrations, make sure Rancher is not already installed on the target cluster. If the conflict is a stale Rancher-managed resource, delete only that specific resource before retrying:
 
 ```bash
 kubectl delete clusters.management.cattle.io conflicting-cluster-name
@@ -195,7 +196,7 @@ kubectl rollout restart deployment rancher -n cattle-system
 
 ### Issue 10: etcd Snapshot Fails
 
-Check the etcd logs on the control plane node:
+For RKE2 clusters using embedded etcd, check the server logs on a control plane node:
 
 ```bash
 journalctl -u rke2-server | grep etcd
@@ -205,45 +206,32 @@ Common causes:
 - **Disk full**: Check available disk space on control plane nodes:
 
 ```bash
-df -h /var/lib/rancher/
+df -h /var/lib/rancher/rke2/
 ```
 
-- **etcd database too large**: Check the database size:
+- **Snapshot inventory or S3 configuration issues**: Verify that RKE2 can see the snapshots:
 
 ```bash
-kubectl -n kube-system exec -it etcd-NODE -- \
-  etcdctl endpoint status --write-out=table \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key
+rke2 etcd-snapshot ls
+kubectl get etcdsnapshotfile
 ```
 
-If the database is too large, consider defragmenting:
-
-```bash
-kubectl -n kube-system exec -it etcd-NODE -- \
-  etcdctl defrag \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key
-```
+If you are using S3 for snapshots, confirm the RKE2 S3 settings and credentials match the configured bucket, region, endpoint, and folder.
 
 ### Issue 11: etcd Restore Breaks Cluster
 
-If a cluster is unhealthy after an etcd restore:
+If a cluster is unhealthy after an RKE2 embedded-etcd restore:
 
-1. Verify etcd member health:
+1. Stop `rke2-server` on all server nodes.
+2. Restore the snapshot on only one server node with `--cluster-reset`.
 
 ```bash
-kubectl -n kube-system exec -it etcd-NODE -- \
-  etcdctl member list \
-  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key
+rke2 server \
+  --cluster-reset \
+  --cluster-reset-restore-path=<PATH-TO-SNAPSHOT>
 ```
 
-2. Check for stale members and remove them.
-3. On multi-node clusters, ensure only one node was restored first, then others re-joined.
+3. Start that server, then delete `/var/lib/rancher/rke2/server/db/` on the other server nodes before starting them again so they rejoin the restored cluster.
 
 ## Diagnostic Commands Summary
 
@@ -260,9 +248,12 @@ kubectl get restores.resources.cattle.io
 # Detailed backup status
 kubectl describe backups.resources.cattle.io BACKUP_NAME
 
-# etcd health
-kubectl get cs
-kubectl -n kube-system exec -it etcd-NODE -- etcdctl endpoint health
+# Kubernetes API server health
+kubectl get --raw='/readyz?verbose'
+
+# RKE2 embedded etcd snapshot inventory
+rke2 etcd-snapshot ls
+kubectl get etcdsnapshotfile
 
 # Rancher health
 kubectl get pods -n cattle-system
