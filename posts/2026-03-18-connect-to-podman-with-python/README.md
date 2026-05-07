@@ -30,7 +30,7 @@ print(client.version())
 client.close()
 ```
 
-This connects to the rootless Podman socket at `unix:///run/user/{uid}/podman/podman.sock` by default.
+On a typical rootless Linux setup, this connects to the Podman socket under `$XDG_RUNTIME_DIR`, such as `http+unix:///run/user/{uid}/podman/podman.sock`, by default.
 
 ### Using a Context Manager
 
@@ -119,22 +119,22 @@ with PodmanClient(
     print(client.version())
 ```
 
-## Connecting via HTTP
+## Connecting via TCP
 
 For environments where the Podman API is exposed over TCP:
 
 ```python
 from podman import PodmanClient
 
-# Connect via HTTP
-with PodmanClient(base_url="http://localhost:8080") as client:
+# Connect via TCP
+with PodmanClient(base_url="tcp://localhost:8080") as client:
     print(client.version())
 ```
 
 To start Podman listening on a TCP port:
 
 ```bash
-podman system service tcp:localhost:8080 --time=0
+podman system service --time=0 tcp://localhost:8080
 ```
 
 Note that TCP connections without TLS are not encrypted and should only be used in trusted networks or for local development.
@@ -169,7 +169,11 @@ import requests
 def get_podman_client(base_url=None):
     """Create a Podman client with error handling."""
     try:
-        client = PodmanClient(base_url=base_url)
+        kwargs = {}
+        if base_url:
+            kwargs["base_url"] = base_url
+
+        client = PodmanClient(**kwargs)
         # Verify the connection works
         client.ping()
         return client
@@ -289,8 +293,8 @@ from podman import PodmanClient
 
 def create_client_from_env():
     """Create a Podman client from environment variables."""
-    base_url = os.environ.get("PODMAN_HOST")
-    identity = os.environ.get("PODMAN_IDENTITY")
+    base_url = os.environ.get("CONTAINER_HOST")
+    identity = os.environ.get("CONTAINER_SSHKEY")
     timeout = int(os.environ.get("PODMAN_TIMEOUT", "30"))
 
     kwargs = {"timeout": timeout}
@@ -302,8 +306,8 @@ def create_client_from_env():
     return PodmanClient(**kwargs)
 
 # Set environment variables before running:
-# export PODMAN_HOST=ssh://user@host/run/user/1000/podman/podman.sock
-# export PODMAN_IDENTITY=/home/user/.ssh/id_rsa
+# export CONTAINER_HOST=ssh://user@host/run/user/1000/podman/podman.sock
+# export CONTAINER_SSHKEY=/home/user/.ssh/id_rsa
 
 with create_client_from_env() as client:
     print(client.version())
