@@ -43,7 +43,7 @@ aws ec2 associate-address \
 # Describe Elastic IPs and their associations
 aws ec2 describe-addresses \
   --allocation-ids eipalloc-0123456789abcdef0 \
-  --query 'Addresses[*].{PublicIP:PublicIp,InstanceId:InstanceId,State:AssociationId}'
+  --query 'Addresses[*].{PublicIP:PublicIp,InstanceId:InstanceId,AssociationId:AssociationId}'
 ```
 
 ## Reassociating to a Different Instance
@@ -81,13 +81,13 @@ resource "aws_eip_association" "web" {
 
 ## Important Cost Considerations
 
-AWS charges for EIPs that are allocated but NOT associated with a running instance. Always release unneeded EIPs:
+AWS charges for all public IPv4 addresses, including Elastic IPs whether they are in use or idle. Always release unneeded EIPs:
 
 ```bash
-# Disassociate the EIP first
+# If the EIP is currently associated, disassociate it first
 aws ec2 disassociate-address --association-id eipassoc-xxx
 
-# Then release it to stop charges
+# Then release it to stop ongoing public IPv4 charges
 aws ec2 release-address --allocation-id eipalloc-0123456789abcdef0
 ```
 
@@ -97,4 +97,4 @@ By default, each AWS account can have 5 Elastic IPs per region. Request an incre
 
 ## Conclusion
 
-Elastic IPs are the standard way to maintain a static public IP for EC2 instances. They enable reliable DNS records, SSL certificate validation, and firewall rules without worrying about IP changes during instance restarts.
+Elastic IPs are the standard way to maintain a static public IP for EC2 instances. They enable reliable DNS records, firewall allowlists, and other integrations that depend on a stable public IP without worrying about IP changes during instance restarts.
