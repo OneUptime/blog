@@ -76,7 +76,7 @@ sudo sysctl -w net.ipv6.conf.all.forwarding=1
 Create a sysctl configuration file:
 
 ```bash
-sudo cat > /etc/sysctl.d/99-podman-forwarding.conf << 'EOF'
+sudo tee /etc/sysctl.d/99-podman-forwarding.conf > /dev/null << 'EOF'
 # Enable IPv4 forwarding for Podman containers
 net.ipv4.ip_forward = 1
 
@@ -102,10 +102,10 @@ Podman typically manages IP forwarding automatically when it creates networks. H
 
 ### Rootless Podman
 
-Rootless Podman uses `slirp4netns` or `pasta` for networking, which handles forwarding differently than rootful mode. Check which network mode you are using:
+Rootless Podman uses `slirp4netns` or `pasta` for networking, which handles forwarding differently than rootful mode. You can check a running container's network mode with:
 
 ```bash
-podman info --format '{{.Host.NetworkBackendInfo.Backend}}'
+podman inspect test-app --format '{{.HostConfig.NetworkMode}}'
 ```
 
 For rootless mode with `pasta` (the default in recent Podman versions):
@@ -143,11 +143,11 @@ podman network create net-b --subnet 10.90.0.0/24
 Start containers on each network:
 
 ```bash
-podman run -d --name app-a --network net-a docker.io/library/alpine sleep 3600
-podman run -d --name app-b --network net-b docker.io/library/alpine sleep 3600
+podman run -d --name app-a --network net-a --cap-add NET_ADMIN docker.io/library/alpine sleep 3600
+podman run -d --name app-b --network net-b --cap-add NET_ADMIN docker.io/library/alpine sleep 3600
 ```
 
-By default, these containers cannot communicate. Enable routing:
+If your firewall policy blocks forwarding between these bridges, allow the routed traffic:
 
 ```bash
 # Get bridge interface names
@@ -159,7 +159,7 @@ sudo iptables -A FORWARD -i "$BRIDGE_A" -o "$BRIDGE_B" -j ACCEPT
 sudo iptables -A FORWARD -i "$BRIDGE_B" -o "$BRIDGE_A" -j ACCEPT
 ```
 
-Now add routes inside the containers:
+Now get the container IPs:
 
 ```bash
 # Get container IPs
@@ -185,6 +185,7 @@ podman run -d \
   --name router \
   --network net-a \
   --network net-b \
+  --cap-add NET_ADMIN \
   --sysctl net.ipv4.ip_forward=1 \
   docker.io/library/alpine sleep 3600
 ```
@@ -223,7 +224,7 @@ sudo iptables -A FORWARD -i "$EXT_IF" -o "$BRIDGE_A" -m state --state RELATED,ES
 Forward specific ports from the host to containers using iptables DNAT rules:
 
 ```bash
-# Forward host port 8080 to container on 10.89.0.2:80
+# Forward traffic arriving at host port 8080 to container 10.89.0.2:80
 sudo iptables -t nat -A PREROUTING -p tcp --dport 8080 -j DNAT --to-destination 10.89.0.2:80
 sudo iptables -A FORWARD -p tcp -d 10.89.0.2 --dport 80 -j ACCEPT
 ```
@@ -259,7 +260,7 @@ sudo netfilter-persistent save
 
 # Using iptables-services (Fedora/RHEL)
 sudo dnf install iptables-services
-sudo iptables-save > /etc/sysconfig/iptables
+sudo sh -c 'iptables-save > /etc/sysconfig/iptables'
 sudo systemctl enable iptables
 ```
 
