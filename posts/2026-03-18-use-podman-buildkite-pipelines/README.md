@@ -26,7 +26,11 @@ Install Podman on your Buildkite agent machines.
 
 # Install Podman
 sudo apt-get update
-sudo apt-get install -y podman fuse-overlayfs
+sudo apt-get install -y podman fuse-overlayfs uidmap slirp4netns
+
+# Rootless Podman requires subordinate UID/GID ranges
+sudo grep -q '^buildkite-agent:' /etc/subuid || echo 'buildkite-agent:100000:65536' | sudo tee -a /etc/subuid
+sudo grep -q '^buildkite-agent:' /etc/subgid || echo 'buildkite-agent:100000:65536' | sudo tee -a /etc/subgid
 
 # Configure storage for the buildkite-agent user
 sudo -u buildkite-agent mkdir -p /home/buildkite-agent/.config/containers
@@ -61,21 +65,14 @@ steps:
     agents:
       podman: "true"
 
-  # Build the container image
-  - label: ":building_construction: Build Image"
-    commands:
-      - podman build
-          --tag myapp:${BUILDKITE_BUILD_NUMBER}
-          --tag myapp:${BUILDKITE_COMMIT}
-          .
-    agents:
-      podman: "true"
-
-  # Run the test suite
-  - label: ":test_tube: Run Tests"
-    depends_on: ":building_construction: Build Image"
-    commands:
-      - podman run --rm myapp:${BUILDKITE_COMMIT} npm test
+  # Build the image and run tests in the same step
+  - label: ":building_construction: Build and Test"
+    command: |
+      podman build \
+        --tag myapp:${BUILDKITE_BUILD_NUMBER} \
+        --tag myapp:${BUILDKITE_COMMIT} \
+        .
+      podman run --rm myapp:${BUILDKITE_COMMIT} npm test
     agents:
       podman: "true"
 ```
@@ -88,27 +85,19 @@ Push images to a container registry after successful builds.
 # .buildkite/pipeline.yml
 # Build and push pipeline with registry authentication
 steps:
-  - label: ":building_construction: Build"
-    commands:
-      - podman build
-          -t ${REGISTRY}/${IMAGE_NAME}:${BUILDKITE_COMMIT}
-          -t ${REGISTRY}/${IMAGE_NAME}:latest
-          .
-    agents:
-      podman: "true"
+  - label: ":rocket: Build and Push"
+    command: |
+      podman build \
+        -t ${REGISTRY}/${IMAGE_NAME}:${BUILDKITE_COMMIT} \
+        -t ${REGISTRY}/${IMAGE_NAME}:latest \
+        .
 
-  - label: ":rocket: Push to Registry"
-    depends_on: ":building_construction: Build"
-    commands:
-      # Login using credentials from Buildkite secrets
-      - echo "$REGISTRY_PASSWORD" |
-          podman login $REGISTRY
-            -u "$REGISTRY_USERNAME"
-            --password-stdin
+      echo "$REGISTRY_PASSWORD" | podman login "$REGISTRY" \
+        -u "$REGISTRY_USERNAME" \
+        --password-stdin
 
-      # Push both tags
-      - podman push ${REGISTRY}/${IMAGE_NAME}:${BUILDKITE_COMMIT}
-      - podman push ${REGISTRY}/${IMAGE_NAME}:latest
+      podman push ${REGISTRY}/${IMAGE_NAME}:${BUILDKITE_COMMIT}
+      podman push ${REGISTRY}/${IMAGE_NAME}:latest
     agents:
       podman: "true"
     # Only push on the main branch
@@ -123,46 +112,41 @@ Run multi-container integration tests in Buildkite.
 # .buildkite/pipeline.yml
 # Integration testing with Podman
 steps:
-  - label: ":building_construction: Build"
-    commands:
-      - podman build -t myapp:test .
-    agents:
-      podman: "true"
+  - label: ":database: Build and Integration Tests"
+    command: |
+      set -euo pipefail
 
-  - label: ":database: Integration Tests"
-    depends_on: ":building_construction: Build"
-    commands:
-      # Create a network for the test services
-      - podman network create bk-test-net
+      podman build -t myapp:test .
+      podman network create bk-test-net
 
-      # Start PostgreSQL
-      - podman run -d
-          --name bk-postgres
-          --network bk-test-net
-          -e POSTGRES_PASSWORD=testpass
-          -e POSTGRES_DB=testdb
-          postgres:16-alpine
+      cleanup() {
+        podman rm -f bk-postgres 2>/dev/null || true
+        podman network rm bk-test-net 2>/dev/null || true
+      }
+      trap cleanup EXIT
 
-      # Wait for database
-      - sleep 5
-      - podman exec bk-postgres pg_isready -U postgres
+      podman run -d \
+        --name bk-postgres \
+        --network bk-test-net \
+        -e POSTGRES_PASSWORD=testpass \
+        -e POSTGRES_DB=testdb \
+        postgres:16-alpine
 
-      # Run integration tests
-      - podman run --rm
-          --network bk-test-net
-          -e DATABASE_URL=postgresql://postgres:testpass@bk-postgres/testdb
-          myapp:test npm run test:integration
+      until podman exec bk-postgres pg_isready -U postgres -d testdb; do
+        sleep 1
+      done
 
-      # Clean up
-      - podman rm -f bk-postgres
-      - podman network rm bk-test-net
+      podman run --rm \
+        --network bk-test-net \
+        -e DATABASE_URL=postgresql://postgres:testpass@bk-postgres/testdb \
+        myapp:test npm run test:integration
     agents:
       podman: "true"
 ```
 
-## Using Buildkite Plugins with Podman
+## Using Buildkite Hooks with Podman
 
-Create a custom Buildkite plugin for common Podman operations.
+Use a repository hook for common Podman operations.
 
 ```yaml
 # .buildkite/pipeline.yml
@@ -184,10 +168,10 @@ steps:
 # Pre-command hook that runs before every build step
 # Use this to configure Podman for the build environment
 
-# Clean up any leftover containers from previous builds
+# Clean up any stopped containers left over from previous builds
 podman container prune -f 2>/dev/null || true
 
-# Prune old images to save disk space (keep images from last 24h)
+# Prune dangling images older than 24h
 podman image prune -f --filter "until=24h" 2>/dev/null || true
 
 echo "Podman environment ready"
@@ -210,8 +194,7 @@ YAML
 # Always build the image
 cat << YAML
   - label: ":building_construction: Build Image"
-    commands:
-      - podman build -t myapp:${BUILDKITE_COMMIT} .
+    command: podman build -t myapp:${BUILDKITE_COMMIT} .
     agents:
       podman: "true"
 YAML
@@ -219,10 +202,10 @@ YAML
 # Add test steps based on what changed
 if git diff --name-only HEAD~1 | grep -q "^src/"; then
 cat << YAML
-  - label: ":test_tube: Unit Tests"
-    depends_on: ":building_construction: Build Image"
-    commands:
-      - podman run --rm myapp:${BUILDKITE_COMMIT} npm test
+  - label: ":test_tube: Build and Unit Tests"
+    command: |
+      podman build -t myapp:${BUILDKITE_COMMIT} .
+      podman run --rm myapp:${BUILDKITE_COMMIT} npm test
     agents:
       podman: "true"
 YAML
@@ -230,15 +213,21 @@ fi
 
 if git diff --name-only HEAD~1 | grep -q "^test/integration"; then
 cat << YAML
-  - label: ":database: Integration Tests"
-    depends_on: ":building_construction: Build Image"
-    commands:
-      - podman network create bk-net
-      - podman run -d --name testdb --network bk-net -e POSTGRES_PASSWORD=test postgres:16-alpine
-      - sleep 5
-      - podman run --rm --network bk-net -e DB_HOST=testdb myapp:${BUILDKITE_COMMIT} npm run test:integration
-      - podman rm -f testdb
-      - podman network rm bk-net
+  - label: ":database: Build and Integration Tests"
+    command: |
+      set -euo pipefail
+      podman build -t myapp:${BUILDKITE_COMMIT} .
+      podman network create bk-net
+      cleanup() {
+        podman rm -f testdb 2>/dev/null || true
+        podman network rm bk-net 2>/dev/null || true
+      }
+      trap cleanup EXIT
+      podman run -d --name testdb --network bk-net -e POSTGRES_PASSWORD=test postgres:16-alpine
+      until podman exec testdb pg_isready -U postgres; do
+        sleep 1
+      done
+      podman run --rm --network bk-net -e DB_HOST=testdb myapp:${BUILDKITE_COMMIT} npm run test:integration
     agents:
       podman: "true"
 YAML
