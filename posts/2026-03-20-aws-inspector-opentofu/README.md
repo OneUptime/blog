@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTofu, AWS, Inspector, Vulnerability Management, Container Security, Infrastructure as Code
 
-Description: Learn how to enable AWS Inspector v2 with OpenTofu to automatically scan EC2 instances, Lambda functions, and ECR container images for software vulnerabilities and unintended network exposure.
+Description: Learn how to enable AWS Inspector v2 with OpenTofu to automatically scan EC2 instances, Lambda functions, and ECR container images for software vulnerabilities, plus EC2 instances for unintended network exposure.
 
 ## Introduction
 
-AWS Inspector v2 continuously scans EC2 instances, Lambda functions, and ECR container images for software vulnerabilities (CVEs) and network reachability issues. It automatically starts scanning when new instances launch or images are pushed, and sends findings to Security Hub for centralized management. Inspector eliminates the need to schedule manual vulnerability scans.
+AWS Inspector v2 continuously scans EC2 instances, Lambda functions, and ECR container images for software vulnerabilities (CVEs), and it also analyzes EC2 instances for network reachability issues. It automatically starts scanning when new eligible resources launch or images are pushed, and it can send findings to Security Hub for centralized management when Security Hub is enabled. Inspector eliminates the need to schedule manual vulnerability scans.
 
 ## Prerequisites
 
@@ -18,44 +18,49 @@ AWS Inspector v2 continuously scans EC2 instances, Lambda functions, and ECR con
 ## Step 1: Enable Inspector v2
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 resource "aws_inspector2_enabler" "main" {
   account_ids    = [data.aws_caller_identity.current.account_id]
   resource_types = ["EC2", "ECR", "LAMBDA", "LAMBDA_CODE"]
 
   # Notes:
-  # EC2 - Scans EC2 instances using SSM Agent
+  # EC2 - Scans EC2 instances for package vulnerabilities and network reachability
   # ECR - Scans container images on push and periodically
   # LAMBDA - Scans Lambda function package dependencies
-  # LAMBDA_CODE - Scans Lambda function source code (beta)
+  # LAMBDA_CODE - Scans Lambda function custom application code
 }
 ```
 
 ## Step 2: Delegate Inspector Admin to Security Account
 
 ```hcl
-# Delegate Inspector administration to security account in Organizations
+# Delegate Inspector administration to security account in Organizations.
+# Run this in the AWS Organizations management account.
 
 resource "aws_inspector2_delegated_admin_account" "main" {
   account_id = var.security_account_id
 }
 
-# In the security (admin) account - configure organization membership
+# In the delegated administrator (security) account - configure organization membership
 resource "aws_inspector2_organization_configuration" "main" {
+  depends_on = [aws_inspector2_delegated_admin_account.main]
+
   auto_enable {
-    ec2         = true   # Auto-enable for new EC2 instances
-    ecr         = true   # Auto-enable for new ECR repos
-    lambda      = true   # Auto-enable for Lambda
-    lambda_code = false  # Lambda code scanning (may have higher cost)
+    ec2         = true   # Auto-enable EC2 scanning for new organization member accounts
+    ecr         = true   # Auto-enable ECR scanning for new organization member accounts
+    lambda      = true   # Auto-enable Lambda scanning for new organization member accounts
+    lambda_code = false  # Optional Lambda code scanning for new organization member accounts
   }
 }
 ```
 
-## Step 3: Route Critical Findings to SNS
+## Step 3: Route Critical and High Findings to SNS
 
 ```hcl
 resource "aws_cloudwatch_event_rule" "inspector_critical" {
   name        = "${var.project_name}-inspector-critical"
-  description = "Alert on CRITICAL Inspector findings"
+  description = "Alert on CRITICAL and HIGH Inspector findings"
 
   event_pattern = jsonencode({
     source        = ["aws.inspector2"]
@@ -67,7 +72,27 @@ resource "aws_cloudwatch_event_rule" "inspector_critical" {
   })
 }
 
+data "aws_iam_policy_document" "inspector_sns" {
+  statement {
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    resources = [var.security_sns_topic_arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "inspector_events" {
+  arn    = var.security_sns_topic_arn
+  policy = data.aws_iam_policy_document.inspector_sns.json
+}
+
 resource "aws_cloudwatch_event_target" "inspector_sns" {
+  depends_on = [aws_sns_topic_policy.inspector_events]
   rule      = aws_cloudwatch_event_rule.inspector_critical.name
   target_id = "inspector-alert"
   arn       = var.security_sns_topic_arn
@@ -106,8 +131,8 @@ resource "aws_ecr_repository" "app" {
   }
 }
 
-# Enable enhanced scanning for ECR (managed by Inspector v2)
-# Inspector v2 automatically scans when enabled at the account level
+# Inspector v2 enables enhanced scanning for ECR at the registry level.
+# Scan frequency (continuous scan or scan on push) is configured in Amazon ECR.
 ```
 
 ## Step 5: IAM Policy to View Inspector Findings
@@ -148,4 +173,4 @@ aws inspector2 list-findings \
 
 ## Conclusion
 
-Inspector v2 delivers continuous vulnerability management without scheduling or agent management for EC2 (via SSM) and ECR images. Enable it organization-wide to get comprehensive coverage-Inspector automatically starts scanning when new resources are deployed. Focus remediation on CRITICAL findings first, particularly those with available fixes and exploitability scores. Integrate with Security Hub for centralized tracking and with Jira or other ticketing systems via EventBridge for automatic ticket creation.
+Inspector v2 delivers continuous vulnerability management without manual scan scheduling. For EC2, Inspector supports agent-based and agentless scanning depending on your configuration, and for ECR it integrates with enhanced scanning. Enable it organization-wide to get comprehensive coverage; Inspector automatically starts scanning new eligible resources after you enable the service. Focus remediation on CRITICAL findings first, particularly those with available fixes and exploitability scores. Integrate with Security Hub for centralized tracking and with Jira or other ticketing systems via EventBridge for automatic ticket creation.
