@@ -1,40 +1,47 @@
-# How to Use Podman with Istio Service Mesh
+# How to Use Podman with Istio Service Mesh Patterns
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Istio, Service Mesh, Microservice, Networking
 
-Description: Learn how to use Podman with Istio service mesh concepts to implement traffic management, security, and observability for containerized microservices.
+Description: Learn how to use Podman and Envoy to apply Istio service mesh concepts for traffic management, security, and observability in containerized microservices.
 
 ---
 
 > Istio service mesh patterns applied to Podman containers bring enterprise-grade traffic management, mutual TLS authentication, and deep observability to your microservices without modifying application code.
 
-Istio is the leading service mesh platform that manages communication between microservices. While Istio is typically deployed on Kubernetes, its core patterns and components can be used with Podman to bring service mesh capabilities to non-Kubernetes container environments. By running Envoy sidecar proxies alongside your Podman containers and using Istio's control plane components, you can implement traffic management, security policies, and comprehensive observability for your containerized services.
+Istio is a leading service mesh platform that manages communication between microservices. While Istio itself is typically deployed on Kubernetes, many of its core patterns can be applied to Podman to bring service mesh capabilities to non-Kubernetes container environments. By running Envoy sidecar proxies alongside your Podman containers and managing the proxy configuration directly, you can implement traffic management, security policies, and comprehensive observability for your containerized services.
 
 ---
 
 ## Understanding Istio Components
 
-Istio consists of a data plane and a control plane. The data plane is made up of Envoy proxy sidecars deployed alongside each service. The control plane, primarily the `istiod` component, manages and configures these proxies. In a Podman environment, you deploy Envoy sidecars manually as containers within pods, and can use Istio's tools for configuration generation.
+Istio consists of a data plane and a control plane. The data plane is made up of Envoy proxy sidecars deployed alongside each service. The control plane, primarily the `istiod` component, manages and configures these proxies in a Kubernetes-based mesh. In a Podman environment, you deploy Envoy sidecars manually as containers within pods and manage their configuration directly.
 
 ## Setting Up the Sidecar Pattern
 
 The fundamental Istio pattern is the sidecar proxy. With Podman pods, this is straightforward:
 
 ```bash
-# Create a pod for the service
+# Create a user-defined network for service DNS
+podman network create mesh
 
+# Create a pod for the service
 podman pod create \
   --name bookinfo-productpage \
-  -p 9080:9080 \
+  --network mesh \
+  -p 9080:8080 \
   -p 15000:15000
 
-# Run the application container
+# Run the application container and send outbound calls through the local Envoy
 podman run -d \
   --pod bookinfo-productpage \
   --name productpage \
-  istio/examples-bookinfo-productpage-v1:latest
+  -e DETAILS_HOSTNAME=127.0.0.1 \
+  -e DETAILS_SERVICE_PORT=15001 \
+  -e REVIEWS_HOSTNAME=127.0.0.1 \
+  -e REVIEWS_SERVICE_PORT=15001 \
+  docker.io/istio/examples-bookinfo-productpage-v1:1.20.3
 
 # Run the Envoy sidecar
 podman run -d \
@@ -54,7 +61,7 @@ static_resources:
       address:
         socket_address:
           address: 0.0.0.0
-          port_value: 9080
+          port_value: 8080
       filter_chains:
         - filters:
             - name: envoy.filters.network.http_connection_manager
@@ -116,7 +123,7 @@ static_resources:
                   address:
                     socket_address:
                       address: 127.0.0.1
-                      port_value: 9081
+                      port_value: 9080
 
     - name: reviews_service
       connect_timeout: 5s
@@ -128,8 +135,8 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: reviews
-                      port_value: 9080
+                      address: reviews-proxy
+                      port_value: 8080
 
     - name: details_service
       connect_timeout: 5s
@@ -141,8 +148,8 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: details
-                      port_value: 9080
+                      address: details-proxy
+                      port_value: 8080
 
 admin:
   address:
@@ -157,44 +164,54 @@ Deploy a complete microservice application with sidecar proxies:
 
 ```yaml
 # bookinfo-mesh.yml
-version: "3"
 services:
   productpage:
-    image: istio/examples-bookinfo-productpage-v1:latest
+    image: docker.io/istio/examples-bookinfo-productpage-v1:1.20.3
     network_mode: "service:productpage-proxy"
+    environment:
+      DETAILS_HOSTNAME: 127.0.0.1
+      DETAILS_SERVICE_PORT: "15001"
+      REVIEWS_HOSTNAME: 127.0.0.1
+      REVIEWS_SERVICE_PORT: "15001"
 
   productpage-proxy:
     image: envoyproxy/envoy:v1.29-latest
     ports:
-      - "9080:9080"
+      - "9080:8080"
       - "15000:15000"
     volumes:
       - ./envoy/productpage.yaml:/etc/envoy/envoy.yaml:ro
 
   reviews-v1:
-    image: istio/examples-bookinfo-reviews-v1:latest
+    image: docker.io/istio/examples-bookinfo-reviews-v1:1.20.3
     network_mode: "service:reviews-proxy"
 
   reviews-proxy:
     image: envoyproxy/envoy:v1.29-latest
+    ports:
+      - "15001:15000"
     volumes:
       - ./envoy/reviews.yaml:/etc/envoy/envoy.yaml:ro
 
   details:
-    image: istio/examples-bookinfo-details-v1:latest
+    image: docker.io/istio/examples-bookinfo-details-v1:1.20.3
     network_mode: "service:details-proxy"
 
   details-proxy:
     image: envoyproxy/envoy:v1.29-latest
+    ports:
+      - "15002:15000"
     volumes:
       - ./envoy/details.yaml:/etc/envoy/envoy.yaml:ro
 
   ratings:
-    image: istio/examples-bookinfo-ratings-v1:latest
+    image: docker.io/istio/examples-bookinfo-ratings-v1:1.20.3
     network_mode: "service:ratings-proxy"
 
   ratings-proxy:
     image: envoyproxy/envoy:v1.29-latest
+    ports:
+      - "15003:15000"
     volumes:
       - ./envoy/ratings.yaml:/etc/envoy/envoy.yaml:ro
 ```
@@ -223,7 +240,34 @@ done
 Configure Envoy for mTLS:
 
 ```yaml
-# Add TLS to the cluster configuration
+# Add TLS to the listener and cluster configuration
+listeners:
+  - name: inbound
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 8080
+    filter_chains:
+      - transport_socket:
+          name: envoy.transport_sockets.tls
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+            require_client_certificate: true
+            common_tls_context:
+              tls_certificates:
+                - certificate_chain:
+                    filename: /certs/reviews-cert.pem
+                  private_key:
+                    filename: /certs/reviews-key.pem
+              validation_context:
+                trusted_ca:
+                  filename: /certs/ca-cert.pem
+        filters:
+          - name: envoy.filters.network.http_connection_manager
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+              stat_prefix: inbound
+
 clusters:
   - name: reviews_service
     connect_timeout: 5s
@@ -249,14 +293,14 @@ clusters:
                 address:
                   socket_address:
                     address: reviews-proxy
-                    port_value: 9080
+                    port_value: 8080
 ```
 
 ## Traffic Management Patterns
 
-Implement common Istio traffic patterns with Envoy configuration.
+Implement common Istio traffic patterns with Envoy configuration. Because Podman does not automatically capture traffic the way Istio sidecar injection does on Kubernetes, configure the application to send outbound requests through Envoy, as shown with `127.0.0.1:15001`, or add your own traffic-redirection rules.
 
-Canary deployment with traffic splitting:
+Assuming you define separate upstream clusters for each `reviews` version, canary deployment with traffic splitting:
 
 ```yaml
 routes:
@@ -290,7 +334,7 @@ routes:
       cluster: reviews_v1
 ```
 
-Fault injection for resilience testing:
+Fault injection for resilience testing requires the HTTP fault filter to be present before the router filter in the same HTTP connection manager:
 
 ```yaml
 routes:
@@ -319,7 +363,6 @@ Deploy a complete observability stack alongside the mesh:
 
 ```yaml
 # observability.yml
-version: "3"
 services:
   prometheus:
     image: prom/prometheus:latest
@@ -338,40 +381,44 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
 
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.15.0
     ports:
       - "16686:16686"
-      - "4317:4317"
+      - "9411:9411"
 ```
 
-Configure Envoy to export telemetry:
+Configure Envoy to export traces:
 
 ```yaml
-# Add tracing configuration
-tracing:
-  http:
-    name: envoy.tracers.opentelemetry
-    typed_config:
-      "@type": type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig
-      grpc_service:
-        envoy_grpc:
-          cluster_name: otel_collector
-        timeout: 5s
-      service_name: productpage
+# Add tracing under the HTTP connection manager
+typed_config:
+  "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+  stat_prefix: inbound
+  tracing:
+    provider:
+      name: envoy.tracers.zipkin
+      typed_config:
+        "@type": type.googleapis.com/envoy.config.trace.v3.ZipkinConfig
+        collector_service:
+          http_uri:
+            uri: "http://jaeger:9411/api/v2/spans"
+            cluster: jaeger
+            timeout: 5s
+        trace_id_128bit: true
 
 clusters:
-  - name: otel_collector
+  - name: jaeger
     type: STRICT_DNS
     connect_timeout: 5s
     load_assignment:
-      cluster_name: otel_collector
+      cluster_name: jaeger
       endpoints:
         - lb_endpoints:
             - endpoint:
                 address:
                   socket_address:
                     address: jaeger
-                    port_value: 4317
+                    port_value: 9411
 ```
 
 ## Mesh Management Script
@@ -387,8 +434,8 @@ ACTION="${1:-status}"
 case "$ACTION" in
     deploy)
         echo "Deploying service mesh..."
-        podman-compose -f bookinfo-mesh.yml up -d
-        podman-compose -f observability.yml up -d
+        podman compose -f bookinfo-mesh.yml up -d
+        podman compose -f observability.yml up -d
         echo "Mesh deployed. Services available at http://localhost:9080"
         echo "Grafana: http://localhost:3000"
         echo "Jaeger: http://localhost:16686"
@@ -396,15 +443,15 @@ case "$ACTION" in
     status)
         echo "=== Service Mesh Status ==="
         echo ""
-        echo "Pods:"
-        podman pod ps
+        echo "Application:"
+        podman compose -f bookinfo-mesh.yml ps
         echo ""
-        echo "Containers:"
-        podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+        echo "Observability:"
+        podman compose -f observability.yml ps
         echo ""
         echo "Envoy Admin:"
         for proxy in productpage-proxy reviews-proxy details-proxy ratings-proxy; do
-            PORT=$(podman port "$proxy" 15000 2>/dev/null | cut -d: -f2)
+            PORT=$(podman compose -f bookinfo-mesh.yml port "$proxy" 15000 2>/dev/null | cut -d: -f2)
             if [ -n "$PORT" ]; then
                 CLUSTERS=$(curl -s "http://localhost:$PORT/clusters" | grep -c "::healthy")
                 echo "  $proxy: $CLUSTERS healthy upstream(s)"
@@ -419,8 +466,8 @@ case "$ACTION" in
         ;;
     destroy)
         echo "Destroying service mesh..."
-        podman-compose -f bookinfo-mesh.yml down
-        podman-compose -f observability.yml down
+        podman compose -f bookinfo-mesh.yml down
+        podman compose -f observability.yml down
         echo "Mesh destroyed"
         ;;
     *)
@@ -430,9 +477,9 @@ case "$ACTION" in
 esac
 ```
 
-## Rate Limiting Across Services
+## Local Rate Limiting on Each Proxy
 
-Implement mesh-wide rate limiting:
+Implement per-proxy rate limiting:
 
 ```yaml
 http_filters:
@@ -465,7 +512,7 @@ clusters:
         healthy_threshold: 2
         unhealthy_threshold: 3
         http_health_check:
-          path: /health
+          path: /reviews/0
     circuit_breakers:
       thresholds:
         - max_connections: 100
@@ -485,9 +532,9 @@ clusters:
                 address:
                   socket_address:
                     address: reviews-proxy
-                    port_value: 9080
+                    port_value: 8080
 ```
 
 ## Conclusion
 
-While Istio is designed for Kubernetes, its core patterns of sidecar proxies, traffic management, mTLS security, and observability can be implemented with Podman using Envoy proxies. Podman pods provide the shared network namespace needed for the sidecar pattern, and Envoy configuration gives you the same traffic management capabilities that Istio provides. This approach is valuable for environments where Kubernetes is not available or appropriate, but you still need the service mesh capabilities that modern microservice architectures demand. By combining Podman's pod model with Envoy's proxy capabilities and Istio's architectural patterns, you get a practical service mesh solution for container-based microservices.
+While Istio is designed for Kubernetes, its core sidecar, traffic management, mTLS, and observability patterns can be implemented with Podman by running and configuring Envoy directly. Podman pods provide the shared network namespace needed for the sidecar pattern, and Envoy configuration lets you reproduce many of the traffic management capabilities commonly associated with Istio. This approach is valuable for environments where Kubernetes is not available or appropriate, but you still need modern service-to-service security and routing patterns. By combining Podman's pod model with Envoy's proxy capabilities and Istio's architectural patterns, you get a practical service-mesh-inspired solution for container-based microservices.
