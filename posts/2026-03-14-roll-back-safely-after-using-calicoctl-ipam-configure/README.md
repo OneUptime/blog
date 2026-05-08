@@ -88,8 +88,10 @@ data = json.load(sys.stdin)
 for pod in data['items']:
     ns = pod['metadata']['namespace']
     name = pod['metadata']['name']
-    print(f'kubectl delete pod -n {ns} {name}')
-"
+    print(f'{ns} {name}')
+" | while read -r ns name; do
+    kubectl delete pod -n "$ns" "$name"
+  done
 ```
 
 ## Verification
