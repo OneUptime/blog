@@ -41,10 +41,10 @@ Before filtering, inspect what labels are available on your images.
 
 ```bash
 # View all labels on an image
-podman inspect nginx:1.25 --format '{{json .Labels}}' | python3 -m json.tool
+podman image inspect myapp:1.0 --format '{{json .Labels}}' | python3 -m json.tool
 
 # View a specific label
-podman inspect nginx:1.25 --format '{{index .Labels "maintainer"}}'
+podman image inspect myapp:1.0 --format '{{index .Labels "maintainer"}}'
 
 # List labels for all local images
 podman images --format "{{.Repository}}:{{.Tag}} -> {{.Labels}}"
@@ -104,7 +104,7 @@ podman images \
 # Combine label and name filters
 podman images \
   --filter label=environment=production \
-  --filter reference='myapp*'
+  --filter reference='.*myapp.*'
 ```
 
 ## Formatting Label Filter Output
@@ -125,7 +125,8 @@ podman images --filter label=maintainer --format json | \
   python3 -c "
 import sys, json
 for img in json.load(sys.stdin):
-    print(f\"{img['repository']}:{img['tag']} -> {img.get('labels', {})}\")
+    name = img.get('names', [img.get('id', '<unknown>')])[0]
+    print(f\"{name} -> {img.get('labels', {})}\")
 "
 
 # Get just the IDs of labeled images
@@ -192,7 +193,7 @@ echo "=== Image Label Audit ==="
 echo ""
 
 podman images --format "{{.Repository}}:{{.Tag}}" | while read -r IMAGE; do
-  LABELS=$(podman inspect "$IMAGE" --format '{{json .Labels}}' 2>/dev/null)
+  LABELS=$(podman image inspect "$IMAGE" --format '{{json .Labels}}' 2>/dev/null)
   if [ "$LABELS" != "null" ] && [ "$LABELS" != "{}" ]; then
     echo "Image: $IMAGE"
     echo "Labels: $LABELS" | python3 -m json.tool 2>/dev/null
