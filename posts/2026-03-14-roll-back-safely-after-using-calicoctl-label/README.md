@@ -63,7 +63,7 @@ calicoctl label nodes worker-1 env=production --overwrite
 calicoctl label nodes worker-1 env=staging --overwrite
 
 # Or remove the label entirely
-calicoctl label nodes worker-1 env-
+calicoctl label nodes worker-1 env --remove
 ```
 
 ## Rolling Back a Removed Label
@@ -72,7 +72,7 @@ If you accidentally removed a label:
 
 ```bash
 # Oops - removed the env label
-calicoctl label nodes worker-1 env-
+calicoctl label nodes worker-1 env --remove
 
 # Restore it
 calicoctl label nodes worker-1 env=production
@@ -103,20 +103,54 @@ echo "Restoring labels from $SNAPSHOT_DIR"
 if [ -f "$SNAPSHOT_DIR/nodes.json" ]; then
   echo "Restoring node labels..."
   
-  python3 -c "
-import json, subprocess, sys
+  SNAPSHOT_FILE="$SNAPSHOT_DIR/nodes.json" python3 - <<'PY'
+import json, os, subprocess
 
-with open('$SNAPSHOT_DIR/nodes.json') as f:
+def resource_items(data):
+    if isinstance(data, dict):
+        return data.get('items', [data])
+    if isinstance(data, list):
+        items = []
+        for entry in data:
+            if isinstance(entry, dict) and 'items' in entry:
+                items.extend(entry['items'])
+            else:
+                items.append(entry)
+        return items
+    return []
+
+with open(os.environ['SNAPSHOT_FILE']) as f:
     data = json.load(f)
 
-items = data.get('items', [data]) if 'items' in data else [data]
-
-for node in items:
+for node in resource_items(data):
     name = node['metadata']['name']
-    labels = node['metadata'].get('labels', {})
+    snapshot_labels = node['metadata'].get('labels', {})
+
+    current = subprocess.run(
+        ['calicoctl', 'get', 'nodes', name, '-o', 'json'],
+        capture_output=True,
+        text=True,
+    )
+    if current.returncode != 0:
+        print(f'  ERROR: could not read current labels for node {name}: {current.stderr.strip()}')
+        continue
+
+    current_items = resource_items(json.loads(current.stdout))
+    current_labels = current_items[0].get('metadata', {}).get('labels', {}) if current_items else {}
     
     print(f'Restoring labels for node {name}')
-    for key, value in labels.items():
+    for key in sorted(set(current_labels) - set(snapshot_labels)):
+        # Skip system labels
+        if key.startswith('projectcalico.org/'):
+            continue
+        cmd = ['calicoctl', 'label', 'nodes', name, key, '--remove']
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f'  ERROR removing {key} - {result.stderr.strip()}')
+        else:
+            print(f'  REMOVED: {key}')
+
+    for key, value in snapshot_labels.items():
         # Skip system labels
         if key.startswith('projectcalico.org/'):
             continue
@@ -126,7 +160,7 @@ for node in items:
             print(f'  ERROR: {key}={value} - {result.stderr.strip()}')
         else:
             print(f'  OK: {key}={value}')
-"
+PY
 fi
 
 # Restore host endpoint labels
@@ -159,11 +193,11 @@ fi
 
 echo "Removing label '$LABEL_KEY' from all nodes..."
 
-NODES=$(calicoctl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+NODES=$(calicoctl get nodes -o go-template='{{range .}}{{range .Items}}{{.ObjectMeta.Name}}{{"\n"}}{{end}}{{end}}')
 
 for NODE in $NODES; do
   echo "  Removing from $NODE..."
-  calicoctl label nodes "$NODE" "${LABEL_KEY}-" 2>&1
+  calicoctl label nodes "$NODE" "$LABEL_KEY" --remove 2>&1
 done
 
 echo "Bulk rollback complete."
