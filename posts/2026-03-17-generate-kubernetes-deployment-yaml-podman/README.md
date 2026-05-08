@@ -40,22 +40,23 @@ The generated Deployment includes a `replicas` field, a selector, and a pod temp
 # apiVersion: apps/v1
 # kind: Deployment
 # metadata:
-#   name: web-app-deployment
+#   name: web-app-pod-deployment
 # spec:
 #   replicas: 1
 #   selector:
 #     matchLabels:
-#       app: web-app
+#       app: web-app-pod
 #   template:
 #     metadata:
 #       labels:
-#         app: web-app
+#         app: web-app-pod
 #     spec:
 #       containers:
 #         - name: web-app
 #           image: docker.io/library/nginx:alpine
 #           ports:
 #             - containerPort: 80
+#               hostPort: 8080
 ```
 
 ## Generating a Deployment from a Pod
@@ -95,10 +96,10 @@ podman generate kube --type deployment --replicas 3 web-app > scaled-deployment.
 kubectl apply -f deployment.yaml
 
 # Check the deployment status
-kubectl get deployment web-app-deployment
+kubectl get deployment web-app-pod-deployment
 
 # Scale it up
-kubectl scale deployment web-app-deployment --replicas=5
+kubectl scale deployment web-app-pod-deployment --replicas=5
 ```
 
 ## Replaying a Deployment with Podman
@@ -107,10 +108,10 @@ kubectl scale deployment web-app-deployment --replicas=5
 # Podman can also play Deployment YAML locally
 podman play kube deployment.yaml
 
-# This creates a pod matching the Deployment's pod template
+# This creates a local pod matching the Deployment's pod template
 podman pod ls
 ```
 
 ## Summary
 
-Use `podman generate kube --type deployment` to create a Kubernetes Deployment manifest from a container or pod. Add `--replicas` to set the initial replica count and `--service` to include a Service definition. The generated YAML is ready for `kubectl apply` or local replay with `podman play kube`.
+Use `podman generate kube --type deployment` to create a Kubernetes Deployment manifest from a container or pod. Add `--replicas` to set the initial replica count and `--service` to include a Service definition. The generated YAML is ready for `kubectl apply` or local replay with `podman play kube`, though Podman plays Deployment YAML as a single local replica.
