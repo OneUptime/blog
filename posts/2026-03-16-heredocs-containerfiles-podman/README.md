@@ -10,13 +10,13 @@ Description: Learn how to use heredoc syntax in Containerfiles with Podman to wr
 
 > Heredocs in Containerfiles eliminate the need for awkward line continuations and external script files, making your builds cleaner and more readable.
 
-Heredoc (here-document) syntax in Containerfiles lets you write multi-line content inline without chaining commands with `&&` and `\`. This feature requires BuildKit-compatible syntax and works with Podman's Buildah backend. It simplifies writing scripts, configuration files, and complex RUN instructions directly in your Containerfile.
+Heredoc (here-document) syntax in Containerfiles lets you write multi-line content inline without chaining commands with `&&` and `\`. This feature is part of modern Dockerfile syntax and is supported by Podman's Buildah backend in current Podman releases. It simplifies writing scripts, configuration files, and complex RUN instructions directly in your Containerfile.
 
 ---
 
 ## Enabling Heredoc Syntax
 
-To use heredocs, add the syntax directive at the top of your Containerfile.
+For Dockerfile frontend compatibility, add the syntax directive at the top of your Containerfile.
 
 ```bash
 cat > Containerfile <<'OUTER'
@@ -107,7 +107,7 @@ cat > Containerfile <<'OUTER'
 FROM nginx:alpine
 
 # Create an nginx config file inline
-COPY <<EOF /etc/nginx/conf.d/default.conf
+COPY <<'EOF' /etc/nginx/conf.d/default.conf
 server {
     listen 80;
     server_name localhost;
@@ -174,7 +174,7 @@ podman build -t heredoc-multi:latest .
 
 ## Heredocs with Variable Expansion
 
-Control whether variables are expanded by quoting (or not quoting) the delimiter.
+Control whether heredoc content is expanded by quoting (or not quoting) the delimiter. In `RUN` scripts, normal shell quoting still controls what the shell expands when it executes the script.
 
 ```bash
 cat > Containerfile <<'OUTER'
@@ -190,7 +190,7 @@ echo "Building version: ${APP_VERSION}"
 echo "App name: ${APP_NAME}"
 EOF
 
-# Quoted delimiter: variables are NOT expanded (literal strings)
+# Quoted delimiter plus shell quotes: variables are NOT expanded (literal strings)
 RUN <<'EOF'
 echo 'This prints literal ${APP_VERSION}'
 echo 'No variable expansion here'
@@ -300,6 +300,8 @@ cat > Containerfile <<'OUTER'
 # syntax=docker/dockerfile:1
 FROM alpine:3.19
 
+RUN apk add --no-cache curl
+
 COPY --chmod=755 <<'EOF' /usr/local/bin/healthcheck.sh
 #!/bin/sh
 curl -sf http://localhost:8080/health || exit 1
@@ -312,4 +314,4 @@ OUTER
 
 ## Summary
 
-Heredocs in Containerfiles make your builds more readable and maintainable. Use them for inline scripts with `RUN`, for creating configuration files with `COPY`, and for embedding multi-line content without external files. Remember to add the syntax directive at the top of your Containerfile and choose between quoted and unquoted delimiters based on whether you need variable expansion.
+Heredocs in Containerfiles make your builds more readable and maintainable. Use them for inline scripts with `RUN`, for creating configuration files with `COPY`, and for embedding multi-line content without external files. Use the syntax directive shown above for Dockerfile frontend compatibility, and choose between quoted and unquoted delimiters based on whether you need variable expansion.
