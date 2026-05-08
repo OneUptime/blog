@@ -30,7 +30,7 @@ This guide provides a structured validation procedure that covers immediate veri
 
 kubectl get pods -n calico-system -o wide
 
-# Check for zero error events in the last 10 minutes
+# Check recent warning events for Calico, CNI, or network errors
 kubectl get events -A --field-selector type=Warning --sort-by='.lastTimestamp' | grep -i "calico\|cni\|network" | tail -10
 
 # Verify IPAM is healthy
@@ -40,9 +40,13 @@ calicoctl ipam show
 ## Step 2: Connectivity Testing (5-15 minutes)
 
 ```bash
-# Deploy test pods on different nodes
-kubectl run test-pod-1 --image=busybox --command -- sleep 3600
-kubectl run test-pod-2 --image=busybox --command -- sleep 3600
+# Deploy test pods on different Ready nodes
+NODE1=$(kubectl get nodes --no-headers | awk '$2 == "Ready" {print $1}' | sed -n '1p')
+NODE2=$(kubectl get nodes --no-headers | awk '$2 == "Ready" {print $1}' | sed -n '2p')
+if [ -z "$NODE2" ]; then echo "Need at least two Ready nodes for cross-node testing" >&2; exit 1; fi
+
+kubectl run test-pod-1 --image=busybox --overrides='{"spec":{"nodeName":"'"$NODE1"'"}}' --command -- sleep 3600
+kubectl run test-pod-2 --image=busybox --overrides='{"spec":{"nodeName":"'"$NODE2"'"}}' --command -- sleep 3600
 
 # Wait for pods to be ready
 kubectl wait --for=condition=ready pod/test-pod-1 pod/test-pod-2 --timeout=60s
@@ -62,10 +66,10 @@ kubectl delete pod test-pod-1 test-pod-2
 
 ```bash
 # Check all pods across namespaces
-kubectl get pods -A | grep -v Running | grep -v Completed
+kubectl get pods -A --no-headers | awk '$4 != "Running" && $4 != "Completed"'
 
 # Verify deployments are at desired replica count
-kubectl get deployments -A | awk '$3 != $4'
+kubectl get deployments -A --no-headers | awk '{split($3, ready, "/"); if (ready[1] != ready[2] || $4 != ready[2] || $5 != ready[2]) print}'
 ```
 
 ## Step 4: Extended Monitoring (30 minutes - 2 hours)
@@ -143,7 +147,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crds -o custom-columns='NAME:.metadata.name,VERSIONS:.spec.versions[*].name' | grep projectcalico
 ```
 
 ### Security Hardening
@@ -151,8 +155,8 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current user can modify Calico resources
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
