@@ -10,7 +10,7 @@ Description: Practical patterns for using Calico IPReservation resources in prod
 
 ## Introduction
 
-In real production clusters, the pod IP address space often overlaps with pre-existing network infrastructure. Load balancers, database servers, monitoring appliances, and legacy systems may already occupy IPs within your Calico IPPool CIDR ranges. IPReservation resources ensure these addresses are never handed out to pods.
+In real production clusters, the pod IP address space often overlaps with pre-existing network infrastructure. Load balancers, database servers, monitoring appliances, and legacy systems may already occupy IPs within your Calico IPPool CIDR ranges. IPReservation resources ensure these addresses are not handed out to pods during new automatic Calico IPAM allocations.
 
 Beyond conflict prevention, IPReservations are useful for capacity management. By reserving blocks for future infrastructure, you prevent fragmentation and ensure contiguous address space remains available for planned deployments.
 
@@ -18,7 +18,7 @@ This guide covers practical IPReservation patterns drawn from production cluster
 
 ## Prerequisites
 
-- A production Kubernetes cluster with Calico CNI (v3.22 or later)
+- A production Kubernetes cluster running Calico with Calico IPAM and the IPReservation CRD available, such as Calico Enterprise v3.22 or later
 - `kubectl` and `calicoctl` with cluster admin access
 - A network inventory documenting all static IP assignments
 - Active IPPool resources whose CIDRs may overlap with existing infrastructure
@@ -168,14 +168,14 @@ Validate your production reservation setup:
 # List all reservations
 calicoctl get ipreservations
 
-# Verify total reserved count
+# Count reserved CIDR entries in the YAML output
 calicoctl get ipreservations -o yaml | grep -c "/"
 
 # Check that no pods have reserved IPs
-RESERVED=$(calicoctl get ipreservation -o jsonpath='{.items[*].spec.reservedCIDRs[*]}')
+RESERVED=$(calicoctl get ipreservation -o go-template='{{range .}}{{range .Items}}{{range .Spec.ReservedCIDRs}}{{.}} {{end}}{{end}}{{end}}')
 echo "Reserved ranges: $RESERVED"
 
-# Verify IPAM utilization accounts for reservations
+# Review IPAM utilization alongside reservations
 calicoctl ipam show
 
 # Stress test allocation
@@ -186,7 +186,7 @@ kubectl delete deployment reservation-test
 
 ## Troubleshooting
 
-- If pods receive reserved IPs during high-churn scenarios, verify the IPReservation resource exists with `calicoctl get ipreservation <name> -o yaml`
+- If pods receive reserved IPs, verify the IPReservation resource exists with `calicoctl get ipreservation <name> -o yaml`, check whether the IP was already allocated before the reservation was created, and check for annotations that request specific pod IPs
 - For large clusters, use fewer IPReservation resources with broader CIDRs rather than many resources with individual /32 entries
 - If reservations are accidentally deleted, apply them immediately from version control backups
 - Monitor for IP conflicts using ARP scans: `arping -D -c 3 <ip>` on each node
@@ -194,4 +194,4 @@ kubectl delete deployment reservation-test
 
 ## Conclusion
 
-Calico IPReservation resources are essential for production clusters that share address space with existing infrastructure. By systematically reserving IPs for load balancers, databases, network equipment, and future expansion, you prevent silent IP conflicts that cause difficult-to-debug connectivity issues. Automate reservation management through infrastructure-as-code practices and maintain a comprehensive network inventory to keep reservations accurate.
+Calico IPReservation resources are essential for production clusters that share address space with existing infrastructure. By systematically reserving IPs for load balancers, databases, network equipment, and future expansion, you prevent new automatic Calico IPAM allocations from creating silent IP conflicts that cause difficult-to-debug connectivity issues. Automate reservation management through infrastructure-as-code practices and maintain a comprehensive network inventory to keep reservations accurate.
