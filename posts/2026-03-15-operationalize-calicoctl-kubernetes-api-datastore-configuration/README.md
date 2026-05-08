@@ -23,6 +23,7 @@ This guide covers practical patterns for managing Calico configurations as code,
 - Git repository for storing Calico manifests
 - CI/CD system (GitHub Actions, GitLab CI, or similar)
 - `kubectl` access to the cluster
+- Calico API server or native v3 CRDs enabled if you use `kubectl` to validate `projectcalico.org/v3` resources
 
 ## Storing Calico Configuration in Git
 
@@ -68,20 +69,22 @@ jobs:
 
       - name: Set datastore config
         run: |
-          echo "${{ secrets.KUBECONFIG }}" > /tmp/kubeconfig
-          export DATASTORE_TYPE=kubernetes
-          export KUBECONFIG=/tmp/kubeconfig
+          printf '%s\n' "${{ secrets.KUBECONFIG }}" > /tmp/kubeconfig
+          echo "DATASTORE_TYPE=kubernetes" >> "$GITHUB_ENV"
+          echo "KUBECONFIG=/tmp/kubeconfig" >> "$GITHUB_ENV"
 
       - name: Validate manifests
         run: |
-          for f in calico-config/**/*.yaml; do
+          set -euo pipefail
+          find calico-config -type f \( -name '*.yaml' -o -name '*.yml' \) -print0 | while IFS= read -r -d '' f; do
             echo "Validating $f"
             kubectl apply -f "$f" --dry-run=server
           done
 
       - name: Apply configuration
         run: |
-          for f in calico-config/**/*.yaml; do
+          set -euo pipefail
+          find calico-config -type f \( -name '*.yaml' -o -name '*.yml' \) -print0 | while IFS= read -r -d '' f; do
             echo "Applying $f"
             calicoctl apply -f "$f"
           done
@@ -137,14 +140,14 @@ Add a pre-apply diff step to show what will change:
 # calico-diff.sh - Show changes before applying
 
 FILE=$1
-RESOURCE_TYPE=$(grep "kind:" "$FILE" | head -1 | awk '{print $2}')
-RESOURCE_NAME=$(grep "name:" "$FILE" | head -1 | awk '{print $2}')
 
 echo "=== Current state ==="
-calicoctl get "$RESOURCE_TYPE" "$RESOURCE_NAME" -o yaml > /tmp/current.yaml 2>/dev/null
+calicoctl get -f "$FILE" -o yaml > /tmp/current.yaml 2>/dev/null || true
 
 echo "=== Proposed changes ==="
-diff /tmp/current.yaml "$FILE" || echo "No differences found"
+if diff -u /tmp/current.yaml "$FILE"; then
+  echo "No differences found"
+fi
 ```
 
 ## Verification
