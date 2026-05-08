@@ -179,26 +179,32 @@ SERVER_IP=$(kubectl get pod server -n diag-labeled -o jsonpath='{.status.podIP}'
 
 # Test from labeled namespace (should succeed if policy allows environment=production)
 echo "From labeled namespace:"
-kubectl exec -n diag-labeled client-labeled -- wget -qO- --timeout=5 "http://$SERVER_IP" && echo "ALLOWED" || echo "DENIED"
+kubectl exec -n diag-labeled client-labeled -- wget -qO- -T 5 "http://$SERVER_IP" && echo "ALLOWED" || echo "DENIED"
 
 # Test from unlabeled namespace (may be denied if policy requires labels)
 echo "From unlabeled namespace:"
-kubectl exec -n diag-unlabeled client-unlabeled -- wget -qO- --timeout=5 "http://$SERVER_IP" && echo "ALLOWED" || echo "DENIED"
+kubectl exec -n diag-unlabeled client-unlabeled -- wget -qO- -T 5 "http://$SERVER_IP" && echo "ALLOWED" || echo "DENIED"
 ```
 
 ## Using Calico Policy Audit Tools
 
-Use Felix metrics and logging to see which policies are being evaluated:
+Use Felix logging when you need deeper Calico diagnostics:
 
 ```bash
-# Enable Felix debug logging temporarily on one node
-kubectl exec -n calico-system $(kubectl get pod -n calico-system \
-  -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}') -- \
-  env FELIX_LOGSEVERITYSCREEN=debug sh -c "echo 'Debug logging enabled'"
+# Check the current Felix stdout log level
+kubectl get felixconfiguration default -o jsonpath='{.spec.logSeverityScreen}{"\n"}'
 
-# Check Felix flow logs for policy evaluation
+# Temporarily raise Felix logging to Debug cluster-wide
+kubectl patch felixconfiguration default --type=merge \
+  -p '{"spec":{"logSeverityScreen":"Debug"}}'
+
+# Check Felix logs for policy and selector updates
 kubectl logs -n calico-system -l k8s-app=calico-node --tail=100 \
   | grep -i "namespace" | grep -i "selector" | tail -20
+
+# Restore the normal log level after troubleshooting
+kubectl patch felixconfiguration default --type=merge \
+  -p '{"spec":{"logSeverityScreen":"Info"}}'
 ```
 
 ## Verification
@@ -225,7 +231,7 @@ kubectl delete namespace diag-labeled diag-unlabeled --wait=false
 ## Troubleshooting
 
 - **All traffic is allowed despite policies**: Calico operates in a default-allow mode unless a policy selects the endpoint. Verify that your policy's `selector` field matches the pods you intend to protect, not just the `namespaceSelector`.
-- **Policy appears correct but traffic is still denied**: Check if multiple policies apply to the same pod. Calico evaluates all matching policies, and a deny in any policy takes precedence.
+- **Policy appears correct but traffic is still denied**: Check if multiple policies apply to the same pod. Calico evaluates policies by tier and order, and an `Allow` or `Deny` action is final when a rule matches. Verify the effective tier, order, and rule sequence for every policy that selects the endpoint.
 - **Kubernetes NetworkPolicy vs Calico NetworkPolicy confusion**: Standard Kubernetes NetworkPolicies use `matchLabels` under `namespaceSelector`, while Calico uses label selector expressions like `environment == 'production'`. Ensure you are using the correct syntax for the resource type.
 - **Namespace labels were added but policy still does not match**: Calico watches for label changes in real time, but Felix may take a few seconds to recalculate. Wait 10-15 seconds and test again.
 
