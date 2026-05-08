@@ -67,7 +67,7 @@ podman exec my-web-server ls -la /var/log/nginx/
 podman exec my-web-server df -h
 
 # View running processes
-podman exec my-web-server ps aux
+podman exec my-web-server cat /proc/1/cmdline
 ```
 
 ## Using the Interactive Flag
@@ -108,8 +108,8 @@ CONTAINER_ID=$(podman ps -q --filter name=my-web-server)
 # Execute a command using the ID
 podman exec "$CONTAINER_ID" whoami
 
-# You can also use just the first few characters of the ID
-podman exec "$(podman ps -q --filter name=my-web-server | cut -c1-4)" whoami
+# You can also use a unique prefix of the ID
+podman exec "$(podman ps -q --filter name=my-web-server | cut -c1-12)" whoami
 ```
 
 ## Practical Debugging Examples
@@ -118,19 +118,19 @@ Here are some real-world scenarios where `podman exec` is invaluable:
 
 ```bash
 # Check if a service is listening on the expected port
-podman exec my-web-server ss -tlnp
+podman exec my-web-server cat /proc/net/tcp
 
 # Test DNS resolution inside the container
-podman exec my-web-server nslookup google.com
+podman exec my-web-server getent hosts google.com
 
 # Check environment variables
 podman exec my-web-server env
 
 # Inspect network configuration
-podman exec my-web-server ip addr show
+podman exec my-web-server cat /proc/net/route
 
 # Check available memory
-podman exec my-web-server free -m
+podman exec my-web-server cat /proc/meminfo
 ```
 
 ## Redirecting Output
