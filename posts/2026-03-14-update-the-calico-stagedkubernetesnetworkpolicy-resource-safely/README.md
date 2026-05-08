@@ -10,7 +10,7 @@ Description: A step-by-step guide to modifying Calico StagedKubernetesNetworkPol
 
 ## Introduction
 
-Updating Calico resources in a running cluster requires care. A misconfigured StagedKubernetesNetworkPolicy can disrupt networking, drop traffic, or break BGP peerings. This guide covers a safe workflow for modifying StagedKubernetesNetworkPolicy resources in production.
+Updating Calico resources in a running cluster requires care. A misconfigured StagedKubernetesNetworkPolicy can produce misleading policy previews and, if later enforced as a NetworkPolicy, drop traffic. This guide covers a safe workflow for modifying StagedKubernetesNetworkPolicy resources in production.
 
 The key principle is to treat Calico resource changes like any infrastructure change: review the diff, understand the impact, test in staging, and have a rollback plan ready. Calico resources are declarative, so the same discipline you apply to Kubernetes manifests applies here.
 
@@ -30,7 +30,7 @@ Before making any changes, export the current state as your baseline:
 ```bash
 # Export current resource to YAML
 
-calicoctl get stagedkubernetesnetworkpolicy -o yaml > stagedkubernetesnetworkpolicy-backup.yaml
+kubectl get stagedkubernetesnetworkpolicies.projectcalico.org --all-namespaces -o yaml > stagedkubernetesnetworkpolicy-backup.yaml
 
 # Store the backup safely
 cp stagedkubernetesnetworkpolicy-backup.yaml stagedkubernetesnetworkpolicy-backup-$(date +%Y%m%d%H%M%S).yaml
@@ -44,25 +44,28 @@ Open your StagedKubernetesNetworkPolicy manifest and make the desired changes. U
 
 ```bash
 # Compare current live state with your updated manifest
-diff <(calicoctl get stagedkubernetesnetworkpolicy -o yaml) stagedkubernetesnetworkpolicy.yaml
+diff <(kubectl get stagedkubernetesnetworkpolicies.projectcalico.org --all-namespaces -o yaml) stagedkubernetesnetworkpolicy.yaml
 ```
 
 Review each changed field and consider its impact:
 
-- Will this change affect active connections?
-- Does this change require a Felix or BGP restart?
-- Could this change lock you out of nodes?
+- Would enforcing the equivalent NetworkPolicy affect active connections?
+- Does this change produce the staged policy preview you expect?
+- Would enforcing the equivalent NetworkPolicy block required access?
 
 ## Step 3: Apply the Update
 
 Apply the updated manifest:
 
 ```bash
-# Apply with calicoctl for validation
-calicoctl apply -f stagedkubernetesnetworkpolicy.yaml
+# Validate with the API server before persisting the change
+kubectl apply --dry-run=server -f stagedkubernetesnetworkpolicy.yaml
+
+# Apply the updated staged policy
+kubectl apply -f stagedkubernetesnetworkpolicy.yaml
 ```
 
-For critical changes, consider applying during a maintenance window and monitoring immediately after.
+For critical changes, review the staged policy preview before creating the equivalent enforcing NetworkPolicy.
 
 ## Step 4: Monitor After the Update
 
@@ -76,7 +79,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node -f --tail=100
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "config"
 ```
 
-Run connectivity tests to verify that pods can still communicate:
+If you later create the equivalent enforcing NetworkPolicy, run connectivity tests to verify that pods can still communicate:
 
 ```bash
 # Quick connectivity check between pods
@@ -92,7 +95,7 @@ Confirm the resource reflects your changes:
 
 ```bash
 # Verify the updated resource
-calicoctl get stagedkubernetesnetworkpolicy -o yaml
+kubectl get stagedkubernetesnetworkpolicies.projectcalico.org --all-namespaces -o yaml
 
 # Check that calico-node pods are healthy
 kubectl get pods -n calico-system -l k8s-app=calico-node
@@ -106,26 +109,26 @@ If the update causes problems, immediately revert to your backup:
 
 ```bash
 # Rollback to the previous configuration
-calicoctl apply -f stagedkubernetesnetworkpolicy-backup.yaml
+kubectl apply -f stagedkubernetesnetworkpolicy-backup.yaml
 
 # Verify rollback was successful
-calicoctl get stagedkubernetesnetworkpolicy -o yaml
+kubectl get stagedkubernetesnetworkpolicies.projectcalico.org --all-namespaces -o yaml
 ```
 
 ## Troubleshooting
 
-**Pods losing connectivity after update:**
-- Immediately apply the backup manifest.
+**Pods losing connectivity after enforcing the equivalent policy:**
+- Immediately apply the previous enforcing policy manifest or remove the enforcing policy.
 - Check if Felix is crashlooping: `kubectl get pods -n calico-system`.
 - Review Felix logs for configuration errors.
 
-**BGP sessions dropping (for BGP-related resources):**
-- Check BGP peering status: `calicoctl node status`.
-- Verify ASN numbers and peer IPs are correct.
+**Unexpected Calico node issues:**
+- Check calico-node status: `kubectl get pods -n calico-system -l k8s-app=calico-node`.
+- Review calico-node logs for errors.
 
 **Update appears to have no effect:**
 - Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Check for typos in field names; modern `kubectl apply` uses strict validation by default, but older clusters or commands run with `--validate=warn` or `--validate=ignore` may only warn or ignore unknown fields.
 
 
 ## Additional Considerations
@@ -159,10 +162,10 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether you can modify staged Kubernetes network policies
+kubectl auth can-i update stagedkubernetesnetworkpolicies.projectcalico.org --all-namespaces
 
-# Review recent changes to Calico resources (if audit logging is enabled)
+# Review recent events in the Calico namespace
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 ```
 
