@@ -60,7 +60,7 @@ RUN npm run build
 FROM docker.io/library/node:20-alpine AS production
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 USER node
 EXPOSE 3000
@@ -117,7 +117,7 @@ podman build --target test -t myapp:test .
 podman run --rm myapp:test
 
 # Run tests with specific options
-podman run --rm myapp:test jest --verbose --testPathPattern="unit"
+podman run --rm myapp:test jest --verbose --testPathPatterns="unit"
 
 # Run tests and extract coverage report
 podman run --rm -v ./coverage:/app/coverage:Z myapp:test jest --coverage
