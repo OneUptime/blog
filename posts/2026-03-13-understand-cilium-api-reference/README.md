@@ -37,7 +37,8 @@ Key CRDs include:
 | `ciliumendpoints.cilium.io` | Endpoint state per pod |
 | `ciliumnodes.cilium.io` | Node networking state |
 | `ciliumloadbalanceripools.cilium.io` | IP pools for LB |
-| `ciliumbgppeerpolicies.cilium.io` | BGP peer configuration |
+| `ciliumbgpclusterconfigs.cilium.io` | BGP control plane configuration |
+| `ciliumbgppeerconfigs.cilium.io` | BGP peer configuration |
 
 ## Architecture
 
@@ -59,7 +60,7 @@ The agent exposes a REST API on its local socket:
 ```bash
 kubectl exec -n kube-system ds/cilium -- \
   curl -s --unix-socket /var/run/cilium/cilium.sock \
-  http://localhost/v1/healthz | jq .
+  http://localhost/healthz | jq .
 ```
 
 List endpoints via REST:
@@ -67,7 +68,7 @@ List endpoints via REST:
 ```bash
 kubectl exec -n kube-system ds/cilium -- \
   curl -s --unix-socket /var/run/cilium/cilium.sock \
-  http://localhost/v1/endpoint | jq '.[].id'
+  http://localhost/endpoint | jq '.[].id'
 ```
 
 ## View CRD Schema
@@ -80,9 +81,9 @@ kubectl explain ciliumnetworkpolicy.spec.egress.toPorts
 
 ## API Compatibility Guarantees
 
-- **CRD API**: Follows Kubernetes deprecation policy. Breaking changes include version bumps (v1 vs v2).
-- **Agent REST API**: Versioned at `/v1/`. Breaking changes are avoided within a version.
-- **Hubble gRPC**: Follows proto3 backward compatibility.
+- **CRD API**: CRDs are Kubernetes custom resources with served API versions such as `cilium.io/v2` and `cilium.io/v2alpha1`; prefer stable versions for integrations and watch release notes for migrations.
+- **Agent REST API**: The Cilium agent API is stable as of Cilium 1.0, and backward compatibility is upheld for the Cilium 1.x lifecycle.
+- **Hubble gRPC**: Stable as of version 1.0, with backward compatibility upheld for the Cilium 1.x lifecycle.
 
 ## Golang Client
 
