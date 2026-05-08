@@ -27,7 +27,7 @@ By the end of this post you will have a working IPAMConfiguration resource appli
 
 The IPAMConfiguration resource uses the Calico API group `projectcalico.org/v3`. Before writing the manifest, review the key fields:
 
-- `strictAffinity`: When true, Calico only assigns IPs from blocks affined to the local node.
+- `strictAffinity`: When true, Calico does not allow borrowing IP addresses from blocks affined to other nodes.
 - `maxBlocksPerHost`: Limits the number of CIDR blocks that can be affined to a single node.
 
 > **Note:** There can only be one IPAMConfiguration resource, and it must be named `default`.
@@ -46,7 +46,7 @@ spec:
   maxBlocksPerHost: 4
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+The `strictAffinity` value shown is the default. The `maxBlocksPerHost` value shown is a common example; Calico's default is `20`. Adjust the values to match your environment before applying.
 
 ## Applying the Resource
 
@@ -56,7 +56,7 @@ Apply the manifest using `kubectl`:
 kubectl apply -f ipamconfiguration.yaml
 ```
 
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
+Alternatively, use `calicoctl`, which provides validation and defaulting for Calico resources:
 
 ```bash
 # Apply with calicoctl for enhanced validation
@@ -64,7 +64,7 @@ Alternatively, use `calicoctl` which provides better validation for Calico resou
 calicoctl apply -f ipamconfiguration.yaml
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+`calicoctl` provides validation and defaulting for Calico API resources. In newer Calico installations, the Calico API server or native v3 CRDs provide server-side validation when you use `kubectl`.
 
 ## Verification
 
@@ -75,7 +75,7 @@ Confirm that the resource was created successfully:
 kubectl get ipamconfiguration.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe ipamconfiguration.projectcalico.org
+kubectl describe ipamconfiguration.projectcalico.org default
 
 # Verify with calicoctl
 calicoctl get ipamconfiguration -o yaml
@@ -92,11 +92,12 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `IPAMConfiguration`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- If you are using `kubectl` with the aggregated API server, check that it is available: `kubectl get tigerastatus apiserver`.
+- If you are using native v3 CRDs, confirm the API resource exists: `kubectl api-resources | grep ipamconfigurations`.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
-- Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
+- Ensure field values match the types expected by the API (for example, booleans for `strictAffinity` and integers for `maxBlocksPerHost`).
 
 **Calico components not picking up the resource:**
 - Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
@@ -109,7 +110,7 @@ Beyond the basic manifest shown above, there are several advanced configuration 
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. The IPAMConfiguration resource itself is global, but other resources such as IPPools can use node selectors. For example, you can label nodes before referencing those labels from an IPPool:
 
 ```bash
 # Label nodes for targeted configuration
@@ -137,11 +138,11 @@ Store your Calico resource manifests alongside your application configurations i
 #       kustomization.yaml
 ```
 
-When using GitOps tools like Flux or Argo CD, ensure your Calico CRDs are applied before the custom resources. Set appropriate sync waves or dependencies to prevent ordering issues.
+When using GitOps tools like Flux or Argo CD, ensure the Calico API resources are available before the custom resources are applied. Set appropriate sync waves or dependencies to prevent ordering issues.
 
 Resource Naming Conventions
 
-Adopt a consistent naming convention for your Calico resources:
+Adopt a consistent naming convention for other Calico resources. The IPAMConfiguration resource is a singleton and must be named `default`, but resources such as IPPools should use descriptive names:
 
 - Use descriptive names that indicate the resource's purpose (e.g., `production-pod-pool` instead of `pool-1`)
 - Include environment or cluster identifiers for multi-cluster setups
@@ -168,14 +169,14 @@ After applying any fix, systematically verify each layer of the Calico stack:
 # Layer 1: Calico system pods
 kubectl get pods -n calico-system -o wide
 
-# Layer 2: IPAM consistency
-calicoctl ipam check
+# Layer 2: IPAM usage
+calicoctl ipam show
 
-# Layer 3: Node-to-node connectivity
-calicoctl node status
+# Layer 3: Calico node and BGP status (run on a Calico node)
+sudo calicoctl node status
 
-# Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+# Layer 4: Cluster DNS and service connectivity
+kubectl run fix-test --image=busybox --rm -it --restart=Never -- nslookup kubernetes.default.svc
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
