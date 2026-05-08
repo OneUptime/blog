@@ -29,10 +29,10 @@ podman logs --since 1h my-container
 # View logs from the last 30 seconds
 podman logs --since 30s my-container
 
-# View logs from a specific timestamp (RFC 3339 format)
+# View logs from a specific timestamp without timezone
 podman logs --since "2026-03-16T14:30:00" my-container
 
-# View logs from a specific timestamp with timezone
+# View logs from a specific timestamp with timezone (RFC 3339 format)
 podman logs --since "2026-03-16T14:30:00Z" my-container
 
 # Unix timestamp
