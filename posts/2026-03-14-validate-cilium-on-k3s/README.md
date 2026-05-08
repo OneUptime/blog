@@ -52,13 +52,13 @@ The Cilium connectivity test deploys test workloads and validates all networking
 
 ```bash
 # Run the full connectivity test suite
-# This creates a cilium-test namespace with test pods
+# This creates cilium-test namespace(s) with test pods
 cilium connectivity test
 
-# For a quicker subset of tests
+# For a quicker subset of tests; --test accepts regular expressions
 cilium connectivity test --test pod-to-pod
 cilium connectivity test --test pod-to-service
-cilium connectivity test --test dns-resolution
+cilium connectivity test --test dns-only
 
 # The test suite validates:
 # - Pod-to-pod connectivity (same node and cross-node)
@@ -76,19 +76,16 @@ Verify Cilium integrates correctly with K3s components:
 ```bash
 # Check that CoreDNS is running and reachable through Cilium
 kubectl get pods -n kube-system -l k8s-app=kube-dns -o wide
-kubectl run dns-test --image=busybox --restart=Never -- nslookup kubernetes.default
-kubectl wait --for=condition=Ready pod/dns-test --timeout=30s
-kubectl logs dns-test
-kubectl delete pod dns-test
+kubectl run dns-test --image=busybox:1.36 --restart=Never --rm -i -- \
+  nslookup kubernetes.default.svc.cluster.local
 
 # Verify kube-proxy replacement is working (if enabled)
-cilium status | grep "KubeProxyReplacement"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep KubeProxyReplacement
 
 # Check that services are accessible
 kubectl get svc kubernetes
-kubectl run svc-test --image=busybox --restart=Never -- wget -qO- --timeout=5 https://kubernetes.default.svc:443 2>&1
-kubectl logs svc-test 2>/dev/null
-kubectl delete pod svc-test
+kubectl run svc-test --image=curlimages/curl:8.11.1 --restart=Never --rm -i -- \
+  curl -k -sS --connect-timeout 5 https://kubernetes.default.svc/version
 
 # Verify Cilium is managing all pods
 cilium status | grep "managed by Cilium"
@@ -214,17 +211,20 @@ kubectl get pods -n kube-system -l app.kubernetes.io/part-of=cilium --no-headers
 # 4. Pod networking functional
 echo "4. Pod Network Test:"
 kubectl run val-test --image=nginx --restart=Never 2>/dev/null
-kubectl wait --for=condition=Ready pod/val-test --timeout=30s 2>/dev/null
-echo "   Pod created and ready: OK"
+if kubectl wait --for=condition=Ready pod/val-test --timeout=30s 2>/dev/null; then
+  echo "   Pod created and ready: OK"
+else
+  echo "   Pod created and ready: FAILED"
+fi
 kubectl delete pod val-test 2>/dev/null
 ```
 
 ## Troubleshooting
 
-- **Connectivity test hangs on pod-to-world tests**: K3s may have restrictive outbound rules. Skip external tests with `cilium connectivity test --test '!to-outside'`.
+- **Connectivity test hangs on pod-to-world tests**: K3s may have restrictive outbound rules. Skip external tests with `cilium connectivity test --test '!pod-to-world'`.
 - **Network policy test shows both clients can connect**: Ensure the policy was applied correctly with `kubectl get networkpolicy -n policy-validation -o yaml`. Cilium may take a few seconds to enforce new policies.
 - **DNS resolution fails intermittently**: Check if CoreDNS pods have been restarted after Cilium was installed. Restart CoreDNS with `kubectl rollout restart deployment coredns -n kube-system`.
-- **`cilium status` shows warnings about BPF**: Verify your kernel version supports eBPF with `uname -r`. K3s on older kernels (< 4.19) may not support all Cilium features.
+- **`cilium status` shows warnings about BPF**: Verify your kernel version supports eBPF with `uname -r`. Current Cilium releases recommend Linux kernel 5.10 or later, or a distribution-equivalent kernel such as RHEL 8.10's 4.18 kernel.
 
 ## Conclusion
 
