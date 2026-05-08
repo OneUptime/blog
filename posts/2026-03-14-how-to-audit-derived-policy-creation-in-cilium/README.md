@@ -15,7 +15,7 @@ Auditing derived policy creation provides a complete picture of the effective se
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and policies applied
-- kubectl and Cilium CLI configured
+- kubectl and jq configured
 
 ## Comprehensive Policy Audit
 
@@ -27,9 +27,9 @@ echo ""
 
 # Overall statistics
 
-TOTAL_ENDPOINTS=$(cilium endpoint list -o json | jq '. | length')
-READY_ENDPOINTS=$(cilium endpoint list -o json | jq '[.[] | select(.status.state == "ready")] | length')
-TOTAL_POLICIES=$(kubectl get ciliumnetworkpolicies --all-namespaces --no-headers | wc -l)
+TOTAL_ENDPOINTS=$(kubectl get ciliumendpoints --all-namespaces -o json | jq '.items | length')
+READY_ENDPOINTS=$(kubectl get ciliumendpoints --all-namespaces -o json | jq '[.items[] | select(.status.state == "ready")] | length')
+TOTAL_POLICIES=$(kubectl get ciliumnetworkpolicies --all-namespaces --no-headers 2>/dev/null | wc -l)
 CW_POLICIES=$(kubectl get ciliumclusterwidenetworkpolicies --no-headers 2>/dev/null | wc -l)
 
 echo "Total endpoints: $TOTAL_ENDPOINTS"
@@ -40,7 +40,7 @@ echo ""
 
 # Endpoints without policy enforcement
 echo "--- Endpoints without policy enforcement ---"
-cilium endpoint list -o json | jq '.[] | select(.status.policy.spec."policy-enabled" != true) | {id: .id, labels: .status.labels["security-relevant"]}'
+kubectl get ciliumendpoints --all-namespaces -o json | jq '.items[] | select((.status.policy.realized."policy-enabled" // "none") == "none") | {namespace: .metadata.namespace, name: .metadata.name, id: .status.id, labels: .status.labels["security-relevant"]}'
 echo ""
 
 # Policy coverage by namespace
@@ -59,10 +59,10 @@ done
 
 ```bash
 # Check all endpoints enforce ingress policy
-cilium endpoint list -o json | jq '[.[] | select(.status.policy.realized."allowed-ingress-identities" == null or (.status.policy.realized."allowed-ingress-identities" | length) == 0)] | length' 
+kubectl get ciliumendpoints --all-namespaces -o json | jq '[.items[] | select((.status.policy.realized."policy-enabled" // "none") as $mode | ($mode != "ingress" and $mode != "both"))] | length' 
 
-# Check for endpoints allowing all identities
-cilium endpoint list -o json | jq '.[] | select(.status.policy.realized."allowed-ingress-identities" // [] | length > 100) | {id: .id, allowed_count: (.status.policy.realized."allowed-ingress-identities" | length)}'
+# Check for endpoints allowing many ingress identities
+kubectl get ciliumendpoints --all-namespaces -o json | jq '.items[] | select(.status.policy.realized."allowed-ingress-identities" // [] | length > 100) | {namespace: .metadata.namespace, name: .metadata.name, id: .status.id, allowed_count: (.status.policy.realized."allowed-ingress-identities" | length)}'
 ```
 
 ```mermaid
@@ -80,8 +80,10 @@ graph LR
 
 ```bash
 # Generate JSON audit report
-cilium endpoint list -o json | jq '[.[] | {
-  id: .id,
+kubectl get ciliumendpoints --all-namespaces -o json | jq '[.items[] | {
+  namespace: .metadata.namespace,
+  name: .metadata.name,
+  id: .status.id,
   state: .status.state,
   identity: .status.identity.id,
   labels: .status.labels["security-relevant"],
@@ -95,8 +97,9 @@ echo "Audit report saved to /tmp/policy-audit-report.json"
 ## Verification
 
 ```bash
-cilium endpoint list
-cilium policy get
+kubectl get ciliumendpoints --all-namespaces
+kubectl get ciliumnetworkpolicies --all-namespaces
+kubectl get ciliumclusterwidenetworkpolicies
 cat /tmp/policy-audit-report.json | jq '. | length'
 ```
 
