@@ -17,7 +17,7 @@ Because this command queries the local Calico node's BIRD daemon, errors can ori
 ## Prerequisites
 
 - A Kubernetes cluster with Calico installed
-- Root or sudo access on the node
+- Root or sudo access on the Calico node
 - `calicoctl` installed
 - Basic understanding of BGP concepts
 
@@ -89,15 +89,15 @@ Error: permission denied
 # Always use sudo for node status
 sudo calicoctl node status
 
-# In Kubernetes, exec into the calico-node pod
-kubectl exec -n calico-system <calico-node-pod> -- calicoctl node status
+# If installed as a kubectl plugin, run it on the Calico node
+sudo kubectl calico node status
 ```
 
 ## BGP Peers Not Establishing
 
-When peers show states other than "Established":
+When peers show BGP session status other than "Established":
 
-### Peer State: connect (TCP connection failing)
+### Peer Status: Connect (TCP connection failing)
 
 ```bash
 # Check network connectivity to peer
@@ -115,7 +115,7 @@ sudo iptables -A INPUT -p tcp --dport 179 -j ACCEPT
 sudo iptables -A OUTPUT -p tcp --dport 179 -j ACCEPT
 ```
 
-### Peer State: active (BGP negotiation failing)
+### Peer Status: Active (BGP negotiation failing)
 
 ```bash
 # Check AS number configuration
@@ -128,7 +128,7 @@ calicoctl get bgpconfigurations default -o yaml
 calicoctl get node $(hostname) -o jsonpath='{.spec.bgp.asNumber}'
 ```
 
-### Peer State: start (connection not initiated)
+### Peer Status: Idle or no peers listed (connection not initiated)
 
 ```bash
 # Verify the node-to-node mesh is enabled
