@@ -12,7 +12,7 @@ Description: A safe process for upgrading Calico on K3s clusters while maintaini
 
 Upgrading Calico on K3s follows the standard manifest-based approach used for other self-managed Kubernetes distributions. Because K3s clusters are often deployed at the edge with limited redundancy, the upgrade process must be executed carefully to avoid prolonged networking disruptions.
 
-K3s's rolling update mechanism for DaemonSets ensures that calico-node pods are updated one at a time across nodes, minimizing the window during which any single node is without networking. For single-node K3s clusters, the upgrade briefly interrupts networking while the calico-node pod restarts.
+Kubernetes' rolling update mechanism for DaemonSets updates calico-node pods in a controlled sequence. With the default DaemonSet rolling update settings, one calico-node pod can be unavailable at a time, minimizing the window during which any single node is without networking. For single-node K3s clusters, the upgrade briefly interrupts networking while the calico-node pod restarts.
 
 This guide provides a safe Calico upgrade procedure for K3s, including pre-upgrade preparation, the upgrade itself, and post-upgrade validation with rollback instructions if needed.
 
@@ -51,7 +51,10 @@ kubectl delete pod pre-upgrade-test
 ## Step 4: Apply New Calico Manifest
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/calico.yaml -o upgrade.yaml
+# Reapply any local changes from your existing manifest, including K3s CNI settings
+# such as container_settings.allow_ip_forwarding when required.
+kubectl apply --server-side --force-conflicts -f upgrade.yaml
 ```
 
 ## Step 5: Monitor the Upgrade
