@@ -20,7 +20,7 @@ Whether you are setting up a new cluster or hardening an existing one, these sec
 
 - A running Kubernetes cluster (v1.24+)
 - Cilium installed (v1.14+) via Helm
-- `cilium` CLI tool installed
+- `cilium` CLI tool installed and access to `cilium-dbg` inside Cilium agent pods
 - `kubectl` configured for cluster access
 - Hubble enabled for network flow observation
 - Basic understanding of Kubernetes networking concepts
@@ -53,21 +53,20 @@ cilium status
 
 ```bash
 # Check current policy enforcement mode
-cilium config view | grep policy-enforcement
+cilium config view | grep enable-policy
 ```
 
 ## Implementing Security Policies
 
-Apply a CiliumNetworkPolicy to restrict access to your policy audit mode disabling resources.
+Apply a CiliumNetworkPolicy to restrict access to workloads after policy audit mode is disabled.
 
 ```yaml
 # Apply this policy to restrict access based on identity
 apiVersion: "cilium.io/v2"
-kind: CiliumClusterwideNetworkPolicy
+kind: CiliumNetworkPolicy
 metadata:
   name: enforce-mode-policy
-  annotations:
-    policy.cilium.io/audit-mode: "false"
+  namespace: production
 spec:
   endpointSelector: {}
   ingress:
@@ -109,7 +108,8 @@ metadata:
   namespace: production
 spec:
   endpointSelector: {}
-  ingress: []
+  ingress:
+    - {}
   egress:
     - toEndpoints:
         - matchLabels:
@@ -128,8 +128,7 @@ spec:
 hubble observe --verdict DROPPED --namespace production --output compact
 
 # Check endpoint security status
-# List all active policies
-cilium policy get -o json | jq '.[].metadata.name'
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list
 ```
 
 ## Advanced Security Configuration
@@ -137,16 +136,22 @@ cilium policy get -o json | jq '.[].metadata.name'
 For enhanced protection, consider these additional hardening measures:
 
 ```bash
-# Enable policy enforcement in strict mode
-# This is configured during Cilium installation via Helm
+# Disable policy audit mode after validating expected traffic
 # helm upgrade cilium cilium/cilium --namespace kube-system \
-#   --set policyEnforcementMode=always
+#   --reuse-values \
+#   --set policyAuditMode=false
 
-# Verify the current enforcement mode
-cilium config view | grep policy-enforcement
+# Or update the Cilium ConfigMap and restart the agent DaemonSet
+kubectl patch -n kube-system configmap cilium-config --type merge \
+  --patch '{"data":{"policy-audit-mode":"false"}}'
+kubectl -n kube-system rollout restart ds/cilium
+kubectl -n kube-system rollout status ds/cilium
+
+# Verify the current audit and enforcement settings
+cilium config view | grep -E "policy-audit-mode|enable-policy"
 
 # List all identities and verify they match expected workloads
-cilium identity list
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg identity list
 ```
 
 
@@ -165,10 +170,12 @@ kubectl get cnp --all-namespaces -o yaml > "$EVIDENCE_DIR/all-policies.yaml"
 kubectl get ccnp -o yaml > "$EVIDENCE_DIR/clusterwide-policies.yaml"
 
 # Capture endpoint security state
-cilium endpoint list -o json > "$EVIDENCE_DIR/endpoint-state.json"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list -o json > "$EVIDENCE_DIR/endpoint-state.json"
 
 # Capture identity mappings
-cilium identity list -o json > "$EVIDENCE_DIR/identities.json"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list -o json > "$EVIDENCE_DIR/identities.json"
 
 # Capture Cilium configuration
 cilium config view > "$EVIDENCE_DIR/cilium-config.txt"
@@ -176,7 +183,7 @@ cilium config view > "$EVIDENCE_DIR/cilium-config.txt"
 # Generate a summary for auditors
 echo "Audit Evidence Generated: $(date -u)" > "$EVIDENCE_DIR/summary.txt"
 echo "Policies: $(kubectl get cnp -A --no-headers | wc -l)" >> "$EVIDENCE_DIR/summary.txt"
-echo "Endpoints: $(cilium endpoint list -o json | jq length)" >> "$EVIDENCE_DIR/summary.txt"
+echo "Endpoints: $(jq length "$EVIDENCE_DIR/endpoint-state.json")" >> "$EVIDENCE_DIR/summary.txt"
 
 tar -czf "$EVIDENCE_DIR.tar.gz" "$EVIDENCE_DIR"
 echo "Evidence package created: $EVIDENCE_DIR.tar.gz"
@@ -190,7 +197,7 @@ After applying security controls, verify they are working correctly:
 
 ```bash
 # Verify policy is applied
-cilium endpoint list
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list
 ```
 
 ```bash
@@ -200,12 +207,13 @@ cilium connectivity test
 
 ```bash
 # Monitor for policy drops
-cilium monitor --type drop --output json | head -20
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type drop --json | head -20
 ```
 
 ## Troubleshooting
 
-- **Policy not taking effect**: Verify endpoint labels match policy selectors with `cilium endpoint list -o json | jq '.[] | .status.labels'`.
+- **Policy not taking effect**: Verify endpoint labels match policy selectors with `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list -o json | jq '.[] | .status.labels'`.
 - **Legitimate traffic blocked**: Check Hubble for specific drop reasons with `hubble observe --verdict DROPPED --namespace production`.
 - **High latency after policy application**: L7 policies route through Envoy proxy. Consider using L3/L4 policies where L7 inspection is not needed.
 - **Cilium agent errors**: Check agent logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent --tail=50`.
