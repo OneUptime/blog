@@ -30,8 +30,8 @@ calicoctl ipam show --show-blocks
 # View IP pool configuration
 calicoctl get ippools -o yaml
 
-# Check IPAM allocations
-calicoctl ipam check
+# Check pool selectors
+calicoctl get ippools -o wide
 ```
 
 ## Example Configuration
@@ -40,27 +40,43 @@ calicoctl ipam check
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: pool-example
+  name: pool-rack-0
 spec:
-  cidr: 10.48.0.0/16
+  cidr: 10.48.0.0/24
   blockSize: 26
-  ipipMode: Never
-  vxlanMode: VXLAN
+  vxlanMode: Always
   natOutgoing: true
-  nodeSelector: all()
+  nodeSelector: rack == "0"
+---
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: pool-rack-1
+spec:
+  cidr: 10.48.1.0/24
+  blockSize: 26
+  vxlanMode: Always
+  natOutgoing: true
+  nodeSelector: rack == "1"
 ```
 
 ## Verification
 
 ```bash
-# Verify allocations
-kubectl get pods -A -o wide | awk '{print $8}' | sort -u | head -20
+# Verify pod IPs and the nodes where pods are running
+kubectl get pods -A -o wide
+
+# Verify node labels match the pool selectors
+kubectl get nodes --show-labels | grep 'rack='
 
 # Check pool utilization
+calicoctl ipam show
+
+# Check IPAM configuration
 calicoctl ipam show --show-configuration
 
-# Validate consistency
-calicoctl ipam check -o ipam-report.json
+# Validate allocated blocks by pool
+calicoctl ipam show --show-blocks
 ```
 
 ## Architecture
@@ -76,4 +92,4 @@ graph LR
 
 ## Conclusion
 
-Properly managing IP Address Allocation by Topology in Calico ensures reliable pod networking and prevents IP exhaustion issues. Regular monitoring of pool utilization and IPAM consistency checks help maintain a healthy IP addressing infrastructure.
+Properly managing IP Address Allocation by Topology in Calico ensures reliable pod networking and prevents IP exhaustion issues. Regular monitoring of pool utilization and IPAM state checks help maintain a healthy IP addressing infrastructure.
