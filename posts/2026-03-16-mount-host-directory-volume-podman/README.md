@@ -86,7 +86,7 @@ podman run -v /host/path:/container/path:ro,Z alpine:latest
 ```bash
 # Serve files from a host directory
 podman run -d --name web \
-    -v /var/www/html:/usr/share/nginx/html:ro,Z \
+    -v /srv/www/html:/usr/share/nginx/html:ro,Z \
     -p 8080:80 \
     nginx:alpine
 ```
@@ -107,8 +107,8 @@ podman run --rm \
 ```bash
 # Mount a custom nginx config
 podman run -d --name nginx \
-    -v /etc/nginx/custom.conf:/etc/nginx/nginx.conf:ro,Z \
-    -v /var/log/nginx:/var/log/nginx:Z \
+    -v /srv/nginx/custom.conf:/etc/nginx/nginx.conf:ro,Z \
+    -v /srv/nginx/logs:/var/log/nginx:Z \
     -p 80:80 \
     nginx:alpine
 ```
@@ -120,7 +120,7 @@ The `--mount` flag provides a more explicit syntax:
 ```bash
 # Equivalent to -v /data:/app/data:ro
 podman run --rm \
-    --mount type=bind,source=/data,target=/app/data,readonly \
+    --mount type=bind,source=/data,target=/app/data,readonly=true \
     alpine:latest \
     ls /app/data
 ```
@@ -158,7 +158,7 @@ podman run -d --name myapp \
 
 ## Creating the Host Directory First
 
-If the host directory does not exist, Podman creates it automatically. However, it is better to create it explicitly:
+If the host directory does not exist, Podman returns an error. Create it explicitly before mounting it:
 
 ```bash
 # Create the directory with proper permissions
