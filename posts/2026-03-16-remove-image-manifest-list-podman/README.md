@@ -30,14 +30,14 @@ The output includes digests for each entry:
 {
   "manifests": [
     {
-      "digest": "sha256:abc123def456...",
+      "digest": "sha256:cb8a924afdf0229ef7515d9e5b3024e23b3eb03ddbba287f4a19c6ac90b8d221",
       "platform": {
         "architecture": "amd64",
         "os": "linux"
       }
     },
     {
-      "digest": "sha256:789ghi012jkl...",
+      "digest": "sha256:8e834c96f733b0a9e689c9e605d945c89bd60f2f3c7f9400ab8bd0ee0b2d44f9",
       "platform": {
         "architecture": "arm64",
         "os": "linux"
@@ -56,7 +56,7 @@ Use `podman manifest remove` with the manifest list name and the digest of the e
 podman manifest inspect myapp:latest | jq '.manifests[] | {digest, arch: .platform.architecture}'
 
 # Remove the specific entry by digest
-podman manifest remove myapp:latest sha256:abc123def456...
+podman manifest remove myapp:latest sha256:cb8a924afdf0229ef7515d9e5b3024e23b3eb03ddbba287f4a19c6ac90b8d221
 
 # Verify the entry was removed
 podman manifest inspect myapp:latest
@@ -75,34 +75,34 @@ CMD ["sh", "-c", "echo Architecture: $(uname -m)"]
 EOF
 
 # Build for three architectures
-podman build --platform linux/amd64 -t myapp:amd64 .
-podman build --platform linux/arm64 -t myapp:arm64 .
-podman build --platform linux/arm/v7 -t myapp:armv7 .
+podman build --platform linux/amd64 -t localhost/myapp:amd64 .
+podman build --platform linux/arm64 -t localhost/myapp:arm64 .
+podman build --platform linux/arm/v7 -t localhost/myapp:armv7 .
 
 # Create manifest and add all three
-podman manifest create myapp:latest
-podman manifest add myapp:latest myapp:amd64
-podman manifest add myapp:latest myapp:arm64
-podman manifest add myapp:latest myapp:armv7
+podman manifest create localhost/myapp:latest
+podman manifest add localhost/myapp:latest containers-storage:localhost/myapp:amd64
+podman manifest add localhost/myapp:latest containers-storage:localhost/myapp:arm64
+podman manifest add localhost/myapp:latest containers-storage:localhost/myapp:armv7
 
 # Verify all three are present
 echo "Before removal:"
-podman manifest inspect myapp:latest | \
-  jq '.manifests[] | "\(.platform.architecture) - \(.digest)"'
+podman manifest inspect localhost/myapp:latest | \
+  jq '.manifests[] | "\(.platform.architecture)/\(.platform.variant // "") - \(.digest)"'
 
 # Get the digest of the armv7 entry
-ARMV7_DIGEST=$(podman manifest inspect myapp:latest | \
-  jq -r '.manifests[] | select(.platform.architecture == "arm") | .digest')
+ARMV7_DIGEST=$(podman manifest inspect localhost/myapp:latest | \
+  jq -r '.manifests[] | select(.platform.architecture == "arm" and .platform.variant == "v7") | .digest')
 
 echo "Removing ARM v7 entry: ${ARMV7_DIGEST}"
 
 # Remove the armv7 entry
-podman manifest remove myapp:latest "${ARMV7_DIGEST}"
+podman manifest remove localhost/myapp:latest "${ARMV7_DIGEST}"
 
 # Verify it was removed
 echo "After removal:"
-podman manifest inspect myapp:latest | \
-  jq '.manifests[] | "\(.platform.architecture) - \(.digest)"'
+podman manifest inspect localhost/myapp:latest | \
+  jq '.manifests[] | "\(.platform.architecture)/\(.platform.variant // "") - \(.digest)"'
 ```
 
 ## Scripting Removal by Architecture
@@ -168,7 +168,7 @@ if [ -n "${DIGEST}" ] && [ "${DIGEST}" != "null" ]; then
   podman manifest remove "${MANIFEST}" "${DIGEST}"
 fi
 
-# Add the new image
+# Add the new image. Use containers-storage: for a locally built image, or docker:// for a registry image.
 echo "Adding new ${ARCH} image..."
 podman manifest add "${MANIFEST}" "${NEW_IMAGE}"
 
@@ -181,10 +181,10 @@ Usage:
 
 ```bash
 # Rebuild the ARM64 image
-podman build --platform linux/arm64 -t myapp:arm64-v2 .
+podman build --platform linux/arm64 -t localhost/myapp:arm64-v2 .
 
 # Replace in the manifest
-./replace-arch.sh myapp:latest arm64 myapp:arm64-v2
+./replace-arch.sh localhost/myapp:latest arm64 containers-storage:localhost/myapp:arm64-v2
 ```
 
 ## Removing All Entries
