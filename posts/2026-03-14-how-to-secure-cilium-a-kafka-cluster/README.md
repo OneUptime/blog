@@ -10,7 +10,7 @@ Description: Learn how to secure Kafka traffic policies in Cilium for Kubernetes
 
 ## Introduction
 
-Securing Kafka traffic policies in Cilium is essential for maintaining a robust Kubernetes network security posture. Cilium leverages eBPF technology to provide deep visibility and control over network traffic, making it possible to enforce fine-grained security policies at the kernel level.
+Securing Kafka traffic policies in Cilium is essential for maintaining a robust Kubernetes network security posture. Cilium leverages eBPF technology to provide deep visibility and control over network traffic, making it possible to enforce fine-grained security policies at the network layer, with Layer 7 policy enforcement proxied through Envoy where configured.
 
 This guide focuses on practical steps to harden your Kafka-aware security using CiliumNetworkPolicy resources. You will learn how to create policies that restrict access, implement defense-in-depth strategies, and verify that your security controls are working as intended.
 
@@ -19,7 +19,7 @@ Whether you are setting up a new cluster or hardening an existing one, these sec
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.24+)
-- Cilium installed (v1.14+) via Helm
+- Cilium installed via Helm (v1.14 through v1.19 for Kafka-aware Layer 7 policies)
 - `cilium` CLI tool installed
 - `kubectl` configured for cluster access
 - Hubble enabled for network flow observation
@@ -28,6 +28,8 @@ Whether you are setting up a new cluster or hardening an existing one, these sec
 ## Understanding the Security Model
 
 Before implementing security controls, it is important to understand how Cilium handles Kafka traffic policies.
+
+Kafka-aware Layer 7 policy support is deprecated in Cilium v1.19 and is scheduled for removal in Cilium v1.20. Use these examples only with Cilium versions that still support Kafka policy rules, and plan a migration path if you are upgrading beyond those versions.
 
 ```mermaid
 graph TD
@@ -102,7 +104,7 @@ spec:
 kubectl apply -f policy.yaml
 
 # Verify the policy was accepted
-kubectl get cnp -n production
+kubectl get cnp -n kafka
 ```
 
 ### Hardening with Default-Deny
@@ -115,7 +117,7 @@ apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
   name: default-deny-kafka
-  namespace: production
+  namespace: kafka
 spec:
   endpointSelector: {}
   ingress: []
@@ -134,11 +136,10 @@ spec:
 
 ```bash
 # Monitor for policy-related drops in real time
-hubble observe --verdict DROPPED --namespace production --output compact
+hubble observe --verdict DROPPED --namespace kafka --output compact
 
-# Check endpoint security status
-# List all active policies
-cilium policy get -o json | jq '.[].metadata.name'
+# List all CiliumNetworkPolicy resources
+kubectl get cnp -A
 ```
 
 ## Advanced Security Configuration
@@ -155,7 +156,7 @@ For enhanced protection, consider these additional hardening measures:
 cilium config view | grep policy-enforcement
 
 # List all identities and verify they match expected workloads
-cilium identity list
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg identity list
 ```
 
 
@@ -170,11 +171,9 @@ kubectl get namespaces --show-labels
 
 # Identify cross-namespace communication patterns
 hubble observe --output json --last 500 | \
-  jq '.flow | select(.source.namespace != .destination.namespace) | {
-    src_ns: .source.namespace,
-    dst_ns: .destination.namespace,
-    port: (.l4.TCP.destination_port // .l4.UDP.destination_port)
-  }' | sort | uniq -c | sort -rn
+  jq -r '.flow | select(.source.namespace != .destination.namespace) |
+    [.source.namespace, .destination.namespace, (.l4.TCP.destination_port // .l4.UDP.destination_port)] | @tsv' | \
+  sort | uniq -c | sort -rn
 
 # Ensure each namespace has appropriate policy coverage
 for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
@@ -191,7 +190,7 @@ After applying security controls, verify they are working correctly:
 
 ```bash
 # Verify policy is applied
-cilium endpoint list
+kubectl get cep -n kafka
 ```
 
 ```bash
@@ -201,13 +200,13 @@ cilium connectivity test
 
 ```bash
 # Monitor for policy drops
-cilium monitor --type drop --output json | head -20
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg monitor --type drop --json | head -20
 ```
 
 ## Troubleshooting
 
-- **Policy not taking effect**: Verify endpoint labels match policy selectors with `cilium endpoint list -o json | jq '.[] | .status.labels'`.
-- **Legitimate traffic blocked**: Check Hubble for specific drop reasons with `hubble observe --verdict DROPPED --namespace production`.
+- **Policy not taking effect**: Verify endpoint labels match policy selectors with `kubectl get cep -n kafka -o yaml`.
+- **Legitimate traffic blocked**: Check Hubble for specific drop reasons with `hubble observe --verdict DROPPED --namespace kafka`.
 - **High latency after policy application**: L7 policies route through Envoy proxy. Consider using L3/L4 policies where L7 inspection is not needed.
 - **Cilium agent errors**: Check agent logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent --tail=50`.
 
