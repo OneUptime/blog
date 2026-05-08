@@ -24,6 +24,7 @@ Description=Application with custom DNS
 
 [Container]
 Image=docker.io/myorg/myapp:latest
+ContainerName=myapp
 PublishPort=3000:3000
 
 # Use custom DNS servers
@@ -71,7 +72,7 @@ Description=Internal application with full DNS config
 
 [Container]
 Image=docker.io/myorg/internal-app:latest
-Network=mynet.network
+Network=mynet
 PublishPort=8080:8080
 
 # Internal DNS server
@@ -103,7 +104,7 @@ Description=App using network DNS
 [Container]
 Image=docker.io/myorg/app:latest
 # Containers on this network resolve each other by name
-Network=mynet.network
+Network=mynet
 
 [Service]
 Restart=on-failure
