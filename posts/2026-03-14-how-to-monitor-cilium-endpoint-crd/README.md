@@ -10,7 +10,7 @@ Description: A guide to monitoring CiliumEndpoint custom resources using Prometh
 
 ## Introduction
 
-CiliumEndpoint resources represent the state of every network endpoint in your Cilium-managed cluster. Monitoring gives you visibility into endpoint health, identity distribution, policy enforcement status, and networking state.
+CiliumEndpoint resources represent the state of every pod managed by Cilium in your cluster. Monitoring gives you visibility into endpoint health, identity distribution, policy enforcement status, and networking state.
 
 Effective endpoint monitoring combines three layers: Cilium agent metrics for endpoint counts and state transitions, Hubble flow data for traffic patterns, and custom checks for endpoint consistency.
 
@@ -57,10 +57,10 @@ cilium_endpoint_state{state="ready"}
 cilium_endpoint_state{state="not-ready"}
 
 # Endpoint regeneration duration
-histogram_quantile(0.99, rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[5m]))
+histogram_quantile(0.99, sum by (le) (rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[5m])))
 
 # Regeneration count by outcome
-rate(cilium_endpoint_regenerations_total[5m])
+sum by (outcome) (rate(cilium_endpoint_regenerations_total[5m]))
 ```
 
 ## Hubble Flow Monitoring
@@ -76,6 +76,10 @@ hubble:
       - drop
       - tcp
       - flow
+    serviceMonitor:
+      enabled: true
+      labels:
+        release: prometheus
 ```
 
 ```bash
@@ -112,7 +116,7 @@ spec:
           annotations:
             summary: "{{ $value }} endpoints not ready for 10+ minutes"
         - alert: CiliumEndpointRegenerationFailures
-          expr: rate(cilium_endpoint_regenerations_total{outcome="fail"}[5m]) > 0
+          expr: sum(rate(cilium_endpoint_regenerations_total{outcome="fail"}[5m])) > 0
           for: 5m
           labels:
             severity: critical
