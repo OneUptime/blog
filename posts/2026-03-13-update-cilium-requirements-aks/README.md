@@ -34,7 +34,7 @@ Verify the cluster's current network profile and Kubernetes version.
 az aks show \
   --resource-group <resource-group> \
   --name <cluster-name> \
-  --query "{networkPlugin:networkProfile.networkPlugin, networkPolicy:networkProfile.networkPolicy, k8sVersion:kubernetesVersion, nodeOsType:agentPoolProfiles[0].osSKU}"
+  --query "{networkPlugin:networkProfile.networkPlugin, networkPluginMode:networkProfile.networkPluginMode, networkDataplane:networkProfile.networkDataplane, networkPolicy:networkProfile.networkPolicy, k8sVersion:kubernetesVersion, nodeOsType:agentPoolProfiles[0].osSKU}"
 ```
 
 ## Step 2: Verify Node OS and Kernel Version
@@ -45,9 +45,9 @@ Cilium requires specific kernel versions. Check what's running on AKS nodes.
 # Check the kernel version on AKS nodes
 kubectl get nodes -o custom-columns="NODE:.metadata.name,OS:.status.nodeInfo.osImage,KERNEL:.status.nodeInfo.kernelVersion"
 
-# For L7 policy and kube-proxy replacement, need kernel 5.3+
-# AKS Ubuntu 22.04 nodes typically run kernel 5.15+
-# AKS Azure Linux nodes run kernel 5.15+
+# Cilium 1.19 requires Linux kernel 5.10+ or an equivalent vendor kernel
+# AKS Ubuntu and Azure Linux node images generally meet this baseline,
+# but always verify the running kernel before installing or upgrading
 ```
 
 ## Step 3: Check Cilium Compatibility with AKS Network Plugin
@@ -61,18 +61,18 @@ az aks show \
   --name <cluster-name> \
   --query "networkProfile.networkPlugin" -o tsv
 
-# For Azure CNI Overlay + Cilium, verify the overlay is configured
+# For Azure CNI Overlay Powered by Cilium, verify overlay mode and Cilium dataplane
 az aks show \
   --resource-group <resource-group> \
   --name <cluster-name> \
-  --query "networkProfile.networkPluginMode" -o tsv
+  --query "{networkPluginMode:networkProfile.networkPluginMode, networkDataplane:networkProfile.networkDataplane}"
 ```
 
 Compatibility matrix:
-- Azure CNI + Cilium: Supported, Cilium as standalone CNI
-- Azure CNI Overlay + Cilium: Supported, best practice for scale
-- kubenet + Cilium: Not recommended
-- Azure CNI Powered by Cilium: Managed Cilium by AKS
+- BYO CNI + Cilium: Supported for standalone Cilium; create the AKS cluster with `--network-plugin none`
+- Azure CNI + Cilium: Supported as legacy CNI chaining, with some advanced Cilium features limited
+- Azure CNI Overlay Powered by Cilium: Managed Cilium by AKS, recommended for most AKS Cilium deployments
+- kubenet + Cilium: Not recommended; kubenet for AKS is scheduled for retirement on March 31, 2028
 
 ## Step 4: Update Node Pool to Meet Requirements
 
@@ -86,7 +86,7 @@ az aks nodepool add \
   --name ciliumpool \
   --node-count 3 \
   --os-sku AzureLinux \
-  --kubernetes-version 1.29.0 \
+  --kubernetes-version <supported-aks-version> \
   --node-vm-size Standard_D4s_v3
 
 # Verify the new node pool meets kernel requirements
@@ -102,10 +102,9 @@ Ensure the AKS cluster has sufficient resources for Cilium pods.
 # Check available resources on nodes
 kubectl describe nodes | grep -A 10 "Allocatable"
 
-# Cilium minimum requirements per node:
-# - CPU: 100m request, 1 core limit
-# - Memory: 64Mi request, 500Mi limit
-# - These are for calico-node equivalent (cilium-agent pod)
+# Cilium's Helm chart does not set default cilium-agent CPU or memory
+# requests/limits. Size these values for your cluster and configure them
+# explicitly with the chart's resources value if your environment requires it.
 
 # Check current resource usage
 kubectl top nodes
@@ -122,4 +121,4 @@ kubectl top pods -n kube-system | grep cilium
 
 ## Conclusion
 
-Meeting Cilium's requirements on AKS involves verifying kernel versions, network plugin compatibility, and node OS selection. By using Azure Linux node images, configuring Azure CNI Overlay, and checking resource allocations, you ensure Cilium can be installed and operated reliably on AKS. Keeping these requirements current is an ongoing operational responsibility as both AKS and Cilium evolve.
+Meeting Cilium's requirements on AKS involves verifying kernel versions, network plugin compatibility, and node OS selection. By using Azure Linux node images, configuring Azure CNI Overlay Powered by Cilium where appropriate, and checking resource allocations, you ensure Cilium can be installed and operated reliably on AKS. Keeping these requirements current is an ongoing operational responsibility as both AKS and Cilium evolve.
