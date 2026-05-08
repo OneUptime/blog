@@ -27,7 +27,8 @@ This guide covers production tuning for binary-managed Calico on bare metal usin
 ```yaml
 # group_vars/all.yml
 
-calico_encapsulation: "None"
+calico_ipip_mode: "Never"
+calico_vxlan_mode: "Never"
 calico_mtu: 1500
 calico_bpf_enabled: true
 calico_prometheus_enabled: true
@@ -42,7 +43,7 @@ calico_iptables_refresh: "90s"
 ```yaml
 # roles/calico-tuning/tasks/main.yml
 - name: Apply sysctl performance tuning
-  sysctl:
+  ansible.posix.sysctl:
     name: "{{ item.name }}"
     value: "{{ item.value }}"
     state: present
@@ -69,6 +70,8 @@ Environment=FELIX_IPTABLESREFRESHINTERVAL={{ calico_iptables_refresh | replace('
 
 ## Step 4: Apply CRD-Level Tuning
 
+Before enabling eBPF, complete Calico's eBPF migration prerequisites for your cluster, including configuring direct API server access and either disabling `kube-proxy` or configuring Felix to avoid conflicts with it.
+
 ```yaml
 # apply-tuning.yml
 - name: Apply Calico CRD tuning
@@ -77,9 +80,9 @@ Environment=FELIX_IPTABLESREFRESHINTERVAL={{ calico_iptables_refresh | replace('
     - name: Patch IP pool for no encapsulation
       shell: |
         calicoctl patch ippool default-ipv4-ippool \
-          --patch '{"spec":{"encapsulation":"None"}}'
+          --patch '{"spec":{"ipipMode":"Never","vxlanMode":"Never"}}'
 
-    - name: Enable eBPF
+    - name: Enable eBPF after migration prerequisites are complete
       shell: |
         calicoctl patch felixconfiguration default \
           --patch '{"spec":{"bpfEnabled":true}}'
