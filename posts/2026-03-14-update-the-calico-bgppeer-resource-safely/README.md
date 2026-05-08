@@ -125,7 +125,7 @@ calicoctl get bgppeer -o yaml
 
 **Update appears to have no effect:**
 - Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Validate the manifest for typos and schema errors before applying it: `calicoctl validate -f bgppeer.yaml`.
 
 
 ## Additional Considerations
@@ -160,7 +160,8 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.projectcalico.org
+kubectl auth can-i --list
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
