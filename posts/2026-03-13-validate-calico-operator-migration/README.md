@@ -58,7 +58,7 @@ cat calico-migration-backup-*/ippools.yaml
 
 # Verify CIDR ranges match
 current_cidr=$(calicoctl get ippool default-ipv4-ippool \
-  -o jsonpath='{.spec.cidr}' 2>/dev/null)
+  -o go-template='{{range .}}{{range .Items}}{{.Spec.CIDR}}{{end}}{{end}}' 2>/dev/null)
 backup_cidr=$(grep "cidr:" calico-migration-backup-*/ippools.yaml | head -1 | awk '{print $2}')
 
 if [[ "${current_cidr}" == "${backup_cidr}" ]]; then
@@ -74,7 +74,7 @@ fi
 # Verify all global network policies are present
 echo "=== Network Policy Validation ==="
 
-current_gnps=$(calicoctl get globalnetworkpolicies --no-headers | wc -l)
+current_gnps=$(calicoctl get globalnetworkpolicies -o yaml | grep -c "^- apiVersion")
 backup_gnps=$(grep "^- apiVersion" calico-migration-backup-*/gnps.yaml | wc -l)
 
 echo "Current GNPs: ${current_gnps}"
@@ -84,9 +84,9 @@ if [[ "${current_gnps}" -eq "${backup_gnps}" ]]; then
   echo "OK: Global network policy count matches"
 else
   echo "WARNING: Count mismatch. Review policies."
-  diff <(calicoctl get gnp -o json | jq '[.[].metadata.name] | sort') \
+  diff <(calicoctl get gnp -o yaml | grep "^  name:" | awk '{print $2}' | sort) \
        <(cat calico-migration-backup-*/gnps.yaml | \
-         grep "^  name:" | awk '{print $2}' | sort | jq -R . | jq -s .)
+         grep "^  name:" | awk '{print $2}' | sort)
 fi
 ```
 
