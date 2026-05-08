@@ -14,7 +14,7 @@ Calico GlobalNetworkPolicy resources enforce network security rules across all n
 
 GlobalNetworkPolicy supports Calico-specific features like application layer policy, DNS-based rules, and host endpoint protection that are not available in the standard Kubernetes NetworkPolicy API. These capabilities make it the preferred choice for implementing zero-trust networking and microsegmentation at scale.
 
-This guide covers creating GlobalNetworkPolicy resources for common security patterns, from default deny policies to granular egress controls and host endpoint protection.
+This guide covers creating GlobalNetworkPolicy resources for common security patterns, from default deny policies to granular egress controls and namespace protection.
 
 ## Prerequisites
 
@@ -34,6 +34,7 @@ metadata:
   name: default-deny-all
 spec:
   order: 1000
+  namespaceSelector: 'has(projectcalico.org/name) && projectcalico.org/name not in {"kube-system", "calico-system", "calico-apiserver", "tigera-operator"}'
   selector: all()
   types:
     - Ingress
@@ -46,7 +47,7 @@ Apply the policy:
 calicoctl apply -f default-deny.yaml
 ```
 
-This blocks all pod-to-pod traffic. You must create allow policies with a lower order number to permit required traffic.
+This blocks ingress and egress traffic for non-system pods after higher-precedence policies have been evaluated. You must create allow policies with a lower order number to permit required traffic.
 
 ## Allowing DNS Traffic Cluster-Wide
 
@@ -81,7 +82,7 @@ calicoctl apply -f allow-dns.yaml
 
 ## Allowing Kubernetes API Access
 
-Pods often need to communicate with the Kubernetes API server:
+Pods often need to communicate with the Kubernetes API server. With the Kubernetes datastore driver, you can match the default `kubernetes` service directly:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -97,11 +98,11 @@ spec:
     - action: Allow
       protocol: TCP
       destination:
-        nets:
-          - 10.96.0.1/32
+        services:
+          name: kubernetes
+          namespace: default
         ports:
           - 443
-          - 6443
 ```
 
 ```bash
@@ -110,27 +111,27 @@ calicoctl apply -f allow-kube-api.yaml
 
 ## Creating a Namespace Isolation Policy
 
-Restrict traffic so pods can only communicate within their own namespace:
+Restrict traffic for a specific namespace so pods can only receive traffic from pods in the same namespace. Repeat this pattern for each namespace that requires strict isolation:
 
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: namespace-isolation
+  name: namespace-isolation-payments
 spec:
   order: 200
-  namespaceSelector: has(kubernetes.io/metadata.name)
+  selector: 'projectcalico.org/namespace == "payments"'
   types:
     - Ingress
   ingress:
     - action: Allow
       source:
-        namespaceSelector: "kubernetes.io/metadata.name == '{{.Namespace}}'"
+        selector: 'projectcalico.org/namespace == "payments"'
 ```
 
 ## Blocking Egress to External Networks
 
-Prevent pods from reaching the public internet while allowing internal cluster traffic:
+Prevent pods from reaching the public internet while allowing internal cluster traffic. Replace these CIDRs with your pod, service, and internal network CIDRs:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -169,13 +170,13 @@ metadata:
   name: protect-kube-system
 spec:
   order: 50
-  namespaceSelector: "kubernetes.io/metadata.name == 'kube-system'"
+  namespaceSelector: 'projectcalico.org/name == "kube-system"'
   types:
     - Ingress
   ingress:
     - action: Allow
       source:
-        namespaceSelector: "kubernetes.io/metadata.name == 'kube-system'"
+        namespaceSelector: 'projectcalico.org/name == "kube-system"'
     - action: Allow
       protocol: TCP
       destination:
