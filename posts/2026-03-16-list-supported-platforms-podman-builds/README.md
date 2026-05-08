@@ -42,6 +42,7 @@ ls /proc/sys/fs/binfmt_misc/ | grep qemu
 
 # Get detailed information about each emulator
 for handler in /proc/sys/fs/binfmt_misc/qemu-*; do
+  [ -e "${handler}" ] || { echo "No QEMU handlers registered"; break; }
   name=$(basename "${handler}")
   enabled=$(head -1 "${handler}")
   echo "${name}: ${enabled}"
@@ -66,7 +67,15 @@ qemu-s390x: enabled
 # list-platforms.sh - Show all available build platforms
 
 echo "Native platform:"
-echo "  linux/$(uname -m | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')"
+case "$(uname -m)" in
+  x86_64) native_arch="amd64" ;;
+  aarch64) native_arch="arm64" ;;
+  armv7l) native_arch="arm/v7" ;;
+  armv6l) native_arch="arm/v6" ;;
+  i386|i686) native_arch="386" ;;
+  *) native_arch="$(uname -m)" ;;
+esac
+echo "  linux/${native_arch}"
 echo ""
 
 echo "Emulated platforms (via QEMU):"
@@ -82,6 +91,7 @@ declare -A QEMU_TO_PLATFORM=(
 )
 
 for handler in /proc/sys/fs/binfmt_misc/qemu-*; do
+  [ -e "${handler}" ] || { echo "  (none registered)"; break; }
   name=$(basename "${handler}")
   status=$(head -1 "${handler}")
   platform="${QEMU_TO_PLATFORM[${name}]:-unknown}"
@@ -134,13 +144,16 @@ Different base images support different platforms. Check what a specific image o
 ```bash
 # Inspect a remote image's manifest to see supported platforms
 podman manifest inspect docker://alpine:3.19 | \
-  jq -r '.manifests[] | "\(.platform.os)/\(.platform.architecture)\(if .platform.variant then "/\(.platform.variant)" else "" end)"'
+  jq -r '.manifests[]
+    | select(.platform.os and .platform.architecture)
+    | select(.platform.os != "unknown" and .platform.architecture != "unknown")
+    | "\(.platform.os)/\(.platform.architecture)\(if .platform.variant then "/\(.platform.variant)" else "" end)"'
 
 # Example output for alpine:3.19:
 # linux/amd64
 # linux/arm/v6
 # linux/arm/v7
-# linux/arm64
+# linux/arm64/v8
 # linux/386
 # linux/ppc64le
 # linux/s390x
@@ -164,7 +177,10 @@ IMAGES=(
 for IMAGE in "${IMAGES[@]}"; do
   echo "=== ${IMAGE} ==="
   podman manifest inspect "docker://${IMAGE}" 2>/dev/null | \
-    jq -r '.manifests[] | "  \(.platform.os)/\(.platform.architecture)\(if .platform.variant then "/\(.platform.variant)" else "" end)"' 2>/dev/null || \
+    jq -r '.manifests[]
+      | select(.platform.os and .platform.architecture)
+      | select(.platform.os != "unknown" and .platform.architecture != "unknown")
+      | "  \(.platform.os)/\(.platform.architecture)\(if .platform.variant then "/\(.platform.variant)" else "" end)"' 2>/dev/null || \
     echo "  (not a multi-arch image or unavailable)"
   echo ""
 done
@@ -199,7 +215,10 @@ echo ""
 
 # Get platforms supported by the base image
 IMAGE_PLATFORMS=$(podman manifest inspect "docker://${BASE_IMAGE}" 2>/dev/null | \
-  jq -r '.manifests[] | "\(.platform.os)/\(.platform.architecture)\(if .platform.variant then "/\(.platform.variant)" else "" end)"')
+  jq -r '.manifests[]
+    | select(.platform.os and .platform.architecture)
+    | select(.platform.os != "unknown" and .platform.architecture != "unknown")
+    | "\(.platform.os)/\(.platform.architecture)\(if .platform.variant then "/\(.platform.variant)" else "" end)"')
 
 if [ -z "${IMAGE_PLATFORMS}" ]; then
   echo "Could not inspect ${BASE_IMAGE}. It may not be a multi-arch image."
