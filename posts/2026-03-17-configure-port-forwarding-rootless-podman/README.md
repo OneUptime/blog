@@ -56,8 +56,8 @@ podman run -d -p 80:80 docker.io/library/nginx:latest
 Pasta is the modern network backend for rootless Podman:
 
 ```bash
-# Verify pasta is being used
-podman info --format '{{ .Host.Pasta.Executable }}'
+# Verify pasta is the default rootless network command
+podman info --format '{{ .Host.RootlessNetworkCmd }}'
 
 # Pasta handles port forwarding efficiently
 podman run -d --name pasta-web \
@@ -134,8 +134,8 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:8080
 # Check if the port is in use
 ss -tlnp | grep 8080
 
-# Verify the networking backend
-podman info --format '{{ .Host.NetworkBackend }}'
+# Verify the rootless networking command
+podman info --format '{{ .Host.RootlessNetworkCmd }}'
 
 # Check for firewall blocking
 sudo iptables -L -n | grep 8080
