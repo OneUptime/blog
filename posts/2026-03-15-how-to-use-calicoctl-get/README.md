@@ -10,9 +10,9 @@ Description: Learn how to use calicoctl get to inspect and query Calico resource
 
 ## Introduction
 
-The `calicoctl get` command retrieves Calico resources from the datastore and displays them in various output formats. It is the primary tool for inspecting the current state of your Calico configuration, including network policies, IP pools, BGP peers, and workload endpoints.
+The `calicoctl get` command retrieves Calico resources from the datastore and displays them in various output formats. It is a useful tool for inspecting the current state of your Calico configuration, including network policies, IP pools, BGP peers, and workload endpoints.
 
-Unlike `kubectl get`, which can only access Calico resources stored as Kubernetes CRDs, `calicoctl get` understands the full Calico data model and provides properly formatted output for all resource types. It also supports output in YAML, JSON, wide table, and custom Go template formats.
+`kubectl get` can manage Calico resources when the Calico API server or native v3 CRDs are installed, but `calicoctl get` remains useful for Calico-specific workflows and datastore-aware inspection. It also supports output in YAML, JSON, wide table, and custom Go template formats.
 
 This guide demonstrates practical uses of `calicoctl get` for day-to-day Calico operations and troubleshooting.
 
@@ -74,7 +74,7 @@ calicoctl get nodes -o wide
 ### Go Template Output
 
 ```bash
-calicoctl get nodes -o go-template='{{range .}}{{.ObjectMeta.Name}}{{"\n"}}{{end}}'
+calicoctl get nodes -o go-template='{{range .}}{{range .Items}}{{.ObjectMeta.Name}}{{"\n"}}{{end}}{{end}}'
 ```
 
 ## Querying Workload Endpoints
@@ -164,7 +164,7 @@ calicoctl get ippool default-ipv4-ippool -o yaml
 
 - **Empty output**: Ensure `DATASTORE_TYPE` and `KUBECONFIG` are set. Run `calicoctl get nodes` as a connectivity check.
 - **Resource not found**: Verify the resource name and type. Use the plural form for listing (e.g., `ippools` not `ippool` when listing all).
-- **Permission denied**: The user needs RBAC permissions on the Calico CRDs (`projectcalico.org` API group).
+- **Permission denied**: The user needs RBAC permissions for the Calico resources. Depending on the installation mode, these may be exposed through the `projectcalico.org` API group or stored in the backing `crd.projectcalico.org` API group.
 - **Namespace scoping**: Some resources like `NetworkPolicy` are namespace-scoped. Use `--namespace` or `--all-namespaces` to query them.
 
 ## Conclusion
