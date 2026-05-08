@@ -55,8 +55,8 @@ podman run -d --name app \
 # Log collection sidecar inherits the log volume
 podman run -d --name log-collector \
     --volumes-from app:ro \
-    fluentbit:latest \
-    fluent-bit -i tail -p path=/var/log/app/*.log -o stdout
+    cr.fluentbit.io/fluent/fluent-bit:latest \
+    -i tail -p path=/var/log/app/*.log -o stdout
 ```
 
 ## Debugging a Running Container's Data
@@ -197,7 +197,7 @@ podman run --volumes-from nonexistent alpine:latest
 # Build container creates artifacts
 podman run --name builder \
     -v build-artifacts:/output \
-    golang:1.21 \
+    golang:1.26 \
     sh -c "go build -o /output/myapp ./cmd/server"
 
 # Test container accesses the build output
