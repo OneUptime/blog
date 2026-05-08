@@ -154,17 +154,16 @@ podman run -d --name app \
 ## Entrypoint with JSON Array vs String Form
 
 ```bash
-# JSON array form (preferred) - command receives signals properly
+# JSON array form - use this when the replacement entrypoint has multiple parts
 podman run --entrypoint '["node", "server.js"]' myapp
 
-# String form - treated as a single executable path
-# If it does not parse as JSON, Podman treats it as a literal command
+# Single-command form - treated as the executable to run
 podman run --entrypoint /usr/bin/node myapp server.js
 
-# The JSON array form is preferred because:
-# - The process receives SIGTERM on container stop
-# - The process is PID 1 (not a child of sh)
-# - Proper signal handling for graceful shutdown
+# The JSON array form is useful when:
+# - The entrypoint itself needs fixed arguments
+# - You want to keep the entrypoint and runtime arguments separate
+# - You need to avoid shell-style word splitting or quoting issues
 ```
 
 ## Combining Entrypoint with Command
