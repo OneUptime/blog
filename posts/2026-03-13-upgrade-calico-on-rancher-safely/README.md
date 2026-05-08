@@ -65,10 +65,10 @@ kubectl get nodes
 
 ## Step 3: Backup Calico Configuration
 
-Export all Calico resources.
+Export key Calico policy and IPAM resources.
 
 ```bash
-# Backup all Calico configuration
+# Backup key Calico configuration
 BACKUP_DATE=$(date +%Y%m%d-%H%M%S)
 
 calicoctl get felixconfiguration -o yaml > rancher-calico-backup-felix-$BACKUP_DATE.yaml
@@ -99,9 +99,12 @@ kubectl get nodes | grep -E "SchedulingDisabled|Ready|NotReady"
 For operator-managed Calico, upgrade independently:
 
 ```bash
-# Download new Tigera Operator for standalone upgrade
-kubectl apply --server-side \
-  -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
+# Apply the target version's CRDs and Tigera Operator manifest
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml -O
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml -O
+
+kubectl apply --server-side --force-conflicts -f v1_crd_projectcalico_org.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 
 # Monitor operator upgrade
 kubectl rollout status deployment/tigera-operator -n tigera-operator
