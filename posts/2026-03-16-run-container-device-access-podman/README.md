@@ -73,8 +73,8 @@ podman run --rm \
 For GPU workloads like machine learning:
 
 ```bash
-# NVIDIA GPU access (requires nvidia-container-toolkit)
-# podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.0-base nvidia-smi
+# NVIDIA GPU access (requires NVIDIA Container Toolkit with a generated CDI spec)
+# podman run --rm --security-opt=label=disable --device nvidia.com/gpu=all ubuntu nvidia-smi -L
 
 # Specific GPU device access
 podman run --rm \
@@ -87,7 +87,7 @@ podman run --rm \
 podman run --rm \
   --device /dev/dri/renderD128 \
   alpine sh -c "
-    ls -la /dev/dri/ 2>/dev/null || echo 'No render device on this host'
+    ls -la /dev/dri/renderD128 2>/dev/null || echo 'No render device on this host'
   "
 ```
 
@@ -183,7 +183,7 @@ podman run --rm \
   "
 ```
 
-## KVM Device for Nested Virtualization
+## KVM Device for Hardware Virtualization
 
 ```bash
 # Access KVM for running VMs inside containers
@@ -191,7 +191,7 @@ podman run --rm \
   --device /dev/kvm \
   alpine sh -c "
     ls -la /dev/kvm 2>/dev/null || echo 'No KVM device found'
-    echo 'KVM access enables nested virtualization'
+    echo 'KVM access enables hardware virtualization workloads'
   "
 ```
 
