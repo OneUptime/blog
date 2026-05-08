@@ -16,7 +16,7 @@ This pattern is particularly valuable for microservices where a buggy new versio
 
 ## Prerequisites
 
-- Calico with ingress controller support
+- Calico installed for network policy enforcement
 - Two versions of an application deployed
 - NGINX Ingress Controller or similar for canary annotations
 
@@ -29,7 +29,9 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: app-stable
+  namespace: production
 spec:
+  ingressClassName: nginx
   rules:
   - host: app.example.com
     http:
@@ -47,10 +49,12 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: app-canary
+  namespace: production
   annotations:
     nginx.ingress.kubernetes.io/canary: "true"
     nginx.ingress.kubernetes.io/canary-weight: "10"
 spec:
+  ingressClassName: nginx
   rules:
   - host: app.example.com
     http:
@@ -77,18 +81,19 @@ spec:
   ingress:
   - action: Allow
     source:
-      selector: app == 'ingress-nginx'
+      namespaceSelector: projectcalico.org/name == 'ingress-nginx'
+      selector: app.kubernetes.io/name == 'ingress-nginx'
 ```
 
 ## Monitor Canary Traffic
 
 ```bash
 # Watch error rates for both versions
-kubectl logs -l app=app-v1 --prefix=true | grep "500\|error" | wc -l
-kubectl logs -l app=app-v2 --prefix=true | grep "500\|error" | wc -l
+kubectl logs -n production -l app=app-v1 --prefix=true | grep "500\|error" | wc -l
+kubectl logs -n production -l app=app-v2 --prefix=true | grep "500\|error" | wc -l
 
 # Increase canary weight after validation
-kubectl annotate ingress app-canary   nginx.ingress.kubernetes.io/canary-weight=50 --overwrite
+kubectl annotate -n production ingress app-canary nginx.ingress.kubernetes.io/canary-weight=50 --overwrite
 ```
 
 ## Canary Rollout Flow
@@ -108,4 +113,4 @@ graph LR
 
 ## Conclusion
 
-Canary rollouts with Calico ingress gateway combine traffic splitting at the ingress layer with network policy enforcement for the canary pods. Start with a small percentage of traffic, monitor error rates for both versions, and gradually increase the canary weight as confidence grows. Use Calico policies to ensure the canary version adheres to security requirements before it receives significant traffic.
+Canary rollouts with NGINX Ingress and Calico combine traffic splitting at the ingress layer with network policy enforcement for the canary pods. Start with a small percentage of traffic, monitor error rates for both versions, and gradually increase the canary weight as confidence grows. Use Calico policies to ensure the canary version adheres to security requirements before it receives significant traffic.
