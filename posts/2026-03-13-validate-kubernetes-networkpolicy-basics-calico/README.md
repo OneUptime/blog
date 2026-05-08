@@ -10,14 +10,14 @@ Description: Validate Kubernetes NetworkPolicy basics using Calico as the networ
 
 ## Introduction
 
-Validate Kubernetes NetworkPolicy Basics with Calico Before Production requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle kubernetes networkpolicy basics while maintaining strict access controls.
+Validate Kubernetes NetworkPolicy Basics with Calico Before Production requires careful policy design to balance security with performance and availability. The Kubernetes `networking.k8s.io/v1` NetworkPolicy API provides the standard policy model, and Calico enforces those policies in the cluster.
 
 This guide covers validate Kubernetes NetworkPolicy Basics in Calico with production-ready configurations.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
-- `calicoctl` and `kubectl` installed
+- `kubectl` installed
 
 ## Core Configuration
 
@@ -61,7 +61,7 @@ spec:
 # Apply Kubernetes NetworkPolicy
 kubectl apply -f basic-network-policy.yaml
 
-# Verify policy is enforced by Calico
+# Verify the policy exists and review how Kubernetes interpreted it
 kubectl describe networkpolicy allow-frontend-to-backend -n production
 
 # Test connectivity
