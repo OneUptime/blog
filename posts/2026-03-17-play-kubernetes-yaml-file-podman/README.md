@@ -109,17 +109,20 @@ podman pod ls
 podman play kube https://example.com/manifests/app-pod.yaml
 ```
 
-## Playing with Image Pull Options
+## Playing with Image Pull Policy
 
 ```bash
-# Always pull the latest image
-podman play kube --pull always /tmp/web-pod.yaml
+# Always pull the image when starting the container
+sed -i '/image: docker.io\/library\/nginx:alpine/a\      imagePullPolicy: Always' /tmp/web-pod.yaml
+podman play kube /tmp/web-pod.yaml
 
 # Never pull, use only local images
-podman play kube --pull never /tmp/web-pod.yaml
+sed -i 's/imagePullPolicy: Always/imagePullPolicy: Never/' /tmp/web-pod.yaml
+podman play kube --replace /tmp/web-pod.yaml
 
 # Pull only if not present locally (default)
-podman play kube --pull missing /tmp/web-pod.yaml
+sed -i 's/imagePullPolicy: Never/imagePullPolicy: IfNotPresent/' /tmp/web-pod.yaml
+podman play kube --replace /tmp/web-pod.yaml
 ```
 
 ## Replacing Existing Resources
@@ -133,4 +136,4 @@ podman play kube --replace /tmp/web-pod.yaml
 
 ## Summary
 
-Use `podman play kube` to create pods, containers, and volumes from Kubernetes YAML manifests. This lets you test manifests locally without a Kubernetes cluster. Use `--down` to tear down resources, `--replace` to update them, and `--pull` to control image fetching behavior.
+Use `podman play kube` to create pods, containers, and volumes from Kubernetes YAML manifests. This lets you test manifests locally without a Kubernetes cluster. Use `--down` to tear down resources, `--replace` to update them, and `imagePullPolicy` to control image fetching behavior.
