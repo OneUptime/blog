@@ -4,20 +4,21 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, GAMMA, Gateway API, Validation
 
-Description: Validate producer, consumer, and mixed GAMMA configuration types in Cilium by checking route acceptance, backend resolution, and actual traffic behavior.
+Description: Validate supported producer GAMMA configuration in Cilium and confirm consumer or mixed configurations are not applied.
 
 ---
 
 ## Introduction
 
-Validating GAMMA configuration types ensures that the intended ownership model-whether producer-controlled, consumer-controlled, or mixed-is correctly enforced in the eBPF datapath. Each type requires slightly different validation steps.
+Validating GAMMA configuration types ensures that the intended ownership model-whether producer-controlled, consumer-controlled, or mixed-is correctly handled by Cilium's Gateway API controller and Envoy datapath. Each type requires slightly different validation steps.
 
-For producer routes, validation confirms that traffic to the Service is routed according to the producer's rules regardless of which consumer sends it. For consumer routes, validation confirms that only the intended consumer's traffic is affected by the routing policy.
+For producer routes, validation confirms that traffic to the Service is routed according to the producer's rules regardless of which consumer sends it. Cilium currently supports producer HTTPRoutes only, so consumer or mixed-route validation should confirm that unsupported consumer HTTPRoutes are not applied.
 
 ## Prerequisites
 
-- Cilium GAMMA enabled with producer and consumer HTTPRoutes deployed
-- ReferenceGrants configured for cross-namespace routes
+- Cilium GAMMA enabled with producer HTTPRoutes deployed
+- Optional consumer HTTPRoutes deployed if you want to confirm unsupported routes are not applied
+- ReferenceGrants configured for any cross-namespace backend references
 - `kubectl` and `hubble` CLIs
 
 ## Validate Producer Route
@@ -40,14 +41,22 @@ done
 
 ## Validate Consumer Route
 
-Confirm only the specified consumer's traffic is affected:
+Confirm that a consumer HTTPRoute is not accepted by Cilium:
+
+```bash
+kubectl get httproute <consumer-route> -n <consumer-ns> \
+  -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}'
+# Expected: False
+```
+
+Confirm that the unsupported consumer route does not change traffic:
 
 ```bash
 kubectl run test-consumer --image=curlimages/curl --rm --restart=Never \
   -n consumer-ns -- curl -H "x-consumer: my-app" http://<service>:<port>/
 ```
 
-Traffic from other consumers should not match the consumer route's headers.
+Traffic from other consumers should follow the accepted producer route or the Service's normal routing behavior.
 
 ## Architecture
 
@@ -55,14 +64,13 @@ Traffic from other consumers should not match the consumer route's headers.
 sequenceDiagram
     participant ConsumerA
     participant ConsumerB
-    participant GammaeBPF
+    participant CiliumEnvoy
     participant BackendV1
-    participant BackendV2
 
-    ConsumerA->>GammaeBPF: request (no special header)
-    GammaeBPF->>BackendV1: default route
-    ConsumerB->>GammaeBPF: request (x-consumer: my-app)
-    GammaeBPF->>BackendV2: consumer route matched
+    ConsumerA->>CiliumEnvoy: request (no special header)
+    CiliumEnvoy->>BackendV1: producer route
+    ConsumerB->>CiliumEnvoy: request (x-consumer: my-app)
+    CiliumEnvoy->>BackendV1: consumer route not applied
 ```
 
 ## Validate ReferenceGrant Coverage
@@ -72,7 +80,7 @@ kubectl get referencegrant -A -o json | \
   jq '.items[] | {name: .metadata.name, from: .spec.from, to: .spec.to}'
 ```
 
-Ensure each cross-namespace HTTPRoute has a corresponding ReferenceGrant.
+Ensure each cross-namespace backend reference has a corresponding ReferenceGrant in the referenced backend namespace.
 
 ## Use Hubble to Confirm Routing
 
@@ -83,4 +91,4 @@ hubble observe --namespace <producer-ns> --protocol http --follow \
 
 ## Conclusion
 
-Validating GAMMA configuration types involves testing route conditions, confirming routing behavior per consumer, and using Hubble to verify the eBPF datapath enforces the intended rules. These checks ensure your GAMMA deployment behaves according to the chosen ownership model.
+Validating GAMMA configuration types involves testing route conditions, confirming producer-route behavior across consumers, confirming unsupported consumer routes are not applied, and using Hubble to verify Cilium forwards the intended traffic. These checks ensure your GAMMA deployment behaves according to Cilium's supported ownership model.
