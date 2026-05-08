@@ -29,9 +29,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vpa
-  namespace: kube-system
+  namespace: flux-system
 spec:
   interval: 1h
+  targetNamespace: kube-system
   chart:
     spec:
       chart: vpa
@@ -39,6 +40,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: fairwinds-stable
+        namespace: flux-system
   values:
     recommender:
       enabled: true
@@ -99,8 +101,8 @@ for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
     
     echo "--- $ns/$vpa ($TARGET) ---"
     
-    # Get current resource requests
-    echo "Current requests:"
+    # Get target recommendations
+    echo "Target recommendations:"
     kubectl get vpa $vpa -n $ns \
       -o jsonpath='{range .status.recommendation.containerRecommendations[*]}{.containerName}{": CPU="}{.target.cpu}{", Mem="}{.target.memory}{"\n"}{end}'
     
@@ -146,7 +148,8 @@ spec:
     kind: GitRepository
     name: fleet-repo
   dependsOn:
-    - name: vpa
+    # Use the Flux Kustomization that applies the VPA HelmRelease and CRDs.
+    - name: infrastructure
 ```
 
 ## Step 5: Act on VPA Recommendations
@@ -187,20 +190,22 @@ spec:
         - alert: CPURequestOverprovisioned
           expr: |
             kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="cpu"}
-            / on(namespace, pod)
-            kube_pod_container_resource_requests{resource="cpu"} < 0.5
+            / on(namespace, container, resource) group_left
+            avg by (namespace, container, resource) (
+              kube_pod_container_resource_requests{resource="cpu"}
+            ) < 0.5
           for: 1h
           labels:
             severity: info
           annotations:
-            summary: "CPU request may be overprovisioned for {{ $labels.namespace }}/{{ $labels.pod }}"
+            summary: "CPU request may be overprovisioned for {{ $labels.namespace }}/{{ $labels.verticalpodautoscaler }}"
 ```
 
 ## Best Practices
 
 - Run VPA in recommendation mode for at least 1-2 weeks before acting on recommendations; early recommendations are based on insufficient data.
 - Review recommendations weekly and apply them during the next deployment cycle rather than continuously chasing VPA suggestions.
-- Add a 20-30% buffer above the VPA `target` recommendation when setting resource requests; VPA's target is based on P90 usage.
+- Add a 20-30% buffer above the VPA `target` recommendation when setting resource requests; the target is VPA's recommended request after applying any resource policy bounds.
 - Use VPA recommendations as input to your team's resource planning, not as automatically applied values.
 - When transitioning from recommendation to Auto mode, do it gradually: enable Auto for non-production namespaces first.
 - Export VPA recommendations to a Grafana dashboard for organization-wide resource optimization visibility.
