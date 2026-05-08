@@ -12,7 +12,7 @@ Description: Learn how to validate that your unit test suite for Cilium L7 parse
 
 Writing unit tests is necessary but not sufficient. The tests themselves must be validated to ensure they actually catch bugs, cover meaningful scenarios, and do not give false confidence through tests that always pass regardless of code correctness.
 
-Test validation answers a fundamental question: if a bug were introduced into the parser, would these tests catch it? Techniques like mutation testing, coverage branch analysis, and test quality auditing provide objective answers to this question.
+Test validation answers a fundamental question: if a bug were introduced into the parser, would these tests catch it? Techniques like mutation testing, coverage analysis, and test quality auditing provide objective answers to this question.
 
 This guide demonstrates how to validate the quality of your unit test suite for Cilium L7 parsers, ensuring the tests provide genuine security and correctness guarantees.
 
@@ -26,12 +26,12 @@ This guide demonstrates how to validate the quality of your unit test suite for 
 
 ## Measuring Test Coverage Depth
 
-Line coverage alone is insufficient. Measure branch coverage and condition coverage:
+Line coverage alone is insufficient. Go's built-in coverage tooling reports statement coverage, with counters recorded for source blocks. Use it to find untested blocks, then manually audit branches and conditions in critical parser logic:
 
 ```bash
-# Generate atomic coverage profile (tracks branch-level coverage)
+# Generate a coverage profile
 
-go test ./proxylib/myprotocol/... -coverprofile=coverage.out -covermode=atomic
+go test ./proxylib/myprotocol/... -coverprofile=coverage.out -covermode=count
 
 # View function-level coverage
 go tool cover -func=coverage.out
@@ -40,27 +40,27 @@ go tool cover -func=coverage.out
 go tool cover -html=coverage.out -o coverage.html
 ```
 
-Analyze which branches are covered in critical functions:
+Analyze which branches are covered in critical functions. This example uses the current Cilium proxylib `Parser` interface, where `OnData` receives the stream direction, an `endStream` flag, and available data as a slice of byte slices:
 
 ```go
 // Example: OnData has 6 return paths. Are all covered?
-func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, int) {
+func (p *Parser) OnData(reply, endStream bool, data [][]byte) (proxylib.OpType, int) {
     if p.state == stateError {       // Branch 1: error state
-        return proxylib.DROP, 0
+        return proxylib.ERROR, 0
     }
-    dataLen := reader.Length()
+    dataLen := totalAvailable(data)
     if dataLen < 4 {                 // Branch 2: insufficient header
-        return proxylib.MORE, 4
+        return proxylib.MORE, 4 - dataLen
     }
     // ... parse header ...
     if msgLen <= 0 || msgLen > maxMessageSize {  // Branch 3: invalid length
-        return proxylib.DROP, 0
+        return proxylib.ERROR, 0
     }
     if dataLen < totalLen {          // Branch 4: incomplete message
-        return proxylib.MORE, totalLen
+        return proxylib.MORE, totalLen - dataLen
     }
     if !p.matchesPolicy(command) {   // Branch 5: policy denied
-        return proxylib.DROP, 0
+        return proxylib.DROP, totalLen
     }
     return proxylib.PASS, totalLen   // Branch 6: success
 }
@@ -92,23 +92,23 @@ Example mutation and expected test failure:
 ```go
 // Original code
 if msgLen <= 0 || msgLen > maxMessageSize {
-    return proxylib.DROP, 0
+    return proxylib.ERROR, 0
 }
 
 // Mutation 1: Change <= to <
 if msgLen < 0 || msgLen > maxMessageSize {
-    return proxylib.DROP, 0
+    return proxylib.ERROR, 0
 }
 // Your test for zero-length messages MUST catch this mutation
 
 // Mutation 2: Change > to >=
 if msgLen <= 0 || msgLen >= maxMessageSize {
-    return proxylib.DROP, 0
+    return proxylib.ERROR, 0
 }
 // Your test for exactly-maxMessageSize messages MUST catch this mutation
 
 // Mutation 3: Remove the entire check
-// return proxylib.DROP, 0  // removed
+// return proxylib.ERROR, 0  // removed
 // Your oversized message test MUST catch this mutation
 ```
 
@@ -133,17 +133,17 @@ Check that tests have meaningful assertions, not just coverage:
 // BAD: Test executes code but does not assert behavior
 func TestOnData_WeakTest(t *testing.T) {
     parser := &Parser{state: stateRunning}
-    reader := proxylib.NewTestReader(makeValidMessage())
-    parser.OnData(false, reader)  // No assertions! Always passes.
+    data := [][]byte{makeValidMessage()}
+    parser.OnData(false, false, data)  // No assertions! Always passes.
 }
 
 // GOOD: Test asserts specific expected behavior
 func TestOnData_StrongTest(t *testing.T) {
     parser := &Parser{state: stateRunning}
     msg := makeValidMessage()
-    reader := proxylib.NewTestReader(msg)
+    data := [][]byte{msg}
 
-    op, n := parser.OnData(false, reader)
+    op, n := parser.OnData(false, false, data)
 
     if op != proxylib.PASS {
         t.Errorf("Valid message should PASS, got %v", op)
@@ -181,12 +181,12 @@ func TestOnData_BoundaryValues(t *testing.T) {
         wantOp  proxylib.OpType
     }{
         // Length boundaries
-        {"length = -1", -1, proxylib.DROP},
-        {"length = 0", 0, proxylib.DROP},
+        {"length = -1", -1, proxylib.ERROR},
+        {"length = 0", 0, proxylib.ERROR},
         {"length = 1", 1, proxylib.PASS},           // minimum valid
         {"length = maxMessageSize-1", maxMessageSize - 1, proxylib.PASS},
         {"length = maxMessageSize", maxMessageSize, proxylib.PASS},
-        {"length = maxMessageSize+1", maxMessageSize + 1, proxylib.DROP},
+        {"length = maxMessageSize+1", maxMessageSize + 1, proxylib.ERROR},
     }
 
     for _, tt := range tests {
@@ -205,8 +205,7 @@ func TestOnData_BoundaryValues(t *testing.T) {
             }
 
             parser := &Parser{state: stateRunning}
-            reader := proxylib.NewTestReader(data)
-            op, _ := parser.OnData(false, reader)
+            op, _ := parser.OnData(false, false, [][]byte{data})
 
             if op != tt.wantOp {
                 t.Errorf("msgLen=%d: got %v, want %v", tt.msgLen, op, tt.wantOp)
@@ -224,8 +223,8 @@ Run the full validation suite:
 # Standard test run
 go test ./proxylib/myprotocol/... -v -race -count=1
 
-# Coverage with branch detail
-go test ./proxylib/myprotocol/... -coverprofile=cover.out -covermode=atomic
+# Coverage detail
+go test ./proxylib/myprotocol/... -coverprofile=cover.out -covermode=count
 go tool cover -func=cover.out
 
 # Mutation testing
