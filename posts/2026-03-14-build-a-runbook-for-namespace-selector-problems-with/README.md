@@ -71,7 +71,7 @@ kubectl get networkpolicies.crd.projectcalico.org -n DEST_NAMESPACE -o yaml
 # Step 3.2: List global policies that may apply
 kubectl get globalnetworkpolicies.crd.projectcalico.org -o yaml
 
-# Step 3.3: For each policy, extract namespace selectors
+# Step 3.3: For each namespaced policy, extract namespace selectors
 kubectl get networkpolicies.crd.projectcalico.org -n DEST_NAMESPACE -o json \
   | python3 -c "
 import sys, json
@@ -84,6 +84,21 @@ for p in json.load(sys.stdin)['items']:
                 ns_sel = rule.get(key, {}).get('namespaceSelector', '')
                 if ns_sel:
                     print(f'Policy: {name}, Rule {i} ({direction}/{key}): {ns_sel}')
+"
+
+# Step 3.3b: Repeat for global policies
+kubectl get globalnetworkpolicies.crd.projectcalico.org -o json \
+  | python3 -c "
+import sys, json
+for p in json.load(sys.stdin)['items']:
+    name = p['metadata']['name']
+    spec = p.get('spec', {})
+    for direction in ['ingress', 'egress']:
+        for i, rule in enumerate(spec.get(direction, [])):
+            for key in ['source', 'destination']:
+                ns_sel = rule.get(key, {}).get('namespaceSelector', '')
+                if ns_sel:
+                    print(f'GlobalPolicy: {name}, Rule {i} ({direction}/{key}): {ns_sel}')
 "
 
 # Step 3.4: Manually verify the selector matches the namespace labels
@@ -144,7 +159,7 @@ kubectl exec -n SOURCE_NAMESPACE SOURCE_POD -- \
 # Check that other namespaces that should NOT reach the destination are still blocked
 kubectl exec -n OTHER_NAMESPACE OTHER_POD -- \
   wget -qO- --timeout=5 http://DEST_IP:DEST_PORT 2>&1
-# Expected: connection refused or timeout
+# Expected: timeout or another policy-specific denial signal
 
 # Step 5.3: Confirm namespace labels are correct
 kubectl get namespaces --show-labels | grep -E "SOURCE_NAMESPACE|DEST_NAMESPACE"
@@ -171,7 +186,7 @@ kubectl get events -n DEST_NAMESPACE --sort-by='.lastTimestamp' | tail -5
 
 ## Troubleshooting
 
-- **Label was added but traffic is still blocked**: Multiple policies may apply. Check all policies in the namespace and all GlobalNetworkPolicies. A deny rule in any matching policy takes precedence.
+- **Label was added but traffic is still blocked**: Multiple policies may apply. Check all policies in the namespace, all GlobalNetworkPolicies, and their tier/order values. In Calico, policies are evaluated in tier and policy order; the first matching Allow or Deny action is final.
 - **Label was added but too much traffic is now allowed**: The label may have caused the namespace to match an allow policy intended for a different namespace. Review all policies that select for that label value.
 - **Cannot determine which policy is affecting traffic**: Use Felix debug logging by setting `logSeverityScreen: Debug` in the FelixConfiguration resource temporarily. Check calico-node logs for policy hit information.
 - **Namespace is managed by Terraform/Helm**: Do not apply labels manually. Update the source definition and redeploy through the proper pipeline to avoid drift.
