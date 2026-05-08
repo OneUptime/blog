@@ -10,7 +10,7 @@ Description: Learn how to add OCI annotations to container images with Podman fo
 
 > Annotations provide OCI-standard metadata at the manifest level, complementing labels for richer image documentation.
 
-While labels are stored in the image configuration, annotations are stored in the OCI manifest and image index. Annotations are the OCI-standard way to attach metadata to images and are supported by registries and tooling that understand the OCI image specification. Podman supports adding annotations during builds. This guide covers the differences from labels and practical annotation patterns.
+While labels are stored in the image configuration, annotations are stored in the OCI manifest and image index. Annotations are the OCI-standard way to attach metadata to images and are supported by registries and tooling that understand the OCI image specification. Podman supports adding annotations during builds when writing images in OCI format. This guide covers the differences from labels and practical annotation patterns.
 
 ---
 
@@ -18,11 +18,11 @@ While labels are stored in the image configuration, annotations are stored in th
 
 Annotations and labels serve similar purposes but are stored differently and have different scopes.
 
-- **Labels** are stored in the image configuration (config blob). They are available at container runtime via `podman inspect`.
+- **Labels** are stored in the image configuration (config blob). They are available through image and container inspection via `podman inspect`.
 - **Annotations** are stored in the OCI manifest or image index. They are available when querying a registry, before pulling the image.
 
 ```bash
-# Labels: runtime metadata visible inside the container
+# Labels: image configuration metadata visible through inspect commands
 
 # Annotations: manifest metadata visible at the registry level
 ```
@@ -78,8 +78,10 @@ podman manifest inspect myapp:v1.0.0 2>/dev/null || \
 Annotations are especially useful on multi-architecture manifest lists.
 
 ```bash
-# Create a manifest list with annotations
-podman manifest create myapp:multi
+# Create a manifest list with annotations on the image index itself
+podman manifest create \
+  --annotation "org.opencontainers.image.version=1.0.0" \
+  myapp:multi
 
 # Build for each platform
 podman build --platform linux/amd64 -t myapp:amd64 .
@@ -93,11 +95,6 @@ podman manifest add \
 podman manifest add \
   --annotation "org.opencontainers.image.title=My App (arm64)" \
   myapp:multi myapp:arm64
-
-# Add annotations to the manifest list itself
-podman manifest annotate \
-  --annotation "org.opencontainers.image.version=1.0.0" \
-  myapp:multi myapp:amd64
 
 # Inspect the annotated manifest
 podman manifest inspect myapp:multi
@@ -148,7 +145,7 @@ podman build \
 Some registries allow querying annotations without pulling images.
 
 ```bash
-# Query annotations from a registry using skopeo
+# Query image metadata from a registry using skopeo
 skopeo inspect docker://registry.example.com/myapp:v1.0.0 | python3 -m json.tool
 
 # Query just the annotations
