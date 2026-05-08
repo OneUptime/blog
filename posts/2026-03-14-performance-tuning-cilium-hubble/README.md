@@ -33,21 +33,20 @@ The event buffer determines how many flows Hubble keeps in memory per agent:
 hubble:
   enabled: true
 
-  # Event buffer capacity (default: 4096)
-  # Each event uses approximately 100-200 bytes
-  # 4096 events ~= 400KB-800KB per agent
-  # 65536 events ~= 6.5MB-13MB per agent
-  eventBufferCapacity: "16384"
+  # Event buffer capacity (default: 4095)
+  # Cilium accepts power-of-two-minus-one values such as 4095, 8191,
+  # 16383, 32767, and 65535
+  eventBufferCapacity: "16383"
 
-  # Event queue size for the observer
-  # Controls backpressure from the ring buffer to the BPF perf event reader
-  eventQueueSize: "0"  # 0 = auto-size based on buffer capacity
+  # Event queue size for Hubble to receive monitor events
+  # If unset, Cilium uses the default monitor queue size
+  eventQueueSize: "32768"
 ```
 
 ```bash
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set hubble.eventBufferCapacity="16384"
+  --set hubble.eventBufferCapacity="16383"
 
 # Measure the impact on memory usage
 kubectl -n kube-system top pod -l k8s-app=cilium --sort-by=memory
@@ -58,12 +57,12 @@ Choose the buffer size based on your needs:
 ```mermaid
 graph TD
     A[Choose Buffer Size] --> B{Traffic Volume}
-    B -->|Low: <1000 flows/s| C["4096 (default)"]
-    B -->|Medium: 1000-10000 flows/s| D["16384"]
-    B -->|High: >10000 flows/s| E["65536"]
-    C --> F[~800KB memory per agent]
-    D --> G[~3.2MB memory per agent]
-    E --> H[~13MB memory per agent]
+    B -->|Low: <1000 flows/s| C["4095 (default)"]
+    B -->|Medium: 1000-10000 flows/s| D["16383"]
+    B -->|High: >10000 flows/s| E["65535"]
+    C --> F[Lowest memory use]
+    D --> G[More recent flows retained]
+    E --> H[Highest memory use]
 ```
 
 ## Configuring Monitor Aggregation
@@ -73,31 +72,32 @@ Monitor aggregation reduces the number of events Hubble processes by combining s
 ```yaml
 # Monitor aggregation settings (set via Cilium config, not Hubble directly)
 # These are set as Cilium Helm values
-monitorAggregation: medium  # Options: none, low, medium, maximum
+bpf:
+  monitorAggregation: medium  # Options: none, low, medium, maximum
 
-# Fine-grained control
-monitorAggregationFlags: "all"  # Which TCP flags to track
-monitorAggregationInterval: "5s"  # Aggregation window
+  # Fine-grained control
+  monitorFlags: "all"  # Which TCP flags trigger notifications when first seen
+  monitorInterval: "5s"  # Typical interval between notifications for active connections
 ```
 
 ```bash
 # Check current aggregation setting
-kubectl -n kube-system exec ds/cilium -- cilium config | grep MonitorAggregation
+kubectl -n kube-system get configmap cilium-config -o yaml | grep monitor-aggregation
 
 # Set to medium for a good balance
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set monitorAggregation=medium \
-  --set monitorAggregationInterval=5s
+  --set bpf.monitorAggregation=medium \
+  --set bpf.monitorInterval=5s
 ```
 
 Impact of each level:
 
 ```bash
-# none: Every packet generates an event (highest overhead, most detail)
-# low: Aggregate events with same source, destination, verdict
-# medium: Additionally aggregate across TCP flags (recommended)
-# maximum: Aggressive aggregation, only report new connections and drops
+# none: Generate a tracing event on every receive and send packet
+# low: Generate a tracing event on every send packet
+# medium: Generate send-packet events for new connections, newly seen TCP flags, and periodic active-flow updates
+# maximum: Alias for the most aggressive level; currently equivalent to medium
 ```
 
 ## Managing Metric Cardinality
@@ -156,13 +156,22 @@ hubble:
         memory: 1Gi
 
   ui:
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        cpu: 500m
-        memory: 256Mi
+    backend:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+    frontend:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
 
 # Cilium agent resources (Hubble runs inside the agent)
 resources:
@@ -190,11 +199,13 @@ Measure the performance impact of your tuning:
 ```bash
 # 1. Check event processing rate
 kubectl -n kube-system exec ds/cilium -- \
-  wget -qO- http://localhost:9962/metrics 2>/dev/null | \
-  grep "cilium_event_ts"
+  wget -qO- http://localhost:9965/metrics 2>/dev/null | \
+  grep "hubble_flows_processed_total"
 
 # 2. Verify no events are being lost
-kubectl -n kube-system exec ds/cilium -- cilium status --verbose | grep -i "lost\|drop"
+kubectl -n kube-system exec ds/cilium -- \
+  wget -qO- http://localhost:9965/metrics 2>/dev/null | \
+  grep "hubble_lost_events_total"
 
 # 3. Check memory usage
 kubectl -n kube-system top pod -l k8s-app=cilium --sort-by=memory
@@ -208,13 +219,13 @@ hubble observe --last 20 -o compact
 
 ## Troubleshooting
 
-- **High CPU on Cilium agent after enabling Hubble**: Set `monitorAggregation` to `medium` or `maximum`. This is the single most impactful tuning parameter.
+- **High CPU on Cilium agent after enabling Hubble**: Set `bpf.monitorAggregation` to `medium` or `maximum`. This is the single most impactful tuning parameter.
 
 - **Prometheus OOM after enabling Hubble metrics**: Reduce metric cardinality by removing IP-level labels from `labelsContext` and disabling `port-distribution` metrics.
 
 - **Hubble relay using too much memory**: Reduce `sortBufferLenMax` in the relay configuration. Default is fine for most clusters.
 
-- **Flows being dropped**: Increase `eventBufferCapacity`. Check with `cilium status --verbose` for "events lost" counters.
+- **Flows being dropped**: If `hubble_lost_events_total` reports losses from `observer_events_queue`, increase `eventQueueSize` gradually. If losses come from `hubble_ring_buffer`, increase `eventBufferCapacity`.
 
 - **Metric scrapes timing out**: Too many time series. Reduce the enabled metric list or use `metric_relabel_configs` in Prometheus to drop unnecessary labels.
 
