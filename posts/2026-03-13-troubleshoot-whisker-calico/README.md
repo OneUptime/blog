@@ -10,24 +10,25 @@ Description: Diagnose and resolve Whisker deployment issues including pods not s
 
 ## Introduction
 
-Whisker troubleshooting focuses on two failure modes: the Whisker backend pods not starting (usually RBAC or resource constraints) and flow data not appearing in the UI (usually a FelixConfiguration issue or flow log pipeline problem). Both are diagnosable through standard pod logs and Calico configuration inspection.
+Whisker troubleshooting focuses on two failure modes: the Whisker and Goldmane components not starting (usually RBAC, certificate, or resource constraints) and flow data not appearing in the UI (usually Goldmane not being enabled or a Felix flow log pipeline problem). Both are diagnosable through standard pod logs and Calico configuration inspection.
 
 ## Key Operations
 
 ```bash
 # Verify Whisker is running
 
-kubectl get pods -n calico-system | grep whisker
+kubectl get pods -n calico-system | grep -E 'whisker|goldmane'
 
 # Access Whisker UI
-kubectl port-forward -n calico-system svc/whisker 8081:8081
+kubectl port-forward -n calico-system service/whisker 8081:8081
 # Open: http://localhost:8081
 
-# Check Whisker logs for issues
-kubectl logs -n calico-system -l app=whisker --tail=50
+# Check Whisker and Goldmane logs for issues
+kubectl logs -n calico-system deployment/whisker --all-containers=true --tail=50
+kubectl logs -n calico-system deployment/goldmane --all-containers=true --tail=50
 
 # Check flow log configuration (affects what Whisker shows)
-kubectl get felixconfiguration default -o jsonpath='{.spec.flowLogsFlushInterval}'
+kubectl get felixconfiguration default -o jsonpath='{.spec.flowLogsFlushInterval}{"\n"}{.spec.flowLogsGoldmaneServer}{"\n"}'
 ```
 
 ## Architecture
@@ -35,11 +36,12 @@ kubectl get felixconfiguration default -o jsonpath='{.spec.flowLogsFlushInterval
 ```mermaid
 flowchart LR
     A[Applications] -->|connections| B[Felix flow logs]
-    B --> C[Whisker backend]
-    C --> D[Whisker UI]
-    D --> E[Allowed traffic view]
-    D --> F[Denied traffic view]
-    D --> G[Policy decision view]
+    B --> C[Goldmane flow logs API]
+    C --> D[Whisker backend]
+    D --> E[Whisker UI]
+    E --> F[Allowed flow view]
+    E --> G[Denied flow view]
+    E --> H[Policy details]
 ```
 
 ## Common Whisker Queries
@@ -48,18 +50,18 @@ flowchart LR
 # In Whisker UI - common investigation patterns:
 
 # Find all denied connections to a service:
-# Filter: destination=<service-name>, action=Deny
+# Filter: dest_name=<service-name>, action=deny
 
 # Find all traffic from a specific pod:
-# Filter: source=<pod-name>
+# Filter: source_name=<pod-name>
 
 # Find recently started connections:
-# Sort by: timestamp descending
+# Sort by: start_time descending
 
 # Find policy drop sources:
-# Filter: action=Deny, group by: source namespace
+# Filter: action=deny, group by: source_namespace
 ```
 
 ## Conclusion
 
-Whisker provides the fastest path to understanding Calico network policy behavior in a running cluster. The denied traffic view replaces hours of log analysis with seconds of UI interaction. Validate Whisker periodically by cross-checking its view against known application connection patterns - this ensures the observability pipeline is functioning correctly before you rely on it during an incident.
+Whisker provides a fast path to understanding Calico network policy behavior in a running cluster. The denied flow view can replace hours of log analysis with seconds of UI interaction. Validate Whisker periodically by cross-checking its view against known application connection patterns - this ensures the observability pipeline is functioning correctly before you rely on it during an incident.
