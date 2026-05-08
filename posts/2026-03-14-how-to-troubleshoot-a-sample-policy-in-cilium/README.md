@@ -15,7 +15,7 @@ Network policy issues in Cilium typically fall into four categories: selector mi
 ## Prerequisites
 
 - Kubernetes cluster with Cilium installed
-- kubectl, Cilium CLI, and Hubble configured
+- kubectl, Cilium CLI, Hubble, and access to `cilium-dbg` in a Cilium pod
 
 ## Diagnosing Policy Selection Issues
 
@@ -37,7 +37,7 @@ graph TD
     A[Policy Not Working] --> B{Correct Selector?}
     B -->|No| C[Fix Labels/Selector]
     B -->|Yes| D{L7 Rules?}
-    D -->|Yes| E{Envoy Enabled?}
+    D -->|Yes| E{L7 Proxy Enabled?}
     E -->|No| F[Enable l7Proxy]
     E -->|Yes| G{FQDN Rules?}
     G -->|Yes| H{DNS Allowed?}
@@ -48,14 +48,15 @@ graph TD
 ## Fixing L7 Filtering
 
 ```bash
-# Ensure L7 proxy is enabled
-cilium status | grep "L7 Proxy"
+# Ensure L7 proxy support is enabled
+cilium config view | grep enable-l7-proxy
 
 # If not enabled
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set l7Proxy=true
+kubectl -n kube-system rollout restart ds/cilium
 
 # Check Hubble for L7 traffic
 hubble observe --protocol http -n default --last 20
@@ -69,7 +70,8 @@ hubble observe --protocol http -n default --last 20
 kubectl exec deploy/my-app -- nslookup api.example.com
 
 # Check Cilium FQDN cache
-cilium fqdn cache list
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg fqdn cache list
 ```
 
 ## Using Hubble for Policy Debugging
@@ -88,14 +90,15 @@ hubble observe --protocol http --to-pod default/api-backend --last 20 -o json | 
 ```bash
 kubectl get ciliumnetworkpolicies -n default
 hubble observe --verdict DROPPED -n default --last 5
-cilium endpoint list
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list
 ```
 
 ## Troubleshooting
 
 - **Policy applied but traffic still flows**: Check if another policy allows the traffic. Cilium is additive.
-- **L7 rules ignored**: Envoy must be enabled. Without it, only L3/L4 rules apply.
-- **FQDN rule never matches**: Add explicit DNS allow rule. Check `cilium fqdn cache list`.
+- **L7 rules ignored**: L7 proxy support must be enabled. Without it, only L3/L4 rules apply.
+- **FQDN rule never matches**: Add explicit DNS allow rule. Check `cilium-dbg fqdn cache list` from a Cilium pod.
 - **Wildcard path not matching**: Use regex format `/api/v1/.*` with proper escaping.
 
 ## Conclusion
