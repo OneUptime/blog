@@ -34,22 +34,22 @@ kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.kernelVersion}' | tr '
 
 # Verify BPF filesystem is mounted
 kubectl debug node/$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') \
-  -it --image=ubuntu -- bash -c 'mount | grep bpf'
+  -it --image=ubuntu -- chroot /host mount | grep /sys/fs/bpf
 # Should show: bpf on /sys/fs/bpf type bpf
 
 # Check if BPF JIT is enabled (required for performance)
 kubectl debug node/$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') \
-  -it --image=ubuntu -- bash -c 'cat /proc/sys/net/core/bpf_jit_enable'
+  -it --image=ubuntu -- chroot /host cat /proc/sys/net/core/bpf_jit_enable
 # Should return 1
 
 # Check cgroup v2 support (needed for some Cilium features)
 kubectl debug node/$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') \
-  -it --image=ubuntu -- bash -c 'mount | grep cgroup2'
+  -it --image=ubuntu -- chroot /host mount | grep cgroup2
 ```
 
 ```mermaid
 flowchart TD
-    A[Kernel Prerequisite Failure] --> B{Kernel version >= 4.19?}
+    A[Kernel Prerequisite Failure] --> B{Kernel version >= 5.10 or equivalent?}
     B -->|No| C[Upgrade node OS/kernel]
     B -->|Yes| D{BPF filesystem mounted?}
     D -->|No| E["Mount: mount -t bpf bpf /sys/fs/bpf"]
@@ -64,7 +64,7 @@ Fix BPF JIT if disabled:
 
 ```bash
 # On each node (via debug pod or SSH)
-kubectl debug node/<node-name> -it --image=ubuntu -- bash -c '
+kubectl debug node/<node-name> -it --image=ubuntu -- chroot /host sh -c '
   sysctl -w net.core.bpf_jit_enable=1
   echo "net.core.bpf_jit_enable=1" >> /etc/sysctl.d/99-bpf.conf
 '
@@ -90,7 +90,7 @@ for pod in pods['items']:
 
 # Check for CNI configuration files on nodes
 kubectl debug node/$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') \
-  -it --image=ubuntu -- bash -c 'ls -la /etc/cni/net.d/'
+  -it --image=ubuntu -- chroot /host ls -la /etc/cni/net.d/
 
 # If multiple CNI configs exist, only the first alphabetically is used
 # Cilium creates: 05-cilium.conflist
@@ -109,7 +109,7 @@ kubectl delete -f https://raw.githubusercontent.com/flannel-io/flannel/master/Do
 
 # Clean up leftover CNI configs on nodes
 kubectl debug node/$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') \
-  -it --image=ubuntu -- bash -c '
+  -it --image=ubuntu -- chroot /host sh -c '
   ls /etc/cni/net.d/
   # Remove non-Cilium configs
   rm -f /etc/cni/net.d/10-calico.conflist 2>/dev/null
@@ -128,9 +128,9 @@ echo "Kubernetes: $K8S_VERSION"
 helm search repo cilium/cilium --versions | head -10
 
 # Common compatibility issues:
-# - Cilium 1.15 requires Kubernetes 1.21+
-# - Cilium 1.14 requires Kubernetes 1.21+
-# - Very old Kubernetes versions (<1.21) need Cilium 1.12 or earlier
+# - Check the Cilium requirements page for the exact Cilium/Kubernetes matrix
+# - Current Cilium releases only support the Kubernetes minors listed in the docs
+# - Older Kubernetes clusters usually need an older, still-compatible Cilium release
 ```
 
 ## Resolving Missing Tool Dependencies
@@ -149,19 +149,25 @@ done
 # Fix missing Cilium CLI
 if ! command -v cilium &>/dev/null; then
   CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+  CLI_ARCH=amd64
+  if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
   curl -L --fail --remote-name-all \
-    https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz
-  sudo tar xzvf cilium-linux-amd64.tar.gz -C /usr/local/bin
-  rm cilium-linux-amd64.tar.gz
+    https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+  sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+  sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+  rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 fi
 
 # Fix missing Hubble CLI
 if ! command -v hubble &>/dev/null; then
   HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+  HUBBLE_ARCH=amd64
+  if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
   curl -L --fail --remote-name-all \
-    https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-amd64.tar.gz
-  sudo tar xzvf hubble-linux-amd64.tar.gz -C /usr/local/bin
-  rm hubble-linux-amd64.tar.gz
+    https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+  sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+  sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
+  rm hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
 fi
 ```
 
@@ -183,7 +189,7 @@ echo "  Conflicting CNI pods: $CONFLICTS"
 
 # Kubernetes version
 echo "Kubernetes:"
-kubectl version --short 2>/dev/null | grep Server || kubectl version -o json | python3 -c "import json,sys; print(f\"  {json.load(sys.stdin)['serverVersion']['gitVersion']}\")"
+kubectl version -o json | python3 -c "import json,sys; print(f\"  {json.load(sys.stdin)['serverVersion']['gitVersion']}\")"
 
 # Tools
 echo "Tools:"
@@ -198,7 +204,7 @@ echo "Prerequisites: $([ $CONFLICTS -eq 0 ] && echo 'PASSED' || echo 'FAILED - f
 
 ## Troubleshooting
 
-- **Cannot upgrade kernel on managed cluster**: Use a newer node pool or node image. GKE, EKS, and AKS all offer node images with kernel >= 5.10.
+- **Cannot upgrade kernel on managed cluster**: Use a newer node pool or node image. GKE, EKS, and AKS all offer node images with kernel >= 5.10 or equivalent.
 
 - **CNI removal breaks existing pods**: Pods created under the old CNI may lose networking. Drain nodes and recreate pods after installing Cilium.
 
