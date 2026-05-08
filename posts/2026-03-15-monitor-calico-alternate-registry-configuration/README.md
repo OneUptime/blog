@@ -100,7 +100,7 @@ spec:
             severity: warning
           annotations:
             summary: "Calico pod not ready"
-            description: "Pod {{ $labels.pod }} in calico-system has been not ready for more than 10 minutes."
+            description: "Pod {{ $labels.pod }} in calico-system has not been ready for more than 10 minutes."
 ```
 
 ## Configuration Drift Detection
@@ -130,7 +130,7 @@ spec:
                 - -c
                 - |
                   REGISTRY=$(kubectl get installation default -o jsonpath='{.spec.registry}')
-                  EXPECTED="registry.internal.example.com"
+                  EXPECTED="registry.internal.example.com/"
                   if [ "$REGISTRY" != "$EXPECTED" ]; then
                     echo "DRIFT DETECTED: registry is $REGISTRY, expected $EXPECTED"
                     exit 1
@@ -139,16 +139,16 @@ spec:
           restartPolicy: OnFailure
 ```
 
-## Credential Expiry Monitoring
+## Credential Rotation Monitoring
 
-Check the age of image pull secrets to detect credentials nearing expiry:
+Check the age of image pull secrets to identify credentials that may need rotation:
 
 ```bash
 #!/bin/bash
 # check-secret-age.sh
 
 SECRET_NAME="calico-registry-secret"
-NAMESPACE="calico-system"
+NAMESPACE="tigera-operator"
 MAX_AGE_DAYS=90
 
 CREATED=$(kubectl get secret "$SECRET_NAME" -n "$NAMESPACE" \
