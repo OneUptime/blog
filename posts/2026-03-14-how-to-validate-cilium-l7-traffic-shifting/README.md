@@ -33,8 +33,8 @@ for i in $(seq 1 $TOTAL); do
     curl -s http://backend/ -H "Host: backend" 2>/dev/null
 done > /tmp/shift-results.txt
 
-V1_COUNT=$(grep -c "v1" /tmp/shift-results.txt || echo 0)
-V2_COUNT=$(grep -c "v2" /tmp/shift-results.txt || echo 0)
+V1_COUNT=$(grep -c "v1" /tmp/shift-results.txt)
+V2_COUNT=$(grep -c "v2" /tmp/shift-results.txt)
 
 echo "v1: $V1_COUNT ($((V1_COUNT * 100 / TOTAL))%)"
 echo "v2: $V2_COUNT ($((V2_COUNT * 100 / TOTAL))%)"
@@ -50,7 +50,7 @@ kubectl exec deploy/client -- curl -s http://backend-v2/ | head -5
 
 # Check for errors
 hubble observe --protocol http --to-label app=backend \
-  --http-status 500-599 --last 20
+  --http-status 5+ --last 20
 ```
 
 ```mermaid
