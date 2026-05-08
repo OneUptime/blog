@@ -10,9 +10,9 @@ Description: An operator-focused guide to Calico Typha's role in the architectur
 
 ## Introduction
 
-Typha is a Calico component that sits between the datastore (Kubernetes API server or etcd) and the Felix agents running on each node. Its primary purpose is to reduce the load on the datastore by fanning out updates to multiple Felix instances through a single connection.
+Typha is a Calico component that sits between the datastore, usually the Kubernetes API server, and the Felix agents running on each node. Its primary purpose is to reduce the load on the datastore by fanning out updates to multiple Felix instances through a single connection. Typha can be used with etcd, but etcd v3 is already optimized for many clients, so Calico does not recommend Typha for etcd-backed installations.
 
-For operators managing clusters with more than 50 nodes, Typha is not optional -- it is essential for stable operation. Without Typha, every calico-node pod opens its own watch connection to the Kubernetes API server, which can overwhelm the API server at scale.
+For operators managing clusters with the Kubernetes API datastore and more than 50 nodes, Calico's manifest-based install path includes Typha, and operator-based installations deploy it automatically. Without Typha, every calico-node pod opens its own watch connection to the Kubernetes API server, which can overwhelm the API server at scale.
 
 This guide explains Typha's architecture, when you need it, how to size it, and how to monitor it in production.
 
@@ -47,9 +47,9 @@ kubectl get pods -n calico-system -l k8s-app=calico-typha -o wide
 | Cluster Size | Typha Needed | Recommended Replicas |
 |---|---|---|
 | Under 50 nodes | Optional | 1 (if deployed) |
-| 50-200 nodes | Recommended | 2-3 |
-| 200-500 nodes | Required | 3-5 |
-| 500+ nodes | Required | 5+ |
+| 50-200 nodes | Recommended | At least 1; 3 for production resilience |
+| 200-500 nodes | Required | At least 1 per 200 nodes; 3+ for production resilience |
+| 500+ nodes | Required | At least 1 per 200 nodes, up to 20 |
 
 Calico's operator-based installation automatically deploys Typha and scales its replica count based on the number of nodes.
 
@@ -65,7 +65,7 @@ kubectl describe deployment -n calico-system calico-typha
 kubectl get deployment -n calico-system calico-typha -o yaml | grep -A20 "affinity"
 ```
 
-Each Typha replica can handle approximately 100-200 Felix connections. The connection is persistent and uses a custom protocol optimized for Calico's update patterns.
+Each Typha replica can handle hundreds of Felix connections; Calico recommends at least one Typha replica for every 200 nodes, with a production minimum of three replicas to reduce the impact of rolling upgrades and failures. The connection is persistent and uses a custom protocol optimized for Calico's update patterns.
 
 ## Verifying Typha Health
 
@@ -82,11 +82,14 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=20 | 
 
 ## Monitoring Typha in Production
 
-Typha exposes Prometheus metrics on port 9093 by default:
+Typha can expose Prometheus metrics when metrics reporting is enabled. The Typha metrics port defaults to 9091; some operator-managed or Enterprise metric services may expose Typha metrics through a Service on port 9093:
 
 ```bash
 # Check Typha metrics directly
-kubectl exec -n calico-system <typha-pod> -- wget -qO- http://localhost:9093/metrics | head -30
+kubectl port-forward -n calico-system pod/<typha-pod> 9091:9091
+
+# In another terminal
+curl -s http://localhost:9091/metrics | head -30
 ```
 
 Key metrics to monitor:
@@ -155,7 +158,8 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i update globalnetworkpolicies.crd.projectcalico.org --all-namespaces
+kubectl auth can-i --list | grep projectcalico
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
