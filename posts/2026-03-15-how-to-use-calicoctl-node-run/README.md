@@ -18,7 +18,7 @@ This guide covers practical examples of using `calicoctl node run` with various 
 
 ## Prerequisites
 
-- A Linux host with Docker or containerd installed
+- A Linux host with Docker installed and running
 - `calicoctl` CLI installed on the host
 - Network connectivity to an etcd cluster or Kubernetes API
 - Root or sudo access on the host
@@ -38,21 +38,21 @@ This starts the `calico/node` container with default configuration, connecting t
 
 ### Using etcd as the Datastore
 
-```bash
-sudo calicoctl node run \
-  --backend=bird \
-  --dryrun=false \
-  --log-dir=/var/log/calico \
-  --node-image=calico/node:v3.27.0
-```
-
 Set the etcd endpoints via environment variable before running:
 
 ```bash
+export DATASTORE_TYPE=etcdv3
 export ETCD_ENDPOINTS=https://etcd1:2379,https://etcd2:2379
 export ETCD_CA_CERT_FILE=/etc/calico/certs/ca.pem
 export ETCD_CERT_FILE=/etc/calico/certs/cert.pem
 export ETCD_KEY_FILE=/etc/calico/certs/key.pem
+```
+
+```bash
+sudo -E calicoctl node run \
+  --backend=bird \
+  --log-dir=/var/log/calico \
+  --node-image=quay.io/calico/node:v3.27.0
 ```
 
 ### Using Kubernetes as the Datastore
@@ -62,8 +62,10 @@ export DATASTORE_TYPE=kubernetes
 export KUBECONFIG=/etc/kubernetes/admin.conf
 
 sudo -E calicoctl node run \
-  --node-image=calico/node:v3.27.0
+  --node-image=quay.io/calico/node:v3.27.0
 ```
+
+When Calico uses the Kubernetes API as the datastore, BGP-related `calicoctl node run` options such as `--ip`, `--as`, and `--backend` have no effect.
 
 ## Common Options
 
@@ -94,13 +96,17 @@ sudo calicoctl node run \
   --ip=192.168.1.10
 ```
 
-### Enable IP-in-IP Encapsulation
+### Use the BIRD Networking Backend
+
+Select the BIRD networking backend for BGP routing:
 
 ```bash
 sudo calicoctl node run \
   --ip=192.168.1.10 \
   --backend=bird
 ```
+
+IP-in-IP encapsulation is configured on Calico IP pools with `ipipMode`, not with the `--backend` flag.
 
 ### Set the AS Number
 
@@ -116,12 +122,12 @@ Preview what `calicoctl node run` would do without actually starting the node:
 
 ```bash
 sudo calicoctl node run \
-  --node-image=calico/node:v3.27.0 \
+  --node-image=quay.io/calico/node:v3.27.0 \
   --ip=192.168.1.10 \
   --dryrun
 ```
 
-This outputs the Docker or container runtime command that would be executed, allowing you to review and customize it.
+This outputs the Docker command that would be executed, allowing you to review and customize it.
 
 ## Setting the Log Directory
 
@@ -146,7 +152,7 @@ Requires=docker.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/calicoctl node run --node-image=calico/node:v3.27.0 --ip=autodetect
+ExecStart=/usr/local/bin/calicoctl node run --init-system --node-image=quay.io/calico/node:v3.27.0 --ip=autodetect
 ExecStop=/usr/bin/docker stop calico-node
 Restart=on-failure
 RestartSec=10
@@ -183,7 +189,7 @@ calicoctl get nodes
 
 ## Troubleshooting
 
-- **Container fails to start**: Check Docker or containerd is running. Verify the image name and tag are correct and accessible.
+- **Container fails to start**: Check Docker is running. Verify the image name and tag are correct and accessible.
 - **Datastore connection failures**: Ensure the etcd or Kubernetes API endpoint is reachable. Check certificate paths for TLS connections.
 - **BGP session not establishing**: Verify the IP address and AS number are correct. Check that the BGP port (179) is not firewalled.
 - **Node not appearing in datastore**: Check the node name. If using auto-detection, verify the hostname is resolvable and unique.
