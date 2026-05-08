@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Network Security, Go
 
-Description: Learn how to secure Go extension development in Cilium for Kubernetes. This guide covers practical hardening measures with real examples and commands.
+Description: Learn how to secure Go extension workloads in Cilium for Kubernetes. This guide covers practical hardening measures with real examples and commands.
 
 ---
 
 ## Introduction
 
-Securing Go extension development in Cilium is essential for maintaining a robust Kubernetes network security posture. Cilium leverages eBPF technology to provide deep visibility and control over network traffic, making it possible to enforce fine-grained security policies at the kernel level.
+Securing Go extension workloads in Cilium is essential for maintaining a robust Kubernetes network security posture. Cilium leverages eBPF technology to provide deep visibility and control over network traffic, making it possible to enforce fine-grained security policies at the kernel level.
 
-This guide focuses on practical steps to harden your custom Go-based extensions using CiliumNetworkPolicy resources. You will learn how to create policies that restrict access, implement defense-in-depth strategies, and verify that your security controls are working as intended.
+This guide focuses on practical steps to harden your custom Go-based extension workloads using CiliumNetworkPolicy resources. You will learn how to create policies that restrict access, implement defense-in-depth strategies, and verify that your security controls are working as intended.
 
 Whether you are setting up a new cluster or hardening an existing one, these security practices will help you reduce your attack surface and protect your workloads from unauthorized access.
 
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.24+)
-- Cilium installed (v1.14+) via Helm
+- Cilium installed via Helm. If you are using Cilium's Envoy Go Extensions/proxylib, use a Cilium release before v1.19; in v1.19 and later, apply these policy practices to the Kubernetes workloads that replace those extensions.
 - `cilium` CLI tool installed
 - `kubectl` configured for cluster access
 - Hubble enabled for network flow observation
@@ -27,7 +27,7 @@ Whether you are setting up a new cluster or hardening an existing one, these sec
 
 ## Understanding the Security Model
 
-Before implementing security controls, it is important to understand how Cilium handles Go extension development.
+Before implementing security controls, it is important to understand how Cilium handles Go extension workloads.
 
 ```mermaid
 graph TD
@@ -120,9 +120,8 @@ spec:
 # Monitor for policy-related drops in real time
 hubble observe --verdict DROPPED --namespace production --output compact
 
-# Check endpoint security status
 # List all active policies
-cilium policy get -o json | jq '.[].metadata.name'
+kubectl get cnp -A -o json | jq '.items[].metadata.name'
 ```
 
 ## Advanced Security Configuration
@@ -139,7 +138,7 @@ For enhanced protection, consider these additional hardening measures:
 cilium config view | grep policy-enforcement
 
 # List all identities and verify they match expected workloads
-cilium identity list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list
 ```
 
 
@@ -175,7 +174,7 @@ After applying security controls, verify they are working correctly:
 
 ```bash
 # Verify policy is applied
-cilium endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
 ```
 
 ```bash
@@ -185,16 +184,16 @@ cilium connectivity test
 
 ```bash
 # Monitor for policy drops
-cilium monitor --type drop --output json | head -20
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop --json | head -20
 ```
 
 ## Troubleshooting
 
-- **Policy not taking effect**: Verify endpoint labels match policy selectors with `cilium endpoint list -o json | jq '.[] | .status.labels'`.
+- **Policy not taking effect**: Verify endpoint labels match policy selectors with `kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | jq '.[] | .status.labels'`.
 - **Legitimate traffic blocked**: Check Hubble for specific drop reasons with `hubble observe --verdict DROPPED --namespace production`.
 - **High latency after policy application**: L7 policies route through Envoy proxy. Consider using L3/L4 policies where L7 inspection is not needed.
 - **Cilium agent errors**: Check agent logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent --tail=50`.
 
 ## Conclusion
 
-Securing Go extension development in Cilium requires a layered approach: implement default-deny baselines, create specific allow policies for legitimate traffic, and continuously monitor with Hubble. By following the steps in this guide, you have established strong security controls for your go extensions workloads. Remember to regularly review and update your policies as your application architecture evolves, and always test changes in a staging environment before applying them to production.
+Securing Go extension workloads in Cilium requires a layered approach: implement default-deny baselines, create specific allow policies for legitimate traffic, and continuously monitor with Hubble. By following the steps in this guide, you have established strong security controls for your go extensions workloads. Remember to regularly review and update your policies as your application architecture evolves, and always test changes in a staging environment before applying them to production.
