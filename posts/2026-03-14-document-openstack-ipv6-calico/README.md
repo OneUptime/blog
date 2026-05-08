@@ -54,15 +54,15 @@ Document the IPv6 address types operators will encounter:
 | Address Type | Range | Purpose | Example |
 |-------------|-------|---------|---------|
 | Link-Local | fe80::/10 | Node-local communication, NDP | fe80::1 |
-| Unique Local (ULA) | fd00::/8 | Internal VM communication | fd00:10:96::5 |
+| Unique Local (ULA) | fc00::/7 (locally assigned prefixes typically use fd00::/8) | Internal VM communication | fd00:10:96::5 |
 | Global Unicast (GUA) | 2000::/3 | Public-facing services | 2001:db8::1 |
 | Multicast | ff00::/8 | NDP, group communication | ff02::1 |
 
 ## Key Difference from IPv4
 - Every interface has a link-local address automatically
-- ICMPv6 MUST be allowed for IPv6 to function (NDP depends on it)
+- Required ICMPv6 traffic MUST be allowed for IPv6 to function (NDP depends on it)
 - No broadcast in IPv6; multicast is used instead
-- No NAT required (every VM can have a globally routable address)
+- No NAT required for globally routed IPv6 (VMs with GUA addresses can be globally routable)
 ```
 
 ## IPv6 Troubleshooting Procedures
@@ -80,7 +80,8 @@ echo "=== IPv6 Troubleshooting: ${VM_V6} ==="
 # Step 1: Verify IPv6 is enabled on the compute node
 echo ""
 echo "--- Step 1: IPv6 Enabled ---"
-COMPUTE_HOST=$(openstack server list --all-projects -f value | grep "${VM_V6}" | awk '{print $NF}')
+SERVER_ID=$(openstack server list --all-projects --ip6 "${VM_V6}" -f value -c ID | head -1)
+COMPUTE_HOST=$(openstack server show "${SERVER_ID}" -f value -c OS-EXT-SRV-ATTR:host)
 ssh ${COMPUTE_HOST} 'sysctl net.ipv6.conf.all.disable_ipv6'
 # Should return 0 (IPv6 enabled)
 
@@ -111,8 +112,8 @@ ssh ${COMPUTE_HOST} "sudo calicoctl node status" | grep -A5 "IPv6 BGP"
 Document common IPv6 operational tasks.
 
 ```bash
-# Check IPv6 IP pool utilization
-calicoctl ipam show --ip-version=6
+# Check IP pool utilization, including IPv6 pools
+calicoctl ipam show
 
 # List all IPv6 workload endpoints
 calicoctl get workloadendpoints --all-namespaces -o wide | grep -i "fd00"
@@ -140,7 +141,7 @@ calicoctl get ippools -o wide | grep fd00
 
 echo ""
 echo "Per-Node Route Counts:"
-for node in $(openstack compute service list -f value -c Host | sort -u); do
+for node in $(openstack compute service list --service nova-compute -f value -c Host | sort -u); do
   v4=$(ssh ${node} 'ip route show proto bird | wc -l')
   v6=$(ssh ${node} 'ip -6 route show proto bird | wc -l')
   echo "  ${node}: IPv4=${v4} IPv6=${v6}"
