@@ -15,26 +15,29 @@ Datastore migration errors can be particularly stressful because they occur duri
 ## Prerequisites
 
 - Active migration attempt with errors
-- Access to both source and target datastores
+- Access to the exported datastore file and target Kubernetes datastore
 - `calicoctl` installed
 - Backup of Calico resources
 
 ## Common Errors
 
-### Error: Connection Refused to Source Datastore
+### Error: Connection Refused to Datastore
 
 ```bash
-# For etcd source
+# For target Kubernetes datastore
+export DATASTORE_TYPE=kubernetes
+export KUBECONFIG=~/.kube/config
+kubectl cluster-info
+calicoctl get nodes
 
-echo $ETCD_ENDPOINTS
+# If you need to verify the etcd source before re-exporting
+
+export DATASTORE_TYPE=etcdv3
+echo "$ETCD_ENDPOINTS"
 curl --cacert /etc/calico/certs/ca.pem \
      --cert /etc/calico/certs/cert.pem \
      --key /etc/calico/certs/key.pem \
-     $ETCD_ENDPOINTS/health
-
-# For Kubernetes source
-export DATASTORE_TYPE=kubernetes
-kubectl cluster-info
+     "${ETCD_ENDPOINTS%%,*}/health"
 ```
 
 ### Error: Permission Denied
@@ -57,8 +60,8 @@ rules:
 
 ```bash
 # During import, resources may already exist in the target
-# Use --allow-version-mismatch if version differs
-calicoctl datastore migrate import --allow-version-mismatch 2>&1
+# Import requires the export filename
+calicoctl datastore migrate import -f etcd-data 2>&1
 
 # Or clean the target datastore first (DANGEROUS - only if target is empty/new)
 ```
@@ -68,9 +71,9 @@ calicoctl datastore migrate import --allow-version-mismatch 2>&1
 ```bash
 # The export file may be from a different Calico version
 # Check the version in the export
-head -20 calico-export.yaml
+head -20 etcd-data
 
-# Ensure calicoctl version matches the data version
+# Ensure calicoctl version is appropriate for the Calico version you are migrating
 calicoctl version
 ```
 
@@ -105,7 +108,7 @@ After resolving errors:
 
 ```bash
 # Retry the migration command
-calicoctl datastore migrate import
+calicoctl datastore migrate import -f etcd-data
 
 # Verify resources
 calicoctl get nodes
@@ -116,9 +119,9 @@ calicoctl get ippools
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| Connection refused | Wrong datastore endpoint | Check ETCD_ENDPOINTS or kubeconfig |
+| Connection refused | Wrong datastore endpoint | Check kubeconfig or ETCD_ENDPOINTS |
 | Permission denied | Missing RBAC | Apply migration ClusterRole |
-| Resource exists | Target not clean | Clear target or use --allow-version-mismatch |
+| Resource exists | Target not clean | Clear conflicting target resources and retry the import |
 | Format mismatch | Version incompatibility | Align calicoctl version |
 
 ## Conclusion
