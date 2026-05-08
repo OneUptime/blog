@@ -22,6 +22,7 @@ Before applying fixes, ensure you have completed a proper diagnosis. Applying fi
 - `kubectl` with cluster-admin privileges
 - `calicoctl` installed and configured
 - A backup of your current Calico configuration
+- These commands assume an operator-managed Calico install in the `calico-system` namespace. For manifest-based installs, use `kube-system` instead.
 
 ## Backup Current Configuration
 
@@ -41,7 +42,7 @@ kubectl cluster-info
 kubectl get serviceaccount -n calico-system calico-node
 ```
 
-## Step 2: Fix RBAC Permissions
+## Step 2: Check RBAC Permissions
 
 ```bash
 kubectl get clusterrole calico-node
@@ -143,8 +144,8 @@ calicoctl ipam check
 # Layer 3: Node-to-node connectivity
 calicoctl node status
 
-# Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+# Layer 4: Service and DNS connectivity
+kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 --no-check-certificate https://kubernetes.default.svc/readyz
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
