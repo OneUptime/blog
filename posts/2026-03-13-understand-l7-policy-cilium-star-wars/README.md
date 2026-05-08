@@ -10,7 +10,7 @@ Description: Understand how Cilium's L7 HTTP-aware policy works in the Star Wars
 
 ## Introduction
 
-The L7 HTTP policy in the Cilium Star Wars demo represents the apex of the demonstration. Having established that L3/L4 policy can block unauthorized connections (no more `xwing` landings), the demo reveals the gap that remains: authorized connections can still access privileged endpoints. The `tiefighter`, cleared to land, can also trigger the Death Star's exhaust port - a catastrophic security failure that no traditional firewall can prevent.
+The L7 HTTP policy in the Cilium Star Wars demo represents the apex of the demonstration. Having established that L3/L4 policy can block unauthorized connections (no more `xwing` landings), the demo reveals the gap that remains: authorized connections can still access privileged endpoints. The `tiefighter`, cleared to land, can also trigger the Death Star's exhaust port - a catastrophic security failure that L3/L4 filtering alone cannot prevent.
 
 L7 HTTP policy fills this gap. By inspecting the HTTP method and path of requests made by already-authorized connections, Cilium can enforce application-level access control without deploying a sidecar. The `tiefighter` can POST to `/v1/request-landing` but not PUT to `/v1/exhaust-port`. This is precisely the policy that production API services need: not just "who can connect" but "what can they do once connected."
 
@@ -81,7 +81,7 @@ kubectl apply -f https://raw.githubusercontent.com/cilium/cilium/HEAD/examples/m
 kubectl exec tiefighter -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
 # Expected: Ship landed
 
-# Test: blocked endpoint (same pod, same connection, different path)
+# Test: blocked endpoint (same pod, different method and path)
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
 # Expected: Access denied
 ```
