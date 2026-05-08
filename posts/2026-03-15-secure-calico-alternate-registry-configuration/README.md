@@ -10,9 +10,9 @@ Description: Learn how to securely configure Calico to pull images from alternat
 
 ## Introduction
 
-Calico components run as containers within your Kubernetes cluster, and by default they pull images from public registries like `docker.io/calico`. In enterprise and air-gapped environments, you often need to redirect image pulls to an internal or alternate registry. This is common for compliance, security scanning, and network isolation requirements.
+Calico components run as containers within your Kubernetes cluster, and by default operator-based installations pull images from public registries like `quay.io/calico` and `quay.io/tigera`. In enterprise and air-gapped environments, you often need to redirect image pulls to an internal or alternate registry. This is common for compliance, security scanning, and network isolation requirements.
 
-However, simply pointing Calico at a different registry is not enough. You must also secure the registry credentials, enforce image verification, and ensure that the configuration itself is protected from unauthorized changes. A misconfigured registry setup can expose credentials or allow tampered images to enter your cluster.
+However, simply pointing Calico at a different registry is not enough. You must also secure the registry credentials, use immutable image references, and ensure that the configuration itself is protected from unauthorized changes. A misconfigured registry setup can expose credentials or allow tampered images to enter your cluster.
 
 This guide covers best practices for securing your Calico alternate registry configuration, including credential management, image digest pinning, and RBAC controls around the configuration resources.
 
@@ -21,7 +21,6 @@ This guide covers best practices for securing your Calico alternate registry con
 - Kubernetes cluster with Calico installed
 - `kubectl` with cluster-admin access
 - Access to a private container registry
-- `calicoctl` CLI installed
 - Familiarity with Kubernetes Secrets and RBAC
 
 ## Configuring the Alternate Registry
@@ -62,7 +61,7 @@ kubectl create secret docker-registry calico-registry-secret \
   --docker-username=calico-pull \
   --docker-password="${REGISTRY_PASSWORD}" \
   --docker-email=ops@example.com \
-  -n calico-system
+  -n tigera-operator
 ```
 
 Reference the secret in the Installation resource:
@@ -97,7 +96,20 @@ kubectl apply -f calico-registry-sealed.yaml
 
 ## Enforcing Image Digest Pinning
 
-Use image digests instead of tags to prevent tag mutation attacks. In the Installation resource, you can specify exact image digests by setting the component images explicitly in your registry mirror.
+Use image digests instead of tags to prevent tag mutation attacks. For operator-based installations, specify image digests with an `ImageSet` resource instead of adding digests directly to the Installation resource:
+
+```yaml
+apiVersion: operator.tigera.io/v1
+kind: ImageSet
+metadata:
+  name: calico-v3.32.0
+spec:
+  images:
+    - image: calico/node
+      digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+```
+
+The ImageSet name must match the Calico release deployed by the operator, and all images deployed by the operator must be included.
 
 Verify running images use digests:
 
@@ -138,7 +150,7 @@ Confirm Calico pods are pulling from the alternate registry:
 kubectl get pods -n calico-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].image}{"\n"}{end}'
 
 # Verify no public registry references remain
-kubectl get pods -n calico-system -o yaml | grep -c "docker.io"
+kubectl get pods -n calico-system -o yaml | grep -Ec "quay.io|docker.io"
 
 # Check pod events for pull errors
 kubectl get events -n calico-system --field-selector reason=Failed
@@ -146,8 +158,8 @@ kubectl get events -n calico-system --field-selector reason=Failed
 
 ## Troubleshooting
 
-- **ImagePullBackOff errors**: Verify the image pull secret exists in the `calico-system` namespace and the credentials are valid. Test with `docker login registry.internal.example.com`.
-- **Secret not found**: Ensure the secret name in `imagePullSecrets` matches the actual secret name in the correct namespace.
+- **ImagePullBackOff errors**: Verify the image pull secret exists in the `tigera-operator` namespace and the credentials are valid. Test with `docker login registry.internal.example.com`.
+- **Secret not found**: Ensure the secret name in `imagePullSecrets` matches the actual secret name in the `tigera-operator` namespace.
 - **Permission denied on Installation resource**: Check your RBAC bindings and ensure your user or service account has the required permissions.
 - **Images pulling from wrong registry**: Confirm the Installation resource has been reconciled by the operator. Check `kubectl get tigerastatus` for status.
 
