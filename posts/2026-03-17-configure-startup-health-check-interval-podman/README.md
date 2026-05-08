@@ -78,12 +78,12 @@ podman run -d --name heavy-init \
   heavy-init:latest
 ```
 
-## Impact on Total Startup Window
+## Impact on Startup Failure Window
 
 ```bash
-# Total startup window = interval * retries
+# Approximate startup failure window = interval * retries
 
-# 2s interval * 30 retries = 60 seconds max startup
+# 2s interval * 30 retries = about 60 seconds before restart on repeated failures
 podman run -d --name app-60s \
   --health-startup-cmd "curl -f http://localhost:8080/ready || exit 1" \
   --health-startup-interval 2s \
@@ -92,7 +92,7 @@ podman run -d --name app-60s \
   --health-interval 20s \
   app-60s:latest
 
-# 10s interval * 30 retries = 300 seconds (5 minutes) max startup
+# 10s interval * 30 retries = about 300 seconds (5 minutes) before restart on repeated failures
 podman run -d --name app-5m \
   --health-startup-cmd "curl -f http://localhost:8080/ready || exit 1" \
   --health-startup-interval 10s \
@@ -104,4 +104,4 @@ podman run -d --name app-5m \
 
 ## Summary
 
-The `--health-startup-interval` flag sets how often the startup health check runs during container initialization. Use shorter intervals for faster readiness detection in latency-sensitive deployments, and longer intervals when the startup check itself is resource-intensive. Remember that the total startup window is the product of the interval and retries, so adjust both values together to match your application needs.
+The `--health-startup-interval` flag sets how often the startup health check runs during container initialization. Use shorter intervals for faster readiness detection in latency-sensitive deployments, and longer intervals when the startup check itself is resource-intensive. Remember that the approximate failure window before Podman restarts the container is the product of the interval and retries, so adjust both values together to match your application needs.
