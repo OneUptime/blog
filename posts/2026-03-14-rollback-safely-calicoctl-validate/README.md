@@ -16,9 +16,10 @@ However, understanding this distinction is itself valuable. Teams sometimes conf
 
 ## Prerequisites
 
-- calicoctl v3.27 or later
+- calicoctl v3.31 or later
 - Basic understanding of Calico resource lifecycle
 - Calico YAML resource files
+- Python 3 with PyYAML for the backup workflow script
 
 ## What calicoctl validate Does
 
@@ -89,6 +90,7 @@ if calicoctl get "$KIND" "$NAME" -o yaml > "$BACKUP" 2>/dev/null; then
 else
   echo "Step 2: Resource does not exist yet (new resource)"
   rm -f "$BACKUP"
+  BACKUP="none (new resource)"
 fi
 
 # Step 3: Apply the change
@@ -99,7 +101,7 @@ calicoctl apply -f "$RESOURCE_FILE"
 echo "Step 4: Verifying..."
 calicoctl get "$KIND" "$NAME" -o yaml > /dev/null && echo "Verification passed."
 
-echo "Change complete. Rollback backup: ${BACKUP:-none (new resource)}"
+echo "Change complete. Rollback backup: $BACKUP"
 ```
 
 ## Validate in Multi-Stage Pipelines
@@ -179,8 +181,8 @@ diff /tmp/before.txt /tmp/after.txt && echo "Confirmed: validate made no changes
 
 ## Troubleshooting
 
-- **"validate is not a recognized command"**: Your calicoctl version may be too old. Update to v3.27 or later.
-- **Validation passes but apply fails**: Validate checks syntax only. Apply also checks cluster-level constraints (resource existence, conflicts). These are different checks.
+- **"validate is not a recognized command"**: Your calicoctl version may be too old. Update to v3.31 or later.
+- **Validation passes but apply fails**: Validate checks the file offline for syntax, structure, schema, and Calico-specific validation rules. Apply also needs datastore access and can fail because of credentials, connectivity, admission controls, or current cluster state. These are different checks.
 - **Team members skip validation**: Enforce it through pre-commit hooks and CI pipeline required checks. Make validation mandatory, not optional.
 - **Validation gives different results on different machines**: Ensure all team members and CI runners use the same calicoctl version.
 
