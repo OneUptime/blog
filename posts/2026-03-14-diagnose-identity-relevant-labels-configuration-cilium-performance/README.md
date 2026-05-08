@@ -31,8 +31,9 @@ This guide provides the specific steps for managing identity-relevant labels con
 
 cilium config view | grep -E "^labels"
 
-# If empty, ALL labels are identity-relevant (default behavior)
-# This is the most common source of identity explosion
+# If empty, Cilium uses its default identity-relevant label patterns.
+# By default most labels are relevant, with documented exclusions for
+# common generated Kubernetes labels such as pod-template-hash.
 ```
 
 ## Label Impact Analysis
@@ -40,32 +41,35 @@ cilium config view | grep -E "^labels"
 ```bash
 # Count unique label combinations (potential identities)
 kubectl get pods --all-namespaces -o json | \
-  jq '[.items[].metadata.labels | to_entries | sort_by(.key) | from_entries | tostring] | unique | length'
+  jq '[.items[].metadata.labels // {} | to_entries | sort_by(.key) | from_entries | tostring] | unique | length'
 
 # Compare with actual identity count
-cilium identity list | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg identity list | wc -l
 
-# Find labels with high cardinality
+# Find label keys with many distinct values
 kubectl get pods --all-namespaces -o json | \
-  jq '[.items[].metadata.labels | keys[]] | group_by(.) | map({label: .[0], count: length}) | sort_by(-.count)' | head -30
+  jq '[.items[].metadata.labels // {} | to_entries[]] |
+      group_by(.key) |
+      map({label: .[0].key, distinct_values: ([.[].value] | unique | length), pod_count: length}) |
+      sort_by(-.distinct_values)' | head -30
 ```
 
 ## Performance Impact Assessment
 
 ```bash
-# Measure policy regeneration time
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | \
-  jq '[.[] | .status.policy."proxy-statistics" // empty]'
+# Measure endpoint regeneration time from Cilium metrics
+kubectl exec -n kube-system ds/cilium -- \
+  curl -s localhost:9962/metrics | grep '^cilium_endpoint_regeneration_time_stats_seconds'
 
 # Check BPF policy map sizes
-kubectl exec -n kube-system ds/cilium -- cilium bpf policy get --all | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf policy get --all | wc -l
 ```
 
 ## Verification
 
 ```bash
 cilium config view | grep labels
-cilium identity list | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg identity list | wc -l
 ```
 
 ## Troubleshooting
@@ -91,11 +95,11 @@ cilium status --verbose > $DIAG_DIR/cilium-status.txt
 cilium config view > $DIAG_DIR/cilium-config.txt
 
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf ct list > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -126,21 +130,21 @@ The combination of these data points will point you toward the specific subsyste
 
 ### Using Cilium Monitor for Real-Time Analysis
 
-The `cilium monitor` command provides real-time visibility into the eBPF datapath:
+The `cilium-dbg monitor` command provides real-time visibility into the eBPF datapath:
 
 ```bash
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+ENDPOINT_ID=$(kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list -o json | jq '.[0].id')
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --related-to $ENDPOINT_ID --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
