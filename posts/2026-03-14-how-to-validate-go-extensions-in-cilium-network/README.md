@@ -19,7 +19,7 @@ By integrating these validation steps into your deployment workflow, you can cat
 ## Prerequisites
 
 - Kubernetes cluster with Cilium (v1.14+) installed
-- `cilium` CLI and Hubble CLI available
+- `cilium` CLI and Hubble CLI available, with Hubble enabled and reachable
 - `kubectl` access to the cluster
 - A staging or test namespace for validation
 - Familiarity with CiliumNetworkPolicy syntax
@@ -69,24 +69,25 @@ apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
   name: custom-extension-policy
-  namespace: production
+  namespace: cilium-validate
 spec:
   endpointSelector:
     matchLabels:
-      app: custom-protocol-server
+      app: server
   ingress:
     - fromEndpoints:
         - matchLabels:
-            app: protocol-client
+            app: client
       toPorts:
         - ports:
-            - port: "9999"
+            - port: "80"
               protocol: TCP
 ```
 
 ```bash
 # Validate all endpoints have policies applied
-cilium endpoint list -o json | jq '.[] | {id: .id, policy: .status.policy}'
+kubectl get ciliumendpoints -n cilium-validate -o json | \
+  jq '.items[] | {name: .metadata.name, id: .status.id, policy: .status.status.policy}'
 ```
 
 ### Running Connectivity Tests
@@ -134,28 +135,28 @@ echo "=== Cilium Policy Validation ==="
 # Test 1: Cilium agent health
 echo -n "Test 1: Cilium agent health... "
 if cilium status > /dev/null 2>&1; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((++PASS))
 else
-  echo "FAIL"; ((FAIL++))
+  echo "FAIL"; ((++FAIL))
 fi
 
 # Test 2: All endpoints ready
 echo -n "Test 2: All endpoints ready... "
-NOT_READY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.state != "ready")] | length')
+NOT_READY=$(kubectl get ciliumendpoints -n "$NAMESPACE" -o json | \
+  jq '[.items[] | select(.status.state != "ready")] | length')
 if [ "$NOT_READY" -eq 0 ]; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((++PASS))
 else
-  echo "FAIL ($NOT_READY not ready)"; ((FAIL++))
+  echo "FAIL ($NOT_READY not ready)"; ((++FAIL))
 fi
 
 # Test 3: Policies applied
 echo -n "Test 3: Policies applied... "
-POLICY_COUNT=$(cilium policy get -o json | jq '. | length')
+POLICY_COUNT=$(kubectl get cnp -n "$NAMESPACE" -o json | jq '.items | length')
 if [ "$POLICY_COUNT" -gt 0 ]; then
-  echo "PASS ($POLICY_COUNT policies)"; ((PASS++))
+  echo "PASS ($POLICY_COUNT policies)"; ((++PASS))
 else
-  echo "FAIL (no policies)"; ((FAIL++))
+  echo "FAIL (no policies)"; ((++FAIL))
 fi
 
 echo ""
@@ -175,7 +176,7 @@ kubectl get namespaces --show-labels
 
 # Identify cross-namespace communication patterns
 hubble observe --output json --last 500 | \
-  jq '.flow | select(.source.namespace != .destination.namespace) | {
+  jq -c '.flow | select(.source.namespace != .destination.namespace) | {
     src_ns: .source.namespace,
     dst_ns: .destination.namespace,
     port: (.l4.TCP.destination_port // .l4.UDP.destination_port)
@@ -199,7 +200,8 @@ cilium status
 
 ```bash
 # Confirm all endpoints are healthy
-cilium endpoint health
+kubectl get ciliumendpoints -n cilium-validate -o json | \
+  jq '.items[] | {name: .metadata.name, state: .status.state, health: .status.health}'
 ```
 
 ```bash
