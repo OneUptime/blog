@@ -10,7 +10,7 @@ Description: Learn how to force-remove running containers in Podman when gracefu
 
 > Force removal stops and removes a container in a single command, useful when you need to clean up quickly without waiting for graceful shutdown.
 
-Sometimes you need to remove a container immediately without going through the graceful stop process. The `podman rm --force` command sends SIGKILL to the container's processes and removes it in one step. This guide explains when and how to use force removal.
+Sometimes you need to remove a container immediately without running a separate stop command first. The `podman rm --force` command removes running and paused containers in one step. To skip the stop timeout and remove instantly, combine it with `--time 0`. This guide explains when and how to use force removal.
 
 ---
 
@@ -21,7 +21,7 @@ Sometimes you need to remove a container immediately without going through the g
 
 podman run -d --name stubborn-app docker.io/library/alpine:latest sleep 3600
 
-# Force remove it (kills and removes in one step)
+# Force remove it (stops and removes in one step)
 podman rm --force stubborn-app
 
 # Verify it is gone
@@ -44,11 +44,11 @@ podman rm -f my-app
 podman stop my-container
 podman rm my-container
 
-# Method 2: Force remove (sends SIGKILL immediately, then removes)
+# Method 2: Force remove (stops and removes in one command)
 podman rm -f my-container
 ```
 
-The key difference is that `--force` does not give the application time to clean up. It sends SIGKILL directly, which cannot be caught or ignored.
+The key difference is that `--force` does not require a separate `podman stop` step. If you also set `--time 0`, Podman does not wait before forcibly stopping the container.
 
 ## Force Removing Multiple Containers
 
@@ -85,6 +85,12 @@ podman rm -f --all
 
 # Alternative: pipe all container IDs to force remove
 podman ps -a -q | xargs -r podman rm -f
+```
+
+To remove a running container instantly without waiting, add `--time 0`:
+
+```bash
+podman rm --time 0 --force my-container
 ```
 
 ## Force Removing by Pattern
@@ -135,12 +141,15 @@ podman rm my-database
 ## Handling Force Removal Errors
 
 ```bash
-# Force remove ignores "not found" errors
+# Force remove does not ignore "not found" errors by default
 podman rm -f nonexistent-container 2>/dev/null
-echo "Exit code: $?" # Still returns 1 for missing containers
+echo "Exit code: $?" # Returns 1 for missing containers
+
+# Use --ignore when missing containers should not be treated as errors
+podman rm --ignore -f nonexistent-container
 
 # Safe force remove in scripts
-podman rm -f my-container 2>/dev/null || true
+podman rm --ignore -f my-container
 echo "Container removed or did not exist"
 ```
 
@@ -192,4 +201,4 @@ fi
 
 ## Summary
 
-The `podman rm -f` command is a powerful tool for immediately removing containers regardless of their state. It sends SIGKILL and removes the container in one step. Use it for quick cleanup in development and CI/CD, but prefer graceful `podman stop` followed by `podman rm` for production workloads, especially databases and stateful applications.
+The `podman rm -f` command is a powerful tool for removing containers regardless of their state. Use `--time 0 --force` when you need removal without waiting. Use force removal for quick cleanup in development and CI/CD, but prefer graceful `podman stop` followed by `podman rm` for production workloads, especially databases and stateful applications.
