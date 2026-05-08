@@ -44,10 +44,10 @@ podman secret ls
 
 ## Migrating Docker Compose Secrets
 
-Docker Compose secrets syntax works with Podman Compose:
+Docker Compose secrets syntax can work with `podman compose`, depending on the configured Compose provider:
 
 ```yaml
-# This docker-compose.yml works with both Docker and Podman Compose
+# This docker-compose.yml uses standard Compose secrets syntax
 version: "3.8"
 
 services:
@@ -72,7 +72,7 @@ secrets:
 ```
 
 ```bash
-# Works with both Docker Compose and Podman Compose
+# podman compose delegates to an external Compose provider
 podman compose up -d
 ```
 
@@ -80,7 +80,7 @@ podman compose up -d
 
 ```bash
 # 1. Podman secrets work without Swarm mode
-# Docker secrets originally required Swarm for standalone containers
+# Docker Engine secrets are only available to Swarm services, not standalone containers
 # Podman secrets work natively without any orchestrator
 
 # 2. Podman supports secrets as environment variables
@@ -96,8 +96,9 @@ podman run -d \
 # Docker Swarm has similar options but they differ in syntax
 
 # 4. Storage location differs
-# Docker: stored in Swarm raft logs or local daemon
-# Podman: stored in user-local file storage
+# Docker Engine secrets: stored in encrypted Swarm raft logs
+# Docker Compose secrets: read from the Compose-defined source and mounted into containers
+# Podman: stored by the configured secret driver; the default file driver uses read-protected files
 ```
 
 ## Migration Script
@@ -117,6 +118,8 @@ fi
 
 # Create each secret in Podman
 for secret_file in "$SECRETS_DIR"/*; do
+  [ -f "$secret_file" ] || continue
+
   secret_name=$(basename "$secret_file" | sed 's/\.[^.]*$//')
 
   # Remove existing secret if present
@@ -134,10 +137,10 @@ podman secret ls
 ## Updating Container Run Commands
 
 ```bash
-# Docker command with secrets
+# Docker Engine secrets are used with Swarm services, not standalone docker run containers
 # docker run -d --name app --secret db_password my-app:latest
 
-# Podman equivalent (identical syntax)
+# Podman standalone container with a secret
 podman run -d --name app --secret db_password my-app:latest
 
 # Docker Swarm service with secrets (not applicable to Podman)
@@ -149,4 +152,4 @@ podman run -d --secret db_password my-app:latest
 
 ## Summary
 
-Migrating Docker secrets to Podman is largely a one-to-one command mapping, as Podman uses the same CLI syntax. The main differences are that Podman secrets work without Swarm mode, support environment variable exposure natively, and offer more granular file permission controls. Use the same secret files and compose definitions, recreate the secrets with `podman secret create`, and your containers will work as before.
+Migrating Docker secrets to Podman is largely a one-to-one command mapping for secret creation and management, as Podman uses similar CLI syntax. The main differences are that Podman secrets work without Swarm mode, support environment variable exposure natively, and offer granular file permission controls. Use the same source secret files and Compose definitions where your Compose provider supports them, recreate the secrets with `podman secret create`, and update standalone container commands to use Podman's `--secret` support.
