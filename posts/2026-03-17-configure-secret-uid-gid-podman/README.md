@@ -56,7 +56,7 @@ podman run -d \
   --name node-app \
   --user node \
   --secret api_key,uid=1000,gid=1000,mode=0440 \
-  node:18-alpine
+  node:lts-alpine
 
 # Nginx running as user 'nginx' (UID 101, GID 101)
 podman secret create nginx_cert ./certs/server.crt
