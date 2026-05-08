@@ -61,9 +61,9 @@ const http = require('http');
 http.createServer((req, res) => { res.end('OK'); }).listen(3000);
 "
 
-# Run npm commands from the app directory
+# Run commands from specific application directories
 podman exec -w /usr/local/lib node-app ls
-podman exec -w /usr/local/bin node-app ls node*
+podman exec -w /usr/local/bin node-app /bin/sh -c 'ls node*'
 ```
 
 ### Navigating Log Directories
@@ -76,36 +76,36 @@ podman exec -w /var/log/nginx my-app ls -la
 podman exec -w /var/log/nginx my-app tail -20 access.log
 
 # Count lines in all log files
-podman exec -w /var/log/nginx my-app wc -l *.log
+podman exec -w /var/log/nginx my-app /bin/sh -c 'wc -l *.log'
 ```
 
 ### Creating Files in Specific Directories
 
 ```bash
 # Create a file in a specific directory
-podman exec -w /tmp my-app /bin/bash -c "echo 'test content' > testfile.txt && ls -la testfile.txt"
+podman exec -w /tmp my-app /bin/sh -c "echo 'test content' > testfile.txt && ls -la testfile.txt"
 
 # Create a directory structure
-podman exec -w /tmp my-app /bin/bash -c "mkdir -p project/src && touch project/src/main.py && find project -type f"
+podman exec -w /tmp my-app /bin/sh -c "mkdir -p project/src && touch project/src/main.py && find project -type f"
 ```
 
 ## Combining -w with Other Flags
 
-The `-w` flag works alongside all other exec options:
+The `-w` flag works alongside common exec options:
 
 ```bash
 # Working directory + specific user
 podman exec -w /var/log/nginx --user root my-app ls -la
 
 # Working directory + environment variables
-podman exec -w /tmp -e OUTPUT_FILE=results.txt my-app /bin/bash -c 'echo "output" > $OUTPUT_FILE && cat $OUTPUT_FILE'
+podman exec -w /tmp -e OUTPUT_FILE=results.txt my-app /bin/sh -c 'echo "output" > $OUTPUT_FILE && cat $OUTPUT_FILE'
 
 # Working directory + interactive shell
-podman exec -it -w /etc/nginx my-app /bin/bash
-# root@container:/etc/nginx#
+podman exec -it -w /etc/nginx my-app /bin/sh
+# Shell opens in /etc/nginx
 
 # Working directory + detached mode
-podman exec -d -w /var/log/nginx my-app /bin/bash -c "wc -l *.log > /tmp/log-counts.txt"
+podman exec -d -w /var/log/nginx my-app /bin/sh -c "wc -l *.log > /tmp/log-counts.txt"
 ```
 
 ## Non-Existent Working Directories
@@ -149,11 +149,11 @@ BACKUP_DIR="/tmp/backups"
 podman exec "$CONTAINER" mkdir -p "$BACKUP_DIR"
 
 # Backup nginx config from its own directory
-podman exec -w /etc/nginx "$CONTAINER" /bin/bash -c \
+podman exec -w /etc/nginx "$CONTAINER" /bin/sh -c \
     "tar czf ${BACKUP_DIR}/nginx-config.tar.gz ."
 
 # Backup logs from the log directory
-podman exec -w /var/log/nginx "$CONTAINER" /bin/bash -c \
+podman exec -w /var/log/nginx "$CONTAINER" /bin/sh -c \
     "tar czf ${BACKUP_DIR}/nginx-logs.tar.gz ."
 
 # List the backups
@@ -169,4 +169,4 @@ podman rm my-app node-app 2>/dev/null
 
 ## Summary
 
-The `-w` flag on `podman exec` sets the working directory for your command, making relative paths resolve correctly and keeping commands clean. It works with all other exec flags including `-it`, `--user`, `-e`, and `-d`. Always verify the directory exists inside the container before using it, or create it first.
+The `-w` flag on `podman exec` sets the working directory for your command, making relative paths resolve correctly and keeping commands clean. It works with common exec flags including `-it`, `--user`, `-e`, and `-d`. Always verify the directory exists inside the container before using it, or create it first.
