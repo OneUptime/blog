@@ -58,7 +58,7 @@ echo "=== Migration: ${NS}/${NAME} ==="
 
 # Stage 1: Backup original K8s policy
 echo "Stage 1: Backing up original..."
-kubectl get networkpolicy "$NAME" -n "$NS" -o yaml > "${BACKUP_DIR}/k8s-original.yaml"
+cp "$K8S_FILE" "${BACKUP_DIR}/k8s-original.yaml"
 
 # Stage 2: Convert (safe, no cluster changes)
 echo "Stage 2: Converting..."
@@ -75,17 +75,21 @@ fi
 echo "Stage 4: Applying Calico policy..."
 calicoctl apply -f "${BACKUP_DIR}/calico-converted.yaml"
 
+rollback_calico_policy() {
+  echo "Rolling back..."
+  calicoctl delete -f "${BACKUP_DIR}/calico-converted.yaml" --skip-not-exists 2>/dev/null || true
+  echo "Rollback complete. Original K8s policy still active."
+  exit 1
+}
+
 # Stage 5: Verify connectivity
 echo "Stage 5: Verifying connectivity (10 second window)..."
 sleep 10
 
+trap rollback_calico_policy INT TERM
 echo "Press Enter to confirm migration, or Ctrl+C to rollback"
-read -r -t 60 || {
-  echo "Timeout - rolling back..."
-  calicoctl delete networkpolicy "$NAME" -n "$NS" 2>/dev/null || true
-  echo "Rollback complete. Original K8s policy still active."
-  exit 1
-}
+read -r -t 60 || rollback_calico_policy
+trap - INT TERM
 
 # Stage 6: Remove original K8s policy (optional)
 echo "Stage 6: Removing original K8s NetworkPolicy..."
@@ -93,7 +97,7 @@ kubectl delete networkpolicy "$NAME" -n "$NS"
 
 echo "Migration complete."
 echo "Rollback files: $BACKUP_DIR"
-echo "To rollback: kubectl apply -f ${BACKUP_DIR}/k8s-original.yaml && calicoctl delete networkpolicy $NAME -n $NS"
+echo "To rollback: kubectl apply -f ${BACKUP_DIR}/k8s-original.yaml && calicoctl delete -f ${BACKUP_DIR}/calico-converted.yaml --skip-not-exists"
 ```
 
 ## Full Rollback Script
@@ -123,10 +127,8 @@ fi
 
 # Remove Calico NetworkPolicy
 if [ -f "${BACKUP_DIR}/calico-converted.yaml" ]; then
-  NS=$(python3 -c "import yaml; print(yaml.safe_load(open('${BACKUP_DIR}/calico-converted.yaml'))['metadata'].get('namespace','default'))")
-  NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('${BACKUP_DIR}/calico-converted.yaml'))['metadata']['name'])")
-  echo "Removing Calico NetworkPolicy: ${NS}/${NAME}"
-  calicoctl delete networkpolicy "$NAME" -n "$NS" 2>/dev/null || echo "  Already removed"
+  echo "Removing Calico NetworkPolicy..."
+  calicoctl delete -f "${BACKUP_DIR}/calico-converted.yaml" --skip-not-exists 2>/dev/null || echo "  Already removed"
 fi
 
 echo "Rollback complete. Original K8s NetworkPolicy restored."
@@ -155,9 +157,7 @@ find "$MIGRATION_DIR" -name "k8s-original.yaml" | while read backup; do
 
   # Remove Calico policy
   if [ -f "${dir}/calico-converted.yaml" ]; then
-    NS=$(python3 -c "import yaml; print(yaml.safe_load(open('${dir}/calico-converted.yaml'))['metadata'].get('namespace','default'))" 2>/dev/null)
-    NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('${dir}/calico-converted.yaml'))['metadata']['name'])" 2>/dev/null)
-    calicoctl delete networkpolicy "$NAME" -n "$NS" 2>/dev/null || true
+    calicoctl delete -f "${dir}/calico-converted.yaml" --skip-not-exists 2>/dev/null || true
   fi
 done
 
@@ -197,7 +197,7 @@ kubectl exec deploy/frontend -- curl -s --max-time 5 http://backend:8080/health
 ## Troubleshooting
 
 - **Both K8s and Calico policies exist after partial migration**: Having both active is safe -- they are additive. Remove the Calico version if rolling back.
-- **K8s backup file has extra metadata**: Kubernetes adds status fields and annotations. These are harmless and will be ignored on apply.
+- **K8s backup file has extra metadata**: Backups made from `kubectl get -o yaml` can include server-managed fields such as `uid`, `resourceVersion`, and `managedFields`. Remove those fields before using the file as a rollback manifest, or back up the original source YAML instead.
 - **Cannot find backup directory**: Check `/var/backups/calico-migration/` for timestamped directories. Use the most recent one.
 - **Rollback does not restore original behavior**: Check if other Calico GlobalNetworkPolicies are affecting the namespace. K8s NetworkPolicies are namespace-scoped but Calico global policies are not.
 
