@@ -95,17 +95,17 @@ Using named stages is strongly recommended for readability and maintainability.
 cat > Containerfile <<'EOF'
 FROM alpine:3.19
 
-# Copy the curl binary from the official curl image
-COPY --from=curlimages/curl:latest /usr/bin/curl /usr/local/bin/curl
+# Copy a self-contained tool from the BusyBox image
+COPY --from=busybox:1.36 /bin/busybox /usr/local/bin/busybox
 
-# Copy CA certificates from a Debian image
-COPY --from=debian:bookworm /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+# Copy a release metadata file from a Debian image
+COPY --from=debian:bookworm /etc/debian_version /tmp/debian_version
 
-CMD ["curl", "--version"]
+CMD ["busybox", "cat", "/tmp/debian_version"]
 EOF
 
-podman build -t with-curl:latest .
-podman run --rm with-curl:latest
+podman build -t from-external:latest .
+podman run --rm from-external:latest
 ```
 
 This is useful for pulling specific tools or files without installing them through a package manager.
@@ -125,9 +125,10 @@ RUN curl -LO https://github.com/stedolan/jq/releases/download/jq-1.7.1/jq-linux-
 
 # Stage 2: Build application config
 FROM alpine:3.19 AS config-builder
-RUN apk add --no-cache envsubst
-COPY config.template.json /tmp/
-RUN echo '{"app": "demo", "version": "1.0"}' > /etc/app/config.json
+RUN apk add --no-cache gettext-envsubst
+RUN printf '{"app": "${APP_NAME}", "version": "${APP_VERSION}"}\n' > /tmp/config.template.json && \
+    mkdir -p /etc/app && \
+    APP_NAME=demo APP_VERSION=1.0 envsubst < /tmp/config.template.json > /etc/app/config.json
 
 # Stage 3: Final image pulls from both stages
 FROM alpine:3.19
