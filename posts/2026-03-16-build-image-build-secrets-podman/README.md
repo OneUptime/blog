@@ -89,6 +89,7 @@ cat > Containerfile << 'EOF'
 FROM docker.io/library/node:20-alpine
 
 WORKDIR /app
+COPY package*.json ./
 
 # Use GitHub token for private packages
 RUN --mount=type=secret,id=github_token \
@@ -120,6 +121,8 @@ By default, secrets mount at `/run/secrets/<id>`. You can specify a custom path.
 cat > Containerfile << 'EOF'
 FROM docker.io/library/alpine:latest
 
+RUN mkdir -p /etc/myapp
+
 # Mount at a custom path
 RUN --mount=type=secret,id=config,target=/etc/myapp/config.json \
     cat /etc/myapp/config.json && \
@@ -141,10 +144,8 @@ You can pass environment variables as secrets.
 # Set the secret in an environment variable
 export MY_SECRET="super-secret-value"
 
-# Create a temp file from the env var
-echo "$MY_SECRET" > /tmp/env-secret.txt
-podman build --secret id=my_secret,src=/tmp/env-secret.txt -t myapp:latest .
-rm /tmp/env-secret.txt
+# Read the secret directly from the environment variable
+podman build --secret id=my_secret,env=MY_SECRET -t myapp:latest .
 ```
 
 ## Private Git Repository Access
@@ -180,15 +181,18 @@ cat > Containerfile << 'EOF'
 FROM docker.io/library/golang:1.22
 
 WORKDIR /src
+COPY go.mod go.sum ./
 
-# Configure Go private modules with a token
+# Configure Go private modules with a token and download dependencies
 RUN --mount=type=secret,id=goprivate_token \
     GOTOKEN=$(cat /run/secrets/goprivate_token) && \
+    export GOPRIVATE=github.com/myorg/* && \
     git config --global url."https://token:${GOTOKEN}@github.com/".insteadOf "https://github.com/" && \
-    echo "machine github.com login token password ${GOTOKEN}" > ~/.netrc
+    echo "machine github.com login token password ${GOTOKEN}" > ~/.netrc && \
+    go mod download && \
+    rm -f ~/.netrc && \
+    git config --global --unset-all url."https://token:${GOTOKEN}@github.com/".insteadOf
 
-COPY go.mod go.sum ./
-RUN go mod download
 COPY . .
 RUN go build -o /app .
 
