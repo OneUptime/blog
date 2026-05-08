@@ -24,7 +24,13 @@ The basic syntax follows the pattern `podman cp <source> <container>:<destinatio
 podman run -d --name my-app nginx:latest
 
 # Copy a single file into the container
-echo "server_name example.com;" > /tmp/server.conf
+cat > /tmp/server.conf << 'EOF'
+server {
+    listen 80;
+    server_name example.com;
+    root /usr/share/nginx/html;
+}
+EOF
 podman cp /tmp/server.conf my-app:/etc/nginx/conf.d/server.conf
 
 # Verify the file was copied
@@ -127,12 +133,11 @@ podman exec my-app nginx -s reload
 ### Extracting Logs
 
 ```bash
-# Copy log files from the container
-podman cp my-app:/var/log/nginx/access.log /tmp/access.log
-podman cp my-app:/var/log/nginx/error.log /tmp/error.log
+# For the official nginx image, logs are linked to stdout and stderr
+podman logs my-app > /tmp/nginx.log 2>&1
 
-# Or copy the entire log directory
-podman cp my-app:/var/log/nginx /tmp/nginx-logs/
+# For containers that write regular log files, copy the log directory
+# podman cp my-app:/var/log/nginx /tmp/nginx-logs/
 ```
 
 ### Injecting Test Data
@@ -157,10 +162,10 @@ podman exec my-app cat /tmp/test-data.json
 podman run -d --name my-db -e POSTGRES_PASSWORD=secret postgres:latest
 sleep 5
 
-# Create a backup inside the container
+# Create a backup on the host from a command running inside the container
 podman exec my-db pg_dumpall -U postgres > /tmp/db-backup.sql 2>/dev/null
 
-# Copy the backup to the host (alternative approach)
+# Alternative approach using tee
 podman exec my-db pg_dumpall -U postgres 2>/dev/null | tee /tmp/db-backup.sql > /dev/null
 
 # Copy a backup file into the container for restore
@@ -206,7 +211,7 @@ fi
 ```bash
 podman stop my-app my-db 2>/dev/null
 podman rm my-app my-db 2>/dev/null
-rm -rf /tmp/server.conf /tmp/html-content /tmp/nginx-*.conf /tmp/nginx-config-backup /tmp/nginx-logs /tmp/test-data.json /tmp/db-backup.sql /tmp/my-script.sh
+rm -rf /tmp/server.conf /tmp/html-content /tmp/custom-nginx.conf /tmp/nginx-*.conf /tmp/nginx.log /tmp/nginx-config-backup /tmp/nginx-logs /tmp/test-data.json /tmp/db-backup.sql /tmp/my-script.sh
 ```
 
 ## Summary
