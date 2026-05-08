@@ -12,15 +12,15 @@ Description: A rigorous framework for validating multi-stream TCP throughput in 
 
 Validating multi-stream performance goes beyond running a single iperf3 test with many parallel streams. A proper validation framework must confirm that throughput scales linearly with stream count, that all node pairs deliver consistent performance, and that results are statistically repeatable across multiple runs.
 
-Multi-stream validation is more complex than single-stream because the number of variables increases. Each additional stream adds another CPU core to the equation, another NIC queue, and another set of BPF program invocations. The validation must confirm that all these components work together efficiently.
+Multi-stream validation is more complex than single-stream because the number of variables increases. Each additional stream adds another TCP flow and, with recent iperf3 versions, another client thread; depending on CPU affinity, RSS, and NIC queue steering, those flows may exercise additional CPU cores and NIC queues. The validation must confirm that all these components work together efficiently.
 
 This guide provides a comprehensive validation methodology that you can integrate into CI/CD pipelines and use for acceptance testing after any Cilium configuration change.
 
 ## Prerequisites
 
 - Kubernetes cluster with Cilium v1.14+
-- `iperf3` and `jq` available in container images
-- At least 3 worker nodes for cross-node testing
+- `iperf3` available in test containers and `jq` available wherever JSON output is parsed
+- At least 3 schedulable worker nodes for cross-node testing, labeled with `node-role.kubernetes.io/worker` or with the selector adjusted in the script
 - Prometheus for metrics storage
 - CI/CD system for automated validation
 
@@ -97,20 +97,20 @@ for src in $NODES; do
 
     # Deploy server on dst
     kubectl run matrix-server --image=networkstatic/iperf3 \
-      --overrides="{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$dst\"}}}" \
+      --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$dst\"}}}" \
       -- -s 2>/dev/null
     kubectl wait --for=condition=ready pod/matrix-server --timeout=30s
     DST_IP=$(kubectl get pod matrix-server -o jsonpath='{.status.podIP}')
 
     # Run test from src
     BPS=$(kubectl run matrix-client --image=networkstatic/iperf3 \
-      --rm -it --restart=Never \
-      --overrides="{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$src\"}}}" \
+      --rm -i --restart=Never \
+      --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$src\"}}}" \
       -- -c $DST_IP -t 15 -P $STREAMS -J 2>/dev/null | \
       jq '.end.sum_sent.bits_per_second / 1000000000')
 
     echo "$src -> $dst | $BPS"
-    kubectl delete pod matrix-server --force 2>/dev/null
+    kubectl delete pod matrix-server --force --wait=true 2>/dev/null
   done
 done
 ```
@@ -135,6 +135,9 @@ spec:
         - /bin/sh
         - -c
         - |
+          apt-get update >/dev/null
+          apt-get install -y jq >/dev/null
+
           SERVER="iperf-server.monitoring"
           echo '[]' > /tmp/results.json
 
@@ -222,8 +225,8 @@ kubectl get pods -n monitoring -l app=iperf-server
 # Verify validation Job completed
 kubectl get jobs -n monitoring -l app=statistical-validation
 
-# Check metric collection
-curl -s http://prometheus:9090/api/v1/query?query=cilium_multi_stream_throughput_bps
+# Check a validation metric if your CI pipeline exports one
+curl -s 'http://prometheus:9090/api/v1/query?query=multi_stream_throughput_bps'
 ```
 
 ## Troubleshooting
