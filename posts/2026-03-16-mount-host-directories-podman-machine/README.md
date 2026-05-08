@@ -23,11 +23,8 @@ Podman machines come with certain host directories mounted by default. The exact
 
 podman machine inspect my-machine
 
-# On macOS, the default volume mount is $HOME:$HOME
-# Common default mounts include:
-# /Users - your home directory tree
-# /private - macOS private directories
-# /var/folders - temporary files
+# Default volume mounts are defined in containers.conf
+# Unless changed, the default volume mount is $HOME:$HOME
 ```
 
 ## Creating a Machine with Custom Mounts
@@ -74,7 +71,7 @@ Check that the mount is accessible inside the VM:
 podman machine ssh my-machine -- ls -la /projects
 
 # Check mounted filesystems
-podman machine ssh my-machine -- mount | grep virtiofs
+podman machine ssh my-machine -- mount | grep -E 'virtiofs|9p'
 ```
 
 ## Using Mounted Directories in Containers
@@ -84,7 +81,7 @@ Once a directory is mounted into the machine, you can bind-mount it into contain
 ```bash
 # Mount a project directory into a container
 podman run -it --rm \
-    -v /Users/dev/projects/myapp:/app \
+    -v /projects/myapp:/app \
     -w /app \
     node:20 bash
 
@@ -94,7 +91,7 @@ podman run -it --rm \
 
 # Mount with read-only access in the container
 podman run -it --rm \
-    -v /Users/dev/configs:/etc/myapp:ro \
+    -v /configs:/etc/myapp:ro \
     myapp:latest
 ```
 
@@ -105,7 +102,7 @@ A common pattern is mounting source code for live development:
 ```bash
 # Run a development server with live code reloading
 podman run -d --name dev-server \
-    -v /Users/dev/projects/webapp:/app \
+    -v /projects/webapp:/app \
     -w /app \
     -p 3000:3000 \
     node:20 npm run dev
@@ -126,7 +123,7 @@ Directory mounts through a VM have performance implications:
 # provides the best performance
 
 # Check which VM type is used
-podman machine inspect my-machine --format '{{.VMType}}'
+podman machine ls --format 'table {{.Name}}\t{{.VMType}}'
 
 # For best performance on macOS, ensure you are using applehv
 # which uses VirtioFS for file sharing
@@ -137,7 +134,7 @@ For projects with many small files (like `node_modules`), consider keeping those
 ```bash
 # Use a named volume for node_modules to avoid slow host mounts
 podman run -d --name dev \
-    -v /Users/dev/projects/myapp:/app \
+    -v /projects/myapp:/app \
     -v node_modules:/app/node_modules \
     -w /app \
     -p 3000:3000 \
@@ -150,14 +147,14 @@ Control how mounted directories behave with permission options:
 
 ```bash
 # Read-write mount (default)
-podman run -v /Users/dev/data:/data:rw myimage
+podman run -v /data:/data:rw myimage
 
 # Read-only mount
-podman run -v /Users/dev/configs:/configs:ro myimage
+podman run -v /configs:/configs:ro myimage
 
 # Mount with SELinux labels (on Linux systems)
-podman run -v /Users/dev/data:/data:Z myimage    # Private label
-podman run -v /Users/dev/data:/data:z myimage    # Shared label
+podman run -v /data:/data:Z myimage    # Private label
+podman run -v /data:/data:z myimage    # Shared label
 ```
 
 ## Removing Mounts
@@ -181,7 +178,7 @@ podman machine start my-machine
 ```bash
 # Issue: Files not visible inside the container
 # Check if the path is mounted in the machine first
-podman machine ssh my-machine -- ls -la /Users/dev/projects
+podman machine ssh my-machine -- ls -la /projects
 
 # Issue: Permission denied when writing
 # Check mount options
@@ -194,7 +191,7 @@ podman run -v deps:/app/node_modules myimage
 
 # Issue: File changes not detected by watchers
 # Some file watchers need polling mode for mounted volumes
-podman run -e CHOKIDAR_USEPOLLING=true -v /Users/dev/app:/app node:20 npm run dev
+podman run -e CHOKIDAR_USEPOLLING=true -v /projects/app:/app node:20 npm run dev
 ```
 
 ## Quick Reference
@@ -203,7 +200,7 @@ podman run -e CHOKIDAR_USEPOLLING=true -v /Users/dev/app:/app node:20 npm run de
 |---|---|
 | `podman machine init --volume /host:/guest <name>` | Create machine with mount |
 | `podman machine rm <name> && podman machine init --volume ... <name>` | Change mounts on existing machine |
-| `podman run -v /host:/container ...` | Mount into a container |
+| `podman run -v /machine-path:/container ...` | Mount into a container |
 
 ## Summary
 
