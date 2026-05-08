@@ -65,12 +65,13 @@ graph TD
 When endpoints are stuck in a non-ready state, policies cannot be enforced correctly.
 
 ```bash
-# Check endpoint status for failures
-cilium endpoint list -o json | jq '.[] | select(.status.state != "ready")'
+# Check endpoint status for failures across namespaces
+kubectl get ciliumendpoints -A -o json | \
+  jq '.items[] | select(.status.state != "ready")'
 
 # Get detailed status for a problematic endpoint
-cilium endpoint get <ENDPOINT_ID> -o json | \
-  jq '{state: .status.state, health: .status.health, policy: .status.policy}'
+kubectl get ciliumendpoint -n production <POD_NAME> -o json | \
+  jq '{state: .status.state, identity: .status.identity, policy: .status.policy}'
 
 # Check if the endpoint is being regenerated
 kubectl -n kube-system logs ds/cilium -c cilium-agent | \
@@ -86,12 +87,12 @@ Verify that your policy selectors correctly match the target endpoints:
 kubectl get pods -n production --show-labels
 
 # View the realized policy on a specific endpoint
-cilium endpoint list -o json | \
-  jq '.[] | select(.status.labels.id | any(contains("app="))) | {
-    id: .id,
-    labels: .status.labels.id,
-    ingress_enforcing: .status.policy.realized."l4-ingress",
-    egress_enforcing: .status.policy.realized."l4-egress"
+kubectl get ciliumendpoints -n production -o json | \
+  jq '.items[] | select((.status.identity.labels // []) | any(contains("app="))) | {
+    name: .metadata.name,
+    labels: .status.identity.labels,
+    ingress_policy: .status.policy.realized.l4.ingress,
+    egress_policy: .status.policy.realized.l4.egress
   }'
 ```
 
@@ -131,8 +132,8 @@ When Hubble reports drops that should be allowed, investigate the flow details:
 
 ```bash
 # Get detailed drop information
-hubble observe --verdict DROPPED --namespace production --output json | \
-  jq '.flow | {
+hubble observe --verdict DROPPED --namespace production --output jsonpb | \
+  jq '(.flow // .) | {
     src: .source.labels,
     dst: .destination.labels,
     port: (.l4.TCP.destination_port // .l4.UDP.destination_port),
@@ -141,7 +142,7 @@ hubble observe --verdict DROPPED --namespace production --output json | \
   }' | head -30
 
 # Check if the source identity is recognized
-cilium identity list | grep <IDENTITY_ID>
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | grep <IDENTITY_ID>
 ```
 
 ## Analyzing Agent Logs
@@ -168,7 +169,7 @@ After applying fixes, confirm the issue is resolved:
 
 ```bash
 # Verify the fix resolved the issue
-cilium endpoint health
+kubectl get ciliumendpoints -A
 ```
 
 ```bash
@@ -184,8 +185,8 @@ cilium connectivity test
 ## Troubleshooting
 
 - **Cilium agent CrashLoopBackOff**: Check resource limits and node capacity. Review crash logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent --previous`.
-- **Policy changes not propagating**: Force endpoint regeneration with `cilium endpoint regenerate all` (use with caution).
-- **Hubble relay unavailable**: Check Hubble relay pod status with `kubectl -n kube-system get pods -l app.kubernetes.io/name=hubble-relay`.
+- **Policy changes not propagating**: Check endpoint state with `kubectl get ciliumendpoints -A` and review Cilium agent logs for regeneration errors before restarting the affected workload or Cilium agent.
+- **Hubble relay unavailable**: Check Hubble relay pod status with `kubectl -n kube-system get pods -l k8s-app=hubble-relay`.
 - **Stale endpoint data**: Delete and recreate the affected pod to force a new endpoint allocation.
 
 ## Conclusion
