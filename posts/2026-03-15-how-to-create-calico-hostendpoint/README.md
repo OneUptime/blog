@@ -100,7 +100,7 @@ calicoctl apply -f all-node-heps.yaml
 
 ## Applying a Policy to HostEndpoints
 
-Once HostEndpoints exist, create a GlobalNetworkPolicy that targets them. This policy allows SSH only from a management subnet:
+Once HostEndpoints exist, create a GlobalNetworkPolicy that targets them. This policy allows SSH from a management subnet:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -129,6 +129,8 @@ spec:
 calicoctl apply -f allow-ssh-management.yaml
 ```
 
+Calico's default inbound failsafe ports include TCP port 22 for SSH, so this policy will not block SSH from other sources until you replace or narrow the `failsafeInboundHostPorts` Felix configuration after confirming you have another safe access path.
+
 ## Enabling Auto HostEndpoints
 
 Calico can automatically create HostEndpoints for every node. Enable this in the KubeControllersConfiguration:
@@ -142,7 +144,7 @@ spec:
   controllers:
     node:
       hostEndpoint:
-        autoCreate: true
+        autoCreate: Enabled
 ```
 
 ```bash
@@ -169,7 +171,7 @@ Confirm the HostEndpoint is associated with the correct node:
 calicoctl get hostendpoint -o yaml | grep -A5 "spec:"
 ```
 
-Test that the SSH policy works by attempting to connect from the management subnet and from an unauthorized network.
+Test that the SSH policy works by attempting to connect from the management subnet and, after replacing the default SSH failsafe rule, from an unauthorized network.
 
 ## Troubleshooting
 
@@ -193,4 +195,4 @@ calicoctl get hostendpoint worker-1-eth0 -o yaml | grep interfaceName
 
 ## Conclusion
 
-Calico HostEndpoint resources extend policy enforcement to node interfaces, closing a significant security gap in Kubernetes clusters. Start with auto-created HostEndpoints for broad coverage, then add custom labels for targeted policies. Always ensure failsafe ports are configured before applying restrictive policies to avoid locking yourself out of nodes.
+Calico HostEndpoint resources extend policy enforcement to node interfaces, closing a significant security gap in Kubernetes clusters. Start with auto-created HostEndpoints for broad coverage, then label Kubernetes nodes for targeted policies. Always ensure failsafe ports are configured before applying restrictive policies to avoid locking yourself out of nodes.
