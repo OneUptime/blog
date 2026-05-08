@@ -37,15 +37,17 @@ Determine whether the bottleneck is Cilium-specific or infrastructure-related:
 
 # Test 2: Pod-to-pod same-node throughput
 kubectl run iperf-server --image=networkstatic/iperf3 --port=5201 -- -s
+kubectl wait --for=condition=Ready pod/iperf-server --timeout=60s
 kubectl expose pod iperf-server --port=5201
 NODE=$(kubectl get pod iperf-server -o jsonpath='{.spec.nodeName}')
+SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
 
 kubectl run iperf-same --image=networkstatic/iperf3 --rm -it --restart=Never \
   --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"'$NODE'"}}}' -- \
   -c iperf-server.default -t 30 -P 4
 
 # Test 3: Pod-to-pod cross-node throughput
-OTHER_NODE=$(kubectl get nodes -o jsonpath='{.items[1].metadata.name}')
+OTHER_NODE=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | grep -vx "$NODE" | head -n1)
 kubectl run iperf-cross --image=networkstatic/iperf3 --rm -it --restart=Never \
   --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"'$OTHER_NODE'"}}}' -- \
   -c iperf-server.default -t 30 -P 4
@@ -73,15 +75,16 @@ MTU mismatches are a common cause of throughput degradation:
 kubectl -n kube-system exec ds/cilium -- ip link show | grep mtu
 
 # Check the configured MTU in Cilium
-kubectl -n kube-system exec ds/cilium -- cilium config | grep MTU
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config get mtu
 
 # Test with specific packet sizes to detect MTU issues
 kubectl run mtu-test --image=busybox --rm -it --restart=Never -- \
-  ping -c 5 -s 1472 -M do iperf-server.default
+  ping -c 5 -s 1472 -M do "$SERVER_IP"
 # If this fails but ping -s 1400 works, there is an MTU issue
 
-# For VXLAN tunnels, effective MTU = NIC MTU - 50 (VXLAN header)
-# For WireGuard, effective MTU = NIC MTU - 80 (WireGuard header)
+# For VXLAN over IPv4, effective MTU is typically NIC MTU - 50 bytes.
+# For WireGuard, account for about 60 bytes on IPv4 and 80 bytes on IPv6.
+# If WireGuard is combined with overlay tunneling, account for both overheads.
 ```
 
 Fix MTU:
@@ -97,17 +100,17 @@ helm upgrade cilium cilium/cilium -n kube-system \
 Check for BPF-level bottlenecks:
 
 ```bash
-# Check BPF program complexity
-kubectl -n kube-system exec ds/cilium -- cilium bpf prog list
+# Check BPF datapath counters
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf metrics list
 
 # Check for conntrack table pressure
-kubectl -n kube-system exec ds/cilium -- cilium bpf ct list global | wc -l
-CT_MAX=$(kubectl -n kube-system exec ds/cilium -- cilium config | grep CTMapEntriesGlobalTCP | awk '{print $2}')
-CT_CURRENT=$(kubectl -n kube-system exec ds/cilium -- cilium bpf ct list global | wc -l)
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list | wc -l
+CT_MAX=$(kubectl -n kube-system exec ds/cilium -- cilium-dbg config get bpf-ct-global-tcp-max | awk 'NF{print $NF}')
+CT_CURRENT=$(kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list | wc -l)
 echo "CT usage: $CT_CURRENT / $CT_MAX"
 
 # Check for drops during the throughput test
-kubectl -n kube-system exec ds/cilium -- cilium monitor --type drop &
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop &
 MONITOR_PID=$!
 # Run your iperf3 test
 # Then stop the monitor
@@ -125,19 +128,19 @@ Encryption significantly impacts throughput:
 
 ```bash
 # Check if encryption is enabled
-cilium status | grep "Encryption"
-kubectl -n kube-system exec ds/cilium -- cilium config | grep -i encrypt
+cilium encryption status
+kubectl -n kube-system exec ds/cilium -- cilium-dbg encrypt status
 
-# If IPSec is enabled, check the algorithm
-kubectl -n kube-system exec ds/cilium -- cilium config | grep "EncryptionType"
+# Check encryption-related configuration
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config | grep -i encrypt
 
 # Benchmark comparison:
-# No encryption: ~line rate
-# WireGuard: ~70-90% of line rate
-# IPSec: ~40-70% of line rate (depends on algorithm and hardware offload)
+# No encryption usually has the lowest datapath overhead.
+# WireGuard and IPsec overhead depends on CPU, kernel, NIC offload, routing mode,
+# packet size, and whether overlay tunneling is also enabled.
 
 # If encryption is the bottleneck, consider:
-# 1. Switch from IPSec to WireGuard (better performance)
+# 1. Benchmark WireGuard and IPsec in your environment
 # 2. Use hardware crypto offload if available
 # 3. Accept the overhead as a security trade-off
 ```
@@ -163,7 +166,11 @@ kubectl debug node/$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') 
 kubectl debug node/$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') \
   -it --image=ubuntu -- bash -c '
   echo "Socket buffer overflows:"
-  cat /proc/net/softnet_stat | awk "{print \"CPU\" NR-1 \": dropped=\" strtonum(\"0x\"\$2) \" squeezed=\" strtonum(\"0x\"\$3)}"
+  cpu=0
+  while read -r processed dropped squeezed rest; do
+    printf "CPU%d: dropped=%d squeezed=%d\n" "$cpu" "$((16#$dropped))" "$((16#$squeezed))"
+    cpu=$((cpu + 1))
+  done < /proc/net/softnet_stat
 '
 
 # Check current TCP buffer sizes
@@ -194,7 +201,7 @@ kubectl -n kube-system exec ds/cilium -- \
 
 # 3. Check retransmission rate
 kubectl debug node/$NODE -it --image=busybox -- sh -c '
-  cat /proc/net/snmp | grep Tcp | tail -1 | awk "{print \"RetransSegs: \" \$13}"
+  awk "/^Tcp:/ { if (!header) { for (i=1; i<=NF; i++) idx[\$i]=i; header=1 } else { print \"RetransSegs: \" \$idx[\"RetransSegs\"] } }" /proc/net/snmp
 '
 
 # 4. Compare with baseline
@@ -207,7 +214,7 @@ kubectl delete svc iperf-server 2>/dev/null
 
 ## Troubleshooting
 
-- **Same-node throughput is low**: Check if Hubble is running with `monitorAggregation=none`. This is the most common cause of same-node throughput reduction.
+- **Same-node throughput is low**: Check if Hubble is running with `bpf.monitorAggregation=none`. This can increase per-flow event overhead and reduce same-node throughput.
 
 - **Cross-node throughput is much lower than same-node**: This is expected with VXLAN tunneling (adds overhead). Consider switching to native routing.
 
