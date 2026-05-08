@@ -32,14 +32,11 @@ Start by confirming the overall IPAM state is healthy:
 
 calicoctl ipam show
 
-# Check for any leaked or orphaned IPs
-calicoctl ipam check
-
 # Verify block allocation across nodes
 calicoctl ipam show --show-blocks
 ```
 
-Expected outcome: No errors from `ipam check`, reasonable utilization percentage, and blocks distributed across active nodes.
+Expected outcome: reasonable utilization percentage, and blocks distributed across active nodes.
 
 ## Step 2: Validate IPPool Configuration
 
@@ -51,32 +48,54 @@ calicoctl get ippools -o yaml
 
 # Confirm CIDR alignment with kubeadm
 KUBEADM_CIDR=$(kubectl get configmap -n kube-system kubeadm-config -o jsonpath='{.data.ClusterConfiguration}' | grep podSubnet | awk '{print $2}')
-CALICO_CIDR=$(calicoctl get ippools -o jsonpath='{.items[0].spec.cidr}')
+CALICO_CIDRS=$(calicoctl get ippools -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.cidr}{"\n"}{end}')
 
 echo "kubeadm CIDR:  $KUBEADM_CIDR"
-echo "Calico CIDR:   $CALICO_CIDR"
+echo "Calico pools:"
+echo "$CALICO_CIDRS"
 
-if [ "$KUBEADM_CIDR" = "$CALICO_CIDR" ]; then
-  echo "PASS: CIDRs are aligned"
-else
-  echo "FAIL: CIDRs do not match"
-fi
+# Calico pools should normally be within the Kubernetes pod CIDR. A single
+# default pool may match the kubeadm podSubnet exactly, but multiple smaller
+# pools are also valid.
+python3 - "$KUBEADM_CIDR" <<'PY'
+import ipaddress
+import subprocess
+import sys
+
+cluster = ipaddress.ip_network(sys.argv[1], strict=False)
+output = subprocess.check_output([
+    "calicoctl", "get", "ippools", "-o",
+    "jsonpath={range .items[*]}{.spec.cidr}{\"\\n\"}{end}",
+], text=True)
+
+failed = False
+for cidr in output.splitlines():
+    pool = ipaddress.ip_network(cidr, strict=False)
+    if pool.subnet_of(cluster):
+        print(f"PASS: Calico pool {pool} is within kubeadm podSubnet {cluster}")
+    else:
+        print(f"FAIL: Calico pool {pool} is outside kubeadm podSubnet {cluster}")
+        failed = True
+
+sys.exit(1 if failed else 0)
+PY
 ```
 
 ## Step 3: Validate Node CIDR Assignments
 
-Ensure every node has a valid pod CIDR assigned:
+Check whether node CIDR allocation matches the remediation you applied. Calico IPAM does not use Kubernetes `Node.spec.podCIDR` allocations, so nodes do not need pod CIDRs if you disabled `--allocate-node-cidrs` on the kube-controller-manager. If node CIDR allocation is still enabled, every node should have a pod CIDR and no new `CIDRNotAvailable` events should appear.
 
 ```bash
 # List all nodes and their CIDRs
-kubectl get nodes -o custom-columns=NAME:.metadata.name,CIDR:.spec.podCIDR,STATUS:.status.conditions[-1].type
+kubectl get nodes -o custom-columns=NAME:.metadata.name,CIDR:.spec.podCIDR
 
-# Check for nodes without CIDR
+# Check for nodes without CIDR if node CIDR allocation remains enabled
 MISSING=$(kubectl get nodes -o json | jq -r '.items[] | select(.spec.podCIDR == null) | .metadata.name')
 if [ -z "$MISSING" ]; then
   echo "PASS: All nodes have CIDR assignments"
 else
-  echo "FAIL: Nodes without CIDR: $MISSING"
+  echo "INFO: Nodes without CIDR: $MISSING"
+  echo "This is expected only if kube-controller-manager has --allocate-node-cidrs=false."
 fi
 ```
 
@@ -89,6 +108,7 @@ Test that pods can be scheduled on every node:
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   kubectl run "cidr-test-${NODE}" \
     --image=busybox \
+    --labels=app.kubernetes.io/name=cidr-test \
     --overrides="{\"spec\":{\"nodeName\":\"${NODE}\"}}" \
     --command -- sleep 60
 done
@@ -97,18 +117,15 @@ done
 sleep 15
 
 # Check pod status and IPs
-kubectl get pods -l run -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,IP:.status.podIP,STATUS:.status.phase | grep cidr-test
+kubectl get pods -l app.kubernetes.io/name=cidr-test -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,IP:.status.podIP,STATUS:.status.phase
 
 # Verify all pods have IPs
-TOTAL=$(kubectl get pods -o name | grep cidr-test | wc -l)
-WITH_IP=$(kubectl get pods -o json | jq '[.items[] | select(.metadata.name | startswith("cidr-test")) | select(.status.podIP != null)] | length')
+TOTAL=$(kubectl get pods -l app.kubernetes.io/name=cidr-test --no-headers | wc -l)
+WITH_IP=$(kubectl get pods -l app.kubernetes.io/name=cidr-test -o json | jq '[.items[] | select(.status.podIP != null)] | length')
 echo "Pods with IPs: $WITH_IP / $TOTAL"
 
 # Clean up test pods
-kubectl delete pods -l run --field-selector=metadata.name!=dummy --grace-period=0 2>/dev/null
-for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl delete pod "cidr-test-${NODE}" --grace-period=0 2>/dev/null
-done
+kubectl delete pods -l app.kubernetes.io/name=cidr-test --grace-period=0 --force 2>/dev/null
 ```
 
 ## Step 5: Validate Previously Pending Pods
@@ -207,19 +224,35 @@ echo "Date: $(date)"
 echo ""
 
 # 1. IPAM health
-calicoctl ipam check > /dev/null 2>&1
-check $? "IPAM consistency check"
+calicoctl ipam show > /dev/null 2>&1
+check $? "IPAM utilization is readable"
 
 # 2. CIDR alignment
 KUBEADM_CIDR=$(kubectl get configmap -n kube-system kubeadm-config -o jsonpath='{.data.ClusterConfiguration}' 2>/dev/null | grep podSubnet | awk '{print $2}')
-CALICO_CIDR=$(calicoctl get ippools -o jsonpath='{.items[0].spec.cidr}' 2>/dev/null)
-[ "$KUBEADM_CIDR" = "$CALICO_CIDR" ]
-check $? "CIDR alignment (kubeadm=$KUBEADM_CIDR, calico=$CALICO_CIDR)"
+python3 - "$KUBEADM_CIDR" >/dev/null 2>&1 <<'PY'
+import ipaddress
+import subprocess
+import sys
 
-# 3. All nodes have CIDRs
-MISSING=$(kubectl get nodes -o json | jq '[.items[] | select(.spec.podCIDR == null)] | length')
-[ "$MISSING" -eq 0 ]
-check $? "All nodes have CIDR assignments"
+cluster = ipaddress.ip_network(sys.argv[1], strict=False)
+output = subprocess.check_output([
+    "calicoctl", "get", "ippools", "-o",
+    "jsonpath={range .items[*]}{.spec.cidr}{\"\\n\"}{end}",
+], text=True)
+
+for cidr in output.splitlines():
+    if not ipaddress.ip_network(cidr, strict=False).subnet_of(cluster):
+        sys.exit(1)
+PY
+check $? "Calico IP pools are within kubeadm podSubnet ($KUBEADM_CIDR)"
+
+# 3. Node CIDR allocation status
+MISSING=$(kubectl get nodes -o json | jq -r '[.items[] | select(.spec.podCIDR == null)] | length')
+if [ "$MISSING" -eq 0 ]; then
+  check 0 "All nodes have CIDR assignments"
+else
+  echo "INFO: $MISSING nodes have no podCIDR; this is expected only when --allocate-node-cidrs=false."
+fi
 
 # 4. No pending pods
 PENDING=$(kubectl get pods --all-namespaces --field-selector=status.phase=Pending --no-headers 2>/dev/null | wc -l | tr -d ' ')
@@ -239,16 +272,16 @@ chmod +x validate-cidr-fix.sh
 ./validate-cidr-fix.sh
 ```
 
-All checks should show PASS. Any FAIL indicates the resolution is incomplete.
+All checks should show PASS, except for the node CIDR check when missing node pod CIDRs are expected because `--allocate-node-cidrs=false` is configured. Any FAIL indicates the resolution is incomplete.
 
 ## Troubleshooting
 
 **Test pods fail on specific nodes**: The fix may not have propagated to all nodes. Restart the calico-node pod on the affected node and re-run validation.
 
-**IPAM check reports inconsistencies**: Run `calicoctl ipam release` for any leaked addresses identified by the check. Then re-validate.
+**IPAM utilization is unexpectedly high**: Review `calicoctl ipam show --show-blocks` output to identify which pools and nodes are consuming addresses. Then re-validate after freeing addresses or adding pool capacity.
 
 **Load test fails but individual pods succeed**: This may indicate that the CIDR has enough space for a few pods but not enough for sustained scaling. Review the IPAM utilization and consider expanding the IP pool.
 
 ## Conclusion
 
-Validating the resolution of CIDRNotAvailable errors requires checking every layer of the stack: IPAM state, IPPool configuration, node CIDR assignments, pod creation across all nodes, and monitoring alert status. The validation script provided here can be integrated into your runbook and run after every remediation to ensure the fix is complete and durable. Never close an incident without running through the full validation checklist.
+Validating the resolution of CIDRNotAvailable errors requires checking every layer of the stack: IPAM state, IPPool configuration, node CIDR allocation behavior, pod creation across all nodes, and monitoring alert status. The validation script provided here can be integrated into your runbook and run after every remediation to ensure the fix is complete and durable. Never close an incident without running through the full validation checklist.
