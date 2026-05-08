@@ -8,9 +8,9 @@ Description: Learn how to deploy and manage an Nginx web server as a systemd ser
 
 ---
 
-> Deploy a production-ready Nginx web server managed by systemd using Quadlet, with persistent content, health checks, and automatic restarts.
+> Deploy an Nginx web server managed by systemd using Quadlet, with persistent content, health checks, and automatic restarts.
 
-Running a web server with Quadlet gives you systemd's reliability features including automatic startup at boot, restart on failure, and structured logging through the journal. This guide sets up a complete Nginx deployment.
+Running a web server with Quadlet gives you systemd's reliability features including automatic startup at boot when user lingering is enabled, restart on failure, and structured logging through the journal. This guide sets up a complete Nginx deployment.
 
 ---
 
@@ -40,7 +40,6 @@ HTMLEOF
 # ~/.config/containers/systemd/webserver.container
 [Unit]
 Description=Nginx web server managed by Quadlet
-After=network-online.target
 
 [Container]
 Image=docker.io/library/nginx:latest
@@ -56,8 +55,9 @@ HealthInterval=30s
 HealthTimeout=5s
 HealthRetries=3
 HealthStartPeriod=10s
+HealthOnFailure=kill
 
-# Auto-update when a new image is available
+# Mark the container for Podman auto-update
 AutoUpdate=registry
 
 [Service]
@@ -81,8 +81,11 @@ systemctl --user daemon-reload
 # Start the web server
 systemctl --user start webserver.service
 
-# Enable it to start at boot
-systemctl --user enable webserver.service
+# Enable user services to start at boot without an active login
+sudo loginctl enable-linger "$USER"
+
+# Enable the Podman auto-update timer
+systemctl --user enable --now podman-auto-update.timer
 
 # Check the status
 systemctl --user status webserver.service
@@ -115,4 +118,4 @@ Volume=%h/.config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro,Z
 
 ## Summary
 
-Quadlet makes running an Nginx web server reliable and maintainable. The container starts at boot, restarts on failure, logs to the journal, and can auto-update when a new image is published. Mount your content and configuration as volumes for easy management.
+Quadlet makes running an Nginx web server reliable and maintainable. With user lingering enabled, the container starts at boot, restarts on failure, logs to the journal, and can be updated by Podman's auto-update timer when a new image is published. Mount your content and configuration as volumes for easy management.
