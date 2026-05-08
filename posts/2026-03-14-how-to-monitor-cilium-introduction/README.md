@@ -48,6 +48,8 @@ hubble:
       - drop
       - tcp
       - flow
+    serviceMonitor:
+      enabled: true
 ```
 
 ```bash
@@ -55,7 +57,11 @@ helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
   --set prometheus.enabled=true \
-  --set prometheus.serviceMonitor.enabled=true
+  --set prometheus.serviceMonitor.enabled=true \
+  --set operator.prometheus.enabled=true \
+  --set operator.prometheus.serviceMonitor.enabled=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow}" \
+  --set hubble.metrics.serviceMonitor.enabled=true
 ```
 
 Key health metrics:
@@ -64,8 +70,8 @@ Key health metrics:
 # Agent process health
 up{job="cilium"}
 
-# Agent uptime (detect restarts)
-cilium_agent_uptime_seconds
+# Agent restarts
+changes(process_start_time_seconds{namespace="kube-system",pod=~"cilium-.*"}[10m])
 
 # Unreachable nodes
 cilium_unreachable_nodes
@@ -84,8 +90,9 @@ rate(cilium_drop_count_total[5m])
 # BPF map pressure
 cilium_bpf_map_pressure
 
-# Conntrack table utilization
-cilium_ct_entries / cilium_ct_max_entries
+# Conntrack garbage collection
+cilium_datapath_conntrack_gc_entries
+rate(cilium_datapath_conntrack_dump_resets_total[5m])
 ```
 
 ```mermaid
@@ -143,6 +150,7 @@ spec:
 echo "=== Cilium Installation Health Report ==="
 echo "Date: $(date)"
 echo ""
+CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
 
 # Agent status
 echo "--- Agent Status ---"
@@ -156,24 +164,25 @@ echo ""
 
 # Endpoint summary
 echo "--- Endpoint Summary ---"
-cilium endpoint list | tail -1
+kubectl exec -n kube-system "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list --no-headers | wc -l
 echo ""
 
 # Connectivity
 echo "--- Quick Connectivity Check ---"
-cilium status --brief
+cilium status
 ```
 
 ## Verification
 
 ```bash
 # Verify metrics are being collected
-kubectl port-forward -n kube-system svc/cilium-agent 9962:9962 &
+CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n kube-system pod/$CILIUM_POD 9962:9962 &
 curl -s http://localhost:9962/metrics | head -20
 
 # Verify Hubble metrics
-cilium hubble port-forward &
-hubble observe --last 5
+kubectl port-forward -n kube-system svc/hubble-metrics 9965:9965 &
+curl -s http://localhost:9965/metrics | head -20
 
 # Check Grafana dashboards
 kubectl port-forward -n monitoring svc/grafana 3000:3000
