@@ -92,7 +92,7 @@ spec:
   cidr: 10.245.0.0/16
   vxlanMode: Always
   natOutgoing: true
-  nodeSelector: node-role.kubernetes.io/worker == "true"
+  nodeSelector: node-role.kubernetes.io/worker == ""
   blockSize: 26
 ```
 
@@ -150,7 +150,7 @@ calicoctl ipam show --show-blocks
 kubectl get pods -A -o wide --no-headers | awk '{print $8}' | sort | uniq -c | sort -rn
 ```
 
-A /16 CIDR gives 65,534 usable IPs. With a blockSize of 26, each node gets blocks of 64 IPs. Plan for at least 2x your expected maximum pod count to handle churn.
+A /16 CIDR gives 65,536 addresses in Calico because Calico can use all addresses in an IP pool, including addresses that would traditionally be treated as network or broadcast addresses. With a blockSize of 26, each node gets blocks of 64 IPs. Plan for at least 2x your expected maximum pod count to handle churn.
 
 ## Verification
 
@@ -161,7 +161,8 @@ Validate your multi-pool setup is working correctly:
 calicoctl get ippools -o wide
 
 # Check that pods in each zone get correct IPs
-kubectl get pods -A -o wide | grep us-east-1a
+kubectl get nodes -l topology.kubernetes.io/zone=us-east-1a -o name
+kubectl get pods -A -o wide --field-selector spec.nodeName=<node-name>
 
 # Verify namespace annotation is respected
 kubectl run test --image=busybox -n production --restart=Never -- sleep 3600
@@ -176,8 +177,8 @@ calicoctl ipam show
 - If a namespace annotation is not respected, verify the pool name in the annotation matches exactly with `calicoctl get ippools`
 - When pods land on the wrong pool, check node labels match the nodeSelector with `kubectl get node <name> --show-labels`
 - If a pool runs out of IPs, check utilization with `calicoctl ipam show` and consider expanding with an additional non-overlapping pool
-- For cross-zone connectivity issues with VXLANCrossSubnet, verify that nodes in different zones are on different L2 subnets
-- Monitor pool utilization with Prometheus metrics from calico-node: `felix_ipam_allocations` and `felix_ipam_blocks`
+- For cross-zone connectivity issues with `vxlanMode: CrossSubnet`, verify that nodes in different zones are on different L2 subnets
+- Monitor pool utilization with Prometheus metrics from kube-controllers: `ipam_allocations_in_use` and `ipam_blocks`
 
 ## Conclusion
 
