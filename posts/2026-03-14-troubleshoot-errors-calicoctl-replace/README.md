@@ -21,6 +21,7 @@ This guide covers the most common calicoctl replace errors with specific diagnos
 - A running Kubernetes cluster with Calico installed
 - calicoctl v3.27 or later
 - kubectl access to the cluster
+- Python 3 with PyYAML installed for the example scripts
 - Basic understanding of Calico resource lifecycle
 
 ## Error: Resource Does Not Exist
@@ -109,17 +110,17 @@ exit 1
 ## Error: Immutable Field Change
 
 ```bash
-# Error - trying to change the CIDR of an IPPool
-calicoctl replace -f ippool-new-cidr.yaml
-# Error: field is immutable: spec.cidr
+# Error - trying to change the blockSize of an IPPool
+calicoctl replace -f ippool-new-blocksize.yaml
+# Error: field is immutable: spec.blockSize
 
 # Diagnosis: Some fields cannot be changed after creation
-# IPPool CIDR and name are immutable
+# IPPool blockSize can only be set when the pool is created
 
 # Fix: Delete and recreate (with careful migration)
 calicoctl get ippool old-pool -o yaml > /tmp/old-pool-backup.yaml
 calicoctl delete ippool old-pool
-calicoctl create -f ippool-new-cidr.yaml
+calicoctl create -f ippool-new-blocksize.yaml
 ```
 
 ## Error: Validation Failure
@@ -144,10 +145,10 @@ calicoctl validate -f policy.yaml
 ```bash
 # Error - incomplete resource definition
 calicoctl replace -f incomplete-policy.yaml
-# Error: spec.selector: Required value
+# Error: metadata.name: Required value
 
-# Diagnosis: Replace requires the COMPLETE resource definition
-# All required fields must be present
+# Diagnosis: Replace requires a complete resource manifest
+# Required identifying fields such as metadata.name must be present
 
 # Fix: Get the current resource as a starting point
 calicoctl get globalnetworkpolicy my-policy -o yaml > /tmp/complete-policy.yaml
@@ -219,9 +220,9 @@ kubectl exec deploy/test -- curl -s --max-time 5 http://backend:8080/health
 
 ## Troubleshooting
 
-- **Replace succeeds but old fields persist**: This should not happen with replace (it overwrites entirely). If you see old fields, you may have used `apply` instead of `replace`. Verify with `calicoctl get <kind> <name> -o yaml`.
+- **Replace succeeds but old spec fields persist**: This should not happen with replace (it replaces the resource spec). If you see old spec fields, you may have used `patch` instead of `replace`. Verify with `calicoctl get <kind> <name> -o yaml`.
 - **"metadata.resourceVersion: must be specified"**: Some datastores require the resourceVersion for replace. Get the current version first with `calicoctl get`.
-- **Replace breaks existing connections**: Replace removes any fields not in the new definition. Ensure your replacement includes all needed ingress/egress rules, not just the new ones.
+- **Replace breaks existing connections**: Replace removes any spec fields not in the new definition. Ensure your replacement includes all needed ingress/egress rules, not just the new ones.
 - **"unknown field" in replacement YAML**: Check for typos in field names. Use `calicoctl get <kind> <name> -o yaml` to see valid field names.
 
 ## Conclusion
