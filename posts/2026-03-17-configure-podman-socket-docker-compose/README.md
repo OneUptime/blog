@@ -8,9 +8,9 @@ Description: Learn how to configure and manage the Podman socket for use with Do
 
 ---
 
-> The Podman socket exposes a Docker-compatible REST API that lets Docker Compose and other tools work with Podman seamlessly.
+> The Podman socket exposes a Docker-compatible REST API that lets Docker Compose and other tools work with Podman.
 
-Podman provides a systemd-managed socket that implements the Docker Engine API. This lets tools like Docker Compose, Portainer, and other Docker ecosystem utilities work with Podman without modification. This guide covers setup for both rootless and rootful modes.
+Podman provides a systemd-managed socket for its REST API, including a compatibility layer for the Docker v1.40 API. This lets tools like Docker Compose, Portainer, and other Docker ecosystem utilities work with Podman without modification. This guide covers setup for both rootless and rootful modes.
 
 ---
 
@@ -102,14 +102,14 @@ loginctl show-user $(whoami) | grep Linger
 
 ```bash
 # Enable the TCP socket for remote access
-podman system service --time=0 tcp:0.0.0.0:2375 &
+podman system service --time=0 tcp://0.0.0.0:2375 &
 
 # Connect from a remote machine
 export DOCKER_HOST=tcp://remote-host:2375
 docker compose up -d
 
 # WARNING: TCP socket has no authentication by default
-# Use SSH tunneling or TLS for production
+# Use SSH tunneling or mutual TLS for production
 ```
 
 ## Socket Troubleshooting
@@ -146,4 +146,4 @@ docker compose down
 
 ## Summary
 
-Configure the Podman socket by enabling it with systemd for rootless or rootful mode. Set `DOCKER_HOST` to point at the socket, enable lingering for persistent access, and test with curl or Docker Compose. The socket provides Docker API compatibility for all Docker ecosystem tools.
+Configure the Podman socket by enabling it with systemd for rootless or rootful mode. Set `DOCKER_HOST` to point at the socket, enable lingering for persistent access, and test with curl or Docker Compose. The socket provides Docker API compatibility for many Docker ecosystem tools.
