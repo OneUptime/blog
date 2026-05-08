@@ -64,39 +64,51 @@ graph TD
 Apply the policy and verify it is enforced:
 
 ```yaml
-# Test policy for validation
+# client-terminal-policy.yaml
 apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
   name: client-terminal-policy
-  namespace: testing
-spec:
-  endpointSelector:
-    matchLabels:
-      app: test-client
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            app: test-server
-      toPorts:
-        - ports:
-            - port: "80"
-              protocol: TCP
-            - port: "443"
-              protocol: TCP
-    - toEndpoints:
-        - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: ANY
+  namespace: cilium-validate
+specs:
+  - endpointSelector:
+      matchLabels:
+        app: client
+    egress:
+      - toEndpoints:
+          - matchLabels:
+              app: server
+        toPorts:
+          - ports:
+              - port: "80"
+                protocol: TCP
+      - toEndpoints:
+          - matchLabels:
+              k8s:io.kubernetes.pod.namespace: kube-system
+              k8s-app: kube-dns
+        toPorts:
+          - ports:
+              - port: "53"
+                protocol: UDP
+  - endpointSelector:
+      matchLabels:
+        app: server
+    ingress:
+      - fromEndpoints:
+          - matchLabels:
+              app: client
+        toPorts:
+          - ports:
+              - port: "80"
+                protocol: TCP
 ```
 
 ```bash
+kubectl apply -f client-terminal-policy.yaml
+
 # Validate all endpoints have policies applied
-cilium endpoint list -o json | jq '.[] | {id: .id, policy: .status.policy}'
+kubectl get ciliumendpoints -n cilium-validate -o json | \
+  jq '.items[] | {name: .metadata.name, policy: .status.policy}'
 ```
 
 ### Running Connectivity Tests
@@ -144,28 +156,28 @@ echo "=== Cilium Policy Validation ==="
 # Test 1: Cilium agent health
 echo -n "Test 1: Cilium agent health... "
 if cilium status > /dev/null 2>&1; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((PASS+=1))
 else
-  echo "FAIL"; ((FAIL++))
+  echo "FAIL"; ((FAIL+=1))
 fi
 
-# Test 2: All endpoints ready
-echo -n "Test 2: All endpoints ready... "
-NOT_READY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.state != "ready")] | length')
+# Test 2: Validation endpoints ready
+echo -n "Test 2: Validation endpoints ready... "
+NOT_READY=$(kubectl get ciliumendpoints -n "$NAMESPACE" -o json | \
+  jq '[.items[] | select(.status.state != "ready")] | length')
 if [ "$NOT_READY" -eq 0 ]; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((PASS+=1))
 else
-  echo "FAIL ($NOT_READY not ready)"; ((FAIL++))
+  echo "FAIL ($NOT_READY not ready)"; ((FAIL+=1))
 fi
 
 # Test 3: Policies applied
 echo -n "Test 3: Policies applied... "
-POLICY_COUNT=$(cilium policy get -o json | jq '. | length')
+POLICY_COUNT=$(kubectl get cnp -n "$NAMESPACE" -o json | jq '.items | length')
 if [ "$POLICY_COUNT" -gt 0 ]; then
-  echo "PASS ($POLICY_COUNT policies)"; ((PASS++))
+  echo "PASS ($POLICY_COUNT policies)"; ((PASS+=1))
 else
-  echo "FAIL (no policies)"; ((FAIL++))
+  echo "FAIL (no policies)"; ((FAIL+=1))
 fi
 
 echo ""
@@ -208,8 +220,8 @@ cilium status
 ```
 
 ```bash
-# Confirm all endpoints are healthy
-cilium endpoint health
+# Confirm validation endpoints are present and ready
+kubectl get ciliumendpoints -n cilium-validate -o wide
 ```
 
 ```bash
