@@ -27,7 +27,7 @@ podman exec -it my-app /bin/bash
 podman attach my-app
 ```
 
-When you attach, you see exactly what the container's main process outputs. When you detach or press Ctrl+C, it may stop the container if the main process handles that signal.
+When you attach, you see exactly what the container's main process outputs. Use the default detach sequence, Ctrl+P followed by Ctrl+Q, to leave the container running. Pressing Ctrl+C may stop the container if the main process handles that signal.
 
 ## Basic Attach
 
@@ -66,23 +66,23 @@ If you only want to observe output without being able to send input:
 podman run -d --name web-server nginx:latest
 
 # Attach in read-only mode (no stdin)
-podman attach --no-stdin web-server
+podman attach --no-stdin --sig-proxy=false web-server
 # You will see nginx access/error logs
 # Press Ctrl+C to detach
 ```
 
 ## Attach with Custom Signal Handling
 
-By default, Ctrl+C sends SIGINT to the container's main process. You can change the signal sent:
+By default, Ctrl+C sends SIGINT to the container's main process in non-TTY mode. You can disable signal proxying:
 
 ```bash
-# Attach with a specific signal proxy
+# Attach without proxying signals
 podman attach --sig-proxy=false my-logger
 # Now Ctrl+C detaches without sending SIGINT to the process
 # The container continues running
 ```
 
-This is important: with `--sig-proxy=false`, pressing Ctrl+C will detach you from the container without stopping it.
+This is important for non-TTY containers: with `--sig-proxy=false`, pressing Ctrl+C will detach you from the container without sending SIGINT to its main process. You can also use the default detach sequence, Ctrl+P followed by Ctrl+Q, to leave the container running.
 
 ## Attach to See Container Startup
 
@@ -178,4 +178,4 @@ podman network rm redis-net 2>/dev/null
 
 ## Summary
 
-The `podman attach` command connects your terminal to a container's main process, which is different from `podman exec` that starts new processes. Use `--sig-proxy=false` to safely observe output without risk of stopping the container. Attach is ideal for monitoring live output, debugging startup issues, and resuming interactive sessions.
+The `podman attach` command connects your terminal to a container's main process, which is different from `podman exec` that starts new processes. Use Ctrl+P followed by Ctrl+Q to detach while leaving the container running, or use `--sig-proxy=false` when observing non-TTY output without forwarding Ctrl+C to the container process. Attach is ideal for monitoring live output, debugging startup issues, and resuming interactive sessions.
