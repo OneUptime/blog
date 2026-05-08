@@ -19,14 +19,15 @@ This guide covers a multi-layered validation strategy for Cilium L7 parser OnDat
 ## Prerequisites
 
 - Go 1.21 or later (with native fuzz support)
-- Cilium source code with your parser implemented
+- Cilium proxy/proxylib source code with your parser implemented
+- A Cilium version that supports Envoy Go extensions (proxylib); this feature is deprecated in newer releases and removed from Cilium 1.20
 - Familiarity with Go testing patterns
 - `testify` assertion library (optional but recommended)
 - A test Kubernetes cluster with Cilium for integration tests
 
 ## Table-Driven Unit Tests for OnData
 
-Table-driven tests systematically cover all return value combinations:
+Table-driven tests systematically cover common return value combinations:
 
 ```go
 package myprotocol
@@ -34,8 +35,17 @@ package myprotocol
 import (
     "testing"
 
-    "github.com/cilium/cilium/proxylib/proxylib"
+    "github.com/cilium/proxy/proxylib/proxylib"
 )
+
+func testReader(input []byte) *proxylib.Reader {
+    var buffers [][]byte
+    if len(input) > 0 {
+        buffers = [][]byte{input}
+    }
+    reader := proxylib.NewReader(buffers, false)
+    return &reader
+}
 
 func TestOnDataReturnValues(t *testing.T) {
     tests := []struct {
@@ -71,27 +81,27 @@ func TestOnDataReturnValues(t *testing.T) {
             desc:   "Valid complete message should be passed",
         },
         {
-            name:   "zero length message is dropped",
+            name:   "zero length message is an error",
             input:  []byte{0x00, 0x00, 0x00, 0x00},
             reply:  false,
-            wantOp: proxylib.DROP,
-            wantN:  0,
+            wantOp: proxylib.ERROR,
+            wantN:  int(proxylib.ERROR_INVALID_FRAME_LENGTH),
             desc:   "Zero-length body indicates malformed message",
         },
         {
-            name:   "oversized message is dropped",
+            name:   "oversized message is an error",
             input:  []byte{0x7F, 0xFF, 0xFF, 0xFF},
             reply:  false,
-            wantOp: proxylib.DROP,
-            wantN:  0,
+            wantOp: proxylib.ERROR,
+            wantN:  int(proxylib.ERROR_INVALID_FRAME_LENGTH),
             desc:   "Message exceeding maxMessageSize must be dropped",
         },
         {
-            name:   "negative length is dropped",
+            name:   "negative length is an error",
             input:  []byte{0xFF, 0xFF, 0xFF, 0xFF},
             reply:  false,
-            wantOp: proxylib.DROP,
-            wantN:  0,
+            wantOp: proxylib.ERROR,
+            wantN:  int(proxylib.ERROR_INVALID_FRAME_LENGTH),
             desc:   "Negative length (high bit set) must be dropped",
         },
         {
@@ -107,7 +117,7 @@ func TestOnDataReturnValues(t *testing.T) {
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             parser := &Parser{state: stateRunning}
-            reader := proxylib.NewTestReader(tt.input)
+            reader := testReader(tt.input)
 
             gotOp, gotN := parser.OnData(tt.reply, reader)
 
@@ -136,7 +146,7 @@ func FuzzOnData(f *testing.F) {
 
     f.Fuzz(func(t *testing.T, data []byte, reply bool) {
         parser := &Parser{state: stateRunning}
-        reader := proxylib.NewTestReader(data)
+        reader := testReader(data)
 
         // OnData must never panic
         op, n := parser.OnData(reply, reader)
@@ -147,19 +157,25 @@ func FuzzOnData(f *testing.F) {
             if n <= 0 {
                 t.Error("PASS must consume positive bytes")
             }
-            if n > len(data) {
-                t.Error("PASS must not consume more bytes than available")
-            }
         case proxylib.MORE:
             if n <= 0 {
                 t.Error("MORE must request positive bytes")
             }
-            if n <= len(data) {
-                t.Error("MORE must request more bytes than currently available")
-            }
         case proxylib.DROP:
+            if n <= 0 {
+                t.Error("DROP must consume positive bytes")
+            }
+        case proxylib.ERROR:
+            if n <= 0 {
+                t.Error("ERROR should return a proxylib error code")
+            }
+        case proxylib.INJECT:
+            if n <= 0 {
+                t.Error("INJECT must inject positive bytes")
+            }
+        case proxylib.NOP:
             if n != 0 {
-                t.Error("DROP should consume 0 bytes")
+                t.Error("NOP should use length 0")
             }
         default:
             t.Errorf("Unknown OpType: %v", op)
@@ -212,17 +228,18 @@ func TestOnDataProperties(t *testing.T) {
                 data[i] = byte(i % 256)
             }
             parser := &Parser{state: stateRunning}
-            reader := proxylib.NewTestReader(data)
+            reader := testReader(data)
 
             // This should not panic
             parser.OnData(false, reader)
+            reader = testReader(data)
             parser.OnData(true, reader)
         }
     })
 
-    // Property 2: PASS never exceeds available data
-    t.Run("pass within bounds", func(t *testing.T) {
-        for size := 1; size < 500; size++ {
+    // Property 2: PASS never exceeds framed message size
+    t.Run("pass within frame bounds", func(t *testing.T) {
+        for size := 4; size < 500; size++ {
             data := make([]byte, size)
             data[0] = 0x00
             data[1] = 0x00
@@ -232,7 +249,7 @@ func TestOnDataProperties(t *testing.T) {
             }
 
             parser := &Parser{state: stateRunning}
-            reader := proxylib.NewTestReader(data)
+            reader := testReader(data)
             op, n := parser.OnData(false, reader)
 
             if op == proxylib.PASS && n > size {
@@ -245,11 +262,11 @@ func TestOnDataProperties(t *testing.T) {
     t.Run("error state terminal", func(t *testing.T) {
         data := []byte{0x00, 0x00, 0x00, 0x05, 0x01, 0x02, 0x03, 0x04, 0x05}
         parser := &Parser{state: stateError}
-        reader := proxylib.NewTestReader(data)
+        reader := testReader(data)
 
         op, _ := parser.OnData(false, reader)
-        if op != proxylib.DROP {
-            t.Errorf("Error state should always DROP, got %v", op)
+        if op != proxylib.ERROR {
+            t.Errorf("Error state should always ERROR, got %v", op)
         }
     })
 }
@@ -313,8 +330,9 @@ kubectl exec test-client -- protocol-client send --command GET --target protocol
 # Verify parser logs
 kubectl logs -n kube-system ds/cilium -c cilium-agent | grep "myprotocol"
 
-# Check proxy statistics
-kubectl exec -n kube-system ds/cilium -- cilium bpf proxy list
+# Check proxy and Envoy status
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status --all-redirects
+kubectl exec -n kube-system ds/cilium -- cilium-dbg envoy admin listeners
 ```
 
 ## Verification
@@ -345,7 +363,7 @@ go test ./proxylib/myprotocol/... -bench=BenchmarkOnData -benchmem
 Start by fixing the most basic bounds checks - usually missing length validation before slice access. Re-run the fuzzer after each fix.
 
 **Problem: Test reader does not match production behavior**
-The test reader may not perfectly simulate proxylib's Reader. Validate critical behavior differences by testing in a real cluster alongside unit tests.
+Make sure the test helper initializes `proxylib.Reader` with the same buffer shape the framework passes to the parser. Validate critical behavior differences by testing in a real cluster alongside unit tests.
 
 **Problem: Coverage cannot reach certain code paths**
 Some paths may only be reachable through specific state transitions. Create tests that set parser state explicitly before calling OnData, rather than relying on natural state progression.
