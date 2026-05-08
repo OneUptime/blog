@@ -21,7 +21,7 @@ This guide covers the validation steps for Cilium in CNI chaining mode, from che
 - Kubernetes cluster with a primary CNI (AWS VPC CNI, Azure CNI, Flannel, or similar)
 - Cilium deployed in CNI chaining mode (not as the primary CNI)
 - `kubectl` cluster-admin access
-- `cilium` CLI installed
+- Access to the `cilium-dbg` command inside Cilium pods
 
 ## Step 1: Verify CNI Chain Configuration File
 
@@ -31,14 +31,19 @@ Check that the CNI config file on nodes is correctly structured as a chain.
 # Inspect the CNI config file - look for a "plugins" array
 
 # The primary CNI plugin should be first, Cilium should follow
-kubectl -n kube-system exec -it \
-  $(kubectl -n kube-system get pods -l k8s-app=cilium -o name | head -1) -- \
-  cat /host/etc/cni/net.d/05-cilium.conf 2>/dev/null || \
-  ls /host/etc/cni/net.d/
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl -n kube-system exec "$CILIUM_POD" -- sh -c '
+  ls -1 /host/etc/cni/net.d
+  for f in /host/etc/cni/net.d/*.conflist /host/etc/cni/net.d/*.conf; do
+    [ -f "$f" ] && echo "--- $f" && sed -n "1,160p" "$f"
+  done
+'
 
 # A valid chained config looks like:
 # { "cniVersion": "0.3.1",
-#   "name": "portmap",
+#   "name": "aws-cni",
 #   "plugins": [
 #     { "type": "aws-cni" },   <- Primary CNI
 #     { "type": "cilium-cni" } <- Chained Cilium
@@ -54,19 +59,19 @@ kubectl -n kube-system get configmap cilium-config \
 
 # Supported chaining modes:
 # "aws-cni"      - AWS VPC CNI
-# "azure-vnet"   - Azure CNI
-# "flannel"      - Flannel
-# "portmap"      - Generic portmap chaining
+# "generic-veth" - veth-based CNIs such as Azure CNI (legacy), Calico, Weave Net, or Flannel
+# "portmap"      - HostPort support through the CNI portmap plugin
 
-# Verify IPAM is set to delegate (primary CNI handles IPs)
+# Check the configured IPAM mode
 kubectl -n kube-system get configmap cilium-config \
   -o jsonpath='{.data.ipam}'
-# Expected: "delegated-plugin" or "cluster-pool" depending on mode
+# In chaining mode, pod IP allocation is still performed by the primary CNI.
+# Do not change IPAM mode on a live cluster just for this validation.
 ```
 
 ## Step 3: Validate Endpoint Registration
 
-Even in chaining mode, Cilium should register endpoints for all non-hostNetwork pods.
+Even in chaining mode, Cilium should register endpoints for non-hostNetwork pods that were created or restarted after the chaining configuration was installed.
 
 ```bash
 # Check Cilium endpoints - these should exist for all regular pods
@@ -110,8 +115,14 @@ spec:
 # Apply the policy and test enforcement
 kubectl apply -f chain-policy-test.yaml
 
-# Confirm Cilium loaded the policy (even in chaining mode, it reads NetworkPolicy)
-cilium policy get | grep test-chain-policy
+# Confirm Kubernetes accepted the NetworkPolicy object
+kubectl get networkpolicy test-chain-policy -n default
+
+# Inspect endpoint policy enforcement from a Cilium agent
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list
+# Look for the selected server endpoint and verify ingress policy enforcement is Enabled.
 ```
 
 ## Step 5: Verify Primary CNI IP Allocation Is Unaffected
@@ -124,15 +135,15 @@ kubectl get pods -A -o wide --no-headers | awk '{print $7}' | sort -u | head -10
 # For Azure CNI: IPs should be from VNet subnet
 # For Flannel: IPs should be from Flannel's podCIDR
 
-# Verify no IP pools are active in Cilium (primary CNI owns IPAM)
-kubectl get ciliumippools 2>/dev/null || echo "No Cilium IP pools (expected in chaining mode)"
+# Verify multi-pool IPAM pools are not being used unless explicitly configured
+kubectl get ciliumpodippools 2>/dev/null || echo "No CiliumPodIPPools found"
 ```
 
 ## Best Practices
 
 - Test chained CNI behavior after every upgrade of either the primary CNI or Cilium
-- Use `cilium monitor` to observe whether policy drop events are fired correctly
-- In chaining mode, some Cilium features (e.g., BPF NodePort) may be limited - check documentation
+- Use `cilium-dbg monitor` inside a Cilium pod to observe whether policy drop events are fired correctly
+- In chaining mode, some Cilium features (e.g., Layer 7 Policy and IPsec transparent encryption) may be limited - check documentation
 - Ensure only one conflist file is active in `/etc/cni/net.d/` to avoid CNI selection ambiguity
 - Consider migrating to native Cilium IPAM for simpler operations and full feature access
 
