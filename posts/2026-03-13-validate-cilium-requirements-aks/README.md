@@ -29,14 +29,13 @@ Cilium requires a minimum Kubernetes version that supports the features it uses.
 ```bash
 # Check the Kubernetes server version
 
-kubectl version --short
+kubectl version
 
-# Cilium 1.14+ requires Kubernetes 1.21+
-# Cilium 1.15+ recommends Kubernetes 1.25+ for full feature support
+# Check the Azure CNI Powered by Cilium version table for the
+# Kubernetes versions supported by AKS with managed Cilium.
 
 # Check AKS supported versions in your region
-az aks get-versions --location eastus --query \
-  "orchestrators[*].orchestratorVersion" -o table
+az aks get-versions --location eastus -o table
 ```
 
 ## Step 2: Validate Node OS and Kernel Version
@@ -49,10 +48,11 @@ kubectl get nodes -o jsonpath=\
 '{range .items[*]}{.metadata.name}: {.status.nodeInfo.kernelVersion}, OS={.status.nodeInfo.osImage}{"\n"}{end}'
 
 # Requirements:
-# - Azure Linux (CBL-Mariner) 2.0: kernel 5.15+ (full eBPF support)
-# - Ubuntu 22.04: kernel 5.15+ (recommended)
-# - Minimum for basic Cilium: kernel 4.19
-# - Minimum for kube-proxy replacement: kernel 5.10
+# - Azure CNI Powered by Cilium supports Linux node pools, not Windows
+# - Cilium recommends kernel 5.10+ or an equivalent vendor kernel
+# - AKS defaults vary by Kubernetes version:
+#   Ubuntu 22.04 for Kubernetes 1.25-1.34, Ubuntu 24.04 for 1.35+
+#   Azure Linux 2.0 for Kubernetes 1.26-1.31, Azure Linux 3.0 for 1.32+
 ```
 
 ## Step 3: Validate AKS Network Plugin Configuration
@@ -64,10 +64,10 @@ The AKS network plugin setting determines which Cilium modes are supported.
 az aks show --resource-group <rg> --name <cluster> \
   --query "networkProfile.networkPlugin" -o tsv
 
-# For Cilium as the dataplane with Azure CNI Overlay:
+# For Cilium as the dataplane with Azure CNI:
 # networkPlugin: azure
-# networkPluginMode: overlay
 # networkDataplane: cilium
+# networkPluginMode: overlay when using Azure CNI Overlay
 
 az aks show --resource-group <rg> --name <cluster> \
   --query "networkProfile.{plugin:networkPlugin,mode:networkPluginMode,dataplane:networkDataplane}" \
@@ -83,23 +83,30 @@ Certain VM SKUs have limitations that affect eBPF functionality.
 az aks nodepool list --resource-group <rg> --cluster-name <cluster> \
   --query "[*].{name:name, vmSize:vmSize}" -o table
 
-# Avoid B-series burstable VMs for production Cilium deployments
-# (CPU throttling under burst can cause eBPF map operation timeouts)
-# Recommended: D-series, F-series, or N-series VMs
+# Avoid undersized or burstable VMs for production networking components
+# if they cannot provide sustained CPU and memory for your workload.
+# Use production-suitable VM sizes and monitor Cilium and node resource usage.
 ```
 
 ## Step 5: Validate Required Azure Permissions
 
-Cilium's cloud integrations require specific Azure IAM permissions.
+AKS-managed Cilium uses the cluster's Azure networking configuration. If you use a custom virtual network or standalone Cilium Azure IPAM, validate that the relevant managed identity or service principal has the required Azure network permissions.
 
 ```bash
-# Check if the cluster's managed identity has required permissions
+# Check the cluster managed identity
 AKS_PRINCIPAL=$(az aks show --resource-group <rg> --name <cluster> \
+  --query "identity.principalId" -o tsv)
+
+# If your cluster uses a user-assigned kubelet identity, you can inspect it too
+KUBELET_PRINCIPAL=$(az aks show --resource-group <rg> --name <cluster> \
   --query "identityProfile.kubeletidentity.objectId" -o tsv)
 
-# Required roles for Azure CNI with Cilium:
-# - Network Contributor (for subnet IP management)
-# - Virtual Machine Contributor (for ENI operations if using ENI mode)
+# Common required role:
+# - Network Contributor on the virtual network or subnet for custom VNet scenarios
+#
+# Standalone Cilium Azure IPAM also needs Azure API permissions in the
+# AKS node resource group for network interfaces, virtual networks,
+# and virtual machine scale sets.
 az role assignment list --assignee $AKS_PRINCIPAL \
   --query "[*].{role:roleDefinitionName, scope:scope}" -o table
 ```
@@ -108,9 +115,9 @@ az role assignment list --assignee $AKS_PRINCIPAL \
 
 ```mermaid
 flowchart TD
-    A[Start AKS Cilium\nRequirements Check] --> B[Kubernetes >= 1.21?]
+    A[Start AKS Cilium\nRequirements Check] --> B[Kubernetes version supported\nfor AKS managed Cilium?]
     B -- No --> C[Upgrade AKS cluster version]
-    B -- Yes --> D[Kernel >= 4.19?\n5.10+ for full features]
+    B -- Yes --> D[Linux node pool with\nkernel 5.10+ or equivalent?]
     D -- No --> E[Upgrade node OS image]
     D -- Yes --> F[Network plugin configured\ncorrectly?]
     F -- No --> G[Recreate cluster with\ncorrect network settings]
