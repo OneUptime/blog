@@ -30,12 +30,14 @@ Confirm that the CNI configuration on nodes lists Azure CNI as the primary plugi
 ```bash
 # SSH to a node and inspect the CNI configuration directory
 
-# The config file should show a "plugins" array with azure-vnet first, then cilium
-cat /etc/cni/net.d/10-azure.conflist
+# The active conflist should show a "plugins" array with azure-vnet first,
+# usually portmap next, then cilium-cni
+ls -l /etc/cni/net.d/
+cat /etc/cni/net.d/*.conflist
 
-# Alternatively, exec into a Cilium pod to check the installed config
+# Alternatively, exec into a Cilium pod to check the host CNI config
 kubectl -n kube-system exec -it $(kubectl -n kube-system get pods -l k8s-app=cilium -o name | head -1) \
-  -- cat /host/etc/cni/net.d/05-cilium.conf
+  -- sh -c 'ls -l /host/etc/cni/net.d/ && cat /host/etc/cni/net.d/*.conflist'
 ```
 
 ## Step 2: Confirm Cilium Is Running in Chaining Mode
@@ -45,10 +47,10 @@ kubectl -n kube-system exec -it $(kubectl -n kube-system get pods -l k8s-app=cil
 kubectl -n kube-system get configmap cilium-config \
   -o jsonpath='{.data.cni-chaining-mode}'
 
-# Expected output: "azure-vnet"
-# Also verify IPAM mode is set to delegate (azure CNI handles IPs)
-kubectl -n kube-system get configmap cilium-config \
-  -o jsonpath='{.data.ipam}'
+# Expected output: "generic-veth" for Azure CNI legacy chaining
+# Also verify the CNI configuration delegates IPAM to Azure CNI
+kubectl -n kube-system get configmap cni-configuration \
+  -o jsonpath='{.data.cni-config}'
 ```
 
 ## Step 3: Validate Cilium Agent Health
@@ -86,8 +88,8 @@ spec:
 # Apply the policy and verify it is loaded
 kubectl apply -f test-chain-policy.yaml
 
-# Check that the policy appears in Cilium's store
-cilium policy get
+# Check that the policy was accepted by the CiliumNetworkPolicy CRD
+kubectl get ciliumnetworkpolicy chain-ingress-test -n default -o yaml
 
 # Attempt connection from an unlabeled pod - should be denied
 kubectl exec unlabeled-pod -- curl -m 3 http://<server-pod-ip>
@@ -99,14 +101,14 @@ kubectl exec unlabeled-pod -- curl -m 3 http://<server-pod-ip>
 # Pod IPs should fall within the Azure VNet subnet range, not Cilium's PodCIDR
 kubectl get pods -A -o wide | awk '{print $7}' | grep -v IP | sort -u
 
-# Verify no Cilium-managed IP pools are active
-kubectl get ippools 2>/dev/null || echo "No Cilium IP pools (expected in chaining mode)"
+# Verify no Cilium-managed Pod IP pools are active
+kubectl get ciliumpodippools.cilium.io 2>/dev/null || echo "No CiliumPodIPPools (expected in chaining mode)"
 ```
 
 ## Best Practices
 
 - Ensure the Cilium version supports the Azure CNI chaining mode you are using
-- In chaining mode, use `CiliumNetworkPolicy` rather than standard `NetworkPolicy` for full L7 support
+- In chaining mode, use `CiliumNetworkPolicy` when you need Cilium-specific L7 policy features, and verify feature support for your Cilium version because some advanced features are limited in chained deployments
 - Monitor for CNI config conflicts - only one conflist file should be active in `/etc/cni/net.d/`
 - Test after every node image upgrade since CNI configs can be overwritten
 - Consider migrating to native Cilium IPAM for a simpler, fully-supported architecture long-term
