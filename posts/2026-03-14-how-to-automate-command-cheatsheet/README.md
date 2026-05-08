@@ -10,7 +10,7 @@ Description: A practical guide covering how to automate command cheatsheet with 
 
 ## Introduction
 
-The Cilium CLI provides a comprehensive set of commands for managing, monitoring, and troubleshooting your Cilium deployment. Mastering these commands is essential for efficient day-to-day operations.
+The Cilium CLI provides commands for managing, monitoring, and troubleshooting your Cilium deployment, while the `cilium-dbg` and `cilium-health` tools provide node-local agent diagnostics. Mastering these commands is essential for efficient day-to-day operations.
 
 In this guide, we cover Cilium CLI command operations in a Kubernetes environment. Cilium leverages eBPF technology to provide high-performance networking, security, and observability for cloud-native workloads. The eBPF programs are loaded directly into the Linux kernel, enabling efficient packet processing without the overhead of traditional iptables-based networking stacks.
 
@@ -18,12 +18,12 @@ Whether you are running a small development cluster or a large production enviro
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.21+) with Cilium installed (v1.14+)
+- A running Kubernetes cluster on a Kubernetes version supported by your Cilium release
 - `kubectl` configured for cluster access
-- `cilium` CLI installed (matching your Cilium version)
+- `cilium` CLI installed
 - Helm 3.x for configuration management
 - Basic familiarity with Kubernetes networking concepts
-- Access to cluster nodes for troubleshooting (recommended)
+- Access to Cilium agent pods or cluster nodes for troubleshooting (recommended)
 - Prometheus and Grafana for metrics visualization (recommended)
 
 ## Automation Approach
@@ -40,13 +40,17 @@ cat > /tmp/cilium-automation.sh << 'SCRIPT'
 
 set -euo pipefail
 
+cilium_agent_exec() {
+    kubectl -n kube-system exec ds/cilium -- "$@"
+}
+
 # Function: Health check
 health_check() {
     echo "Running Cilium health check..."
-    cilium status --brief
-    cilium health status 2>/dev/null || echo "Health check requires running cluster"
-    echo "Identity count: $(cilium identity list 2>/dev/null | wc -l || echo 'N/A')"
-    echo "Endpoint count: $(cilium endpoint list 2>/dev/null | wc -l || echo 'N/A')"
+    cilium status
+    cilium_agent_exec cilium-health status 2>/dev/null || echo "Health check requires access to a Cilium agent pod"
+    echo "Identity count: $(kubectl get ciliumidentities --no-headers 2>/dev/null | wc -l || echo 'N/A')"
+    echo "Endpoint count: $(kubectl get ciliumendpoints -A --no-headers 2>/dev/null | wc -l || echo 'N/A')"
 }
 
 # Function: Collect diagnostics
@@ -55,9 +59,9 @@ collect_diagnostics() {
     mkdir -p "$output_dir"
     
     cilium status --verbose > "$output_dir/status.txt" 2>&1
-    cilium endpoint list > "$output_dir/endpoints.txt" 2>&1
-    cilium identity list > "$output_dir/identities.txt" 2>&1
-    cilium metrics list > "$output_dir/metrics.txt" 2>&1
+    kubectl get ciliumendpoints -A -o wide > "$output_dir/endpoints.txt" 2>&1
+    kubectl get ciliumidentities -o wide > "$output_dir/identities.txt" 2>&1
+    cilium_agent_exec cilium-dbg metrics list > "$output_dir/metrics.txt" 2>&1
     kubectl top pods -n kube-system -l k8s-app=cilium > "$output_dir/resources.txt" 2>&1
     
     echo "Diagnostics collected in $output_dir"
@@ -106,6 +110,8 @@ jobs:
           sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
       - name: Validate Helm Template
         run: |
+          helm repo add cilium https://helm.cilium.io/
+          helm repo update cilium
           helm template cilium cilium/cilium -f k8s/cilium/values.yaml > /dev/null
 ```
 
@@ -144,8 +150,8 @@ After completing the steps above, run a comprehensive verification to confirm ev
 # Check overall Cilium deployment health
 cilium status --verbose
 
-# Verify inter-node connectivity
-cilium health status
+# Verify inter-node connectivity from a Cilium agent pod
+kubectl -n kube-system exec ds/cilium -- cilium-health status
 
 # Confirm all Cilium pods are running and ready
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
@@ -159,25 +165,25 @@ kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tai
 # Run a connectivity test to validate the data plane
 cilium connectivity test --single-node
 
-# Verify endpoint count matches expected pod count
-echo "Cilium endpoints: $(cilium endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
+# Verify endpoint count matches expected Cilium-managed pods
+kubectl get ciliumendpoints -A
 ```
 
 ## Troubleshooting
 
 If you encounter issues during or after the steps in this guide, use the following troubleshooting procedures:
 
-- **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 4.19 or later. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
+- **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and that your node kernel meets the minimum version required by your Cilium release. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
 
-- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `cilium policy get`. Verify inter-node tunnel connectivity with `cilium bpf tunnel list`.
+- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `kubectl get networkpolicies,ciliumnetworkpolicies,ciliumclusterwidenetworkpolicies -A`. Verify inter-node health with `kubectl -n kube-system exec ds/cilium -- cilium-health status`.
 
 - **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm with `cilium config view`.
 
-- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `cilium metrics list | grep process_resident_memory`.
+- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `kubectl -n kube-system exec ds/cilium -- cilium-dbg metrics list | grep process_resident_memory`.
 
 - **Endpoints stuck in regenerating state**: This usually indicates the agent is overloaded or encountering errors during BPF program compilation. Check agent logs with `kubectl logs -n kube-system -l k8s-app=cilium --tail=200 | grep -i error`.
 
-- **Policy not being enforced**: Verify the policy selectors match the intended pods using `cilium endpoint list`. Confirm the policy is applied with `cilium policy get`. Check that the endpoint has the correct identity with `cilium endpoint get <id>`.
+- **Policy not being enforced**: Verify the policy selectors match the intended pods using `kubectl get ciliumendpoints -A`. Confirm the policy is applied with `kubectl get networkpolicies,ciliumnetworkpolicies,ciliumclusterwidenetworkpolicies -A`. Check that the endpoint has the correct identity with `kubectl -n kube-system exec <cilium-pod> -- cilium-dbg endpoint get <id>`.
 
 To collect a comprehensive diagnostic bundle for further analysis:
 
