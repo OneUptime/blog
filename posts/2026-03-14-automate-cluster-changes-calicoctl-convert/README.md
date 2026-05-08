@@ -19,7 +19,7 @@ This guide covers automation patterns for calicoctl convert, including batch con
 - calicoctl v3.27 or later
 - kubectl access to the cluster
 - CI/CD platform for automation
-- Python 3 for scripting
+- Python 3 with PyYAML for scripting
 
 ## Automated Batch Conversion
 
@@ -107,6 +107,9 @@ on:
 jobs:
   convert:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -114,6 +117,14 @@ jobs:
         run: |
           curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
           chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
+          python3 -m pip install pyyaml
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_DATA }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          echo "$KUBECONFIG_DATA" | base64 -d > "$HOME/.kube/config"
 
       - name: Export and convert policies
         run: |
@@ -128,22 +139,29 @@ jobs:
           kubectl get networkpolicies $NS_FLAG -o yaml > /tmp/all-policies.yaml
 
           # Split and convert each policy
-          python3 -c "
-          import yaml, subprocess, os
+          python3 <<'PY'
+          import os
+          import subprocess
+          import yaml
+
           with open('/tmp/all-policies.yaml') as f:
               data = yaml.safe_load(f)
+
           for item in data.get('items', [data]):
               ns = item['metadata']['namespace']
               name = item['metadata']['name']
               os.makedirs(f'converted-policies/{ns}', exist_ok=True)
-              with open(f'/tmp/temp-{name}.yaml', 'w') as f:
+              temp_file = f'/tmp/temp-{ns}-{name}.yaml'
+              with open(temp_file, 'w') as f:
                   yaml.dump(item, f)
-              result = subprocess.run(['calicoctl', 'convert', '-f', f'/tmp/temp-{name}.yaml', '-o', 'yaml'],
-                  capture_output=True, text=True)
-              if result.returncode == 0:
-                  with open(f'converted-policies/{ns}/{name}.yaml', 'w') as f:
-                      f.write(result.stdout)
-          "
+              result = subprocess.run(
+                  ['calicoctl', 'convert', '-f', temp_file, '-o', 'yaml'],
+                  capture_output=True, text=True, check=True
+              )
+              with open(f'converted-policies/{ns}/{name}.yaml', 'w') as f:
+                  f.write(result.stdout)
+              os.remove(temp_file)
+          PY
 
       - name: Validate converted policies
         run: |
@@ -152,8 +170,12 @@ jobs:
           done
 
       - name: Create PR with converted policies
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git checkout -b convert-policies-$(date +%Y%m%d)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add converted-policies/
           git commit -m "Convert K8s NetworkPolicies to Calico format"
           git push origin HEAD
