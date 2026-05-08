@@ -36,12 +36,8 @@ echo ""
 for CLUSTER in $CLUSTERS; do
   echo "--- $CLUSTER ---"
   
-  export KUBECONFIG=$(kubectl config view --raw -o json | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin)))" 2>/dev/null)
-  
   # Check current state
-  CURRENT=$(kubectl --context="$CLUSTER" exec -n calico-system \
-    $(kubectl --context="$CLUSTER" get pod -n calico-system -l k8s-app=calico-kube-controllers -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) \
-    -- calicoctl ipam show --show-configuration 2>/dev/null | grep StrictAffinity | awk '{print $2}')
+  CURRENT=$(calicoctl --context="$CLUSTER" ipam show --show-configuration 2>/dev/null | awk -F'|' '/StrictAffinity/ {gsub(/ /, "", $3); print $3}')
   
   echo "  Current: StrictAffinity=$CURRENT"
   
@@ -49,7 +45,7 @@ for CLUSTER in $CLUSTERS; do
     echo "  Status: Already configured correctly"
   else
     echo "  Applying: StrictAffinity=$STRICT_AFFINITY"
-    calicoctl ipam configure --strictaffinity="$STRICT_AFFINITY"
+    calicoctl --context="$CLUSTER" ipam configure --strictaffinity="$STRICT_AFFINITY"
     echo "  Status: Updated"
   fi
 done
@@ -87,7 +83,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Apply IPAM configuration
         run: |
-          calicoctl ipam configure --strictaffinity=$(grep strictAffinity ipam-config/production.yaml | awk '{print $2}')
+          calicoctl ipam configure \
+            --strictaffinity=$(grep strictAffinity ipam-config/production.yaml | awk '{print $2}') \
+            --max-blocks-per-host=$(grep maxBlocksPerHost ipam-config/production.yaml | awk '{print $2}')
           calicoctl ipam show --show-configuration
 ```
 
@@ -99,7 +97,7 @@ jobs:
 
 EXPECTED_STRICT_AFFINITY="true"
 
-ACTUAL=$(calicoctl ipam show --show-configuration | grep StrictAffinity | awk '{print $2}')
+ACTUAL=$(calicoctl ipam show --show-configuration | awk -F'|' '/StrictAffinity/ {gsub(/ /, "", $3); print $3}')
 
 if [ "$ACTUAL" = "$EXPECTED_STRICT_AFFINITY" ]; then
   echo "OK: IPAM configuration matches expected state"
