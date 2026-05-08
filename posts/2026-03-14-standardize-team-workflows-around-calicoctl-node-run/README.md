@@ -52,7 +52,7 @@ calico-node-config/
 ```yaml
 # versions.yaml
 
-calico_node_image: "calico/node:v3.27.0"
+calico_node_image: "quay.io/calico/node:v3.27.0"
 calicoctl_version: "v3.27.0"
 minimum_docker_version: "24.0"
 approved_date: "2026-03-01"
@@ -70,7 +70,6 @@ ETCD_CERT_FILE=/etc/calico/certs/cert.pem
 ETCD_CA_CERT_FILE=/etc/calico/certs/ca.pem
 CALICO_IP=autodetect
 CALICO_IP_AUTODETECTION_METHOD=interface=ens192
-FELIX_LOGSEVERITYSCREEN=Info
 CALICO_NETWORKING_BACKEND=bird
 ```
 
@@ -131,7 +130,8 @@ ssh "$TARGET_HOST" bash -s << REMOTE
     --node-image=${CALICO_IMAGE} \
     --name=\$(hostname) \
     --ip=${CALICO_IP} \
-    --ip-autodetection-method=${CALICO_IP_AUTODETECTION_METHOD}
+    --ip-autodetection-method=${CALICO_IP_AUTODETECTION_METHOD} \
+    --backend=${CALICO_NETWORKING_BACKEND}
 REMOTE
 
 # Post-deployment validation
