@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Podman Machine, Virtual Machine, Container, DevOps, Apple Silicon, Rosetta
 
-Description: Learn how to enable Apple Rosetta translation in Podman machines to run x86_64 containers natively on Apple Silicon Macs with near-native performance.
+Description: Learn how to enable Apple Rosetta translation in Podman machines to run x86_64 containers on Apple Silicon Macs with near-native performance.
 
 ---
 
@@ -20,8 +20,10 @@ Rosetta support in Podman machines requires:
 
 - An Apple Silicon Mac (M1, M2, M3, or M4 series)
 - macOS 13 (Ventura) or later
-- Podman 4.1 or later
+- Podman 5.1 or later
 - Rosetta 2 installed on the host
+
+Podman 5.6 and later disabled Rosetta by default because of compatibility issues with newer Linux kernels, so you must explicitly opt in only on macOS and Podman machine images where Rosetta is supported.
 
 ```bash
 # Install Rosetta 2 if not already installed
@@ -29,26 +31,38 @@ Rosetta support in Podman machines requires:
 softwareupdate --install-rosetta --agree-to-license
 
 # Verify Rosetta is installed
-/usr/bin/pgrep -q oahd && echo "Rosetta is running" || echo "Rosetta not active"
+pkgutil --pkg-info com.apple.pkg.RosettaUpdateAuto
 ```
 
 ## Creating a Machine with Rosetta Enabled
 
-Initialize a new Podman machine with Rosetta translation support.
+Initialize a new Podman machine with Rosetta translation support. Add the machine settings to `~/.config/containers/containers.conf` before creating the machine:
+
+```toml
+[machine]
+provider = "applehv"
+rosetta = true
+```
 
 ```bash
-# Create a machine with Rosetta enabled using Apple Virtualization Framework
-podman machine init rosetta-machine --rosetta
+# Create a machine using Apple Virtualization Framework
+podman machine init --provider applehv rosetta-machine
 
 # Start the machine
 podman machine start rosetta-machine
 ```
 
-The `--rosetta` flag configures the machine to use Apple's Rosetta binary translation for x86_64 binaries.
+The `rosetta = true` machine setting configures the machine to use Apple's Rosetta binary translation for x86_64 binaries when the AppleHV provider supports it.
 
 ## Enabling Rosetta on an Existing Machine
 
-To enable Rosetta on an already initialized machine, you need to stop it, remove it, and reinitialize with the `--rosetta` flag, since `podman machine set` does not support a `--rosetta` option.
+To enable Rosetta on an already initialized machine, you need to stop it, remove it, and reinitialize it after setting `rosetta = true`, since `podman machine set` does not support a Rosetta option.
+
+```toml
+[machine]
+provider = "applehv"
+rosetta = true
+```
 
 ```bash
 # Stop and remove the machine
@@ -56,7 +70,7 @@ podman machine stop my-machine
 podman machine rm my-machine
 
 # Reinitialize with Rosetta enabled
-podman machine init my-machine --rosetta
+podman machine init --provider applehv my-machine
 
 # Start the machine
 podman machine start my-machine
@@ -67,8 +81,8 @@ podman machine start my-machine
 Confirm that Rosetta translation is working inside the machine.
 
 ```bash
-# SSH into the machine and check for Rosetta mount
-podman machine ssh my-machine -- ls -la /run/rosetta/
+# Inspect the machine's Rosetta setting
+podman machine inspect --format "{{.Rosetta}}" my-machine
 
 # Check if binfmt is configured for x86_64
 podman machine ssh my-machine -- cat /proc/sys/fs/binfmt_misc/rosetta
@@ -103,8 +117,7 @@ time podman run --platform linux/amd64 --rm ubuntu:22.04 bash -c "
     echo 'Package update completed'
 "
 
-# Compare: To use QEMU emulation instead (slow), you would disable Rosetta
-# The difference is typically 5-10x faster with Rosetta
+# Compare: To use QEMU emulation instead, you would disable Rosetta
 ```
 
 ## Multi-Architecture Workflows
@@ -134,12 +147,18 @@ Rosetta also improves the speed of building x86_64 images:
 podman build --platform linux/amd64 -t myapp:amd64 .
 
 # Build a multi-architecture image
-podman build --platform linux/amd64,linux/arm64 -t myapp:latest .
+podman build --platform linux/amd64,linux/arm64 --manifest myapp:latest .
 ```
 
 ## Disabling Rosetta
 
-If you need to disable Rosetta and fall back to QEMU emulation, you need to recreate the machine without the `--rosetta` flag:
+If you need to disable Rosetta and fall back to QEMU emulation, you need to recreate the machine with `rosetta = false`:
+
+```toml
+[machine]
+provider = "applehv"
+rosetta = false
+```
 
 ```bash
 # Stop and remove the machine
@@ -160,29 +179,29 @@ Common issues when using Rosetta with Podman:
 ```bash
 # Issue: Rosetta mount not available
 # Solution: Ensure the machine uses Apple Virtualization Framework
-podman machine inspect my-machine | jq '.VMType'
-# Should show "applehv" for Apple Virtualization Framework
+podman machine inspect --format "{{.ConfigDir.Path}}" my-machine
+# The path should include "applehv" for Apple Virtualization Framework
 
 # Issue: exec format error when running x86_64 images
 # Solution: Check if Rosetta binfmt is registered
-podman machine ssh my-machine -- ls /proc/sys/fs/binfmt_misc/rosetta
+podman machine ssh my-machine -- cat /proc/sys/fs/binfmt_misc/rosetta
 
 # Issue: Rosetta not installed on host
 softwareupdate --install-rosetta --agree-to-license
 
 # Issue: Machine was created with QEMU backend
 # Solution: Create a new machine with Apple Virtualization Framework
-podman machine init new-machine --rosetta
+podman machine init --provider applehv new-machine
 ```
 
 ## Quick Reference
 
 | Command | Purpose |
 |---|---|
-| `podman machine init --rosetta <name>` | Create a machine with Rosetta |
-| `podman machine rm <name> && podman machine init <name> --rosetta` | Enable Rosetta (requires recreating machine) |
+| `podman machine init --provider applehv <name>` | Create a machine with AppleHV |
+| `rosetta = true` in `[machine]` in `containers.conf` | Enable Rosetta for new machines |
 | `podman run --platform linux/amd64 ...` | Run x86_64 container |
 
 ## Summary
 
-Apple Rosetta translation in Podman machines provides near-native performance when running x86_64 containers on Apple Silicon Macs. Enable it with the `--rosetta` flag during machine initialization. To change the Rosetta setting on an existing machine, you must recreate it. This is essential for developers on Apple Silicon who need to work with x86_64-only container images, providing a dramatic speedup over QEMU emulation.
+Apple Rosetta translation in Podman machines provides near-native performance when running x86_64 containers on Apple Silicon Macs. Enable it with the `rosetta = true` machine setting before machine initialization. To change the Rosetta setting on an existing machine, you must recreate it. This is essential for developers on Apple Silicon who need to work with x86_64-only container images, providing a dramatic speedup over QEMU emulation.
