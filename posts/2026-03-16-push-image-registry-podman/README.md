@@ -77,7 +77,7 @@ podman push docker.io/myuser/myapp:v1.0.0
 podman push docker.io/myuser/myapp:latest
 
 # Push with verbose output
-podman push --log-level=debug docker.io/myuser/myapp:v1.0.0
+podman --log-level=debug push docker.io/myuser/myapp:v1.0.0
 ```
 
 ## Verifying the Push
@@ -88,7 +88,7 @@ Confirm the image was pushed successfully.
 # Inspect the remote image using skopeo
 skopeo inspect docker://docker.io/myuser/myapp:v1.0.0
 
-# Search for the image in the registry
+# Optionally search for the image if your registry supports search
 podman search docker.io/myuser/myapp
 
 # Pull the image on another machine to verify
