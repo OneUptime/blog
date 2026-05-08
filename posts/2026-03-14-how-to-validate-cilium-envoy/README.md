@@ -69,23 +69,23 @@ apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
   name: envoy-l7-policy
-  namespace: production
+  namespace: cilium-validate
 spec:
   endpointSelector:
     matchLabels:
-      app: api-server
+      app: server
   ingress:
     - fromEndpoints:
         - matchLabels:
-            app: web-frontend
+            app: client
       toPorts:
         - ports:
-            - port: "8080"
+            - port: "80"
               protocol: TCP
           rules:
             http:
               - method: "GET"
-                path: "/api/v1/.*"
+                path: "/"
               - method: "POST"
                 path: "/api/v1/resources"
                 headers:
@@ -94,7 +94,8 @@ spec:
 
 ```bash
 # Validate all endpoints have policies applied
-cilium endpoint list -o json | jq '.[] | {id: .id, policy: .status.policy}'
+kubectl get ciliumendpoints -n cilium-validate -o json | \
+  jq '.items[] | {name: .metadata.name, policy: .status.policy}'
 ```
 
 ### Running Connectivity Tests
@@ -108,7 +109,7 @@ cilium connectivity test
 
 ```bash
 # Monitor all flows in the validation namespace
-hubble observe --namespace cilium-validate --output compact --last 50
+hubble observe -P --namespace cilium-validate --output compact --last 50
 
 # Verify allowed traffic succeeds
 kubectl -n cilium-validate exec client -- \
@@ -121,7 +122,7 @@ kubectl -n cilium-validate run unauthorized \
   wget --timeout=3 -q -O - http://server
 
 # Check Hubble for the expected drop
-hubble observe --namespace cilium-validate --verdict DROPPED --last 10
+hubble observe -P --namespace cilium-validate --verdict DROPPED --last 10
 ```
 
 ## Automated Validation Script
@@ -142,28 +143,28 @@ echo "=== Cilium Policy Validation ==="
 # Test 1: Cilium agent health
 echo -n "Test 1: Cilium agent health... "
 if cilium status > /dev/null 2>&1; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((PASS+=1))
 else
-  echo "FAIL"; ((FAIL++))
+  echo "FAIL"; ((FAIL+=1))
 fi
 
 # Test 2: All endpoints ready
 echo -n "Test 2: All endpoints ready... "
-NOT_READY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.state != "ready")] | length')
+NOT_READY=$(kubectl get ciliumendpoints -n "$NAMESPACE" -o json | \
+  jq '[.items[] | select(.status.state != "ready")] | length')
 if [ "$NOT_READY" -eq 0 ]; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((PASS+=1))
 else
-  echo "FAIL ($NOT_READY not ready)"; ((FAIL++))
+  echo "FAIL ($NOT_READY not ready)"; ((FAIL+=1))
 fi
 
 # Test 3: Policies applied
 echo -n "Test 3: Policies applied... "
-POLICY_COUNT=$(cilium policy get -o json | jq '. | length')
+POLICY_COUNT=$(kubectl get cnp -n "$NAMESPACE" -o json | jq '.items | length')
 if [ "$POLICY_COUNT" -gt 0 ]; then
-  echo "PASS ($POLICY_COUNT policies)"; ((PASS++))
+  echo "PASS ($POLICY_COUNT policies)"; ((PASS+=1))
 else
-  echo "FAIL (no policies)"; ((FAIL++))
+  echo "FAIL (no policies)"; ((FAIL+=1))
 fi
 
 echo ""
@@ -182,8 +183,8 @@ Effective network segmentation goes beyond individual policies. Consider organiz
 kubectl get namespaces --show-labels
 
 # Identify cross-namespace communication patterns
-hubble observe --output json --last 500 | \
-  jq '.flow | select(.source.namespace != .destination.namespace) | {
+hubble observe -P --output json --last 500 | \
+  jq -c '.flow | select(.source.namespace != .destination.namespace) | {
     src_ns: .source.namespace,
     dst_ns: .destination.namespace,
     port: (.l4.TCP.destination_port // .l4.UDP.destination_port)
@@ -206,13 +207,13 @@ cilium status
 ```
 
 ```bash
-# Confirm all endpoints are healthy
-cilium endpoint health
+# Confirm Cilium endpoints are ready
+kubectl get ciliumendpoints -A
 ```
 
 ```bash
 # Verify no policy violations
-hubble observe --verdict DROPPED --last 20 --output compact
+hubble observe -P --verdict DROPPED --last 20 --output compact
 ```
 
 ## Troubleshooting
