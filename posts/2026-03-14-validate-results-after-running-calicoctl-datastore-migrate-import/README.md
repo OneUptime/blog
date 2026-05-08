@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Datastore Migration, Validation, Kubernetes
 
-Description: Verify that calicoctl datastore migrate import completed successfully by checking resource integrity, counts, and cluster connectivity.
+Description: Verify that calicoctl datastore migrate import completed successfully by checking resource integrity, counts, and pod IP assignment.
 
 ---
 
@@ -15,8 +15,8 @@ After running `calicoctl datastore migrate import`, thorough validation ensures 
 ## Prerequisites
 
 - Completed execution of `calicoctl datastore migrate import`
-- Access to source and/or target datastore
-- Pre-migration resource counts for comparison
+- Access to the target datastore
+- Pre-migration resource counts saved as `<resource>.count` files for comparison
 
 ## Validation Checklist
 
@@ -51,9 +51,9 @@ echo ""
 echo "--- Node Health ---"
 calicoctl get nodes -o wide
 
-# 5. Test pod connectivity
+# 5. Verify pod IP assignment
 echo ""
-echo "--- Connectivity Test ---"
+echo "--- Pod IP Assignment ---"
 kubectl run migration-test --image=busybox --restart=Never -- sleep 30 2>/dev/null
 sleep 5
 POD_IP=$(kubectl get pod migration-test -o jsonpath='{.status.podIP}' 2>/dev/null)
@@ -76,7 +76,7 @@ fi
 echo "=== Comparing with Pre-Migration State ==="
 
 for r in nodes ippools globalnetworkpolicies bgpconfigurations; do
-  BEFORE=$(grep -c "name:" "$BACKUP_DIR/$r.yaml" 2>/dev/null || echo 0)
+  BEFORE=$(cat "$BACKUP_DIR/$r.count" 2>/dev/null || echo 0)
   AFTER=$(calicoctl get "$r" 2>/dev/null | tail -n +2 | wc -l || echo 0)
   
   if [ "$BEFORE" = "$AFTER" ]; then
@@ -97,9 +97,9 @@ done
 ## Troubleshooting
 
 - **Resource count mismatch**: Some system resources may be auto-created or excluded. Check which specific resources differ.
-- **Connectivity test fails**: The migration may have temporarily disrupted networking. Wait 30 seconds and retry.
+- **Pod IP assignment fails**: The migration may have temporarily disrupted networking. Wait 30 seconds and retry.
 - **Cannot connect after migration**: Verify the DATASTORE_TYPE is set correctly for the target datastore.
 
 ## Conclusion
 
-Thorough validation after each migration step prevents data loss from going undetected. By comparing resource counts, checking critical configurations, and testing connectivity, you confirm that `calicoctl datastore migrate import` completed successfully.
+Thorough validation after each migration step prevents data loss from going undetected. By comparing resource counts, checking critical configurations, and verifying pod IP assignment, you confirm that `calicoctl datastore migrate import` completed successfully.
