@@ -18,7 +18,7 @@ This guide covers automation patterns for cilium-dbg bgp operations, from schedu
 
 - Kubernetes cluster with Cilium and BGP enabled
 - `kubectl` with cluster access
-- CiliumBGPPeeringPolicy configured
+- CiliumBGPClusterConfig, CiliumBGPPeerConfig, and CiliumBGPAdvertisement configured
 - Optional: Prometheus Pushgateway or webhook endpoint for alerts
 
 ## Multi-Node BGP State Collection
@@ -44,10 +44,11 @@ while IFS=',' read -r pod node; do
   [ -z "$pod" ] && continue
   echo "Collecting BGP state from $node..."
 
-  for subcmd in "peers" "routes" "route-policies"; do
+  for subcmd in "peers" "routes available ipv4 unicast" "route-policies"; do
+    output_name=$(echo "$subcmd" | tr ' ' '-')
     kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-      cilium-dbg bgp $subcmd > "$OUTPUT_DIR/${node}-${subcmd}.txt" 2>/dev/null || \
-      echo "FAILED" > "$OUTPUT_DIR/${node}-${subcmd}.txt"
+      cilium-dbg bgp $subcmd > "$OUTPUT_DIR/${node}-${output_name}.txt" 2>/dev/null || \
+      echo "FAILED" > "$OUTPUT_DIR/${node}-${output_name}.txt"
   done
 
   if grep -qi "established" "$OUTPUT_DIR/${node}-peers.txt" 2>/dev/null; then
@@ -147,9 +148,9 @@ while IFS=',' read -r pod node; do
   [ -z "$pod" ] && continue
   PEERS=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
     cilium-dbg bgp peers 2>/dev/null)
-  ESTABLISHED=$(echo "$PEERS" | grep -ci "established" || echo 0)
+  ESTABLISHED=$(echo "$PEERS" | grep -ci "established" || true)
   ROUTES=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-dbg bgp routes 2>/dev/null | tail -n +2 | grep -c . || echo 0)
+    cilium-dbg bgp routes available ipv4 unicast 2>/dev/null | tail -n +2 | grep -c . || true)
 
   cat << METRICS
 cilium_bgp_peers_established{node="$node"} $ESTABLISHED
