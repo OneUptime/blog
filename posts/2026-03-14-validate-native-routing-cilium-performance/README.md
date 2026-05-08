@@ -19,7 +19,7 @@ This guide provides the specific steps and commands for native routing performan
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `cilium` CLI, `helm`, and `kubectl`
+- `cilium` CLI, `helm`, `kubectl`, `jq`, `bc`, and `gawk`
 - `iperf3` and `netperf` for benchmarking
 - Prometheus and Grafana for monitoring
 - Node-level root access
@@ -53,26 +53,46 @@ echo "PASS"
 ## Route Completeness Validation
 
 ```bash
-# Verify all nodes have routes to all other nodes' pod CIDRs
+# Verify all nodes have routes to all other nodes' pod CIDRs when using per-node direct routes
 NODES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
+NODE_CIDRS=$(kubectl get ciliumnodes.cilium.io -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .spec.ipam.podCIDRs[*]}{.}{" "}{end}{"\n"}{end}' 2>/dev/null)
+if [ -z "$NODE_CIDRS" ]; then
+  NODE_CIDRS=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .spec.podCIDRs[*]}{.}{" "}{end}{"\n"}{end}')
+fi
+
 for node in $NODES; do
-  ROUTES=$(kubectl exec -n kube-system $(kubectl get pods -n kube-system -l k8s-app=cilium --field-selector spec.nodeName=$node -o name | head -1) -- ip route show | grep -c "10\.") 
-  EXPECTED=$(($(echo $NODES | wc -w) - 1))
-  echo "$node: $ROUTES routes (expected >= $EXPECTED)"
+  CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium --field-selector spec.nodeName=$node -o name | head -1)
+  ROUTES=$(kubectl exec -n kube-system "$CILIUM_POD" -- ip route show)
+  MISSING=0
+
+  while read -r owner cidrs; do
+    [ "$owner" = "$node" ] && continue
+    for cidr in $cidrs; do
+      [ -z "$cidr" ] && continue
+      if ! echo "$ROUTES" | grep -Fq "$cidr"; then
+        echo "$node: missing route for $owner CIDR $cidr"
+        MISSING=$((MISSING + 1))
+      fi
+    done
+  done << EOF
+$NODE_CIDRS
+EOF
+
+  [ "$MISSING" -eq 0 ] && echo "$node: all remote PodCIDR routes present"
 done
 ```
 
 ## Verification
 
 ```bash
-cilium status --verbose | grep -E "DatapathMode|Host Routing|Routing"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep -E "Routing|Host Routing"
 ip route show | head -20
 ```
 
 ## Troubleshooting
 
-- **Routes not appearing**: Check autoDirectNodeRoutes and ensure nodes are on the same L2 segment, or use BGP.
-- **BPF host routing not activating**: Requires kubeProxyReplacement=true and compatible kernel (5.10+).
+- **Routes not appearing**: Check autoDirectNodeRoutes and ensure nodes are on the same L2 segment, or use BGP to distribute PodCIDR routes through the network.
+- **BPF host routing not activating**: Requires kubeProxyReplacement=true, bpf.masquerade=true, and a compatible kernel (5.10+ or equivalent).
 - **Asymmetric throughput**: Check for different NIC speeds or route path differences between nodes.
 - **BGP peering not establishing**: Verify BGP ASN configuration and firewall rules for TCP port 179.
 
@@ -118,7 +138,7 @@ for i in $(seq 1 20); do
 done
 
 # Calculate statistics
-echo "${SAMPLES[@]}" | tr ' ' '\n' | awk '
+echo "${SAMPLES[@]}" | tr ' ' '\n' | gawk '
 {
   sum += $1
   sumsq += $1 * $1
@@ -176,7 +196,7 @@ Cluster: $(kubectl config current-context)
 ## Test Environment
 - Nodes: $(kubectl get nodes --no-headers | wc -l)
 - Pods: $(kubectl get pods --all-namespaces --no-headers | wc -l)
-- Identities: $(cilium identity list 2>/dev/null | wc -l)
+- Identities: $(kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list 2>/dev/null | wc -l)
 
 ## Results
 HEADER
