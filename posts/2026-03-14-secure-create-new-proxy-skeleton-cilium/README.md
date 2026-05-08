@@ -12,15 +12,15 @@ Description: A step-by-step guide to creating a secure new proxy skeleton in Cil
 
 When adding support for a new Layer 7 protocol in Cilium, the first coding step is creating a proxy skeleton - the minimal structure that registers with the proxylib framework and handles connection lifecycle events. Getting security right at this stage is critical because the skeleton establishes the foundation for all future parsing and policy enforcement.
 
-A poorly structured skeleton can introduce vulnerabilities such as unbounded memory allocation, missing authentication hooks, or improper connection state management. These issues become increasingly difficult to fix once more complex parsing logic is layered on top.
+A poorly structured skeleton can introduce vulnerabilities such as unbounded memory allocation, missing policy checks, or improper connection state management. These issues become increasingly difficult to fix once more complex parsing logic is layered on top.
 
 This guide walks you through creating a new proxy skeleton in Cilium's proxylib with security best practices baked in from the beginning. We will cover factory registration, connection initialization, safe memory patterns, and integration with Cilium's policy engine.
 
 ## Prerequisites
 
-- Cloned Cilium repository (v1.15+)
-- Go 1.21 or later
-- Understanding of Cilium's proxylib interface (Parser and ParserFactory)
+- Cloned `cilium/proxy` repository
+- The Go version required by the repository's `go.mod`
+- Understanding of Cilium's proxylib interface (`Parser`, `ReaderParser`, and `ParserFactory`)
 - Familiarity with CiliumNetworkPolicy L7 rules
 - A Kubernetes cluster with Cilium for end-to-end testing
 
@@ -29,29 +29,32 @@ This guide walks you through creating a new proxy skeleton in Cilium's proxylib 
 Create a well-organized directory for your new protocol parser:
 
 ```bash
-cd cilium
+cd proxy/proxylib
 
 # Create the new parser directory
 
-mkdir -p proxylib/myprotocol
+mkdir -p myprotocol
 
 # Create the required files
-touch proxylib/myprotocol/myprotocolparser.go
-touch proxylib/myprotocol/myprotocolparser_test.go
+touch myprotocol/myprotocol.go
+touch myprotocol/myprotocol_test.go
 ```
 
-The naming convention follows existing parsers - the directory name matches the protocol, and the main file is named `<protocol>parser.go`.
+The naming convention follows existing parsers - the directory name matches the protocol, and the main file is named after the protocol.
 
 ## Implementing the Secure Parser Factory
 
 The ParserFactory is responsible for creating parser instances per connection. Security starts here with proper validation.
 
 ```go
-// proxylib/myprotocol/myprotocolparser.go
+// proxylib/myprotocol/myprotocol.go
 package myprotocol
 
 import (
-    "github.com/cilium/cilium/proxylib/proxylib"
+    "fmt"
+
+    cilium "github.com/cilium/proxy/go/cilium/api"
+    "github.com/cilium/proxy/proxylib/proxylib"
     log "github.com/sirupsen/logrus"
 )
 
@@ -61,9 +64,6 @@ const (
 
     // maxMessageSize prevents memory exhaustion from malformed packets
     maxMessageSize = 1 << 20 // 1 MB
-
-    // maxConnectionsPerEndpoint limits resource consumption
-    maxConnectionsPerEndpoint = 10000
 )
 
 // ParserFactory creates MyProtocol parser instances
@@ -73,20 +73,23 @@ type ParserFactory struct{}
 // The connection parameter provides metadata about the endpoints.
 func (f *ParserFactory) Create(connection *proxylib.Connection) interface{} {
     log.WithFields(log.Fields{
-        "srcIdentity":  connection.SrcIdentity,
-        "dstIdentity":  connection.DstIdentity,
-        "origEndpoint": connection.OrigEndpoint,
+        "srcId":   connection.SrcId,
+        "dstId":   connection.DstId,
+        "srcAddr": connection.SrcAddr,
+        "dstAddr": connection.DstAddr,
     }).Debug("Creating new MyProtocol parser")
 
     return &Parser{
         connection: connection,
         state:      stateInit,
+        maxBytes:   maxMessageSize,
     }
 }
 
 // Register the parser factory during init
 func init() {
     proxylib.RegisterParserFactory(ParserName, &ParserFactory{})
+    proxylib.RegisterL7RuleParser(ParserName, ruleParser)
 }
 ```
 
@@ -105,7 +108,7 @@ const (
     stateClosed
 )
 
-// Parser implements the proxylib.Parser interface for MyProtocol
+// Parser implements the proxylib.ReaderParser interface for MyProtocol
 type Parser struct {
     connection *proxylib.Connection
     state      parserState
@@ -121,7 +124,7 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     // Reject data on errored or closed connections
     if p.state == stateError || p.state == stateClosed {
         log.Warn("Data received on closed/errored MyProtocol connection")
-        return proxylib.DROP, 0
+        return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_TYPE)
     }
 
     // Transition from init to running on first data
@@ -141,7 +144,15 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
         log.WithField("dataLen", dataLen).
             Warn("MyProtocol message exceeds maximum size")
         p.state = stateError
-        return proxylib.DROP, 0
+        return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_LENGTH)
+    }
+
+    p.bytesRead += uint64(dataLen)
+    if p.maxBytes > 0 && p.bytesRead > p.maxBytes {
+        log.WithField("bytesRead", p.bytesRead).
+            Warn("MyProtocol connection exceeded byte limit")
+        p.state = stateError
+        return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_LENGTH)
     }
 
     // Placeholder: forward all data for now
@@ -163,38 +174,68 @@ stateDiagram-v2
 
 ## Integrating with Cilium Policy
 
-Wire the new parser into CiliumNetworkPolicy by updating the import chain and defining the policy rule structure:
+Wire the new parser into CiliumNetworkPolicy by registering an L7 rule parser and updating the import chain:
 
 ```go
-// Add to proxylib/myprotocol/myprotocolparser.go
+// Add to proxylib/myprotocol/myprotocol.go
 
 // MyProtocolRule represents an L7 rule for the protocol
 type MyProtocolRule struct {
-    // AllowedCommands restricts which protocol commands are permitted
-    AllowedCommands []string
+    // Command restricts which protocol command is permitted
+    Command string
 }
 
 // Matches checks if the parsed request matches this policy rule
-func (r *MyProtocolRule) Matches(command string) bool {
-    if len(r.AllowedCommands) == 0 {
+func (r *MyProtocolRule) Matches(data interface{}) bool {
+    request, ok := data.(MyProtocolRequest)
+    if !ok {
+        return false
+    }
+    if r.Command == "" {
         // Empty rule matches everything - explicit allow-all
         return true
     }
-    for _, allowed := range r.AllowedCommands {
-        if allowed == command {
-            return true
-        }
+    return r.Command == request.Command
+}
+
+// MyProtocolRequest contains the fields extracted from one request.
+type MyProtocolRequest struct {
+    Command string
+}
+
+// ruleParser parses Cilium generic L7 key-value rules into matcher objects.
+func ruleParser(rule *cilium.PortNetworkPolicyRule) []proxylib.L7NetworkPolicyRule {
+    l7Rules := rule.GetL7Rules()
+    if l7Rules == nil {
+        return nil
     }
-    return false
+
+    allowRules := l7Rules.GetL7AllowRules()
+    rules := make([]proxylib.L7NetworkPolicyRule, 0, len(allowRules))
+    for _, l7Rule := range allowRules {
+        parsed := &MyProtocolRule{}
+        for key, value := range l7Rule.Rule {
+            switch key {
+            case "command":
+                parsed.Command = value
+            default:
+                proxylib.ParseError(fmt.Sprintf("Unsupported MyProtocol L7 key: %s", key), rule)
+            }
+        }
+        rules = append(rules, parsed)
+    }
+    return rules
 }
 ```
+
+The rule parser only loads the policy. Once the request parser extracts a command, enforce it with `p.connection.Matches(MyProtocolRequest{Command: command})` before returning `PASS`; return `DROP` for the request bytes after injecting an application-level denial response when possible.
 
 Ensure the parser is imported in the proxylib main package:
 
 ```go
-// Add this import to proxylib/proxylib.go or the appropriate init file
+// Add this import to proxylib/proxylib.go
 import (
-    _ "github.com/cilium/cilium/proxylib/myprotocol"
+    _ "github.com/cilium/proxy/proxylib/myprotocol"
 )
 ```
 
@@ -230,23 +271,23 @@ Run tests to verify the skeleton compiles and passes basic checks:
 
 ```bash
 # Build the proxylib to verify compilation
-go build ./proxylib/...
+go build ./...
 
 # Run the parser tests
-go test ./proxylib/myprotocol/... -v
+go test ./myprotocol/... -v
 
 # Run with race detection
-go test ./proxylib/myprotocol/... -race -v
+go test ./myprotocol/... -race -v
 
-# Verify the parser registers correctly
-go test -run TestParserRegistration ./proxylib/... -v
+# Run the proxylib test suite
+go test ./... -v
 ```
 
 Check that the parser appears in the registered parsers list:
 
 ```bash
 # Search for your parser in the registration output
-grep -rn "myprotocol" proxylib/ --include="*.go"
+grep -rn "myprotocol" . --include="*.go"
 ```
 
 ## Troubleshooting
