@@ -10,7 +10,7 @@ Description: How to prevent tunneling-related performance issues in Cilium, cove
 
 ## Introduction
 
-Tunneling (VXLAN or Geneve) in Cilium adds encapsulation overhead to every cross-node packet. This overhead includes additional headers (50-60 bytes), extra processing for encapsulation/decapsulation, and potential MTU-related fragmentation. Preventing these issues is critical for achieving optimal network performance.
+Tunneling (VXLAN or Geneve) in Cilium adds encapsulation overhead to every cross-node packet. This overhead includes additional headers (50 bytes for VXLAN, with Geneve overhead varying when options are used), extra processing for encapsulation/decapsulation, and potential MTU-related fragmentation. Preventing these issues is critical for achieving optimal network performance.
 
 The best prevention is starting with native routing mode from day one. When tunneling is required, proper MTU configuration and monitoring prevent the most common performance issues.
 
@@ -18,7 +18,7 @@ This guide provides the specific steps for each aspect of tunnel performance man
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.24+) with Cilium v1.14+
+- Kubernetes cluster running a version supported by your Cilium release, with Cilium v1.14+ (use a currently supported Cilium release in production)
 - `cilium` CLI, `helm`, and `kubectl`
 - `iperf3` and `netperf` for benchmarking
 - Prometheus and Grafana for monitoring
@@ -28,12 +28,14 @@ This guide provides the specific steps for each aspect of tunnel performance man
 
 ```bash
 # Start new clusters with native routing
+helm repo add cilium https://helm.cilium.io/
+NATIVE_CIDR="10.0.0.0/8" # Replace with your routable Pod CIDR or VPC CIDR
 
 helm install cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
-  --set ipv4NativeRoutingCIDR="10.0.0.0/8" \
+  --set ipv4NativeRoutingCIDR="$NATIVE_CIDR" \
+  --set bpf.masquerade=true \
   --set bpf.hostLegacyRouting=false \
   --set kubeProxyReplacement=true
 ```
@@ -54,11 +56,12 @@ spec:
         spec:
           containers:
           - name: checker
-            image: networkstatic/iperf3
+            image: alpine:3.20
             command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache curl iperf3 jq
               BPS=$(iperf3 -c iperf-server.monitoring -t 20 -P 1 -J | \
                 jq '.end.sum_sent.bits_per_second')
               cat <<METRIC | curl --data-binary @- http://pushgateway.monitoring:9091/metrics/job/tunnel_check
@@ -70,15 +73,15 @@ spec:
 ## Configuration Guardrails
 
 ```bash
-# Alert if someone enables tunneling
-kubectl get cm cilium-config -n kube-system -o yaml | grep tunnel
-# Should show: tunnel: disabled
+# Alert if someone switches back to tunnel mode
+kubectl get cm cilium-config -n kube-system -o yaml | grep routing-mode
+# Should show: routing-mode: native
 ```
 
 ## Verification
 
 ```bash
-cilium status --verbose | grep -E "Tunnel|DatapathMode"
+cilium config view | grep -E "routing-mode|tunnel-protocol"
 kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 ```
@@ -86,7 +89,7 @@ kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
 ## Troubleshooting
 
 - **Cannot switch to native routing**: Cloud provider may require specific network configuration. Check provider documentation.
-- **MTU too low causes poor performance**: Verify with ping -M do and adjust MTU in Cilium config.
+- **MTU too low causes poor performance**: Verify with Linux ping using `ping -M do -s <payload-size>` and adjust the `MTU` Helm value in Cilium config.
 - **Fragmentation despite correct MTU**: Check for nested encapsulation (tunnel inside tunnel).
 - **Native routing breaks cross-node**: Ensure node routes are configured correctly.
 
@@ -213,4 +216,4 @@ Maintain a living runbook that documents all known performance issues and their 
 
 ## Conclusion
 
-Preventing tunneling performance in Cilium is essential for optimal cross-node communication. Native routing eliminates tunnel overhead entirely and should be the default choice when the network supports it. When tunneling is required, proper MTU configuration and BPF host routing minimize the performance impact.
+Preventing tunneling performance in Cilium is essential for optimal cross-node communication. Native routing eliminates tunnel overhead entirely and should be the default choice when the network supports it. When tunneling is required, proper MTU configuration and monitoring minimize the performance impact.
