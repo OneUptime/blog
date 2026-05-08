@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Diagnostic, Validation
 
-Description: Validate cluster-wide Calico health by running comprehensive checks on TigeraStatus, IPAM consistency, cross-node connectivity, and policy enforcement to confirm the entire Calico installation is...
+Description: Validate cluster-wide Calico health by running comprehensive checks on TigeraStatus, pod health, IPAM consistency, IPAM utilization, and cross-node connectivity to confirm the entire Calico installation is...
 
 ---
 
 ## Introduction
 
-Validating Calico cluster health requires more than checking that pods are Running. A healthy-looking cluster can have silent failures: IPAM inconsistencies that cause future pod scheduling failures, BGP route propagation gaps that affect specific pod CIDR ranges, or policy count mismatches between kube-controllers and calicoctl. Comprehensive cluster validation catches these before they cause incidents.
+Validating Calico cluster health requires more than checking that pods are Running. A healthy-looking cluster can have silent failures: IPAM inconsistencies that cause future pod scheduling failures, unavailable operator-managed components, or route propagation gaps that affect specific pod CIDR ranges. Comprehensive cluster validation catches these before they cause incidents.
 
 ## Cluster Validation Script
 
@@ -27,22 +27,27 @@ check_fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 check_warn() { echo "WARN: $1"; WARN=$((WARN + 1)); }
 
 # 1. TigeraStatus
-NOT_AVAILABLE=$(kubectl get tigerastatus --no-headers 2>/dev/null | \
-  awk '$2 != "True"' | wc -l)
-[ "${NOT_AVAILABLE}" -eq 0 ] && \
-  check_pass "All TigeraStatus components Available" || \
-  check_fail "${NOT_AVAILABLE} TigeraStatus components not Available"
+if TIGERA_STATUS=$(kubectl get tigerastatus --no-headers 2>/dev/null); then
+  NOT_AVAILABLE=$(echo "${TIGERA_STATUS}" | awk '$2 != "True"' | wc -l)
+  [ "${NOT_AVAILABLE}" -eq 0 ] && \
+    check_pass "All TigeraStatus components Available" || \
+    check_fail "${NOT_AVAILABLE} TigeraStatus components not Available"
+else
+  check_fail "Unable to get TigeraStatus resources"
+fi
 
 # 2. calico-system pods
-NOT_RUNNING=$(kubectl get pods -n calico-system --no-headers | \
-  grep -cv "Running" || echo 0)
-[ "${NOT_RUNNING}" -eq 0 ] && \
-  check_pass "All calico-system pods Running" || \
-  check_fail "${NOT_RUNNING} calico-system pods not Running"
+if CALICO_PODS=$(kubectl get pods -n calico-system --no-headers 2>/dev/null); then
+  NOT_RUNNING=$(echo "${CALICO_PODS}" | awk '$3 != "Running"' | wc -l)
+  [ "${NOT_RUNNING}" -eq 0 ] && \
+    check_pass "All calico-system pods Running" || \
+    check_fail "${NOT_RUNNING} calico-system pods not Running"
+else
+  check_fail "Unable to get calico-system pods"
+fi
 
 # 3. IPAM consistency
-IPAM_CHECK=$(calicoctl ipam check 2>&1)
-if echo "${IPAM_CHECK}" | grep -q "IPAM is consistent"; then
+if calicoctl ipam check >/tmp/calico-ipam-check.out 2>&1; then
   check_pass "IPAM consistent"
 else
   check_fail "IPAM inconsistency detected"
@@ -50,8 +55,13 @@ fi
 
 # 4. IPAM utilization
 IPAM_USED=$(calicoctl ipam show 2>/dev/null | \
-  grep -oP '\d+%' | head -1 | tr -d '%')
-if [ -n "${IPAM_USED}" ] && [ "${IPAM_USED}" -gt 85 ]; then
+  awk -F'|' '$2 ~ /IP Pool/ && match($5, /\([0-9]+%\)/) {
+    used = substr($5, RSTART + 1, RLENGTH - 3)
+    if (used > max) max = used
+  } END { if (max != "") print max }')
+if [ -z "${IPAM_USED}" ]; then
+  check_warn "Unable to determine IPAM utilization"
+elif [ "${IPAM_USED}" -gt 85 ]; then
   check_warn "IPAM utilization at ${IPAM_USED}% (>85%)"
 else
   check_pass "IPAM utilization at ${IPAM_USED}%"
@@ -73,6 +83,9 @@ kubectl run net-test-a --image=nicolaka/netshoot \
 kubectl run net-test-b --image=nicolaka/netshoot \
   --overrides='{"spec":{"nodeName":"<node-b>"}}' \
   --restart=Never -- sleep 300
+
+kubectl wait --for=condition=Ready pod/net-test-a --timeout=60s
+kubectl wait --for=condition=Ready pod/net-test-b --timeout=60s
 
 IP_B=$(kubectl get pod net-test-b -o jsonpath='{.status.podIP}')
 kubectl exec net-test-a -- ping -c 3 "${IP_B}"
