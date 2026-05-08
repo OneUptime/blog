@@ -72,7 +72,7 @@ set -euo pipefail
 
 REGISTRY="${REGISTRY:-registry.example.com}"
 PUSHGATEWAY="${PUSHGATEWAY:-http://prometheus-pushgateway:9091}"
-CALICO_VERSION="${CALICO_VERSION:-v3.27.0}"
+CALICO_VERSION="${CALICO_VERSION:-v3.32.0}"
 
 # Check registry API availability
 start_time=$(date +%s%N)
@@ -119,7 +119,7 @@ Detect when your private registry falls behind upstream releases:
 set -euo pipefail
 
 PRIVATE_REGISTRY="${PRIVATE_REGISTRY:-registry.example.com/calico}"
-PUBLIC_REGISTRY="docker.io/calico"
+PUBLIC_REGISTRY="quay.io/calico"
 
 IMAGES=("node" "cni" "kube-controllers" "typha")
 
@@ -184,7 +184,7 @@ spec:
             description: "Calico version {{ $labels.version }} is not available in registry {{ $labels.registry }}."
 
         - alert: CalicoImagePullFailures
-          expr: increase(kube_pod_container_status_waiting_reason{namespace="calico-system", reason="ImagePullBackOff"}[10m]) > 0
+          expr: max_over_time(kube_pod_container_status_waiting_reason{namespace="calico-system", reason=~"ImagePullBackOff|ErrImagePull"}[10m]) == 1
           for: 5m
           labels:
             severity: critical
@@ -197,7 +197,7 @@ spec:
 flowchart TD
     A[Registry Health Check] -->|Every 1 min| B[Prometheus Pushgateway]
     C[Image Sync Check] -->|Every 6 hours| B
-    D[Kubernetes Events] -->|kube-state-metrics| E[Prometheus]
+    D[Kubernetes Pod Status] -->|kube-state-metrics| E[Prometheus]
     B --> E
     E --> F{Alert Rules}
     F -->|Registry Down| G[Critical Alert]
