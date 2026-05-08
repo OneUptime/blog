@@ -138,7 +138,7 @@ ip link show vxlan.calico | grep mtu  # VXLAN tunnel
 # VXLAN: node_mtu - 50 (e.g., 1500 - 50 = 1450)
 
 # Set MTU via Calico Installation resource (operator-managed)
-kubectl patch installation default --type merge -p \
+kubectl patch installation.operator.tigera.io default --type merge -p \
   '{"spec":{"calicoNetwork":{"mtu":1450}}}'
 
 # Restart calico-node to apply
@@ -174,7 +174,7 @@ calicoctl patch ippool default-ipv4-ippool --patch \
   '{"spec":{"disabled": true}}'
 
 # Pods must be recreated to get IPs from the new pool
-kubectl rollout restart deployment --all -n <namespace>
+kubectl rollout restart deployment -n <namespace>
 ```
 
 ## Fixing Tunnel Interface Issues
@@ -198,6 +198,9 @@ ip link show tunl0 2>/dev/null || ip link show vxlan.calico 2>/dev/null
 calicoctl get hostendpoint -o yaml
 calicoctl get globalnetworkpolicy -o yaml | grep -A10 "selector.*host"
 
+# If using automatic host endpoints, label nodes so host endpoints can be selected
+kubectl label nodes --all kubernetes-host=
+
 # If host endpoints are configured, ensure traffic is allowed
 cat <<EOF | calicoctl apply -f -
 apiVersion: projectcalico.org/v3
@@ -206,7 +209,7 @@ metadata:
   name: allow-pod-traffic-between-hosts
 spec:
   order: 100
-  selector: all()
+  selector: has(kubernetes-host)
   ingress:
   - action: Allow
     protocol: 4
@@ -215,6 +218,11 @@ spec:
     destination:
       ports:
       - 4789
+  - action: Allow
+    protocol: TCP
+    destination:
+      ports:
+      - 179
   egress:
   - action: Allow
     protocol: 4
@@ -223,6 +231,11 @@ spec:
     destination:
       ports:
       - 4789
+  - action: Allow
+    protocol: TCP
+    destination:
+      ports:
+      - 179
   types:
   - Ingress
   - Egress
@@ -242,7 +255,7 @@ sudo calicoctl node status
 ip route | grep <remote-pod-cidr>
 
 # Run a comprehensive connectivity test
-kubectl run nettest --image=nicolaka/netshoot --rm -it -- \
+kubectl run nettest --image=nicolaka/netshoot --restart=Never --rm -it --command -- \
   bash -c 'for ip in <pod-ip-1> <pod-ip-2> <pod-ip-3>; do
     ping -c 1 -W 2 $ip > /dev/null 2>&1 && echo "$ip: OK" || echo "$ip: FAIL"
   done'
@@ -251,7 +264,7 @@ kubectl run nettest --image=nicolaka/netshoot --rm -it -- \
 ## Troubleshooting
 
 - **BGP peering flaps**: Check for network instability between nodes or resource exhaustion on the calico-node pods.
-- **VXLAN switch causes pod restarts**: Existing pods keep their old tunnel config. Rolling restart of workloads is required.
+- **VXLAN switch does not apply cleanly**: Verify the IP pool VXLAN setting and restart calico-node. Recreate workloads if you also changed MTU, because the updated MTU applies only to new workloads.
 - **New IP pool not used**: Existing pods retain their old IPs. Only new pods get IPs from the new pool.
 - **MTU change not applied**: Verify the Installation resource MTU setting is updated and calico-node pods have restarted on all nodes.
 
