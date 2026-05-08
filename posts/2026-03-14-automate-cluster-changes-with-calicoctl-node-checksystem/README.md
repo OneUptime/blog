@@ -12,7 +12,7 @@ Description: Integrate calicoctl node checksystem into automated deployment pipe
 
 Manually running `calicoctl node checksystem` on each new node is impractical in dynamic environments where nodes are frequently added and removed. By automating system checks into your infrastructure provisioning pipeline, you catch configuration issues before they affect your cluster.
 
-This guide shows how to integrate checksystem into various automation frameworks, from cloud-init scripts to Ansible playbooks and Kubernetes admission controllers.
+This guide shows how to integrate checksystem into various automation frameworks, from cloud-init scripts to Ansible playbooks and Kubernetes DaemonSets.
 
 ## Prerequisites
 
@@ -30,14 +30,26 @@ write_files:
   - path: /etc/modules-load.d/calico.conf
     content: |
       ip_tables
+      ip6_tables
       iptable_filter
       iptable_nat
       ip_set
+      ipt_ipvs
+      ipt_REJECT
+      ipt_rpfilter
+      ipt_set
+      nf_conntrack_netlink
+      vfio-pci
+      xt_addrtype
+      xt_bpf
+      xt_icmp
+      xt_icmp6
       xt_set
       xt_mark
       xt_multiport
       xt_conntrack
-      nf_conntrack
+      xt_rpfilter
+      xt_u32
       vxlan
       ipip
   
@@ -49,7 +61,7 @@ write_files:
 
 runcmd:
   # Load kernel modules
-  - for mod in ip_tables iptable_filter iptable_nat ip_set xt_set xt_mark xt_multiport xt_conntrack nf_conntrack vxlan ipip; do modprobe $mod; done
+  - for mod in ip_tables ip6_tables iptable_filter iptable_nat ip_set ipt_ipvs ipt_REJECT ipt_rpfilter ipt_set nf_conntrack_netlink vfio-pci xt_addrtype xt_bpf xt_icmp xt_icmp6 xt_set xt_mark xt_multiport xt_conntrack xt_rpfilter xt_u32 vxlan ipip; do modprobe $mod || true; done
   
   # Apply sysctl settings
   - sysctl --system
@@ -72,30 +84,55 @@ runcmd:
     state: present
   loop:
     - ip_tables
+    - ip6_tables
     - iptable_filter
     - iptable_nat
     - ip_set
+    - ipt_ipvs
+    - ipt_REJECT
+    - ipt_rpfilter
+    - ipt_set
+    - nf_conntrack_netlink
+    - vfio-pci
+    - xt_addrtype
+    - xt_bpf
+    - xt_icmp
+    - xt_icmp6
     - xt_set
     - xt_mark
     - xt_multiport
     - xt_conntrack
-    - nf_conntrack
+    - xt_rpfilter
+    - xt_u32
     - vxlan
     - ipip
+  failed_when: false
 
 - name: Persist kernel modules
   copy:
     dest: /etc/modules-load.d/calico.conf
     content: |
       ip_tables
+      ip6_tables
       iptable_filter
       iptable_nat
       ip_set
+      ipt_ipvs
+      ipt_REJECT
+      ipt_rpfilter
+      ipt_set
+      nf_conntrack_netlink
+      vfio-pci
+      xt_addrtype
+      xt_bpf
+      xt_icmp
+      xt_icmp6
       xt_set
       xt_mark
       xt_multiport
       xt_conntrack
-      nf_conntrack
+      xt_rpfilter
+      xt_u32
       vxlan
       ipip
 
@@ -113,6 +150,7 @@ runcmd:
 - name: Run Calico system check
   command: calicoctl node checksystem
   register: checksystem_result
+  failed_when: false
 
 - name: Display checksystem results
   debug:
@@ -121,7 +159,7 @@ runcmd:
 - name: Fail if checksystem has errors
   fail:
     msg: "Calico system check failed"
-  when: "'ERROR' in checksystem_result.stdout"
+  when: checksystem_result.rc != 0
 ```
 
 ## Kubernetes DaemonSet for Continuous Checking
@@ -147,17 +185,23 @@ spec:
       - operator: Exists
       containers:
       - name: checker
-        image: calico/ctl:v3.27.0
+        image: alpine:3.19
         securityContext:
           privileged: true
+        volumeMounts:
+        - name: lib-modules
+          mountPath: /lib/modules
+          readOnly: true
         command:
         - /bin/sh
         - -c
         - |
+          wget -q -O /usr/local/bin/calicoctl https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64
+          chmod +x /usr/local/bin/calicoctl
           while true; do
             RESULT=$(calicoctl node checksystem 2>&1)
-            ERRORS=$(echo "$RESULT" | grep -c "ERROR" || echo 0)
-            if [ "$ERRORS" -gt 0 ]; then
+            STATUS=$?
+            if [ "$STATUS" -ne 0 ]; then
               echo "ALERT: System check failed on $(hostname)"
               echo "$RESULT"
             else
@@ -165,6 +209,11 @@ spec:
             fi
             sleep 3600  # Check every hour
           done
+      volumes:
+      - name: lib-modules
+        hostPath:
+          path: /lib/modules
+          type: Directory
 ```
 
 ## CI/CD Pipeline Gate
@@ -183,17 +232,21 @@ jobs:
   check-system:
     runs-on: ubuntu-latest
     steps:
-      - name: Install calicoctl
+      - name: Configure SSH
         run: |
-          curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
-          chmod +x calicoctl
-          sudo mv calicoctl /usr/local/bin/
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$NODE_IP" >> ~/.ssh/known_hosts
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          NODE_IP: ${{ inputs.node_ip }}
 
       - name: Run system check on target node
         run: |
-          ssh ${{ inputs.node_ip }} "sudo calicoctl node checksystem"
+          ssh "$NODE_IP" "sudo calicoctl node checksystem"
         env:
-          SSH_KEY: ${{ secrets.SSH_KEY }}
+          NODE_IP: ${{ inputs.node_ip }}
 ```
 
 ## Verification
