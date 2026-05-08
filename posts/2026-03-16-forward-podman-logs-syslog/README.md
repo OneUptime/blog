@@ -41,11 +41,12 @@ if $programname == 'myapp' then /var/log/containers/myapp.log
 & stop
 
 # Or forward to a remote syslog server
-if $programname == 'myapp' then @@syslog-server.example.com:514
-& stop
+# if $programname == 'myapp' then @@syslog-server.example.com:514
+# & stop
 EOF
 
 # Step 4: Restart rsyslog
+sudo mkdir -p /var/log/containers
 sudo systemctl restart rsyslog
 
 # Step 5: Verify logs arrive
@@ -54,7 +55,7 @@ tail -f /var/log/containers/myapp.log
 
 ## Approach 2: Direct syslog Forwarding with logger
 
-Use a sidecar approach to pipe container logs directly to syslog.
+Use a shell pipeline to pipe container logs directly to syslog.
 
 ```bash
 # Forward logs to local syslog using logger
@@ -67,14 +68,20 @@ podman logs -f my-container 2>&1 | logger -t my-container -n syslog-server.examp
 podman logs -f my-container 2>&1 | logger -t my-container -p local0.info &
 
 # Forward stderr as errors
-podman logs -f my-container 1>/dev/null | logger -t my-container -p local0.err &
+podman logs -f my-container 1>/dev/null 2> >(logger -t my-container -p local0.err) &
 ```
 
 ## Approach 3: Configure rsyslog to Watch Log Files
 
-Point rsyslog directly at Podman's log files.
+Point rsyslog directly at Podman's log files for containers using the `k8s-file` log driver.
 
 ```bash
+# Run the container with a file-based log driver
+podman run -d \
+  --log-driver k8s-file \
+  --name my-container \
+  nginx:latest
+
 # Find the container log file path
 podman inspect --format '{{.HostConfig.LogConfig.Path}}' my-container
 
@@ -82,7 +89,7 @@ podman inspect --format '{{.HostConfig.LogConfig.Path}}' my-container
 sudo tee /etc/rsyslog.d/podman-files.conf << 'EOF'
 module(load="imfile")
 
-# Watch a specific container's log file
+# Watch the log file path reported by podman inspect
 input(type="imfile"
   File="/var/lib/containers/storage/overlay-containers/*/userdata/ctr.log"
   Tag="podman"
@@ -137,10 +144,10 @@ sudo systemctl restart rsyslog
 ```bash
 # Configure rsyslog for remote forwarding
 sudo tee /etc/rsyslog.d/remote-forward.conf << 'EOF'
-# Forward via TCP (@@) - more reliable
-*.* @@syslog-server.example.com:514
+# Forward all logs via TCP (@@) - more reliable
+# *.* @@syslog-server.example.com:514
 
-# Or forward via UDP (@) - lower overhead
+# Or forward all logs via UDP (@) - lower overhead
 # *.* @syslog-server.example.com:514
 
 # Forward only container logs
