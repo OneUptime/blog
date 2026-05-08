@@ -32,11 +32,11 @@ This guide covers how to contribute to and extend Cilium API reference documenta
 git clone https://github.com/cilium/cilium.git
 cd cilium
 
-# Find API definition files
-find . -name "*.go" -path "*/api/*" | head -20
+# Find the Cilium API definition
+ls api/v1/openapi.yaml
 
-# Look for OpenAPI/Swagger definitions
-find . -name "*.yaml" -o -name "*.json" | xargs grep -l "swagger\|openapi" 2>/dev/null
+# Inspect generated API model files
+find api/v1/models -name "*.go" | head -20
 ```
 
 ### Adding API Examples
@@ -55,14 +55,14 @@ When extending the API reference, include practical examples:
 git checkout -b docs/api-reference-improvements
 
 # Edit documentation files
-# Usually in docs/ or api/ directories
+# Usually in Documentation/ or api/v1/openapi.yaml
 
 # Build docs locally to verify
 make -C Documentation html
 
 # Commit and push
 git add .
-git commit -m "docs: improve API reference for endpoint operations"
+git commit -s -m "docs: improve API reference for endpoint operations"
 git push origin docs/api-reference-improvements
 ```
 
