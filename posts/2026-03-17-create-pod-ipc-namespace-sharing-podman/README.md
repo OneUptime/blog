@@ -10,7 +10,7 @@ Description: Learn how to use IPC namespace sharing in Podman pods for shared me
 
 > IPC namespace sharing lets containers in a pod use shared memory segments, semaphores, and message queues.
 
-Inter-Process Communication (IPC) namespace sharing enables containers to exchange data through POSIX shared memory, System V semaphores, and message queues. This is essential for applications that rely on shared memory for high-performance data transfer, such as database engines communicating with proxy processes.
+Inter-Process Communication (IPC) namespace sharing enables containers to exchange data through System V shared memory, semaphores, and message queues. In Podman pods, containers can also use the pod's shared `/dev/shm` tmpfs for POSIX shared memory objects. This is essential for applications that rely on shared memory for high-performance data transfer, such as database engines and sidecar processes that need to share IPC resources.
 
 ---
 
@@ -56,7 +56,7 @@ podman run --rm --pod large-shm-pod docker.io/library/alpine df -h /dev/shm
 ## Use Case: Database with Connection Pooler
 
 ```bash
-# PostgreSQL and PgBouncer can communicate via Unix sockets in shared memory
+# PostgreSQL can use shared memory, while PgBouncer can reach it over the shared pod network
 podman pod create --name db-pod --share ipc,net -p 5432:5432
 
 # Run PostgreSQL
@@ -91,8 +91,8 @@ podman run --pod no-ipc-pod --name b docker.io/library/alpine \
 
 ```bash
 # Check IPC namespace IDs for containers in the pod
-podman exec producer cat /proc/1/ns/ipc
-podman exec consumer cat /proc/1/ns/ipc
+podman exec producer readlink /proc/1/ns/ipc
+podman run --rm --pod shm-pod docker.io/library/alpine readlink /proc/self/ns/ipc
 # With IPC sharing, both show the same namespace ID
 ```
 
