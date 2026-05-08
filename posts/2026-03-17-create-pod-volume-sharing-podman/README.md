@@ -93,15 +93,17 @@ podman logs -f shipper
 podman pod create --name config-pod
 podman volume create app-config
 
-podman run --pod config-pod --init-ctr always --name init \
+podman create --pod config-pod --init-ctr always --name init \
   -v app-config:/config \
   docker.io/library/alpine \
-  sh -c "echo 'port=3000\nhost=0.0.0.0' > /config/app.conf"
+  sh -c "printf 'port=3000\nhost=0.0.0.0\n' > /config/app.conf"
 
-podman run -d --pod config-pod --name app \
+podman create --pod config-pod --name app \
   -v app-config:/config:ro \
   docker.io/library/alpine \
   sh -c "cat /config/app.conf && sleep 3600"
+
+podman pod start config-pod
 ```
 
 ## Summary
