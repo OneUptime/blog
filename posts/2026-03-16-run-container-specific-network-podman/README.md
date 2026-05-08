@@ -10,7 +10,7 @@ Description: Learn how to create custom networks in Podman and run containers on
 
 > Custom networks give you control over container communication, DNS resolution, and network isolation without complex host-level configuration.
 
-By default, Podman containers use a bridge network that provides basic connectivity. However, for multi-container applications, you need custom networks that provide automatic DNS resolution between containers, network isolation, and fine-grained control over IP addressing.
+By default, rootful Podman containers use the `podman` bridge network, while rootless containers use user-mode networking such as `pasta`. However, for multi-container applications, you need custom networks that provide automatic DNS resolution between containers, network isolation, and fine-grained control over IP addressing.
 
 This guide covers how to create and manage custom networks in Podman and how to attach containers to them.
 
@@ -69,7 +69,7 @@ podman run -d --name api --network my-app-network alpine sleep infinity
 podman exec api sh -c "ping -c 3 web"
 ```
 
-DNS resolution between containers on the same custom network is automatic.
+DNS resolution between containers on the same custom bridge network is automatic when DNS is enabled for the network.
 
 ## Assigning a Static IP Address
 
@@ -186,7 +186,7 @@ podman run -d --name host-networked \
   --network host \
   nginx:latest
 
-# The container listens directly on host port 80
+# If host port 80 is available and permitted, the container listens directly on it
 curl -s http://localhost:80 | head -5
 ```
 
@@ -211,7 +211,7 @@ podman network rm my-app-network
 # Remove all unused networks
 podman network prune
 
-# Force remove a network
+# Force remove a network and stop/remove containers that use it
 podman network rm -f my-app-network
 ```
 
