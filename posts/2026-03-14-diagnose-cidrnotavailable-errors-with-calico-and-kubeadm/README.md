@@ -10,7 +10,7 @@ Description: Step-by-step diagnostic procedures for identifying the root cause o
 
 ## Introduction
 
-CIDRNotAvailable errors occur when Calico cannot find a suitable CIDR block to allocate IPs from. This typically happens when the pod CIDR configured in kubeadm does not match the Calico IPPool configuration, or when the IP address space is exhausted.
+CIDRNotAvailable events are emitted by Kubernetes when the controller manager cannot allocate a node PodCIDR. In Calico clusters, this often appears after kubeadm is initialized with `--pod-network-cidr`, because kubeadm enables Kubernetes node CIDR allocation. Calico IPAM does not use `Node.spec.podCIDR`, so you should distinguish Kubernetes node CIDR allocation issues from Calico IPPool exhaustion or misconfiguration.
 
 This guide provides a systematic approach to diagnosing CIDRNotAvailable errors. Rather than guessing at solutions, you will methodically narrow down the root cause using Calico and Kubernetes diagnostic commands.
 
@@ -33,7 +33,7 @@ Start by confirming the exact error and its scope:
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=100 | grep -i "error\|fail\|warn"
 
 # Check recent events across the cluster
-kubectl get events -A --sort-by='.lastTimestamp' | grep -i "calico\|cni\|network" | tail -20
+kubectl get events -A --sort-by='.metadata.creationTimestamp' | grep -i "cidr\|calico\|cni\|network" | tail -20
 
 # View Calico IPPool configuration
 calicoctl get ippools -o yaml
@@ -67,10 +67,13 @@ Narrow down to specific nodes:
 # Check which nodes have issues
 kubectl get nodes -o wide
 
+# Check Kubernetes-assigned PodCIDRs on each node
+kubectl get nodes -o custom-columns=NAME:.metadata.name,PODCIDR:.spec.podCIDR,PODCIDRS:.spec.podCIDRs
+
 # Test connectivity from a debug pod
 kubectl run debug-net --image=busybox --rm -it --restart=Never -- ping -c 3 <target-ip>
 
-# Check calico-node status per node
+# Check calico-node status on the affected node
 calicoctl node status
 ```
 
@@ -80,7 +83,7 @@ For complex issues, collect a full diagnostic bundle:
 
 ```bash
 # Collect Calico diagnostic information
-calicoctl node diag
+calicoctl cluster diags
 
 # Collect cluster-wide Calico state
 calicoctl get nodes -o yaml > calico-nodes.yaml
@@ -94,7 +97,7 @@ After identifying the root cause, verify your diagnosis before proceeding to fix
 
 ```bash
 # Confirm the identified cause matches the symptoms
-kubectl get events -A --sort-by='.lastTimestamp' | grep -i "error\|warning" | tail -20
+kubectl get events -A --sort-by='.metadata.creationTimestamp' | grep -i "cidr\|error\|warning" | tail -20
 
 # Verify Calico system health
 kubectl get pods -n calico-system
@@ -105,7 +108,7 @@ calicoctl node status
 
 **Cannot access calico-node pods for diagnostics:**
 - Use `kubectl debug node/<name>` to get a shell on the node directly.
-- Check if the calico-system namespace exists: `kubectl get ns calico-system`.
+- Check whether Calico is installed in `calico-system` or `kube-system`: `kubectl get pods -A -l k8s-app=calico-node`.
 
 **calicoctl commands failing:**
 - Ensure calicoctl version matches your Calico version: `calicoctl version`.
@@ -148,10 +151,10 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
-kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
+kubectl get events -n calico-system --sort-by='.metadata.creationTimestamp' | tail -20
 ```
 
 ### Capacity Planning for Large Deployments
