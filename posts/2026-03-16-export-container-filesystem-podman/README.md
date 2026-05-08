@@ -8,7 +8,7 @@ Description: Learn how to export a Podman container's entire filesystem as a tar
 
 ---
 
-> Exporting a container's filesystem captures its complete state as a portable tar archive.
+> Exporting a container's filesystem captures its filesystem state as a portable tar archive.
 
 Sometimes you need to capture a container's entire filesystem, whether for backup, migration to another system, forensic analysis, or sharing with team members. The `podman export` command creates a tar archive of the container's filesystem. This guide walks you through the process.
 
@@ -89,6 +89,7 @@ tar tvf /tmp/my-app-filesystem.tar | head -20
 tar tf /tmp/my-app-filesystem.tar | grep nginx.conf
 
 # Extract a single file from the archive
+mkdir -p /tmp/extracted
 tar xf /tmp/my-app-filesystem.tar -C /tmp/extracted/ etc/nginx/nginx.conf
 ```
 
