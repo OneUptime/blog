@@ -29,13 +29,13 @@ This runbook follows a standard incident response workflow: detect, assess, diag
 ```bash
 # Check scope of impact
 
-kubectl get pods -A --field-selector status.phase!=Running | grep -v Completed | wc -l
+kubectl get pods -A --field-selector status.phase!=Running --no-headers | grep -v Completed | wc -l
 
 # Check how many nodes are affected
-kubectl get pods -n calico-system -l k8s-app=calico-node | grep -v Running
+kubectl get pods -n calico-system -l k8s-app=calico-node --no-headers | grep -v Running
 
 # Check if production workloads are impacted
-kubectl get pods -n production --field-selector status.phase!=Running 2>/dev/null
+kubectl get pods -n production --field-selector status.phase!=Running --no-headers 2>/dev/null
 ```
 
 **Decision Point:**
@@ -68,6 +68,10 @@ Based on the diagnosis, apply the appropriate fix:
 **If IPAM/IP allocation issue:**
 ```bash
 calicoctl ipam show --show-blocks
+calicoctl datastore migrate lock
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report=report.json
+calicoctl datastore migrate unlock
 ```
 
 **If connectivity issue:**
@@ -90,7 +94,7 @@ kubectl get pods -n calico-system -l k8s-app=calico-node
 kubectl run runbook-test --image=busybox --rm -it --restart=Never -- ping -c 5 <known-pod-ip>
 
 # Check all previously failing pods are recovering
-kubectl get pods -A --field-selector status.phase!=Running | grep -v Completed
+kubectl get pods -A --field-selector status.phase!=Running --no-headers | grep -v Completed
 ```
 
 ### Phase 5: Post-Incident Documentation
@@ -154,10 +158,10 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current credentials can modify Calico resources
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
 
-# Review recent changes to Calico resources (if audit logging is enabled)
+# Review recent Calico events (use Kubernetes audit logs for a full change history)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 ```
 
