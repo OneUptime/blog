@@ -55,16 +55,16 @@ Confirm that routes from this node are being advertised to peers:
 kubectl exec -n calico-system ${NODE_POD} -- birdcl show route
 ```
 
-Check that the pod CIDR for each node appears in the routing table:
+Check that the Calico workload routes or IPAM block routes for each node appear in the routing table:
 
 ```bash
 kubectl exec -n calico-system ${NODE_POD} -- birdcl show route export BGP_10_0_0_2
 ```
 
-On the Kubernetes node itself, check the Linux routing table to confirm pod routes are present:
+On the Kubernetes node itself, check the Linux routing table to confirm BIRD-learned pod routes are present:
 
 ```bash
-ip route | grep -E 'cali|tunl|vxlan'
+ip route | grep bird
 ```
 
 ## Validate Pod-to-Pod Connectivity
@@ -72,9 +72,9 @@ ip route | grep -E 'cali|tunl|vxlan'
 Deploy test pods on different nodes and test connectivity:
 
 ```bash
-kubectl run test-pod-1 --image=busybox --overrides='{"spec":{"nodeName":"node-1"}}' \
+kubectl run test-pod-1 --image=busybox --restart=Never --overrides='{"apiVersion":"v1","spec":{"nodeName":"node-1"}}' \
   -- sleep 3600
-kubectl run test-pod-2 --image=busybox --overrides='{"spec":{"nodeName":"node-2"}}' \
+kubectl run test-pod-2 --image=busybox --restart=Never --overrides='{"apiVersion":"v1","spec":{"nodeName":"node-2"}}' \
   -- sleep 3600
 
 POD2_IP=$(kubectl get pod test-pod-2 -o jsonpath='{.status.podIP}')
@@ -86,7 +86,7 @@ kubectl exec test-pod-1 -- ping -c 3 ${POD2_IP}
 Check that all BGP peer resources are correctly configured:
 
 ```bash
-calicoctl get bgppeers -o yaml
+calicoctl get bgppeer -o yaml
 calicoctl get bgpconfiguration -o yaml
 ```
 
