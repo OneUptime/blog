@@ -42,7 +42,7 @@ Confirm that HostEndpoint resources carry the correct labels:
 calicoctl get hostendpoints -o yaml | grep -A10 "labels:"
 ```
 
-If you are using automatic host endpoint creation, labels may need to be applied manually:
+If you are using manually created host endpoints, labels may need to be applied manually. Automatic host endpoints sync labels from their corresponding Kubernetes nodes:
 
 ```bash
 calicoctl patch hostendpoint worker-1-eth0 \
@@ -51,17 +51,18 @@ calicoctl patch hostendpoint worker-1-eth0 \
 
 ## Step 3: Test Selector Matching
 
-Use `calicoctl` to query HostEndpoints that match a specific selector expression:
+Use `kubectl` to query HostEndpoint resources that match a specific label selector:
 
 ```bash
 # List all endpoints matching a selector
 
-calicoctl get hostendpoints --selector="node-role == 'worker'" -o wide
+kubectl get hostendpoints.crd.projectcalico.org -l node-role=worker \
+  -o custom-columns=NAME:.metadata.name,NODE:.spec.node,INTERFACE:.spec.interfaceName,IPS:.spec.expectedIPs
 ```
 
 ```mermaid
 graph LR
-    A[GlobalNetworkPolicy Selector] --> B{calicoctl selector query}
+    A[GlobalNetworkPolicy Selector] --> B{HostEndpoint label query}
     B --> C[Matched HEPs]
     B --> D[Unmatched HEPs]
     C --> E[Policy Applied]
@@ -71,7 +72,7 @@ graph LR
 
 ## Step 4: Inspect Policy Application via Felix
 
-Felix logs show which policies are applied to which endpoints:
+Felix logs can help troubleshoot selector and endpoint updates:
 
 ```bash
 kubectl logs -n calico-system -l k8s-app=calico-node --tail=200 | grep "selector\|endpoint"
@@ -82,8 +83,14 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=200 | grep "selector
 A common issue is a policy selector that does not match any endpoints:
 
 ```bash
-# Check if policy has 0 matching endpoints
+# Inspect the policy selector
 calicoctl get globalnetworkpolicy control-plane-ingress -o yaml
+```
+
+Calico Enterprise users can use `calicoq` to show the endpoints selected by a policy:
+
+```bash
+calicoq policy control-plane-ingress --hide-rule-matches --hide-selectors
 ```
 
 If the selector field contains a typo, no endpoints will match:
@@ -102,7 +109,7 @@ After confirming selector matches, run a targeted traffic test:
 
 ```bash
 # Get the IP of a matched node
-NODE_IP=$(kubectl get node worker-1 -o jsonpath='{.status.addresses[0].address}')
+NODE_IP=$(kubectl get node worker-1 -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
 
 # Test allowed port
 nc -zv $NODE_IP 10250
@@ -113,10 +120,10 @@ nc -zv $NODE_IP 8443
 
 ## Step 7: Use Calico Policy Tester (Enterprise)
 
-For Calico Enterprise, the policy recommendation tool can simulate which policies apply:
+For Calico Enterprise, `calicoq` can show which endpoints a policy applies to, and Policy Impact Preview in the web console can preview how policy changes affect observed flows:
 
 ```bash
-calicoctl policy-test --from 10.0.0.1 --to 10.0.1.20 --proto tcp --port 22
+calicoq policy control-plane-ingress --hide-rule-matches --hide-selectors
 ```
 
 ## Conclusion
