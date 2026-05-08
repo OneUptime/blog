@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Testing, Monitoring, Echo App
 
-Description: How to monitor the Cilium echo app to ensure test reliability and catch false positives in connectivity and policy testing.
+Description: How to monitor the Cilium echo app to ensure test reliability and catch false negatives in connectivity and policy testing.
 
 ---
 
@@ -30,11 +30,11 @@ echo "=== Echo App Health Monitor ==="
 kubectl get pods -n cilium-test -o wide
 
 # Service endpoints
-kubectl get endpoints -n cilium-test echo-server
+kubectl get endpointslice -n cilium-test -l kubernetes.io/service-name=echo-server
 
 # Test responsiveness
 RESPONSE=$(kubectl exec -n cilium-test deploy/echo-client -- \
-  curl -s -w "%{http_code}" --max-time 5 http://echo-server:8080/ 2>/dev/null)
+  curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://echo-server:8080/ 2>/dev/null)
 echo "Echo server response: $RESPONSE"
 
 # Restart count
@@ -48,10 +48,10 @@ kubectl get pods -n cilium-test -o json | jq '.items[] | {
 
 ```bash
 # Watch echo app traffic
-hubble observe -n cilium-test --last 20
+hubble observe --namespace cilium-test --last 20
 
 # Check for drops
-hubble observe -n cilium-test --verdict DROPPED --last 10
+hubble observe --namespace cilium-test --verdict DROPPED --last 10
 ```
 
 ```mermaid
