@@ -20,7 +20,7 @@ Understanding the Neutron-Calico integration architecture is important: Neutron 
 
 - An OpenStack deployment with Neutron installed
 - Calico components (Felix, BIRD) installed on compute nodes
-- etcd cluster or Kubernetes API for Calico datastore
+- etcd v3 cluster for the Calico OpenStack datastore
 - Administrative access to Neutron configuration files
 - Python package management tools (pip)
 
@@ -37,6 +37,12 @@ pip install networking-calico
 pip show networking-calico
 ```
 
+On Ubuntu package-based deployments, use the Calico packages instead:
+
+```bash
+sudo apt-get install -y calico-control
+```
+
 Configure Neutron to use the Calico plugin:
 
 ```bash
@@ -47,8 +53,8 @@ cat << 'EOF' | sudo tee /etc/neutron/neutron.conf.d/calico.conf
 # Use Calico as the core network plugin
 core_plugin = calico
 
-# Calico handles DHCP internally
-dhcp_agents_per_network = 0
+# Calico's core plugin provides router handling; QoS still uses a service plugin.
+service_plugins = qos
 
 [calico]
 # etcd connection settings for Calico datastore
@@ -66,24 +72,23 @@ sudo systemctl restart neutron-server
 
 ## Configuring the Calico DHCP Agent
 
-Calico provides its own DHCP agent that works with the Calico networking model.
+Calico provides its own `calico-dhcp-agent` service that works with the Calico networking model. It reads the `[calico]` etcd settings from `neutron.conf`, watches etcd, and configures Dnsmasq for locally hosted workloads. Do not run the standard Neutron DHCP agent for Calico networks.
 
 ```bash
-# /etc/neutron/dhcp_agent.ini
-# Configure for Calico DHCP
-cat << 'EOF' | sudo tee /etc/neutron/dhcp_agent.ini
-[DEFAULT]
-# Use the Calico DHCP driver
-interface_driver = neutron.agent.linux.interface.RoutedInterfaceDriver
-dhcp_driver = networking_calico.dhcp_agent.CalicoDHCPDriver
+# Install the Calico DHCP agent on each compute node.
+sudo apt-get install -y calico-dhcp-agent
 
-# Enable metadata proxy for VM instance metadata
-enable_isolated_metadata = True
-EOF
+# Disable the standard Neutron DHCP agent for Calico deployments.
+sudo systemctl disable --now neutron-dhcp-agent
 
-# Restart the DHCP agent
-sudo systemctl restart neutron-dhcp-agent
+# Start the Calico DHCP agent.
+sudo systemctl enable --now calico-dhcp-agent
+
+# If you run the agent manually, pass the Neutron config that contains [calico].
+calico-dhcp-agent --config-file /etc/neutron/neutron.conf
 ```
+
+For instance metadata, Calico uses the Nova metadata API directly on compute nodes. Ensure Nova is not configured to use the Neutron metadata proxy for these instances.
 
 ```mermaid
 sequenceDiagram
@@ -103,12 +108,13 @@ sequenceDiagram
 
 ## Configuring Security Group Integration
 
-Calico translates Neutron security groups into Calico network policies automatically.
+Calico preserves Neutron security group semantics and translates security group state into Calico policy/profile data that Felix enforces on compute nodes.
 
 ```bash
 # Verify security group driver configuration
-# /etc/neutron/plugins/ml2/ml2_conf.ini (if using ML2)
-# Or in the Calico plugin configuration
+# /etc/neutron/neutron.conf should use core_plugin = calico.
+# If using ML2 instead, /etc/neutron/plugins/ml2/ml2_conf.ini should use
+# mechanism_drivers = calico.
 
 # Check that security groups are working
 openstack security group list
@@ -120,21 +126,22 @@ openstack security group rule create \
   --protocol tcp --dst-port 80 \
   --remote-ip 0.0.0.0/0 test-calico-sg
 
-# Verify Calico translated the security group
-calicoctl get profiles -o wide | grep test-calico-sg
+# Verify Calico profile data exists.
+calicoctl get profiles -o wide
 ```
 
 ## Configuring Neutron API Extensions
 
-Enable Calico-specific Neutron API extensions for advanced features.
+Verify the standard Neutron API extensions that Calico supports in your deployment. When Calico runs as the core plugin, it provides the router extension itself; QoS should be enabled with `service_plugins = qos`.
 
 ```bash
 # Check available API extensions
 openstack extension list --network
 
-# Verify Calico extensions are loaded
+# Verify standard network extensions are loaded
 openstack extension show security-group
 openstack extension show router
+openstack extension show qos
 
 # Test the API with a complete workflow
 # Create network
@@ -168,7 +175,7 @@ echo "=== Neutron-Calico Integration Verification ==="
 
 # Check Neutron is using Calico plugin
 echo "Neutron core plugin:"
-grep "core_plugin" /etc/neutron/neutron.conf | grep -v "^#"
+grep -R "core_plugin" /etc/neutron/neutron.conf /etc/neutron/neutron.conf.d 2>/dev/null | grep -v "^#"
 
 # Check Neutron server health
 echo ""
@@ -178,7 +185,7 @@ openstack network agent list
 # Check Calico DHCP agent
 echo ""
 echo "DHCP Agent:"
-openstack network agent list --agent-type dhcp
+systemctl status calico-dhcp-agent --no-pager
 
 # Test API operations
 echo ""
@@ -199,7 +206,7 @@ calicoctl get workloadendpoints --all-namespaces -o json | \
 - **Neutron server fails to start**: Check that `networking-calico` is installed in the correct Python environment. Verify the plugin name in `neutron.conf` is exactly `calico`.
 - **Network creation fails via API**: Check Neutron server logs at `/var/log/neutron/server.log`. Common issues are etcd connection failures or missing Calico datastore configuration.
 - **Security groups not translating to Calico profiles**: Verify the security group driver is configured. Check Felix logs on compute nodes for profile sync errors.
-- **DHCP not providing IP addresses**: Verify the Calico DHCP agent is running. Check that the `dhcp_driver` is set to `networking_calico.dhcp_agent.CalicoDHCPDriver`.
+- **DHCP not providing IP addresses**: Verify the Calico DHCP agent is running and that it is started with the Neutron configuration file containing the `[calico]` etcd settings.
 
 ## Conclusion
 
