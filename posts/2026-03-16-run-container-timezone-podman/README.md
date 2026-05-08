@@ -36,19 +36,19 @@ The simplest approach is setting the `TZ` environment variable:
 
 ```bash
 # Set timezone to US Eastern
-podman run --rm -e TZ=America/New_York alpine date
+podman run --rm -e TZ=America/New_York alpine sh -c "apk add --no-cache tzdata >/dev/null && date"
 
 # Set timezone to Europe/London
-podman run --rm -e TZ=Europe/London alpine date
+podman run --rm -e TZ=Europe/London alpine sh -c "apk add --no-cache tzdata >/dev/null && date"
 
 # Set timezone to Asia/Tokyo
-podman run --rm -e TZ=Asia/Tokyo alpine date
+podman run --rm -e TZ=Asia/Tokyo alpine sh -c "apk add --no-cache tzdata >/dev/null && date"
 
 # Set timezone to US Pacific
-podman run --rm -e TZ=America/Los_Angeles alpine date
+podman run --rm -e TZ=America/Los_Angeles alpine sh -c "apk add --no-cache tzdata >/dev/null && date"
 ```
 
-The `TZ` variable is widely supported by C libraries and most applications.
+The `TZ` variable is widely supported by C libraries and most applications. Minimal images such as Alpine need the `tzdata` package installed for IANA timezone names like `America/New_York`.
 
 ## Method 2: Mounting the Host's Timezone Files
 
@@ -60,7 +60,7 @@ podman run --rm \
   -v /etc/localtime:/etc/localtime:ro \
   alpine date
 
-# Mount both localtime and timezone files
+# Mount both localtime and timezone files on hosts that provide /etc/timezone
 podman run --rm \
   -v /etc/localtime:/etc/localtime:ro \
   -v /etc/timezone:/etc/timezone:ro \
@@ -93,7 +93,7 @@ The `--tz` flag is the cleanest Podman-specific approach.
 
 ```bash
 echo "=== TZ environment variable ==="
-podman run --rm -e TZ=America/New_York alpine date
+podman run --rm -e TZ=America/New_York alpine sh -c "apk add --no-cache tzdata >/dev/null && date"
 
 echo ""
 echo "=== --tz flag ==="
@@ -135,9 +135,9 @@ podman stop web postgres && podman rm web postgres
 ```bash
 # Application that logs timestamps
 podman run --rm --tz Europe/Berlin alpine sh -c "
-  echo \"[$(date '+%Y-%m-%d %H:%M:%S %Z')] Application started\"
-  echo \"[$(date '+%Y-%m-%d %H:%M:%S %Z')] Processing request\"
-  echo \"[$(date '+%Y-%m-%d %H:%M:%S %Z')] Request completed\"
+  echo \"[\$(date '+%Y-%m-%d %H:%M:%S %Z')] Application started\"
+  echo \"[\$(date '+%Y-%m-%d %H:%M:%S %Z')] Processing request\"
+  echo \"[\$(date '+%Y-%m-%d %H:%M:%S %Z')] Request completed\"
 "
 
 # Compare UTC vs local time in logs
@@ -191,6 +191,7 @@ console.log('Timezone:', Intl.DateTimeFormat().resolvedOptions().timeZone);
 ```bash
 # List all available timezone names
 podman run --rm alpine sh -c "
+  apk add --no-cache tzdata >/dev/null
   ls /usr/share/zoneinfo/ | head -20
   echo '...'
   echo ''
