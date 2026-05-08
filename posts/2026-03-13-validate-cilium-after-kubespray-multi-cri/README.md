@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Kubespray, CRI, Validation, Troubleshooting
 
-Description: Validate Cilium networking after Kubespray-provisioned clusters report multiple container runtime interface sockets, which can cause CNI configuration conflicts.
+Description: Validate Cilium networking after Kubespray-provisioned clusters report multiple container runtime interface sockets, which can block kubeadm runtime detection or leave kubelet using the wrong runtime endpoint.
 
 ---
 
 ## Introduction
 
-Kubespray sometimes reports multiple CRI sockets when a node has residual configuration from a previous container runtime installation (e.g., both containerd and Docker sockets present). This can cause Cilium's CNI configuration to target the wrong runtime, resulting in failed pod networking.
+Kubespray sometimes reports multiple CRI sockets when a node has residual configuration from a previous container runtime installation (e.g., both containerd and cri-dockerd sockets present). kubeadm detects known CRI endpoints and errors when more than one runtime is available and no socket is selected. If kubelet is later pointed at the wrong runtime endpoint, pod sandbox creation and CNI execution can fail.
 
 Validating Cilium after this scenario requires confirming the active CRI, verifying Cilium CNI configuration, and ensuring pods can be created and communicate.
 
@@ -25,15 +25,15 @@ Validating Cilium after this scenario requires confirming the active CRI, verify
 On the affected node, check for multiple CRI sockets:
 
 ```bash
-ls /var/run/ | grep -E "containerd|crio|dockershim"
-ls /run/containerd/containerd.sock
-ls /var/run/cri-dockerd.sock
+sudo ls -l /var/run/containerd/containerd.sock 2>/dev/null
+sudo ls -l /var/run/crio/crio.sock 2>/dev/null
+sudo ls -l /var/run/cri-dockerd.sock 2>/dev/null
 ```
 
-Kubespray may also log warnings in:
+Kubespray may show the CRI socket conflict in the Ansible task output. On a node that already joined the cluster, kubelet logs can show runtime or CNI errors:
 
 ```bash
-journalctl -u kubelet | grep "CRI"
+sudo journalctl -u kubelet | grep -Ei "CRI|runtime|CNI"
 ```
 
 ## Determine the Active CRI
@@ -41,9 +41,10 @@ journalctl -u kubelet | grep "CRI"
 ```bash
 # Check which socket kubelet is using
 
+sudo grep "containerRuntimeEndpoint" /var/lib/kubelet/instance-config.yaml
 sudo cat /var/lib/kubelet/kubeadm-flags.env | grep "container-runtime-endpoint"
 
-# Or check kubelet config
+# Or check Kubespray's kubelet environment file
 sudo cat /etc/kubernetes/kubelet.env | grep "container-runtime"
 ```
 
@@ -57,7 +58,7 @@ flowchart TD
     C --> E{kubelet configured?}
     E -->|Correct socket| F[Normal operation]
     E -->|Wrong socket| G[CNI fails]
-    G --> H[Cilium agent error]
+    G --> H[CNI execution error]
     H --> I[Pod networking broken]
 ```
 
@@ -65,13 +66,13 @@ flowchart TD
 
 ```bash
 # Check CNI config file
-cat /etc/cni/net.d/05-cilium.conf
+cat /etc/cni/net.d/05-cilium.conflist
 
 # Verify Cilium is the active CNI
-ls /etc/cni/net.d/ | head -5
+LC_ALL=C ls -1 /etc/cni/net.d/ | head -5
 ```
 
-The first file alphabetically is the active CNI.
+With standard CNI loading, the first configuration file in lexical order is used. Cilium normally writes `/etc/cni/net.d/05-cilium.conflist` and removes other CNI configuration files unless CNI exclusivity has been disabled.
 
 ## Check Cilium Agent Status
 
@@ -86,23 +87,27 @@ Look for errors related to container runtime or socket connections.
 
 ```bash
 # Create a test pod
-kubectl run cri-test --image=busybox --restart=Never -- sleep 3600
+kubectl run cri-test --image=busybox:1.36 --restart=Never -- sleep 3600
 
 # Verify it has an IP
+kubectl wait --for=condition=Ready pod/cri-test --timeout=60s
 kubectl get pod cri-test -o wide
 
 # Test connectivity
-kubectl exec cri-test -- ping -c 3 8.8.8.8
+kubectl exec cri-test -- nslookup kubernetes.default.svc.cluster.local
 ```
 
 ## Fix Multiple CRI Sockets
 
-Remove unused runtime sockets to resolve the conflict:
+Configure Kubespray to use the intended runtime socket and remove or disable unused runtime services. Do not only delete socket files; they can be recreated by the running service.
 
 ```bash
-# Stop and remove docker if containerd is the active runtime
-sudo systemctl stop docker
-sudo apt-get remove docker-ce docker-ce-cli
+# Example: stop cri-dockerd if containerd is the active runtime
+sudo systemctl disable --now cri-docker.socket cri-docker.service
+
+# Confirm kubelet is configured for containerd
+sudo grep "containerRuntimeEndpoint" /var/lib/kubelet/instance-config.yaml
+sudo grep "container-runtime-endpoint" /var/lib/kubelet/kubeadm-flags.env
 
 # Restart kubelet
 sudo systemctl restart kubelet
@@ -118,4 +123,4 @@ cilium status
 
 ## Conclusion
 
-Validating Cilium after Kubespray reports multiple CRI sockets involves confirming which runtime is active, verifying the Cilium CNI configuration, and testing pod networking. Cleaning up unused CRI sockets and restarting kubelet typically resolves the conflict and restores normal Cilium operation.
+Validating Cilium after Kubespray reports multiple CRI sockets involves confirming which runtime is active, verifying the Cilium CNI configuration, and testing pod networking. Configuring a single intended CRI endpoint, disabling unused runtime services, and restarting kubelet typically resolves the conflict and restores normal Cilium operation.
