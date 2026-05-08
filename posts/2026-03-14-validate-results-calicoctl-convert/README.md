@@ -37,7 +37,7 @@ CONVERTED_DIR="${1:?Usage: $0 <converted-policies-dir>}"
 PASS=0
 FAIL=0
 
-find "$CONVERTED_DIR" -name "*.yaml" | while read file; do
+while IFS= read -r file; do
   if calicoctl validate -f "$file" > /dev/null 2>&1; then
     echo "VALID: $file"
     PASS=$((PASS + 1))
@@ -46,7 +46,7 @@ find "$CONVERTED_DIR" -name "*.yaml" | while read file; do
     calicoctl validate -f "$file" 2>&1 | sed 's/^/  /'
     FAIL=$((FAIL + 1))
   fi
-done
+done < <(find "$CONVERTED_DIR" \( -name "*.yaml" -o -name "*.yml" \) -print)
 
 echo "Results: $PASS valid, $FAIL invalid"
 ```
@@ -65,16 +65,38 @@ set -euo pipefail
 K8S_FILE="${1:?Usage: $0 <k8s-policy.yaml> <calico-policy.yaml>}"
 CALICO_FILE="${2:?}"
 
-python3 -c "
+python3 - "$K8S_FILE" "$CALICO_FILE" <<'PY'
 import yaml
+import sys
 
-with open('$K8S_FILE') as f:
+with open(sys.argv[1]) as f:
     k8s = yaml.safe_load(f)
 
-with open('$CALICO_FILE') as f:
+with open(sys.argv[2]) as f:
     calico = yaml.safe_load(f)
 
 issues = []
+
+def k8s_policy_types(spec):
+    types = spec.get('policyTypes')
+    if types:
+        return set(types)
+    inferred = {'Ingress'}
+    if 'egress' in spec:
+        inferred.add('Egress')
+    return inferred
+
+def calico_policy_types(spec):
+    types = spec.get('types')
+    if types:
+        return set(types)
+    has_ingress = 'ingress' in spec
+    has_egress = 'egress' in spec
+    if has_ingress and has_egress:
+        return {'Ingress', 'Egress'}
+    if has_egress:
+        return {'Egress'}
+    return {'Ingress'}
 
 # Check 1: Same namespace
 k8s_ns = k8s['metadata'].get('namespace', 'default')
@@ -83,8 +105,8 @@ if k8s_ns != calico_ns:
     issues.append(f'Namespace mismatch: K8s={k8s_ns}, Calico={calico_ns}')
 
 # Check 2: Policy types match
-k8s_types = set(k8s['spec'].get('policyTypes', []))
-calico_types = set(calico['spec'].get('types', []))
+k8s_types = k8s_policy_types(k8s['spec'])
+calico_types = calico_policy_types(calico['spec'])
 if k8s_types != calico_types:
     issues.append(f'Policy types mismatch: K8s={k8s_types}, Calico={calico_types}')
 
@@ -107,10 +129,10 @@ for direction in ['ingress', 'egress']:
     for i, (kr, cr) in enumerate(zip(k8s_rules, calico_rules)):
         k8s_ports = set()
         for p in kr.get('ports', []):
-            k8s_ports.add(f\"{p.get('protocol','TCP')}:{p.get('port','any')}\")
+            k8s_ports.add(f"{p.get('protocol','TCP')}:{p.get('port','any')}")
         calico_ports = set()
         for p_val in cr.get('destination', {}).get('ports', []):
-            calico_ports.add(f\"{cr.get('protocol','TCP')}:{p_val}\")
+            calico_ports.add(f"{cr.get('protocol','TCP')}:{p_val}")
         # Simplified comparison
         if k8s_ports and not calico_ports:
             issues.append(f'{direction}[{i}]: K8s has ports but Calico does not')
@@ -121,7 +143,7 @@ if issues:
         print(f'  - {issue}')
 else:
     print('EQUIVALENT: Policies appear semantically equivalent')
-"
+PY
 ```
 
 ## Network Behavior Testing
@@ -199,8 +221,8 @@ bash test-policy-behavior.sh
 ## Troubleshooting
 
 - **Equivalence check shows extra rules in Calico output**: calicoctl convert may add explicit rules that were implicit in K8s format. Review whether the extra rules are functionally equivalent.
-- **Behavior test shows different results**: Check for default deny differences. K8s NetworkPolicy implicitly denies unmatched traffic when policyTypes is set, while Calico may need explicit deny rules.
-- **Port comparison fails**: Named ports in K8s may convert to numeric ports in Calico. This is functionally equivalent but looks different.
+- **Behavior test shows different results**: Check for policy type and namespace differences. For Kubernetes pods, Calico NetworkPolicy follows the Kubernetes default allow/default deny convention: once a policy applies for ingress or egress, only traffic allowed by matching rules is allowed.
+- **Port comparison fails**: Named ports in K8s may remain named ports or convert to port ranges in Calico. Review the endpoint port definitions and the rendered Calico `destination.ports` values before treating this as a behavioral difference.
 - **Test pods cannot start**: Check if existing policies in the test namespace block pod communication.
 
 ## Conclusion
