@@ -46,18 +46,24 @@ This should return one or more IP addresses or hostnames.
 ## Confirm Load Balancer Service IP
 
 ```bash
-kubectl get svc -n <namespace> -l cilium.io/gateway-name=<gateway-name> \
-  -o jsonpath='{.items[*].status.loadBalancer.ingress[*].ip}'
+kubectl get svc -n <namespace> -l gateway.networking.k8s.io/gateway-name=<gateway-name> \
+  -o jsonpath='{.items[*].status.loadBalancer.ingress[*]["ip","hostname"]}'
 ```
 
-The IP should match what is shown in `Gateway.status.addresses`.
+The IP address or hostname should match what is shown in `Gateway.status.addresses`.
 
 ## Test HTTP Connectivity
 
 ```bash
-GATEWAY_IP=$(kubectl get gateway <gateway-name> -n <namespace> \
+GATEWAY_ADDRESS=$(kubectl get gateway <gateway-name> -n <namespace> \
   -o jsonpath='{.status.addresses[0].value}')
-curl -v http://${GATEWAY_IP}/
+curl -v http://${GATEWAY_ADDRESS}/
+```
+
+If the HTTPRoute matches a specific hostname, include that host in the request:
+
+```bash
+curl -v -H "Host: <route-hostname>" http://${GATEWAY_ADDRESS}/
 ```
 
 ## Architecture
@@ -74,7 +80,7 @@ sequenceDiagram
     kubectl->>Gateway: inspect .status.addresses
     Gateway->>LBService: verify matching IP
     LBService->>Endpoint: confirm routing
-    User->>Endpoint: curl GATEWAY_IP
+    User->>Endpoint: curl GATEWAY_ADDRESS
     Endpoint-->>User: HTTP 200
 ```
 
@@ -89,11 +95,11 @@ kubectl describe httproute <route-name> -n <namespace> | grep -A5 "Parents"
 
 A `Accepted: True` condition on the route's parent reference confirms binding.
 
-## Check Cilium Endpoint Status
+## Check Cilium Gateway Controller Status
 
 ```bash
-cilium status --verbose | grep Gateway
-kubectl get ciliumendpoints -n <namespace>
+cilium status
+kubectl logs -n kube-system deployment/cilium-operator | grep -i gateway
 ```
 
 ## Conclusion
