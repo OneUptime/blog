@@ -19,7 +19,7 @@ This guide provides the specific steps for managing label inclusion in Cilium.
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `cilium` CLI, `helm`, and `kubectl`
+- `cilium` CLI, `helm`, `kubectl`, and access to `cilium-dbg` in Cilium agent pods
 - Understanding of Cilium identity system
 - Access to Cilium configuration
 
@@ -29,7 +29,7 @@ This guide provides the specific steps for managing label inclusion in Cilium.
 # Include labels needed by your network policies
 
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace k8s:io.cilium.k8s.policy k8s:component k8s:tier"
+  --set labels="app io\\.kubernetes\\.pod\\.namespace component tier"
 ```
 
 ## Systematic Label Selection
@@ -41,22 +41,26 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 
 echo "Analyzing CiliumNetworkPolicies..."
 LABELS=$(kubectl get cnp --all-namespaces -o json | \
-  jq -r '[.items[].spec | .. | .matchLabels? // empty | keys[]] | unique | .[]')
+  jq -r '[.items[].spec | .. | objects |
+    ((.matchLabels? // {} | keys[]) , (.matchExpressions? // [] | .[].key?))] |
+    unique | .[]')
 
 echo "Analyzing NetworkPolicies..."
 K8S_LABELS=$(kubectl get networkpolicy --all-namespaces -o json | \
-  jq -r '[.items[].spec | .. | .matchLabels? // empty | keys[]] | unique | .[]')
+  jq -r '[.items[].spec | .. | objects |
+    ((.matchLabels? // {} | keys[]) , (.matchExpressions? // [] | .[].key?))] |
+    unique | .[]')
 
-ALL_LABELS=$(echo -e "$LABELS\n$K8S_LABELS" | sort | uniq)
+ALL_LABELS=$(echo -e "$LABELS\n$K8S_LABELS" | sed 's/^k8s://' | sort | uniq)
 
 echo "Required labels for policies:"
 echo "$ALL_LABELS"
 echo ""
 
 # Generate Helm set command
-HELM_LABELS=$(echo "$ALL_LABELS" | sed 's/^/k8s:/' | tr '\n' ' ')
+HELM_LABELS=$(echo "$ALL_LABELS" | sed 's/\./\\\\./g' | tr '\n' ' ')
 echo "Helm configuration:"
-echo "--set labels="$HELM_LABELS""
+printf -- '--set labels="%s"\n' "$HELM_LABELS"
 ```
 
 ## Applying Label Changes
@@ -68,17 +72,19 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 
 # Wait for rollout
 kubectl rollout status ds/cilium -n kube-system
+# If the Cilium Operator manages identities, wait for the operator rollout too
+kubectl rollout status deployment/cilium-operator -n kube-system
 
 # Verify identity count changed
 sleep 120
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | wc -l
 ```
 
 ## Verification
 
 ```bash
 cilium config view | grep labels
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | wc -l
 ```
 
 ## Troubleshooting
@@ -86,6 +92,7 @@ cilium identity list | wc -l
 - **Policies not matching after label change**: A required label was not included. Check policy selectors.
 - **Identity count still high after filtering**: Check for high-cardinality labels in the include list.
 - **Cannot determine which labels policies need**: Use the analysis script to extract labels from all policies.
+- **Existing identities unchanged**: Restart workload pods so Cilium recomputes their identities with the new label pattern.
 - **Label config not persisting**: Ensure it is in the Helm values file, not just set via `cilium config`.
 
 ## Implementing Changes Safely
@@ -93,24 +100,21 @@ cilium identity list | wc -l
 When applying performance fixes to a production Cilium cluster, follow a staged rollout approach to minimize risk:
 
 ```bash
-# Step 1: Test on a single node first
-kubectl cordon node-test-1
-kubectl drain node-test-1 --ignore-daemonsets --delete-emptydir-data
+# Step 1: Test in a staging cluster first
+# Use a representative workload and policy set
 
 # Step 2: Apply configuration changes
 helm upgrade cilium cilium/cilium --namespace kube-system \
   --reuse-values \
   <your-changes-here>
 
-# Step 3: Wait for the Cilium agent on the test node to restart
+# Step 3: Wait for Cilium agents to restart
 kubectl rollout status ds/cilium -n kube-system --timeout=120s
 
-# Step 4: Run a quick benchmark on the test node
-kubectl uncordon node-test-1
-# Deploy test pods on the node and verify performance
+# Step 4: Run a quick benchmark
+# Deploy test pods and verify performance
 
-# Step 5: If successful, roll out to remaining nodes
-# Cilium DaemonSet will handle the rolling update
+# Step 5: If successful, apply the same Helm values to production
 ```
 
 ### Change Tracking
@@ -163,12 +167,12 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+kubectl -n kube-system exec ds/cilium -- timeout 5 cilium-dbg monitor --type drop | head -5 || echo "No drops in 5 seconds"
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | awk '$NF=="ready"{count++} END{print count+0}'
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | awk '$NF=="not-ready"{count++} END{print count+0}'
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
