@@ -16,6 +16,8 @@ Advanced parsing in Cilium requires maintaining the same strict security discipl
 
 This guide covers secure implementation patterns for advanced protocol parsing within Cilium's proxylib framework.
 
+Note: Cilium's Envoy Go Extensions (proxylib) were deprecated in Cilium 1.18 and removed in Cilium 1.20. Use these proxylib-specific patterns only with Cilium/proxy versions that still include proxylib parsers.
+
 ## Prerequisites
 
 - A working basic parser in Cilium's proxylib
@@ -39,7 +41,7 @@ const (
 // Returns the string, bytes consumed, and any error.
 func readString(data []byte, offset int) (string, int, error) {
     // Need at least 2 bytes for the length prefix
-    if len(data) < offset+2 {
+    if offset < 0 || len(data)-offset < 2 {
         return "", 0, fmt.Errorf("insufficient data for string length at offset %d", offset)
     }
 
@@ -56,8 +58,7 @@ func readString(data []byte, offset int) (string, int, error) {
     }
 
     // Check data availability
-    totalNeeded := offset + 2 + strLen
-    if len(data) < totalNeeded {
+    if len(data)-offset-2 < strLen {
         return "", 0, fmt.Errorf("insufficient data for string body at offset %d", offset)
     }
 
@@ -79,7 +80,7 @@ func parseValue(data []byte, offset int, depth int) (interface{}, int, error) {
         return nil, 0, fmt.Errorf("maximum nesting depth %d exceeded", maxNestingDepth)
     }
 
-    if len(data) <= offset {
+    if offset < 0 || len(data) <= offset {
         return nil, 0, fmt.Errorf("no data at offset %d", offset)
     }
 
@@ -89,7 +90,7 @@ func parseValue(data []byte, offset int, depth int) (interface{}, int, error) {
 
     switch typeByte {
     case 0x01: // Integer
-        if len(data) < offset+consumed+4 {
+        if len(data)-offset-consumed < 4 {
             return nil, 0, fmt.Errorf("insufficient data for integer")
         }
         val := int32(data[offset+consumed])<<24 |
@@ -106,7 +107,7 @@ func parseValue(data []byte, offset int, depth int) (interface{}, int, error) {
         return str, consumed + n, nil
 
     case 0x03: // Array - recurse with incremented depth
-        if len(data) < offset+consumed+4 {
+        if len(data)-offset-consumed < 4 {
             return nil, 0, fmt.Errorf("insufficient data for array length")
         }
         arrayLen := int(data[offset+consumed])<<24 |
@@ -160,6 +161,11 @@ Route different command types to specialized handlers:
 // commandHandler processes a specific protocol command
 type commandHandler func(parser *Parser, body []byte, reply bool) (proxylib.OpType, int)
 
+type MyProtocolRequest struct {
+    Command string
+    Key     string
+}
+
 // commandRegistry maps command bytes to handlers
 var commandRegistry = map[byte]commandHandler{
     0x01: handleGetCommand,
@@ -173,36 +179,39 @@ func (p *Parser) dispatchCommand(command byte, body []byte, reply bool, totalLen
     if !exists {
         log.WithField("command", command).Warn("Unknown command type")
         // Policy decision: drop unknown commands for security
-        return proxylib.DROP, 0
+        return proxylib.DROP, totalLen
     }
 
-    op, _ := handler(p, body, reply)
+    op, n := handler(p, body, reply)
     if op == proxylib.PASS {
         return proxylib.PASS, totalLen
     }
-    return op, 0
+    if op == proxylib.DROP {
+        return proxylib.DROP, totalLen
+    }
+    return op, n
 }
 
 // handleGetCommand parses and validates a GET command
 func handleGetCommand(p *Parser, body []byte, reply bool) (proxylib.OpType, int) {
-    if len(body) < 1 {
-        return proxylib.DROP, 0
+    if len(body) < 2 {
+        return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_LENGTH)
     }
 
     // Parse the key name from the body
     key, _, err := readString(body, 0)
     if err != nil {
         log.WithError(err).Warn("Failed to parse GET key")
-        return proxylib.DROP, 0
+        return proxylib.ERROR, int(proxylib.ERROR_INVALID_FRAME_LENGTH)
     }
 
     // Check policy
-    if !p.connection.Matches("GET", key) {
+    if !p.connection.Matches(MyProtocolRequest{Command: "GET", Key: key}) {
         log.WithField("key", key).Info("GET denied by policy")
-        return proxylib.DROP, 0
+        return proxylib.DROP, len(body)
     }
 
-    return proxylib.PASS, 0
+    return proxylib.PASS, len(body)
 }
 ```
 
