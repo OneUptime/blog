@@ -10,7 +10,7 @@ Description: How to diagnose and fix AWS access key and IAM role issues affectin
 
 ## Introduction
 
-AWS access key and IAM role issues in Cilium prevent ENI management, causing pods to fail IP allocation. Troubleshooting requires checking the authentication chain from the Cilium pod to the AWS API.
+AWS access key and IAM role issues in Cilium prevent ENI management, causing pods to fail IP allocation. Troubleshooting requires checking the authentication chain from the Cilium operator to the AWS API.
 
 ## Prerequisites
 
@@ -20,19 +20,21 @@ AWS access key and IAM role issues in Cilium prevent ENI management, causing pod
 ## Diagnosing IAM Issues
 
 ```bash
-# Check Cilium agent for auth errors
+# Check Cilium operator for auth errors
 
-kubectl logs -n kube-system -l k8s-app=cilium | \
+kubectl logs -n kube-system deployment/cilium-operator | \
   grep -iE "unauthorized|forbidden|accessdenied" | tail -10
 
-# Check what identity Cilium is using
-kubectl exec -n kube-system -l k8s-app=cilium -- \
-  aws sts get-caller-identity 2>&1
+# Check the role annotated on the Cilium operator service account
+kubectl get serviceaccount -n kube-system cilium-operator \
+  -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}{"\n"}'
 
 # Check IRSA token
-kubectl exec -n kube-system -l k8s-app=cilium -- \
-  cat /var/run/secrets/eks.amazonaws.com/serviceaccount/token 2>/dev/null | \
-  head -c 50 && echo "...token exists"
+OPERATOR_POD=$(kubectl get pod -n kube-system -l name=cilium-operator \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl exec -n kube-system "$OPERATOR_POD" -- \
+  sh -c 'test -f "${AWS_WEB_IDENTITY_TOKEN_FILE:-/var/run/secrets/eks.amazonaws.com/serviceaccount/token}" && echo "token exists"'
 ```
 
 ```mermaid
@@ -65,7 +67,10 @@ kubectl rollout restart daemonset/cilium -n kube-system
 ## Verification
 
 ```bash
-kubectl exec -n kube-system -l k8s-app=cilium -- aws sts get-caller-identity
+kubectl run -n kube-system aws-cli-irsa-check --rm -i --restart=Never \
+  --image=amazon/aws-cli:2 \
+  --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"cilium-operator"}}' \
+  -- sts get-caller-identity
 cilium status
 ```
 
@@ -73,8 +78,8 @@ cilium status
 
 - **"AssumeRoleWithWebIdentity" error**: OIDC provider not configured for the cluster.
 - **Intermittent auth failures**: Token may be expiring. Check pod age and token refresh.
-- **Wrong role assumed**: Check service account annotation matches the correct role ARN.
+- **Wrong role assumed**: Check the Cilium operator service account annotation matches the correct role ARN.
 
 ## Conclusion
 
-Troubleshoot AWS IAM issues by following the authentication chain: token mounting, role assumption, and API permissions. Use `aws sts get-caller-identity` from the Cilium pod as your primary diagnostic.
+Troubleshoot AWS IAM issues by following the authentication chain: token mounting, role assumption, and API permissions. Use `aws sts get-caller-identity` from a temporary AWS CLI pod that uses the Cilium operator service account as your primary diagnostic.
