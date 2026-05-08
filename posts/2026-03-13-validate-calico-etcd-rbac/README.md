@@ -16,7 +16,7 @@ A systematic validation process tests both the positive cases (permissions that 
 
 ## Prerequisites
 
-- etcd v3.x with RBAC enabled and Calico roles configured
+- etcd v3.x with RBAC enabled and Calico etcdv3 roles configured
 - etcdctl with root credentials for validation
 - Calico running and connected to etcd
 - Access to Calico component logs
@@ -46,11 +46,10 @@ Expected output for `calico-felix`:
 ```plaintext
 Role calico-felix
 KV Read:
-  [/calico/v1/config/, /calico/v1/config/0) (prefix /calico/v1/config/)
-  [/calico/v1/policy/, /calico/v1/policy/0) (prefix /calico/v1/policy/)
+  [/calico/resources/v3/projectcalico.org/, /calico/resources/v3/projectcalico.org0) (prefix /calico/resources/v3/projectcalico.org/)
 KV Write:
-  [/calico/v1/host/, /calico/v1/host/0) (prefix /calico/v1/host/)
   [/calico/felix/v1/, /calico/felix/v1/0) (prefix /calico/felix/v1/)
+  [/calico/felix/v2/, /calico/felix/v2/0) (prefix /calico/felix/v2/)
 ```
 
 ## Step 2: Test Permitted Access
@@ -58,35 +57,39 @@ KV Write:
 Use the calico-felix credentials to verify allowed operations succeed:
 
 ```bash
-# Should succeed: read policy path
+# Should succeed: read Calico resource path
 etcdctl --endpoints=https://etcd:2379 \
   --cacert=/etc/etcd/ca.crt \
   --cert=/etc/calico/etcd/felix.crt \
   --key=/etc/calico/etcd/felix.key \
-  get /calico/v1/policy/ --prefix
+  get /calico/resources/v3/projectcalico.org/ --prefix
 
-# Should succeed: write to host path
-etcdctl ... put /calico/v1/host/test-key "test-value"
-etcdctl ... del /calico/v1/host/test-key
+# Should succeed: write to Felix status/config path
+etcdctl ... put /calico/felix/v1/test-key "test-value"
+etcdctl ... del /calico/felix/v1/test-key
 ```
 
 ## Step 3: Test Denied Access
 
 ```mermaid
 graph LR
-    A[calico-felix credentials] -->|Read /calico/v1/policy/| B[Should SUCCEED]
-    A -->|Write /calico/v1/policy/| C[Should FAIL - permission denied]
+    A[calico-felix credentials] -->|Read /calico/resources/v3/projectcalico.org/| B[Should SUCCEED]
+    A -->|Write /calico/resources/v3/projectcalico.org/| C[Should FAIL - permission denied]
     A -->|Read /registry/secrets/| D[Should FAIL - no access]
-    A -->|Read /calico/v1/ipam/| E[Should FAIL - wrong role]
+    A -->|Read /calico/ipam/v2/| E[Should FAIL - wrong role]
 ```
 
 ```bash
-# Should fail: write to policy path (read-only for felix)
-etcdctl ... put /calico/v1/policy/test "value"
+# Should fail: write to Calico resource path (read-only for standalone Felix)
+etcdctl ... put /calico/resources/v3/projectcalico.org/test "value"
 # Expected: Error: etcdserver: permission denied
 
 # Should fail: access Kubernetes paths
 etcdctl ... get /registry/secrets/ --prefix
+# Expected: Error: etcdserver: permission denied
+
+# Should fail: access CNI/IPAM paths
+etcdctl ... get /calico/ipam/v2/ --prefix
 # Expected: Error: etcdserver: permission denied
 ```
 
@@ -117,4 +120,4 @@ etcdctl ... user get calico-cni
 
 ## Conclusion
 
-Validating Calico etcd RBAC requires testing both permitted and denied access paths for each component credential. A complete validation confirms that Felix can read policies and write host data, that the CNI plugin can manage IPAM, and that neither can access Kubernetes secrets or each other's write paths. Run this validation after any changes to etcd roles or Calico credentials.
+Validating Calico etcd RBAC requires testing both permitted and denied access paths for each component credential. A complete validation confirms that Felix can read Calico resources and write Felix data, that the CNI plugin can manage IPAM, and that neither can access Kubernetes secrets or each other's write paths. Run this validation after any changes to etcd roles or Calico credentials.
