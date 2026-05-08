@@ -39,8 +39,8 @@ Description=PostgreSQL with readiness notification
 [Container]
 Image=docker.io/library/postgres:16
 ContainerName=database
-Network=appnet.network
-Volume=pgdata.volume:/var/lib/postgresql/data
+Network=appnet
+Volume=pgdata:/var/lib/postgresql/data
 Environment=POSTGRES_PASSWORD=secret
 
 # Health check determines when the database is ready
@@ -66,6 +66,8 @@ WantedBy=default.target
 
 Configure the dependent service to wait for the database:
 
+Use the same user-defined Podman network for both containers so the web app can resolve the `database` container name.
+
 ```ini
 # ~/.config/containers/systemd/webapp.container
 [Unit]
@@ -76,7 +78,7 @@ Requires=database.service
 
 [Container]
 Image=docker.io/myorg/webapp:latest
-Network=appnet.network
+Network=appnet
 Environment=DATABASE_URL=postgresql://postgres:secret@database:5432/postgres
 PublishPort=8080:80
 
