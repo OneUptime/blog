@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, Endpoint, CRD
 
-Description: Learn how to configure and manage CiliumEndpoint custom resources to control endpoint identity, networking, and policy enforcement in Cilium-managed Kubernetes clusters.
+Description: Learn how to inspect CiliumEndpoint custom resources and configure the Cilium settings that affect endpoint identity, networking, and policy enforcement in Cilium-managed Kubernetes clusters.
 
 ---
 
 ## Introduction
 
-CiliumEndpoint is a CRD that Cilium creates automatically for each pod managed by the Cilium agent. Each CiliumEndpoint represents a network endpoint with its own identity, IP address, and policy state. While Cilium manages these resources automatically, understanding their configuration is essential for debugging and advanced networking setups.
+CiliumEndpoint is a CRD that Cilium creates automatically for each pod managed by the Cilium agent. Each CiliumEndpoint represents a network endpoint with its own identity, IP address, and policy state. While Cilium manages these resources automatically, understanding their status is essential for debugging and advanced networking setups.
 
 The CiliumEndpoint CRD stores the endpoint security identity, labels used for policy selection, networking state, and policy enforcement status. Inspecting a CiliumEndpoint gives you a complete picture of how Cilium sees a workload.
 
-This guide walks through configuring the Cilium agent for endpoint management, customizing endpoint behavior, and integrating endpoint data with your infrastructure.
+This guide walks through configuring the Cilium agent settings that affect endpoint management, customizing endpoint-related behavior, and integrating endpoint data with your infrastructure.
 
 ## Prerequisites
 
@@ -77,10 +77,6 @@ ipam:
     clusterPoolIPv4PodCIDRList:
       - "10.0.0.0/8"
     clusterPoolIPv4MaskSize: 24
-
-endpointStatus:
-  enabled: true
-  status: "policy health controllers log state"
 ```
 
 ```bash
@@ -97,7 +93,7 @@ helm upgrade cilium cilium/cilium \
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set "labels=k8s:app k8s:io.kubernetes.pod.namespace k8s:env"
+  --set "labels=app env io\\.kubernetes\\.pod\\.namespace"
 ```
 
 ### Enabling Endpoint Health Checking
@@ -105,7 +101,8 @@ helm upgrade cilium cilium/cilium \
 ```yaml
 healthChecking: true
 healthPort: 9879
-endpointGCInterval: "5m0s"
+operator:
+  endpointGCInterval: "5m0s"
 ```
 
 ```mermaid
@@ -129,7 +126,6 @@ metadata:
   name: bandwidth-limited-app
   annotations:
     kubernetes.io/egress-bandwidth: "10M"
-    kubernetes.io/ingress-bandwidth: "10M"
 spec:
   containers:
     - name: app
@@ -158,10 +154,12 @@ helm upgrade cilium cilium/cilium \
 
 ```bash
 cilium status
-cilium endpoint list
+kubectl -n kube-system exec <cilium-agent-pod-on-endpoint-node> \
+  -c cilium-agent -- cilium-dbg endpoint list
 kubectl get ciliumendpoint <pod-name> -n <namespace> \
   -o jsonpath='{.status.identity}'
-cilium endpoint health <endpoint-id>
+kubectl -n kube-system exec <cilium-agent-pod-on-endpoint-node> \
+  -c cilium-agent -- cilium-dbg endpoint health <endpoint-id>
 ```
 
 ## Troubleshooting
@@ -173,4 +171,4 @@ cilium endpoint health <endpoint-id>
 
 ## Conclusion
 
-CiliumEndpoint CRDs are the foundation of Cilium networking and policy. Understanding their configuration and the agent settings that control endpoint behavior lets you tune performance, troubleshoot connectivity, and maintain visibility into cluster networking.
+CiliumEndpoint CRDs are the foundation of Cilium networking and policy. Understanding their status and the agent settings that control endpoint behavior lets you tune performance, troubleshoot connectivity, and maintain visibility into cluster networking.
