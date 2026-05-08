@@ -10,7 +10,7 @@ Description: Learn how to identify and remove dangling container images with Pod
 
 > Dangling images are the hidden storage consumers that accumulate silently with every image rebuild and tag update.
 
-Dangling images are layers that have no tags or names pointing to them. They typically result from rebuilding images without removing the old version first, or from pulling updated tags that replace previous builds. This guide shows you how to find and remove dangling images with Podman.
+Dangling images are untagged images or filesystem layers that are no longer referenced by any image. They typically result from rebuilding images without removing the old version first, or from pulling updated tags that replace previous builds. This guide shows you how to find and remove dangling images with Podman.
 
 ---
 
@@ -47,7 +47,7 @@ podman images --filter dangling=true -q | wc -l
 podman images --filter dangling=true \
   --format "table {{.ID}}\t{{.Size}}\t{{.Created}}"
 
-# Calculate total space used by dangling images
+# List the reported sizes of dangling images
 podman images --filter dangling=true \
   --format "{{.Size}}"
 ```
@@ -78,8 +78,10 @@ podman images --filter dangling=true -q
 # Remove a specific dangling image by ID
 podman rmi abc123def456
 
-# Remove all dangling images using xargs
-podman images --filter dangling=true -q | xargs podman rmi
+# Remove all dangling images by ID
+podman images --filter dangling=true -q | while read -r image_id; do
+  podman rmi "$image_id"
+done
 ```
 
 ## Understanding How Dangling Images Are Created
