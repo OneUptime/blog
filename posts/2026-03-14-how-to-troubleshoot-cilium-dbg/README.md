@@ -29,16 +29,16 @@ This guide provides structured troubleshooting for common cilium-dbg failures.
 
 
 ```bash
-CILIUM_POD=\$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
 
 ## Check pod status
-kubectl -n kube-system get pod "\$CILIUM_POD" -o wide
+kubectl -n kube-system get pod "$CILIUM_POD" -o wide
 
 ## Test basic exec
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent -- echo "exec works"
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- echo "exec works"
 
 ## Test agent API connectivity
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg status 2>&1 | head -5
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg status 2>&1 | head -5
 ```
 
 ```mermaid
@@ -57,17 +57,17 @@ flowchart TD
 ```bash
 # Verify the API socket exists
 
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   ls -la /var/run/cilium/cilium.sock
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- ls -la /var/run/cilium/cilium.sock
 
 # Test direct API access
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   curl -s --unix-socket /var/run/cilium/cilium.sock http://localhost/v1/healthz
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- curl -s --unix-socket /var/run/cilium/cilium.sock http://localhost/healthz
 ```
 
 ### Version Mismatch
 
 ```bash
 # Check cilium-dbg version
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg version
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg version
 
 # Ensure CLI version matches agent version
 # Version mismatch can cause unexpected errors
@@ -77,10 +77,10 @@ kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg versi
 
 ```bash
 # "Unable to reach agent" - agent process may be down
-kubectl -n kube-system logs "\$CILIUM_POD" -c cilium-agent --tail=20
+kubectl -n kube-system logs "$CILIUM_POD" -c cilium-agent --tail=20
 
 # "command not found" - binary may be at different path
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   which cilium-dbg || find / -name cilium-dbg 2>/dev/null
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- sh -c 'command -v cilium-dbg || find / -name cilium-dbg 2>/dev/null'
 
 # "permission denied" - check RBAC
 kubectl auth can-i create pods/exec -n kube-system
@@ -91,14 +91,14 @@ kubectl auth can-i create pods/exec -n kube-system
 
 ```bash
 # Full connectivity test
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent -- cilium-dbg status --brief
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list | head -5
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg status --brief
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list | head -5
 echo "All commands working"
 ```
 
 ## Troubleshooting
 
-- **Commands timeout on large clusters**: Increase `--request-timeout` and consider running commands in parallel.
+- **Commands timeout on large clusters**: Use command-specific timeouts such as `cilium-dbg status --timeout`, or increase kubectl's `--request-timeout` if the API server connection for `kubectl exec` is timing out.
 - **JSON output is empty array**: The agent may have no endpoints yet. Check `cilium-dbg status` first.
 - **Table output columns shift**: Use JSON output (`-o json`) for reliable parsing. Tables are for human consumption.
 - **Agent unreachable errors**: Verify the cilium-agent container is running and the API socket exists.
@@ -107,4 +107,3 @@ echo "All commands working"
 
 
 Cilium-dbg failures are usually caused by exec connectivity issues, agent API problems, or version mismatches. Systematic diagnosis from pod state through API socket to command-level errors resolves most issues efficiently.
-
