@@ -38,7 +38,16 @@ calicoctl patch bgpconfiguration default \
 calicoctl get bgpconfiguration default -o yaml
 ```
 
-Configure the IP pool for local routing only:
+Configure the active IP pool for local routing only. Replace `default-ipv4-ippool` with the pool name from `calicoctl get ippool`.
+
+```bash
+calicoctl get ippool
+
+calicoctl patch ippool default-ipv4-ippool \
+  --patch='{"spec": {"ipipMode": "Never", "vxlanMode": "Never", "natOutgoing": true}}'
+```
+
+For a fresh install, configure the pool this way before workloads are scheduled. `blockSize` can only be set when the pool is created.
 
 ```yaml
 # IP pool configured for single-node local routing
@@ -79,37 +88,44 @@ calicoctl patch felixconfiguration default --patch='{
 
 Set appropriate resource limits to prevent Calico from starving other workloads on the single node.
 
-```yaml
-# Patch calico-node DaemonSet with resource limits for single-node use
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: calico-node
-  namespace: calico-system
-spec:
-  template:
-    spec:
-      containers:
-      - name: calico-node
-        resources:
-          # Limit CPU and memory to leave room for workloads
-          requests:
-            cpu: 50m
-            memory: 64Mi
-          limits:
-            cpu: 200m
-            memory: 256Mi
+```bash
+# Operator installs: patch the Installation resource
+kubectl patch installations default --type=merge --patch='{
+  "spec": {
+    "calicoNodeDaemonSet": {
+      "spec": {
+        "template": {
+          "spec": {
+            "containers": [
+              {
+                "name": "calico-node",
+                "resources": {
+                  "requests": {"cpu": "50m", "memory": "64Mi"},
+                  "limits": {"cpu": "200m", "memory": "256Mi"}
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}'
 ```
 
 ## Step 4: Tune MTU for Local Traffic
 
-On a single node, all traffic is looped through the Linux kernel without entering a physical network. MTU can be set to the maximum for better container-to-container throughput.
+On a single node with no overlay encapsulation, Calico can use the workload MTU that matches the node network path. For a typical Ethernet MTU, set it to 1500. The updated MTU applies to new workloads.
 
 ```bash
-# Set MTU to 1500 for local single-node traffic
-# No encapsulation overhead needed since there's no inter-node routing
-calicoctl patch felixconfiguration default \
-  --patch='{"spec": {"vethMTU": 1500}}'
+# Operator installs
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"mtu":1500}}}'
+
+# Manifest installs
+kubectl patch configmap/calico-config -n kube-system --type merge \
+  -p '{"data":{"veth_mtu": "1500"}}'
+kubectl rollout restart daemonset calico-node -n kube-system
 ```
 
 ## Step 5: Apply a Minimal Network Policy
@@ -124,7 +140,8 @@ metadata:
   name: default-deny-ingress
 spec:
   # Apply to all non-system pods
-  selector: "!has(projectcalico.org/system-pod)"
+  selector: all()
+  namespaceSelector: "projectcalico.org/name not in {'kube-system', 'calico-system', 'tigera-operator'}"
   types:
   - Ingress
   # No ingress rules = deny all ingress by default
