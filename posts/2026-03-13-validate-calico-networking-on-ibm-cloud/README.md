@@ -25,15 +25,19 @@ This guide covers validation procedures for both IKS and self-managed Kubernetes
 ```bash
 # Check all Calico pods are running
 
-kubectl get pods -n calico-system
-kubectl get pods -n ibm-system | grep calico
+kubectl get pods -A -o wide | grep -E 'calico|coredns'
+# In IKS 1.29 and later, Calico pods run in calico-system.
+# In IKS 1.28 and earlier, Calico pods run in kube-system.
 
 # Check Felix status via calicoctl
 calicoctl node status
 
-# Expected output
+# Expected output for an overlay-only cluster
 # Calico process is running.
-# IPv4 BGP status: No peers established
+# IPv4 BGP status
+# No IPv4 peers found.
+#
+# If BGP is enabled, peers should be Established instead.
 ```
 
 ## Step 2: Check IP Pool Configuration
@@ -52,8 +56,12 @@ calicoctl ipam show --show-blocks
 # List security group rules
 ibmcloud is security-group <sg-id>
 
-# Verify VXLAN rule exists
+# Verify VXLAN rule exists if your Calico IP pool uses VXLAN
 ibmcloud is security-group-rules <sg-id> | grep 4789
+
+# Verify BGP or IP-in-IP rules instead if your Calico IP pool uses those modes
+ibmcloud is security-group-rules <sg-id> | grep 179
+ibmcloud is security-group-rules <sg-id> | grep ip_in_ip
 
 # Verify kubelet rule
 ibmcloud is security-group-rules <sg-id> | grep 10250
@@ -78,13 +86,14 @@ graph LR
 # Deploy test pods on different zones
 kubectl run test-zone-1 --image=busybox \
   --overrides='{"spec":{"nodeSelector":{"ibm-cloud.kubernetes.io/zone":"us-south-1"}}}' \
-  -- sleep 3600 &
+  -- sleep 3600
 
 kubectl run test-zone-2 --image=busybox \
   --overrides='{"spec":{"nodeSelector":{"ibm-cloud.kubernetes.io/zone":"us-south-2"}}}' \
-  -- sleep 3600 &
+  -- sleep 3600
 
-sleep 15
+kubectl wait --for=condition=Ready pod/test-zone-1 --timeout=60s
+kubectl wait --for=condition=Ready pod/test-zone-2 --timeout=60s
 
 Z2_IP=$(kubectl get pod test-zone-2 -o jsonpath='{.status.podIP}')
 kubectl exec test-zone-1 -- ping -c 3 $Z2_IP
@@ -92,13 +101,15 @@ kubectl exec test-zone-1 -- ping -c 3 $Z2_IP
 
 ## Step 5: Validate IKS Managed Calico Policies
 
-IKS installs several managed Calico policies. Verify they haven't been accidentally removed:
+IKS classic clusters install several managed Calico host policies. Verify they haven't been accidentally removed:
 
 ```bash
-calicoctl get globalnetworkpolicies | grep ibm
-# Should show several IBM-managed policies like:
-# allow-ibm-ports
+calicoctl get globalnetworkpolicies | grep -E 'allow-all-outbound|allow-all-private-default|allow-sys-mgmt|allow-ibm-ports'
+# Depending on cluster type and applied policy samples, this can show policies like:
 # allow-all-outbound
+# allow-all-private-default
+# allow-sys-mgmt
+# allow-ibm-ports-public
 ```
 
 ## Step 6: Test Service Discovery
