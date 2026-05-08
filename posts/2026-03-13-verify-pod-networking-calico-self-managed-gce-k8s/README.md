@@ -12,7 +12,7 @@ Description: Learn how to verify Calico pod networking on a self-managed Kuberne
 
 Google Compute Engine (GCE) supports self-managed Kubernetes clusters with Calico as the CNI plugin. GCE's Virtual Private Cloud supports both IP-in-IP and VXLAN encapsulation, making both overlay modes viable. However, GCE VPC firewall rules must explicitly allow the encapsulation protocol - IP-in-IP (protocol 4) is not allowed by default and must be added.
 
-GCE also supports native routing without overlay if you enable VPC native routing and add per-node pod CIDR routes to the VPC routing table. This is the highest-performance option but requires more configuration. The most common choice for self-managed clusters is Calico with IPIP or VXLAN, which provides a good balance of simplicity and performance.
+GCE also supports native routing without overlay if you enable IP forwarding on the node instances and add per-node pod CIDR routes to the VPC routing table. This is the highest-performance option but requires more configuration. The most common choice for self-managed clusters is Calico with IPIP or VXLAN, which provides a good balance of simplicity and performance.
 
 This guide covers verification of pod networking for self-managed Kubernetes on GCE.
 
@@ -40,7 +40,7 @@ gcloud compute firewall-rules create calico-ipip \
   --network=$NETWORK \
   --action=ALLOW \
   --rules=ipip \
-  --source-ranges=<node-cidr>/16 \
+  --source-ranges=<node-subnet-cidr> \
   --target-tags=k8s-node
 
 # Or create firewall rule for VXLAN if using that mode
@@ -49,7 +49,7 @@ gcloud compute firewall-rules create calico-vxlan \
   --network=$NETWORK \
   --action=ALLOW \
   --rules=udp:4789 \
-  --source-ranges=<node-cidr>/16 \
+  --source-ranges=<node-subnet-cidr> \
   --target-tags=k8s-node
 
 # Verify firewall rules are created
@@ -107,7 +107,7 @@ kubectl exec pod-a -- ping -c 5 $POD_B_IP
 
 ## Step 4: Test Cross-Zone Pod Connectivity
 
-Validate that pods in different GCE zones can communicate (requires firewall rules).
+Validate that pods in different GCE zones can communicate. GCE subnets are regional, so cross-zone traffic is not necessarily cross-subnet traffic. If both nodes are in the same subnet, this verifies multi-zone pod reachability but might not exercise Calico `CrossSubnet` encapsulation.
 
 ```bash
 # Deploy pods in different zones
@@ -119,7 +119,7 @@ kubectl run pod-zone-b --image=busybox:1.28 \
   --overrides='{"spec":{"nodeSelector":{"topology.kubernetes.io/zone":"us-central1-b"}}}' \
   --restart=Never -- sleep 3600
 
-# Test cross-zone connectivity (requires IPIP or VXLAN encapsulation)
+# Test cross-zone connectivity
 POD_ZONE_B_IP=$(kubectl get pod pod-zone-b -o jsonpath='{.status.podIP}')
 kubectl exec pod-zone-a -- ping -c 5 $POD_ZONE_B_IP
 ```
@@ -137,17 +137,17 @@ KUBE_SVC_IP=$(kubectl get svc kubernetes -o jsonpath='{.spec.clusterIP}')
 kubectl exec pod-a -- nc -zv $KUBE_SVC_IP 443
 
 # Verify external access works
-kubectl exec pod-a -- wget -qO- --timeout=5 https://www.googleapis.com/
+kubectl exec pod-a -- wget -S -O- --timeout=5 http://www.googleapis.com/generate_204
 ```
 
 ## Best Practices
 
-- Use `ipipMode: CrossSubnet` on GCE for optimal performance - no encapsulation within a zone, IPIP only across zones
+- Use `ipipMode: CrossSubnet` on GCE when nodes span subnet boundaries - no encapsulation within a node subnet, IPIP only across subnet boundaries
 - Apply GCE firewall rules using network tags for easier management across instance groups
-- Test connectivity across availability zones as GCE inter-zone routing differs from intra-zone
+- Test connectivity across availability zones, and separately across node subnet boundaries if you use Calico `CrossSubnet` mode
 - Monitor GCE firewall rule hits to confirm Calico overlay traffic is being allowed
 - Enable GCE VPC Flow Logs to gain visibility into cross-node traffic patterns
 
 ## Conclusion
 
-Verifying Calico pod networking on self-managed GCE Kubernetes requires proper VPC firewall configuration, appropriate encapsulation mode selection, and cross-zone connectivity testing. GCE's support for IP-in-IP makes it a good platform for Calico with CrossSubnet IPIP mode, providing native routing within zones and encapsulation only where needed. Always verify connectivity across zone boundaries in addition to within-zone tests.
+Verifying Calico pod networking on self-managed GCE Kubernetes requires proper VPC firewall configuration, appropriate encapsulation mode selection, and cross-zone connectivity testing. GCE's support for IP-in-IP makes it a good platform for Calico with CrossSubnet IPIP mode when nodes span subnet boundaries, providing native routing within node subnets and encapsulation only where needed. Always verify connectivity across zone boundaries and subnet boundaries in addition to within-zone tests.
