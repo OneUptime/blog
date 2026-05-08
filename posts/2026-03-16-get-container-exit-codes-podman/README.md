@@ -23,12 +23,13 @@ Common exit codes:
 | 0 | Success |
 | 1 | General error |
 | 2 | Misuse of shell command |
+| 125 | Podman itself failed |
 | 126 | Command cannot execute (permission issue) |
 | 127 | Command not found |
-| 128+N | Process killed by signal N (e.g., 137 = SIGKILL, 143 = SIGTERM) |
+| 128+N | Process killed by signal N in common shell conventions (e.g., 137 = SIGKILL, 143 = SIGTERM) |
 | 137 | Container killed (SIGKILL / OOM killed) |
 | 143 | Container terminated (SIGTERM) |
-| 255 | Exit status out of range |
+| 255 | Application-specific error or shell exit status such as `exit -1` |
 
 ## Getting Exit Code from podman run
 
@@ -98,7 +99,7 @@ When a container is killed due to exceeding its memory limit, the exit code is 1
 # Run a container with a low memory limit
 podman run --rm --name oom-test --memory 10m \
   docker.io/library/alpine:latest \
-  sh -c 'dd if=/dev/zero of=/dev/null bs=20m' 2>/dev/null
+  sh -c 'x=$(head -c 100m /dev/zero | tr "\0" "x"); echo "$x" >/dev/null' 2>/dev/null
 echo "Exit code: $?"
 
 # Check if a container was OOM killed
@@ -140,7 +141,7 @@ echo "Pipeline PASSED"
 
 ## Interpreting Signal-Based Exit Codes
 
-Exit codes above 128 indicate the process was killed by a signal.
+Exit codes above 128 often indicate the process was killed by a signal.
 
 ```bash
 #!/bin/bash
@@ -161,6 +162,7 @@ case $EXIT_CODE in
   0)   echo "Interpretation: Success" ;;
   1)   echo "Interpretation: General error" ;;
   2)   echo "Interpretation: Shell misuse" ;;
+  125) echo "Interpretation: Podman error" ;;
   126) echo "Interpretation: Permission denied or not executable" ;;
   127) echo "Interpretation: Command not found" ;;
   137) echo "Interpretation: Killed by SIGKILL (possibly OOM)" ;;
@@ -250,4 +252,4 @@ echo "  Failed (!=0): $(podman ps -a --filter status=exited --format "{{.ExitCod
 
 ## Summary
 
-Exit codes are fundamental to container debugging and automation. Capture them with `$?` after `podman run`, `podman inspect --format '{{.State.ExitCode}}'` for stopped containers, or `podman wait` for background containers. Exit code 0 means success, 1-125 are application errors, 126-127 are shell errors, and 128+N indicates the process was killed by signal N. Use this information to build robust CI/CD pipelines and monitoring scripts.
+Exit codes are fundamental to container debugging and automation. Capture them with `$?` after `podman run`, `podman inspect --format '{{.State.ExitCode}}'` for stopped containers, or `podman wait` for background containers. Exit code 0 means success, 1-124 are typically application errors, 125 means Podman itself failed, 126-127 are command invocation errors, and 128+N often indicates the process was killed by signal N. Use this information to build robust CI/CD pipelines and monitoring scripts.
