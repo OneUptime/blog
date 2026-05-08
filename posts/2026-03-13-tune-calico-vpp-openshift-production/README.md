@@ -12,7 +12,7 @@ Description: A guide to tuning Calico VPP for production performance on OpenShif
 
 Production tuning for Calico VPP on OpenShift uses the Machine Config Operator (MCO) for all OS-level performance settings - CPU isolation for VPP workers, hugepage allocation, and NUMA topology hints. This MCO-based approach ensures that performance settings persist across node reboots and are applied consistently to all worker nodes that match the MachineConfigPool selector.
 
-VPP data plane tuning - buffer sizes, worker counts, and interface queue configuration - is managed through the VPP ConfigMap and the VPP startup configuration, which are applied as Kubernetes resources without requiring node restarts.
+VPP data plane tuning - buffer sizes, worker counts, and interface queue configuration - is managed through the VPP ConfigMap and the VPP startup configuration. These changes are applied as Kubernetes resources and require the Calico VPP pods to restart, but they do not require node restarts.
 
 ## Prerequisites
 
@@ -46,33 +46,27 @@ oc get machineconfigpool worker -w
 ## Step 2: Increase VPP Buffer Pool
 
 ```bash
-oc patch configmap vpp-config -n calico-vpp-dataplane \
-  --patch '{"data":{"vpp.conf":"unix {\n  nodaemon\n}\nbuffers {\n  buffers-per-numa 512000\n  page-size 2m\n}\ncpu {\n  workers 4\n  corelist-workers 1-4\n}"}}'
+oc patch configmap calico-vpp-config -n calico-vpp-dataplane \
+  --patch '{"data":{"CALICOVPP_CONFIG_TEMPLATE":"unix {\n  nodaemon\n  full-coredump\n  cli-listen /var/run/vpp/cli.sock\n  pidfile /run/vpp/vpp.pid\n  exec /etc/vpp/startup.exec\n}\napi-trace { on }\ncpu {\n  workers 4\n  corelist-workers 1-4\n}\nsocksvr {\n  socket-name /var/run/vpp/vpp-api.sock\n}\nplugins {\n  plugin default { enable }\n  plugin dpdk_plugin.so { disable }\n  plugin calico_plugin.so { enable }\n  plugin ping_plugin.so { disable }\n  plugin dispatch_trace_plugin.so { enable }\n}\nbuffers {\n  buffers-per-numa 512000\n  page-size 2M\n}"}}'
+oc rollout restart daemonset/calico-vpp-node -n calico-vpp-dataplane
 ```
 
 ## Step 3: Configure DPDK Multi-Queue
 
-```yaml
-# In vpp.conf
-
-dpdk {
-  dev 0000:01:00.0 {
-    num-rx-queues 4
-    num-tx-queues 4
-    num-rx-desc 1024
-    num-tx-desc 1024
-  }
-}
+```bash
+oc patch configmap calico-vpp-config -n calico-vpp-dataplane \
+  --patch '{"data":{"CALICOVPP_INTERFACES":"{\n  \"uplinkInterfaces\": [\n    {\n      \"interfaceName\": \"eth1\",\n      \"vppDriver\": \"dpdk\",\n      \"rx\": 4,\n      \"tx\": 4,\n      \"rxqsz\": 1024,\n      \"txqsz\": 1024\n    }\n  ]\n}"}}'
+oc rollout restart daemonset/calico-vpp-node -n calico-vpp-dataplane
 ```
 
-## Step 4: Enable VPP Prometheus Metrics
+## Step 4: Enable Calico Felix Prometheus Metrics
 
 ```bash
 calicoctl patch felixconfiguration default \
   --patch '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
 ```
 
-Configure OpenShift Monitoring to scrape VPP metrics:
+Configure OpenShift Monitoring to scrape Felix metrics:
 
 ```bash
 oc apply -f calico-vpp-servicemonitor.yaml
