@@ -10,7 +10,7 @@ Description: Learn how to configure local-based auto-updates in Podman to automa
 
 > Local-based auto-update monitors your local image storage and restarts containers when their image has been updated through a build or manual pull.
 
-The `local` auto-update policy is useful when you build images locally or pull them through a separate CI/CD process. Instead of checking a remote registry, Podman compares the running container's image with the current local image.
+The `local` auto-update policy is useful when you build images locally or pull them through a separate CI/CD process. Instead of checking a remote registry, Podman compares the image used by the running container with the image resolved from the same raw name in local storage.
 
 ---
 
@@ -18,8 +18,8 @@ The `local` auto-update policy is useful when you build images locally or pull t
 
 1. An external process updates the local image (via `podman build` or `podman pull`).
 2. The auto-update timer runs `podman auto-update`.
-3. Podman compares the running container's image ID with the current local image ID for that tag.
-4. If they differ, the container is restarted with the new image.
+3. Podman compares the image used by the running container with the image in local storage for that raw image name.
+4. If they differ, the systemd unit running the container is restarted with the new image.
 
 ## Configure a Container for Local Auto-Update
 
@@ -31,6 +31,7 @@ Description=Application with local auto-update
 
 [Container]
 Image=localhost/myapp:latest
+ContainerName=myapp
 PublishPort=3000:3000
 # Use local policy instead of registry
 AutoUpdate=local
@@ -53,9 +54,15 @@ podman build -t localhost/myapp:latest .
 podman auto-update
 ```
 
-## Enable the Timer
+## Enable the Service and Timer
 
 ```bash
+# Generate the systemd unit from the Quadlet file
+systemctl --user daemon-reload
+
+# Start the container under systemd
+systemctl --user enable --now myapp.service
+
 # Enable periodic checks
 systemctl --user enable --now podman-auto-update.timer
 ```
