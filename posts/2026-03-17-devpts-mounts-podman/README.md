@@ -33,7 +33,7 @@ podman run --rm -it docker.io/library/alpine:latest ls -la /dev/pts/
 ```bash
 # Mount devpts with specific options
 podman run --rm -it \
-  --mount type=devpts,target=/dev/pts,uid=0,gid=5,mode=620,ptmxmode=666 \
+  --mount type=devpts,target=/dev/pts,uid=0,gid=5,mode=0620,max=1024 \
   docker.io/library/alpine:latest ls -la /dev/pts/
 ```
 
@@ -88,21 +88,20 @@ podman run --rm -it \
 # - Others: no access
 ```
 
-## devpts with ptmxmode
+## devpts with max
 
-The `ptmxmode` option controls permissions on the `/dev/pts/ptmx` device:
+The `max` option controls the maximum number of PTYs for the devpts mount:
 
 ```bash
-# Allow all users to allocate PTYs
+# Limit the devpts mount to 1024 PTYs
 podman run --rm -it \
-  --mount type=devpts,target=/dev/pts,ptmxmode=0666 \
-  docker.io/library/alpine:latest ls -la /dev/pts/ptmx
-# Output: crw-rw-rw- 1 root root 5, 2 ... /dev/pts/ptmx
+  --mount type=devpts,target=/dev/pts,max=1024 \
+  docker.io/library/alpine:latest cat /proc/mounts | grep devpts
 
-# Restrict PTY allocation to root and tty group
+# Use a smaller PTY limit for constrained containers
 podman run --rm -it \
-  --mount type=devpts,target=/dev/pts,ptmxmode=0660 \
-  docker.io/library/alpine:latest ls -la /dev/pts/ptmx
+  --mount type=devpts,target=/dev/pts,max=128 \
+  docker.io/library/alpine:latest cat /proc/mounts | grep devpts
 ```
 
 ## Verifying devpts Configuration
@@ -113,9 +112,9 @@ podman run --rm docker.io/library/alpine:latest \
   cat /proc/mounts | grep devpts
 
 # Verify PTY allocation works
-podman run --rm -it docker.io/library/alpine:latest \
+podman run --rm -it docker.io/library/python:3-alpine \
   sh -c "python3 -c 'import pty; print(pty.openpty())'" 2>/dev/null || \
-  echo "PTY allocation test complete"
+  echo "PTY allocation failed"
 
 # Check the number of available PTYs
 podman run --rm docker.io/library/alpine:latest \
@@ -138,4 +137,4 @@ podman exec mycontainer cat /proc/sys/kernel/pty/max
 
 ## Summary
 
-devpts mounts in Podman provide pseudo-terminal devices that interactive applications, SSH servers, and terminal multiplexers require. Customize devpts mounts with `uid`, `gid`, `mode`, and `ptmxmode` options to control PTY device ownership and permissions. Use `--mount type=devpts` for explicit configuration when running containers that need terminal session management.
+devpts mounts in Podman provide pseudo-terminal devices that interactive applications, SSH servers, and terminal multiplexers require. Customize devpts mounts with `uid`, `gid`, `mode`, and `max` options to control PTY device ownership, permissions, and limits. Use `--mount type=devpts` for explicit configuration when running containers that need terminal session management.
