@@ -35,53 +35,22 @@ helm upgrade cilium cilium/cilium --version 1.16.5 \
   --reuse-values \
   --set prometheus.enabled=true \
   --set operator.prometheus.enabled=true \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}"
+  --set hubble.enabled=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2}" \
+  --set prometheus.serviceMonitor.enabled=true \
+  --set prometheus.serviceMonitor.namespace=monitoring \
+  --set prometheus.serviceMonitor.labels.release=kube-prometheus-stack \
+  --set operator.prometheus.serviceMonitor.enabled=true \
+  --set operator.prometheus.serviceMonitor.namespace=monitoring \
+  --set operator.prometheus.serviceMonitor.labels.release=kube-prometheus-stack \
+  --set hubble.metrics.serviceMonitor.enabled=true \
+  --set hubble.metrics.serviceMonitor.labels.release=kube-prometheus-stack
 ```
 
-Create a ServiceMonitor for Prometheus Operator to discover Cilium metrics:
-
-```yaml
-# cilium-service-monitor.yaml
-# ServiceMonitor for Prometheus to scrape Cilium agent metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: cilium-agent
-  namespace: monitoring
-  labels:
-    release: kube-prometheus-stack
-spec:
-  selector:
-    matchLabels:
-      k8s-app: cilium
-  namespaceSelector:
-    matchNames:
-      - kube-system
-  endpoints:
-    - port: metrics
-      interval: 15s
----
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: cilium-operator
-  namespace: monitoring
-  labels:
-    release: kube-prometheus-stack
-spec:
-  selector:
-    matchLabels:
-      name: cilium-operator
-  namespaceSelector:
-    matchNames:
-      - kube-system
-  endpoints:
-    - port: metrics
-      interval: 15s
-```
+These Helm values create ServiceMonitor resources for Prometheus Operator to discover Cilium and Hubble metrics. Verify they were created:
 
 ```bash
-kubectl apply -f cilium-service-monitor.yaml
+kubectl get servicemonitor -n monitoring cilium-agent cilium-operator hubble
 ```
 
 ## Configuring Prometheus Alerting Rules
@@ -142,8 +111,8 @@ Key metrics to display on your Cilium monitoring dashboard:
 ```bash
 # PromQL queries for Grafana panels
 
-# Panel: Cilium Agent Uptime (Gauge)
-avg(cilium_agent_uptime_seconds) by (instance)
+# Panel: Cluster Health (Stat)
+sum(cilium_unreachable_nodes) + sum(cilium_unreachable_health_endpoints)
 
 # Panel: Endpoints by State (Pie Chart)
 sum(cilium_endpoint_state) by (endpoint_state)
@@ -151,8 +120,8 @@ sum(cilium_endpoint_state) by (endpoint_state)
 # Panel: Packet Drop Rate (Time Series)
 rate(cilium_drop_count_total[5m])
 
-# Panel: Policy Import Errors (Stat)
-sum(cilium_policy_import_errors_total)
+# Panel: Policy Change Failures (Stat)
+sum(rate(cilium_policy_change_total{outcome="failure"}[5m]))
 
 # Panel: API Request Rate (Time Series)
 rate(cilium_k8s_client_api_calls_total[5m])
@@ -187,7 +156,8 @@ Set up Hubble flow monitoring for deeper observability:
 kubectl exec -n kube-system ds/cilium -- hubble observe --last 10
 
 # Check Hubble metrics
-kubectl exec -n kube-system ds/cilium -- hubble metrics list
+kubectl -n kube-system port-forward svc/hubble-metrics 9965:9965 &
+curl -s http://localhost:9965/metrics | grep "hubble_flows_processed_total"
 
 # Monitor DNS traffic through Hubble
 kubectl exec -n kube-system ds/cilium -- hubble observe --type l7 --protocol dns --last 20
@@ -207,10 +177,10 @@ for t in json.load(sys.stdin)['data']['activeTargets']:
 "
 
 # Verify metrics are available
-curl -s "http://localhost:9090/api/v1/query?query=cilium_agent_uptime_seconds" | python3 -c "
+curl -s "http://localhost:9090/api/v1/query?query=cilium_unreachable_nodes" | python3 -c "
 import sys, json
 result = json.load(sys.stdin)['data']['result']
-print(f'Cilium agent metrics found: {len(result)} instances')
+print(f'Cilium health metrics found: {len(result)} instances')
 "
 
 # Check alerting rules
