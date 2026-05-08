@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, OpenShift, eBPF
 
-Description: A guide to verifying and updating Cilium's system requirements on Red Hat OpenShift, including Security Context Constraints, kernel compatibility, and OVN-Kubernetes migration considerations.
+Description: A guide to verifying Cilium's system requirements on Red Hat OpenShift, including Security Context Constraints, kernel compatibility, and OpenShift networking considerations.
 
 ---
 
@@ -12,9 +12,9 @@ Description: A guide to verifying and updating Cilium's system requirements on R
 
 Red Hat OpenShift adds several layers of security and operational constraints beyond standard Kubernetes that affect Cilium's requirements. OpenShift's Security Context Constraints (SCCs), default CNI (OVN-Kubernetes), and RHCOS (Red Hat CoreOS) node images all introduce specific prerequisites for running Cilium.
 
-OpenShift's strong security posture means Cilium's privileged DaemonSet requires explicit SCC configuration - a step that doesn't exist on standard Kubernetes. Additionally, migrating from OVN-Kubernetes to Cilium requires careful planning around the cluster network operator and RHCOS kernel compatibility.
+OpenShift's strong security posture means Cilium's privileged agent requires SCC configuration when you are not using a vendor-provided OpenShift Operator that manages it for you. Additionally, replacing OVN-Kubernetes with Cilium requires careful planning around the cluster network operator and RHCOS kernel compatibility.
 
-This guide covers all prerequisites for running Cilium on OpenShift, including SCC setup, kernel verification, and the cluster-level network changes needed before Cilium installation.
+This guide covers the key checks for running Cilium on OpenShift, including SCC setup, kernel verification, and cluster-level network checks before Cilium installation.
 
 ## Prerequisites
 
@@ -36,8 +36,10 @@ oc version
 # Check RHCOS kernel version on nodes
 oc get nodes -o custom-columns="NODE:.metadata.name,KERNEL:.status.nodeInfo.kernelVersion,OS:.status.nodeInfo.osImage"
 
-# OpenShift 4.14+ with RHCOS runs kernel 5.14+
-# OpenShift 4.12+ with RHCOS runs kernel 5.14+ (minimum for Cilium eBPF)
+# Cilium supports Red Hat CoreOS 4.12+.
+# Current Cilium releases require Linux kernel 5.10+ or an equivalent
+# vendor kernel; verify the actual kernel on every node instead of assuming
+# it from the OpenShift minor version.
 ```
 
 ## Step 2: Check Current CNI and Network Operator Status
@@ -57,7 +59,7 @@ oc get network.config cluster -o yaml
 
 ## Step 3: Configure Security Context Constraints for Cilium
 
-Cilium's DaemonSet requires privileged access. Create the appropriate SCC.
+Cilium's agent requires privileged access. If your Cilium installation method does not provide an OpenShift-certified Operator or SCC, create an SCC for the service account used by your Cilium deployment.
 
 ```yaml
 # cilium-scc.yaml - Security Context Constraint for Cilium
@@ -83,8 +85,12 @@ runAsUser:
   type: RunAsAny
 seLinuxContext:
   type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+volumes:
+- '*'
 users:
-# Bind to the Cilium service account
+# Bind to the Cilium service account; adjust namespace/name for your installer
 - system:serviceaccount:kube-system:cilium
 groups: []
 ```
@@ -103,28 +109,28 @@ oc adm policy add-scc-to-user cilium-scc \
 oc get scc cilium-scc -o yaml | grep users -A 5
 ```
 
-## Step 4: Disable OpenShift Firewall Management Conflicts
+## Step 4: Check Firewall and Network Policy Conflicts
 
-OpenShift's iptables management may conflict with Cilium. Check for conflicts.
+Verify that host firewalls, cloud firewalls, and the currently installed network plugin will not block the ports required by your chosen Cilium datapath.
 
 ```bash
-# Check if iptables-operator is running
+# Check the network operator pods
 oc get pods -n openshift-network-operator
 
-# Verify no conflicting iptables rules exist before Cilium install
+# Inspect host firewall rules before Cilium install
 oc debug node/<node-name> -- chroot /host iptables -L | head -30
 
-# Check current network plugin iptables chains
+# Check current network plugin rules
 oc debug node/<node-name> -- chroot /host iptables -L -n | grep OVN
 ```
 
 ## Step 5: Verify etcd and API Server Accessibility
 
-Cilium requires access to the Kubernetes API server which on OpenShift runs on control plane nodes.
+Cilium requires access to the Kubernetes API server. On OpenShift, use the cluster API endpoint and verify the required cluster-scoped permissions before installation.
 
 ```bash
 # Check API server endpoint accessibility from worker nodes
-oc debug node/<worker-node> -- curl -k https://api.<cluster-domain>:6443/healthz
+oc debug node/<worker-node> -- curl -k https://api.<cluster-name>.<base-domain>:6443/readyz
 
 # Verify Cilium's CRDs can be installed (requires cluster-admin)
 oc auth can-i create customresourcedefinitions
@@ -136,9 +142,9 @@ oc auth can-i create clusterrolebindings
 
 - Always test Cilium on OpenShift in a non-production cluster first
 - Use `oc debug node` for node-level diagnostics without SSH access
-- Review Red Hat's Cilium compatibility announcements before major OpenShift upgrades
-- Keep the Cluster Network Operator in sync with your Cilium version
-- Use OpenShift's built-in certificate rotation to keep Cilium's mTLS certificates current
+- Review Cilium and Red Hat compatibility notes before major OpenShift upgrades
+- Install Cilium with vendor-maintained OpenShift Operator images or during cluster creation when possible
+- Use Cilium's documented certificate management options, such as SPIRE for Cilium mutual authentication or cert-manager for Hubble TLS
 
 ## Conclusion
 
