@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Installation, Linux, Container, DevOps, Amazon Linux
 
-Description: Step-by-step instructions for installing Podman on Amazon Linux 2 and Amazon Linux 2023 for running containers on AWS EC2 instances.
+Description: Step-by-step instructions for installing Podman on Amazon Linux 2023 for running containers on AWS EC2 instances.
 
 ---
 
-> Amazon Linux 2023 includes Podman as the default container runtime, replacing Docker as the recommended container tool on AWS.
+> Amazon Linux 2023 provides Podman through the Supplementary Packages for Amazon Linux (SPAL) repository.
 
-Amazon Linux is the go-to operating system for AWS EC2 instances. Amazon Linux 2023 (AL2023) ships with Podman in its default repositories, while Amazon Linux 2 requires the `extras` library. This guide covers both versions.
+Amazon Linux is the go-to operating system for AWS EC2 instances. Amazon Linux 2023 (AL2023) can install Podman from SPAL. Amazon Linux 2 does not include a Podman topic in the Amazon Linux Extras library, so use AL2023 for the package-manager-based installation shown here.
 
 ---
 
 ## Prerequisites
 
-- An Amazon Linux 2 or Amazon Linux 2023 EC2 instance
+- An Amazon Linux 2023 EC2 instance
 - SSH access with a user that has sudo privileges
 - An active internet connection
 
@@ -30,11 +30,14 @@ Amazon Linux is the go-to operating system for AWS EC2 instances. Amazon Linux 2
 sudo dnf update -y
 ```
 
-### Step 2: Install Podman
+### Step 2: Enable SPAL and Install Podman
 
-Podman is available directly from the AL2023 repositories:
+Podman is available from the AL2023 SPAL repository:
 
 ```bash
+# Enable the SPAL repository
+sudo dnf install -y spal-release
+
 # Install Podman
 sudo dnf install -y podman
 ```
@@ -49,48 +52,12 @@ podman --version
 podman info
 ```
 
-## Installing on Amazon Linux 2
-
-### Step 1: Update the System
-
-```bash
-# Update all packages
-sudo yum update -y
-```
-
-### Step 2: Enable the Extras Repository
-
-Podman is available through the Amazon Linux 2 extras library:
-
-```bash
-# List available extras topics
-amazon-linux-extras list | grep -i container
-
-# Enable and install the container tools
-sudo amazon-linux-extras enable docker
-sudo yum install -y podman
-```
-
-If the above does not work, try the `container-tools` extra:
-
-```bash
-# Alternative: use container-tools extras topic
-sudo amazon-linux-extras install -y podman
-```
-
-### Step 3: Verify the Installation
-
-```bash
-# Check the version
-podman --version
-```
-
-## Configure Rootless Containers (Both Versions)
+## Configure Rootless Containers
 
 ### Step 4: Set Up User Namespaces
 
 ```bash
-# Enable user namespaces (Amazon Linux 2)
+# Enable user namespaces if needed
 echo "user.max_user_namespaces=28633" | sudo tee -a /etc/sysctl.d/userns.conf
 sudo sysctl -p /etc/sysctl.d/userns.conf
 
@@ -106,10 +73,8 @@ cat /etc/subgid
 ### Step 5: Install Rootless Dependencies
 
 ```bash
-# Install slirp4netns for rootless networking
-sudo dnf install -y slirp4netns   # AL2023
-# or
-sudo yum install -y slirp4netns   # AL2
+# Install rootless networking helpers
+sudo dnf install -y passt slirp4netns
 ```
 
 ## Step 6: Run a Test Container
@@ -164,7 +129,7 @@ Pull images from Amazon Elastic Container Registry:
 
 ```bash
 # Install the AWS CLI if not already present
-sudo dnf install -y aws-cli   # AL2023
+sudo dnf install -y awscli-2
 
 # Authenticate with ECR (replace region and account ID)
 aws ecr get-login-password --region us-east-1 | \
@@ -180,7 +145,13 @@ podman pull 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
 Create a systemd service for containers that should survive reboots:
 
 ```bash
-# Generate a systemd unit for a running container (note: podman generate systemd
+# Create the container first if you cleaned it up earlier
+podman create \
+  --name web-app \
+  -p 8080:80 \
+  docker.io/library/nginx:latest
+
+# Generate a systemd unit for the container (note: podman generate systemd
 # is deprecated; consider using Quadlet .container files for new deployments)
 mkdir -p ~/.config/systemd/user
 podman generate systemd --new --name web-app > ~/.config/systemd/user/container-web-app.service
@@ -195,7 +166,7 @@ sudo loginctl enable-linger ec2-user
 
 ## Troubleshooting
 
-If Podman fails with namespace errors on Amazon Linux 2:
+If Podman fails with namespace errors:
 
 ```bash
 # Check user namespace support
@@ -216,4 +187,4 @@ EOF
 
 ## Summary
 
-Podman is well-supported on Amazon Linux, especially on AL2023 where it is the recommended container runtime. Integration with AWS ECR and systemd makes it suitable for production workloads on EC2. For Amazon Linux 2, the extras library provides access to Podman with minimal extra configuration.
+Podman is available on Amazon Linux 2023 through SPAL. Integration with AWS ECR and systemd makes it suitable for production workloads on EC2. For Amazon Linux 2, the Extras library does not provide a Podman topic, so AL2023 is the better choice for Podman on Amazon Linux.
