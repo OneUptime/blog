@@ -12,7 +12,7 @@ Description: A guide to reviewing and updating Cilium's system and cluster requi
 
 Amazon EKS presents unique requirements for Cilium due to AWS's VPC-native networking model and the Amazon Linux 2 vs Bottlerocket node options. EKS clusters running the Amazon VPC CNI (aws-node) require specific steps to chain with Cilium or replace it entirely, and each path has different prerequisites.
 
-EKS Kubernetes version support windows, node AMI selections, and instance type capabilities all affect Cilium compatibility. For example, running Cilium's eBPF dataplane on EKS requires Bottlerocket or Amazon Linux 2023 nodes with kernel 5.10+ - older Amazon Linux 2 instances may have kernel 4.14 which limits available Cilium features.
+EKS Kubernetes version support windows, node AMI selections, and instance type capabilities all affect Cilium compatibility. For example, current Cilium releases require Linux kernel 5.10+ or an equivalent distribution kernel. EKS-optimized Amazon Linux 2 AMIs are based on kernel 5.10 but are no longer published for new Kubernetes versions after EKS 1.32, so Amazon Linux 2023 or Bottlerocket are the better choices for current clusters.
 
 This guide covers how to verify and update your EKS cluster to meet Cilium's requirements, including node group configuration, kernel verification, and AWS-specific networking settings.
 
@@ -37,13 +37,13 @@ aws eks describe-cluster \
   --query "cluster.version" -o text
 
 # Check Cilium's supported Kubernetes versions
-# Visit: https://docs.cilium.io/en/stable/concepts/kubernetes/compatibility/
+# Visit: https://docs.cilium.io/en/stable/network/kubernetes/compatibility/
 
 # Update EKS to a supported version if needed
 aws eks update-cluster-version \
   --name <cluster-name> \
   --region <region> \
-  --kubernetes-version 1.29
+  --kubernetes-version 1.34
 ```
 
 ## Step 2: Verify Node Group AMI and Kernel Version
@@ -55,11 +55,10 @@ Check that node AMIs meet Cilium's minimum kernel requirements.
 kubectl get nodes \
   -o custom-columns="NODE:.metadata.name,KERNEL:.status.nodeInfo.kernelVersion,OS:.status.nodeInfo.osImage"
 
-# For Cilium eBPF features, need kernel 5.3+ (Bottlerocket or AL2023)
-# For basic Cilium, need kernel 4.9+
-# Amazon Linux 2: kernel 4.14 (limited features)
+# Current Cilium releases require kernel 5.10+ or an equivalent distribution kernel
+# Amazon Linux 2: kernel 5.10, but EKS AL2 AMIs are no longer published for new versions after EKS 1.32
 # Amazon Linux 2023: kernel 6.1 (full feature support)
-# Bottlerocket: kernel 5.10+ (full feature support)
+# Bottlerocket: kernel varies by release and Kubernetes variant; verify on your nodes
 ```
 
 ## Step 3: Update Node Groups to Use Compatible AMI
@@ -88,12 +87,12 @@ kubectl get nodes -l eks.amazonaws.com/nodegroup=cilium-nodes \
 Decide whether to chain Cilium with the AWS VPC CNI or replace it.
 
 ```bash
-# Option A: Chain Cilium with AWS VPC CNI (preserves ENI-based IPAM)
+# Option A: Chain Cilium with AWS VPC CNI (preserves AWS VPC CNI ENI-based IPAM)
 # Verify aws-node daemonset is running
 kubectl get ds -n kube-system aws-node
 
-# Option B: Replace AWS VPC CNI with Cilium (requires ENI IPAM disabled)
-# Scale down aws-node daemonset before installing Cilium
+# Option B: Replace AWS VPC CNI with Cilium
+# Remove or scale down aws-node before installing Cilium in replacement mode
 kubectl scale ds aws-node -n kube-system --replicas=0
 
 # Verify aws-node is fully stopped before proceeding
@@ -108,6 +107,7 @@ EKS security groups must allow Cilium's inter-node communication ports.
 # Get the cluster security group ID
 aws eks describe-cluster \
   --name <cluster-name> \
+  --region <region> \
   --query "cluster.resourcesVpcConfig.clusterSecurityGroupId" -o text
 
 # Allow VXLAN (UDP 8472) between nodes for Cilium VXLAN mode
@@ -117,14 +117,15 @@ aws ec2 authorize-security-group-ingress \
   --group-id <security-group-id> \
   --protocol udp \
   --port 8472 \
-  --source-group <security-group-id>
+  --source-group <security-group-id> \
+  --region <region>
 ```
 
 ## Best Practices
 
 - Use Bottlerocket or Amazon Linux 2023 node AMIs for full Cilium eBPF feature support
 - Review the Cilium-EKS compatibility matrix before each Cilium upgrade
-- Enable IMDSv2 on EKS nodes (required by Cilium for AWS metadata access)
+- When using Cilium AWS ENI IPAM, grant the Cilium operator the required EC2 IAM permissions
 - Use managed node groups to simplify OS and AMI updates
 - Keep aws-node DaemonSet and Cilium versions compatible when chaining
 
