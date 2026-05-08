@@ -10,7 +10,7 @@ Description: Learn how to publish ports when creating a Podman pod so that conta
 
 > Port mappings on a pod are defined at pod creation time and apply to all containers within the pod.
 
-In Podman, port publishing is configured at the pod level, not on individual containers. This is because all containers in a pod share the same network namespace. When you map a host port to a pod port, any container in the pod that listens on that port becomes accessible from the host.
+In Podman, port publishing for containers in a pod is configured at the pod level, not on individual containers. This is because all containers in a pod share the same network namespace. When you map a host port to a pod port, any container in the pod that listens on that port becomes accessible from the host.
 
 ---
 
@@ -82,8 +82,8 @@ podman run -d --pod dns-pod --name dns docker.io/library/alpine sleep 3600
 # Inspect the pod to see port mappings
 podman pod inspect web-pod --format '{{.InfraConfig.PortBindings}}'
 
-# List pods with their published ports
-podman pod ls --format "{{.Name}} {{.Ports}}"
+# List running containers with their pod names and published ports
+podman ps --pod --format "{{.PodName}} {{.Names}} {{.Ports}}"
 ```
 
 ## Summary
