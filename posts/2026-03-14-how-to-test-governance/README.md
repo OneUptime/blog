@@ -26,7 +26,7 @@ This guide covers approaches to testing and validating Cilium project governance
 
 ### Process Audit Checklist
 
-```json
+```text
 [ ] Governance documents are up to date
 [ ] Decision-making process is followed consistently
 [ ] Role transitions happen smoothly
@@ -57,10 +57,10 @@ Check that governance documents are accessible and current.
 
 ## Troubleshooting
 
-- **Cannot find meeting links**: Check the Cilium community calendar and #community Slack channel.
+- **Cannot find meeting links**: Check the Cilium community calendar, meeting notes, and #development Slack channel.
 - **Slack workspace access**: Request an invite through the Cilium website.
 - **GitHub permissions**: Ensure your account has the necessary access for the repositories you need.
-- **Timezone confusion**: All official times are in UTC. Use a timezone converter for your local time.
+- **Timezone confusion**: Check each meeting's listed timezone, such as US/Pacific for the weekly community meeting or UTC for the APAC community meeting. Use a timezone converter for your local time.
 
 ## Conclusion
 
