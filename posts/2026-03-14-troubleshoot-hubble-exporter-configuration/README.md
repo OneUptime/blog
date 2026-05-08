@@ -21,6 +21,7 @@ This guide covers the most common Hubble exporter issues, from basic configurati
 - Kubernetes cluster with Cilium and Hubble exporter enabled
 - kubectl access with exec permissions in kube-system
 - cilium CLI installed
+- Hubble CLI installed and configured to access the Hubble API
 - Access to Cilium agent logs
 
 ## Verifying Exporter Status
@@ -28,9 +29,8 @@ This guide covers the most common Hubble exporter issues, from basic configurati
 Start by confirming the exporter is running and producing output:
 
 ```bash
-# Check if the exporter is configured
-
-kubectl -n kube-system exec ds/cilium -- cilium status --verbose | grep -i export
+# Check if Hubble is enabled in the Cilium agent
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep -i hubble
 
 # Verify the export file exists
 kubectl -n kube-system exec ds/cilium -- ls -la /var/run/cilium/hubble/events.log 2>&1
@@ -144,16 +144,16 @@ helm upgrade cilium cilium/cilium -n kube-system \
 
 ## Diagnosing Data Loss
 
-Event loss occurs when the exporter cannot keep up with the flow rate:
+Event loss occurs when the Hubble event pipeline cannot keep up with the flow rate:
 
 ```bash
 # Check for lost events in metrics
 kubectl -n kube-system exec ds/cilium -- \
-  wget -qO- http://localhost:9962/metrics 2>/dev/null | grep hubble_export
+  wget -qO- http://localhost:9965/metrics 2>/dev/null | grep -E "hubble_lost_events_total|hubble_dynamic_exporter"
 
-# Compare Hubble observed flows vs exported flows
+# Roughly compare observed flows vs recent exported flows when no filters are applied
 OBSERVED=$(hubble observe --last 1000 -o json 2>/dev/null | wc -l)
-EXPORTED=$(kubectl -n kube-system exec ds/cilium -- wc -l /var/run/cilium/hubble/events.log | awk '{print $1}')
+EXPORTED=$(kubectl -n kube-system exec ds/cilium -- tail -1000 /var/run/cilium/hubble/events.log | wc -l)
 echo "Observed: $OBSERVED, Exported: $EXPORTED"
 
 # Check Cilium agent logs for export errors
@@ -175,7 +175,12 @@ After fixing exporter issues, confirm everything works:
 
 ```bash
 # 1. Export file is being written
-kubectl -n kube-system exec ds/cilium -- tail -3 /var/run/cilium/hubble/events.log | python3 -m json.tool
+kubectl -n kube-system exec ds/cilium -- tail -3 /var/run/cilium/hubble/events.log | python3 -c "
+import json, sys
+for line in sys.stdin:
+    json.loads(line)
+print('Recent exported lines are valid JSON')
+"
 
 # 2. Exported data matches expected filters
 kubectl -n kube-system exec ds/cilium -- cat /var/run/cilium/hubble/events.log | python3 -c "
@@ -191,7 +196,7 @@ for v, count in sorted(verdicts.items()):
 
 # 3. No lost events
 kubectl -n kube-system exec ds/cilium -- \
-  wget -qO- http://localhost:9962/metrics 2>/dev/null | grep "hubble_export_events_lost"
+  wget -qO- http://localhost:9965/metrics 2>/dev/null | grep "hubble_lost_events_total"
 
 # 4. File rotation is working
 kubectl -n kube-system exec ds/cilium -- ls -la /var/run/cilium/hubble/
@@ -201,7 +206,7 @@ kubectl -n kube-system exec ds/cilium -- ls -la /var/run/cilium/hubble/
 
 - **Export file exists but is empty**: Hubble may not be processing any flows. Verify with `hubble observe --last 5`. If Hubble itself has no flows, fix Hubble first.
 
-- **JSON parse errors in exported data**: The file may have been corrupted during a pod restart. Delete the file and let it recreate: `kubectl -n kube-system exec ds/cilium -- rm /var/run/cilium/hubble/events.log`.
+- **JSON parse errors in exported data**: The file may have been corrupted during a pod restart. Truncate the file and let the exporter continue writing: `kubectl -n kube-system exec ds/cilium -- sh -c ': > /var/run/cilium/hubble/events.log'`.
 
 - **Export stops after file rotation**: This can happen with specific Cilium versions. Update to the latest patch release of your Cilium minor version.
 
