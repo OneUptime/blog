@@ -10,29 +10,31 @@ Description: How to diagnose performance bottlenecks when a single-process workl
 
 ## Introduction
 
-Single-process workloads in Kubernetes present a unique performance challenge for Cilium. When an application uses only one process (and often one thread) for network I/O, all packet processing is funneled through a single CPU core. This means the application and Cilium's eBPF programs compete for the same core's resources, and any inefficiency is magnified.
+Single-process workloads in Kubernetes present a unique performance challenge for Cilium. When an application uses only one process (and often one thread) for network I/O, packet processing for a busy flow can be concentrated on a small number of CPU cores. This means the application, kernel networking work, and Cilium's eBPF programs can compete for the same core's resources, and any inefficiency is magnified.
 
-Diagnosing single-process performance issues requires understanding how the Linux scheduler places the application thread and how Cilium's softirq processing interacts with it. A poorly scheduled single-process workload can lose 30-50% of its potential throughput due to CPU contention.
+Diagnosing single-process performance issues requires understanding how the Linux scheduler places the application thread and how kernel softirq processing interacts with Cilium's datapath. A poorly scheduled single-process workload can lose significant throughput due to CPU contention.
 
 This guide covers the diagnostic tools and methodology for identifying exactly where a single-process workload is losing performance in a Cilium environment.
 
 ## Prerequisites
 
 - Kubernetes cluster with Cilium v1.14+
-- `perf`, `mpstat`, `pidstat` available on nodes
-- `kubectl` and `cilium` CLI
+- `perf`, `mpstat`, `pidstat`, `bpftool`, `ethtool`, `jq`, and `crictl` available on nodes
+- `kubectl`, `cilium`, and `hubble` CLI
 - Understanding of Linux CPU scheduling
 - A single-process workload exhibiting poor performance
 
 ## Identifying the CPU Bottleneck
 
 ```bash
-# Find the application's CPU affinity
+# Find the node and host PID for the application container
 
-APP_PID=$(kubectl exec my-app -- cat /proc/1/status | grep "^Pid:" | awk '{print $2}')
+APP_NODE=$(kubectl get pod my-app -o jsonpath='{.spec.nodeName}')
+CONTAINER_ID=$(kubectl get pod my-app -o jsonpath='{.status.containerStatuses[0].containerID}' | sed 's#^[^/]*://##')
 
-# On the node, check CPU affinity
-taskset -p $APP_PID
+# On $APP_NODE, check CPU affinity for the host PID
+APP_PID=$(sudo crictl inspect "$CONTAINER_ID" | jq -r '.info.pid')
+taskset -pc "$APP_PID"
 
 # Monitor per-CPU utilization during the workload
 mpstat -P ALL 1 30
@@ -58,7 +60,9 @@ perf report --stdio --sort=dso,symbol | head -30
 
 ```bash
 # Check BPF program execution stats
-bpftool prog show --json | jq '.[] | select(.name | contains("cil")) | {name, run_cnt, run_time_ns, avg_ns: (.run_time_ns / (.run_cnt + 1))}'
+# Runtime counters require BPF runtime statistics to be enabled on the node.
+test -w /proc/sys/kernel/bpf_stats_enabled && echo 1 | sudo tee /proc/sys/kernel/bpf_stats_enabled
+bpftool prog show --json | jq '.[] | select((.name // "") | contains("cil")) | {name, run_cnt: (.run_cnt // 0), run_time_ns: (.run_time_ns // 0), avg_ns: ((.run_time_ns // 0) / ((.run_cnt // 0) + 1))}'
 
 # Monitor softirq distribution
 cat /proc/softirqs | grep NET
@@ -91,22 +95,23 @@ graph TD
 
 ```bash
 # Check if CPU limits are throttling
-kubectl exec my-app -- cat /sys/fs/cgroup/cpu/cpu.stat
-# Look for nr_throttled and throttled_time
+kubectl exec my-app -- sh -c 'cat /sys/fs/cgroup/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu/cpu.stat'
+# Look for nr_throttled and throttled_usec on cgroup v2,
+# or nr_throttled and throttled_time on cgroup v1.
 
 kubectl describe pod my-app | grep -A5 "Limits"
-# If CPU limit is 1 core and both app + softirq compete, throttling occurs
+# If CPU limit is 1 core, the app can be throttled when it consumes its quota.
 ```
 
 ## Using Hubble for Flow Analysis
 
 ```bash
 # Check flow patterns from the single-process app
-hubble observe --pod my-app --protocol TCP -o json | \
+hubble observe --pod my-app --protocol tcp -o json | \
   jq '{src: .source.pod_name, dst: .destination.pod_name, verdict: .verdict}' | head -20
 
-# Check for retransmissions or drops
-hubble observe --pod my-app --type drop
+# Check for drops
+hubble observe --pod my-app --verdict DROPPED
 ```
 
 ## Verification
@@ -118,11 +123,11 @@ hubble observe --pod my-app --type drop
 # Same core test
 taskset -c 0 iperf3 -c $SERVER_IP -t 10 -P 1 &
 # Force IRQ to CPU 0
-echo 1 > /proc/irq/<nic-irq>/smp_affinity
+echo 0 > /proc/irq/<nic-irq>/smp_affinity_list
 
 # Different core test
 taskset -c 0 iperf3 -c $SERVER_IP -t 10 -P 1 &
-echo 2 > /proc/irq/<nic-irq>/smp_affinity
+echo 1 > /proc/irq/<nic-irq>/smp_affinity_list
 
 # Compare results to quantify contention
 ```
@@ -132,7 +137,7 @@ echo 2 > /proc/irq/<nic-irq>/smp_affinity
 - **Cannot find application PID on node**: Use `crictl ps` to find the container, then `crictl inspect` for the PID.
 - **perf not available**: Install `linux-tools-$(uname -r)` or use BCC tools like `profile`.
 - **CPU utilization data unclear**: Use `pidstat -t -p $APP_PID 1` for per-thread breakdown.
-- **Cilium agent itself consuming excessive CPU**: Check `cilium monitor` for excessive events and disable verbose logging.
+- **Cilium agent itself consuming excessive CPU**: Check `cilium-dbg monitor` inside the Cilium agent pod for excessive events and disable verbose logging.
 
 ## Collecting Diagnostic Data Systematically
 
@@ -143,6 +148,10 @@ Before making any changes, collect a complete diagnostic snapshot. This ensures 
 DIAG_DIR="/tmp/cilium-diag-$(date +%Y%m%d-%H%M%S)"
 mkdir -p $DIAG_DIR
 
+# Select the Cilium agent pod on the same node as the application
+APP_NODE=${APP_NODE:-$(kubectl get pod my-app -o jsonpath='{.spec.nodeName}')}
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium --field-selector spec.nodeName="$APP_NODE" -o jsonpath='{.items[0].metadata.name}')
+
 # Collect Cilium status
 cilium status --verbose > $DIAG_DIR/cilium-status.txt
 
@@ -150,11 +159,11 @@ cilium status --verbose > $DIAG_DIR/cilium-status.txt
 cilium config view > $DIAG_DIR/cilium-config.txt
 
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
