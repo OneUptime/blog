@@ -24,15 +24,17 @@ Datastore migration errors can be particularly stressful because they occur duri
 ### Error: Connection Refused to Source Datastore
 
 ```bash
-# For etcd source
+# For etcdv3 source
 
+echo $DATASTORE_TYPE
 echo $ETCD_ENDPOINTS
+ETCD_ENDPOINT=$(echo "$ETCD_ENDPOINTS" | cut -d, -f1)
 curl --cacert /etc/calico/certs/ca.pem \
      --cert /etc/calico/certs/cert.pem \
      --key /etc/calico/certs/key.pem \
-     $ETCD_ENDPOINTS/health
+     "$ETCD_ENDPOINT/health"
 
-# For Kubernetes source
+# For Kubernetes target access before import
 export DATASTORE_TYPE=kubernetes
 kubectl cluster-info
 ```
@@ -45,20 +47,32 @@ kind: ClusterRole
 metadata:
   name: calicoctl-migration
 rules:
-- apiGroups: ["crd.projectcalico.org"]
+- apiGroups: ["projectcalico.org", "crd.projectcalico.org"]
   resources: ["*"]
   verbs: ["*"]
 - apiGroups: [""]
   resources: ["nodes", "pods", "namespaces"]
   verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: calicoctl-migration
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: calicoctl-migration
+subjects:
+- kind: User
+  name: calicoctl-user
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ### Error: Resource Already Exists
 
 ```bash
 # During import, resources may already exist in the target
-# Use --allow-version-mismatch if version differs
-calicoctl datastore migrate export --allow-version-mismatch 2>&1
+calicoctl datastore migrate import -f etcd-data 2>&1
 
 # Or clean the target datastore first (DANGEROUS - only if target is empty/new)
 ```
@@ -117,8 +131,8 @@ calicoctl get ippools
 | Error | Cause | Fix |
 |-------|-------|-----|
 | Connection refused | Wrong datastore endpoint | Check ETCD_ENDPOINTS or kubeconfig |
-| Permission denied | Missing RBAC | Apply migration ClusterRole |
-| Resource exists | Target not clean | Clear target or use --allow-version-mismatch |
+| Permission denied | Missing RBAC | Apply migration ClusterRole and ClusterRoleBinding |
+| Resource exists | Target not clean | Clear target or import into an empty Kubernetes datastore |
 | Format mismatch | Version incompatibility | Align calicoctl version |
 
 ## Conclusion
