@@ -83,19 +83,21 @@ podman machine ssh -- lscpu
 podman machine ssh
 
 # View container storage location
-ls -la /var/lib/containers/storage/
+podman info --format '{{.Store.GraphRoot}}'
+STORAGE_ROOT=$(podman info --format '{{.Store.GraphRoot}}')
+ls -la "$STORAGE_ROOT"
 
 # Check overlay filesystem usage
-du -sh /var/lib/containers/storage/overlay/
+du -sh "$STORAGE_ROOT/overlay/"
 
 # List stored images
-ls /var/lib/containers/storage/overlay-images/
+ls "$STORAGE_ROOT/overlay-images/"
 
 # Check container data
-ls /var/lib/containers/storage/overlay-containers/
+ls "$STORAGE_ROOT/overlay-containers/"
 
 # Check volume data
-ls /var/lib/containers/storage/volumes/
+ls "$STORAGE_ROOT/volumes/"
 
 # Exit SSH session
 exit
@@ -104,13 +106,13 @@ exit
 ### Check Container Runtime Logs
 
 ```bash
-# View systemd journal for container-related logs
-podman machine ssh -- journalctl -u podman --no-pager | tail -30
+# View logs for a specific container by its name or ID
+podman machine ssh -- podman logs --tail 30 <container>
 
 # Check for errors in the journal
 podman machine ssh -- journalctl -p err --no-pager | tail -20
 
-# View logs for a specific container by its ID
+# If the container uses the journald log driver, view its journal entries
 podman machine ssh -- journalctl CONTAINER_ID=<id> --no-pager
 ```
 
