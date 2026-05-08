@@ -10,7 +10,7 @@ Description: Validate that Calico flow logs are accurately capturing connection 
 
 ## Introduction
 
-Validating flow log accuracy requires comparing what flow logs record against what you know happened. Generate a test connection, verify it appears in flow logs with the correct source, destination, and policy decision. Also verify that the aggregation level is correctly applied - per-flow logs should show individual connection records, per-pod aggregation should group them.
+Validating flow log accuracy requires comparing what flow logs record against what you know happened. Generate a test connection, verify it appears in flow logs with the correct source, destination, and policy decision. Also verify that the aggregation level is correctly applied - no aggregation should preserve pod/IP/port-level fields, while higher aggregation levels should group flows.
 
 ## Step 1: Generate a Known Test Connection
 
@@ -30,8 +30,8 @@ echo "Test connection at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ## Step 2: Verify the Flow Appears in Logs
 
 ```bash
-# Wait for flow flush interval (check felixconfiguration flowLogsFlushInterval)
-sleep 20
+# Wait for flow flush interval (default is 5m; shorten this if flowLogsFlushInterval is lower)
+sleep 320
 
 # Find the flow on the node where flow-test-client is running
 CLIENT_NODE=$(kubectl get pod flow-test-client \
@@ -47,6 +47,11 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
 ## Step 3: Validate Denied Traffic Capture
 
 ```bash
+kubectl run flow-test-target --image=nginx --labels=run=flow-test-target \
+  --restart=Never --port=80
+kubectl wait --for=condition=Ready pod/flow-test-target --timeout=60s
+kubectl expose pod flow-test-target --port=80 --target-port=80
+
 # Apply a restrictive NetworkPolicy and test
 kubectl apply -f - << 'YAML'
 apiVersion: networking.k8s.io/v1
@@ -62,13 +67,12 @@ spec:
   ingress: []  # No ingress = deny all
 YAML
 
-kubectl run flow-test-target --image=nginx --labels=run=flow-test-target --restart=Never
-
 # Try to connect (should be denied)
-kubectl exec flow-test-client -- curl --connect-timeout 3 http://flow-test-target:80
+kubectl exec flow-test-client -- curl --connect-timeout 3 \
+  http://flow-test-target.default.svc.cluster.local:80
 
 # Verify deny appears in flow logs
-sleep 20
+sleep 320
 kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
   grep -i "deny\|flow-test-target" /var/log/calico/flowlogs/flows.log | tail -5
 ```
@@ -96,7 +100,7 @@ flowchart TD
 # For Elasticsearch:
 curl -s http://elasticsearch:9200/calico-flows/_search \
   -H 'Content-Type: application/json' \
-  -d '{"query":{"match":{"src_name":"flow-test-client"}}}' | \
+  -d '{"query":{"match":{"source_name":"flow-test-client"}}}' | \
   python3 -m json.tool | grep -A5 "hits"
 ```
 
