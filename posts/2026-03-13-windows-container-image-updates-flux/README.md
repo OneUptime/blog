@@ -98,8 +98,7 @@ spec:
     spec:
       containers:
         - name: iis-app
-          # {"$imagepolicy": "flux-system:iis-app"}
-          image: my-registry.example.com/windows/iis-app:v2.1.0
+          image: my-registry.example.com/windows/iis-app:v2.1.0 # {"$imagepolicy": "flux-system:iis-app"}
           imagePullPolicy: IfNotPresent
           # ... rest of container spec
 ```
@@ -116,6 +115,8 @@ metadata:
   name: windows-image-updates
   namespace: flux-system
 spec:
+  interval: 15m
+
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -129,8 +130,8 @@ spec:
         name: Flux Image Automation
         email: flux@example.com
       messageTemplate: |
-        ci: update Windows image {{ range .Updated.Images -}}
-        {{ .NewImage }} {{ end -}}
+        ci: update Windows image {{ range .Changed.Changes -}}
+        {{ .OldValue }} -> {{ .NewValue }} {{ end -}}
         [skip ci]
     push:
       branch: main
