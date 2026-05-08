@@ -19,9 +19,10 @@ This guide provides a structured approach to extracting Typha configuration from
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.25+ and Typha deployed
-- `kubectl` access with cluster-admin privileges
-- `calicoctl` CLI installed
+- `kubectl` access with permission to read Calico resources
 - A documentation repository or wiki for storing the output
+
+The examples below assume an operator-managed Calico install in the `calico-system` namespace. Manifest-based installs often run Typha in `kube-system`; adjust the namespace in the commands to match your cluster.
 
 ## Extracting Typha Configuration
 
@@ -40,7 +41,7 @@ kubectl get deployment -n calico-system calico-typha -o yaml | grep -A 2 "env:" 
 
 ### Environment Variables
 
-Typha reads most of its configuration from environment variables set on the deployment:
+For manifest-based installations, Typha reads configuration from environment variables prefixed with `TYPHA_`, or from the Typha configuration file. For operator-managed installations, use these commands to document the generated Deployment, but make persistent configuration changes through the operator-supported resources.
 
 ```bash
 # List all Typha environment variables
@@ -85,8 +86,8 @@ Document the connection limits and how they relate to cluster size:
 
 | Parameter | Value | Default | Purpose |
 |-----------|-------|---------|---------|
-| TYPHA_MAXCONNECTIONSLOWERLIMIT | 300 | 100 | Min connections before load shedding |
-| TYPHA_MAXCONNECTIONSUPPERLIMIT | 500 | 300 | Hard connection limit |
+| TYPHA_MAXCONNECTIONSLOWERLIMIT | 300 | 400 | Lower connection threshold used for rebalancing |
+| TYPHA_MAXCONNECTIONSUPPERLIMIT | 500 | 10000 | Hard connection limit |
 
 Current cluster: 150 nodes = 150 Felix connections
 Headroom: 150 connections remaining before lower limit
@@ -99,7 +100,7 @@ Headroom: 150 connections remaining before lower limit
 kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-typha -o name | head -1) -- wget -qO- http://localhost:9098/liveness
 
 # Check Prometheus metrics
-kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-typha -o name | head -1) -- wget -qO- http://localhost:9091/metrics | head -20
+kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-typha -o name | head -1) -- wget -qO- http://localhost:9093/metrics | head -20
 ```
 
 ### Logging Configuration
@@ -109,7 +110,7 @@ kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=cali
 kubectl get deployment -n calico-system calico-typha -o yaml | grep -i "logseverity"
 ```
 
-Document log levels and how to change them during incidents:
+Document log levels and how to change them during incidents. For manifest-based installations:
 
 ```bash
 # Temporarily increase log verbosity for debugging
