@@ -10,9 +10,9 @@ Description: Learn how to safely update Calico StagedGlobalNetworkPolicy resourc
 
 ## Introduction
 
-The StagedGlobalNetworkPolicy resource in Calico Enterprise allows you to preview network policy changes before they take effect across the entire cluster. Unlike regular GlobalNetworkPolicy resources, staged policies sit in a pending state until explicitly committed, giving teams time to validate rules against live traffic.
+The StagedGlobalNetworkPolicy resource in Calico Enterprise allows you to preview network policy changes before they take effect across the entire cluster. Unlike regular GlobalNetworkPolicy resources, staged policies do not enforce traffic directly, giving teams time to validate rules against live traffic before creating or updating the enforced policy.
 
-Updating staged policies requires careful handling because incorrect modifications can lead to unexpected traffic blocking or allowing once committed. A safe update workflow involves reviewing the current policy state, applying changes incrementally, validating the staged diff, and confirming the update through the Calico management plane.
+Updating staged policies requires careful handling because incorrect modifications can lead to unexpected traffic blocking or allowing once enforced. A safe update workflow involves reviewing the current policy state, applying changes incrementally, validating the staged impact, and confirming the update through the Calico management plane.
 
 This guide walks through a systematic approach to updating StagedGlobalNetworkPolicy resources with minimal risk to production workloads.
 
@@ -101,7 +101,7 @@ After applying, verify the staged policy reflects your changes:
 calicoctl get stagedglobalnetworkpolicy allow-dns-egress -o yaml
 ```
 
-Check the stagedAction field to confirm the policy is still in staged mode and has not been accidentally committed. Use the Calico Enterprise UI to review the policy diff, which shows what traffic would be affected once the policy is committed.
+Confirm the resource kind is still `StagedGlobalNetworkPolicy`, and check that `stagedAction` is `Set` if you intend the staged policy to create or update the enforced policy. Use the Calico Enterprise UI policy preview to review what traffic would be affected once the policy is enforced.
 
 ```bash
 kubectl describe stagedglobalnetworkpolicy allow-dns-egress
@@ -115,16 +115,16 @@ Validate the update by confirming the staged policy exists and contains the expe
 calicoctl get stagedglobalnetworkpolicy allow-dns-egress -o yaml | grep -A 5 "egress"
 ```
 
-Check that no validation errors were reported:
+Check Kubernetes API validation with a server-side dry run:
 
 ```bash
-kubectl get events --field-selector reason=StagedPolicyValidation
+kubectl apply --dry-run=server -f allow-dns-egress-updated.yaml
 ```
 
-Run a dry-run commit to preview what would change in the active policy set:
+There is no `calicoctl` dry-run commit for staged policies. To enforce the change from the CLI, create an equivalent `GlobalNetworkPolicy` manifest and validate it before applying:
 
 ```bash
-calicoctl get stagedglobalnetworkpolicies -o yaml | grep stagedAction
+kubectl apply --dry-run=server -f allow-dns-egress-global.yaml
 ```
 
 ## Troubleshooting
@@ -132,7 +132,7 @@ calicoctl get stagedglobalnetworkpolicies -o yaml | grep stagedAction
 If the update fails to apply, check for YAML syntax errors:
 
 ```bash
-calicoctl validate -f allow-dns-egress-updated.yaml
+kubectl apply --dry-run=server -f allow-dns-egress-updated.yaml
 ```
 
 If the policy shows an unexpected stagedAction, verify you have not accidentally set it to `Delete` instead of `Set`. To restore the original policy from your backup:
