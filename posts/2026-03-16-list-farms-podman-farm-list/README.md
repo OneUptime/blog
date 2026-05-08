@@ -26,9 +26,9 @@ Default output:
 
 ```text
 Name            Connections                                    Default  ReadWrite
-dev-farm        amd64-builder                                  false    true
-prod-farm       amd64-builder,arm64-builder,ppc64le-builder    true     true
-arm-test-farm   arm64-builder                                  false    true
+dev-farm        [amd64-builder]                                false    true
+prod-farm       [amd64-builder arm64-builder ppc64le-builder]  true     true
+arm-test-farm   [arm64-builder]                                false    true
 ```
 
 ## Formatting Output
@@ -52,13 +52,19 @@ Example JSON output:
 [
   {
     "Name": "dev-farm",
-    "Connections": "amd64-builder",
+    "Connections": [
+      "amd64-builder"
+    ],
     "Default": false,
     "ReadWrite": true
   },
   {
     "Name": "prod-farm",
-    "Connections": "amd64-builder,arm64-builder,ppc64le-builder",
+    "Connections": [
+      "amd64-builder",
+      "arm64-builder",
+      "ppc64le-builder"
+    ],
     "Default": true,
     "ReadWrite": true
   }
@@ -83,18 +89,19 @@ fi
 podman farm list --format '{{.Name}}' | wc -l
 
 # Count farms with more than one connection
-podman farm list --format '{{.Connections}}' | \
-    awk -F',' 'NF > 1' | wc -l
+podman farm list --format '{{range .Connections}}{{.}} {{end}}' | \
+    awk 'NF > 1' | wc -l
 ```
 
 ## Listing Connections for a Specific Farm
 
 ```bash
 # Get connections for a specific farm
-podman farm list --format '{{.Name}} {{.Connections}}' | \
+podman farm list --format '{{.Name}} {{range .Connections}}{{.}} {{end}}' | \
     grep "^prod-farm " | \
-    awk '{print $2}' | \
-    tr ',' '\n'
+    cut -d' ' -f2- | \
+    tr ' ' '\n' | \
+    sed '/^$/d'
 ```
 
 Output:
@@ -124,7 +131,8 @@ fi
 
 for FARM in ${FARMS}; do
     # Get connections for this farm
-    CONNECTIONS=$(podman farm list --format '{{if eq .Name "'"${FARM}"'"}}{{.Connections}}{{end}}' | tr ',' ' ')
+    CONNECTIONS=$(podman farm list --format '{{.Name}} {{range .Connections}}{{.}} {{end}}' | \
+        awk -v farm="${FARM}" '$1 == farm {for (i=2; i<=NF; i++) print $i}')
 
     echo "Farm: ${FARM}"
     echo "  Connections:"
@@ -170,7 +178,7 @@ If no farms are configured, the command returns an empty table:
 ```bash
 # If no farms exist
 podman farm list
-# Name    Connections
+# Name    Connections  Default  ReadWrite
 # (empty)
 
 # Check programmatically
