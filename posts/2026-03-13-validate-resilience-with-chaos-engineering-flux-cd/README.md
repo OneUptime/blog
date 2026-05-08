@@ -12,7 +12,7 @@ Description: Use chaos engineering to validate the resilience of Flux CD managed
 
 Resilience validation is the process of proving, with data, that your system meets its reliability goals under adverse conditions. Chaos engineering without a defined steady-state hypothesis and measurement methodology is just random destruction. True resilience validation requires defining what "working correctly" looks like, injecting faults, and measuring whether those conditions still hold.
 
-Flux CD provides the ideal foundation for resilience validation because every workload definition - including chaos experiments, SLO monitors, and alerting rules - lives in Git. This means your resilience tests are as auditable and reproducible as your application deployments. When a chaos experiment fails a SLO threshold, the failure is recorded in your Git history and can be traced back to the specific change that caused the regression.
+Flux CD provides the ideal foundation for resilience validation because every workload definition - including chaos experiments, SLO monitors, and alerting rules - lives in Git. This means your resilience tests are as auditable and reproducible as your application deployments. When a chaos experiment fails a SLO threshold, the configuration that produced the failure is recorded in your Git history and can be traced back to the specific change that caused the regression.
 
 This guide walks through the complete resilience validation workflow: defining steady-state hypotheses, running chaos experiments, measuring SLO impact, and recording results - all managed by Flux CD.
 
@@ -93,7 +93,7 @@ metadata:
     resilience.validation/hypothesis: api-server-slo
     resilience.validation/expected-outcome: "Success rate stays above 99.5%"
 spec:
-  action: pod-kill
+  action: pod-failure
   mode: one
   selector:
     namespaces:
@@ -121,6 +121,7 @@ spec:
       - default
     labelSelectors:
       app: api-server
+  direction: to
   target:
     selector:
       namespaces:
@@ -147,19 +148,26 @@ spec:
       restartPolicy: Never
       containers:
         - name: validator
-          image: prom/prometheus:latest
+          image: alpine:3.20
           command:
             - sh
             - -c
             - |
+              apk add --no-cache curl jq bc
+
               # Query Prometheus for SLO metrics during the experiment window
               RESULT=$(curl -s "http://prometheus.monitoring:9090/api/v1/query" \
                 --data-urlencode 'query=min_over_time(slo:api_success_rate:5m[10m])' \
-                | jq '.data.result[0].value[1]')
+                | jq -r '.data.result[0].value[1] // empty')
 
               echo "Minimum success rate during chaos window: $RESULT"
 
-              if (( $(echo "$RESULT >= 0.995" | bc -l) )); then
+              if [ -z "$RESULT" ]; then
+                echo "RESILIENCE FAILURE: no SLO data returned for chaos window"
+                exit 1
+              fi
+
+              if [ "$(echo "$RESULT >= 0.995" | bc -l)" -eq 1 ]; then
                 echo "RESILIENCE VALIDATED: SLO maintained during chaos"
                 exit 0
               else
@@ -206,7 +214,7 @@ flowchart TD
 ## Best Practices
 
 - Always define a steady-state hypothesis before running chaos; experiments without a success criterion are not validation.
-- Store experiment results as annotations or labels on the chaos resources in Git for historical tracking.
+- Store experiment result summaries as report artifacts or commit them back to Git for historical tracking; use annotations or labels on chaos resources for static metadata such as hypothesis links.
 - Run the same experiment suite against every new environment (staging, pre-prod) before promoting to production.
 - Treat a resilience validation failure as a bug - open an issue, fix the root cause, and re-run the experiment.
 - Use Grafana dashboards pinned to chaos experiment time windows to visually confirm SLO preservation.
