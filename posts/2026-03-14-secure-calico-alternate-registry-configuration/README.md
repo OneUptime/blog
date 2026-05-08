@@ -36,7 +36,7 @@ Sign Calico images after mirroring them to verify authenticity:
 
 set -euo pipefail
 
-CALICO_VERSION="${CALICO_VERSION:-v3.27.0}"
+CALICO_VERSION="${CALICO_VERSION:-v3.32.0}"
 PRIVATE_REGISTRY="${PRIVATE_REGISTRY:-registry.example.com/calico}"
 
 IMAGES=(
@@ -50,11 +50,11 @@ for image in "${IMAGES[@]}"; do
   full_image="${PRIVATE_REGISTRY}/${image}"
   echo "Signing: $full_image"
 
-  # Sign with cosign using keyless signing (Fulcio/Rekor)
-  cosign sign --yes "$full_image"
+  # Sign with cosign using a private key
+  cosign sign --yes --key cosign.key "$full_image"
 
-  # Or sign with a private key
-  # cosign sign --key cosign.key "$full_image"
+  # Or sign with keyless signing (Fulcio/Rekor)
+  # cosign sign --yes "$full_image"
 done
 
 echo "All images signed successfully"
@@ -64,12 +64,12 @@ Verify signatures before deployment:
 
 ```bash
 # Verify image signatures
-cosign verify registry.example.com/calico/node:v3.27.0 \
-  --certificate-identity=your-email@example.com \
-  --certificate-oidc-issuer=https://accounts.google.com
+cosign verify --key cosign.pub registry.example.com/calico/node:v3.32.0
 
-# Or verify with a public key
-# cosign verify --key cosign.pub registry.example.com/calico/node:v3.27.0
+# Or verify a keyless signature
+# cosign verify registry.example.com/calico/node:v3.32.0 \
+#   --certificate-identity=your-email@example.com \
+#   --certificate-oidc-issuer=https://accounts.google.com
 ```
 
 ## Vulnerability Scanning Pipeline
@@ -83,7 +83,7 @@ Scan images after mirroring and before deployment:
 
 set -euo pipefail
 
-CALICO_VERSION="${CALICO_VERSION:-v3.27.0}"
+CALICO_VERSION="${CALICO_VERSION:-v3.32.0}"
 PRIVATE_REGISTRY="${PRIVATE_REGISTRY:-registry.example.com/calico}"
 SEVERITY_THRESHOLD="CRITICAL,HIGH"
 
@@ -132,7 +132,7 @@ Configure your registry with least-privilege access:
 ```bash
 # Create a Kubernetes pull secret with read-only credentials
 kubectl create secret docker-registry calico-registry-pull \
-  -n calico-system \
+  -n tigera-operator \
   --docker-server=registry.example.com \
   --docker-username=calico-pull \
   --docker-password="${PULL_TOKEN}"
@@ -157,27 +157,37 @@ spec:
   rules:
     - name: verify-calico-registry
       match:
-        resources:
-          kinds:
-            - Pod
-          namespaces:
-            - calico-system
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - calico-system
       validate:
         message: "Calico images must come from registry.example.com/calico"
         pattern:
           spec:
+            "=(ephemeralContainers)":
+              - image: "registry.example.com/calico/*"
+            "=(initContainers)":
+              - image: "registry.example.com/calico/*"
             containers:
               - image: "registry.example.com/calico/*"
     - name: verify-calico-signatures
       match:
-        resources:
-          kinds:
-            - Pod
-          namespaces:
-            - calico-system
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - calico-system
       verifyImages:
         - imageReferences:
             - "registry.example.com/calico/*"
+          failureAction: Enforce
+          imageRegistryCredentials:
+            secrets:
+              - "tigera-operator/calico-registry-pull"
           attestors:
             - entries:
                 - keys:
@@ -209,16 +219,16 @@ flowchart TD
 
 ```bash
 # Verify image signatures
-cosign verify registry.example.com/calico/node:v3.27.0
+cosign verify --key cosign.pub registry.example.com/calico/node:v3.32.0
 
 # Verify vulnerability scan results
-trivy image --severity CRITICAL registry.example.com/calico/node:v3.27.0
+trivy image --severity CRITICAL registry.example.com/calico/node:v3.32.0
 
 # Verify admission policy is enforced
 kubectl get cpol verify-calico-images -o yaml | grep validationFailureAction
 
 # Test that unauthorized images are blocked
-kubectl run test --image=docker.io/calico/node:v3.27.0 -n calico-system --dry-run=server
+kubectl run test --image=docker.io/calico/node:v3.32.0 -n calico-system --dry-run=server
 # Should be rejected by the admission controller
 ```
 
