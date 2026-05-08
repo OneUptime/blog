@@ -29,7 +29,7 @@ Validate Calico configurations before applying them to production:
 ```bash
 # Use calicoctl to validate manifests
 
-calicoctl apply -f calico-config.yaml --dry-run
+calicoctl validate -f calico-config.yaml
 
 # Compare your manifest against the live configuration
 diff <(calicoctl get ippools -o yaml) ippool.yaml
@@ -48,7 +48,7 @@ set -euo pipefail
 
 for manifest in calico-resources/*.yaml; do
   echo "Validating $manifest..."
-  calicoctl apply -f "$manifest" --dry-run || exit 1
+  calicoctl validate -f "$manifest" || exit 1
 done
 
 echo "All Calico manifests are valid."
@@ -106,6 +106,7 @@ calicoctl get globalnetworkpolicies -o yaml > pre-upgrade-gnp.yaml
 
 # Verify cluster health before upgrading
 kubectl get pods -n calico-system
+# Run directly on a Calico node host
 calicoctl node status
 ```
 
@@ -155,7 +156,7 @@ After deploying a Calico configuration change:
 ```bash
 # Automated post-deployment verification
 echo "Checking calico-node pods..."
-kubectl get pods -n calico-system -l k8s-app=calico-node --no-headers | grep -v Running && echo "FAIL: Some calico-node pods not running" || echo "PASS: All calico-node pods running"
+kubectl get pods -n calico-system -l k8s-app=calico-node --no-headers | awk '$3 != "Running" || $4 != 0 { found=1 } END { exit found }' && echo "PASS: All calico-node pods running with zero restarts" || echo "FAIL: Some calico-node pods are not running or have restarted"
 
 echo "Checking for warning events..."
 WARNINGS=$(kubectl get events -n calico-system --field-selector type=Warning --no-headers 2>/dev/null | wc -l)
@@ -198,10 +199,11 @@ kubectl get pods -n calico-system -o wide
 calicoctl ipam check
 
 # Layer 3: Node-to-node connectivity
+# Run directly on a Calico node host
 calicoctl node status
 
-# Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+# Layer 4: Pod-to-service connectivity
+kubectl run fix-test --image=curlimages/curl --rm -it --restart=Never -- curl -kI --connect-timeout 5 https://kubernetes.default.svc
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
