@@ -19,6 +19,7 @@ This guide provides systematic troubleshooting for TLS-related metrics collectio
 - Cilium with Operator TLS metrics configured
 - Prometheus deployed and configured for TLS scraping
 - `kubectl` and `openssl` tools
+- `cmctl` if certificates are managed by cert-manager
 - Access to Prometheus targets page
 - Understanding of TLS certificate chains
 
@@ -36,11 +37,12 @@ curl -s http://localhost:9090/api/v1/targets | \
 # "x509: certificate signed by unknown authority" - CA mismatch
 # "x509: certificate has expired or is not yet valid" - Expired cert
 # "tls: handshake failure" - Protocol mismatch
-# "connection refused" - TLS not enabled on operator
+# "connection refused" - Metrics endpoint not listening or not reachable
+# "server gave HTTP response to HTTPS client" - TLS not enabled on operator
 
 # Test TLS directly
 kubectl run tls-debug --image=curlimages/curl --rm -it --restart=Never -- \
-    curl -v https://cilium-operator.kube-system.svc:9963/metrics 2>&1
+    curl -vk https://cilium-operator.kube-system.svc:9963/metrics 2>&1
 ```
 
 ## Fixing Certificate Issues
@@ -86,10 +88,10 @@ flowchart TD
 kubectl describe pod -n kube-system -l name=cilium-operator | grep -A10 "Mounts:"
 
 # Check volume mount contents
-kubectl exec -n kube-system deploy/cilium-operator -- ls -la /etc/cilium/metrics-tls/
+kubectl exec -n kube-system deploy/cilium-operator -- ls -la /var/lib/cilium/tls/prometheus/
 
 # Verify file permissions
-kubectl exec -n kube-system deploy/cilium-operator -- stat /etc/cilium/metrics-tls/tls.crt
+kubectl exec -n kube-system deploy/cilium-operator -- stat /var/lib/cilium/tls/prometheus/server.crt
 
 # Check for secret not found errors
 kubectl get events -n kube-system | grep -i "secret\|mount\|volume"
@@ -107,7 +109,7 @@ kubectl get secret --all-namespaces | grep metrics-tls
 # Fix: Create the secret in kube-system
 
 # Issue: Operator pod not restarted after secret creation
-kubectl delete pod -n kube-system -l name=cilium-operator
+kubectl rollout restart -n kube-system deployment/cilium-operator
 ```
 
 ## Fixing Prometheus Scraper Configuration
@@ -120,7 +122,7 @@ kubectl get servicemonitor -n kube-system cilium-operator -o yaml
 kubectl get servicemonitor -n kube-system cilium-operator -o jsonpath='{.spec.endpoints[0].scheme}'
 
 # Check TLS config in ServiceMonitor
-kubectl get servicemonitor -n kube-system cilium-operator -o jsonpath='{.spec.endpoints[0].tlsConfig}' | jq .
+kubectl get servicemonitor -n kube-system cilium-operator -o json | jq '.spec.endpoints[0].tlsConfig'
 
 # Verify Prometheus has the CA certificate
 kubectl exec -n monitoring deploy/prometheus -- ls -la /etc/prometheus/certs/
@@ -137,10 +139,15 @@ metadata:
 spec:
   selector:
     matchLabels:
+      io.cilium/app: operator
       name: cilium-operator
+  namespaceSelector:
+    matchNames:
+      - kube-system
   endpoints:
-    - port: operator-prometheus
+    - port: metrics
       scheme: https
+      path: /metrics
       tlsConfig:
         ca:
           secret:
@@ -162,11 +169,10 @@ kubectl get certificate -n kube-system cilium-operator-metrics-tls -o yaml | gre
 kubectl logs -n cert-manager deploy/cert-manager | grep "cilium-operator" | tail -10
 
 # Force certificate renewal
-kubectl delete certificate -n kube-system cilium-operator-metrics-tls
-kubectl apply -f cilium-operator-metrics-cert.yaml
+cmctl renew -n kube-system cilium-operator-metrics-tls
 
 # Restart operator to pick up new certificate
-kubectl delete pod -n kube-system -l name=cilium-operator
+kubectl rollout restart -n kube-system deployment/cilium-operator
 ```
 
 ## Verification
@@ -175,8 +181,13 @@ After fixing TLS issues:
 
 ```bash
 # Verify TLS connection works
-kubectl run tls-verify --image=curlimages/curl --rm -it --restart=Never -- \
-    curl -s --cacert /tmp/ca.crt https://cilium-operator.kube-system.svc:9963/metrics | head -5
+kubectl get secret -n kube-system cilium-operator-metrics-tls -o jsonpath='{.data.ca\.crt}' | \
+    base64 -d > /tmp/cilium-operator-ca.crt
+# Run this in a separate terminal and leave it running during the curl test
+kubectl -n kube-system port-forward svc/cilium-operator 9963:9963
+curl -s --cacert /tmp/cilium-operator-ca.crt \
+    --resolve cilium-operator.kube-system.svc:9963:127.0.0.1 \
+    https://cilium-operator.kube-system.svc:9963/metrics | head -5
 
 # Verify Prometheus target is healthy
 curl -s http://localhost:9090/api/v1/targets | \
@@ -194,7 +205,7 @@ kubectl get secret -n kube-system cilium-operator-metrics-tls -o jsonpath='{.dat
 ## Troubleshooting
 
 **Problem: Certificate renews but operator still uses old certificate**
-The operator needs to be restarted to load the new certificate. Configure a file watcher or use cert-manager's `renewBefore` to trigger rolling restarts.
+The operator process may need to reload the new certificate. Use a file watcher/reloader or trigger a rollout after cert-manager renews the Secret. `renewBefore` controls when cert-manager attempts renewal; it does not restart pods by itself.
 
 **Problem: insecureSkipVerify is true but should not be**
 Setting `insecureSkipVerify: true` bypasses certificate validation, defeating the purpose of TLS. Fix the certificate chain so verification passes, then set it to false.
@@ -203,7 +214,7 @@ Setting `insecureSkipVerify: true` bypasses certificate validation, defeating th
 When running multiple replicas, ensure all replicas mount the same secret. The secret is shared across all pods in the deployment.
 
 **Problem: TLS works but Prometheus shows "server returned HTTP status 400"**
-The operator metrics endpoint may not support TLS on the expected port. Verify the port number and that the operator was compiled with TLS support enabled.
+The operator metrics endpoint may not be serving TLS on the expected port. Verify the port number and that `operator.prometheus.tls.enabled=true` is set.
 
 ## Conclusion
 
