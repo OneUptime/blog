@@ -33,8 +33,9 @@ set -euo pipefail
 PASS=true
 
 echo "=== Kernel Validation ==="
-KVER=$(uname -r | cut -d. -f1-2)
-if (( $(echo "$KVER >= 5.10" | bc -l) )); then
+KVER=$(uname -r | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
+MIN_KVER=5.10
+if [ "$(printf '%s\n' "$MIN_KVER" "$KVER" | sort -V | head -n1)" = "$MIN_KVER" ]; then
   echo "PASS: Kernel $KVER >= 5.10"
 else
   echo "FAIL: Kernel $KVER < 5.10"
@@ -50,7 +51,7 @@ else
 fi
 
 echo "=== Cilium Validation ==="
-if cilium status | grep -q "OK"; then
+if cilium status --wait --wait-duration 5m; then
   echo "PASS: Cilium is healthy"
 else
   echo "FAIL: Cilium is not healthy"
@@ -58,7 +59,7 @@ else
 fi
 
 echo "=== Tools Validation ==="
-for tool in bpftool ethtool perf; do
+for tool in bpftool ethtool perf iperf3 jq netperf; do
   if command -v $tool &>/dev/null; then
     echo "PASS: $tool available"
   else
@@ -87,6 +88,7 @@ spec:
   template:
     spec:
       hostNetwork: true
+      hostPID: true
       containers:
       - name: validator
         image: busybox:1.36
@@ -99,11 +101,27 @@ spec:
           echo "Validating node software..."
           # Kernel modules
           for mod in wireguard br_netfilter; do
-            lsmod | grep -q $mod && echo "PASS: $mod" || echo "FAIL: $mod"
+            grep -q "^$mod " /host/proc/modules && echo "PASS: $mod" || echo "FAIL: $mod"
           done
           # BPF
-          mount | grep -q bpf && echo "PASS: BPF" || echo "FAIL: BPF"
+          mount | grep -q "/sys/fs/bpf type bpf" && echo "PASS: BPF" || echo "FAIL: BPF"
+        volumeMounts:
+        - name: host-proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: bpffs
+          mountPath: /sys/fs/bpf
+          readOnly: true
       restartPolicy: Never
+      volumes:
+      - name: host-proc
+        hostPath:
+          path: /proc
+          type: Directory
+      - name: bpffs
+        hostPath:
+          path: /sys/fs/bpf
+          type: Directory
 ```
 
 ## Verification
