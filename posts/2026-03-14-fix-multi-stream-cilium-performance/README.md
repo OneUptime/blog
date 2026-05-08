@@ -64,13 +64,14 @@ spec:
       hostNetwork: true
       initContainers:
       - name: tune
-        image: busybox:1.36
+        image: alpine:3.19
         securityContext:
           privileged: true
         command:
         - sh
         - -c
         - |
+          apk add --no-cache ethtool >/dev/null
           # Get CPU count and set NIC queues
           CPUS=$(nproc)
           ethtool -L eth0 combined $CPUS 2>/dev/null || true
@@ -84,10 +85,12 @@ spec:
 
 ## Enabling XDP Acceleration
 
-Cilium's XDP (eXpress Data Path) mode processes packets before they enter the kernel networking stack, dramatically improving multi-stream performance:
+Cilium's XDP (eXpress Data Path) acceleration processes supported service traffic at the driver layer before it traverses the full kernel networking stack. It applies to NodePort, LoadBalancer, and externalIP service handling when Cilium's kube-proxy replacement is enabled:
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --reuse-values \
+  --set kubeProxyReplacement=true \
   --set loadBalancer.acceleration=native \
   --set devices=eth0
 ```
@@ -95,7 +98,7 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 Verify XDP is active:
 
 ```bash
-cilium status --verbose | grep "XDP"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep "XDP"
 # Should show: XDP Acceleration: Native
 
 # Verify XDP programs are attached
@@ -104,12 +107,13 @@ ip link show eth0 | grep xdp
 
 ## Tuning BPF Map Configuration
 
-Reduce contention on shared BPF maps:
+Increase capacity for shared BPF maps:
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set bpf.ctGlobalTCPMax=1048576 \
-  --set bpf.ctGlobalAnyMax=524288 \
+  --reuse-values \
+  --set bpf.ctTcpMax=1048576 \
+  --set bpf.ctAnyMax=524288 \
   --set bpf.natMax=1048576 \
   --set bpf.mapDynamicSizeRatio=0.0025
 ```
@@ -118,7 +122,7 @@ The `mapDynamicSizeRatio` setting automatically scales map sizes based on total 
 
 ## NUMA-Aware Pod Scheduling
 
-Ensure test pods and Cilium agents are NUMA-aligned with the NIC:
+Ensure test pods are NUMA-aligned with the NIC:
 
 ```yaml
 apiVersion: v1
@@ -144,12 +148,15 @@ spec:
 
 Enable topology manager on nodes:
 
-```bash
-# In kubelet config
-cat >> /var/lib/kubelet/config.yaml << KUBELET
+```yaml
+# In /var/lib/kubelet/config.yaml
 topologyManagerPolicy: single-numa-node
 cpuManagerPolicy: static
-KUBELET
+```
+
+```bash
+# Drain the node before changing CPU manager policy, then restart kubelet
+rm -f /var/lib/kubelet/cpu_manager_state
 systemctl restart kubelet
 ```
 
@@ -187,7 +194,7 @@ for STREAMS in 1 2 4 8 16 32; do
 done
 
 # Verify XDP attachment
-cilium status --verbose | grep XDP
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep XDP
 
 # Check CPU distribution during test
 mpstat -P ALL 1 10
@@ -195,7 +202,7 @@ mpstat -P ALL 1 10
 
 ## Troubleshooting
 
-- **XDP fails to attach**: Ensure the NIC driver supports native XDP. Fallback: use `loadBalancer.acceleration=generic`.
+- **XDP fails to attach**: Ensure the NIC driver supports native XDP and kube-proxy replacement is enabled. Fallback: use `loadBalancer.acceleration=best-effort` when only some devices support native XDP, or disable acceleration.
 - **ethtool queue changes not persisting**: Use the DaemonSet approach above. NetworkManager may reset settings.
 - **NUMA misalignment**: Use `numactl --hardware` and `cat /sys/class/net/eth0/device/numa_node` to verify alignment.
 - **Throughput regression with XDP**: Some workloads with heavy L7 policy see regression. Profile with `bpftool prog show`.
@@ -250,7 +257,7 @@ If a change causes unexpected behavior, roll back immediately:
 helm rollback cilium -n kube-system
 
 # Verify the rollback was successful
-cilium status --verbose
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose
 kubectl rollout status ds/cilium -n kube-system
 ```
 
