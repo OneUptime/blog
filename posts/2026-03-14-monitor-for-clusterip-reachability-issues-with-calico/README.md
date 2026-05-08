@@ -25,7 +25,7 @@ Early detection dramatically reduces mean time to resolution (MTTR). A well-conf
 
 ## Step 1: Enable Calico Prometheus Metrics
 
-Ensure Felix and Typha are exposing metrics:
+Ensure Felix is exposing metrics:
 
 ```bash
 # Verify Felix metrics are enabled
@@ -33,14 +33,30 @@ Ensure Felix and Typha are exposing metrics:
 calicoctl get felixconfiguration default -o yaml | grep -i prometheus
 
 # If not enabled, apply:
-calicoctl patch felixconfiguration default -p '{"spec": {"prometheusMetricsEnabled": true, "prometheusMetricsPort": 9091}}'
+calicoctl patch felixconfiguration default --patch '{"spec": {"prometheusMetricsEnabled": true}}'
 ```
 
 ## Step 2: Create ServiceMonitor Resources
 
-Configure Prometheus to scrape Calico metrics:
+Configure Prometheus to scrape Calico metrics. ServiceMonitor resources select Kubernetes Services, so create a headless Service for the Felix metrics endpoints first:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    app: calico-felix-metrics
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: http-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -51,7 +67,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      k8s-app: calico-node
+      app: calico-felix-metrics
   endpoints:
     - port: http-metrics
       interval: 30s
@@ -79,7 +95,7 @@ spec:
     - name: calico.rules
       rules:
         - alert: CalicoNodeNotReady
-          expr: up{job="calico-node"} == 0
+          expr: up{namespace="calico-system", service="felix-metrics-svc"} == 0
           for: 5m
           labels:
             severity: critical
@@ -103,8 +119,8 @@ kubectl apply -f calico-alerts.yaml
 Set up dashboards for these Felix metrics:
 
 - `felix_int_dataplane_failures`: Dataplane programming failures
-- `felix_iptables_save_errors_total`: Errors saving iptables rules
-- `felix_ipam_blocks_per_node`: IPAM block count per node
+- `felix_iptables_save_errors`: Errors saving iptables rules
+- `felix_iptables_rules`: Number of active iptables rules
 - `felix_cluster_num_hosts`: Number of hosts in the cluster
 
 ## Step 5: Log-Based Monitoring
@@ -153,7 +169,7 @@ Track Felix dataplane programming latency, iptables rule count, and policy calcu
 ```bash
 # Key Felix metrics to query in Prometheus
 # felix_int_dataplane_apply_time_seconds - Time to apply dataplane updates
-# felix_iptables_lines - Total iptables rules managed by Felix
+# felix_iptables_rules - Total active iptables rules managed by Felix
 # felix_active_local_endpoints - Number of local workload endpoints
 # felix_cluster_num_hosts - Total hosts in the cluster
 ```
@@ -192,14 +208,14 @@ After applying any fix, systematically verify each layer of the Calico stack:
 # Layer 1: Calico system pods
 kubectl get pods -n calico-system -o wide
 
-# Layer 2: IPAM consistency
-calicoctl ipam check
+# Layer 2: IPAM usage
+calicoctl ipam show --show-blocks
 
 # Layer 3: Node-to-node connectivity
 calicoctl node status
 
 # Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+kubectl run fix-test --image=curlimages/curl --rm -it --restart=Never -- curl -ksS --max-time 5 https://kubernetes.default.svc/readyz
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
