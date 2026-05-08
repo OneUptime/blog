@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubeadm, CIDR, IPAM, Kubernetes, Monitoring, Prometheus, Alerting
 
-Description: How to set up monitoring and alerting for CIDRNotAvailable errors in Calico-based Kubernetes clusters to catch IP exhaustion before it impacts workloads.
+Description: How to set up monitoring and alerting for Kubernetes CIDRNotAvailable events and Calico IPAM exhaustion before they impact workloads.
 
 ---
 
 ## Introduction
 
-CIDRNotAvailable errors can bring pod scheduling to a halt, but they rarely happen without warning. IP address utilization grows gradually as clusters scale, and IPAM block allocation patterns become visible well before exhaustion occurs. By monitoring the right metrics and events, operators can detect problems early and take corrective action before workloads are affected.
+CIDRNotAvailable events can point to Kubernetes node CIDR allocation exhaustion or misconfiguration, while Calico IPAM exhaustion can bring pod creation to a halt. These problems rarely happen without warning. IP address utilization grows gradually as clusters scale, and IPAM block allocation patterns become visible well before exhaustion occurs. By monitoring the right metrics and events, operators can detect problems early and take corrective action before workloads are affected.
 
 Effective monitoring for CIDR issues combines Calico IPAM metrics, Kubernetes events, and node-level checks into a comprehensive alerting strategy. This guide covers how to set up each layer of monitoring using Prometheus, Kubernetes event watches, and periodic IPAM health checks.
 
-This approach works for any kubeadm-provisioned cluster running Calico as the CNI plugin.
+This approach works for any kubeadm-provisioned cluster running Calico as the CNI plugin with Calico IPAM.
 
 ## Prerequisites
 
@@ -29,19 +29,18 @@ This approach works for any kubeadm-provisioned cluster running Calico as the CN
 Verify that Calico components expose Prometheus metrics:
 
 ```bash
-# Check if calico-node metrics are enabled
-
-kubectl get daemonset -n calico-system calico-node -o yaml | grep -i "prometheus\|metrics"
+# Check if calico-kube-controllers metrics are exposed
+kubectl get svc -n calico-system | grep calico-kube-controllers-metrics
 
 # Verify metrics endpoint is accessible
-kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1) -c calico-node -- wget -qO- http://localhost:9091/metrics | head -20
+kubectl run -n calico-system metrics-check --rm -i --restart=Never --image=curlimages/curl -- http://calico-kube-controllers-metrics:9094/metrics | head -20
 ```
 
-If metrics are not enabled, configure Felix to expose them:
+Calico kube-controllers metrics are enabled by default on port 9094. If the metrics port was disabled or changed, configure the `KubeControllersConfiguration` resource:
 
 ```bash
-# Enable Prometheus metrics on Felix
-calicoctl patch felixconfiguration default --patch '{"spec":{"prometheusMetricsEnabled": true}}'
+# Enable Prometheus metrics on calico-kube-controllers
+calicoctl patch kubecontrollersconfiguration default --patch '{"spec":{"prometheusMetricsPort": 9094}}'
 ```
 
 ## Key Metrics to Monitor
@@ -50,20 +49,20 @@ calicoctl patch felixconfiguration default --patch '{"spec":{"prometheusMetricsE
 
 ```bash
 # Check available IPAM metrics
-kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-node -o name | head -1) -c calico-node -- wget -qO- http://localhost:9091/metrics 2>/dev/null | grep -i "ipam\|ip_pool\|block"
+kubectl run -n calico-system metrics-check --rm -i --restart=Never --image=curlimages/curl -- http://calico-kube-controllers-metrics:9094/metrics 2>/dev/null | grep -i "ipam\|ippool\|block"
 ```
 
 Key metrics to track:
 
 ```yaml
 # Total IPs allocated per node
-felix_ipam_ips_in_use
+ipam_allocations_in_use
 
 # Total IPs available in pools
-felix_ipam_ips_total
+ipam_ippool_size
 
 # Number of IPAM blocks allocated
-felix_ipam_blocks_per_node
+ipam_blocks
 ```
 
 ### Pod Scheduling Metrics
@@ -93,7 +92,7 @@ spec:
     rules:
     - alert: CalicoIPAMHighUtilization
       expr: |
-        sum(felix_ipam_ips_in_use) / sum(felix_ipam_ips_total) > 0.8
+        sum(ipam_allocations_in_use) / sum(ipam_ippool_size) > 0.8
       for: 10m
       labels:
         severity: warning
@@ -103,23 +102,23 @@ spec:
 
     - alert: CalicoIPAMCriticalUtilization
       expr: |
-        sum(felix_ipam_ips_in_use) / sum(felix_ipam_ips_total) > 0.95
+        sum(ipam_allocations_in_use) / sum(ipam_ippool_size) > 0.95
       for: 5m
       labels:
         severity: critical
       annotations:
         summary: "Calico IPAM utilization above 95%"
-        description: "IPAM is nearly exhausted. Immediate action required to prevent CIDRNotAvailable errors."
+        description: "IPAM is nearly exhausted. Immediate action required to prevent pod sandbox creation failures."
 
-    - alert: CalicoNodeNoIPAMBlock
+    - alert: CalicoIPAMLeakCandidates
       expr: |
-        felix_ipam_blocks_per_node == 0
+        sum(ipam_allocations_gc_candidates) > 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Node has no IPAM blocks allocated"
-        description: "Node {{ $labels.instance }} has no IPAM blocks. New pods on this node will fail."
+        summary: "Calico IPAM has potential leaked allocations"
+        description: "Calico IPAM is reporting potential leaked allocations. Run calicoctl ipam check before releasing addresses."
 ```
 
 ```bash
@@ -133,7 +132,7 @@ Set up a watcher for CIDR-related events:
 
 ```bash
 # Watch for CIDR-related events in real time
-kubectl get events --all-namespaces --watch --field-selector reason=FailedCreatePodSandBox | grep -i "cidr\|ipam"
+kubectl get events --all-namespaces --watch --field-selector reason=CIDRNotAvailable
 ```
 
 For persistent event monitoring, deploy an event exporter:
@@ -151,7 +150,7 @@ data:
       routes:
         - match:
             - receiver: "dump"
-              reason: "FailedCreatePodSandBox"
+              reason: "CIDRNotAvailable"
     receivers:
       - name: "dump"
         stdout: {}
@@ -169,7 +168,7 @@ Create a dashboard that visualizes IPAM health:
       "type": "gauge",
       "targets": [
         {
-          "expr": "sum(felix_ipam_ips_in_use) / sum(felix_ipam_ips_total) * 100"
+          "expr": "sum(ipam_allocations_in_use) / sum(ipam_ippool_size) * 100"
         }
       ]
     },
@@ -178,8 +177,8 @@ Create a dashboard that visualizes IPAM health:
       "type": "timeseries",
       "targets": [
         {
-          "expr": "felix_ipam_ips_in_use",
-          "legendFormat": "{{ instance }}"
+          "expr": "ipam_allocations_in_use",
+          "legendFormat": "{{ node }}"
         }
       ]
     },
@@ -188,8 +187,8 @@ Create a dashboard that visualizes IPAM health:
       "type": "timeseries",
       "targets": [
         {
-          "expr": "felix_ipam_blocks_per_node",
-          "legendFormat": "{{ instance }}"
+          "expr": "ipam_blocks",
+          "legendFormat": "{{ node }}"
         }
       ]
     },
@@ -198,7 +197,7 @@ Create a dashboard that visualizes IPAM health:
       "type": "stat",
       "targets": [
         {
-          "expr": "count(kube_pod_status_phase{phase='Pending'})"
+          "expr": "sum(kube_pod_status_phase{phase='Pending'})"
         }
       ]
     }
@@ -222,10 +221,10 @@ calicoctl ipam check 2>&1
 # Check utilization
 calicoctl ipam show
 
-# Check for nodes without CIDR assignments
-NO_CIDR=$(kubectl get nodes -o json | jq '[.items[] | select(.spec.podCIDR == null)] | length')
-if [ "$NO_CIDR" -gt 0 ]; then
-  echo "WARNING: $NO_CIDR nodes without CIDR assignment"
+# Check for Kubernetes node CIDR allocation events
+CIDR_EVENTS=$(kubectl get events --all-namespaces --field-selector=reason=CIDRNotAvailable --no-headers 2>/dev/null | wc -l)
+if [ "$CIDR_EVENTS" -gt 0 ]; then
+  echo "WARNING: $CIDR_EVENTS CIDRNotAvailable events detected"
 fi
 
 # Check for pending pods
@@ -247,7 +246,7 @@ kubectl exec -n monitoring $(kubectl get pod -n monitoring -l app=prometheus -o 
 kubectl exec -n monitoring $(kubectl get pod -n monitoring -l app=prometheus -o name | head -1) -- wget -qO- 'http://localhost:9090/api/v1/rules' | grep CalicoIPAM
 
 # Verify metrics are being collected
-kubectl exec -n monitoring $(kubectl get pod -n monitoring -l app=prometheus -o name | head -1) -- wget -qO- 'http://localhost:9090/api/v1/query?query=felix_ipam_ips_in_use'
+kubectl exec -n monitoring $(kubectl get pod -n monitoring -l app=prometheus -o name | head -1) -- wget -qO- 'http://localhost:9090/api/v1/query?query=ipam_allocations_in_use'
 ```
 
 ## Troubleshooting
@@ -260,4 +259,4 @@ kubectl exec -n monitoring $(kubectl get pod -n monitoring -l app=prometheus -o 
 
 ## Conclusion
 
-Monitoring for CIDRNotAvailable errors is about catching trends before they become incidents. By combining Calico IPAM metrics in Prometheus, Kubernetes event monitoring, and periodic health checks, operators gain early visibility into IP address utilization and CIDR allocation issues. Set alert thresholds that give your team enough lead time to expand IP pools or clean up stale allocations before pods start failing.
+Monitoring for CIDRNotAvailable events and Calico IPAM exhaustion is about catching trends before they become incidents. By combining Calico IPAM metrics in Prometheus, Kubernetes event monitoring, and periodic health checks, operators gain early visibility into IP address utilization and CIDR allocation issues. Set alert thresholds that give your team enough lead time to expand IP pools, fix node CIDR allocation, or clean up stale allocations before pods start failing.
