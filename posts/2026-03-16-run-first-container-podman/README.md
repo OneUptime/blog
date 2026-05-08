@@ -27,7 +27,7 @@ podman --version
 podman machine ls
 
 # Verify Podman can connect to the container runtime
-podman info --format "{{.Host.Os}}"
+podman info --format "{{.Host.OS}}"
 ```
 
 ## Running Your First Container
@@ -41,7 +41,7 @@ podman run hello-world
 
 This command does several things:
 1. Checks if the `hello-world` image exists locally.
-2. Pulls the image from the default registry if not found.
+2. Pulls the image using Podman's configured short-name resolution if not found.
 3. Creates a container from the image.
 4. Starts the container.
 5. The container prints a message and exits.
@@ -120,7 +120,7 @@ podman rm my-web
 You can pull images before running them:
 
 ```bash
-# Pull an image from the default registry
+# Pull an image using short-name resolution
 podman pull nginx
 
 # Pull a specific version
@@ -171,7 +171,7 @@ podman run -it --rm node:20-alpine node --version
 # Run a specific PostgreSQL version
 podman run -d --name db -e POSTGRES_PASSWORD=secret postgres:16
 
-# Run the latest Ubuntu LTS
+# Run Ubuntu 22.04 LTS
 podman run -it --rm ubuntu:22.04 bash
 ```
 
@@ -210,8 +210,8 @@ podman exec web cat /etc/nginx/nginx.conf
 # Get an interactive shell
 podman exec -it web bash
 
-# Check running processes inside the container
-podman exec web ps aux
+# Check the Nginx version inside the container
+podman exec web nginx -v
 
 # Clean up
 podman rm -f web
