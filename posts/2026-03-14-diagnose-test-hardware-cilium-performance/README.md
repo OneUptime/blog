@@ -19,7 +19,7 @@ This guide covers the hardware diagnostic checklist for Cilium performance testi
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `cilium` CLI and `kubectl` access
+- `cilium`, `hubble`, `kubectl`, and `jq` CLI access
 - Node-level root access
 - Prometheus monitoring (recommended)
 
@@ -86,7 +86,7 @@ lspci -vvv -s $(ethtool -i eth0 | grep bus-info | awk '{print $2}') | grep -E "L
 
 ```bash
 # Run the validation checks above
-# All items should show PASS
+# Cilium components should report OK/ready status
 cilium status --verbose
 ```
 
@@ -112,12 +112,17 @@ cilium status --verbose > $DIAG_DIR/cilium-status.txt
 # Collect Cilium configuration
 cilium config view > $DIAG_DIR/cilium-config.txt
 
+# Run Cilium agent-local debug commands through one Cilium pod
+cilium_dbg() {
+  kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg "$@"
+}
+
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+cilium_dbg bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
+cilium_dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+cilium_dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -148,21 +153,25 @@ The combination of these data points will point you toward the specific subsyste
 
 ### Using Cilium Monitor for Real-Time Analysis
 
-The `cilium monitor` command provides real-time visibility into the eBPF datapath:
+The `cilium-dbg monitor` command provides real-time visibility into the eBPF datapath:
 
 ```bash
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+cilium_dbg() {
+  kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg "$@"
+}
+
+ENDPOINT_ID=$(cilium_dbg endpoint list -o json | jq -r '.[0].id')
+cilium_dbg monitor --related-to $ENDPOINT_ID --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+cilium_dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+cilium_dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+cilium_dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
@@ -189,7 +198,7 @@ For deep datapath analysis, use BPF tracing tools:
 
 ```bash
 # Trace BPF program execution time
-bpftool prog show --json | jq '.[] | select(.name | contains("cil")) | {name, run_cnt, run_time_ns, avg_ns: (if .run_cnt > 0 then (.run_time_ns / .run_cnt | floor) else 0 end)}'
+bpftool prog show --json | jq '.[] | select((.name // "") | contains("cil")) | {name, run_cnt: (.run_cnt // 0), run_time_ns: (.run_time_ns // 0), avg_ns: (if ((.run_cnt // 0) > 0) then (((.run_time_ns // 0) / .run_cnt) | floor) else 0 end)}'
 
 # Use bpftrace for custom tracing
 bpftrace -e 'tracepoint:xdp:xdp_redirect { @cnt[args->action] = count(); }'
