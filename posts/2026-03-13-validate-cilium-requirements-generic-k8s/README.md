@@ -36,13 +36,14 @@ kubectl get nodes -o jsonpath=\
 # Direct check on a node
 uname -r
 
-# Feature-based kernel requirements:
-# Basic Cilium:              4.19+
-# BPF NodePort:              5.4+
-# kube-proxy replacement:    5.10+
-# WireGuard encryption:      5.6+
-# Bandwidth Manager:         5.1+
-# Socket LB in all NS:       5.7+
+# Current Cilium releases recommend Linux kernel 5.10+,
+# or an equivalent vendor kernel such as RHEL 8.10's 4.18 kernel.
+#
+# Advanced feature kernel requirements:
+# Multicast support (AMD64): 5.10+
+# IPv6 BIG TCP support:      5.19+
+# Multicast support (AArch64): 6.0+
+# IPv4 BIG TCP support:      6.3+
 ```
 
 ## Step 2: Verify Required Kernel Modules and eBPF Support
@@ -52,27 +53,32 @@ uname -r
 mount | grep bpf || mount -t bpf bpf /sys/fs/bpf
 
 # Verify required kernel config options are enabled
-grep -E "CONFIG_BPF|CONFIG_BPF_SYSCALL|CONFIG_BPF_JIT" /boot/config-$(uname -r)
+grep -E "CONFIG_BPF=|CONFIG_BPF_EVENTS|CONFIG_BPF_SYSCALL|CONFIG_NET_CLS_BPF|CONFIG_BPF_JIT|CONFIG_NET_CLS_ACT|CONFIG_NET_SCH_INGRESS|CONFIG_CRYPTO_SHA1|CONFIG_CRYPTO_USER_API_HASH|CONFIG_CGROUPS|CONFIG_CGROUP_BPF|CONFIG_PERF_EVENTS|CONFIG_SCHEDSTATS" /boot/config-$(uname -r)
 
-# Check that required modules are available
-lsmod | grep -E "ip_tables|xt_socket|nf_conntrack"
+# Check optional netfilter modules used by some Cilium features
+lsmod | grep -E "ip_tables|xt_socket|nf_conntrack|ip_set"
 
-# Verify tun module for VXLAN/Geneve support
+# Verify tunnel modules for VXLAN/Geneve support
 modinfo vxlan 2>/dev/null && echo "VXLAN supported" || echo "VXLAN not available"
+modinfo geneve 2>/dev/null && echo "Geneve supported" || echo "Geneve not available"
 ```
 
 ## Step 3: Check Kubernetes API Server Configuration
 
-Cilium requires certain API server flags to be set.
+Cilium requires Kubernetes to be configured for CNI. Automatic node CIDR allocation is recommended for Kubernetes host-scope IPAM, and the service CIDR must not overlap with node or pod CIDRs.
 
 ```bash
 # Check API server flags (on control plane node)
 cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep -E \
-  "allow-privileged|service-cluster-ip-range|service-account-signing"
+  "service-cluster-ip-range"
 
-# Required flags:
-# --allow-privileged=true (or use PodSecurityAdmission)
-# --service-cluster-ip-range=<cidr>  (must not overlap with pod CIDR)
+# Required API server setting:
+# --service-cluster-ip-range=<cidr>
+# The service CIDR must not overlap with node or pod CIDRs.
+
+# Check whether kube-controller-manager allocates per-node PodCIDRs
+cat /etc/kubernetes/manifests/kube-controller-manager.yaml | grep -E \
+  "allocate-node-cidrs|cluster-cidr"
 
 # Check kubeadm config for CIDR settings
 kubectl -n kube-system get configmap kubeadm-config \
@@ -82,18 +88,18 @@ kubectl -n kube-system get configmap kubeadm-config \
 ## Step 4: Validate System Configuration
 
 ```bash
-# Check that inotify limits are sufficient for Cilium's file watchers
+# Check host inotify limits for general Kubernetes node health
 sysctl fs.inotify.max_user_instances
 sysctl fs.inotify.max_user_watches
-# Recommended: max_user_instances >= 256, max_user_watches >= 65536
+# Higher values may be needed on busy nodes with many pods
 
-# Verify ulimits for open files
+# Verify shell open-file limit for the current session
 ulimit -n
-# Should be at least 65536
+# Raise this through systemd or your node image if node agents hit file limits
 
-# Check that ipv4 forwarding is enabled
+# Check ipv4 forwarding. Cilium enables forwarding for native routing,
+# but this should not be disabled by node hardening automation.
 sysctl net.ipv4.ip_forward
-# Expected: net.ipv4.ip_forward = 1
 ```
 
 ## Step 5: Validate Network Interface Requirements
@@ -102,9 +108,10 @@ sysctl net.ipv4.ip_forward
 # Ensure nodes have a non-loopback network interface for Cilium to bind to
 ip link show | grep -v "lo:" | grep "state UP"
 
-# Check that the interface used for pod traffic does not have firewall rules
-# blocking UDP 8472 (VXLAN) or UDP 6081 (Geneve) between nodes
-iptables -L INPUT -n | grep -E "8472|6081"
+# Check firewall rules for ports Cilium may require:
+# UDP 8472 (VXLAN), UDP 6081 (Geneve), UDP 51871 (WireGuard),
+# and TCP 4240/ICMP for cilium-health.
+iptables -S | grep -E "8472|6081|51871|4240" || true
 
 # Confirm there are no conflicting CNI configurations in /etc/cni/net.d/
 ls -la /etc/cni/net.d/
