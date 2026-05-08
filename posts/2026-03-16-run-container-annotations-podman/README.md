@@ -31,7 +31,7 @@ podman run -d --name api-server \
   --annotation owner="platform-team" \
   --annotation created="2026-03-16" \
   --annotation environment="production" \
-  alpine sleep infinity
+  alpine sleep 3600
 ```
 
 ## OCI-Standard Annotations
@@ -51,7 +51,7 @@ podman run -d --name oci-standard \
   --annotation org.opencontainers.image.revision="abc123def" \
   --annotation org.opencontainers.image.vendor="Example Corp" \
   --annotation org.opencontainers.image.licenses="Apache-2.0" \
-  alpine sleep infinity
+  alpine sleep 3600
 ```
 
 ## Inspecting Container Annotations
@@ -63,8 +63,12 @@ podman inspect api-server --format '{{json .Config.Annotations}}' | python3 -m j
 # Get a specific annotation
 podman inspect api-server --format '{{index .Config.Annotations "owner"}}'
 
-# List containers with annotations
-podman ps --format "table {{.Names}}\t{{.Labels}}"
+# List running containers with annotations
+for cid in $(podman ps -q); do
+  name=$(podman inspect "$cid" --format '{{.Name}}')
+  annotations=$(podman inspect "$cid" --format '{{json .Config.Annotations}}')
+  echo "$name: $annotations"
+done
 ```
 
 ## Annotations vs Labels
@@ -76,13 +80,13 @@ Both annotations and labels are key-value metadata, but they serve different rol
 podman run -d --name with-labels \
   --label app=myservice \
   --label env=production \
-  alpine sleep infinity
+  alpine sleep 3600
 
 # Annotations: used for OCI-standard metadata and tooling integration
 podman run -d --name with-annotations \
   --annotation org.opencontainers.image.title="My Service" \
   --annotation org.opencontainers.image.version="1.0" \
-  alpine sleep infinity
+  alpine sleep 3600
 
 # You can use both together
 podman run -d --name with-both \
@@ -90,7 +94,7 @@ podman run -d --name with-both \
   --label env=production \
   --annotation org.opencontainers.image.title="My Service" \
   --annotation build.pipeline="ci-main-456" \
-  alpine sleep infinity
+  alpine sleep 3600
 
 # Labels support filtering; annotations are for metadata
 podman ps --filter label=app=myservice
@@ -99,7 +103,7 @@ podman ps --filter label=app=myservice
 Key differences:
 - Labels can be used with `--filter` in podman commands
 - Annotations follow OCI specifications for cross-tool compatibility
-- Labels are stored in the container config; annotations in OCI-specific metadata
+- Podman exposes labels and annotations separately in inspect output
 
 ## Custom Annotation Namespaces
 
@@ -113,7 +117,7 @@ podman run -d --name namespaced \
   --annotation com.mycompany.compliance.pci="true" \
   --annotation com.mycompany.sla="99.9" \
   --annotation io.kubernetes.pod.name="api-pod" \
-  alpine sleep infinity
+  alpine sleep 3600
 
 # Read back the custom annotations
 podman inspect namespaced --format '{{json .Config.Annotations}}' | python3 -m json.tool
@@ -132,7 +136,7 @@ podman run -d --name build-tracked \
   --annotation build.branch="main" \
   --annotation build.timestamp="2026-03-16T10:30:00Z" \
   --annotation build.builder="jenkins" \
-  alpine sleep infinity
+  alpine sleep 3600
 
 # Query build information
 podman inspect build-tracked --format '
@@ -142,12 +146,12 @@ podman inspect build-tracked --format '
 '
 ```
 
-## Annotations on Pods
+## Annotations on Containers in Pods
 
-Annotations can also be applied to pods:
+Podman pods support labels, and containers inside pods can have their own annotations:
 
 ```bash
-# Create a pod with annotations
+# Create a pod with labels
 podman pod create --name annotated-pod \
   --label app=myapp
 
@@ -158,10 +162,11 @@ podman run -d --pod annotated-pod --name pod-web \
 
 podman run -d --pod annotated-pod --name pod-api \
   --annotation role="backend" \
-  alpine sleep infinity
+  alpine sleep 3600
 
-# Inspect pod annotations
-podman pod inspect annotated-pod | python3 -m json.tool | head -20
+# Inspect pod labels and container annotations
+podman pod inspect annotated-pod --format '{{json .Labels}}' | python3 -m json.tool
+podman inspect pod-web --format '{{json .Config.Annotations}}' | python3 -m json.tool
 
 # Clean up
 podman pod stop annotated-pod && podman pod rm annotated-pod
@@ -177,7 +182,7 @@ podman run -d --name compliant-app \
   --annotation compliance.reviewed-by="security-team" \
   --annotation compliance.review-date="2026-03-01" \
   --annotation compliance.encryption="AES-256" \
-  alpine sleep infinity
+  alpine sleep 3600
 
 # Audit script to find containers with compliance annotations
 echo "Containers with compliance annotations:"
