@@ -44,7 +44,7 @@ sudo apt install -y curl wget vim tar    # Debian/Ubuntu
 
 ```bash
 # Install Podman with minimal dependencies
-sudo dnf install -y podman crun slirp4netns
+sudo dnf install -y podman crun fuse-overlayfs passt
 ```
 
 ### On Debian Server (Minimal)
@@ -58,7 +58,7 @@ sudo apt install -y podman slirp4netns uidmap fuse-overlayfs
 
 ```bash
 # Install Podman
-sudo dnf install -y podman crun slirp4netns
+sudo dnf install -y podman crun fuse-overlayfs passt
 ```
 
 ## Step 3: Configure a Dedicated Container User
@@ -84,6 +84,7 @@ On a minimal server, optimize storage:
 ```bash
 # Switch to the container user
 sudo -u podman-user -i
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
 
 # Create the configuration directory
 mkdir -p ~/.config/containers
@@ -189,12 +190,12 @@ Switch to the container user and deploy a service:
 ```bash
 # Switch to the container user
 sudo -u podman-user -i
+export XDG_RUNTIME_DIR=/run/user/$(id -u)
 
 # Run a web application
 podman run -d \
   --name web-app \
   -p 8080:80 \
-  --restart=always \
   docker.io/library/nginx:alpine
 
 # Verify it is running
@@ -206,20 +207,34 @@ podman ps
 Make containers survive reboots:
 
 ```bash
-# Generate a systemd unit file for the container
-mkdir -p ~/.config/systemd/user
-podman generate systemd --new --name web-app > ~/.config/systemd/user/container-web-app.service
-
 # Stop and remove the manually created container
 podman stop web-app
 podman rm web-app
 
-# Enable the systemd service
+# Create a Quadlet container unit
+mkdir -p ~/.config/containers/systemd
+cat > ~/.config/containers/systemd/web-app.container <<EOF
+[Unit]
+Description=Web app container
+
+[Container]
+Image=docker.io/library/nginx:alpine
+ContainerName=web-app
+PublishPort=8080:80
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Enable the generated systemd service
 systemctl --user daemon-reload
-systemctl --user enable --now container-web-app.service
+systemctl --user enable --now web-app.service
 
 # Verify it starts
-systemctl --user status container-web-app.service
+systemctl --user status web-app.service
 podman ps
 ```
 
@@ -258,11 +273,15 @@ exit
 
 # Disable root login via SSH (if not already done)
 sudo sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-sudo systemctl restart sshd
+sudo systemctl restart sshd  # Fedora/CentOS
+# or
+sudo systemctl restart ssh   # Debian/Ubuntu
 
 # Enable automatic security updates
 sudo dnf install -y dnf-automatic   # Fedora/CentOS
 sudo systemctl enable --now dnf-automatic-install.timer
+# or
+sudo apt install -y unattended-upgrades   # Debian/Ubuntu
 ```
 
 ## Troubleshooting
