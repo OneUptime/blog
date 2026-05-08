@@ -74,13 +74,13 @@ kubectl get events --all-namespaces --field-selector reason=BackOff --sort-by='.
 ## Section 3: Quick Triage Decision Tree
 
 ```bash
-# Step 1: Are endpoints populated?
-kubectl get endpoints <service-name> -n <namespace>
-# If empty -> Go to "No Endpoints" section
+# Step 1: Are EndpointSlices populated?
+kubectl get endpointslices -n <namespace> -l kubernetes.io/service-name=<service-name>
+# If empty -> Go to "No Ready EndpointSlices" section
 # If populated -> Continue to Step 2
 
 # Step 2: Can a pod reach the ClusterIP?
-kubectl run triage-test --image=busybox --rm -it -- \
+kubectl run triage-test --image=busybox --restart=Never --rm -it --command -- \
   wget -qO- --timeout=3 http://<cluster-ip>:<port>
 # If timeout -> Go to "Network/Policy Issue" section
 # If connection refused -> Go to "Pod Health" section
@@ -96,7 +96,7 @@ kubectl get pods -n <namespace> -o wide
 
 ```bash
 # Endpoint investigation
-kubectl get endpoints <service-name> -n <namespace> -o yaml
+kubectl get endpointslices -n <namespace> -l kubernetes.io/service-name=<service-name> -o yaml
 kubectl get pods -n <namespace> -l <selector> -o wide --show-labels
 
 # kube-proxy investigation
@@ -116,7 +116,7 @@ calicoctl get networkpolicy -n <namespace> -o yaml
 ## Section 5: Remediation by Root Cause
 
 ```markdown
-### No Endpoints
+### No Ready EndpointSlices
 1. Check pod readiness: `kubectl get pods -n <ns> -l <selector>`
 2. Fix failing probes or restart unhealthy pods
 3. Verify selector match: compare service selector with pod labels
@@ -134,21 +134,21 @@ calicoctl get networkpolicy -n <namespace> -o yaml
 ### conntrack Exhaustion
 1. Check: `sudo sysctl net.netfilter.nf_conntrack_count`
 2. Increase: `sudo sysctl -w net.netfilter.nf_conntrack_max=524288`
-3. Clear stale: `sudo conntrack -F`
+3. Flush conntrack only during an approved emergency, because it drops active connection tracking state: `sudo conntrack -F`
 ```
 
 ## Section 6: Verification Steps
 
 ```bash
 # Confirm service is reachable
-kubectl run verify --image=nicolaka/netshoot --rm -it -- \
+kubectl run verify --image=nicolaka/netshoot --restart=Never --rm -it --command -- \
   curl -s --connect-timeout 5 http://<service-name>.<namespace>.svc.cluster.local:<port>
 
-# Confirm endpoints are healthy
-kubectl get endpoints <service-name> -n <namespace>
+# Confirm EndpointSlices are healthy
+kubectl get endpointslices -n <namespace> -l kubernetes.io/service-name=<service-name>
 
 # Monitor for 5 minutes for recurrence
-watch -n 10 kubectl get endpoints <service-name> -n <namespace>
+watch -n 10 kubectl get endpointslices -n <namespace> -l kubernetes.io/service-name=<service-name>
 ```
 
 ## Section 7: Escalation Criteria
