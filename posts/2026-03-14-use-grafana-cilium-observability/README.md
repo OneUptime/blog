@@ -17,14 +17,14 @@ Cilium provides official Grafana dashboards that cover the most common observabi
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and Hubble installed
-- Prometheus collecting Cilium and Hubble metrics
+- Prometheus collecting Cilium and Hubble metrics. Cilium, Hubble, and Cilium Operator metrics must be enabled separately with `prometheus.enabled=true`, `hubble.enabled=true`, `hubble.metrics.enabled`, and `operator.prometheus.enabled=true`.
 - Grafana deployed (standalone or via Grafana Operator)
 - `kubectl` and `helm` CLI tools
 - Basic familiarity with Grafana dashboard editing
 
 ## Installing Grafana with Cilium Dashboards
 
-Deploy Grafana using Helm with pre-configured dashboards:
+Deploy Grafana using Helm with a Prometheus datasource:
 
 ```bash
 # Add Grafana Helm repository
@@ -32,12 +32,14 @@ Deploy Grafana using Helm with pre-configured dashboards:
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
-# Install Grafana with Cilium dashboards
+# Install Grafana with a Prometheus datasource
 helm install grafana grafana/grafana \
     --namespace monitoring \
+    --create-namespace \
     --set adminPassword=admin \
     --set datasources."datasources\.yaml".apiVersion=1 \
     --set datasources."datasources\.yaml".datasources[0].name=Prometheus \
+    --set datasources."datasources\.yaml".datasources[0].uid=prometheus \
     --set datasources."datasources\.yaml".datasources[0].type=prometheus \
     --set datasources."datasources\.yaml".datasources[0].url=http://prometheus-server.monitoring.svc:9090 \
     --set datasources."datasources\.yaml".datasources[0].access=proxy \
@@ -51,16 +53,20 @@ echo "Grafana available at http://localhost:3000"
 Import Cilium's official dashboards:
 
 ```bash
-# Import dashboards using Grafana API
-# Cilium Agent dashboard
-curl -s -u admin:admin -X POST http://localhost:3000/api/dashboards/import \
-    -H "Content-Type: application/json" \
-    -d '{"dashboard": {"id": null}, "pluginId": "grafana", "overwrite": true, "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}], "folderId": 0, "dashboardId": 16611}'
+# Import dashboards from the Cilium repository using the Grafana API
+CILIUM_VERSION=1.19.3
 
-# Hubble dashboard
-curl -s -u admin:admin -X POST http://localhost:3000/api/dashboards/import \
-    -H "Content-Type: application/json" \
-    -d '{"dashboard": {"id": null}, "pluginId": "grafana", "overwrite": true, "inputs": [{"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus", "value": "Prometheus"}], "folderId": 0, "dashboardId": 16612}'
+curl -sL "https://raw.githubusercontent.com/cilium/cilium/v${CILIUM_VERSION}/install/kubernetes/cilium/files/cilium-agent/dashboards/cilium-dashboard.json" \
+  | jq '{dashboard: (. * {id: null, uid: null}), overwrite: true}' \
+  | curl -s -u admin:admin -X POST http://localhost:3000/api/dashboards/db \
+      -H "Content-Type: application/json" \
+      -d @-
+
+curl -sL "https://raw.githubusercontent.com/cilium/cilium/v${CILIUM_VERSION}/install/kubernetes/cilium/files/hubble/dashboards/hubble-dashboard.json" \
+  | jq '{dashboard: (. * {id: null, uid: null}), overwrite: true}' \
+  | curl -s -u admin:admin -X POST http://localhost:3000/api/dashboards/db \
+      -H "Content-Type: application/json" \
+      -d @-
 ```
 
 ## Using the Cilium Agent Dashboard
@@ -70,15 +76,15 @@ Key panels and their interpretation:
 ```mermaid
 graph TD
     A[Cilium Agent Dashboard] --> B[Endpoint Health]
-    A --> C[Policy Verdicts]
+    A --> C[L7 Policy Traffic]
     A --> D[BPF Map Usage]
     A --> E[API Call Latency]
     A --> F[Identity Allocation]
 
     B --> B1[Total endpoints]
     B --> B2[Endpoints by state]
-    C --> C1[Forwarded vs Dropped]
-    C --> C2[Policy verdict rate]
+    C --> C1[Requests and responses]
+    C --> C2[L7 proxy traffic rate]
     D --> D1[Map pressure alerts]
     E --> E1[Slow API detection]
 ```
@@ -86,8 +92,8 @@ graph TD
 Essential PromQL queries for Cilium monitoring:
 
 ```promql
-# Policy verdict rate (allowed vs denied)
-sum(rate(cilium_policy_l7_total[5m])) by (type)
+# L7 policy traffic rate
+sum(rate(cilium_policy_l7_total[5m])) by (proxy_type)
 
 # Endpoint regeneration rate (indicates policy changes)
 rate(cilium_endpoint_regenerations_total[5m])
@@ -96,7 +102,7 @@ rate(cilium_endpoint_regenerations_total[5m])
 cilium_bpf_map_pressure * 100
 
 # API request duration (95th percentile)
-histogram_quantile(0.95, rate(cilium_api_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum(rate(cilium_api_process_time_seconds_bucket[5m])) by (le))
 
 # Dropped packets by reason
 sum(rate(cilium_drop_count_total[5m])) by (reason)
@@ -111,18 +117,20 @@ Hubble metrics provide L7 application-level visibility:
 sum(rate(hubble_http_requests_total[5m])) by (destination_workload, method)
 
 # HTTP error rate
-sum(rate(hubble_http_requests_total{status=~"5.."}[5m])) by (destination_workload)
-/ sum(rate(hubble_http_requests_total[5m])) by (destination_workload)
+sum(rate(hubble_http_responses_total{status=~"5.."}[5m])) by (destination_workload)
+/ sum(rate(hubble_http_responses_total[5m])) by (destination_workload)
 
 # DNS query rate
-sum(rate(hubble_dns_queries_total[5m])) by (query_type)
+sum(rate(hubble_dns_queries_total[5m])) by (qtypes)
 
-# TCP connection duration (p99)
-histogram_quantile(0.99, rate(hubble_tcp_connect_duration_seconds_bucket[5m]))
+# TCP flag rate
+sum(rate(hubble_tcp_flags_total[5m])) by (flag, family)
 
-# Network flow rate by namespace
-sum(rate(hubble_flows_processed_total[5m])) by (source_namespace, destination_namespace)
+# Network flow rate by verdict
+sum(rate(hubble_flows_processed_total[5m])) by (verdict)
 ```
+
+Queries that group by `destination_workload`, `source_namespace`, or `destination_namespace` require Hubble `labelsContext` to include those labels.
 
 ## Creating Custom Dashboards
 
@@ -134,23 +142,23 @@ Build a custom dashboard for your specific monitoring needs:
     "title": "Cilium Custom Observability",
     "panels": [
       {
-        "title": "L7 Policy Verdicts",
+        "title": "Network Flow Verdicts",
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
         "targets": [
           {
-            "expr": "sum(rate(cilium_policy_l7_total[5m])) by (type)",
-            "legendFormat": "{{type}}"
+            "expr": "sum(rate(hubble_flows_processed_total[5m])) by (verdict)",
+            "legendFormat": "{{verdict}}"
           }
         ]
       },
       {
-        "title": "Top Denied Endpoints",
+        "title": "Top Dropped Flow Subtypes",
         "type": "table",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
         "targets": [
           {
-            "expr": "topk(10, sum(increase(cilium_policy_l7_total{type=\"denied\"}[1h])) by (endpoint))",
+            "expr": "topk(10, sum(increase(hubble_flows_processed_total{verdict=\"DROPPED\"}[1h])) by (subtype))",
             "format": "table"
           }
         ]
@@ -186,7 +194,7 @@ Configure alerts for critical Cilium metrics:
 
 ```yaml
 # Alert: High policy denial rate
-# PromQL: sum(rate(cilium_policy_l7_total{type="denied"}[5m])) > 100
+# PromQL: sum(rate(hubble_flows_processed_total{verdict="DROPPED"}[5m])) > 100
 # Condition: When avg() of query is above 100 for 5 minutes
 
 # Alert: BPF map pressure high
@@ -207,13 +215,13 @@ Verify the Grafana setup is complete:
 kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana
 
 # Verify datasource connectivity
-curl -s -u admin:admin http://localhost:3000/api/datasources/1/health | jq '.status'
+curl -s -u admin:admin http://localhost:3000/api/datasources/uid/prometheus/health | jq '.status'
 
 # List imported dashboards
 curl -s -u admin:admin http://localhost:3000/api/search | jq '.[].title'
 
 # Test a PromQL query through Grafana
-curl -s -u admin:admin "http://localhost:3000/api/datasources/proxy/1/api/v1/query?query=up" | jq '.data.result | length'
+curl -s -u admin:admin "http://localhost:3000/api/datasources/proxy/uid/prometheus/api/v1/query?query=up" | jq '.data.result | length'
 ```
 
 ## Troubleshooting
