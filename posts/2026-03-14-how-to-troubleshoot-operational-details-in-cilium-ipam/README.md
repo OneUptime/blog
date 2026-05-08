@@ -41,7 +41,8 @@ graph TD
 ```bash
 # Check overall IPAM status
 
-cilium status | grep IPAM
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status --all-addresses | grep IPAM
 
 # View per-node IP usage
 kubectl get ciliumnodes -o json | jq '.items[] | {
@@ -51,10 +52,18 @@ kubectl get ciliumnodes -o json | jq '.items[] | {
 }'
 
 # Check for nodes near exhaustion
-kubectl get ciliumnodes -o json | jq '.items[] | {
-  name: .metadata.name,
-  available: ((.spec.ipam.pool // {} | length) - (.status.ipam.used // {} | length))
-}' | jq 'select(.available < 10)'
+kubectl get ciliumnodes -o json | jq '
+  .items[] |
+  (.spec.ipam.podCIDRs // [] | map(select(test("\\."))) | .[0]) as $cidr |
+  select($cidr != null) |
+  ($cidr | split("/")[1] | tonumber) as $mask |
+  (.status.ipam.used // {} | length) as $used |
+  {
+    name: .metadata.name,
+    podCIDR: $cidr,
+    used: $used,
+    available: ((pow(2; 32 - $mask) - 2) - $used)
+  } | select(.available < 10)'
 
 # Check events for allocation failures
 kubectl get events --all-namespaces | grep -i "allocat"
@@ -64,7 +73,7 @@ kubectl get events --all-namespaces | grep -i "allocat"
 
 ```bash
 # Check operator logs for CIDR allocation errors
-kubectl logs -n kube-system -l name=cilium-operator | grep -i "cidr" | tail -20
+kubectl logs -n kube-system -l io.cilium/app=operator | grep -i "cidr" | tail -20
 
 # View assigned node CIDRs
 kubectl get ciliumnodes -o json | jq '.items[] | {
@@ -84,10 +93,10 @@ kubectl get configmap cilium-config -n kube-system \
 kubectl logs -n kube-system -l k8s-app=cilium | grep "allocation" | tail -20
 
 # Monitor operator reconciliation
-kubectl logs -n kube-system -l name=cilium-operator | grep "reconcil" | tail -20
+kubectl logs -n kube-system -l io.cilium/app=operator | grep "reconcil" | tail -20
 
 # Check operator resource constraints
-kubectl top pods -n kube-system -l name=cilium-operator
+kubectl top pods -n kube-system -l io.cilium/app=operator
 ```
 
 ## Handling IP Conflicts
@@ -106,18 +115,19 @@ kubectl delete pod -n kube-system <cilium-agent-pod>
 ## Verification
 
 ```bash
-cilium status | grep IPAM
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status | grep IPAM
 kubectl get pods --all-namespaces | grep -c "ContainerCreating"
 cilium connectivity test
 ```
 
 ## Troubleshooting
 
-- **"No more IPs available"**: Reduce clusterPoolIPv4MaskSize to give nodes smaller pools, or add additional CIDRs.
+- **"No more IPs available"**: Add another CIDR to clusterPoolIPv4PodCIDRList. Do not change existing CIDR entries or clusterPoolIPv4MaskSize on an existing cluster.
 - **New nodes have no CIDR**: Check operator is running. Verify clusterPoolIPv4PodCIDRList has enough space.
 - **Pod takes 30+ seconds to start**: Check operator CPU/memory. Consider increasing operator replicas.
 - **IP conflicts after node reboot**: Known issue in some versions. Upgrade Cilium and restart agents.
 
 ## Conclusion
 
-IPAM troubleshooting focuses on three layers: operator CIDR allocation, per-node pool management, and individual pod IP assignment. Check IP utilization regularly and plan capacity before pools run out. Most operational issues are resolved by expanding CIDRs or tuning pool sizes.
+IPAM troubleshooting focuses on three layers: operator CIDR allocation, per-node pool management, and individual pod IP assignment. Check IP utilization regularly and plan capacity before pools run out. Most operational issues are resolved by expanding CIDRs or adjusting pool sizing before deployment.
