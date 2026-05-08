@@ -12,7 +12,7 @@ Description: A safe upgrade procedure for moving Calico to a newer version on an
 
 Upgrading Calico on an on-premises cluster is a high-stakes operation. The CNI plugin is in the critical path for all pod networking, and a failed upgrade can break inter-pod communication across the cluster. On-prem environments add additional considerations: BGP sessions with physical routers must remain stable throughout the upgrade, and there is no cloud provider rollback mechanism if something goes wrong.
 
-Calico supports rolling upgrades when using the Tigera Operator - the operator manages the DaemonSet rollout node by node, ensuring only one node is transitioning at a time. This means existing pods on other nodes continue to function normally while the upgrade proceeds.
+Calico supports rolling upgrades when using the Tigera Operator - the operator updates the Kubernetes resources that drive the DaemonSet rollout. With the default DaemonSet rolling update settings, only one calico-node pod is unavailable at a time. This means existing pods on other nodes continue to function normally while the upgrade proceeds.
 
 This guide covers a safe, operator-managed Calico upgrade on an on-premises Kubernetes cluster.
 
@@ -20,7 +20,7 @@ This guide covers a safe, operator-managed Calico upgrade on an on-premises Kube
 
 - Calico installed via the Tigera Operator on an on-prem cluster
 - Current Calico version documented
-- Backup of all Calico CRDs and custom resources
+- Backup of relevant Calico custom resources
 - Maintenance window scheduled
 
 ## Step 1: Backup Current Configuration
@@ -42,10 +42,14 @@ calicoctl version
 
 ## Step 3: Upgrade the Tigera Operator
 
-Apply the new operator manifest. The operator itself will be upgraded before it upgrades Calico components.
+Apply the new Calico CRDs and operator manifest. The operator itself will be upgraded before it upgrades Calico components.
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml -O
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml -O
+
+kubectl apply --server-side --force-conflicts -f v1_crd_projectcalico_org.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 ```
 
 Wait for the operator to be ready:
@@ -63,10 +67,10 @@ watch kubectl get pods -n calico-system
 kubectl rollout status daemonset/calico-node -n calico-system
 ```
 
-Monitor BGP sessions during the rollout:
+Monitor BGP sessions during the rollout from each node you want to check:
 
 ```bash
-watch calicoctl node status
+watch sudo calicoctl node status
 ```
 
 ## Step 5: Verify Post-Upgrade State
@@ -89,7 +93,7 @@ kubectl delete pod verify-a verify-b
 ## Step 6: Upgrade calicoctl
 
 ```bash
-sudo curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
+sudo curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 \
   -o /usr/local/bin/calicoctl
 sudo chmod +x /usr/local/bin/calicoctl
 calicoctl version
@@ -97,4 +101,4 @@ calicoctl version
 
 ## Conclusion
 
-Safely upgrading Calico on an on-prem Kubernetes cluster requires backing up all CRDs, upgrading the Tigera Operator first, monitoring the rolling DaemonSet update, keeping an eye on BGP session stability, and validating pod connectivity after the upgrade completes. The operator-managed rolling upgrade minimizes disruption by updating one node at a time.
+Safely upgrading Calico on an on-prem Kubernetes cluster requires backing up Calico resources, upgrading the Tigera Operator first, monitoring the rolling DaemonSet update, keeping an eye on BGP session stability, and validating pod connectivity after the upgrade completes. The operator-managed rolling upgrade minimizes disruption by updating calico-node through a Kubernetes DaemonSet rolling update.
