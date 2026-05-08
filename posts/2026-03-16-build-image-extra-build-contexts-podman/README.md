@@ -30,7 +30,7 @@ podman build --build-context <name>=<source> -t <image-name> .
 
 The `<source>` can be:
 - A local directory path
-- A container image reference (prefixed with `docker-image://`)
+- A container image reference (prefixed with `container-image://`; `docker-image://` is also accepted)
 - A URL to a tarball
 
 ## Using a Local Directory as an Extra Context
@@ -42,9 +42,9 @@ Suppose you have shared configuration files in a separate directory. You can ref
 # /projects/myapp/        <- main build context
 # /projects/shared-config/ <- extra context with shared configs
 
-# Create a Containerfile that references the extra context
-cat > Containerfile <<'EOF'
-FROM alpine:3.19
+# Create a Containerfile in the main build context that references the extra context
+cat > /projects/myapp/Containerfile <<'EOF'
+FROM alpine:3.23
 
 # Copy from the main build context as usual
 COPY app.sh /usr/local/bin/app.sh
@@ -72,14 +72,14 @@ You can reference an existing container image as an extra build context. This is
 ```bash
 # Use an official golang image as a named context
 podman build \
-  --build-context gotools=docker-image://golang:1.22-alpine \
+  --build-context gotools=container-image://golang:1.26-alpine \
   -t myapp:latest .
 ```
 
 In your Containerfile, reference it like this:
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Copy the Go binary from the gotools context
 COPY --from=gotools /usr/local/go/bin/go /usr/local/bin/go
@@ -96,14 +96,14 @@ You can specify multiple `--build-context` flags in a single build command.
 podman build \
   --build-context configs=/projects/shared-config \
   --build-context scripts=/projects/shared-scripts \
-  --build-context base=docker-image://ubuntu:22.04 \
+  --build-context base=container-image://ubuntu:24.04 \
   -t myapp:latest .
 ```
 
 Then reference each one in your Containerfile:
 
 ```dockerfile
-FROM alpine:3.19
+FROM alpine:3.23
 
 COPY --from=configs app.conf /etc/app/
 COPY --from=scripts entrypoint.sh /usr/local/bin/
@@ -118,12 +118,12 @@ A powerful pattern is to override a named build stage. If your Containerfile use
 
 ```dockerfile
 # Containerfile with a named stage
-FROM golang:1.22 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /src
 COPY . .
 RUN go build -o /app
 
-FROM alpine:3.19
+FROM alpine:3.23
 COPY --from=builder /app /usr/local/bin/app
 CMD ["app"]
 ```
@@ -161,7 +161,7 @@ podman build \
 
 ```dockerfile
 # /repo/services/api/Containerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 COPY package.json .
