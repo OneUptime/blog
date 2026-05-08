@@ -27,10 +27,11 @@ This guide covers techniques for extracting, parsing, and summarizing cilium-bug
 # Extract the bugtool archive
 
 mkdir -p /tmp/bugtool-analysis
-tar xzf /tmp/cilium-bugtool.tar.gz -C /tmp/bugtool-analysis
+tar xf /tmp/cilium-bugtool.tar -C /tmp/bugtool-analysis
 
 # Find the extracted directory
-BUGDIR=$(find /tmp/bugtool-analysis -maxdepth 1 -type d | tail -1)
+BUGDIR=$(find /tmp/bugtool-analysis -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
+BUGDIR="${BUGDIR:-/tmp/bugtool-analysis}"
 
 # List all collected files
 find "$BUGDIR" -type f | sort
@@ -43,8 +44,9 @@ find "$BUGDIR" -type f | sort
 # analyze-bugtool.sh
 # Generate a quick health summary from a bugtool archive
 
-BUGDIR="${1:-/tmp/bugtool-analysis}"
-BUGDIR=$(find "$BUGDIR" -maxdepth 1 -type d | tail -1)
+INPUT_DIR="${1:-/tmp/bugtool-analysis}"
+BUGDIR=$(find "$INPUT_DIR" -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
+BUGDIR="${BUGDIR:-$INPUT_DIR}"
 
 echo "=== Cilium Bugtool Analysis ==="
 echo "Archive: $BUGDIR"
@@ -87,9 +89,9 @@ echo ""
 
 # Error detection
 echo "--- Errors Detected ---"
-find "$BUGDIR" -type f -exec grep -l -i "error\|panic\|fatal" {} \; 2>/dev/null | \
-  while read f; do
-    COUNT=$(grep -ci "error\|panic\|fatal" "$f")
+find "$BUGDIR" -type f -exec grep -E -l -i "error|panic|fatal" {} \; 2>/dev/null | \
+  while read -r f; do
+    COUNT=$(grep -E -c -i "error|panic|fatal" "$f")
     echo "  $f: $COUNT error references"
   done
 ```
@@ -188,14 +190,17 @@ if __name__ == '__main__':
 ARCHIVE_DIR="${1:-/tmp/cilium-bugtool-archives}"
 
 echo "=== Node Comparison ==="
-for archive in "$ARCHIVE_DIR"/*.tar.gz; do
+for archive in "$ARCHIVE_DIR"/*.tar "$ARCHIVE_DIR"/*.tar.gz; do
   [ -f "$archive" ] || continue
-  NODE=$(basename "$archive" .tar.gz)
+  NODE=$(basename "$archive")
+  NODE="${NODE%.tar.gz}"
+  NODE="${NODE%.tar}"
   TMPDIR="/tmp/compare-$NODE"
   mkdir -p "$TMPDIR"
-  tar xzf "$archive" -C "$TMPDIR" 2>/dev/null
+  tar xf "$archive" -C "$TMPDIR" 2>/dev/null
 
-  BUGDIR=$(find "$TMPDIR" -maxdepth 2 -type d | tail -1)
+  BUGDIR=$(find "$TMPDIR" -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
+  BUGDIR="${BUGDIR:-$TMPDIR}"
 
   # Extract key metrics
   STATUS=$(find "$BUGDIR" -name "*status*" -path "*/cmd-output/*" -exec \
