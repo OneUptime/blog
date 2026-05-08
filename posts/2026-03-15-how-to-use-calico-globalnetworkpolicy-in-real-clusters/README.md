@@ -12,7 +12,7 @@ Description: Deploy and manage Calico GlobalNetworkPolicy resources to enforce c
 
 Calico GlobalNetworkPolicy is a cluster-scoped resource that applies network rules across all namespaces without requiring per-namespace duplication. Unlike the namespace-scoped NetworkPolicy, a GlobalNetworkPolicy lets you define baseline security controls that every workload in the cluster must follow.
 
-In production environments, GlobalNetworkPolicy is commonly used to implement default-deny postures, block access to metadata endpoints, and enforce egress controls. These policies evaluate before Kubernetes NetworkPolicy resources unless you explicitly set their order field.
+In production environments, GlobalNetworkPolicy is commonly used to implement default-deny postures, block access to metadata endpoints, and enforce egress controls. Calico policies can be ordered relative to Kubernetes NetworkPolicy resources by using the order field.
 
 This guide walks through practical GlobalNetworkPolicy configurations that address real security requirements in production Calico clusters.
 
@@ -49,7 +49,7 @@ calicoctl apply -f default-deny-ingress.yaml
 
 ## Allowing DNS Egress Cluster-Wide
 
-After implementing default-deny, workloads lose DNS resolution. This policy restores DNS access for all pods:
+If you also apply a default-deny egress posture, workloads can lose DNS resolution. This policy restores DNS access for all pods:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -164,13 +164,13 @@ List all policies and their orders:
 calicoctl get globalnetworkpolicy -o yaml | grep -E "name:|order:"
 ```
 
-Check the Calico Felix logs for denied packets:
+Calico deny rules do not log packets by default. To troubleshoot packet matches, add a temporary `Log` rule before the `Deny` rule, then check node logs for Calico policy log entries:
 
 ```bash
-kubectl logs -n calico-system -l k8s-app=calico-node --tail=50 | grep -i denied
+journalctl -k | grep calico-packet
 ```
 
-If DNS stops working after applying default-deny, make sure the allow-dns-egress policy has a lower order number than the deny-all policy.
+If DNS stops working after applying default-deny egress, make sure the allow-dns-egress policy has a lower order number than the deny-all policy.
 
 ## Conclusion
 
