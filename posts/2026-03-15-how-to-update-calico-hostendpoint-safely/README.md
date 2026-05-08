@@ -10,7 +10,7 @@ Description: Safely update Calico HostEndpoint resources without losing node con
 
 ## Introduction
 
-Updating a Calico HostEndpoint is a high-risk operation because incorrect changes can sever connectivity to the node. Since HostEndpoints control traffic at the host interface level, a misconfigured update can block SSH, kubelet communication, and even pod networking on that node.
+Updating a Calico HostEndpoint is a high-risk operation because incorrect changes can sever connectivity to the node. Since HostEndpoints control traffic at the host interface level, a misconfigured update can block SSH, kubelet communication, and forwarded pod traffic when policies use `applyOnForward`.
 
 Safe updates require careful planning: backing up the current state, understanding which policies target the HostEndpoint, making changes incrementally, and having a rollback plan ready. Unlike pod-level policies, HostEndpoint mistakes can make nodes completely unreachable from the network.
 
@@ -29,7 +29,7 @@ This guide walks through safe update procedures for HostEndpoint resources, cove
 Always export the current HostEndpoint configuration before making changes:
 
 ```bash
-calicoctl get hostendpoint worker-1-eth0 -o yaml > worker-1-hep-backup.yaml
+calicoctl get hostendpoint worker-1-eth0 -o yaml --export > worker-1-hep-backup.yaml
 ```
 
 Back up all HostEndpoints at once:
@@ -155,7 +155,7 @@ Confirm the node is still reachable:
 
 ```bash
 kubectl get node worker-1 -o wide
-kubectl exec -it $(kubectl get pod -n calico-system -l k8s-app=calico-node --field-selector spec.nodeName=worker-1 -o jsonpath='{.items[0].metadata.name}') -n calico-system -- calico-node -felix-live
+kubectl exec -it $(kubectl get pod -n calico-system -l k8s-app=calico-node --field-selector spec.nodeName=worker-1 -o jsonpath='{.items[0].metadata.name}') -n calico-system -c calico-node -- calico-node -felix-live
 ```
 
 Check that existing policies still apply:
@@ -178,7 +178,7 @@ Check if failsafe ports are still allowing critical traffic:
 calicoctl get felixconfiguration default -o yaml | grep -A15 "failsafe"
 ```
 
-If the expectedIPs do not match the actual node IP, Felix may not apply rules correctly. Verify the IP:
+If the expectedIPs do not match the actual node IP, selector-based policies that depend on HostEndpoint labels can resolve to the wrong address. Verify the IP:
 
 ```bash
 kubectl get node worker-1 -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}'
@@ -192,4 +192,4 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=30 | grep -i "hosten
 
 ## Conclusion
 
-HostEndpoint updates carry significant risk because they affect node-level connectivity. Always back up before changes, use `calicoctl replace` for atomic updates, process nodes one at a time in rolling updates, and maintain console access as a safety net. Verify connectivity after each change before proceeding to the next node.
+HostEndpoint updates carry significant risk because they affect node-level connectivity. Always back up before changes, use `calicoctl replace` for complete-resource updates, process nodes one at a time in rolling updates, and maintain console access as a safety net. Verify connectivity after each change before proceeding to the next node.
