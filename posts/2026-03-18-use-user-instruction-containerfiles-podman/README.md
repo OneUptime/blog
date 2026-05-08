@@ -76,7 +76,7 @@ CMD ["python", "app.py"]
 On Alpine-based images, use `addgroup` and `adduser` instead:
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Alpine uses different commands for user creation
 RUN addgroup -g 1001 -S appgroup && \
@@ -97,10 +97,10 @@ CMD ["node", "server.js"]
 
 ## Using Numeric UIDs
 
-Using numeric UIDs instead of usernames is often preferred in production because it avoids dependencies on `/etc/passwd` and works with distroless images:
+Using numeric UIDs instead of usernames is often preferred in production because it avoids username lookups in `/etc/passwd` and works with minimal or distroless images that may not contain the user name you want:
 
 ```dockerfile
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY . .
@@ -108,7 +108,7 @@ RUN CGO_ENABLED=0 go build -o server .
 
 FROM gcr.io/distroless/static-debian12
 
-# Distroless has no /etc/passwd, so use numeric UID
+# Numeric UIDs do not require a passwd entry
 COPY --from=builder /app/server /server
 
 USER 1001
@@ -189,7 +189,7 @@ Proper file ownership is essential when running as a non-root user:
 ### Using --chown with COPY
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 RUN addgroup -g 1001 -S app && adduser -u 1001 -S app -G app
 
@@ -229,7 +229,7 @@ CMD ["python", "app.py"]
 ### Handling Writable Directories
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 RUN addgroup -g 1001 -S app && adduser -u 1001 -S app -G app
 
@@ -256,7 +256,7 @@ Many base images come with non-root users already defined:
 
 ```dockerfile
 # Node.js images include a 'node' user
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 COPY --chown=node:node package.json package-lock.json ./
@@ -274,7 +274,7 @@ FROM nginx:alpine
 COPY --chown=nginx:nginx dist/ /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Note: nginx needs root to bind to ports < 1024
+# Note: rootless Podman cannot publish host ports < 1024 by default
 # Use a custom config that listens on 8080 instead
 USER nginx
 EXPOSE 8080
@@ -295,14 +295,14 @@ Each build stage has its own USER context:
 
 ```dockerfile
 # Build stage runs as root (default)
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 COPY . .
 RUN go build -o server .
 
 # Runtime stage with non-root user
-FROM alpine:3.19
+FROM alpine:3.23
 
 RUN addgroup -g 1001 -S app && adduser -u 1001 -S app -G app
 
@@ -355,6 +355,9 @@ RUN groupadd --gid 1001 app && \
 WORKDIR /app
 
 COPY requirements.txt .
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gosu \
+    && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --chown=app:app . .
@@ -384,7 +387,7 @@ exec gosu app "$@"
 Alternatively, use `tini` for proper signal handling:
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 RUN apk add --no-cache tini
 RUN addgroup -g 1001 -S app && adduser -u 1001 -S app -G app
@@ -437,16 +440,16 @@ CMD ["python", "app.py"]
 RUN useradd appuser  # UID assigned dynamically, unpredictable
 # Better: useradd --uid 1001 appuser
 
-# Mistake 5: Using USER with ports below 1024
+# Mistake 5: Publishing privileged host ports with rootless Podman
 USER app
-EXPOSE 80  # App can't bind to port 80 as non-root
-# Fix: Use port 8080 or higher
+EXPOSE 80  # Rootless Podman cannot publish host port 80 by default
+# Fix: Listen on and publish port 8080 or higher
 ```
 
 ## Security Checklist
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 # 1. Create a dedicated user with specific UID/GID
 RUN addgroup -g 1001 -S app && \
