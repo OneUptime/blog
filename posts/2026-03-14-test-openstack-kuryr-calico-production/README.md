@@ -30,8 +30,9 @@ Deploy test workloads across both Kubernetes and OpenStack.
 
 ```bash
 # Create an OpenStack VM for VM-to-pod testing
+# Run this command with OpenStack credentials scoped to the kuryr-test project.
 
-openstack server create --project kuryr-test \
+openstack server create \
   --flavor m1.small --image ubuntu-22.04 \
   --network shared-network \
   --security-group default \
@@ -161,7 +162,7 @@ graph LR
     P1 -->|Kuryr/Neutron| VM1
     VM1 -->|Calico Routes| P1
     Kuryr[Kuryr Controller] -->|Creates Ports| Neutron[Neutron API]
-    Neutron -->|Programs| Calico[Calico Felix]
+    Neutron -->|Calico Neutron Driver| Calico[Calico Felix/BIRD]
 ```
 
 ## Testing Policy Enforcement Across VM and Pod Boundaries
@@ -211,7 +212,8 @@ echo "Kubernetes Pods:"
 kubectl get pods -n kuryr-test -o wide
 echo ""
 echo "Neutron Ports for Pods:"
-openstack port list --device-owner kuryr:bound -f table
+openstack port list --device-owner compute:kuryr -f table
+openstack port list --device-owner trunk:subport -f table
 echo ""
 echo "Calico Endpoints:"
 calicoctl get workloadendpoints -n kuryr-test -o wide 2>/dev/null
