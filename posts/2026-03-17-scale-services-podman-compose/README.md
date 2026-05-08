@@ -23,14 +23,13 @@ podman-compose up -d --scale worker=3
 
 # Check the running instances
 podman-compose ps
-# Output shows worker_1, worker_2, worker_3
+# Output shows project_worker_1, project_worker_2, project_worker_3 (project name may vary)
 ```
 
 ## Example Compose File for Scaling
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -70,13 +69,12 @@ When scaling, avoid fixed host port mappings since multiple containers cannot bi
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   api:
     image: docker.io/library/python:3.12-slim
     command: python -m http.server 5000
-    # Use a port range or omit hostPort for scaled services
-    expose:
+    # Omit the host port so each instance gets an available host port
+    ports:
       - "5000"
 ```
 
@@ -105,12 +103,12 @@ podman logs project_worker_2
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   worker:
     image: docker.io/library/python:3.12-slim
     command: python -c "import time; time.sleep(3600)"
     deploy:
+      mode: replicated
       replicas: 3
 ```
 
