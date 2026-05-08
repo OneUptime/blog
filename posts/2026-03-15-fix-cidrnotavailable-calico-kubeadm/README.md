@@ -135,20 +135,19 @@ If IPAM blocks are allocated to nodes that no longer exist:
 # Show all block allocations
 calicoctl ipam show --show-blocks
 
-# Check for blocks assigned to non-existent nodes
+# Compare the affinity owner in the block output with the active node list
 ACTIVE_NODES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
-calicoctl ipam show --show-blocks | while read line; do
-  echo "$line"
-done
+echo "Active nodes: $ACTIVE_NODES"
+calicoctl ipam show --show-blocks
 ```
 
-Release orphaned IPAM handles:
+Release leaked addresses:
 
 ```bash
-# Check IPAM status for leaked addresses
-calicoctl ipam check
+# Check whether a specific stale IP is still allocated
+calicoctl ipam show --ip=<leaked-ip>
 
-# Release specific handles if needed (use with caution)
+# Release specific leaked addresses if needed (use with caution)
 calicoctl ipam release --ip=<leaked-ip>
 ```
 
@@ -168,10 +167,22 @@ A smaller block size allows more nodes to receive allocations from the same CIDR
 # WARNING: This is disruptive - schedule during a maintenance window
 calicoctl get ippool default-ipv4-ippool -o yaml > ippool-backup.yaml
 
-# Modify the blockSize in the YAML (e.g., from 26 to 28)
-# Then delete and recreate
+# Create a temporary, non-overlapping pool named temporary-ippool for new pod allocations
+calicoctl apply -f temporary-ippool.yaml
+
+# Disable the original pool so only new allocations move to the temporary pool
+calicoctl patch ippool default-ipv4-ippool -p '{"spec": {"disabled": true}}'
+
+# Recreate pods so they move out of the original pool, then delete and recreate it
+# with the modified blockSize (e.g., from 26 to 28)
+kubectl delete pod -A --all
 calicoctl delete ippool default-ipv4-ippool
 calicoctl apply -f ippool-modified.yaml
+
+# Disable and remove the temporary pool after pods have moved back
+calicoctl patch ippool temporary-ippool -p '{"spec": {"disabled": true}}'
+kubectl delete pod -A --all
+calicoctl delete ippool temporary-ippool
 ```
 
 ## Verification
