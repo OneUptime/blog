@@ -40,12 +40,12 @@ WantedBy=default.target
 
 | Policy | Behavior |
 |--------|----------|
-| `registry` | Checks if the registry has a newer image digest |
-| `local` | Checks if a newer local image exists |
+| `registry` | Checks if the registry image digest differs from the local image digest |
+| `local` | Checks if the image digest in local storage differs from the container's image |
 
 ## Registry-Based Auto-Update
 
-The `registry` policy compares the running container's image digest with the registry:
+The `registry` policy compares the local image digest with the registry:
 
 ```ini
 [Container]
@@ -92,7 +92,7 @@ podman auto-update
 
 ## Auto-Update with Health Checks
 
-Combine auto-update with health checks for safe rolling updates:
+Combine auto-update with health checks for safer updates:
 
 ```ini
 # ~/.config/containers/systemd/webapp.container
@@ -125,7 +125,7 @@ systemctl --user daemon-reload
 systemctl --user start webapp.service
 
 # Check auto-update label on the container
-podman inspect webapp --format '{{index .Config.Labels "io.containers.autoupdate"}}'
+podman inspect systemd-webapp --format '{{index .Config.Labels "io.containers.autoupdate"}}'
 
 # Dry run to see what would be updated
 podman auto-update --dry-run
@@ -133,4 +133,4 @@ podman auto-update --dry-run
 
 ## Summary
 
-Quadlet's `AutoUpdate` directive enables automatic image updates for your containers. Use `registry` to check remote registries or `local` to check local storage. Enable the `podman-auto-update.timer` to run checks periodically, and combine with health checks for safe updates that roll back if the new image fails.
+Quadlet's `AutoUpdate` directive enables automatic image updates for your containers. Use `registry` to check remote registries or `local` to check local storage. Enable the `podman-auto-update.timer` to run checks periodically, and combine with health checks for safer updates that roll back if the new image fails.
