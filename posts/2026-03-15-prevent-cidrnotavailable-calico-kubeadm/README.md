@@ -10,9 +10,9 @@ Description: Proactive strategies to prevent CIDRNotAvailable errors from occurr
 
 ## Introduction
 
-CIDRNotAvailable errors in Calico and kubeadm clusters are preventable. These errors typically occur due to CIDR mismatches during initial setup, insufficient address space for cluster growth, or IPAM block fragmentation over time. By following consistent configuration practices and planning for capacity, operators can avoid these issues entirely.
+CIDRNotAvailable errors in Calico and kubeadm clusters are preventable. These errors typically occur when Kubernetes node CIDR allocation is enabled but the configured cluster CIDR is missing, too small, or exhausted. Calico IPAM does not use `Node.spec.podCIDR` for pod IP allocation, but Calico IPPools should still be kept within the Kubernetes pod CIDR because other Kubernetes components use that range to identify pod addresses. By following consistent configuration practices and planning for capacity, operators can avoid these issues entirely.
 
-Prevention is always preferable to remediation because CIDRNotAvailable errors directly impact pod scheduling. When pods cannot obtain IP addresses, deployments stall, autoscaling fails, and workloads experience downtime.
+Prevention is always preferable to remediation because node CIDR exhaustion and pod IPPool exhaustion can both affect cluster growth. When pods cannot obtain IP addresses, deployments stall, autoscaling fails, and workloads experience downtime.
 
 This guide covers the proactive measures you should take during initial cluster setup and ongoing operations to ensure CIDR-related failures never occur.
 
@@ -36,7 +36,7 @@ kubeadm init --pod-network-cidr=10.244.0.0/16
 kubectl get configmap -n kube-system kubeadm-config -o yaml | grep podSubnet
 ```
 
-When installing Calico, use the same CIDR:
+When installing Calico, use the same CIDR or a subset of it:
 
 ```yaml
 # calico-ippool.yaml
@@ -68,7 +68,7 @@ echo "Controller:  $CONTROLLER_CIDR"
 if [ "$KUBEADM_CIDR" = "$CALICO_CIDR" ]; then
   echo "PASS: CIDRs are aligned"
 else
-  echo "FAIL: CIDR mismatch detected"
+  echo "CHECK: Confirm the Calico pool is a subset of the kubeadm pod CIDR"
 fi
 ```
 
@@ -114,15 +114,20 @@ echo "VPN range:    172.16.0.0/12"
 # Use an IP calculator or script to check for range overlaps
 ```
 
-## Implementing IPAM Garbage Collection
+## Implementing IPAM Leak Detection
 
-Prevent stale IPAM allocations from accumulating:
+Detect stale IPAM allocations before they accumulate:
 
 ```bash
 # Regular check for leaked IP addresses
 calicoctl ipam check
 
-# Automate with a CronJob
+# To clean up leaked addresses, lock the datastore, generate a report,
+# review it, release the leaked addresses, and unlock the datastore:
+calicoctl datastore migrate lock
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report report.json
+calicoctl datastore migrate unlock
 ```
 
 ```yaml
@@ -146,14 +151,17 @@ spec:
           restartPolicy: OnFailure
 ```
 
+Run any automated release workflow separately and with change-control, because datastore locking pauses new pod launches and releasing addresses that are still in use can disrupt workloads.
+
 ## Setting Up Capacity Alerts
 
 Configure alerts before CIDR exhaustion occurs:
 
 ```bash
 # Check current utilization percentage
-TOTAL=$(calicoctl ipam show | grep "Total" | awk '{print $2}')
-USED=$(calicoctl ipam show | grep "In use" | awk '{print $2}')
+read TOTAL USED <<EOF
+$(calicoctl ipam show | awk -F'|' '/IP Pool/ {gsub(/ /, "", $4); gsub(/^ +| +$/, "", $5); split($5, a, " "); total += $4; used += a[1]} END {print total + 0, used + 0}')
+EOF
 echo "IPAM utilization: $USED / $TOTAL"
 ```
 
@@ -164,8 +172,9 @@ Create a monitoring script:
 # ipam-capacity-check.sh
 THRESHOLD=80
 
-TOTAL=$(calicoctl ipam show 2>/dev/null | grep -i "total" | awk '{print $2}')
-USED=$(calicoctl ipam show 2>/dev/null | grep -i "in use" | awk '{print $2}')
+read TOTAL USED <<EOF
+$(calicoctl ipam show 2>/dev/null | awk -F'|' '/IP Pool/ {gsub(/ /, "", $4); gsub(/^ +| +$/, "", $5); split($5, a, " "); total += $4; used += a[1]} END {print total + 0, used + 0}')
+EOF
 
 if [ -n "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
   PERCENT=$((USED * 100 / TOTAL))
@@ -184,18 +193,23 @@ Use infrastructure-as-code to ensure consistent CIDR configuration:
 ```bash
 # Store cluster configuration in version control
 cat > cluster-config.yaml <<EOF
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 networking:
   podSubnet: "10.244.0.0/16"
   serviceSubnet: "10.96.0.0/12"
 controllerManager:
   extraArgs:
-    allocate-node-cidrs: "true"
-    cluster-cidr: "10.244.0.0/16"
-    node-cidr-mask-size: "24"
+    - name: allocate-node-cidrs
+      value: "true"
+    - name: cluster-cidr
+      value: "10.244.0.0/16"
+    - name: node-cidr-mask-size
+      value: "24"
 EOF
 ```
+
+If you use Calico IPAM and do not need Kubernetes to allocate node CIDRs, you can instead set `allocate-node-cidrs` to `"false"` to avoid unused Kubernetes node CIDR allocations and the related `CIDRNotAvailable` events.
 
 ## Verification
 
@@ -213,7 +227,7 @@ calicoctl ipam check
 echo "3. Capacity headroom: "
 calicoctl ipam show
 
-echo "4. All nodes have CIDRs: "
+echo "4. Node CIDR allocation status: "
 kubectl get nodes -o custom-columns=NAME:.metadata.name,CIDR:.spec.podCIDR
 ```
 
@@ -221,10 +235,10 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,CIDR:.spec.podCIDR
 
 **Prevention measures already missed**: If the cluster is already running with misaligned CIDRs, refer to the fix guide for remediation steps before implementing prevention measures.
 
-**Unable to change CIDR after initialization**: kubeadm's pod CIDR cannot be changed after initialization without cluster recreation. Add a second Calico IPPool instead.
+**Unable to change CIDR after initialization**: kubeadm does not provide a simple in-place workflow for changing the original pod CIDR after initialization. If you use Calico IPAM, add a new Calico IPPool within the intended pod address space and migrate workloads carefully.
 
 **Block size too large for node count**: If you run many nodes with few pods each, consider using a smaller block size to avoid exhausting the CIDR through block allocation overhead.
 
 ## Conclusion
 
-Preventing CIDRNotAvailable errors requires discipline at cluster provisioning time and ongoing capacity monitoring. By aligning CIDRs across all components from the start, sizing the address space for growth, avoiding network overlaps, and monitoring IPAM utilization, operators can ensure that pod IP allocation never becomes a bottleneck. Encode these practices into your provisioning automation and runbooks to maintain consistency across all clusters.
+Preventing CIDRNotAvailable errors requires discipline at cluster provisioning time and ongoing capacity monitoring. By keeping Calico IPPools within the Kubernetes pod CIDR from the start, sizing the address space for growth, avoiding network overlaps, and monitoring IPAM utilization, operators can ensure that pod IP allocation never becomes a bottleneck. Encode these practices into your provisioning automation and runbooks to maintain consistency across all clusters.
