@@ -32,7 +32,7 @@ This guide covers the specific steps for managing encryption performance in Cili
 grep -c aes /proc/cpuinfo  # For IPsec AES-GCM
 grep -c -E "avx|ssse3" /proc/cpuinfo  # For WireGuard ChaCha20
 
-# If AES-NI: consider IPsec for possible hardware offload
+# If AES-NI: consider IPsec for possible CPU crypto acceleration
 # If no AES-NI: WireGuard is likely faster
 ```
 
@@ -52,8 +52,7 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
   --set encryption.enabled=true \
-  --set encryption.type=ipsec \
-  --set encryption.ipsec.keyFile=/etc/ipsec/keys
+  --set encryption.type=ipsec
 
 # Check for hardware offload
 ip xfrm state | grep -i offload
@@ -73,7 +72,7 @@ done
 ## Verification
 
 ```bash
-cilium encrypt status
+cilium encryption status
 kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 ```
@@ -81,7 +80,7 @@ kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
 ## Troubleshooting
 
 - **Encryption not active**: Verify Cilium helm values include encryption.enabled=true.
-- **Overhead > 40%**: Check for userspace WireGuard or missing AES-NI for IPsec.
+- **Overhead > 40%**: Check for MTU fragmentation, tunnel-mode double encapsulation with WireGuard, or missing AES-NI for IPsec.
 - **Some nodes not encrypted**: Check Cilium agent logs for key exchange errors.
 - **Performance varies by node pair**: Different hardware capabilities across nodes.
 
@@ -153,6 +152,8 @@ echo "=== Post-Fix Validation Checklist ==="
 echo "1. Cilium agent health:"
 cilium status | grep -E "OK|error|degraded"
 
+CILIUM_POD=$(kubectl get pods -n kube-system -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+
 # 2. No agent restarts
 echo "2. Agent restart count:"
 kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
@@ -160,12 +161,18 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+DROPS=$(timeout 5 kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg monitor --type drop 2>/dev/null | head -5)
+if [ -n "$DROPS" ]; then
+  echo "$DROPS"
+else
+  echo "No drops in 5 seconds"
+fi
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+ENDPOINTS=$(kubectl exec -n kube-system "$CILIUM_POD" -- cilium-dbg endpoint list)
+echo "$ENDPOINTS" | grep -cE '[[:space:]]ready[[:space:]]'
+echo "$ENDPOINTS" | grep -cE '[[:space:]]not-ready[[:space:]]'
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
