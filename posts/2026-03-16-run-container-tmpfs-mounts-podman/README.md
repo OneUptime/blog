@@ -8,9 +8,9 @@ Description: Learn how to use tmpfs mounts in Podman containers for fast in-memo
 
 ---
 
-> Tmpfs mounts give your containers blazing-fast in-memory storage that disappears when the container stops, perfect for sensitive temp files and high-speed caches.
+> Tmpfs mounts give your containers blazing-fast temporary storage that disappears when the container stops, perfect for temp files and high-speed caches.
 
-Tmpfs is a temporary filesystem that stores data in memory (RAM) rather than on disk. In containers, tmpfs mounts are useful for temporary files, caches, session data, and any workload where speed matters and persistence does not. Since tmpfs data lives in memory, it is never written to disk, which also makes it suitable for sensitive data that should not persist.
+Tmpfs is a temporary filesystem that stores data in virtual memory rather than in the container's writable layer. In containers, tmpfs mounts are useful for temporary files, caches, session data, and any workload where speed matters and persistence does not. Since tmpfs data is not persisted with the container filesystem, it can be useful for sensitive data that should not remain after the container stops. On Linux, tmpfs pages can still be swapped unless swap is disabled or the mount is created with a supported no-swap option.
 
 ---
 
@@ -147,13 +147,13 @@ podman stop cached-app && podman rm cached-app
 ### Sensitive Temporary Data
 
 ```bash
-# Store temporary secrets in tmpfs so they are never written to disk
+# Store temporary secrets in tmpfs so they are not persisted in the container filesystem
 podman run --rm \
   --tmpfs /secrets:rw,noexec,nosuid,size=1m \
   alpine sh -c "
     echo 'my-secret-token-12345' > /secrets/token
     cat /secrets/token
-    # When the container stops, this data is gone forever
+    # When the container stops, this data is removed with the tmpfs mount
   "
 ```
 
@@ -231,4 +231,4 @@ Tmpfs mounts in Podman provide fast, ephemeral in-memory storage:
 - Data is lost when the container stops (by design)
 - Multiple tmpfs mounts can have different sizes and options
 
-Tmpfs is the right choice whenever you need temporary storage that is fast, secure, and automatically cleaned up.
+Tmpfs is the right choice whenever you need temporary storage that is fast and automatically cleaned up.
