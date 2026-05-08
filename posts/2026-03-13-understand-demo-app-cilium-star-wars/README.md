@@ -10,7 +10,7 @@ Description: A detailed look at the application components deployed in the Ciliu
 
 ## Introduction
 
-Before diving into network policies, it is essential to understand what the Cilium Star Wars demo actually deploys. The application consists of four Kubernetes workloads representing elements of the Star Wars universe: the Death Star (a service accepting landing requests), TIE Fighters (Empire ships), and X-Wings (Rebel Alliance ships). Each workload carries carefully chosen Kubernetes labels that become the foundation for all policy decisions Cilium makes.
+Before diving into network policies, it is essential to understand what the Cilium Star Wars demo actually deploys. The application consists of three application components represented by four pods: the Death Star (a service accepting landing requests, backed by two pod replicas), TIE Fighters (Empire ships), and X-Wings (Rebel Alliance ships). Each pod carries carefully chosen Kubernetes labels that become the foundation for all policy decisions Cilium makes.
 
 The demo application is intentionally simple - it is an HTTP server with a handful of endpoints, not a complex distributed system. But its simplicity is a feature, not a limitation. By keeping the application logic minimal, the demo keeps your attention on the networking layer rather than the application layer. The labels on the pods are the application, from Cilium's perspective.
 
@@ -61,13 +61,13 @@ The `deathstar` pod runs a simple HTTP server with these endpoints:
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | /v1 | API metadata |
 | POST | /v1/request-landing | Request permission to land |
 | PUT | /v1/exhaust-port | Trigger the exhaust port (dangerous!) |
-| GET | /v1/health | Health check |
 
 ```bash
 # Explore the API from within the cluster
-kubectl exec tiefighter -- curl -s http://deathstar.default.svc.cluster.local/v1/health
+kubectl exec tiefighter -- curl -s http://deathstar.default.svc.cluster.local/v1
 
 # Request landing
 kubectl exec tiefighter -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
