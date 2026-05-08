@@ -18,7 +18,7 @@ Podman supports multiple log drivers that control how container stdout and stder
 
 Podman supports the following log drivers:
 
-- **journald** (default): Sends logs to the systemd journal.
+- **journald** (default on systems where the systemd journal is available): Sends logs to the systemd journal.
 - **k8s-file**: Writes logs to a file in Kubernetes log format.
 - **json-file**: Alias for k8s-file (provided for Docker scripting compatibility).
 - **passthrough**: No log storage by Podman; output passes directly through to the parent process.
@@ -59,14 +59,13 @@ podman run -d --log-driver none --name my-app my-image:latest
 
 ## Set Log Driver Options
 
-Each log driver supports additional options via `--log-opt`.
+Podman supports driver-specific options via `--log-opt`.
 
 ```bash
-# json-file with max size and rotation
+# json-file with a max size
 podman run -d \
   --log-driver json-file \
   --log-opt max-size=10m \
-  --log-opt max-file=3 \
   --name my-app my-image:latest
 
 # journald with a custom tag
@@ -110,17 +109,17 @@ podman info --format '{{.Host.LogDriver}}'
 # k8s-file: logs are stored as plain text files
 podman run -d --log-driver k8s-file --name test-k8s alpine sh -c 'echo "hello from k8s-file"'
 podman logs test-k8s
-podman inspect --format '{{.LogPath}}' test-k8s
+podman inspect --format '{{.HostConfig.LogConfig.Path}}' test-k8s
 
 # journald: logs go to systemd journal
 podman run -d --log-driver journald --name test-journald alpine sh -c 'echo "hello from journald"'
 podman logs test-journald
 journalctl CONTAINER_NAME=test-journald --no-pager
 
-# json-file: logs are stored as JSON
+# json-file: alias for k8s-file, so logs use the Kubernetes log format
 podman run -d --log-driver json-file --name test-json alpine sh -c 'echo "hello from json-file"'
 podman logs test-json
-podman inspect --format '{{.LogPath}}' test-json
+podman inspect --format '{{.HostConfig.LogConfig.Path}}' test-json
 
 # Clean up
 podman rm test-k8s test-journald test-json
@@ -146,7 +145,6 @@ services:
       driver: json-file
       options:
         max-size: "10m"
-        max-file: "3"
 
   worker:
     image: my-worker:latest
@@ -173,8 +171,8 @@ Here is a quick decision guide:
 
 # Use json-file (alias for k8s-file) when:
 # - You need Docker-compatible scripting
-# - You want to parse logs programmatically
-# - You want log rotation via max-size/max-file
+# - You want logs in the same Kubernetes log format as k8s-file
+# - You want size limits via max-size
 
 # Use passthrough when:
 # - You are running interactive containers
@@ -189,4 +187,4 @@ Here is a quick decision guide:
 
 ## Summary
 
-Podman's log driver configuration gives you control over where container logs are stored and how they are formatted. Set the driver per container with `--log-driver`, pass options with `--log-opt`, or change the system-wide default in `containers.conf`. The default log driver is journald. Choose between journald for system integration, k8s-file for file-based logs, json-file (alias for k8s-file) for Docker compatibility, or passthrough for minimal overhead.
+Podman's log driver configuration gives you control over where container logs are stored and how they are formatted. Set the driver per container with `--log-driver`, pass options with `--log-opt`, or change the system-wide default in `containers.conf`. The default log driver is journald on systems where the systemd journal is available. Choose between journald for system integration, k8s-file for file-based logs, json-file (alias for k8s-file) for Docker compatibility, or passthrough for minimal overhead.
