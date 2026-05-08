@@ -86,8 +86,8 @@ calicoctl apply -f /path/to/backup/calico-config.yaml
 # Verify all calico-node pods are running
 kubectl get pods -n calico-system -l k8s-app=calico-node
 
-# Test connectivity
-kubectl run runbook-test --image=busybox --rm -it --restart=Never -- ping -c 5 <known-pod-ip>
+# Test ClusterIP connectivity to a known service and port
+kubectl run runbook-test --image=curlimages/curl --rm -it --restart=Never --command -- curl -fsS --connect-timeout 5 http://<known-service-cluster-ip>:<port>
 
 # Check all previously failing pods are recovering
 kubectl get pods -A --field-selector status.phase!=Running | grep -v Completed
@@ -146,7 +146,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crds -o custom-columns=NAME:.metadata.name,VERSIONS:.spec.versions[*].name | grep projectcalico
 ```
 
 ### Security Hardening
@@ -154,8 +154,9 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current identity can modify Calico resources
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces
+kubectl auth can-i update globalnetworkpolicies.crd.projectcalico.org --all-namespaces
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
