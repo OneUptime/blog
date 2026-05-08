@@ -28,7 +28,7 @@ This guide provides practical techniques for getting maximum value from Cilium S
 ```bash
 # Join via the official invite link
 
-# Visit: https://cilium.io/slack to get the invite URL
+# Visit: https://slack.cilium.io to get the invite URL
 
 # After joining, configure your Slack notifications:
 # - Enable notifications for direct messages
@@ -50,10 +50,11 @@ Never post a Cilium question without diagnostic context - it always leads to fol
 # Run this before posting to Slack - paste the output in your message
 echo "--- Cilium Version ---"
 cilium version 2>/dev/null || kubectl exec -n kube-system \
-  $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) -- cilium version
+  $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) \
+  -c cilium-agent -- cilium-dbg version
 
 echo "--- Kubernetes Version ---"
-kubectl version --short
+kubectl version
 
 echo "--- Node Kernel Versions ---"
 kubectl get nodes -o custom-columns="NODE:.metadata.name,KERNEL:.status.nodeInfo.kernelVersion"
@@ -68,7 +69,7 @@ Structure your message for maximum clarity and response speed.
 
 Good Slack message template:
 
-```plaintext
+````plaintext
 **Problem**: [One sentence describing what's wrong]
 
 **Environment**:
@@ -84,10 +85,10 @@ Good Slack message template:
 **Relevant output** (use code block):
 ```
 paste your error or command output here
-```plaintext
+```
 
 **Question**: [Specific question or "What am I missing?"]
-```
+````
 
 ## Step 4: Follow Thread Etiquette
 
@@ -127,8 +128,9 @@ Share your expertise by answering questions in your area of knowledge.
 
 # Share useful commands you've found helpful
 # When diagnosing Cilium endpoint policy issues:
-cilium endpoint list
-cilium policy trace --from-pod <pod-name> --to-pod <pod-name>
+kubectl get ciliumendpoints --all-namespaces
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg endpoint list
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg endpoint get pod-name:<namespace>:<pod-name>
 ```
 
 ## Best Practices
@@ -137,7 +139,7 @@ cilium policy trace --from-pod <pod-name> --to-pod <pod-name>
 - Post in one channel only - cross-posting to multiple channels is considered bad etiquette
 - Include version information in every question without being asked
 - Share your resolutions publicly - they help future searchers find answers
-- DM maintainers only for security disclosures - all other questions go to public channels
+- Use the private security mailing list for security disclosures - all other questions go to public channels
 - Be patient during weekends - many community volunteers are based in specific timezones
 
 ## Conclusion
