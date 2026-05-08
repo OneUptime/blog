@@ -12,7 +12,7 @@ Description: A comprehensive guide to checking and updating Cilium's system requ
 
 Generic Kubernetes clusters - those not managed by a cloud provider (bare metal, on-premises VMs, private cloud) - provide maximum flexibility for Cilium configuration but also require the most thorough requirements verification. Unlike managed services that ensure baseline compatibility, self-managed clusters may run a wide variety of Linux distributions, kernel versions, and storage configurations.
 
-Cilium's requirements for generic Kubernetes span multiple layers: the Linux kernel must support specific eBPF program types, the container runtime must mount the eBPF filesystem, network interfaces must be configurable, and the Kubernetes version must be within the supported compatibility window.
+Cilium's requirements for generic Kubernetes span multiple layers: the Linux kernel must support specific eBPF program types, the host must provide an eBPF filesystem mount, network interfaces must be configurable, and the Kubernetes version must be within the supported compatibility window.
 
 This guide walks through verifying and updating every layer of Cilium's requirements on generic Kubernetes clusters, from checking kernel capabilities to configuring container runtime parameters.
 
@@ -34,22 +34,22 @@ Cilium requires specific kernel capabilities. Check each node thoroughly.
 kubectl get nodes -o custom-columns="NODE:.metadata.name,KERNEL:.status.nodeInfo.kernelVersion"
 
 # On individual nodes, check BPF support
-ssh <node-ip> "grep -m 1 CONFIG_BPF /boot/config-$(uname -r)"
-ssh <node-ip> "grep -m 1 CONFIG_BPF_SYSCALL /boot/config-$(uname -r)"
-ssh <node-ip> "grep -m 1 CONFIG_NET_CLS_BPF /boot/config-$(uname -r)"
+ssh <node-ip> 'grep -m 1 CONFIG_BPF /boot/config-$(uname -r)'
+ssh <node-ip> 'grep -m 1 CONFIG_BPF_SYSCALL /boot/config-$(uname -r)'
+ssh <node-ip> 'grep -m 1 CONFIG_NET_CLS_BPF /boot/config-$(uname -r)'
+ssh <node-ip> 'grep -m 1 CONFIG_BPF_JIT /boot/config-$(uname -r)'
 
 # Check if BPF filesystem is mounted
 ssh <node-ip> "mount | grep bpf"
 ```
 
 Minimum kernel requirements:
-- Basic Cilium: Linux 4.9.17+
-- Cilium with kube-proxy replacement: Linux 5.3+
-- Full eBPF features: Linux 5.10+
+- Cilium: Linux 5.10+ or an equivalent distribution kernel, such as 4.18 on RHEL 8.10
+- Advanced features may require newer kernels, such as IPv6 BIG TCP on Linux 5.19+ and IPv4 BIG TCP on Linux 6.3+
 
 ## Step 2: Mount the BPF Filesystem
 
-If the BPF filesystem is not mounted, configure it to mount at boot.
+If the BPF filesystem is not mounted, Cilium can mount it automatically. You can also configure it to mount at boot.
 
 ```bash
 # Mount BPF filesystem immediately
@@ -64,14 +64,14 @@ ssh <node-ip> "mount | grep /sys/fs/bpf"
 
 ## Step 3: Check and Update Container Runtime
 
-Cilium requires a compatible container runtime with specific configuration.
+Cilium requires Kubernetes CNI support and access to the CNI plugin and configuration directories.
 
 ```bash
 # Check container runtime on nodes
 kubectl get nodes -o custom-columns="NODE:.metadata.name,RUNTIME:.status.nodeInfo.containerRuntimeVersion"
 
-# For containerd, verify the configuration allows BPF
-ssh <node-ip> "containerd config dump | grep -A 5 cni"
+# For containerd, verify the configured CNI directories
+ssh <node-ip> "containerd config dump | grep -A 10 'plugins.*cni'"
 
 # Ensure /opt/cni/bin and /etc/cni/net.d are accessible
 ssh <node-ip> "ls /opt/cni/bin"
@@ -86,14 +86,14 @@ Different Linux distributions have different package availability affecting Cili
 # Check distribution on nodes
 kubectl get nodes -o custom-columns="NODE:.metadata.name,OS:.status.nodeInfo.osImage"
 
-# For Ubuntu nodes, install required packages
-ssh <node-ip> "sudo apt-get install -y linux-headers-$(uname -r) iproute2 ipset"
+# For Ubuntu nodes, install host networking tools commonly needed by Cilium features
+ssh <node-ip> 'sudo apt-get install -y iproute2 ipset'
 
 # For RHEL/CentOS nodes
-ssh <node-ip> "sudo yum install -y kernel-devel-$(uname -r) iproute iptables"
+ssh <node-ip> "sudo yum install -y iproute iptables ipset"
 
-# For Flatcar Container Linux, verify BPF support
-ssh <node-ip> "cat /usr/share/flatcar/update.conf"
+# For Flatcar Container Linux, verify the OS release
+ssh <node-ip> "cat /etc/os-release"
 ```
 
 ## Step 5: Verify Networking Prerequisites
@@ -101,11 +101,11 @@ ssh <node-ip> "cat /usr/share/flatcar/update.conf"
 Check that network interfaces and protocols needed by Cilium are available.
 
 ```bash
-# Verify required kernel modules are loaded
-ssh <node-ip> "lsmod | grep -E 'ip_tables|xt_|nf_conntrack|bridge'"
+# Verify common kernel modules used by Cilium features are loaded
+ssh <node-ip> "lsmod | grep -E 'vxlan|geneve|ip_tables|xt_|nf_conntrack|bridge'"
 
 # Load required modules if missing
-ssh <node-ip> "sudo modprobe ip_tables xt_bpf"
+ssh <node-ip> "sudo modprobe ip_tables vxlan geneve"
 
 # Check that IPv4 forwarding is enabled
 ssh <node-ip> "sysctl net.ipv4.ip_forward"
@@ -117,7 +117,7 @@ ssh <node-ip> 'echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-cilium.c
 
 ## Best Practices
 
-- Run the `cilium preflight` check before installing on new nodes
+- Run Cilium's documented pre-flight check before upgrades and validate new installations with Cilium's status and connectivity checks
 - Document node OS versions and kernel versions in your cluster inventory
 - Use a consistent Linux distribution across all nodes to simplify requirements management
 - Enable kernel auto-updates within a pinned major version to keep security patches current
