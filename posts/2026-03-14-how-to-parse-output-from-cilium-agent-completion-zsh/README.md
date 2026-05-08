@@ -10,9 +10,9 @@ Description: Learn how to parse and analyze the output of cilium-agent completio
 
 ## Introduction
 
-The `cilium-agent completion zsh` command generates a zsh completion script that contains a structured representation of all cilium-agent subcommands, flags, and their descriptions. This output is a rich data source that can be parsed programmatically to build documentation, create wrapper scripts, or validate CLI coverage in tests.
+The `cilium-agent completion zsh` command generates a zsh completion script that calls Cobra's dynamic `__complete` endpoint to retrieve cilium-agent subcommands, flags, and their descriptions. That completion protocol is a rich data source that can be queried programmatically to build documentation, create wrapper scripts, or validate CLI coverage in tests.
 
-Parsing completion output goes beyond simply installing it in your shell. By extracting the command tree and flag definitions, you can generate reference docs, audit which commands lack descriptions, or build automation that adapts to new Cilium releases.
+Parsing completion output goes beyond simply installing it in your shell. By querying the same completion endpoint that the zsh script uses, you can generate reference docs, audit which commands lack descriptions, or build automation that adapts to new Cilium releases.
 
 This guide shows practical techniques for parsing cilium-agent zsh completion output using standard Unix tools and scripting languages.
 
@@ -35,8 +35,9 @@ cilium-agent completion zsh > /tmp/cilium-agent-completion.zsh
 # Check the file size and line count
 wc -l /tmp/cilium-agent-completion.zsh
 
-# Preview the structure
+# Preview the structure and confirm it calls __complete dynamically
 head -50 /tmp/cilium-agent-completion.zsh
+grep "__complete" /tmp/cilium-agent-completion.zsh
 ```
 
 From a running pod if the binary is not local:
@@ -49,42 +50,38 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
   cilium-agent completion zsh > /tmp/cilium-agent-completion.zsh
 ```
 
+Use the same `kubectl exec` form for the `__complete` examples below if `cilium-agent` is only available inside the pod.
+
 ## Extracting Subcommands
 
-Zsh completion scripts define commands in structured blocks. Extract the available subcommands:
+Modern Cobra-generated zsh completion scripts fetch candidates dynamically. Extract the available top-level subcommands from the same `__complete` output that the script consumes:
 
 ```bash
-# Extract command names from the completion script
-grep -E "commands\+=\(|'[a-z-]+\[" /tmp/cilium-agent-completion.zsh | \
-  grep -oP "'[a-z][-a-z]*" | \
-  tr -d "'" | \
+# Extract top-level command names
+cilium-agent __complete "" 2>/dev/null | \
+  awk -F '\t' '$1 !~ /^:/ && $1 !~ /^time=/ {print $1}' | \
   sort -u
 
-# Alternative: extract from _describe or compadd calls
-grep -E "(compadd|_describe)" /tmp/cilium-agent-completion.zsh | \
-  grep -oP "'[^']+'" | \
-  tr -d "'" | \
+# Alternative: include command descriptions
+cilium-agent __complete "" 2>/dev/null | \
+  awk -F '\t' '$1 !~ /^:/ && $1 !~ /^time=/ {print $1 "\t" $2}' | \
   sort -u | head -30
 ```
 
 ## Extracting Flags and Their Descriptions
 
-Flags in zsh completion files follow patterns with descriptions in brackets:
+The dynamic completion output returns candidates and descriptions separated by a tab:
 
 ```bash
 #!/bin/bash
 # extract-flags.sh
-# Parse cilium-agent zsh completion to extract all flags with descriptions
-
-INPUT="/tmp/cilium-agent-completion.zsh"
+# Query cilium-agent completion to extract all top-level flags with descriptions
 
 echo "Flag|Description"
 echo "----|----------"
 
-grep -oP "'--[a-z][-a-z0-9]*\[.*?\]" "$INPUT" | \
-  sed "s/'--/--/" | \
-  sed 's/\[/|/' | \
-  sed 's/\]//' | \
+cilium-agent __complete -- 2>/dev/null | \
+  awk -F '\t' '$1 ~ /^--/ {print $1 "|" $2}' | \
   sort -u | while IFS='|' read -r flag desc; do
     echo "$flag|$desc"
   done
@@ -97,57 +94,67 @@ chmod +x extract-flags.sh
 
 ## Building a Command Tree with Python
 
-For more structured parsing, use Python to build a complete command tree:
+For more structured parsing, use Python to build top-level command data:
 
 ```python
 #!/usr/bin/env python3
-"""Parse cilium-agent zsh completion output into a structured command tree."""
+"""Parse cilium-agent completion output into structured command data."""
 
-import re
 import json
-import sys
+import subprocess
 
-def parse_completion_file(filepath):
-    """Extract commands and flags from a zsh completion script."""
-    with open(filepath, 'r') as f:
-        content = f.read()
+def completion_candidates(*args):
+    """Return Cobra completion candidates for cilium-agent."""
+    proc = subprocess.run(
+        ['cilium-agent', '__complete', *args],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+
+    candidates = []
+    for line in proc.stdout.splitlines():
+        if line.startswith(':') or line.startswith('time='):
+            continue
+        name, _, description = line.partition('\t')
+        if name:
+            candidates.append({
+                'name': name,
+                'description': description
+            })
+    return candidates
+
+def parse_completion():
+    """Extract top-level commands and flags from completion candidates."""
+    root_candidates = completion_candidates('')
+    flag_candidates = completion_candidates('--')
 
     result = {
-        'commands': [],
-        'flags': [],
+        'commands': [
+            item for item in root_candidates
+            if not item['name'].startswith('-')
+        ],
+        'flags': [
+            {
+                'flag': item['name'],
+                'description': item['description']
+            }
+            for item in flag_candidates
+            if item['name'].startswith('--')
+        ],
         'subcommands': {}
     }
-
-    # Extract top-level commands
-    cmd_pattern = re.compile(r"'(\w[-\w]*):(.*?)'")
-    for match in cmd_pattern.finditer(content):
-        cmd_name = match.group(1)
-        cmd_desc = match.group(2).strip()
-        result['commands'].append({
-            'name': cmd_name,
-            'description': cmd_desc
-        })
-
-    # Extract flags with descriptions
-    flag_pattern = re.compile(r"'(--[\w-]+)\[(.*?)\]")
-    for match in flag_pattern.finditer(content):
-        flag_name = match.group(1)
-        flag_desc = match.group(2).strip()
-        result['flags'].append({
-            'flag': flag_name,
-            'description': flag_desc
-        })
 
     return result
 
 if __name__ == '__main__':
-    filepath = sys.argv[1] if len(sys.argv) > 1 else '/tmp/cilium-agent-completion.zsh'
-    tree = parse_completion_file(filepath)
+    tree = parse_completion()
     print(json.dumps(tree, indent=2))
 ```
 
 ```bash
-python3 parse_completion.py /tmp/cilium-agent-completion.zsh | jq '.commands | length'
+python3 parse_completion.py | jq '.commands | length'
 ```
 
 ## Generating Markdown Documentation from Completions
@@ -159,7 +166,6 @@ Convert the parsed data into reference documentation:
 # gen-docs-from-completion.sh
 # Generate markdown docs from cilium-agent completion output
 
-INPUT="/tmp/cilium-agent-completion.zsh"
 OUTPUT="/tmp/cilium-agent-reference.md"
 
 echo "# cilium-agent Command Reference" > "$OUTPUT"
@@ -170,9 +176,9 @@ echo "" >> "$OUTPUT"
 echo "## Commands" >> "$OUTPUT"
 echo "" >> "$OUTPUT"
 
-grep -oP "'(\w[-\w]*):(.*?)'" "$INPUT" | \
-  tr -d "'" | \
-  sort -u | while IFS=':' read -r cmd desc; do
+cilium-agent __complete "" 2>/dev/null | \
+  awk -F '\t' '$1 !~ /^:/ && $1 !~ /^time=/ {print $1 "|" $2}' | \
+  sort -u | while IFS='|' read -r cmd desc; do
     echo "- **$cmd**: $desc" >> "$OUTPUT"
   done
 
@@ -180,10 +186,9 @@ echo "" >> "$OUTPUT"
 echo "## Global Flags" >> "$OUTPUT"
 echo "" >> "$OUTPUT"
 
-grep -oP "'(--[\w-]+)\[(.*?)\]" "$INPUT" | \
-  tr -d "'" | \
-  sort -u | while IFS='[' read -r flag desc; do
-    desc="${desc%]}"
+cilium-agent __complete -- 2>/dev/null | \
+  awk -F '\t' '$1 ~ /^--/ {print $1 "|" $2}' | \
+  sort -u | while IFS='|' read -r flag desc; do
     echo "- \`$flag\`: $desc" >> "$OUTPUT"
   done
 
@@ -197,13 +202,13 @@ Validate your parsing produces consistent results:
 
 ```bash
 # Count extracted commands and compare across versions
-CMDS=$(grep -oP "'(\w[-\w]*):" /tmp/cilium-agent-completion.zsh | sort -u | wc -l)
-FLAGS=$(grep -oP "'--[\w-]+" /tmp/cilium-agent-completion.zsh | sort -u | wc -l)
+CMDS=$(cilium-agent __complete "" 2>/dev/null | awk -F '\t' '$1 !~ /^:/ && $1 !~ /^time=/ {print $1}' | sort -u | wc -l)
+FLAGS=$(cilium-agent __complete -- 2>/dev/null | awk -F '\t' '$1 ~ /^--/ {print $1}' | sort -u | wc -l)
 
 echo "Extracted $CMDS commands and $FLAGS flags"
 
 # Verify JSON output is valid
-python3 parse_completion.py /tmp/cilium-agent-completion.zsh | jq . > /dev/null && \
+python3 parse_completion.py | jq . > /dev/null && \
   echo "JSON output is valid"
 ```
 
@@ -216,4 +221,4 @@ python3 parse_completion.py /tmp/cilium-agent-completion.zsh | jq . > /dev/null 
 
 ## Conclusion
 
-Parsing the output of `cilium-agent completion zsh` unlocks the ability to auto-generate documentation, build validation tests, and create tooling that stays synchronized with the Cilium CLI. Whether you use simple shell pipelines or structured Python parsing, the completion script serves as a machine-readable specification of the entire command interface.
+Parsing the completion protocol used by `cilium-agent completion zsh` unlocks the ability to auto-generate documentation, build validation tests, and create tooling that stays synchronized with the Cilium CLI. Whether you use simple shell pipelines or structured Python parsing, the dynamic completion output serves as a machine-readable view of the command interface.
