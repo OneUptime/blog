@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, IPAM, Validation, Kubernetes
 
-Description: Learn how to interpret and validate the output of calicoctl ipam split to ensure IPAM operations completed successfully and the cluster state is healthy.
+Description: Learn how to interpret and validate the output of calicoctl ipam split in Calico Enterprise to ensure IPAM operations completed successfully and the cluster state is healthy.
 
 ---
 
@@ -15,7 +15,7 @@ After running `calicoctl ipam split`, you need to verify that the output makes s
 ## Prerequisites
 
 - Output from a recent `calicoctl ipam split` execution
-- `calicoctl` and `kubectl` access
+- Calico Enterprise `calicoctl` and `kubectl` access
 - Understanding of your cluster's IP allocation
 
 ## Validation Steps
@@ -25,7 +25,9 @@ After running `calicoctl ipam split`, you need to verify that the output makes s
 ```bash
 # Run the command and capture output
 
-calicoctl ipam split 10.244.0.0/24 --cidr-size=26 2>&1 | tee /tmp/ipam-output.txt
+calicoctl datastore migrate lock
+calicoctl ipam split --cidr=10.244.0.0/24 4 2>&1 | tee /tmp/ipam-output.txt
+calicoctl datastore migrate unlock
 
 # Check for errors in output
 grep -i "error" /tmp/ipam-output.txt
@@ -52,7 +54,7 @@ calicoctl ipam show --show-blocks
 
 # Verify each node has appropriate block assignments
 NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
-BLOCK_COUNT=$(calicoctl ipam show --show-blocks 2>/dev/null | grep -c "Block" || echo 0)
+BLOCK_COUNT=$(calicoctl ipam show --show-blocks 2>/dev/null | grep -c '^| Block' || true)
 echo "Nodes: $NODE_COUNT, Blocks: $BLOCK_COUNT"
 ```
 
@@ -76,15 +78,15 @@ calicoctl ipam show
 # Test allocation
 echo ""
 echo "--- Allocation Test ---"
-kubectl run ipam-test --image=busybox --restart=Never -- sleep 30 2>/dev/null
-sleep 5
+kubectl run ipam-test --image=busybox --restart=Never --command -- sleep 30 2>/dev/null
+kubectl wait --for=condition=Ready pod/ipam-test --timeout=30s 2>/dev/null
 IP=$(kubectl get pod ipam-test -o jsonpath='{.status.podIP}' 2>/dev/null)
 if [ -n "$IP" ]; then
   echo "PASS: Test pod allocated IP $IP"
 else
   echo "FAIL: Test pod did not get an IP"
 fi
-kubectl delete pod ipam-test --grace-period=0 2>/dev/null
+kubectl delete pod ipam-test --ignore-not-found 2>/dev/null
 ```
 
 ## Verification
