@@ -12,7 +12,7 @@ Description: Automate Calico node deployments using calicoctl node run with conf
 
 In bare-metal and non-Kubernetes environments, deploying Calico nodes across a fleet of servers requires automation. Running `calicoctl node run` manually on each host is impractical for clusters of any meaningful size. Automated deployment ensures consistent configuration, reduces human error, and enables rapid scaling.
 
-This guide covers automation patterns for `calicoctl node run`, from simple parallel SSH scripts to integration with configuration management tools like Ansible. These techniques are most relevant for environments where Calico is used outside Kubernetes or in hybrid setups where some nodes are not managed by an orchestrator.
+This guide covers automation patterns for `calicoctl node run`, from simple parallel SSH scripts to integration with configuration management tools like Ansible. These techniques are most relevant for environments where Calico is used outside Kubernetes or in hybrid setups where some nodes are not managed by an orchestrator. The examples below use an etcdv3 datastore because BGP-related `calicoctl node run` options such as `--ip`, `--as`, and `--backend` do not apply when Calico is configured to use the Kubernetes API datastore.
 
 Even in Kubernetes environments, understanding these automation patterns helps when troubleshooting DaemonSet-managed calico-node pods or deploying Calico on infrastructure nodes that sit outside the Kubernetes cluster.
 
@@ -21,7 +21,7 @@ Even in Kubernetes environments, understanding these automation patterns helps w
 - Multiple Linux hosts where Calico needs to run
 - SSH access to all target hosts
 - `calicoctl` installed on all hosts (or a plan to install it)
-- A configured Calico datastore (etcd or Kubernetes API)
+- A configured Calico etcdv3 datastore
 - Docker installed on all target hosts
 
 ## Fleet Deployment Script
@@ -45,9 +45,12 @@ fi
 
 # Deploy to each host in parallel
 while IFS=',' read -r HOST IP INTERFACE AS_NUM; do
+  [[ -z "$HOST" || "$HOST" =~ ^# ]] && continue
+
   echo "Deploying to $HOST ($IP via $INTERFACE, AS $AS_NUM)..."
   
   ssh -o StrictHostKeyChecking=no "$HOST" bash -s <<REMOTE_EOF &
+    export DATASTORE_TYPE="etcdv3"
     export ETCD_ENDPOINTS="${ETCD_ENDPOINTS}"
     export ETCD_KEY_FILE="/etc/calico/certs/key.pem"
     export ETCD_CERT_FILE="/etc/calico/certs/cert.pem"
@@ -60,12 +63,11 @@ while IFS=',' read -r HOST IP INTERFACE AS_NUM; do
     # Start the new node
     sudo -E calicoctl node run \
       --node-image=${CALICO_IMAGE} \
-      --name=$(hostname) \
+      --name=${HOST} \
       --ip=${IP} \
-      --ip-autodetection-method=interface=${INTERFACE} \
       --as=${AS_NUM}
     
-    echo "Calico node started on $(hostname)"
+    echo "Calico node started on ${HOST}"
 REMOTE_EOF
 
 done < "$HOSTS_FILE"
@@ -114,6 +116,12 @@ For more robust automation, use Ansible:
         path: /etc/calico
         state: directory
         mode: '0755'
+
+    - name: Create Calico certificate directory
+      file:
+        path: "{{ cert_dir }}"
+        state: directory
+        mode: '0700'
     
     - name: Copy TLS certificates
       copy:
@@ -126,16 +134,10 @@ For more robust automation, use Ansible:
         - key.pem
     
     - name: Stop existing calico-node container
-      docker_container:
+      community.docker.docker_container:
         name: calico-node
         state: absent
       ignore_errors: true
-    
-    - name: Create calico-node environment file
-      template:
-        src: calico-node.env.j2
-        dest: /etc/calico/calico-node.env
-        mode: '0600'
     
     - name: Start calico-node
       shell: |
@@ -174,18 +176,26 @@ Restart Calico nodes one at a time to avoid cluster-wide disruption:
 
 HOSTS_FILE="${1:-hosts.txt}"
 CALICO_IMAGE="calico/node:v3.27.0"
+ETCD_ENDPOINTS="https://10.0.1.5:2379"
 WAIT_SECONDS=30
 
 while IFS=',' read -r HOST IP INTERFACE AS_NUM; do
+  [[ -z "$HOST" || "$HOST" =~ ^# ]] && continue
+
   echo "=== Restarting calico-node on $HOST ==="
   
   # Stop the node
   ssh "$HOST" "docker stop calico-node && docker rm calico-node"
   
   # Start with new image
-  ssh "$HOST" "sudo ETCD_ENDPOINTS=\$ETCD_ENDPOINTS calicoctl node run \
+  ssh "$HOST" "sudo env DATASTORE_TYPE=etcdv3 \
+    ETCD_ENDPOINTS=${ETCD_ENDPOINTS} \
+    ETCD_KEY_FILE=/etc/calico/certs/key.pem \
+    ETCD_CERT_FILE=/etc/calico/certs/cert.pem \
+    ETCD_CA_CERT_FILE=/etc/calico/certs/ca.pem \
+    calicoctl node run \
     --node-image=${CALICO_IMAGE} \
-    --name=\$(hostname) \
+    --name=${HOST} \
     --ip=${IP} \
     --as=${AS_NUM}"
   
@@ -225,6 +235,8 @@ HOSTS_FILE="${1:-hosts.txt}"
 FAILURES=0
 
 while IFS=',' read -r HOST IP INTERFACE AS_NUM; do
+  [[ -z "$HOST" || "$HOST" =~ ^# ]] && continue
+
   echo "Checking $HOST..."
   
   # SSH connectivity
@@ -267,10 +279,15 @@ After automated deployment:
 
 ```bash
 # Check all nodes are registered
+DATASTORE_TYPE=etcdv3 \
+ETCD_ENDPOINTS=https://10.0.1.5:2379 \
+ETCD_KEY_FILE=/etc/calico/certs/key.pem \
+ETCD_CERT_FILE=/etc/calico/certs/cert.pem \
+ETCD_CA_CERT_FILE=/etc/calico/certs/ca.pem \
 calicoctl get nodes -o wide
 
 # Verify BGP mesh is established
-for HOST in $(cat hosts.txt | cut -d, -f1); do
+for HOST in $(grep -vE '^[[:space:]]*(#|$)' hosts.txt | cut -d, -f1); do
   echo "=== $HOST ==="
   ssh "$HOST" "sudo calicoctl node status"
   echo ""
