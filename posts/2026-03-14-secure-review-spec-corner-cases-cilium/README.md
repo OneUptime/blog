@@ -123,7 +123,7 @@ const (
 func TestNumericBoundaries(t *testing.T) {
     boundaries := []struct {
         name  string
-        value int
+        value int64
         valid bool
     }{
         {"length = -1", -1, false},
@@ -202,7 +202,7 @@ Test all documented corner cases:
 go test ./proxylib/myprotocol/... -v -run TestCornerCase
 
 # Fuzz to discover undocumented corner cases
-go test ./proxylib/myprotocol/... -fuzz=FuzzOnData -fuzztime=5m
+go test ./proxylib/myprotocol -fuzz=FuzzOnData -fuzztime=5m
 
 # Review corner case documentation
 cat proxylib/myprotocol/corner_cases.go
