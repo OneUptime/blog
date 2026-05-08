@@ -10,7 +10,7 @@ Description: A step-by-step guide to modifying Calico GlobalNetworkSet resources
 
 ## Introduction
 
-Updating Calico resources in a running cluster requires care. A misconfigured GlobalNetworkSet can disrupt networking, drop traffic, or break BGP peerings. This guide covers a safe workflow for modifying GlobalNetworkSet resources in production.
+Updating Calico resources in a running cluster requires care. A misconfigured GlobalNetworkSet can disrupt networking or drop traffic for policies that reference it. This guide covers a safe workflow for modifying GlobalNetworkSet resources in production.
 
 The key principle is to treat Calico resource changes like any infrastructure change: review the diff, understand the impact, test in staging, and have a rollback plan ready. Calico resources are declarative, so the same discipline you apply to Kubernetes manifests applies here.
 
@@ -50,15 +50,18 @@ diff <(calicoctl get globalnetworkset -o yaml) globalnetworkset.yaml
 Review each changed field and consider its impact:
 
 - Will this change affect active connections?
-- Does this change require a Felix or BGP restart?
+- Does this change affect policies enforced by Felix?
 - Could this change lock you out of nodes?
 
 ## Step 3: Apply the Update
 
-Apply the updated manifest:
+Validate and apply the updated manifest:
 
 ```bash
-# Apply with calicoctl for validation
+# Validate the manifest before applying it
+calicoctl validate -f globalnetworkset.yaml
+
+# Apply the validated manifest
 calicoctl apply -f globalnetworkset.yaml
 ```
 
@@ -120,12 +123,12 @@ calicoctl get globalnetworkset -o yaml
 - Review Felix logs for configuration errors.
 
 **BGP sessions dropping (for BGP-related resources):**
-- Check BGP peering status: `calicoctl node status`.
+- Check BGP peering status from a Calico node host: `calicoctl node status`.
 - Verify ASN numbers and peer IPs are correct.
 
 **Update appears to have no effect:**
 - Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Validate the manifest with `calicoctl validate -f globalnetworkset.yaml` to catch malformed fields before applying it.
 
 
 ## Additional Considerations
@@ -160,9 +163,9 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i update globalnetworksets.crd.projectcalico.org
 
-# Review recent changes to Calico resources (if audit logging is enabled)
+# Review recent Calico events
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 ```
 
