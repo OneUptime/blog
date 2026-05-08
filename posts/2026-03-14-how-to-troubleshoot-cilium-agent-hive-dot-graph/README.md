@@ -66,7 +66,8 @@ if [ $? -ne 0 ]; then
 
   # Check for common issues
   # Error messages mixed into output
-  grep -n "^[^\"{}digraph]" /tmp/hive-stdout.txt | head -10
+  grep -nEv '^[[:space:]]*(digraph|[{}]|"[^"]+"[[:space:]]*(->|\[)|$)' \
+    /tmp/hive-stdout.txt | head -10
 
   # Missing closing brace
   tail -5 /tmp/hive-stdout.txt
@@ -87,7 +88,7 @@ INPUT="/tmp/hive-stdout.txt"
 OUTPUT="/tmp/hive-fixed.dot"
 
 # Remove non-DOT lines (error messages, warnings)
-grep -E '^\s*(digraph|"|{|})' "$INPUT" > "$OUTPUT"
+grep -E '^[[:space:]]*(digraph|[{}]|")' "$INPUT" > "$OUTPUT"
 
 # Ensure proper closing
 if ! tail -1 "$OUTPUT" | grep -q "}"; then
@@ -117,9 +118,8 @@ dot -Tps /tmp/hive-fixed.dot -o /tmp/test.ps 2>&1
 # Check Graphviz version
 dot -V
 
-# For very large graphs, increase memory limits
-# The graph may have too many nodes for default settings
-dot -Tsvg -Gnslimit=5 -Gmclimit=5 /tmp/hive-fixed.dot -o /tmp/test.svg
+# For very large graphs, cap layout work if the default dot layout struggles
+dot -Tsvg -Gnslimit=2 -Gmclimit=0.5 /tmp/hive-fixed.dot -o /tmp/test.svg
 
 # Try alternative layout engines
 neato -Tsvg /tmp/hive-fixed.dot -o /tmp/test-neato.svg 2>&1
