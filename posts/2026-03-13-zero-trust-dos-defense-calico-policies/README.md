@@ -24,39 +24,58 @@ This guide covers zero trust DoS Defense in Calico with practical configurations
 
 ```yaml
 apiVersion: projectcalico.org/v3
+kind: GlobalNetworkSet
+metadata:
+  name: dos-deny-list
+  labels:
+    dos-deny-list: 'true'
+spec:
+  nets:
+    - 198.51.100.0/24  # Example deny-list source
+    - 203.0.113.0/24
+---
+apiVersion: projectcalico.org/v3
+kind: HostEndpoint
+metadata:
+  name: production-edge
+  labels:
+    apply-dos-mitigation: 'true'
+spec:
+  interfaceName: eth0
+  node: worker-1
+  expectedIPs: ['10.0.0.1']
+---
+apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: dos-defense-rate-limit
+  name: dos-deny-list
+spec:
+  order: 10
+  selector: apply-dos-mitigation == 'true'
+  doNotTrack: true
+  applyOnForward: true
+  ingress:
+    - action: Deny
+      source:
+        selector: dos-deny-list == 'true'
+  types:
+    - Ingress
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
+metadata:
+  name: allow-web-frontend
 spec:
   order: 50
   selector: app == 'web-frontend'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 0.0.0.0/0
       destination:
         ports: [80, 443]
-      # Note: Rate limiting requires Calico Enterprise or eBPF mode
-    - action: Allow
-  types:
-    - Ingress
----
-# Block known bad actors
-
-apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
-metadata:
-  name: dos-block-bad-actors
-spec:
-  order: 10
-  selector: app == 'web-frontend'
-  ingress:
-    - action: Deny
-      source:
-        nets:
-          - 198.51.100.0/24  # Known attack source
-          - 203.0.113.0/24
   types:
     - Ingress
 ```
@@ -67,18 +86,31 @@ spec:
 # Apply DoS defense policies
 calicoctl apply -f dos-defense.yaml
 
-# Monitor connection rates using Felix metrics
-curl -s http://node-ip:9091/metrics | grep felix_denied
+# Check that Felix is exposing Prometheus metrics
+curl -s http://node-ip:9091/metrics | grep felix_active_local_policies
 
-# Check denial rates in real-time
-watch -n1 'curl -s http://localhost:9091/metrics | grep felix_denied_packets_total'
+# Watch active policy metrics in real-time
+watch -n1 'curl -s http://localhost:9091/metrics | grep felix_active_local_policies'
 ```
 
-## eBPF Rate Limiting (Calico with eBPF dataplane)
+## QoS Rate Limiting (Calico workload controls)
 
-```bash
-# Enable eBPF dataplane for rate limiting support
-kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-frontend
+  labels:
+    app: web-frontend
+  annotations:
+    qos.projectcalico.org/ingressPacketRate: "1000"
+    qos.projectcalico.org/ingressPacketBurst: "2000"
+spec:
+  containers:
+    - name: nginx
+      image: nginx:1.27
+      ports:
+        - containerPort: 80
 ```
 
 ## Architecture
