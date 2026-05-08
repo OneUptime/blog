@@ -18,11 +18,11 @@ This guide demonstrates advanced validation techniques for Cilium L7 parsers wit
 
 ## Prerequisites
 
-- Go 1.21+ with native fuzzing support
+- Go 1.18+ with native fuzzing support
 - Parser with advanced parsing features implemented
 - Reference protocol implementation or specification
 - `go-cmp` library for deep comparison
-- Traffic capture (pcap) of real protocol exchanges
+- Raw protocol messages extracted from traffic captures of real protocol exchanges
 
 ## Differential Testing Against Reference Implementation
 
@@ -30,8 +30,11 @@ Compare your parser's output against a known-correct implementation:
 
 ```go
 import (
+    "os"
+    "path/filepath"
     "testing"
 
+    "github.com/google/go-cmp/cmp"
     reference "github.com/example/myprotocol-go" // Reference implementation
 )
 
@@ -55,16 +58,15 @@ func TestDifferentialParsing(t *testing.T) {
 
             // For valid messages, results must match
             if ourErr == nil && refErr == nil {
-                if !reflect.DeepEqual(ourResult, refResult) {
-                    t.Errorf("Parse result mismatch:\n  ours: %+v\n  ref:  %+v",
-                        ourResult, refResult)
+                if diff := cmp.Diff(refResult, ourResult); diff != "" {
+                    t.Errorf("Parse result mismatch (-ref +ours):\n%s", diff)
                 }
             }
         })
     }
 }
 
-// loadTestCorpus reads test cases from pcap files
+// loadTestCorpus reads raw message test cases extracted from captures
 func loadTestCorpus(t *testing.T, dir string) []testCase {
     t.Helper()
     entries, err := os.ReadDir(dir)
@@ -89,6 +91,12 @@ func loadTestCorpus(t *testing.T, dir string) []testCase {
 Define invariants that must hold for all parsed messages:
 
 ```go
+import (
+    "testing"
+
+    "github.com/google/go-cmp/cmp"
+)
+
 func FuzzParseValueProperties(f *testing.F) {
     // Seed with known inputs
     f.Add([]byte{0x01, 0x00, 0x00, 0x00, 0x42})            // integer
@@ -118,8 +126,8 @@ func FuzzParseValueProperties(f *testing.F) {
             if consumed2 != consumed {
                 t.Errorf("Determinism: consumed %d then %d", consumed, consumed2)
             }
-            if !reflect.DeepEqual(val, val2) {
-                t.Error("Determinism: different results for same input")
+            if diff := cmp.Diff(val, val2); diff != "" {
+                t.Errorf("Determinism: different results for same input (-first +second):\n%s", diff)
             }
         }
 
@@ -135,7 +143,7 @@ flowchart TD
     C -->|Yes| D[Check: consumed > 0]
     C -->|Yes| E[Check: consumed <= len data]
     C -->|Yes| F[Check: deterministic re-parse]
-    C -->|No| G[Check: error message meaningful]
+    C -->|No| G[Input rejected safely]
     D --> H{All properties hold?}
     E --> H
     F --> H
@@ -149,6 +157,12 @@ flowchart TD
 If you have both parser and serializer, verify round-trip consistency:
 
 ```go
+import (
+    "bytes"
+    "fmt"
+    "testing"
+)
+
 func TestRoundTrip(t *testing.T) {
     testMessages := []Message{
         {Command: 0x01, RequestID: 1, Body: []byte("hello")},
@@ -194,6 +208,12 @@ func TestRoundTrip(t *testing.T) {
 Validate against the official protocol specification:
 
 ```go
+import (
+    "testing"
+
+    "github.com/google/go-cmp/cmp"
+)
+
 func TestProtocolConformance(t *testing.T) {
     // Test vectors from the protocol specification
     specTests := []struct {
@@ -204,10 +224,10 @@ func TestProtocolConformance(t *testing.T) {
         {
             name: "spec example 1 - basic GET",
             wire: []byte{
-                0x00, 0x00, 0x00, 0x08, // length: 8
+                0x00, 0x00, 0x00, 0x0A, // length: 10
                 0x01,                     // command: GET
                 0x00, 0x00, 0x00, 0x01,  // request ID: 1
-                0x00, 0x03, 'f', 'o', 'o', // key: "foo" (this makes body = 8 bytes)
+                0x00, 0x03, 'f', 'o', 'o', // key: "foo"
             },
             expected: ParsedMessage{
                 Command:   0x01,
@@ -223,9 +243,8 @@ func TestProtocolConformance(t *testing.T) {
             if err != nil {
                 t.Fatalf("Failed to parse spec example: %v", err)
             }
-            if !reflect.DeepEqual(result, tt.expected) {
-                t.Errorf("Spec conformance failure:\n  got:  %+v\n  want: %+v",
-                    result, tt.expected)
+            if diff := cmp.Diff(tt.expected, result); diff != "" {
+                t.Errorf("Spec conformance failure (-want +got):\n%s", diff)
             }
         })
     }
@@ -261,7 +280,7 @@ go tool cover -func=cover.out
 Determine which implementation is correct by checking the protocol specification. The reference implementation may also have bugs.
 
 **Problem: Fuzz testing finds inputs that crash the parser**
-Each crashing input is saved in `testdata/fuzz/`. Convert these into permanent regression tests. Fix the crash, then verify the input no longer causes issues.
+Each crashing input is saved under `testdata/fuzz/<FuzzTestName>/`. Convert these into permanent regression tests. Fix the crash, then verify the input no longer causes issues.
 
 **Problem: Round-trip tests fail due to serialization differences**
 Some protocols allow multiple valid serializations for the same logical message. Normalize both sides before comparison, or compare at the logical level rather than byte level.
