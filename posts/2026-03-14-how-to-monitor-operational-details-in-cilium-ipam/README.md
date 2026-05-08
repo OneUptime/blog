@@ -12,7 +12,7 @@ Description: How to monitor Cilium IPAM operational metrics including IP allocat
 
 Monitoring Cilium IPAM gives you visibility into IP address allocation health, utilization trends, and potential exhaustion before it affects pod scheduling. IPAM issues are among the most impactful Cilium problems because they directly prevent pods from starting.
 
-The key metrics to track are per-node IP utilization, allocation and release rates, operator reconciliation performance, and overall cluster IP capacity. These metrics help you plan capacity and detect issues proactively.
+The key metrics to track are per-node IP utilization, allocation and release rates, operator reconciliation performance, and overall cluster IP capacity. Cilium's per-node operator IPAM metrics are available for AWS, AlibabaCloud, and Azure IPAM modes; for cluster-pool and Kubernetes host-scope modes, combine agent IPAM metrics with `CiliumNode` and Kubernetes `Node` data. These metrics help you plan capacity and detect issues proactively.
 
 ## Prerequisites
 
@@ -41,19 +41,22 @@ Key IPAM metrics:
 ```promql
 # Available IPs per node
 
-cilium_ipam_available
+cilium_operator_ipam_available_ips
 
 # Used IPs per node
-cilium_ipam_used
+cilium_operator_ipam_used_ips
 
 # IP allocation operations
-rate(cilium_ipam_allocation_ops_total[5m])
+rate(cilium_operator_ipam_ip_allocation_ops_total[5m])
 
 # IP release operations
-rate(cilium_ipam_release_ops_total[5m])
+rate(cilium_operator_ipam_ip_release_ops_total[5m])
 
 # Allocation failures
-rate(cilium_ipam_allocation_ops_total{status="failure"}[5m])
+rate(cilium_operator_ipam_allocation_duration_seconds_count{status="failed"}[5m])
+
+# Agent-reported IPAM capacity
+cilium_ipam_capacity
 ```
 
 ## Custom IPAM Monitoring Script
@@ -99,14 +102,14 @@ spec:
     - name: cilium-ipam
       rules:
         - alert: CiliumIPAMNearExhaustion
-          expr: cilium_ipam_available < 20
+          expr: cilium_operator_ipam_available_ips < 20
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Node {{ $labels.node }} has fewer than 20 IPs available"
+            summary: "Node {{ $labels.target_node }} has fewer than 20 IPs available"
         - alert: CiliumIPAMAllocationFailures
-          expr: rate(cilium_ipam_allocation_ops_total{status="failure"}[5m]) > 0
+          expr: rate(cilium_operator_ipam_allocation_duration_seconds_count{status="failed"}[5m]) > 0
           for: 5m
           labels:
             severity: critical
@@ -118,14 +121,16 @@ spec:
 
 ```bash
 cilium status | grep IPAM
+kubectl port-forward -n kube-system svc/cilium-operator 9963:9963 &
+curl -s http://localhost:9963/metrics | grep cilium_operator_ipam
 kubectl port-forward -n kube-system svc/cilium-agent 9962:9962 &
-curl -s http://localhost:9962/metrics | grep cilium_ipam
+curl -s http://localhost:9962/metrics | grep -E 'cilium_ipam|cilium_ip_addresses'
 ```
 
 ## Troubleshooting
 
 - **IPAM metrics not appearing**: Ensure Prometheus metrics are enabled and ServiceMonitor is configured.
-- **Utilization shows 100%**: Expand CIDRs immediately. Pods will fail to schedule.
+- **Utilization shows 100%**: Add capacity for your IPAM mode immediately. Pods will fail to schedule when Cilium cannot allocate pod IPs.
 - **Allocation rate spikes**: Correlate with deployment events. Sudden spikes during scaling are normal.
 - **Metrics lag**: Check Prometheus scrape interval and agent health.
 
