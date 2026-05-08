@@ -31,7 +31,7 @@ metadata:
   name: platform
 spec:
   order: 500
-# default tier already exists at order 1000
+# default tier already exists at order 1,000,000
 ```
 
 ```bash
@@ -72,6 +72,7 @@ spec:
     - action: Allow
       source:
         selector: "app == 'security-scanner'"
+    - action: Pass  # Let lower tiers handle other ingress
   egress:
     - action: Pass  # Let lower tiers handle other egress
 ```
@@ -83,7 +84,7 @@ graph TD
     B -->|Security tooling: Allow| D[Allowed]
     B -->|No match: Pass| E[Platform Tier 500]
     E -->|Monitoring: Allow| F[Allowed]
-    E -->|No match: Pass| G[Default Tier 1000]
+    E -->|No match: Pass| G[Default Tier 1,000,000]
     G -->|App policies| H[App-specific allow/deny]
 ```
 
@@ -102,9 +103,10 @@ spec:
   ingress:
     - action: Allow
       source:
-        namespaceSelector: "kubernetes.io/metadata.name == 'monitoring'"
+        namespaceSelector: "projectcalico.org/name == 'monitoring'"
       destination:
         ports: [9090, 9091, 8080]
+    - action: Pass  # Let lower tiers handle other ingress
 ```
 
 ## Usage Pattern 4: Inspect Policy Distribution Across Tiers
@@ -115,7 +117,8 @@ calicoctl get globalnetworkpolicies -o json | python3 -c "
 import json, sys
 from collections import Counter
 data = json.load(sys.stdin)
-tiers = Counter(p['spec'].get('tier', 'default') for p in data['items'])
+items = data.get('items', data) if isinstance(data, dict) else data
+tiers = Counter(p.get('spec', {}).get('tier', 'default') for p in items)
 print('Policy distribution by tier:')
 for tier, count in sorted(tiers.items()):
     print(f'  {tier}: {count} policies')
@@ -132,7 +135,12 @@ metadata:
   name: security-tier-writer
 rules:
   - apiGroups: ["projectcalico.org"]
-    resources: ["globalnetworkpolicies", "networkpolicies", "tiers"]
+    resources: ["tiers"]
+    resourceNames: ["security"]
+    verbs: ["get"]
+  - apiGroups: ["projectcalico.org"]
+    resources: ["tier.globalnetworkpolicies", "tier.networkpolicies"]
+    resourceNames: ["security.*"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
