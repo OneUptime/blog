@@ -26,16 +26,16 @@ sudo podman network create \
   --opt parent=eth0 \
   --subnet 192.168.1.0/24 \
   --gateway 192.168.1.1 \
-  --ip-range 192.168.1.210/29 \
+  --ip-range 192.168.1.208/29 \
   my-ipvlan-l2
 
 # Verify the configuration
-podman network inspect my-ipvlan-l2
+sudo podman network inspect my-ipvlan-l2
 ```
 
 ## Creating an IPvlan L3 Network
 
-IPvlan L3 mode operates at Layer 3 with routing between subnets:
+IPvlan L3 mode operates at Layer 3 and uses routing for container subnets:
 
 ```bash
 # Create an IPvlan L3 network
@@ -47,6 +47,7 @@ sudo podman network create \
   my-ipvlan-l3
 
 # L3 mode routes traffic between different subnets
+# Upstream networks need routes back to the container subnet
 ```
 
 ## Running Containers on IPvlan
@@ -70,7 +71,7 @@ sudo podman exec web-ipvlan ip link show eth0
 | Feature | IPvlan | Macvlan |
 |---------|--------|---------|
 | MAC address | Shared with host | Unique per container |
-| Wireless support | Yes | No |
+| Wireless support | Often works | Usually limited |
 | Cloud compatibility | Better | Limited |
 | L3 routing mode | Yes | No |
 | Container-to-host | Requires workaround | Requires workaround |
@@ -80,21 +81,21 @@ sudo podman exec web-ipvlan ip link show eth0
 ```bash
 # Run multiple containers sharing the host's MAC
 sudo podman run -d --name svc1 \
-  --network my-ipvlan-l2 --ip 192.168.1.211 \
-  docker.io/library/nginx:latest
-
-sudo podman run -d --name svc2 \
   --network my-ipvlan-l2 --ip 192.168.1.212 \
   docker.io/library/nginx:latest
 
+sudo podman run -d --name svc2 \
+  --network my-ipvlan-l2 --ip 192.168.1.213 \
+  docker.io/library/nginx:latest
+
 # Containers can communicate with each other
-sudo podman exec svc1 ping -c 2 192.168.1.212
+sudo podman exec svc1 ping -c 2 192.168.1.213
 ```
 
 ## IPvlan on Wireless Interfaces
 
 ```bash
-# IPvlan works on wireless where macvlan does not
+# IPvlan can work on wireless where macvlan is often restricted
 sudo podman network create \
   --driver ipvlan \
   --opt parent=wlan0 \
@@ -142,4 +143,4 @@ sudo podman exec web-ipvlan ip route show
 
 ## Summary
 
-IPvlan networks in Podman assign unique IP addresses to containers while sharing the host's MAC address. This makes IPvlan suitable for wireless networks and cloud environments that restrict MAC address changes. Choose L2 mode for same-subnet communication or L3 mode for routed inter-subnet traffic. Use IPvlan when macvlan is not available due to platform restrictions.
+IPvlan networks in Podman assign unique IP addresses to containers while sharing the host's MAC address. This makes IPvlan suitable for environments such as wireless networks and cloud platforms that restrict MAC address changes. Choose L2 mode for same-subnet communication or L3 mode for routed container subnets with appropriate routes. Use IPvlan when macvlan is not available due to platform restrictions.
