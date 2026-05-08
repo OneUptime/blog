@@ -22,7 +22,7 @@ This guide covers diagnostic techniques for the most common advanced parsing pro
 - Parser source code access
 - Go debugging tools (Delve, pprof)
 - Protocol-specific traffic generator for reproduction
-- `cilium monitor` and Envoy admin interface access
+- `cilium-dbg monitor` and Envoy admin interface access
 
 ## Diagnosing Nested Structure Parsing Failures
 
@@ -31,7 +31,7 @@ When nested structures fail to parse correctly, the error may cascade through th
 ```bash
 # Enable debug logging for the parser
 
-kubectl exec -n kube-system ds/cilium -- cilium config set debug true
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg config debug=true
 
 # Watch for parser errors in real time
 kubectl logs -n kube-system ds/cilium -c cilium-agent -f | grep -i "parse\|parser\|myprotocol"
@@ -101,10 +101,12 @@ When the parser and the application disagree on encoding:
 ```go
 // Diagnostic: Log raw bytes at parse boundaries
 func readStringDiagnostic(data []byte, offset int) (string, int, error) {
-    if len(data) < offset+2 {
+    if offset < 0 || offset > len(data)-2 {
         return "", 0, fmt.Errorf("insufficient data at offset %d (have %d bytes)",
             offset, len(data))
     }
+
+    available := len(data) - offset - 2
 
     // Log the raw length bytes for debugging
     log.WithFields(log.Fields{
@@ -112,7 +114,7 @@ func readStringDiagnostic(data []byte, offset int) (string, int, error) {
         "byte0":     fmt.Sprintf("0x%02x", data[offset]),
         "byte1":     fmt.Sprintf("0x%02x", data[offset+1]),
         "bigEndian": int(data[offset])<<8 | int(data[offset+1]),
-        "litEndian": int(data[offset+1])<<8 | int(data[offset]),
+        "littleEndian": int(data[offset+1])<<8 | int(data[offset]),
     }).Debug("String length bytes")
 
     // Try big-endian (most protocols)
@@ -120,23 +122,25 @@ func readStringDiagnostic(data []byte, offset int) (string, int, error) {
 
     // Sanity check: if big-endian produces unreasonable length,
     // the protocol might use little-endian
-    if strLen > len(data)-offset-2 {
+    if strLen > available {
         littleEndian := int(data[offset+1])<<8 | int(data[offset])
         log.WithFields(log.Fields{
             "bigEndian":    strLen,
             "littleEndian": littleEndian,
-            "available":    len(data) - offset - 2,
+            "available":    available,
         }).Warn("Big-endian length exceeds data, check byte order")
     }
 
     if strLen > maxStringLen {
         return "", 0, fmt.Errorf("string length %d exceeds max %d", strLen, maxStringLen)
     }
-    if len(data) < offset+2+strLen {
+    if strLen > available {
         return "", 0, fmt.Errorf("insufficient data for string body")
     }
 
-    return string(data[offset+2 : offset+2+strLen]), 2 + strLen, nil
+    bodyStart := offset + 2
+    bodyEnd := bodyStart + strLen
+    return string(data[bodyStart:bodyEnd]), 2 + strLen, nil
 }
 ```
 
@@ -199,7 +203,9 @@ go tool pprof -top cpu.prof
 # Analyze memory allocations
 go tool pprof -top -alloc_objects mem.prof
 
-# Check Envoy proxy latency
+# Check Envoy proxy latency if the admin interface is enabled on this pod.
+# In deployments that use the standalone Cilium Envoy DaemonSet, run the same
+# command against ds/cilium-envoy and the cilium-envoy container instead.
 kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
     curl -s http://localhost:9901/stats | grep downstream_cx_length
 ```
@@ -208,7 +214,7 @@ Common performance issues and fixes:
 
 ```go
 // SLOW: String concatenation in hot path
-func formatKey(parts []string) string {
+func formatKeySlow(parts []string) string {
     result := ""
     for _, p := range parts {
         result += "/" + p  // Creates new string each iteration
@@ -217,7 +223,7 @@ func formatKey(parts []string) string {
 }
 
 // FAST: Use strings.Builder
-func formatKey(parts []string) string {
+func formatKeyFast(parts []string) string {
     var buf strings.Builder
     for _, p := range parts {
         buf.WriteByte('/')
