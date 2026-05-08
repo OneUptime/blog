@@ -10,7 +10,7 @@ Description: Learn how to use Podman's squash options to flatten image layers, r
 
 > Squashing layers combines multiple Containerfile instructions into fewer layers, producing smaller and simpler images for distribution.
 
-Each instruction in a Containerfile creates a new layer in the resulting image. While layers enable caching and reuse, too many layers can increase image size, especially when files are created and deleted in separate steps. Podman provides squash options to flatten these layers and produce leaner images.
+Each Containerfile instruction that changes the filesystem, such as `RUN`, `COPY`, or `ADD`, creates a new layer in the resulting image. While layers enable caching and reuse, too many filesystem-changing layers can increase image size, especially when files are created and deleted in separate steps. Podman provides squash options to flatten these layers and produce leaner images.
 
 ---
 
@@ -62,13 +62,13 @@ Compare the layer counts:
 ```bash
 # Check layer count for each image
 echo "Normal layers:"
-podman inspect demo:normal | grep -c '"sha256:'
+podman image inspect --format '{{len .RootFS.Layers}}' demo:normal
 
 echo "Squashed layers:"
-podman inspect demo:squashed | grep -c '"sha256:'
+podman image inspect --format '{{len .RootFS.Layers}}' demo:squashed
 
 echo "Flat layers:"
-podman inspect demo:flat | grep -c '"sha256:'
+podman image inspect --format '{{len .RootFS.Layers}}' demo:flat
 ```
 
 ## Practical Example: Removing Build Artifacts
