@@ -73,10 +73,10 @@ make build-all
 podman pod unpause dev-pod
 ```
 
-## Use Case: Taking a Consistent Snapshot
+## Use Case: Reducing Writes During a Backup
 
 ```bash
-# Pause to ensure filesystem consistency before a backup
+# Pause to reduce writes before a file-level backup
 podman pod pause app-pod
 
 # Back up the volumes
@@ -110,4 +110,4 @@ podman pod ls --filter name="$POD_NAME"
 
 ## Summary
 
-Use `podman pod pause` to freeze all containers in a pod and `podman pod unpause` to resume them. Pausing preserves container memory state and is useful for temporarily freeing CPU resources, taking consistent volume backups, or suspending workloads during maintenance windows.
+Use `podman pod pause` to freeze all containers in a pod and `podman pod unpause` to resume them. Pausing preserves container memory state and is useful for temporarily freeing CPU resources, reducing writes during file-level backups, or suspending workloads during maintenance windows. For databases and other stateful services, use the application's backup or quiescing mechanism for consistency.
