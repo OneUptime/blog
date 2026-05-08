@@ -20,6 +20,7 @@ This guide covers setting up comprehensive monitoring for the K3s master node in
 
 - A K3s cluster with Cilium installed on the master node
 - Prometheus and Grafana for monitoring
+- Cilium Prometheus metrics enabled
 - `kubectl` with cluster-admin access
 - Node-level access for system metrics collection
 
@@ -72,7 +73,8 @@ spec:
       rules:
         - alert: K3sMasterNodeNotReady
           expr: |
-            kube_node_status_condition{condition="Ready",status="true",node=~".*master.*"} == 0
+            kube_node_status_condition{condition="Ready",status="true"} * on(node) group_left()
+            max by (node) (kube_node_role{role=~"control-plane|master"}) == 0
           for: 3m
           labels:
             severity: critical
@@ -101,29 +103,33 @@ CILIUM_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium \
   --field-selector spec.nodeName=$MASTER_NODE -o jsonpath='{.items[0].metadata.name}')
 
 # Get Cilium agent metrics
-kubectl exec -n kube-system $CILIUM_POD -- cilium metrics list | head -20
+kubectl exec -n kube-system $CILIUM_POD -- cilium-dbg metrics list | head -20
 
 # Check endpoint status on the master node
-kubectl exec -n kube-system $CILIUM_POD -- cilium endpoint list
+kubectl exec -n kube-system $CILIUM_POD -- cilium-dbg endpoint list
 
 # Monitor BPF map usage
-kubectl exec -n kube-system $CILIUM_POD -- cilium bpf ct list global | wc -l
+kubectl exec -n kube-system $CILIUM_POD -- cilium-dbg bpf ct list | wc -l
 ```
 
 Key PromQL queries for the master node:
 
 ```bash
 # Cilium agent CPU usage on master node
-rate(container_cpu_usage_seconds_total{namespace="kube-system",pod=~"cilium-.*",node=~".*master.*"}[5m])
+rate(container_cpu_usage_seconds_total{namespace="kube-system",pod=~"cilium-.*"}[5m])
+  * on(node) group_left()
+  max by (node) (kube_node_role{role=~"control-plane|master"})
 
 # Cilium agent memory usage on master node
-container_memory_working_set_bytes{namespace="kube-system",pod=~"cilium-.*",node=~".*master.*"}
+container_memory_working_set_bytes{namespace="kube-system",pod=~"cilium-.*"}
+  * on(node) group_left()
+  max by (node) (kube_node_role{role=~"control-plane|master"})
 
 # BPF map operations rate
-rate(cilium_bpf_map_ops_total{instance=~".*master.*"}[5m])
+rate(cilium_bpf_map_ops_total[5m])
 
-# Policy import events
-rate(cilium_policy_import_errors_total{instance=~".*master.*"}[5m])
+# Policy changes by outcome
+rate(cilium_policy_change_total[5m])
 ```
 
 ## Monitoring System Resources on the Master Node
@@ -179,11 +185,11 @@ Create a Grafana dashboard focused on the master node:
 # Row 1: K3s Control Plane
 # - API Server Request Rate: rate(apiserver_request_total[5m])
 # - API Server Error Rate: rate(apiserver_request_total{code=~"5.."}[5m])
-# - etcd Latency: histogram_quantile(0.99, rate(etcd_request_duration_seconds_bucket[5m]))
+# - etcd Latency (embedded or external etcd clusters only): histogram_quantile(0.99, rate(etcd_request_duration_seconds_bucket[5m]))
 
 # Row 2: Cilium Agent
-# - Agent Uptime: cilium_agent_uptime_seconds
-# - Endpoint Count: cilium_endpoint_state
+# - Agent Scrape Health: up{job="cilium-agent"}
+# - Endpoint Count: sum(cilium_endpoint_state) by (state)
 # - Drop Rate: rate(cilium_drop_count_total[5m])
 
 # Row 3: System Resources
