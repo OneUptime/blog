@@ -26,12 +26,13 @@ EKS adds complexity because AWS manages the control plane, and Cilium must work 
 ```bash
 # Check Kubernetes version
 
-kubectl version --short
+kubectl version
 
-# Cilium 1.15+ requires Kubernetes 1.21+
+# Check the Kubernetes compatibility matrix for your target Cilium version.
+# For example, Cilium 1.19 is tested with Kubernetes 1.31-1.34.
 # Check EKS available versions
-aws eks describe-addon-versions --region us-east-1 \
-  --query "addons[0].addonVersions[0].compatibilities[*].clusterVersion" \
+aws eks describe-cluster-versions --region us-east-1 \
+  --query "clusterVersions[*].{version:clusterVersion,status:versionStatus}" \
   --output text 2>/dev/null | head -5
 
 # Get current EKS cluster version
@@ -46,9 +47,10 @@ aws eks describe-cluster --name <cluster-name> \
 kubectl get nodes -o jsonpath=\
 '{range .items[*]}{.metadata.name}: {.status.nodeInfo.kernelVersion}, {.status.nodeInfo.osImage}{"\n"}{end}'
 
-# For EKS-optimized Amazon Linux 2:
-# Kernel 5.10+ is included in recent AMIs
-# For Bottlerocket: kernel 5.15+ (recommended for Cilium)
+# Cilium requires Linux kernel 5.10+ or an equivalent vendor kernel.
+# Current EKS AL2023 and Bottlerocket AMIs use newer 6.x kernels.
+# Legacy EKS-optimized Amazon Linux 2 AMIs used kernel 5.10, but EKS stopped
+# publishing new AL2 AMIs after November 26, 2025.
 
 # Check AMI version used by node groups
 aws eks describe-nodegroup \
@@ -74,6 +76,11 @@ echo "Node IAM Role: $NODE_ROLE"
 aws iam list-attached-role-policies \
   --role-name $(basename $NODE_ROLE) \
   --query "AttachedPolicies[*].PolicyName" --output table
+
+# Also check inline policies if your role uses them
+aws iam list-role-policies \
+  --role-name $(basename $NODE_ROLE) \
+  --query "PolicyNames" --output table
 ```
 
 ```json
@@ -87,12 +94,17 @@ aws iam list-attached-role-policies \
         "ec2:CreateNetworkInterface",
         "ec2:AttachNetworkInterface",
         "ec2:DeleteNetworkInterface",
+        "ec2:ModifyNetworkInterfaceAttribute",
         "ec2:AssignPrivateIpAddresses",
         "ec2:UnassignPrivateIpAddresses",
         "ec2:DescribeSubnets",
         "ec2:DescribeSecurityGroups",
         "ec2:DescribeVpcs",
-        "ec2:DescribeInstances"
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeTags",
+        "ec2:CreateTags"
       ],
       "Resource": "*"
     }
@@ -110,7 +122,7 @@ aws ec2 describe-subnets \
   --output table
 
 # Check ENI limits for the instance type used by worker nodes
-# e.g., m5.xlarge supports up to 15 ENIs with 15 IPs each
+# e.g., m5.xlarge supports up to 4 ENIs with 15 IPv4 addresses each
 aws ec2 describe-instance-types \
   --instance-types m5.xlarge \
   --query "InstanceTypes[0].NetworkInfo.{maxENIs:MaximumNetworkInterfaces,ipsPerENI:Ipv4AddressesPerInterface}"
@@ -131,8 +143,8 @@ aws ec2 describe-security-groups \
 
 - Use Bottlerocket or Amazon Linux 2023 nodes for best Cilium kernel support on EKS
 - Attach the minimum required IAM policy for ENI operations - avoid AmazonEC2FullAccess
-- Ensure subnets have at least 100+ free IPs per node when using ENI mode
-- Disable `aws-node` DaemonSet when switching from AWS VPC CNI to Cilium
+- Ensure subnets have enough free IPs for the expected pod density when using ENI mode
+- Patch the `aws-node` DaemonSet to stop managing ENIs when switching from AWS VPC CNI to Cilium ENI mode
 - Test requirements in a dedicated EKS test cluster before modifying production
 
 ## Conclusion
