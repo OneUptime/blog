@@ -10,7 +10,7 @@ Description: Learn how to verify Calico pod networking and policy enforcement on
 
 ## Introduction
 
-IBM Kubernetes Service (IKS) uses Calico as its default CNI plugin and network policy engine. Unlike some other managed Kubernetes services where Calico is an optional add-on, IKS ships with Calico as a core component, providing both pod networking and policy enforcement. IBM Cloud also extends Calico with additional enterprise features through their Calico integration.
+IBM Kubernetes Service (IKS) uses Calico as its default CNI plugin and network policy engine. Unlike some other managed Kubernetes services where Calico is an optional add-on, IKS ships with Calico as a core component, providing both pod networking and policy enforcement. IBM Cloud also provides default Calico policies and supported configuration paths for its Calico integration.
 
 Validating Calico on IKS involves checking the IBM-specific Calico configuration, verifying that the IKS-provided Calico components are healthy, and confirming that both standard Kubernetes NetworkPolicies and Calico-specific policies work correctly. IBM IKS also deploys pre-configured Calico GlobalNetworkPolicies for cluster security, which you must account for when testing.
 
@@ -20,7 +20,7 @@ This guide covers verification of Calico networking on IBM Kubernetes Service.
 
 - IBM Kubernetes Service cluster
 - IBM Cloud CLI with Kubernetes plugin (`ibmcloud ks`)
-- `calicoctl` CLI configured for IKS (IBM Cloud provides configuration)
+- `calicoctl` CLI configured for IKS (`ibmcloud ks cluster config --cluster <cluster-name> --admin --network`)
 - `kubectl` with cluster admin access
 
 ## Step 1: Verify IKS Calico Configuration
@@ -33,9 +33,11 @@ Confirm Calico is correctly deployed on the IKS cluster.
 ibmcloud ks cluster get --cluster <cluster-name> | grep -i "network\|calico"
 
 # Verify Calico pods are running on all worker nodes
-kubectl get pods -n kube-system | grep calico
+kubectl get pods -n calico-system 2>/dev/null || kubectl get pods -n kube-system | grep calico
 
 # Check the specific Calico version deployed by IBM
+kubectl get pods -n calico-system -l k8s-app=calico-node \
+  -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || \
 kubectl get pods -n kube-system -l k8s-app=calico-node \
   -o jsonpath='{.items[0].spec.containers[0].image}'
 
@@ -55,7 +57,7 @@ calicoctl get globalnetworkpolicy -o wide
 calicoctl get hostendpoint -o wide
 
 # Inspect a specific IBM policy to understand what traffic it controls
-calicoctl get globalnetworkpolicy allow-ibm-ports -o yaml
+calicoctl get globalnetworkpolicy allow-all-private-default -o yaml
 
 # Check the policy order to understand enforcement priority
 calicoctl get globalnetworkpolicy -o yaml | grep -E "name:|order:"
@@ -105,7 +107,7 @@ spec:
         matchLabels:
           tier: frontend
     ports:
-    - port: 8080
+    - port: 80
 ```
 
 ```bash
@@ -121,8 +123,11 @@ kubectl run frontend -n production --image=busybox:1.28 \
 kubectl run backend -n production --image=nginx \
   --labels="tier=backend" --restart=Never
 
+kubectl wait --for=condition=Ready pod/frontend -n production --timeout=60s
+kubectl wait --for=condition=Ready pod/backend -n production --timeout=60s
+
 BACKEND_IP=$(kubectl get pod backend -n production -o jsonpath='{.status.podIP}')
-kubectl exec -n production frontend -- wget -qO- --timeout=5 http://$BACKEND_IP:80 && echo "PASS"
+kubectl exec -n production frontend -- wget -qO- -T 5 http://$BACKEND_IP:80 && echo "PASS"
 ```
 
 ## Step 5: Validate IKS-Specific Calico Integration
@@ -133,23 +138,23 @@ Check IBM Cloud-specific Calico features and integration.
 # Verify Calico is using the IBM Cloud provided datastore configuration
 kubectl get cm -n kube-system calico-config -o yaml
 
-# Check IKS network operator components
-kubectl get pods -n ibm-operators 2>/dev/null || kubectl get pods -n kube-system | grep ibm
+# Check Calico operator-managed resources on Kubernetes 1.29 and later
+kubectl get installation default -n calico-system -o yaml 2>/dev/null || true
 
-# Verify Calico metrics are being collected (IBM monitoring integration)
-kubectl get servicemonitor -n kube-system 2>/dev/null | grep calico
+# If you run Prometheus Operator, check whether Calico ServiceMonitor resources exist
+kubectl get servicemonitor -A 2>/dev/null | grep calico || true
 
 # Check Calico node status for all worker nodes
-calicoctl node status
+calicoctl get nodes -o wide
 ```
 
 ## Best Practices
 
 - Review IBM's pre-configured Calico policies before adding custom ones to understand the existing security baseline
-- Use IBM Cloud's Kubernetes network policy dashboard to visualize policy interactions
+- Use Kubernetes API server audit logs in IBM Cloud Logs or an external server to audit network policy changes
 - When upgrading IKS versions, verify that IBM's Calico policies are updated to the new version's format
 - Test policies that interact with IBM-managed host endpoints carefully - incorrect policies can disrupt worker node communication with the control plane
-- Use IBM Cloud Activity Tracker to audit network policy changes
+- Use `kubectl` and `calicoctl` output to review policy interactions
 
 ## Conclusion
 
