@@ -31,7 +31,7 @@ All pods should show `2/2` containers running (flannel + calico-node).
 
 ## Step 2: Confirm Flannel Subnet Allocation
 
-Each node should have a Flannel subnet annotation.
+Each node should have a PodCIDR for Flannel's kube-subnet-manager to use.
 
 ```bash
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDR}{"\n"}{end}'
@@ -48,14 +48,15 @@ NODE1=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
 NODE2=$(kubectl get nodes -o jsonpath='{.items[1].metadata.name}')
 
 kubectl run pod-a --image=busybox --restart=Never --overrides="{\"spec\":{\"nodeName\":\"$NODE1\"}}" -- sleep 3600
-kubectl run pod-b --image=busybox --restart=Never --overrides="{\"spec\":{\"nodeName\":\"$NODE2\"}}" -- sleep 3600
+kubectl run pod-b --image=nginx:stable-alpine --restart=Never --overrides="{\"spec\":{\"nodeName\":\"$NODE2\"}}"
 
 kubectl wait --for=condition=Ready pod/pod-a pod/pod-b --timeout=60s
 POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
 kubectl exec pod-a -- ping -c5 $POD_B_IP
+kubectl exec pod-a -- wget -T 3 -qO- http://$POD_B_IP
 ```
 
-Cross-node ping confirms Flannel VXLAN encapsulation is working.
+Cross-node ping and HTTP connectivity confirm Flannel VXLAN encapsulation is working.
 
 ## Step 4: Verify NetworkPolicy Enforcement
 
@@ -77,9 +78,9 @@ spec:
   policyTypes: [Ingress]
 EOF
 
-# Ping should now fail
+# HTTP should now fail
 
-kubectl exec pod-a -- ping -c3 $POD_B_IP && echo "FAIL: traffic not blocked" || echo "PASS: traffic blocked"
+kubectl exec pod-a -- wget -T 3 -qO- http://$POD_B_IP && echo "FAIL: traffic not blocked" || echo "PASS: traffic blocked"
 kubectl delete networkpolicy isolate-pod-b
 ```
 
@@ -96,10 +97,10 @@ chroot /host iptables -L | grep cali | head -20
 ## Step 6: Check Calico Workload Endpoints
 
 ```bash
-kubectl exec -n kube-system deploy/calicoctl -- calicoctl get workloadendpoints -A | head -20
+calicoctl get workloadendpoints -A | head -20
 ```
 
-Every running pod should have a corresponding workload endpoint entry.
+Every running pod using the Canal CNI should have a corresponding workload endpoint entry. Run this from a host or container where `calicoctl` is installed and configured for the cluster.
 
 ## Step 7: Verify DNS Resolution
 
