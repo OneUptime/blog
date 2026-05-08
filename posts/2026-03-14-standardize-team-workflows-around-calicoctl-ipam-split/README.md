@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, IPAM, Team Workflows, Best Practice
 
-Description: Establish consistent team procedures for using calicoctl ipam split as part of regular IPAM operations and maintenance.
+Description: Establish consistent team procedures for using calicoctl ipam split as part of planned IPAM maintenance.
 
 ---
 
 ## Introduction
 
-When team members use `calicoctl ipam split` inconsistently or infrequently, IPAM issues go undetected. Standardizing how and when this command is used ensures consistent IP address management across all environments.
+When team members use `calicoctl ipam split` inconsistently, planned IP pool changes become risky. Standardizing how and when this command is used ensures consistent IP address management across all environments.
 
 ## Prerequisites
 
 - A team managing Calico clusters
 - Documented operational procedures
-- Scheduling or automation infrastructure
+- A maintenance window for locking and unlocking the Calico datastore
 
 ## Standard Operating Procedures
 
@@ -24,14 +24,14 @@ When team members use `calicoctl ipam split` inconsistently or infrequently, IPA
 
 ```yaml
 scheduled:
-  - frequency: "Daily"
-    purpose: "Routine IPAM health check"
+  - frequency: "During planned IP pool maintenance"
+    purpose: "Split an existing IP pool into smaller pools"
     
-  - frequency: "After node changes"
-    purpose: "Verify IPAM consistency"
+  - frequency: "After a clean IPAM check"
+    purpose: "Confirm there are no IPAM issues before splitting"
     
-  - frequency: "After pod issues"
-    purpose: "Check for IP-related problems"
+  - frequency: "After change approval"
+    purpose: "Ensure the team is ready for a datastore lock"
 ```
 
 ### Team Script
@@ -40,12 +40,17 @@ scheduled:
 #!/bin/bash
 # team-ipam-split.sh
 
+set -euo pipefail
+
 echo "=== calicoctl ipam split ==="
 echo "Operator: $USER"
 echo "Cluster: $(kubectl config current-context)"
 echo "Date: $(date)"
 echo ""
-calicoctl ipam split 4 --cidr=10.244.0.0/24
+calicoctl ipam check
+calicoctl datastore migrate lock
+trap 'calicoctl datastore migrate unlock' EXIT
+calicoctl ipam split --cidr=10.244.0.0/24 4
 echo ""
 echo "=== Complete ==="
 ```
@@ -55,12 +60,13 @@ echo "=== Complete ==="
 ```markdown
 After running calicoctl ipam split:
 - [ ] Output reviewed for errors or warnings
+- [ ] Calico datastore unlocked successfully
 - [ ] Results compared with expected state
 - [ ] Any issues documented and assigned
 - [ ] Results shared with team if noteworthy
 ```
 
-## Automated Monitoring
+## Automated Runbook
 
 ```yaml
 apiVersion: batch/v1
@@ -70,6 +76,7 @@ metadata:
   namespace: calico-system
 spec:
   schedule: "0 8 * * *"
+  suspend: true
   jobTemplate:
     spec:
       template:
@@ -77,8 +84,16 @@ spec:
           serviceAccountName: calicoctl
           containers:
           - name: task
-            image: calico/ctl:v3.27.0
-            command: ["/bin/sh", "-c", "calicoctl ipam split 4 --cidr=10.244.0.0/24"]
+            image: calico/ctl:v3.32.0
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              calicoctl ipam check
+              calicoctl datastore migrate lock
+              trap 'calicoctl datastore migrate unlock' EXIT
+              calicoctl ipam split --cidr=10.244.0.0/24 4
           restartPolicy: Never
 ```
 
@@ -90,10 +105,10 @@ spec:
 
 ## Troubleshooting
 
-- **Team members not running checks**: Automate with CronJobs and send results to a shared channel.
+- **Team members running splits without review**: Keep the CronJob suspended by default and require approval before unsuspending it.
 - **Different results across team members**: Ensure everyone targets the same cluster context.
 - **Results not being acted upon**: Define clear escalation procedures for each type of finding.
 
 ## Conclusion
 
-Standardizing `calicoctl ipam split` usage across your team ensures consistent IPAM visibility and proactive issue detection. By defining when to run the command, how to interpret results, and what actions to take, your team maintains healthy IP address management.
+Standardizing `calicoctl ipam split` usage across your team ensures consistent IPAM maintenance. By defining when to run the command, how to interpret results, and what actions to take, your team maintains healthy IP address management.
