@@ -27,46 +27,35 @@ This guide walks through practical uses of `calicoctl node checksystem`, includi
 The simplest usage runs the check against the current node:
 
 ```bash
-calicoctl node checksystem
+sudo calicoctl node checksystem
 ```
 
-This produces output indicating whether the node passes all checks. A successful run looks like:
+This produces output indicating whether the node passes all checks. A successful run looks like this abridged example:
 
 ```text
-WARNING: Your kernel does not support swap limit capabilities or the cgroup is not mounted. Memory limited without swap.
 Checking kernel version...
-  Kernel version: 5.15.0-78-generic
-  Kernel version is supported.
-Checking for required kernel modules...
-  xt_set: OK
-  ip6_tables: OK
-  xt_addrtype: OK
-  xt_conntrack: OK
-  xt_icmp: OK
-  xt_mark: OK
-  xt_multiport: OK
-  xt_rpfilter: OK
-  xt_set: OK
-  ip_tables: OK
-  ipt_REJECT: OK
-  ipt_rpfilter: OK
-  nf_conntrack_netlink: OK
-  xt_u32: OK
-System meets Calico requirements.
+		5.15.0-78-generic					OK
+Checking kernel modules...
+		xt_conntrack					OK
+		xt_u32						OK
+		xt_set						OK
+		ip6_tables					OK
+System meets minimum system requirements to run Calico!
 ```
 
 ## Understanding the Output
 
 ### Kernel Version Check
 
-The command first validates that the running kernel version is supported by Calico. Calico requires a Linux kernel version 3.10 or later for basic functionality. Certain features like eBPF dataplane require kernel 5.3 or later.
+The command first checks the running kernel version against the minimum built into the `calicoctl` command. You should still verify the current Calico release requirements separately; current Calico Kubernetes documentation requires Linux kernel 5.10 or later, and the base eBPF dataplane also requires kernel 5.10 or later, with some features requiring newer kernels.
 
 ### Kernel Module Check
 
 Each required kernel module is listed with its status. If a module is missing, the output will show:
 
 ```text
-  xt_set: FAIL (module not loaded and not available)
+WARNING: Unable to detect the xt_set module as Loaded/Builtin module or lsmod
+		xt_set						FAIL
 ```
 
 ## Loading Missing Kernel Modules
@@ -77,25 +66,17 @@ If the check reports missing modules, you can attempt to load them:
 sudo modprobe xt_set
 sudo modprobe ip6_tables
 sudo modprobe xt_conntrack
+sudo modprobe ipip
 ```
 
-To make modules persist across reboots, add them to a configuration file:
+To make required modules persist across reboots, add the modules reported by `checksystem` to a configuration file. For example:
 
 ```bash
 cat <<EOF | sudo tee /etc/modules-load.d/calico.conf
 xt_set
 ip6_tables
-xt_addrtype
 xt_conntrack
-xt_icmp
-xt_mark
-xt_multiport
-xt_rpfilter
-ip_tables
-ipt_REJECT
-ipt_rpfilter
-nf_conntrack_netlink
-xt_u32
+ipip
 EOF
 ```
 
@@ -109,7 +90,7 @@ NODES=$(kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="In
 
 for NODE in $NODES; do
   echo "=== Checking node: $NODE ==="
-  ssh "$NODE" "calicoctl node checksystem" 2>&1
+  ssh "$NODE" "sudo calicoctl node checksystem" 2>&1
   if [ $? -ne 0 ]; then
     echo "FAIL: Node $NODE does not meet requirements"
   else
@@ -142,10 +123,30 @@ spec:
       hostNetwork: true
       containers:
       - name: checksystem
-        image: calico/ctl:v3.27.0
+        image: calico/ctl:v3.32.0
         command: ["calicoctl", "node", "checksystem"]
         securityContext:
           privileged: true
+        volumeMounts:
+        - name: modules
+          mountPath: /lib/modules
+          readOnly: true
+        - name: boot
+          mountPath: /boot
+          readOnly: true
+        - name: usr-src
+          mountPath: /usr/src
+          readOnly: true
+      volumes:
+      - name: modules
+        hostPath:
+          path: /lib/modules
+      - name: boot
+        hostPath:
+          path: /boot
+      - name: usr-src
+        hostPath:
+          path: /usr/src
       restartPolicy: Always
       tolerations:
       - operator: Exists
@@ -162,7 +163,7 @@ kubectl logs -l app=calico-checksystem -n kube-system --prefix
 After addressing any reported issues, re-run the check to confirm:
 
 ```bash
-calicoctl node checksystem
+sudo calicoctl node checksystem
 echo "Exit code: $?"
 ```
 
@@ -171,7 +172,7 @@ An exit code of 0 confirms all checks passed. A non-zero exit code indicates rem
 ## Troubleshooting
 
 - **Module not found**: The kernel module may not be available in the running kernel. Install the appropriate `linux-modules-extra` package for your kernel version.
-- **Kernel version too old**: Upgrade your kernel to at least version 3.10. For eBPF dataplane support, use kernel 5.3 or later.
+- **Kernel version too old**: Upgrade your kernel to meet the requirements for the Calico version and dataplane you are running. Current Calico Kubernetes documentation requires Linux kernel 5.10 or later; some eBPF features require newer kernels.
 - **Permission denied**: Run the command with `sudo` as it needs to inspect kernel configurations.
 - **calicoctl not found**: Ensure the binary is downloaded and available in your PATH. Verify the version matches your Calico deployment.
 
