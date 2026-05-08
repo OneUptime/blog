@@ -10,7 +10,7 @@ Description: Validate that external connectivity is restored after a Calico upgr
 
 ## Introduction
 
-Validating external connectivity resolution after a Calico upgrade fix requires testing connectivity from pods on each node, verifying iptables MASQUERADE rules are present, and confirming the IP pool natOutgoing configuration is correct. A fix to natOutgoing takes effect immediately without requiring pod restarts, but iptables rule verification confirms calico-node applied the changes on each node.
+Validating external connectivity resolution after a Calico upgrade fix requires testing connectivity from pods on each node, verifying MASQUERADE rules are present in the active dataplane, and confirming the IP pool natOutgoing configuration is correct. A fix to natOutgoing takes effect after calico-node reconciles it and does not require pod restarts, but dataplane rule verification confirms calico-node applied the changes on each node.
 
 Complete validation also includes verifying that all calico-node pods are running the same version, which eliminates the possibility of mixed-version routing inconsistencies causing intermittent failures after the incident appears resolved.
 
@@ -31,15 +31,16 @@ Complete validation also includes verifying that all calico-node pods are runnin
 ```bash
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   kubectl run ext-test-$NODE --image=busybox --restart=Never \
+    --labels="app=ext-test" \
     --overrides="{\"spec\":{\"nodeName\":\"$NODE\"}}" \
-    -- wget -qO- --timeout=10 http://1.1.1.1
+    --command -- wget -qO- --timeout=10 http://1.1.1.1
 done
 
 sleep 15
 kubectl get pods | grep ext-test
 # All should complete (not Error)
 
-kubectl delete pods -l run=ext-test 2>/dev/null || \
+kubectl delete pods -l app=ext-test 2>/dev/null || \
   kubectl get pods | grep ext-test | awk '{print $1}' | xargs kubectl delete pod
 ```
 
@@ -58,7 +59,7 @@ for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
   echo -n "Node $NODE MASQUERADE: "
   ssh $NODE "sudo iptables -t nat -L POSTROUTING -n | grep -c MASQUERADE" 2>/dev/null || echo "SSH failed"
 done
-# Each node should show at least 1 MASQUERADE rule
+# On clusters using the Calico iptables dataplane, each node should show at least 1 MASQUERADE rule
 ```
 
 **Validation Step 4: Verify all calico-node pods on same version**
@@ -75,10 +76,10 @@ VERSION_COUNT=$(echo "$VERSIONS" | wc -l)
 **Validation Step 5: Test DNS and HTTPS external connectivity**
 
 ```bash
-kubectl run full-test --image=busybox --restart=Never -- sh -c \
+kubectl run full-test --image=busybox --restart=Never --command -- sh -c \
   "nslookup google.com && wget -qO- --timeout=10 https://ifconfig.me && echo PASS"
 
-kubectl wait pod full-test --for=condition=Ready --timeout=30s
+kubectl wait pod/full-test --for=jsonpath='{.status.phase}'=Succeeded --timeout=60s
 kubectl logs full-test
 kubectl delete pod full-test
 ```
@@ -107,4 +108,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating external connectivity resolution requires per-node pod connectivity tests, iptables MASQUERADE rule verification, and IP pool configuration confirmation. Testing from pods on every node ensures the fix applied correctly across all calico-node instances before closing the incident.
+Validating external connectivity resolution requires per-node pod connectivity tests, MASQUERADE rule verification in the active dataplane, and IP pool configuration confirmation. Testing from pods on every node ensures the fix applied correctly across all calico-node instances before closing the incident.
