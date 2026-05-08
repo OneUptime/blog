@@ -37,7 +37,7 @@ Example output:
 +----------+--------------+-----------+------------+-----------+
 | GROUPING |     CIDR     | IPS TOTAL | IPS IN USE | IPS FREE  |
 +----------+--------------+-----------+------------+-----------+
-| IP Pool  | 10.244.0.0/16|    65536  |     342    |   65194   |
+| IP Pool  | 10.244.0.0/16|     65536 | 342 (1%)   | 65194 (99%) |
 +----------+--------------+-----------+------------+-----------+
 ```
 
@@ -48,15 +48,16 @@ Example output:
 calicoctl ipam show --show-blocks
 ```
 
-This shows how IP blocks are distributed across nodes:
+This shows per-pool utilization and the IP blocks allocated from those pools:
 
 ```text
 +----------+------------------+-----------+------------+-----------+
 | GROUPING |       CIDR       | IPS TOTAL | IPS IN USE | IPS FREE  |
 +----------+------------------+-----------+------------+-----------+
-| Block    | 10.244.0.0/26    |    64     |     12     |    52     |
-|          | 10.244.0.64/26   |    64     |     8      |    56     |
-|          | 10.244.1.0/26    |    64     |     15     |    49     |
+| IP Pool  | 10.244.0.0/16    |     65536 | 35 (0%)    | 65501 (100%) |
+| Block    | 10.244.0.0/26    |        64 | 12 (19%)   | 52 (81%) |
+| Block    | 10.244.0.64/26   |        64 | 8 (12%)    | 56 (88%) |
+| Block    | 10.244.1.0/26    |        64 | 15 (23%)   | 49 (77%) |
 +----------+------------------+-----------+------------+-----------+
 ```
 
@@ -79,9 +80,21 @@ TIMESTAMP=$(date +%Y-%m-%dT%H:%M:%S)
 
 # Parse utilization
 UTIL=$(calicoctl ipam show 2>/dev/null)
-TOTAL=$(echo "$UTIL" | grep "IP Pool" | awk '{print $5}')
-USED=$(echo "$UTIL" | grep "IP Pool" | awk '{print $7}')
-FREE=$(echo "$UTIL" | grep "IP Pool" | awk '{print $9}')
+read -r TOTAL USED FREE <<EOF
+$(echo "$UTIL" | awk -F'|' '
+/IP Pool/ {
+  gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4)
+  gsub(/^[[:space:]]+|[[:space:]]+$/, "", $5)
+  gsub(/^[[:space:]]+|[[:space:]]+$/, "", $6)
+  split($5, used, " ")
+  split($6, free, " ")
+  total += $4
+  in_use += used[1]
+  available += free[1]
+}
+END {print total, in_use, available}
+')
+EOF
 
 echo "$TIMESTAMP,$TOTAL,$USED,$FREE" >> "$LOG"
 echo "Recorded: total=$TOTAL used=$USED free=$FREE"
@@ -96,11 +109,24 @@ echo "Recorded: total=$TOTAL used=$USED free=$FREE"
 THRESHOLD=80  # Alert at 80% utilization
 
 UTIL=$(calicoctl ipam show 2>/dev/null)
-TOTAL=$(echo "$UTIL" | grep "IP Pool" | awk '{print $5}' | head -1)
-USED=$(echo "$UTIL" | grep "IP Pool" | awk '{print $7}' | head -1)
+read -r TOTAL USED PERCENT <<EOF
+$(echo "$UTIL" | awk -F'|' '
+/IP Pool/ {
+  gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4)
+  gsub(/^[[:space:]]+|[[:space:]]+$/, "", $5)
+  split($5, used, " ")
+  total += $4
+  in_use += used[1]
+}
+END {
+  if (total > 0) {
+    printf "%.0f %.0f %.0f\n", total, in_use, (in_use * 100 / total)
+  }
+}
+')
+EOF
 
-if [ -n "$TOTAL" ] && [ "$TOTAL" -gt 0 ]; then
-  PERCENT=$((USED * 100 / TOTAL))
+if [ -n "$TOTAL" ] && [ "$TOTAL" != "0" ]; then
   echo "IP utilization: $USED/$TOTAL ($PERCENT%)"
   
   if [ "$PERCENT" -ge "$THRESHOLD" ]; then
