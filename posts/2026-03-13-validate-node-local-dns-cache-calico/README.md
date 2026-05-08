@@ -10,15 +10,15 @@ Description: Validate that NodeLocal DNSCache is working correctly with Calico b
 
 ## Introduction
 
-Validating NodeLocal DNSCache with Calico confirms that DNS queries from pods are being served by the local cache rather than crossing the network to CoreDNS. Effective validation requires measuring DNS resolution latency (cache hits should be sub-millisecond), confirming that Calico network policies correctly allow traffic to the link-local cache IP, and verifying that cache pods are healthy on all nodes.
+Validating NodeLocal DNSCache with Calico confirms that DNS queries from pods use the node-local caching path, with cache misses forwarded to kube-dns/CoreDNS. Effective validation requires measuring DNS resolution latency, confirming that Calico network policies correctly allow DNS traffic, and verifying that cache pods are healthy on all nodes.
 
-A misconfigured NodeLocal DNS cache can silently fall back to CoreDNS for all queries, negating the performance benefit while consuming resources running the cache daemon. Validation catches this scenario and ensures the cache is actually being used.
+A misconfigured NodeLocal DNS cache can silently send queries directly to kube-dns/CoreDNS, negating the performance benefit while consuming resources running the cache daemon. Validation catches this scenario and ensures the cache is actually being used.
 
 ## Prerequisites
 
 - NodeLocal DNSCache deployed with Calico
 - kubectl access and ability to exec into pods
-- curl or wget for accessing metrics
+- curl for accessing metrics
 
 ## Verify Cache Pod Health
 
@@ -39,11 +39,16 @@ echo "Nodes: ${NODE_COUNT}, DNS cache pods: ${POD_COUNT}"
 # Deploy test pod and verify it uses node-local cache
 kubectl run dns-test --image=busybox -- sleep 3600
 
-# Check /etc/resolv.conf - should show 169.254.20.10
+# Check /etc/resolv.conf. In IPVS mode it should show the NodeLocal DNS IP
+# such as 169.254.20.10; in iptables mode it may still show the kube-dns
+# service IP because node-local-dns can listen on both addresses.
 kubectl exec dns-test -- cat /etc/resolv.conf
 
-# Time DNS lookups
-kubectl exec dns-test -- time nslookup kubernetes.default.svc.cluster.local
+# Time DNS lookups through the pod resolver
+kubectl exec dns-test -- sh -c 'time nslookup kubernetes.default.svc.cluster.local'
+
+# Query the NodeLocal DNS IP directly
+kubectl exec dns-test -- nslookup kubernetes.default.svc.cluster.local 169.254.20.10
 ```
 
 ## Measure Cache Hit Rate
@@ -53,18 +58,22 @@ NODE_DNS=$(kubectl get pod -n kube-system -l k8s-app=node-local-dns \
   --field-selector spec.nodeName=<node> -o name | head -1)
 
 # Get cache metrics
-kubectl exec -n kube-system ${NODE_DNS} -- \
-  wget -qO- http://localhost:9253/metrics | grep -E "cache_hits|cache_misses"
+kubectl port-forward -n kube-system ${NODE_DNS} 9253:9253 >/tmp/node-dns-port-forward.log 2>&1 &
+PF_PID=$!
+sleep 2
+curl -s http://127.0.0.1:9253/metrics | grep -E "coredns_cache_hits_total|coredns_cache_requests_total"
+kill ${PF_PID}
 ```
 
 ## Validate Calico Policies Allow DNS Traffic
 
 ```bash
-# Test connectivity to node-local DNS IP
-kubectl exec dns-test -- nc -zvw 3 169.254.20.10 53
+# Test DNS resolution through the node-local DNS IP
+kubectl exec dns-test -- nslookup kubernetes.default.svc.cluster.local 169.254.20.10
 
-# Verify no dropped packets in Calico logs
-kubectl logs -n calico-system ds/calico-node | grep -i "169.254.20.10" | grep -i deny
+# Verify no dropped packets in Calico logs. The namespace is calico-system
+# for operator installs and may be kube-system for manifest installs.
+kubectl logs -n calico-system ds/calico-node --all-pods=true | grep -i "169.254.20.10" | grep -i deny
 ```
 
 ## Validation Summary
@@ -73,7 +82,7 @@ kubectl logs -n calico-system ds/calico-node | grep -i "169.254.20.10" | grep -i
 flowchart TD
     A[Start Validation] --> B[One DNS pod\nper node?]
     B -- No --> C[Re-deploy NodeLocal DNS]
-    B -- Yes --> D[resolv.conf shows\n169.254.20.10?]
+    B -- Yes --> D[resolv.conf points to\nNodeLocal or kube-dns IP?]
     D -- No --> E[Check kubelet DNS\nconfiguration]
     D -- Yes --> F[DNS latency\nacceptable?]
     F -- High --> G[Check cache\nhit rate]
@@ -83,4 +92,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating NodeLocal DNSCache with Calico confirms the full DNS acceleration path is working: pods are configured to use 169.254.20.10, Calico policies allow traffic to that address, and the cache is serving requests with high hit rates. Monitor cache metrics regularly to ensure the caching layer continues to function after cluster changes.
+Validating NodeLocal DNSCache with Calico confirms the full DNS acceleration path is working: pods are configured to use the NodeLocal DNS path, Calico policies allow the required DNS traffic, and the cache is serving requests with high hit rates. Monitor cache metrics regularly to ensure the caching layer continues to function after cluster changes.
