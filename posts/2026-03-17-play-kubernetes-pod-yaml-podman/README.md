@@ -10,7 +10,7 @@ Description: Learn how to create Podman pods from Kubernetes Pod YAML manifests 
 
 > Playing a Kubernetes Pod YAML with Podman creates a local pod with all the containers defined in the manifest.
 
-Kubernetes Pod YAML is the most basic unit of deployment. Podman can interpret these manifests and create matching local pods with all specified containers, volumes, and networking. This lets you validate pod definitions before deploying to a cluster.
+A Kubernetes Pod is the smallest deployable unit of computing in Kubernetes. Podman can interpret supported Kubernetes manifests and create matching local pods with the supported containers, volumes, and networking options. This lets you smoke-test pod definitions before deploying to a cluster.
 
 ---
 
@@ -96,7 +96,7 @@ EOF
 
 podman play kube /tmp/limited-pod.yaml
 
-# Verify the resource limits are applied
+# Verify the memory limit is applied
 podman inspect limited-pod-app --format '{{.HostConfig.Memory}}'
 ```
 
@@ -141,10 +141,10 @@ podman play kube --down /tmp/simple-pod.yaml
 podman pod rm --force simple-pod
 ```
 
-## Verifying Pod Health
+## Verifying Pod Status
 
 ```bash
-# After playing, check that all containers are healthy
+# After playing, check the status of each container
 podman ps --filter pod=simple-pod --format "table {{.Names}}\t{{.Status}}"
 
 # Inspect pod details
