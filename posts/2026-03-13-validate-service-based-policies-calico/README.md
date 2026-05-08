@@ -12,13 +12,14 @@ Description: Validate Calico service-based network policies before production de
 
 Validating service-based Calico policies requires checking that the referenced services exist, that backing pods are running and healthy, and that the traffic behavior matches the intended security model in staging.
 
-Calico's `projectcalico.org/v3` service-based policies use the `services` field in egress destination rules to reference Kubernetes Service objects. This creates a stable, maintainable policy that survives pod restarts, scaling events, and deployments without requiring policy updates.
+Calico's `projectcalico.org/v3` service-based policies use the `services` field in egress destination rules to reference Kubernetes Service objects when Calico is using the Kubernetes datastore driver. This creates a stable, maintainable policy that survives pod restarts, scaling events, and deployments without requiring policy updates.
 
 This guide covers practical techniques for validate service-based Calico policies effectively.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
+- Calico configured with the Kubernetes datastore driver
 - `calicoctl` and `kubectl` installed
 - Service-based policies configured or ready to configure
 
@@ -51,7 +52,7 @@ spec:
 # Verify service exists and has endpoints
 
 kubectl get service backend-api -n production
-kubectl get endpoints backend-api -n production
+kubectl get endpointslice -n production -l kubernetes.io/service-name=backend-api
 
 # Test traffic through the service
 SVC_IP=$(kubectl get service backend-api -n production -o jsonpath='{.spec.clusterIP}')
@@ -63,7 +64,7 @@ echo "Result: $?"
 
 ```bash
 # Check if service has backing pods
-kubectl get endpoints backend-api -n production -o yaml | grep -A 10 subsets
+kubectl get endpointslice -n production -l kubernetes.io/service-name=backend-api -o yaml | grep -A 6 conditions
 
 # Verify policy is targeting the correct service
 calicoctl get networkpolicy allow-frontend-to-backend -n production -o yaml | grep -A 5 services
@@ -79,7 +80,7 @@ flowchart TD
     A[frontend pods] -->|Egress allow to backend-api Service| B[backend-api Service]
     B --> C[backend pod 1]
     B --> D[backend pod 2]
-    E[unauthorized pod] -.-x|Denied| B
+    E[unauthorized pod] -.->|Denied| B
     F[Policy Update] -->|Service scales| B
     B --> G[backend pod 3 - auto included]
 ```
