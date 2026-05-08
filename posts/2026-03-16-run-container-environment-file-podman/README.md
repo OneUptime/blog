@@ -56,9 +56,9 @@ cat > example.env << 'EOF'
 # Comments are supported (lines starting with #)
 SIMPLE_VALUE=hello
 
-# Quotes are optional but supported
-QUOTED_VALUE="hello world"
-SINGLE_QUOTED='hello world'
+# Quotes are allowed, but they are kept as part of the value
+DOUBLE_QUOTED_VALUE="hello world"
+SINGLE_QUOTED_VALUE='hello world'
 
 # Empty values
 EMPTY_VALUE=
@@ -171,8 +171,7 @@ podman run -d --name db --env-file postgres.env -p 5432:5432 postgres:16
 
 # Redis
 cat > redis.env << 'EOF'
-REDIS_MAXMEMORY=256mb
-REDIS_MAXMEMORY_POLICY=allkeys-lru
+REDIS_ARGS=--maxmemory 256mb --maxmemory-policy allkeys-lru
 EOF
 
 # MySQL
