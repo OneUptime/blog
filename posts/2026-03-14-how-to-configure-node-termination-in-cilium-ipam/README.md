@@ -43,7 +43,7 @@ kubectl get nodes --no-headers | wc -l
 ```yaml
 # cilium-node-termination.yaml
 operator:
-  # Enable node garbage collection
+  # Tune CiliumNode garbage collection interval
   nodeGCInterval: "5m0s"
   replicas: 2
   resources:
@@ -76,10 +76,6 @@ graph TD
 ```yaml
 # Ensure Cilium agent handles SIGTERM properly
 terminationGracePeriodSeconds: 30
-
-# Configure agent for graceful shutdown
-agent:
-  terminationGracePeriodSeconds: 30
 ```
 
 ### Spot Instance Handling
@@ -123,8 +119,8 @@ echo "CiliumNodes: $(kubectl get ciliumnodes --no-headers | wc -l)"
 kubectl logs -n kube-system -l name=cilium-operator | \
   grep -i "garbage" | tail -10
 
-# Verify CIDR pool has available ranges
-cilium status | grep IPAM
+# Check IPAM operator status for each CiliumNode
+kubectl get ciliumnodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.ipam.operator-status}{"\n"}{end}'
 ```
 
 ## Troubleshooting
