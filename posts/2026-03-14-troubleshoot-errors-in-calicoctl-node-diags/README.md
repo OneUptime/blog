@@ -34,8 +34,8 @@ The diags command needs root privileges to access iptables, routing tables, and 
 
 sudo calicoctl node diags
 
-# In Kubernetes, exec into the calico-node pod (which runs as privileged)
-kubectl exec -n calico-system <pod-name> -- calicoctl node diags
+# In Kubernetes, exec into the calico-node pod in its namespace
+kubectl exec -n <namespace> <pod-name> -- calicoctl node diags
 ```
 
 ## Error: Disk Space Insufficient
@@ -48,11 +48,11 @@ Error: no space left on device
 # Check available disk space
 df -h /tmp
 
-# Specify a different output directory with more space
-sudo calicoctl node diags --output-dir=/var/tmp/
+# Use a different temporary directory with more space
+sudo env TMPDIR=/var/tmp calicoctl node diags
 
 # Clean up old diagnostic bundles
-rm -f /tmp/calico-diags-*.tar.gz
+rm -rf /tmp/calico*/diags-*.tar.gz
 ```
 
 ## Error: Command Not Found (iptables, ip, etc.)
@@ -61,14 +61,14 @@ When system utilities are missing from the PATH:
 
 ```bash
 # Check which utilities are available
-which iptables ip ipset ss netstat 2>/dev/null
+which ip nft iptables-save ip6tables-save ipset ss netstat tar 2>/dev/null
 
 # In minimal container images, install missing tools
 # For calico-node containers, most tools should be included
 
 # Set PATH explicitly if needed
 export PATH=$PATH:/sbin:/usr/sbin
-sudo -E calicoctl node diags
+sudo env "PATH=$PATH" calicoctl node diags
 ```
 
 ## Error: Cannot Access Log Files
@@ -82,11 +82,11 @@ Warning: unable to read log directory /var/log/calico
 ls -la /var/log/calico/
 
 # In Kubernetes, logs may be in a different location
-kubectl exec -n calico-system <pod-name> -- ls /var/log/calico/
+kubectl exec -n <namespace> <pod-name> -- ls /var/log/calico/
 
 # If logs are sent to stdout only, they will not be in the log directory
 # Collect container logs separately
-kubectl logs -n calico-system <pod-name> --tail=1000 > calico-node-stdout.log
+kubectl logs -n <namespace> <pod-name> --tail=1000 > calico-node-stdout.log
 ```
 
 ## Error: Diagnostic Bundle Incomplete
@@ -95,12 +95,13 @@ Sometimes the command succeeds but the bundle is missing expected files:
 
 ```bash
 # List contents and check for missing critical files
-tar tzf calico-diags-*.tar.gz | sort
+BUNDLE=$(find /tmp -path '/tmp/calico*/diags-*.tar.gz' -type f | sort | tail -1)
+tar tzf "$BUNDLE" | sort
 
 # Expected critical files
-EXPECTED="iptables ip-route ip-addr bgp-status hostname date"
+EXPECTED="date hostname ipv4_route ipv6_route ipv4_addr ipv6_addr ipv4_tables ipv6_tables ipsets"
 for FILE in $EXPECTED; do
-  if tar tzf calico-diags-*.tar.gz | grep -q "$FILE"; then
+  if tar tzf "$BUNDLE" | grep -q "diagnostics/$FILE"; then
     echo "FOUND: $FILE"
   else
     echo "MISSING: $FILE"
@@ -120,12 +121,20 @@ mkdir -p "$DIAG_DIR"
 
 date > "$DIAG_DIR/date"
 hostname > "$DIAG_DIR/hostname"
-ip addr > "$DIAG_DIR/ip-addr" 2>&1
-ip route > "$DIAG_DIR/ip-route" 2>&1
+ip -4 addr > "$DIAG_DIR/ipv4_addr" 2>&1
+ip -6 addr > "$DIAG_DIR/ipv6_addr" 2>&1
+ip -4 route > "$DIAG_DIR/ipv4_route" 2>&1
+ip -6 route > "$DIAG_DIR/ipv6_route" 2>&1
 ip rule > "$DIAG_DIR/ip-rule" 2>&1
-iptables-save > "$DIAG_DIR/iptables" 2>&1
-ip6tables-save > "$DIAG_DIR/ip6tables" 2>&1
-ipset list > "$DIAG_DIR/ipset-list" 2>&1
+nft -n -a list ruleset > "$DIAG_DIR/nft_ruleset" 2>&1
+iptables-save -c > "$DIAG_DIR/ipv4_tables" 2>&1
+ip6tables-save -c > "$DIAG_DIR/ipv6_tables" 2>&1
+ipset list > "$DIAG_DIR/ipsets" 2>&1
+if command -v netstat >/dev/null 2>&1; then
+  netstat -a -n > "$DIAG_DIR/netstat" 2>&1
+else
+  ss -a -n > "$DIAG_DIR/ss" 2>&1
+fi
 
 # Collect calico logs if available
 cp -r /var/log/calico "$DIAG_DIR/calico-logs" 2>/dev/null
@@ -165,10 +174,10 @@ After resolving errors, verify the diagnostic bundle is complete:
 sudo calicoctl node diags
 
 # Verify the bundle
-BUNDLE=$(ls -t /tmp/calico-diags-*.tar.gz | head -1)
+BUNDLE=$(find /tmp -path '/tmp/calico*/diags-*.tar.gz' -type f | sort | tail -1)
 echo "Bundle: $BUNDLE"
-echo "Size: $(du -h $BUNDLE | cut -f1)"
-echo "Files: $(tar tzf $BUNDLE | wc -l)"
+echo "Size: $(du -h "$BUNDLE" | cut -f1)"
+echo "Files: $(tar tzf "$BUNDLE" | wc -l)"
 ```
 
 ## Troubleshooting
@@ -176,7 +185,7 @@ echo "Files: $(tar tzf $BUNDLE | wc -l)"
 | Error | Cause | Fix |
 |-------|-------|-----|
 | Permission denied | Not running as root | Use sudo |
-| No space left | /tmp full | Clean up or use --output-dir |
+| No space left | /tmp full | Clean up or set TMPDIR |
 | Command not found | Missing system tools | Set PATH or install tools |
 | Cannot read logs | Log directory missing | Check Calico log configuration |
 | Timeout | Heavy system load | Increase timeout, collect manually |
