@@ -39,7 +39,7 @@ Organize the runbook with these sections:
 
 ## Symptoms
 - Pods stuck in ContainerCreating or Pending state
-- Events showing "CIDRNotAvailable" or "no available CIDR"
+- Node events showing "CIDRNotAvailable" or pod events showing Calico IPAM allocation failures
 - IPAM utilization alerts from Prometheus
 ```
 
@@ -74,12 +74,12 @@ Build a decision tree into the runbook:
    - YES -> Go to "Resolution: CIDR Exhaustion"
    - NO  -> Continue to step 2
 
-2. Does the Calico IPPool CIDR match kubeadm's podSubnet?
-   - NO  -> Go to "Resolution: CIDR Mismatch"
-   - YES -> Continue to step 3
-
-3. Are there nodes without pod CIDR assignments?
+2. Are there nodes without pod CIDR assignments while kube-controller-manager node CIDR allocation is enabled?
    - YES -> Go to "Resolution: Missing Node CIDRs"
+   - NO  -> Continue to step 3
+
+3. Are enabled Calico IPPool CIDRs outside kubeadm's podSubnet / Kubernetes cluster CIDR?
+   - YES -> Go to "Resolution: CIDR Mismatch"
    - NO  -> Continue to step 4
 
 4. Are there stale IPAM blocks for removed nodes?
@@ -100,20 +100,18 @@ echo "Step 1: Checking IPAM utilization..."
 calicoctl ipam show
 
 # Check 2: CIDR alignment
-echo "Step 2: Checking CIDR alignment..."
+echo "Step 2: Checking kubeadm cluster CIDR and enabled Calico pools..."
 KUBEADM_CIDR=$(kubectl get configmap -n kube-system kubeadm-config -o jsonpath='{.data.ClusterConfiguration}' 2>/dev/null | grep podSubnet | awk '{print $2}')
-CALICO_CIDR=$(calicoctl get ippools -o json 2>/dev/null | jq -r '.items[0].spec.cidr')
-echo "kubeadm: $KUBEADM_CIDR"
-echo "Calico:  $CALICO_CIDR"
-if [ "$KUBEADM_CIDR" != "$CALICO_CIDR" ]; then
-  echo "FINDING: CIDR mismatch detected"
-fi
+calicoctl get ippools -o wide
+echo "kubeadm podSubnet / cluster CIDR: $KUBEADM_CIDR"
+echo "Verify each enabled Calico IPPool is inside the Kubernetes cluster CIDR; exact equality is not required when multiple pools are used."
 
 # Check 3: Node CIDR assignments
 echo "Step 3: Checking node CIDR assignments..."
+kubectl -n kube-system get pod -l component=kube-controller-manager -o jsonpath='{range .items[*].spec.containers[*].command[*]}{.}{"\n"}{end}' 2>/dev/null | grep -E -- '--allocate-node-cidrs|--cluster-cidr|--node-cidr-mask-size' || true
 NO_CIDR=$(kubectl get nodes -o json | jq '[.items[] | select(.spec.podCIDR == null)] | length')
 if [ "$NO_CIDR" -gt 0 ]; then
-  echo "FINDING: $NO_CIDR nodes without CIDR assignment"
+  echo "FINDING: $NO_CIDR nodes without CIDR assignment. This matters when Kubernetes node CIDR allocation is enabled or Calico is using host-local IPAM."
 fi
 
 # Check 4: Stale blocks
@@ -141,6 +139,7 @@ kind: IPPool
 metadata:
   name: supplementary-pool
 spec:
+  # Choose a non-overlapping range inside the Kubernetes cluster CIDR.
   cidr: 10.245.0.0/16
   ipipMode: Always
   natOutgoing: true
@@ -156,10 +155,10 @@ EOF
 **Maintenance window**: Recommended
 
 1. Back up current IPPool configuration
-2. Delete incorrect IPPool
-3. Create IPPool matching kubeadm CIDR
-4. Restart calico-node DaemonSet
-5. Verify new pods receive correct IPs
+2. Create a replacement IPPool inside the kubeadm podSubnet / Kubernetes cluster CIDR
+3. Disable the old IPPool so new workloads stop using it
+4. Restart or recreate affected pods so they receive addresses from the replacement pool
+5. Delete the old IPPool only after no active workloads use it
 ```
 
 ## Step 4: Verification Steps
