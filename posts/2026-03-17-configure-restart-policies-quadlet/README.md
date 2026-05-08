@@ -27,7 +27,7 @@ Image=docker.io/myorg/webapp:latest
 PublishPort=8080:80
 
 [Service]
-# Restart the container if it exits with a non-zero status
+# Restart the container if it fails
 Restart=on-failure
 # Wait 5 seconds before restarting
 RestartSec=5
@@ -45,17 +45,19 @@ Restart=always
 RestartSec=3
 ```
 
-## Restart with Backoff Limits
+## Restart with Rate Limits
 
 Configure systemd to limit restart attempts:
 
 ```ini
-[Service]
-Restart=on-failure
-RestartSec=5
+[Unit]
 # Limit to 5 restart attempts within a 60 second window
 StartLimitIntervalSec=60
 StartLimitBurst=5
+
+[Service]
+Restart=on-failure
+RestartSec=5
 ```
 
 ## Restart Options Explained
@@ -63,10 +65,10 @@ StartLimitBurst=5
 | Policy | Behavior |
 |--------|----------|
 | `no` | Never restart (default) |
-| `on-failure` | Restart only on non-zero exit code |
-| `on-success` | Restart only on clean exit (code 0) |
+| `on-failure` | Restart on non-zero exit code, signal, timeout, or watchdog |
+| `on-success` | Restart only on clean exit |
 | `on-abnormal` | Restart on signal, timeout, or watchdog |
-| `always` | Always restart regardless of exit reason |
+| `always` | Restart after clean or failed exits |
 
 ## Production-Ready Restart Configuration
 
@@ -83,6 +85,7 @@ PublishPort=8080:8080
 HealthCmd=curl -f http://localhost:8080/health || exit 1
 HealthInterval=30s
 HealthRetries=3
+HealthOnFailure=kill
 
 [Service]
 Restart=on-failure
@@ -113,4 +116,4 @@ systemctl --user status webapp.service
 
 ## Summary
 
-Quadlet uses systemd restart policies instead of Podman's native restart mechanism. Configure `Restart`, `RestartSec`, `StartLimitIntervalSec`, and `StartLimitBurst` in the `[Service]` section to control how and when failed containers are restarted. This approach gives you systemd's mature restart logic including backoff limits and rate limiting.
+Quadlet uses systemd restart policies instead of Podman's native restart mechanism. Configure `Restart` and `RestartSec` in the `[Service]` section, and `StartLimitIntervalSec` and `StartLimitBurst` in the `[Unit]` section, to control how and when failed containers are restarted. This approach gives you systemd's mature restart logic including rate limiting.
