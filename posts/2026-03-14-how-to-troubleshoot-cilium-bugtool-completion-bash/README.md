@@ -23,8 +23,8 @@ This guide provides systematic troubleshooting steps for resolving cilium-bugtoo
 
 - Bash shell (v4.0+)
 - `bash-completion` package installed
-- `cilium-bugtool` binary available locally or in a Cilium pod
-- `kubectl` access to a Cilium cluster (if binary is not local)
+- `cilium-bugtool` binary available locally
+- `kubectl` access to a Cilium cluster (if you also need to collect bugtool output from a Cilium pod)
 
 ## Diagnosing Common Failures
 
@@ -72,7 +72,7 @@ fi
 
 # Issue: stale completions from old version
 # Fix: regenerate
-cilium-bugtool completion bash > /etc/bash_completion.d/cilium-bugtool
+cilium-bugtool completion bash | sudo tee /etc/bash_completion.d/cilium-bugtool >/dev/null
 source /etc/bash_completion.d/cilium-bugtool
 
 # Issue: completions show errors when pressing Tab
@@ -108,7 +108,7 @@ echo "Completion registered successfully"
 
 - **"bash_completion: command not found"**: Install the bash-completion package for your distribution.
 - **Completions load but no options shown**: The binary may have changed subcommands. Regenerate.
-- **Errors when pressing Tab**: Check for syntax errors in the completion file with \`bash -n\`.
+- **Errors when pressing Tab**: Check for syntax errors in the completion file with `bash -n /etc/bash_completion.d/cilium-bugtool`.
 - **Works in terminal but not in scripts**: Completions are only loaded in interactive shells.
 
 ## Conclusion
@@ -116,4 +116,3 @@ echo "Completion registered successfully"
 
 
 Most cilium-bugtool bash completion issues trace back to the bash-completion framework not being installed or the completion file not being sourced. Following a systematic diagnostic approach from package installation through file validation resolves the majority of problems.
-
