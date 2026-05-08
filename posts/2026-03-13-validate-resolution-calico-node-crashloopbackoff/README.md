@@ -12,7 +12,7 @@ Description: Post-fix validation steps to confirm calico-node CrashLoopBackOff i
 
 After applying a fix for calico-node CrashLoopBackOff, a structured validation sequence confirms that the cluster has returned to a fully healthy state. Without this validation, teams risk closing incidents prematurely, only to see CrashLoopBackOff recur within hours when the underlying condition re-triggers.
 
-Validation for CrashLoopBackOff covers more ground than most fixes because the calico-node crash affects multiple subsystems: CNI configuration, BGP routing, and pod scheduling. Each of these must be independently verified. An end-to-end pod scheduling test is particularly valuable because it exercises the entire path from scheduler through CNI to BGP advertisement.
+Validation for CrashLoopBackOff covers more ground than most fixes because the calico-node crash can affect multiple subsystems: CNI configuration, BGP routing when BGP is enabled, and pod scheduling. Each of these must be independently verified. An end-to-end pod scheduling test is particularly valuable because it exercises the entire path from scheduler through CNI to network reachability.
 
 This guide provides a verification checklist that should be completed in order before the incident is marked resolved.
 
@@ -67,7 +67,7 @@ exit
 # Test that new pods can be scheduled and receive IPs
 kubectl run post-fix-test --image=busybox \
   --restart=Never \
-  --overrides="{\"spec\":{\"nodeName\":\"<affected-node>\"}}" \
+  --overrides="{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"<affected-node>\"}}}" \
   -- sleep 30
 
 kubectl wait pod/post-fix-test --for=condition=Ready --timeout=60s
@@ -76,21 +76,21 @@ kubectl get pod post-fix-test -o jsonpath='{.status.podIP}'
 kubectl delete pod post-fix-test
 ```
 
-**Validation Step 4: Verify BGP routes are being advertised**
+**Validation Step 4: Verify BGP peers are established**
 
 ```bash
 calicoctl node status
-# Expected: all BGP peers showing Established
+# Expected when BGP is enabled: all BGP peers show up with Established in the INFO column
 ```
 
 **Validation Step 5: Cross-node connectivity test**
 
 ```bash
 kubectl run node-a-pod --image=busybox --restart=Never \
-  --overrides="{\"spec\":{\"nodeName\":\"<affected-node>\"}}" -- sleep 300
+  --overrides="{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"<affected-node>\"}}}" -- sleep 300
 
 kubectl run node-b-pod --image=busybox --restart=Never \
-  --overrides="{\"spec\":{\"nodeName\":\"<different-node>\"}}" -- sleep 300
+  --overrides="{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"<different-node>\"}}}" -- sleep 300
 
 kubectl wait pod/node-a-pod pod/node-b-pod --for=condition=Ready --timeout=60s
 
@@ -116,7 +116,7 @@ flowchart TD
     D -- No --> E[Reinstall CNI via calico-node restart]
     D -- Yes --> F[New pod schedules and gets IP?]
     F -- No --> G[Check kubelet CNI plugin call]
-    F -- Yes --> H[BGP peers Established?]
+    F -- Yes --> H[BGP peers up and Established?]
     H -- No --> I[Check BIRD and BGP config]
     H -- Yes --> J[Cross-node ping succeeds?]
     J -- Yes --> K[Alert resolved - close incident]
