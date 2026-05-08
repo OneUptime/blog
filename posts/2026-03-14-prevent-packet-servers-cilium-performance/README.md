@@ -95,7 +95,7 @@ spec:
   - name: test-servers
     rules:
     - alert: PerfTestServerDown
-      expr: up{job="perf-test-server"} == 0
+      expr: kube_deployment_status_replicas_available{namespace="monitoring", deployment="perf-test-servers"} < 1
       for: 5m
       labels:
         severity: warning
@@ -165,7 +165,7 @@ Run performance regression tests on every change:
 echo "Running performance regression gate..."
 
 # Quick smoke test
-BPS=$(kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 10 -P 1 -J | \
+BPS=$(kubectl exec perf-client -- iperf3 -c perf-test-server.monitoring -t 10 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second')
 MIN_BPS=8000000000
 
@@ -199,13 +199,13 @@ SNAPSHOT="/tmp/perf-snapshot-$(date +%Y%m%d-%H%M%S)"
 mkdir -p $SNAPSHOT
 
 # Throughput
-kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > $SNAPSHOT/throughput.json
+kubectl exec perf-client -- iperf3 -c perf-test-server.monitoring -t 15 -P 1 -J > $SNAPSHOT/throughput.json
 
 # Latency
-kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_RR -l 15 > $SNAPSHOT/latency.txt
+kubectl exec netperf-client -- netperf -H perf-test-server.monitoring -t TCP_RR -l 15 > $SNAPSHOT/latency.txt
 
 # Connection rate
-kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_CRR -l 15 > $SNAPSHOT/connrate.txt
+kubectl exec netperf-client -- netperf -H perf-test-server.monitoring -t TCP_CRR -l 15 > $SNAPSHOT/connrate.txt
 
 # Cilium state
 cilium status --verbose > $SNAPSHOT/cilium-status.txt
@@ -224,7 +224,7 @@ PRE=$1
 POST="/tmp/perf-snapshot-post-$(date +%Y%m%d-%H%M%S)"
 mkdir -p $POST
 
-kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > $POST/throughput.json
+kubectl exec perf-client -- iperf3 -c perf-test-server.monitoring -t 15 -P 1 -J > $POST/throughput.json
 
 PRE_BPS=$(jq '.end.sum_sent.bits_per_second' $PRE/throughput.json)
 POST_BPS=$(jq '.end.sum_sent.bits_per_second' $POST/throughput.json)
