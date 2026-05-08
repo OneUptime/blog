@@ -12,7 +12,7 @@ Description: Safely upgrade Calico to a newer version using Helm and the Tigera 
 
 Managing Calico through Helm provides several advantages for safe upgrades: version pinning, rollback capability, and diff preview before applying changes. When combined with GitOps workflows using Flux or ArgoCD, Helm-managed Calico upgrades become reviewable, auditable, and reversible through standard Git operations.
 
-A Helm-based Calico upgrade is safer than direct manifest application because Helm tracks the current release state and can perform atomic upgrades with automatic rollback on failure. The `helm diff` plugin also allows you to preview exactly what will change before applying, reducing the risk of unexpected configuration drift.
+A Helm-based Calico upgrade is safer than direct manifest application because Helm tracks the current release state and can roll back an upgrade on failure. The `helm diff` plugin also allows you to preview exactly what will change before applying, reducing the risk of unexpected configuration drift.
 
 This guide covers the safe Helm upgrade process for Calico, from version planning through execution and validation, with specific guidance for GitOps-managed installations.
 
@@ -43,6 +43,8 @@ helm get metadata calico -n tigera-operator
 kubectl get pods -n calico-system
 kubectl get tigerastatus calico
 ```
+
+If you are upgrading to Calico v3.28.0 or later, check for resources with OwnerReferences to the `projectcalico.org/v3` API group and plan to remove and recreate those OwnerReferences during the upgrade, as Calico v3.28 changes the UIDs for those resources.
 
 ## Step 2: Review the Upgrade with helm diff
 
@@ -84,15 +86,19 @@ echo "Backup complete: helm-calico-values-backup-$BACKUP_DATE.yaml"
 
 ## Step 4: Execute the Helm Upgrade
 
-Perform the upgrade with atomic flag for automatic rollback on failure.
+Apply the target version's Calico CRDs, then perform the upgrade with rollback on failure enabled.
 
 ```bash
-# Execute the upgrade with atomic flag (auto-rollback on failure)
+# Apply the target version's operator CRDs before upgrading
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/operator-crds.yaml
+
+# Execute the upgrade with automatic rollback on failure
 helm upgrade calico projectcalico/tigera-operator \
   --namespace tigera-operator \
   --version v3.28.0 \
   --values calico-production-values.yaml \
-  --atomic \
+  --rollback-on-failure \
   --timeout 10m \
   --cleanup-on-fail
 
@@ -103,7 +109,7 @@ kubectl rollout status daemonset/calico-node -n calico-system --timeout=10m
 kubectl get pods -n calico-system -w
 ```
 
-For GitOps deployments, update the Helm values file in Git:
+For GitOps deployments, update the HelmRelease manifest in Git:
 
 ```yaml
 # Update version in HelmRelease manifest for Flux GitOps
@@ -124,6 +130,8 @@ spec:
         kind: HelmRepository
         name: projectcalico
         namespace: flux-system
+  upgrade:
+    crds: CreateReplace
 ```
 
 ## Step 5: Post-Upgrade Validation
@@ -152,11 +160,11 @@ kubectl run helm-upgrade-test --image=busybox --rm -it --restart=Never -- \
 ## Best Practices
 
 - Always run `helm diff` before every upgrade to review changes
-- Use `--atomic` flag to enable automatic rollback on failed upgrades
+- Use `--rollback-on-failure` to enable automatic rollback on failed upgrades
 - Store Helm values files in Git and require PR reviews for all changes
 - Tag each successful Helm upgrade in Git with the Calico version deployed
 - Keep at least 3 Helm release history entries for rollback: `helm history calico -n tigera-operator`
 
 ## Conclusion
 
-Helm provides a structured, reversible approach to Calico upgrades. By using `helm diff` to preview changes, `--atomic` for automatic rollback, and GitOps for change management, you create a safe upgrade path that meets production reliability standards. The combination of Helm's rollback capability and Calico's own rolling upgrade mechanism provides multiple safety layers that protect production workloads during network infrastructure changes.
+Helm provides a structured, reversible approach to Calico upgrades. By using `helm diff` to preview changes, `--rollback-on-failure` for automatic rollback, and GitOps for change management, you create a safe upgrade path that meets production reliability standards. The combination of Helm's rollback capability and Calico's own rolling upgrade mechanism provides multiple safety layers that protect production workloads during network infrastructure changes.
