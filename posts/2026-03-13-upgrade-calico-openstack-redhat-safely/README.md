@@ -10,7 +10,9 @@ Description: A safe procedure for upgrading Calico on Red Hat-based OpenStack wh
 
 ## Introduction
 
-Upgrading Calico on RHEL OpenStack uses RPM-based package management (`dnf`) rather than Debian's `apt`. The upgrade procedure is otherwise similar to Ubuntu: upgrade the Neutron plugin on the controller, then upgrade Felix on compute nodes one at a time with connectivity verification after each. RHEL-specific considerations include checking SELinux policy compatibility after the upgrade and verifying that the iptables backend configuration is preserved.
+Upgrading Calico on RHEL OpenStack uses RPM-based package management (`dnf`) rather than Debian's `apt`. The upgrade procedure is otherwise similar to other RPM-based OpenStack deployments: update Calico packages on compute nodes one at a time with connectivity verification after each, then update the Calico Neutron plugin on the controller. RHEL-specific considerations include checking SELinux policy compatibility after the upgrade and verifying that the iptables backend configuration is preserved.
+
+Project Calico's RHEL OpenStack installation path is not actively tested in current documentation, so validate the procedure against your deployed Calico and OpenStack versions before the maintenance window.
 
 New Calico versions sometimes introduce changes to the iptables rules structure that can conflict with existing SELinux policies. Having an SELinux check as part of the post-upgrade verification prevents silent policy enforcement failures after the upgrade.
 
@@ -36,22 +38,20 @@ calicoctl get felixconfiguration -o yaml > felix-backup.yaml
 calicoctl get ippool -o yaml > ippool-backup.yaml
 ```
 
-## Step 3: Upgrade on the Controller
-
-```bash
-sudo dnf update python3-networking-calico
-sudo systemctl restart openstack-neutron
-sudo systemctl status openstack-neutron
-```
-
-## Step 4: Upgrade Compute Nodes One at a Time
+## Step 3: Upgrade Compute Nodes One at a Time
 
 ```bash
 # On each compute node
 
-sudo dnf update calico-felix
+sudo dnf update calico-common calico-compute calico-dhcp-agent calico-felix dnsmasq networking-calico openstack-neutron openstack-nova-api openstack-nova-compute
 sudo systemctl restart calico-felix
 sudo systemctl status calico-felix
+
+# Confirm Felix upgraded
+calico-felix --version
+
+# Confirm the datastore type is still etcdv3
+grep -i "^DatastoreType" /etc/calico/felix.cfg
 
 # Check SELinux after upgrade
 sudo ausearch -m AVC -ts recent | grep -iE "felix|calico" | head -10
@@ -65,6 +65,14 @@ sudo semodule -i calico-upgraded.pp
 ```
 
 Verify VM connectivity on the upgraded compute node before proceeding.
+
+## Step 4: Upgrade on the Controller
+
+```bash
+sudo dnf update calico-common calico-control networking-calico openstack-neutron
+sudo systemctl restart neutron-server
+sudo systemctl status neutron-server
+```
 
 ## Step 5: Verify BGP Sessions
 
@@ -82,7 +90,7 @@ calicoctl get workloadendpoints -A | wc -l
 openstack server list | grep -c ACTIVE
 ```
 
-The workload endpoint count should match the active VM count.
+The workload endpoint count should match the expected number of VM interfaces, which can be higher than the active VM count when instances have multiple ports.
 
 ## Conclusion
 
