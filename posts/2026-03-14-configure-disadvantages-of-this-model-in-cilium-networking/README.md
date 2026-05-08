@@ -33,21 +33,26 @@ Apply the following Helm values to configure disadvantages of native routing in 
 
 # Mitigating native routing disadvantages
 
+# Enable native routing and declare the CIDR that the underlay can route
+routingMode: native
+ipv4NativeRoutingCIDR: "10.42.0.0/16"
+
 # Ensure pod CIDR does not overlap with infrastructure
 ipam:
+  mode: cluster-pool
   operator:
     clusterPoolIPv4PodCIDRList:
       - "10.42.0.0/16"
 
-# Auto-create routes between nodes
+# Auto-create routes between nodes when all nodes share a single L2 network
 autoDirectNodeRoutes: true
 
-# Enable health checking for route validation
+# Enable Cilium connectivity health checking
 healthChecking: true
 
 # Fallback: if native routing is too complex, use overlay
-# tunnel: vxlan
 # routingMode: tunnel
+# tunnelProtocol: vxlan
 ```
 
 Apply the configuration:
@@ -56,7 +61,7 @@ Apply the configuration:
 # Apply the configuration via Helm upgrade
 helm upgrade cilium cilium/cilium --version 1.16.5 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  -f cilium-native-routing-mitigations.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -69,7 +74,7 @@ Verify the configuration was applied correctly:
 
 ```bash
 # Check the active configuration
-ip route show proto bird 2>/dev/null || ip route show | grep cilium
+cilium config view | grep -E "routing-mode|ipv4-native-routing-cidr|auto-direct-node-routes"
 
 # Verify Cilium status after configuration change
 cilium status
@@ -144,7 +149,7 @@ cilium config view
 cilium status --verbose | head -40
 
 # Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -153,13 +158,13 @@ Final verification that configuration is complete and correct:
 
 ```bash
 # Run Cilium connectivity test
-cilium connectivity test --test pod-to-pod,pod-to-service
+cilium connectivity test --test pod-to-pod --test pod-to-service
 
 # Verify no configuration warnings
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl get ciliumendpoints --all-namespaces | head -20
 ```
 
 ## Troubleshooting
