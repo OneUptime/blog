@@ -25,10 +25,10 @@ podman manifest exists myapp:latest
 
 # Check the exit code
 echo $?
-# 0 = exists, 1 = does not exist
+# 0 = exists, 1 = does not exist, 125 = another error
 ```
 
-The command produces no output on success. It communicates solely through exit codes: `0` means the manifest exists, and a non-zero code means it does not.
+The command produces no output on success. It communicates solely through exit codes: `0` means the manifest exists, `1` means it does not, and `125` indicates another issue.
 
 ## Using in Conditional Statements
 
@@ -103,7 +103,7 @@ for ARCH in "${ARCHITECTURES[@]}"; do
         .
 
     # Add to the manifest list
-    podman manifest add "${IMAGE}:${TAG}" "${IMAGE}:${TAG}-${ARCH}"
+    podman manifest add "${IMAGE}:${TAG}" "containers-storage:${IMAGE}:${TAG}-${ARCH}"
 done
 
 # Step 4: Push the manifest list
@@ -195,4 +195,4 @@ fi
 
 ## Summary
 
-The `podman manifest exists` command is a lightweight check that returns exit code 0 when a manifest list exists locally and non-zero when it does not. Use it in shell conditionals to build idempotent scripts, guard against duplicate manifest creation, and validate build pipeline state. It produces no output, making it ideal for scripting.
+The `podman manifest exists` command is a lightweight check that returns exit code 0 when a manifest list exists locally and 1 when it does not. Use it in shell conditionals to build idempotent scripts, guard against duplicate manifest creation, and validate build pipeline state. It produces no output, making it ideal for scripting.
