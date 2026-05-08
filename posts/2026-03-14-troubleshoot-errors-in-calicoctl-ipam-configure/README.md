@@ -27,18 +27,31 @@ Error: unauthorized to modify IPAM configuration
 ```bash
 # Check current RBAC
 
-kubectl auth can-i update ipamconfigurations --as=system:serviceaccount:kube-system:calicoctl
+kubectl auth can-i update ipamconfigs.crd.projectcalico.org --as=system:serviceaccount:kube-system:calicoctl
 
-# Create necessary RBAC
+# Create necessary RBAC and bind it to the service account used by calicoctl
 cat <<EOF | kubectl apply -f -
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: calicoctl-ipam-admin
 rules:
-- apiGroups: ["crd.projectcalico.org"]
-  resources: ["ipamconfigurations", "ippools", "ipamblocks", "blockaffinities"]
+- apiGroups: ["projectcalico.org", "crd.projectcalico.org"]
+  resources: ["ipamconfigurations", "ipamconfigs", "ippools", "ipamblocks", "ipamhandles", "blockaffinities"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: calicoctl-ipam-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: calicoctl-ipam-admin
+subjects:
+- kind: ServiceAccount
+  name: calicoctl
+  namespace: kube-system
 EOF
 ```
 
@@ -63,7 +76,7 @@ When the IPAM configuration cannot be changed due to existing state:
 
 ```bash
 # Check current IPAM state
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 calicoctl ipam show
 calicoctl ipam show --show-blocks
 
@@ -81,9 +94,9 @@ Block size is configured on the IPPool resource, not via `ipam configure`:
 
 ```bash
 # WRONG: calicoctl ipam configure --blocksize=26
-# CORRECT: Configure block size on the IP pool
+# CORRECT: Configure block size when creating a new IP pool
 calicoctl get ippools default-ipv4-ippool -o yaml
-# Edit the blockSize field in the IPPool spec
+# Create a replacement pool with the desired blockSize and migrate workloads
 ```
 
 ## Diagnostic Steps
@@ -95,11 +108,11 @@ calicoctl get ippools default-ipv4-ippool -o yaml
 echo "=== IPAM Configure Diagnostics ==="
 
 echo "--- Connectivity ---"
-calicoctl version > /dev/null 2>&1 && echo "Datastore: OK" || echo "Datastore: UNREACHABLE"
+calicoctl get nodes > /dev/null 2>&1 && echo "Datastore: OK" || echo "Datastore: UNREACHABLE"
 
 echo ""
 echo "--- Current IPAM Config ---"
-calicoctl ipam configure show 2>&1
+calicoctl ipam show --show-configuration 2>&1
 
 echo ""
 echo "--- IP Pools ---"
@@ -123,7 +136,7 @@ After resolving errors:
 calicoctl ipam configure --strictaffinity=true
 
 # Verify
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 
 # Test pod creation
 kubectl run test --image=busybox --restart=Never -- sleep 10
