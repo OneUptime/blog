@@ -25,17 +25,23 @@ Common cache problems include: stale interface lists after node scaling, missing
 ```bash
 # Check operator logs for cache-related errors
 
-kubectl logs -n kube-system -l name=cilium-operator | \
+kubectl logs -n kube-system deployment/cilium-operator | \
   grep -iE "cache|resync|interface|subnet" | tail -30
 
-# Check CiliumNode data freshness
+# Check recent Cilium-managed CiliumNode updates
 kubectl get ciliumnode <node-name> -o json | \
-  jq '.metadata.managedFields[-1].time'
+  jq '.metadata.managedFields[] |
+    select(.manager | test("cilium"; "i")) |
+    {manager, operation, time}'
 
 # Compare CiliumNode data with actual cloud state
 kubectl get ciliumnodes -o json | jq '.items[] | {
   name: .metadata.name,
-  interfaces: (.spec.azure.interfaces // .spec.eni // {} | length)
+  azureInterfaces: ((.status.azure.interfaces // []) | length),
+  awsENIs: ((.status.eni.enis // {}) | length),
+  availableIPs: ((.spec.ipam.pool // {}) | length),
+  usedIPs: ((.status.ipam.used // {}) | length),
+  operatorStatus: (.status.ipam["operator-status"] // {})
 }'
 ```
 
@@ -63,7 +69,10 @@ kubectl rollout status deployment/cilium-operator -n kube-system
 # Verify interface data is updated
 kubectl get ciliumnodes -o json | jq '.items[] | {
   name: .metadata.name,
-  lastUpdate: .metadata.managedFields[-1].time
+  azureInterfaces: ((.status.azure.interfaces // []) | length),
+  awsENIs: ((.status.eni.enis // {}) | length),
+  availableIPs: ((.spec.ipam.pool // {}) | length),
+  operatorStatus: (.status.ipam["operator-status"] // {})
 }'
 ```
 
@@ -71,41 +80,54 @@ kubectl get ciliumnodes -o json | jq '.items[] | {
 
 ```bash
 # Check operator logs for auth errors
-kubectl logs -n kube-system -l name=cilium-operator | \
+kubectl logs -n kube-system deployment/cilium-operator | \
   grep -iE "auth|credential|permission|forbidden" | tail -20
 
 # Verify cloud credentials are mounted
 kubectl get deployment cilium-operator -n kube-system -o json | \
-  jq '.spec.template.spec.containers[0].env[] | select(.name | test("AZURE|AWS|GCP"))'
+  jq '.spec.template.spec.containers[].env[]? |
+    select(.name | test("AZURE|AWS|GCP"))'
 
 # For Azure, check managed identity
-kubectl logs -n kube-system -l name=cilium-operator | \
+kubectl logs -n kube-system deployment/cilium-operator | \
   grep -i "identity" | tail -10
 ```
 
 ## Handling Subnet Discovery Problems
 
 ```bash
-# Check which subnets the operator sees
-kubectl get ciliumnodes -o json | jq '[.items[].spec.ipam.pool // {} | keys] | flatten | unique'
+# Check AWS subnet selectors and fallback subnet IDs configured on CiliumNodes
+kubectl get ciliumnodes -o json | jq '.items[] | {
+  name: .metadata.name,
+  subnetIDs: (.spec.eni["subnet-ids"] // []),
+  subnetTags: (.spec.eni["subnet-tags"] // {}),
+  nodeSubnetID: (.spec.eni["node-subnet-id"] // null)
+}'
 
-# Verify subnet matches expected cloud configuration
-kubectl get ciliumnodes -o json | jq '.items[0].spec.ipam'
+# For Azure, check the subnets reported on interface addresses
+kubectl get ciliumnodes -o json | jq '[.items[].status.azure.interfaces[]?.addresses[]?.subnet] | unique'
 ```
 
 ## Verification
 
 ```bash
-# After fixes, verify cache is working
-cilium status | grep IPAM
+# After fixes, verify Cilium is healthy
+cilium status --wait
 
-# Test IP allocation
+# Verify IPAM state and test IP allocation
+kubectl get ciliumnodes -o json | jq '.items[] | {
+  name: .metadata.name,
+  availableIPs: ((.spec.ipam.pool // {}) | length),
+  usedIPs: ((.status.ipam.used // {}) | length),
+  operatorStatus: (.status.ipam["operator-status"] // {})
+}'
+
 kubectl run cache-test --image=nginx:1.27 --restart=Never
 kubectl get pod cache-test -o wide
 kubectl delete pod cache-test
 
 # Verify operator sync
-kubectl logs -n kube-system -l name=cilium-operator --since=5m | \
+kubectl logs -n kube-system deployment/cilium-operator --since=5m | \
   grep -c "resync"
 ```
 
