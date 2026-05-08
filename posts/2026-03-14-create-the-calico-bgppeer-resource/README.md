@@ -30,7 +30,7 @@ The BGPPeer resource uses the Calico API group `projectcalico.org/v3`. Before wr
 - `peerIP`: The IP address of the external BGP peer (e.g., a ToR switch or route reflector).
 - `asNumber`: The remote peer's Autonomous System number.
 - `nodeSelector`: A label selector that determines which Calico nodes peer with this BGP neighbor.
-- `keepOriginalNextHop`: When true, the original next-hop is preserved.
+- `nextHopMode`: Controls how Calico sets the BGP next-hop attribute for received routes.
 
 ## Creating the BGPPeer Manifest
 
@@ -45,10 +45,10 @@ spec:
   peerIP: 192.168.1.1
   asNumber: 64513
   nodeSelector: rack == 'rack-1'
-  keepOriginalNextHop: true
+  nextHopMode: Keep
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+Each field is intentionally set to a practical example value. Adjust the values to match your environment before applying.
 
 ## Applying the Resource
 
@@ -77,7 +77,7 @@ Confirm that the resource was created successfully:
 kubectl get bgppeer.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe bgppeer.projectcalico.org
+kubectl describe bgppeer.projectcalico.org rack1-tor-switch
 
 # Verify with calicoctl
 calicoctl get bgppeer -o yaml
@@ -90,15 +90,17 @@ Check the Calico component logs for any warnings or errors related to the new re
 kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 ```
 
+If your Calico deployment uses the `kube-system` namespace instead of `calico-system`, adjust the namespace in the log command.
+
 ## Troubleshooting
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `BGPPeer`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- If you are using `kubectl`, confirm that `projectcalico.org/v3` resources are available through the Calico API server: `kubectl api-resources --api-group=projectcalico.org | grep -i bgppeer`.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
-- Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
+- Ensure field values match the types expected by the API, such as valid IP addresses, AS numbers, and selectors.
 
 **Calico components not picking up the resource:**
 - Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
