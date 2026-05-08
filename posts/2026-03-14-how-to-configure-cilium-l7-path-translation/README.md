@@ -12,21 +12,22 @@ Description: How to configure Cilium L7 path translation to rewrite HTTP request
 
 Cilium L7 path translation allows you to rewrite HTTP request paths as traffic flows between services. This is useful when a frontend service uses a different URL structure than the backend, when migrating APIs between versions, or when consolidating multiple backend paths behind a single external endpoint.
 
-Path translation in Cilium is implemented through the Envoy proxy. When L7 policies are in place, traffic passes through Envoy, which can modify request paths before forwarding to the upstream service.
+Path translation in Cilium is implemented through the Envoy proxy. When a service is selected by a CiliumEnvoyConfig or L7 policies are in place, traffic passes through Envoy, which can modify request paths before forwarding to the upstream service.
 
 ## Prerequisites
 
 - Kubernetes cluster with Cilium installed (v1.14+)
-- Envoy proxy enabled (l7Proxy=true)
+- CiliumEnvoyConfig enabled (`envoyConfig.enabled=true`) and kube-proxy replacement enabled (`kubeProxyReplacement=true`)
 - kubectl and Helm configured
 
-## Enabling L7 Proxy
+## Enabling CiliumEnvoyConfig
 
 ```bash
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set l7Proxy=true
+  --set kubeProxyReplacement=true \
+  --set envoyConfig.enabled=true
 ```
 
 ## Configuring Path Translation
@@ -39,13 +40,30 @@ kind: CiliumEnvoyConfig
 metadata:
   name: path-translation
   namespace: default
+  annotations:
+    cec.cilium.io/use-original-source-address: "false"
 spec:
   services:
     - name: backend-service
       namespace: default
+      listener: path-translation-listener
   resources:
+    - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+      name: path-translation-listener
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: path-translation
+                rds:
+                  route_config_name: path_translation_route
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
     - "@type": type.googleapis.com/envoy.config.route.v3.RouteConfiguration
-      name: default/backend-service
+      name: path_translation_route
       virtual_hosts:
         - name: backend
           domains: ["*"]
@@ -64,6 +82,11 @@ spec:
                 prefix: "/"
               route:
                 cluster: default/backend-service
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: default/backend-service
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
 ```
 
 ```bash
@@ -88,30 +111,54 @@ kind: CiliumEnvoyConfig
 metadata:
   name: regex-path-translation
   namespace: default
+  annotations:
+    cec.cilium.io/use-original-source-address: "false"
 spec:
   services:
     - name: backend-service
       namespace: default
+      listener: regex-path-translation-listener
   resources:
+    - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+      name: regex-path-translation-listener
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: regex-path-translation
+                rds:
+                  route_config_name: regex_path_translation_route
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
     - "@type": type.googleapis.com/envoy.config.route.v3.RouteConfiguration
-      name: default/backend-service
+      name: regex_path_translation_route
       virtual_hosts:
         - name: backend
           domains: ["*"]
           routes:
             - match:
                 safe_regex:
-                  regex: "/users/([0-9]+)/profile"
+                  google_re2: {}
+                  regex: "^/users/([0-9]+)/profile$"
               route:
                 cluster: default/backend-service
                 regex_rewrite:
                   pattern:
-                    regex: "/users/([0-9]+)/profile"
-                  substitution: "/v1/profiles/\1"
+                    google_re2: {}
+                    regex: "^/users/([0-9]+)/profile$"
+                  substitution: '/v1/profiles/\1'
             - match:
                 prefix: "/"
               route:
                 cluster: default/backend-service
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: default/backend-service
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
 ```
 
 ## Testing Path Translation
@@ -137,8 +184,8 @@ hubble observe --protocol http -n default --last 10 -o json | \
 kubectl get ciliumenvoyconfigs -n default
 
 # Check Envoy routes
-kubectl exec -n kube-system <cilium-pod> -- \
-  curl -s localhost:9901/config_dump | jq '.configs[] | select(.["@type"] | contains("RoutesConfigDump"))'
+kubectl exec -n kube-system <cilium-pod> -c cilium-agent -- \
+  cilium-dbg envoy admin config routes --name path_translation_route
 
 # Test path translation
 kubectl exec deploy/client -- curl -s http://backend-service:8080/api/v2/test
@@ -147,10 +194,10 @@ kubectl exec deploy/client -- curl -s http://backend-service:8080/api/v2/test
 ## Troubleshooting
 
 - **Path not being rewritten**: Verify CiliumEnvoyConfig is applied and matches the service. Check Envoy route config dump.
-- **503 errors after applying config**: The route configuration may be invalid. Check Envoy admin logs.
+- **503 errors after applying config**: The Envoy configuration may be invalid. Check Cilium agent logs.
 - **Regex not matching**: Test regex patterns separately. Envoy uses RE2 syntax.
-- **Traffic bypassing Envoy**: Ensure an L7 policy exists to force traffic through the proxy.
+- **Traffic bypassing Envoy**: Ensure the service is selected by the CiliumEnvoyConfig or an L7 policy exists to force traffic through the proxy.
 
 ## Conclusion
 
-Cilium L7 path translation through CiliumEnvoyConfig provides flexible HTTP path rewriting between services. Use prefix rewrites for simple cases and regex rewrites for complex patterns. Always verify with Hubble flow observation to confirm paths are translated correctly.
+Cilium L7 path translation through CiliumEnvoyConfig provides flexible HTTP path rewriting between services. Use prefix rewrites for simple cases and regex rewrites for complex patterns. Always verify with backend logs, Envoy configuration, and Hubble flow observation.
