@@ -31,8 +31,8 @@ For clusters with fewer than 50 nodes, a straightforward HostEndpoint configurat
 
 calicoctl get hostendpoint -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check generated HostEndpoint resources for a specific node
+calicoctl get hostendpoint -o wide | grep <node-name>
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
@@ -50,7 +50,7 @@ kubectl label node worker-2 environment=staging
 kubectl get nodes --show-labels | grep environment
 ```
 
-Then reference these labels in your HostEndpoint manifest's node selectors to apply environment-specific settings.
+Then reference these labels in `KubeControllersConfiguration` HostEndpoint template `nodeSelector` rules for automatic HostEndpoint creation, or apply equivalent labels directly to HostEndpoint metadata and target them from policy selectors.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,7 +65,7 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Review the `KubeControllersConfiguration` `reconcilerPeriod` before changing it; increasing it reduces reconciliation frequency but also delays correction of drift
 - Use Typha to reduce the number of direct datastore connections
 - Monitor memory usage of calico-node pods when managing many HostEndpoint resources
 
@@ -97,12 +97,12 @@ kubectl get hostendpoint.projectcalico.org -w
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if Felix health reporting is enabled:
 
 ```bash
-# Check if Felix is reporting healthy
-curl -s http://<node-ip>:9099/liveness
-curl -s http://<node-ip>:9099/readiness
+# Check if Felix is reporting healthy from the node or calico-node network namespace
+curl -s http://127.0.0.1:9099/liveness
+curl -s http://127.0.0.1:9099/readiness
 ```
 
 ## Verification
@@ -169,7 +169,7 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
