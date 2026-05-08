@@ -74,6 +74,7 @@ Requires=app-db.service
 
 [Container]
 ContainerName=app-api
+# Replace this with your published API image.
 Image=docker.io/myorg/api:latest
 Network=appnet.network
 Environment=DATABASE_URL=postgresql://api:secret@app-db:5432/appdb
