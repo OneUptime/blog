@@ -137,7 +137,7 @@ podman run -d --name app \
 
 # Port 8080 is accessible from any network interface
 # Port 9090 is only accessible from localhost
-curl http://localhost:8080    # Works from anywhere
+curl http://localhost:8080    # Works locally; remote clients use the host IP
 curl http://localhost:9090    # Only works locally
 ```
 
