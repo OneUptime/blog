@@ -16,14 +16,14 @@ Monitoring external lock-down policies reveals which pods attempt external acces
 
 - Kubernetes cluster with Cilium and external lock-down policies
 - Prometheus and Grafana deployed
-- Hubble enabled
+- Hubble and Hubble metrics enabled
 
 ## Monitoring Egress Drops
 
 ```promql
 # Drops by policy denial reason
 
-rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])
+rate(hubble_drop_total{reason="Policy denied"}[5m])
 
 # Dropped flows by verdict
 rate(hubble_flows_processed_total{verdict="DROPPED"}[5m])
@@ -32,11 +32,11 @@ rate(hubble_flows_processed_total{verdict="DROPPED"}[5m])
 ```bash
 # Monitor blocked external access attempts
 hubble observe --verdict DROPPED --type l3/l4 -n default \
-  --not --to-label io.kubernetes.pod.namespace --last 50
+  --to-label reserved:world --last 50
 
 # See which pods are trying to reach external services
 hubble observe --verdict DROPPED -n default -o json --last 100 | \
-  jq -r '.flow | select(.destination.labels == null or (.destination.labels | length) == 0) | "\(.source.labels | join(",")) -> \(.IP.destination):\(.l4.TCP.destination_port // .l4.UDP.destination_port)"' | \
+  jq -r '.flow | select((.destination.labels // []) | index("reserved:world")) | "\(.source.labels | join(",")) -> \(.IP.destination):\(.l4.TCP.destination_port // .l4.UDP.destination_port)"' | \
   sort | uniq -c | sort -rn | head -20
 ```
 
@@ -65,7 +65,7 @@ spec:
         - alert: UnexpectedExternalAccessAttempt
           expr: >
             rate(hubble_drop_total{
-              reason="POLICY_DENIED"}[5m]) > 50
+              reason="Policy denied"}[5m]) > 50
           for: 10m
           labels:
             severity: warning
