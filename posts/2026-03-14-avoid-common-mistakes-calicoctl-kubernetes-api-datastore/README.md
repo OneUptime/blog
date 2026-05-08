@@ -25,10 +25,10 @@ This guide catalogs the most frequent mistakes teams make when configuring calic
 
 ## Mistake 1: Wrong or Missing DATASTORE_TYPE
 
-The most common mistake is forgetting to set the `DATASTORE_TYPE` environment variable, which defaults to `etcdv3` in some calicoctl versions:
+The most common mistake is letting calicoctl use an unexpected datastore configuration. Current calicoctl versions default to the Kubernetes API datastore, but an existing config file or environment variable can still point calicoctl at `etcdv3`:
 
 ```bash
-# WRONG: Missing datastore type (may default to etcd)
+# WRONG: Existing environment or config points at etcd
 
 calicoctl get nodes
 # Error: connection to etcd failed
@@ -86,7 +86,7 @@ calicoctl get globalnetworkpolicies
 # Error: resource type 'globalnetworkpolicies' is not permitted
 
 # Check what permissions the current user has for Calico resources
-kubectl auth can-i list globalnetworkpolicies.projectcalico.org --all-namespaces
+kubectl auth can-i list globalnetworkpolicies.crd.projectcalico.org --all-namespaces
 ```
 
 Create the proper RBAC role:
@@ -114,19 +114,19 @@ rules:
 kubectl apply -f calico-admin-role.yaml
 kubectl create clusterrolebinding calico-admin-binding \
   --clusterrole=calico-admin \
-  --user=$(kubectl config current-context)
+  --user="$(kubectl config view --minify -o jsonpath='{.contexts[0].context.user}')"
 ```
 
-## Mistake 4: Using kubectl Instead of Calicoctl for Calico Resources
+## Mistake 4: Using kubectl Without Calico API Server Validation
 
-While Calico resources are stored as CRDs in the Kubernetes API, some resources have different field names and behaviors when accessed via kubectl versus calicoctl:
+While Calico resources are stored as CRDs in the Kubernetes API, applying them directly with kubectl against the low-level CRDs can skip Calico-specific validation and defaulting unless the Calico API server is installed:
 
 ```bash
-# WRONG: Using kubectl to apply a Calico GlobalNetworkPolicy
-# kubectl does not validate Calico-specific fields properly
+# RISKY: Using kubectl against low-level Calico CRDs without the Calico API server
+# may skip Calico-specific validation and defaulting
 kubectl apply -f policy.yaml
 
-# CORRECT: Use calicoctl for Calico resources
+# CORRECT: Use calicoctl for Calico resources when the Calico API server is not installed
 calicoctl apply -f policy.yaml
 ```
 
@@ -149,7 +149,7 @@ spec:
 ```
 
 ```bash
-# Verify with calicoctl, not kubectl
+# Verify with calicoctl, or with kubectl if the Calico API server is installed
 calicoctl get globalnetworkpolicies allow-http -o yaml
 ```
 
@@ -173,8 +173,9 @@ calicoctl get nodes -o wide
 ```mermaid
 flowchart TD
     A[calicoctl Command] --> B{DATASTORE_TYPE set?}
-    B -->|No| C[Error: etcd connection failed]
+    B -->|No| C[Uses default or config file datastore]
     B -->|Yes: kubernetes| D{KUBECONFIG valid?}
+    C --> D
     D -->|No| E[Error: unauthorized]
     D -->|Yes| F{Correct cluster context?}
     F -->|No| G[Changes applied to wrong cluster!]
@@ -224,7 +225,7 @@ calicoctl get clusterinformation default -o yaml
 calicoctl version
 
 # Verify RBAC permissions
-kubectl auth can-i list globalnetworkpolicies.projectcalico.org
+kubectl auth can-i list globalnetworkpolicies.crd.projectcalico.org
 
 # Verify current context
 kubectl config current-context
