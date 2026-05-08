@@ -10,7 +10,7 @@ Description: Learn how to customize the infra container in a Podman pod for spec
 
 > The infra container is the foundation of every pod, holding shared namespaces alive even when all other containers stop.
 
-Every Podman pod has an infra container that runs a minimal pause process. This container owns the shared namespaces (network, IPC, UTS) and keeps them alive for the lifetime of the pod. You can customize the infra container's image, command, and resource limits.
+By default, every Podman pod has an infra container that runs a minimal pause process. This container owns the shared namespaces (network, IPC, UTS) and keeps them alive for the lifetime of the pod. You can customize the infra container's image and command, and set pod-level resource limits.
 
 ---
 
@@ -24,7 +24,7 @@ podman pod create --name my-pod
 # List all containers including the infra container
 podman ps -a --filter pod=my-pod --format "table {{.Names}}\t{{.Image}}\t{{.Command}}"
 
-# The infra container runs the k8s.gcr.io/pause image or a local equivalent
+# By default, Podman builds a local pause image for the infra container
 ```
 
 ## Using a Custom Infra Image
@@ -32,7 +32,7 @@ podman ps -a --filter pod=my-pod --format "table {{.Names}}\t{{.Image}}\t{{.Comm
 ```bash
 # Specify a custom infra container image
 podman pod create --name custom-infra-pod \
-  --infra-image docker.io/library/alpine:latest
+  --infra-image registry.k8s.io/pause:3.10
 
 # The infra container uses the specified image
 podman ps -a --filter pod=custom-infra-pod --format "{{.Names}} {{.Image}}"
@@ -43,9 +43,10 @@ podman ps -a --filter pod=custom-infra-pod --format "{{.Names}} {{.Image}}"
 ```bash
 # Override the infra container's command
 podman pod create --name cmd-pod \
-  --infra-command "/bin/sleep inf"
+  --infra-image docker.io/library/busybox:latest \
+  --infra-command /bin/top
 
-# The infra container runs sleep instead of the default pause
+# The infra container runs top instead of the default pause
 ```
 
 ## Disabling the Infra Container
@@ -68,29 +69,30 @@ podman pod create --name web-pod \
   -p 8443:443
 
 # The infra container owns these port bindings
-INFRA_ID=$(podman pod inspect web-pod --format '{{.InfraContainerId}}')
+INFRA_ID=$(podman pod inspect web-pod --format '{{.InfraContainerID}}')
 podman inspect "$INFRA_ID" --format '{{.HostConfig.PortBindings}}'
 ```
 
-## Setting Resource Limits on the Infra Container
+## Setting Pod Resource Limits
 
 ```bash
-# The infra container is lightweight but you can set limits
+# Set CPU and memory limits for the pod
 podman pod create --name limited-pod \
-  --infra-conmon-pidfile /tmp/pod-conmon.pid
+  --cpus=2 \
+  --memory=512m
 
-# Inspect infra container resource usage
-podman pod stats limited-pod --no-stream
+# Inspect pod resource usage
+podman pod stats --no-stream limited-pod
 ```
 
 ## Inspecting the Infra Container
 
 ```bash
 # Get the infra container ID
-podman pod inspect my-pod --format '{{.InfraContainerId}}'
+podman pod inspect my-pod --format '{{.InfraContainerID}}'
 
 # Inspect the infra container in detail
-INFRA_ID=$(podman pod inspect my-pod --format '{{.InfraContainerId}}')
+INFRA_ID=$(podman pod inspect my-pod --format '{{.InfraContainerID}}')
 podman inspect "$INFRA_ID" | jq '{
   Image: .Config.Image,
   Cmd: .Config.Cmd,
@@ -101,4 +103,4 @@ podman inspect "$INFRA_ID" | jq '{
 
 ## Summary
 
-The infra container is the backbone of every Podman pod, maintaining shared namespaces for all member containers. Customize it with `--infra-image` for a different base image, `--infra-command` for a different entry process, or `--infra=false` to disable it entirely. Port mappings and namespace configuration all flow through the infra container.
+The infra container is the backbone of a default Podman pod, maintaining shared namespaces for all member containers. Customize it with `--infra-image` for a different base image, `--infra-command` for a different entry process, or `--infra=false` to disable it entirely. Port mappings and namespace configuration all flow through the infra container.
