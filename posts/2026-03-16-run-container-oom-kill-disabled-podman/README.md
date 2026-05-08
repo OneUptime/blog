@@ -30,14 +30,14 @@ When a container exceeds its memory limit:
 ```bash
 # Demonstrate OOM kill behavior (default)
 
-podman run --rm --memory 32m alpine sh -c "
+podman run --rm --memory 32m --shm-size 128m alpine sh -c "
   echo 'Attempting to exceed 32MB memory limit...'
-  dd if=/dev/zero of=/tmp/fill bs=1M count=64 2>&1 || echo 'Process was killed or hit limit'
+  dd if=/dev/zero of=/dev/shm/fill bs=1M count=64 2>&1 || echo 'Process was killed or hit limit'
 "
 
 # Check if a container was OOM-killed
-podman run -d --name oom-test --memory 32m alpine sh -c "
-  dd if=/dev/zero of=/tmp/fill bs=1M count=64 2>&1
+podman run -d --name oom-test --memory 32m --shm-size 128m alpine sh -c "
+  dd if=/dev/zero of=/dev/shm/fill bs=1M count=64 2>&1
   sleep 10
 "
 sleep 5
@@ -73,10 +73,10 @@ Never disable OOM kill without setting a memory limit:
 # podman run --oom-kill-disable alpine sleep infinity  # DO NOT DO THIS
 
 # SAFE: OOM kill disabled WITH a memory limit
-# The container is capped and will simply stop allocating
+# The container is capped; if it cannot reclaim memory, tasks may block
 podman run -d --name safe-no-oom \
   --memory 512m \
-  --memory-swap 512m \
+  --memory-swap 1g \
   --oom-kill-disable \
   alpine sleep infinity
 
@@ -88,14 +88,14 @@ podman stop safe-no-oom && podman rm safe-no-oom
 With OOM kill disabled, when a container hits its memory limit:
 
 ```bash
-# The container's processes will be unable to allocate more memory
-# Memory allocations will fail with ENOMEM
-podman run --rm --memory 64m --oom-kill-disable alpine sh -c "
+# The container's processes may hang/sleep waiting for memory to be freed
+podman run --rm --memory 64m --shm-size 256m --oom-kill-disable alpine sh -c "
   echo 'Allocating memory with OOM kill disabled...'
-  # Processes will get memory allocation failures instead of being killed
-  dd if=/dev/zero of=/tmp/fill bs=1M count=128 2>&1
-  echo 'Process survived (not killed by OOM)'
-  echo 'Exit code: $?'
+  # This may block instead of being killed when the cgroup is under OOM
+  timeout 10s dd if=/dev/zero of=/dev/shm/fill bs=1M count=128 2>&1
+  code=\$?
+  echo 'Process was not killed by the cgroup OOM killer'
+  echo \"Exit code: \$code\"
 "
 ```
 
@@ -106,6 +106,7 @@ Instead of disabling OOM kill entirely, you can adjust the OOM priority:
 ```bash
 # Lower OOM score means less likely to be killed (-1000 to 1000)
 # -1000 = never kill, 1000 = kill first
+# In rootless mode, Podman may clamp negative values to the user's current oom_score_adj
 podman run -d --name low-oom-priority \
   --memory 256m \
   --oom-score-adj -500 \
@@ -132,7 +133,7 @@ Appropriate scenarios:
 # 1. Critical database that must not be interrupted
 podman run -d --name critical-db \
   --memory 4g \
-  --memory-swap 4g \
+  --memory-swap 8g \
   --oom-kill-disable \
   -e POSTGRES_PASSWORD=secret \
   postgres:16
@@ -140,7 +141,7 @@ podman run -d --name critical-db \
 # 2. Stateful application where data loss is worse than a hang
 podman run -d --name stateful-app \
   --memory 2g \
-  --memory-swap 2g \
+  --memory-swap 4g \
   --oom-kill-disable \
   alpine sleep infinity
 
@@ -181,8 +182,8 @@ podman rm web batch worker 2>/dev/null
 podman ps -a --format "table {{.Names}}\t{{.Status}}" | head -10
 
 # Inspect a specific container for OOM status
-podman run -d --name oom-monitor --memory 64m alpine sh -c "
-  dd if=/dev/zero of=/tmp/fill bs=1M count=128 2>&1
+podman run -d --name oom-monitor --memory 64m --shm-size 256m alpine sh -c "
+  dd if=/dev/zero of=/dev/shm/fill bs=1M count=128 2>&1
   sleep 10
 "
 sleep 3
@@ -205,7 +206,7 @@ podman rm -f oom-monitor
 # If you disable OOM kill, add other protections
 podman run -d --name protected-service \
   --memory 1g \
-  --memory-swap 1g \
+  --memory-swap 2g \
   --memory-reservation 512m \
   --oom-kill-disable \
   --pids-limit 200 \
@@ -226,7 +227,7 @@ podman stop protected-service && podman rm protected-service
 Disabling the OOM killer in Podman is a specialized option for critical workloads:
 
 - Use `--oom-kill-disable` only with `--memory` (never without a limit)
-- Also set `--memory-swap` equal to `--memory` to prevent swap usage
+- Also set an explicit `--memory-swap` limit if you need to cap total memory plus swap usage
 - Consider `--oom-score-adj` as a less extreme alternative
 - Appropriate for databases and stateful services where data integrity is paramount
 - Not appropriate for stateless, easily replaceable workloads
