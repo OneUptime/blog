@@ -19,7 +19,7 @@ This guide walks through practical examples of using `calicoctl node status` for
 ## Prerequisites
 
 - A Kubernetes cluster with Calico installed (BGP mode)
-- `calicoctl` v3.25+ installed
+- `calicoctl` installed at the same version as your Calico cluster
 - Root or sudo access (required for this command)
 - At least two nodes in the cluster for meaningful BGP peering
 
@@ -70,9 +70,7 @@ NODES=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{e
 
 for NODE in $NODES; do
   echo "=== $NODE ==="
-  kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-node \
-    --field-selector spec.nodeName=$NODE -o jsonpath='{.items[0].metadata.name}') \
-    -- calicoctl node status 2>/dev/null
+  ssh "$NODE" "sudo calicoctl node status" 2>/dev/null
   echo ""
 done
 ```
@@ -105,7 +103,7 @@ ssh <peer-address> "sudo calicoctl node status"
 
 ### State: active
 
-TCP connection established but BGP negotiation failed:
+The BGP process is still trying to acquire the peer or retry a TCP connection:
 
 ```bash
 # Check for AS number mismatch
@@ -130,8 +128,8 @@ while true; do
   OUTPUT=$(sudo calicoctl node status 2>/dev/null)
   
   echo "$OUTPUT" | grep "Established" | while read -r line; do
-    PEER=$(echo "$line" | awk '{print $2}')
-    SINCE=$(echo "$line" | awk '{print $8}')
+    PEER=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}')
+    SINCE=$(echo "$line" | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $5); print $5}')
     
     # Parse the SINCE time and check how recent it is
     echo "Peer $PEER established since $SINCE"
@@ -204,7 +202,7 @@ Verify BGP is healthy across your cluster:
 # Quick health check
 sudo calicoctl node status | grep -c "Established"
 
-# Should match the number of expected peers
+# In node-to-node mesh mode, this should match the number of expected peers
 EXPECTED_PEERS=$(($(kubectl get nodes --no-headers | wc -l) - 1))
 ACTUAL_PEERS=$(sudo calicoctl node status | grep -c "Established")
 echo "Expected: $EXPECTED_PEERS, Actual: $ACTUAL_PEERS"
