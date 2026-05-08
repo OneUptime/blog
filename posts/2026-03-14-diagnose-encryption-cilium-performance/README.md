@@ -10,7 +10,7 @@ Description: How to diagnose encryption performance in Cilium, covering both Wir
 
 ## Introduction
 
-Encryption in Cilium adds CPU overhead to every packet, reducing throughput and increasing latency compared to unencrypted networking. The magnitude of the overhead depends on the encryption protocol (WireGuard vs IPsec), hardware crypto support, and the workload characteristics.
+Encryption in Cilium adds CPU overhead to encrypted cross-node traffic, reducing throughput and increasing latency compared to unencrypted networking. The magnitude of the overhead depends on the encryption protocol (WireGuard vs IPsec), hardware crypto support, and the workload characteristics.
 
 Diagnosing encryption performance involves measuring the overhead compared to unencrypted baseline and profiling CPU usage during encrypted transfers.
 
@@ -27,8 +27,8 @@ This guide covers the specific steps for managing encryption performance in Cili
 ## Identifying Encryption Status
 
 ```bash
-cilium encrypt status
-# Shows: Encryption type, keys, and node status
+cilium encryption status --per-node-details
+# Shows: Encryption type and per-node status
 
 # Check which traffic is encrypted
 
@@ -63,7 +63,7 @@ perf report --stdio | grep -E "chacha|poly|aes|gcm|esp|wireguard|crypto" | head 
 ## Verification
 
 ```bash
-cilium encrypt status
+cilium encryption status --per-node-details
 kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 ```
@@ -71,7 +71,7 @@ kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
 ## Troubleshooting
 
 - **Encryption not active**: Verify Cilium helm values include encryption.enabled=true.
-- **Overhead > 40%**: Check for userspace WireGuard or missing AES-NI for IPsec.
+- **Overhead > 40%**: Check for kernel WireGuard support or missing AES-NI for IPsec.
 - **Some nodes not encrypted**: Check Cilium agent logs for key exchange errors.
 - **Performance varies by node pair**: Different hardware capabilities across nodes.
 
@@ -86,16 +86,21 @@ mkdir -p $DIAG_DIR
 
 # Collect Cilium status
 cilium status --verbose > $DIAG_DIR/cilium-status.txt
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose > $DIAG_DIR/cilium-agent-status.txt
 
 # Collect Cilium configuration
 cilium config view > $DIAG_DIR/cilium-config.txt
 
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg bpf ct list > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -130,17 +135,22 @@ The `cilium monitor` command provides real-time visibility into the eBPF datapat
 
 ```bash
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+ENDPOINT_ID=$(kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list -o json | jq '.[0].id')
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --related-to $ENDPOINT_ID --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
@@ -153,11 +163,11 @@ cilium hubble port-forward &
 
 # Query recent flows with filters
 hubble observe --protocol TCP --last 500 -o json | \
-  jq 'select(.verdict == "DROPPED") | {src: .source.pod_name, dst: .destination.pod_name, reason: .drop_reason_desc}'
+  jq 'select(.flow.verdict == "DROPPED") | {src: .flow.source.pod_name, dst: .flow.destination.pod_name, reason: .flow.drop_reason_desc}'
 
 # Get flow statistics by source and destination
 hubble observe --last 1000 -o json | \
-  jq -r '\(.source.namespace)/\(.source.pod_name) -> \(.destination.namespace)/\(.destination.pod_name): \(.verdict)' | \
+  jq -r '\(.flow.source.namespace)/\(.flow.source.pod_name) -> \(.flow.destination.namespace)/\(.flow.destination.pod_name): \(.flow.verdict)' | \
   sort | uniq -c | sort -rn | head -20
 ```
 
