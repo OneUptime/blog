@@ -48,7 +48,7 @@ Place instructions that change rarely at the top and those that change frequentl
 ```bash
 # BAD: Source code copy before dependency install
 cat > Containerfile.bad <<'EOF'
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY . .                    # Changes every time you edit code
 RUN npm install             # Rebuilds every time (cache invalidated above)
@@ -57,7 +57,7 @@ EOF
 
 # GOOD: Dependencies first, source code last
 cat > Containerfile.good <<'EOF'
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./   # Only changes when deps change
 RUN npm ci                                # Cached when deps unchanged
@@ -103,18 +103,13 @@ This prevents irrelevant file changes from invalidating your `COPY` cache.
 In CI/CD pipelines, the local cache may be empty on each run. You can use `--cache-from` to pull cache layers from a registry.
 
 ```bash
-# Pull the previous build to use as cache source
-podman pull registry.example.com/myapp:cache || true
-
-# Build using the pulled image as cache (--layers is required for --cache-from)
+# Build using a remote cache repository (--layers is required for --cache-from and --cache-to)
 podman build \
   --layers \
   --cache-from=registry.example.com/myapp:cache \
+  --cache-to=registry.example.com/myapp:cache \
   -t myapp:latest \
   .
-
-# Push the new build as the cache source for next time
-podman push myapp:latest registry.example.com/myapp:cache
 ```
 
 ## Splitting RUN Instructions Strategically
@@ -132,14 +127,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Layer 2: Application runtime (changes occasionally)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
 # Layer 3: Dependencies (changes when package.json changes)
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 # Layer 4: Application code (changes frequently)
 COPY . .
@@ -155,7 +150,7 @@ Build arguments can invalidate cache if not used carefully.
 ```bash
 # BAD: ARG before instructions causes cache miss when value changes
 cat > Containerfile.bad <<'EOF'
-FROM alpine:3.19
+FROM alpine:3.23
 ARG APP_VERSION=1.0    # Changing this invalidates everything below
 RUN apk add --no-cache curl
 RUN echo $APP_VERSION > /version.txt
@@ -163,7 +158,7 @@ EOF
 
 # GOOD: Place ARG just before it is needed
 cat > Containerfile.good <<'EOF'
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache curl    # This stays cached regardless
 ARG APP_VERSION=1.0            # Only affects layers below
 RUN echo $APP_VERSION > /version.txt
@@ -177,7 +172,7 @@ Each stage in a multi-stage build has its own cache chain.
 ```bash
 cat > Containerfile <<'EOF'
 # Stage 1: Build (cached independently)
-FROM golang:1.22 AS builder
+FROM golang:1.26 AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download        # Cached until go.mod/go.sum change
@@ -185,7 +180,7 @@ COPY . .
 RUN go build -o /app
 
 # Stage 2: Runtime (cached independently)
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates   # Always cached
 COPY --from=builder /app /usr/local/bin/app
 CMD ["app"]
@@ -219,7 +214,7 @@ podman build --no-cache -t myapp:latest .
 
 # Disable cache for a specific layer using a changing ARG
 cat > Containerfile <<'EOF'
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache curl
 
 # Bust cache for everything below by changing this value
