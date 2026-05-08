@@ -41,8 +41,10 @@ calicoctl ipam show
 
 ```bash
 # Deploy test pods on different nodes
-kubectl run test-pod-1 --image=busybox --command -- sleep 3600
-kubectl run test-pod-2 --image=busybox --command -- sleep 3600
+NODE1=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+NODE2=$(kubectl get nodes -o jsonpath='{.items[1].metadata.name}')
+kubectl run test-pod-1 --image=busybox --overrides='{"apiVersion":"v1","spec":{"nodeName":"'"$NODE1"'"}}' --command -- sleep 3600
+kubectl run test-pod-2 --image=busybox --overrides='{"apiVersion":"v1","spec":{"nodeName":"'"$NODE2"'"}}' --command -- sleep 3600
 
 # Wait for pods to be ready
 kubectl wait --for=condition=ready pod/test-pod-1 pod/test-pod-2 --timeout=60s
@@ -62,10 +64,10 @@ kubectl delete pod test-pod-1 test-pod-2
 
 ```bash
 # Check all pods across namespaces
-kubectl get pods -A | grep -v Running | grep -v Completed
+kubectl get pods -A --no-headers | grep -v Running | grep -v Completed
 
 # Verify deployments are at desired replica count
-kubectl get deployments -A | awk '$3 != $4'
+kubectl get deployments -A --no-headers | awk '{split($3, ready, "/"); if (ready[1] != ready[2]) print}'
 ```
 
 ## Step 4: Extended Monitoring (30 minutes - 2 hours)
@@ -151,8 +153,8 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current user can modify Calico global network policies
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
