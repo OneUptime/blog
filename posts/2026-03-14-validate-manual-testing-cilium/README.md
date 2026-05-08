@@ -30,10 +30,10 @@ Map your test plan against required coverage areas:
 # Check that the test plan covers all policy verdict paths
 
 echo "=== Coverage Matrix ==="
-echo "1. Allowed request (PASS verdict): ___"
-echo "2. Denied request (DROP verdict): ___"
-echo "3. Malformed request (DROP/ERROR): ___"
-echo "4. Oversized request (DROP): ___"
+echo "1. Allowed request (FORWARDED verdict): ___"
+echo "2. Denied request (DROPPED verdict): ___"
+echo "3. Malformed request (DROPPED/ERROR): ___"
+echo "4. Oversized request (DROPPED): ___"
 echo "5. Partial request (MORE then PASS): ___"
 echo "6. Multiple messages on one connection: ___"
 echo "7. Request and response correlation: ___"
@@ -76,13 +76,13 @@ hubble observe --namespace cilium-parser-test --type l7 --since 1h -o json | \
 
 # Verify both allowed and denied traffic occurred
 ALLOWED=$(hubble observe --namespace cilium-parser-test --type l7 --verdict FORWARDED --since 1h -o json | jq -s 'length')
-DENIED=$(hubble observe --namespace cilium-parser-test --type l7 --verdict DENIED --since 1h -o json | jq -s 'length')
+DROPPED=$(hubble observe --namespace cilium-parser-test --type l7 --verdict DROPPED --since 1h -o json | jq -s 'length')
 
 echo "Allowed requests: $ALLOWED"
-echo "Denied requests: $DENIED"
+echo "Dropped/denied requests: $DROPPED"
 
-if [ "$DENIED" -eq 0 ]; then
-    echo "WARNING: No denied requests recorded - security testing incomplete"
+if [ "$DROPPED" -eq 0 ]; then
+    echo "WARNING: No dropped or denied requests recorded - security testing incomplete"
 fi
 ```
 
@@ -117,6 +117,7 @@ set -e
 
 NS="cilium-parser-test"
 RESULTS_FILE="/tmp/test-results-$(date +%Y%m%d-%H%M%S).json"
+first=1
 
 echo '{"tests": [' > "$RESULTS_FILE"
 
@@ -135,7 +136,14 @@ run_test() {
         status="FAIL"
     fi
 
-    echo "{\"name\": \"$name\", \"status\": \"$status\", \"output\": \"$(echo $result | head -c 200)\"}," >> "$RESULTS_FILE"
+    if [ "$first" -eq 0 ]; then
+        echo "," >> "$RESULTS_FILE"
+    fi
+
+    escaped_name=$(printf '%s' "$name" | jq -Rs .)
+    escaped_output=$(printf '%s' "$result" | head -c 200 | jq -Rs .)
+    printf '{"name": %s, "status": "%s", "output": %s}' "$escaped_name" "$status" "$escaped_output" >> "$RESULTS_FILE"
+    first=0
     echo "  $name: $status"
 }
 
@@ -185,7 +193,8 @@ Validate the validation process itself:
 ```bash
 # Ensure all coverage areas have at least one test
 COVERAGE_AREAS=10
-COVERED=$(grep -c "PASS\|FAIL" test-results.json | head -1)
+LATEST_RESULTS=$(ls -t /tmp/test-results-*.json | head -1)
+COVERED=$(jq '.tests | length' "$LATEST_RESULTS")
 echo "Coverage: $COVERED/$COVERAGE_AREAS areas tested"
 
 # Verify test results are saved
