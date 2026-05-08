@@ -48,20 +48,20 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=cilium-operator --tail=30
 Examine the Cilium data path for issues related to cilium networking concepts:
 
 ```bash
-# Check BPF program status
-kubectl exec -n kube-system ds/cilium -- cilium bpf tunnel list 2>/dev/null | head -20
+# Check tunnel map status when tunnel routing is enabled
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf tunnel list 2>/dev/null | head -20
 
 # Monitor dropped packets in real time
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop
 
 # Check endpoint status for affected pods
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
 # Verify current configuration
 cilium config view | grep -E "bpf|identity|endpoint"
 
 # Check Cilium metrics for anomalies
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -iE "drop|error|fail"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep -iE "drop|error|fail"
 ```
 
 ## Analyzing Connectivity Issues
@@ -77,7 +77,7 @@ kubectl wait --for=condition=Ready pod/diag-pod --timeout=60s
 kubectl exec diag-pod -- ping -c 3 $(kubectl get pod -l app=target -o jsonpath='{.items[0].status.podIP}') 2>/dev/null
 
 # Test pod-to-service connectivity
-kubectl exec diag-pod -- curl -s --max-time 5 http://kubernetes.default.svc:443 2>&1
+kubectl exec diag-pod -- curl -sk --max-time 5 https://kubernetes.default.svc/version 2>&1
 
 # Test external connectivity
 kubectl exec diag-pod -- curl -s --max-time 5 http://1.1.1.1 2>&1
@@ -134,7 +134,7 @@ cilium connectivity test
 kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=5m | grep -c "error"
 
 # Check endpoint health
-cilium endpoint list | grep -v "ready" | head -5
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep -v "ready" | head -5
 
 # Verify Cilium status
 cilium status
@@ -142,10 +142,10 @@ cilium status
 
 ## Troubleshooting
 
-- **Cilium monitor shows no output**: The monitor may not be capturing traffic on the correct endpoint. Use `cilium monitor --related-to ENDPOINT_ID` to filter for a specific endpoint.
+- **Cilium monitor shows no output**: The monitor may not be capturing traffic on the correct endpoint. Use `cilium-dbg monitor --related-to ENDPOINT_ID` to filter for a specific endpoint.
 - **Hubble observe shows no flows**: Ensure Hubble is enabled in the Cilium configuration. Check with `cilium config view | grep hubble`.
-- **BPF maps are full**: Check map sizes with `cilium bpf ct list global | wc -l`. If approaching limits, increase conntrack table size in Helm values.
-- **Performance issues after configuration change**: Check if BPF program complexity has increased. Use `cilium bpf prog list` to see loaded programs and their complexity.
+- **BPF maps are full**: Check map sizes with `kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf ct list | wc -l`. If approaching limits, increase conntrack table size in Helm values.
+- **Performance issues after configuration change**: Check if BPF program size has increased. Use `bpftool prog` on the node to inspect loaded programs and their translated and JITed sizes.
 
 ## Conclusion
 
