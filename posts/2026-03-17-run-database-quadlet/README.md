@@ -77,7 +77,7 @@ systemctl --user daemon-reload
 # Start the database
 systemctl --user start postgres.service
 
-# Enable at boot
+# Enable for future user sessions
 systemctl --user enable postgres.service
 
 # Check status (will show "activating" until health check passes)
