@@ -10,7 +10,7 @@ Description: Learn how to generate Kubernetes-compatible YAML manifests from run
 
 > Podman can export a running container's configuration as Kubernetes YAML, bridging the gap between local development and cluster deployment.
 
-One of Podman's standout features is its ability to generate Kubernetes YAML from running containers. This lets you develop and test locally with Podman, then export the configuration directly to Kubernetes manifests. The `podman generate kube` command handles the translation.
+One of Podman's standout features is its ability to generate Kubernetes YAML from running containers. This lets you develop and test locally with Podman, then export the configuration directly to Kubernetes manifests. The `podman kube generate` command handles the translation.
 
 ---
 
@@ -26,14 +26,14 @@ podman run -d --name my-web \
   docker.io/library/nginx:alpine
 
 # Generate Kubernetes YAML
-podman generate kube my-web
+podman kube generate my-web
 ```
 
 ## Saving the YAML to a File
 
 ```bash
 # Save the generated YAML to a file
-podman generate kube my-web > my-web-pod.yaml
+podman kube generate my-web > my-web-pod.yaml
 
 # View the generated file
 cat my-web-pod.yaml
@@ -61,14 +61,18 @@ The generated YAML includes a Pod spec with the container's image, ports, enviro
 #           value: production
 #       volumeMounts:
 #         - mountPath: /usr/share/nginx/html
-#           name: web-data
+#           name: web-data-pvc
+#   volumes:
+#     - name: web-data-pvc
+#       persistentVolumeClaim:
+#         claimName: web-data
 ```
 
 ## Generating YAML with Service Definition
 
 ```bash
 # Include a Kubernetes Service definition in the output
-podman generate kube --service my-web > my-web-with-service.yaml
+podman kube generate --service my-web > my-web-with-service.yaml
 
 # The output includes both a Pod and a Service resource
 ```
@@ -83,7 +87,7 @@ podman run -d --name multi-port \
   docker.io/library/nginx:alpine
 
 # Generate YAML - all ports are included
-podman generate kube multi-port
+podman kube generate multi-port
 ```
 
 ## Generating YAML from a Container with Environment Variables
@@ -98,16 +102,16 @@ podman run -d --name api-server \
   docker.io/library/node:20-alpine sleep 3600
 
 # Generate YAML - all env vars are captured
-podman generate kube api-server > api-server.yaml
+podman kube generate api-server > api-server.yaml
 ```
 
 ## Applying the Generated YAML to Kubernetes
 
 ```bash
 # Generate the YAML
-podman generate kube my-web > deployment.yaml
+podman kube generate my-web > deployment.yaml
 
-# Apply it to a Kubernetes cluster
+# Apply it to a Kubernetes cluster after creating any referenced resources such as PVCs
 kubectl apply -f deployment.yaml
 
 # Or replay it locally with Podman
@@ -116,4 +120,4 @@ podman play kube deployment.yaml
 
 ## Summary
 
-Use `podman generate kube` to export a running container's configuration as Kubernetes-compatible YAML. Add `--service` to include a Service definition. Save the output to a file and apply it to Kubernetes with `kubectl apply` or replay it with `podman play kube`. This bridges local development and production deployment.
+Use `podman kube generate` to export a running container's configuration as Kubernetes-compatible YAML. Add `--service` to include a Service definition. Save the output to a file and apply it to Kubernetes with `kubectl apply` or replay it with `podman play kube`. This bridges local development and production deployment.
