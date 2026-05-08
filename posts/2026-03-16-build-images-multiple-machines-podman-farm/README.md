@@ -10,7 +10,7 @@ Description: Learn how to use podman farm build to distribute container image bu
 
 > The podman farm build command sends your build context to every node in the farm, builds natively on each architecture, and assembles the results into a manifest list.
 
-Building container images natively on each target architecture produces faster, more reliable results than cross-compilation. The `podman farm build` command orchestrates this entire process. It connects to each machine in your farm over SSH, runs the build, and combines the results. This guide covers the command in detail.
+Building container images natively on each target architecture produces faster, more reliable results than cross-compilation. The `podman farm build` command orchestrates this entire process. It connects to each system connection in your farm, runs the build, and combines the results. This guide covers the command in detail.
 
 ---
 
@@ -24,7 +24,7 @@ You need a configured farm with reachable system connections:
 podman farm list
 
 # Test connectivity to all nodes
-podman farm list --format '{{.Connections}}' | tr ',' '\n' | while read -r CONN; do
+podman farm list --format '{{range .Connections}}{{.}}{{"\n"}}{{end}}' | while read -r CONN; do
     echo -n "${CONN}: "
     podman --connection "${CONN}" info --format '{{.Host.Arch}}' 2>/dev/null || echo "UNREACHABLE"
 done
@@ -74,26 +74,16 @@ podman farm build --farm prod-farm \
     -t registry.example.com/myapp:v2.0 \
     .
 
-# Then push the manifest list
-podman manifest push --all \
-    registry.example.com/myapp:v2.0 \
-    docker://registry.example.com/myapp:v2.0
+# No separate podman manifest push command is needed
 ```
 
 ## Build with Local Architecture Included
 
-If your local machine is also a build target, include its connection:
+If your local machine is also a build target, use `--local`:
 
 ```bash
-# Add local machine as a system connection
-podman system connection add localhost \
-    unix:///run/user/$(id -u)/podman/podman.sock
-
-# Include it in the farm
-podman farm update --add localhost my-farm
-
-# Build will now include the local machine
-podman farm build --farm my-farm -t registry.example.com/myapp:latest .
+# Build on the local machine as well as farm nodes
+podman farm build --farm my-farm --local -t registry.example.com/myapp:latest .
 ```
 
 ## Monitoring Build Progress
