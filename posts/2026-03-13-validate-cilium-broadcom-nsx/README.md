@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, VMware, NSX, eBPF
 
-Description: A guide to validating Cilium integration with Broadcom NSX, including verifying CNI chaining configuration, policy enforcement, and connectivity between Kubernetes pods and NSX-managed workloads.
+Description: A guide to validating Cilium integration with Broadcom NSX, including verifying CNI chaining configuration, policy enforcement, and connectivity over the NSX-managed overlay.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A guide to validating Cilium integration with Broadcom NSX, includi
 
 Broadcom NSX is an enterprise network virtualization platform widely used in VMware-based private cloud environments. When running Kubernetes on NSX-managed infrastructure, Cilium can be deployed in a chained CNI mode alongside the NSX Container Plugin (NCP), providing Cilium's eBPF-based policy enforcement and observability while NSX handles overlay networking and micro-segmentation.
 
-Validating this integration requires checking that the NCP and Cilium CNI plugins coexist correctly, that Cilium is enforcing Kubernetes network policies at the pod level, and that traffic between pods and NSX-managed workloads flows as expected. This is a nuanced validation because two networking control planes are active simultaneously.
+Validating this integration requires checking that the NCP and Cilium CNI plugins coexist correctly, that Cilium is enforcing Kubernetes network policies at the pod level, and that pod traffic flows over the NSX-managed overlay as expected. This is a nuanced validation because two networking control planes are active simultaneously.
 
 This guide provides practical validation steps for the Cilium + NSX deployment pattern, helping platform engineers confirm correct behavior in enterprise VMware environments.
 
@@ -32,9 +32,12 @@ Confirm the CNI configuration file on nodes shows NCP as primary and Cilium as c
 # Check the CNI configuration directory on a node
 
 # The conflist should show NCP plugin first, followed by Cilium
-kubectl -n kube-system exec -it \
-  $(kubectl -n kube-system get pods -l k8s-app=cilium -o name | head -1) -- \
-  cat /host/etc/cni/net.d/05-nsx.conflist | python3 -m json.tool
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl -n kube-system exec "$CILIUM_POD" -- sh -c \
+  'cat "$(ls /host/etc/cni/net.d/*nsx*.conflist /host/etc/cni/net.d/*.conflist 2>/dev/null | head -n 1)"' \
+  | python3 -m json.tool
 
 # Confirm Cilium's chaining mode configuration
 kubectl -n kube-system get configmap cilium-config \
@@ -85,7 +88,11 @@ spec:
 kubectl apply -f nsx-cilium-test-policy.yaml
 
 # Verify Cilium has loaded the policy
-cilium policy get | grep allow-specific-ingress
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl -n kube-system exec "$CILIUM_POD" -- \
+  cilium-dbg policy get k8s:io.cilium.k8s.policy.name=allow-specific-ingress
 ```
 
 ## Step 4: Test Pod-to-Pod Connectivity via NSX Overlay
@@ -104,6 +111,7 @@ kubectl exec frontend -- curl -m 5 http://$BACKEND_IP
 
 # Test denied connection (from an unlabeled pod)
 kubectl run other --image=nicolaka/netshoot -- sleep 3600
+kubectl wait --for=condition=Ready pod/other
 kubectl exec other -- curl -m 3 http://$BACKEND_IP  # Should timeout/be rejected
 ```
 
@@ -120,7 +128,7 @@ kubectl get pods -o wide
 ## Best Practices
 
 - Ensure Cilium and NCP versions are compatible before upgrading either component
-- Use `CiliumNetworkPolicy` for L7 policies; use standard `NetworkPolicy` for L3/L4 when NCP also enforces
+- Use `CiliumNetworkPolicy` for Cilium-specific policy extensions, but verify L7 support for your chaining mode because some advanced Cilium features are limited when chaining with other CNI plugins
 - Monitor both NCP and Cilium logs separately to correlate issues at the correct layer
 - Periodically run `cilium connectivity test` to detect regressions after NSX changes
 - Document which policies are enforced at the NSX micro-segmentation layer vs. Cilium layer
