@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, VPP, Kubernetes, Networking, Troubleshooting, Validation
 
-Description: Validate that Calico VPP is correctly configured and operating by verifying interface state, routing tables, NAT entries, and packet forwarding through the VPP dataplane.
+Description: Validate that Calico VPP is correctly configured and operating by verifying interface state, routing tables, CNAT service translations, and packet forwarding through the VPP dataplane.
 
 ---
 
 ## Introduction
 
-Validating Calico VPP configurations ensures that the VPP dataplane is correctly set up before issues arise in production. VPP validation differs from standard Calico validation because you need to verify VPP-internal state - interface configuration, FIB entries, NAT tables - in addition to Kubernetes-level objects.
+Validating Calico VPP configurations ensures that the VPP dataplane is correctly set up before issues arise in production. VPP validation differs from standard Calico validation because you need to verify VPP-internal state - interface configuration, FIB entries, CNAT service translations - in addition to Kubernetes-level objects.
 
 ## Step 1: Validate VPP Process Health
 
@@ -30,7 +30,7 @@ kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
 ## Step 2: Validate VPP Interface Configuration
 
 ```bash
-# All pod tap interfaces should appear as 'up'
+# All pod tun interfaces should appear as 'up'
 kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
   vppctl show interface | awk '$2 == "up" {print $1}'
 
@@ -41,10 +41,10 @@ PODS_ON_NODE=$(kubectl get pods --all-namespaces \
   --field-selector=spec.nodeName="${NODE}" --no-headers | wc -l)
 echo "Pods on node: ${PODS_ON_NODE}"
 
-VPP_TAPS=$(kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
-  vppctl show interface | grep -c "^tap")
-echo "VPP tap interfaces: ${VPP_TAPS}"
-# These numbers should be close (not every system pod needs a tap)
+VPP_TUNS=$(kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
+  vppctl show interface | grep -c "^tun")
+echo "VPP tun interfaces: ${VPP_TUNS}"
+# These numbers should be close (host-networked and some system pods do not need a tun)
 ```
 
 ## Step 3: Validate VPP Routing (FIB)
@@ -57,21 +57,21 @@ POD_IP=$(kubectl get pod <pod-name> -n <namespace> \
 kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
   vppctl show ip fib "${POD_IP}"
 
-# Expected output: route entry pointing to a tap interface
-# If "no match found": calico-vpp-manager has not programmed the route
+# Expected output: route entry pointing to a tun interface
+# If "no match found": calico-vpp-agent has not programmed the route
 ```
 
-## Step 4: Validate NAT (Service Routing)
+## Step 4: Validate CNAT (Service Routing)
 
 ```bash
-# Check that cluster service IPs are in the VPP NAT table
+# Check that cluster service IPs are in the VPP CNAT translations
 SERVICE_IP=$(kubectl get svc <service-name> -n <namespace> \
   -o jsonpath='{.spec.clusterIP}')
 
 kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
-  vppctl show nat44 static mappings | grep "${SERVICE_IP}"
+  vppctl show cnat translation "${SERVICE_IP}"
 
-# Missing entries indicate calico-vpp-manager service sync failure
+# Missing entries indicate calico-vpp-agent service sync failure
 ```
 
 ## Validation Architecture
@@ -83,7 +83,7 @@ flowchart TD
     B -->|No| F[FAIL: VPP crashed]
     C -->|Yes| D[FIB entries correct?]
     C -->|No| G[FAIL: Interface config]
-    D -->|Yes| E[NAT entries correct?]
+    D -->|Yes| E[CNAT entries correct?]
     D -->|No| H[FAIL: Routing not programmed]
     E -->|Yes| I[PASS: VPP validated]
     E -->|No| J[FAIL: Service routing broken]
@@ -92,13 +92,13 @@ flowchart TD
 ## Step 5: Validate Error Counters Are Zero
 
 ```bash
-# Check for non-zero error counters (indicates packet drops)
+# Check for non-zero error counters (some counters are informational; drops need review)
 kubectl exec -n calico-vpp-dataplane "${VPP_POD}" -c vpp -- \
-  vppctl show error | grep -v " 0 " | grep -v "^$" | head -20
+  vppctl show error | awk '$1 ~ /^[0-9]+$/ && $1 != 0 {print}' | head -20
 
-# Zero output = no packet drops. Non-zero output identifies problem nodes.
+# Zero output = no non-zero VPP error counters. Non-zero output identifies counters to inspect.
 ```
 
 ## Conclusion
 
-VPP validation requires checking four layers: VPP process health, interface state, FIB routing entries, and NAT service mappings. The error counter check is the fastest way to detect active packet drops. Run this validation sequence after any configuration change to the VPP dataplane, after calico-vpp-manager restarts, and as part of your pre-production checklist. Automated validation scripts should alert when any check fails.
+VPP validation requires checking four layers: VPP process health, interface state, FIB routing entries, and CNAT service mappings. The error counter check is a fast way to detect counters that may indicate active packet drops. Run this validation sequence after any configuration change to the VPP dataplane, after calico-vpp-agent restarts, and as part of your pre-production checklist. Automated validation scripts should alert when any check fails.
