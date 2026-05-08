@@ -30,29 +30,31 @@ podman run --rm docker.io/library/alpine:latest \
 ## Method 1: Using host.containers.internal
 
 ```bash
-# The special hostname resolves to the host
-podman run --rm docker.io/library/alpine:latest \
+# The special hostname resolves to the host gateway
+podman run --rm --network pasta:--map-gw \
+  docker.io/library/alpine:latest \
   ping -c 2 host.containers.internal
 
-# Access a host service
-podman run --rm docker.io/library/alpine:latest \
+# Access a host service after enabling host gateway access
+podman run --rm --network pasta:--map-gw \
+  docker.io/library/alpine:latest \
   sh -c "apk add --no-cache curl > /dev/null 2>&1 && curl http://host.containers.internal:3000"
 ```
 
 ## Method 2: Pasta with Loopback Access
 
-Pasta provides the best loopback access for rootless containers:
+Pasta is the default rootless networking backend in current Podman releases, but Podman disables direct host gateway access by default. Use `--map-gw` to allow access through the gateway, or forward specific host loopback ports with pasta's `-T` option:
 
 ```bash
-# Pasta allows host loopback access by default
-podman run --rm --network pasta \
-  docker.io/library/alpine:latest \
-  sh -c "apk add --no-cache curl > /dev/null 2>&1 && curl -s http://host.containers.internal:3000"
-
-# Map gateway to host loopback
+# Allow the container to reach the host through the gateway address
 podman run --rm --network pasta:--map-gw \
   docker.io/library/alpine:latest \
   sh -c "apk add --no-cache curl > /dev/null 2>&1 && curl -s http://host.containers.internal:3000"
+
+# Forward host loopback TCP port 3000 to the container loopback
+podman run --rm --network pasta:-T,3000 \
+  docker.io/library/alpine:latest \
+  sh -c "apk add --no-cache curl > /dev/null 2>&1 && curl -s http://127.0.0.1:3000"
 ```
 
 ## Method 3: slirp4netns with allow_host_loopback
@@ -72,6 +74,7 @@ podman run --rm \
 ```bash
 # Map a friendly hostname to the host gateway
 podman run --rm \
+  --network pasta:--map-gw \
   --add-host host:host-gateway \
   docker.io/library/alpine:latest \
   sh -c "apk add --no-cache curl > /dev/null 2>&1 && curl -s http://host:3000"
@@ -96,6 +99,7 @@ podman run --rm --network host \
 
 # Run your frontend container with host access
 podman run -d --name frontend \
+  --network pasta:--map-gw \
   --add-host api:host-gateway \
   -e API_URL=http://api:4000 \
   -p 3000:3000 \
@@ -111,15 +115,16 @@ podman run -d --name frontend \
 # Edit ~/.config/containers/containers.conf
 
 # For slirp4netns:
-# [containers]
+# [network]
 # default_rootless_network_cmd = "slirp4netns"
 #
 # [engine]
 # network_cmd_options = ["allow_host_loopback=true"]
 
-# For pasta (default has loopback access):
-# [containers]
+# For pasta:
+# [network]
 # default_rootless_network_cmd = "pasta"
+# pasta_options = ["--map-gw"]
 ```
 
 ## Verifying Host Loopback Access
@@ -130,6 +135,7 @@ ss -tlnp | grep 127.0.0.1
 
 # Test from the container
 podman run --rm \
+  --network pasta:--map-gw \
   --add-host host:host-gateway \
   docker.io/library/alpine:latest \
   sh -c "
@@ -142,4 +148,4 @@ podman run --rm \
 
 ## Summary
 
-Access host loopback services from rootless Podman containers using `host.containers.internal`, pasta networking (which has loopback access by default), slirp4netns with `allow_host_loopback=true`, or `--add-host` with `host-gateway`. Pasta is the recommended approach for the easiest setup. For development workflows, map descriptive hostnames to `host-gateway` so application configuration stays clean and readable.
+Access host loopback services from rootless Podman containers using `host.containers.internal` with a backend that permits host access, pasta networking with `--map-gw` or `-T`, slirp4netns with `allow_host_loopback=true`, or `--add-host` with `host-gateway`. Pasta is the recommended approach for the easiest setup. For development workflows, map descriptive hostnames to `host-gateway` so application configuration stays clean and readable.
