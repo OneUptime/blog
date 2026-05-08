@@ -33,7 +33,7 @@ Apply the following Helm values to configure cilium networking concepts:
 
 # Core networking configuration for Cilium
 operator:
-  replicas: 1
+  replicas: 2
 
 # Enable eBPF-based networking
 bpf:
@@ -46,11 +46,12 @@ bpf:
 # Identity management
 identityAllocationMode: crd
 
-# Enable endpoint routes for direct routing
+# Enable per-endpoint routes instead of routing through cilium_host
 endpointRoutes:
   enabled: true
 
-# Service handling
+# Service handling for Cilium's kube-proxy replacement
+kubeProxyReplacement: true
 loadBalancer:
   algorithm: maglev
 
@@ -63,9 +64,10 @@ Apply the configuration:
 
 ```bash
 # Apply the configuration via Helm upgrade
-helm upgrade cilium cilium/cilium --version 1.16.5 \
+helm upgrade cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  --reuse-values \
+  -f cilium-networking-values.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -153,7 +155,7 @@ cilium config view
 cilium status --verbose | head -40
 
 # Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -168,7 +170,7 @@ cilium connectivity test --test pod-to-pod,pod-to-service
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | head -20
 ```
 
 ## Troubleshooting
