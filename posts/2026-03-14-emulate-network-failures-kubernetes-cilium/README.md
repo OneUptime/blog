@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Chaos Engineering, Network Failures, Testing
 
-Description: Learn how to emulate network failures in a Kubernetes cluster running Cilium using CiliumNetworkPolicies, traffic control, and chaos engineering techniques to test application resilience.
+Description: Learn how to emulate network failures in a Kubernetes cluster running Cilium using CiliumNetworkPolicies and chaos engineering techniques to test application resilience.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to emulate network failures in a Kubernetes cluster runni
 
 Testing how your applications behave during network failures is critical for building resilient systems. In a Kubernetes cluster running Cilium, you have unique advantages for network failure emulation because Cilium's eBPF-based datapath gives you fine-grained control over packet handling at the kernel level.
 
-Unlike traditional chaos engineering tools that inject failures at the application or container level, Cilium allows you to emulate failures directly in the network datapath. You can selectively drop packets, introduce latency, block specific traffic patterns, and simulate DNS failures -- all using native Cilium features.
+Unlike traditional chaos engineering tools that inject failures at the application or container level, Cilium allows you to emulate failures directly in the network datapath. You can selectively drop packets, block specific traffic patterns, and simulate DNS failures -- all using native Cilium policy features.
 
 This guide covers practical techniques for emulating various types of network failures in a Cilium-powered cluster, from simple connectivity drops to sophisticated partial failure scenarios.
 
@@ -41,9 +41,11 @@ spec:
   endpointSelector:
     matchLabels:
       app: target-service
-  # Empty ingress/egress lists = deny all traffic
-  ingress: []
-  egress: []
+  # Empty ingress/egress rules put the endpoint into default-deny mode
+  ingress:
+    - {}
+  egress:
+    - {}
 ```
 
 ```bash
@@ -51,7 +53,7 @@ spec:
 kubectl apply -f network-isolation.yaml
 
 # Verify the pod is isolated using Hubble
-hubble observe --namespace default --pod default/target-service --verdict DROPPED --last 20
+hubble observe --pod default/target-service --verdict DROPPED --last 20
 
 # Test connectivity (should fail)
 kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
@@ -67,7 +69,7 @@ Simulate more realistic failures by blocking specific traffic patterns:
 
 ```yaml
 # partial-failure.yaml
-# Block only external DNS while allowing internal communication
+# Block only direct external DNS resolver access while allowing other communication
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -78,10 +80,9 @@ spec:
     matchLabels:
       app: target-service
   egress:
-    # Allow all internal cluster traffic
+    # Allow egress generally; egressDeny below takes precedence for direct external DNS
     - toEntities:
-        - cluster
-    # Block external DNS by not including world entity for port 53
+        - all
   egressDeny:
     - toEntities:
         - world
@@ -96,8 +97,8 @@ kubectl apply -f partial-failure.yaml
 
 # The pod can still communicate within the cluster
 kubectl exec -it target-service -- wget -qO- --timeout=5 http://other-service.default/
-# But external DNS resolution fails
-kubectl exec -it target-service -- nslookup external-api.example.com
+# But direct queries to an external DNS resolver fail
+kubectl exec -it target-service -- nslookup external-api.example.com 8.8.8.8
 ```
 
 ```mermaid
@@ -105,10 +106,10 @@ graph TD
     A[Target Pod] -->|Allowed| B[Internal Services]
     A -->|Allowed| C[CoreDNS]
     A -->|BLOCKED| D[External DNS]
-    A -->|BLOCKED| E[External APIs]
+    A -->|Allowed| E[External APIs]
 
     style D fill:#FF6666
-    style E fill:#FF6666
+    style E fill:#90EE90
     style B fill:#90EE90
     style C fill:#90EE90
 ```
@@ -129,6 +130,9 @@ spec:
   endpointSelector:
     matchLabels:
       app: target-service
+  egress:
+    - toEntities:
+        - all
   egressDeny:
     - toEndpoints:
         - matchLabels:
@@ -172,6 +176,9 @@ spec:
   endpointSelector:
     matchLabels:
       app: target-service
+  egress:
+    - toEntities:
+        - all
   egressDeny:
     - toPorts:
         - ports:
@@ -185,7 +192,7 @@ spec:
 kubectl apply -f port-failure.yaml
 
 # Observe the dropped connections
-hubble observe --namespace default --from-pod default/target-service --verdict DROPPED --to-port 5432
+hubble observe --from-pod default/target-service --verdict DROPPED --to-port 5432
 
 kubectl delete -f port-failure.yaml
 ```
@@ -210,7 +217,13 @@ for line in sys.stdin:
     flow = f.get('flow', {})
     reason = flow.get('drop_reason_desc', 'unknown')
     dst = flow.get('destination', {})
-    dst_name = f\"{dst.get('namespace','?')}/{dst.get('pod_name','?')}:{dst.get('port',0)}\"
+    l4 = flow.get('l4', {})
+    port = 0
+    for proto in ('TCP', 'UDP', 'SCTP'):
+        if proto in l4:
+            port = l4[proto].get('destination_port', 0)
+            break
+    dst_name = f\"{dst.get('namespace','?')}/{dst.get('pod_name','?')}:{port}\"
     reasons[reason] += 1
     destinations[dst_name] += 1
 
