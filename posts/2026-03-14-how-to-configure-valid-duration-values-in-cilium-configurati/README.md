@@ -75,10 +75,7 @@ resources:
     memory: "512Mi"
 
 # Optimize identity management
-labels:
-  exclude:
-    - "k8s:pod-template-hash"
-    - "k8s:controller-revision-hash"
+labels: "!pod-template-hash !controller-revision-hash"
 ```
 
 ```bash
@@ -109,14 +106,16 @@ bpf:
   masquerade: true
   # Automatically size BPF maps based on node capacity
   mapDynamicSizeRatio: 0.0025
-  # Connection tracking settings
-  # Adjust based on connection patterns in your workloads
-  ctTcpTimeout: "21600s"
-  ctAnyTimeout: "60s"
+
+# Connection tracking garbage collection settings
+# Adjust based on connection patterns in your workloads
+conntrackGCInterval: "5m"
+conntrackGCMaxInterval: "30m"
 
 # Identity management
 identityAllocationMode: "crd"
-identityGCInterval: "15m"
+operator:
+  identityGCInterval: "15m"
 ```
 
 ```bash
@@ -163,7 +162,7 @@ After completing the steps above, run a comprehensive verification to confirm ev
 cilium status --verbose
 
 # Verify inter-node connectivity
-cilium health status
+kubectl -n kube-system exec ds/cilium -- cilium-health status
 
 # Confirm all Cilium pods are running and ready
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
@@ -178,7 +177,7 @@ kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tai
 cilium connectivity test --single-node
 
 # Verify endpoint count matches expected pod count
-echo "Cilium endpoints: $(cilium endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
+echo "Cilium endpoints: $(kubectl get ciliumendpoints -A -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get(\"items\", [])))' 2>/dev/null || echo 'N/A')"
 ```
 
 ## Troubleshooting
@@ -187,7 +186,7 @@ If you encounter issues during or after the steps in this guide, use the followi
 
 - **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 4.19 or later. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
 
-- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `cilium policy get`. Verify inter-node tunnel connectivity with `cilium bpf tunnel list`.
+- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `kubectl get cnp,ccnp -A`. Verify inter-node connectivity with `kubectl -n kube-system exec ds/cilium -- cilium-health status`.
 
 - **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm with `cilium config view`.
 
@@ -195,7 +194,7 @@ If you encounter issues during or after the steps in this guide, use the followi
 
 - **Endpoints stuck in regenerating state**: This usually indicates the agent is overloaded or encountering errors during BPF program compilation. Check agent logs with `kubectl logs -n kube-system -l k8s-app=cilium --tail=200 | grep -i error`.
 
-- **Policy not being enforced**: Verify the policy selectors match the intended pods using `cilium endpoint list`. Confirm the policy is applied with `cilium policy get`. Check that the endpoint has the correct identity with `cilium endpoint get <id>`.
+- **Policy not being enforced**: Verify the policy selectors match the intended pods using `kubectl get ciliumendpoints -A`. Confirm the policy is applied with `kubectl get cnp,ccnp -A`. Check that the endpoint has the correct identity with `kubectl get ciliumendpoints -A -o wide`.
 
 To collect a comprehensive diagnostic bundle for further analysis:
 
