@@ -21,9 +21,7 @@ Running `podman-compose up` without the `-d` flag starts services in the foregro
 
 podman-compose up -d
 
-# Output shows each container starting
-# Creating project_db_1 ... done
-# Creating project_web_1 ... done
+# Output shows containers being created and started
 ```
 
 ## Foreground vs Detached
@@ -39,11 +37,11 @@ podman-compose up -d
 ## Checking Service Status
 
 ```bash
-# List running services and their status
+# List compose services and their status
 podman-compose ps
 
 # Show all containers including stopped ones
-podman-compose ps -a
+podman ps -a
 
 # Detailed container info
 podman ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
