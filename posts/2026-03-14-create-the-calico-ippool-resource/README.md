@@ -28,7 +28,7 @@ By the end of this post you will have a working IPPool resource applied to your 
 The IPPool resource uses the Calico API group `projectcalico.org/v3`. Before writing the manifest, review the key fields:
 
 - `cidr`: The IP range for this pool. Must not overlap with existing pools or host networks.
-- `blockSize`: The size of allocation blocks. Default is 26 (64 IPs per block).
+- `blockSize`: The size of allocation blocks. Default is 26 for IPv4 (64 IPs per block) and 122 for IPv6.
 - `ipipMode`: IPIP encapsulation mode. Values: `Always`, `CrossSubnet`, `Never`.
 - `vxlanMode`: VXLAN encapsulation mode. Values: `Always`, `CrossSubnet`, `Never`.
 - `natOutgoing`: When true, pods using this pool get SNAT for traffic leaving the cluster.
@@ -47,23 +47,22 @@ spec:
   cidr: 10.244.0.0/16
   blockSize: 26
   ipipMode: Always
-  vxlanMode: Never
   natOutgoing: true
   nodeSelector: all()
   disabled: false
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+Each field is intentionally set to a common starting point. Adjust the values to match your environment before applying. Do not set `ipipMode` and `vxlanMode` at the same time.
 
 ## Applying the Resource
 
-Apply the manifest using `kubectl`:
+Apply the manifest using `kubectl` if your cluster has the Calico API server installed or uses native `projectcalico.org/v3` CRDs:
 
 ```bash
 kubectl apply -f ippool.yaml
 ```
 
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
+Alternatively, use `calicoctl`, which provides validation and defaulting for Calico resources when the Calico API server or native v3 CRDs are not handling that server-side:
 
 ```bash
 # Apply with calicoctl for enhanced validation
@@ -71,7 +70,7 @@ Alternatively, use `calicoctl` which provides better validation for Calico resou
 calicoctl apply -f ippool.yaml
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss on clusters that do not provide server-side validation for these resources.
 
 ## Verification
 
@@ -82,7 +81,7 @@ Confirm that the resource was created successfully:
 kubectl get ippool.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe ippool.projectcalico.org
+kubectl describe ippool.projectcalico.org default-ipv4-pool
 
 # Verify with calicoctl
 calicoctl get ippool -o yaml
@@ -99,7 +98,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `IPPool`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- Check that the Calico API resources are available: `kubectl api-resources | grep projectcalico.org`. If you use the Calico API server, also check its pods: `kubectl get pods -n calico-apiserver`.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
