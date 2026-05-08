@@ -10,7 +10,7 @@ Description: Zero Trust advanced Kubernetes NetworkPolicy patterns using Calico 
 
 ## Introduction
 
-Zero Trust with Advanced Kubernetes NetworkPolicy requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle advanced k8s networkpolicy while maintaining strict access controls.
+Zero Trust with Advanced Kubernetes NetworkPolicy requires careful policy design in Calico to balance security with performance and availability. Calico enforces the standard Kubernetes `networking.k8s.io/v1` NetworkPolicy API, while the `projectcalico.org/v3` API provides additional Calico-specific controls when needed.
 
 This guide covers zero trust Advanced K8s NetworkPolicy in Calico with production-ready configurations.
 
