@@ -10,7 +10,7 @@ Description: Learn how to list and view running containers in Podman with variou
 
 > Listing running containers is the starting point for container management, giving you a quick overview of what is active on your system.
 
-The `podman ps` command displays running containers with details like names, IDs, images, status, and port mappings. This guide covers all the ways to list and inspect running containers in Podman.
+The `podman ps` command displays running containers with details like names, IDs, images, status, and port mappings. This guide covers common ways to list and inspect running containers in Podman.
 
 ---
 
@@ -65,7 +65,7 @@ podman ps -s
 ## Showing the Latest Container
 
 ```bash
-# Show only the most recently created running container
+# Show only the most recently created container, across all states
 podman ps --latest
 
 # Or use the short flag
@@ -75,7 +75,7 @@ podman ps -l
 ## Limiting Output
 
 ```bash
-# Show only the last N containers
+# Show only the last N created containers, across all states
 podman ps --last 5
 
 # Or use the short flag
