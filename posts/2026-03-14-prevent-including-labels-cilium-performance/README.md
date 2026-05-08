@@ -29,7 +29,7 @@ This guide provides the specific steps for managing label inclusion in Cilium.
 # Define standard labels during installation
 
 helm install cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace k8s:io.cilium.k8s.policy"
+  --set labels="app$"
 ```
 
 ## Policy Review Gate
@@ -40,12 +40,11 @@ helm install cilium cilium/cilium --namespace kube-system \
 # Run before applying new CiliumNetworkPolicies
 
 POLICY_FILE=$1
-CURRENT_LABELS=$(cilium config view | grep "^labels" | sed 's/labels *//' | tr ' ' '\n' | sed 's/k8s://' | sort)
+CONFIG_LABELS=$(kubectl -n kube-system get configmap cilium-config -o jsonpath='{.data.labels}')
 
 # Extract labels from policy
-POLICY_LABELS=$(cat $POLICY_FILE | python3 -c "
+POLICY_LABELS=$(python3 -c "
 import sys, yaml, json
-data = yaml.safe_load(sys.stdin)
 labels = set()
 def extract_labels(obj):
     if isinstance(obj, dict):
@@ -56,11 +55,38 @@ def extract_labels(obj):
     elif isinstance(obj, list):
         for v in obj:
             extract_labels(v)
-extract_labels(data)
+for data in yaml.safe_load_all(sys.stdin):
+    extract_labels(data)
 print('\n'.join(sorted(labels)))
-")
+" < "$POLICY_FILE")
 
-MISSING=$(comm -23 <(echo "$POLICY_LABELS") <(echo "$CURRENT_LABELS"))
+MISSING=$(POLICY_LABELS="$POLICY_LABELS" python3 - "$CONFIG_LABELS" <<'PY'
+import os, re, sys
+patterns = sys.argv[1].split()
+policy_labels = [line.strip() for line in os.environ.get('POLICY_LABELS', '').splitlines() if line.strip()]
+
+if not any(not pattern.startswith('!') for pattern in patterns):
+    sys.exit(0)
+
+default_includes = [
+    r'reserved:.*',
+    r'io\.kubernetes\.pod\.namespace',
+    r'io\.cilium\.k8s\.namespace\.labels',
+    r'io\.cilium\.k8s\.policy\.cluster',
+    r'io\.cilium\.k8s\.policy\.serviceaccount',
+    r'app\.kubernetes\.io',
+]
+includes = [pattern for pattern in patterns if not pattern.startswith('!')] + default_includes
+
+def normalize(label):
+    return label.split(':', 1)[1] if label.startswith(('k8s:', 'any:')) else label
+
+for label in policy_labels:
+    key = normalize(label)
+    if not any(re.match(pattern, key) for pattern in includes):
+        print(label)
+PY
+)
 if [ -n "$MISSING" ]; then
   echo "WARNING: Policy uses labels not in identity config:"
   echo "$MISSING"
@@ -81,7 +107,7 @@ spec:
   - name: label-inclusion
     rules:
     - alert: HighIdentityCount
-      expr: cilium_identity_count > 5000
+      expr: sum(cilium_identity) > 5000
       for: 30m
       labels:
         severity: warning
@@ -90,8 +116,8 @@ spec:
 ## Verification
 
 ```bash
-cilium config view | grep labels
-cilium identity list | wc -l
+kubectl -n kube-system get configmap cilium-config -o jsonpath='{.data.labels}{"\n"}'
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | wc -l
 ```
 
 ## Troubleshooting
