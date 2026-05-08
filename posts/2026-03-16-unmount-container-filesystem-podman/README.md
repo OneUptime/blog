@@ -23,12 +23,13 @@ Unmount a previously mounted container filesystem:
 
 sudo podman run -d --name my-app nginx:latest
 sudo podman mount my-app
+CONTAINER_ID=$(sudo podman inspect my-app --format '{{.Id}}')
 
 # Unmount the filesystem
 sudo podman unmount my-app
 
 # Verify it was unmounted
-sudo podman mount --notruncate | grep my-app || echo "Successfully unmounted"
+sudo podman mount --no-trunc | grep "$CONTAINER_ID" || echo "Successfully unmounted"
 ```
 
 ## The unmount Command Aliases
@@ -66,13 +67,14 @@ Before unmounting, check current mounts:
 
 ```bash
 # List all mounted containers (rootful)
-sudo podman mount --notruncate
+sudo podman mount --no-trunc
 
 # List mounted containers (rootless)
-podman unshare podman mount --notruncate 2>/dev/null
+podman unshare podman mount --no-trunc 2>/dev/null
 
 # Check if a specific container is mounted
-if sudo podman mount --notruncate 2>/dev/null | grep -q my-app; then
+CONTAINER_ID=$(sudo podman inspect my-app --format '{{.Id}}')
+if sudo podman mount --no-trunc 2>/dev/null | grep -q "$CONTAINER_ID"; then
     echo "my-app is mounted"
 else
     echo "my-app is not mounted"
@@ -97,11 +99,10 @@ If a process is using files in the mount, unmount may fail:
 
 ```bash
 # Simulate a busy mount
-sudo podman mount my-app
 MOUNT_POINT=$(sudo podman mount my-app)
 
 # This process is using the mount (simulated)
-# cat "$MOUNT_POINT/etc/nginx/nginx.conf" &
+# tail -f "$MOUNT_POINT/etc/nginx/nginx.conf" &
 # BUSY_PID=$!
 
 # Unmount might fail if something is accessing the files
@@ -165,7 +166,7 @@ A comprehensive cleanup script that handles unmounting:
 # Clean up all stopped and mounted containers
 
 echo "Checking for mounted containers..."
-MOUNTED=$(sudo podman mount --notruncate 2>/dev/null)
+MOUNTED=$(sudo podman mount --no-trunc 2>/dev/null)
 
 if [ -n "$MOUNTED" ]; then
     echo "Found mounted containers:"
@@ -193,7 +194,7 @@ After unmounting, verify the cleanup was complete:
 
 ```bash
 # Check mount status
-sudo podman mount --notruncate 2>/dev/null
+sudo podman mount --no-trunc 2>/dev/null
 
 # Check that the mount point is no longer accessible
 # (The path may still exist but won't have container contents)
@@ -211,7 +212,9 @@ sudo podman unmount my-app 2>/dev/null || echo "Already unmounted"
 
 # Error: "device or resource busy"
 # Solution: Close any terminals or processes using the mount
-sudo lsof +D "$(sudo podman mount my-app 2>/dev/null)" 2>/dev/null
+CONTAINER_ID=$(sudo podman inspect my-app --format '{{.Id}}')
+MOUNT_POINT=$(sudo podman mount --no-trunc | awk -v id="$CONTAINER_ID" '$1 == id {print $2}')
+sudo lsof +D "$MOUNT_POINT" 2>/dev/null
 # Then kill those processes and retry
 
 # Error: "no such container"
