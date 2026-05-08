@@ -98,11 +98,11 @@ You can copy files into a created container before it starts.
 # Create a container
 podman create --name app-container \
   docker.io/library/alpine:latest \
-  /bin/sh -c 'cat /app/config.json'
+  /bin/sh -c 'cat /tmp/config.json'
 
 # Copy a configuration file into the container
 echo '{"key": "value", "env": "production"}' > /tmp/config.json
-podman cp /tmp/config.json app-container:/app/config.json
+podman cp /tmp/config.json app-container:/tmp/config.json
 
 # Now start the container - it will read the copied file
 podman start --attach app-container
@@ -116,6 +116,9 @@ podman rm app-container
 Create several containers first, then start them in the correct order.
 
 ```bash
+# Create the network first if needed
+podman network create mynet 2>/dev/null
+
 # Create the database container
 podman create \
   --name app-db \
@@ -133,9 +136,6 @@ podman create \
   docker.io/library/alpine:latest \
   echo "App connected to database"
 
-# Create the network first if needed
-podman network create mynet 2>/dev/null
-
 # Start in the correct order
 podman start app-db
 echo "Waiting for database to initialize..."
@@ -143,7 +143,7 @@ sleep 3
 podman start app-web
 
 # Check both containers
-podman ps --filter name=app
+podman ps -a --filter name=app
 
 # Clean up
 podman rm -f app-db app-web
