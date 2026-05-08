@@ -10,7 +10,7 @@ Description: Learn how to verify Calico pod networking on a self-managed Kuberne
 
 ## Introduction
 
-DigitalOcean Droplets support self-managed Kubernetes clusters with Calico as the CNI plugin. Unlike the managed DOKS service, self-managed deployments on DigitalOcean require you to configure networking manually. DigitalOcean's networking supports both IP-in-IP and VXLAN overlay modes, but DigitalOcean Cloud Firewalls must be explicitly configured to allow the necessary CNI traffic.
+DigitalOcean Droplets support self-managed Kubernetes clusters with Calico as the CNI plugin. Unlike the managed DOKS service, self-managed deployments on DigitalOcean require you to configure networking manually. DigitalOcean's networking works well with Calico VXLAN overlays, but DigitalOcean Cloud Firewalls must be explicitly configured to allow the necessary CNI traffic.
 
 The DigitalOcean private network (VPC) provides connectivity between Droplets in the same region. Calico leverages this private network for pod traffic. Without proper Cloud Firewall rules, even Droplets in the same VPC will have their Calico overlay traffic blocked.
 
@@ -37,11 +37,13 @@ doctl compute firewall list
 FIREWALL_ID=<firewall-id>
 doctl compute firewall get $FIREWALL_ID
 
-# Add inbound rule for IPIP (protocol 4) between cluster nodes
+# Add inbound rule for VXLAN (UDP port 4789) between cluster nodes.
+# Use your VPC CIDR or a narrower source range for your cluster nodes.
 doctl compute firewall add-rules $FIREWALL_ID \
-  --inbound-rules "protocol:icmp,address:10.0.0.0/8 protocol:tcp,ports:all,address:10.0.0.0/8 protocol:udp,ports:all,address:10.0.0.0/8"
+  --inbound-rules "protocol:udp,ports:4789,address:<vpc-cidr> protocol:icmp,ports:all,address:<vpc-cidr>"
 
-# Note: For IPIP, use DigitalOcean VPC-level rules as doctl may not support protocol 4 directly
+# Note: DigitalOcean Cloud Firewalls support TCP, UDP, and ICMP rules.
+# For clusters protected by Cloud Firewalls, prefer Calico VXLAN over IP-in-IP.
 ```
 
 ## Step 2: Verify Calico Installation and IP Pool
@@ -83,10 +85,10 @@ Confirm that DigitalOcean Droplets can communicate over the private network.
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'
 
 # Test ICMP connectivity between nodes on private network
-kubectl debug node/<node-1> -it --image=ubuntu -- ping -c 3 <node-2-private-ip>
+kubectl debug node/<node-1> -it --image=nicolaka/netshoot -- ping -c 3 <node-2-private-ip>
 
 # Test VXLAN UDP connectivity between nodes (port 4789)
-kubectl debug node/<node-1> -it --image=ubuntu -- nc -zuv <node-2-private-ip> 4789
+kubectl debug node/<node-1> -it --image=nicolaka/netshoot -- nc -zuv <node-2-private-ip> 4789
 ```
 
 ## Step 4: Test Pod-to-Pod Connectivity Across Droplets
@@ -133,7 +135,7 @@ calicoctl get ippool -o yaml | grep natOutgoing
 - Apply DigitalOcean Cloud Firewall rules using both VPC CIDR and Droplet tags for flexibility
 - Enable monitoring on your cluster to catch VXLAN tunnel failures early
 - Test connectivity after any DigitalOcean VPC or firewall configuration change
-- Use a private Floating IP if you need persistent external access to cluster nodes
+- Use a Reserved IP if you need persistent public access to a cluster node
 
 ## Conclusion
 
