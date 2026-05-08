@@ -10,7 +10,7 @@ Description: Validate Calico MTU configuration by testing packet sizes through t
 
 ## Introduction
 
-Validating MTU configuration in Calico ensures that the values set in Felix configuration are actually applied to pod interfaces and that packets of the expected size traverse the network without fragmentation. MTU validation is particularly important after cluster upgrades, network changes, or when onboarding new node types with different physical MTU values.
+Validating MTU configuration in Calico ensures that the configured MTU values are actually applied to pod interfaces and that packets of the expected size traverse the network without fragmentation. MTU validation is particularly important after cluster upgrades, network changes, or when onboarding new node types with different physical MTU values.
 
 The most reliable MTU validation method is sending packets at the configured MTU size with the "Don't Fragment" (DF) bit set. If the packet passes without fragmentation, the MTU is correctly configured throughout the path. If it fails, you have a mismatch somewhere in the path.
 
@@ -24,7 +24,9 @@ The most reliable MTU validation method is sending packets at the configured MTU
 ```bash
 # Check MTU on all running pods
 
-kubectl get pods -o wide | awk '{print $1, $7}' | while read pod node; do
+kubectl get pods --field-selector=status.phase=Running \
+  -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName --no-headers |
+while read pod node; do
   mtu=$(kubectl exec ${pod} -- ip link show eth0 2>/dev/null | grep mtu | awk '{print $5}')
   echo "${pod} on ${node}: MTU=${mtu}"
 done
@@ -48,20 +50,27 @@ If this fails but smaller sizes succeed, there is an MTU mismatch in the path.
 # Server
 kubectl exec -it iperf3-server -- iperf3 -s
 
-# Client - test at different MTU-relevant sizes
+# Client - test at different MSS values
 SERVER_IP=$(kubectl get pod iperf3-server -o jsonpath='{.status.podIP}')
-kubectl exec -it iperf3-client -- iperf3 -c ${SERVER_IP} -M 1400 -t 10
-kubectl exec -it iperf3-client -- iperf3 -c ${SERVER_IP} -M 1450 -t 10
-kubectl exec -it iperf3-client -- iperf3 -c ${SERVER_IP} -M 1500 -t 10
+kubectl exec -it iperf3-client -- iperf3 -c ${SERVER_IP} -M 1360 -t 10
+kubectl exec -it iperf3-client -- iperf3 -c ${SERVER_IP} -M 1410 -t 10
+kubectl exec -it iperf3-client -- iperf3 -c ${SERVER_IP} -M 1460 -t 10
 ```
 
-Compare throughput across sizes - a significant drop indicates MTU misconfiguration.
+The `-M` option sets TCP MSS, not MTU directly. For IPv4 TCP without options, MSS is typically MTU minus 40 bytes, so MSS 1410 corresponds to MTU 1450. Compare throughput and retransmissions across sizes; failures or retransmissions at larger MSS values can indicate an MTU misconfiguration.
 
 ## Check for Fragmentation in Node Counters
 
 ```bash
 # Check IP fragmentation counters on node
-cat /proc/net/snmp | grep -i frag
+awk '
+  /^Ip: / && !seen {split($0, h); seen=1; next}
+  /^Ip: / && seen {
+    for (i=2; i<=NF; i++) {
+      if (h[i] ~ /^(Reasm|Frag)/) print h[i] "=" $i
+    }
+  }
+' /proc/net/snmp
 netstat -s | grep -i fragment
 ```
 
@@ -87,14 +96,13 @@ graph LR
 EXPECTED_MTU=1450  # Adjust for your setup
 ERRORS=0
 
-kubectl get pods -o wide | tail -n +2 | while read line; do
-  POD=$(echo $line | awk '{print $1}')
-  MTU=$(kubectl exec ${POD} -- ip link show eth0 2>/dev/null | grep -oP 'mtu \K\d+')
+while read POD; do
+  MTU=$(kubectl exec ${POD} -- ip link show eth0 2>/dev/null | awk '/mtu/ {print $5}')
   if [ "${MTU}" != "${EXPECTED_MTU}" ]; then
     echo "ERROR: ${POD} has MTU=${MTU}, expected ${EXPECTED_MTU}"
     ERRORS=$((ERRORS+1))
   fi
-done
+done < <(kubectl get pods --field-selector=status.phase=Running -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
 
 echo "MTU validation complete. Errors: ${ERRORS}"
 ```
