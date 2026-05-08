@@ -20,8 +20,8 @@ This guide walks you through implementing secure DNS egress policies with Cilium
 
 - Kubernetes cluster (v1.24+) with Cilium (v1.14+)
 - Cilium DNS proxy enabled (enabled by default)
-- `cilium` CLI and `kubectl` installed
-- Hubble for traffic observation
+- `kubectl` and Hubble CLI installed
+- `cilium-dbg` available inside Cilium agent pods
 - Basic understanding of DNS and CiliumNetworkPolicy
 
 ## Configuring DNS-Aware Egress Policies
@@ -31,7 +31,7 @@ Cilium intercepts DNS queries at the pod level, allowing you to create fine-grai
 ### Step 1: Allow DNS Resolution to Cluster DNS Only
 
 ```yaml
-# First, ensure all pods can only resolve DNS through kube-dns
+# First, ensure selected pods can only resolve DNS through kube-dns
 
 # This prevents pods from using external DNS servers to bypass policies
 apiVersion: "cilium.io/v2"
@@ -47,8 +47,8 @@ spec:
     # Allow DNS queries only to kube-dns
     - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -78,8 +78,8 @@ spec:
     # Allow DNS to kube-dns
     - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -110,7 +110,7 @@ hubble observe --protocol dns --namespace production --output json | \
   }'
 
 # Check the FQDN cache for unexpected entries
-cilium fqdn cache list -o json | \
+kubectl -n kube-system exec ds/cilium -- cilium-dbg fqdn cache list -o json | \
   jq '.[] | select(.fqdn | test("suspicious|unusual") )'
 ```
 
@@ -140,7 +140,7 @@ kubectl get namespaces --show-labels
 
 # Identify cross-namespace communication patterns
 hubble observe --output json --last 500 | \
-  jq '.flow | select(.source.namespace != .destination.namespace) | {
+  jq -c '.flow | select(.source.namespace != .destination.namespace) | {
     src_ns: .source.namespace,
     dst_ns: .destination.namespace,
     port: (.l4.TCP.destination_port // .l4.UDP.destination_port)
@@ -159,8 +159,8 @@ When designing your segmentation strategy, ensure that each security zone has ex
 
 ```bash
 # Verify DNS policies are active
-cilium policy get -o json | \
-  jq '.[] | select(.spec.egress[]?.toPorts[]?.rules.dns != null) | .metadata.name'
+kubectl -n kube-system exec ds/cilium -- cilium-dbg policy get -o json | \
+  jq '.[] | select(.egress[]?.toPorts[]?.rules.dns != null) | .labels[]? | select(.key == "io.cilium.k8s.policy.name") | .value'
 
 # Test that allowed DNS queries work
 kubectl -n production exec deploy/api-service -- \
@@ -171,13 +171,13 @@ kubectl -n production exec deploy/api-service -- \
   nslookup unauthorized-domain.com
 
 # Check FQDN cache is populated
-cilium fqdn cache list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg fqdn cache list
 ```
 
 ## Troubleshooting
 
 - **DNS queries timing out**: Verify that the kube-dns endpoint selector matches your DNS pods. Check labels with `kubectl -n kube-system get pods -l k8s-app=kube-dns --show-labels`.
-- **FQDN cache not populating**: Ensure the Cilium DNS proxy is intercepting queries. Check `cilium status --verbose | grep DNS`.
+- **FQDN cache not populating**: Ensure the Cilium DNS proxy is intercepting queries. Check `kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep DNS`.
 - **Pods cannot resolve cluster-internal services**: Add `matchPattern: "*.cluster.local"` to your DNS rules.
 - **Policy not matching after DNS resolution**: FQDN-based egress rules require the DNS query to happen first. Ensure the DNS allow rule is in the same policy.
 
