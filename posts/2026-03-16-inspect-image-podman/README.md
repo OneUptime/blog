@@ -8,7 +8,7 @@ Description: Learn how to inspect container images with Podman to view detailed 
 
 ---
 
-> Inspecting an image reveals everything about how it was built and configured, which is essential for debugging and security auditing.
+> Inspecting an image reveals detailed metadata about how it was built and configured, which is essential for debugging and security auditing.
 
 The `podman inspect` command provides detailed metadata about container images, including configuration, environment variables, exposed ports, volumes, labels, and layer information. This guide shows you how to use image inspection effectively for debugging, security auditing, and understanding image internals.
 
