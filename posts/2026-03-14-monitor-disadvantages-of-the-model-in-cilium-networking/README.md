@@ -23,6 +23,7 @@ This guide covers metrics collection, dashboard creation, and alert configuratio
 - Grafana for dashboards
 - `kubectl` with cluster-admin access
 - The Cilium CLI installed
+- The Hubble CLI installed if you want to run `hubble observe` locally
 
 ## Enabling Prometheus Metrics
 
@@ -34,12 +35,14 @@ Ensure Cilium exposes metrics for Prometheus:
 cilium config view | grep prometheus
 
 # If not enabled, upgrade Cilium with metrics
-helm upgrade cilium cilium/cilium --version 1.16.5 \
+helm upgrade cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
   --reuse-values \
   --set prometheus.enabled=true \
   --set operator.prometheus.enabled=true \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}"
+  --set hubble.enabled=true \
+  --set hubble.relay.enabled=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,httpV2}"
 
 # Verify metrics endpoint
 kubectl exec -n kube-system ds/cilium -- wget -qO- http://localhost:9962/metrics | head -20
@@ -51,22 +54,22 @@ Monitor these Prometheus metrics:
 
 ```bash
 # Primary metrics to track
-# cilium_datapath_conntrack_entries - core operational metric
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep "datapath_conntrack_entries"
+# cilium_bpf_map_pressure - BPF map pressure can reveal datapath capacity issues
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list --match-pattern "bpf_map_pressure"
 
 # PromQL queries for Grafana panels:
 
-# Panel 1: Operational rate
-rate(cilium_datapath_conntrack_entries[5m])
+# Panel 1: BPF map pressure
+cilium_bpf_map_pressure
 
 # Panel 2: Error rate
 rate(cilium_drop_count_total[5m])
 
 # Panel 3: Agent health
-cilium_agent_uptime_seconds
+up{job="cilium-agent"}
 
 # Panel 4: Endpoint state
-sum(cilium_endpoint_state) by (endpoint_state)
+sum(cilium_endpoint_state) by (state)
 
 # Panel 5: Policy evaluation
 rate(cilium_policy_l7_total[5m])
@@ -92,7 +95,7 @@ spec:
       rules:
         - alert: CiliumAgentUnhealthy
           expr: |
-            kube_daemonset_status_number_unavailable{daemonset="cilium"} > 0
+            kube_daemonset_status_number_unavailable{namespace="kube-system", daemonset="cilium"} > 0
           for: 5m
           labels:
             severity: critical
@@ -110,7 +113,7 @@ spec:
             description: "Cilium is dropping {{ $value }} packets/sec. Check disadvantages of the encapsulation model in cilium configuration."
         - alert: CiliumEndpointsNotReady
           expr: |
-            cilium_endpoint_state{endpoint_state="not-ready"} > 0
+            sum(cilium_endpoint_state{state!="ready", state!="disconnecting", state!="disconnected"}) > 0
           for: 10m
           labels:
             severity: warning
@@ -133,7 +136,7 @@ Create a Grafana dashboard for disadvantages of the encapsulation model in ciliu
 # Row 1: Health Overview
 # - Cilium Agent Status: sum(up{job="cilium-agent"})
 # - Operator Status: sum(up{job="cilium-operator"})
-# - Endpoint Count: sum(cilium_endpoint_state) by (endpoint_state)
+# - Endpoint Count: sum(cilium_endpoint_state) by (state)
 
 # Row 2: Traffic Metrics
 # - Forward Rate: rate(cilium_forward_count_total[5m])
@@ -142,7 +145,7 @@ Create a Grafana dashboard for disadvantages of the encapsulation model in ciliu
 
 # Row 3: Performance
 # - BPF Map Operations: rate(cilium_bpf_map_ops_total[5m])
-# - Conntrack Entries: cilium_datapath_conntrack_entries
+# - Conntrack GC Entries: cilium_datapath_conntrack_gc_entries
 # - API Call Rate: rate(cilium_k8s_client_api_calls_total[5m])
 ```
 
@@ -152,13 +155,13 @@ Use Hubble for real-time flow monitoring:
 
 ```bash
 # Monitor flows in real time
-kubectl exec -n kube-system ds/cilium -- hubble observe --last 20
+hubble observe -P --last 20
 
 # Monitor drops specifically
-kubectl exec -n kube-system ds/cilium -- hubble observe --verdict DROPPED --last 10
+hubble observe -P --verdict DROPPED --last 10
 
 # Monitor specific namespaces
-kubectl exec -n kube-system ds/cilium -- hubble observe --namespace default --last 10
+hubble observe -P --namespace default --last 10
 ```
 
 ## Verification
@@ -180,7 +183,7 @@ except: print('  Port-forward Prometheus first')
 kubectl get prometheusrules -n monitoring | grep cilium
 
 # Check that metrics are being collected
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | wc -l
 ```
 
 ## Troubleshooting
