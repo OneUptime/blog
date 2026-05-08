@@ -55,6 +55,11 @@ if [ ! -f "${CERT_DIR}/client.pem" ]; then
   exit 1
 fi
 
+if [ ! -f "${CERT_DIR}/client-key.pem" ]; then
+  echo "ERROR: Client key not found at ${CERT_DIR}/client-key.pem"
+  exit 1
+fi
+
 export DATASTORE_TYPE=etcdv3
 export ETCD_ENDPOINTS=https://etcd1:2379,https://etcd2:2379,https://etcd3:2379
 export ETCD_CA_CERT_FILE=${CERT_DIR}/ca.pem
@@ -76,21 +81,21 @@ calicoctl get nodes
 Create a calicoctl config file instead of environment variables:
 
 ```bash
-mkdir -p /etc/calico
+sudo mkdir -p /etc/calico
 
-cat > /etc/calico/calicoctl.cfg <<EOF
+sudo tee /etc/calico/calicoctl.cfg > /dev/null <<EOF
 apiVersion: projectcalico.org/v3
 kind: CalicoAPIConfig
 metadata:
 spec:
   datastoreType: "etcdv3"
   etcdEndpoints: "https://etcd1:2379,https://etcd2:2379,https://etcd3:2379"
-  etcdCACert: "/etc/calico/certs/ca.pem"
-  etcdCert: "/etc/calico/certs/client.pem"
-  etcdKey: "/etc/calico/certs/client-key.pem"
+  etcdCACertFile: "/etc/calico/certs/ca.pem"
+  etcdCertFile: "/etc/calico/certs/client.pem"
+  etcdKeyFile: "/etc/calico/certs/client-key.pem"
 EOF
 
-chmod 600 /etc/calico/calicoctl.cfg
+sudo chmod 600 /etc/calico/calicoctl.cfg
 ```
 
 calicoctl reads this file automatically from `/etc/calico/calicoctl.cfg`.
@@ -110,10 +115,12 @@ CONFIG_FILE="/etc/calico/calicoctl.cfg"
 for NODE in "${NODES[@]}"; do
   echo "Configuring ${NODE}..."
   ssh "$NODE" "sudo mkdir -p ${CERT_DIR}"
-  scp certs/ca.pem certs/client.pem certs/client-key.pem "${NODE}:${CERT_DIR}/"
-  scp calicoctl.cfg "${NODE}:${CONFIG_FILE}"
-  ssh "$NODE" "sudo chmod 600 ${CERT_DIR}/* ${CONFIG_FILE}"
-  ssh "$NODE" "sudo chown root:root ${CERT_DIR}/* ${CONFIG_FILE}"
+  scp certs/ca.pem certs/client.pem certs/client-key.pem calicoctl.cfg "${NODE}:/tmp/"
+  ssh "$NODE" "sudo install -m 600 -o root -g root /tmp/ca.pem ${CERT_DIR}/ca.pem"
+  ssh "$NODE" "sudo install -m 600 -o root -g root /tmp/client.pem ${CERT_DIR}/client.pem"
+  ssh "$NODE" "sudo install -m 600 -o root -g root /tmp/client-key.pem ${CERT_DIR}/client-key.pem"
+  ssh "$NODE" "sudo install -m 600 -o root -g root /tmp/calicoctl.cfg ${CONFIG_FILE}"
+  ssh "$NODE" "rm -f /tmp/ca.pem /tmp/client.pem /tmp/client-key.pem /tmp/calicoctl.cfg"
   echo "${NODE} configured successfully"
 done
 ```
