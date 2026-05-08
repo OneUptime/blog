@@ -52,8 +52,8 @@ kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
 Verify the datastore connection is healthy:
 
 ```bash
-# Check datastore readiness using calicoctl
-calicoctl node status
+# Verify calicoctl can read registered nodes from the datastore
+calicoctl get nodes
 
 # Verify cluster information is accessible
 calicoctl get clusterinformation -o yaml
@@ -77,8 +77,8 @@ graph TD
 Deploy test workloads to verify that pod networking works correctly across all nodes.
 
 ```yaml
-# verification-pods.yaml
-# Deploy test pods on different nodes to verify cross-node connectivity
+# ippool.yaml
+# Verify that the IP pool matches your intended pod CIDR and encapsulation mode
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
@@ -92,8 +92,8 @@ spec:
 
 ```bash
 # Create test pods on different nodes
-kubectl run test-pod-1 --image=busybox:1.36 --overrides='{"spec":{"nodeName":"node-01"}}' -- sleep 3600
-kubectl run test-pod-2 --image=busybox:1.36 --overrides='{"spec":{"nodeName":"node-02"}}' -- sleep 3600
+kubectl run test-pod-1 --image=busybox:1.36 --labels=app=network-test --overrides='{"spec":{"nodeName":"node-01"}}' --command -- sleep 3600
+kubectl run test-pod-2 --image=busybox:1.36 --labels=app=network-test --overrides='{"spec":{"nodeName":"node-02"}}' --command -- sh -c 'mkdir -p /www && echo ok > /www/index.html && httpd -f -p 8080 -h /www'
 
 # Wait for pods to be ready
 kubectl wait --for=condition=Ready pod/test-pod-1 pod/test-pod-2 --timeout=60s
@@ -101,12 +101,13 @@ kubectl wait --for=condition=Ready pod/test-pod-1 pod/test-pod-2 --timeout=60s
 # Test pod-to-pod connectivity across nodes
 POD2_IP=$(kubectl get pod test-pod-2 -o jsonpath='{.status.podIP}')
 kubectl exec test-pod-1 -- ping -c 3 "${POD2_IP}"
+kubectl exec test-pod-1 -- wget -qO- -T 5 "http://${POD2_IP}:8080"
 
 # Test service DNS resolution
 kubectl exec test-pod-1 -- nslookup kubernetes.default.svc.cluster.local
 
 # Test external connectivity
-kubectl exec test-pod-1 -- wget -qO- --timeout=5 http://httpbin.org/get
+kubectl exec test-pod-1 -- wget -qO- -T 5 http://httpbin.org/get
 ```
 
 ## Verifying Network Policy Enforcement
@@ -133,13 +134,13 @@ spec:
 calicoctl apply -f test-policy.yaml
 
 # Verify the policy blocks traffic (this should timeout)
-kubectl exec test-pod-1 -- wget -qO- --timeout=3 "http://${POD2_IP}" 2>&1 || echo "Correctly blocked by policy"
+kubectl exec test-pod-1 -- wget -qO- -T 3 "http://${POD2_IP}:8080" 2>&1 || echo "Correctly blocked by policy"
 
 # Clean up test policy
 calicoctl delete -f test-policy.yaml
 
 # Verify traffic flows again after policy removal
-kubectl exec test-pod-1 -- ping -c 3 "${POD2_IP}"
+kubectl exec test-pod-1 -- wget -qO- -T 5 "http://${POD2_IP}:8080"
 ```
 
 ## Performance Baseline
@@ -148,15 +149,14 @@ Establish a performance baseline before production traffic arrives.
 
 ```bash
 # Run iperf3 bandwidth test between pods on different nodes
-kubectl run iperf-server --image=networkstatic/iperf3 --restart=Never -- -s
+kubectl run iperf-server --image=networkstatic/iperf3 --restart=Never --command -- iperf3 -s
 kubectl wait --for=condition=Ready pod/iperf-server --timeout=60s
 
 IPERF_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
-kubectl run iperf-client --image=networkstatic/iperf3 --restart=Never -- -c ${IPERF_IP} -t 30
-kubectl wait --for=condition=Ready pod/iperf-client --timeout=60s
+kubectl run iperf-client --image=networkstatic/iperf3 --restart=Never --command -- iperf3 -c ${IPERF_IP} -t 30
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/iperf-client --timeout=90s
 
-# View results after test completes
-sleep 35
+# View results after the test completes
 kubectl logs iperf-client
 
 # Clean up performance test pods
@@ -182,7 +182,7 @@ echo "=== IP Pool Configuration ==="
 calicoctl get ippools -o wide
 
 echo ""
-echo "=== BGP Peering Status ==="
+echo "=== BGP Peering Status (if BGP is enabled) ==="
 calicoctl node status
 
 echo ""
@@ -195,7 +195,7 @@ calicoctl get clusterinformation -o yaml
 - **calico-node not starting**: Check that the datastore (etcd or Kubernetes API) is reachable. Verify TLS certificates are valid and mounted correctly.
 - **Pod-to-pod connectivity fails**: Verify IP-in-IP or VXLAN tunnel interfaces exist on each node with `ip link show tunl0` or `ip link show vxlan.calico`. Check that the IPPool CIDR does not overlap with node networks.
 - **Policy not enforced**: Verify Felix is programming iptables rules with `iptables-save | grep cali` on the node. Check Felix logs for policy calculation errors.
-- **BIRD not establishing BGP sessions**: Check BIRD configuration files in `/etc/calico/confd/config/` on calico-node. Verify node-to-node connectivity on TCP port 179.
+- **BIRD not establishing BGP sessions**: If BGP is enabled, check BIRD configuration files in `/etc/calico/confd/config/` on calico-node. Verify node-to-node connectivity on TCP port 179.
 
 ## Conclusion
 
