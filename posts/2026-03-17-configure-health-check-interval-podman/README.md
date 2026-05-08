@@ -35,19 +35,19 @@ Podman accepts various time formats for the interval:
 ```bash
 # Seconds
 podman run -d --name app1 \
-  --health-cmd "curl -f http://localhost:80/ || exit 1" \
+  --health-cmd "nginx -t || exit 1" \
   --health-interval 15s \
   nginx:latest
 
 # Minutes
 podman run -d --name app2 \
-  --health-cmd "curl -f http://localhost:80/ || exit 1" \
+  --health-cmd "nginx -t || exit 1" \
   --health-interval 2m \
   nginx:latest
 
 # Combined format
 podman run -d --name app3 \
-  --health-cmd "curl -f http://localhost:80/ || exit 1" \
+  --health-cmd "nginx -t || exit 1" \
   --health-interval 1m30s \
   nginx:latest
 ```
@@ -72,7 +72,7 @@ podman run -d --name batch-worker \
 
 ## Interval in a Containerfile
 
-You can set the default interval in a Containerfile:
+You can set the default interval in a Containerfile. If you build the image with Podman, use `--format=docker` so the `HEALTHCHECK` instruction is preserved:
 
 ```dockerfile
 FROM python:3.11-slim
