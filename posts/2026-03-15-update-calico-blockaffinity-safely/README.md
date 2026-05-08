@@ -10,9 +10,9 @@ Description: Learn how to safely update Calico BlockAffinity resources without d
 
 ## Introduction
 
-The Calico BlockAffinity resource controls which nodes have affinity for specific CIDR blocks in your cluster's IP address management system. Each BlockAffinity ties an IP block to a particular node, ensuring that pods scheduled on that node receive IP addresses from the associated block.
+The Calico BlockAffinity resource records which nodes have affinity for specific CIDR blocks in your cluster's IP address management system. Each BlockAffinity ties an IP block to a particular node, so Calico IPAM can prefer addresses from the associated block for pods scheduled on that node.
 
-Updating BlockAffinity resources incorrectly can lead to IP address conflicts, orphaned allocations, or pods losing network connectivity. Because these resources are tightly coupled with the IPAM subsystem, changes must be coordinated carefully to avoid disrupting running workloads.
+Manually updating BlockAffinity resources can lead to IP address conflicts, orphaned allocations, or pods losing network connectivity. Calico manages these resources internally through IPAM, and the supported operations for BlockAffinity resources are get, list, and watch rather than create, update, or delete. Because these resources are tightly coupled with the IPAM subsystem, changes must be coordinated carefully to avoid disrupting running workloads.
 
 This guide walks through the safe process for updating BlockAffinity resources, including pre-update checks, backup procedures, and validation steps that prevent common pitfalls.
 
@@ -48,7 +48,7 @@ spec:
   cidr: 192.168.10.0/26
   node: node01
   state: confirmed
-  deleted: "false"
+  deleted: false
 ```
 
 ## Backing Up Before Changes
@@ -59,21 +59,21 @@ Always create a backup of your BlockAffinity resources before modifying them:
 calicoctl get blockaffinities -o yaml > blockaffinity-backup-$(date +%Y%m%d).yaml
 ```
 
-Also back up related IPAMBlocks to ensure consistency:
+Also capture IPAM block usage to help with later comparison:
 
 ```bash
-calicoctl get ipamblocks -o yaml > ipamblocks-backup-$(date +%Y%m%d).yaml
+calicoctl ipam show --show-blocks > ipamblocks-backup-$(date +%Y%m%d).txt
 ```
 
 ## Draining Workloads Before Update
 
-If you need to reassign a block to a different node, first drain the workloads using IPs from that block:
+If you need to move workloads off the node that currently owns a block, first drain that node:
 
 ```bash
 kubectl drain node01 --ignore-daemonsets --delete-emptydir-data --grace-period=60
 ```
 
-Verify no pods are still using IPs from the target block:
+Verify no regular pods are still running on the drained node:
 
 ```bash
 kubectl get pods --all-namespaces -o wide | grep node01
@@ -81,43 +81,26 @@ kubectl get pods --all-namespaces -o wide | grep node01
 
 ## Applying the Update Safely
 
-Use `calicoctl apply` with the updated resource. Change the node assignment carefully:
+Do not use `calicoctl apply` to reassign a BlockAffinity. Calico IPAM manages BlockAffinity resources, and direct create, update, and delete operations are not supported for this resource type. After the old workloads have been drained and their pod IPs released by normal pod deletion, let Calico allocate blocks for the target node as new workloads are scheduled there.
 
-```yaml
-apiVersion: projectcalico.org/v3
-kind: BlockAffinity
-metadata:
-  name: node02-192-168-10-0-26
-spec:
-  cidr: 192.168.10.0/26
-  node: node02
-  state: confirmed
-  deleted: "false"
-```
-
-Apply with:
+If you need to influence future allocations, update the supported IPPool configuration, such as `nodeSelector`, before creating new pods. Verify the pool configuration with:
 
 ```bash
-calicoctl apply -f updated-blockaffinity.yaml
+calicoctl get ippools -o yaml
 ```
 
-To release a block affinity without reassigning, mark it as deleted:
+To release leaked IPAM allocations, use `calicoctl ipam check` to generate a report and release addresses from that report rather than editing BlockAffinity objects directly.
 
-```yaml
-apiVersion: projectcalico.org/v3
-kind: BlockAffinity
-metadata:
-  name: node01-192-168-10-0-26
-spec:
-  cidr: 192.168.10.0/26
-  node: node01
-  state: confirmed
-  deleted: "true"
+```bash
+calicoctl datastore migrate lock
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report report.json
+calicoctl datastore migrate unlock
 ```
 
 ## Verification
 
-Confirm the update applied correctly:
+Confirm the BlockAffinity state after Calico has reconciled IPAM:
 
 ```bash
 calicoctl get blockaffinities -o yaml | grep -A 5 "192.168.10.0/26"
@@ -129,7 +112,7 @@ Verify IPAM consistency:
 calicoctl ipam check
 ```
 
-Check that new pods on the target node receive IPs from the correct block:
+Check that new pods on the target node receive an expected Calico IP address:
 
 ```bash
 kubectl run test-pod --image=busybox --restart=Never --overrides='{"spec":{"nodeName":"node02"}}' -- sleep 3600
@@ -150,13 +133,14 @@ If pods fail to get IP addresses after the update, check the calico-node logs:
 kubectl logs -n kube-system -l k8s-app=calico-node --tail=50 | grep -i "ipam\|block"
 ```
 
-If you see IPAM block conflicts, restore from your backup:
+If you see leaked IPAM allocations, create an IPAM report and release the leaked addresses from that report:
 
 ```bash
-calicoctl apply -f blockaffinity-backup-$(date +%Y%m%d).yaml
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report report.json
 ```
 
-For orphaned block affinities where the original node no longer exists:
+For orphaned IP allocations where the original endpoint no longer exists:
 
 ```bash
 calicoctl ipam release --ip=192.168.10.5
@@ -170,4 +154,4 @@ calicoctl get blockaffinities -o yaml | grep -B 3 "192.168.10.0/26"
 
 ## Conclusion
 
-Updating Calico BlockAffinity resources requires careful planning to avoid IP conflicts and connectivity disruptions. Always back up existing resources, drain affected workloads, and validate IPAM consistency after making changes. Following the procedures in this guide helps ensure that block reassignments and modifications complete without impacting running services.
+Working around Calico BlockAffinity resources requires careful planning to avoid IP conflicts and connectivity disruptions. Always back up existing state, drain affected workloads, avoid direct BlockAffinity edits, and validate IPAM consistency after making changes. Following the procedures in this guide helps ensure that IPAM repairs and allocation changes complete without impacting running services.
