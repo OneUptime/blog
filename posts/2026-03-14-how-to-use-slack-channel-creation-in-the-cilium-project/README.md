@@ -19,7 +19,7 @@ This guide covers practical steps for using the Cilium Slack channel creation pr
 ## Prerequisites
 
 - Familiarity with the Cilium project and its ecosystem
-- Access to the Cilium Slack workspace (cilium.slack.com)
+- Access to the Cilium & eBPF Slack workspace
 - Willingness to participate in community discussions
 
 ## Understanding the Channel Creation Process
@@ -35,21 +35,21 @@ Request a new Slack channel when:
 ### Requesting a Channel
 
 1. Check that no existing channel covers your topic
-2. Post a request in #community or #general with:
-   - Proposed channel name (following naming conventions)
-   - Purpose and scope
+2. Open a new issue in the cilium/community GitHub repository with:
+   - Title in the format `Slack: <Name>`
+   - Description of the purpose and scope
    - Expected audience
-3. Get approval from a community moderator or SIG lead
-4. A workspace admin will create the channel
+3. Get two Cilium committers to comment on the issue approving the channel
+4. Submit a pull request if you would like the new channel listed in the Cilium documentation
 
 ### Channel Naming Conventions
 
 ```text
-#sig-<area>          - SIG-specific channels
-#dev-<component>     - Development discussions
-#users-<topic>       - User-focused discussions
-#region-<name>       - Regional channels
-#wg-<workgroup>      - Working group channels
+#sig-<area>          - SIG-specific discussions
+#area-<topic>        - Discussions for a specific project area
+#development         - Development discussions around Cilium
+#testing             - Testing and CI discussions
+#cilium-website      - Development discussions around cilium.io
 ```
 
 ### Setting Up a New Channel
@@ -66,10 +66,10 @@ Confirm Slack channels are accessible and active.
 
 ## Troubleshooting
 
-- **Cannot find meeting links**: Check the Cilium community calendar and #community Slack channel.
-- **Slack workspace access**: Request an invite through the Cilium website.
+- **Cannot find meeting links**: Check the meeting notes or the #development Slack channel.
+- **Slack workspace access**: Join through the Cilium Slack invite link.
 - **GitHub permissions**: Ensure your account has the necessary access for the repositories you need.
-- **Timezone confusion**: All official times are in UTC. Use a timezone converter for your local time.
+- **Timezone confusion**: Check the documented timezone for each meeting. Use a timezone converter for your local time.
 
 ## Conclusion
 
