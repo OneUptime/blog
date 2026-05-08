@@ -19,10 +19,12 @@ Ulimits (user limits) control the resources available to processes running insid
 Ulimits define soft and hard resource limits. The soft limit is the effective limit that the process starts with, and the hard limit is the maximum value the soft limit can be raised to. Common ulimit types include:
 
 - `nofile` - Maximum number of open file descriptors
-- `nproc` - Maximum number of processes
+- `nproc` - Maximum number of processes available to a user, not a container-wide process limit
 - `memlock` - Maximum locked memory size
 - `stack` - Maximum stack size
 - `core` - Maximum core file size
+
+For a container-wide process limit in Podman, use `--pids-limit` instead of the `nproc` ulimit.
 
 ## Setting Ulimits with --ulimit
 
@@ -56,11 +58,11 @@ You can specify multiple `--ulimit` flags in a single run command.
 # Set multiple ulimits for a production-like container
 podman run --rm \
   --ulimit nofile=65536:65536 \
-  --ulimit nproc=4096:4096 \
   --ulimit memlock=-1:-1 \
   --ulimit stack=8388608:8388608 \
+  --pids-limit 4096 \
   docker.io/library/alpine:latest \
-  sh -c 'echo "Open files: $(ulimit -n)"; echo "Processes: $(ulimit -u)"; echo "Memlock: $(ulimit -l)"; echo "Stack: $(ulimit -s)"'
+  sh -c 'echo "Open files: $(ulimit -n)"; echo "Memlock: $(ulimit -l)"; echo "Stack: $(ulimit -s)"'
 ```
 
 ## Common Ulimit Configurations
@@ -75,7 +77,7 @@ podman run --rm -d \
   --name postgres-db \
   --ulimit nofile=65536:65536 \
   --ulimit memlock=-1:-1 \
-  --ulimit nproc=4096:4096 \
+  --pids-limit 4096 \
   -e POSTGRES_PASSWORD=mysecret \
   docker.io/library/postgres:16
 
@@ -99,12 +101,12 @@ podman run --rm -d \
 podman exec web-server sh -c 'ulimit -n'
 ```
 
-### Unlimited Memlock for Elasticsearch
+### Memlock for Elasticsearch
 
-Elasticsearch requires unlimited memory locking.
+Elasticsearch can use memory locking when `bootstrap.memory_lock` is enabled.
 
 ```bash
-# Run with unlimited memlock (value -1 means unlimited)
+# Run with the maximum memlock allowed by the current Podman process
 podman run --rm \
   --ulimit memlock=-1:-1 \
   --ulimit nofile=65536:65536 \
@@ -123,14 +125,14 @@ cat >> ~/.config/containers/containers.conf << 'EOF'
 [containers]
 default_ulimits = [
   "nofile=65536:65536",
-  "nproc=4096:4096",
   "memlock=-1:-1"
 ]
+pids_limit = 4096
 EOF
 
 # Verify defaults are applied
 podman run --rm docker.io/library/alpine:latest \
-  sh -c 'echo "Files: $(ulimit -n)"; echo "Procs: $(ulimit -u)"'
+  sh -c 'echo "Files: $(ulimit -n)"; echo "Memlock: $(ulimit -l)"'
 ```
 
 ## Checking Current Ulimits
@@ -176,14 +178,12 @@ services:
       nofile:
         soft: 65536
         hard: 65536
-      nproc:
-        soft: 4096
-        hard: 4096
       memlock:
         soft: -1
         hard: -1
+    pids_limit: 4096
 ```
 
 ## Summary
 
-Ulimits are essential for controlling container resource usage. Use `--ulimit` to set per-container limits, configure defaults in `containers.conf` for consistency, and always verify limits with `ulimit` or `/proc/1/limits` inside the container. For production workloads, pay special attention to `nofile`, `nproc`, and `memlock` settings.
+Ulimits are essential for controlling container resource usage. Use `--ulimit` to set per-container limits, configure defaults in `containers.conf` for consistency, and always verify limits with `ulimit` or `/proc/1/limits` inside the container. For production workloads, pay special attention to `nofile`, `memlock`, and container process limits such as `--pids-limit`.
