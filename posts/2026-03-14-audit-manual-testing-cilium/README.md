@@ -130,7 +130,7 @@ Evaluate whether testing covers the attack surface:
 // 3. DROP (denied by policy) - covered by: ___
 // 4. DROP (malformed input) - covered by: ___
 // 5. DROP (oversized) - covered by: ___
-// 6. DROP (error state) - covered by: ___
+// 6. ERROR (invalid protocol state) - covered by: ___
 // 7. Error injection path - covered by: ___
 // 8. Access logging path - covered by: ___
 ```
