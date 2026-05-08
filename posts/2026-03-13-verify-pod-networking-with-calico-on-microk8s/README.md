@@ -18,7 +18,7 @@ This guide provides a comprehensive verification checklist for Calico on MicroK8
 
 ## Prerequisites
 
-- MicroK8s with Calico enabled
+- MicroK8s with Calico CNI and DNS enabled
 - calicoctl installed and configured
 - kubectl access (via microk8s kubectl or alias)
 
@@ -28,7 +28,7 @@ This guide provides a comprehensive verification checklist for Calico on MicroK8
 microk8s status
 ```
 
-Look for `calico: enabled` in the add-ons list and `microk8s is running` status.
+Look for `microk8s is running` status. Calico is the default CNI in recent MicroK8s releases, so verify it by checking the Calico pods in the next step rather than looking for a Calico add-on entry.
 
 ## Step 2: Verify Calico Pods Are Running
 
@@ -43,7 +43,7 @@ microk8s kubectl get pods -n kube-system -l k8s-app=calico-kube-controllers
 calicoctl node status
 ```
 
-On a single-node MicroK8s cluster, there are no BGP peers to check, but Felix should show as running.
+On a default single-node MicroK8s cluster using the VXLAN backend, there are no BGP peers to check, but the command should report that the Calico process is running.
 
 ## Step 4: Verify IP Pool
 
