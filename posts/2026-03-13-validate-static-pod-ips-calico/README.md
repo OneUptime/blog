@@ -12,7 +12,7 @@ Description: Learn how to validate static IP address persistence for pods in Cal
 
 In most Kubernetes deployments, pod IPs change when pods are rescheduled. For stateless microservices, this is acceptable since services handle routing. However, for stateful workloads like databases, message brokers, or applications with IP-based licensing, IP persistence is a hard requirement.
 
-Calico supports static pod IPs through IPAM annotations that reserve specific addresses. The challenge is not just assigning the IP initially, but validating that the IP persists correctly across the pod lifecycle - restarts, node failures, and cluster upgrades. This guide covers the full validation workflow for static pod IPs in Calico.
+Calico supports static pod IPs through IPAM annotations that request specific addresses. The challenge is not just assigning the IP initially, but validating that the IP persists correctly across the pod lifecycle - restarts, rescheduling events, and cluster upgrades. This guide covers the full validation workflow for static pod IPs in Calico.
 
 ## Prerequisites
 
@@ -20,6 +20,7 @@ Calico supports static pod IPs through IPAM annotations that reserve specific ad
 - `calicoctl` CLI configured
 - `kubectl` with cluster admin access
 - StatefulSet or Deployment managing the target workload
+- A static IP that is inside a configured Calico IP pool and not currently in use
 
 ## Step 1: Configure Static IP on a Pod or StatefulSet
 
@@ -54,6 +55,8 @@ spec:
           value: "testpassword"
 ```
 
+The IP address must be in a Calico IP pool, and the annotation must be present when the pod is created. Adding the annotation to an existing pod does not change its IP.
+
 ```bash
 # Deploy the StatefulSet with static IP
 kubectl apply -f statefulset-static-ip.yaml
@@ -68,13 +71,10 @@ Confirm that Calico IPAM has recorded the static IP allocation correctly.
 
 ```bash
 # Check the IP is allocated in Calico IPAM
-calicoctl ipam show --show-blocks | grep "192.168.10.50"
+calicoctl ipam show --ip=192.168.10.50
 
 # Get the workload endpoint and verify the IP
 calicoctl get workloadendpoint --all-namespaces -o yaml | grep -B5 "192.168.10.50"
-
-# Run IPAM consistency check
-calicoctl ipam check
 ```
 
 ## Step 3: Test IP Persistence Across Pod Restarts
@@ -98,15 +98,15 @@ echo "IP after restart: $NEW_IP"
 [ "$ORIGINAL_IP" = "$NEW_IP" ] && echo "PASS: IP retained" || echo "FAIL: IP changed"
 ```
 
-## Step 4: Test IP Behavior After Node Failure
+## Step 4: Test IP Behavior After Rescheduling
 
-Validate static IP behavior when a node fails and the pod is rescheduled.
+Validate static IP behavior when the pod is rescheduled to another node.
 
 ```bash
 # Check which node the pod is on
 kubectl get pod db-statefulset-0 -o wide
 
-# Cordon the node to simulate a node failure
+# Cordon the node to force scheduling away from it
 kubectl cordon <current-node>
 
 # Delete the pod to force rescheduling to another node
@@ -122,24 +122,24 @@ kubectl get pod db-statefulset-0 -o wide
 kubectl uncordon <original-node>
 ```
 
-## Step 5: Validate IPAM Cleanup Does Not Remove Reserved IPs
+## Step 5: Validate the Static IP Is Reserved for Manual Use
 
-Ensure that IPAM garbage collection does not claim the static IP during normal operation.
+Ensure that Calico will not automatically assign the static IP to another workload. The pod annotation requests the address, but it does not reserve the address while the pod is absent. Reserve the address with an `IPReservation`, or use a dedicated IP pool with `assignmentMode: Manual` for static assignments.
 
 ```bash
-# Check that the static IP block is reserved in Calico IPAM
-calicoctl ipam show --show-blocks
+# Verify any IPReservation resources that protect manual assignments
+calicoctl get ipreservation -o yaml
 
-# Verify the static IP is not in the "floating" state
-calicoctl get ipamblock -o yaml | grep -A10 "192.168.10"
+# Verify the IP pool used for static assignments
+calicoctl get ippool -o yaml
 
-# Run the IPAM check and confirm no issues
-calicoctl ipam check --show-all-ips
+# Confirm the static IP is currently allocated to the expected pod
+calicoctl ipam show --ip=192.168.10.50
 ```
 
 ## Best Practices
 
-- Use a dedicated IP pool for static IPs, separate from the dynamic allocation pool
+- Use an `IPReservation`, or a dedicated IP pool with `assignmentMode: Manual`, for static IPs separate from the dynamic allocation pool
 - Document all static IP assignments in a network registry
 - Test IP persistence during rolling upgrades of the cluster as well as pod restarts
 - Set up monitoring alerts for IP allocation failures on pods with static IP annotations
@@ -147,4 +147,4 @@ calicoctl ipam check --show-all-ips
 
 ## Conclusion
 
-Static pod IPs in Calico require careful validation across the full pod lifecycle - initial assignment, restarts, and node rescheduling. By using Calico IPAM annotations and validating persistence through each scenario, you can reliably provide stable addressing for workloads that require it. Always combine static IP validation with IPAM consistency checks to prevent allocation leaks over time.
+Static pod IPs in Calico require careful validation across the full pod lifecycle - initial assignment, restarts, and node rescheduling. By using Calico IPAM annotations and validating persistence through each scenario, you can reliably provide stable addressing for workloads that require it. Always combine static IP validation with reservation checks to prevent accidental address reuse over time.
