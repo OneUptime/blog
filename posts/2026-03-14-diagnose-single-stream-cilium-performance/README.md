@@ -84,27 +84,27 @@ kubectl run iperf-client-pod --image=networkstatic/iperf3 \
 
 Compare the two results. A significant gap (more than 10-15%) indicates a datapath issue worth investigating.
 
-## Inspecting Cilium eBPF Metrics
+## Inspecting Cilium eBPF State
 
-Cilium exposes detailed metrics about its eBPF programs. These are essential for diagnosis:
+Cilium exposes detailed state about its eBPF maps and programs. These are essential for diagnosis:
 
 ```bash
-# Check Cilium status on each node
+# Check Cilium status from the Kubernetes-facing CLI
 cilium status --verbose
 
-# View datapath mode
-cilium config view | grep datapath-mode
+# View routing and datapath-related configuration
+cilium config view | grep -E 'routing-mode|tunnel-protocol|datapath-mode|bpf.datapathMode'
 
-# Examine BPF map sizes and program stats
-cilium bpf policy get --all
-cilium bpf ct list global | head -20
+# Examine BPF policy and conntrack state from a Cilium agent
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf policy get --all
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list global | head -20
 ```
 
 Check for conntrack table pressure, which can slow down single-stream throughput:
 
 ```bash
 # Count conntrack entries vs. max
-cilium bpf ct list global | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list global | wc -l
 cilium config view | grep bpf-ct-global-tcp-max
 ```
 
@@ -135,25 +135,29 @@ echo "f" > /sys/class/net/eth0/queues/rx-0/rps_cpus
 Use `bpftool` to inspect Cilium's eBPF program runtime:
 
 ```bash
+# Enable kernel BPF runtime counters before sampling, then disable them after
+sudo sysctl -w kernel.bpf_stats_enabled=1
+
 # List all eBPF programs with runtime stats
-bpftool prog show --json | jq '.[] | select(.name | contains("cil")) | {id, name, run_cnt, run_time_ns}'
+sudo bpftool prog show --json | jq '.[] | select((.name // "") | contains("cil")) | {id, name, run_cnt, run_time_ns}'
 
 # Calculate average per-packet processing time
 # run_time_ns / run_cnt gives ns per invocation
+sudo sysctl -w kernel.bpf_stats_enabled=0
 ```
 
 Programs taking more than 1-2 microseconds per packet can limit single-stream throughput. Common causes include:
 
-- Policy complexity: Too many L7 rules cause per-packet L7 parsing
+- Policy complexity: L7 policies redirect matching traffic through the Envoy proxy, adding proxy processing overhead
 - Encryption overhead: WireGuard or IPsec adds CPU cost
 - Conntrack churn: Frequent conntrack GC interrupting flow processing
 
 ```bash
 # Check if L7 policy is in the path
-cilium endpoint list -o json | jq '.[].policy.proxy-statistics'
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | jq '.[].status.policy."proxy-statistics" // empty'
 
 # Check encryption status
-cilium encrypt status
+cilium encryption status
 ```
 
 ## Verification
@@ -168,8 +172,8 @@ kubectl exec iperf-client-pod -- iperf3 -c $SERVER_IP -t 30 -P 1 -J > /tmp/resul
 echo "Pod-to-pod throughput: $(jq '.end.sum_sent.bits_per_second' /tmp/results.json)"
 echo "Host-to-host baseline: <your-baseline-value>"
 
-# Verify CPU utilization during test
-kubectl exec -it cilium-agent-pod -n kube-system -- cilium metrics list | grep cpu
+# Verify Cilium agent CPU utilization during the test
+kubectl top pod -n kube-system -l k8s-app=cilium --containers
 ```
 
 ## Troubleshooting
@@ -177,7 +181,7 @@ kubectl exec -it cilium-agent-pod -n kube-system -- cilium metrics list | grep c
 - **Throughput below 50% of baseline**: Check if tunneling (VXLAN/Geneve) is enabled. Tunneling adds overhead. Consider switching to native routing.
 - **CPU at 100% on one core**: Check IRQ affinity and enable RPS/RFS. Consider enabling Cilium's BPF-based packet steering.
 - **Inconsistent results**: Ensure no other workloads are running on the test nodes. Use `kubectl cordon` to isolate them.
-- **Cilium agent high CPU**: Check `cilium monitor` output for excessive events. Rate-limit monitoring or disable verbose debugging.
+- **Cilium agent high CPU**: Check `kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor` output for excessive events. Rate-limit monitoring or disable verbose debugging.
 - **Conntrack table full**: Increase `bpf-ct-global-tcp-max` in the Cilium ConfigMap and restart agents.
 
 ## Conclusion
