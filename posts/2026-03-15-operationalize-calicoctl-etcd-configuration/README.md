@@ -20,7 +20,7 @@ This guide covers production-grade operational patterns for managing calicoctl e
 
 - Calico cluster using etcd as the datastore
 - `calicoctl` binary installed (v3.25+)
-- `etcdctl` for backup and maintenance operations
+- `etcdctl` and `etcdutl` for backup, restore, and maintenance operations
 - Dedicated backup storage (local disk, S3, or similar)
 - Access to etcd TLS certificates
 
@@ -35,16 +35,19 @@ Create a full etcd snapshot that includes all Calico data:
 BACKUP_DIR="/var/backups/calico"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/etcd-snapshot-${TIMESTAMP}.db"
+SNAPSHOT_ENDPOINT="${ETCD_SNAPSHOT_ENDPOINT:-${ETCD_ENDPOINTS%%,*}}"
 
 mkdir -p "$BACKUP_DIR"
 
-etcdctl --endpoints="$ETCD_ENDPOINTS" \
+etcdctl --endpoints="$SNAPSHOT_ENDPOINT" \
   --cacert="$ETCD_CA_CERT_FILE" \
   --cert="$ETCD_CERT_FILE" \
   --key="$ETCD_KEY_FILE" \
   snapshot save "$BACKUP_FILE"
 
-etcdctl snapshot status "$BACKUP_FILE" --write-out=table
+ln -sfn "$BACKUP_FILE" "${BACKUP_DIR}/etcd-snapshot-latest.db"
+
+etcdutl snapshot status "$BACKUP_FILE" --write-out=table
 
 # Keep only last 7 days of backups
 
@@ -56,7 +59,7 @@ echo "Backup saved: ${BACKUP_FILE}"
 Schedule daily backups via cron:
 
 ```bash
-echo "0 3 * * * /usr/local/bin/calico-etcd-backup.sh >> /var/log/calico-backup.log 2>&1" | crontab -
+(crontab -l 2>/dev/null; echo "0 3 * * * /usr/local/bin/calico-etcd-backup.sh >> /var/log/calico-backup.log 2>&1") | crontab -
 ```
 
 ## Exporting Calico Resources as YAML
@@ -100,10 +103,11 @@ Restore an etcd snapshot in a disaster recovery scenario:
 # Stop etcd on all members first
 
 # Restore on each member with its specific configuration
-etcdctl snapshot restore /var/backups/calico/etcd-snapshot-latest.db \
+etcdutl snapshot restore /var/backups/calico/etcd-snapshot-latest.db \
   --name etcd1 \
   --data-dir /var/lib/etcd-restore \
   --initial-cluster "etcd1=https://etcd1:2380,etcd2=https://etcd2:2380,etcd3=https://etcd3:2380" \
+  --initial-cluster-token calico-etcd-restore \
   --initial-advertise-peer-urls "https://etcd1:2380"
 
 # Replace data directory and restart etcd
@@ -189,7 +193,7 @@ Confirm operational procedures work:
 
 ```bash
 # Verify backup integrity
-etcdctl snapshot status /var/backups/calico/etcd-snapshot-latest.db --write-out=table
+etcdutl snapshot status /var/backups/calico/etcd-snapshot-latest.db --write-out=table
 
 # Verify YAML exports are complete
 ls -la /var/backups/calico/yaml-$(date +%Y%m%d)/
