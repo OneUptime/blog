@@ -10,7 +10,7 @@ Description: Learn how to manage Podman containers using systemctl commands for 
 
 > Manage your Podman container lifecycle through systemctl for consistent, reliable operations including start, stop, restart, status checks, and log viewing.
 
-When Podman containers run as systemd services (via Quadlet or generated units), you manage them with `systemctl` instead of `podman` commands. This gives you a consistent interface for all system services.
+When Podman containers run as systemd services (via Quadlet or generated units), you manage them with `systemctl` instead of `podman` commands. This gives you a consistent interface for all system services. Quadlet is the recommended approach for new Podman systemd services; `podman generate systemd` is deprecated but still supported for existing generated units.
 
 ---
 
@@ -50,7 +50,7 @@ systemctl --user is-failed webapp.service
 ## Enabling and Disabling Services
 
 ```bash
-# Enable to start at boot
+# Enable an installed generated user unit to start on user login
 systemctl --user enable webapp.service
 
 # Enable and start immediately
@@ -62,6 +62,8 @@ systemctl --user disable webapp.service
 # Disable and stop immediately
 systemctl --user disable --now webapp.service
 ```
+
+For Quadlet services, add an `[Install]` section such as `WantedBy=default.target` to the Quadlet file and run `systemctl --user daemon-reload`; Quadlet applies that install information when generating the service. User services start at boot only if the user's systemd instance is started at boot, for example with linger enabled.
 
 ## Viewing Logs
 
