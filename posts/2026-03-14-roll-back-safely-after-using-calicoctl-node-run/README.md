@@ -28,11 +28,7 @@ This guide provides step-by-step rollback procedures for different failure scena
 The first step in any rollback is stopping the current node cleanly:
 
 ```bash
-# Graceful stop using calicoctl
-
-sudo calicoctl node stop
-
-# If calicoctl node stop fails, use Docker directly
+# Stop the calico/node container started by calicoctl node run
 docker stop calico-node
 docker rm calico-node
 
@@ -60,16 +56,21 @@ docker pull "$PREVIOUS_IMAGE"
 
 # Get current node configuration from datastore
 NODE_NAME=$(hostname)
-NODE_IP=$(calicoctl get node "$NODE_NAME" -o jsonpath='{.spec.bgp.ipv4Address}' | cut -d/ -f1)
-NODE_AS=$(calicoctl get node "$NODE_NAME" -o jsonpath='{.spec.bgp.asNumber}')
+NODE_IP=$(calicoctl get node "$NODE_NAME" -o go-template='{{range .}}{{range .Items}}{{.Spec.BGP.IPv4Address}}{{end}}{{end}}' | cut -d/ -f1)
+NODE_AS=$(calicoctl get node "$NODE_NAME" -o go-template='{{range .}}{{range .Items}}{{.Spec.BGP.ASNumber}}{{end}}{{end}}')
 
 echo "Restarting with: name=$NODE_NAME ip=$NODE_IP as=${NODE_AS:-default}"
 
+RUN_ARGS=(--node-image="$PREVIOUS_IMAGE" --name="$NODE_NAME")
+if [ -n "$NODE_IP" ]; then
+  RUN_ARGS+=(--ip="$NODE_IP")
+fi
+if [ -n "$NODE_AS" ]; then
+  RUN_ARGS+=(--as="$NODE_AS")
+fi
+
 # Start with previous image
-sudo calicoctl node run \
-  --node-image="$PREVIOUS_IMAGE" \
-  --name="$NODE_NAME" \
-  --ip="$NODE_IP"
+sudo calicoctl node run "${RUN_ARGS[@]}"
 
 # Verify
 sleep 10
@@ -96,11 +97,14 @@ docker rm calico-node 2>/dev/null
 # Remove the node from the datastore
 calicoctl delete node "$NODE_NAME"
 
-# Clean up iptables rules
-sudo iptables-save | grep -v "cali-" | sudo iptables-restore
+# Check for leaked IPAM allocations after the node is removed
+calicoctl datastore migrate lock
+calicoctl ipam check -o ipam-report.json
+calicoctl ipam release --from-report=ipam-report.json
+calicoctl datastore migrate unlock
 
-# Clean up IPAM allocations for this node
-calicoctl ipam release --node="$NODE_NAME"
+# Clean up remaining iptables rules
+sudo iptables-save | grep -v "cali-" | sudo iptables-restore
 
 # Remove Calico interfaces
 for iface in $(ip link show | grep "cali" | awk -F: '{print $2}' | tr -d ' '); do
@@ -122,7 +126,7 @@ When the node started but with wrong configuration:
 ```bash
 #!/bin/bash
 # rollback-node-config.sh
-# Restops the node with corrected configuration
+# Restarts the node with corrected configuration
 
 # Stop the misconfigured node
 docker stop calico-node
@@ -139,15 +143,19 @@ ETCD_ENDPOINTS=https://10.0.1.5:2379
 ETCD_KEY_FILE=/etc/calico/certs/key.pem
 ETCD_CERT_FILE=/etc/calico/certs/cert.pem
 ETCD_CA_CERT_FILE=/etc/calico/certs/ca.pem
-CALICO_IP=autodetect
-CALICO_IP_AUTODETECTION_METHOD=interface=ens192
+IP=autodetect
+IP_AUTODETECTION_METHOD=interface=ens192
 EOF
 
 # Restart with corrected configuration
+set -a
 source /etc/calico/calico-node.env
+set +a
 sudo -E calicoctl node run \
   --node-image=calico/node:v3.27.0 \
-  --name=$(hostname)
+  --name="$(hostname)" \
+  --ip="$IP" \
+  --ip-autodetection-method="$IP_AUTODETECTION_METHOD"
 
 # Verify
 sleep 10
@@ -240,7 +248,7 @@ All checks should pass, BGP peers should show as "Established", and there should
 - **Node stop hangs**: Use `docker kill calico-node` as a last resort if `docker stop` hangs.
 - **Stale node entry in datastore**: If you cannot start a new node because the old entry exists, use `calicoctl delete node <name>` to clean it up.
 - **iptables rules left behind after stop**: The cleanup script above removes leftover `cali-` chains. Run it if pods have connectivity issues after stopping the node.
-- **IPAM leaks after node removal**: Use `calicoctl ipam check` to identify leaked IP addresses, then release them with `calicoctl ipam release`.
+- **IPAM leaks after node removal**: Lock the datastore, use `calicoctl ipam check -o report.json` to identify leaked IP addresses, release them with `calicoctl ipam release --from-report=report.json`, and then unlock the datastore.
 
 ## Conclusion
 
