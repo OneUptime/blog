@@ -19,7 +19,7 @@ This guide provides a step-by-step troubleshooting approach for WireGuard latenc
 ## Prerequisites
 
 - Kubernetes cluster with Cilium v1.14+ and WireGuard enabled
-- `netperf`, `perf`, `tcpdump` available
+- `netperf`, `perf`, `tcpdump`, `jq` available
 - `cilium` CLI and node-level access
 
 ## Step 1: Quantify the Overhead
@@ -42,10 +42,10 @@ echo "Overhead: $(echo "scale=1; (1 - $WG_RR / $HOST_RR) * 100" | bc)%"
 ## Step 2: Check for MTU Fragmentation
 
 ```bash
-# Fragmentation adds extra round trips
+# Fragmentation adds extra packets, reassembly work, and possible drops
 kubectl exec test-pod -- ping -M do -s 1350 $REMOTE_POD_IP
 
-# If this fails, MTU is too high
+# If this fails, the path MTU is too low for that payload size
 # Check all interfaces in the path
 kubectl exec -n kube-system ds/cilium -- sh -c \
   'for iface in eth0 cilium_wg0 cilium_host; do
@@ -65,19 +65,19 @@ perf record -g -a -- sleep 10
 perf report --stdio | grep -E "chacha|poly1305|wireguard|crypto" | head -10
 
 # If crypto functions dominate, check:
-# 1. CPU supports SIMD (AVX/SSSE3)
-grep -c -E "avx|ssse3" /proc/cpuinfo
-# 2. Not using userspace fallback
-lsmod | grep wireguard
+# 1. CPU supports architecture-specific SIMD (for example AVX/SSSE3 on x86 or NEON on ARM)
+grep -c -E "avx|ssse3|neon" /proc/cpuinfo
+# 2. Kernel WireGuard support is available
+grep -E "CONFIG_WIREGUARD=[ym]" /boot/config-$(uname -r) 2>/dev/null || lsmod | grep wireguard
 ```
 
 ## Step 4: Check Key Rotation
 
 ```bash
 # View handshake times
-kubectl exec -n kube-system ds/cilium -- wg show cilium_wg0
+kubectl exec -n kube-system ds/cilium -- cilium-dbg debuginfo --output json | jq .encryption
 
-# Recent handshakes should be within the last 2 minutes
+# During active traffic, WireGuard handshakes should update every few minutes
 # If handshake times are old, there may be connectivity issues
 
 # Check for rekey events in logs
@@ -94,9 +94,9 @@ graph TD
     D -->|Yes| E[Fix MTU to 1420]
     D -->|No| F{CPU has SIMD?}
     F -->|No| G[Upgrade hardware or reduce encryption scope]
-    F -->|Yes| H{Userspace WG?}
-    H -->|Yes| I[Upgrade kernel to 5.6+]
-    H -->|No| J[Profile CPU for other contention]
+    F -->|Yes| H{Kernel WG support?}
+    H -->|No| I[Enable WireGuard kernel support]
+    H -->|Yes| J[Profile CPU for other contention]
 ```
 
 ## Verification
@@ -105,14 +105,14 @@ graph TD
 # After fixes, verify improvement
 kubectl exec netperf-client -- \
   netperf -H $SERVER_IP -t TCP_RR -l 20 -- -r 1,1
-echo "Expected: < 20% overhead vs unencrypted"
+echo "Target: low overhead vs the comparable unencrypted baseline"
 ```
 
 ## Troubleshooting
 
-- **Overhead > 50%**: Almost certainly using userspace WireGuard or fragmentation. Check kernel version and MTU.
-- **Periodic latency spikes**: Key rotation causes brief handshake delays. These should be < 100ms and occur every ~2 minutes.
-- **One node pair has high latency**: Check if that node has different CPU capabilities (missing AVX).
+- **Overhead > 50%**: Often indicates MTU fragmentation, missing kernel WireGuard support, or CPU saturation. Check kernel version, WireGuard support, and MTU.
+- **Periodic latency spikes**: Normal WireGuard rekeying should be transparent. If spikes align with failed or repeated handshakes, check node-to-node UDP connectivity on the WireGuard port.
+- **One node pair has high latency**: Check if that node has different CPU capabilities (for example, missing x86 SIMD extensions).
 - **Latency varies with payload size**: MTU fragmentation threshold. Test with different `-r` sizes in netperf.
 
 ## Systematic Troubleshooting Approach
@@ -145,9 +145,9 @@ mkdir -p $DIAG
 
 # Quick data collection (runs in <30 seconds)
 cilium status --verbose > $DIAG/status.txt &
-cilium bpf ct list global | wc -l > $DIAG/ct-count.txt &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf ct list | wc -l > $DIAG/ct-count.txt &
 kubectl top pods -n kube-system -l k8s-app=cilium > $DIAG/agent-resources.txt &
-kubectl exec -n kube-system ds/cilium -- cilium metrics list > $DIAG/metrics.txt &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list > $DIAG/metrics.txt &
 wait
 
 # BPF program stats
@@ -177,4 +177,4 @@ Include the following in any escalation:
 
 ## Conclusion
 
-Troubleshooting WireGuard request/response latency in Cilium follows a structured approach: quantify the overhead, check for MTU fragmentation, profile crypto operations, and verify key rotation is healthy. Most issues resolve by fixing MTU, ensuring the kernel WireGuard module is used, and verifying CPU SIMD support. With these issues addressed, WireGuard overhead should be below 20% for TCP_RR workloads.
+Troubleshooting WireGuard request/response latency in Cilium follows a structured approach: quantify the overhead, check for MTU fragmentation, profile crypto operations, and verify key rotation is healthy. Most issues resolve by fixing MTU, ensuring kernel WireGuard support is available, and verifying CPU SIMD support. With these issues addressed, WireGuard overhead should stay close to the comparable unencrypted baseline for TCP_RR workloads.
