@@ -20,7 +20,7 @@ This guide covers the essential operational procedures for managing calicoctl wi
 
 - Calico cluster using the etcd datastore backend
 - calicoctl v3.27 or later
-- etcdctl v3 for backup and maintenance operations
+- etcdctl v3 for backup and maintenance operations, and etcdutl for snapshot restore
 - Access to etcd cluster with admin privileges
 - A backup storage location (S3, GCS, or NFS)
 
@@ -39,6 +39,7 @@ set -euo pipefail
 BACKUP_DIR="/var/backups/calico-etcd"
 RETENTION_DAYS=30
 ETCD_ENDPOINTS="${ETCD_ENDPOINTS:-https://etcd1:2379}"
+ETCD_SNAPSHOT_ENDPOINT="${ETCD_ENDPOINTS%%,*}"
 CERT_DIR="/etc/calicoctl/certs"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
@@ -46,7 +47,7 @@ mkdir -p "$BACKUP_DIR"
 
 # Create etcd snapshot
 echo "Creating etcd snapshot..."
-etcdctl --endpoints="$ETCD_ENDPOINTS" \
+etcdctl --endpoints="$ETCD_SNAPSHOT_ENDPOINT" \
   --cert="${CERT_DIR}/cert.pem" \
   --key="${CERT_DIR}/key.pem" \
   --cacert="${CERT_DIR}/ca.pem" \
@@ -55,6 +56,10 @@ etcdctl --endpoints="$ETCD_ENDPOINTS" \
 # Also export Calico resources via calicoctl for human-readable backup
 echo "Exporting Calico resources..."
 export DATASTORE_TYPE=etcdv3
+export ETCD_ENDPOINTS
+export ETCD_CERT_FILE="${CERT_DIR}/cert.pem"
+export ETCD_KEY_FILE="${CERT_DIR}/key.pem"
+export ETCD_CA_CERT_FILE="${CERT_DIR}/ca.pem"
 CALICO_BACKUP="${BACKUP_DIR}/calico-resources-${TIMESTAMP}"
 mkdir -p "$CALICO_BACKUP"
 
@@ -109,6 +114,8 @@ set -euo pipefail
 
 BACKUP_FILE="${1:?Usage: $0 <backup-file.tar.gz>}"
 RESTORE_DIR="/tmp/calico-restore-$(date +%s)"
+ETCD_ENDPOINTS="${ETCD_ENDPOINTS:-https://etcd1:2379}"
+CERT_DIR="/etc/calicoctl/certs"
 
 echo "Extracting backup..."
 mkdir -p "$RESTORE_DIR"
@@ -120,7 +127,7 @@ if [ -n "$SNAPSHOT" ]; then
     echo "Found etcd snapshot: $SNAPSHOT"
     echo "WARNING: Full etcd restore will replace ALL etcd data."
     echo "To restore full etcd, stop etcd on all members and run:"
-    echo "  etcdctl snapshot restore $SNAPSHOT --data-dir=/var/lib/etcd-restore"
+    echo "  etcdutl snapshot restore $SNAPSHOT --data-dir=/var/lib/etcd-restore"
 fi
 
 # Option 2: Restore individual Calico resources
@@ -128,6 +135,10 @@ RESOURCE_DIR=$(find "$RESTORE_DIR" -type d -name "calico-resources-*" | head -1)
 if [ -n "$RESOURCE_DIR" ]; then
     echo "Restoring Calico resources from: $RESOURCE_DIR"
     export DATASTORE_TYPE=etcdv3
+    export ETCD_ENDPOINTS
+    export ETCD_CERT_FILE="${CERT_DIR}/cert.pem"
+    export ETCD_KEY_FILE="${CERT_DIR}/key.pem"
+    export ETCD_CA_CERT_FILE="${CERT_DIR}/ca.pem"
 
     # Apply in dependency order
     for resource_file in \
@@ -274,7 +285,7 @@ etcdctl --endpoints=$ETCD_ENDPOINTS \
 ## Troubleshooting
 
 - **Backup fails with "context deadline exceeded"**: The etcd cluster is under heavy load or a member is down. Try targeting a specific healthy member with a single endpoint.
-- **Restore fails with "resource already exists"**: Use `calicoctl replace` instead of `calicoctl apply` for resources that already exist, or delete them first.
+- **Restore fails with "resource already exists"**: This usually means the restore was run with `calicoctl create`. Use `calicoctl apply`, which creates missing resources and replaces existing resources, or delete the resources first if you need a clean import.
 - **Compaction fails**: The etcd cluster may not have quorum. Verify all members are healthy before running maintenance.
 - **Certificate rotation breaks calico-node**: After rotating calicoctl certificates, remember to also update certificates used by calico-node pods. They use separate credentials.
 
