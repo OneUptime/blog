@@ -37,7 +37,7 @@ Log in to Docker Hub before pushing.
 ```bash
 # Interactive login
 podman login docker.io
-# Enter your Docker Hub username and password
+# Enter your Docker Hub username and password or access token
 
 # Login with environment variables (for CI/CD)
 echo "$DOCKERHUB_TOKEN" | podman login docker.io -u "$DOCKERHUB_USERNAME" --password-stdin
@@ -45,8 +45,9 @@ echo "$DOCKERHUB_TOKEN" | podman login docker.io -u "$DOCKERHUB_USERNAME" --pass
 # Verify authentication
 podman login --get-login docker.io
 
-# Check stored credentials
-cat ~/.config/containers/auth.json
+# On Linux, Podman stores credentials in ${XDG_RUNTIME_DIR}/containers/auth.json by default
+# To persist credentials across reboots, specify an auth file:
+podman login --authfile ~/.config/containers/auth.json docker.io
 ```
 
 ## Using Access Tokens
@@ -54,7 +55,7 @@ cat ~/.config/containers/auth.json
 Docker Hub access tokens are recommended over passwords.
 
 ```bash
-# Generate an access token at https://hub.docker.com/settings/security
+# Generate an access token in Docker Hub account settings
 # Then login with the token
 podman login docker.io -u myusername
 # When prompted for password, enter your access token instead
@@ -185,20 +186,20 @@ podman manifest push docker.io/myusername/myapp:v1.0.0 \
 
 ## Managing Docker Hub Rate Limits
 
-Be aware of Docker Hub pull and push limits.
+Be aware of Docker Hub pull rate limits.
 
 ```bash
 # Check your rate limit status
-TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/nginx:pull" \
+TOKEN=$(curl -s "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
 
 curl -s -H "Authorization: Bearer $TOKEN" \
-  -I "https://registry-1.docker.io/v2/library/nginx/manifests/latest" 2>&1 \
+  -I "https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest" 2>&1 \
   | grep -i ratelimit
 
-# Authenticated users get higher limits
-# Free: 200 pulls per 6 hours
-# Pro/Team: higher limits
+# Personal authenticated users: 200 pulls per 6 hours
+# Unauthenticated users: 100 pulls per 6 hours per IPv4 address or IPv6 /64 subnet
+# Pro, Team, and Business users: unlimited pulls, subject to fair use
 ```
 
 ## Summary
