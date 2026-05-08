@@ -115,11 +115,14 @@ metadata:
   name: default-ipv4-ippool
 spec:
   cidr: 10.244.0.0/16
+  # Do not change blockSize on an existing pool; keep the current value
   blockSize: 26
   # For nodes on the same L2 network, use Never
   # For nodes across subnets, use CrossSubnet or Always
   ipipMode: CrossSubnet
   vxlanMode: Never
+  # Ensure routes from this pool are advertised over BGP
+  disableBGPExport: false
   natOutgoing: true
   nodeSelector: all()
   # Ensure this is NOT set to true
@@ -135,11 +138,14 @@ metadata:
   name: default-ipv4-ippool
 spec:
   cidr: 10.244.0.0/16
+  # Do not change blockSize on an existing pool; keep the current value
   blockSize: 26
   ipipMode: CrossSubnet
   vxlanMode: Never
+  disableBGPExport: false
   natOutgoing: true
   nodeSelector: all()
+  disabled: false
 EOF
 
 # Verify the IP pool configuration
@@ -156,16 +162,7 @@ For clusters with more than 50 nodes, disable the full mesh and use route reflec
 # kubectl label node rr-node-1 route-reflector=true
 # kubectl label node rr-node-2 route-reflector=true
 
-# Step 2: Disable full mesh
-apiVersion: projectcalico.org/v3
-kind: BGPConfiguration
-metadata:
-  name: default
-spec:
-  nodeToNodeMeshEnabled: false
-  asNumber: 64512
----
-# Step 3: Configure route reflector nodes
+# Step 2: Configure route reflector nodes
 apiVersion: projectcalico.org/v3
 kind: Node
 metadata:
@@ -176,7 +173,7 @@ spec:
   bgp:
     routeReflectorClusterID: 244.0.0.1
 ---
-# Step 4: Create BGP peer for non-RR nodes to peer with RR nodes
+# Step 3: Create BGP peer for non-RR nodes to peer with RR nodes
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
@@ -185,7 +182,7 @@ spec:
   nodeSelector: "!has(route-reflector)"
   peerSelector: route-reflector == 'true'
 ---
-# Step 5: Create BGP peer for RR nodes to peer with each other
+# Step 4: Create BGP peer for RR nodes to peer with each other
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
@@ -193,6 +190,15 @@ metadata:
 spec:
   nodeSelector: route-reflector == 'true'
   peerSelector: route-reflector == 'true'
+---
+# Step 5: Disable full mesh after route reflector peering is configured
+apiVersion: projectcalico.org/v3
+kind: BGPConfiguration
+metadata:
+  name: default
+spec:
+  nodeToNodeMeshEnabled: false
+  asNumber: 64512
 ```
 
 ```bash
@@ -209,12 +215,12 @@ calicoctl node status
 Confirm routes are now being advertised correctly:
 
 ```bash
-# Check BGP peers are all Established
+# Check BGP peers are all Established on each Calico node
 calicoctl node status
 
 # Verify routes exist on all nodes
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  ROUTE_COUNT=$(kubectl debug node/$NODE -it --image=nicolaka/netshoot -- \
+  ROUTE_COUNT=$(kubectl debug node/$NODE --quiet --image=nicolaka/netshoot -- \
     ip route show proto bird 2>/dev/null | wc -l)
   echo "$NODE: $ROUTE_COUNT BGP routes"
 done
