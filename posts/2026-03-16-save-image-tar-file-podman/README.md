@@ -16,12 +16,12 @@ When working with container images in air-gapped environments, transferring imag
 
 ## Understanding podman save
 
-The `podman save` command writes one or more images to a file or standard output. The default output format is a Docker-compatible tar archive, which makes the resulting file portable across container runtimes.
+The `podman save` command writes an image to a file or standard output. The default output format is a Docker-compatible tar archive, which makes the resulting file portable across container runtimes. For Docker archives, you can use `-m` to save more than one image.
 
 ```bash
 # Basic syntax
 
-podman save [options] IMAGE [IMAGE...]
+podman save [options] IMAGE
 ```
 
 ## Saving a Single Image
@@ -46,7 +46,7 @@ ls -lh nginx-latest.tar
 
 ## Saving with Compression
 
-Tar files can be large. You can compress them on the fly by piping through gzip or using the `--compress` flag.
+Tar files can be large. You can compress them on the fly by piping through gzip, bzip2, or zstd.
 
 ```bash
 # Method 1: Pipe through gzip
@@ -77,11 +77,13 @@ podman pull docker.io/library/redis:7
 podman pull docker.io/library/postgres:16
 
 # Save all three into one tar file
-podman save -o app-stack.tar \
+podman save -m -o app-stack.tar \
   docker.io/library/nginx:latest \
   docker.io/library/redis:7 \
   docker.io/library/postgres:16
 ```
+
+The `-m` flag allows a Docker archive to contain more than one image.
 
 ## Choosing the Output Format
 
@@ -125,8 +127,8 @@ When an image has multiple tags, you can save specific tags or all of them.
 podman tag docker.io/library/nginx:latest myapp:v1.0
 podman tag docker.io/library/nginx:latest myapp:stable
 
-# Save both tags
-podman save -o myapp-tags.tar myapp:v1.0 myapp:stable
+# Save both tags in one archive
+podman save -m -o myapp-tags.tar myapp:v1.0 myapp:stable
 ```
 
 ## Practical Workflow: Transfer Between Machines
@@ -171,9 +173,8 @@ done
 
 ```bash
 # Save all images matching a pattern
-podman images --format "{{.Repository}}:{{.Tag}}" | grep "myapp" | while read img; do
-  podman save "$img" >> all-myapp-images.tar
-done
+podman save -m -o all-myapp-images.tar \
+  $(podman images --format "{{.Repository}}:{{.Tag}}" | grep "myapp")
 ```
 
 ## Summary
