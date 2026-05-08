@@ -10,11 +10,11 @@ Description: Safely update Calico IPPool resources without disrupting running wo
 
 ## Introduction
 
-Modifying an active IPPool in Calico requires careful planning because pods already have IPs assigned from the pool. Changing the CIDR, disabling the pool, or altering encapsulation affects running workloads. A careless update can cause network outages, IP conflicts, or orphaned allocations.
+Modifying an active IPPool in Calico requires careful planning because pods already have IPs assigned from the pool. Changing the CIDR or altering encapsulation affects how workloads are allocated or routed, while disabling a pool prevents only new allocations. A careless update can cause network outages, IP conflicts, or orphaned allocations.
 
 The safest approach depends on which fields you need to change. Some fields like natOutgoing and encapsulation can be updated in place, while changing the CIDR requires creating a new pool and migrating workloads. Understanding these distinctions prevents downtime.
 
-This guide covers safe update strategies for every modifiable IPPool field, including rollback procedures for when things go wrong.
+This guide covers safe update strategies for common IPPool fields, including rollback procedures for when things go wrong.
 
 ## Prerequisites
 
@@ -70,7 +70,7 @@ This takes effect immediately for new connections. Existing connections continue
 
 ## Changing Encapsulation Mode
 
-Switching encapsulation modes requires a rolling approach:
+Switching encapsulation modes can cause brief packet loss while routes and tunnel programming converge, so make the change during a maintenance window:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -85,7 +85,7 @@ spec:
   blockSize: 26
 ```
 
-Apply and then perform a rolling restart of calico-node to ensure all nodes pick up the change:
+Apply the change and monitor calico-node health. If your deployment does not converge cleanly, restart the calico-node DaemonSet in the namespace where it is installed:
 
 ```bash
 calicoctl apply -f ippool-vxlan.yaml
@@ -95,7 +95,7 @@ kubectl rollout status daemonset calico-node -n calico-system
 
 ## Migrating to a New CIDR
 
-Since CIDR cannot be changed in place, create a new pool and migrate:
+Since CIDR cannot be changed in place, create a new pool and migrate. Verify first that the cluster uses Calico IPAM, and keep the new pool inside the Kubernetes cluster CIDR:
 
 ```bash
 # Step 1: Create the new pool
@@ -116,11 +116,11 @@ EOF
 # Step 2: Disable the old pool
 calicoctl patch ippool default-ipv4-pool -p '{"spec": {"disabled": true}}'
 
-# Step 3: Rolling restart workloads to get new IPs
+# Step 3: Restart workloads to get new IPs
 kubectl rollout restart deployment -n my-namespace
 ```
 
-Wait for all pods to be rescheduled with IPs from the new pool before deleting the old one.
+Wait for all pods from the old pool to be recreated with IPs from the new pool before deleting the old one.
 
 ## Updating Node Selectors
 
@@ -143,6 +143,7 @@ calicoctl get ippools -o wide
 
 # Verify IPAM allocations
 calicoctl ipam show
+calicoctl ipam show --show-blocks
 
 # Check for pods with IPs outside active pools
 kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.podIP}{"\n"}{end}'
@@ -155,10 +156,10 @@ kubectl get pods -n calico-system -l k8s-app=calico-node
 
 - If pods lose connectivity after tunnel mode changes, verify all calico-node pods have restarted with `kubectl get pods -n calico-system -l k8s-app=calico-node -o wide`
 - If new pods are not getting IPs after disabling a pool, ensure the replacement pool exists and is not disabled
-- For CIDR migration, check that old pool blocks are released: `calicoctl ipam show --show-blocks`
+- For CIDR migration, check that old pool blocks are released before deleting the old pool
 - If a rollback is needed, re-enable the old pool immediately: `calicoctl patch ippool default-ipv4-pool -p '{"spec": {"disabled": false}}'`
 - Always keep backups of pool configurations before making changes
 
 ## Conclusion
 
-Updating Calico IPPool resources safely requires understanding which fields support in-place changes and which require migration. Always back up existing configurations, test changes in a non-production environment first, and have a rollback plan ready. For CIDR changes, the disable-and-migrate pattern ensures zero downtime when executed correctly.
+Updating Calico IPPool resources safely requires understanding which fields support in-place changes and which require migration. Always back up existing configurations, test changes in a non-production environment first, and have a rollback plan ready. For CIDR changes, the disable-and-migrate pattern keeps existing pod connectivity intact when executed correctly, though restarted workloads may still see normal application-level interruption.
