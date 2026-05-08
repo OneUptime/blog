@@ -40,11 +40,11 @@ for POD in $(kubectl get pods -n kube-system -l k8s-app=calico-node -o name); do
 done
 ```
 
-**Validation Step 2: iptables rules present on all nodes**
+**Validation Step 2: iptables rules present on all nodes (for the Calico iptables dataplane)**
 
 ```bash
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  RULES=$(ssh $NODE "sudo iptables -L | grep -c cali-pi" 2>/dev/null)
+  RULES=$(ssh $NODE "sudo iptables-save | grep -Ec 'cali-p[io]-' || true" 2>/dev/null)
   echo "$NODE: $RULES Calico policy rules"
 done
 ```
@@ -55,6 +55,7 @@ done
 # Test that traffic is now blocked (if policy is deny)
 
 kubectl run block-test --image=busybox --restart=Never -- sleep 60
+kubectl wait --for=condition=Ready pod/block-test --timeout=60s
 TARGET_IP=$(kubectl get pod <policy-target-pod> -o jsonpath='{.status.podIP}')
 
 kubectl exec block-test -- ping -c 2 -W 2 $TARGET_IP 2>&1
@@ -67,6 +68,7 @@ kubectl delete pod block-test
 
 ```bash
 kubectl run allow-test --image=busybox --restart=Never -- sleep 60
+kubectl wait --for=condition=Ready pod/allow-test --timeout=60s
 kubectl exec allow-test -- ping -c 3 <expected-allowed-ip> 2>&1
 # Expected: ping succeeds (allowed by policy)
 kubectl delete pod allow-test
@@ -100,4 +102,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating NetworkPolicy enforcement requires confirming Felix health on all nodes, iptables rules present cluster-wide, and both blocking and allowing traffic tests passing as expected. Running tests on multiple nodes catches partial enforcement issues that single-node validation would miss.
+Validating NetworkPolicy enforcement requires confirming Felix health on all nodes, dataplane rules present cluster-wide, and both blocking and allowing traffic tests passing as expected. Running tests on multiple nodes catches partial enforcement issues that single-node validation would miss.
