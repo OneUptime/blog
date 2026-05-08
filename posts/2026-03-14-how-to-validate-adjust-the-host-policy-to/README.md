@@ -19,6 +19,7 @@ By integrating these validation steps into your deployment workflow, you can cat
 ## Prerequisites
 
 - Kubernetes cluster with Cilium (v1.14+) installed
+- Cilium host firewall enabled (`hostFirewall.enabled=true`)
 - `cilium` CLI and Hubble CLI available
 - `kubectl` access to the cluster
 - A staging or test namespace for validation
@@ -94,14 +95,15 @@ spec:
 ```
 
 ```bash
-# Validate all endpoints have policies applied
-cilium endpoint list -o json | jq '.[] | {id: .id, policy: .status.policy}'
+# Inspect the host endpoint policy state on a Cilium agent
+kubectl -n kube-system exec ds/cilium -- \
+  cilium-dbg endpoint get -l reserved:host -o 'jsonpath={range [*]}{@.id}{"="}{@.status.policy.spec.policy-enabled}{"\n"}{end}'
 ```
 
 ### Running Connectivity Tests
 
 ```bash
-# Run Cilium connectivity test suite
+# Run Cilium connectivity test suite to validate the datapath and policy framework
 cilium connectivity test
 ```
 
@@ -115,13 +117,13 @@ hubble observe --namespace cilium-validate --output compact --last 50
 kubectl -n cilium-validate exec client -- \
   wget --timeout=5 -q -O - http://server
 
-# Verify unauthorized traffic is blocked
+# Verify workload traffic is not blocked by the host policy
 kubectl -n cilium-validate run unauthorized \
   --image=busybox:1.36 --rm -it --restart=Never \
   --labels="app=unauthorized" -- \
   wget --timeout=3 -q -O - http://server
 
-# Check Hubble for the expected drop
+# If validation fails, check Hubble for policy drops
 hubble observe --namespace cilium-validate --verdict DROPPED --last 10
 ```
 
@@ -143,28 +145,31 @@ echo "=== Cilium Policy Validation ==="
 # Test 1: Cilium agent health
 echo -n "Test 1: Cilium agent health... "
 if cilium status > /dev/null 2>&1; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((PASS+=1))
 else
-  echo "FAIL"; ((FAIL++))
+  echo "FAIL"; ((FAIL+=1))
 fi
 
 # Test 2: All endpoints ready
 echo -n "Test 2: All endpoints ready... "
-NOT_READY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.state != "ready")] | length')
+NOT_READY=$(kubectl get ciliumendpoints.cilium.io --all-namespaces -o json | \
+  jq '[.items[] | select(.status.state != "ready")] | length')
 if [ "$NOT_READY" -eq 0 ]; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((PASS+=1))
 else
-  echo "FAIL ($NOT_READY not ready)"; ((FAIL++))
+  echo "FAIL ($NOT_READY not ready)"; ((FAIL+=1))
 fi
 
 # Test 3: Policies applied
 echo -n "Test 3: Policies applied... "
-POLICY_COUNT=$(cilium policy get -o json | jq '. | length')
+POLICY_COUNT=$((
+  $(kubectl get cnp --all-namespaces --no-headers 2>/dev/null | wc -l) +
+  $(kubectl get ccnp --no-headers 2>/dev/null | wc -l)
+))
 if [ "$POLICY_COUNT" -gt 0 ]; then
-  echo "PASS ($POLICY_COUNT policies)"; ((PASS++))
+  echo "PASS ($POLICY_COUNT policies)"; ((PASS+=1))
 else
-  echo "FAIL (no policies)"; ((FAIL++))
+  echo "FAIL (no policies)"; ((FAIL+=1))
 fi
 
 echo ""
@@ -207,8 +212,9 @@ cilium status
 ```
 
 ```bash
-# Confirm all endpoints are healthy
-cilium endpoint health
+# Confirm the host endpoint is healthy
+kubectl -n kube-system exec ds/cilium -- sh -c \
+  'HOST_EP_ID=$(cilium-dbg endpoint get -l reserved:host -o "jsonpath={\$[0].id}"); cilium-dbg endpoint health "$HOST_EP_ID"'
 ```
 
 ```bash
