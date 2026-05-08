@@ -10,7 +10,7 @@ Description: How to secure AWS access keys and IAM role configurations used by C
 
 ## Introduction
 
-Securing AWS access keys and IAM roles for Cilium prevents unauthorized access to your VPC networking. Cilium needs AWS credentials to manage ENIs in ENI IPAM mode, and these credentials must be locked down to prevent misuse.
+Securing AWS access keys and IAM roles for Cilium prevents unauthorized access to your VPC networking. The Cilium operator needs AWS credentials to manage ENIs in ENI IPAM mode, and these credentials must be locked down to prevent misuse.
 
 The security hierarchy from least to most secure is: static access keys, instance profiles, and IAM roles for service accounts (IRSA). Production deployments should always use IRSA.
 
@@ -39,7 +39,8 @@ cat <<EOF > trust-policy.json
     "Action": "sts:AssumeRoleWithWebIdentity",
     "Condition": {
       "StringEquals": {
-        "oidc.eks.us-east-1.amazonaws.com/id/ABCDEF:sub": "system:serviceaccount:kube-system:cilium"
+        "oidc.eks.us-east-1.amazonaws.com/id/ABCDEF:aud": "sts.amazonaws.com",
+        "oidc.eks.us-east-1.amazonaws.com/id/ABCDEF:sub": "system:serviceaccount:kube-system:cilium-operator"
       }
     }
   }]
@@ -48,16 +49,20 @@ EOF
 
 aws iam create-role --role-name cilium-eni-role --assume-role-policy-document file://trust-policy.json
 
-# Step 3: Attach minimal policy
+# Step 3: Create and attach the minimal policy from cilium-eni-policy.json
+aws iam create-policy \
+  --policy-name CiliumMinimalPolicy \
+  --policy-document file://cilium-eni-policy.json
+
 aws iam attach-role-policy --role-name cilium-eni-role \
   --policy-arn arn:aws:iam::123456789012:policy/CiliumMinimalPolicy
 
-# Step 4: Annotate service account
-kubectl annotate sa cilium -n kube-system \
+# Step 4: Annotate the Cilium operator service account
+kubectl annotate sa cilium-operator -n kube-system \
   eks.amazonaws.com/role-arn=arn:aws:iam::123456789012:role/cilium-eni-role
 
-# Step 5: Restart Cilium to pick up new credentials
-kubectl rollout restart daemonset/cilium -n kube-system
+# Step 5: Restart the Cilium operator to pick up new credentials
+kubectl rollout restart deployment/cilium-operator -n kube-system
 
 # Step 6: Remove old static credentials
 kubectl delete secret aws-creds -n kube-system
@@ -73,6 +78,8 @@ graph TD
 
 ## Implementing Least-Privilege IAM
 
+Save this policy as `cilium-eni-policy.json` before attaching it to the role:
+
 ```json
 {
   "Version": "2012-10-17",
@@ -87,9 +94,13 @@ graph TD
         "ec2:DescribeNetworkInterfaces",
         "ec2:DescribeSubnets",
         "ec2:DescribeVpcs",
+        "ec2:DescribeRouteTables",
         "ec2:DescribeSecurityGroups",
+        "ec2:ModifyNetworkInterfaceAttribute",
         "ec2:AssignPrivateIpAddresses",
-        "ec2:UnassignPrivateIpAddresses"
+        "ec2:UnassignPrivateIpAddresses",
+        "ec2:CreateTags",
+        "ec2:DescribeTags"
       ],
       "Resource": "*"
     },
@@ -112,23 +123,26 @@ graph TD
 # Enable CloudTrail logging for the Cilium role
 # Monitor for unusual patterns:
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=Username,AttributeValue=cilium-eni-role \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
   --max-items 20
 ```
 
 ## Verification
 
 ```bash
-kubectl exec -n kube-system -l k8s-app=cilium -- aws sts get-caller-identity
+kubectl run aws-cli-irsa-test -n kube-system --rm -i --restart=Never \
+  --image=amazon/aws-cli:2 \
+  --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"cilium-operator"}}' \
+  -- sts get-caller-identity
 cilium status | grep IPAM
-kubectl get sa cilium -n kube-system -o yaml | grep eks.amazonaws.com
+kubectl get sa cilium-operator -n kube-system -o yaml | grep eks.amazonaws.com
 ```
 
 ## Troubleshooting
 
 - **IRSA not working after migration**: Check OIDC provider and trust policy condition.
 - **Permission denied on ENI operations**: Update IAM policy with missing actions.
-- **Old credentials still being used**: Restart all Cilium pods after IRSA setup.
+- **Old credentials still being used**: Restart the Cilium operator pods after IRSA setup.
 
 ## Conclusion
 
