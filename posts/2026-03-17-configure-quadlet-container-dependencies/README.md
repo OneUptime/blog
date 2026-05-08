@@ -18,11 +18,11 @@ When running multi-container applications, services often depend on each other. 
 
 | Directive | Behavior |
 |-----------|----------|
-| `After=` | Start this service after the listed services |
-| `Before=` | Start this service before the listed services |
-| `Requires=` | This service fails if the listed services fail |
-| `Wants=` | Like Requires but does not fail if dependency fails |
-| `BindsTo=` | Stronger than Requires; stops if dependency stops |
+| `After=` | Order this service after the listed services when both are started |
+| `Before=` | Order this service before the listed services when both are started |
+| `Requires=` | Start the listed services too; fail if a required service cannot start |
+| `Wants=` | Start the listed services too, but continue if they fail |
+| `BindsTo=` | Stronger than Requires; stops this service if the dependency stops |
 
 ## Basic Dependency Configuration
 
@@ -42,7 +42,6 @@ HealthInterval=10s
 Notify=healthy
 
 [Service]
-Type=notify
 Restart=on-failure
 
 [Install]
