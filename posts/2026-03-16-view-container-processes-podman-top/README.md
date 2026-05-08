@@ -10,7 +10,7 @@ Description: Learn how to view and analyze running processes inside Podman conta
 
 > podman top gives you visibility into every process running inside a container, essential for debugging and security auditing.
 
-Understanding what processes are running inside a container is critical for debugging application issues, verifying that services started correctly, and ensuring no unexpected processes are present. The `podman top` command works like the Linux `top` and `ps` commands but is scoped to a specific container. This guide covers all its capabilities.
+Understanding what processes are running inside a container is critical for debugging application issues, verifying that services started correctly, and ensuring no unexpected processes are present. The `podman top` command displays process information similar to `ps` but is scoped to a specific container. This guide covers its common capabilities.
 
 ---
 
@@ -95,7 +95,7 @@ podman top my-app pid args | grep nginx
 ### Identifying Resource-Heavy Processes
 
 ```bash
-# Sort by CPU and memory usage
+# Show CPU and memory usage
 podman top my-app pid pcpu pmem rss comm
 
 # Check for processes consuming excessive memory
@@ -127,7 +127,7 @@ podman top my-app user pid comm | grep root
 You can also use `ps` inside the container, but `podman top` has advantages:
 
 ```bash
-# Using podman top (works even if ps is not installed in the container)
+# Using podman top (works with supported descriptors even if ps is not installed in the container)
 podman top my-app
 
 # Using exec ps (requires ps to be installed in the container)
@@ -185,4 +185,4 @@ podman stop my-app && podman rm my-app
 
 ## Summary
 
-The `podman top` command shows running processes inside a container without requiring `ps` to be installed in the container image. Use custom descriptors to focus on specific attributes like CPU usage, memory, or user ownership. It is more reliable than `podman exec ps` and shows both container and host PIDs, making it essential for debugging and security auditing.
+The `podman top` command shows running processes inside a container without requiring `ps` to be installed in the container image when using supported descriptors. Use custom descriptors to focus on specific attributes like CPU usage, memory, or user ownership. It can be more reliable than `podman exec ps` and can show both container and host PIDs, making it useful for debugging and security auditing.
