@@ -36,16 +36,15 @@ Verify that service IPs are allocated correctly from the dedicated pool.
 echo "=== Service IP Allocation Tests ==="
 
 # Record initial allocation state
-INITIAL_ALLOC=$(calicoctl ipam show 2>/dev/null | grep "allocated")
+INITIAL_ALLOC=$(calicoctl ipam show 2>/dev/null)
 echo "Initial allocation: ${INITIAL_ALLOC}"
 
 # Create a service VM with a service IP
-openstack server create --project service-test \
+OS_PROJECT_NAME=service-test openstack server create \
   --flavor m1.small --image ubuntu-22.04 \
   --network service-network \
+  --wait \
   test-service-1
-
-openstack server wait test-service-1
 
 # Get the assigned IP
 SERVICE_IP=$(openstack server show test-service-1 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
@@ -61,7 +60,7 @@ fi
 # Check IPAM allocation
 echo ""
 echo "Post-allocation state:"
-calicoctl ipam show 2>/dev/null | grep "allocated"
+calicoctl ipam show 2>/dev/null
 ```
 
 ## Testing Service Endpoint Connectivity
@@ -76,7 +75,7 @@ echo "=== Service Endpoint Connectivity Tests ==="
 SERVICE_IP=$(openstack server show test-service-1 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
 
 # Start a service on the VM
-ssh ubuntu@${SERVICE_IP} "python3 -m http.server 8080 &"
+ssh ubuntu@${SERVICE_IP} "nohup python3 -m http.server 8080 >/tmp/test-service-http.log 2>&1 &"
 sleep 2
 
 # Test from a consumer VM on a different network
@@ -112,6 +111,10 @@ graph LR
 #!/bin/bash
 # test-service-ip-policy.sh
 echo "=== Service IP Policy Tests ==="
+
+SERVICE_IP=$(openstack server show test-service-1 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+CONSUMER_IP=$(openstack server show test-consumer-1 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+UNAUTH_IP=$(openstack server show test-unauthorized-1 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
 
 # Apply a policy restricting service access
 calicoctl apply -f - << 'EOF'
@@ -152,6 +155,27 @@ calicoctl delete globalnetworkpolicy test-service-restriction
 # test-service-ip-failover.sh
 echo "=== Service IP Failover Tests ==="
 
+wait_for_server_status() {
+  server="$1"
+  expected="$2"
+  timeout="${3:-120}"
+  elapsed=0
+
+  while [ "${elapsed}" -lt "${timeout}" ]; do
+    status=$(openstack server show "${server}" -f value -c status 2>/dev/null)
+    if [ "${status}" = "${expected}" ]; then
+      return 0
+    fi
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  echo "Timed out waiting for ${server} to reach ${expected}; last status was ${status}"
+  return 1
+}
+
+SERVICE_IP=$(openstack server show test-service-1 -f value -c addresses | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+
 # Record which node hosts the service
 SERVICE_HOST=$(openstack server show test-service-1 -f value -c OS-EXT-SRV-ATTR:host)
 echo "Service hosted on: ${SERVICE_HOST}"
@@ -168,6 +192,7 @@ done
 echo ""
 echo "Stopping service VM..."
 openstack server stop test-service-1
+wait_for_server_status test-service-1 SHUTOFF
 sleep 15
 
 echo "Route verification after stop:"
@@ -178,7 +203,7 @@ done
 
 # Restart and verify route returns
 openstack server start test-service-1
-openstack server wait test-service-1
+wait_for_server_status test-service-1 ACTIVE
 sleep 15
 
 echo ""
