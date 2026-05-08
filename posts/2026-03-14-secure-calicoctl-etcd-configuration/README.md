@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, etcd, Security, TLS, Calicoctl
 
-Description: Learn how to secure your calicoctl etcd datastore configuration with mutual TLS, certificate rotation, etcd RBAC, encrypted secrets management, and audit logging best practices.
+Description: Learn how to secure your calicoctl etcd datastore configuration with mutual TLS, certificate rotation, etcd RBAC, and encrypted secrets management best practices.
 
 ---
 
@@ -30,12 +30,13 @@ Mutual TLS (mTLS) ensures both the client (calicoctl) and server (etcd) authenti
 
 ```bash
 # Generate a private key for calicoctl
+umask 077
 
 openssl genrsa -out calicoctl-key.pem 4096
 
 # Create a certificate signing request
 openssl req -new -key calicoctl-key.pem -out calicoctl.csr \
-  -subj "/CN=calicoctl/O=calico-admins"
+  -subj "/CN=calico-operator/O=calico-admins"
 
 # Sign the CSR with your etcd CA
 openssl x509 -req -in calicoctl.csr \
@@ -61,7 +62,7 @@ rm -f calicoctl-key.pem calicoctl-cert.pem calicoctl.csr
 Configure calicoctl to use the certificates:
 
 ```yaml
-# /etc/calicoctl/calicoctl.cfg
+# /etc/calico/calicoctl.cfg
 apiVersion: projectcalico.org/v3
 kind: CalicoAPIConfig
 metadata:
@@ -75,7 +76,7 @@ spec:
 
 ## Implementing etcd Role-Based Access Control
 
-etcd supports its own RBAC system. Create a dedicated role that limits calicoctl to only the Calico key prefix:
+etcd supports its own RBAC system. Create a dedicated role that limits calicoctl to only the Calico key prefix. When using TLS Common Name authentication, the certificate CN must match the etcd user name:
 
 ```bash
 # Enable etcd authentication (if not already enabled)
@@ -105,7 +106,7 @@ etcdctl --endpoints=https://etcd1:2379 \
   --key=/etc/etcd/pki/admin-key.pem \
   --cacert=/etc/etcd/pki/ca.pem \
   --user root \
-  role grant-permission calico-admin readwrite /calico/ --prefix
+  role grant-permission calico-admin --prefix=true readwrite /calico/
 
 # Create a user and assign the role
 etcdctl --endpoints=https://etcd1:2379 \
@@ -113,7 +114,7 @@ etcdctl --endpoints=https://etcd1:2379 \
   --key=/etc/etcd/pki/admin-key.pem \
   --cacert=/etc/etcd/pki/ca.pem \
   --user root \
-  user add calico-operator --new-user-password="<password>"
+  user add calico-operator --no-password
 
 etcdctl --endpoints=https://etcd1:2379 \
   --cert=/etc/etcd/pki/admin-cert.pem \
@@ -133,6 +134,7 @@ Create a certificate rotation script to prevent expiry-related outages:
 # Rotates calicoctl client certificates
 
 set -euo pipefail
+umask 077
 
 CERT_DIR="/etc/calicoctl/certs"
 CA_CERT="/etc/etcd/pki/ca.pem"
@@ -143,9 +145,11 @@ echo "Generating new calicoctl client certificate..."
 
 # Generate new key and certificate
 openssl genrsa -out "${CERT_DIR}/key-new.pem" 4096
-openssl req -new -key "${CERT_DIR}/key-new.pem" -out /tmp/calicoctl-new.csr \
-  -subj "/CN=calicoctl/O=calico-admins"
-openssl x509 -req -in /tmp/calicoctl-new.csr \
+TMP_CSR="$(mktemp)"
+trap 'rm -f "$TMP_CSR"' EXIT
+openssl req -new -key "${CERT_DIR}/key-new.pem" -out "$TMP_CSR" \
+  -subj "/CN=calico-operator/O=calico-admins"
+openssl x509 -req -in "$TMP_CSR" \
   -CA "$CA_CERT" -CAkey "$CA_KEY" -CAcreateserial \
   -out "${CERT_DIR}/cert-new.pem" -days "$DAYS_VALID" -sha256
 
@@ -158,7 +162,7 @@ export ETCD_ENDPOINTS="https://etcd1:2379"
 
 if calicoctl get nodes > /dev/null 2>&1; then
     echo "New certificate verified successfully"
-    # Swap certificates atomically
+    # Swap certificates into place
     mv "${CERT_DIR}/key.pem" "${CERT_DIR}/key-old.pem"
     mv "${CERT_DIR}/cert.pem" "${CERT_DIR}/cert-old.pem"
     mv "${CERT_DIR}/key-new.pem" "${CERT_DIR}/key.pem"
@@ -171,7 +175,7 @@ else
     exit 1
 fi
 
-rm -f /tmp/calicoctl-new.csr
+rm -f "$TMP_CSR"
 ```
 
 ```mermaid
@@ -186,7 +190,7 @@ flowchart TD
     H -->|calico-admin| I[Allow /calico/ prefix]
     H -->|No role| J[Deny Access]
     C --> K[Certificate Rotation Script]
-    K -->|Every 365 days| C
+    K -->|Before expiry| C
 ```
 
 ## Securing Credential Storage
@@ -195,26 +199,29 @@ Use a secrets manager to store etcd credentials instead of plain files:
 
 ```bash
 # Store certificates in HashiCorp Vault
-vault kv put secret/calico/etcd \
+vault kv put -mount=secret calico/etcd \
   ca_cert=@/etc/calicoctl/certs/ca.pem \
   client_cert=@/etc/calicoctl/certs/cert.pem \
   client_key=@/etc/calicoctl/certs/key.pem
 
 # Retrieve certificates at runtime
-vault kv get -field=ca_cert secret/calico/etcd > /tmp/ca.pem
-vault kv get -field=client_cert secret/calico/etcd > /tmp/cert.pem
-vault kv get -field=client_key secret/calico/etcd > /tmp/key.pem
-chmod 600 /tmp/*.pem
+umask 077
+TMP_CERT_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_CERT_DIR"' EXIT
+vault kv get -mount=secret -field=ca_cert calico/etcd > "$TMP_CERT_DIR/ca.pem"
+vault kv get -mount=secret -field=client_cert calico/etcd > "$TMP_CERT_DIR/cert.pem"
+vault kv get -mount=secret -field=client_key calico/etcd > "$TMP_CERT_DIR/key.pem"
+chmod 600 "$TMP_CERT_DIR"/*.pem
 
 # Use the temporary certificates
 export DATASTORE_TYPE=etcdv3
-export ETCD_CA_CERT_FILE=/tmp/ca.pem
-export ETCD_CERT_FILE=/tmp/cert.pem
-export ETCD_KEY_FILE=/tmp/key.pem
+export ETCD_CA_CERT_FILE="$TMP_CERT_DIR/ca.pem"
+export ETCD_CERT_FILE="$TMP_CERT_DIR/cert.pem"
+export ETCD_KEY_FILE="$TMP_CERT_DIR/key.pem"
 calicoctl get nodes
 
 # Clean up after use
-rm -f /tmp/ca.pem /tmp/cert.pem /tmp/key.pem
+rm -rf "$TMP_CERT_DIR"
 ```
 
 ## Verification
@@ -244,7 +251,7 @@ ls -la /etc/calicoctl/certs/
 - **"authentication is not enabled"**: etcd auth was not enabled. Run `etcdctl auth enable` with root credentials first.
 - **"permission denied" from etcd RBAC**: The etcd user does not have the calico-admin role. Verify with `etcdctl user get calico-operator`.
 - **Certificate rotation breaks connectivity**: The new certificate may not match the CA. Verify with `openssl verify -CAfile ca.pem cert-new.pem` before swapping.
-- **"x509: certificate has expired"**: Run the rotation script immediately, or temporarily use the `--insecure-skip-tls-verify` flag only for emergency diagnostics (never in production).
+- **"x509: certificate has expired"**: Run the rotation script immediately and verify the renewed certificate chain with `openssl verify -CAfile ca.pem cert-new.pem` before retrying.
 
 ## Conclusion
 
