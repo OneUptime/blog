@@ -73,21 +73,42 @@ kubectl patch daemonset calico-node -n kube-system --type=json -p='[
 
 ## Step 5: Enable Azure Monitor Integration for Calico Metrics
 
-Create a Prometheus scrape ConfigMap for Azure Monitor:
+Create a custom Prometheus scrape ConfigMap for Azure Monitor:
 
 ```bash
-kubectl apply -f - <<EOF
+kubectl apply -f - <<'EOF'
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ama-metrics-settings-configmap
+  name: ama-metrics-prometheus-config
   namespace: kube-system
 data:
-  schema-version: v1
-  default-targets-metrics-keep-list: |-
-    [felix]
-    felix_active_local_endpoints = true
-    felix_iptables_rules = true
+  prometheus-config: |-
+    global:
+      scrape_interval: 30s
+    scrape_configs:
+    - job_name: calico-felix
+      scheme: http
+      metrics_path: /metrics
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace]
+        action: keep
+        regex: kube-system
+      - source_labels: [__meta_kubernetes_pod_label_k8s_app]
+        action: keep
+        regex: calico-node
+      - source_labels: [__meta_kubernetes_pod_phase]
+        action: keep
+        regex: Running
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:9091
+      metric_relabel_configs:
+      - source_labels: [__name__]
+        action: keep
+        regex: 'felix_active_local_endpoints|felix_iptables_rules'
 EOF
 ```
 
@@ -103,17 +124,16 @@ metadata:
   name: default
 spec:
   iptablesRefreshInterval: 180s
+  ipsetsRefreshInterval: 180s
   routeRefreshInterval: 180s
   iptablesPostWriteCheckInterval: 1s
-  iptablesLockFilePath: /run/xtables.lock
-  iptablesLockTimeout: 30s
 EOF
 ```
 
 ## Step 7: Verify Tuning
 
 ```bash
-calicoctl get felixconfiguration default -o yaml
+calicoctl get felixconfig default -o yaml
 kubectl rollout restart daemonset calico-node -n kube-system
 kubectl rollout status daemonset calico-node -n kube-system
 ```
