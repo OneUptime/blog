@@ -27,14 +27,18 @@ Resource Pre-Provisioning
 Configure generous resource limits from the start:
 
 ```bash
+API_SERVER_IP=<your_api_server_ip>
+API_SERVER_PORT=<your_api_server_port>
+
 helm install cilium cilium/cilium --namespace kube-system \
-  --set bpf.ctGlobalTCPMax=1048576 \
-  --set bpf.ctGlobalAnyMax=524288 \
+  --set bpf.ctTcpMax=1048576 \
+  --set bpf.ctAnyMax=524288 \
   --set bpf.natMax=1048576 \
   --set bpf.mapDynamicSizeRatio=0.0025 \
   --set kubeProxyReplacement=true \
+  --set k8sServiceHost=${API_SERVER_IP} \
+  --set k8sServicePort=${API_SERVER_PORT} \
   --set loadBalancer.acceleration=native \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set prometheus.enabled=true \
@@ -57,11 +61,12 @@ spec:
         spec:
           containers:
           - name: tester
-            image: networkstatic/iperf3
+            image: alpine:3.20
             command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache iperf3 jq curl
               SERVER="iperf-server.monitoring"
               for P in 1 8 16 32; do
                 BPS=$(iperf3 -c $SERVER -t 20 -P $P -J | jq '.end.sum_sent.bits_per_second')
@@ -95,7 +100,7 @@ spec:
     - alert: ScalingEfficiencyDegraded
       expr: |
         cilium_scaling_throughput_bps{processes="32"}
-        / cilium_scaling_throughput_bps{processes="1"} < 15
+        / ignoring(processes) cilium_scaling_throughput_bps{processes="1"} < 15
       for: 1h
       labels:
         severity: warning
@@ -123,13 +128,14 @@ spec:
       hostNetwork: true
       initContainers:
       - name: configure
-        image: busybox:1.36
+        image: alpine:3.20
         securityContext:
           privileged: true
         command:
         - sh
         - -c
         - |
+          apk add --no-cache ethtool
           # Ensure NIC queues match CPU count
           CPUS=$(nproc)
           ethtool -L eth0 combined $CPUS 2>/dev/null || true
