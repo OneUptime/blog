@@ -16,6 +16,8 @@ Validating a secured demo application confirms both positive (allowed traffic wo
 
 - Kubernetes cluster with Cilium and secured demo application
 - kubectl configured
+- curl and nc available in the application containers
+- Hubble enabled and Hubble CLI configured
 
 ## Validation Test Suite
 
@@ -25,9 +27,9 @@ echo "=== Demo App Security Validation ==="
 PASS=0
 FAIL=0
 
-# Test 1: Frontend reachable from outside
+# Test 1: Frontend serves HTTP inside its pod
 
-echo -n "Test 1 - Frontend accessible: "
+echo -n "Test 1 - Frontend HTTP check: "
 RESULT=$(kubectl exec -n demo deploy/frontend -- curl -s -o /dev/null -w "%{http_code}" http://localhost:80 --max-time 5)
 if [ "$RESULT" = "200" ]; then echo "PASS"; PASS=$((PASS+1)); else echo "FAIL ($RESULT)"; FAIL=$((FAIL+1)); fi
 
@@ -38,14 +40,13 @@ if [ "$RESULT" = "200" ]; then echo "PASS"; PASS=$((PASS+1)); else echo "FAIL ($
 
 # Test 3: Frontend cannot reach database
 echo -n "Test 3 - Frontend->DB blocked: "
-RESULT=$(kubectl exec -n demo deploy/frontend -- curl -s -o /dev/null -w "%{http_code}" http://database:5432/ --max-time 3 2>&1)
-if echo "$RESULT" | grep -qE "000|timeout"; then echo "PASS (blocked)"; PASS=$((PASS+1)); else echo "FAIL (not blocked: $RESULT)"; FAIL=$((FAIL+1)); fi
+RESULT=$(kubectl exec -n demo deploy/frontend -- nc -vz -w 3 database 5432 2>&1)
+if echo "$RESULT" | grep -qiE "timed out|timeout"; then echo "PASS (blocked)"; PASS=$((PASS+1)); else echo "FAIL (not blocked: $RESULT)"; FAIL=$((FAIL+1)); fi
 
 # Test 4: API can reach database
 echo -n "Test 4 - API->DB: "
-RESULT=$(kubectl exec -n demo deploy/api -- curl -s -o /dev/null -w "%{http_code}" http://database:5432/ --max-time 5 2>&1)
-# PostgreSQL will not respond to HTTP, but connection should not be refused
-echo "CHECK MANUALLY"
+RESULT=$(kubectl exec -n demo deploy/api -- nc -vz -w 5 database 5432 2>&1)
+if echo "$RESULT" | grep -qiE "succeeded|open"; then echo "PASS"; PASS=$((PASS+1)); else echo "FAIL ($RESULT)"; FAIL=$((FAIL+1)); fi
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
