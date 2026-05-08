@@ -61,8 +61,8 @@ echo "PASS: Baseline validation successful"
 ```bash
 # Validate throughput, latency, and connection rate against baselines
 echo "Throughput: $(kubectl exec pod-iperf -- iperf3 -c $SERVER_IP -t 15 -P 1 -J | jq '.end.sum_sent.bits_per_second / 1000000000') Gbps"
-echo "TCP_RR: $(kubectl exec pod-netperf -- netperf -H $SERVER_IP -t TCP_RR -l 15 2>/dev/null | tail -1 | awk '{print $1}') trans/s"
-echo "TCP_CRR: $(kubectl exec pod-netperf -- netperf -H $SERVER_IP -t TCP_CRR -l 15 2>/dev/null | tail -1 | awk '{print $1}') conn/s"
+echo "TCP_RR: $(kubectl exec pod-netperf -- netperf -H $SERVER_IP -t TCP_RR -l 15 2>/dev/null | tail -1 | awk '{print $NF}') trans/s"
+echo "TCP_CRR: $(kubectl exec pod-netperf -- netperf -H $SERVER_IP -t TCP_CRR -l 15 2>/dev/null | tail -1 | awk '{print $NF}') conn/s"
 ```
 
 ## Verification
@@ -90,7 +90,9 @@ Before running validation tests, ensure all variables except the one being teste
 ```bash
 # Create a controlled test environment
 kubectl cordon node-test-1 node-test-2
-kubectl drain node-test-1 node-test-2 --ignore-daemonsets --delete-emptydir-data
+for node in node-test-1 node-test-2; do
+  kubectl drain "$node" --ignore-daemonsets --delete-emptydir-data
+done
 
 # Verify no non-essential workloads
 kubectl get pods --all-namespaces --field-selector spec.nodeName=node-test-1 \
@@ -121,7 +123,7 @@ for i in $(seq 1 20); do
 done
 
 # Calculate statistics
-echo "${SAMPLES[@]}" | tr ' ' '\n' | awk '
+echo "${SAMPLES[@]}" | tr ' ' '\n' | sort -n | awk '
 {
   sum += $1
   sumsq += $1 * $1
@@ -133,8 +135,8 @@ END {
   stddev = sqrt(variance)
   cv = (stddev / mean) * 100
 
-  # Sort for percentiles
-  n = asort(data)
+  # Input is already sorted for percentile calculation
+  n = NR
   p50 = data[int(n * 0.5)]
   p95 = data[int(n * 0.95)]
   p99 = data[int(n * 0.99)]
@@ -162,4 +164,4 @@ Document your acceptance criteria clearly so that validation results can be obje
 
 ## Conclusion
 
-Validating baseline performance in Cilium establishes the reference point for all performance optimization. With optimal Cilium configuration (native routing, BPF host routing, XDP acceleration), pod-to-pod throughput should achieve 90-98% of host-to-host baseline, confirming minimal CNI overhead.
+Validating baseline performance in Cilium establishes the reference point for all performance optimization. With an optimal Cilium configuration for pod traffic, such as native routing and BPF host routing, pod-to-pod throughput can approach the host-to-host baseline, with the exact efficiency depending on hardware, kernel, routing mode, encryption, policy, and test parameters.
