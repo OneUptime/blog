@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Network Security, Protocol Specification, Corner Cases, Troubleshooting
 
-Description: Diagnose and resolve issues caused by protocol specification corner cases in Cilium L7 parsers, including client/server disagreements, encoding ambiguities, and state machine conflicts.
+Description: Diagnose and resolve issues caused by protocol specification corner cases in legacy Cilium proxylib L7 parsers, including client/server disagreements, encoding ambiguities, and state machine conflicts.
 
 ---
 
@@ -14,13 +14,15 @@ Corner cases in protocol specifications become real bugs when the parser encount
 
 Troubleshooting corner case issues requires comparing actual wire traffic against the specification, understanding where implementations diverge from the spec, and determining whether the parser's interpretation is correct for security purposes.
 
+Note: Cilium's Envoy Go Extensions (proxylib) were deprecated in Cilium 1.18 and removed in Cilium 1.20. Use these proxylib-specific techniques only with Cilium/proxy versions that still include proxylib parsers; for newer deployments, troubleshoot the corresponding Envoy filter or CiliumEnvoyConfig instead.
+
 ## Prerequisites
 
 - Packet capture of the problematic traffic
 - Protocol specification for reference
 - Access to client and server source code or documentation
 - Wireshark with protocol dissector (if available)
-- Parser source code and debug logging
+- Parser source code and debug logging from a Cilium/proxy version that still includes proxylib
 
 ## Diagnosing Client-Parser Disagreements
 
@@ -47,7 +49,10 @@ Compare parser interpretation with raw bytes:
 func (p *Parser) OnDataDiagnostic(reply bool, reader *proxylib.Reader) (proxylib.OpType, int) {
     dataLen := reader.Length()
     if dataLen > 0 {
-        data, _ := reader.PeekSlice(min(dataLen, 64))
+        sampleLen := min(dataLen, 64)
+        data := make([]byte, sampleLen)
+        n, _ := reader.PeekFull(data)
+        data = data[:n]
         log.WithFields(log.Fields{
             "direction": directionStr(reply),
             "dataLen":   dataLen,
@@ -91,7 +96,7 @@ When the same bytes are interpreted differently:
 
 # Example: Is string encoding UTF-8 or Latin-1?
 # Byte sequence: 0xC3 0xA9
-# As UTF-8: "e" (single character)
+# As UTF-8: "é" (single character)
 # As Latin-1: "Ã©" (two characters)
 ```
 
@@ -103,7 +108,7 @@ func diagnoseLengthField(data []byte) {
     }
 
     unsigned := uint32(data[0])<<24 | uint32(data[1])<<16 | uint32(data[2])<<8 | uint32(data[3])
-    signed := int32(data[0])<<24 | int32(data[1])<<16 | int32(data[2])<<8 | int32(data[3])
+    signed := int32(unsigned)
 
     log.WithFields(log.Fields{
         "bytes":      fmt.Sprintf("%02x %02x %02x %02x", data[0], data[1], data[2], data[3]),
@@ -149,6 +154,10 @@ kubectl exec -n cilium-parser-test deploy/test-client-v2 -- \
 ```go
 // Handle version-specific corner cases
 func (p *Parser) parseMessageVersionAware(data []byte) (ParsedMessage, error) {
+    if len(data) < 5 {
+        return ParsedMessage{}, io.ErrUnexpectedEOF
+    }
+
     version := data[4] // Assuming version byte at offset 4
 
     switch version {
