@@ -34,8 +34,8 @@ Set up a clean environment for accurate benchmarking results.
 # Record baseline state
 
 cilium status
-echo "Baseline identities: $(cilium identity list | wc -l)"
-echo "Baseline endpoints: $(cilium endpoint list | wc -l)"
+echo "Baseline identities: $(kubectl get ciliumidentities --no-headers 2>/dev/null | wc -l)"
+echo "Baseline endpoints: $(kubectl get ciliumendpoints --all-namespaces --no-headers 2>/dev/null | wc -l)"
 kubectl top pods -n kube-system -l k8s-app=cilium
 
 # Ensure monitoring is enabled for data collection
@@ -63,7 +63,7 @@ for ns in $(seq 1 5); do
       --namespace=bench-ns-$ns \
       --replicas=5
   done
-  echo "Deployed to bench-ns-$ns, current identity count: $(cilium identity list | wc -l)"
+  echo "Deployed to bench-ns-$ns, current identity count: $(kubectl get ciliumidentities --no-headers 2>/dev/null | wc -l)"
 done
 ```
 
@@ -75,15 +75,15 @@ done
 apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
-  name: bench-policy
+  name: bench-policy-TARGET
 spec:
   endpointSelector:
     matchLabels:
-      app: bench-1
+      app: bench-TARGET
   ingress:
     - fromEndpoints:
         - matchLabels:
-            app: bench-2
+            app: bench-SOURCE
       toPorts:
         - ports:
             - port: "80"
@@ -94,7 +94,8 @@ spec:
 # Apply policies across all namespaces
 for ns in $(seq 1 5); do
   for i in $(seq 1 10); do
-    cat bench-policy.yaml | sed "s/bench-1/bench-$i/g" | kubectl apply -n bench-ns-$ns -f -
+    source=$((i % 10 + 1))
+    sed -e "s/TARGET/$i/g" -e "s/SOURCE/$source/g" bench-policy.yaml | kubectl apply -n bench-ns-$ns -f -
   done
 done
 ```
@@ -104,10 +105,10 @@ done
 ```bash
 # Record post-benchmark metrics
 echo "=== Benchmark Results ==="
-echo "Identity count: $(cilium identity list | wc -l)"
-echo "Endpoint count: $(cilium endpoint list | wc -l)"
+echo "Identity count: $(kubectl get ciliumidentities --no-headers 2>/dev/null | wc -l)"
+echo "Endpoint count: $(kubectl get ciliumendpoints --all-namespaces --no-headers 2>/dev/null | wc -l)"
 kubectl top pods -n kube-system -l k8s-app=cilium
-cilium metrics list | grep -E "policy_regeneration|endpoint_regeneration|identity"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg metrics list | grep -E "policy_implementation_delay|policy_change_total|endpoint_regenerations_total|endpoint_regeneration_time_stats_seconds|identity"
 ```
 
 ```mermaid
@@ -138,7 +139,7 @@ After completing the steps above, run a comprehensive verification to confirm ev
 cilium status --verbose
 
 # Verify inter-node connectivity
-cilium health status
+kubectl -n kube-system exec ds/cilium -- cilium-health status
 
 # Confirm all Cilium pods are running and ready
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
@@ -153,24 +154,24 @@ kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tai
 cilium connectivity test --single-node
 
 # Verify endpoint count matches expected pod count
-echo "Cilium endpoints: $(cilium endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
+echo "Cilium endpoints: $(kubectl get ciliumendpoints --all-namespaces --no-headers 2>/dev/null | wc -l)"
 ```
 
 ## Troubleshooting
 
 If you encounter issues during or after the steps in this guide, use the following troubleshooting procedures:
 
-- **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 4.19 or later. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
+- **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and that the nodes meet Cilium's current Linux kernel requirements. Check Cilium pod logs with `kubectl logs -n kube-system <pod> --all-containers`.
 
-- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `cilium policy get`. Verify inter-node tunnel connectivity with `cilium bpf tunnel list`.
+- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check applied network policies with `kubectl get cnp --all-namespaces` and inspect the affected endpoint from an agent with `kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint get <id>`. If you use tunnel mode, confirm the tunnel setting with `kubectl -n kube-system exec ds/cilium -- cilium-dbg config get tunnel-protocol`.
 
-- **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm with `cilium config view`.
+- **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm the configured values with `kubectl get configmap cilium-config -n kube-system -o yaml`.
 
-- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `cilium metrics list | grep process_resident_memory`.
+- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check Cilium metrics with `kubectl -n kube-system exec ds/cilium -- cilium-dbg metrics list | grep -E "identity|bpf_map_pressure|endpoint_regenerations_total"`.
 
 - **Endpoints stuck in regenerating state**: This usually indicates the agent is overloaded or encountering errors during BPF program compilation. Check agent logs with `kubectl logs -n kube-system -l k8s-app=cilium --tail=200 | grep -i error`.
 
-- **Policy not being enforced**: Verify the policy selectors match the intended pods using `cilium endpoint list`. Confirm the policy is applied with `cilium policy get`. Check that the endpoint has the correct identity with `cilium endpoint get <id>`.
+- **Policy not being enforced**: Verify the policy selectors match the intended pods using `kubectl get ciliumendpoints --all-namespaces`. Confirm the policy is applied with `kubectl get cnp --all-namespaces`. Check that the endpoint has the correct identity and realized policy with `kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint get <id>`.
 
 To collect a comprehensive diagnostic bundle for further analysis:
 
