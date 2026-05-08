@@ -8,15 +8,15 @@ Description: Learn how to install and run Podman on Windows using WSL2, includin
 
 ---
 
-> With WSL2 and the Podman Windows installer, you can run Linux containers natively on Windows without Docker Desktop.
+> With WSL2 and the Podman Windows installer, you can run Linux containers on Windows without Docker Desktop.
 
-Podman on Windows works through two approaches: the native Podman for Windows installer that uses a managed WSL2 machine, or installing Podman directly inside a WSL2 Linux distribution. This guide covers both methods so you can choose the one that best fits your workflow.
+Podman on Windows works through two approaches: the native Podman for Windows installer that uses a managed WSL2 or Hyper-V machine, or installing Podman directly inside a WSL2 Linux distribution. This guide covers both methods so you can choose the one that best fits your workflow.
 
 ---
 
 ## Prerequisites
 
-- Windows 10 version 2004+ or Windows 11
+- Windows 11 for the Podman for Windows installer, or Windows 10 version 2004+ for installing Podman directly inside WSL2
 - WSL2 enabled
 - Administrator access
 - At least 4GB of free RAM
@@ -53,7 +53,7 @@ Alternatively, download the MSI installer from the Podman GitHub releases page a
 Open a new PowerShell or Command Prompt window:
 
 ```bash
-# Initialize a Podman machine (creates a WSL2-based VM)
+# Initialize a Podman machine (creates a WSL2-based machine if WSL is the selected provider)
 podman machine init
 
 # Start the machine
@@ -237,12 +237,10 @@ podman machine start
 If port forwarding does not work from Windows:
 
 ```bash
-# For WSL2 method, check that systemd is enabled in WSL
-# Edit /etc/wsl.conf inside WSL2
-sudo tee /etc/wsl.conf <<EOF
-[boot]
-systemd=true
-EOF
+# For WSL2 method, check localhost forwarding in %USERPROFILE%\.wslconfig
+# Create or edit the file from Windows and add:
+# [wsl2]
+# localhostForwarding=true
 
 # Restart WSL from PowerShell
 wsl --shutdown
