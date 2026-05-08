@@ -38,16 +38,20 @@ STATUS=$(kubectl get tigerastatus calico \
   { echo "FAIL: TigeraStatus: ${STATUS}"; FAILURES=$((FAILURES + 1)); }
 
 # calico-system pods
-NOT_RUNNING=$(kubectl get pods -n calico-system --no-headers | grep -v Running | wc -l)
-[[ "${NOT_RUNNING}" -eq 0 ]] && echo "OK:   All calico-system pods Running" || \
-  { echo "FAIL: ${NOT_RUNNING} pods not Running"; FAILURES=$((FAILURES + 1)); }
+kubectl wait --for=condition=Ready pods --all -n calico-system --timeout=120s > /dev/null 2>&1 && \
+  echo "OK:   All calico-system pods Ready" || \
+  { echo "FAIL: Not all calico-system pods are Ready"; FAILURES=$((FAILURES + 1)); }
 
 echo ""
 echo "--- OpenShift-Specific Checks ---"
 
-# SCC exists and is correct
-oc get scc calico-node > /dev/null 2>&1 && echo "OK:   calico-node SCC exists" || \
-  { echo "FAIL: calico-node SCC missing"; FAILURES=$((FAILURES + 1)); }
+# SCC exists and is used by calico-node pods
+CALICO_NODE_SCCS=$(oc get pods -n calico-system -l k8s-app=calico-node \
+  -o jsonpath='{range .items[*]}{.metadata.annotations.openshift\.io/scc}{"\n"}{end}')
+oc get scc calico-node > /dev/null 2>&1 && [[ -n "${CALICO_NODE_SCCS}" ]] && \
+  [[ "$(echo "${CALICO_NODE_SCCS}" | grep -vc '^calico-node$')" -eq 0 ]] && \
+  echo "OK:   calico-node SCC exists and is in use" || \
+  { echo "FAIL: calico-node SCC missing or not used by calico-node pods"; FAILURES=$((FAILURES + 1)); }
 
 # Cluster operators healthy
 CO_DEGRADED=$(oc get co -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.conditions[?(@.type=="Degraded")].status}{"\n"}{end}' | \
@@ -68,12 +72,10 @@ MCP_UPDATING=$(oc get mcp -o jsonpath='{range .items[*]}{.status.conditions[?(@.
 
 echo ""
 echo "--- Network Connectivity ---"
-oc run ocp-connectivity-test --image=busybox --restart=Never -- \
+oc run ocp-connectivity-test --image=busybox:1.36 --restart=Never --rm -i --attach --command -- \
   nslookup kubernetes.default.svc.cluster.local > /dev/null 2>&1 && \
   echo "OK:   DNS resolution working" || \
   { echo "FAIL: DNS resolution failed"; FAILURES=$((FAILURES + 1)); }
-
-oc delete pod ocp-connectivity-test 2>/dev/null
 
 echo ""
 echo "=== Validation: ${FAILURES} failure(s) ==="
