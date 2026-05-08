@@ -63,7 +63,7 @@ On EKS in policy-only mode, BGP is not used. Felix should show as running.
 ## Step 6: Deploy Test Pods
 
 ```bash
-kubectl run pod-a --image=busybox --restart=Never -- sleep 3600
+kubectl run pod-a --image=busybox --restart=Never --command -- sleep 3600
 kubectl run pod-b --image=nginx --port=80
 kubectl expose pod pod-b --port=80 --name=pod-b-svc
 kubectl get pods -o wide
@@ -95,7 +95,7 @@ spec:
   - Ingress
 EOF
 
-kubectl exec pod-a -- wget --timeout=5 -qO- http://pod-b-svc
+kubectl exec pod-a -- wget -T 5 -qO- http://pod-b-svc
 ```
 
 Should time out, confirming Calico is enforcing policies on EKS.
