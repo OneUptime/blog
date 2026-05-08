@@ -18,9 +18,8 @@ This guide shows you how to set up visibility into Cilium controllers, configure
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium 1.14 or later installed
+- Kubernetes cluster with Cilium 1.15 or later installed
 - kubectl access with permissions to exec into Cilium pods
-- cilium CLI installed
 - Prometheus and Grafana deployed (for metrics and dashboards)
 - Helm 3 for configuration changes
 
@@ -31,12 +30,13 @@ Each Cilium agent pod runs dozens of controllers. Start by listing them to under
 ```bash
 # List all controllers on a specific Cilium agent
 
-kubectl -n kube-system exec ds/cilium -- cilium status controllers
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers
 
 # Get detailed controller status with JSON output for parsing
-kubectl -n kube-system exec ds/cilium -- cilium status controllers -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers -o json | python3 -c "
 import json, sys
-controllers = json.load(sys.stdin)
+data = json.load(sys.stdin)
+controllers = data.get('controllers', [])
 for c in controllers:
     status = c.get('status', {})
     fail_count = status.get('consecutive-failure-count', 0)
@@ -70,11 +70,17 @@ Cilium exposes controller metrics through its Prometheus endpoint. Ensure the me
 # cilium-values.yaml
 prometheus:
   enabled: true
+  # Optional: enable per-controller-group run metrics for dashboard breakdowns.
+  # Use a smaller allow-list in production if you only need specific groups.
+  controllerGroupMetrics:
+    - all
 
-# Controller-specific metrics are included by default when
-# prometheus.enabled is true. The key metrics are:
+# Aggregate controller metrics are included by default when
+# prometheus.enabled is true. The key metrics are exposed with the
+# cilium_ Prometheus namespace:
 # - cilium_controllers_runs_total
 # - cilium_controllers_runs_duration_seconds
+# - cilium_controllers_group_runs_total
 # - cilium_controllers_failing
 ```
 
@@ -83,7 +89,8 @@ Apply the configuration:
 ```bash
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set prometheus.enabled=true
+  --set prometheus.enabled=true \
+  --set prometheus.controllerGroupMetrics='{all}'
 ```
 
 Verify that controller metrics are being exposed:
@@ -134,7 +141,7 @@ spec:
         # Alert on high error rate across all controllers
         - alert: CiliumControllerHighErrorRate
           expr: |
-            sum by (instance) (rate(cilium_controllers_runs_total{outcome="error"}[5m]))
+            sum by (instance) (rate(cilium_controllers_runs_total{status="failure"}[5m]))
             / sum by (instance) (rate(cilium_controllers_runs_total[5m])) > 0.1
           for: 15m
           labels:
@@ -158,13 +165,13 @@ Create a Grafana dashboard to visualize controller health. Here are the key pane
 cilium_controllers_failing
 
 # Panel 2: Controller run success vs failure rate
-sum by (outcome) (rate(cilium_controllers_runs_total[5m]))
+sum by (status) (rate(cilium_controllers_runs_total[5m]))
 
 # Panel 3: Average controller run duration
 rate(cilium_controllers_runs_duration_seconds_sum[5m]) / rate(cilium_controllers_runs_duration_seconds_count[5m])
 
-# Panel 4: Top 10 controllers by error count
-topk(10, sum by (controller) (rate(cilium_controllers_runs_total{outcome="error"}[5m])))
+# Panel 4: Top 10 controller groups by failure count
+topk(10, sum by (group_name) (rate(cilium_controllers_group_runs_total{status="failure"}[5m])))
 ```
 
 To automate dashboard provisioning, create a ConfigMap:
@@ -181,21 +188,19 @@ metadata:
 data:
   cilium-controllers.json: |
     {
-      "dashboard": {
-        "title": "Cilium Controllers Health",
-        "panels": [
-          {
-            "title": "Failing Controllers",
-            "type": "stat",
-            "targets": [{"expr": "sum(cilium_controllers_failing)"}]
-          },
-          {
-            "title": "Controller Run Outcomes",
-            "type": "timeseries",
-            "targets": [{"expr": "sum by (outcome) (rate(cilium_controllers_runs_total[5m]))"}]
-          }
-        ]
-      }
+      "title": "Cilium Controllers Health",
+      "panels": [
+        {
+          "title": "Failing Controllers",
+          "type": "stat",
+          "targets": [{"expr": "sum(cilium_controllers_failing)"}]
+        },
+        {
+          "title": "Controller Run Status",
+          "type": "timeseries",
+          "targets": [{"expr": "sum by (status) (rate(cilium_controllers_runs_total[5m]))"}]
+        }
+      ]
     }
 ```
 
@@ -205,7 +210,7 @@ Validate that your controller observability setup is working:
 
 ```bash
 # 1. Confirm controllers are listed
-kubectl -n kube-system exec ds/cilium -- cilium status controllers | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers | wc -l
 
 # 2. Check that Prometheus is scraping controller metrics
 curl -s 'http://localhost:9090/api/v1/query?query=cilium_controllers_failing' | python3 -m json.tool
@@ -220,14 +225,14 @@ for group in data['data']['groups']:
             print(f\"Rule: {rule['name']}, State: {rule['state']}\")
 "
 
-# 4. Trigger a test by intentionally causing a controller failure (safe read-only check)
-kubectl -n kube-system exec ds/cilium -- cilium status controllers -o json | python3 -c "
+# 4. Check whether any controllers are currently failing (safe read-only check)
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers -o json | python3 -c "
 import json, sys
-data = json.load(sys.stdin)
+data = json.load(sys.stdin).get('controllers', [])
 failing = [c for c in data if c.get('status', {}).get('consecutive-failure-count', 0) > 0]
 print(f'Currently failing controllers: {len(failing)}')
 for c in failing:
-    print(f\"  - {c['name']}: {c['status']['last-failure-msg']}\")
+    print(f\"  - {c['name']}: {c['status'].get('last-failure-msg', 'no message')}\")
 "
 ```
 
@@ -237,9 +242,9 @@ for c in failing:
 
 - **All controllers show as failing**: This often indicates API server connectivity issues. Check `kubectl -n kube-system logs ds/cilium | grep "api-server"`.
 
-- **A single controller keeps failing**: Examine the controller's error message with `cilium status controllers` and search Cilium's GitHub issues for the specific error.
+- **A single controller keeps failing**: Examine the controller's error message with `cilium-dbg status --all-controllers` and search Cilium's GitHub issues for the specific error.
 
-- **Controller runs are very slow**: High run durations can indicate BPF map contention or large numbers of endpoints. Check endpoint count with `cilium endpoint list | wc -l`.
+- **Controller runs are very slow**: High run durations can indicate BPF map contention or large numbers of endpoints. Check endpoint count with `cilium-dbg endpoint list | wc -l`.
 
 - **Alerts not firing**: Verify the PrometheusRule labels match your Prometheus operator's `ruleSelector`. Check with `kubectl get prometheus -n monitoring -o yaml | grep -A5 ruleSelector`.
 
