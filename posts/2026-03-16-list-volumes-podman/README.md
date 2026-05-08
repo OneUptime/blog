@@ -10,7 +10,7 @@ Description: Learn how to list and filter Podman volumes using podman volume lis
 
 > The podman volume list command gives you visibility into all persistent storage managed by Podman, with filters and format options for automation.
 
-As your container environment grows, you accumulate volumes for databases, application data, logs, and caches. The `podman volume list` command helps you track what exists, filter by labels or status, and output data in formats suitable for scripting.
+As your container environment grows, you accumulate volumes for databases, application data, logs, and caches. The `podman volume list` command helps you track what exists, filter by labels or usage, and output data in formats suitable for scripting.
 
 ---
 
@@ -87,7 +87,7 @@ podman volume list --filter label=project=webapp --format '{{.Name}}' | wc -l
 
 ```bash
 # See which volumes a specific container uses
-podman inspect mycontainer --format '{{range .Mounts}}{{.Name}} -> {{.Destination}}{{"\n"}}{{end}}'
+podman inspect mycontainer --format '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}} -> {{.Destination}}{{"\n"}}{{end}}{{end}}'
 
 # List all containers and their volume mounts
 podman ps -a --format '{{.Names}}' | while read -r CONTAINER; do
