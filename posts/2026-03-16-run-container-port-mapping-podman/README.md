@@ -32,7 +32,7 @@ The format is `-p HOST_PORT:CONTAINER_PORT`.
 ## Understanding the Port Format
 
 ```bash
-# Full format: [host-ip:]host-port:container-port[/protocol]
+# Full format: [[host-ip:][host-port]:]container-port[/protocol]
 
 # Map to all host interfaces (default)
 podman run -d -p 8080:80 nginx
@@ -118,7 +118,7 @@ podman run -d --name mongo -p 27017:27017 mongo:7
 
 ## Avoiding Port Conflicts
 
-Ports on the host can only be used by one container at a time:
+The same host IP, port, and protocol combination can only be used by one container at a time:
 
 ```bash
 # This works
@@ -170,7 +170,10 @@ podman run -d -p 80:80 nginx
 # Use a port above 1024
 podman run -d -p 8080:80 nginx
 
-# Or configure the unprivileged port start (inside the machine)
+# Or configure the unprivileged port start on native Linux
+sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
+
+# With Podman Machine, run the sysctl inside the machine
 podman machine ssh -- sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
 ```
 
@@ -204,4 +207,4 @@ podman exec web curl -s localhost:80
 
 ## Summary
 
-Port mapping is essential for making container services accessible. Use `-p HOST:CONTAINER` for explicit mappings, bind to `127.0.0.1` for local-only access, and use random port assignment when the exact host port does not matter. Always check for port conflicts before starting containers, and remember that rootless mode restricts ports below 1024.
+Port mapping is essential for making container services accessible. Use `-p HOST_PORT:CONTAINER_PORT` for explicit mappings, bind to `127.0.0.1` for local-only access, and use random port assignment when the exact host port does not matter. Always check for port conflicts before starting containers, and remember that rootless mode restricts ports below 1024.
