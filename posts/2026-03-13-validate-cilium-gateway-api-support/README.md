@@ -33,11 +33,14 @@ kubectl get gatewayclass cilium \
 ## Validate Gateway Provisioning
 
 ```bash
-kubectl get gateway -A -o custom-columns=\
-NAME:.metadata.name,\
-NS:.metadata.namespace,\
-PROGRAMMED:.status.conditions[0].status,\
-IP:.status.addresses[0].value
+kubectl get gateway -A -o json | jq '
+  .items[] | {
+    name: .metadata.name,
+    ns: .metadata.namespace,
+    programmed: ([.status.conditions[]? |
+      select(.type=="Programmed") | .status][0] // ""),
+    address: (.status.addresses[0].value // "")
+  }'
 ```
 
 All Gateways should show `True` for PROGRAMMED and an IP address.
@@ -46,15 +49,18 @@ All Gateways should show `True` for PROGRAMMED and an IP address.
 
 ```bash
 kubectl get httproute -A -o json | jq '
-  .items[] | {
-    name: .metadata.name,
-    ns: .metadata.namespace,
-    accepted: (.status.parents[0].conditions[] |
-      select(.type=="Accepted") | .status),
-    resolvedRefs: (.status.parents[0].conditions[] |
-      select(.type=="ResolvedRefs") | .status)
+  .items[] | . as $route | .status.parents[]? | {
+    name: $route.metadata.name,
+    ns: $route.metadata.namespace,
+    parentRef: .parentRef.name,
+    accepted: ([.conditions[]? |
+      select(.type=="Accepted") | .status][0] // ""),
+    resolvedRefs: ([.conditions[]? |
+      select(.type=="ResolvedRefs") | .status][0] // "")
   }'
 ```
+
+Each parent binding should show `True` for `accepted` and `resolvedRefs`.
 
 ## Architecture
 
@@ -83,7 +89,8 @@ GATEWAY_IP=$(kubectl get gateway <name> -n <namespace> \
 curl -v -H "Host: myapp.example.com" http://${GATEWAY_IP}/
 
 # Test HTTPS
-curl -v --cacert ca.crt https://myapp.example.com/
+curl -v --resolve myapp.example.com:443:${GATEWAY_IP} \
+  --cacert ca.crt https://myapp.example.com/
 ```
 
 ## Validate Backend Connectivity
@@ -91,7 +98,8 @@ curl -v --cacert ca.crt https://myapp.example.com/
 Confirm the target Services have ready endpoints:
 
 ```bash
-kubectl get endpoints -n <namespace> <backend-service>
+kubectl get endpointslice -n <namespace> \
+  -l kubernetes.io/service-name=<backend-service>
 ```
 
 ## Run Cilium Connectivity Test
