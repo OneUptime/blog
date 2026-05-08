@@ -28,6 +28,7 @@ Description=Frontend - auto-updates enabled
 
 [Container]
 Image=docker.io/myorg/frontend:latest
+ContainerName=frontend
 PublishPort=8080:80
 # This container will auto-update
 AutoUpdate=registry
@@ -46,7 +47,8 @@ Description=Database - no auto-update
 
 [Container]
 Image=docker.io/library/postgres:16
-Volume=pgdata.volume:/var/lib/postgresql/data
+ContainerName=database
+Volume=pgdata:/var/lib/postgresql/data
 Environment=POSTGRES_PASSWORD=secret
 # No AutoUpdate directive - this container stays on its current image
 
@@ -64,6 +66,7 @@ Description=API - auto-updates enabled
 
 [Container]
 Image=docker.io/myorg/api:latest
+ContainerName=api
 PublishPort=3000:3000
 # This container will auto-update
 AutoUpdate=registry
