@@ -10,15 +10,15 @@ Description: Implement zero trust security using Calico Tiered Policies in Calic
 
 ## Introduction
 
-Calico Tiered Policies in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to zero trust Tiered Policies effectively.
+Calico Tiered Policies in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to implement zero trust with Tiered Policies effectively.
 
-Calico's extensible policy model supports Tiered Policies through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your Tiered Policies criteria.
+Calico's extensible policy model supports Tiered Policies through `Tier`, `GlobalNetworkPolicy`, and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your Tiered Policies criteria.
 
 This guide provides practical techniques for zero trust Tiered Policies in your Kubernetes cluster, following security best practices and production-tested patterns.
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico v3.26+
+- Kubernetes cluster with Calico v3.29+
 - `calicoctl` and `kubectl` installed
 - Basic understanding of Calico network policy concepts
 
@@ -26,12 +26,21 @@ This guide provides practical techniques for zero trust Tiered Policies in your 
 
 ```yaml
 apiVersion: projectcalico.org/v3
+kind: Tier
+metadata:
+  name: zero-trust
+spec:
+  order: 300
+  defaultAction: Deny
+---
+apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
   name: zt-default-deny
 spec:
+  tier: zero-trust
   order: 1000
-  selector: all()
+  selector: projectcalico.org/orchestrator == "k8s"
   types:
     - Ingress
     - Egress
@@ -46,6 +55,7 @@ metadata:
   name: zt-tiered-policies
   namespace: production
 spec:
+  tier: zero-trust
   order: 100
   selector: all()
   ingress:
