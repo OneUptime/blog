@@ -10,7 +10,7 @@ Description: Learn how to create Calico StagedGlobalNetworkPolicy resources to t
 
 ## Introduction
 
-The StagedGlobalNetworkPolicy resource in Calico lets you preview the effect of a network policy without actually enforcing it. Staged policies are evaluated against traffic but only log their verdicts rather than allowing or denying packets. This gives you confidence that a new policy will behave as expected before you promote it to an enforced GlobalNetworkPolicy.
+The StagedGlobalNetworkPolicy resource in Calico lets you preview the effect of a network policy without actually enforcing it. Staged policies are evaluated against traffic and surface simulated policy actions in flow logs rather than allowing or denying packets. This gives you confidence that a new policy will behave as expected before you promote it to an enforced GlobalNetworkPolicy.
 
 Deploying network policies in production is risky. A misconfigured rule can block legitimate traffic and cause outages. Staged policies eliminate this risk by providing an audit trail of what the policy would have done without affecting any actual traffic flow.
 
@@ -18,8 +18,8 @@ This guide covers creating StagedGlobalNetworkPolicy resources, understanding th
 
 ## Prerequisites
 
-- A Kubernetes cluster with Calico Enterprise or Calico Cloud (staged policies require the enterprise features)
-- `kubectl` and `calicoctl` configured with cluster admin access
+- A Kubernetes cluster with Calico staged policy CRDs installed
+- `kubectl` configured with cluster admin access
 - Calico flow logs enabled to observe staged policy verdicts
 - Familiarity with Calico GlobalNetworkPolicy syntax
 
@@ -27,8 +27,8 @@ This guide covers creating StagedGlobalNetworkPolicy resources, understanding th
 
 A StagedGlobalNetworkPolicy has the same spec as a GlobalNetworkPolicy but with key differences in behavior:
 
-- Traffic matching a staged policy is logged but not enforced
-- Staged policies appear in flow logs with a staged verdict
+- Traffic matching a staged policy is evaluated for preview but not enforced
+- Staged policies appear in flow logs as pending policies, with staged policy names prefixed by `staged:`
 - They can be promoted to enforced GlobalNetworkPolicy when validated
 - Multiple staged policies can be tested simultaneously
 
@@ -60,7 +60,7 @@ spec:
 Apply the staged policy:
 
 ```bash
-calicoctl apply -f staged-policy.yaml
+kubectl apply -f staged-policy.yaml
 ```
 
 ## Creating a Staged Default-Deny Policy
@@ -115,12 +115,12 @@ spec:
     - action: Allow
       protocol: UDP
       destination:
-        nets: ["10.96.0.10/32"]
+        nets: ["10.96.0.10/32"] # Replace with your cluster DNS service IP.
         ports: [53]
     - action: Deny
 ```
 
-This staged policy would isolate production namespaces from non-production while allowing DNS resolution.
+This staged policy would isolate production namespaces from non-production while allowing DNS resolution through the specified cluster DNS service IP.
 
 ## Creating a Staged Policy for CIDR-Based Rules
 
@@ -188,15 +188,14 @@ The Pass action delegates to the next policy in the chain rather than making a f
 After deploying staged policies, review their impact through flow logs:
 
 ```bash
-# Check flow logs for staged policy verdicts
+# Check flow logs in Calico Whisker or your configured Enterprise/Cloud flow-log sink.
+# In flow-log policy fields, staged policy names are prefixed with "staged:".
 
-kubectl logs -n calico-system -l k8s-app=calico-node --tail=100 | grep -i staged
-
-# Use calicoctl to list staged policies
-calicoctl get stagedglobalnetworkpolicies -o wide
+# Use kubectl to list staged policies
+kubectl get stagedglobalnetworkpolicies.projectcalico.org -o wide
 ```
 
-Look for entries that show what the staged policy would have allowed or denied. Use this data to refine rules before promoting.
+Look for pending policy entries that show what the staged policy would have allowed or denied. Use this data to refine rules before promoting.
 
 ## Promoting a Staged Policy
 
@@ -204,10 +203,10 @@ Once validated, convert the staged policy to an enforced one:
 
 ```bash
 # Export the staged policy
-calicoctl get stagedglobalnetworkpolicy staged.deny-unauthorized-ingress -o yaml > enforced-policy.yaml
+kubectl get stagedglobalnetworkpolicy.projectcalico.org staged.deny-unauthorized-ingress -o yaml > enforced-policy.yaml
 ```
 
-Edit the file to change the kind and remove the `staged.` prefix from the name:
+Edit the file to change the kind, remove the `staged.` prefix from the name, and remove Kubernetes-generated metadata such as `creationTimestamp`, `resourceVersion`, `uid`, `managedFields`, and `status` if present:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -233,8 +232,8 @@ spec:
 Apply the enforced policy and delete the staged version:
 
 ```bash
-calicoctl apply -f enforced-policy.yaml
-calicoctl delete stagedglobalnetworkpolicy staged.deny-unauthorized-ingress
+kubectl apply -f enforced-policy.yaml
+kubectl delete stagedglobalnetworkpolicy.projectcalico.org staged.deny-unauthorized-ingress
 ```
 
 ## Verification
@@ -243,13 +242,13 @@ Verify your staged policies are correctly deployed and being evaluated:
 
 ```bash
 # List all staged policies
-calicoctl get stagedglobalnetworkpolicies
+kubectl get stagedglobalnetworkpolicies.projectcalico.org
 
 # View details of a specific staged policy
-calicoctl get stagedglobalnetworkpolicy staged.default-deny-all -o yaml
+kubectl get stagedglobalnetworkpolicy.projectcalico.org staged.default-deny-all -o yaml
 
 # Check that the policy tier exists
-calicoctl get tiers
+kubectl get tiers.projectcalico.org
 
 # Generate test traffic and check flow logs
 kubectl exec -n default deploy/test-client -- wget -qO- --timeout=5 http://web-frontend:8080
@@ -257,11 +256,11 @@ kubectl exec -n default deploy/test-client -- wget -qO- --timeout=5 http://web-f
 
 ## Troubleshooting
 
-- If staged policies do not appear in flow logs, verify that Calico flow logging is enabled in the FelixConfiguration
-- Staged policies must use valid tier names. Check available tiers with `calicoctl get tiers`
+- If staged policies do not appear in flow logs, verify that Calico flow logging is enabled and that policy data is included in the flow-log output
+- Staged policies must use valid tier names. Check available tiers with `kubectl get tiers.projectcalico.org`
 - The naming convention `staged.` prefix is recommended but not enforced. Use consistent naming to distinguish staged from enforced policies
-- If the staged policy selector matches no endpoints, it will have no observable effect. Verify selectors with `calicoctl get workloadendpoints -o wide`
-- StagedGlobalNetworkPolicy requires Calico Enterprise or Calico Cloud. Open-source Calico does not support staged policies
+- If the staged policy selector matches no endpoints, it will have no observable effect. Verify selectors with `kubectl get workloadendpoints.projectcalico.org -A -o wide`
+- If `StagedGlobalNetworkPolicy` is not recognized, verify that the staged policy CRDs are installed and that your Calico version supports them
 
 ## Conclusion
 
