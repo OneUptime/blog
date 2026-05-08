@@ -31,10 +31,16 @@ Before modifying a GlobalNetworkSet, identify every policy that references it. E
 calicoctl get globalnetworkset trusted-partners -o yaml > trusted-partners-backup.yaml
 ```
 
-Find all policies that reference the set by its labels:
+Find all global policies that reference the set by its labels:
 
 ```bash
 calicoctl get globalnetworkpolicy -o yaml | grep -B5 "role == 'trusted-external'"
+```
+
+Also check namespaced Calico NetworkPolicy resources, because GlobalNetworkSets can be matched by rules whose `namespaceSelector` includes `global()`:
+
+```bash
+calicoctl get networkpolicy --all-namespaces -o yaml | grep -B10 -A10 "role == 'trusted-external'"
 ```
 
 Document the current nets:
@@ -94,15 +100,15 @@ spec:
 calicoctl apply -f trusted-partners-reduced.yaml
 ```
 
-## Using Replace for Atomic Updates
+## Using Replace for Existing Resources
 
-The `calicoctl replace` command performs an atomic update and fails if the resource does not exist, preventing accidental creation:
+The `calicoctl replace` command updates an existing resource and fails if the resource does not exist, preventing accidental creation:
 
 ```bash
 calicoctl replace -f trusted-partners-updated.yaml
 ```
 
-This is safer than `calicoctl apply` for updates because it will error out if the resource name is misspelled.
+This is safer than `calicoctl apply` for updates because it will error out if the resource name is misspelled. When using `replace`, provide the complete resource spec rather than only the fields being changed.
 
 ## Rolling Back Changes
 
@@ -140,7 +146,7 @@ kubectl run test-pod --image=busybox --rm -it --restart=Never -- wget -qO- --tim
 
 ## Troubleshooting
 
-If changes are not taking effect, check the Felix sync status:
+If changes are not taking effect, check the Felix liveness status:
 
 ```bash
 kubectl exec -n calico-system -it $(kubectl get pod -n calico-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}') -- calico-node -felix-live
