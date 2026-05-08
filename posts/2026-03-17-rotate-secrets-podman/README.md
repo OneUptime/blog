@@ -10,24 +10,21 @@ Description: Learn how to rotate secrets in Podman to maintain security by regul
 
 > Regular secret rotation limits the window of exposure if a secret is compromised and is a fundamental security practice for production environments.
 
-Secret rotation involves replacing existing secrets with new values and ensuring all containers pick up the updated credentials. Podman does not have a built-in rotation command, but the process is straightforward using remove-and-recreate combined with container restarts.
+Secret rotation involves replacing existing secrets with new values and ensuring all containers pick up the updated credentials. Podman supports replacing a secret with `podman secret create --replace`, but existing containers still need to be recreated to use the updated value.
 
 ---
 
 ## Basic Secret Rotation
 
 ```bash
-# Step 1: Remove the old secret (stop containers first if needed)
+# Step 1: Replace the old secret value
 
 podman stop my-app
 podman rm my-app
 
-podman secret rm db_password
+echo -n "new-rotated-password-2026" | podman secret create --replace db_password -
 
-# Step 2: Create the new secret with the updated value
-echo -n "new-rotated-password-2026" | podman secret create db_password -
-
-# Step 3: Restart the container with the updated secret
+# Step 2: Recreate the container with the updated secret
 podman run -d \
   --name my-app \
   --secret db_password \
@@ -38,11 +35,11 @@ podman run -d \
 
 ```bash
 #!/bin/bash
-# rotate-secret.sh - Rotate a Podman secret with minimal downtime
+# rotate-secret.sh - Rotate a Podman secret and prepare containers for recreation
 
 SECRET_NAME="$1"
 NEW_VALUE="$2"
-CONTAINERS="$3"  # Comma-separated container names
+CONTAINERS="$3"  # Comma-separated container names to remove and recreate
 
 if [ -z "$SECRET_NAME" ] || [ -z "$NEW_VALUE" ]; then
   echo "Usage: rotate-secret.sh <secret-name> <new-value> [container1,container2]"
@@ -60,16 +57,16 @@ if [ -n "$CONTAINERS" ]; then
   done
 fi
 
-# Remove and recreate the secret
-podman secret rm "$SECRET_NAME" 2>/dev/null
-printf '%s' "$NEW_VALUE" | podman secret create "$SECRET_NAME" -
+# Replace the secret
+printf '%s' "$NEW_VALUE" | podman secret create --replace "$SECRET_NAME" -
 echo "Secret $SECRET_NAME rotated successfully"
 
-# Restart containers
+# Remove containers so they can be recreated with the updated secret
 if [ -n "$CONTAINERS" ]; then
   for container in "${CONTAINER_LIST[@]}"; do
-    echo "Starting container: $container"
-    podman start "$container"
+    echo "Removing container: $container"
+    podman rm "$container" 2>/dev/null
+    echo "Recreate $container with the original podman run options and --secret $SECRET_NAME"
   done
 fi
 ```
@@ -101,10 +98,9 @@ if podman healthcheck run my-app-new; then
   # Step 5: Stop the old container and clean up
   podman stop my-app
   podman rm my-app
-  podman secret rm db_password
 
-  # Step 6: Rename for consistency
-  echo -n "new-password-value" | podman secret create db_password -
+  # Step 6: Replace the standard secret name for future deployments
+  echo -n "new-password-value" | podman secret create --replace db_password -
   podman secret rm db_password_new
 else
   echo "New container is unhealthy, rolling back"
@@ -123,20 +119,23 @@ fi
 TIMESTAMP=$(date +%s)
 NEW_PASSWORD=$(openssl rand -base64 32)
 
-# Rotate the database password
+# Rotate the database password secret
 podman stop my-app
-podman secret rm db_password
-echo -n "$NEW_PASSWORD" | podman secret create db_password -
+podman rm my-app
+echo -n "$NEW_PASSWORD" | podman secret create --replace db_password -
 
 # Update the database password as well
 podman exec my-db psql -U postgres -c "ALTER USER app PASSWORD '$NEW_PASSWORD';"
 
-# Restart the application
-podman start my-app
+# Recreate the application
+podman run -d \
+  --name my-app \
+  --secret db_password \
+  my-app:latest
 
 echo "Secret rotated at $(date)"
 ```
 
 ## Summary
 
-Secret rotation in Podman involves removing the old secret, creating a new one with updated values, and restarting containers. For production environments, use blue-green deployments to achieve zero-downtime rotation. Automate the process with scripts and run them on a schedule using cron or a similar scheduler. Regular rotation limits the impact of compromised credentials and is an essential security practice.
+Secret rotation in Podman involves replacing the old secret with updated values and recreating containers that need the new secret. For production environments, use blue-green deployments to achieve zero-downtime rotation. Automate the process with scripts and run them on a schedule using cron or a similar scheduler. Regular rotation limits the impact of compromised credentials and is an essential security practice.
