@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Logging, Loki, Grafana
 
-Description: Learn how to forward Podman container logs to Grafana Loki for cost-effective centralized logging, using Promtail, Fluent Bit, and direct API approaches.
+Description: Learn how to forward Podman container logs to Grafana Loki for cost-effective centralized logging, using Fluent Bit, Promtail, and direct API approaches.
 
 ---
 
@@ -24,7 +24,7 @@ Start a local Loki instance to test with.
 podman run -d \
   --name loki \
   -p 3100:3100 \
-  grafana/loki:latest
+  grafana/loki:3.7.0
 
 # Verify Loki is running
 curl -s http://localhost:3100/ready
@@ -41,7 +41,7 @@ podman run -d \
 
 ## Approach 1: Promtail File Tailing
 
-Promtail is Loki's native log collector and the recommended approach.
+Promtail was Loki's native log collector, but it is deprecated and reached end-of-life on March 2, 2026. Use this approach only for existing Promtail deployments; for new deployments, prefer Fluent Bit or Grafana Alloy.
 
 ```bash
 # Step 1: Create Promtail configuration
@@ -55,7 +55,7 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://loki:3100/loki/api/v1/push
+  - url: http://localhost:3100/loki/api/v1/push
 
 scrape_configs:
   - job_name: podman
@@ -90,7 +90,7 @@ podman run -d \
 
 ## Approach 2: Promtail with journald
 
-Use Podman's journald log driver with Promtail's journal scraper.
+Use Podman's journald log driver with Promtail's journal scraper for existing Promtail deployments.
 
 ```bash
 # Step 1: Run containers with journald driver
@@ -166,19 +166,11 @@ podman logs -f --timestamps "$CONTAINER" 2>&1 | while IFS= read -r line; do
   TS_NANO=$(date -d "$TS" +%s%N 2>/dev/null || echo "$(date +%s)000000000")
 
   # Push to Loki
+  jq -nc --arg ts "$TS_NANO" --arg msg "$MSG" --arg container "$CONTAINER" \
+    '{streams: [{stream: {container: $container, source: "podman"}, values: [[$ts, $msg]]}]}' |
   curl -s -X POST "${LOKI_URL}/loki/api/v1/push" \
     -H "Content-Type: application/json" \
-    -d "{
-      \"streams\": [{
-        \"stream\": {
-          \"container\": \"${CONTAINER}\",
-          \"source\": \"podman\"
-        },
-        \"values\": [
-          [\"${TS_NANO}\", \"$(echo "$MSG" | sed 's/"/\\"/g')\"]
-        ]
-      }]
-    }" &
+    --data-binary @- &
 done
 ```
 
@@ -188,6 +180,8 @@ Use Fluent Bit with the Loki output plugin.
 
 ```bash
 # Create Fluent Bit config for Loki output
+mkdir -p /etc/fluent-bit
+
 cat > /etc/fluent-bit/loki.conf << 'EOF'
 [SERVICE]
     Flush        5
@@ -215,7 +209,8 @@ podman run -d \
   --network host \
   -v /var/lib/containers/storage:/var/lib/containers/storage:ro \
   -v /etc/fluent-bit:/fluent-bit/etc:ro \
-  fluent/fluent-bit:latest
+  fluent/fluent-bit:latest \
+  -c /fluent-bit/etc/loki.conf
 ```
 
 ## Query Logs in Loki
@@ -236,7 +231,7 @@ curl -sG "http://localhost:3100/loki/api/v1/query_range" \
 
 # Count log lines per container
 curl -sG "http://localhost:3100/loki/api/v1/query" \
-  --data-urlencode 'query=count_over_time({job="podman"}[1h]) by (container)' | python3 -m json.tool
+  --data-urlencode 'query=sum by (container) (count_over_time({job="systemd-journal"}[1h]))' | python3 -m json.tool
 
 # Check Loki ingestion status
 curl -s http://localhost:3100/metrics | grep loki_ingester
@@ -266,4 +261,4 @@ podman rm -f loki-test
 
 ## Summary
 
-Forwarding Podman container logs to Loki can be done through Promtail file tailing (recommended), Promtail journald integration, direct API pushes, or Fluent Bit with the Loki output plugin. Promtail with the journald scraper provides the richest metadata and most reliable delivery. Once logs are in Loki, use LogQL in Grafana for powerful label-based querying with low storage overhead.
+Forwarding Podman container logs to Loki can be done through Fluent Bit with the Loki output plugin, Promtail file tailing, Promtail journald integration, or direct API pushes. Promtail with the journald scraper provides rich metadata for existing Promtail deployments, but Promtail is deprecated; use Fluent Bit or Grafana Alloy for new deployments. Once logs are in Loki, use LogQL in Grafana for powerful label-based querying with low storage overhead.
