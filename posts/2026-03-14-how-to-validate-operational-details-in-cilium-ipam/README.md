@@ -77,11 +77,17 @@ echo "=== IPAM Capacity Validation ==="
 THRESHOLD=20  # Minimum free IPs per node
 
 kubectl get ciliumnodes -o json | jq -r --argjson thresh "$THRESHOLD" '
+  def pow2(n): reduce range(0; n) as $i (1; . * 2);
+  def ipv4_capacity(cidr):
+    (cidr | capture("/(?<prefix>[0-9]+)$").prefix | tonumber) as $prefix |
+    if $prefix >= 31 then pow2(32 - $prefix)
+    else pow2(32 - $prefix) - 2
+    end;
   .items[] | {
     name: .metadata.name,
     used: (.status.ipam.used // {} | length),
     total: (if .spec.ipam.podCIDRs then
-      (.spec.ipam.podCIDRs | length) * 254 else 0 end)
+      ([.spec.ipam.podCIDRs[] | select(test("\\.")) | ipv4_capacity(.)] | add // 0) else 0 end)
   } | .free = (.total - .used) |
   if .free < $thresh then
     "WARN: \(.name) has only \(.free) free IPs (used: \(.used)/\(.total))"
