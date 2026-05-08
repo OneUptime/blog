@@ -78,9 +78,11 @@ spec:
         - cluster-internal
 ```
 
-Label specific nodes as route reflectors:
+Configure specific nodes as route reflectors and label them:
 
 ```bash
+kubectl annotate node rr-node-1 projectcalico.org/RouteReflectorClusterID=244.0.0.1
+kubectl annotate node rr-node-2 projectcalico.org/RouteReflectorClusterID=244.0.0.1
 kubectl label node rr-node-1 route-reflector=true
 kubectl label node rr-node-2 route-reflector=true
 ```
@@ -93,7 +95,7 @@ kind: BGPPeer
 metadata:
   name: route-reflector-peer
 spec:
-  nodeSelector: "!route-reflector == 'true'"
+  nodeSelector: all()
   peerSelector: route-reflector == 'true'
 ```
 
@@ -149,10 +151,10 @@ Validate the BGP configuration is active and routes are being advertised:
 
 calicoctl node status
 
-# Verify advertised routes from a peer router
+# Verify the stored BGPConfiguration
 calicoctl get bgpconfiguration default -o yaml
 
-# Confirm service IPs are being advertised
+# Confirm service IPs fall within the advertised ranges
 kubectl get svc -A -o wide | grep LoadBalancer
 
 # Check calico-node BGP logs
