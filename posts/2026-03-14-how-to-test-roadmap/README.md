@@ -34,9 +34,6 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
-  extraMounts:
-  - hostPath: /opt/images
-    containerPath: /opt/images
 - role: worker
 - role: worker
 networking:
@@ -44,21 +41,25 @@ networking:
 EOF
 
 # Install Cilium development build
-cilium install --version=v1.17.0-rc.1 --set debug.enabled=true
+cilium install --version=v1.20.0-pre.2 \
+  --set debug.enabled=true \
+  --set ipam.mode=kubernetes
 ```
 
 ### Testing Pre-Release Features
 
 ```bash
 # Install a specific pre-release version
+helm repo add cilium https://helm.cilium.io/
 helm repo update
 helm search repo cilium/cilium --versions --devel | head -10
 
 # Install with feature flags enabled
-helm install cilium cilium/cilium \
-  --version 1.17.0-rc.1 \
+helm upgrade --install cilium cilium/cilium \
+  --version 1.20.0-pre.2 \
   --namespace kube-system \
-  --set debug.enabled=true
+  --set debug.enabled=true \
+  --set ipam.mode=kubernetes
 ```
 
 ### Providing Feedback on Roadmap Features
