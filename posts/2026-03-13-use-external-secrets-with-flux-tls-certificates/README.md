@@ -43,11 +43,11 @@ Create an `ExternalSecret` with a `kubernetes.io/tls` template to produce a prop
 ```yaml
 # clusters/my-cluster/platform/tls/externalsecret-wildcard.yaml
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: wildcard-example-com-tls
-  namespace: ingress-nginx
+  namespace: default
   annotations:
     # Document certificate details for operators
     cert-expiry: "2026-12-31"
@@ -118,16 +118,16 @@ Use `ClusterExternalSecret` to distribute a TLS certificate across multiple name
 
 ```yaml
 # clusters/my-cluster/platform/tls/cluster-external-secret-tls.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterExternalSecret
 metadata:
   name: wildcard-tls-all-namespaces
 spec:
   externalSecretName: wildcard-tls
   # Apply to all namespaces matching this selector
-  namespaceSelector:
-    matchLabels:
-      tls.platform.io/wildcard: "true"
+  namespaceSelectors:
+    - matchLabels:
+        tls.platform.io/wildcard: "true"
   refreshTime: 1h
   externalSecretSpec:
     refreshInterval: 6h
@@ -169,8 +169,8 @@ spec:
     - name: tls-certificates
       rules:
         - alert: TLSCertificateExpiringSoon
-          # x509_cert_expiry is provided by the x509-certificate-exporter
-          expr: x509_cert_expiry - time() < 86400 * 30
+          # x509_cert_not_after is provided by the x509-certificate-exporter
+          expr: x509_cert_not_after - time() < 86400 * 30
           for: 1h
           labels:
             severity: warning
@@ -197,10 +197,10 @@ spec:
   dependsOn:
     - name: external-secrets
   healthChecks:
-    - apiVersion: external-secrets.io/v1beta1
+    - apiVersion: external-secrets.io/v1
       kind: ExternalSecret
       name: wildcard-example-com-tls
-      namespace: ingress-nginx
+      namespace: default
 ```
 
 ## Best Practices
