@@ -21,7 +21,7 @@ This guide covers the complete master node configuration from kernel parameters 
 - A Linux server (Ubuntu 20.04+, RHEL 8+, or similar) designated as the K3s master
 - Root or sudo access to the server
 - At least 2 CPUs and 4GB RAM
-- Kernel version 4.19+ (5.4+ recommended for full Cilium features)
+- Kernel version 5.10+ (or an equivalent distribution kernel such as RHEL 8.10's 4.18 kernel)
 
 ## Configuring Kernel Parameters
 
@@ -31,12 +31,12 @@ Set kernel parameters required for Cilium's eBPF datapath:
 # Configure kernel parameters for Cilium
 
 # These settings are required for eBPF operation and IP forwarding
-cat > /etc/sysctl.d/99-cilium.conf << 'EOF'
+sudo tee /etc/sysctl.d/99-cilium.conf >/dev/null << 'EOF'
 # Enable IP forwarding for pod networking
 net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1
 
-# Increase BPF JIT limit for complex programs
+# Enable the BPF JIT compiler
 net.core.bpf_jit_enable = 1
 
 # Increase conntrack table size for high-traffic clusters
@@ -66,7 +66,7 @@ mount | grep bpf
 sudo mount -t bpf bpf /sys/fs/bpf
 
 # Make BPF mount persistent
-echo "bpf /sys/fs/bpf bpf defaults 0 0" | sudo tee -a /etc/fstab
+echo "bpffs /sys/fs/bpf bpf defaults 0 0" | sudo tee -a /etc/fstab
 
 # Verify eBPF support in kernel
 ls /sys/fs/bpf/
@@ -79,6 +79,7 @@ ls /sys/fs/bpf/
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="\
   --flannel-backend=none \
   --disable-network-policy \
+  --disable-kube-proxy \
   --disable=traefik \
   --disable=servicelb \
   --cluster-cidr=10.42.0.0/16 \
@@ -89,6 +90,7 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="\
 # Explanation of flags:
 # --flannel-backend=none     : Disables Flannel so Cilium can manage networking
 # --disable-network-policy   : Disables K3s built-in network policy controller
+# --disable-kube-proxy       : Disables kube-proxy so Cilium can replace it
 # --disable=traefik          : Disables Traefik (optional, use Cilium Ingress instead)
 # --disable=servicelb        : Disables K3s ServiceLB (optional, use Cilium LB)
 # --cluster-cidr             : Pod CIDR that Cilium IPAM will manage
@@ -122,8 +124,8 @@ ipam:
     clusterPoolIPv4PodCIDRList:
       - "10.42.0.0/16"
 
-# K3s API server endpoint
-k8sServiceHost: "127.0.0.1"
+# K3s API server endpoint. Use an address reachable from every node.
+k8sServiceHost: "<MASTER_NODE_IP>"
 k8sServicePort: 6443
 
 # Replace kube-proxy functionality
@@ -154,7 +156,7 @@ hubble:
 helm repo add cilium https://helm.cilium.io/
 helm repo update
 
-helm install cilium cilium/cilium --version 1.16.5 \
+helm install cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
   -f cilium-master-values.yaml
 
@@ -176,7 +178,7 @@ kubectl top nodes 2>/dev/null || echo "Metrics server not yet available"
 
 # Patch Cilium DaemonSet with resource limits appropriate for master
 kubectl patch daemonset cilium -n kube-system --type='json' -p='[
-  {"op": "replace", "path": "/spec/template/spec/containers/0/resources", "value": {
+  {"op": "add", "path": "/spec/template/spec/containers/0/resources", "value": {
     "requests": {"cpu": "100m", "memory": "256Mi"},
     "limits": {"cpu": "2000m", "memory": "1Gi"}
   }}
@@ -215,7 +217,7 @@ kubectl get pods -n kube-system -o custom-columns=NAME:.metadata.name,STATUS:.st
 ## Troubleshooting
 
 - **K3s server fails to start with Flannel disabled**: Check K3s logs with `journalctl -u k3s -f`. The server will start but the node will remain NotReady until Cilium is installed.
-- **Cilium cannot reach the API server**: If `k8sServiceHost` is set to `127.0.0.1`, ensure the K3s API server is listening on localhost. Check with `ss -tlnp | grep 6443`.
+- **Cilium cannot reach the API server**: Ensure `k8sServiceHost` is set to an API server address reachable from every node. Check the server is listening with `ss -tlnp | grep 6443`.
 - **BPF filesystem not mounted**: Run `mount -t bpf bpf /sys/fs/bpf` and add to `/etc/fstab` for persistence.
 - **Master node under resource pressure**: The master runs both K3s control plane and Cilium. Monitor with `top` or `kubectl top nodes` and consider using a dedicated master node without workload scheduling.
 
