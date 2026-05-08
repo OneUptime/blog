@@ -10,16 +10,15 @@ Description: A guide to validating the specific requirements for running Cilium 
 
 ## Introduction
 
-Running Cilium on OpenShift requires navigating OpenShift's security model, which is significantly more restrictive than standard Kubernetes. OpenShift uses Security Context Constraints (SCCs) instead of PodSecurityAdmission, and its default OVN-Kubernetes CNI must be replaced or supplemented when using Cilium. Additionally, OpenShift has specific requirements around operator lifecycle management.
+Running Cilium on OpenShift requires navigating OpenShift's security model, which is significantly more restrictive than standard Kubernetes. OpenShift uses Security Context Constraints (SCCs) alongside Kubernetes Pod Security Admission, and Cilium should be configured as a supported primary CNI rather than treated as a simple live replacement for the default OVN-Kubernetes CNI. Additionally, OpenShift has specific requirements around operator lifecycle management.
 
-Cilium on OpenShift is typically deployed through the Cilium Operator available in OperatorHub, which handles SCC creation and the privileged access Cilium agents need. Validating requirements involves checking OpenShift version compatibility, SCC configuration, and the operator installation state.
+Cilium on OpenShift is typically deployed through certified or vendor-maintained OLM images available from the Red Hat Ecosystem Catalog and OperatorHub, which handle the OpenShift-specific manifests and privileged access Cilium agents need. Validating requirements involves checking OpenShift version compatibility, SCC access, and the operator installation state.
 
 ## Prerequisites
 
-- OpenShift cluster (4.12+)
+- OpenShift cluster version supported by the selected certified Cilium or Isovalent release
 - `oc` CLI with cluster-admin privileges
 - Access to OperatorHub or the ability to apply Operator manifests
-- `cilium` CLI installed
 
 ## Step 1: Validate OpenShift Version Compatibility
 
@@ -31,10 +30,11 @@ oc version
 # Check the cluster version (OpenShift-specific)
 oc get clusterversion
 
-# Cilium on OpenShift requirements:
-# OpenShift 4.12+: Cilium 1.13+
-# OpenShift 4.14+: Cilium 1.14+ (recommended)
-# Full feature support requires OpenShift 4.14+ with RHEL CoreOS nodes
+# Validate against the current Red Hat certified CNI matrix.
+# Examples from the certified matrix:
+# Cilium Community 1.13: OpenShift 4.12 and 4.13
+# Isovalent Enterprise for Cilium 1.14: OpenShift 4.13 through 4.16
+# Isovalent Enterprise for Cilium 1.15: OpenShift 4.14 through 4.17
 ```
 
 ## Step 2: Check Node OS for eBPF Compatibility
@@ -48,7 +48,9 @@ oc get nodes -o jsonpath=\
 oc get nodes -o jsonpath=\
 '{range .items[*]}{.metadata.name}: {.status.nodeInfo.kernelVersion}{"\n"}{end}'
 
-# RHCOS in OpenShift 4.14+ includes kernel 5.14+ which fully supports Cilium eBPF
+# Cilium requires Linux kernel 5.10 or later, or an equivalent vendor kernel.
+# Red Hat CoreOS 4.12+ is listed by Cilium as a compatible distribution.
+# Newer kernels may be required for specific advanced Cilium features.
 ```
 
 ## Step 3: Validate Security Context Constraints
@@ -56,32 +58,34 @@ oc get nodes -o jsonpath=\
 Cilium agents require privileged access to load eBPF programs.
 
 ```bash
-# Check if Cilium-specific SCCs are present (created by the Cilium Operator)
-oc get scc | grep cilium
+# Check the SCCs available on the cluster
+oc get scc
 
-# Expected SCCs after Cilium Operator installation:
-# cilium-admin
-# cilium-node
+# Check which subjects can use the privileged and hostnetwork SCCs
+oc adm policy who-can use scc privileged | grep -i cilium
+oc adm policy who-can use scc hostnetwork | grep -i cilium
 
-# Verify the Cilium ServiceAccount is bound to the correct SCC
-oc describe scc cilium-node | grep -A 10 "Users\|Groups"
+# Verify the Cilium DaemonSet service account
+oc get daemonset cilium -n cilium \
+  -o jsonpath='{.spec.template.spec.serviceAccountName}{"\n"}'
 
-# Check if the DaemonSet service account has SCC access
-oc describe clusterrolebinding cilium 2>/dev/null | head -20
+# Check Cilium-related RBAC created by the operator or manifests
+oc get clusterrole,clusterrolebinding | grep -i cilium
 ```
 
 ## Step 4: Check the Cilium Operator Installation
 
 ```bash
-# Check if the Cilium Operator is installed via OLM
-oc get csv -n cilium | grep cilium
+# Check if the Cilium or Isovalent operator is installed via OLM
+oc get csv -A | grep -Ei 'cilium|isovalent'
 
 # Check the operator subscription
-oc get subscription -n cilium
+oc get subscription -A | grep -Ei 'cilium|isovalent'
 
 # Verify the operator is in "Succeeded" state
-oc get csv -n cilium \
-  -o jsonpath='{.items[0].status.phase}'
+OPERATOR_NAMESPACE=cilium
+oc get csv -n "${OPERATOR_NAMESPACE}" \
+  -o jsonpath='{range .items[*]}{.metadata.name}: {.status.phase}{"\n"}{end}'
 ```
 
 ## Step 5: Validate Network Operator Configuration
@@ -90,12 +94,13 @@ On OpenShift, the cluster Network Operator manages CNI configuration.
 
 ```bash
 # Check the current network configuration
-oc get network.config cluster -o yaml
+oc get network.config.openshift.io cluster -o yaml
 
-# For replacing OVN-Kubernetes with Cilium, the networkType should be changed
-# This is a significant operation - validate in a test cluster first
-oc get network.config cluster \
-  -o jsonpath='{.spec.networkType}'
+# Check the currently deployed network type.
+# The Network spec networkType field is immutable after installation; use the
+# OpenShift installer or a vendor-supported migration process for Cilium.
+oc get network.config.openshift.io cluster \
+  -o jsonpath='{.status.networkType}{"\n"}'
 
 # Verify no conflicting CNI configs remain after migration
 oc debug node/<node-name> -- chroot /host ls /etc/cni/net.d/
@@ -104,10 +109,9 @@ oc debug node/<node-name> -- chroot /host ls /etc/cni/net.d/
 ## OpenShift-Specific Considerations
 
 ```bash
-# Check that Cilium pods can run as privileged
+# Check whether the Cilium agent container is configured as privileged
 oc get pods -n cilium -l k8s-app=cilium \
-  -o jsonpath='{.items[0].spec.containers[0].securityContext}' | \
-  python3 -m json.tool
+  -o jsonpath='{.items[0].spec.containers[0].securityContext.privileged}{"\n"}'
 
 # Verify the Cilium DaemonSet has the required capabilities
 oc describe daemonset cilium -n cilium | grep -A 5 "Capabilities"
@@ -115,10 +119,10 @@ oc describe daemonset cilium -n cilium | grep -A 5 "Capabilities"
 
 ## Best Practices
 
-- Use the certified Cilium Operator from Red Hat OperatorHub for OpenShift support
-- Do not skip the SCC creation step - Cilium will fail to start without proper SCCs
+- Use the certified Cilium or Isovalent Operator from Red Hat OperatorHub for OpenShift support
+- Do not skip the SCC and RBAC validation step - Cilium will fail to start without proper access
 - Test the CNI migration from OVN-Kubernetes to Cilium in a non-production cluster first
-- Keep the OpenShift Network Operator and Cilium Operator versions aligned
+- Keep the selected Cilium or Isovalent version within the certified OpenShift support matrix
 - Monitor OpenShift cluster operators after Cilium changes: `oc get clusteroperators`
 
 ## Conclusion
