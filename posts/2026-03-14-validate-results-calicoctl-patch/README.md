@@ -10,7 +10,7 @@ Description: Learn how to validate that calicoctl patch operations produced the 
 
 ## Introduction
 
-Running `calicoctl patch` is only half the job. The patch command may succeed at the API level but fail to produce the intended network behavior. A patched policy selector might not match the intended pods, a modified Felix configuration might not take effect until Felix restarts, or a patched BGP configuration might cause route flapping.
+Running `calicoctl patch` is only half the job. The patch command may succeed at the API level but fail to produce the intended network behavior. A patched policy selector might not match the intended pods, a modified Felix configuration might be overridden by higher-precedence configuration, or a patched BGP configuration might cause route flapping.
 
 Validating the results of a patch operation requires checking three layers: the resource state in the datastore, the enforcement state in Felix, and the actual network behavior in the cluster.
 
@@ -21,6 +21,7 @@ This guide covers comprehensive validation strategies for calicoctl patch operat
 - A running Kubernetes cluster with Calico installed
 - calicoctl v3.27 or later
 - kubectl access to the cluster
+- Felix Prometheus metrics enabled if you want to use metrics-based sync checks
 - Basic understanding of Calico policy enforcement
 
 ## Layer 1: Resource State Validation
@@ -41,7 +42,7 @@ RESOURCE_NAME="${2:?}"
 FIELD_PATH="${3:?}"
 EXPECTED_VALUE="${4:?}"
 
-# Get the current field value using python3 to traverse the YAML
+# Get the current field value using python3 to traverse the JSON output
 ACTUAL_VALUE=$(calicoctl get "$RESOURCE_KIND" "$RESOURCE_NAME" -o json | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -71,7 +72,7 @@ fi
 
 ## Layer 2: Felix Enforcement Validation
 
-Verify that Felix has picked up and enforced the patched policy:
+Verify that Felix has picked up the patched policy data:
 
 ```bash
 #!/bin/bash
@@ -80,16 +81,19 @@ Verify that Felix has picked up and enforced the patched policy:
 
 set -euo pipefail
 
+CALICO_NAMESPACE="${CALICO_NAMESPACE:-calico-system}"
+
 # Check Felix logs for policy update events
 echo "=== Recent Felix Policy Updates ==="
-kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | \
-  grep -i "policy\|update\|applied" | tail -20
+kubectl logs -n "$CALICO_NAMESPACE" -l k8s-app=calico-node -c calico-node --tail=50 | \
+  grep -i "policy\|update\|applied" | tail -20 || true
 
-# Check Felix metrics for sync status
+# Check Felix metrics for sync status.
+# Felix metrics are disabled by default; enable prometheusMetricsEnabled before using this check.
 echo ""
 echo "=== Felix Sync Status ==="
-CALICO_NODE_POD=$(kubectl get pods -n calico-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n calico-system "$CALICO_NODE_POD" -c calico-node -- \
+CALICO_NODE_POD=$(kubectl get pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n "$CALICO_NAMESPACE" "$CALICO_NODE_POD" -c calico-node -- \
   wget -q -O- http://localhost:9091/metrics 2>/dev/null | \
   grep -E "felix_resync_state|felix_cluster_num_policies"
 ```
@@ -107,12 +111,12 @@ set -euo pipefail
 
 # Test 1: Allowed connections should succeed
 echo "Test 1: Testing allowed connections..."
-kubectl exec -it deploy/frontend -- curl -s --max-time 5 -o /dev/null -w "%{http_code}" http://backend:8080/health
+kubectl exec deploy/frontend -- curl -s --max-time 5 -o /dev/null -w "%{http_code}" http://backend:8080/health
 echo ""
 
 # Test 2: Blocked connections should fail
 echo "Test 2: Testing blocked connections..."
-if kubectl exec -it deploy/frontend -- curl -s --max-time 5 -o /dev/null http://restricted-service:8080 2>/dev/null; then
+if kubectl exec deploy/frontend -- curl -s --max-time 5 -o /dev/null http://restricted-service:8080 2>/dev/null; then
   echo "FAIL: Connection to restricted-service should be blocked"
 else
   echo "PASS: Connection to restricted-service is blocked as expected"
@@ -120,7 +124,7 @@ fi
 
 # Test 3: DNS should work
 echo "Test 3: Testing DNS resolution..."
-kubectl exec -it deploy/frontend -- nslookup kubernetes.default.svc.cluster.local
+kubectl exec deploy/frontend -- nslookup kubernetes.default.svc.cluster.local
 ```
 
 ## Automated Validation Pipeline
@@ -135,6 +139,7 @@ Combine all validation layers into a single script:
 set -euo pipefail
 
 export DATASTORE_TYPE=kubernetes
+CALICO_NAMESPACE="${CALICO_NAMESPACE:-calico-system}"
 RESOURCE_KIND="${1:?Usage: $0 <kind> <name>}"
 RESOURCE_NAME="${2:?}"
 
@@ -153,6 +158,14 @@ check() {
   fi
 }
 
+all_calico_node_pods_running() {
+  local total
+  local running
+  total=$(kubectl get pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  running=$(kubectl get pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  [ "$total" -gt 0 ] && [ "$total" -eq "$running" ]
+}
+
 echo "=== Validating patch results for ${RESOURCE_KIND}/${RESOURCE_NAME} ==="
 
 # Resource exists
@@ -161,11 +174,11 @@ check "Resource exists in datastore" calicoctl get "$RESOURCE_KIND" "$RESOURCE_N
 # Resource is valid YAML
 check "Resource is valid" calicoctl get "$RESOURCE_KIND" "$RESOURCE_NAME" -o yaml
 
-# Felix is in sync
-check "Felix is processing policies" kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=10
+# Felix logs are accessible
+check "Felix logs are readable" kubectl logs -n "$CALICO_NAMESPACE" -l k8s-app=calico-node -c calico-node --tail=10
 
 # All calico-node pods are running
-check "All calico-node pods are running" kubectl get pods -n calico-system -l k8s-app=calico-node --field-selector=status.phase=Running
+check "All calico-node pods are running" all_calico_node_pods_running
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
