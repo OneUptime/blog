@@ -14,7 +14,7 @@ Upgrading Calico on Kind requires care to avoid disrupting pod networking during
 
 Calico upgrades typically involve updating the calico-node DaemonSet, calico-kube-controllers Deployment, and associated CRDs. The Calico project follows semantic versioning and publishes upgrade guides for each release. Minor version upgrades are usually straightforward, while major version upgrades may require additional steps.
 
-This guide covers upgrading Calico from v3.26.x to v3.27.0 on Kind using the manifest-based approach. The same process applies to other version pairs with appropriate manifest URL adjustments.
+This guide covers upgrading Calico from v3.26.x to v3.27.x on Kind using the manifest-based approach. The same process applies to other version pairs with appropriate manifest URL adjustments.
 
 ## Prerequisites
 
@@ -38,16 +38,17 @@ calicoctl get felixconfiguration -o yaml > calico-felix-backup.yaml
 calicoctl get bgpconfiguration -o yaml > calico-bgp-backup.yaml
 ```
 
-## Step 3: Review the Calico v3.27.0 Release Notes
+## Step 3: Review the Calico v3.27 Release Notes
 
 Before upgrading, read the release notes at https://docs.tigera.io/calico/3.27/release-notes/ to identify any breaking changes or required migration steps.
 
 ## Step 4: Apply the New Calico Manifest
 
-Apply the v3.27.0 manifest to update all Calico components:
+Download the v3.27 manifest that corresponds to your original installation method, then apply it to update all Calico components:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.27.5/manifests/calico.yaml -o upgrade.yaml
+kubectl apply --server-side --force-conflicts -f upgrade.yaml
 ```
 
 Kubernetes will perform a rolling update of the calico-node DaemonSet and update the calico-kube-controllers Deployment.
@@ -85,7 +86,7 @@ kubectl logs test-pod
 Update calicoctl to match the new Calico version:
 
 ```bash
-curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
+curl -L https://github.com/projectcalico/calico/releases/download/v3.27.5/calicoctl-linux-amd64 -o calicoctl
 chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
 calicoctl version
 ```
