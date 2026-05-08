@@ -76,7 +76,9 @@ grep "$USER" /etc/subuid
 # For containers needing more UIDs, increase the range
 sudo usermod --del-subuids 100000-165535 $USER
 sudo usermod --add-subuids 100000-231535 $USER
-# Now provides 131536 UIDs
+sudo usermod --del-subgids 100000-165535 $USER
+sudo usermod --add-subgids 100000-231535 $USER
+# Now provides 131536 UIDs and GIDs
 
 # Apply changes
 podman system migrate
@@ -96,11 +98,12 @@ podman unshare chown 0:0 ./data/test
 ## Inspecting Container Namespace Configuration
 
 ```bash
-# View the full namespace configuration of a container
-podman inspect --format='{{json .HostConfig.IDMappings}}' my-container | python3 -m json.tool
+# View the configured user namespace mode of a container
+podman inspect --format='{{.HostConfig.UsernsMode}}' my-container
 
-# View specific UID mappings
-podman inspect --format='{{range .HostConfig.IDMappings.UIDMap}}Container:{{.ContainerID}} Host:{{.HostID}} Size:{{.Size}}{{"\n"}}{{end}}' my-container
+# View the UID and GID mappings used by a running container
+podman exec my-container cat /proc/self/uid_map
+podman exec my-container cat /proc/self/gid_map
 ```
 
 ## Security Implications
@@ -112,8 +115,8 @@ podman run --rm alpine:latest id
 
 # But on the host, the process runs as your user
 podman run -d --name sec-test alpine:latest sleep 60
-ps aux | grep "sleep 60"
-# Shows your username, not root
+podman top sec-test huser,user,pid
+# Shows the mapped host user, not host root
 
 podman rm -f sec-test
 ```
