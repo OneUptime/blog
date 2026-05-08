@@ -10,7 +10,7 @@ Description: Learn how to configure namespace sharing between containers in a Po
 
 > Shared namespaces let containers in a pod see each other's processes, network interfaces, and IPC resources.
 
-By default, Podman pods share the network, UTS, and IPC namespaces. You can control exactly which namespaces are shared using the `--share` flag. This determines how tightly coupled the containers within a pod are.
+By default, Podman pods share the network, UTS, and IPC namespaces. You can control exactly which namespaces are shared using the `--share` flag. This determines how tightly coupled the containers within a pod are. When you pass `--share` without a leading `+`, it replaces the default list.
 
 ---
 
@@ -22,7 +22,6 @@ By default, Podman pods share the network, UTS, and IPC namespaces. You can cont
 podman pod create --name default-pod
 
 # By default, the following namespaces are shared:
-# - cgroup: Cgroup namespace
 # - ipc: Inter-process communication
 # - net: Network interfaces and routing
 # - uts: Hostname
@@ -91,9 +90,9 @@ podman run -d --pod isolated-pod --name b docker.io/library/alpine sleep 3600
 ```bash
 # Check which namespaces are shared
 podman pod inspect pid-pod --format '{{.SharedNamespaces}}'
-# Output: [ipc net uts pid]
+# Output: [pid net]
 ```
 
 ## Summary
 
-Podman pods share cgroup, IPC, network, and UTS namespaces by default. Use the `--share` flag to add PID sharing for cross-container process visibility, or restrict sharing for tighter isolation. This flexibility lets you match Kubernetes pod semantics or create custom grouping behavior.
+Podman pods share IPC, network, and UTS namespaces by default. Use the `--share` flag to enable PID sharing for cross-container process visibility, or restrict sharing for tighter isolation. This flexibility lets you match Kubernetes pod semantics or create custom grouping behavior.
