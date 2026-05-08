@@ -10,11 +10,11 @@ Description: Guide to creating Calico StagedNetworkPolicy resources for previewi
 
 ## Introduction
 
-The StagedNetworkPolicy resource in Calico Enterprise is the namespace-scoped equivalent of StagedGlobalNetworkPolicy. It allows you to stage Calico-native network policy changes within a specific namespace, preview their impact on traffic flows, and commit them only after validation. Unlike StagedKubernetesNetworkPolicy, it uses the full Calico policy syntax with features like action types, application layer policies, and service account selectors.
+The StagedNetworkPolicy resource in Calico Enterprise is the namespace-scoped equivalent of StagedGlobalNetworkPolicy. It allows you to stage Calico-native network policy changes within a specific namespace, preview their impact on traffic flows, and enforce them only after validation. Unlike StagedKubernetesNetworkPolicy, it uses the full Calico policy syntax with features like action types, optional application layer policy matches, and service account selectors.
 
-Creating a StagedNetworkPolicy follows the same patterns as creating a regular Calico NetworkPolicy, but with the addition of a stagedAction field that determines whether the policy is being added, modified, or removed. The staged policy does not affect live traffic until explicitly committed through the Calico Enterprise management plane.
+Creating a StagedNetworkPolicy follows the same patterns as creating a regular Calico NetworkPolicy, but with the addition of a stagedAction field. A stagedAction of `Set` stages a policy to be created or updated, `Delete` stages removal, and Calico also supports `Learn` and `Ignore` actions. The staged policy does not affect live traffic until it is enforced by creating or updating the corresponding Calico NetworkPolicy, or by using the Calico Enterprise management plane.
 
-This guide covers creating StagedNetworkPolicy resources for common use cases including microservice communication, database access control, and application layer filtering.
+This guide covers creating StagedNetworkPolicy resources for common use cases including microservice communication, database access control, and service account-based egress control.
 
 ## Prerequisites
 
@@ -166,12 +166,12 @@ If the selector syntax is invalid, remember that Calico uses its own selector sy
 selector: app == 'api-server' && version == 'v2'
 ```
 
-If RBAC errors prevent creation, ensure your role includes the stagednetworkpolicies resource:
+If RBAC errors prevent creation, ensure your role includes the stagednetworkpolicies resource in the `projectcalico.org` API group:
 
 ```bash
-kubectl auth can-i create stagednetworkpolicies -n production
+kubectl auth can-i create stagednetworkpolicies.projectcalico.org -n production
 ```
 
 ## Conclusion
 
-Creating StagedNetworkPolicy resources provides a safe way to introduce namespace-scoped Calico network policies. The full Calico policy syntax gives you access to advanced features like service account selectors and ordered rule evaluation, while the staging mechanism ensures no traffic is affected until you commit the changes. Always review the traffic impact analysis before committing staged policies to production enforcement.
+Creating StagedNetworkPolicy resources provides a safe way to introduce namespace-scoped Calico network policies. The full Calico policy syntax gives you access to advanced features like service account selectors and ordered rule evaluation, while the staging mechanism ensures no traffic is affected until you enforce the changes. Always review the traffic impact analysis before enforcing staged policies in production.
