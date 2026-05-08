@@ -30,7 +30,7 @@ Simply seeing "Established" next to every peer is necessary but not sufficient. 
 NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
 EXPECTED_MESH_PEERS=$((NODE_COUNT - 1))
 
-ACTUAL_PEERS=$(sudo calicoctl node status 2>/dev/null | grep -c "Established" || echo 0)
+ACTUAL_PEERS=$(sudo calicoctl node status 2>/dev/null | awk -F'|' '$6 ~ /Established/ {count++} END {print count+0}')
 
 echo "Cluster nodes: $NODE_COUNT"
 echo "Expected mesh peers: $EXPECTED_MESH_PEERS"
@@ -44,8 +44,8 @@ else
   echo "FAIL: Missing $((EXPECTED_MESH_PEERS - ACTUAL_PEERS)) peer(s)"
   echo "Missing peers:"
   # Find which nodes are not peered
-  ALL_NODE_IPS=$(calicoctl get nodes -o jsonpath='{range .items[*]}{.spec.bgp.ipv4Address}{"\n"}{end}' | cut -d/ -f1)
-  PEERED_IPS=$(sudo calicoctl node status | grep "Established" | awk '{print $2}')
+  ALL_NODE_IPS=$(calicoctl get nodes -o go-template='{{range .}}{{range .Items}}{{with .Spec.BGP.IPv4Address}}{{.}}{{"\n"}}{{end}}{{end}}{{end}}' | cut -d/ -f1)
+  PEERED_IPS=$(sudo calicoctl node status | awk -F'|' '$6 ~ /Established/ {gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}')
   
   for IP in $ALL_NODE_IPS; do
     MY_IP=$(hostname -I | awk '{print $1}')
@@ -66,11 +66,11 @@ fi
 
 MIN_UPTIME_MINUTES=10
 
-sudo calicoctl node status | grep "Established" | while read -r line; do
-  PEER=$(echo "$line" | awk '{print $2}')
-  SINCE=$(echo "$line" | awk '{print $8}')
+sudo calicoctl node status | awk -F'|' '$6 ~ /Established/ {print $2 "|" $5}' | while IFS='|' read -r peer since; do
+  PEER=$(echo "$peer" | xargs)
+  SINCE=$(echo "$since" | xargs)
   
-  # The SINCE field is a timestamp like "08:15:30"
+  # The SINCE field is the time or date of the last BGP state change.
   echo "Peer $PEER established since $SINCE"
 done
 
@@ -81,30 +81,30 @@ echo "Compare SINCE times with current time: $(date +%H:%M:%S)"
 
 ## Validating Route Exchange
 
-Established BGP sessions should result in routes being installed:
+In a BGP-backed Calico deployment, established BGP sessions should result in routes being installed:
 
 ```bash
 # Check that routes exist for remote pod CIDRs
 echo "=== Routes from BGP peers ==="
-ip route | grep "proto bird"
+ip route | grep -E "proto (bird|80)"
 
 # Count routes per peer
 echo ""
 echo "=== Route count per next-hop ==="
-ip route | grep "proto bird" | awk '{for(i=1;i<=NF;i++) if($i=="via") print $(i+1)}' | sort | uniq -c | sort -rn
+ip route | grep -E "proto (bird|80)" | awk '{for(i=1;i<=NF;i++) if($i=="via") print $(i+1)}' | sort | uniq -c | sort -rn
 
-# Verify routes match the number of remote nodes
-ROUTE_NEXTHOPS=$(ip route | grep "proto bird" | awk '{for(i=1;i<=NF;i++) if($i=="via") print $(i+1)}' | sort -u | wc -l)
-EXPECTED_PEERS=$(sudo calicoctl node status | grep -c "Established")
+# Compare route next-hops with established BGP peers in a node-to-node mesh.
+ROUTE_NEXTHOPS=$(ip route | grep -E "proto (bird|80)" | awk '{for(i=1;i<=NF;i++) if($i=="via") print $(i+1)}' | sort -u | wc -l)
+EXPECTED_PEERS=$(sudo calicoctl node status | awk -F'|' '$6 ~ /Established/ {count++} END {print count+0}')
 
 echo ""
 echo "Unique route next-hops: $ROUTE_NEXTHOPS"
 echo "Established BGP peers: $EXPECTED_PEERS"
 
 if [ "$ROUTE_NEXTHOPS" -ge "$EXPECTED_PEERS" ]; then
-  echo "PASS: Routes received from all peers"
+  echo "PASS: Route next-hops match or exceed established peers"
 else
-  echo "WARN: Some peers may not be advertising routes"
+  echo "WARN: Some peers may not be advertising routes, or this node uses route reflectors or encapsulation"
 fi
 ```
 
@@ -124,16 +124,17 @@ for NODE in $NODES; do
   POD_INDEX=$((POD_INDEX + 1))
   kubectl run "connectivity-test-${POD_INDEX}" \
     --image=busybox \
+    --labels=app=calico-connectivity-test \
     --restart=Never \
-    --overrides="{\"spec\":{\"nodeName\":\"$NODE\"}}" \
+    --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"$NODE\"}}" \
     -- sleep 300
 done
 
 echo "Waiting for pods to be ready..."
-kubectl wait --for=condition=Ready pod -l run --timeout=60s 2>/dev/null
+kubectl wait --for=condition=Ready pod -l app=calico-connectivity-test --timeout=60s 2>/dev/null
 
 # Test connectivity between each pair
-PODS=$(kubectl get pods -l run -o jsonpath='{range .items[*]}{.metadata.name},{.status.podIP}{"\n"}{end}')
+PODS=$(kubectl get pods -l app=calico-connectivity-test -o jsonpath='{range .items[*]}{.metadata.name},{.status.podIP}{"\n"}{end}')
 echo ""
 echo "Testing connectivity..."
 
@@ -156,7 +157,7 @@ done
 # Cleanup
 echo ""
 echo "Cleaning up test pods..."
-kubectl delete pods -l run --grace-period=0 2>/dev/null
+kubectl delete pods -l app=calico-connectivity-test --grace-period=0 2>/dev/null
 ```
 
 ## Verification
