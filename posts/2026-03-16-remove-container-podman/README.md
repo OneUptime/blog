@@ -119,11 +119,7 @@ podman ps -a --filter ancestor=docker.io/library/alpine:latest
 
 ```bash
 # Remove containers created more than 24 hours ago
-podman ps -a --filter status=exited --format "{{.ID}} {{.CreatedAt}}" | \
-  while read id created; do
-    echo "Removing container $id (created $created)"
-    podman rm "$id"
-  done
+podman rm --filter status=exited --filter until=24h
 ```
 
 ## Scripting Container Cleanup
@@ -149,15 +145,15 @@ fi
 
 ## Removing Containers with Dependencies
 
-If a container is referenced by other containers, remove the dependents first.
+If a container is required by other containers, remove the dependents first or use `--depend`.
 
 ```bash
-# Check if a container has dependents
-podman inspect my-container --format '{{.HostConfig.Links}}'
-
 # Remove containers in the correct order
 podman rm dependent-container
 podman rm my-container
+
+# Or remove the container and its dependents recursively
+podman rm --depend my-container
 ```
 
 ## Summary
