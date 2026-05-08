@@ -82,7 +82,7 @@ Find flows from a specific namespace to external destinations:
 hubble observe \
   --from-namespace production \
   --to-ip 0.0.0.0/0 \
-  --not-to-namespace production \
+  --not --to-namespace production \
   --since 5m
 ```
 
@@ -91,13 +91,13 @@ hubble observe \
 Find all DNS queries in the cluster:
 
 ```bash
-hubble observe --protocol DNS --since 1m
+hubble observe --protocol dns --since 1m
 ```
 
 Find HTTP traffic returning errors:
 
 ```bash
-hubble observe --http-status-code 500 --since 10m
+hubble observe --http-status 500 --since 10m
 ```
 
 ## Export for Analysis
