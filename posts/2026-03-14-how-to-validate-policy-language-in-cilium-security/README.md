@@ -16,6 +16,7 @@ Validating policy language constructs ensures your policies are syntactically co
 
 - Kubernetes cluster with Cilium
 - kubectl configured
+- Hubble enabled and the Hubble CLI configured, if you want to inspect L7 flows
 
 ## Syntax Validation
 
@@ -37,27 +38,38 @@ kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '
 echo "=== Policy Selector Validation ==="
 
 for policy in $(kubectl get ciliumnetworkpolicies -n default -o jsonpath='{.items[*].metadata.name}'); do
-  MATCH_COUNT=$(kubectl get ciliumendpoints -n default -o json | jq --argjson sel "$(kubectl get ciliumnetworkpolicy "$policy" -n default -o json | jq '.spec.endpointSelector.matchLabels')" '
-    [.items[] | select(.metadata.labels as $l | $sel | to_entries | all(.key as $k | .value as $v | $l[$k] == $v))] | length')
-  echo "Policy '$policy' matches $MATCH_COUNT endpoints"
+  SELECTOR=$(kubectl get ciliumnetworkpolicy "$policy" -n default -o json | jq -r '
+    (.spec.endpointSelector.matchLabels // {}) |
+    to_entries |
+    map("\(.key)=\(.value)") |
+    join(",")')
+  if [ -n "$SELECTOR" ]; then
+    MATCH_COUNT=$(kubectl get pods -n default -l "$SELECTOR" --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  else
+    MATCH_COUNT=$(kubectl get pods -n default --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  fi
+  echo "Policy '$policy' matches $MATCH_COUNT pods"
 done
 ```
 
 ## Rule Behavior Validation
 
 ```bash
-# Use policy trace to validate specific rules
-cilium policy trace -s <src-labels> -d <dst-labels> --dport 8080
+# Generate traffic that should match the policy
+kubectl exec -n default <source-pod> -- curl -sS http://<service-name>:8080
 
 # Verify L7 rules with actual traffic
-hubble observe --protocol http -n default --last 20
+hubble observe --protocol http
+
+# Check policy drops
+hubble observe --verdict DROPPED
 ```
 
 ```mermaid
 graph TD
     A[Validate Policy Language] --> B[Syntax Check]
     B --> C[Selector Match Check]
-    C --> D[Rule Trace]
+    C --> D[Traffic Observation]
     D --> E[Traffic Test]
     E --> F{All Valid?}
     F -->|Yes| G[Policy Valid]
@@ -68,15 +80,15 @@ graph TD
 
 ```bash
 kubectl get ciliumnetworkpolicies --all-namespaces
-cilium policy get
+cilium status
 ```
 
 ## Troubleshooting
 
 - **Dry-run passes but policy does not work**: Syntax is valid but semantics may be wrong. Check selectors.
-- **Policy trace shows allow but traffic blocked**: Check for conflicting deny policies.
-- **Selector matches zero endpoints**: Labels may not match. Use exact label format from `cilium endpoint list`.
+- **Hubble shows traffic blocked unexpectedly**: Check for conflicting deny policies.
+- **Selector matches zero endpoints**: Labels may not match. Compare against `kubectl get ciliumendpoints -o json` or `cilium-dbg endpoint list`.
 
 ## Conclusion
 
-Validate policy language with syntax checks, selector matching, policy trace, and traffic testing. Each layer catches different types of issues.
+Validate policy language with syntax checks, selector matching, traffic observation, and traffic testing. Each layer catches different types of issues.
