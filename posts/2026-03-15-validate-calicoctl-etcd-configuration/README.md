@@ -20,7 +20,7 @@ This guide provides a comprehensive validation checklist and scripts for calicoc
 
 - Calico cluster using etcd as the datastore
 - `calicoctl` binary installed (v3.25+)
-- `openssl` and `etcdctl` available
+- `openssl`, `etcdctl`, and Python with PyYAML available
 - etcd TLS certificates accessible
 
 ## Validating the Configuration File
@@ -30,13 +30,19 @@ Check that the calicoctl configuration file is syntactically correct:
 ```bash
 CONFIG_FILE="/etc/calico/calicoctl.cfg"
 
-# Verify YAML syntax
+# Verify YAML syntax and etcd datastore settings
+python3 - "$CONFIG_FILE" <<'PY'
+import sys
+import yaml
 
-python3 -c "import yaml; yaml.safe_load(open('${CONFIG_FILE}'))" && echo "YAML syntax: OK" || echo "YAML syntax: FAILED"
+with open(sys.argv[1]) as f:
+    config = yaml.safe_load(f)
 
-# Check required fields
-grep -q "datastoreType" "$CONFIG_FILE" && echo "datastoreType: present" || echo "datastoreType: MISSING"
-grep -q "etcdEndpoints" "$CONFIG_FILE" && echo "etcdEndpoints: present" || echo "etcdEndpoints: MISSING"
+spec = config.get("spec", {})
+assert spec.get("datastoreType") == "etcdv3", "spec.datastoreType must be etcdv3"
+assert spec.get("etcdEndpoints"), "spec.etcdEndpoints is required"
+print("calicoctl etcd config: OK")
+PY
 ```
 
 ## Validating TLS Certificate Files
@@ -96,10 +102,10 @@ openssl verify -CAfile "$ETCD_CA_CERT_FILE" "$ETCD_CERT_FILE"
 Verify the private key matches the client certificate:
 
 ```bash
-CERT_MOD=$(openssl x509 -in "$ETCD_CERT_FILE" -noout -modulus | md5sum)
-KEY_MOD=$(openssl rsa -in "$ETCD_KEY_FILE" -noout -modulus | md5sum)
+CERT_PUBKEY=$(openssl x509 -in "$ETCD_CERT_FILE" -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256)
+KEY_PUBKEY=$(openssl pkey -in "$ETCD_KEY_FILE" -pubout -outform DER | openssl dgst -sha256)
 
-if [ "$CERT_MOD" = "$KEY_MOD" ]; then
+if [ "$CERT_PUBKEY" = "$KEY_PUBKEY" ]; then
   echo "OK: Client certificate and key match"
 else
   echo "FAIL: Client certificate and key do NOT match"
@@ -144,7 +150,7 @@ calicoctl get felixconfiguration default && echo "Felix Config: OK" || echo "Fel
 Test write access with a temporary resource:
 
 ```bash
-cat <<EOF | calicoctl apply -f -
+if cat <<EOF | calicoctl apply -f -
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkSet
 metadata:
@@ -153,11 +159,17 @@ spec:
   nets:
     - 192.0.2.0/24
 EOF
-
-calicoctl get globalnetworkset validation-test -o yaml
-
-calicoctl delete globalnetworkset validation-test
-echo "Write validation: OK"
+then
+  if calicoctl get globalnetworkset validation-test -o yaml; then
+    calicoctl delete globalnetworkset validation-test
+    echo "Write validation: OK"
+  else
+    calicoctl delete globalnetworkset validation-test
+    echo "Write validation: FAIL"
+  fi
+else
+  echo "Write validation: FAIL"
+fi
 ```
 
 ## Full Validation Script
@@ -170,24 +182,34 @@ Combine all checks into a single validation script:
 
 PASS=0
 FAIL=0
+CONFIG_FILE=${CONFIG_FILE:-/etc/calico/calicoctl.cfg}
 
 check() {
-  if eval "$2" > /dev/null 2>&1; then
-    echo "PASS: $1"
+  local label=$1
+  shift
+
+  if "$@" > /dev/null 2>&1; then
+    echo "PASS: ${label}"
     PASS=$((PASS + 1))
   else
-    echo "FAIL: $1"
+    echo "FAIL: ${label}"
     FAIL=$((FAIL + 1))
   fi
 }
 
-check "Config file exists" "[ -f /etc/calico/calicoctl.cfg ]"
-check "CA cert readable" "[ -r $ETCD_CA_CERT_FILE ]"
-check "Client cert readable" "[ -r $ETCD_CERT_FILE ]"
-check "Client key readable" "[ -r $ETCD_KEY_FILE ]"
-check "Cert chain valid" "openssl verify -CAfile $ETCD_CA_CERT_FILE $ETCD_CERT_FILE"
-check "calicoctl get nodes" "calicoctl get nodes"
-check "calicoctl get ippools" "calicoctl get ippools"
+check_file_readable() {
+  local file=${1:-}
+  [ -n "$file" ] && [ -r "$file" ]
+}
+
+check "Config file exists" test -f "$CONFIG_FILE"
+check "CA cert readable" check_file_readable "${ETCD_CA_CERT_FILE:-}"
+check "Client cert readable" check_file_readable "${ETCD_CERT_FILE:-}"
+check "Client key readable" check_file_readable "${ETCD_KEY_FILE:-}"
+check "Cert chain valid" openssl verify -CAfile "$ETCD_CA_CERT_FILE" "$ETCD_CERT_FILE"
+check "etcd endpoint health" etcdctl --endpoints="$ETCD_ENDPOINTS" --cacert="$ETCD_CA_CERT_FILE" --cert="$ETCD_CERT_FILE" --key="$ETCD_KEY_FILE" endpoint health
+check "calicoctl get nodes" calicoctl get nodes
+check "calicoctl get ippools" calicoctl get ippools
 
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"
