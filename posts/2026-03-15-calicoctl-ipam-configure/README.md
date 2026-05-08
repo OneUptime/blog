@@ -10,7 +10,7 @@ Description: Learn how to use calicoctl ipam configure to manage IP address allo
 
 ## Introduction
 
-Calico uses its own IP Address Management (IPAM) system to allocate IP addresses to workloads. The `calicoctl ipam configure` command allows you to adjust IPAM settings such as the number of IP addresses reserved per node and the strict affinity mode for IP block allocation.
+Calico uses its own IP Address Management (IPAM) system to allocate IP addresses to workloads. The `calicoctl ipam configure` command allows you to adjust IPAM settings such as the maximum number of IP blocks that can be affine to a node and the strict affinity mode for IP block allocation.
 
 Proper IPAM configuration is critical for cluster scalability and efficient IP address utilization. Misconfigured IPAM settings can lead to IP address exhaustion, uneven distribution across nodes, or routing issues when nodes are decommissioned.
 
@@ -28,14 +28,19 @@ This guide covers practical uses of `calicoctl ipam configure` to tune IPAM beha
 Before making changes, check the current configuration:
 
 ```bash
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 ```
 
 Example output:
 
 ```text
-StrictAffinity: false
-MaxBlocksPerHost: 0 (unlimited)
++--------------------+-------+
+| PROPERTY           | VALUE |
++--------------------+-------+
+| StrictAffinity     | false |
+| AutoAllocateBlocks | true  |
+| MaxBlocksPerHost   | 0     |
++--------------------+-------+
 ```
 
 ## Enabling Strict Affinity
@@ -49,14 +54,19 @@ calicoctl ipam configure --strictaffinity=true
 Verify the change:
 
 ```bash
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 ```
 
 Output:
 
 ```text
-StrictAffinity: true
-MaxBlocksPerHost: 0 (unlimited)
++--------------------+-------+
+| PROPERTY           | VALUE |
++--------------------+-------+
+| StrictAffinity     | true  |
+| AutoAllocateBlocks | true  |
+| MaxBlocksPerHost   | 0     |
++--------------------+-------+
 ```
 
 ### When to Use Strict Affinity
@@ -79,7 +89,7 @@ kind: IPAMConfiguration
 metadata:
   name: default
 spec:
-  strictAffinity: false
+  strictAffinity: true
   maxBlocksPerHost: 4
 EOF
 ```
@@ -88,11 +98,15 @@ This limits each node to a maximum of 4 IP blocks. With the default block size o
 
 ## Combining Configuration Options
 
-You can set strict affinity via the CLI and max blocks per host via the IPAMConfiguration resource:
+You can set strict affinity and max blocks per host through the CLI:
 
 ```bash
-calicoctl ipam configure --strictaffinity=true
+calicoctl ipam configure --strictaffinity=true --max-blocks-per-host=8
+```
 
+Or configure both settings through the IPAMConfiguration resource:
+
+```bash
 calicoctl apply -f - <<EOF
 apiVersion: projectcalico.org/v3
 kind: IPAMConfiguration
@@ -107,14 +121,19 @@ EOF
 Verify both settings applied:
 
 ```bash
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 ```
 
 Output:
 
 ```text
-StrictAffinity: true
-MaxBlocksPerHost: 8
++--------------------+-------+
+| PROPERTY           | VALUE |
++--------------------+-------+
+| StrictAffinity     | true  |
+| AutoAllocateBlocks | true  |
+| MaxBlocksPerHost   | 8     |
++--------------------+-------+
 ```
 
 ## Planning IP Capacity
@@ -124,12 +143,12 @@ Calculate your IP capacity based on the configuration:
 ```bash
 #!/bin/bash
 BLOCK_SIZE=64  # Default /26 block
-MAX_BLOCKS=$(calicoctl ipam configure show | grep MaxBlocksPerHost | awk '{print $2}')
+MAX_BLOCKS=$(calicoctl get ipamconfiguration default -o yaml | awk '/maxBlocksPerHost:/ {print $2}')
 NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
 
-if [ "$MAX_BLOCKS" = "0" ]; then
-  echo "MaxBlocksPerHost: unlimited"
-  echo "IP capacity is limited only by pool size"
+if [ -z "$MAX_BLOCKS" ] || [ "$MAX_BLOCKS" = "0" ]; then
+  echo "MaxBlocksPerHost: using Calico default allocation safeguard"
+  echo "Check your Calico version's IPAMConfiguration defaults before planning maximum density"
 else
   IPS_PER_NODE=$((BLOCK_SIZE * MAX_BLOCKS))
   TOTAL_CAPACITY=$((IPS_PER_NODE * NODE_COUNT))
@@ -146,7 +165,7 @@ When scaling a cluster, you may need to adjust IPAM settings. Here is a script t
 ```bash
 #!/bin/bash
 echo "=== Current IPAM Configuration ==="
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 
 echo ""
 echo "=== Current IPAM Usage ==="
@@ -179,7 +198,7 @@ spec:
 EOF
 ```
 
-A value of 0 for `maxBlocksPerHost` means unlimited.
+A value of 0 for `maxBlocksPerHost` means no explicit global limit is set; Calico's allocation logic still applies its default safeguard when needed.
 
 ## Verification
 
@@ -188,7 +207,7 @@ After changing IPAM configuration, verify the settings and check that existing w
 ```bash
 # Check configuration
 
-calicoctl ipam configure show
+calicoctl ipam show --show-configuration
 
 # Verify workloads still have IP addresses
 kubectl get pods -A -o wide | grep -v Completed | head -20
@@ -199,9 +218,9 @@ calicoctl ipam show
 
 ## Troubleshooting
 
-- **Pods stuck in ContainerCreating**: If `maxblocksperhost` is too low, nodes may run out of IP blocks. Increase the limit or add more IP pools.
-- **Strict affinity causing issues**: Enabling strict affinity on an existing cluster may cause borrowed blocks to not be reclaimed. Drain and restart nodes gradually.
-- **Configuration not taking effect**: Changes to IPAM configuration may require Felix to restart. Check Felix logs for configuration reload messages.
+- **Pods stuck in ContainerCreating**: If `maxBlocksPerHost` is too low, nodes may run out of IP blocks. Increase the limit or add more IP pools.
+- **Strict affinity causing issues**: Check for borrowed IPs with `calicoctl ipam show --show-borrowed` before enabling strict affinity in an existing cluster. Drain or restart affected workloads gradually if you need to clear borrowed allocations.
+- **Configuration not taking effect**: Confirm `calicoctl` is connected to the correct datastore and inspect `calicoctl get ipamconfiguration default -o yaml`.
 - **IP exhaustion after enabling strict affinity**: Strict affinity can lead to less efficient IP utilization. Monitor usage with `calicoctl ipam show` and add IP pools if needed.
 
 ## Conclusion
