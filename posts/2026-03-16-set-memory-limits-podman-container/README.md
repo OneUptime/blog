@@ -49,12 +49,6 @@ When a container exceeds its hard memory limit, the OOM killer terminates proces
 The `--memory-swap` flag controls how much combined memory and swap the container can use:
 
 ```bash
-# 512MB RAM, no swap allowed (memory-swap equals memory)
-podman run -d --name no-swap \
-  --memory 512m \
-  --memory-swap 512m \
-  alpine sleep infinity
-
 # 512MB RAM, 512MB of swap (1g total minus 512m memory = 512m swap)
 podman run -d --name with-swap \
   --memory 512m \
@@ -72,10 +66,11 @@ The relationship between the flags:
 
 | --memory | --memory-swap | Effective Swap |
 |----------|---------------|----------------|
-| 512m     | 512m          | 0 (no swap)    |
 | 512m     | 1g            | 512m of swap   |
 | 512m     | -1            | Unlimited swap |
 | 512m     | (not set)     | 512m of swap (2x memory) |
+
+Podman's current documentation requires `--memory-swap` to be larger than `--memory`, except when using `-1` for unlimited swap.
 
 ## Setting Memory Reservation (Soft Limit)
 
@@ -96,8 +91,8 @@ The soft limit must be lower than the hard limit. Under normal conditions, the c
 Control how aggressively the kernel swaps memory pages for a container:
 
 ```bash
-# Disable swapping for this container (value 0)
-podman run -d --name no-swappiness \
+# Minimize swapping for this container (value 0)
+podman run -d --name low-swappiness \
   --memory 512m \
   --memory-swappiness 0 \
   alpine sleep infinity
@@ -110,6 +105,8 @@ podman run -d --name swap-happy \
 ```
 
 A value of 0 tells the kernel to avoid swapping unless absolutely necessary. A value of 100 makes the kernel swap aggressively.
+
+The `--memory-swappiness` flag is only supported on cgroups v1 rootful systems.
 
 ## Disabling the OOM Killer
 
@@ -124,6 +121,8 @@ podman run -d --name critical-app \
 ```
 
 Use this cautiously. If the container exceeds its memory limit with OOM kill disabled, the container will hang rather than having a process killed. Always set a `--memory` limit when disabling OOM kill.
+
+The `--oom-kill-disable` flag is not supported on cgroups v2 systems.
 
 ## Verifying Memory Limits
 
@@ -154,9 +153,9 @@ podman stats app
 # One-shot stats for all containers
 podman stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}"
 
-# Read cgroup memory stats directly (cgroups v2)
+# Read cgroup memory stats directly (cgroups v2, then cgroups v1)
 podman exec app cat /sys/fs/cgroup/memory.current 2>/dev/null || \
-podman exec app cat /proc/meminfo
+podman exec app cat /sys/fs/cgroup/memory/memory.usage_in_bytes
 ```
 
 ## Updating Memory Limits at Runtime
@@ -182,7 +181,7 @@ podman update --memory 1g --memory-swap 2g app
 podman run -d --name postgres \
   --memory 2g \
   --memory-reservation 1g \
-  --memory-swap 2g \
+  --memory-swap 3g \
   -e POSTGRES_PASSWORD=secret \
   postgres:16
 
@@ -190,14 +189,14 @@ podman run -d --name postgres \
 podman run -d --name app-server \
   --memory 512m \
   --memory-reservation 256m \
-  --memory-swap 512m \
+  --memory-swap 1g \
   node:20-slim sleep infinity
 
 # Reverse proxy - lightweight
 podman run -d --name proxy \
   --memory 128m \
   --memory-reservation 64m \
-  --memory-swap 128m \
+  --memory-swap 256m \
   nginx:latest
 
 # Monitor all containers
@@ -209,10 +208,10 @@ podman stats --no-stream
 Verify that limits are enforced:
 
 ```bash
-# This container will be OOM-killed when it exceeds 64MB
-podman run --rm --memory 64m alpine sh -c "
+# This container will be OOM-killed when it exceeds its memory and swap allowance
+podman run --rm --memory 64m python:3.12-alpine sh -c "
   echo 'Attempting to allocate beyond 64MB...'
-  dd if=/dev/zero of=/tmp/fill bs=1M count=128 2>&1 || echo 'Hit memory limit'
+  python -c 'data = bytearray(256 * 1024 * 1024)'
 "
 
 # Check if a container was OOM-killed
@@ -226,8 +225,8 @@ Memory management in Podman revolves around these key flags:
 - `--memory`: Hard upper limit on RAM usage
 - `--memory-swap`: Combined RAM plus swap limit
 - `--memory-reservation`: Soft limit for memory pressure scenarios
-- `--memory-swappiness`: Controls kernel swap behavior (0-100)
-- `--oom-kill-disable`: Prevents OOM killer (use with caution)
+- `--memory-swappiness`: Controls kernel swap behavior (0-100, cgroups v1 rootful only)
+- `--oom-kill-disable`: Prevents OOM killer (use with caution, not supported on cgroups v2)
 - `podman update`: Adjust limits on running containers
 
 Set memory limits based on actual observed usage plus a reasonable buffer. Start with monitoring, then apply limits that give your containers room to operate without wasting host resources.
