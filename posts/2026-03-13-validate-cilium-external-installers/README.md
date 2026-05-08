@@ -10,7 +10,7 @@ Description: Learn how to validate Cilium installations deployed via external to
 
 ## Introduction
 
-Cilium can be installed through multiple mechanisms: the `cilium` CLI, Helm, kubeadm init phases, cluster lifecycle tools like Cluster API, or managed Kubernetes provisioners that bundle Cilium as the default CNI. Each installer may apply different default configurations, and the resulting installation needs to be validated to confirm it matches your intended configuration and that all components are functional.
+Cilium can be installed through multiple mechanisms: the `cilium` CLI, Helm, kubeadm-based workflows, cluster lifecycle tools like Cluster API, or managed Kubernetes provisioners that bundle Cilium as the default CNI. Each installer may apply different default configurations, and the resulting installation needs to be validated to confirm it matches your intended configuration and that all components are functional.
 
 When Cilium is installed by an external tool, you may not have full visibility into the exact flags and values that were used. Validation becomes especially important in these cases because mismatches between the installer's defaults and your operational requirements can cause subtle networking issues that only manifest under specific conditions.
 
@@ -37,20 +37,21 @@ kubectl -n kube-system get pods -l k8s-app=cilium \
 helm list -n kube-system | grep cilium
 
 # If installed via Helm, inspect the values that were used
+# Replace cilium with the release name shown by helm list if it differs
 helm get values cilium -n kube-system
 ```
 
 ## Step 2: Review the Cilium ConfigMap
 
-The ConfigMap is the source of truth for Cilium's runtime configuration.
+The ConfigMap is the primary place to review many Cilium runtime configuration options.
 
 ```bash
 # Dump the full Cilium configuration
 kubectl -n kube-system get configmap cilium-config -o yaml
 
 # Check key configuration parameters
-kubectl -n kube-system get configmap cilium-config -o jsonpath='{.data}' | \
-  python3 -m json.tool | grep -E '"ipam"|"tunnel"|"kube-proxy|"bpf-"'
+kubectl -n kube-system get configmap cilium-config -o yaml | \
+  grep -E '^\s+(ipam|routing-mode|tunnel-protocol|kube-proxy-replacement|enable-bpf-masquerade|bpf-.*):'
 ```
 
 ## Step 3: Validate All Cilium Components Are Running
@@ -66,7 +67,7 @@ kubectl -n kube-system get deployment cilium-operator
 
 # Check Hubble components if enabled
 kubectl -n kube-system get deployment hubble-relay 2>/dev/null
-kubectl -n kube-system get daemonset hubble-ui 2>/dev/null
+kubectl -n kube-system get deployment hubble-ui 2>/dev/null
 
 # Use cilium CLI for a comprehensive status check
 cilium status --wait
@@ -79,19 +80,23 @@ Validate that installer-applied settings match your requirements.
 ```bash
 # Check kube-proxy replacement status
 kubectl -n kube-system get configmap cilium-config \
-  -o jsonpath='{.data.kube-proxy-replacement}'
+  -o go-template='{{index .data "kube-proxy-replacement"}}'
 
 # Verify IPAM mode
 kubectl -n kube-system get configmap cilium-config \
-  -o jsonpath='{.data.ipam}'
+  -o go-template='{{index .data "ipam"}}'
 
-# Check tunnel mode (vxlan, geneve, or disabled)
+# Check routing mode (tunnel or native)
 kubectl -n kube-system get configmap cilium-config \
-  -o jsonpath='{.data.tunnel}'
+  -o go-template='{{index .data "routing-mode"}}'
+
+# Check tunnel protocol when routing mode is tunnel (vxlan or geneve)
+kubectl -n kube-system get configmap cilium-config \
+  -o go-template='{{index .data "tunnel-protocol"}}'
 
 # Confirm eBPF masquerading setting
 kubectl -n kube-system get configmap cilium-config \
-  -o jsonpath='{.data.enable-bpf-masquerade}'
+  -o go-template='{{index .data "enable-bpf-masquerade"}}'
 ```
 
 ## Step 5: Run the Connectivity Test Suite
@@ -111,10 +116,11 @@ cilium connectivity test --verbose 2>&1 | tail -50
 Confirm the CNI binary was correctly installed on all nodes.
 
 ```bash
-# Check CNI binary exists on nodes via a Cilium pod
-kubectl -n kube-system exec -it \
-  $(kubectl -n kube-system get pods -l k8s-app=cilium -o name | head -1) -- \
-  ls -la /host/opt/cni/bin/ | grep cilium
+# Check CNI binary exists on each node via the Cilium pods
+for pod in $(kubectl -n kube-system get pods -l k8s-app=cilium -o name); do
+  echo "$pod"
+  kubectl -n kube-system exec "$pod" -- ls -l /host/opt/cni/bin/cilium-cni
+done
 ```
 
 ## Best Practices
