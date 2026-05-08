@@ -48,9 +48,10 @@ kubectl exec $POD -n $NAMESPACE -- nc -zv $KUBE_IP 443 2>&1
 for POD in $(kubectl get pods -n $NAMESPACE -o name | head -3); do
   echo "Testing from $POD:"
   kubectl exec $POD -n $NAMESPACE -- \
+    sh -c 'TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) && \
     curl -sk https://kubernetes.default.svc.cluster.local/api/v1 \
-    --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
-    -o /dev/null -w "HTTP: %{http_code}\n" --max-time 5 2>/dev/null
+    --header "Authorization: Bearer $TOKEN" \
+    -o /dev/null -w "HTTP: %{http_code}\n" --max-time 5' 2>/dev/null
 done
 ```
 
@@ -81,9 +82,10 @@ kubectl delete networkpolicy emergency-allow-api-access -n $NAMESPACE 2>/dev/nul
 **Validation Step 5: Test synthetic probe manually**
 
 ```bash
-kubectl create job --from=cronjob/api-access-probe manual-probe-$(date +%s) -n $NAMESPACE
-kubectl wait job/manual-probe-* --for=condition=complete --timeout=60s -n $NAMESPACE
-kubectl logs -n $NAMESPACE -l job-name=manual-probe-*
+JOB_NAME=manual-probe-$(date +%s)
+kubectl create job --from=cronjob/api-access-probe $JOB_NAME -n $NAMESPACE
+kubectl wait job/$JOB_NAME --for=condition=complete --timeout=60s -n $NAMESPACE
+kubectl logs -n $NAMESPACE -l job-name=$JOB_NAME
 ```
 
 **Validation Step 6: Confirm alert is resolved**
