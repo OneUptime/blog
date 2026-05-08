@@ -61,39 +61,42 @@ graph TD
 
 ## Validating Policy Enforcement
 
-Apply the policy and verify it is enforced:
+Disable daemon-level audit mode, apply the policy, and verify it is enforced:
+
+```bash
+CILIUM_NAMESPACE=kube-system
+
+kubectl patch -n "$CILIUM_NAMESPACE" configmap cilium-config \
+  --type merge --patch '{"data":{"policy-audit-mode":"false"}}'
+kubectl -n "$CILIUM_NAMESPACE" rollout restart ds/cilium
+kubectl -n "$CILIUM_NAMESPACE" rollout status ds/cilium
+```
 
 ```yaml
 # Test policy for validation
 apiVersion: "cilium.io/v2"
-kind: CiliumClusterwideNetworkPolicy
+kind: CiliumNetworkPolicy
 metadata:
   name: enforce-mode-policy
-  annotations:
-    policy.cilium.io/audit-mode: "false"
+  namespace: cilium-validate
 spec:
-  endpointSelector: {}
+  endpointSelector:
+    matchLabels:
+      app: server
   ingress:
-    - fromEntities:
-        - cluster
-        - health
-  egress:
-    - toEntities:
-        - cluster
-        - health
-    - toEndpoints:
+    - fromEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            app: client
       toPorts:
         - ports:
-            - port: "53"
-              protocol: ANY
+            - port: "80"
+              protocol: TCP
 ```
 
 ```bash
 # Validate all endpoints have policies applied
-cilium endpoint list -o json | jq '.[] | {id: .id, policy: .status.policy}'
+kubectl -n cilium-validate get ciliumendpoints -o json | \
+  jq '.items[] | {name: .metadata.name, policy: .status.policy}'
 ```
 
 ### Running Connectivity Tests
@@ -141,28 +144,28 @@ echo "=== Cilium Policy Validation ==="
 # Test 1: Cilium agent health
 echo -n "Test 1: Cilium agent health... "
 if cilium status > /dev/null 2>&1; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((PASS+=1))
 else
-  echo "FAIL"; ((FAIL++))
+  echo "FAIL"; ((FAIL+=1))
 fi
 
 # Test 2: All endpoints ready
 echo -n "Test 2: All endpoints ready... "
-NOT_READY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.state != "ready")] | length')
+NOT_READY=$(kubectl -n "$NAMESPACE" get ciliumendpoints -o json | \
+  jq '[.items[] | select(.status.state != "ready")] | length')
 if [ "$NOT_READY" -eq 0 ]; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; ((PASS+=1))
 else
-  echo "FAIL ($NOT_READY not ready)"; ((FAIL++))
+  echo "FAIL ($NOT_READY not ready)"; ((FAIL+=1))
 fi
 
 # Test 3: Policies applied
 echo -n "Test 3: Policies applied... "
-POLICY_COUNT=$(cilium policy get -o json | jq '. | length')
+POLICY_COUNT=$(kubectl -n "$NAMESPACE" get cnp -o json | jq '.items | length')
 if [ "$POLICY_COUNT" -gt 0 ]; then
-  echo "PASS ($POLICY_COUNT policies)"; ((PASS++))
+  echo "PASS ($POLICY_COUNT policies)"; ((PASS+=1))
 else
-  echo "FAIL (no policies)"; ((FAIL++))
+  echo "FAIL (no policies)"; ((FAIL+=1))
 fi
 
 echo ""
@@ -186,10 +189,10 @@ kubectl get cnp --all-namespaces -o yaml > "$EVIDENCE_DIR/all-policies.yaml"
 kubectl get ccnp -o yaml > "$EVIDENCE_DIR/clusterwide-policies.yaml"
 
 # Capture endpoint security state
-cilium endpoint list -o json > "$EVIDENCE_DIR/endpoint-state.json"
+kubectl get ciliumendpoints --all-namespaces -o json > "$EVIDENCE_DIR/endpoint-state.json"
 
 # Capture identity mappings
-cilium identity list -o json > "$EVIDENCE_DIR/identities.json"
+kubectl get ciliumidentities -o json > "$EVIDENCE_DIR/identities.json"
 
 # Capture Cilium configuration
 cilium config view > "$EVIDENCE_DIR/cilium-config.txt"
@@ -197,7 +200,7 @@ cilium config view > "$EVIDENCE_DIR/cilium-config.txt"
 # Generate a summary for auditors
 echo "Audit Evidence Generated: $(date -u)" > "$EVIDENCE_DIR/summary.txt"
 echo "Policies: $(kubectl get cnp -A --no-headers | wc -l)" >> "$EVIDENCE_DIR/summary.txt"
-echo "Endpoints: $(cilium endpoint list -o json | jq length)" >> "$EVIDENCE_DIR/summary.txt"
+echo "Endpoints: $(kubectl get ciliumendpoints -A -o json | jq '.items | length')" >> "$EVIDENCE_DIR/summary.txt"
 
 tar -czf "$EVIDENCE_DIR.tar.gz" "$EVIDENCE_DIR"
 echo "Evidence package created: $EVIDENCE_DIR.tar.gz"
@@ -213,8 +216,8 @@ cilium status
 ```
 
 ```bash
-# Confirm all endpoints are healthy
-cilium endpoint health
+# Confirm all Cilium endpoints in the validation namespace are ready
+kubectl -n cilium-validate get ciliumendpoints
 ```
 
 ```bash
