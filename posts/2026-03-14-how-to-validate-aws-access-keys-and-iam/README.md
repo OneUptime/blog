@@ -15,7 +15,8 @@ Validating AWS IAM configuration for Cilium ensures authentication works, permis
 ## Prerequisites
 
 - EKS cluster with Cilium
-- kubectl and AWS CLI configured
+- kubectl, jq, and AWS CLI configured
+- AWS_REGION set to the cluster's AWS region
 
 ## Validating Authentication
 
@@ -23,10 +24,18 @@ Validating AWS IAM configuration for Cilium ensures authentication works, permis
 #!/bin/bash
 echo "=== AWS IAM Validation for Cilium ==="
 
+: "${AWS_REGION:?Set AWS_REGION to your cluster's AWS region}"
+
+run_as_cilium_operator() {
+  kubectl run cilium-iam-check -n kube-system --rm -i --restart=Never --quiet \
+    --image=public.ecr.aws/aws-cli/aws-cli:latest \
+    --overrides='{"spec":{"serviceAccountName":"cilium-operator"}}' \
+    --env="AWS_REGION=${AWS_REGION}" -- "$@"
+}
+
 # Test authentication
 
-IDENTITY=$(kubectl exec -n kube-system -l k8s-app=cilium -- \
-  aws sts get-caller-identity 2>&1)
+IDENTITY=$(run_as_cilium_operator sts get-caller-identity 2>&1)
 if echo "$IDENTITY" | jq -e '.Arn' &>/dev/null; then
   echo "PASS: Authentication works"
   echo "  Role: $(echo "$IDENTITY" | jq -r '.Arn')"
@@ -36,8 +45,7 @@ else
 fi
 
 # Test ENI operations
-ENIS=$(kubectl exec -n kube-system -l k8s-app=cilium -- \
-  aws ec2 describe-network-interfaces --max-items 1 2>&1)
+ENIS=$(run_as_cilium_operator ec2 describe-network-interfaces --max-items 1 2>&1)
 if echo "$ENIS" | jq -e '.NetworkInterfaces' &>/dev/null; then
   echo "PASS: ENI API access works"
 else
@@ -49,9 +57,13 @@ fi
 
 ```bash
 # Test actions that should be denied
+CILIUM_ROLE_ARN=${CILIUM_ROLE_ARN:-$(kubectl get sa cilium-operator -n kube-system \
+  -o jsonpath='{.metadata.annotations.eks\.amazonaws\.com/role-arn}')}
+: "${CILIUM_ROLE_ARN:?Set CILIUM_ROLE_ARN to the Cilium operator IAM role ARN}"
+
 for action in s3:ListBuckets iam:CreateUser ec2:TerminateInstances; do
   RESULT=$(aws iam simulate-principal-policy \
-    --policy-source-arn arn:aws:iam::123456789012:role/cilium-role \
+    --policy-source-arn "$CILIUM_ROLE_ARN" \
     --action-names "$action" --query 'EvaluationResults[0].EvalDecision' --output text)
   if [ "$RESULT" = "implicitDeny" ] || [ "$RESULT" = "explicitDeny" ]; then
     echo "PASS: $action is denied"
@@ -76,7 +88,7 @@ graph TD
 
 ```bash
 cilium status | grep IPAM
-kubectl get sa cilium -n kube-system -o yaml
+kubectl get sa cilium-operator -n kube-system -o yaml
 ```
 
 ## Troubleshooting
