@@ -171,7 +171,7 @@ Here is an end-to-end workflow for deploying containers in an air-gapped environ
 # Step 1: On an internet-connected machine, pull and save images
 podman pull docker.io/library/nginx:1.27
 podman pull docker.io/library/redis:7
-podman save docker.io/library/nginx:1.27 docker.io/library/redis:7 | gzip > app-images.tar.gz
+podman save --multi-image-archive docker.io/library/nginx:1.27 docker.io/library/redis:7 | gzip > app-images.tar.gz
 
 # Step 2: Transfer to air-gapped machine via USB or secure copy
 # (physical transfer or scp to a jump host)
