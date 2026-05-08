@@ -28,7 +28,8 @@ For IPIP encapsulation, the effective MTU is reduced by 20 bytes. Configure Cali
 
 ```bash
 kubectl patch configmap calico-config -n kube-system \
-  --patch '{"data":{"veth_mtu":"1440"}}'
+  --type merge \
+  --patch '{"data":{"veth_mtu":"1480"}}'
 kubectl rollout restart daemonset calico-node -n kube-system
 ```
 
@@ -66,6 +67,7 @@ metadata:
   name: calico-felix-metrics
   namespace: kube-system
 spec:
+  clusterIP: None
   selector:
     k8s-app: calico-node
   ports:
@@ -83,7 +85,7 @@ For production security, enable WireGuard encryption between nodes:
 calicoctl patch felixconfiguration default --patch '{"spec":{"wireguardEnabled":true}}'
 ```
 
-Note: WireGuard requires Linux kernel 5.6+ and may not be available in all Kind node images.
+Note: WireGuard is included in Linux kernel 5.6+ and has been backported to some earlier distribution kernels. It may not be available in all Kind node images. If you enable IPv4 WireGuard on a 1500-byte network, set the Calico MTU to 1440 instead of 1480.
 
 ## Step 5: Set Resource Limits on Calico Pods
 
