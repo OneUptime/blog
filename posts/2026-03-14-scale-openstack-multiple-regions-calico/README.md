@@ -72,15 +72,18 @@ metadata:
 spec:
   nodeSelector: reflector-tier == 'regional'
   peerSelector: reflector-tier == 'super'
+  filters:
+    - cross-region-filter
 ---
-# Compute nodes peer only with their regional reflector
+# Compute nodes peer only with their regional reflector.
+# Repeat this BGPPeer per region with the appropriate region label.
 apiVersion: projectcalico.org/v3
 kind: BGPPeer
 metadata:
-  name: compute-to-regional
+  name: compute-to-regional-region-a
 spec:
-  nodeSelector: "!has(route-reflector)"
-  peerSelector: reflector-tier == 'regional'
+  nodeSelector: "!has(route-reflector) && region == 'region-a'"
+  peerSelector: "reflector-tier == 'regional' && region == 'region-a'"
 ```
 
 ```mermaid
@@ -108,6 +111,12 @@ Use a GitOps approach to keep policies consistent across all regions.
 
 POLICY_REPO="/opt/calico-policies"
 REGIONS=("region-a" "region-b" "region-c" "region-d")
+declare -A ETCD_ENDPOINTS=(
+  ["region-a"]="https://etcd-a.example.com:2379"
+  ["region-b"]="https://etcd-b.example.com:2379"
+  ["region-c"]="https://etcd-c.example.com:2379"
+  ["region-d"]="https://etcd-d.example.com:2379"
+)
 
 # Pull latest policies from version control
 cd ${POLICY_REPO}
@@ -115,11 +124,10 @@ git pull origin main
 
 # Apply to each region
 for region in "${REGIONS[@]}"; do
-  KUBECONFIG="/etc/calico/regions/${region}/kubeconfig"
   echo "Syncing policies to ${region}..."
 
   for policy in global-policies/*.yaml; do
-    DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} \
+    DATASTORE_TYPE=etcdv3 ETCD_ENDPOINTS="${ETCD_ENDPOINTS[$region]}" \
       calicoctl apply -f ${policy} 2>&1
     if [ $? -ne 0 ]; then
       echo "  ERROR: Failed to apply $(basename ${policy}) to ${region}"
@@ -136,7 +144,9 @@ Configure route filtering to minimize cross-region route table size.
 
 ```yaml
 # region-a-bgp-filter.yaml
-# Only advertise aggregate routes cross-region (not individual VM routes)
+# Only allow aggregate routes cross-region (not individual VM routes).
+# Attach this filter to the cross-region BGPPeer, and ensure the aggregate
+# route is originated by your region's routing design.
 apiVersion: projectcalico.org/v3
 kind: BGPFilter
 metadata:
@@ -150,6 +160,7 @@ spec:
     - action: Reject
       matchOperator: In
       cidr: 10.10.0.0/16
+    - action: Reject
 ```
 
 ## Monitoring Multi-Region Scale
@@ -163,24 +174,29 @@ echo "Multi-Region Calico Status - $(date)"
 echo "======================================="
 
 REGIONS=("region-a" "region-b" "region-c" "region-d")
+declare -A ETCD_ENDPOINTS=(
+  ["region-a"]="https://etcd-a.example.com:2379"
+  ["region-b"]="https://etcd-b.example.com:2379"
+  ["region-c"]="https://etcd-c.example.com:2379"
+  ["region-d"]="https://etcd-d.example.com:2379"
+)
 
 for region in "${REGIONS[@]}"; do
-  KUBECONFIG="/etc/calico/regions/${region}/kubeconfig"
   echo ""
   echo "--- ${region} ---"
 
   # Node count
-  nodes=$(DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} \
+  nodes=$(DATASTORE_TYPE=etcdv3 ETCD_ENDPOINTS="${ETCD_ENDPOINTS[$region]}" \
     calicoctl get nodes -o json 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('items',[])))")
   echo "  Nodes: ${nodes}"
 
   # Endpoint count
-  endpoints=$(DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} \
+  endpoints=$(DATASTORE_TYPE=etcdv3 ETCD_ENDPOINTS="${ETCD_ENDPOINTS[$region]}" \
     calicoctl get workloadendpoints --all-namespaces -o json 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('items',[])))")
   echo "  Endpoints: ${endpoints}"
 
   # Policy count
-  policies=$(DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} \
+  policies=$(DATASTORE_TYPE=etcdv3 ETCD_ENDPOINTS="${ETCD_ENDPOINTS[$region]}" \
     calicoctl get globalnetworkpolicies -o json 2>/dev/null | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('items',[])))")
   echo "  Policies: ${policies}"
 done
@@ -193,24 +209,28 @@ done
 # verify-multi-region-scale.sh
 echo "=== Multi-Region Scaling Verification ==="
 
+declare -A ETCD_ENDPOINTS=(
+  ["region-a"]="https://etcd-a.example.com:2379"
+  ["region-b"]="https://etcd-b.example.com:2379"
+)
+
 echo "Route Reflector Hierarchy:"
 for region in region-a region-b; do
-  KUBECONFIG="/etc/calico/regions/${region}/kubeconfig"
   echo "${region} reflectors:"
-  DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} \
+  DATASTORE_TYPE=etcdv3 ETCD_ENDPOINTS="${ETCD_ENDPOINTS[$region]}" \
     calicoctl get nodes -l route-reflector=true -o wide 2>/dev/null
 done
 
 echo ""
 echo "Cross-Region BGP Peers:"
-calicoctl get bgppeers -o wide
+DATASTORE_TYPE=etcdv3 ETCD_ENDPOINTS="${ETCD_ENDPOINTS[region-a]}" \
+  calicoctl get bgppeers -o wide
 
 echo ""
 echo "Policy Consistency:"
 # Compare policy counts across regions
 for region in region-a region-b; do
-  KUBECONFIG="/etc/calico/regions/${region}/kubeconfig"
-  count=$(DATASTORE_TYPE=kubernetes KUBECONFIG=${KUBECONFIG} \
+  count=$(DATASTORE_TYPE=etcdv3 ETCD_ENDPOINTS="${ETCD_ENDPOINTS[$region]}" \
     calicoctl get globalnetworkpolicies -o name 2>/dev/null | wc -l)
   echo "  ${region}: ${count} policies"
 done
