@@ -19,7 +19,7 @@ This guide walks through the most common Kubernetes-related failures in Cilium o
 ## Prerequisites
 
 - Kubernetes cluster with Cilium installed
-- kubectl and cilium CLI access
+- kubectl, Hubble CLI, and in-agent cilium-dbg CLI access
 - Ability to view logs from kube-system namespace
 - Basic understanding of Kubernetes watches and informers
 
@@ -30,17 +30,16 @@ The most common Kubernetes integration failure is the Cilium agent losing connec
 ```bash
 # Check Cilium's view of the API server connection
 
-kubectl -n kube-system exec ds/cilium -- cilium status | grep -A3 "Kubernetes"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --require-k8s-connectivity | grep -A3 "Kubernetes"
 
 # Look for API server errors in Cilium logs
 kubectl -n kube-system logs ds/cilium --tail=200 | grep -i "apiserver\|k8s.*error\|watch.*error\|connection"
 
 # Test API server connectivity from the Cilium pod
-kubectl -n kube-system exec ds/cilium -- \
-  wget -qO- --timeout=5 https://kubernetes.default.svc/healthz 2>&1
+kubectl -n kube-system exec ds/cilium -- cilium-dbg troubleshoot
 
-# Check if the kubernetes service endpoint is correct
-kubectl get endpoints kubernetes
+# Check if the kubernetes service EndpointSlice is correct
+kubectl get endpointslice -n default -l kubernetes.io/service-name=kubernetes
 ```
 
 ```mermaid
@@ -61,7 +60,7 @@ Cilium assigns security identities based on Kubernetes labels. When identity res
 
 ```bash
 # Check identity allocation
-kubectl -n kube-system exec ds/cilium -- cilium identity list | head -20
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | head -20
 
 # Look for identity allocation errors
 kubectl -n kube-system logs ds/cilium --tail=100 | grep -i "identity\|allocat"
@@ -69,22 +68,20 @@ kubectl -n kube-system logs ds/cilium --tail=100 | grep -i "identity\|allocat"
 # Verify a specific pod has the correct identity
 POD_NAME="my-app-pod"
 NAMESPACE="default"
-ENDPOINT_ID=$(kubectl -n kube-system exec ds/cilium -- cilium endpoint list -o json | python3 -c "
+ENDPOINT_ID=$(kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint get pod-name:$NAMESPACE:$POD_NAME -o json | python3 -c "
 import json, sys
-for ep in json.load(sys.stdin):
-    labels = ep.get('status',{}).get('identity',{}).get('labels',[])
-    for l in labels:
-        if '$POD_NAME' in l:
-            print(ep['id'])
-            break
+data = json.load(sys.stdin)
+ep = data[0] if isinstance(data, list) else data
+print(ep.get('id') or ep.get('status',{}).get('id',''))
 ")
 echo "Endpoint ID: $ENDPOINT_ID"
 
 # Get identity details for the endpoint
-kubectl -n kube-system exec ds/cilium -- cilium endpoint get $ENDPOINT_ID -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint get $ENDPOINT_ID -o json | python3 -c "
 import json, sys
-ep = json.load(sys.stdin)
-identity = ep[0].get('status',{}).get('identity',{})
+data = json.load(sys.stdin)
+ep = data[0] if isinstance(data, list) else data
+identity = ep.get('status',{}).get('identity',{})
 print(f\"Identity: {identity.get('id')}\")
 print(f\"Labels: {identity.get('labels')}\")
 "
@@ -96,8 +93,8 @@ If identities are stale or incorrect:
 # Force identity reallocation by restarting the agent
 kubectl -n kube-system rollout restart daemonset/cilium
 
-# Or regenerate a specific endpoint
-kubectl -n kube-system exec ds/cilium -- cilium endpoint regenerate $ENDPOINT_ID
+# Or, if the pod is managed by a controller, recreate the affected workload pod
+kubectl -n $NAMESPACE delete pod $POD_NAME
 ```
 
 ## Resolving Endpoint Synchronization Problems
@@ -106,10 +103,10 @@ Endpoints in Cilium represent Kubernetes pods. When they fail to sync, new pods 
 
 ```bash
 # List endpoints and their states
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
 
 # Find endpoints in non-ready states
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | python3 -c "
 import json, sys
 eps = json.load(sys.stdin)
 for ep in eps:
@@ -126,10 +123,20 @@ for ep in eps:
 "
 
 # Check CiliumEndpoint CRD status
-kubectl get ciliumendpoints -A | grep -v "1/1"
+kubectl get ciliumendpoints -A -o json | python3 -c "
+import json, sys
+items = json.load(sys.stdin).get('items', [])
+for item in items:
+    status = item.get('status', {})
+    state = status.get('status', {}).get('state') or status.get('state', 'unknown')
+    if state != 'ready':
+        ns = item['metadata']['namespace']
+        name = item['metadata']['name']
+        print(f'{ns}/{name}: {state}')
+"
 
 # Look for endpoint-related controller failures
-kubectl -n kube-system exec ds/cilium -- cilium status controllers | grep endpoint
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers | grep -i endpoint
 ```
 
 ## Debugging CRD Synchronization
@@ -140,13 +147,13 @@ Cilium uses several CRDs that must stay synchronized with the Kubernetes API:
 # Verify all Cilium CRDs are installed
 kubectl get crd | grep cilium
 
-# Expected CRDs:
+# Core CRDs commonly include:
 # ciliumnetworkpolicies.cilium.io
 # ciliumclusterwidenetworkpolicies.cilium.io
 # ciliumendpoints.cilium.io
 # ciliumidentities.cilium.io
 # ciliumnodes.cilium.io
-# ciliumexternalworkloads.cilium.io
+# Other CRDs depend on the installed Cilium version and enabled features.
 
 # Check CRD versions
 kubectl get crd ciliumnetworkpolicies.cilium.io -o jsonpath='{.spec.versions[*].name}'
@@ -157,15 +164,10 @@ kubectl get nodes
 # These should have the same count
 
 # Check for orphaned CiliumEndpoints
-kubectl get ciliumendpoints -A -o json | python3 -c "
-import json, sys
-ceps = json.load(sys.stdin)
-for item in ceps.get('items', []):
-    ns = item['metadata']['namespace']
-    name = item['metadata']['name']
-    # Try to find matching pod
-    print(f'{ns}/{name}')
-"
+kubectl get ciliumendpoints -A --no-headers | while read -r ns name _; do
+  case "$ns/$name" in kube-system/cilium-health-*) continue ;; esac
+  kubectl -n "$ns" get pod "$name" >/dev/null 2>&1 || echo "$ns/$name"
+done
 ```
 
 ## Verification
@@ -174,10 +176,10 @@ After resolving issues, confirm Kubernetes integration is healthy:
 
 ```bash
 # 1. Cilium status shows healthy Kubernetes connection
-kubectl -n kube-system exec ds/cilium -- cilium status | grep -A5 "Kubernetes"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --require-k8s-connectivity | grep -A5 "Kubernetes"
 
 # 2. All endpoints are in ready state
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | python3 -c "
 import json, sys
 eps = json.load(sys.stdin)
 ready = len([e for e in eps if e.get('status',{}).get('state') == 'ready'])
@@ -196,25 +198,17 @@ for line in sys.stdin:
 " | head -3
 
 # 4. No Kubernetes-related controller failures
-kubectl -n kube-system exec ds/cilium -- cilium status controllers -o json | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-k8s_failing = [c for c in data if 'k8s' in c['name'].lower() and c.get('status',{}).get('consecutive-failure-count',0) > 0]
-if k8s_failing:
-    for c in k8s_failing:
-        print(f'Failing: {c[\"name\"]}')
-else:
-    print('All K8s controllers healthy')
-"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers | \
+  awk 'BEGIN{IGNORECASE=1; found=0} /k8s|kubernetes/ && /fail|error/ {print; found=1} END{if (!found) print "No Kubernetes-related controller failures found"}'
 ```
 
 ## Troubleshooting
 
-- **Cilium shows "Kubernetes: Disabled"**: The agent was started without Kubernetes integration. This should not happen with Helm installations. Check the Helm values for `k8s.requireIPv4PodCIDR` and related settings.
+- **Cilium shows "Kubernetes: Disabled"**: The agent was started without Kubernetes integration. This should not happen with normal Kubernetes Helm installations. Check Kubernetes API settings such as `k8sServiceHost`, `k8sServicePort`, and `k8s.apiServerURLs`.
 
 - **Pods stuck in ContainerCreating**: Cilium CNI is not responding. Check if the Cilium agent is running on that node with `kubectl get pods -n kube-system -l k8s-app=cilium -o wide`.
 
-- **CiliumEndpoints not created for pods**: The endpoint controller may be failing. Check with `kubectl -n kube-system exec ds/cilium -- cilium status controllers | grep endpoint`.
+- **CiliumEndpoints not created for pods**: The endpoint controller may be failing. Check with `kubectl -n kube-system exec ds/cilium -- cilium-dbg status --all-controllers | grep -i endpoint`.
 
 - **Hubble shows numeric identities instead of pod names**: The agent cannot resolve identities to Kubernetes labels. Check API server connectivity and identity allocation.
 
