@@ -10,7 +10,7 @@ Description: Learn how to start stopped or created containers in Podman, includi
 
 > Starting a stopped container preserves all its configuration and data, letting you resume work without recreating anything from scratch.
 
-When a container stops, either because its process finished or you stopped it manually, it retains its filesystem, configuration, and any changes made during its run. The `podman start` command brings these containers back to life. This guide covers all the ways to start containers in Podman.
+When a container stops, either because its process finished or you stopped it manually, it retains its filesystem, configuration, and any changes made during its run. The `podman start` command brings these containers back to life. This guide covers common ways to start containers in Podman.
 
 ---
 
@@ -19,7 +19,7 @@ When a container stops, either because its process finished or you stopped it ma
 Start a stopped container by name or ID.
 
 ```bash
-# Create and stop a container first
+# Create a container first
 
 podman create --name my-web -p 8080:80 docker.io/library/nginx:latest
 
@@ -129,7 +129,7 @@ podman logs -f my-web
 
 ## Start with Checkpoint Restore
 
-If you previously checkpointed a container, restore it during start.
+If you previously checkpointed a container, restore it with `podman container restore`.
 
 ```bash
 # Create and start a container with a long-running process
