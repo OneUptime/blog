@@ -39,19 +39,20 @@ podman inspect --format '{{.HostConfig.LogConfig.Type}}' my-container
 
 # Log driver support for podman logs:
 # k8s-file:    YES - podman logs works
-# json-file:   YES - podman logs works
+# json-file:   YES - alias for k8s-file
 # journald:    YES - podman logs works
 # passthrough: NO  - logs go to terminal, not stored
+# passthrough-tty: NO - logs go to terminal, not stored
 # none:        NO  - logs are discarded
 
-# If using passthrough or none, podman logs will always be empty
+# If using passthrough, passthrough-tty, or none, podman logs will always be empty
 # Switch to a different driver if you need logs:
 podman run -d --log-driver k8s-file --name my-container my-image:latest
 ```
 
 ## Step 3: Check the Log File Directly
 
-Bypass `podman logs` and check the raw log file.
+Bypass `podman logs` and check the raw log file. This only applies to file-backed log drivers such as `k8s-file` and `json-file`; the `journald` driver stores logs in the system journal instead.
 
 ```bash
 # Find the log file path
@@ -100,8 +101,8 @@ If the application writes to files, you have two options:
 # RUN ln -sf /dev/stdout /var/log/app.log
 # RUN ln -sf /dev/stderr /var/log/app-error.log
 
-# Option 2: Tail the log file to stdout
-podman exec my-container tail -f /var/log/app.log
+# Option 2: Configure your application or entrypoint to tail the log file to stdout
+tail -F /var/log/app.log
 ```
 
 ## Step 5: Check for Buffering Issues
@@ -112,9 +113,8 @@ Application output buffering can delay or prevent logs from appearing.
 # Python buffers stdout by default. Disable it:
 podman run -d -e PYTHONUNBUFFERED=1 my-python-app:latest
 
-# For C/C++ applications, disable stdio buffering:
-podman run -d -e LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libstdbuf.so \
-  my-c-app:latest
+# For C/C++ applications that use stdio, wrap the command with stdbuf:
+podman run -d --entrypoint stdbuf my-c-app:latest -oL -eL /app/start.sh
 
 # For Node.js, logs are usually unbuffered by default
 # But check if the app uses a logging library that buffers
@@ -136,7 +136,9 @@ podman system df
 
 # Check if the log partition has space
 LOG_PATH=$(podman inspect --format '{{.LogPath}}' my-container)
-df -h "$(dirname "$LOG_PATH")"
+if [ -n "$LOG_PATH" ]; then
+  df -h "$(dirname "$LOG_PATH")"
+fi
 
 # Clean up unused container data if disk is full
 podman system prune -f
@@ -150,8 +152,10 @@ If log rotation is too aggressive, logs might be rotated away before you read th
 # Check log size limits
 podman inspect --format '{{json .HostConfig.LogConfig}}' my-container | python3 -m json.tool
 
-# Check the system default
-podman info --format '{{.Host.LogSizeMax}}'
+# Check containers.conf defaults, such as log_size_max, if configured
+grep -R "log_size_max" /usr/share/containers/containers.conf \
+  /etc/containers/containers.conf \
+  "$HOME/.config/containers/containers.conf" 2>/dev/null
 
 # If max-size is very small (e.g., 1k), logs rotate immediately
 # Increase the limit
@@ -162,7 +166,7 @@ podman run -d --log-opt max-size=50m my-image:latest
 
 ```bash
 # Verify journald has the logs
-journalctl CONTAINER_NAME=my-container --no-pager | tail -20
+journalctl CONTAINER_NAME=my-container --no-pager -n 20
 
 # Check if journald is running and healthy
 systemctl status systemd-journald
@@ -223,7 +227,7 @@ fi
 # Check log driver
 DRIVER=$(podman inspect --format '{{.HostConfig.LogConfig.Type}}' "$CONTAINER")
 echo "Log driver: $DRIVER"
-if [ "$DRIVER" = "none" ] || [ "$DRIVER" = "passthrough" ]; then
+if [ "$DRIVER" = "none" ] || [ "$DRIVER" = "passthrough" ] || [ "$DRIVER" = "passthrough-tty" ]; then
   echo "ISSUE: Log driver '$DRIVER' does not store logs"
   echo "  Recreate the container with --log-driver k8s-file or journald"
   exit 1
@@ -232,7 +236,9 @@ fi
 # Check log file
 LOG_PATH=$(podman inspect --format '{{.LogPath}}' "$CONTAINER")
 echo "Log path: $LOG_PATH"
-if [ ! -f "$LOG_PATH" ]; then
+if [ -z "$LOG_PATH" ]; then
+  echo "No log file path reported. This is expected for non-file log drivers such as journald."
+elif [ ! -f "$LOG_PATH" ]; then
   echo "ISSUE: Log file does not exist at $LOG_PATH"
 elif [ ! -s "$LOG_PATH" ]; then
   echo "ISSUE: Log file exists but is empty"
@@ -247,13 +253,15 @@ fi
 STATUS=$(podman inspect --format '{{.State.Status}}' "$CONTAINER")
 echo "Container status: $STATUS"
 
-# Check disk space
-DISK_AVAIL=$(df -h "$(dirname "$LOG_PATH")" | tail -1 | awk '{print $4}')
-echo "Available disk: $DISK_AVAIL"
+# Check disk space for file-backed logs
+if [ -n "$LOG_PATH" ]; then
+  DISK_AVAIL=$(df -h "$(dirname "$LOG_PATH")" | tail -1 | awk '{print $4}')
+  echo "Available disk: $DISK_AVAIL"
+fi
 
 echo "=== Done ==="
 ```
 
 ## Summary
 
-Missing container logs in Podman are caused by a limited set of issues: the container was removed, the log driver does not support reading (passthrough/none), the application writes to files instead of stdout, output is buffered, disk space is exhausted, or log rotation is too aggressive. Use the diagnostic script to systematically check each possibility, and always configure appropriate log drivers and size limits when creating containers.
+Missing container logs in Podman are caused by a limited set of issues: the container was removed, the log driver does not support reading (passthrough/passthrough-tty/none), the application writes to files instead of stdout, output is buffered, disk space is exhausted, or log rotation is too aggressive. Use the diagnostic script to systematically check each possibility, and always configure appropriate log drivers and size limits when creating containers.
