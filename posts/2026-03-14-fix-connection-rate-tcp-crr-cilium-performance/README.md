@@ -29,14 +29,16 @@ Unlike throughput fixes that focus on steady-state packet processing, TCP_CRR fi
 # Increase conntrack table sizes to reduce hash collisions
 
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set bpf.ctGlobalTCPMax=1048576 \
-  --set bpf.ctGlobalAnyMax=524288
+  --reuse-values \
+  --set bpf.ctTcpMax=1048576 \
+  --set bpf.ctAnyMax=524288
 
 # Reduce conntrack timeouts to free entries faster
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set bpf.ctTCPTimeoutEstablished=21600 \
-  --set bpf.ctTCPTimeoutClose=10 \
-  --set bpf.ctTCPTimeoutFIN=10
+  --reuse-values \
+  --set extraConfig.bpf-ct-timeout-regular-tcp=1h \
+  --set extraConfig.bpf-ct-timeout-regular-tcp-syn=30s \
+  --set extraConfig.bpf-ct-timeout-regular-any=30s
 ```
 
 ## Enabling Socket-Level Load Balancing
@@ -45,6 +47,7 @@ Socket-level LB avoids the full TC datapath for service connections:
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --reuse-values \
   --set kubeProxyReplacement=true \
   --set socketLB.enabled=true \
   --set socketLB.hostNamespaceOnly=false
@@ -56,6 +59,7 @@ This dramatically improves TCP_CRR for connections to ClusterIP services because
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --reuse-values \
   --set bpf.natMax=1048576
 
 # Reduce NAT mapping timeout
@@ -89,10 +93,10 @@ If policies are complex, simplify them for high-CRR paths:
 
 ```bash
 # Check current policy count
-cilium policy get -o json | jq '[.[] | .rules | length] | add'
+kubectl get cnp,ccnp -A -o json | jq '[.items[].spec | ((.ingress // []) | length) + ((.egress // []) | length)] | add // 0'
 
 # Use CIDR-based L3 policies instead of FQDN where possible
-# FQDN policies require DNS resolution per new connection
+# FQDN policies rely on DNS proxy/cache updates and generated IP rules
 ```
 
 Example optimized policy:
@@ -127,10 +131,10 @@ echo "Before: <baseline> conn/s"
 echo "After: <new_result> conn/s"
 
 # Verify socket LB is active
-cilium status --verbose | grep "Socket LB"
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg status --verbose | grep "Socket LB"
 
 # Check conntrack utilization
-cilium bpf ct list global | wc -l
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg bpf ct list | wc -l
 ```
 
 ## Troubleshooting
@@ -138,7 +142,7 @@ cilium bpf ct list global | wc -l
 - **No improvement from socket LB**: Ensure the traffic path goes through a Kubernetes Service. Direct pod-to-pod bypasses socket LB.
 - **Port exhaustion errors**: Increase `ip_local_port_range` and enable `tcp_tw_reuse`.
 - **Conntrack table still filling up**: Reduce timeouts further or increase table size.
-- **Policy evaluation still slow**: Check for FQDN policies that require DNS lookups per connection.
+- **Policy evaluation still slow**: Check for FQDN policies that add DNS proxy/cache and generated IP rule churn.
 
 ## Implementing Changes Safely
 
@@ -190,7 +194,7 @@ If a change causes unexpected behavior, roll back immediately:
 helm rollback cilium -n kube-system
 
 # Verify the rollback was successful
-cilium status --verbose
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg status --verbose
 kubectl rollout status ds/cilium -n kube-system
 ```
 
