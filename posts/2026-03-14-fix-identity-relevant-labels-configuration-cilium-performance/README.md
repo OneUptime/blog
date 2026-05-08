@@ -30,11 +30,11 @@ This guide provides the specific steps for managing identity-relevant labels con
 # For most clusters, these labels are sufficient:
 
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace k8s:io.cilium.k8s.policy"
+  --set labels='io\\.kubernetes\\.pod\\.namespace app$'
 
 # For clusters using additional labels in policies:
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace k8s:io.cilium.k8s.policy k8s:component k8s:tier"
+  --set labels='io\\.kubernetes\\.pod\\.namespace app$ component$ tier$'
 ```
 
 ## Verifying Policy Compatibility
@@ -44,26 +44,32 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 kubectl get cnp --all-namespaces -o json | \
   jq '[.items[].spec | .. | .matchLabels? // empty | keys[]] | unique | sort'
 
+kubectl get ccnp -o json | \
+  jq '[.items[].spec | .. | .matchLabels? // empty | keys[]] | unique | sort'
+
 # Ensure all policy-referenced labels are in the identity-relevant list
 ```
 
 ## Triggering Identity Regeneration
 
 ```bash
-# After changing label configuration, restart agents
+# After changing label configuration, restart the Cilium agents.
+# If the Cilium Operator is managing identities, restart it too.
+kubectl rollout restart deployment/cilium-operator -n kube-system
 kubectl rollout restart ds/cilium -n kube-system
+kubectl rollout status deployment/cilium-operator -n kube-system
 kubectl rollout status ds/cilium -n kube-system
 
 # Verify identity count after regeneration
 sleep 120  # Wait for GC
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | wc -l
 ```
 
 ## Verification
 
 ```bash
 cilium config view | grep labels
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | wc -l
 ```
 
 ## Troubleshooting
@@ -148,12 +154,12 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -c "ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -c "not-ready"
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
