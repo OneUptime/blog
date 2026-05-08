@@ -36,13 +36,13 @@ kubectl -n kube-system top pod -l k8s-app=cilium --sort-by=cpu
 # If usage is significantly higher, Hubble processing is likely the cause
 
 # Check monitor aggregation level
-kubectl -n kube-system exec ds/cilium -- cilium config | grep MonitorAggregation
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config get monitor-aggregation
 
-# If MonitorAggregation is "none", that is the likely cause
-# Check flow processing rate
+# If monitor-aggregation is "none", that is the likely cause
+# Check the flow processing counter
 kubectl -n kube-system exec ds/cilium -- \
-  wget -qO- http://localhost:9962/metrics 2>/dev/null | \
-  grep "cilium_event_ts"
+  wget -qO- http://localhost:9965/metrics 2>/dev/null | \
+  grep "hubble_flows_processed_total"
 ```
 
 ```mermaid
@@ -62,8 +62,8 @@ Apply the fix:
 # Set monitor aggregation to medium (most impactful change)
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set monitorAggregation=medium \
-  --set monitorAggregationInterval=5s
+  --set bpf.monitorAggregation=medium \
+  --set bpf.monitorInterval=5s
 
 # Wait for rollout and measure again
 kubectl -n kube-system rollout status daemonset/cilium
@@ -81,10 +81,10 @@ kubectl -n kube-system top pod -l k8s-app=cilium --sort-by=memory
 # Check event buffer configuration
 helm get values cilium -n kube-system | grep eventBufferCapacity
 
-# Calculate buffer memory usage
+# Calculate Hubble flow buffer memory usage
 # Each event ~150 bytes average
 # eventBufferCapacity * 150 bytes = approximate memory usage
-# 65536 * 150 = ~10MB per agent
+# 65535 * 150 = ~10MB per agent
 
 # Check if Prometheus metric storage is consuming memory
 kubectl -n kube-system exec ds/cilium -- \
@@ -99,12 +99,12 @@ Reduce memory consumption:
 # Reduce event buffer if it is oversized
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set hubble.eventBufferCapacity="4096"
+  --set hubble.eventBufferCapacity="4095"
 
 # Reduce metric cardinality
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set-json 'hubble.metrics.enabled=["dns","drop","tcp","flow"]'
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow}"
 ```
 
 ## Fixing Event Loss
@@ -113,28 +113,28 @@ Lost events mean Hubble cannot keep up with the flow rate:
 
 ```bash
 # Check for lost events
-kubectl -n kube-system exec ds/cilium -- cilium status --verbose 2>&1 | grep -i "lost\|missed"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose 2>&1 | grep -i "lost\|missed"
 
-# Check perf event reader statistics
+# Check Hubble flow and lost-event counters
 kubectl -n kube-system exec ds/cilium -- \
-  wget -qO- http://localhost:9962/metrics 2>/dev/null | \
-  grep "cilium_perf_event"
+  wget -qO- http://localhost:9965/metrics 2>/dev/null | \
+  grep "hubble_lost_events_total\|hubble_flows_processed_total"
 
 # Key metrics:
-# cilium_perf_event_lost_total - events lost from BPF perf buffer
-# cilium_perf_event_received_total - events successfully received
+# hubble_lost_events_total - events lost by source (perf_event_ring_buffer, observer_events_queue, or hubble_ring_buffer)
+# hubble_flows_processed_total - flows successfully processed by Hubble
 
 # Calculate loss ratio
 kubectl -n kube-system exec ds/cilium -- \
-  wget -qO- http://localhost:9962/metrics 2>/dev/null | python3 -c "
+  wget -qO- http://localhost:9965/metrics 2>/dev/null | python3 -c "
 import sys
-received = lost = 0
+processed = lost = 0
 for line in sys.stdin:
-    if 'cilium_perf_event_received_total' in line and not line.startswith('#'):
-        received += float(line.split()[-1])
-    elif 'cilium_perf_event_lost_total' in line and not line.startswith('#'):
+    if 'hubble_flows_processed_total' in line and not line.startswith('#'):
+        processed += float(line.split()[-1])
+    elif 'hubble_lost_events_total' in line and not line.startswith('#'):
         lost += float(line.split()[-1])
-total = received + lost
+total = processed + lost
 if total > 0:
     print(f'Loss ratio: {lost/total*100:.2f}% ({int(lost)} lost / {int(total)} total)')
 else:
@@ -145,16 +145,16 @@ else:
 Reduce event loss:
 
 ```bash
-# Increase the BPF perf event buffer size
+# Increase the Hubble event queue for bursty traffic
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set bpf.events.drop.enabled=true \
-  --set monitorAggregation=medium
+  --set hubble.eventQueueSize=32768 \
+  --set bpf.monitorAggregation=medium
 
 # Alternatively, increase monitor aggregation to reduce event volume
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set monitorAggregation=maximum
+  --set bpf.monitorAggregation=maximum
 ```
 
 ## Addressing Slow Prometheus Scrapes
@@ -206,7 +206,7 @@ kubectl -n kube-system top pod -l k8s-app=cilium --sort-by=cpu
 kubectl -n kube-system top pod -l k8s-app=cilium --sort-by=memory
 
 # 3. Event loss should be minimal
-kubectl -n kube-system exec ds/cilium -- cilium status --verbose | grep -i lost
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep -i lost
 
 # 4. Scrape duration should be under 10 seconds
 curl -s 'http://localhost:9090/api/v1/query?query=scrape_duration_seconds{job=~".*hubble.*"}' | python3 -m json.tool
@@ -221,7 +221,7 @@ hubble observe --last 10 -o compact
 
 - **Memory growing over time**: This could be a metric cardinality explosion. Monitor with `sum(scrape_samples_scraped{job=~".*hubble.*"})` in Prometheus.
 
-- **Event loss persists**: Consider whether you need `monitorAggregation=maximum` for extremely high-traffic workloads. This still captures all new connections and drops.
+- **Event loss persists**: Consider whether you need `bpf.monitorAggregation=maximum` for extremely high-traffic workloads. This still captures all new connections and drops.
 
 - **Performance degrades over time**: Check if endpoint count is growing. More endpoints mean more BPF events. Monitor with `cilium_endpoint_count`.
 
