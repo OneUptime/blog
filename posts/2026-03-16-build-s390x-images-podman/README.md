@@ -33,7 +33,7 @@ cat /proc/sys/fs/binfmt_misc/qemu-s390x
 # Should show: enabled
 
 # Quick test
-podman run --rm --platform linux/s390x alpine:3.19 uname -m
+podman run --rm --platform linux/s390x alpine:3.23 uname -m
 # Expected output: s390x
 ```
 
@@ -43,7 +43,7 @@ podman run --rm --platform linux/s390x alpine:3.19 uname -m
 mkdir -p ~/s390x-demo && cd ~/s390x-demo
 
 cat > Containerfile <<'EOF'
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache curl
 RUN echo "Architecture: $(uname -m)" > /build-info.txt
 CMD ["cat", "/build-info.txt"]
@@ -66,21 +66,21 @@ Not all base images support s390x. Check before building.
 
 ```bash
 # Check if a base image supports s390x
-podman manifest inspect docker://alpine:3.19 | \
+podman manifest inspect docker://alpine:3.23 | \
   jq '.manifests[] | select(.platform.architecture == "s390x")'
 
 # Common base images with s390x support:
-# alpine:3.19         - YES
+# alpine:3.23         - YES
 # ubuntu:22.04        - YES
 # debian:bookworm     - YES
-# fedora:39           - YES
-# golang:1.22         - YES
-# node:20             - YES
+# fedora:44           - YES
+# golang:1.26         - YES
+# node:24             - YES
 # python:3.12         - YES
-# rust:1.77           - YES
+# rust:1.94           - YES
 
 # Check support for a specific image
-for IMAGE in alpine:3.19 ubuntu:22.04 node:20-alpine golang:1.22-alpine; do
+for IMAGE in alpine:3.23 ubuntu:22.04 node:24-alpine golang:1.26-alpine; do
   printf "%-25s " "${IMAGE}"
   if podman manifest inspect "docker://${IMAGE}" 2>/dev/null | \
      jq -e '.manifests[] | select(.platform.architecture == "s390x")' >/dev/null 2>&1; then
@@ -112,12 +112,13 @@ EOF
 
 cat > go.mod <<'EOF'
 module s390x-demo
-go 1.22
+go 1.26
 EOF
 
 cat > Containerfile <<'EOF'
 # Cross-compile natively (fast, no QEMU for compilation)
-FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+ARG BUILDPLATFORM
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -129,12 +130,12 @@ RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 \
     go build -ldflags="-s -w" -o /app
 
 # Runtime image for s390x
-FROM alpine:3.19
+FROM alpine:3.23
 COPY --from=builder /app /usr/local/bin/app
 CMD ["app"]
 EOF
 
-# Build for s390x (compilation runs natively, only final stage is emulated)
+# Build for s390x (compilation runs natively; the target image is s390x)
 podman build --platform linux/s390x -t myapp:s390x .
 
 # Test
@@ -165,7 +166,7 @@ console.log(`Hostname: ${os.hostname()}`);
 EOF
 
 cat > Containerfile <<'EOF'
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package.json ./
 COPY index.js ./
@@ -189,7 +190,7 @@ print(f"Platform: {platform.platform()}")
 EOF
 
 cat > requirements.txt <<'EOF'
-requests==2.31.0
+requests==2.32.5
 EOF
 
 cat > Containerfile <<'EOF'
@@ -235,7 +236,8 @@ podman run --rm --platform linux/s390x myapp:s390x uname -m
 # Output: s390x
 
 # Check binary architecture
-podman run --rm --platform linux/s390x myapp:s390x file /usr/local/bin/app
+podman run --rm --platform linux/s390x myapp:s390x sh -c \
+  'apk add --no-cache file >/dev/null && file /usr/local/bin/app'
 # Output: ELF 64-bit MSB executable, IBM S/390
 
 # Note: s390x is big-endian (MSB), unlike most other platforms
@@ -270,7 +272,7 @@ IMAGE="${REGISTRY}/myapp"
 TAG="${CI_COMMIT_TAG:-latest}"
 
 # Verify s390x emulation is available
-if ! podman run --rm --platform linux/s390x alpine:3.19 true 2>/dev/null; then
+if ! podman run --rm --platform linux/s390x alpine:3.23 true 2>/dev/null; then
   echo "ERROR: s390x emulation not available"
   echo "Install qemu-user-static and restart binfmt"
   exit 1
@@ -320,7 +322,7 @@ FROM ubuntu:22.04  # Supports s390x
 ```bash
 # Some packages may not be available for s390x
 # Check availability first
-podman run --rm --platform linux/s390x alpine:3.19 apk search <package>
+podman run --rm --platform linux/s390x alpine:3.23 apk search <package>
 
 # Use alternative packages or build from source if needed
 ```
