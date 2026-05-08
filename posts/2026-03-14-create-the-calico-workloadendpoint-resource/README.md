@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Endpoint
 
-Description: Learn how to define and apply a Calico WorkloadEndpoint resource to your Kubernetes cluster using kubectl and calicoctl.
+Description: Learn how to inspect and understand a Calico WorkloadEndpoint resource in your Kubernetes cluster using kubectl and calicoctl.
 
 ---
 
 ## Introduction
 
-Calico uses custom Kubernetes resources to configure networking and security in your cluster. The WorkloadEndpoint resource is one of these building blocks, and understanding how to create it properly is essential for any Kubernetes operator running Calico.
+Calico uses custom Kubernetes resources to configure networking and security in your cluster. The WorkloadEndpoint resource is one of these building blocks, and understanding how it is structured is useful for any Kubernetes operator running Calico.
 
-This guide walks you through defining a WorkloadEndpoint manifest, understanding each field, and applying it to your cluster. Whether you are setting up a new cluster or extending an existing Calico deployment, you will learn the correct way to create this resource.
+This guide walks you through a WorkloadEndpoint manifest, understanding each field, and the commands used to inspect or apply it when you have a custom use case. Whether you are setting up a new cluster or extending an existing Calico deployment, you will learn how this resource is represented.
 
-By the end of this post you will have a working WorkloadEndpoint resource applied to your cluster, with a clear understanding of what each field controls and how to verify that the resource is active.
+By the end of this post you will have a clear understanding of what each field controls and how to verify existing WorkloadEndpoint resources in your cluster.
 
 ## Prerequisites
 
@@ -29,11 +29,14 @@ The WorkloadEndpoint resource uses the Calico API group `projectcalico.org/v3`. 
 
 - `node`: The Kubernetes node where the workload runs.
 - `orchestrator`: The orchestrator managing this endpoint (typically `k8s`).
+- `pod`: The Kubernetes pod name for this endpoint.
+- `containerID`: The CNI container ID for this endpoint.
+- `endpoint`: The workload-side container interface name, such as `eth0`.
 - `interfaceName`: The host-side veth interface name created by Calico.
-- `ipNetworks`: The IP addresses assigned to this endpoint.
+- `ipNetworks`: The CIDRs assigned to this endpoint.
 - `profiles`: Calico profiles applied to this endpoint.
 
-> **Note:** WorkloadEndpoint resources are managed automatically by Calico. Manual creation is rarely needed.
+> **Note:** WorkloadEndpoint resources are managed automatically by the Calico CNI plugin and other orchestrator-specific integrations. In Kubernetes, manual creation is generally not recommended for normal pods; use these manifests primarily for understanding, troubleshooting, or carefully controlled custom integrations.
 
 ## Creating the WorkloadEndpoint Manifest
 
@@ -52,6 +55,8 @@ metadata:
 spec:
   node: node1
   orchestrator: k8s
+  containerID: 1337495556942031415926535
+  pod: nginx-pod
   endpoint: eth0
   interfaceName: cali1234abcd
   mac: "ca:fe:00:00:00:01"
@@ -62,17 +67,17 @@ spec:
     - ksa.default.default
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+Each field is an example placeholder. Adjust the values to match the actual node, pod, interface, IP address, and Calico profiles in your environment before applying anything.
 
 ## Applying the Resource
 
-Apply the manifest using `kubectl`:
+If your cluster exposes the Calico `projectcalico.org/v3` API through the Calico API server or native v3 CRDs, apply the manifest using `kubectl`:
 
 ```bash
 kubectl apply -f workloadendpoint.yaml
 ```
 
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
+Alternatively, use `calicoctl`, which provides validation and defaulting for Calico API resources when the Calico API server is not handling that server-side:
 
 ```bash
 # Apply with calicoctl for enhanced validation
@@ -80,7 +85,7 @@ Alternatively, use `calicoctl` which provides better validation for Calico resou
 calicoctl apply -f workloadendpoint.yaml
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that a cluster without Calico API server validation might miss.
 
 ## Verification
 
@@ -91,7 +96,7 @@ Confirm that the resource was created successfully:
 kubectl get workloadendpoint.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe workloadendpoint.projectcalico.org
+kubectl describe workloadendpoint.projectcalico.org node1-k8s-nginx--pod-eth0
 
 # Verify with calicoctl
 calicoctl get workloadendpoint -o yaml
@@ -104,18 +109,20 @@ Check the Calico component logs for any warnings or errors related to the new re
 kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 ```
 
+If your installation runs `calico-node` in another namespace, such as `kube-system`, use that namespace instead.
+
 ## Troubleshooting
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `WorkloadEndpoint`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- If using `kubectl`, check that the Calico API server or native v3 CRDs are available for `projectcalico.org/v3` resources.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
 - Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
 
 **Calico components not picking up the resource:**
-- Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
+- Verify that the values match a real workload endpoint before restarting components.
 - Check Felix and Typha logs for error messages.
 
 
@@ -155,7 +162,7 @@ Store your Calico resource manifests alongside your application configurations i
 
 When using GitOps tools like Flux or Argo CD, ensure your Calico CRDs are applied before the custom resources. Set appropriate sync waves or dependencies to prevent ordering issues.
 
-Resource Naming Conventions
+### Resource Naming Conventions
 
 Adopt a consistent naming convention for your Calico resources:
 
@@ -167,4 +174,4 @@ Following these conventions makes it easier to manage resources at scale and red
 
 ## Conclusion
 
-You have created a Calico WorkloadEndpoint resource, applied it to your cluster, and verified it is active. This resource is a foundational piece of your Calico configuration. Keep your manifests in version control and validate changes with `calicoctl` before applying to production clusters.
+You have reviewed a Calico WorkloadEndpoint resource, learned when applying one is appropriate, and verified how to inspect active endpoints. This resource is a foundational part of how Calico represents workload networking. Keep any custom manifests in version control and validate changes with `calicoctl` or the Calico API server before applying them to production clusters.
