@@ -25,7 +25,7 @@ This guide provides a structured methodology for diagnosing and resolving the mo
 
 ## Step 1: Verify Environment Variables
 
-Check that all required environment variables are set:
+Check that the relevant environment variables are set. When using environment variables with an etcdv3 datastore, `DATASTORE_TYPE` is required. The TLS variables are required only when your etcd endpoints use TLS or client certificate authentication:
 
 ```bash
 echo "DATASTORE_TYPE:   ${DATASTORE_TYPE}"
@@ -50,8 +50,15 @@ Check that etcd endpoints are reachable:
 
 IFS=',' read -ra ENDPOINTS <<< "$ETCD_ENDPOINTS"
 for EP in "${ENDPOINTS[@]}"; do
-  HOST=$(echo "$EP" | sed 's|https\?://||' | cut -d: -f1)
-  PORT=$(echo "$EP" | sed 's|https\?://||' | cut -d: -f2)
+  ADDR="${EP#*://}"
+  ADDR="${ADDR%%/*}"
+  if [[ "$ADDR" =~ ^\[(.*)\]:(.*)$ ]]; then
+    HOST="${BASH_REMATCH[1]}"
+    PORT="${BASH_REMATCH[2]}"
+  else
+    HOST="${ADDR%:*}"
+    PORT="${ADDR##*:}"
+  fi
   echo -n "Testing ${HOST}:${PORT} ... "
   if nc -z -w5 "$HOST" "$PORT" 2>/dev/null; then
     echo "OK"
@@ -83,10 +90,28 @@ openssl x509 -in "$ETCD_CERT_FILE" -noout -dates -subject
 openssl x509 -in "$ETCD_CA_CERT_FILE" -noout -dates -subject
 ```
 
-Verify the certificate chain:
+Verify the client certificate chain:
 
 ```bash
 openssl verify -CAfile "$ETCD_CA_CERT_FILE" "$ETCD_CERT_FILE"
+```
+
+Verify the etcd server certificate chain for an HTTPS endpoint:
+
+```bash
+ENDPOINT=$(echo "$ETCD_ENDPOINTS" | cut -d, -f1)
+ADDR="${ENDPOINT#*://}"
+ADDR="${ADDR%%/*}"
+if [[ "$ADDR" =~ ^\[(.*)\]:(.*)$ ]]; then
+  HOST="${BASH_REMATCH[1]}"
+else
+  HOST="${ADDR%:*}"
+fi
+
+openssl s_client -connect "$ADDR" \
+  -servername "$HOST" \
+  -CAfile "$ETCD_CA_CERT_FILE" \
+  -verify_return_error </dev/null
 ```
 
 ## Step 4: Test with etcdctl
@@ -129,7 +154,7 @@ curl -s --cacert "$ETCD_CA_CERT_FILE" \
 Enable verbose output for detailed error information:
 
 ```bash
-DATASTORE_TYPE=etcdv3 calicoctl get nodes --log-level=debug 2>&1 | head -50
+DATASTORE_TYPE=etcdv3 calicoctl --log-level=debug get nodes 2>&1 | head -50
 ```
 
 ## Common Error Messages and Solutions
@@ -146,16 +171,18 @@ nc -z -w5 etcd1 2379
 
 ```bash
 # Cause: CA cert does not match etcd server cert
-# Fix: Verify the CA cert matches
-openssl verify -CAfile "$ETCD_CA_CERT_FILE" "$ETCD_CERT_FILE"
+# Fix: Verify the server certificate using the configured CA
+openssl s_client -connect etcd1:2379 -servername etcd1 -CAfile "$ETCD_CA_CERT_FILE" -verify_return_error </dev/null
 ```
 
 **Error: "tls: bad certificate"**
 
 ```bash
 # Cause: Client certificate rejected by etcd server
-# Fix: Check cert CN/SAN and expiration
-openssl x509 -in "$ETCD_CERT_FILE" -noout -text | grep -A1 "Subject:"
+# Fix: Check cert CN, expiration, and that the key matches the certificate
+openssl x509 -in "$ETCD_CERT_FILE" -noout -subject -dates
+openssl x509 -in "$ETCD_CERT_FILE" -pubkey -noout | openssl md5
+openssl pkey -in "$ETCD_KEY_FILE" -pubout -outform pem | openssl md5
 ```
 
 ## Verification
