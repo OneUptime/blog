@@ -77,18 +77,20 @@ ports:
 # sudo sysctl net.ipv4.ip_unprivileged_port_start=80
 ```
 
-## Step 5: Rename Dockerfile to Containerfile
+## Step 5: Keep or Rename Dockerfile
 
 ```bash
-# Podman prefers Containerfile (but accepts Dockerfile too)
+# Podman accepts both Dockerfile and Containerfile
 mv Dockerfile Containerfile
+```
 
-# Or specify in compose:
+```yaml
+# If you rename it, specify it in compose:
 services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile  # Works with Podman too
+      dockerfile: Containerfile
 ```
 
 ## Step 6: Test the Migration
@@ -164,4 +166,4 @@ docker compose up -d
 
 ## Summary
 
-Migrating from Docker Compose to Podman involves updating image names to fully qualified paths, adding SELinux volume labels, adjusting privileged port bindings, and testing with podman-compose. Most projects require only these minor changes. For full compatibility, use the Docker Compose tool with the Podman socket.
+Migrating from Docker Compose to Podman involves updating image names to fully qualified paths, adding SELinux volume labels, adjusting privileged port bindings, and testing with podman-compose. Most projects require only these minor changes. For closer Compose compatibility, use the Docker Compose tool with the Podman socket.
