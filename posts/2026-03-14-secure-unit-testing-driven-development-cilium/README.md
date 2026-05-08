@@ -14,14 +14,14 @@ Test-driven development (TDD) is particularly valuable when building L7 protocol
 
 Security-focused TDD differs from standard TDD by emphasizing negative test cases, boundary conditions, and invariant verification alongside the happy-path tests. Each test serves as both a specification and a regression guard, making it harder for future changes to introduce vulnerabilities.
 
-This guide demonstrates how to apply security-focused TDD to Cilium parser development, with practical examples using Go's testing framework and proxylib's test utilities.
+This guide demonstrates how to apply security-focused TDD to Cilium proxy parser development, with practical examples using Go's testing framework and proxylib's reader utilities.
 
 ## Prerequisites
 
-- Go 1.21 or later
-- Cilium source code with proxylib available
+- The Go version required by the `cilium/proxy` repository's `go.mod`
+- Cilium proxy source code with proxylib available
 - Familiarity with Go's testing package and table-driven tests
-- Understanding of Cilium's proxylib Parser interface
+- Understanding of Cilium's proxylib `ReaderParser` interface
 - Your target protocol's specification document
 
 ## Setting Up the Test Infrastructure
@@ -33,10 +33,9 @@ Create the test file alongside your parser with proper test helpers:
 package myprotocol
 
 import (
-    "bytes"
     "testing"
 
-    "github.com/cilium/cilium/proxylib/proxylib"
+    "github.com/cilium/proxy/proxylib/proxylib"
 )
 
 // testHelper creates common test fixtures
@@ -68,6 +67,14 @@ func (h *testHelper) makeHeader(length int) []byte {
     return header
 }
 
+// newReader creates a proxylib Reader over one input chunk
+func (h *testHelper) newReader(input []byte) proxylib.Reader {
+    if len(input) == 0 {
+        return proxylib.NewReader(nil, false)
+    }
+    return proxylib.NewReader([][]byte{input}, false)
+}
+
 // newParser creates a fresh parser in the running state
 func (h *testHelper) newParser() *Parser {
     return &Parser{
@@ -93,20 +100,20 @@ func TestOnData_SecurityBoundaries(t *testing.T) {
         {
             name:   "reject negative length",
             input:  []byte{0x80, 0x00, 0x00, 0x00}, // High bit set = negative int32
-            wantOp: proxylib.DROP,
+            wantOp: proxylib.ERROR,
             desc:   "Negative lengths indicate malformed or malicious input",
         },
         {
             name:   "reject oversized message",
             input:  h.makeHeader(maxMessageSize + 1),
-            wantOp: proxylib.DROP,
+            wantOp: proxylib.ERROR,
             desc:   "Messages exceeding maxMessageSize must be rejected",
         },
         {
             name:   "accept max size message",
-            input:  append(h.makeHeader(5), make([]byte, 5)...),
+            input:  append(h.makeHeader(maxMessageSize), make([]byte, maxMessageSize)...),
             wantOp: proxylib.PASS,
-            desc:   "Messages at exactly the right size should pass",
+            desc:   "Messages at exactly maxMessageSize should pass",
         },
         {
             name:   "handle empty input gracefully",
@@ -125,8 +132,8 @@ func TestOnData_SecurityBoundaries(t *testing.T) {
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             parser := h.newParser()
-            reader := proxylib.NewTestReader(tt.input)
-            op, _ := parser.OnData(false, reader)
+            reader := h.newReader(tt.input)
+            op, _ := parser.OnData(false, &reader)
             if op != tt.wantOp {
                 t.Errorf("%s: got op %v, want %v", tt.desc, op, tt.wantOp)
             }
@@ -146,36 +153,36 @@ func TestOnData_StateMachine(t *testing.T) {
     t.Run("init transitions to running on first data", func(t *testing.T) {
         parser := &Parser{state: stateInit}
         msg := h.makeMessage(0x01, []byte("hello"))
-        reader := proxylib.NewTestReader(msg)
+        reader := h.newReader(msg)
 
-        parser.OnData(false, reader)
+        parser.OnData(false, &reader)
 
         if parser.state != stateRunning {
             t.Errorf("Expected state running, got %v", parser.state)
         }
     })
 
-    t.Run("error state always drops", func(t *testing.T) {
+    t.Run("error state terminates parsing", func(t *testing.T) {
         parser := &Parser{state: stateError}
         msg := h.makeMessage(0x01, []byte("hello"))
-        reader := proxylib.NewTestReader(msg)
+        reader := h.newReader(msg)
 
-        op, n := parser.OnData(false, reader)
+        op, n := parser.OnData(false, &reader)
 
-        if op != proxylib.DROP || n != 0 {
-            t.Errorf("Error state should DROP/0, got %v/%d", op, n)
+        if op != proxylib.ERROR || n != int(proxylib.ERROR_INVALID_FRAME_TYPE) {
+            t.Errorf("Error state should ERROR/ERROR_INVALID_FRAME_TYPE, got %v/%d", op, n)
         }
     })
 
-    t.Run("closed state always drops", func(t *testing.T) {
+    t.Run("closed state terminates parsing", func(t *testing.T) {
         parser := &Parser{state: stateClosed}
         msg := h.makeMessage(0x01, []byte("hello"))
-        reader := proxylib.NewTestReader(msg)
+        reader := h.newReader(msg)
 
-        op, n := parser.OnData(false, reader)
+        op, n := parser.OnData(false, &reader)
 
-        if op != proxylib.DROP || n != 0 {
-            t.Errorf("Closed state should DROP/0, got %v/%d", op, n)
+        if op != proxylib.ERROR || n != int(proxylib.ERROR_INVALID_FRAME_TYPE) {
+            t.Errorf("Closed state should ERROR/ERROR_INVALID_FRAME_TYPE, got %v/%d", op, n)
         }
     })
 }
@@ -208,10 +215,10 @@ func TestOnData_MultipleMessages(t *testing.T) {
         combined := append(msg1, msg2...)
 
         parser := h.newParser()
-        reader := proxylib.NewTestReader(combined)
+        reader := h.newReader(combined)
 
         // First call should consume first message only
-        op1, n1 := parser.OnData(false, reader)
+        op1, n1 := parser.OnData(false, &reader)
         if op1 != proxylib.PASS || n1 != len(msg1) {
             t.Errorf("First message: got %v/%d, want PASS/%d", op1, n1, len(msg1))
         }
@@ -224,8 +231,8 @@ func TestOnData_MultipleMessages(t *testing.T) {
         parser := h.newParser()
 
         // First call with partial data
-        reader1 := proxylib.NewTestReader(msg[:half])
-        op1, n1 := parser.OnData(false, reader1)
+        reader1 := h.newReader(msg[:half])
+        op1, n1 := parser.OnData(false, &reader1)
         if op1 != proxylib.MORE {
             t.Errorf("Partial message: got %v, want MORE", op1)
         }
@@ -234,8 +241,8 @@ func TestOnData_MultipleMessages(t *testing.T) {
         }
 
         // Second call with complete data
-        reader2 := proxylib.NewTestReader(msg)
-        op2, n2 := parser.OnData(false, reader2)
+        reader2 := h.newReader(msg)
+        op2, n2 := parser.OnData(false, &reader2)
         if op2 != proxylib.PASS || n2 != len(msg) {
             t.Errorf("Complete message: got %v/%d, want PASS/%d", op2, n2, len(msg))
         }
@@ -288,7 +295,7 @@ go test ./proxylib/myprotocol/... -bench=BenchmarkOnData -benchmem -count=3
 Test behavior (return values, state transitions), not internal details. Avoid testing private helper function internals - test through the public OnData interface.
 
 **Problem: Hard to create test Reader with specific data**
-Use `proxylib.NewTestReader()` or create a simple wrapper that implements the Reader interface for testing purposes. Keep test helpers in the test file.
+Use `proxylib.NewReader()` or create a simple wrapper around it for testing purposes. Keep test helpers in the test file.
 
 **Problem: Test names are unclear**
 Use the pattern `TestOnData_<Category>/<specific_case>`. The category groups related tests, and the specific case describes the scenario being tested.
