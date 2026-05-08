@@ -38,7 +38,7 @@ CLIENT_NODE=$(kubectl get pod rr-test-client -o jsonpath='{.spec.nodeName}')
 echo "Server on: $SERVER_NODE ($SERVER_IP)"
 echo "Client on: $CLIENT_NODE"
 
-kubectl exec rr-test-client -- wget -qO- --timeout=5 http://$SERVER_IP 2>&1
+kubectl exec rr-test-client -- wget -qO- -T 5 http://$SERVER_IP 2>&1
 # If this fails and both pods are on different nodes → BGP issue likely
 
 # Step 2: Check the scope of the problem
@@ -57,13 +57,17 @@ calicoctl node status 2>&1 | grep -v "Established"
 # - Specific node sessions down → Node-specific issue
 # - All sessions up → Routes exist but may not be correct
 
-# Step 4: For sessions not Established, check BIRD status
-kubectl exec -n calico-system $(kubectl get pod -n calico-system \
-  -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}') -- \
+# Step 4: For sessions not Established, check BIRD status on the failing node
+# Use kube-system instead of calico-system for non-operator-managed installs
+CALICO_NS=calico-system
+CALICO_NODE_POD=$(kubectl get pod -n "$CALICO_NS" -l k8s-app=calico-node \
+  --field-selector spec.nodeName=FAILING_NODE \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n "$CALICO_NS" "$CALICO_NODE_POD" -c calico-node -- \
   birdcl show protocols all | head -50
 
 # Step 5: Check calico-node logs for BGP errors
-kubectl logs -n calico-system -l k8s-app=calico-node --tail=30 \
+kubectl logs -n "$CALICO_NS" -l k8s-app=calico-node --tail=30 \
   | grep -iE "bgp|bird|peer|route"
 ```
 
@@ -79,11 +83,10 @@ kubectl debug node/FAILING_NODE -it --image=nicolaka/netshoot -- \
 kubectl debug node/FAILING_NODE -it --image=nicolaka/netshoot -- \
   iptables -L INPUT -n | grep 179
 
-# Step 8: Verify IPIP or VXLAN tunnel interfaces exist
+# Step 8: Verify IPIP tunnel interfaces exist if IPIP is enabled.
+# Calico does not use BGP for VXLAN-only overlays; troubleshoot VXLAN separately.
 kubectl debug node/FAILING_NODE -it --image=nicolaka/netshoot -- \
   ip link show type ipip
-kubectl debug node/FAILING_NODE -it --image=nicolaka/netshoot -- \
-  ip link show type vxlan
 ```
 
 ## Runbook: Configuration Verification
@@ -93,7 +96,7 @@ kubectl debug node/FAILING_NODE -it --image=nicolaka/netshoot -- \
 calicoctl get bgpconfiguration default -o yaml
 
 # Check these fields:
-# - asNumber: consistent across cluster
+# - asNumber: expected default local AS number, accounting for per-node overrides
 # - nodeToNodeMeshEnabled: true (unless using route reflectors)
 
 # Step 10: Verify IP pool configuration
@@ -102,6 +105,7 @@ calicoctl get ippool -o yaml
 # Check these fields:
 # - ipipMode or vxlanMode matches network topology
 # - disabled is not true
+# - disableBGPExport is not true for pools that should be advertised
 # - cidr matches cluster pod CIDR
 
 # Step 11: Check for BGP peer configuration issues
@@ -146,7 +150,7 @@ done
 
 # 3. Cross-node connectivity
 echo "3. Cross-Node Connectivity:"
-kubectl exec rr-test-client -- wget -qO- --timeout=5 http://$SERVER_IP >/dev/null 2>&1 && echo "   PASS" || echo "   FAIL"
+kubectl exec rr-test-client -- wget -qO- -T 5 http://$SERVER_IP >/dev/null 2>&1 && echo "   PASS" || echo "   FAIL"
 
 # Cleanup
 kubectl delete pod rr-test-server rr-test-client 2>/dev/null
@@ -154,8 +158,8 @@ kubectl delete pod rr-test-server rr-test-client 2>/dev/null
 
 ## Troubleshooting
 
-- **BGP sessions established but routes missing**: This indicates BIRD is peered but not advertising routes. Check the IP pool `disabled` field and verify IPAM block allocations with `calicoctl ipam show`.
-- **Routes present on node but pod traffic still fails**: Check if IPIP or VXLAN tunnels are up. If using IPIP mode, verify IP protocol 4 is allowed through firewalls.
+- **BGP sessions established but routes missing**: This indicates BIRD is peered but not advertising routes. Check the IP pool `disableBGPExport` and `disabled` fields, and verify IPAM block allocations with `calicoctl ipam show`.
+- **Routes present on node but pod traffic still fails**: Check if IPIP tunnels are up when IPIP is enabled. If using IPIP mode, verify IP protocol 4 is allowed through firewalls. For VXLAN-only clusters, Calico does not use BGP; check the VXLAN interface and UDP 4789 instead.
 - **Only new pods fail, existing pods work**: IPAM block exhaustion may prevent new IP allocations. Check with `calicoctl ipam show` and look for blocks at capacity.
 - **BGP session flaps repeatedly**: Check for MTU issues, CPU overload on the node, or network instability. Review `kubectl logs -n calico-system` for the calico-node pod on the affected node.
 
