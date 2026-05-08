@@ -65,10 +65,10 @@ podman generate systemd --name mywebserver \
   --stop-timeout=30
 ```
 
-## Generate for Multiple Containers
+## Generate a Unit File to a File
 
 ```bash
-# Generate unit files for all containers and save to files
+# Generate a unit file for the named container and save it to a file
 podman generate systemd --new --name mywebserver --files
 
 # This creates a file named container-mywebserver.service in the current directory
@@ -95,14 +95,13 @@ mv container-mywebserver.service ~/.config/systemd/user/
 
 # Reload, enable, and start
 systemctl --user daemon-reload
-systemctl --user enable --now container-mywebserver.service
 
-# Stop the original container (systemd manages it now)
+# Stop and remove the original container before starting a --new unit
 podman stop mywebserver
 podman rm mywebserver
 
-# Start through systemd
-systemctl --user start container-mywebserver.service
+# Enable and start through systemd
+systemctl --user enable --now container-mywebserver.service
 ```
 
 ## Note on Deprecation
