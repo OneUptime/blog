@@ -19,7 +19,7 @@ This guide covers the validation steps for Cilium ENI mode on Alibaba Cloud, fro
 ## Prerequisites
 
 - ACK (Alibaba Cloud Container Service for Kubernetes) cluster or self-managed cluster on ECS
-- Cilium deployed with `ipam: eni` mode
+- Cilium deployed with `ipam: alibabacloud` mode
 - `kubectl` cluster-admin access
 - `cilium` CLI installed
 - Alibaba Cloud CLI (`aliyun`) configured (optional, for cloud-side validation)
@@ -34,11 +34,11 @@ Confirm that Cilium is configured to use ENI mode for IP allocation.
 kubectl -n kube-system get configmap cilium-config \
   -o jsonpath='{.data.ipam}'
 
-# Expected output: "eni"
+# Expected output: "alibabacloud"
 
 # Verify ENI-specific configuration keys
 kubectl -n kube-system get configmap cilium-config -o yaml | \
-  grep -E "eni|alibaba|instance-tags"
+  grep -E "alibabacloud|alibaba-cloud|eni|instance-tags"
 ```
 
 ## Step 2: Inspect CiliumNode ENI Status
@@ -47,11 +47,11 @@ Check that each node has ENIs attached and IPs allocated.
 
 ```bash
 # List all CiliumNode objects with ENI details
-kubectl get ciliumnodes -o yaml | grep -A 20 "eni:"
+kubectl get ciliumnodes -o yaml | grep -A 20 "alibaba-cloud:"
 
 # Check a specific node's ENI allocation status
-kubectl get ciliumnode <node-name> \
-  -o jsonpath='{.status.eni}' | python3 -m json.tool
+kubectl get ciliumnode <node-name> -o json | \
+  python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("status", {}).get("alibaba-cloud", {}), indent=2))'
 ```
 
 ## Step 3: Validate Pod IP Allocation from VPC
@@ -66,7 +66,7 @@ kubectl get pods -A -o wide --no-headers | awk '{print $7}' | sort -u
 # Each pod IP should match an ENI secondary IP on its node
 
 # Check ENI secondary IPs from the Cilium operator logs
-kubectl -n kube-system logs -l name=cilium-operator --tail=100 | \
+kubectl -n kube-system logs -l io.cilium/app=operator --tail=100 | \
   grep -i "eni\|allocation\|release"
 ```
 
@@ -74,7 +74,7 @@ kubectl -n kube-system logs -l name=cilium-operator --tail=100 | \
 
 ```bash
 # Verify all endpoints are in "ready" state
-kubectl get ciliumendpoints -A | grep -v "ready"
+kubectl get ciliumendpoints -A -o jsonpath='{range .items[?(@.status.state!="ready")]}{.metadata.namespace}/{.metadata.name}{"\t"}{.status.state}{"\n"}{end}'
 
 # If any endpoints are not ready, inspect the specific endpoint
 kubectl describe ciliumendpoint <endpoint-name> -n <namespace>
@@ -96,7 +96,7 @@ kubectl logs dns-test && kubectl delete pod dns-test
 
 - Ensure ECS instance types support sufficient ENI secondary IPs for your pods-per-node target
 - Monitor ENI quota limits in your Alibaba Cloud account to prevent allocation failures
-- Use the `--eni-tags` Cilium option to tag ENIs for cost allocation and resource tracking
+- Use Cilium's Alibaba Cloud vSwitch and security group tag filters to keep ENI allocation scoped to the intended cloud resources
 - Size VPC subnets generously - ENI mode consumes one IP per pod from the VPC subnet
 - Enable the Cilium operator's ENI release mechanism to return IPs when pods are deleted
 
