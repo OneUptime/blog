@@ -29,9 +29,15 @@ podman ps --format "{{.Names}}"
 
 ## Enabling Compatibility Mode
 
+```yaml
+# compose.yaml
+x-podman:
+  docker_compose_compat: true
+```
+
 ```bash
-# Use the --podman-run-args flag for compatible behavior
-podman-compose --podman-run-args="--replace" up -d
+# Or enable the same compatibility settings with an environment variable
+PODMAN_COMPOSE_DOCKER_COMPOSE_COMPAT=true podman-compose up -d
 ```
 
 ## Docker Compose Binary Alias
@@ -73,7 +79,7 @@ docker compose up -d
 # Docker Compose allows short image names
 # image: nginx:alpine
 
-# podman-compose requires fully qualified names
+# Podman may require fully qualified names unless unqualified registries are configured
 # image: docker.io/library/nginx:alpine
 
 # Configure unqualified search registries to accept short names
@@ -89,7 +95,6 @@ docker compose up -d
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -115,7 +120,6 @@ podman ps --format "{{.Names}}"
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -136,7 +140,7 @@ if command -v docker-compose &> /dev/null; then
   docker-compose "$@"
 elif command -v podman-compose &> /dev/null; then
   podman-compose "$@"
-elif command -v docker &> /dev/null; then
+elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
   docker compose "$@"
 else
   echo "No compose tool found"
@@ -146,4 +150,4 @@ fi
 
 ## Summary
 
-Enable Docker Compose compatibility in podman-compose by using explicit container names, fully qualified image names, and named networks. For full compatibility, use the official Docker Compose with the Podman socket. Create aliases and wrapper scripts to keep CI/CD pipelines working across both tools.
+Enable Docker Compose compatibility in podman-compose with the `x-podman` compatibility settings or the matching environment variables, and use explicit container names, fully qualified image names, and named networks where you need predictable behavior. For full compatibility, use the official Docker Compose with the Podman socket. Create aliases and wrapper scripts to keep CI/CD pipelines working across both tools.

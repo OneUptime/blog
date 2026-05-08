@@ -39,7 +39,7 @@ podman inspect api-server --format '{{ range $k, $v := .NetworkSettings.Networks
 ## Force Disconnecting
 
 ```bash
-# Force disconnect even if there are active connections
+# Force the container to disconnect from the network
 podman network disconnect --force backend api-server
 ```
 
@@ -70,10 +70,10 @@ When decommissioning a network, disconnect all containers first:
 
 ```bash
 # Find all containers on the network
-podman ps --filter network=staging --format "{{ .Names }}"
+podman ps -a --filter network=staging --format "{{ .Names }}"
 
 # Disconnect each container
-for ctr in $(podman ps --filter network=staging --format "{{ .Names }}"); do
+for ctr in $(podman ps -a --filter network=staging --format "{{ .Names }}"); do
   podman network disconnect staging "$ctr"
   echo "Disconnected: $ctr"
 done
@@ -93,7 +93,7 @@ podman exec webapp ping -c 1 backend-service
 # ping: Name or service not known
 
 # Confirm the network no longer lists the container
-podman ps --filter network=mynetwork --format "{{ .Names }}"
+podman ps -a --filter network=mynetwork --format "{{ .Names }}"
 ```
 
 ## Summary
