@@ -17,6 +17,8 @@ Validating the echo app setup ensures you have a reliable test environment for C
 - Kubernetes cluster with Cilium installed
 - Echo app deployed in cilium-test namespace
 - kubectl configured
+- jq installed
+- Cilium CLI installed for the full connectivity test
 
 ## Validating Deployment Health
 
@@ -41,9 +43,11 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-# Check service endpoints
-EP_COUNT=$(kubectl get endpoints echo-server -n cilium-test \
-  -o json 2>/dev/null | jq '.subsets[0].addresses | length')
+# Check service endpoints with EndpointSlices
+EP_COUNT=$(kubectl get endpointslice -n cilium-test \
+  -l kubernetes.io/service-name=echo-server \
+  -o json 2>/dev/null | jq '[.items[].endpoints[]? | select(.conditions.ready != false)] | length')
+EP_COUNT=${EP_COUNT:-0}
 if [ "$EP_COUNT" -gt 0 ]; then
   echo "PASS: Echo service has $EP_COUNT endpoints"
 else
@@ -83,7 +87,7 @@ graph TD
 ## Running Full Connectivity Test
 
 ```bash
-# The built-in test validates everything
+# The built-in test validates Cilium connectivity with its own test workloads
 cilium connectivity test
 
 # Or run specific tests
@@ -107,4 +111,4 @@ kubectl get ciliumendpoints -n cilium-test
 
 ## Conclusion
 
-Validate the echo app before using it for policy testing. Confirm pods are running, services have endpoints, and HTTP responses are successful. The built-in connectivity test suite is the most comprehensive validation available.
+Validate the echo app before using it for policy testing. Confirm pods are running, services have endpoints, and HTTP responses are successful. The built-in connectivity test suite is the most comprehensive validation available for cluster connectivity.
