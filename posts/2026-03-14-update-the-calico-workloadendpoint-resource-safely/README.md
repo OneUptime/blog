@@ -10,11 +10,11 @@ Description: A step-by-step guide to modifying Calico WorkloadEndpoint resources
 
 ## Introduction
 
-Updating Calico resources in a running cluster requires care. A misconfigured WorkloadEndpoint can disrupt networking, drop traffic, or break BGP peerings. This guide covers a safe workflow for modifying WorkloadEndpoint resources in production.
+Updating Calico resources in a running cluster requires care. A misconfigured WorkloadEndpoint can disrupt networking or drop traffic for the affected workload. This guide covers a safe workflow for modifying WorkloadEndpoint resources in production.
 
 The key principle is to treat Calico resource changes like any infrastructure change: review the diff, understand the impact, test in staging, and have a rollback plan ready. Calico resources are declarative, so the same discipline you apply to Kubernetes manifests applies here.
 
-This post provides a repeatable process you can follow every time you need to update a WorkloadEndpoint resource, whether it is a minor tuning change or a significant configuration shift.
+WorkloadEndpoint resources for Kubernetes pods are normally created and updated by the Calico CNI plugin. In general, use `calicoctl` to view them and only modify them manually when you have a specific operational reason and understand that the orchestrator may reconcile the resource again.
 
 ## Prerequisites
 
@@ -22,15 +22,15 @@ This post provides a repeatable process you can follow every time you need to up
 - `kubectl` and `calicoctl` installed
 - Cluster-admin privileges
 - The current WorkloadEndpoint manifest stored in version control
+- The namespace and name of the specific WorkloadEndpoint you intend to update
 
 ## Step 1: Export the Current Resource
 
 Before making any changes, export the current state as your baseline:
 
 ```bash
-# Export current resource to YAML
-
-calicoctl get workloadendpoint -o yaml > workloadendpoint-backup.yaml
+# Export the target resource to YAML
+calicoctl get workloadendpoint <workloadendpoint-name> -n <namespace> -o yaml > workloadendpoint-backup.yaml
 
 # Store the backup safely
 cp workloadendpoint-backup.yaml workloadendpoint-backup-$(date +%Y%m%d%H%M%S).yaml
@@ -44,14 +44,16 @@ Open your WorkloadEndpoint manifest and make the desired changes. Use `diff` to 
 
 ```bash
 # Compare current live state with your updated manifest
-diff <(calicoctl get workloadendpoint -o yaml) workloadendpoint.yaml
+diff <(calicoctl get workloadendpoint <workloadendpoint-name> -n <namespace> -o yaml) workloadendpoint.yaml
 ```
 
 Review each changed field and consider its impact:
 
 - Will this change affect active connections?
-- Does this change require a Felix or BGP restart?
+- Will Felix recalculate policy or routes for this endpoint?
 - Could this change lock you out of nodes?
+
+When using `calicoctl apply`, provide the complete resource spec. For an existing resource, `apply` replaces the specification rather than applying a partial update.
 
 ## Step 3: Apply the Update
 
@@ -76,6 +78,8 @@ kubectl logs -n calico-system -l k8s-app=calico-node -f --tail=100
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "config"
 ```
 
+If your Calico installation runs in a different namespace, such as `kube-system`, use that namespace instead of `calico-system`.
+
 Run connectivity tests to verify that pods can still communicate:
 
 ```bash
@@ -92,7 +96,7 @@ Confirm the resource reflects your changes:
 
 ```bash
 # Verify the updated resource
-calicoctl get workloadendpoint -o yaml
+calicoctl get workloadendpoint <workloadendpoint-name> -n <namespace> -o yaml
 
 # Check that calico-node pods are healthy
 kubectl get pods -n calico-system -l k8s-app=calico-node
@@ -109,7 +113,7 @@ If the update causes problems, immediately revert to your backup:
 calicoctl apply -f workloadendpoint-backup.yaml
 
 # Verify rollback was successful
-calicoctl get workloadendpoint -o yaml
+calicoctl get workloadendpoint <workloadendpoint-name> -n <namespace> -o yaml
 ```
 
 ## Troubleshooting
@@ -124,8 +128,8 @@ calicoctl get workloadendpoint -o yaml
 - Verify ASN numbers and peer IPs are correct.
 
 **Update appears to have no effect:**
-- Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Ensure the resource namespace and name match the existing resource.
+- Validate the manifest before applying it: `calicoctl validate -f workloadendpoint.yaml`.
 
 
 ## Additional Considerations
@@ -151,7 +155,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crd workloadendpoints.crd.projectcalico.org -o jsonpath='{.spec.versions[*].name}{"\n"}'
 ```
 
 ### Security Hardening
@@ -160,7 +164,8 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i update globalnetworkpolicies.crd.projectcalico.org --all-namespaces
+kubectl auth can-i --list --all-namespaces | grep projectcalico
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
