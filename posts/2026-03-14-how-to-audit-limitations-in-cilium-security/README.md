@@ -31,17 +31,21 @@ Start by assessing what percentage of your workloads have explicit Cilium networ
 ```bash
 # Count total endpoints vs endpoints with active policies
 
-TOTAL=$(cilium endpoint list -o json | jq 'length')
-WITH_POLICY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.policy.realized."l4-ingress" != null or .status.policy.realized."l4-egress" != null)] | length')
+TOTAL=$(kubectl get ciliumendpoints --all-namespaces -o json | jq '.items | length')
+WITH_POLICY=$(kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '[.items[] | select(.status.policy.realized."policy-enabled" != null and .status.policy.realized."policy-enabled" != "none")] | length')
 
 echo "Total endpoints: $TOTAL"
 echo "Endpoints with policies: $WITH_POLICY"
-echo "Coverage: $(( WITH_POLICY * 100 / TOTAL ))%"
+if [ "$TOTAL" -gt 0 ]; then
+  echo "Coverage: $(( WITH_POLICY * 100 / TOTAL ))%"
+else
+  echo "Coverage: 0%"
+fi
 
 # List endpoints without any policy
-cilium endpoint list -o json | \
-  jq '.[] | select(.status.policy.realized."l4-ingress" == null and .status.policy.realized."l4-egress" == null) | {id: .id, labels: .status.labels.id}'
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '.items[] | select(.status.policy.realized."policy-enabled" == null or .status.policy.realized."policy-enabled" == "none") | {namespace: .metadata.namespace, name: .metadata.name, id: .status.id, labels: .status.identity.labels}'
 ```
 
 ### Generating a Policy Inventory
@@ -102,7 +106,7 @@ spec:
 # Check which namespaces lack a default-deny policy
 for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
   DENY_COUNT=$(kubectl get ciliumnetworkpolicies -n "$ns" -o json 2>/dev/null | \
-    jq '[.items[] | select(.spec.ingress == [] or .spec.ingress == null)] | length')
+    jq '[.items[] | select((.spec.endpointSelector == {} or .spec.endpointSelector.matchLabels == {}) and (.spec.ingress == [] or .spec.egress != null))] | length')
   if [ "$DENY_COUNT" -eq 0 ]; then
     echo "WARNING: Namespace '$ns' has no default-deny policy"
   fi
@@ -126,7 +130,7 @@ echo "Generating Cilium security audit report..."
 # Collect policy data
 POLICIES=$(kubectl get ciliumnetworkpolicies --all-namespaces -o json)
 CLUSTERWIDE=$(kubectl get ciliumclusterwidenetworkpolicies -o json 2>/dev/null || echo '{"items":[]}')
-ENDPOINTS=$(cilium endpoint list -o json)
+ENDPOINTS=$(kubectl get ciliumendpoints --all-namespaces -o json)
 
 # Build report
 jq -n \
@@ -138,7 +142,7 @@ jq -n \
     report_date: $date,
     total_policies: ($policies.items | length),
     clusterwide_policies: ($clusterwide.items | length),
-    total_endpoints: ($endpoints | length),
+    total_endpoints: ($endpoints.items | length),
     namespaces_covered: ($policies.items | [.[].metadata.namespace] | unique | length)
   }' > "$OUTPUT"
 
@@ -161,10 +165,10 @@ kubectl get cnp --all-namespaces -o yaml > "$EVIDENCE_DIR/all-policies.yaml"
 kubectl get ccnp -o yaml > "$EVIDENCE_DIR/clusterwide-policies.yaml"
 
 # Capture endpoint security state
-cilium endpoint list -o json > "$EVIDENCE_DIR/endpoint-state.json"
+kubectl get ciliumendpoints --all-namespaces -o json > "$EVIDENCE_DIR/endpoint-state.json"
 
 # Capture identity mappings
-cilium identity list -o json > "$EVIDENCE_DIR/identities.json"
+kubectl get ciliumidentities -o json > "$EVIDENCE_DIR/identities.json"
 
 # Capture Cilium configuration
 cilium config view > "$EVIDENCE_DIR/cilium-config.txt"
@@ -172,7 +176,7 @@ cilium config view > "$EVIDENCE_DIR/cilium-config.txt"
 # Generate a summary for auditors
 echo "Audit Evidence Generated: $(date -u)" > "$EVIDENCE_DIR/summary.txt"
 echo "Policies: $(kubectl get cnp -A --no-headers | wc -l)" >> "$EVIDENCE_DIR/summary.txt"
-echo "Endpoints: $(cilium endpoint list -o json | jq length)" >> "$EVIDENCE_DIR/summary.txt"
+echo "Endpoints: $(kubectl get ciliumendpoints --all-namespaces -o json | jq '.items | length')" >> "$EVIDENCE_DIR/summary.txt"
 
 tar -czf "$EVIDENCE_DIR.tar.gz" "$EVIDENCE_DIR"
 echo "Evidence package created: $EVIDENCE_DIR.tar.gz"
@@ -188,11 +192,13 @@ hubble observe --verdict DROPPED --last 500 -o json | \
   jq '.flow.drop_reason_desc' | sort | uniq -c | sort -rn
 
 # Cross-reference policy inventory with running workloads
-kubectl get pods --all-namespaces -l '!io.cilium.no-policy' -o json | \
+kubectl get pods --all-namespaces --field-selector=status.phase=Running -o json | \
+  jq '.items | length'
+kubectl get ciliumendpoints --all-namespaces -o json | \
   jq '.items | length'
 
 # Verify Cilium agent configuration is consistent
-cilium config view | grep -E "policy-audit|enable-l7"
+cilium config view | grep -E "policy-audit-mode|enable-l7-proxy|l7Proxy"
 ```
 
 ## Troubleshooting
