@@ -27,7 +27,7 @@ Check whether the new Calico VPP version requires any OS-level changes.
 ```bash
 # Review the VPP dataplane changelog
 
-cat vpp-dataplane/CHANGELOG.md | head -50
+curl -L https://api.github.com/repos/projectcalico/vpp-dataplane/releases/tags/v3.31.0
 ```
 
 If new kernel parameters or hugepage values are required, update the MCO first.
@@ -52,7 +52,7 @@ oc get installation default -o yaml > installation-backup.yaml
 ## Step 4: Upgrade Calico Control Plane
 
 ```bash
-oc apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/ocp/tigera-operator.yaml
+oc apply --server-side --force-conflicts -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator-ocp-upgrade.yaml
 oc rollout status deployment/tigera-operator -n tigera-operator
 ```
 
@@ -60,9 +60,13 @@ oc rollout status deployment/tigera-operator -n tigera-operator
 
 ```bash
 cd vpp-dataplane
-git fetch && git checkout v3.27.0
+git fetch --tags && git checkout v3.31.0
 
-oc apply -f yaml/calico-vpp.yaml
+oc apply -f yaml/platforms/openshift/03-configmap-calico-vpp-resources.yaml
+oc apply -f yaml/platforms/openshift/03-role-calico-vpp-dataplane.yaml
+oc apply -f yaml/platforms/openshift/03-rolebinding-calico-vpp-dataplane.yaml
+oc apply -f yaml/platforms/openshift/03-serviceaccount-calico-vpp-dataplane.yaml
+oc apply -f yaml/platforms/openshift/04-calico-vpp-nohuge.yaml
 oc rollout status daemonset/calico-vpp-node -n calico-vpp-dataplane
 ```
 
@@ -72,8 +76,9 @@ oc rollout status daemonset/calico-vpp-node -n calico-vpp-dataplane
 oc get tigerastatus
 oc get pods -n calico-vpp-dataplane
 oc get pods -n openshift-ingress
-oc exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show version
-oc exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show interface
+VPP_POD=$(oc get pod -n calico-vpp-dataplane -l k8s-app=calico-vpp-node -o jsonpath='{.items[0].metadata.name}')
+oc exec -n calico-vpp-dataplane -c vpp "$VPP_POD" -- vppctl show version
+oc exec -n calico-vpp-dataplane -c vpp "$VPP_POD" -- vppctl show interface
 ```
 
 ## Conclusion
