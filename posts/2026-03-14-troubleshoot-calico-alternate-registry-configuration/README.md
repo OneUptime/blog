@@ -68,9 +68,9 @@ crane ls registry.example.com/calico/typha
 # Check a specific image manifest
 crane manifest registry.example.com/calico/node:v3.27.0
 
-# Verify the image architecture matches your nodes
-crane config registry.example.com/calico/node:v3.27.0 | \
-  python3 -c "import sys,json; c=json.load(sys.stdin); print(f\"OS: {c['os']}, Arch: {c['architecture']}\")"
+# Verify the available image platforms match your nodes
+crane manifest registry.example.com/calico/node:v3.27.0 | \
+  python3 -c "import sys,json; m=json.load(sys.stdin); [print(f\"OS: {p['platform']['os']}, Arch: {p['platform']['architecture']}\") for p in m.get('manifests', [])] or print('Single-platform manifest; inspect with crane config')"
 ```
 
 ## Step 3: Test Registry Authentication
@@ -78,30 +78,28 @@ crane config registry.example.com/calico/node:v3.27.0 | \
 Verify that Kubernetes can authenticate to the private registry:
 
 ```bash
-# Check if image pull secrets exist
-kubectl get secrets -n calico-system | grep docker
+# Check if image pull secrets are configured on the Installation resource
+kubectl get installation default -o jsonpath='{.spec.imagePullSecrets[*].name}{"\n"}'
+
+# Check if the referenced image pull secret exists in the tigera-operator namespace
+kubectl get secret tigera-pull-secret -n tigera-operator
 
 # Inspect the pull secret contents (base64 encoded)
-kubectl get secret calico-registry-secret -n calico-system -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | python3 -m json.tool
+kubectl get secret tigera-pull-secret -n tigera-operator -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | python3 -m json.tool
 
-# Test authentication from a debug pod
-kubectl run registry-test --rm -it \
-  --image=gcr.io/go-containerregistry/crane:debug \
+# Test that Kubernetes can pull a private Calico image with the secret
+kubectl run registry-pull-test -n tigera-operator --rm -it --restart=Never \
+  --image=registry.example.com/calico/node:v3.27.0 \
   --overrides='{
     "spec": {
-      "imagePullSecrets": [{"name": "calico-registry-secret"}],
-      "containers": [{
-        "name": "test",
-        "image": "gcr.io/go-containerregistry/crane:debug",
-        "command": ["crane", "ls", "registry.example.com/calico/node"]
-      }]
+      "imagePullSecrets": [{"name": "tigera-pull-secret"}]
     }
-  }' -- crane ls registry.example.com/calico/node
+  }' --command -- /bin/sh -c 'echo "Image pulled successfully"'
 
 # Recreate the pull secret if credentials are wrong
-kubectl delete secret calico-registry-secret -n calico-system
-kubectl create secret docker-registry calico-registry-secret \
-  -n calico-system \
+kubectl delete secret tigera-pull-secret -n tigera-operator
+kubectl create secret docker-registry tigera-pull-secret \
+  -n tigera-operator \
   --docker-server=registry.example.com \
   --docker-username=calico-pull \
   --docker-password="${REGISTRY_PASSWORD}"
@@ -117,12 +115,21 @@ openssl s_client -connect registry.example.com:443 -servername registry.example.
 
 # Check if containerd trusts the registry CA
 # For containerd-based nodes
-cat /etc/containerd/config.toml | grep -A 10 "registry.example.com"
+grep -A 5 "config_path" /etc/containerd/config.toml
+cat /etc/containerd/certs.d/registry.example.com/hosts.toml
 
-# Configure containerd to trust the private CA
-# Add to /etc/containerd/config.toml on each node:
-# [plugins."io.containerd.grpc.v1.cri".registry.configs."registry.example.com".tls]
-#   ca_file = "/etc/containerd/certs.d/registry.example.com/ca.crt"
+# Configure containerd to trust the private CA on each node.
+# For containerd 1.x, set config_path in /etc/containerd/config.toml:
+# [plugins."io.containerd.grpc.v1.cri".registry]
+#   config_path = "/etc/containerd/certs.d"
+#
+# For containerd 2.x, set config_path in /etc/containerd/config.toml:
+# [plugins."io.containerd.cri.v1.images".registry]
+#   config_path = "/etc/containerd/certs.d"
+#
+# Then create /etc/containerd/certs.d/registry.example.com/hosts.toml:
+# server = "https://registry.example.com"
+# ca = "/etc/containerd/certs.d/registry.example.com/ca.crt"
 ```
 
 ```mermaid
@@ -146,11 +153,13 @@ Ensure the Tigera operator is configured with the correct registry:
 
 ```bash
 # Check the Installation resource
-kubectl get installation default -o yaml | grep -A 5 "registry\|imagePath"
+kubectl get installation default -o yaml | grep -A 3 "imagePullSecrets\|registry\|imagePath"
 
 # Expected output:
-# registry: registry.example.com
+# registry: registry.example.com/
 # imagePath: calico
+# imagePullSecrets:
+# - name: tigera-pull-secret
 
 # Check what images the operator is actually setting
 kubectl get deployment -n calico-system calico-kube-controllers -o jsonpath='{.spec.template.spec.containers[*].image}'
@@ -159,8 +168,9 @@ kubectl get daemonset -n calico-system calico-node -o jsonpath='{.spec.template.
 # If the registry is wrong, update the Installation resource
 kubectl patch installation default --type merge -p '{
   "spec": {
-    "registry": "registry.example.com",
-    "imagePath": "calico"
+    "registry": "registry.example.com/",
+    "imagePath": "calico",
+    "imagePullSecrets": [{"name": "tigera-pull-secret"}]
   }
 }'
 ```
@@ -175,7 +185,8 @@ kubectl debug node/<node-name> -it --image=busybox -- sh -c \
   "wget -q -O /dev/null --timeout=5 https://registry.example.com/v2/ && echo 'Registry reachable' || echo 'Registry unreachable'"
 
 # Check for proxy settings that might block registry access
-kubectl get daemonset -n calico-system calico-node -o jsonpath='{.spec.template.spec.containers[*].env}' | python3 -m json.tool | grep -i proxy
+kubectl get daemonset -n calico-system calico-node -o json | \
+  python3 -c "import sys,json; d=json.load(sys.stdin); [print(e) for c in d['spec']['template']['spec']['containers'] for e in c.get('env', []) if 'proxy' in e.get('name', '').lower()]"
 ```
 
 ## Verification
