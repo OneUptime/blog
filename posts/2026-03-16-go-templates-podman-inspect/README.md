@@ -24,7 +24,7 @@ Access fields using double curly braces and dot notation:
 podman run -d --name my-app -p 8080:80 -e APP_ENV=prod -e DB_HOST=localhost nginx:latest
 
 # Access a top-level field
-podman inspect my-app --format '{{.Id}}'
+podman inspect my-app --format '{{.ID}}'
 
 # Access nested fields with dots
 podman inspect my-app --format '{{.State.Status}}'
@@ -90,7 +90,7 @@ Go templates include several useful string functions:
 podman inspect my-app --format '{{len .Config.Env}} environment variables'
 
 # Slice a string (get first 12 chars of container ID)
-podman inspect my-app --format '{{slice .Id 0 12}}'
+podman inspect my-app --format '{{slice .ID 0 12}}'
 
 # Use printf for formatting
 podman inspect my-app --format '{{printf "%-20s %s" .Name .State.Status}}'
@@ -121,7 +121,7 @@ podman inspect my-app --format '
 Container Report
 ================
 Name:    {{.Name}}
-ID:      {{slice .Id 0 12}}
+ID:      {{slice .ID 0 12}}
 Image:   {{.Config.Image}}
 Status:  {{.State.Status}}
 Started: {{.State.StartedAt}}
