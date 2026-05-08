@@ -32,7 +32,7 @@ metadata:
   name: zt-namespace-default-deny
 spec:
   order: 1000
-  selector: all()
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   types:
     - Ingress
     - Egress
@@ -47,24 +47,21 @@ metadata:
   name: zt-allow-dns-and-kubelet
 spec:
   order: 10
-  selector: all()
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   egress:
     - action: Allow
       protocol: UDP
       destination:
+        namespaceSelector: kubernetes.io/metadata.name == "kube-system"
+        selector: k8s-app == "kube-dns"
         ports: [53]
     - action: Allow
       protocol: TCP
       destination:
+        namespaceSelector: kubernetes.io/metadata.name == "kube-system"
+        selector: k8s-app == "kube-dns"
         ports: [53]
-  ingress:
-    - action: Allow
-      source:
-        nets: ["10.0.0.0/8"]
-      destination:
-        ports: [10250]
   types:
-    - Ingress
     - Egress
 ```
 
