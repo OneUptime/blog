@@ -196,7 +196,7 @@ podman run -d \
   --name postgres-db \
   --cpus 2 \
   --memory 4g \
-  --memory-swap 4g \
+  --memory-swap 8g \
   -p 5432:5432 \
   -e POSTGRES_PASSWORD=secret \
   docker.io/library/postgres:16
@@ -218,11 +218,11 @@ podman run --rm docker.io/library/alpine:latest sh -c "
 "
 
 # Test memory allocation
-podman run --rm --memory 2g docker.io/library/alpine:latest sh -c "
+podman run --rm --memory 2g --tmpfs /mnt:rw,size=1536m docker.io/library/alpine:latest sh -c "
   echo 'Available memory:'
   free -h
   echo 'Allocating 1GB...'
-  dd if=/dev/zero of=/dev/null bs=1M count=1024
+  dd if=/dev/zero of=/mnt/memory-test bs=1M count=1024
   echo 'Memory test passed'
 "
 
