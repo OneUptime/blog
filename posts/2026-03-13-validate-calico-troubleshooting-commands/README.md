@@ -21,14 +21,14 @@ calicoctl version
 
 # Expected output includes:
 # Client Version: vX.Y.Z
-# Cluster Calico Version: vX.Y.Z (should match client version)
+# Cluster Version: vX.Y.Z (should match client version)
 
-# If "Cluster Calico Version" is different or missing:
+# If "Cluster Version" is different or missing:
 # calicoctl version mismatch - download matching version
-CALICO_VERSION=$(kubectl get pods -n calico-system \
-  -l k8s-app=calico-node -o jsonpath='{.items[0].spec.containers[0].image}' | \
-  cut -d: -f2)
-echo "Cluster Calico version: ${CALICO_VERSION}"
+CALICO_IMAGE=$(kubectl get pods -n calico-system \
+  -l k8s-app=calico-node \
+  -o jsonpath='{.items[0].spec.containers[?(@.name=="calico-node")].image}')
+echo "Cluster calico-node image: ${CALICO_IMAGE}"
 ```
 
 ## Validate Core Command Outputs
@@ -67,7 +67,7 @@ exit ${FAIL}
 
 ```bash
 # Cross-check BGP peer count between calicoctl and BGPPeer resources
-CONFIGURED_PEERS=$(calicoctl get bgppeer --no-headers 2>/dev/null | wc -l)
+CONFIGURED_PEERS=$(calicoctl get bgppeer 2>/dev/null | awk 'NR > 1 { count++ } END { print count + 0 }')
 echo "Configured BGPPeer resources: ${CONFIGURED_PEERS}"
 
 # BGP state shown in calico-node pod
@@ -96,10 +96,12 @@ flowchart TD
 
 ```bash
 # Verify IPAM show matches actual pod count
-IPAM_USED=$(calicoctl ipam show 2>/dev/null | grep "IPs in use" | awk '{print $NF}')
-ACTUAL_PODS=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
+IPAM_USED=$(calicoctl ipam show 2>/dev/null | awk -F'|' \
+  '$2 ~ /IP Pool/ { gsub(/^[ \t]+|[ \t]+$/, "", $5); split($5, used, " "); total += used[1] } END { print total + 0 }')
+ACTUAL_PODS=$(kubectl get pods --all-namespaces --field-selector=status.phase=Running --no-headers | wc -l)
 echo "IPAM shows ${IPAM_USED} IPs in use, ${ACTUAL_PODS} running pods"
-# These should be close (some pods share IPs, host-networked pods don't use IPAM)
+# These should be in the same range for single-stack clusters using Calico IPAM
+# (some pods share IPs, host-networked pods don't use IPAM)
 ```
 
 ## Conclusion
