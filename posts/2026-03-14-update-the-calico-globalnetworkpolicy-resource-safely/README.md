@@ -55,10 +55,13 @@ Review each changed field and consider its impact:
 
 ## Step 3: Apply the Update
 
-Apply the updated manifest:
+Validate and apply the updated manifest:
 
 ```bash
-# Apply with calicoctl for validation
+# Validate the manifest before applying it
+calicoctl validate -f globalnetworkpolicy.yaml
+
+# Apply the update with calicoctl
 calicoctl apply -f globalnetworkpolicy.yaml
 ```
 
@@ -66,7 +69,7 @@ For critical changes, consider applying during a maintenance window and monitori
 
 ## Step 4: Monitor After the Update
 
-Watch for issues in the Calico component logs:
+Watch for issues in the Calico component logs. Adjust the namespace if your installation runs Calico in `kube-system` instead of `calico-system`:
 
 ```bash
 # Watch calico-node logs for errors
@@ -125,7 +128,7 @@ calicoctl get globalnetworkpolicy -o yaml
 
 **Update appears to have no effect:**
 - Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Validate the manifest with `calicoctl validate -f globalnetworkpolicy.yaml`; Kubernetes may warn, reject, or prune unknown fields depending on server-side field validation and the CRD schema.
 
 
 ## Additional Considerations
@@ -160,7 +163,8 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
+kubectl auth can-i --list --all-namespaces | grep globalnetworkpolicies
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
