@@ -8,15 +8,15 @@ Description: Learn how to build container images from a Containerfile using Podm
 
 ---
 
-> Containerfiles are the OCI-native way to define reproducible container image builds in Podman.
+> Containerfiles are the Podman and Buildah convention for defining reproducible container image builds.
 
-A Containerfile is the OCI-standard equivalent of a Dockerfile. Podman natively supports both, but Containerfile is the preferred naming convention when working with OCI-compliant tools. This guide walks through creating and building images from Containerfiles with practical examples.
+A Containerfile uses the same syntax as a Dockerfile. Podman natively supports both `Containerfile` and `Dockerfile` names, but `Containerfile` is a common naming convention in Podman and Buildah workflows. This guide walks through creating and building images from Containerfiles with practical examples.
 
 ---
 
 ## What Is a Containerfile
 
-A Containerfile is a text file containing instructions that Podman executes sequentially to build an image. Each instruction creates a new layer in the image.
+A Containerfile is a text file containing instructions that Podman executes sequentially to build an image. Filesystem-changing instructions such as `RUN`, `COPY`, and `ADD` create image layers; metadata instructions update the image configuration and build history.
 
 ```bash
 # Create a project directory
@@ -82,7 +82,7 @@ podman build -t mywebapp:v1.0 .
 # The dot (.) specifies the build context directory
 ```
 
-Podman automatically detects a file named `Containerfile` in the current directory. If both `Containerfile` and `Dockerfile` exist, `Containerfile` takes precedence.
+Podman automatically detects a file named `Containerfile` or `Dockerfile` in the current directory. If you need to choose a specific file, pass it explicitly with `-f`.
 
 ## Containerfile Instructions Reference
 
@@ -143,7 +143,7 @@ See detailed build progress with the `--log-level` flag.
 # Build with debug output (--log-level is a global Podman flag)
 podman --log-level debug build -t myapp:latest .
 
-# Build with build progress displayed
+# Build a Docker-format image instead of the default OCI format
 podman build --format docker -t myapp:latest .
 ```
 
@@ -191,7 +191,7 @@ cat > Containerfile << 'EOF'
 FROM docker.io/library/node:20-slim
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY . .
 CMD ["node", "server.js"]
 EOF
