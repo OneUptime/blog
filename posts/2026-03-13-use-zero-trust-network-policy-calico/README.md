@@ -10,9 +10,9 @@ Description: Use zero trust network policies in Calico to enforce the principle 
 
 ## Introduction
 
-Zero Trust Network Policy in Calico implements the principle of never trust, always verify at the Kubernetes network layer. Every connection is evaluated against explicit policy rules, and nothing is permitted by default. This eliminates implicit trust that allows compromised workloads to move laterally through the cluster.
+Zero Trust Network Policy in Calico implements the principle of never trust, always verify at the Kubernetes network layer. With an enforced default-deny policy, selected workloads are isolated unless traffic is explicitly allowed. This eliminates implicit trust that allows compromised workloads to move laterally through the cluster.
 
-Calico's `projectcalico.org/v3` GlobalNetworkPolicy and NetworkPolicy resources provide the building blocks for zero trust: default deny at the cluster level, explicit allow rules for each required communication path, and comprehensive logging of every traffic decision.
+Calico's `projectcalico.org/v3` GlobalNetworkPolicy and NetworkPolicy resources provide the building blocks for zero trust: default deny for non-system workloads, explicit allow rules for each required communication path, and optional `Log` rules for traffic discovery and auditing.
 
 This guide covers use zero trust network policies in Calico, including the full policy stack from global defaults to workload-specific microsegmentation.
 
@@ -34,6 +34,7 @@ metadata:
   name: zt-global-default-deny
 spec:
   order: 10000
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   selector: all()
   types:
     - Ingress
@@ -46,24 +47,15 @@ metadata:
   name: zt-allow-system-traffic
 spec:
   order: 1
+  namespaceSelector: kubernetes.io/metadata.name not in {"calico-system", "kube-public", "kube-system", "tigera-operator"}
   selector: all()
   egress:
     - action: Allow
-      protocol: UDP
       destination:
-        ports: [53]
-    - action: Allow
-      protocol: TCP
-      destination:
-        ports: [53]
-  ingress:
-    - action: Allow
-      source:
-        nets: ["10.0.0.0/8"]
-      destination:
-        ports: [10250]
+        services:
+          name: kube-dns
+          namespace: kube-system
   types:
-    - Ingress
     - Egress
 ---
 # Layer 3: Application-specific allow rules
@@ -89,7 +81,7 @@ spec:
 
 ```bash
 # Verify default deny is active
-kubectl exec -n production test-pod -- curl -s --max-time 5 http://random-ip:8080
+kubectl exec -n production test-pod -- curl -s --max-time 5 http://backend-api:8080
 echo "Should timeout (default deny): $?"
 
 # Verify explicit allows work
@@ -106,8 +98,7 @@ echo "Should timeout (no frontend->DB allow): $?"
 ```mermaid
 flowchart TD
     ALL[All Traffic] --> GD{GlobalNetworkPolicy\nDefault Deny\norder=10000}
-    GD -->|DNS Traffic| DNS[Allow DNS :53]
-    GD -->|Kubelet| KUB[Allow Kubelet :10250]
+    GD -->|DNS Traffic| DNS[Allow kube-dns service]
     GD -->|App Traffic| APP{Application\nNetworkPolicy}
     APP -->|Explicit Allow| PERMIT[Traffic Permitted]
     APP -->|No Match| DENY[DENIED - Zero Trust]
