@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Diagnostic, Validation
 
-Description: Validate Calico networking health on individual cluster nodes by confirming Felix liveness, iptables rule completeness, BGP route propagation, and pod IP reachability from each node.
+Description: Validate Calico networking health on individual cluster nodes by confirming Felix health, dataplane rules, BGP route propagation when BGP is enabled, and pod IP reachability from each node.
 
 ---
 
 ## Introduction
 
-Validating Calico node health requires confirming four signals per node: Felix is live and ready, iptables rules are programmed, BGP peers are Established, and pod IPs are reachable from the node. Running this validation on every node ensures no node is silently degraded before issues affect application traffic.
+Validating Calico node health requires confirming four signals per node: Felix is live and ready, dataplane rules are programmed, BGP peers are Established when BGP is enabled, and pod IPs are reachable from the node. Running this validation on every node ensures no node is silently degraded before issues affect application traffic.
 
 ## Per-Node Validation Script
 
@@ -29,20 +29,20 @@ for pod in $(kubectl get pods -n calico-system -l k8s-app=calico-node \
 
   echo "Validating node: ${NODE}"
 
-  # 1. Felix liveness
-  LIVE=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
-    calico-node -felix-live 2>&1 | grep -c "live" || echo 0)
-  if [ "${LIVE}" -gt 0 ]; then
-    echo "  PASS: Felix live"
+  # 1. Felix liveness and readiness
+  if kubectl exec -n calico-system "${pod}" -c calico-node -- \
+    /bin/calico-node -felix-live -felix-ready >/dev/null 2>&1; then
+    echo "  PASS: Felix live and ready"
     PASS=$((PASS + 1))
   else
-    echo "  FAIL: Felix not live on ${NODE}"
+    echo "  FAIL: Felix not live or ready on ${NODE}"
     FAIL=$((FAIL + 1))
   fi
 
   # 2. BGP peers
-  ESTABLISHED=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
-    calicoctl node status 2>/dev/null | grep -c "Established" || echo 0)
+  BGP_STATUS=$(kubectl exec -n calico-system "${pod}" -c calico-node -- \
+    calicoctl node status 2>/dev/null || true)
+  ESTABLISHED=$(printf '%s\n' "${BGP_STATUS}" | grep -c "Established")
   if [ "${ESTABLISHED}" -gt 0 ]; then
     echo "  PASS: ${ESTABLISHED} BGP peer(s) Established"
     PASS=$((PASS + 1))
@@ -58,11 +58,12 @@ echo "Validation: ${PASS} passed, ${FAIL} failed"
 exit ${FAIL}
 ```
 
-## Validate iptables Rules Are Complete
+## Validate iptables Rules Are Present
 
 ```bash
-# Check Calico iptables chain exists and has rules
-CALICO_RULES=$(kubectl debug node/"${NODE}" --image=alpine -- \
+# For Calico's iptables dataplane, check that the Calico chain exists and has rules.
+# The debug image must include nsenter and iptables.
+CALICO_RULES=$(kubectl debug node/"${NODE}" --image=nicolaka/netshoot --profile=sysadmin -- \
   nsenter -t 1 -n -- iptables -L cali-FORWARD --line-numbers 2>/dev/null | wc -l)
 
 if [ "${CALICO_RULES}" -gt 2 ]; then
@@ -83,7 +84,7 @@ TEST_NODE_POD="<calico-node-pod-on-different-node>"
 kubectl exec -n calico-system "${TEST_NODE_POD}" -c calico-node -- \
   ping -c 3 "${POD_IP}"
 # Success: routing between nodes is working
-# Failure: BGP routes not propagated, check BGP state
+# Failure: check BGP state, dataplane mode, NetworkPolicy, and whether the pod responds to ICMP
 ```
 
 ## Validation Architecture
@@ -103,4 +104,4 @@ flowchart LR
 
 ## Conclusion
 
-Per-node Calico validation ensures that no node is silently degraded. The four validation points - Felix liveness, BGP peer state, iptables rules, and pod reachability - cover the primary failure modes for individual nodes. Run this validation after node replacements, calico-node pod restarts, and before declaring an incident resolved. A green run on all nodes confirms the full data plane is healthy.
+Per-node Calico validation ensures that no node is silently degraded. The four validation points - Felix health, BGP peer state when BGP is enabled, dataplane rules, and pod reachability - cover the primary failure modes for individual nodes. Run this validation after node replacements, calico-node pod restarts, and before declaring an incident resolved. A green run on all nodes confirms the tested dataplane path is healthy.
