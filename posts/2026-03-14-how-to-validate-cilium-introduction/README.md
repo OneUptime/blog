@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Validation, Installation, Networking
 
-Description: How to validate a fresh Cilium installation to confirm proper networking, policy enforcement, encryption, and observability are all functioning correctly.
+Description: How to validate a fresh Cilium installation to confirm proper networking and policy enforcement are functioning correctly.
 
 ---
 
@@ -84,9 +84,9 @@ kubectl apply -n cilium-test -f \
 # Check all test pods are running
 kubectl get pods -n cilium-test -o wide
 
-# Verify cross-node communication
-kubectl exec -n cilium-test -it deployment/client -- \
-  curl -s http://echo-service:8080
+# Verify cross-node service communication
+kubectl exec -n cilium-test -it deployment/pod-to-b-multi-node-clusterip -- \
+  curl -sS --fail --connect-timeout 5 http://echo-b:8080/public
 ```
 
 ## Validating Policy Enforcement
@@ -100,8 +100,10 @@ metadata:
   namespace: cilium-test
 spec:
   endpointSelector: {}
-  ingress: []
-  egress: []
+  ingress:
+  - {}
+  egress:
+  - {}
 ```
 
 ```bash
@@ -109,8 +111,8 @@ spec:
 kubectl apply -f test-deny-all.yaml
 
 # Verify traffic is blocked
-kubectl exec -n cilium-test -it deployment/client -- \
-  curl -s --connect-timeout 5 http://echo-service:8080
+kubectl exec -n cilium-test -it deployment/pod-to-b-multi-node-clusterip -- \
+  curl -sS --fail --connect-timeout 5 http://echo-b:8080/public
 # Should timeout
 
 # Clean up
