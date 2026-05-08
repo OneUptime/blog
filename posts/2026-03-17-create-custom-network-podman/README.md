@@ -53,7 +53,7 @@ podman run -d --name webserver \
 # Run another container on the same network
 podman run -d --name api \
   --network mynetwork \
-  docker.io/library/node:20 tail -f /dev/null
+  docker.io/library/alpine:latest tail -f /dev/null
 
 # Containers can reach each other by name
 podman exec api ping -c 3 webserver
