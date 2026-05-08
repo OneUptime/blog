@@ -12,7 +12,7 @@ Description: Safely update Calico WorkloadEndpoint resources with proper backup,
 
 Updating a WorkloadEndpoint resource in Calico modifies the network identity of a running workload. This includes changes to IP addresses, labels, profiles, and interface configurations. Unlike staged policy resources, WorkloadEndpoint changes take effect immediately, making safe update practices critical to avoid network disruption.
 
-In Kubernetes environments, Calico manages WorkloadEndpoint resources automatically for pods. Manual updates are typically needed for non-Kubernetes workloads, custom orchestrator integrations, or when correcting misconfigured endpoints. Each update must preserve the endpoint's core identity fields while modifying only the intended attributes.
+In Kubernetes environments, Calico manages WorkloadEndpoint resources automatically for pods, and Calico generally recommends using `calicoctl` only to view those orchestrator-managed endpoints. Manual updates are typically needed for non-Kubernetes workloads, custom orchestrator integrations, or when correcting endpoints that are not managed by the Kubernetes pod lifecycle. Each update must preserve the endpoint's core identity fields while modifying only the intended attributes.
 
 This guide covers safe update procedures for WorkloadEndpoint resources, including backup workflows, label updates, IP address changes, and profile modifications.
 
@@ -110,7 +110,7 @@ kubectl exec -it -n calico-system ds/calico-node -- ip route | grep 10.240.0.75
 
 ## Updating Profiles
 
-Profiles control default policy rules applied to an endpoint. Update profiles when migrating workloads between security tiers:
+Profiles apply shared labels to an endpoint, and older profile rule fields can also affect policy behavior. Update profiles when migrating workloads between security tiers:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -202,4 +202,4 @@ calicoctl apply -f endpoint-backup.yaml
 
 ## Conclusion
 
-Updating WorkloadEndpoint resources safely requires understanding which fields trigger immediate network changes. Label updates alter policy matching, IP changes affect routing, and profile changes modify default security rules. Always back up the current state, verify prerequisites like IP pool availability and profile existence, and test connectivity immediately after applying changes. For identity field changes, plan for endpoint recreation rather than in-place updates.
+Updating WorkloadEndpoint resources safely requires understanding which fields trigger immediate network changes. Label updates alter policy matching, IP changes affect routing, and profile changes modify inherited labels and any legacy profile rules. Always back up the current state, verify prerequisites like IP pool availability and profile existence, and test connectivity immediately after applying changes. For identity field changes, plan for endpoint recreation rather than in-place updates.
