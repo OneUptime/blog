@@ -74,7 +74,7 @@ podman system df
 
 # Verbose view showing each volume
 podman system df -v
-# Volumes space usage:
+# Local Volumes space usage:
 # VOLUME NAME   LINKS   SIZE
 # dbdata        1       850MB
 # appdata       1       200MB
@@ -104,7 +104,7 @@ podman volume prune
 # Remove specific unused volumes
 podman volume rm old-cache temp-data
 
-# Clean up everything including unused volumes
+# Clean up unused resources including unused volumes
 podman system prune --volumes
 ```
 
