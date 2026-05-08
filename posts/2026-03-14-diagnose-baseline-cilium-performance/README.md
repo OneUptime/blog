@@ -39,7 +39,12 @@ kubectl run host-client --image=networkstatic/iperf3 \
   -- -c <node-1-ip> -t 30 -P 1
 
 # Host TCP_RR baseline
-kubectl run host-netperf --image=cilium/netperf \
+kubectl run host-netserver --image=cilium/netperf \
+  --overrides='{"spec":{"hostNetwork":true,"nodeSelector":{"kubernetes.io/hostname":"node-1"}}}' \
+  --restart=Never \
+  -- netserver -D
+
+kubectl run host-netperf-client --image=cilium/netperf \
   --overrides='{"spec":{"hostNetwork":true,"nodeSelector":{"kubernetes.io/hostname":"node-2"}}}' \
   --rm -it --restart=Never \
   -- netperf -H <node-1-ip> -t TCP_RR -l 20
@@ -49,29 +54,45 @@ kubectl run host-netperf --image=cilium/netperf \
 
 ```bash
 # Pod-to-pod throughput
-kubectl exec pod-iperf -- iperf3 -c $POD_SERVER_IP -t 30 -P 1 -J | \
+kubectl run pod-iperf-server --image=networkstatic/iperf3 --restart=Never -- -s
+POD_SERVER_IP=$(kubectl get pod pod-iperf-server -o jsonpath='{.status.podIP}')
+kubectl run pod-iperf-client --image=networkstatic/iperf3 \
+  --rm -it --restart=Never \
+  -- -c "$POD_SERVER_IP" -t 30 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 
 # Calculate CNI overhead
-echo "Host baseline: X Gbps"
-echo "Pod throughput: Y Gbps"
-echo "CNI overhead: $(echo 'scale=1; (1 - Y/X) * 100' | bc)%"
+HOST_GBPS=10.0
+POD_GBPS=9.4
+echo "Host baseline: $HOST_GBPS Gbps"
+echo "Pod throughput: $POD_GBPS Gbps"
+echo "CNI overhead: $(echo "scale=1; (1 - $POD_GBPS/$HOST_GBPS) * 100" | bc)%"
 ```
 
 ## Baseline Metrics Collection
 
 ```bash
-# Collect comprehensive baseline
 #!/bin/bash
+# Collect comprehensive baseline
+kubectl run pod-netserver --image=cilium/netperf --restart=Never -- netserver -D
+POD_IP=$(kubectl get pod pod-netserver -o jsonpath='{.status.podIP}')
+
 METRICS=("TCP_STREAM" "TCP_RR" "TCP_CRR")
 for M in "${METRICS[@]}"; do
+  SAFE_M=$(echo "$M" | tr '[:upper:]_' '[:lower:]-')
+
   echo "=== $M ==="
   # Host baseline
   echo "Host:"
-  kubectl exec host-netperf -- netperf -H $HOST_IP -t $M -l 20
+  kubectl run "host-netperf-client-$SAFE_M" --image=cilium/netperf \
+    --overrides='{"spec":{"hostNetwork":true,"nodeSelector":{"kubernetes.io/hostname":"node-2"}}}' \
+    --rm -i --restart=Never \
+    -- netperf -H "$HOST_IP" -t "$M" -l 20
   # Pod baseline
   echo "Pod:"
-  kubectl exec pod-netperf -- netperf -H $POD_IP -t $M -l 20
+  kubectl run "pod-netperf-client-$SAFE_M" --image=cilium/netperf \
+    --rm -i --restart=Never \
+    -- netperf -H "$POD_IP" -t "$M" -l 20
 done
 ```
 
@@ -104,12 +125,15 @@ cilium status --verbose > $DIAG_DIR/cilium-status.txt
 # Collect Cilium configuration
 cilium config view > $DIAG_DIR/cilium-config.txt
 
+# Select a Cilium agent pod for node-local datapath inspection
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg bpf ct list > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -140,21 +164,22 @@ The combination of these data points will point you toward the specific subsyste
 
 ### Using Cilium Monitor for Real-Time Analysis
 
-The `cilium monitor` command provides real-time visibility into the eBPF datapath:
+The `cilium-dbg monitor` command provides real-time visibility into the eBPF datapath:
 
 ```bash
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+ENDPOINT_ID=$(kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list -o json | jq -r '.[0].id')
+kubectl -n kube-system exec -it "$CILIUM_POD" -- cilium-dbg monitor --related-to "$ENDPOINT_ID" --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+kubectl -n kube-system exec -it "$CILIUM_POD" -- cilium-dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+kubectl -n kube-system exec -it "$CILIUM_POD" -- cilium-dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+kubectl -n kube-system exec -it "$CILIUM_POD" -- cilium-dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
@@ -184,11 +209,11 @@ For deep datapath analysis, use BPF tracing tools:
 bpftool prog show --json | jq '.[] | select(.name | contains("cil")) | {name, run_cnt, run_time_ns, avg_ns: (if .run_cnt > 0 then (.run_time_ns / .run_cnt | floor) else 0 end)}'
 
 # Use bpftrace for custom tracing
-bpftrace -e 'tracepoint:xdp:xdp_redirect { @cnt[args->action] = count(); }'
+bpftrace -e 'tracepoint:xdp:xdp_redirect*_err { @redir_errno[-args->err] = count(); }'
 ```
 
 These diagnostic tools form a comprehensive toolkit for understanding exactly what happens to packets as they traverse Cilium's eBPF datapath.
 
 ## Conclusion
 
-Diagnosing baseline performance in Cilium establishes the reference point for all performance optimization. With optimal Cilium configuration (native routing, BPF host routing, XDP acceleration), pod-to-pod throughput should achieve 90-98% of host-to-host baseline, confirming minimal CNI overhead.
+Diagnosing baseline performance in Cilium establishes the reference point for all performance optimization. With optimal Cilium configuration (native routing and BPF host routing), pod-to-pod throughput can approach the host-to-host baseline, confirming minimal CNI overhead.
