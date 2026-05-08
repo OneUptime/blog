@@ -64,17 +64,20 @@ cat /etc/subuid
 cat /etc/subgid
 
 # Verify your user has entries
-grep $(whoami) /etc/subuid && echo "subuid OK" || echo "subuid MISSING"
-grep $(whoami) /etc/subgid && echo "subgid OK" || echo "subgid MISSING"
+grep -q "^$(id -un):" /etc/subuid && echo "subuid OK" || echo "subuid MISSING"
+grep -q "^$(id -un):" /etc/subgid && echo "subgid OK" || echo "subgid MISSING"
 
 # Check user namespace support
 cat /proc/sys/user/max_user_namespaces
 
 # Run a rootless test container
 podman run --rm docker.io/library/alpine:latest id
+
+# Check the user namespace mapping used by rootless Podman
+podman unshare cat /proc/self/uid_map
 ```
 
-The container should show a non-root user mapping. Running as rootless means the container process maps to your regular user on the host.
+The container may still show `uid=0(root)` inside the container. In rootless mode, that container root user maps to your regular unprivileged user on the host, which you can confirm from the `uid_map` output.
 
 ## Step 4: Verify the OCI Runtime
 
@@ -191,9 +194,12 @@ rm -rf /tmp/podman-verify-test
 # Check if the Podman socket is active
 systemctl --user status podman.socket 2>/dev/null
 
-# Test the socket with curl
+# Start the socket if it is not already active
+systemctl --user start podman.socket
+
+# Test the Docker-compatible API through the socket
 curl -s --unix-socket $XDG_RUNTIME_DIR/podman/podman.sock \
-  http://localhost/v4.0.0/libpod/info | head -c 200
+  http://localhost/v1.40/info | head -c 200
 
 echo ""
 echo "Socket test complete"
@@ -201,17 +207,17 @@ echo "Socket test complete"
 
 ## Step 10: Run the Built-in Health Check
 
-Podman includes built-in system checks:
+Podman includes built-in storage consistency checks:
 
 ```bash
-# Check the system health
+# Check image and container storage consistency
 podman system check 2>/dev/null || echo "system check not available in this version"
 
-# Check for any storage inconsistencies
+# Show Podman disk usage
 podman system df
 
-# View unused resources that could be pruned
-podman system df
+# View detailed disk usage, including reclaimable space
+podman system df -v
 ```
 
 ## Comprehensive Verification Script
@@ -242,12 +248,12 @@ podman info --format '{{.Host.NetworkBackend}}'
 echo ""
 
 echo "5. Rootless Check:"
-if grep -q $(whoami) /etc/subuid 2>/dev/null; then
+if grep -q "^$(id -un):" /etc/subuid 2>/dev/null; then
   echo "  subuid: OK"
 else
   echo "  subuid: MISSING"
 fi
-if grep -q $(whoami) /etc/subgid 2>/dev/null; then
+if grep -q "^$(id -un):" /etc/subgid 2>/dev/null; then
   echo "  subgid: OK"
 else
   echo "  subgid: MISSING"
