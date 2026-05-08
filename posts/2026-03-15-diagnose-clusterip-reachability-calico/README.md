@@ -63,7 +63,7 @@ If the endpoints list is empty, the issue is not networking but rather that no p
 
 ## Inspecting kube-proxy and iptables Rules
 
-kube-proxy programs iptables rules that perform DNAT from the ClusterIP to pod IPs.
+In iptables mode, kube-proxy programs iptables rules that perform DNAT from the ClusterIP to pod IPs.
 
 ```bash
 # SSH to a node and check iptables NAT rules for the service
@@ -82,7 +82,7 @@ kubectl get configmap kube-proxy -n kube-system -o yaml | grep mode
 
 ## Examining Calico Network Policies
 
-Calico network policies can silently block traffic to ClusterIP services.
+Calico network policies can silently block traffic that is sent via ClusterIP services. In typical kube-proxy deployments, policy is enforced against the client pod and selected backend pod after DNAT, not against the ClusterIP itself.
 
 ```bash
 # List all network policies in the namespace
@@ -105,8 +105,8 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=100 | grep -i deny
 # Check Calico IP pools
 calicoctl get ippool -o yaml
 
-# Ensure the pod CIDR matches the IP pool
-kubectl cluster-info dump | grep -m 1 cluster-cidr
+# Ensure the node pod CIDRs match the IP pool
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDRs}{"\n"}{end}'
 
 # Verify natOutgoing setting
 calicoctl get ippool -o wide
