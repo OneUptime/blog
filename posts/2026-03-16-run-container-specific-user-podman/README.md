@@ -10,7 +10,7 @@ Description: Learn how to run Podman containers as a specific user for security 
 
 > Running containers as a specific user limits the damage from container breakouts and ensures proper file ownership.
 
-By default, many container images run their processes as root. This is a security risk - if an attacker escapes the container, they might gain root access to the host. Running containers as a non-root user is a security best practice that limits the impact of potential vulnerabilities. This guide covers all methods for specifying the user.
+By default, many container images run their processes as root. This is a security risk - especially for rootful containers, where a container breakout can expose host root privileges. Running containers as a non-root user is a security best practice that limits the impact of potential vulnerabilities. This guide covers all methods for specifying the user.
 
 ---
 
@@ -55,7 +55,7 @@ See which user an image runs as by default:
 
 ```bash
 # Check the default user in the image config
-podman inspect nginx --format '{{.Config.User}}'
+podman image inspect nginx --format '{{.User}}'
 
 # If empty, the container runs as root (UID 0)
 podman run --rm nginx id
@@ -67,9 +67,9 @@ podman run --rm nginx id
 When mounting host directories, the container user must have access to the files:
 
 ```bash
-# Create a directory owned by UID 1000
+# For rootful containers, create a directory owned by UID 1000
 mkdir -p ./data
-chown 1000:1000 ./data
+sudo chown 1000:1000 ./data
 
 # Run as UID 1000 with the mounted directory
 podman run -it --rm \
@@ -88,7 +88,7 @@ The `--userns=keep-id` flag maps your host UID into the container, which is part
 ```bash
 # Your host UID is mapped into the container
 podman run -it --rm --userns=keep-id alpine id
-# Output: uid=1000(your-username) gid=1000(your-group)
+# Output: uid=1000 gid=1000
 
 # Files created in mounted volumes will have your host UID
 podman run -it --rm \
@@ -117,7 +117,7 @@ WORKDIR /app
 
 # Copy application files
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 COPY . .
 
@@ -161,7 +161,7 @@ Instead of running as root, grant specific capabilities:
 podman run -d --name web \
     --user 1000:1000 \
     --cap-add NET_BIND_SERVICE \
-    -p 80:80 \
+    -p 8080:80 \
     my-web-server
 
 # Drop all capabilities and add only what is needed
@@ -169,7 +169,7 @@ podman run -d --name app \
     --user 1000:1000 \
     --cap-drop ALL \
     --cap-add NET_BIND_SERVICE \
-    -p 80:80 \
+    -p 8080:80 \
     my-web-server
 ```
 
@@ -177,13 +177,12 @@ podman run -d --name app \
 
 ```bash
 # Start a container
-podman run -d --name app --user 1000:1000 nginx
+podman run -d --name app --user 1000:1000 alpine sleep 300
 
 # Check which user processes are running as
 podman top app user,pid,comm
 
 # Check from inside the container
-podman exec app whoami
 podman exec app id
 ```
 
@@ -191,13 +190,13 @@ podman exec app id
 
 ```bash
 # Issue: Permission denied when writing to mounted volume
-# Solution: Match the container user to the host file owner
+# Solution for rootful containers: Match the container user to the host file owner
 ls -la ./data  # Check host ownership
-podman run --user $(stat -f %u ./data):$(stat -f %g ./data) -v ./data:/data alpine touch /data/test
+podman run --user $(stat -c %u ./data):$(stat -c %g ./data) -v ./data:/data alpine touch /data/test
 
-# Issue: Cannot bind to a low port
+# Issue: A non-root process cannot bind to a low port inside the container
 # Solution: Add NET_BIND_SERVICE capability
-podman run --user 1000 --cap-add NET_BIND_SERVICE -p 80:80 nginx
+podman run --user 1000 --cap-add NET_BIND_SERVICE -p 8080:80 nginx
 
 # Issue: Application fails because it expects to run as root
 # Solution: Use --userns=keep-id or fix file permissions in the image
