@@ -105,7 +105,7 @@ Use SSH only in the build stage to keep the final image clean.
 ```bash
 cat > Containerfile << 'EOF'
 # Stage 1: Build (needs SSH access)
-FROM docker.io/library/golang:1.22 AS builder
+FROM docker.io/library/golang:1.26 AS builder
 
 RUN apt-get update && apt-get install -y openssh-client git
 RUN mkdir -p /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts
@@ -138,7 +138,7 @@ Configure Go to use SSH for private modules during build.
 
 ```bash
 cat > Containerfile << 'EOF'
-FROM docker.io/library/golang:1.22
+FROM docker.io/library/golang:1.26
 
 RUN apt-get update && apt-get install -y openssh-client
 RUN mkdir -p /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts
@@ -251,7 +251,7 @@ echo "${DEPLOY_SSH_KEY}" | ssh-add -
 podman build --ssh default -t myapp:latest .
 
 # Clean up SSH agent
-ssh-agent -k
+eval "$(ssh-agent -k)"
 ```
 
 ## Summary
