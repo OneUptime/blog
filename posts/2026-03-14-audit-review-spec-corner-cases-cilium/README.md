@@ -108,13 +108,13 @@ Verify that code matches documented decisions:
 ```bash
 # For each corner case, find the implementing code
 # Example for CORNER_CASE_001 (zero-length body)
-grep -n "length.*<=\s*0\|length.*==\s*0\|len.*body.*==\s*0" proxylib/myprotocol/*.go | grep -v test
+grep -nE "length.*<=[[:space:]]*0|length.*==[[:space:]]*0|len.*body.*==[[:space:]]*0" proxylib/myprotocol/*.go | grep -v test
 
 # For CORNER_CASE_002 (unknown commands)
-grep -n "unknown\|default\|commandRegistry" proxylib/myprotocol/*.go | grep -v test
+grep -nE "unknown|default|commandRegistry" proxylib/myprotocol/*.go | grep -v test
 
 # For CORNER_CASE_006 (negative length)
-grep -n "< 0\|<= 0\|negative" proxylib/myprotocol/*.go | grep -v test
+grep -nE "< 0|<= 0|negative" proxylib/myprotocol/*.go | grep -v test
 ```
 
 Cross-reference documentation with implementation:
@@ -134,13 +134,13 @@ Verify that each corner case has dedicated tests:
 
 ```bash
 # Count corner case tests
-grep -c "CC-\|CornerCase\|corner.case" proxylib/myprotocol/*_test.go
+grep -hEo "CC-|CornerCase|corner[.]case" proxylib/myprotocol/*_test.go | wc -l
 
 # List corner case tests
-grep "CC-\|CornerCase\|corner.case" proxylib/myprotocol/*_test.go
+grep -E "CC-|CornerCase|corner[.]case" proxylib/myprotocol/*_test.go
 
 # Check that tests verify the correct behavior
-grep -A 5 "CC-001\|zero.length" proxylib/myprotocol/*_test.go
+grep -A 5 -E "CC-001|zero[.]length" proxylib/myprotocol/*_test.go
 ```
 
 Test coverage audit:
@@ -159,13 +159,13 @@ Identify corner cases that may have been missed:
 ```bash
 # Search for common corner case patterns not in the documentation
 # 1. Null/nil handling
-grep -n "nil\|null\|NULL" proxylib/myprotocol/*.go | grep -v test | grep -v import
+grep -nE "nil|null|NULL" proxylib/myprotocol/*.go | grep -v test | grep -v import
 
 # 2. Integer wrapping
-grep -n "uint\|int32\|int16" proxylib/myprotocol/*.go | grep -v test | grep -v import
+grep -nE "uint|int32|int16" proxylib/myprotocol/*.go | grep -v test | grep -v import
 
 # 3. String termination
-grep -n "string\|byte.*0x00\|null.byte" proxylib/myprotocol/*.go | grep -v test
+grep -nE "string|byte.*0x00|null[.]byte" proxylib/myprotocol/*.go | grep -v test
 ```
 
 ## Verification
@@ -174,11 +174,11 @@ Run the audit verification:
 
 ```bash
 # Execute all corner case tests
-go test ./proxylib/myprotocol/... -v -run "TestCornerCase\|TestSpec" -race
+go test ./proxylib/myprotocol/... -v -run "TestCornerCase|TestSpec" -race
 
 # Check that no corner case is unimplemented
 DOCUMENTED=$(grep -c "CORNER_CASE" proxylib/myprotocol/corner_cases.go 2>/dev/null || echo 0)
-TESTED=$(grep -c "CC-" proxylib/myprotocol/*_test.go 2>/dev/null || echo 0)
+TESTED=$(grep -h -o "CC-" proxylib/myprotocol/*_test.go 2>/dev/null | wc -l)
 echo "Documented: $DOCUMENTED, Tested: $TESTED"
 
 # Fuzz to check for undocumented corner cases
