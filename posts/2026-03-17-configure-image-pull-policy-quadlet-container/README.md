@@ -21,7 +21,7 @@ Podman supports several pull policies:
 - **missing** - Pull only if the image is not in local storage (default).
 - **always** - Always pull the image from the registry, even if a local copy exists.
 - **never** - Never pull the image; fail if it is not available locally.
-- **newer** - Pull only if the registry image is newer than the local one.
+- **newer** - Pull if the registry image has a different digest than the local one.
 
 ## Setting Pull Policy in a Quadlet File
 
@@ -73,7 +73,7 @@ WantedBy=default.target
 
 ## Using Pull=newer for Efficient Updates
 
-The `newer` policy avoids unnecessary pulls while still getting updates:
+The `newer` policy avoids unnecessary pulls while still getting updates when the registry image digest changes:
 
 ```ini
 # ~/.config/containers/systemd/api-server.container
@@ -82,7 +82,7 @@ Description=API server with smart pulling
 
 [Container]
 Image=docker.io/myorg/api-server:stable
-# Only pull if the registry has a newer version
+# Only pull if the registry image digest differs from the local one
 Pull=newer
 PublishPort=3000:3000
 
