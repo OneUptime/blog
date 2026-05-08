@@ -38,7 +38,7 @@ Accepted
 Our OpenShift 4.x clusters use OVN-Kubernetes as the default CNI.
 We need advanced network policy features including:
 - Global network policies across namespaces
-- DNS-based egress policies
+- DNS-based egress policies if using Calico Enterprise or Calico Cloud
 - Network flow logging for compliance
 
 ## Decision
@@ -138,15 +138,16 @@ Create a reference document that maps OVN-specific resources to their Calico equ
 | spec.egress[].type: Allow | spec.egress[].action: Allow |
 | spec.egress[].type: Deny | spec.egress[].action: Deny |
 | spec.egress[].to.cidrSelector | spec.egress[].destination.nets |
-| spec.egress[].to.dnsName | spec.egress[].destination.domains |
-| (applied per namespace) | spec.namespaceSelector |
+| spec.egress[].to.dnsName | Calico Enterprise/Cloud: spec.egress[].destination.domains on egress Allow rules |
+| (applied per namespace) | spec.namespaceSelector, for example `projectcalico.org/name == "team-a"` |
 
 Key differences to document:
 
 1. Calico policies have explicit ordering via the `order` field
 2. Calico supports both `Allow` and `Pass` actions
 3. Calico GlobalNetworkPolicy applies cluster-wide by default
-4. Calico supports selector-based policy application
+4. Calico Open Source does not support `destination.domains`; DNS-based egress policy is a Calico Enterprise and Calico Cloud feature
+5. Calico supports selector-based policy application
 
 ## Creating Troubleshooting Documentation
 
@@ -163,7 +164,7 @@ oc get pods -n calico-system -l k8s-app=calico-node -o wide
 oc logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=100
 
 # Check BGP peering status (if using BGP)
-oc exec -n calico-system $(oc get pod -n calico-system -l k8s-app=calico-node -o name | head -1) -c calico-node -- birdcl show protocols
+calicoctl node status
 
 # Verify endpoint status for a specific pod
 oc get workloadendpoints.projectcalico.org --all-namespaces
