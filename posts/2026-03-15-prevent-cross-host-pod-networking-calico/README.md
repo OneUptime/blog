@@ -26,7 +26,7 @@ This guide provides actionable steps to harden cross-host pod networking in Cali
 
 ## Infrastructure-Level Prevention
 
-Ensure the underlying network always permits Calico traffic.
+Ensure the underlying network always permits the Calico traffic required by your selected dataplane mode.
 
 ```bash
 # Define required ports and protocols in infrastructure-as-code
@@ -35,7 +35,7 @@ Ensure the underlying network always permits Calico traffic.
 ```
 
 ```hcl
-# Security group rules for Calico
+# Security group rules for Calico. Keep only the rules required by your selected mode.
 resource "aws_security_group_rule" "calico_bgp" {
   type              = "ingress"
   from_port         = 179
@@ -88,7 +88,8 @@ EOF
 ```
 
 ```bash
-# Set BGP configuration with explicit parameters
+# If you use BGP or IP-in-IP, set BGP configuration with explicit parameters.
+# VXLAN-only clusters do not require BGP for internal cluster routing.
 cat <<EOF | calicoctl apply -f -
 apiVersion: projectcalico.org/v3
 kind: BGPConfiguration
@@ -141,6 +142,16 @@ echo "Pod CIDR: $(calicoctl get ippool -o custom-columns=CIDR)"
 Deploy a continuous connectivity checker.
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: network-connectivity-checker
+  namespace: monitoring
+spec:
+  clusterIP: None
+  selector:
+    app: connectivity-checker
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -163,8 +174,10 @@ spec:
         - -c
         - |
           while true; do
-            TARGETS=$(getent hosts kubernetes.default.svc.cluster.local | awk '{print $1}')
+            SELF_IP=$(hostname -i | awk '{print $1}')
+            TARGETS=$(getent hosts network-connectivity-checker.monitoring.svc.cluster.local | awk '{print $1}' | sort -u)
             for target in $TARGETS; do
+              [ "$target" = "$SELF_IP" ] && continue
               if ping -c 1 -W 2 "$target" > /dev/null 2>&1; then
                 echo "$(date): $target reachable"
               else
@@ -184,6 +197,8 @@ spec:
 
 ## Monitoring BGP Peering Health
 
+For BGP or IP-in-IP clusters, alert on non-established peers. VXLAN-only clusters do not require BGP for internal cluster routing, so this alert applies only when BGP metrics are exported.
+
 ```yaml
 # Prometheus alert for BGP peering issues
 apiVersion: monitoring.coreos.com/v1
@@ -196,7 +211,7 @@ spec:
   - name: calico-bgp
     rules:
     - alert: CalicoBGPPeerDown
-      expr: bgp_peers - bgp_peers_established > 0
+      expr: bgp_peers{status!="Established"} > 0
       for: 5m
       labels:
         severity: critical
@@ -204,12 +219,12 @@ spec:
         summary: "Calico BGP peer not established on {{ $labels.instance }}"
 
     - alert: CalicoNodeNotReady
-      expr: kube_pod_status_ready{namespace="calico-system",pod=~"calico-node.*"} == 0
+      expr: kube_pod_status_ready{namespace="calico-system",pod=~"calico-node.*",condition="true"} == 0
       for: 3m
       labels:
         severity: critical
       annotations:
-        summary: "calico-node pod not ready on {{ $labels.node }}"
+        summary: "calico-node pod {{ $labels.pod }} is not ready"
 ```
 
 ## Node Maintenance Procedures
@@ -220,14 +235,14 @@ Prevent cross-host failures during node operations.
 # Before node maintenance, drain gracefully
 kubectl drain <node-name> --ignore-daemonsets --delete-emptydir-data
 
-# After maintenance, uncordon and verify BGP
+# After maintenance, uncordon and verify Calico
 kubectl uncordon <node-name>
 
 # Wait for calico-node to be ready
 kubectl wait --for=condition=ready pod -l k8s-app=calico-node \
   -n calico-system --timeout=120s
 
-# Verify BGP peering re-establishes
+# For BGP or IP-in-IP clusters, verify BGP peering re-establishes
 sleep 10
 sudo calicoctl node status
 ```
@@ -246,6 +261,7 @@ echo "=== MTU Setting ==="
 calicoctl get felixconfiguration default -o yaml | grep -i mtu
 
 echo "=== BGP Peering Status ==="
+# For BGP or IP-in-IP clusters
 sudo calicoctl node status
 
 echo "=== Cross-host test ==="
@@ -255,7 +271,7 @@ kubectl exec <pod-on-node-A> -- ping -c 3 <pod-ip-on-node-B>
 ## Troubleshooting
 
 - **VXLAN mode not working on all nodes**: Verify UDP 4789 is open in all security groups and host firewalls.
-- **BGP mesh does not scale**: For clusters over 100 nodes, consider route reflectors instead of full mesh.
+- **BGP mesh does not scale**: For BGP clusters over 100 nodes, consider route reflectors instead of full mesh.
 - **MTU changes cause temporary connectivity loss**: Roll out MTU changes during maintenance windows and restart calico-node incrementally.
 - **Connectivity checker generates too much traffic**: Increase the sleep interval and reduce ping count.
 
