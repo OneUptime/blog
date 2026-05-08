@@ -66,16 +66,10 @@ podman run -d --pod webapp-pod --name api \
 
 ## Starting the Reverse Proxy
 
-```bash
-# Create an nginx config that proxies to the API
-podman run -d --pod webapp-pod --name proxy \
-  -v /tmp/nginx.conf:/etc/nginx/conf.d/default.conf:ro \
-  docker.io/library/nginx:alpine
-```
-
 Create the nginx config file first:
 
 ```bash
+# Create an nginx config that proxies to the API
 cat > /tmp/nginx.conf << 'EOF'
 server {
     listen 80;
@@ -88,6 +82,12 @@ server {
     }
 }
 EOF
+```
+
+```bash
+podman run -d --pod webapp-pod --name proxy \
+  -v /tmp/nginx.conf:/etc/nginx/conf.d/default.conf:ro \
+  docker.io/library/nginx:alpine
 ```
 
 ## Verifying the Stack
