@@ -10,7 +10,7 @@ Description: Use calicoctl apply to create or update Calico resources declarativ
 
 ## Introduction
 
-`calicoctl apply` is the primary command for declarative Calico resource management. Like `kubectl apply`, it creates resources that don't exist and updates existing ones based on the YAML definition. It's the preferred command for infrastructure-as-code workflows because it's idempotent - running it multiple times produces the same result. Understanding when to use `apply` versus `create`, `replace`, or `patch` is essential for safe Calico operations.
+`calicoctl apply` is the primary command for declarative Calico resource management. It creates resources that don't exist and replaces the complete spec for existing resources based on the YAML definition. It's the preferred command for infrastructure-as-code workflows because it's idempotent when you keep the full desired spec in the file - running it multiple times produces the same result. Understanding when to use `apply` versus `create`, `replace`, or `patch` is essential for safe Calico operations.
 
 ## Basic calicoctl apply Usage
 
@@ -25,8 +25,8 @@ calicoctl apply -f ./calico-policies/
 # Apply from stdin
 cat policy.yaml | calicoctl apply -f -
 
-# Dry-run to preview changes (validate without applying)
-calicoctl apply -f policy.yaml --dry-run
+# Validate without applying
+calicoctl validate -f policy.yaml
 ```
 
 ## Practical Example 1: Apply a GlobalNetworkPolicy
@@ -62,7 +62,7 @@ metadata:
 spec:
   peerIP: 192.168.1.1
   asNumber: 65001
-  keepOriginalNextHop: true
+  nextHopMode: Keep
 ```
 
 ```bash
@@ -93,9 +93,9 @@ YAML
 flowchart LR
     A[YAML file] -->|calicoctl apply| B[calicoctl client]
     B -->|Kubernetes API| C[Calico CRD storage]
-    C -->|watch| D[Tigera Operator]
-    D -->|reconcile| E[calico-node / Felix]
-    E -->|iptables/eBPF| F[Data plane enforcement]
+    C -->|watch| D[Felix / confd / IPAM]
+    D -->|program| E[calico-node]
+    E -->|iptables/eBPF/BGP| F[Data plane enforcement and routing]
 ```
 
 ## Key Differences: apply vs Other Commands
@@ -110,11 +110,11 @@ calicoctl create -f policy.yaml     # Error if already exists
 # replace: fails if resource doesn't exist
 calicoctl replace -f policy.yaml    # Error if doesn't exist
 
-# patch: partial update using JSON patch
+# patch: partial update using a strategic merge patch
 calicoctl patch felixconfiguration default \
   -p '{"spec":{"logSeverityScreen":"Debug"}}'
 ```
 
 ## Conclusion
 
-`calicoctl apply` is the safest command for declarative Calico resource management because it handles both create and update idempotently. Use it in GitOps pipelines, CI/CD, and all infrastructure-as-code workflows. Always use `--dry-run` first when applying policies to production clusters to preview the change before it takes effect. Store all policy YAML files in version control so every `calicoctl apply` operation is tracked and reversible.
+`calicoctl apply` is the safest command for declarative Calico resource management because it handles both create and update idempotently when you manage the complete resource spec. Use it in GitOps pipelines, CI/CD, and all infrastructure-as-code workflows. Always use `calicoctl validate` first when applying policies to production clusters to check resource structure, syntax, and Calico-specific validation rules before the change takes effect. Store all policy YAML files in version control so every `calicoctl apply` operation is tracked and reversible.
