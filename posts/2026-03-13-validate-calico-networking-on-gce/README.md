@@ -29,7 +29,7 @@ for node in $(kubectl get nodes -o name | cut -d/ -f2); do
     --zone $ZONE \
     --format="value(canIpForward)" 2>/dev/null)
   echo "$node ($ZONE): canIpForward=$CAN_FWD"
-  # Should be: true
+  # Should be true when using native, unencapsulated routing
 done
 ```
 
@@ -40,7 +40,7 @@ done
 
 gcloud compute firewall-rules list \
   --filter="name~calico OR name~kubelet OR name~vxlan" \
-  --format="table(name,direction,allowed[].map().firewall_rule():label=ALLOW,targetTags.list())"
+  --format="table(name,direction,allowed[].map().firewall_rule().list():label=ALLOW,targetTags.list())"
 ```
 
 Expected rules:
@@ -51,18 +51,22 @@ Expected rules:
 ## Step 3: Verify VPC Static Routes for Pod CIDRs
 
 ```bash
-# List routes matching pod CIDR space
+# List node PodCIDRs and GCE static routes
+kubectl get nodes \
+  -o custom-columns=NAME:.metadata.name,PODCIDR:.spec.podCIDR,PODCIDRS:.spec.podCIDRs
+
 gcloud compute routes list \
-  --filter="destRange~192.168" \
+  --filter="nextHopInstance:*" \
   --format="table(name,destRange,nextHopInstance)"
 ```
 
-Verify each node has a corresponding route:
+Verify each node PodCIDR has a corresponding route:
 
 ```bash
-# Cross-check with Calico IPAM blocks
+# Cross-check with Calico IPAM blocks if Calico owns pod IPAM
 calicoctl ipam show --show-blocks
-# Every block should have a corresponding VPC route
+# Each node PodCIDR, or an aggregate that covers the Calico blocks on that node,
+# should have a VPC route pointing at the node instance.
 ```
 
 ## Step 4: Check Calico Component Health
