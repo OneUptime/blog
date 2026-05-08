@@ -33,24 +33,33 @@ Cilium's runtime test framework provides the foundation for integration tests:
 package myprotocol_test
 
 import (
-    "context"
-    "fmt"
+    "os"
     "testing"
     "time"
 
     "github.com/cilium/cilium/test/helpers"
+    "github.com/sirupsen/logrus"
 )
 
 // TestMyProtocolRuntime runs the full runtime test suite
 func TestMyProtocolRuntime(t *testing.T) {
-    // Initialize the test VM or Kind cluster
-    kubectl := helpers.CreateKubectl(t)
-    defer kubectl.Delete()
+    // Initialize the test VM or kubeconfig-backed test cluster
+    vmName := os.Getenv("CILIUM_TEST_VM")
+    if vmName == "" {
+        vmName = "runtime"
+    }
+    kubectl := helpers.CreateKubectl(vmName, logrus.NewEntry(logrus.StandardLogger()))
+    kubectl.NamespaceCreate("cilium-test")
+    defer kubectl.NamespaceDelete("cilium-test")
 
     // Deploy test workloads
     t.Run("deploy", func(t *testing.T) {
-        kubectl.Apply(helpers.ManifestGet("myprotocol-test-deployment.yaml"))
-        err := kubectl.WaitForPods("cilium-test", "app=myprotocol-server", 60*time.Second)
+        manifest := helpers.ManifestGet(kubectl.BasePath(), "myprotocol-test-deployment.yaml")
+        res := kubectl.Apply(helpers.ApplyOptions{FilePath: manifest})
+        if !res.WasSuccessful() {
+            t.Fatalf("Failed to apply test deployment: %s", res.CombineOutput().String())
+        }
+        err := kubectl.WaitforPods("cilium-test", "-l app=myprotocol-server", 60*time.Second)
         if err != nil {
             t.Fatalf("Server pods not ready: %v", err)
         }
@@ -73,14 +82,19 @@ Each test case validates a specific security property:
 func testAllowedTraffic(kubectl *helpers.Kubectl) func(t *testing.T) {
     return func(t *testing.T) {
         // Apply L7 policy allowing GET commands
-        kubectl.Apply(helpers.ManifestGet("myprotocol-allow-get-policy.yaml"))
+        policy := helpers.ManifestGet(kubectl.BasePath(), "myprotocol-allow-get-policy.yaml")
+        res := kubectl.Apply(helpers.ApplyOptions{FilePath: policy})
+        if !res.WasSuccessful() {
+            t.Fatalf("Failed to apply policy: %s", res.CombineOutput().String())
+        }
         time.Sleep(5 * time.Second) // Wait for policy propagation
 
         // Send allowed request
-        output, err := kubectl.Exec("cilium-test", "test-client",
+        cmd := kubectl.ExecPodCmd("cilium-test", "test-client",
             "protocol-client send --command GET --key testkey --target myprotocol-server:9000")
-        if err != nil {
-            t.Fatalf("Allowed request failed: %v\nOutput: %s", err, output)
+        output := cmd.Stdout()
+        if !cmd.WasSuccessful() {
+            t.Fatalf("Allowed request failed:\n%s", cmd.OutputPrettyPrint())
         }
 
         // Verify the request succeeded
@@ -89,7 +103,7 @@ func testAllowedTraffic(kubectl *helpers.Kubectl) func(t *testing.T) {
         }
 
         // Verify the server received the request
-        serverLogs, _ := kubectl.Logs("cilium-test", "myprotocol-server")
+        serverLogs := kubectl.Logs("cilium-test", "myprotocol-server").Stdout()
         if !containsGetRequest(serverLogs) {
             t.Error("Server did not receive the GET request")
         }
@@ -99,8 +113,9 @@ func testAllowedTraffic(kubectl *helpers.Kubectl) func(t *testing.T) {
 func testDeniedTraffic(kubectl *helpers.Kubectl) func(t *testing.T) {
     return func(t *testing.T) {
         // Send denied request (DELETE not in policy)
-        output, err := kubectl.Exec("cilium-test", "test-client",
+        cmd := kubectl.ExecPodCmd("cilium-test", "test-client",
             "protocol-client send --command DELETE --key testkey --target myprotocol-server:9000")
+        output := cmd.Stdout()
 
         // The command may return an error, which is expected
         if containsSuccess(output) {
@@ -108,18 +123,21 @@ func testDeniedTraffic(kubectl *helpers.Kubectl) func(t *testing.T) {
         }
 
         // Verify the server did NOT receive the request
-        serverLogs, _ := kubectl.Logs("cilium-test", "myprotocol-server")
+        serverLogs := kubectl.Logs("cilium-test", "myprotocol-server").Stdout()
         if containsDeleteRequest(serverLogs) {
             t.Error("Server received a request that should have been denied")
         }
 
-        // Verify Cilium logged the denial
-        ciliumOutput, _ := kubectl.ExecInCilium(
-            "cilium monitor --type l7 --last 10")
-        if !containsDenial(ciliumOutput) {
-            t.Error("No denial recorded in Cilium monitor")
+        // Verify Hubble recorded the denial
+        ciliumPods, err := kubectl.GetCiliumPods()
+        if err != nil || len(ciliumPods) == 0 {
+            t.Fatalf("No Cilium pods available for Hubble query: %v", err)
         }
-        _ = err
+        hubble := kubectl.HubbleObserve(ciliumPods[0],
+            "--last 10 --verdict DROPPED --pod cilium-test/myprotocol-server")
+        if !containsDenial(hubble.Stdout()) {
+            t.Error("No denial recorded in Hubble")
+        }
     }
 }
 ```
@@ -229,34 +247,48 @@ Verify the parser handles policy changes correctly:
 func testPolicyUpdate(kubectl *helpers.Kubectl) func(t *testing.T) {
     return func(t *testing.T) {
         // Start with restrictive policy (GET only)
-        kubectl.Apply(helpers.ManifestGet("myprotocol-allow-get-policy.yaml"))
+        getOnly := helpers.ManifestGet(kubectl.BasePath(), "myprotocol-allow-get-policy.yaml")
+        res := kubectl.Apply(helpers.ApplyOptions{FilePath: getOnly})
+        if !res.WasSuccessful() {
+            t.Fatalf("Failed to apply GET-only policy: %s", res.CombineOutput().String())
+        }
         time.Sleep(5 * time.Second)
 
         // Verify DELETE is denied
-        output, _ := kubectl.Exec("cilium-test", "test-client",
+        cmd := kubectl.ExecPodCmd("cilium-test", "test-client",
             "protocol-client send --command DELETE --key test --target myprotocol-server:9000")
+        output := cmd.Stdout()
         if containsSuccess(output) {
             t.Error("DELETE should be denied under GET-only policy")
         }
 
         // Update policy to allow DELETE
-        kubectl.Apply(helpers.ManifestGet("myprotocol-allow-all-policy.yaml"))
+        allowAll := helpers.ManifestGet(kubectl.BasePath(), "myprotocol-allow-all-policy.yaml")
+        res = kubectl.Apply(helpers.ApplyOptions{FilePath: allowAll})
+        if !res.WasSuccessful() {
+            t.Fatalf("Failed to apply permissive policy: %s", res.CombineOutput().String())
+        }
         time.Sleep(5 * time.Second)
 
         // Verify DELETE is now allowed
-        output, _ = kubectl.Exec("cilium-test", "test-client",
+        cmd = kubectl.ExecPodCmd("cilium-test", "test-client",
             "protocol-client send --command DELETE --key test --target myprotocol-server:9000")
+        output = cmd.Stdout()
         if !containsSuccess(output) {
             t.Error("DELETE should be allowed under permissive policy")
         }
 
         // Revert to restrictive policy
-        kubectl.Apply(helpers.ManifestGet("myprotocol-allow-get-policy.yaml"))
+        res = kubectl.Apply(helpers.ApplyOptions{FilePath: getOnly})
+        if !res.WasSuccessful() {
+            t.Fatalf("Failed to reapply GET-only policy: %s", res.CombineOutput().String())
+        }
         time.Sleep(5 * time.Second)
 
         // Verify DELETE is denied again
-        output, _ = kubectl.Exec("cilium-test", "test-client",
+        cmd = kubectl.ExecPodCmd("cilium-test", "test-client",
             "protocol-client send --command DELETE --key test --target myprotocol-server:9000")
+        output = cmd.Stdout()
         if containsSuccess(output) {
             t.Error("DELETE should be denied after policy revert")
         }
@@ -276,8 +308,10 @@ docker build -t myprotocol-test-client:latest -f test/Dockerfile.client .
 # Run runtime tests
 go test -tags=integration ./proxylib/myprotocol/... -v -timeout 10m
 
-# Or run with the Cilium test framework
-make -C test/ TESTFLAGS="-run TestMyProtocolRuntime" runtime-tests
+# Or run with the Cilium legacy end-to-end test framework
+cd test/
+ginkgo build
+INTEGRATION_TESTS=true ginkgo --focus "Runtime.*MyProtocol" -v -- --cilium.testScope=runtime
 ```
 
 ## Troubleshooting
