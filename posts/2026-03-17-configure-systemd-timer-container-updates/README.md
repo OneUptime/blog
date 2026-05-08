@@ -10,7 +10,7 @@ Description: Learn how to set up systemd timers to periodically check for and ap
 
 > Schedule automatic container image updates using systemd timers that run podman auto-update at regular intervals.
 
-Podman includes a built-in auto-update mechanism that checks for new container images and restarts containers with the updated image. A systemd timer triggers this check on a schedule, ensuring your containers stay up to date.
+Podman includes a built-in auto-update mechanism that checks for new container images and restarts containers configured for auto updates. A systemd timer triggers this check on a schedule, ensuring eligible containers stay up to date.
 
 ---
 
@@ -42,7 +42,7 @@ systemctl --user cat podman-auto-update.service
 
 ## Creating a Custom Update Timer
 
-If you need a different schedule, create a custom timer:
+If you need a different schedule, create a custom timer for containers that are configured for Podman auto updates:
 
 ```ini
 # ~/.config/systemd/user/container-update.timer
@@ -128,4 +128,4 @@ podman auto-update
 
 ## Summary
 
-Systemd timers automate Podman container image updates. Enable the built-in `podman-auto-update.timer` for a default schedule, or create a custom timer for specific intervals. Use `RandomizedDelaySec` to spread load and `Persistent=true` to catch missed runs. Monitor update results through `journalctl` and `systemctl status`.
+Systemd timers automate Podman container image updates for containers configured with an auto-update policy. Enable the built-in `podman-auto-update.timer` for a default schedule, or create a custom timer for specific intervals. Use `RandomizedDelaySec` to spread load and `Persistent=true` to catch missed runs. Monitor update results through `journalctl` and `systemctl status`.
