@@ -32,10 +32,10 @@ This guide covers parsing techniques for all common cilium-dbg output formats.
 Most cilium-dbg commands support JSON output:
 
 ```bash
-CILIUM_POD=\$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
 
 ## Get endpoint list as JSON
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg endpoint list -o json > /tmp/endpoints.json
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent --   cilium-dbg endpoint list -o json > /tmp/endpoints.json
 
 ## Parse with jq
 jq '.[] | {id: .id, state: .status.state, identity: .status.identity.id}'   /tmp/endpoints.json
@@ -47,16 +47,16 @@ jq '.[] | {id: .id, state: .status.state, identity: .status.identity.id}'   /tmp
 #!/bin/bash
 ## parse-cilium-dbg-status.sh
 
-CILIUM_POD=\$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
 
-STATUS=\$(kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg status 2>/dev/null)
+STATUS=$(kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent --   cilium-dbg status 2>/dev/null)
 
-## Extract health status
-echo "\$STATUS" | grep "Overall Health" | awk -F: '{print \$2}' | xargs
+## Extract Cilium daemon status
+echo "$STATUS" | grep "^Cilium:" | awk -F: '{print $2}' | xargs
 
 ## Extract component statuses
-echo "\$STATUS" | grep -E "^[A-Z].*:" | while IFS=: read -r key value; do
-  echo "{\\"component\\": \\"\$key\\", \\"status\\": \\"\$(echo \$value | xargs)\\"}"
+echo "$STATUS" | grep -E "^[A-Z].*:" | while IFS=: read -r key value; do
+  echo "{\"component\": \"$key\", \"status\": \"$(echo "$value" | xargs)\"}"
 done | jq -s '.'
 ```
 
@@ -98,8 +98,8 @@ if __name__ == '__main__':
 ### Converting Table Output to CSV
 
 ```bash
-## For commands without JSON support
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg bpf ct list global 2>/dev/null |   awk 'NR==1 {gsub(/  +/, ","); print} NR>1 {gsub(/  +/, ","); print}' > /tmp/ct-table.csv
+## For commands where you intentionally consume table output
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent --   cilium-dbg bpf ct list 2>/dev/null |   awk 'NR==1 {gsub(/  +/, ","); print} NR>1 {gsub(/  +/, ","); print}' > /tmp/ct-table.csv
 ```
 
 ## Verification
@@ -107,10 +107,10 @@ kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg bpf c
 ```bash
 # Verify JSON parsing
 
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg endpoint list -o json | jq length
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent --   cilium-dbg endpoint list -o json | jq length
 
 # Verify Python parser
-python3 parse_cilium_dbg.py \$CILIUM_POD | jq .total
+python3 parse_cilium_dbg.py $CILIUM_POD | jq .total
 ```
 
 ## Troubleshooting
