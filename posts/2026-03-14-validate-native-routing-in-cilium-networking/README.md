@@ -48,9 +48,9 @@ Use the Cilium connectivity test to validate the data path:
 cilium connectivity test
 
 # Run specific test categories
-cilium connectivity test --test pod-to-pod
-cilium connectivity test --test pod-to-service
-cilium connectivity test --test dns-resolution
+cilium connectivity test --test '/pod-to-pod'
+cilium connectivity test --test '/pod-to-service'
+cilium connectivity test --test dns-only
 
 # Check Cilium status for any warnings
 cilium status --verbose
@@ -117,12 +117,12 @@ kubectl run validate-client --image=busybox --restart=Never -- sleep 300
 kubectl wait --for=condition=Ready pod/validate-client --timeout=30s
 
 # Test service access
-kubectl exec validate-client -- wget -qO- --timeout=5 http://validate-svc
+kubectl exec validate-client -- wget -qO- -T 5 http://validate-svc
 
 # Test direct pod IP access
 for IP in $(kubectl get pods -l app=validate-server -o jsonpath='{.items[*].status.podIP}'); do
   echo "Testing $IP..."
-  kubectl exec validate-client -- wget -qO- --timeout=5 http://$IP >/dev/null 2>&1 && echo "  OK" || echo "  FAIL"
+  kubectl exec validate-client -- wget -qO- -T 5 http://$IP >/dev/null 2>&1 && echo "  OK" || echo "  FAIL"
 done
 
 # Cleanup
@@ -136,15 +136,14 @@ Check that all endpoints managed by Cilium are healthy:
 
 ```bash
 # List all Cilium endpoints and their health
-cilium endpoint list
+kubectl get ciliumendpoints.cilium.io --all-namespaces
 
 # Check for endpoints in a non-ready state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
+kubectl get ciliumendpoints.cilium.io --all-namespaces -o jsonpath='{range .items[?(@.status.state!="ready")]}{.metadata.namespace}/{.metadata.name}{"\t"}{.status.state}{"\n"}{end}'
 
-# Verify endpoint count matches pod count
-ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
-POD_COUNT=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
-echo "Cilium endpoints: $ENDPOINT_COUNT, Running pods: $POD_COUNT"
+# Verify the CiliumEndpoint count for Cilium-managed pods
+ENDPOINT_COUNT=$(kubectl get ciliumendpoints.cilium.io --all-namespaces --no-headers | wc -l)
+echo "Cilium endpoints: $ENDPOINT_COUNT"
 ```
 
 ## Validating Metrics and Observability
@@ -153,13 +152,13 @@ Confirm metrics are being collected for native routing in cilium:
 
 ```bash
 # Check Cilium agent metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i "forward"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list -p "cilium_feature_datapath_network"
 
 # Verify Hubble is observing flows
 kubectl exec -n kube-system ds/cilium -- hubble observe --last 5
 
 # Check for any drop metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list -p "drop"
 ```
 
 ## Verification
@@ -179,7 +178,7 @@ cilium status | head -10
 
 # 3. Connectivity working
 echo "3. Connectivity Test:"
-cilium connectivity test --test pod-to-pod 2>&1 | tail -3
+cilium connectivity test --test '/pod-to-pod' 2>&1 | tail -3
 
 # 4. No errors
 echo "4. Recent Errors:"
@@ -190,7 +189,7 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=10m | grep -c "e
 
 - **Connectivity test fails on specific tests**: Not all tests apply to every configuration. Some tests require specific features (like encryption or L7 policy) to be enabled.
 - **Endpoints show as not-ready**: The endpoint may still be initializing. Wait 30 seconds and check again. If persistent, check the Cilium agent logs for the node where the endpoint is running.
-- **Metrics show high drop count**: Check the drop reason with `cilium metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
+- **Metrics show high drop count**: Check the drop reason with `cilium-dbg metrics list -p "drop"` from a Cilium agent pod. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
 - **Validation passes but production traffic fails**: The validation tests may not cover your specific traffic pattern. Create custom test workloads that mirror your production traffic patterns.
 
 ## Conclusion
