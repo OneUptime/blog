@@ -10,7 +10,7 @@ Description: Set up monitoring and alerting for masquerading behavior for traffi
 
 ## Introduction
 
-Monitoring masquerade traffic to remote nodes in cilium provides early warning when configuration drift, resource exhaustion, or component failures affect networking. When pods communicate with pods on remote nodes, Cilium can be configured to masquerade or not masquerade this inter-node traffic. The behavior depends on whether the pod CIDR is natively routable between nodes. In overlay (VXLAN/Geneve) mode, masquerading for inter-node traffic is typically not needed because the overlay handles encapsulation.
+Monitoring masquerade traffic to remote nodes in cilium provides early warning when configuration drift, resource exhaustion, or component failures affect networking. When pods communicate with remote node IP addresses, Cilium can be configured to masquerade or not masquerade this traffic in BPF masquerading mode. This option affects traffic from an endpoint to a remote node address, not traffic between endpoints on different nodes. The behavior depends on the masquerading mode and whether the destination is considered natively routable.
 
 Without monitoring, issues in this area may only surface when applications experience connectivity failures or performance degradation. Proactive monitoring with Prometheus metrics, Grafana dashboards, and alerting rules enables your team to respond before users are impacted.
 
@@ -34,12 +34,14 @@ Ensure Cilium exposes metrics for Prometheus:
 cilium config view | grep prometheus
 
 # If not enabled, upgrade Cilium with metrics
-helm upgrade cilium cilium/cilium --version 1.16.5 \
+helm upgrade cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
   --reuse-values \
   --set prometheus.enabled=true \
   --set operator.prometheus.enabled=true \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}"
+  --set hubble.enabled=true \
+  --set hubble.metrics.enableOpenMetrics=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,httpV2}"
 
 # Verify metrics endpoint
 kubectl exec -n kube-system ds/cilium -- wget -qO- http://localhost:9962/metrics | head -20
@@ -52,7 +54,7 @@ Monitor these Prometheus metrics:
 ```bash
 # Primary metrics to track
 # cilium_forward_count_total - core operational metric
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep "forward_count_total"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list --match-pattern "forward_count_total"
 
 # PromQL queries for Grafana panels:
 
@@ -63,10 +65,10 @@ rate(cilium_forward_count_total[5m])
 rate(cilium_drop_count_total[5m])
 
 # Panel 3: Agent health
-cilium_agent_uptime_seconds
+up{job="cilium-agent"}
 
 # Panel 4: Endpoint state
-sum(cilium_endpoint_state) by (endpoint_state)
+sum(cilium_endpoint_state) by (state)
 
 # Panel 5: Policy evaluation
 rate(cilium_policy_l7_total[5m])
@@ -110,7 +112,7 @@ spec:
             description: "Cilium is dropping {{ $value }} packets/sec. Check masquerade traffic to remote nodes in cilium configuration."
         - alert: CiliumEndpointsNotReady
           expr: |
-            cilium_endpoint_state{endpoint_state="not-ready"} > 0
+            cilium_endpoint_state{state!="ready"} > 0
           for: 10m
           labels:
             severity: warning
@@ -133,7 +135,7 @@ Create a Grafana dashboard for masquerade traffic to remote nodes in cilium:
 # Row 1: Health Overview
 # - Cilium Agent Status: sum(up{job="cilium-agent"})
 # - Operator Status: sum(up{job="cilium-operator"})
-# - Endpoint Count: sum(cilium_endpoint_state) by (endpoint_state)
+# - Endpoint Count: sum(cilium_endpoint_state) by (state)
 
 # Row 2: Traffic Metrics
 # - Forward Rate: rate(cilium_forward_count_total[5m])
@@ -142,7 +144,7 @@ Create a Grafana dashboard for masquerade traffic to remote nodes in cilium:
 
 # Row 3: Performance
 # - BPF Map Operations: rate(cilium_bpf_map_ops_total[5m])
-# - Conntrack Entries: cilium_datapath_conntrack_entries
+# - Conntrack Entries: cilium_datapath_conntrack_gc_entries
 # - API Call Rate: rate(cilium_k8s_client_api_calls_total[5m])
 ```
 
@@ -180,7 +182,7 @@ except: print('  Port-forward Prometheus first')
 kubectl get prometheusrules -n monitoring | grep cilium
 
 # Check that metrics are being collected
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | wc -l
 ```
 
 ## Troubleshooting
