@@ -19,7 +19,7 @@ This guide covers parsing output from cilium-dbg bgp peers for structured data e
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and BGP enabled
-- BGP peering configured via CiliumBGPPeeringPolicy
+- BGP peering configured via CiliumBGPClusterConfig and CiliumBGPPeerConfig
 - `kubectl` access to cilium pods
 - `jq` for JSON processing
 - Python 3.x for structured parsing
@@ -46,13 +46,13 @@ INPUT="${1:-/tmp/bgp-peers-output.txt}"
 echo "=== Data Rows ==="
 tail -n +2 "$INPUT" | head -20
 
-# Count entries
-TOTAL=$(tail -n +2 "$INPUT" | grep -c . || echo 0)
-echo "Total entries: $TOTAL"
+# Count peer rows (continuation rows for extra address families are skipped)
+TOTAL=$(awk 'NR>1 && $1 ~ /^[0-9]+$/ {count++} END {print count+0}' "$INPUT")
+echo "Total peers: $TOTAL"
 
-# Extract unique values from first column
-echo "=== First Column Values ==="
-awk 'NR>1 {print $1}' "$INPUT" | sort -u
+# Extract unique local ASNs
+echo "=== Local ASNs ==="
+awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}' "$INPUT" | sort -u
 ```
 
 ## Python Parser
@@ -71,21 +71,45 @@ def parse_table(filepath):
     
     if not lines:
         return {'error': 'empty output', 'entries': []}
-    
-    # Parse header
-    header = lines[0].split()
-    header = [h.lower().replace(' ', '_') for h in header]
+
+    # Prefer native JSON when the command is run with: cilium-dbg bgp peers -o json
+    if lines[0].startswith(('{', '[')):
+        with open(filepath) as f:
+            data = json.load(f)
+        return {'total': len(data) if isinstance(data, list) else 1, 'entries': data}
     
     entries = []
     for line in lines[1:]:
         if line.startswith('-'):
             continue
+        # Continuation rows list additional address families for the previous peer.
+        if not re.match(r'^\d+\s+\d+\s+', line):
+            if entries:
+                fields = line.split()
+                if len(fields) >= 3:
+                    entries[-1].setdefault('families', []).append({
+                        'family': fields[0],
+                        'received': fields[1],
+                        'advertised': fields[2],
+                    })
+            continue
+
         fields = line.split()
-        entry = {}
-        for i, field in enumerate(fields):
-            key = header[i] if i < len(header) else f'field_{i}'
-            entry[key] = field
-        entries.append(entry)
+        if len(fields) < 8:
+            continue
+
+        entries.append({
+            'local_as': fields[0],
+            'peer_as': fields[1],
+            'peer_address': fields[2],
+            'session': fields[3],
+            'uptime': fields[4],
+            'families': [{
+                'family': fields[5],
+                'received': fields[6],
+                'advertised': fields[7],
+            }],
+        })
     
     return {'total': len(entries), 'entries': entries}
 
@@ -106,7 +130,7 @@ CILIUM_POD=$(kubectl -n "$NAMESPACE" get pods -l k8s-app=cilium \
 NODE=$(kubectl -n "$NAMESPACE" get pod "$CILIUM_POD" -o jsonpath='{.spec.nodeName}')
 
 COUNT=$(kubectl -n "$NAMESPACE" exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp peers 2>/dev/null | tail -n +2 | grep -c . || echo 0)
+  cilium-dbg bgp peers 2>/dev/null | awk 'NR>1 && $1 ~ /^[0-9]+$/ {count++} END {print count+0}')
 
 cat << METRICS
 # HELP cilium_bgp_peers_total Total bgp peers entries
@@ -130,9 +154,9 @@ PODS=$(kubectl -n "$NAMESPACE" get pods -l k8s-app=cilium \
 while IFS=',' read -r pod node; do
   [ -z "$pod" ] && continue
   COUNT=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-dbg bgp peers 2>/dev/null | tail -n +2 | grep -c . || echo 0)
+    cilium-dbg bgp peers 2>/dev/null | awk 'NR>1 && $1 ~ /^[0-9]+$/ {count++} END {print count+0}')
   [ "$FIRST" = true ] && FIRST=false || echo ","
-  echo "  {"node": \"$node\", "entries": $COUNT}"
+  printf '  {"node": "%s", "entries": %s}\n' "$node" "$COUNT"
 done <<< "$PODS"
 
 echo ']}'
@@ -154,8 +178,8 @@ python3 parse_bgp_peers.py /tmp/bgp-peers-output.txt | head -10
 
 ## Troubleshooting
 
-- **"BGP is not enabled"**: Set `enable-bgp-control-plane: "true"` in cilium-config.
-- **Empty output**: No BGP peering policy may be configured. Check `kubectl get ciliumbgppeeringpolicies`.
+- **"BGP is not enabled"**: Enable the BGP Control Plane with the Helm value `bgpControlPlane.enabled=true`.
+- **Empty output**: No BGP configuration may be configured. Check `kubectl get ciliumbgpclusterconfigs,ciliumbgppeerconfigs,ciliumbgpadvertisements`.
 - **Peers not establishing**: Verify network connectivity to peer on TCP/179 and ASN configuration.
 - **Timeout on large clusters**: Add `--request-timeout=120s` to kubectl commands.
 
