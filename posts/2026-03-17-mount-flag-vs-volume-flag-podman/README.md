@@ -16,7 +16,7 @@ Both `--volume` and `--mount` achieve the same result of attaching storage to co
 
 ## The --volume (-v) Flag
 
-The `-v` flag uses a colon-separated string with three fields:
+The `-v` flag uses a colon-separated string with up to three fields:
 
 ```bash
 # Syntax: -v source:destination:options
@@ -43,12 +43,12 @@ podman run -d \
 
 # Bind mount
 podman run -d \
-  --mount type=bind,source=/home/user/config,target=/etc/nginx/conf.d,readonly \
+  --mount type=bind,source=/home/user/config,target=/etc/nginx/conf.d,readonly=true \
   docker.io/library/nginx:latest
 
 # tmpfs mount
 podman run -d \
-  --mount type=tmpfs,target=/tmp,tmpfs-size=100m \
+  --mount type=tmpfs,target=/tmp,tmpfs-size=100M \
   docker.io/library/nginx:latest
 ```
 
@@ -58,20 +58,20 @@ podman run -d \
 |---------|--------------|---------|
 | Syntax | Colon-separated | Key-value pairs |
 | Readability | Concise | Explicit |
-| Auto-create dirs | Creates missing host dirs | Errors if dir missing |
-| Volume options | Appended after colons | Explicit key names |
+| Missing host paths | Errors if path missing | Errors if path missing |
+| Mount options | Appended after colons | Explicit key names |
 | tmpfs support | Via --tmpfs flag | Built-in type=tmpfs |
 
 ## Auto-Creation Behavior
 
-The most important behavioral difference is how they handle missing source paths:
+Both flags require bind mount source paths to exist before the container starts:
 
 ```bash
-# -v creates the host directory if it doesn't exist
+# -v errors if the host path doesn't exist
 podman run --rm -v /home/user/newdir:/data docker.io/library/alpine:latest ls /data
-# /home/user/newdir is created automatically
+# Error: /home/user/newdir: no such file or directory
 
-# --mount errors if the source directory doesn't exist
+# --mount also errors if the source directory doesn't exist
 podman run --rm \
   --mount type=bind,source=/home/user/missing,target=/data \
   docker.io/library/alpine:latest ls /data
@@ -88,7 +88,7 @@ podman run -d --name app1 \
 
 # Equivalent using --mount
 podman run -d --name app2 \
-  --mount type=bind,source=/home/user/html,target=/usr/share/nginx/html,readonly,bind-propagation=rprivate \
+  --mount type=bind,source=/home/user/html,target=/usr/share/nginx/html,readonly=true,relabel=private \
   docker.io/library/nginx:latest
 ```
 
@@ -100,20 +100,26 @@ podman run -d --name db1 \
   -v pgdata:/var/lib/postgresql/data \
   docker.io/library/postgres:16
 
-# Equivalent using --mount with volume options
+# Equivalent using --mount
 podman run -d --name db2 \
   --mount type=volume,source=pgdata,target=/var/lib/postgresql/data \
   docker.io/library/postgres:16
 ```
 
-## Volume Driver Options with --mount
+## Volume Driver Options
 
-The `--mount` flag can pass volume driver options inline:
+Create named volumes with driver options first, then mount them into the container:
 
 ```bash
-# Create and configure a volume inline
+# Create and configure a volume
+podman volume create nfs-data \
+  --opt type=nfs \
+  --opt device=192.168.1.100:/share \
+  --opt o=addr=192.168.1.100
+
+# Mount the named volume
 podman run -d --name app \
-  --mount type=volume,source=nfs-data,target=/data,volume-opt=type=nfs,volume-opt=device=192.168.1.100:/share,volume-opt=o=addr=192.168.1.100 \
+  --mount type=volume,source=nfs-data,target=/data \
   docker.io/library/nginx:latest
 ```
 
@@ -126,10 +132,9 @@ Use `-v` when:
 
 Use `--mount` when:
 - You need explicit, readable configuration
-- Working with tmpfs or complex volume options
-- You want strict error handling for missing paths
-- Passing volume driver options inline
+- Working with tmpfs
+- You want key-value mount options
 
 ## Summary
 
-Both `--volume` and `--mount` attach storage to Podman containers. The `-v` flag is concise and auto-creates missing directories, while `--mount` is explicit, more readable, and errors on missing paths. Use `-v` for quick commands and `--mount` for complex configurations or when you need strict path validation. Both support the same underlying mount types and options.
+Both `--volume` and `--mount` attach storage to Podman containers. The `-v` flag is concise, while `--mount` is explicit and more readable. Use `-v` for quick commands and `--mount` for complex configurations or when you prefer key-value options. Bind mount source paths must exist before the container starts with either syntax.
