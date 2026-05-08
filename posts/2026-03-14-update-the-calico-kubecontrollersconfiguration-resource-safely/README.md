@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes
 
-Description: A step-by-step guide to modifying Calico KubeControllersConfiguration resources in production without causing downtime or connectivity issues.
+Description: A step-by-step guide to modifying Calico KubeControllersConfiguration resources in production while reducing the risk of downtime or connectivity issues.
 
 ---
 
 ## Introduction
 
-Updating Calico resources in a running cluster requires care. A misconfigured KubeControllersConfiguration can disrupt networking, drop traffic, or break BGP peerings. This guide covers a safe workflow for modifying KubeControllersConfiguration resources in production.
+Updating Calico resources in a running cluster requires care. A misconfigured KubeControllersConfiguration can affect Calico kube-controllers behavior, including policy synchronization, namespace and service account profile updates, node reconciliation, host endpoint automation, and LoadBalancer IP assignment. This guide covers a safe workflow for modifying KubeControllersConfiguration resources in production.
 
 The key principle is to treat Calico resource changes like any infrastructure change: review the diff, understand the impact, test in staging, and have a rollback plan ready. Calico resources are declarative, so the same discipline you apply to Kubernetes manifests applies here.
 
@@ -50,15 +50,18 @@ diff <(calicoctl get kubecontrollersconfiguration -o yaml) kubecontrollersconfig
 Review each changed field and consider its impact:
 
 - Will this change affect active connections?
-- Does this change require a Felix or BGP restart?
-- Could this change lock you out of nodes?
+- Does this change require a calico-kube-controllers rollout or restart?
+- Could host endpoint settings affect access to nodes?
 
 ## Step 3: Apply the Update
 
-Apply the updated manifest:
+Validate and apply the updated manifest:
 
 ```bash
-# Apply with calicoctl for validation
+# Validate the resource before applying it
+calicoctl validate -f kubecontrollersconfiguration.yaml
+
+# Apply with calicoctl
 calicoctl apply -f kubecontrollersconfiguration.yaml
 ```
 
@@ -66,14 +69,14 @@ For critical changes, consider applying during a maintenance window and monitori
 
 ## Step 4: Monitor After the Update
 
-Watch for issues in the Calico component logs:
+Watch for issues in the Calico kube-controllers logs:
 
 ```bash
-# Watch calico-node logs for errors
-kubectl logs -n calico-system -l k8s-app=calico-node -f --tail=100
+# Watch calico-kube-controllers logs for errors
+kubectl logs -n calico-system -l k8s-app=calico-kube-controllers -f --tail=100
 
-# Check Felix for configuration reload
-kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "config"
+# Check kube-controllers for configuration reload
+kubectl logs -n calico-system -l k8s-app=calico-kube-controllers --tail=50 | grep -i "config"
 ```
 
 Run connectivity tests to verify that pods can still communicate:
@@ -94,11 +97,11 @@ Confirm the resource reflects your changes:
 # Verify the updated resource
 calicoctl get kubecontrollersconfiguration -o yaml
 
-# Check that calico-node pods are healthy
-kubectl get pods -n calico-system -l k8s-app=calico-node
+# Check that calico-kube-controllers pods are healthy
+kubectl get pods -n calico-system -l k8s-app=calico-kube-controllers
 ```
 
-Ensure all calico-node pods show `Running` status and have not restarted unexpectedly.
+Ensure all calico-kube-controllers pods show `Running` status and have not restarted unexpectedly.
 
 ## Rolling Back
 
@@ -116,16 +119,16 @@ calicoctl get kubecontrollersconfiguration -o yaml
 
 **Pods losing connectivity after update:**
 - Immediately apply the backup manifest.
-- Check if Felix is crashlooping: `kubectl get pods -n calico-system`.
-- Review Felix logs for configuration errors.
+- Check if calico-kube-controllers is crashlooping: `kubectl get pods -n calico-system -l k8s-app=calico-kube-controllers`.
+- Review calico-kube-controllers logs for configuration errors.
 
-**BGP sessions dropping (for BGP-related resources):**
+**BGP sessions dropping (for changes made alongside BGP-related resources):**
 - Check BGP peering status: `calicoctl node status`.
 - Verify ASN numbers and peer IPs are correct.
 
 **Update appears to have no effect:**
-- Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Ensure the resource name is `default`; only one KubeControllersConfiguration object is used.
+- Run `calicoctl validate -f kubecontrollersconfiguration.yaml` and check for field name or schema errors.
 
 
 ## Additional Considerations
@@ -137,9 +140,9 @@ If you operate multiple Kubernetes clusters with Calico, standardize your config
 ```bash
 # Compare Calico configurations across clusters
 # Export from each cluster and diff
-KUBECONFIG=cluster-1.kubeconfig calicoctl get felixconfiguration -o yaml > cluster1-felix.yaml
-KUBECONFIG=cluster-2.kubeconfig calicoctl get felixconfiguration -o yaml > cluster2-felix.yaml
-diff cluster1-felix.yaml cluster2-felix.yaml
+KUBECONFIG=cluster-1.kubeconfig calicoctl get kubecontrollersconfiguration -o yaml > cluster1-kubecontrollers.yaml
+KUBECONFIG=cluster-2.kubeconfig calicoctl get kubecontrollersconfiguration -o yaml > cluster2-kubecontrollers.yaml
+diff cluster1-kubecontrollers.yaml cluster2-kubecontrollers.yaml
 ```
 
 ### Upgrade Compatibility
@@ -159,8 +162,8 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current identity can modify the KubeControllersConfiguration resource
+kubectl auth can-i update kubecontrollersconfigurations.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
