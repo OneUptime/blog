@@ -19,26 +19,52 @@ This guide covers using cilium-dbg bgp to inspect and validate your BGP configur
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and BGP enabled
-- BGP peering configured via CiliumBGPPeeringPolicy
+- BGP peering configured via CiliumBGPClusterConfig, CiliumBGPPeerConfig, and CiliumBGPAdvertisement
 - `kubectl` access to cilium pods
-- `jq` for JSON processing
 
 ## Configuring BGP in Cilium
 
-Cilium BGP is configured through CiliumBGPPeeringPolicy resources:
+Cilium BGP is configured through CiliumBGPClusterConfig, CiliumBGPPeerConfig, and CiliumBGPAdvertisement resources:
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
-  name: bgp-peering
+  name: cilium-bgp
 spec:
-  virtualRouters:
-  - localASN: 65001
-    exportPodCIDR: true
-    neighbors:
-    - peerAddress: "10.0.0.1/32"
+  nodeSelector:
+    matchLabels: {}
+  bgpInstances:
+  - name: "instance-65001"
+    localASN: 65001
+    peers:
+    - name: "peer-65000"
+      peerAddress: "10.0.0.1"
       peerASN: 65000
+      peerConfigRef:
+        name: "cilium-peer"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: cilium-peer
+spec:
+  families:
+  - afi: ipv4
+    safi: unicast
+    advertisements:
+      matchLabels:
+        advertise: "bgp"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: bgp-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+  - advertisementType: "PodCIDR"
 ```
 
 Ensure BGP is enabled in the Cilium configuration:
@@ -65,7 +91,11 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 
 # View BGP routes
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp routes
+  cilium-dbg bgp routes available ipv4 unicast
+
+# View routes advertised to peers
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
+  cilium-dbg bgp routes advertised ipv4 unicast
 
 # Check route policies
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
@@ -103,7 +133,7 @@ while IFS=',' read -r pod node; do
   
   echo "-- Routes --"
   kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-dbg bgp routes 2>/dev/null | head -10 || echo "  Failed"
+    cilium-dbg bgp routes available ipv4 unicast 2>/dev/null | head -10 || echo "  Failed"
   
   echo ""
 done <<< "$PODS"
@@ -125,13 +155,13 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 Cilium can advertise several types of routes:
 
 - **Pod CIDR**: The pod network range allocated to the node
-- **Service VIP**: LoadBalancer and ClusterIP service addresses
-- **Custom routes**: Routes defined through BGP advertisements
+- **Service VIP**: LoadBalancer, ClusterIP, and ExternalIP service addresses
+- **Interface IPs**: Addresses from node interfaces selected through BGP advertisements
 
 ```bash
 # Check what is being advertised
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp routes
+  cilium-dbg bgp routes advertised ipv4 unicast
 
 # Compare with pod CIDR allocation
 kubectl get node $(kubectl -n kube-system get pod "$CILIUM_POD" \
@@ -144,8 +174,8 @@ kubectl get node $(kubectl -n kube-system get pod "$CILIUM_POD" \
 # Verify BGP is enabled
 kubectl -n kube-system get configmap cilium-config -o yaml | grep "enable-bgp"
 
-# Verify peering policy exists
-kubectl get ciliumbgppeeringpolicies
+# Verify BGP resources exist
+kubectl get ciliumbgpclusterconfigs,ciliumbgppeerconfigs,ciliumbgpadvertisements
 
 # Verify peers are established
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
@@ -153,15 +183,15 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 
 # Verify routes are advertised
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp routes
+  cilium-dbg bgp routes advertised ipv4 unicast
 ```
 
 ## Troubleshooting
 
-- **"BGP is not enabled"**: Set `enable-bgp-control-plane: "true"` in cilium-config and restart the agent.
-- **No peers shown**: Ensure a CiliumBGPPeeringPolicy exists and matches the node labels.
+- **"BGP is not enabled"**: Enable BGP with `bgpControlPlane.enabled=true` and restart the agent.
+- **No peers shown**: Ensure a CiliumBGPClusterConfig exists and its `nodeSelector` matches the node labels.
 - **Peers not establishing**: Check network connectivity to the peer address on TCP port 179 and verify ASN configuration.
-- **Routes not advertised**: Verify `exportPodCIDR: true` in the peering policy and check service selectors.
+- **Routes not advertised**: Verify the CiliumBGPPeerConfig `advertisements` selector matches the intended CiliumBGPAdvertisement labels and check service selectors.
 
 ## Conclusion
 
