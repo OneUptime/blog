@@ -14,9 +14,10 @@ When `calicoctl ipam split` produces errors, it typically indicates problems wit
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico IPAM
-- `calicoctl` installed
+- Kubernetes cluster with Calico IPAM on a version that supports `calicoctl ipam split`
+- Matching `calicoctl` version installed
 - Admin access to troubleshoot RBAC and connectivity
+- Calico datastore locked before running `calicoctl ipam split`
 
 ## Common Errors and Solutions
 
@@ -41,7 +42,7 @@ metadata:
   name: calicoctl-ipam-admin
 rules:
 - apiGroups: ["crd.projectcalico.org"]
-  resources: ["ipamblocks", "ipamhandles", "blockaffinities", "ippools", "ipamconfigurations"]
+  resources: ["ipamblocks", "ipamhandles", "blockaffinities", "ippools", "ipamconfigs"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 - apiGroups: [""]
   resources: ["pods", "nodes"]
@@ -50,19 +51,22 @@ rules:
 
 ```bash
 kubectl apply -f calicoctl-ipam-rbac.yaml
+kubectl create clusterrolebinding calicoctl-ipam-admin \
+  --clusterrole=calicoctl-ipam-admin \
+  --user=<user-running-calicoctl>
 ```
 
 ### Error: Resource Not Found
 
 ```bash
 # Verify Calico CRDs exist
-kubectl get crd | grep ipam
+kubectl get crd | grep -E 'ipam|blockaffinities|ippools'
 
 # Expected CRDs:
 # ipamblocks.crd.projectcalico.org
 # ipamhandles.crd.projectcalico.org
 # blockaffinities.crd.projectcalico.org
-# ipamconfigurations.crd.projectcalico.org
+# ipamconfigs.crd.projectcalico.org
 ```
 
 ### Error: Invalid IP Address or CIDR
@@ -71,11 +75,11 @@ kubectl get crd | grep ipam
 # Verify the IP or CIDR format
 # CORRECT formats:
 calicoctl ipam show --ip=10.244.0.5
-calicoctl ipam show --ip=192.168.0.0/16
+calicoctl ipam split --cidr=192.168.0.0/16 2
 
 # WRONG formats:
-# calicoctl ipam show --ip=10.244.0.5/33  (invalid prefix length)
-# calicoctl ipam show --ip=300.0.0.1      (invalid octet)
+# calicoctl ipam split --cidr=10.244.0.5/33 2  (invalid prefix length)
+# calicoctl ipam show --ip=300.0.0.1           (invalid octet)
 ```
 
 ## Diagnostic Script
@@ -90,7 +94,7 @@ echo "--- Datastore ---"
 calicoctl version > /dev/null 2>&1 && echo "Connected" || echo "UNREACHABLE"
 
 echo "--- CRDs ---"
-for CRD in ipamblocks ipamhandles blockaffinities ipamconfigurations ippools; do
+for CRD in ipamblocks ipamhandles blockaffinities ipamconfigs ippools; do
   kubectl get crd "${CRD}.crd.projectcalico.org" > /dev/null 2>&1 && echo "  $CRD: OK" || echo "  $CRD: MISSING"
 done
 
@@ -106,7 +110,9 @@ calicoctl ipam show 2>&1
 After fixing errors:
 
 ```bash
-calicoctl ipam split 10.244.0.0/24 --cidr-size=26
+calicoctl datastore migrate lock
+calicoctl ipam split --cidr=10.244.0.0/24 4
+calicoctl datastore migrate unlock
 ```
 
 ## Troubleshooting
