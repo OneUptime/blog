@@ -36,7 +36,7 @@ uname -m
 Create your first Podman machine optimized for Apple Silicon:
 
 ```bash
-# Initialize with Apple Virtualization Framework (default on Apple Silicon)
+# Initialize with Apple Virtualization Framework (the default provider on macOS)
 podman machine init
 
 # Or initialize with specific resources
@@ -46,7 +46,7 @@ podman machine init --cpus 4 --memory 8192 --disk-size 100
 podman machine start
 ```
 
-Apple Silicon Macs automatically use the Apple Virtualization Framework (applehv) which provides better performance than QEMU.
+On macOS, Podman uses the Apple Virtualization Framework (applehv) as the default provider.
 
 ## Verifying the VM Type
 
@@ -54,16 +54,17 @@ Confirm that the machine uses the Apple Virtualization Framework:
 
 ```bash
 # Check the VM type
-podman machine inspect | jq '.VMType'
-# Should return: "applehv"
+podman machine list --format "{{.Name}} {{.VMType}}"
+# The default macOS provider should show: applehv
 
 # Check full machine info
 podman machine inspect | jq '{
     name: .Name,
-    vm_type: .VMType,
+    config_dir: .ConfigDir.Path,
     cpus: .Resources.CPUs,
     memory: .Resources.Memory,
-    rootful: .Rootful
+    rootful: .Rootful,
+    rosetta: .Rosetta
 }'
 ```
 
@@ -80,19 +81,19 @@ podman run --rm alpine uname -m
 podman run -d --name web -p 8080:80 nginx
 
 # Verify it is running the ARM64 variant
-podman inspect web --format '{{.Architecture}}'
+podman image inspect nginx --format '{{.Architecture}}'
 ```
 
 ## Enabling Rosetta for x86_64 Images
 
-Many images are only available for x86_64. Enable Rosetta for fast translation:
+Many images are only available for x86_64. Podman enables Rosetta by default on AppleHV ARM64 machines:
 
 ```bash
-# Rosetta must be enabled at machine creation time
-# Remove the existing machine and reinitialize with --rosetta
+# Remove the existing machine and reinitialize it
+# CONTAINERS_MACHINE_ROSETTA=true is only needed if you previously disabled Rosetta
 podman machine stop
 podman machine rm
-podman machine init --rosetta
+CONTAINERS_MACHINE_ROSETTA=true podman machine init
 
 # Start the machine
 podman machine start
@@ -116,8 +117,8 @@ podman pull --platform linux/amd64 nginx
 # List images with their architectures
 podman images --format "{{.Repository}}:{{.Tag}} {{.Os}}/{{.Architecture}}"
 
-# Build multi-arch images
-podman build --platform linux/arm64,linux/amd64 -t myapp:latest .
+# Build multi-arch images into a manifest list
+podman build --platform linux/arm64 --platform linux/amd64 --manifest myapp:latest .
 ```
 
 ## Performance Optimization
@@ -125,8 +126,8 @@ podman build --platform linux/arm64,linux/amd64 -t myapp:latest .
 Maximize performance on Apple Silicon:
 
 ```bash
-# Use VirtioFS for file sharing (default with applehv)
-# This is faster than 9p filesystem sharing
+# Use the default macOS volume mounts only for source code that needs host access.
+# Keep high-I/O paths in named volumes when possible.
 
 # Allocate appropriate resources based on your Mac
 # M1 Pro/Max: 6-8 CPUs, 8-16 GB RAM
@@ -134,7 +135,7 @@ Maximize performance on Apple Silicon:
 # On Apple Silicon (applehv), set resources during machine creation:
 podman machine stop
 podman machine rm
-podman machine init --cpus 6 --memory 8192 --rosetta
+podman machine init --cpus 6 --memory 8192
 podman machine start
 
 # Use named volumes instead of host mounts for better I/O
@@ -158,8 +159,7 @@ A typical development setup on Apple Silicon:
 podman machine init dev \
     --cpus 4 \
     --memory 8192 \
-    --disk-size 100 \
-    --rosetta
+    --disk-size 100
 
 podman machine start dev
 
@@ -171,6 +171,7 @@ podman run -d --name db \
     --network dev-network \
     -v pgdata:/var/lib/postgresql/data \
     -e POSTGRES_PASSWORD=secret \
+    -e POSTGRES_DB=mydb \
     postgres:16
 
 # Redis (native ARM64)
@@ -193,10 +194,10 @@ podman run -d --name app \
 
 ```bash
 # Issue: "exec format error" when running containers
-# Solution: The image might be x86_64 only - recreate with Rosetta enabled
+# Solution: The image might be x86_64 only - make sure Rosetta is enabled and recreate the machine
 podman machine stop
 podman machine rm
-podman machine init --rosetta
+CONTAINERS_MACHINE_ROSETTA=true podman machine init
 podman machine start
 
 # Or specify the platform explicitly
@@ -227,8 +228,8 @@ podman machine start
 
 | Command | Purpose |
 |---|---|
-| `podman machine init --rosetta` | Create machine with Rosetta |
-| `podman machine inspect \| jq '.VMType'` | Verify Apple HV is used |
+| `podman machine init` | Create machine with default macOS provider and default Rosetta setting |
+| `podman machine list --format "{{.Name}} {{.VMType}}"` | Verify Apple HV is used |
 | `podman run --platform linux/amd64 ...` | Run x86_64 container |
 | `podman machine init --cpus 4 --memory 8192` | Set resources at creation |
 
