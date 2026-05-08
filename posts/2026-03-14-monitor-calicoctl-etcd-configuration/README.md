@@ -56,8 +56,8 @@ etcd_server_leader_changes_seen_total     # Leader changes (instability indicato
 etcd_disk_wal_fsync_duration_seconds      # Disk latency affecting writes
 etcd_network_peer_round_trip_time_seconds # Network latency between members
 
-# Calico-specific data metrics
-etcd_debugging_mvcc_keys_total            # Total number of keys (includes Calico data)
+# etcd data size metrics
+etcd_debugging_mvcc_keys_total            # Total number of keys (debugging metric; includes Calico data)
 etcd_mvcc_db_total_size_in_bytes          # Database size
 ```
 
@@ -72,6 +72,9 @@ Monitor TLS certificate expiration to prevent connectivity failures:
 
 CERT_DIR="/etc/calicoctl/certs"
 METRICS_FILE="/var/lib/node_exporter/calico_cert_expiry.prom"
+
+# Start with a clean temporary file so repeated runs do not duplicate metrics
+: > "${METRICS_FILE}.tmp"
 
 # Calculate days until expiry for each certificate
 for cert_file in "$CERT_DIR"/*.pem; do
