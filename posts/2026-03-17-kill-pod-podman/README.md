@@ -8,9 +8,9 @@ Description: Learn how to send signals to all containers in a Podman pod using t
 
 ---
 
-> The podman pod kill command sends a signal to every container in a pod, providing immediate forceful termination.
+> The podman pod kill command sends a signal to the main process of each container in a pod, providing immediate termination when using the default SIGKILL signal.
 
-When `podman pod stop` takes too long or a container is unresponsive, `podman pod kill` sends a signal directly to all container processes. By default, it sends SIGKILL for immediate termination, but you can specify any signal.
+When `podman pod stop` takes too long or a container is unresponsive, `podman pod kill` sends a signal directly to the main process of each container. By default, it sends SIGKILL for immediate termination, but you can specify any signal.
 
 ---
 
@@ -47,8 +47,8 @@ podman pod kill --signal SIGUSR1 app-pod
 ## Difference Between Kill and Stop
 
 ```bash
-# podman pod stop sends SIGTERM, waits for timeout, then sends SIGKILL
-podman pod stop --timeout 10 app-pod
+# podman pod stop asks containers to stop, waits for the timeout, then forcibly stops them
+podman pod stop --time 10 app-pod
 
 # podman pod kill sends the signal immediately with no grace period
 podman pod kill app-pod
@@ -58,7 +58,7 @@ podman pod kill app-pod
 
 ```bash
 # Get the pod ID
-POD_ID=$(podman pod ls --filter name=app-pod --format '{{.Id}}')
+POD_ID=$(podman pod ls --filter name=app-pod --format '{{.ID}}')
 
 # Kill using the ID
 podman pod kill "$POD_ID"
