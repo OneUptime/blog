@@ -18,7 +18,7 @@ This guide covers the hardware management practices that ensure reliable Cilium 
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.24+) with Cilium v1.14+
+- A Kubernetes and Cilium version combination supported by the Cilium compatibility matrix
 - `cilium` CLI and `kubectl` access
 - Node-level root access
 - Prometheus monitoring (recommended)
@@ -40,11 +40,15 @@ HWREQ
 # Validation script for new nodes
 #!/bin/bash
 PASS=true
-SPEED=$(ethtool eth0 | grep Speed | awk '{print $2}')
+IFACE=${IFACE:-eth0}
+SPEED=$(ethtool "$IFACE" | awk '/Speed:/ {print $2}' | sed 's/Mb\/s//' | grep -Eo '^[0-9]+' || true)
 CORES=$(nproc)
-AES=$(grep -c aes /proc/cpuinfo)
+AES=$(grep -c -w aes /proc/cpuinfo)
+AVX2=$(grep -c -w avx2 /proc/cpuinfo)
 if [ "$CORES" -lt 16 ]; then echo "FAIL: Need 16+ cores"; PASS=false; fi
+if [ "${SPEED:-0}" -lt 25000 ]; then echo "FAIL: Need 25G+ NIC"; PASS=false; fi
 if [ "$AES" -eq 0 ]; then echo "FAIL: No AES-NI"; PASS=false; fi
+if [ "$AVX2" -eq 0 ]; then echo "FAIL: No AVX2"; PASS=false; fi
 echo "Validation: $PASS"
 ```
 
@@ -89,14 +93,18 @@ spec:
           hostNetwork: true
           containers:
           - name: benchmark
-            image: networkstatic/iperf3
+            image: alpine:3.22
+            env:
+            - name: IPERF_SERVER
+              value: node-2.example.internal
             command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache curl iperf3 jq >/dev/null
               # Host-to-host baseline (no CNI overhead)
-              BPS=$(iperf3 -c node-2 -t 20 -P 1 -J | jq '.end.sum_sent.bits_per_second')
-              cat <<METRIC | curl --data-binary @- http://pushgateway.monitoring:9091/metrics/job/hw_baseline
+              BPS=$(iperf3 -c "$IPERF_SERVER" -t 20 -P 1 -J | jq '.end.sum_sent.bits_per_second')
+              cat <<METRIC | curl --data-binary @- http://pushgateway.monitoring.svc:9091/metrics/job/hw_baseline
               hardware_baseline_throughput_bps $BPS
               METRIC
           restartPolicy: OnFailure
