@@ -18,7 +18,7 @@ This guide covers setting up effective monitoring for CiliumCIDRGroup resources,
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.25+) with Cilium installed (v1.14+)
+- Kubernetes cluster (v1.25+) with Cilium installed (v1.18+)
 - kubectl configured with cluster access
 - Prometheus and Grafana for metrics (recommended)
 - Cilium CLI installed
@@ -28,7 +28,7 @@ This guide covers setting up effective monitoring for CiliumCIDRGroup resources,
 A CiliumCIDRGroup defines reusable CIDR blocks:
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
+apiVersion: cilium.io/v2
 kind: CiliumCIDRGroup
 metadata:
   name: external-api-cidrs
@@ -67,8 +67,8 @@ if [ -z "$CIDRGROUPS" ]; then
 fi
 
 for group in $CIDRGROUPS; do
-  CIDR_COUNT=$(kubectl get ciliumcidrgroup "$group" \
-    -o jsonpath='{.spec.externalCIDRs}' | jq length)
+  CIDR_COUNT=$(kubectl get ciliumcidrgroup "$group" -o json | \
+    jq '.spec.externalCIDRs | length')
   if [ "$CIDR_COUNT" -eq 0 ]; then
     echo "CRITICAL: CIDRGroup $group has no CIDR entries"
   else
@@ -96,9 +96,12 @@ hubble:
       - flow
       - icmp
       - "policy:sourceContext=app;destinationContext=app"
+    serviceMonitor:
+      enabled: true
 prometheus:
   enabled: true
-  serviceMonitor:
+operator:
+  prometheus:
     enabled: true
 ```
 
@@ -113,7 +116,7 @@ helm upgrade cilium cilium/cilium \
 
 ```promql
 # Track drops by reason related to policy denial
-rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])
+rate(hubble_drop_total{reason="Policy denied"}[5m])
 
 # Monitor flow counts for dropped traffic
 rate(hubble_flows_processed_total{verdict="DROPPED"}[5m])
@@ -142,7 +145,7 @@ spec:
     - name: cilium-cidrgroup
       rules:
         - alert: HighPolicyDropRate
-          expr: rate(hubble_drop_total{reason="POLICY_DENIED"}[5m]) > 10
+          expr: rate(hubble_drop_total{reason="Policy denied"}[5m]) > 10
           for: 5m
           labels:
             severity: warning
@@ -165,7 +168,7 @@ kubectl get ciliumcidrgroups -o json | \
 
 ## Troubleshooting
 
-- **No CiliumCIDRGroup resources found**: Verify Cilium version supports CiliumCIDRGroup (v1.14+). Check the CRD with `kubectl get crd ciliumcidrgroups.cilium.io`.
+- **No CiliumCIDRGroup resources found**: Verify Cilium version supports the `cilium.io/v2` CiliumCIDRGroup API (v1.18+). Check the CRD with `kubectl get crd ciliumcidrgroups.cilium.io`.
 - **Metrics not appearing in Prometheus**: Ensure Hubble is enabled and ServiceMonitor is configured. Check `cilium status`.
 - **High drop rate alerts firing unexpectedly**: Review flows with `hubble observe --verdict DROPPED`. Drops may be legitimate policy enforcement.
 - **Stale CIDR entries**: Implement a reconciliation process that validates entries against current external service IP ranges.
