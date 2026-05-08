@@ -20,6 +20,7 @@ This guide presents tested BGPFilter configurations for production scenarios, co
 
 - Production Kubernetes cluster with Calico CNI
 - Active BGP peering with external routers or route reflectors
+- For service VIP examples, Calico `BGPConfiguration` already configured to advertise the relevant `serviceClusterIPs`, `serviceExternalIPs`, or `serviceLoadBalancerIPs`
 - `calicoctl` and `kubectl` with cluster-admin access
 - Coordination with network team for external peer filter verification
 
@@ -108,7 +109,7 @@ metadata:
   name: rr-peer
 spec:
   peerSelector: route-reflector == 'true'
-  nodeSelector: "!route-reflector == 'true'"
+  nodeSelector: route-reflector != 'true'
   filters:
     - route-reflector-filter
 ```
