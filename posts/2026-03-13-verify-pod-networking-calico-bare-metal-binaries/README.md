@@ -10,25 +10,25 @@ Description: A guide to verifying that Calico's binary installation provides cor
 
 ## Introduction
 
-Verifying pod networking in a binary-installed Calico environment adds OS-level checks that are not needed in operator-based deployments. Because Calico runs as a native systemd service rather than a container, you can inspect its state directly through the process tree, its log output via journalctl, and its effect on the Linux networking stack without going through Kubernetes API layers.
+Verifying pod networking in a binary-installed Calico environment adds OS-level checks that are not needed in operator-based deployments. Because Felix can run as a native systemd service while Kubernetes uses the Calico CNI plugin binaries on each node, you can inspect its state directly through the process tree, its log output via journalctl, and its effect on the Linux networking stack without going through Kubernetes API layers.
 
-The verification workflow covers the calico-node service status, CNI plugin execution, IP allocation, pod-to-pod connectivity, and egress routing. Each check confirms a distinct layer of the networking stack is working correctly.
+The verification workflow covers the calico-felix service status, CNI plugin execution, IP allocation, pod-to-pod connectivity, and egress routing. Each check confirms a distinct layer of the networking stack is working correctly.
 
 This guide provides a complete verification workflow for binary-installed Calico on bare metal.
 
 ## Prerequisites
 
-- Calico binary installation running on all nodes as a systemd service
+- Calico CNI plugin binaries installed on all nodes and Felix running as a systemd service
 - `kubectl` and `calicoctl` installed
 - At least two worker nodes
 
-## Step 1: Verify calico-node Service Health
+## Step 1: Verify calico-felix Service Health
 
 On each node:
 
 ```bash
-sudo systemctl status calico-node
-journalctl -u calico-node --since "10 minutes ago" | grep -E "(ERROR|WARN|started|felix)"
+sudo systemctl status calico-felix
+sudo journalctl -u calico-felix --since "10 minutes ago" | grep -E "(ERROR|WARN|started|Felix|felix)"
 ```
 
 ## Step 2: Verify CNI Plugin Presence
@@ -71,27 +71,27 @@ kubectl exec pod-a -- ping -c5 $POD_B_IP
 On a node, verify that routes to remote pod subnets are present.
 
 ```bash
-ip route show | grep "proto bird"
+ip route show | grep -E "proto bird|proto 80|tunl0|vxlan.calico"
 ```
 
-Routes marked `proto bird` are learned via BGP. If you are using IPIP, look for `tunl0` routes instead.
+Routes marked `proto bird` are learned via BGP, while some Calico-installed routes may appear with a numeric route protocol such as `proto 80`. If you are using IPIP or VXLAN, look for `tunl0` or `vxlan.calico` routes instead.
 
 ## Step 6: Check Felix Dataplane Rules
 
-Verify that Felix has programmed iptables rules.
+Verify that Felix has programmed iptables rules when using the iptables dataplane.
 
 ```bash
-iptables-save | grep -c "cali-"
+sudo iptables-save | grep -c "cali-"
 ```
 
-A healthy Felix installation will have dozens of `cali-` chains in iptables.
+A healthy Felix installation using the iptables dataplane will have multiple `cali-` chains in iptables.
 
 ## Step 7: Test Egress
 
 ```bash
-kubectl exec pod-a -- wget -qO- --timeout=5 http://example.com
+kubectl exec pod-a -- wget -qO- -T 5 http://example.com
 ```
 
 ## Conclusion
 
-Verifying binary-installed Calico on bare metal requires checking the calico-node systemd service, confirming CNI plugins are present, validating IPAM block allocation, testing cross-node connectivity, and inspecting the node routing table for BGP-learned routes. The OS-level checks - service status, routing table, iptables rules - are the distinguishing aspect of binary installation verification compared to container-based deployments.
+Verifying binary-installed Calico on bare metal requires checking the calico-felix systemd service, confirming CNI plugins are present, validating IPAM block allocation, testing cross-node connectivity, and inspecting the node routing table for Calico routes. The OS-level checks - service status, routing table, iptables rules when using the iptables dataplane - are the distinguishing aspect of binary installation verification compared to container-based deployments.
