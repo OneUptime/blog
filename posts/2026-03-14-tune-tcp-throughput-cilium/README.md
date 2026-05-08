@@ -101,7 +101,7 @@ spec:
               # Reduce TCP FIN timeout
               sysctl -w net.ipv4.tcp_fin_timeout=15
 
-              # Enable BBR congestion control (if available)
+              # Enable BBR congestion control in the host namespace (if available)
               modprobe tcp_bbr 2>/dev/null || true
               sysctl -w net.ipv4.tcp_congestion_control=bbr 2>/dev/null || true
               sysctl -w net.core.default_qdisc=fq 2>/dev/null || true
@@ -125,13 +125,13 @@ graph TD
     A --> D[NIC Configuration]
 
     B --> B1["Buffer sizes: rmem/wmem 16MB"]
-    B --> B2["BBR congestion control"]
+    B --> B2["Host BBR congestion control"]
     B --> B3["TCP Fast Open"]
     B --> B4["Increased backlog"]
 
     C --> C1["Native routing mode"]
     C --> C2["BPF host routing"]
-    C --> C3["Disable monitor for perf"]
+    C --> C3["Monitor aggregation"]
 
     D --> D1["TSO/GSO/GRO enabled"]
     D --> D2["Ring buffer sizes"]
@@ -145,32 +145,42 @@ Configure Cilium for maximum throughput:
 ```yaml
 # cilium-throughput-tuning.yaml
 # Use native routing instead of VXLAN (reduces encapsulation overhead)
-tunnel: disabled
 routingMode: native
 autoDirectNodeRoutes: true
 ipv4NativeRoutingCIDR: "10.0.0.0/8"
+kubeProxyReplacement: true
 
 # Enable BPF-based host routing (bypasses iptables entirely)
 bpf:
   hostLegacyRouting: false  # Use BPF routing
+  masquerade: true
   # Increase map sizes for high-connection workloads
   ctTcpMax: 1048576
   natMax: 1048576
+  # Monitor aggregation to reduce event processing overhead
+  monitorAggregation: maximum
+  monitorInterval: 10s
+
+# Enable Cilium's Bandwidth Manager for TCP pacing and BBR for pods
+bandwidthManager:
+  enabled: true
+  bbr: true
 
 # Disable features that add per-packet overhead if not needed
 # Only disable these if you do not use the respective feature
-enableIPv6: false  # If not using IPv6, disable it
-
-# Monitor aggregation to reduce event processing overhead
-monitorAggregation: maximum
-monitorAggregationInterval: 10s
+ipv6:
+  enabled: false  # If not using IPv6, disable it
 ```
 
 ```bash
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
   --values cilium-throughput-tuning.yaml
+
+kubectl -n kube-system rollout restart ds/cilium
 ```
+
+Datapath changes such as native routing and BPF host routing affect how pods are connected. Apply them during a maintenance window, and restart workload pods or use per-node configuration so newly created pods pick up the changed datapath.
 
 ## NIC-Level Optimizations
 
@@ -251,7 +261,7 @@ kubectl delete namespace tcp-tune
 
 - **Native routing not working**: Your cloud provider or network infrastructure must support direct routing between nodes. Check with your network administrator.
 
-- **BBR not available**: BBR requires kernel 4.9+ and the `tcp_bbr` module. Some minimal container OS images do not include it.
+- **BBR not available**: Host-level BBR requires a kernel with BBR support and the `tcp_bbr` module when BBR is built as a module. Cilium BBR for pods requires Cilium Bandwidth Manager, eBPF host routing, kube-proxy replacement, eBPF masquerading, and kernel 5.18 or newer.
 
 - **Throughput degrades with more connections**: Increase BPF CT map sizes. Each connection consumes an entry, and a full table causes drops.
 
