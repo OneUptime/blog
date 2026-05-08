@@ -37,13 +37,13 @@ The output shows an empty manifest list:
 {
   "schemaVersion": 2,
   "mediaType": "application/vnd.docker.distribution.manifest.list.v2+json",
-  "manifests": []
+  "manifests": null
 }
 ```
 
 ## Building and Adding Architecture-Specific Images
 
-Build images for each target architecture, then add them to the manifest list.
+Build images for each target architecture, then add them to the manifest list. If you build for a non-native architecture and your Containerfile uses `RUN` instructions, make sure emulation such as `qemu-user-static` is configured first.
 
 ```bash
 # Create a simple Containerfile
@@ -115,8 +115,8 @@ podman push myapp:arm64 registry.example.com/myapp:arm64
 
 # Create a manifest list referencing registry images
 podman manifest create registry.example.com/myapp:latest \
-  registry.example.com/myapp:amd64 \
-  registry.example.com/myapp:arm64
+  docker://registry.example.com/myapp:amd64 \
+  docker://registry.example.com/myapp:arm64
 ```
 
 ## One-Line Manifest Creation
