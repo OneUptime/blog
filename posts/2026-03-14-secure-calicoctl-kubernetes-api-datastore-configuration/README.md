@@ -19,7 +19,7 @@ This guide walks you through practical steps to lock down calicoctl when using t
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.24 or later)
-- calicoctl installed (v3.27 or later)
+- calicoctl installed (matching the Calico version running on your cluster)
 - Calico installed with the Kubernetes API datastore backend
 - kubectl access with cluster-admin privileges (for initial setup)
 - Familiarity with Kubernetes RBAC concepts
@@ -70,7 +70,7 @@ metadata:
   name: calico-readonly
 rules:
   # Allow reading Calico custom resources
-  - apiGroups: ["projectcalico.org"]
+  - apiGroups: ["crd.projectcalico.org"]
     resources:
       - networkpolicies
       - globalnetworkpolicies
@@ -101,13 +101,17 @@ kind: ClusterRole
 metadata:
   name: calico-netpol-operator
 rules:
-  - apiGroups: ["projectcalico.org"]
+  - apiGroups: ["crd.projectcalico.org"]
     resources:
       - networkpolicies
       - globalnetworkpolicies
       - globalnetworksets
       - networksets
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Required for calicoctl version checks
+  - apiGroups: ["crd.projectcalico.org"]
+    resources: ["clusterinformations"]
+    verbs: ["get"]
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["get", "list", "watch"]
@@ -148,13 +152,20 @@ kubectl apply -f calico-operator-binding.yaml
 # Create a token for the service account
 kubectl create token calico-operator -n kube-system --duration=8760h > /tmp/calico-token
 
-# Generate a restricted kubeconfig
-kubectl config set-credentials calico-operator \
-  --token=$(cat /tmp/calico-token)
+# Generate a restricted kubeconfig from the current cluster connection
+CALICO_KUBECONFIG=~/.kube/calico-config
+kubectl config view --minify --raw > "$CALICO_KUBECONFIG"
+CURRENT_CLUSTER=$(kubectl config view --kubeconfig="$CALICO_KUBECONFIG" \
+  -o jsonpath='{.contexts[0].context.cluster}')
 
-kubectl config set-context calico-context \
-  --cluster=$(kubectl config current-context) \
+kubectl config --kubeconfig="$CALICO_KUBECONFIG" set-credentials calico-operator \
+  --token="$(cat /tmp/calico-token)"
+
+kubectl config --kubeconfig="$CALICO_KUBECONFIG" set-context calico-context \
+  --cluster="$CURRENT_CLUSTER" \
   --user=calico-operator
+
+kubectl config --kubeconfig="$CALICO_KUBECONFIG" use-context calico-context
 
 # Clean up the token file
 rm /tmp/calico-token
@@ -186,7 +197,10 @@ For additional security, use short-lived tokens rather than long-lived service a
 # Generate a short-lived token (1 hour)
 TOKEN=$(kubectl create token calico-operator -n kube-system --duration=1h)
 
-# Use it with calicoctl directly
+# Refresh the kubeconfig credential before using calicoctl
+kubectl config --kubeconfig=/etc/calicoctl/kubeconfig set-credentials calico-operator \
+  --token="$TOKEN"
+
 calicoctl get networkpolicies --all-namespaces \
   --config=/etc/calicoctl/calicoctl.cfg
 ```
@@ -203,7 +217,7 @@ rules:
   # Log all changes to Calico resources at RequestResponse level
   - level: RequestResponse
     resources:
-      - group: "projectcalico.org"
+      - group: "crd.projectcalico.org"
         resources:
           - networkpolicies
           - globalnetworkpolicies
@@ -213,7 +227,7 @@ rules:
   # Log read operations at Metadata level
   - level: Metadata
     resources:
-      - group: "projectcalico.org"
+      - group: "crd.projectcalico.org"
     verbs: ["get", "list", "watch"]
 ```
 
