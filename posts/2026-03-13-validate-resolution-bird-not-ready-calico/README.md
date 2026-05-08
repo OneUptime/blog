@@ -48,7 +48,7 @@ kubectl get pods -n kube-system -l k8s-app=calico-node
 **Validation Step 2: Verify BGP peer state on all nodes**
 
 ```bash
-# Check from one node - repeat for others if needed
+# Run on each node whose BGP status you need to verify
 calicoctl node status
 # Expected: all peers show "Established" under BGP summary
 ```
@@ -66,9 +66,9 @@ ip route show | grep bird
 ```bash
 # Deploy test pods on different nodes
 kubectl run test-pod-a --image=busybox --restart=Never \
-  --overrides='{"spec":{"nodeName":"<node-a>"}}' -- sleep 3600
+  --overrides='{"spec":{"nodeName":"<node-a>"}}' --command -- sleep 3600
 kubectl run test-pod-b --image=busybox --restart=Never \
-  --overrides='{"spec":{"nodeName":"<node-b>"}}' -- sleep 3600
+  --overrides='{"spec":{"nodeName":"<node-b>"}}' --command -- sleep 3600
 
 # Wait for pods to be running
 kubectl wait pod/test-pod-a pod/test-pod-b --for=condition=Ready --timeout=60s
