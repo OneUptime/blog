@@ -147,8 +147,8 @@ fi
 Beyond the IP address, you can extract other useful network information:
 
 ```bash
-# Get the subnet
-podman inspect net-app --format '{{range .NetworkSettings.Networks}}Subnet: {{.IPPrefixLen}}{{end}}'
+# Get the subnet prefix length
+podman inspect net-app --format '{{range .NetworkSettings.Networks}}Prefix length: {{.IPPrefixLen}}{{end}}'
 
 # Get the gateway
 podman inspect net-app --format '{{range .NetworkSettings.Networks}}Gateway: {{.Gateway}}{{end}}'
