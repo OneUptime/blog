@@ -29,17 +29,17 @@ For clusters with fewer than 50 nodes, a straightforward KubeControllersConfigur
 ```bash
 # Verify current KubeControllersConfiguration resources
 
-calicoctl get kubecontrollersconfiguration -o yaml
+calicoctl get kubecontrollersconfiguration default -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check the calico-kube-controllers pod using the configuration
+kubectl get pods -n calico-system -l k8s-app=calico-kube-controllers -o wide
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), you can use node labels in host endpoint template selectors:
 
 ```bash
 # Label nodes by environment
@@ -50,7 +50,7 @@ kubectl label node worker-2 environment=staging
 kubectl get nodes --show-labels | grep environment
 ```
 
-Then reference these labels in your KubeControllersConfiguration manifest's node selectors to apply environment-specific settings.
+Then reference these labels in the `spec.controllers.node.hostEndpoint.templates[*].nodeSelector` field to create environment-specific host endpoints. `KubeControllersConfiguration` itself is a singleton resource named `default`, so it does not provide separate controller configurations per node or environment.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,9 +65,9 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Increase reconciliation intervals to reduce datastore load
 - Use Typha to reduce the number of direct datastore connections
-- Monitor memory usage of calico-node pods when managing many KubeControllersConfiguration resources
+- Monitor resource usage of the calico-kube-controllers pod after changing reconciliation settings
 
 ## Pattern 4: Combining with Other Calico Resources
 
@@ -78,7 +78,7 @@ The KubeControllersConfiguration resource works together with other Calico resou
 kubectl get crds | grep projectcalico
 
 # View all Calico configuration resources
-calicoctl get kubecontrollersconfiguration -o yaml
+calicoctl get kubecontrollersconfiguration default -o yaml
 calicoctl get felixconfiguration -o yaml
 calicoctl get ippools -o yaml
 ```
@@ -97,7 +97,7 @@ kubectl get kubecontrollersconfiguration.projectcalico.org -w
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if the Felix health port is enabled:
 
 ```bash
 # Check if Felix is reporting healthy
@@ -123,8 +123,8 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 ## Troubleshooting
 
 **Resource configuration not taking effect:**
-- Verify the resource is correctly applied: `calicoctl get kubecontrollersconfiguration -o yaml`.
-- Check Felix logs for configuration reload messages.
+- Verify the resource is correctly applied: `calicoctl get kubecontrollersconfiguration default -o yaml`.
+- Check calico-kube-controllers logs for configuration reload or validation messages.
 - Ensure Typha is relaying updates: `kubectl logs -n calico-system -l k8s-app=calico-typha --tail=20`.
 
 **Performance degradation after configuration change:**
@@ -133,7 +133,7 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
-- Verify node selectors are matching the intended nodes.
+- If using host endpoint templates, verify node selectors are matching the intended nodes.
 - Check for node-specific FelixConfiguration overrides.
 
 
@@ -169,7 +169,7 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.projectcalico.org --all-namespaces
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
