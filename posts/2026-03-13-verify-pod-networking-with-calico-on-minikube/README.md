@@ -34,10 +34,11 @@ All pods must be in `Running` state with all containers ready (e.g., `1/1` or `2
 ## Step 2: Inspect Calico Node Status
 
 ```bash
-calicoctl node status
+kubectl exec -n kube-system ds/calico-node -c calico-node -- /bin/calico-node -felix-ready
+kubectl exec -n kube-system ds/calico-node -c calico-node -- /bin/calico-node -bird-ready
 ```
 
-Look for the data plane status showing healthy Felix and BIRD (if BGP is enabled).
+Look for readiness checks showing healthy Felix and BIRD (if BGP is enabled). If you prefer `calicoctl node status`, run it directly on the Minikube node because Calico node subcommands require access to the node filesystem.
 
 ## Step 3: Check IP Pool Allocation
 
@@ -53,6 +54,7 @@ This confirms Calico's IPAM has allocated IP blocks and is assigning addresses f
 ```bash
 kubectl run pod1 --image=busybox --restart=Never -- sleep 3600
 kubectl run pod2 --image=busybox --restart=Never -- sleep 3600
+kubectl wait --for=condition=Ready pod/pod1 pod/pod2 --timeout=60s
 kubectl get pods -o wide
 ```
 
@@ -78,6 +80,7 @@ kubectl exec pod1 -- wget -qO- https://httpbin.org/ip
 
 ```bash
 kubectl run nginx --image=nginx --port=80
+kubectl wait --for=condition=Ready pod/nginx --timeout=60s
 kubectl expose pod nginx --port=80 --name=nginx-svc
 kubectl exec pod1 -- wget -qO- http://nginx-svc.default.svc.cluster.local
 ```
