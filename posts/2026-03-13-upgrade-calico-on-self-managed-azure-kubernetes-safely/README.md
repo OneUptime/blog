@@ -21,7 +21,7 @@ This guide provides safe Calico upgrade procedures for self-managed Azure Kubern
 - Self-managed Kubernetes on Azure VMs
 - `az` CLI with Network Contributor access
 - `kubectl` with cluster-admin permissions
-- `calicoctl` matching the installed Calico version
+- `calicoctl` matching the installed Calico version, and the target version available after upgrade
 - SSH access to cluster nodes
 
 ## Step 1: Pre-Upgrade Azure Network Validation
@@ -33,12 +33,15 @@ Verify Azure networking is healthy before the Calico upgrade.
 
 kubectl get nodes -o wide
 
-# Check current Calico version
-kubectl get pods -n calico-system \
-  -o jsonpath='{.items[0].spec.containers[0].image}'
+# Check current calico-node image
+kubectl get daemonset calico-node -n calico-system \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="calico-node")].image}'
 
-# Verify VXLAN tunnels are functional (if using VXLAN mode)
+# Verify Calico node and BGP status (if using BGP)
 calicoctl node status
+
+# Verify the VXLAN device exists on each node (if using VXLAN mode)
+ssh <node> "ip -d link show vxlan.calico"
 
 # Verify Azure NSG rules are in place
 az network nsg rule list \
@@ -78,7 +81,7 @@ Update the operator before upgrading Calico components.
 
 ```bash
 # Apply the new Tigera Operator manifest
-kubectl apply --server-side \
+kubectl apply --server-side --force-conflicts \
   -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
 
 # Wait for the operator to be healthy
@@ -94,16 +97,15 @@ kubectl get pod -n tigera-operator \
 Trigger the rolling upgrade through the operator.
 
 ```bash
-# Apply updated custom resources
-kubectl apply \
-  -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml
+# If you need to change Installation settings for this upgrade, apply your
+# reviewed cluster-specific Installation manifest, not the stock custom-resources.yaml.
+# The stock manifest contains default IP pool values and can overwrite your existing configuration.
 
-# Monitor calico-node rolling update - each node upgrades sequentially
+# Monitor calico-node rolling update according to the DaemonSet update strategy
 kubectl rollout status daemonset/calico-node -n calico-system --timeout=15m
 
-# During rolling upgrade, verify VXLAN tunnel recovery on recently upgraded nodes
-# Wait for each node's VXLAN tunnel to come back up
-calicoctl node status
+# During rolling upgrade, verify the VXLAN device is present on recently upgraded nodes
+ssh <node> "ip -d link show vxlan.calico"
 
 # Monitor Azure load balancer health probes (if serving LB traffic)
 az network lb show \
@@ -146,7 +148,7 @@ kubectl delete service conn-test
 - Verify Azure proximity placement groups (if used) don't interfere with Calico node selection
 - Monitor Azure VM CPU and network metrics during the rolling upgrade
 - Keep a terminal session open with `kubectl get pods -n calico-system -w` throughout the upgrade
-- Test VXLAN connectivity explicitly if using VXLAN mode - Azure VNet sometimes needs time to learn new routes
+- Test VXLAN connectivity explicitly if using VXLAN mode, and verify Azure NSG effective rules and route tables have converged before declaring the upgrade complete
 
 ## Conclusion
 
