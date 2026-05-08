@@ -95,7 +95,7 @@ calicoctl label nodes worker-1 env=staging --overwrite
 Unauthorized to label resource
 ```
 
-This is an RBAC issue. The service account or user needs permission to update Calico resources:
+This is an RBAC issue. The service account or user needs permission to get and update the Calico resource types you want to label:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -146,8 +146,17 @@ kubectl label pods my-pod env=production
 ```
 
 Supported resource types for `calicoctl label`:
+- `bgpconfigurations`
+- `bgppeers`
+- `felixconfigurations`
+- `globalnetworkpolicies`
+- `globalnetworksets`
 - `nodes`
 - `hostendpoints`
+- `ippools`
+- `networkpolicies`
+- `networksets`
+- `profiles`
 - `workloadendpoints`
 
 ## Error: Connection to Datastore Failed
@@ -174,7 +183,7 @@ cat /etc/calico/calicoctl.cfg
 
 ## Debugging Label Operations
 
-Enable verbose output to understand what is happening:
+Specify configuration explicitly and inspect the resource before and after labeling:
 
 ```bash
 # Use --config to specify configuration explicitly
@@ -217,12 +226,12 @@ fi
 
 # Check resource exists
 echo "--- Resource Check ---"
-if calicoctl get "$RESOURCE_TYPE" "$RESOURCE_NAME" > /dev/null 2>&1; then
+if calicoctl get "$RESOURCE_TYPE" "$RESOURCE_NAME" -o yaml 2>/dev/null | grep -q .; then
   echo "PASS: Resource exists"
 else
   echo "FAIL: Resource not found"
   echo "Available resources:"
-  calicoctl get "$RESOURCE_TYPE" -o name
+  calicoctl get "$RESOURCE_TYPE"
   exit 1
 fi
 
@@ -257,7 +266,7 @@ calicoctl get globalnetworkpolicies -o yaml
 | resource does not exist | Wrong resource name | Check exact name with `calicoctl get` |
 | label already exists | Key already set | Add `--overwrite` flag |
 | invalid label key | Bad characters in key | Use only alphanumeric, `-`, `_`, `.` |
-| unknown resource type | Wrong resource type | Use nodes, hostendpoints, or workloadendpoints |
+| unknown resource type | Wrong resource type | Use a resource type supported by `calicoctl label` |
 | Unauthorized | Missing RBAC permissions | Create appropriate ClusterRole |
 
 ## Conclusion
