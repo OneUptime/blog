@@ -10,13 +10,13 @@ Description: Learn how to install podman-compose on Linux, macOS, and other plat
 
 > podman-compose brings Docker Compose compatibility to Podman, letting you reuse existing docker-compose.yml files without Docker.
 
-podman-compose is a Python-based tool that implements the Docker Compose specification using Podman as the container runtime. It reads standard `docker-compose.yml` files and translates them into Podman commands, making migration from Docker seamless.
+podman-compose is a Python-based tool that implements Docker Compose-style workflows using Podman as the container runtime. It reads standard `docker-compose.yml` files and translates them into Podman commands, making migration from Docker straightforward for many Compose files.
 
 ---
 
 ## Installing with pip
 
-The most universal method works on any platform with Python.
+The most universal method works on any platform with Python 3.9+ and Podman.
 
 ```bash
 # Install podman-compose using pip
@@ -31,7 +31,7 @@ podman-compose --version
 ## Installing on Fedora / RHEL / CentOS
 
 ```bash
-# Install from the default repositories
+# Install from Fedora repositories, or from EPEL-enabled RHEL / CentOS systems
 sudo dnf install podman-compose
 
 # Verify
@@ -100,7 +100,6 @@ podman-compose --version
 ```bash
 # Create a minimal compose file to test
 cat > docker-compose.yml << 'EOF'
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:alpine
