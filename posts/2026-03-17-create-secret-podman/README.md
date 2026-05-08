@@ -8,9 +8,9 @@ Description: Learn how to create and manage secrets in Podman to securely store 
 
 ---
 
-> Podman secrets provide a secure way to store and deliver sensitive data to containers without exposing it in environment variables, command lines, or image layers.
+> Podman secrets provide a secure way to store and deliver sensitive data to containers without storing it in command lines, source control, or image layers.
 
-Storing sensitive data like passwords and API keys directly in container configurations is a security risk. Podman secrets offer a dedicated mechanism to manage this data securely, keeping it out of image layers, environment variable listings, and process tables.
+Storing sensitive data like passwords and API keys directly in container configurations is a security risk. Podman secrets offer a dedicated mechanism to manage this data securely, keeping mounted secrets out of image layers, environment variable listings, and process tables.
 
 ---
 
@@ -84,9 +84,9 @@ echo -n "value3" | podman secret create app_smtp_api_key -
 podman secret inspect db_password
 
 # Output shows creation time, driver, and other metadata
-# The actual secret value is never displayed
+# The actual secret value is not displayed unless you explicitly use --showsecret
 ```
 
 ## Summary
 
-Podman secrets provide a secure way to manage sensitive data for containers. Create secrets using `podman secret create` with data from standard input, files, or environment variables. Secrets are stored securely by Podman and delivered to containers as files under `/run/secrets/`, keeping sensitive data out of environment variables and command-line arguments.
+Podman secrets provide a secure way to manage sensitive data for containers. Create secrets using `podman secret create` with data from standard input, files, or environment variables. Secrets can be delivered to containers as files under `/run/secrets/`, keeping sensitive data out of environment variables and command-line arguments.
