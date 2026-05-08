@@ -22,6 +22,7 @@ This guide covers the security controls needed to use the dynamic exporter safel
 - kubectl with cluster-admin access for RBAC configuration
 - Understanding of Kubernetes RBAC
 - Admission controller (Kyverno or OPA Gatekeeper) for policy enforcement
+- yq for the local validation commands that inspect `flowlogs.yaml`
 
 ## Restricting ConfigMap Access with RBAC
 
@@ -38,7 +39,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
-    resourceNames: ["cilium-hubble-export-config"]
+    resourceNames: ["cilium-flowlog-config"]
     verbs: ["get", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -64,7 +65,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
-    resourceNames: ["cilium-hubble-export-config"]
+    resourceNames: ["cilium-flowlog-config"]
     verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -86,7 +87,7 @@ roleRef:
 kubectl apply -f dynamic-exporter-rbac.yaml
 
 # Verify access restrictions
-kubectl auth can-i update configmaps/cilium-hubble-export-config \
+kubectl auth can-i update configmaps/cilium-flowlog-config \
   -n kube-system --as=system:serviceaccount:default:default
 # Should return "no"
 ```
@@ -102,28 +103,38 @@ kind: ClusterPolicy
 metadata:
   name: validate-hubble-export-config
 spec:
-  validationFailureAction: Enforce
+  background: false
   rules:
     - name: validate-export-rules
       match:
-        resources:
-          kinds:
-            - ConfigMap
-          namespaces:
-            - kube-system
-          names:
-            - cilium-hubble-export-config
+        any:
+          - resources:
+              kinds:
+                - ConfigMap
+              namespaces:
+                - kube-system
+              names:
+                - cilium-flowlog-config
       validate:
-        message: "Hubble export rules must include field masks and must not export L7 data"
+        failureAction: Enforce
+        message: "Hubble export rules must include field masks, write to the approved path, and must not export L7 data"
         foreach:
-          - list: "request.object.data"
+          - list: "request.object.data.\"flowlogs.yaml\" | parse_yaml(@).flowLogs"
             deny:
               conditions:
                 any:
                   # Every rule must have a field mask
-                  - key: "{{ parse_json(@).fieldMask || '' }}"
+                  - key: "{{ length(element.fieldMask || `[]`) }}"
                     operator: Equals
-                    value: ""
+                    value: 0
+                  # Every rule must write under the approved directory
+                  - key: "{{ pattern_match('/var/run/cilium/hubble/*', element.filePath || '') }}"
+                    operator: Equals
+                    value: false
+                  # Do not export full L7 records
+                  - key: "{{ contains(element.fieldMask || `[]`, 'l7') }}"
+                    operator: Equals
+                    value: true
 ```
 
 ```bash
@@ -164,8 +175,7 @@ rules:
 
 ```bash
 # Check recent audit events for the ConfigMap
-kubectl logs -n kube-system $(kubectl get pods -n kube-system -l component=kube-apiserver -o name | head -1) \
-  --tail=200 | grep "cilium-hubble-export-config" | tail -10
+grep "cilium-flowlog-config" /var/log/kubernetes/audit/audit.log | tail -10
 
 # Create a Prometheus alert for ConfigMap changes
 ```
@@ -183,7 +193,7 @@ spec:
       rules:
         - alert: HubbleExportConfigChanged
           expr: |
-            changes(kube_configmap_info{namespace="kube-system",configmap="cilium-hubble-export-config"}[5m]) > 0
+            changes(kube_configmap_metadata_resource_version{namespace="kube-system",configmap="cilium-flowlog-config"}[5m]) > 0
           for: 0m
           labels:
             severity: info
@@ -197,38 +207,38 @@ Ensure dynamic exporters cannot be used to capture data outside approved boundar
 
 ```bash
 # Regular audit: check all active export rules
-kubectl -n kube-system get configmap cilium-hubble-export-config -o json | python3 -c "
+kubectl -n kube-system get configmap cilium-flowlog-config -o jsonpath='{.data.flowlogs\.yaml}' | yq -o=json '.flowLogs[]' - | python3 -c "
 import json, sys
 
 ALLOWED_PATHS_PREFIX = '/var/run/cilium/hubble/'
-FORBIDDEN_FIELDS = {'l7', 'IP.source', 'IP.destination', 'ethernet'}
+FORBIDDEN_FIELDS = {'l7'}
 
-cm = json.load(sys.stdin)
-for key, value in cm.get('data', {}).items():
+for line in sys.stdin:
     try:
-        cfg = json.loads(value)
+        cfg = json.loads(line)
+        name = cfg.get('name', '<unnamed>')
 
         # Check file path
         path = cfg.get('filePath', '')
         if not path.startswith(ALLOWED_PATHS_PREFIX):
-            print(f'VIOLATION {key}: file path outside allowed directory: {path}')
+            print(f'VIOLATION {name}: file path outside allowed directory: {path}')
 
         # Check field mask for sensitive fields
         mask = set(cfg.get('fieldMask', []))
         forbidden = mask.intersection(FORBIDDEN_FIELDS)
         if forbidden:
-            print(f'VIOLATION {key}: exports sensitive fields: {forbidden}')
+            print(f'VIOLATION {name}: exports sensitive fields: {forbidden}')
 
         # Check if there is no field mask (exports everything)
         if not mask:
-            print(f'WARNING {key}: no field mask - exports all fields')
+            print(f'WARNING {name}: no field mask - exports all fields')
 
         # Check for missing expiration
         if 'end' not in cfg:
-            print(f'WARNING {key}: no expiration set')
+            print(f'WARNING {name}: no expiration set')
 
     except json.JSONDecodeError:
-        print(f'ERROR {key}: invalid JSON')
+        print('ERROR: invalid flow log entry')
 "
 ```
 
@@ -246,27 +256,27 @@ kubectl auth can-i update configmaps -n kube-system \
 kubectl get clusterpolicy validate-hubble-export-config -o jsonpath='{.status.conditions}' 2>/dev/null | python3 -m json.tool
 
 # 3. All current rules pass validation
-kubectl -n kube-system get configmap cilium-hubble-export-config -o json | python3 -c "
+kubectl -n kube-system get configmap cilium-flowlog-config -o jsonpath='{.data.flowlogs\.yaml}' | yq -o=json '.flowLogs[]' - | python3 -c "
 import json, sys
-cm = json.load(sys.stdin)
-for key, value in cm.get('data', {}).items():
-    cfg = json.loads(value)
+for line in sys.stdin:
+    cfg = json.loads(line)
+    name = cfg.get('name', '<unnamed>')
     has_mask = bool(cfg.get('fieldMask'))
     has_path = cfg.get('filePath','').startswith('/var/run/cilium/hubble/')
-    print(f'{key}: mask={has_mask}, valid_path={has_path}')
+    print(f'{name}: mask={has_mask}, valid_path={has_path}')
 "
 
 # 4. Audit trail exists
-echo "Check your audit log system for recent changes to cilium-hubble-export-config"
+echo "Check your audit log system for recent changes to cilium-flowlog-config"
 ```
 
 ## Troubleshooting
 
 - **Admission webhook blocks legitimate updates**: Check the policy rules carefully. You may need to adjust the validation conditions. Test changes in a staging cluster first.
 
-- **RBAC prevents Cilium from reading the ConfigMap**: The Cilium service account needs `get` and `watch` permissions on the ConfigMap. This is separate from the operator RBAC.
+- **Cilium does not pick up ConfigMap changes**: The Helm chart mounts `cilium-flowlog-config` into the Cilium agent pods when `hubble.export.dynamic.enabled=true`. Confirm that the ConfigMap exists, is mounted in the DaemonSet, and that the updated `flowlogs.yaml` is present in the agent pod.
 
-- **Audit logs not showing ConfigMap changes**: Ensure the audit policy is loaded by the kube-apiserver. Check the apiserver flags for `--audit-policy-file`.
+- **Audit logs not showing ConfigMap changes**: Ensure the audit policy is loaded by the kube-apiserver. Check the apiserver flags for `--audit-policy-file` and `--audit-log-path` or `--audit-webhook-config-file`.
 
 - **Unauthorized exporter found**: Remove it immediately from the ConfigMap and investigate who created it through audit logs. Tighten RBAC if needed.
 
