@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Automation, CLI
 
-Description: A practical guide covering how to automate cilium-agent completion with step-by-step instructions and real-world examples for production Kubernetes clusters.
+Description: A practical guide covering how to automate cilium-agent completion with step-by-step instructions and real-world examples for Kubernetes operators.
 
 ---
 
@@ -12,113 +12,136 @@ Description: A practical guide covering how to automate cilium-agent completion 
 
 Shell completion dramatically improves CLI productivity by providing tab-completion for commands, subcommands, flags, and arguments. Setting up completion for your shell takes only a few minutes and saves significant time in daily operations.
 
-In this guide, we cover cilium-agent shell completion for your shell in a Kubernetes environment. Cilium leverages eBPF technology to provide high-performance networking, security, and observability for cloud-native workloads. The eBPF programs are loaded directly into the Linux kernel, enabling efficient packet processing without the overhead of traditional iptables-based networking stacks.
+In this guide, we cover cilium-agent shell completion for your shell in a Kubernetes environment. Cilium leverages eBPF technology to provide high-performance networking, security, and observability for cloud-native workloads. The eBPF programs are loaded directly into the Linux kernel, enabling efficient packet processing and reducing reliance on traditional iptables-based networking paths.
 
 Whether you are running a small development cluster or a large production environment with thousands of pods, the techniques in this guide will help you maintain a reliable Cilium deployment. We provide step-by-step instructions with real commands and configuration examples that you can adapt to your environment.
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.21+) with Cilium installed (v1.14+)
+- A running Kubernetes cluster with Cilium installed
 - `kubectl` configured for cluster access
-- `cilium` CLI installed (matching your Cilium version)
-- Helm 3.x for configuration management
+- Access to a Cilium agent pod through `kubectl exec`, or a local `cilium-agent` binary that matches your Cilium version
+- `bash`, `zsh`, or `fish` installed on the workstation where completion will be configured
 - Basic familiarity with Kubernetes networking concepts
 - Access to cluster nodes for troubleshooting (recommended)
-- Prometheus and Grafana for metrics visualization (recommended)
 
 ## Automation Approach
 
 Automating cilium-agent shell completion for your shell reduces operational overhead and ensures consistency across environments.
 
 ```bash
-# Create an automation script for common operations
+# Create an automation script for cilium-agent shell completion
 
-cat > /tmp/cilium-automation.sh << 'SCRIPT'
+cat > /tmp/cilium-agent-completion.sh << 'SCRIPT'
 #!/bin/bash
-# Cilium automation script
-# This script automates common Cilium operational tasks
+# cilium-agent completion installer
+# This script generates shell completion from a local cilium-agent binary
+# or from the cilium-agent binary inside a running Cilium pod.
 
 set -euo pipefail
 
-# Function: Health check
-health_check() {
-    echo "Running Cilium health check..."
-    cilium status --brief
-    cilium health status 2>/dev/null || echo "Health check requires running cluster"
-    echo "Identity count: $(cilium identity list 2>/dev/null | wc -l || echo 'N/A')"
-    echo "Endpoint count: $(cilium endpoint list 2>/dev/null | wc -l || echo 'N/A')"
+CILIUM_NAMESPACE="${CILIUM_NAMESPACE:-kube-system}"
+CILIUM_SELECTOR="${CILIUM_SELECTOR:-k8s-app=cilium}"
+
+run_cilium_agent() {
+    if command -v cilium-agent >/dev/null 2>&1; then
+        cilium-agent "$@"
+        return
+    fi
+
+    local pod
+    pod="$(kubectl -n "$CILIUM_NAMESPACE" get pods -l "$CILIUM_SELECTOR" \
+        -o jsonpath='{.items[0].metadata.name}')"
+
+    if [ -z "$pod" ]; then
+        echo "No Cilium agent pod found in namespace $CILIUM_NAMESPACE with selector $CILIUM_SELECTOR" >&2
+        return 1
+    fi
+
+    kubectl -n "$CILIUM_NAMESPACE" exec "$pod" -c cilium-agent -- cilium-agent "$@"
 }
 
-# Function: Collect diagnostics
-collect_diagnostics() {
-    local output_dir="${1:-/tmp/cilium-diagnostics}"
-    mkdir -p "$output_dir"
-    
-    cilium status --verbose > "$output_dir/status.txt" 2>&1
-    cilium endpoint list > "$output_dir/endpoints.txt" 2>&1
-    cilium identity list > "$output_dir/identities.txt" 2>&1
-    cilium metrics list > "$output_dir/metrics.txt" 2>&1
-    kubectl top pods -n kube-system -l k8s-app=cilium > "$output_dir/resources.txt" 2>&1
-    
-    echo "Diagnostics collected in $output_dir"
+install_completion() {
+    local shell_name="${1:-bash}"
+
+    case "$shell_name" in
+        bash)
+            local bash_dir="${BASH_COMPLETION_DIR:-$HOME/.local/share/bash-completion/completions}"
+            mkdir -p "$bash_dir"
+            run_cilium_agent completion bash > "$bash_dir/cilium-agent"
+            echo "Installed bash completion to $bash_dir/cilium-agent"
+            ;;
+        zsh)
+            local zsh_dir="${ZSH_COMPLETION_DIR:-$HOME/.zsh/completions}"
+            mkdir -p "$zsh_dir"
+            run_cilium_agent completion zsh > "$zsh_dir/_cilium-agent"
+            echo "Installed zsh completion to $zsh_dir/_cilium-agent"
+            echo "Ensure this directory is in fpath before compinit runs: fpath=($zsh_dir \$fpath)"
+            ;;
+        fish)
+            local fish_dir="${FISH_COMPLETION_DIR:-$HOME/.config/fish/completions}"
+            mkdir -p "$fish_dir"
+            run_cilium_agent completion fish > "$fish_dir/cilium-agent.fish"
+            echo "Installed fish completion to $fish_dir/cilium-agent.fish"
+            ;;
+        *)
+            echo "Unsupported shell: $shell_name" >&2
+            echo "Supported shells: bash, zsh, fish" >&2
+            return 1
+            ;;
+    esac
 }
 
-# Function: Validate configuration
-validate_config() {
-    echo "Validating Cilium configuration..."
-    cilium config view > /dev/null 2>&1 && echo "Config: OK" || echo "Config: FAILED"
-    cilium status > /dev/null 2>&1 && echo "Status: OK" || echo "Status: FAILED"
+print_completion() {
+    local shell_name="${1:-bash}"
+    run_cilium_agent completion "$shell_name"
 }
 
 # Main
-case "${1:-help}" in
-    health) health_check ;;
-    diagnostics) collect_diagnostics "${2:-}" ;;
-    validate) validate_config ;;
-    *) echo "Usage: $0 {health|diagnostics|validate}" ;;
+case "${1:-install}" in
+    install) install_completion "${2:-bash}" ;;
+    print) print_completion "${2:-bash}" ;;
+    *) echo "Usage: $0 {install|print} {bash|zsh|fish}" ;;
 esac
 SCRIPT
-chmod +x /tmp/cilium-automation.sh
+chmod +x /tmp/cilium-agent-completion.sh
+
+# Install completion for your preferred shell
+/tmp/cilium-agent-completion.sh install bash
 ```
 
 ## CI/CD Integration
 
-Integrate Cilium validation into your CI/CD pipeline:
+Integrate completion validation into your CI/CD pipeline:
 
 ```yaml
-# .github/workflows/cilium-validation.yaml
-# GitHub Actions workflow for Cilium validation
-name: Cilium Validation
+# .github/workflows/cilium-agent-completion.yaml
+# GitHub Actions workflow for cilium-agent completion validation
+name: cilium-agent Completion
 on:
   push:
     paths:
-      - 'k8s/cilium/**'
+      - 'scripts/cilium-agent-completion.sh'
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Cilium CLI
+      - name: Validate completion generation
         run: |
-          CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-          CLI_ARCH=amd64
-          curl -L --fail --remote-name-all "https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz"
-          sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
-      - name: Validate Helm Template
-        run: |
-          helm template cilium cilium/cilium -f k8s/cilium/values.yaml > /dev/null
+          CILIUM_VERSION=v1.19.3
+          docker run --rm --entrypoint cilium-agent quay.io/cilium/cilium:${CILIUM_VERSION} completion bash > /tmp/cilium-agent.bash
+          test -s /tmp/cilium-agent.bash
+          bash -n /tmp/cilium-agent.bash
 ```
 
 ## Scheduled Automation
 
 ```bash
-# Create a cron job for regular health checks
+# Create a cron job to refresh completion after Cilium upgrades
 # Add to crontab: crontab -e
-# Run health check every hour
-# 0 * * * * /tmp/cilium-automation.sh health >> /var/log/cilium-health.log 2>&1
-
-# Run diagnostics collection daily
-# 0 2 * * * /tmp/cilium-automation.sh diagnostics /tmp/cilium-daily-$(date +\%Y\%m\%d)
+# Run daily for bash completion
+# 0 2 * * * /tmp/cilium-agent-completion.sh install bash >> /var/log/cilium-agent-completion.log 2>&1
 ```
 
 ```mermaid
@@ -127,10 +150,10 @@ flowchart TD
     B -->|Scheduled| C[Cron Job]
     B -->|CI/CD| D[Pipeline Step]
     B -->|Manual| E[CLI Invocation]
-    C --> F[Health Check]
-    D --> G[Validate Config]
-    E --> H[Collect Diagnostics]
-    F --> I[Log Results]
+    C --> F[Refresh Completion File]
+    D --> G[Validate Generated Script]
+    E --> H[Install Shell Completion]
+    F --> I[Shell Completion Available]
     G --> I
     H --> I
 ```
@@ -141,63 +164,46 @@ flowchart TD
 After completing the steps above, run a comprehensive verification to confirm everything is working as expected.
 
 ```bash
-# Check overall Cilium deployment health
-cilium status --verbose
+# Verify that cilium-agent can generate completion
+/tmp/cilium-agent-completion.sh print bash > /tmp/cilium-agent.bash
+test -s /tmp/cilium-agent.bash
+bash -n /tmp/cilium-agent.bash
 
-# Verify inter-node connectivity
-cilium health status
+# Verify that the persistent completion file exists
+test -s "$HOME/.local/share/bash-completion/completions/cilium-agent"
 
-# Confirm all Cilium pods are running and ready
-kubectl get pods -n kube-system -l k8s-app=cilium -o wide
-
-# Verify the Cilium operator is healthy
-kubectl get pods -n kube-system -l name=cilium-operator
-
-# Check for recent error events
-kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tail -10
-
-# Run a connectivity test to validate the data plane
-cilium connectivity test --single-node
-
-# Verify endpoint count matches expected pod count
-echo "Cilium endpoints: $(cilium endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
+# Load completion in the current bash session
+source "$HOME/.local/share/bash-completion/completions/cilium-agent"
 ```
 
 ## Troubleshooting
 
 If you encounter issues during or after the steps in this guide, use the following troubleshooting procedures:
 
-- **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 4.19 or later. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
+- **No Cilium agent pod found**: Confirm the namespace and label selector with `kubectl get pods -n kube-system -l k8s-app=cilium`. If your installation uses a different namespace or labels, set `CILIUM_NAMESPACE` or `CILIUM_SELECTOR` before running the script.
 
-- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `cilium policy get`. Verify inter-node tunnel connectivity with `cilium bpf tunnel list`.
+- **`kubectl exec` fails**: Verify that your Kubernetes credentials allow exec access to the Cilium pod and that the container name is `cilium-agent`. The script uses `kubectl exec <pod> -c cilium-agent -- cilium-agent completion <shell>`.
 
-- **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm with `cilium config view`.
+- **Completion file is installed but tab completion does not work**: Start a new shell session. For bash, make sure the `bash-completion` package is installed. For zsh, make sure the completion directory is in `fpath` before `compinit` runs.
 
-- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `cilium metrics list | grep process_resident_memory`.
+- **Wrong shell selected**: Re-run the script with the shell name you use, for example `/tmp/cilium-agent-completion.sh install zsh` or `/tmp/cilium-agent-completion.sh install fish`.
 
-- **Endpoints stuck in regenerating state**: This usually indicates the agent is overloaded or encountering errors during BPF program compilation. Check agent logs with `kubectl logs -n kube-system -l k8s-app=cilium --tail=200 | grep -i error`.
-
-- **Policy not being enforced**: Verify the policy selectors match the intended pods using `cilium endpoint list`. Confirm the policy is applied with `cilium policy get`. Check that the endpoint has the correct identity with `cilium endpoint get <id>`.
-
-To collect a comprehensive diagnostic bundle for further analysis:
+To inspect the generated completion without installing it:
 
 ```bash
-# Generate a Cilium sysdump containing all diagnostic information
-# This collects logs, configs, BPF maps, and cluster state
-cilium sysdump --output-filename cilium-diag-$(date +%Y%m%d)
+/tmp/cilium-agent-completion.sh print bash | head
 ```
 
 ## Conclusion
 
-This guide covered cilium-agent shell completion for your shell with practical steps you can apply to your Kubernetes cluster. Regular monitoring, systematic validation, and proactive management are essential for maintaining a healthy Cilium deployment at any scale.
+This guide covered cilium-agent shell completion for your shell with practical steps you can apply to your Kubernetes workstation. Keeping completion generated from the same cilium-agent version that runs in your cluster helps avoid stale flags and subcommands.
 
 Key takeaways from this guide:
 
-- Always assess the current state before making changes to your Cilium configuration
-- Use Helm for configuration management to ensure consistency and reproducibility across environments
-- Monitor Cilium metrics through Prometheus to detect issues before they impact workloads
-- Test changes in a staging environment before applying them to production clusters
-- Maintain runbooks documenting your Cilium configuration decisions and operational procedures
-- Use `cilium sysdump` to collect comprehensive diagnostic data when investigating issues
+- Generate completion with the `cilium-agent completion` command for the shell you use
+- Use a local `cilium-agent` binary when available, or run the command through `kubectl exec` against a Cilium pod
+- Refresh completion after upgrading Cilium so shell suggestions match the deployed version
+- Validate generated completion scripts in CI before publishing automation changes
+- Document the namespace, selector, and shell-specific completion path used by your team
 
-As your cluster grows and evolves, revisit these configurations periodically and adjust them to match your current requirements. The Cilium community and documentation are excellent resources for staying current with best practices and new features.
+As your cluster grows and evolves, revisit these automation scripts periodically and adjust them to match your current Cilium version and workstation shell conventions. The Cilium community and documentation are excellent resources for staying current with best practices and new features.
