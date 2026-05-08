@@ -91,13 +91,13 @@ podman images --format json
 podman images --format json | python3 -m json.tool
 
 # Extract specific fields with jq
-podman images --format json | jq '.[].Names'
+podman images --format json | jq '.[].names'
 
 # Get image sizes in JSON
-podman images --format json | jq '.[] | {name: .Names[0], size: .Size}'
+podman images --format json | jq '.[] | {name: .names[0], size: .size}'
 
 # Filter JSON output
-podman images --format json | jq '.[] | select(.Size > 100000000) | .Names[0]'
+podman images --format json | jq '.[] | select(.size > 100000000) | .names[0]'
 ```
 
 ## Practical Formatting Recipes
@@ -118,7 +118,7 @@ podman images --format "| {{.Repository}} | {{.Tag}} | {{.Size}} |"
 podman images --sort size \
   --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}"
 
-# Show images older than their creation date
+# Show images with their creation age
 podman images --format "{{.Repository}}:{{.Tag}} (created {{.Created}})"
 ```
 
@@ -128,12 +128,12 @@ Use Go template conditionals for smarter output.
 
 ```bash
 # Show tag or "none" for dangling images
-podman images -a --format '{{.Repository}}:{{if .Tag}}{{.Tag}}{{else}}none{{end}} {{.Size}}'
+podman images -a --format '{{.Repository}}:{{if eq .Tag "<none>"}}none{{else}}{{.Tag}}{{end}} {{.Size}}'
 
 # Flag large images
 podman images --format json | jq -r '.[] |
-  if .Size > 500000000 then "LARGE: \(.Names[0]) (\(.Size / 1000000 | floor)MB)"
-  else "OK: \(.Names[0]) (\(.Size / 1000000 | floor)MB)"
+  if .size > 500000000 then "LARGE: \(.names[0]) (\(.size / 1000000 | floor)MB)"
+  else "OK: \(.names[0]) (\(.size / 1000000 | floor)MB)"
   end'
 ```
 
@@ -180,7 +180,7 @@ podman images --filter dangling=true \
   --format "table {{.ID}}\t{{.Size}}\t{{.Created}}"
 
 # Show large images (piped through sort)
-podman images --format "{{.Size}}\t{{.Repository}}:{{.Tag}}" | sort -rh
+podman images --format "{{.VirtualSize}}\t{{.Repository}}:{{.Tag}}" | sort -rn
 
 # Show images from a specific registry with custom format
 podman images --filter reference='quay.io/*' \
