@@ -8,7 +8,7 @@ Description: Learn how to install and configure Podman on Debian, including sett
 
 ---
 
-> Podman brings daemonless, rootless containers to Debian without requiring any background services or root access.
+> Podman brings daemonless containers to Debian and supports running containers without root access.
 
 Podman is a powerful alternative to Docker that runs containers without a central daemon process. On Debian, Podman is available through the official repositories starting from Debian 11 (Bullseye). This guide covers installation, configuration, and basic usage on Debian systems.
 
@@ -39,19 +39,15 @@ On Debian 11 and later, Podman is available directly from the official repositor
 sudo apt install -y podman
 ```
 
-This installs Podman along with essential components like `crun`, `conmon`, and `slirp4netns` for rootless networking.
+This installs Podman along with components such as `conmon`, an OCI runtime like `crun` or `runc`, and recommended rootless helpers such as `slirp4netns` and `uidmap` depending on your Debian release.
 
-### For Debian 11 (Bullseye) with Backports
+### For Debian 11 (Bullseye)
 
-If you want a newer version of Podman on Debian 11, enable the backports repository:
+Debian 11 provides Podman 3.0.1 in the official repositories. The `bullseye-backports` repository does not currently provide a newer `podman` package, so use a newer Debian release if you need a newer major version of Podman.
 
 ```bash
-# Add Debian backports repository
-echo "deb http://deb.debian.org/debian bullseye-backports main" | sudo tee /etc/apt/sources.list.d/backports.list
-
-# Update and install from backports
-sudo apt update
-sudo apt install -y -t bullseye-backports podman
+# Check the Podman version available from your configured repositories
+apt-cache policy podman
 ```
 
 ## Step 3: Verify the Installation
@@ -72,8 +68,8 @@ Debian's Podman installation may not include default registry configuration. Set
 
 ```bash
 # Create the containers registries configuration
-sudo tee /etc/containers/registries.conf.d/shortnames.conf <<EOF
-unqualified-search-registries = ['docker.io', 'quay.io', 'ghcr.io']
+sudo tee /etc/containers/registries.conf.d/unqualified-search-registries.conf <<EOF
+unqualified-search-registries = ["docker.io", "quay.io", "ghcr.io"]
 EOF
 ```
 
@@ -86,16 +82,16 @@ Configure your user for rootless container operation:
 sudo apt install -y slirp4netns uidmap
 
 # Verify subuid and subgid entries exist for your user
-grep $(whoami) /etc/subuid
-grep $(whoami) /etc/subgid
+grep "^$(id -un):" /etc/subuid
+grep "^$(id -un):" /etc/subgid
 ```
 
 If no entries exist, add them:
 
 ```bash
 # Add subordinate UID and GID ranges for your user
-sudo usermod --add-subuids 100000-165535 $(whoami)
-sudo usermod --add-subgids 100000-165535 $(whoami)
+sudo usermod --add-subuids 100000-165535 "$(id -un)"
+sudo usermod --add-subgids 100000-165535 "$(id -un)"
 ```
 
 ## Step 6: Run Your First Container
