@@ -33,11 +33,12 @@ This guide provides practical examples of using `calicoctl ipam release` for com
 calicoctl ipam release --ip=10.244.0.5
 ```
 
-### Releasing All IPs from a Removed Node
+### Releasing Leaked IPs from a Check Report
 
 ```bash
-# Release all IPs allocated to a node that no longer exists
-calicoctl ipam release --node=old-worker-node
+# Generate a report, then release leaked addresses from it
+calicoctl ipam check -o report.json
+calicoctl ipam release --from-report=report.json
 ```
 
 ## Safe Release Workflow
@@ -86,33 +87,24 @@ fi
 ```bash
 #!/bin/bash
 # batch-release-leaked.sh
-# Releases all IPs identified as leaked by ipam check
+# Releases leaked IPs identified by ipam check
 
 echo "Running IPAM check to find leaked IPs..."
-CHECK_OUTPUT=$(calicoctl ipam check 2>&1)
+REPORT="${1:-ipam-report.json}"
 
-# Extract leaked IPs (format depends on calicoctl version)
-LEAKED_IPS=$(echo "$CHECK_OUTPUT" | grep "leaked" | grep -oP '\d+\.\d+\.\d+\.\d+')
+calicoctl datastore migrate lock
+trap 'calicoctl datastore migrate unlock' EXIT
 
-if [ -z "$LEAKED_IPS" ]; then
-  echo "No leaked IPs found."
+calicoctl ipam check -o "$REPORT" --show-problem-ips
+
+echo ""
+read -p "Release leaked IPs from $REPORT? (yes/no): " CONFIRM
+if [ "$CONFIRM" = "yes" ]; then
+  calicoctl ipam release --from-report="$REPORT"
+else
+  echo "Aborted."
   exit 0
 fi
-
-COUNT=$(echo "$LEAKED_IPS" | wc -l)
-echo "Found $COUNT leaked IPs."
-echo ""
-
-for IP in $LEAKED_IPS; do
-  # Double-check no pod uses this IP
-  if kubectl get pods --all-namespaces -o wide 2>/dev/null | grep -q "$IP"; then
-    echo "SKIP: $IP (still in use by a pod)"
-    continue
-  fi
-  
-  echo "Releasing: $IP"
-  calicoctl ipam release --ip="$IP"
-done
 
 echo ""
 echo "Batch release complete. Running check again..."
@@ -124,20 +116,22 @@ calicoctl ipam check
 ```bash
 #!/bin/bash
 # release-orphaned-nodes.sh
-# Releases IPs from nodes that no longer exist in the cluster
+# Checks IPAM against Kubernetes after node removal and releases leaked IPs
 
-VALID_NODES=$(calicoctl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+REPORT="${1:-removed-node-ipam-report.json}"
 
-# Get nodes with block affinities
-AFFINITY_NODES=$(kubectl get blockaffinities.crd.projectcalico.org -o jsonpath='{range .items[*]}{.spec.node}{"\n"}{end}' | sort -u)
+calicoctl datastore migrate lock
+trap 'calicoctl datastore migrate unlock' EXIT
 
-for NODE in $AFFINITY_NODES; do
-  if ! echo "$VALID_NODES" | grep -q "^${NODE}$"; then
-    echo "Orphaned node: $NODE"
-    echo "  Releasing IPs..."
-    calicoctl ipam release --node="$NODE"
-  fi
-done
+calicoctl ipam check -o "$REPORT" --show-problem-ips
+
+echo ""
+read -p "Release leaked IPs from $REPORT? (yes/no): " CONFIRM
+if [ "$CONFIRM" = "yes" ]; then
+  calicoctl ipam release --from-report="$REPORT"
+else
+  echo "Aborted."
+fi
 ```
 
 
