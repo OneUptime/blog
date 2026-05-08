@@ -40,9 +40,9 @@ podman run -d --name web6 \
 # Check the container's IPv6 address
 podman inspect web6 --format '{{ range .NetworkSettings.Networks }}{{ .GlobalIPv6Address }}{{ end }}'
 
-# Verify IPv6 connectivity inside the container
-podman exec web6 ip -6 addr show
-podman exec web6 ping -6 -c 3 fd00:dead:beef::1
+# Verify IPv6 connectivity with a utility container
+podman run --rm --network ipv6-network \
+  docker.io/library/alpine:latest ping -6 -c 3 fd00:dead:beef::1
 ```
 
 ## Assigning Static IPv6 Addresses
@@ -105,7 +105,8 @@ echo "net.ipv6.conf.all.disable_ipv6 = 0" | sudo tee -a /etc/sysctl.d/99-ipv6.co
 ## IPv6 with Unique Local Addresses (ULA)
 
 ```bash
-# ULA addresses (fd00::/8) are for private networks
+# ULA addresses (fc00::/7) are for private networks.
+# fd00::/8 is the locally assigned ULA range commonly used for internal networks.
 podman network create \
   --ipv6 \
   --subnet fd12:3456:7890::/48 \
@@ -121,14 +122,17 @@ podman run -d --name internal-svc \
 ## Troubleshooting IPv6
 
 ```bash
-# Check IPv6 routes in the container
-podman exec web6 ip -6 route show
+# Check IPv6 routes with a utility container
+podman run --rm --network ipv6-network \
+  docker.io/library/alpine:latest ip -6 route show
 
 # Test IPv6 connectivity
-podman exec web6 ping -6 -c 3 fd00:dead:beef::1
+podman run --rm --network ipv6-network \
+  docker.io/library/alpine:latest ping -6 -c 3 fd00:dead:beef::1
 
-# Check if IPv6 is enabled in the container
-podman exec web6 cat /proc/sys/net/ipv6/conf/all/disable_ipv6
+# Check if IPv6 is enabled in the container network namespace
+podman run --rm --network ipv6-network \
+  docker.io/library/alpine:latest cat /proc/sys/net/ipv6/conf/all/disable_ipv6
 
 # Inspect network for IPv6 configuration
 podman network inspect ipv6-network
@@ -136,4 +140,4 @@ podman network inspect ipv6-network
 
 ## Summary
 
-Enable IPv6 on Podman networks with the `--ipv6` flag along with an IPv6 subnet and gateway. Assign static IPv6 addresses with `--ip6`, and publish ports on IPv6 using bracket notation. Ensure IPv6 is enabled on the host system and use ULA addresses (fd00::/8) for private container networks. IPv6 DNS resolution works automatically on custom networks with DNS enabled.
+Enable IPv6 on Podman networks with the `--ipv6` flag along with an IPv6 subnet and gateway. Assign static IPv6 addresses with `--ip6`, and publish ports on IPv6 using bracket notation. Ensure IPv6 is enabled on the host system and use ULA addresses (fc00::/7), commonly from the locally assigned fd00::/8 range, for private container networks. IPv6 DNS resolution works automatically on custom networks with DNS enabled.
