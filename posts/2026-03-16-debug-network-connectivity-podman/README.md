@@ -42,7 +42,7 @@ Understand how the container is networked.
 podman inspect --format '{{json .NetworkSettings}}' my-container | python3 -m json.tool
 
 # Check the container's IP address
-podman inspect --format '{{.NetworkSettings.IPAddress}}' my-container
+podman inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' my-container
 
 # List network interfaces inside the container
 podman exec my-container ip addr show
@@ -83,7 +83,7 @@ podman run -d -p 0.0.0.0:8080:80 nginx:latest
 
 ## Debug Container-to-Container Communication
 
-Containers need to be on the same custom network to communicate.
+Containers need to be on the same Podman network to communicate directly. A custom bridge network also provides container name resolution when DNS is enabled.
 
 ```bash
 # Create a custom network
@@ -132,11 +132,11 @@ sudo nft list ruleset | head -50
 Rootless Podman uses slirp4netns or pasta, which have different behaviors than root-mode networking.
 
 ```bash
-# Check the rootless network backend
+# Check Podman's network backend
 podman info --format '{{.Host.NetworkBackend}}'
 
-# Check if slirp4netns is running
-ps aux | grep slirp4netns
+# Check if the rootless network helper is running
+pgrep -af 'slirp4netns|pasta'
 
 # Test with explicit network mode
 podman run --network slirp4netns alpine ping -c 3 8.8.8.8
@@ -177,10 +177,10 @@ Capture traffic at the host level to see what is happening on the network bridge
 
 ```bash
 # Find the container's network interface on the host
-CONTAINER_PID=$(podman inspect --format '{{.State.Pid}}' my-container)
+podman network inspect podman --format '{{.NetworkInterface}}'
 
 # Capture traffic on the Podman bridge
-sudo tcpdump -i podman0 -n host $(podman inspect --format '{{.NetworkSettings.IPAddress}}' my-container)
+sudo tcpdump -i podman0 -n host $(podman inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' my-container)
 
 # Capture only specific ports
 sudo tcpdump -i podman0 -n port 80
