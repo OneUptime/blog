@@ -25,10 +25,15 @@ A common validation gap is checking the policy but not the underlying SA assignm
 #!/usr/bin/env python3
 import subprocess, json, sys
 
-result = subprocess.run(
-    ["kubectl", "get", "pods", "--all-namespaces", "-o", "json"],
-    capture_output=True, text=True
-)
+try:
+    result = subprocess.run(
+        ["kubectl", "get", "pods", "--all-namespaces", "-o", "json"],
+        capture_output=True, text=True, check=True
+    )
+except subprocess.CalledProcessError as exc:
+    print(exc.stderr, file=sys.stderr)
+    sys.exit(exc.returncode)
+
 pods = json.loads(result.stdout)
 
 errors = []
@@ -41,7 +46,7 @@ for pod in pods["items"]:
         continue
     
     if sa == "default":
-        errors.append(f"Pod {ns}/{name} uses default SA - may bypass SA policies")
+        errors.append(f"Pod {ns}/{name} uses default SA - may not match intended SA policies")
 
 if errors:
     for e in errors:
@@ -53,16 +58,18 @@ print(f"SA validation passed. Default SA pods: {len(errors)}")
 ## Step 2: Validate Policy SA Selector Syntax
 
 ```bash
-# Test all SA-based policies with dry-run
+# Validate all SA-based policies without applying them
 
 for f in policies/sa-*.yaml; do
   echo "Validating: $f"
-  calicoctl apply -f "$f" --dry-run
+  calicoctl validate -f "$f"
   
-  # Extract SA selectors and verify SA exists
-  SA_NAME=$(grep "serviceAccountSelector" "$f" | grep -oP "name == '\K[^']+")
+  # Extract exact-name SA selectors and verify the SA exists.
+  # Calico matches service account names with the automatic projectcalico.org/name label.
+  SA_NAME=$(sed -nE "s/.*serviceAccountSelector:.*projectcalico\.org\/name[[:space:]]*==[[:space:]]*['\"]([^'\"]+)['\"].*/\1/p" "$f" | head -1)
   if [ -n "$SA_NAME" ]; then
-    NS=$(grep "namespace:" "$f" | head -1 | awk '{print $2}')
+    NS=$(awk '/^metadata:/{in_meta=1; next} in_meta && /^[^[:space:]]/{in_meta=0} in_meta && /^[[:space:]]+namespace:/{print $2; exit}' "$f")
+    NS=${NS:-default}
     kubectl get serviceaccount "$SA_NAME" -n "$NS" &>/dev/null || \
       echo "WARNING: SA '$SA_NAME' not found in namespace '$NS'"
   fi
@@ -83,7 +90,7 @@ test_sa_access() {
   SA=$(kubectl get pod "$src_pod" -n "$src_ns" -o jsonpath='{.spec.serviceAccountName}')
   echo "  Source SA: $SA"
   
-  kubectl exec -n "$src_ns" "$src_pod" -- nc -zv "$dest_ip" "$port" --wait 3 2>/dev/null
+  kubectl exec -n "$src_ns" "$src_pod" -- nc -zv -w 3 "$dest_ip" "$port" 2>/dev/null
   local exit=$?
   
   if { [ $exit -eq 0 ] && [ "$expected" == "allow" ]; } || { [ $exit -ne 0 ] && [ "$expected" == "deny" ]; }; then
