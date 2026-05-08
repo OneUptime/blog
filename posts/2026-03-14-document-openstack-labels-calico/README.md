@@ -169,7 +169,7 @@ echo "  calicoctl get workloadendpoints --all-namespaces -o yaml | grep -A20 '<v
 # Find all VMs with a specific label
 echo ""
 echo "Find VMs by label:"
-echo "  calicoctl get workloadendpoints --all-namespaces -o json | python3 -c "import json,sys; [print(i['metadata']['name']) for i in json.load(sys.stdin).get('items',[]) if i.get('metadata',{}).get('labels',{}).get('role')=='web']""
+echo "  calicoctl get workloadendpoints --all-namespaces -o json | python3 -c 'import json,sys; [print(i[\"metadata\"][\"name\"]) for i in json.load(sys.stdin).get(\"items\",[]) if i.get(\"metadata\",{}).get(\"labels\",{}).get(\"role\")==\"web\"]'"
 
 # Check which policies apply to a label combination
 echo ""
