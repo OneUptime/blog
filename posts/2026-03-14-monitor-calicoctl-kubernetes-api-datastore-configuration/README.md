@@ -19,7 +19,7 @@ This guide covers practical monitoring strategies including health check scripts
 ## Prerequisites
 
 - A running Kubernetes cluster with Calico installed (Kubernetes API datastore)
-- calicoctl v3.27 or later installed
+- A calicoctl version that matches the Calico version running in your cluster
 - Prometheus and Grafana deployed (or equivalent monitoring stack)
 - kubectl access with appropriate permissions
 - Basic familiarity with PromQL
@@ -39,34 +39,46 @@ set -euo pipefail
 export DATASTORE_TYPE=kubernetes
 HEALTH_STATUS=0
 
+set_status() {
+    local new_status="$1"
+    if [ "$new_status" -gt "$HEALTH_STATUS" ]; then
+        HEALTH_STATUS="$new_status"
+    fi
+}
+
 # Check 1: Verify calicoctl can reach the API server
 echo "Checking API server connectivity..."
 if ! calicoctl get clusterinformation default -o yaml > /dev/null 2>&1; then
     echo "CRITICAL: Cannot reach Kubernetes API datastore"
-    HEALTH_STATUS=1
+    set_status 2
 fi
 
 # Check 2: Verify node count matches kubectl
-CALICO_NODES=$(calicoctl get nodes -o json 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin)['items']))")
-KUBE_NODES=$(kubectl get nodes --no-headers 2>/dev/null | wc -l | tr -d ' ')
-
-if [ "$CALICO_NODES" != "$KUBE_NODES" ]; then
+if ! CALICO_NODES=$(calicoctl get nodes -o json 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('items', [])))"); then
+    echo "CRITICAL: Cannot list Calico nodes"
+    set_status 2
+elif ! KUBE_NODES=$(kubectl get nodes --no-headers 2>/dev/null | wc -l | tr -d ' '); then
+    echo "CRITICAL: Cannot list Kubernetes nodes"
+    set_status 2
+elif [ "$CALICO_NODES" != "$KUBE_NODES" ]; then
     echo "WARNING: Calico node count ($CALICO_NODES) does not match Kubernetes node count ($KUBE_NODES)"
-    HEALTH_STATUS=2
+    set_status 1
 fi
 
 # Check 3: Verify IPPool configuration exists
-IPPOOL_COUNT=$(calicoctl get ippools -o json 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin)['items']))")
-if [ "$IPPOOL_COUNT" -eq 0 ]; then
+if ! IPPOOL_COUNT=$(calicoctl get ippools -o json 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('items', [])))"); then
+    echo "CRITICAL: Cannot list IPPools"
+    set_status 2
+elif [ "$IPPOOL_COUNT" -eq 0 ]; then
     echo "CRITICAL: No IPPools configured"
-    HEALTH_STATUS=1
+    set_status 2
 fi
 
-# Check 4: Verify Felix is reporting status
-echo "Checking Felix status on nodes..."
+# Check 4: Verify local Calico node status when running on a Calico node host
+echo "Checking local Calico node status..."
 if ! calicoctl node status > /dev/null 2>&1; then
-    echo "WARNING: Cannot retrieve node status"
-    HEALTH_STATUS=2
+    echo "WARNING: Cannot retrieve local node status"
+    set_status 1
 fi
 
 echo "Health check complete. Status: $HEALTH_STATUS"
@@ -78,7 +90,41 @@ exit $HEALTH_STATUS
 Calico's Felix and Typha components expose Prometheus metrics. Configure scraping to monitor the datastore interaction:
 
 ```yaml
-# prometheus-calico-servicemonitor.yaml
+# prometheus-calico-services-and-servicemonitors.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    app: calico
+    component: felix
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: metrics
+      port: 9091
+      targetPort: 9091
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: typha-metrics-svc
+  namespace: calico-system
+  labels:
+    app: calico
+    component: typha
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-typha
+  ports:
+    - name: metrics
+      port: 9093
+      targetPort: 9093
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -89,12 +135,13 @@ metadata:
 spec:
   selector:
     matchLabels:
-      k8s-app: calico-node
+      app: calico
+      component: felix
   namespaceSelector:
     matchNames:
       - calico-system
   endpoints:
-    - port: http-metrics
+    - port: metrics
       path: /metrics
       interval: 30s
 ---
@@ -108,12 +155,13 @@ metadata:
 spec:
   selector:
     matchLabels:
-      k8s-app: calico-typha
+      app: calico
+      component: typha
   namespaceSelector:
     matchNames:
       - calico-system
   endpoints:
-    - port: http-metrics
+    - port: metrics
       path: /metrics
       interval: 30s
 ```
@@ -148,7 +196,7 @@ spec:
     - name: calico-datastore
       interval: 60s
       rules:
-        # Alert when Felix loses datastore connection
+        # Alert when Felix is not in sync with the datastore/dataplane (not meaningful in Typha deployments)
         - alert: CalicoFelixDatastoreFailure
           expr: felix_resync_state != 3
           for: 5m
@@ -180,7 +228,7 @@ spec:
 
         # Alert on high API server latency for Calico operations
         - alert: CalicoHighDatastoreLatency
-          expr: histogram_quantile(0.99, rate(felix_calc_graph_update_time_seconds_bucket[5m])) > 5
+          expr: max by (instance) (felix_calc_graph_update_time_seconds{quantile="0.99"}) > 5
           for: 10m
           labels:
             severity: warning
