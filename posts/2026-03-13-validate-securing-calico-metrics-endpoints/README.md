@@ -18,6 +18,7 @@ This guide covers validate Calico Metrics in Calico with practical configuration
 
 - Kubernetes cluster with Calico v3.26+
 - `calicoctl` and `kubectl` installed
+- HostEndpoints created for the Calico nodes and labeled `running-calico: 'true'`
 - Understanding of Calico's monitoring and security architecture
 
 ## Core Configuration
@@ -31,21 +32,14 @@ metadata:
   name: secure-calico-metrics
 spec:
   order: 100
-  selector: k8s-app == 'calico-node'
+  selector: running-calico == 'true'
   ingress:
-    - action: Allow
-      source:
-        namespaceSelector: team == 'observability'
-      destination:
-        ports: [9091]
-    - action: Allow
-      source:
-        selector: app == 'prometheus'
-      destination:
-        ports: [9091]
     - action: Deny
+      protocol: TCP
+      source:
+        notSelector: calico-prometheus-access == 'true'
       destination:
-        ports: [9091, 9092, 9093]
+        ports: [9091]
   types:
     - Ingress
 ```
@@ -56,23 +50,26 @@ spec:
 # Apply metrics security policy
 calicoctl apply -f secure-calico-metrics.yaml
 
+# Label the Prometheus pod that should be allowed to scrape Felix metrics
+kubectl label pod -n monitoring prometheus-pod calico-prometheus-access=true
+
 # Verify only authorized access works
-kubectl exec -n monitoring prometheus-pod -- curl -s http://calico-node-ip:9091/metrics | head -5
+kubectl exec -n monitoring prometheus-pod -- sh -c 'curl -fsS --max-time 5 http://<node-ip>:9091/metrics | head -5'
 echo "Prometheus access (should work): $?"
 
 # Verify unauthorized access is blocked
-kubectl exec -n default test-pod -- curl -s --max-time 5 http://calico-node-ip:9091/metrics
+kubectl exec -n default test-pod -- curl -fsS --max-time 5 http://<node-ip>:9091/metrics
 echo "Unauthorized access (should timeout): $?"
 ```
 
 ## Verify Metrics Security
 
 ```bash
-# List all IPs that have accessed the metrics endpoint recently
-grep "port=9091" /var/log/calico/flow-logs/*.log | tail -20
+# Confirm the host endpoints selected by the policy
+calicoctl get hostendpoints -l running-calico==true -o wide
 
-# Check active policy for calico-node pods
-calicoctl get networkpolicies -n kube-system | grep metrics
+# Check the active global policy
+calicoctl get globalnetworkpolicy secure-calico-metrics -o yaml
 ```
 
 ## Architecture
