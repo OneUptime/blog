@@ -61,18 +61,18 @@ fi
 
 ## Validating Policy-Namespace Selector Alignment
 
-Ensure every namespace selector in every policy matches at least one namespace:
+List every namespace selector in every Calico policy so you can verify that each selector matches the intended namespaces:
 
 ```bash
 #!/bin/bash
 # validate-policy-selectors.sh
-# Verifies that policy namespace selectors match existing namespaces
+# Lists policy namespace selectors for manual comparison with namespace labels
 
 echo "=== Policy Selector Validation ==="
 
 # Extract all unique namespace selectors from Calico policies
 kubectl get networkpolicies.crd.projectcalico.org --all-namespaces -o json | python3 -c "
-import sys, json, subprocess
+import sys, json
 
 policies = json.load(sys.stdin)['items']
 selectors = {}
@@ -98,6 +98,8 @@ for sel, policy_list in selectors.items():
     print()
 "
 ```
+
+Compare the reported selectors with `kubectl get namespaces --show-labels`. Calico selectors use Calico selector syntax, so do not pass them directly to `kubectl -l` unless the selector is also valid Kubernetes label-selector syntax.
 
 ## Testing Cross-Namespace Connectivity
 
@@ -170,19 +172,19 @@ SERVER_IP=$(kubectl get pod server -n validate-prod -o jsonpath='{.status.podIP}
 
 # Test from production namespace (should be allowed by production policies)
 echo "Production -> Production:"
-kubectl exec -n validate-prod client-prod -- wget -qO- --timeout=5 "http://$SERVER_IP" >/dev/null 2>&1 && echo "ALLOWED" || echo "DENIED"
+kubectl exec -n validate-prod client-prod -- wget -qO- -T 5 "http://$SERVER_IP" >/dev/null 2>&1 && echo "ALLOWED" || echo "DENIED"
 
 # Test from staging namespace (behavior depends on your policies)
 echo "Staging -> Production:"
-kubectl exec -n validate-staging client-staging -- wget -qO- --timeout=5 "http://$SERVER_IP" >/dev/null 2>&1 && echo "ALLOWED" || echo "DENIED"
+kubectl exec -n validate-staging client-staging -- wget -qO- -T 5 "http://$SERVER_IP" >/dev/null 2>&1 && echo "ALLOWED" || echo "DENIED"
 
 # Cleanup
 kubectl delete namespace validate-prod validate-staging
 ```
 
-## Validating Felix Policy Evaluation
+## Validating Felix Readiness and Policy Metrics
 
-Confirm Felix is correctly processing the updated policies:
+Confirm Felix is ready and reporting active local policies:
 
 ```bash
 # Check Felix configuration and policy sync status
@@ -190,7 +192,7 @@ kubectl exec -n calico-system $(kubectl get pod -n calico-system \
   -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}') -- \
   calico-node -felix-ready
 
-# Verify Felix metrics show policy evaluations
+# If Felix metrics are enabled, verify that they show active local policies
 kubectl exec -n calico-system $(kubectl get pod -n calico-system \
   -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}') -- \
   wget -qO- http://localhost:9091/metrics | grep "felix_active_local_policies"
