@@ -92,15 +92,34 @@ Apply with:
 calicoctl apply -f felix-config.yaml
 ```
 
-Create a Prometheus ServiceMonitor:
+Create a Kubernetes Service and Prometheus ServiceMonitor:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: http-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: calico-felix
   namespace: monitoring
 spec:
+  namespaceSelector:
+    matchNames:
+      - calico-system
   selector:
     matchLabels:
       k8s-app: calico-node
@@ -117,10 +136,11 @@ Monitor these Felix and Typha metrics in Prometheus:
 felix_cluster_num_policies
 felix_cluster_num_profiles
 felix_cluster_num_host_endpoints
-felix_datastore_connection_failures_total
-felix_ipset_errors_total
-typha_connections_accepted_total
-typha_connections_dropped_total
+felix_resync_state
+felix_resyncs_started
+felix_ipset_errors
+typha_connections_accepted
+typha_connections_dropped
 ```
 
 ## Enabling Kubernetes Audit Logging
