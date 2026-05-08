@@ -10,9 +10,9 @@ Description: Practical patterns and real-world examples for using Calico BlockAf
 
 ## Introduction
 
-Knowing how to create a Calico BlockAffinity resource is only the first step. Using it effectively in production requires understanding common patterns, combining it with other Calico resources, and adapting it to real-world scenarios.
+Knowing how to inspect a Calico BlockAffinity resource is only the first step. Using it effectively in production requires understanding common patterns, combining it with other Calico resources, and adapting it to real-world scenarios.
 
-This guide presents practical use cases for the BlockAffinity resource, drawn from common production Kubernetes deployments. Each example includes guidance and an explanation of why the configuration is structured that way.
+This guide presents practical use cases for the BlockAffinity resource, drawn from common production Kubernetes deployments. Each example includes guidance and an explanation of how BlockAffinity relates to the surrounding Calico configuration.
 
 Whether you are running a small cluster or a large multi-tenant environment, these patterns will help you get the most out of the BlockAffinity resource.
 
@@ -20,26 +20,26 @@ Whether you are running a small cluster or a large multi-tenant environment, the
 
 - A running Kubernetes cluster with Calico (v3.26+)
 - `kubectl` and `calicoctl` installed
-- Basic understanding of the BlockAffinity resource fields (see our creation guide)
+- Basic understanding of the BlockAffinity resource fields
 
 ## Pattern 1: Default Configuration for Small Clusters
 
-For clusters with fewer than 50 nodes, a straightforward BlockAffinity configuration works well:
+For clusters with fewer than 50 nodes, the default Calico IPAM behavior usually works well:
 
 ```bash
 # Verify current BlockAffinity resources
 
 calicoctl get blockaffinity -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check allocation blocks associated with a specific node
+calicoctl get blockaffinity -o yaml | grep -A4 "node: <node-name>"
 ```
 
-Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
+Start with the defaults and only change related IPPool settings when you have a measured reason to do so. Premature optimization of Calico resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), you can use IPPool node selectors and labels to control which nodes Calico IPAM assigns addresses from each pool to:
 
 ```bash
 # Label nodes by environment
@@ -50,7 +50,7 @@ kubectl label node worker-2 environment=staging
 kubectl get nodes --show-labels | grep environment
 ```
 
-Then reference these labels in your BlockAffinity manifest's node selectors to apply environment-specific settings.
+Then reference these labels in your IPPool manifests with `spec.nodeSelector`. BlockAffinity resources are created and managed by Calico IPAM as nodes claim allocation blocks from those pools.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,7 +65,7 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Avoid manual changes to BlockAffinity resources; adjust IPPool settings such as `blockSize` and `nodeSelector` instead
 - Use Typha to reduce the number of direct datastore connections
 - Monitor memory usage of calico-node pods when managing many BlockAffinity resources
 
@@ -91,13 +91,13 @@ Set up ongoing monitoring for your BlockAffinity resources:
 
 ```bash
 # Watch for changes to BlockAffinity resources
-kubectl get blockaffinity.projectcalico.org -w
+kubectl get blockaffinities.projectcalico.org -w
 
 # Set up alerts on calico-node restarts
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if Felix health checks are enabled:
 
 ```bash
 # Check if Felix is reporting healthy
@@ -107,7 +107,7 @@ curl -s http://<node-ip>:9099/readiness
 
 ## Verification
 
-After configuring the BlockAffinity resource for your production use case, run a comprehensive check:
+After changing IPPool, BGP, or Felix settings for your production use case, run a comprehensive check:
 
 ```bash
 # Verify Calico system health
@@ -123,17 +123,17 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 ## Troubleshooting
 
 **Resource configuration not taking effect:**
-- Verify the resource is correctly applied: `calicoctl get blockaffinity -o yaml`.
-- Check Felix logs for configuration reload messages.
+- Verify BlockAffinity state: `calicoctl get blockaffinity -o yaml`.
+- Check the relevant IPPool configuration with `calicoctl get ippool -o yaml`.
 - Ensure Typha is relaying updates: `kubectl logs -n calico-system -l k8s-app=calico-typha --tail=20`.
 
 **Performance degradation after configuration change:**
 - Check calico-node CPU and memory: `kubectl top pods -n calico-system`.
-- Review whether reconciliation intervals are too aggressive.
+- Review IPPool block sizes and node selectors for excessive block churn or fragmentation.
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
-- Verify node selectors are matching the intended nodes.
+- Verify IPPool node selectors are matching the intended nodes.
 - Check for node-specific FelixConfiguration overrides.
 
 
@@ -168,8 +168,8 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether the current user can modify Calico IPAM resources
+kubectl auth can-i update blockaffinities.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
