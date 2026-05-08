@@ -21,6 +21,7 @@ This tutorial is intentionally hands-on. Rather than describing what the demo do
 - Kubernetes cluster with Cilium installed
 - `kubectl` configured to access the cluster
 - Cilium CLI installed (`cilium` binary)
+- Access to a Cilium agent pod for `cilium-dbg monitor`
 - `curl` available in test pods (the demo images include it)
 
 ## Step 1: Deploy the Demo Application
@@ -96,11 +97,14 @@ The exhaust port request returns `Access denied` because the L7 policy only perm
 # Check Cilium status
 cilium status
 
-# Monitor network flows in real time
-cilium monitor --type drop
-cilium monitor --type l7
+# Pick a Cilium agent pod
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+
+# Monitor network flows in real time from the agent pod
+kubectl -n kube-system exec -it "$CILIUM_POD" -- cilium-dbg monitor --type drop
+kubectl -n kube-system exec -it "$CILIUM_POD" -- cilium-dbg monitor --type l7
 ```
 
 ## Conclusion
 
-The Cilium Star Wars demo takes you from zero policy to L7-aware enforcement in five concrete steps. Each step builds your intuition for how Cilium policies compose and how eBPF enables the enforcement to happen transparently in the kernel. With this foundation, you are ready to translate these concepts into production policies for your own services.
+The Cilium Star Wars demo takes you from zero policy to L7-aware enforcement in six concrete steps. Each step builds your intuition for how Cilium policies compose and how eBPF enables the enforcement to happen transparently in the kernel. With this foundation, you are ready to translate these concepts into production policies for your own services.
