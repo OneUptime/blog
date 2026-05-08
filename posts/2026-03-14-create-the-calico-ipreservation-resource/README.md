@@ -20,14 +20,14 @@ By the end of this post you will have a working IPReservation resource applied t
 
 - A running Kubernetes cluster (v1.24 or later)
 - Calico installed (v3.26 or later recommended)
-- `kubectl` configured with cluster-admin privileges
+- `kubectl` configured with cluster-admin privileges, with the Calico API server or native `projectcalico.org/v3` CRDs available
 - `calicoctl` installed (optional but recommended for validation)
 
 ## Understanding the IPReservation Resource
 
 The IPReservation resource uses the Calico API group `projectcalico.org/v3`. Before writing the manifest, review the key fields:
 
-- `reservedCIDRs`: A list of CIDRs that Calico IPAM must not allocate to workloads.
+- `reservedCIDRs`: A list of IP addresses and/or CIDRs that Calico IPAM must not allocate to workloads automatically.
 
 ## Creating the IPReservation Manifest
 
@@ -45,11 +45,11 @@ spec:
     - 10.244.1.0/28
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+The `reservedCIDRs` values are examples only. Adjust them to match addresses or ranges in your Calico IP pools before applying.
 
 ## Applying the Resource
 
-Apply the manifest using `kubectl`:
+Apply the manifest using `kubectl` if your cluster exposes the Calico `projectcalico.org/v3` API through the Calico API server or native v3 CRDs:
 
 ```bash
 kubectl apply -f ipreservation.yaml
@@ -63,7 +63,7 @@ Alternatively, use `calicoctl` which provides better validation for Calico resou
 calicoctl apply -f ipreservation.yaml
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+`calicoctl` provides Calico-aware validation and is still required for Calico `node`, `ipam`, `convert`, and `version` subcommands.
 
 ## Verification
 
@@ -71,10 +71,10 @@ Confirm that the resource was created successfully:
 
 ```bash
 # List IPReservation resources
-kubectl get ipreservation.projectcalico.org -o wide
+kubectl get ipreservations.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe ipreservation.projectcalico.org
+kubectl describe ipreservation.projectcalico.org reserved-ips
 
 # Verify with calicoctl
 calicoctl get ipreservation -o yaml
@@ -91,15 +91,15 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `IPReservation`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- If you are using the aggregated Calico API server, check that it is available: `kubectl get tigerastatus apiserver` for operator installs, or `kubectl get pods -n calico-apiserver` for manifest installs. New native v3 CRD installs do not require the aggregated API server.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
-- Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
+- Ensure field values match the types expected by the API, such as valid IPv4 or IPv6 addresses and CIDRs.
 
 **Calico components not picking up the resource:**
-- Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
-- Check Felix and Typha logs for error messages.
+- Remember that IP reservations are checked only during automatic IPAM allocation. If an IP from the reserved range is already in use, Calico will not automatically release it.
+- Check calico-node logs for CNI or IPAM allocation errors.
 
 
 ## Advanced Configuration Options
@@ -108,7 +108,7 @@ Beyond the basic manifest shown above, there are several advanced configuration 
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Labels are useful across Kubernetes and Calico configurations, but `IPReservation` applies cluster-wide and does not target specific nodes. For resources that support node selection, such as IP pools, you can use node labels to control which nodes are affected:
 
 ```bash
 # Label nodes for targeted configuration
@@ -136,7 +136,7 @@ Store your Calico resource manifests alongside your application configurations i
 #       kustomization.yaml
 ```
 
-When using GitOps tools like Flux or Argo CD, ensure your Calico CRDs are applied before the custom resources. Set appropriate sync waves or dependencies to prevent ordering issues.
+When using GitOps tools like Flux or Argo CD, ensure the Calico APIs or CRDs are available before applying the custom resources. Set appropriate sync waves or dependencies to prevent ordering issues.
 
 Resource Naming Conventions
 
