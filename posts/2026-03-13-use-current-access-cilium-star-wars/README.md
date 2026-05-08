@@ -61,18 +61,20 @@ hubble observe --namespace default --to-pod deathstar
 # Observe flows from xwing
 hubble observe --namespace default --from-pod xwing
 
-# View HTTP flows specifically
-hubble observe --namespace default --protocol http
+# View TCP flows specifically
+hubble observe --namespace default --protocol tcp
 ```
 
 ## Using cilium monitor for Low-Level Visibility
 
 ```bash
-# Monitor all packet events (before policy, mostly traces)
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type trace
+# Monitor packet events from one Cilium agent (before policy, mostly traces)
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type trace
 
-# Filter for a specific pod
-kubectl exec -n kube-system ds/cilium -- cilium monitor --related-to xwing
+# Filter for a specific endpoint ID
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
+XWING_ENDPOINT_ID=3184 # replace with the xwing endpoint ID from the previous command
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --related-to "$XWING_ENDPOINT_ID"
 ```
 
 ## Documenting Access Patterns
