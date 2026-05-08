@@ -61,7 +61,7 @@ spec:
   # Must match your existing cluster network CIDR from network.config
   cidr: 10.128.0.0/14
   # VXLAN encapsulation for compatibility with existing infrastructure
-  encapsulation: VXLAN
+  vxlanMode: Always
   # Enable NAT for outbound traffic from pods
   natOutgoing: true
   # Assign to all nodes by default
@@ -109,7 +109,7 @@ metadata:
   name: restrict-external-egress
 spec:
   # Apply to all pods in the target namespace
-  namespaceSelector: kubernetes.io/metadata.name == 'production'
+  namespaceSelector: projectcalico.org/name == 'production'
   # Egress rules only
   types:
     - Egress
@@ -149,7 +149,7 @@ oc get globalnetworkpolicies.projectcalico.org
 
 ## Tuning Calico for Workload-Specific Requirements
 
-Some workloads may need specific Calico configurations. For example, high-throughput applications benefit from eBPF dataplane mode, and multi-tenant clusters need stricter policy enforcement.
+Some workloads may need specific Calico configurations. For example, OpenShift uses Calico eBPF dataplane mode by default, and multi-tenant clusters need stricter policy enforcement.
 
 ```yaml
 # calico-felixconfig.yaml
@@ -159,13 +159,11 @@ kind: FelixConfiguration
 metadata:
   name: default
 spec:
-  # Enable eBPF dataplane for better performance (optional)
-  bpfEnabled: false
   # Set log severity for troubleshooting during migration
   logSeverityScreen: Info
-  # Enable flow logs for network visibility
-  flowLogsFlushInterval: 15s
-  flowLogsFileEnabled: true
+  # Enable Felix metrics for network visibility
+  prometheusMetricsEnabled: true
+  prometheusMetricsPort: 9091
 ```
 
 ## Verification
@@ -179,9 +177,11 @@ oc get pods --all-namespaces -o wide | grep -v Running
 # Check Calico node status on all nodes
 oc get pods -n calico-system -o wide
 
-# Test pod-to-pod connectivity across nodes
-oc run test-client --image=busybox --restart=Never -- sleep 3600
-oc exec test-client -- wget -qO- http://kubernetes.default.svc.cluster.local/healthz
+# Test service-backed pod connectivity
+oc run test-server --image=nginxinc/nginx-unprivileged --restart=Never --port=8080
+oc expose pod/test-server --port=8080 --target-port=8080
+oc run test-client --image=busybox:1.36 --restart=Never -- sleep 3600
+oc exec test-client -- wget -qO- http://test-server.default.svc.cluster.local:8080/
 
 # Verify network policies are enforced
 oc get globalnetworkpolicies.projectcalico.org
