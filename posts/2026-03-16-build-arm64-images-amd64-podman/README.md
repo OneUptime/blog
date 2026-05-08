@@ -40,7 +40,7 @@ ls /proc/sys/fs/binfmt_misc/qemu-*
 cat /proc/sys/fs/binfmt_misc/qemu-aarch64
 
 # Test that QEMU works
-podman run --rm --platform linux/arm64 alpine:3.19 uname -m
+podman run --rm --platform linux/arm64 alpine:3.23 uname -m
 # Expected output: aarch64
 ```
 
@@ -50,7 +50,7 @@ podman run --rm --platform linux/arm64 alpine:3.19 uname -m
 mkdir -p ~/arm64-demo && cd ~/arm64-demo
 
 cat > Containerfile <<'EOF'
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache curl
 RUN echo "Architecture: $(uname -m)" > /arch-info.txt
 CMD ["cat", "/arch-info.txt"]
@@ -77,7 +77,7 @@ QEMU emulation is slower than native builds. Use cross-compilation to minimize e
 ```bash
 cat > Containerfile <<'EOF'
 # Build stage: runs NATIVELY on AMD64 (fast)
-FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 ARG TARGETARCH
 
@@ -91,7 +91,7 @@ RUN GOOS=linux GOARCH=${TARGETARCH} CGO_ENABLED=0 \
     go build -ldflags="-s -w" -o /app
 
 # Runtime stage: ARM64 image (minimal emulation)
-FROM --platform=linux/arm64 alpine:3.19
+FROM --platform=linux/arm64 alpine:3.23
 RUN apk add --no-cache ca-certificates
 COPY --from=builder /app /usr/local/bin/app
 CMD ["app"]
@@ -104,7 +104,7 @@ podman build --platform linux/arm64 -t myapp:arm64 .
 
 ```bash
 cat > Containerfile <<'EOF'
-FROM --platform=$BUILDPLATFORM rust:1.77-alpine AS builder
+FROM --platform=$BUILDPLATFORM rust:1.95-alpine AS builder
 
 RUN apk add --no-cache musl-dev
 RUN rustup target add aarch64-unknown-linux-musl
@@ -116,7 +116,7 @@ COPY src ./src
 # Cross-compile for ARM64
 RUN cargo build --release --target aarch64-unknown-linux-musl
 
-FROM --platform=linux/arm64 alpine:3.19
+FROM --platform=linux/arm64 alpine:3.23
 COPY --from=builder /src/target/aarch64-unknown-linux-musl/release/myapp /usr/local/bin/
 CMD ["myapp"]
 EOF
@@ -126,17 +126,17 @@ podman build --platform linux/arm64 -t myapp:arm64 .
 
 ### Node.js Applications
 
-Node.js cannot cross-compile, so native npm install runs under emulation. Minimize the emulated work.
+Node.js applications with native dependencies usually need target-platform dependency installs, so `npm ci` runs under emulation in this pattern. Minimize the emulated work.
 
 ```bash
 cat > Containerfile <<'EOF'
-FROM --platform=linux/arm64 node:20-alpine
+FROM --platform=linux/arm64 node:24-alpine
 
 WORKDIR /app
 
 # Dependencies first (cached)
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 # Source code
 COPY . .
@@ -154,14 +154,14 @@ Separate native and emulated work for maximum speed.
 ```bash
 cat > Containerfile <<'EOF'
 # Stage 1: Native AMD64 work (fast)
-FROM --platform=$BUILDPLATFORM alpine:3.19 AS fetcher
+FROM --platform=$BUILDPLATFORM alpine:3.23 AS fetcher
 RUN apk add --no-cache curl
 # Download ARM64 binaries on AMD64 (just downloading, no emulation needed)
 RUN curl -Lo /tmp/mytool https://example.com/mytool-linux-arm64 && \
     chmod +x /tmp/mytool
 
 # Stage 2: ARM64 runtime (emulated, but minimal work)
-FROM --platform=linux/arm64 alpine:3.19
+FROM --platform=linux/arm64 alpine:3.23
 COPY --from=fetcher /tmp/mytool /usr/local/bin/mytool
 CMD ["mytool"]
 EOF
@@ -183,7 +183,8 @@ podman run --rm myapp:arm64 uname -m
 # Output: aarch64
 
 # Check that binaries are ARM64
-podman run --rm myapp:arm64 file /usr/local/bin/app
+podman run --rm --entrypoint /bin/sh myapp:arm64 -c \
+  'apk add --no-cache file >/dev/null && file /usr/local/bin/app'
 # Output: ELF 64-bit LSB executable, ARM aarch64
 ```
 
