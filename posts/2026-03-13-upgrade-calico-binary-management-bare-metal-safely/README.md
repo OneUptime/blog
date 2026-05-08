@@ -10,7 +10,7 @@ Description: A guide to safely upgrading Calico binary installations across bare
 
 ## Introduction
 
-Upgrading Calico binary installations managed by Ansible on bare metal is cleaner and safer than unmanaged binary upgrades because Ansible can orchestrate the node-by-node rollout, handle binary replacement idempotently, and roll back automatically if a node fails to come back healthy. The upgrade playbook becomes the single authoritative source of the new version, and Ansible's serial execution model naturally enforces the node-by-node sequence.
+Upgrading Calico binary installations managed by Ansible on bare metal is cleaner and safer than unmanaged binary upgrades because Ansible can orchestrate the node-by-node rollout, handle binary replacement idempotently, and run rollback tasks if a node fails to come back healthy. The upgrade playbook becomes the single authoritative source of the new version, and Ansible's serial execution model naturally enforces the node-by-node sequence.
 
 The key to a safe upgrade is setting Ansible's `serial` parameter to 1 so only one node is upgraded at a time, and including a verification task after each node that checks service health and BGP session state before proceeding.
 
@@ -20,6 +20,7 @@ This guide covers a safe Ansible-managed Calico binary upgrade.
 
 - Calico binary installation managed by Ansible on all bare metal nodes
 - A tested upgrade playbook targeting the new version
+- The target `calico-node` binary extracted from the matching `calico/node` image or Calico release bundle on the Ansible control host
 - Current configuration backed up
 - Maintenance window scheduled
 
@@ -35,10 +36,11 @@ calicoctl get ippool -o yaml > ippool-backup.yaml
 
 Update the `calico_version` variable in your inventory or group vars.
 
-```ini
+```yaml
 # group_vars/all.yml
 
 calico_version: v3.27.0
+calico_binary_source: /srv/calico/{{ calico_version }}/calico-node
 ```
 
 ## Step 3: Write the Upgrade Playbook
@@ -50,38 +52,60 @@ calico_version: v3.27.0
   hosts: workers
   serial: 1  # One node at a time
   become: true
-  vars:
-    calico_base_url: "https://github.com/projectcalico/calico/releases/download/{{ calico_version }}"
   tasks:
     - name: Cordon node
       delegate_to: localhost
       shell: kubectl cordon {{ inventory_hostname }}
 
-    - name: Backup existing calico-node binary
-      copy:
-        src: /usr/local/bin/calico-node
-        dest: /usr/local/bin/calico-node.bak
-        remote_src: true
+    - block:
+        - name: Backup existing calico-node binary
+          copy:
+            src: /usr/local/bin/calico-node
+            dest: /usr/local/bin/calico-node.bak
+            remote_src: true
 
-    - name: Download new calico-node binary
-      get_url:
-        url: "{{ calico_base_url }}/calico-node-amd64"
-        dest: /usr/local/bin/calico-node
-        mode: '0755'
-        force: true
+        - name: Install new calico-node binary
+          copy:
+            src: "{{ calico_binary_source }}"
+            dest: /usr/local/bin/calico-node
+            mode: '0755'
 
-    - name: Restart calico-node service
-      systemd:
-        name: calico-node
-        state: restarted
+        - name: Restart calico-node service
+          systemd:
+            name: calico-node
+            state: restarted
 
-    - name: Wait for calico-node to be active
-      systemd:
-        name: calico-node
-      register: svc_status
-      until: svc_status.status.ActiveState == 'active'
-      retries: 12
-      delay: 5
+        - name: Wait for calico-node to be active
+          command: systemctl is-active calico-node
+          register: svc_status
+          until: svc_status.stdout == 'active'
+          retries: 12
+          delay: 5
+
+        - name: Verify BGP sessions are established
+          shell: |
+            calicoctl node status | awk -F'|' '/node-to-node mesh|global/ {
+              gsub(/^[ \t]+|[ \t]+$/, "", $6)
+              if ($6 != "Established") bad=1
+            } END { exit bad }'
+          changed_when: false
+
+      rescue:
+        - name: Restore previous calico-node binary
+          copy:
+            src: /usr/local/bin/calico-node.bak
+            dest: /usr/local/bin/calico-node
+            remote_src: true
+            mode: '0755'
+
+        - name: Restart calico-node after rollback
+          systemd:
+            name: calico-node
+            state: restarted
+
+        - name: Stop the play after rollback
+          fail:
+            msg: "Calico upgrade failed on {{ inventory_hostname }} and the previous binary was restored."
 
     - name: Uncordon node
       delegate_to: localhost
@@ -111,4 +135,4 @@ kubectl get nodes
 
 ## Conclusion
 
-Ansible-managed Calico binary upgrades on bare metal use serial execution to roll through nodes one at a time, cordoning each before replacement and uncordoning after verification. This automated approach provides the controlled node-by-node sequence of a manual upgrade with the repeatability and rollback capability of configuration management.
+Ansible-managed Calico binary upgrades on bare metal use serial execution to roll through nodes one at a time, cordoning each before replacement and uncordoning after verification. This automated approach provides the controlled node-by-node sequence of a manual upgrade with the repeatability and explicit rollback tasks of configuration management.
