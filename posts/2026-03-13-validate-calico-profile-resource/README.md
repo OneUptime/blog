@@ -10,7 +10,7 @@ Description: How to validate Calico Profile resources to confirm label inheritan
 
 ## Introduction
 
-Validating Calico Profile resources requires confirming three things: the profile specification matches the intended configuration, the profile is assigned to the correct workload endpoints, and the labels applied by the profile are visible on those endpoints (making them matchable by policy selectors). In Kubernetes, profile validation is primarily about verifying that namespace-profile synchronization is correct and that the auto-generated profiles have not been modified unexpectedly.
+Validating Calico Profile resources requires confirming three things: the profile specification matches the intended configuration, the profile is assigned to the correct workload endpoints, and the labels applied by the profile are effective for those endpoints (making them matchable by policy selectors). In Kubernetes, profile validation is primarily about verifying that namespace-profile synchronization is correct and that the auto-generated profiles have not been modified unexpectedly.
 
 ## Prerequisites
 
@@ -56,18 +56,26 @@ for ep in data['items']:
 ## Step 3: Verify Label Inheritance
 
 ```bash
-# Labels from profiles should appear on the workload endpoint
-# Check that a pod in 'production' namespace has namespace labels applied
-calicoctl get workloadendpoint -n production -o json | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for ep in data['items']:
-    name = ep['metadata']['name']
-    labels = ep['metadata'].get('labels', {})
-    # Kubernetes namespace profile should add pcns.projectcalico.org/name
-    ns_label = labels.get('pcns.projectcalico.org/name', 'MISSING')
-    print(f'{name}: namespace label = {ns_label}')
-"
+# Check that endpoints reference the namespace profile that supplies namespace labels
+python3 - <<'PY'
+import json, subprocess
+
+profile = json.loads(subprocess.check_output([
+    "calicoctl", "get", "profile", "kns.production", "-o", "json"
+]))
+labels_to_apply = profile.get("spec", {}).get("labelsToApply", {})
+ns_label = labels_to_apply.get("pcns.projectcalico.org/name", "MISSING")
+print(f"kns.production labelsToApply namespace label = {ns_label}")
+
+endpoints = json.loads(subprocess.check_output([
+    "calicoctl", "get", "workloadendpoint", "-n", "production", "-o", "json"
+]))
+for ep in endpoints["items"]:
+    name = ep["metadata"]["name"]
+    profiles = ep["spec"].get("profiles", [])
+    status = "present" if "kns.production" in profiles else "MISSING"
+    print(f"{name}: kns.production profile = {status}")
+PY
 ```
 
 ```mermaid
@@ -75,7 +83,7 @@ graph TD
     A[Validate Profile] --> B{Profile exists?}
     B -->|No| C[Create or sync profile]
     B -->|Yes| D{Assigned to endpoints?}
-    D -->|No| E[Update WorkloadEndpoint profiles field]
+    D -->|No| E[Check Calico CNI and profile synchronization]
     D -->|Yes| F{Labels inherited?}
     F -->|Labels missing| G[Check labelsToApply in profile spec]
     F -->|Labels present| H{Traffic behavior correct?}
@@ -88,12 +96,15 @@ graph TD
 ```bash
 # Deploy test pods to verify profile-based policy allows expected traffic
 kubectl run sender --image=busybox -n production -l role=test -- sleep 3600
-kubectl run receiver --image=nginx -n production -l role=test
+kubectl run receiver --image=nginx -n production -l role=test --port=80
+kubectl wait --for=condition=Ready pod/sender pod/receiver -n production --timeout=60s
+kubectl expose pod receiver --port=80 --target-port=80 -n production
 
 # Test intra-namespace traffic (should be allowed by default profile)
-kubectl exec -n production sender -- wget -qO- http://receiver.production
+kubectl exec -n production sender -- wget -qO- http://receiver.production.svc.cluster.local
 
 # Cleanup
+kubectl delete service receiver -n production
 kubectl delete pod sender receiver -n production
 ```
 
