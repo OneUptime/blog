@@ -10,7 +10,7 @@ Description: Set up alerting and observability to detect Data Store Initializati
 
 ## Introduction
 
-Calico data store initialization errors occur when calico-node or kube-controllers cannot connect to or initialize the Calico datastore. This prevents Calico from starting and blocks all pod networking.
+Calico data store initialization errors occur when calico-node or kube-controllers cannot connect to or initialize the Calico datastore. When calico-node or the CNI plugin cannot access the datastore, Calico may fail to start on affected nodes and pod networking can be disrupted.
 
 Detecting Data Store Initialization errors before they impact users requires proper monitoring and alerting. This guide shows you how to set up observability for the Calico components relevant to this error class.
 
@@ -25,7 +25,7 @@ Early detection dramatically reduces mean time to resolution (MTTR). A well-conf
 
 ## Step 1: Enable Calico Prometheus Metrics
 
-Ensure Felix and Typha are exposing metrics:
+Ensure Felix is exposing metrics, and enable Typha metrics if your cluster uses Typha:
 
 ```bash
 # Verify Felix metrics are enabled
@@ -34,13 +34,32 @@ calicoctl get felixconfiguration default -o yaml | grep -i prometheus
 
 # If not enabled, apply:
 calicoctl patch felixconfiguration default -p '{"spec": {"prometheusMetricsEnabled": true, "prometheusMetricsPort": 9091}}'
+
+# For operator installs that use Typha:
+kubectl patch installation default --type=merge -p '{"spec": {"typhaMetricsPort": 9093}}'
 ```
 
 ## Step 2: Create ServiceMonitor Resources
 
-Configure Prometheus to scrape Calico metrics:
+Configure Prometheus to scrape Calico metrics. ServiceMonitor resources select Kubernetes Services, so expose the Felix metrics port with a Service first:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: http-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -79,7 +98,7 @@ spec:
     - name: calico.rules
       rules:
         - alert: CalicoNodeNotReady
-          expr: up{job="calico-node"} == 0
+          expr: up{service="felix-metrics-svc"} == 0
           for: 5m
           labels:
             severity: critical
@@ -100,11 +119,11 @@ kubectl apply -f calico-alerts.yaml
 
 ## Step 4: Key Metrics to Monitor
 
-Set up dashboards for these Felix metrics:
+Set up dashboards for these Felix and kube-controllers metrics:
 
 - `felix_int_dataplane_failures`: Dataplane programming failures
-- `felix_iptables_save_errors_total`: Errors saving iptables rules
-- `felix_ipam_blocks_per_node`: IPAM block count per node
+- `felix_iptables_save_errors`: Errors saving iptables rules
+- `ipam_blocks`: IPAM block count by IP pool and node
 - `felix_cluster_num_hosts`: Number of hosts in the cluster
 
 ## Step 5: Log-Based Monitoring
@@ -153,7 +172,7 @@ Track Felix dataplane programming latency, iptables rule count, and policy calcu
 ```bash
 # Key Felix metrics to query in Prometheus
 # felix_int_dataplane_apply_time_seconds - Time to apply dataplane updates
-# felix_iptables_lines - Total iptables rules managed by Felix
+# felix_iptables_rules - Total active iptables rules managed by Felix
 # felix_active_local_endpoints - Number of local workload endpoints
 # felix_cluster_num_hosts - Total hosts in the cluster
 ```
