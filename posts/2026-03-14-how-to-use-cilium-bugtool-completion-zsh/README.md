@@ -46,7 +46,7 @@ mkdir -p ~/.zsh/completions
 cp /tmp/_cilium-bugtool ~/.zsh/completions/_cilium-bugtool
 
 # Add to fpath in .zshrc (before compinit)
-# fpath=(~/.zsh/completions \$fpath)
+# fpath=(~/.zsh/completions $fpath)
 ```
 
 ### Activate Completions
@@ -76,11 +76,11 @@ cilium-bugtool completion <TAB>
 ### Generating from a Pod
 
 ```bash
-CILIUM_POD=\$(kubectl -n kube-system get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
 
-kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --   cilium-bugtool completion zsh > ~/.zsh/completions/_cilium-bugtool
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-bugtool completion zsh > ~/.zsh/completions/_cilium-bugtool
 
-rm -f ~/.zcompdump* && compinit
+rm -f ~/.zcompdump* && autoload -Uz compinit && compinit
 ```
 
 
@@ -91,7 +91,7 @@ rm -f ~/.zcompdump* && compinit
 ```bash
 # Verify installation
 whence -v _cilium-bugtool
-echo \$_comps[cilium-bugtool]
+echo $_comps[cilium-bugtool]
 
 # Test completion
 cilium-bugtool <TAB>
@@ -107,6 +107,5 @@ cilium-bugtool <TAB>
 ## Conclusion
 
 Zsh completions for cilium-bugtool provide rich, descriptive tab completion that makes navigating the diagnostic tool efficient and intuitive. Proper installation into fpath with compinit ensures reliable operation.
-
 
 
