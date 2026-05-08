@@ -10,9 +10,9 @@ Description: Learn how to verify that Calico pod networking is working correctly
 
 ## Introduction
 
-Verifying Calico pod networking on K3s is important because K3s's lightweight architecture introduces specific behaviors that differ from standard Kubernetes. K3s uses its own container runtime (containerd) and a simplified control plane, which means CNI initialization and pod networking follow slightly different code paths than full Kubernetes distributions.
+Verifying Calico pod networking on K3s is important because K3s's lightweight architecture introduces specific behaviors that differ from standard Kubernetes. K3s packages containerd by default and uses a simplified control plane, which means CNI initialization and pod networking follow slightly different code paths than full Kubernetes distributions.
 
-The verification process on K3s covers Calico component health, pod IP assignment from the correct CIDR, inter-pod connectivity, service DNS resolution, and external egress. On multi-node K3s clusters, cross-node pod communication is particularly important to verify since it requires Calico's IPIP or VXLAN encapsulation to work correctly with K3s's network configuration.
+The verification process on K3s covers Calico component health, pod IP assignment from the correct CIDR, inter-pod connectivity, service DNS resolution, and external egress. On multi-node K3s clusters, cross-node pod communication is particularly important to verify because it depends on the Calico networking mode you configured, such as BGP routing, IPIP, or VXLAN encapsulation.
 
 This guide provides a step-by-step verification process tailored for K3s with Calico.
 
@@ -29,7 +29,7 @@ kubectl get nodes -o wide
 kubectl describe node $(kubectl get nodes -o name | head -1)
 ```
 
-All nodes should be `Ready` and the `Container Runtime` should be `containerd`.
+All nodes should be `Ready` and the `Container Runtime` should match the configured runtime, which is `containerd` for a default K3s installation.
 
 ## Step 2: Verify Calico Pods
 
@@ -44,7 +44,8 @@ kubectl logs -n kube-system -l k8s-app=calico-node -c calico-node --tail=20
 calicoctl node status
 ```
 
-Verify that Felix is running and, for multi-node K3s, that BGP sessions are established.
+Verify that the Calico process is running and, for multi-node K3s clusters with BGP enabled, that BGP sessions are established.
+Run this command on the node whose Calico status you want to inspect. If the cluster uses VXLAN-only networking, BGP sessions are not expected.
 
 ## Step 4: Check IPAM Allocation
 
@@ -86,11 +87,11 @@ kubectl exec verify-a -- ping -c 4 1.1.1.1
 
 ## Step 9: Verify K3s-Specific CNI Path
 
-Confirm Calico CNI config is present in K3s's CNI directory:
+Confirm Calico CNI config is present in the host CNI directory used by K3s:
 
 ```bash
-ls /var/lib/rancher/k3s/agent/etc/cni/net.d/
-cat /var/lib/rancher/k3s/agent/etc/cni/net.d/10-calico.conflist
+ls /etc/cni/net.d/
+cat /etc/cni/net.d/10-calico.conflist
 ```
 
 ## Conclusion
