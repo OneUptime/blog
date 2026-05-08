@@ -69,16 +69,16 @@ apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
   name: combined-l7-policy
-  namespace: production
+  namespace: cilium-validate
 spec:
   endpointSelector:
     matchLabels:
-      app: api-gateway
+      app: client
   egress:
     - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -104,7 +104,8 @@ spec:
 
 ```bash
 # Validate all endpoints have policies applied
-cilium endpoint list -o json | jq '.[] | {id: .id, policy: .status.policy}'
+kubectl -n cilium-validate get ciliumendpoints -o json | \
+  jq '.items[] | {name: .metadata.name, policy: .status.status.policy}'
 ```
 
 ### Running Connectivity Tests
@@ -122,13 +123,11 @@ hubble observe --namespace cilium-validate --output compact --last 50
 
 # Verify allowed traffic succeeds
 kubectl -n cilium-validate exec client -- \
-  wget --timeout=5 -q -O - http://server
+  wget --timeout=5 -q -O - http://api.backend.local:8080/api/v1/status
 
 # Verify unauthorized traffic is blocked
-kubectl -n cilium-validate run unauthorized \
-  --image=busybox:1.36 --rm -it --restart=Never \
-  --labels="app=unauthorized" -- \
-  wget --timeout=3 -q -O - http://server
+kubectl -n cilium-validate exec client -- \
+  wget --timeout=3 -q -O - http://api.backend.local:8080/admin
 
 # Check Hubble for the expected drop
 hubble observe --namespace cilium-validate --verdict DROPPED --last 10
@@ -159,17 +158,17 @@ fi
 
 # Test 2: All endpoints ready
 echo -n "Test 2: All endpoints ready... "
-NOT_READY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.state != "ready")] | length')
-if [ "$NOT_READY" -eq 0 ]; then
+if kubectl -n "$NAMESPACE" wait --for=condition=Ready pod \
+  --selector='app in (client,server)' --timeout=30s > /dev/null 2>&1; then
   echo "PASS"; ((PASS++))
 else
-  echo "FAIL ($NOT_READY not ready)"; ((FAIL++))
+  echo "FAIL (one or more validation pods not ready)"; ((FAIL++))
 fi
 
 # Test 3: Policies applied
 echo -n "Test 3: Policies applied... "
-POLICY_COUNT=$(cilium policy get -o json | jq '. | length')
+POLICY_COUNT=$(kubectl -n "$NAMESPACE" get ciliumnetworkpolicies -o json | \
+  jq '.items | length')
 if [ "$POLICY_COUNT" -gt 0 ]; then
   echo "PASS ($POLICY_COUNT policies)"; ((PASS++))
 else
@@ -190,7 +189,7 @@ cilium status
 
 ```bash
 # Confirm all endpoints are healthy
-cilium endpoint health
+cilium-health status
 ```
 
 ```bash
