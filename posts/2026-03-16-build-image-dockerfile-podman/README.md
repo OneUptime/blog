@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Container Image, Build, Dockerfile
 
-Description: Learn how to build container images from Dockerfiles using Podman, with full compatibility for existing Docker-based workflows.
+Description: Learn how to build container images from Dockerfiles using Podman, with broad compatibility for existing Docker-based workflows.
 
 ---
 
-> Podman builds images from Dockerfiles with full compatibility, making migration from Docker seamless.
+> Podman builds images from Dockerfiles with broad compatibility, making migration from Docker straightforward.
 
-Podman fully supports the Dockerfile format, so you can use your existing Dockerfiles without modification. This makes Podman a drop-in replacement for Docker when building images. This guide covers building images from Dockerfiles with Podman, including compatibility details and practical examples.
+Podman supports the Dockerfile format, so most existing Dockerfiles can be used without modification. This makes Podman a practical replacement for Docker when building many images. This guide covers building images from Dockerfiles with Podman, including compatibility details and practical examples.
 
 ---
 
@@ -24,7 +24,7 @@ Podman recognizes both `Dockerfile` and `Containerfile`. When both exist in the 
 # 1. Containerfile
 # 2. Dockerfile
 
-# Check which file Podman will use
+# Check which files are present
 ls -la Containerfile Dockerfile 2>/dev/null
 ```
 
@@ -42,7 +42,7 @@ FROM docker.io/library/node:20-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --production
+RUN npm install --omit=dev
 
 COPY . .
 
@@ -91,10 +91,10 @@ podman build -f /path/to/Dockerfile -t myapp:latest .
 
 ## Docker CLI Compatibility
 
-Podman supports the same build flags as Docker, making migration straightforward.
+Podman supports many common Docker build flags, making migration straightforward.
 
 ```bash
-# These commands work identically in both Docker and Podman:
+# These common commands work in both Docker and Podman:
 
 # Build with a tag
 podman build -t myimage:latest .
@@ -108,19 +108,19 @@ podman build --build-arg NODE_ENV=production -t myapp:latest .
 # Build with no cache
 podman build --no-cache -t myapp:latest .
 
-# Build and show output
-podman build --progress=plain -t myapp:latest .
+# Build quietly
+podman build --quiet -t myapp:latest .
 ```
 
 ## Docker-Specific Instructions
 
-Podman supports all Docker-specific Dockerfile instructions.
+Podman supports standard Dockerfile instructions, including the following examples.
 
 ```bash
 cat > Dockerfile << 'EOF'
 FROM docker.io/library/python:3.12-slim
 
-# SHELL instruction (Docker-specific)
+# SHELL instruction
 SHELL ["/bin/bash", "-c"]
 
 # STOPSIGNAL instruction
@@ -193,8 +193,8 @@ podman build --secret id=mysecret,src=secret.txt -t myapp:latest .
 # Docker BuildKit SSH forwarding
 podman build --ssh default -t myapp:latest .
 
-# BuildKit inline cache (format flag may be needed)
-podman build --format docker -t myapp:latest .
+# Remote cache import/export (requires layers)
+podman build --layers --cache-to registry.example.com/myapp/cache --cache-from registry.example.com/myapp/cache -t myapp:latest .
 ```
 
 ## Building a Multi-Service Application
@@ -234,7 +234,7 @@ podman logs test
 # Test the application
 curl http://localhost:3000
 
-# Check container health
+# Check container status
 podman inspect test --format '{{.State.Status}}'
 
 # Clean up
@@ -243,4 +243,4 @@ podman stop test && podman rm test
 
 ## Summary
 
-Podman provides full Dockerfile compatibility, making it a seamless replacement for Docker when building images. All standard Dockerfile instructions, build arguments, and build flags work identically. For teams migrating from Docker, the transition requires no changes to existing Dockerfiles. Simply replace `docker build` with `podman build` and your existing workflows continue to work.
+Podman provides broad Dockerfile compatibility, making it a practical replacement for Docker when building many images. Standard Dockerfile instructions and common build arguments work as expected, while some Docker-specific build features have Podman-specific behavior. For teams migrating from Docker, many existing Dockerfiles can be built by replacing `docker build` with `podman build`.
