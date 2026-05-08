@@ -26,12 +26,43 @@ This guide walks through setting up event-based monitoring, Prometheus alerting 
 
 ## Capturing Kubernetes Events with Event Exporter
 
-Kubernetes events are the primary source for FailedCreatePodSandBox errors. Deploy the Kubernetes Event Exporter to surface these as metrics.
+Kubernetes events are the primary source for FailedCreatePodSandBox errors. Deploy the Kubernetes Event Exporter to route these events to logs and expose exporter health metrics.
 
 ```yaml
 # event-exporter-deployment.yaml
 
 # Deploys the event exporter to capture and forward Kubernetes events
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: event-exporter
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: event-exporter
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: event-exporter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: event-exporter
+subjects:
+  - kind: ServiceAccount
+    name: event-exporter
+    namespace: monitoring
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -52,7 +83,7 @@ spec:
         - name: event-exporter
           image: bitnami/kube-event-exporter:1.7.0
           args:
-            - --config=/config/config.yaml
+            - -conf=/config/config.yaml
           volumeMounts:
             - name: config
               mountPath: /config
@@ -75,6 +106,7 @@ metadata:
 data:
   config.yaml: |
     logLevel: info
+    omitLookup: true
     route:
       routes:
         - match:
@@ -82,8 +114,7 @@ data:
               reason: "FailedCreatePodSandBox"
     receivers:
       - name: "dump"
-        stdout:
-          layout: {}
+        stdout: {}
 ```
 
 You can also watch events directly from the command line for immediate debugging:
@@ -112,16 +143,18 @@ spec:
   groups:
     - name: calico.podsandbox
       rules:
-        # Fires when pods are stuck with sandbox creation errors
+        # Fires when pods stay in ContainerCreating, a common symptom of sandbox creation failures
         - alert: PodSandboxCreationFailing
           expr: |
-            increase(kube_pod_container_status_waiting_reason{reason="CreateContainerError"}[10m]) > 0
-          for: 5m
+            sum by (namespace, pod) (
+              kube_pod_container_status_waiting_reason{reason="ContainerCreating"}
+            ) > 0
+          for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Pod sandbox creation failing on {{ $labels.node }}"
-            description: "Pods are failing to create sandboxes, check Calico CNI status on the node."
+            summary: "Pod stuck creating containers: {{ $labels.namespace }}/{{ $labels.pod }}"
+            description: "The pod has been in ContainerCreating for more than 10 minutes. Check its events for FailedCreatePodSandBox and verify Calico CNI status on the node."
         # Fires when calico-node DaemonSet has unavailable pods
         - alert: CalicoNodeUnavailable
           expr: |
@@ -151,9 +184,9 @@ curl -s http://localhost:9090/api/v1/rules \
 Create a dashboard that correlates pod sandbox failures with Calico component status:
 
 ```bash
-# Query to count pods currently in a waiting state due to container errors
+# Query to count containers currently waiting in ContainerCreating
 # Use this in a Grafana Stat panel
-kube_pod_container_status_waiting_reason{reason="CreateContainerError"}
+sum(kube_pod_container_status_waiting_reason{reason="ContainerCreating"})
 
 # Query to track calico-node DaemonSet readiness as a percentage
 # Use this in a Grafana Gauge panel
@@ -216,7 +249,7 @@ kubectl delete pod sandbox-monitor-test
 
 ## Troubleshooting
 
-- **Events not appearing in exporter logs**: Ensure the event-exporter ServiceAccount has an RBAC ClusterRole with `get`, `list`, and `watch` permissions on the `events` resource in the core API group.
+- **Events not appearing in exporter logs**: Ensure the event-exporter ServiceAccount has an RBAC ClusterRole with `get`, `list`, and `watch` permissions on the `events` resources in both the core API group and `events.k8s.io`.
 - **Prometheus rules not loading**: Verify the PrometheusRule labels match the `ruleSelector` in your Prometheus custom resource. Run `kubectl get prometheus -n monitoring -o yaml | grep -A5 ruleSelector`.
 - **Grafana panels show No Data**: Confirm kube-state-metrics is running and that the Grafana data source URL matches the Prometheus service endpoint. Test queries directly in the Prometheus expression browser.
 - **Alerts firing but no notifications**: Check Alertmanager configuration for correct receiver routes and verify the Alertmanager pods are healthy with `kubectl get pods -n monitoring -l app.kubernetes.io/name=alertmanager`.
