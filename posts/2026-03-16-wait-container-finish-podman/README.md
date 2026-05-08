@@ -23,8 +23,8 @@ podman run -d --name my-task docker.io/library/alpine:latest \
   sh -c 'echo "Working..."; sleep 5; echo "Done"'
 
 # Wait for it to finish
-podman wait my-task
-echo "Container finished with exit code: $?"
+EXIT_CODE=$(podman wait my-task)
+echo "Container finished with exit code: $EXIT_CODE"
 ```
 
 ## Capturing the Exit Code
@@ -52,7 +52,7 @@ podman rm success-task fail-task
 
 ## Waiting for Multiple Containers
 
-Wait for several containers to finish simultaneously.
+Wait for several containers with one command. Podman waits on the listed containers consecutively and prints one exit code per line in the same order.
 
 ```bash
 # Start multiple background tasks
@@ -88,12 +88,19 @@ wait
 ```
 
 Available conditions include:
+- `configured` - Wait until the container is configured
+- `created` - Wait until the container is created
 - `stopped` - Wait until the container has stopped (default)
 - `removing` - Wait until the container is being removed
 - `exited` - Wait until the container has exited
+- `initialized` - Wait until the container is initialized
+- `paused` - Wait until the container is paused
 - `running` - Wait until the container is running
+- `stopping` - Wait until the container is stopping
 - `healthy` - Wait until the container is healthy
 - `unhealthy` - Wait until the container is unhealthy
+
+For conditions other than `stopped` and `exited`, `podman wait` prints `-1` instead of the container process exit code.
 
 ## Using Wait in CI/CD Pipelines
 
