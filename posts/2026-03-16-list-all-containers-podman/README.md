@@ -17,7 +17,7 @@ By default, `podman ps` only shows running containers. To see every container on
 ## Listing All Containers
 
 ```bash
-# List ALL containers (running, stopped, created, paused)
+# List ALL containers (running, exited, created, initialized, paused)
 
 podman ps --all
 
@@ -40,6 +40,9 @@ podman ps -a --filter status=exited --format "{{.Names}}"
 echo "=== Created ==="
 podman ps -a --filter status=created --format "{{.Names}}"
 
+echo "=== Initialized ==="
+podman ps -a --filter status=initialized --format "{{.Names}}"
+
 echo "=== Paused ==="
 podman ps -a --filter status=paused --format "{{.Names}}"
 ```
@@ -57,6 +60,7 @@ podman ps -a -q | wc -l
 echo "Running: $(podman ps --filter status=running -q | wc -l)"
 echo "Exited: $(podman ps -a --filter status=exited -q | wc -l)"
 echo "Created: $(podman ps -a --filter status=created -q | wc -l)"
+echo "Initialized: $(podman ps -a --filter status=initialized -q | wc -l)"
 ```
 
 ## Custom Format for All Containers
@@ -132,6 +136,7 @@ TOTAL=$(podman ps -a -q | wc -l)
 RUNNING=$(podman ps -q | wc -l)
 STOPPED=$(podman ps -a --filter status=exited -q | wc -l)
 CREATED=$(podman ps -a --filter status=created -q | wc -l)
+INITIALIZED=$(podman ps -a --filter status=initialized -q | wc -l)
 PAUSED=$(podman ps -a --filter status=paused -q | wc -l)
 
 echo ""
@@ -140,6 +145,7 @@ echo "  Total:   $TOTAL"
 echo "  Running: $RUNNING"
 echo "  Stopped: $STOPPED"
 echo "  Created: $CREATED"
+echo "  Initialized: $INITIALIZED"
 echo "  Paused:  $PAUSED"
 echo ""
 
