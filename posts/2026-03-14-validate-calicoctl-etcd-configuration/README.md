@@ -104,9 +104,12 @@ done
 
 echo ""
 echo "=== Key-Certificate Match ==="
-cert_modulus=$(openssl x509 -in "$CERT_FILE" -noout -modulus | md5sum)
-key_modulus=$(openssl rsa -in "$KEY_FILE" -noout -modulus 2>/dev/null | md5sum)
-if [ "$cert_modulus" = "$key_modulus" ]; then
+cert_pubkey_hash=$(openssl x509 -in "$CERT_FILE" -pubkey -noout \
+    | openssl pkey -pubin -outform DER 2>/dev/null \
+    | openssl dgst -sha256)
+key_pubkey_hash=$(openssl pkey -in "$KEY_FILE" -pubout -outform DER 2>/dev/null \
+    | openssl dgst -sha256)
+if [ "$cert_pubkey_hash" = "$key_pubkey_hash" ]; then
     echo "OK: Private key matches certificate"
 else
     echo "FAIL: Private key does NOT match certificate"
@@ -124,7 +127,7 @@ Validate the calicoctl configuration file syntax and parameters:
 
 set -euo pipefail
 
-CONFIG_FILE="${1:-/etc/calicoctl/calicoctl.cfg}"
+CONFIG_FILE="${1:-/etc/calico/calicoctl.cfg}"
 
 echo "=== Configuration File Validation ==="
 
@@ -142,7 +145,14 @@ else
 fi
 
 # Validate YAML syntax
-if python3 -c "import yaml; yaml.safe_load(open('$CONFIG_FILE'))" 2>/dev/null; then
+if python3 - "$CONFIG_FILE" <<'PY' 2>/dev/null
+import sys
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    yaml.safe_load(f)
+PY
+then
     echo "OK: YAML syntax is valid"
 else
     echo "FAIL: YAML syntax is invalid"
@@ -260,7 +270,7 @@ check "calicoctl can read cluster info" "calicoctl get clusterinformation defaul
 check "calicoctl can list IP pools" "calicoctl get ippools"
 check "calicoctl can list policies" "calicoctl get globalnetworkpolicies"
 check "calicoctl can list Felix config" "calicoctl get felixconfiguration default"
-check "calicoctl version matches cluster" "calicoctl version"
+check "calicoctl can read client and cluster version" "calicoctl version"
 
 echo ""
 echo "=== Validation Summary ==="
