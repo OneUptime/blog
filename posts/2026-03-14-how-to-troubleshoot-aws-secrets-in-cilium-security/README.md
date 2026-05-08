@@ -10,7 +10,7 @@ Description: How to diagnose and resolve AWS credential issues in Cilium includi
 
 ## Introduction
 
-AWS credential issues in Cilium prevent the agent and operator from managing ENIs and allocating IP addresses. When credentials fail, new pods cannot get IPs and existing pods may lose connectivity during scale events.
+AWS credential issues in Cilium prevent the operator from managing ENIs and allocating IP addresses. When credentials fail, new pods cannot get IPs and existing pods may lose connectivity during scale events.
 
 Common issues include IRSA misconfiguration, expired static credentials, insufficient IAM permissions, and secret mounting failures.
 
@@ -29,15 +29,16 @@ kubectl logs -n kube-system -l k8s-app=cilium | \
   grep -iE "auth|credential|forbidden|unauthorized" | tail -20
 
 # Check operator logs
-kubectl logs -n kube-system -l name=cilium-operator | \
+kubectl logs -n kube-system deploy/cilium-operator | \
   grep -iE "auth|credential|forbidden" | tail -20
 
-# Verify IRSA token is mounted
-kubectl exec -n kube-system -l k8s-app=cilium -- \
+# Verify IRSA token is mounted in an operator pod
+CILIUM_OPERATOR_POD=$(kubectl get pod -n kube-system -l io.cilium/app=operator -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n kube-system "$CILIUM_OPERATOR_POD" -- \
   ls -la /var/run/secrets/eks.amazonaws.com/serviceaccount/
 
-# Test AWS API access from Cilium pod
-kubectl exec -n kube-system -l k8s-app=cilium -- \
+# Test AWS API access from the operator pod, if the AWS CLI is available in the image
+kubectl exec -n kube-system "$CILIUM_OPERATOR_POD" -- \
   aws sts get-caller-identity
 ```
 
@@ -57,7 +58,7 @@ graph TD
 
 ```bash
 # Verify service account annotation
-kubectl get sa cilium -n kube-system -o yaml | grep eks.amazonaws.com
+kubectl get sa cilium-operator -n kube-system -o yaml | grep eks.amazonaws.com
 
 # Check OIDC provider
 aws eks describe-cluster --name my-cluster --query "cluster.identity.oidc.issuer"
@@ -67,7 +68,7 @@ aws iam get-role --role-name cilium-role --query "Role.AssumeRolePolicyDocument"
 
 # Re-create service account binding
 eksctl create iamserviceaccount \
-  --name cilium \
+  --name cilium-operator \
   --namespace kube-system \
   --cluster my-cluster \
   --attach-policy-arn arn:aws:iam::123456789012:policy/CiliumPolicy \
@@ -93,7 +94,8 @@ aws iam put-role-policy \
 ## Verification
 
 ```bash
-kubectl exec -n kube-system -l k8s-app=cilium -- aws sts get-caller-identity
+CILIUM_OPERATOR_POD=$(kubectl get pod -n kube-system -l io.cilium/app=operator -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n kube-system "$CILIUM_OPERATOR_POD" -- aws sts get-caller-identity
 cilium status | grep IPAM
 kubectl run test-pod --image=nginx:1.27 --restart=Never
 kubectl get pod test-pod -o wide
