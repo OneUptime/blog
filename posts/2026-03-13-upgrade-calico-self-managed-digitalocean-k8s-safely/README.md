@@ -12,7 +12,7 @@ Description: A safe, step-by-step process for upgrading Calico to a newer versio
 
 Upgrading Calico on a production cluster requires care. The CNI plugin is in the critical path for all pod networking - an upgrade that goes wrong can take down inter-pod communication across entire nodes. On self-managed clusters running on DigitalOcean Droplets, you have full control over the upgrade process, which allows you to move methodically and roll back if necessary.
 
-Calico's upgrade path depends on whether you installed with the Tigera Operator or directly with manifests. Both paths are covered here. In either case, the goal is to upgrade the control plane components first, verify stability, then let the DaemonSet roll out across nodes with zero downtime.
+Calico's upgrade path depends on whether you installed with the Tigera Operator or directly with manifests. Both paths are covered here. In either case, the goal is to apply the matching CRDs and upgrade manifests carefully, then verify that Calico rolls out across nodes without interrupting pod networking.
 
 This guide covers a safe upgrade procedure with checkpoints at each stage.
 
@@ -49,15 +49,16 @@ kubectl get ds calico-node -n kube-system -o jsonpath='{.spec.template.spec.cont
 
 ## Step 3: Upgrade with the Tigera Operator
 
-If you installed via the operator, update the operator first, then update the Installation CR.
+If you installed via the operator, update the operator CRDs and operator manifest for the target version. The operator manages the Calico component rollout from there.
 
 ```bash
-# Upgrade the operator
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+# Download the target version's operator CRDs and operator manifest
+curl -L https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/operator-crds.yaml -O
+curl -L https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml -O
 
-# Patch the Installation CR with the new version
-kubectl patch installation default --type merge \
-  --patch '{"spec":{"variant":"Calico","calicoNetwork":{"ipPools":[{"cidr":"192.168.0.0/16","encapsulation":"VXLANCrossSubnet"}]}}}'
+# Initiate the operator upgrade
+kubectl apply --server-side --force-conflicts -f operator-crds.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 ```
 
 ## Step 4: Upgrade with Manifests
@@ -65,7 +66,8 @@ kubectl patch installation default --type merge \
 If you installed directly with manifests, apply the new manifest.
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+curl -L https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml -o upgrade.yaml
+kubectl apply --server-side --force-conflicts -f upgrade.yaml
 ```
 
 Monitor the rollout across nodes.
@@ -76,16 +78,18 @@ kubectl rollout status daemonset/calico-node -n kube-system
 
 ## Step 5: Verify Post-Upgrade Health
 
+Run the node status check directly on a cluster node.
+
 ```bash
 kubectl get pods -n kube-system -l k8s-app=calico-node
 kubectl get nodes
-calicoctl node status
+sudo calicoctl node status
 ```
 
 Test pod-to-pod connectivity across nodes to confirm the data plane is intact.
 
 ```bash
-kubectl run ping-test --image=busybox --rm -it -- ping -c3 <pod-ip-on-another-node>
+kubectl run ping-test --image=busybox --restart=Never --rm -it -- ping -c3 <pod-ip-on-another-node>
 ```
 
 ## Step 6: Update calicoctl
