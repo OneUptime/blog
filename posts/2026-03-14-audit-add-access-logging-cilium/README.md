@@ -48,13 +48,21 @@ Create a completeness matrix:
 ```go
 // AUDIT FINDING: FAIL - denied requests not logged
 if !p.matchesPolicy(command) {
-    return proxylib.DROP, 0  // No log entry for denied request
+    return proxylib.DROP, requestLen  // No log entry for denied request
 }
 
 // REQUIRED FIX:
 if !p.matchesPolicy(command) {
-    p.logAccess(reply, command, requestID, accesslog.VerdictDenied)
-    return proxylib.DROP, 0
+    p.connection.Log(cilium.EntryType_Denied, &cilium.LogEntry_GenericL7{
+        GenericL7: &cilium.L7LogEntry{
+            Proto: "myprotocol",
+            Fields: map[string]string{
+                "command":    command,
+                "request_id": fmt.Sprint(requestID),
+            },
+        },
+    })
+    return proxylib.DROP, requestLen
 }
 ```
 
@@ -64,10 +72,10 @@ Review all data that flows into log entries:
 
 ```bash
 # Find all fields added to log entries
-grep -A 30 "LogRecord{" proxylib/myprotocol/*.go | grep -v test
+grep -A 30 "L7LogEntry{" proxylib/myprotocol/*.go | grep -v test
 
 # Find all L7 field assignments
-grep "L7\[" proxylib/myprotocol/*.go | grep -v test
+grep -n "Fields: map\\[string\\]string\\|\\\".*\\\":" proxylib/myprotocol/*.go | grep -v test
 
 # Check for sanitization calls
 grep "sanitize\|redact\|filter" proxylib/myprotocol/*.go | grep -v test
@@ -103,7 +111,7 @@ Assess logging overhead:
 # Benchmark with and without logging
 go test ./proxylib/myprotocol/... -bench=BenchmarkOnData -benchmem
 
-# Check for synchronous I/O in the logging path
+# Check for parser-owned synchronous I/O in the logging path
 grep -n "os\.\|file\.\|Write\|Flush" proxylib/myprotocol/*.go | grep -v test | grep -v "import"
 ```
 
@@ -111,28 +119,28 @@ Performance audit checks:
 
 | Check | Requirement | Verdict |
 |-------|-------------|---------|
-| No synchronous file I/O in hot path | Logging must not block parsing | |
+| No parser-owned synchronous file I/O in hot path | Parser code should use the proxylib access log path | |
 | Log entry allocation bounded | No unbounded string concatenation | |
-| Buffered/async delivery | Log calls return immediately | |
-| Graceful degradation under pressure | Drops logs rather than blocking | |
+| Delivery behavior understood | Document whether the proxylib access log path can block or return errors | |
+| Graceful degradation under pressure | Document socket write failure and reconnect behavior | |
 
 ## Audit Phase 4: Log Integrity
 
 Check that logs cannot be tampered with or silently lost:
 
 ```bash
-# Check for error handling on log writes
-grep -A 3 "accesslog\.Log\|\.Log(" proxylib/myprotocol/*.go | grep "err\|error" | grep -v test
+# Check for access log calls in parser code
+grep -A 10 "\.Log(" proxylib/myprotocol/*.go | grep -v test
 ```
 
 Integrity checks:
 
 ```go
 // AUDIT: Are log delivery errors handled?
-accesslog.Log(entry)  // Is the return value checked?
+p.connection.Log(entryType, l7Entry)  // proxylib does not return an error to parser code
 
 // AUDIT: Can log buffer overflow cause silent data loss?
-// Check the buffer size and overflow handling
+// Check the accesslog client and socket write failure handling
 
 // AUDIT: Are log entries immutable after creation?
 // Check that the entry is not modified after being sent to the log pipeline
