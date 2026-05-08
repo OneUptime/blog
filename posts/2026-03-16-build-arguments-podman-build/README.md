@@ -62,7 +62,7 @@ ARG instructions can have default values that are used when no `--build-arg` is 
 
 ```bash
 cat > Containerfile << 'EOF'
-FROM docker.io/library/node:20-alpine
+FROM docker.io/library/node:22-alpine
 
 # With default value
 ARG NODE_ENV=production
@@ -75,7 +75,7 @@ ENV NODE_ENV=${NODE_ENV}
 WORKDIR /app
 COPY package*.json ./
 RUN if [ "$NODE_ENV" = "production" ]; then \
-      npm ci --production; \
+      npm ci --omit=dev; \
     else \
       npm ci; \
     fi
@@ -195,7 +195,7 @@ Use build arguments to pin dependency versions for reproducible builds.
 
 ```bash
 cat > Containerfile << 'EOF'
-FROM docker.io/library/golang:1.22 AS builder
+FROM docker.io/library/golang:1.26 AS builder
 
 ARG APP_VERSION=0.0.0-dev
 ARG COMMIT_SHA=unknown
@@ -208,7 +208,7 @@ RUN CGO_ENABLED=0 go build \
     -ldflags "-X main.version=${APP_VERSION} -X main.commit=${COMMIT_SHA}" \
     -o /app .
 
-FROM docker.io/library/alpine:latest
+FROM docker.io/library/alpine:3.23
 COPY --from=builder /app /usr/local/bin/app
 CMD ["app"]
 EOF
@@ -234,9 +234,7 @@ API_URL=https://api.example.com
 EOF
 
 # Build using arguments from the file
-podman build \
-  $(while IFS= read -r line; do echo "--build-arg $line"; done < build-args.env) \
-  -t myapp:latest .
+podman build --build-arg-file build-args.env -t myapp:latest .
 ```
 
 ## Security Considerations
