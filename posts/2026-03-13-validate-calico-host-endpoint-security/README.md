@@ -50,33 +50,35 @@ calicoctl get hostendpoint node1-eth0 -o yaml
 Felix is the Calico agent that programs policies into the kernel. Check Felix logs for host endpoint processing:
 
 ```bash
-kubectl logs -n calico-system -l k8s-app=calico-node --tail=100 | grep -i "hostendpoint\|policy"
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=100 | grep -i "hostendpoint\|policy"
 ```
 
 Verify Felix status on a node:
 
 ```bash
-kubectl exec -n calico-system ds/calico-node -- calico-node -felix-live
+kubectl exec -n calico-system ds/calico-node -c calico-node -- calico-node -felix-live
 ```
 
 ## Step 3: Inspect iptables Rules
 
-For the iptables dataplane, inspect the chains that Calico creates for host endpoints:
+For the iptables dataplane, inspect the chains that Calico creates for host endpoints. Forwarded traffic uses the `cali-from-hep-forward` and `cali-to-hep-forward` chains; locally terminated host traffic uses `cali-from-host-endpoint` and `cali-to-host-endpoint`:
 
 ```bash
 # SSH to a node and inspect Calico chains
 
 sudo iptables -L cali-to-hep-forward -n -v
 sudo iptables -L cali-from-hep-forward -n -v
+sudo iptables -L cali-to-host-endpoint -n -v
+sudo iptables -L cali-from-host-endpoint -n -v
 ```
 
 ```mermaid
 graph LR
-    A[Inbound Packet] --> B[cali-from-hep-forward]
+    A[Forwarded Packet Entering Host Endpoint] --> B[cali-from-hep-forward]
     B --> C{Policy Match?}
     C -->|Allow| D[Accepted]
     C -->|Deny| E[Dropped]
-    F[Outbound Packet] --> G[cali-to-hep-forward]
+    F[Forwarded Packet Leaving Host Endpoint] --> G[cali-to-hep-forward]
     G --> H{Policy Match?}
     H -->|Allow| I[Accepted]
     H -->|Deny| J[Dropped]
@@ -97,21 +99,22 @@ nc -zv 10.0.1.10 8888
 From inside the cluster, test pod-to-node communication:
 
 ```bash
-kubectl run test-pod --image=busybox --rm -it -- wget -T 3 10.0.1.10:10250
+kubectl run test-pod --image=curlimages/curl --rm -it --restart=Never -- \
+  curl -k --connect-timeout 3 https://10.0.1.10:10250/healthz
 ```
 
 ## Step 5: Validate with Calico Policy Audit
 
-Use the Calico Enterprise policy recommendation engine or the open-source audit mode to review policy hits:
+Use the Calico Enterprise policy recommendation engine, or Calico Open Source log rules and staged policies, to review how traffic would match policy before enforcing changes:
 
 ```bash
 calicoctl get globalnetworkpolicies -o wide
 ```
 
-Check for zero-match policies that may indicate misconfiguration:
+Inspect the policy rules and selectors that apply to your host endpoints:
 
 ```bash
-calicoctl get globalnetworkpolicy allow-cluster-internal -o yaml | grep -A5 "ingress"
+calicoctl get globalnetworkpolicy allow-cluster-internal -o yaml
 ```
 
 ## Conclusion
