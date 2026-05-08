@@ -43,12 +43,9 @@ On Raspberry Pi OS Bullseye (Debian 11-based):
 ```bash
 # Install Podman from the standard repository
 sudo apt install -y podman
-
-# Or use backports for a newer version
-echo "deb http://deb.debian.org/debian bullseye-backports main" | sudo tee /etc/apt/sources.list.d/backports.list
-sudo apt update
-sudo apt install -y -t bullseye-backports podman
 ```
+
+Bullseye backports have been discontinued. If you need a newer Podman version than Bullseye provides, upgrade to Raspberry Pi OS Bookworm or later.
 
 ## Step 3: Install Rootless Dependencies
 
@@ -84,7 +81,7 @@ sudo usermod --add-subgids 100000-165535 $(whoami)
 
 ## Step 6: Configure Storage for the Pi
 
-The Raspberry Pi typically uses an SD card, which benefits from the `vfs` or `overlay` storage driver:
+The Raspberry Pi typically uses an SD card. Use the `overlay` storage driver with `fuse-overlayfs` for rootless containers; `vfs` is a fallback but uses more disk space and is slower:
 
 ```bash
 # Create user-level container configuration
@@ -105,11 +102,13 @@ For Pi setups with an external SSD, redirect container storage:
 ```bash
 # If you have an external SSD mounted at /mnt/ssd
 # Configure Podman to use it for storage
+sudo mkdir -p /mnt/ssd/containers/storage
+sudo chown -R $(whoami):$(id -gn) /mnt/ssd/containers
+
 cat > ~/.config/containers/storage.conf <<EOF
 [storage]
 driver = "overlay"
 graphroot = "/mnt/ssd/containers/storage"
-runroot = "/mnt/ssd/containers/run"
 
 [storage.options.overlay]
 mount_program = "/usr/bin/fuse-overlayfs"
@@ -200,7 +199,14 @@ podman system prune -a
 ## Auto-Starting Containers on Boot
 
 ```bash
-# Generate a systemd service for a container
+# Create a stopped container for systemd to use as a template
+podman create \
+  --name pi-web \
+  -p 8080:80 \
+  -v ~/my-website:/usr/share/nginx/html:ro \
+  docker.io/library/nginx:alpine
+
+# Generate a systemd service for the container
 mkdir -p ~/.config/systemd/user
 podman generate systemd --new --name pi-web > ~/.config/systemd/user/container-pi-web.service
 
