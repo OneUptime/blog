@@ -81,16 +81,16 @@ done
 # List containers on a specific network
 podman ps --filter network=mynetwork
 
-# Show all containers with their network assignments
+# Show all running containers with their network assignments
 podman ps --format "{{ .Names }}\t{{ .Networks }}"
 ```
 
 ## Finding Unused Networks
 
 ```bash
-# List networks not used by any running container
+# List networks not used by any container
 podman network ls --format "{{ .Name }}" | while read -r net; do
-  count=$(podman ps --filter network="$net" --format "{{ .Names }}" | wc -l)
+  count=$(podman ps -a --filter network="$net" --format "{{ .Names }}" | wc -l)
   if [ "$count" -eq 0 ] && [ "$net" != "podman" ]; then
     echo "Unused: $net"
   fi
@@ -100,12 +100,12 @@ done
 ## Quiet Mode for Scripting
 
 ```bash
-# Output only network IDs
+# Output only network names
 podman network ls -q
 
 # Use in scripts to iterate over all networks
-for net_id in $(podman network ls -q); do
-  podman network inspect "$net_id" --format "{{ .Name }}: {{ .Driver }}"
+for net in $(podman network ls -q); do
+  podman network inspect "$net" --format "{{ .Name }}: {{ .Driver }}"
 done
 
 # Count total networks
@@ -114,4 +114,4 @@ podman network ls -q | wc -l
 
 ## Summary
 
-Use `podman network ls` to view all configured networks. Apply `--format` for custom output layouts, `--filter` to narrow results by driver, name, or label, and `-q` for script-friendly ID-only output. Combine with `podman network inspect` and `podman ps --filter network=` to understand the full networking topology of your container environment.
+Use `podman network ls` to view all configured networks. Apply `--format` for custom output layouts, `--filter` to narrow results by driver, name, or label, and `-q` for script-friendly name-only output. Combine with `podman network inspect` and `podman ps --filter network=` to understand the full networking topology of your container environment.
