@@ -10,7 +10,7 @@ Description: Learn how to identify and remove unused Podman networks to keep you
 
 > Pruning unused networks removes stale configuration and prevents subnet exhaustion over time.
 
-As you create and tear down containers, networks accumulate. Unused networks consume subnet ranges from the available pool and clutter the output of `podman network ls`. Podman provides a built-in prune command to remove all networks that have no containers attached.
+As you create and tear down containers, networks accumulate. Unused networks consume subnet ranges from the available pool and clutter the output of `podman network ls`. Podman provides a built-in prune command to remove all networks that have no containers connected or configured to connect to them.
 
 ---
 
@@ -34,7 +34,7 @@ podman network ls
 # Check which containers are connected to a specific network
 podman network inspect frontend-net --format '{{.Containers}}'
 
-# If the output is an empty map, no containers use this network
+# If the output is an empty map, no running containers are connected to this network
 ```
 
 ## Pruning All Unused Networks
@@ -59,11 +59,9 @@ podman network prune --force
 ## Filtering Networks Before Pruning
 
 ```bash
-# List networks with no connected containers
-# Compare network list with container network assignments
-podman network ls --format '{{.Name}}' | while read net; do
-  count=$(podman network inspect "$net" --format '{{len .Containers}}')
-  if [ "$count" -eq 0 ] && [ "$net" != "podman" ]; then
+# List networks with no containers attached
+podman network ls --filter dangling=true --format '{{.Name}}' | while IFS= read -r net; do
+  if [ "$net" != "podman" ]; then
     echo "Unused: $net"
   fi
 done
