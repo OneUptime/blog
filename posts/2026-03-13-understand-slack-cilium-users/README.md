@@ -31,7 +31,7 @@ Join the official Cilium Slack workspace to access all community channels.
 # Visit the self-invite page to join
 
 # URL: https://cilium.slack.com/join/shared_invite/...
-# Or use the link on the official Cilium website: cilium.io/slack
+# Or use the link from the official Cilium docs: https://slack.cilium.io/
 ```
 
 After joining, complete your profile with:
@@ -45,14 +45,15 @@ The Cilium Slack has dedicated channels for different topics.
 
 | Channel | Purpose |
 |---------|---------|
-| `#general` | General Cilium questions and announcements |
-| `#networkpolicy` | CiliumNetworkPolicy questions |
-| `#installation` | Install and upgrade issues |
-| `#ebpf` | eBPF dataplane and kernel topics |
+| `#general` | General user discussions and questions |
+| `#networkpolicy` | Network policy questions |
+| `#kubernetes` | Kubernetes-specific questions |
+| `#ebpf` | General eBPF questions |
 | `#hubble` | Hubble observability questions |
-| `#servicemesh` | Cilium service mesh topics |
+| `#service-mesh` | Cilium Service Mesh topics |
 | `#development` | Contributor discussions |
-| `#announcements` | Official release and security announcements |
+| `#release` | Release announcements only |
+| `#tetragon` | Tetragon questions |
 
 ## Step 3: Prepare Your Question with Diagnostic Context
 
@@ -62,7 +63,7 @@ Before posting, collect diagnostic information to include with your question.
 # Collect key information to include in your Slack message
 echo "=== Cilium Version ===" && cilium version
 echo "=== Cilium Status ===" && cilium status
-echo "=== Kubernetes Version ===" && kubectl version --short
+echo "=== Kubernetes Version ===" && kubectl version
 echo "=== Kernel Version ===" && uname -r
 echo "=== Node OS ===" && cat /etc/os-release | grep PRETTY_NAME
 ```
@@ -71,7 +72,7 @@ For complex issues, generate a sysdump:
 
 ```bash
 # Generate a sysdump to attach to your Slack thread
-cilium sysdump --output-filename slack-help-$(date +%Y%m%d).zip
+cilium sysdump --output-filename slack-help-$(date +%Y%m%d)
 ```
 
 ## Step 4: Write an Effective Help Request
@@ -80,7 +81,7 @@ Structure your Slack message for maximum response efficiency.
 
 A good Slack message template:
 
-```plaintext
+````plaintext
 **Problem**: [1-2 sentence description of what's wrong]
 
 **Environment**:
@@ -99,10 +100,10 @@ A good Slack message template:
 **Relevant output**:
 ```
 [paste relevant logs or command output here]
-```plaintext
+```
 
 **Sysdump attached**: yes/no
-```
+````
 
 ## Step 5: Follow Community Etiquette
 
@@ -124,7 +125,7 @@ Productive community engagement follows consistent norms.
 - Post in the most relevant channel - avoid posting the same question in multiple channels
 - Use threads to continue discussions rather than replying in the main channel
 - Include a one-line summary in your initial message before providing details
-- Tag Slack messages with `:resolved:` when your issue is fixed to help others
+- Update Slack threads with a `Resolved:` note when your issue is fixed to help others
 - Share your solutions back in Slack - every resolved question helps the next person
 - Be patient - community volunteers respond based on their availability
 
