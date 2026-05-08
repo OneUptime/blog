@@ -56,11 +56,11 @@ kubectl -n kube-system exec ds/cilium -- \
 ```mermaid
 graph TD
     A[Performance Issue] --> B{Symptom Type}
-    B -->|High Latency| C[Check policy evaluation time]
+    B -->|High Latency| C[Check policy implementation and regeneration time]
     B -->|Low Throughput| D[Check datapath bottlenecks]
     B -->|Packet Drops| E[Check CT table and BPF maps]
     B -->|High CPU| F[Check monitor aggregation and Hubble]
-    C --> G[cilium_policy_evaluation_duration]
+    C --> G[cilium_policy_implementation_delay]
     D --> H[BPF program complexity]
     E --> I[cilium_bpf_map_pressure]
     F --> J[monitorAggregation setting]
@@ -72,14 +72,14 @@ Check the BPF datapath for bottlenecks:
 
 ```bash
 # Check BPF map sizes and pressure
-kubectl -n kube-system exec ds/cilium -- cilium bpf ct list global | wc -l
-kubectl -n kube-system exec ds/cilium -- cilium status | grep -A5 "BPF Maps"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list global | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep -A5 "BPF Maps"
 
 # Check NAT table usage
-kubectl -n kube-system exec ds/cilium -- cilium bpf nat list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf nat list | wc -l
 
-# View BPF program complexity (instruction count)
-kubectl -n kube-system exec ds/cilium -- cilium bpf prog list
+# View loaded BPF program sizes
+kubectl -n kube-system exec ds/cilium -- bpftool prog show | grep -E "cil_|cilium" -A2
 
 # Check for BPF map pressure metrics
 kubectl -n kube-system exec ds/cilium -- \
@@ -100,8 +100,8 @@ kubectl expose pod iperf3-server --port=5201
 kubectl run iperf3-client --image=networkstatic/iperf3 --rm -it --restart=Never -- \
   -c iperf3-server.default -t 30 -P 4
 
-# Run latency test (TCP_RR equivalent)
-kubectl run iperf3-latency --image=networkstatic/iperf3 --rm -it --restart=Never -- \
+# Run bidirectional throughput test
+kubectl run iperf3-bidir --image=networkstatic/iperf3 --rm -it --restart=Never -- \
   -c iperf3-server.default -t 10 --bidir
 
 # Cross-node test (ensure pods are on different nodes)
@@ -116,19 +116,19 @@ kubectl delete pod iperf3-server iperf3-server-node2 2>/dev/null
 kubectl delete svc iperf3-server 2>/dev/null
 ```
 
-## Checking Policy Evaluation Performance
+## Checking Policy Implementation Performance
 
-Complex policies can slow down packet processing:
+Complex policies can increase policy implementation and endpoint regeneration time:
 
 ```bash
 # Count the number of policies
 kubectl get cnp -A --no-headers | wc -l
 kubectl get ccnp --no-headers 2>/dev/null | wc -l
 
-# Check policy evaluation duration
+# Check policy implementation and incremental update duration
 kubectl -n kube-system exec ds/cilium -- \
   wget -qO- http://localhost:9962/metrics 2>/dev/null | \
-  grep "cilium_policy"
+  grep -E "cilium_policy_(implementation_delay|incremental_update_duration)"
 
 # Check endpoint regeneration time (policies trigger regeneration)
 kubectl -n kube-system exec ds/cilium -- \
@@ -136,7 +136,7 @@ kubectl -n kube-system exec ds/cilium -- \
   grep "cilium_endpoint_regeneration_time_stats"
 
 # Count endpoints (more endpoints = more regeneration overhead)
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | wc -l
 ```
 
 ## Diagnosing Hubble Overhead
@@ -146,11 +146,11 @@ Hubble can add measurable overhead in high-traffic environments:
 ```bash
 # Check Hubble-specific resource usage
 kubectl -n kube-system exec ds/cilium -- \
-  wget -qO- http://localhost:9962/metrics 2>/dev/null | \
-  grep "cilium_event_ts\|cilium_perf_event"
+  wget -qO- http://localhost:9965/metrics 2>/dev/null | \
+  grep -E "hubble_(flows_processed_total|lost_events_total)"
 
 # Check monitor aggregation level
-kubectl -n kube-system exec ds/cilium -- cilium config | grep MonitorAggregation
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config | grep MonitorAggregation
 
 # If aggregation is "none", it could be a significant CPU cost
 # Compare CPU usage with Hubble metrics enabled vs disabled
@@ -181,9 +181,9 @@ kubectl -n kube-system exec ds/cilium -- \
 
 ## Troubleshooting
 
-- **Throughput significantly lower than expected**: Check if IPSec or WireGuard encryption is enabled, which adds overhead. Check with `cilium status | grep Encryption`.
+- **Throughput significantly lower than expected**: Check if IPSec or WireGuard encryption is enabled, which adds overhead. Check with `kubectl -n kube-system exec ds/cilium -- cilium-dbg encrypt status`.
 
-- **High latency on cross-node traffic**: Check tunnel mode. VXLAN adds overhead compared to native routing. Check with `cilium status | grep "Datapath Mode"`.
+- **High latency on cross-node traffic**: Check tunnel mode. VXLAN adds overhead compared to native routing. Check with `kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep "Routing"`.
 
 - **CPU usage scales linearly with traffic**: Monitor aggregation is likely set to `none`. Change to `medium` for production workloads.
 
@@ -191,4 +191,4 @@ kubectl -n kube-system exec ds/cilium -- \
 
 ## Conclusion
 
-Diagnosing Cilium performance requires a layered approach: start with high-level metrics (CPU, memory, drops), then benchmark actual throughput and latency, and finally investigate specific subsystems (BPF maps, policy evaluation, Hubble overhead). Most performance issues trace back to a small number of root causes: disabled monitor aggregation, oversized BPF programs from complex policies, CT table pressure, or encryption overhead. Measure, identify, tune, and re-measure to systematically improve your cluster's networking performance.
+Diagnosing Cilium performance requires a layered approach: start with high-level metrics (CPU, memory, drops), then benchmark actual throughput and latency, and finally investigate specific subsystems (BPF maps, policy implementation, Hubble overhead). Most performance issues trace back to a small number of root causes: disabled monitor aggregation, oversized BPF programs from complex policies, CT table pressure, or encryption overhead. Measure, identify, tune, and re-measure to systematically improve your cluster's networking performance.
