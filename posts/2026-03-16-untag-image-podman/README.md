@@ -19,7 +19,7 @@ Over time, local image stores accumulate tags that are no longer needed. Podman'
 It is important to understand the difference between untagging and removing.
 
 ```bash
-# Untag: removes a name/tag reference, image data remains if other tags exist
+# Untag: removes name/tag references; specify a name to remove only that tag
 
 podman untag myapp:old-tag
 
@@ -27,7 +27,7 @@ podman untag myapp:old-tag
 podman rmi myapp:old-tag
 
 # Key difference:
-# - An image with multiple tags: untag removes one name, image stays
+# - An image with multiple tags: untag can remove one name when you specify it
 # - An image with only one tag: untag leaves a dangling (untagged) image
 # - rmi removes the image data when the last reference is gone
 ```
@@ -40,8 +40,9 @@ Remove a specific tag from an image.
 # First, see current tags
 podman images myapp --format "table {{.Tag}}\t{{.ID}}"
 
-# Untag a specific version
-podman untag myapp:v1.0.0
+# Get the image ID for the tag, then untag that specific version
+IMAGE_ID=$(podman images myapp:v1.0.0 -q | head -1)
+podman untag "$IMAGE_ID" myapp:v1.0.0
 
 # Verify the tag was removed
 podman images myapp --format "table {{.Tag}}\t{{.ID}}"
@@ -61,7 +62,7 @@ podman tag nginx:1.25 my-nginx:production
 podman images my-nginx --format "table {{.Tag}}\t{{.ID}}"
 
 # Remove just the "production" tag
-podman untag my-nginx:production
+podman untag my-nginx:latest my-nginx:production
 
 # The other tags still exist
 podman images my-nginx --format "table {{.Tag}}\t{{.ID}}"
@@ -94,13 +95,13 @@ Remove registry-specific tags that were added for pushing.
 podman images myapp --format "{{.Repository}}:{{.Tag}}" --no-trunc
 
 # Remove the Docker Hub tag
-podman untag docker.io/myuser/myapp:v1.0.0
+podman untag myapp:v1.0.0 docker.io/myuser/myapp:v1.0.0
 
 # Remove the Quay.io tag
-podman untag quay.io/myorg/myapp:v1.0.0
+podman untag myapp:v1.0.0 quay.io/myorg/myapp:v1.0.0
 
 # Keep only the local tag
-podman images --filter reference='*myapp*' \
+podman images --filter reference='.*myapp.*' \
   --format "{{.Repository}}:{{.Tag}}"
 ```
 
@@ -117,17 +118,17 @@ KEEP_VERSION="2.0.0"
 
 echo "Removing tags older than ${KEEP_VERSION} for ${IMAGE}..."
 
-podman images "${IMAGE}" --format "{{.Tag}}" | while read -r TAG; do
+podman images "${IMAGE}" --format "{{.ID}}\t{{.Tag}}" | while read -r IMAGE_ID TAG; do
   # Skip non-version tags
   if ! echo "$TAG" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
     continue
   fi
 
-  # Compare versions (simple string comparison, works for semver)
+  # Compare numeric version tags
   if [ "$(printf '%s\n' "$KEEP_VERSION" "$TAG" | sort -V | head -1)" = "$TAG" ] && \
      [ "$TAG" != "$KEEP_VERSION" ]; then
     echo "Untagging ${IMAGE}:${TAG}"
-    podman untag "${IMAGE}:${TAG}"
+    podman untag "$IMAGE_ID" "${IMAGE}:${TAG}"
   fi
 done
 
@@ -169,10 +170,10 @@ echo "Cleaning up old build tags for ${IMAGE}..."
 
 # Get all tags sorted by creation time, skip the newest N
 OLD_TAGS=$(podman images "${IMAGE}" \
-  --format "{{.CreatedAt}}\t{{.Tag}}" \
+  --format "{{.CreatedAt}}\t{{.ID}}\t{{.Tag}}" \
   | sort -r \
   | tail -n +$((KEEP_COUNT + 1)) \
-  | awk '{print $NF}')
+  | awk '{print $(NF-1) "\t" $NF}')
 
 if [ -z "$OLD_TAGS" ]; then
   echo "No old tags to remove."
@@ -180,10 +181,11 @@ if [ -z "$OLD_TAGS" ]; then
 fi
 
 echo "Removing old tags:"
-for TAG in $OLD_TAGS; do
+while read -r IMAGE_ID TAG; do
+  [ -z "$IMAGE_ID" ] && continue
   echo "  Untagging ${IMAGE}:${TAG}"
-  podman untag "${IMAGE}:${TAG}"
-done
+  podman untag "$IMAGE_ID" "${IMAGE}:${TAG}"
+done <<< "$OLD_TAGS"
 
 # Clean up any resulting dangling images
 podman image prune -f
