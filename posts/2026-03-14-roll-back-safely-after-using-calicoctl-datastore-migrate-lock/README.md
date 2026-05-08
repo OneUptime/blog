@@ -22,33 +22,38 @@ Datastore migration is a multi-step process, and issues at any step require care
 
 ### Before Migration Was Finalized
 
-If the migration has not been finalized (lock step not completed):
+If the Kubernetes datastore has not been unlocked after import, you can still roll back to the original etcd datastore:
 
 ```bash
-# Reconnect to the original datastore
+# Lock the Kubernetes datastore so imported resources do not affect the cluster
+export DATASTORE_TYPE=kubernetes
+calicoctl datastore migrate lock
 
-export DATASTORE_TYPE=etcdv3  # Or kubernetes, depending on your original
+# Remove Calico resources imported into the Kubernetes datastore
+kubectl delete $(kubectl get crds -o name | grep projectcalico.org)
 
-# Verify the original data is still intact
-calicoctl get nodes
-calicoctl get ippools
+# Reconfigure Calico to read from the original etcd datastore
+# Replace this with the Calico manifest for your original etcd-backed install
+kubectl apply -f calico-etcd.yaml
 
-# Resume using the original datastore
-# No further action needed - the original datastore was not modified
+# Reconnect calicoctl to the original datastore and unlock it
+export DATASTORE_TYPE=etcdv3
+calicoctl datastore migrate unlock
 ```
 
 ### If Data Was Partially Migrated
 
 ```bash
-# Apply resources from backup to restore the original state
-BACKUP_DIR="migration-backup-*"
+# If resources were imported into Kubernetes but the datastore was not unlocked,
+# delete the imported Kubernetes datastore resources and return to etcd.
+export DATASTORE_TYPE=kubernetes
+calicoctl datastore migrate lock
+kubectl delete $(kubectl get crds -o name | grep projectcalico.org)
 
-for r in globalnetworkpolicies networkpolicies bgpconfigurations bgppeers ippools felixconfigurations; do
-  if [ -f "$BACKUP_DIR/$r.yaml" ]; then
-    echo "Restoring $r..."
-    calicoctl apply -f "$BACKUP_DIR/$r.yaml"
-  fi
-done
+kubectl apply -f calico-etcd.yaml
+
+export DATASTORE_TYPE=etcdv3
+calicoctl datastore migrate unlock
 ```
 
 ### Emergency: Restore from Full Backup
@@ -61,13 +66,8 @@ BACKUP_DIR="${1:?Usage: $0 <backup-dir>}"
 echo "=== Emergency Restoration ==="
 echo "Restoring from $BACKUP_DIR"
 
-# Restore in dependency order
-for r in ippools felixconfigurations bgpconfigurations bgppeers globalnetworkpolicies networkpolicies; do
-  if [ -f "$BACKUP_DIR/$r.yaml" ]; then
-    echo "Restoring $r..."
-    calicoctl apply -f "$BACKUP_DIR/$r.yaml" 2>&1
-  fi
-done
+# Apply all YAML or JSON resource manifests in the backup directory
+calicoctl apply -f "$BACKUP_DIR"
 
 # Verify
 echo ""
@@ -89,15 +89,15 @@ calicoctl get globalnetworkpolicies
 # Test connectivity
 kubectl run rollback-test --image=busybox --restart=Never -- sleep 10
 kubectl get pod rollback-test -o wide
-kubectl delete pod rollback-test --grace-period=0
+kubectl delete pod rollback-test --now
 ```
 
 ## Troubleshooting
 
 - **Cannot connect to original datastore**: Verify the DATASTORE_TYPE and connection parameters match the original configuration.
 - **Some resources cannot be restored**: Check for schema version differences. Some resources may need manual adjustment.
-- **Cluster networking disrupted during rollback**: Restart calico-node pods to force reconnection to the correct datastore.
+- **Cluster networking disrupted during rollback**: Verify Calico is configured to read from the original datastore and wait for the calico-node DaemonSet rollout to complete.
 
 ## Conclusion
 
-The most important aspect of migration rollback is having complete backups taken before the migration started. With proper backups, you can always restore the original Calico configuration regardless of what went wrong during the migration process.
+The most important aspect of migration rollback is having complete backups taken before the migration started. With proper backups, you can restore Calico configuration, but the documented datastore rollback path is only available before the Kubernetes datastore has been unlocked.
