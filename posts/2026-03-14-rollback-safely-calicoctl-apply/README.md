@@ -21,6 +21,7 @@ This guide covers practical rollback strategies for `calicoctl apply` operations
 - A running Kubernetes cluster with Calico installed
 - calicoctl v3.27 or later
 - kubectl access to the cluster
+- Python 3 with PyYAML installed for the helper scripts
 - Basic understanding of Calico resources (NetworkPolicy, GlobalNetworkPolicy, IPPool)
 
 ## Creating Pre-Apply Snapshots
@@ -48,10 +49,18 @@ RESOURCES=(
   "globalnetworksets"
   "networksets"
   "ippools"
+  "ipreservations"
   "bgpconfigurations"
+  "bgpfilters"
   "bgppeers"
   "felixconfigurations"
   "hostendpoints"
+  "workloadendpoints"
+  "kubecontrollersconfigurations"
+  "clusterinformations"
+  "nodes"
+  "profiles"
+  "tiers"
 )
 
 for resource in "${RESOURCES[@]}"; do
@@ -82,14 +91,24 @@ SNAPSHOT_DIR="/var/backups/calico-snapshots/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$SNAPSHOT_DIR"
 
 # Determine what resource type we're applying
-RESOURCE_KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['kind'])")
-RESOURCE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['metadata']['name'])")
+RESOURCE_KIND=$(python3 -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))["kind"])' "$RESOURCE_FILE")
+RESOURCE_NAME=$(python3 -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))["metadata"]["name"])' "$RESOURCE_FILE")
+RESOURCE_NAMESPACE=$(python3 -c 'import sys, yaml; print(yaml.safe_load(open(sys.argv[1])).get("metadata", {}).get("namespace", "default"))' "$RESOURCE_FILE")
+
+NAMESPACE_ARGS=()
+SNAPSHOT_NAME="before-${RESOURCE_KIND}-${RESOURCE_NAME}.yaml"
+case "${RESOURCE_KIND,,}" in
+  networkpolicy|networkset|workloadendpoint)
+    NAMESPACE_ARGS=(-n "$RESOURCE_NAMESPACE")
+    SNAPSHOT_NAME="before-${RESOURCE_KIND}-${RESOURCE_NAMESPACE}-${RESOURCE_NAME}.yaml"
+    ;;
+esac
 
 echo "Applying ${RESOURCE_KIND}/${RESOURCE_NAME}"
 
 # Snapshot the specific resource if it exists
-calicoctl get "${RESOURCE_KIND}" "${RESOURCE_NAME}" -o yaml > \
-  "${SNAPSHOT_DIR}/before-${RESOURCE_KIND}-${RESOURCE_NAME}.yaml" 2>/dev/null || echo "Resource does not exist yet"
+calicoctl get "${RESOURCE_KIND}" "${RESOURCE_NAME}" "${NAMESPACE_ARGS[@]}" -o yaml > \
+  "${SNAPSHOT_DIR}/${SNAPSHOT_NAME}" 2>/dev/null || echo "Resource does not exist yet"
 
 # Step 2: Validate the resource
 echo "Validating resource..."
@@ -103,7 +122,7 @@ calicoctl apply -f "$RESOURCE_FILE"
 echo "$SNAPSHOT_DIR" > /tmp/last-calico-snapshot
 
 echo "Applied successfully."
-echo "To rollback: calicoctl apply -f ${SNAPSHOT_DIR}/before-${RESOURCE_KIND}-${RESOURCE_NAME}.yaml"
+echo "To rollback: calicoctl apply -f ${SNAPSHOT_DIR}/${SNAPSHOT_NAME}"
 ```
 
 ## Rolling Back a Specific Resource
@@ -186,15 +205,23 @@ echo "Performing full rollback from: $SNAPSHOT_DIR"
 
 # Apply in dependency order
 ORDER=(
+  "tiers"
   "ippools"
+  "ipreservations"
   "felixconfigurations"
   "bgpconfigurations"
+  "bgpfilters"
   "bgppeers"
+  "clusterinformations"
+  "kubecontrollersconfigurations"
+  "nodes"
+  "profiles"
   "globalnetworksets"
   "networksets"
   "globalnetworkpolicies"
   "networkpolicies"
   "hostendpoints"
+  "workloadendpoints"
 )
 
 for resource in "${ORDER[@]}"; do
@@ -207,6 +234,8 @@ done
 
 echo "Full rollback complete."
 ```
+
+This restores the resources captured in the snapshot. It does not remove Calico resources that were created after the snapshot; delete those separately before or after the restore.
 
 ## Verification
 
