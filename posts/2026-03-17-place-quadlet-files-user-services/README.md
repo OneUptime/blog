@@ -78,11 +78,14 @@ WantedBy=default.target
 ## Enabling Services at Login
 
 ```bash
-# Enable auto-start when you log in
-systemctl --user enable devserver
+# Apply the [Install] section for auto-start when you log in
+systemctl --user daemon-reload
 
-# Check enabled services
-systemctl --user list-unit-files --state=enabled
+# Start it immediately in the current session
+systemctl --user start devserver
+
+# Check the generated unit
+systemctl --user list-unit-files devserver.service
 ```
 
 ## Persistent Services with Lingering
@@ -154,16 +157,16 @@ WantedBy=default.target
 ```
 
 ```bash
-# Reload and enable all
+# Reload and start all
 systemctl --user daemon-reload
-systemctl --user enable --now redis-dev mailhog
+systemctl --user start redis-dev mailhog
 ```
 
 ## Verifying Quadlet Generation
 
 ```bash
 # Preview generated unit files for user services
-/usr/libexec/podman/quadlet --dryrun --user
+/usr/lib/systemd/system-generators/podman-system-generator --user --dryrun
 
 # Check for configuration errors
 systemctl --user status devserver
