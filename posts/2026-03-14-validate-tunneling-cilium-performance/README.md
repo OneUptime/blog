@@ -29,10 +29,11 @@ This guide provides the specific steps for each aspect of tunnel performance man
 ```bash
 #!/bin/bash
 # Run both configurations and compare
+# Set POD_CIDR to the PodCIDR range that is routable in native mode.
 
-for MODE in "tunnel=vxlan" "tunnel=disabled --set routingMode=native --set autoDirectNodeRoutes=true"; do
+for MODE in "routingMode=tunnel --set tunnelProtocol=vxlan" "routingMode=native --set autoDirectNodeRoutes=true --set ipv4NativeRoutingCIDR=$POD_CIDR"; do
   echo "=== Testing: $MODE ==="
-  helm upgrade cilium cilium/cilium --namespace kube-system --set $MODE
+  helm upgrade cilium cilium/cilium --namespace kube-system --reuse-values --set $MODE
   kubectl rollout status ds/cilium -n kube-system
   sleep 30
 
@@ -52,8 +53,11 @@ kubectl exec test-pod -- ping -M do -s 1400 $REMOTE_POD_IP
 # Should succeed with native routing
 # May need -s 1350 with tunneling
 
-# Verify no fragmentation counters
-kubectl exec -n kube-system ds/cilium -- cat /proc/net/snmp | grep -i frag
+# Verify fragmentation counters on each Cilium pod
+for pod in $(kubectl get pods -n kube-system -l k8s-app=cilium -o name); do
+  echo "=== $pod ==="
+  kubectl exec -n kube-system "$pod" -- cat /proc/net/snmp | grep -i frag
+done
 ```
 
 ## Cross-Node Tunnel Validation
@@ -64,6 +68,7 @@ NODES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
 for src in $NODES; do
   for dst in $NODES; do
     [ "$src" = "$dst" ] && continue
+    DST_IP=$(kubectl get pod iperf-server-"$dst" -o jsonpath='{.status.podIP}')
     echo "$src -> $dst: $(kubectl exec iperf-client-$src -- iperf3 -c $DST_IP -t 10 -P 1 -J | jq '.end.sum_sent.bits_per_second / 1000000000') Gbps"
   done
 done
@@ -72,7 +77,7 @@ done
 ## Verification
 
 ```bash
-cilium status --verbose | grep -E "Tunnel|DatapathMode"
+cilium config view | grep -E "routing-mode|tunnel-protocol|ipv4-native-routing-cidr|auto-direct-node-routes"
 kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 ```
@@ -108,6 +113,7 @@ ssh node-test-2 "for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governo
 # Uncordon for test workloads only
 kubectl uncordon node-test-1 node-test-2
 kubectl taint nodes node-test-1 node-test-2 dedicated=perf-testing:NoSchedule
+# Ensure perf test pods include a matching toleration for dedicated=perf-testing:NoSchedule
 ```
 
 ### Statistical Analysis
