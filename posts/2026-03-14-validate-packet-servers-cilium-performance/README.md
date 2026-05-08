@@ -20,7 +20,9 @@ This guide provides the validation methodology for performance test servers.
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
 - `cilium` CLI and `kubectl` access
+- Metrics Server for `kubectl top`
 - Node-level root access
+- GNU awk (`gawk`) for the statistical analysis example
 - Prometheus monitoring (recommended)
 
 ## Server Capacity Validation
@@ -35,7 +37,8 @@ kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 20 -P 8 &
 sleep 5
 SERVER_CPU=$(kubectl top pod iperf-server --no-headers | awk '{print $2}')
 echo "Server CPU during 8-stream test: $SERVER_CPU"
-# Should be below 80% of allocated CPU
+# kubectl top reports CPU as a Kubernetes quantity, such as 800m for 0.8 cores.
+# Compare it with the pod's CPU limit; it should be below 80% of allocated CPU.
 
 # Test 2: Server handles connection rate
 kubectl exec netperf-client -- netperf -H $SERVER_IP -t TCP_CRR -l 10
@@ -66,7 +69,7 @@ echo "Should be >= 16777216"
 
 ```bash
 # Run the validation checks above
-# All items should show PASS
+# Cilium status should report OK, and the validation checks should meet the criteria above.
 cilium status --verbose
 ```
 
@@ -119,7 +122,7 @@ for i in $(seq 1 20); do
 done
 
 # Calculate statistics
-echo "${SAMPLES[@]}" | tr ' ' '\n' | awk '
+echo "${SAMPLES[@]}" | tr ' ' '\n' | gawk '
 {
   sum += $1
   sumsq += $1 * $1
@@ -133,9 +136,9 @@ END {
 
   # Sort for percentiles
   n = asort(data)
-  p50 = data[int(n * 0.5)]
-  p95 = data[int(n * 0.95)]
-  p99 = data[int(n * 0.99)]
+  p50 = data[int((n - 1) * 0.50) + 1]
+  p95 = data[int((n - 1) * 0.95) + 1]
+  p99 = data[int((n - 1) * 0.99) + 1]
 
   printf "Samples: %d\n", NR
   printf "Mean: %.2f Gbps\n", mean / 1e9
@@ -177,7 +180,7 @@ Cluster: $(kubectl config current-context)
 ## Test Environment
 - Nodes: $(kubectl get nodes --no-headers | wc -l)
 - Pods: $(kubectl get pods --all-namespaces --no-headers | wc -l)
-- Identities: $(cilium identity list 2>/dev/null | wc -l)
+- Identities: $(kubectl get ciliumidentities.cilium.io --no-headers 2>/dev/null | wc -l)
 
 ## Results
 HEADER
