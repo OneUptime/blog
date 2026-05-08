@@ -10,15 +10,15 @@ Description: Safely upgrade Calico network policies on Azure Kubernetes Service 
 
 ## Introduction
 
-Upgrading Calico on AKS requires care because Calico manages the network data plane that all workloads depend on. A failed or misconfigured upgrade can cause network disruptions that affect production services. AKS clusters have the additional complexity of Azure's managed control plane, which must remain compatible with your Calico version.
+Upgrading Calico on AKS requires care because Calico can manage policy enforcement and, in self-managed CNI deployments, pod networking that workloads depend on. A failed or misconfigured upgrade can cause network disruptions that affect production services. AKS clusters have the additional complexity of Azure's managed control plane, which must remain compatible with your Calico version.
 
-Calico upgrades on AKS follow the standard Calico rolling upgrade process, but with AKS-specific considerations: Azure CNI may be chained with Calico for policy enforcement, node pool upgrades must be coordinated with Calico version bumps, and Azure NSG rules must remain consistent throughout the upgrade.
+Self-managed Calico upgrades on AKS follow the standard Calico rolling upgrade process, but with AKS-specific considerations: Azure CNI may be used with Calico for policy enforcement, node pool upgrades must be coordinated with Calico version bumps, and Azure NSG rules must remain consistent throughout the upgrade. If you use Azure-managed Calico through AKS network policy, Calico components are installed and upgraded by Azure rather than through the Tigera Operator.
 
 This guide provides a safe upgrade path for Calico on AKS, covering pre-upgrade validation, the rolling upgrade procedure, and post-upgrade verification steps.
 
 ## Prerequisites
 
-- AKS cluster running Calico (via Tigera Operator or manifest installation)
+- AKS cluster running self-managed, operator-managed Calico
 - `az` CLI with appropriate permissions
 - `kubectl` with cluster-admin access
 - `calicoctl` matching the current Calico version
@@ -38,11 +38,11 @@ kubectl get pods -n calico-system -l app.kubernetes.io/name=calico-node \
 kubectl get pods -n calico-system
 kubectl get pods -n tigera-operator
 
-# Check Calico node status
-calicoctl node status
+# Check Calico node resources
+calicoctl get nodes
 
 # Verify TigeraStatus is Available
-kubectl get tigerastatus calico
+kubectl get tigerastatus
 ```
 
 ## Step 2: Backup Current Calico Configuration
@@ -70,7 +70,7 @@ Check the Calico upgrade path for your specific version pair.
 
 ```bash
 # Check current Calico version
-kubectl get clusterinformation default -o yaml | grep calicoVersion
+calicoctl get clusterinformation default -o yaml | grep calicoVersion
 
 # Review release notes for your target version
 # Visit: https://docs.tigera.io/calico/latest/release-notes/
@@ -80,8 +80,8 @@ kubectl get deployment -n tigera-operator tigera-operator \
   -o jsonpath='{.spec.template.spec.containers[0].image}'
 
 # Calico upgrade order:
-# 1. Upgrade Tigera Operator
-# 2. Update the Installation resource to new version
+# 1. Apply the target Calico CRDs
+# 2. Upgrade the Tigera Operator manifest
 # 3. Operator performs rolling upgrade of Calico components
 ```
 
@@ -90,18 +90,19 @@ kubectl get deployment -n tigera-operator tigera-operator \
 Upgrade via the Tigera Operator method (recommended for AKS).
 
 ```bash
-# Download the new Tigera Operator manifest
-curl -O https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
+# Set the target version for this upgrade
+CALICO_VERSION=v3.32.0
 
-# Apply the new operator
-kubectl apply -f tigera-operator.yaml
+# Download the new Calico CRDs and Tigera Operator manifest
+curl -O https://raw.githubusercontent.com/projectcalico/calico/$CALICO_VERSION/manifests/v1_crd_projectcalico_org.yaml
+curl -O https://raw.githubusercontent.com/projectcalico/calico/$CALICO_VERSION/manifests/tigera-operator.yaml
+
+# Apply the target CRDs and operator
+kubectl apply --server-side --force-conflicts -f v1_crd_projectcalico_org.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 
 # Monitor the operator upgrade
 kubectl rollout status deployment tigera-operator -n tigera-operator
-
-# Update the Installation resource to trigger Calico component upgrades
-kubectl patch installation default --type merge \
-  --patch '{"spec":{"variant":"Calico","calicoNetwork":{"calicoVersion":"v3.28.0"}}}'
 
 # Monitor the rolling upgrade progress
 kubectl get pods -n calico-system -w
@@ -117,11 +118,11 @@ kubectl get pods -n calico-system \
   -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.containers[0].image}{"\n"}{end}'
 
 # Check TigeraStatus
-kubectl get tigerastatus calico
+kubectl get tigerastatus
 
-# Validate node status with new calicoctl version
+# Validate node resources with new calicoctl version
 calicoctl version
-calicoctl node status
+calicoctl get nodes
 
 # Run a connectivity test between pods
 kubectl run test-pod-1 --image=busybox --rm -it -- wget -qO- http://test-service
