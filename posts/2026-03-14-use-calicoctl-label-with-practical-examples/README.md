@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Labels, Kubernetes, Network Policy
 
-Description: A hands-on guide to using calicoctl label to manage labels on Calico resources such as nodes, workload endpoints, and host endpoints for effective network policy targeting.
+Description: A hands-on guide to using calicoctl label to manage labels on Calico resources such as nodes, workload endpoints, and host endpoints for effective resource organization and network policy targeting.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A hands-on guide to using calicoctl label to manage labels on Calic
 
 Labels in Calico serve the same fundamental purpose as labels in Kubernetes: they provide a flexible mechanism for selecting and grouping resources. The `calicoctl label` command allows you to add, update, and remove labels on Calico-managed resources such as nodes, workload endpoints, and host endpoints.
 
-Unlike `kubectl label`, which operates on Kubernetes resources, `calicoctl label` works directly with Calico's datastore resources. This distinction matters because some Calico resources like HostEndpoints and certain node labels exist only in the Calico datastore and are not accessible through kubectl.
+Unlike `kubectl label`, which operates on Kubernetes resources, `calicoctl label` works directly with Calico's datastore resources. This distinction matters because network policy selectors match Calico endpoint resources such as HostEndpoints and WorkloadEndpoints, while Node labels are used by Calico node-related configuration such as IPPool node selectors and generated host endpoint selection.
 
 This guide walks through practical examples of using `calicoctl label` for common operational tasks, from simple label management to building label-based network policy strategies.
 
@@ -58,8 +58,8 @@ calicoctl label nodes worker-1 env=staging --overwrite
 ### Removing a Label
 
 ```bash
-# Remove a label by appending a minus sign to the key
-calicoctl label nodes worker-1 tier-
+# Remove a label by passing the key with --remove
+calicoctl label nodes worker-1 tier --remove
 ```
 
 ## Labeling Host Endpoints
@@ -118,16 +118,16 @@ This policy allows ingress traffic only between resources labeled `env=productio
 
 ## Label-Based Node Segmentation
 
-Use labels to create network segments based on node roles:
+Use labels on host endpoints to create network segments based on node roles:
 
 ```bash
-# Label nodes by their role
-calicoctl label nodes master-1 node-role=control-plane
-calicoctl label nodes worker-1 node-role=compute
-calicoctl label nodes worker-2 node-role=compute
-calicoctl label nodes worker-3 node-role=storage
+# Label host endpoints by their node role
+calicoctl label hostendpoints master-1-eth0 node-role=control-plane
+calicoctl label hostendpoints worker-1-eth0 node-role=compute
+calicoctl label hostendpoints worker-2-eth0 node-role=compute
+calicoctl label hostendpoints worker-3-eth0 node-role=storage
 
-# Create a policy that restricts storage node access
+# Create a policy that restricts storage host endpoint access
 cat <<EOF | calicoctl apply -f -
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
@@ -168,7 +168,7 @@ if [ -z "$LABEL" ]; then
 fi
 
 # Get all Calico nodes
-NODES=$(calicoctl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
+NODES=$(calicoctl get nodes -o go-template='{{range .}}{{range .Items}}{{.ObjectMeta.Name}}{{"\n"}}{{end}}{{end}}')
 
 for NODE in $NODES; do
   # If a pattern is provided, filter by it
@@ -189,20 +189,20 @@ Verify your labels are correctly applied:
 # Check labels on all nodes
 calicoctl get nodes -o yaml | grep -B2 -A10 "labels:"
 
-# Verify policy selectors match expected nodes
+# Verify policy selectors match expected resources
 calicoctl get globalnetworkpolicies -o yaml | grep "selector:"
 
-# Test that a specific selector matches the right resources
-calicoctl get nodes -l env=production
+# Inspect a labeled resource directly
+calicoctl get node worker-1 -o yaml | grep -A5 labels
 ```
 
 ## Troubleshooting
 
 - **Label not appearing**: Ensure you are checking the Calico node resource, not the Kubernetes node. Labels set via `calicoctl label` apply to the Calico Node resource.
-- **Policy not matching labeled resources**: Double-check the selector syntax. Calico uses `==` for equality (not `=`). Labels with special characters need quoting.
+- **Policy not matching labeled resources**: Double-check the selector syntax and make sure the label is on an endpoint resource selected by the policy. Calico uses `==` for equality (not `=`). Labels with special characters need quoting.
 - **"resource does not exist" error**: Verify the resource name is correct with `calicoctl get nodes` or `calicoctl get hostendpoints`.
 - **Overwrite error**: If updating an existing label, you must pass the `--overwrite` flag.
 
 ## Conclusion
 
-The `calicoctl label` command is a fundamental tool for organizing Calico resources and enabling fine-grained network policy targeting. By establishing a consistent labeling strategy across nodes, host endpoints, and workload endpoints, you create a foundation for scalable and maintainable network security policies.
+The `calicoctl label` command is a fundamental tool for organizing Calico resources and enabling fine-grained network policy targeting. By establishing a consistent labeling strategy across endpoint resources such as host endpoints and workload endpoints, you create a foundation for scalable and maintainable network security policies.
