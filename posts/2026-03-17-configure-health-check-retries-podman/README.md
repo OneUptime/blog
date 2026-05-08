@@ -55,7 +55,8 @@ podman run -d --name payment-gateway \
   --health-interval 10s \
   --health-retries 2 \
   payment-gateway:latest
-# Unhealthy detection time: 2 * 10s = 20 seconds
+# Approximate unhealthy detection time: about 2 * 10s = 20 seconds,
+# plus any health check command runtime or timeout
 
 # Higher retries for services with variable response times
 podman run -d --name data-pipeline \
@@ -63,7 +64,8 @@ podman run -d --name data-pipeline \
   --health-interval 30s \
   --health-retries 6 \
   data-pipeline:latest
-# Unhealthy detection time: 6 * 30s = 3 minutes
+# Approximate unhealthy detection time: about 6 * 30s = 3 minutes,
+# plus any health check command runtime or timeout
 ```
 
 ## Retries in a Containerfile
