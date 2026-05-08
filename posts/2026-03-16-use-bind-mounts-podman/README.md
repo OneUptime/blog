@@ -84,8 +84,8 @@ podman run -v /shared:/shared:z myapp:latest
 ```bash
 # Mount source code for live development
 podman run -d --name dev-server \
-    -v $(pwd)/src:/app/src:Z \
-    -v $(pwd)/package.json:/app/package.json:ro,Z \
+    -v "$(pwd)"/src:/app/src:Z \
+    -v "$(pwd)"/package.json:/app/package.json:ro,Z \
     -p 3000:3000 \
     node:20-alpine \
     sh -c "cd /app && npm install && npm run dev"
@@ -98,7 +98,7 @@ podman run -d --name dev-server \
 ```bash
 # Mount a custom configuration file
 podman run -d --name redis \
-    -v /etc/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro,Z \
+    -v "$(pwd)"/redis.conf:/usr/local/etc/redis/redis.conf:ro,Z \
     -p 6379:6379 \
     redis:alpine \
     redis-server /usr/local/etc/redis/redis.conf
@@ -125,7 +125,7 @@ tail -f /var/log/myapp/app.log
 # Solution 1: Use --userns=keep-id
 podman run --rm \
     --userns=keep-id \
-    -v $(pwd)/data:/app/data:Z \
+    -v "$(pwd)"/data:/app/data:Z \
     myapp:latest
 
 # Solution 2: Set permissions on the host directory
@@ -135,7 +135,7 @@ podman run -v /data/shared:/app/data:Z myapp:latest
 # Solution 3: Run as a specific user
 podman run --rm \
     --user $(id -u):$(id -g) \
-    -v $(pwd)/data:/app/data:Z \
+    -v "$(pwd)"/data:/app/data:Z \
     myapp:latest
 ```
 
@@ -162,9 +162,9 @@ podman run --mount type=bind,source=/data,target=/data,bind-propagation=shared m
 ```bash
 # Mount several paths
 podman run -d --name webapp \
-    -v $(pwd)/src:/app/src:Z \
-    -v $(pwd)/public:/app/public:ro,Z \
-    -v $(pwd)/config:/app/config:ro,Z \
+    -v "$(pwd)"/src:/app/src:Z \
+    -v "$(pwd)"/public:/app/public:ro,Z \
+    -v "$(pwd)"/config:/app/config:ro,Z \
     -v /tmp/app-cache:/app/cache:Z \
     -p 8080:8080 \
     webapp:latest
@@ -173,20 +173,20 @@ podman run -d --name webapp \
 ## Bind Mount Gotchas
 
 ```bash
-# Gotcha 1: Non-existent host path creates an empty directory
+# Gotcha 1: Non-existent host paths fail
 podman run --rm -v /nonexistent/path:/data alpine:latest ls -la /data
-# Creates /nonexistent/path as an empty directory owned by root
+# Podman returns an error; pre-create host files and directories before mounting
 
 # Gotcha 2: Bind mount hides existing container content
 # If /app/config has files in the image, mounting over it hides them
 podman run -v /empty/dir:/app/config myapp:latest
 # The original /app/config files are hidden
 
-# Gotcha 3: Relative paths are treated differently than absolute paths
-# Always use absolute paths for bind mounts
+# Gotcha 3: Relative host paths must start with ./
+# A source like data:/app/data is treated as a named volume, not ./data
 podman run -v "$(pwd)/data":/app/data:Z myapp:latest
 ```
 
 ## Summary
 
-Bind mounts map host paths directly into containers using `-v /host:/container` or `--mount type=bind`. They are ideal for development, configuration injection, and log collection. Use `:ro` for read-only access, `:Z` or `:z` for SELinux, and `--userns=keep-id` for rootless permission handling. Always use absolute paths for the host side of bind mounts.
+Bind mounts map host paths directly into containers using `-v /host:/container` or `--mount type=bind`. They are ideal for development, configuration injection, and log collection. Use `:ro` for read-only access, `:Z` or `:z` for SELinux, and `--userns=keep-id` for rootless permission handling. Use absolute host paths, or relative host paths that start with `./`.
