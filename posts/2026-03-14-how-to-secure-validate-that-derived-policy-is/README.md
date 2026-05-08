@@ -17,7 +17,7 @@ Securing derived policy validation means ensuring that the translation from poli
 ## Prerequisites
 
 - Kubernetes cluster with Cilium installed
-- kubectl and Cilium CLI configured
+- kubectl configured with access to the Cilium agent pods
 - Network policies applied
 
 ## Understanding Derived Policies
@@ -25,12 +25,14 @@ Securing derived policy validation means ensuring that the translation from poli
 ```bash
 # View the derived policy for a specific endpoint
 
-cilium endpoint list
-cilium endpoint get <endpoint-id> -o json | jq '.status.policy'
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
+kubectl -n kube-system exec ds/cilium -- \
+  cilium-dbg endpoint get <endpoint-id> -o json | jq '.status.policy'
 
-# See which policies are applied to an endpoint
-cilium endpoint get <endpoint-id> -o json | \
-  jq '.status.policy.realized.cidr-policy'
+# See the realized policy state for an endpoint
+kubectl -n kube-system exec ds/cilium -- \
+  cilium-dbg endpoint get <endpoint-id> -o json | \
+  jq '.status.policy.realized'
 ```
 
 ```mermaid
@@ -48,41 +50,45 @@ graph TD
 #!/bin/bash
 echo "=== Derived Policy Validation ==="
 
-for ep_id in $(cilium endpoint list -o json | jq -r '.[].id'); do
-  POLICY=$(cilium endpoint get "$ep_id" -o json 2>/dev/null | jq '.status.policy')
-  INGRESS=$(echo "$POLICY" | jq '.realized."allowed-ingress-identities" | length')
-  EGRESS=$(echo "$POLICY" | jq '.realized."allowed-egress-identities" | length')
+kubectl -n kube-system get pods -l k8s-app=cilium -o name | while read -r agent; do
+  for ep_id in $(kubectl -n kube-system exec "$agent" -- \
+    cilium-dbg endpoint list -o json | jq -r '.[].id'); do
+    POLICY=$(kubectl -n kube-system exec "$agent" -- \
+      cilium-dbg endpoint get "$ep_id" -o json 2>/dev/null | jq '.status.policy')
+    INGRESS=$(printf '%s' "$POLICY" | jq '.realized."allowed-ingress-identities" // [] | length')
+    EGRESS=$(printf '%s' "$POLICY" | jq '.realized."allowed-egress-identities" // [] | length')
   
-  echo "Endpoint $ep_id: $INGRESS ingress rules, $EGRESS egress rules"
+    echo "$agent endpoint $ep_id: $INGRESS ingress identities, $EGRESS egress identities"
+  done
 done
 ```
 
-## Policy Trace for Validation
+## Policy Selector Validation
 
 ```bash
-# Trace policy decision between two endpoints
-cilium policy trace \
-  --src-identity <source-identity-id> \
-  --dst-identity <dest-identity-id> \
-  --dport 8080
+# Show cached selectors and the identities they match
+kubectl -n kube-system exec ds/cilium -- cilium-dbg policy selectors
 
-# This shows exactly how the derived policy evaluates the connection
+# List the identities that appear in endpoint policy output
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list
+
+# Compare this with Hubble verdicts for the same source, destination, and port
 ```
 
 ## Verification
 
 ```bash
-cilium policy get
-cilium endpoint list
+kubectl get ciliumendpoints --all-namespaces
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf policy get --all
 hubble observe -n default --last 10
 ```
 
 ## Troubleshooting
 
 - **Derived policy allows unexpected traffic**: Check all policies that select the endpoint. Cilium unions (OR) matching policies.
-- **Policy trace shows allow but Hubble shows drop**: May be a port/protocol mismatch not caught by identity trace.
+- **Selector inspection suggests allow but Hubble shows drop**: May be a port/protocol mismatch or a datapath policy-map difference.
 - **Endpoint has no derived policy**: No policy selects this endpoint. Add a policy with matching selector.
 
 ## Conclusion
 
-Derived policy validation ensures your security intent translates correctly to enforcement. Use policy trace and endpoint inspection to verify the effective policy on each endpoint matches your expectations.
+Derived policy validation ensures your security intent translates correctly to enforcement. Use selector, identity, datapath policy-map, and endpoint inspection to verify the effective policy on each endpoint matches your expectations.
