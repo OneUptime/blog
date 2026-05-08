@@ -44,8 +44,8 @@ podman rmi nginx:1.24 nginx:1.25 alpine:3.18
 # Remove multiple images by ID
 podman rmi a3ed95caeb02 05455a08881e b5d58f6c8a2d
 
-# Remove all images matching a pattern
-podman images --filter reference='myapp*' -q | xargs podman rmi
+# Remove all images matching a reference pattern
+podman images --filter reference='myapp.*' -q | xargs podman rmi
 ```
 
 ## Handling Images with Multiple Tags
@@ -106,14 +106,14 @@ Check what would be removed before actually removing.
 
 ```bash
 # List images that match your removal criteria
-podman images --filter reference='myapp*' \
+podman images --filter reference='myapp.*' \
   --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.Created}}"
 
 # Count images to be removed
-podman images --filter reference='myapp*' -q | wc -l
+podman images --filter reference='myapp.*' -q | wc -l
 
 # Check if any containers depend on these images
-for IMG in $(podman images --filter reference='myapp*' -q); do
+for IMG in $(podman images --filter reference='myapp.*' -q); do
   CONTAINERS=$(podman ps -a --filter ancestor="$IMG" -q | wc -l)
   if [ "$CONTAINERS" -gt 0 ]; then
     echo "Image $IMG has $CONTAINERS container(s)"
@@ -132,20 +132,17 @@ Automate image cleanup with scripts.
 DAYS="${1:-30}"
 echo "Removing images older than ${DAYS} days..."
 
-# Get the cutoff date
-CUTOFF=$(date -d "${DAYS} days ago" +%s 2>/dev/null || \
-         date -v-${DAYS}d +%s)
+HOURS=$((DAYS * 24))
 
 REMOVED=0
-podman images --format "{{.ID}} {{.CreatedAt}}" | while read -r ID DATE; do
-  IMG_DATE=$(date -d "$DATE" +%s 2>/dev/null || date -j -f "%Y-%m-%d" "$DATE" +%s 2>/dev/null)
-  if [ -n "$IMG_DATE" ] && [ "$IMG_DATE" -lt "$CUTOFF" ]; then
-    echo "Removing image ${ID} (created ${DATE})"
+while read -r ID; do
+  if [ -n "$ID" ]; then
+    echo "Removing image ${ID}"
     podman rmi "$ID" 2>/dev/null && REMOVED=$((REMOVED + 1))
   fi
-done
+done < <(podman images --filter "until=${HOURS}h" -q)
 
-echo "Cleanup complete."
+echo "Cleanup complete. Removed ${REMOVED} image(s)."
 ```
 
 ## Checking Disk Space After Removal
