@@ -29,10 +29,10 @@ podman search postgresql
 # Search for Python images
 podman search python
 
-# The output shows:
-# INDEX       NAME                            DESCRIPTION                     STARS   OFFICIAL
-# docker.io   docker.io/library/nginx         Official build of Nginx         19000   [OK]
-# docker.io   docker.io/bitnami/nginx         Bitnami container for Nginx     150
+# The default output shows:
+# NAME                       DESCRIPTION
+# docker.io/library/nginx    Official build of Nginx
+# docker.io/bitnami/nginx    Bitnami container for Nginx
 ```
 
 ## Searching a Specific Registry
@@ -49,9 +49,11 @@ podman search quay.io/nginx
 # Search Red Hat Registry
 podman search registry.access.redhat.com/ubi
 
-# Search GitHub Container Registry
-podman search ghcr.io/actions
+# Search Fedora Registry
+podman search registry.fedoraproject.org/fedora
 ```
+
+Registry search support varies by registry, so some registries may not return search results even when images are available.
 
 ## Controlling Search Results
 
@@ -61,7 +63,7 @@ Limit and adjust the number of results returned.
 # Limit results to 5 images
 podman search nginx --limit 5
 
-# Show more results (up to 100)
+# Show more results than the default
 podman search nginx --limit 100
 ```
 
@@ -71,13 +73,13 @@ Find only official images on Docker Hub.
 
 ```bash
 # Search for official images only
-podman search nginx --filter is-official=true
+podman search docker.io/nginx --filter=is-official=true
 
 # Search for official database images
-podman search database --filter is-official=true
+podman search docker.io/database --filter=is-official=true
 
 # Combine with limit
-podman search python --filter is-official=true --limit 10
+podman search docker.io/python --filter=is-official=true --limit 10
 ```
 
 ## Listing Available Tags
@@ -110,10 +112,10 @@ podman search nginx
 podman search nginx --format json | python3 -m json.tool
 
 # Custom format showing name and stars
-podman search nginx --format "{{.Name}} (Stars: {{.Stars}})"
+podman search docker.io/nginx --format "{{.Name}} (Stars: {{.Stars}})"
 
 # Table format with selected columns
-podman search nginx \
+podman search docker.io/nginx \
   --format "table {{.Name}}\t{{.Stars}}\t{{.Official}}"
 ```
 
@@ -142,13 +144,13 @@ Common search patterns for finding the right image.
 ```bash
 # Find the right base image for a web application
 echo "=== Web Server Images ==="
-podman search nginx --filter is-official=true --limit 3
+podman search docker.io/nginx --filter=is-official=true --limit 3
 echo ""
 echo "=== Application Runtime Images ==="
-podman search node --filter is-official=true --limit 3
+podman search docker.io/node --filter=is-official=true --limit 3
 echo ""
 echo "=== Database Images ==="
-podman search postgres --filter is-official=true --limit 3
+podman search docker.io/postgres --filter=is-official=true --limit 3
 
 # Find available tags for your chosen image
 podman search --list-tags docker.io/library/node --limit 30
@@ -164,7 +166,7 @@ Compare images available across different registries.
 
 SEARCH_TERM="${1:?Usage: $0 <search-term>}"
 
-REGISTRIES=("docker.io" "quay.io" "ghcr.io")
+REGISTRIES=("docker.io" "quay.io" "registry.fedoraproject.org")
 
 for REG in "${REGISTRIES[@]}"; do
   echo "=== ${REG} ==="
