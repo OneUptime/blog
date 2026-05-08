@@ -29,18 +29,19 @@ Configure kernel security settings that complement Cilium's eBPF-based networkin
 # Apply security-focused kernel settings on each node
 
 kubectl debug node/$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') \
-  -it --image=ubuntu -- bash -c '
-# Enable BPF JIT (required, also better security than interpreter mode)
+  -it --image=ubuntu --profile=sysadmin -- chroot /host /bin/bash -c '
+# Enable BPF JIT when the runtime sysctl is available
 sysctl -w net.core.bpf_jit_enable=1
 
-# Harden BPF JIT against speculative execution attacks
+# Harden BPF JIT for all users
 sysctl -w net.core.bpf_jit_harden=2
 
-# Disable unprivileged BPF access (only root/CAP_BPF can use BPF)
+# Disable unprivileged BPF access (CAP_BPF or CAP_SYS_ADMIN is required)
 sysctl -w kernel.unprivileged_bpf_disabled=1
 
-# Enable reverse path filtering
-sysctl -w net.ipv4.conf.all.rp_filter=1
+# Enable loose reverse path filtering
+# Use strict mode (1) only when your routing topology is symmetric
+sysctl -w net.ipv4.conf.all.rp_filter=2
 
 # Disable IP forwarding for non-router interfaces (Cilium manages this)
 # Note: Cilium will enable forwarding as needed
@@ -50,7 +51,7 @@ cat >> /etc/sysctl.d/99-cilium-security.conf << EOF
 net.core.bpf_jit_enable=1
 net.core.bpf_jit_harden=2
 kernel.unprivileged_bpf_disabled=1
-net.ipv4.conf.all.rp_filter=1
+net.ipv4.conf.all.rp_filter=2
 EOF
 '
 ```
@@ -64,7 +65,7 @@ graph TD
 
     B --> B1["bpf_jit_harden=2"]
     C --> C1["unprivileged_bpf_disabled=1"]
-    D --> D1["rp_filter=1"]
+    D --> D1["rp_filter=2"]
     E --> E1["Signed kernel modules"]
 ```
 
@@ -74,6 +75,12 @@ Create least-privilege RBAC for the Cilium installation process:
 
 ```yaml
 # cilium-installer-rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cilium-installer
+  namespace: kube-system
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -81,17 +88,20 @@ metadata:
 rules:
   # Helm needs these for Cilium installation
   - apiGroups: [""]
-    resources: ["configmaps", "secrets", "serviceaccounts", "services", "pods"]
-    verbs: ["create", "get", "list", "update", "delete"]
+    resources: ["configmaps", "secrets", "serviceaccounts", "services", "pods", "namespaces", "resourcequotas"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
   - apiGroups: ["apps"]
     resources: ["daemonsets", "deployments"]
-    verbs: ["create", "get", "list", "update", "delete"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
   - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["clusterroles", "clusterrolebindings"]
-    verbs: ["create", "get", "list", "update", "delete"]
+    resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
-    verbs: ["create", "get", "list", "update"]
+    verbs: ["create", "get", "list", "watch", "update", "patch"]
   - apiGroups: ["cilium.io"]
     resources: ["*"]
     verbs: ["*"]
@@ -123,16 +133,19 @@ Ensure the Cilium Helm chart has not been tampered with:
 helm repo list | grep cilium
 # Should show: https://helm.cilium.io/
 
-# Download and verify the chart
-helm pull cilium/cilium --version 1.15.0 --untar
+# Download the packaged chart
+CILIUM_VERSION=1.19.3
+helm pull cilium/cilium --version "$CILIUM_VERSION"
 
 # Check chart provenance if available
-helm verify cilium-1.15.0.tgz 2>/dev/null || echo "Provenance file not available"
+helm verify "cilium-${CILIUM_VERSION}.tgz" 2>/dev/null || echo "Provenance file not available"
 
-# Compare chart digest with official release
-helm pull cilium/cilium --version 1.15.0
-sha256sum cilium-1.15.0.tgz
-# Compare with digest listed on the Cilium releases page
+# Compare chart digest with the official Helm index
+sha256sum "cilium-${CILIUM_VERSION}.tgz"
+curl -fsSL https://helm.cilium.io/index.yaml | awk -v version="$CILIUM_VERSION" '
+  /digest:/ { digest = $2 }
+  $1 == "version:" && $2 == version { print digest }
+'
 ```
 
 ## Securing Node-Level Prerequisites
@@ -177,7 +190,7 @@ echo "=== Security Prerequisites Check ==="
 # Kernel security
 echo "1. Kernel Security:"
 kubectl debug node/$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') \
-  -it --image=ubuntu -- bash -c '
+  -it --image=ubuntu --profile=sysadmin -- chroot /host /bin/bash -c '
   echo "  BPF JIT: $(cat /proc/sys/net/core/bpf_jit_enable)"
   echo "  BPF JIT Harden: $(cat /proc/sys/net/core/bpf_jit_harden)"
   echo "  Unprivileged BPF: $(cat /proc/sys/kernel/unprivileged_bpf_disabled)"
@@ -208,7 +221,7 @@ kubectl get nodes --no-headers | awk '{print "  "$1": "$2}'
 
 - **RBAC too restrictive for Helm**: Helm needs broad permissions during installation. Use the installer RBAC during setup, then switch to a restricted role for operations.
 
-- **Helm chart verification not available**: Cilium does not currently provide Helm provenance files. Verify chart integrity by comparing SHA256 digests with official releases.
+- **Helm chart verification not available**: Cilium's legacy Helm repository may not provide Helm provenance files for older chart versions. Verify chart integrity by comparing SHA256 digests with the official Helm index, or use the OCI chart workflow for digest pinning and signature verification.
 
 ## Conclusion
 
