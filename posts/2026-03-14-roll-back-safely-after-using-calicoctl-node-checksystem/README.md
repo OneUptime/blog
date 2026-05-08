@@ -46,8 +46,8 @@ Note: Unloading kernel modules while Calico is running is dangerous and will bre
 # Remove Calico sysctl configuration
 sudo rm /etc/sysctl.d/99-calico.conf
 
-# Restore previous IP forwarding setting
-sudo sysctl -w net.ipv4.ip_forward=0
+# Restore previous IP forwarding setting (use 0 only if that was the previous value)
+sudo sysctl -w net.ipv4.ip_forward=<previous-value>
 
 # Reload all sysctl from remaining config files
 sudo sysctl --system
@@ -108,7 +108,7 @@ sysctl net.ipv4.ip_forward
 # Verify module loading config is removed
 ls /etc/modules-load.d/
 
-# Note: loaded modules remain in memory until reboot
+# Note: loaded modules remain in memory until reboot unless unloaded with modprobe -r
 lsmod | grep ip_tables
 ```
 
