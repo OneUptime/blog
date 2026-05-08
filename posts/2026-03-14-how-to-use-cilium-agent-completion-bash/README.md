@@ -12,122 +12,126 @@ Description: A practical guide covering how to use cilium-agent completion bash 
 
 Shell completion dramatically improves CLI productivity by providing tab-completion for commands, subcommands, flags, and arguments. Setting up completion for Bash takes only a few minutes and saves significant time in daily operations.
 
-In this guide, we cover cilium-agent shell completion for Bash in a Kubernetes environment. Cilium leverages eBPF technology to provide high-performance networking, security, and observability for cloud-native workloads. The eBPF programs are loaded directly into the Linux kernel, enabling efficient packet processing without the overhead of traditional iptables-based networking stacks.
+In this guide, we cover `cilium-agent` shell completion for Bash in a Kubernetes environment. Cilium leverages eBPF technology to provide high-performance networking, security, and observability for cloud-native workloads. The eBPF programs are loaded directly into the Linux kernel, enabling efficient packet processing without the overhead of traditional iptables-based networking stacks.
 
-Whether you are running a small development cluster or a large production environment with thousands of pods, the techniques in this guide will help you maintain a reliable Cilium deployment. We provide step-by-step instructions with real commands and configuration examples that you can adapt to your environment.
+Whether you are running a small development cluster or a large production environment with thousands of pods, the techniques in this guide will help you make the `cilium-agent` command easier to use when you need to inspect or troubleshoot an agent directly. We provide step-by-step instructions with real commands that you can adapt to your environment.
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.21+) with Cilium installed (v1.14+)
+- A running Kubernetes cluster with Cilium installed
 - `kubectl` configured for cluster access
-- `cilium` CLI installed (matching your Cilium version)
-- Helm 3.x for configuration management
+- Access to the `cilium-agent` binary, either locally or inside a Cilium agent pod
+- Bash with the `bash-completion` package installed
 - Basic familiarity with Kubernetes networking concepts
-- Access to cluster nodes for troubleshooting (recommended)
-- Prometheus and Grafana for metrics visualization (recommended)
+- Access to cluster nodes or Cilium pods for troubleshooting
 
 ## Getting Started
 
-Familiarize yourself with the tools and commands needed for cilium-agent shell completion for Bash.
+Familiarize yourself with the tools and commands needed for `cilium-agent` shell completion for Bash.
 
 ```bash
-# Verify Cilium is installed and accessible
+# Verify that Bash is available
+bash --version
 
-cilium version
+# Verify that bash-completion is installed on Linux systems that use it
+type _init_completion
 
-# Check the current deployment status
-cilium status --verbose
+# If cilium-agent is available locally, verify the command is accessible
+cilium-agent --help | head
+```
 
-# View the configuration
-cilium config view | head -20
+If `cilium-agent` is not installed on your workstation, you can generate the completion script from a running Cilium pod:
+
+```bash
+# Select one Cilium agent pod
+CILIUM_POD="$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')"
+
+# Generate the Bash completion script from the cilium-agent container
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-agent completion bash > cilium-agent.bash
 ```
 
 ## Core Operations
 
-### Working with Endpoints
+### Loading Completion for the Current Shell
 
 ```bash
-# List all endpoints managed by Cilium
-cilium endpoint list
+# Load completions when cilium-agent is available locally
+source <(cilium-agent completion bash)
 
-# Get detailed information about a specific endpoint
-cilium endpoint get <endpoint-id>
+# Or load the script generated from a Cilium pod
+source ./cilium-agent.bash
 
-# Check endpoint labels and identity
-cilium endpoint list -o json | jq '.[] | {id: .id, labels: .status.labels, identity: .status.identity.id}'
+# Confirm Bash has registered completion for cilium-agent
+complete -p cilium-agent
 ```
 
-### Working with Identities
+### Installing Completion System-Wide on Linux
 
 ```bash
-# List all security identities
-cilium identity list
+# Install the completion script for future Bash sessions
+cilium-agent completion bash | sudo tee /etc/bash_completion.d/cilium-agent >/dev/null
 
-# Filter identities by label
-cilium identity list -o json | jq '.[] | select(.labels | any(contains("app=")))'
+# Start a new shell or source the installed completion file
+source /etc/bash_completion.d/cilium-agent
 ```
 
-### Working with Policies
+### Installing Completion with Homebrew on macOS
 
 ```bash
-# View all enforced policies
-cilium policy get
+# Ensure Homebrew's bash-completion directory exists
+mkdir -p "$(brew --prefix)/etc/bash_completion.d"
 
-# Check policy selectors and their matches
-cilium policy selectors
+# Install the completion script for future Bash sessions
+cilium-agent completion bash > "$(brew --prefix)/etc/bash_completion.d/cilium-agent"
 ```
 
 ## Practical Examples
 
-### Example 1: Inspecting Service Load Balancing
+### Example 1: Generating Completion Without a Local Binary
 
 ```bash
-# List all services managed by Cilium
-cilium service list
+# Select a Cilium agent pod
+CILIUM_POD="$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')"
 
-# Check BPF load balancer entries
-cilium bpf lb list | head -20
+# Save the generated completion script locally
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-agent completion bash > cilium-agent.bash
 
-# Verify a specific service has correct backends
-cilium service list -o json | jq '.[] | select(.spec.frontend_address.port == 80)'
+# Load it into the current shell
+source ./cilium-agent.bash
 ```
 
-### Example 2: Debugging Network Connectivity
+### Example 2: Installing the Generated Script for Your User
 
 ```bash
-# Run a targeted connectivity test
-cilium connectivity test --single-node
+# Keep user-managed completion scripts in a predictable location
+mkdir -p ~/.local/share/bash-completion/completions
 
-# Check for dropped packets
-cilium metrics list | grep drop
+# Install the generated script
+cp cilium-agent.bash ~/.local/share/bash-completion/completions/cilium-agent
 
-# Inspect BPF connection tracking table
-cilium bpf ct list global | tail -20
+# Source it directly if your current Bash session has not loaded user completions
+source ~/.local/share/bash-completion/completions/cilium-agent
 ```
 
-### Example 3: Monitoring Agent Health
+### Example 3: Disabling Completion Descriptions
 
 ```bash
-# Check overall health
-cilium health status
+# Generate a smaller completion script without descriptions
+cilium-agent completion bash --no-descriptions > cilium-agent.bash
 
-# Monitor agent metrics
-cilium metrics list | grep -E "process_cpu|process_resident_memory"
-
-# Check for recent agent events
-kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tail -10
+# Load the generated script
+source ./cilium-agent.bash
 ```
 
 ```mermaid
 flowchart TD
-    A[Daily Operations] --> B[Health Checks]
-    A --> C[Endpoint Management]
-    A --> D[Policy Inspection]
-    A --> E[Troubleshooting]
-    B --> F[cilium status]
-    C --> G[cilium endpoint list]
-    D --> H[cilium policy get]
-    E --> I[cilium connectivity test]
+    A[Need cilium-agent Bash completion] --> B{Local cilium-agent binary?}
+    B -->|Yes| C[source <(cilium-agent completion bash)]
+    B -->|No| D[kubectl exec into Cilium pod]
+    D --> E[Save cilium-agent.bash]
+    E --> F[source ./cilium-agent.bash]
+    C --> G[Tab-complete cilium-agent commands]
+    F --> G
 ```
 
 
@@ -136,63 +140,63 @@ flowchart TD
 After completing the steps above, run a comprehensive verification to confirm everything is working as expected.
 
 ```bash
-# Check overall Cilium deployment health
-cilium status --verbose
+# Confirm the generated completion script is valid Bash
+bash -n cilium-agent.bash
 
-# Verify inter-node connectivity
-cilium health status
+# Load completion in the current shell
+source ./cilium-agent.bash
 
-# Confirm all Cilium pods are running and ready
+# Confirm Bash registered the cilium-agent completion function
+complete -p cilium-agent
+
+# Confirm cilium-agent exposes the completion subcommand
+cilium-agent completion bash --help
+```
+
+If you generated the script from a Kubernetes pod, verify that the pod and container name still match your deployment:
+
+```bash
+# Confirm Cilium pods are running and ready
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 
-# Verify the Cilium operator is healthy
-kubectl get pods -n kube-system -l name=cilium-operator
-
-# Check for recent error events
-kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tail -10
-
-# Run a connectivity test to validate the data plane
-cilium connectivity test --single-node
-
-# Verify endpoint count matches expected pod count
-echo "Cilium endpoints: $(cilium endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
+# Confirm the selected pod contains the cilium-agent container
+kubectl get pod -n kube-system "$CILIUM_POD" -o jsonpath='{.spec.containers[*].name}{"\n"}'
 ```
 
 ## Troubleshooting
 
 If you encounter issues during or after the steps in this guide, use the following troubleshooting procedures:
 
-- **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 4.19 or later. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
+- **`cilium-agent: command not found`**: The `cilium-agent` binary is usually inside the Cilium agent pod rather than on your workstation. Generate the completion script with `kubectl exec` from a running Cilium pod, or run the command on a node where the binary is installed.
 
-- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `cilium policy get`. Verify inter-node tunnel connectivity with `cilium bpf tunnel list`.
+- **Completion does not work after sourcing the script**: Confirm that `bash-completion` is installed and loaded. On many Linux distributions, installing the `bash-completion` package and starting a new shell is enough. You can check with `type _init_completion`.
 
-- **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm with `cilium config view`.
+- **Permission denied when writing to `/etc/bash_completion.d`**: Use `sudo tee` instead of shell redirection because redirection is performed by your current shell before `sudo` runs: `cilium-agent completion bash | sudo tee /etc/bash_completion.d/cilium-agent >/dev/null`.
 
-- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `cilium metrics list | grep process_resident_memory`.
+- **Generated script is empty or contains an error**: Check that the target Cilium pod is running and that you are executing the command in the `cilium-agent` container. Run `kubectl get pods -n kube-system -l k8s-app=cilium` and retry with a ready pod.
 
-- **Endpoints stuck in regenerating state**: This usually indicates the agent is overloaded or encountering errors during BPF program compilation. Check agent logs with `kubectl logs -n kube-system -l k8s-app=cilium --tail=200 | grep -i error`.
+- **Completion is stale after a Cilium upgrade**: Regenerate the completion script from the upgraded `cilium-agent` binary so the available commands and flags match the running version.
 
-- **Policy not being enforced**: Verify the policy selectors match the intended pods using `cilium endpoint list`. Confirm the policy is applied with `cilium policy get`. Check that the endpoint has the correct identity with `cilium endpoint get <id>`.
+- **You meant the Cilium CLI instead of cilium-agent**: The `cilium` CLI is a separate command and has its own completion command: `cilium completion bash`.
 
-To collect a comprehensive diagnostic bundle for further analysis:
+If the Cilium CLI is installed, you can collect a comprehensive diagnostic bundle for further analysis:
 
 ```bash
-# Generate a Cilium sysdump containing all diagnostic information
-# This collects logs, configs, BPF maps, and cluster state
+# Generate a Cilium sysdump containing diagnostic information
 cilium sysdump --output-filename cilium-diag-$(date +%Y%m%d)
 ```
 
 ## Conclusion
 
-This guide covered cilium-agent shell completion for Bash with practical steps you can apply to your Kubernetes cluster. Regular monitoring, systematic validation, and proactive management are essential for maintaining a healthy Cilium deployment at any scale.
+This guide covered `cilium-agent` shell completion for Bash with practical steps you can apply to your Kubernetes cluster. Regular validation and keeping generated completion files aligned with your installed Cilium version are essential for avoiding stale command and flag suggestions.
 
 Key takeaways from this guide:
 
-- Always assess the current state before making changes to your Cilium configuration
-- Use Helm for configuration management to ensure consistency and reproducibility across environments
-- Monitor Cilium metrics through Prometheus to detect issues before they impact workloads
-- Test changes in a staging environment before applying them to production clusters
-- Maintain runbooks documenting your Cilium configuration decisions and operational procedures
-- Use `cilium sysdump` to collect comprehensive diagnostic data when investigating issues
+- Use `cilium-agent completion bash` to generate Bash completion for the agent binary
+- Load completion immediately with `source <(cilium-agent completion bash)` when the binary is available locally
+- Generate the script from a running Cilium pod when `cilium-agent` is not installed on your workstation
+- Install completion under `/etc/bash_completion.d` or your user completion directory for future sessions
+- Regenerate completion after Cilium upgrades
+- Use `cilium completion bash` instead if you want completion for the separate Cilium CLI
 
-As your cluster grows and evolves, revisit these configurations periodically and adjust them to match your current requirements. The Cilium community and documentation are excellent resources for staying current with best practices and new features.
+As your cluster grows and evolves, revisit these generated completion scripts periodically and adjust them to match your current requirements. The Cilium community and documentation are excellent resources for staying current with best practices and new features.
