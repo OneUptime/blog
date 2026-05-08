@@ -24,33 +24,32 @@ Whether you are running a small cluster or a large multi-tenant environment, the
 
 ## Pattern 1: Default Configuration for Small Clusters
 
-For clusters with fewer than 50 nodes, a straightforward GlobalNetworkSet configuration works well:
+For clusters with fewer than 50 nodes, a straightforward GlobalNetworkSet layout works well:
 
 ```bash
 # Verify current GlobalNetworkSet resources
 
 calicoctl get globalnetworkset -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Confirm the Calico CRD is installed
+kubectl get crd globalnetworksets.crd.projectcalico.org
 ```
 
-Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
+Start with clearly named sets that contain only the required CIDRs, and add labels that your policies can select. Premature splitting of GlobalNetworkSet resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), you can use GlobalNetworkSet labels and policy selectors to group external CIDRs by environment:
 
 ```bash
-# Label nodes by environment
-kubectl label node worker-1 environment=production
-kubectl label node worker-2 environment=staging
+# Verify GlobalNetworkSet labels by environment
+calicoctl get globalnetworkset -o wide
 
-# Verify labels
-kubectl get nodes --show-labels | grep environment
+# Inspect the policies that select those labels
+calicoctl get globalnetworkpolicy -o yaml | grep -A5 "selector"
 ```
 
-Then reference these labels in your GlobalNetworkSet manifest's node selectors to apply environment-specific settings.
+Then reference these labels from Calico policy rule selectors to apply environment-specific allow or deny rules for those external networks.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,9 +64,9 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Use simple, optimized selectors in policies that match GlobalNetworkSet labels
 - Use Typha to reduce the number of direct datastore connections
-- Monitor memory usage of calico-node pods when managing many GlobalNetworkSet resources
+- Monitor Felix metrics such as active selectors and label index metrics when managing many GlobalNetworkSet resources
 
 ## Pattern 4: Combining with Other Calico Resources
 
@@ -91,18 +90,17 @@ Set up ongoing monitoring for your GlobalNetworkSet resources:
 
 ```bash
 # Watch for changes to GlobalNetworkSet resources
-kubectl get globalnetworkset.projectcalico.org -w
+kubectl get globalnetworksets.crd.projectcalico.org -w
 
 # Set up alerts on calico-node restarts
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix metrics if you have Prometheus metrics enabled:
 
 ```bash
-# Check if Felix is reporting healthy
-curl -s http://<node-ip>:9099/liveness
-curl -s http://<node-ip>:9099/readiness
+# Check whether Felix is exporting metrics
+curl -s http://<node-ip>:9091/metrics | head
 ```
 
 ## Verification
@@ -124,17 +122,17 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 
 **Resource configuration not taking effect:**
 - Verify the resource is correctly applied: `calicoctl get globalnetworkset -o yaml`.
-- Check Felix logs for configuration reload messages.
+- Check Felix logs for policy or selector update messages.
 - Ensure Typha is relaying updates: `kubectl logs -n calico-system -l k8s-app=calico-typha --tail=20`.
 
 **Performance degradation after configuration change:**
 - Check calico-node CPU and memory: `kubectl top pods -n calico-system`.
-- Review whether reconciliation intervals are too aggressive.
+- Review whether policy selectors that reference GlobalNetworkSet labels are broader or more complex than needed.
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
-- Verify node selectors are matching the intended nodes.
-- Check for node-specific FelixConfiguration overrides.
+- Verify policy selectors are matching the intended GlobalNetworkSet labels.
+- Check whether policies are active on the endpoints where you expect them to apply.
 
 
 ## Additional Considerations
@@ -169,15 +167,16 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworksets.crd.projectcalico.org
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
 
-# Review recent changes to Calico resources (if audit logging is enabled)
+# Review recent Calico-related events
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 ```
 
 ### Capacity Planning for Large Deployments
 
-For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use the Calico metrics endpoint to track IPAM utilization and plan IP pool expansions before reaching capacity limits.
+For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use `calicoctl ipam show` and kube-controllers IPAM metrics to track IPAM utilization and plan IP pool expansions before reaching capacity limits.
 
 ```bash
 # Monitor IPAM utilization
