@@ -33,8 +33,9 @@ This is the most common Cilium question in production environments.
 kubectl get ciliumnetworkpolicies -A -o yaml | grep -B 5 "app: my-pod"
 
 # Step 2: Check Cilium endpoint identity for the affected pod
-POD_IP=$(kubectl get pod my-pod -o jsonpath='{.status.podIP}')
-cilium endpoint list | grep $POD_IP
+POD_IP=$(kubectl get pod -n my-namespace my-pod -o jsonpath='{.status.podIP}')
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list | grep "$POD_IP"
 
 # Step 3: Use Hubble to see why traffic is being dropped
 hubble observe --from-pod my-namespace/my-pod --verdict DROPPED --follow
@@ -50,14 +51,17 @@ The most common fix: add an explicit DNS egress allow rule to your CiliumNetwork
 egress:
 - toEndpoints:
   - matchLabels:
-      k8s:io.kubernetes.pod.namespace: kube-system
-      k8s-app: kube-dns
+      "k8s:io.kubernetes.pod.namespace": kube-system
+      "k8s:k8s-app": kube-dns
   toPorts:
   - ports:
     - port: "53"
       protocol: UDP
     - port: "53"
       protocol: TCP
+    rules:
+      dns:
+      - matchPattern: "*"
 ```
 
 ## FAQ Topic 2: Cilium Pods Crash After Kernel Update
@@ -74,22 +78,22 @@ kubectl debug node/<node-name> -it --image=busybox -- \
   chroot /host mount | grep bpf
 
 # If BPF filesystem is unmounted, remount it
-kubectl debug node/<node-name> -it --image=ubuntu -- \
+kubectl debug node/<node-name> -it --image=ubuntu --profile=sysadmin -- \
   chroot /host mount bpffs -t bpf /sys/fs/bpf
 ```
 
-## FAQ Topic 3: High CPU Usage from Felix/Cilium Agent
+## FAQ Topic 3: High CPU Usage from Cilium Agent
 
 ```bash
 # Check Cilium agent CPU usage
 kubectl top pods -n kube-system -l k8s-app=cilium
 
 # Check for policy or endpoint count causing overhead
-cilium endpoint list | wc -l
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg endpoint list | wc -l
 
-# Reduce iptables refresh frequency if not needed
-kubectl patch configmap -n kube-system cilium-config \
-  --patch '{"data":{"kube-proxy-replacement":"false"}}'
+# Check agent status and controller health
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg status --verbose
 
 # Check if policy count is unusually high
 kubectl get ciliumnetworkpolicies -A | wc -l
@@ -114,7 +118,7 @@ hubble status
 
 # If still not showing traffic, check flow sampling settings
 kubectl get configmap -n kube-system cilium-config \
-  -o jsonpath='{.data.monitor-aggregation}'
+  -o jsonpath='{.data["monitor-aggregation"]}'
 ```
 
 ## FAQ Topic 5: Services Not Accessible After Cilium Installation
@@ -123,12 +127,13 @@ kubectl get configmap -n kube-system cilium-config \
 # Check if kube-proxy is conflicting with Cilium
 kubectl get pods -n kube-system | grep kube-proxy
 
-# If using kube-proxy replacement, disable kube-proxy
-kubectl -n kube-system patch ds kube-proxy \
-  -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-existing":"true"}}}}}'
+# If using kube-proxy replacement, remove kube-proxy
+kubectl -n kube-system delete ds kube-proxy
+kubectl -n kube-system delete cm kube-proxy
 
 # Verify service routing in Cilium
-cilium service list
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg service list
 
 # Test service connectivity
 kubectl run svc-test --image=busybox --rm -it --restart=Never -- \
