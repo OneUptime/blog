@@ -39,7 +39,7 @@ calicoctl get nodes -o yaml > backup-nodes.yaml
 ```bash
 # Find pods with duplicate IPs
 
-kubectl get pods -A -o wide | sort -k7 | awk 'NR>1{if($7==prev) print prev_line"\n"$0; prev=$7; prev_line=$0}'
+kubectl get pods -A -o wide | awk 'NR>1 && $7!="<none>" {count[$7]++; lines[$7]=lines[$7] $0 "\n"} END {for (ip in count) if (count[ip] > 1) printf "%s", lines[ip]}'
 ```
 
 ## Step 2: Delete the Conflicting Pods
@@ -48,17 +48,28 @@ kubectl get pods -A -o wide | sort -k7 | awk 'NR>1{if($7==prev) print prev_line"
 kubectl delete pod <conflicting-pod> -n <namespace>
 ```
 
-The pod will be recreated with a new, unique IP address.
+If the pod is managed by a controller such as a Deployment, ReplicaSet, StatefulSet, or DaemonSet, it will be recreated with a new IP address.
 
 ## Step 3: Clean Up IPAM State
 
 ```bash
-# Release orphaned IPs
-calicoctl ipam release --ip=<duplicate-ip>
-
-# Verify the release
+# Check the IPAM state for the duplicate IP
 calicoctl ipam show --ip=<duplicate-ip>
+
+# Lock the datastore while checking and releasing leaked addresses
+calicoctl datastore migrate lock
+
+# Generate an IPAM consistency report
+calicoctl ipam check --show-problem-ips -o report.json
+
+# Release leaked addresses found by the report
+calicoctl ipam release --from-report=report.json
+
+# Unlock the datastore after cleanup
+calicoctl datastore migrate unlock
 ```
+
+Only release addresses that are leaked or orphaned. `calicoctl ipam release` does not remove an IP address from an existing endpoint that is still using it. While the datastore is locked, new pods cannot be launched, so unlock it as soon as the cleanup is complete.
 
 ## Step 4: Enable Strict Affinity
 
@@ -155,8 +166,8 @@ calicoctl ipam check
 # Layer 3: Node-to-node connectivity
 calicoctl node status
 
-# Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+# Layer 4: Pod-to-service connectivity
+kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 --no-check-certificate https://kubernetes.default.svc/livez
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
