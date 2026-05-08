@@ -39,7 +39,7 @@ kubectl run iperf3-baseline --image=networkstatic/iperf3 --rm -it --restart=Neve
   -c iperf3-server.default -t 30 -P 4 2>&1 | tee /tmp/iperf3-baseline.txt
 
 # Baseline endpoint count and BPF map usage
-kubectl -n kube-system exec ds/cilium -- cilium status --verbose > /tmp/cilium-status-baseline.txt
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose > /tmp/cilium-status-baseline.txt
 
 # Clean up
 kubectl delete pod iperf3-server 2>/dev/null
@@ -84,7 +84,7 @@ spec:
 
         # Endpoint count growing fast
         - alert: CiliumEndpointCountHigh
-          expr: cilium_endpoint_count > 500
+          expr: cilium_endpoint > 500
           for: 5m
           labels:
             severity: info
@@ -93,7 +93,7 @@ spec:
 
         # Drop rate increasing
         - alert: CiliumDropRateHigh
-          expr: sum(rate(cilium_drop_count_total[5m])) > 100
+          expr: sum(rate(hubble_drop_total[5m])) > 100
           for: 5m
           labels:
             severity: warning
@@ -103,8 +103,8 @@ spec:
         # Endpoint regeneration taking too long
         - alert: CiliumSlowEndpointRegeneration
           expr: |
-            rate(cilium_endpoint_regeneration_time_stats_sum[5m])
-            / rate(cilium_endpoint_regeneration_time_stats_count[5m]) > 30
+            rate(cilium_endpoint_regeneration_time_stats_seconds_sum[5m])
+            / rate(cilium_endpoint_regeneration_time_stats_seconds_count[5m]) > 30
           for: 5m
           labels:
             severity: warning
@@ -147,11 +147,11 @@ Apply these settings from the initial deployment:
 ```yaml
 # cilium-performance-best-practices.yaml
 # Monitor aggregation (reduces CPU overhead)
-monitorAggregation: medium
-monitorAggregationInterval: 5s
-
-# Appropriate BPF map sizes for a medium cluster (100-500 nodes)
 bpf:
+  monitorAggregation: medium
+  monitorInterval: 5s
+
+  # Appropriate BPF map sizes for a medium cluster (100-500 nodes)
   ctTcpMax: 524288
   ctAnyMax: 262144
   natMax: 524288
@@ -169,7 +169,7 @@ resources:
 # Hubble with controlled cardinality
 hubble:
   enabled: true
-  eventBufferCapacity: "8192"
+  eventBufferCapacity: "8191"
   metrics:
     enabled:
       - dns
@@ -250,7 +250,7 @@ for r in data.get('data',{}).get('result',[]):
 kubectl -n kube-system get ds cilium -o jsonpath='{.spec.template.spec.containers[0].resources}' | python3 -m json.tool
 
 # 4. Monitor aggregation is enabled
-kubectl -n kube-system exec ds/cilium -- cilium config | grep MonitorAggregation
+kubectl -n kube-system exec ds/cilium -- cilium-dbg config | grep monitor-aggregation
 ```
 
 ## Troubleshooting
