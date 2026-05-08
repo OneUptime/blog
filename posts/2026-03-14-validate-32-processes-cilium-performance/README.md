@@ -1,16 +1,16 @@
-# Validating 32-Process Performance in Cilium
+# Validating 32-Stream Performance in Cilium
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Cilium, Kubernetes, Performance, Multi-Process, Validation
+Tags: Cilium, Kubernetes, Performance, Parallel Streams, Validation
 
-Description: A validation framework for 32-process parallel workloads in Cilium, ensuring linear scaling, even CPU distribution, and consistent aggregate throughput.
+Description: A validation framework for 32-stream parallel workloads in Cilium, ensuring linear scaling, even CPU distribution, and consistent aggregate throughput.
 
 ---
 
 ## Introduction
 
-Validating 32-process performance in Cilium requires testing that aggregate throughput scales properly with process count, that all CPUs contribute evenly, and that results are statistically stable. The validation is more rigorous than lower-parallelism tests because the interaction of 32 concurrent flows creates emergent behavior that single tests cannot predict.
+Validating 32-stream performance in Cilium requires testing that aggregate throughput scales properly with stream count, that CPUs contribute evenly, and that results are statistically stable. The validation is more rigorous than lower-parallelism tests because the interaction of 32 concurrent flows creates emergent behavior that single tests cannot predict.
 
 This guide provides a comprehensive validation framework covering scaling efficiency, CPU utilization balance, and consistency across multiple runs and node pairs.
 
@@ -20,7 +20,8 @@ The validation must answer three questions: Does throughput scale linearly? Is t
 
 - Kubernetes cluster with Cilium v1.14+
 - Nodes with 32+ CPU cores
-- `iperf3` and `jq` available
+- `kubectl`, `iperf3`, `jq`, `bc`, and GNU `awk` available
+- Cilium CLI available for status checks
 - Prometheus for metrics
 - CI/CD pipeline
 
@@ -32,13 +33,13 @@ The validation must answer three questions: Does throughput scale linearly? Is t
 
 SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
 
-echo "Processes | Throughput (Gbps) | Efficiency"
+echo "Streams | Throughput (Gbps) | Efficiency"
 SINGLE=""
 
 for P in 1 2 4 8 16 32; do
   TOTAL=0
   for i in 1 2 3; do
-    BPS=$(kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 15 -P $P -J 2>/dev/null | \
+    BPS=$(kubectl exec iperf-client -- iperf3 -c "$SERVER_IP" -t 15 -P "$P" -J 2>/dev/null | \
       jq '.end.sum_sent.bits_per_second')
     TOTAL=$(echo "$TOTAL + $BPS" | bc)
     sleep 3
@@ -64,11 +65,12 @@ done
 #!/bin/bash
 # validate-32p-consistency.sh
 
+SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
 RUNS=10
 RESULTS=()
 
 for i in $(seq 1 $RUNS); do
-  BPS=$(kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 20 -P 32 -J | \
+  BPS=$(kubectl exec iperf-client -- iperf3 -c "$SERVER_IP" -t 20 -P 32 -J | \
     jq '.end.sum_sent.bits_per_second')
   RESULTS+=($BPS)
   echo "Run $i: $(echo "scale=2; $BPS / 1000000000" | bc) Gbps"
@@ -96,13 +98,21 @@ echo "PASS: Consistency validation successful"
 NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
 MIN_GBPS=20
 
+# Assumes a running iperf3 server pod labeled app=iperf-server on each destination node.
 for src in $NODES; do
   for dst in $NODES; do
     [ "$src" = "$dst" ] && continue
+    DST_IP=$(kubectl get pod -l app=iperf-server \
+      --field-selector "spec.nodeName=$dst,status.phase=Running" \
+      -o jsonpath='{.items[0].status.podIP}')
+    if [ -z "$DST_IP" ]; then
+      echo "FAIL: no running iperf-server pod on $dst"
+      continue
+    fi
     BPS=$(kubectl run "matrix-$src-$dst" --image=networkstatic/iperf3 \
-      --overrides="{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$src\"}}}" \
-      --rm -it --restart=Never \
-      -- -c $DST_IP -t 15 -P 32 -J 2>/dev/null | \
+      --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$src\"},\"tolerations\":[{\"key\":\"dedicated\",\"operator\":\"Equal\",\"value\":\"perf-testing\",\"effect\":\"NoSchedule\"}]}}" \
+      --rm -i --restart=Never \
+      -- -c "$DST_IP" -t 15 -P 32 -J 2>/dev/null | \
       jq '.end.sum_sent.bits_per_second / 1000000000')
     echo "$src -> $dst: $BPS Gbps"
     if (( $(echo "$BPS < $MIN_GBPS" | bc -l) )); then
@@ -153,9 +163,9 @@ kubectl get pods --all-namespaces --field-selector spec.nodeName=node-test-1 \
 ssh node-test-1 "for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > \$gov; done"
 ssh node-test-2 "for gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo performance > \$gov; done"
 
-# Uncordon for test workloads only
+# Reserve the nodes for test workloads with a matching toleration
+kubectl taint nodes node-test-1 node-test-2 dedicated=perf-testing:NoSchedule --overwrite
 kubectl uncordon node-test-1 node-test-2
-kubectl taint nodes node-test-1 node-test-2 dedicated=perf-testing:NoSchedule
 ```
 
 ### Statistical Analysis
@@ -215,4 +225,4 @@ Document your acceptance criteria clearly so that validation results can be obje
 
 ## Conclusion
 
-Validating 32-process performance in Cilium requires testing scaling efficiency, consistency, and cross-node uniformity. The scaling test reveals your hardware ceiling and configuration efficiency, the consistency test confirms reliability, and the cross-node matrix ensures uniform cluster behavior. Together, these validations provide confidence that 32-process workloads will perform predictably in production.
+Validating 32-stream performance in Cilium requires testing scaling efficiency, consistency, and cross-node uniformity. The scaling test reveals your hardware ceiling and configuration efficiency, the consistency test confirms reliability, and the cross-node matrix ensures uniform cluster behavior. Together, these validations provide confidence that 32-stream workloads will perform predictably in production.
