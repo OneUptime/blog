@@ -12,7 +12,7 @@ Description: Safely update Calico StagedKubernetesNetworkPolicy resources using 
 
 Updating a StagedKubernetesNetworkPolicy in Calico Enterprise requires the same discipline as updating any production network policy, but with the added benefit of staged preview. Since these policies use the Kubernetes NetworkPolicy format, teams already familiar with standard network policies can update them using familiar patterns while leveraging Calico's staging capabilities.
 
-A safe update workflow involves exporting the current staged policy, making targeted changes, applying the update, and validating the diff before committing. This prevents accidental rule removal or misconfiguration that could impact traffic once the policy is enforced.
+A safe update workflow involves exporting the current staged policy, making targeted changes, applying the update, and validating the diff before enforcement. This prevents accidental rule removal or misconfiguration that could impact traffic once the policy is enforced.
 
 This guide demonstrates safe update patterns for StagedKubernetesNetworkPolicy resources, including backup procedures, incremental modifications, and validation steps.
 
@@ -20,7 +20,6 @@ This guide demonstrates safe update patterns for StagedKubernetesNetworkPolicy r
 
 - Kubernetes cluster with Calico Enterprise
 - `kubectl` configured with namespace-level access
-- `calicoctl` CLI installed
 - Existing StagedKubernetesNetworkPolicy resources to update
 - RBAC permissions for stagedkubernetesnetworkpolicies resources
 
@@ -50,7 +49,6 @@ metadata:
   name: allow-web-ingress
   namespace: production
 spec:
-  stagedAction: Set
   podSelector:
     matchLabels:
       app: web-frontend
@@ -104,7 +102,6 @@ metadata:
   name: allow-web-ingress
   namespace: production
 spec:
-  stagedAction: Set
   podSelector:
     matchLabels:
       app: web-frontend
@@ -172,4 +169,4 @@ kubectl apply -f allow-web-ingress-backup.yaml
 
 ## Conclusion
 
-Safely updating StagedKubernetesNetworkPolicy resources requires a structured approach: back up first, make targeted changes, validate with diffs and dry-runs, and verify the update took effect. The staging mechanism provides an additional safety net since changes are not enforced until committed, but disciplined update practices prevent errors from reaching the commit stage in the first place.
+Safely updating StagedKubernetesNetworkPolicy resources requires a structured approach: back up first, make targeted changes, validate with diffs and dry-runs, and verify the update took effect. The staging mechanism provides an additional safety net since changes are not enforced until you create or update the corresponding enforced policy, but disciplined update practices prevent errors from reaching enforcement in the first place.
