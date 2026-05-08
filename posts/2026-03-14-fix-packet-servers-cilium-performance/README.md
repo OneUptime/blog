@@ -18,7 +18,7 @@ This guide provides server configurations optimized for each benchmark type.
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.24+) with Cilium v1.14+
+- Kubernetes cluster running a version supported by your Cilium release
 - `cilium` CLI and `kubectl` access
 - Node-level root access
 - Prometheus monitoring (recommended)
@@ -48,14 +48,22 @@ spec:
 
 ## Server-Side Tuning
 
-```bash
-# Inside the server container or via init container
+```yaml
+# For pod-level tuning, set namespaced sysctls with the pod securityContext.
+# Unsafe sysctls must be allowed on the target nodes by the cluster admin.
 
-sysctl -w net.core.rmem_max=67108864
-sysctl -w net.core.wmem_max=67108864
-sysctl -w net.ipv4.tcp_rmem="4096 87380 67108864"
-sysctl -w net.ipv4.tcp_wmem="4096 65536 67108864"
-sysctl -w net.core.somaxconn=65535
+securityContext:
+  sysctls:
+  - name: net.core.rmem_max
+    value: "67108864"
+  - name: net.core.wmem_max
+    value: "67108864"
+  - name: net.ipv4.tcp_rmem
+    value: "4096 87380 67108864"
+  - name: net.ipv4.tcp_wmem
+    value: "4096 65536 67108864"
+  - name: net.core.somaxconn
+    value: "65535"
 ```
 
 ## Multi-Server for High Parallelism
@@ -85,8 +93,7 @@ YAML
 ## Verification
 
 ```bash
-# Run the validation checks above
-# All items should show PASS
+# Cilium should report healthy status
 cilium status --verbose
 ```
 
@@ -143,8 +150,9 @@ This change log is invaluable for understanding which optimizations provide the 
 If a change causes unexpected behavior, roll back immediately:
 
 ```bash
-# Rollback to previous Helm release
-helm rollback cilium -n kube-system
+# Rollback to a previous Helm release revision
+helm history cilium -n kube-system
+helm rollback cilium <revision> -n kube-system
 
 # Verify the rollback was successful
 cilium status --verbose
@@ -161,9 +169,12 @@ After applying any fix, run through this validation checklist to ensure the fix 
 
 echo "=== Post-Fix Validation Checklist ==="
 
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  -o jsonpath='{.items[0].metadata.name}')
+
 # 1. Cilium agent health
 echo "1. Cilium agent health:"
-cilium status | grep -E "OK|error|degraded"
+cilium status | grep -E "Ok|OK|error|degraded"
 
 # 2. No agent restarts
 echo "2. Agent restart count:"
@@ -172,12 +183,15 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg monitor --type drop | \
+  timeout 5 head -5 || echo "No drops in 5 seconds"
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '[.items[] | select(.status.state == "ready")] | length'
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '[.items[] | select(.status.state == "not-ready")] | length'
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
