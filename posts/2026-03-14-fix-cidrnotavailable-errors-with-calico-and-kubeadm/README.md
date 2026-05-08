@@ -10,7 +10,7 @@ Description: Concrete steps to resolve CIDRNotAvailable errors in Kubernetes clu
 
 ## Introduction
 
-CIDRNotAvailable errors occur when Calico cannot find a suitable CIDR block to allocate IPs from. This typically happens when the pod CIDR configured in kubeadm does not match the Calico IPPool configuration, or when the IP address space is exhausted.
+CIDRNotAvailable events are emitted by Kubernetes when the node CIDR allocator cannot allocate a pod CIDR for a node. In clusters using Calico IPAM, Calico does not use Kubernetes `Node.spec.podCIDR` allocations for pod IP assignment, so the event usually points to kube-controller-manager node CIDR allocation settings rather than Calico directly. Calico IPPool mismatches or exhaustion can still cause pod IP allocation and connectivity problems, and should be checked alongside the kubeadm pod CIDR.
 
 This guide provides concrete fix procedures for CIDRNotAvailable errors. Each step includes the exact commands to run, with explanations of what each command does and why it resolves the issue.
 
@@ -36,24 +36,28 @@ calicoctl get nodes -o yaml > backup-nodes.yaml
 
 ## Step 1: Align the Pod CIDR
 
-The most common cause is a mismatch between kubeadm's pod CIDR and Calico's IPPool:
+Check kubeadm's pod CIDR, the node CIDR allocator settings, and Calico's IPPool:
 
 ```bash
 # Get kubeadm pod CIDR
+kubectl get cm -n kube-system kubeadm-config -o jsonpath='{.data.ClusterConfiguration}' | grep podSubnet
 
-kubectl get cm -n kube-system kubeadm-config -o yaml | grep podSubnet
+# Check the running kube-controller-manager node CIDR settings
+kubectl -n kube-system get pod -l component=kube-controller-manager -o yaml | grep -E -- '--allocate-node-cidrs|--cluster-cidr|--node-cidr-mask-size'
 
 # Get Calico IPPool CIDR
-calicoctl get ippools -o yaml | grep cidr
+calicoctl get ippool -o wide
 ```
 
-If they do not match, update the Calico IPPool:
+If the node CIDR allocator is producing CIDRNotAvailable events in a Calico IPAM cluster, either configure kube-controller-manager with a large enough `--cluster-cidr` and appropriate `--node-cidr-mask-size`, or disable Kubernetes node CIDR allocation by setting `--allocate-node-cidrs=false`.
+
+If the Calico IPPool does not fall within the Kubernetes cluster CIDR, migrate to a new Calico IPPool instead of changing the CIDR of an existing pool in place:
 
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: IPPool
 metadata:
-  name: default-ipv4-pool
+  name: new-ipv4-pool
 spec:
   cidr: 10.244.0.0/16
   blockSize: 26
@@ -63,12 +67,15 @@ spec:
 ```
 
 ```bash
-calicoctl apply -f ippool.yaml
+calicoctl apply -f new-pool.yaml
+calicoctl patch ippool default-ipv4-ippool -p '{"spec": {"disabled": true}}'
+kubectl delete pod -A --all
+calicoctl delete ippool default-ipv4-ippool
 ```
 
 ## Step 2: Expand the IP Pool if Exhausted
 
-If the CIDR is correct but IPs are exhausted, create an additional pool:
+If Calico IPAM is exhausted, create an additional non-overlapping pool that is covered by the Kubernetes cluster CIDR and kube-proxy cluster CIDR configuration. This example assumes the cluster CIDR covers both `10.244.0.0/16` and `10.245.0.0/16`:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -89,14 +96,14 @@ calicoctl apply -f additional-pool.yaml
 
 ## Step 3: Clean Up Stale Block Affinities
 
-Remove affinities for deleted nodes:
+Do not manually delete BlockAffinity resources. They are managed by Calico IPAM. If deleted nodes left stale Calico state behind, remove the stale Calico Node resource after confirming the host is no longer in service:
 
 ```bash
-# List block affinities
-calicoctl get blockaffinities -o yaml
+# List Calico nodes
+calicoctl get nodes
 
-# Remove affinities for deleted nodes
-calicoctl delete blockaffinity <stale-affinity-name>
+# Remove the stale Calico node resource
+calicoctl delete node <stale-node-name>
 ```
 
 ## Verification
@@ -174,7 +181,7 @@ After applying any fix, systematically verify each layer of the Calico stack:
 kubectl get pods -n calico-system -o wide
 
 # Layer 2: IPAM consistency
-calicoctl ipam check
+calicoctl ipam show --show-blocks
 
 # Layer 3: Node-to-node connectivity
 calicoctl node status
