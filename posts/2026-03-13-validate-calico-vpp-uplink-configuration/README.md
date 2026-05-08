@@ -21,7 +21,7 @@ Validating the Calico VPP uplink configuration is critical because an incorrectl
 ## Step 1: Verify DPDK Binding
 
 ```bash
-# On the node, verify the NIC is bound to vfio-pci (not Linux driver)
+# On the node, verify the NIC is bound to vfio-pci or another DPDK-compatible driver
 
 dpdk-devbind.py --status-dev net
 
@@ -30,7 +30,7 @@ dpdk-devbind.py --status-dev net
 # ============================================
 # 0000:00:0a.0 '82599ES 10G' drv=vfio-pci unused=ixgbe
 
-# If still bound to Linux driver, VPP is using af_packet mode
+# If still bound to a Linux driver, VPP is not using DPDK for that NIC
 ```
 
 ## Step 2: Verify VPP Interface State
@@ -40,8 +40,9 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
   vppctl show hardware-interfaces
 
 # For DPDK uplink, expect:
-# GigabitEthernet0/0/0       1  up         10000/10000/10000/10000
-# Name, Instance, Admin, Speed
+# GigabitEthernet0/0/0       1  up   GigabitEthernet0/0/0
+#   ...
+#     rx queues 1, rx desc 1024, tx queues 1, tx desc 1024
 
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
   vppctl show interface GigabitEthernet0/0/0
@@ -75,11 +76,11 @@ kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
 ```bash
 # Check number of RX queues
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show dpdk version
+  vppctl show hardware-interfaces GigabitEthernet0/0/0
 
 # Check queue-to-worker thread mapping
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show dpdk statistics | grep -E "queue|worker"
+  vppctl show interface rx-placement
 ```
 
 ## Step 5: Test Bandwidth
@@ -101,12 +102,12 @@ kubectl run iperf-client --image=networkstatic/iperf3 -- \
 
 ```bash
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show dpdk statistics
+  vppctl show hardware-interfaces GigabitEthernet0/0/0 detail
 
 # Check for:
 # rx_errors: 0 (non-zero = hardware NIC errors)
 # rx_missed_errors: 0 (non-zero = rx ring overflow, need larger queues)
-# rx_no_bufs: 0 (non-zero = VPP buffer exhaustion, need more hugepages)
+# rx_mbuf_allocation_errors: 0 (non-zero = VPP buffer exhaustion, need more buffers)
 ```
 
 ## Conclusion
