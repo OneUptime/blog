@@ -61,7 +61,7 @@ echo "First check:"
 FIRST=$(calicoctl ipam check 2>&1)
 echo "$FIRST"
 
-FIRST_ISSUES=$(echo "$FIRST" | grep -cE "leaked|orphan" || echo 0)
+FIRST_ISSUES=$(echo "$FIRST" | grep -cE "leaked|orphan" || true)
 
 if [ "$FIRST_ISSUES" -eq 0 ]; then
   echo "CLEAN: No issues found."
@@ -76,7 +76,7 @@ echo "Second check:"
 SECOND=$(calicoctl ipam check 2>&1)
 echo "$SECOND"
 
-SECOND_ISSUES=$(echo "$SECOND" | grep -cE "leaked|orphan" || echo 0)
+SECOND_ISSUES=$(echo "$SECOND" | grep -cE "leaked|orphan" || true)
 
 echo ""
 echo "=== Validation ==="
@@ -103,7 +103,7 @@ fi
 
 ## Troubleshooting
 
-- **Transient leaks from StatefulSet restarts**: StatefulSet pods maintain IP affinity. Brief leaks during rolling updates are normal.
+- **Transient leaks from StatefulSet restarts**: StatefulSet pods maintain stable names and DNS identities, but their IP addresses may change when pods are recreated. Brief IPAM discrepancies during rolling updates can be normal.
 - **Check results differ on each run**: This indicates active pod churn. Run during quiet periods for stable results.
 - **Cannot determine if block is truly orphaned**: Check the Kubernetes node list, cloud provider console, and recent cluster operations logs.
 
