@@ -12,7 +12,7 @@ Description: Diagnose and fix Hubble filter issues including empty results, inco
 
 Hubble filters are powerful but can be confusing when they do not return the expected results. A filter that returns no data could mean the traffic does not exist, the filter syntax is wrong, the required observability features are not enabled, or the filter logic is not what you intended.
 
-Troubleshooting filter issues requires understanding how filters compose (AND logic for CLI flags), how identity-based filtering works in Cilium, and what data is available at each observability layer (L3/L4 vs L7).
+Troubleshooting filter issues requires understanding how filters compose (most different CLI filters narrow results, while broad relationship filters such as `--namespace` match either side of a flow), how identity-based filtering works in Cilium, and what data is available at each observability layer (L3/L4 vs L7).
 
 This guide systematically addresses the common filter problems you will encounter when working with Hubble.
 
@@ -65,11 +65,11 @@ flowchart TD
 
 ## Fixing Identity and Label Mismatches
 
-Hubble uses Cilium security identities for filtering. Pod names and labels must match exactly:
+Hubble uses Cilium security identities for filtering. Pod filters are prefix matches, while labels and workloads must match how Cilium sees the endpoint:
 
 ```bash
 # Check how Hubble sees a specific pod's identity
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | python3 -c "
 import json, sys
 for ep in json.load(sys.stdin):
     labels = ep.get('status',{}).get('identity',{}).get('labels',[])
@@ -80,13 +80,13 @@ for ep in json.load(sys.stdin):
         for l in labels:
             if l.startswith('k8s:io.kubernetes.pod.namespace='):
                 ns = l.split('=')[1]
-        name = ep.get('status',{}).get('external-identifiers',{}).get('pod-name','')
+        name = ep.get('status',{}).get('external-identifiers',{}).get('k8s-pod-name','')
         print(f'{ns}/{name}: {k8s_labels[:3]}')
 " | head -10
 
-# Common mistake: using deployment name instead of pod name
-# WRONG: --pod default/my-deployment
-# RIGHT: --pod default/my-deployment-abc123-xyz
+# Common mistake: relying on an ambiguous pod-name prefix
+# RISKY: --pod default/my-deployment
+# BETTER: --pod default/my-deployment-abc123-xyz
 # BETTER: --to-workload my-deployment (uses label matching)
 
 # Verify the exact pod name
@@ -102,17 +102,19 @@ L7 filters (HTTP, DNS, gRPC) require additional configuration:
 
 ```bash
 # Check if L7 visibility is enabled
-kubectl -n kube-system exec ds/cilium -- cilium endpoint list -o json | python3 -c "
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | python3 -c "
 import json, sys
 for ep in json.load(sys.stdin):
     proxy = ep.get('status',{}).get('policy',{}).get('proxy-statistics',[])
     if proxy:
-        name = ep.get('status',{}).get('external-identifiers',{}).get('pod-name','')
+        name = ep.get('status',{}).get('external-identifiers',{}).get('k8s-pod-name','')
         print(f'{name}: L7 proxy active - {len(proxy)} rules')
 " | head -10
 
 # If no endpoints have L7 proxy active, L7 filters won't work
-# Enable L7 visibility with a CiliumNetworkPolicy
+# Enable L7 visibility with a CiliumNetworkPolicy.
+# L7 policies also enforce traffic, so apply this only when the allow-all rule
+# below matches the traffic you intend to permit.
 ```
 
 ```yaml
@@ -165,10 +167,11 @@ helm get values cilium -n kube-system -o yaml | grep -A20 "export:"
 # allowList:
 #   - '{"verdict":["DROPPED"]}'
 
-# WRONG: Using pod names instead of prefixes
-# '{"source_pod":["my-exact-pod-name"]}'
+# WRONG: Using an unqualified pod name prefix
+# '{"source_pod":["my-pod"]}'
 
-# CORRECT: Using namespace prefix
+# CORRECT: Using namespace/name or namespace prefix
+# '{"source_pod":["production/my-pod"]}'
 # '{"source_pod":["production/"]}'
 
 # Test exporter filters by checking the output
@@ -178,7 +181,7 @@ kubectl -n kube-system exec ds/cilium -- wc -l /var/run/cilium/hubble/events.log
 # Temporarily remove filters to verify export is working
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set hubble.export.static.allowList='{}'
+  --set hubble.export.static.allowList={}
 ```
 
 ## Verification
@@ -219,7 +222,7 @@ print(f'Validated {count} flows - all match filter criteria')
 
 ## Troubleshooting
 
-- **Filter matches too many flows**: CLI filters use AND logic. Add more filter criteria to narrow results. Use `--from-namespace` and `--to-namespace` instead of `--namespace` for directional filtering.
+- **Filter matches too many flows**: Most different CLI filters narrow results, but `--namespace` matches flows where either the source or destination is in that namespace. Add more filter criteria to narrow results. Use `--from-namespace` and `--to-namespace` instead of `--namespace` for directional filtering.
 
 - **Workload filter does not match**: The workload name must match the Kubernetes Deployment/StatefulSet name, not the pod name. Check with `kubectl get deploy`.
 
