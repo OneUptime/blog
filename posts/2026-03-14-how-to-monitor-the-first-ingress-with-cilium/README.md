@@ -34,15 +34,21 @@ envoy:
     serviceMonitor:
       enabled: true
 
+prometheus:
+  enabled: true
+
 hubble:
   enabled: true
   metrics:
+    enableOpenMetrics: true
     enabled:
       - dns
       - drop
       - tcp
       - flow
       - "httpV2:exemplars=true;labelsContext=source_ip,destination_ip"
+    serviceMonitor:
+      enabled: true
 ```
 
 ```bash
@@ -55,17 +61,17 @@ helm upgrade cilium cilium/cilium \
 Key metrics:
 
 ```promql
-# Request rate by route
-rate(envoy_http_downstream_rq_total[5m])
+# Total request rate
+sum(rate(envoy_http_downstream_rq_total[5m]))
 
 # Latency percentiles
-histogram_quantile(0.99, rate(envoy_http_downstream_rq_time_bucket[5m]))
+histogram_quantile(0.99, sum by (le) (rate(envoy_http_downstream_rq_time_bucket[5m])))
 
 # Error rate (5xx)
-rate(envoy_http_downstream_rq_xx{envoy_response_code_class="5"}[5m])
+sum(rate(envoy_http_downstream_rq_xx{envoy_response_code_class="5"}[5m]))
 
 # Active connections
-envoy_http_downstream_cx_active
+sum(envoy_http_downstream_cx_active)
 ```
 
 ## Hubble Flow Monitoring
@@ -106,9 +112,9 @@ spec:
       rules:
         - alert: IngressHighErrorRate
           expr: >
-            rate(envoy_http_downstream_rq_xx{
-              envoy_response_code_class="5"}[5m]) /
-            rate(envoy_http_downstream_rq_total[5m]) > 0.05
+            sum(rate(envoy_http_downstream_rq_xx{
+              envoy_response_code_class="5"}[5m])) /
+            sum(rate(envoy_http_downstream_rq_total[5m])) > 0.05
           for: 5m
           labels:
             severity: warning
@@ -117,7 +123,7 @@ spec:
         - alert: IngressHighLatency
           expr: >
             histogram_quantile(0.99,
-              rate(envoy_http_downstream_rq_time_bucket[5m])) > 5
+              sum by (le) (rate(envoy_http_downstream_rq_time_bucket[5m]))) > 5000
           for: 10m
           labels:
             severity: warning
@@ -128,9 +134,9 @@ spec:
 ## Verification
 
 ```bash
-kubectl port-forward -n kube-system svc/cilium-envoy 9090:9090 &
-curl -s http://localhost:9090/metrics | grep envoy_http
-cilium status | grep -i ingress
+kubectl port-forward -n kube-system svc/cilium-envoy 9964:9964 &
+curl -s http://localhost:9964/metrics | grep envoy_http
+kubectl get ingress -A -o wide
 ```
 
 ## Troubleshooting
