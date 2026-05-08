@@ -12,7 +12,7 @@ Description: Understand the Cilium project's governance structure including comm
 
 Cilium is a CNCF Graduated project with a well-defined governance model that describes how decisions are made, how contributors advance to committer status, and how the project is directed. Understanding this governance helps contributors know how to influence the project and how to resolve disagreements.
 
-The Cilium governance model is documented in the GitHub repository and follows common CNCF governance patterns. It defines roles (contributor, committer, maintainer), how the core team is selected, and how technical disputes are resolved.
+The Cilium governance model is documented in the Cilium community GitHub repository and follows common CNCF governance patterns. It defines a contributor ladder, how commit access is granted or revoked, and how technical disputes are resolved.
 
 ## Governance Roles
 
@@ -26,11 +26,11 @@ Committers have write access to the repository and are trusted to review and mer
 
 - Sustained contributions over time
 - Demonstrated technical expertise
-- Nomination and approval by existing committers
+- Nomination and approval by existing committers, including a majority of yes votes and no no votes
 
-### Maintainer (Core Team)
+### Committer and CNCF Maintainer Status
 
-Maintainers set project direction, make architectural decisions, and represent Cilium in CNCF. The core team meets to make decisions that affect the project as a whole.
+Cilium committers discuss strategy and policy for the whole project, vote on project matters when required, and can communicate with the CNCF on behalf of the project. Becoming a Cilium committer also grants CNCF maintainer status for the project.
 
 ## Decision-Making
 
@@ -41,8 +41,8 @@ flowchart TD
     B -->|No| D[Discussion period]
     D --> E{Consensus after discussion?}
     E -->|Yes| C
-    E -->|No| F[Core team vote]
-    F --> G[Majority decides]
+    E -->|No| F[Committer vote]
+    F --> G[Threshold depends on decision type]
     G --> C
 ```
 
@@ -50,20 +50,20 @@ flowchart TD
 
 Cilium is a CNCF Graduated project, which means:
 
-- Code and project assets are owned by the CNCF
-- Cilium participates in CNCF governance bodies
+- Cilium is hosted by the CNCF as a graduated project
+- Cilium committers can request CNCF project services and vote on certain CNCF matters
 - The project follows CNCF's Code of Conduct
 - Isovalent (now part of Cisco) is the primary corporate contributor
 
 ## Contributing to Governance
 
-- Governance documents are in `/GOVERNANCE.md` in the Cilium GitHub repository
-- Changes to governance require a pull request and discussion
-- Community members can propose governance changes through the weekly meeting
+- Governance documents are in `/GOVERNANCE.md` in the Cilium community GitHub repository
+- Changes to governance require discussion and, except for editorial changes, a committer vote
+- Community members can raise governance topics through Cilium community channels and meetings
 
 ## Code of Conduct
 
-Cilium follows the CNCF Code of Conduct. Reports of Code of Conduct violations can be made to the CNCF via the process described at: https://www.cncf.io/conduct/
+Cilium's Code of Conduct is based on the CNCF Code of Conduct and includes Cilium-specific reporting details. Reports of Code of Conduct violations can be made to the Cilium code of conduct team or, where applicable, through the CNCF process described at: https://www.cncf.io/conduct/
 
 ## Find Current Maintainers
 
@@ -81,4 +81,4 @@ https://github.com/cilium/cilium/blob/main/MAINTAINERS.md
 
 ## Conclusion
 
-Cilium's governance model provides a transparent framework for contribution, committer advancement, and project decision-making. As a CNCF Graduated project, Cilium benefits from CNCF's neutral ownership and standardized governance practices. Understanding this model helps contributors engage effectively and advance within the project.
+Cilium's governance model provides a transparent framework for contribution, committer advancement, and project decision-making. As a CNCF Graduated project, Cilium benefits from CNCF's neutral project home and standardized governance practices. Understanding this model helps contributors engage effectively and advance within the project.
