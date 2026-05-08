@@ -20,7 +20,7 @@ This guide walks through diagnosing TCP_CRR performance issues in Cilium-managed
 
 - Kubernetes cluster with Cilium v1.14+
 - `netperf` container image (cilium/netperf)
-- `cilium` CLI, `kubectl`, `bpftool`
+- `cilium` CLI, `cilium-dbg`, `kubectl`, `hubble`, `bpftool`
 - Node-level access for kernel profiling
 
 ## Measuring TCP_CRR Baseline
@@ -41,22 +41,28 @@ kubectl run netperf-crr --image=cilium/netperf \
   -- netperf -H $SERVER_IP -t TCP_CRR -l 30
 
 # Also test host-to-host for baseline
+kubectl run host-netperf-server --image=cilium/netperf \
+  --overrides='{"spec":{"hostNetwork":true,"nodeSelector":{"kubernetes.io/hostname":"node-1"}}}' \
+  -- netserver -D
+
+HOST_SERVER_IP=$(kubectl get pod host-netperf-server -o jsonpath='{.status.hostIP}')
+
 kubectl run host-crr --image=cilium/netperf \
   --overrides='{"spec":{"hostNetwork":true,"nodeSelector":{"kubernetes.io/hostname":"node-2"}}}' \
   --rm -it --restart=Never \
-  -- netperf -H <node-1-ip> -t TCP_CRR -l 30
+  -- netperf -H $HOST_SERVER_IP -t TCP_CRR -l 30
 ```
 
 ## Analyzing Conntrack Behavior
 
-Each TCP_CRR transaction creates and destroys a conntrack entry:
+Each TCP_CRR transaction creates a conntrack entry, which is later removed by Cilium's conntrack garbage collection or timeout handling:
 
 ```bash
 # Monitor conntrack entry creation rate during test
-watch -n1 "cilium bpf ct list global | wc -l"
+watch -n1 "sudo cilium-dbg bpf ct list | wc -l"
 
 # Check conntrack GC timing
-cilium metrics list | grep gc
+sudo cilium-dbg metrics list | grep gc
 
 # Profile conntrack operations
 bpftool prog show --json | jq '.[] | select(.name | contains("ct")) | {name, run_cnt, run_time_ns}'
@@ -65,28 +71,28 @@ bpftool prog show --json | jq '.[] | select(.name | contains("ct")) | {name, run
 ## Checking NAT Table Pressure
 
 ```bash
-# NAT entries grow with connection rate
-cilium bpf nat list | wc -l
+# NAT entries grow with masqueraded connection rate
+sudo cilium-dbg bpf nat list | wc -l
 
 # Check NAT map capacity
 cilium config view | grep bpf-nat-global-max
 
-# Monitor port allocation exhaustion
-cilium bpf nat list | awk '{print $3}' | sort | uniq -c | sort -rn | head
+# Monitor repeated remote endpoint mappings that can indicate port pressure
+sudo cilium-dbg bpf nat list | awk '{print $3}' | sort | uniq -c | sort -rn | head
 ```
 
 ## SYN Processing Path Analysis
 
 ```bash
 # Use Hubble to observe SYN processing
-hubble observe --protocol TCP --last 1000 -o json | \
-  jq 'select(.l4.TCP.flags.SYN == true) | {verdict, drop_reason: .drop_reason_desc}'
+hubble observe --protocol tcp --tcp-flags syn --last 1000 -o json | \
+  jq '.flow | {verdict, drop_reason: .drop_reason_desc}'
 
 # Check for SYN drops
-hubble observe --type drop --protocol TCP --last 100
+hubble observe --type drop --protocol tcp --last 100
 
 # Monitor Cilium for policy evaluation on new connections
-cilium monitor --type policy-verdict | head -20
+sudo cilium-dbg monitor --type policy-verdict | head -20
 ```
 
 ```mermaid
@@ -114,14 +120,14 @@ kubectl exec netperf-client -- netperf -H $POD_IP -t TCP_CRR -l 10
 # Via ClusterIP service (with NAT)
 kubectl exec netperf-client -- netperf -H $SVC_IP -t TCP_CRR -l 10
 
-# The difference shows NAT overhead
+# The difference helps isolate service load-balancing and reverse-NAT overhead
 ```
 
 ## Troubleshooting
 
-- **Very low TCP_CRR (<5000 conn/s)**: Check for L7 policy in the path causing per-connection Envoy proxy setup.
-- **Conntrack table growing unbounded**: Verify GC is running with `cilium config view | grep ct-global-tcp-timeout`.
-- **NAT port exhaustion**: Increase `bpf-nat-global-max` or reduce `tcp_fin_timeout`.
+- **Very low TCP_CRR (<5000 conn/s)**: Check for L7 policy in the path causing Envoy proxying overhead.
+- **Conntrack table growing unbounded**: Verify GC is running with `sudo cilium-dbg metrics list | grep gc` and check Cilium CT timeout settings such as `bpf-ct-timeout-regular-tcp`.
+- **NAT port exhaustion**: Check `nat_endpoint_max_connection`, review ephemeral port usage for the destination, and increase `bpf-nat-global-max` only if the NAT map itself is capacity-constrained.
 - **SYN drops under load**: Increase `net.core.somaxconn` and `net.ipv4.tcp_max_syn_backlog`.
 
 ## Collecting Diagnostic Data Systematically
@@ -140,11 +146,11 @@ cilium status --verbose > $DIAG_DIR/cilium-status.txt
 cilium config view > $DIAG_DIR/cilium-config.txt
 
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+sudo cilium-dbg bpf ct list > $DIAG_DIR/ct-entries.txt 2>&1
+sudo cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+sudo cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
