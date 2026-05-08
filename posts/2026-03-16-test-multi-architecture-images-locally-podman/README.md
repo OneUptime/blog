@@ -36,7 +36,7 @@ podman run --rm --platform linux/amd64 alpine:3.19 uname -m
 
 ## Running a Specific Platform Variant
 
-Use `--platform` with `podman run` to select which architecture to execute.
+Use `--platform` with `podman run` to select which architecture to execute. For ARM variants, use `--variant`.
 
 ```bash
 # Run the AMD64 variant
@@ -46,7 +46,7 @@ podman run --rm --platform linux/amd64 myapp:latest
 podman run --rm --platform linux/arm64 myapp:latest
 
 # Run the ARMv7 variant
-podman run --rm --platform linux/arm/v7 myapp:latest
+podman run --rm --platform linux/arm --variant v7 myapp:latest
 ```
 
 ## Verifying Image Architecture
@@ -60,21 +60,23 @@ Confirm that each variant is actually the correct architecture.
 MANIFEST="myapp:latest"
 
 PLATFORMS=$(podman manifest inspect "${MANIFEST}" | \
-  jq -r '.manifests[] | "\(.platform.os)/\(.platform.architecture)\(if .platform.variant then "/\(.platform.variant)" else "" end)"')
+  jq -r '.manifests[] | [.platform.os, .platform.architecture, (.platform.variant // "")] | @tsv')
 
-for PLATFORM in ${PLATFORMS}; do
+while IFS=$'\t' read -r OS ARCH VARIANT; do
+  PLATFORM="${OS}/${ARCH}"
   echo "=== Testing ${PLATFORM} ==="
 
   # Run uname to verify architecture
-  RESULT=$(podman run --rm --platform "${PLATFORM}" "${MANIFEST}" uname -m 2>&1)
-  echo "  uname -m: ${RESULT}"
+  RUN_ARGS=(--rm --platform "${PLATFORM}")
+  if [ -n "${VARIANT}" ]; then
+    RUN_ARGS+=(--variant "${VARIANT}")
+    echo "  variant: ${VARIANT}"
+  fi
 
-  # Check the image metadata
-  ARCH=$(echo "${PLATFORM}" | cut -d/ -f2)
-  INSPECT_ARCH=$(podman inspect --format '{{.Architecture}}' "${MANIFEST}" 2>/dev/null || echo "N/A")
-  echo "  Inspect arch: ${INSPECT_ARCH}"
+  RESULT=$(podman run "${RUN_ARGS[@]}" "${MANIFEST}" uname -m 2>&1)
+  echo "  uname -m: ${RESULT}"
   echo ""
-done
+done <<< "${PLATFORMS}"
 ```
 
 ## Running a Test Suite Per Platform
@@ -188,7 +190,7 @@ for PLATFORM in "${REQUIRED_PLATFORMS[@]}"; do
     echo "PASS"
   else
     echo "FAIL"
-    ((FAILURES++))
+    ((FAILURES+=1))
     continue
   fi
 
@@ -208,7 +210,7 @@ for PLATFORM in "${REQUIRED_PLATFORMS[@]}"; do
     echo "PASS (${ACTUAL})"
   else
     echo "FAIL (expected ${EXPECTED_UNAME}, got ${ACTUAL})"
-    ((FAILURES++))
+    ((FAILURES+=1))
   fi
 
   # Test 3: Application-specific test
@@ -217,7 +219,7 @@ for PLATFORM in "${REQUIRED_PLATFORMS[@]}"; do
     echo "PASS"
   else
     echo "FAIL"
-    ((FAILURES++))
+    ((FAILURES+=1))
   fi
 
   echo ""
@@ -266,7 +268,7 @@ MANIFEST="myapp:latest"
 for PLATFORM in linux/amd64 linux/arm64; do
   echo "=== ${PLATFORM} ==="
   time podman run --rm --platform "${PLATFORM}" "${MANIFEST}" \
-    sh -c "for i in $(seq 1 1000); do echo \$i > /dev/null; done"
+    sh -c 'for i in $(seq 1 1000); do echo "$i" > /dev/null; done'
   echo ""
 done
 ```
