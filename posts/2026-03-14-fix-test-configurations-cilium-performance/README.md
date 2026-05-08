@@ -27,7 +27,6 @@ Apply changes incrementally and benchmark after each to measure the impact of in
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.0.0.0/8" \
@@ -36,15 +35,14 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
   --set bpf.hostLegacyRouting=false \
   --set loadBalancer.acceleration=native \
   --set devices=eth0 \
-  --set bpf.ctGlobalTCPMax=524288 \
-  --set bpf.ctGlobalAnyMax=262144
+  --set bpf.ctTcpMax=524288 \
+  --set bpf.ctAnyMax=262144
 ```
 
 ## Optimal Configuration for Latency Testing
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set kubeProxyReplacement=true \
   --set socketLB.enabled=true \
@@ -84,24 +82,24 @@ cilium status --verbose
 When applying performance fixes to a production Cilium cluster, follow a staged rollout approach to minimize risk:
 
 ```bash
-# Step 1: Test on a single node first
+# Step 1: Prepare a test node first
 kubectl cordon node-test-1
 kubectl drain node-test-1 --ignore-daemonsets --delete-emptydir-data
 
 # Step 2: Apply configuration changes
+# Helm values update the Cilium DaemonSet cluster-wide.
 helm upgrade cilium cilium/cilium --namespace kube-system \
   --reuse-values \
-  <your-changes-here>
+  --set key=value
 
-# Step 3: Wait for the Cilium agent on the test node to restart
+# Step 3: Wait for the Cilium agents to roll out
 kubectl rollout status ds/cilium -n kube-system --timeout=120s
 
 # Step 4: Run a quick benchmark on the test node
 kubectl uncordon node-test-1
 # Deploy test pods on the node and verify performance
 
-# Step 5: If successful, roll out to remaining nodes
-# Cilium DaemonSet will handle the rolling update
+# Step 5: If successful, continue monitoring; otherwise roll back
 ```
 
 ### Change Tracking
@@ -154,12 +152,24 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+  -o jsonpath='{.items[0].metadata.name}')
+DROPS=$(timeout 5 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
+  cilium-dbg monitor --type drop 2>/dev/null | head -5)
+if [ -n "$DROPS" ]; then
+  echo "$DROPS"
+else
+  echo "No drops in 5 seconds"
+fi
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
+  cilium-dbg endpoint list -o json | \
+  jq '[.[] | select(.status.state == "ready")] | length'
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
+  cilium-dbg endpoint list -o json | \
+  jq '[.[] | select(.status.state != "ready")] | length'
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
