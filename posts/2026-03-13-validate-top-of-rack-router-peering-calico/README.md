@@ -27,10 +27,13 @@ This guide covers validate of Top-of-Rack Router Peering with Calico in Calico w
 
 calicoctl get bgpconfiguration default -o yaml
 
+# Verify BGP peering status on each Calico node
+sudo calicoctl node status
+
 # Check node status
 kubectl get nodes -o wide
 
-# Verify Calico components
+# Verify Calico components in operator-based installations
 kubectl get pods -n calico-system
 ```
 
