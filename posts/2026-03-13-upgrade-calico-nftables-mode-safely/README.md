@@ -17,6 +17,7 @@ The upgrade procedure should include verifying that nftables tables are correctl
 ## Prerequisites
 
 - Calico running in nftables mode
+- kube-proxy running in nftables mode
 - `kubectl` with cluster admin access
 - A maintenance window
 
@@ -31,6 +32,7 @@ calicoctl version
 # Verify nftables state before upgrade
 
 nft list tables | grep calico
+kubectl -n kube-system get configmap kube-proxy -o yaml | grep "mode:"
 ```
 
 ## Step 2: Backup Calico Configuration
@@ -41,16 +43,19 @@ calicoctl get ippool -o yaml > ippool-backup.yaml
 kubectl get installation default -o yaml > installation-backup.yaml
 ```
 
-Confirm the nftables backend is configured in the backup:
+Confirm the nftables dataplane is configured in the backup:
 
 ```bash
-grep iptablesBackend felix-backup.yaml
+grep linuxDataplane installation-backup.yaml
 ```
 
 ## Step 3: Upgrade the Tigera Operator
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml -O
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml -O
+kubectl apply --server-side --force-conflicts -f v1_crd_projectcalico_org.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 kubectl rollout status deployment/tigera-operator -n tigera-operator
 ```
 
@@ -68,33 +73,35 @@ After each node's calico-node pod restarts, verify nftables tables are correctly
 ```bash
 # On an upgraded node
 nft list tables | grep calico
-nft list table ip calico-filter | wc -l
+nft list table ip calico | wc -l
 ```
 
-The rule count in `calico-filter` should be non-zero and roughly similar to pre-upgrade.
+The rule count in the `ip calico` table should be non-zero and roughly similar to pre-upgrade.
 
 ## Step 6: Test Policy Enforcement Post-Upgrade
 
 ```bash
 kubectl create namespace nft-upgrade-test
 kubectl run server --image=nginx --labels="app=s" -n nft-upgrade-test
+kubectl wait --for=condition=Ready pod/server -n nft-upgrade-test --timeout=60s
 kubectl expose pod server --port=80 -n nft-upgrade-test
 kubectl run client --image=busybox -n nft-upgrade-test -- sleep 60
+kubectl wait --for=condition=Ready pod/client -n nft-upgrade-test --timeout=60s
 kubectl exec -n nft-upgrade-test client -- wget -qO- --timeout=5 http://server
 kubectl delete namespace nft-upgrade-test
 ```
 
-## Step 7: Confirm Felix Backend After Upgrade
+## Step 7: Confirm Dataplane After Upgrade
 
 ```bash
-calicoctl get felixconfiguration default -o yaml | grep iptablesBackend
+kubectl get installation default -o jsonpath='{.spec.calicoNetwork.linuxDataplane}{"\n"}'
 ```
 
-If the upgrade reset the backend to iptables (this should not happen, but verify):
+If the upgrade reset the dataplane to iptables (this should not happen, but verify):
 
 ```bash
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{"iptablesBackend":"nft"}}'
+kubectl patch installation default --type=merge \
+  --patch '{"spec":{"calicoNetwork":{"linuxDataplane":"Nftables"}}}'
 ```
 
 ## Conclusion
