@@ -32,7 +32,7 @@ curl --cacert /etc/calico/certs/ca.pem \
      --key /etc/calico/certs/key.pem \
      $ETCD_ENDPOINTS/health
 
-# For Kubernetes source
+# For Kubernetes datastore
 export DATASTORE_TYPE=kubernetes
 kubectl cluster-info
 ```
@@ -57,8 +57,8 @@ rules:
 
 ```bash
 # During import, resources may already exist in the target
-# Use --allow-version-mismatch if version differs
-calicoctl datastore migrate lock --allow-version-mismatch 2>&1
+# Re-run the import only after resolving the duplicate resources
+calicoctl datastore migrate import -f etcd-data 2>&1
 
 # Or clean the target datastore first (DANGEROUS - only if target is empty/new)
 ```
@@ -72,6 +72,10 @@ head -20 calico-export.yaml
 
 # Ensure calicoctl version matches the data version
 calicoctl version
+
+# If only the calicoctl client and cluster versions differ, use the
+# top-level version override after confirming the mismatch is acceptable
+calicoctl --allow-version-mismatch datastore migrate import -f etcd-data
 ```
 
 ## Diagnostic Script
@@ -118,7 +122,7 @@ calicoctl get ippools
 |-------|-------|-----|
 | Connection refused | Wrong datastore endpoint | Check ETCD_ENDPOINTS or kubeconfig |
 | Permission denied | Missing RBAC | Apply migration ClusterRole |
-| Resource exists | Target not clean | Clear target or use --allow-version-mismatch |
+| Resource exists | Target not clean | Resolve duplicate resources or clear an empty/new target |
 | Format mismatch | Version incompatibility | Align calicoctl version |
 
 ## Conclusion
