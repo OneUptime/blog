@@ -59,7 +59,7 @@ df -h /var/lib/containers/storage
 df -h ~/.local/share/containers/storage
 
 # Estimate the number of tags to get an idea of the scope
-podman search --list-tags docker.io/library/alpine | wc -l
+podman search --list-tags --format "{{.Tag}}" docker.io/library/alpine | wc -l
 ```
 
 ## Scripting Selective Tag Pulls
@@ -76,8 +76,7 @@ PATTERN="3.12"
 echo "Fetching tags for ${IMAGE} matching '${PATTERN}'..."
 
 # Get matching tags
-TAGS=$(podman search --list-tags "$IMAGE" --limit 100 \
-  | awk 'NR>1 {print $2}' \
+TAGS=$(podman search --list-tags --limit 100 --format "{{.Tag}}" "$IMAGE" \
   | grep "$PATTERN")
 
 if [ -z "$TAGS" ]; then
@@ -99,9 +98,9 @@ done
 echo "Done. Pulled all matching tags."
 ```
 
-## Pulling All Tags with Version Filtering
+## Pulling Tags with Version Filtering
 
-A more advanced script that filters tags by semantic version ranges.
+A more advanced script that filters tags by a version pattern.
 
 ```bash
 #!/bin/bash
@@ -110,10 +109,9 @@ A more advanced script that filters tags by semantic version ranges.
 IMAGE="docker.io/library/node"
 MAJOR_VERSION="20"
 
-echo "Pulling Node.js ${MAJOR_VERSION}.x tags..."
+echo "Pulling Node.js ${MAJOR_VERSION}.x major.minor tags..."
 
-podman search --list-tags "$IMAGE" --limit 500 \
-  | awk 'NR>1 {print $2}' \
+podman search --list-tags --limit 500 --format "{{.Tag}}" "$IMAGE" \
   | grep -E "^${MAJOR_VERSION}\.[0-9]+$" \
   | sort -V \
   | while read -r TAG; do
@@ -121,7 +119,7 @@ podman search --list-tags "$IMAGE" --limit 500 \
       podman pull "${IMAGE}:${TAG}"
     done
 
-echo "All Node.js ${MAJOR_VERSION}.x tags pulled."
+echo "All matching Node.js ${MAJOR_VERSION}.x major.minor tags pulled."
 ```
 
 ## Verifying Pulled Tags
