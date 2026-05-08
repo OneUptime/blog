@@ -28,7 +28,7 @@ sudo podman network create \
   my-macvlan
 
 # Verify the network configuration
-podman network inspect my-macvlan
+sudo podman network inspect my-macvlan
 ```
 
 ## Running Containers on Macvlan
@@ -71,6 +71,10 @@ sudo podman network create \
 
 ```bash
 # Create a macvlan on a specific VLAN (VLAN 100)
+# Create the VLAN sub-interface first if it does not already exist
+sudo ip link add link eth0 name eth0.100 type vlan id 100
+sudo ip link set eth0.100 up
+
 sudo podman network create \
   --driver macvlan \
   --opt parent=eth0.100 \
@@ -78,7 +82,6 @@ sudo podman network create \
   --gateway 10.100.0.1 \
   vlan100-net
 
-# The VLAN sub-interface is created automatically
 sudo podman run -d --name vlan-app \
   --network vlan100-net \
   docker.io/library/alpine:latest tail -f /dev/null
@@ -90,11 +93,11 @@ sudo podman run -d --name vlan-app \
 # Run multiple containers with individual LAN addresses
 sudo podman run -d --name server1 \
   --network my-macvlan --ip 192.168.1.201 \
-  docker.io/library/nginx:latest
+  docker.io/library/alpine:latest tail -f /dev/null
 
 sudo podman run -d --name server2 \
   --network my-macvlan --ip 192.168.1.202 \
-  docker.io/library/nginx:latest
+  docker.io/library/alpine:latest tail -f /dev/null
 
 # Both are directly reachable from the LAN
 # Containers can also reach each other
@@ -108,8 +111,9 @@ By default, the host cannot communicate with macvlan containers. Create a macvla
 ```bash
 # Create a macvlan interface on the host
 sudo ip link add macvlan-host link eth0 type macvlan mode bridge
-sudo ip addr add 192.168.1.250/24 dev macvlan-host
+sudo ip addr add 192.168.1.250/32 dev macvlan-host
 sudo ip link set macvlan-host up
+sudo ip route add 192.168.1.200/29 dev macvlan-host
 
 # Now the host can reach macvlan containers
 ping -c 2 192.168.1.201
@@ -118,17 +122,17 @@ ping -c 2 192.168.1.201
 ## Macvlan Limitations
 
 - The host cannot directly communicate with macvlan containers without a host macvlan interface
-- Requires promiscuous mode support on the physical interface
+- May require promiscuous mode support on the physical interface or switch port
 - Does not work in most cloud/virtualized environments
 - Wireless interfaces typically do not support macvlan
 
 ```bash
-# Check if your interface supports macvlan
+# Check the current interface flags
 ip link show eth0
-# Look for: PROMISC flag or ensure promiscuous mode can be enabled
+# PROMISC means promiscuous mode is currently enabled
 sudo ip link set eth0 promisc on
 ```
 
 ## Summary
 
-Macvlan networks in Podman give containers their own MAC addresses and direct Layer 2 network access, making them appear as physical devices on the LAN. Create macvlan networks with `--driver macvlan` and specify the parent interface, subnet, and gateway. Use VLAN sub-interfaces for network segmentation. Note that host-to-container communication requires an additional macvlan interface on the host, and macvlan may not work in virtualized or cloud environments.
+Macvlan networks in Podman give containers their own MAC addresses and direct Layer 2 network access, making them appear as physical devices on the LAN. Create macvlan networks with `--driver macvlan` and specify the parent interface, subnet, and gateway. Use existing VLAN sub-interfaces for network segmentation. Note that host-to-container communication requires an additional macvlan interface and route on the host, and macvlan may not work in virtualized or cloud environments.
