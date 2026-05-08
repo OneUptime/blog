@@ -66,7 +66,7 @@ podman exec my-app id
 ```bash
 # When mounting volumes, ensure the non-root user can access them
 mkdir -p ./app-data
-chmod 777 ./app-data
+podman unshare chown 1000:1000 ./app-data
 
 podman run -d \
   --name data-app \
@@ -122,11 +122,11 @@ podman run -d \
 podman exec my-app ps aux
 
 # Check the UID from outside
-podman top my-app user pid
+podman top my-app huser hpid
 # Shows the mapped UID on the host
 
 # Verify no process is running as root inside
-podman exec my-app sh -c 'ps aux | grep -v "^root" | wc -l'
+podman exec my-app sh -c '! ps -eo user= | grep -qx root'
 ```
 
 ## Summary
