@@ -40,7 +40,7 @@ Use the `--mount type=image` option to mount an image directly:
 ```bash
 # Mount the image's /data directory into the container
 podman run -d --name webapp \
-  --mount type=image,source=myapp-data:v1,target=/app/data \
+  --mount type=image,source=myapp-data:v1,target=/app/data,subpath=/data \
   docker.io/library/nginx:latest
 
 # Verify the data is accessible
@@ -66,7 +66,7 @@ By default, image volumes are mounted read-only. You can make them writable with
 ```bash
 # Mount as explicitly read-only (the default)
 podman run -d --name app \
-  --mount type=image,source=myapp-data:v1,target=/config,readonly \
+  --mount type=image,source=myapp-data:v1,target=/config,subpath=/data,rw=false \
   docker.io/library/node:20 tail -f /dev/null
 
 # Attempting to write will fail
@@ -75,7 +75,7 @@ podman exec app touch /config/newfile
 
 # Mount as read-write (changes are ephemeral)
 podman run -d --name app-rw \
-  --mount type=image,source=myapp-data:v1,target=/config,rw=true \
+  --mount type=image,source=myapp-data:v1,target=/config,subpath=/data,rw=true \
   docker.io/library/node:20 tail -f /dev/null
 ```
 
@@ -90,12 +90,12 @@ podman build -t myapp-data:v2 -f Containerfile.data.v2 .
 
 # Deploy with a specific data version
 podman run -d --name app-v1 \
-  --mount type=image,source=myapp-data:v1,target=/data \
+  --mount type=image,source=myapp-data:v1,target=/data,subpath=/data \
   docker.io/library/nginx:latest
 
 # Upgrade data by switching the image tag
 podman run -d --name app-v2 \
-  --mount type=image,source=myapp-data:v2,target=/data \
+  --mount type=image,source=myapp-data:v2,target=/data,subpath=/data \
   docker.io/library/nginx:latest
 ```
 
@@ -106,11 +106,11 @@ podman run -d --name app-v2 \
 podman pod create --name myapp-pod -p 8080:80
 
 podman run -d --pod myapp-pod --name data-provider \
-  --mount type=image,source=myapp-data:v1,target=/shared-data \
+  --mount type=image,source=myapp-data:v1,target=/shared-data,subpath=/data \
   docker.io/library/alpine:latest tail -f /dev/null
 
 podman run -d --pod myapp-pod --name webserver \
-  --mount type=image,source=myapp-data:v1,target=/usr/share/nginx/html \
+  --mount type=image,source=myapp-data:v1,target=/usr/share/nginx/html,subpath=/assets \
   docker.io/library/nginx:latest
 ```
 
