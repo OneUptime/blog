@@ -59,10 +59,10 @@ For the absolute latest version via COPR:
 
 ```bash
 # Enable the Podman Next COPR repository
-sudo dnf copr enable rhcontainerbot/podman-next
+sudo dnf copr enable -y rhcontainerbot/podman-next
 
 # Upgrade to the latest build
-sudo dnf update -y podman
+sudo dnf install -y podman
 
 # Verify
 podman --version
@@ -82,19 +82,22 @@ podman --version
 For a newer version than what the default repository offers:
 
 ```bash
-# On Debian, use backports for newer versions
+# On Debian 12, enable backports first
+sudo tee /etc/apt/sources.list.d/debian-backports.sources >/dev/null <<'EOF'
+Types: deb
+URIs: http://deb.debian.org/debian
+Suites: bookworm-backports
+Components: main
+Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+EOF
+
+# Install the backported package
+sudo apt update
 sudo apt install -y -t bookworm-backports podman
 
-# On Ubuntu, the Kubic repository may have newer versions
-# Add the repository (Ubuntu 22.04 example)
-echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/unstable/xUbuntu_22.04/ /" | \
-  sudo tee /etc/apt/sources.list.d/podman.list
-
-curl -fsSL "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/unstable/xUbuntu_22.04/Release.key" | \
-  sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/podman.gpg
-
+# On Ubuntu, use the official Ubuntu repositories or upgrade to a newer Ubuntu release
 sudo apt update
-sudo apt install -y podman
+sudo apt install --only-upgrade -y podman
 ```
 
 ## Upgrade on CentOS Stream / RHEL
@@ -152,7 +155,7 @@ brew upgrade podman
 
 # After upgrading, recreate the Podman machine
 podman machine stop
-podman machine rm
+podman machine rm -f
 
 # Initialize with a fresh VM image
 podman machine init
@@ -170,7 +173,7 @@ winget upgrade RedHat.Podman
 
 # After upgrading, recreate the machine
 podman machine stop
-podman machine rm
+podman machine rm -f
 podman machine init
 podman machine start
 
@@ -211,7 +214,7 @@ Major version upgrades sometimes require a storage migration:
 podman system migrate
 
 # If migration fails, you may need to reset storage
-# WARNING: This removes all containers and images
+# WARNING: This removes all pods, containers, images, networks, volumes, and machines
 podman system reset
 ```
 
@@ -256,12 +259,11 @@ podman system info
 If you encounter CNI networking errors after a major upgrade:
 
 ```bash
-# Podman 5.x uses Netavark by default instead of CNI
+# Podman 4.x and newer use Netavark by default instead of CNI
 # Check the current network backend
-podman info | grep -i network
+podman info --format '{{.Host.NetworkBackend}}'
 
-# If needed, remove old CNI configurations
-sudo rm -rf /etc/cni/net.d/
+# If you change the network backend in containers.conf, reset Podman storage afterward
 podman system reset
 ```
 
@@ -274,7 +276,6 @@ cat /etc/subgid
 
 # Reset the rootless storage
 podman system reset
-podman system migrate
 ```
 
 ## Summary
