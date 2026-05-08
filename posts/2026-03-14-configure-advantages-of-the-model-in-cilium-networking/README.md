@@ -10,7 +10,7 @@ Description: Learn how to configure the benefits of using Cilium encapsulation (
 
 ## Introduction
 
-Proper configuration of advantages of the encapsulation model in cilium is essential for a production-ready Cilium deployment. The encapsulation model in Cilium provides several advantages: it works on any network infrastructure without special routing requirements, it isolates pod IPs from the underlying network so there are no IP conflicts, it simplifies multi-cloud and hybrid deployments, and it supports features like transparent encryption at the tunnel level. The overlay abstracts away network topology complexity.
+Proper configuration of advantages of the encapsulation model in cilium is essential for a production-ready Cilium deployment. The encapsulation model in Cilium provides several advantages: it works on any network infrastructure with node-to-node IP/UDP connectivity and without special PodCIDR routing requirements, it keeps the underlying network unaware of pod IPs so you can choose pod CIDRs independently from infrastructure routing, it simplifies multi-cloud and hybrid deployments, and it supports features like transparent WireGuard encryption between Cilium-managed endpoints. The overlay abstracts away network topology complexity.
 
 Misconfiguration at this level can lead to connectivity failures, performance degradation, or security gaps. This guide provides tested configuration settings with explanations for each option so you can make informed decisions for your environment.
 
@@ -37,20 +37,19 @@ Apply the following Helm values to configure advantages of the encapsulation mod
 routingMode: tunnel
 tunnelProtocol: vxlan
 
-# Pod CIDRs are isolated - no conflict with infrastructure IPs
+# Pod CIDRs are not routed by the underlying network in tunnel mode;
+# still choose a range that does not overlap Kubernetes service or node ranges.
 ipam:
   operator:
     clusterPoolIPv4PodCIDRList:
       - "10.42.0.0/16"
 
-# Enable transparent encryption at the tunnel level
+# Enable transparent WireGuard encryption between Cilium-managed endpoints
 encryption:
   enabled: true
   type: wireguard
-
-# Works across cloud providers
-nodeEncryption:
-  enabled: true
+  # Also encrypt node-to-node, pod-to-node, and node-to-pod traffic where supported.
+  nodeEncryption: true
 ```
 
 Apply the configuration:
@@ -59,7 +58,7 @@ Apply the configuration:
 # Apply the configuration via Helm upgrade
 helm upgrade cilium cilium/cilium --version 1.16.5 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  -f cilium-encap-advantages-values.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -147,7 +146,7 @@ cilium config view
 cilium status --verbose | head -40
 
 # Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -156,13 +155,13 @@ Final verification that configuration is complete and correct:
 
 ```bash
 # Run Cilium connectivity test
-cilium connectivity test --test pod-to-pod,pod-to-service
+cilium connectivity test --test pod-to-pod --test pod-to-service
 
 # Verify no configuration warnings
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | head -20
 ```
 
 ## Troubleshooting
