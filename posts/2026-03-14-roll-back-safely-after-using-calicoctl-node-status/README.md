@@ -10,7 +10,7 @@ Description: Strategies for recovering from issues detected by calicoctl node st
 
 ## Introduction
 
-The `calicoctl node status` command is read-only and does not modify your cluster. However, it often reveals problems that were caused by recent changes to BGP configuration, node labels, or network policy. When these changes cause BGP sessions to drop or fail to establish, you need to roll back the changes that caused the issue.
+The `calicoctl node status` command is read-only and does not modify your cluster. However, it often reveals problems that were caused by recent changes to BGP configuration, node labels, or host endpoint/global network policy. When these changes cause BGP sessions to drop or fail to establish, you need to roll back the changes that caused the issue.
 
 This guide covers common scenarios where `calicoctl node status` reveals problems and provides rollback procedures for each. The focus is on restoring healthy BGP peering and network connectivity.
 
@@ -77,19 +77,11 @@ If a node's BGP configuration was modified incorrectly:
 
 ```bash
 # Check current node BGP config
-calicoctl get node $(hostname) -o yaml | grep -A10 "bgp:"
+calicoctl get node <node-name> -o yaml | grep -A10 "bgp:"
 
-# Restore correct node BGP configuration
-cat <<EOF | calicoctl apply -f -
-apiVersion: projectcalico.org/v3
-kind: Node
-metadata:
-  name: $(hostname)
-spec:
-  bgp:
-    ipv4Address: $(hostname -I | awk '{print $1}')/24
-    asNumber: 64512
-EOF
+# Restore the correct node BGP configuration.
+# Replace <node-ip>/<prefix> with the node's original Calico BGP address.
+calicoctl patch node <node-name> -p '{"spec": {"bgp": {"ipv4Address": "<node-ip>/<prefix>", "asNumber": "64512"}}}'
 
 # Wait for BGP to re-establish
 sleep 10
@@ -120,18 +112,20 @@ EOF
 
 # Step 2: Remove any custom BGP peers that might be interfering
 echo "Removing custom BGP peers..."
-for PEER in $(calicoctl get bgppeers -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
+for PEER in $(calicoctl get bgppeers -o go-template='{{range .}}{{range .Items}}{{.ObjectMeta.Name}}{{"\n"}}{{end}}{{end}}'); do
   echo "  Removing: $PEER"
   calicoctl delete bgppeer "$PEER"
 done
 
 # Step 3: Restart calico-node pods to force BGP re-establishment
 echo "Restarting calico-node pods..."
-kubectl rollout restart daemonset calico-node -n calico-system
+CALICO_NAMESPACE=calico-system
+kubectl get daemonset calico-node -n "$CALICO_NAMESPACE" >/dev/null 2>&1 || CALICO_NAMESPACE=kube-system
+kubectl rollout restart daemonset calico-node -n "$CALICO_NAMESPACE"
 
 # Step 4: Wait and verify
 echo "Waiting for pods to restart..."
-kubectl rollout status daemonset calico-node -n calico-system --timeout=120s
+kubectl rollout status daemonset calico-node -n "$CALICO_NAMESPACE" --timeout=120s
 
 echo "Checking BGP status..."
 sleep 15
@@ -168,7 +162,7 @@ After rollback:
 # Check BGP is healthy
 sudo calicoctl node status
 
-# Verify all expected peers are established
+# For node-to-node mesh, verify all expected peers are established
 EXPECTED=$(($(kubectl get nodes --no-headers | wc -l) - 1))
 ACTUAL=$(sudo calicoctl node status | grep -c "Established")
 echo "Expected peers: $EXPECTED, Actual: $ACTUAL"
