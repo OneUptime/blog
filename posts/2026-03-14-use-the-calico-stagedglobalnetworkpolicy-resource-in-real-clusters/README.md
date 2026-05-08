@@ -28,29 +28,28 @@ For clusters with fewer than 50 nodes, a straightforward StagedGlobalNetworkPoli
 
 ```bash
 # Verify current StagedGlobalNetworkPolicy resources
+kubectl get stagedglobalnetworkpolicy.projectcalico.org -o yaml
 
-calicoctl get stagedglobalnetworkpolicy -o yaml
-
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check policies in the default tier
+kubectl get stagedglobalnetworkpolicy --field-selector spec.tier=default
 ```
 
-Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
+Start with simple staged policies and only customize optional fields such as tiers, order, and performance hints when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), you can use namespace labels, pod labels, and Calico selectors to scope staged policies:
 
 ```bash
-# Label nodes by environment
-kubectl label node worker-1 environment=production
-kubectl label node worker-2 environment=staging
+# Label namespaces by environment
+kubectl label namespace production environment=production
+kubectl label namespace staging environment=staging
 
 # Verify labels
-kubectl get nodes --show-labels | grep environment
+kubectl get namespaces --show-labels | grep environment
 ```
 
-Then reference these labels in your StagedGlobalNetworkPolicy manifest's node selectors to apply environment-specific settings.
+Then reference these labels in your StagedGlobalNetworkPolicy manifest's `namespaceSelector`, or use the policy `selector` to match workload endpoint labels such as pod labels.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,7 +64,8 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Prefer optimized selectors such as `label == "value"`, `label in { ... }`, and `has(label)` for large policy sets
+- Use `performanceHints: ["AssumeNeededOnEveryNode"]` only for policies that are known to apply to all or nearly all endpoints
 - Use Typha to reduce the number of direct datastore connections
 - Monitor memory usage of calico-node pods when managing many StagedGlobalNetworkPolicy resources
 
@@ -78,7 +78,7 @@ The StagedGlobalNetworkPolicy resource works together with other Calico resource
 kubectl get crds | grep projectcalico
 
 # View all Calico configuration resources
-calicoctl get stagedglobalnetworkpolicy -o yaml
+kubectl get stagedglobalnetworkpolicy.projectcalico.org -o yaml
 calicoctl get felixconfiguration -o yaml
 calicoctl get ippools -o yaml
 ```
@@ -97,7 +97,7 @@ kubectl get stagedglobalnetworkpolicy.projectcalico.org -w
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if the Felix health port is enabled and reachable:
 
 ```bash
 # Check if Felix is reporting healthy
@@ -123,17 +123,18 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 ## Troubleshooting
 
 **Resource configuration not taking effect:**
-- Verify the resource is correctly applied: `calicoctl get stagedglobalnetworkpolicy -o yaml`.
-- Check Felix logs for configuration reload messages.
+- Verify the resource is correctly applied: `kubectl get stagedglobalnetworkpolicy.projectcalico.org -o yaml`.
+- Remember that staged policies preview policy behavior; use GlobalNetworkPolicy when you are ready to enforce the rules.
+- Check Felix logs for policy update messages.
 - Ensure Typha is relaying updates: `kubectl logs -n calico-system -l k8s-app=calico-typha --tail=20`.
 
 **Performance degradation after configuration change:**
 - Check calico-node CPU and memory: `kubectl top pods -n calico-system`.
-- Review whether reconciliation intervals are too aggressive.
+- Review whether selectors are optimized for large policy sets.
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
-- Verify node selectors are matching the intended nodes.
+- Verify policy selectors and namespace selectors are matching the intended endpoints.
 - Check for node-specific FelixConfiguration overrides.
 
 
@@ -159,8 +160,8 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 # Check current Calico version
 calicoctl version
 
-# Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+# Review served Calico API resources
+kubectl api-resources --api-group=projectcalico.org | grep -i stagedglobalnetworkpolicies
 ```
 
 ### Security Hardening
@@ -169,7 +170,7 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create stagedglobalnetworkpolicies.projectcalico.org --all-namespaces
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
