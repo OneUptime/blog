@@ -21,7 +21,7 @@ This guide covers automated installation strategies for cilium-bugtool bash comp
 
 ## Prerequisites
 
-- Bash shell (v4.0+)
+- Bash shell (v4.2+)
 - `bash-completion` package installed
 - `cilium-bugtool` binary available locally or in a Cilium pod
 - `kubectl` access to a Cilium cluster (if binary is not local)
@@ -40,27 +40,27 @@ set -euo pipefail
 # Detect the best installation path
 if [ -d /etc/bash_completion.d ] && [ -w /etc/bash_completion.d ]; then
   INSTALL_DIR="/etc/bash_completion.d"
-elif [ -d "\$HOME/.local/share/bash-completion/completions" ]; then
-  INSTALL_DIR="\$HOME/.local/share/bash-completion/completions"
+elif [ -d "$HOME/.local/share/bash-completion/completions" ]; then
+  INSTALL_DIR="$HOME/.local/share/bash-completion/completions"
 else
-  INSTALL_DIR="\$HOME/.local/share/bash-completion/completions"
-  mkdir -p "\$INSTALL_DIR"
+  INSTALL_DIR="$HOME/.local/share/bash-completion/completions"
+  mkdir -p "$INSTALL_DIR"
 fi
 
-COMPLETION_FILE="\$INSTALL_DIR/cilium-bugtool"
+COMPLETION_FILE="$INSTALL_DIR/cilium-bugtool"
 
 # Generate the completion
 if command -v cilium-bugtool &> /dev/null; then
-  cilium-bugtool completion bash > "\$COMPLETION_FILE"
-  echo "Installed bash completion to \$COMPLETION_FILE"
+  cilium-bugtool completion bash > "$COMPLETION_FILE"
+  echo "Installed bash completion to $COMPLETION_FILE"
 else
   echo "cilium-bugtool not found in PATH"
   # Try extracting from a pod
   if command -v kubectl &> /dev/null; then
-    CILIUM_POD=\$(kubectl -n kube-system get pods -l k8s-app=cilium       -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-    if [ -n "\$CILIUM_POD" ]; then
-      kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --         cilium-bugtool completion bash > "\$COMPLETION_FILE"
-      echo "Installed from pod \$CILIUM_POD to \$COMPLETION_FILE"
+    CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium       -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    if [ -n "$CILIUM_POD" ]; then
+      kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent --         cilium-bugtool completion bash > "$COMPLETION_FILE"
+      echo "Installed from pod $CILIUM_POD to $COMPLETION_FILE"
     else
       echo "No Cilium pod found"
       exit 1
@@ -69,8 +69,8 @@ else
 fi
 
 # Validate the installed file
-if [ -s "\$COMPLETION_FILE" ]; then
-  echo "Validation: completion file is non-empty ($(wc -c < "\$COMPLETION_FILE") bytes)"
+if [ -s "$COMPLETION_FILE" ]; then
+  echo "Validation: completion file is non-empty ($(wc -c < "$COMPLETION_FILE") bytes)"
 else
   echo "ERROR: completion file is empty"
   exit 1
@@ -90,8 +90,9 @@ fi
 # GitHub Actions step
 - name: Install cilium-bugtool completions
   run: |
-    cilium-bugtool completion bash > /etc/bash_completion.d/cilium-bugtool
-    source /etc/bash_completion.d/cilium-bugtool
+    mkdir -p ~/.local/share/bash-completion/completions
+    cilium-bugtool completion bash > ~/.local/share/bash-completion/completions/cilium-bugtool
+    source ~/.local/share/bash-completion/completions/cilium-bugtool
 ```
 
 
@@ -106,7 +107,7 @@ bash auto-install-bugtool-bash-completion.sh
 ls -la /etc/bash_completion.d/cilium-bugtool 2>/dev/null ||   ls -la ~/.local/share/bash-completion/completions/cilium-bugtool
 
 # Test in a new shell
-bash -c 'source /etc/bash_completion.d/cilium-bugtool && complete -p cilium-bugtool'
+bash -c 'if [ -f /etc/bash_completion.d/cilium-bugtool ]; then source /etc/bash_completion.d/cilium-bugtool; else source ~/.local/share/bash-completion/completions/cilium-bugtool; fi && complete -p cilium-bugtool'
 ```
 
 ## Troubleshooting
@@ -120,5 +121,4 @@ bash -c 'source /etc/bash_completion.d/cilium-bugtool && complete -p cilium-bugt
 
 
 Automated bash completion setup for cilium-bugtool ensures consistent environments across your team and infrastructure. Combined with version-aware regeneration, your completions stay current through upgrades without manual intervention.
-
 
