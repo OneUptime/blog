@@ -10,9 +10,9 @@ Description: Implement zero trust security using External IP Policies in Calico.
 
 ## Introduction
 
-External IP Policies in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to zero trust External IP effectively.
+External IP rules in Calico provide fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to apply zero trust controls to external IPs effectively.
 
-Calico's extensible policy model supports External IP through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your External IP criteria.
+Calico's extensible policy model supports external IP and CIDR matching through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your external network criteria.
 
 This guide provides practical techniques for zero trust External IP in your Kubernetes cluster, following security best practices and production-tested patterns.
 
@@ -26,11 +26,11 @@ This guide provides practical techniques for zero trust External IP in your Kube
 
 ```yaml
 apiVersion: projectcalico.org/v3
-kind: GlobalNetworkPolicy
+kind: NetworkPolicy
 metadata:
   name: zt-default-deny
+  namespace: production
 spec:
-  order: 1000
   selector: all()
   types:
     - Ingress
@@ -50,13 +50,19 @@ spec:
   selector: all()
   ingress:
     - action: Allow
+      protocol: TCP
       source:
-        selector: trust == 'verified'
+        nets:
+          - 203.0.113.0/24
+      destination:
+        ports: [8080]
   egress:
     - action: Allow
+      protocol: TCP
       destination:
-        ports: [53]
-      protocol: UDP
+        nets:
+          - 198.51.100.10/32
+        ports: [443]
   types:
     - Ingress
     - Egress
@@ -83,4 +89,4 @@ flowchart TD
 
 ## Conclusion
 
-Zero Trust External IP policies in Calico requires attention to policy ordering, selector accuracy, and bidirectional rule coverage. Follow the patterns in this guide to ensure your External IP policies are correctly configured, tested, and monitored. Always validate in staging before applying to production, and maintain comprehensive logging for visibility into policy decisions.
+Zero Trust external IP rules in Calico require attention to policy ordering, selector accuracy, and bidirectional rule coverage. Follow the patterns in this guide to ensure your external IP policies are correctly configured, tested, and monitored. Always validate in staging before applying to production, and maintain comprehensive logging for visibility into policy decisions.
