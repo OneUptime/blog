@@ -12,7 +12,7 @@ Description: Understand what 'current access' means in the Cilium Star Wars demo
 
 Before applying any Cilium network policy, the Star Wars demo starts from a state of fully open access. Every pod can reach every other pod. The `xwing`, despite belonging to the enemy Alliance, can request a landing on the Death Star just as easily as an authorized TIE Fighter can. This initial state is not a failure - it is a deliberately constructed baseline that exposes a universal truth about Kubernetes networking: by default, all pods can communicate with all other pods.
 
-Understanding the "current access" phase of the demo means understanding the Kubernetes networking model. Kubernetes implements a flat, routable network where every pod has a unique IP address and can communicate with every other pod by default, regardless of namespace, label, or ownership. No implicit deny exists in the Kubernetes networking model. All deny rules must be explicitly created.
+Understanding the "current access" phase of the demo means understanding the Kubernetes networking model. Kubernetes implements a flat, routable network where every pod has a unique IP address and can communicate with every other pod by default, regardless of namespace, label, or ownership. No implicit deny exists in the Kubernetes networking model. Isolation must be explicitly created with network policies.
 
 This is a significant security concern for production environments. Most Kubernetes clusters start with no `NetworkPolicy` resources, meaning every service is accessible from every other service. The Star Wars demo makes this visible and visceral before introducing Cilium's policy capabilities.
 
@@ -41,7 +41,7 @@ kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/
 kubectl exec xwing -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
 ```
 
-All four commands return success. This is the problem statement.
+Both landing-request commands return success, and both exhaust-port commands reach the dangerous endpoint. This is the problem statement.
 
 ## Visualizing the Open Access State
 
