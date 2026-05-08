@@ -10,7 +10,7 @@ Description: Practical guide to managing Calico BlockAffinity resources in produ
 
 ## Introduction
 
-In production Kubernetes clusters, the Calico BlockAffinity resource determines how IP address blocks are distributed across nodes. Each node claims affinity for one or more CIDR blocks, and pods scheduled on that node receive IPs from those blocks. This design reduces the number of routes needed in the cluster and improves IPAM performance.
+In production Kubernetes clusters, the Calico BlockAffinity resource determines how IP address blocks are distributed across nodes. Nodes claim affinity for one or more CIDR blocks as Calico IPAM allocates addresses, and pods scheduled on that node normally receive IPs from those blocks. This design reduces the number of routes needed in the cluster and improves IPAM performance.
 
 Understanding how BlockAffinity works in real clusters is essential for capacity planning, troubleshooting IP exhaustion, and managing node scaling events. When nodes are added or removed, BlockAffinity resources are created and cleaned up as part of the IPAM lifecycle.
 
@@ -68,7 +68,7 @@ calicoctl ipam show --show-blocks | grep node01
 
 ## Handling Node Scale-Up Events
 
-When a new node joins the cluster, Calico automatically creates a BlockAffinity. Verify the assignment after the node becomes ready:
+When Calico first needs to allocate an address on a new node, it automatically creates a BlockAffinity. Verify the assignment after the node becomes ready and has pods scheduled:
 
 ```bash
 kubectl get nodes -w
@@ -96,11 +96,13 @@ Verify block affinities are released:
 calicoctl get blockaffinities -o yaml | grep "node-to-remove"
 ```
 
-If orphaned affinities remain, run an IPAM check to identify leaked addresses and release them:
+If leaked IP allocations remain, lock the datastore, run an IPAM check to identify them, release them from the report, and then unlock the datastore:
 
 ```bash
+calicoctl datastore migrate lock
 calicoctl ipam check -o report.json
 calicoctl ipam release --from-report=report.json
+calicoctl datastore migrate unlock
 ```
 
 ## Restricting Blocks to Specific Nodes
@@ -162,7 +164,7 @@ If a node has too many blocks while others have none, this may indicate uneven s
 If block affinities are stuck in a pending state, restart the calico-node pod on the affected node:
 
 ```bash
-kubectl delete pod -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName=affected-node
+kubectl delete pod -A -l k8s-app=calico-node --field-selector spec.nodeName=affected-node
 ```
 
 For IP leak detection, compare allocated IPs against running pods:
