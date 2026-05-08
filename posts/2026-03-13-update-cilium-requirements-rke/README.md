@@ -10,9 +10,9 @@ Description: Learn how to verify and update Cilium's system requirements on Ranc
 
 ## Introduction
 
-Rancher Kubernetes Engine (RKE and RKE2) has specific networking defaults and node provisioning behaviors that affect Cilium's requirements. RKE2 ships with Canal (Calico + Flannel) as its default CNI, while RKE1 uses Canal by default. Replacing these with Cilium requires understanding the CNI replacement process and ensuring all nodes meet Cilium's requirements before the switch.
+Rancher Kubernetes Engine (RKE and RKE2) has specific networking defaults and node provisioning behaviors that affect Cilium's requirements. RKE2 ships with Canal (Calico + Flannel) as its default CNI, while RKE1 uses Canal by default. RKE2 can deploy Cilium as a bundled CNI; RKE1 does not list Cilium as a built-in network plug-in, so it must be installed as a custom CNI with the RKE network plug-in set to `none` before cluster creation. Replacing an existing CNI requires understanding the CNI replacement process and ensuring all nodes meet Cilium's requirements before the switch.
 
-RKE's node provisioning model - which manages Docker or containerd on worker nodes - affects how Cilium's eBPF programs are loaded. Additionally, Rancher's node hardening CIS profiles can restrict certain system calls that Cilium requires, making it essential to review these configurations before installation.
+RKE's node provisioning model - Docker for RKE1 and containerd for RKE2 - affects the host paths, privileges, and CNI artifacts that Cilium needs. Additionally, Rancher's node hardening CIS profiles can apply host-level requirements and pod security controls, making it essential to review these configurations before installation.
 
 This guide covers checking and updating Cilium requirements specifically for RKE and RKE2 clusters, including CNI replacement planning, kernel verification, and Rancher-specific configuration adjustments.
 
@@ -29,19 +29,21 @@ This guide covers checking and updating Cilium requirements specifically for RKE
 Determine whether you're running RKE1 or RKE2 and what CNI is currently in use.
 
 ```bash
-# Check RKE2 version and status
+# Check RKE/RKE2 version and status
 
+rke --version
 rke2 --version
 
-# Check current CNI from the cluster config
+# Check the bundled RKE2 Canal Helm chart, if Canal is in use
 kubectl get configmap -n kube-system rke2-canal -o yaml 2>/dev/null || \
   echo "Canal not found - different CNI may be in use"
 
 # Check which CNI pods are running
 kubectl get pods -n kube-system | grep -E "canal|cilium|flannel|calico"
 
-# View the CNI configuration on a node
-# For RKE2: /etc/rancher/rke2/rke2.yaml contains cluster config
+# View node annotations that may identify the configured CNI
+# For RKE2: /etc/rancher/rke2/config.yaml contains node configuration,
+# while /etc/rancher/rke2/rke2.yaml is the generated admin kubeconfig.
 kubectl get node <node-name> -o jsonpath='{.metadata.annotations}'
 ```
 
@@ -54,17 +56,18 @@ Check that all nodes meet Cilium's kernel requirements.
 kubectl get nodes \
   -o custom-columns="NODE:.metadata.name,KERNEL:.status.nodeInfo.kernelVersion,OS:.status.nodeInfo.osImage"
 
-# For RKE2 nodes (commonly Ubuntu 22.04 or SLES 15)
-# Ubuntu 22.04: kernel 5.15+ (full Cilium eBPF support)
-# SLES 15 SP4: kernel 5.14+ (full Cilium eBPF support)
-# CentOS Stream 8: kernel 4.18+ (basic Cilium support only)
+# Current Cilium releases require Linux kernel 5.10+ or an equivalent vendor kernel
+# such as RHEL 8.10's 4.18 kernel.
+# Ubuntu 22.04: kernel 5.15+ meets the base requirement.
+# SLES/openSUSE Leap 15.4: verify the vendor kernel has the required eBPF options.
+# RHEL 8.10: kernel 4.18 is listed by Cilium as an equivalent supported kernel.
 ```
 
 Upgrade nodes that don't meet kernel requirements:
 
 ```bash
 # On Ubuntu nodes - upgrade kernel to LTS version
-sudo apt-get update && sudo apt-get install -y linux-image-generic-hwe-22.04
+sudo apt-get update && sudo apt-get install -y linux-generic-hwe-22.04
 sudo reboot
 
 # Verify kernel version after reboot
@@ -81,19 +84,36 @@ cat /etc/rancher/rke2/config.yaml
 
 # To replace Canal with Cilium, the RKE2 config needs:
 # cni: cilium
-# This requires cluster reprovisioning in RKE2
+# Set this before bootstrapping a new cluster, or during a planned reprovisioning
+# when changing an existing cluster's CNI.
 ```
 
 Create an updated RKE2 configuration for Cilium:
 
 ```yaml
 # /etc/rancher/rke2/config.yaml - Updated for Cilium CNI
-# This configuration disables Canal and prepares for Cilium
+# This configuration selects the bundled Cilium CNI instead of the default Canal CNI
 cni: cilium
 cluster-cidr: 10.42.0.0/16
 service-cidr: 10.43.0.0/16
 # Disable kube-proxy if using Cilium's kube-proxy replacement
 disable-kube-proxy: true
+```
+
+If you use Cilium's kube-proxy replacement mode on RKE2, add the matching Helm chart values:
+
+```yaml
+# /var/lib/rancher/rke2/server/manifests/rke2-cilium-config.yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-cilium
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    kubeProxyReplacement: true
+    k8sServiceHost: "localhost"
+    k8sServicePort: "6443"
 ```
 
 ## Step 4: Check for CIS Hardening Profile Conflicts
@@ -109,10 +129,10 @@ sysctl net.ipv4.conf.all.rp_filter
 sysctl net.ipv4.ip_forward
 sysctl kernel.unprivileged_bpf_disabled
 
-# Allow BPF syscalls if kernel.unprivileged_bpf_disabled is set to 1
-# Cilium runs as privileged, so this should not be an issue
-# But verify with:
-echo 0 > /proc/sys/kernel/unprivileged_bpf_disabled
+# Cilium's Kubernetes DaemonSet runs privileged and may set
+# kernel.unprivileged_bpf_disabled=1 to disable unprivileged BPF use.
+# Do not try to reset a value of 1 to 0 at runtime; on Linux this setting
+# is a one-way switch until reboot.
 ```
 
 ## Step 5: Validate Container Runtime Configuration
@@ -120,11 +140,12 @@ echo 0 > /proc/sys/kernel/unprivileged_bpf_disabled
 RKE2 uses containerd. Verify it's configured to support Cilium's CNI requirements.
 
 ```bash
-# Check containerd version on RKE2 nodes
-/var/lib/rancher/rke2/bin/containerd --version
+# Check container runtime access on RKE2 nodes
+export CRI_CONFIG_FILE=/var/lib/rancher/rke2/agent/etc/crictl.yaml
+/var/lib/rancher/rke2/bin/crictl info
 
-# Verify CNI bin directory is accessible
-ls /var/lib/rancher/rke2/data/current/bin/ | grep -E "cilium|cni"
+# Verify RKE2's packaged CLI tools are accessible
+ls /var/lib/rancher/rke2/bin/
 
 # Check that CNI config directory is writable
 ls -la /etc/cni/net.d/
