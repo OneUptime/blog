@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, IPAM, Validation, Networking
 
-Description: How to validate that Cilium IPAM correctly publishes available IP counts in CiliumNode resources for each cluster node.
+Description: How to validate that Cilium IPAM correctly publishes available IP pools and used IP counts in CiliumNode resources for each cluster node.
 
 ---
 
 ## Introduction
 
-Validating IP availability publication ensures that every node correctly reports its IP capacity and usage. This validation is important for clusters that rely on published IP data for autoscaling or scheduling decisions.
+Validating IP availability publication ensures that every node correctly reports its IP capacity and usage. In CRD-backed IPAM, CiliumNode resources expose the allocation pool in `spec.ipam.pool` and used addresses in `status.ipam.used`. This validation is important for clusters that rely on published IP data for autoscaling or scheduling decisions.
 
 Validation checks include confirming every node publishes data, verifying the data is consistent with actual usage, and ensuring publication updates reflect recent changes.
 
@@ -18,6 +18,7 @@ Validation checks include confirming every node publishes data, verifying the da
 
 - Kubernetes cluster with Cilium installed
 - kubectl and jq configured
+- Cilium configured with CRD-backed IPAM, or another IPAM mode that publishes `spec.ipam.pool` and `status.ipam.used`
 
 ## Validating Publication Completeness
 
@@ -48,16 +49,22 @@ exit $ERRORS
 ## Validating Data Consistency
 
 ```bash
-# Compare published data with endpoint count
+# Compare published used IPs with endpoint IP count
 
-kubectl get ciliumnodes -o json | jq '.items[] | {
-  node: .metadata.name,
-  published_used: (.status.ipam.used // {} | length)
+kubectl get ciliumnodes -o json | jq '{
+  nodes: [.items[] | {
+    node: .metadata.name,
+    published_used: (.status.ipam.used // {} | length)
+  }],
+  total_published_used: ([.items[] | (.status.ipam.used // {} | length)] | add // 0)
 }' > /tmp/published.json
 
 kubectl get ciliumendpoints --all-namespaces -o json | jq '
-  [.items[] | .metadata.name as $ep |
-   .status.networking.addressing[]? | .ipv4 // empty] | length
+  {
+    actual_endpoint_ips: ([.items[] |
+      .status.networking.addressing[]? |
+      .ipv4 // empty] | length)
+  }
 ' > /tmp/actual.json
 
 echo "Published used IPs:"
@@ -79,7 +86,7 @@ graph TD
 ## Verification
 
 ```bash
-cilium status | grep IPAM
+kubectl get ciliumnodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.ipam.pool}{"\t"}{.status.ipam.used}{"\n"}{end}'
 kubectl get ciliumnodes --no-headers | wc -l
 kubectl get nodes --no-headers | wc -l
 ```
