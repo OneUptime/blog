@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Hubble, Exporter, Security, Data Protection
 
-Description: Learn how to secure the Cilium Hubble exporter by protecting exported flow data, restricting file access, applying field masks to redact sensitive information, and encrypting data at rest.
+Description: Learn how to secure the Cilium Hubble exporter by protecting exported flow data, restricting file access, applying field masks to omit sensitive information, and encrypting data at rest.
 
 ---
 
@@ -23,9 +23,9 @@ This guide provides practical steps to harden the Hubble exporter configuration 
 - Understanding of Linux file permissions
 - Familiarity with Hubble field masks and filters
 
-## Applying Field Masks to Redact Sensitive Data
+## Applying Field Masks to Omit Sensitive Data
 
-Field masks control which flow fields are included in the export. Use them to exclude sensitive information:
+Field masks control which flow fields are included in the export. Use them to omit sensitive information:
 
 ```yaml
 # cilium-secure-export.yaml
@@ -47,9 +47,8 @@ hubble:
         - destination.namespace
         - destination.pod_name
         - destination.labels
-        - destination.port
         - verdict
-        - drop_reason
+        - drop_reason_desc
         - l4.TCP.flags
         - Type
         # Deliberately excluding:
@@ -107,7 +106,7 @@ graph TD
     A[Hubble Flow Data] --> B[Field Mask Filter]
     B --> C[Deny List Filter]
     C --> D[Export to File]
-    D --> E[File Permissions: 0640]
+    D --> E[Restrictive File Permissions]
     E --> F[Authorized Log Collector]
     E --> G[Unauthorized Access Blocked]
 
@@ -173,13 +172,14 @@ helm upgrade cilium cilium/cilium -n kube-system \
 
 If you must export L7 data, enable Hubble's built-in redaction:
 
+If you are also using a field mask, include `l7` in the mask for the L7 fields you intend to export.
+
 ```bash
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
   --set hubble.redact.enabled=true \
-  --set hubble.redact.httpURLQuery=true \
-  --set hubble.redact.httpUserInfo=true \
-  --set hubble.redact.kafkaApiKey=true
+  --set hubble.redact.http.urlQuery=true \
+  --set hubble.redact.http.userInfo=true
 ```
 
 Verify redaction is working:
@@ -256,4 +256,4 @@ helm get values cilium -n kube-system | grep -A5 redact
 
 ## Conclusion
 
-Securing the Hubble exporter is about controlling what data is written and who can read it. Field masks remove unnecessary fields, deny lists exclude sensitive namespaces, redaction strips query parameters and credentials from L7 data, and file permissions prevent unauthorized access. Apply these measures as part of your defense-in-depth strategy to ensure that network observability does not become a data leakage vector.
+Securing the Hubble exporter is about controlling what data is written and who can read it. Field masks omit unnecessary fields, deny lists exclude sensitive namespaces, redaction strips query parameters and credentials from L7 data, and file permissions prevent unauthorized access. Apply these measures as part of your defense-in-depth strategy to ensure that network observability does not become a data leakage vector.
