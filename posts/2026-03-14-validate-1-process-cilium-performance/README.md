@@ -20,7 +20,7 @@ This guide provides a complete validation framework including automated tests, a
 
 - Kubernetes cluster with Cilium v1.14+ and CPU Manager enabled
 - `iperf3` and `netperf` container images
-- Prometheus for metrics collection
+- Prometheus for cluster-wide throttling metrics
 - CI/CD pipeline access
 
 ## Throughput Validation
@@ -62,20 +62,41 @@ echo "PASS: All runs above minimum threshold"
 #!/bin/bash
 # validate-cpu-isolation.sh
 
+SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
+
+read_cgroup_file() {
+  for path in "$@"; do
+    if kubectl exec single-process-app -- test -r "$path"; then
+      kubectl exec single-process-app -- cat "$path"
+      return
+    fi
+  done
+  return 1
+}
+
 # Check pod has exclusive CPUs
 
-CPUSET=$(kubectl exec single-process-app -- cat /sys/fs/cgroup/cpuset/cpuset.cpus)
+CPUSET=$(read_cgroup_file \
+  /sys/fs/cgroup/cpuset.cpus.effective \
+  /sys/fs/cgroup/cpuset/cpuset.cpus)
 echo "Pod CPUs: $CPUSET"
 
 # Verify no throttling during benchmark
-BEFORE_THROTTLE=$(kubectl exec single-process-app -- \
-  cat /sys/fs/cgroup/cpu/cpu.stat | grep nr_throttled | awk '{print $2}')
+BEFORE_THROTTLE=$(read_cgroup_file \
+  /sys/fs/cgroup/cpu.stat \
+  /sys/fs/cgroup/cpu/cpu.stat | awk '/nr_throttled/ {print $2}')
 
 # Run 30-second benchmark
 kubectl exec single-process-client -- iperf3 -c $SERVER_IP -t 30 -P 1
 
-AFTER_THROTTLE=$(kubectl exec single-process-app -- \
-  cat /sys/fs/cgroup/cpu/cpu.stat | grep nr_throttled | awk '{print $2}')
+AFTER_THROTTLE=$(read_cgroup_file \
+  /sys/fs/cgroup/cpu.stat \
+  /sys/fs/cgroup/cpu/cpu.stat | awk '/nr_throttled/ {print $2}')
+
+if [ -z "$BEFORE_THROTTLE" ] || [ -z "$AFTER_THROTTLE" ]; then
+  echo "FAIL: nr_throttled is not available in cpu.stat"
+  exit 1
+fi
 
 THROTTLE_EVENTS=$((AFTER_THROTTLE - BEFORE_THROTTLE))
 echo "Throttle events during test: $THROTTLE_EVENTS"
@@ -97,7 +118,7 @@ SERVER_IP=$(kubectl get pod netperf-server -o jsonpath='{.status.podIP}')
 
 # TCP_RR with 1-byte payload
 RESULT=$(kubectl exec single-process-client-netperf -- \
-  netperf -H $SERVER_IP -t TCP_RR -l 30 -- -r 1,1 -o throughput,mean_latency 2>/dev/null)
+  netperf -P 0 -j -H $SERVER_IP -t TCP_RR -l 30 -- -r 1,1 -o THROUGHPUT,MEAN_LATENCY 2>/dev/null)
 
 TPS=$(echo "$RESULT" | tail -1 | awk '{print $1}')
 MEAN_LAT=$(echo "$RESULT" | tail -1 | awk '{print $2}')
@@ -147,12 +168,12 @@ spec:
           BPS=$(iperf3 -c $SERVER -t 20 -P 1 -J | jq '.end.sum_sent.bits_per_second')
           GBPS=$(echo "scale=2; $BPS / 1000000000" | bc)
           echo "Throughput: $GBPS Gbps"
-          if (( $(echo "$GBPS < 8" | bc -l) )); then PASS=false; fi
+          if [ "$(echo "$GBPS < 8" | bc -l)" -eq 1 ]; then PASS=false; fi
 
           # Latency test
           TPS=$(netperf -H netperf-server.monitoring -t TCP_RR -l 15 -- -r 1,1 2>/dev/null | tail -1 | awk '{print $1}')
           echo "TCP_RR: $TPS trans/s"
-          if (( $(echo "$TPS < 20000" | bc -l) )); then PASS=false; fi
+          if [ "$(echo "$TPS < 20000" | bc -l)" -eq 1 ]; then PASS=false; fi
 
           if [ "$PASS" = true ]; then
             echo "OVERALL: PASS"
@@ -172,8 +193,9 @@ kubectl logs job/single-process-validation -n monitoring
 # Verify CPU isolation is maintained
 kubectl get pods -o json | jq '.items[] | select(.spec.containers[].resources.limits.cpu == "2") | .metadata.name'
 
-# Check for any throttling cluster-wide
-kubectl top pods --containers | sort -k3 -rn | head -10
+# Check for CPU throttling metrics in Prometheus
+curl -G http://prometheus.monitoring.svc:9090/api/v1/query \
+  --data-urlencode 'query=sum by (namespace,pod,container) (increase(container_cpu_cfs_throttled_periods_total[5m])) > 0'
 ```
 
 ## Troubleshooting
