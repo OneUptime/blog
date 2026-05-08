@@ -18,7 +18,7 @@ By implementing these measures, you reduce the risk of networking incidents and 
 
 ## Prerequisites
 
-- A Kubernetes cluster running Calico (v3.26+)
+- A Kubernetes cluster running Calico (v3.31+)
 - `kubectl` and `calicoctl` installed
 - Cluster-admin access
 
@@ -29,7 +29,7 @@ Validate Calico configurations before applying them to production:
 ```bash
 # Use calicoctl to validate manifests
 
-calicoctl apply -f calico-config.yaml --dry-run
+calicoctl validate -f calico-config.yaml
 
 # Compare your manifest against the live configuration
 diff <(calicoctl get ippools -o yaml) ippool.yaml
@@ -48,7 +48,7 @@ set -euo pipefail
 
 for manifest in calico-resources/*.yaml; do
   echo "Validating $manifest..."
-  calicoctl apply -f "$manifest" --dry-run || exit 1
+  calicoctl validate -f "$manifest" || exit 1
 done
 
 echo "All Calico manifests are valid."
@@ -200,8 +200,8 @@ calicoctl ipam check
 # Layer 3: Node-to-node connectivity
 calicoctl node status
 
-# Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+# Layer 4: Pod-to-service connectivity
+kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 --no-check-certificate https://kubernetes.default.svc/readyz
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
