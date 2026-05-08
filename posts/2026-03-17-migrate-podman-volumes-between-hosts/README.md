@@ -42,7 +42,7 @@ podman volume export mydata | \
 
 # With compression for faster transfer over slow links
 podman volume export mydata | gzip | \
-  ssh user@destination "gunzip | podman volume import mydata -"
+  ssh user@destination "podman volume create mydata && gunzip | podman volume import mydata -"
 ```
 
 ## Migrating Multiple Volumes
