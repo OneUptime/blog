@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Observability
 
-Description: Use Felix Prometheus metrics to monitor policy enforcement performance, detect iptables programming failures, and track BGP peer state changes across all Calico-managed nodes.
+Description: Use Felix Prometheus metrics to monitor policy calculation performance, detect dataplane programming failures, and track Calico state across all Calico-managed nodes.
 
 ---
 
 ## Introduction
 
-Felix metrics are organized into four operational groups: policy calculation metrics (felix_calc_* - how fast Felix processes policy changes), dataplane metrics (felix_int_dataplane_* - iptables/eBPF programming performance), IPAM metrics (felix_ipam_* - IP allocation activity), and BGP metrics (felix_bpf_*/felix_cluster_* - peer connectivity). Understanding which metric to use for each operational question is the key to effective monitoring.
+Felix metrics are organized into operational groups: calculation graph metrics (felix_calc_* - how fast Felix processes datastore updates), dataplane metrics (felix_int_dataplane_* - dataplane programming performance), iptables metrics (felix_iptables_* - iptables programming activity), BPF dataplane metrics (felix_bpf_* - eBPF dataplane state), and cluster state metrics (felix_cluster_* - Calico resource counts). Understanding which metric to use for each operational question is the key to effective monitoring.
 
 ## Key Commands
 
@@ -31,6 +31,22 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node --   wget -qO- http
 ## ServiceMonitor for Felix
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    app: calico-felix-metrics
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: http-metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -39,7 +55,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      k8s-app: calico-node
+      app: calico-felix-metrics
   endpoints:
     - port: http-metrics
       path: /metrics
