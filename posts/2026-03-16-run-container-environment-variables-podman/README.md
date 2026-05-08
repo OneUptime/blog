@@ -10,7 +10,7 @@ Description: Learn how to pass environment variables to Podman containers for ap
 
 > Environment variables are the standard way to configure containerized applications without modifying the image.
 
-Environment variables let you pass configuration to containers at runtime. Database connection strings, API keys, feature flags, and runtime settings are all commonly managed through environment variables. This guide covers every method for passing environment variables to Podman containers.
+Environment variables let you pass configuration to containers at runtime. Database connection strings, API keys, feature flags, and runtime settings are all commonly managed through environment variables. This guide covers common methods for passing environment variables to Podman containers.
 
 ---
 
@@ -141,16 +141,15 @@ podman run -d --name go-app \
 
 ## Overriding Image Defaults
 
-Many images define default environment variables that you can override:
+Many images define or use environment variables that you can set or override:
 
 ```bash
 # Check default variables in an image
-podman inspect nginx --format '{{range .Config.Env}}{{println .}}{{end}}'
+podman image inspect nginx --format '{{range .Config.Env}}{{println .}}{{end}}'
 
-# Override a default variable
+# Set a supported runtime variable for the nginx image
 podman run -d --name web \
-    -e NGINX_HOST=mysite.com \
-    -e NGINX_PORT=8080 \
+    -e NGINX_ENTRYPOINT_QUIET_LOGS=1 \
     nginx
 ```
 
@@ -164,7 +163,7 @@ podman run --rm \
     -e GREETING="Hello World" \
     alpine sh -c 'echo $GREETING'
 
-# Multi-line configuration via environment variable
+# JSON configuration via environment variable
 podman run --rm \
     -e CONFIG='{"port": 3000, "debug": true}' \
     alpine sh -c 'echo $CONFIG'
