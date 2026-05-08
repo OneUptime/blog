@@ -51,13 +51,15 @@ operator:
 hubble:
   enabled: true
   metrics:
+    enableOpenMetrics: true
     enabled:
-      - dns
+      - dns:query
       - drop
       - tcp
       - flow
+      - port-distribution
       - icmp
-      - httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload
+      - httpV2:exemplars=true;labelsContext=source_ip,source_namespace,source_workload,destination_ip,destination_namespace,destination_workload,traffic_direction
     serviceMonitor:
       enabled: true
       labels:
@@ -97,53 +99,48 @@ curl -s http://localhost:9962/metrics | head -20
 If you are using the Prometheus Operator (kube-prometheus-stack), the ServiceMonitor resources created by Cilium's Helm chart will automatically configure scraping. Verify the ServiceMonitors exist:
 
 ```bash
-kubectl get servicemonitors -n kube-system | grep cilium
+kubectl get servicemonitors -n kube-system -l app.kubernetes.io/part-of=cilium
 ```
 
 You should see output similar to:
 
 ```text
-cilium-agent       9962   2m
-cilium-operator    9963   2m
-hubble             9965   2m
+NAME              AGE
+cilium-agent      2m
+cilium-operator   2m
+hubble            2m
 ```
 
-If you are running Prometheus without the operator, add scrape configs manually:
+If you are running Prometheus without the operator, leave the ServiceMonitor values disabled and add scrape configs manually. Cilium agent metrics are exposed through pod annotations, and Hubble metrics are exposed through the `hubble-metrics` headless service:
 
 ```yaml
 # prometheus-additional-scrape-configs.yaml
-- job_name: 'cilium-agent'
+- job_name: 'kubernetes-pods'
   kubernetes_sd_configs:
     - role: pod
-      namespaces:
-        names:
-          - kube-system
   relabel_configs:
-    - source_labels: [__meta_kubernetes_pod_label_k8s_app]
-      regex: cilium
+    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
       action: keep
-    - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-      regex: "9962"
-      action: keep
-    - source_labels: [__address__]
-      regex: (.+):.*
-      replacement: $1:9962
+      regex: true
+    - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+      action: replace
+      regex: ([^:]+)(?::\d+)?;(\d+)
+      replacement: ${1}:${2}
       target_label: __address__
 
-- job_name: 'hubble'
+- job_name: 'kubernetes-endpoints'
+  scrape_interval: 30s
   kubernetes_sd_configs:
-    - role: pod
-      namespaces:
-        names:
-          - kube-system
+    - role: endpoints
   relabel_configs:
-    - source_labels: [__meta_kubernetes_pod_label_k8s_app]
-      regex: cilium
+    - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
       action: keep
-    - source_labels: [__address__]
-      regex: (.+):.*
-      replacement: $1:9965
+      regex: true
+    - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+      action: replace
       target_label: __address__
+      regex: (.+)(?::\d+);(\d+)
+      replacement: $1:$2
 ```
 
 ## Key Cilium Metrics to Monitor
@@ -155,14 +152,14 @@ graph TD
     A[Cilium Metrics] --> B[Agent Metrics :9962]
     A --> C[Hubble Metrics :9965]
     A --> D[Operator Metrics :9963]
-    B --> B1[cilium_endpoint_count]
-    B --> B2[cilium_policy_verdict_total]
+    B --> B1[cilium_endpoint_state]
+    B --> B2[cilium_policy_l7_total]
     B --> B3[cilium_drop_count_total]
     B --> B4[cilium_forward_count_total]
     C --> C1[hubble_flows_processed_total]
     C --> C2[hubble_dns_queries_total]
     C --> C3[hubble_tcp_flags_total]
-    D --> D1[cilium_operator_ipam_allocation_ops]
+    D --> D1[cilium_operator_ipam_ip_allocation_ops]
 ```
 
 Useful PromQL queries to get started:
@@ -171,11 +168,11 @@ Useful PromQL queries to get started:
 # Rate of dropped packets by reason
 rate(cilium_drop_count_total[5m])
 
-# Policy verdict breakdown
-sum by (verdict) (rate(cilium_policy_verdict_total[5m]))
+# Hubble flow verdict breakdown
+sum by (verdict) (rate(hubble_flows_processed_total[5m]))
 
-# Active endpoints per node
-cilium_endpoint_count
+# Endpoint state per node
+sum by (node, state) (cilium_endpoint_state)
 
 # DNS query rate by destination
 sum by (query) (rate(hubble_dns_queries_total[5m]))
@@ -222,19 +219,20 @@ kubectl port-forward -n monitoring svc/prometheus-operated 9090:9090 &
 curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep cilium
 
 # 3. Run a test query
-curl -s 'http://localhost:9090/api/v1/query?query=cilium_endpoint_count' | python3 -m json.tool
+curl -s 'http://localhost:9090/api/v1/query?query=cilium_endpoint_state' | python3 -m json.tool
 
 # 4. Check Hubble metrics specifically
-kubectl -n kube-system exec ds/cilium -- cilium metrics list | grep hubble
+kubectl -n kube-system get svc hubble-metrics -o wide
+kubectl -n kube-system exec ds/cilium -- cilium-dbg metrics list | grep hubble
 ```
 
 ## Troubleshooting
 
 - **No metrics appearing in Prometheus**: Verify the ServiceMonitor labels match your Prometheus operator's `serviceMonitorSelector`. Check with `kubectl get prometheus -n monitoring -o yaml | grep -A5 serviceMonitorSelector`.
 
-- **Hubble metrics missing**: Ensure Hubble is enabled and the relay is running: `kubectl -n kube-system get pods -l k8s-app=hubble-relay`.
+- **Hubble metrics missing**: Ensure Hubble is enabled and `hubble.metrics.enabled` is not empty. Check that the metrics service exists with `kubectl -n kube-system get svc hubble-metrics`.
 
-- **Partial metrics**: Some metrics like `httpV2` require L7 visibility. Ensure you have a CiliumNetworkPolicy with `visibility` annotations or L7 policy rules applied.
+- **Partial metrics**: Some metrics like `httpV2` require L7 visibility. Ensure you have L7 proxy support enabled and a CiliumNetworkPolicy with L7 rules applied.
 
 - **High cardinality warnings**: Be careful with labels like `source_ip` and `destination_ip` in Hubble metrics. These can cause high cardinality. Use `labelsContext` selectively.
 
