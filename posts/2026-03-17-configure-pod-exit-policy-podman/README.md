@@ -10,7 +10,7 @@ Description: Learn how to configure the exit policy for Podman pods to control w
 
 > The pod exit policy determines whether a pod stays running or stops when its containers exit.
 
-When all non-infra containers in a pod exit, the pod can either continue running with just the infra container or stop automatically. The exit policy controls this behavior and is useful for batch jobs that should clean up after themselves versus long-running services that should stay available.
+When all non-infra containers in a pod exit, the pod can either continue running with just the infra container or stop automatically. The exit policy controls this behavior and is useful for batch jobs that should stop their pod when finished versus long-running services that should stay available.
 
 ---
 
@@ -58,7 +58,7 @@ podman pod ls --filter name=keep-alive-pod
 ## Use Case: Batch Processing Pod
 
 ```bash
-# Create a pod for a batch job that cleans up after itself
+# Create a pod for a batch job that stops when it finishes
 podman pod create --name batch-pod --exit-policy stop
 
 # Run the batch processing container
@@ -100,4 +100,4 @@ podman pod inspect auto-stop-pod --format '{{.ExitPolicy}}'
 
 ## Summary
 
-The pod exit policy controls whether a pod stops when all its containers exit. Use `--exit-policy stop` for batch jobs and one-shot tasks that should clean up automatically. Use `--exit-policy continue` (the default) for service pods that should remain available for new containers to join.
+The pod exit policy controls whether a pod stops when all its containers exit. Use `--exit-policy stop` for batch jobs and one-shot tasks that should stop automatically. Use `--exit-policy continue` (the default) for service pods that should remain available for new containers to join.
