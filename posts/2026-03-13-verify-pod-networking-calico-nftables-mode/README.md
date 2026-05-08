@@ -23,10 +23,11 @@ One important verification is confirming that there are no conflicting iptables 
 ## Step 1: Verify Felix Is Using nftables
 
 ```bash
-calicoctl get felixconfiguration default -o yaml | grep iptablesBackend
+calicoctl get felixconfiguration default -o yaml | grep nftablesMode
+kubectl get installation.operator.tigera.io default -o yaml | grep linuxDataplane
 ```
 
-Should show `iptablesBackend: nft`.
+Depending on how Calico was installed, this should show `nftablesMode: Enabled` or `linuxDataplane: Nftables`. Do not use `iptablesBackend: NFT` as the verification signal; that setting controls the iptables-nft compatibility backend, not Calico's nftables dataplane.
 
 ## Step 2: Check nftables Tables on a Node
 
@@ -39,28 +40,25 @@ nft list tables
 Expected output:
 
 ```plaintext
-table ip calico-filter
-table ip calico-nat
-table ip calico-mangle
-table ip calico-raw
+table ip calico
+table arp calico-arp
 ```
 
-If these tables are absent, Felix is not running in nftables mode on this node.
+If IPv6 is enabled, you should also see `table ip6 calico`. If the `ip calico` table is absent, Felix is not running in nftables mode on this node.
 
 ## Step 3: Check nftables Rules
 
 ```bash
-nft list table ip calico-filter | head -30
-nft list table ip calico-nat | head -20
+nft list table ip calico | head -80
 ```
 
-Policy rules should be present in `calico-filter`. NAT rules for pod egress should be in `calico-nat`.
+Policy rules should be present in filter chains such as `filter-FORWARD`. NAT rules for pod egress should be present in NAT chains such as `nat-POSTROUTING`.
 
 ## Step 4: Verify No iptables Conflicts
 
 ```bash
 # Check if legacy iptables has Calico chains (should be empty in nftables mode)
-iptables-legacy -L | grep -c "cali-"
+iptables-legacy-save | grep -c "cali-"
 ```
 
 This should return 0 in a pure nftables mode deployment.
@@ -70,6 +68,8 @@ This should return 0 in a pure nftables mode deployment.
 ```bash
 kubectl run pod-a --image=busybox -- sleep 300
 kubectl run pod-b --image=busybox -- sleep 300
+kubectl wait --for=condition=Ready pod/pod-a --timeout=60s
+kubectl wait --for=condition=Ready pod/pod-b --timeout=60s
 POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
 kubectl exec pod-a -- ping -c5 $POD_B_IP
 ```
@@ -81,6 +81,8 @@ kubectl create namespace nft-verify
 kubectl run server --image=nginx --labels="app=server" -n nft-verify
 kubectl expose pod server --port=80 -n nft-verify
 kubectl run client --image=busybox --labels="app=client" -n nft-verify -- sleep 300
+kubectl wait --for=condition=Ready pod/server -n nft-verify --timeout=60s
+kubectl wait --for=condition=Ready pod/client -n nft-verify --timeout=60s
 
 # Apply default deny
 kubectl apply -f - <<EOF
@@ -97,10 +99,10 @@ EOF
 kubectl exec -n nft-verify client -- wget -qO- --timeout=5 http://server || echo "Blocked by nftables"
 
 # Verify the nftables rule for the policy on the node
-nft list table ip calico-filter | grep drop | head -5
+nft list table ip calico | grep drop | head -5
 kubectl delete namespace nft-verify
 ```
 
 ## Conclusion
 
-Verifying Calico in nftables mode requires inspecting nftables tables (`nft list table`) instead of iptables chains, confirming no legacy iptables conflicts, and testing standard pod connectivity and network policy enforcement. The `nft` command provides the same diagnostic insight as `iptables -L` but for the modern nftables framework.
+Verifying Calico in nftables mode requires inspecting nftables tables (`nft list table`) instead of iptables chains, confirming no legacy iptables conflicts, and testing standard pod connectivity and network policy enforcement. The `nft` command provides the same diagnostic insight as `iptables-save` but for the modern nftables framework.
