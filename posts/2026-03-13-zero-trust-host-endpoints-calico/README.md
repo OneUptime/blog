@@ -10,7 +10,7 @@ Description: Implement zero trust host protection using Calico host endpoints an
 
 ## Introduction
 
-Host Protection with Calico Host Endpoints in Calico provides host-level network security beyond standard pod-to-pod policies. Using the `projectcalico.org/v3` API, you can control traffic at the node level, protecting both pod traffic and the underlying host infrastructure.
+Host Protection with Calico Host Endpoints in Calico provides host-level network security beyond standard pod-to-pod policies. Using the `projectcalico.org/v3` API, you can control traffic at the node level, protecting forwarded pod traffic when `applyOnForward` is enabled and the underlying host infrastructure.
 
 Calico's host endpoint functionality extends policy enforcement to the host network namespace, allowing you to protect host processes, control traffic to and from external networks, and implement node-level security controls that complement your pod policies.
 
@@ -50,6 +50,7 @@ spec:
   preDNAT: false
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 10.0.0.0/8
@@ -70,7 +71,7 @@ spec:
 calicoctl apply -f host-endpoint.yaml
 
 # Verify host endpoint is active
-calicoctl get hostendpoints -o wide
+calicoctl get hostendpoints --output=wide
 
 # Apply host protection policy
 calicoctl apply -f host-protection-policy.yaml
@@ -85,11 +86,11 @@ ssh user@node01-ip "echo connected"
 # List all host endpoints
 calicoctl get hostendpoints
 
-# View host-level policy decisions
+# View host-level policy chains on the iptables dataplane
 sudo iptables -L -n | grep CALICO
 
-# Check Felix status on node
-kubectl exec -n kube-system calico-node-xxx -- calico-node -felix-live
+# Check Felix status on node (use kube-system for manifest-based installs)
+kubectl exec -n calico-system <calico-node-pod> -- /bin/calico-node -felix-live
 ```
 
 ## Architecture
@@ -107,4 +108,3 @@ flowchart TD
 ## Conclusion
 
 Host Protection with Calico Host Endpoints with Calico provides a comprehensive security layer that extends beyond pod-to-pod policies to protect the underlying node infrastructure. Configure host endpoints carefully to avoid locking yourself out of the node, always test SSH and management access after applying host policies, and use staged policies to preview impact before enforcement. Host-level policies are powerful but require careful planning and testing.
-
