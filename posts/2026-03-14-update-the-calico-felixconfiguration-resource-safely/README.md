@@ -30,7 +30,7 @@ Before making any changes, export the current state as your baseline:
 ```bash
 # Export current resource to YAML
 
-calicoctl get felixconfiguration -o yaml > felixconfiguration-backup.yaml
+calicoctl get felixconfiguration default -o yaml --export > felixconfiguration-backup.yaml
 
 # Store the backup safely
 cp felixconfiguration-backup.yaml felixconfiguration-backup-$(date +%Y%m%d%H%M%S).yaml
@@ -44,7 +44,7 @@ Open your FelixConfiguration manifest and make the desired changes. Use `diff` t
 
 ```bash
 # Compare current live state with your updated manifest
-diff <(calicoctl get felixconfiguration -o yaml) felixconfiguration.yaml
+diff <(calicoctl get felixconfiguration default -o yaml --export) felixconfiguration.yaml
 ```
 
 Review each changed field and consider its impact:
@@ -92,7 +92,7 @@ Confirm the resource reflects your changes:
 
 ```bash
 # Verify the updated resource
-calicoctl get felixconfiguration -o yaml
+calicoctl get felixconfiguration default -o yaml
 
 # Check that calico-node pods are healthy
 kubectl get pods -n calico-system -l k8s-app=calico-node
@@ -109,7 +109,7 @@ If the update causes problems, immediately revert to your backup:
 calicoctl apply -f felixconfiguration-backup.yaml
 
 # Verify rollback was successful
-calicoctl get felixconfiguration -o yaml
+calicoctl get felixconfiguration default -o yaml
 ```
 
 ## Troubleshooting
@@ -125,7 +125,7 @@ calicoctl get felixconfiguration -o yaml
 
 **Update appears to have no effect:**
 - Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Check for typos in field names; `calicoctl apply` should report schema validation errors, while `kubectl` may warn or fail depending on server-side field validation settings.
 
 
 ## Additional Considerations
@@ -137,8 +137,8 @@ If you operate multiple Kubernetes clusters with Calico, standardize your config
 ```bash
 # Compare Calico configurations across clusters
 # Export from each cluster and diff
-KUBECONFIG=cluster-1.kubeconfig calicoctl get felixconfiguration -o yaml > cluster1-felix.yaml
-KUBECONFIG=cluster-2.kubeconfig calicoctl get felixconfiguration -o yaml > cluster2-felix.yaml
+KUBECONFIG=cluster-1.kubeconfig calicoctl get felixconfiguration default -o yaml --export > cluster1-felix.yaml
+KUBECONFIG=cluster-2.kubeconfig calicoctl get felixconfiguration default -o yaml --export > cluster2-felix.yaml
 diff cluster1-felix.yaml cluster2-felix.yaml
 ```
 
@@ -160,7 +160,8 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i update felixconfigurations.crd.projectcalico.org
+kubectl auth can-i --list | grep projectcalico
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
