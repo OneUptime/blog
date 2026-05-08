@@ -20,7 +20,7 @@ This guide provides a step-by-step validation checklist organized to catch both 
 
 - Fix was applied but ping tests are still inconsistent
 - TCP traffic works but ICMP remains blocked (valid if ICMP was intentionally blocked)
-- Connectivity restored but Felix drop rate is still elevated
+- Connectivity restored but Felix error or drop metrics are still elevated
 
 ## Root Causes
 
@@ -33,7 +33,8 @@ This guide provides a step-by-step validation checklist organized to catch both 
 ```bash
 # Check current state before starting validation
 
-kubectl get pods --all-namespaces | grep -v Running | grep -v Completed
+kubectl get pods --all-namespaces \
+  --field-selector=status.phase!=Running,status.phase!=Succeeded
 calicoctl node status
 ```
 
@@ -46,10 +47,9 @@ calicoctl node status
 for NS in default production staging; do
   echo "Testing namespace: $NS"
   kubectl run val-test-$NS --image=busybox -n $NS --restart=Never -- sleep 60
+  kubectl wait pod -n $NS -l run=val-test-$NS \
+    --for=condition=Ready --timeout=60s
 done
-
-kubectl wait pods --all --for=condition=Ready --timeout=60s \
-  -l run  # or appropriate label
 ```
 
 **Validation Step 2: ICMP test across all node pairs**
@@ -61,9 +61,9 @@ echo "Nodes: $NODES"
 
 # For each pair, deploy pods and test
 kubectl run val-a --image=busybox --restart=Never \
-  --overrides='{"spec":{"nodeName":"<node-1>"}}' -- sleep 120
+  --overrides='{"apiVersion":"v1","spec":{"nodeName":"<node-1>"}}' -- sleep 120
 kubectl run val-b --image=busybox --restart=Never \
-  --overrides='{"spec":{"nodeName":"<node-2>"}}' -- sleep 120
+  --overrides='{"apiVersion":"v1","spec":{"nodeName":"<node-2>"}}' -- sleep 120
 
 kubectl wait pod/val-a pod/val-b --for=condition=Ready --timeout=60s
 
@@ -78,25 +78,31 @@ kubectl delete pod val-a val-b
 ```bash
 # Deploy a simple TCP listener and client
 kubectl run tcp-server --image=busybox --restart=Never \
-  -- sh -c "nc -l -p 8080 -e echo PONG"
+  -- sh -c "while true; do echo PONG | nc -l -p 8080; done"
 kubectl run tcp-client --image=busybox --restart=Never \
   -- sleep 120
 
 kubectl wait pod/tcp-server pod/tcp-client --for=condition=Ready --timeout=60s
 
 SERVER_IP=$(kubectl get pod tcp-server -o jsonpath='{.status.podIP}')
-kubectl exec tcp-client -- nc -zv $SERVER_IP 8080 && echo "PASS: TCP" || echo "FAIL: TCP"
+kubectl exec tcp-client -- sh -c "echo PING | nc -w 5 $SERVER_IP 8080 | grep PONG" \
+  && echo "PASS: TCP" || echo "FAIL: TCP"
 
 kubectl delete pod tcp-server tcp-client
 ```
 
-**Validation Step 4: Verify Felix drop counters are back to baseline**
+**Validation Step 4: Verify Felix error and drop metrics are back to baseline**
 
 ```bash
-NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)
-kubectl exec $NODE_POD -n kube-system -- \
-  wget -qO- http://localhost:9091/metrics | grep "felix_iptables_dropped"
-# Compare to baseline - should be near zero for new drops
+CALICO_NS=kube-system # use calico-system for operator-based installs
+NODE_POD=$(kubectl get pods -n $CALICO_NS -l k8s-app=calico-node -o name | head -1)
+kubectl port-forward -n $CALICO_NS $NODE_POD 9091:9091 &
+PF_PID=$!
+sleep 2
+curl -s http://localhost:9091/metrics | \
+  grep -E "felix_logs_dropped|felix_iptables_.*_errors|felix_int_dataplane_failures"
+kill $PF_PID
+# Compare to baseline - counters should not continue increasing
 ```
 
 **Validation Step 5: Confirm BGP peers stable**
@@ -122,7 +128,7 @@ flowchart TD
     D -- No --> E[Investigate residual routing issue]
     D -- Yes --> F[TCP connectivity passes?]
     F -- No --> G[Check service-specific NetworkPolicy]
-    F -- Yes --> H[Felix drop rate at baseline?]
+    F -- Yes --> H[Felix error/drop metrics at baseline?]
     H -- No --> I[Investigate residual policy drops]
     H -- Yes --> J[BGP peers all Established?]
     J -- Yes --> K[Monitor 30min then close]
@@ -132,8 +138,8 @@ flowchart TD
 
 - Add this validation checklist to incident closure requirements
 - Automate cross-node ping as a synthetic monitor
-- Keep baseline Felix drop rate metric for comparison during incidents
+- Keep baseline Felix error and drop metrics for comparison during incidents
 
 ## Conclusion
 
-Validating pod connectivity restoration requires testing ICMP and TCP across node boundaries, verifying Felix drop counters return to baseline, and confirming BGP peer state. A 30-minute monitoring window after fix application catches delayed failures before the incident is closed.
+Validating pod connectivity restoration requires testing ICMP and TCP across node boundaries, verifying Felix error and drop metrics return to baseline, and confirming BGP peer state. A 30-minute monitoring window after fix application catches delayed failures before the incident is closed.
