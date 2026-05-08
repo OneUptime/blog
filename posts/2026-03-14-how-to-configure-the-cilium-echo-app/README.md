@@ -10,9 +10,9 @@ Description: How to deploy and configure the Cilium echo app for testing connect
 
 ## Introduction
 
-The Cilium echo app is a purpose-built test application that helps validate networking, policy enforcement, and L7 traffic management. It provides HTTP and gRPC endpoints that echo request details back to the caller, making it easy to verify routing, headers, and policy behavior.
+The Cilium echo app is a purpose-built test application that helps validate networking, policy enforcement, and L7 traffic management. The HTTP echo endpoints used below echo request details back to the caller, making it easy to verify routing, headers, and policy behavior.
 
-Using the echo app is the recommended way to test Cilium features before deploying them in production. It is lightweight, provides detailed request/response information, and is designed to work with Cilium connectivity tests.
+Using the echo app is a practical way to test Cilium features before deploying them in production. It is lightweight, provides detailed request/response information, and is designed to work with Cilium connectivity tests.
 
 ## Prerequisites
 
@@ -23,14 +23,14 @@ Using the echo app is the recommended way to test Cilium features before deployi
 ## Deploying the Echo App
 
 ```bash
-# Deploy the echo app using the connectivity test
+# Run the Cilium connectivity test, which deploys its own test workloads
 
-cilium connectivity test --deploy-only
+cilium connectivity test
 
-# Or deploy manually
+# Or deploy the connectivity-check manifests manually
 kubectl create namespace cilium-test
-kubectl apply -n cilium-test -f \
-  https://raw.githubusercontent.com/cilium/cilium/main/examples/kubernetes/connectivity-check/connectivity-check.yaml
+kubectl apply --namespace=cilium-test -f \
+  https://raw.githubusercontent.com/cilium/cilium/1.19.3/examples/kubernetes/connectivity-check/connectivity-check.yaml
 ```
 
 ### Manual Deployment
@@ -55,6 +55,9 @@ spec:
       containers:
         - name: echo-server
           image: quay.io/cilium/json-mock:v1.3.8
+          env:
+            - name: PORT
+              value: "8080"
           ports:
             - containerPort: 8080
               name: http
@@ -187,7 +190,7 @@ cilium connectivity test
 
 - **Echo app not starting**: Check image pull permissions. The images are on quay.io.
 - **Connectivity test fails**: Verify Cilium agent is healthy on all nodes.
-- **L7 policy not working**: Ensure Envoy proxy is enabled in Cilium.
+- **L7 policy not working**: Ensure L7 proxy support is enabled in Cilium.
 - **Pods stuck in Pending**: Check resource limits and node capacity.
 
 ## Conclusion
