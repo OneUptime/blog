@@ -12,7 +12,7 @@ If your Datadog bill has doubled since you first signed up, you're not alone. An
 
 ## The pricing model that prints money
 
-Datadog's pricing looks straightforward until you actually use it. Infrastructure monitoring starts at $15/host/month. APM is $31/host/month. Log management is $0.10/GB ingested *plus* $1.70/million log events for indexing. Custom metrics? $0.05 each after the first 100.
+Datadog's pricing looks straightforward until you actually use it. Infrastructure monitoring starts at $15/host/month. APM starts at $31/host/month, with APM Pro and Enterprise priced higher. Log management is $0.10/GB ingested *plus* $1.70/million log events for 15-day indexing. Custom metrics? $5 per 100 indexed custom metrics after the included per-host allotment.
 
 None of those numbers sound scary in isolation. The problem is that modern infrastructure generates *a lot* of data, and Datadog charges for every dimension of it.
 
@@ -21,11 +21,11 @@ Here's what a typical mid-market company (50 engineers, ~200 hosts, microservice
 | Product | Unit Price | Realistic Usage | Monthly Cost |
 |---------|-----------|----------------|-------------|
 | Infrastructure (Pro) | $23/host | 200 hosts | $4,600 |
-| APM (Pro) | $40/host | 200 hosts | $8,000 |
+| APM (Enterprise) | $40/host | 200 hosts | $8,000 |
 | Log Management | $0.10/GB + indexing | 500GB/day | $4,500+ |
-| Custom Metrics | $0.05/metric | 10,000 metrics | $500 |
-| Synthetics | $12/10k tests | 50k tests | $60 |
-| RUM | $1.50/1k sessions | 500k sessions | $750 |
+| Custom Metrics | $5/100 metrics | 10,000 over allotment | $500 |
+| Synthetics | $5/10k API tests or $12/1k browser tests | 50k API tests | $25 |
+| RUM | $0.15/1k sessions (Measure) or $3/1k sessions (Investigate) | 500k sessions | $75-$1,500 |
 | **Total** | | | **~$18,400/mo** |
 
 That's **$220,000 per year** for a 50-person engineering team. And this is conservative - many teams report bills 2-3x higher once you factor in overages, committed-use penalties, and the products you added "just to try."
@@ -36,7 +36,7 @@ Three things drive Datadog bill shock:
 
 ### 1. Per-host pricing × container sprawl
 
-Kubernetes doesn't care about your Datadog contract. Every pod gets an agent. Every node counts as a host. Auto-scaling means your bill auto-scales too. Teams running Kubernetes regularly report that their host count is 3-5x what they expected when they signed the contract.
+Kubernetes doesn't care about your Datadog contract. The Agent typically runs once per node, every node counts as a host, and containers above the included per-host allotment can be billed separately. Auto-scaling means your bill auto-scales too. Teams running Kubernetes regularly report that their monitored footprint is 3-5x what they expected when they signed the contract.
 
 ### 2. Log volume is unpredictable
 
@@ -46,7 +46,7 @@ The kicker: Datadog's log archiving and rehydration means you pay to store logs,
 
 ### 3. Custom metrics multiply silently
 
-Every new dashboard, every new tag, every new dimension creates custom metrics. Datadog's pricing doc warns about "custom metric volumes" but most engineers don't think about billing when they're adding a Prometheus counter at 3am during an incident.
+Every new metric tag value combination, every new dimension, and some metric types can create more custom metrics. Datadog's pricing doc warns about "custom metric volumes" but most engineers don't think about billing when they're adding a Prometheus counter at 3am during an incident.
 
 ## The lock-in problem
 
