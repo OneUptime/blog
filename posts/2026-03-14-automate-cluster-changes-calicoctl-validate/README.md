@@ -18,7 +18,7 @@ This guide covers practical patterns for using calicoctl validate in automated w
 
 ## Prerequisites
 
-- calicoctl v3.27 or later
+- calicoctl v3.31 or later
 - CI/CD platform (GitHub Actions, GitLab CI, or Jenkins)
 - Git repository for Calico resources
 - Basic scripting skills
@@ -40,16 +40,16 @@ if ! command -v calicoctl &> /dev/null; then
 fi
 
 # Get staged YAML files in calico directories
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E 'calico.*\.yaml$' || true)
+mapfile -t STAGED_FILES < <(git diff --cached --name-only --diff-filter=ACM | grep -E 'calico.*\.ya?ml$' || true)
 
-if [ -z "$STAGED_FILES" ]; then
+if [ "${#STAGED_FILES[@]}" -eq 0 ]; then
   exit 0
 fi
 
 ERRORS=0
-for file in $STAGED_FILES; do
+for file in "${STAGED_FILES[@]}"; do
   echo "Validating: $file"
-  if ! calicoctl validate -f "$file" 2>&1; then
+  if ! git show ":$file" | calicoctl validate -f - 2>&1; then
     ERRORS=$((ERRORS + 1))
   fi
 done
@@ -81,6 +81,9 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -88,20 +91,21 @@ jobs:
 
       - name: Install calicoctl
         run: |
-          curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.31.0/calicoctl-linux-amd64 -o calicoctl
           chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
 
       - name: Validate changed Calico resources
         run: |
           # Only validate files changed in this PR
-          CHANGED=$(git diff --name-only origin/main...HEAD -- 'calico-resources/**/*.yaml')
-          if [ -z "$CHANGED" ]; then
+          mapfile -t CHANGED < <(git diff --name-only --diff-filter=ACM origin/main...HEAD -- 'calico-resources/**/*.yaml' 'calico-resources/**/*.yml')
+          if [ "${#CHANGED[@]}" -eq 0 ]; then
             echo "No Calico resource changes detected"
+            echo "CALICO_VALIDATION_RESULT=no changes detected" >> "$GITHUB_ENV"
             exit 0
           fi
 
           ERRORS=0
-          for file in $CHANGED; do
+          for file in "${CHANGED[@]}"; do
             echo "Validating: $file"
             if calicoctl validate -f "$file"; then
               echo "  PASS"
@@ -112,20 +116,22 @@ jobs:
           done
 
           if [ "$ERRORS" -gt 0 ]; then
+            echo "CALICO_VALIDATION_RESULT=$ERRORS file(s) failed validation" >> "$GITHUB_ENV"
             echo "::error::$ERRORS files failed validation"
             exit 1
           fi
+          echo "CALICO_VALIDATION_RESULT=all resources valid" >> "$GITHUB_ENV"
 
       - name: Comment validation results on PR
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `Calico validation: ${process.env.ERRORS === '0' ? 'All resources valid' : 'Validation failures detected'}`
+              body: `Calico validation: ${process.env.CALICO_VALIDATION_RESULT || 'validation did not complete'}`
             })
 ```
 
@@ -186,9 +192,21 @@ REPORT_FILE="${2:-/tmp/calico-validation-report.json}"
 
 echo "[]" > "$REPORT_FILE"
 
-find "$RESOURCE_DIR" -name "*.yaml" -not -name "kustomization.yaml" | sort | while read file; do
-  KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$file')).get('kind','unknown'))" 2>/dev/null || echo "unknown")
-  NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$file')).get('metadata',{}).get('name','unknown'))" 2>/dev/null || echo "unknown")
+find "$RESOURCE_DIR" -name "*.yaml" -not -name "kustomization.yaml" | sort | while read -r file; do
+  KIND=$(FILE="$file" python3 - <<'PY' 2>/dev/null || echo "unknown"
+import os, yaml
+with open(os.environ["FILE"]) as f:
+    doc = yaml.safe_load(f) or {}
+print(doc.get("kind", "unknown"))
+PY
+)
+  NAME=$(FILE="$file" python3 - <<'PY' 2>/dev/null || echo "unknown"
+import os, yaml
+with open(os.environ["FILE"]) as f:
+    doc = yaml.safe_load(f) or {}
+print(doc.get("metadata", {}).get("name", "unknown"))
+PY
+)
 
   if output=$(calicoctl validate -f "$file" 2>&1); then
     status="valid"
@@ -198,30 +216,36 @@ find "$RESOURCE_DIR" -name "*.yaml" -not -name "kustomization.yaml" | sort | whi
     error=$(echo "$output" | head -5)
   fi
 
-  python3 -c "
+  REPORT_FILE="$REPORT_FILE" FILE="$file" KIND="$KIND" NAME="$NAME" STATUS="$status" ERROR="$error" python3 - <<'PY'
 import json
-with open('$REPORT_FILE') as f:
+import os
+
+report_file = os.environ["REPORT_FILE"]
+with open(report_file) as f:
     report = json.load(f)
 report.append({
-    'file': '$file',
-    'kind': '$KIND',
-    'name': '$NAME',
-    'status': '$status',
-    'error': '''$error'''
+    "file": os.environ["FILE"],
+    "kind": os.environ["KIND"],
+    "name": os.environ["NAME"],
+    "status": os.environ["STATUS"],
+    "error": os.environ["ERROR"],
 })
-with open('$REPORT_FILE', 'w') as f:
+with open(report_file, "w") as f:
     json.dump(report, f, indent=2)
-"
+PY
 done
 
 echo "Report generated: $REPORT_FILE"
-cat "$REPORT_FILE" | python3 -c "
-import sys, json
-report = json.load(sys.stdin)
-valid = sum(1 for r in report if r['status'] == 'valid')
-invalid = sum(1 for r in report if r['status'] == 'invalid')
-print(f'Total: {len(report)}, Valid: {valid}, Invalid: {invalid}')
-"
+python3 - "$REPORT_FILE" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    report = json.load(f)
+valid = sum(1 for r in report if r["status"] == "valid")
+invalid = sum(1 for r in report if r["status"] == "invalid")
+print(f"Total: {len(report)}, Valid: {valid}, Invalid: {invalid}")
+PY
 ```
 
 ```mermaid
@@ -256,8 +280,8 @@ cat /tmp/calico-validation-report.json
 ## Troubleshooting
 
 - **Pre-commit hook not running**: Verify the hook is executable: `chmod +x .git/hooks/pre-commit`. Also check that calicoctl is in the PATH.
-- **CI validation passes but deploy fails**: Validate checks syntax, not cluster state. A resource might be valid YAML but conflict with existing resources.
-- **Validation slow on many files**: Run validation in parallel: `find ... | xargs -P 4 -I{} calicoctl validate -f {}`.
+- **CI validation passes but deploy fails**: Validate checks syntax, structure, and schema validity, not cluster state. A resource might be valid YAML but conflict with existing resources.
+- **Validation slow on many files**: Run validation in parallel: `find ... -print0 | xargs -0 -P 4 -I{} calicoctl validate -f {}`.
 - **False positives with new Calico features**: Update calicoctl to match the target cluster version for accurate validation.
 
 ## Conclusion
