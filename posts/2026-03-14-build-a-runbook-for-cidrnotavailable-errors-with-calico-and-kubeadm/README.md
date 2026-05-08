@@ -10,7 +10,7 @@ Description: A structured operational runbook for on-call engineers to follow wh
 
 ## Introduction
 
-CIDRNotAvailable errors occur when Calico cannot find a suitable CIDR block to allocate IPs from. This typically happens when the pod CIDR configured in kubeadm does not match the Calico IPPool configuration, or when the IP address space is exhausted.
+CIDRNotAvailable events occur when the Kubernetes node CIDR allocator cannot assign a pod CIDR to a node. In kubeadm clusters, this can happen when node CIDR allocation is enabled with `--pod-network-cidr` but the cluster CIDR is exhausted or too small. In Calico clusters that use Calico IPAM, Calico allocates pod IPs from IPPools instead of using `Node.spec.podCIDR`, so also check the Calico IPPool configuration and IP address usage when pods cannot get IPs.
 
 A runbook transforms tribal knowledge into a repeatable procedure that any on-call engineer can follow. This guide provides a structured runbook for handling CIDRNotAvailable errors, designed to minimize mean time to resolution (MTTR).
 
@@ -50,13 +50,19 @@ echo "=== Calico System Pods ==="
 kubectl get pods -n calico-system -o wide
 
 echo "=== Recent Events ==="
-kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
+kubectl get events -A --sort-by='.metadata.creationTimestamp' | grep CIDRNotAvailable | tail -20
+
+echo "=== Node Pod CIDRs ==="
+kubectl get nodes -o custom-columns=NAME:.metadata.name,PODCIDR:.spec.podCIDR,PODCIDRS:.spec.podCIDRs
 
 echo "=== Calico Node Status ==="
 calicoctl node status
 
 echo "=== IPAM Status ==="
 calicoctl ipam show
+
+echo "=== Calico IPPools ==="
+calicoctl get ippool -o wide
 ```
 
 Record findings in the incident channel.
@@ -154,11 +160,14 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current identity can modify Calico resources
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
+
+# List allowed actions and filter for Calico resources
+kubectl auth can-i --list --all-namespaces | grep projectcalico
 
 # Review recent changes to Calico resources (if audit logging is enabled)
-kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
+kubectl get events -n calico-system --sort-by='.metadata.creationTimestamp' | tail -20
 ```
 
 ### Capacity Planning for Large Deployments
