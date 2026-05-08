@@ -145,15 +145,18 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
 # Use the Cilium CLI tool from outside the pod
 cilium status --wait
 
-# Debug with a temporary pod
-kubectl run cilium-debug --rm -it --image=quay.io/cilium/cilium:v1.16.0 \
+# Debug with a temporary pod using the same Cilium image
+CILIUM_IMAGE=$(kubectl -n kube-system get pod "$CILIUM_POD" \
+  -o jsonpath='{.spec.containers[?(@.name=="cilium-agent")].image}')
+
+kubectl run cilium-debug --rm -it --image="$CILIUM_IMAGE" \
   --overrides='{"spec":{"nodeName":"'$(kubectl -n kube-system get pod "$CILIUM_POD" -o jsonpath='{.spec.nodeName}')'"}}' \
-  -- /bin/bash
+  --command -- /bin/bash
 ```
 
-## Network Policy Blocking Exec
+## Network Policy Side Effects
 
-In rare cases, network policies may block the exec connection:
+Network policies do not normally block the `kubectl exec` stream itself, but they can affect commands you run from inside the pod if those commands need network access:
 
 ```bash
 # Check if any network policies could affect kube-system
@@ -162,7 +165,7 @@ kubectl get networkpolicies -n kube-system
 # Check Cilium network policies
 kubectl get ciliumnetworkpolicies -n kube-system
 
-# Temporarily check without policies (for diagnosis only)
+# Check whether Cilium-managed kube-system endpoints are visible
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
   cilium-dbg endpoint list 2>/dev/null | \
   grep kube-system
