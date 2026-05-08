@@ -18,9 +18,10 @@ This guide walks through setting up Cilium observability policies from scratch, 
 
 ## Prerequisites
 
-- Kubernetes cluster (1.21+)
+- Kubernetes cluster supported by your Cilium release (Cilium 1.19 supports Kubernetes 1.31-1.34)
 - Helm 3 installed
 - `kubectl` cluster admin access
+- Cilium CLI installed
 - Basic understanding of Cilium network policies
 - Familiarity with Prometheus and Grafana (for metrics export)
 
@@ -35,13 +36,15 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 # Install Cilium with Hubble enabled
-helm install cilium cilium/cilium --version 1.15.0 \
+helm install cilium cilium/cilium --version 1.19.3 \
     --namespace kube-system \
+    --set prometheus.enabled=true \
+    --set operator.prometheus.enabled=true \
     --set hubble.enabled=true \
     --set hubble.relay.enabled=true \
     --set hubble.ui.enabled=true \
     --set hubble.metrics.enableOpenMetrics=true \
-    --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2:exemplars=true;labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload}"
+    --set hubble.metrics.enabled="{dns,drop,tcp,flow,port-distribution,icmp,httpV2:exemplars=true;labelsContext=source_ip\,source_namespace\,source_workload\,destination_ip\,destination_namespace\,destination_workload\,traffic_direction}"
 
 # Verify Hubble is running
 kubectl get pods -n kube-system -l k8s-app=hubble-relay
@@ -52,10 +55,13 @@ Install the Hubble CLI:
 
 ```bash
 # Install Hubble CLI
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
-curl -L --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-amd64.tar.gz
-tar xzvf hubble-linux-amd64.tar.gz
-sudo mv hubble /usr/local/bin/
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all https://github.com/cilium/hubble/releases/download/$HUBBLE_VERSION/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
+rm hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
 
 # Verify connectivity
 cilium hubble port-forward &
@@ -64,7 +70,7 @@ hubble status
 
 ## Configuring Flow Visibility Policies
 
-Control which flows are visible through CiliumNetworkPolicy annotations:
+Control which flows are visible through L7 CiliumNetworkPolicy rules:
 
 ```yaml
 # visibility-policy.yaml
@@ -91,33 +97,39 @@ spec:
               - method: "POST"
 ```
 
-For visibility without enforcement, use annotations:
+Historically, Cilium supported L7 visibility through the `policy.cilium.io/proxy-visibility` pod annotation. Current Cilium releases no longer support that method; use L7 Cilium network policies instead and make the L7 match as broad as your security requirements allow.
 
 ```yaml
-# Enable L7 visibility on a pod without enforcing policy
-apiVersion: v1
-kind: Pod
+# visibility-all-http.yaml
+# This enables L7 visibility for HTTP traffic on port 80 and permits all HTTP requests that match the L4 rule
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
 metadata:
-  name: my-app
-  annotations:
-    policy.cilium.io/proxy-visibility: "<Ingress/80/TCP/HTTP>"
-  labels:
-    app: my-app
+  name: my-app-http-visibility
+  namespace: default
 spec:
-  containers:
-    - name: app
-      image: my-app:latest
-      ports:
-        - containerPort: 80
+  endpointSelector:
+    matchLabels:
+      app: my-app
+  ingress:
+    - fromEndpoints:
+        - {}
+      toPorts:
+        - ports:
+            - port: "80"
+              protocol: TCP
+          rules:
+            http:
+              - {}
 ```
 
 ```mermaid
 flowchart LR
     A[Traffic] --> B{Hubble Enabled?}
     B -->|No| C[No Visibility]
-    B -->|Yes| D{L7 Policy/Annotation?}
+    B -->|Yes| D{L7 Policy?}
     D -->|No| E[L3/L4 Flows Only]
-    D -->|Yes| F[Full L7 Visibility]
+    D -->|Yes| F[L7 Flow Visibility]
     F --> G[Hubble Relay]
     E --> G
     G --> H[Hubble UI]
@@ -127,41 +139,56 @@ flowchart LR
 
 ## Setting Up Hubble Metrics Export
 
-Configure Hubble to export metrics to Prometheus:
+Configure Hubble to export metrics to Prometheus. If you want to change metric definitions without restarting agents, use the dynamic metrics exporter:
 
 ```yaml
-# hubble-metrics-config.yaml
+# dynamic-metrics.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: hubble-metrics-config
+  name: cilium-dynamic-metrics-config
   namespace: kube-system
 data:
-  metrics: |
-    dns:query;ignoreAAAA
-    drop:sourceContext=identity;destinationContext=identity
-    tcp:sourceContext=identity;destinationContext=identity
-    flow:sourceContext=identity;destinationContext=identity
-    port-distribution:sourceContext=identity;destinationContext=identity
-    httpV2:sourceContext=identity;destinationContext=identity;labelsContext=source_namespace,destination_namespace
+  dynamic-metrics.yaml: |
+    metrics:
+      - name: dns
+      - name: drop
+      - name: tcp
+      - name: flow
+      - name: port-distribution
+      - name: icmp
+      - name: httpV2
+        contextOptions:
+          - name: exemplars
+            values:
+              - "true"
+          - name: labelsContext
+            values:
+              - source_namespace
+              - destination_namespace
 ```
 
-Create a ServiceMonitor for Prometheus to scrape Hubble metrics:
+Apply the ConfigMap and enable the dynamic exporter:
 
-```yaml
-# hubble-servicemonitor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: hubble-metrics
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      k8s-app: hubble
-  endpoints:
-    - port: hubble-metrics
-      interval: 30s
+```bash
+kubectl apply -f dynamic-metrics.yaml
+
+helm upgrade cilium cilium/cilium --version 1.19.3 \
+    --namespace kube-system \
+    --reuse-values \
+    --set hubble.metrics.enabled=[] \
+    --set hubble.metrics.dynamic.enabled=true \
+    --set hubble.metrics.dynamic.config.configMapName=cilium-dynamic-metrics-config \
+    --set hubble.metrics.dynamic.config.createConfigMap=false
+```
+
+If you use Prometheus Operator, have the Cilium chart create the ServiceMonitor:
+
+```bash
+helm upgrade cilium cilium/cilium --version 1.19.3 \
+    --namespace kube-system \
+    --reuse-values \
+    --set hubble.metrics.serviceMonitor.enabled=true
 ```
 
 ## Observing Traffic Flows
@@ -182,10 +209,10 @@ hubble observe --pod default/frontend
 hubble observe --verdict DROPPED
 
 # Filter by L7 protocol
-hubble observe --type l7 --protocol HTTP
+hubble observe --type l7 --protocol http
 
 # Filter by HTTP status code
-hubble observe --http-status-code 500
+hubble observe --http-status 500
 
 # Export to JSON for processing
 hubble observe --namespace default -o json > flows.json
@@ -223,14 +250,14 @@ echo "Open http://localhost:12000 in browser"
 Ensure Hubble relay is running: `kubectl get pods -n kube-system -l k8s-app=hubble-relay`. If not running, check that Hubble was enabled during Cilium installation.
 
 **Problem: No L7 flows visible**
-L7 visibility requires either an L7 network policy or the `proxy-visibility` annotation on the pod. L3/L4-only policies do not generate L7 flow data.
+L7 visibility requires an L7 network policy. L3/L4-only policies do not generate L7 flow data.
 
 **Problem: Metrics not appearing in Prometheus**
 Check that the ServiceMonitor is created and that Prometheus is configured to watch the kube-system namespace. Verify the metrics port is exposed.
 
 **Problem: High CPU usage from Hubble**
-Reduce the flow buffer size or enable sampling. Adjust `hubble.eventQueueSize` and `hubble.metricsServer.enabled` in Helm values.
+Reduce the number of enabled Hubble metrics, avoid high-cardinality `labelsContext` values unless you need them, and consider rate-limiting datapath events with `bpf.events.default.rateLimit` and `bpf.events.default.burstLimit`.
 
 ## Conclusion
 
-Setting up Cilium observability policies provides critical visibility into network traffic and policy enforcement. By enabling Hubble with appropriate metrics, configuring L7 visibility through policies or annotations, and integrating with Prometheus for metrics export, you build a comprehensive observability stack. Start with L3/L4 visibility for all traffic and add L7 visibility selectively for services that require deep inspection to balance visibility with performance.
+Setting up Cilium observability policies provides critical visibility into network traffic and policy enforcement. By enabling Hubble with appropriate metrics, configuring L7 visibility through policies, and integrating with Prometheus for metrics export, you build a comprehensive observability stack. Start with L3/L4 visibility for all traffic and add L7 visibility selectively for services that require deep inspection to balance visibility with performance.
