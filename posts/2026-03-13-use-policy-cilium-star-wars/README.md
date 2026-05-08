@@ -14,12 +14,12 @@ Writing `CiliumNetworkPolicy` is a skill that develops through practice. The Sta
 
 The key habit to develop is writing policies incrementally. Start with L3/L4 to establish connection-level boundaries, observe whether legitimate traffic still flows, then add L7 rules to restrict specific HTTP methods and paths. Each layer of policy adds security but also adds risk of breaking legitimate traffic - always verify after each change.
 
-This guide also introduces the `cilium policy trace` command, which is your most important tool for verifying policies before applying them. It allows you to predict whether Cilium will allow or deny a specific traffic flow based on the current policy set.
+This guide also uses Kubernetes server-side dry-run checks to validate policy manifests before applying them. A dry-run confirms that the resource is accepted by the API server and Cilium CRD schema, but you should still verify the actual traffic behavior after applying the policy.
 
 ## Prerequisites
 
 - Star Wars demo deployed
-- Cilium CLI installed
+- Access to the Cilium agent pod, where `cilium-dbg` is available
 - `kubectl` configured
 
 ## Writing a Basic Ingress Policy
@@ -48,27 +48,14 @@ spec:
 ```
 
 ```bash
+# Validate the policy manifest before applying it
+kubectl apply --dry-run=server -f basic-deathstar-policy.yaml
+
 # Apply the policy
 kubectl apply -f basic-deathstar-policy.yaml
 
 # Verify it was applied
 kubectl get CiliumNetworkPolicy
-```
-
-## Pre-Testing with Policy Trace
-
-```bash
-# Predict: will tiefighter be allowed?
-kubectl exec -n kube-system ds/cilium -- cilium policy trace \
-  --src-k8s-pod default:tiefighter \
-  --dst-k8s-pod default:deathstar-xxxxx \
-  --dport 80
-
-# Predict: will xwing be blocked?
-kubectl exec -n kube-system ds/cilium -- cilium policy trace \
-  --src-k8s-pod default:xwing \
-  --dst-k8s-pod default:deathstar-xxxxx \
-  --dport 80
 ```
 
 ## Upgrading to L7 Policy
@@ -102,6 +89,9 @@ spec:
 ```
 
 ```bash
+# Validate the L7 policy manifest before applying it
+kubectl apply --dry-run=server -f l7-deathstar-policy.yaml
+
 # Apply the L7 policy (replaces the L3/L4 policy with the same name)
 kubectl apply -f l7-deathstar-policy.yaml
 
@@ -117,10 +107,10 @@ kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/
 
 ```bash
 # Watch drops as you test
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop &
 
 # Watch L7 decisions
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type l7 &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type l7 &
 
 # Run tests
 kubectl exec tiefighter -- curl -s -XPUT deathstar.default.svc.cluster.local/v1/exhaust-port
@@ -152,4 +142,4 @@ spec:
 
 ## Conclusion
 
-Writing `CiliumNetworkPolicy` follows a clear pattern: select the endpoint, define ingress/egress rules with identity selectors, optionally add L7 rules. The Star Wars demo gives you immediate feedback - every policy change is verifiable with a `curl` command. Use `cilium policy trace` before applying and `cilium monitor` after to build confidence in your policies before deploying to production.
+Writing `CiliumNetworkPolicy` follows a clear pattern: select the endpoint, define ingress/egress rules with identity selectors, optionally add L7 rules. The Star Wars demo gives you immediate feedback - every policy change is verifiable with a `curl` command. Use server-side dry-run checks before applying and `cilium-dbg monitor` after to build confidence in your policies before deploying to production.
