@@ -67,6 +67,7 @@ Export the entire filesystem for thorough analysis:
 podman export data-container > /tmp/container-filesystem.tar
 
 # Extract specific files
+mkdir -p /tmp/extracted
 tar xf /tmp/container-filesystem.tar -C /tmp/extracted/ app/logs/app.log app/data/config.json
 
 # Or extract everything
@@ -98,7 +99,7 @@ A common scenario is extracting logs from a container that crashed:
 
 ```bash
 # Simulate a crashing container
-podman run --name web-crash nginx:latest /bin/bash -c "
+podman run --name web-crash nginx:latest /bin/sh -c "
     echo 'Starting server...' > /var/log/nginx/startup.log
     echo 'Error: config invalid' >> /var/log/nginx/startup.log
     exit 1
@@ -171,8 +172,7 @@ podman rm "$CONTAINER"
 If you need to run commands on the data, temporarily start the container:
 
 ```bash
-# Create a new container from the stopped one's image with the same volumes
-# Or commit the stopped container and run from the new image
+# Commit the stopped container and run commands from the new image
 
 podman commit data-container recovery-image:latest
 podman run --rm -it recovery-image:latest /bin/sh -c "find /app -type f -name '*.log' -exec cat {} \;"
