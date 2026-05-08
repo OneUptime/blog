@@ -50,6 +50,9 @@ sudo dnf install -y podman
 ## Step 3: Install Additional Container Tools
 
 ```bash
+# Enable EPEL for podman-compose
+sudo dnf install -y epel-release
+
 # Install the complete container toolkit
 sudo dnf install -y buildah skopeo podman-compose
 
@@ -82,6 +85,9 @@ cat /etc/subgid
 # Add mappings if needed
 sudo usermod --add-subuids 100000-165535 $(whoami)
 sudo usermod --add-subgids 100000-165535 $(whoami)
+
+# Apply the updated user namespace mappings
+podman system migrate
 
 # Install slirp4netns for rootless networking
 sudo dnf install -y slirp4netns
@@ -173,26 +179,26 @@ podman rm rocky-web rocky-web-custom
 ## Creating systemd Services
 
 ```bash
-# Run a container
-podman run -d --name my-service -p 8080:80 docker.io/library/nginx:latest
+# Create a Quadlet service definition
+mkdir -p ~/.config/containers/systemd
+cat > ~/.config/containers/systemd/my-service.container <<'EOF'
+[Container]
+Image=docker.io/library/nginx:latest
+PublishPort=8080:80
 
-# Generate a systemd service file
-mkdir -p ~/.config/systemd/user
-podman generate systemd --new --name my-service > ~/.config/systemd/user/container-my-service.service
+[Install]
+WantedBy=default.target
+EOF
 
-# Stop the manually created container
-podman stop my-service
-podman rm my-service
-
-# Enable the systemd-managed container
+# Load and start the systemd-managed container
 systemctl --user daemon-reload
-systemctl --user enable --now container-my-service.service
+systemctl --user enable --now my-service.service
 
 # Enable lingering for boot-time startup
 sudo loginctl enable-linger $(whoami)
 
 # Verify
-systemctl --user status container-my-service.service
+systemctl --user status my-service.service
 ```
 
 ## Troubleshooting
@@ -218,14 +224,15 @@ podman system reset
 sysctl user.max_user_namespaces
 ```
 
-If DNS fails inside containers:
+If container networking fails after firewall changes:
 
 ```bash
-# Check if systemd-resolved is running
-sudo systemctl status systemd-resolved
+# Inspect Podman's network configuration
+podman network ls
+podman network inspect podman
 
-# Restart if needed
-sudo systemctl restart systemd-resolved
+# Reload network configuration for running containers
+podman network reload --all
 ```
 
 ## Summary
