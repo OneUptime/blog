@@ -28,7 +28,7 @@ This guide provides a comprehensive overview of Cilium project governance and ho
 
 As a CNCF graduated project, Cilium follows established governance principles:
 
-- **Transparency**: All decisions are made in public
+- **Transparency**: Project work happens in public where possible, with private handling for sensitive matters such as committer nominations and Code of Conduct reports
 - **Meritocracy**: Influence is earned through contributions
 - **Community-driven**: Major decisions involve community input
 - **Code of Conduct**: All participants follow the CNCF Code of Conduct
@@ -37,23 +37,25 @@ As a CNCF graduated project, Cilium follows established governance principles:
 
 ```mermaid
 flowchart TD
-    A[Committers] --> B[Maintainers]
-    B --> C[SIG Leads]
-    C --> D[Contributors]
-    D --> E[Users/Community]
+    A[Community Contributors] --> B[Organization Members]
+    B --> C[Reviewers]
+    C --> D[Sub-Project Committers]
+    D --> E[Committers]
+    C --> F[SIG Leads]
 ```
 
-- **Maintainers**: Overall project direction, release management, final review authority
-- **Committers**: Merge rights, regular code review duties
-- **SIG Leads**: Technical direction within their area
-- **Contributors**: Anyone who submits patches, docs, or issues
-- **Community Members**: Users, testers, advocates
+- **Committers**: Project-wide write, merge, and voting privileges; collectively responsible for steering the project
+- **Sub-Project Committers**: Write and merge privileges within a specific Cilium sub-project
+- **Reviewers**: Review responsibility for specific code, documentation, test, or project areas
+- **SIG Leads**: Coordinate a SIG, keep notes and cadence, and help drive charter work; SIGs do not have additional authority beyond what the Committer community accepts
+- **Organization Members**: Established contributors with repository privileges such as triggering CI and leaving reviews
+- **Community Contributors**: Anyone who participates through patches, docs, issues, testing, discussions, or other project contributions
 
 ### Decision Making
 
-- **Lazy consensus**: Proposals are accepted if no objections within a review period
-- **Voting**: Used for contentious issues; each committer gets one vote
-- **RFC process**: Major changes go through a Request for Comments process
+- **Lazy consensus**: Used for editorial governance policy changes such as spelling, grammar, style, or link updates
+- **Voting**: Used when disputes cannot otherwise be resolved; each committer receives one vote, subject to the Company Block Vote Limit
+- **CFP process**: Significant enhancements and feature requests are discussed through Cilium Feature Proposals
 
 ### Path to Committer
 
@@ -61,7 +63,7 @@ flowchart TD
 2. Demonstrated understanding of project standards
 3. Active participation in code review
 4. Nomination by existing committer
-5. Approval by majority of maintainers
+5. Approval by a majority of existing committers with zero no votes
 
 ## Verification
 
@@ -69,10 +71,10 @@ Check that governance documents are accessible and current.
 
 ## Troubleshooting
 
-- **Cannot find meeting links**: Check the Cilium community calendar and #community Slack channel.
+- **Cannot find meeting links**: Check the Cilium community meeting notes and the `#development` Slack channel.
 - **Slack workspace access**: Request an invite through the Cilium website.
 - **GitHub permissions**: Ensure your account has the necessary access for the repositories you need.
-- **Timezone confusion**: All official times are in UTC. Use a timezone converter for your local time.
+- **Timezone confusion**: The weekly community meeting is listed in US/Pacific time, while the monthly APAC meeting is listed in UTC. Use a timezone converter for your local time.
 
 ## Conclusion
 
