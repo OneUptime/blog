@@ -10,7 +10,7 @@ Description: Learn how to set CPU, memory, and other resource limits in Podman Q
 
 > Prevent containers from consuming excessive host resources by configuring CPU, memory, and I/O limits in your Quadlet container files.
 
-Resource limits ensure that no single container can monopolize host resources. Quadlet exposes Podman's resource limit options through the `PodmanArgs` directive, allowing you to set CPU, memory, and other cgroup-based constraints declaratively.
+Resource limits ensure that no single container can monopolize host resources. Quadlet exposes some Podman resource limit options as dedicated keys, and you can use the `PodmanArgs` directive for Podman flags that do not have a dedicated Quadlet key.
 
 ---
 
@@ -27,7 +27,7 @@ Image=docker.io/myorg/myapp:latest
 PublishPort=3000:3000
 
 # Limit container memory to 512MB
-PodmanArgs=--memory=512m
+Memory=512m
 # Set memory + swap limit to 1GB
 PodmanArgs=--memory-swap=1g
 
@@ -72,7 +72,7 @@ Image=docker.io/myorg/api:latest
 PublishPort=8080:8080
 
 # Memory limits
-PodmanArgs=--memory=1g
+Memory=1g
 PodmanArgs=--memory-swap=2g
 PodmanArgs=--memory-reservation=256m
 
@@ -95,7 +95,7 @@ Limit the number of processes a container can create:
 [Container]
 Image=docker.io/myorg/myapp:latest
 # Limit to 200 processes
-PodmanArgs=--pids-limit=200
+PidsLimit=200
 ```
 
 ## Setting Block I/O Limits
@@ -114,16 +114,17 @@ PodmanArgs=--device-write-bps=/dev/sda:5mb
 ```bash
 # Reload and start
 systemctl --user daemon-reload
-systemctl --user start myapp.service
+systemctl --user start myapp.service worker.service
 
 # Check resource limits
-podman inspect myapp --format '{{.HostConfig.Memory}}'
-podman inspect myapp --format '{{.HostConfig.NanoCpus}}'
+podman inspect systemd-myapp --format '{{.HostConfig.Memory}}'
+podman inspect systemd-myapp --format '{{.HostConfig.MemorySwap}}'
+podman inspect systemd-worker --format '{{.HostConfig.NanoCpus}}'
 
 # Monitor resource usage in real time
-podman stats myapp --no-stream
+podman stats systemd-myapp --no-stream
 ```
 
 ## Summary
 
-Resource limits in Quadlet container files are configured through `PodmanArgs` directives that pass standard Podman flags. Set memory limits, CPU constraints, PIDs limits, and I/O bandwidth controls to prevent containers from consuming excessive resources. Use `podman stats` to monitor usage in real time.
+Resource limits in Quadlet container files are configured through dedicated keys such as `Memory=` and `PidsLimit=`, or through `PodmanArgs` directives that pass standard Podman flags. Set memory limits, CPU constraints, PIDs limits, and I/O bandwidth controls to prevent containers from consuming excessive resources. Use `podman stats` to monitor usage in real time.
