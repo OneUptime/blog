@@ -33,12 +33,13 @@ Ensure Cilium exposes metrics for Prometheus:
 cilium config view | grep prometheus
 
 ## If not enabled, upgrade Cilium with metrics
-helm upgrade cilium cilium/cilium --version 1.16.5 \
+helm upgrade cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
   --reuse-values \
   --set prometheus.enabled=true \
   --set operator.prometheus.enabled=true \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}"
+  --set hubble.enabled=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,policy,httpV2}"
 
 ## Verify metrics endpoint
 kubectl exec -n kube-system ds/cilium -- wget -qO- http://localhost:9962/metrics | head -20
@@ -77,25 +78,25 @@ Monitor these Prometheus metrics:
 
 ```bash
 ## Primary metrics to track
-## cilium_policy_count - total number of policies in the agent
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep "policy"
+## cilium_policy - total number of policies in the agent
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list --match-pattern "policy"
 
 ## PromQL queries for Grafana panels:
 
 ## Panel 1: Policy count per agent
-cilium_policy_count
+cilium_policy
 
-## Panel 2: Policy import errors
-rate(cilium_policy_import_errors_total[5m])
+## Panel 2: Failed policy changes
+rate(cilium_policy_change_total{outcome="failure"}[5m])
 
 ## Panel 3: Policy change rate
-rate(cilium_policy_change_total[5m])
+sum by (outcome) (rate(cilium_policy_change_total[5m]))
 
-## Panel 4: Endpoint regeneration triggered by policy changes
-rate(cilium_endpoint_regenerations_total{reason="policy"}[5m])
+## Panel 4: Endpoint regeneration rate
+sum by (outcome) (rate(cilium_endpoint_regenerations_total[5m]))
 
 ## Panel 5: Drop rate for policy-denied traffic
-sum(rate(cilium_drop_count_total{reason=~"POLICY_DENIED.*"}[5m])) by (direction)
+sum(rate(cilium_drop_count_total{reason=~"Policy denied|POLICY_DENIED.*"}[5m])) by (direction)
 ```
 
 ## Configuring Alerting Rules
@@ -116,18 +117,18 @@ spec:
   groups:
     - name: cilium.cidrgroup
       rules:
-        - alert: CiliumPolicyImportErrors
+        - alert: CiliumPolicyChangeFailures
           expr: |
-            rate(cilium_policy_import_errors_total[5m]) > 0
+            rate(cilium_policy_change_total{outcome="failure"}[5m]) > 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Cilium policy import errors on {{ $labels.instance }}"
-            description: "Policy import is failing at {{ $value }} errors/sec. Check CiliumCIDRGroup references in network policies."
+            summary: "Cilium policy change failures on {{ $labels.instance }}"
+            description: "Policy changes are failing at {{ $value }} failures/sec. Check CiliumCIDRGroup references in network policies."
         - alert: CiliumHighPolicyDeniedDrops
           expr: |
-            sum(rate(cilium_drop_count_total{reason=~"POLICY_DENIED.*"}[5m])) by (instance) > 100
+            sum(rate(cilium_drop_count_total{reason=~"Policy denied|POLICY_DENIED.*"}[5m])) by (instance) > 100
           for: 10m
           labels:
             severity: warning
@@ -136,7 +137,7 @@ spec:
             description: "{{ $value }} packets/sec denied by policy. Verify CiliumCIDRGroup CIDRs are up to date."
         - alert: CiliumEndpointRegenerationFailures
           expr: |
-            rate(cilium_endpoint_regenerations_total{outcome="fail"}[5m]) > 0
+            rate(cilium_endpoint_regenerations_total{outcome="failure"}[5m]) > 0
           for: 5m
           labels:
             severity: critical
@@ -157,19 +158,19 @@ Create a Grafana dashboard for CiliumCIDRGroup:
 ## Dashboard panels (PromQL):
 
 ## Row 1: Policy Health
-## - Active Policies: cilium_policy_count
-## - Import Errors: rate(cilium_policy_import_errors_total[5m])
-## - Policy Changes: rate(cilium_policy_change_total[5m])
+## - Active Policies: cilium_policy
+## - Failed Policy Changes: rate(cilium_policy_change_total{outcome="failure"}[5m])
+## - Policy Changes: sum by (outcome) (rate(cilium_policy_change_total[5m]))
 
 ## Row 2: Traffic Impact
-## - Policy Denied Drops: sum(rate(cilium_drop_count_total{reason=~"POLICY_DENIED.*"}[5m])) by (direction)
+## - Policy Denied Drops: sum(rate(cilium_drop_count_total{reason=~"Policy denied|POLICY_DENIED.*"}[5m])) by (direction)
 ## - Forward Rate: rate(cilium_forward_count_total[5m])
-## - L3/L4 Policy Verdicts: rate(cilium_policy_l3l4_total[5m])
+## - Policy Verdicts: sum by (verdict) (rate(hubble_policy_verdicts_total[5m]))
 
 ## Row 3: Endpoint Regeneration
-## - Regeneration Rate: rate(cilium_endpoint_regenerations_total[5m])
-## - Regeneration Failures: rate(cilium_endpoint_regenerations_total{outcome="fail"}[5m])
-## - Regeneration Duration: histogram_quantile(0.99, rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[5m]))
+## - Regeneration Rate: sum by (outcome) (rate(cilium_endpoint_regenerations_total[5m]))
+## - Regeneration Failures: rate(cilium_endpoint_regenerations_total{outcome="failure"}[5m])
+## - Regeneration Duration: histogram_quantile(0.99, sum by (le) (rate(cilium_endpoint_regeneration_time_stats_seconds_bucket[5m])))
 ```
 
 ## Monitoring with Hubble
@@ -180,14 +181,14 @@ Use Hubble for real-time flow monitoring related to CIDR-based policies:
 ## Monitor dropped flows due to policy
 kubectl exec -n kube-system ds/cilium -- hubble observe --verdict DROPPED --last 20
 
-## Monitor traffic to specific CIDR ranges referenced in CiliumCIDRGroup
-kubectl exec -n kube-system ds/cilium -- hubble observe --to-ip 203.0.113.0/24 --last 10
+## Monitor traffic to a specific IP in a CIDR range referenced in CiliumCIDRGroup
+kubectl exec -n kube-system ds/cilium -- hubble observe --to-ip 203.0.113.10 --last 10
 
 ## Monitor policy verdict events
 kubectl exec -n kube-system ds/cilium -- hubble observe --type policy-verdict --last 10
 
 ## Check flow logs for a specific namespace
-kubectl exec -n kube-system ds/cilium -- hubble observe --namespace default --type drop --last 10
+kubectl exec -n kube-system ds/cilium -- hubble observe --namespace default --verdict DROPPED --last 10
 ```
 
 ## Verification
@@ -212,13 +213,13 @@ kubectl get prometheusrules -n monitoring | grep cilium-cidrgroup
 kubectl get ciliumcidrgroups -o custom-columns=NAME:.metadata.name,AGE:.metadata.creationTimestamp
 
 ## Check that metrics are being collected
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep policy | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list --match-pattern "policy" | wc -l
 ```
 
 ## Troubleshooting
 
 - **No metrics in Prometheus**: Verify `prometheus.enabled=true` in Cilium Helm values. Check that the ServiceMonitor labels match your Prometheus operator configuration.
-- **CiliumCIDRGroup changes not reflected**: Cilium agents must regenerate endpoints after CIDR group updates. Check `cilium_endpoint_regenerations_total` for failures and inspect agent logs with `kubectl logs -n kube-system ds/cilium`.
+- **CiliumCIDRGroup changes not reflected**: Cilium agents must regenerate endpoints after CIDR group updates. Check `cilium_endpoint_regenerations_total` for failures and inspect agent logs with `kubectl logs -n kube-system ds/cilium -c cilium-agent`.
 - **Dashboard shows No Data**: Confirm the Grafana data source points to the correct Prometheus instance. Test PromQL queries directly in the Prometheus expression browser.
 - **Alerts not firing**: Check that PrometheusRule labels match the Prometheus operator's `ruleSelector`. Verify with `kubectl get prometheus -n monitoring -o yaml`.
 - **Policy denied drops after CIDR update**: Verify the CiliumCIDRGroup resource contains the correct CIDR ranges with `kubectl get ciliumcidrgroup <name> -o yaml`. Ensure the referencing CiliumNetworkPolicy uses the correct `cidrGroupRef`.
