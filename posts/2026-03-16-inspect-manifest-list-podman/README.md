@@ -43,7 +43,7 @@ This produces JSON output similar to:
     {
       "mediaType": "application/vnd.oci.image.manifest.v1+json",
       "size": 480,
-      "digest": "sha256:e5f6g7h8...",
+      "digest": "sha256:e5f6a7b8...",
       "platform": {
         "architecture": "arm64",
         "os": "linux"
@@ -133,15 +133,17 @@ podman manifest inspect "${REMOTE}" | \
 After identifying a digest from the manifest list, inspect the individual platform image.
 
 ```bash
+IMAGE="registry.example.com/myapp"
+
 # Get the digest for a specific architecture
-AMD64_DIGEST=$(podman manifest inspect myapp:latest | \
+AMD64_DIGEST=$(podman manifest inspect "docker://${IMAGE}:latest" | \
   jq -r '.manifests[] | select(.platform.architecture == "amd64") | .digest')
 
 echo "AMD64 digest: ${AMD64_DIGEST}"
 
-# Inspect the platform-specific image by digest
-podman inspect "${AMD64_DIGEST}" 2>/dev/null || \
-  echo "Image not available locally, pull it first"
+# Pull and inspect the platform-specific image by digest
+podman pull "${IMAGE}@${AMD64_DIGEST}"
+podman image inspect "${IMAGE}@${AMD64_DIGEST}"
 ```
 
 ## Verifying Platform Coverage
