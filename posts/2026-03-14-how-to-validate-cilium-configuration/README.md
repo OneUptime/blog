@@ -33,7 +33,8 @@ helm template cilium cilium/cilium \
   -f cilium-values.yaml > /tmp/cilium-rendered.yaml
 
 # Check for common misconfigurations
-grep "tunnel:" /tmp/cilium-rendered.yaml
+grep "routing-mode:" /tmp/cilium-rendered.yaml
+grep "tunnel-protocol:" /tmp/cilium-rendered.yaml
 grep "ipam:" -A5 /tmp/cilium-rendered.yaml
 grep "resources:" -A10 /tmp/cilium-rendered.yaml
 ```
@@ -102,13 +103,13 @@ cilium connectivity test --test pod-to-service
 ```bash
 #!/bin/bash
 # detect-config-drift.sh
-EXPECTED_TUNNEL=$(helm get values cilium -n kube-system \
-  -o json | jq -r '.tunnel // "vxlan"')
-ACTUAL_TUNNEL=$(kubectl get configmap cilium-config -n kube-system \
-  -o jsonpath='{.data.tunnel}')
+EXPECTED_ROUTING_MODE=$(helm get values cilium -n kube-system \
+  -o json | jq -r '.routingMode // "tunnel"')
+ACTUAL_ROUTING_MODE=$(kubectl get configmap cilium-config -n kube-system \
+  -o jsonpath='{.data.routing-mode}')
 
-if [ "$EXPECTED_TUNNEL" != "$ACTUAL_TUNNEL" ]; then
-  echo "DRIFT: tunnel expected=$EXPECTED_TUNNEL actual=$ACTUAL_TUNNEL"
+if [ "$EXPECTED_ROUTING_MODE" != "$ACTUAL_ROUTING_MODE" ]; then
+  echo "DRIFT: routingMode expected=$EXPECTED_ROUTING_MODE actual=$ACTUAL_ROUTING_MODE"
 fi
 ```
 
