@@ -11,10 +11,11 @@ Pulumi is a modern Infrastructure as Code platform that lets you define infrastr
 ## Prerequisites
 
 - Pulumi CLI installed
-- Node.js 18 or later installed
+- A supported Node.js version installed (use an active LTS release such as Node.js 22 or 24)
 - AWS CLI configured with credentials
+- An existing EC2 key pair in AWS and the matching private key on your machine
 - A Pulumi account (free tier available)
-- A domain name (optional but recommended)
+- A DNS hostname for Rancher
 
 ## Step 1: Create a New Pulumi Project
 
@@ -36,7 +37,7 @@ Set the Pulumi configuration values:
 ```bash
 pulumi config set aws:region us-east-1
 pulumi config set rancherHostname rancher.example.com
-pulumi config set --secret rancherBootstrapPassword admin
+pulumi config set --secret rancherBootstrapPassword replace-with-a-unique-password
 pulumi config set keyName your-aws-key-pair
 pulumi config set sshPrivateKeyPath ~/.ssh/id_rsa
 ```
@@ -118,31 +119,35 @@ const installRancher = new command.remote.Command(
       ),
     },
     create: pulumi.interpolate`
+      set -eu
+
       # Wait for cloud-init
       cloud-init status --wait
 
       # Install K3s
       curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
-      sleep 30
       export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+      until kubectl get nodes >/dev/null 2>&1; do sleep 5; done
+      kubectl wait --for=condition=Ready nodes --all --timeout=300s
 
       # Install Helm
-      curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+      curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
       # Install cert-manager
-      helm repo add jetstack https://charts.jetstack.io
+      helm repo add jetstack https://charts.jetstack.io --force-update
+      helm repo add rancher-stable https://releases.rancher.com/server-charts/stable --force-update
       helm repo update
-      helm install cert-manager jetstack/cert-manager \
+      helm upgrade --install cert-manager jetstack/cert-manager \
         --namespace cert-manager \
         --create-namespace \
         --set crds.enabled=true
-      sleep 30
+      kubectl -n cert-manager rollout status deploy/cert-manager --timeout=300s
+      kubectl -n cert-manager rollout status deploy/cert-manager-cainjector --timeout=300s
+      kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=300s
 
       # Install Rancher
-      helm repo add rancher-stable https://releases.rancher.com/server-charts/stable
-      helm repo update
-      kubectl create namespace cattle-system
-      helm install rancher rancher-stable/rancher \
+      kubectl get namespace cattle-system >/dev/null 2>&1 || kubectl create namespace cattle-system
+      helm upgrade --install rancher rancher-stable/rancher \
         --namespace cattle-system \
         --set hostname=${rancherHostname} \
         --set bootstrapPassword=${rancherBootstrapPassword} \
@@ -187,7 +192,7 @@ pulumi stack output rancherUrl
 
 ## Step 7: Configure DNS and Access Rancher
 
-Point your domain to the Elastic IP from the output and navigate to your Rancher URL in a browser. Log in with the bootstrap password and set your admin credentials.
+Point your hostname to the Elastic IP from the output and navigate to your Rancher URL in a browser. Log in with the bootstrap password and set your admin credentials.
 
 ## Managing the Stack
 
