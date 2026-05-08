@@ -53,14 +53,17 @@ graph TD
 
 ```bash
 # Check policy coverage for all endpoints
-cilium endpoint list -o json | jq '[.[] | .status.policy.realized] | length'
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '[.items[] | select(.status.policy.realized."policy-enabled" != "none")] | length'
 
-# Identify endpoints without any policy
-cilium endpoint list -o json | \
-  jq '.[] | select(
-    .status.policy.realized."l4-ingress" == null and
-    .status.policy.realized."l4-egress" == null
-  ) | {id: .id, labels: .status.labels.id}'
+# Identify endpoints with policy enforcement disabled
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '.items[] | select(.status.policy.realized."policy-enabled" == "none") | {
+    namespace: .metadata.namespace,
+    name: .metadata.name,
+    identity: .status.identity.id,
+    labels: .status.identity.labels
+  }'
 ```
 
 ## Configuration Audit
@@ -75,7 +78,7 @@ cilium config view | grep -E 'policy|audit|monitor'
 kubectl -n kube-system get pods -l k8s-app=cilium -o name | while read pod; do
   echo "=== $pod ==="
   kubectl -n kube-system exec "$pod" -c cilium-agent -- \
-    cilium config view | grep -E "policy-enforcement|enable-l7|enable-hubble"
+    cilium-dbg config --all | grep -Ei "policy|audit|monitor|hubble|l7"
 done
 ```
 
@@ -130,13 +133,13 @@ REPORT_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 OUTPUT="cilium-audit-$(date +%Y%m%d).json"
 
 # Gather audit data
-TOTAL_ENDPOINTS=$(cilium endpoint list -o json | jq 'length')
+TOTAL_ENDPOINTS=$(kubectl get ciliumendpoints --all-namespaces -o json | jq '.items | length')
 TOTAL_POLICIES=$(kubectl get cnp --all-namespaces -o json | jq '.items | length')
 TOTAL_CCNP=$(kubectl get ccnp -o json 2>/dev/null | jq '.items | length' 2>/dev/null || echo 0)
 
-# Count endpoints with policies
-COVERED=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.policy.realized."l4-ingress" != null)] | length')
+# Count endpoints with policy enforcement enabled
+COVERED=$(kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '[.items[] | select(.status.policy.realized."policy-enabled" != "none")] | length')
 
 # Build JSON report
 jq -n \
@@ -164,7 +167,8 @@ cat "$OUTPUT" | jq .
 
 ```bash
 # Generate audit summary
-cilium policy get -o json | jq '.[].metadata.name'
+kubectl get cnp --all-namespaces -o json | jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name)"'
+kubectl get ccnp -o json 2>/dev/null | jq -r '.items[] | .metadata.name'
 ```
 
 ```bash
@@ -174,7 +178,13 @@ hubble observe --verdict DROPPED --last 100 -o json | jq -r '.flow.drop_reason_d
 
 ```bash
 # Verify endpoint identity assignments
-cilium identity list | head -30
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '.items[] | {
+    namespace: .metadata.namespace,
+    name: .metadata.name,
+    identity: .status.identity.id,
+    labels: .status.identity.labels
+  }' | head -30
 ```
 
 ## Troubleshooting
