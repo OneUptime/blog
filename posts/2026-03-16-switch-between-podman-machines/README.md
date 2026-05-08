@@ -14,20 +14,19 @@ When you have multiple Podman machines, you need a way to control which machine 
 
 ---
 
-## Understanding the Default Machine
+## Understanding the Default Connection
 
-The default machine is the one that receives all Podman commands when no specific connection is specified. It is marked with an asterisk in the machine list.
+The default connection is the Podman service destination that receives remote Podman commands when no specific connection is specified. For Podman machines, you can see which machine is associated with the default connection by checking the `Default` field.
 
 ```bash
-# See which machine is the default (marked with *)
-
-podman machine ls
+# See which machine is associated with the default connection
+podman machine ls --format "table {{.Name}}\t{{.VMType}}\t{{.Created}}\t{{.LastUp}}\t{{.CPUs}}\t{{.Memory}}\t{{.DiskSize}}\t{{.Default}}"
 ```
 
 ```text
-NAME        VM TYPE     CREATED        LAST UP            CPUS    MEMORY      DISK SIZE
-dev*        qemu        2 days ago     Currently running  2       4.295GB     107.4GB
-staging     qemu        5 days ago     Currently running  4       8.59GB      214.7GB
+NAME        VM TYPE     CREATED        LAST UP            CPUS    MEMORY      DISK SIZE    DEFAULT
+dev         qemu        2 days ago     Currently running  2       4.295GB     107.4GB      true
+staging     qemu        5 days ago     Currently running  4       8.59GB      214.7GB      false
 ```
 
 ## Setting the Default Connection
@@ -69,11 +68,11 @@ podman --connection staging run -d --name api node:20
 You can set an environment variable to temporarily redirect all commands.
 
 ```bash
-# Get the socket path for a machine
-podman machine inspect dev | jq -r '.ConnectionInfo.PodmanSocket.Path'
+# Get the socket path for a machine and set the environment variable
+export CONTAINER_HOST="unix://$(podman machine inspect dev | jq -r '.[0].ConnectionInfo.PodmanSocket.Path')"
 
-# Set the environment variable to target a specific machine
-export CONTAINER_HOST="unix:///run/user/1000/podman/podman.sock"
+# Or set it manually after inspecting the socket path
+export CONTAINER_HOST="unix:///path/to/dev-api.sock"
 
 # All commands now go to this machine
 podman ps
@@ -158,7 +157,7 @@ podman system connection ls --format "{{.Name}} {{.Default}}" | grep true
 # Check machine info
 podman info --format "{{.Host.Hostname}}"
 
-# Quick check: which machine am I on?
+# Quick check: which machine is associated with the default connection?
 podman machine ls --format "{{.Name}} {{.Default}}" | grep true
 ```
 
@@ -166,10 +165,10 @@ podman machine ls --format "{{.Name}} {{.Default}}" | grep true
 
 | Command | Purpose |
 |---|---|
-| `podman system connection default <name>` | Set the default machine |
+| `podman system connection default <name>` | Set the default connection |
 | `podman --connection <name> <cmd>` | Target a specific machine |
 | `podman system connection ls` | List all connections |
-| `podman machine ls` | See which machine is default |
+| `podman machine ls` | List Podman machines |
 
 ## Summary
 
