@@ -10,17 +10,16 @@ Description: Learn how to verify Calico network policy enforcement is working co
 
 ## Introduction
 
-Verifying Calico on AKS differs from self-managed Kubernetes because Calico runs in policy-only mode. Pod IP assignment is handled by Azure CNI, so Calico's IPAM verification steps do not apply. Instead, verification focuses on confirming that Felix is running and actively enforcing network policies.
+Verifying Calico on AKS differs from self-managed Kubernetes when the cluster uses Azure CNI with Calico as the network policy engine. Pod IP assignment is handled by Azure CNI, so Calico's IPAM verification steps do not apply. Instead, verification focuses on confirming that Felix is running and actively enforcing network policies.
 
-On AKS, all pods receive IPs from the Azure virtual network address space (not from Calico IP pools). The key verifications are: Calico pods are running, Felix is processing NetworkPolicy resources, and network policies are being enforced correctly in practice. Pod-to-pod connectivity is always expected to work since Azure CNI handles routing.
+On AKS clusters using Azure CNI with Calico policy, pods receive IPs from Azure CNI, not from Calico IP pools. In flat Azure CNI modes, those pod IPs come from the Azure virtual network; in Azure CNI Overlay, they come from a separate pod CIDR. The key verifications are: Calico pods are running, Felix is processing NetworkPolicy resources, and network policies are being enforced correctly in practice. Basic pod-to-pod connectivity is expected to work before restrictive policies are applied because Azure CNI handles routing.
 
 This guide focuses on the AKS-specific verification steps for Calico policy enforcement.
 
 ## Prerequisites
 
-- AKS cluster with `--network-policy calico` enabled
+- AKS cluster using Azure CNI with `--network-policy calico` enabled
 - kubectl with AKS cluster credentials
-- calicoctl configured for the AKS cluster
 
 ## Step 1: Verify Calico Pods Are Running
 
@@ -56,7 +55,7 @@ kubectl expose pod test-b --port=80 --name=test-b-svc
 kubectl get pods -o wide
 ```
 
-Note: Pod IPs will be from the Azure VNet CIDR, not from Calico IP pools.
+Note: Pod IPs will be assigned by Azure CNI, not from Calico IP pools.
 
 ## Step 5: Verify Pod-to-Pod Connectivity
 
@@ -92,7 +91,7 @@ EOF
 ```
 
 ```bash
-kubectl exec test-a -- wget --timeout=5 -qO- http://test-b-svc
+kubectl exec test-a -- wget -T 5 -qO- http://test-b-svc
 ```
 
 Should be denied, confirming Calico is enforcing policies on AKS.
