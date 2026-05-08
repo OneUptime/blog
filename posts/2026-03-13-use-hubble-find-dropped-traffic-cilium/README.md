@@ -45,7 +45,7 @@ flowchart TD
     A[Pod sends packet] --> B[Cilium eBPF Datapath]
     B -->|Allowed| C[Forwarded to destination]
     B -->|Denied| D[Dropped with reason]
-    D --> E[Hubble Agent captures event]
+    D --> E[Hubble in the Cilium agent captures event]
     E --> F[Hubble Relay aggregates]
     F --> G[hubble observe CLI]
     G --> H[Operator analyzes drop reason]
@@ -71,8 +71,8 @@ hubble observe \
 | Drop Reason | Meaning |
 |-------------|---------|
 | `POLICY_DENIED` | A network policy blocked the traffic |
-| `ENDPOINT_NOT_FOUND` | Destination pod not registered in Cilium |
-| `NO_TUNNEL_OR_ROUTE` | Missing route to destination |
+| `DROP_EP_NOT_READY` | Endpoint policy program not ready |
+| `FIB_LOOKUP_FAILED` | Route lookup failed |
 | `INVALID_SOURCE_IP` | Source IP not matching endpoint identity |
 | `UNSUPPORTED_L2_PROTOCOL` | Layer 2 protocol not supported |
 
@@ -82,7 +82,8 @@ hubble observe \
 hubble observe \
   --verdict DROPPED \
   --since 10m \
-  | grep "POLICY_DENIED"
+  --output jsonpb \
+  | jq 'select(.flow.drop_reason_desc == "POLICY_DENIED")'
 ```
 
 ## Trace Specific Traffic
@@ -97,7 +98,7 @@ hubble observe \
 ## Export Drop Events for Analysis
 
 ```bash
-hubble observe --verdict DROPPED --output json | \
+hubble observe --verdict DROPPED --output jsonpb | \
   jq '.flow | {src: .source.pod_name, dst: .destination.pod_name, reason: .drop_reason_desc}'
 ```
 
