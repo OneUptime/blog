@@ -31,9 +31,11 @@ metadata:
   name: host-net-pod
 spec:
   hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
   containers:
     - name: app
-      image: nginx:1.27
+      image: python:3.12-alpine
+      command: ["python", "-m", "http.server", "8080"]
       ports:
         - containerPort: 8080
           hostPort: 8080
@@ -59,12 +61,16 @@ kubectl get pod <pod-name> -o jsonpath='{.spec.hostNetwork}'
 kubectl get ciliumendpoints -n <namespace> | grep <pod-name>
 # This will return nothing for host-networked pods
 
-# Check Cilium host endpoint
-cilium endpoint list | grep "reserved:host"
+# Check the Cilium host endpoint on a Cilium agent
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list | grep "reserved:host"
 
-# Verify host policy is enabled
+# Verify the host firewall setting
 kubectl get configmap cilium-config -n kube-system \
   -o jsonpath='{.data.enable-host-firewall}'
+
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status | grep "Host firewall"
 ```
 
 ## Enabling Host Firewall for Host Network Pods
@@ -98,6 +104,7 @@ spec:
               protocol: TCP
   egress:
     - toEntities:
+        - cluster
         - world
 ```
 
@@ -116,17 +123,18 @@ hubble observe --to-label reserved:host --last 20
 
 ```bash
 cilium status
-cilium endpoint list | grep host
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list | grep host
 kubectl get ciliumclusterwidenetworkpolicies
 ```
 
 ## Troubleshooting
 
-- **No CiliumEndpoint for host-networked pod**: This is expected. Host-networked pods use the node identity.
+- **No CiliumEndpoint for host-networked pod**: This is expected. Host-networked pods are covered by the host endpoint.
 - **Policy not enforced on host traffic**: Enable host firewall with `hostFirewall.enabled=true`.
 - **Host-networked pod cannot reach cluster services**: Check kube-proxy/eBPF service handling configuration.
 - **Port conflicts**: Host-networked pods share the node port space. Ensure no port conflicts.
 
 ## Conclusion
 
-Host network mode in Cilium requires special handling. Enable the host firewall for policy enforcement, understand that host-networked pods use the node identity, and create CiliumClusterwideNetworkPolicy for host-level traffic control.
+Host network mode in Cilium requires special handling. Enable the host firewall for policy enforcement, understand that host-networked pods are covered by the host endpoint, and create CiliumClusterwideNetworkPolicy for host-level traffic control.
