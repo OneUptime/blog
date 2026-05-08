@@ -89,8 +89,8 @@ podman run -d --name myapp \
 # Sidecar collects and ships logs
 podman run -d --name log-shipper \
     -v app-logs:/logs:ro \
-    fluentbit:latest \
-    fluent-bit -i tail -p path=/logs/*.log -o stdout
+    cr.fluentbit.io/fluent/fluent-bit:latest \
+    -i tail -p path=/logs/*.log -o stdout
 ```
 
 ## Database Backup Pattern
@@ -105,12 +105,17 @@ podman run -d --name postgres \
     -e POSTGRES_PASSWORD=secret \
     postgres:16
 
-# Run periodic backups from the same volume
+# Stop the database before making a file-system backup
+mkdir -p ./backup
+podman stop postgres
+
 podman run --rm \
     -v dbdata:/data:ro \
-    -v /backup:/backup \
+    -v ./backup:/backup \
     alpine:latest \
     tar czf /backup/db-$(date +%Y%m%d).tar.gz -C /data .
+
+podman start postgres
 ```
 
 ## Multiple Containers with Read-Write Access
@@ -142,7 +147,7 @@ podman run --rm \
 
 ## Using Pods for Volume Sharing
 
-Pods group containers that share resources, including volumes:
+Pods group containers that share namespaces. You can mount the same named volume in containers that run in a pod:
 
 ```bash
 # Create a pod
