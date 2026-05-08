@@ -10,7 +10,7 @@ Description: Learn how to run multiple independent podman-compose projects simul
 
 > Running multiple compose projects with Podman lets you develop and test microservices, client projects, or multiple environments side by side.
 
-When working on multiple applications or microservice architectures, you often need several compose projects running at the same time. Podman handles this through project name isolation, separate networks, and careful port management.
+When working on multiple applications or microservice architectures, you often need several compose projects running at the same time. podman-compose handles this through project name isolation, separate networks, and careful port management.
 
 ---
 
