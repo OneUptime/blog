@@ -18,7 +18,7 @@ This guide walks through the key validation steps for an AKS cluster running Azu
 
 ## Prerequisites
 
-- AKS cluster created with `--network-plugin azure` and `--network-plugin-mode overlay` or `--network-dataplane cilium`
+- AKS cluster created with `--network-plugin azure`, `--network-dataplane cilium`, and either `--network-plugin-mode overlay` or a pod subnet configured with `--pod-subnet-id`
 - `kubectl` configured to point to your AKS cluster
 - `cilium` CLI installed (v0.15+)
 - `az` CLI authenticated and targeting the correct subscription
@@ -41,18 +41,28 @@ cilium status --wait
 
 ## Step 2: Check Azure CNI Integration
 
-Confirm that Azure CNI is the active IPAM mode and that node CIDRs are assigned correctly.
+Confirm that AKS is using Azure CNI Powered by Cilium and that delegated Azure IPAM resources are present.
 
 ```bash
-# Inspect the Cilium ConfigMap for IPAM mode
-kubectl -n kube-system get configmap cilium-config -o jsonpath='{.data.ipam}'
+# Confirm the AKS network plugin, dataplane, and pod IP assignment mode
+az aks show \
+  --resource-group <resource-group> \
+  --name <cluster-name> \
+  --query "networkProfile.{plugin:networkPlugin,pluginMode:networkPluginMode,dataplane:networkDataplane,podCidr:podCidr,podSubnetId:podSubnetId}" \
+  -o table
 
-# List CiliumNode objects to verify Azure pod CIDRs are present
-kubectl get ciliumnodes -o custom-columns=\
+# Inspect the Cilium ConfigMap for delegated IPAM mode
+kubectl -n kube-system get configmap cilium-config \
+  -o jsonpath='{.data.ipam}{"\n"}{.data.local-router-ipv4}{"\n"}'
+
+# List NodeNetworkConfig objects created by the AKS control plane
+kubectl -n kube-system get nodenetworkconfigs -o custom-columns=\
 NAME:.metadata.name,\
-PODCIDR:.spec.ipam.podCIDRs
+PRIMARYIP:.status.primaryIP,\
+REQUESTEDIPS:.status.requestedIPCount,\
+ASSIGNEDIPS:.status.assignedIPCount
 
-# Confirm pods receive IPs from the expected Azure subnet range
+# Confirm pods receive IPs from the expected pod CIDR or pod subnet range
 kubectl get pods -A -o wide | awk '{print $7}' | sort -u
 ```
 
@@ -94,16 +104,16 @@ spec:
 # Apply the policy and test enforcement
 kubectl apply -f cilium-test-policy.yaml
 
-# Verify the policy appears in Cilium's policy store
-cilium policy get
+# Verify the policy was accepted by the Kubernetes API
+kubectl -n default get ciliumnetworkpolicy allow-labeled-ingress -o yaml
 ```
 
 ## Best Practices
 
 - Always run `cilium connectivity test` after any cluster upgrade or CNI config change
 - Monitor the `cilium_drop_count_total` Prometheus metric to catch unexpected policy drops
-- Use `cilium endpoint list` to inspect per-pod policy status and identity assignments
-- Ensure Azure subnet IP ranges are large enough to accommodate node expansion
+- Use `kubectl get ciliumendpoints -A` to inspect per-pod policy status and identity assignments
+- Ensure pod CIDRs or Azure pod subnets are large enough to accommodate node expansion
 - Enable Hubble observability for real-time flow visibility during troubleshooting
 
 ## Conclusion
