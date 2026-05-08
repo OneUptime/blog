@@ -19,42 +19,43 @@ Overlay mounts in Podman use the Linux OverlayFS to combine multiple directory l
 An overlay mount combines a lower (read-only) directory with an upper (writable) directory. The container sees a merged view of both. Writes go to the upper layer, leaving the lower layer unchanged.
 
 ```bash
-# Basic overlay mount syntax with --mount
+# Basic overlay volume syntax with :O
 
 podman run --rm \
-  --mount type=overlay,source=/home/user/base-config,target=/config \
+  -v /home/user/base-config:/config:O \
   docker.io/library/alpine:latest ls /config
 ```
 
-## Creating an Overlay Mount with Multiple Layers
+## Creating an Overlay Mount with a Persistent Upper Layer
 
 ```bash
-# Prepare base and override directories
+# Prepare base, upper, and work directories
 mkdir -p /home/user/base-config
 mkdir -p /home/user/override-config
+mkdir -p /home/user/overlay-work
 
 echo "base_setting=true" > /home/user/base-config/app.conf
 echo "override_setting=true" > /home/user/override-config/app.conf
 
-# Mount as overlay - the override layer takes precedence
+# Mount as overlay - the upper layer takes precedence
 podman run --rm \
-  --mount type=overlay,source=/home/user/base-config,target=/config,upperdir=/home/user/override-config \
+  -v /home/user/base-config:/config:O,upperdir=/home/user/override-config,workdir=/home/user/overlay-work \
   docker.io/library/alpine:latest cat /config/app.conf
 ```
 
 ## Using Overlay for Development Workflows
 
-Overlay mounts are useful in development to layer custom configuration over default files without modifying the originals:
+Overlay mounts are useful in development to test changes against default files without modifying the originals:
 
 ```bash
 # Base image has default nginx config
-# Overlay your custom config on top
+# Overlay a temporary writable layer on top
 podman run -d --name dev-nginx \
-  --mount type=overlay,source=/home/user/default-nginx,target=/etc/nginx/conf.d \
+  -v /home/user/default-nginx:/etc/nginx/conf.d:O \
   -p 8080:80 \
   docker.io/library/nginx:latest
 
-# Any changes inside the container are written to the upper layer
+# Any changes inside the container are written to the container storage upper layer
 # The base files remain unchanged
 ```
 
@@ -63,7 +64,7 @@ podman run -d --name dev-nginx \
 ```bash
 # Specify workdir and upperdir explicitly
 podman run --rm \
-  --mount type=overlay,source=/home/user/lower,target=/data,upperdir=/home/user/upper,workdir=/home/user/work \
+  -v /home/user/lower:/data:O,upperdir=/home/user/upper,workdir=/home/user/work \
   docker.io/library/alpine:latest sh -c "echo hello > /data/newfile.txt && cat /data/newfile.txt"
 
 # The new file appears in the upper directory on the host
@@ -75,12 +76,12 @@ ls /home/user/lower/newfile.txt
 # Output: No such file or directory
 ```
 
-## Read-Only Overlay Mounts
+## Read-Only Mounts
 
 ```bash
-# Mount overlay as read-only for strict protection
+# Mount the directory as read-only for strict protection
 podman run --rm \
-  --mount type=overlay,source=/home/user/base-config,target=/config,readonly \
+  -v /home/user/base-config:/config:ro \
   docker.io/library/alpine:latest cat /config/app.conf
 ```
 
@@ -90,19 +91,19 @@ podman run --rm \
 |---------|--------------|------------|
 | Copy-on-write | Yes | No |
 | Original files protected | Yes | No |
-| Multiple layers | Yes | No |
+| Persistent upper layer | Optional | No |
 | Performance | Slight overhead | Direct access |
 
 ## Combining with SELinux
 
 ```bash
-# Add SELinux context to overlay mounts on SELinux-enabled systems
+# Use overlay mounts on SELinux-enabled systems
 podman run --rm \
-  -v /home/user/base:/config:O,z \
+  -v /home/user/base:/config:O \
   docker.io/library/alpine:latest ls /config
-# The :O flag can be used as shorthand for overlay type
+# Podman labels overlay volume content with a private label
 ```
 
 ## Summary
 
-Overlay mounts in Podman provide copy-on-write layering for container volumes. They are ideal for scenarios where you need to provide base files that containers can appear to modify without altering the originals. Use explicit `upperdir` and `workdir` options for full control over where modifications are stored.
+Overlay mounts in Podman provide copy-on-write layering for container volumes. They are ideal for scenarios where you need to provide base files that containers can appear to modify without altering the originals. Use explicit `upperdir` and `workdir` options when you need non-volatile storage for modifications.
