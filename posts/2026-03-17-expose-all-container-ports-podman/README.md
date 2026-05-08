@@ -74,7 +74,7 @@ podman run -d --name hybrid \
   -p 8080:80 \
   docker.io/library/nginx:latest
 
-# Port 80 is mapped to both 8080 (explicit) and a random port (-P)
+# Port 80 uses the explicit 8080 mapping; -P auto-assigns any other exposed ports
 podman port hybrid
 ```
 
