@@ -10,7 +10,7 @@ Description: Set up monitoring and alerting for Cilium Bandwidth Manager for rat
 
 ## Introduction
 
-Monitoring cilium bandwidth manager provides early warning when configuration drift, resource exhaustion, or component failures affect networking. Cilium Bandwidth Manager provides eBPF-based rate limiting for pod traffic. It enforces bandwidth limits specified in pod annotations without requiring traditional Linux traffic control (tc) rules. The bandwidth manager uses Earliest Departure Time (EDT) scheduling in the eBPF datapath for precise rate limiting with minimal overhead.
+Monitoring cilium bandwidth manager provides early warning when configuration drift, resource exhaustion, or component failures affect networking. Cilium Bandwidth Manager provides eBPF-based rate limiting for pod traffic. It enforces bandwidth limits specified in pod annotations without using the bandwidth CNI plugin. Egress bandwidth limits use Earliest Departure Time (EDT) scheduling, while ingress limits use an eBPF-based token bucket implementation.
 
 Without monitoring, issues in this area may only surface when applications experience connectivity failures or performance degradation. Proactive monitoring with Prometheus metrics, Grafana dashboards, and alerting rules enables your team to respond before users are impacted.
 
@@ -34,12 +34,14 @@ Ensure Cilium exposes metrics for Prometheus:
 cilium config view | grep prometheus
 
 # If not enabled, upgrade Cilium with metrics
-helm upgrade cilium cilium/cilium --version 1.16.5 \
+helm upgrade cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
   --reuse-values \
+  --set bandwidthManager.enabled=true \
   --set prometheus.enabled=true \
   --set operator.prometheus.enabled=true \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}"
+  --set hubble.enabled=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,httpV2}"
 
 # Verify metrics endpoint
 kubectl exec -n kube-system ds/cilium -- wget -qO- http://localhost:9962/metrics | head -20
@@ -51,22 +53,22 @@ Monitor these Prometheus metrics:
 
 ```bash
 # Primary metrics to track
-# cilium_datapath_conntrack_entries - core operational metric
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep "datapath_conntrack_entries"
+# cilium_feature_adv_connect_and_lb_bandwidth_manager_enabled - feature enabled state
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list --match-pattern "bandwidth_manager_enabled"
 
 # PromQL queries for Grafana panels:
 
-# Panel 1: Operational rate
-rate(cilium_datapath_conntrack_entries[5m])
+# Panel 1: Bandwidth Manager enabled
+cilium_feature_adv_connect_and_lb_bandwidth_manager_enabled
 
 # Panel 2: Error rate
 rate(cilium_drop_count_total[5m])
 
 # Panel 3: Agent health
-cilium_agent_uptime_seconds
+up{job=~".*cilium.*"}
 
 # Panel 4: Endpoint state
-sum(cilium_endpoint_state) by (endpoint_state)
+sum(cilium_endpoint_state) by (state)
 
 # Panel 5: Policy evaluation
 rate(cilium_policy_l7_total[5m])
@@ -108,15 +110,15 @@ spec:
           annotations:
             summary: "High packet drop rate on {{ $labels.instance }}"
             description: "Cilium is dropping {{ $value }} packets/sec. Check cilium bandwidth manager configuration."
-        - alert: CiliumEndpointsNotReady
+        - alert: CiliumBandwidthManagerDisabled
           expr: |
-            cilium_endpoint_state{endpoint_state="not-ready"} > 0
+            cilium_feature_adv_connect_and_lb_bandwidth_manager_enabled == 0
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Cilium endpoints not ready"
-            description: "{{ $value }} endpoints are not ready on {{ $labels.instance }}."
+            summary: "Cilium Bandwidth Manager disabled"
+            description: "Cilium Bandwidth Manager is disabled on {{ $labels.instance }}."
 ```
 
 ```bash
@@ -133,7 +135,8 @@ Create a Grafana dashboard for cilium bandwidth manager:
 # Row 1: Health Overview
 # - Cilium Agent Status: sum(up{job="cilium-agent"})
 # - Operator Status: sum(up{job="cilium-operator"})
-# - Endpoint Count: sum(cilium_endpoint_state) by (endpoint_state)
+# - Endpoint Count: sum(cilium_endpoint_state) by (state)
+# - Bandwidth Manager Enabled: cilium_feature_adv_connect_and_lb_bandwidth_manager_enabled
 
 # Row 2: Traffic Metrics
 # - Forward Rate: rate(cilium_forward_count_total[5m])
@@ -142,7 +145,7 @@ Create a Grafana dashboard for cilium bandwidth manager:
 
 # Row 3: Performance
 # - BPF Map Operations: rate(cilium_bpf_map_ops_total[5m])
-# - Conntrack Entries: cilium_datapath_conntrack_entries
+# - Conntrack GC Entries: cilium_datapath_conntrack_gc_entries
 # - API Call Rate: rate(cilium_k8s_client_api_calls_total[5m])
 ```
 
@@ -151,14 +154,14 @@ Create a Grafana dashboard for cilium bandwidth manager:
 Use Hubble for real-time flow monitoring:
 
 ```bash
-# Monitor flows in real time
-kubectl exec -n kube-system ds/cilium -- hubble observe --last 20
+# Monitor flows in real time through Hubble Relay
+hubble observe -P --last 20
 
 # Monitor drops specifically
-kubectl exec -n kube-system ds/cilium -- hubble observe --verdict DROPPED --last 10
+hubble observe -P --verdict DROPPED --last 10
 
 # Monitor specific namespaces
-kubectl exec -n kube-system ds/cilium -- hubble observe --namespace default --last 10
+hubble observe -P --namespace default --last 10
 ```
 
 ## Verification
@@ -180,7 +183,7 @@ except: print('  Port-forward Prometheus first')
 kubectl get prometheusrules -n monitoring | grep cilium
 
 # Check that metrics are being collected
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | wc -l
 ```
 
 ## Troubleshooting
