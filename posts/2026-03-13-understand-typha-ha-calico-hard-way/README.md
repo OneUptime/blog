@@ -26,25 +26,25 @@ During the disconnection window (typically seconds to 30 seconds), Felix continu
 
 ## Felix Reconnection Behavior
 
-Felix uses Kubernetes service DNS to discover Typha. When the Service has multiple backend endpoints, Felix reconnects and the load balancer routes it to a healthy replica.
+Felix uses `FELIX_TYPHAK8SSERVICENAME` to discover Typha by looking up the endpoints for the configured Kubernetes Service. When the Service has multiple healthy backend endpoints, Felix can reconnect to a different Typha replica.
 
 ```bash
-# Check Typha service endpoints
+# Check Typha service endpoints in a hard way installation
 
-kubectl get endpoints calico-typha -n calico-system
+kubectl get endpointslices -n kube-system -l kubernetes.io/service-name=calico-typha
 ```
 
-With two Typha replicas, the endpoints list shows two IP addresses. Felix reconnects to one of them.
+With multiple ready Typha replicas, the EndpointSlice output shows multiple backend addresses. Felix reconnects to one of them.
 
 ## Typha Replica Recommendations
 
 | Cluster Size | Recommended Typha Replicas | Reason |
 |-------------|---------------------------|--------|
-| 1-50 nodes | 0 (direct API server) | Typha overhead not justified |
-| 50-200 nodes | 1 | Basic deployment |
-| 200-500 nodes | 2 | HA without excess resources |
-| 500-2000 nodes | 3 | Full HA with zone distribution |
-| 2000+ nodes | 5+ | Scale + HA |
+| 1-50 nodes | 0 or operator-managed Typha | Older manifest installs can connect directly to the API server; operator installs include Typha |
+| 50-200 nodes | 3 in production | Production minimum for failure and rolling upgrade tolerance |
+| 200-500 nodes | 3 | At least one replica per 200 nodes, with production HA |
+| 500-2000 nodes | 3-10 | At least one replica per 200 nodes, spread across failure domains |
+| 2000+ nodes | 10-20 | Scale + HA, staying within the recommended maximum of 20 replicas |
 
 ## Single Replica Failure Mode
 
@@ -52,23 +52,23 @@ With one Typha replica:
 
 ```plaintext
 Typha fails → All Felix agents disconnect → Felix continues with cached state
-               → Typha pod restarts (typically <60s) → Felix reconnects
+               → Typha pod restarts → Felix reconnects
                → Policy changes during downtime applied
 ```
 
-Policy changes during the Typha outage are applied after reconnection. For short Typha restarts (<5 minutes), the practical impact is minimal.
+Policy changes during the Typha outage are applied after reconnection. For short Typha restarts, the practical impact is usually limited to delayed policy updates.
 
 ## Multi-Replica Failure Mode
 
 With three Typha replicas (one per availability zone):
 
 ```plaintext
-Typha replica in zone-a fails → Felix agents in zone-a reconnect to zone-b or zone-c
-                                → No policy propagation interruption
+Typha replica in zone-a fails → Felix agents connected to it reconnect to zone-b or zone-c
+                                → Healthy replicas keep serving their existing clients
                                 → Zone-a Felix agents receive snapshot on reconnect
 ```
 
-Policy changes continue propagating through the healthy replicas.
+Policy changes continue propagating through the healthy replicas, while clients that were connected to the failed replica resume updates after reconnection.
 
 ## Typha is Stateless
 
@@ -76,8 +76,8 @@ Each Typha replica independently watches the Kubernetes API server and maintains
 
 - A new Typha replica is immediately usable after startup
 - Replicas can be added or removed without coordination
-- Each replica can handle a full Felix connection load independently
+- Each replica should be sized so that the remaining replicas can handle the Felix connection load after a failure
 
 ## Conclusion
 
-Typha HA in hard way installations is achieved by running multiple Typha replicas, each independently caching Calico resource state from the Kubernetes API server. When a replica fails, Felix agents reconnect to a healthy replica and receive a snapshot of current state. The stateless nature of Typha makes scaling replicas up and down straightforward. The recommended replica count scales with cluster size, starting at two replicas for clusters with 200+ nodes to ensure that a single replica failure does not interrupt policy propagation.
+Typha HA in hard way installations is achieved by running multiple Typha replicas, each independently caching Calico resource state from the Kubernetes API server. When a replica fails, Felix agents reconnect to a healthy replica and receive a snapshot of current state. The stateless nature of Typha makes scaling replicas up and down straightforward. The recommended replica count scales with cluster size, with at least three replicas in production to reduce the impact of rolling upgrades and failures.
