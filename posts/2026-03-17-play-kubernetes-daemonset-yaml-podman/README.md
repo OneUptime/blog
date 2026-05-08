@@ -133,8 +133,8 @@ podman play kube /tmp/monitor-daemonset.yaml
 podman ps --filter pod=node-monitor-pod
 podman logs node-monitor-pod-agent
 
-# Verify port binding
-curl -s http://localhost:9100 || echo "Port accessible"
+# Verify hostPort binding
+podman port node-monitor-pod-agent 9100
 
 # Once validated, deploy to Kubernetes
 # kubectl apply -f /tmp/monitor-daemonset.yaml
@@ -164,7 +164,7 @@ podman play kube --replace /tmp/monitor-daemonset.yaml
 When playing DaemonSet YAML locally, Podman does not provide:
 - Multi-node scheduling (only one pod is created locally)
 - Node affinity or tolerations
-- Automatic restarts on failure
+- DaemonSet controller reconciliation if the pod is removed
 
 These features are available only in a full Kubernetes cluster.
 
