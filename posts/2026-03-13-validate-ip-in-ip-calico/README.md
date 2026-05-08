@@ -60,8 +60,8 @@ ip -s link show tunl0
 POD1_NODE="node-in-subnet-a"
 POD2_NODE="node-in-subnet-b"
 
-kubectl run pod-a --image=busybox --overrides="{\"spec\":{\"nodeName\":\"\"}}" -- sleep 3600
-kubectl run pod-b --image=busybox --overrides="{\"spec\":{\"nodeName\":\"\"}}" -- sleep 3600
+kubectl run pod-a --image=busybox --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"${POD1_NODE}\"}}" --command -- sleep 3600
+kubectl run pod-b --image=busybox --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"${POD2_NODE}\"}}" --command -- sleep 3600
 
 POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
 kubectl exec pod-a -- ping -c 3 ${POD_B_IP}
