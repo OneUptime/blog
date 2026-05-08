@@ -17,13 +17,19 @@ Validating Whisker in production requires confirming that it accurately represen
 ```bash
 # Check Whisker pods are running and healthy
 
-kubectl get pods -n calico-system -l app=whisker
-kubectl logs -n calico-system -l app=whisker | grep -i "error\|warn" | tail -10
+kubectl get tigerastatus goldmane whisker
+kubectl logs -n calico-system deployment/whisker -c whisker-backend --tail=100 | \
+  grep -i "error\|warn" | tail -10
+kubectl logs -n calico-system deployment/goldmane --tail=100 | \
+  grep -i "error\|warn" | tail -10
 
-# Verify flow log configuration
+# Verify flow log pipeline components are enabled
+kubectl get goldmane.operator.tigera.io default
+kubectl get whisker.operator.tigera.io default
 kubectl get felixconfiguration default \
-  -o jsonpath='{.spec.flowLogsFlushInterval}'
-# Should be set (e.g., 10s) - if not set, flows may not be collected
+  -o jsonpath='{.spec.flowLogsGoldmaneServer}{"\n"}'
+# Goldmane and Whisker are enabled by default on new Calico Open Source 3.30+
+# installations, but must be enabled manually after upgrades from earlier versions.
 ```
 
 ## Step 2: Generate Known Traffic and Verify in Whisker
@@ -36,7 +42,7 @@ kubectl run test-client --image=nicolaka/netshoot \
 # Wait 15-30 seconds for flow flush
 
 # Then verify in Whisker UI:
-# http://localhost:8080 (after port-forward)
+# http://localhost:8081 (after port-forward: kubectl port-forward -n calico-system service/whisker 8081:8081)
 # Filter: source=test-client
 # Expected: connection appears as "Allowed" or "Denied" depending on policy
 ```
@@ -71,18 +77,18 @@ flowchart LR
 ## Step 4: Cross-Check Flow Count Against Expectations
 
 ```bash
-# A busy production cluster should show hundreds of flows per minute
+# A busy production cluster should show nonzero recent flows matching expected workload traffic
 # If Whisker shows 0 flows in a production cluster: pipeline failure
 
 # Check flow log file on a node (if file logging enabled)
 kubectl debug node/<node> --image=alpine -- \
-  ls -la /var/log/calico/flowlogs/ 2>/dev/null
+  ls -la /host/var/log/calico/flowlogs/ 2>/dev/null
 
-# Check Felix flow log metrics
+# Check Felix flow log metrics (if Felix Prometheus metrics are enabled)
 kubectl exec -n calico-system <calico-node-pod> -c calico-node -- \
   wget -qO- http://localhost:9091/metrics | grep flow
 ```
 
 ## Conclusion
 
-Whisker validation requires active testing: generate known traffic patterns and verify they appear correctly in the Whisker UI. A silent Whisker showing no flows in a production cluster is a broken observability pipeline, not a sign of no traffic. The most common validation failure is a FelixConfiguration that doesn't have flow logging configured, causing Whisker to have no data source. Validate Whisker after any FelixConfiguration change and after Calico upgrades.
+Whisker validation requires active testing: generate known traffic patterns and verify they appear correctly in the Whisker UI. A silent Whisker showing no flows in a production cluster is a broken observability pipeline, not a sign of no traffic. Common validation failures include Goldmane or Whisker not being enabled after an upgrade, or Felix not publishing flow data to Goldmane. Validate Whisker after any FelixConfiguration change and after Calico upgrades.
