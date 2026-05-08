@@ -30,6 +30,8 @@ kubectl get pods -A -o wide | head -10
 
 ## Configuration
 
+Create a replacement IPPool with the desired block size. The `blockSize` value can only be set when the IPPool is created.
+
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: IPPool
@@ -48,7 +50,7 @@ spec:
 ```bash
 # Validate changes
 calicoctl ipam check
-kubectl get pods -A -o wide | awk '{print $8}' | sort -u
+kubectl get pods -A -o wide --no-headers | awk '{print $7}' | sort -u
 ```
 
 ## Architecture
