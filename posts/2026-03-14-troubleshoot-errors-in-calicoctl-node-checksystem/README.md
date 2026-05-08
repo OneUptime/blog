@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, System Requirements, Troubleshooting, Kubernetes, Kernel
 
-Description: Resolve errors reported by calicoctl node checksystem, including missing kernel modules, incorrect sysctl settings, and kernel version incompatibilities.
+Description: Resolve errors reported by calicoctl node checksystem, including missing kernel modules and kernel version incompatibilities.
 
 ---
 
 ## Introduction
 
-When `calicoctl node checksystem` reports errors, it means the host lacks critical requirements for Calico to function properly. These errors must be resolved before deployment, otherwise Calico may start but fail to enforce policies, route traffic, or maintain BGP sessions.
+When `calicoctl node checksystem` reports errors, it means the host lacks kernel compatibility or kernel module requirements for Calico to function properly. These errors must be resolved before deployment, otherwise Calico may start but fail to enforce policies, route traffic, or maintain BGP sessions.
 
-This guide addresses each category of error that checksystem can report and provides specific remediation steps for different Linux distributions.
+This guide addresses the categories of error that checksystem can report and provides specific remediation steps for different Linux distributions. It also includes related sysctl settings that are commonly checked during Calico node preparation.
 
 ## Prerequisites
 
@@ -24,10 +24,11 @@ This guide addresses each category of error that checksystem can report and prov
 ## Kernel Version Errors
 
 ```yaml
-ERROR: kernel version 3.10.0 is below minimum 5.10.0
+2.6.18                                                  FAIL
+Minimum kernel version to run Calico is 2.6.24. Detected kernel version: 2.6.18
 ```
 
-Calico requires kernel 5.10+ for full functionality:
+`calicoctl node checksystem` checks against its built-in minimum kernel version. Current Calico node requirements are stricter: Calico requires Linux kernel 5.10 or later with the required dependencies.
 
 ```bash
 # Check current kernel version
@@ -38,8 +39,10 @@ uname -r
 sudo yum update kernel
 sudo reboot
 
-# On Ubuntu/Debian
-sudo apt update && sudo apt upgrade linux-generic
+# On Ubuntu
+sudo apt update && sudo apt install --only-upgrade linux-generic
+
+# On Debian, install or upgrade the appropriate linux-image-* package
 sudo reboot
 ```
 
@@ -48,8 +51,8 @@ sudo reboot
 ### iptables Modules
 
 ```yaml
-ERROR: ip_tables - module not available
-ERROR: iptable_filter - module not available
+WARNING: Unable to detect the ip_tables module as Loaded/Builtin module or lsmod
+ip_tables                                               FAIL
 ```
 
 ```bash
@@ -59,7 +62,7 @@ sudo modprobe ip_tables
 # If modprobe fails, check if the module exists
 find /lib/modules/$(uname -r) -name "ip_tables*"
 
-# On Ubuntu/Debian, install extra modules
+# On Ubuntu, install extra modules
 sudo apt install linux-modules-extra-$(uname -r)
 
 # On RHEL/CentOS
@@ -69,12 +72,14 @@ sudo yum install kernel-modules-extra
 ### Conntrack Modules
 
 ```yaml
-ERROR: nf_conntrack - module not loaded
+WARNING: Unable to detect the xt_conntrack module as Loaded/Builtin module or lsmod
+xt_conntrack                                            FAIL
 ```
 
 ```bash
-# Load conntrack module
-sudo modprobe nf_conntrack
+# Load conntrack-related modules checked by calicoctl
+sudo modprobe xt_conntrack
+sudo modprobe nf_conntrack_netlink
 
 # On older kernels, it may be named differently
 sudo modprobe nf_conntrack_ipv4 2>/dev/null || sudo modprobe nf_conntrack
@@ -83,11 +88,13 @@ sudo modprobe nf_conntrack_ipv4 2>/dev/null || sudo modprobe nf_conntrack
 ### IPVS Modules
 
 ```yaml
-WARNING: ip_vs - module not loaded
+WARNING: Unable to detect the ipt_ipvs module as Loaded/Builtin module or lsmod
+ipt_ipvs                                                FAIL
 ```
 
 ```bash
 # Load IPVS modules (needed for kube-proxy IPVS mode)
+sudo modprobe ipt_ipvs 2>/dev/null || sudo modprobe xt_ipvs
 sudo modprobe ip_vs
 sudo modprobe ip_vs_rr
 sudo modprobe ip_vs_wrr
@@ -98,13 +105,15 @@ sudo apt install ipvsadm  # Debian/Ubuntu
 sudo yum install ipvsadm  # RHEL/CentOS
 ```
 
-## sysctl Parameter Errors
+## Related sysctl Settings
 
 ### IP Forwarding Disabled
 
 ```yaml
-ERROR: net.ipv4.ip_forward = 0 (must be 1)
+net.ipv4.ip_forward = 0
 ```
+
+`calicoctl node checksystem` does not validate sysctl settings. However, Calico node startup enables IPv4 forwarding, and many node provisioning checks require it to be set persistently:
 
 ```bash
 # Enable immediately
@@ -118,13 +127,16 @@ sudo sysctl --system
 ### Reverse Path Filtering
 
 ```yaml
-WARNING: net.ipv4.conf.all.rp_filter = 2 (recommended: 1)
+net.ipv4.conf.all.rp_filter = 1
 ```
 
+Linux reverse path filtering uses `0` for disabled, `1` for strict mode, and `2` for loose mode. If you are troubleshooting asymmetric routing or tunneled traffic drops, disable strict RPF for the Calico node interfaces:
+
 ```bash
-sudo sysctl -w net.ipv4.conf.all.rp_filter=1
-sudo sysctl -w net.ipv4.conf.default.rp_filter=1
-echo "net.ipv4.conf.all.rp_filter = 1" | sudo tee -a /etc/sysctl.d/99-calico.conf
+sudo sysctl -w net.ipv4.conf.all.rp_filter=0
+sudo sysctl -w net.ipv4.conf.default.rp_filter=0
+echo "net.ipv4.conf.all.rp_filter = 0" | sudo tee -a /etc/sysctl.d/99-calico.conf
+echo "net.ipv4.conf.default.rp_filter = 0" | sudo tee -a /etc/sysctl.d/99-calico.conf
 ```
 
 ## Distribution-Specific Fixes
@@ -132,14 +144,14 @@ echo "net.ipv4.conf.all.rp_filter = 1" | sudo tee -a /etc/sysctl.d/99-calico.con
 ### Ubuntu / Debian
 
 ```bash
-# Install all commonly needed modules
+# Install commonly needed modules on Ubuntu generic kernels
 sudo apt update
 sudo apt install -y linux-modules-extra-$(uname -r)
 
-# Load all Calico-required modules
-for mod in ip_tables iptable_filter iptable_nat iptable_mangle \
-  ip_set xt_set xt_mark xt_multiport xt_conntrack nf_conntrack \
-  vxlan ipip; do
+# Load commonly required modules
+for mod in ip_tables ip6_tables ip_set xt_set xt_mark xt_multiport \
+  xt_conntrack nf_conntrack_netlink xt_addrtype xt_u32 xt_bpf \
+  ipt_REJECT ipt_rpfilter ipt_ipvs vxlan ipip; do
   sudo modprobe "$mod" 2>/dev/null
 done
 ```
@@ -150,10 +162,10 @@ done
 # Install kernel modules
 sudo yum install -y kernel-modules-extra
 
-# Load modules
-for mod in ip_tables iptable_filter iptable_nat iptable_mangle \
-  ip_set xt_set xt_mark xt_multiport xt_conntrack nf_conntrack \
-  vxlan ipip; do
+# Load commonly required modules
+for mod in ip_tables ip6_tables ip_set xt_set xt_mark xt_multiport \
+  xt_conntrack nf_conntrack_netlink xt_addrtype xt_u32 xt_bpf \
+  ipt_REJECT ipt_rpfilter ipt_ipvs vxlan ipip; do
   sudo modprobe "$mod" 2>/dev/null
 done
 ```
@@ -181,7 +193,7 @@ echo "=== Fixing Calico System Requirements ==="
 
 # 1. Load all required kernel modules
 echo "Loading kernel modules..."
-MODULES="ip_tables iptable_filter iptable_nat iptable_mangle ip_set xt_set xt_mark xt_multiport xt_conntrack nf_conntrack vxlan ipip"
+MODULES="ip_tables ip6_tables ip_set xt_set xt_mark xt_multiport xt_conntrack nf_conntrack_netlink xt_addrtype xt_u32 xt_bpf ipt_REJECT ipt_rpfilter ipt_ipvs vxlan ipip"
 for MOD in $MODULES; do
   if modprobe "$MOD" 2>/dev/null; then
     echo "  OK: $MOD"
@@ -198,8 +210,8 @@ echo "Module persistence configured."
 cat > /etc/sysctl.d/99-calico.conf << 'EOF'
 net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1
-net.ipv4.conf.all.rp_filter = 1
-net.ipv4.conf.default.rp_filter = 1
+net.ipv4.conf.all.rp_filter = 0
+net.ipv4.conf.default.rp_filter = 0
 EOF
 sysctl --system > /dev/null
 
@@ -222,7 +234,7 @@ All checks should pass after applying the fixes.
 
 ## Troubleshooting
 
-- **Module loads but checksystem still shows error**: The module name may differ between kernel versions. Use `lsmod | grep <partial-name>` to find the actual module name.
+- **Module loads but checksystem still shows error**: The module name may differ between kernel versions or be provided under an alias. Use `lsmod | grep <partial-name>` and `modinfo <module>` to find the actual module name and aliases.
 - **Cannot install kernel-modules-extra**: You may need to enable additional package repositories or use a different kernel package.
 - **sysctl changes revert after reboot**: Ensure the file is in `/etc/sysctl.d/` (not just `/etc/sysctl.conf`) and the systemd-sysctl service is enabled.
 
