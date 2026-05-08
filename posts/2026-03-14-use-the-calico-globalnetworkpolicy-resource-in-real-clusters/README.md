@@ -31,26 +31,26 @@ For clusters with fewer than 50 nodes, a straightforward GlobalNetworkPolicy con
 
 calicoctl get globalnetworkpolicy -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check the workload labels that policy selectors will match
+kubectl get pods --all-namespaces --show-labels
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), you can use namespace and workload labels to apply different policies:
 
 ```bash
-# Label nodes by environment
-kubectl label node worker-1 environment=production
-kubectl label node worker-2 environment=staging
+# Label namespaces by environment
+kubectl label namespace production environment=production
+kubectl label namespace staging environment=staging
 
 # Verify labels
-kubectl get nodes --show-labels | grep environment
+kubectl get namespaces --show-labels | grep environment
 ```
 
-Then reference these labels in your GlobalNetworkPolicy manifest's node selectors to apply environment-specific settings.
+Then reference these labels in your GlobalNetworkPolicy manifest's `namespaceSelector` or endpoint `selector` fields to apply environment-specific policies.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,7 +65,7 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Avoid unnecessary policy churn and overly broad selectors that force frequent recalculation
 - Use Typha to reduce the number of direct datastore connections
 - Monitor memory usage of calico-node pods when managing many GlobalNetworkPolicy resources
 
@@ -97,7 +97,7 @@ kubectl get globalnetworkpolicy.projectcalico.org -w
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if the Felix health port is enabled and reachable:
 
 ```bash
 # Check if Felix is reporting healthy
@@ -169,10 +169,11 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.projectcalico.org
+kubectl auth can-i update globalnetworkpolicies.projectcalico.org
 
-# Review recent changes to Calico resources (if audit logging is enabled)
-kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
+# List allowed actions and filter for Calico policy resources
+kubectl auth can-i --list | grep globalnetworkpolicies
 ```
 
 ### Capacity Planning for Large Deployments
