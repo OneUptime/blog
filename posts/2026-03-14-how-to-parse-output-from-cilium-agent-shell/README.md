@@ -51,7 +51,7 @@ jq '[.[] | select(.status.state == "ready")]' /tmp/endpoints.json | \
 
 ## Parsing Table Output
 
-Some commands only produce table-formatted text:
+When working with table-formatted text:
 
 ```bash
 # Capture table output
@@ -59,19 +59,20 @@ kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
   cilium-dbg endpoint list > /tmp/endpoints-table.txt
 
 # Parse the table with awk
-# Skip header lines, extract fields by position
-awk 'NR>2 {print $1, $3, $4}' /tmp/endpoints-table.txt
+# Skip header lines and label continuation lines, then extract fields by position
+awk 'NR>2 && $1 ~ /^[0-9]+$/ {print $1, $2, $3, $4, $NF}' \
+  /tmp/endpoints-table.txt
 
 # Convert table to CSV
-head -1 /tmp/endpoints-table.txt | \
-  sed 's/  \+/,/g' > /tmp/endpoints.csv
-tail -n +3 /tmp/endpoints-table.txt | \
-  sed 's/  \+/,/g' >> /tmp/endpoints.csv
+printf 'endpoint,ingress_policy,egress_policy,identity,status\n' \
+  > /tmp/endpoints.csv
+awk 'NR>2 && $1 ~ /^[0-9]+$/ {printf "%s,%s,%s,%s,%s\n", $1, $2, $3, $4, $NF}' \
+  /tmp/endpoints-table.txt >> /tmp/endpoints.csv
 ```
 
 ## Parsing Status Output
 
-The `cilium-dbg status` command produces multi-section output:
+The `cilium-dbg status` command produces multi-section text output by default:
 
 ```bash
 #!/bin/bash
@@ -85,23 +86,23 @@ STATUS=$(kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
   cilium-dbg status 2>/dev/null)
 
 # Extract KVStore status
-KVSTORE=$(echo "$STATUS" | grep "KVStore:" | awk -F: '{print $2}' | xargs)
+KVSTORE=$(echo "$STATUS" | awk -F: '/^KVStore:/ {print substr($0, index($0,$2))}' | xargs)
 echo "KVStore: $KVSTORE"
 
 # Extract ContainerRuntime status
-RUNTIME=$(echo "$STATUS" | grep "ContainerRuntime:" | awk -F: '{print $2}' | xargs)
+RUNTIME=$(echo "$STATUS" | awk -F: '/^ContainerRuntime:/ {print substr($0, index($0,$2))}' | xargs)
 echo "ContainerRuntime: $RUNTIME"
 
 # Extract Kubernetes status
-K8S=$(echo "$STATUS" | grep "Kubernetes:" | awk -F: '{print $2}' | xargs)
+K8S=$(echo "$STATUS" | awk -F: '/^Kubernetes:/ {print substr($0, index($0,$2))}' | xargs)
 echo "Kubernetes: $K8S"
 
 # Extract controller counts
-CONTROLLERS=$(echo "$STATUS" | grep "controllers" | grep -oP '\d+')
+CONTROLLERS=$(echo "$STATUS" | awk -F: '/^Controller Status:/ {print $2}' | xargs)
 echo "Controller count: $CONTROLLERS"
 
 # Check overall health
-if echo "$STATUS" | grep -q "Overall Health.*OK"; then
+if echo "$STATUS" | grep -qE '^Cilium:[[:space:]]+Ok'; then
   echo "Overall: HEALTHY"
 else
   echo "Overall: UNHEALTHY"
@@ -115,7 +116,6 @@ fi
 """Parse various cilium-agent output formats into structured JSON."""
 
 import json
-import re
 import subprocess
 import sys
 
@@ -139,7 +139,7 @@ def parse_endpoint_json(output):
         'labels': ep.get('status', {}).get('labels', {}).get(
             'security-relevant', []),
         'policy_enabled': ep.get('status', {}).get('policy', {}).get(
-            'realized', {}).get('l4', {}) != {}
+            'realized', {}).get('policy-enabled', 'none') != 'none'
     } for ep in data]
 
 def parse_status_text(output):
