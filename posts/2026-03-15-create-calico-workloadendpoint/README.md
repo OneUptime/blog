@@ -10,11 +10,11 @@ Description: Learn how to create and manage Calico WorkloadEndpoint resources fo
 
 ## Introduction
 
-The WorkloadEndpoint resource in Calico represents a network endpoint associated with a workload. In Kubernetes environments, Calico automatically creates WorkloadEndpoint resources for each pod. However, there are scenarios where you need to manually create or manage these resources, such as integrating non-Kubernetes workloads, bare-metal hosts, or custom network configurations that Calico does not auto-detect.
+The WorkloadEndpoint resource in Calico represents a network endpoint associated with a workload. In Kubernetes environments, Calico automatically creates WorkloadEndpoint resources for each pod. Calico generally recommends using `calicoctl` to view Kubernetes-managed WorkloadEndpoint resources and leaving their lifecycle to the orchestrator plugin. However, there are scenarios where you need to manually create these resources, such as integrating non-Kubernetes workloads, bare-metal hosts, or custom network configurations that Calico does not auto-detect.
 
 A WorkloadEndpoint defines the network identity of a workload, including its IP addresses, network interfaces, labels for policy selection, and the node it runs on. Understanding how to create these resources is essential for environments that mix Kubernetes pods with VMs, containers managed by other orchestrators, or legacy applications.
 
-This guide covers creating WorkloadEndpoint resources for various use cases, including manual pod endpoint registration, VM integration, and multi-interface workloads.
+This guide covers creating WorkloadEndpoint resources for various use cases, including VM integration and multi-interface workloads managed outside the standard Kubernetes pod lifecycle.
 
 ## Prerequisites
 
@@ -91,42 +91,42 @@ For workloads with multiple network interfaces, create separate endpoint resourc
 apiVersion: projectcalico.org/v3
 kind: WorkloadEndpoint
 metadata:
-  name: node3-k8s-multinet--pod1-eth0
+  name: node3-custom-multinet-pod1-eth0
   namespace: networking
   labels:
     app: multi-nic-service
     interface: primary
 spec:
   node: node3
-  orchestrator: k8s
-  pod: multinet-pod1
+  orchestrator: custom
+  workload: multinet-pod1
   endpoint: eth0
   interfaceName: cali9012ijkl
   ipNetworks:
     - 192.168.20.10/32
   profiles:
-    - kns.networking
+    - multinet-workloads
 ```
 
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: WorkloadEndpoint
 metadata:
-  name: node3-k8s-multinet--pod1-net1
+  name: node3-custom-multinet-pod1-net1
   namespace: networking
   labels:
     app: multi-nic-service
     interface: secondary
 spec:
   node: node3
-  orchestrator: k8s
-  pod: multinet-pod1
+  orchestrator: custom
+  workload: multinet-pod1
   endpoint: net1
   interfaceName: cali3456mnop
   ipNetworks:
     - 10.100.0.10/32
   profiles:
-    - kns.networking
+    - multinet-workloads
 ```
 
 ## Creating Endpoints with MAC Addresses
@@ -164,7 +164,7 @@ calicoctl apply -f bare-metal-endpoint.yaml
 List all workload endpoints on a specific node:
 
 ```bash
-calicoctl get workloadendpoints --node=node1 -o wide
+calicoctl get workloadendpoints --all-namespaces -o wide | grep node1
 ```
 
 Inspect a specific endpoint:
