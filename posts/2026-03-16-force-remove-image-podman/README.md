@@ -8,7 +8,7 @@ Description: Learn how to force remove container images that are in use by conta
 
 ---
 
-> Force removing images should be used carefully, as it bypasses safety checks designed to prevent breaking running containers.
+> Force removing images should be used carefully, as it removes containers that are using the image.
 
 When you try to remove a container image that is currently being used by one or more containers, Podman will refuse the operation by default. The `--force` flag overrides this protection. This guide explains when and how to force remove images, and what happens to containers that depend on them.
 
@@ -35,7 +35,7 @@ podman rmi -f nginx:1.25
 
 ## What Happens When You Force Remove
 
-When you force remove an image that has dependent containers, the image reference is removed but the container continues to work because it uses its own copy of the filesystem layers.
+When you force remove an image that has dependent containers, Podman removes those containers before removing the image.
 
 ```bash
 # Run a container
@@ -44,15 +44,11 @@ podman run -d --name test-container alpine:3.19 sleep 3600
 # Force remove the base image
 podman rmi -f alpine:3.19
 
-# The container is still running
+# The container has been removed, so this returns no running container
 podman ps --filter name=test-container
 
-# The image shows as <none> in the container's image field
-podman ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
-
-# Clean up
-podman stop test-container
-podman rm test-container
+# It is also gone from the all-containers list
+podman ps -a --filter name=test-container
 ```
 
 ## Force Removing Multiple Images
@@ -78,7 +74,7 @@ Clear your entire local image store.
 # Remove all images forcefully
 podman rmi -f $(podman images -aq)
 
-# Alternative: use podman image prune with --all and --force
+# Alternative: remove unused images without prompting
 podman image prune -af
 
 # Verify all images are removed
@@ -116,7 +112,7 @@ fi
 STOPPED=$(podman ps -a --filter ancestor="$IMAGE_ID" --filter status=exited -q | wc -l)
 echo "Stopped containers using this image: ${STOPPED}"
 
-# Check other images that depend on this as a parent
+# Check other tags pointing to this image
 echo ""
 echo "Other tags pointing to this image:"
 podman images --format "{{.Repository}}:{{.Tag}} {{.ID}}" \
@@ -134,18 +130,16 @@ fi
 
 ## Rebuilding After Force Removal
 
-After force removing an image, containers lose their image reference. Here is how to recover.
+After force removing an image, dependent containers are removed. Here is how to recover.
 
 ```bash
-# Containers show <none> as their image
-podman ps -a --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+# The affected container is gone
+podman ps -a --filter name=web
 
 # Re-pull the image
 podman pull nginx:1.25
 
-# Recreate affected containers
-podman stop web
-podman rm web
+# Recreate affected containers from the image
 podman run -d --name web nginx:1.25
 ```
 
@@ -194,9 +188,9 @@ podman image prune -a
 
 # Alternative 3: Use system prune for comprehensive cleanup
 podman system prune
-# Removes stopped containers, dangling images, and unused networks
+# Removes stopped containers, unused networks, and dangling images
 ```
 
 ## Summary
 
-The `--force` flag in `podman rmi` is a powerful tool that should be used deliberately. It is most appropriate in CI/CD environments, development cleanup, and situations where you need a complete reset. In production environments, prefer stopping and removing dependent containers first before removing images. Always check dependencies before force removing to avoid unexpected disruptions to running services.
+The `--force` flag in `podman rmi` is a powerful tool that should be used deliberately. It is most appropriate in CI/CD environments, development cleanup, and situations where you need a complete reset. In production environments, prefer stopping and removing dependent containers first before removing images. Always check dependencies before force removing to avoid unexpectedly removing running services.
