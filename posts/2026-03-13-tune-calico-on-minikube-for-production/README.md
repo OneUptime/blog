@@ -36,7 +36,8 @@ For IPIP encapsulation, subtract 20 from the interface MTU (typically 1500 - 20 
 
 ```bash
 kubectl patch configmap calico-config -n kube-system \
-  --patch '{"data":{"veth_mtu":"1440"}}'
+  --type merge \
+  --patch '{"data":{"veth_mtu":"1480"}}'
 ```
 
 ## Step 3: Tune Felix Configuration
@@ -60,7 +61,14 @@ EOF
 
 ## Step 4: Configure IP Pool for Production CIDR
 
-Match production CIDR and NAT settings:
+Match production CIDR and NAT settings. The IP pool CIDR should be within the pod CIDR that Minikube was started with. If you need to test `192.168.0.0/16`, start Minikube with that pod CIDR before installing Calico:
+
+```bash
+minikube start --cni=false --network-plugin=cni \
+  --extra-config=kubeadm.pod-network-cidr=192.168.0.0/16
+```
+
+Then configure the default pool:
 
 ```bash
 calicoctl apply -f - <<EOF
