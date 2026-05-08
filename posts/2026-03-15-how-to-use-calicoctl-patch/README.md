@@ -10,9 +10,9 @@ Description: Learn how to use calicoctl patch to make targeted modifications to 
 
 ## Introduction
 
-The `calicoctl patch` command applies partial updates to existing Calico resources. Instead of replacing the entire resource definition, you can modify specific fields using a JSON merge patch. This is particularly useful for making targeted changes to large or complex resources without needing to retrieve, edit, and reapply the full resource.
+The `calicoctl patch` command applies partial updates to existing Calico resources. Instead of replacing the entire resource definition, you can modify specific fields using a strategic merge patch. This is particularly useful for making targeted changes to large or complex resources without needing to retrieve, edit, and reapply the full resource.
 
-The patch command uses strategic merge patch by default, where you provide a JSON document containing only the fields you want to change. Fields not included in the patch remain unchanged. You can also use JSON Merge Patch (RFC 7386) or JSON Patch (RFC 6902) by specifying the `--type` flag.
+The patch command uses strategic merge patch by default, where you provide a JSON document containing only the fields you want to change. Fields not included in the patch remain unchanged. The `--type` flag documents JSON Merge Patch (RFC 7386) and JSON Patch (RFC 6902), but current `calicoctl` help lists those modes as not yet implemented.
 
 This guide demonstrates practical uses of `calicoctl patch` for common Calico configuration changes.
 
@@ -21,14 +21,14 @@ This guide demonstrates practical uses of `calicoctl patch` for common Calico co
 - Kubernetes cluster with Calico installed
 - `calicoctl` CLI installed and configured
 - Existing Calico resources to modify
-- Understanding of JSON merge patch semantics
+- Understanding of strategic merge patch semantics
 
 ## Basic Patch Syntax
 
 The general syntax is:
 
 ```bash
-calicoctl patch <resource_type> <resource_name> -p '<json_patch>'
+calicoctl patch <resource_type> <resource_name> -p '<patch_json>'
 ```
 
 ## Patching IP Pools
@@ -50,13 +50,13 @@ calicoctl patch ippool default-ipv4-ippool -p '{"spec": {"natOutgoing": false}}'
 ### Update IPIP Mode
 
 ```bash
-calicoctl patch ippool default-ipv4-ippool -p '{"spec": {"ipipMode": "CrossSubnet"}}'
+calicoctl patch ippool default-ipv4-ippool -p '{"spec": {"ipipMode": "CrossSubnet", "vxlanMode": "Never"}}'
 ```
 
 ### Update VXLAN Mode
 
 ```bash
-calicoctl patch ippool default-ipv4-ippool -p '{"spec": {"vxlanMode": "Always"}}'
+calicoctl patch ippool default-ipv4-ippool -p '{"spec": {"vxlanMode": "Always", "ipipMode": "Never"}}'
 ```
 
 ## Patching BGP Configuration
@@ -143,11 +143,11 @@ for node in $NODES; do
 done
 ```
 
-### Conditional Patching
+### Patch All IP Pools
 
 ```bash
 #!/bin/bash
-# Disable IP pools that have no allocations
+# Disable all IP pools after listing their CIDRs
 POOLS=$(calicoctl get ippools -o json | jq -r '.items[].metadata.name')
 
 for pool in $POOLS; do
