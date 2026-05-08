@@ -21,7 +21,7 @@ Podman supports four pull policies:
 - `always` - Always pull the image from the registry, even if a local copy exists
 - `missing` - Only pull if the image is not available locally (default)
 - `never` - Never pull from the registry; fail if the image is not local
-- `newer` - Pull only if the registry has a newer version than the local copy
+- `newer` - Pull if the registry image digest differs from the local copy
 
 ## Using --pull=always
 
@@ -96,7 +96,7 @@ This is useful for air-gapped environments or when you want to ensure no network
 
 ## Using --pull=newer
 
-This policy checks the registry and only pulls if a newer version is available.
+This policy checks the registry and only pulls if the remote image digest differs from the local copy.
 
 ```bash
 # Pull only if the registry has a newer image
@@ -182,12 +182,12 @@ services:
 # For mutable tags like 'latest', use always or newer
 podman run --rm --pull=always docker.io/library/alpine:latest echo "Fresh"
 
-# For immutable tags with digests, missing is safe
+# For immutable references with digests, missing is safe
 podman run --rm --pull=missing \
-  docker.io/library/alpine@sha256:abcdef1234567890 \
+  docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc \
   echo "Immutable image"
 ```
 
 ## Summary
 
-Pull policies control how Podman interacts with image registries. Use `always` in CI/CD for guaranteed freshness, `missing` (default) for general use, `never` for offline environments, and `newer` for smart update checks. Choose the right policy based on your environment's network access and consistency requirements.
+Pull policies control how Podman interacts with image registries. Use `always` in CI/CD for guaranteed freshness, `missing` (default) for general use, `never` for offline environments, and `newer` for digest-based update checks. Choose the right policy based on your environment's network access and consistency requirements.
