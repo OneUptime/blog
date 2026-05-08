@@ -10,7 +10,7 @@ Description: A guide to documenting Calico Felix configuration parameters, defau
 
 ## Introduction
 
-Felix is the primary agent in Calico that runs on every node. It is responsible for programming routes and ACLs, managing network interfaces, and enforcing network policy. Felix reads its configuration from the FelixConfiguration resource in the Calico datastore and translates it into iptables rules, BPF programs, or other data plane constructs.
+Felix is the primary agent in Calico that runs on every node. It is responsible for programming routes and ACLs, managing network interfaces, and enforcing network policy. Felix can read its configuration from environment variables, a Felix configuration file, and FelixConfiguration resources in the Calico datastore, then translate it into iptables rules, nftables rules, BPF programs, or other data plane constructs.
 
 For operators managing production clusters, documenting Felix configuration is critical. Undocumented configuration changes can lead to unexpected behavior, make incident response harder, and create knowledge silos within the team. A well-maintained Felix configuration document serves as the single source of truth for how networking behaves in your cluster.
 
@@ -49,7 +49,7 @@ spec:
   logSeverityScreen: Info
   reportingInterval: 30s
   routeRefreshInterval: 90s
-  iptablesRefreshInterval: 90s
+  iptablesRefreshInterval: 3m
 ```
 
 ## Documenting Key Configuration Categories
@@ -63,7 +63,7 @@ Organize Felix parameters into logical groups for your documentation:
 calicoctl get felixconfiguration default -o yaml | grep -E "bpfEnabled|ipipEnabled|vxlanEnabled"
 ```
 
-Document which data plane is in use (iptables, BPF, or eBPF) and why that decision was made. Include the trade-offs considered during the initial setup.
+Document which data plane is in use (iptables, nftables, or eBPF) and why that decision was made. Include the trade-offs considered during the initial setup.
 
 ### Logging and Reporting
 
@@ -72,7 +72,7 @@ Document which data plane is in use (iptables, BPF, or eBPF) and why that decisi
 calicoctl get felixconfiguration default -o yaml | grep -E "logSeverity|reportingInterval"
 ```
 
-Document the log severity levels and reporting intervals. Note any custom log file paths or syslog integrations.
+Document the log severity levels and Felix status reporting intervals. Note any custom log file paths or syslog integrations.
 
 ### Refresh Intervals
 
@@ -81,7 +81,7 @@ Document the log severity levels and reporting intervals. Note any custom log fi
 calicoctl get felixconfiguration default -o yaml | grep -E "Interval|Period"
 ```
 
-These intervals control how often Felix re-syncs with the datastore and refreshes iptables rules. Document any deviations from defaults and the reasoning behind them.
+These intervals control how often Felix refreshes dataplane state such as routes, IP sets, and iptables rules. Document any deviations from defaults and the reasoning behind them.
 
 ## Creating a Configuration Reference Document
 
@@ -100,14 +100,14 @@ Structure your documentation with these sections:
 | Parameter | Value | Default | Reason |
 |-----------|-------|---------|--------|
 | logSeverityScreen | Warning | Info | Reduce log volume in production |
-| iptablesRefreshInterval | 180s | 90s | Lower CPU on large clusters |
+| iptablesRefreshInterval | 5m | 3m | Lower CPU on large clusters |
 | routeRefreshInterval | 120s | 90s | Stable network, fewer refreshes needed |
 
 ### Default Parameters (unchanged)
 | Parameter | Default Value | Description |
 |-----------|--------------|-------------|
 | bpfEnabled | false | Standard iptables data plane |
-| reportingInterval | 30s | Metrics reporting frequency |
+| reportingInterval | 30s | Felix status reporting interval |
 ```
 
 ## Tracking Configuration Changes
