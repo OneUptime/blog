@@ -34,13 +34,13 @@ calicoctl ipam release --ip=10.244.1.15
 Successful output:
 
 ```text
-Successfully released IP 10.244.1.15
+Successfully released IP address 10.244.1.15
 ```
 
-If the IP is not allocated:
+If the IP is not assigned:
 
 ```text
-IP 10.244.1.15 is not currently allocated.
+IP address 10.244.1.15 is not assigned
 ```
 
 ## Identifying Orphaned IPs Before Release
@@ -50,10 +50,10 @@ Always verify an IP is truly orphaned before releasing it. Releasing an IP that 
 ```bash
 # Check if any pod is using the IP
 
-kubectl get pods -A -o wide | grep "10.244.1.15"
+kubectl get pods -A -o wide --no-headers | awk '$7 == "10.244.1.15"'
 
 # Check IPAM allocation details
-calicoctl ipam show --show-blocks
+calicoctl ipam show --ip=10.244.1.15
 
 # Run consistency check to find orphaned IPs
 calicoctl ipam check
@@ -61,35 +61,26 @@ calicoctl ipam check
 
 ## Releasing Multiple Orphaned IPs
 
-After running `calicoctl ipam check`, you can release all identified orphaned IPs:
+After running `calicoctl ipam check`, you can release leaked IPs from a generated report:
 
 ```bash
 #!/bin/bash
-# Collect orphaned IPs from the check output
-ORPHANED_IPS=$(calicoctl ipam check 2>&1 | grep "non-existent workload" | awk '{print $3}')
+REPORT="ipam-report.json"
 
-if [ -z "$ORPHANED_IPS" ]; then
-  echo "No orphaned IPs found."
-  exit 0
-fi
+# Lock the datastore so the report and release operate on a stable view.
+calicoctl datastore migrate lock
+trap 'calicoctl datastore migrate unlock' EXIT
 
-echo "Found orphaned IPs:"
-echo "$ORPHANED_IPS"
-echo ""
+calicoctl ipam check -o "$REPORT"
+calicoctl ipam check --show-problem-ips
 
-read -p "Release all orphaned IPs? (y/n) " CONFIRM
+read -p "Release leaked IPs and handles from $REPORT? (y/n) " CONFIRM
 if [ "$CONFIRM" != "y" ]; then
   echo "Aborted."
   exit 0
 fi
 
-for IP in $ORPHANED_IPS; do
-  echo "Releasing $IP..."
-  calicoctl ipam release --ip="$IP"
-done
-
-echo ""
-echo "Released $(echo "$ORPHANED_IPS" | wc -w) IP(s)."
+calicoctl ipam release --from-report="$REPORT"
 ```
 
 ## Cleaning Up After Node Removal
@@ -108,14 +99,12 @@ if kubectl get node "$REMOVED_NODE" &>/dev/null; then
   exit 1
 fi
 
-# Find and release orphaned IPs from the removed node
-calicoctl ipam check 2>&1 | grep "$REMOVED_NODE" | while read -r LINE; do
-  IP=$(echo "$LINE" | awk '{print $3}')
-  if [ -n "$IP" ]; then
-    echo "Releasing orphaned IP: $IP"
-    calicoctl ipam release --ip="$IP"
-  fi
-done
+# Generate a report and release leaked IPs and handles.
+calicoctl datastore migrate lock
+trap 'calicoctl datastore migrate unlock' EXIT
+
+calicoctl ipam check --show-problem-ips -o ipam-report.json
+calicoctl ipam release --from-report=ipam-report.json
 ```
 
 ## Safe Release Workflow
@@ -134,7 +123,7 @@ fi
 echo "=== Pre-release checks for $IP ==="
 
 # Check if any pod is using this IP
-POD=$(kubectl get pods -A -o wide --no-headers 2>/dev/null | grep "$IP" | head -1)
+POD=$(kubectl get pods -A -o wide --no-headers 2>/dev/null | awk -v ip="$IP" '$7 == ip' | head -1)
 if [ -n "$POD" ]; then
   echo "WARNING: IP $IP is in use by a pod:"
   echo "  $POD"
@@ -144,7 +133,7 @@ fi
 
 # Check IPAM allocation
 echo "IPAM status:"
-calicoctl ipam show --show-blocks 2>/dev/null | grep "$IP" || echo "  IP not found in block listing"
+calicoctl ipam show --ip="$IP"
 
 echo ""
 echo "No active pod found using $IP."
@@ -162,7 +151,7 @@ After releasing IPs, confirm the changes:
 
 ```bash
 # Verify the IP is no longer allocated
-calicoctl ipam show
+calicoctl ipam show --ip=10.244.1.15
 
 # Run consistency check again
 calicoctl ipam check
@@ -182,13 +171,12 @@ calicoctl ipam check
 Expected output after cleanup:
 
 ```text
-Found 0 inconsistencies.
-IPAM data is consistent.
+Check complete; found 0 problems.
 ```
 
 ## Troubleshooting
 
-- **Release fails with error**: The IP may be in a block that is locked. Wait and retry, or check if another IPAM operation is in progress.
+- **Release fails with error**: Check datastore access, client/server version compatibility, and whether a report-based release is using a fresh report from the same locked datastore.
 - **Released IP gets re-allocated immediately**: This is normal if new pods are being scheduled. The IP is simply being reused.
 - **Pod loses connectivity after release**: You released an IP that was still in use. The affected pod needs to be restarted to get a new IP allocation.
 - **IP not found in IPAM**: The IP may belong to a different IP pool or may not be managed by Calico IPAM. Verify the IP range against your configured IP pools.
