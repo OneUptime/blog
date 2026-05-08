@@ -10,7 +10,7 @@ Description: Learn how to configure Podman to use the journald log driver, query
 
 > The journald log driver integrates container logs directly into the systemd journal, giving you structured metadata and powerful querying with journalctl.
 
-The journald log driver sends container stdout and stderr to the systemd journal instead of writing to log files. This provides structured logging with automatic metadata like container name, image, and ID, and lets you use the full power of `journalctl` for querying.
+The journald log driver sends container stdout and stderr to the systemd journal instead of writing to log files. This provides structured logging with automatic metadata like container name and ID, and lets you use the full power of `journalctl` for querying.
 
 ---
 
@@ -63,10 +63,7 @@ journalctl CONTAINER_NAME=web --no-pager
 
 # View logs by container ID
 CONTAINER_ID=$(podman inspect --format '{{.Id}}' web)
-journalctl CONTAINER_ID="$CONTAINER_ID" --no-pager
-
-# View logs by image name
-journalctl IMAGE_NAME=docker.io/library/nginx --no-pager
+journalctl CONTAINER_ID_FULL="$CONTAINER_ID" --no-pager
 
 # Follow logs in real time
 journalctl CONTAINER_NAME=web -f
@@ -94,9 +91,8 @@ journalctl CONTAINER_NAME=web -n 1 -o verbose
 
 # Common metadata fields available:
 # CONTAINER_NAME - Container name
-# CONTAINER_ID - Full container ID
+# CONTAINER_ID - Truncated container ID
 # CONTAINER_ID_FULL - Full container ID
-# IMAGE_NAME - Image used to create the container
 # CONTAINER_TAG - Custom tag if set
 
 # Filter by multiple criteria
@@ -117,7 +113,7 @@ Tags help organize and filter container logs in the journal.
 # Set a custom tag for the container
 podman run -d \
   --log-driver journald \
-  --log-opt tag="{{.Name}}/{{.ImageName}}" \
+  --log-opt tag="api" \
   --name api \
   my-api:latest
 
@@ -139,7 +135,7 @@ One of journald's strengths is combining container logs with host system logs.
 # View container and host logs together, sorted by time
 journalctl --since "5 minutes ago" --no-pager
 
-# View only container-related entries
+# View stdout transport entries, including container output
 journalctl _TRANSPORT=stdout --no-pager | tail -20
 
 # Correlate container events with system events
