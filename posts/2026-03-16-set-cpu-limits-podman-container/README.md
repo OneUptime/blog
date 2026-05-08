@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, CPU, Resource Limit, Performance
 
-Description: Learn how to control CPU allocation for Podman containers using CPU quotas, shares, pinning, and real-time scheduling options.
+Description: Learn how to control CPU allocation for Podman containers using CPU quotas, shares, and pinning options.
 
 ---
 
@@ -12,7 +12,7 @@ Description: Learn how to control CPU allocation for Podman containers using CPU
 
 CPU management is essential when running multiple containers on the same host. Without limits, a CPU-intensive container can consume all available cores, causing latency spikes and degraded performance for other services. Podman offers multiple mechanisms to control CPU allocation, from hard limits to relative priorities.
 
-This guide covers all the CPU limiting options available in Podman.
+This guide covers the most common CPU limiting options available in Podman.
 
 ---
 
@@ -35,10 +35,10 @@ The `--cpus` flag is the simplest way to limit CPU usage:
 podman run -d --name web --cpus 1 nginx:latest
 
 # Limit to half a CPU core
-podman run -d --name light-worker --cpus 0.5 alpine sleep infinity
+podman run -d --name light-worker --cpus 0.5 alpine sleep 1d
 
 # Limit to 2.5 CPU cores
-podman run -d --name compute --cpus 2.5 alpine sleep infinity
+podman run -d --name compute --cpus 2.5 alpine sleep 1d
 ```
 
 A value of `1.0` means the container can use 100% of one CPU core. A value of `2.5` means 250% total across multiple cores.
@@ -53,14 +53,14 @@ The `--cpus` flag is actually a convenience wrapper around `--cpu-period` and `-
 podman run -d --name custom-cpu \
   --cpu-period 100000 \
   --cpu-quota 150000 \
-  alpine sleep infinity
+  alpine sleep 1d
 
 # Equivalent to --cpus 0.25
 # Allow 25ms of CPU time every 100ms
 podman run -d --name quarter-cpu \
   --cpu-period 100000 \
   --cpu-quota 25000 \
-  alpine sleep infinity
+  alpine sleep 1d
 ```
 
 The formula is: `effective CPUs = cpu-quota / cpu-period`. With a period of 100000 and quota of 150000, the container gets 1.5 CPUs.
@@ -72,13 +72,13 @@ CPU shares set the relative weight of a container when multiple containers compe
 ```bash
 # Default CPU shares is 1024
 # Low priority container (half the default)
-podman run -d --name background-job --cpu-shares 512 alpine sleep infinity
+podman run -d --name background-job --cpu-shares 512 alpine sleep 1d
 
 # High priority container (double the default)
 podman run -d --name critical-service --cpu-shares 2048 nginx:latest
 
 # Very low priority
-podman run -d --name batch-work --cpu-shares 256 alpine sleep infinity
+podman run -d --name batch-work --cpu-shares 256 alpine sleep 1d
 ```
 
 CPU shares only matter when there is contention. If only one container needs CPU, it gets all available regardless of its share value.
@@ -99,16 +99,16 @@ Use `--cpuset-cpus` to bind a container to specific CPU cores:
 
 ```bash
 # Pin to CPU core 0 only
-podman run -d --name pinned-0 --cpuset-cpus "0" alpine sleep infinity
+podman run -d --name pinned-0 --cpuset-cpus "0" alpine sleep 1d
 
 # Pin to cores 0 and 1
-podman run -d --name pinned-01 --cpuset-cpus "0,1" alpine sleep infinity
+podman run -d --name pinned-01 --cpuset-cpus "0,1" alpine sleep 1d
 
 # Pin to a range of cores (0 through 3)
-podman run -d --name pinned-range --cpuset-cpus "0-3" alpine sleep infinity
+podman run -d --name pinned-range --cpuset-cpus "0-3" alpine sleep 1d
 
 # Pin to specific non-adjacent cores
-podman run -d --name pinned-mix --cpuset-cpus "0,2,4" alpine sleep infinity
+podman run -d --name pinned-mix --cpuset-cpus "0,2,4" alpine sleep 1d
 ```
 
 CPU pinning is useful for NUMA-aware workloads or when you want to isolate containers on separate cores.
@@ -129,7 +129,7 @@ For NUMA systems, you can also pin the memory node:
 podman run -d --name numa-aware \
   --cpuset-cpus "0,1" \
   --cpuset-mems "0" \
-  alpine sleep infinity
+  alpine sleep 1d
 ```
 
 ## Combining CPU Limits
