@@ -41,6 +41,7 @@ Description=Application with secrets
 
 [Container]
 Image=docker.io/myorg/myapp:latest
+ContainerName=myapp
 PublishPort=3000:3000
 
 # Mount the secret as a file inside the container
