@@ -10,7 +10,7 @@ Description: Set up alerting and observability to detect CIDRNotAvailable errors
 
 ## Introduction
 
-CIDRNotAvailable errors occur when Calico cannot find a suitable CIDR block to allocate IPs from. This typically happens when the pod CIDR configured in kubeadm does not match the Calico IPPool configuration, or when the IP address space is exhausted.
+CIDRNotAvailable events are reported by Kubernetes when node CIDR allocation fails or runs out of available CIDRs. In clusters using Calico IPAM, Calico does not use Kubernetes `Node.spec.podCIDR` allocations for pod IP assignment, but mismatched kubeadm pod CIDRs, Calico IPPool configuration, or exhausted Calico IPPools can still lead to pod IP allocation failures that need to be monitored alongside these events.
 
 Detecting CIDRNotAvailable errors before they impact users requires proper monitoring and alerting. This guide shows you how to set up observability for the Calico components relevant to this error class.
 
@@ -25,7 +25,7 @@ Early detection dramatically reduces mean time to resolution (MTTR). A well-conf
 
 ## Step 1: Enable Calico Prometheus Metrics
 
-Ensure Felix and Typha are exposing metrics:
+Ensure Felix is exposing metrics. If your cluster uses Typha, enable Typha metrics separately through the Calico installation configuration:
 
 ```bash
 # Verify Felix metrics are enabled
@@ -38,22 +38,39 @@ calicoctl patch felixconfiguration default -p '{"spec": {"prometheusMetricsEnabl
 
 ## Step 2: Create ServiceMonitor Resources
 
-Configure Prometheus to scrape Calico metrics:
+Configure Prometheus to scrape Calico metrics. A ServiceMonitor selects Kubernetes Services, so create a Service for Felix metrics and then point the ServiceMonitor at that Service:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: felix-metrics-svc
+  namespace: calico-system
+  labels:
+    k8s-app: calico-node
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-node
+  ports:
+    - name: metrics
+      port: 9091
+      targetPort: 9091
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: calico-node-monitor
+  name: felix-metrics
   namespace: calico-system
   labels:
     release: prometheus
 spec:
+  jobLabel: k8s-app
   selector:
     matchLabels:
       k8s-app: calico-node
   endpoints:
-    - port: http-metrics
+    - port: metrics
       interval: 30s
       path: /metrics
 ```
@@ -79,7 +96,7 @@ spec:
     - name: calico.rules
       rules:
         - alert: CalicoNodeNotReady
-          expr: up{job="calico-node"} == 0
+          expr: up{job="calico-node", namespace="calico-system"} == 0
           for: 5m
           labels:
             severity: critical
@@ -100,11 +117,11 @@ kubectl apply -f calico-alerts.yaml
 
 ## Step 4: Key Metrics to Monitor
 
-Set up dashboards for these Felix metrics:
+Set up dashboards for these Calico metrics:
 
 - `felix_int_dataplane_failures`: Dataplane programming failures
-- `felix_iptables_save_errors_total`: Errors saving iptables rules
-- `felix_ipam_blocks_per_node`: IPAM block count per node
+- `felix_iptables_save_errors`: Errors saving iptables rules
+- `ipam_blocks`: IPAM block count by IPPool and node from calico-kube-controllers metrics
 - `felix_cluster_num_hosts`: Number of hosts in the cluster
 
 ## Step 5: Log-Based Monitoring
@@ -153,7 +170,7 @@ Track Felix dataplane programming latency, iptables rule count, and policy calcu
 ```bash
 # Key Felix metrics to query in Prometheus
 # felix_int_dataplane_apply_time_seconds - Time to apply dataplane updates
-# felix_iptables_lines - Total iptables rules managed by Felix
+# felix_iptables_rules - Total iptables rules managed by Felix
 # felix_active_local_endpoints - Number of local workload endpoints
 # felix_cluster_num_hosts - Total hosts in the cluster
 ```
@@ -198,8 +215,8 @@ calicoctl ipam check
 # Layer 3: Node-to-node connectivity
 calicoctl node status
 
-# Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+# Layer 4: Cluster DNS and service reachability
+kubectl run fix-test --image=busybox --rm -it --restart=Never -- nslookup kubernetes.default.svc
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
