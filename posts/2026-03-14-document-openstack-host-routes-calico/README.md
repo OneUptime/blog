@@ -33,7 +33,7 @@ graph TD
         A[VM Created] --> B[IP Assigned from IPAM Pool]
         B --> C[Route Added to Host Kernel]
         C --> D[BIRD Advertises via BGP]
-        D --> E[Route Reflector Distributes]
+        D --> E[BGP Peers or Route Reflectors Distribute]
         E --> F[All Nodes Learn Route]
     end
     subgraph "Route Removal"
@@ -63,9 +63,9 @@ Document the key route types operators will see:
 # 10.0.2.0/26 via 192.168.1.30 dev vxlan.calico proto bird
 # Meaning: Block of VM IPs reachable via compute node 192.168.1.30 through VXLAN tunnel
 
-# Blackhole route for unused IPAM block
+# Blackhole route for a locally owned IPAM block
 # blackhole 10.0.3.0/26 proto bird
-# Meaning: This IPAM block is allocated to this node but no VMs are using these IPs
+# Meaning: This IPAM block is allocated to this node; more-specific VM routes override the blackhole for IPs in use
 ```
 
 ## Creating Route Troubleshooting Procedures
@@ -84,28 +84,28 @@ echo "=== Troubleshooting Missing Route for ${VM_IP} ==="
 # Step 1: Find which compute node hosts the VM
 echo ""
 echo "--- Step 1: Locate the VM ---"
-VM_HOST=$(openstack server list --all-projects --ip ${VM_IP} -f value -c Host 2>/dev/null)
+VM_HOST=$(openstack server list --all-projects --long --ip "${VM_IP}" -f value -c Host 2>/dev/null)
 echo "VM is hosted on: ${VM_HOST}"
 
 # Step 2: Check if the route exists on the hosting node
 echo ""
 echo "--- Step 2: Check route on hosting node ---"
-ssh ${VM_HOST} "ip route show ${VM_IP}"
+ssh "${VM_HOST}" "ip route get ${VM_IP}"
 
 # Step 3: Check BGP session status on the hosting node
 echo ""
 echo "--- Step 3: BGP status on hosting node ---"
-ssh ${VM_HOST} "sudo calicoctl node status"
+ssh "${VM_HOST}" "sudo calicoctl node status"
 
 # Step 4: Check if Felix has the endpoint registered
 echo ""
 echo "--- Step 4: Check Calico endpoint ---"
-calicoctl get workloadendpoints --all-namespaces -o wide 2>/dev/null | grep ${VM_IP}
+calicoctl get workloadendpoints --all-namespaces -o wide 2>/dev/null | grep -F "${VM_IP}"
 
 # Step 5: Check BIRD logs for route advertisement
 echo ""
 echo "--- Step 5: BIRD logs on hosting node ---"
-ssh ${VM_HOST} "sudo journalctl -u calico-bird --since '5 minutes ago' | grep ${VM_IP}" 2>/dev/null || ssh ${VM_HOST} "sudo docker logs calico-node 2>&1 | tail -50 | grep -i bird"
+ssh "${VM_HOST}" "sudo journalctl -u calico-bird --since '5 minutes ago' | grep -F '${VM_IP}'" 2>/dev/null || ssh "${VM_HOST}" "sudo docker logs calico-node 2>&1 | tail -50 | grep -i bird"
 ```
 
 ## Maintenance Runbooks
@@ -122,7 +122,7 @@ echo ""
 echo "Pre-checks:"
 echo "  1. Verify the new node has Calico Felix installed and running"
 echo "  2. Verify BIRD is running on the new node"
-echo "  3. Confirm the node's BGP AS number matches the cluster"
+echo "  3. Confirm the node's BGP AS number matches the expected cluster or per-node configuration"
 echo ""
 echo "Steps:"
 echo "  1. Check the node has registered with Calico:"
@@ -132,7 +132,7 @@ echo "  2. Verify BGP sessions are establishing:"
 echo "     ssh NEW_NODE 'sudo calicoctl node status'"
 echo ""
 echo "  3. Verify routes from existing nodes are learned:"
-echo "     ssh NEW_NODE 'ip route show proto bird | wc -l'"
+echo "     ssh NEW_NODE '(ip route show proto bird 2>/dev/null || ip route show proto 80) | wc -l'"
 echo ""
 echo "  4. Deploy a test VM on the new node and verify connectivity"
 echo ""
@@ -151,7 +151,7 @@ echo "  check Felix and BIRD logs before escalating."
 | What to Check | Command |
 |----------------|---------|
 | All routes | `ip route show` |
-| BGP-learned routes | `ip route show proto bird` |
+| BGP-learned routes | `ip route show proto bird 2>/dev/null || ip route show proto 80` |
 | Route to specific IP | `ip route get <IP>` |
 | BGP peer status | `sudo calicoctl node status` |
 | IPAM block allocation | `calicoctl ipam show --show-blocks` |
@@ -163,7 +163,7 @@ echo "  check Felix and BIRD logs before escalating."
 |------------|---------|---------|
 | Local VM | `10.0.0.5 dev cali1234` | VM on this node |
 | Remote block | `10.0.1.0/26 via 192.168.1.20 dev tunl0` | VMs on node .20 |
-| Blackhole | `blackhole 10.0.3.0/26` | Allocated but unused block |
+| Blackhole | `blackhole 10.0.3.0/26` | Locally owned block; more-specific VM routes override it |
 ```
 
 ## Verification
