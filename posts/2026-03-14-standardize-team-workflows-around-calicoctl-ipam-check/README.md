@@ -25,7 +25,7 @@ audit_schedule:
   daily:
     - command: "calicoctl ipam check"
     - automated: true
-    - alert_on: "any leaked IPs or orphaned blocks"
+    - alert_on: "any leaked IPs or IP allocation inconsistencies"
     
   weekly:
     - command: "calicoctl ipam show"
@@ -84,9 +84,9 @@ echo "=== Audit Complete ==="
 3. Batch release: use cleanup script
 4. Monitor for recurrence
 
-### Orphaned Blocks
-1. Confirm node is permanently removed
-2. Release: calicoctl ipam release --node=<node>
+### Leaked IPs from a report
+1. Generate a report: calicoctl ipam check -o report.json
+2. Release leaked addresses from the report: calicoctl ipam release --from-report=report.json
 3. Verify with: calicoctl ipam check
 
 ### IP Pool Near Exhaustion (> 80%)
@@ -102,7 +102,7 @@ echo "=== Audit Complete ==="
 # Run the team audit
 ./team-ipam-audit.sh
 
-# Verify the CronJob is running
+# If your automation uses a CronJob, verify it is present
 kubectl get cronjobs -n calico-system | grep ipam
 ```
 
