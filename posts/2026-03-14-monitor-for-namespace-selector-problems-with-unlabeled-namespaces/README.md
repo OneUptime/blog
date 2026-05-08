@@ -12,9 +12,9 @@ Description: Set up monitoring and alerting to detect when Calico network polici
 
 Namespace selector problems caused by unlabeled namespaces in Calico are particularly insidious because they produce no errors or warnings. The policy evaluates successfully, but it does not match the namespaces you intended. Without active monitoring, these gaps can persist for weeks or months.
 
-Effective monitoring for this issue combines two approaches: detecting namespaces that lack expected labels and detecting traffic patterns that suggest policies are not matching correctly. Together, these approaches provide early warning before a misconfigured namespace becomes a security incident.
+Effective monitoring for this issue combines two approaches: detecting namespaces that lack expected labels and watching Felix policy and selector activity for unexpected changes. Together, these approaches provide early warning before a misconfigured namespace becomes a security incident.
 
-This guide walks through setting up both namespace label monitoring and traffic-based anomaly detection for Calico policy mismatches.
+This guide walks through setting up both namespace label monitoring and Felix policy activity checks for Calico policy mismatches.
 
 ## Prerequisites
 
@@ -30,6 +30,35 @@ Deploy a lightweight exporter that exposes namespace label information as Promet
 ```yaml
 # namespace-label-exporter.yaml
 
+# ServiceAccount and RBAC for reading Namespace metadata
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ns-label-exporter
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ns-label-exporter
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ns-label-exporter
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ns-label-exporter
+subjects:
+  - kind: ServiceAccount
+    name: ns-label-exporter
+    namespace: monitoring
+---
 # Deployment that exposes namespace label metrics to Prometheus
 apiVersion: apps/v1
 kind: Deployment
@@ -54,8 +83,9 @@ spec:
         - name: exporter
           image: python:3.12-slim
           command:
-            - python3
-            - /app/exporter.py
+            - sh
+            - -c
+            - pip install --no-cache-dir kubernetes && python3 /app/exporter.py
           volumeMounts:
             - name: script
               mountPath: /app
@@ -75,7 +105,6 @@ data:
   exporter.py: |
     from http.server import HTTPServer, BaseHTTPRequestHandler
     from kubernetes import client, config
-    import time
 
     config.load_incluster_config()
     v1 = client.CoreV1Api()
@@ -147,20 +176,20 @@ kubectl port-forward -n monitoring deploy/ns-label-exporter 8080:8080 &
 curl -s http://localhost:8080/metrics
 ```
 
-## Monitoring Calico Felix Policy Counters
+## Monitoring Calico Felix Policy Activity
 
-Felix exposes metrics about policy rule evaluations. Use these to detect anomalies:
+Felix exposes metrics about active local policies and selectors. Use these to detect anomalies:
 
 ```bash
-# Check available Felix metrics
+# Check available Felix policy and selector metrics
 kubectl exec -n calico-system $(kubectl get pod -n calico-system \
   -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}') \
-  -- wget -qO- http://localhost:9091/metrics | grep "felix_policy"
+  -- wget -qO- http://localhost:9091/metrics | grep -E "felix_active_local_(policies|selectors)"
 ```
 
 ```yaml
 # felix-policy-alerts.yaml
-# Alert when traffic is not matching any policy (potential selector issue)
+# Alert when workloads are present but no local policies are active
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -172,15 +201,16 @@ spec:
   groups:
     - name: felix.policy
       rules:
-        - alert: HighUnmatchedTrafficRate
+        - alert: NoActiveCalicoPoliciesOnNode
           expr: |
-            rate(felix_denied_packets_total[5m]) > 100
+            felix_active_local_endpoints > 0
+              and on(instance) felix_active_local_policies == 0
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "High rate of denied packets detected"
-            description: "Node {{ $labels.instance }} is seeing {{ $value }} denied packets/sec, which may indicate a namespace selector mismatch."
+            summary: "No active Calico policies on node {{ $labels.instance }}"
+            description: "Felix reports local endpoints but no active local policies on {{ $labels.instance }}, which may indicate policy selector or namespace label mismatches."
 ```
 
 ## Building a Namespace Label Dashboard
@@ -198,9 +228,9 @@ count(namespace_has_required_label == 0) by (label)
 # Type: Table
 namespace_has_required_label{namespace!~"kube-.*|default|calico-.*"} == 0
 
-# Panel 3: Felix denied packets rate by node
+# Panel 3: Felix active policies by node
 # Type: Time Series
-rate(felix_denied_packets_total[5m])
+felix_active_local_policies
 ```
 
 ## Verification
@@ -230,11 +260,11 @@ kubectl delete namespace monitor-test-unlabeled
 
 ## Troubleshooting
 
-- **Exporter pod fails to start**: Ensure the ServiceAccount has RBAC permissions to list namespaces. Create a ClusterRole with `get`, `list` on namespaces and bind it to the ServiceAccount.
+- **Exporter pod fails to start**: Ensure the ServiceAccount has RBAC permissions to list namespaces. The example manifest creates a ClusterRole with `get`, `list` on namespaces and binds it to the ServiceAccount.
 - **Prometheus not scraping exporter**: Check that the `prometheus.io/scrape` annotation is present and that Prometheus is configured to honor pod annotations for service discovery.
 - **False alerts on system namespaces**: Adjust the `namespace!~` regex in the alert expression to exclude additional system namespaces specific to your cluster.
 - **Felix metrics not available**: Ensure the Felix Prometheus metrics endpoint is enabled by checking the `felixConfiguration` resource for `prometheusMetricsEnabled: true`.
 
 ## Conclusion
 
-Monitoring for namespace selector problems requires exposing namespace label state as metrics, alerting when namespaces lack required labels, and tracking Felix policy evaluation metrics for anomalies. This combination of label compliance monitoring and traffic-based detection ensures that unlabeled namespaces are caught before they create security gaps in your Calico network policies.
+Monitoring for namespace selector problems requires exposing namespace label state as metrics, alerting when namespaces lack required labels, and tracking Felix policy activity metrics for anomalies. This combination of label compliance monitoring and Felix activity checks ensures that unlabeled namespaces are caught before they create security gaps in your Calico network policies.
