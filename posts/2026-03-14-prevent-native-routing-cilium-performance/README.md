@@ -30,7 +30,6 @@ This guide provides the specific steps and commands for native routing performan
 # Always deploy with native routing from the start
 
 helm install cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.0.0.0/8" \
@@ -52,23 +51,23 @@ spec:
   groups:
   - name: native-routing
     rules:
-    - alert: CiliumRoutesMissing
-      expr: cilium_nodes_all_num - cilium_nodes_all_connected > 0
+    - alert: CiliumNodesUnreachable
+      expr: cilium_unreachable_nodes > 0
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Not all Cilium nodes are connected via routes"
+        summary: "One or more Cilium nodes are unreachable"
 ```
 
 ## Configuration Drift Prevention
 
 ```bash
-# Validate routing config periodically
 #!/bin/bash
-TUNNEL=$(cilium config view | grep "^tunnel" | awk '{print $2}')
-if [ "$TUNNEL" != "disabled" ]; then
-  echo "ALERT: Tunnel mode is $TUNNEL, expected disabled"
+# Validate routing config periodically
+ROUTING_MODE=$(cilium config view | awk '$1 == "routing-mode" {print $2}')
+if [ "$ROUTING_MODE" != "native" ]; then
+  echo "ALERT: Routing mode is $ROUTING_MODE, expected native"
 fi
 ```
 
@@ -82,7 +81,7 @@ ip route show | head -20
 ## Troubleshooting
 
 - **Routes not appearing**: Check autoDirectNodeRoutes and ensure nodes are on the same L2 segment, or use BGP.
-- **BPF host routing not activating**: Requires kubeProxyReplacement=true and compatible kernel (5.10+).
+- **BPF host routing not activating**: Requires kubeProxyReplacement=true, bpf.masquerade=true, and a compatible kernel.
 - **Asymmetric throughput**: Check for different NIC speeds or route path differences between nodes.
 - **BGP peering not establishing**: Verify BGP ASN configuration and firewall rules for TCP port 179.
 
@@ -209,4 +208,4 @@ Maintain a living runbook that documents all known performance issues and their 
 
 ## Conclusion
 
-Native routing in Cilium provides the best possible network performance by eliminating tunnel overhead. Preventing native routing configuration ensures pods benefit from direct routing with BPF host routing acceleration, achieving 90%+ of bare-metal throughput.
+Native routing in Cilium provides high network performance by eliminating tunnel overhead. Preventing native routing configuration drift ensures pods benefit from direct routing with BPF host routing acceleration where the kernel and Cilium configuration support it.
