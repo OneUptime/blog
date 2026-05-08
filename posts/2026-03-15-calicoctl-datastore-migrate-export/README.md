@@ -4,28 +4,28 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Datastore, Migration, Kubernetes, etcd, Backup, DevOps
 
-Description: Learn how to use calicoctl datastore migrate export to export Calico configuration data for datastore migration or backup.
+Description: Learn how to use calicoctl datastore migrate export to export Calico etcd datastore data for migration or backup.
 
 ---
 
 ## Introduction
 
-Calico stores its configuration and state data in a datastore, which can be either etcd or the Kubernetes API datastore. The `calicoctl datastore migrate export` command exports all Calico data from the current datastore into a portable format that can be imported into a different datastore.
+Calico stores its configuration and state data in a datastore, which can be either etcd or the Kubernetes API datastore. The `calicoctl datastore migrate export` command exports Calico data from an etcdv3 datastore into a portable format that can be imported into the Kubernetes API datastore.
 
-This command is essential when migrating from an etcd-backed Calico installation to the Kubernetes API datastore, or vice versa. It is also useful for creating complete backups of Calico configuration that go beyond what standard Kubernetes resource backups capture.
+This command is essential when migrating from an etcd-backed Calico installation to the Kubernetes API datastore. It is also useful for creating backups of Calico configuration stored in etcd that go beyond what standard Kubernetes resource backups capture.
 
-This guide demonstrates how to use `calicoctl datastore migrate export` for both migration and backup scenarios.
+This guide demonstrates how to use `calicoctl datastore migrate export` for etcd-to-Kubernetes migration and etcd backup scenarios.
 
 ## Prerequisites
 
-- `calicoctl` configured to connect to the source datastore
-- Access credentials for the source datastore (etcd certificates or Kubernetes kubeconfig)
+- `calicoctl` configured to connect to the source etcdv3 datastore
+- Access credentials for the source etcd datastore
 - Sufficient disk space for the exported data
 - Calico cluster in a stable state before export
 
 ## Basic Export
 
-Export all Calico data from the current datastore:
+Export all Calico data from the etcdv3 datastore:
 
 ```bash
 calicoctl datastore migrate export > calico-export.yaml
@@ -34,13 +34,18 @@ calicoctl datastore migrate export > calico-export.yaml
 This writes all Calico resources to stdout in YAML format. The export includes:
 
 - IP pools
+- BGP peers
 - BGP configurations
 - Network policies
 - Global network policies
+- Global network sets
 - Host endpoints
+- Kube controllers configurations
 - Felix configurations
 - Node resources
-- IPAM allocations
+- Network sets
+- IP reservations
+- BGP filters
 
 ## Exporting from etcd
 
@@ -56,15 +61,12 @@ export ETCD_KEY_FILE=/etc/calico/certs/key.pem
 calicoctl datastore migrate export > calico-export.yaml
 ```
 
-## Exporting from Kubernetes API Datastore
+## Using a Configuration File
 
-When using the Kubernetes API as the datastore:
+You can also point the command at a calicoctl configuration file:
 
 ```bash
-export DATASTORE_TYPE=kubernetes
-export KUBECONFIG=/path/to/kubeconfig
-
-calicoctl datastore migrate export > calico-export.yaml
+calicoctl datastore migrate export --config=/path/to/calicoctl.cfg > calico-export.yaml
 ```
 
 ## Verifying the Export
@@ -138,8 +140,8 @@ echo "1. Checking Calico node status..."
 calicoctl node status
 
 echo ""
-echo "2. Checking IPAM consistency..."
-calicoctl ipam check
+echo "2. Checking IPAM usage..."
+calicoctl ipam show --show-blocks
 
 echo ""
 echo "3. Listing all IP pools..."
@@ -156,10 +158,10 @@ calicoctl get bgppeers -o wide
 
 ## Exporting as Part of a Migration Workflow
 
-The full migration workflow uses export, lock, and import together:
+The full migration workflow uses lock, export, import, and unlock together:
 
 ```bash
-# Step 1: Lock the datastore to prevent changes during migration
+# Step 1: Lock the etcd datastore so changes do not affect the cluster during migration
 calicoctl datastore migrate lock
 
 # Step 2: Export all data
@@ -170,6 +172,7 @@ grep "^kind:" calico-migration-data.yaml | sort | uniq -c
 
 # Step 4: Import into the new datastore (covered in the import guide)
 # Step 5: Unlock the datastore after migration is complete
+calicoctl datastore migrate unlock
 ```
 
 ## Verification
@@ -180,15 +183,18 @@ Verify the export is complete and valid:
 # Ensure the file is valid YAML
 python3 -c "import yaml; list(yaml.safe_load_all(open('calico-export.yaml')))" && echo "Valid YAML"
 
+# Validate Calico resource structure
+calicoctl validate -f calico-export.yaml
+
 # Compare resource counts with live cluster
 echo "Exported resources:"
 grep "^kind:" calico-export.yaml | sort | uniq -c
 
 echo ""
 echo "Live resources:"
-calicoctl get ippools --no-headers | wc -l
-calicoctl get gnp --no-headers | wc -l
-calicoctl get np -A --no-headers | wc -l
+calicoctl get ippools -o go-template='{{range .}}{{len .Items}}{{"\n"}}{{end}}'
+calicoctl get globalnetworkpolicy -o go-template='{{range .}}{{len .Items}}{{"\n"}}{{end}}'
+calicoctl get networkpolicy -A -o go-template='{{range .}}{{len .Items}}{{"\n"}}{{end}}'
 ```
 
 ## Troubleshooting
@@ -196,8 +202,8 @@ calicoctl get np -A --no-headers | wc -l
 - **Empty export file**: Verify datastore connection settings. Check that `DATASTORE_TYPE` and connection environment variables are correct.
 - **Permission denied**: Ensure the credentials have read access to all Calico resources in the datastore.
 - **Partial export**: If the export is interrupted, it may be incomplete. Always verify resource counts after export.
-- **etcd timeout**: For large datastores, the export may take time. Increase etcd client timeouts if needed with `ETCD_DIAL_TIMEOUT`.
+- **etcd timeout**: For large datastores, the export may take time. Check etcd connectivity, certificate configuration, and whether the etcd endpoint is healthy before retrying.
 
 ## Conclusion
 
-The `calicoctl datastore migrate export` command is the first step in migrating Calico data between datastores or creating comprehensive backups. Always verify exports by checking resource counts and YAML validity before proceeding with migration. Combining regular exports with a retention policy gives you reliable recovery points for your Calico configuration.
+The `calicoctl datastore migrate export` command is the first step in migrating Calico data from an etcdv3 datastore to the Kubernetes API datastore or creating backups of etcd-backed Calico configuration. Always verify exports by checking resource counts and YAML validity before proceeding with migration. Combining regular exports with a retention policy gives you reliable recovery points for your Calico configuration.
