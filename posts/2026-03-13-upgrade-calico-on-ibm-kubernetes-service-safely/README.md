@@ -10,11 +10,11 @@ Description: A guide to safely upgrading Calico on IBM Kubernetes Service (IKS),
 
 ## Introduction
 
-IBM Kubernetes Service (IKS) integrates Calico as the default CNI and network policy engine, making it central to all cluster networking. IKS manages Calico through its own lifecycle, but operators can also install newer Calico versions alongside the IBM-managed components for advanced features.
+IBM Kubernetes Service (IKS) integrates Calico as the default network plug-in and network policy engine, making it central to all cluster networking. IKS manages Calico through its own lifecycle, while operators manage Kubernetes and Calico network policy resources with `kubectl` and `calicoctl`.
 
 Upgrading Calico on IKS requires understanding the relationship between IBM's managed Calico integration and any additional Calico resources you've deployed. IBM Cloud's network infrastructure - including its VLAN-based networking and LoadBalancer integration - must remain compatible with the Calico version being deployed.
 
-This guide covers safe Calico upgrade procedures for IKS, including the IBM Cloud-specific considerations for managed vs self-managed Calico components and how to coordinate with IKS cluster version upgrades.
+This guide covers safe Calico upgrade procedures for IKS, including IBM Cloud-specific considerations for managed Calico components and how to coordinate with IKS cluster version upgrades.
 
 ## Prerequisites
 
@@ -43,24 +43,15 @@ kubectl get ds -n kube-system calico-node -o yaml | grep image:
 
 ## Step 2: Configure calicoctl for IKS
 
-IKS requires specific calicoctl configuration to connect to its etcd cluster.
+IKS uses the Kubernetes API datastore for Calico on current Kubernetes versions.
 
 ```bash
-# Download the IKS cluster configuration including calicoctl config
-ibmcloud ks cluster config --cluster <cluster-name> --admin
+# Download the IKS cluster configuration and Calico network configuration
+ibmcloud ks cluster config --cluster <cluster-name> --admin --network
 
-# Create calicoctl configuration file for IKS
-mkdir -p ~/.calicoctl
-
-# IKS typically uses Kubernetes API mode for calicoctl
-cat > ~/.calicoctl/config.yaml << EOF
-apiVersion: projectcalico.org/v3
-kind: CalicoAPIConfig
-metadata:
-spec:
-  datastoreType: kubernetes
-  kubeconfig: ~/.kube/config
-EOF
+# Use Kubernetes API mode for calicoctl
+export DATASTORE_TYPE=kubernetes
+export KUBECONFIG=~/.kube/config
 
 # Verify calicoctl can connect
 calicoctl version
@@ -75,7 +66,7 @@ Export all Calico resources before the upgrade.
 # Create timestamped backups
 BACKUP_DATE=$(date +%Y%m%d-%H%M%S)
 
-# Export all Calico resources
+# Export Calico resources
 calicoctl get felixconfiguration -o yaml > iks-calico-backup-felix-$BACKUP_DATE.yaml
 calicoctl get ippools -o yaml > iks-calico-backup-ippools-$BACKUP_DATE.yaml
 calicoctl get globalnetworkpolicies -o yaml > iks-calico-backup-gnp-$BACKUP_DATE.yaml
@@ -88,30 +79,41 @@ ibmcloud cos upload \
   --file iks-calico-backup-felix-$BACKUP_DATE.yaml
 ```
 
-## Step 4: Upgrade Calico via IKS Worker Reload
+## Step 4: Upgrade Calico via IKS Cluster and Worker Updates
 
 IKS Calico upgrades are tied to IKS cluster version upgrades.
 
 ```bash
-# For IBM-managed Calico, upgrade by updating the IKS cluster version
+# List currently supported target versions
+ibmcloud ks versions --show-version kubernetes
+
+# For IBM-managed Calico, upgrade by updating the IKS cluster master version
 # This will update Calico to the version bundled with the target Kubernetes version
-ibmcloud ks cluster update --cluster <cluster-name> --version 1.29
+ibmcloud ks cluster master update \
+  --cluster <cluster-name> \
+  --version <target-major.minor.patch>
 
 # Monitor the master update
-ibmcloud ks cluster get --cluster <cluster-name> | grep "Master Status"
+ibmcloud ks cluster get --cluster <cluster-name> | grep -E "Version|State|Status"
 
-# After master update, reload worker nodes one at a time
-ibmcloud ks worker reload \
+# After the master update, update classic worker nodes one at a time
+ibmcloud ks worker update \
   --cluster <cluster-name> \
   --worker <worker-id>
 
+# For VPC worker nodes, use worker replace with --update instead
+ibmcloud ks worker replace \
+  --cluster <cluster-name> \
+  --worker <worker-id> \
+  --update
+
 # Monitor worker node status
-ibmcloud ks workers --cluster <cluster-name>
+ibmcloud ks worker ls --cluster <cluster-name>
 ```
 
 ## Step 5: Validate Post-Upgrade Network Functionality
 
-Verify Calico network policies are working correctly after the upgrade.
+Verify Calico is running and network policy resources are accepted after the upgrade.
 
 ```bash
 # Check all Calico pods are running the new version
@@ -136,7 +138,7 @@ spec:
   - Ingress
 EOF
 
-calicoctl get networkpolicies -n default
+kubectl get networkpolicy upgrade-test-policy -n default
 
 # Cleanup test policy
 kubectl delete networkpolicy upgrade-test-policy
@@ -145,11 +147,11 @@ kubectl delete networkpolicy upgrade-test-policy
 ## Best Practices
 
 - Always align Calico upgrades with IKS cluster version upgrade windows
-- Test the reload of one worker node before rolling it to all nodes
-- Use IBM Cloud's VSI snapshot feature to back up worker nodes before reload
+- Test the update or replacement of one worker node before rolling it to all nodes
+- Ensure workloads have enough spare capacity and keep persistent data outside worker nodes before updating or replacing workers
 - Monitor IBM Cloud Service Dashboard for any Calico-related incidents post-upgrade
-- Contact IBM Cloud Support if Calico pods don't recover after worker reload
+- Contact IBM Cloud Support if Calico pods don't recover after worker updates or replacements
 
 ## Conclusion
 
-Upgrading Calico on IBM Kubernetes Service is primarily driven by IKS cluster version upgrades, as IBM bundles specific Calico versions with each Kubernetes release. By coordinating Calico configuration backups with the worker reload process and validating network policy enforcement afterward, you ensure a smooth upgrade with no disruption to workload connectivity. IBM's managed approach simplifies some aspects of the upgrade while requiring coordination with IBM's versioning lifecycle.
+Upgrading Calico on IBM Kubernetes Service is primarily driven by IKS cluster version upgrades, as IBM bundles specific Calico versions with each Kubernetes release. By coordinating Calico configuration backups with the worker update or replacement process and validating network policy resources afterward, you ensure a smooth upgrade with no disruption to workload connectivity. IBM's managed approach simplifies some aspects of the upgrade while requiring coordination with IBM's versioning lifecycle.
