@@ -10,7 +10,7 @@ Description: Learn how to configure network infrastructure requirements for depl
 
 ## Introduction
 
-Proper configuration of network requirements for cilium is essential for a production-ready Cilium deployment. Cilium requires specific network infrastructure support depending on the chosen networking mode. In VXLAN mode, UDP port 8472 must be open between nodes. In Geneve mode, UDP port 6081 is needed. In native routing mode, the network must be able to route pod CIDRs between nodes. All modes require TCP port 4240 for Cilium health checks and TCP port 4244 for Hubble.
+Proper configuration of network requirements for cilium is essential for a production-ready Cilium deployment. Cilium requires specific network infrastructure support depending on the chosen networking mode. In VXLAN mode, UDP port 8472 must be open between nodes. In Geneve mode, UDP port 6081 is needed. In native routing mode, the network must be able to route pod CIDRs between nodes. Cilium health monitoring uses TCP port 4240 and ICMP Type 0/8, Code 0 between nodes. If Hubble is enabled, TCP port 4244 is used for the Hubble server and TCP port 4245 is used for Hubble Relay.
 
 Misconfiguration at this level can lead to connectivity failures, performance degradation, or security gaps. This guide provides tested configuration settings with explanations for each option so you can make informed decisions for your environment.
 
@@ -35,11 +35,13 @@ Apply the following Helm values to configure network requirements for cilium:
 
 # VXLAN mode requirements:
 # - UDP port 8472 between all nodes
-# - TCP port 4240 for health checks
-# - TCP port 4244 for Hubble relay
-tunnel: vxlan
+# - TCP port 4240 and ICMP Type 0/8, Code 0 for cilium-health
+# - TCP port 4244 for the Hubble server
+# - TCP port 4245 for Hubble Relay
+routingMode: tunnel
+tunnelProtocol: vxlan
 
-# Health checking port
+# Cilium agent health status API port; this is not the cilium-health port
 healthPort: 9879
 
 # Hubble configuration
@@ -56,7 +58,7 @@ Apply the configuration:
 # Apply the configuration via Helm upgrade
 helm upgrade cilium cilium/cilium --version 1.16.5 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  -f cilium-network-requirements.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -69,7 +71,7 @@ Verify the configuration was applied correctly:
 
 ```bash
 # Check the active configuration
-ss -ulnp | grep -E "8472|6081" && ss -tlnp | grep -E "4240|4244"
+cilium config view | grep -E "routing-mode|tunnel-protocol"
 
 # Verify Cilium status after configuration change
 cilium status
@@ -127,7 +129,7 @@ kubectl rollout status deployment/config-test --timeout=60s
 # Test connectivity
 kubectl run test-client --image=busybox --restart=Never -- sleep 300
 kubectl wait --for=condition=Ready pod/test-client --timeout=30s
-kubectl exec test-client -- wget -qO- --timeout=5 http://config-test-svc
+kubectl exec test-client -- wget -qO- -T 5 http://config-test-svc
 kubectl delete pod test-client
 kubectl delete -f test-deployment.yaml
 ```
@@ -144,7 +146,7 @@ cilium config view
 cilium status --verbose | head -40
 
 # Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -153,13 +155,13 @@ Final verification that configuration is complete and correct:
 
 ```bash
 # Run Cilium connectivity test
-cilium connectivity test --test pod-to-pod,pod-to-service
+cilium connectivity test --test pod-to-pod --test pod-to-service
 
 # Verify no configuration warnings
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg endpoint list | head -20
 ```
 
 ## Troubleshooting
