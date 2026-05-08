@@ -37,7 +37,9 @@ spec:
   order: 100
   ingress:
     - action: Allow
+      protocol: TCP
       source:
+        namespaceSelector: "kubernetes.io/metadata.name == 'ingress-nginx'"
         selector: "app == 'ingress-nginx'"
       destination:
         ports: [80]
@@ -53,6 +55,7 @@ spec:
   order: 100
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: "app == 'frontend'"
       destination:
@@ -69,6 +72,7 @@ spec:
   order: 100
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: "app == 'backend'"
       destination:
@@ -95,6 +99,7 @@ spec:
   order: 50
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         namespaceSelector: "kubernetes.io/metadata.name == 'monitoring'"
       destination:
@@ -144,7 +149,7 @@ spec:
     - action: Allow
       destination:
         nets:
-          - 52.94.76.0/22   # AWS API Gateway CIDRs
+          - 18.246.176.0/24   # Example AWS API Gateway CIDR; verify current ranges in AWS ip-ranges.json
         ports: [443]
       protocol: TCP
 ```
