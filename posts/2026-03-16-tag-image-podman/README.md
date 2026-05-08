@@ -104,6 +104,7 @@ Tag images with build metadata in a CI/CD pipeline.
 IMAGE="registry.example.com:5000/myapp"
 GIT_SHA=$(git rev-parse --short HEAD)
 GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+BRANCH_TAG=$(printf '%s' "$GIT_BRANCH" | tr -c 'A-Za-z0-9_.-' '-')
 BUILD_DATE=$(date +%Y%m%d)
 BUILD_NUMBER="${BUILD_NUMBER:-local}"
 
@@ -112,8 +113,8 @@ podman build -t myapp:build .
 
 # Apply CI/CD tags
 podman tag myapp:build "${IMAGE}:${GIT_SHA}"
-podman tag myapp:build "${IMAGE}:${GIT_BRANCH}"
-podman tag myapp:build "${IMAGE}:${GIT_BRANCH}-${BUILD_NUMBER}"
+podman tag myapp:build "${IMAGE}:${BRANCH_TAG}"
+podman tag myapp:build "${IMAGE}:${BRANCH_TAG}-${BUILD_NUMBER}"
 podman tag myapp:build "${IMAGE}:${BUILD_DATE}-${GIT_SHA}"
 
 # If this is the main branch, also tag as latest
@@ -133,7 +134,7 @@ Change the tag of an image by adding a new tag and optionally removing the old o
 ```bash
 # Rename an image by tagging and untagging
 podman tag myapp:old-name myapp:new-name
-podman untag myapp:old-name
+podman untag myapp:new-name myapp:old-name
 
 # Retag to move "latest" to a new version
 podman tag myapp:v2.0.0 myapp:latest
