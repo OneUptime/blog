@@ -117,7 +117,7 @@ Some base images are multi-arch and Podman will automatically pull the correct v
 # Multi-arch base image (Podman pulls the right variant automatically)
 podman build --platform linux/arm64 -t myapp:arm64 .
 
-# If you need to explicitly use an architecture-specific digest
+# If you need to pin the base image platform in the Containerfile
 cat > Containerfile <<'EOF'
 FROM --platform=linux/arm64 ubuntu:22.04
 RUN apt-get update && apt-get install -y curl
@@ -150,15 +150,21 @@ RUN echo "Building for ${TARGETOS}/${TARGETARCH}" && \
 CMD ["/usr/local/bin/mytool"]
 EOF
 
-# Podman automatically sets TARGETARCH and TARGETOS
+# Podman sets TARGETARCH and TARGETOS when you declare them in the Containerfile
 podman build --platform linux/arm64 -t myapp:arm64 .
 ```
 
-The automatic build arguments provided by Podman include:
+The platform build arguments provided by Podman include:
 - `TARGETPLATFORM` - full platform string (e.g., `linux/arm64`)
 - `TARGETOS` - operating system (e.g., `linux`)
 - `TARGETARCH` - architecture (e.g., `arm64`)
 - `TARGETVARIANT` - variant if applicable (e.g., `v7`)
+- `BUILDPLATFORM` - full platform string for the host performing the build (e.g., `linux/amd64`)
+- `BUILDOS` - operating system for the host performing the build (e.g., `linux`)
+- `BUILDARCH` - architecture for the host performing the build (e.g., `amd64`)
+- `BUILDVARIANT` - variant for the host performing the build, if applicable
+
+Declare the `ARG` values you need within each `FROM` section where you use them.
 
 ## Performance Considerations
 
