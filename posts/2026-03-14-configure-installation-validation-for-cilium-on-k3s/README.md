@@ -38,11 +38,7 @@ healthChecking: true
 # Enable the Cilium agent health port
 healthPort: 9879
 
-# Enable Cilium agent readiness and liveness probes
-agent:
-  healthPort: 9879
-
-# Enable the operator health endpoint
+# Keep at least one Cilium operator replica running
 operator:
   replicas: 1
 
@@ -62,7 +58,7 @@ hubble:
 
 ```bash
 # Apply the validation-enabled configuration
-helm upgrade cilium cilium/cilium --version 1.16.5 \
+helm upgrade cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
   -f cilium-validation-values.yaml
 
@@ -106,7 +102,7 @@ spec:
                 exit 1
               fi
               echo "2. Running connectivity tests..."
-              cilium connectivity test --test pod-to-pod,pod-to-service,dns-resolution
+              cilium connectivity test --test pod-to-pod --test pod-to-service --test dns-only
               if [ $? -ne 0 ]; then
                 echo "FAIL: Connectivity test failed"
                 exit 1
@@ -164,6 +160,7 @@ spec:
   backoffLimit: 2
   template:
     spec:
+      serviceAccountName: cilium-validation
       restartPolicy: OnFailure
       containers:
         - name: health-check
@@ -230,7 +227,11 @@ Confirm validation is properly configured:
 
 ```bash
 # Check that health port is accessible
-kubectl exec -n kube-system ds/cilium -- curl -s http://localhost:9879/healthz
+# In one terminal:
+kubectl port-forward -n kube-system ds/cilium 9879:9879
+
+# In another terminal:
+curl -s http://127.0.0.1:9879/healthz
 
 # Verify validation job ran successfully
 kubectl get jobs -n kube-system -l app=cilium-validation
