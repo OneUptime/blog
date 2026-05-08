@@ -81,7 +81,7 @@ spec:
               +(environment): "development"
 ```
 
-If you do not use Kyverno, you can enforce labeling via a ValidatingWebhook that rejects unlabeled namespaces:
+If you prefer enforcement over mutation, you can use a Kyverno validation policy that rejects unlabeled namespaces:
 
 ```yaml
 # namespace-label-validation.yaml
@@ -91,7 +91,6 @@ kind: ClusterPolicy
 metadata:
   name: require-namespace-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-environment-label
       match:
@@ -102,13 +101,14 @@ spec:
       exclude:
         any:
           - resources:
-              namespaces:
+              names:
                 - kube-system
                 - kube-public
                 - kube-node-lease
                 - calico-system
                 - calico-apiserver
       validate:
+        failureAction: Enforce
         message: "Namespaces must have an 'environment' label."
         pattern:
           metadata:
@@ -191,8 +191,9 @@ kubectl exec -n staging test-pod -- wget -qO- --timeout=5 http://backend-svc.bac
 kubectl label namespace frontend environment=production
 kubectl label namespace backend environment=production
 
-# Step 4: Monitor for any connectivity changes
-kubectl get events --all-namespaces --field-selector reason=NetworkPolicyDrop --watch &
+# Step 4: Monitor for any connectivity changes and policy-related errors
+kubectl get events --all-namespaces --watch &
+kubectl logs -n calico-system -l k8s-app=calico-node --tail=50 --follow &
 
 # Step 5: Verify critical connectivity paths
 kubectl exec -n frontend deploy/web -- curl -s --max-time 5 http://api-svc.backend:8080/health
