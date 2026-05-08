@@ -10,7 +10,7 @@ Description: Learn how to configure stop timeouts for Podman containers to give 
 
 > The stop timeout determines how long your container gets to clean up before Podman forcefully terminates it with SIGKILL.
 
-When you stop a container, Podman first sends the stop signal (default SIGTERM) and then waits for the container to exit. If the container does not exit within the timeout period, Podman sends SIGKILL to force an immediate termination. The default timeout is 10 seconds, but applications that need to drain connections, flush data, or complete transactions may need more time.
+When you stop a container, Podman first sends the stop signal (default SIGTERM, unless the image or `--stop-signal` configures a different signal) and then waits for the container to exit. If the container does not exit within the timeout period, Podman sends SIGKILL to force an immediate termination. The default timeout is 10 seconds, but applications that need to drain connections, flush data, or complete transactions may need more time.
 
 ---
 
@@ -105,8 +105,8 @@ podman run -d --name postgres-graceful \
   postgres:16
 
 # Give PostgreSQL up to 60 seconds to:
-# - Complete active transactions
-# - Flush WAL to disk
+# - Refuse new connections and abort active transactions cleanly
+# - Flush data to disk
 # - Close connections cleanly
 # - Write a clean shutdown marker
 podman stop postgres-graceful
