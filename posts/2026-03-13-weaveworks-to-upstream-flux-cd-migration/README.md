@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, GitOps, Migration, Weaveworks, Kubernetes
 
-Description: Learn how to migrate from Weaveworks Flux v1 to upstream CNCF Flux CD v2, preserving your GitOps workflows while adopting the modern multi-tenant, multi-cluster Flux architecture.
+Description: Learn how to migrate from Weave GitOps Enterprise to upstream CNCF Flux CD, preserving your GitOps workflows while adopting the modern multi-tenant, multi-cluster Flux architecture.
 
 ---
 
 ## Introduction
 
-Weaveworks, the company that created Flux CD and Weave GitOps Enterprise, wound down its operations in 2024. Organizations running Weave GitOps Enterprise need to migrate to upstream open-source Flux CD or another GitOps solution. The good news is that Weave GitOps Enterprise was built on top of upstream Flux CD, so the core reconciliation logic is identical. The migration primarily involves removing Weave GitOps Enterprise components and features not available in open-source Flux.
+Weaveworks, the company that created Flux CD and Weave GitOps Enterprise, wound down its operations in 2024. Organizations running Weave GitOps Enterprise need to migrate to upstream open-source Flux CD or another GitOps solution. The good news is that Weave GitOps Enterprise was built on top of upstream Flux CD, so standard Flux controllers and resources can remain in place when their API versions match the upstream release you install. The migration primarily involves removing Weave GitOps Enterprise components and replacing features not available in open-source Flux.
 
 ## Prerequisites
 
@@ -35,8 +35,8 @@ kubectl get pipelines.pipelines.weave.works -A 2>/dev/null && echo "Pipelines in
 # List Templates (enterprise feature)
 kubectl get gitopstemplates -A 2>/dev/null && echo "Templates in use"
 
-# List Policies (enterprise feature)
-kubectl get policies -A 2>/dev/null && echo "Policies in use"
+# List Weave Policy Engine policies (enterprise feature)
+kubectl get policies.pac.weave.works -A 2>/dev/null && echo "Policies in use"
 
 # Check standard Flux resources (these migrate automatically)
 flux get kustomizations -A
@@ -49,7 +49,7 @@ flux get sources git -A
 ```plaintext
 Weave GitOps Feature             Migration Path
 ───────────────────────────────  ────────────────────────────────
-Flux CDs (Kustomization, etc.)   Keep as-is - upstream compatible
+Flux CRs (Kustomization, etc.)   Keep as-is when API versions match upstream Flux
 HelmRelease                      Keep as-is - upstream compatible
 GitRepository sources            Keep as-is - upstream compatible
 SOPS decryption                  Keep as-is - upstream compatible
@@ -138,6 +138,11 @@ spec:
 ```bash
 # Install Kyverno via Flux
 cat > clusters/production/infrastructure/kyverno.yaml << 'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kyverno
+---
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -163,7 +168,14 @@ spec:
         name: kyverno
         namespace: flux-system
   values:
-    replicaCount: 3
+    admissionController:
+      replicas: 3
+    backgroundController:
+      replicas: 2
+    cleanupController:
+      replicas: 2
+    reportsController:
+      replicas: 2
 EOF
 git add clusters/production/infrastructure/kyverno.yaml
 git commit -m "feat: add Kyverno as Policy Controller replacement"
@@ -188,30 +200,15 @@ flux check
 ## Step 6: Set Up Open-Source Monitoring as UI Replacement
 
 ```bash
-# Install Capacitor (open-source Flux UI)
-cat > clusters/production/infrastructure/capacitor.yaml << 'EOF'
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: capacitor
-  namespace: flux-system
-spec:
-  interval: 1h
-  chart:
-    spec:
-      chart: capacitor
-      version: "0.x.x"
-      sourceRef:
-        kind: HelmRepository
-        name: gimlet
-        namespace: flux-system
-EOF
+# Install Capacitor Next (open-source Flux UI)
+wget -qO- https://gimlet.io/install-capacitor | bash
+next --port 3333
 ```
 
 ## Best Practices
 
 - Audit all Weave GitOps Enterprise CRDs in use before starting the migration; GitOpsSets and Pipelines require the most rework.
-- The core Flux reconciliation resources (Kustomization, HelmRelease, GitRepository) are 100% compatible with upstream; they require no migration.
+- The core Flux reconciliation resources (Kustomization, HelmRelease, GitRepository) can stay in place when their API versions are supported by the upstream Flux release you install.
 - Install OPA Gatekeeper or Kyverno before removing the Weave Policy Controller to maintain admission control continuity.
 - Use Capacitor or Grafana dashboards as open-source replacements for the Weave GitOps UI.
 - Reach out to CNCF-affiliated vendors for commercial support options for upstream Flux CD.
