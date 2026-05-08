@@ -10,11 +10,11 @@ Description: Step-by-step instructions for safely upgrading Calico on MicroK8s w
 
 ## Introduction
 
-Upgrading Calico on MicroK8s differs from other distributions because MicroK8s manages Calico through its add-on system. Calico upgrades on MicroK8s are typically tied to MicroK8s channel upgrades. However, you can also apply Calico upgrades independently by manually applying newer manifests while keeping MicroK8s version pinned.
+Upgrading Calico on MicroK8s differs from other distributions because MicroK8s manages its default CNI manifest under the snap-managed CNI configuration directory. Upgrading MicroK8s does not upgrade the already deployed Calico resources automatically. However, newer MicroK8s snaps include an updated Calico manifest that you can apply after reviewing and preserving any local customizations.
 
-Understanding which upgrade path to use depends on whether you want to upgrade just Calico or upgrade both MicroK8s and Calico together. The safest approach for production environments is to upgrade in stages: first upgrade MicroK8s to a new channel on a test cluster, validate Calico functionality, then apply to production.
+Understanding which upgrade path to use depends on whether you want to upgrade just Calico from the manifest bundled with your current MicroK8s snap or upgrade MicroK8s first and then apply the Calico manifest from the refreshed snap. The safest approach for production environments is to upgrade in stages: first test the MicroK8s channel and Calico manifest on a test cluster, validate Calico functionality, then apply to production.
 
-This guide covers both the MicroK8s channel upgrade approach and the manual Calico manifest upgrade approach, along with pre and post-upgrade validation steps.
+This guide covers both the MicroK8s channel refresh step and the manual Calico manifest upgrade step, along with pre and post-upgrade validation steps.
 
 ## Prerequisites
 
@@ -48,7 +48,7 @@ microk8s kubectl get pods -n kube-system
 
 ## Step 4a: Upgrade via MicroK8s Channel
 
-To upgrade MicroK8s (which includes a newer Calico version):
+To upgrade MicroK8s to a newer channel:
 
 ```bash
 sudo snap refresh microk8s --channel=1.29/stable
@@ -62,10 +62,19 @@ microk8s status --wait-ready
 
 ## Step 4b: Manual Calico Manifest Upgrade
 
-To upgrade only Calico while keeping MicroK8s version:
+To upgrade Calico using the manifest bundled with the installed MicroK8s snap, first back up the current CNI manifest and copy the newer manifest into the MicroK8s CNI configuration directory. On multi-node clusters, repeat the file update on each node to avoid configuration drift.
 
 ```bash
-microk8s kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+sudo cp /var/snap/microk8s/current/args/cni-network/cni.yaml \
+  /var/snap/microk8s/current/args/cni-network/cni.yaml.backup
+sudo cp /snap/microk8s/current/upgrade-scripts/000-switch-to-calico/resources/calico.yaml \
+  /var/snap/microk8s/current/args/cni-network/cni.yaml
+```
+
+Compare `cni.yaml` with `cni.yaml.backup` and carry forward any local customizations, such as IP autodetection settings. Then apply the updated manifest:
+
+```bash
+microk8s kubectl apply -f /var/snap/microk8s/current/args/cni-network/cni.yaml
 ```
 
 ## Step 5: Monitor the Rolling Update
@@ -96,8 +105,8 @@ microk8s kubectl delete pod smoke-test
 
 ```bash
 curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
-  -o /usr/local/bin/calicoctl
-chmod +x /usr/local/bin/calicoctl
+  -o calicoctl
+sudo install -m 0755 calicoctl /usr/local/bin/calicoctl
 calicoctl version
 ```
 
