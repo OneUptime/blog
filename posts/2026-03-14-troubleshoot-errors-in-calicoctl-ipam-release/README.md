@@ -41,14 +41,28 @@ metadata:
   name: calicoctl-ipam-admin
 rules:
 - apiGroups: ["crd.projectcalico.org"]
-  resources: ["ipamblocks", "ipamhandles", "blockaffinities", "ippools", "ipamconfigurations"]
+  resources: ["ipamblocks", "ipamhandles", "blockaffinities", "ippools", "ipamconfigs"]
   verbs: ["get", "list", "create", "update", "patch", "delete"]
 - apiGroups: [""]
   resources: ["pods", "nodes"]
   verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: calicoctl-ipam-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: calicoctl-ipam-admin
+subjects:
+- kind: User
+  name: your-calicoctl-user
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ```bash
+# Replace the subject with the user, group, or service account that runs calicoctl.
 kubectl apply -f calicoctl-ipam-rbac.yaml
 ```
 
@@ -62,19 +76,18 @@ kubectl get crd | grep ipam
 # ipamblocks.crd.projectcalico.org
 # ipamhandles.crd.projectcalico.org
 # blockaffinities.crd.projectcalico.org
-# ipamconfigurations.crd.projectcalico.org
+# ipamconfigs.crd.projectcalico.org
 ```
 
-### Error: Invalid IP Address or CIDR
+### Error: Invalid IP Address
 
 ```bash
-# Verify the IP or CIDR format
+# Verify the IP address format
 # CORRECT formats:
 calicoctl ipam show --ip=10.244.0.5
-calicoctl ipam show --ip=192.168.0.0/16
 
 # WRONG formats:
-# calicoctl ipam show --ip=10.244.0.5/33  (invalid prefix length)
+# calicoctl ipam show --ip=10.244.0.5/33  (--ip expects a single IP address)
 # calicoctl ipam show --ip=300.0.0.1      (invalid octet)
 ```
 
@@ -90,7 +103,7 @@ echo "--- Datastore ---"
 calicoctl version > /dev/null 2>&1 && echo "Connected" || echo "UNREACHABLE"
 
 echo "--- CRDs ---"
-for CRD in ipamblocks ipamhandles blockaffinities ipamconfigurations ippools; do
+for CRD in ipamblocks ipamhandles blockaffinities ipamconfigs ippools; do
   kubectl get crd "${CRD}.crd.projectcalico.org" > /dev/null 2>&1 && echo "  $CRD: OK" || echo "  $CRD: MISSING"
 done
 
@@ -114,9 +127,9 @@ calicoctl ipam release --ip=10.244.0.5
 | Error | Cause | Fix |
 |-------|-------|-----|
 | Connection refused | Datastore unreachable | Check DATASTORE_TYPE and kubeconfig |
-| Unauthorized | Missing RBAC | Apply ClusterRole for IPAM resources |
+| Unauthorized | Missing RBAC | Apply ClusterRole and ClusterRoleBinding for IPAM resources |
 | CRD not found | Calico not fully installed | Install Calico CRDs |
-| Invalid argument | Wrong format | Check IP/CIDR syntax |
+| Invalid argument | Wrong format | Check IP address syntax |
 
 ## Conclusion
 
