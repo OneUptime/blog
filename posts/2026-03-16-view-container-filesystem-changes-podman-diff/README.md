@@ -167,10 +167,10 @@ podman diff file-test
 
 ## Diff for Image Layers
 
-You can also diff images to see what each layer adds:
+You can also diff an image to see what it adds or changes compared to its parent layer:
 
 ```bash
-# Diff an image layer
+# Diff an image against its parent layer
 podman diff --format json nginx:latest 2>/dev/null | head -20
 ```
 
