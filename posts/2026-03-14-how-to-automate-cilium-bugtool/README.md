@@ -54,7 +54,7 @@ while IFS=',' read -r pod node; do
   echo "[$TIMESTAMP] Collecting from $node..."
 
   if kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-bugtool 2>/dev/null; then
+    cilium-bugtool -o gz 2>/dev/null; then
 
     ARCHIVE=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
       ls -t /tmp/cilium-bugtool-*.tar.gz 2>/dev/null | head -1)
@@ -113,7 +113,7 @@ spec:
               for pod in $PODS; do
                 echo "Collecting from $pod..."
                 kubectl -n kube-system exec "$pod" -c cilium-agent -- \
-                  cilium-bugtool 2>/dev/null || true
+                  cilium-bugtool -o gz 2>/dev/null || true
                 ARCHIVE=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- \
                   ls -t /tmp/cilium-bugtool-*.tar.gz 2>/dev/null | head -1)
                 if [ -n "$ARCHIVE" ]; then
@@ -158,10 +158,26 @@ kubectl -n "$NAMESPACE" get events --watch-only \
       POD=$(echo "$line" | grep -oP 'cilium-\S+')
       if [ -n "$POD" ]; then
         echo "  Triggering bugtool on $POD..."
-        kubectl -n "$NAMESPACE" exec "$POD" -c cilium-agent -- \
-          cilium-bugtool 2>/dev/null && \
-          echo "  Collection triggered" || \
+        if kubectl -n "$NAMESPACE" exec "$POD" -c cilium-agent -- \
+          cilium-bugtool -o gz 2>/dev/null; then
+
+          ARCHIVE=$(kubectl -n "$NAMESPACE" exec "$POD" -c cilium-agent -- \
+            ls -t /tmp/cilium-bugtool-*.tar.gz 2>/dev/null | head -1)
+
+          if [ -n "$ARCHIVE" ]; then
+            if kubectl -n "$NAMESPACE" cp \
+              "$POD:$ARCHIVE" "$ARCHIVE_DIR/${TIMESTAMP}-${POD}.tar.gz" \
+              -c cilium-agent 2>/dev/null; then
+              echo "  Saved to $ARCHIVE_DIR/${TIMESTAMP}-${POD}.tar.gz"
+              kubectl -n "$NAMESPACE" exec "$POD" -c cilium-agent -- \
+                rm -f "$ARCHIVE" 2>/dev/null
+            else
+              echo "  Failed to copy archive"
+            fi
+          fi
+        else
           echo "  Pod not accessible for collection"
+        fi
       fi
     fi
   done
