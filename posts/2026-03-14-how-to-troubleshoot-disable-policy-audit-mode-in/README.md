@@ -19,7 +19,7 @@ This guide covers the complete troubleshooting workflow from initial diagnosis t
 ## Prerequisites
 
 - Kubernetes cluster with Cilium (v1.14+) installed
-- `cilium` CLI and Hubble CLI available
+- `cilium` CLI, `cilium-dbg` access through the Cilium agent pod, and Hubble CLI available
 - `kubectl` access to the cluster
 - Familiarity with CiliumNetworkPolicy resources
 - Access to Cilium agent logs
@@ -66,10 +66,11 @@ When endpoints are stuck in a non-ready state, policies cannot be enforced corre
 
 ```bash
 # Check endpoint status for failures
-cilium endpoint list -o json | jq '.[] | select(.status.state != "ready")'
+kubectl get ciliumendpoints -A -o json | \
+  jq '.items[] | select(.status.state != "ready")'
 
 # Get detailed status for a problematic endpoint
-cilium endpoint get <ENDPOINT_ID> -o json | \
+kubectl get ciliumendpoint -n <NAMESPACE> <POD_NAME> -o json | \
   jq '{state: .status.state, health: .status.health, policy: .status.policy}'
 
 # Check if the endpoint is being regenerated
@@ -86,10 +87,10 @@ Verify that your policy selectors correctly match the target endpoints:
 kubectl get pods -n production --show-labels
 
 # View the realized policy on a specific endpoint
-cilium endpoint list -o json | \
-  jq '.[] | select(.status.labels.id | any(contains("app="))) | {
-    id: .id,
-    labels: .status.labels.id,
+kubectl get ciliumendpoints -n production -o json | \
+  jq '.items[] | select(.status.identity.labels[]? | contains("app=")) | {
+    name: .metadata.name,
+    labels: .status.identity.labels,
     ingress_enforcing: .status.policy.realized."l4-ingress",
     egress_enforcing: .status.policy.realized."l4-egress"
   }'
@@ -102,8 +103,6 @@ apiVersion: "cilium.io/v2"
 kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: enforce-mode-policy
-  annotations:
-    policy.cilium.io/audit-mode: "false"
 spec:
   endpointSelector: {}
   ingress:
@@ -124,6 +123,18 @@ spec:
               protocol: ANY
 ```
 
+```bash
+# Disable Policy Audit Mode for the entire daemon after the policy is ready
+kubectl patch -n kube-system configmap cilium-config --type merge \
+  --patch '{"data":{"policy-audit-mode":"false"}}'
+kubectl -n kube-system rollout restart ds/cilium
+kubectl -n kube-system rollout status ds/cilium
+
+# Or disable it temporarily for one endpoint on the relevant Cilium node
+kubectl -n kube-system exec <CILIUM_POD> -c cilium-agent -- \
+  cilium-dbg endpoint config <ENDPOINT_ID> PolicyAuditMode=Disabled
+```
+
 ### Issue 3: Hubble Shows Unexpected Drops
 
 When Hubble reports drops that should be allowed, investigate the flow details:
@@ -140,7 +151,8 @@ hubble observe --verdict DROPPED --namespace production --output json | \
   }' | head -30
 
 # Check if the source identity is recognized
-cilium identity list | grep <IDENTITY_ID>
+kubectl -n kube-system exec <CILIUM_POD> -c cilium-agent -- \
+  cilium-dbg identity list | grep <IDENTITY_ID>
 ```
 
 ## Analyzing Agent Logs
@@ -167,7 +179,8 @@ After applying fixes, confirm the issue is resolved:
 
 ```bash
 # Verify the fix resolved the issue
-cilium endpoint health
+kubectl get ciliumendpoints -A -o json | \
+  jq '.items[] | select(.status.state != "ready")'
 ```
 
 ```bash
@@ -183,7 +196,7 @@ cilium connectivity test
 ## Troubleshooting
 
 - **Cilium agent CrashLoopBackOff**: Check resource limits and node capacity. Review crash logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent --previous`.
-- **Policy changes not propagating**: Force endpoint regeneration with `cilium endpoint regenerate all` (use with caution).
+- **Policy changes not propagating**: Check Cilium agent logs for endpoint regeneration failures, then restart the affected Cilium agent only if needed.
 - **Hubble relay unavailable**: Check Hubble relay pod status with `kubectl -n kube-system get pods -l app.kubernetes.io/name=hubble-relay`.
 - **Stale endpoint data**: Delete and recreate the affected pod to force a new endpoint allocation.
 
