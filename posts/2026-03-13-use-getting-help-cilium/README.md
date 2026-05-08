@@ -55,10 +55,10 @@ The official documentation covers most scenarios:
 # https://docs.cilium.io/en/stable/search/?q=your+error+message
 
 # For policy issues:
-# https://docs.cilium.io/en/stable/network/kubernetes/policy/
+# https://docs.cilium.io/en/stable/security/policy/troubleshooting/
 
 # For installation issues:
-# https://docs.cilium.io/en/stable/installation/
+# https://docs.cilium.io/en/stable/gettingstarted/k8s-install-default/
 ```
 
 ## Step 3: Generate a Sysdump
@@ -83,13 +83,13 @@ cilium sysdump --output-filename my-cluster-sysdump
 
 ```bash
 # Join the Cilium Slack workspace:
-# https://cilium.io/slack
+# https://slack.cilium.io
 
 # Key channels:
 # #general - general Cilium questions
 # #ebpf - eBPF-specific questions
 # #hubble - Hubble observability questions
-# #installation - installation problems
+# #kubernetes - Kubernetes-specific questions
 ```
 
 When posting, include:
@@ -118,19 +118,19 @@ When posting, include:
 ## Useful Diagnostic Commands Reference
 
 ```bash
-# Policy tracing
-kubectl exec -n kube-system ds/cilium -- cilium policy trace --src-k8s-pod <ns>:<pod> --dst-k8s-pod <ns>:<pod> --dport 80
+# Endpoint policy details
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint get pod-name:<ns>:<pod>
 
 # Endpoint status
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
 # Monitor drops
-kubectl exec -n kube-system ds/cilium -- cilium monitor --type drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg monitor --type drop
 
 # BPF policy state
-kubectl exec -n kube-system ds/cilium -- cilium bpf policy get --all
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf policy get --all
 ```
 
 ## Conclusion
 
-Getting help with Cilium is most effective when you follow a progression: diagnose locally first, check the documentation, then escalate to Slack or GitHub with a well-prepared question and diagnostic data. The Cilium community rewards well-prepared questions with fast, thorough responses. Mastering the diagnostic tools - `cilium status`, `cilium monitor`, `cilium policy trace`, `cilium sysdump` - is the most important investment you can make for operating Cilium in production.
+Getting help with Cilium is most effective when you follow a progression: diagnose locally first, check the documentation, then escalate to Slack or GitHub with a well-prepared question and diagnostic data. The Cilium community rewards well-prepared questions with fast, thorough responses. Mastering the diagnostic tools - `cilium status`, `cilium-dbg monitor`, `cilium-dbg endpoint get`, `cilium sysdump` - is the most important investment you can make for operating Cilium in production.
