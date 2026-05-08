@@ -33,8 +33,9 @@ Datastore migration affects the entire Calico deployment and should follow stric
 ### Migration Day
 - [ ] Take final backup of all Calico resources
 - [ ] Verify source datastore health
-- [ ] Execute: calicoctl datastore migrate export
-- [ ] Validate resource counts match pre-migration state
+- [ ] Lock the source datastore for migration
+- [ ] Execute: calicoctl datastore migrate export > etcd-migration
+- [ ] Validate the export file was created and is non-empty
 - [ ] Test pod connectivity
 - [ ] Monitor for 30 minutes
 
@@ -60,7 +61,7 @@ Datastore migration affects the entire Calico deployment and should follow stric
 - [ ] All clear - [Status]
 
 ### Impact
-- Expected: Brief networking disruption during migration
+- Expected: New pods will not start while the datastore is locked for migration
 - Actual: [To be filled during migration]
 ```
 
@@ -73,6 +74,7 @@ Datastore migration affects the entire Calico deployment and should follow stric
 echo "=== Team Migration: datastore migrate export ==="
 echo "Operator: $USER"
 echo "Date: $(date)"
+OUTPUT_FILE="${OUTPUT_FILE:-etcd-migration}"
 
 # Confirm readiness
 
@@ -84,15 +86,16 @@ fi
 
 # Execute
 echo "Executing migration step..."
-calicoctl datastore migrate export
+calicoctl datastore migrate export > "$OUTPUT_FILE"
 
 # Validate
 echo "Running validation..."
+test -s "$OUTPUT_FILE"
 calicoctl get nodes -o wide
 calicoctl get ippools
 
 echo ""
-echo "Step complete. Update the team communication channel."
+echo "Export step complete. Continue with the import and unlock steps, then update the team communication channel."
 ```
 
 ## Verification
