@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Policy Language, Security, Network Policy
 
-Description: How to use advanced CiliumNetworkPolicy language features including entity selectors, service accounts, CIDR groups, and conditional rules for comprehensive security.
+Description: How to use advanced CiliumNetworkPolicy language features including entity selectors, service accounts, CIDR groups, and L7-aware rules for comprehensive security.
 
 ---
 
@@ -143,14 +143,14 @@ spec:
 ```bash
 kubectl get ciliumnetworkpolicies -n default
 kubectl get ciliumcidrgroups
-cilium endpoint list
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list
 hubble observe -n default --last 20
 ```
 
 ## Troubleshooting
 
-- **Entity selector not matching**: Check entity names. Valid entities: world, cluster, host, init, health, unmanaged, kube-apiserver.
-- **Service account policy not working**: Verify SA label format with `cilium endpoint list`.
+- **Entity selector not matching**: Check entity names. Valid entities: host, remote-node, kube-apiserver, ingress, cluster, init, health, unmanaged, world, all.
+- **Service account policy not working**: Verify SA label format with `kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list`.
 - **CIDR group not resolving**: Check CiliumCIDRGroup exists and CRD is registered.
 - **L7 headers not matching**: Headers are case-sensitive. Check exact format.
 
