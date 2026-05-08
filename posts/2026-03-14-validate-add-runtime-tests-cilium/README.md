@@ -118,7 +118,7 @@ func testGoodDeniedTraffic(kubectl *helpers.Kubectl) func(t *testing.T) {
 
         // Check 3: Denial was logged
         flows, _ := kubectl.ExecInCilium(
-            "hubble observe --type l7 --verdict DENIED --last 5 -o json")
+            "hubble observe --type l7 --verdict DROPPED --last 5 -o json")
         if !containsMyProtocolDenial(flows) {
             t.Error("Denial not recorded in Hubble flows")
         }
@@ -151,13 +151,13 @@ Run tests multiple times and analyze consistency:
 for i in $(seq 1 5); do
     echo "=== Run $i ==="
     go test -tags=integration ./proxylib/myprotocol/... -v -timeout 10m -count=1 2>&1 | \
-        grep -E "--- PASS|--- FAIL" | tee -a /tmp/runtime-results.txt
+        grep -E -- "--- PASS|--- FAIL" | tee -a /tmp/runtime-results.txt
 done
 
 # Analyze results
 echo ""
 echo "=== Reliability Analysis ==="
-TOTAL=$(grep -c "---" /tmp/runtime-results.txt)
+TOTAL=$(grep -c -- "---" /tmp/runtime-results.txt)
 PASSES=$(grep -c "PASS" /tmp/runtime-results.txt)
 echo "Total: $TOTAL, Passes: $PASSES, Rate: $(echo "scale=1; $PASSES*100/$TOTAL" | bc)%"
 
