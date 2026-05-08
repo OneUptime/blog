@@ -10,7 +10,7 @@ Description: How to create and secure a sample CiliumNetworkPolicy with best pra
 
 ## Introduction
 
-A well-crafted CiliumNetworkPolicy is the building block of Kubernetes network security. Cilium extends standard Kubernetes NetworkPolicy with identity-based enforcement, L7 HTTP/gRPC filtering, DNS-aware rules, and CIDR-based access control. This guide walks through creating a comprehensive sample policy that demonstrates these capabilities.
+A well-crafted CiliumNetworkPolicy is the building block of Kubernetes network security. Cilium extends standard Kubernetes NetworkPolicy with identity-based enforcement, L7 HTTP/gRPC filtering, DNS-aware rules, and CIDR-based access control. This guide walks through creating a comprehensive sample policy that demonstrates several of these capabilities.
 
 Understanding how to build secure policies from scratch is essential before applying them to production workloads. The sample policy in this guide covers common patterns you will encounter in real deployments.
 
@@ -69,7 +69,20 @@ spec:
         - name: api
           image: nginx:1.27
           ports:
-            - containerPort: 8080
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-backend
+  namespace: default
+spec:
+  selector:
+    app: api-backend
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
 ```
 
 ## Comprehensive Sample Policy
@@ -89,13 +102,13 @@ spec:
   
   # Ingress rules - who can reach this service
   ingress:
-    # Allow frontend to access API on port 8080
+    # Allow frontend to access API on port 80
     - fromEndpoints:
         - matchLabels:
             app: web-frontend
       toPorts:
         - ports:
-            - port: "8080"
+            - port: "80"
               protocol: TCP
           rules:
             http:
@@ -122,7 +135,10 @@ spec:
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
     # Allow access to database
     - toEndpoints:
         - matchLabels:
@@ -146,7 +162,7 @@ kubectl apply -f secure-sample-policy.yaml
 
 ```mermaid
 graph LR
-    A[Web Frontend] -->|GET/POST /api/v1/*| B[API Backend]
+    A[Web Frontend] -->|GET/POST /api/v1/* on :80| B[API Backend]
     C[Prometheus] -->|:9090| B
     B -->|:53| D[kube-dns]
     B -->|:5432| E[Database]
@@ -171,10 +187,10 @@ kubectl get ciliumnetworkpolicies -n default
 kubectl get ciliumendpoints -n default -o json | jq '.items[] | select(.metadata.labels.app == "api-backend") | .status.policy'
 
 # Test allowed traffic
-kubectl exec deploy/web-frontend -- curl -s http://api-backend:8080/api/v1/test
+kubectl exec deploy/web-frontend -- curl -s http://api-backend/api/v1/test
 
 # Test denied traffic (wrong method)
-kubectl exec deploy/web-frontend -- curl -s -X DELETE http://api-backend:8080/api/v1/test
+kubectl exec deploy/web-frontend -- curl -s -X DELETE http://api-backend/api/v1/test
 ```
 
 ## Troubleshooting
