@@ -10,7 +10,7 @@ Description: Proactive measures and best practices to prevent CIDRNotAvailable e
 
 ## Introduction
 
-CIDRNotAvailable errors occur when Calico cannot find a suitable CIDR block to allocate IPs from. This typically happens when the pod CIDR configured in kubeadm does not match the Calico IPPool configuration, or when the IP address space is exhausted.
+CIDRNotAvailable events occur when Kubernetes node CIDR allocation is enabled but the controller manager cannot allocate a pod CIDR for a node. In kubeadm clusters, this can happen when `--pod-network-cidr` enables node CIDR allocation even though Calico IPAM does not use Kubernetes `Node.spec.podCIDR` allocations, or when the Kubernetes cluster CIDR is too small for the number of nodes.
 
 Prevention is always better than remediation. This guide covers the proactive steps, configuration practices, and operational habits that prevent CIDRNotAvailable errors from occurring in the first place.
 
@@ -29,10 +29,13 @@ Validate Calico configurations before applying them to production:
 ```bash
 # Use calicoctl to validate manifests
 
-calicoctl apply -f calico-config.yaml --dry-run
+calicoctl validate -f calico-config.yaml
 
 # Compare your manifest against the live configuration
 diff <(calicoctl get ippools -o yaml) ippool.yaml
+
+# Check whether Kubernetes node CIDR allocation is enabled
+kubectl -n kube-system get pod -l component=kube-controller-manager -o yaml | grep -E 'allocate-node-cidrs|cluster-cidr'
 ```
 
 Store all Calico resource manifests in version control and require code review for changes.
@@ -48,7 +51,7 @@ set -euo pipefail
 
 for manifest in calico-resources/*.yaml; do
   echo "Validating $manifest..."
-  calicoctl apply -f "$manifest" --dry-run || exit 1
+  calicoctl validate -f "$manifest" || exit 1
 done
 
 echo "All Calico manifests are valid."
@@ -59,6 +62,9 @@ echo "All Calico manifests are valid."
 Set up monitoring to detect drift before it causes errors:
 
 ```bash
+# Check for CIDR allocation events on nodes
+kubectl get events -A --field-selector reason=CIDRNotAvailable
+
 # Check IPAM usage regularly
 calicoctl ipam show
 
