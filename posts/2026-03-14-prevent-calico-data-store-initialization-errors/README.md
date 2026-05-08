@@ -10,7 +10,7 @@ Description: Proactive measures and best practices to prevent Data Store Initial
 
 ## Introduction
 
-Calico data store initialization errors occur when calico-node or kube-controllers cannot connect to or initialize the Calico datastore. This prevents Calico from starting and blocks all pod networking.
+Calico data store initialization errors occur when calico-node or kube-controllers cannot connect to or initialize the Calico datastore. This can prevent affected Calico components from starting and disrupt pod networking.
 
 Prevention is always better than remediation. This guide covers the proactive steps, configuration practices, and operational habits that prevent Data Store Initialization errors from occurring in the first place.
 
@@ -29,7 +29,7 @@ Validate Calico configurations before applying them to production:
 ```bash
 # Use calicoctl to validate manifests
 
-calicoctl apply -f calico-config.yaml --dry-run
+calicoctl validate -f calico-config.yaml
 
 # Compare your manifest against the live configuration
 diff <(calicoctl get ippools -o yaml) ippool.yaml
@@ -48,7 +48,7 @@ set -euo pipefail
 
 for manifest in calico-resources/*.yaml; do
   echo "Validating $manifest..."
-  calicoctl apply -f "$manifest" --dry-run || exit 1
+  calicoctl validate -f "$manifest" || exit 1
 done
 
 echo "All Calico manifests are valid."
@@ -106,6 +106,7 @@ calicoctl get globalnetworkpolicies -o yaml > pre-upgrade-gnp.yaml
 
 # Verify cluster health before upgrading
 kubectl get pods -n calico-system
+# Run on a host where calico-node is running
 calicoctl node status
 ```
 
@@ -198,6 +199,7 @@ kubectl get pods -n calico-system -o wide
 calicoctl ipam check
 
 # Layer 3: Node-to-node connectivity
+# Run on a host where calico-node is running
 calicoctl node status
 
 # Layer 4: Pod-to-pod connectivity
