@@ -40,10 +40,9 @@ All must be healthy before upgrading.
 Confirm worker nodes can reach the management cluster API server.
 
 ```bash
-# From a pod on the worker nodes
-
-kubectl exec -n calico-system -it <calico-node-pod> -- curl -sk \
-  https://kubernetes.default.svc.cluster.local/healthz
+API_SERVER_URL=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+kubectl run api-check --rm -i --restart=Never --image=curlimages/curl -- \
+  curl -sk "${API_SERVER_URL}/readyz"
 ```
 
 ## Step 3: Backup Calico Configuration
@@ -57,7 +56,7 @@ kubectl get installation default -o yaml > installation-backup.yaml
 ## Step 4: Upgrade the Tigera Operator
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/ocp/tigera-operator.yaml
+kubectl apply --server-side --force-conflicts -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator-ocp-upgrade.yaml
 kubectl rollout status deployment/tigera-operator -n tigera-operator
 ```
 
@@ -87,6 +86,7 @@ Test pod connectivity:
 
 ```bash
 kubectl run verify --image=busybox -- sleep 60
+kubectl wait --for=condition=Ready pod/verify --timeout=60s
 kubectl exec verify -- ping -c3 kubernetes.default.svc.cluster.local
 kubectl delete pod verify
 ```
