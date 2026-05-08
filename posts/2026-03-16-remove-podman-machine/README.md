@@ -29,9 +29,9 @@ Podman will prompt you for confirmation before proceeding:
 ```text
 The following files will be deleted:
 
-/home/user/.local/share/containers/podman/machine/qemu/my-machine.json
-/home/user/.local/share/containers/podman/machine/qemu/my-machine_ovmf_vars.fd
-/home/user/.local/share/containers/podman/machine/qemu/my-machine_vlan.sock
+/home/user/.config/containers/podman/machine/qemu/my-machine.json
+/home/user/.config/containers/podman/machine/qemu/my-machine.ign
+/home/user/.local/share/containers/podman/machine/qemu/my-machine_fedora-coreos.qcow2
 
 Are you sure you want to continue? [y/N]
 ```
@@ -75,8 +75,8 @@ The default machine (named `podman-machine-default`) is removed the same way.
 # Remove the default machine
 podman machine rm podman-machine-default
 
-# Or simply omit the name if it is the active default
-podman machine rm --force podman-machine-default
+# Or omit the name to remove podman-machine-default
+podman machine rm --force
 ```
 
 ## Removing All Machines
@@ -100,7 +100,7 @@ After removing a machine, confirm it is gone.
 podman machine ls
 
 # Check that the specific machine no longer appears
-podman machine ls --format "{{.Name}}" | grep -q "my-machine" && echo "Still exists" || echo "Successfully removed"
+podman machine ls --format "{{.Name}}" | grep -Fxq "my-machine" && echo "Still exists" || echo "Successfully removed"
 ```
 
 ## Cleaning Up Residual Files
@@ -108,11 +108,11 @@ podman machine ls --format "{{.Name}}" | grep -q "my-machine" && echo "Still exi
 In rare cases, some files may remain after removal. You can clean these up manually.
 
 ```bash
-# Check for leftover machine configuration files (Linux)
-ls ~/.local/share/containers/podman/machine/
-
-# Check for leftover machine configuration files (macOS)
+# Check for leftover machine configuration files
 ls ~/.config/containers/podman/machine/
+
+# Check for leftover machine image files
+ls ~/.local/share/containers/podman/machine/
 
 # Remove leftover socket files if they exist
 rm -f /tmp/podman-machine-*.sock
@@ -120,10 +120,10 @@ rm -f /tmp/podman-machine-*.sock
 
 ## Removing a Machine and Its Associated Images
 
-Removing a machine does not remove container images stored on other machines. If you want to clean up images before removing the machine, do so while the machine is still running.
+Removing a machine removes that VM and its image file. If you want to prune unused container images and other resources inside the machine before deleting it, do so while the machine is still running.
 
 ```bash
-# Remove all images on the machine first
+# Prune unused images and other unused resources on the machine first
 podman --connection my-machine system prune --all --force
 
 # Then remove the machine itself
@@ -141,7 +141,7 @@ Here is a complete script that safely removes a machine with proper checks:
 MACHINE_NAME="${1:?Usage: $0 <machine-name>}"
 
 # Check if machine exists
-if ! podman machine ls --format "{{.Name}}" | grep -q "^${MACHINE_NAME}$"; then
+if ! podman machine ls --format "{{.Name}}" | grep -Fxq "$MACHINE_NAME"; then
     echo "Error: Machine '$MACHINE_NAME' does not exist"
     podman machine ls
     exit 1
@@ -160,7 +160,7 @@ echo "Removing machine '$MACHINE_NAME'..."
 podman machine rm --force "$MACHINE_NAME"
 
 # Verify removal
-if ! podman machine ls --format "{{.Name}}" | grep -q "^${MACHINE_NAME}$"; then
+if ! podman machine ls --format "{{.Name}}" | grep -Fxq "$MACHINE_NAME"; then
     echo "Machine '$MACHINE_NAME' successfully removed"
 else
     echo "Warning: Machine '$MACHINE_NAME' may not have been fully removed"
