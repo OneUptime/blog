@@ -70,8 +70,8 @@ kubectl get nodes -o wide
 # Test connectivity from a debug pod
 kubectl run debug-net --image=busybox --rm -it --restart=Never -- ping -c 3 <target-ip>
 
-# Check calico-node status per node
-calicoctl node status
+# Check calico-node status on the current node; run this on each affected node
+sudo calicoctl node status
 ```
 
 ## Step 4: Collect a Diagnostic Bundle
@@ -80,7 +80,7 @@ For complex issues, collect a full diagnostic bundle:
 
 ```bash
 # Collect Calico diagnostic information
-calicoctl node diag
+calicoctl cluster diags
 
 # Collect cluster-wide Calico state
 calicoctl get nodes -o yaml > calico-nodes.yaml
@@ -98,13 +98,13 @@ kubectl get events -A --sort-by='.lastTimestamp' | grep -i "error\|warning" | ta
 
 # Verify Calico system health
 kubectl get pods -n calico-system
-calicoctl node status
+sudo calicoctl node status
 ```
 
 ## Troubleshooting
 
 **Cannot access calico-node pods for diagnostics:**
-- Use `kubectl debug node/<name>` to get a shell on the node directly.
+- Use `kubectl debug node/<name> -it --image=busybox` to get a shell on the node directly.
 - Check if the calico-system namespace exists: `kubectl get ns calico-system`.
 
 **calicoctl commands failing:**
@@ -147,8 +147,8 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether you can create Calico global network policies
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
