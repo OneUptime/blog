@@ -10,7 +10,7 @@ Description: Learn how to disable the built-in DNS server in Podman networks and
 
 > Disabling DNS on a Podman network removes the automatic name resolution service, which can be useful when you manage DNS externally or want to reduce overhead.
 
-By default, custom Podman networks run the aardvark-dns plugin for container name resolution. In some cases, you may want to disable this built-in DNS and rely on external DNS servers or IP-based addressing instead.
+By default, bridge-based custom Podman networks use the aardvark-dns plugin for container name resolution. In some cases, you may want to disable this built-in DNS and rely on external DNS servers or IP-based addressing instead.
 
 ---
 
@@ -50,7 +50,7 @@ podman exec svc1 ping -c 2 "$SVC2_IP"
 - **External DNS management**: When you use an external DNS server like Consul, CoreDNS, or BIND
 - **Performance optimization**: Removing the aardvark-dns overhead for high-throughput networks
 - **IP-based communication**: When containers communicate only via static IPs
-- **Default bridge behavior**: Matching Docker's default bridge behavior where DNS is not available
+- **Default bridge behavior**: Matching Docker's default bridge behavior where container-name DNS is not available
 
 ## Using External DNS Instead
 
@@ -100,7 +100,7 @@ Without DNS, you can use `--add-host` to provide name resolution:
 ```bash
 # Add static host entries for name resolution
 podman run -d --name client \
-  --network no-dns-network \
+  --network static-network \
   --add-host web:10.80.0.10 \
   --add-host api:10.80.0.20 \
   --add-host db:10.80.0.30 \
