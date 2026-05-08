@@ -47,6 +47,7 @@ Description=My application with env file
 
 [Container]
 Image=docker.io/myorg/myapp:latest
+ContainerName=myapp
 # Load environment variables from an external file
 EnvironmentFile=%h/.config/containers/systemd/myapp.env
 PublishPort=3000:3000
@@ -87,18 +88,6 @@ EnvironmentFile=%h/.config/containers/systemd/myapp.env
 Environment=LOG_LEVEL=debug
 ```
 
-## Optional Environment Files
-
-Prefix the path with a dash to make the file optional (no error if missing):
-
-```ini
-[Container]
-Image=docker.io/myorg/myapp:latest
-EnvironmentFile=%h/.config/containers/systemd/myapp.env
-# Optional overrides file - no error if it does not exist
-EnvironmentFile=-%h/.config/containers/systemd/myapp-overrides.env
-```
-
 ## Reload and Verify
 
 ```bash
@@ -114,4 +103,4 @@ podman exec myapp env | sort
 
 ## Summary
 
-Environment files keep your Quadlet container files clean and make it easy to manage configuration separately. Use `EnvironmentFile` to load variables from external files, combine multiple files for layered configuration, and prefix paths with a dash to make files optional.
+Environment files keep your Quadlet container files clean and make it easy to manage configuration separately. Use `EnvironmentFile` to load variables from external files and combine multiple files for layered configuration.
