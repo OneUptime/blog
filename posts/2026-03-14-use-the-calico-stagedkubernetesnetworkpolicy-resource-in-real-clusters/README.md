@@ -28,29 +28,28 @@ For clusters with fewer than 50 nodes, a straightforward StagedKubernetesNetwork
 
 ```bash
 # Verify current StagedKubernetesNetworkPolicy resources
+kubectl get stagedkubernetesnetworkpolicies.projectcalico.org --all-namespaces -o yaml
 
-calicoctl get stagedkubernetesnetworkpolicy -o yaml
-
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Inspect a specific staged policy before creating the enforced NetworkPolicy
+kubectl describe stagedkubernetesnetworkpolicy.projectcalico.org <policy-name> -n <namespace>
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), you can use namespace labels and Kubernetes NetworkPolicy selectors to scope staged policies:
 
 ```bash
-# Label nodes by environment
-kubectl label node worker-1 environment=production
-kubectl label node worker-2 environment=staging
+# Label namespaces by environment
+kubectl label namespace production environment=production
+kubectl label namespace staging environment=staging
 
 # Verify labels
-kubectl get nodes --show-labels | grep environment
+kubectl get namespaces --show-labels | grep environment
 ```
 
-Then reference these labels in your StagedKubernetesNetworkPolicy manifest's node selectors to apply environment-specific settings.
+Then reference these labels in your StagedKubernetesNetworkPolicy manifest's `namespaceSelector` peers, and use `podSelector` to select the workloads in the policy's namespace.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,7 +64,7 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Keep staged policies targeted with `podSelector` and `namespaceSelector` so Felix evaluates only the intended workloads
 - Use Typha to reduce the number of direct datastore connections
 - Monitor memory usage of calico-node pods when managing many StagedKubernetesNetworkPolicy resources
 
@@ -78,7 +77,7 @@ The StagedKubernetesNetworkPolicy resource works together with other Calico reso
 kubectl get crds | grep projectcalico
 
 # View all Calico configuration resources
-calicoctl get stagedkubernetesnetworkpolicy -o yaml
+kubectl get stagedkubernetesnetworkpolicies.projectcalico.org --all-namespaces -o yaml
 calicoctl get felixconfiguration -o yaml
 calicoctl get ippools -o yaml
 ```
@@ -91,18 +90,18 @@ Set up ongoing monitoring for your StagedKubernetesNetworkPolicy resources:
 
 ```bash
 # Watch for changes to StagedKubernetesNetworkPolicy resources
-kubectl get stagedkubernetesnetworkpolicy.projectcalico.org -w
+kubectl get stagedkubernetesnetworkpolicies.projectcalico.org --all-namespaces -w
 
 # Set up alerts on calico-node restarts
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if Felix health checks are enabled and the health server is reachable from where you run the command:
 
 ```bash
 # Check if Felix is reporting healthy
-curl -s http://<node-ip>:9099/liveness
-curl -s http://<node-ip>:9099/readiness
+curl -s http://localhost:9099/liveness
+curl -s http://localhost:9099/readiness
 ```
 
 ## Verification
@@ -110,7 +109,7 @@ curl -s http://<node-ip>:9099/readiness
 After configuring the StagedKubernetesNetworkPolicy resource for your production use case, run a comprehensive check:
 
 ```bash
-# Verify Calico system health
+# Verify the local Calico node process and BGP peering status
 calicoctl node status
 
 # Ensure all calico-node pods are healthy
@@ -123,17 +122,17 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 ## Troubleshooting
 
 **Resource configuration not taking effect:**
-- Verify the resource is correctly applied: `calicoctl get stagedkubernetesnetworkpolicy -o yaml`.
-- Check Felix logs for configuration reload messages.
+- Verify the resource is correctly applied: `kubectl get stagedkubernetesnetworkpolicies.projectcalico.org --all-namespaces -o yaml`.
+- Check Felix logs for policy update messages.
 - Ensure Typha is relaying updates: `kubectl logs -n calico-system -l k8s-app=calico-typha --tail=20`.
 
 **Performance degradation after configuration change:**
 - Check calico-node CPU and memory: `kubectl top pods -n calico-system`.
-- Review whether reconciliation intervals are too aggressive.
+- Review whether staged policy count or selector complexity increased unexpectedly.
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
-- Verify node selectors are matching the intended nodes.
+- Verify `podSelector` and `namespaceSelector` values are matching the intended workloads.
 - Check for node-specific FelixConfiguration overrides.
 
 
@@ -169,7 +168,8 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create stagedkubernetesnetworkpolicies.projectcalico.org --all-namespaces
+kubectl auth can-i --list --all-namespaces | grep projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
