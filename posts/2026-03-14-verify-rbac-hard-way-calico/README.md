@@ -68,7 +68,13 @@ rules:
       - networkpolicies
       - networksets
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  # Read-only access to global resources for context
+---
+# Separate read-only role for selected cluster-scoped Calico resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: calico-global-network-viewer
+rules:
   - apiGroups: ["crd.projectcalico.org"]
     resources:
       - globalnetworkpolicies
@@ -106,6 +112,10 @@ kubectl create rolebinding test-ns-admin-binding \
   --clusterrole=calico-namespace-network-admin \
   --serviceaccount=default:test-ns-admin \
   --namespace=default
+
+kubectl create clusterrolebinding test-ns-admin-global-view-binding \
+  --clusterrole=calico-global-network-viewer \
+  --serviceaccount=default:test-ns-admin
 
 kubectl create clusterrolebinding test-viewer-binding \
   --clusterrole=calico-network-viewer \
@@ -167,7 +177,7 @@ Beyond `auth can-i`, perform actual operations to confirm RBAC enforcement works
 ```yaml
 # test-calico-policy.yaml
 # Test policy for RBAC verification
-apiVersion: projectcalico.org/v3
+apiVersion: crd.projectcalico.org/v1
 kind: NetworkPolicy
 metadata:
   name: rbac-test-policy
@@ -211,8 +221,12 @@ for sa in test-cluster-admin test-ns-admin test-viewer; do
   echo ""
   echo "--- Service Account: ${sa} ---"
   for resource in globalnetworkpolicies networkpolicies ippools hostendpoints; do
+    scope_args=""
+    if [ "${resource}" = "networkpolicies" ]; then
+      scope_args="-n default"
+    fi
     for verb in get create delete; do
-      result=$(kubectl auth can-i ${verb} ${resource}.crd.projectcalico.org \
+      result=$(kubectl auth can-i ${verb} ${resource}.crd.projectcalico.org ${scope_args} \
         --as=system:serviceaccount:default:${sa} 2>&1)
       echo "${verb} ${resource}: ${result}"
     done
@@ -223,8 +237,8 @@ done
 ## Troubleshooting
 
 - **Unexpected "yes" for restricted users**: Check for overly broad ClusterRoleBindings. Run `kubectl get clusterrolebindings -o json` and filter by subject name to find all bindings for that account.
-- **Cluster admin gets "no"**: Verify the ClusterRoleBinding exists and references the correct ClusterRole. Check for typos in API group names (use `crd.projectcalico.org` for CRD-based access, not `projectcalico.org` which requires the Calico API server).
-- **RBAC works with kubectl but not calicoctl**: Ensure calicoctl is configured to use the same authentication context. When using Kubernetes API datastore, calicoctl respects Kubernetes RBAC.
+- **Cluster admin gets "no"**: Verify the ClusterRoleBinding exists and references the correct ClusterRole. Check for typos in API group names (use `crd.projectcalico.org` for CRD-based access, not `projectcalico.org` unless the Calico API server or native v3 CRDs are enabled).
+- **RBAC works with kubectl but not calicoctl**: Ensure calicoctl is configured to use the same authentication context. When using Kubernetes API datastore, calicoctl respects Kubernetes RBAC and also needs cluster-level `get` access to `clusterinformations` for version checks.
 - **Namespace admin can access other namespaces**: Verify you used RoleBinding (not ClusterRoleBinding) for namespace-scoped roles.
 
 ## Conclusion
