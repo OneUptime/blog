@@ -197,7 +197,7 @@ podman stats web-server postgres redis
 # One-shot stats (no streaming)
 podman stats --no-stream
 
-# Check container health
+# Check container status
 podman inspect web-server --format '{{.State.Status}}'
 ```
 
