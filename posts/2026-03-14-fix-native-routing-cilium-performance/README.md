@@ -28,7 +28,6 @@ This guide provides the specific steps and commands for native routing performan
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.0.0.0/8" \
@@ -42,26 +41,51 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 ```bash
 # If autoDirectNodeRoutes doesn't work (e.g., different subnets)
 
-# Use BGP control plane
+# Use BGP control plane to advertise PodCIDRs to upstream routers
 helm upgrade cilium cilium/cilium --namespace kube-system \
+  --reuse-values \
   --set bgpControlPlane.enabled=true
 
 # Configure BGP peering
 kubectl apply -f - <<YAML
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
-  name: bgp-peering
+  name: cilium-bgp
 spec:
-  virtualRouters:
-  - localASN: 65000
-    exportPodCIDR: true
-    neighbors:
-    - peerAddress: "10.0.0.1/32"
+  nodeSelector:
+    matchLabels: {}
+  bgpInstances:
+  - name: "instance-65000"
+    localASN: 65000
+    peers:
+    - name: "peer-65000-router"
       peerASN: 65000
-# Note: CiliumBGPPeeringPolicy (v2alpha1) is legacy.
-# For new deployments, use CiliumBGPClusterConfig, CiliumBGPPeerConfig,
-# and CiliumBGPAdvertisement resources instead.
+      peerAddress: "10.0.0.1"
+      peerConfigRef:
+        name: "cilium-peer"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: cilium-peer
+spec:
+  families:
+  - afi: ipv4
+    safi: unicast
+    advertisements:
+      matchLabels:
+        advertise: "bgp"
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: bgp-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+  - advertisementType: "PodCIDR"
 YAML
 ```
 
@@ -165,12 +189,13 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+timeout 5 kubectl -n kube-system exec ds/cilium -- \
+  cilium-dbg monitor --type drop | head -5 || echo "No drops in 5 seconds"
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -c "ready"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list | grep -c "not-ready"
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
