@@ -12,9 +12,9 @@ Description: Learn how to tune Calico networking for production environments usi
 
 Helm is the most popular Kubernetes package manager, and using it to manage Calico installations provides significant advantages: reproducible deployments, version-controlled configuration, and easy upgrades. For production environments, managing Calico through Helm values files also integrates naturally with GitOps workflows using tools like Flux or ArgoCD.
 
-Tuning Calico via Helm means expressing all performance and behavior settings as Helm values rather than post-install patches. This approach ensures that every cluster in your fleet has identical, auditable Calico configuration, and that configuration changes go through your standard code review and deployment process.
+Tuning Calico via Helm means expressing installation-time performance and behavior settings as Helm values rather than post-install patches. This approach ensures that every cluster in your fleet has identical, auditable Calico installation configuration, and that configuration changes go through your standard code review and deployment process.
 
-This guide covers how to structure Helm values for production Calico deployments, including MTU optimization, IPAM configuration, Felix tuning, and resource allocation - all expressed as Helm values for GitOps compatibility.
+This guide covers how to structure Helm values for production Calico deployments, including MTU optimization, IPAM configuration, metrics ports, and resource allocation - with Felix tuning applied declaratively through Calico resources for GitOps compatibility.
 
 ## Prerequisites
 
@@ -42,21 +42,20 @@ helm search repo projectcalico/tigera-operator --versions | head -10
 
 ## Step 2: Create a Production Helm Values File
 
-Define a production-ready Helm values file with all tuning parameters set.
+Define a production-ready Helm values file with installation tuning parameters set.
 
 ```yaml
 # calico-production-values.yaml
 # Production Helm values for Calico - store in version control
 
-tigera-operator:
-  # Resource limits for the Tigera operator
-  resources:
-    requests:
-      cpu: 100m
-      memory: 150Mi
-    limits:
-      cpu: 500m
-      memory: 300Mi
+# Resource limits for the Tigera operator pod
+resources:
+  requests:
+    cpu: 100m
+    memory: 150Mi
+  limits:
+    cpu: 500m
+    memory: 300Mi
 
 installation:
   # Use Calico CNI with eBPF-compatible configuration
@@ -76,9 +75,24 @@ installation:
       natOutgoing: Enabled
       nodeSelector: all()
 
-  # Resource limits for calico-node DaemonSet
+  # Metrics ports for calico-node and Typha
   nodeMetricsPort: 9091
   typhaMetricsPort: 9093
+
+  # Resource limits for the calico-node DaemonSet
+  calicoNodeDaemonSet:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: calico-node
+            resources:
+              requests:
+                cpu: 250m
+                memory: 256Mi
+              limits:
+                cpu: 1
+                memory: 512Mi
 ```
 
 ## Step 3: Deploy Calico with Production Values
@@ -98,9 +112,9 @@ kubectl get tigerastatus calico
 kubectl get pods -n calico-system
 ```
 
-## Step 4: Apply Felix Tuning via Helm Post-Install
+## Step 4: Apply Felix Tuning After Installation
 
-Some Felix parameters are best applied via calicoctl after the Helm installation completes.
+Some Felix parameters are applied through the `FelixConfiguration` resource after the Helm installation completes.
 
 ```bash
 # Wait for Calico to be fully ready
@@ -163,4 +177,4 @@ spec:
 
 ## Conclusion
 
-Managing Calico with Helm provides a consistent, auditable, and GitOps-compatible approach to production network configuration. By encoding all tuning parameters in Helm values files, you ensure reproducible deployments across environments and make it easy to apply, review, and roll back network configuration changes through standard development workflows.
+Managing Calico with Helm provides a consistent, auditable, and GitOps-compatible approach to production network configuration. By encoding installation parameters in Helm values files and managing Felix settings through Calico resources, you ensure reproducible deployments across environments and make it easy to apply, review, and roll back network configuration changes through standard development workflows.
