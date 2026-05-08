@@ -10,7 +10,7 @@ Description: Set up monitoring and alerting for iptables-based masquerading mode
 
 ## Introduction
 
-Monitoring iptables-based masquerading in cilium provides early warning when configuration drift, resource exhaustion, or component failures affect networking. Cilium can use iptables for masquerading instead of eBPF. The iptables mode is the legacy approach that provides broader kernel compatibility but lower performance compared to eBPF masquerading. It works by installing iptables MASQUERADE rules in the POSTROUTING chain for traffic leaving the pod CIDR.
+Monitoring iptables-based masquerading in cilium provides early warning when configuration drift, resource exhaustion, or component failures affect networking. Cilium can use iptables for masquerading instead of eBPF. The iptables mode is the legacy approach that works on all kernel versions, with lower performance compared to eBPF masquerading. By default, it masquerades traffic leaving on a non-Cilium network device.
 
 Without monitoring, issues in this area may only surface when applications experience connectivity failures or performance degradation. Proactive monitoring with Prometheus metrics, Grafana dashboards, and alerting rules enables your team to respond before users are impacted.
 
@@ -34,12 +34,17 @@ Ensure Cilium exposes metrics for Prometheus:
 cilium config view | grep prometheus
 
 # If not enabled, upgrade Cilium with metrics
-helm upgrade cilium cilium/cilium --version 1.16.5 \
+helm upgrade cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
   --reuse-values \
   --set prometheus.enabled=true \
   --set operator.prometheus.enabled=true \
-  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}"
+  --set prometheus.serviceMonitor.enabled=true \
+  --set operator.prometheus.serviceMonitor.enabled=true \
+  --set hubble.enabled=true \
+  --set hubble.metrics.serviceMonitor.enabled=true \
+  --set hubble.metrics.enableOpenMetrics=true \
+  --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,httpV2}"
 
 # Verify metrics endpoint
 kubectl exec -n kube-system ds/cilium -- wget -qO- http://localhost:9962/metrics | head -20
@@ -51,22 +56,22 @@ Monitor these Prometheus metrics:
 
 ```bash
 # Primary metrics to track
-# cilium_datapath_conntrack_entries - core operational metric
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep "datapath_conntrack_entries"
+# cilium_datapath_conntrack_gc_entries - conntrack garbage-collection metric
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep "datapath_conntrack_gc_entries"
 
 # PromQL queries for Grafana panels:
 
-# Panel 1: Operational rate
-rate(cilium_datapath_conntrack_entries[5m])
+# Panel 1: Conntrack entries after garbage collection
+cilium_datapath_conntrack_gc_entries
 
 # Panel 2: Error rate
 rate(cilium_drop_count_total[5m])
 
 # Panel 3: Agent health
-cilium_agent_uptime_seconds
+up{job="cilium-agent"}
 
 # Panel 4: Endpoint state
-sum(cilium_endpoint_state) by (endpoint_state)
+sum(cilium_endpoint_state) by (state)
 
 # Panel 5: Policy evaluation
 rate(cilium_policy_l7_total[5m])
@@ -110,7 +115,7 @@ spec:
             description: "Cilium is dropping {{ $value }} packets/sec. Check iptables-based masquerading in cilium configuration."
         - alert: CiliumEndpointsNotReady
           expr: |
-            cilium_endpoint_state{endpoint_state="not-ready"} > 0
+            cilium_endpoint_state{state="not-ready"} > 0
           for: 10m
           labels:
             severity: warning
@@ -133,7 +138,7 @@ Create a Grafana dashboard for iptables-based masquerading in cilium:
 # Row 1: Health Overview
 # - Cilium Agent Status: sum(up{job="cilium-agent"})
 # - Operator Status: sum(up{job="cilium-operator"})
-# - Endpoint Count: sum(cilium_endpoint_state) by (endpoint_state)
+# - Endpoint Count: sum(cilium_endpoint_state) by (state)
 
 # Row 2: Traffic Metrics
 # - Forward Rate: rate(cilium_forward_count_total[5m])
@@ -142,7 +147,7 @@ Create a Grafana dashboard for iptables-based masquerading in cilium:
 
 # Row 3: Performance
 # - BPF Map Operations: rate(cilium_bpf_map_ops_total[5m])
-# - Conntrack Entries: cilium_datapath_conntrack_entries
+# - Conntrack Entries: cilium_datapath_conntrack_gc_entries
 # - API Call Rate: rate(cilium_k8s_client_api_calls_total[5m])
 ```
 
@@ -180,7 +185,7 @@ except: print('  Port-forward Prometheus first')
 kubectl get prometheusrules -n monitoring | grep cilium
 
 # Check that metrics are being collected
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | wc -l
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | wc -l
 ```
 
 ## Troubleshooting
@@ -188,7 +193,7 @@ kubectl exec -n kube-system ds/cilium -- cilium metrics list | wc -l
 - **No metrics in Prometheus**: Verify `prometheus.enabled=true` in Cilium Helm values. Check that the ServiceMonitor labels match your Prometheus operator configuration.
 - **Dashboard shows No Data**: Confirm the Grafana data source points to the correct Prometheus instance. Test PromQL queries directly in the Prometheus expression browser.
 - **Alerts not firing**: Check that PrometheusRule labels match the Prometheus operator's `ruleSelector`. Verify with `kubectl get prometheus -n monitoring -o yaml`.
-- **Hubble shows no flows**: Ensure Hubble is enabled with `cilium config view | grep hubble`. Restart Hubble relay if needed.
+- **Hubble shows no flows**: Ensure Hubble is enabled with `cilium config view | grep hubble` and `cilium-dbg status` from a Cilium pod. Restart Hubble relay if needed.
 
 ## Conclusion
 
