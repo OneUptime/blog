@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, podman-compose, Docker Compose
 
-Description: Learn how to run existing Docker Compose files using podman-compose without any modifications.
+Description: Learn how to run existing Docker Compose files using podman-compose with minimal or no modifications.
 
 ---
 
@@ -32,7 +32,6 @@ podman-compose up -d
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   web:
     image: docker.io/library/nginx:alpine
@@ -86,7 +85,7 @@ podman-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 
 ## Using Full Image References
 
-One key difference from Docker: always use fully qualified image names.
+One key difference from Docker: fully qualified image names are recommended with Podman to avoid short-name prompts or registry lookup issues.
 
 ```yaml
 # Instead of this:
