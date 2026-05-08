@@ -4,28 +4,30 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, GAMMA, Gateway API, Validation
 
-Description: Validate that Cilium's GAMMA controller is correctly processing HTTPRoutes and enforcing mesh routing rules in the eBPF datapath.
+Description: Validate that Cilium's Gateway API controller is correctly processing GAMMA HTTPRoutes and enforcing mesh routing rules through the Cilium L7 proxy.
 
 ---
 
 ## Introduction
 
-Validating Cilium GAMMA support in the Gateway API controller goes beyond checking route status conditions. True validation requires confirming that the eBPF programs compiled from GAMMA routes are loaded and actively enforcing the defined routing rules for real traffic.
+Validating Cilium GAMMA support in the Gateway API controller goes beyond checking route status conditions. True validation requires confirming that Gateway API support is enabled, Cilium is redirecting L7 traffic to Envoy, and the defined routing rules are enforced for real traffic.
 
 This guide provides a systematic validation checklist: starting from the controller configuration level down to live traffic verification.
 
 ## Prerequisites
 
-- Cilium with GAMMA enabled
-- Experimental Gateway API CRDs installed
+- Cilium with Gateway API enabled, kube-proxy replacement enabled, and the L7 proxy enabled
+- Gateway API CRDs installed
 - Test HTTPRoutes with Service parentRefs deployed
 
 ## Step 1: Validate Feature Configuration
 
 ```bash
-kubectl get cm -n kube-system cilium-config \
-  -o jsonpath='{.data.enable-gateway-api-gamma}'
-# Expected: true
+cilium config view | grep -E '^(enable-gateway-api|kube-proxy-replacement|enable-l7-proxy)\b'
+# Expected:
+# enable-gateway-api                                true
+# kube-proxy-replacement                            true
+# enable-l7-proxy                                   true
 
 kubectl get gatewayclass cilium \
   -o jsonpath='{.status.conditions[?(@.type=="Accepted")].status}'
@@ -39,16 +41,18 @@ kubectl get gatewayclass cilium \
 kubectl get crd | grep gateway.networking.k8s.io
 ```
 
-Should include `httproutes.gateway.networking.k8s.io`.
+Should include `httproutes.gateway.networking.k8s.io` and `referencegrants.gateway.networking.k8s.io`.
 
 ## Step 3: Validate HTTPRoute Reconciliation
 
 ```bash
 kubectl get httproute -A -o json | jq '
-  .items[] |
-  select(.spec.parentRefs[].kind == "Service") |
-  {name: .metadata.name, ns: .metadata.namespace,
-   accepted: (.status.parents[0].conditions[] |
+  .items[] as $route |
+  ($route.spec.parentRefs[]? |
+    select((.group // "") == "" and (.kind // "") == "Service")) as $parent |
+  {name: $route.metadata.name, ns: $route.metadata.namespace,
+   parent: $parent.name,
+   accepted: ($route.status.parents[]?.conditions[]? |
      select(.type=="Accepted") | .status)}'
 ```
 
@@ -59,15 +63,15 @@ sequenceDiagram
     participant Validator
     participant Config
     participant Controller
-    participant eBPF
+    participant Envoy
     participant Traffic
 
-    Validator->>Config: check enable-gateway-api-gamma
-    Config-->>Validator: true
+    Validator->>Config: check enable-gateway-api, kube-proxy-replacement, enable-l7-proxy
+    Config-->>Validator: true/true/true
     Validator->>Controller: list httproutes with Service parentRef
     Controller-->>Validator: Accepted=True
-    Validator->>eBPF: verify programs loaded
-    eBPF-->>Validator: confirmed
+    Validator->>Envoy: verify L7 traffic is proxied
+    Envoy-->>Validator: confirmed
     Validator->>Traffic: send test request
     Traffic-->>Validator: routed per rule
 ```
