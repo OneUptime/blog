@@ -8,9 +8,9 @@ Description: Learn how to mount a Podman container's filesystem directly to the 
 
 ---
 
-> Mounting a container's filesystem gives you direct host-level access to all its files without running commands inside the container.
+> Mounting a container's filesystem gives you direct host-level access to its root filesystem files without running commands inside the container.
 
-While `podman cp` and `podman exec` let you interact with container files, sometimes you need direct filesystem access from the host. The `podman mount` command exposes a container's entire filesystem as a regular directory on the host. This is powerful for debugging, forensic analysis, and bulk file operations.
+While `podman cp` and `podman exec` let you interact with container files, sometimes you need direct filesystem access from the host. The `podman mount` command exposes a container's root filesystem as a regular directory on the host. This is powerful for debugging, forensic analysis, and bulk file operations.
 
 ---
 
@@ -164,7 +164,7 @@ Check which containers are currently mounted:
 
 ```bash
 # List all mounted containers
-sudo podman mount --notruncate
+sudo podman mount --no-trunc
 
 # This shows container IDs and their mount points
 ```
