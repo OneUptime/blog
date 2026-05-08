@@ -10,7 +10,7 @@ Description: Zero Trust Calico network policies for high-connection workloads wh
 
 ## Introduction
 
-Zero Trust Security for High-Connection Workloads with Calico requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle high-connection workloads while maintaining strict access controls.
+Zero Trust Security for High-Connection Workloads with Calico requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle high-connection workloads while maintaining strict access controls. For workloads that can exceed Linux conntrack capacity, Calico can apply untracked policy to selected host endpoint traffic.
 
 This guide covers zero trust High-Connection Workloads in Calico with production-ready configurations.
 
@@ -18,32 +18,48 @@ This guide covers zero trust High-Connection Workloads in Calico with production
 
 - Kubernetes cluster with Calico v3.26+
 - `calicoctl` and `kubectl` installed
+- A host endpoint for the node interface that receives the high-connection traffic
 
 ## Core Configuration
 
 ```yaml
-# Optimize for high-connection workloads
+# Bypass conntrack for a high-connection service running on a host endpoint
 
 apiVersion: projectcalico.org/v3
-kind: NetworkPolicy
+kind: HostEndpoint
+metadata:
+  name: high-throughput-node-eth0
+  labels:
+    app: high-throughput-service
+spec:
+  interfaceName: eth0
+  node: high-throughput-node
+  expectedIPs:
+    - 10.0.0.10
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
 metadata:
   name: allow-high-connection-workload
-  namespace: production
 spec:
+  doNotTrack: true
+  applyOnForward: true
   order: 100
   selector: app == 'high-throughput-service'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'client'
+      destination:
+        ports: [9999]
   egress:
     - action: Allow
+      protocol: TCP
+      source:
+        ports: [9999]
       destination:
-        selector: app == 'backend-pool'
-    - action: Allow
-      protocol: UDP
-      destination:
-        ports: [53]
+        selector: tier == 'client'
   types:
     - Ingress
     - Egress
@@ -52,17 +68,15 @@ spec:
 ## Performance Tuning
 
 ```bash
-# Tune Felix for high-connection workloads
+# Enable Felix metrics for monitoring policy and dataplane behavior
 kubectl patch felixconfiguration default --type=merge -p '{
   "spec": {
-    "ipSetSize": 1048576,
-    "maxIpsetSize": 1048576,
     "prometheusMetricsEnabled": true
   }
 }'
 
 # Monitor connection tracking table
-kubectl exec -n kube-system calico-node-xxx -- conntrack -S
+kubectl exec -n kube-system <calico-node-pod> -c calico-node -- conntrack -S
 ```
 
 ## Architecture
