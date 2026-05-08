@@ -12,15 +12,15 @@ Description: A guide to tuning Calico for maximum performance and stability on b
 
 Bare metal hardware delivers the highest possible network performance, but realizing that performance with containerized workloads requires tuning the entire networking stack - from the NIC driver settings to Calico's internal timers. Default Calico settings leave significant performance on the table because they are tuned for compatibility across diverse environments rather than peak throughput on dedicated hardware.
 
-Production tuning on bare metal focuses on three areas: eliminating encapsulation overhead, enabling the eBPF dataplane for kernel-bypass processing, and tuning the Linux networking stack to support high packet rates. Each optimization is independent, and the cumulative effect can increase throughput by 30-50% compared to default settings.
+Production tuning on bare metal focuses on three areas: eliminating encapsulation overhead, enabling the eBPF dataplane to reduce iptables overhead, and tuning the Linux networking stack to support high packet rates. Each optimization is independent, and the cumulative effect can improve throughput and latency compared to default settings.
 
 This guide covers the key tuning parameters for production Calico deployments on bare metal with containers.
 
 ## Prerequisites
 
 - Calico installed on a bare metal Kubernetes cluster with containers
-- Nodes with Linux kernel 5.3+ for eBPF support
-- BGP-capable physical switches
+- Nodes with a Calico-supported eBPF kernel, such as Linux kernel 5.10+ or a supported distribution with backported eBPF features
+- A network fabric that can route pod CIDRs without an overlay, such as an on-prem cluster with BGP peering configured
 - `kubectl` and `calicoctl` installed
 
 ## Step 1: Disable Encapsulation
@@ -28,8 +28,13 @@ This guide covers the key tuning parameters for production Calico deployments on
 Remove VXLAN or IPIP overhead with native BGP routing.
 
 ```bash
+# For an IPIP pool
 calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec":{"encapsulation":"None"}}'
+  --patch '{"spec":{"ipipMode":"Never"}}'
+
+# For a VXLAN pool
+calicoctl patch ippool default-ipv4-ippool \
+  --patch '{"spec":{"vxlanMode":"Never"}}'
 ```
 
 ## Step 2: Enable eBPF Dataplane
@@ -37,13 +42,8 @@ calicoctl patch ippool default-ipv4-ippool \
 eBPF bypasses iptables entirely, reducing latency and CPU usage.
 
 ```bash
-# Disable kube-proxy
-
-kubectl patch ds kube-proxy -n kube-system \
-  -p '{"spec":{"template":{"spec":{"nodeSelector":{"non-calico":"true"}}}}}'
-
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{"bpfEnabled":true}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","bpfNetworkBootstrap":"Enabled","kubeProxyManagement":"Enabled"}}}'
 ```
 
 ## Step 3: Set Jumbo Frame MTU (If Supported)
@@ -54,9 +54,9 @@ If your physical network supports jumbo frames:
 # Verify switch and NIC support
 ip link show | grep mtu
 
-# Set Calico MTU
-kubectl patch installation default --type merge \
-  --patch '{"spec":{"calicoNetwork":{"mtu":9000}}}'
+# Set Calico MTU for a 9000-byte underlay in eBPF mode
+kubectl patch installation.operator.tigera.io default --type merge \
+  -p '{"spec":{"calicoNetwork":{"mtu":8950}}}'
 ```
 
 ## Step 4: Tune Linux Networking Stack
@@ -86,9 +86,9 @@ calicoctl patch felixconfiguration default \
   }}'
 ```
 
-## Step 6: Enable Hardware Offload (If Supported)
+## Step 6: Set eBPF Data Interface Pattern (If Needed)
 
-If your NICs support XDP hardware offload:
+If your nodes use a bonded or non-default uplink interface:
 
 ```bash
 calicoctl patch felixconfiguration default \
