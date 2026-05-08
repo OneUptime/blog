@@ -8,7 +8,7 @@ Description: Learn where to place Quadlet unit files for system-wide (rootful) P
 
 ---
 
-> System-level Quadlet files run containers as root with full system access, starting at boot before any user logs in.
+> System-level Quadlet files run rootful containers as system services, starting at boot before any user logs in.
 
 System services (rootful) run as root and start during the boot process. They are suitable for infrastructure services like reverse proxies, databases, and monitoring agents that must be available system-wide and not tied to any user session.
 
@@ -57,9 +57,6 @@ sudo systemctl daemon-reload
 # Start the system service
 sudo systemctl start nginx-proxy
 
-# Enable auto-start at boot
-sudo systemctl enable nginx-proxy
-
 # Check status
 sudo systemctl status nginx-proxy
 ```
@@ -92,12 +89,11 @@ WantedBy=multi-user.target
 # /etc/containers/systemd/node-exporter.container
 [Container]
 Image=docker.io/prom/node-exporter:latest
-PublishPort=9100:9100
 # Mount host filesystem for metrics collection
-Volume=/proc:/host/proc:ro
-Volume=/sys:/host/sys:ro
-Volume=/:/rootfs:ro
-PodmanArgs=--pid=host --net=host
+Volume=/:/host:ro,rslave
+Network=host
+PodmanArgs=--pid=host
+Exec=--path.rootfs=/host
 
 [Service]
 Restart=always
@@ -114,7 +110,7 @@ WantedBy=multi-user.target
 WantedBy=multi-user.target
 
 # multi-user.target starts after basic system initialization
-# This ensures network and filesystems are available
+# Quadlet adds network-online.target dependencies for root units by default
 ```
 
 ## Managing System Services
@@ -129,12 +125,6 @@ sudo systemctl stop nginx-proxy
 # View logs
 sudo journalctl -u nginx-proxy -f
 
-# Enable at boot
-sudo systemctl enable nginx-proxy
-
-# Disable at boot
-sudo systemctl disable nginx-proxy
-
 # Restart
 sudo systemctl restart nginx-proxy
 ```
@@ -143,7 +133,7 @@ sudo systemctl restart nginx-proxy
 
 ```bash
 # Preview generated unit files
-sudo /usr/libexec/podman/quadlet --dryrun
+sudo /usr/lib/systemd/system-generators/podman-system-generator --dryrun
 
 # Check for errors
 sudo systemctl status nginx-proxy
@@ -163,4 +153,4 @@ sudo chmod 644 /etc/containers/systemd/nginx-proxy.container
 
 ## Summary
 
-Place system-level Quadlet files in `/etc/containers/systemd/` for rootful containers that start at boot. Use `multi-user.target` in the `[Install]` section, manage with `sudo systemctl`, and view logs with `sudo journalctl`. System services run as root with full access to host resources.
+Place system-level Quadlet files in `/etc/containers/systemd/` for rootful containers that start at boot. Use `multi-user.target` in the `[Install]` section, manage with `sudo systemctl`, and view logs with `sudo journalctl`. System services run as root-owned services and can be given broad access to host resources through mounts and Podman options.
