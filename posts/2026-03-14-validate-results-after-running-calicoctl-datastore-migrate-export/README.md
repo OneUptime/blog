@@ -14,8 +14,8 @@ After running `calicoctl datastore migrate export`, thorough validation ensures 
 
 ## Prerequisites
 
-- Completed execution of `calicoctl datastore migrate export`
-- Access to source and/or target datastore
+- Completed execution of `calicoctl datastore migrate export > etcd-data`
+- Access to the source etcdv3 datastore
 - Pre-migration resource counts for comparison
 
 ## Validation Checklist
@@ -35,7 +35,11 @@ calicoctl version && echo "OK" || echo "FAIL"
 echo ""
 echo "--- Resource Counts ---"
 for r in nodes ippools globalnetworkpolicies networkpolicies bgpconfigurations bgppeers felixconfigurations; do
-  COUNT=$(calicoctl get "$r" 2>/dev/null | tail -n +2 | wc -l || echo 0)
+  if [ "$r" = "networkpolicies" ]; then
+    COUNT=$(calicoctl get "$r" --all-namespaces 2>/dev/null | tail -n +2 | wc -l || echo 0)
+  else
+    COUNT=$(calicoctl get "$r" 2>/dev/null | tail -n +2 | wc -l || echo 0)
+  fi
   echo "  $r: $COUNT"
 done
 
@@ -51,14 +55,10 @@ echo ""
 echo "--- Node Health ---"
 calicoctl get nodes -o wide
 
-# 5. Test pod connectivity
+# 5. Check existing pod networking
 echo ""
-echo "--- Connectivity Test ---"
-kubectl run migration-test --image=busybox --restart=Never -- sleep 30 2>/dev/null
-sleep 5
-POD_IP=$(kubectl get pod migration-test -o jsonpath='{.status.podIP}' 2>/dev/null)
-echo "Test pod IP: ${POD_IP:-FAILED}"
-kubectl delete pod migration-test --grace-period=0 2>/dev/null
+echo "--- Existing Pod IPs ---"
+kubectl get pods --all-namespaces -o wide
 ```
 
 ## Comparing with Pre-Migration State
@@ -67,16 +67,23 @@ kubectl delete pod migration-test --grace-period=0 2>/dev/null
 #!/bin/bash
 # compare-migration-state.sh
 
-BACKUP_DIR="$1"
-if [ -z "$BACKUP_DIR" ]; then
-  echo "Usage: $0 <backup-directory>"
+EXPORT_FILE="$1"
+if [ -z "$EXPORT_FILE" ]; then
+  echo "Usage: $0 <export-file>"
   exit 1
 fi
 
 echo "=== Comparing with Pre-Migration State ==="
 
 for r in nodes ippools globalnetworkpolicies bgpconfigurations; do
-  BEFORE=$(grep -c "name:" "$BACKUP_DIR/$r.yaml" 2>/dev/null || echo 0)
+  case "$r" in
+    nodes) KIND="Node" ;;
+    ippools) KIND="IPPool" ;;
+    globalnetworkpolicies) KIND="GlobalNetworkPolicy" ;;
+    bgpconfigurations) KIND="BGPConfiguration" ;;
+  esac
+
+  BEFORE=$(grep -c "kind: $KIND" "$EXPORT_FILE" 2>/dev/null || echo 0)
   AFTER=$(calicoctl get "$r" 2>/dev/null | tail -n +2 | wc -l || echo 0)
   
   if [ "$BEFORE" = "$AFTER" ]; then
@@ -91,14 +98,14 @@ done
 
 ```bash
 ./validate-migration-step.sh
-./compare-migration-state.sh migration-backup-*/
+./compare-migration-state.sh etcd-data
 ```
 
 ## Troubleshooting
 
 - **Resource count mismatch**: Some system resources may be auto-created or excluded. Check which specific resources differ.
-- **Connectivity test fails**: The migration may have temporarily disrupted networking. Wait 30 seconds and retry.
-- **Cannot connect after migration**: Verify the DATASTORE_TYPE is set correctly for the target datastore.
+- **Existing pods have no IPs**: The migration may have temporarily disrupted networking. Wait 30 seconds and retry.
+- **Cannot connect after export**: Verify the DATASTORE_TYPE is set to `etcdv3` for the source datastore.
 
 ## Conclusion
 
