@@ -74,7 +74,7 @@ kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metada
 If the IP is already allocated to a pod, you have two options:
 
 1. Add the reservation and restart the affected pod so it gets a new IP
-2. Wait for the pod to naturally terminate before adding the reservation
+2. Add the reservation and wait for the pod to naturally terminate so the IP is not automatically reused
 
 ## Removing Reserved IPs Safely
 
@@ -177,7 +177,9 @@ done
 kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.podIP}{"\n"}{end}' | grep test-
 
 # Clean up test pods
-kubectl delete pod -l run --field-selector=status.phase=Succeeded
+for i in $(seq 1 5); do
+  kubectl delete pod test-$i --ignore-not-found
+done
 ```
 
 ## Troubleshooting
