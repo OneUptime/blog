@@ -21,6 +21,7 @@ Whether you are running a small development cluster or a large production enviro
 - A running Kubernetes cluster (v1.21+) with Cilium installed (v1.14+)
 - `kubectl` configured for cluster access
 - `cilium` CLI installed (matching your Cilium version)
+- Fish shell installed for validating the generated completion file
 - Helm 3.x for configuration management
 - Basic familiarity with Kubernetes networking concepts
 - Access to cluster nodes for troubleshooting (recommended)
@@ -31,51 +32,67 @@ Whether you are running a small development cluster or a large production enviro
 Automating cilium-agent shell completion for Fish reduces operational overhead and ensures consistency across environments.
 
 ```bash
-# Create an automation script for common operations
+# Create an automation script for cilium-agent Fish completion
 
 cat > /tmp/cilium-automation.sh << 'SCRIPT'
 #!/bin/bash
 # Cilium automation script
-# This script automates common Cilium operational tasks
+# This script automates cilium-agent Fish shell completion setup
 
 set -euo pipefail
 
-# Function: Health check
-health_check() {
-    echo "Running Cilium health check..."
-    cilium status --brief
-    cilium health status 2>/dev/null || echo "Health check requires running cluster"
-    echo "Identity count: $(cilium identity list 2>/dev/null | wc -l || echo 'N/A')"
-    echo "Endpoint count: $(cilium endpoint list 2>/dev/null | wc -l || echo 'N/A')"
+CILIUM_NAMESPACE="${CILIUM_NAMESPACE:-kube-system}"
+COMPLETION_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
+COMPLETION_FILE="$COMPLETION_DIR/cilium-agent.fish"
+
+get_cilium_pod() {
+    kubectl -n "$CILIUM_NAMESPACE" get pods -l k8s-app=cilium \
+        -o jsonpath='{.items[0].metadata.name}'
 }
 
-# Function: Collect diagnostics
-collect_diagnostics() {
-    local output_dir="${1:-/tmp/cilium-diagnostics}"
-    mkdir -p "$output_dir"
-    
-    cilium status --verbose > "$output_dir/status.txt" 2>&1
-    cilium endpoint list > "$output_dir/endpoints.txt" 2>&1
-    cilium identity list > "$output_dir/identities.txt" 2>&1
-    cilium metrics list > "$output_dir/metrics.txt" 2>&1
-    kubectl top pods -n kube-system -l k8s-app=cilium > "$output_dir/resources.txt" 2>&1
-    
-    echo "Diagnostics collected in $output_dir"
+install_completion() {
+    local pod
+    pod="$(get_cilium_pod)"
+    if [ -z "$pod" ]; then
+        echo "No Cilium pod found in namespace $CILIUM_NAMESPACE" >&2
+        exit 1
+    fi
+
+    mkdir -p "$COMPLETION_DIR"
+    kubectl -n "$CILIUM_NAMESPACE" exec "$pod" -c cilium-agent -- \
+        cilium-agent completion fish > "$COMPLETION_FILE"
+
+    echo "Installed Fish completion to $COMPLETION_FILE"
+    echo "Start a new Fish shell for the completion to take effect."
 }
 
-# Function: Validate configuration
-validate_config() {
-    echo "Validating Cilium configuration..."
-    cilium config view > /dev/null 2>&1 && echo "Config: OK" || echo "Config: FAILED"
-    cilium status > /dev/null 2>&1 && echo "Status: OK" || echo "Status: FAILED"
+validate_completion() {
+    test -s "$COMPLETION_FILE"
+    grep -q "cilium-agent" "$COMPLETION_FILE"
+    if command -v fish >/dev/null 2>&1; then
+        fish -n "$COMPLETION_FILE"
+    fi
+    echo "Completion file is present and valid."
+}
+
+show_completion() {
+    local pod
+    pod="$(get_cilium_pod)"
+    if [ -z "$pod" ]; then
+        echo "No Cilium pod found in namespace $CILIUM_NAMESPACE" >&2
+        exit 1
+    fi
+
+    kubectl -n "$CILIUM_NAMESPACE" exec "$pod" -c cilium-agent -- \
+        cilium-agent completion fish | head -20
 }
 
 # Main
 case "${1:-help}" in
-    health) health_check ;;
-    diagnostics) collect_diagnostics "${2:-}" ;;
-    validate) validate_config ;;
-    *) echo "Usage: $0 {health|diagnostics|validate}" ;;
+    install) install_completion ;;
+    validate) validate_completion ;;
+    show) show_completion ;;
+    *) echo "Usage: $0 {install|validate|show}" ;;
 esac
 SCRIPT
 chmod +x /tmp/cilium-automation.sh
@@ -106,19 +123,21 @@ jobs:
           sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
       - name: Validate Helm Template
         run: |
+          helm repo add cilium https://helm.cilium.io/
+          helm repo update
           helm template cilium cilium/cilium -f k8s/cilium/values.yaml > /dev/null
 ```
 
 ## Scheduled Automation
 
 ```bash
-# Create a cron job for regular health checks
+# Create a cron job for regular completion refresh
 # Add to crontab: crontab -e
-# Run health check every hour
-# 0 * * * * /tmp/cilium-automation.sh health >> /var/log/cilium-health.log 2>&1
+# Refresh the generated cilium-agent Fish completion daily
+# 0 2 * * * /tmp/cilium-automation.sh install >> /var/log/cilium-agent-completion.log 2>&1
 
-# Run diagnostics collection daily
-# 0 2 * * * /tmp/cilium-automation.sh diagnostics /tmp/cilium-daily-$(date +\%Y\%m\%d)
+# Validate the generated completion file every hour
+# 0 * * * * /tmp/cilium-automation.sh validate >> /var/log/cilium-agent-completion.log 2>&1
 ```
 
 ```mermaid
@@ -127,10 +146,10 @@ flowchart TD
     B -->|Scheduled| C[Cron Job]
     B -->|CI/CD| D[Pipeline Step]
     B -->|Manual| E[CLI Invocation]
-    C --> F[Health Check]
-    D --> G[Validate Config]
-    E --> H[Collect Diagnostics]
-    F --> I[Log Results]
+    C --> F[Refresh Completion]
+    D --> G[Validate Helm Template]
+    E --> H[Install or Preview Completion]
+    F --> I[Update Completion File]
     G --> I
     H --> I
 ```
@@ -141,14 +160,20 @@ flowchart TD
 After completing the steps above, run a comprehensive verification to confirm everything is working as expected.
 
 ```bash
-# Check overall Cilium deployment health
-cilium status --verbose
+# Generate and install the cilium-agent Fish completion
+/tmp/cilium-automation.sh install
 
-# Verify inter-node connectivity
-cilium health status
+# Validate the generated completion file
+/tmp/cilium-automation.sh validate
+
+# Preview the generated completion content
+/tmp/cilium-automation.sh show
 
 # Confirm all Cilium pods are running and ready
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
+
+# Check overall Cilium deployment health
+cilium status --verbose
 
 # Verify the Cilium operator is healthy
 kubectl get pods -n kube-system -l name=cilium-operator
@@ -158,9 +183,6 @@ kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tai
 
 # Run a connectivity test to validate the data plane
 cilium connectivity test --single-node
-
-# Verify endpoint count matches expected pod count
-echo "Cilium endpoints: $(cilium endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
 ```
 
 ## Troubleshooting
@@ -169,15 +191,15 @@ If you encounter issues during or after the steps in this guide, use the followi
 
 - **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 4.19 or later. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
 
-- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `cilium policy get`. Verify inter-node tunnel connectivity with `cilium bpf tunnel list`.
+- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `kubectl get ciliumnetworkpolicies,ciliumclusterwidenetworkpolicies --all-namespaces`. For node-local datapath details, run `cilium-dbg` commands inside the relevant Cilium pod.
 
 - **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm with `cilium config view`.
 
-- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `cilium metrics list | grep process_resident_memory`.
+- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check agent metrics with `kubectl -n kube-system exec <pod> -c cilium-agent -- cilium-dbg metrics list | grep process_resident_memory`.
 
 - **Endpoints stuck in regenerating state**: This usually indicates the agent is overloaded or encountering errors during BPF program compilation. Check agent logs with `kubectl logs -n kube-system -l k8s-app=cilium --tail=200 | grep -i error`.
 
-- **Policy not being enforced**: Verify the policy selectors match the intended pods using `cilium endpoint list`. Confirm the policy is applied with `cilium policy get`. Check that the endpoint has the correct identity with `cilium endpoint get <id>`.
+- **Policy not being enforced**: Verify the policy selectors match the intended pods using `kubectl get pods --show-labels`. Confirm the policy is applied with `kubectl get ciliumnetworkpolicies,ciliumclusterwidenetworkpolicies --all-namespaces`. For endpoint identity details, run `kubectl -n kube-system exec <pod> -c cilium-agent -- cilium-dbg endpoint get <id>`.
 
 To collect a comprehensive diagnostic bundle for further analysis:
 
