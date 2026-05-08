@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, IPAM, Kubernetes, IP Address Management
 
-Description: Use calicoctl ipam split to divide IP blocks into smaller allocations for improved IP utilization and more granular per-node address management.
+Description: Use calicoctl ipam split to divide IP pools into smaller pools for improved IP utilization and more granular address management.
 
 ---
 
 ## Introduction
 
-The `calicoctl ipam split` command is an essential IPAM management tool in Calico. Understanding how to use it effectively helps you maintain healthy IP address allocation, troubleshoot address-related issues, and optimize IP utilization across your Kubernetes cluster.
+The `calicoctl ipam split` command is an IPAM management tool in Calico Enterprise. Understanding how to use it effectively helps you maintain healthy IP address allocation, troubleshoot address-related issues, and optimize IP utilization across your Kubernetes cluster.
 
 Proper IP address management becomes increasingly important as clusters grow. Without visibility into how IPs are allocated and used, you risk pool exhaustion, address conflicts, and difficulty troubleshooting connectivity issues.
 
@@ -18,8 +18,8 @@ This guide provides practical examples of using `calicoctl ipam split` for commo
 
 ## Prerequisites
 
-- Kubernetes cluster with Calico IPAM
-- `calicoctl` v3.25+ installed and configured
+- Kubernetes cluster with Calico Enterprise IPAM
+- `calicoctl` installed, configured, and version-matched with the cluster
 - Admin-level access to the Calico datastore
 - Understanding of IP addressing and CIDR notation
 
@@ -28,7 +28,9 @@ This guide provides practical examples of using `calicoctl ipam split` for commo
 ```bash
 # Split the IP pool containing 10.244.0.0/24 into 4 smaller pools
 
-calicoctl ipam split 4 --cidr=10.244.0.0/24
+calicoctl datastore migrate lock
+calicoctl ipam split --cidr=10.244.0.0/24 4
+calicoctl datastore migrate unlock
 ```
 
 This divides one pool into four equally sized smaller pools. The number of splits must be a power of 2 (2, 4, 8, 16, etc.).
@@ -45,14 +47,14 @@ After split:  10.244.0.0/26   (64 IPs)
               10.244.0.192/26 (64 IPs)
 ```
 
-## When to Split Blocks
+## When to Split Pools
 
-- **Uneven IP distribution**: One node holds a large pool while others are starved
-- **After changing block size**: When reducing the default block size in an IP pool
-- **During cluster rebalancing**: Redistributing IPs after node additions
+- **Topology-specific allocation**: Creating smaller pools that can be selected by node, namespace, or workload
+- **Pool segmentation**: Dividing a large pool into smaller child pools for operational control
+- **During cluster planning**: Preparing address ranges before node or workload placement changes
 - **IP utilization optimization**: Breaking up underutilized large pools
 
-## Practical Example: Rebalancing After Pool Split
+## Practical Example: Pool Split Workflow
 
 ```bash
 # Step 1: Check current pool allocation
@@ -62,7 +64,9 @@ calicoctl ipam show --show-blocks
 calicoctl get ippools -o wide
 
 # Step 3: Split the pool into 4 smaller pools (must be a power of 2)
-calicoctl ipam split 4 --cidr=10.244.0.0/24
+calicoctl datastore migrate lock
+calicoctl ipam split --cidr=10.244.0.0/24 4
+calicoctl datastore migrate unlock
 
 # Step 4: Verify the split
 calicoctl get ippools -o wide
@@ -73,7 +77,7 @@ calicoctl get ippools -o wide
 ```bash
 #!/bin/bash
 # plan-ipam-split.sh
-# Plans block splits based on current allocation
+# Plans pool splits based on current allocation
 
 echo "=== IPAM Split Planning ==="
 
@@ -95,7 +99,8 @@ for pool in data.get('items', []):
     prefix = int(cidr.split('/')[1])
     if prefix < $TARGET_SIZE:
         num_splits = 2 ** ($TARGET_SIZE - prefix)
-        print(f'  Split: {cidr} into {num_splits} pools (calicoctl ipam split {num_splits} --name={pool[\"metadata\"][\"name\"]})')
+        name = pool['metadata']['name']
+        print(f'  Split: {cidr} into {num_splits} pools (calicoctl ipam split --name={name} {num_splits})')
 "
 ```
 
@@ -120,11 +125,12 @@ calicoctl ipam show
 
 echo ""
 # Verify num_splits is a power of 2
-if (( NUM_SPLITS & (NUM_SPLITS - 1) )); then
+if (( NUM_SPLITS < 2 || (NUM_SPLITS & (NUM_SPLITS - 1)) != 0 )); then
   echo "ERROR: Number of splits must be a power of 2"
   exit 1
 fi
 echo "Will split into $NUM_SPLITS equal pools"
+echo "Remember to run 'calicoctl datastore migrate lock' before the split and 'calicoctl datastore migrate unlock' after it"
 ```
 
 
