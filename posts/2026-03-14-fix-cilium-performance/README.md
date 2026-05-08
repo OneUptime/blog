@@ -25,27 +25,29 @@ This guide provides concrete fixes for the most common Cilium performance issues
 
 ## Fix: Enable Monitor Aggregation
 
-The single most impactful performance fix for most clusters:
+A common low-risk performance fix for clusters with high monitor event volume:
 
 ```yaml
 # performance-fix-aggregation.yaml
 
-# Reduces the volume of events Hubble processes
-monitorAggregation: medium
-monitorAggregationInterval: 5s
-monitorAggregationFlags: "all"
+# Reduces the volume of events Cilium monitor and Hubble process
+bpf:
+  monitorAggregation: medium
+  monitorInterval: 5s
+  monitorFlags: "all"
 ```
 
 ```bash
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set monitorAggregation=medium \
-  --set monitorAggregationInterval=5s
+  --set bpf.monitorAggregation=medium \
+  --set bpf.monitorInterval=5s \
+  --set bpf.monitorFlags=all
 
 kubectl -n kube-system rollout status daemonset/cilium
 ```
 
-Expected impact: 30-60% CPU reduction on Cilium agents in high-traffic environments.
+Expected impact: lower CPU usage on Cilium agents in high-traffic environments with high monitor event volume.
 
 ## Fix: Increase BPF Map Sizes
 
@@ -53,30 +55,32 @@ When connection tracking or NAT tables are full, packets are dropped:
 
 ```bash
 # Check current map utilization
-kubectl -n kube-system exec ds/cilium -- cilium bpf ct list global | wc -l
-kubectl -n kube-system exec ds/cilium -- cilium status | grep -A10 "BPF"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep -A10 "BPF"
 ```
 
 ```yaml
 # performance-fix-bpf-maps.yaml
 bpf:
   # Connection tracking table sizes
-  ctTcpMax: 524288    # Default: 524288, increase for high-connection workloads
-  ctAnyMax: 262144    # Default: 262144
+  ctTcpMax: 1048576   # Default: 524288, increase for high-connection workloads
+  ctAnyMax: 524288    # Default: 262144
   # NAT table size
-  natMax: 524288      # Default: 524288
+  natMax: 1048576     # Default: 524288
   # Neighbor table size
-  neighMax: 524288    # Default: 524288
+  neighMax: 1048576   # Default: 524288
   # Policy map size (per endpoint)
-  policyMapMax: 16384 # Default: 16384
+  policyMapMax: 32768 # Default: 16384
 ```
 
 ```bash
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set bpf.ctTcpMax=524288 \
-  --set bpf.ctAnyMax=262144 \
-  --set bpf.natMax=524288
+  --set bpf.ctTcpMax=1048576 \
+  --set bpf.ctAnyMax=524288 \
+  --set bpf.natMax=1048576 \
+  --set bpf.neighMax=1048576 \
+  --set bpf.policyMapMax=32768
 ```
 
 ```mermaid
@@ -97,14 +101,13 @@ Switching from VXLAN tunneling to native routing reduces overhead:
 
 ```bash
 # Check current datapath mode
-cilium status | grep "Datapath Mode"
+cilium config view | grep -E "routing-mode|tunnel-protocol"
 
 # If using VXLAN and your infrastructure supports direct routing:
 ```
 
 ```yaml
 # performance-fix-native-routing.yaml
-tunnel: disabled
 ipam:
   mode: kubernetes
 routingMode: native
@@ -117,7 +120,6 @@ ipv4NativeRoutingCIDR: "10.0.0.0/8"  # Adjust to your pod CIDR
 # This will cause network interruption during rollout
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.0.0.0/8"
@@ -206,7 +208,7 @@ kubectl -n kube-system exec ds/cilium -- \
 # Reduce by removing IP-level labels
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
-  --set-json 'hubble.metrics.enabled=["dns","drop","tcp","flow","httpV2:labelsContext=source_namespace,destination_namespace"]'
+  --set 'hubble.metrics.enabled={dns,drop,tcp,flow,httpV2:labelsContext=source_namespace\,destination_namespace}'
 ```
 
 ## Verification
@@ -229,7 +231,7 @@ kubectl run iperf3-client --image=networkstatic/iperf3 --rm -it --restart=Never 
 # 4. Endpoint regeneration time
 kubectl -n kube-system exec ds/cilium -- \
   wget -qO- http://localhost:9962/metrics 2>/dev/null | \
-  grep "cilium_endpoint_regeneration_time_stats"
+  grep "cilium_endpoint_regeneration_time_stats_seconds"
 ```
 
 ## Troubleshooting
@@ -238,9 +240,9 @@ kubectl -n kube-system exec ds/cilium -- \
 
 - **Native routing not working**: Your infrastructure must support direct routing between nodes. Cloud providers may require specific network configurations.
 
-- **BPF map increase causes OOM**: Increase the Cilium agent memory limit proportionally. Each doubling of map size adds approximately 256MB memory.
+- **BPF map increase causes OOM**: Increase the Cilium agent memory limit and monitor BPF map memory. The memory impact depends on which maps are increased, enabled IP families, preallocation, and node size.
 
-- **Policy optimization breaks connectivity**: Test policy changes in a staging environment first. Use `cilium policy trace` to verify connectivity before and after.
+- **Policy optimization breaks connectivity**: Test policy changes in a staging environment first. Use `cilium connectivity test` and Hubble flows to verify connectivity before and after.
 
 ## Conclusion
 
