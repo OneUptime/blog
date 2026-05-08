@@ -18,7 +18,8 @@ This guide provides the installation and configuration commands for each require
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.24+) with Cilium v1.14+
+- Kubernetes cluster running a version supported by your Cilium release
+- Cilium v1.19+ on Linux kernel 5.10+ (or an equivalent distribution kernel)
 - `cilium` CLI and `kubectl` access
 - Node-level root access
 - Prometheus monitoring (recommended)
@@ -28,27 +29,29 @@ This guide provides the installation and configuration commands for each require
 ```bash
 # Load required modules
 
-modprobe wireguard
 modprobe br_netfilter
 modprobe ip_tables
 modprobe xt_conntrack
+modprobe xt_socket || true
+modprobe wireguard || true
 
 # Make persistent
 cat > /etc/modules-load.d/cilium-perf.conf << MOD
-wireguard
 br_netfilter
 ip_tables
 xt_conntrack
+xt_socket
+wireguard
 MOD
 
 # Mount BPF filesystem if not mounted
-mount | grep bpf || mount -t bpf bpf /sys/fs/bpf
+mount | grep /sys/fs/bpf || mount bpffs /sys/fs/bpf -t bpf
 ```
 
 ## Installing Benchmarking Tools
 
 ```bash
-# Deploy iperf3 and netperf as persistent test pods
+# Deploy iperf3 as persistent test pods
 kubectl apply -f - <<YAML
 apiVersion: v1
 kind: Namespace
@@ -58,17 +61,43 @@ metadata:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: bench-tools
+  name: perf-server
+  namespace: monitoring
+  labels:
+    app: perf-server
+spec:
+  containers:
+  - name: iperf3
+    image: networkstatic/iperf3:latest
+    args: ["-s"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: perf-server
+  namespace: monitoring
+spec:
+  selector:
+    app: perf-server
+  ports:
+  - name: iperf3
+    port: 5201
+    targetPort: 5201
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: perf-client
   namespace: monitoring
 spec:
   containers:
   - name: iperf3
     image: networkstatic/iperf3:latest
     command: ["sleep", "infinity"]
-  - name: netperf
-    image: cilium/netperf:latest
-    command: ["sleep", "infinity"]
 YAML
+
+# For Cilium's built-in netperf-based tests, use:
+cilium connectivity perf
 ```
 
 ## Installing Node-Level Tools
@@ -88,17 +117,19 @@ yum install -y perf ethtool iproute bpftool
 # Install latest Cilium CLI
 CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
 CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
 curl -L --fail --remote-name-all \
-  https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz
-tar xzvf cilium-linux-${CLI_ARCH}.tar.gz -C /usr/local/bin
+  https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 cilium version
 ```
 
 ## Verification
 
 ```bash
-# Run the validation checks above
-# All items should show PASS
+# Check Cilium health and version
 cilium status --verbose
 ```
 
@@ -184,16 +215,16 @@ kubectl get pods -n kube-system -l k8s-app=cilium -o json | \
 
 # 3. No new drops
 echo "3. Recent drops:"
-cilium monitor --type drop | timeout 5 head -5 || echo "No drops in 5 seconds"
+timeout 5 kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop | \
+  head -5 || echo "No drops in 5 seconds"
 
 # 4. Endpoint health
 echo "4. Endpoint health:"
-cilium endpoint list | grep -c "ready"
-cilium endpoint list | grep -c "not-ready"
+kubectl get ciliumendpoints --all-namespaces
 
 # 5. Performance benchmark
 echo "5. Quick performance check:"
-kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 10 -P 1 -J | \
+kubectl exec -n monitoring perf-client -- iperf3 -c perf-server.monitoring.svc.cluster.local -t 10 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000' | \
   xargs -I{} echo "{} Gbps"
 
