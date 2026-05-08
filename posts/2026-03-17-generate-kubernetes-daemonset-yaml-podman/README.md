@@ -32,7 +32,7 @@ podman run -d --name node-exporter \
 
 ```bash
 # Generate a DaemonSet manifest
-podman generate kube --type daemonset node-exporter > daemonset.yaml
+podman kube generate --type daemonset node-exporter > daemonset.yaml
 
 # View the generated file
 cat daemonset.yaml
@@ -45,15 +45,15 @@ cat daemonset.yaml
 # apiVersion: apps/v1
 # kind: DaemonSet
 # metadata:
-#   name: node-exporter-daemonset
+#   name: node-exporter-pod-daemonset
 # spec:
 #   selector:
 #     matchLabels:
-#       app: node-exporter
+#       app: node-exporter-pod
 #   template:
 #     metadata:
 #       labels:
-#         app: node-exporter
+#         app: node-exporter-pod
 #     spec:
 #       containers:
 #         - name: node-exporter
@@ -70,9 +70,9 @@ cat daemonset.yaml
 
 ```bash
 # Include a Service for the DaemonSet
-podman generate kube --type daemonset --service node-exporter > daemonset-with-svc.yaml
+podman kube generate --type daemonset --service node-exporter > daemonset-with-svc.yaml
 
-# The Service lets you access the agent on any node
+# The generated Service exposes the agent through Kubernetes networking
 ```
 
 ## Use Case: Log Collector DaemonSet
@@ -86,7 +86,7 @@ podman run -d --name log-collector \
   sh -c "tail -f /host/logs/syslog"
 
 # Generate DaemonSet YAML
-podman generate kube --type daemonset log-collector > log-collector-ds.yaml
+podman kube generate --type daemonset log-collector > log-collector-ds.yaml
 ```
 
 ## Use Case: Network Agent DaemonSet
@@ -97,10 +97,10 @@ podman run -d --name net-agent \
   --privileged \
   --network host \
   docker.io/library/alpine \
-  sh -c "while true; do ss -tlnp > /tmp/connections.log; sleep 60; done"
+  sh -c "apk add --no-cache iproute2 >/dev/null && while true; do ss -tlnp > /tmp/connections.log; sleep 60; done"
 
 # Generate the DaemonSet manifest
-podman generate kube --type daemonset net-agent > net-agent-ds.yaml
+podman kube generate --type daemonset net-agent > net-agent-ds.yaml
 ```
 
 ## Applying the DaemonSet to Kubernetes
@@ -110,12 +110,12 @@ podman generate kube --type daemonset net-agent > net-agent-ds.yaml
 kubectl apply -f daemonset.yaml
 
 # Verify it runs on all nodes
-kubectl get daemonset node-exporter-daemonset
+kubectl get daemonset node-exporter-pod-daemonset
 
 # Check pods across nodes
-kubectl get pods -l app=node-exporter -o wide
+kubectl get pods -l app=node-exporter-pod -o wide
 ```
 
 ## Summary
 
-Use `podman generate kube --type daemonset` to create a Kubernetes DaemonSet manifest from a locally running container. This is ideal for monitoring agents, log collectors, and network tools that need to run on every cluster node. Test locally with Podman, then deploy cluster-wide with `kubectl apply`.
+Use `podman kube generate --type daemonset` to create a Kubernetes DaemonSet manifest from a locally running container. This is ideal for monitoring agents, log collectors, and network tools that need to run on every cluster node. Test locally with Podman, then deploy cluster-wide with `kubectl apply`.
