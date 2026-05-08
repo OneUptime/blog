@@ -30,7 +30,7 @@ podman logs -t my-container
 # 2026-03-16T14:30:05.789012345Z Connected to database
 ```
 
-The timestamp format is RFC 3339 with nanosecond precision, appended by Podman at log capture time.
+The timestamp format is RFC 3339 with nanosecond precision, prepended by Podman at log capture time.
 
 ## Combine Timestamps with Other Flags
 
@@ -85,16 +85,16 @@ Timestamps make it possible to correlate events across different containers.
   podman logs -t web 2>&1 | sed 's/^/[web] /'
   podman logs -t api 2>&1 | sed 's/^/[api] /'
   podman logs -t db  2>&1 | sed 's/^/[db]  /'
-} | sort
+} | sort -k2
 
-# Sort merged logs chronologically (timestamps are the first field)
+# Sort merged logs chronologically (timestamps are the second field after the label)
 {
   podman logs -t --since 10m web 2>&1 | sed 's/^/[web] /'
   podman logs -t --since 10m api 2>&1 | sed 's/^/[api] /'
-} | sort -k1
+} | sort -k2
 
 # Find what happened across services at a specific second
-TIMESTAMP="2026-03-16T14:30:0"
+TIMESTAMP="2026-03-16T14:30:01"
 for c in web api db; do
   echo "=== $c ==="
   podman logs -t "$c" 2>&1 | grep "$TIMESTAMP"
