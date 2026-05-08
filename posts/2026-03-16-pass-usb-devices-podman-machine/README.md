@@ -45,6 +45,9 @@ podman run -it --device /dev/ttyUSB0 --rm alpine sh
 # Pass a USB device with specific permissions
 podman run -it --device /dev/ttyUSB0:/dev/ttyUSB0:rwm --rm alpine sh
 
+# If access depends on your user's supplementary groups in rootless mode
+podman run -it --device /dev/ttyUSB0 --group-add keep-groups --rm alpine sh
+
 # Pass multiple devices
 podman run -it \
     --device /dev/ttyUSB0 \
@@ -69,25 +72,21 @@ lsusb
 
 ## Configuring QEMU USB Passthrough
 
-For QEMU-based machines, you need to modify the machine configuration to add USB device passthrough.
+For QEMU-based machines, use Podman's `--usb` machine option to add USB device passthrough. The USB device must be present and accessible to your user when the VM starts.
 
 ```bash
-# Stop the machine
+# Add USB passthrough to an existing machine
 podman machine stop my-machine
-
-# Find the QEMU configuration file
-podman machine inspect my-machine | jq -r '.ConfigDir.Path'
-
-# You may need to edit the QEMU launch arguments to add:
-# -device usb-host,vendorid=0x1a86,productid=0x7523
-
-# After editing, start the machine
+podman machine set --usb vendor=1a86,product=7523 my-machine
 podman machine start my-machine
+
+# Or configure passthrough when creating a new QEMU-backed machine
+podman machine init --provider qemu --usb vendor=1a86,product=7523 my-machine
 ```
 
-## Using Volume Mounts for Device Files
+## Checking Device Files in the Machine
 
-An alternative approach is to mount device files into the machine using volume mounts.
+Volume mounts are useful for host directories, but they do not replace USB passthrough for device nodes. After configuring passthrough, check that the device appears inside the machine.
 
 ```bash
 # SSH into the machine and check available devices
@@ -121,6 +120,8 @@ ls /dev/
 
 # This is a security trade-off - only use when necessary
 ```
+
+On Podman Machine, privileged mode only exposes devices that already exist inside the VM. It does not pass a USB device from the host into the VM.
 
 ## Working with Arduino and Serial Devices
 
@@ -167,8 +168,8 @@ podman run -it --device /dev/ttyUSB0:/dev/ttyUSB0:rwm --rm alpine sh
 # Solution: Check if the device is recognized by the VM
 podman machine ssh my-machine -- dmesg | tail -20
 
-# Issue: Device disappears after reconnection
-# Solution: Use udev rules to create a stable symlink
+# Issue: Device path changes after reconnection
+# Solution: Prefer --usb vendor=...,product=... over bus=...,devnum=..., or use udev rules inside the VM to create a stable symlink after the device is passed through
 podman machine ssh my-machine
 echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="my-device"' | \
     sudo tee /etc/udev/rules.d/99-my-device.rules
@@ -187,4 +188,4 @@ exit
 
 ## Summary
 
-Passing USB devices to Podman machines requires getting the device into the virtual machine first, then passing it to containers using the `--device` flag. On native Linux, this is straightforward. On macOS and Windows where Podman uses a VM, you may need QEMU USB passthrough configuration or privileged mode. Always prefer specific device passthrough over privileged mode for better security.
+Passing USB devices to Podman machines requires getting the device into the virtual machine first, then passing it to containers using the `--device` flag. On native Linux, this is straightforward. For Podman machines, use Podman's QEMU USB passthrough support when the machine is QEMU-backed and the provider is available on your platform. Always prefer specific device passthrough over privileged mode for better security.
