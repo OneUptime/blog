@@ -49,7 +49,10 @@ All BGP sessions should be `Established` before proceeding.
 ## Step 3: Upgrade the Tigera Operator
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml -O
+curl https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml -O
+kubectl apply --server-side --force-conflicts -f v1_crd_projectcalico_org.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 kubectl rollout status deployment/tigera-operator -n tigera-operator
 ```
 
@@ -92,7 +95,7 @@ calicoctl ipam show
 Update `calicoctl` to match:
 
 ```bash
-sudo curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
+sudo curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 \
   -o /usr/local/bin/calicoctl && sudo chmod +x /usr/local/bin/calicoctl
 ```
 
