@@ -10,7 +10,7 @@ Description: A step-by-step guide to tuning Calico networking on self-managed Ku
 
 ## Introduction
 
-Self-managed Kubernetes clusters on Azure give operators full control over their networking stack. When running Calico in this environment, understanding Azure's VNet networking model is critical to making the right tuning decisions. Azure VMs communicate over VNets with an effective MTU of 1500 bytes by default, though accelerated networking can change this.
+Self-managed Kubernetes clusters on Azure give operators full control over their networking stack. When running Calico in this environment, understanding Azure's VNet networking model is critical to making the right tuning decisions. Azure VMs communicate over VNets with an effective MTU of 1500 bytes by default, though supported VM network interfaces can be configured for larger MTUs on traffic that stays within the virtual network or directly peered virtual networks in the same region.
 
 Unlike AKS, self-managed Azure Kubernetes clusters don't benefit from managed CNI integration, so you must configure Calico explicitly to work within Azure's routing constraints. This includes deciding between VXLAN overlay and direct routing, configuring appropriate IP pools, and tuning Felix to handle Azure-specific network behaviors.
 
@@ -26,7 +26,7 @@ This guide provides practical tuning steps for Calico on self-managed Azure Kube
 
 ## Step 1: Check Azure Accelerated Networking and MTU
 
-Azure Accelerated Networking enables SR-IOV and increases effective throughput. Check whether it's enabled and configure MTU accordingly.
+Azure Accelerated Networking enables SR-IOV and increases effective throughput. Check whether it's enabled, but treat MTU as a separate setting: the Azure default is still 1500 unless you explicitly configure and test a larger MTU on supported VM network interfaces and network paths.
 
 ```bash
 # Check if accelerated networking is enabled on Azure VMs
@@ -41,14 +41,14 @@ ip link show eth0 | grep mtu
 Set the Calico MTU based on your Azure network configuration:
 
 ```bash
-# For standard Azure networking (MTU 1500), use 1450 for VXLAN (50 byte overhead)
+# For standard Azure networking (MTU 1500), use 1450 for IPv4 VXLAN (50 byte overhead)
 calicoctl patch felixconfiguration default \
-  --patch='{"spec": {"vethMTU": 1450}}'
+  --patch='{"spec": {"vxlanMTU": 1450}}'
 ```
 
 ## Step 2: Configure VXLAN Overlay for Azure VNet Compatibility
 
-Azure VNet does not support BGP-based pod routing without additional configuration. VXLAN is the recommended overlay for self-managed Azure clusters.
+Azure VNet does not automatically learn Calico pod CIDRs through BGP. Direct routing requires additional Azure route table or network appliance configuration, so VXLAN is a common overlay choice for self-managed Azure clusters.
 
 ```yaml
 # Configure IPPool with VXLAN overlay for Azure VNet compatibility
@@ -69,7 +69,7 @@ spec:
 
 ## Step 3: Optimize IPAM for Azure Availability Zones
 
-Assign IP blocks to nodes within the same Azure availability zone to minimize cross-zone traffic.
+Assign IP blocks to nodes within the same Azure availability zone when you want pod address ranges to align with zone topology for operations, route planning, or observability. IP pool selection alone does not minimize cross-zone traffic; use Kubernetes scheduling and topology controls for workload placement.
 
 ```bash
 # Label nodes with their Azure availability zone
@@ -98,7 +98,7 @@ spec:
 
 ## Step 4: Tune Felix for Azure Network Characteristics
 
-Azure network ACLs and security groups can affect Felix's iptables management. Tune Felix to work reliably within these constraints.
+Other iptables managers or host firewall tooling can affect Felix's iptables management. Tune Felix only when you have a measured need to change the defaults.
 
 ```bash
 # Apply Azure-optimized Felix configuration
@@ -108,7 +108,7 @@ calicoctl patch felixconfiguration default --patch='{
     "routeRefreshInterval": "90s",
     "ipv6Support": false,
     "iptablesBackend": "Auto",
-    "reportingInterval": "0s"
+    "usageReportingEnabled": false
   }
 }'
 ```
@@ -126,7 +126,7 @@ az network nsg rule create \
   --protocol Udp \
   --direction Inbound \
   --priority 1000 \
-  --source-address-prefix VirtualNetwork \
+  --source-address-prefixes VirtualNetwork \
   --destination-port-ranges 4789 \
   --access Allow
 
@@ -138,14 +138,14 @@ az network nsg rule create \
   --protocol Tcp \
   --direction Inbound \
   --priority 1010 \
-  --source-address-prefix VirtualNetwork \
+  --source-address-prefixes VirtualNetwork \
   --destination-port-ranges 5473 \
   --access Allow
 ```
 
 ## Best Practices
 
-- Use VXLAN mode rather than IPIP for Azure - Azure VNets handle UDP better
+- Use VXLAN mode rather than IPIP for Azure overlays - VXLAN is supported in environments where IPIP is not, including Azure
 - Enable Typha for clusters with more than 50 nodes to reduce API server load
 - Configure Azure NSGs before installing Calico to avoid connectivity gaps
 - Monitor Calico node pod logs for VXLAN tunnel errors on Azure
