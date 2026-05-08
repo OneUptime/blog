@@ -93,7 +93,7 @@ spec:
     - 198.18.0.0/24
 ```
 
-Allow only specific workloads to reach tier2 vendors:
+Allow vendor integration workloads to reach tier2 vendors. To make this exclusive, pair the allow policy with your cluster's default-deny egress policy or a separate deny rule for other workloads:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -141,7 +141,8 @@ spec:
                 - -c
                 - |
                   calicoctl get globalnetworkset threat-feed-daily -o yaml > /tmp/current.yaml
-                  # Replace nets with updated feed
+                  # Fetch or generate /tmp/updated-feed.yaml from your threat feed here.
+                  # Replace the full resource with the updated feed.
                   calicoctl replace -f /tmp/updated-feed.yaml
           restartPolicy: OnFailure
 ```
@@ -152,7 +153,7 @@ kubectl apply -f update-threat-feed-cronjob.yaml
 
 ## Verification
 
-List all GlobalNetworkSets and their labels:
+List all GlobalNetworkSets:
 
 ```bash
 calicoctl get globalnetworkset -o wide
@@ -164,16 +165,16 @@ Check which policies reference a specific label:
 calicoctl get globalnetworkpolicy -o yaml | grep "trust-level"
 ```
 
-Test that blocked IPs are unreachable:
+Test that blocked IPs are unreachable. Replace the example address with an IP from your threat feed that would otherwise respond:
 
 ```bash
 kubectl run test-pod --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=3 http://10.200.0.1/
 ```
 
-Verify allowed traffic still flows:
+Verify allowed traffic from a selected workload still flows. Replace `192.0.2.10` with a reachable IP from your vendor set:
 
 ```bash
-kubectl run test-pod --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=3 http://203.0.113.10/
+kubectl run test-pod --image=busybox --labels=app=vendor-integration --rm -it --restart=Never -- wget -qO- --timeout=3 http://192.0.2.10/
 ```
 
 ## Troubleshooting
