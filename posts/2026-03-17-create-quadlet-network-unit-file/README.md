@@ -83,7 +83,7 @@ systemctl --user start web
 systemctl --user start api
 
 # web can reach api by container name
-podman exec systemd-web curl http://systemd-api:5000
+podman exec systemd-web wget -qO- http://systemd-api:5000
 ```
 
 ## Multi-Tier Network Setup
