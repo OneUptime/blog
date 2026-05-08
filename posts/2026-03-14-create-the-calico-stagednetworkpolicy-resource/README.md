@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Staged Policy
 
-Description: Learn how to define and apply a Calico StagedNetworkPolicy resource to your Kubernetes cluster using kubectl and calicoctl.
+Description: Learn how to define and apply a Calico StagedNetworkPolicy resource to your Kubernetes cluster using kubectl.
 
 ---
 
@@ -21,17 +21,17 @@ By the end of this post you will have a working StagedNetworkPolicy resource app
 - A running Kubernetes cluster (v1.24 or later)
 - Calico installed (v3.26 or later recommended)
 - `kubectl` configured with cluster-admin privileges
-- `calicoctl` installed (optional but recommended for validation)
+- Calico's `projectcalico.org/v3` API available through the Calico API server or native v3 CRDs
 
 ## Understanding the StagedNetworkPolicy Resource
 
 The StagedNetworkPolicy resource uses the Calico API group `projectcalico.org/v3`. Before writing the manifest, review the key fields:
 
-- `stagedAction`: Set to `Log` to observe without enforcing.
+- Rule `action`: Set to `Allow`, `Deny`, `Log`, or `Pass` to preview how matching traffic would be handled.
 - `order`: Evaluation priority. Lower numbers are processed first.
 - `selector`: Matches endpoints within the namespace.
 
-Namespace-scoped equivalent of StagedGlobalNetworkPolicy.
+StagedNetworkPolicy is the namespace-scoped equivalent of StagedGlobalNetworkPolicy. It previews policy behavior without enforcing traffic changes.
 
 ## Creating the StagedNetworkPolicy Manifest
 
@@ -45,7 +45,6 @@ metadata:
   namespace: production
 spec:
   order: 100
-  stagedAction: Log
   selector: app == 'database'
   types:
     - Ingress
@@ -66,7 +65,7 @@ spec:
           - 53
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+Adjust the values to match your environment before applying.
 
 ## Applying the Resource
 
@@ -76,15 +75,13 @@ Apply the manifest using `kubectl`:
 kubectl apply -f stagednetworkpolicy.yaml
 ```
 
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
+You can also ask the API server to validate the manifest without creating the resource:
 
 ```bash
-# Apply with calicoctl for enhanced validation
-
-calicoctl apply -f stagednetworkpolicy.yaml
+kubectl apply --dry-run=server -f stagednetworkpolicy.yaml
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+Server-side dry runs check the resource against the API server schema and admission checks before you apply it.
 
 ## Verification
 
@@ -92,13 +89,10 @@ Confirm that the resource was created successfully:
 
 ```bash
 # List StagedNetworkPolicy resources
-kubectl get stagednetworkpolicy.projectcalico.org -o wide
+kubectl get stagednetworkpolicy.projectcalico.org -n production -o wide
 
 # Describe the specific resource for full details
-kubectl describe stagednetworkpolicy.projectcalico.org
-
-# Verify with calicoctl
-calicoctl get stagednetworkpolicy -o yaml
+kubectl describe stagednetworkpolicy.projectcalico.org staged-restrict-db -n production
 ```
 
 Check the Calico component logs for any warnings or errors related to the new resource:
@@ -115,11 +109,11 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 - Check that the Calico API server is running: `kubectl get pods -n calico-system`.
 
 **Validation errors:**
-- Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
+- Use `kubectl apply --dry-run=server -f stagednetworkpolicy.yaml` before applying to get validation messages.
 - Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
 
 **Calico components not picking up the resource:**
-- Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
+- Check that the Calico API server or native v3 CRDs are available for `projectcalico.org/v3` resources.
 - Check Felix and Typha logs for error messages.
 
 
@@ -129,15 +123,15 @@ Beyond the basic manifest shown above, there are several advanced configuration 
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Labels on Kubernetes workloads enable you to build flexible configurations that apply differently across your cluster. For example, you can label pods so they match the selectors used by this policy:
 
 ```bash
-# Label nodes for targeted configuration
-kubectl label node worker-1 calico-config=high-performance
-kubectl label node worker-2 calico-config=standard
+# Label pods for targeted policy selection
+kubectl label pod db-0 app=database -n production --overwrite
+kubectl label pod backend-0 app=backend -n production --overwrite
 
 # Verify labels are applied
-kubectl get nodes --show-labels | grep calico-config
+kubectl get pods -n production --show-labels
 ```
 
 ### Version Control and GitOps Integration
@@ -171,4 +165,4 @@ Following these conventions makes it easier to manage resources at scale and red
 
 ## Conclusion
 
-You have created a Calico StagedNetworkPolicy resource, applied it to your cluster, and verified it is active. This resource is a foundational piece of your Calico configuration. Keep your manifests in version control and validate changes with `calicoctl` before applying to production clusters.
+You have created a Calico StagedNetworkPolicy resource, applied it to your cluster, and verified it is active. This resource is a foundational piece of your Calico configuration. Keep your manifests in version control and validate changes with a server-side dry run before applying to production clusters.
