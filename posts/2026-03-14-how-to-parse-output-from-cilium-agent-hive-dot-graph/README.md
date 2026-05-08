@@ -18,7 +18,7 @@ Parsing the DOT output programmatically lets you integrate dependency analysis i
 
 - A captured cilium-agent hive dot-graph output file
 - Python 3.x
-- `grep`, `awk`, `sed` for shell parsing
+- `grep`, `awk`, `sed`, `perl`, `jq`, `bc` for shell parsing and reports
 - Optional: `networkx` Python library for graph analysis
 
 ## Shell-Based DOT Parsing
@@ -34,21 +34,29 @@ Extract basic information using standard Unix tools:
 DOT_FILE="${1:-/tmp/cilium-hive.dot}"
 
 echo "=== Node List ==="
-grep -oP '"([^"]+)"\s*\[label="([^"]+)"' "$DOT_FILE" | \
-  sed 's/"//g;s/\s*\[label=/ => /' | sort
+grep -oP '^\s*("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*\[[^]]*\blabel\s*=' "$DOT_FILE" | \
+  sed -E 's/^[[:space:]]*//;s/[[:space:]]+\[.*label[[:space:]]*=//;s/"//g' | sort
 
 echo ""
 echo "=== Edge List ==="
-grep -oP '"([^"]+)"\s*->\s*"([^"]+)"' "$DOT_FILE" | \
+grep -oP '("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*->\s*("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)' "$DOT_FILE" | \
   sed 's/"//g;s/ -> / => /' | sort
 
 echo ""
 echo "=== Summary ==="
-NODES=$(grep -c '\[label=' "$DOT_FILE" 2>/dev/null || echo 0)
+NODES=$(perl -0ne '$count = 0;
+  while (/^\s*(?:"(?:\\.|[^"\\])*"|[A-Za-z_][A-Za-z0-9_]*)\s*\[(.*?)\];/msg) {
+    $count++ if $1 =~ /\blabel\s*=/s;
+  }
+  print "$count\n";' "$DOT_FILE" 2>/dev/null || echo 0)
 EDGES=$(grep -c '\->' "$DOT_FILE" 2>/dev/null || echo 0)
 echo "Nodes: $NODES"
 echo "Edges: $EDGES"
-echo "Average edges per node: $(echo "scale=1; $EDGES / $NODES" | bc 2>/dev/null || echo "N/A")"
+if [ "$NODES" -gt 0 ]; then
+  echo "Average edges per node: $(echo "scale=1; $EDGES / $NODES" | bc 2>/dev/null || echo "N/A")"
+else
+  echo "Average edges per node: N/A"
+fi
 ```
 
 ## Python DOT Parser with Graph Analysis
@@ -65,6 +73,30 @@ import json
 import sys
 from collections import defaultdict
 
+ID_PATTERN = r'(?:"(?:\\.|[^"\\])*"|[A-Za-z_][A-Za-z0-9_]*)'
+NODE_PATTERN = re.compile(
+    rf'^\s*(?P<id>{ID_PATTERN})\s*\[(?P<attrs>.*?)\];',
+    re.MULTILINE | re.DOTALL
+)
+EDGE_PATTERN = re.compile(
+    rf'^\s*(?P<src>{ID_PATTERN})\s*->\s*(?P<dst>{ID_PATTERN})(?=\s|;|\[|$)',
+    re.MULTILINE
+)
+LABEL_PATTERN = re.compile(
+    r'\blabel\s*=\s*(?:"(?P<quoted>(?:\\.|[^"\\])*)"|<(?P<html>[^>]*)>)',
+    re.DOTALL
+)
+
+def clean_id(value):
+    """Return a DOT ID without surrounding quotes."""
+    if value.startswith('"') and value.endswith('"'):
+        return bytes(value[1:-1], 'utf-8').decode('unicode_escape')
+    return value
+
+def clean_label(value):
+    """Normalize a DOT label value for JSON output."""
+    return ' '.join(value.split())
+
 def parse_dot(filepath):
     """Parse a DOT file into nodes and edges."""
     with open(filepath) as f:
@@ -73,14 +105,17 @@ def parse_dot(filepath):
     nodes = {}
     edges = []
 
-    # Extract nodes with labels
-    for match in re.finditer(r'"([^"]+)"\s*\[label="([^"]+)"', content):
-        node_id, label = match.group(1), match.group(2)
-        nodes[node_id] = label
+    # Extract nodes with quoted or HTML-like labels.
+    for match in NODE_PATTERN.finditer(content):
+        label_match = LABEL_PATTERN.search(match.group('attrs'))
+        if label_match:
+            node_id = clean_id(match.group('id'))
+            label = label_match.group('quoted') or label_match.group('html')
+            nodes[node_id] = clean_label(label)
 
     # Extract edges
-    for match in re.finditer(r'"([^"]+)"\s*->\s*"([^"]+)"', content):
-        edges.append((match.group(1), match.group(2)))
+    for match in EDGE_PATTERN.finditer(content):
+        edges.append((clean_id(match.group('src')), clean_id(match.group('dst'))))
 
     return nodes, edges
 
@@ -89,22 +124,20 @@ def compute_metrics(nodes, edges):
     in_degree = defaultdict(int)
     out_degree = defaultdict(int)
     adj = defaultdict(set)
-    rev_adj = defaultdict(set)
 
     for src, dst in edges:
         out_degree[src] += 1
         in_degree[dst] += 1
         adj[src].add(dst)
-        rev_adj[dst].add(src)
 
     # Find root nodes (no incoming edges)
     all_nodes = set(nodes.keys())
     targets = {dst for _, dst in edges}
     sources = {src for src, _ in edges}
-    roots = sources - targets
+    roots = all_nodes - targets
 
     # Find leaf nodes (no outgoing edges)
-    leaves = targets - sources
+    leaves = all_nodes - sources
 
     # Compute longest dependency chain using DFS
     def longest_path(node, memo={}):
@@ -172,7 +205,7 @@ For integration with other graph tools:
 DOT_FILE="${1:-/tmp/cilium-hive.dot}"
 
 echo "# Adjacency list: node -> [dependencies]"
-grep -oP '"([^"]+)"\s*->\s*"([^"]+)"' "$DOT_FILE" | \
+grep -oP '("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)\s*->\s*("[^"]+"|[A-Za-z_][A-Za-z0-9_]*)' "$DOT_FILE" | \
   sed 's/"//g;s/ -> /\t/' | \
   awk -F'\t' '{
     adj[$1] = adj[$1] ? adj[$1] "," $2 : $2
@@ -193,12 +226,22 @@ grep -oP '"([^"]+)"\s*->\s*"([^"]+)"' "$DOT_FILE" | \
 
 DOT_FILE="${1:-/tmp/cilium-hive.dot}"
 
-NODES=$(grep -c '\[label=' "$DOT_FILE" 2>/dev/null || echo 0)
+NODES=$(perl -0ne '$count = 0;
+  while (/^\s*(?:"(?:\\.|[^"\\])*"|[A-Za-z_][A-Za-z0-9_]*)\s*\[(.*?)\];/msg) {
+    $count++ if $1 =~ /\blabel\s*=/s;
+  }
+  print "$count\n";' "$DOT_FILE" 2>/dev/null || echo 0)
 EDGES=$(grep -c '\->' "$DOT_FILE" 2>/dev/null || echo 0)
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Extract node list as JSON array
-NODE_LIST=$(grep -oP 'label="\K[^"]+' "$DOT_FILE" | \
+NODE_LIST=$(perl -0ne 'while (/^\s*(?:"(?:\\.|[^"\\])*"|[A-Za-z_][A-Za-z0-9_]*)\s*\[(.*?)\];/msg) {
+    $attrs = $1;
+    next unless $attrs =~ /\blabel\s*=\s*(?:"((?:\\.|[^"\\])*)"|<([^>]*)>)/s;
+    $label = defined $1 ? $1 : $2;
+    $label =~ s/\s+/ /g;
+    print "$label\n";
+  }' "$DOT_FILE" | \
   jq -R . | jq -s .)
 
 cat << JSONEOF
@@ -232,7 +275,7 @@ bash dot-to-json-report.sh /tmp/cilium-hive.dot | jq .total_components
 
 - **Regex mismatches**: DOT formatting can vary. Check the raw file and adjust patterns for your Cilium version.
 - **Python script finds zero nodes**: The node definition format may differ. Print the first 20 lines of the DOT file and adjust the regex.
-- **jq errors in JSON generation**: Ensure node labels do not contain unescaped quotes. Preprocess with `sed 's/"/\\"/g'`.
+- **jq errors in JSON generation**: Ensure `jq` is installed and that the DOT output is not truncated.
 - **Graph metrics report cycles**: The hive dependency graph should be a DAG. Cycles indicate a bug -- report to the Cilium project.
 
 ## Conclusion
