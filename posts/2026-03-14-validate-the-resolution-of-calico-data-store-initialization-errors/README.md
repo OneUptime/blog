@@ -10,7 +10,7 @@ Description: Comprehensive verification procedures to confirm that Data Store In
 
 ## Introduction
 
-Calico data store initialization errors occur when calico-node or kube-controllers cannot connect to or initialize the Calico datastore. This prevents Calico from starting and blocks all pod networking.
+Calico data store initialization errors occur when calico-node or kube-controllers cannot connect to or initialize the Calico datastore. This can prevent Calico components from starting, block networking for new pods, and stop Calico configuration or policy updates from being applied.
 
 After applying a fix for Data Store Initialization errors, it is critical to validate that the resolution is complete and stable. A premature declaration of resolution can lead to recurring incidents.
 
@@ -27,10 +27,10 @@ This guide provides a structured validation procedure that covers immediate veri
 
 ```bash
 # Verify all Calico system pods are healthy
+CALICO_NAMESPACE=calico-system  # Use kube-system for manifest-based Calico installs.
+kubectl get pods -n "$CALICO_NAMESPACE" -o wide
 
-kubectl get pods -n calico-system -o wide
-
-# Check for zero error events in the last 10 minutes
+# Check the latest Warning events for Calico, CNI, or networking errors
 kubectl get events -A --field-selector type=Warning --sort-by='.lastTimestamp' | grep -i "calico\|cni\|network" | tail -10
 
 # Verify IPAM is healthy
@@ -40,16 +40,18 @@ calicoctl ipam show
 ## Step 2: Connectivity Testing (5-15 minutes)
 
 ```bash
-# Deploy test pods on different nodes
+# Deploy test pods for connectivity testing
 kubectl run test-pod-1 --image=busybox --command -- sleep 3600
 kubectl run test-pod-2 --image=busybox --command -- sleep 3600
 
 # Wait for pods to be ready
 kubectl wait --for=condition=ready pod/test-pod-1 pod/test-pod-2 --timeout=60s
+kubectl get pods test-pod-1 test-pod-2 -o wide
+# Use the NODE column to confirm whether this is a cross-node test.
 
-# Test cross-node connectivity
+# Test pod-to-pod connectivity
 TEST_IP=$(kubectl get pod test-pod-2 -o jsonpath='{.status.podIP}')
-kubectl exec test-pod-1 -- ping -c 5 $TEST_IP
+kubectl exec test-pod-1 -- ping -c 5 "$TEST_IP"
 
 # Test DNS resolution
 kubectl exec test-pod-1 -- nslookup kubernetes.default
@@ -62,10 +64,10 @@ kubectl delete pod test-pod-1 test-pod-2
 
 ```bash
 # Check all pods across namespaces
-kubectl get pods -A | grep -v Running | grep -v Completed
+kubectl get pods -A --no-headers | grep -v Running | grep -v Completed
 
 # Verify deployments are at desired replica count
-kubectl get deployments -A | awk '$3 != $4'
+kubectl get deployments -A -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:.status.readyReplicas,DESIRED:.spec.replicas --no-headers | awk '{ ready=$3; desired=$4; if (ready == "<none>") ready=0; if (ready != desired) print }'
 ```
 
 ## Step 4: Extended Monitoring (30 minutes - 2 hours)
@@ -77,7 +79,8 @@ Monitor for error recurrence:
 kubectl get events -A -w --field-selector type=Warning
 
 # Monitor calico-node pod stability
-kubectl get pods -n calico-system -l k8s-app=calico-node -w
+CALICO_NAMESPACE=${CALICO_NAMESPACE:-calico-system}
+kubectl get pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node -w
 ```
 
 Keep monitoring for at least one hour after the fix. For critical production clusters, extend to 24 hours.
@@ -105,7 +108,8 @@ The resolution is validated when all of the following are true:
 
 ```bash
 echo "=== Resolution Validation Summary ==="
-echo "Calico pods healthy: $(kubectl get pods -n calico-system -l k8s-app=calico-node --no-headers | grep -c Running)"
+CALICO_NAMESPACE=${CALICO_NAMESPACE:-calico-system}
+echo "Calico pods healthy: $(kubectl get pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node --no-headers | grep -c Running)"
 echo "Non-running pods: $(kubectl get pods -A --no-headers | grep -v Running | grep -v Completed | wc -l)"
 ```
 
@@ -143,7 +147,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crds -o custom-columns=NAME:.metadata.name,VERSIONS:.spec.versions[*].name | grep projectcalico
 ```
 
 ### Security Hardening
@@ -151,11 +155,13 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current credentials can modify Calico resources
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
+kubectl auth can-i --list | grep projectcalico
 
 # Review recent changes to Calico resources (if audit logging is enabled)
-kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
+CALICO_NAMESPACE=${CALICO_NAMESPACE:-calico-system}
+kubectl get events -n "$CALICO_NAMESPACE" --sort-by='.lastTimestamp' | tail -20
 ```
 
 ### Capacity Planning for Large Deployments
@@ -167,7 +173,8 @@ For clusters with hundreds of nodes or thousands of pods, plan your Calico resou
 calicoctl ipam show
 
 # Check calico-node resource consumption
-kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=memory
+CALICO_NAMESPACE=${CALICO_NAMESPACE:-calico-system}
+kubectl top pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node --sort-by=memory
 ```
 
 ## Conclusion
