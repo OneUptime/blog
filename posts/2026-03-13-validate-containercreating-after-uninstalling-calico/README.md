@@ -52,20 +52,27 @@ done
 
 ```bash
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl run test-$NODE --image=busybox --restart=Never \
-    --overrides="{\"spec\":{\"nodeName\":\"$NODE\"}}" -- sleep 10
+  POD_NAME="cni-test-$(echo "$NODE" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/^-*//; s/-*$//')"
+  kubectl run "$POD_NAME" --image=busybox --restart=Never \
+    --labels=cni-validation=true \
+    --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"$NODE\"}}" -- sleep 300
 done
 
-kubectl wait pods -l run --for=condition=Ready --timeout=120s
-kubectl get pods -l run -o wide
-kubectl delete pods -l run
+kubectl wait pods -l cni-validation=true --for=condition=Ready --timeout=120s
+kubectl get pods -l cni-validation=true -o wide
+kubectl delete pods -l cni-validation=true
 ```
 
 **Validation Step 4: Cross-node connectivity**
 
 ```bash
-kubectl run src --image=busybox --restart=Never -- sleep 120
-kubectl run dst --image=busybox --restart=Never -- sleep 120
+NODES=($(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'))
+[ "${#NODES[@]}" -ge 2 ] || { echo "FAIL: Need at least two nodes for cross-node test"; exit 1; }
+
+kubectl run src --image=busybox --restart=Never \
+  --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"${NODES[0]}\"}}" -- sleep 120
+kubectl run dst --image=busybox --restart=Never \
+  --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"${NODES[1]}\"}}" -- sleep 120
 kubectl wait pod/src pod/dst --for=condition=Ready --timeout=60s
 DST_IP=$(kubectl get pod dst -o jsonpath='{.status.podIP}')
 kubectl exec src -- ping -c 3 $DST_IP && echo "PASS: Cross-node ping" || echo "FAIL"
