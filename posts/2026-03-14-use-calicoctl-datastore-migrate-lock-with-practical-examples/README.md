@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Datastore Migration, Kubernetes, etcd
 
-Description: Use calicoctl datastore migrate lock to prevent changes to the Calico datastore during migration, ensuring data consistency throughout the process.
+Description: Use calicoctl datastore migrate lock to prevent datastore changes from affecting the Calico cluster during migration, ensuring data consistency throughout the process.
 
 ---
 
@@ -32,14 +32,15 @@ This guide provides practical examples and step-by-step procedures for using `ca
 calicoctl datastore migrate lock
 ```
 
-This sets a lock flag in the Calico datastore that prevents other calicoctl operations from modifying resources. It is a critical safety step during migration to ensure data consistency.
+This sets a lock flag in the Calico datastore so new Calico resource changes do not affect the cluster while migration is in progress. It is a critical safety step during migration to ensure data consistency.
 
 ## Understanding the Lock Mechanism
 
 The datastore lock:
-- Prevents `calicoctl apply`, `calicoctl create`, `calicoctl delete`, and `calicoctl replace` operations
+- Prevents new Calico resource changes from affecting the cluster during migration
+- Does not prevent `calicoctl apply`, `calicoctl create`, `calicoctl delete`, or `calicoctl replace` from updating stored resources
 - Does not affect read operations (`calicoctl get`, `calicoctl ipam show`)
-- Does not affect Calico runtime (Felix, BIRD continue to operate based on existing config)
+- Does not disrupt existing dataplane state, but new pods will not be started until after migration is complete
 - Must be explicitly unlocked after migration completes
 
 ## Step-by-Step Lock Usage
@@ -62,17 +63,15 @@ echo "Datastore is about to be locked."
 # Lock the datastore
 calicoctl datastore migrate lock
 
-# Verify the lock is active
-calicoctl datastore migrate lock --check 2>/dev/null || echo "Datastore is locked"
+# The command exits successfully when the datastore is locked.
+echo "Datastore lock command completed."
 ```
 
 ### Step 3: Verify Lock is Effective
 
 ```bash
-# Attempting to modify resources should fail
-echo "Testing lock..."
-calicoctl apply -f test-resource.yaml 2>&1 | grep -i "locked\|migration"
-echo "Lock is effective if the above shows a lock/migration message."
+# New Calico resource changes should not affect the cluster until unlock.
+echo "Keep the datastore locked while exporting and importing migration data."
 ```
 
 ### Step 4: Proceed with Migration
@@ -153,7 +152,7 @@ calicoctl get bgpconfigurations
 
 - **Permission errors**: Ensure calicoctl has read/write access to both source and target datastores.
 - **Connection timeouts**: Verify network connectivity to both etcd and Kubernetes API server.
-- **Resource conflicts**: If resources already exist in the target datastore, use the `--allow-version-mismatch` flag cautiously.
+- **Version mismatch errors**: Use a `calicoctl` binary that matches your Calico version, or use the global `--allow-version-mismatch` option only when you understand the compatibility risk.
 - **Incomplete migration**: Always verify resource counts match between source and target.
 
 ## Conclusion
