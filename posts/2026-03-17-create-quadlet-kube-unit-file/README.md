@@ -119,13 +119,13 @@ Restart=always
 WantedBy=default.target
 ```
 
-## Kube with Auto-Build
+## Kube with Auto-Update
 
 ```ini
 # ~/.config/containers/systemd/custom-app.kube
 [Kube]
 Yaml=custom-app.yaml
-# Automatically build images referenced in the YAML
+# Enable Podman auto-update for registry-backed images
 AutoUpdate=registry
 
 [Service]
