@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Network Policy, Logging, Audit, Security
 
-Description: Build a validation framework for Calico Policy Log Rules in Calico before production deployment.
+Description: Build a validation framework for Calico log rules before production deployment.
 
 ---
 
 ## Introduction
 
-Calico Policy Log Rules in Calico provides fine-grained network security controls using the `projectcalico.org/v3` API. This guide covers how to validate Policy Logging effectively.
+Calico log rules provide fine-grained network security visibility using the `projectcalico.org/v3` API. This guide covers how to validate policy logging effectively.
 
-Calico's extensible policy model supports Policy Logging through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your Policy Logging criteria.
+Calico's extensible policy model supports log rules through its `GlobalNetworkPolicy` and `NetworkPolicy` resources, giving you cluster-wide and namespace-scoped control over traffic that matches your policy logging criteria.
 
-This guide provides practical techniques for validate Policy Logging in your Kubernetes cluster, following security best practices and production-tested patterns.
+This guide provides practical techniques for validating policy logging in your Kubernetes cluster, following security best practices and production-tested patterns.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ This guide provides practical techniques for validate Policy Logging in your Kub
 
 ```bash
 for f in policies/*.yaml; do
-  calicoctl apply -f "$f" --dry-run && echo "PASS: $f" || echo "FAIL: $f"
+  calicoctl validate -f "$f" && echo "PASS: $f" || echo "FAIL: $f"
 done
 ```
 
@@ -34,7 +34,9 @@ done
 
 ```bash
 python3 << 'EOF'
-import subprocess, yaml, sys
+import re
+import subprocess
+import yaml
 
 # Load policies
 
@@ -46,11 +48,22 @@ for p in policies:
     if p is None: continue
     sel = p.get('spec', {}).get('selector', '')
     if sel and sel != 'all()':
-        label_key = sel.split('==')[0].strip().strip("'")
+        if re.fullmatch(r"[A-Za-z0-9./_-]+\s*==\s*['\"][^'\"]+['\"]", sel):
+            label_key, label_value = re.split(r"\s*==\s*", sel, maxsplit=1)
+            label_value = label_value.strip().strip("'\"")
+            kube_selector = f"{label_key.strip()}={label_value}"
+        elif re.fullmatch(r"has\([A-Za-z0-9./_-]+\)", sel):
+            kube_selector = sel[4:-1]
+        else:
+            print(f"SKIP: selector requires Calico validation, not kubectl label matching: {sel}")
+            continue
         result = subprocess.run(
-            ['kubectl', 'get', 'pods', '--all-namespaces', '-l', label_key],
+            ['kubectl', 'get', 'pods', '--all-namespaces', '-l', kube_selector, '--no-headers'],
             capture_output=True, text=True
         )
+        if result.returncode != 0:
+            errors.append(f"kubectl failed for selector {sel}: {result.stderr.strip()}")
+            continue
         if not result.stdout.strip():
             errors.append(f"No pods match selector: {sel}")
 if errors:
@@ -77,11 +90,18 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - name: Install validation tools
+        run: |
+          pipx install yamllint
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o calicoctl
+          chmod +x calicoctl
+          sudo mv calicoctl /usr/local/bin/calicoctl
       - name: Validate
         run: |
+          yamllint policies/
           for f in policies/*.yaml; do
-            yamllint "$f"
+            calicoctl validate -f "$f"
           done
 ```
 
@@ -89,12 +109,13 @@ jobs:
 
 ```mermaid
 flowchart TD
-    A[Source Pod] -->|Traffic| B{Calico Policy\nPolicy Logging}
-    B -->|Allow Rule Matches| C[Destination Pod]
-    B -->|No Match / Deny| D[BLOCKED]
-    E[Policy Controller] -->|Updates| B
+    A[Source Pod] -->|Traffic| B{Calico Policy\nLog Rule}
+    B -->|Log action matches| C[Continue to next rule]
+    C -->|Allow verdict| D[Destination Pod]
+    C -->|Deny / no action| E[BLOCKED]
+    F[Policy Controller] -->|Updates| B
 ```
 
 ## Conclusion
 
-Validate Policy Logging policies in Calico requires attention to policy ordering, selector accuracy, and bidirectional rule coverage. Follow the patterns in this guide to ensure your Policy Logging policies are correctly configured, tested, and monitored. Always validate in staging before applying to production, and maintain comprehensive logging for visibility into policy decisions.
+Validating policy logging in Calico requires attention to policy ordering, selector accuracy, and bidirectional rule coverage. Follow the patterns in this guide to ensure your log rules are correctly configured, tested, and monitored. Always validate in staging before applying to production, and remove temporary log rules when testing is complete to avoid unnecessary overhead.
