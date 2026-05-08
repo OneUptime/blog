@@ -79,14 +79,14 @@ podman build --platform linux/arm64 -t myapp:arm64 .
 podman manifest create myapp:latest
 
 # Add each platform image to the manifest
-podman manifest add myapp:latest myapp:amd64
-podman manifest add myapp:latest myapp:arm64
+podman manifest add myapp:latest containers-storage:localhost/myapp:amd64
+podman manifest add myapp:latest containers-storage:localhost/myapp:arm64
 
 # Inspect the manifest
 podman manifest inspect myapp:latest
 
 # Push the manifest to a registry
-podman manifest push myapp:latest docker://registry.example.com/myapp:latest
+podman manifest push --all myapp:latest docker://registry.example.com/myapp:latest
 ```
 
 ## Using --platform with podman build --manifest
@@ -103,7 +103,7 @@ podman build --platform linux/amd64,linux/arm64 \
 podman manifest inspect myapp:multi
 
 # Push the multi-arch manifest
-podman manifest push myapp:multi docker://registry.example.com/myapp:latest
+podman manifest push --all myapp:multi docker://registry.example.com/myapp:latest
 ```
 
 ## Platform-Aware Containerfiles
@@ -133,9 +133,9 @@ EOF
 podman build --platform linux/arm64 -t myapp:arm64 .
 ```
 
-## Automatic Platform Variables
+## Automatic Target Platform Variables
 
-Podman sets these ARG variables automatically when `--platform` is used.
+Podman sets these target ARG variables automatically when `--platform` is used.
 
 ```bash
 cat > Containerfile << 'EOF'
@@ -145,14 +145,11 @@ ARG TARGETPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
-ARG BUILDPLATFORM
-ARG BUILDOS
-ARG BUILDARCH
 
-RUN echo "Building on: ${BUILDPLATFORM}" && \
-    echo "Target: ${TARGETPLATFORM}" && \
+RUN echo "Target: ${TARGETPLATFORM}" && \
     echo "Target OS: ${TARGETOS}" && \
-    echo "Target Arch: ${TARGETARCH}"
+    echo "Target Arch: ${TARGETARCH}" && \
+    echo "Target Variant: ${TARGETVARIANT}"
 
 CMD ["sh"]
 EOF
@@ -200,7 +197,7 @@ podman build \
   .
 
 # Push the manifest list
-podman manifest push "${IMAGE}:${TAG}" "docker://${IMAGE}:${TAG}"
+podman manifest push --all "${IMAGE}:${TAG}" "docker://${IMAGE}:${TAG}"
 
 echo "Pushed multi-arch manifest: ${IMAGE}:${TAG}"
 ```
