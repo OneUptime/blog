@@ -53,26 +53,47 @@ spec:
         - |
           # Load required modules
           modprobe wireguard 2>/dev/null || echo "WARN: wireguard module not available"
-          modprobe br_netfilter
+          modprobe br_netfilter 2>/dev/null || echo "WARN: br_netfilter module not available"
           # Verify BPF filesystem
-          mount | grep -q bpf || mount -t bpf bpf /sys/fs/bpf
+          mount | grep -q ' on /sys/fs/bpf type bpf' || mount -t bpf bpf /sys/fs/bpf
           # Set required sysctl
           sysctl -w net.ipv4.ip_forward=1
           echo "Node software validation complete"
+        volumeMounts:
+        - name: modules
+          mountPath: /lib/modules
+          readOnly: true
+        - name: bpffs
+          mountPath: /sys/fs/bpf
+          mountPropagation: Bidirectional
       containers:
       - name: pause
         image: registry.k8s.io/pause:3.9
+      volumes:
+      - name: modules
+        hostPath:
+          path: /lib/modules
+          type: Directory
+      - name: bpffs
+        hostPath:
+          path: /sys/fs/bpf
+          type: DirectoryOrCreate
 ```
 
 ## Version Pinning
 
-```bash
+```yaml
 # Pin container image versions in test deployments
 
 # Good: specific version
-image: networkstatic/iperf3:3.16
+containers:
+- name: iperf3
+  image: networkstatic/iperf3:3.16
+
 # Bad: latest tag
-image: networkstatic/iperf3:latest
+containers:
+- name: iperf3
+  image: networkstatic/iperf3:latest
 ```
 
 ## Software Health Alerting
@@ -88,7 +109,7 @@ spec:
   - name: node-software
     rules:
     - alert: KernelVersionMismatch
-      expr: count(count by (kernel_version) (node_uname_info)) > 1
+      expr: count(count by (release) (node_uname_info)) > 1
       for: 10m
       labels:
         severity: warning
@@ -99,9 +120,12 @@ spec:
 ## Verification
 
 ```bash
-# Run the validation checks above
-# All items should show PASS
+# Check Cilium health
 cilium status --verbose
+
+# Run functional connectivity validation
+# Successful connectivity tests should show PASS
+cilium connectivity test
 ```
 
 ## Troubleshooting
