@@ -67,7 +67,7 @@ When searching, use specific terms from your error messages:
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i error
 
 # Also check Cilium operator logs
-kubectl logs -n kube-system -l name=cilium-operator --tail=30
+kubectl logs -n kube-system -l io.cilium/app=operator --tail=30
 ```
 
 ## Step 3: File an Effective Bug Report
@@ -79,11 +79,11 @@ When filing a bug, use the repository's issue template and include complete diag
 cilium version
 cilium status --verbose
 uname -r
-kubectl version --short
+kubectl version
 kubectl get nodes -o wide
 
 # Generate a sysdump for complex issues
-cilium sysdump --output-filename bug-report-$(date +%Y%m%d).zip
+cilium sysdump --output-filename bug-report-$(date +%Y%m%d)
 
 # Check for relevant recent events
 kubectl get events --sort-by='.lastTimestamp' -A | grep -i cilium
@@ -123,11 +123,11 @@ git clone https://github.com/YOUR_USERNAME/cilium.git
 cd cilium
 git checkout -b fix/my-bug-fix
 
-# Make your changes, then run tests
-make tests
+# Make your changes, then run the relevant tests
+make test-docs
 
 # Submit a pull request with a clear description
-# PR title format: "[area] Short description"
+# Use a clear PR title and include the requested PR template details
 # Example: "[policy] Fix incorrect endpoint selector matching on restart"
 ```
 
