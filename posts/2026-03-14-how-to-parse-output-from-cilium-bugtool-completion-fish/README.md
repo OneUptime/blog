@@ -15,7 +15,7 @@ The fish shell provides a rich completion system with descriptions displayed inl
 
 
 
-Fish completion scripts use a declarative format with `complete` commands that map directly to command-line options. This format is particularly straightforward to parse compared to bash or zsh completions.
+Fish completion scripts use the `complete` command, and modern Cobra-generated completions resolve candidates dynamically through fish. This makes the completion output queryable with fish itself, which is more reliable than parsing the generated script as a static list.
 
 This guide covers extracting and analyzing data from cilium-bugtool fish completion output.
 
@@ -37,14 +37,14 @@ cilium-bugtool completion fish > /tmp/bugtool-fish-completion.fish
 
 ### Extracting Commands and Descriptions
 
-Fish completions use a consistent \`complete -c <command>\` format:
+Modern Cobra-generated fish completions define dynamic `complete -c <command>` entries. Source the generated script in fish, then ask fish for the completions it would show:
 
 ```bash
 ## Extract subcommands with descriptions
-grep -oP "complete -c cilium-bugtool.*-a\s+(\S+)\s+-d\s+'([^']+)'"   /tmp/bugtool-fish-completion.fish |   sed "s/complete.*-a //" | sed "s/ -d '/: /" | sed "s/'$//"
+fish -c 'source /tmp/bugtool-fish-completion.fish; complete --do-complete "cilium-bugtool "' | awk -F "\t" '{print $1 ": " $2}'
 
 ## Extract all flags
-grep -oP "(-l|--)\s*[a-z][-a-z0-9]*" /tmp/bugtool-fish-completion.fish | sort -u
+fish -c 'source /tmp/bugtool-fish-completion.fish; complete --do-complete "cilium-bugtool -"' | awk -F "\t" '{print $1}' | sort -u
 ```
 
 ### Python Parser for Fish Completions
@@ -53,42 +53,46 @@ grep -oP "(-l|--)\s*[a-z][-a-z0-9]*" /tmp/bugtool-fish-completion.fish | sort -u
 #!/usr/bin/env python3
 """Parse cilium-bugtool fish completion output."""
 
-import re
 import json
 import sys
+import subprocess
+import shlex
 
 def parse_fish_completion(filepath):
-    with open(filepath) as f:
-        lines = f.readlines()
+    source_path = shlex.quote(filepath)
+
+    def get_completions(commandline):
+        fish_command = f'source {source_path}; complete --do-complete {shlex.quote(commandline)}'
+        output = subprocess.check_output(['fish', '-c', fish_command], text=True)
+        return [line for line in output.splitlines() if line]
+
+    def parse_completion_line(line):
+        value, _, description = line.partition('\t')
+        return value, description
 
     commands = []
     flags = []
 
-    for line in lines:
-        line = line.strip()
-        if not line.startswith('complete'):
-            continue
-
-        # Extract subcommand with description
-        cmd_match = re.search(r'-a\s+(\S+)(?:\s+-d\s+\'([^\']+)\')?', line)
-        if cmd_match:
+    for line in get_completions('cilium-bugtool '):
+        name, description = parse_completion_line(line)
+        if name and not name.startswith('-'):
             commands.append({
-                'name': cmd_match.group(1),
-                'description': cmd_match.group(2) or ''
+                'name': name,
+                'description': description
             })
 
-        # Extract long flags
-        flag_match = re.search(r'-l\s+(\S+)(?:\s+-d\s+\'([^\']+)\')?', line)
-        if flag_match:
+    for line in get_completions('cilium-bugtool -'):
+        flag, description = parse_completion_line(line)
+        if flag.startswith('--'):
             flags.append({
-                'flag': '--' + flag_match.group(1),
-                'description': flag_match.group(2) or ''
+                'flag': flag,
+                'description': description
             })
 
     return {
         'commands': commands,
         'flags': flags,
-        'total_completions': len(lines)
+        'total_completions': len(commands) + len(flags)
     }
 
 if __name__ == '__main__':
@@ -118,4 +122,4 @@ python3 parse_fish_completion.py /tmp/bugtool-fish-completion.fish | jq '.flags 
 
 
 
-Fish completion scripts use a clean declarative format that is straightforward to parse. Extracting commands and flags from fish completions enables documentation generation and CLI analysis with minimal effort.
+Fish completion scripts expose a clean interface through fish's completion engine. Extracting commands and flags from fish completions enables documentation generation and CLI analysis with minimal effort.
