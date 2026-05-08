@@ -20,7 +20,7 @@ Podman allows you to connect a running container to one or more additional netwo
 # Create two networks
 
 podman network create frontend
-podman network create backend
+podman network create --subnet 10.10.0.0/24 backend
 
 # Start a container on the frontend network
 podman run -d --name api-gateway \
@@ -52,6 +52,7 @@ podman inspect multi-net --format '{{ range $k, $v := .NetworkSettings.Networks 
 
 ```bash
 # Connect to a network with a specific IP address
+podman network disconnect backend api-gateway
 podman network connect --ip 10.10.0.50 backend api-gateway
 
 # Verify the assigned IP
@@ -62,6 +63,7 @@ podman inspect api-gateway --format '{{ range $k, $v := .NetworkSettings.Network
 
 ```bash
 # Connect with a DNS alias on the new network
+podman network disconnect backend api-gateway
 podman network connect --alias gateway --alias proxy backend api-gateway
 
 # Other containers on the backend network can reach it by alias
@@ -104,8 +106,8 @@ podman run -d --name db \
 podman inspect api-gateway --format '{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }} {{ end }}'
 
 # Test connectivity between containers
-podman exec api ping -c 2 db
-podman exec web ping -c 2 api
+podman run --rm --network container:api docker.io/library/alpine:latest ping -c 2 db
+podman run --rm --network container:web docker.io/library/alpine:latest ping -c 2 api
 
 # List all containers on a specific network
 podman ps --filter network=backend --format "{{ .Names }}: {{ .Networks }}"
