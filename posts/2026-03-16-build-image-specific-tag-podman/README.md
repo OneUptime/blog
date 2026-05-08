@@ -10,7 +10,7 @@ Description: Learn how to tag images during Podman builds using the -t flag, inc
 
 > Consistent image tagging is essential for tracking deployments, rolling back changes, and managing container image lifecycles.
 
-Every container image needs a tag to identify it. While Podman assigns a random ID to every build, meaningful tags make images discoverable and manageable. The `-t` flag in `podman build` assigns tags during the build process. This guide covers tagging strategies and practical workflows.
+Every container image gets an image ID, and tags give it a human-readable name. While Podman assigns an ID to every build, meaningful tags make images discoverable and manageable. The `-t` flag in `podman build` assigns tags during the build process. This guide covers tagging strategies and practical workflows.
 
 ---
 
@@ -153,7 +153,7 @@ podman build -t "myapp:${BUILD_TAG}" .
 You can also tag images after they have been built.
 
 ```bash
-# Build without a specific tag
+# Build with an initial tag
 podman build -t myapp:latest .
 
 # Add additional tags after the build
