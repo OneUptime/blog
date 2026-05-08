@@ -29,7 +29,7 @@ Validate Calico configurations before applying them to production:
 ```bash
 # Use calicoctl to validate manifests
 
-calicoctl apply -f calico-config.yaml --dry-run
+calicoctl validate -f calico-config.yaml
 
 # Compare your manifest against the live configuration
 diff <(calicoctl get ippools -o yaml) ippool.yaml
@@ -48,7 +48,7 @@ set -euo pipefail
 
 for manifest in calico-resources/*.yaml; do
   echo "Validating $manifest..."
-  calicoctl apply -f "$manifest" --dry-run || exit 1
+  calicoctl validate -f "$manifest" || exit 1
 done
 
 echo "All Calico manifests are valid."
@@ -197,14 +197,14 @@ kubectl get pods -n calico-system -o wide
 # Layer 2: IPAM consistency
 calicoctl ipam check
 
-# Layer 3: Node-to-node connectivity
+# Layer 3: Calico process and BGP peer status, if BGP is in use
 calicoctl node status
 
-# Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+# Layer 4: Service ClusterIP connectivity
+kubectl run fix-test --image=curlimages/curl --rm -it --restart=Never --command -- curl -sk --max-time 5 https://kubernetes.default.svc/readyz
 
 # Layer 5: Application-level connectivity
-kubectl get endpoints -A | grep "<none>" | head -10
+kubectl get endpointslices -A
 ```
 
 Each layer depends on the previous one. If Layer 1 fails, do not proceed to testing Layer 2. Fix each layer in order to avoid chasing phantom issues caused by a lower-layer failure.
