@@ -44,7 +44,7 @@ calicoctl ipam check 2>&1
 
 ```bash
 OLD_CIDR_PREFIX="10.0."  # Replace with old conflicting prefix
-kubectl get pods --all-namespaces -o wide | grep "$OLD_CIDR_PREFIX" | grep -v "kube-system"
+kubectl get pods --all-namespaces -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,IP:.status.podIP --no-headers | awk -v prefix="$OLD_CIDR_PREFIX" 'index($3, prefix) == 1'
 # Expected: empty - no pods should have IPs starting with old prefix
 ```
 
@@ -74,10 +74,10 @@ kubectl delete pod val-a val-b
 
 ```bash
 # Test from a node to a pod (previous source of routing conflict)
-NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-POD_IP=$(kubectl get pods --all-namespaces -o jsonpath='{.items[0].status.podIP}' | head -1)
+NODE_NAME=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+POD_IP=$(kubectl get pods --all-namespaces --field-selector=status.phase=Running -o custom-columns=IP:.status.podIP --no-headers | awk 'NF {print $1; exit}')
 # SSH to node and ping pod
-ssh <node-name> "ping -c 3 $POD_IP"
+ssh "$NODE_NAME" "ping -c 3 $POD_IP"
 ```
 
 ```mermaid
