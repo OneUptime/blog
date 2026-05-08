@@ -43,17 +43,29 @@ spec:
             - -c
             - |
               echo "=== IPAM Audit $(date) ==="
+
+              SA=/var/run/secrets/kubernetes.io/serviceaccount
+              cat > /tmp/calicoctl.cfg <<EOF
+              apiVersion: projectcalico.org/v3
+              kind: CalicoAPIConfig
+              metadata:
+              spec:
+                datastoreType: kubernetes
+                k8sAPIEndpoint: https://kubernetes.default.svc
+                k8sCAFile: $SA/ca.crt
+                k8sToken: $(cat $SA/token)
+              EOF
               
               # Run the check
-              RESULT=$(calicoctl ipam check 2>&1)
+              RESULT=$(calicoctl ipam check --config=/tmp/calicoctl.cfg --show-problem-ips 2>&1)
               echo "$RESULT"
               
               # Check for issues
-              ISSUES=$(echo "$RESULT" | grep -cE "leaked|orphan" || echo 0)
+              ISSUES=$(echo "$RESULT" | grep -ciE "leaked|not allocated properly" || true)
               
               # Report utilization
               echo ""
-              calicoctl ipam show
+              calicoctl ipam show --config=/tmp/calicoctl.cfg
               
               if [ "$ISSUES" -gt 0 ]; then
                 echo "ALERT: $ISSUES IPAM issues detected"
@@ -70,22 +82,26 @@ spec:
 #!/bin/bash
 # auto-cleanup-ipam.sh
 
-# Automatically cleans up leaked IPs and orphaned blocks
+# Automatically releases leaked IPs reported by calicoctl ipam check
 
 LOG="/var/log/calico-ipam-cleanup.log"
+REPORT=$(mktemp)
+
+cleanup() {
+  rm -f "$REPORT"
+  calicoctl datastore migrate unlock >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 
 {
   echo "=== IPAM Cleanup $(date) ==="
   
-  # Run check
-  calicoctl ipam check
+  # Lock the datastore while checking and releasing leaked addresses
+  calicoctl datastore migrate lock
   
-  # Get valid nodes
-  VALID_NODES=$(calicoctl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
-  
-  # Clean orphaned blocks
-  echo "Checking for orphaned blocks..."
-  # This is a conservative approach - only release from nodes that clearly do not exist
+  # Generate an IPAM report and release leaked addresses from it
+  calicoctl ipam check -o "$REPORT" --show-problem-ips
+  calicoctl ipam release --from-report "$REPORT"
   
   # Report final state
   echo ""
@@ -103,16 +119,16 @@ LOG="/var/log/calico-ipam-cleanup.log"
 # Exports IPAM metrics for monitoring
 
 RESULT=$(calicoctl ipam check 2>&1)
-LEAKED=$(echo "$RESULT" | grep -c "leaked" || echo 0)
-ORPHANED=$(echo "$RESULT" | grep -c "orphan" || echo 0)
+LEAKED=$(echo "$RESULT" | grep -ci "leaked" || true)
+UNALLOCATED=$(echo "$RESULT" | grep -ci "not allocated properly" || true)
 
 # Get utilization
 UTIL=$(calicoctl ipam show 2>&1)
-TOTAL=$(echo "$UTIL" | grep "IPs" | head -1 | awk '{print $1}')
-USED=$(echo "$UTIL" | grep "in use" | awk '{print $1}')
+TOTAL=$(echo "$UTIL" | awk -F'|' '$2 ~ /IP Pool/ {gsub(/ /, "", $4); total += $4} END {print total+0}')
+USED=$(echo "$UTIL" | awk -F'|' '$2 ~ /IP Pool/ {gsub(/^ +| +$/, "", $5); split($5, used, " "); total += used[1]} END {print total+0}')
 
 echo "calico_ipam_leaked_ips $LEAKED"
-echo "calico_ipam_orphaned_blocks $ORPHANED"
+echo "calico_ipam_unallocated_ips $UNALLOCATED"
 echo "calico_ipam_total_ips ${TOTAL:-0}"
 echo "calico_ipam_used_ips ${USED:-0}"
 ```
@@ -131,7 +147,7 @@ kubectl logs -n calico-system -l job-name=test-ipam-audit -f
 ## Troubleshooting
 
 - **CronJob always fails**: Check RBAC permissions for the service account. The job needs read access to IPAM resources.
-- **Cleanup is too aggressive**: Only release IPs from nodes that are confirmed to no longer exist. Never release IPs from active nodes.
+- **Cleanup is too aggressive**: Only release addresses that `calicoctl ipam check` reports as leaked. Never release IPs that may still be used by active endpoints.
 - **Metrics show increasing leaked IPs**: Investigate why IPs are being leaked. Common causes include application crashes, forced pod deletions, and kubelet issues.
 
 ## Conclusion
