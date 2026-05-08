@@ -10,7 +10,7 @@ Description: Systematically validate that Cilium Ingress controller and Gateway 
 
 ## Introduction
 
-Validating ingress in cilium networking ensures that your Cilium configuration is not only applied but actually working correctly under real traffic conditions. Cilium provides a built-in Ingress controller and Gateway API implementation powered by Envoy. It handles external HTTP/HTTPS traffic routing to cluster services without requiring a separate ingress controller. Cilium Ingress supports TLS termination, path-based routing, header manipulation, and integrates with Cilium network policies for security.
+Validating ingress in cilium networking ensures that your Cilium configuration is not only applied but actually working correctly under real traffic conditions. Cilium provides a built-in Ingress controller and Gateway API implementation powered by Envoy. It handles external HTTP/HTTPS traffic routing to cluster services without requiring a separate ingress controller. Cilium Ingress supports TLS termination and path-based routing, while Cilium's Ingress and Gateway API implementations integrate with Cilium network policies for security.
 
 Validation goes beyond checking pod status. It requires testing actual traffic flows, verifying configuration values, and confirming that the feature behaves as documented. A validation failure caught early prevents production incidents caused by misconfigured networking.
 
@@ -105,6 +105,24 @@ spec:
   ports:
     - port: 80
       targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: validate-ingress
+  namespace: default
+spec:
+  ingressClassName: cilium
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: validate-svc
+                port:
+                  number: 80
 ```
 
 ```bash
@@ -118,6 +136,11 @@ kubectl wait --for=condition=Ready pod/validate-client --timeout=30s
 
 # Test service access
 kubectl exec validate-client -- wget -qO- --timeout=5 http://validate-svc
+
+# Test ingress resource programming
+kubectl get ingress validate-ingress
+INGRESS_ADDRESS=$(kubectl get ingress validate-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+curl -fsS "http://${INGRESS_ADDRESS}/" >/dev/null
 
 # Test direct pod IP access
 for IP in $(kubectl get pods -l app=validate-server -o jsonpath='{.items[*].status.podIP}'); do
@@ -136,15 +159,15 @@ Check that all endpoints managed by Cilium are healthy:
 
 ```bash
 # List all Cilium endpoints and their health
-cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
-# Check for endpoints in a non-ready state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
+# Check local Cilium endpoints on one agent for non-ready state
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list --no-headers | grep -v "ready" || true
 
-# Verify endpoint count matches pod count
-ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
-POD_COUNT=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
-echo "Cilium endpoints: $ENDPOINT_COUNT, Running pods: $POD_COUNT"
+# Compare CiliumEndpoint resources with running pods as a sanity check
+CEP_COUNT=$(kubectl get ciliumendpoints.cilium.io --all-namespaces --no-headers 2>/dev/null | wc -l)
+POD_COUNT=$(kubectl get pods --all-namespaces --field-selector=status.phase=Running --no-headers | wc -l)
+echo "CiliumEndpoint resources: $CEP_COUNT, Running pods: $POD_COUNT"
 ```
 
 ## Validating Metrics and Observability
@@ -153,13 +176,13 @@ Confirm metrics are being collected for ingress in cilium networking:
 
 ```bash
 # Check Cilium agent metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i "proxy"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep -i "proxy"
 
 # Verify Hubble is observing flows
 kubectl exec -n kube-system ds/cilium -- hubble observe --last 5
 
 # Check for any drop metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep drop
 ```
 
 ## Verification
@@ -190,7 +213,7 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=10m | grep -c "e
 
 - **Connectivity test fails on specific tests**: Not all tests apply to every configuration. Some tests require specific features (like encryption or L7 policy) to be enabled.
 - **Endpoints show as not-ready**: The endpoint may still be initializing. Wait 30 seconds and check again. If persistent, check the Cilium agent logs for the node where the endpoint is running.
-- **Metrics show high drop count**: Check the drop reason with `cilium metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
+- **Metrics show high drop count**: Check the drop reason with `cilium-dbg metrics list | grep drop` from a Cilium agent pod. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
 - **Validation passes but production traffic fails**: The validation tests may not cover your specific traffic pattern. Create custom test workloads that mirror your production traffic patterns.
 
 ## Conclusion
