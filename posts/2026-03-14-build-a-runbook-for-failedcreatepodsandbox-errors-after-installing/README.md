@@ -51,7 +51,7 @@ Document the scope in your incident:
 # Decision Point 1: Scope
 # - All nodes affected → Likely a cluster-wide CNI configuration issue
 # - Single node affected → Likely a node-specific CNI binary or config issue
-# - Specific namespace only → Likely an IPAM or network policy issue
+# - Specific namespace only → Likely a namespace-specific IPAM issue
 ```
 
 ## Runbook: CNI Binary and Configuration Checks
@@ -78,8 +78,10 @@ kubectl get pods -n calico-system -l k8s-app=calico-node \
   --field-selector spec.nodeName=NODE_NAME -o wide
 
 # Step 7: Check calico-node logs for errors
-kubectl logs -n calico-system -l k8s-app=calico-node \
-  --field-selector spec.nodeName=NODE_NAME --tail=50
+CALICO_NODE_POD=$(kubectl get pod -n calico-system \
+  -l k8s-app=calico-node --field-selector spec.nodeName=NODE_NAME \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl logs -n calico-system "$CALICO_NODE_POD" --tail=50
 ```
 
 Decision tree:
@@ -108,7 +110,7 @@ kubectl get ipamblocks.crd.projectcalico.org \
 kubectl get ipamhandles.crd.projectcalico.org -o name | wc -l
 
 # Step 11: Verify the Calico IPAM configuration matches the pod CIDR
-kubectl get installation default -n calico-system -o yaml | grep -A5 ipPools
+kubectl get installations.operator.tigera.io default -o yaml | grep -A5 ipPools
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{": "}{.spec.podCIDR}{"\n"}{end}'
 ```
 
@@ -172,7 +174,7 @@ kubectl get ds calico-node -n calico-system
 ## Troubleshooting
 
 - **calico-node pod is CrashLoopBackOff**: Check logs with `kubectl logs -n calico-system -l k8s-app=calico-node --previous`. Common causes include incorrect `IP_AUTODETECTION_METHOD` or datastore connectivity issues.
-- **CNI config keeps disappearing**: The calico-node pod installs the CNI config via an init container. If the node has a custom CNI path, set `spec.cni.cniBinPath` and `spec.cni.cniConfDir` in the Calico Installation CR.
+- **CNI config keeps disappearing**: The calico-node pod installs the CNI config via an init container. If the node has a custom CNI path, set `spec.cni.binDir` and `spec.cni.confDir` in the Calico Installation CR.
 - **IPAM blocks exhausted**: Increase the IP pool CIDR or reduce the block size. Note that changing block size requires recreating the IPPool.
 - **Multiple CNI configs conflicting**: Check `/etc/cni/net.d/` for leftover configs from previous CNI plugins. Remove any non-Calico configs and restart kubelet.
 
