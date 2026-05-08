@@ -53,7 +53,7 @@ spec:
     - fd80::1
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+Each field is intentionally set to a concrete example value. Adjust the values to match your environment before applying.
 
 ## Applying the Resource
 
@@ -63,15 +63,15 @@ Apply the manifest using `kubectl`:
 kubectl apply -f hostendpoint.yaml
 ```
 
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
+Alternatively, use `calicoctl`, the native CLI for Calico resources:
 
 ```bash
-# Apply with calicoctl for enhanced validation
+# Apply with calicoctl
 
 calicoctl apply -f hostendpoint.yaml
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+`calicoctl` applies Calico resource manifests directly and is useful for validating Calico resources before applying them to production clusters.
 
 ## Verification
 
@@ -79,10 +79,10 @@ Confirm that the resource was created successfully:
 
 ```bash
 # List HostEndpoint resources
-kubectl get hostendpoint.projectcalico.org -o wide
+kubectl get hostendpoints.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe hostendpoint.projectcalico.org
+kubectl describe hostendpoint.projectcalico.org worker1-eth0
 
 # Verify with calicoctl
 calicoctl get hostendpoint -o yaml
@@ -99,11 +99,11 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `HostEndpoint`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- Check that the Calico APIs are available to `kubectl`: `kubectl api-resources | grep projectcalico.org`.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
-- Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
+- Ensure field values match the types expected by the API, including valid IPv4 or IPv6 addresses for `expectedIPs`.
 
 **Calico components not picking up the resource:**
 - Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
@@ -116,15 +116,14 @@ Beyond the basic manifest shown above, there are several advanced configuration 
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can label host endpoints for targeted policy selectors:
 
 ```bash
-# Label nodes for targeted configuration
-kubectl label node worker-1 calico-config=high-performance
-kubectl label node worker-2 calico-config=standard
+# Label host endpoints for targeted configuration
+kubectl label hostendpoint.projectcalico.org worker1-eth0 calico-config=high-performance
 
 # Verify labels are applied
-kubectl get nodes --show-labels | grep calico-config
+kubectl get hostendpoints.projectcalico.org --show-labels | grep calico-config
 ```
 
 ### Version Control and GitOps Integration
@@ -152,7 +151,7 @@ Adopt a consistent naming convention for your Calico resources:
 
 - Use descriptive names that indicate the resource's purpose (e.g., `production-pod-pool` instead of `pool-1`)
 - Include environment or cluster identifiers for multi-cluster setups
-- Avoid special characters; use lowercase letters, numbers, and hyphens only
+- Avoid unnecessary special characters; Calico resource names support alphanumeric characters with optional dots, underscores, and hyphens
 
 Following these conventions makes it easier to manage resources at scale and reduces the risk of accidental modifications to the wrong resource.
 
