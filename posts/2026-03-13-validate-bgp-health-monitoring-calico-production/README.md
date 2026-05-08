@@ -21,10 +21,20 @@ kubectl patch felixconfiguration default \
   --type=merge \
   -p '{"spec":{"prometheusMetricsEnabled":true,"prometheusMetricsPort":9091}}'
 
-# Enable flow logs
-kubectl patch felixconfiguration default \
-  --type=merge \
-  -p '{"spec":{"flowLogsFlushInterval":"15s","flowLogsFileEnabled":true}}'
+# Enable flow logs API and Whisker
+kubectl apply -f - <<'EOF'
+apiVersion: operator.tigera.io/v1
+kind: Goldmane
+metadata:
+  name: default
+EOF
+
+kubectl apply -f - <<'EOF'
+apiVersion: operator.tigera.io/v1
+kind: Whisker
+metadata:
+  name: default
+EOF
 
 # Check BGP peer state
 calicoctl node status
@@ -41,11 +51,11 @@ kubectl exec -n calico-system "${CALICO_POD}" -c calico-node -- \
 ```mermaid
 flowchart LR
     A[Felix metrics :9091] --> B[Prometheus]
-    C[Flow logs] --> D[Fluent Bit]
-    D --> E[Loki / Elasticsearch]
+    C[Flow logs] --> D[Goldmane]
+    D --> E[Whisker / flow logs API]
     B --> F[Grafana]
-    E --> F
-    F --> G[Dashboards & Alerts]
+    E --> G[Flow log visibility]
+    F --> H[Dashboards & Alerts]
 ```
 
 ## Alert Configuration
@@ -60,11 +70,11 @@ spec:
   groups:
     - name: calico.network
       rules:
-        - alert: CalicoHighDenyRate
+        - alert: CalicoFelixDataplaneFailures
           expr: rate(felix_int_dataplane_failures[5m]) > 0
           for: 5m
           annotations:
-            summary: "High Calico policy deny rate on {{ $labels.instance }}"
+            summary: "Calico Felix dataplane failures on {{ $labels.instance }}"
         - alert: CalicoFelixMetricsDown
           expr: up{job="calico-node-metrics"} == 0
           for: 5m
@@ -74,4 +84,4 @@ spec:
 
 ## Conclusion
 
-Calico observability requires enabling Felix Prometheus metrics, configuring flow logs for connection-level data, and building dashboards that surface actionable signals. The three most important operational signals are Felix dataplane failures (indicates iptables programming errors), high policy deny rate (indicates policy misconfiguration or security events), and IPAM utilization (indicates capacity issues). Configure alerts for all three from day one in production clusters.
+Calico observability requires enabling Felix Prometheus metrics, configuring flow logs for connection-level data, and building dashboards that surface actionable signals. The most important operational signals include Felix dataplane failures (indicates dataplane programming errors), Felix metrics availability, and IPAM utilization (indicates capacity issues). Configure alerts for the metrics-backed signals from day one in production clusters.
