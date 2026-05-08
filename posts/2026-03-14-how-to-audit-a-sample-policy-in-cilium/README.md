@@ -30,9 +30,9 @@ for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
   POD_COUNT=$(kubectl get pods -n "$ns" --no-headers 2>/dev/null | wc -l)
   
   if [ "$POD_COUNT" -gt 0 ] && [ "$POLICY_COUNT" -eq 0 ]; then
-    echo "AUDIT FAIL: Namespace '$ns' has $POD_COUNT pods but NO policies"
+    echo "AUDIT FAIL: Namespace '$ns' has $POD_COUNT pods but NO namespace-scoped CiliumNetworkPolicies"
   else
-    echo "OK: Namespace '$ns' has $POLICY_COUNT policies for $POD_COUNT pods"
+    echo "OK: Namespace '$ns' has $POLICY_COUNT CiliumNetworkPolicies for $POD_COUNT pods"
   fi
 done
 ```
@@ -43,12 +43,16 @@ done
 # Check for overly permissive policies
 
 kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '.items[] | select(
-  .spec.ingress == [{"fromEndpoints": [{}]}] or
-  .spec.egress == [{"toEndpoints": [{}]}]
-) | "WARN: \(.metadata.namespace)/\(.metadata.name) has allow-all rule"'
+  ([.spec?] + (.specs? // []) | map(select(. != null))) as $rules |
+  any($rules[]; any(.ingress[]?; .fromEndpoints == [{}] and ((keys - ["fromEndpoints"]) | length == 0))) or
+  any($rules[]; any(.egress[]?; .toEndpoints == [{}] and ((keys - ["toEndpoints"]) | length == 0)))
+) | "WARN: \(.metadata.namespace)/\(.metadata.name) has allow-all endpoint rule"'
 
 # Check for policies without egress restrictions
-kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '.items[] | select(.spec.egress == null) | "INFO: \(.metadata.namespace)/\(.metadata.name) has no egress rules"'
+kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '.items[] | select(
+  ([.spec?] + (.specs? // []) | map(select(. != null))) as $rules |
+  ($rules | length) > 0 and all($rules[]; ((.egress // []) | length) == 0)
+) | "INFO: \(.metadata.namespace)/\(.metadata.name) has no egress rules"'
 ```
 
 ```mermaid
@@ -70,7 +74,7 @@ echo "Date: $(date)"
 echo "Total policies: $(kubectl get ciliumnetworkpolicies --all-namespaces --no-headers | wc -l)"
 echo "Cluster-wide policies: $(kubectl get ciliumclusterwidenetworkpolicies --no-headers 2>/dev/null | wc -l)"
 echo ""
-echo "Namespaces without policies:"
+echo "Namespaces without namespace-scoped CiliumNetworkPolicies:"
 for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
   if [[ "$ns" == kube-* ]]; then continue; fi
   COUNT=$(kubectl get ciliumnetworkpolicies -n "$ns" --no-headers 2>/dev/null | wc -l)
@@ -90,7 +94,7 @@ kubectl get ciliumclusterwidenetworkpolicies
 
 ## Troubleshooting
 
-- **Namespaces without policies**: Apply default deny and add specific allow rules.
+- **Namespaces without namespace-scoped CiliumNetworkPolicies**: Apply default deny and add specific allow rules.
 - **Allow-all rules found**: Replace with specific selectors and port rules.
 - **Audit script slow**: Process namespaces in parallel for large clusters.
 
