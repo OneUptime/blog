@@ -12,7 +12,7 @@ Description: A systematic guide to diagnosing cross-host pod networking failures
 
 Cross-host pod networking failures in Calico occur when pods on one node cannot communicate with pods on another node. This is one of the most impactful networking issues in a Kubernetes cluster because it breaks service-to-service communication across the cluster.
 
-Calico uses BGP to distribute pod routes between nodes. When cross-host communication fails, the root cause typically involves BGP peering problems, incorrect route propagation, IP-in-IP or VXLAN tunnel failures, firewall rules blocking inter-node traffic, or misconfigured IP pools. Each of these requires different diagnostic tools and techniques.
+In BGP-backed Calico deployments, Calico uses BGP to distribute pod routes between nodes. In VXLAN-only deployments, BGP is not required, but tunnel and firewall checks still apply. When cross-host communication fails, the root cause typically involves BGP peering problems, incorrect route propagation, IP-in-IP or VXLAN tunnel failures, firewall rules blocking inter-node traffic, or misconfigured IP pools. Each of these requires different diagnostic tools and techniques.
 
 This guide covers the systematic diagnostic process from symptom identification through root cause isolation for cross-host pod networking failures in Calico.
 
@@ -45,7 +45,7 @@ kubectl exec <pod-on-node-A> -- ping -c 3 <pod-ip-on-node-B>
 
 ## Checking BGP Peering Status
 
-Calico relies on BGP to exchange pod routes between nodes.
+In BGP-backed Calico deployments, Calico relies on BGP to exchange pod routes between nodes. If your installation uses VXLAN-only networking with BGP disabled, skip the BGP-specific checks and focus on tunnel, route, firewall, and policy diagnostics.
 
 ```bash
 # Check BGP peering status on each node
@@ -78,7 +78,8 @@ ip route | grep <destination-pod-cidr>
 # Check if routes exist for the remote node's pod CIDR
 ip route get <remote-pod-ip>
 
-# Verify BIRD routing daemon logs (BIRD runs inside the calico-node container)
+# Verify BIRD routing daemon logs when BGP is enabled (BIRD runs inside the calico-node container)
+# Some manifest-based installations use kube-system instead of calico-system.
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "bird"
 ```
 
@@ -113,7 +114,7 @@ kubectl logs -n calico-system <calico-node-pod> -c calico-node --tail=50
 kubectl exec -n calico-system <calico-node-pod> -c calico-node -- \
   calico-node -felix-live
 
-# Verify BIRD is running
+# Verify BIRD is running when BGP is enabled
 kubectl exec -n calico-system <calico-node-pod> -c calico-node -- \
   calico-node -bird-live
 ```
