@@ -47,12 +47,12 @@ If rules are still missing after restart, check the kube-proxy configuration:
 kubectl edit configmap kube-proxy -n kube-system
 
 # Ensure clusterCIDR is set correctly
-# Ensure mode is set (iptables or ipvs)
+# Ensure mode is set (iptables, ipvs, or nftables)
 ```
 
 ## Fixing Endpoint Registration Issues
 
-Empty endpoints mean the service cannot route traffic to any pod.
+Empty EndpointSlices mean the service cannot route traffic to any pod.
 
 ```bash
 # Check if the service selector matches pod labels
@@ -126,15 +126,15 @@ If kube-proxy is in the wrong mode for your cluster setup, switch it.
 # Check current mode
 kubectl get configmap kube-proxy -n kube-system -o yaml | grep mode
 
-# Switch to ipvs mode if iptables mode has performance issues
+# Switch to nftables mode if iptables mode has performance issues and your nodes support it
 kubectl edit configmap kube-proxy -n kube-system
-# Set mode: "ipvs"
+# Set mode: "nftables"
 
 # Restart kube-proxy after config change
 kubectl rollout restart daemonset/kube-proxy -n kube-system
 
-# Verify ipvs rules are programmed
-sudo ipvsadm -Ln | grep <cluster-ip>
+# Verify nftables rules are programmed
+sudo nft list table ip kube-proxy | grep <cluster-ip>
 ```
 
 ## Fixing conntrack Table Exhaustion
@@ -166,8 +166,8 @@ After applying fixes, verify ClusterIP connectivity is restored:
 kubectl run verify-fix --image=nicolaka/netshoot --rm -it -- \
   curl -s --connect-timeout 5 http://<service-name>.<namespace>.svc.cluster.local:<port>
 
-# Verify endpoints are populated
-kubectl get endpoints <service-name> -n <namespace>
+# Verify EndpointSlices are populated
+kubectl get endpointslice -l kubernetes.io/service-name=<service-name> -n <namespace>
 
 # Check iptables rules exist
 sudo iptables -t nat -L KUBE-SERVICES -n | grep <cluster-ip>
@@ -179,7 +179,7 @@ sudo iptables -t nat -L KUBE-SERVICES -n | grep <cluster-ip>
 - **kube-proxy restart causes brief outage**: This is expected. Rolling restarts minimize impact.
 - **Policy changes not taking effect**: Check for higher-priority Calico GlobalNetworkPolicy rules that may override namespace-level policies.
 - **conntrack flush drops active connections**: Schedule conntrack changes during maintenance windows.
-- **IPVS mode not working**: Ensure ipvs kernel modules are loaded with `lsmod | grep ip_vs`.
+- **nftables mode not working**: Ensure nodes run Linux kernel 5.13 or later and have a compatible `nft` userspace tool installed.
 
 ## Conclusion
 
