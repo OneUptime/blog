@@ -12,7 +12,7 @@ Description: A guide to interpreting and validating Cilium status output, unders
 
 Running `cilium status` is simple. Interpreting its output correctly requires understanding what each component represents and what "healthy" looks like versus "degraded" or "unavailable." Validating Cilium status checks means establishing clear criteria for a healthy installation and building automated checks that alert when those criteria are not met.
 
-The `cilium status` command aggregates health information from multiple Cilium components: the agent, the operator, the Hubble relay (if enabled), the BPF programs, the policy engine, the IP address manager, and the service load balancer. A complete validation covers all of these components, not just the high-level "OK" indicator.
+The `cilium status` command aggregates health information from multiple Cilium components, including the Cilium DaemonSet, the operator, Hubble Relay (if enabled), and other installed Cilium resources. Agent-local checks with `cilium-dbg status` can validate details such as controllers, kube-proxy replacement, IPAM, and service handling. A complete validation covers these components, not just the high-level "OK" indicator.
 
 This guide defines what a validated healthy Cilium installation looks like and provides the commands to verify each component.
 
@@ -36,7 +36,7 @@ cilium status --verbose
 # Cilium: OK
 # NodeMonitor: OK
 # Hubble: OK (if enabled)
-# KubeProxyReplacement: Strict
+# KubeProxyReplacement: True (if configured for full kube-proxy replacement)
 # Encryption: WireGuard (if configured)
 ```
 
@@ -49,7 +49,7 @@ kubectl get pods -n kube-system -l k8s-app=cilium
 # Validate each agent individually
 for pod in $(kubectl get pods -n kube-system -l k8s-app=cilium -o name); do
   echo "=== $pod ==="
-  kubectl exec -n kube-system $pod -- cilium status 2>/dev/null | grep -E "Cilium|KubeProxy|Controller"
+  kubectl exec -n kube-system $pod -- cilium-dbg status 2>/dev/null | grep -E "Cilium|KubeProxy|Controller"
 done
 ```
 
@@ -57,28 +57,28 @@ done
 
 ```bash
 # Check how many endpoints are managed
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
-# Count should match number of running pods
-CILIUM_ENDPOINTS=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -c "ready")
+# Count should be close to the number of pods managed by Cilium
+CILIUM_ENDPOINTS=$(kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list --no-headers | awk '$NF == "ready" {count++} END {print count+0}')
 RUNNING_PODS=$(kubectl get pods --all-namespaces --field-selector=status.phase=Running -o name | wc -l)
 
 echo "Cilium endpoints: $CILIUM_ENDPOINTS"
 echo "Running pods: $RUNNING_PODS"
-# These should be close (some pods may use host networking)
+# These should be close (some pods may use host networking, and Cilium also creates health endpoints)
 ```
 
 ## Step 4: Validate Policy Enforcement
 
 ```bash
 # Check controller errors (should be 0)
-kubectl exec -n kube-system ds/cilium -- cilium status | grep -i "controller"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status --verbose | grep -i "controller"
 
 # Check for policy-related errors
-kubectl exec -n kube-system ds/cilium -- cilium policy get 2>&1 | grep -i error
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep -i "not-ready"
 
-# Verify BPF programs are loaded
-kubectl exec -n kube-system ds/cilium -- cilium bpf policy get --all | grep -c "OK"
+# Verify policy BPF maps can be read
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf policy get --all >/dev/null
 ```
 
 ## Step 5: Validate Network Connectivity
@@ -111,7 +111,7 @@ if [ "$NOT_RUNNING" -gt 0 ]; then
 fi
 
 echo "=== Endpoint Health ==="
-ERRORS=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -c "not-ready" || true)
+ERRORS=$(kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep -c "not-ready" || true)
 if [ "$ERRORS" -gt 0 ]; then
   echo "WARN: $ERRORS endpoints not ready"
 fi
