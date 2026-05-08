@@ -136,7 +136,7 @@ Environment variables set with `-e` are available in interactive shell sessions:
 
 ```bash
 # Open a shell with custom environment
-podman exec -it -e EDITOR=vim -e TERM=xterm-256color my-app /bin/bash
+podman exec -it -e EDITOR=vim -e TERM=xterm-256color my-app /bin/sh
 
 # Inside the container:
 # root@container:/# echo $EDITOR
@@ -154,14 +154,14 @@ podman exec -it -e EDITOR=vim -e TERM=xterm-256color my-app /bin/bash
 podman exec \
     -e DATABASE_URL="postgres://admin:secret@db:5432/production" \
     -e MIGRATION_DIR="/app/migrations" \
-    my-app /bin/bash -c 'echo "Connecting to $DATABASE_URL, running migrations from $MIGRATION_DIR"'
+    my-app /bin/sh -c 'echo "Connecting to $DATABASE_URL, running migrations from $MIGRATION_DIR"'
 ```
 
 ### Debug Mode for a Specific Command
 
 ```bash
 # Enable verbose debugging for a single command
-podman exec -e DEBUG=1 -e VERBOSE=true -e LOG_LEVEL=trace my-app /bin/bash -c '
+podman exec -e DEBUG=1 -e VERBOSE=true -e LOG_LEVEL=trace my-app /bin/sh -c '
     echo "Debug mode: $DEBUG"
     echo "Verbose: $VERBOSE"
     echo "Log level: $LOG_LEVEL"
