@@ -10,9 +10,9 @@ Description: Learn how to automate Calico cluster changes using calicoctl replac
 
 ## Introduction
 
-The `calicoctl replace` command is well-suited for automation because it provides deterministic outcomes -- the resource state after replace exactly matches the provided definition, with no leftover fields from previous configurations. This makes it ideal for GitOps workflows where the desired state is stored in Git and applied to the cluster.
+The `calicoctl replace` command is well-suited for automation because it provides deterministic outcomes for the managed resource spec -- when replacing a resource, the complete resource spec must be provided rather than only the fields being updated. This makes it useful for GitOps workflows where the desired state is stored in Git and applied to the cluster.
 
-Unlike `apply` which may create new resources unexpectedly, `replace` fails if the resource does not exist, providing an additional safety check in automated pipelines. This fail-fast behavior helps catch configuration drift early.
+Unlike `apply`, which creates a resource if it does not exist and replaces it if it does, `replace` fails if the resource does not exist, providing an additional safety check in automated pipelines. This fail-fast behavior helps catch configuration drift early.
 
 This guide covers practical automation patterns for `calicoctl replace` including GitOps integration, templated replacements, and CI/CD pipeline design.
 
@@ -57,16 +57,19 @@ RESOURCE_DIR="${1:-.}"
 echo "Syncing Calico resources from: $RESOURCE_DIR"
 
 find "$RESOURCE_DIR" -name "*.yaml" -not -path "*/scripts/*" | sort | while read -r file; do
-  KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$file'))['kind'])")
-  NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$file'))['metadata']['name'])")
+  echo "Syncing: ${file}"
 
-  # Check if resource exists
-  if calicoctl get "$KIND" "$NAME" > /dev/null 2>&1; then
-    echo "Replacing: ${KIND}/${NAME} from ${file}"
-    calicoctl replace -f "$file"
+  if output=$(calicoctl replace -f "$file" 2>&1); then
+    printf '%s\n' "$output"
+    echo "Replaced: ${file}"
   else
-    echo "Creating: ${KIND}/${NAME} from ${file}"
-    calicoctl create -f "$file"
+    if printf '%s\n' "$output" | grep -qi "resource does not exist"; then
+      echo "Creating: ${file}"
+      calicoctl create -f "$file"
+    else
+      printf '%s\n' "$output" >&2
+      exit 1
+    fi
   fi
 done
 
@@ -98,10 +101,7 @@ jobs:
 
       - name: Validate all resources
         run: |
-          find calico-resources -name "*.yaml" -not -path "*/scripts/*" | while read file; do
-            echo "Validating: $file"
-            calicoctl validate -f "$file"
-          done
+          calicoctl validate -f calico-resources --recursive
 
   deploy:
     needs: validate
@@ -133,6 +133,9 @@ set -euo pipefail
 
 export DATASTORE_TYPE=kubernetes
 ENVIRONMENT="${ENVIRONMENT:-staging}"
+FELIX_LOG_LEVEL="${FELIX_LOG_LEVEL:-Warning}"
+FELIX_REPORTING_INTERVAL="${FELIX_REPORTING_INTERVAL:-300s}"
+export ENVIRONMENT FELIX_LOG_LEVEL FELIX_REPORTING_INTERVAL
 TEMPLATE_DIR="templates"
 OUTPUT_DIR="/tmp/calico-generated"
 mkdir -p "$OUTPUT_DIR"
@@ -148,15 +151,17 @@ done
 
 # Replace resources
 for file in "${OUTPUT_DIR}"/*.yaml; do
-  KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$file'))['kind'])")
-  NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$file'))['metadata']['name'])")
-
-  if calicoctl get "$KIND" "$NAME" > /dev/null 2>&1; then
-    calicoctl replace -f "$file"
-    echo "Replaced: ${KIND}/${NAME}"
+  if output=$(calicoctl replace -f "$file" 2>&1); then
+    printf '%s\n' "$output"
+    echo "Replaced: ${file}"
   else
-    calicoctl create -f "$file"
-    echo "Created: ${KIND}/${NAME}"
+    if printf '%s\n' "$output" | grep -qi "resource does not exist"; then
+      calicoctl create -f "$file"
+      echo "Created: ${file}"
+    else
+      printf '%s\n' "$output" >&2
+      exit 1
+    fi
   fi
 done
 ```
@@ -170,8 +175,8 @@ kind: FelixConfiguration
 metadata:
   name: default
 spec:
-  logSeverityScreen: ${FELIX_LOG_LEVEL:-Warning}
-  reportingInterval: ${FELIX_REPORTING_INTERVAL:-300s}
+  logSeverityScreen: ${FELIX_LOG_LEVEL}
+  reportingInterval: ${FELIX_REPORTING_INTERVAL}
   prometheusMetricsEnabled: true
   prometheusMetricsPort: 9091
 ```
@@ -194,22 +199,24 @@ flowchart TD
 ```bash
 export DATASTORE_TYPE=kubernetes
 
-# Verify all resources match Git state
-find calico-resources -name "*.yaml" -not -path "*/scripts/*" | while read file; do
-  KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$file'))['kind'])")
-  NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$file'))['metadata']['name'])")
-  echo "Checking ${KIND}/${NAME}..."
-  calicoctl get "$KIND" "$NAME" -o yaml > /dev/null && echo "  OK" || echo "  MISSING"
+# Verify all resources can be read from the cluster
+find calico-resources -name "*.yaml" -not -path "*/scripts/*" | while read -r file; do
+  echo "Checking ${file}..."
+  if [ -n "$(calicoctl get -f "$file" -o yaml 2>/dev/null)" ]; then
+    echo "  OK"
+  else
+    echo "  MISSING"
+  fi
 done
 ```
 
 ## Troubleshooting
 
-- **Replace fails with "resource does not exist" in pipeline**: Initial deployment requires `create`. Use the sync script pattern that checks existence before choosing create or replace.
+- **Replace fails with "resource does not exist" in pipeline**: Initial deployment requires `create`. Use the sync script pattern that falls back to create only for missing resources.
 - **Template substitution produces invalid YAML**: Validate generated files before replacing. Use `calicoctl validate` as a gate in the pipeline.
 - **Concurrent pipeline runs cause conflicts**: Use pipeline concurrency controls to ensure only one sync runs at a time.
 - **Drift detection shows differences**: Add a scheduled pipeline that compares cluster state with Git using `diff` to detect manual changes.
 
 ## Conclusion
 
-Automating Calico changes with `calicoctl replace` provides deterministic, full-resource updates that ensure cluster state matches your Git repository exactly. By combining replace with create in a sync script, validating resources in CI, and using templates for environment-specific configurations, you build a robust GitOps workflow for Calico management. The replace command's strict existence requirement adds a safety layer that catches configuration drift and unexpected resource creation.
+Automating Calico changes with `calicoctl replace` provides deterministic, full-resource updates for the Calico resource specs you manage in Git. By combining replace with create in a sync script, validating resources in CI, and using templates for environment-specific configurations, you build a robust GitOps workflow for Calico management. The replace command's strict existence requirement adds a safety layer that catches configuration drift and unexpected resource creation.
