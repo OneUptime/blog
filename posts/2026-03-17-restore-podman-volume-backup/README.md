@@ -103,17 +103,17 @@ sleep 5
 podman exec -i postgres-db psql -U postgres < /home/user/backups/myapp-db.sql
 ```
 
-## Restore with Permission Preservation
+## Restore with Permission and Ownership Preservation
 
 ```bash
-# Ensure permissions are preserved during restore
+# Ensure file modes and numeric ownership are preserved during restore
 podman run --rm \
   -v appdata-restored:/target \
   -v /home/user/backups:/backup:ro \
   docker.io/library/alpine:latest \
-  sh -c "tar xzf /backup/appdata-backup.tar.gz -C /target --preserve-permissions"
+  sh -c "tar xzf /backup/appdata-backup.tar.gz --numeric-owner -C /target"
 
-# Verify permissions
+# Verify permissions and ownership
 podman run --rm -v appdata-restored:/data:ro \
   docker.io/library/alpine:latest ls -la /data
 ```
