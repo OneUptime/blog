@@ -63,8 +63,12 @@ cat > "$DIAG_PATH/metadata.json" << EOF
 EOF
 
 # Collect
-calicoctl cluster diags 2>/dev/null
-mv calico-cluster-diags-*.tar.gz "$DIAG_PATH/" 2>/dev/null
+if calicoctl cluster diags; then
+  mv calico-diagnostics.tar.gz "$DIAG_PATH/"
+else
+  echo "Diagnostic collection failed" >&2
+  exit 1
+fi
 
 # Additional context
 calicoctl version > "$DIAG_PATH/version.txt" 2>&1
@@ -84,17 +88,17 @@ STORAGE="/shared/cluster-diags"
 
 # List available diagnostics
 echo "=== Available Diagnostic Collections ==="
-for d in $(ls -dt "$STORAGE"/*/); do
+for d in "$STORAGE"/*/; do
   META="$d/metadata.json"
   if [ -f "$META" ]; then
-    REASON=$(python3 -c "import json; print(json.load(open('$META')).get('reason','unknown'))" 2>/dev/null)
+    REASON=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1])).get('reason','unknown'))" "$META" 2>/dev/null)
     DATE=$(basename "$d" | cut -d- -f1-2)
     echo "  $DATE - $REASON"
   fi
 done
 
 # Cleanup old baselines (keep 4 weeks)
-find "$STORAGE" -name "*weekly*" -maxdepth 1 -mtime +28 -exec rm -rf {} +
+find "$STORAGE" -maxdepth 1 -name "*weekly*" -mtime +28 -exec rm -rf {} +
 echo ""
 echo "Cleanup complete."
 ```
