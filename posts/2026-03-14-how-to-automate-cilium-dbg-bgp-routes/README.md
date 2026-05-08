@@ -19,10 +19,8 @@ This guide covers automating cilium-dbg bgp routes for monitoring and alerting.
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and BGP enabled
-- BGP peering configured via CiliumBGPPeeringPolicy
+- BGP peering configured via CiliumBGPClusterConfig, CiliumBGPPeerConfig, and CiliumBGPAdvertisement
 - `kubectl` access to cilium pods
-- `jq` for JSON processing
-- 
 
 ## Automated Routes Collection
 
@@ -135,9 +133,9 @@ bash collect-bgp-routes-state.sh
 
 ## Troubleshooting
 
-- **"BGP is not enabled"**: Set `enable-bgp-control-plane: "true"` in cilium-config.
-- **Empty output**: No BGP peering policy may be configured. Check `kubectl get ciliumbgppeeringpolicies`.
-- **No routes shown**: Check exportPodCIDR and service selector in the peering policy.
+- **"BGP is not enabled"**: Enable the BGP control plane with Helm value `bgpControlPlane.enabled=true`.
+- **Empty output**: No BGP resources may be configured. Check `kubectl get ciliumbgpclusterconfigs,ciliumbgppeerconfigs,ciliumbgpadvertisements`.
+- **No routes shown**: Check the `CiliumBGPAdvertisement` resources and the advertisement selector in the peer configuration.
 - **Timeout on large clusters**: Add `--request-timeout=120s` to kubectl commands.
 
 ## Conclusion
