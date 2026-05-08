@@ -101,7 +101,7 @@ ls -la /etc/calico/calicoctl.cfg
 
 ## Configuring etcd Role-Based Access
 
-Create a dedicated etcd role and user for calicoctl:
+Create a dedicated etcd role and user for calicoctl. When using a passwordless etcd user with client certificate authentication, the etcd user name must match the client certificate Common Name (CN):
 
 ```bash
 # Create a role with access to Calico keys only
@@ -115,20 +115,20 @@ etcdctl --endpoints="$ETCD_ENDPOINTS" \
   --cacert="$ETCD_CA_CERT_FILE" \
   --cert="$ETCD_CERT_FILE" \
   --key="$ETCD_KEY_FILE" \
-  role grant-permission calico-role readwrite /calico --prefix
+  role grant-permission calico-role --prefix=true readwrite /calico
 
 # Create a user and assign the role
 etcdctl --endpoints="$ETCD_ENDPOINTS" \
   --cacert="$ETCD_CA_CERT_FILE" \
   --cert="$ETCD_CERT_FILE" \
   --key="$ETCD_KEY_FILE" \
-  user add calicoctl-user --no-password
+  user add calicoctl --no-password
 
 etcdctl --endpoints="$ETCD_ENDPOINTS" \
   --cacert="$ETCD_CA_CERT_FILE" \
   --cert="$ETCD_CERT_FILE" \
   --key="$ETCD_KEY_FILE" \
-  user grant-role calicoctl-user calico-role
+  user grant-role calicoctl calico-role
 ```
 
 ## Implementing Certificate Rotation
