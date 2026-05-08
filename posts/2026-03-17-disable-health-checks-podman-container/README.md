@@ -88,7 +88,7 @@ podman inspect --format='{{if .Config.Healthcheck}}Health check: {{.Config.Healt
 
 # Container status should not show health status
 podman ps --format "table {{.Names}}\t{{.Status}}"
-# Output: no-healthcheck   Up 2 minutes (no health check)
+# Output: no-healthcheck   Up 2 minutes
 ```
 
 ## Re-enabling Health Checks
