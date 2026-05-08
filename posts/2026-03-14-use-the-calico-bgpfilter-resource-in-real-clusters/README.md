@@ -31,15 +31,15 @@ For clusters with fewer than 50 nodes, a straightforward BGPFilter configuration
 
 calicoctl get bgpfilter -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check which BGP peers reference BGPFilters
+calicoctl get bgppeer -o yaml
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels on BGPPeer resources to apply different BGPFilter resources to different sets of nodes:
 
 ```bash
 # Label nodes by environment
@@ -50,7 +50,7 @@ kubectl label node worker-2 environment=staging
 kubectl get nodes --show-labels | grep environment
 ```
 
-Then reference these labels in your BGPFilter manifest's node selectors to apply environment-specific settings.
+Then reference these labels in your BGPPeer manifest's `nodeSelector` field and add the relevant BGPFilter names to the BGPPeer `filters` list.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,7 +65,7 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Avoid frequent BGPFilter changes and batch updates where possible to reduce API server and routing churn
 - Use Typha to reduce the number of direct datastore connections
 - Monitor memory usage of calico-node pods when managing many BGPFilter resources
 
@@ -91,13 +91,13 @@ Set up ongoing monitoring for your BGPFilter resources:
 
 ```bash
 # Watch for changes to BGPFilter resources
-kubectl get bgpfilter.projectcalico.org -w
+kubectl get bgpfilters.projectcalico.org -w
 
 # Set up alerts on calico-node restarts
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if the Felix health port is enabled:
 
 ```bash
 # Check if Felix is reporting healthy
@@ -129,7 +129,7 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 
 **Performance degradation after configuration change:**
 - Check calico-node CPU and memory: `kubectl top pods -n calico-system`.
-- Review whether reconciliation intervals are too aggressive.
+- Review whether BGPFilter updates are too frequent or too broad.
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
@@ -160,7 +160,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crds -o custom-columns=NAME:.metadata.name,VERSIONS:.spec.versions[*].name | grep projectcalico
 ```
 
 ### Security Hardening
@@ -168,8 +168,8 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current user can modify BGPFilter resources
+kubectl auth can-i create bgpfilters.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
