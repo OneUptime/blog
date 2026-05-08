@@ -55,9 +55,11 @@ REGISTRY="registry.internal.example.com"
 IMAGES=(
   "calico/node:v3.27.0"
   "calico/cni:v3.27.0"
+  "calico/apiserver:v3.27.0"
   "calico/kube-controllers:v3.27.0"
   "calico/typha:v3.27.0"
   "calico/pod2daemon-flexvol:v3.27.0"
+  "calico/key-cert-provisioner:v3.27.0"
   "calico/csi:v3.27.0"
   "calico/node-driver-registrar:v3.27.0"
 )
@@ -77,10 +79,14 @@ done
 Check that image pull secrets are configured:
 
 ```bash
-# List secrets in calico namespace
-kubectl get secrets -n calico-system -o name | grep -i pull
+# For operator installations, list pull secrets in the tigera-operator namespace
+kubectl get secrets -n tigera-operator -o name | grep -i pull
 
-# Check if pods reference the pull secret
+# Check if the Installation resource references the pull secret
+kubectl get installation default \
+  -o jsonpath='{.spec.imagePullSecrets[*].name}'
+
+# Check if rendered pods reference the pull secret
 kubectl get daemonset calico-node -n calico-system \
   -o jsonpath='{.spec.template.spec.imagePullSecrets[*].name}'
 ```
@@ -88,11 +94,14 @@ kubectl get daemonset calico-node -n calico-system \
 Create an image pull secret if missing:
 
 ```bash
-kubectl create secret docker-registry calico-registry-secret \
-  -n calico-system \
+kubectl create secret docker-registry tigera-pull-secret \
+  -n tigera-operator \
   --docker-server=registry.internal.example.com \
   --docker-username=calico-pull \
   --docker-password='<password>'
+
+kubectl patch installation default --type merge -p \
+  '{"spec":{"imagePullSecrets":[{"name":"tigera-pull-secret"}]}}'
 ```
 
 ## Step 4: Test Registry Connectivity from Nodes
@@ -133,7 +142,9 @@ kind: Installation
 metadata:
   name: default
 spec:
-  registry: registry.internal.example.com
+  imagePullSecrets:
+    - name: tigera-pull-secret
+  registry: registry.internal.example.com/
   imagePath: calico
 ```
 
@@ -155,15 +166,25 @@ openssl s_client -connect registry.internal.example.com:443 </dev/null 2>/dev/nu
   openssl x509 -noout -issuer -dates
 
 # If using containerd, check its config
-cat /etc/containerd/config.toml | grep -A5 "registry.internal.example.com"
+cat /etc/containerd/config.toml | grep -A3 "\[plugins.*registry"
+ls /etc/containerd/certs.d/registry.internal.example.com/
 ```
 
 Configure containerd to trust a private CA:
 
 ```toml
-# /etc/containerd/config.toml
-[plugins."io.containerd.grpc.v1.cri".registry.configs."registry.internal.example.com".tls]
-  ca_file = "/etc/containerd/certs.d/registry.internal.example.com/ca.crt"
+# /etc/containerd/config.toml for containerd 1.x
+[plugins."io.containerd.grpc.v1.cri".registry]
+  config_path = "/etc/containerd/certs.d"
+```
+
+```toml
+# /etc/containerd/certs.d/registry.internal.example.com/hosts.toml
+server = "https://registry.internal.example.com"
+
+[host."https://registry.internal.example.com"]
+  capabilities = ["pull", "resolve"]
+  ca = "/etc/containerd/certs.d/registry.internal.example.com/ca.crt"
 ```
 
 Restart containerd after changes:
@@ -183,15 +204,18 @@ VERSION="v3.27.0"
 IMAGES=(
   "calico/node"
   "calico/cni"
+  "calico/apiserver"
   "calico/kube-controllers"
   "calico/typha"
+  "calico/pod2daemon-flexvol"
+  "calico/key-cert-provisioner"
   "calico/csi"
   "calico/node-driver-registrar"
 )
 
 for IMG in "${IMAGES[@]}"; do
   echo "Mirroring ${IMG}:${VERSION}..."
-  crane copy "docker.io/${IMG}:${VERSION}" "${REGISTRY}/${IMG}:${VERSION}"
+  crane cp "quay.io/${IMG}:${VERSION}" "${REGISTRY}/${IMG}:${VERSION}"
 done
 ```
 
