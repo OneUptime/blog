@@ -18,7 +18,7 @@ This guide covers the key configuration decisions and provides tested Helm value
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.25+)
+- Kubernetes cluster running a Kubernetes version supported by your Cilium release
 - Helm v3 installed
 - kubectl configured with cluster access
 
@@ -31,6 +31,7 @@ helm repo add cilium https://helm.cilium.io/
 helm repo update
 
 helm install cilium cilium/cilium \
+  --version 1.19.3 \
   --namespace kube-system \
   --set ipam.mode=cluster-pool \
   --set ipam.operator.clusterPoolIPv4PodCIDRList=10.0.0.0/8 \
@@ -42,7 +43,7 @@ helm install cilium cilium/cilium \
 ```yaml
 # cilium-production.yaml
 
-tunnel: disabled
+routingMode: native
 autoDirectNodeRoutes: true
 ipv4NativeRoutingCIDR: "10.0.0.0/8"
 
@@ -65,6 +66,8 @@ hubble:
       - drop
       - tcp
       - flow
+    serviceMonitor:
+      enabled: true
 
 prometheus:
   enabled: true
@@ -92,6 +95,7 @@ bandwidthManager:
 
 ```bash
 helm install cilium cilium/cilium \
+  --version 1.19.3 \
   --namespace kube-system \
   -f cilium-production.yaml
 ```
@@ -111,16 +115,19 @@ graph TD
 ### VXLAN Overlay Mode
 
 ```yaml
-tunnel: vxlan
+routingMode: tunnel
+tunnelProtocol: vxlan
 ```
 
 ### Native Routing Mode
 
 ```yaml
-tunnel: disabled
+routingMode: native
 autoDirectNodeRoutes: true
 ipv4NativeRoutingCIDR: "10.0.0.0/8"
 ```
+
+Native routing requires the network between nodes to be able to route pod CIDRs; `autoDirectNodeRoutes` is intended for nodes on the same L2 network segment.
 
 ## Security Configuration
 
@@ -151,7 +158,7 @@ kubectl get configmap cilium-config -n kube-system -o yaml
 
 - **Pods stuck in ContainerCreating**: Check Cilium agent logs. Usually CNI binary or config issues.
 - **No pod connectivity**: Verify tunnel mode and routing config. Check `cilium status` for datapath errors.
-- **High memory usage**: Tune BPF map sizes and enable `bpf.preallocateMaps`.
+- **High memory usage**: Tune BPF map sizes and disable `bpf.preallocateMaps` if you do not need lower allocation latency.
 - **Operator not scheduling**: Check RBAC permissions and resources.
 
 ## Conclusion
