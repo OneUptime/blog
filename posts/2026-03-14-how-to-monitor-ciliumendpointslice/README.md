@@ -12,7 +12,7 @@ Description: How to monitor CiliumEndpointSlice resources using Prometheus metri
 
 CiliumEndpointSlice reduces API server load by batching endpoints into fewer resources. Monitoring CES verifies this optimization delivers its intended benefits and catches issues where the batching mechanism becomes a bottleneck or produces incorrect results.
 
-Key CES metrics include slice count and size distribution, operator reconciliation rate and latency, API server request reduction, and synchronization gaps between CES and actual endpoint state.
+Key CES metrics include size distribution, operator synchronization rate, queueing delay, API server request reduction, and synchronization gaps between CES and actual endpoint state.
 
 This guide covers comprehensive CES monitoring with Prometheus, Grafana, and custom health checks.
 
@@ -46,15 +46,17 @@ helm upgrade cilium cilium/cilium \
 Key metrics:
 
 ```promql
-# CES reconciliation duration
+# CES synchronization rate by outcome
 
-histogram_quantile(0.99, rate(cilium_operator_ces_sync_total_bucket[5m]))
+sum by (outcome, failure_type) (rate(cilium_operator_ces_sync_total[5m]))
 
-# Number of CES resources
-cilium_operator_ces_slice_count
+# CES size distribution
+histogram_quantile(0.99,
+  sum by (le) (rate(cilium_operator_number_of_ceps_per_ces_bucket[5m])))
 
-# Queue length for CES updates
-cilium_operator_ces_queueing_delay_seconds
+# Queueing delay for CES updates
+histogram_quantile(0.99,
+  sum by (le) (rate(cilium_operator_ces_queueing_delay_seconds_bucket[5m])))
 ```
 
 ## Custom Monitoring Script
@@ -65,11 +67,10 @@ cilium_operator_ces_queueing_delay_seconds
 
 echo "=== CiliumEndpointSlice Monitor ==="
 
-SLICE_COUNT=$(kubectl get ciliumendpointslices \
-  --all-namespaces --no-headers | wc -l)
+SLICE_COUNT=$(kubectl get ciliumendpointslices --no-headers | wc -l)
 echo "Total CES resources: $SLICE_COUNT"
 
-EP_IN_SLICES=$(kubectl get ciliumendpointslices --all-namespaces -o json | \
+EP_IN_SLICES=$(kubectl get ciliumendpointslices -o json | \
   jq '[.items[].endpoints[]?] | length')
 echo "Endpoints in slices: $EP_IN_SLICES"
 
@@ -88,7 +89,7 @@ graph LR
     A[Cilium Operator] -->|CES Metrics| B[Prometheus]
     B --> C[Grafana Dashboard]
     C --> D[Slice Count Panel]
-    C --> E[Sync Latency Panel]
+    C --> E[Queue Delay Panel]
     C --> F[Coverage Gap Panel]
 ```
 
@@ -104,15 +105,15 @@ spec:
   groups:
     - name: cilium-ces
       rules:
-        - alert: CESHighSyncLatency
+        - alert: CESHighQueueDelay
           expr: >
             histogram_quantile(0.99,
-              rate(cilium_operator_ces_sync_total_bucket[5m])) > 10
+              sum by (le) (rate(cilium_operator_ces_queueing_delay_seconds_bucket[5m]))) > 10
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "CES sync latency exceeding 10 seconds"
+            summary: "CES queueing delay exceeding 10 seconds"
 ```
 
 ## Verification
@@ -126,9 +127,9 @@ cilium connectivity test
 ## Troubleshooting
 
 - **No CES metrics**: Enable operator Prometheus metrics. Ensure ServiceMonitor matches Prometheus label selectors.
-- **High sync latency**: Increase operator CPU and memory limits.
+- **High queueing delay**: Increase operator CPU and memory limits.
 - **Coverage gap alerts**: Check operator health. A restart usually resolves transient gaps.
 
 ## Conclusion
 
-Monitoring CES gives visibility into the scalability optimization it provides. Track slice counts, sync latency, and coverage gaps to ensure batching works correctly.
+Monitoring CES gives visibility into the scalability optimization it provides. Track slice counts, queueing delay, and coverage gaps to ensure batching works correctly.
