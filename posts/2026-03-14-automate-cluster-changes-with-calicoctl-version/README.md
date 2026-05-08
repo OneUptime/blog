@@ -58,9 +58,11 @@ For environments with multiple clusters, automate version auditing:
 # audit-calico-versions.sh
 # Checks Calico versions across all configured kubectl contexts
 
-EXPECTED_VERSION="${1:-v3.27.0}"
+EXPECTED_VERSION="${1:-v3.32.0}"
 CONTEXTS=$(kubectl config get-contexts -o name)
 FAILURES=0
+
+export DATASTORE_TYPE=kubernetes
 
 echo "=== Calico Version Audit ==="
 echo "Expected version: $EXPECTED_VERSION"
@@ -69,10 +71,7 @@ echo ""
 for CTX in $CONTEXTS; do
   echo "--- Cluster: $CTX ---"
   
-  # Set the context for calicoctl
-  export KUBECONFIG=$(kubectl config view --raw -o jsonpath="{.clusters[0].cluster.server}" 2>/dev/null)
-  
-  CLUSTER_VER=$(kubectl --context="$CTX" get clusterinformation default     -o jsonpath='{.spec.calicoVersion}' 2>/dev/null)
+  CLUSTER_VER=$(calicoctl --context="$CTX" --allow-version-mismatch version 2>/dev/null | grep "Cluster Version:" | awk '{print $3}')
   
   if [ -z "$CLUSTER_VER" ]; then
     echo "  Status: UNREACHABLE"
@@ -113,7 +112,7 @@ jobs:
     steps:
       - name: Install calicoctl
         run: |
-          curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o calicoctl
           chmod +x calicoctl
           sudo mv calicoctl /usr/local/bin/
 
@@ -124,9 +123,10 @@ jobs:
 
       - name: Check Calico version
         run: |
+          export DATASTORE_TYPE=kubernetes
           echo "Checking ${{ matrix.cluster }} cluster..."
-          CLIENT_VER=$(calicoctl version | grep "Client Version:" | awk '{print $3}')
-          CLUSTER_VER=$(calicoctl version | grep "Cluster Version:" | awk '{print $3}')
+          CLIENT_VER=$(calicoctl --allow-version-mismatch version | grep "Client Version:" | awk '{print $3}')
+          CLUSTER_VER=$(calicoctl --allow-version-mismatch version | grep "Cluster Version:" | awk '{print $3}')
           
           echo "Client: $CLIENT_VER"
           echo "Cluster: $CLUSTER_VER"
@@ -137,6 +137,7 @@ jobs:
 
       - name: Verify node health
         run: |
+          export DATASTORE_TYPE=kubernetes
           calicoctl node status || echo "::warning::Node status check failed"
 ```
 
@@ -188,8 +189,8 @@ Test your automation scripts:
 # Test the version extraction
 bash extract-calico-version.sh
 
-# Run the audit in dry-run mode
-bash audit-calico-versions.sh v3.27.0
+# Run the audit
+bash audit-calico-versions.sh v3.32.0
 
 # Verify CI/CD integration
 # Trigger a manual workflow run and check the output
