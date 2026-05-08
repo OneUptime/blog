@@ -10,7 +10,7 @@ Description: A guide to documenting Calico Typha's architecture, its role in clu
 
 ## Introduction
 
-Typha is an optional but highly recommended component in the Calico architecture that sits between the Kubernetes API server (or etcd datastore) and the Felix agents running on each node. Without Typha, every Felix instance independently watches the datastore for changes, which creates significant load on the API server as clusters grow beyond 100 nodes.
+Typha is an optional but highly recommended component in the Calico architecture that sits between the Kubernetes API server and the Felix agents running on each node. Typha can be used with etcd, but it is not recommended with etcd v3 because etcd v3 already handles many clients efficiently. Without Typha in a Kubernetes API datastore cluster, every Felix instance independently watches the datastore for changes, which creates significant load on the API server as clusters grow beyond 100 nodes.
 
 Typha solves this by acting as a fan-out proxy. A small number of Typha instances watch the datastore, and all Felix agents connect to Typha instead. This reduces the number of direct API server watches from potentially thousands to just a handful, making Calico viable at very large scale.
 
@@ -20,7 +20,7 @@ Documenting Typha's architecture helps operators understand why it exists, how d
 
 - Kubernetes cluster with Calico v3.25+ and Typha enabled
 - `kubectl` access with cluster-admin privileges
-- `calicoctl` CLI installed
+- `calicoctl` CLI installed, if you also want to inspect Calico resources directly
 - Basic understanding of Calico components (Felix, BIRD, confd)
 
 ## Understanding the Typha Data Flow
@@ -31,7 +31,7 @@ Document the data flow path in your cluster:
 Kubernetes API Server
         |
         v
-  Typha Instances (2-3 replicas)
+  Typha Instances (3+ replicas in production)
         |
         v
   Felix (on every node)
@@ -62,15 +62,15 @@ Typha serves three main functions that should be documented:
 kubectl logs -n calico-system -l k8s-app=calico-typha --tail=50 | grep "connection"
 ```
 
-Each Typha instance maintains a single watch on the API server and fans out updates to all connected Felix instances. Document the current ratio of Felix-to-Typha connections.
+Each Typha instance maintains datastore watches on behalf of its clients and fans out updates to all connected Felix instances. Document the current ratio of Felix-to-Typha connections.
 
 ### Snapshot and Sync
 
 When a Felix agent starts or reconnects, Typha sends a full snapshot of the current state before streaming incremental updates. This is more efficient than Felix performing its own full list from the API server.
 
-### Validation and Filtering
+### Filtering and Deduplication
 
-Typha validates and pre-processes resources before sending them to Felix, reducing the processing burden on each node.
+Typha caches datastore state, deduplicates events, and filters updates that are not relevant to Felix, reducing the processing burden on each node.
 
 ## Mapping Typha to Felix Connections
 
@@ -78,7 +78,7 @@ Document which Felix instances connect to which Typha pod:
 
 ```bash
 # Check Felix configuration for Typha connection
-kubectl get configmap -n calico-system --selector=k8s-app=calico-node -o yaml | grep -i typha
+kubectl get daemonset -n calico-system calico-node -o yaml | grep -i typha
 
 # View Typha service endpoints
 kubectl get endpoints -n calico-system calico-typha
@@ -100,7 +100,7 @@ kubectl get pdb -n calico-system
 kubectl get pods -n calico-system -l k8s-app=calico-typha -o wide
 ```
 
-Document the anti-affinity rules that ensure Typha pods run on different nodes:
+Document any affinity or anti-affinity rules that influence where Typha pods run:
 
 ```bash
 kubectl get deployment -n calico-system calico-typha -o yaml | grep -A 15 "affinity"
@@ -114,9 +114,16 @@ Include capacity guidelines in your documentation:
 # Count total nodes (Felix instances)
 NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
 
-# Recommended Typha replicas (1 per 200 nodes, minimum 2)
+# Recommended Typha replicas (1 per 200 nodes, minimum 3 in production, maximum 20)
 echo "Nodes: $NODE_COUNT"
-echo "Recommended Typha replicas: $(( (NODE_COUNT / 200) + 2 ))"
+RECOMMENDED_TYPHA_REPLICAS=$(( (NODE_COUNT + 199) / 200 ))
+if [ "$RECOMMENDED_TYPHA_REPLICAS" -lt 3 ]; then
+  RECOMMENDED_TYPHA_REPLICAS=3
+fi
+if [ "$RECOMMENDED_TYPHA_REPLICAS" -gt 20 ]; then
+  RECOMMENDED_TYPHA_REPLICAS=20
+fi
+echo "Recommended Typha replicas: $RECOMMENDED_TYPHA_REPLICAS"
 
 # Check current resource limits
 kubectl get deployment -n calico-system calico-typha -o yaml | grep -A 10 "resources"
@@ -152,7 +159,7 @@ Verify your architecture documentation is accurate:
 # Confirm Typha is running and healthy
 kubectl get pods -n calico-system -l k8s-app=calico-typha -o wide
 
-# Check Typha metrics endpoint
+# Check Typha metrics endpoint if metrics are enabled
 kubectl exec -n calico-system $(kubectl get pod -n calico-system -l k8s-app=calico-typha -o name | head -1) -- wget -qO- http://localhost:9091/metrics | head -20
 
 # Verify Felix-to-Typha connections are active
