@@ -12,7 +12,7 @@ Description: Learn how Cilium Special Interest Groups (SIGs) are organized, thei
 
 The Cilium project has grown into a mature CNCF project with structured governance and community processes. Understanding Cilium Special Interest Groups (SIGs) is essential for effective participation, whether you are a user, contributor, or organization adopting Cilium.
 
-Special Interest Groups defines how decisions are made, responsibilities are assigned, and the project evolves over time. This structure ensures transparency, fairness, and sustainable growth.
+Special Interest Groups define how focused areas coordinate work, responsibilities are assigned, and the project evolves over time. This structure supports transparency, fairness, and sustainable growth.
 
 This guide provides a comprehensive overview of Cilium Special Interest Groups (SIGs) and how to engage with them.
 
@@ -26,56 +26,46 @@ This guide provides a comprehensive overview of Cilium Special Interest Groups (
 
 ### SIG Structure
 
-Cilium SIGs are organized around specific technical areas:
+Cilium SIGs are organized around specific project areas. Current active SIGs include:
 
-- **SIG-Policy**: Network policy design and implementation
-- **SIG-Datapath**: BPF/eBPF datapath development
-- **SIG-Hubble**: Observability and flow monitoring
-- **SIG-Service-Mesh**: Service mesh and Envoy integration
-- **SIG-BGP**: BGP and external networking
+- **SIG Community**: Fostering, growing, and sustaining the Cilium open source community
+- **SIG Policy**: Defining, maintaining, and evolving network policy and security policy capabilities in Cilium
+- **SIG Scalability**: Maintaining, tracking, and improving Cilium scalability, and advising other SIGs on subsystem scalability
 
 ### SIG Responsibilities
 
 Each SIG is responsible for:
-- Technical direction in their area
-- Reviewing and approving related PRs
-- Maintaining documentation for their components
-- Running SIG-specific meetings
-- Mentoring new contributors in their area
+- Defining a charter that specifies its scope and responsibilities
+- Keeping membership and leadership information up to date
+- Maintaining meeting notes and open communication channels
+- Tracking project enhancements related to its area
+- Helping contributors build depth in the SIG's area
 
 ```mermaid
 flowchart TD
-    A[Cilium Project] --> B[SIG-Policy]
-    A --> C[SIG-Datapath]
-    A --> D[SIG-Hubble]
-    A --> E[SIG-Service-Mesh]
-    A --> F[SIG-BGP]
-    B --> B1[Network Policies]
-    C --> C1[eBPF Programs]
-    D --> D1[Flow Monitoring]
-    E --> E1[Envoy Integration]
-    F --> F1[BGP Control Plane]
+    A[Cilium Project] --> B[SIG Community]
+    A --> C[SIG Policy]
+    A --> D[SIG Scalability]
+    B --> B1[Contributor Experience]
+    C --> C1[Network and Security Policy]
+    D --> D1[Scalability Tracking and Advice]
 ```
 
 ### SIG Membership
 
-SIGs have different roles:
-- **Chair**: Leads the SIG, runs meetings, makes decisions
-- **Technical Lead**: Guides technical direction
-- **Member**: Regular participant and contributor
-- **Observer**: Interested community member
+Cilium's SIG governance defines a required **SIG Lead** role. SIG Leads must be tracked in `sigs.yaml`, must be reviewers of one or more project areas, and should be subject matter experts in their SIG area. SIGs may define additional roles in their charters when needed.
 
 ## Verification
 
-Verify roadmap information is accessible and up to date.
+Verify SIG information in the Cilium community repository and check that the relevant charter and `sigs.yaml` entries are up to date.
 
 ## Troubleshooting
 
-- **Cannot find meeting links**: Check the Cilium community calendar and #community Slack channel.
+- **Cannot find meeting links**: Check the Cilium community documentation and the relevant `#sig-` Slack channel.
 - **Slack workspace access**: Request an invite through the Cilium website.
 - **GitHub permissions**: Ensure your account has the necessary access for the repositories you need.
-- **Timezone confusion**: All official times are in UTC. Use a timezone converter for your local time.
+- **Timezone confusion**: Check each meeting entry for its listed timezone and use a timezone converter for your local time.
 
 ## Conclusion
 
-The project roadmap provides a valuable resource for working with Cilium programmatically. Active participation strengthens both your own Cilium practice and the broader community.
+Cilium SIGs provide focused forums for contributors to collaborate on specific project areas. Active participation strengthens both your own Cilium practice and the broader community.
