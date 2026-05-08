@@ -36,7 +36,7 @@ kubectl get networkpolicy -n <namespace> | grep emergency
 ```bash
 for NS in <affected-namespace-1> <affected-namespace-2>; do
   kubectl run dns-val --image=busybox -n $NS --restart=Never --rm -i \
-    --timeout=15s -- nslookup kubernetes.default 2>&1 \
+    --timeout=15s --command -- nslookup kubernetes.default 2>&1 \
     && echo "PASS: DNS in $NS" || echo "FAIL: DNS in $NS"
 done
 ```
@@ -44,11 +44,24 @@ done
 **Validation Step 2: CoreDNS SERVFAIL rate at baseline**
 
 ```bash
-kubectl exec -n kube-system \
-  $(kubectl get pods -n kube-system -l k8s-app=kube-dns -o name | head -1) \
-  -- wget -qO- http://localhost:9153/metrics \
-  | grep 'coredns_dns_responses_total{.*SERVFAIL.*}'
-# Rate should be near zero
+POD=$(kubectl get pods -n kube-system -l k8s-app=kube-dns -o jsonpath='{.items[0].metadata.name}')
+kubectl port-forward -n kube-system "pod/$POD" 9153:9153 >/tmp/coredns-port-forward.log 2>&1 &
+PF_PID=$!
+sleep 2
+
+servfail_count() {
+  curl -fsS http://localhost:9153/metrics \
+    | awk '/^coredns_dns_responses_total\{.*rcode="SERVFAIL"/ {sum += $NF} END {print sum + 0}'
+}
+
+BEFORE=$(servfail_count)
+sleep 60
+AFTER=$(servfail_count)
+kill "$PF_PID"
+
+test "$AFTER" -eq "$BEFORE" \
+  && echo "PASS: CoreDNS SERVFAIL counter is not increasing" \
+  || echo "FAIL: CoreDNS SERVFAIL counter increased from $BEFORE to $AFTER"
 
 ```
 
@@ -65,7 +78,7 @@ kubectl get networkpolicy -n <namespace> -o yaml | grep "port: 53"
 
 ```bash
 # Check that applications are resolving service names correctly
-kubectl get pods -n <namespace> | grep -v Running
+kubectl wait --for=condition=Ready pod --all -n <namespace> --timeout=60s
 # Expected: all pods Running and Ready
 ```
 
