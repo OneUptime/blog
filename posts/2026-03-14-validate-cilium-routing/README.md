@@ -20,6 +20,7 @@ This guide provides a structured validation process with automated checks and ma
 
 - A Kubernetes cluster with Cilium installed and configured
 - The Cilium CLI installed
+- The Hubble CLI installed and Hubble enabled, if you want to run Hubble observability checks
 - `kubectl` with cluster-admin access
 - Test workloads or the ability to create them
 
@@ -48,9 +49,9 @@ Use the Cilium connectivity test to validate the data path:
 cilium connectivity test
 
 # Run specific test categories
-cilium connectivity test --test pod-to-pod
-cilium connectivity test --test pod-to-service
-cilium connectivity test --test dns-resolution
+cilium connectivity test --test /pod-to-pod
+cilium connectivity test --test /pod-to-service
+cilium connectivity test --test to-fqdns
 
 # Check Cilium status for any warnings
 cilium status --verbose
@@ -117,12 +118,12 @@ kubectl run validate-client --image=busybox --restart=Never -- sleep 300
 kubectl wait --for=condition=Ready pod/validate-client --timeout=30s
 
 # Test service access
-kubectl exec validate-client -- wget -qO- --timeout=5 http://validate-svc
+kubectl exec validate-client -- wget -qO- -T 5 http://validate-svc
 
 # Test direct pod IP access
 for IP in $(kubectl get pods -l app=validate-server -o jsonpath='{.items[*].status.podIP}'); do
   echo "Testing $IP..."
-  kubectl exec validate-client -- wget -qO- --timeout=5 http://$IP >/dev/null 2>&1 && echo "  OK" || echo "  FAIL"
+  kubectl exec validate-client -- wget -qO- -T 5 http://$IP >/dev/null 2>&1 && echo "  OK" || echo "  FAIL"
 done
 
 # Cleanup
@@ -136,15 +137,14 @@ Check that all endpoints managed by Cilium are healthy:
 
 ```bash
 # List all Cilium endpoints and their health
-cilium endpoint list
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg endpoint list
 
 # Check for endpoints in a non-ready state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg endpoint list | grep -v "ready"
 
-# Verify endpoint count matches pod count
-ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
-POD_COUNT=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
-echo "Cilium endpoints: $ENDPOINT_COUNT, Running pods: $POD_COUNT"
+# Review the local endpoint count on the selected Cilium agent
+ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+echo "Local Cilium endpoints on selected agent: $ENDPOINT_COUNT"
 ```
 
 ## Validating Metrics and Observability
@@ -153,13 +153,13 @@ Confirm metrics are being collected for cilium routing:
 
 ```bash
 # Check Cilium agent metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i "forward"
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg metrics list | grep -i "forward"
 
 # Verify Hubble is observing flows
-kubectl exec -n kube-system ds/cilium -- hubble observe --last 5
+hubble observe --last 5
 
 # Check for any drop metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- cilium-dbg metrics list | grep drop
 ```
 
 ## Verification
@@ -179,7 +179,7 @@ cilium status | head -10
 
 # 3. Connectivity working
 echo "3. Connectivity Test:"
-cilium connectivity test --test pod-to-pod 2>&1 | tail -3
+cilium connectivity test --test /pod-to-pod 2>&1 | tail -3
 
 # 4. No errors
 echo "4. Recent Errors:"
@@ -190,7 +190,7 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=10m | grep -c "e
 
 - **Connectivity test fails on specific tests**: Not all tests apply to every configuration. Some tests require specific features (like encryption or L7 policy) to be enabled.
 - **Endpoints show as not-ready**: The endpoint may still be initializing. Wait 30 seconds and check again. If persistent, check the Cilium agent logs for the node where the endpoint is running.
-- **Metrics show high drop count**: Check the drop reason with `cilium metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
+- **Metrics show high drop count**: Check the drop reason with `cilium-dbg metrics list | grep drop` from a Cilium agent pod. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
 - **Validation passes but production traffic fails**: The validation tests may not cover your specific traffic pattern. Create custom test workloads that mirror your production traffic patterns.
 
 ## Conclusion
