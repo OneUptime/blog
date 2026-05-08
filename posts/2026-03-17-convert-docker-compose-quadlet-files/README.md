@@ -33,7 +33,6 @@ Docker Compose is popular for defining multi-container applications, but Quadlet
 Original docker-compose.yml:
 
 ```yaml
-version: "3.8"
 services:
   web:
     image: docker.io/myorg/webapp:latest
@@ -70,12 +69,14 @@ Converted Quadlet files:
 # ~/.config/containers/systemd/appnet.network
 
 [Network]
+NetworkName=appnet
 Driver=bridge
 ```
 
 ```ini
 # ~/.config/containers/systemd/pgdata.volume
 [Volume]
+VolumeName=pgdata
 ```
 
 ```ini
@@ -125,7 +126,7 @@ WantedBy=default.target
 1. **Dependencies** - Compose `depends_on` becomes `After=` and `Requires=` in the `[Unit]` section.
 2. **Networks** - Each Compose network becomes a `.network` Quadlet file.
 3. **Volumes** - Named volumes become `.volume` Quadlet files.
-4. **Service names** - Use `ContainerName=` to set the hostname for DNS resolution on the network.
+4. **Service names** - Use `ContainerName=` to set the Podman container name used for container-name DNS resolution on the network.
 
 ## Deploy the Converted Files
 
@@ -146,4 +147,4 @@ systemctl --user start web.service
 
 ## Summary
 
-Converting Docker Compose to Quadlet involves creating separate `.container`, `.volume`, and `.network` files for each Compose service and resource. Map Compose fields to Quadlet directives, use systemd dependency directives instead of `depends_on`, and use `ContainerName` for DNS resolution. The result is native systemd management with all its benefits.
+Converting Docker Compose to Quadlet involves creating separate `.container`, `.volume`, and `.network` files for each Compose service and resource. Map Compose fields to Quadlet directives, use systemd dependency directives instead of `depends_on`, and use `ContainerName` for container-name DNS resolution. The result is native systemd management with all its benefits.
