@@ -23,6 +23,7 @@ By establishing regular audit procedures, your security team can maintain contin
 - `kubectl` and `jq` installed
 - Access to cluster audit logs
 - Knowledge of your compliance requirements
+- Host Firewall enabled if you are auditing `nodeSelector`-based host policies
 
 ## Policy Inventory Audit
 
@@ -32,6 +33,7 @@ Start by creating a complete inventory of all Cilium network policies:
 # Inventory all policies across the cluster
 
 kubectl get cnp --all-namespaces -o json | jq '.items[] | {ns: .metadata.namespace, name: .metadata.name}'
+kubectl get ccnp -o json | jq '.items[] | {scope: "cluster", name: .metadata.name}'
 ```
 
 ```mermaid
@@ -52,15 +54,36 @@ graph TD
 ### Checking Policy Coverage
 
 ```bash
-# Check policy coverage for all endpoints
-cilium endpoint list -o json | jq '[.[] | .status.policy.realized] | length'
+# Check policy coverage for all workload endpoints
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '[.items[] | select(
+    ((.status.policy.realized.l4.ingress // []) | length) > 0 or
+    ((.status.policy.realized.l4.egress // []) | length) > 0
+  )] | length'
 
-# Identify endpoints without any policy
-cilium endpoint list -o json | \
-  jq '.[] | select(
-    .status.policy.realized."l4-ingress" == null and
-    .status.policy.realized."l4-egress" == null
-  ) | {id: .id, labels: .status.labels.id}'
+# Identify workload endpoints without any policy
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '.items[] | select(
+    ((.status.policy.realized.l4.ingress // []) | length) == 0 and
+    ((.status.policy.realized.l4.egress // []) | length) == 0
+  ) | {
+    namespace: .metadata.namespace,
+    name: .metadata.name,
+    identity: .status.identity.id,
+    labels: .status.identity.labels
+  }'
+
+# Inspect host endpoints for nodeSelector-based host policies
+kubectl -n kube-system get pods -l k8s-app=cilium -o name | while read pod; do
+  kubectl -n kube-system exec "$pod" -c cilium-agent -- \
+    cilium-dbg endpoint list -o json | jq --arg pod "$pod" \
+    '.[] | select((.status.identity.labels // []) | index("reserved:host")) | {
+      agent: $pod,
+      id: .id,
+      policy: .status.policy.realized."policy-enabled",
+      labels: .status.identity.labels
+    }'
+done
 ```
 
 ## Configuration Audit
@@ -75,7 +98,7 @@ cilium config view | grep -E 'policy|audit|monitor'
 kubectl -n kube-system get pods -l k8s-app=cilium -o name | while read pod; do
   echo "=== $pod ==="
   kubectl -n kube-system exec "$pod" -c cilium-agent -- \
-    cilium config view | grep -E "policy-enforcement|enable-l7|enable-hubble"
+    cilium-dbg config --all | grep -E "policy-enforcement|enable-l7|enable-hubble|enable-policy"
 done
 ```
 
@@ -89,6 +112,9 @@ apiVersion: "cilium.io/v2"
 kind: CiliumClusterwideNetworkPolicy
 metadata:
   name: node-label-policy
+  annotations:
+    audit.oneuptime.com/owner: platform-security
+    audit.oneuptime.com/reviewed: "2026-03-14"
 spec:
   nodeSelector:
     matchLabels:
@@ -129,13 +155,16 @@ REPORT_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 OUTPUT="cilium-audit-$(date +%Y%m%d).json"
 
 # Gather audit data
-TOTAL_ENDPOINTS=$(cilium endpoint list -o json | jq 'length')
+TOTAL_ENDPOINTS=$(kubectl get ciliumendpoints --all-namespaces -o json | jq '.items | length')
 TOTAL_POLICIES=$(kubectl get cnp --all-namespaces -o json | jq '.items | length')
 TOTAL_CCNP=$(kubectl get ccnp -o json 2>/dev/null | jq '.items | length' 2>/dev/null || echo 0)
 
 # Count endpoints with policies
-COVERED=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.policy.realized."l4-ingress" != null)] | length')
+COVERED=$(kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '[.items[] | select(
+    ((.status.policy.realized.l4.ingress // []) | length) > 0 or
+    ((.status.policy.realized.l4.egress // []) | length) > 0
+  )] | length')
 
 # Build JSON report
 jq -n \
@@ -163,7 +192,8 @@ cat "$OUTPUT" | jq .
 
 ```bash
 # Generate audit summary
-cilium policy get -o json | jq '.[].metadata.name'
+kubectl get cnp --all-namespaces -o json | jq -r '.items[].metadata.name'
+kubectl get ccnp -o json | jq -r '.items[].metadata.name'
 ```
 
 ```bash
@@ -173,7 +203,13 @@ hubble observe --verdict DROPPED --last 100 -o json | jq -r '.flow.drop_reason_d
 
 ```bash
 # Verify endpoint identity assignments
-cilium identity list | head -30
+kubectl get ciliumendpoints --all-namespaces -o json | \
+  jq '.items[] | {
+    namespace: .metadata.namespace,
+    name: .metadata.name,
+    identity: .status.identity.id,
+    labels: .status.identity.labels
+  }' | head -30
 ```
 
 ## Troubleshooting
@@ -181,7 +217,7 @@ cilium identity list | head -30
 - **Audit script times out on large clusters**: Process namespaces in batches and increase kubectl request timeout.
 - **Inconsistent data across nodes**: Ensure all Cilium agents are running the same version with `cilium version`.
 - **Cannot access Hubble metrics**: Verify Hubble is enabled and the relay is healthy.
-- **Policy count mismatch**: Some policies may be in a failed state. Check with `kubectl describe cnp -A | grep "Enforcement"`.
+- **Policy count mismatch**: Some policies may be in a failed state. Check status with `kubectl get cnp -A -o json | jq '.items[] | {namespace: .metadata.namespace, name: .metadata.name, status: .status}'`.
 
 ## Conclusion
 
