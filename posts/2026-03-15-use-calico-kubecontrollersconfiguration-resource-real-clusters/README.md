@@ -50,9 +50,11 @@ spec:
       reconcilerPeriod: 2m
     serviceAccount:
       reconcilerPeriod: 2m
+    loadBalancer:
+      assignIPs: AllServices
 ```
 
-All controllers are enabled with short reconciliation periods since the API server can handle the load.
+The listed controllers use short reconciliation periods since the API server can handle the load. Keep the `loadBalancer` controller enabled if you use Calico LoadBalancer IPAM.
 
 ## Large Cluster Configuration (200+ Nodes)
 
@@ -81,6 +83,8 @@ spec:
       reconcilerPeriod: 15m
     serviceAccount:
       reconcilerPeriod: 15m
+    loadBalancer:
+      assignIPs: AllServices
 ```
 
 The log severity is set to Warning to reduce log volume. Longer grace periods prevent premature garbage collection of resources during slow API responses.
@@ -111,6 +115,8 @@ spec:
       reconcilerPeriod: 5m
     serviceAccount:
       reconcilerPeriod: 5m
+    loadBalancer:
+      assignIPs: AllServices
 ```
 
 With `autoCreate: Enabled`, every node automatically gets HostEndpoint resources. This is required for GlobalNetworkPolicy rules that target host traffic. Ensure you have appropriate policies before enabling this:
@@ -136,7 +142,7 @@ spec:
     - action: Allow
 ```
 
-This policy allows essential traffic before automatic host endpoints enforce deny-by-default behavior.
+This policy allows essential traffic when host endpoints are selected by restrictive GlobalNetworkPolicy rules. Automatic host endpoints include the `projectcalico-default-allow` profile, so they retain allow-all behavior in the absence of matching network policy.
 
 ## Monitoring Controller Health
 
@@ -145,7 +151,7 @@ Set up monitoring for the calico-kube-controllers pod:
 ```bash
 # Check health endpoint
 
-kubectl exec -n calico-system deployment/calico-kube-controllers -- wget -qO- http://localhost:9094/readiness
+kubectl exec -n calico-system deployment/calico-kube-controllers -- /usr/bin/calico component kube-controllers kube-controllers-health -r
 
 # View controller metrics
 kubectl port-forward -n calico-system deployment/calico-kube-controllers 9094:9094 &
@@ -160,20 +166,20 @@ Ensure the controller pod has appropriate resource limits in the deployment:
 # Check current resource configuration
 kubectl get deployment calico-kube-controllers -n calico-system -o jsonpath='{.spec.template.spec.containers[0].resources}'
 
-# Recommended resources for large clusters
-kubectl patch deployment calico-kube-controllers -n calico-system -p \
-  '{"spec": {"template": {"spec": {"containers": [{"name": "calico-kube-controllers", "resources": {"requests": {"cpu": "200m", "memory": "256Mi"}, "limits": {"cpu": "500m", "memory": "512Mi"}}}]}}}}'
+# Recommended resources for large operator-managed clusters
+kubectl patch installation default --type merge -p \
+  '{"spec": {"calicoKubeControllersDeployment": {"spec": {"template": {"spec": {"containers": [{"name": "calico-kube-controllers", "resources": {"requests": {"cpu": "200m", "memory": "256Mi"}, "limits": {"cpu": "500m", "memory": "512Mi"}}}]}}}}}}'
 ```
 
 ## Handling Controller Failover
 
-The calico-kube-controllers deployment should run as a single replica with leader election. Verify this is configured:
+The calico-kube-controllers deployment is designed to run as a single active instance. Verify the replica count:
 
 ```bash
 kubectl get deployment calico-kube-controllers -n calico-system -o jsonpath='{.spec.replicas}'
 ```
 
-If your cluster requires high availability, the controller supports leader election natively. The standby pod remains idle until the active pod fails.
+For high availability, rely on Kubernetes to restart or reschedule the single replica quickly rather than scaling the deployment to active standby replicas.
 
 ## Verification
 
