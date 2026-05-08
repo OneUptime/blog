@@ -18,7 +18,7 @@ This guide provides practical examples of using `calicoctl validate` for differe
 
 ## Prerequisites
 
-- calicoctl v3.27 or later installed
+- calicoctl v3.31 or later installed
 - Calico resource YAML files to validate
 - Basic understanding of Calico resource types
 
@@ -58,7 +58,7 @@ EOF
 
 # Validate the policy
 calicoctl validate -f /tmp/test-policy.yaml
-# Output: GlobalNetworkPolicy(allow-web-traffic) is valid.
+# Output: Successfully validated 1 'GlobalNetworkPolicy' resource(s)
 ```
 
 ## Validating with Common Errors
@@ -80,7 +80,7 @@ spec:
 EOF
 
 calicoctl validate -f /tmp/bad-action.yaml
-# Error: spec.ingress[0].action: Unsupported value: "allow"
+# Error: failed to validate 'GlobalNetworkPolicy' resource: [error with field Action = 'allow' ...]
 # Fix: Use "Allow" (capital A)
 ```
 
@@ -98,7 +98,7 @@ spec:
 EOF
 
 calicoctl validate -f /tmp/bad-selector.yaml
-# Error: invalid selector syntax
+# Error: failed to validate 'GlobalNetworkPolicy' resource: [error with field Selector = 'app: web' ...]
 # Fix: Use Calico selector syntax: app == "web"
 ```
 
@@ -107,16 +107,15 @@ calicoctl validate -f /tmp/bad-selector.yaml
 cat > /tmp/missing-field.yaml <<EOF
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
-metadata:
-  name: no-selector
+metadata: {}
 spec:
   ingress:
     - action: Allow
 EOF
 
 calicoctl validate -f /tmp/missing-field.yaml
-# May validate (selector defaults to all() for GlobalNetworkPolicy)
-# But for NetworkPolicy, namespace is required
+# Error: failed to validate 'GlobalNetworkPolicy' resource: [error with field Metadata.Name = '' ...]
+# Fix: Add metadata.name
 ```
 
 ## Validating Multiple Resources
@@ -128,6 +127,8 @@ apiVersion: projectcalico.org/v3
 kind: GlobalNetworkSet
 metadata:
   name: trusted-ips
+  labels:
+    role: trusted
 spec:
   nets:
     - 10.0.0.0/8
@@ -143,7 +144,7 @@ spec:
   ingress:
     - action: Allow
       source:
-        selector: "global() && name == 'trusted-ips'"
+        selector: role == "trusted"
 EOF
 
 calicoctl validate -f /tmp/multi-resource.yaml
@@ -162,16 +163,16 @@ DIR="${1:-.}"
 PASS=0
 FAIL=0
 
-find "$DIR" -name "*.yaml" -not -name "kustomization.yaml" | sort | while read file; do
+while read -r file; do
   if calicoctl validate -f "$file" > /dev/null 2>&1; then
     echo "PASS: $file"
     PASS=$((PASS + 1))
   else
     echo "FAIL: $file"
-    calicoctl validate -f "$file" 2>&1 | sed 's/^/  /'
+    calicoctl validate -f "$file" 2>&1 | sed 's/^/  /' || true
     FAIL=$((FAIL + 1))
   fi
-done
+done < <(find "$DIR" -name "*.yaml" -not -name "kustomization.yaml" | sort)
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
@@ -251,17 +252,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install calicoctl
         run: |
-          curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.31.0/calicoctl-linux-amd64 -o calicoctl
           chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
 
       - name: Validate all Calico resources
         run: |
           ERRORS=0
-          find calico -name "*.yaml" | while read file; do
+          while read -r file; do
             if ! calicoctl validate -f "$file"; then
               ERRORS=$((ERRORS + 1))
             fi
-          done
+          done < <(find calico -name "*.yaml" | sort)
           exit $ERRORS
 ```
 
