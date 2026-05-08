@@ -1,22 +1,23 @@
-# VPA Auto Mode with Flux CD
+# VPA Recreate Mode with Flux CD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Flux CD, VPA, Kubernetes, Resource Management, GitOps
 
-Description: Learn how to configure Vertical Pod Autoscaler in Auto mode with Flux CD, enabling automatic right-sizing of pod resource requests through GitOps-managed VPA objects.
+Description: Learn how to configure Vertical Pod Autoscaler in Recreate mode with Flux CD, enabling automatic right-sizing of pod resource requests through GitOps-managed VPA objects.
 
 ---
 
 ## Introduction
 
-Vertical Pod Autoscaler (VPA) automatically adjusts CPU and memory requests for containers based on historical usage. In Auto mode, VPA can evict and restart pods with updated resource requests. This ensures pods always have the right amount of resources allocated, reducing overprovisioning waste and preventing OOM kills from underprovisioning.
+Vertical Pod Autoscaler (VPA) automatically adjusts CPU and memory requests for containers based on historical usage. In Recreate mode, VPA can evict and restart pods with updated resource requests. This ensures pods have more appropriate resources allocated, reducing overprovisioning waste and helping prevent OOM kills from underprovisioning.
 
 ## Prerequisites
 
 - Kubernetes cluster with Flux CD bootstrapped
 - VPA installed (via Flux)
 - Metrics Server running
+- `jq` installed locally for the JSON filtering command
 
 ## Step 1: Deploy VPA via Flux
 
@@ -36,9 +37,10 @@ apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: vpa
-  namespace: kube-system
+  namespace: flux-system
 spec:
   interval: 1h
+  targetNamespace: kube-system
   chart:
     spec:
       chart: vpa
@@ -46,6 +48,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: fairwinds-stable
+        namespace: flux-system
   values:
     recommender:
       enabled: true
@@ -54,12 +57,12 @@ spec:
           cpu: 50m
           memory: 256Mi
     updater:
-      enabled: true   # Required for Auto mode
+      enabled: true   # Required for Recreate mode
     admissionController:
-      enabled: true   # Required for Auto mode (mutates pod specs)
+      enabled: true   # Required for Recreate mode (mutates pod specs)
 ```
 
-## Step 2: Configure VPA in Auto Mode
+## Step 2: Configure VPA in Recreate Mode
 
 ```yaml
 # apps/myapp/vpa.yaml
@@ -74,7 +77,7 @@ spec:
     kind: Deployment
     name: myapp
   updatePolicy:
-    updateMode: "Auto"  # Automatically apply recommendations and evict pods
+    updateMode: "Recreate"  # Automatically apply recommendations by evicting pods
   resourcePolicy:
     containerPolicies:
       - containerName: myapp
@@ -105,8 +108,8 @@ spec:
     kind: Deployment
     name: myapp
   updatePolicy:
-    updateMode: "Auto"
-    minReplicas: 2  # Don't evict if replicas < 2 (ensures availability)
+    updateMode: "Recreate"
+    minReplicas: 2  # Require at least 2 live replicas before eviction
   resourcePolicy:
     containerPolicies:
       - containerName: myapp
@@ -137,7 +140,7 @@ spec:
     kind: GitRepository
     name: fleet-repo
   dependsOn:
-    - name: vpa  # VPA CRDs must exist
+    - name: vpa  # Flux Kustomization that installs the VPA CRDs/controller
   targetNamespace: myapp
 ```
 
@@ -197,7 +200,7 @@ spec:
     kind: Deployment
     name: myapp
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: myapp
@@ -206,13 +209,13 @@ spec:
 
 ## Best Practices
 
-- Start with VPA in Recommendation-Only mode to observe what changes it would make before enabling Auto mode.
-- Set `minReplicas: 2` in the VPA updatePolicy to prevent evicting all pods simultaneously.
+- Start with VPA in `Off` mode to observe what changes it would make before enabling Recreate mode.
+- Set `minReplicas: 2` in the VPA updatePolicy to require at least two live replicas before the updater attempts eviction.
 - Use PodDisruptionBudgets alongside VPA to control how many pods can be evicted at once.
-- Do not use VPA Auto mode with HPA on the same resource dimension (both CPU or both memory); it causes oscillation.
+- Do not use VPA Recreate mode with HPA on the same resource dimension (both CPU or both memory); it can cause oscillation.
 - Set generous `maxAllowed` values; VPA will not recommend resources above this ceiling.
 - Allow VPA at least 24-48 hours of metric collection before the recommendations stabilize.
 
 ## Conclusion
 
-VPA in Auto mode deployed via Flux CD provides automatic right-sizing of pod resources based on actual usage patterns. This reduces both overprovisioning (waste) and underprovisioning (OOM kills and throttling). Combined with HPA for horizontal scaling, VPA and HPA together create a complete autoscaling solution that optimizes both the number of replicas and the resources allocated to each.
+VPA in Recreate mode deployed via Flux CD provides automatic right-sizing of pod resources based on actual usage patterns. This reduces both overprovisioning (waste) and underprovisioning (OOM kills and throttling). Combined with HPA for horizontal scaling, VPA and HPA together create a complete autoscaling solution that optimizes both the number of replicas and the resources allocated to each.
