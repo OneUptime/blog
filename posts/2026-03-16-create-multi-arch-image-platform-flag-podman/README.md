@@ -10,7 +10,7 @@ Description: Learn how to use the --platform flag in Podman to build multi-archi
 
 > The --platform flag with comma-separated values lets you build for multiple architectures in one command, producing a ready-to-push manifest list.
 
-Podman's `--platform` flag accepts multiple platform targets, separated by commas. Combined with the `--manifest` flag, this creates a complete multi-architecture manifest list in a single build invocation. This is the fastest path to multi-arch images when building from a single machine.
+Podman's `--platform` flag accepts multiple platform targets, separated by commas. Combined with the `--manifest` flag, this creates a complete multi-architecture manifest list in a single build invocation. This is the most concise path to multi-arch images when building from a single machine. If your Containerfile uses `RUN` instructions for non-native architectures, the host also needs working emulation, such as QEMU with binfmt.
 
 ---
 
@@ -20,7 +20,7 @@ Podman's `--platform` flag accepts multiple platform targets, separated by comma
 mkdir -p ~/platform-demo && cd ~/platform-demo
 
 cat > Containerfile <<'EOF'
-FROM alpine:3.19
+FROM alpine:3.23
 RUN apk add --no-cache curl
 CMD ["sh", "-c", "echo Running on $(uname -m)"]
 EOF
@@ -72,9 +72,17 @@ podman manifest inspect myapp:v1.0 | \
 The `--platform` flag in `FROM` instructions overrides the target platform for specific stages.
 
 ```bash
+mkdir -p ~/go-platform-demo && cd ~/go-platform-demo
+go mod init example.com/platform-demo
+cat > main.go <<'EOF'
+package main
+
+func main() {}
+EOF
+
 cat > Containerfile <<'EOF'
 # Build stage: always runs on the build host's native platform
-FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -84,7 +92,7 @@ COPY . .
 RUN GOOS=${TARGETOS} GOARCH=${TARGETARCH} CGO_ENABLED=0 go build -o /app
 
 # Runtime stage: uses the target platform
-FROM alpine:3.19
+FROM alpine:3.23
 COPY --from=builder /app /usr/local/bin/app
 CMD ["app"]
 EOF
@@ -102,7 +110,7 @@ When you use `--platform`, Podman sets these build arguments automatically:
 
 ```bash
 cat > Containerfile <<'EOF'
-FROM alpine:3.19
+FROM alpine:3.23
 
 ARG TARGETPLATFORM    # e.g., linux/amd64
 ARG TARGETOS          # e.g., linux
@@ -111,6 +119,7 @@ ARG TARGETVARIANT     # e.g., v7 (for ARM)
 ARG BUILDPLATFORM     # e.g., linux/amd64 (your host)
 ARG BUILDOS           # e.g., linux
 ARG BUILDARCH         # e.g., amd64
+ARG BUILDVARIANT      # e.g., v7 (for ARM hosts)
 
 RUN echo "Build host: ${BUILDPLATFORM}" && \
     echo "Target: ${TARGETPLATFORM}" && \
@@ -126,7 +135,7 @@ Handle architecture-specific steps using the automatic arguments.
 
 ```bash
 cat > Containerfile <<'EOF'
-FROM alpine:3.19
+FROM alpine:3.23
 
 ARG TARGETARCH
 
