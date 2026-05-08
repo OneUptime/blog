@@ -10,7 +10,7 @@ Description: Use Hubble field masks as a security control to enforce data minimi
 
 ## Introduction
 
-Field masks in Hubble serve a dual purpose: they optimize performance by reducing export size, and they enforce data minimization by preventing sensitive fields from being written to disk. From a security perspective, the field mask is your primary control for determining what network metadata leaves the Cilium agent's memory and becomes persistent.
+Field masks in Hubble serve a dual purpose: they optimize performance by reducing export size, and they enforce data minimization by preventing sensitive flow fields from being written to disk by the exporter. From a security perspective, the field mask is your primary control for determining what flow metadata leaves the Cilium agent's memory and becomes persistent in the Hubble export file.
 
 IP addresses can reveal network topology. L7 metadata can expose API paths and query parameters. Ethernet addresses can fingerprint devices. By applying strict field masks, you ensure that only the data necessary for your observability use case is persisted, reducing the blast radius if exported data is compromised.
 
@@ -45,12 +45,12 @@ hubble:
         - destination.namespace
         - destination.pod_name
 
-        # Port for service identification
-        - destination.port
+        # L4 protocol and ports for service identification
+        - l4
 
         # Security verdict
         - verdict
-        - drop_reason
+        - drop_reason_desc
 
         # Event classification
         - Type
@@ -59,9 +59,9 @@ hubble:
         # - source.labels (may contain sensitive label values)
         # - IP.source/IP.destination (reveals network topology)
         # - ethernet (reveals MAC addresses)
-        # - l7 (contains HTTP paths, DNS queries, request bodies)
+        # - l7 (contains HTTP paths, URLs, headers, DNS queries)
         # - source.identity/destination.identity (numeric but correlatable)
-        # - node_name (reveals infrastructure topology)
+        # - node_name (flow-level node name; export records still include a top-level node_name)
 ```
 
 ```bash
@@ -101,9 +101,9 @@ fieldMask:
   - source.pod_name
   - destination.namespace
   - destination.pod_name
-  - destination.port
+  - l4
   - verdict
-  - drop_reason
+  - drop_reason_desc
   - Type
   - event_type
 ```
@@ -116,10 +116,10 @@ fieldMask:
 fieldMask:
   - time
   - source.namespace
-  - source.pod_name  # Pod names are not personal data
+  - source.pod_name  # Omit if pod names encode personal data
   - destination.namespace
   - destination.pod_name
-  - destination.port
+  - l4
   - verdict
   - Type
   # NO IP addresses
@@ -137,10 +137,9 @@ fieldMask:
   - source.pod_name
   - destination.namespace
   - destination.pod_name
-  - destination.port
+  - l4
   - verdict
-  - drop_reason
-  - l4.TCP  # Connection state for network segmentation verification
+  - drop_reason_desc
   - Type
   # NO L7 data (may capture payment data in transit)
   # NO IP addresses of PCI zone
@@ -160,7 +159,7 @@ FORBIDDEN_FIELDS = {
     'IP',           # Network topology
     'ethernet',     # MAC addresses
     'l7',           # Application-layer data
-    'node_name',    # Infrastructure topology
+    'node_name',    # Flow-level infrastructure topology
 }
 
 violations = []
@@ -194,22 +193,23 @@ kind: ClusterPolicy
 metadata:
   name: enforce-hubble-field-mask
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-field-mask
       match:
-        resources:
-          kinds:
-            - ConfigMap
-          namespaces:
-            - kube-system
-          names:
-            - cilium-config
+        any:
+          - resources:
+              kinds:
+                - ConfigMap
+              namespaces:
+                - kube-system
+              names:
+                - cilium-config
       validate:
+        failureAction: Enforce
         message: "Hubble exporter must have a field mask configured"
         pattern:
           data:
-            hubble-export-field-mask: "?*"
+            hubble-export-fieldmask: "?*"
 ```
 
 ## Verification
@@ -217,17 +217,17 @@ spec:
 Confirm field mask security controls:
 
 ```bash
-# 1. No IP addresses in export
+# 1. No IP address fields in exported flows
 kubectl -n kube-system exec ds/cilium -- cat /var/run/cilium/hubble/events.log | python3 -c "
-import json, sys, re
-ip_pattern = re.compile(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')
+import json, sys
 count = 0
 ip_found = 0
 for line in sys.stdin:
     count += 1
-    if ip_pattern.search(line):
+    flow = json.loads(line).get('flow', {})
+    if 'IP' in flow:
         ip_found += 1
-print(f'Checked {count} events: {ip_found} contain IP-like patterns')
+print(f'Checked {count} events: {ip_found} contain flow IP fields')
 "
 
 # 2. No L7 data
@@ -256,7 +256,7 @@ for line in sys.stdin:
 
 ## Troubleshooting
 
-- **Field mask too restrictive for debugging**: Create a separate exporter configuration for temporary debugging with broader field masks. Remove it after the investigation.
+- **Field mask too restrictive for debugging**: Temporarily broaden the static exporter field mask, or use a dynamic exporter configuration for a separate temporary flow log with a broader field mask. Remove it after the investigation.
 
 - **Compliance audit fails despite field mask**: Check if there are other data paths (Hubble relay, CLI access, Prometheus metrics) that expose the restricted fields. Field masks only apply to the file exporter.
 
