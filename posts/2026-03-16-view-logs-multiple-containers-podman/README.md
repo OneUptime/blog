@@ -35,20 +35,13 @@ Prefix each log line with the container name for easy identification.
 
 ```bash
 # View logs from specific containers with labels
-for c in web api worker; do
-  podman logs "$c" 2>&1 | sed "s/^/[$c] /"
-done
+podman logs --names web api worker
 
 # With timestamps and labels
-for c in web api worker; do
-  podman logs --timestamps "$c" 2>&1 | sed "s/^/[$c] /"
-done
+podman logs --timestamps --names web api worker
 
 # Follow multiple containers in real time with labels
-for c in web api worker; do
-  podman logs -f "$c" 2>&1 | sed "s/^/[$c] /" &
-done
-wait
+podman logs -f --names web api worker
 # Press Ctrl+C to stop all
 ```
 
@@ -59,22 +52,22 @@ Combine logs from multiple containers and sort them by time.
 ```bash
 # Merge timestamped logs and sort by time
 {
-  podman logs --timestamps web 2>&1 | sed 's/^/[web] /'
-  podman logs --timestamps api 2>&1 | sed 's/^/[api] /'
-  podman logs --timestamps db  2>&1 | sed 's/^/[db]  /'
+  podman logs --timestamps web 2>&1 | sed 's/^[^ ]*/& [web]/'
+  podman logs --timestamps api 2>&1 | sed 's/^[^ ]*/& [api]/'
+  podman logs --timestamps db  2>&1 | sed 's/^[^ ]*/& [db]/'
 } | sort
 
 # Merge logs from a specific time window
 SINCE="2026-03-16T14:00:00"
 {
-  podman logs --timestamps --since "$SINCE" web 2>&1 | sed 's/^/[web] /'
-  podman logs --timestamps --since "$SINCE" api 2>&1 | sed 's/^/[api] /'
+  podman logs --timestamps --since "$SINCE" web 2>&1 | sed 's/^[^ ]*/& [web]/'
+  podman logs --timestamps --since "$SINCE" api 2>&1 | sed 's/^[^ ]*/& [api]/'
 } | sort
 
 # Merge and filter for errors
 {
-  podman logs --timestamps web 2>&1 | sed 's/^/[web] /'
-  podman logs --timestamps api 2>&1 | sed 's/^/[api] /'
+  podman logs --timestamps web 2>&1 | sed 's/^[^ ]*/& [web]/'
+  podman logs --timestamps api 2>&1 | sed 's/^[^ ]*/& [api]/'
 } | sort | grep -i error
 ```
 
@@ -84,20 +77,13 @@ Podman pods group containers together, making it natural to view their logs coll
 
 ```bash
 # List containers in a pod
-podman pod inspect my-pod --format '{{range .Containers}}{{.Name}} {{end}}'
+podman ps --filter pod=my-pod --format '{{.Names}}'
 
 # View logs from all containers in a pod
-for c in $(podman pod inspect my-pod --format '{{range .Containers}}{{.Name}} {{end}}'); do
-  echo "=== $c ==="
-  podman logs --tail 20 "$c" 2>&1
-  echo ""
-done
+podman pod logs --tail 20 --names my-pod
 
 # Follow all pod containers with labels
-for c in $(podman pod inspect my-pod --format '{{range .Containers}}{{.Name}} {{end}}'); do
-  podman logs -f "$c" 2>&1 | sed "s/^/[$c] /" &
-done
-wait
+podman pod logs -f --names my-pod
 ```
 
 ## Filter Multi-Container Logs by Pattern
@@ -171,18 +157,16 @@ Save combined logs for later analysis or sharing.
   echo "Containers: web, api, worker"
   echo "---"
   for c in web api worker; do
-    podman logs --timestamps "$c" 2>&1 | sed "s/^/[$c] /"
+    podman logs --timestamps "$c" 2>&1 | sed "s/^[^ ]*/& [$c]/"
   done | sort
 } > combined-logs.txt
 
 # Export as structured data
 for c in web api worker; do
-  podman logs --timestamps "$c" 2>&1 | while IFS= read -r line; do
-    echo "{\"container\":\"$c\",\"log\":\"$line\"}"
-  done
+  podman logs --timestamps "$c" 2>&1 | jq -R --arg container "$c" '{container:$container, log:.}'
 done > combined-logs.jsonl
 ```
 
 ## Summary
 
-Viewing logs from multiple Podman containers requires combining `podman logs` with shell scripting. Use `sed` to label each container's output, merge timestamped logs and `sort` them for chronological ordering, and loop over pod containers for grouped viewing. For real-time monitoring, run multiple `podman logs -f` processes in the background with labeled output. Always use `--timestamps` when merging logs from different containers to maintain proper chronological order.
+Viewing logs from multiple Podman containers can be done with `podman logs` and shell scripting. Use `--names` or `sed` to label each container's output, merge timestamped logs and `sort` them for chronological ordering, and use `podman pod logs` for grouped pod viewing. For real-time monitoring, use `podman logs -f` or `podman pod logs -f` with labeled output. Always use `--timestamps` when merging logs from different containers to maintain proper chronological order.
