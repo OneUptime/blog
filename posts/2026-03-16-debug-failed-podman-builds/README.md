@@ -78,11 +78,11 @@ podman run --rm -it <intermediate-image-id> /bin/sh
 
 ## Keeping Intermediate Containers
 
-Use `--rm=false` to keep the containers from each build step.
+Use `--rm=false` and `--force-rm=false` to keep the containers from each build step, including when the build fails.
 
 ```bash
 # Build without removing intermediate containers
-podman build --rm=false -t myapp:latest . || true
+podman build --rm=false --force-rm=false -t myapp:latest . || true
 
 # List the intermediate containers
 podman ps -a --format "table {{.ID}}\t{{.Image}}\t{{.Command}}\t{{.Status}}"
@@ -90,7 +90,7 @@ podman ps -a --format "table {{.ID}}\t{{.Image}}\t{{.Command}}\t{{.Status}}"
 # Inspect the last container (the one that failed)
 podman logs <container-id>
 
-# Start a shell in the failed container's filesystem
+# Re-run the failed container's original command interactively
 podman start -ai <container-id>
 
 # Or commit it to an image and run interactively
@@ -109,7 +109,7 @@ Temporarily add debugging commands to identify issues.
 cat > Containerfile <<'EOF'
 FROM alpine:3.19
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl nodejs npm
 
 # Debug: Check what is available
 RUN ls -la /etc/
@@ -234,8 +234,8 @@ podman build --build-arg CACHE_BUST=$(date +%s) -t myapp:latest .
 Monitor Podman events during a build for additional context.
 
 ```bash
-# In terminal 1: Watch events
-podman events --filter event=build
+# In terminal 1: Watch container events from RUN instructions
+podman events --filter type=container
 
 # In terminal 2: Run the build
 podman build -t myapp:latest .
@@ -243,4 +243,4 @@ podman build -t myapp:latest .
 
 ## Summary
 
-Debugging Podman build failures involves reading error output carefully, building to intermediate stages with `--target`, keeping intermediate containers with `--rm=false`, and adding temporary debug output. For persistent issues, use `--no-cache` to rule out stale cache, `--log-level=debug` for detailed logging, and run interactive shells in intermediate images to test commands manually. Clean up debug artifacts after resolving the issue with `podman system prune`.
+Debugging Podman build failures involves reading error output carefully, building to intermediate stages with `--target`, keeping intermediate containers with `--rm=false --force-rm=false`, and adding temporary debug output. For persistent issues, use `--no-cache` to rule out stale cache, `--log-level=debug` for detailed logging, and run interactive shells in intermediate images to test commands manually. Clean up debug artifacts after resolving the issue with `podman system prune`.
