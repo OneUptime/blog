@@ -49,7 +49,7 @@ SetWorkingDirectory=unit
 
 # ~/.config/containers/systemd/myapp.container
 [Container]
-Image=localhost/myapp:latest
+Image=myapp.build
 
 PublishPort=8080:8080
 
@@ -141,7 +141,7 @@ SetWorkingDirectory=/home/user/projects/frontend
 
 # ~/.config/containers/systemd/frontend.container
 [Container]
-Image=localhost/frontend:latest
+Image=frontend.build
 PublishPort=8080:80
 
 [Service]
@@ -166,4 +166,4 @@ systemctl --user start myapp
 
 ## Summary
 
-Quadlet `.build` files define image builds from Containerfiles with support for build arguments, labels, and custom contexts. Reference the built image in a `.container` file, and systemd handles building the image before starting the container. This keeps your entire deployment workflow within the systemd lifecycle.
+Quadlet `.build` files define image builds from Containerfiles with support for build arguments, labels, and custom contexts. Reference the build unit in a `.container` file, and systemd handles building the image before starting the container. This keeps your entire deployment workflow within the systemd lifecycle.
