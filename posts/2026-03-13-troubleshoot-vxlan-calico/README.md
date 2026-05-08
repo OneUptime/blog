@@ -12,7 +12,7 @@ Description: Diagnose VXLAN encapsulation failures in Calico including VTEP conf
 
 VXLAN (Virtual Extensible LAN) is an encapsulation protocol that wraps layer-2 Ethernet frames inside UDP packets, allowing pod networks to span across layer-3 boundaries without BGP routing support. Calico uses VXLAN to create an overlay network where pods on different subnets can communicate as if they were on the same flat network.
 
-VXLAN is the preferred encapsulation mode for cloud environments where BGP peering with the underlying network is not possible or practical. It uses UDP port 4789 for encapsulation and requires all cluster nodes to be able to reach each other on this port.
+VXLAN is the preferred encapsulation mode for cloud environments where BGP peering with the underlying network is not possible or practical. By default, it uses UDP port 4789 for encapsulation and requires all cluster nodes to be able to reach each other on the configured VXLAN port.
 
 ## Prerequisites
 
@@ -49,11 +49,11 @@ ip addr show vxlan.calico
 # View VXLAN forwarding database (FDB)
 bridge fdb show dev vxlan.calico
 
-# View ARP table for VTEP neighbors
-arp -n | grep "vxlan"
+# View neighbor table for VTEP neighbors
+ip neigh show dev vxlan.calico
 
 # Check Calico VTEP information
-kubectl get nodes -o yaml | grep -A5 vxlanTunnelMACAddr
+calicoctl get nodes -o yaml | grep -A5 vxlanTunnelMACAddr
 ```
 
 ## Test Cross-Subnet Pod Connectivity
