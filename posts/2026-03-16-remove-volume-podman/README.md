@@ -22,7 +22,7 @@ Over time, volumes accumulate as containers are created and removed. Orphaned vo
 podman volume rm mydata
 
 # Verify it was removed
-podman volume list
+podman volume ls
 ```
 
 ## Removing Multiple Volumes
@@ -71,7 +71,7 @@ Use the `--force` flag to remove a volume even if it is referenced by containers
 podman volume rm --force mydata
 ```
 
-This stops and removes any containers using the volume before deleting it. Use this only when you are certain the data is not needed.
+This removes any containers using the volume, stopping running containers as needed, before deleting it. Use this only when you are certain the data is not needed.
 
 ## Safe Removal Script
 
@@ -126,11 +126,11 @@ podman rm -v mycontainer
 
 ```bash
 # Remove all volumes with a specific label
-podman volume list --filter label=env=test --format '{{.Name}}' | \
+podman volume ls --filter label=env=test --format '{{.Name}}' | \
     xargs -r podman volume rm
 
 # Remove volumes for a specific project
-podman volume list --filter label=project=old-app --format '{{.Name}}' | \
+podman volume ls --filter label=project=old-app --format '{{.Name}}' | \
     xargs -r podman volume rm
 ```
 
@@ -166,4 +166,4 @@ podman volume rm "${VOLUME}"
 
 ## Summary
 
-Use `podman volume rm` to remove volumes by name. Podman prevents removal of volumes in use by running containers unless you use `--force`. Always check volume usage before removal and consider backing up important data. For batch cleanup, filter volumes by label or dangling status before removing them.
+Use `podman volume rm` to remove volumes by name. Podman prevents removal of volumes in use by containers unless you use `--force`. Always check volume usage before removal and consider backing up important data. For batch cleanup, filter volumes by label or dangling status before removing them.
