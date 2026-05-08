@@ -10,7 +10,7 @@ Description: Learn how to use calicoctl create to define network policies, IP po
 
 ## Introduction
 
-The `calicoctl create` command is used to create Calico resources from YAML or JSON definitions. While Kubernetes-native network policies can be managed with `kubectl`, Calico-specific resources such as GlobalNetworkPolicy, IPPool, BGPPeer, and HostEndpoint require `calicoctl` for management.
+The `calicoctl create` command is used to create Calico resources from YAML or JSON definitions. While Kubernetes-native network policies can be managed with `kubectl`, Calico-specific resources such as GlobalNetworkPolicy, IPPool, BGPPeer, and HostEndpoint are commonly managed with `calicoctl`, which provides Calico-specific validation and defaulting.
 
 The `calicoctl create` command works similarly to `kubectl create` in that it will fail if the resource already exists. This makes it suitable for initial resource provisioning and for scripts where you want to ensure resources are not accidentally overwritten.
 
@@ -146,7 +146,7 @@ calicoctl create -f networkset.yaml
 
 ## Creating Multiple Resources from a Single File
 
-You can define multiple resources separated by `---`:
+You can define multiple resources in a YAML list in one file:
 
 ```bash
 calicoctl create -f multi-resource.yaml
