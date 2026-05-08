@@ -30,8 +30,11 @@ This guide provides the specific steps for managing identity-relevant labels in 
 # Always configure label limits during initial installation
 
 helm install cilium cilium/cilium --namespace kube-system \
-  --set labels="k8s:app k8s:io.kubernetes.pod.namespace k8s:io.cilium.k8s.policy"
+  --set prometheus.enabled=true \
+  --set labels="app io\\.kubernetes\\.pod\\.namespace io\\.cilium\\.k8s\\.policy\\.cluster io\\.cilium\\.k8s\\.policy\\.serviceaccount"
 ```
+
+The `labels` Helm value appends label patterns to Cilium's default identity-relevant label patterns. If you need an exact allow-list instead of the defaults plus your additions, use Cilium's `label-prefix-file` configuration.
 
 ## Identity Count Monitoring
 
@@ -46,14 +49,14 @@ spec:
   - name: cilium-identity
     rules:
     - alert: IdentityCountHigh
-      expr: cilium_identity_count > 5000
+      expr: max(sum by (namespace, pod) (cilium_identity)) > 5000
       for: 30m
       labels:
         severity: warning
       annotations:
         summary: "Cilium identity count exceeds 5000"
     - alert: IdentityGrowthRapid
-      expr: deriv(cilium_identity_count[1h]) > 100
+      expr: deriv(max(sum by (namespace, pod) (cilium_identity))[1h:]) * 3600 > 100
       for: 15m
       labels:
         severity: warning
@@ -69,8 +72,9 @@ cat << 'DOC'
 Identity-Relevant Labels Policy:
 - k8s:app - Required for application-level policies
 - k8s:io.kubernetes.pod.namespace - Required for namespace isolation
-- k8s:io.cilium.k8s.policy - Required for CiliumNetworkPolicy
-- All other labels are NOT identity-relevant
+- k8s:io.cilium.k8s.policy.cluster - Required for policy cluster matching
+- k8s:io.cilium.k8s.policy.serviceaccount - Required for service account selectors
+- Cilium default identity label patterns remain identity-relevant unless you use label-prefix-file
 - New identity-relevant labels require performance review
 DOC
 ```
@@ -78,15 +82,15 @@ DOC
 ## Verification
 
 ```bash
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list | wc -l
 cilium config view | grep labels
 ```
 
 ## Troubleshooting
 
-- **Identity count not decreasing after label change**: Wait for garbage collection (up to 15 minutes).
+- **Identity count not decreasing after label change**: Restart the affected Cilium agents or workloads so endpoints receive new identities, then wait for the old identities to be garbage collected.
 - **Policies broken after label restriction**: Add the missing label to the identity-relevant list.
-- **Cannot reduce below certain count**: Namespace-level identities are the minimum.
+- **Cannot reduce below certain count**: Cilium's default identity-relevant label patterns, such as namespace, cluster, and service account labels, still contribute to identities.
 - **Agent memory still high**: Identity reduction takes effect gradually as endpoints regenerate.
 
 ## Building a Prevention Framework
