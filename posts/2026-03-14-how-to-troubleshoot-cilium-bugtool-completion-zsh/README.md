@@ -31,17 +31,17 @@ This guide provides systematic approaches to diagnosing and resolving cilium-bug
 
 ### Step 1: Check File Existence
 
-```bash
+```zsh
 # Search fpath for the completion file
 
-for dir in \$fpath; do
-  [ -f "\$dir/_cilium-bugtool" ] && echo "Found: \$dir/_cilium-bugtool"
+for dir in $fpath; do
+  [ -f "$dir/_cilium-bugtool" ] && echo "Found: $dir/_cilium-bugtool"
 done
 ```
 
 ### Step 2: Check Cache State
 
-```bash
+```zsh
 # Remove stale cache
 rm -f ~/.zcompdump*
 
@@ -49,15 +49,15 @@ rm -f ~/.zcompdump*
 autoload -Uz compinit && compinit
 
 # Verify registration
-echo \$_comps[cilium-bugtool]
+echo $_comps[cilium-bugtool]
 # Expected: _cilium-bugtool
 ```
 
 ### Step 3: Validate the Completion Script
 
-```bash
+```zsh
 # Check for syntax errors
-zsh -c "source /usr/local/share/zsh/site-functions/_cilium-bugtool" 2>&1
+zsh -n /usr/local/share/zsh/site-functions/_cilium-bugtool
 
 # Check it has the compdef directive
 head -5 /usr/local/share/zsh/site-functions/_cilium-bugtool
@@ -66,13 +66,13 @@ head -5 /usr/local/share/zsh/site-functions/_cilium-bugtool
 
 ### Step 4: Fix fpath Issues
 
-```bash
+```zsh
 # Check current fpath
-echo \$fpath | tr ' ' '\n'
+print -r -- ${(F)fpath}
 
 # Ensure your completion directory is listed
 # Add to .zshrc BEFORE compinit:
-fpath=(~/.zsh/completions \$fpath)
+fpath=(~/.zsh/completions $fpath)
 autoload -Uz compinit && compinit
 ```
 
@@ -92,12 +92,12 @@ flowchart TD
 
 ## Verification
 
-```bash
+```zsh
 # Full verification after fixes
 rm -f ~/.zcompdump*
 exec zsh
 whence -v _cilium-bugtool
-echo \$_comps[cilium-bugtool]
+echo $_comps[cilium-bugtool]
 cilium-bugtool <TAB>
 ```
 
@@ -105,12 +105,11 @@ cilium-bugtool <TAB>
 
 - **"_cilium-bugtool: function definition file not found"**: File must be named `_cilium-bugtool` with underscore prefix and be in fpath.
 - **Stale completions after upgrade**: Run `rm -f ~/.zcompdump*` and restart zsh.
-- **Slow shell startup**: Use `compinit -C` to skip security checks on the dump file.
-- **Oh My Zsh interference**: Place completions in `$ZSH_CUSTOM/plugins/` or ensure fpath is set before Oh My Zsh loads.
+- **Slow shell startup**: Use `compinit -C` only with an existing trusted dump file to skip the freshness check and, when the dump file exists, the security check.
+- **Oh My Zsh interference**: Place the completion in a custom plugin directory such as `$ZSH_CUSTOM/plugins/cilium-bugtool/_cilium-bugtool` and enable that plugin, or ensure fpath is set before Oh My Zsh loads.
 
 ## Conclusion
 
 
 
 Zsh completion troubleshooting follows a clear path: verify file existence, clear the cache, validate syntax, and check fpath configuration. Most issues resolve with a cache clear and compinit rebuild.
-
