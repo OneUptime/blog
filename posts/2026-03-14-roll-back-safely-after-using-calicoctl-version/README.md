@@ -68,10 +68,16 @@ Always back up your Calico configuration before attempting any rollback:
 BACKUP_DIR="calico-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
-# Export all Calico resources
-for RESOURCE in felixconfigurations bgpconfigurations bgppeers   ippools networkpolicies globalnetworkpolicies   globalnetworksets hostendpoints profiles; do
+# Export cluster-scoped Calico resources
+for RESOURCE in felixconfigurations bgpconfigurations bgppeers ippools globalnetworkpolicies globalnetworksets hostendpoints profiles; do
   echo "Backing up $RESOURCE..."
   calicoctl get "$RESOURCE" -o yaml > "$BACKUP_DIR/${RESOURCE}.yaml" 2>/dev/null
+done
+
+# Export namespaced Calico resources
+for RESOURCE in networkpolicies networksets workloadendpoints; do
+  echo "Backing up $RESOURCE..."
+  calicoctl get "$RESOURCE" --all-namespaces -o yaml > "$BACKUP_DIR/${RESOURCE}.yaml" 2>/dev/null
 done
 
 # Also backup Kubernetes network policies
@@ -94,11 +100,17 @@ kubectl get tigerastatus
 # Get the current Installation resource
 kubectl get installation default -o yaml > installation-current.yaml
 
-# Edit the Installation to pin the previous version
-kubectl edit installation default
+# Download the previous operator manifests
+PREVIOUS_VERSION="v3.26.4"
+curl -L -O "https://raw.githubusercontent.com/projectcalico/calico/${PREVIOUS_VERSION}/manifests/v1_crd_projectcalico_org.yaml"
+curl -L -O "https://raw.githubusercontent.com/projectcalico/calico/${PREVIOUS_VERSION}/manifests/tigera-operator.yaml"
+
+# Apply the previous CRDs and operator manifest
+kubectl apply --server-side --force-conflicts -f v1_crd_projectcalico_org.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 ```
 
-In the Installation resource, modify the version:
+The Installation resource controls installation settings, not the Calico release version. Verify that settings such as the registry still match your cluster:
 
 ```yaml
 apiVersion: operator.tigera.io/v1
@@ -111,9 +123,8 @@ spec:
     ipPools:
     - cidr: 192.168.0.0/16
       encapsulation: VXLANCrossSubnet
-  registry: quay.io
+  registry: quay.io/
   variant: Calico
-  # The operator will roll components to this version
 ```
 
 To roll back the operator itself:
@@ -121,10 +132,6 @@ To roll back the operator itself:
 ```bash
 # Check current operator deployment
 kubectl get deployment tigera-operator -n tigera-operator -o jsonpath='{.spec.template.spec.containers[0].image}'
-
-# Roll back the operator to previous version
-PREV_OPERATOR_VERSION="v1.32.0"
-kubectl set image deployment/tigera-operator -n tigera-operator   tigera-operator="quay.io/tigera/operator:${PREV_OPERATOR_VERSION}"
 
 # Monitor the rollback
 kubectl rollout status deployment/tigera-operator -n tigera-operator
@@ -137,7 +144,7 @@ For manifest-based installations, apply the previous version manifests:
 ```bash
 # Apply the previous version manifests
 PREVIOUS_VERSION="v3.26.4"
-kubectl apply -f "https://raw.githubusercontent.com/projectcalico/calico/${PREVIOUS_VERSION}/manifests/calico.yaml"
+kubectl apply --server-side --force-conflicts -f "https://raw.githubusercontent.com/projectcalico/calico/${PREVIOUS_VERSION}/manifests/calico.yaml"
 
 # Monitor the rollout
 kubectl rollout status daemonset/calico-node -n kube-system
@@ -160,7 +167,7 @@ calicoctl version
 
 # 2. Node status
 echo "--- Node Status ---"
-calicoctl node status
+sudo calicoctl node status
 
 # 3. Pod connectivity test
 echo "--- Connectivity Test ---"
@@ -168,7 +175,7 @@ kubectl run test-ping --image=busybox --restart=Never --rm -it -- ping -c 3 kube
 
 # 4. Check all calico pods
 echo "--- Calico Pod Status ---"
-kubectl get pods -n calico-system -o wide
+kubectl get pods -n calico-system -o wide 2>/dev/null || kubectl get pods -n kube-system -l k8s-app=calico-node -o wide
 
 # 5. Verify network policies still applied
 echo "--- Network Policies ---"
@@ -185,10 +192,10 @@ Confirm the rollback was successful:
 calicoctl version
 
 # All nodes should be healthy
-calicoctl node status
+sudo calicoctl node status
 
 # All calico pods should be Running
-kubectl get pods -n calico-system
+kubectl get pods -n calico-system 2>/dev/null || kubectl get pods -n kube-system -l k8s-app=calico-node
 
 # Workload connectivity should be intact
 kubectl get pods --all-namespaces | grep -v Running | grep -v Completed
