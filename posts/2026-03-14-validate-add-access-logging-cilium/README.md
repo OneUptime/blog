@@ -31,23 +31,23 @@ func TestAccessLogCompleteness(t *testing.T) {
     tests := []struct {
         name           string
         input          []byte
-        expectedVerdict accesslog.FlowVerdict
+        expectedType   cilium.EntryType
         expectLog      bool
         desc           string
     }{
         {
             name:           "allowed request logged",
             input:          makeMessage(0x01, []byte("test")),
-            expectedVerdict: accesslog.VerdictForwarded,
+            expectedType:   cilium.EntryType_Request,
             expectLog:      true,
-            desc:           "Allowed requests must be logged with FORWARDED verdict",
+            desc:           "Allowed requests must be logged as request entries",
         },
         {
             name:           "denied request logged",
             input:          makeMessage(0xFF, []byte("test")),  // Denied command
-            expectedVerdict: accesslog.VerdictDenied,
+            expectedType:   cilium.EntryType_Denied,
             expectLog:      true,
-            desc:           "Denied requests must be logged with DENIED verdict",
+            desc:           "Denied requests must be logged as denied entries",
         },
         {
             name:           "partial data not logged",
@@ -58,9 +58,9 @@ func TestAccessLogCompleteness(t *testing.T) {
         {
             name:           "malformed data logged as error",
             input:          []byte{0xFF, 0xFF, 0xFF, 0xFF},  // Invalid length
-            expectedVerdict: accesslog.VerdictError,
+            expectedType:   cilium.EntryType_Denied,
             expectLog:      true,
-            desc:           "Malformed messages should be logged with ERROR verdict",
+            desc:           "Malformed messages should be logged before the parser returns ERROR",
         },
     }
 
@@ -69,9 +69,9 @@ func TestAccessLogCompleteness(t *testing.T) {
             // Create parser with a mock log collector
             collector := &mockLogCollector{}
             parser := newTestParser(collector)
-            reader := proxylib.NewTestReader(tt.input)
+            reader := proxylib.NewReader([][]byte{tt.input}, false)
 
-            parser.OnData(false, reader)
+            parser.OnData(false, &reader)
 
             if tt.expectLog && len(collector.entries) == 0 {
                 t.Errorf("%s: expected log entry but none generated", tt.desc)
@@ -80,8 +80,8 @@ func TestAccessLogCompleteness(t *testing.T) {
                 t.Errorf("%s: unexpected log entry generated", tt.desc)
             }
             if tt.expectLog && len(collector.entries) > 0 {
-                if collector.entries[0].Verdict != tt.expectedVerdict {
-                    t.Errorf("Verdict: got %v, want %v", collector.entries[0].Verdict, tt.expectedVerdict)
+                if collector.entries[0].EntryType != tt.expectedType {
+                    t.Errorf("EntryType: got %v, want %v", collector.entries[0].EntryType, tt.expectedType)
                 }
             }
         })
@@ -89,10 +89,10 @@ func TestAccessLogCompleteness(t *testing.T) {
 }
 
 type mockLogCollector struct {
-    entries []*accesslog.LogRecord
+    entries []*cilium.LogEntry
 }
 
-func (m *mockLogCollector) Log(entry *accesslog.LogRecord) {
+func (m *mockLogCollector) Log(entry *cilium.LogEntry) {
     m.entries = append(m.entries, entry)
 }
 ```
@@ -105,15 +105,15 @@ Verify that each field in the log entry is populated correctly:
 func TestAccessLogMetadata(t *testing.T) {
     collector := &mockLogCollector{}
     parser := newTestParserWithConnection(collector, &proxylib.Connection{
-        SrcIdentity:  100,
-        DstIdentity:  200,
-        SrcEndpoint:  "10.0.1.5:43210",
-        DstEndpoint:  "10.0.2.10:9000",
+        SrcId:    100,
+        DstId:    200,
+        SrcAddr:  "10.0.1.5:43210",
+        DstAddr:  "10.0.2.10:9000",
     })
 
     msg := makeMessage(0x01, []byte("testkey"))
-    reader := proxylib.NewTestReader(msg)
-    parser.OnData(false, reader)
+    reader := proxylib.NewReader([][]byte{msg}, false)
+    parser.OnData(false, &reader)
 
     if len(collector.entries) != 1 {
         t.Fatalf("Expected 1 log entry, got %d", len(collector.entries))
@@ -127,11 +127,11 @@ func TestAccessLogMetadata(t *testing.T) {
         got   interface{}
         want  interface{}
     }{
-        {"Protocol", entry.Protocol, "myprotocol"},
-        {"Type", entry.Type, accesslog.TypeRequest},
-        {"Verdict", entry.Verdict, accesslog.VerdictForwarded},
-        {"SourceIdentity", entry.SourceIdentity, uint32(100)},
-        {"DestinationIdentity", entry.DestinationIdentity, uint32(200)},
+        {"EntryType", entry.EntryType, cilium.EntryType_Request},
+        {"SourceSecurityId", entry.SourceSecurityId, uint32(100)},
+        {"DestinationSecurityId", entry.DestinationSecurityId, uint32(200)},
+        {"SourceAddress", entry.SourceAddress, "10.0.1.5:43210"},
+        {"DestinationAddress", entry.DestinationAddress, "10.0.2.10:9000"},
     }
 
     for _, check := range checks {
@@ -140,18 +140,26 @@ func TestAccessLogMetadata(t *testing.T) {
         }
     }
 
+    generic := entry.GetGenericL7()
+    if generic == nil {
+        t.Fatal("Generic L7 log entry is nil")
+    }
+
+    if generic.Proto != "myprotocol" {
+        t.Errorf("Protocol: got %q, want %q", generic.Proto, "myprotocol")
+    }
+
     // Verify L7 fields
-    if entry.L7["command"] == "" {
+    if generic.Fields["command"] == "" {
         t.Error("L7 command field is empty")
     }
-    if entry.L7["request_id"] == "" {
+    if generic.Fields["request_id"] == "" {
         t.Error("L7 request_id field is empty")
     }
 
     // Verify timestamp is valid
-    _, err := time.Parse(time.RFC3339Nano, entry.Timestamp)
-    if err != nil {
-        t.Errorf("Invalid timestamp format: %v", err)
+    if entry.Timestamp == 0 {
+        t.Error("Timestamp is empty")
     }
 }
 ```
@@ -202,8 +210,8 @@ func TestAccessLogRedaction(t *testing.T) {
         t.Run(si.name, func(t *testing.T) {
             collector.entries = nil
             msg := makeMessage(si.command, si.payload)
-            reader := proxylib.NewTestReader(msg)
-            parser.OnData(false, reader)
+            reader := proxylib.NewReader([][]byte{msg}, false)
+            parser.OnData(false, &reader)
 
             for _, entry := range collector.entries {
                 entryJSON, _ := json.Marshal(entry)
@@ -235,15 +243,16 @@ Validate the complete logging pipeline in a cluster:
 kubectl exec test-client -- protocol-client send --command GET --key "test1" --target myservice:9000
 kubectl exec test-client -- protocol-client send --command DELETE --key "test2" --target myservice:9000
 
-# Collect Hubble flows
-hubble observe --type l7 --protocol myprotocol --last 10 -o json > /tmp/flows.json
+# Collect Hubble L7 flows
+hubble observe --type l7 --last 10 -o json > /tmp/flows.json
 
 # Validate flow count
 FLOW_COUNT=$(jq -s 'length' /tmp/flows.json)
 echo "Captured $FLOW_COUNT flows"
 
-# Validate verdicts
+# Validate verdicts and generic L7 protocol names
 jq -r '.flow.verdict' /tmp/flows.json | sort | uniq -c
+jq -r 'select(.flow.l7.generic_l7.proto == "myprotocol") | .flow.l7.generic_l7.fields[]?' /tmp/flows.json
 ```
 
 ## Verification
@@ -280,7 +289,7 @@ The test may be checking different code paths than production. Ensure the saniti
 Hubble may aggregate or deduplicate flows. Use unique request IDs and check for each specific ID rather than relying on total counts.
 
 **Problem: Timestamps are not in UTC**
-Explicitly call `time.Now().UTC()` rather than `time.Now()`. The latter uses the local timezone which varies across nodes.
+Proxylib access-log entries use a Unix-nanosecond timestamp set by `Connection.Log`. If you add any protocol-specific timestamp fields to the generic L7 map, format them from `time.Now().UTC()` so they are consistent across nodes.
 
 ## Conclusion
 
