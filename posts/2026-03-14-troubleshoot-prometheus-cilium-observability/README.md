@@ -48,10 +48,10 @@ If no Cilium targets appear at all, the ServiceMonitor is likely misconfigured:
 kubectl get servicemonitor -A | grep cilium
 
 # Check the ServiceMonitor label selector matches Prometheus
-kubectl get prometheus -n monitoring -o jsonpath='{.items[0].spec.serviceMonitorSelector}' | python3 -m json.tool
+kubectl get prometheus -n monitoring -o yaml | grep -A5 serviceMonitorSelector
 
 # Compare with ServiceMonitor labels
-kubectl get servicemonitor cilium-agent -n kube-system -o jsonpath='{.metadata.labels}' | python3 -m json.tool
+kubectl get servicemonitor cilium-agent -n kube-system --show-labels
 ```
 
 ```mermaid
@@ -94,7 +94,7 @@ spec:
     - fromEndpoints:
         - matchLabels:
             app.kubernetes.io/name: prometheus
-            io.kubernetes.pod.namespace: monitoring
+            k8s:io.kubernetes.pod.namespace: monitoring
       toPorts:
         - ports:
             - port: "9962"
@@ -113,7 +113,7 @@ Sometimes the Cilium agent metrics endpoint itself is not responding correctly.
 
 ```bash
 # Check if the metrics server is running inside the Cilium agent
-kubectl -n kube-system exec ds/cilium -- cilium status | grep -i prometheus
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep -i prometheus
 
 # Check if the port is actually listening
 kubectl -n kube-system exec ds/cilium -- ss -tlnp | grep 9962
@@ -143,10 +143,10 @@ Hubble metrics require both the Hubble component and the specific metric collect
 ```bash
 # Check Hubble status
 cilium hubble port-forward &
-cilium hubble status
+hubble status -P
 
 # Verify which Hubble metrics are enabled
-kubectl -n kube-system exec ds/cilium -- cilium status --verbose | grep -A20 "Hubble"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose | grep -A20 "Hubble"
 
 # Check Hubble relay connectivity
 kubectl -n kube-system get pods -l k8s-app=hubble-relay
@@ -170,7 +170,7 @@ After applying fixes, confirm that metrics are flowing:
 
 ```bash
 # 1. Verify Prometheus can reach all Cilium targets
-curl -s http://localhost:9090/api/v1/targets/metadata?metric=cilium_endpoint_count | python3 -m json.tool
+curl -s http://localhost:9090/api/v1/targets/metadata?metric=cilium_endpoint | python3 -m json.tool
 
 # 2. Query a known Cilium metric
 curl -s 'http://localhost:9090/api/v1/query?query=up{job=~".*cilium.*"}' | python3 -m json.tool
