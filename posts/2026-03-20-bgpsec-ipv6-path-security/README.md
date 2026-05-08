@@ -16,20 +16,20 @@ BGPsec (RFC 8205) extends BGP to provide cryptographic path validation. While RP
 graph LR
     A[RPKI ROA] -->|Validates| B[Origin AS only]
     C[BGPsec] -->|Validates| D[Entire AS path]
-    D --> E[Path cannot be forged or altered]
+    D --> E[Each AS hop authorized the advertisement]
 ```
 
 ## How BGPsec Works
 
-1. Each BGP speaker generates an asymmetric key pair registered with RPKI
+1. Each BGPsec speaker that sends signed eBGP updates uses an asymmetric key pair associated with an RPKI BGPsec Router Certificate
 2. When advertising a route, the AS signs the BGP UPDATE with its private key
-3. The next-hop AS verifies the signature before forwarding
+3. The receiving AS can validate the signatures before selecting or forwarding the route
 4. A chain of signatures proves the complete AS path is authentic
 
 ## BGPsec Router Key Setup
 
 ```bash
-# BGPsec uses router keys registered in RPKI
+# BGPsec uses router keys certified in RPKI BGPsec Router Certificates
 
 # Generate a router key (ECDSA P-256 is standard)
 openssl ecparam -name prime256v1 -genkey -noout -out router-key.pem
@@ -37,28 +37,37 @@ openssl ecparam -name prime256v1 -genkey -noout -out router-key.pem
 # Extract the public key
 openssl ec -in router-key.pem -pubout -out router-key-pub.pem
 
-# The public key must be registered as a Router Key Object in RPKI
-# Contact your RIR to register the router key
+# The public key must appear in a BGPsec Router Certificate issued under RPKI
+# Follow your RIR or delegated RPKI CA process to request the certificate
 ```
 
-## FRRouting BGPsec Configuration (Experimental)
+## FRRouting BGPsec Configuration Status
 
-FRRouting has experimental BGPsec support:
+Current FRRouting documentation covers RPKI origin validation, but does not document a BGPsec configuration command set. Treat BGPsec activation as vendor- and version-specific, and verify support in your router's documentation before planning deployment.
 
 ```text
-# FRR configuration for BGPsec (experimental as of FRR 8.x)
+# FRR example: IPv6 BGP peering with RPKI origin validation preparation
+# This is not a BGPsec configuration.
 router bgp 64496
   bgp router-id 192.0.2.1
-
-  # Enable BGPsec capability
-  neighbor 2001:db8:peer::1 remote-as 65001
+  neighbor 2001:db8:1::1 remote-as 65001
 
   address-family ipv6 unicast
-    neighbor 2001:db8:peer::1 activate
-    # BGPsec requires explicit activation (when supported)
-    # neighbor 2001:db8:peer::1 capability bgpsec-send
-    # neighbor 2001:db8:peer::1 capability bgpsec-receive
+    neighbor 2001:db8:1::1 activate
+    neighbor 2001:db8:1::1 route-map rpki in
   exit-address-family
+
+route-map rpki permit 10
+  match rpki invalid
+  set local-preference 10
+
+route-map rpki permit 20
+  match rpki notfound
+  set local-preference 20
+
+route-map rpki permit 30
+  match rpki valid
+  set local-preference 30
 ```
 
 ## Current Deployment Reality
@@ -69,8 +78,8 @@ BGPsec has significant challenges that limit current deployment:
 Challenges:
 1. CPU overhead: Every BGP UPDATE requires cryptographic verification
 2. Path length sensitivity: Longer AS paths require more signatures
-3. AS path manipulation: BGPsec breaks when AS path attributes are modified
-   (e.g., AS path prepending for traffic engineering)
+3. AS path constraints: BGPsec protects the AS path, so arbitrary AS path
+   rewriting is not possible; normal prepending is represented with pCount
 4. Incremental deployment: Path security only works when ALL ASes in the
    path support BGPsec
 5. Performance: Signing/verification adds latency to BGP convergence
@@ -85,7 +94,7 @@ graph TD
     A[Deploy RPKI ROAs] --> B[Enable Origin Validation]
     B --> C[Monitor BGP path changes]
     C --> D[Prepare for BGPsec when routers support it]
-    D --> E[Enable BGPsec on internal iBGP first]
+    D --> E[Test BGPsec in a lab or controlled edge peer]
     E --> F[Expand to eBGP peers that support BGPsec]
 ```
 
