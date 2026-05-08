@@ -64,6 +64,7 @@ kind: GlobalNetworkPolicy
 metadata:
   name: default-deny
 spec:
+  order: 1000
   selector: all()
   types:
     - Ingress
@@ -83,17 +84,10 @@ spec:
     - Egress
   egress:
     - action: Allow
-      protocol: UDP
       destination:
-        selector: k8s-app == "kube-dns"
-        ports:
-          - 53
-    - action: Allow
-      protocol: TCP
-      destination:
-        selector: k8s-app == "kube-dns"
-        ports:
-          - 53
+        services:
+          name: kube-dns
+          namespace: kube-system
 ```
 
 ## Building a CI/CD Pipeline for Calico Changes
@@ -141,6 +135,13 @@ jobs:
       - name: Configure kubectl
         uses: azure/setup-kubectl@v3
 
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG_DATA }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
+
       - name: Install calicoctl
         run: |
           curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
@@ -157,7 +158,7 @@ jobs:
           # Apply global policies
           calicoctl apply -f calico-config/policies/global/
           # Apply namespaced policies
-          calicoctl apply -f calico-config/policies/namespaced/
+          calicoctl apply -f calico-config/policies/namespaced/ --recursive
 ```
 
 ## Implementing Backup and Restore Procedures
@@ -167,7 +168,7 @@ Create automated backups of your Calico configuration:
 ```bash
 #!/bin/bash
 # calico-backup.sh
-# Creates a timestamped backup of all Calico resources
+# Creates a timestamped backup of common Calico configuration resources
 
 set -euo pipefail
 
@@ -175,7 +176,7 @@ export DATASTORE_TYPE=kubernetes
 BACKUP_DIR="/var/backups/calico/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
 
-# List of Calico resource types to back up
+# List of common Calico configuration resource types to back up
 RESOURCES=(
   "globalnetworkpolicies"
   "networkpolicies"
@@ -184,15 +185,23 @@ RESOURCES=(
   "ippools"
   "ipreservations"
   "bgpconfigurations"
+  "bgpfilters"
   "bgppeers"
+  "clusterinformations"
   "felixconfigurations"
+  "kubecontrollersconfigurations"
   "profiles"
   "hostendpoints"
+  "tiers"
 )
 
 for resource in "${RESOURCES[@]}"; do
   echo "Backing up $resource..."
-  calicoctl get "$resource" -o yaml > "$BACKUP_DIR/$resource.yaml" 2>/dev/null || true
+  if [[ "$resource" == "networkpolicies" || "$resource" == "networksets" ]]; then
+    calicoctl get "$resource" --all-namespaces -o yaml > "$BACKUP_DIR/$resource.yaml" 2>/dev/null || true
+  else
+    calicoctl get "$resource" -o yaml > "$BACKUP_DIR/$resource.yaml" 2>/dev/null || true
+  fi
 done
 
 echo "Backup completed: $BACKUP_DIR"
@@ -245,11 +254,11 @@ case "$COMMAND" in
     echo "Applied successfully. Backup saved to /tmp/calico-pre-apply-backup.yaml"
     ;;
   diff)
-    # Show what would change
-    echo "Comparing local vs cluster state..."
+    # Show current cluster state for comparison
+    echo "Fetching current cluster state..."
     for file in "$@"; do
       echo "--- File: $file ---"
-      calicoctl apply -f "$file" --dry-run -o yaml 2>/dev/null || echo "New resource"
+      calicoctl get -f "$file" -o yaml 2>/dev/null || echo "Resource not found in cluster"
     done
     ;;
   backup)
