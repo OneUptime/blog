@@ -31,6 +31,7 @@ metadata:
   name: zt-default-deny
 spec:
   order: 1000
+  namespaceSelector: projectcalico.org/name == "production"
   selector: all()
   types:
     - Ingress
@@ -50,13 +51,42 @@ spec:
   selector: all()
   ingress:
     - action: Allow
+      protocol: ICMP
       source:
         selector: trust == 'verified'
+      icmp:
+        type: 8 # Echo request (ping)
+    - action: Allow
+      protocol: ICMPv6
+      source:
+        selector: trust == 'verified'
+      icmp:
+        type: 128 # Echo request (ping)
   egress:
     - action: Allow
+      protocol: ICMP
       destination:
-        ports: [53]
+        selector: app == 'protected-service'
+      icmp:
+        type: 8 # Echo request (ping)
+    - action: Allow
+      protocol: ICMPv6
+      destination:
+        selector: app == 'protected-service'
+      icmp:
+        type: 128 # Echo request (ping)
+    - action: Allow
       protocol: UDP
+      destination:
+        namespaceSelector: projectcalico.org/name == "kube-system"
+        selector: k8s-app == "kube-dns"
+        ports: [53]
+    - action: Allow
+      protocol: TCP
+      destination:
+        namespaceSelector: projectcalico.org/name == "kube-system"
+        selector: k8s-app == "kube-dns"
+        ports: [53]
   types:
     - Ingress
     - Egress
@@ -67,7 +97,8 @@ spec:
 ```bash
 # Verify unauthorized access is blocked
 
-kubectl exec -n production unauthorized-pod -- curl -s --max-time 5 http://protected-service:8080
+PROTECTED_POD_IP=$(kubectl get pod -n production -l app=protected-service -o jsonpath='{.items[0].status.podIP}')
+kubectl exec -n production unauthorized-pod -- ping -c 1 -W 5 "$PROTECTED_POD_IP"
 echo "Should be DENIED: $?"
 ```
 
