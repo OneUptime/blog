@@ -32,7 +32,7 @@ Here's what actually drives the bill:
 
 ### 1. Cardinality Explosion
 
-Every new label, tag, or dimension on a metric multiplies the number of unique time series your system tracks. Add a `customer_id` label to a metric across 100 endpoints, and you just went from 100 time series to 100 × N (where N is your customer count). Vendors charge per unique time series. This is where bills explode.
+Every new label, tag, or dimension on a metric multiplies the number of unique time series your system tracks. Add a `customer_id` label to a metric across 100 endpoints, and you just went from 100 time series to 100 × N (where N is your customer count). Many vendors meter custom metrics by unique metric and tag-value combinations. This is where bills explode.
 
 ### 2. The Trace Tax
 
@@ -88,7 +88,7 @@ Give each service team a log ingestion budget. Make log volume visible per-servi
 
 ### Sample Traces Intelligently
 
-You don't need 100% of traces. Head-based sampling at 10% captures enough for performance analysis. Tail-based sampling captures 100% of error traces and slow requests - the ones you actually investigate. The combination reduces trace volume by 80-90% while keeping diagnostic value.
+You don't need 100% of traces. Head-based sampling at 10% can capture enough for performance analysis. Tail-based sampling can be configured to capture 100% of error traces and slow requests - the ones you actually investigate. The combination can reduce trace volume by 80-90% while keeping diagnostic value.
 
 ### Consolidate Tools
 
