@@ -21,7 +21,7 @@ Whether you are running a small development cluster or a large production enviro
 - A running Kubernetes cluster (v1.21+) with Cilium installed (v1.14+)
 - `kubectl` configured for cluster access
 - `cilium` CLI installed (matching your Cilium version)
-- Helm 3.x for configuration management
+- Access to edit the `argocd-cm` ConfigMap in the Argo CD namespace
 - Basic familiarity with Kubernetes networking concepts
 - Access to cluster nodes for troubleshooting (recommended)
 - Prometheus and Grafana for metrics visualization (recommended)
@@ -31,111 +31,90 @@ Whether you are running a small development cluster or a large production enviro
 Before making configuration changes, review the current state and plan the changes carefully.
 
 ```bash
-# Review current Cilium configuration
+# Confirm Cilium CRDs are installed
+kubectl api-resources --api-group=cilium.io
 
-cilium config view
+# Review the current Argo CD ConfigMap
+kubectl get configmap argocd-cm -n argocd -o yaml
 
-# Check current Helm values
-helm get values cilium -n kube-system
-
-# Verify the Cilium version
-cilium version
+# Check whether Argo CD is seeing Cilium-created resources
+kubectl get ciliumidentities.cilium.io
+kubectl get ciliumendpoints.cilium.io -A
 ```
 
 ## Applying Configuration Changes
 
-Use Helm for all configuration changes to maintain consistency and enable easy rollback.
+Configure Argo CD resource exclusions so it does not discover or compare Cilium-managed runtime resources.
 
 ```yaml
-# cilium-config-values.yaml
-# Configuration changes for Cilium and Argo CD integration
-# These values should be adjusted for your specific environment
-
-# Enable comprehensive monitoring
-prometheus:
-  enabled: true
-  serviceMonitor:
-    enabled: true
-
-# Enable Hubble for flow observability
-hubble:
-  enabled: true
-  relay:
-    enabled: true
-  ui:
-    enabled: true
-
-# Configure agent resources
-resources:
-  limits:
-    cpu: "2000m"
-    memory: "2Gi"
-  requests:
-    cpu: "500m"
-    memory: "512Mi"
-
-# Optimize identity management
-labels:
-  exclude:
-    - "k8s:pod-template-hash"
-    - "k8s:controller-revision-hash"
+# argocd-cm-cilium-exclusions.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
+data:
+  resource.exclusions: |
+    - apiGroups:
+      - cilium.io
+      kinds:
+      - CiliumIdentity
+      - CiliumEndpoint
+      clusters:
+      - "*"
 ```
 
 ```bash
 # Apply the configuration
-helm upgrade cilium cilium/cilium \
-  --namespace kube-system \
-  --reuse-values \
-  -f cilium-config-values.yaml
+kubectl apply -f argocd-cm-cilium-exclusions.yaml
 
-# Wait for all agents to restart with the new configuration
-kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
+# Restart the application controller so it rebuilds its cluster cache
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
+kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=300s
 
 # Verify the configuration was applied
-cilium config view | head -30
+kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.resource\.exclusions}'
 ```
 
 ## Advanced Configuration
 
-For production environments, consider these additional configuration options:
+For production environments, keep any existing resource exclusions and add the Cilium resources to the same list instead of replacing the whole key.
 
 ```yaml
-# cilium-advanced-values.yaml
-# Advanced settings for production clusters
-
-# BPF configuration
-bpf:
-  # Enable BPF-based masquerading for better performance
-  masquerade: true
-  # Automatically size BPF maps based on node capacity
-  mapDynamicSizeRatio: 0.0025
-  # Connection tracking settings
-  # Adjust based on connection patterns in your workloads
-  ctTcpTimeout: "21600s"
-  ctAnyTimeout: "60s"
-
-# Identity management
-identityAllocationMode: "crd"
-identityGCInterval: "15m"
+# Existing and Cilium-specific Argo CD exclusions
+resource.exclusions: |
+  - apiGroups:
+    - events.k8s.io
+    - metrics.k8s.io
+    kinds:
+    - "*"
+    clusters:
+    - "*"
+  - apiGroups:
+    - cilium.io
+    kinds:
+    - CiliumIdentity
+    - CiliumEndpoint
+    clusters:
+    - "*"
 ```
 
 ```bash
-# Apply advanced configuration
-helm upgrade cilium cilium/cilium \
-  --namespace kube-system \
-  --reuse-values \
-  -f cilium-advanced-values.yaml
+# Confirm Argo CD applications no longer report these Cilium resources as extraneous
+kubectl get applications.argoproj.io -A
 ```
 
 ```mermaid
 flowchart TD
     A[Review Current Config] --> B[Plan Changes]
-    B --> C[Create Helm Values File]
-    C --> D[Apply via Helm Upgrade]
-    D --> E[Wait for Rollout]
+    B --> C[Create argocd-cm Update]
+    C --> D[Apply argocd-cm Update]
+    D --> E[Restart Application Controller]
     E --> F[Verify Configuration]
     F --> G{Config Correct?}
-    G -->|Yes| H[Run Connectivity Test]
+    G -->|Yes| H[Refresh Affected Application]
     G -->|No| I[Review and Fix Values]
     I --> C
     H --> J[Monitor in Production]
@@ -146,10 +125,10 @@ flowchart TD
 Always back up your configuration before making changes:
 
 ```bash
-# Export current Helm values
-helm get values cilium -n kube-system > /tmp/cilium-values-backup-$(date +%Y%m%d).yaml
+# Export the current Argo CD ConfigMap
+kubectl get configmap argocd-cm -n argocd -o yaml > /tmp/argocd-cm-backup-$(date +%Y%m%d).yaml
 
-# Export the current ConfigMap
+# Export the current Cilium ConfigMap for reference
 kubectl get configmap cilium-config -n kube-system -o yaml > /tmp/cilium-configmap-backup-$(date +%Y%m%d).yaml
 ```
 
@@ -162,34 +141,34 @@ After completing the steps above, run a comprehensive verification to confirm ev
 # Check overall Cilium deployment health
 cilium status --verbose
 
-# Verify inter-node connectivity
-cilium health status
-
 # Confirm all Cilium pods are running and ready
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 
 # Verify the Cilium operator is healthy
 kubectl get pods -n kube-system -l name=cilium-operator
 
-# Check for recent error events
-kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tail -10
+# Confirm Argo CD has the exclusion configured
+kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.resource\.exclusions}'
 
-# Run a connectivity test to validate the data plane
-cilium connectivity test --single-node
+# Refresh an affected application after the controller restart
+kubectl annotate applications.argoproj.io <app-name> -n argocd argocd.argoproj.io/refresh=hard --overwrite
 
-# Verify endpoint count matches expected pod count
-echo "Cilium endpoints: $(cilium endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
+# Confirm Cilium runtime resources still exist in Kubernetes
+kubectl get ciliumidentities.cilium.io
+kubectl get ciliumendpoints.cilium.io -A
 ```
 
 ## Troubleshooting
 
 If you encounter issues during or after the steps in this guide, use the following troubleshooting procedures:
 
+- **Argo CD still shows Cilium resources as out of sync**: Confirm `resource.exclusions` is present in `argocd-cm`, restart the application controller, and hard-refresh the affected application. Check that the excluded kinds are exactly `CiliumIdentity` and `CiliumEndpoint` under the `cilium.io` API group.
+
 - **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 4.19 or later. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
 
 - **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `cilium policy get`. Verify inter-node tunnel connectivity with `cilium bpf tunnel list`.
 
-- **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm with `cilium config view`.
+- **Configuration not applied**: Verify the `argocd-cm` YAML is correctly formatted. Run `kubectl rollout restart statefulset/argocd-application-controller -n argocd` and wait for the rollout to complete. Confirm with `kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.resource\.exclusions}'`.
 
 - **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `cilium metrics list | grep process_resident_memory`.
 
@@ -212,7 +191,7 @@ This guide covered Cilium and Argo CD integration with practical steps you can a
 Key takeaways from this guide:
 
 - Always assess the current state before making changes to your Cilium configuration
-- Use Helm for configuration management to ensure consistency and reproducibility across environments
+- Use Argo CD resource exclusions for Cilium-managed runtime resources that should not be tracked as Git-managed application resources
 - Monitor Cilium metrics through Prometheus to detect issues before they impact workloads
 - Test changes in a staging environment before applying them to production clusters
 - Maintain runbooks documenting your Cilium configuration decisions and operational procedures
