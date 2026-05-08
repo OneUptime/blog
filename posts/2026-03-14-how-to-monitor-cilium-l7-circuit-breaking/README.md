@@ -10,7 +10,7 @@ Description: How to monitor Cilium L7 circuit breaking with Prometheus metrics, 
 
 ## Introduction
 
-Monitoring L7 circuit breaking in production helps you understand when services are under stress and when circuit breakers are protecting your system. Key metrics include circuit breaker open/close events, connection overflow counts, and request rejection rates.
+Monitoring L7 circuit breaking in production helps you understand when services are under stress and when circuit breakers are protecting your system. Key metrics include circuit breaker open gauges, connection overflow counts, and request rejection rates.
 
 ## Prerequisites
 
@@ -28,6 +28,9 @@ rate(envoy_cluster_upstream_cx_overflow[5m])
 # Pending request overflow
 rate(envoy_cluster_upstream_rq_pending_overflow[5m])
 
+# Active request overflow
+rate(envoy_cluster_upstream_rq_active_overflow[5m])
+
 # Active connections per cluster
 envoy_cluster_upstream_cx_active
 
@@ -38,8 +41,8 @@ rate(envoy_cluster_upstream_rq_retry_overflow[5m])
 ## Monitoring with Hubble
 
 ```bash
-# Watch for HTTP errors that may indicate circuit breaking
-hubble observe --protocol http --verdict DROPPED -n default --last 20
+# Watch for HTTP 5xx responses that may indicate circuit breaking
+hubble observe --protocol http --http-status 5+ -n default --last 20
 
 # Filter for 503 responses (typical circuit breaker response)
 hubble observe --protocol http -n default -o json --last 100 | \
@@ -80,7 +83,7 @@ spec:
 
 ```bash
 kubectl exec -n kube-system <cilium-pod> -- \
-  curl -s localhost:9901/stats | grep overflow
+  cilium-dbg envoy admin metrics --filter overflow
 hubble observe --protocol http -n default --last 5
 ```
 
