@@ -28,7 +28,7 @@ This guide covers the most impactful tuning parameters for production Calico dep
 DigitalOcean's network uses an MTU of 1500. With VXLAN encapsulation, Calico needs overhead. Set the MTU explicitly to avoid fragmentation.
 
 ```bash
-kubectl patch installation default --type merge \
+kubectl patch installation.operator.tigera.io default --type merge \
   --patch '{"spec":{"calicoNetwork":{"mtu":1450}}}'
 ```
 
@@ -36,19 +36,19 @@ For IP-in-IP encapsulation:
 
 ```bash
 calicoctl patch felixconfiguration default \
-  --patch '{"spec":{"ipiniMTU":1480}}'
+  --patch '{"spec":{"ipipMTU":1480}}'
 ```
 
 ## Step 2: Tune Felix Polling Intervals
 
-Reduce Felix's iptables refresh interval for faster policy convergence under heavy policy churn.
+Reduce Felix's iptables and route refresh intervals when you need Felix to detect unexpected dataplane drift more quickly.
 
 ```bash
 calicoctl patch felixconfiguration default \
   --patch '{"spec":{"iptablesRefreshInterval":"10s","routeRefreshInterval":"10s"}}'
 ```
 
-For stable clusters with infrequent policy changes, increase these intervals to reduce CPU overhead.
+For stable clusters where unexpected dataplane drift is rare, increase these intervals to reduce CPU overhead.
 
 ```bash
 calicoctl patch felixconfiguration default \
@@ -57,11 +57,11 @@ calicoctl patch felixconfiguration default \
 
 ## Step 3: Enable eBPF Dataplane (Optional)
 
-For higher throughput and lower latency, switch to the eBPF dataplane on Droplets with kernel 5.3+.
+For higher throughput and lower latency, switch to the eBPF dataplane on Droplets with kernel 5.10+.
 
 ```bash
-calicoctl patch felixconfiguration default \
-  --patch '{"spec":{"bpfEnabled":true}}'
+kubectl patch installation.operator.tigera.io default --type merge \
+  --patch '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF","bpfNetworkBootstrap":"Enabled","kubeProxyManagement":"Enabled"}}}'
 ```
 
 Verify kernel version first:
@@ -74,22 +74,31 @@ uname -r
 
 Smaller IPAM blocks reduce wasted IPs in large clusters. Larger blocks reduce IPAM churn in small clusters.
 
-```bash
-calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec":{"blockSize":26}}'
+The `blockSize` value can only be set when an IP pool is created. For existing pools, migrate to a new IP pool with the desired block size instead of patching the current pool in place.
+
+```yaml
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: production-ipv4-ippool
+spec:
+  cidr: 192.168.0.0/16
+  blockSize: 26
+  vxlanMode: Always
+  natOutgoing: true
 ```
 
-A block size of 26 gives 64 IPs per node, suitable for most node sizes.
+A block size of 26 gives 64 IPs per allocation block, suitable for most node sizes.
 
 ## Step 5: Set Resource Requests on Calico Pods
 
 Ensure the Kubernetes scheduler places Calico pods on nodes with sufficient resources.
 
-```yaml
+```bash
 # Patch calico-node DaemonSet resources
 
-kubectl patch daemonset calico-node -n kube-system --type=json \
-  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/resources","value":{"requests":{"cpu":"250m","memory":"256Mi"},"limits":{"cpu":"1","memory":"512Mi"}}}]'
+kubectl patch installation.operator.tigera.io default --type=merge \
+  --patch='{"spec":{"calicoNodeDaemonSet":{"spec":{"template":{"spec":{"containers":[{"name":"calico-node","resources":{"requests":{"cpu":"250m","memory":"256Mi"},"limits":{"cpu":"1","memory":"512Mi"}}}]}}}}}}'
 ```
 
 ## Step 6: Enable Prometheus Metrics
