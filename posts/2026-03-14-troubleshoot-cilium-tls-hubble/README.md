@@ -132,10 +132,20 @@ kubectl -n kube-system logs deploy/hubble-relay --tail=50
 # Verify the relay is using the correct certificates
 kubectl -n kube-system exec deploy/hubble-relay -- ls -la /var/lib/hubble-relay/tls/
 
-# Test TLS connectivity from relay to agent
-AGENT_POD_IP=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].status.podIP}')
-kubectl -n kube-system exec deploy/hubble-relay -- \
-  wget -qO- --timeout=5 https://$AGENT_POD_IP:4244 2>&1 | head -5
+# Test TLS connectivity to an agent with the relay client certificate
+kubectl apply -n kube-system -f https://raw.githubusercontent.com/cilium/cilium/main/examples/hubble/hubble-cli.yaml
+kubectl exec -n kube-system deployment/hubble-cli -- apk add --update openssl
+kubectl exec -n kube-system deployment/hubble-cli -- \
+  hubble watch peers --server unix:///var/run/cilium/hubble.sock
+
+# Copy a peer IP and TLS.ServerName from the output above
+IP=172.18.0.2
+SERVERNAME=kind-worker.default.hubble-grpc.cilium.io
+kubectl exec -n kube-system deployment/hubble-cli -- \
+  openssl s_client -showcerts -servername ${SERVERNAME} -connect ${IP}:4244 \
+    -CAfile /var/lib/hubble-relay/tls/hubble-server-ca.crt \
+    -cert /var/lib/hubble-relay/tls/client.crt \
+    -key /var/lib/hubble-relay/tls/client.key
 ```
 
 Fix CA mismatch by regenerating all certificates:
@@ -147,7 +157,8 @@ kubectl -n kube-system delete secret hubble-ca-secret hubble-server-certs hubble
 # Trigger regeneration
 helm upgrade cilium cilium/cilium -n kube-system --reuse-values
 
-# Restart all components to pick up new certs
+# Hubble server and relay hot reload TLS certificates, including CA certificates.
+# If new connections still fail, restart the components to force a fresh load.
 kubectl -n kube-system rollout restart daemonset/cilium
 kubectl -n kube-system rollout restart deployment/hubble-relay
 kubectl -n kube-system rollout status daemonset/cilium
@@ -223,13 +234,13 @@ kubectl -n kube-system logs ds/cilium --tail=50 | grep -i "tls\|certificate\|x50
 
 ## Troubleshooting
 
-- **Certificates regenerated but relay still fails**: The relay pod may have cached old certificates. Restart it: `kubectl -n kube-system rollout restart deployment/hubble-relay`.
+- **Certificates regenerated but relay still fails**: Hubble server and relay hot reload TLS certificates, including CA certificates. If new connections still fail, restart the relay to force a fresh load: `kubectl -n kube-system rollout restart deployment/hubble-relay`.
 
 - **CronJob runs but certificates are not updated**: Check if the CronJob has permissions to update secrets in kube-system. Verify the ServiceAccount and RBAC.
 
 - **cert-manager Certificate stuck in "Not Ready"**: Check the cert-manager logs and the Certificate's status conditions. The ClusterIssuer may be misconfigured.
 
-- **TLS works for some agents but not others**: Certificate Subject Alternative Names (SANs) may not cover all agent pod IPs. Check the SAN list with openssl.
+- **TLS works for some agents but not others**: The Hubble server certificate SAN must match the peer's `TLS.ServerName`, typically `*.{cluster-name}.hubble-grpc.cilium.io`, where `{cluster-name}` is the `cluster.name` Helm value. Check the peer names with `hubble watch peers` and inspect the SAN list with openssl.
 
 ## Conclusion
 
