@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, NetworkSet, Validation
 
-Description: How to validate Calico NetworkSet resources to confirm IP sets are correctly defined, labels are applied for policy matching, and IP sets are programmed into the kernel.
+Description: How to validate Calico NetworkSet resources to confirm IP sets are correctly defined, labels are applied for policy matching, and IP sets are programmed into the dataplane.
 
 ---
 
 ## Introduction
 
-Validating Calico NetworkSet resources involves confirming that the correct IP addresses and CIDRs are included, that the labels enable correct policy matching, and that Felix has programmed the IP sets into the kernel. A NetworkSet with wrong IPs silently allows or blocks the wrong traffic; a NetworkSet with incorrect labels won't match any policy selectors.
+Validating Calico NetworkSet resources involves confirming that the correct IP addresses and CIDRs are included, that the labels enable correct policy matching, and that Felix has programmed the IP sets into the dataplane. A NetworkSet with wrong IPs silently allows or blocks the wrong traffic; a NetworkSet with incorrect labels won't match any policy selectors.
 
 ## Prerequisites
 
@@ -68,7 +68,7 @@ calicoctl get networkpolicies -n payments -o yaml | grep "role == 'trusted-exter
 ```mermaid
 graph LR
     A[Calico NetworkSet] --> B[Felix watches for changes]
-    B --> C[Programs ipset in kernel]
+    B --> C[Programs dataplane set]
     C --> D[iptables rules reference ipset]
     D --> E{Traffic test}
     E -->|Blocked IP denied| F[IP set correct]
@@ -76,12 +76,16 @@ graph LR
 ```
 
 ```bash
-# On a node, check if the IP set exists in the kernel
-kubectl debug node/worker-1 -it --image=ubuntu -- \
-  ipset list | grep "cali-" | grep -i "networkset"
+# On a node using Calico's standard Linux iptables dataplane,
+# check Calico-owned ipsets in the host network namespace.
+# Use a debug image that includes ipset and a profile with enough privileges.
+kubectl debug node/worker-1 -it --profile=sysadmin --image=nicolaka/netshoot -- \
+  ipset list | grep "cali"
 
-# Or check ipset contents
-ipset list cali-s:management-hosts 2>/dev/null
+# Calico ipset names are generated and may be truncated, so search for
+# the expected IP or CIDR rather than assuming the resource name is present.
+kubectl debug node/worker-1 -it --profile=sysadmin --image=nicolaka/netshoot -- \
+  ipset list | grep -A20 -E "52\\.44\\.1\\.100|52\\.44\\.1\\.0/24"
 ```
 
 ## Step 5: Traffic Test
@@ -111,4 +115,4 @@ calicoctl get globalnetworkpolicies -o yaml | grep "role == 'management'"
 
 ## Conclusion
 
-Validating Calico NetworkSet resources requires checking IP contents, verifying label correctness for selector matching, and confirming Felix has programmed the IP set into the kernel. Traffic testing against IPs both inside and outside the NetworkSet confirms end-to-end correctness. Always verify that updates to NetworkSet IP lists are reflected in kernel IP sets, especially after adding new external service IP ranges.
+Validating Calico NetworkSet resources requires checking IP contents, verifying label correctness for selector matching, and confirming Felix has programmed the IP set into the dataplane. Traffic testing against IPs both inside and outside the NetworkSet confirms end-to-end correctness. Always verify that updates to NetworkSet IP lists are reflected in the dataplane, especially after adding new external service IP ranges.
