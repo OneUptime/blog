@@ -32,7 +32,7 @@ kind: CiliumNetworkPolicy
 metadata:
   name: "rule1"
 spec:
-  description: "L3-L4 policy to restrict deathstar access to empire ships"
+  description: "L3-L4 policy to restrict deathstar access to empire ships only"
   endpointSelector:
     matchLabels:
       org: empire
@@ -63,13 +63,13 @@ graph TD
 
 ```bash
 # Apply the L3/L4 policy
-kubectl create -f https://raw.githubusercontent.com/cilium/cilium/HEAD/examples/minikube/sw_l3_l4_policy.yaml
+kubectl create -f https://raw.githubusercontent.com/cilium/cilium/1.19.3/examples/minikube/sw_l3_l4_policy.yaml
 
 # Verify policy is active
 kubectl get CiliumNetworkPolicy rule1 -o yaml
 
 # Check Cilium has loaded the policy
-kubectl exec -n kube-system ds/cilium -- cilium policy get
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
 
 # Test: Empire ship should succeed
 kubectl exec tiefighter -- curl -s -XPOST deathstar.default.svc.cluster.local/v1/request-landing
@@ -84,16 +84,16 @@ echo "Exit code: $?"
 When the policy is applied, Cilium:
 
 1. Assigns security identities to all endpoints based on their labels
-2. Populates eBPF policy maps with allow/deny rules keyed by identity pair
-3. At packet time, the TC hook looks up `(source_identity, dest_identity, port)` in the BPF map
+2. Populates per-endpoint eBPF policy maps with allowed identity, port, and protocol entries
+3. At packet time, the TC hook checks the packet's peer identity, direction, port, and protocol against the endpoint's policy map
 4. The verdict (allow/drop) is applied inline without going to userspace
 
 ```bash
 # Inspect BPF policy maps
-kubectl exec -n kube-system ds/cilium -- cilium bpf policy get --all
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf policy get --all
 
 # View drop statistics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep drop
 ```
 
 ## The Limitation: L3/L4 Cannot Inspect HTTP Content
