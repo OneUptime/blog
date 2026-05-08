@@ -21,7 +21,7 @@ This guide covers the practical steps to standardize team workflows around calic
 - A team managing Calico resources in shared clusters
 - Git repository for Calico resource definitions
 - CI/CD platform for automated deployments
-- calicoctl v3.27 or later
+- calicoctl v3.31 or later
 
 ## Establishing Git as the Single Source of Truth
 
@@ -72,8 +72,6 @@ spec:
         selector: k8s-app == "kube-dns"
         ports:
           - 53
-    # Allow established connections
-    - action: Allow
 ```
 
 ## Code Review Process for Replace Operations
@@ -131,7 +129,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install calicoctl
         run: |
-          curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.31.0/calicoctl-linux-amd64 -o calicoctl
           chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
 
       - name: Diff against cluster state
@@ -152,7 +150,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install calicoctl
         run: |
-          curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.31.0/calicoctl-linux-amd64 -o calicoctl
           chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
 
       - name: Sync to production
@@ -176,31 +174,65 @@ export DATASTORE_TYPE=kubernetes
 RESOURCE_DIR="${1:?Usage: $0 <resource-directory>}"
 DRIFT_FOUND=0
 
-find "$RESOURCE_DIR" -name "*.yaml" | while read file; do
-  KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$file'))['kind'])")
-  NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$file'))['metadata']['name'])")
+while IFS= read -r file; do
+  read -r KIND NAME NAMESPACE < <(python3 - "$file" <<'PY'
+import sys
+import yaml
+
+with open(sys.argv[1]) as f:
+    doc = yaml.safe_load(f)
+
+metadata = doc.get("metadata", {})
+print(doc["kind"], metadata["name"], metadata.get("namespace", "-"))
+PY
+)
+  if [[ "$NAMESPACE" == "-" ]]; then
+    NAMESPACE=""
+  fi
+
+  GET_ARGS=("$KIND" "$NAME" "-o" "json")
+  if [[ -n "$NAMESPACE" ]]; then
+    GET_ARGS+=("-n" "$NAMESPACE")
+  fi
 
   # Get cluster state
-  CLUSTER_STATE=$(calicoctl get "$KIND" "$NAME" -o json 2>/dev/null) || {
+  CLUSTER_STATE=$(calicoctl get "${GET_ARGS[@]}" 2>/dev/null) || {
     echo "DRIFT: ${KIND}/${NAME} exists in Git but not in cluster"
+    DRIFT_FOUND=1
     continue
   }
 
   # Compare spec sections
-  python3 -c "
-import yaml, json
+  if ! CLUSTER_STATE="$CLUSTER_STATE" python3 - "$file" "$KIND" "$NAME" <<'PY'; then
+import json
+import os
+import sys
+import yaml
 
-with open('$file') as f:
+file, kind, name = sys.argv[1:]
+
+with open(file) as f:
     git_spec = yaml.safe_load(f).get('spec', {})
 
-cluster_spec = json.loads('''$CLUSTER_STATE''').get('spec', {})
+cluster_items = json.loads(os.environ["CLUSTER_STATE"] or "[]")
+
+if not cluster_items:
+    print(f'DRIFT: {kind}/{name} exists in Git but not in cluster')
+    sys.exit(1)
+
+cluster_spec = cluster_items[0].get('spec', {})
 
 if git_spec != cluster_spec:
-    print(f'DRIFT: ${KIND}/${NAME} differs between Git and cluster')
+    print(f'DRIFT: {kind}/{name} differs between Git and cluster')
+    sys.exit(1)
 else:
-    print(f'OK: ${KIND}/${NAME}')
-" 2>/dev/null || echo "CHECK: ${KIND}/${NAME} needs manual review"
-done
+    print(f'OK: {kind}/{name}')
+PY
+    DRIFT_FOUND=1
+  fi
+done < <(find "$RESOURCE_DIR" -name "*.yaml")
+
+exit "$DRIFT_FOUND"
 ```
 
 ```mermaid
