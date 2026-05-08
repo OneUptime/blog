@@ -34,7 +34,7 @@ Common exit codes and their meanings:
 
 - **Exit 0**: Container completed successfully (expected for one-off tasks).
 - **Exit 1**: Application error inside the container.
-- **Exit 125**: Podman daemon error (e.g., invalid flags or options).
+- **Exit 125**: Podman error (e.g., invalid flags or options).
 - **Exit 126**: Command cannot be invoked (permission issue on entrypoint).
 - **Exit 127**: Command not found (entrypoint or CMD does not exist).
 - **Exit 137**: Container was killed with SIGKILL (often OOM killer).
@@ -55,7 +55,7 @@ podman logs --timestamps my-container
 podman logs --tail 50 my-container
 ```
 
-If the container never started, you might see errors related to missing binaries, misconfigured environment variables, or failed health checks.
+If the container starts and then exits quickly, you might see errors related to missing binaries, misconfigured environment variables, or failed application startup.
 
 ## Debug Image Issues
 
@@ -106,7 +106,7 @@ podman run my-image:latest
 
 ## Debug Health Check Failures
 
-If your container has a health check defined, it might be marked as unhealthy and restarted.
+If your container has a health check defined, it might be marked as unhealthy or restarted if a health-check failure action is configured.
 
 ```bash
 # Check the health status
