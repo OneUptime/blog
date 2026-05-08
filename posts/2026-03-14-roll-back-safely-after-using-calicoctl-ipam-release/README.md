@@ -30,9 +30,10 @@ For commands that modify IPAM state, recovery depends on the specific operation:
 calicoctl ipam show
 calicoctl ipam check
 
-# If IPs were incorrectly released, pods will need to be restarted
-# to get new IP allocations
-kubectl get pods --all-namespaces | grep -v Running | grep -v Completed
+# If an IP that is still used by an endpoint was incorrectly released,
+# identify the affected pod or workload endpoint before restarting it
+# to get a fresh allocation.
+kubectl get pods --all-namespaces -o wide
 ```
 
 ### If the Command Was Read-Only
@@ -42,7 +43,8 @@ Read-only IPAM commands do not modify state, so no rollback is needed. Focus on 
 ### Restoring IPAM State
 
 ```bash
-# IPAM state is derived from running pods and IP pool configuration
+# IPAM health depends on Calico IPAM allocation data, Kubernetes endpoints,
+# and IP pool configuration staying consistent
 # To restore healthy state:
 
 # 1. Verify IP pools are correct
@@ -68,12 +70,12 @@ calicoctl ipam show
 # Test pod creation
 kubectl run recovery-test --image=busybox --restart=Never -- sleep 10
 kubectl get pod recovery-test -o wide
-kubectl delete pod recovery-test --grace-period=0
+kubectl delete pod recovery-test --now
 ```
 
 ## Troubleshooting
 
-- **Cannot restore previous IP assignments**: IP addresses are dynamically allocated. Previous assignments cannot be exactly restored, but new allocations will work correctly.
+- **Cannot restore previous IP assignments**: Pod IP addresses are usually dynamically allocated. Previous assignments are not generally guaranteed, but new allocations will work correctly after the underlying IPAM issue is resolved.
 - **IPAM check shows persistent issues**: Some issues require manual cleanup of IPAM block resources. See the IPAM check troubleshooting guide.
 
 ## Conclusion
