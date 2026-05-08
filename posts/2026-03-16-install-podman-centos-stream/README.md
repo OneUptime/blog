@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Installation, Linux, Container, DevOps, CentOS
 
-Description: A complete guide to installing Podman on CentOS Stream 8 and 9, with rootless configuration and practical container examples.
+Description: A complete guide to installing Podman on CentOS Stream 9, with legacy CentOS Stream 8 notes, rootless configuration, and practical container examples.
 
 ---
 
 > CentOS Stream, as the upstream for RHEL, provides excellent Podman support with enterprise-grade stability and the latest container tooling.
 
-CentOS Stream serves as the development branch for Red Hat Enterprise Linux, making it an ideal platform for Podman. As a Red Hat project, Podman is tightly integrated with CentOS Stream and receives timely updates. This guide covers installation on both CentOS Stream 8 and 9.
+CentOS Stream serves as the development branch for Red Hat Enterprise Linux, making it an ideal platform for Podman. As a Red Hat project, Podman is tightly integrated with CentOS Stream and receives timely updates. This guide focuses on CentOS Stream 9 and includes legacy notes for CentOS Stream 8, which reached end of life on May 31, 2024.
 
 ---
 
 ## Prerequisites
 
-- CentOS Stream 8 or 9
+- CentOS Stream 9, or a legacy CentOS Stream 8 system
 - A user account with sudo privileges
 - An active internet connection
 
@@ -43,7 +43,7 @@ sudo dnf install -y podman
 
 ### CentOS Stream 8
 
-On CentOS Stream 8, Podman is available through the `container-tools` module:
+CentOS Stream 8 reached end of life on May 31, 2024, so standard repositories no longer receive updates. On legacy CentOS Stream 8 systems with working repository configuration, Podman was available through the `container-tools` module:
 
 ```bash
 # Enable the container-tools module and install Podman
@@ -186,11 +186,11 @@ podman run -d \
 
 ## Troubleshooting
 
-If you encounter `ERRO[0000] cannot find UID/GID` errors:
+If you encounter `ERRO[0000] cannot find UID/GID` errors after changing `/etc/subuid` or `/etc/subgid`:
 
 ```bash
-# Reset Podman storage after changing subuid/subgid
-podman system reset
+# Recreate the rootless user namespace with the updated mappings
+podman system migrate
 ```
 
 If containers fail to start with SELinux errors, check the audit log:
@@ -202,4 +202,4 @@ sudo ausearch -m AVC -ts recent
 
 ## Summary
 
-Podman is fully supported on CentOS Stream as part of the Red Hat container ecosystem. With the `container-tools` module on CentOS Stream 8 and direct package availability on CentOS Stream 9, you get a stable and up-to-date container runtime. SELinux integration provides additional security for production deployments.
+Podman is fully supported on current CentOS Stream releases as part of the Red Hat container ecosystem. With direct package availability on CentOS Stream 9, and the legacy `container-tools` module on CentOS Stream 8 systems with archived repository access, you get a capable container runtime. SELinux integration provides additional security for production deployments.
