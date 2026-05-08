@@ -98,10 +98,11 @@ helm get values cilium -n kube-system -o yaml | grep -A10 "tls:"
 # If TLS settings are inconsistent, reset them
 helm upgrade cilium cilium/cilium -n kube-system \
   --reuse-values \
+  --set hubble.enabled=true \
+  --set hubble.relay.enabled=true \
   --set hubble.tls.enabled=true \
   --set hubble.tls.auto.enabled=true \
-  --set hubble.tls.auto.method=cronJob \
-  --set hubble.relay.tls.server.enabled=true
+  --set hubble.tls.auto.method=cronJob
 ```
 
 ## Resolving Missing Flow Data
@@ -111,7 +112,7 @@ When Hubble is running but flows are missing or incomplete:
 ```bash
 # Generate test traffic
 kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
-  curl -s http://kubernetes.default/healthz
+  curl -k -s https://kubernetes.default.svc/healthz
 
 # Check if flows are visible locally on the agent
 kubectl -n kube-system exec ds/cilium -- hubble observe --last 10
@@ -135,7 +136,7 @@ kubectl -n kube-system exec ds/cilium -- cilium config | grep MonitorAggregation
 kubectl -n kube-system exec ds/cilium -- cilium endpoint regenerate --all
 
 # 3. Event buffer too small for the traffic volume
-kubectl -n kube-system exec ds/cilium -- cilium status --verbose | grep "current/max"
+kubectl -n kube-system exec ds/cilium -- hubble status | grep "Current/Max Flows"
 ```
 
 ## Fixing UI Configuration Problems
@@ -150,9 +151,9 @@ kubectl -n kube-system get pods -l k8s-app=hubble-ui
 kubectl -n kube-system logs deploy/hubble-ui -c frontend --tail=20
 kubectl -n kube-system logs deploy/hubble-ui -c backend --tail=20
 
-# Verify the UI can reach the relay
-kubectl -n kube-system exec deploy/hubble-ui -c backend -- \
-  wget -qO- --timeout=5 http://hubble-relay:4245 2>&1
+# Verify the UI namespace can reach the relay service
+kubectl -n kube-system run relay-check --image=busybox:1.36 --rm -it --restart=Never -- \
+  nc -vz -w5 hubble-relay 80
 
 # Port-forward and test the UI
 kubectl -n kube-system port-forward svc/hubble-ui 12000:80 &
@@ -189,7 +190,7 @@ hubble observe --last 5
 kubectl -n kube-system port-forward svc/hubble-ui 12000:80 &
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:12000
 
-# 5. Metrics endpoint responding
+# 5. Metrics endpoint responding, if Hubble metrics are enabled
 kubectl -n kube-system exec ds/cilium -- wget -qO- http://localhost:9965/metrics 2>/dev/null | grep hubble | head -5
 ```
 
