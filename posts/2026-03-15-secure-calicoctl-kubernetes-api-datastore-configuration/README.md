@@ -35,7 +35,7 @@ kubectl create serviceaccount calicoctl-sa -n calico-system
 
 ## Creating a Least-Privilege ClusterRole
 
-Define a ClusterRole that grants only the permissions calicoctl needs:
+Define a ClusterRole that grants only the permissions needed for common calicoctl policy and configuration operations:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -75,10 +75,9 @@ kubectl create clusterrolebinding calicoctl-binding \
 Generate a kubeconfig file scoped to the calicoctl service account:
 
 ```bash
-SECRET_NAME=$(kubectl get sa calicoctl-sa -n calico-system -o jsonpath='{.secrets[0].name}')
-TOKEN=$(kubectl get secret "$SECRET_NAME" -n calico-system -o jsonpath='{.data.token}' | base64 -d)
-CA_CERT=$(kubectl get secret "$SECRET_NAME" -n calico-system -o jsonpath='{.data.ca\.crt}')
-API_SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+TOKEN=$(kubectl create token calicoctl-sa -n calico-system --duration=24h)
+CA_CERT=$(kubectl config view --raw --minify --flatten -o jsonpath='{.clusters[0].cluster.certificate-authority-data}')
+API_SERVER=$(kubectl config view --raw --minify -o jsonpath='{.clusters[0].cluster.server}')
 
 cat > calicoctl-kubeconfig.yaml <<EOF
 apiVersion: v1
@@ -120,7 +119,7 @@ Ensure kubeconfig files have strict file permissions:
 
 ```bash
 chmod 600 /path/to/calicoctl-kubeconfig.yaml
-chown root:root /path/to/calicoctl-kubeconfig.yaml
+chown "$(id -u):$(id -g)" /path/to/calicoctl-kubeconfig.yaml
 
 ls -la /path/to/calicoctl-kubeconfig.yaml
 ```
@@ -147,7 +146,7 @@ kubectl --kubeconfig=/path/to/calicoctl-kubeconfig.yaml get secrets -n kube-syst
 
 ## Troubleshooting
 
-- **"Unauthorized" errors**: Verify the service account token is valid and the secret exists. Tokens from deleted secrets will fail.
+- **"Unauthorized" errors**: Verify the service account token is valid and has not expired. Tokens created with `kubectl create token` are time-limited.
 - **"Forbidden" errors on Calico resources**: Check that the ClusterRoleBinding references the correct service account namespace and name.
 - **File permission denied**: Ensure the user running calicoctl has read access to the kubeconfig file.
 - **Connection refused**: Confirm the API server URL in the kubeconfig matches your cluster endpoint.
