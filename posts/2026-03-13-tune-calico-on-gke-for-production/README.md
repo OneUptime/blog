@@ -12,7 +12,7 @@ Description: Apply production-grade Calico tuning on Google Kubernetes Engine fo
 
 Calico on GKE in policy-only mode requires tuning Felix for production workload volumes. GKE clusters can scale to hundreds of nodes, and at this scale, Felix's iptables management overhead needs to be optimized. GKE's node pool auto-scaling also means Calico must handle nodes being added and removed frequently, making the refresh intervals and health monitoring settings especially important.
 
-GKE supports both standard nodes (Container-Optimized OS with iptables) and nodes with eBPF support (select kernel versions). For high-performance production workloads, enabling eBPF via the Tigera Operator can significantly reduce policy enforcement latency and CPU overhead compared to iptables.
+GKE's legacy dataplane uses Calico with iptables for Kubernetes NetworkPolicy enforcement. For high-performance production workloads that need an eBPF-based dataplane, use GKE Dataplane V2, which is implemented with Cilium and is selected at cluster creation time rather than enabled by patching Calico Felix.
 
 ## Prerequisites
 
@@ -28,22 +28,23 @@ kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.osImage}'
 kubectl get nodes -o jsonpath='{.items[0].status.nodeInfo.kernelVersion}'
 ```
 
-Container-Optimized OS on GKE typically supports eBPF with kernel 5.x+.
+Container-Optimized OS kernel versions vary by GKE version and node image. Kernel version alone is not enough to switch the managed GKE Calico dataplane to eBPF.
 
-## Step 2: Enable eBPF for High-Performance Production
+## Step 2: Check Whether You Need GKE Dataplane V2
 
-Check if eBPF is viable for your GKE version:
-
-```bash
-kubectl get nodes -o jsonpath='{.items[*].status.nodeInfo.kernelVersion}'
-```
-
-If kernel is 5.3+, switch to eBPF:
+Check whether the cluster is using legacy Calico policy enforcement:
 
 ```bash
-kubectl patch felixconfiguration default --type merge \
-  --patch '{"spec":{"bpfEnabled":true}}'
+kubectl get nodes -l projectcalico.org/ds-ready=true
 ```
+
+Check whether the cluster is using GKE Dataplane V2:
+
+```bash
+kubectl -n kube-system get pods -l k8s-app=cilium
+```
+
+If you need eBPF-based policy enforcement on GKE, plan for GKE Dataplane V2 instead of enabling Calico eBPF with a Felix patch on the managed Calico add-on.
 
 ## Step 3: Tune Felix for GKE Production
 
@@ -56,12 +57,9 @@ metadata:
 spec:
   logSeverityScreen: Warning
   iptablesRefreshInterval: 90s
-  routeRefreshInterval: 90s
   healthEnabled: true
   prometheusMetricsEnabled: true
   prometheusMetricsPort: 9091
-  reportingInterval: 30s
-  bpfLogLevel: ""
   ipv6Support: false
 EOF
 ```
@@ -126,10 +124,10 @@ For clusters with node auto-scaling:
 
 ```bash
 calicoctl patch felixconfiguration default \
-  --patch '{"spec":{"iptablesRefreshInterval":"60s","routeRefreshInterval":"60s"}}'
+  --patch '{"spec":{"iptablesRefreshInterval":"60s"}}'
 ```
 
-Shorter intervals help Calico react faster to auto-scaling events.
+Shorter refresh intervals can help Felix detect dataplane drift sooner during node churn, at the cost of more frequent reconciliation work.
 
 ## Step 8: Verify and Restart
 
@@ -141,4 +139,4 @@ calicoctl get felixconfiguration default -o yaml
 
 ## Conclusion
 
-You have applied production-grade Calico tuning on GKE, including eBPF data plane configuration for high-performance workloads, Felix iptables refresh optimization, resource limits, Prometheus metrics, and Google Cloud Monitoring integration. These settings ensure that Calico performs reliably at production scale on GKE including auto-scaling environments.
+You have applied production-grade Calico tuning on GKE, including Felix iptables refresh optimization, resource limits, Prometheus metrics, and Google Cloud Monitoring integration. These settings help Calico perform reliably at production scale on GKE including auto-scaling environments. For eBPF-based policy enforcement on GKE, evaluate GKE Dataplane V2 when creating a cluster.
