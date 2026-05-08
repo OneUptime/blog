@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Validation steps to confirm a Kubernetes node is fully Ready after resolving Calico issues including pod scheduling tests and BGP state verification.
+Description: Validation steps to confirm a Kubernetes node is fully Ready after resolving Calico issues including pod startup tests and BGP state verification.
 
 ---
 
 ## Introduction
 
-Validating node Ready status restoration after a Calico fix requires confirming the node condition, calico-node pod health, pod scheduling on the recovered node, and BGP peer state. A node that shows Ready may still have incomplete networking if BGP route reconvergence is still in progress.
+Validating node Ready status restoration after a Calico fix requires confirming the node condition, calico-node pod health, pod startup on the recovered node, and BGP peer state. A node that shows Ready may still have incomplete networking if BGP route reconvergence is still in progress.
 
 ## Symptoms
 
-- Node shows Ready but pods cannot schedule due to network issues
+- Node shows Ready but pods cannot become Ready due to network issues
 - calico-node is 1/1 but BGP peers not yet Established
 - Node recovers then goes NotReady again
 
@@ -55,7 +55,7 @@ calicoctl node status
 # Expected: all peers show Established
 ```
 
-**Validation Step 4: Test pod scheduling on recovered node**
+**Validation Step 4: Test pod startup on recovered node**
 
 ```bash
 kubectl run node-test --image=busybox --restart=Never \
@@ -101,4 +101,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating node Ready recovery requires confirming node status, calico-node pod health, BGP peer state, pod scheduling capability, and cross-node connectivity. BGP reconvergence may take a few minutes after calico-node recovers - allow time for this before confirming the node is fully operational.
+Validating node Ready recovery requires confirming node status, calico-node pod health, BGP peer state, pod startup capability, and cross-node connectivity. BGP reconvergence may take a few minutes after calico-node recovers - allow time for this before confirming the node is fully operational.
