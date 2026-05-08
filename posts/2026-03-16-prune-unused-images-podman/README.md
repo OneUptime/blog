@@ -54,7 +54,7 @@ podman image prune -f
 
 ## Pruning All Unused Images
 
-To remove all images not associated with a running container, use the `--all` flag.
+To remove all images not associated with any container, use the `--all` flag.
 
 ```bash
 # Remove all unused images (not just dangling ones)
@@ -64,7 +64,7 @@ podman image prune -a
 podman image prune -a -f
 ```
 
-This removes images that are not actively used by any container. Be careful in production environments.
+This removes images that are not referenced by any container. Be careful in production environments.
 
 ## Filtering What Gets Pruned
 
@@ -91,10 +91,10 @@ podman image prune -a -f \
 
 ## Using podman system prune
 
-For a broader cleanup that covers images, containers, and volumes, use `podman system prune`.
+For a broader cleanup that can cover images, containers, and volumes, use `podman system prune`.
 
 ```bash
-# Prune stopped containers, dangling images, and unused networks
+# Prune stopped containers, unused pods and networks, and dangling images
 podman system prune -f
 
 # Prune everything including unused images and volumes
@@ -134,7 +134,7 @@ podman images -f dangling=true --format "{{.ID}} {{.Repository}}:{{.Tag}} {{.Siz
 
 # List unused images (not used by any container)
 podman images --format "{{.ID}} {{.Repository}}:{{.Tag}} {{.Size}}" | while read id name size; do
-  if ! podman ps -a --format "{{.Image}}" | grep -q "$name"; then
+  if ! podman ps -a --format "{{.ImageID}}" | grep -Fq "$id"; then
     echo "Unused: $name ($size)"
   fi
 done
@@ -184,7 +184,7 @@ If you prefer cron over systemd timers, set up a cron job.
 
 ```bash
 # Add a daily cleanup cron job
-crontab -l 2>/dev/null; echo "0 2 * * * /usr/bin/podman image prune -a -f --filter 'until=168h' >> /var/log/podman-prune.log 2>&1" | crontab -
+(crontab -l 2>/dev/null; echo "0 2 * * * /usr/bin/podman image prune -a -f --filter 'until=168h' >> /var/log/podman-prune.log 2>&1") | crontab -
 
 # Verify the cron entry
 crontab -l
@@ -201,7 +201,7 @@ podman system df
 # Detailed breakdown by image
 podman system df -v
 
-# Check the container storage directory size
+# Check the rootless container storage directory size
 du -sh ~/.local/share/containers/storage/
 
 # Alert script: warn when usage exceeds threshold
