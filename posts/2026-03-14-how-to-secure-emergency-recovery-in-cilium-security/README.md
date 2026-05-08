@@ -23,6 +23,7 @@ Whether you are setting up a new cluster or hardening an existing one, these sec
 - `cilium` CLI tool installed
 - `kubectl` configured for cluster access
 - Hubble enabled for network flow observation
+- Access to a Cilium agent pod for node-local `cilium-dbg` commands
 - Basic understanding of Kubernetes networking concepts
 
 ## Understanding the Security Model
@@ -53,7 +54,7 @@ cilium status
 
 ```bash
 # Check current policy enforcement mode
-cilium config view | grep policy-enforcement
+cilium config view | grep -E 'policyEnforcementMode|enable-policy'
 ```
 
 ## Implementing Security Policies
@@ -65,18 +66,31 @@ Apply a CiliumNetworkPolicy to restrict access to your emergency recovery resour
 apiVersion: "cilium.io/v2"
 kind: CiliumClusterwideNetworkPolicy
 metadata:
-  name: emergency-allow-all
+  name: emergency-recovery-access
   annotations:
     emergency.cilium.io/reason: "recovery-mode"
     emergency.cilium.io/timestamp: "2026-03-14T00:00:00Z"
 spec:
-  endpointSelector: {}
+  endpointSelector:
+    matchLabels:
+      app: emergency-recovery
   ingress:
-    - fromEntities:
-        - all
+    - fromEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: operations
+            role: recovery-operator
   egress:
-    - toEntities:
-        - all
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 ```
 
 ```bash
@@ -110,6 +124,9 @@ spec:
         - ports:
             - port: "53"
               protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 ```
 
 ### Monitoring Security Events
@@ -118,9 +135,9 @@ spec:
 # Monitor for policy-related drops in real time
 hubble observe --verdict DROPPED --namespace production --output compact
 
-# Check endpoint security status
 # List all active policies
-cilium policy get -o json | jq '.[].metadata.name'
+kubectl get cnp --all-namespaces
+kubectl get ccnp
 ```
 
 ## Advanced Security Configuration
@@ -134,10 +151,11 @@ For enhanced protection, consider these additional hardening measures:
 #   --set policyEnforcementMode=always
 
 # Verify the current enforcement mode
-cilium config view | grep policy-enforcement
+cilium config view | grep -E 'policyEnforcementMode|enable-policy'
 
 # List all identities and verify they match expected workloads
-cilium identity list
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg identity list
 ```
 
 
@@ -152,7 +170,7 @@ kubectl get namespaces --show-labels
 
 # Identify cross-namespace communication patterns
 hubble observe --output json --last 500 | \
-  jq '.flow | select(.source.namespace != .destination.namespace) | {
+  jq -c '.flow | select(.source.namespace != .destination.namespace) | {
     src_ns: .source.namespace,
     dst_ns: .destination.namespace,
     port: (.l4.TCP.destination_port // .l4.UDP.destination_port)
@@ -173,7 +191,8 @@ After applying security controls, verify they are working correctly:
 
 ```bash
 # Verify policy is applied
-cilium endpoint list
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list
 ```
 
 ```bash
@@ -183,12 +202,13 @@ cilium connectivity test
 
 ```bash
 # Monitor for policy drops
-cilium monitor --type drop --output json | head -20
+CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --type drop --json | head -20
 ```
 
 ## Troubleshooting
 
-- **Policy not taking effect**: Verify endpoint labels match policy selectors with `cilium endpoint list -o json | jq '.[] | .status.labels'`.
+- **Policy not taking effect**: Verify endpoint labels match policy selectors with `kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list -o json | jq '.[] | .status.labels'`.
 - **Legitimate traffic blocked**: Check Hubble for specific drop reasons with `hubble observe --verdict DROPPED --namespace production`.
 - **High latency after policy application**: L7 policies route through Envoy proxy. Consider using L3/L4 policies where L7 inspection is not needed.
 - **Cilium agent errors**: Check agent logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent --tail=50`.
