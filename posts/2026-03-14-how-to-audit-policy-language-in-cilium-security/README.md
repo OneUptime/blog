@@ -16,6 +16,7 @@ Auditing policy language usage checks that policies across the cluster follow co
 
 - Kubernetes cluster with Cilium
 - kubectl configured
+- jq installed
 
 ## Auditing Policy Constructs
 
@@ -29,16 +30,16 @@ echo "Policy statistics:"
 echo "  CiliumNetworkPolicy: $(kubectl get ciliumnetworkpolicies --all-namespaces --no-headers | wc -l)"
 echo "  CiliumClusterwideNetworkPolicy: $(kubectl get ciliumclusterwidenetworkpolicies --no-headers 2>/dev/null | wc -l)"
 
-# Check for L7 rules
-L7_COUNT=$(kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '[.items[] | select(.spec.ingress[]?.toPorts[]?.rules.http != null or .spec.egress[]?.toPorts[]?.rules.http != null)] | length')
-echo "  Policies with L7 rules: $L7_COUNT"
+# Check for HTTP L7 rules
+L7_COUNT=$(kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '[.items[] | ((if .spec then [.spec] else [] end) + (.specs // []))[] | select(.ingress[]?.toPorts[]?.rules.http != null or .egress[]?.toPorts[]?.rules.http != null)] | length')
+echo "  Policies with HTTP L7 rules: $L7_COUNT"
 
 # Check for FQDN rules
-FQDN_COUNT=$(kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '[.items[] | select(.spec.egress[]?.toFQDNs != null)] | length')
+FQDN_COUNT=$(kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '[.items[] | ((if .spec then [.spec] else [] end) + (.specs // []))[] | select(.egress[]?.toFQDNs != null)] | length')
 echo "  Policies with FQDN rules: $FQDN_COUNT"
 
 # Check for entity selectors
-ENTITY_COUNT=$(kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '[.items[] | select(.spec.ingress[]?.fromEntities != null or .spec.egress[]?.toEntities != null)] | length')
+ENTITY_COUNT=$(kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '[.items[] | ((if .spec then [.spec] else [] end) + (.specs // []))[] | select(.ingress[]?.fromEntities != null or .egress[]?.toEntities != null)] | length')
 echo "  Policies with entity selectors: $ENTITY_COUNT"
 ```
 
@@ -48,7 +49,7 @@ echo "  Policies with entity selectors: $ENTITY_COUNT"
 # Check for default deny in each namespace
 for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
   if [[ "$ns" == kube-* ]]; then continue; fi
-  DENY=$(kubectl get ciliumnetworkpolicies -n "$ns" -o json 2>/dev/null | jq '[.items[] | select(.spec.ingress == [] or .spec.egress == [])] | length')
+  DENY=$(kubectl get ciliumnetworkpolicies -n "$ns" -o json 2>/dev/null | jq '[.items[] | ((if .spec then [.spec] else [] end) + (.specs // []))[] | select(((.ingress // []) | any(. == {})) or ((.egress // []) | any(. == {})))] | length')
   if [ "$DENY" -gt 0 ]; then
     echo "OK: $ns has default deny"
   else
