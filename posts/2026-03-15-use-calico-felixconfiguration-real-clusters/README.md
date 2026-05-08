@@ -35,7 +35,6 @@ metadata:
 spec:
   iptablesRefreshInterval: 90s
   iptablesPostWriteCheckInterval: 5s
-  iptablesLockTimeout: 10s
   iptablesLockProbeInterval: 100ms
   routeRefreshInterval: 90s
   logSeverityScreen: Warning
@@ -62,7 +61,6 @@ spec:
   defaultEndpointToHostAction: Drop
   chainInsertMode: Insert
   logSeverityScreen: Info
-  ipipEnabled: true
   failsafeInboundHostPorts:
     - protocol: tcp
       port: 22
@@ -99,7 +97,7 @@ calicoctl apply -f felix-security.yaml
 
 ## Enabling Flow Logs for Compliance (Calico Enterprise)
 
-Configure Felix to export flow logs for audit and compliance. Note that file-based flow log fields like `flowLogsFileEnabled`, `flowLogsFileDirectory`, `flowLogsFileMaxFiles`, and `flowLogsFileMaxFileSizeMB` are available in Calico Enterprise. For open-source Calico v3.30+, flow logs are enabled by default and use the Whisker dashboard:
+Configure Felix to export flow logs for audit and compliance. Note that file-based flow log fields like `flowLogsFileEnabled` and `flowLogsFileDirectory` are available in Calico Enterprise and Calico Cloud. For open-source Calico v3.30+, new operator and Helm installations include the Goldmane flow logs API and Whisker dashboard by default; upgraded clusters from v3.29 or earlier need those components enabled separately.
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -110,8 +108,6 @@ spec:
   flowLogsFlushInterval: 15s
   flowLogsFileEnabled: true
   flowLogsFileDirectory: /var/log/calico/flowlogs
-  flowLogsFileMaxFiles: 5
-  flowLogsFileMaxFileSizeMB: 100
   logSeverityScreen: Info
 ```
 
@@ -177,7 +173,7 @@ done
 
 ## Verification
 
-Confirm the active configuration on each node:
+List the global and node-specific FelixConfiguration resources:
 
 ```bash
 calicoctl get felixconfiguration -o wide
@@ -189,10 +185,10 @@ Verify Felix is applying the correct settings by checking iptables rules:
 kubectl exec -n kube-system $(kubectl get pod -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}') -c calico-node -- iptables-save | grep -c cali
 ```
 
-Test network policy enforcement is working:
+Test basic service connectivity after policy changes:
 
 ```bash
-kubectl run policy-test --image=busybox --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc
+kubectl run policy-test --image=busybox:1.36 --restart=Never -- sh -c 'nc -vz -w 5 kubernetes.default.svc 443'
 kubectl delete pod policy-test
 ```
 
