@@ -69,7 +69,7 @@ rm -f /tmp/calicoctl
 echo ""
 echo "Verification:"
 calicoctl version
-calicoctl get nodes -o name > /dev/null 2>&1 && echo "Datastore: CONNECTED" || echo "Datastore: FAILED"
+calicoctl get nodes > /dev/null 2>&1 && echo "Datastore: CONNECTED" || echo "Datastore: FAILED"
 
 # Step 6: Log the upgrade
 echo "$(date) - Upgraded calicoctl from ${CURRENT_VERSION} to ${NEW_VERSION} on $(hostname)" |   sudo tee -a /var/log/calicoctl-upgrades.log
@@ -135,7 +135,7 @@ Make calicoctl part of standard operational procedures.
 # ops-wrapper.sh
 # Operational wrapper for calicoctl with auditing
 
-CALICOCTL_BIN="/usr/local/bin/calicoctl"
+CALICOCTL_BIN="/usr/local/bin/calicoctl.bin"
 AUDIT_LOG="/var/log/calicoctl-audit.log"
 
 # Log the operation
@@ -150,8 +150,12 @@ Install the wrapper:
 ```bash
 # Replace direct calicoctl with the audited wrapper
 sudo mv /usr/local/bin/calicoctl /usr/local/bin/calicoctl.bin
-sudo install -m 755 ops-wrapper.sh /usr/local/bin/calicoctl
-# Update the wrapper to point to calicoctl.bin
+sudo chown root:calico-ops /usr/local/bin/calicoctl.bin
+sudo chmod 750 /usr/local/bin/calicoctl.bin
+sudo install -o root -g calico-ops -m 750 ops-wrapper.sh /usr/local/bin/calicoctl
+sudo touch /var/log/calicoctl-audit.log
+sudo chown root:calico-ops /var/log/calicoctl-audit.log
+sudo chmod 664 /var/log/calicoctl-audit.log
 ```
 
 ## Operational Runbooks Using Calicoctl
