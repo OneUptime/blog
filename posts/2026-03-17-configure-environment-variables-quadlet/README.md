@@ -63,13 +63,13 @@ WantedBy=default.target
 
 ## Using Variables with Spaces
 
-Wrap values with spaces in quotes:
+Wrap the full assignment in quotes when values contain spaces:
 
 ```ini
 [Container]
 Image=docker.io/myorg/myapp:latest
-Environment=APP_TITLE="My Application Server"
-Environment=GREETING="Hello World"
+Environment="APP_TITLE=My Application Server"
+Environment="GREETING=Hello World"
 ```
 
 ## Combining with systemd Environment Directives
@@ -99,7 +99,7 @@ systemctl --user daemon-reload
 systemctl --user start myapp.service
 
 # Verify environment variables inside the container
-podman exec myapp env | grep -E 'NODE_ENV|DATABASE_HOST|LOG_LEVEL'
+podman exec systemd-myapp env | grep -E 'NODE_ENV|DATABASE_HOST|LOG_LEVEL'
 ```
 
 Expected output:
