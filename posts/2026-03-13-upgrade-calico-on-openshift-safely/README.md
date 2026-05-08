@@ -48,7 +48,7 @@ oc get installation default -o yaml > installation-backup.yaml
 ## Step 3: Upgrade the Tigera Operator
 
 ```bash
-oc apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/ocp/tigera-operator.yaml
+oc apply --server-side --force-conflicts -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator-ocp-upgrade.yaml
 oc rollout status deployment/tigera-operator -n tigera-operator
 ```
 
@@ -62,7 +62,7 @@ oc rollout status daemonset/calico-node -n calico-system
 Monitor OpenShift system pods in parallel:
 
 ```bash
-watch oc get pods -n openshift-ingress -n openshift-dns -n openshift-monitoring
+watch 'oc get pods -n openshift-ingress; oc get pods -n openshift-dns; oc get pods -n openshift-monitoring'
 ```
 
 ## Step 5: Verify After Each Node
