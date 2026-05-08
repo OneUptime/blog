@@ -29,46 +29,48 @@ sudo apt install nfs-common -y
 showmount -e 192.168.1.100
 ```
 
+The Podman volume examples below use rootful Podman because local driver mount options require root privileges.
+
 ## Creating an NFS Volume
 
 ```bash
 # Create a named volume backed by an NFS share
-podman volume create --driver local \
+sudo podman volume create --driver local \
   --opt type=nfs \
   --opt device=192.168.1.100:/exports/shared \
   --opt o=addr=192.168.1.100,rw,nfsvers=4.2 \
   nfs-shared
 
 # Verify the volume was created
-podman volume inspect nfs-shared
+sudo podman volume inspect nfs-shared
 ```
 
 ## Using NFS Volumes in Containers
 
 ```bash
 # Run a container with the NFS volume
-podman run -d --name webapp \
+sudo podman run -d --name webapp \
   -v nfs-shared:/app/data \
   -p 8080:80 \
   docker.io/library/nginx:latest
 
 # Verify the NFS mount is accessible
-podman exec webapp ls -la /app/data
-podman exec webapp df -h /app/data
+sudo podman exec webapp ls -la /app/data
+sudo podman exec webapp df -h /app/data
 ```
 
 ## NFS Mount Options
 
 ```bash
 # Create with common NFS mount options
-podman volume create --driver local \
+sudo podman volume create --driver local \
   --opt type=nfs \
   --opt device=192.168.1.100:/exports/data \
   --opt o=addr=192.168.1.100,rw,nfsvers=4.2,soft,timeo=30,retrans=3 \
   nfs-data
 
 # Read-only NFS mount
-podman volume create --driver local \
+sudo podman volume create --driver local \
   --opt type=nfs \
   --opt device=192.168.1.100:/exports/config \
   --opt o=addr=192.168.1.100,ro,nfsvers=4.2 \
@@ -79,7 +81,7 @@ podman volume create --driver local \
 
 ```bash
 # NFSv3 with UDP transport
-podman volume create --driver local \
+sudo podman volume create --driver local \
   --opt type=nfs \
   --opt device=192.168.1.100:/exports/legacy \
   --opt o=addr=192.168.1.100,rw,nfsvers=3,proto=udp \
@@ -108,12 +110,12 @@ echo "192.168.1.100:/exports/shared /mnt/nfs-share nfs defaults 0 0" | sudo tee 
 
 ```bash
 # Multiple containers can share the same NFS volume
-podman run -d --name writer \
+sudo podman run -d --name writer \
   -v nfs-shared:/data \
   docker.io/library/alpine:latest \
   sh -c "while true; do date >> /data/log.txt; sleep 5; done"
 
-podman run -d --name reader \
+sudo podman run -d --name reader \
   -v nfs-shared:/data:ro \
   docker.io/library/alpine:latest \
   sh -c "while true; do cat /data/log.txt; sleep 10; done"
@@ -129,15 +131,16 @@ ping -c 3 192.168.1.100
 showmount -e 192.168.1.100
 
 # Test manual NFS mount
+sudo mkdir -p /mnt/test
 sudo mount -t nfs -o nfsvers=4.2 192.168.1.100:/exports/shared /mnt/test
 
 # Check for mount errors in container
-podman logs webapp 2>&1 | grep -i "mount\|nfs\|error"
+sudo podman logs webapp 2>&1 | grep -i "mount\|nfs\|error"
 
-# Verify firewall allows NFS traffic (port 2049)
+# On the NFS server, verify the NFS service is listening on port 2049
 sudo ss -tlnp | grep 2049
 ```
 
 ## Summary
 
-Mount NFS shares as Podman volumes using the local driver with `type=nfs`, `device` for the NFS server path, and `o` for mount options including the server address and NFS version. This enables shared network storage across multiple containers and hosts. Use appropriate NFS mount options like `soft`, `timeo`, and `retrans` for resilience, and ensure NFS client utilities are installed on the host.
+Mount NFS shares as Podman volumes using the local driver with `type=nfs`, `device` for the NFS server path, and `o` for mount options including the server address and NFS version. This enables shared network storage across multiple containers and hosts. Tune NFS mount options like `timeo` and `retrans` carefully, use `soft` only when responsiveness is more important than data integrity, and ensure NFS client utilities are installed on the host.
