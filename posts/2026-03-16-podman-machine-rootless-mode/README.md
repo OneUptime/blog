@@ -27,7 +27,7 @@ podman machine init my-machine
 podman machine start my-machine
 
 # Verify rootless mode
-podman machine inspect my-machine | jq '.Rootful'
+podman machine inspect my-machine | jq '.[0].Rootful'
 # Returns: false
 ```
 
@@ -99,7 +99,7 @@ podman run --rm alpine id
 # View the user namespace mapping
 podman run --rm alpine cat /proc/self/uid_map
 
-# The container root (UID 0) maps to your user's UID range
+# Container root (UID 0) maps to your host UID; other container UIDs map into your subordinate UID range
 ```
 
 ## Configuring Subordinate UID/GID Ranges
@@ -148,7 +148,7 @@ podman info --format "{{.Store.GraphDriverName}}"
 podman machine ssh my-machine
 
 # Edit storage configuration
-cat ~/.config/containers/storage.conf
+vi ~/.config/containers/storage.conf
 # [storage]
 # driver = "overlay"
 
@@ -170,8 +170,8 @@ podman network create my-network
 podman run -d --name web --network my-network nginx
 podman run -d --name api --network my-network node:20
 
-# Containers on the same network can communicate by name
-podman exec api ping -c 2 web
+# Containers on the same network can resolve each other by name
+podman exec api getent hosts web
 ```
 
 ## Running Containers Effectively in Rootless Mode
@@ -214,7 +214,7 @@ podman top my-container user,pid,comm
 |---|---|
 | `podman machine init <name>` | Create a rootless machine (default) |
 | `podman machine set --rootful=false <name>` | Switch to rootless mode |
-| `podman machine inspect <name> \| jq '.Rootful'` | Verify rootless mode |
+| `podman machine inspect <name> \| jq '.[0].Rootful'` | Verify rootless mode |
 | `podman run --userns=keep-id ...` | Map host UID into container |
 
 ## Summary
