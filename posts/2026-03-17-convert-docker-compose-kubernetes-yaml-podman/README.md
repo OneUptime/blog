@@ -10,7 +10,7 @@ Description: Learn how to convert a Docker Compose project into Kubernetes YAML 
 
 > Podman can run your Compose services and export them as Kubernetes YAML, bridging the gap between Docker Compose and Kubernetes.
 
-Many projects start with Docker Compose for local development but eventually need to deploy to Kubernetes. Podman provides a path to convert Compose-based projects into Kubernetes YAML by running the services as pods and generating manifests with `podman generate kube`.
+Many projects start with Docker Compose for local development but eventually need to deploy to Kubernetes. Podman provides a path to convert Compose-based projects into Kubernetes YAML by running the services as containers or pods and generating manifests with `podman kube generate`.
 
 ---
 
@@ -19,18 +19,20 @@ Many projects start with Docker Compose for local development but eventually nee
 ```yaml
 # docker-compose.yml
 
-version: "3.8"
 services:
   web:
+    container_name: web
     image: docker.io/library/nginx:alpine
     ports:
       - "8080:80"
   api:
+    container_name: api
     image: docker.io/library/python:3.12-slim
     command: python -m http.server 5000
     ports:
       - "5000:5000"
   db:
+    container_name: db
     image: docker.io/library/postgres:16-alpine
     environment:
       POSTGRES_PASSWORD: secret
@@ -40,11 +42,11 @@ volumes:
   db-data:
 ```
 
-## Running with podman-compose
+## Running with podman compose
 
 ```bash
-# Start the services using podman-compose
-podman-compose up -d
+# Start the services using Podman's Compose wrapper
+podman compose up -d
 
 # Verify all containers are running
 podman ps
@@ -57,16 +59,16 @@ podman ps
 podman ps --format "{{.Names}}"
 
 # Generate Kubernetes YAML for each service
-podman generate kube web > web-k8s.yaml
-podman generate kube api > api-k8s.yaml
-podman generate kube db > db-k8s.yaml
+podman kube generate web > web-k8s.yaml
+podman kube generate api > api-k8s.yaml
+podman kube generate db > db-k8s.yaml
 ```
 
 ## Alternative: Create a Pod and Generate
 
 ```bash
 # Stop the compose services
-podman-compose down
+podman compose down
 
 # Recreate as a Podman pod for a single combined YAML
 podman pod create --name myapp -p 8080:80 -p 5000:5000
@@ -80,7 +82,7 @@ podman run -d --pod myapp --name db \
   docker.io/library/postgres:16-alpine
 
 # Generate a single YAML with all containers
-podman generate kube myapp > myapp-k8s.yaml
+podman kube generate myapp > myapp-k8s.yaml
 ```
 
 ## Adapting the Generated YAML
@@ -133,8 +135,8 @@ spec:
 #!/bin/bash
 # compose-to-kube.sh - convert a Compose project to Kubernetes YAML
 
-# Step 1: Start services with podman-compose
-podman-compose up -d
+# Step 1: Start services with podman compose
+podman compose up -d
 
 # Step 2: Get container names
 CONTAINERS=$(podman ps --format "{{.Names}}")
@@ -142,11 +144,11 @@ CONTAINERS=$(podman ps --format "{{.Names}}")
 # Step 3: Generate YAML for each container
 for container in $CONTAINERS; do
   echo "Generating YAML for $container..."
-  podman generate kube "$container" > "${container}-k8s.yaml"
+  podman kube generate "$container" > "${container}-k8s.yaml"
 done
 
 # Step 4: Stop services
-podman-compose down
+podman compose down
 
 echo "Kubernetes YAML files generated."
 ls -la *-k8s.yaml
@@ -154,4 +156,4 @@ ls -la *-k8s.yaml
 
 ## Summary
 
-Convert Docker Compose projects to Kubernetes YAML by running services with Podman and exporting with `podman generate kube`. Create the services as a Podman pod for a combined manifest, then adapt the generated YAML with registry paths, resource limits, and Kubernetes Services for cluster deployment.
+Convert Docker Compose projects to Kubernetes YAML by running services with Podman and exporting with `podman kube generate`. Create the services as a Podman pod for a combined manifest, then adapt the generated YAML with registry paths, resource limits, and Kubernetes Services for cluster deployment.
