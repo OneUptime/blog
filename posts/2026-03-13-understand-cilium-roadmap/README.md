@@ -18,18 +18,18 @@ The Cilium roadmap is maintained in GitHub and discussed openly in community mee
 
 | Location | Content |
 |----------|---------|
-| GitHub Projects (cilium/cilium) | Release planning boards |
+| GitHub Projects (cilium/cilium) | Release blockers, SIG roadmaps, and other tracking boards |
 | GitHub Issues with `roadmap` label | Feature requests and tracking issues |
-| Weekly community meeting notes | Current sprint priorities |
+| Weekly community meeting notes | Release status and next-release development items |
 | Cilium blog | Feature announcements and previews |
 
 ## How to Read GitHub Projects
 
-The main Cilium GitHub project board organizes work by:
+The Cilium GitHub Projects page contains multiple boards for different workstreams, such as release blockers, CI quarantine, and SIG-specific roadmaps. Depending on the board, work is usually organized by status or release relevance:
 
-1. **Backlog**: Planned but not yet scheduled
+1. **Backlog or proposed**: Planned or under consideration
 2. **In Progress**: Active development
-3. **Done**: Completed in the current cycle
+3. **Done or closed**: Completed, rejected, or no longer active
 
 ```bash
 # View issues labeled roadmap
@@ -67,7 +67,7 @@ Cilium roadmap items typically fall into:
 
 1. **File detailed GitHub issues** describing the use case and impact
 2. **Attend weekly community meetings** and raise the topic
-3. **Submit an RFC** for significant feature proposals
+3. **Submit a Cilium Feature Proposal (CFP)** for significant feature proposals
 4. **Contribute code** - roadmap items with contributors advance faster
 
 ## Tracking Specific Features
