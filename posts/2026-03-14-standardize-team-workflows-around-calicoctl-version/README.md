@@ -120,37 +120,37 @@ fi
 
 Create a standard onboarding checklist for new team members:
 
-```markdown
+````markdown
 ## Calico Tools Onboarding
 
 1. Install calicoctl using the team script:
    ```
    ./install-calicoctl.sh v3.27.0
-   ```text
+   ```
 
 2. Verify installation:
    ```
    calicoctl version
-   ```text
+   ```
 
 3. Configure datastore access:
    ```
    export DATASTORE_TYPE=kubernetes
    export KUBECONFIG=~/.kube/config
-   ```text
+   ```
 
 4. Run the team validation script:
    ```
    ./validate-calico-setup.sh
-   ```text
+   ```
 
 5. Confirm you can access each environment:
    ```
    for ctx in dev staging prod; do
      kubectl --context=$ctx get clusterinformation default
    done
-   ```text
-```
+   ```
+````
 
 ## Pre-Commit and Pre-Apply Hooks
 
@@ -208,8 +208,11 @@ REPORT_FILE="/tmp/calico-version-report-$(date +%Y%m%d).txt"
     VER=$(kubectl --context="$CONTEXT" get clusterinformation default       -o jsonpath='{.spec.calicoVersion}' 2>/dev/null)
     echo "  Calico Version: ${VER:-UNREACHABLE}"
     
-    NODES=$(kubectl --context="$CONTEXT" get nodes --no-headers 2>/dev/null | wc -l)
-    echo "  Node Count: ${NODES:-N/A}"
+    if NODES=$(kubectl --context="$CONTEXT" get nodes --no-headers 2>/dev/null); then
+      echo "  Node Count: $(printf '%s\n' "$NODES" | wc -l)"
+    else
+      echo "  Node Count: N/A"
+    fi
     echo ""
   done
 
