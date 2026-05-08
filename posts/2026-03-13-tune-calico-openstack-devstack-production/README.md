@@ -34,9 +34,11 @@ calicoctl patch felixconfiguration default \
 
 ## Step 2: Configure Production IP Pool Settings
 
+Calico's default IPv4 block size is `/26`. If you need a different block size, set `blockSize` when creating the IP pool; it cannot be edited directly after the pool has been created. For a VXLAN pool, patch `vxlanMode` instead of `ipipMode`.
+
 ```bash
 calicoctl patch ippool default-ipv4-ippool \
-  --patch '{"spec":{"blockSize":26,"encapsulation":"None"}}'
+  --patch '{"spec":{"ipipMode":"Never"}}'
 ```
 
 ## Step 3: Test Policy Convergence Time
@@ -48,7 +50,7 @@ TIME_BEFORE=$(date +%s%N)
 openstack security group rule create --protocol tcp --dst-port 8080 test-sg
 # Check when iptables rule appears
 
-while ! sudo iptables -L | grep -q "dpt:8080"; do sleep 0.1; done
+while ! sudo iptables -L -n | grep -q "dpt:8080"; do sleep 0.1; done
 TIME_AFTER=$(date +%s%N)
 echo "Policy convergence: $(( ($TIME_AFTER - $TIME_BEFORE) / 1000000 )) ms"
 ```
@@ -83,7 +85,7 @@ ETCDCTL_API=3 etcdctl --endpoints=http://127.0.0.1:2379 \
 curl -s http://127.0.0.1:9091/metrics | grep felix_
 ```
 
-Confirm `felix_exec_time_seconds` is within expected bounds.
+Confirm `felix_exec_time_micros` and `felix_int_dataplane_apply_time_seconds` are within expected bounds.
 
 ## Conclusion
 
