@@ -23,7 +23,7 @@ podman run -d --name web \
   -p 192.168.1.100:8080:80 \
   docker.io/library/nginx:latest
 
-# Only accessible from the 192.168.1.0/24 network
+# Accessible through the 192.168.1.100 host address
 curl http://192.168.1.100:8080
 # This works
 
@@ -124,7 +124,7 @@ podman inspect web --format '{{ json .NetworkSettings.Ports }}'
 ss -tlnp | grep 8080
 ```
 
-## Using --mount with Port Binding
+## Using --network with Port Binding
 
 ```bash
 # Combine specific IP binding with other network options
