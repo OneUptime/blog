@@ -32,7 +32,7 @@ Felix is configured through the FelixConfiguration custom resource:
 calicoctl get felixconfiguration default -o yaml
 ```
 
-The default resource applies to all nodes. You can create node-specific overrides by creating FelixConfiguration resources with names matching node hostnames.
+The default resource applies to all nodes. You can create node-specific overrides by creating FelixConfiguration resources named `node.<nodename>`.
 
 ## Key Configuration Parameters
 
@@ -47,8 +47,8 @@ spec:
   bpfEnabled: false
 ```
 
-- `bpfEnabled: false` uses the standard iptables dataplane (default and most battle-tested).
-- `bpfEnabled: true` switches to the eBPF dataplane, which provides better performance and avoids kube-proxy, but requires Linux kernel 5.3+ (5.8+ strongly recommended for CO-RE support).
+- `bpfEnabled: false` uses the standard Linux dataplane, which is iptables-based unless nftables is configured.
+- `bpfEnabled: true` switches manifest-based installs to the eBPF dataplane, which provides better performance and can replace kube-proxy, but current Calico releases require Linux kernel 5.10+ (or a supported RHEL kernel with the required backports). For operator-managed installs, use the operator `Installation` resource's `linuxDataplane: BPF` setting instead.
 
 ### Encapsulation Settings
 
@@ -58,7 +58,8 @@ spec:
   vxlanEnabled: false
 ```
 
-- Enable only one encapsulation mode at a time.
+- `ipipEnabled` and `vxlanEnabled` override whether Felix creates tunnel devices. In most Kubernetes deployments, configure encapsulation on IP pools (`ipipMode` or `vxlanMode`) or through the operator `Installation` resource instead.
+- Enable only one encapsulation mode per IP pool.
 - IPIP has lower overhead but requires protocol 4 to be allowed by your network.
 - VXLAN works on any network that allows UDP but has slightly higher overhead.
 
@@ -67,7 +68,7 @@ spec:
 ```yaml
 spec:
   logSeverityScreen: Info
-  reportingInterval: 30s
+  usageReportingInterval: 24h
   healthEnabled: true
   healthPort: 9099
   prometheusMetricsEnabled: true
@@ -94,17 +95,17 @@ spec:
 ```
 
 - `defaultEndpointToHostAction: Drop` prevents pods from accessing host services unless explicitly allowed.
-- Failsafe ports are always allowed even when host endpoint policies are applied. Always include SSH (22) and kubelet (10250).
+- Failsafe ports are always allowed even when host endpoint policies are applied. Keep only the ports required for your environment, such as SSH (22) or kubelet (10250) if those services must remain reachable through host endpoint policy.
 
 ## Node-Specific Overrides
 
-Create a FelixConfiguration named after a specific node to override settings for that node only:
+Create a FelixConfiguration named `node.<nodename>` to override settings for that node only:
 
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: FelixConfiguration
 metadata:
-  name: worker-node-1
+  name: node.worker-node-1
 spec:
   logSeverityScreen: Debug
 ```
@@ -132,7 +133,7 @@ kubectl exec -n calico-system <calico-node-pod> -c calico-node -- wget -qO- http
 - Common cause: invalid field values or incompatible combinations (e.g., IPIP + VXLAN both enabled).
 
 **High CPU usage on calico-node:**
-- Check if `reportingInterval` is too low.
+- Check if Felix refresh intervals such as `iptablesRefreshInterval` or `ipsetsRefreshInterval` are too low.
 - Verify `logSeverityScreen` is not set to Debug in production.
 - Consider enabling eBPF mode for better performance at scale.
 
@@ -172,8 +173,9 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current identity can modify Calico resources
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces
+kubectl auth can-i update felixconfigurations.crd.projectcalico.org --all-namespaces
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
