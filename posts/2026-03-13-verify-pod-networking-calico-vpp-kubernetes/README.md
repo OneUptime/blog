@@ -18,50 +18,57 @@ VPP provides its own CLI with detailed interface statistics, session tables, and
 
 - Calico VPP installed and running on a Kubernetes cluster
 - `kubectl` with cluster admin access
-- VPP manager pods running in the `calico-vpp-dataplane` namespace
+- `calico-vpp-node` pods running in the `calico-vpp-dataplane` namespace
 
-## Step 1: Verify VPP Manager Pods Are Running
+## Step 1: Verify Calico VPP Pods Are Running
 
 ```bash
-kubectl get pods -n calico-vpp-dataplane
-kubectl get pods -n kube-system -l k8s-app=calico-node
+kubectl get daemonset -n calico-vpp-dataplane calico-vpp-node
+kubectl get pods -n calico-vpp-dataplane -l k8s-app=calico-vpp-node
 ```
 
 ## Step 2: Check VPP Interface State
 
 ```bash
-kubectl exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show interface
+kubectl exec -n calico-vpp-dataplane <calico-vpp-node-pod> -c vpp -- vppctl -s /var/run/vpp/cli.sock show interface
 ```
 
-The primary data interface (e.g., `GigabitEthernetb/0/0` or `host-eth1`) should show `up` state.
+The primary data interface (e.g., `GigabitEthernet0/0/0` or `host-eth1`) should show `up` state.
 
 ## Step 3: Verify VPP Is Processing Pod Traffic
 
-Deploy a test pod and check VPP's session table for traffic.
+Deploy a test pod and use a VPP trace to confirm that packets enter the VPP processing graph.
 
 ```bash
 kubectl run test-vpp --image=busybox -- sleep 300
 kubectl get pod test-vpp -o wide
 ```
 
+Clear the trace buffer and add a trace for traffic arriving from pods:
+
+```bash
+kubectl exec -n calico-vpp-dataplane <calico-vpp-node-pod> -c vpp -- vppctl -s /var/run/vpp/cli.sock clear trace
+kubectl exec -n calico-vpp-dataplane <calico-vpp-node-pod> -c vpp -- vppctl -s /var/run/vpp/cli.sock trace add virtio-input 100
+```
+
 From the test pod, generate traffic:
 
 ```bash
-kubectl exec test-vpp -- wget -qO- http://google.com
+kubectl exec test-vpp -- wget -qO- http://example.com
 ```
 
-Check VPP sessions:
+Check the VPP trace:
 
 ```bash
-kubectl exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show session
+kubectl exec -n calico-vpp-dataplane <calico-vpp-node-pod> -c vpp -- vppctl -s /var/run/vpp/cli.sock show trace max 100
 ```
 
-Traffic sessions from the pod should appear in VPP's session table.
+The trace should include packets from the test pod and show the VPP graph nodes that processed them.
 
 ## Step 4: Check VPP Interface Statistics
 
 ```bash
-kubectl exec -n calico-vpp-dataplane <vpp-manager-pod> -- vppctl show interface statistics
+kubectl exec -n calico-vpp-dataplane <calico-vpp-node-pod> -c vpp -- vppctl -s /var/run/vpp/cli.sock show interface
 ```
 
 Look for increasing packet counts on the data interface, confirming VPP is processing traffic.
@@ -87,4 +94,4 @@ With VPP and DPDK, you should see throughput significantly above what standard k
 
 ## Conclusion
 
-Verifying Calico VPP requires confirming that VPP interfaces are up and processing packets (via `vppctl show interface statistics`), that pod traffic flows through VPP's session table, and that cross-node throughput meets the performance expectations that motivated the VPP installation. The VPP CLI is the primary tool for this deeper verification beyond standard connectivity checks.
+Verifying Calico VPP requires confirming that VPP interfaces are up and processing packets (via `vppctl show interface`), that pod traffic appears in VPP traces, and that cross-node throughput meets the performance expectations that motivated the VPP installation. The VPP CLI is the primary tool for this deeper verification beyond standard connectivity checks.
