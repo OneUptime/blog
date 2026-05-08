@@ -10,7 +10,7 @@ Description: Learn how to validate that Kubernetes service ClusterIP addresses a
 
 ## Introduction
 
-Kubernetes services use ClusterIP addresses drawn from the service CIDR - a separate IP range from the pod CIDR. Unlike pod IPs, ClusterIP addresses are virtual; they exist only in iptables or eBPF rules and are never assigned to actual network interfaces. This means routing service IPs requires kube-proxy or Calico's eBPF dataplane to intercept and translate traffic.
+Kubernetes services use ClusterIP addresses drawn from the service CIDR - a separate IP range from the pod CIDR. Unlike pod IPs, ClusterIP addresses are virtual; they are implemented by service proxy rules such as iptables, IPVS, nftables, or Calico eBPF, and are not assigned to actual network interfaces. This means routing service IPs requires kube-proxy or Calico's eBPF dataplane to intercept and translate traffic.
 
 When service CIDR reachability breaks, pods cannot reach other services via their ClusterIP addresses, causing application-level failures that appear as DNS resolution succeeding but connections failing. This is distinct from pod-to-pod connectivity issues and requires a different diagnostic approach.
 
@@ -28,15 +28,18 @@ This guide covers validation of service CIDR reachability in Calico-managed clus
 Confirm the service CIDR configured in the cluster.
 
 ```bash
+# Get the service CIDR from the Kubernetes ServiceCIDR API, if available
+kubectl get servicecidrs
+
 # Get the service CIDR from kube-apiserver configuration
 
 kubectl cluster-info dump | grep -m1 "service-cluster-ip-range"
 
-# Alternative: check via kube-controller-manager
+# Alternative for kubeadm clusters: check the kubeadm ClusterConfiguration
 kubectl get cm -n kube-system kubeadm-config -o yaml | grep serviceSubnet
 
 # List all services to see the ClusterIP range in use
-kubectl get services --all-namespaces | grep -v None | awk '{print $4}' | sort
+kubectl get services --all-namespaces -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,CLUSTER-IP:.spec.clusterIP --no-headers | grep -v "None" | sort
 ```
 
 ## Step 2: Test Service Reachability from a Pod
@@ -49,27 +52,27 @@ KUBE_SVC_IP=$(kubectl get svc kubernetes -n default -o jsonpath='{.spec.clusterI
 echo "Kubernetes service IP: $KUBE_SVC_IP"
 
 # Test connectivity to the Kubernetes API service from a pod
-kubectl run svc-test --image=busybox:1.28 --restart=Never -- sleep 3600
-kubectl exec svc-test -- wget -q -O- --timeout=5 https://$KUBE_SVC_IP
+kubectl run svc-test --image=busybox:1.36 --restart=Never -- sleep 3600
+kubectl exec svc-test -- nc -z -w 5 $KUBE_SVC_IP 443
 
 # Test a regular ClusterIP service
-kubectl exec svc-test -- nc -zv <service-clusterip> <port>
+kubectl exec svc-test -- nc -z -w 5 <service-clusterip> <port>
 ```
 
 ## Step 3: Inspect iptables Rules for Service Translation
 
-Verify that kube-proxy has created the correct iptables DNAT rules for services.
+If kube-proxy is running in iptables mode, verify that it has created the correct DNAT rules for services.
 
 ```bash
 # Check KUBE-SERVICES iptables chain on a node
-kubectl debug node/<node-name> -it --image=ubuntu -- iptables -t nat -L KUBE-SERVICES -n
+kubectl debug node/<node-name> -it --profile=netadmin --image=nicolaka/netshoot -- iptables -t nat -L KUBE-SERVICES -n
 
 # Find the specific rules for a service ClusterIP
 SVC_IP=<service-clusterip>
-kubectl debug node/<node-name> -it --image=ubuntu -- iptables -t nat -L -n | grep $SVC_IP
+kubectl debug node/<node-name> -it --profile=netadmin --image=nicolaka/netshoot -- iptables -t nat -L -n | grep $SVC_IP
 
 # Verify KUBE-POSTROUTING rules for masquerade
-kubectl debug node/<node-name> -it --image=ubuntu -- iptables -t nat -L KUBE-POSTROUTING -n
+kubectl debug node/<node-name> -it --profile=netadmin --image=nicolaka/netshoot -- iptables -t nat -L KUBE-POSTROUTING -n
 ```
 
 ## Step 4: Validate Calico Does Not Block Service CIDR Traffic
@@ -96,10 +99,10 @@ Ensure Calico is not treating the service CIDR as a pod IP pool or routing it in
 # Check that the service CIDR is not accidentally in a Calico IP pool
 calicoctl get ippool -o wide
 
-# Verify Calico Felix knows about the service CIDR
-kubectl get cm -n kube-system calico-config -o yaml | grep -i "service\|cluster"
+# If Calico advertises service IPs over BGP, verify the configured service CIDRs
+calicoctl get bgpconfiguration default -o yaml | grep -A5 serviceClusterIPs
 
-# Check that routes to the service CIDR are handled by kube-proxy, not BGP
+# Check whether a node route to the service CIDR exists; kube-proxy iptables mode normally does not require one
 kubectl debug node/<node-name> -it --image=busybox -- ip route show | grep <service-cidr>
 ```
 
