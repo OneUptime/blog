@@ -10,7 +10,7 @@ Description: Understand when and how to run containers in privileged mode with P
 
 > Privileged mode grants a container nearly unrestricted access to the host system, so use it only when you fully understand the trade-offs.
 
-By default, containers run with restricted capabilities for security. They cannot access host devices, load kernel modules, or modify system configurations. However, certain workloads require elevated privileges, such as running Docker-in-Docker, managing network interfaces, or accessing hardware devices.
+By default, containers run with restricted capabilities for security. They have limited access to host devices and cannot load kernel modules or modify system configurations. However, certain workloads require elevated privileges, such as running container engines inside containers, managing network interfaces, or accessing hardware devices.
 
 Podman's `--privileged` flag removes these restrictions. This guide explains how it works, when to use it, and how to use safer alternatives when possible.
 
@@ -22,9 +22,9 @@ When you run a container with `--privileged`, Podman:
 
 - Grants all Linux capabilities to the container
 - Disables SELinux and AppArmor confinement
-- Gives access to all host devices under `/dev`
+- Gives the container the same host device access as the user launching it
 - Removes seccomp filtering
-- Mounts `/proc` and `/sys` as read-write
+- Disables Podman's default read-only and masked path protections for parts of `/proc` and `/sys`
 
 ```bash
 # Run a container in privileged mode
@@ -64,7 +64,7 @@ podman run --rm alpine sh -c "cat /proc/self/status | grep Cap"
 ### Running Container Engines Inside Containers
 
 ```bash
-# Run Podman inside Podman (requires privileged)
+# Run Podman inside Podman with extended privileges
 podman run --privileged -it --name inner-podman \
   quay.io/podman/stable:latest \
   podman run --rm alpine echo "Nested container works"
@@ -159,7 +159,7 @@ podman run --device /dev/sda:/dev/sda:r -it alpine sh -c "
 ### Using Custom Seccomp Profiles
 
 ```bash
-# Run with the default seccomp profile (this is the normal behavior)
+# Turn off seccomp confinement
 podman run --security-opt seccomp=unconfined -it alpine sh -c "
   echo 'Running with unconfined seccomp'
 "
