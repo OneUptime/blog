@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Window, Networking, CNI, Verification
+Tags: Calico, Kubernetes, Windows, Networking, CNI, Verification
 
 Description: A guide to verifying Calico pod networking on Windows nodes, including cross-OS connectivity between Windows and Linux pods.
 
@@ -17,7 +17,7 @@ Windows containers use a different network namespace model than Linux containers
 ## Prerequisites
 
 - Calico running on both Linux and Windows nodes in a Kubernetes cluster
-- `kubectl` access from a Linux node
+- `kubectl` access from a Linux or other Unix-like shell
 - PowerShell access to at least one Windows node
 
 ## Step 1: Verify Windows Calico Services
@@ -26,14 +26,14 @@ Windows containers use a different network namespace model than Linux containers
 Get-Service CalicoNode, CalicoFelix | Select-Object Name, Status, StartType
 ```
 
-Both should show `Running` status.
+Both should show `Running` status for manually installed Calico for Windows. If Calico for Windows was installed by the Tigera Operator with HostProcess containers, check the `calico-node-windows` pods instead because the Calico services are not registered directly on the host.
 
 ## Step 2: Check HNS Endpoints
 
 ```powershell
 # List all HNS endpoints (one per running pod on the Windows node)
-
-Get-HnsEndpoint | Select-Object Id, IPAddress, MacAddress
+ipmo -DisableNameChecking C:\CalicoWindows\libs\hns\hns.psm1
+Get-HNSEndpoint | Select-Object Id, IPAddress, MacAddress
 ```
 
 Each running Windows pod should have a corresponding HNS endpoint.
@@ -42,18 +42,33 @@ Each running Windows pod should have a corresponding HNS endpoint.
 
 ```bash
 # Apply a Windows pod manifest
-cat <<EOF | kubectl apply -f -
+cat <<'EOF' | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
   name: win-verify
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   containers:
   - name: win
-    image: mcr.microsoft.com/windows/servercore:ltsc2019
-    command: ["powershell", "-Command", "while($true) { Start-Sleep 10 }"]
+    # Use a tag that matches the Windows node OS version, such as ltsc2022 for Windows Server 2022.
+    image: mcr.microsoft.com/windows/servercore:ltsc2022
+    command:
+    - powershell.exe
+    - -Command
+    - |
+      $listener = New-Object System.Net.HttpListener
+      $listener.Prefixes.Add('http://*:8080/')
+      $listener.Start()
+      while ($listener.IsListening) {
+        $context = $listener.GetContext()
+        $bytes = [Text.Encoding]::UTF8.GetBytes('ok')
+        $context.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+        $context.Response.Close()
+      }
 EOF
 kubectl get pod win-verify -o wide
 ```
@@ -69,15 +84,15 @@ kubectl exec win-verify -- powershell -Command "Invoke-WebRequest -Uri http://ex
 
 ```bash
 # Deploy a Linux pod
-kubectl run linux-verify --image=busybox -- sleep 300
+kubectl run linux-verify --image=busybox:1.36 --restart=Never -- sh -c 'mkdir -p /www && echo ok > /www/index.html && httpd -f -p 8080 -h /www'
 LINUX_IP=$(kubectl get pod linux-verify -o jsonpath='{.status.podIP}')
 WIN_IP=$(kubectl get pod win-verify -o jsonpath='{.status.podIP}')
 
-# Windows pod pings Linux pod
-kubectl exec win-verify -- powershell -Command "Test-NetConnection -ComputerName $LINUX_IP -Port 80"
+# Windows pod connects to the Linux pod's HTTP listener
+kubectl exec win-verify -- powershell -Command "Test-NetConnection -ComputerName $LINUX_IP -Port 8080"
 
-# Linux pod pings Windows pod
-kubectl exec linux-verify -- ping -c3 $WIN_IP
+# Linux pod connects to the Windows pod's HTTP listener
+kubectl exec linux-verify -- wget -qO- http://$WIN_IP:8080/
 ```
 
 ## Step 6: Verify IPAM for Windows Nodes
@@ -93,6 +108,9 @@ kubectl get node <windows-node> -o yaml | grep podCIDR
 Get-EventLog -LogName Application -Source CalicoNode -Newest 20
 # Or check the log file
 Get-Content C:\CalicoWindows\logs\calico-node.log -Tail 30
+# For operator-managed HostProcess installs
+kubectl logs -n calico-system -l k8s-app=calico-node-windows -c node --tail=30
+kubectl logs -n calico-system -l k8s-app=calico-node-windows -c felix --tail=30
 ```
 
 ## Conclusion
