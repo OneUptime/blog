@@ -12,7 +12,7 @@ Description: Learn how to validate that your Cilium security policies account fo
 
 Validating Cilium security policies is essential to confirm that your network security posture is as strong as you intend. Given Cilium's known limitations, validation must go beyond simply applying policies and hoping they work.
 
-A proper validation strategy includes automated connectivity testing, flow analysis, and policy simulation. This ensures that even when Cilium has constraints around certain traffic patterns, your overall security model remains intact.
+A proper validation strategy includes automated connectivity testing, flow analysis, and policy state inspection. This ensures that even when Cilium has constraints around certain traffic patterns, your overall security model remains intact.
 
 This guide provides a comprehensive framework for validating your Cilium policies, with particular attention to areas where limitations may create gaps.
 
@@ -68,11 +68,11 @@ spec:
 
 ## Running Cilium Connectivity Tests
 
-Cilium provides a built-in connectivity test suite that validates many common scenarios.
+Cilium provides a built-in connectivity test suite that validates the installation and many common scenarios.
 
 ```bash
 # Run the full connectivity test suite
-cilium connectivity test --namespace cilium-validation
+cilium connectivity test --test-namespace cilium-validation
 
 # Run specific test scenarios to target known limitation areas
 cilium connectivity test --test to-fqdns
@@ -87,17 +87,17 @@ Use Hubble to observe real traffic flows and confirm policies are being enforced
 
 ```bash
 # Monitor all flows in the validation namespace
-hubble observe --namespace cilium-validation --output compact
+hubble observe --namespace cilium-validation --output compact --follow
 
 # Test allowed traffic and verify it succeeds
 kubectl -n cilium-validation exec client -- \
-  wget --timeout=5 -q -O - http://server
+  wget -T 5 -q -O - http://server
 
 # Test that unauthorized traffic is blocked
 kubectl -n cilium-validation run unauthorized \
-  --image=busybox:1.36 --rm -it --restart=Never \
+  --image=busybox:1.36 --rm --attach --restart=Never \
   --labels="app=unauthorized" -- \
-  wget --timeout=3 -q -O - http://server
+  wget -T 3 -q -O - http://server || true
 
 # Verify the drop was recorded
 hubble observe --namespace cilium-validation --verdict DROPPED --last 10
@@ -115,6 +115,7 @@ Integrate policy validation into your CI/CD pipeline for continuous assurance.
 set -euo pipefail
 
 NAMESPACE="cilium-validation"
+CONNECTIVITY_TEST_NAMESPACE="cilium-connectivity"
 
 echo "Step 1: Checking Cilium agent health..."
 cilium status || exit 1
@@ -126,16 +127,16 @@ echo "Step 3: Waiting for policy propagation..."
 sleep 10
 
 echo "Step 4: Running connectivity tests..."
-cilium connectivity test --namespace "$NAMESPACE"
+cilium connectivity test --test-namespace "$CONNECTIVITY_TEST_NAMESPACE"
 
 echo "Step 5: Verifying endpoint policy status..."
-ENDPOINTS=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.policy.realized."l4-ingress" != null)] | length')
+ENDPOINTS=$(kubectl get ciliumendpoints -n "$NAMESPACE" -o json | \
+  jq '[.items[] | select((.status.policy.realized.l4.ingress // []) | length > 0)] | length')
 echo "Endpoints with active policies: $ENDPOINTS"
 
 echo "Step 6: Checking for unintended drops..."
 DROPS=$(hubble observe --namespace "$NAMESPACE" --verdict DROPPED --last 100 -o json | \
-  jq '[.flow] | length')
+  jq -s '[.[].flow] | length')
 echo "Drops detected: $DROPS"
 
 echo "Validation complete."
@@ -153,7 +154,7 @@ kubectl get namespaces --show-labels
 
 # Identify cross-namespace communication patterns
 hubble observe --output json --last 500 | \
-  jq '.flow | select(.source.namespace != .destination.namespace) | {
+  jq -c '.flow | select(.source.namespace != .destination.namespace) | {
     src_ns: .source.namespace,
     dst_ns: .destination.namespace,
     port: (.l4.TCP.destination_port // .l4.UDP.destination_port)
@@ -173,16 +174,22 @@ When designing your segmentation strategy, ensure that each security zone has ex
 ```bash
 # Final verification checklist
 # 1. All endpoints have correct identity
-cilium endpoint list -o json | jq '.[] | .status.identity.id'
+kubectl get ciliumendpoints -A -o json | jq '.items[] | .status.identity.id'
 
-# 2. All policies are in realized state
-cilium policy get -o json | jq '.[] | {name: .metadata.name, state: .status}'
+# 2. Endpoint policy state is realized
+kubectl get ciliumendpoints -A -o json | \
+  jq '.items[] | {
+    namespace: .metadata.namespace,
+    name: .metadata.name,
+    policy_enabled: .status.policy.realized."policy-enabled",
+    policy_revision: .status.policy.realized."policy-revision"
+  }'
 
 # 3. No unexpected drops in production namespaces
 hubble observe --namespace production --verdict DROPPED --last 50
 
 # 4. Connectivity test passes
-cilium connectivity test
+cilium connectivity test --test-namespace cilium-connectivity
 ```
 
 ## Troubleshooting
