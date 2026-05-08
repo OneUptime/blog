@@ -40,8 +40,11 @@ podman --connection my-machine images --format "{{.Repository}}:{{.Tag}}"
 # Save the list of images to a file for reference
 podman --connection my-machine images --format "{{.Repository}}:{{.Tag}}" > saved-images.txt
 
-# Export any containers with important data
+# Export any container filesystems with important data
 podman --connection my-machine export my-container > my-container-backup.tar
+
+# Export named volumes separately if they contain important data
+podman --connection my-machine volume export my-volume --output my-volume-backup.tar
 ```
 
 ## Recording Current Configuration
@@ -53,7 +56,7 @@ Document the current configuration so you can selectively reapply settings you w
 podman machine inspect my-machine > machine-config-backup.json
 
 # Extract key settings
-podman machine inspect my-machine | jq '{
+podman machine inspect my-machine | jq '.[0] | {
     cpus: .Resources.CPUs,
     memory: .Resources.Memory,
     disk: .Resources.DiskSize,
@@ -79,7 +82,7 @@ podman machine init my-machine
 podman machine start my-machine
 ```
 
-The default settings for a new machine typically include 1 CPU, 2 GB of memory, and 100 GB of disk space, though these defaults may vary by platform and Podman version.
+The default settings for a new machine vary by platform, provider, Podman version, and any `[machine]` settings in `containers.conf`. Check the fresh machine with `podman machine inspect my-machine` or `podman machine ls`.
 
 ## Resetting the Default Machine
 
