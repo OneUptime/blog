@@ -127,7 +127,7 @@ podman push quay.io/myusername/myapp:v1.0.0
 # 3. Change repository visibility to Public
 
 # You can also set visibility using the Quay API
-curl -X PUT "https://quay.io/api/v1/repository/myusername/myapp" \
+curl -X POST "https://quay.io/api/v1/repository/myusername/myapp/changevisibility" \
   -H "Authorization: Bearer $QUAY_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"visibility": "public"}'
