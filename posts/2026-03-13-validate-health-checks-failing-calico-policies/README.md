@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Troubleshooting
 
-Description: Validation steps to confirm health check probes are working correctly after fixing Calico NetworkPolicy ingress rules including pod readiness confirmation and probe event monitoring.
+Description: Validation steps to confirm health check probes are working correctly after fixing Calico host endpoint or GlobalNetworkPolicy rules including pod readiness confirmation and probe event monitoring.
 
 ---
 
 ## Introduction
 
-Validating that health check failures are resolved after a Calico NetworkPolicy fix requires confirming that all probe types (liveness, readiness, startup) are passing, that pod restart counts have stabilized, and that the emergency policy has been replaced with a permanent fix. A brief monitoring window after the fix is essential to catch probes that pass initially but fail under load.
+Validating that health check failures are resolved after a Calico host endpoint or GlobalNetworkPolicy fix requires confirming that all probe types (liveness, readiness, startup) are passing, that pod restart counts have stabilized, and that the emergency policy has been replaced with a permanent fix. Standard Kubernetes NetworkPolicy does not block kubelet probes from the node hosting the pod, so this validation applies when Calico host endpoint or global policy is controlling node traffic. A brief monitoring window after the fix is essential to catch probes that pass initially but fail under load.
 
 ## Symptoms
 
@@ -21,8 +21,8 @@ Validating that health check failures are resolved after a Calico NetworkPolicy 
 ## Root Causes
 
 - Fix covered readiness probe port but not liveness probe port (different ports)
-- Emergency policy applied but blocking policy not updated
-- Multiple nodes with different CIDRs, fix only covered some nodes
+- Emergency policy applied but blocking host endpoint or global policy not updated
+- Multiple nodes with different addresses or labels, fix only covered some nodes
 
 ## Diagnosis Steps
 
@@ -63,7 +63,7 @@ kubectl get pods -n <namespace> \
 # Expected: restart count did not increase
 ```
 
-**Validation Step 4: Test all probe ports are accessible from node**
+**Validation Step 4: Test all probe ports are accessible from the pod's node**
 
 ```bash
 # From the node hosting the pod:
@@ -72,18 +72,18 @@ POD_IP=$(kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.status.podIP}'
 
 # Test each probe port (get from pod spec)
 for PORT in 8080 8443 9090; do
-  ssh $NODE "nc -zv $POD_IP $PORT 2>&1" && echo "Port $PORT: OPEN" || echo "Port $PORT: BLOCKED"
+  ssh "$NODE" "nc -zv $POD_IP $PORT 2>&1" && echo "Port $PORT: OPEN" || echo "Port $PORT: BLOCKED"
 done
 ```
 
 **Validation Step 5: Confirm permanent fix and remove emergency policy**
 
 ```bash
-# Verify the blocking policy now has node CIDR allow
-kubectl get networkpolicy -n <namespace> -o yaml | grep -B2 -A5 "ipBlock:"
+# Verify the blocking Calico policy now allows the relevant node source addresses or selectors
+kubectl get globalnetworkpolicy -o yaml | grep -B2 -A6 -E "source:|selector:|nets:|ports:"
 
 # Remove emergency policy if permanent fix is confirmed
-kubectl delete networkpolicy emergency-allow-kubelet-probes -n <namespace> --ignore-not-found
+kubectl delete globalnetworkpolicy emergency-allow-kubelet-probes --ignore-not-found
 
 # Watch for 2 minutes to confirm probes still pass after emergency removal
 watch -n10 kubectl get pods -n <namespace>
@@ -105,7 +105,7 @@ flowchart TD
 ## Prevention
 
 - List all probe ports when creating fix - cover all (liveness, readiness, startup)
-- Document node CIDR change process that includes updating existing NetworkPolicies
+- Document node address and label change processes that include updating existing Calico host endpoint or global policies
 - Add restart-count stability check to incident closure criteria
 
 ## Conclusion
