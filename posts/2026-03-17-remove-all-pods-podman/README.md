@@ -46,7 +46,7 @@ podman pod prune
 # Confirm the prune operation
 # Are you sure you want to remove all stopped pods? [y/N] y
 
-# Skip confirmation with --force
+# Force pruning running pods too
 podman pod prune --force
 ```
 
@@ -79,7 +79,7 @@ podman system df
 # List all pods before removing them
 
 echo "The following pods will be removed:"
-podman pod ls --format "  {{.Name}} ({{.Status}}, {{.NumContainers}} containers)"
+podman pod ls --format "  {{.Name}} ({{.Status}}, {{.NumberOfContainers}} containers)"
 
 read -p "Continue? [y/N] " confirm
 if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
