@@ -42,6 +42,8 @@ Configure Neutron for higher throughput:
 
 ```bash
 # /etc/neutron/neutron.conf optimizations
+# Add these options to neutron.conf or to a supplemental file that
+# your neutron-server service includes with --config-file.
 # Increase API workers for more concurrent requests
 cat << 'EOF' | sudo tee /etc/neutron/neutron.conf.d/kuryr-scale.conf
 [DEFAULT]
@@ -122,7 +124,7 @@ spec:
   # Larger block size for pod density
   blockSize: 24
   natOutgoing: true
-  encapsulation: VXLAN
+  vxlanMode: Always
   nodeSelector: all()
 ---
 # Existing VM pool remains unchanged
@@ -134,7 +136,7 @@ spec:
   cidr: 10.0.0.0/16
   blockSize: 26
   natOutgoing: true
-  encapsulation: VXLAN
+  vxlanMode: Always
   nodeSelector: all()
 ```
 
