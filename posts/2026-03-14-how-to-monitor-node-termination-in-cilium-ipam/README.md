@@ -10,9 +10,9 @@ Description: How to monitor Cilium IPAM node termination events to detect orphan
 
 ## Introduction
 
-Monitoring node termination in Cilium IPAM catches cleanup failures before they accumulate into IP address exhaustion. Every orphaned CiliumNode holds a CIDR allocation that cannot be reused. In clusters with frequent node churn, even a small cleanup failure rate leads to significant IP pool shrinkage over time.
+Monitoring node termination in Cilium IPAM catches cleanup failures before they accumulate into IP address exhaustion. An orphaned CiliumNode can keep node IPAM allocations from being reused. In clusters with frequent node churn, even a small cleanup failure rate leads to significant IP pool shrinkage over time.
 
-Key monitoring signals are CiliumNode count vs Kubernetes node count divergence, CIDR pool utilization trends, operator GC event frequency, and orphan age.
+Key monitoring signals are CiliumNode count vs Kubernetes node count divergence, IP pool utilization trends, IP release operation rates, and orphan age.
 
 ## Prerequisites
 
@@ -25,14 +25,17 @@ Key monitoring signals are CiliumNode count vs Kubernetes node count divergence,
 ```promql
 # Track node count divergence
 
-abs(kube_node_info - cilium_operator_ces_slice_count) > 0
+count(kube_node_info) != max(cilium_operator_ipam_nodes{category="total"})
 
-# Operator GC events
-rate(cilium_operator_ipam_node_release_total[1h])
+# IP release operations
 
-# Available CIDRs trending down
-cilium_ipam_available
+sum(rate(cilium_operator_ipam_ip_release_ops[1h]))
+
+# Available IPs trending down
+sum(cilium_operator_ipam_available_ips)
 ```
+
+The `cilium_operator_ipam_*` metrics are exported by the Cilium operator for cloud IPAM modes such as AWS ENI, Azure IPAM, and AlibabaCloud IPAM. For other IPAM modes, use the CiliumNode comparison script below or expose CiliumNode counts through kube-state-metrics custom resource metrics.
 
 ## Custom Monitoring Script
 
@@ -50,8 +53,8 @@ if [ "$DIFF" -gt 0 ]; then
   
   NODES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | sort)
   for cn in $(kubectl get ciliumnodes -o jsonpath='{.items[*].metadata.name}'); do
-    if ! echo "$NODES" | grep -qw "$cn"; then
-      AGE=$(kubectl get ciliumnode "$cn" -o jsonpath='{.metadata.creationTimestamp}')
+    if ! echo "$NODES" | grep -Fxq "$cn"; then
+      AGE=$(kubectl get ciliumnodes "$cn" -o jsonpath='{.metadata.creationTimestamp}')
       echo "  Orphan: $cn (created: $AGE)"
     fi
   done
@@ -67,7 +70,7 @@ graph LR
     A[Monitor CronJob] --> B{Orphans Found?}
     B -->|Yes| C[Alert]
     B -->|No| D[OK]
-    E[CIDR Trends] --> F{Shrinking?}
+    E[IP Pool Trends] --> F{Shrinking?}
     F -->|Yes| G[Investigate Leaks]
     F -->|No| H[Healthy]
 ```
@@ -86,7 +89,7 @@ spec:
       rules:
         - alert: OrphanedCiliumNodes
           expr: >
-            count(kube_node_info) != count(cilium_nodes_all)
+            count(kube_node_info) != max(cilium_operator_ipam_nodes{category="total"})
           for: 30m
           labels:
             severity: warning
@@ -104,10 +107,10 @@ cilium status | grep IPAM
 
 ## Troubleshooting
 
-- **Persistent orphans**: Operator GC interval may be too long. Decrease it or run manual cleanup.
-- **CIDR pool shrinking**: Track over time with Prometheus. Correlate with scaling events.
+- **Persistent orphans**: Operator CiliumNode GC interval may be too long. Decrease `--nodes-gc-interval` or run manual cleanup.
+- **IP pool shrinking**: Track over time with Prometheus. Correlate with scaling events.
 - **Alert fatigue during upgrades**: Exclude maintenance windows. Nodes being replaced during upgrades temporarily create mismatches.
 
 ## Conclusion
 
-Monitoring node termination cleanup prevents slow IP pool leaks. Track CiliumNode-to-node parity, alert on orphans, and watch CIDR utilization trends. Automated cleanup scripts complement monitoring for environments with high node churn.
+Monitoring node termination cleanup prevents slow IP pool leaks. Track CiliumNode-to-node parity, alert on orphans, and watch IP pool utilization trends. Automated cleanup scripts complement monitoring for environments with high node churn.
