@@ -89,7 +89,7 @@ kind: BGPPeer
 metadata:
   name: rr-mesh
 spec:
-  nodeSelector: "!route-reflector == 'true'"
+  nodeSelector: route-reflector != 'true'
   peerSelector: route-reflector == 'true'
 ```
 
@@ -106,10 +106,13 @@ spec:
 ```
 
 ```bash
+kubectl annotate node rr-node-1 projectcalico.org/RouteReflectorClusterID=244.0.0.1
+kubectl annotate node rr-node-2 projectcalico.org/RouteReflectorClusterID=244.0.0.1
 kubectl label node rr-node-1 route-reflector=true
 kubectl label node rr-node-2 route-reflector=true
 calicoctl apply -f rr-mesh.yaml
 calicoctl apply -f rr-to-rr.yaml
+calicoctl patch bgpconfiguration default -p '{"spec": {"nodeToNodeMeshEnabled": false}}'
 ```
 
 ## Creating a BGPPeer with Filters
@@ -146,7 +149,7 @@ spec:
       key: upstream-password
 ```
 
-Create the secret first:
+Create the secret first in the same namespace as the `calico/node` pod, and ensure the `calico-node` service account can read it:
 
 ```bash
 kubectl create secret generic bgp-secrets -n calico-system --from-literal=upstream-password=MyBGPSecret123
@@ -182,7 +185,7 @@ calicoctl node status
 calicoctl get bgppeer filtered-upstream-peer -o yaml
 ```
 
-The `calicoctl node status` output should show the peer with status `Established` and the correct AS number.
+The `calicoctl node status` output should show the peer with state `up` and info `Established`.
 
 ## Troubleshooting
 
@@ -193,7 +196,7 @@ If the BGP session does not establish:
 - Check calico-node logs: `kubectl logs -n calico-system -l k8s-app=calico-node | grep -i "peer\|session\|connect"`
 - Confirm the nodeSelector matches intended nodes: `kubectl get nodes -l rack=rack1`
 - Verify the BGPConfiguration AS number is set: `calicoctl get bgpconfiguration default -o yaml`
-- For password-authenticated peers, verify the secret exists: `kubectl get secret bgp-secrets -n calico-system`
+- For password-authenticated peers, verify the secret exists and the `calico-node` service account can read it: `kubectl get secret bgp-secrets -n calico-system`
 
 ## Conclusion
 
