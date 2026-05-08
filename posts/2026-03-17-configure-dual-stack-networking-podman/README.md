@@ -43,8 +43,9 @@ podman run -d --name web-dual \
 # Check both IP addresses
 podman inspect web-dual --format '{{ range .NetworkSettings.Networks }}IPv4: {{ .IPAddress }}, IPv6: {{ .GlobalIPv6Address }}{{ end }}'
 
-# Verify both addresses inside the container
-podman exec web-dual ip addr show eth0
+# Verify both addresses inside a container
+podman run --rm --network dual-stack \
+  docker.io/library/alpine:latest ip addr show eth0
 ```
 
 ## Static Dual-Stack Addresses
@@ -89,9 +90,9 @@ podman run -d --name web-public \
   -p 8080:80 \
   docker.io/library/nginx:latest
 
-# Accessible on both protocols
-# curl http://10.90.0.50:8080
-# curl http://[fd00:90::50]:80
+# Accessible through the host's published port
+# curl http://127.0.0.1:8080
+# curl http://[::1]:8080
 
 # Bind to specific addresses
 podman run -d --name web-bound \
@@ -132,8 +133,8 @@ podman run -d --name database \
 
 ```bash
 # Check routes for both protocols
-podman exec web-dual ip -4 route show
-podman exec web-dual ip -6 route show
+podman exec svc-a ip -4 route show
+podman exec svc-a ip -6 route show
 
 # Verify DNS resolution returns both address families
 podman exec svc-a getent ahosts svc-b
