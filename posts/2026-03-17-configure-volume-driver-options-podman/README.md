@@ -16,33 +16,33 @@ Podman's default local volume driver supports a range of options that control ho
 
 ## Default Local Driver Options
 
-The local driver accepts three main options: `type`, `device`, and `o` (mount options):
+The local driver accepts three main mount-related options: `type`, `device`, and `o` (mount options). Current Podman versions also support `copy` and `nocopy` for local volumes. Mount options other than ownership-related options require root privileges:
 
 ```bash
 # Create a volume with specific driver options
 
-podman volume create --driver local \
+sudo podman volume create --driver local \
   --opt type=tmpfs \
   --opt o=size=500m,noexec \
   --opt device=tmpfs \
   fast-cache
 
 # Inspect the volume to see configured options
-podman volume inspect fast-cache
+sudo podman volume inspect fast-cache
 ```
 
 ## Creating a tmpfs Volume
 
 ```bash
 # Create a tmpfs-backed volume with size limit
-podman volume create --driver local \
+sudo podman volume create --driver local \
   --opt type=tmpfs \
   --opt device=tmpfs \
   --opt o=size=256m,nodev,nosuid \
   temp-storage
 
 # Use the volume
-podman run -d --name app \
+sudo podman run -d --name app \
   -v temp-storage:/app/cache \
   docker.io/library/node:20
 ```
@@ -51,14 +51,14 @@ podman run -d --name app \
 
 ```bash
 # Create a volume backed by an NFS share
-podman volume create --driver local \
+sudo podman volume create --driver local \
   --opt type=nfs \
   --opt device=192.168.1.100:/exports/data \
   --opt o=addr=192.168.1.100,rw,nfsvers=4 \
   nfs-data
 
 # Use the NFS volume in a container
-podman run -d --name webapp \
+sudo podman run -d --name webapp \
   -v nfs-data:/app/data \
   docker.io/library/nginx:latest
 ```
@@ -67,14 +67,14 @@ podman run -d --name webapp \
 
 ```bash
 # Create a named volume that points to a host directory
-podman volume create --driver local \
+sudo podman volume create --driver local \
   --opt type=none \
   --opt device=/home/user/project-data \
   --opt o=bind \
   project-vol
 
 # This provides a named volume interface to a host directory
-podman run -d --name devapp \
+sudo podman run -d --name devapp \
   -v project-vol:/app/data \
   docker.io/library/node:20
 ```
@@ -100,29 +100,41 @@ sudo podman volume create --driver local \
 
 ```bash
 # Inspect volume driver options
-podman volume inspect fast-cache --format '{{ .Options }}'
+sudo podman volume inspect fast-cache --format '{{ .Options }}'
 
 # List all volumes with their drivers
-podman volume ls --format "{{ .Name }}\t{{ .Driver }}"
+sudo podman volume ls --format "{{ .Name }}\t{{ .Driver }}"
 
 # Get detailed JSON output
-podman volume inspect fast-cache --format '{{ json .Options }}'
+sudo podman volume inspect fast-cache --format '{{ json .Options }}'
 ```
 
 ## Common Mount Options Reference
 
 ```bash
 # Read-write with no access time updates
-podman volume create --opt o=rw,noatime my-vol
+sudo podman volume create --driver local \
+  --opt type=tmpfs \
+  --opt device=tmpfs \
+  --opt o=rw,noatime \
+  my-vol-noatime
 
 # No executable files allowed
-podman volume create --opt o=noexec my-vol
+sudo podman volume create --driver local \
+  --opt type=tmpfs \
+  --opt device=tmpfs \
+  --opt o=noexec \
+  my-vol-noexec
 
 # No setuid bits honored
-podman volume create --opt o=nosuid my-vol
+sudo podman volume create --driver local \
+  --opt type=tmpfs \
+  --opt device=tmpfs \
+  --opt o=nosuid \
+  my-vol-nosuid
 
 # Combine multiple options
-podman volume create --driver local \
+sudo podman volume create --driver local \
   --opt type=tmpfs \
   --opt device=tmpfs \
   --opt o=size=1g,noexec,nosuid,nodev \
@@ -132,9 +144,16 @@ podman volume create --driver local \
 ## Using Driver Options with --mount
 
 ```bash
-# Pass volume options inline with --mount flag
-podman run -d --name app \
-  --mount type=volume,source=mydata,target=/data,volume-opt=type=tmpfs,volume-opt=device=tmpfs,volume-opt=o=size=100m \
+# Create the volume with driver options first
+sudo podman volume create --driver local \
+  --opt type=tmpfs \
+  --opt device=tmpfs \
+  --opt o=size=100m \
+  mydata
+
+# Mount the pre-created volume with --mount
+sudo podman run -d --name mount-app \
+  --mount type=volume,source=mydata,target=/data \
   docker.io/library/alpine:latest tail -f /dev/null
 ```
 
