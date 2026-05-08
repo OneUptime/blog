@@ -19,7 +19,7 @@ This guide addresses the most common unit testing problems encountered during Ci
 ## Prerequisites
 
 - Go 1.21 or later
-- Cilium source code with proxylib
+- Cilium proxy source code with proxylib
 - Existing parser with test files
 - Familiarity with Go test debugging (`-v`, `-run`, `-count`)
 - `dlv` (Delve) debugger installed for interactive debugging
@@ -39,10 +39,10 @@ go test ./proxylib/myprotocol/... -v -count=1 2>&1 | head -80
 func TestOnData_BasicMessage(t *testing.T) {
     // BUG: Data does not match protocol format
     data := []byte("hello world")
-    reader := proxylib.NewTestReader(data)
+    reader := proxylib.NewReader([][]byte{data}, false)
 
     parser := &Parser{state: stateRunning}
-    op, n := parser.OnData(false, reader)
+    op, n := parser.OnData(false, &reader)
 
     // This will fail because "hello world" is not a valid protocol message
     if op != proxylib.PASS {
@@ -62,10 +62,10 @@ func TestOnData_BasicMessage(t *testing.T) {
     header[3] = byte(len(body))
 
     data := append(header, body...)
-    reader := proxylib.NewTestReader(data)
+    reader := proxylib.NewReader([][]byte{data}, false)
 
     parser := &Parser{state: stateRunning}
-    op, n := parser.OnData(false, reader)
+    op, n := parser.OnData(false, &reader)
 
     if op != proxylib.PASS {
         t.Errorf("Expected PASS, got %v", op)
@@ -162,9 +162,9 @@ func TestOnData_ErrorStateRecovery(t *testing.T) {
 
     // Provide data that would normally be valid
     msg := makeValidMessage(0x01, []byte("test"))
-    reader := proxylib.NewTestReader(msg)
+    reader := proxylib.NewReader([][]byte{msg}, false)
 
-    op, n := parser.OnData(false, reader)
+    op, n := parser.OnData(false, &reader)
 
     // Error state should remain terminal
     if op != proxylib.DROP {
@@ -180,10 +180,10 @@ func TestOnData_IntegerOverflowPath(t *testing.T) {
     // Craft a header with length that would overflow when added to header size
     header := []byte{0x7F, 0xFF, 0xFF, 0xFF} // Near-max positive int32
 
-    reader := proxylib.NewTestReader(header)
+    reader := proxylib.NewReader([][]byte{header}, false)
     parser := &Parser{state: stateRunning}
 
-    op, _ := parser.OnData(false, reader)
+    op, _ := parser.OnData(false, &reader)
 
     if op != proxylib.DROP {
         t.Errorf("Near-overflow length should be dropped, got %v", op)
@@ -255,7 +255,7 @@ Check Go version differences between local and CI. Also verify that CI runs test
 This usually indicates an `init()` function problem - the parser factory registration may conflict with another parser. Check for duplicate parser names.
 
 **Problem: Coverage report shows 0%**
-Ensure the test file is in the same package as the code under test (not a separate `_test` package for internal function access).
+Ensure the package path being tested includes the code under test and that tests actually execute code in that package. If you need direct access to unexported parser state, keep those tests in the same package rather than a separate `_test` package.
 
 **Problem: Tests take too long to run**
 Profile slow tests with `-cpuprofile` and examine whether they allocate excessive memory. Table-driven tests with many cases should use `t.Parallel()` where possible.
