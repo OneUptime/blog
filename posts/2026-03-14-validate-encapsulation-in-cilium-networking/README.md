@@ -10,7 +10,7 @@ Description: Systematically validate that Cilium network encapsulation using VXL
 
 ## Introduction
 
-Validating encapsulation in cilium networking ensures that your Cilium configuration is not only applied but actually working correctly under real traffic conditions. Cilium encapsulation wraps pod-to-pod traffic between nodes in VXLAN or Geneve headers. This creates an overlay network where pod IPs are hidden inside the tunnel and the underlying network only sees node-to-node UDP traffic on port 8472 (VXLAN) or 6081 (Geneve). Encapsulation mode is the default and simplest to deploy because it has no requirements on the underlying network.
+Validating encapsulation in cilium networking ensures that your Cilium configuration is not only applied but actually working correctly under real traffic conditions. Cilium encapsulation wraps pod-to-pod traffic between nodes in VXLAN or Geneve headers. This creates an overlay network where pod IPs are carried inside the tunnel and the underlying network only sees node-to-node UDP traffic on port 8472 (VXLAN) or 6081 (Geneve). Encapsulation mode is the default and simplest to deploy because it has minimal requirements on the underlying network beyond node-to-node IP connectivity and allowing the encapsulation UDP port.
 
 Validation goes beyond checking pod status. It requires testing actual traffic flows, verifying configuration values, and confirming that the feature behaves as documented. A validation failure caught early prevents production incidents caused by misconfigured networking.
 
@@ -19,6 +19,7 @@ This guide provides a structured validation process with automated checks and ma
 ## Prerequisites
 
 - A Kubernetes cluster with Cilium installed and configured
+- At least two schedulable nodes for inter-node encapsulation validation
 - The Cilium CLI installed
 - `kubectl` with cluster-admin access
 - Test workloads or the ability to create them
@@ -47,10 +48,10 @@ Use the Cilium connectivity test to validate the data path:
 # Run the full connectivity test suite
 cilium connectivity test
 
-# Run specific test categories
-cilium connectivity test --test pod-to-pod
-cilium connectivity test --test pod-to-service
-cilium connectivity test --test dns-resolution
+# Run tests matching specific connectivity test names
+cilium connectivity test --test pod-to
+cilium connectivity test --test pod-to-b
+cilium connectivity test --test dns
 
 # Check Cilium status for any warnings
 cilium status --verbose
@@ -78,16 +79,14 @@ spec:
       labels:
         app: validate-server
     spec:
-      # Use anti-affinity to spread across nodes
+      # Use anti-affinity to require spreading across nodes
       affinity:
         podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app: validate-server
-                topologyKey: kubernetes.io/hostname
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: validate-server
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: nginx
           image: nginx:1.25
@@ -135,16 +134,17 @@ kubectl delete -f validation-workload.yaml
 Check that all endpoints managed by Cilium are healthy:
 
 ```bash
-# List all Cilium endpoints and their health
-cilium endpoint list
+# List CiliumEndpoint objects across the cluster
+kubectl get ciliumendpoints --all-namespaces
 
 # Check for endpoints in a non-ready state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
+kubectl get ciliumendpoints --all-namespaces -o jsonpath='{range .items[?(@.status.state!="ready")]}{.metadata.namespace}/{.metadata.name}{"\t"}{.status.state}{"\n"}{end}'
 
-# Verify endpoint count matches pod count
-ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+# Compare endpoint count with running pod count
+ENDPOINT_COUNT=$(kubectl get ciliumendpoints --all-namespaces -o json | python3 -c "import sys,json; print(sum(1 for i in json.load(sys.stdin)['items'] if not i['metadata']['name'].startswith('cilium-health-')))")
 POD_COUNT=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
 echo "Cilium endpoints: $ENDPOINT_COUNT, Running pods: $POD_COUNT"
+# Counts can differ for host-network pods or pods not managed by Cilium.
 ```
 
 ## Validating Metrics and Observability
@@ -153,13 +153,13 @@ Confirm metrics are being collected for encapsulation in cilium networking:
 
 ```bash
 # Check Cilium agent metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i "forward"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep -i "forward"
 
 # Verify Hubble is observing flows
 kubectl exec -n kube-system ds/cilium -- hubble observe --last 5
 
 # Check for any drop metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep drop
 ```
 
 ## Verification
@@ -179,7 +179,7 @@ cilium status | head -10
 
 # 3. Connectivity working
 echo "3. Connectivity Test:"
-cilium connectivity test --test pod-to-pod 2>&1 | tail -3
+cilium connectivity test --test pod-to 2>&1 | tail -3
 
 # 4. No errors
 echo "4. Recent Errors:"
@@ -190,7 +190,7 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=10m | grep -c "e
 
 - **Connectivity test fails on specific tests**: Not all tests apply to every configuration. Some tests require specific features (like encryption or L7 policy) to be enabled.
 - **Endpoints show as not-ready**: The endpoint may still be initializing. Wait 30 seconds and check again. If persistent, check the Cilium agent logs for the node where the endpoint is running.
-- **Metrics show high drop count**: Check the drop reason with `cilium metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
+- **Metrics show high drop count**: Check the drop reason with `cilium-dbg metrics list | grep drop` inside a Cilium agent pod. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
 - **Validation passes but production traffic fails**: The validation tests may not cover your specific traffic pattern. Create custom test workloads that mirror your production traffic patterns.
 
 ## Conclusion
