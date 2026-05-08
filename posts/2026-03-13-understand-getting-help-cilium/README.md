@@ -36,8 +36,8 @@ cilium status --verbose > cilium-status.txt
 # Collect Cilium version information
 cilium version
 
-# Collect bugreport for complex issues (generates a tarball of diagnostics)
-cilium sysdump --output-filename cilium-sysdump.zip
+# Collect bugreport for complex issues (generates a zip archive of diagnostics)
+cilium sysdump --output-filename cilium-sysdump
 ```
 
 ## Step 2: Check Documentation and Known Issues First
@@ -59,14 +59,14 @@ Gather key environment details to include in your help request:
 
 ```bash
 # Get Kubernetes version and node information
-kubectl version --short
+kubectl version
 kubectl get nodes -o wide
 
 # Get Cilium configuration
 cilium config view
 
 # Get Cilium endpoint status for affected pods
-cilium endpoint list
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list
 ```
 
 ## Step 3: Use Slack for Real-Time Help
@@ -77,19 +77,19 @@ Key Slack channels:
 - `#general` - General questions about Cilium usage
 - `#networkpolicy` - Network policy questions
 - `#ebpf` - eBPF and kernel-level questions
-- `#installation` - Installation and upgrade questions
+- `#kubernetes` - Kubernetes-specific questions
 
 When posting to Slack:
 
 ```bash
 # Generate a sysdump to attach to your Slack message for complex issues
-cilium sysdump --output-filename cilium-sysdump-$(date +%Y%m%d).zip
+cilium sysdump --output-filename cilium-sysdump-$(date +%Y%m%d)
 
 # Include the output of these commands in your Slack message
 cilium status
 kubectl get pods -n kube-system | grep cilium
 uname -r
-kubectl version --short
+kubectl version
 ```
 
 ## Step 4: File a GitHub Issue for Bugs
@@ -102,7 +102,7 @@ For reproducible bugs, file a GitHub issue at `https://github.com/cilium/cilium/
 
 # Include Cilium and Kubernetes version
 cilium version
-kubectl version --short
+kubectl version
 
 # Include relevant logs
 kubectl logs -n kube-system -l k8s-app=cilium --tail=100
@@ -123,7 +123,7 @@ For production incidents requiring SLA-backed support, Isovalent (the company be
 ```bash
 # For enterprise users, use the Cilium Enterprise support portal
 # Document the issue with full sysdump before escalating
-cilium sysdump --output-filename enterprise-support-$(date +%Y%m%d-%H%M%S).zip
+cilium sysdump --output-filename enterprise-support-$(date +%Y%m%d-%H%M%S)
 
 # Note the exact time the issue started (for log correlation)
 date -u
