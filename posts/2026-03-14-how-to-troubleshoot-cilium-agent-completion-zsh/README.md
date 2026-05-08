@@ -58,7 +58,7 @@ flowchart TD
 
 ## Fixing Stale Completion Cache
 
-The most common issue is a stale `~/.zcompdump` file. Zsh caches completion definitions for performance, but the cache does not auto-detect new files.
+The most common issue is a stale `~/.zcompdump` file. Zsh caches completion definitions for performance. A normal `compinit` run can detect when the number of completion files changes, but it may not pick up changed `#compdef` mappings, and `compinit -C` skips the check for new functions.
 
 ```bash
 # Remove all zcompdump cache files
@@ -154,8 +154,7 @@ cilium-agent --version
 # Check zsh version
 zsh --version
 
-# If using zsh < 5.3, some completion features may not work
-# Upgrade zsh if possible
+# If using a very old zsh and generated completions fail, upgrade zsh if possible
 # macOS:
 brew install zsh
 # Debian/Ubuntu:
@@ -174,8 +173,8 @@ exec zsh
 # Test that completion function is loaded
 whence -v _cilium-agent
 
-# Test actual completion (programmatically)
-_cilium-agent 2>/dev/null && echo "Completion function callable"
+# Test that cilium-agent is mapped to the completion function
+echo ${_comps[cilium-agent]}
 
 # Interactive test - type and press Tab
 cilium-agent <TAB>
@@ -183,10 +182,10 @@ cilium-agent <TAB>
 
 ## Troubleshooting
 
-- **"_cilium-agent: function definition file not found"**: The file is in `fpath` but has incorrect naming. It must be named `_cilium-agent` (with underscore prefix).
+- **"_cilium-agent: function definition file not found"**: The completion function is registered, but zsh cannot autoload it from `fpath`. Ensure the file is in a directory listed in `fpath` and is named `_cilium-agent` (with underscore prefix).
 - **Completions load but show no options**: The cilium-agent version may have changed its command structure. Regenerate the file.
-- **"compdef: unknown command or service: cilium-agent"**: `compinit` was not called before the completion was registered. Reorder your `.zshrc`.
-- **Slow shell startup after adding completions**: Use `compinit -C` to skip security checks, or ensure `zcompdump` is being cached properly.
+- **"command not found: compdef"**: A completion file was sourced before `compinit` defined the completion helper functions. Reorder your `.zshrc`.
+- **Slow shell startup after adding completions**: Ensure `zcompdump` is being cached properly. After the dump file exists, `compinit -C` can reduce startup cost, but avoid it while debugging newly added completion files because it skips the check for new functions.
 
 ## Conclusion
 
