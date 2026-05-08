@@ -95,27 +95,45 @@ spec:
   failsafeInboundHostPorts:
     - protocol: tcp
       port: 22
-    - protocol: tcp
-      port: 53
     - protocol: udp
-      port: 53
+      port: 68
     - protocol: tcp
       port: 179
-    - protocol: udp
-      port: 67
+    - protocol: tcp
+      port: 2379
+    - protocol: tcp
+      port: 2380
+    - protocol: tcp
+      port: 5473
+    - protocol: tcp
+      port: 6443
+    - protocol: tcp
+      port: 6666
+    - protocol: tcp
+      port: 6667
     - protocol: tcp
       port: 10250
   failsafeOutboundHostPorts:
-    - protocol: tcp
-      port: 53
     - protocol: udp
       port: 53
+    - protocol: udp
+      port: 67
     - protocol: tcp
       port: 179
     - protocol: tcp
+      port: 2379
+    - protocol: tcp
+      port: 2380
+    - protocol: tcp
+      port: 5473
+    - protocol: tcp
+      port: 6443
+    - protocol: tcp
+      port: 6666
+    - protocol: tcp
+      port: 6667
+    - protocol: tcp
       port: 443
-    - protocol: udp
-      port: 67
 ```
 
 Apply and immediately verify SSH access to a node:
@@ -145,7 +163,7 @@ calicoctl apply -f felix-test-node.yaml
 Verify the test node is functioning correctly before applying to the default:
 
 ```bash
-kubectl run test --image=busybox --restart=Never --overrides='{"spec":{"nodeName":"test-node-01"}}' -- wget -qO- http://kubernetes.default.svc
+kubectl run test --image=curlimages/curl --restart=Never --overrides='{"apiVersion":"v1","spec":{"nodeName":"test-node-01"}}' -- -kfsS https://kubernetes.default.svc/version
 kubectl delete pod test
 ```
 
@@ -157,7 +175,7 @@ If a change causes issues, restore immediately from your backup:
 calicoctl apply -f felix-backup-20260315-120000.yaml
 ```
 
-If you cannot access the API server, restart the calico-node pods to pick up the reverted configuration:
+If the API server is reachable again but Felix remains unhealthy after the rollback, restart the calico-node pods:
 
 ```bash
 kubectl rollout restart daemonset -n kube-system calico-node
@@ -175,7 +193,7 @@ calicoctl get felixconfiguration default -o yaml
 kubectl get pods -n kube-system -l k8s-app=calico-node
 
 # Test pod connectivity
-kubectl run verify --image=busybox --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc
+kubectl run verify --image=curlimages/curl --restart=Never -- -kfsS --max-time 5 https://kubernetes.default.svc/version
 kubectl delete pod verify
 ```
 
