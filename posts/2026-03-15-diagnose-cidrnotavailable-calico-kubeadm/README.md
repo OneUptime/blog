@@ -10,9 +10,9 @@ Description: Step-by-step guide to diagnosing CIDRNotAvailable errors in Kuberne
 
 ## Introduction
 
-The CIDRNotAvailable error occurs when Calico's IPAM (IP Address Management) system cannot allocate IP addresses from the configured pod CIDR range. This typically manifests as pods stuck in a ContainerCreating state with events indicating that no suitable CIDR block is available for IP allocation.
+The CIDRNotAvailable event is reported by Kubernetes when the controller manager cannot allocate a per-node pod CIDR from the configured cluster CIDR. In Calico clusters, pods can also become stuck in a ContainerCreating state when Calico IPAM (IP Address Management) cannot allocate addresses from its configured IPPools.
 
-This error is particularly common in kubeadm-provisioned clusters because the pod CIDR must be consistently configured across kubeadm's cluster configuration, the kube-controller-manager, and Calico's IPPool resources. A mismatch between any of these components can trigger the error.
+This error is particularly common in kubeadm-provisioned clusters because the pod CIDR must be understood consistently across kubeadm's cluster configuration, the kube-controller-manager, and Calico's IPPool resources. Calico IPAM does not use Kubernetes `Node.spec.podCIDR` allocations, but CIDR mismatches can still cause Kubernetes node CIDR events or Calico address allocation failures.
 
 This guide focuses on the diagnostic process, helping you identify the root cause before attempting a fix.
 
@@ -22,6 +22,7 @@ This guide focuses on the diagnostic process, helping you identify the root caus
 - Calico installed as the CNI plugin
 - `kubectl` access with cluster-admin privileges
 - `calicoctl` CLI installed
+- `jq` installed for JSON filtering commands
 - Access to node-level logs
 
 ## Identifying the Symptom
@@ -43,8 +44,8 @@ kubectl describe pod <pod-name> -n <namespace> | grep -A 5 "Events"
 Common error messages include:
 
 ```text
-Warning  FailedCreatePodSandBox  no available CIDR
-Warning  FailedCreatePodSandBox  CIDRNotAvailable
+Normal   CIDRNotAvailable        Node <node-name> status is now: CIDRNotAvailable
+Warning  FailedCreatePodSandBox  failed to assign an IP address to container
 ```
 
 ## Checking kubeadm Configuration
@@ -100,7 +101,7 @@ If all blocks are allocated or the CIDR is exhausted, no new IPs can be assigned
 
 ## Checking Node CIDR Assignments
 
-Verify that each node has been assigned a pod CIDR:
+Verify whether Kubernetes is assigning pod CIDRs to nodes:
 
 ```bash
 # List node CIDR assignments
@@ -110,7 +111,7 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,CIDR:.spec.podCIDR,CIDRS
 kubectl get nodes -o json | jq '.items[] | select(.spec.podCIDR == null) | .metadata.name'
 ```
 
-Nodes without a CIDR assignment will not be able to schedule pods with Calico.
+With Calico IPAM, missing `Node.spec.podCIDR` values do not by themselves prevent pods from being assigned Calico IPs. They are still useful to check because kubeadm sets `--allocate-node-cidrs=true` when `--pod-network-cidr` is used, and allocation failures can produce CIDRNotAvailable node events.
 
 ## Checking Felix and Calico Node Logs
 
@@ -167,9 +168,9 @@ kubectl get pods --all-namespaces --field-selector=status.phase=Pending --no-hea
 
 **Diagnosis points to CIDR exhaustion**: The pod CIDR is too small for the number of pods. You will need to expand the CIDR range or reduce pod density.
 
-**Diagnosis points to missing node CIDR**: The kube-controller-manager is not allocating CIDRs to nodes. Verify the `--allocate-node-cidrs=true` flag is set.
+**Diagnosis points to missing node CIDR**: The kube-controller-manager is not allocating CIDRs to nodes. If another component requires Kubernetes node CIDRs, verify the `--allocate-node-cidrs=true` and `--cluster-cidr` flags are set. If you are using Calico IPAM only, Kubernetes node CIDR allocation is not required for pod IP assignment and can be disabled after validating your cluster design.
 
-**Diagnosis points to stale IPAM blocks**: Blocks may be allocated to nodes that no longer exist. Use `calicoctl ipam release` to clean up stale allocations.
+**Diagnosis points to stale IPAM allocations**: IP addresses may be allocated to endpoints that no longer exist. Use `calicoctl ipam release --ip=<IP>` or `calicoctl ipam release --from-report=<REPORT>` to clean up leaked allocations.
 
 ## Conclusion
 
