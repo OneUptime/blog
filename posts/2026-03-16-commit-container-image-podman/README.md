@@ -58,7 +58,7 @@ Use the `--change` or `-c` flag to modify the image configuration during the com
 podman run -d --name webapp docker.io/library/python:3.12-slim sh -c "
   pip install flask &&
   mkdir -p /app &&
-  echo 'from flask import Flask; app = Flask(__name__)' > /app/main.py &&
+  printf '%s\n' 'from flask import Flask' 'app = Flask(__name__)' 'app.run(host=\"0.0.0.0\", port=5000)' > /app/main.py &&
   sleep infinity
 "
 
@@ -79,14 +79,14 @@ podman run -d -p 5000:5000 flask-app:v1.0
 
 ## Committing a Running Container
 
-You can commit a container while it is still running. Podman pauses the container briefly to ensure a consistent snapshot.
+You can commit a container while it is still running. By default, Podman does not pause the container during the commit, but you can enable pausing with `--pause=true` when you want the container paused while the image is created.
 
 ```bash
 # Start a container that is actively running
 podman run -d --name running-app docker.io/library/nginx:latest
 
-# Commit while it is running
-podman commit running-app nginx-snapshot:$(date +%Y%m%d)
+# Commit while it is running, pausing the container during the commit
+podman commit --pause=true running-app nginx-snapshot:$(date +%Y%m%d)
 
 # The container continues running after the commit
 podman ps | grep running-app
@@ -94,13 +94,13 @@ podman ps | grep running-app
 
 ## Using the Pause Flag
 
-By default, Podman pauses the container during commit to ensure filesystem consistency. You can disable this behavior.
+By default, Podman does not pause the container during commit. You can enable this behavior when you want the container paused while the image is created.
 
 ```bash
-# Commit without pausing (faster but potentially inconsistent)
+# Commit without pausing (default)
 podman commit --pause=false my-container myimage:latest
 
-# Commit with pause (default, recommended)
+# Commit with pause
 podman commit --pause=true my-container myimage:latest
 ```
 
@@ -111,6 +111,7 @@ Document your commits with author information and messages.
 ```bash
 # Commit with author and message
 podman commit \
+  --format docker \
   --author "Dev Team <dev@example.com>" \
   --message "Added monitoring tools and custom config" \
   my-container monitoring-tools:v1.0
@@ -139,7 +140,7 @@ podman commit --format docker my-container myimage:docker
 By default, Podman includes filesystem changes. You can explicitly control what gets included.
 
 ```bash
-# Commit including changes to volumes
+# Commit including contents from volumes added with --volume or --mount
 podman commit --include-volumes my-container myimage:with-volumes
 ```
 
@@ -212,7 +213,7 @@ podman diff my-container
 When committing, you can squash all changes into a single layer.
 
 ```bash
-# Commit with squashed layers for a smaller image
+# Commit with squashed layers for a simpler layer history
 podman commit --squash my-container myimage:squashed
 
 # Compare sizes
