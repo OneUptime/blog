@@ -25,25 +25,39 @@ This guide covers validate High-Connection Workloads in Calico with production-r
 # Optimize for high-connection workloads
 
 apiVersion: projectcalico.org/v3
-kind: NetworkPolicy
+kind: HostEndpoint
+metadata:
+  name: high-throughput-node-eth0
+  labels:
+    app: high-throughput-service
+spec:
+  interfaceName: eth0
+  node: high-throughput-node
+  expectedIPs:
+    - 10.0.0.10
+---
+apiVersion: projectcalico.org/v3
+kind: GlobalNetworkPolicy
 metadata:
   name: allow-high-connection-workload
-  namespace: production
 spec:
-  order: 100
   selector: app == 'high-throughput-service'
+  applyOnForward: true
+  doNotTrack: true
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         selector: tier == 'client'
+      destination:
+        ports: [8080]
   egress:
     - action: Allow
+      protocol: TCP
+      source:
+        ports: [8080]
       destination:
-        selector: app == 'backend-pool'
-    - action: Allow
-      protocol: UDP
-      destination:
-        ports: [53]
+        selector: tier == 'client'
   types:
     - Ingress
     - Egress
@@ -52,11 +66,9 @@ spec:
 ## Performance Tuning
 
 ```bash
-# Tune Felix for high-connection workloads
+# Enable Felix metrics for high-connection workload validation
 kubectl patch felixconfiguration default --type=merge -p '{
   "spec": {
-    "ipSetSize": 1048576,
-    "maxIpsetSize": 1048576,
     "prometheusMetricsEnabled": true
   }
 }'
