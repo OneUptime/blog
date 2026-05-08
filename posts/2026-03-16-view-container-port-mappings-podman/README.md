@@ -110,7 +110,7 @@ podman inspect web --format '{{json .HostConfig.PortBindings}}' | python3 -m jso
 # Get ports from network settings
 podman inspect web --format '{{json .NetworkSettings.Ports}}' | python3 -m json.tool
 
-# Get exposed ports from the image config
+# Get exposed ports from the container config
 podman inspect web --format '{{json .Config.ExposedPorts}}'
 ```
 
@@ -123,7 +123,7 @@ Verify that mapped ports are actually accessible:
 curl -s -o /dev/null -w "HTTP %{http_code}\n" http://localhost:8080
 
 # Check if the port is listening
-ss -tlnp | grep 8080 2>/dev/null || netstat -tlnp | grep 8080 2>/dev/null
+(ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | grep 8080
 
 # Test from another machine (if bound to 0.0.0.0)
 # curl http://<host-ip>:8080
@@ -150,9 +150,9 @@ done
 
 ```bash
 # Check if a port is already in use on the host
-ss -tlnp 2>/dev/null | grep ":8080" || echo "Port 8080 is free"
+(ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | grep ":8080" || echo "Port 8080 is free"
 
-# Check if the container is actually listening on the mapped port
+# Check if the container is actually listening on the mapped port (requires ss in the container)
 podman exec web ss -tlnp 2>/dev/null | grep ":80"
 
 # Verify port mapping exists
