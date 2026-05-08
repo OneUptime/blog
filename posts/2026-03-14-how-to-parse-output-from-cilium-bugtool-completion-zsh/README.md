@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Bugtool, Zsh, Parsing, Scripting
 
-Description: Extract subcommands, flags, and descriptions from cilium-bugtool zsh completion scripts for automated documentation and tooling.
+Description: Extract subcommands, flags, and descriptions from cilium-bugtool zsh completion data for automated documentation and tooling.
 
 ---
 
@@ -15,7 +15,7 @@ Zsh provides one of the most powerful completion systems among Unix shells, with
 
 
 
-Zsh completion scripts contain rich metadata about commands, flags, and their descriptions in a structured format. Parsing this data enables automated documentation generation and CLI validation testing.
+The generated zsh script uses Cobra's dynamic completion protocol: it calls `cilium-bugtool __complete` and converts tab-separated descriptions into the format zsh's `_describe` helper expects. Querying that completion protocol gives access to commands, flags, and their descriptions for automated documentation generation and CLI validation testing.
 
 This guide covers parsing techniques specific to zsh completion output.
 
@@ -34,20 +34,24 @@ This guide covers parsing techniques specific to zsh completion output.
 ## Capture the completion output
 cilium-bugtool completion zsh > /tmp/bugtool-zsh-completion.zsh
 wc -l /tmp/bugtool-zsh-completion.zsh
+
+## Capture the dynamic completion candidates used by the zsh script
+cilium-bugtool __complete "" > /tmp/bugtool-zsh-root-completions.txt 2>/dev/null
+cilium-bugtool __complete -- > /tmp/bugtool-zsh-flag-completions.txt 2>/dev/null
 ```
 
 ### Extracting Subcommands
 
 ```bash
 ## Extract commands with descriptions
-grep -oP "'[a-z][-a-z]*\[.*?\]" /tmp/bugtool-zsh-completion.zsh |   sed "s/'//g;s/\[/: /;s/\]//" | sort -u
+awk -F '\t' '$1 !~ /^--/ && $1 !~ /^:/ { print $1 ": " $2 }' /tmp/bugtool-zsh-root-completions.txt | sort -u
 ```
 
 ### Extracting Flags
 
 ```bash
 ## Extract flags with descriptions
-grep -oP "'--[a-z][-a-z0-9]*\[.*?\]" /tmp/bugtool-zsh-completion.zsh |   sed "s/'//g;s/\[/: /;s/\]//" | sort -u
+awk -F '\t' '$1 ~ /^--/ { print $1 ": " $2 }' /tmp/bugtool-zsh-flag-completions.txt | sort -u
 ```
 
 ### Python Parser
@@ -55,20 +59,33 @@ grep -oP "'--[a-z][-a-z0-9]*\[.*?\]" /tmp/bugtool-zsh-completion.zsh |   sed "s/
 ```python
 #!/usr/bin/env python3
 """Parse cilium-bugtool zsh completion output."""
-import re, json, sys
+import json, subprocess
 
-def parse_zsh_completion(filepath):
-    with open(filepath) as f:
-        content = f.read()
-    commands = [{'name': m.group(1), 'description': m.group(2)}
-        for m in re.finditer(r"'([a-z][-a-z]*)\[([^\]]*)\]", content)]
-    flags = [{'flag': m.group(1), 'description': m.group(2)}
-        for m in re.finditer(r"'(--[a-z][-a-z0-9]*)\[([^\]]*)\]", content)]
+def complete(*args):
+    output = subprocess.check_output(
+        ['cilium-bugtool', '__complete', *args],
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    rows = []
+    for line in output.splitlines():
+        if not line or line.startswith(':'):
+            continue
+        value, _, description = line.partition('\t')
+        rows.append((value, description))
+    return rows
+
+def parse_zsh_completion():
+    root = complete('')
+    flag_rows = complete('--')
+    commands = [{'name': value, 'description': description}
+        for value, description in root if not value.startswith('--')]
+    flags = [{'flag': value, 'description': description}
+        for value, description in flag_rows if value.startswith('--')]
     return {'commands': commands, 'flags': flags}
 
 if __name__ == '__main__':
-    path = sys.argv[1] if len(sys.argv) > 1 else '/tmp/bugtool-zsh-completion.zsh'
-    print(json.dumps(parse_zsh_completion(path), indent=2))
+    print(json.dumps(parse_zsh_completion(), indent=2))
 ```
 
 ## Verification
@@ -76,8 +93,8 @@ if __name__ == '__main__':
 ```bash
 # Verify parsing
 
-python3 parse_zsh_completion.py /tmp/bugtool-zsh-completion.zsh | jq '.commands | length'
-python3 parse_zsh_completion.py /tmp/bugtool-zsh-completion.zsh | jq '.flags | length'
+python3 parse_zsh_completion.py | jq '.commands | length'
+python3 parse_zsh_completion.py | jq '.flags | length'
 ```
 
 ## Troubleshooting
@@ -92,4 +109,4 @@ python3 parse_zsh_completion.py /tmp/bugtool-zsh-completion.zsh | jq '.flags | l
 
 
 
-Parsing zsh completion scripts provides machine-readable access to the cilium-bugtool command structure, enabling automated documentation and CLI coverage testing.
+Querying zsh completion data provides machine-readable access to the cilium-bugtool command structure, enabling automated documentation and CLI coverage testing.
