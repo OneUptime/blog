@@ -19,7 +19,7 @@ This guide covers practical patterns for automating Calico changes with `calicoc
 ## Prerequisites
 
 - A running Kubernetes cluster with Calico installed
-- calicoctl v3.27 or later
+- calicoctl that matches the Calico version running in your cluster
 - CI/CD platform (GitHub Actions, GitLab CI, or Jenkins)
 - kubectl access to the cluster
 - Basic scripting skills
@@ -103,32 +103,43 @@ jobs:
     steps:
       - name: Install calicoctl
         run: |
-          curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.32.0/calicoctl-linux-amd64 -o calicoctl
           chmod +x calicoctl
           sudo mv calicoctl /usr/local/bin/
 
-      - name: Configure kubectl
-        uses: azure/setup-kubectl@v3
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          mkdir -p "$HOME/.kube"
+          printf '%s' "$KUBECONFIG_DATA" > "$HOME/.kube/config"
+          chmod 600 "$HOME/.kube/config"
 
       - name: Backup current state
         env:
           DATASTORE_TYPE: kubernetes
+          POLICY_NAME: ${{ github.event.inputs.policy_name }}
         run: |
-          calicoctl get globalnetworkpolicy ${{ github.event.inputs.policy_name }} -o yaml > /tmp/backup.yaml
+          calicoctl get globalnetworkpolicy "$POLICY_NAME" -o yaml > /tmp/backup.yaml
           echo "Backup created"
 
       - name: Apply patch
         env:
           DATASTORE_TYPE: kubernetes
+          POLICY_NAME: ${{ github.event.inputs.policy_name }}
+          PATCH_JSON: ${{ github.event.inputs.patch_json }}
         run: |
-          calicoctl patch globalnetworkpolicy ${{ github.event.inputs.policy_name }} \
-            -p '${{ github.event.inputs.patch_json }}'
+          calicoctl patch globalnetworkpolicy "$POLICY_NAME" -p "$PATCH_JSON"
 
       - name: Verify patch
         env:
           DATASTORE_TYPE: kubernetes
+          POLICY_NAME: ${{ github.event.inputs.policy_name }}
         run: |
-          calicoctl get globalnetworkpolicy ${{ github.event.inputs.policy_name }} -o yaml
+          calicoctl get globalnetworkpolicy "$POLICY_NAME" -o yaml
 ```
 
 ## Bulk Patching Multiple Resources
@@ -145,18 +156,19 @@ set -euo pipefail
 export DATASTORE_TYPE=kubernetes
 PATCH_JSON="${1:?Usage: $0 '<patch-json>' [name-pattern]}"
 NAME_PATTERN="${2:-.*}"
+export NAME_PATTERN
 
 echo "Patching GlobalNetworkPolicies matching: $NAME_PATTERN"
 
 # Get all policy names and filter
 calicoctl get globalnetworkpolicies -o json | \
   python3 -c "
-import sys, json
+import os, re, sys, json
+pattern = os.environ['NAME_PATTERN']
 policies = json.load(sys.stdin)['items']
 for p in policies:
     name = p['metadata']['name']
-    import re
-    if re.match('$NAME_PATTERN', name):
+    if re.match(pattern, name):
         print(name)
 " | while read -r policy_name; do
   echo "Patching: $policy_name"
@@ -192,7 +204,7 @@ spec:
           serviceAccountName: calico-admin
           containers:
             - name: patcher
-              image: calico/ctl:v3.27.0
+              image: calico/ctl:v3.32.0
               env:
                 - name: DATASTORE_TYPE
                   value: "kubernetes"
@@ -202,8 +214,19 @@ spec:
                 - |
                   # Weekly maintenance patches
                   echo "Running weekly Calico maintenance patches..."
+                  TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+                  cat >/tmp/calicoctl.cfg <<EOF
+                  apiVersion: projectcalico.org/v3
+                  kind: CalicoAPIConfig
+                  metadata:
+                  spec:
+                    datastoreType: "kubernetes"
+                    k8sAPIEndpoint: "https://kubernetes.default.svc"
+                    k8sCAFile: "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+                    k8sToken: "$TOKEN"
+                  EOF
                   # Reset Felix log level to Warning
-                  calicoctl patch felixconfiguration default -p '{"spec":{"logSeverityScreen":"Warning"}}'
+                  calicoctl patch felixconfiguration default --config=/tmp/calicoctl.cfg -p '{"spec":{"logSeverityScreen":"Warning"}}'
                   echo "Maintenance patches applied at $(date)"
           restartPolicy: OnFailure
 ```
@@ -249,7 +272,7 @@ kubectl get jobs -n calico-system --sort-by=.metadata.creationTimestamp | tail -
 
 - **Patch not taking effect in automation**: Ensure `DATASTORE_TYPE` is set in the automation environment. CI/CD runners do not inherit your local environment variables.
 - **Bulk patch partially fails**: Some resources may have different schemas. Verify the patch JSON is compatible with all target resources before running bulk operations.
-- **CronJob patch fails silently**: Check CronJob logs with `kubectl logs -n calico-system job/<job-name>`. Common issues include expired service account tokens.
+- **CronJob patch fails silently**: Check CronJob logs with `kubectl logs -n calico-system job/<job-name>`. Common issues include missing service account RBAC or API connectivity.
 - **Rate limiting on rapid patches**: If patching many resources quickly, add a small delay between operations to avoid API server throttling.
 
 ## Conclusion
