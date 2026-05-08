@@ -41,8 +41,8 @@ kubectl get networkpolicy --all-namespaces | grep -v "No resources"
 ```bash
 for NS in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}' \
   | tr ' ' '\n' | grep -v "kube-system\|kube-public\|kube-node-lease"); do
-  RESULT=$(kubectl run dns-val --image=busybox -n $NS --restart=Never --rm -i \
-    --timeout=15s -- nslookup kubernetes.default 2>&1)
+  RESULT=$(timeout 30s kubectl run dns-val --image=busybox -n $NS --restart=Never --rm -i \
+    --pod-running-timeout=15s -- nslookup kubernetes.default 2>&1)
   if echo "$RESULT" | grep -q "Address"; then
     echo "PASS: DNS in $NS"
   else
@@ -56,9 +56,11 @@ done 2>/dev/null
 ```bash
 # Test from the affected namespace
 kubectl run metrics-test --image=curlimages/curl -n <namespace> \
-  --restart=Never --rm -i --timeout=30s \
+  --restart=Never --rm -i --pod-running-timeout=30s \
   -- curl -sk https://metrics-server.kube-system.svc.cluster.local/apis/metrics.k8s.io/v1beta1 \
   -o /dev/null -w "HTTP: %{http_code}\n"
+
+# A non-000 HTTP code confirms network connectivity; 401/403 can indicate auth, not a NetworkPolicy block.
 ```
 
 **Validation Step 3: Admission webhook connectivity (if applicable)**
@@ -68,7 +70,7 @@ kubectl run metrics-test --image=curlimages/curl -n <namespace> \
 kubectl get validatingwebhookconfiguration
 kubectl get mutatingwebhookconfiguration
 
-# If any exist, deploy a test pod to trigger webhooks
+# If pod-matching webhooks exist, deploy a test pod to trigger API server-to-webhook calls
 kubectl run webhook-test --image=busybox -n <namespace> --restart=Never -- sleep 5
 kubectl delete pod webhook-test -n <namespace> --ignore-not-found
 ```
@@ -78,7 +80,7 @@ kubectl delete pod webhook-test -n <namespace> --ignore-not-found
 ```bash
 # Verify emergency policy was removed
 kubectl get networkpolicy -n <namespace> | grep emergency
-# Expected: No resources found
+# Expected: no output
 
 # Verify permanent DNS allow is present
 kubectl get networkpolicy -n <namespace> -o yaml | grep -A 5 "port: 53"
@@ -100,7 +102,7 @@ flowchart TD
     B -- Yes --> D[Metrics-server accessible?]
     D -- No --> E[Add metrics-server egress allow]
     D -- Yes --> F[Admission webhooks healthy?]
-    F -- No --> G[Add webhook service egress allow]
+    F -- No --> G[Check webhook service ingress and API server reachability]
     F -- Yes --> H[Emergency policies removed?]
     H -- No --> I[Remove emergency policies]
     H -- Yes --> J[Monitor 15 min - clean?]
@@ -111,7 +113,7 @@ flowchart TD
 
 - Run DNS validation across all namespaces as a post-change health check
 - Add metrics-server and webhook connectivity to the validation checklist
-- Track emergency policy lifetime - auto-delete after 24 hours with a TTL annotation
+- Track emergency policy lifetime - auto-delete after 24 hours with cleanup automation or an external TTL controller
 
 ## Conclusion
 
