@@ -16,7 +16,7 @@ Running containers behind a corporate firewall or in a restricted network often 
 
 ## Understanding Proxy Configuration in Podman
 
-Podman can pass proxy environment variables to containers automatically or manually. By default, Podman inherits proxy settings from the host environment if configured in `containers.conf`. You can also set them explicitly per container.
+Podman can pass proxy environment variables to containers automatically or manually. By default, Podman passes proxy settings from the host environment into containers when those variables are set for the Podman process. This behavior can be configured in `containers.conf`. You can also set proxy variables explicitly per container.
 
 ## Setting Proxy Variables with --env
 
@@ -123,17 +123,17 @@ podman run --rm \
 
 ## Disabling Proxy for Specific Containers
 
-If global proxy is configured but you need to bypass it for certain containers, override the variables with empty values.
+If proxy settings are being inherited from the host but you need to bypass them for a specific container, disable proxy pass-through with `--http-proxy=false`.
 
 ```bash
 # Disable proxy for a specific container
 podman run --rm \
-  --env HTTP_PROXY="" \
-  --env HTTPS_PROXY="" \
-  --env NO_PROXY="" \
+  --http-proxy=false \
   docker.io/library/alpine:latest \
   sh -c 'echo "No proxy: HTTP_PROXY=$HTTP_PROXY"'
 ```
+
+If proxy variables are set with the `env` array in `containers.conf`, override the specific variables with empty values instead.
 
 ## Verifying Proxy Configuration Inside a Container
 
