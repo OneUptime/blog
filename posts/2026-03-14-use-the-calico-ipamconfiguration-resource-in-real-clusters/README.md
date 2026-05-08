@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPAM
 
-Description: Practical patterns and real-world examples for using Calico IPAMConfiguration resources effectively in production Kubernetes environments.
+Description: Practical patterns and real-world examples for using the Calico IPAMConfiguration resource effectively in production Kubernetes environments.
 
 ---
 
@@ -27,19 +27,19 @@ Whether you are running a small cluster or a large multi-tenant environment, the
 For clusters with fewer than 50 nodes, a straightforward IPAMConfiguration configuration works well:
 
 ```bash
-# Verify current IPAMConfiguration resources
+# Verify the current IPAMConfiguration resource
 
-calicoctl get ipamconfiguration -o yaml
+kubectl get ipamconfiguration.projectcalico.org default -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check current IPAM utilization
+calicoctl ipam show
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), keep the IPAMConfiguration resource global and use IPPool node selectors with node labels to control which pools are used by each environment:
 
 ```bash
 # Label nodes by environment
@@ -50,7 +50,7 @@ kubectl label node worker-2 environment=staging
 kubectl get nodes --show-labels | grep environment
 ```
 
-Then reference these labels in your IPAMConfiguration manifest's node selectors to apply environment-specific settings.
+Then reference these labels in your IPPool manifests' `nodeSelector` fields to apply environment-specific address pools. IPAMConfiguration itself is a singleton named `default`, so settings such as `strictAffinity` and `maxBlocksPerHost` apply cluster-wide.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,9 +65,9 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Review `maxBlocksPerHost` and IPPool block sizes against pod density and route scale
 - Use Typha to reduce the number of direct datastore connections
-- Monitor memory usage of calico-node pods when managing many IPAMConfiguration resources
+- Monitor memory usage of calico-node pods when managing many IP pools and allocation blocks
 
 ## Pattern 4: Combining with Other Calico Resources
 
@@ -78,7 +78,7 @@ The IPAMConfiguration resource works together with other Calico resources. Here 
 kubectl get crds | grep projectcalico
 
 # View all Calico configuration resources
-calicoctl get ipamconfiguration -o yaml
+kubectl get ipamconfiguration.projectcalico.org default -o yaml
 calicoctl get felixconfiguration -o yaml
 calicoctl get ippools -o yaml
 ```
@@ -87,17 +87,17 @@ Always consider the interaction between resources. For example, changes to BGP r
 
 ## Monitoring the Resource in Production
 
-Set up ongoing monitoring for your IPAMConfiguration resources:
+Set up ongoing monitoring for your IPAMConfiguration resource:
 
 ```bash
-# Watch for changes to IPAMConfiguration resources
-kubectl get ipamconfiguration.projectcalico.org -w
+# Watch for changes to the IPAMConfiguration resource
+kubectl get ipamconfiguration.projectcalico.org default -w
 
 # Set up alerts on calico-node restarts
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if Felix health checks are enabled:
 
 ```bash
 # Check if Felix is reporting healthy
@@ -123,17 +123,17 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 ## Troubleshooting
 
 **Resource configuration not taking effect:**
-- Verify the resource is correctly applied: `calicoctl get ipamconfiguration -o yaml`.
-- Check Felix logs for configuration reload messages.
+- Verify the resource is correctly applied: `kubectl get ipamconfiguration.projectcalico.org default -o yaml`.
+- Check calico-node logs for IPAM-related errors.
 - Ensure Typha is relaying updates: `kubectl logs -n calico-system -l k8s-app=calico-typha --tail=20`.
 
 **Performance degradation after configuration change:**
 - Check calico-node CPU and memory: `kubectl top pods -n calico-system`.
-- Review whether reconciliation intervals are too aggressive.
+- Review whether `maxBlocksPerHost` and IPPool block sizes are appropriate for your pod density.
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
-- Verify node selectors are matching the intended nodes.
+- Verify IPPool node selectors are matching the intended nodes.
 - Check for node-specific FelixConfiguration overrides.
 
 
@@ -160,7 +160,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crds -o custom-columns=NAME:.metadata.name,VERSIONS:.spec.versions[*].name | grep projectcalico
 ```
 
 ### Security Hardening
@@ -169,7 +169,7 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
@@ -177,7 +177,7 @@ kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 
 ### Capacity Planning for Large Deployments
 
-For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use the Calico metrics endpoint to track IPAM utilization and plan IP pool expansions before reaching capacity limits.
+For clusters with hundreds of nodes or thousands of pods, plan your Calico resource configurations carefully. Monitor resource consumption of calico-node and calico-typha pods, and scale Typha replicas based on the number of Felix instances. Use Calico IPAM utilization checks to plan IP pool expansions before reaching capacity limits.
 
 ```bash
 # Monitor IPAM utilization
