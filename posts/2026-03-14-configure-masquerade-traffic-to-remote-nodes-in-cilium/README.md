@@ -10,7 +10,7 @@ Description: Learn how to configure masquerading behavior for traffic destined t
 
 ## Introduction
 
-Proper configuration of masquerade traffic to remote nodes in cilium is essential for a production-ready Cilium deployment. When pods communicate with pods on remote nodes, Cilium can be configured to masquerade or not masquerade this inter-node traffic. The behavior depends on whether the pod CIDR is natively routable between nodes. In overlay (VXLAN/Geneve) mode, masquerading for inter-node traffic is typically not needed because the overlay handles encapsulation.
+Proper configuration of masquerade traffic to remote nodes in cilium is essential for a production-ready Cilium deployment. When pods communicate with node addresses on remote nodes, Cilium can be configured to masquerade or not masquerade this traffic. This setting only affects traffic from an endpoint to a remote node address, not pod-to-pod traffic between endpoints on different nodes. In overlay (VXLAN/Geneve) mode, pod-to-pod traffic between nodes is encapsulated and is not controlled by remote node masquerading.
 
 Misconfiguration at this level can lead to connectivity failures, performance degradation, or security gaps. This guide provides tested configuration settings with explanations for each option so you can make informed decisions for your environment.
 
@@ -31,28 +31,29 @@ Apply the following Helm values to configure masquerade traffic to remote nodes 
 ```yaml
 # cilium-remote-masquerade-values.yaml
 
-# Controls masquerading for traffic between nodes
-# In overlay mode, inter-node traffic is encapsulated, no masquerade needed
-tunnel: vxlan
+# Use VXLAN tunneling mode
+routingMode: tunnel
+tunnelProtocol: vxlan
 
-# Enable masquerade only for traffic leaving the cluster
+# Enable IPv4 masquerade support
 enableIPv4Masquerade: true
 
-# Do not masquerade traffic within the cluster pod CIDR
-ipv4NativeRoutingCIDR: "10.42.0.0/16"
-
-# BPF masquerade for performance
+# Enable BPF masquerade, which is required for remote node masquerading
 bpf:
   masquerade: true
+
+# Masquerade endpoint traffic destined to remote node InternalIP addresses
+extraConfig:
+  enable-remote-node-masquerade: "true"
 ```
 
 Apply the configuration:
 
 ```bash
 # Apply the configuration via Helm upgrade
-helm upgrade cilium cilium/cilium --version 1.16.5 \
+helm upgrade cilium cilium/cilium --version 1.19.3 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  -f cilium-remote-masquerade-values.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -65,7 +66,7 @@ Verify the configuration was applied correctly:
 
 ```bash
 # Check the active configuration
-cilium config view | grep -E "masq|routing-cidr|tunnel"
+cilium config view | grep -E "masq|routing-cidr|routing-mode|tunnel"
 
 # Verify Cilium status after configuration change
 cilium status
@@ -140,7 +141,7 @@ cilium config view
 cilium status --verbose | head -40
 
 # Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -155,7 +156,7 @@ cilium connectivity test --test pod-to-pod,pod-to-service
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | head -20
 ```
 
 ## Troubleshooting
