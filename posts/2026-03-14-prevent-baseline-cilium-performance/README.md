@@ -20,7 +20,7 @@ This guide provides the methodology and commands for baseline performance manage
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
 - `cilium` CLI, `helm`, and `kubectl`
-- `iperf3` and `netperf` for benchmarking
+- `iperf3` and `netperf` for benchmarking, plus `jq`, `bc`, and `curl` for the example scripts
 - Prometheus and Grafana for monitoring
 - Node-level root access
 
@@ -40,17 +40,17 @@ spec:
         spec:
           containers:
           - name: tracker
-            image: networkstatic/iperf3
+            image: alpine:3.22
             command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache iperf3 jq curl
               # Pod-to-pod throughput
               BPS=$(iperf3 -c iperf-server.monitoring -t 20 -P 1 -J | \
                 jq '.end.sum_sent.bits_per_second')
-              cat <<METRIC | curl --data-binary @- http://pushgateway.monitoring:9091/metrics/job/baseline
-              cilium_baseline_throughput_bps $BPS
-              METRIC
+              printf "cilium_baseline_throughput_bps %s\n" "$BPS" | \
+                curl --fail --data-binary @- http://pushgateway.monitoring:9091/metrics/job/baseline
           restartPolicy: OnFailure
 ```
 
@@ -87,7 +87,7 @@ echo "Compare pod throughput vs host baseline"
 ## Troubleshooting
 
 - **Host baseline lower than expected**: Check NIC link speed, CPU governor, and kernel TCP tuning.
-- **Pod performance much lower than host**: Check Cilium datapath mode -- tunnel mode adds significant overhead.
+- **Pod performance much lower than host**: Check Cilium datapath mode -- tunnel mode can add overhead compared with native routing.
 - **Inconsistent baseline measurements**: Increase test duration, check for background workloads.
 - **Baseline changes after kernel update**: Re-run host baseline and update reference values.
 
@@ -117,13 +117,14 @@ spec:
   chart:
     spec:
       chart: cilium
-      version: "1.14.x"
+      version: ">=1.14.0 <2.0.0"
       sourceRef:
         kind: HelmRepository
         name: cilium
   valuesFrom:
   - kind: ConfigMap
     name: cilium-values
+    valuesKey: cilium-values.yaml
 YAML
 ```
 
@@ -169,20 +170,20 @@ Before any cluster change, capture a performance snapshot:
 #!/bin/bash
 # pre-change-snapshot.sh
 SNAPSHOT="/tmp/perf-snapshot-$(date +%Y%m%d-%H%M%S)"
-mkdir -p $SNAPSHOT
+mkdir -p "$SNAPSHOT"
 
 # Throughput
-kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > $SNAPSHOT/throughput.json
+kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > "$SNAPSHOT/throughput.json"
 
 # Latency
-kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_RR -l 15 > $SNAPSHOT/latency.txt
+kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_RR -l 15 > "$SNAPSHOT/latency.txt"
 
 # Connection rate
-kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_CRR -l 15 > $SNAPSHOT/connrate.txt
+kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_CRR -l 15 > "$SNAPSHOT/connrate.txt"
 
 # Cilium state
-cilium status --verbose > $SNAPSHOT/cilium-status.txt
-cilium config view > $SNAPSHOT/cilium-config.txt
+cilium status --verbose > "$SNAPSHOT/cilium-status.txt"
+cilium config view > "$SNAPSHOT/cilium-config.txt"
 
 echo "Snapshot saved to $SNAPSHOT"
 echo "Run post-change-compare.sh after the change to detect regressions"
@@ -195,12 +196,16 @@ echo "Run post-change-compare.sh after the change to detect regressions"
 # post-change-compare.sh <pre-change-snapshot-dir>
 PRE=$1
 POST="/tmp/perf-snapshot-post-$(date +%Y%m%d-%H%M%S)"
-mkdir -p $POST
+if [ -z "$PRE" ]; then
+  echo "Usage: $0 <pre-change-snapshot-dir>"
+  exit 1
+fi
+mkdir -p "$POST"
 
-kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > $POST/throughput.json
+kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > "$POST/throughput.json"
 
-PRE_BPS=$(jq '.end.sum_sent.bits_per_second' $PRE/throughput.json)
-POST_BPS=$(jq '.end.sum_sent.bits_per_second' $POST/throughput.json)
+PRE_BPS=$(jq '.end.sum_sent.bits_per_second' "$PRE/throughput.json")
+POST_BPS=$(jq '.end.sum_sent.bits_per_second' "$POST/throughput.json")
 CHANGE=$(echo "scale=2; ($POST_BPS - $PRE_BPS) / $PRE_BPS * 100" | bc)
 
 echo "Throughput change: ${CHANGE}%"
