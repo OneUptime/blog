@@ -19,7 +19,7 @@ This guide covers the systematic analysis of Cilium configuration for performanc
 ## Prerequisites
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
-- `cilium` CLI and `kubectl` access
+- `cilium` CLI, `cilium-dbg` access inside the Cilium agent pod, and `kubectl` access
 - Node-level root access
 - Prometheus monitoring (recommended)
 
@@ -28,13 +28,15 @@ This guide covers the systematic analysis of Cilium configuration for performanc
 ```bash
 # Dump complete Cilium configuration
 
-cilium config view > /tmp/cilium-config.txt
+kubectl -n kube-system get configmap cilium-config -o yaml > /tmp/cilium-config.txt
 
 # Check critical performance settings
-cilium config view | grep -E "tunnel|routing-mode|bpf-host-routing|kube-proxy-replacement|bpf-lb-acceleration"
+kubectl -n kube-system get configmap cilium-config -o yaml | \
+  grep -E "routing-mode|tunnel-protocol|bpf-host-legacy-routing|kube-proxy-replacement|loadbalancer-acceleration"
 
 # Verify datapath mode
-cilium status --verbose | grep -E "DatapathMode|Host Routing|KubeProxyReplacement|XDP"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose | grep -E "Host Routing|KubeProxyReplacement|XDP"
 ```
 
 ## Feature Impact Matrix
@@ -56,14 +58,14 @@ graph TD
 ```bash
 # Test with current config
 echo "=== Current Config ==="
-cilium config view | grep -E "tunnel|routing|bpf"
+kubectl -n kube-system get configmap cilium-config -o yaml | grep -E "tunnel|routing|bpf"
 kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 20 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 
-# Switch to optimal config
+# Example direct-routing config; requires an underlay that routes PodCIDRs
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set tunnel=disabled \
   --set routingMode=native \
+  --set bpf.masquerade=true \
   --set bpf.hostLegacyRouting=false \
   --set kubeProxyReplacement=true
 kubectl rollout status ds/cilium -n kube-system
@@ -77,7 +79,7 @@ kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 20 -P 1 -J | \
 
 ```bash
 # Run the validation checks above
-# All items should show PASS
+# Cilium and its managed components should report OK
 cilium status --verbose
 ```
 
@@ -98,17 +100,21 @@ DIAG_DIR="/tmp/cilium-diag-$(date +%Y%m%d-%H%M%S)"
 mkdir -p $DIAG_DIR
 
 # Collect Cilium status
-cilium status --verbose > $DIAG_DIR/cilium-status.txt
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose > $DIAG_DIR/cilium-status.txt
 
 # Collect Cilium configuration
-cilium config view > $DIAG_DIR/cilium-config.txt
+kubectl -n kube-system get configmap cilium-config -o yaml > $DIAG_DIR/cilium-config.txt
 
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg bpf ct list > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -139,21 +145,26 @@ The combination of these data points will point you toward the specific subsyste
 
 ### Using Cilium Monitor for Real-Time Analysis
 
-The `cilium monitor` command provides real-time visibility into the eBPF datapath:
+The `cilium-dbg monitor` command provides real-time visibility into the eBPF datapath:
 
 ```bash
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+ENDPOINT_ID=$(kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list -o json | jq '.[0].id')
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --related-to $ENDPOINT_ID --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
@@ -166,11 +177,11 @@ cilium hubble port-forward &
 
 # Query recent flows with filters
 hubble observe --protocol TCP --last 500 -o json | \
-  jq 'select(.verdict == "DROPPED") | {src: .source.pod_name, dst: .destination.pod_name, reason: .drop_reason_desc}'
+  jq 'select(.flow.verdict == "DROPPED") | {src: .flow.source.pod_name, dst: .flow.destination.pod_name, reason: .flow.drop_reason_desc}'
 
 # Get flow statistics by source and destination
 hubble observe --last 1000 -o json | \
-  jq -r '\(.source.namespace)/\(.source.pod_name) -> \(.destination.namespace)/\(.destination.pod_name): \(.verdict)' | \
+  jq -r '\(.flow.source.namespace)/\(.flow.source.pod_name) -> \(.flow.destination.namespace)/\(.flow.destination.pod_name): \(.flow.verdict)' | \
   sort | uniq -c | sort -rn | head -20
 ```
 
@@ -183,7 +194,7 @@ For deep datapath analysis, use BPF tracing tools:
 bpftool prog show --json | jq '.[] | select(.name | contains("cil")) | {name, run_cnt, run_time_ns, avg_ns: (if .run_cnt > 0 then (.run_time_ns / .run_cnt | floor) else 0 end)}'
 
 # Use bpftrace for custom tracing
-bpftrace -e 'tracepoint:xdp:xdp_redirect { @cnt[args->action] = count(); }'
+bpftrace -e 'tracepoint:xdp:xdp_redirect { @cnt[probe] = count(); }'
 ```
 
 These diagnostic tools form a comprehensive toolkit for understanding exactly what happens to packets as they traverse Cilium's eBPF datapath.
