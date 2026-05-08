@@ -14,7 +14,7 @@ Calicoctl installation seems straightforward, but several common mistakes lead t
 
 This guide documents the most common calicoctl installation mistakes and how to avoid them. Each mistake includes the symptom it causes, why it happens, and the correct approach. Learn from the mistakes of others rather than discovering them during an incident.
 
-These mistakes apply across all Calico versions and deployment methods. Whether you install calicoctl manually, through automation, or via containers, these pitfalls are waiting.
+These mistakes apply across common Calico versions and deployment methods. Whether you install calicoctl manually, through automation, or via containers, these pitfalls are waiting.
 
 ## Prerequisites
 
@@ -49,14 +49,14 @@ calicoctl version
 
 ## Mistake 2: Missing or Incorrect Configuration
 
-Installing the binary without configuring the datastore connection.
+Installing the binary without ensuring calicoctl can find the correct datastore connection.
 
 ```bash
-# WRONG: Install binary and assume it will auto-detect the datastore
+# WRONG: Install binary and assume it will find the correct datastore
 sudo install calicoctl /usr/local/bin/
 # Then: calicoctl get nodes -> "connection refused"
 
-# RIGHT: Always create the configuration file
+# RIGHT: Create the configuration file when the default kubeconfig is not correct
 sudo mkdir -p /etc/calico
 
 # For Kubernetes datastore:
@@ -109,17 +109,17 @@ CALICO_VERSION="v3.27.0"
 ARCH="amd64"
 
 # Download binary and checksum
-curl -fsSL -o /tmp/calicoctl \
+cd /tmp
+curl -fsSL -o "calicoctl-linux-${ARCH}" \
   "https://github.com/projectcalico/calico/releases/download/${CALICO_VERSION}/calicoctl-linux-${ARCH}"
-curl -fsSL -o /tmp/calicoctl.sha256 \
+curl -fsSL -o calicoctl.sha256 \
   "https://github.com/projectcalico/calico/releases/download/${CALICO_VERSION}/SHA256SUMS"
 
 # Verify checksum
-cd /tmp
 grep "calicoctl-linux-${ARCH}" calicoctl.sha256 | sha256sum -c -
 
 # Only install if verification passes
-sudo install -o root -g root -m 0755 /tmp/calicoctl /usr/local/bin/calicoctl
+sudo install -o root -g root -m 0755 "calicoctl-linux-${ARCH}" /usr/local/bin/calicoctl
 ```
 
 **Symptom**: No immediate symptom, but running unverified binaries is a security risk.
@@ -187,7 +187,7 @@ echo "=== Installation Quality Check ==="
 # Check 1: Version match
 echo -n "Version match: "
 CTL_V=$(calicoctl version 2>/dev/null | grep "Client" | awk '{print $NF}')
-CLU_V=$(calicoctl version 2>/dev/null | grep "Cluster" | awk '{print $NF}')
+CLU_V=$(calicoctl version 2>/dev/null | grep "Cluster Version" | awk '{print $NF}')
 [ "${CTL_V%.*}" = "${CLU_V%.*}" ] && echo "PASS" || echo "WARNING (${CTL_V} vs ${CLU_V})"
 
 # Check 2: Configuration exists
