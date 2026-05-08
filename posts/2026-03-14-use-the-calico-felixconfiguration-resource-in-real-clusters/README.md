@@ -18,7 +18,7 @@ Whether you are running a small cluster or a large multi-tenant environment, the
 
 ## Prerequisites
 
-- A running Kubernetes cluster with Calico (v3.26+)
+- A running Kubernetes cluster with Calico (v3.32+ for selector-scoped FelixConfiguration resources)
 - `kubectl` and `calicoctl` installed
 - Basic understanding of the FelixConfiguration resource fields (see our creation guide)
 
@@ -31,15 +31,16 @@ For clusters with fewer than 50 nodes, a straightforward FelixConfiguration conf
 
 calicoctl get felixconfiguration -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# Check global and node-specific FelixConfiguration resources
+calicoctl get felixconfiguration default -o yaml
+calicoctl get felixconfiguration node.<node-name> -o yaml
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), you can use selector-scoped FelixConfiguration resources and labels to apply different configurations:
 
 ```bash
 # Label nodes by environment
@@ -50,7 +51,7 @@ kubectl label node worker-2 environment=staging
 kubectl get nodes --show-labels | grep environment
 ```
 
-Then reference these labels in your FelixConfiguration manifest's node selectors to apply environment-specific settings.
+Then reference these labels in your FelixConfiguration manifest's `nodeSelector` field, such as `environment == 'production'`, to apply environment-specific settings. Selector-scoped FelixConfiguration is a tech preview feature, so avoid overlapping selectors and validate the behavior before relying on it in production.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,9 +66,9 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Avoid making Felix refresh and reconciliation intervals more aggressive unless you have measured a need
 - Use Typha to reduce the number of direct datastore connections
-- Monitor memory usage of calico-node pods when managing many FelixConfiguration resources
+- Monitor memory usage of calico-node pods when managing many policies and Calico resources
 
 ## Pattern 4: Combining with Other Calico Resources
 
@@ -79,7 +80,7 @@ kubectl get crds | grep projectcalico
 
 # View all Calico configuration resources
 calicoctl get felixconfiguration -o yaml
-calicoctl get felixconfiguration -o yaml
+calicoctl get bgpconfiguration -o yaml
 calicoctl get ippools -o yaml
 ```
 
@@ -97,12 +98,12 @@ kubectl get felixconfiguration.projectcalico.org -w
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if the Felix health port is enabled:
 
 ```bash
 # Check if Felix is reporting healthy
-curl -s http://<node-ip>:9099/liveness
-curl -s http://<node-ip>:9099/readiness
+curl -s http://127.0.0.1:9099/liveness
+curl -s http://127.0.0.1:9099/readiness
 ```
 
 ## Verification
@@ -168,10 +169,10 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current credentials can modify Calico resources
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces
 
-# Review recent changes to Calico resources (if audit logging is enabled)
+# Review recent events for Calico components
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 ```
 
