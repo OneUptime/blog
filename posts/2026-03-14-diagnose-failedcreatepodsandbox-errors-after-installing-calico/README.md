@@ -22,13 +22,15 @@ Accurate diagnosis is the most important step in resolving any Calico networking
 - `kubectl` with cluster-admin privileges
 - `calicoctl` installed
 - Access to node logs (directly or via `kubectl debug`)
+- The Calico namespace for your installation. Operator-managed installs commonly use `calico-system`; some manifest-based installs use `kube-system`.
 
 ## Step 1: Confirm the Error
 
 Start by confirming the exact error and its scope:
 
 ```bash
-# Check calico-node pod logs for relevant errors
+# Check calico-node pod logs for relevant errors.
+# Replace calico-system with kube-system if your install uses that namespace.
 
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=100 | grep -i "error\|fail\|warn"
 
@@ -46,7 +48,8 @@ Document the exact error message, which pods or nodes are affected, and when the
 Dig deeper into the root cause:
 
 ```bash
-# Check the Calico system pod status
+# Check the Calico system pod status.
+# Replace calico-system with kube-system if your install uses that namespace.
 kubectl get pods -n calico-system -o wide
 
 # Verify IPAM state
@@ -67,7 +70,7 @@ Narrow down to specific nodes:
 # Check which nodes have issues
 kubectl get nodes -o wide
 
-# Test connectivity from a debug pod
+# Test connectivity from a debug pod that can be scheduled successfully
 kubectl run debug-net --image=busybox --rm -it --restart=Never -- ping -c 3 <target-ip>
 
 # Check calico-node status per node
@@ -80,7 +83,7 @@ For complex issues, collect a full diagnostic bundle:
 
 ```bash
 # Collect Calico diagnostic information
-calicoctl node diag
+sudo calicoctl node diags
 
 # Collect cluster-wide Calico state
 calicoctl get nodes -o yaml > calico-nodes.yaml
@@ -97,6 +100,7 @@ After identifying the root cause, verify your diagnosis before proceeding to fix
 kubectl get events -A --sort-by='.lastTimestamp' | grep -i "error\|warning" | tail -20
 
 # Verify Calico system health
+# Replace calico-system with kube-system if your install uses that namespace.
 kubectl get pods -n calico-system
 calicoctl node status
 ```
@@ -105,7 +109,7 @@ calicoctl node status
 
 **Cannot access calico-node pods for diagnostics:**
 - Use `kubectl debug node/<name>` to get a shell on the node directly.
-- Check if the calico-system namespace exists: `kubectl get ns calico-system`.
+- Check if the Calico namespace exists, for example: `kubectl get ns calico-system` or `kubectl get ns kube-system`.
 
 **calicoctl commands failing:**
 - Ensure calicoctl version matches your Calico version: `calicoctl version`.
@@ -118,11 +122,11 @@ calicoctl node status
 
 ## Advanced Configuration Options
 
-Beyond the basic manifest shown above, there are several advanced configuration patterns worth understanding for production deployments.
+Beyond the basic diagnostics shown above, there are several advanced configuration patterns worth understanding for production deployments.
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Labels and selectors enable you to build flexible configurations that apply differently across your cluster. For example, you can use Kubernetes node labels to control which nodes are affected by resources that support node selection:
 
 ```bash
 # Label nodes for targeted configuration
