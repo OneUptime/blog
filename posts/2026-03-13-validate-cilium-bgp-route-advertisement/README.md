@@ -30,8 +30,8 @@ This guide provides a complete validation checklist for Cilium BGP route adverti
 
 cilium bgp peers
 
-# Check session uptime and prefix counts
-cilium bgp peers --verbose
+# Check session uptime and received/advertised route counts
+cilium bgp peers
 ```
 
 ## Step 2: Validate Advertised Prefixes
@@ -48,16 +48,14 @@ cilium bgp routes advertised ipv4 unicast
 cilium bgp routes advertised ipv6 unicast
 ```
 
-## Step 3: Validate Available (Received) Routes
+## Step 3: Validate Available Routes
 
 ```bash
-# Routes received from BGP peers and available for use
+# Routes in Cilium's local BGP routing table
 cilium bgp routes available ipv4 unicast
 
-# Compare with kernel routing table
-ip route show | grep bgp
-# Or check via kubectl exec
-kubectl exec -n kube-system cilium-xxxxx -- ip route show
+# For agent-level debugging, inspect the Cilium pod directly
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg bgp routes available ipv4 unicast
 ```
 
 ## Step 4: Validate Service IP Advertisement
@@ -74,15 +72,17 @@ cilium bgp routes advertised ipv4 unicast | grep "203.0.113"
 
 ```bash
 # Check IP pool status and utilization
-kubectl get ciliumulbippool -o yaml
+kubectl get ippools -o yaml
 
-# Sample output showing allocated IPs:
+# Sample output showing pool capacity and availability:
 # status:
 #   conditions:
-#     - type: Ready
-#   allocatedIPs:
-#     - 203.0.113.1
-#     - 203.0.113.2
+#     - type: cilium.io/IPsTotal
+#       message: "254"
+#     - type: cilium.io/IPsAvailable
+#       message: "252"
+#     - type: cilium.io/IPsUsed
+#       message: "2"
 ```
 
 ## Step 6: Cross-Validate on Upstream Router
