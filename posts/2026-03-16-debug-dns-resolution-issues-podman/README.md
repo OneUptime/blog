@@ -96,17 +96,20 @@ podman inspect --format '{{json .NetworkSettings.Networks}}' my-container | pyth
 
 ## Debug Podman Network DNS
 
-Podman uses either Aardvark DNS or dnsmasq for container name resolution depending on your version.
+Podman uses Aardvark DNS with the Netavark network backend. Older CNI-based setups may use the `dnsname` plugin, which runs dnsmasq for container name resolution.
 
 ```bash
-# Check which DNS plugin Podman is using
-podman info --format '{{.Plugins.Network}}'
+# Check which network backend Podman is using
+podman info --format '{{.Host.NetworkBackend}}'
 
 # List all Podman networks
 podman network ls
 
 # Inspect a network's DNS configuration
 podman network inspect my-network
+
+# Check whether DNS is enabled on the network
+podman network inspect -f '{{.DNSEnabled}}' my-network
 
 # Check if the Aardvark DNS process is running
 ps aux | grep aardvark-dns
