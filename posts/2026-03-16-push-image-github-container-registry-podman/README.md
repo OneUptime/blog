@@ -22,11 +22,9 @@ You need a GitHub account with a personal access token (PAT) that has the approp
 # Create a Personal Access Token (classic) at:
 
 # https://github.com/settings/tokens
-# Required scopes: read:packages, write:packages, delete:packages
-
-# Or create a fine-grained token at:
-# https://github.com/settings/personal-access-tokens
-# Required permissions: Packages - Read and Write
+# Required scopes for pushing: write:packages
+# Add read:packages for pulling private images or reading metadata
+# Add delete:packages only if you need to delete images
 ```
 
 ## Authenticating with GHCR
@@ -116,11 +114,11 @@ podman push ghcr.io/myorg/myapp:v1.0.0
 New packages on GHCR are private by default.
 
 ```bash
-# Make a package public using the GitHub API
-curl -X PATCH \
-  "https://api.github.com/user/packages/container/myapp/versions" \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
-  -H "Accept: application/vnd.github.v3+json"
+# Make a personal package public using the GitHub web UI:
+# 1. Go to github.com/users/myusername/packages/container/package/myapp
+# 2. Click "Package settings"
+# 3. Under "Danger Zone", click "Change visibility"
+# 4. Select Public and confirm the change
 
 # For organization packages, use the GitHub web UI:
 # 1. Go to github.com/orgs/myorg/packages
