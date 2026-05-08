@@ -26,7 +26,8 @@ Validating IP pool exhaustion resolution requires confirming that free IPs are a
 
 ```bash
 calicoctl ipam show
-kubectl get pods --all-namespaces | grep -E "Pending|FailedScheduling"
+kubectl get pods --all-namespaces | grep Pending
+kubectl get events --all-namespaces | grep FailedScheduling
 ```
 
 ## Solution
@@ -35,7 +36,7 @@ kubectl get pods --all-namespaces | grep -E "Pending|FailedScheduling"
 
 ```bash
 calicoctl ipam show | grep -i "free\|available"
-FREE=$(calicoctl ipam show 2>/dev/null | grep -i "free" | grep -oP '\d+' | head -1)
+FREE=$(calicoctl ipam show 2>/dev/null | awk -F'|' '/IP Pool/ { free=$6; gsub(/^[ \t]+|[ \t]+$/, "", free); split(free, a, " "); if (a[1] ~ /^[0-9]+$/) total+=a[1] } END { print total+0 }')
 [ "${FREE:-0}" -gt 10 ] && echo "PASS: $FREE free IPs" || echo "FAIL: Only $FREE free IPs"
 ```
 
