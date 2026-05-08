@@ -24,7 +24,7 @@ Start by gathering information about the failure:
 podman machine start my-machine 2>&1
 
 # Check the machine state
-podman machine inspect my-machine | jq '.State'
+podman machine inspect my-machine | jq '.[0].State'
 
 # List all machines and their status
 podman machine ls
@@ -53,16 +53,17 @@ podman machine start my-machine
 # The socket file may be stale or missing
 
 # Check the socket path
-podman machine inspect my-machine | jq -r '.ConnectionInfo.PodmanSocket.Path'
+SOCKET_PATH=$(podman machine inspect my-machine | jq -r '.[0].ConnectionInfo.PodmanSocket.Path')
+echo "$SOCKET_PATH"
 
-# Remove stale socket files
-rm -f /tmp/podman-machine-*.sock
+# Remove the stale socket file if it still exists after the machine is stopped
+podman machine stop my-machine 2>/dev/null
+rm -f "$SOCKET_PATH"
 
 # Check for leftover processes
 ps aux | grep -i podman | grep -v grep
 
 # Restart the machine
-podman machine stop my-machine 2>/dev/null
 podman machine start my-machine
 ```
 
@@ -75,7 +76,7 @@ podman machine start my-machine
 df -h
 
 # Check machine resource requirements
-podman machine inspect my-machine | jq '.Resources'
+podman machine inspect my-machine | jq '.[0].Resources'
 
 # Reduce resource allocations if needed
 podman machine stop my-machine
@@ -104,7 +105,8 @@ lsmod | grep kvm
 
 # Find what is using the SSH port
 # On macOS:
-lsof -i :$(podman machine inspect my-machine | jq '.ConnectionInfo.PodmanSocket.Path' -r | grep -o '[0-9]*')
+SSH_PORT=$(podman machine inspect my-machine | jq -r '.[0].SSHConfig.Port')
+lsof -i :"$SSH_PORT"
 
 # Kill conflicting processes if safe to do so
 # Or stop the other machine that may be using the port
@@ -125,7 +127,7 @@ done
 podman machine rm --force my-machine
 
 # Reinitialize it
-podman machine init my-machine --cpus 2 --memory 4096
+podman machine init --cpus 2 --memory 4096 my-machine
 podman machine start my-machine
 ```
 
@@ -215,12 +217,12 @@ podman machine ls
 echo ""
 echo "--- Machine Configuration ---"
 podman machine inspect "$MACHINE" 2>&1 | jq '{
-    state: .State,
-    vm_type: .VMType,
-    cpus: .Resources.CPUs,
-    memory_mb: .Resources.Memory,
-    disk_gb: .Resources.DiskSize,
-    rootful: .Rootful
+    state: .[0].State,
+    vm_type: .[0].VMType,
+    cpus: .[0].Resources.CPUs,
+    memory_mb: .[0].Resources.Memory,
+    disk_gb: .[0].Resources.DiskSize,
+    rootful: .[0].Rootful
 }' 2>/dev/null || echo "Could not inspect machine"
 
 echo ""
