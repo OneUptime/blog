@@ -10,9 +10,9 @@ Description: A guide to upgrading Cilium on Kubernetes clusters running on Broad
 
 ## Introduction
 
-Running Kubernetes on VMware ESXi with Cilium as the CNI is common in enterprise environments that have standardized on VMware's virtualization infrastructure. Upgrading Cilium in this environment requires understanding how vSphere's virtual networking - including VMware NSX, distributed virtual switches (DVS), and VXLAN support - interacts with Cilium's dataplane.
+Running Kubernetes on VMware ESXi with Cilium as the CNI is common in enterprise environments that have standardized on VMware's virtualization infrastructure. Upgrading Cilium in this environment requires understanding how vSphere's virtual networking - including VMware NSX, distributed virtual switches (DVS), and overlay tunnel support - interacts with Cilium's dataplane.
 
-VMware ESXi's virtualization layer can affect Cilium's eBPF programs due to how the hypervisor presents hardware capabilities to VMs. Most modern ESXi deployments with VMXNET3 network adapters and hardware virtualization extensions support Cilium's full feature set, but confirming hardware capability passthrough is an essential pre-upgrade step.
+VMware ESXi's virtualization layer can affect Cilium traffic due to virtual NIC driver behavior and tunnel offloads. Cilium's eBPF programs run in the guest Linux kernel, so confirming the node kernel, BPF filesystem, and tunnel settings is an essential pre-upgrade step.
 
 This guide covers Cilium upgrade procedures for Kubernetes clusters on VMware ESXi, including vSphere-specific pre-upgrade checks and validation of Cilium features after the upgrade.
 
@@ -22,26 +22,28 @@ This guide covers Cilium upgrade procedures for Kubernetes clusters on VMware ES
 - vSphere administrator access
 - `kubectl` with cluster-admin permissions
 - `cilium` CLI installed
+- Helm installed
+- `helm diff` plugin installed if you use the `helm diff upgrade` command
 - SSH access to Kubernetes node VMs
 
 ## Step 1: Verify ESXi and VM Hardware Compatibility
 
-Check that VMs support the hardware features Cilium requires.
+Check that the node VMs meet Cilium's Linux kernel and networking requirements.
 
 ```bash
-# Check kernel version on VMs (should be 4.9+ for basic Cilium, 5.3+ for eBPF)
+# Check kernel version on VMs (Cilium 1.19 requires Linux 5.10+ or an equivalent vendor kernel, such as RHEL 8.10's 4.18 kernel)
 
 kubectl get nodes \
   -o custom-columns="NODE:.metadata.name,KERNEL:.status.nodeInfo.kernelVersion,OS:.status.nodeInfo.osImage"
 
-# Check hardware virtualization on VMs
-ssh <vm-node-ip> "grep -m 1 vmx /proc/cpuinfo | cut -d: -f2"
+# Check required BPF-related kernel options
+ssh <vm-node-ip> 'grep -E "CONFIG_(BPF|BPF_EVENTS|BPF_SYSCALL|BPF_JIT|NET_CLS_BPF|NET_CLS_ACT|CGROUP_BPF)=" /boot/config-$(uname -r)'
 
-# Verify VMXNET3 adapter is in use (required for optimal Cilium performance)
+# Verify VMXNET3 adapter is in use (recommended for Cilium performance on VMware)
 ssh <vm-node-ip> "lspci | grep -i vmxnet"
 
 # Check BPF filesystem mount status
-ssh <vm-node-ip> "mount | grep bpf"
+ssh <vm-node-ip> "mount | grep /sys/fs/bpf"
 ```
 
 ## Step 2: Pre-Upgrade Cilium Health Check
@@ -80,16 +82,23 @@ kubectl get ciliumnetworkpolicies -A \
 # Export Cilium node annotations
 kubectl get ciliumnodes -o yaml > esxi-cilium-nodes-backup-$BACKUP_DATE.yaml
 
+# Export current Helm values for review and reuse during upgrade
+helm get values cilium --namespace kube-system -o yaml > esxi-cilium-values-$BACKUP_DATE.yaml
+cp esxi-cilium-values-$BACKUP_DATE.yaml cilium-upgrade-values.yaml
+
 # Take VM snapshots before upgrade (from vSphere)
-# Use VMware vSphere API or vCenter UI to snapshot all Kubernetes VMs
-echo "Remember to take VM snapshots from vCenter before proceeding"
+# Use VMware vSphere API or vCenter UI according to your cluster's snapshot and etcd backup policy
+echo "If your operations policy allows VM snapshots, take them from vCenter before proceeding"
 ```
 
 ## Step 4: Execute the Cilium Upgrade
 
-Perform the rolling upgrade using Helm or the cilium CLI.
+Perform the rolling upgrade using Helm. Upgrade one minor release at a time and use the latest patch release for the target minor version.
 
 ```bash
+TARGET_VERSION=1.19.3
+VALUES_FILE=cilium-upgrade-values.yaml
+
 # Upgrade using Helm
 helm repo add cilium https://helm.cilium.io/
 helm repo update
@@ -97,14 +106,14 @@ helm repo update
 # Check what changes will be made
 helm diff upgrade cilium cilium/cilium \
   --namespace kube-system \
-  --version 1.15.0 \
-  --reuse-values
+  --version $TARGET_VERSION \
+  -f $VALUES_FILE
 
 # Execute the upgrade
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
-  --version 1.15.0 \
-  --reuse-values \
+  --version $TARGET_VERSION \
+  -f $VALUES_FILE \
   --atomic \
   --timeout 15m
 
@@ -126,14 +135,14 @@ cilium version
 # Check eBPF programs are loaded correctly
 # On a node: verify BPF programs are attached
 kubectl exec -n kube-system $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) -- \
-  cilium bpf policy list
+  cilium-dbg bpf policy list
 
 # Run Cilium connectivity test suite
 cilium connectivity test
 
 # Check that VXLAN tunnels are up (if using VXLAN mode)
 kubectl exec -n kube-system $(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1) -- \
-  cilium status --verbose | grep -i vxlan
+  cilium-dbg status --verbose | grep -i vxlan
 
 # Verify cross-host pod connectivity between VMs on different ESXi hosts
 kubectl run vmware-test --image=busybox --rm -it --restart=Never -- \
@@ -142,12 +151,12 @@ kubectl run vmware-test --image=busybox --rm -it --restart=Never -- \
 
 ## Best Practices
 
-- Take VM snapshots before Cilium upgrades for quick rollback capability
-- Verify VMXNET3 is the VM network adapter - E1000/E1000e have reduced performance with Cilium
-- If running VMware NSX, coordinate Cilium upgrades with NSX configuration changes
+- Follow your VM snapshot and etcd backup policy before Cilium upgrades for rollback capability
+- Verify VMXNET3 is the VM network adapter - E1000/E1000e have reduced performance compared with VMXNET3
+- If running VMware NSX with VXLAN tunnel mode, consider using a custom Cilium tunnel port such as `--set tunnelPort=8223` or using Geneve, and coordinate Cilium upgrades with NSX configuration changes
 - Disable VMware Fault Tolerance on Kubernetes VMs during upgrade - FT can cause unexpected node behavior
 - Monitor vCenter for VM network performance metrics during the rolling upgrade
 
 ## Conclusion
 
-Upgrading Cilium on VMware ESXi requires attention to VM hardware configuration and vSphere networking compatibility. By verifying hardware virtualization features, taking VM snapshots before the upgrade, using Helm's atomic upgrade, and running the Cilium connectivity test suite post-upgrade, you ensure a successful upgrade that maintains Cilium's full feature set on your vSphere-based Kubernetes infrastructure.
+Upgrading Cilium on VMware ESXi requires attention to VM hardware configuration and vSphere networking compatibility. By verifying the guest kernel and BPF filesystem, following your snapshot and backup policy before the upgrade, using Helm's atomic upgrade, and running the Cilium connectivity test suite post-upgrade, you ensure a successful upgrade that maintains Cilium networking on your vSphere-based Kubernetes infrastructure.
