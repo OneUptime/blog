@@ -87,8 +87,6 @@ spec:
   ingress:
     - from:
         - podSelector: {}
-      ports:
-        - protocol: TCP
 ```
 
 This stages a policy that only allows intra-namespace ingress. Review flow logs to discover which external namespaces currently communicate with the payments namespace before committing.
@@ -142,7 +140,7 @@ kubectl get stagedkubernetesnetworkpolicies --all-namespaces -o wide
 Validate that production traffic is unaffected while policies are staged:
 
 ```bash
-kubectl exec -n production deploy/api-server -- wget -qO- --timeout=5 http://database-svc.data:5432 2>&1 | head -1
+kubectl exec -n production deploy/api-server -- nc -zvw5 database-svc.data 5432
 ```
 
 Review the traffic impact analysis in Calico Enterprise Manager to see which flows would match the staged rules.
