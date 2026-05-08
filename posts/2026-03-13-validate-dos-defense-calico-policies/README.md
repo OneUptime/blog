@@ -26,19 +26,21 @@ This guide covers validate DoS Defense in Calico with practical configurations a
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
 metadata:
-  name: dos-defense-rate-limit
+  name: dos-defense-web-ingress
 spec:
   order: 50
   selector: app == 'web-frontend'
   ingress:
     - action: Allow
+      protocol: TCP
       source:
         nets:
           - 0.0.0.0/0
       destination:
         ports: [80, 443]
-      # Note: Rate limiting requires Calico Enterprise or eBPF mode
-    - action: Allow
+      # Calico network policy allows or denies traffic. Use an ingress controller,
+      # service mesh, or external DDoS protection for request/connection rate limits.
+    - action: Deny
   types:
     - Ingress
 ---
@@ -65,20 +67,21 @@ spec:
 
 ```bash
 # Apply DoS defense policies
+calicoctl validate -f dos-defense.yaml
 calicoctl apply -f dos-defense.yaml
 
-# Monitor connection rates using Felix metrics
-curl -s http://node-ip:9091/metrics | grep felix_denied
+# Monitor denied packet counts using Calico Enterprise policy metrics
+curl -s http://node-ip:9081/metrics | grep calico_denied_packets
 
 # Check denial rates in real-time
-watch -n1 'curl -s http://localhost:9091/metrics | grep felix_denied_packets_total'
+watch -n1 'curl -s http://localhost:9081/metrics | grep calico_denied_packets'
 ```
 
-## eBPF Rate Limiting (Calico with eBPF dataplane)
+## eBPF Dataplane
 
 ```bash
-# Enable eBPF dataplane for rate limiting support
-kubectl patch installation default --type=merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF"}}}'
+# Enable eBPF dataplane
+kubectl patch installation.operator.tigera.io default --type merge -p '{"spec":{"calicoNetwork":{"linuxDataplane":"BPF", "hostPorts":null}}}'
 ```
 
 ## Architecture
