@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Datastore, Migration, Kubernetes, etcd, Lock, DevOps
 
-Description: Learn how to use calicoctl datastore migrate lock to prevent changes during a Calico datastore migration.
+Description: Learn how to use calicoctl datastore migrate lock to keep new Calico resources from affecting the cluster during a datastore migration.
 
 ---
 
 ## Introduction
 
-When migrating Calico data between datastores, it is critical to prevent any configuration changes during the migration window. The `calicoctl datastore migrate lock` command puts the Calico datastore into a read-only mode, ensuring that no new resources are created, modified, or deleted while you export and import data.
+When migrating Calico data between datastores, it is critical to prevent configuration changes from taking effect during the migration window. The `calicoctl datastore migrate lock` command marks the Calico datastore as not ready for migration, ensuring that new or updated Calico resources do not affect the cluster while you export and import data.
 
-Without locking the datastore, changes made after the export but before the import completes would be lost. This could result in missing network policies, stale IP allocations, or inconsistent BGP configurations in the target datastore.
+Without locking the datastore, changes made after the export but before the import completes could affect the running cluster but be missing from the imported target datastore. This could result in missing network policies, stale IP allocations, or inconsistent BGP configurations in the target datastore.
 
 This guide covers how to use `calicoctl datastore migrate lock` as part of a safe migration workflow.
 
@@ -25,7 +25,7 @@ This guide covers how to use `calicoctl datastore migrate lock` as part of a saf
 
 ## Locking the Datastore
 
-Lock the datastore to prevent modifications:
+Lock the datastore to prevent new changes from affecting the cluster:
 
 ```bash
 calicoctl datastore migrate lock
@@ -34,18 +34,17 @@ calicoctl datastore migrate lock
 Successful output:
 
 ```text
-Datastore locked for migration.
-All write operations are now blocked.
+Datastore locked.
 ```
 
-Once locked, any attempt to modify Calico resources will fail:
+Once locked, new or updated Calico resources can still be written to the datastore, but they do not take effect in the cluster until the migration is completed and the datastore is unlocked:
 
 ```bash
 calicoctl apply -f new-policy.yaml
 ```
 
 ```text
-Error: datastore is locked for migration. Unlock with 'calicoctl datastore migrate unlock'.
+Successfully applied 1 'GlobalNetworkPolicy' resource(s)
 ```
 
 ## Unlocking the Datastore
@@ -59,17 +58,18 @@ calicoctl datastore migrate unlock
 Output:
 
 ```text
-Datastore unlocked. Write operations are now permitted.
+Datastore unlocked.
 ```
 
 ## Understanding Lock Behavior
 
 When the datastore is locked:
 
-- All `calicoctl apply`, `calicoctl create`, `calicoctl replace`, and `calicoctl delete` operations are rejected
+- New or updated Calico resources do not affect the cluster until the datastore is unlocked
+- `calicoctl apply`, `calicoctl create`, `calicoctl replace`, and `calicoctl delete` can still update the datastore
 - Read operations like `calicoctl get` continue to work normally
-- The Calico control plane (Felix, BIRD, Typha) continues to enforce existing policies
-- No new pods will receive Calico network policies until the lock is released
+- The Calico control plane continues to enforce existing dataplane state
+- New pods will not be started until the lock is released
 - Existing pod connectivity is not affected
 
 ## Pre-Lock Checklist
@@ -95,10 +95,10 @@ kubectl get events -n calico-system --field-selector reason=Updated --no-headers
 
 echo ""
 echo "3. Current resource counts..."
-echo "   IPPools: $(calicoctl get ippools --no-headers | wc -l)"
-echo "   GlobalNetworkPolicies: $(calicoctl get gnp --no-headers | wc -l)"
-echo "   NetworkPolicies: $(calicoctl get np -A --no-headers | wc -l)"
-echo "   BGPPeers: $(calicoctl get bgppeers --no-headers | wc -l)"
+echo "   IPPools: $(calicoctl get ippools | tail -n +2 | wc -l)"
+echo "   GlobalNetworkPolicies: $(calicoctl get globalnetworkpolicies | tail -n +2 | wc -l)"
+echo "   NetworkPolicies: $(calicoctl get networkpolicies -A | tail -n +2 | wc -l)"
+echo "   BGPPeers: $(calicoctl get bgppeers | tail -n +2 | wc -l)"
 
 echo ""
 echo "4. IPAM consistency..."
@@ -162,8 +162,8 @@ calicoctl datastore migrate import -f "$EXPORT_FILE"
 # Phase 5: Verify import
 echo ""
 echo "Phase 5: Verifying import"
-echo "IPPools: $(calicoctl get ippools --no-headers | wc -l)"
-echo "Policies: $(calicoctl get gnp --no-headers | wc -l)"
+echo "IPPools: $(calicoctl get ippools | tail -n +2 | wc -l)"
+echo "Policies: $(calicoctl get globalnetworkpolicies | tail -n +2 | wc -l)"
 
 # Phase 6: Unlock source (or switch to target)
 echo ""
@@ -178,14 +178,14 @@ echo "Run: calicoctl datastore migrate unlock"
 Check whether the datastore is currently locked:
 
 ```bash
-calicoctl datastore migrate lock 2>&1 || echo "Datastore may already be locked."
+calicoctl get clusterinformation default -o yaml
 ```
 
-You can also verify by attempting a dry-run operation:
+Look for the `spec.datastoreReady` field:
 
-```bash
-# This will fail if the datastore is locked
-calicoctl get ippools -o yaml | calicoctl apply -f - 2>&1 | head -1
+```yaml
+spec:
+  datastoreReady: false
 ```
 
 ## Handling Lock Emergencies
@@ -200,22 +200,10 @@ calicoctl datastore migrate unlock
 calicoctl get ippools -o yaml | head -5
 ```
 
-If `calicoctl` cannot reach the datastore to unlock it, you may need to directly modify the lock in the datastore:
-
-For etcd:
+For a Kubernetes API datastore, you can also verify the `ClusterInformation` resource with `kubectl`:
 
 ```bash
-etcdctl del /calico/migration/lock \
-  --endpoints=https://10.0.1.10:2379 \
-  --cacert=/etc/calico/certs/ca.pem \
-  --cert=/etc/calico/certs/cert.pem \
-  --key=/etc/calico/certs/key.pem
-```
-
-For Kubernetes API datastore, the lock is stored as a ConfigMap:
-
-```bash
-kubectl delete configmap calico-migration-lock -n kube-system
+kubectl get clusterinformation default -o yaml
 ```
 
 ## Verification
@@ -223,7 +211,7 @@ kubectl delete configmap calico-migration-lock -n kube-system
 After completing the migration and unlocking:
 
 ```bash
-# Verify datastore is unlocked
+# Verify datastore is writable
 calicoctl apply -f - <<EOF
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
@@ -236,18 +224,18 @@ spec:
 EOF
 
 # Clean up test resource
-calicoctl delete gnp migration-test
+calicoctl delete globalnetworkpolicy migration-test
 
 echo "Datastore is writable. Migration lock successfully released."
 ```
 
 ## Troubleshooting
 
-- **Cannot lock**: Another migration may be in progress. Check for existing locks and ensure no other operator is performing a migration.
-- **Cannot unlock**: Verify `calicoctl` has admin-level access to the datastore. If `calicoctl` is unreachable, use the emergency direct datastore access methods described above.
-- **Pods failing after lock**: The lock prevents new policy creation but does not affect existing policies. If pods are failing, the issue is likely unrelated to the lock. Check Calico component logs.
+- **Cannot lock**: Verify `calicoctl` has access to the datastore and can update the `ClusterInformation` resource.
+- **Cannot unlock**: Verify `calicoctl` has admin-level access to the datastore. If `calicoctl` is unreachable, restore access to the datastore before attempting to unlock it.
+- **Pods failing after lock**: The lock prevents new policy changes from affecting the cluster but does not affect existing dataplane state. If pods are failing, check Calico component logs.
 - **Lock persists after crash**: If the migration process crashed without unlocking, manually run `calicoctl datastore migrate unlock` to restore write access.
 
 ## Conclusion
 
-The `calicoctl datastore migrate lock` command is a critical safety mechanism that ensures data consistency during Calico datastore migrations. Always lock the datastore before exporting data, verify the import in the target datastore, and only unlock after confirming the migration was successful. Having an emergency unlock procedure documented ensures you can recover quickly if the migration process is interrupted.
+The `calicoctl datastore migrate lock` command is a critical safety mechanism that ensures new Calico resources do not affect the cluster during Calico datastore migrations. Always lock the datastore before exporting data, verify the import in the target datastore, and only unlock after confirming the migration was successful. Having an emergency unlock procedure documented ensures you can recover quickly if the migration process is interrupted.
