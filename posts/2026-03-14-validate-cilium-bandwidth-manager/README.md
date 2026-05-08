@@ -34,6 +34,7 @@ cilium config view | head -40
 
 # Specifically check settings related to cilium bandwidth manager
 cilium config view | grep -i bandwidth
+cilium status --verbose | grep -i BandwidthManager
 
 # Compare with expected Helm values
 helm get values cilium -n kube-system -o yaml
@@ -41,7 +42,7 @@ helm get values cilium -n kube-system -o yaml
 
 ## Running Automated Validation
 
-Use the Cilium connectivity test to validate the data path:
+Use the Cilium connectivity test to validate the general data path before testing bandwidth enforcement:
 
 ```bash
 # Run the full connectivity test suite
@@ -63,70 +64,71 @@ Deploy workloads that specifically test cilium bandwidth manager:
 ```yaml
 # validation-workload.yaml
 # Test deployment for cilium bandwidth manager validation
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Pod
 metadata:
   name: validate-server
   namespace: default
+  annotations:
+    kubernetes.io/egress-bandwidth: "10M"
+    kubernetes.io/ingress-bandwidth: "20M"
+  labels:
+    app: validate-server
 spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: validate-server
-  template:
-    metadata:
-      labels:
-        app: validate-server
-    spec:
-      # Use anti-affinity to spread across nodes
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app: validate-server
-                topologyKey: kubernetes.io/hostname
-      containers:
-        - name: nginx
-          image: nginx:1.25
-          ports:
-            - containerPort: 80
+  containers:
+    - name: netperf
+      image: cilium/netperf
+      args:
+        - iperf3
+        - "-s"
+      ports:
+        - containerPort: 5201
 ---
 apiVersion: v1
-kind: Service
+kind: Pod
 metadata:
-  name: validate-svc
+  name: validate-client
   namespace: default
+  labels:
+    app: validate-client
 spec:
-  selector:
-    app: validate-server
-  ports:
-    - port: 80
-      targetPort: 80
+  # Use anti-affinity to schedule the client away from the server when possible.
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app: validate-server
+            topologyKey: kubernetes.io/hostname
+  containers:
+    - name: netperf
+      image: cilium/netperf
+      args:
+        - sleep
+        - infinity
 ```
 
 ```bash
 # Deploy and test
 kubectl apply -f validation-workload.yaml
-kubectl rollout status deployment/validate-server --timeout=60s
+kubectl wait --for=condition=Ready pod/validate-server pod/validate-client --timeout=60s
 
-# Test same-node and cross-node connectivity
-kubectl run validate-client --image=busybox --restart=Never -- sleep 300
-kubectl wait --for=condition=Ready pod/validate-client --timeout=30s
+# Test egress bandwidth from the annotated server pod
+SERVER_IP=$(kubectl get pod validate-server -o jsonpath='{.status.podIP}')
+kubectl exec validate-client -- iperf3 -R -c "$SERVER_IP"
 
-# Test service access
-kubectl exec validate-client -- wget -qO- --timeout=5 http://validate-svc
+# Test ingress bandwidth to the annotated server pod
+kubectl exec validate-client -- iperf3 -c "$SERVER_IP"
 
-# Test direct pod IP access
-for IP in $(kubectl get pods -l app=validate-server -o jsonpath='{.items[*].status.podIP}'); do
-  echo "Testing $IP..."
-  kubectl exec validate-client -- wget -qO- --timeout=5 http://$IP >/dev/null 2>&1 && echo "  OK" || echo "  FAIL"
-done
+# Inspect bandwidth settings from the Cilium agent on the server's node
+SERVER_NODE=$(kubectl get pod validate-server -o jsonpath='{.spec.nodeName}')
+CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium \
+  --field-selector spec.nodeName="$SERVER_NODE" -o jsonpath='{.items[0].metadata.name}')
+kubectl -n kube-system exec "$CILIUM_POD" -- cilium-dbg bpf bandwidth list
 
 # Cleanup
-kubectl delete pod validate-client
 kubectl delete -f validation-workload.yaml
 ```
 
@@ -136,30 +138,30 @@ Check that all endpoints managed by Cilium are healthy:
 
 ```bash
 # List all Cilium endpoints and their health
-cilium endpoint list
+kubectl get ciliumendpoints --all-namespaces
 
 # Check for endpoints in a non-ready state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | grep -v "ready"
 
-# Verify endpoint count matches pod count
-ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+# Compare endpoint count with the number of running pods
+ENDPOINT_COUNT=$(kubectl get ciliumendpoints --all-namespaces --no-headers | wc -l)
 POD_COUNT=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
 echo "Cilium endpoints: $ENDPOINT_COUNT, Running pods: $POD_COUNT"
 ```
 
 ## Validating Metrics and Observability
 
-Confirm metrics are being collected for cilium bandwidth manager:
+Confirm datapath metrics and flow observability are available while testing cilium bandwidth manager:
 
 ```bash
 # Check Cilium agent metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i "datapath"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep -i "datapath"
 
 # Verify Hubble is observing flows
 kubectl exec -n kube-system ds/cilium -- hubble observe --last 5
 
 # Check for any drop metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep drop
 ```
 
 ## Verification
@@ -190,9 +192,9 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=10m | grep -c "e
 
 - **Connectivity test fails on specific tests**: Not all tests apply to every configuration. Some tests require specific features (like encryption or L7 policy) to be enabled.
 - **Endpoints show as not-ready**: The endpoint may still be initializing. Wait 30 seconds and check again. If persistent, check the Cilium agent logs for the node where the endpoint is running.
-- **Metrics show high drop count**: Check the drop reason with `cilium metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
+- **Metrics show high drop count**: Check the drop reason with `cilium-dbg metrics list | grep drop` from a Cilium agent pod. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
 - **Validation passes but production traffic fails**: The validation tests may not cover your specific traffic pattern. Create custom test workloads that mirror your production traffic patterns.
 
 ## Conclusion
 
-Validating cilium bandwidth manager requires checking the active configuration matches your intent, running automated connectivity tests, deploying custom test workloads that exercise the specific feature, verifying endpoint health, and confirming metrics collection. A passing validation gives confidence that the feature is working correctly before production traffic flows through it.
+Validating cilium bandwidth manager requires checking the active configuration matches your intent, running automated connectivity tests, deploying custom test workloads that exercise bandwidth annotations, verifying endpoint health, and confirming metrics collection. A passing validation gives confidence that the feature is working correctly before production traffic flows through it.
