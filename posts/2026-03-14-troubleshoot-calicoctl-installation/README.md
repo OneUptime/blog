@@ -70,7 +70,7 @@ echo ""
 echo "--- Architecture ---"
 echo "System: $(uname -m)"
 if [ -n "${CALICOCTL_PATH}" ]; then
-  echo "Binary: $(file ${CALICOCTL_PATH} | grep -oP '(x86-64|aarch64|ARM)')"
+  echo "Binary: $(file "${CALICOCTL_PATH}" | grep -oE '(x86-64|aarch64|ARM)')"
 fi
 
 # Check 4: Version
@@ -93,7 +93,7 @@ echo "KUBECONFIG=${KUBECONFIG:-not set}"
 # Check 6: Datastore connectivity
 echo ""
 echo "--- Datastore Connectivity ---"
-calicoctl get nodes -o name 2>&1
+calicoctl get nodes 2>&1
 ```
 
 ```mermaid
@@ -168,11 +168,21 @@ ls -la /usr/local/bin/calicoctl
 calicoctl version 2>&1
 
 # Check cluster Calico version
-kubectl get deployment calico-kube-controllers -n kube-system -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null
+for ns in calico-system kube-system; do
+  kubectl get deployment calico-kube-controllers -n "${ns}" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null && break
+done
 
 # Download matching version
-CLUSTER_VERSION=$(kubectl get deployment calico-kube-controllers -n kube-system   -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null | grep -oP 'v[0-9.]+')
+CLUSTER_VERSION=$(
+  for ns in calico-system kube-system; do
+    kubectl get deployment calico-kube-controllers -n "${ns}" -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null && break
+  done | grep -oE 'v[0-9]+(\.[0-9]+)+' | head -1
+)
 echo "Cluster version: ${CLUSTER_VERSION}"
+if [ -z "${CLUSTER_VERSION}" ]; then
+  echo "Could not detect Calico version from calico-kube-controllers"
+  exit 1
+fi
 
 # Reinstall with correct version
 ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
@@ -223,12 +233,13 @@ echo "=== Post-Fix Verification ==="
 echo "Binary: $(which calicoctl)"
 echo "Version: $(calicoctl version 2>&1 | head -1)"
 echo "Permissions: $(ls -la $(which calicoctl) | awk '{print $1}')"
-echo "Architecture: $(file $(which calicoctl) | grep -oP '(x86-64|aarch64|ARM)')"
+echo "Architecture: $(file "$(which calicoctl)" | grep -oE '(x86-64|aarch64|ARM)')"
 
 echo ""
 echo "Datastore:"
-calicoctl get nodes -o name 2>&1 | head -5
+OUTPUT=$(calicoctl get nodes 2>&1)
 RESULT=$?
+echo "${OUTPUT}" | head -5
 if [ ${RESULT} -eq 0 ]; then
   echo "Status: CONNECTED"
 else
