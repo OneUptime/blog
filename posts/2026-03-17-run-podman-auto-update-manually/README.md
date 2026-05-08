@@ -28,9 +28,9 @@ Example output:
 
 ```text
 UNIT                    CONTAINER       IMAGE                              POLICY      UPDATED
-webapp.service          abc123def456    docker.io/myorg/webapp:latest      registry    pending
-api.service             def456abc789    docker.io/myorg/api:latest         registry    false
-database.service        789abc123def    docker.io/library/postgres:16      registry    false
+webapp.service          abc123def456 (webapp)    docker.io/myorg/webapp:latest      registry    pending
+api.service             def456abc789 (api)       docker.io/myorg/api:latest         registry    false
+database.service        789abc123def (database)  docker.io/library/postgres:16      registry    false
 ```
 
 - **pending** means an update is available.
@@ -49,9 +49,9 @@ Example output:
 
 ```text
 UNIT                    CONTAINER       IMAGE                              POLICY      UPDATED
-webapp.service          abc123def456    docker.io/myorg/webapp:latest      registry    true
-api.service             def456abc789    docker.io/myorg/api:latest         registry    false
-database.service        789abc123def    docker.io/library/postgres:16      registry    false
+webapp.service          abc123def456 (webapp)    docker.io/myorg/webapp:latest      registry    true
+api.service             def456abc789 (api)       docker.io/myorg/api:latest         registry    false
+database.service        789abc123def (database)  docker.io/library/postgres:16      registry    false
 ```
 
 - **true** means the container was updated and restarted.
@@ -104,7 +104,7 @@ echo "=== Update complete ==="
 
 ```bash
 # Check the container is running with the new image
-podman inspect webapp --format '{{.Image}}'
+podman inspect webapp --format '{{.ImageName}}'
 
 # Check the service status
 systemctl --user status webapp.service
