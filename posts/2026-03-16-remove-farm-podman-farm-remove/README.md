@@ -72,7 +72,7 @@ Removing a farm does not remove the system connections it used. If you also want
 FARM_NAME="decomm-farm"
 
 # Get connections before removing the farm
-CONNECTIONS=$(podman farm list --format '{{if eq .Name "'"${FARM_NAME}"'"}}{{.Connections}}{{end}}' | tr ',' ' ')
+CONNECTIONS=$(podman farm list --format '{{if eq .Name "'"${FARM_NAME}"'"}}{{range .Connections}}{{.}} {{end}}{{end}}')
 
 # Remove the farm
 podman farm remove "${FARM_NAME}" 2>/dev/null || {
@@ -82,10 +82,10 @@ podman farm remove "${FARM_NAME}" 2>/dev/null || {
 echo "Removed farm: ${FARM_NAME}"
 
 # Check if any connection is still used by another farm
-ALL_FARM_CONNECTIONS=$(podman farm list --format '{{.Connections}}' | tr ',' '\n' | sort -u)
+ALL_FARM_CONNECTIONS=$(podman farm list --format '{{range .Connections}}{{.}}{{"\n"}}{{end}}' | sort -u)
 
 for CONN in ${CONNECTIONS}; do
-    if echo "${ALL_FARM_CONNECTIONS}" | grep -q "^${CONN}$"; then
+    if echo "${ALL_FARM_CONNECTIONS}" | grep -Fxq -- "${CONN}"; then
         echo "Connection '${CONN}' is used by another farm, keeping it."
     else
         echo "Removing unused connection: ${CONN}"
@@ -110,8 +110,7 @@ podman farm create "${FARM_NAME}" amd64-builder arm64-builder
 # Build with the farm
 podman farm build --farm "${FARM_NAME}" -t "${IMAGE}:${TAG}" .
 
-# Push the result
-podman manifest push --all "${IMAGE}:${TAG}" "docker://${IMAGE}:${TAG}"
+# The farm build pushes the image instances and manifest list to the registry
 
 # Clean up the temporary farm
 podman farm remove "${FARM_NAME}"
