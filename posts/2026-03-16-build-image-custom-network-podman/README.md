@@ -16,7 +16,7 @@ Container builds often need network access for downloading dependencies, cloning
 
 ## Default Build Networking
 
-By default, Podman builds use a private network namespace with NAT-based internet access.
+By default, Podman builds use the default build network mode, which provides isolated outbound network access for `RUN` instructions.
 
 ```bash
 # Build with default networking
@@ -92,7 +92,7 @@ Write Containerfiles that work with and without proxy settings.
 cat > Containerfile << 'EOF'
 FROM docker.io/library/python:3.12-slim
 
-# These ARGs are automatically picked up by Podman from environment
+# Podman passes proxy environment variables into RUN steps by default when they are set
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
@@ -110,13 +110,13 @@ EOF
 
 ## Using a Custom Network
 
-Create and use a custom Podman network for builds.
+Create and use a custom Podman network for rootful builds.
 
 ```bash
 # Create a custom network
 podman network create build-network
 
-# Build using the custom network
+# Build using the custom network (only supported for rootful builds)
 podman build --network=build-network -t myapp:latest .
 
 # Clean up the network
@@ -178,7 +178,7 @@ podman build \
 
 ## Network Configuration for Multi-Stage Builds
 
-Different stages may need different network configurations.
+Different stages may have different network needs, but `--network` applies to `RUN` instructions across the whole build.
 
 ```bash
 cat > Containerfile << 'EOF'
