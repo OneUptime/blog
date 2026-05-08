@@ -50,9 +50,9 @@ calicoctl ipam check
 # Check block distribution across nodes
 calicoctl ipam show --show-blocks
 
-# Verify each node has appropriate block assignments
+# Compare allocated blocks with node count
 NODE_COUNT=$(kubectl get nodes --no-headers | wc -l)
-BLOCK_COUNT=$(calicoctl ipam show --show-blocks 2>/dev/null | grep -c "Block" || echo 0)
+BLOCK_COUNT=$(calicoctl ipam show --show-blocks 2>/dev/null | awk '$1 == "|" && $2 == "Block" {count++} END {print count+0}')
 echo "Nodes: $NODE_COUNT, Blocks: $BLOCK_COUNT"
 ```
 
@@ -84,7 +84,7 @@ if [ -n "$IP" ]; then
 else
   echo "FAIL: Test pod did not get an IP"
 fi
-kubectl delete pod ipam-test --grace-period=0 2>/dev/null
+kubectl delete pod ipam-test --force --grace-period=0 2>/dev/null
 ```
 
 ## Verification
