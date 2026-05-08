@@ -61,6 +61,7 @@ Description=API server
 After=database.service
 
 [Container]
+ContainerName=api
 Image=docker.io/myorg/api:latest
 Network=mynet.network
 # The database container is reachable at hostname "database"
