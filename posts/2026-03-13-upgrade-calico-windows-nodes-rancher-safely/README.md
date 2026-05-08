@@ -10,9 +10,9 @@ Description: A guide to safely upgrading Calico on Windows nodes in a Rancher-ma
 
 ## Introduction
 
-Upgrading Calico on Windows nodes in a Rancher-managed cluster involves coordinating between Rancher's cluster upgrade mechanism and the Windows-specific Calico upgrade steps. Rancher can trigger operator and Linux Calico component upgrades through its UI or kubectl, but Windows Calico components still require the same manual steps as non-Rancher deployments.
+Upgrading Calico on Windows nodes in a Rancher-managed cluster involves coordinating between Rancher's cluster upgrade mechanism and the Windows-specific Calico upgrade steps. Rancher can trigger RKE2 and Linux Calico component upgrades through its UI or kubectl, but Windows nodes that use a manual Calico for Windows installation still require the same manual steps as non-Rancher deployments. For newer Calico installations, the operator-based Windows HostProcess container method is preferred over the deprecated manual method.
 
-Rancher may have opinions about Calico version - it pins the Calico version that was used during cluster creation in its cluster configuration. When upgrading Calico independently of the Rancher cluster upgrade, be aware that Rancher may try to revert the Calico version if you perform a cluster-level upgrade without explicitly specifying the new Calico version.
+Rancher may have opinions about Calico version because RKE2 bundles CNI charts with each RKE2 release and Rancher stores RKE2 cluster configuration, including chart values, in the cluster configuration. When upgrading Calico independently of the Rancher cluster upgrade, be aware that a later cluster-level upgrade may reconcile the bundled RKE2 Calico chart unless you coordinate the change with the Rancher-managed RKE2 version and chart configuration.
 
 ## Prerequisites
 
@@ -20,15 +20,17 @@ Rancher may have opinions about Calico version - it pins the Calico version that
 - Access to Rancher UI and kubectl
 - A scheduled maintenance window
 
-## Step 1: Check Rancher's Pinned Calico Version
+## Step 1: Check Rancher's Calico Chart Configuration
 
 ```bash
-# Check the Calico version Rancher expects
+# Check the installed RKE2 Calico chart in the downstream cluster
+kubectl get helmchart -n kube-system rke2-calico -o yaml
 
-kubectl get configmap -n kube-system rke2-chart-values -o yaml | grep calico
+# From the Rancher management cluster, check any Rancher-managed Calico chart values
+kubectl get clusters.provisioning.cattle.io -A -o yaml | grep -A20 -B5 rke2-calico
 ```
 
-If Rancher has pinned Calico to a specific version, coordinate the upgrade with Rancher's cluster edit UI.
+If Rancher has Calico chart values in the cluster configuration, coordinate the upgrade with Rancher's cluster edit UI.
 
 ## Step 2: Pre-Upgrade Health Check
 
@@ -50,7 +52,7 @@ This path handles Linux nodes automatically.
 
 ## Step 4: Upgrade Windows Nodes Manually
 
-After Linux nodes are upgraded, upgrade Windows nodes manually.
+After Linux nodes are upgraded, upgrade Windows nodes that use a manual Calico for Windows installation manually.
 
 ```bash
 kubectl cordon <windows-node>
@@ -68,9 +70,12 @@ Rename-Item C:\CalicoWindows C:\CalicoWindows.bak
 Expand-Archive C:\calico-windows-new.zip -DestinationPath C:\CalicoWindows
 Copy-Item C:\CalicoWindows.bak\config.ps1 C:\CalicoWindows\config.ps1
 
-C:\CalicoWindows\install-calico.ps1
+cd C:\CalicoWindows
+.\install-calico.ps1
 Get-Service CalicoNode, CalicoFelix
 ```
+
+The installer can briefly disrupt Windows node networking while it initializes the vSwitch. If kubelet or kube-proxy were already running as Windows services, restart them after the Calico install completes.
 
 ```bash
 kubectl uncordon <windows-node>
@@ -96,4 +101,4 @@ kubectl delete pod test
 
 ## Conclusion
 
-Upgrading Calico on Windows nodes in Rancher requires coordinating with Rancher's cluster version management for Linux nodes while performing manual Windows binary upgrades for the Windows nodes. Checking Rancher's pinned Calico version before the upgrade prevents version drift that could cause Rancher to revert the upgrade during a subsequent cluster-level operation.
+Upgrading Calico on Windows nodes in Rancher requires coordinating with Rancher's cluster version management for Linux nodes while performing manual Windows binary upgrades for Windows nodes that use the manual Calico for Windows installation. Checking Rancher's RKE2 Calico chart state before the upgrade prevents version drift that could cause a later cluster-level operation to reconcile Calico back to the bundled chart version.
