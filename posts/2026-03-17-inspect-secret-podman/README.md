@@ -8,9 +8,9 @@ Description: Learn how to inspect Podman secrets to view metadata, driver inform
 
 ---
 
-> The `podman secret inspect` command reveals metadata about a secret such as its ID, driver, and timestamps, while keeping the actual secret value safe from exposure.
+> By default, the `podman secret inspect` command reveals metadata about a secret such as its ID, driver, and timestamps, while keeping the actual secret value safe from exposure.
 
-When managing secrets, you often need to check when a secret was created, which driver stores it, or verify that it exists with the right configuration. Podman provides the `inspect` command for secrets, which shows all metadata without ever revealing the secret value itself.
+When managing secrets, you often need to check when a secret was created, which driver stores it, or verify that it exists with the right configuration. Podman provides the `inspect` command for secrets, which shows metadata without revealing the secret value itself unless you explicitly use `--showsecret`.
 
 ---
 
@@ -24,7 +24,7 @@ podman secret inspect db_password
 # Example output:
 # [
 #     {
-#         "ID": "a1b2c3d4e5f6g7h8i9j0",
+#         "ID": "a1b2c3d4e5f6a1b2c3d4",
 #         "CreatedAt": "2026-03-17T10:00:00.000000000Z",
 #         "UpdatedAt": "2026-03-17T10:00:00.000000000Z",
 #         "Spec": {
@@ -42,7 +42,7 @@ podman secret inspect db_password
 
 ```bash
 # Inspect a secret by its ID
-podman secret inspect a1b2c3d4e5f6g7h8i9j0
+podman secret inspect a1b2c3d4e5f6a1b2c3d4
 ```
 
 ## Formatted Output
@@ -123,4 +123,4 @@ fi
 
 ## Summary
 
-The `podman secret inspect` command provides detailed metadata about secrets including their ID, creation time, update time, and storage driver, all without exposing the actual secret value. Use `--format` for targeted queries in scripts, and `--showsecret` only when you need to view the actual data in a secure context. This command is essential for auditing and managing your secret inventory.
+The `podman secret inspect` command provides detailed metadata about secrets including their ID, creation time, update time, and storage driver, without exposing the actual secret value by default. Use `--format` for targeted queries in scripts, and `--showsecret` only when you need to view the actual data in a secure context. This command is essential for auditing and managing your secret inventory.
