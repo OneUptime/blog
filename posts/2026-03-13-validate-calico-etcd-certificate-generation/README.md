@@ -33,7 +33,8 @@ openssl x509 -in calico-etcd-ca.crt -noout \
 
 # Inspect Felix client certificate
 openssl x509 -in calico-felix.crt -noout \
-  -subject -issuer -dates -extensions
+  -subject -issuer -dates \
+  -ext subjectAltName,keyUsage,extendedKeyUsage
 
 # Full details
 openssl x509 -in calico-felix.crt -text -noout | grep -A20 "Extensions"
@@ -67,18 +68,20 @@ openssl verify -CAfile calico-etcd-ca.crt etcd-server.crt
 ```mermaid
 graph LR
     A[Certificate Public Key] -->|Must match| B[Private Key]
-    C[Modulus check] --> D[openssl x509 -modulus]
-    C --> E[openssl rsa -modulus]
+    C[Public key fingerprint check] --> D[openssl x509 -pubkey]
+    C --> E[openssl pkey -pubout]
     D -->|Same hash| F[Matched]
     E -->|Same hash| F
 ```
 
 ```bash
 # Certificate and key must have matching public key
-CERT_MOD=$(openssl x509 -in calico-felix.crt -modulus -noout | md5sum)
-KEY_MOD=$(openssl rsa -in calico-felix.key -modulus -noout | md5sum)
+CERT_PUBKEY=$(openssl x509 -in calico-felix.crt -pubkey -noout | \
+  openssl pkey -pubin -outform DER | openssl dgst -sha256)
+KEY_PUBKEY=$(openssl pkey -in calico-felix.key -pubout -outform DER | \
+  openssl dgst -sha256)
 
-if [ "$CERT_MOD" = "$KEY_MOD" ]; then
+if [ "$CERT_PUBKEY" = "$KEY_PUBKEY" ]; then
   echo "Certificate and key match"
 else
   echo "MISMATCH: Certificate and key do not match!"
@@ -94,6 +97,7 @@ openssl s_client \
   -CAfile calico-etcd-ca.crt \
   -cert calico-felix.crt \
   -key calico-felix.key \
+  -verify_hostname etcd \
   -verify_return_error 2>&1 | grep -E "Verify|Certificate|error"
 
 # Expected: Verify return code: 0 (ok)
@@ -114,7 +118,7 @@ etcdctl --endpoints=https://etcd:2379 \
 
 ```bash
 # Verify the secret contents are base64-encoded correctly
-kubectl get secret calico-etcd-certs -n kube-system -o jsonpath='{.data.etcd-cert}' | \
+kubectl get secret calico-etcd-secrets -n kube-system -o jsonpath='{.data.etcd-cert}' | \
   base64 -d | openssl x509 -noout -subject -dates
 ```
 
