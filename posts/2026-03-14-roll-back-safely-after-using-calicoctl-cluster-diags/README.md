@@ -10,7 +10,7 @@ Description: Understand that calicoctl cluster diags is a read-only command and 
 
 ## Introduction
 
-The `calicoctl cluster diags` command is entirely read-only. It collects information from the Calico datastore without modifying any resources. There is nothing to roll back from running this command.
+The `calicoctl cluster diags` command is entirely read-only. It collects diagnostic information and logs related to Calico without modifying any resources. There is nothing to roll back from running this command.
 
 However, cluster diagnostics are frequently collected as part of change management. By comparing diagnostic bundles taken before and after changes, you can identify exactly what changed and roll back specific resources if needed.
 
@@ -41,11 +41,11 @@ echo "=== Cluster Configuration Changes ==="
 
 # Compare each resource file
 
-for AFTER_FILE in $(find "$AFTER_DIR" -name "*.yaml"); do
-  RESOURCE=$(basename "$AFTER_FILE")
-  BEFORE_FILE=$(find "$BEFORE_DIR" -name "$RESOURCE")
+find "$AFTER_DIR" -name "*.yaml" -print0 | while IFS= read -r -d '' AFTER_FILE; do
+  RESOURCE=${AFTER_FILE#"$AFTER_DIR"/}
+  BEFORE_FILE="$BEFORE_DIR/$RESOURCE"
   
-  if [ -n "$BEFORE_FILE" ]; then
+  if [ -f "$BEFORE_FILE" ]; then
     CHANGES=$(diff "$BEFORE_FILE" "$AFTER_FILE" | head -20)
     if [ -n "$CHANGES" ]; then
       echo "--- Changed: $RESOURCE ---"
@@ -68,8 +68,8 @@ BEFORE_DIR=$(mktemp -d)
 tar xzf before-change-diags.tar.gz -C "$BEFORE_DIR"
 
 # Apply the pre-change state for a specific resource
-calicoctl apply -f "$BEFORE_DIR/globalnetworkpolicies.yaml"
-calicoctl apply -f "$BEFORE_DIR/bgpconfigurations.yaml"
+calicoctl apply -f "$(find "$BEFORE_DIR" -name "globalnetworkpolicies.yaml" -print -quit)"
+calicoctl apply -f "$(find "$BEFORE_DIR" -name "bgpconfigurations.yaml" -print -quit)"
 ```
 
 ## Verification
@@ -78,7 +78,7 @@ After rollback, collect fresh diagnostics and compare with the pre-change baseli
 
 ```bash
 calicoctl cluster diags
-./compare-cluster-diags.sh before-change-diags.tar.gz calico-cluster-diags-*.tar.gz
+./compare-cluster-diags.sh before-change-diags.tar.gz calico-diagnostics.tar.gz
 ```
 
 The output should show minimal or no differences.
