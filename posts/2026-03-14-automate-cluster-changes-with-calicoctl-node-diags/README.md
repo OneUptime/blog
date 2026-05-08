@@ -17,9 +17,11 @@ Automated diagnostic collection serves multiple purposes: it captures baseline s
 ## Prerequisites
 
 - Kubernetes cluster with Calico
+- Matching-version `calicoctl` installed on each node where diagnostics will be collected
 - Storage for diagnostic bundles (local, S3, or persistent volume)
 - CI/CD or scheduling system
 - `kubectl` access with appropriate RBAC
+- SSH access to nodes when collecting node diagnostics from automation
 
 ## Scheduled Diagnostic Collection
 
@@ -40,41 +42,45 @@ spec:
       template:
         spec:
           serviceAccountName: calicoctl
-          hostNetwork: true
-          hostPID: true
           containers:
           - name: collector
-            image: calico/ctl:v3.27.0
-            securityContext:
-              privileged: true
+            image: alpine:3.20
             command:
             - /bin/sh
             - -c
             - |
+              set -e
+              apk add --no-cache openssh-client kubectl
               echo "Collecting diagnostics at $(date)..."
-              calicoctl node diags
-              BUNDLE=$(ls -t /tmp/calico-diags-*.tar.gz 2>/dev/null | head -1)
-              if [ -n "$BUNDLE" ]; then
-                echo "Bundle created: $BUNDLE ($(du -h $BUNDLE | cut -f1))"
-                # Copy to shared storage
-                cp "$BUNDLE" /diags/
-              else
-                echo "ERROR: No diagnostic bundle created"
-                exit 1
-              fi
+              kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}' |
+              while read -r NODE SSH_HOST; do
+                echo "Collecting diagnostics from $NODE..."
+                if ! ssh -o BatchMode=yes "$SSH_HOST" 'sudo calicoctl node diags'; then
+                  echo "ERROR: Diagnostic collection failed on $NODE"
+                  exit 1
+                fi
+                BUNDLE=$(ssh -o BatchMode=yes "$SSH_HOST" "ls -t /tmp/calico*/diags-*.tar.gz 2>/dev/null | head -1")
+                if [ -n "$BUNDLE" ]; then
+                  scp -o BatchMode=yes "$SSH_HOST:$BUNDLE" "/diags/${NODE}-$(date +%Y%m%d-%H%M%S).tar.gz"
+                else
+                  echo "ERROR: No diagnostic bundle created on $NODE"
+                  exit 1
+                fi
+              done
             volumeMounts:
             - name: diags-storage
               mountPath: /diags
-            - name: var-log
-              mountPath: /var/log/calico
+            - name: ssh-key
+              mountPath: /root/.ssh
               readOnly: true
           volumes:
           - name: diags-storage
             persistentVolumeClaim:
               claimName: calico-diags-pvc
-          - name: var-log
-            hostPath:
-              path: /var/log/calico
+          - name: ssh-key
+            secret:
+              secretName: calico-diag-ssh
+              defaultMode: 0400
           restartPolicy: Never
 ```
 
@@ -99,7 +105,7 @@ while true; do
   if ! echo "$STATUS" | grep -q "Calico process is running"; then
     echo "$(date): Calico process failure detected - collecting diagnostics"
     sudo calicoctl node diags
-    BUNDLE=$(ls -t /tmp/calico-diags-*.tar.gz | head -1)
+    BUNDLE=$(ls -t /tmp/calico*/diags-*.tar.gz 2>/dev/null | head -1)
     mv "$BUNDLE" "$STORAGE_DIR/incident-$(date +%Y%m%d-%H%M%S).tar.gz"
   fi
   
@@ -107,7 +113,7 @@ while true; do
   if [ "$DOWN_PEERS" -gt 0 ]; then
     echo "$(date): $DOWN_PEERS BGP peers down - collecting diagnostics"
     sudo calicoctl node diags
-    BUNDLE=$(ls -t /tmp/calico-diags-*.tar.gz | head -1)
+    BUNDLE=$(ls -t /tmp/calico*/diags-*.tar.gz 2>/dev/null | head -1)
     mv "$BUNDLE" "$STORAGE_DIR/bgp-issue-$(date +%Y%m%d-%H%M%S).tar.gz"
   fi
   
@@ -127,22 +133,18 @@ mkdir -p "$OUTPUT_DIR"
 
 collect_from_node() {
   local NODE=$1
-  local POD=$(kubectl get pod -n calico-system -l k8s-app=calico-node \
-    --field-selector spec.nodeName="$NODE" \
-    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+  local SSH_HOST=$2
   
-  if [ -z "$POD" ]; then
-    echo "$NODE: SKIP (no calico-node pod)"
+  if ! ssh -o BatchMode=yes "$SSH_HOST" 'sudo calicoctl node diags' 2>/dev/null; then
+    echo "$NODE: FAILED (calicoctl node diags failed)"
     return
   fi
   
-  kubectl exec -n calico-system "$POD" -- calicoctl node diags 2>/dev/null
-  
-  DIAG_FILE=$(kubectl exec -n calico-system "$POD" -- \
-    sh -c 'ls -t /tmp/calico-diags-*.tar.gz 2>/dev/null | head -1' 2>/dev/null)
+  DIAG_FILE=$(ssh -o BatchMode=yes "$SSH_HOST" \
+    "ls -t /tmp/calico*/diags-*.tar.gz 2>/dev/null | head -1" 2>/dev/null)
   
   if [ -n "$DIAG_FILE" ]; then
-    kubectl cp "calico-system/${POD}:${DIAG_FILE}" "${OUTPUT_DIR}/${NODE}.tar.gz" 2>/dev/null
+    scp -o BatchMode=yes "$SSH_HOST:$DIAG_FILE" "${OUTPUT_DIR}/${NODE}.tar.gz" 2>/dev/null
     echo "$NODE: collected"
   else
     echo "$NODE: FAILED"
@@ -155,7 +157,8 @@ PARALLEL=5
 COUNT=0
 
 for NODE in $NODES; do
-  collect_from_node "$NODE" &
+  SSH_HOST=$(kubectl get node "$NODE" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
+  collect_from_node "$NODE" "$SSH_HOST" &
   COUNT=$((COUNT + 1))
   if [ $COUNT -ge $PARALLEL ]; then
     wait
@@ -199,10 +202,11 @@ kubectl exec -n calico-system <pvc-pod> -- ls -lh /diags/
 
 ## Troubleshooting
 
-- **CronJob fails with insufficient permissions**: Ensure the service account has the privileged security context and hostNetwork/hostPID access.
+- **CronJob fails with insufficient permissions**: Ensure the service account can list nodes and that the SSH user can run `sudo calicoctl node diags` on each node.
+- **CronJob cannot connect to nodes**: Ensure the SSH key secret is mounted correctly and the target nodes allow the automation identity to run `sudo calicoctl node diags`.
 - **Bundles taking too much storage**: Implement the cleanup script as a separate CronJob or reduce collection frequency.
 - **Collection fails during high load**: Add resource limits and consider collecting from one node at a time during incidents.
-- **Cannot copy files from pods**: Verify that the kubectl cp command works and that tar is available in the container.
+- **Cannot copy files from nodes**: Verify that `scp` works from the automation environment and that the generated `diags-*.tar.gz` file exists under `/tmp/calico*/`.
 
 ## Conclusion
 
