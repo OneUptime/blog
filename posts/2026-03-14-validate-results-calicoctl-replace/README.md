@@ -19,7 +19,8 @@ This guide provides a structured validation approach for calicoctl replace opera
 - A running Kubernetes cluster with Calico installed
 - calicoctl v3.27 or later
 - kubectl access to the cluster
-- python3 for YAML/JSON comparison
+- python3 with PyYAML installed for YAML/JSON comparison
+- Felix Prometheus metrics enabled if you use the Felix sync validation script
 
 ## Validating Resource State
 
@@ -36,23 +37,42 @@ set -euo pipefail
 export DATASTORE_TYPE=kubernetes
 INTENDED_FILE="${1:?Usage: $0 <intended-resource.yaml>}"
 
-KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$INTENDED_FILE'))['kind'])")
-NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$INTENDED_FILE'))['metadata']['name'])")
+KIND=$(python3 -c "import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))['kind'])" "$INTENDED_FILE")
+NAME=$(python3 -c "import sys, yaml; print(yaml.safe_load(open(sys.argv[1]))['metadata']['name'])" "$INTENDED_FILE")
 
 echo "Validating ${KIND}/${NAME} against intended state..."
 
 # Get current state from cluster
 calicoctl get "$KIND" "$NAME" -o json > /tmp/actual.json
 
-# Compare spec sections (ignoring metadata like resourceVersion, uid)
-python3 -c "
-import yaml, json
+# Compare spec sections (ignoring metadata like resourceVersion, uid).
+# calicoctl JSON output is a list; select the matching resource by kind and name.
+python3 - "$INTENDED_FILE" <<'PY'
+import json
+import sys
+import yaml
 
-with open('$INTENDED_FILE') as f:
+intended_file = sys.argv[1]
+
+with open(intended_file) as f:
     intended = yaml.safe_load(f)
 
 with open('/tmp/actual.json') as f:
     actual = json.load(f)
+
+if isinstance(actual, dict) and 'items' in actual:
+    actual = actual['items']
+
+if isinstance(actual, list):
+    matches = [
+        item for item in actual
+        if item.get('kind', '').lower() == intended.get('kind', '').lower()
+        and item.get('metadata', {}).get('name') == intended.get('metadata', {}).get('name')
+    ]
+    if not matches:
+        print('VALIDATION FAILED: Resource not found in calicoctl output')
+        sys.exit(1)
+    actual = matches[0]
 
 # Compare specs
 intended_spec = intended.get('spec', {})
@@ -61,12 +81,19 @@ actual_spec = actual.get('spec', {})
 def compare(intended, actual, path='spec'):
     diffs = []
     if isinstance(intended, dict):
+        if not isinstance(actual, dict):
+            return [f'TYPE MISMATCH: {path} (intended=dict, actual={type(actual).__name__})']
         for key in intended:
             if key not in actual:
                 diffs.append(f'MISSING: {path}.{key}')
             else:
                 diffs.extend(compare(intended[key], actual[key], f'{path}.{key}'))
+        for key in actual:
+            if key not in intended:
+                diffs.append(f'EXTRA: {path}.{key}')
     elif isinstance(intended, list):
+        if not isinstance(actual, list):
+            return [f'TYPE MISMATCH: {path} (intended=list, actual={type(actual).__name__})']
         if len(intended) != len(actual):
             diffs.append(f'LENGTH MISMATCH: {path} (intended={len(intended)}, actual={len(actual)})')
         else:
@@ -81,10 +108,10 @@ if diffs:
     print('VALIDATION FAILED:')
     for d in diffs:
         print(f'  {d}')
-    exit(1)
+    sys.exit(1)
 else:
     print('VALIDATION PASSED: Resource matches intended state')
-"
+PY
 ```
 
 ## Validating Felix Enforcement
@@ -96,22 +123,29 @@ else:
 
 set -euo pipefail
 
+CALICO_NAMESPACE="${CALICO_NAMESPACE:-calico-system}"
+
 echo "=== Felix Sync Status ==="
 
 # Check all calico-node pods for sync state
-kubectl get pods -n calico-system -l k8s-app=calico-node -o name | while read pod; do
-  node=$(kubectl get "$pod" -n calico-system -o jsonpath='{.spec.nodeName}')
+kubectl get pods -n "$CALICO_NAMESPACE" -l k8s-app=calico-node -o name | while read pod; do
+  node=$(kubectl get "$pod" -n "$CALICO_NAMESPACE" -o jsonpath='{.spec.nodeName}')
   # Check Felix metrics for in-sync state
-  sync_status=$(kubectl exec -n calico-system "${pod##*/}" -c calico-node -- \
+  sync_status=$(kubectl exec -n "$CALICO_NAMESPACE" "${pod##*/}" -c calico-node -- \
     wget -q -O- http://localhost:9091/metrics 2>/dev/null | \
-    grep "felix_resync_state" | head -1 || echo "unknown")
-  echo "Node: $node - $sync_status"
+    awk '/^felix_resync_state($|[ {])/ {print $NF; exit}' || true)
+  case "$sync_status" in
+    3) echo "Node: $node - in sync with datastore" ;;
+    2) echo "Node: $node - resync in progress" ;;
+    1) echo "Node: $node - waiting for datastore" ;;
+    *) echo "Node: $node - unknown or metrics unavailable" ;;
+  esac
 done
 
 # Check recent Felix logs for policy updates
 echo ""
 echo "=== Recent Policy Updates ==="
-kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=20 2>/dev/null | \
+kubectl logs -n "$CALICO_NAMESPACE" -l k8s-app=calico-node -c calico-node --tail=20 2>/dev/null | \
   grep -i "policy\|replaced\|updated" | tail -10
 ```
 
@@ -149,7 +183,7 @@ test_connection() {
 
 # Define test cases based on your policy
 test_connection "Frontend to API" "frontend" "http://api:8080/health" "pass"
-test_connection "Frontend to DB (should fail)" "frontend" "http://database:5432" "fail"
+test_connection "Frontend to Admin (should fail)" "frontend" "http://admin:8080/health" "fail"
 
 echo ""
 echo "Results: $TESTS_PASSED passed, $TESTS_FAILED failed"
@@ -174,6 +208,7 @@ flowchart TD
 
 ```bash
 export DATASTORE_TYPE=kubernetes
+export CALICO_NAMESPACE=calico-system  # Use kube-system for manifest-based installations that deploy calico-node there.
 
 # Run full validation
 ./validate-replace.sh intended-policy.yaml
