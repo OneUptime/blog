@@ -8,9 +8,9 @@ Description: Learn how to export an entire Podman pod as a Kubernetes Pod YAML m
 
 ---
 
-> Generating Kubernetes YAML from a Podman pod captures all containers, volumes, and networking in a single manifest.
+> Generating Kubernetes YAML from a Podman pod captures the pod's application containers, volume references, and port mappings in a single manifest.
 
-When your application runs as a multi-container pod in Podman, you can export the entire pod configuration as a Kubernetes YAML file. This captures all containers, their environment variables, volume mounts, and port mappings in one manifest that is ready to deploy on a Kubernetes cluster.
+When your application runs as a multi-container pod in Podman, you can export the pod configuration as a Kubernetes YAML file. This captures application containers, their environment variables, volume mounts, and port mappings in one manifest that can be used as a starting point for Kubernetes or replayed with Podman.
 
 ---
 
@@ -31,10 +31,10 @@ podman run -d --pod app-pod --name api \
 
 ```bash
 # Generate Kubernetes YAML for the entire pod
-podman generate kube app-pod
+podman kube generate app-pod
 
 # Save to a file
-podman generate kube app-pod > app-pod.yaml
+podman kube generate app-pod > app-pod.yaml
 ```
 
 ## Examining the Generated YAML
@@ -74,9 +74,9 @@ The generated YAML will have a structure like:
 
 ```bash
 # Generate YAML with an accompanying Kubernetes Service
-podman generate kube --service app-pod > app-pod-with-service.yaml
+podman kube generate --service app-pod > app-pod-with-service.yaml
 
-# The Service will expose the pod's published ports
+# The Service will expose the pod's published ports as NodePort entries
 ```
 
 ## Generating YAML from a Pod with Volumes
@@ -93,7 +93,7 @@ podman run -d --pod vol-pod --name reader \
   docker.io/library/alpine sleep 3600
 
 # Generate YAML including volume definitions
-podman generate kube vol-pod > vol-pod.yaml
+podman kube generate vol-pod > vol-pod.yaml
 
 # The YAML includes PersistentVolumeClaim references
 ```
@@ -105,7 +105,7 @@ podman generate kube vol-pod > vol-pod.yaml
 podman pod rm --force app-pod
 
 # Recreate it from the generated YAML
-podman play kube app-pod.yaml
+podman kube play app-pod.yaml
 
 # Verify the pod is running
 podman pod ls
@@ -114,4 +114,4 @@ podman ps --filter pod=app-pod
 
 ## Summary
 
-Use `podman generate kube <pod-name>` to export a complete multi-container pod as a Kubernetes YAML manifest. The output includes all containers, environment variables, port mappings, and volume definitions. Add `--service` for a Service resource. The generated YAML works with both `kubectl apply` and `podman play kube`.
+Use `podman kube generate <pod-name>` to export a multi-container pod as a Kubernetes YAML manifest. The output includes application containers, environment variables, port mappings, and volume references. Add `--service` for a Service resource. The generated YAML can be used with `kubectl apply` after any cluster-specific adjustments and with `podman kube play`.
