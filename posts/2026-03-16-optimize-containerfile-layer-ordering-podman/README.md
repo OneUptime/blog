@@ -35,7 +35,7 @@ This Containerfile rebuilds everything on every code change:
 
 ```bash
 cat > Containerfile.bad <<'EOF'
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 # Copies everything, including source code
@@ -56,7 +56,7 @@ EOF
 
 ```bash
 cat > Containerfile.good <<'EOF'
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 
 # Layer 1: Package files only (changes when dependencies change)
@@ -108,7 +108,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Layer 2: Application runtime
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
@@ -130,7 +130,7 @@ Split dependency installation to cache production deps separately.
 
 ```bash
 cat > Containerfile <<'EOF'
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 
 # Layer 1: Production dependencies (cached separately)
@@ -145,7 +145,7 @@ COPY . .
 RUN npm run build
 
 # Production image
-FROM node:20-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY --from=base /prod_modules ./node_modules
 COPY --from=base /app/dist ./dist
@@ -218,7 +218,7 @@ Place `ARG` declarations just before the layer that uses them. `ENV` instruction
 
 ```bash
 cat > Containerfile <<'EOF'
-FROM alpine:3.19
+FROM python:3.12-alpine
 
 # Static environment variables (rarely change)
 ENV APP_DIR=/app
@@ -252,7 +252,7 @@ Apply the same principles within each stage.
 ```bash
 cat > Containerfile <<'EOF'
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 RUN apk add --no-cache git gcc musl-dev
 
 WORKDIR /src
@@ -266,7 +266,7 @@ COPY . .
 RUN go build -o /app ./cmd/server
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.23
 
 # System deps first
 RUN apk add --no-cache ca-certificates tzdata
