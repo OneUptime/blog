@@ -10,7 +10,7 @@ Description: A comprehensive guide to using calicoctl node run to start the Cali
 
 ## Introduction
 
-The `calicoctl node run` command starts the Calico node service on a host, initializing the Felix agent and BIRD BGP daemon that together provide Calico's networking and network policy enforcement. While most modern Calico deployments use Kubernetes DaemonSets or the Tigera operator to manage Calico nodes, understanding `calicoctl node run` is valuable for non-orchestrated environments, debugging, and custom deployment scenarios.
+The `calicoctl node run` command starts the Calico node service on a host, initializing components such as Felix, BIRD, and confd that provide Calico's networking and network policy enforcement. While most modern Calico deployments use Kubernetes DaemonSets or the Tigera operator to manage Calico nodes, understanding `calicoctl node run` is valuable for non-orchestrated environments, debugging, and custom deployment scenarios.
 
 This command is particularly relevant when deploying Calico on bare-metal hosts outside of Kubernetes, in Docker-only environments, or when you need fine-grained control over how the Calico node container starts. It handles pulling the Calico node image, configuring environment variables, and starting the container with the correct capabilities and mounts.
 
@@ -18,7 +18,7 @@ This guide provides practical examples of using `calicoctl node run` across diff
 
 ## Prerequisites
 
-- A Linux host with Docker or containerd installed
+- A Linux host with Docker installed and running
 - `calicoctl` v3.25+ installed on the host
 - Network connectivity to an etcd cluster or Kubernetes API server
 - Root or sudo access on the host
@@ -29,15 +29,17 @@ This guide provides practical examples of using `calicoctl node run` across diff
 Start the Calico node with default settings:
 
 ```bash
-# Start calico/node using Kubernetes datastore
+# Start calico/node using the configured default datastore
 
 sudo calicoctl node run
 
 # Start with explicit etcd datastore
-sudo ETCD_ENDPOINTS=https://10.0.1.5:2379 calicoctl node run
+sudo DATASTORE_TYPE=etcdv3 ETCD_ENDPOINTS=https://10.0.1.5:2379 calicoctl node run
 ```
 
 This pulls the `calico/node` image and starts it as a Docker container with the necessary privileges.
+
+When Calico is configured to use the Kubernetes API datastore, BGP routing is not supported, so BGP-related options such as `--as`, `--backend`, and IP autodetection flags have no effect.
 
 ## Common Configuration Options
 
@@ -89,6 +91,7 @@ For non-Kubernetes bare-metal deployments:
 # deploy-calico-node-baremetal.sh
 
 # Set etcd connection details
+export DATASTORE_TYPE="etcdv3"
 export ETCD_ENDPOINTS="https://10.0.1.5:2379,https://10.0.1.6:2379,https://10.0.1.7:2379"
 export ETCD_KEY_FILE="/etc/calico/certs/key.pem"
 export ETCD_CERT_FILE="/etc/calico/certs/cert.pem"
@@ -116,7 +119,7 @@ echo "Calico node started on $(hostname)"
 When BGP is not available (e.g., in cloud environments without BGP support):
 
 ```bash
-# Start with VXLAN backend
+# Start the node, then enable VXLAN on the IP pool
 sudo calicoctl node run --node-image=calico/node:v3.27.0
 
 # After starting, configure the IP pool for VXLAN
@@ -138,11 +141,11 @@ EOF
 For debugging, increase the log verbosity:
 
 ```bash
-# Set Felix log level via environment variable
-sudo FELIX_LOGSEVERITYSCREEN=Debug calicoctl node run
+# Set Felix log level via FelixConfiguration
+calicoctl patch felixconfiguration default -p '{"spec":{"logSeverityScreen":"Debug"}}'
 
-# Or for BGP-specific debugging
-sudo BGP_LOGSEVERITYSCREEN=Debug calicoctl node run
+# Or for BGP-specific debugging via BGPConfiguration
+calicoctl patch bgpconfiguration default -p '{"spec":{"logSeverityScreen":"Debug"}}'
 ```
 
 ## Systemd Service Integration
@@ -160,8 +163,8 @@ Requires=docker.service
 Type=simple
 EnvironmentFile=/etc/calico/calico-node.env
 ExecStartPre=-/usr/bin/docker rm -f calico-node
-ExecStart=/usr/local/bin/calicoctl node run --init-system --name=${CALICO_NODENAME}
-ExecStop=/usr/local/bin/calicoctl node stop
+ExecStart=/usr/local/bin/calicoctl node run --init-system --name=${NODENAME} --ip=${IP} --ip-autodetection-method=${IP_AUTODETECTION_METHOD}
+ExecStop=/usr/bin/docker stop calico-node
 Restart=on-failure
 RestartSec=10
 
@@ -178,9 +181,9 @@ ETCD_ENDPOINTS=https://10.0.1.5:2379
 ETCD_KEY_FILE=/etc/calico/certs/key.pem
 ETCD_CERT_FILE=/etc/calico/certs/cert.pem
 ETCD_CA_CERT_FILE=/etc/calico/certs/ca.pem
-CALICO_NODENAME=worker-01
-CALICO_IP=autodetect
-CALICO_IP_AUTODETECTION_METHOD=interface=ens192
+NODENAME=worker-01
+IP=autodetect
+IP_AUTODETECTION_METHOD=interface=ens192
 ```
 
 Enable and start the service:
