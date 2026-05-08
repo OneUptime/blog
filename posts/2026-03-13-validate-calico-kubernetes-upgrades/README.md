@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, Networking, Upgrade, Validation
 
-Description: Validate a successful Calico upgrade on Kubernetes by verifying version consistency, network connectivity, policy enforcement, and IPAM integrity.
+Description: Validate a successful Calico upgrade on Kubernetes by verifying version consistency, network connectivity, DNS resolution, and IPAM integrity.
 
 ---
 
 ## Introduction
 
-Post-upgrade validation for Calico is a multi-step process that confirms the upgrade was complete and correct. Version consistency validation checks every component is on the target version. Functional validation tests network connectivity and policy enforcement. IPAM validation ensures no IP addresses were lost or duplicated during the upgrade.
+Post-upgrade validation for Calico is a multi-step process that confirms the upgrade was complete and correct. Version consistency validation checks every component is on the target version. Functional validation tests network connectivity and DNS resolution. IPAM validation ensures no IP addresses were lost or duplicated during the upgrade.
 
 ## Complete Upgrade Validation Script
 
@@ -87,7 +87,7 @@ kubectl delete pod upgrade-test-pod --force > /dev/null 2>&1
 echo ""
 echo "--- IPAM Integrity ---"
 check "IP pools exist" \
-  "calicoctl get ippools --no-headers | grep -q ."
+  "kubectl get ippools --no-headers | grep -q ."
 
 check "No IPAM conflicts" \
   "calicoctl ipam check --show-all-ips 2>&1 | grep -q 'No problems found'"
@@ -112,7 +112,7 @@ calicoctl ipam check
 # If problems found:
 calicoctl ipam check --show-all-ips
 # This shows which IPs are leaked or have conflicts
-# Follow up with: calicoctl ipam release <problem-ip>
+# Follow up with: calicoctl ipam release --ip=<problem-ip>
 ```
 
 ## Conclusion
