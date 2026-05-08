@@ -31,19 +31,20 @@ Before configuring networking, understand what Windows nodes support.
 kubectl get pods -n kube-system | grep -E "calico|antrea|azure-cni|flannel"
 
 # Windows network mode affects what is supported:
-# overlay mode: l2bridge (limited), vxlan (preferred)
-# Host networking: supported but limited use cases
-# Network Policies: supported with Calico/Antrea on Windows
+# l2bridge connects containers to the underlay network
+# overlay mode uses VXLAN encapsulation
+# Host networking: not supported for Windows pods
+# Network Policies: supported with a compatible Windows policy engine
 
 # Check Windows node network configuration
 kubectl describe node windows-worker-1 | grep -A 10 "Node Info"
 ```
 
 Key Windows container networking constraints:
-- `hostNetwork: true` has limitations on Windows (some networking features differ)
-- IPv6 dual-stack has limited support on Windows containers
-- NodePort services work differently on Windows (uses `winproxy` for load balancing)
-- Network policies require a Windows-compatible CNI (Calico or Antrea)
+- `hostNetwork: true` is not supported for Windows pods
+- IPv6 dual-stack is supported, but IPv6 communication between Windows pods on overlay networks is not supported
+- NodePort services are supported, but local NodePort access from the Windows node itself is not supported
+- Network policies require a Windows-compatible policy engine (Calico, Antrea, or Azure Network Policy Manager on AKS)
 
 ## Step 2: Configure ClusterIP Services for Windows Workloads
 
@@ -95,7 +96,7 @@ spec:
 
 ## Step 3: Configure NetworkPolicy for Windows Workloads
 
-Windows network policies require Calico or Antrea with Windows support enabled.
+Windows network policies require a compatible Windows policy engine such as Calico, Antrea, or Azure Network Policy Manager on AKS.
 
 ```yaml
 # apps/base/windows-workloads/network-policies/iis-app-policy.yaml
@@ -166,7 +167,6 @@ metadata:
   name: iis-app-ingress
   namespace: windows-workloads
   annotations:
-    kubernetes.io/ingress.class: nginx
     # Increase timeout for Windows apps with slower response times
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
