@@ -18,7 +18,7 @@ This guide covers the software dependency audit for Cilium performance testing e
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.24+) with Cilium v1.14+
+- Kubernetes cluster running a Kubernetes version supported by the installed Cilium release
 - `cilium` CLI and `kubectl` access
 - Node-level root access
 - Prometheus monitoring (recommended)
@@ -30,8 +30,8 @@ This guide covers the software dependency audit for Cilium performance testing e
 
 uname -r
 
-# Verify required kernel modules
-for mod in wireguard ip_tables xt_conntrack br_netfilter vxlan; do
+# Verify common kernel modules used by typical Cilium features
+for mod in ip_tables xt_conntrack vxlan geneve xt_socket; do
   if lsmod | grep -q $mod; then
     echo "$mod: loaded"
   else
@@ -52,14 +52,14 @@ zcat /proc/config.gz 2>/dev/null | grep -E "CONFIG_BPF|CONFIG_XDP" || \
 ```bash
 # Verify iperf3 version
 kubectl exec iperf-client -- iperf3 --version
-# Should be 3.9+ for best JSON output
+# Use a recent iperf3 release and -J/--json when collecting machine-readable results
 
 # Verify netperf availability
 kubectl exec netperf-client -- netperf -V
 
 # Check bpftool
 bpftool version
-# Should match kernel version
+# Should be compatible with the running kernel
 
 # Check cilium CLI
 cilium version
@@ -106,12 +106,15 @@ cilium status --verbose > $DIAG_DIR/cilium-status.txt
 # Collect Cilium configuration
 cilium config view > $DIAG_DIR/cilium-config.txt
 
+# Select a Cilium agent pod for node-local datapath diagnostics
+CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg bpf ct list > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -142,21 +145,24 @@ The combination of these data points will point you toward the specific subsyste
 
 ### Using Cilium Monitor for Real-Time Analysis
 
-The `cilium monitor` command provides real-time visibility into the eBPF datapath:
+The `cilium-dbg monitor` command provides real-time visibility into the eBPF datapath:
 
 ```bash
+# Select a Cilium agent pod for node-local datapath monitoring
+CILIUM_POD=$(kubectl -n kube-system get pod -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+ENDPOINT_ID=$(kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list -o json | jq -r '.[0].id')
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --related-to $ENDPOINT_ID --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
@@ -169,11 +175,11 @@ cilium hubble port-forward &
 
 # Query recent flows with filters
 hubble observe --protocol TCP --last 500 -o json | \
-  jq 'select(.verdict == "DROPPED") | {src: .source.pod_name, dst: .destination.pod_name, reason: .drop_reason_desc}'
+  jq 'select(.flow.verdict == "DROPPED") | {src: .flow.source.pod_name, dst: .flow.destination.pod_name, reason: .flow.drop_reason_desc}'
 
 # Get flow statistics by source and destination
 hubble observe --last 1000 -o json | \
-  jq -r '\(.source.namespace)/\(.source.pod_name) -> \(.destination.namespace)/\(.destination.pod_name): \(.verdict)' | \
+  jq -r '\(.flow.source.namespace)/\(.flow.source.pod_name) -> \(.flow.destination.namespace)/\(.flow.destination.pod_name): \(.flow.verdict)' | \
   sort | uniq -c | sort -rn | head -20
 ```
 
