@@ -12,7 +12,7 @@ Description: Safely update the Calico KubeControllersConfiguration resource to c
 
 The KubeControllersConfiguration is a singleton resource that governs how calico-kube-controllers behaves across your entire cluster. Changes to this resource take effect when the controller pod detects the update, which typically happens within seconds. However, some changes have significant side effects that require careful planning.
 
-Enabling automatic host endpoints creates new resources on every node. Changing reconciler periods affects how quickly the cluster converges after changes. Disabling controllers can leave stale resources behind. Each of these scenarios requires a different approach to ensure safe updates.
+Enabling automatic host endpoints creates new HostEndpoint resources for nodes. Changing reconciler periods affects how quickly the cluster converges after changes. Disabling controllers can leave stale resources behind. Each of these scenarios requires a different approach to ensure safe updates.
 
 This guide covers safe procedures for modifying each section of the KubeControllersConfiguration, including impact analysis and rollback strategies.
 
@@ -43,7 +43,7 @@ When enabling a controller that was previously disabled, the controller starts p
 calicoctl get kubecontrollersconfiguration default -o yaml
 ```
 
-Apply the update with the new controller:
+Apply the update with the new controller, preserving any other enabled controller sections because `calicoctl apply` replaces the full spec:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -63,8 +63,12 @@ spec:
       reconcilerPeriod: 5m
     workloadEndpoint:
       reconcilerPeriod: 5m
+    serviceAccount:
+      reconcilerPeriod: 5m
     namespace:
       reconcilerPeriod: 5m
+    loadBalancer:
+      assignIPs: AllServices
 ```
 
 ```bash
@@ -79,7 +83,7 @@ kubectl logs -n calico-system -l k8s-app=calico-kube-controllers -f --tail=20
 
 ## Enabling Automatic Host Endpoints
 
-This is a high-impact change that creates HostEndpoint resources for every node interface. Plan this carefully:
+This is a high-impact change that creates HostEndpoint resources for nodes. With the default host endpoint enabled, those auto-created endpoints can represent all host interfaces. Plan this carefully:
 
 ```bash
 # Step 1: Verify current host endpoints
@@ -106,7 +110,7 @@ calicoctl patch kubecontrollersconfiguration default -p \
 Note that disabling autoCreate does not automatically delete the host endpoints that were created. Clean them up manually if needed:
 
 ```bash
-calicoctl get hostendpoints -o name | xargs -I {} calicoctl delete {}
+calicoctl get hostendpoints -o yaml | calicoctl delete -f -
 ```
 
 ## Adjusting Reconciler Periods
@@ -157,6 +161,12 @@ spec:
         autoCreate: Disabled
     policy:
       reconcilerPeriod: 5m
+    serviceAccount:
+      reconcilerPeriod: 5m
+    namespace:
+      reconcilerPeriod: 5m
+    loadBalancer:
+      assignIPs: AllServices
 ```
 
 Removing the workloadEndpoint controller means orphaned endpoints are no longer cleaned up. Only disable controllers if you have an alternative process for managing those resources.
