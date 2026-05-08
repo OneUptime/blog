@@ -45,39 +45,43 @@ done
 **Validation Step 2: No duplicate pod IPs**
 
 ```bash
-DUPES=$(kubectl get pods --all-namespaces -o wide \
-  | awk '{print $7}' | grep -v "IP\|<none>" | sort | uniq -d)
+DUPES=$(kubectl get pods --all-namespaces \
+  -o custom-columns=IP:.status.podIP --no-headers \
+  | grep -v "<none>" | sort | uniq -d)
 [ -z "$DUPES" ] && echo "PASS: No duplicate pod IPs" || echo "FAIL: Duplicate IPs: $DUPES"
 ```
 
 **Validation Step 3: New pods get unique IPs from all nodes**
 
 ```bash
-for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | head -3); do
-  kubectl run ipam-test-$(echo $NODE | tr -d '-') --image=busybox --restart=Never \
-    --overrides="{\"spec\":{\"nodeName\":\"$NODE\"}}" -- sleep 10
+i=0
+for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+  i=$((i + 1))
+  kubectl run ipam-test-$i --image=busybox --restart=Never \
+    --labels=ipam-validation=block-conflict-test \
+    --overrides="{\"apiVersion\":\"v1\",\"spec\":{\"nodeName\":\"$NODE\"}}" \
+    --command -- sleep 60
 done
 
 sleep 15
 
-kubectl get pods -l run --selector='' -o wide 2>/dev/null | grep ipam-test
+kubectl get pods -l ipam-validation=block-conflict-test -o wide
 # Verify each pod has a unique IP
-kubectl delete pods -l run 2>/dev/null || kubectl get pods | grep ipam-test | awk '{print $1}' | xargs kubectl delete pod
+kubectl delete pods -l ipam-validation=block-conflict-test
 ```
 
 **Validation Step 4: Block affinity state is consistent**
 
 ```bash
 # Verify no orphaned block affinities remain
-CURRENT_NODES=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}')
+CURRENT_NODES=$(kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
 ORPHANED=0
-for BA in $(calicoctl get blockaffinity -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
-  NODE=$(calicoctl get blockaffinity $BA -o jsonpath='{.spec.node}' 2>/dev/null)
-  if ! echo "$CURRENT_NODES" | grep -qw "$NODE"; then
+while read -r BA NODE; do
+  if ! echo "$CURRENT_NODES" | grep -Fxq "$NODE"; then
     echo "ORPHANED AFFINITY: $BA"
     ORPHANED=1
   fi
-done
+done < <(calicoctl get blockaffinity -o go-template='{{range .}}{{range .Items}}{{.ObjectMeta.Name}}{{"\t"}}{{.Spec.Node}}{{"\n"}}{{end}}{{end}}' 2>/dev/null)
 [ $ORPHANED -eq 0 ] && echo "PASS: No orphaned block affinities"
 ```
 
