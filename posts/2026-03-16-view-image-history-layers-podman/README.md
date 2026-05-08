@@ -10,7 +10,7 @@ Description: Learn how to view the build history and layer structure of containe
 
 > Understanding image history and layers helps you optimize image size, debug build issues, and audit what goes into your containers.
 
-Every container image is built from a series of layers, each created by a Containerfile instruction. The `podman history` command lets you see exactly how an image was constructed, including each layer's size, the command that created it, and when it was built. This guide shows you how to analyze image history and layers with Podman.
+Every container image is built from a series of layers. Filesystem-changing Containerfile instructions create layers, while metadata instructions can appear as zero-byte history entries. The `podman history` command lets you see exactly how an image was constructed, including each layer's size, the command that created it, and when it was built. This guide shows you how to analyze image history and layers with Podman.
 
 ---
 
@@ -25,8 +25,8 @@ podman history nginx:1.25
 
 # Sample output:
 # ID            CREATED      CREATED BY                          SIZE     COMMENT
-# a3ed95caeb02  2 days ago   CMD ["nginx" "-g" "daemon off;"]    0B
-# <missing>     2 days ago   EXPOSE map[80/tcp:{}]               0B
+# a3ed95caeb02  2 days ago   /bin/sh -c #(nop) CMD [...]         0 B
+# <missing>     2 days ago   /bin/sh -c #(nop) EXPOSE 80         0 B
 # <missing>     2 days ago   COPY file:xyz... in /etc/nginx...   4.62kB
 # <missing>     2 days ago   RUN /bin/sh -c set -x && ...        62.1MB
 # ...
@@ -74,19 +74,19 @@ Find which layers contribute the most to image size.
 
 ```bash
 # Show layers sorted by size (largest first)
-podman history nginx:1.25 --format "{{.Size}}\t{{.CreatedBy}}" \
-  | sort -rh
+podman history --human=false nginx:1.25 --format "{{.Size}}\t{{.CreatedBy}}" \
+  | sort -nr
 
 # Show only layers with non-zero size
-podman history nginx:1.25 --format "{{.Size}}\t{{.CreatedBy}}" \
-  | grep -v "^0B"
+podman history --human=false nginx:1.25 --format "{{.Size}}\t{{.CreatedBy}}" \
+  | grep -v "^0"
 
 # Script to find the top 5 largest layers
 echo "=== Top 5 Largest Layers ==="
-podman history --no-trunc nginx:1.25 \
+podman history --no-trunc --human=false nginx:1.25 \
   --format "{{.Size}}\t{{.CreatedBy}}" \
-  | grep -v "^0B" \
-  | sort -rh \
+  | grep -v "^0" \
+  | sort -nr \
   | head -5
 ```
 
@@ -104,8 +104,8 @@ diff <(podman history --no-trunc nginx:1.24 --format "{{.CreatedBy}}") \
      <(podman history --no-trunc nginx:1.25 --format "{{.CreatedBy}}")
 
 # Compare an image with its slim variant
-podman history python:3.12 --format "{{.Size}}" | paste -sd+ | bc
-podman history python:3.12-slim --format "{{.Size}}" | paste -sd+ | bc
+podman history --human=false python:3.12 --format "{{.Size}}" | paste -sd+ | bc
+podman history --human=false python:3.12-slim --format "{{.Size}}" | paste -sd+ | bc
 ```
 
 ## Viewing Layer Digests
@@ -159,8 +159,8 @@ LAYERS=$(podman history -q "$IMAGE" | wc -l)
 echo "Total layers: ${LAYERS}"
 
 # Number of layers with content
-CONTENT_LAYERS=$(podman history "$IMAGE" --format "{{.Size}}" \
-  | grep -v "^0B" | wc -l)
+CONTENT_LAYERS=$(podman history --human=false "$IMAGE" --format "{{.Size}}" \
+  | grep -v "^0$" | wc -l)
 echo "Layers with content: ${CONTENT_LAYERS}"
 echo "Empty layers: $((LAYERS - CONTENT_LAYERS))"
 
@@ -168,7 +168,7 @@ echo ""
 echo "--- Layer Breakdown ---"
 podman history "$IMAGE" \
   --format "table {{.Size}}\t{{.CreatedBy}}" \
-  | grep -v "^0B"
+  | grep -Ev "^0 ?B"
 
 echo ""
 echo "--- Optimization Tips ---"
@@ -180,8 +180,8 @@ if [ "$RUN_LAYERS" -gt 5 ]; then
 fi
 
 # Check for large layers
-LARGE=$(podman history "$IMAGE" --format "{{.Size}}" \
-  | grep -cE "^[0-9]+(\.[0-9]+)?(GB|MB)")
+LARGE=$(podman history --human=false "$IMAGE" --format "{{.Size}}" \
+  | awk '$1 >= 104857600 { count++ } END { print count + 0 }')
 if [ "$LARGE" -gt 0 ]; then
   echo "- ${LARGE} large layer(s) found, review for optimization"
 fi
