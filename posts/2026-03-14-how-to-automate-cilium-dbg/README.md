@@ -37,30 +37,63 @@ This guide covers automation patterns for cilium-dbg, from simple multi-node scr
 
 set -euo pipefail
 
-CMD="\${1:-status --brief}"
-NAMESPACE="\${CILIUM_NAMESPACE:-kube-system}"
+CMD="${1:-status --brief}"
+NAMESPACE="${CILIUM_NAMESPACE:-kube-system}"
 
-PODS=\$(kubectl -n "\$NAMESPACE" get pods -l k8s-app=cilium   -o jsonpath='{range .items[*]}{.metadata.name},{.spec.nodeName}{"\n"}{end}')
+PODS=$(kubectl -n "$NAMESPACE" get pods -l k8s-app=cilium -o jsonpath='{range .items[*]}{.metadata.name},{.spec.nodeName}{"\n"}{end}')
 
 while IFS=',' read -r pod node; do
-  [ -z "\$pod" ] && continue
-  echo "=== \$node ==="
-  kubectl -n "\$NAMESPACE" exec "\$pod" -c cilium-agent --     cilium-dbg \$CMD 2>/dev/null || echo "FAILED"
+  [ -z "$pod" ] && continue
+  echo "=== $node ==="
+  kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- cilium-dbg $CMD 2>/dev/null || echo "FAILED"
   echo ""
-done <<< "\$PODS"
+done <<< "$PODS"
 ```
 
 ```bash
 # Usage examples
 bash cilium-dbg-all-nodes.sh "status --brief"
 bash cilium-dbg-all-nodes.sh "endpoint list"
-bash cilium-dbg-all-nodes.sh "bpf ct list global"
+bash cilium-dbg-all-nodes.sh "bpf ct list"
 ```
 
 ### Scheduled Health Monitoring
 
 ```yaml
 # cilium-health-monitor.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cilium-dbg-health
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cilium-dbg-health
+  namespace: kube-system
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cilium-dbg-health
+  namespace: kube-system
+subjects:
+- kind: ServiceAccount
+  name: cilium-dbg-health
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cilium-dbg-health
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -72,7 +105,7 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: cilium
+          serviceAccountName: cilium-dbg-health
           containers:
           - name: health-check
             image: bitnami/kubectl:latest
@@ -81,16 +114,16 @@ spec:
             - -c
             - |
               UNHEALTHY=0
-              PODS=\$(kubectl -n kube-system get pods -l k8s-app=cilium                 -o jsonpath='{.items[*].metadata.name}')
-              for pod in \$PODS; do
-                STATUS=\$(kubectl -n kube-system exec "\$pod" -c cilium-agent --                   cilium-dbg status --brief 2>/dev/null || echo "FAIL")
-                if ! echo "\$STATUS" | grep -q "OK"; then
-                  UNHEALTHY=\$((UNHEALTHY + 1))
-                  echo "ALERT: \$pod is unhealthy"
+              PODS=$(kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[*].metadata.name}')
+              for pod in $PODS; do
+                STATUS=$(kubectl -n kube-system exec "$pod" -c cilium-agent -- cilium-dbg status --brief 2>/dev/null || echo "FAIL")
+                if ! echo "$STATUS" | grep -q "OK"; then
+                  UNHEALTHY=$((UNHEALTHY + 1))
+                  echo "ALERT: $pod is unhealthy"
                 fi
               done
-              echo "Health check: \$UNHEALTHY unhealthy agents"
-              [ "\$UNHEALTHY" -gt 0 ] && exit 1 || exit 0
+              echo "Health check: $UNHEALTHY unhealthy agents"
+              [ "$UNHEALTHY" -gt 0 ] && exit 1 || exit 0
           restartPolicy: OnFailure
 ```
 
@@ -102,22 +135,22 @@ spec:
 # Export cilium-dbg data as Prometheus metrics
 
 NAMESPACE="kube-system"
-CILIUM_POD=\$(kubectl -n "\$NAMESPACE" get pods -l k8s-app=cilium   -o jsonpath='{.items[0].metadata.name}')
-NODE=\$(kubectl -n "\$NAMESPACE" get pod "\$CILIUM_POD" -o jsonpath='{.spec.nodeName}')
+CILIUM_POD=$(kubectl -n "$NAMESPACE" get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}')
+NODE=$(kubectl -n "$NAMESPACE" get pod "$CILIUM_POD" -o jsonpath='{.spec.nodeName}')
 
 # Endpoint metrics
-EP_JSON=\$(kubectl -n "\$NAMESPACE" exec "\$CILIUM_POD" -c cilium-agent --   cilium-dbg endpoint list -o json 2>/dev/null)
+EP_JSON=$(kubectl -n "$NAMESPACE" exec "$CILIUM_POD" -c cilium-agent -- cilium-dbg endpoint list -o json 2>/dev/null)
 
-TOTAL=\$(echo "\$EP_JSON" | jq length)
-READY=\$(echo "\$EP_JSON" | jq '[.[] | select(.status.state=="ready")] | length')
+TOTAL=$(echo "$EP_JSON" | jq length)
+READY=$(echo "$EP_JSON" | jq '[.[] | select(.status.state=="ready")] | length')
 
 cat << METRICS
 # HELP cilium_endpoints_total Total endpoints on node
 # TYPE cilium_endpoints_total gauge
-cilium_endpoints_total{node="\$NODE"} \$TOTAL
+cilium_endpoints_total{node="$NODE"} $TOTAL
 # HELP cilium_endpoints_ready Ready endpoints on node
 # TYPE cilium_endpoints_ready gauge
-cilium_endpoints_ready{node="\$NODE"} \$READY
+cilium_endpoints_ready{node="$NODE"} $READY
 METRICS
 ```
 
@@ -147,5 +180,4 @@ kubectl -n kube-system get cronjob cilium-dbg-health
 ## Conclusion
 
 Automating cilium-dbg commands transforms debugging into monitoring. Scheduled multi-node execution, metrics export, and CI/CD integration give you continuous visibility into Cilium agent health and state across your entire cluster fleet.
-
 
