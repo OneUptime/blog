@@ -30,13 +30,8 @@ This guide covers the infrastructure and processes needed to prevent test enviro
 
 kubectl label nodes node-perf-1 node-perf-2 node-role=perf-testing
 
-
-
-
-# Enforce kernel parameters
-
-
-
+# Prevent non-benchmark workloads from scheduling on the test nodes
+kubectl taint nodes node-perf-1 node-perf-2 dedicated=perf-testing:NoSchedule
 
 ```
 
@@ -48,8 +43,10 @@ kubectl label nodes node-perf-1 node-perf-2 node-role=perf-testing
 set -euo pipefail
 
 # Verify no non-system pods on test nodes
-PODS=$(kubectl get pods --all-namespaces --field-selector spec.nodeName=node-perf-1 -o json | jq "[.items[] | select(.metadata.namespace != \"kube-system\" and .metadata.namespace != \"monitoring\")] | length")
-if [ "$PODS" -gt 0 ]; then echo "FAIL: Non-system pods on test node"; exit 1; fi
+for NODE in node-perf-1 node-perf-2; do
+  PODS=$(kubectl get pods --all-namespaces --field-selector spec.nodeName="$NODE" -o json | jq "[.items[] | select(.metadata.namespace != \"kube-system\" and .metadata.namespace != \"monitoring\")] | length")
+  if [ "$PODS" -gt 0 ]; then echo "FAIL: Non-system pods on test node $NODE"; exit 1; fi
+done
 ```
 
 ## CI/CD Integration
@@ -122,7 +119,7 @@ Run performance regression tests on every change:
 echo "Running performance regression gate..."
 
 # Quick smoke test
-BPS=$(kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 10 -P 1 -J | \
+BPS=$(kubectl exec -n monitoring perf-client -- iperf3 -c perf-server -t 10 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second')
 MIN_BPS=8000000000
 
@@ -153,20 +150,20 @@ Before any cluster change, capture a performance snapshot:
 #!/bin/bash
 # pre-change-snapshot.sh
 SNAPSHOT="/tmp/perf-snapshot-$(date +%Y%m%d-%H%M%S)"
-mkdir -p $SNAPSHOT
+mkdir -p "$SNAPSHOT"
 
 # Throughput
-kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > $SNAPSHOT/throughput.json
+kubectl exec -n monitoring perf-client -- iperf3 -c perf-server -t 15 -P 1 -J > "$SNAPSHOT/throughput.json"
 
 # Latency
-kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_RR -l 15 > $SNAPSHOT/latency.txt
+kubectl exec -n monitoring netperf-client -- netperf -H netperf-server -t TCP_RR -l 15 > "$SNAPSHOT/latency.txt"
 
 # Connection rate
-kubectl exec netperf-client -- netperf -H netperf-server.monitoring -t TCP_CRR -l 15 > $SNAPSHOT/connrate.txt
+kubectl exec -n monitoring netperf-client -- netperf -H netperf-server -t TCP_CRR -l 15 > "$SNAPSHOT/connrate.txt"
 
 # Cilium state
-cilium status --verbose > $SNAPSHOT/cilium-status.txt
-cilium config view > $SNAPSHOT/cilium-config.txt
+cilium status --verbose > "$SNAPSHOT/cilium-status.txt"
+cilium config view > "$SNAPSHOT/cilium-config.txt"
 
 echo "Snapshot saved to $SNAPSHOT"
 echo "Run post-change-compare.sh after the change to detect regressions"
@@ -179,12 +176,12 @@ echo "Run post-change-compare.sh after the change to detect regressions"
 # post-change-compare.sh <pre-change-snapshot-dir>
 PRE=$1
 POST="/tmp/perf-snapshot-post-$(date +%Y%m%d-%H%M%S)"
-mkdir -p $POST
+mkdir -p "$POST"
 
-kubectl exec perf-client -- iperf3 -c perf-server.monitoring -t 15 -P 1 -J > $POST/throughput.json
+kubectl exec -n monitoring perf-client -- iperf3 -c perf-server -t 15 -P 1 -J > "$POST/throughput.json"
 
-PRE_BPS=$(jq '.end.sum_sent.bits_per_second' $PRE/throughput.json)
-POST_BPS=$(jq '.end.sum_sent.bits_per_second' $POST/throughput.json)
+PRE_BPS=$(jq '.end.sum_sent.bits_per_second' "$PRE/throughput.json")
+POST_BPS=$(jq '.end.sum_sent.bits_per_second' "$POST/throughput.json")
 CHANGE=$(echo "scale=2; ($POST_BPS - $PRE_BPS) / $PRE_BPS * 100" | bc)
 
 echo "Throughput change: ${CHANGE}%"
