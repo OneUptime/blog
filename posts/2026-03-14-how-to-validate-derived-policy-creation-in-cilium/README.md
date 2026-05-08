@@ -15,7 +15,7 @@ Validating derived policy creation confirms that every endpoint with matching po
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and policies applied
-- kubectl and Cilium CLI configured
+- kubectl configured with access to the cilium-agent pods
 
 ## Validating Policy Application
 
@@ -23,33 +23,40 @@ Validating derived policy creation confirms that every endpoint with matching po
 #!/bin/bash
 echo "=== Derived Policy Validation ==="
 
-# Check every endpoint has policy state
+# Check every endpoint on every Cilium agent has policy state
 
-cilium endpoint list -o json | jq '.[] | {
-  id: .id,
-  state: .status.state,
-  policy_enabled: (.status.policy != null),
-  ingress_enforcing: .status.policy.spec."policy-enabled",
-  identity: .status.identity.id
-}' | jq 'select(.policy_enabled != true)'
+kubectl -n kube-system get pods -l k8s-app=cilium -o name | while read -r agent; do
+  kubectl -n kube-system exec "$agent" -- cilium-dbg endpoint list -o json | \
+    jq --arg agent "$agent" '.[] | {
+      agent: $agent,
+      id: .id,
+      state: .status.state,
+      desired_policy: (.status.policy.spec."policy-enabled" // "unknown"),
+      realized_policy: (.status.policy.realized."policy-enabled" // "unknown"),
+      identity: .status.identity.id
+    } | select(.desired_policy == "unknown" or .realized_policy == "unknown")'
+done
 ```
 
 ## Validating Policy Correctness
 
 ```bash
 # For each endpoint, verify the derived policy includes expected rules
-for ep in $(cilium endpoint list -o json | jq -r '.[].id'); do
-  INGRESS=$(cilium endpoint get "$ep" -o json | \
-    jq '.status.policy.realized."allowed-ingress-identities" // [] | length')
-  EGRESS=$(cilium endpoint get "$ep" -o json | \
-    jq '.status.policy.realized."allowed-egress-identities" // [] | length')
-  STATE=$(cilium endpoint get "$ep" -o json | jq -r '.status.state')
+kubectl -n kube-system get pods -l k8s-app=cilium -o name | while read -r agent; do
+  for ep in $(kubectl -n kube-system exec "$agent" -- cilium-dbg endpoint list -o json | jq -r '.[].id'); do
+    ENDPOINT_JSON=$(kubectl -n kube-system exec "$agent" -- cilium-dbg endpoint get "$ep" -o json)
+    INGRESS=$(printf '%s' "$ENDPOINT_JSON" | \
+      jq '.status.policy.realized."allowed-ingress-identities" // [] | length')
+    EGRESS=$(printf '%s' "$ENDPOINT_JSON" | \
+      jq '.status.policy.realized."allowed-egress-identities" // [] | length')
+    STATE=$(printf '%s' "$ENDPOINT_JSON" | jq -r '.status.state')
   
-  if [ "$STATE" = "ready" ]; then
-    echo "OK: Endpoint $ep - ingress:$INGRESS egress:$EGRESS"
-  else
-    echo "WARN: Endpoint $ep in state $STATE"
-  fi
+    if [ "$STATE" = "ready" ]; then
+      echo "OK: $agent endpoint $ep - ingress:$INGRESS egress:$EGRESS"
+    else
+      echo "WARN: $agent endpoint $ep in state $STATE"
+    fi
+  done
 done
 ```
 
@@ -67,8 +74,8 @@ graph TD
 ## Verification
 
 ```bash
-cilium endpoint list
-cilium policy get
+kubectl get ciliumendpoints --all-namespaces
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf policy get --all
 ```
 
 ## Troubleshooting
