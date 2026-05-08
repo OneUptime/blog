@@ -38,24 +38,24 @@ podman inspect web --format '{{ range .NetworkSettings.Networks }}{{ .IPAddress 
 # Assign predictable IPs to each service
 podman run -d --name frontend \
   --network app-network \
-  --ip 10.50.0.10 \
+  --ip 10.50.0.11 \
   -p 8080:80 \
   docker.io/library/nginx:latest
 
 podman run -d --name backend \
   --network app-network \
-  --ip 10.50.0.20 \
+  --ip 10.50.0.21 \
   docker.io/library/node:20 tail -f /dev/null
 
 podman run -d --name database \
   --network app-network \
-  --ip 10.50.0.30 \
+  --ip 10.50.0.31 \
   -e POSTGRES_PASSWORD=secret \
   docker.io/library/postgres:16
 
 podman run -d --name cache \
   --network app-network \
-  --ip 10.50.0.40 \
+  --ip 10.50.0.41 \
   docker.io/library/redis:latest
 
 # Verify all IPs
@@ -71,7 +71,7 @@ done
 # Start a container on one network
 podman run -d --name api \
   --network app-network \
-  --ip 10.50.0.20 \
+  --ip 10.50.0.22 \
   docker.io/library/node:20 tail -f /dev/null
 
 # Connect to a second network with a static IP
@@ -87,14 +87,14 @@ podman inspect api --format '{{ range $k, $v := .NetworkSettings.Networks }}{{ $
 ```bash
 # Create a dual-stack network
 podman network create \
-  --subnet 10.50.0.0/24 --gateway 10.50.0.1 \
+  --subnet 10.70.0.0/24 --gateway 10.70.0.1 \
   --ipv6 --subnet fd00:50::/64 --gateway fd00:50::1 \
   dual-net
 
 # Assign both static IPv4 and IPv6
 podman run -d --name dual-app \
   --network dual-net \
-  --ip 10.50.0.100 \
+  --ip 10.70.0.100 \
   --ip6 fd00:50::100 \
   docker.io/library/nginx:latest
 ```
@@ -104,21 +104,21 @@ podman run -d --name dual-app \
 A structured IP plan for a typical application:
 
 ```bash
-# Network: 10.50.0.0/24
-# Gateway: 10.50.0.1
-# Load balancers: 10.50.0.10-19
-# Web servers: 10.50.0.20-29
-# API servers: 10.50.0.30-39
-# Databases: 10.50.0.40-49
-# Caches: 10.50.0.50-59
+# Network: 10.80.0.0/24
+# Gateway: 10.80.0.1
+# Load balancers: 10.80.0.10-19
+# Web servers: 10.80.0.20-29
+# API servers: 10.80.0.30-39
+# Databases: 10.80.0.40-49
+# Caches: 10.80.0.50-59
 
-podman network create --subnet 10.50.0.0/24 --gateway 10.50.0.1 production
+podman network create --subnet 10.80.0.0/24 --gateway 10.80.0.1 production
 
-podman run -d --name lb --network production --ip 10.50.0.10 haproxy:latest
-podman run -d --name web1 --network production --ip 10.50.0.20 docker.io/library/nginx:latest
-podman run -d --name api1 --network production --ip 10.50.0.30 docker.io/library/node:20 tail -f /dev/null
-podman run -d --name db1 --network production --ip 10.50.0.40 -e POSTGRES_PASSWORD=secret docker.io/library/postgres:16
-podman run -d --name redis1 --network production --ip 10.50.0.50 docker.io/library/redis:latest
+podman run -d --name lb --network production --ip 10.80.0.10 haproxy:latest
+podman run -d --name web1 --network production --ip 10.80.0.20 docker.io/library/nginx:latest
+podman run -d --name api1 --network production --ip 10.80.0.30 docker.io/library/node:20 tail -f /dev/null
+podman run -d --name db1 --network production --ip 10.80.0.40 -e POSTGRES_PASSWORD=secret docker.io/library/postgres:16
+podman run -d --name redis1 --network production --ip 10.80.0.50 docker.io/library/redis:latest
 ```
 
 ## Verifying Static IP Persistence
@@ -151,4 +151,4 @@ podman network inspect app-network --format '{{ range .Subnets }}{{ .Subnet }}{{
 
 ## Summary
 
-Assign static IPs to Podman containers with `--ip` when starting containers or `--ip` when connecting to networks via `podman network connect`. Always create networks with explicit subnets before assigning static IPs. Plan your IP addressing scheme to avoid conflicts and make service addressing predictable. Static IPs persist across container restarts but require a user-defined network with a specified subnet.
+Assign static IPs to Podman containers with `--ip` when starting containers or `--ip` when connecting to networks via `podman network connect`. Create networks with explicit subnets before assigning static IPs when you want predictable address pools. Plan your IP addressing scheme to avoid conflicts and make service addressing predictable. Static IPs persist across container restarts and must be within the network's IP address pool.
