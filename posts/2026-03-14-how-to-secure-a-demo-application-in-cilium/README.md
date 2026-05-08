@@ -17,6 +17,7 @@ Securing a demo application with Cilium demonstrates how network policies protec
 - Kubernetes cluster with Cilium installed
 - kubectl configured
 - L7 proxy enabled in Cilium
+- Hubble enabled and the Hubble CLI configured
 
 ## Deploy the Demo Application
 
@@ -46,6 +47,19 @@ spec:
           ports:
             - containerPort: 80
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: demo
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -67,7 +81,20 @@ spec:
         - name: api
           image: nginx:1.27
           ports:
-            - containerPort: 8080
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: demo
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -94,6 +121,19 @@ spec:
           env:
             - name: POSTGRES_PASSWORD
               value: "demo-password"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: demo
+spec:
+  selector:
+    app: database
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
 ```
 
 ```bash
@@ -126,12 +166,15 @@ spec:
   egress:
     - toEndpoints:
         - matchLabels:
-            k8s:io.kubernetes.pod.namespace: kube-system
+            "k8s:io.kubernetes.pod.namespace": kube-system
             k8s-app: kube-dns
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 ---
 # demo-frontend-policy.yaml
 apiVersion: cilium.io/v2
@@ -156,8 +199,11 @@ spec:
             app: api
       toPorts:
         - ports:
-            - port: "8080"
+            - port: "80"
               protocol: TCP
+          rules:
+            http:
+              - method: "GET"
 ---
 # demo-api-policy.yaml
 apiVersion: cilium.io/v2
@@ -175,8 +221,11 @@ spec:
             app: frontend
       toPorts:
         - ports:
-            - port: "8080"
+            - port: "80"
               protocol: TCP
+          rules:
+            http:
+              - method: "GET"
   egress:
     - toEndpoints:
         - matchLabels:
@@ -214,7 +263,7 @@ kubectl apply -f demo-frontend-policy.yaml -f demo-api-policy.yaml -f demo-datab
 ```mermaid
 graph LR
     A[World] -->|:80| B[Frontend]
-    B -->|:8080| C[API]
+    B -->|:80| C[API]
     C -->|:5432| D[Database]
 ```
 
@@ -225,10 +274,10 @@ kubectl get ciliumnetworkpolicies -n demo
 hubble observe -n demo --last 20
 
 # Test allowed path
-kubectl exec -n demo deploy/frontend -- curl -s http://api:8080/
+kubectl run -n demo frontend-client --rm -it --restart=Never --image=curlimages/curl --labels app=frontend,tier=web -- curl -s http://api/
 
 # Test denied path (frontend should not reach database)
-kubectl exec -n demo deploy/frontend -- curl -s --connect-timeout 3 http://database:5432/
+kubectl run -n demo frontend-client --rm -it --restart=Never --image=curlimages/curl --labels app=frontend,tier=web -- curl -s --connect-timeout 3 http://database:5432/
 ```
 
 ## Troubleshooting
