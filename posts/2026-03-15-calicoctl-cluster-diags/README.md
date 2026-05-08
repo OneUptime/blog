@@ -12,7 +12,7 @@ Description: Learn how to use calicoctl cluster diags to collect diagnostic info
 
 When troubleshooting Calico networking issues in a Kubernetes cluster, collecting diagnostic information from multiple components can be tedious. The `calicoctl cluster diags` command automates this process by gathering logs, configuration, and state from all Calico components into a single diagnostic bundle.
 
-This diagnostic bundle includes node status, BGP peering information, IP pool configurations, workload endpoint details, and Calico component logs. Having all this information in one place significantly speeds up root cause analysis and simplifies communication with support teams.
+This diagnostic bundle includes Kubernetes resources, Calico custom resources, Calico and Tigera namespace state, Calico component logs, pod descriptions, and dataplane diagnostics from Calico nodes. Having all this information in one place significantly speeds up root cause analysis and simplifies communication with support teams.
 
 This guide demonstrates how to use `calicoctl cluster diags` effectively, including filtering options and how to interpret the collected data.
 
@@ -34,14 +34,16 @@ calicoctl cluster diags
 This creates a compressed archive containing diagnostic data from the cluster. The output indicates where the archive is saved:
 
 ```text
-Collecting diagnostics...
-  Collecting Calico node status...
-  Collecting BGP peer information...
-  Collecting IP pool information...
-  Collecting workload endpoints...
-  Collecting felix configuration...
-  Collecting component logs...
-Diagnostics saved to: calico-diagnostics-20260315-143022.tar.gz
+==== Begin collecting diagnostics. ====
+Created temporary directory: /tmp/123456789
+Collecting kubernetes version...
+Collecting core kubernetes resources...
+Collecting detailed diags for namespace calico-system...
+Collecting detailed diags for pod calico-node-abcde in namespace calico-system on node node1...
+Collecting dataplane diags for calico-node: calico-node-abcde
+
+==== Producing a diagnostics bundle. ====
+Diagnostic bundle created at ./calico-diagnostics-20260315_143022.tar.gz
 ```
 
 ## Examining the Diagnostic Bundle
@@ -49,43 +51,44 @@ Diagnostics saved to: calico-diagnostics-20260315-143022.tar.gz
 Extract and examine the contents:
 
 ```bash
-tar xzf calico-diagnostics-20260315-143022.tar.gz
-ls calico-diagnostics-20260315-143022/
+tar xzf calico-diagnostics-20260315_143022.tar.gz
+ls calico-diagnostics-20260315_143022/
 ```
 
 The bundle typically contains:
 
 ```text
-calico-diagnostics-20260315-143022/
+calico-diagnostics-20260315_143022/
+  cluster/
+  links/
   nodes/
-  bgp/
-  ipam/
-  policies/
-  logs/
-  config/
+  tls/
 ```
 
 ### Reviewing Node Information
 
 ```bash
-cat calico-diagnostics-*/nodes/node-status.json | jq '.items[] | {name: .metadata.name, status: .status}'
+cat calico-diagnostics-*/cluster/kubernetes/nodes.txt
 ```
 
-### Checking BGP Peering State
+### Reviewing BGP Peer Configuration
 
 ```bash
-cat calico-diagnostics-*/bgp/peers.json | jq '.items[] | {node: .metadata.name, peerIP: .spec.peerIP, asNumber: .spec.asNumber}'
+cat calico-diagnostics-*/cluster/crd/bgppeers.crd.projectcalico.org.txt
 ```
 
-## Collecting Diagnostics with Log Levels
+## Collecting Diagnostics After Increasing Log Levels
 
-To include more verbose component logs:
+The diagnostics command collects logs that already exist in the cluster. To include more verbose Felix logs, increase the Felix log level before collecting diagnostics:
 
 ```bash
-CALICO_LOG_LEVEL=debug calicoctl cluster diags
+kubectl get felixconfig -o yaml > felixconfig.yaml
+# Edit logSeverityScreen to Debug, then apply the updated resource.
+kubectl replace -f felixconfig.yaml
+calicoctl cluster diags
 ```
 
-This collects debug-level logs from Felix, BIRD, and confd, providing deeper visibility into component behavior.
+For BGP agent logs, update the `logSeverityScreen` field on the BGP configuration instead. Debug logging can be verbose, so return the setting to its previous value after collecting the bundle.
 
 ## Filtering Diagnostics by Scope
 
@@ -102,7 +105,7 @@ calicoctl cluster diags --focus-nodes=node1,node2 --max-logs=3
 
 ## Automating Periodic Diagnostic Collection
 
-Set up a CronJob to collect diagnostics on a schedule:
+After creating a PVC and granting the job's service account the required cluster-wide read permissions, set up a CronJob to collect diagnostics on a schedule:
 
 ```yaml
 apiVersion: batch/v1
@@ -116,9 +119,10 @@ spec:
     spec:
       template:
         spec:
+          serviceAccountName: calico-diags-collector
           containers:
           - name: diags
-            image: calico/ctl:v3.27.0
+            image: calico/ctl:v3.32.0
             command:
             - /bin/sh
             - -c
@@ -142,15 +146,15 @@ When you have multiple diagnostic bundles, compare them to identify changes:
 ```bash
 # Compare node counts
 echo "Bundle 1 nodes:"
-cat bundle1/nodes/node-status.json | jq '.items | length'
+tail -n +2 bundle1/cluster/kubernetes/nodes.txt | wc -l
 echo "Bundle 2 nodes:"
-cat bundle2/nodes/node-status.json | jq '.items | length'
+tail -n +2 bundle2/cluster/kubernetes/nodes.txt | wc -l
 
 # Compare IP pool usage
 echo "Bundle 1 IPAM:"
-cat bundle1/ipam/pools.json | jq '.items[] | {cidr: .spec.cidr}'
+cat bundle1/cluster/crd/ippools.crd.projectcalico.org.txt
 echo "Bundle 2 IPAM:"
-cat bundle2/ipam/pools.json | jq '.items[] | {cidr: .spec.cidr}'
+cat bundle2/cluster/crd/ippools.crd.projectcalico.org.txt
 ```
 
 ## Verification
@@ -167,7 +171,7 @@ A complete bundle should contain files across all diagnostic categories.
 ## Troubleshooting
 
 - **Permission denied**: Ensure `calicoctl` has the correct RBAC permissions or datastore credentials configured.
-- **Empty diagnostic sections**: Some components may not be running. Check that all Calico pods are healthy with `kubectl get pods -n calico-system`.
+- **Empty diagnostic sections**: Some components may not be running. Check that all Calico pods are healthy with `kubectl get pods -n calico-system` for operator-managed installs, or `kubectl get pods -n kube-system` for manifest-based installs.
 - **Large bundle size**: If the bundle is very large, it may include excessive logs. Reduce the log collection window or filter by component type.
 - **Timeout during collection**: In large clusters, diagnostic collection can take time. Increase any client-side timeouts if the process is interrupted.
 
