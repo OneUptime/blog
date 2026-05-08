@@ -69,24 +69,25 @@ apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
   name: protocol-aware-policy
-  namespace: production
+  namespace: cilium-validate
 spec:
   endpointSelector:
     matchLabels:
-      app: protocol-server
+      app: server
   ingress:
     - fromEndpoints:
         - matchLabels:
-            app: protocol-client
+            app: client
       toPorts:
         - ports:
-            - port: "8443"
+            - port: "80"
               protocol: TCP
 ```
 
 ```bash
 # Validate all endpoints have policies applied
-cilium endpoint list -o json | jq '.[] | {id: .id, policy: .status.policy}'
+kubectl get ciliumendpoints -n cilium-validate -o json | \
+  jq '.items[] | {name: .metadata.name, policy: .status.policy}'
 ```
 
 ### Running Connectivity Tests
@@ -134,28 +135,29 @@ echo "=== Cilium Policy Validation ==="
 # Test 1: Cilium agent health
 echo -n "Test 1: Cilium agent health... "
 if cilium status > /dev/null 2>&1; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; PASS=$((PASS + 1))
 else
-  echo "FAIL"; ((FAIL++))
+  echo "FAIL"; FAIL=$((FAIL + 1))
 fi
 
 # Test 2: All endpoints ready
 echo -n "Test 2: All endpoints ready... "
-NOT_READY=$(cilium endpoint list -o json | \
-  jq '[.[] | select(.status.state != "ready")] | length')
+NOT_READY=$(kubectl get ciliumendpoints -n "$NAMESPACE" -o json | \
+  jq '[.items[] | select(.status.state != "ready")] | length')
 if [ "$NOT_READY" -eq 0 ]; then
-  echo "PASS"; ((PASS++))
+  echo "PASS"; PASS=$((PASS + 1))
 else
-  echo "FAIL ($NOT_READY not ready)"; ((FAIL++))
+  echo "FAIL ($NOT_READY not ready)"; FAIL=$((FAIL + 1))
 fi
 
 # Test 3: Policies applied
 echo -n "Test 3: Policies applied... "
-POLICY_COUNT=$(cilium policy get -o json | jq '. | length')
+POLICY_COUNT=$(kubectl get ciliumnetworkpolicies -n "$NAMESPACE" -o json | \
+  jq '.items | length')
 if [ "$POLICY_COUNT" -gt 0 ]; then
-  echo "PASS ($POLICY_COUNT policies)"; ((PASS++))
+  echo "PASS ($POLICY_COUNT policies)"; PASS=$((PASS + 1))
 else
-  echo "FAIL (no policies)"; ((FAIL++))
+  echo "FAIL (no policies)"; FAIL=$((FAIL + 1))
 fi
 
 echo ""
@@ -175,15 +177,16 @@ kubectl get namespaces --show-labels
 
 # Identify cross-namespace communication patterns
 hubble observe --output json --last 500 | \
-  jq '.flow | select(.source.namespace != .destination.namespace) | {
-    src_ns: .source.namespace,
-    dst_ns: .destination.namespace,
-    port: (.l4.TCP.destination_port // .l4.UDP.destination_port)
-  }' | sort | uniq -c | sort -rn
+  jq -r '.flow |
+    select(.source.namespace and .destination.namespace and
+           .source.namespace != .destination.namespace) |
+    [.source.namespace, .destination.namespace,
+     (.l4.TCP.destination_port // .l4.UDP.destination_port // "-")] |
+    @tsv' | sort | uniq -c | sort -rn
 
 # Ensure each namespace has appropriate policy coverage
 for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
-  count=$(kubectl get cnp -n "$ns" --no-headers 2>/dev/null | wc -l)
+  count=$(kubectl get ciliumnetworkpolicies -n "$ns" --no-headers 2>/dev/null | wc -l)
   echo "Namespace $ns: $count policies"
 done
 ```
@@ -199,7 +202,8 @@ cilium status
 
 ```bash
 # Confirm all endpoints are healthy
-cilium endpoint health
+kubectl get ciliumendpoints -A -o json | \
+  jq '.items[] | {namespace: .metadata.namespace, name: .metadata.name, state: .status.state}'
 ```
 
 ```bash
