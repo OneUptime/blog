@@ -106,9 +106,9 @@ multiarch-build:
 
       # Push manifest list
       podman manifest push --all "${IMAGE}:${TAG}" "docker://${IMAGE}:${TAG}"
-  only:
-    - tags
-    - main
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
 ```
 
 ## Jenkins Pipeline
@@ -231,12 +231,9 @@ podman build \
     --platform "linux/${ARCH}" \
     --layers \
     --cache-from "registry.example.com/myapp:build-cache-${ARCH}" \
+    --cache-to "registry.example.com/myapp:build-cache-${ARCH}" \
     -t "${IMAGE}:${TAG}-${ARCH}" \
     .
-
-# Push cache layers for the next build
-podman push "${IMAGE}:${TAG}-${ARCH}" \
-    "docker://registry.example.com/myapp:build-cache-${ARCH}"
 ```
 
 ## Parallel Builds for Speed
