@@ -125,7 +125,7 @@ calicoctl get ippool -o yaml
 
 **Update appears to have no effect:**
 - Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Check for typos in field names and validate the manifest before applying it: `calicoctl validate -f ippool.yaml`.
 
 
 ## Additional Considerations
@@ -151,7 +151,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crds -o custom-columns=NAME:.metadata.name,VERSIONS:.spec.versions[*].name | grep projectcalico
 ```
 
 ### Security Hardening
@@ -159,8 +159,8 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current identity can update Calico IPPool resources
+kubectl auth can-i update ippools.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
