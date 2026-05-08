@@ -26,7 +26,7 @@ Understanding the configuration options and their implications before deploying 
 
 ## Core Configuration
 
-Apply the following Helm values to configure ciliumcidrgroup:
+Apply the following Kubernetes resources to configure ciliumcidrgroup:
 
 ```yaml
 # cidrgroup-example.yaml
@@ -64,7 +64,7 @@ spec:
 Apply the configuration:
 
 ```bash
-# Apply the configuration via Helm upgrade
+# If you need to install or upgrade Cilium first, use Helm
 helm upgrade cilium cilium/cilium --version 1.16.5 \
   --namespace kube-system \
   -f cilium-values.yaml
@@ -72,6 +72,10 @@ helm upgrade cilium cilium/cilium --version 1.16.5 \
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
 kubectl rollout status deployment/cilium-operator -n kube-system --timeout=120s
+
+# Apply the CiliumCIDRGroup and CiliumNetworkPolicy resources
+kubectl create namespace backend --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f cidrgroup-example.yaml
 ```
 
 ## Validating the Configuration
@@ -91,11 +95,11 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=30 | grep -i "config\|setti
 
 ## Testing the Configuration
 
-Deploy test workloads to verify the configuration works as expected:
+Deploy test workloads to verify cluster connectivity after applying the configuration:
 
 ```yaml
 # test-deployment.yaml
-# Test workload to verify ciliumcidrgroup configuration
+# Test workload to verify cluster connectivity after the policy is applied
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -154,8 +158,8 @@ cilium config view
 # Check which features are enabled
 cilium status --verbose | head -40
 
-# Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+# Review the effective BPF runtime configuration from a Cilium agent
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -164,13 +168,13 @@ Final verification that configuration is complete and correct:
 
 ```bash
 # Run Cilium connectivity test
-cilium connectivity test --test pod-to-pod,pod-to-service
+cilium connectivity test
 
 # Verify no configuration warnings
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | head -20
 ```
 
 ## Troubleshooting
@@ -182,4 +186,4 @@ cilium endpoint list | head -20
 
 ## Conclusion
 
-Configuring ciliumcidrgroup requires understanding the available options and their impact on networking behavior, performance, and security. Apply configuration changes through Helm for reproducibility, validate with connectivity tests, and monitor for any degradation after changes. Always have a rollback plan before modifying production Cilium configuration.
+Configuring ciliumcidrgroup requires understanding the available options and their impact on networking behavior, performance, and security. Manage Cilium installation settings through Helm for reproducibility, apply CiliumCIDRGroup resources as Kubernetes manifests, validate with connectivity tests, and monitor for any degradation after changes. Always have a rollback plan before modifying production Cilium configuration.
