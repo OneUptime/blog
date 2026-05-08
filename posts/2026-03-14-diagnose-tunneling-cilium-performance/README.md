@@ -29,10 +29,11 @@ This guide provides the specific steps for each aspect of tunnel performance man
 ```bash
 # Check current tunnel configuration
 
-cilium config view | grep tunnel
-cilium status --verbose | grep DatapathMode
+cilium config view | grep -E "routing-mode|tunnel-protocol|tunnel-port"
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose | grep -E "Routing|Host Routing"
 
-# If tunnel=vxlan or tunnel=geneve, tunneling is active
+# If routing-mode=tunnel and tunnel-protocol=vxlan or geneve, tunneling is active
 ```
 
 ## Measuring Tunnel Overhead
@@ -69,13 +70,15 @@ tcpdump -i eth0 -n 'udp port 8472 and ip[6:2] & 0x1fff != 0' -c 10
 # If outer MTU is 1500, inner MTU must be <=1450
 
 cilium config view | grep mtu
-kubectl exec -n kube-system ds/cilium -- ip link show cilium_vxlan | grep mtu
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  sh -c 'ip link show cilium_vxlan 2>/dev/null || ip link show cilium_geneve 2>/dev/null' | grep mtu
 ```
 
 ## Verification
 
 ```bash
-cilium status --verbose | grep -E "Tunnel|DatapathMode"
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose | grep -E "Routing|Host Routing"
 kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 ```
@@ -97,17 +100,21 @@ DIAG_DIR="/tmp/cilium-diag-$(date +%Y%m%d-%H%M%S)"
 mkdir -p $DIAG_DIR
 
 # Collect Cilium status
-cilium status --verbose > $DIAG_DIR/cilium-status.txt
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose > $DIAG_DIR/cilium-status.txt
 
 # Collect Cilium configuration
 cilium config view > $DIAG_DIR/cilium-config.txt
 
 # Collect BPF map information
-cilium bpf ct list global > $DIAG_DIR/ct-entries.txt 2>&1
-cilium bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg bpf ct list > $DIAG_DIR/ct-entries.txt 2>&1
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg bpf nat list > $DIAG_DIR/nat-entries.txt 2>&1
 
 # Collect endpoint information
-cilium endpoint list -o json > $DIAG_DIR/endpoints.json
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list -o json > $DIAG_DIR/endpoints.json
 
 # Collect node information
 kubectl get nodes -o wide > $DIAG_DIR/nodes.txt
@@ -138,21 +145,26 @@ The combination of these data points will point you toward the specific subsyste
 
 ### Using Cilium Monitor for Real-Time Analysis
 
-The `cilium monitor` command provides real-time visibility into the eBPF datapath:
+The `cilium-dbg monitor` command provides real-time visibility into the eBPF datapath:
 
 ```bash
 # Monitor all traffic for a specific endpoint
-ENDPOINT_ID=$(cilium endpoint list -o json | jq '.[0].id')
-cilium monitor --related-to $ENDPOINT_ID --type trace
+ENDPOINT_ID=$(kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list -o json | jq -r '.[0].id')
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --related-to $ENDPOINT_ID --type trace
 
 # Monitor drops with verbose output
-cilium monitor --type drop -v
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type drop -v
 
 # Monitor policy verdicts
-cilium monitor --type policy-verdict
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type policy-verdict
 
 # Filter by specific protocol
-cilium monitor --type trace -v | grep TCP
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg monitor --type trace -v | grep TCP
 ```
 
 ### Using Hubble for Historical Analysis
@@ -164,12 +176,12 @@ Hubble provides historical flow data that helps identify patterns:
 cilium hubble port-forward &
 
 # Query recent flows with filters
-hubble observe --protocol TCP --last 500 -o json | \
-  jq 'select(.verdict == "DROPPED") | {src: .source.pod_name, dst: .destination.pod_name, reason: .drop_reason_desc}'
+hubble observe --protocol tcp --last 500 -o json | \
+  jq 'select(.flow.verdict == "DROPPED") | {src: .flow.source.pod_name, dst: .flow.destination.pod_name, reason: .flow.drop_reason_desc}'
 
 # Get flow statistics by source and destination
 hubble observe --last 1000 -o json | \
-  jq -r '\(.source.namespace)/\(.source.pod_name) -> \(.destination.namespace)/\(.destination.pod_name): \(.verdict)' | \
+  jq -r '\(.flow.source.namespace)/\(.flow.source.pod_name) -> \(.flow.destination.namespace)/\(.flow.destination.pod_name): \(.flow.verdict)' | \
   sort | uniq -c | sort -rn | head -20
 ```
 
@@ -179,10 +191,10 @@ For deep datapath analysis, use BPF tracing tools:
 
 ```bash
 # Trace BPF program execution time
-bpftool prog show --json | jq '.[] | select(.name | contains("cil")) | {name, run_cnt, run_time_ns, avg_ns: (if .run_cnt > 0 then (.run_time_ns / .run_cnt | floor) else 0 end)}'
+bpftool prog show --json | jq '.[] | select((.name // "") | contains("cil")) | {name, run_cnt, run_time_ns, avg_ns: (if (.run_cnt // 0) > 0 then ((.run_time_ns // 0) / .run_cnt | floor) else 0 end)}'
 
 # Use bpftrace for custom tracing
-bpftrace -e 'tracepoint:xdp:xdp_redirect { @cnt[args->action] = count(); }'
+bpftrace -e 'tracepoint:xdp:* { @cnt[probe] = count(); }'
 ```
 
 These diagnostic tools form a comprehensive toolkit for understanding exactly what happens to packets as they traverse Cilium's eBPF datapath.
