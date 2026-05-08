@@ -109,16 +109,16 @@ kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
 Common causes of connection resets:
 
 ```go
-// PROBLEM: Injecting response after connection is already closing
+// PROBLEM: Injecting a response but returning a zero-length DROP
 func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, int) {
     // ... parse and deny ...
 
-    // BUG: DROP closes the connection immediately, injection may not be delivered
+    // BUG: A zero-length DROP makes no parser progress and is treated as an error
     p.connection.Inject(true, errorResp)
-    return proxylib.DROP, 0 // Connection tears down, response may be lost
+    return proxylib.DROP, 0 // Parser error closes the connection
 }
 
-// FIX: Use ERROR return type if the framework supports injecting before close
+// FIX: Inject the response and DROP the denied request bytes
 func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, int) {
     // ... parse and deny ...
 
@@ -126,7 +126,7 @@ func (p *Parser) OnData(reply bool, reader *proxylib.Reader) (proxylib.OpType, i
     p.connection.Inject(true, errorResp)
 
     // Consume the request bytes so the proxy can process the injection
-    // before closing the connection
+    // and continue with any remaining buffered data
     return proxylib.DROP, totalLen // Consume the denied request
 }
 ```
@@ -166,8 +166,8 @@ func (p *Parser) buildCompatibleErrorResponse(command byte, requestID uint32, ms
 When error responses arrive out of order or at unexpected times:
 
 ```bash
-# Enable detailed proxy timing logs
-kubectl exec -n kube-system ds/cilium -- cilium config set debug true
+# Enable Cilium debug logging (this updates the ConfigMap and restarts Cilium pods by default)
+cilium config set debug true
 
 # Watch for injection-related log entries
 kubectl logs -n kube-system ds/cilium -c cilium-agent -f | grep -i "inject"
@@ -212,7 +212,7 @@ kubectl logs protocol-server | grep DELETE
 ## Troubleshooting
 
 **Problem: Error response is never received by client**
-Check that `Inject` is called before returning DROP. If the framework tears down the connection before flushing the injection buffer, the response is lost.
+Check that `Inject` is called before returning DROP for the denied request bytes. A zero-length operation or parser ERROR closes the connection before the client can receive a useful application-layer error.
 
 **Problem: Error response arrives after legitimate response**
 This happens when the proxy forwards the request before the policy decision completes. Ensure the parser returns a policy verdict before passing any data to the backend.
