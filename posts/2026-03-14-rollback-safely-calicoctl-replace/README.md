@@ -21,6 +21,7 @@ This guide covers rollback strategies for calicoctl replace operations, from sim
 - A running Kubernetes cluster with Calico installed
 - calicoctl v3.27 or later
 - kubectl access to the cluster
+- Python 3 with PyYAML installed for the helper scripts
 - Git repository for resource version control (recommended)
 
 ## Pre-Replace Backup Workflow
@@ -40,6 +41,7 @@ RESOURCE_FILE="${1:?Usage: $0 <resource-file.yaml>}"
 
 KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['kind'])")
 NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['metadata']['name'])")
+NAMESPACE=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE')).get('metadata', {}).get('namespace', ''))")
 
 BACKUP_DIR="/var/backups/calico-replace"
 mkdir -p "$BACKUP_DIR"
@@ -47,7 +49,11 @@ TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/${KIND}-${NAME}-${TIMESTAMP}.yaml"
 
 # Backup current state
-calicoctl get "$KIND" "$NAME" -o yaml > "$BACKUP_FILE"
+if [ -n "$NAMESPACE" ]; then
+  calicoctl get "$KIND" "$NAME" -n "$NAMESPACE" -o yaml --export > "$BACKUP_FILE"
+else
+  calicoctl get "$KIND" "$NAME" -o yaml --export > "$BACKUP_FILE"
+fi
 echo "Backup: $BACKUP_FILE"
 
 # Validate new resource
@@ -70,7 +76,11 @@ echo "Replaced. Rollback: calicoctl replace -f $BACKUP_FILE"
 set -euo pipefail
 
 export DATASTORE_TYPE=kubernetes
-BACKUP_FILE="${1:-$(cat /tmp/last-replace-backup 2>/dev/null)}"
+BACKUP_FILE="${1:-}"
+
+if [ -z "$BACKUP_FILE" ]; then
+  BACKUP_FILE="$(cat /tmp/last-replace-backup 2>/dev/null || true)"
+fi
 
 if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
   echo "No backup file found. Available backups:"
@@ -165,10 +175,15 @@ TIMEOUT="${2:-120}"
 
 KIND=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['kind'])")
 NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['metadata']['name'])")
+NAMESPACE=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE')).get('metadata', {}).get('namespace', ''))")
 
 # Backup
 BACKUP="/tmp/auto-rollback-backup-$(date +%s).yaml"
-calicoctl get "$KIND" "$NAME" -o yaml > "$BACKUP"
+if [ -n "$NAMESPACE" ]; then
+  calicoctl get "$KIND" "$NAME" -n "$NAMESPACE" -o yaml --export > "$BACKUP"
+else
+  calicoctl get "$KIND" "$NAME" -o yaml --export > "$BACKUP"
+fi
 
 # Replace
 calicoctl replace -f "$RESOURCE_FILE"
@@ -195,7 +210,8 @@ export DATASTORE_TYPE=kubernetes
 calicoctl get globalnetworkpolicy my-policy -o yaml
 
 # Compare with backup
-diff <(calicoctl get globalnetworkpolicy my-policy -o yaml) /var/backups/calico-replace/GlobalNetworkPolicy-my-policy-*.yaml
+LATEST_BACKUP=$(ls -t /var/backups/calico-replace/GlobalNetworkPolicy-my-policy-*.yaml | head -1)
+diff <(calicoctl get globalnetworkpolicy my-policy -o yaml --export) "$LATEST_BACKUP"
 
 # Verify network connectivity
 kubectl exec deploy/frontend -- curl -s --max-time 5 http://backend:8080/health
