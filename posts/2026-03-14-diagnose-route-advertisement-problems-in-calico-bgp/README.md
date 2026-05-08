@@ -26,12 +26,12 @@ This guide provides a systematic diagnostic approach to identify the exact cause
 
 ## Checking BGP Peering Status
 
-Start by verifying the BGP peering state across all nodes:
+Start by verifying the BGP peering state on an affected node:
 
 ```bash
 # Check BGP peer status using calicoctl
 
-# This shows the state of all BGP sessions from each node
+# This shows the state of BGP sessions for the Calico node where it is run
 calicoctl node status
 
 # Expected output for healthy peering:
@@ -44,7 +44,8 @@ calicoctl node status
 # | 10.0.1.3     | node-to-node mesh | up    | 09:15:31 | Established |
 # +--------------+-------------------+-------+----------+-------------+
 
-# If calicoctl is not available, check via the calico-node pod
+# If calicoctl is not available, check via the calico-node pod.
+# Use kube-system instead of calico-system for manifest-based installs.
 kubectl exec -n calico-system $(kubectl get pod -n calico-system \
   -l k8s-app=calico-node -o jsonpath='{.items[0].metadata.name}') -- \
   calico-node -bird-ready
@@ -69,9 +70,9 @@ metadata:
   name: default
 spec:
   logSeverityScreen: Info
-  # nodeToNodeMeshEnabled should be true unless using route reflectors
+  # nodeToNodeMeshEnabled should be true unless using explicit BGPPeer resources
   nodeToNodeMeshEnabled: true
-  # asNumber should be consistent across the cluster
+  # asNumber is the default local AS number unless overridden on Node or BGPPeer resources
   asNumber: 64512
 ```
 
@@ -83,7 +84,7 @@ kubectl get bgppeers.crd.projectcalico.org -o yaml
 kubectl get bgpfilters.crd.projectcalico.org -o yaml 2>/dev/null
 
 # Verify IP pools are configured for BGP advertisement
-kubectl get ippools.crd.projectcalico.org -o yaml | grep -A2 "natOutgoing\|ipipMode\|vxlanMode"
+kubectl get ippools.crd.projectcalico.org -o yaml | grep -A3 "disableBGPExport\|ipipMode\|vxlanMode"
 ```
 
 ## Analyzing Route Tables on Nodes
@@ -133,10 +134,10 @@ graph TD
     C -->|No| D[Fix firewall/security group rules]
     C -->|Yes| E[Check AS number mismatch]
     B -->|Yes| F{Routes in node table?}
-    F -->|No| G[Check IP pool BGP advertisement config]
+    F -->|No| G[Check IP pool disableBGPExport config]
     F -->|Yes| H[Check for route filtering or blackhole routes]
     E --> I[Fix BGPConfiguration AS numbers]
-    G --> J[Enable BGP advertisement on IP pool]
+    G --> J[Set disableBGPExport to false on IP pool]
     H --> K[Check BGP filters and node selectors]
 ```
 
@@ -159,10 +160,15 @@ done
 
 # Test pod-to-pod connectivity across nodes
 kubectl run diag-server --image=nginx --restart=Never
-kubectl run diag-client --image=busybox --restart=Never -- sleep 300
-kubectl wait --for=condition=Ready pod/diag-server pod/diag-client --timeout=60s
+kubectl wait --for=condition=Ready pod/diag-server --timeout=60s
+SERVER_NODE=$(kubectl get pod diag-server -o jsonpath='{.spec.nodeName}')
+CLIENT_NODE=$(kubectl get nodes -o jsonpath='{.items[*].metadata.name}' | tr ' ' '\n' | grep -v "^${SERVER_NODE}$" | head -n1)
+if [ -z "$CLIENT_NODE" ]; then echo "Need at least two schedulable nodes"; exit 1; fi
+kubectl run diag-client --image=busybox --restart=Never \
+  --overrides='{"spec":{"nodeName":"'"$CLIENT_NODE"'"}}' -- sleep 300
+kubectl wait --for=condition=Ready pod/diag-client --timeout=60s
 SERVER_IP=$(kubectl get pod diag-server -o jsonpath='{.status.podIP}')
-kubectl exec diag-client -- wget -qO- --timeout=5 http://$SERVER_IP
+kubectl exec diag-client -- wget -qO- -T 5 http://$SERVER_IP
 kubectl delete pod diag-server diag-client
 ```
 
