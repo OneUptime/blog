@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenStack, Calico, Neutron, API, Testing
 
-Description: A testing guide for the Neutron API integration with Calico, covering API endpoint validation, security group translation testing, and integration stress testing.
+Description: A testing guide for the Neutron API integration with Calico, covering API endpoint validation, security group policy translation testing, and integration stress testing.
 
 ---
 
 ## Introduction
 
-Testing the Neutron API integration with Calico verifies that the entire control plane path works correctly: from API request to Calico data plane configuration. This integration is the critical bridge that makes OpenStack networking work with Calico, and testing it thoroughly prevents issues that only manifest when real workloads create networks, ports, and security groups.
+Testing the Neutron API integration with Calico verifies that the control plane path works correctly: from API requests to the Calico resources that the backend programs for security groups and bound workload ports. This integration is the critical bridge that makes OpenStack networking work with Calico, and testing it thoroughly prevents issues that only manifest when real workloads create networks, ports, and security groups.
 
-This guide provides a structured test plan covering API endpoint functionality, security group translation to Calico profiles, port lifecycle management, and stress testing the integration under load.
+This guide provides a structured test plan covering API endpoint functionality, security group translation to Calico network policies, port lifecycle management, and stress testing the integration under load.
 
-The Neutron-Calico integration has several subtle failure modes: security groups may not translate correctly, ports may be created in Neutron but not reflected in Calico, or bulk operations may time out. Systematic testing catches these issues.
+The Neutron-Calico integration has several subtle failure modes: security groups may not translate correctly, bound workload ports may be created in Neutron but not reflected in Calico, or bulk operations may time out. Systematic testing catches these issues.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ The Neutron-Calico integration has several subtle failure modes: security groups
 
 ## Testing API Endpoint Functionality
 
-Validate all Neutron API operations that interact with Calico.
+Validate the Neutron API operations that are relevant to a Calico-backed deployment.
 
 ```bash
 #!/bin/bash
@@ -95,12 +95,12 @@ echo "Results: ${PASS} passed, ${FAIL} failed"
 
 ## Testing Security Group Translation
 
-Verify that Neutron security groups are correctly translated to Calico profiles.
+Verify that Neutron security groups are correctly translated to Calico network policies.
 
 ```bash
 #!/bin/bash
 # test-sg-translation.sh
-# Test security group to Calico profile translation
+# Test security group to Calico NetworkPolicy translation
 
 echo "=== Security Group Translation Tests ==="
 
@@ -113,16 +113,18 @@ openstack security group rule create \
 openstack security group rule create \
   --protocol icmp sg-translation-test
 
-# Check that Calico profile was created
+# Check that the Calico NetworkPolicy was created
 echo ""
-echo "Calico profile for security group:"
+echo "Calico NetworkPolicy for security group:"
 SG_ID=$(openstack security group show sg-translation-test -f value -c id)
-calicoctl get profiles -o wide 2>/dev/null | grep "${SG_ID}"
+SG_POLICY="ossg.default.${SG_ID}"
+CALICO_NAMESPACE="${CALICO_NAMESPACE:-openstack}"
+calicoctl get networkpolicy "${SG_POLICY}" --namespace "${CALICO_NAMESPACE}" -o wide
 
 # Verify rules translated correctly
 echo ""
-echo "Calico profile rules:"
-calicoctl get profile "${SG_ID}" -o yaml 2>/dev/null | grep -A30 "spec:"
+echo "Calico NetworkPolicy rules:"
+calicoctl get networkpolicy "${SG_POLICY}" --namespace "${CALICO_NAMESPACE}" -o yaml 2>/dev/null | grep -A40 "spec:"
 
 # Cleanup
 openstack security group delete sg-translation-test
@@ -130,7 +132,7 @@ openstack security group delete sg-translation-test
 
 ```mermaid
 graph LR
-    A[Neutron Security Group] -->|Calico Plugin| B[Calico Profile]
+    A[Neutron Security Group] -->|Calico Plugin| B[Calico NetworkPolicy]
     A1[Rule: TCP 443] --> B1[Ingress Allow TCP 443]
     A2[Rule: UDP 53 from 10.0.0.0/8] --> B2[Ingress Allow UDP 53 src 10.0.0.0/8]
     A3[Rule: ICMP] --> B3[Ingress Allow ICMP]
@@ -172,16 +174,20 @@ wait
 
 END=$(date +%s)
 DURATION=$((END - START))
-RATE=$(echo "scale=1; ${NUM_PORTS} / ${DURATION}" | bc)
+if [ "${DURATION}" -eq 0 ]; then
+  RATE="${NUM_PORTS}"
+else
+  RATE=$(echo "scale=1; ${NUM_PORTS} / ${DURATION}" | bc)
+fi
 
 echo "Created ${NUM_PORTS} ports in ${DURATION}s (${RATE} ports/sec)"
 
-# Verify all ports exist in Calico
+# Verify all test ports exist in Neutron. Standalone, unbound ports are not
+# Calico WorkloadEndpoints until they are bound as VM or Kuryr container ports.
 echo ""
-echo "Verifying Calico endpoints..."
-CALICO_ENDPOINTS=$(calicoctl get workloadendpoints --all-namespaces -o json 2>/dev/null | \
-  python3 -c "import json,sys; print(len(json.load(sys.stdin).get('items',[])))")
-echo "Calico endpoints: ${CALICO_ENDPOINTS}"
+echo "Verifying Neutron ports..."
+NEUTRON_PORTS=$(openstack port list --network ${NETWORK} -f value -c ID | wc -l)
+echo "Neutron ports on ${NETWORK}: ${NEUTRON_PORTS}"
 
 # Cleanup
 echo ""
@@ -218,15 +224,15 @@ echo "Security group count:"
 openstack security group list --all-projects -f value | wc -l
 
 echo ""
-echo "Calico profile count:"
-calicoctl get profiles -o name 2>/dev/null | wc -l
+echo "Calico OpenStack security group policy count:"
+calicoctl get networkpolicy --namespace "${CALICO_NAMESPACE:-openstack}" -o name 2>/dev/null | grep "ossg.default." | wc -l
 ```
 
 ## Troubleshooting
 
 - **API returns 500 errors**: Check Neutron server logs at `/var/log/neutron/server.log`. Common causes are etcd connection failures or database connection exhaustion.
-- **Security groups not creating Calico profiles**: Verify the Calico plugin security group driver is configured. Check that the `networking-calico` package version matches your Calico version.
-- **Port creation succeeds but no Calico endpoint**: Check the Calico plugin logs for errors. Verify etcd connectivity from the Neutron server.
+- **Security groups not creating Calico network policies**: Verify the Calico plugin security group driver is configured. Check that the `networking-calico` package version matches your Calico version.
+- **Bound VM port succeeds but no Calico endpoint**: Check the Calico plugin logs for errors. Verify etcd connectivity from the Neutron server. A standalone unbound Neutron port is not expected to appear as a Calico WorkloadEndpoint.
 - **Stress test shows degraded performance**: Monitor database and etcd during the test. The bottleneck is usually database writes or etcd latency.
 
 ## Conclusion
