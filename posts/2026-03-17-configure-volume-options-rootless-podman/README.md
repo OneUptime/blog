@@ -30,14 +30,14 @@ cat /etc/subgid
 
 ## The :U Option for Rootless Volumes
 
-The `:U` flag is essential for rootless Podman. It automatically adjusts ownership to match the container's user namespace:
+The `:U` flag is useful for rootless Podman when a volume needs to be owned by the container user. It recursively changes the host directory's ownership to match the container's user namespace, so use it carefully on directories you are willing to modify:
 
 ```bash
 # Without :U - files may show wrong ownership inside container
 podman run --rm -v /home/user/data:/data \
   docker.io/library/alpine:latest ls -la /data
 
-# With :U - ownership is automatically corrected
+# With :U - ownership is recursively adjusted for the container
 podman run --rm -v /home/user/data:/data:U \
   docker.io/library/alpine:latest ls -la /data
 ```
@@ -108,11 +108,11 @@ ls -la /home/user/data/root-file
 # Use podman unshare to enter the user namespace and fix permissions
 podman unshare ls -la /home/user/data
 
-# Change ownership within the user namespace
-podman unshare chown -R 0:0 /home/user/data
+# Change ownership for a specific container UID
+podman unshare chown -R 1000:1000 /home/user/data
 
-# Reset permissions back to host user
-podman unshare chown -R $(id -u):$(id -g) /home/user/data
+# Reset permissions back to the host user
+podman unshare chown -R 0:0 /home/user/data
 ```
 
 ## Volume Options Reference for Rootless
