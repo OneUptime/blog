@@ -20,11 +20,11 @@ Getting Typha configuration right prevents datastore overload, reduces Felix syn
 
 - Kubernetes cluster with Calico (v3.26+) using the Tigera operator
 - `kubectl` with cluster-admin access
-- Typha deployed (automatic with operator-based installs for 50+ nodes)
+- Typha deployed (operator-based installs include Typha)
 
 ## Typha Configuration via Environment Variables
 
-Typha is configured through environment variables on the Typha deployment. The Tigera operator manages these, but you can inspect them:
+Typha runtime settings are exposed as environment variables on the Typha deployment. In operator-managed installs, the Tigera operator manages these values, so treat them as read-only unless the Installation API exposes a supported field for the setting:
 
 ```bash
 # View current Typha environment variables
@@ -38,8 +38,8 @@ Key configuration variables:
 # Core settings
 - name: TYPHA_LOGSEVERITYSCREEN
   value: "Info"
-- name: TYPHA_CONNECTIONREBALANCINGENABLED
-  value: "true"
+- name: TYPHA_CONNECTIONREBALANCINGMODE
+  value: "kubernetes"
 - name: TYPHA_MAXCONNECTIONSLOWERLIMIT
   value: "300"
 - name: TYPHA_HEALTHENABLED
@@ -54,7 +54,7 @@ Key configuration variables:
 
 ## Tuning Connection Limits
 
-Typha's connection settings control how many Felix instances each replica serves. If any single Typha pod is serving more than 150 connections, consider adding replicas. Connection rebalancing (enabled by default) helps distribute Felix connections evenly across Typha replicas when new replicas are added.
+Typha's connection settings control how many Felix instances each replica serves. If any single Typha pod is serving more than 150 connections, consider adding replicas. When `TYPHA_CONNECTIONREBALANCINGMODE` is set to `kubernetes`, Typha can use Kubernetes service information to help distribute Felix connections across Typha replicas.
 
 Resource Limits
 
@@ -75,7 +75,7 @@ Recommended resource settings by cluster size:
 
 ## Configuring via the Tigera Operator
 
-If using the Tigera operator, configure Typha through the Installation resource:
+If using the Tigera operator, configure supported Typha deployment settings through the Installation resource:
 
 ```yaml
 apiVersion: operator.tigera.io/v1
@@ -131,7 +131,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=10 | 
 - Check network latency between calico-node and Typha pods.
 
 **Prometheus metrics not available:**
-- Verify `TYPHA_PROMETHEUSMETRICSENABLED` is `true`.
+- Verify Typha metrics are enabled with `spec.typhaMetricsPort` in the Installation resource, or that `TYPHA_PROMETHEUSMETRICSENABLED` is `true` in manifest-based installs.
 - Check that port 9093 is not blocked by network policies.
 
 
@@ -158,7 +158,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crds -o custom-columns=NAME:.metadata.name,VERSIONS:.spec.versions[*].name | grep projectcalico
 ```
 
 ### Security Hardening
@@ -167,7 +167,8 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
+kubectl auth can-i update globalnetworkpolicies.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
@@ -187,4 +188,4 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=memory
 
 ## Conclusion
 
-Typha configuration tuning is mainly about scaling connections and resource limits to match your cluster size. Start with the defaults, monitor connection counts and resource usage, and scale as needed. Use the Tigera operator's Installation resource for configuration changes to ensure they persist across upgrades.
+Typha tuning is mainly about scaling connections and resource limits to match your cluster size. Start with the defaults, monitor connection counts and resource usage, and scale as needed. Use supported Tigera operator Installation fields for deployment resource and metrics changes to ensure they persist across upgrades.
