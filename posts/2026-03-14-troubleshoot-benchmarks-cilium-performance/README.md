@@ -44,9 +44,10 @@ ssh node-1 "cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq" | sort | 
 ## iperf3 Server Limitations
 
 ```bash
-# iperf3 server is single-threaded
-# Symptom: Multi-stream throughput doesn't scale
+# iperf3 versions before 3.16 are single-threaded
+# Symptom: Multi-stream throughput doesn't scale on older iperf3 versions
 # Solution: Verify server CPU is not saturated
+kubectl exec iperf-client -- iperf3 -v
 kubectl top pod iperf-server
 
 # If server is CPU-bound, use multiple server pods
@@ -68,7 +69,7 @@ kubectl exec netperf-server -- netserver -V
 
 # Symptom: TCP_CRR very low
 # Check: File descriptor limits
-kubectl exec netperf-server -- ulimit -n
+kubectl exec netperf-server -- sh -c 'ulimit -n'
 # Should be high (65535+)
 ```
 
@@ -81,9 +82,9 @@ kubectl get networkpolicies --all-namespaces
 kubectl get ciliumnetworkpolicies --all-namespaces
 
 # Temporarily check without policies
-cilium config set policy-audit-mode enabled
+cilium config set policy-audit-mode true
 # Re-run test
-cilium config set policy-audit-mode disabled
+cilium config set policy-audit-mode false
 ```
 
 ## MTU Issues
@@ -108,7 +109,7 @@ echo "Results should be consistent (CV < 5%)"
 
 ## Troubleshooting
 
-- **Zero throughput results**: Check pod networking with `kubectl exec -- ping`. Verify Cilium endpoint status.
+- **Zero throughput results**: Check pod networking with `kubectl exec test-pod -- ping $SERVER_IP`. Verify Cilium endpoint status.
 - **iperf3 "unable to connect"**: Check that the server port is not blocked by network policy or firewall.
 - **Results worse than expected for hardware**: Compare with host-networking baseline first.
 - **netperf hangs**: Increase test timeout or check for firewall issues with control connection.
@@ -143,9 +144,9 @@ mkdir -p $DIAG
 
 # Quick data collection (runs in <30 seconds)
 cilium status --verbose > $DIAG/status.txt &
-cilium bpf ct list global | wc -l > $DIAG/ct-count.txt &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf ct list | wc -l > $DIAG/ct-count.txt &
 kubectl top pods -n kube-system -l k8s-app=cilium > $DIAG/agent-resources.txt &
-kubectl exec -n kube-system ds/cilium -- cilium metrics list > $DIAG/metrics.txt &
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list > $DIAG/metrics.txt &
 wait
 
 # BPF program stats
