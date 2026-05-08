@@ -34,15 +34,16 @@ echo "=== Identity Label Configuration Validation ==="
 
 # Check configuration exists
 
-LABELS=$(cilium config view | grep "^labels" | awk '{$1=""; print $0}' | xargs)
+LABELS=$(cilium config view | grep "^labels[[:space:]]" | awk '{$1=""; print $0}' | xargs)
 if [ -z "$LABELS" ]; then
-  echo "FAIL: No label restriction configured (all labels are identity-relevant)"
-  exit 1
+  echo "WARN: No custom label restriction configured (Cilium defaults only)"
+else
+  echo "PASS: Custom labels configured: $LABELS"
 fi
-echo "PASS: Labels configured: $LABELS"
 
 # Check identity-to-pod ratio
-IDS=$(cilium identity list | wc -l)
+IDS=$(kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list -o json | jq 'length')
 PODS=$(kubectl get pods --all-namespaces --no-headers | wc -l)
 RATIO=$(echo "scale=2; $IDS / $PODS" | bc)
 echo "Identity/Pod ratio: $RATIO"
@@ -52,15 +53,19 @@ if (( $(echo "$RATIO > 0.5" | bc -l) )); then
 fi
 
 # Verify policies still work
-cilium policy get -o json | jq 'length'
-echo "Active policies: $(cilium policy get -o json | jq 'length')"
+NAMESPACED_POLICIES=$(kubectl get networkpolicies,ciliumnetworkpolicies \
+  --all-namespaces -o json | jq '.items | length')
+CLUSTER_POLICIES=$(kubectl get ciliumclusterwidenetworkpolicies \
+  -o json | jq '.items | length')
+echo "Active policies: $((NAMESPACED_POLICIES + CLUSTER_POLICIES))"
 ```
 
 ## Verification
 
 ```bash
 cilium config view | grep labels
-cilium identity list | wc -l
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg identity list -o json | jq 'length'
 ```
 
 ## Troubleshooting
@@ -170,7 +175,8 @@ Cluster: $(kubectl config current-context)
 ## Test Environment
 - Nodes: $(kubectl get nodes --no-headers | wc -l)
 - Pods: $(kubectl get pods --all-namespaces --no-headers | wc -l)
-- Identities: $(cilium identity list 2>/dev/null | wc -l)
+- Identities: $(kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+    cilium-dbg identity list -o json 2>/dev/null | jq 'length')
 
 ## Results
 HEADER
