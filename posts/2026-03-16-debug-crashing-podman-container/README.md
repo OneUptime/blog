@@ -97,11 +97,11 @@ podman run -it --entrypoint /bin/sh my-image:latest
 Keep the entrypoint but change the command:
 
 ```bash
-# Run with a different command
+# Run with a different command when the image has no entrypoint
 podman run -it my-image:latest /bin/bash
 
 # Run the original command manually to see errors
-podman run -it my-image:latest /bin/bash -c "
+podman run -it --entrypoint /bin/bash my-image:latest -c "
     echo 'Checking environment...'
     env | sort
     echo ''
@@ -190,8 +190,8 @@ podman logs debug-app
 Test if the container can reach its dependencies:
 
 ```bash
-# Run a debug container in the same network
-podman run --rm -it --network container:my-crashing-app alpine /bin/sh -c "
+# Run a debug container in the same user-defined network
+podman run --rm -it --network my-app-network alpine /bin/sh -c "
     # Test DNS resolution
     nslookup database-host 2>/dev/null || echo 'DNS failed'
 
