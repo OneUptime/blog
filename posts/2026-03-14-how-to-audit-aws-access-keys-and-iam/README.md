@@ -34,7 +34,7 @@ aws iam list-access-keys --user-name cilium-user \
 ## Auditing API Call Patterns
 
 ```bash
-# Review Cilium API calls in the last 7 days
+# Review AWS API calls made by the Cilium role in the last 7 days
 aws cloudtrail lookup-events \
   --lookup-attributes AttributeKey=Username,AttributeValue=cilium-role \
   --start-time $(date -d '7 days ago' +%Y-%m-%dT%H:%M:%S) \
@@ -87,7 +87,7 @@ cilium status
 
 ## Troubleshooting
 
-- **CloudTrail not showing events**: Ensure trail is enabled for the correct region.
+- **CloudTrail not showing events**: Ensure you are querying the correct region and that the calls are management events; data events require a trail or event data store.
 - **Cannot identify Cilium calls**: Check the assumed role name in CloudTrail.
 
 ## Conclusion
