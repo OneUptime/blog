@@ -19,7 +19,7 @@ This guide covers parsing output from cilium-dbg bgp routes for structured data 
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and BGP enabled
-- BGP peering configured via CiliumBGPPeeringPolicy
+- BGP peering configured via CiliumBGPClusterConfig and related BGP resources
 - `kubectl` access to cilium pods
 - `jq` for JSON processing
 - Python 3.x for structured parsing
@@ -31,7 +31,7 @@ CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
   -o jsonpath='{.items[0].metadata.name}')
 
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp routes > /tmp/bgp-routes-output.txt 2>/dev/null
+  cilium-dbg bgp routes available ipv4 unicast > /tmp/bgp-routes-output.txt 2>/dev/null
 ```
 
 ## Shell-Based Parsing
@@ -80,7 +80,7 @@ def parse_table(filepath):
     for line in lines[1:]:
         if line.startswith('-'):
             continue
-        fields = line.split()
+        fields = line.split(None, len(header) - 1)
         entry = {}
         for i, field in enumerate(fields):
             key = header[i] if i < len(header) else f'field_{i}'
@@ -106,7 +106,7 @@ CILIUM_POD=$(kubectl -n "$NAMESPACE" get pods -l k8s-app=cilium \
 NODE=$(kubectl -n "$NAMESPACE" get pod "$CILIUM_POD" -o jsonpath='{.spec.nodeName}')
 
 COUNT=$(kubectl -n "$NAMESPACE" exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp routes 2>/dev/null | tail -n +2 | grep -c . || echo 0)
+  cilium-dbg bgp routes available ipv4 unicast 2>/dev/null | tail -n +2 | grep -c . || echo 0)
 
 cat << METRICS
 # HELP cilium_bgp_routes_total Total bgp routes entries
@@ -130,9 +130,10 @@ PODS=$(kubectl -n "$NAMESPACE" get pods -l k8s-app=cilium \
 while IFS=',' read -r pod node; do
   [ -z "$pod" ] && continue
   COUNT=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-dbg bgp routes 2>/dev/null | tail -n +2 | grep -c . || echo 0)
+    cilium-dbg bgp routes available ipv4 unicast 2>/dev/null | tail -n +2 | grep -c . || echo 0)
   [ "$FIRST" = true ] && FIRST=false || echo ","
-  echo "  {"node": \"$node\", "entries": $COUNT}"
+  jq -n --arg node "$node" --argjson entries "$COUNT" \
+    '{node: $node, entries: $entries}'
 done <<< "$PODS"
 
 echo ']}'
@@ -146,7 +147,7 @@ CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
 
 # Verify command works
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp routes 2>/dev/null && echo "Command succeeded"
+  cilium-dbg bgp routes available ipv4 unicast 2>/dev/null && echo "Command succeeded"
 
 # Verify automation/parsing
 python3 parse_bgp_routes.py /tmp/bgp-routes-output.txt | head -10
@@ -154,9 +155,9 @@ python3 parse_bgp_routes.py /tmp/bgp-routes-output.txt | head -10
 
 ## Troubleshooting
 
-- **"BGP is not enabled"**: Set `enable-bgp-control-plane: "true"` in cilium-config.
-- **Empty output**: No BGP peering policy may be configured. Check `kubectl get ciliumbgppeeringpolicies`.
-- **No routes shown**: Check exportPodCIDR and service selector in the peering policy.
+- **"BGP is not enabled"**: Set the Cilium Helm value `bgpControlPlane.enabled=true`.
+- **Empty output**: No BGP cluster configuration or advertisements may be configured. Check `kubectl get ciliumbgpclusterconfigs,ciliumbgpadvertisements`.
+- **No routes shown**: Check the CiliumBGPAdvertisement type and selector for PodCIDR or Service advertisements.
 - **Timeout on large clusters**: Add `--request-timeout=120s` to kubectl commands.
 
 ## Conclusion
