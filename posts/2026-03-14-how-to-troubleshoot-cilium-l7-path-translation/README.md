@@ -26,12 +26,11 @@ L7 path translation issues in Cilium manifest as requests hitting the wrong back
 kubectl get ciliumenvoyconfigs -n default
 
 # Verify Envoy picked up the configuration
-kubectl exec -n kube-system <cilium-pod> -- \
-  curl -s localhost:9901/config_dump | \
-  jq '.configs[] | select(.["@type"] | contains("RoutesConfigDump"))' | head -50
+kubectl exec -n kube-system <cilium-pod> -c cilium-agent -- \
+  cilium-dbg envoy admin config routes
 
 # Check Envoy logs for route errors
-kubectl logs -n kube-system <cilium-pod> | grep -i "route" | tail -20
+kubectl logs -n kube-system <cilium-pod> -c cilium-agent | grep -Ei "envoy|route" | tail -20
 
 # Monitor actual HTTP requests through Hubble
 hubble observe --protocol http -n default --last 20 -o json | \
@@ -56,9 +55,8 @@ graph TD
 # Validate CiliumEnvoyConfig YAML
 kubectl apply --dry-run=client -f path-translation.yaml
 
-# Check for rejected configurations
-kubectl get ciliumenvoyconfigs -n default -o json | \
-  jq '.items[] | {name: .metadata.name, status: .status}'
+# Check agent logs for rejected Envoy resources
+kubectl logs -n kube-system <cilium-pod> -c cilium-agent | grep -Ei "CiliumEnvoyConfig|envoy|rejected" | tail -50
 
 # Test with a simple configuration first
 cat <<EOF | kubectl apply -f -
@@ -67,13 +65,29 @@ kind: CiliumEnvoyConfig
 metadata:
   name: simple-rewrite-test
   namespace: default
+  annotations:
+    cec.cilium.io/use-original-source-address: "false"
 spec:
   services:
     - name: backend-service
       namespace: default
   resources:
+    - "@type": type.googleapis.com/envoy.config.listener.v3.Listener
+      name: simple-rewrite-listener
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: simple-rewrite-listener
+                rds:
+                  route_config_name: simple_rewrite_route
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
     - "@type": type.googleapis.com/envoy.config.route.v3.RouteConfiguration
-      name: default/backend-service
+      name: simple_rewrite_route
       virtual_hosts:
         - name: backend
           domains: ["*"]
@@ -87,6 +101,11 @@ spec:
                 prefix: "/"
               route:
                 cluster: default/backend-service
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: default/backend-service
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
 EOF
 ```
 
