@@ -36,11 +36,11 @@ Apply the following Helm values to configure cilium masquerading:
 bpf:
   masquerade: true
 
-# Configure masquerade CIDRs
+# Keep the eBPF ip-masq-agent disabled unless you need multiple exclusion CIDRs
 ipMasqAgent:
   enabled: false
 
-# Non-masquerade CIDRs - traffic to these will NOT be masqueraded
+# Native routing CIDR - traffic to this routable network will NOT be masqueraded
 ipv4NativeRoutingCIDR: "10.0.0.0/8"
 
 # Enable masquerading for IPv4
@@ -53,7 +53,7 @@ Apply the configuration:
 # Apply the configuration via Helm upgrade
 helm upgrade cilium cilium/cilium --version 1.16.5 \
   --namespace kube-system \
-  -f cilium-values.yaml
+  -f cilium-masquerade-values.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
@@ -141,7 +141,7 @@ cilium config view
 cilium status --verbose | head -40
 
 # Review the effective BPF configuration
-kubectl exec -n kube-system ds/cilium -- cilium bpf config list 2>/dev/null || echo "Use cilium config view instead"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg bpf config list 2>/dev/null || echo "Use cilium config view instead"
 ```
 
 ## Verification
@@ -150,13 +150,13 @@ Final verification that configuration is complete and correct:
 
 ```bash
 # Run Cilium connectivity test
-cilium connectivity test --test pod-to-pod,pod-to-service
+cilium connectivity test --test /pod-to-pod --test /pod-to-service
 
 # Verify no configuration warnings
 kubectl logs -n kube-system -l k8s-app=cilium --tail=50 | grep -i "warn\|error" | tail -10
 
 # Check endpoint health
-cilium endpoint list | head -20
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list | head -20
 ```
 
 ## Troubleshooting
