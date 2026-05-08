@@ -27,7 +27,7 @@ podman container prune
 podman container prune --force
 ```
 
-This removes containers in `exited` and `created` states but leaves running and paused containers untouched.
+This removes stopped containers, such as containers in `exited` and `created` states, but leaves running and paused containers untouched.
 
 ## Checking What Will Be Removed
 
@@ -35,10 +35,10 @@ Before pruning, see which containers will be affected.
 
 ```bash
 # List all stopped containers
-podman ps -a --filter status=exited --format "table {{.Names}}\t{{.Status}}\t{{.Size}}"
+podman ps -a --size --filter status=exited --format "table {{.Names}}\t{{.Status}}\t{{.Size}}"
 
 # Also check containers in "created" state (never started)
-podman ps -a --filter status=created --format "table {{.Names}}\t{{.Status}}\t{{.Size}}"
+podman ps -a --size --filter status=created --format "table {{.Names}}\t{{.Status}}\t{{.Size}}"
 
 # Count how many will be removed
 echo "Exited: $(podman ps -a --filter status=exited -q | wc -l)"
@@ -112,10 +112,10 @@ podman ps -a --filter status=exited --format "{{.Names}}" | \
 
 ## Full System Prune
 
-For a comprehensive cleanup that includes containers, images, and volumes:
+For a comprehensive cleanup that includes containers, images, pods, networks, and optionally volumes:
 
 ```bash
-# Remove stopped containers, unused images, and unused volumes
+# Remove stopped containers, unused networks, unused pods, and dangling images
 podman system prune --force
 
 # Include all unused images (not just dangling)
