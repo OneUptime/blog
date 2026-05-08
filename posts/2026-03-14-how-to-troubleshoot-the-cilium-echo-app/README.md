@@ -26,7 +26,7 @@ The Cilium echo app is used for testing networking and policies. When it does no
 kubectl get pods -n cilium-test
 
 # Check events for failing pods
-kubectl describe pod -n cilium-test -l app=echo-server
+kubectl describe pod -n cilium-test -l name=echo-a
 
 # Check image pull issues
 kubectl get events -n cilium-test | grep -i "pull"
@@ -40,7 +40,7 @@ graph TD
     A[Echo App Issue] --> B{Pods Running?}
     B -->|No| C[Check Image Pull]
     B -->|Yes| D{Connectivity Works?}
-    D -->|No| E[Check Service/Endpoints]
+    D -->|No| E[Check Service/EndpointSlices]
     D -->|Yes| F{L7 Policy Works?}
     F -->|No| G[Check Envoy Proxy]
 ```
@@ -50,7 +50,8 @@ graph TD
 ```bash
 # If images cannot be pulled from quay.io
 # Check node internet access
-kubectl run test-pull --image=busybox:1.36 --restart=Never -- echo "pull works"
+kubectl run test-pull --image=quay.io/cilium/alpine-curl:v1.10.0 \
+  --restart=Never --command -- /bin/sh -c 'echo "pull works"'
 kubectl get pod test-pull
 kubectl delete pod test-pull
 
@@ -61,18 +62,19 @@ kubectl get pods -n cilium-test -o yaml | grep -i proxy
 ## Fixing Connectivity Issues
 
 ```bash
-# Check service endpoints
-kubectl get endpoints -n cilium-test echo-server
+# Check service EndpointSlices
+kubectl get endpointslices -n cilium-test \
+  -l kubernetes.io/service-name=echo-a
 
 # Verify DNS resolution
-kubectl exec -n cilium-test deploy/echo-client -- \
-  nslookup echo-server.cilium-test
+kubectl exec -n cilium-test deploy/pod-to-a -- \
+  nslookup echo-a.cilium-test.svc.cluster.local
 
 # Test direct pod IP
-POD_IP=$(kubectl get pods -n cilium-test -l app=echo-server \
+POD_IP=$(kubectl get pods -n cilium-test -l name=echo-a \
   -o jsonpath='{.items[0].status.podIP}')
-kubectl exec -n cilium-test deploy/echo-client -- \
-  curl -s --connect-timeout 5 http://$POD_IP:8080/
+kubectl exec -n cilium-test deploy/pod-to-a -- \
+  curl -s --connect-timeout 5 http://$POD_IP:8080/public
 ```
 
 ## Fixing L7 Policy Testing
@@ -98,15 +100,15 @@ hubble observe -n cilium-test --protocol http --last 20
 
 ```bash
 kubectl get pods -n cilium-test
-kubectl exec -n cilium-test deploy/echo-client -- \
-  curl -s http://echo-server:8080/
+kubectl exec -n cilium-test deploy/pod-to-a -- \
+  curl -s http://echo-a:8080/public
 cilium connectivity test
 ```
 
 ## Troubleshooting
 
 - **Image pull rate limited**: Use a pull secret or mirror the images to a private registry.
-- **Service has no endpoints**: Check pod labels match service selector.
+- **Service has no EndpointSlices**: Check pod labels match service selector.
 - **L7 rules ignored**: Envoy proxy must be enabled. Check `l7Proxy` setting.
 - **Connectivity test hangs**: Increase timeout or check for resource constraints.
 
