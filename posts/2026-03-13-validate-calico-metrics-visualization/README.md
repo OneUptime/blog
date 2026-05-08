@@ -26,7 +26,7 @@ echo "=== Calico Dashboard Validation ==="
 FAILURES=0
 
 # 1. Get expected values from Prometheus
-EXPECTED_POLICIES=$(curl -s "${PROMETHEUS_URL}/api/v1/query?query=sum(felix_active_local_policies)" | \
+EXPECTED_POLICIES=$(curl -s "${PROMETHEUS_URL}/api/v1/query?query=max(felix_cluster_num_policies)" | \
   jq -r '.data.result[0].value[1] // "0"')
 EXPECTED_NODES=$(curl -s "${PROMETHEUS_URL}/api/v1/query?query=count(felix_active_local_policies)" | \
   jq -r '.data.result[0].value[1] // "0"')
@@ -51,7 +51,7 @@ for uid in calico-overview calico-felix-perf calico-ipam; do
 done
 
 # 3. Validate key metrics are non-zero
-for metric in felix_active_local_policies felix_ipsets_total; do
+for metric in felix_active_local_policies felix_active_local_endpoints; do
   value=$(curl -s "${PROMETHEUS_URL}/api/v1/query?query=sum(${metric})" | \
     jq -r '.data.result[0].value[1] // "0"')
 
@@ -72,10 +72,10 @@ For each panel in the overview dashboard:
 
 | Panel | Expected Value | How to Check |
 |-------|---------------|--------------|
-| Active Policies | >0 if policies exist | `calicoctl get gnp --no-headers \| wc -l` |
-| IP Pool Usage | % based on pod count | `kubectl get pods -A --no-headers \| wc -l` |
+| Active Policies | matches configured Calico policies | `calicoctl get globalnetworkpolicy -o json \| jq 'length'` and `calicoctl get networkpolicy --all-namespaces -o json \| jq 'length'` |
+| IP Pool Usage | matches Calico IPAM allocation | `calicoctl ipam show --show-blocks` |
 | Nodes with Felix | = total node count | `kubectl get nodes --no-headers \| wc -l` |
-| Policy Latency | >0ms, typically <100ms | Query prometheus |
+| Policy Latency | low calculation graph update duration when updates occur | Query `felix_calc_graph_update_time_seconds` in Prometheus |
 
 ## Conclusion
 
