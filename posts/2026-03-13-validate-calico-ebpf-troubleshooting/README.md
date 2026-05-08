@@ -48,11 +48,11 @@ check "bpftool accessible in calico-node" \
   "kubectl exec -n calico-system ds/calico-node -c calico-node -- bpftool version"
 
 # Calico's built-in BPF commands
-check "calico-node bpf-nat-dump works" \
-  "kubectl exec -n calico-system ds/calico-node -c calico-node -- calico-node -bpf-nat-dump"
+check "calico-node BPF NAT dump works" \
+  "kubectl exec -n calico-system ds/calico-node -c calico-node -- calico-node -bpf nat dump"
 
-check "calico-node bpf-list-progs works" \
-  "kubectl exec -n calico-system ds/calico-node -c calico-node -- calico-node -bpf-list-progs"
+check "calico-node BPF help works" \
+  "kubectl exec -n calico-system ds/calico-node -c calico-node -- calico-node -bpf help"
 
 echo ""
 echo "--- Felix Logging ---"
@@ -93,7 +93,7 @@ exit ${FAILURES}
 # Verify debug pods can be deployed (check RBAC and admission)
 kubectl run validate-debug --image=ubuntu:22.04 \
   --overrides='{"spec":{"hostNetwork":true,"tolerations":[{"operator":"Exists"}]}}' \
-  --restart=Never -- sleep 5
+  --restart=Never -- sleep 300
 
 kubectl wait pod/validate-debug --for=condition=Ready --timeout=30s \
   && echo "OK: Debug pods can be deployed" \
@@ -114,4 +114,4 @@ flowchart TD
 
 ## Conclusion
 
-Validating your eBPF troubleshooting readiness regularly ensures that your diagnostic toolkit works when you need it most. The readiness validation script tests all critical diagnostic paths: bpftool access, Felix debug logging, BPF program inspection, and debug pod deployment. Run this script quarterly and after any security policy changes that might affect container permissions or BPF filesystem access. A 5-minute validation run is worth far less than 30 minutes of debugging tool access issues during an actual incident.
+Validating your eBPF troubleshooting readiness regularly ensures that your diagnostic toolkit works when you need it most. The readiness validation script tests critical diagnostic paths: bpftool access, Felix log access, Calico BPF tool access, and BPF program inspection. Use the debug pod validation commands to test debug pod deployment. Run these checks quarterly and after any security policy changes that might affect container permissions or BPF filesystem access. A 5-minute validation run is worth far less than 30 minutes of debugging tool access issues during an actual incident.
