@@ -98,10 +98,12 @@ exit $EXIT_CODE
 
 ```bash
 # Check for overlapping selectors that could cause conflicts
-calicoctl get networkpolicies -n production -o yaml | python3 << 'EOF'
-import yaml, sys
+calicoctl get networkpolicies -n production -o yaml > /tmp/production-networkpolicies.yaml
+python3 << 'EOF'
+import yaml
 
-data = yaml.safe_load(sys.stdin)
+with open("/tmp/production-networkpolicies.yaml") as f:
+    data = yaml.safe_load(f) or {}
 selectors = {}
 
 for policy in data.get('items', []):
@@ -125,7 +127,7 @@ FAIL=0
 
 test_traffic() {
   local desc="$1" src_pod="$2" src_ns="$3" dest_ip="$4" port="$5" expected="$6"
-  kubectl exec -n "$src_ns" "$src_pod" -- nc -zv "$dest_ip" "$port" --wait 3 2>/dev/null
+  kubectl exec -n "$src_ns" "$src_pod" -- nc -zvw 3 "$dest_ip" "$port" 2>/dev/null
   local result=$?
   if [ "$result" -eq "0" ] && [ "$expected" == "allow" ]; then
     echo "PASS: $desc"
@@ -147,7 +149,7 @@ echo "Results: $PASS passed, $FAIL failed"
 
 ```mermaid
 flowchart LR
-    A[Policy YAML] --> B[Schema Validate\ncalicoctl dry-run]
+    A[Policy YAML] --> B[Schema Validate\ncalicoctl validate]
     B --> C[Selector Validate\ncheck pod matches]
     C --> D[Label Coverage\ncheck all pods]
     D --> E[Apply to Staging]
