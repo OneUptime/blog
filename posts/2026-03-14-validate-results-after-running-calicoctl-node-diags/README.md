@@ -42,17 +42,16 @@ echo ""
 CONTENTS=$(tar tzf "$BUNDLE")
 
 EXPECTED_FILES=(
-  "date"
-  "hostname"
-  "ip-addr"
-  "ip-route"
-  "iptables"
+  "diagnostics/date"
+  "diagnostics/hostname"
+  "diagnostics/ipv4_addr"
+  "diagnostics/ipv4_route"
+  "diagnostics/ipv4_tables"
 )
 
 WARNINGS=0
 for FILE in "${EXPECTED_FILES[@]}"; do
-  if echo "$CONTENTS" | grep -q "$FILE"; then
-    SIZE=$(tar tzf "$BUNDLE" | grep "$FILE" | head -1)
+  if echo "$CONTENTS" | grep -qx "$FILE"; then
     echo "FOUND: $FILE"
   else
     echo "MISSING: $FILE"
@@ -63,7 +62,7 @@ done
 # Check for log directories
 echo ""
 echo "Log files:"
-LOG_COUNT=$(echo "$CONTENTS" | grep -c "log" || echo 0)
+LOG_COUNT=$(echo "$CONTENTS" | grep -c "log" || true)
 echo "  Total log entries: $LOG_COUNT"
 
 echo ""
@@ -85,21 +84,22 @@ tar xzf calico-diags.tar.gz -C "$DIAG_DIR"
 
 # Analyze iptables rules
 echo "=== iptables Summary ==="
-echo "Total rules: $(cat $DIAG_DIR/*/iptables 2>/dev/null | wc -l)"
-echo "Calico chains: $(cat $DIAG_DIR/*/iptables 2>/dev/null | grep -c 'cali-')"
-echo "DROP rules: $(cat $DIAG_DIR/*/iptables 2>/dev/null | grep -c 'DROP')"
-echo "ACCEPT rules: $(cat $DIAG_DIR/*/iptables 2>/dev/null | grep -c 'ACCEPT')"
+IPTABLES_FILE=$(find "$DIAG_DIR" -name "ipv4_tables" | head -1)
+echo "Total rules: $(wc -l < "$IPTABLES_FILE")"
+echo "Calico chains: $(grep -c 'cali-' "$IPTABLES_FILE" || true)"
+echo "DROP rules: $(grep -c 'DROP' "$IPTABLES_FILE" || true)"
+echo "ACCEPT rules: $(grep -c 'ACCEPT' "$IPTABLES_FILE" || true)"
 ```
 
 ### Analyzing Routes
 
 ```bash
 echo "=== Route Summary ==="
-ROUTES_FILE=$(find "$DIAG_DIR" -name "ip-route" | head -1)
-echo "Total routes: $(wc -l < $ROUTES_FILE)"
-echo "BGP routes: $(grep -c 'proto bird' $ROUTES_FILE || echo 0)"
-echo "Blackhole routes: $(grep -c 'blackhole' $ROUTES_FILE || echo 0)"
-echo "Default route: $(grep '^default' $ROUTES_FILE)"
+ROUTES_FILE=$(find "$DIAG_DIR" -name "ipv4_route" | head -1)
+echo "Total routes: $(wc -l < "$ROUTES_FILE")"
+echo "BGP routes: $(grep -c 'proto bird' "$ROUTES_FILE" || true)"
+echo "Blackhole routes: $(grep -c 'blackhole' "$ROUTES_FILE" || true)"
+echo "Default route: $(grep '^default' "$ROUTES_FILE")"
 ```
 
 ### Checking for Errors in Logs
@@ -107,7 +107,7 @@ echo "Default route: $(grep '^default' $ROUTES_FILE)"
 ```bash
 echo "=== Error Summary ==="
 find "$DIAG_DIR" -name "*.log" -o -name "current" | while read -r logfile; do
-  ERRORS=$(grep -ci "error" "$logfile" 2>/dev/null || echo 0)
+  ERRORS=$(grep -ci "error" "$logfile" 2>/dev/null || true)
   if [ "$ERRORS" -gt 0 ]; then
     echo "  $logfile: $ERRORS errors"
     grep -i "error" "$logfile" | tail -3 | sed 's/^/    /'
@@ -134,12 +134,12 @@ tar xzf "$BEFORE" -C "$BEFORE_DIR"
 tar xzf "$AFTER" -C "$AFTER_DIR"
 
 echo "=== Route Changes ==="
-diff <(sort $(find $BEFORE_DIR -name ip-route)) <(sort $(find $AFTER_DIR -name ip-route))
+diff <(find "$BEFORE_DIR" -name ipv4_route -exec cat {} + | sort) <(find "$AFTER_DIR" -name ipv4_route -exec cat {} + | sort)
 
 echo ""
 echo "=== iptables Rule Count Changes ==="
-BEFORE_RULES=$(cat $(find $BEFORE_DIR -name iptables) | wc -l)
-AFTER_RULES=$(cat $(find $AFTER_DIR -name iptables) | wc -l)
+BEFORE_RULES=$(find "$BEFORE_DIR" -name ipv4_tables -exec cat {} + | wc -l)
+AFTER_RULES=$(find "$AFTER_DIR" -name ipv4_tables -exec cat {} + | wc -l)
 echo "Before: $BEFORE_RULES rules, After: $AFTER_RULES rules"
 
 rm -rf "$BEFORE_DIR" "$AFTER_DIR"
