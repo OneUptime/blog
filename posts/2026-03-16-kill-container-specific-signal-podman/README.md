@@ -10,7 +10,7 @@ Description: Learn how to send specific signals to container processes in Podman
 
 > Sending specific signals to containers gives you fine-grained control over application behavior, from graceful shutdowns to configuration reloads.
 
-The `podman kill` command sends a signal to the main process running inside a container. While `podman stop` always sends SIGTERM followed by SIGKILL, `podman kill` lets you send any Unix signal. This guide covers how to use signals effectively with Podman containers.
+The `podman kill` command sends a signal to the main process running inside a container. While `podman stop` sends the container's configured stop signal (SIGTERM by default) followed by SIGKILL after the timeout, `podman kill` lets you send any Unix signal. This guide covers how to use signals effectively with Podman containers.
 
 ---
 
@@ -51,13 +51,13 @@ podman kill -s SIGHUP my-app
 You can also use signal numbers:
 
 ```bash
-# SIGTERM is signal 15
+# On most Linux architectures, SIGTERM is signal 15
 podman kill -s 15 my-app
 
-# SIGHUP is signal 1
+# On most Linux architectures, SIGHUP is signal 1
 podman kill -s 1 my-app
 
-# SIGUSR1 is signal 10
+# On most Linux architectures, SIGUSR1 is signal 10
 podman kill -s 10 my-app
 ```
 
@@ -146,7 +146,7 @@ podman kill -s SIGQUIT my-java-app
 Understanding the difference between `kill` and `stop`:
 
 ```bash
-# podman stop: sends SIGTERM, waits for timeout, then SIGKILL
+# podman stop: sends the configured stop signal, waits for timeout, then SIGKILL
 # - Graceful shutdown with fallback
 podman stop -t 30 my-app
 
@@ -161,10 +161,10 @@ podman kill -s SIGTERM my-app
 # Kill multiple containers at once
 podman kill -s SIGTERM container-1 container-2 container-3
 
-# Kill all running containers
+# Kill all running and paused containers
 podman kill --all
 
-# Kill all with a specific signal
+# Kill all running and paused containers with a specific signal
 podman kill -s SIGTERM --all
 ```
 
@@ -230,4 +230,4 @@ fi
 
 ## Summary
 
-The `podman kill` command provides precise signal delivery to container processes. Use SIGTERM for graceful shutdown, SIGHUP for configuration reloads, SIGUSR1/SIGUSR2 for application-defined actions, and SIGKILL as a last resort. Unlike `podman stop`, which always follows a SIGTERM-then-SIGKILL sequence, `podman kill` sends exactly the signal you specify, giving you full control over process management.
+The `podman kill` command provides precise signal delivery to container processes. Use SIGTERM for graceful shutdown, SIGHUP for configuration reloads, SIGUSR1/SIGUSR2 for application-defined actions, and SIGKILL as a last resort. Unlike `podman stop`, which sends the container's configured stop signal and falls back to SIGKILL after the timeout, `podman kill` sends exactly the signal you specify, giving you full control over process management.
