@@ -10,21 +10,43 @@ Description: Validate that Calico typha Prometheus metrics are collected accurat
 
 ## Introduction
 
-Calico typha exposes Prometheus metrics on port 9093 that provide visibility into the policy distribution layer. These metrics are essential for monitoring the health of Calico's control plane in large clusters.
+Calico typha can expose Prometheus metrics that provide visibility into the policy distribution layer. These metrics are essential for monitoring the health of Calico's control plane in large clusters.
 
 ## Enable Metrics Collection
 
 ```bash
-# Test typha metrics endpoint
+# Enable typha metrics on port 9093 for operator-based Calico installs.
+kubectl patch installation default --type=merge -p '{"spec":{"typhaMetricsPort":9093}}'
 
 POD=$(kubectl get pods -n calico-system -l k8s-app=calico-typha   -o jsonpath='{.items[0].metadata.name}')
 
-kubectl exec -n calico-system "${POD}" --   wget -qO- http://localhost:9093/metrics | head -30
+kubectl port-forward -n calico-system "pod/${POD}" 9093:9093 >/tmp/typha-port-forward.log 2>&1 &
+PF_PID=$!
+trap 'kill "${PF_PID}"' EXIT
+sleep 2
+
+curl -s http://localhost:9093/metrics | head -30
 ```
 
 ## ServiceMonitor
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: calico-typha-metrics
+  namespace: calico-system
+  labels:
+    k8s-app: calico-typha
+spec:
+  clusterIP: None
+  selector:
+    k8s-app: calico-typha
+  ports:
+    - name: metrics
+      port: 9093
+      targetPort: 9093
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
