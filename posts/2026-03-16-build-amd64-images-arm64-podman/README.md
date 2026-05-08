@@ -16,18 +16,17 @@ With the rise of ARM64 machines, especially Apple Silicon Macs (M1/M2/M3) and AW
 
 ## Setting Up QEMU on ARM64
 
-Install QEMU user-static to enable AMD64 binary emulation on your ARM64 host.
+Install QEMU user-mode emulation and binfmt registration to enable AMD64 binary emulation on your ARM64 host.
 
 ```bash
 # On Fedora/RHEL (ARM64)
-
-sudo dnf install qemu-user-static
+sudo dnf install qemu-user-static qemu-user-binfmt
 
 # On Ubuntu/Debian (ARM64)
 sudo apt-get install qemu-user-static binfmt-support
 
-# On macOS with Podman Machine (already included)
-# QEMU is bundled with the Podman machine VM
+# On macOS with Podman Machine
+# x86_64 translation is handled inside the Podman machine VM
 podman machine init
 podman machine start
 ```
@@ -37,7 +36,7 @@ Verify the setup:
 ```bash
 # Check that x86_64 emulation is available
 ls /proc/sys/fs/binfmt_misc/qemu-x86_64 2>/dev/null || \
-  echo "Running in Podman machine (QEMU bundled)"
+  echo "Running in Podman machine or binfmt entry not registered"
 
 # Test AMD64 emulation
 podman run --rm --platform linux/amd64 alpine:3.19 uname -m
@@ -70,7 +69,7 @@ podman run --rm myapp:amd64
 
 ## Apple Silicon (macOS) Specifics
 
-On macOS with Podman Machine, QEMU is included in the Linux VM.
+On Apple Silicon with Podman Machine, x86_64 translation is handled inside the Linux VM. Current Podman Desktop setups enable Rosetta by default; if Rosetta is disabled, QEMU is used instead.
 
 ```bash
 # Initialize Podman machine if not done
@@ -82,7 +81,7 @@ podman machine start
 # Build AMD64 images directly
 podman build --platform linux/amd64 -t myapp:amd64 .
 
-# The Podman machine handles QEMU automatically
+# The Podman machine handles x86_64 translation automatically
 ```
 
 ## Cross-Compilation for Speed
@@ -215,7 +214,8 @@ podman run --rm myapp:amd64 uname -m
 # Output: x86_64
 
 # Check a binary
-podman run --rm myapp:amd64 file /usr/local/bin/app
+podman run --rm --entrypoint /bin/sh myapp:amd64 -c \
+  'apk add --no-cache file >/dev/null && file /usr/local/bin/app'
 # Output: ELF 64-bit LSB executable, x86-64
 ```
 
@@ -277,4 +277,4 @@ podman manifest push --all "${IMAGE}:${TAG}" "docker://${IMAGE}:${TAG}"
 
 ## Summary
 
-Building AMD64 images on ARM64 with Podman requires QEMU emulation, which is automatically available on macOS with Podman Machine and can be installed on Linux ARM64 hosts. Use cross-compilation for compiled languages to avoid the emulation overhead. The `--platform linux/amd64` flag is all you need to target AMD64 from your ARM64 build machine. Combine both architectures into a manifest list for seamless multi-platform deployments.
+Building AMD64 images on ARM64 with Podman requires emulation or translation for `RUN` instructions that execute AMD64 binaries. Podman Machine handles this on macOS, and Linux ARM64 hosts can use QEMU user-mode emulation with binfmt registration. Use cross-compilation for compiled languages to avoid the emulation overhead. The `--platform linux/amd64` flag is all you need to target AMD64 from your ARM64 build machine. Combine both architectures into a manifest list for seamless multi-platform deployments.
