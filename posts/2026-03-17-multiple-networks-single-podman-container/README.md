@@ -58,17 +58,17 @@ podman network connect backend-net webapp
 # List all network interfaces inside the container
 podman exec proxy ip addr show
 
-# You will see multiple eth interfaces, one per network
-# eth0 -> frontend-net
-# eth1 -> backend-net
+# You will see multiple interfaces, one per network
+# Podman typically names them eth0, eth1, and so on
 ```
 
 ## Testing Cross-Network Connectivity
 
 ```bash
 # Run a database container on the backend network only
-podman run -d --name db --network backend-net docker.io/library/postgres:16-alpine \
-  -e POSTGRES_PASSWORD=secret
+podman run -d --name db --network backend-net \
+  -e POSTGRES_PASSWORD=secret \
+  docker.io/library/postgres:16-alpine
 
 # The proxy container can reach the database
 podman exec proxy ping -c 2 db
