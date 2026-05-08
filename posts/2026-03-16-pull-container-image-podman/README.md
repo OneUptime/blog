@@ -31,6 +31,7 @@ sudo apt-get install -y podman
 
 # On macOS with Homebrew
 brew install podman
+podman machine init --now
 ```
 
 ## Pulling an Image with the Default Tag
@@ -102,7 +103,7 @@ When Podman pulls an image, it downloads individual layers that make up the imag
 
 ```bash
 # Pull with verbose output to see layer downloads
-podman pull --log-level=debug nginx:1.25
+podman --log-level=debug pull nginx:1.25
 
 # Check the storage location of pulled images
 podman info | grep -A 5 "graphRoot"
