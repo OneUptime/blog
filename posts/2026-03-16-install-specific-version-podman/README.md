@@ -43,8 +43,8 @@ sudo dnf list podman --showduplicates | sort -r
 # List available Podman versions
 apt list -a podman 2>/dev/null
 
-# Check versions in backports too
-apt list -a podman -t bullseye-backports 2>/dev/null
+# Check which enabled repositories, including backports, provide Podman
+apt-cache policy podman
 ```
 
 ### Arch Linux
@@ -113,8 +113,8 @@ apt-mark showhold
 ### On CentOS Stream / RHEL
 
 ```bash
-# Install a specific version
-sudo dnf install -y podman-5.2.0-1.el9
+# Install a specific version using a version string from dnf list
+sudo dnf install -y podman-5.6.0-2.el9
 
 # Lock the version
 sudo dnf versionlock add podman
@@ -141,7 +141,7 @@ sudo sed -i '/^#IgnorePkg/a IgnorePkg = podman' /etc/pacman.conf
 
 ## Install from COPR (Fedora) for Testing Versions
 
-For pre-release or specific builds:
+For unreleased testing builds:
 
 ```bash
 # Enable a COPR repository with specific Podman versions
@@ -160,12 +160,17 @@ For precise version control, build from source:
 
 ```bash
 # Install build dependencies (Fedora example)
-sudo dnf install -y git golang gpgme-devel libassuan-devel \
-  libseccomp-devel pkg-config make
+sudo dnf install -y git
 
 # Clone the Podman repository
 git clone https://github.com/containers/podman.git /tmp/podman
 cd /tmp/podman
+
+# Install build dependencies
+sudo dnf -y builddep rpm/podman.spec
+
+# Install runtime dependencies
+sudo dnf -y install catatonit conmon containers-common-extra
 
 # List available tags (versions)
 git tag | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -20
@@ -174,8 +179,8 @@ git tag | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -20
 git checkout v5.2.0
 
 # Build and install
-make BUILDTAGS="seccomp"
-sudo make install
+make BUILDTAGS="selinux seccomp" PREFIX=/usr
+sudo env PATH=$PATH make install PREFIX=/usr
 
 # Verify
 podman --version
