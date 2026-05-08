@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Calico, Kubernetes, Window, Operator, Networking, CNI, Upgrade
+Tags: Calico, Kubernetes, Windows, Operator, Networking, CNI, Upgrade
 
 Description: A guide to safely upgrading Calico on Windows nodes when managed by the Tigera Operator.
 
@@ -42,7 +42,8 @@ calicoctl get ippool -o yaml > ippool-backup.yaml
 ## Step 3: Upgrade the Tigera Operator
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
 kubectl rollout status deployment/tigera-operator -n tigera-operator
 ```
 
@@ -60,12 +61,18 @@ Wait for all Linux nodes to complete before looking at Windows nodes.
 kubectl rollout status daemonset/calico-node-windows -n calico-system
 ```
 
-If the Windows DaemonSet does not automatically update, patch it manually:
+Confirm the operator has reconciled the DaemonSet to the expected image version:
 
 ```bash
-kubectl set image daemonset/calico-node-windows -n calico-system \
-  calico-node-windows=calico/node-windows:v3.27.0
-kubectl rollout status daemonset/calico-node-windows -n calico-system
+kubectl get daemonset/calico-node-windows -n calico-system \
+  -o jsonpath='{.spec.template.spec.containers[*].image}{"\n"}'
+```
+
+If the Windows DaemonSet does not update, do not patch it directly with `kubectl set image`; the operator manages this DaemonSet and may overwrite direct changes. Check operator status and logs instead:
+
+```bash
+kubectl get tigerastatus calico -o yaml
+kubectl logs deployment/tigera-operator -n tigera-operator
 ```
 
 ## Step 6: Monitor Windows Node Pod Restarts
