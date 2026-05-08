@@ -27,8 +27,8 @@ A successful VPP validation confirms that VPP has initialized correctly with the
 kubectl get pods -n calico-vpp-dataplane -o wide
 # All pods should be Running
 
-kubectl logs -n calico-vpp-dataplane ds/calico-vpp-node -c vpp-manager --tail=50
-# Look for "VPP started successfully"
+kubectl logs -n calico-vpp-dataplane ds/calico-vpp-node -c vpp --tail=50
+# Review VPP startup logs for errors
 
 ```
 
@@ -39,16 +39,17 @@ kubectl logs -n calico-vpp-dataplane ds/calico-vpp-node -c vpp-manager --tail=50
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- vppctl show interface
 
 # Expected output shows:
-# GigabitEthernet0/0/0  - the uplink interface
-# loop0                 - loop back
-# tap0, tap1, ...       - pod interfaces
+# avf-0/d8/a/0 or another driver-specific uplink interface
+# local0                - local interface
+# tap0                  - host connectivity tap
+# tun0, tun1, ...       - pod interfaces
 ```
 
 ```mermaid
 graph LR
-    A[vppctl show interface] --> B[GigabitEthernet0/0/0]
-    A --> C[tap0 - pod interface]
-    A --> D[host-eth0 - host tap]
+    A[vppctl show interface] --> B[Driver-specific uplink]
+    A --> C[tun0 - pod interface]
+    A --> D[tap0 - host tap]
     B -->|State: up| E[Uplink active]
     C -->|State: up| F[Pod connected]
 ```
@@ -75,7 +76,7 @@ kubectl run vpp-test --image=nicolaka/netshoot -- sleep 3600
 # Verify it gets an IP from Calico IPAM
 kubectl get pod vpp-test -o jsonpath='{.status.podIP}'
 
-# Check VPP knows about this pod's tap interface
+# Check VPP knows about this pod's tun interface
 kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
   vppctl show ip fib table 0
 ```
@@ -106,17 +107,16 @@ SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
 kubectl run iperf-client --rm -it --image=networkstatic/iperf3 -- -c $SERVER_IP -t 10 -P 4
 
 # Compare results to non-VPP baseline
-# Expected improvement: 2-5x throughput increase
+# Expected improvement depends on NIC, driver, CPU, hugepage, and workload settings
 ```
 
 ## Step 7: Verify Policy Enforcement in VPP
 
 ```bash
-# Check VPP ACL tables to verify Calico policies are programmed into VPP
-kubectl exec -n calico-vpp-dataplane ds/calico-vpp-node -c vpp -- \
-  vppctl show acl-plugin acl
+# Check the Calico VPP agent logs to verify policies are programmed into VPP
+kubectl logs -n calico-vpp-dataplane ds/calico-vpp-node -c agent --tail=100 | grep -i policy
 ```
 
 ## Conclusion
 
-Validating Calico VPP requires using VPP-native tools (`vppctl`) alongside standard Kubernetes tools. The key validation points are VPP interface state, hugepage allocation and utilization, pod IP assignment through the VPP tap interfaces, and performance benchmarking to confirm the expected throughput improvement. Always compare VPP performance against the baseline Linux kernel dataplane to quantify the actual benefit for your workload.
+Validating Calico VPP requires using VPP-native tools (`vppctl`) alongside standard Kubernetes tools. The key validation points are VPP interface state, hugepage allocation and utilization, pod IP assignment through the VPP tun interfaces, and performance benchmarking to confirm the expected throughput improvement. Always compare VPP performance against the baseline Linux kernel dataplane to quantify the actual benefit for your workload.
