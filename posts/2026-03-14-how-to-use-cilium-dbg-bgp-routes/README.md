@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, BGP, Route, Kubernetes, Networking
 
-Description: Inspect BGP routing tables with cilium-dbg bgp routes to view advertised and received routes on Cilium nodes.
+Description: Inspect BGP routing tables with cilium-dbg bgp routes to view available and advertised routes on Cilium nodes.
 
 ---
 
@@ -19,10 +19,8 @@ This guide covers using cilium-dbg bgp routes for inspection and validation.
 ## Prerequisites
 
 - Kubernetes cluster with Cilium and BGP enabled
-- BGP peering configured via CiliumBGPPeeringPolicy
+- BGP peering configured via CiliumBGPClusterConfig, CiliumBGPPeerConfig, and CiliumBGPAdvertisement
 - `kubectl` access to cilium pods
-- 
-- 
 
 ## Inspecting Routes State
 
@@ -33,12 +31,16 @@ CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
 # Run the command
 
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp routes
+  cilium-dbg bgp routes available ipv4 unicast
+
+# Inspect routes advertised to peers
+kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
+  cilium-dbg bgp routes advertised ipv4 unicast
 ```
 
 ### Understanding the Output
 
-The `cilium-dbg bgp routes` command displays the BGP routing information base with prefixes, next hops, and path attributes.
+The `cilium-dbg bgp routes available ipv4 unicast` command displays the local BGP routing information base with prefixes, next hops, and path attributes. Use `advertised` instead of `available` to inspect routes advertised to peers.
 
 ### Multi-Node Inspection
 
@@ -54,7 +56,7 @@ while IFS=',' read -r pod node; do
   [ -z "$pod" ] && continue
   echo "=== $node ==="
   kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
-    cilium-dbg bgp routes 2>/dev/null || echo "  Failed"
+    cilium-dbg bgp routes available ipv4 unicast 2>/dev/null || echo "  Failed"
   echo ""
 done <<< "$PODS"
 ```
@@ -62,17 +64,45 @@ done <<< "$PODS"
 ### BGP Configuration Reference
 
 ```yaml
-apiVersion: cilium.io/v2alpha1
-kind: CiliumBGPPeeringPolicy
+apiVersion: cilium.io/v2
+kind: CiliumBGPClusterConfig
 metadata:
-  name: bgp-peering
+  name: cilium-bgp
 spec:
-  virtualRouters:
-  - localASN: 65001
-    exportPodCIDR: true
-    neighbors:
-    - peerAddress: "10.0.0.1/32"
+  nodeSelector:
+    matchLabels:
+      bgp: enabled
+  bgpInstances:
+  - name: instance-65001
+    localASN: 65001
+    peers:
+    - name: peer-65000
       peerASN: 65000
+      peerAddress: 10.0.0.1
+      peerConfigRef:
+        name: cilium-peer
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPPeerConfig
+metadata:
+  name: cilium-peer
+spec:
+  families:
+  - afi: ipv4
+    safi: unicast
+    advertisements:
+      matchLabels:
+        advertise: bgp
+---
+apiVersion: cilium.io/v2
+kind: CiliumBGPAdvertisement
+metadata:
+  name: bgp-advertisements
+  labels:
+    advertise: bgp
+spec:
+  advertisements:
+  - advertisementType: "PodCIDR"
 ```
 
 ```mermaid
@@ -91,16 +121,16 @@ CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
 
 # Verify command works
 kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
-  cilium-dbg bgp routes 2>/dev/null && echo "Command succeeded"
+  cilium-dbg bgp routes available ipv4 unicast 2>/dev/null && echo "Command succeeded"
 
 ```
 
 ## Troubleshooting
 
-- **"BGP is not enabled"**: Set `enable-bgp-control-plane: "true"` in cilium-config.
-- **Empty output**: No BGP peering policy may be configured. Check `kubectl get ciliumbgppeeringpolicies`.
-- **No routes shown**: Check exportPodCIDR and service selector in the peering policy.
-- **Timeout on large clusters**: Add `--request-timeout=120s` to kubectl commands.
+- **"BGP is not enabled"**: Enable the BGP Control Plane with the Helm value `bgpControlPlane.enabled=true`.
+- **Empty output**: No BGP resources may be configured. Check `kubectl get ciliumbgpclusterconfigs,ciliumbgppeerconfigs,ciliumbgpadvertisements`.
+- **No routes shown**: Check the `CiliumBGPAdvertisement` resource and the advertisement selector in `CiliumBGPPeerConfig`.
+- **Timeout on large clusters**: Add `--request-timeout=120s` to kubectl commands, for example `kubectl --request-timeout=120s ...`.
 
 ## Conclusion
 
