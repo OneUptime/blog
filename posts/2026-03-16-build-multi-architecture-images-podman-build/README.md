@@ -77,21 +77,19 @@ podman manifest inspect myapp:v1.0 | jq '.manifests | length'
 
 ## Using Automatic Build Arguments
 
-Podman automatically provides platform-related build arguments that you can use in your Containerfile.
+Podman automatically provides target platform-related build arguments that you can use in your Containerfile.
 
 ```bash
 cat > Containerfile <<'EOF'
 FROM alpine:3.19
 
-# These are automatically set by Podman
+# These target platform values are automatically set by Podman
 ARG TARGETPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
-ARG BUILDPLATFORM
 
-RUN echo "Building on: ${BUILDPLATFORM}" && \
-    echo "Target: ${TARGETPLATFORM}" && \
+RUN echo "Target: ${TARGETPLATFORM}" && \
     echo "OS: ${TARGETOS}" && \
     echo "Arch: ${TARGETARCH}" && \
     echo "Variant: ${TARGETVARIANT}"
@@ -103,7 +101,7 @@ RUN if [ "${TARGETARCH}" = "amd64" ]; then \
       echo "Downloading arm64 binary"; \
     fi
 
-CMD ["sh", "-c", "echo Target: ${TARGETPLATFORM:-unknown}"]
+CMD ["sh", "-c", "echo Running on $(uname -m)"]
 EOF
 
 podman build \
@@ -119,6 +117,7 @@ Use the build platform for compilation and the target platform for the runtime i
 ```bash
 cat > Containerfile <<'EOF'
 # Build stage runs on the BUILD platform (native, fast)
+ARG BUILDPLATFORM
 FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
 
 ARG TARGETARCH
@@ -141,7 +140,10 @@ CMD ["app"]
 EOF
 
 # Build for both platforms - Go cross-compilation is fast
+BUILDPLATFORM="$(go env GOOS)/$(go env GOARCH)"
+
 podman build \
+  --build-arg BUILDPLATFORM="${BUILDPLATFORM}" \
   --platform linux/amd64,linux/arm64 \
   --manifest myapp:latest \
   .
@@ -231,19 +233,21 @@ podman manifest inspect myapp:latest | jq '.manifests | length'
 ## Performance Tips
 
 ```bash
-# 1. Use BUILDPLATFORM for compilation stages (avoids emulation)
+# 1. Pass BUILDPLATFORM explicitly for compilation stages (avoids emulation)
+ARG BUILDPLATFORM
 FROM --platform=$BUILDPLATFORM golang:1.22 AS builder
 
 # 2. Minimize work done in emulated layers
 # Put the heavy lifting (compiling) in the build stage
 # Keep the runtime stage minimal
 
-# 3. Use parallel builds in CI
-podman build --platform linux/amd64 --manifest myapp:latest . &
-podman build --platform linux/arm64 --manifest myapp:latest . &
-wait
+# 3. Allow concurrent build stages in CI
+podman build --jobs=2 \
+  --platform linux/amd64,linux/arm64 \
+  --manifest myapp:latest \
+  .
 ```
 
 ## Summary
 
-The `podman build` command with `--platform` and `--manifest` flags provides the simplest path to multi-architecture images. Pass a comma-separated list of platforms to build for all of them in one invocation. Use automatic build arguments like `TARGETARCH` and `BUILDPLATFORM` to handle architecture-specific logic in your Containerfile. For compiled languages, use cross-compilation on the build platform to avoid the overhead of QEMU emulation.
+The `podman build` command with `--platform` and `--manifest` flags provides the simplest path to multi-architecture images. Pass a comma-separated list of platforms to build for all of them in one invocation. Use automatic build arguments like `TARGETARCH` to handle architecture-specific logic in your Containerfile. For compiled languages, pass the build platform explicitly and use cross-compilation on the build platform to avoid the overhead of QEMU emulation.
