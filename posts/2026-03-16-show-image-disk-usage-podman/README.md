@@ -60,8 +60,8 @@ podman images --sort size \
 # Show the size of a specific image
 podman images nginx:1.25 --format "{{.Size}}"
 
-# Show sizes of all images in descending order
-podman images --format "{{.Size}}\t{{.Repository}}:{{.Tag}}" | sort -rh
+# Show image sizes in bytes in descending order
+podman images --format "{{.VirtualSize}}\t{{.Repository}}:{{.Tag}}" | sort -nr
 ```
 
 ## Understanding Image Size Metrics
@@ -70,7 +70,7 @@ Podman reports different size metrics that are important to understand.
 
 ```bash
 # Virtual size: total size of all layers
-podman inspect nginx:1.25 --format '{{.VirtualSize}}'
+podman image inspect nginx:1.25 --format '{{.VirtualSize}}'
 
 # Size in human-readable format from the images list
 podman images nginx:1.25 --format "{{.Size}}"
@@ -88,8 +88,8 @@ Identify which images consume the most disk space.
 # Find the top 10 largest images
 
 echo "=== Top 10 Largest Images ==="
-podman images --format "{{.Size}}\t{{.Repository}}:{{.Tag}}" \
-  | sort -rh \
+podman images --format "{{.VirtualSize}}\t{{.Repository}}:{{.Tag}}" \
+  | sort -nr \
   | head -10
 
 echo ""
@@ -109,8 +109,8 @@ podman history nginx:1.25
 podman history nginx:1.25 --format "table {{.Size}}\t{{.CreatedBy}}"
 
 # Find the largest layers
-podman history nginx:1.25 --format "{{.Size}}\t{{.CreatedBy}}" \
-  | sort -rh | head -5
+podman history nginx:1.25 --human=false --format "{{.Size}}\t{{.CreatedBy}}" \
+  | sort -nr | head -5
 ```
 
 ## Calculating Reclaimable Space
@@ -122,8 +122,8 @@ Determine how much space you can recover by cleaning up.
 podman system df
 
 # Calculate space from dangling images
-podman images --filter dangling=true --format "{{.Size}}" \
-  | paste -sd+ | bc 2>/dev/null || echo "No dangling images"
+podman images --filter dangling=true --format "{{.VirtualSize}}" \
+  | awk '{total += $1; count++} END {if (count) print total " bytes"; else print "No dangling images"}'
 
 # Show unused images (not referenced by any container)
 podman images --format json | jq -r '.[] |
@@ -142,7 +142,7 @@ Set up periodic monitoring of image disk usage.
 LOG_FILE="podman-disk-usage.log"
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') | $(podman system df \
-  --format '{{.Type}}: {{.TotalCount}} items, {{.Size}} total, {{.Reclaimable}} reclaimable' \
+  --format '{{.Type}}: {{.Total}} items, {{.Size}} total, {{.Reclaimable}} reclaimable' \
   | head -1)" >> "$LOG_FILE"
 
 # View the log
@@ -178,12 +178,11 @@ podman image prune
 # Remove all unused images (not just dangling)
 podman image prune -a
 
-# Show what would be removed without actually removing
+# Remove unused images older than 30 days
 podman image prune -a --filter "until=720h"
-# Removes unused images older than 30 days
 
 # Full system cleanup including containers and volumes
-podman system prune -a
+podman system prune -a --volumes
 ```
 
 ## Summary
