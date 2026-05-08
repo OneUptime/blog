@@ -16,10 +16,10 @@ By default, Podman machines run in rootless mode, which provides better security
 
 ## Understanding Rootful vs Rootless
 
-In rootless mode, the Podman daemon runs as a regular user inside the VM. In rootful mode, it runs as root. This affects what containers can do:
+In rootless mode, Podman runs containers as a regular user inside the VM. In rootful mode, it runs containers as root. This affects what containers can do:
 
 - **Rootless** - Containers cannot bind to ports below 1024, limited device access, better security isolation.
-- **Rootful** - Containers can bind to any port, full device access, runs with root privileges.
+- **Rootful** - Containers can bind to any port, broader device access, runs with root privileges.
 
 ## Creating a Machine in Rootful Mode
 
@@ -28,7 +28,7 @@ The simplest approach is to initialize a new machine with the `--rootful` flag.
 ```bash
 # Create a new machine in rootful mode
 
-podman machine init rootful-machine --rootful
+podman machine init --rootful rootful-machine
 
 # Start the machine
 podman machine start rootful-machine
@@ -55,7 +55,7 @@ Confirm that the machine is running in rootful mode:
 
 ```bash
 # Check the rootful setting via inspect
-podman machine inspect my-machine | jq '.Rootful'
+podman machine inspect my-machine | jq '.[0].Rootful'
 
 # This should return: true
 ```
@@ -63,11 +63,11 @@ podman machine inspect my-machine | jq '.Rootful'
 You can also verify by checking the connection details:
 
 ```bash
-# List connections - rootful machines have a root connection
+# List connections - each machine exposes rootless and rootful connections
 podman system connection ls
 ```
 
-Rootful machines will show a connection using the root socket path.
+The rootful connection uses the root socket path, such as `/run/podman/podman.sock`, and is commonly named with a `-root` suffix.
 
 ## Testing Rootful Capabilities
 
@@ -94,8 +94,8 @@ Rootful mode enables running fully privileged containers:
 # Run a privileged container
 podman run --privileged -it --rm alpine sh
 
-# Inside the container, you have full root access
-# mount, modprobe, and other privileged operations work
+# Inside the container, you have root access with fewer isolation restrictions
+# mount and other privileged operations can work, depending on the VM configuration
 ```
 
 ## Switching Back to Rootless Mode
@@ -113,7 +113,7 @@ podman machine set --rootful=false my-machine
 podman machine start my-machine
 
 # Verify
-podman machine inspect my-machine | jq '.Rootful'
+podman machine inspect my-machine | jq '.[0].Rootful'
 # Returns: false
 ```
 
@@ -123,10 +123,10 @@ A practical setup is to maintain separate machines for rootful and rootless work
 
 ```bash
 # Create a rootless machine for general development
-podman machine init dev-rootless --cpus 2 --memory 4096
+podman machine init --cpus 2 --memory 4096 dev-rootless
 
 # Create a rootful machine for operations requiring root
-podman machine init dev-rootful --rootful --cpus 2 --memory 4096
+podman machine init --rootful --cpus 2 --memory 4096 dev-rootful
 
 # Start both
 podman machine start dev-rootless
@@ -136,7 +136,7 @@ podman machine start dev-rootful
 podman --connection dev-rootless run -d --name app myapp
 
 # Use rootful when you need privileged access
-podman --connection dev-rootful run -d --name web -p 80:80 nginx
+podman --connection dev-rootful-root run -d --name web -p 80:80 nginx
 ```
 
 ## Security Considerations
@@ -161,7 +161,7 @@ podman run --read-only -d nginx
 | `podman machine init --rootful <name>` | Create a rootful machine |
 | `podman machine set --rootful <name>` | Enable rootful on existing machine |
 | `podman machine set --rootful=false <name>` | Disable rootful mode |
-| `podman machine inspect <name> \| jq '.Rootful'` | Check rootful status |
+| `podman machine inspect <name> \| jq '.[0].Rootful'` | Check rootful status |
 
 ## Summary
 
