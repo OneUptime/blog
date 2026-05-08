@@ -107,8 +107,14 @@ spec:
   selector: "has(typha-validation-marker-only)"
   ingress:
     - action: Allow
+      metadata:
+        annotations:
+          validation: typha-validation-marker
   egress:
     - action: Allow
+      metadata:
+        annotations:
+          validation: typha-validation-marker
 ```
 
 ```bash
@@ -116,10 +122,12 @@ spec:
 START=$(date +%s%3N)  # milliseconds
 calicoctl apply -f validation-policy.yaml
 
-# Poll Felix's iptables until the policy chain appears (adjust chain name for your version)
+# Poll Felix's rendered dataplane rules until the policy marker appears.
+# This example assumes the Linux iptables dataplane; for nftables or eBPF,
+# use the equivalent Felix dataplane or metrics signal for your deployment.
 NODE_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-node -o name | head -1)
 until kubectl exec -n kube-system $NODE_POD -c calico-node -- \
-    calicoctl get globalnetworkpolicy typha-validation-marker 2>/dev/null | grep -q "validation"; do
+    iptables-save 2>/dev/null | grep -q "validation=typha-validation-marker"; do
   sleep 0.2
 done
 END=$(date +%s%3N)
@@ -139,17 +147,18 @@ calicoctl delete -f validation-policy.yaml
 
 ```bash
 TYPHA_POD=$(kubectl get pods -n kube-system -l k8s-app=calico-typha -o name | head -1)
-kubectl port-forward -n kube-system $TYPHA_POD 9093:9093 &
+TYPHA_METRICS_PORT=${TYPHA_METRICS_PORT:-9091}
+kubectl port-forward -n kube-system $TYPHA_POD ${TYPHA_METRICS_PORT}:${TYPHA_METRICS_PORT} &
 sleep 2
 
 echo "=== Active connections (must be > 0) ==="
-curl -s http://localhost:9093/metrics | grep "^typha_connections_active "
+curl -s http://localhost:${TYPHA_METRICS_PORT}/metrics | grep "^typha_connections_active "
 
 echo "=== Updates sent (must be > 0 after 5+ min) ==="
-curl -s http://localhost:9093/metrics | grep "^typha_updates_sent_total"
+curl -s http://localhost:${TYPHA_METRICS_PORT}/metrics | grep "^typha_updates_total "
 
 echo "=== Connections dropped (should be 0 or very low) ==="
-curl -s http://localhost:9093/metrics | grep "^typha_connections_dropped_total"
+curl -s http://localhost:${TYPHA_METRICS_PORT}/metrics | grep "^typha_connections_dropped "
 
 kill %1
 ```
