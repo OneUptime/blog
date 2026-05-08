@@ -10,7 +10,7 @@ Description: How to tune Cilium's WireGuard encryption for optimal request/respo
 
 ## Introduction
 
-WireGuard encryption adds latency to every packet, which directly impacts request/response (TCP_RR) workloads. Each request and response must be encrypted and decrypted, adding CPU cycles to every transaction. For latency-sensitive microservices, this overhead can be significant.
+WireGuard encryption adds latency to every encrypted cross-node packet, which directly impacts request/response (TCP_RR) workloads. Each cross-node request and response must be encrypted and decrypted, adding CPU cycles to every transaction. For latency-sensitive microservices, this overhead can be significant.
 
 Tuning WireGuard for TCP_RR performance focuses on minimizing the per-packet encryption cost rather than maximizing bulk throughput. The strategies differ: bulk throughput benefits from batching and large buffers, while request/response latency benefits from small buffers, fast crypto processing, and minimal queueing delay.
 
@@ -46,7 +46,7 @@ kubectl exec netperf-client -- \
   netperf -H $SERVER_IP -t TCP_RR -l 30 -- -r 1,1
 ```
 
-Typical overhead is 10-30% reduction in transactions per second.
+The overhead varies by kernel, CPU, NIC, MTU, routing mode, and traffic pattern, so compare the encrypted result against your own unencrypted baseline.
 
 ## Optimizing for Low Latency
 
@@ -69,7 +69,7 @@ done
 
 ## Socket-Level BPF with WireGuard
 
-Enable socket-level load balancing to reduce the datapath length before encryption:
+Enable socket-level load balancing to reduce the service load-balancing datapath before encryption:
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
@@ -86,9 +86,10 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
 # Check WireGuard interface parameters
 ip link show cilium_wg0
 
-# Ensure the WireGuard interface uses optimal queue settings
-# WireGuard processes packets in-line, so queue depth affects latency
-ethtool -G cilium_wg0 tx 256 rx 256 2>/dev/null || echo "WG uses kernel defaults"
+# WireGuard is a virtual interface and commonly does not expose ethtool ring settings.
+# If ring tuning is needed, inspect and tune the physical NIC instead.
+ethtool -g cilium_wg0 2>/dev/null || echo "WireGuard interface does not expose ethtool ring settings"
+ethtool -g eth0
 ```
 
 ## NUMA Alignment for Crypto Processing
@@ -107,7 +108,7 @@ kubectl exec netperf-client -- \
   netperf -H $SERVER_IP -t TCP_RR -l 30 -- -r 1,1
 
 # Verify WireGuard is active
-cilium encrypt status
+cilium encryption status
 
 # Check CPU governor
 cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
@@ -118,7 +119,7 @@ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 - **No improvement from busy polling**: Some NIC drivers do not support busy polling. Check driver documentation.
 - **High variance in latency**: Disable interrupt coalescing and C-states for consistent results.
 - **Socket LB not working with WireGuard**: Verify both features are enabled in `cilium status --verbose`.
-- **Latency spikes during key rotation**: WireGuard key rotation is fast but can cause brief latency spikes. Monitor handshake times.
+- **Latency spikes during node or endpoint changes**: WireGuard device updates can briefly affect traffic while peers and allowed IPs are updated. Check Cilium agent logs and WireGuard peer state.
 
 ## Systematic Tuning Methodology
 
@@ -132,9 +133,9 @@ Always establish a pre-tuning baseline with multiple runs:
 #!/bin/bash
 echo "=== Pre-Tuning Baseline ==="
 for i in $(seq 1 5); do
-  kubectl exec perf-client -- iperf3 -c perf-server -t 15 -P 1 -J | \
-    jq '.end.sum_sent.bits_per_second / 1000000000' | \
-    xargs -I{} echo "Run $i: {} Gbps"
+  kubectl exec perf-client -- \
+    netperf -P 0 -H $SERVER_IP -t TCP_RR -l 15 -- -r 1,1 | \
+    awk -v run="$i" '{print "Run " run ": " $NF " transactions/s"}'
   sleep 5
 done
 ```
@@ -166,7 +167,7 @@ After all tuning is complete, document the full configuration as the new baselin
 helm get values cilium -n kube-system -o yaml > cilium-tuned-values-$(date +%Y%m%d).yaml
 
 # Record final benchmark results
-echo "Final tuned throughput: X Gbps"
+echo "Final tuned TCP_RR rate: X transactions/s"
 echo "Improvement from baseline: Y%"
 ```
 
@@ -181,4 +182,4 @@ Avoid these common mistakes in performance tuning:
 
 ## Conclusion
 
-Tuning WireGuard for request/response latency in Cilium requires a different approach than throughput tuning. The focus is on reducing per-packet processing time through busy polling, CPU frequency management, interrupt coalescing disabled, and socket-level BPF acceleration. With proper tuning, WireGuard's impact on TCP_RR latency can be kept below 20%, making transparent encryption practical for latency-sensitive microservices.
+Tuning WireGuard for request/response latency in Cilium requires a different approach than throughput tuning. The focus is on reducing per-packet processing time through busy polling, CPU frequency management, interrupt coalescing disabled, and socket-level BPF acceleration. With proper tuning and measurement, transparent encryption can be practical for latency-sensitive microservices, but the final TCP_RR impact should be validated on your own workload and hardware.
