@@ -29,17 +29,17 @@ List pods that Cilium is not managing as endpoints.
 ```bash
 # List all Cilium-managed endpoints
 
-cilium endpoint list
+kubectl get ciliumendpoints --all-namespaces
 
 # Get the count of managed endpoints
-cilium endpoint list | grep -c "ready"
+kubectl get ciliumendpoints --all-namespaces --no-headers | awk '$2 !~ /^cilium-health-/ {count++} END {print count+0}'
 
 # Get all running pods and compare with Cilium endpoints
-echo "Running pods: $(kubectl get pods --all-namespaces --field-selector=status.phase=Running --no-headers | wc -l)"
-echo "Cilium endpoints: $(cilium endpoint list | grep -c 'endpoint')"
+printf "Running non-host-network pods: %s\n" "$(kubectl get pods --all-namespaces --field-selector=status.phase=Running -o jsonpath='{range .items[?(@.spec.hostNetwork!=true)]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}' | wc -l)"
+printf "Cilium-managed pods: %s\n" "$(kubectl get ciliumendpoints --all-namespaces --no-headers | awk '$2 !~ /^cilium-health-/ {count++} END {print count+0}')"
 
-# Use cilium status to check for unmanaged pods
-cilium status --verbose | grep -i "unmanaged\|not managed"
+# Use cilium status to check the managed pod summary
+cilium status | grep "managed by Cilium"
 ```
 
 ## Step 2: Find Pods Not Represented as Cilium Endpoints
@@ -47,16 +47,16 @@ cilium status --verbose | grep -i "unmanaged\|not managed"
 Cross-reference running pods with Cilium endpoints to identify gaps.
 
 ```bash
-# Get all pod IPs
-kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.status.podIP}{"\n"}{end}' | grep -v "^$" | sort > /tmp/pod-ips.txt
+# Get all running non-host-network pods
+kubectl get pods --all-namespaces --field-selector=status.phase=Running \
+  -o jsonpath='{range .items[?(@.spec.hostNetwork!=true)]}{.metadata.namespace}{"/"}{.metadata.name}{"\n"}{end}' | sort > /tmp/pods.txt
 
-# Get all Cilium endpoint IPs
-CALICO_POD=$(kubectl get pod -n kube-system -l k8s-app=cilium -o name | head -1)
-kubectl exec -n kube-system $CALICO_POD -- cilium endpoint list -o json | \
-  python3 -c "import json,sys; [print(e['status']['networking']['addressing'][0]['ipv4']) for e in json.load(sys.stdin) if e.get('status',{}).get('networking',{}).get('addressing')]" | sort > /tmp/cilium-ips.txt
+# Get all Kubernetes pods represented by CiliumEndpoint objects
+kubectl get ciliumendpoints --all-namespaces --no-headers | \
+  awk '$2 !~ /^cilium-health-/ {print $1"/"$2}' | sort > /tmp/cilium-endpoints.txt
 
-# Find pod IPs not in Cilium endpoint list
-diff /tmp/pod-ips.txt /tmp/cilium-ips.txt
+# Find pods not represented as Cilium endpoints
+comm -23 /tmp/pods.txt /tmp/cilium-endpoints.txt
 ```
 
 ## Step 3: Inspect Host-Network Pods
@@ -65,7 +65,6 @@ Host-network pods use the node's IP and are typically not managed as Cilium endp
 
 ```bash
 # List all host-network pods (these are expected to be unmanaged in most cases)
-kubectl get pods --all-namespaces -o wide | grep "true"
 kubectl get pods --all-namespaces -o jsonpath='{range .items[?(@.spec.hostNetwork==true)]}{.metadata.namespace}{"\t"}{.metadata.name}{"\n"}{end}'
 
 # Verify that Cilium system pods themselves use host network (expected)
@@ -105,15 +104,15 @@ kubectl delete pod <unmanaged-pod>
 # The deployment/replicaset will recreate it through Cilium
 
 # After recreation, verify the pod is now managed
-cilium endpoint list | grep <pod-ip>
+kubectl get ciliumendpoints --all-namespaces | grep <unmanaged-pod>
 ```
 
 ## Best Practices
 
-- Regularly audit unmanaged pods using `cilium endpoint list` comparisons in your monitoring pipeline
-- Use Cilium's `--ensure-no-host-ns-pods` flag to alert on unexpected host-network pods
+- Regularly audit unmanaged pods using `CiliumEndpoint` comparisons in your monitoring pipeline
+- Use Cilium's `node.cilium.io/agent-not-ready` taint to prevent pods from starting before Cilium is ready on a node
 - In security-sensitive environments, use Cilium's default-deny policies which require endpoints to be managed
-- Monitor Cilium endpoint creation failures in Cilium agent metrics
+- Monitor the `cilium_endpoint`, `cilium_endpoint_state`, and `cilium_unmanaged_pods` metrics
 - Document expected unmanaged pods (system DaemonSets with hostNetwork) to distinguish them from problems
 
 ## Conclusion
