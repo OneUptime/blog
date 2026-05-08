@@ -53,7 +53,7 @@ cilium status
 
 ```bash
 # Check current policy enforcement mode
-cilium config view | grep policy-enforcement
+cilium config view | grep enable-policy
 ```
 
 ## Implementing Security Policies
@@ -91,12 +91,12 @@ spec:
 kubectl apply -f policy.yaml
 
 # Verify the policy was accepted
-kubectl get cnp -n production
+kubectl get ciliumclusterwidenetworkpolicies cluster-baseline-security
 ```
 
 ### Hardening with Default-Deny
 
-Implement a default-deny baseline to ensure no traffic flows unless explicitly allowed:
+Implement a default-deny baseline to ensure workload traffic flows only when explicitly allowed:
 
 ```yaml
 # Default-deny policy ensures zero-trust networking
@@ -127,7 +127,8 @@ hubble observe --verdict DROPPED --namespace production --output compact
 
 # Check endpoint security status
 # List all active policies
-cilium policy get -o json | jq '.[].metadata.name'
+kubectl get ciliumnetworkpolicies --all-namespaces -o json | jq '.items[].metadata.name'
+kubectl get ciliumclusterwidenetworkpolicies -o json | jq '.items[].metadata.name'
 ```
 
 ## Advanced Security Configuration
@@ -141,10 +142,10 @@ For enhanced protection, consider these additional hardening measures:
 #   --set policyEnforcementMode=always
 
 # Verify the current enforcement mode
-cilium config view | grep policy-enforcement
+cilium config view | grep enable-policy
 
 # List all identities and verify they match expected workloads
-cilium identity list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg identity list
 ```
 
 
@@ -180,7 +181,7 @@ After applying security controls, verify they are working correctly:
 
 ```bash
 # Verify policy is applied
-cilium endpoint list
+kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list
 ```
 
 ```bash
@@ -190,12 +191,12 @@ cilium connectivity test
 
 ```bash
 # Monitor for policy drops
-cilium monitor --type drop --output json | head -20
+kubectl -n kube-system exec ds/cilium -- cilium-dbg monitor --type drop --json | head -20
 ```
 
 ## Troubleshooting
 
-- **Policy not taking effect**: Verify endpoint labels match policy selectors with `cilium endpoint list -o json | jq '.[] | .status.labels'`.
+- **Policy not taking effect**: Verify endpoint labels match policy selectors with `kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint list -o json | jq '.[] | .status.labels'`.
 - **Legitimate traffic blocked**: Check Hubble for specific drop reasons with `hubble observe --verdict DROPPED --namespace production`.
 - **High latency after policy application**: L7 policies route through Envoy proxy. Consider using L3/L4 policies where L7 inspection is not needed.
 - **Cilium agent errors**: Check agent logs with `kubectl -n kube-system logs ds/cilium -c cilium-agent --tail=50`.
