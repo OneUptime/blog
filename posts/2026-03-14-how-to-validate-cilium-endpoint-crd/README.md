@@ -19,7 +19,7 @@ This guide provides validation checks you can run manually or automate.
 ## Prerequisites
 
 - Kubernetes cluster with Cilium installed (v1.14+)
-- kubectl and Cilium CLI configured
+- kubectl, Cilium CLI, and access to `cilium-dbg` configured
 - jq installed for JSON processing
 
 ## Validating Endpoint Existence
@@ -55,13 +55,15 @@ fi
 ```bash
 # Check for endpoints not in ready state
 
-cilium endpoint list -o json | \
+cilium-dbg endpoint list -o json | \
   jq '[.[] | select(.status.state != "ready")] | length'
 
-# Check for reserved identities assigned unexpectedly
+# Check for reserved identities assigned unexpectedly to pod endpoints
 kubectl get ciliumendpoints --all-namespaces -o json | jq -r '
   .items[] |
-  select(.status.identity.id < 100) |
+  select((.metadata.name | startswith("cilium-health-") | not) and
+    (.status.identity.id // 0) > 0 and
+    (.status.identity.id // 0) < 256) |
   "WARNING: \(.metadata.namespace)/\(.metadata.name) has reserved identity"'
 ```
 
@@ -96,12 +98,14 @@ kubectl get ciliumendpoints --all-namespaces -o json | jq -r '
 
 ## Validating Policy Enforcement
 
+In Cilium's default policy enforcement mode, `enforcing: false` is normal for endpoints that are not selected by a policy. Use this check to confirm endpoints you expect to be policy-selected.
+
 ```bash
 kubectl get ciliumendpoints --all-namespaces -o json | jq -r '
   .items[] |
-  select(.status.policy.ingress.enforcing == false or
-    .status.policy.egress.enforcing == false) |
-  "NOT ENFORCING: \(.metadata.namespace)/\(.metadata.name)"'
+  select((.status.policy.ingress.enforcing // false) == false or
+    (.status.policy.egress.enforcing // false) == false) |
+  "POLICY NOT ENFORCING (confirm expected): \(.metadata.namespace)/\(.metadata.name)"'
 ```
 
 ## Verification
