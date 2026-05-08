@@ -102,7 +102,7 @@ Check the assigned port after starting:
 
 ```bash
 # Find the dynamically assigned port
-podman port nginx
+podman port systemd-nginx
 ```
 
 ## Reload and Verify
@@ -115,7 +115,7 @@ systemctl --user daemon-reload
 systemctl --user start nginx.service
 
 # Verify published ports
-podman port nginx
+podman port systemd-nginx
 
 # Test connectivity
 curl http://localhost:8080
