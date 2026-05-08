@@ -47,7 +47,7 @@ sudo dnf module enable -y container-tools:rhel8
 sudo dnf install -y podman
 ```
 
-## Step 3: Install the Full Container Toolkit
+## Step 3: Install Additional Container Tools
 
 ```bash
 # Install complementary tools
@@ -125,7 +125,7 @@ sudo firewall-cmd --reload
 
 ## Running a Practical Example
 
-Deploy a multi-container application:
+Deploy two containers on a custom network:
 
 ```bash
 # Create a custom network
@@ -137,7 +137,7 @@ podman run -d \
   --network app-network \
   docker.io/library/redis:alpine
 
-# Run an application that connects to Redis
+# Run a web frontend on the same network
 podman run -d \
   --name web-frontend \
   --network app-network \
@@ -147,7 +147,7 @@ podman run -d \
 # Verify both containers are running
 podman ps
 
-# Check network connectivity between containers
+# Check name resolution between containers
 podman exec web-frontend ping -c 2 redis-backend
 
 # Clean up
@@ -235,6 +235,9 @@ sudo ausearch -m AVC -ts recent | grep podman
 # Temporarily set SELinux to permissive for debugging (not recommended for production)
 sudo setenforce 0
 
+# Install policy generation tools if needed
+sudo dnf install -y policycoreutils-python-utils
+
 # Generate a custom policy for persistent fixes
 sudo ausearch -m AVC -ts recent | audit2allow -M my-podman
 sudo semodule -i my-podman.pp
@@ -253,13 +256,13 @@ podman system reset
 podman system migrate
 ```
 
-If you need newer Podman versions than what AlmaLinux provides:
+If an AlmaLinux 8 system is using an older container-tools stream:
 
 ```bash
-# Check if a newer stream is available (AlmaLinux 8)
+# Check available container-tools streams
 sudo dnf module list container-tools
 
-# Switch to a newer stream
+# Switch to the supported rolling stream
 sudo dnf module switch-to container-tools:rhel8
 ```
 
