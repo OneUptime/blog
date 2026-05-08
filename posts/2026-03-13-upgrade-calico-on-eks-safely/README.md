@@ -18,11 +18,11 @@ This guide covers the safe upgrade procedure for Calico on EKS, addressing both 
 
 ## Prerequisites
 
-- EKS cluster with Calico installed (Tigera Operator or manifest mode)
+- EKS cluster with Calico installed (Tigera Operator for the rolling upgrade procedure below; manifest installs should follow the manifest upgrade path in the Calico documentation)
 - `aws` CLI with appropriate permissions
 - `eksctl` installed
 - `kubectl` with cluster-admin access
-- `calicoctl` matching the current installed version
+- `calicoctl` matching the current installed version before the upgrade, and the target version after the upgrade
 
 ## Step 1: Validate Pre-Upgrade State
 
@@ -37,15 +37,14 @@ aws eks describe-cluster \
   --query "cluster.status" -o text
 
 # Check current Calico version
-kubectl get pods -n calico-system \
-  -o jsonpath='{.items[0].spec.containers[0].image}' | grep calico
+calicoctl version
 
 # Verify all Calico pods are running
 kubectl get pods -n calico-system -o wide
 kubectl get pods -n tigera-operator -o wide
 
 # Verify node status is healthy
-calicoctl node status
+kubectl get tigerastatus
 kubectl get nodes
 ```
 
@@ -57,6 +56,7 @@ Verify the target Calico version supports your EKS Kubernetes version.
 # Get current EKS Kubernetes version
 aws eks describe-cluster \
   --name <cluster-name> \
+  --region <region> \
   --query "cluster.version" -o text
 
 # Check Calico compatibility matrix
@@ -78,13 +78,21 @@ BACKUP_DATE=$(date +%Y%m%d-%H%M%S)
 
 # Backup all policy and configuration resources
 for resource in felixconfiguration bgpconfiguration ippools \
-    globalnetworkpolicies networkpolicies hostendpoints; do
+    globalnetworkpolicies hostendpoints; do
+  calicoctl get $resource -o yaml > calico-eks-backup-${resource}-$BACKUP_DATE.yaml
+  echo "Backed up: $resource"
+done
+
+for resource in networkpolicies; do
   calicoctl get $resource -A -o yaml > calico-eks-backup-${resource}-$BACKUP_DATE.yaml
   echo "Backed up: $resource"
 done
 
 # Store backups in S3 for safety
-aws s3 cp calico-eks-backup-*.yaml s3://<your-backup-bucket>/calico-upgrades/$BACKUP_DATE/
+aws s3 cp . s3://<your-backup-bucket>/calico-upgrades/$BACKUP_DATE/ \
+  --recursive \
+  --exclude "*" \
+  --include "calico-eks-backup-*-$BACKUP_DATE.yaml"
 ```
 
 ## Step 4: Perform Rolling Calico Upgrade
@@ -92,9 +100,12 @@ aws s3 cp calico-eks-backup-*.yaml s3://<your-backup-bucket>/calico-upgrades/$BA
 Upgrade Calico using the Tigera Operator rolling update.
 
 ```bash
-# Step 1: Upgrade Tigera Operator first
-kubectl apply --server-side \
-  -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml
+# Step 1: Apply updated Calico CRDs and Tigera Operator manifest
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+
+kubectl apply --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
 
 # Monitor operator upgrade
 kubectl rollout status deployment tigera-operator -n tigera-operator --timeout=5m
@@ -102,9 +113,8 @@ kubectl rollout status deployment tigera-operator -n tigera-operator --timeout=5
 # Step 2: Check that the operator is ready before proceeding
 kubectl get pods -n tigera-operator
 
-# Step 3: Apply the new Calico custom resources
-kubectl apply \
-  -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml
+# Step 3: Keep your existing Installation custom resource settings
+kubectl get installation default -o yaml
 
 # Step 4: Monitor the rolling upgrade across all nodes
 kubectl get pods -n calico-system -w
@@ -116,12 +126,20 @@ Verify Calico is working correctly after the upgrade.
 
 ```bash
 # Verify new Calico version is deployed
-kubectl get clusterinformation default -o yaml | grep calicoVersion
+calicoctl version
 
 # Check TigeraStatus shows Available
 kubectl get tigerastatus
 
-# Run a network policy test to confirm enforcement continues
+# Run a network policy smoke test to confirm enforcement continues
+kubectl run upgrade-validation-server \
+  --image=nginx:1.27-alpine \
+  --labels=test=upgrade-validation \
+  --port=80
+kubectl wait pod upgrade-validation-server \
+  --for=condition=Ready \
+  --timeout=90s
+
 kubectl apply -f - <<EOF
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -136,11 +154,20 @@ spec:
   - Ingress
 EOF
 
-# Verify policy is recognized by Calico
-calicoctl get networkpolicies -n default
+# Verify the default-deny ingress policy is enforced; this should time out
+SERVER_IP=$(kubectl get pod upgrade-validation-server -o jsonpath='{.status.podIP}')
+if kubectl run upgrade-validation-client \
+    --rm -i --restart=Never \
+    --image=busybox:1.36 \
+    -- wget -T 5 -qO- "http://$SERVER_IP"; then
+  echo "NetworkPolicy test failed: ingress was not denied"
+else
+  echo "NetworkPolicy test passed: ingress was denied"
+fi
 
 # Clean up test policy
 kubectl delete networkpolicy upgrade-validation-test
+kubectl delete pod upgrade-validation-server
 ```
 
 ## Best Practices
@@ -148,7 +175,7 @@ kubectl delete networkpolicy upgrade-validation-test
 - Coordinate Calico upgrades with EKS Kubernetes version upgrades to minimize change windows
 - Store Calico backup files in S3 before every upgrade
 - Use `eksctl` for EKS node group upgrades to ensure cordon/drain is handled properly
-- Run `calicoctl node status` on several nodes after upgrade to confirm BGP is stable
+- If using Calico networking with BGP, run `calicoctl node status` on several nodes after upgrade to confirm BGP is stable
 - Monitor VPC flow logs for unexpected traffic drops in the 30 minutes following upgrade
 
 ## Conclusion
