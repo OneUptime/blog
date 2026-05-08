@@ -16,7 +16,7 @@ Container health checks are a critical part of running reliable services. Withou
 
 ## Understanding Health Checks
 
-A health check is a command that Podman runs inside your container at regular intervals. If the command exits with code 0, the container is considered healthy. Any other exit code marks it as unhealthy.
+A health check is a command that Podman runs inside your container at regular intervals. If the command exits with code 0, the container is considered healthy. Failed checks count toward the configured retry limit, and Podman marks the container as unhealthy after the allowed retries are exceeded.
 
 ## Adding a Health Check at Container Creation
 
@@ -62,8 +62,9 @@ podman run -d --name web \
   --health-cmd "curl -f http://localhost:80/ || exit 1" \
   nginx:latest
 
-# TCP port check using bash
+# PostgreSQL readiness check
 podman run -d --name db \
+  -e POSTGRES_PASSWORD=example \
   --health-cmd "pg_isready -U postgres || exit 1" \
   postgres:15
 
