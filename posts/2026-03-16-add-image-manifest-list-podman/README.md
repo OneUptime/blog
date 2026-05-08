@@ -21,10 +21,10 @@ The `podman manifest add` command adds an image to an existing manifest list.
 ```bash
 # Syntax
 
-podman manifest add <manifest-list> <image>
+podman manifest add <manifest-list> [transport:]<image>
 
 # Example: Add a local image
-podman manifest add myapp:latest myapp:amd64
+podman manifest add localhost/myapp:latest containers-storage:localhost/myapp:amd64
 ```
 
 ## Step-by-Step Example
@@ -41,20 +41,20 @@ CMD ["sh", "-c", "echo Platform: $(uname -m)"]
 EOF
 
 # Build images for different architectures
-podman build --platform linux/amd64 -t myapp:amd64 .
-podman build --platform linux/arm64 -t myapp:arm64 .
-podman build --platform linux/arm/v7 -t myapp:armv7 .
+podman build --platform linux/amd64 -t localhost/myapp:amd64 .
+podman build --platform linux/arm64 -t localhost/myapp:arm64 .
+podman build --platform linux/arm/v7 -t localhost/myapp:armv7 .
 
 # Create a manifest list
-podman manifest create myapp:latest
+podman manifest create localhost/myapp:latest
 
 # Add each image to the manifest list
-podman manifest add myapp:latest myapp:amd64
-podman manifest add myapp:latest myapp:arm64
-podman manifest add myapp:latest myapp:armv7
+podman manifest add localhost/myapp:latest containers-storage:localhost/myapp:amd64
+podman manifest add localhost/myapp:latest containers-storage:localhost/myapp:arm64
+podman manifest add localhost/myapp:latest containers-storage:localhost/myapp:armv7
 
 # Inspect the result
-podman manifest inspect myapp:latest
+podman manifest inspect localhost/myapp:latest
 ```
 
 ## Adding with Explicit Platform Override
@@ -66,20 +66,20 @@ Sometimes the image metadata does not have the correct platform information. You
 podman manifest add \
   --arch amd64 \
   --os linux \
-  myapp:latest myapp:amd64
+  localhost/myapp:latest containers-storage:localhost/myapp:amd64
 
 # Add an ARM image with variant
 podman manifest add \
   --arch arm \
   --os linux \
   --variant v7 \
-  myapp:latest myapp:armv7
+  localhost/myapp:latest containers-storage:localhost/myapp:armv7
 
 # Add an ARM64 image
 podman manifest add \
   --arch arm64 \
   --os linux \
-  myapp:latest myapp:arm64
+  localhost/myapp:latest containers-storage:localhost/myapp:arm64
 ```
 
 ## Adding Remote Images
@@ -88,11 +88,11 @@ You can add images directly from a registry without pulling them locally first.
 
 ```bash
 # Add a remote image to the manifest list
-podman manifest add myapp:latest docker://registry.example.com/myapp:amd64
-podman manifest add myapp:latest docker://registry.example.com/myapp:arm64
+podman manifest add localhost/myapp:latest docker://registry.example.com/myapp:amd64
+podman manifest add localhost/myapp:latest docker://registry.example.com/myapp:arm64
 
 # Add from Docker Hub
-podman manifest add myapp:latest docker://docker.io/library/myapp:amd64
+podman manifest add localhost/myapp:latest docker://docker.io/yourusername/myapp:amd64
 ```
 
 ## Adding All Architectures from a Multi-Arch Image
@@ -101,10 +101,10 @@ If you want to include all platforms from an existing multi-arch image, use the 
 
 ```bash
 # Add all platform variants from a multi-arch source image
-podman manifest add --all myapp:latest docker://alpine:3.19
+podman manifest add --all localhost/myapp:latest docker://alpine:3.19
 
 # This adds every platform variant that alpine:3.19 supports
-podman manifest inspect myapp:latest
+podman manifest inspect localhost/myapp:latest
 ```
 
 ## Adding with Features and OS Version
@@ -117,12 +117,12 @@ podman manifest add \
   --os windows \
   --os-version "10.0.17763.0" \
   --arch amd64 \
-  myapp:latest myapp:windows-ltsc2019
+  localhost/myapp:latest containers-storage:localhost/myapp:windows-ltsc2019
 
 # Add with features
 podman manifest add \
   --features "win32k" \
-  myapp:latest myapp:windows-special
+  localhost/myapp:latest containers-storage:localhost/myapp:windows-special
 ```
 
 ## Verifying Added Images
@@ -131,10 +131,10 @@ After adding images, verify the manifest list contents.
 
 ```bash
 # Full inspection
-podman manifest inspect myapp:latest
+podman manifest inspect localhost/myapp:latest
 
 # Check specific platform entries
-podman manifest inspect myapp:latest | \
+podman manifest inspect localhost/myapp:latest | \
   jq '.manifests[] | {arch: .platform.architecture, os: .platform.os, variant: .platform.variant}'
 ```
 
@@ -160,7 +160,7 @@ Expected output:
 
 ## Adding Images Incrementally
 
-You can add images to a manifest list over time, which is useful in CI/CD pipelines where different architectures build on different machines.
+You can add images to a manifest list over time, which is useful in CI/CD pipelines after different architectures have been built on different machines.
 
 ```bash
 #!/bin/bash
@@ -172,31 +172,24 @@ IMAGE="myapp"
 TAG="v1.0"
 ARCH="${1:?Usage: $0 <arch>}"
 
-# Build for this architecture
-podman build --platform "linux/${ARCH}" \
-  -t "${REGISTRY}/${IMAGE}:${TAG}-${ARCH}" .
-
-# Push the architecture-specific image
-podman push "${REGISTRY}/${IMAGE}:${TAG}-${ARCH}"
-
-# Create manifest if it does not exist, or add to existing
-podman manifest create "${REGISTRY}/${IMAGE}:${TAG}" 2>/dev/null || true
+# Create manifest if it does not exist, or amend it if it already exists
+podman manifest create --amend "${REGISTRY}/${IMAGE}:${TAG}"
 
 # Add this architecture to the manifest
 podman manifest add \
   "${REGISTRY}/${IMAGE}:${TAG}" \
-  "${REGISTRY}/${IMAGE}:${TAG}-${ARCH}"
+  "docker://${REGISTRY}/${IMAGE}:${TAG}-${ARCH}"
 
 echo "Added ${ARCH} to manifest ${REGISTRY}/${IMAGE}:${TAG}"
 ```
 
-Run on each build machine:
+Run after each architecture-specific image has been pushed:
 
 ```bash
-# On AMD64 build machine
+# After the AMD64 image is pushed
 ./add-to-manifest.sh amd64
 
-# On ARM64 build machine
+# After the ARM64 image is pushed
 ./add-to-manifest.sh arm64
 ```
 
@@ -206,14 +199,14 @@ If you accidentally add two images for the same platform, the manifest list will
 
 ```bash
 # Check for duplicates
-podman manifest inspect myapp:latest | \
-  jq '[.manifests[].platform.architecture] | group_by(.) | map(select(length > 1))'
+podman manifest inspect localhost/myapp:latest | \
+  jq '[.manifests[].platform | {os, architecture, variant}] | group_by(.) | map(select(length > 1))'
 
 # If duplicates exist, remove the old entry first
-podman manifest remove myapp:latest sha256:<old-digest>
+podman manifest remove localhost/myapp:latest sha256:<old-digest>
 
 # Then add the correct one
-podman manifest add myapp:latest myapp:amd64-fixed
+podman manifest add localhost/myapp:latest containers-storage:localhost/myapp:amd64-fixed
 ```
 
 ## Complete CI/CD Workflow
@@ -242,7 +235,7 @@ for ARCH in "${PLATFORMS[@]}"; do
     -t "${PLATFORM_TAG}" \
     .
 
-  podman manifest add "${MANIFEST}" "${PLATFORM_TAG}"
+  podman manifest add "${MANIFEST}" "containers-storage:${PLATFORM_TAG}"
 
   echo "Added linux/${ARCH} to manifest"
 done
