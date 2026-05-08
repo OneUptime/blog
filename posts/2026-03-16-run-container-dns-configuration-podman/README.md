@@ -12,7 +12,7 @@ Description: Learn how to configure custom DNS servers, search domains, and DNS 
 
 DNS resolution inside containers is critical for connecting to external services, databases, and APIs. By default, Podman inherits DNS settings from the host, but you often need to customize DNS behavior. You might want to use internal DNS servers, add search domains for short hostname resolution, or configure specific DNS options for reliability.
 
-This guide covers all DNS configuration options available in Podman.
+This guide covers common DNS configuration options available in Podman.
 
 ---
 
@@ -45,7 +45,7 @@ podman run --rm --dns 1.1.1.1 --dns 1.0.0.1 alpine sh -c "
 podman run --rm --dns 10.0.0.53 --dns 10.0.0.54 alpine cat /etc/resolv.conf
 ```
 
-You can specify multiple `--dns` flags. The resolv.conf will list them in the order provided.
+You can specify multiple `--dns` flags. On a container without Podman's embedded network DNS, the resolv.conf will list them in the order provided.
 
 ## Setting DNS Search Domains
 
@@ -71,7 +71,7 @@ podman run --rm \
 
 ## Setting DNS Options
 
-Use `--dns-option` (or `--dns-opt`) to add options to resolv.conf:
+Use `--dns-option` to add options to resolv.conf:
 
 ```bash
 # Add DNS options for timeout and retry behavior
@@ -130,13 +130,14 @@ podman run -d --name web --network app-network alpine sleep infinity
 # Containers can resolve each other by name via the embedded DNS
 podman exec web ping -c 2 db
 
-# You can still add custom DNS servers alongside network DNS
+# You can still add custom DNS servers for non-container queries
 podman run -d --name api \
   --network app-network \
   --dns 8.8.8.8 \
   alpine sleep infinity
 
-# The container can resolve both container names and external hosts
+# With DNS enabled on the network, Podman's embedded DNS resolves container names
+# and forwards external queries to the configured DNS server
 podman exec api sh -c "
   ping -c 1 db && echo 'Can resolve container name'
   ping -c 1 google.com && echo 'Can resolve external host'
@@ -173,7 +174,7 @@ podman run --rm \
 If you need a container with no DNS resolution:
 
 ```bash
-# Using --network none disables all networking including DNS
+# Using --network none disables networking, so DNS queries cannot succeed
 podman run --rm --network none alpine sh -c "
   cat /etc/resolv.conf 2>/dev/null || echo 'No resolv.conf'
   ping -c 1 google.com 2>&1 || echo 'No DNS resolution (expected)'
@@ -233,6 +234,6 @@ DNS configuration in Podman gives you full control over name resolution:
 - `--dns-option`: Set resolver options like timeout, attempts, and rotation
 - `--add-host`: Add static hostname-to-IP mappings
 - Custom networks provide automatic container-to-container DNS
-- `--network none` disables all DNS
+- `--network none` disables networking, so DNS queries cannot succeed
 
 Configure DNS to match your network environment, and use search domains and DNS options to optimize resolution behavior for your workloads.
