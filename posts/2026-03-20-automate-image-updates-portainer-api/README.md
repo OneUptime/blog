@@ -16,7 +16,7 @@ Portainer's REST API provides endpoints to pull images, update stacks, and redep
 graph LR
     Code[Developer Push] --> CI[CI Pipeline]
     CI -->|Build & Push| Registry[Container Registry]
-    CI -->|POST /stacks/{id}/git/redeploy| Portainer[Portainer API]
+    CI -->|PUT /stacks/{id}?endpointId={endpointId}| Portainer[Portainer API]
     Portainer --> Container[Updated Service]
 ```
 
@@ -30,7 +30,7 @@ Generate an API token in Portainer under **My Account > Access Tokens**.
 # List all stacks to get their IDs
 
 curl -s https://portainer:9443/api/stacks \
-  -H "Authorization: Bearer $TOKEN" | jq '.[] | {id: .Id, name: .Name}'
+  -H "X-API-Key: $TOKEN" | jq '.[] | {id: .Id, name: .Name}'
 ```
 
 ## Step 3: Update a Stack Image via API
@@ -42,53 +42,54 @@ ENDPOINT_ID=1
 
 # Step 1: Pull the new image on the environment
 curl -X POST "https://portainer:9443/api/endpoints/${ENDPOINT_ID}/docker/images/create?fromImage=my-registry/api&tag=1.6.0" \
-  -H "Authorization: Bearer $TOKEN"
+  -H "X-API-Key: $TOKEN"
 
 # Step 2: Update the stack with the new image reference
 curl -X PUT "https://portainer:9443/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "StackFileContent": "version: \"3.8\"\nservices:\n  api:\n    image: my-registry/api:1.6.0\n    ports:\n      - \"8080:8080\"\n",
     "Env": [],
     "Prune": false,
-    "PullImage": true
+    "RepullImageAndRedeploy": true
   }'
 ```
 
 ## Step 4: CI/CD Pipeline Integration
 
-Add the Portainer update step to your GitHub Actions or GitLab CI pipeline:
+Add the Portainer update step to your GitHub Actions or GitLab CI pipeline. In GitHub Actions, this deploy job fits into a workflow that already defines the `build` job:
 
 ```yaml
 # .github/workflows/deploy.yml
-deploy:
-  runs-on: ubuntu-latest
-  needs: build
-  if: github.ref == 'refs/heads/main'
-  steps:
-    - name: Update Portainer Stack
-      env:
-        PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
-        PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        # Pull the new image via Portainer API
-        curl -X POST "${PORTAINER_URL}/api/endpoints/1/docker/images/create?fromImage=my-registry/api&tag=${IMAGE_TAG}" \
-          -H "Authorization: Bearer ${PORTAINER_TOKEN}"
-        
-        # Get current stack file content
-        STACK=$(curl -s "${PORTAINER_URL}/api/stacks/5" \
-          -H "Authorization: Bearer ${PORTAINER_TOKEN}")
-        
-        # Update image tag in stack file and redeploy
-        UPDATED_CONTENT=$(echo "$STACK" | jq -r '.StackFileContent' | \
-          sed "s|my-registry/api:[^ ]*|my-registry/api:${IMAGE_TAG}|g")
-        
-        curl -X PUT "${PORTAINER_URL}/api/stacks/5?endpointId=1" \
-          -H "Authorization: Bearer ${PORTAINER_TOKEN}" \
-          -H "Content-Type: application/json" \
-          -d "{\"StackFileContent\": $(echo "$UPDATED_CONTENT" | jq -Rs .), \"PullImage\": true}"
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Update Portainer Stack
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_TOKEN: ${{ secrets.PORTAINER_TOKEN }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Pull the new image via Portainer API
+          curl -X POST "${PORTAINER_URL}/api/endpoints/1/docker/images/create?fromImage=my-registry/api&tag=${IMAGE_TAG}" \
+            -H "X-API-Key: ${PORTAINER_TOKEN}"
+
+          # Get current stack file content
+          STACK=$(curl -s "${PORTAINER_URL}/api/stacks/5/file" \
+            -H "X-API-Key: ${PORTAINER_TOKEN}")
+
+          # Update image tag in stack file and redeploy
+          UPDATED_CONTENT=$(echo "$STACK" | jq -r '.StackFileContent' | \
+            sed "s|my-registry/api:[^ ]*|my-registry/api:${IMAGE_TAG}|g")
+
+          curl -X PUT "${PORTAINER_URL}/api/stacks/5?endpointId=1" \
+            -H "X-API-Key: ${PORTAINER_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"StackFileContent\": $(echo "$UPDATED_CONTENT" | jq -Rs .), \"RepullImageAndRedeploy\": true}"
 ```
 
 ## Step 5: Watchtower Alternative
