@@ -43,11 +43,12 @@ kubectl get configmap cilium-config -n kube-system -o yaml
 helm get values cilium -n kube-system
 
 # Check what agent sees
-kubectl exec -n kube-system -l k8s-app=cilium -- cilium status --verbose
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose
 
 # Verify specific settings
 kubectl get configmap cilium-config -n kube-system \
-  -o jsonpath='{.data.tunnel}'
+  -o jsonpath='{.data.routing-mode}'
 kubectl get configmap cilium-config -n kube-system \
   -o jsonpath='{.data.enable-hubble}'
 ```
@@ -81,8 +82,9 @@ kubectl rollout status daemonset/cilium -n kube-system --timeout=300s
 
 ```bash
 cilium status | grep Hubble
-cilium encrypt status
-cilium bpf bandwidth list
+cilium encryption status
+kubectl exec -n kube-system ds/cilium -c cilium-agent -- \
+  cilium-dbg bpf bandwidth list
 ```
 
 ## Common Configuration Conflicts
@@ -92,13 +94,13 @@ cilium bpf bandwidth list
 ```bash
 # These are mutually exclusive
 kubectl get configmap cilium-config -n kube-system \
-  -o jsonpath='{.data.tunnel}'
+  -o jsonpath='{.data.routing-mode}'
 
 # Switch from tunnel to native routing
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set tunnel=disabled \
+  --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set ipv4NativeRoutingCIDR="10.0.0.0/8"
 ```
@@ -121,4 +123,4 @@ kubectl get pods -n kube-system -l k8s-app=cilium \
 
 ## Conclusion
 
-Configuration troubleshooting follows the flow from Helm values to ConfigMap to agent behavior. Always verify what is actually running rather than what you intended. Use `cilium status --verbose` as your primary diagnostic tool.
+Configuration troubleshooting follows the flow from Helm values to ConfigMap to agent behavior. Always verify what is actually running rather than what you intended. Use `cilium-dbg status --verbose` inside a Cilium agent pod as your primary diagnostic tool.
