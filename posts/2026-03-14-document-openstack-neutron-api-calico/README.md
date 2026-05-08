@@ -10,7 +10,7 @@ Description: A guide to documenting the Neutron API integration with Calico for 
 
 ## Introduction
 
-The Neutron API is the interface that all tenants and automation tools use to manage OpenStack networking. When Calico is the backend, every Neutron API call translates to Calico datastore operations that ultimately configure routes and security rules on compute nodes. Operations teams need documentation that maps this entire path so they can diagnose issues at any point in the chain.
+The Neutron API is the interface that all tenants and automation tools use to manage OpenStack networking. When Calico is the backend, supported Neutron network, subnet, instance, and security operations translate to Calico datastore operations that ultimately configure routes and security rules on compute nodes. Operations teams need documentation that maps this entire path so they can diagnose issues at any point in the chain.
 
 This guide helps you create documentation that explains the Neutron-to-Calico translation layer, maps API operations to their Calico equivalents, and provides troubleshooting procedures for integration-specific issues. The documentation should help operators understand what happens behind the scenes when a tenant creates a network or security group.
 
@@ -30,10 +30,10 @@ graph TD
     A[Tenant API Call] --> B[Neutron API Server]
     B --> C[Calico Neutron Plugin]
     C --> D{Operation Type}
-    D -->|Network/Subnet| E[Calico IP Pool]
+    D -->|Network/Subnet| E[Calico datastore metadata]
     D -->|Port| F[Calico Workload Endpoint]
-    D -->|Security Group| G[Calico Profile]
-    D -->|Security Rule| H[Calico Profile Rules]
+    D -->|Security Group| G[Calico policy data]
+    D -->|Security Rule| H[Calico policy rules]
     E --> I[Calico Datastore]
     F --> I
     G --> I
@@ -49,14 +49,14 @@ Document the API-to-Calico mapping:
 
 | Neutron Resource | Calico Resource | Notes |
 |-----------------|-----------------|-------|
-| Network | (logical grouping) | Networks are logical in Calico |
-| Subnet | IPPool allocation | Subnet CIDR maps to IP allocation |
+| Network | (logical grouping) | Network creation is effectively a no-op in Calico |
+| Subnet | Neutron subnet data in Calico datastore | Subnet CIDR and DHCP metadata are preserved |
 | Port | WorkloadEndpoint | Each port creates an endpoint |
-| Security Group | Profile | SG ID becomes profile name |
-| SG Rule (ingress) | Profile ingress rule | Translated per-rule |
-| SG Rule (egress) | Profile egress rule | Translated per-rule |
-| Router | (L3 routing) | Calico handles routing natively |
-| Floating IP | (NAT rule) | Implemented via iptables NAT |
+| Security Group | Calico policy data | Security groups retain their OpenStack function |
+| SG Rule (ingress) | Calico ingress policy rule | Translated per-rule |
+| SG Rule (egress) | Calico egress policy rule | Translated per-rule |
+| Router | (Neutron data model) | Calico provides routed connectivity by default |
+| Floating IP | Routed floating IP plus DNAT/SNAT | Supported when Calico runs as the Neutron core plugin |
 ```
 
 ## Operational Procedures
@@ -83,7 +83,7 @@ echo ""
 echo "4. Verify datastore sync:"
 echo "   # Compare Neutron port count with Calico endpoint count"
 echo "   openstack port list --all-projects -f value | wc -l"
-echo "   calicoctl get workloadendpoints --all-namespaces -o name | wc -l"
+echo "   calicoctl get workloadendpoints --all-namespaces | tail -n +2 | wc -l"
 
 echo ""
 echo "--- Troubleshoot Port Creation ---"
@@ -111,7 +111,7 @@ case ${ISSUE} in
     echo "   etcdctl endpoint health"
     echo ""
     echo "3. Check database connections:"
-    echo "   mysql -e 'SHOW STATUS LIKE "Threads_connected";'"
+    echo "   mysql -e 'SHOW STATUS LIKE \"Threads_connected\";'"
     echo ""
     echo "4. Test manual port creation with debug:"
     echo "   openstack --debug port create --network <net> test-debug-port"
@@ -122,8 +122,8 @@ case ${ISSUE} in
     echo "1. Get the security group ID:"
     echo "   openstack security group show <sg-name> -f value -c id"
     echo ""
-    echo "2. Check Calico profile exists:"
-    echo "   calicoctl get profiles <sg-id> -o yaml"
+    echo "2. Check Calico policy data references the security group:"
+    echo "   calicoctl get networkpolicies --all-namespaces -o yaml | grep <sg-id>"
     echo ""
     echo "3. Check Felix has programmed iptables:"
     echo "   ssh <compute-node> 'sudo iptables-save | grep <sg-id>'"
@@ -192,7 +192,7 @@ openstack network list > /dev/null 2>&1 && echo "OK" || echo "FAIL"
 
 - **Documentation references wrong log paths**: Different deployment methods (packaged, containerized) place logs in different locations. Verify paths on your specific deployment.
 - **API-to-Calico mapping incomplete**: Add entries as new Neutron features are enabled. Not all Neutron features map directly to Calico resources.
-- **Operators unfamiliar with Calico concepts**: Include a glossary mapping Neutron terms to Calico equivalents (security group = profile, port = workload endpoint).
+- **Operators unfamiliar with Calico concepts**: Include a glossary mapping Neutron terms to Calico equivalents (security group = Calico policy data, port = workload endpoint).
 
 ## Conclusion
 
