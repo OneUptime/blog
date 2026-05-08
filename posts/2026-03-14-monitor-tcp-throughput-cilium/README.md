@@ -147,8 +147,8 @@ sum by (instance) (rate(cilium_forward_bytes_total[5m])) * 8
 # Panel 3: TCP connection rate (SYN flags = new connections)
 sum(rate(hubble_tcp_flags_total{flag="SYN"}[5m]))
 
-# Panel 4: TCP error indicators
-sum by (flag) (rate(hubble_tcp_flags_total{flag=~"RST|FIN"}[5m]))
+# Panel 4: TCP reset rate
+sum(rate(hubble_tcp_flags_total{flag="RST"}[5m]))
 
 # Panel 5: Drop rate that affects throughput
 sum(rate(cilium_drop_count_total[5m]))
@@ -171,29 +171,34 @@ metadata:
 data:
   cilium-tcp-throughput.json: |
     {
-      "dashboard": {
-        "title": "Cilium TCP Throughput",
-        "rows": [
-          {
-            "panels": [
-              {
-                "title": "Cluster Throughput (bits/s)",
-                "type": "timeseries",
-                "targets": [
-                  {"expr": "sum(rate(cilium_forward_bytes_total[5m])) * 8"}
-                ]
-              },
-              {
-                "title": "TCP Connection Rate",
-                "type": "timeseries",
-                "targets": [
-                  {"expr": "sum(rate(hubble_tcp_flags_total{flag=\"SYN\"}[5m]))"}
-                ]
-              }
-            ]
-          }
-        ]
-      }
+      "title": "Cilium TCP Throughput",
+      "schemaVersion": 39,
+      "version": 0,
+      "refresh": "30s",
+      "time": {
+        "from": "now-6h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Cluster Throughput (bits/s)",
+          "type": "timeseries",
+          "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+          "targets": [
+            {"expr": "sum(rate(cilium_forward_bytes_total[5m])) * 8"}
+          ]
+        },
+        {
+          "id": 2,
+          "title": "TCP Connection Rate",
+          "type": "timeseries",
+          "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+          "targets": [
+            {"expr": "sum(rate(hubble_tcp_flags_total{flag=\"SYN\"}[5m]))"}
+          ]
+        }
+      ]
     }
 ```
 
@@ -220,11 +225,13 @@ spec:
         spec:
           containers:
             - name: iperf3-test
-              image: networkstatic/iperf3
+              image: alpine:3.20
               command:
                 - sh
                 - -c
                 - |
+                  apk add --no-cache iperf3 curl python3 >/dev/null
+
                   # Run a 10-second throughput test
                   RESULT=$(iperf3 -c iperf3-server.monitoring -t 10 -P 4 --json 2>/dev/null)
                   THROUGHPUT=$(echo "$RESULT" | python3 -c "
