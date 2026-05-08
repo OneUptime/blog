@@ -33,9 +33,9 @@ Identify the IP ranges that need to be permitted through the legacy firewall.
 calicoctl get ippool -o wide
 
 # Note the CIDRs that need firewall rules:
-# 1. Pod CIDR (inter-cluster routing)
+# 1. Pod CIDR (intra-cluster routing)
 # 2. Node IP range (for tunnel endpoints if using IP-in-IP or VXLAN)
-# 3. Service CIDR (if services need to be reachable externally)
+# 3. Service CIDR (if your network exposes service IPs directly)
 
 # Get node IP range
 kubectl get nodes -o jsonpath=\
@@ -50,13 +50,14 @@ Legacy firewalls may block encapsulated protocols. Verify the encapsulation mode
 ```bash
 # Check which encapsulation mode Calico is using
 calicoctl get ippool default-ipv4-ippool \
-  -o jsonpath='{.spec.ipipMode}:{.spec.vxlanMode}'
+  -o yaml
 
 # Encapsulation modes and required firewall rules:
 # IP-in-IP (ipipMode: Always): requires IP protocol 4 (IPIP) to be permitted
 # VXLAN (vxlanMode: Always): requires UDP port 4789 to be permitted
 # CrossSubnet: IPIP/VXLAN only crosses subnet boundaries - check subnet topology
-# Never (pure BGP): requires BGP (TCP 179) to be permitted between nodes
+# No encapsulation (ipipMode and vxlanMode: Never): requires pod CIDRs to be routed
+# If using Calico BGP for routing, TCP 179 must be permitted between BGP peers
 ```
 
 ## Step 3: Test Firewall Rules for Inter-Node Traffic
@@ -66,7 +67,7 @@ Validate that inter-node traffic (including pod traffic) passes through the fire
 ```bash
 # Test IPIP traffic between two nodes (if using IP-in-IP mode)
 # From node1, attempt to reach a pod on node2:
-kubectl run net-test --image=nicolaka/netshoot -- sleep 3600
+kubectl run net-test --image=nicolaka/netshoot --command -- sleep 3600
 POD_IP=$(kubectl get pod net-test -o jsonpath='{.status.podIP}')
 POD_NODE=$(kubectl get pod net-test -o jsonpath='{.spec.nodeName}')
 echo "Pod on node: $POD_NODE, IP: $POD_IP"
@@ -89,10 +90,10 @@ kubectl exec net-test -- curl -m 10 http://example.com
 # Verify the source IP that the external host sees (should be a node IP, not pod IP)
 kubectl exec net-test -- curl -m 10 https://ifconfig.me
 
-# Check that natOutgoing is enabled on the pod IP pool (required for internet access)
+# Check that natOutgoing is enabled on the pod IP pool when pods should NAT through node IPs
 calicoctl get ippool default-ipv4-ippool \
-  -o jsonpath='{.spec.natOutgoing}'
-# Expected: true (pods NAT to node IP for egress)
+  -o yaml
+# Expected: spec.natOutgoing: true (pods NAT to node IP for egress)
 ```
 
 ## Step 5: Validate BGP Traffic Through Firewall (If Using BGP)
@@ -118,7 +119,7 @@ flowchart LR
         R1["TCP 179 - BGP\nbetween nodes and peers"]
         R2["Protocol 4 (IPIP)\nbetween nodes if ipipMode: Always"]
         R3["UDP 4789 - VXLAN\nbetween nodes if vxlanMode: Always"]
-        R4["Pod CIDR egress\nthrough firewall for external access"]
+        R4["Pod or node egress CIDRs\nthrough firewall for external access"]
     end
     NODES[Kubernetes Nodes] --> FW[Legacy Firewall]
     FW --> EXTERNAL[External Network]
@@ -134,7 +135,7 @@ flowchart LR
 - Use `CrossSubnet` encapsulation mode to avoid encapsulation overhead within the same L2 segment
 - Consider native routing mode (BGP, no encapsulation) for the simplest firewall rule set
 - Work with your network team to create firewall rules before deploying pods - retrofitting rules is risky
-- Test connectivity from the pod CIDR range through the firewall during a maintenance window
+- Test connectivity from the pod CIDR range, or from node IPs when using SNAT, through the firewall during a maintenance window
 
 ## Conclusion
 
