@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Calicoctl, Datastore Migration, Automation, Kubernetes
 
-Description: Automate the Calico datastore migration process using calicoctl datastore migrate export with scripts that handle validation, execution, and verification.
+Description: Automate the Calico datastore migration export step using calicoctl datastore migrate export with scripts that handle validation, execution, and verification.
 
 ---
 
 ## Introduction
 
-While datastore migration is typically a one-time operation, automating the process with scripts ensures it is repeatable, testable, and less error-prone. This is especially valuable when migrating multiple clusters or when you need to practice the migration before performing it in production.
+While migrating Calico from an etcdv3 datastore to the Kubernetes datastore is typically a one-time operation, automating the export step with scripts ensures it is repeatable, testable, and less error-prone. This is especially valuable when migrating multiple clusters or when you need to practice the migration before performing it in production.
 
 ## Prerequisites
 
-- Source and target datastore access
-- `calicoctl` configured for migration
+- Existing Calico etcdv3 datastore access and target Kubernetes datastore access for the later import step
+- Latest `calicoctl` installed and configured to access the etcdv3 datastore for export
 - A test environment to validate the automation
 
 ## Automated Migration Script
@@ -31,6 +31,22 @@ echo "Step: datastore migrate export"
 echo "Date: $(date)"
 echo ""
 
+RESOURCE_TYPES=(nodes ippools globalnetworkpolicies globalnetworksets hostendpoints kubecontrollersconfigurations networkpolicies networksets bgpconfigurations bgppeers felixconfigurations ipreservations bgpfilters)
+
+calico_get() {
+  local resource="$1"
+  shift
+
+  case "$resource" in
+    networkpolicies|networksets)
+      calicoctl get "$resource" --all-namespaces "$@"
+      ;;
+    *)
+      calicoctl get "$resource" "$@"
+      ;;
+  esac
+}
+
 # Pre-flight checks
 echo "--- Pre-flight Checks ---"
 calicoctl version || { echo "FAIL: Cannot connect to datastore"; exit 1; }
@@ -39,8 +55,8 @@ echo "Connectivity: OK"
 # Count resources before
 echo ""
 echo "--- Resource Counts (Before) ---"
-for r in nodes ippools globalnetworkpolicies networkpolicies bgpconfigurations bgppeers felixconfigurations; do
-  COUNT=$(calicoctl get "$r" 2>/dev/null | tail -n +2 | wc -l || echo 0)
+for r in "${RESOURCE_TYPES[@]}"; do
+  COUNT=$(calico_get "$r" 2>/dev/null | tail -n +2 | wc -l || echo 0)
   echo "  $r: $COUNT"
 done
 
@@ -49,22 +65,24 @@ echo ""
 echo "--- Creating Backup ---"
 BACKUP_DIR="migration-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
-for r in nodes ippools globalnetworkpolicies networkpolicies bgpconfigurations bgppeers felixconfigurations; do
-  calicoctl get "$r" -o yaml > "$BACKUP_DIR/$r.yaml" 2>/dev/null || true
+for r in "${RESOURCE_TYPES[@]}"; do
+  calico_get "$r" -o yaml > "$BACKUP_DIR/$r.yaml" 2>/dev/null || true
 done
 echo "Backup saved to $BACKUP_DIR"
 
 # Execute migration step
 echo ""
 echo "--- Executing: calicoctl datastore migrate export ---"
-calicoctl datastore migrate export
-echo "Step complete."
+EXPORT_FILE="$BACKUP_DIR/etcd-data"
+calicoctl datastore migrate export > "$EXPORT_FILE"
+echo "Export saved to $EXPORT_FILE"
 
 # Post-step verification
 echo ""
 echo "--- Post-Step Verification ---"
+test -s "$EXPORT_FILE"
 calicoctl version
-calicoctl get nodes -o wide | head -5
+calico_get nodes -o wide | head -5
 ```
 
 ## CI/CD Pipeline for Migration Testing
@@ -79,10 +97,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup test cluster
+      - name: Create kind config
         run: |
-          # Create a kind cluster with Calico for testing
-          kind create cluster
+          cat > kind-calico.yaml <<'EOF'
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          networking:
+            disableDefaultCNI: true
+          EOF
+
+      - name: Setup test cluster
+        uses: helm/kind-action@v1
+        with:
+          config: kind-calico.yaml
+
+      - name: Install Calico
+        run: |
           kubectl apply -f calico-manifests/
 
       - name: Run migration
@@ -104,4 +134,4 @@ jobs:
 
 ## Conclusion
 
-Automating `calicoctl datastore migrate export` with a structured script that includes pre-flight checks, backups, and post-step verification makes the migration process safer and repeatable. Always test the automation in a non-production environment first.
+Automating `calicoctl datastore migrate export` with a structured script that includes pre-flight checks, backups, an exported migration file, and post-step verification makes the migration process safer and repeatable. Always test the automation in a non-production environment first.
