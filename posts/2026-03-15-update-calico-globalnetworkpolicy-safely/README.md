@@ -35,7 +35,7 @@ Verify the backup file is complete:
 
 ```bash
 grep -c "kind: GlobalNetworkPolicy" gnp-backup-*.yaml
-calicoctl get globalnetworkpolicy --no-headers | wc -l
+calicoctl get globalnetworkpolicy -o yaml | grep -c "kind: GlobalNetworkPolicy"
 ```
 
 ## Reviewing Current Policy State
@@ -69,7 +69,7 @@ spec:
 
 ## Testing Changes with a Staging Policy
 
-Instead of modifying the existing policy directly, create a new policy with a higher order number to test the rule changes:
+Instead of modifying the existing policy directly, create a new policy with a lower order number to give the test rules higher priority:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -78,7 +78,8 @@ metadata:
   name: updated-egress-rules-staging
 spec:
   order: 999
-  selector: "environment == 'staging'"
+  selector: all()
+  namespaceSelector: "environment == 'staging'"
   types:
     - Egress
   egress:
@@ -247,13 +248,13 @@ calicoctl get globalnetworkpolicy -o yaml | grep -B 2 -A 10 "action: Deny"
 If the selector change excluded pods that should be covered, check the pod labels:
 
 ```bash
-kubectl get pods --all-namespaces --show-labels | grep -v "Running"
+kubectl get pods --all-namespaces --show-labels
 ```
 
 If the order change caused unexpected precedence, list all policies sorted by order:
 
 ```bash
-calicoctl get globalnetworkpolicy -o yaml | grep -E "name:|order:" | paste - - | sort -t: -k4 -n
+calicoctl get globalnetworkpolicy -o yaml | awk '/name:/{name=$2} /order:/{print $2, name}' | sort -n
 ```
 
 Remove the staging policy after testing is complete:
