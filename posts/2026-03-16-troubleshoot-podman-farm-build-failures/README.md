@@ -83,7 +83,8 @@ ssh builder@arm64.example.com "echo /run/user/\$(id -u)/podman/podman.sock"
 podman system connection remove arm64-builder
 podman system connection add arm64-builder \
     --identity ~/.ssh/podman_farm \
-    ssh://builder@arm64.example.com/run/user/1001/podman/podman.sock
+    --socket-path /run/user/1001/podman/podman.sock \
+    builder@arm64.example.com
 ```
 
 ## Testing Individual Nodes
@@ -158,8 +159,8 @@ tar cf - . --exclude-from=.containerignore 2>/dev/null | wc -c | numfmt --to=iec
 # Check disk space on each node
 for CONN in amd64-builder arm64-builder; do
     echo "${CONN}:"
-    podman --connection "${CONN}" system info --format '{{.Store.GraphRoot}}'
-    ssh builder@${CONN}.example.com "df -h /"
+    podman --connection "${CONN}" system info --format 'Storage root: {{.Store.GraphRoot}}'
+    podman --connection "${CONN}" system df
 done
 
 # Clean up old images on remote nodes
@@ -180,13 +181,13 @@ echo "Date: $(date)"
 echo ""
 
 # Check farm exists
-if ! podman farm list --format '{{.Name}}' | grep -q "^${FARM_NAME}$"; then
+if ! podman farm list --format '{{.Name}}' | grep -Fxq "${FARM_NAME}"; then
     echo "ERROR: Farm '${FARM_NAME}' does not exist."
     podman farm list
     exit 1
 fi
 
-CONNECTIONS=$(podman farm list --format '{{if eq .Name "'"${FARM_NAME}"'"}}{{.Connections}}{{end}}' | tr ',' ' ')
+CONNECTIONS=$(podman farm list --format '{{if eq .Name "'"${FARM_NAME}"'"}}{{range .Connections}}{{.}}{{"\n"}}{{end}}{{end}}')
 
 for CONN in ${CONNECTIONS}; do
     echo "--- Node: ${CONN} ---"
