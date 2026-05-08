@@ -23,7 +23,7 @@ Key GKE-specific considerations include the Dataplane configuration, node pool O
 
 ## Step 1: Validate GKE Cluster Networking Mode
 
-Cilium on GKE requires VPC-native (alias IP) clusters.
+GKE Dataplane V2 and modern Cilium-on-GKE deployments should use VPC-native (alias IP) clusters.
 
 ```bash
 # Check if the cluster uses VPC-native mode
@@ -32,7 +32,7 @@ gcloud container clusters describe <cluster-name> \
   --zone <zone> \
   --format="get(ipAllocationPolicy.useIpAliases)"
 
-# Expected: true (VPC-native mode required for Cilium)
+# Expected: true (VPC-native mode)
 
 # Also check the pod and service CIDR ranges
 gcloud container clusters describe <cluster-name> \
@@ -72,8 +72,8 @@ gcloud container clusters describe <cluster-name> \
 # Expected for Dataplane V2: "ADVANCED_DATAPATH"
 # Standard: "LEGACY_DATAPATH"
 
-# If Dataplane V2 is enabled, check GKE Cilium pods
-kubectl -n kube-system get pods | grep cilium
+# If Dataplane V2 is enabled, check GKE Dataplane V2 agent pods
+kubectl -n kube-system get pods -l k8s-app=anetd
 ```
 
 ## Step 4: Validate Network Policy Requirements
@@ -81,10 +81,13 @@ kubectl -n kube-system get pods | grep cilium
 GKE has specific considerations for network policy when using Cilium.
 
 ```bash
-# Check if NetworkPolicy is enabled on the cluster
+# Check if NetworkPolicy is enabled on a cluster that uses the legacy dataplane
 gcloud container clusters describe <cluster-name> \
   --zone <zone> \
   --format="get(networkPolicy.enabled)"
+
+# GKE Dataplane V2 has Kubernetes NetworkPolicy enforcement built in.
+# You don't enable or disable it separately on Dataplane V2 clusters.
 
 # If deploying Cilium independently (not Dataplane V2),
 # ensure Calico network policy is NOT enabled simultaneously
@@ -99,8 +102,8 @@ gcloud container clusters describe <cluster-name> \
   --zone <zone> \
   --format="get(nodeConfig.serviceAccount)"
 
-# The service account needs compute permissions for ENI/networking operations
-# Minimum required: roles/container.defaultNodeServiceAccount
+# At minimum, GKE node service accounts need the
+# roles/container.defaultNodeServiceAccount role.
 gcloud projects get-iam-policy <project-id> \
   --flatten="bindings[].members" \
   --filter="bindings.members:serviceAccount:<sa-email>" \
@@ -115,7 +118,7 @@ flowchart TD
     B -- No --> C[Recreate cluster\nwith useIpAliases=true]
     B -- Yes --> D[Node OS: COS\nor Ubuntu?]
     D -- No --> E[Migrate node pool\nto supported OS]
-    D -- Yes --> F[Kernel >= 5.4\nfor BPF features?]
+    D -- Yes --> F[Kernel >= 5.10\nor equivalent?]
     F -- No --> G[Upgrade GKE\nto newer version]
     F -- Yes --> H[No conflicting\nCNI or policy engine?]
     H -- No --> I[Remove conflicting\ncomponents]
@@ -126,8 +129,9 @@ flowchart TD
 
 - Use GKE's built-in Dataplane V2 (Cilium) for seamless integration and Google support
 - If deploying Cilium independently, create a new node pool with the correct OS image type
+- For upstream Cilium on non-Dataplane V2 GKE, create the cluster or node pool with `node.cilium.io/agent-not-ready=true:NoExecute` or use another documented strategy for unmanaged pods
 - Never enable both Calico network policy and Cilium simultaneously on GKE
-- Use Workload Identity for Cilium's GCP API access instead of service account keys
+- Use Workload Identity Federation for GKE for Cilium's GCP API access instead of service account keys
 - Test Cilium features in GKE Autopilot separately - some eBPF features may be restricted
 
 ## Conclusion
