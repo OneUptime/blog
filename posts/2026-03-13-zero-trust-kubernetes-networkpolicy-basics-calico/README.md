@@ -10,14 +10,14 @@ Description: Zero Trust Kubernetes NetworkPolicy basics using Calico as the netw
 
 ## Introduction
 
-Zero Trust with Kubernetes NetworkPolicy Basics Enforced by Calico requires careful policy design in Calico to balance security with performance and availability. The `projectcalico.org/v3` API provides the flexibility needed to handle kubernetes networkpolicy basics while maintaining strict access controls.
+Zero Trust with Kubernetes NetworkPolicy Basics Enforced by Calico requires careful policy design to balance security with performance and availability. The Kubernetes `networking.k8s.io/v1` API defines standard NetworkPolicy resources, while Calico enforces those policies and also provides `projectcalico.org/v3` APIs for Calico-specific policy features when needed.
 
-This guide covers zero trust Kubernetes NetworkPolicy Basics in Calico with production-ready configurations.
+This guide covers zero trust Kubernetes NetworkPolicy Basics in Calico with a starting-point configuration.
 
 ## Prerequisites
 
 - Kubernetes cluster with Calico v3.26+
-- `calicoctl` and `kubectl` installed
+- `kubectl` installed and configured
 
 ## Core Configuration
 
@@ -61,7 +61,7 @@ spec:
 # Apply Kubernetes NetworkPolicy
 kubectl apply -f basic-network-policy.yaml
 
-# Verify policy is enforced by Calico
+# Verify the Kubernetes NetworkPolicy object is present
 kubectl describe networkpolicy allow-frontend-to-backend -n production
 
 # Test connectivity
