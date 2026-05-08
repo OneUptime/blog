@@ -10,7 +10,7 @@ Description: Learn how to optimize Podman build times by structuring Containerfi
 
 > Effective build caching can reduce image build times from minutes to seconds by reusing unchanged layers.
 
-Every instruction in a Containerfile creates a layer. Podman caches these layers and reuses them when the instruction and its context have not changed. Understanding how to structure your Containerfile to maximize cache hits is one of the most impactful build optimizations. This guide covers practical strategies for effective build caching with Podman.
+Build instructions such as `RUN`, `COPY`, and `ADD` create new layers. Podman caches these layers and reuses them when the instruction and its context have not changed. Understanding how to structure your Containerfile to maximize cache hits is one of the most impactful build optimizations. This guide covers practical strategies for effective build caching with Podman.
 
 ---
 
@@ -206,14 +206,14 @@ podman history myapp:latest
 In CI/CD, the cache is often lost between builds. Use these strategies to preserve it.
 
 ```bash
-# Strategy 1: Pull the previous image to seed the cache
-podman pull myregistry.example.com/myapp:latest || true
+# Strategy 1: Use a remote cache repository
 podman build \
-  --cache-from=myregistry.example.com/myapp:latest \
+  --layers \
+  --cache-from=myregistry.example.com/myapp-cache \
+  --cache-to=myregistry.example.com/myapp-cache \
   -t myapp:latest .
 
-# Strategy 2: Use a dedicated cache image
-podman build --layers -t myapp:latest .
+# Strategy 2: Push the final image separately
 podman push myapp:latest myregistry.example.com/myapp:latest
 ```
 
@@ -241,7 +241,9 @@ cat > Containerfile << 'EOF'
 FROM docker.io/library/ubuntu:24.04
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt/lists \
-    apt-get update && apt-get install -y curl vim git
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
+    apt-get update && apt-get install -y --no-install-recommends curl vim git
 EOF
 ```
 
