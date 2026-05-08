@@ -174,13 +174,14 @@ calicoctl get stagednetworkpolicies --all-namespaces -o wide
 Verify traffic flow is unaffected while policies remain staged:
 
 ```bash
-kubectl exec -n checkout deploy/checkout-service -- curl -s -o /dev/null -w "%{http_code}" http://payment-service:443
+kubectl exec -n checkout deploy/checkout-service -- curl -ks -o /dev/null -w "%{http_code}" https://payment-service:443
 ```
 
 Check flow logs for traffic matching staged rules:
 
 ```bash
-kubectl logs -n calico-system -l k8s-app=calico-node --tail=50 | grep "staged"
+calicoctl get felixconfiguration default -o yaml | grep -i flowLogsFileEnabled
+kubectl exec -n calico-system ds/calico-node -c calico-node -- sh -c 'grep "pending_policies" /var/log/calico/flowlogs/flows.log | grep "staged:" | tail -50'
 ```
 
 ## Troubleshooting
