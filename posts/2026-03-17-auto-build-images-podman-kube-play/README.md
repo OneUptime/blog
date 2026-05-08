@@ -45,8 +45,8 @@ metadata:
 spec:
   containers:
     - name: app
-      # Use a local image name (not from a registry)
-      image: localhost/myapp:latest
+      # Use a local image name that matches the build directory
+      image: my-app
       ports:
         - containerPort: 8080
 ```
@@ -58,8 +58,8 @@ spec:
 # The --build flag triggers a build for local images
 podman kube play --build kube.yaml
 
-# Podman looks for a directory named "myapp" with a Containerfile
-# or uses the current directory if the image matches
+# Podman looks for a directory named "my-app" with a Containerfile
+# and uses that directory as the build context
 ```
 
 ## Specifying a Build Context
@@ -68,7 +68,7 @@ podman kube play --build kube.yaml
 # Use --context-dir to point to the build context directory
 podman kube play --build --context-dir ./my-app kube.yaml
 
-# Podman builds localhost/myapp:latest from ./my-app/Containerfile
+# Podman builds my-app from ./my-app/Containerfile
 # then deploys the pod using the freshly built image
 ```
 
@@ -82,21 +82,19 @@ podman kube play --down kube.yaml
 podman kube play --build kube.yaml
 ```
 
-## Using Annotations for Build Context
+## Using the Matching Directory Layout
 
 ```yaml
-# kube-annotated.yaml
+# kube-layout.yaml
 apiVersion: v1
 kind: Pod
 metadata:
   name: myapp
-  annotations:
-    # Tell Podman where to find the Containerfile
-    io.podman.annotations.build.context.dir: "./my-app"
 spec:
   containers:
     - name: app
-      image: localhost/myapp:latest
+      # Podman builds from ./my-app/Containerfile
+      image: my-app
 ```
 
 ## Multiple Containers with Builds
@@ -110,9 +108,9 @@ metadata:
 spec:
   containers:
     - name: frontend
-      image: localhost/frontend:latest
+      image: frontend
     - name: backend
-      image: localhost/backend:latest
+      image: backend
 ```
 
 ```bash
