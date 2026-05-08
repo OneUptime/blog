@@ -31,7 +31,7 @@ Before planning an upgrade, document your current state:
 ```bash
 # Record current Kubernetes version across all components
 
-kubectl version --short 2>/dev/null || kubectl version
+kubectl version
 kubectl get nodes -o custom-columns=\
 NAME:.metadata.name,\
 VERSION:.status.nodeInfo.kubeletVersion,\
@@ -40,6 +40,8 @@ OS:.status.nodeInfo.osImage
 # Check for deprecated API usage that may break in the new version
 # Install kubectl-deprecations plugin or use kubent
 # https://github.com/doitintl/kube-no-trouble
+# This quick inventory only covers resources returned by "kubectl get all";
+# use a dedicated scanner or API server warnings/metrics for a complete check.
 kubectl get all --all-namespaces -o json | python3 -c "
 import sys, json
 resources = json.load(sys.stdin)
@@ -67,6 +69,11 @@ IMAGE:.spec.template.spec.containers[0].image | head -30
 # Check available versions (for kubeadm-based clusters)
 # The general rule: upgrade one minor version at a time
 # e.g., 1.28 -> 1.29 -> 1.30, NOT 1.28 -> 1.30
+# If you use pkgs.k8s.io repositories, switch the package repository
+# to the target minor version before installing packages.
+# Then find the latest patch release for that minor version:
+sudo apt update
+sudo apt-cache madison kubeadm
 
 # Review the changelog for your target version
 # https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/
@@ -125,7 +132,7 @@ kubectl exec -n kube-system $(kubectl get pod -n kube-system \
 # Check 4: Sufficient disk space on nodes
 echo "4. Disk space on nodes:"
 for NODE in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl debug node/$NODE -it --image=busybox -- df -h /host 2>/dev/null | tail -1
+  kubectl debug node/$NODE --image=busybox -- df -h /host 2>/dev/null | tail -1
 done
 
 # Check 5: Backup exists
@@ -146,28 +153,49 @@ For kubeadm-based clusters:
 
 ```bash
 # Step 1: Upgrade the control plane node
-# Install the target version of kubeadm
+# Install the target version of kubeadm.
+# Replace x in 1.29.x-* with the latest patch version you selected.
+sudo apt-mark unhold kubeadm
 sudo apt-get update
-sudo apt-get install -y kubeadm=1.29.0-1.1
+sudo apt-get install -y kubeadm='1.29.x-*'
+sudo apt-mark hold kubeadm
 
 # Verify the upgrade plan
 sudo kubeadm upgrade plan
 
 # Apply the upgrade to the control plane
-sudo kubeadm upgrade apply v1.29.0
+sudo kubeadm upgrade apply v1.29.x
+
+# Drain the control plane node before upgrading its kubelet
+kubectl drain CONTROL_PLANE_NODE --ignore-daemonsets
 
 # Upgrade kubelet and kubectl on the control plane node
-sudo apt-get install -y kubelet=1.29.0-1.1 kubectl=1.29.0-1.1
+sudo apt-mark unhold kubelet kubectl
+sudo apt-get update
+sudo apt-get install -y kubelet='1.29.x-*' kubectl='1.29.x-*'
+sudo apt-mark hold kubelet kubectl
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
 
+# Uncordon the control plane node
+kubectl uncordon CONTROL_PLANE_NODE
+
 # Step 2: Upgrade worker nodes one at a time
-# Drain the worker node
+# On the worker node: upgrade kubeadm first, then update the kubelet configuration
+# sudo apt-mark unhold kubeadm
+# sudo apt-get update
+# sudo apt-get install -y kubeadm='1.29.x-*'
+# sudo apt-mark hold kubeadm
+# sudo kubeadm upgrade node
+
+# Drain the worker node from a machine with kubectl access
 kubectl drain WORKER_NODE --ignore-daemonsets --delete-emptydir-data
 
-# On the worker node: upgrade kubeadm, kubelet, kubectl
-# sudo apt-get install -y kubeadm=1.29.0-1.1 kubelet=1.29.0-1.1 kubectl=1.29.0-1.1
-# sudo kubeadm upgrade node
+# On the worker node: upgrade kubelet and kubectl
+# sudo apt-mark unhold kubelet kubectl
+# sudo apt-get update
+# sudo apt-get install -y kubelet='1.29.x-*' kubectl='1.29.x-*'
+# sudo apt-mark hold kubelet kubectl
 # sudo systemctl daemon-reload
 # sudo systemctl restart kubelet
 
@@ -186,14 +214,16 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION:.status.nodeInfo
 # Verify all system pods are running
 kubectl get pods -n kube-system
 
-# Verify CNI is functioning
-kubectl run upgrade-test --image=nginx --restart=Never
+# Verify pod scheduling and cluster DNS are functioning
+kubectl run upgrade-test --image=busybox:1.36 --restart=Never -- \
+  sh -c 'nslookup kubernetes.default.svc && sleep 30'
 kubectl wait --for=condition=Ready pod/upgrade-test --timeout=60s
-kubectl exec upgrade-test -- curl -s localhost
+kubectl logs upgrade-test
 kubectl delete pod upgrade-test
 
 # Check that all workloads are running
-kubectl get deployments --all-namespaces | grep -v "1/1\|2/2\|3/3"
+kubectl get deployments --all-namespaces --no-headers | \
+  awk '$3 != $4 { print }'
 ```
 
 ## Troubleshooting
