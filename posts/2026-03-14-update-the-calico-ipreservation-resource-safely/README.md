@@ -10,11 +10,11 @@ Description: A step-by-step guide to modifying Calico IPReservation resources in
 
 ## Introduction
 
-Updating Calico resources in a running cluster requires care. A misconfigured IPReservation can disrupt networking, drop traffic, or break BGP peerings. This guide covers a safe workflow for modifying IPReservation resources in production.
+Updating Calico resources in a running cluster requires care. A misconfigured IPReservation can cause future automatic IPAM allocations to avoid the wrong addresses or fail when pools are too constrained. This guide covers a safe workflow for modifying IPReservation resources in production.
 
 The key principle is to treat Calico resource changes like any infrastructure change: review the diff, understand the impact, test in staging, and have a rollback plan ready. Calico resources are declarative, so the same discipline you apply to Kubernetes manifests applies here.
 
-This post provides a repeatable process you can follow every time you need to update a IPReservation resource, whether it is a minor tuning change or a significant configuration shift.
+This post provides a repeatable process you can follow every time you need to update a IPReservation resource, whether you are adding a few addresses or changing reserved CIDR ranges.
 
 ## Prerequisites
 
@@ -49,16 +49,19 @@ diff <(calicoctl get ipreservation -o yaml) ipreservation.yaml
 
 Review each changed field and consider its impact:
 
-- Will this change affect active connections?
-- Does this change require a Felix or BGP restart?
-- Could this change lock you out of nodes?
+- Will this change affect future pod IP assignments?
+- Are any of the newly reserved addresses already assigned? Existing assignments are not released automatically.
+- Will the remaining unreserved IPs be enough for expected pod growth?
 
 ## Step 3: Apply the Update
 
 Apply the updated manifest:
 
 ```bash
-# Apply with calicoctl for validation
+# Validate the manifest before applying it
+calicoctl validate -f ipreservation.yaml
+
+# Apply with calicoctl
 calicoctl apply -f ipreservation.yaml
 ```
 
@@ -72,8 +75,8 @@ Watch for issues in the Calico component logs:
 # Watch calico-node logs for errors
 kubectl logs -n calico-system -l k8s-app=calico-node -f --tail=100
 
-# Check Felix for configuration reload
-kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "config"
+# Check for recent IPAM-related log messages
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "ipam"
 ```
 
 Run connectivity tests to verify that pods can still communicate:
@@ -119,13 +122,13 @@ calicoctl get ipreservation -o yaml
 - Check if Felix is crashlooping: `kubectl get pods -n calico-system`.
 - Review Felix logs for configuration errors.
 
-**BGP sessions dropping (for BGP-related resources):**
-- Check BGP peering status: `calicoctl node status`.
-- Verify ASN numbers and peer IPs are correct.
+**New pods fail to receive IP addresses:**
+- Check IPAM usage: `calicoctl ipam show`.
+- Confirm the reserved CIDRs do not consume too much of an active IP pool.
 
 **Update appears to have no effect:**
 - Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Validate the manifest with `calicoctl validate -f ipreservation.yaml` and check whether the reserved addresses are already assigned. IPReservations only affect automatic allocation requests made after the reservation is created.
 
 
 ## Additional Considerations
@@ -151,7 +154,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crds -o custom-columns=NAME:.metadata.name,VERSIONS:.spec.versions[*].name | grep projectcalico.org
 ```
 
 ### Security Hardening
@@ -160,9 +163,9 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i update ipreservations.crd.projectcalico.org
 
-# Review recent changes to Calico resources (if audit logging is enabled)
+# Review recent events in the Calico namespace
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 ```
 
