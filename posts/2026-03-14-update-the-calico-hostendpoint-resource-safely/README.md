@@ -125,7 +125,7 @@ calicoctl get hostendpoint -o yaml
 
 **Update appears to have no effect:**
 - Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Check for typos in field names; validate the manifest with `calicoctl validate -f hostendpoint.yaml` before applying it.
 
 
 ## Additional Considerations
@@ -150,8 +150,8 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 # Check current Calico version
 calicoctl version
 
-# Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+# Review installed Calico CRD API versions
+kubectl get crds -o custom-columns=NAME:.metadata.name,VERSIONS:.spec.versions[*].name | grep projectcalico
 ```
 
 ### Security Hardening
@@ -159,8 +159,9 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current identity can modify Calico resources
+kubectl auth can-i update hostendpoints.crd.projectcalico.org
+kubectl auth can-i update globalnetworkpolicies.crd.projectcalico.org
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
