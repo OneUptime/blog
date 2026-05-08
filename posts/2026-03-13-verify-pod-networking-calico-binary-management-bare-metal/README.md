@@ -50,18 +50,22 @@ Deploy a test pod on each node to trigger IPAM allocation.
 ```bash
 for node in worker1 worker2 worker3; do
   kubectl run test-$node --image=busybox \
-    --overrides="{\"spec\":{\"nodeName\":\"$node\"}}" -- sleep 60 &
+    --overrides="{\"spec\":{\"nodeName\":\"$node\"}}" --command -- sleep 60 &
 done
 wait
+for node in worker1 worker2 worker3; do
+  kubectl wait --for=condition=Ready pod/test-$node --timeout=120s
+done
 kubectl get pods -o wide | grep test-
-kubectl delete pods -l run
+kubectl delete pod test-worker1 test-worker2 test-worker3
 ```
 
 ## Step 4: Test Cross-Node Pod Connectivity
 
 ```bash
-kubectl run pod-a --image=busybox --overrides='{"spec":{"nodeName":"worker1"}}' -- sleep 300
-kubectl run pod-b --image=busybox --overrides='{"spec":{"nodeName":"worker2"}}' -- sleep 300
+kubectl run pod-a --image=busybox --overrides='{"spec":{"nodeName":"worker1"}}' --command -- sleep 300
+kubectl run pod-b --image=busybox --overrides='{"spec":{"nodeName":"worker2"}}' --command -- sleep 300
+kubectl wait --for=condition=Ready pod/pod-a pod/pod-b --timeout=120s
 
 POD_B_IP=$(kubectl get pod pod-b -o jsonpath='{.status.podIP}')
 kubectl exec pod-a -- ping -c5 $POD_B_IP
@@ -87,16 +91,20 @@ Each worker should show multiple BGP-learned routes.
   hosts: all
   tasks:
     - name: Check calico-node service
-      systemd:
-        name: calico-node
-      register: service_status
-      failed_when: service_status.status.ActiveState != 'active'
+      command: systemctl is-active calico-node
+      changed_when: false
 
-    - name: Check CNI binary exists
+    - name: Check Calico CNI binary exists and is executable
       stat:
         path: /opt/cni/bin/calico
       register: cni_stat
-      failed_when: not cni_stat.stat.exists
+      failed_when: not cni_stat.stat.exists or not cni_stat.stat.executable
+
+    - name: Check Calico IPAM binary exists and is executable
+      stat:
+        path: /opt/cni/bin/calico-ipam
+      register: ipam_stat
+      failed_when: not ipam_stat.stat.exists or not ipam_stat.stat.executable
 
     - name: Check BGP routes present
       shell: ip route show | grep -c 'proto bird'
