@@ -86,7 +86,8 @@ Description=App running as non-root user
 [Container]
 Image=docker.io/myorg/myapp:latest
 UserNS=keep-id
-User=1000:1000
+User=1000
+Group=1000
 Volume=%h/appdata:/data:Z
 
 [Service]
@@ -104,13 +105,13 @@ systemctl --user daemon-reload
 systemctl --user start secure-app.service
 
 # Check the user namespace mapping
-podman inspect secure-app --format '{{.HostConfig.UsernsMode}}'
+podman inspect systemd-secure-app --format '{{.HostConfig.UsernsMode}}'
 
 # Verify the user inside the container
-podman exec secure-app id
+podman exec systemd-secure-app id
 
 # Check the UID mapping
-podman exec secure-app cat /proc/self/uid_map
+podman exec systemd-secure-app cat /proc/self/uid_map
 ```
 
 ## Summary
