@@ -10,7 +10,7 @@ Description: Learn how to configure file permissions on Podman secret mounts to 
 
 > Setting proper file permissions on secret mounts ensures that only authorized processes inside the container can read sensitive data.
 
-By default, secret files mounted in Podman containers have permissions that allow the container's root user to read them. You can customize these permissions to restrict access further, which is important when running multiple processes inside a container or when using non-root users.
+By default, secret files mounted in Podman containers use UID 0, GID 0, and mode `0444`, which makes them readable by users inside the container. You can customize these permissions to restrict access further, which is important when running multiple processes inside a container or when using non-root users.
 
 ---
 
