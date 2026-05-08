@@ -33,27 +33,28 @@ First, establish your current TCP_RR performance:
 
 kubectl run netperf-server --image=cilium/netperf \
   --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"node-1"}}}' \
-  -- netserver -D
+  --command -- netserver -D
 
-SERVER_IP=$(kubectl get pod netperf-server -o jsonpath='{.status.podIP}')
+kubectl expose pod netperf-server --port=12865 --target-port=12865
+SERVICE_IP=$(kubectl get service netperf-server -o jsonpath='{.spec.clusterIP}')
 
-# Run TCP_RR test
+# Run TCP_RR test through the ClusterIP service path
 kubectl run netperf-client --image=cilium/netperf \
   --rm -it --restart=Never \
   --overrides='{"spec":{"nodeSelector":{"kubernetes.io/hostname":"node-2"}}}' \
-  -- netperf -H $SERVER_IP -t TCP_RR -l 30 -- -r 1,1
+  --command -- netperf -H $SERVICE_IP -t TCP_RR -l 30 -- -r 1,1
 
 # Also test with larger payloads
 kubectl run netperf-client-1k --image=cilium/netperf \
   --rm -it --restart=Never \
-  -- netperf -H $SERVER_IP -t TCP_RR -l 30 -- -r 1024,1024
+  --command -- netperf -H $SERVICE_IP -t TCP_RR -l 30 -- -r 1024,1024
 ```
 
 Record the transactions per second. Typical values range from 10,000 to 50,000+ depending on hardware and configuration.
 
 ## Enabling Socket-Level BPF Acceleration
 
-Cilium's socket-level BPF programs can short-circuit the datapath for local pod-to-pod communication:
+Cilium's socket-level BPF programs can short-circuit the service load-balancing datapath for pod-to-service communication:
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
@@ -63,7 +64,7 @@ helm upgrade cilium cilium/cilium --namespace kube-system \
   --set bpf.masquerade=true
 ```
 
-Socket-level load balancing bypasses the entire TC (traffic control) layer for service-to-pod traffic, dramatically reducing TCP_RR latency:
+Socket-level load balancing resolves service backends at the socket layer, avoiding per-packet service NAT in the TC (traffic control) layer and reducing TCP_RR latency for service traffic:
 
 ```mermaid
 graph LR
@@ -81,16 +82,16 @@ TCP_RR generates rapid lookups on the conntrack table. Optimize it:
 
 ```bash
 helm upgrade cilium cilium/cilium --namespace kube-system \
-  --set bpf.ctGlobalTCPMax=524288 \
-  --set bpf.ctGlobalAnyMax=262144 \
-  --set bpf.ctTCPTimeoutEstablished=21600
+  --set bpf.ctTcpMax=524288 \
+  --set bpf.ctAnyMax=262144 \
+  --set bpf.preallocateMaps=true
 ```
 
-Also consider pre-allocating conntrack entries to avoid allocation latency:
+After changing map sizes, check conntrack table utilization:
 
 ```bash
 # Check conntrack table utilization
-cilium bpf ct list global | wc -l
+kubectl -n kube-system exec ds/cilium -- cilium-dbg bpf ct list | wc -l
 ```
 
 ## Kernel TCP Tuning for Low Latency
@@ -98,11 +99,13 @@ cilium bpf ct list global | wc -l
 ```bash
 # Note: net.ipv4.tcp_low_latency is obsolete since kernel 4.14 and has no effect
 
-# Reduce TIME_WAIT sockets
+# Reduce connection churn overhead for workloads that create many short-lived connections.
+# These settings do not improve transactions on a single established TCP_RR connection.
 sysctl -w net.ipv4.tcp_tw_reuse=1
 sysctl -w net.ipv4.tcp_fin_timeout=15
 
-# Enable TCP Fast Open
+# Enable TCP Fast Open for applications that explicitly use it.
+# This does not improve a single established TCP_RR connection.
 sysctl -w net.ipv4.tcp_fastopen=3
 
 # Reduce SYN retransmit timeout
@@ -130,17 +133,17 @@ done
 
 ## Reducing Policy Evaluation Overhead
 
-Complex network policies add per-packet evaluation cost. For TCP_RR-sensitive paths:
+Large policy sets can increase policy map size and regeneration work, while L7 policy or proxying can add request-path overhead. For TCP_RR-sensitive paths:
 
 ```bash
 # Check policy complexity
-cilium policy get -o json | jq '[.[] | .rules | length] | add'
+kubectl get cnp,ccnp -A -o json | jq '[.items[] | (.specs // [.spec]) | length] | add'
 
 # If policies are complex, consider using FQDN-based policies
 # only where needed, and L3/L4 policies elsewhere
 ```
 
-Use endpoint-specific policy caching:
+Check policy audit mode while benchmarking:
 
 ```bash
 cilium config view | grep policy-audit-mode
@@ -153,7 +156,7 @@ cilium config view | grep policy-audit-mode
 # Re-run TCP_RR after tuning
 kubectl run netperf-verify --image=cilium/netperf \
   --rm -it --restart=Never \
-  -- netperf -H $SERVER_IP -t TCP_RR -l 30 -- -r 1,1
+  --command -- netperf -H $SERVICE_IP -t TCP_RR -l 30 -- -r 1,1
 
 # Compare before/after
 echo "Before: <your_baseline> trans/s"
@@ -165,16 +168,16 @@ cilium status --verbose | grep "Socket LB"
 # Check latency distribution with histogram
 kubectl run netperf-hist --image=cilium/netperf \
   --rm -it --restart=Never \
-  -- netperf -H $SERVER_IP -t TCP_RR -l 30 -- -r 1,1 -o mean_latency,p99_latency
+  --command -- netperf -H $SERVICE_IP -t TCP_RR -l 30 -- -r 1,1 -O MEAN_LATENCY,P99_LATENCY
 ```
 
 ## Troubleshooting
 
-- **No improvement from socket LB**: Verify source and destination pods are on different nodes. Socket LB has the most impact for service ClusterIP traffic.
+- **No improvement from socket LB**: Verify the benchmark targets a service ClusterIP rather than the backend Pod IP. Socket LB has the most impact for service traffic.
 - **Inconsistent TCP_RR results**: Check for CPU frequency scaling. Pin to performance governor.
 - **High p99 latency despite good mean**: Look for garbage collection pauses in conntrack or periodic background tasks on the Cilium agent.
 - **TCP_RR worse after kernel tuning**: Verify `busy_poll` settings do not conflict with your workload's I/O patterns.
 
 ## Conclusion
 
-Tuning TCP_RR performance in Cilium focuses on reducing per-transaction latency throughout the datapath. The highest-impact changes are enabling socket-level BPF acceleration, optimizing conntrack table sizes, and tuning kernel TCP parameters for low latency. Each microsecond saved per transaction translates directly to more transactions per second. With proper tuning, Cilium can achieve TCP_RR rates competitive with bare-metal networking.
+Tuning TCP_RR performance in Cilium focuses on reducing per-transaction latency throughout the datapath. The highest-impact changes are enabling socket-level BPF acceleration for service traffic, sizing and preallocating BPF maps appropriately, and removing host-level latency sources such as CPU power saving. Each microsecond saved per transaction translates directly to more transactions per second. With proper tuning, Cilium can achieve TCP_RR rates competitive with bare-metal networking.
