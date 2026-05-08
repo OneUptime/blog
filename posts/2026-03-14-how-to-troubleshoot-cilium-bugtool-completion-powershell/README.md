@@ -36,7 +36,7 @@ This guide provides systematic troubleshooting for cilium-bugtool PowerShell com
 
 Get-ExecutionPolicy
 
-# If Restricted, completions cannot load
+# If Restricted, profile scripts cannot load completions
 # Fix: Set to RemoteSigned (recommended)
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
@@ -45,25 +45,26 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ```powershell
 # Check if profile exists
-Test-Path \$PROFILE
+Test-Path $PROFILE
 
 # Check profile content
-Get-Content \$PROFILE | Select-String "cilium"
+Get-Content $PROFILE | Select-String "cilium"
 
 # Test profile manually
-. \$PROFILE
+. $PROFILE
 ```
 
 ### Check Completion Registration
 
 ```powershell
-# List all registered argument completers
-Get-ArgumentCompleter -Native | Where-Object { \$_.CommandName -like "*cilium*" }
+# Test whether PowerShell returns cilium-bugtool completions
+$line = "cilium-bugtool "
+[System.Management.Automation.CommandCompletion]::CompleteInput($line, $line.Length, $null).CompletionMatches
 
 # If empty, completions are not registered
 # Manually load and test
 cilium-bugtool completion powershell | Out-String | Invoke-Expression
-Get-ArgumentCompleter -Native | Where-Object { \$_.CommandName -like "*cilium*" }
+[System.Management.Automation.CommandCompletion]::CompleteInput($line, $line.Length, $null).CompletionMatches
 ```
 
 ### Fix Common Issues
@@ -71,7 +72,7 @@ Get-ArgumentCompleter -Native | Where-Object { \$_.CommandName -like "*cilium*" 
 ```powershell
 # Issue: "The term 'cilium-bugtool' is not recognized"
 # Fix: Ensure binary is in PATH
-\$env:PATH += ";C:\path\to\cilium"
+$env:PATH += [System.IO.Path]::PathSeparator + "<directory-containing-cilium-bugtool>"
 
 # Issue: Profile throws errors
 # Fix: Test the completion script in isolation
@@ -79,12 +80,12 @@ try {
     cilium-bugtool completion powershell | Out-String | Invoke-Expression
     Write-Host "Completion loaded successfully"
 } catch {
-    Write-Host "Error: \$_"
+    Write-Host "Error: $_"
 }
 
 # Issue: Completions load but do not show options
 # Fix: Check PowerShell version
-\$PSVersionTable.PSVersion
+$PSVersionTable.PSVersion
 # Ensure version 5.1 or higher
 ```
 
@@ -111,4 +112,3 @@ Write-Host "Completions loaded successfully"
 
 
 PowerShell completion issues are typically caused by execution policy restrictions or profile configuration problems. Systematic checking of execution policy, profile existence, and completer registration resolves most issues.
-
