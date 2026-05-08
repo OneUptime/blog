@@ -4,20 +4,20 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Health Check, Logging, Storage
 
-Description: Learn how to configure the maximum size of individual health check log entries in Podman to control storage usage.
+Description: Learn how to configure the maximum length of individual health check log entries in Podman to control storage usage.
 
 ---
 
 > The max log size setting limits how much output each health check result can store, preventing verbose health check commands from consuming excessive disk space.
 
-Some health check commands produce significant output, especially when they include diagnostic information or error messages. By setting a maximum log size per entry, you ensure that health check logs remain manageable without losing important status information.
+Some health check commands produce significant output, especially when they include diagnostic information or error messages. By setting a maximum log length per entry, you ensure that health check logs remain manageable without losing important status information.
 
 ---
 
 ## Setting the Maximum Log Size
 
 ```bash
-# Limit each health check log entry to 500 bytes
+# Limit each health check log entry to 500 characters
 
 podman run -d \
   --name size-limited \
@@ -40,8 +40,8 @@ podman run -d \
   --health-max-log-size 1024 \
   verbose-app:latest
 
-# Without size limits, each entry could store kilobytes of output
-# With --health-max-log-size 1024, output is truncated to 1024 bytes
+# With an unlimited size setting, each entry could store kilobytes of output
+# With --health-max-log-size 1024, output is truncated to 1024 characters
 ```
 
 ## Configuring for Different Scenarios
@@ -72,10 +72,10 @@ podman run -d --name detailed-check \
 ## Combining with Max Log Count
 
 ```bash
-# Calculate total maximum storage for health check logs:
-# total_max = max_log_count * max_log_size
+# Estimate total maximum output length for health check logs:
+# total_max_characters = max_log_count * max_log_size
 
-# Example: 20 entries * 1024 bytes = ~20 KB maximum
+# Example: 20 entries * 1024 characters = up to 20,480 characters of stored output
 podman run -d \
   --name bounded-logs \
   --health-cmd "curl -sf http://localhost:8080/health || exit 1" \
@@ -97,4 +97,4 @@ podman inspect --format='{{range .State.Health.Log}}{{.Output}}{{end}}' size-lim
 
 ## Summary
 
-The `--health-max-log-size` flag limits the size of individual health check log entries in bytes. Output exceeding this size is truncated. Use smaller sizes for simple pass/fail checks, and larger sizes when health checks produce diagnostic output you need for debugging. Combine with `--health-max-log-count` to control both the number and size of stored entries for predictable storage usage.
+The `--health-max-log-size` flag limits the length of individual health check log entries in characters. Output exceeding this size is truncated. Use smaller sizes for simple pass/fail checks, and larger sizes when health checks produce diagnostic output you need for debugging. Combine with `--health-max-log-count` to control both the number and length of stored entries for predictable storage usage.
