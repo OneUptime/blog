@@ -22,7 +22,7 @@ The multi-arch build workflow with Podman farm follows these steps:
 2. Create a farm grouping those connections
 3. Write an architecture-aware Containerfile
 4. Build with `podman farm build`
-5. Push the resulting manifest list to a registry
+5. Verify the pushed manifest list in the registry
 
 ## Step 1: Set Up System Connections
 
@@ -79,22 +79,20 @@ This Containerfile works on any architecture because the Node.js base images sup
 ## Step 4: Build with the Farm
 
 ```bash
+# Log in to the registry before the farm build pushes images
+podman login registry.example.com
+
 # Build across all farm nodes
 podman farm build --farm multiarch-farm \
     -t registry.example.com/webapp:v2.0 \
     .
 ```
 
-## Step 5: Push the Multi-Arch Manifest
+## Step 5: Inspect the Multi-Arch Manifest
 
 ```bash
-# Log in to the registry
-podman login registry.example.com
-
-# Push the manifest list (includes all architectures)
-podman manifest push --all \
-    registry.example.com/webapp:v2.0 \
-    docker://registry.example.com/webapp:v2.0
+# podman farm build already pushed the per-architecture images and manifest list
+podman manifest inspect registry.example.com/webapp:v2.0
 ```
 
 ## Verifying the Result
@@ -151,7 +149,7 @@ FARM="prod-farm"
 echo "=== Farm Build: ${IMAGE}:${TAG} ==="
 
 # Verify farm health
-CONNECTIONS=$(podman farm list --format '{{if eq .Name "'"${FARM}"'"}}{{.Connections}}{{end}}' | tr ',' ' ')
+CONNECTIONS=$(podman farm list --format '{{if eq .Name "'"${FARM}"'"}}{{range .Connections}}{{.}}{{"\n"}}{{end}}{{end}}')
 
 HEALTHY=true
 for CONN in ${CONNECTIONS}; do
@@ -166,12 +164,9 @@ if [ "${HEALTHY}" = false ]; then
     exit 1
 fi
 
-# Build
-podman farm build --farm "${FARM}" -t "${IMAGE}:${TAG}" .
-
-# Push
+# Build and push the manifest list
 podman login -u "${REGISTRY_USER}" -p "${REGISTRY_PASS}" registry.example.com
-podman manifest push --all "${IMAGE}:${TAG}" "docker://${IMAGE}:${TAG}"
+podman farm build --farm "${FARM}" -t "${IMAGE}:${TAG}" .
 
 # Also tag as latest if this is a release tag
 if [[ "${TAG}" =~ ^v[0-9] ]]; then
@@ -183,4 +178,4 @@ echo "=== Build complete ==="
 
 ## Summary
 
-Podman farm provides native multi-architecture builds by distributing work to real hardware over SSH. The workflow is straightforward: configure connections, create a farm, build with `podman farm build`, and push the resulting manifest list. Native builds avoid QEMU performance penalties and produce more reliable results for applications with architecture-specific dependencies.
+Podman farm provides native multi-architecture builds by distributing work to real hardware over SSH. The workflow is straightforward: configure connections, create a farm, and build with `podman farm build` to push the resulting manifest list. Native builds avoid QEMU performance penalties and produce more reliable results for applications with architecture-specific dependencies.
