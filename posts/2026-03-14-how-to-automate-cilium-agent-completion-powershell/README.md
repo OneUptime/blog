@@ -18,119 +18,127 @@ Whether you are running a small development cluster or a large production enviro
 
 ## Prerequisites
 
-- A running Kubernetes cluster (v1.21+) with Cilium installed (v1.14+)
-- `kubectl` configured for cluster access
-- `cilium` CLI installed (matching your Cilium version)
-- Helm 3.x for configuration management
+- A running Kubernetes cluster with a supported Cilium version installed
+- `kubectl` configured for cluster access if you generate the completion script from a Cilium pod
+- `cilium-agent` available locally, or access to a Cilium pod that contains the matching `cilium-agent` binary
+- PowerShell 7+ or Windows PowerShell 5.1
 - Basic familiarity with Kubernetes networking concepts
 - Access to cluster nodes for troubleshooting (recommended)
-- Prometheus and Grafana for metrics visualization (recommended)
 
 ## Automation Approach
 
 Automating cilium-agent shell completion for PowerShell reduces operational overhead and ensures consistency across environments.
 
-```bash
-# Create an automation script for common operations
+```powershell
+# Create or refresh the cilium-agent PowerShell completion script.
+# Run this from a machine with cilium-agent installed, or from a workstation
+# that can use kubectl to execute cilium-agent inside a Cilium pod.
 
-cat > /tmp/cilium-automation.sh << 'SCRIPT'
-#!/bin/bash
-# Cilium automation script
-# This script automates common Cilium operational tasks
+$profileDir = Split-Path -Parent $PROFILE
+$completionPath = Join-Path $profileDir 'cilium-agent-completion.ps1'
+New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
 
-set -euo pipefail
-
-# Function: Health check
-health_check() {
-    echo "Running Cilium health check..."
-    cilium status --brief
-    cilium health status 2>/dev/null || echo "Health check requires running cluster"
-    echo "Identity count: $(cilium identity list 2>/dev/null | wc -l || echo 'N/A')"
-    echo "Endpoint count: $(cilium endpoint list 2>/dev/null | wc -l || echo 'N/A')"
+if (Get-Command cilium-agent -ErrorAction SilentlyContinue) {
+    $completion = @(cilium-agent completion powershell)
+}
+else {
+    $pod = kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}'
+    $completion = @(kubectl -n kube-system exec $pod -- cilium-agent completion powershell)
 }
 
-# Function: Collect diagnostics
-collect_diagnostics() {
-    local output_dir="${1:-/tmp/cilium-diagnostics}"
-    mkdir -p "$output_dir"
-    
-    cilium status --verbose > "$output_dir/status.txt" 2>&1
-    cilium endpoint list > "$output_dir/endpoints.txt" 2>&1
-    cilium identity list > "$output_dir/identities.txt" 2>&1
-    cilium metrics list > "$output_dir/metrics.txt" 2>&1
-    kubectl top pods -n kube-system -l k8s-app=cilium > "$output_dir/resources.txt" 2>&1
-    
-    echo "Diagnostics collected in $output_dir"
+$start = -1
+for ($i = 0; $i -lt $completion.Count; $i++) {
+    if ($completion[$i] -like '# powershell completion for cilium-agent*') {
+        $start = $i
+        break
+    }
 }
 
-# Function: Validate configuration
-validate_config() {
-    echo "Validating Cilium configuration..."
-    cilium config view > /dev/null 2>&1 && echo "Config: OK" || echo "Config: FAILED"
-    cilium status > /dev/null 2>&1 && echo "Status: OK" || echo "Status: FAILED"
+if ($start -lt 0) {
+    throw 'Unable to find cilium-agent PowerShell completion content in command output.'
 }
 
-# Main
-case "${1:-help}" in
-    health) health_check ;;
-    diagnostics) collect_diagnostics "${2:-}" ;;
-    validate) validate_config ;;
-    *) echo "Usage: $0 {health|diagnostics|validate}" ;;
-esac
-SCRIPT
-chmod +x /tmp/cilium-automation.sh
+$completion[$start..($completion.Count - 1)] | Out-File -Encoding utf8 $completionPath
+
+$profileLine = ". '$completionPath'"
+if (-not (Test-Path $PROFILE) -or -not (Select-String -Path $PROFILE -Pattern ([regex]::Escape($completionPath)) -Quiet)) {
+    Add-Content -Path $PROFILE -Value $profileLine
+}
+
+. $completionPath
 ```
 
 ## CI/CD Integration
 
-Integrate Cilium validation into your CI/CD pipeline:
+Integrate completion generation validation into your CI/CD pipeline:
 
 ```yaml
 # .github/workflows/cilium-validation.yaml
-# GitHub Actions workflow for Cilium validation
+# GitHub Actions workflow for cilium-agent completion validation
 name: Cilium Validation
 on:
   push:
     paths:
-      - 'k8s/cilium/**'
+      - '.github/workflows/cilium-validation.yaml'
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Cilium CLI
+      - name: Generate cilium-agent PowerShell completion
         run: |
-          CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-          CLI_ARCH=amd64
-          curl -L --fail --remote-name-all "https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz"
-          sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
-      - name: Validate Helm Template
+          CILIUM_VERSION=v1.19.3
+          docker run --rm --entrypoint cilium-agent quay.io/cilium/cilium:${CILIUM_VERSION} completion powershell \
+            | sed -n '/^# powershell completion for cilium-agent/,$p' > cilium-agent-completion.ps1
+          test -s cilium-agent-completion.ps1
+      - name: Validate PowerShell script loads
+        shell: pwsh
         run: |
-          helm template cilium cilium/cilium -f k8s/cilium/values.yaml > /dev/null
+          . ./cilium-agent-completion.ps1
+          Get-Command TabExpansion2 | Out-Null
 ```
 
 ## Scheduled Automation
 
-```bash
-# Create a cron job for regular health checks
-# Add to crontab: crontab -e
-# Run health check every hour
-# 0 * * * * /tmp/cilium-automation.sh health >> /var/log/cilium-health.log 2>&1
+```powershell
+# Save as $HOME\Refresh-CiliumAgentCompletion.ps1 and run daily from Task Scheduler.
+$profileDir = Split-Path -Parent $PROFILE
+$completionPath = Join-Path $profileDir 'cilium-agent-completion.ps1'
+New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
 
-# Run diagnostics collection daily
-# 0 2 * * * /tmp/cilium-automation.sh diagnostics /tmp/cilium-daily-$(date +\%Y\%m\%d)
+if (Get-Command cilium-agent -ErrorAction SilentlyContinue) {
+    $completion = @(cilium-agent completion powershell)
+}
+else {
+    $pod = kubectl -n kube-system get pods -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}'
+    $completion = @(kubectl -n kube-system exec $pod -- cilium-agent completion powershell)
+}
+
+$start = -1
+for ($i = 0; $i -lt $completion.Count; $i++) {
+    if ($completion[$i] -like '# powershell completion for cilium-agent*') {
+        $start = $i
+        break
+    }
+}
+
+if ($start -lt 0) {
+    throw 'Unable to find cilium-agent PowerShell completion content in command output.'
+}
+
+$completion[$start..($completion.Count - 1)] | Out-File -Encoding utf8 $completionPath
 ```
 
 ```mermaid
 flowchart TD
-    A[Automation Script] --> B{Trigger}
-    B -->|Scheduled| C[Cron Job]
+    A[Completion Script] --> B{Trigger}
+    B -->|Scheduled| C[Task Scheduler]
     B -->|CI/CD| D[Pipeline Step]
-    B -->|Manual| E[CLI Invocation]
-    C --> F[Health Check]
-    D --> G[Validate Config]
-    E --> H[Collect Diagnostics]
-    F --> I[Log Results]
+    B -->|Manual| E[PowerShell Invocation]
+    C --> F[Refresh Completion File]
+    D --> G[Validate Script Loads]
+    E --> H[Load Current Session]
+    F --> I[PowerShell Profile]
     G --> I
     H --> I
 ```
@@ -140,44 +148,36 @@ flowchart TD
 
 After completing the steps above, run a comprehensive verification to confirm everything is working as expected.
 
-```bash
-# Check overall Cilium deployment health
-cilium status --verbose
+```powershell
+# Verify cilium-agent is available locally
+Get-Command cilium-agent
 
-# Verify inter-node connectivity
-cilium health status
+# Generate the completion script directly
+cilium-agent completion powershell | Select-String -Pattern '^# powershell completion for cilium-agent'
 
-# Confirm all Cilium pods are running and ready
-kubectl get pods -n kube-system -l k8s-app=cilium -o wide
+# Confirm the generated script exists and can be loaded
+Test-Path $completionPath
+. $completionPath
 
-# Verify the Cilium operator is healthy
-kubectl get pods -n kube-system -l name=cilium-operator
-
-# Check for recent error events
-kubectl get events -n kube-system --sort-by='.lastTimestamp' | grep cilium | tail -10
-
-# Run a connectivity test to validate the data plane
-cilium connectivity test --single-node
-
-# Verify endpoint count matches expected pod count
-echo "Cilium endpoints: $(cilium endpoint list -o json 2>/dev/null | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'N/A')"
+# Confirm the profile imports the generated completion script
+Select-String -Path $PROFILE -Pattern 'cilium-agent-completion.ps1'
 ```
 
 ## Troubleshooting
 
 If you encounter issues during or after the steps in this guide, use the following troubleshooting procedures:
 
-- **Cilium agent not starting**: Check resource limits and node capacity with `kubectl describe pod -n kube-system -l k8s-app=cilium`. Verify the BPF filesystem is mounted at `/sys/fs/bpf` and the kernel version is 4.19 or later. Check init container logs with `kubectl logs -n kube-system <pod> -c cilium-init`.
+- **`cilium-agent` not found locally**: Generate the completion script from a Cilium pod with `kubectl -n kube-system exec <cilium-pod> -- cilium-agent completion powershell`, or install a matching Cilium agent binary on the workstation where you manage profiles.
 
-- **Connectivity failures**: Run `cilium connectivity test` and inspect the specific failing test case. Check for conflicting network policies with `cilium policy get`. Verify inter-node tunnel connectivity with `cilium bpf tunnel list`.
+- **Profile script not loading**: Check that `$PROFILE` exists and contains the line that dot-sources `cilium-agent-completion.ps1`. Restart PowerShell after updating the profile.
 
-- **Configuration not applied**: Verify the Helm values or ConfigMap are correctly formatted. Run `kubectl rollout restart daemonset/cilium -n kube-system` and wait for the rollout to complete. Confirm with `cilium config view`.
+- **Execution policy blocks the profile**: Review the current policy with `Get-ExecutionPolicy -List` and set an appropriate user-scoped policy for your environment, such as `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
-- **High resource usage**: Review resource consumption with `kubectl top pods -n kube-system -l k8s-app=cilium`. Consider tuning label exclusion to reduce identity count. Increase agent memory limits if needed. Check `cilium metrics list | grep process_resident_memory`.
+- **Completion script is stale after an upgrade**: Regenerate the completion file with the `cilium-agent` binary from the same Cilium version that is running in the cluster.
 
-- **Endpoints stuck in regenerating state**: This usually indicates the agent is overloaded or encountering errors during BPF program compilation. Check agent logs with `kubectl logs -n kube-system -l k8s-app=cilium --tail=200 | grep -i error`.
+- **`kubectl exec` cannot find a Cilium pod**: Confirm the namespace and labels with `kubectl get pods -A -l k8s-app=cilium`. Some installations may run Cilium in a namespace other than `kube-system`.
 
-- **Policy not being enforced**: Verify the policy selectors match the intended pods using `cilium endpoint list`. Confirm the policy is applied with `cilium policy get`. Check that the endpoint has the correct identity with `cilium endpoint get <id>`.
+- **Tabs still do not complete**: Make sure you loaded the generated script in the current session with `. $completionPath`, then try a new PowerShell session so the profile is loaded from disk.
 
 To collect a comprehensive diagnostic bundle for further analysis:
 
@@ -189,15 +189,15 @@ cilium sysdump --output-filename cilium-diag-$(date +%Y%m%d)
 
 ## Conclusion
 
-This guide covered cilium-agent shell completion for PowerShell with practical steps you can apply to your Kubernetes cluster. Regular monitoring, systematic validation, and proactive management are essential for maintaining a healthy Cilium deployment at any scale.
+This guide covered cilium-agent shell completion for PowerShell with practical steps you can apply to your Kubernetes cluster. Regularly refreshing the generated completion script keeps local automation aligned with the Cilium version you operate.
 
 Key takeaways from this guide:
 
-- Always assess the current state before making changes to your Cilium configuration
-- Use Helm for configuration management to ensure consistency and reproducibility across environments
-- Monitor Cilium metrics through Prometheus to detect issues before they impact workloads
-- Test changes in a staging environment before applying them to production clusters
-- Maintain runbooks documenting your Cilium configuration decisions and operational procedures
-- Use `cilium sysdump` to collect comprehensive diagnostic data when investigating issues
+- Generate completions with `cilium-agent completion powershell`
+- Load completions immediately with `cilium-agent completion powershell | Out-String | Invoke-Expression`
+- Add the generated completion script to `$PROFILE` for every new PowerShell session
+- Regenerate completions after Cilium upgrades so flags and subcommands stay current
+- Use `kubectl exec` against a Cilium pod when `cilium-agent` is not installed locally
+- Use `cilium sysdump` to collect comprehensive diagnostic data when investigating cluster issues
 
 As your cluster grows and evolves, revisit these configurations periodically and adjust them to match your current requirements. The Cilium community and documentation are excellent resources for staying current with best practices and new features.
