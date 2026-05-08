@@ -31,26 +31,26 @@ For clusters with fewer than 50 nodes, a straightforward StagedNetworkPolicy con
 
 calicoctl get stagednetworkpolicy -o yaml
 
-# Check the effective configuration on a specific node
-kubectl get node <node-name> -o yaml | grep -A5 "projectcalico"
+# View staged policies through the Kubernetes API
+kubectl get stagednetworkpolicy.projectcalico.org --all-namespaces -o yaml
 ```
 
 Start with the defaults and only customize fields when you have a measured reason to change them. Premature optimization of Calico resources often introduces complexity without benefit.
 
 ## Pattern 2: Multi-Environment Configuration
 
-In clusters that run workloads across multiple environments (dev, staging, production), you can use node selectors and labels to apply different configurations:
+In clusters that run workloads across multiple environments (dev, staging, production), you can use namespaces and workload labels to stage policies for each environment:
 
 ```bash
-# Label nodes by environment
-kubectl label node worker-1 environment=production
-kubectl label node worker-2 environment=staging
+# Label namespaces by environment
+kubectl label namespace production environment=production
+kubectl label namespace staging environment=staging
 
 # Verify labels
-kubectl get nodes --show-labels | grep environment
+kubectl get namespaces --show-labels | grep environment
 ```
 
-Then reference these labels in your StagedNetworkPolicy manifest's node selectors to apply environment-specific settings.
+Then put each namespaced StagedNetworkPolicy in the namespace it should preview, and use the policy `spec.selector` to match the workload labels in that namespace.
 
 ## Pattern 3: High-Availability and Scale
 
@@ -65,7 +65,7 @@ kubectl top pods -n calico-system -l k8s-app=calico-node --sort-by=cpu
 ```
 
 Key considerations at scale:
-- Increase reconciliation intervals to reduce API server load
+- Prefer optimized Calico selectors such as `label == "value"`, `label in { "v1", "v2" }`, and `has(label)` in policy rules
 - Use Typha to reduce the number of direct datastore connections
 - Monitor memory usage of calico-node pods when managing many StagedNetworkPolicy resources
 
@@ -93,16 +93,16 @@ Set up ongoing monitoring for your StagedNetworkPolicy resources:
 # Watch for changes to StagedNetworkPolicy resources
 kubectl get stagednetworkpolicy.projectcalico.org -w
 
-# Set up alerts on calico-node restarts
+# Watch for BackOff events from Calico pods
 kubectl get events -n calico-system --field-selector reason=BackOff --watch
 ```
 
-Consider checking Felix health endpoints if you have Prometheus metrics enabled:
+Consider checking Felix health endpoints if Felix health reporting is enabled and reachable from where you run the command:
 
 ```bash
 # Check if Felix is reporting healthy
-curl -s http://<node-ip>:9099/liveness
-curl -s http://<node-ip>:9099/readiness
+curl -s http://127.0.0.1:9099/liveness
+curl -s http://127.0.0.1:9099/readiness
 ```
 
 ## Verification
@@ -124,17 +124,17 @@ kubectl run test-ping --image=busybox --rm -it --restart=Never -- ping -c 3 <pod
 
 **Resource configuration not taking effect:**
 - Verify the resource is correctly applied: `calicoctl get stagednetworkpolicy -o yaml`.
-- Check Felix logs for configuration reload messages.
+- Check Felix logs for policy update messages.
 - Ensure Typha is relaying updates: `kubectl logs -n calico-system -l k8s-app=calico-typha --tail=20`.
 
 **Performance degradation after configuration change:**
 - Check calico-node CPU and memory: `kubectl top pods -n calico-system`.
-- Review whether reconciliation intervals are too aggressive.
+- Review whether selectors in policy rules can be simplified to optimized selector forms.
 - Consider enabling Typha if not already in use.
 
 **Inconsistent behavior across nodes:**
-- Verify node selectors are matching the intended nodes.
-- Check for node-specific FelixConfiguration overrides.
+- Verify policy selectors are matching the intended workload or host endpoint labels.
+- Check for node-specific FelixConfiguration overrides if the issue is node-local behavior.
 
 
 ## Additional Considerations
@@ -169,7 +169,8 @@ Apply the principle of least privilege to Calico configurations. Limit who can m
 
 ```bash
 # Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org
+kubectl auth can-i --list --all-namespaces
 
 # Review recent changes to Calico resources (if audit logging is enabled)
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
