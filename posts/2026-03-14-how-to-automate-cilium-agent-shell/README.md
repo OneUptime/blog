@@ -68,7 +68,7 @@ check_pod() {
   # Check for endpoints in not-ready state
   NOT_READY=$(kubectl -n "$NAMESPACE" exec "$pod" -c cilium-agent -- \
     cilium-dbg endpoint list 2>/dev/null | \
-    grep -c "not-ready" || echo "0")
+    grep -c "not-ready" || true)
   if [ "$NOT_READY" -gt 0 ]; then
     echo "  WARNING: $NOT_READY endpoints not ready"
     EXIT_CODE=1
