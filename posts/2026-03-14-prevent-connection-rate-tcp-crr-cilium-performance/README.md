@@ -43,7 +43,7 @@ spec:
             - /bin/sh
             - -c
             - |
-              CRR=$(netperf -H netperf-server.monitoring -t TCP_CRR -l 10 2>/dev/null | tail -1 | awk '{print $1}')
+              CRR=$(netperf -H netperf-server.monitoring -t TCP_CRR -l 10 2>/dev/null | tail -1 | awk '{print $NF}')
               cat <<METRIC | curl --data-binary @- http://pushgateway.monitoring:9091/metrics/job/tcp_crr
               cilium_tcp_crr_rate $CRR
               METRIC
@@ -93,13 +93,13 @@ spec:
 # test-policy-crr-impact.sh
 
 BEFORE=$(kubectl exec netperf-client -- \
-  netperf -H netperf-server.monitoring -t TCP_CRR -l 10 2>/dev/null | tail -1 | awk '{print $1}')
+  netperf -H netperf-server.monitoring -t TCP_CRR -l 10 2>/dev/null | tail -1 | awk '{print $NF}')
 
 kubectl apply -f new-policy.yaml
 sleep 15
 
 AFTER=$(kubectl exec netperf-client -- \
-  netperf -H netperf-server.monitoring -t TCP_CRR -l 10 2>/dev/null | tail -1 | awk '{print $1}')
+  netperf -H netperf-server.monitoring -t TCP_CRR -l 10 2>/dev/null | tail -1 | awk '{print $NF}')
 
 IMPACT=$(echo "scale=2; ($AFTER - $BEFORE) / $BEFORE * 100" | bc)
 echo "Connection rate impact: ${IMPACT}%"
@@ -116,8 +116,8 @@ Monitor connection creation patterns to predict capacity needs:
 ```bash
 # Track new connection rate from Hubble
 
-hubble observe --protocol TCP --last 5000 -o json | \
-  jq 'select(.l4.TCP.flags.SYN == true and .l4.TCP.flags.ACK == false) | .time' | \
+hubble observe --protocol TCP --last 5000 -o jsonpb | \
+  jq -r '(.flow // .) as $flow | select($flow.l4.TCP.flags.SYN == true and ($flow.l4.TCP.flags.ACK // false) == false) | $flow.time[0:19]' | \
   sort | uniq -c
 ```
 
