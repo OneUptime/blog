@@ -18,7 +18,7 @@ This guide covers how field masks work in Hubble, which fields are available, an
 
 ## Prerequisites
 
-- Kubernetes cluster with Cilium 1.15+ and Hubble enabled
+- Kubernetes cluster with Cilium 1.18+ and Hubble enabled
 - Hubble exporter configured
 - Helm 3 for configuration management
 - Understanding of Hubble flow data structure
@@ -41,7 +41,7 @@ graph TD
     A --> E[l4]
     A --> F[l7]
     A --> G[verdict]
-    A --> H[drop_reason]
+    A --> H[drop_reason_desc]
     A --> I[ethernet]
     A --> J[IP]
     A --> K[Type]
@@ -56,13 +56,13 @@ graph TD
 
     D --> D1[namespace]
     D --> D2[pod_name]
-    D --> D3[port]
     D --> D4[labels]
     D --> D5[identity]
 
     E --> E1[TCP]
     E --> E2[UDP]
     E --> E3[ICMPv4]
+    E --> E4[ports]
 
     F --> F1[http]
     F --> F2[dns]
@@ -97,7 +97,6 @@ hubble:
         - destination.pod_name
         - destination.labels
         - destination.workloads
-        - destination.port
 
         # Transport layer
         - l4.TCP
@@ -105,10 +104,9 @@ hubble:
 
         # Verdict and classification
         - verdict
-        - drop_reason
+        - drop_reason_desc
         - Type
         - event_type
-        - Summary
 ```
 
 ```bash
@@ -124,16 +122,16 @@ kubectl -n kube-system rollout status daemonset/cilium
 ### Minimal Security Monitoring
 
 ```yaml
-# Only capture verdict and identity information
+# Only capture verdict, identity, and L4 information
 fieldMask:
   - time
   - source.namespace
   - source.pod_name
   - destination.namespace
   - destination.pod_name
-  - destination.port
+  - l4
   - verdict
-  - drop_reason
+  - drop_reason_desc
 ```
 
 ### Network Debugging
@@ -148,12 +146,11 @@ fieldMask:
   - destination.namespace
   - destination.pod_name
   - destination.identity
-  - destination.port
   - l4.TCP
   - l4.UDP
   - l4.ICMPv4
   - verdict
-  - drop_reason
+  - drop_reason_desc
   - Type
   - IP.source
   - IP.destination
@@ -171,12 +168,10 @@ fieldMask:
   - destination.namespace
   - destination.pod_name
   - destination.workloads
-  - destination.port
   - l4.TCP
   - l7
   - verdict
   - Type
-  - Summary
 ```
 
 ## Measuring Field Mask Impact
