@@ -12,7 +12,7 @@ Description: How to validate encryption performance in Cilium, covering both Wir
 
 Encryption in Cilium adds CPU overhead to every packet, reducing throughput and increasing latency compared to unencrypted networking. The magnitude of the overhead depends on the encryption protocol (WireGuard vs IPsec), hardware crypto support, and the workload characteristics.
 
-Validating encryption performance ensures that throughput and latency meet minimum requirements with encryption active and that all node pairs are properly encrypted.
+Validating encryption performance ensures that throughput and latency meet minimum requirements with encryption active and that all participating nodes report encryption enabled.
 
 This guide covers the specific steps for managing encryption performance in Cilium.
 
@@ -20,7 +20,7 @@ This guide covers the specific steps for managing encryption performance in Cili
 
 - Kubernetes cluster (v1.24+) with Cilium v1.14+
 - `cilium` CLI, `helm`, and `kubectl`
-- `iperf3` and `netperf` for benchmarking
+- `iperf3`, `netperf`, and `gawk` for benchmarking and statistics
 - Prometheus and Grafana for monitoring
 - Node-level root access
 
@@ -33,10 +33,14 @@ set -euo pipefail
 echo "=== Encryption Validation ==="
 # Verify encryption is active
 
-cilium encrypt status | grep -q "Encryption:" || { echo "FAIL: No encryption"; exit 1; }
+cilium encryption status --per-node-details
+cilium encryption status -o json | jq -e '
+  [.. | objects | select(has("mode")) | .mode] as $modes |
+  ($modes | length) > 0 and all($modes[]; . != "Disabled")
+' >/dev/null || { echo "FAIL: No encryption"; exit 1; }
 
 # Throughput validation
-BPS=$(kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 20 -P 1 -J | \
+BPS=$(kubectl exec iperf-client -- iperf3 -c "$SERVER_IP" -t 20 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000')
 echo "Encrypted throughput: $BPS Gbps"
 
@@ -47,14 +51,15 @@ if (( $(echo "$BPS < $MIN_GBPS" | bc -l) )); then
 fi
 
 # Latency validation
-RR=$(kubectl exec netperf-client -- netperf -H $SERVER_IP -t TCP_RR -l 15 2>/dev/null | tail -1 | awk '{print $1}')
+RR=$(kubectl exec netperf-client -- netperf -H "$SERVER_IP" -t TCP_RR -l 15 -P 0 2>/dev/null | tail -1 | awk '{print $NF}')
 echo "Encrypted TCP_RR: $RR trans/s"
 
-# Verify all node pairs are encrypted
-PEERS=$(cilium encrypt status | grep -c "peer")
-NODES=$(($(kubectl get nodes --no-headers | wc -l) - 1))
-if [ "$PEERS" -lt "$NODES" ]; then
-  echo "FAIL: Not all peers encrypted ($PEERS < $NODES)"
+# Verify all nodes report encryption enabled
+UNENCRYPTED=$(cilium encryption status -o json | jq '
+  [.. | objects | select(has("mode")) | select(.mode == "Disabled")] | length
+')
+if [ "$UNENCRYPTED" -gt 0 ]; then
+  echo "FAIL: Some nodes report encryption disabled"
   exit 1
 fi
 
@@ -64,15 +69,15 @@ echo "PASS: Encryption validation successful"
 ## Verification
 
 ```bash
-cilium encrypt status
-kubectl exec iperf-client -- iperf3 -c $SERVER_IP -t 10 -P 1 -J | \
+cilium encryption status --per-node-details
+kubectl exec iperf-client -- iperf3 -c "$SERVER_IP" -t 10 -P 1 -J | \
   jq '.end.sum_sent.bits_per_second / 1000000000'
 ```
 
 ## Troubleshooting
 
 - **Encryption not active**: Verify Cilium helm values include encryption.enabled=true.
-- **Overhead > 40%**: Check for userspace WireGuard or missing AES-NI for IPsec.
+- **Overhead > 40%**: Check for missing kernel WireGuard support, MTU fragmentation, or missing AES-NI for IPsec.
 - **Some nodes not encrypted**: Check Cilium agent logs for key exchange errors.
 - **Performance varies by node pair**: Different hardware capabilities across nodes.
 
@@ -118,7 +123,7 @@ for i in $(seq 1 20); do
 done
 
 # Calculate statistics
-echo "${SAMPLES[@]}" | tr ' ' '\n' | awk '
+echo "${SAMPLES[@]}" | tr ' ' '\n' | gawk '
 {
   sum += $1
   sumsq += $1 * $1
