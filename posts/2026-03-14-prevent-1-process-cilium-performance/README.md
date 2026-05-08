@@ -10,7 +10,7 @@ Description: Best practices and proactive configurations to prevent single-proce
 
 ## Introduction
 
-Single-process workloads are common in Kubernetes -- many legacy applications, databases, and specialized services use a single main process for network I/O. Without proactive planning, these workloads inevitably hit CPU contention issues when Cilium's eBPF packet processing competes for the same core.
+Single-process workloads are common in Kubernetes -- many legacy applications, databases, and specialized services use a single main process for network I/O. Without proactive planning, these workloads can hit CPU contention issues when kernel networking work associated with Cilium's eBPF datapath runs on the same core as the application.
 
 Prevention is straightforward once you understand the interaction between Kubernetes CPU management, Linux interrupt handling, and Cilium's datapath. This guide covers the configurations and practices that should be in place before deploying single-process workloads.
 
@@ -73,7 +73,7 @@ spec:
   # Schedule on nodes with static CPU manager
   nodeSelector:
     cpu-manager: "static"
-  # Ensure topology alignment
+  # Spread replicas across nodes; NUMA alignment is enforced by the kubelet Topology Manager
   topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: kubernetes.io/hostname
@@ -132,7 +132,6 @@ helm install cilium cilium/cilium --namespace kube-system \
   --set socketLB.enabled=true \
   --set bpf.hostLegacyRouting=false \
   --set bpf.masquerade=true \
-  --set tunnel=disabled \
   --set routingMode=native \
   --set autoDirectNodeRoutes=true \
   --set prometheus.enabled=true
@@ -174,11 +173,11 @@ spec:
 ## Verification
 
 ```bash
-# Verify CPU manager is active
+# Verify node CPU allocatable after reservations
 kubectl get nodes -o json | jq '.items[].status.allocatable.cpu'
 
 # Check that pods get exclusive CPUs
-kubectl exec single-process-app -- cat /sys/fs/cgroup/cpuset/cpuset.cpus
+kubectl exec single-process-app -- sh -c 'cat /sys/fs/cgroup/cpuset.cpus.effective 2>/dev/null || cat /sys/fs/cgroup/cpuset/cpuset.cpus'
 
 # Verify IRQ isolation
 ssh node-1 "cat /proc/interrupts | head -5"
