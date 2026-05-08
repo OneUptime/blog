@@ -19,7 +19,7 @@ This guide walks through the most common errors you will encounter with `calicoc
 ## Prerequisites
 
 - A running Kubernetes cluster with Calico installed
-- `calicoctl` binary installed (v3.26+ recommended)
+- `calicoctl` binary installed (matching your Calico cluster version is recommended)
 - `kubectl` access to the cluster with appropriate RBAC permissions
 - Familiarity with Kubernetes networking concepts
 
@@ -35,12 +35,13 @@ Expected output:
 
 ```text
 Client Version:    v3.27.0
+Build date:        2024-01-10T00:00:00+0000
 Git commit:        abc1234def
 Cluster Version:   v3.27.0
 Cluster Type:      typha,kdd,k8s,operator,bgp,kubeadm
 ```
 
-The **Client Version** is the version of the calicoctl binary on your local machine. The **Cluster Version** is retrieved from the Calico datastore. If only the client version appears, the command failed to reach the datastore.
+The **Client Version** is the version of the calicoctl binary on your local machine. The **Cluster Version** is retrieved from the Calico datastore. If only the client version appears, calicoctl is not configured to connect to the datastore or cannot reach it.
 
 ## Common Errors and Solutions
 
@@ -94,33 +95,21 @@ metadata:
 rules:
 - apiGroups: ["crd.projectcalico.org"]
   resources: ["clusterinformations"]
-  verbs: ["get", "list"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: calicoctl-reader-binding
-subjects:
-- kind: ServiceAccount
-  name: calicoctl
-  namespace: kube-system
-roleRef:
-  kind: ClusterRole
-  name: calicoctl-reader
-  apiGroup: rbac.authorization.k8s.io
+  verbs: ["get"]
 ```
 
-Apply the role:
+Apply the role, then bind it to the user, group, or service account used by your kubeconfig:
 
 ```bash
 kubectl apply -f calicoctl-rbac.yaml
+kubectl create clusterrolebinding calicoctl-reader-binding --clusterrole=calicoctl-reader --user=<your-kubeconfig-user>
 ```
 
 ### Error: Version Mismatch Warning
 
 When the client and cluster versions differ significantly:
 
-```yaml
+```text
 Client Version:    v3.27.0
 Cluster Version:   v3.24.0
 WARNING: Client and cluster versions differ.
@@ -130,7 +119,7 @@ While this is a warning rather than a hard error, version mismatches can cause u
 
 ```bash
 # Download the matching version
-CALICO_VERSION=$(kubectl get clusterinformation default -o jsonpath='{.spec.calicoVersion}' 2>/dev/null || echo "v3.27.0")
+CALICO_VERSION=$(calicoctl get clusterinformation default -o go-template='{{range .}}{{range .Items}}{{.Spec.CalicoVersion}}{{end}}{{end}}' 2>/dev/null || echo "v3.27.0")
 curl -L "https://github.com/projectcalico/calico/releases/download/${CALICO_VERSION}/calicoctl-linux-amd64" -o calicoctl
 chmod +x calicoctl
 sudo mv calicoctl /usr/local/bin/
