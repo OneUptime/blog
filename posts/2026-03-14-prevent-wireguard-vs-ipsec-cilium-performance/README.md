@@ -14,7 +14,7 @@ Encryption performance can degrade over time due to increased traffic volumes, k
 
 This guide covers the monitoring and testing framework that keeps encryption performance optimal regardless of which protocol you use.
 
-The key principle is monitoring the encryption overhead ratio continuously, not just the absolute throughput.
+The key principle is monitoring encrypted throughput continuously, and comparing it with an unencrypted baseline when you need an overhead ratio.
 
 ## Prerequisites
 
@@ -43,6 +43,8 @@ spec:
             - /bin/sh
             - -c
             - |
+              apt-get update >/dev/null
+              apt-get install -y --no-install-recommends jq curl >/dev/null
               # Measure encrypted throughput
               ENC=$(iperf3 -c iperf-server.monitoring -t 20 -P 1 -J | \
                 jq '.end.sum_sent.bits_per_second')
@@ -224,4 +226,4 @@ Maintain a living runbook that documents all known performance issues and their 
 
 ## Conclusion
 
-Preventing encryption performance degradation requires continuous monitoring of the encrypted throughput and the overhead ratio compared to unencrypted baselines. By tracking these metrics daily and alerting on regressions, you can catch issues caused by kernel updates, hardware changes, or configuration drift before they affect production traffic.
+Preventing encryption performance degradation requires continuous monitoring of encrypted throughput and, where possible, the overhead ratio compared to unencrypted baselines. By tracking these metrics daily and alerting on regressions, you can catch issues caused by kernel updates, hardware changes, or configuration drift before they affect production traffic.
