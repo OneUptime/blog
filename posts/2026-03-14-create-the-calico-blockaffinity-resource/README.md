@@ -1,41 +1,41 @@
-# Creating the Calico BlockAffinity Resource in Kubernetes
+# Inspecting the Calico BlockAffinity Resource in Kubernetes
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes
 
-Description: Learn how to define and apply a Calico BlockAffinity resource to your Kubernetes cluster using kubectl and calicoctl.
+Description: Learn how to inspect and validate Calico BlockAffinity resources in your Kubernetes cluster using kubectl and calicoctl.
 
 ---
 
 ## Introduction
 
-Calico uses custom Kubernetes resources to configure networking and security in your cluster. The BlockAffinity resource is one of these building blocks, and understanding how to create it properly is essential for any Kubernetes operator running Calico.
+Calico uses custom Kubernetes resources to configure networking and security in your cluster. The BlockAffinity resource is one of these building blocks, and understanding how it is created and managed by Calico is essential for any Kubernetes operator running Calico.
 
-This guide walks you through defining a BlockAffinity manifest, understanding each field, and applying it to your cluster. Whether you are setting up a new cluster or extending an existing Calico deployment, you will learn the correct way to create this resource.
+This guide walks you through reviewing a BlockAffinity manifest, understanding each field, and verifying it in your cluster. Whether you are setting up a new cluster or extending an existing Calico deployment, you will learn the correct way to inspect this resource.
 
-By the end of this post you will have a working BlockAffinity resource applied to your cluster, with a clear understanding of what each field controls and how to verify that the resource is active.
+By the end of this post you will know how to find active BlockAffinity resources in your cluster, with a clear understanding of what each field controls and how to verify that the resource is active.
 
 ## Prerequisites
 
 - A running Kubernetes cluster (v1.24 or later)
 - Calico installed (v3.26 or later recommended)
 - `kubectl` configured with cluster-admin privileges
-- `calicoctl` installed (optional but recommended for validation)
+- `calicoctl` installed (optional but recommended for IPAM diagnostics)
 
 ## Understanding the BlockAffinity Resource
 
-The BlockAffinity resource uses the Calico API group `projectcalico.org/v3`. Before writing the manifest, review the key fields:
+The BlockAffinity resource uses the Calico API group `projectcalico.org/v3`. Before reviewing an existing resource, understand the key fields:
 
 - `cidr`: The IP block (CIDR) that is affined to the node.
 - `node`: The name of the Kubernetes node that owns this IP block.
 - `state`: The current state of the affinity. Values: `confirmed`, `pending`, `pendingDeletion`.
 
-> **Note:** BlockAffinity resources are typically managed automatically by Calico IPAM.
+> **Note:** BlockAffinity resources are managed automatically by Calico IPAM. They are intended for get, list, and watch operations, not manual create, update, or delete workflows.
 
-## Creating the BlockAffinity Manifest
+## Reviewing the BlockAffinity Manifest
 
-Create a file named `blockaffinity.yaml` with the following content:
+An existing BlockAffinity resource exported from a cluster may look like this:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -48,42 +48,41 @@ spec:
   state: confirmed
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+The values are cluster state, not sensible defaults. Treat them as data produced by Calico IPAM, and do not edit them as a normal configuration workflow.
 
-## Applying the Resource
+## Exporting the Resource
 
-Apply the manifest using `kubectl`:
-
-```bash
-kubectl apply -f blockaffinity.yaml
-```
-
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
+List existing BlockAffinity resources using `kubectl`:
 
 ```bash
-# Apply with calicoctl for enhanced validation
-
-calicoctl apply -f blockaffinity.yaml
+kubectl get blockaffinities.projectcalico.org -o wide
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+Alternatively, use `calicoctl` to export the same Calico resource:
+
+```bash
+# Export BlockAffinity resources for inspection
+calicoctl get blockaffinity -o yaml
+```
+
+Do not use `kubectl apply` or `calicoctl apply` to create BlockAffinity resources manually. Calico IPAM creates and updates these resources as pod IP blocks are assigned to nodes.
 
 ## Verification
 
-Confirm that the resource was created successfully:
+Confirm that the resource exists and matches the expected node and CIDR:
 
 ```bash
 # List BlockAffinity resources
-kubectl get blockaffinity.projectcalico.org -o wide
+kubectl get blockaffinities.projectcalico.org -o wide
 
-# Describe the specific resource for full details
-kubectl describe blockaffinity.projectcalico.org
+# Describe a specific resource for full details
+kubectl describe blockaffinities.projectcalico.org node1-10-244-0-0-24
 
 # Verify with calicoctl
 calicoctl get blockaffinity -o yaml
 ```
 
-Check the Calico component logs for any warnings or errors related to the new resource:
+Check the Calico component logs for any warnings or errors related to IPAM:
 
 ```bash
 # Check calico-node logs
@@ -92,26 +91,26 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 
 ## Troubleshooting
 
-**Resource not appearing after apply:**
-- Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `BlockAffinity`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+**Resource not appearing:**
+- Do not apply BlockAffinity resources manually. Create a pod workload that requires an IP address and let Calico IPAM allocate blocks.
+- Verify that the Calico API is available with `kubectl api-resources | grep projectcalico.org`.
 
 **Validation errors:**
-- Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
-- Ensure field values match the types expected by the API (strings, integers, valid CIDRs).
+- Use `kubectl get` or `calicoctl get` to inspect generated resources instead of applying edited manifests.
+- Ensure field values in exported output match the types expected by the API (strings, booleans, valid CIDRs).
 
 **Calico components not picking up the resource:**
-- Restart the calico-node pods: `kubectl rollout restart daemonset calico-node -n calico-system`.
+- Avoid editing BlockAffinity resources directly; run `calicoctl ipam check` to identify IPAM consistency issues.
 - Check Felix and Typha logs for error messages.
 
 
 ## Advanced Configuration Options
 
-Beyond the basic manifest shown above, there are several advanced configuration patterns worth understanding for production deployments.
+Beyond the basic inspection workflow shown above, there are several advanced configuration patterns worth understanding for production deployments.
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Labels on nodes and Calico resources enable you to build flexible configurations that apply differently across your cluster. Node labels do not directly assign BlockAffinity resources, but they are useful for related Kubernetes and Calico workflows:
 
 ```bash
 # Label nodes for targeted configuration
@@ -124,7 +123,7 @@ kubectl get nodes --show-labels | grep calico-config
 
 ### Version Control and GitOps Integration
 
-Store your Calico resource manifests alongside your application configurations in Git. This enables change tracking, peer review, and automated deployment:
+Store your Calico configuration manifests alongside your application configurations in Git. This enables change tracking, peer review, and automated deployment:
 
 ```bash
 # Example directory structure for Calico resources
@@ -139,22 +138,22 @@ Store your Calico resource manifests alongside your application configurations i
 #       kustomization.yaml
 ```
 
-When using GitOps tools like Flux or Argo CD, ensure your Calico CRDs are applied before the custom resources. Set appropriate sync waves or dependencies to prevent ordering issues.
+When using GitOps tools like Flux or Argo CD, ensure your Calico CRDs are applied before custom resources that you own, such as IPPool and FelixConfiguration resources. BlockAffinity resources should be treated as Calico-managed runtime state rather than GitOps-managed configuration.
 
 Resource Naming Conventions
 
-Adopt a consistent naming convention for your Calico resources:
+Adopt a consistent naming convention for Calico resources that you manage directly:
 
 - Use descriptive names that indicate the resource's purpose (e.g., `production-pod-pool` instead of `pool-1`)
 - Include environment or cluster identifiers for multi-cluster setups
 - Avoid special characters; use lowercase letters, numbers, and hyphens only
 
-Following these conventions makes it easier to manage resources at scale and reduces the risk of accidental modifications to the wrong resource.
+Following these conventions makes it easier to manage configuration resources at scale and reduces the risk of accidental modifications to the wrong resource.
 
 
 ## Understanding the Root Cause
 
-Before diving into the fix commands, it is worth understanding why this error occurs at a deeper level. Calico's architecture relies on several components working together: Felix for dataplane programming, the IPAM plugin for IP address management, and the CNI plugin for pod network setup. When any of these components encounters an inconsistency, errors propagate through the system.
+Before diving into diagnostic commands, it is worth understanding why BlockAffinity issues occur at a deeper level. Calico's architecture relies on several components working together: Felix for dataplane programming, the IPAM plugin for IP address management, and the CNI plugin for pod network setup. When any of these components encounters an inconsistency, errors propagate through the system.
 
 The most reliable way to prevent recurring issues is to understand the interaction between these components. Felix watches for changes in the Calico datastore and programs the Linux kernel accordingly. If the datastore contains stale or conflicting data, Felix may program incorrect rules, leading to connectivity failures.
 
@@ -164,7 +163,7 @@ Understanding this architecture helps you identify the correct fix more quickly 
 
 ## Recovery Validation Checklist
 
-After applying any fix, systematically verify each layer of the Calico stack:
+After applying any supported fix, systematically verify each layer of the Calico stack:
 
 ```bash
 # Layer 1: Calico system pods
@@ -176,8 +175,8 @@ calicoctl ipam check
 # Layer 3: Node-to-node connectivity
 calicoctl node status
 
-# Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+# Layer 4: DNS and service connectivity
+kubectl run fix-test --image=busybox:1.36 --rm -it --restart=Never -- nslookup kubernetes.default.svc
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
@@ -187,4 +186,4 @@ Each layer depends on the previous one. If Layer 1 fails, do not proceed to test
 
 ## Conclusion
 
-You have created a Calico BlockAffinity resource, applied it to your cluster, and verified it is active. This resource is a foundational piece of your Calico configuration. Keep your manifests in version control and validate changes with `calicoctl` before applying to production clusters.
+You have inspected a Calico BlockAffinity resource and verified it is active. This resource is a foundational piece of Calico IPAM runtime state. Keep user-managed Calico configuration manifests in version control, and use `kubectl get`, `calicoctl get`, and `calicoctl ipam check` to validate BlockAffinity state before troubleshooting production clusters.
