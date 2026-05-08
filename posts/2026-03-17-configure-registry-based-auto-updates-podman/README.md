@@ -30,6 +30,7 @@ The `registry` auto-update policy is the most common approach. Podman checks the
 Description=API server with registry auto-update
 
 [Container]
+ContainerName=api
 Image=docker.io/myorg/api:latest
 PublishPort=3000:3000
 AutoUpdate=registry
@@ -39,6 +40,14 @@ Restart=on-failure
 
 [Install]
 WantedBy=default.target
+```
+
+```bash
+# Reload systemd so Quadlet generates the service
+systemctl --user daemon-reload
+
+# Start the generated service
+systemctl --user enable --now api.service
 ```
 
 ## Using Private Registries
@@ -121,7 +130,7 @@ Image=docker.io/myorg/api:latest
 Image=docker.io/myorg/api:stable
 Image=docker.io/myorg/api:v1
 
-# Bad: immutable tags or digests (will never update)
+# Avoid: immutable version tags or digests
 # Image=docker.io/myorg/api:v1.2.3
 # Image=docker.io/myorg/api@sha256:abc123...
 ```
