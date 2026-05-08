@@ -14,7 +14,7 @@ This is alert fatigue - and it's not just annoying. It's dangerous.
 
 ## The Real Cost of Alert Fatigue
 
-A 2025 study by Catchpoint found that 62% of on-call engineers have ignored a critical alert because it was buried in noise. PagerDuty's own data shows that teams receiving more than 40 alerts per shift have a 3x higher mean time to resolution (MTTR) compared to teams receiving fewer than 10.
+Catchpoint's 2025 SRE Report warns that too much observability can flood teams with more noise than signal, making it harder to surface and explore meaningful insights. PagerDuty's own incident response guidance makes the same operational point: an alert should require a human to take action; anything else is a notification that should not wake people up.
 
 The math is simple: more noise = slower response = longer outages = lost revenue.
 
@@ -74,24 +74,41 @@ AI correlation is only as good as the topology it understands. Start by instrume
 
 ```yaml
 # OpenTelemetry Collector config for service topology
-processors:
-  spanmetrics:
-    metrics_exporter: prometheus
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+connectors:
+  span_metrics:
     dimensions:
       - name: service.name
       - name: peer.service
-  servicegraph:
-    metrics_exporter: prometheus
+  service_graph:
     store:
       ttl: 2s
       max_items: 1000
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [span_metrics, service_graph]
+    metrics:
+      receivers: [span_metrics, service_graph]
+      exporters: [prometheus]
 ```
 
 ### Step 2: Centralize Your Alerts
 
 Alert correlation can't work if your alerts live in five different systems. Consolidate into a single observability platform that handles metrics, logs, traces, and alerts together. This is where open-source platforms have an advantage - you control the data pipeline.
 
-Tools like OneUptime, Grafana + OnCall, or SigNoz let you unify your alerting without vendor lock-in or per-host pricing that makes consolidation prohibitively expensive.
+Tools like OneUptime, Grafana, or SigNoz let you unify your alerting without vendor lock-in or per-host pricing that makes consolidation prohibitively expensive.
 
 ### Step 3: Define Alert Relationships
 
