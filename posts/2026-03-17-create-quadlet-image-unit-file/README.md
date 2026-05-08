@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Podman, Container, DevOps, Quadlet, Systemd, Image
 
-Description: Learn how to create a Quadlet .image unit file to manage container image pulling and tagging as a systemd resource.
+Description: Learn how to create a Quadlet .image unit file to manage container image pulling as a systemd resource.
 
 ---
 
-> Quadlet image unit files ensure container images are pulled and available before containers start, with optional auto-update support.
+> Quadlet image unit files ensure container images are pulled and available before containers start.
 
-Quadlet `.image` files manage the lifecycle of container images within systemd. They define which image to pull, from which registry, and can be referenced by container unit files to ensure the image is present before the container starts.
+Quadlet `.image` files manage container image pulls within systemd. They define which image to pull, from which registry, and can be referenced by container unit files to ensure the image is present before the container starts.
 
 ---
 
@@ -23,13 +23,17 @@ Quadlet `.image` files manage the lifecycle of container images within systemd. 
 Image=docker.io/library/nginx:alpine
 ```
 
-## Image with Auto-Update
+## Image for Auto-Update
 
 ```ini
 # ~/.config/containers/systemd/app-image.image
 [Image]
 Image=docker.io/library/python:3.12-slim
-# Podman will check for newer versions of this image
+
+# ~/.config/containers/systemd/app.container
+[Container]
+Image=app-image.image
+AutoUpdate=registry
 ```
 
 ## Referencing Images in Containers
@@ -72,7 +76,7 @@ Image=registry.example.com/myteam/myapp:v1.5
 # Login to the registry first
 podman login registry.example.com
 
-# Then start the service - it pulls from the private registry
+# Then start the service that references the image - it pulls from the private registry
 systemctl --user start myapp
 ```
 
@@ -133,13 +137,13 @@ podman auto-update --dry-run
 [Image]
 Image=insecure-registry.local:5000/myapp:latest
 # For testing with self-signed certificates
-PodmanArgs=--tls-verify=false
+TLSVerify=false
 ```
 
 ## Managing Images
 
 ```bash
-# Check which images are managed by Quadlet
+# Check local images, including images pulled by Quadlet
 podman images
 
 # Force pull a new version
@@ -151,4 +155,4 @@ systemctl --user restart web
 
 ## Summary
 
-Quadlet `.image` files manage container image pulling as systemd resources. Reference them in `.container` files with `Image=name.image` to ensure images are present before containers start. Combine with Podman auto-update for automatic image refreshes when new versions are published.
+Quadlet `.image` files manage container image pulling as systemd resources. Reference them in `.container` files with `Image=name.image` to ensure images are present before containers start. Combine referenced images with `AutoUpdate=registry` in container units for automatic image refreshes when new versions are published.
