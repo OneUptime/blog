@@ -67,16 +67,16 @@ Enforce the taxonomy with an automated checker:
 TAXONOMY_FILE="${1:-label-taxonomy.yaml}"
 
 calicoctl get nodes -o json | python3 -c "
-import json, sys, re
+import json, sys
 
 # Define the taxonomy inline (or parse from YAML)
 REQUIRED_LABELS = {
     'env': ['production', 'staging', 'development', 'testing'],
     'team': ['platform', 'security', 'application', 'data'],
+    'tier': ['frontend', 'backend', 'database', 'cache', 'monitoring'],
 }
 
 OPTIONAL_LABELS = {
-    'tier': ['frontend', 'backend', 'database', 'cache', 'monitoring'],
     'compliance': ['pci', 'hipaa', 'sox', 'none'],
 }
 
@@ -84,7 +84,7 @@ OPTIONAL_LABELS = {
 SYSTEM_PREFIXES = ['projectcalico.org/', 'kubernetes.io/', 'beta.kubernetes.io/']
 
 data = json.load(sys.stdin)
-items = data.get('items', [data]) if 'items' in data else [data]
+items = data.get('items', [data]) if isinstance(data, dict) else data
 
 errors = 0
 warnings = 0
@@ -151,6 +151,18 @@ Each node file contains the desired labels:
 
 ```yaml
 # production/node-worker-1.yaml
+# This file is the label source of truth for worker-1.
+name: worker-1
+labels:
+  env: production
+  team: platform
+  tier: backend
+  compliance: pci
+```
+
+If you choose to store full Calico resource manifests instead, export the complete resource first and keep the full `spec`. `calicoctl apply` replaces the existing resource spec on update, so a labels-only Calico `Node` manifest is not sufficient:
+
+```yaml
 apiVersion: projectcalico.org/v3
 kind: Node
 metadata:
@@ -158,8 +170,11 @@ metadata:
   labels:
     env: production
     team: platform
-    tier: compute
+    tier: backend
     compliance: pci
+spec:
+  bgp:
+    ipv4Address: 10.244.0.1/24
 ```
 
 ## Pull Request Review Checklist
@@ -222,7 +237,22 @@ echo "Snapshot saved to $SNAPSHOT"
 echo "Applying labels for $ENV..."
 for f in "$LABEL_DIR"/*.yaml; do
   echo "  Applying $f..."
-  calicoctl apply -f "$f"
+  NODE=$(awk -F': *' '$1 == "name" { print $2; exit }' "$f")
+  awk '
+    /^labels:/ { in_labels=1; next }
+    in_labels && /^[^[:space:]]/ { in_labels=0 }
+    in_labels && /^[[:space:]]+[A-Za-z0-9_.\/-]+:/ {
+      key=$1
+      value=$2
+      sub(/:$/, "", key)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      print key "=" value
+    }
+  ' "$f" |
+  while IFS= read -r label; do
+    calicoctl label nodes "$NODE" "$label" --overwrite
+  done
 done
 
 echo "Labels applied. Run verification:"
@@ -238,12 +268,12 @@ Verify your team standards are working:
 ./check-label-compliance.sh
 
 # Verify all nodes have required labels
-calicoctl get nodes -l env
-calicoctl get nodes -l team
+calicoctl get nodes -o json | python3 -c "import json,sys; data=json.load(sys.stdin); nodes=data.get('items', data) if isinstance(data, dict) else data; print('\n'.join(n['metadata']['name'] for n in nodes if 'env' in n.get('metadata', {}).get('labels', {})))"
+calicoctl get nodes -o json | python3 -c "import json,sys; data=json.load(sys.stdin); nodes=data.get('items', data) if isinstance(data, dict) else data; print('\n'.join(n['metadata']['name'] for n in nodes if 'team' in n.get('metadata', {}).get('labels', {})))"
 
 # Check that no unlabeled nodes exist
-TOTAL=$(calicoctl get nodes -o json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('items',[])))")
-LABELED=$(calicoctl get nodes -l env -o json | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('items',[])))")
+TOTAL=$(calicoctl get nodes -o json | python3 -c "import json,sys; data=json.load(sys.stdin); nodes=data.get('items', data) if isinstance(data, dict) else data; print(len(nodes))")
+LABELED=$(calicoctl get nodes -o json | python3 -c "import json,sys; data=json.load(sys.stdin); nodes=data.get('items', data) if isinstance(data, dict) else data; print(sum(1 for n in nodes if 'env' in n.get('metadata', {}).get('labels', {})))")
 echo "Total: $TOTAL, Labeled: $LABELED"
 ```
 
