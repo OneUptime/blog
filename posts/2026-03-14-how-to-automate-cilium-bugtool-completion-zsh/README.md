@@ -33,24 +33,26 @@ This guide covers automation strategies for cilium-bugtool zsh completions.
 ## install-bugtool-zsh-completion.sh
 set -euo pipefail
 
-ZSH_COMP_DIR="\${ZSH_COMPLETION_DIR:-/usr/local/share/zsh/site-functions}"
-COMP_FILE="\$ZSH_COMP_DIR/_cilium-bugtool"
+ZSH_COMP_DIR="${ZSH_COMPLETION_DIR:-/usr/local/share/zsh/site-functions}"
+COMP_FILE="$ZSH_COMP_DIR/_cilium-bugtool"
 
 ## Generate completion
 if command -v cilium-bugtool &> /dev/null; then
-  mkdir -p "\$ZSH_COMP_DIR"
-  cilium-bugtool completion zsh > "\$COMP_FILE"
+  mkdir -p "$ZSH_COMP_DIR"
+  cilium-bugtool completion zsh > "$COMP_FILE"
 elif command -v kubectl &> /dev/null; then
-  CILIUM_POD=\$(kubectl -n kube-system get pods -l k8s-app=cilium     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-  if [ -n "\$CILIUM_POD" ]; then
-    mkdir -p "\$ZSH_COMP_DIR"
-    kubectl -n kube-system exec "\$CILIUM_POD" -c cilium-agent --       cilium-bugtool completion zsh > "\$COMP_FILE"
+  CILIUM_POD=$(kubectl -n kube-system get pods -l k8s-app=cilium \
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+  if [ -n "$CILIUM_POD" ]; then
+    mkdir -p "$ZSH_COMP_DIR"
+    kubectl -n kube-system exec "$CILIUM_POD" -c cilium-agent -- \
+      cilium-bugtool completion zsh > "$COMP_FILE"
   fi
 fi
 
 ## Validate
-if [ -s "\$COMP_FILE" ] && grep -q "compdef\|#compdef" "\$COMP_FILE"; then
-  echo "Installed valid zsh completion to \$COMP_FILE"
+if [ -s "$COMP_FILE" ] && grep -Eq '(^#compdef|compdef)' "$COMP_FILE"; then
+  echo "Installed valid zsh completion to $COMP_FILE"
   echo "Run: rm -f ~/.zcompdump* && compinit"
 else
   echo "ERROR: Generated file does not appear to be valid zsh completion"
@@ -61,14 +63,16 @@ fi
 ### Auto-Regeneration in .zshrc
 
 ```bash
-## Add to .zshrc - regenerate if binary is newer than completion
+## Add to .zshrc before compinit - regenerate if binary is newer than completion
+fpath=("${HOME}/.zsh/completions" $fpath)
+
 _update_bugtool_completion() {
-  local comp_file="\${HOME}/.zsh/completions/_cilium-bugtool"
-  local binary=\$(which cilium-bugtool 2>/dev/null)
-  if [ -n "\$binary" ]; then
-    if [ ! -f "\$comp_file" ] || [ "\$binary" -nt "\$comp_file" ]; then
-      mkdir -p "\${HOME}/.zsh/completions"
-      cilium-bugtool completion zsh > "\$comp_file" 2>/dev/null
+  local comp_file="${HOME}/.zsh/completions/_cilium-bugtool"
+  local binary=$(command -v cilium-bugtool 2>/dev/null)
+  if [ -n "$binary" ]; then
+    if [ ! -f "$comp_file" ] || [ "$binary" -nt "$comp_file" ]; then
+      mkdir -p "${HOME}/.zsh/completions"
+      cilium-bugtool completion zsh > "$comp_file" 2>/dev/null
     fi
   fi
 }
@@ -83,7 +87,7 @@ _update_bugtool_completion
 # Verify installation
 
 whence -v _cilium-bugtool
-echo \$_comps[cilium-bugtool]
+echo ${_comps[cilium-bugtool]}
 
 # Test completion
 cilium-bugtool <TAB>
@@ -100,5 +104,4 @@ cilium-bugtool <TAB>
 
 
 Automating zsh completion setup eliminates the manual steps that often get skipped during upgrades. Version-aware regeneration and profile integration ensure completions are always current.
-
 
