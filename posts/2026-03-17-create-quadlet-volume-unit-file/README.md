@@ -23,7 +23,7 @@ Quadlet `.volume` files define named Podman volumes that can be referenced by co
 # A basic named volume with default settings
 ```
 
-That is the minimal volume file. Quadlet creates a Podman named volume when a container references it.
+That is the minimal volume file. Quadlet creates a Podman named volume when a container references it. By default, `pgdata.volume` creates a volume named `systemd-pgdata`; use `VolumeName=` to set a custom volume name.
 
 ## Volume with Labels
 
@@ -40,7 +40,9 @@ Label=environment=production
 # ~/.config/containers/systemd/nfs-data.volume
 [Volume]
 Driver=local
-Options=type=nfs,o=addr=nfs-server.example.com,rw,device=:/exports/data
+Type=nfs
+Device=:/exports/data
+Options=addr=nfs-server.example.com,rw
 ```
 
 ## Referencing Volumes in Containers
@@ -48,13 +50,14 @@ Options=type=nfs,o=addr=nfs-server.example.com,rw,device=:/exports/data
 ```ini
 # ~/.config/containers/systemd/pgdata.volume
 [Volume]
+VolumeName=pgdata
 Label=service=postgres
 
 # ~/.config/containers/systemd/postgres.container
 [Container]
 Image=docker.io/library/postgres:16-alpine
 Environment=POSTGRES_PASSWORD=secret
-# Reference the volume by its unit name (without .volume extension)
+# Reference the volume by its Quadlet unit file name
 Volume=pgdata.volume:/var/lib/postgresql/data
 PublishPort=5432:5432
 
