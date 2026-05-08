@@ -12,7 +12,7 @@ Description: Learn how to verify Calico pod networking on a self-managed Kuberne
 
 Running a self-managed Kubernetes cluster on Azure VMs with Calico requires specific configuration due to Azure's network filtering policies. Most importantly, Azure Virtual Networks filter IP-in-IP (protocol 4) traffic, making VXLAN the required encapsulation mode for overlay networking. Failing to configure VXLAN mode is the most common cause of cross-node pod connectivity failures in Azure deployments.
 
-Azure Network Security Groups (NSGs) must also be configured to allow VXLAN traffic (UDP 4789) and BGP traffic (TCP 179) between nodes. Without these rules, pods on different nodes will be unable to communicate even if Calico is correctly configured.
+Azure Network Security Groups (NSGs) must also allow VXLAN traffic (UDP 4789) between nodes. Azure's default NSG rules allow VirtualNetwork-to-VirtualNetwork traffic, but custom deny rules can override that behavior. Without an allow path for UDP 4789, pods on different nodes will be unable to communicate even if Calico is correctly configured.
 
 This guide covers the complete verification workflow for Calico pod networking on self-managed Azure Kubernetes.
 
@@ -26,7 +26,7 @@ This guide covers the complete verification workflow for Calico pod networking o
 
 ## Step 1: Verify Calico Is Configured for VXLAN Mode
 
-Azure blocks IP-in-IP traffic, so VXLAN mode is mandatory.
+Azure blocks IP-in-IP traffic, so VXLAN mode is required for Calico overlay networking.
 
 ```bash
 # Check the IP pool encapsulation mode
@@ -70,7 +70,7 @@ az network nsg list --resource-group <rg-name> --query '[*].name' -o tsv
 NSG_NAME=<nsg-name>
 az network nsg rule list --nsg-name $NSG_NAME --resource-group <rg-name> -o table
 
-# Add VXLAN inbound rule if missing (allow UDP 4789 from VNet)
+# Add VXLAN inbound rule if missing or overridden (allow UDP 4789 from VNet)
 az network nsg rule create \
   --nsg-name $NSG_NAME \
   --resource-group <rg-name> \
@@ -142,8 +142,8 @@ kubectl exec pod-a -- wget -qO- --timeout=5 http://checkip.amazonaws.com
 
 - Always use `vxlanMode: Always` and `ipipMode: Never` for Calico on Azure
 - Check Azure NSG rules early in troubleshooting - they are the most common cause of failures
-- Avoid enabling BGP mode on Azure without careful testing as it requires additional NSG rules
-- Use Calico's built-in connectivity test after any NSG rule changes
+- Avoid enabling BGP mode on Azure without careful testing as it requires additional routing configuration and NSG rules for TCP 179
+- Use Calico's documented networking test workflow after any NSG rule changes
 - Monitor VXLAN tunnel interface status as part of your node health checks
 
 ## Conclusion
