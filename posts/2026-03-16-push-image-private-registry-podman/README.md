@@ -24,7 +24,7 @@ Start a simple private registry for testing.
 podman run -d --name registry \
   -p 5000:5000 \
   -v registry-data:/var/lib/registry \
-  docker.io/library/registry:2
+  docker.io/library/registry:3
 
 # Verify the registry is running
 curl -s http://localhost:5000/v2/ | python3 -m json.tool
@@ -138,7 +138,7 @@ Harbor is a popular enterprise private registry.
 # Login to Harbor
 podman login harbor.example.com
 
-# Tag for a Harbor project
+# Tag for an existing Harbor project
 podman tag myapp:v1.0.0 harbor.example.com/myproject/myapp:v1.0.0
 
 # Push to Harbor
