@@ -63,7 +63,7 @@ systemctl --user start app
 
 # Both containers share the same network namespace
 # app can reach web via localhost
-podman exec systemd-app curl http://localhost:80
+podman exec systemd-app python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:80').status)"
 ```
 
 ## Pod with Shared Volumes
@@ -122,12 +122,12 @@ Restart=always
 [Install]
 WantedBy=default.target
 
-# Logging sidecar
-# ~/.config/containers/systemd/log-sidecar.container
+# Metrics sidecar
+# ~/.config/containers/systemd/metrics-sidecar.container
 [Container]
-Image=docker.io/library/busybox:latest
+Image=docker.io/library/python:3.12-slim
 Pod=myapp.pod
-Exec=sh -c "tail -f /proc/1/fd/1"
+Exec=python -m http.server 9090
 
 [Service]
 Restart=always
@@ -149,10 +149,10 @@ podman pod inspect systemd-webapp
 # View all containers in the pod
 podman ps --filter pod=systemd-webapp
 
-# Stop the pod (stops all containers)
+# Stop the containers in the pod
 systemctl --user stop web app
 ```
 
 ## Summary
 
-Quadlet `.pod` files group containers that share a network namespace, enabling localhost communication between sidecars and main applications. Define the pod with ports and have containers join it with `Pod=name.pod`. Systemd manages the lifecycle of all containers in the pod together.
+Quadlet `.pod` files group containers that share a network namespace, enabling localhost communication between sidecars and main applications. Define the pod with ports and have containers join it with `Pod=name.pod`. Systemd manages the pod and container unit lifecycles together.
