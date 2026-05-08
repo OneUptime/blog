@@ -20,7 +20,7 @@ The majority of these issues occur in bare-metal and Docker-based deployments wh
 
 - A Linux host where `calicoctl node run` has been attempted
 - Root or sudo access
-- Docker or containerd installed and running
+- Docker installed and running
 - `calicoctl` binary installed
 - Access to the Calico datastore
 
@@ -50,7 +50,7 @@ sudo calicoctl node run
 ### Error: Image Pull Failed
 
 ```text
-Error response from daemon: manifest for calico/node:v3.27.0 not found
+Error response from daemon: manifest for calico/node:v3.27.99 not found
 ```
 
 ```bash
@@ -112,10 +112,12 @@ x509: certificate signed by unknown authority
 ```
 
 ```bash
-# Verify the CA certificate matches the etcd server certificate
-openssl verify -CAfile /etc/calico/certs/ca.pem /etc/calico/certs/cert.pem
+# Verify the etcd server certificate chains to the configured CA
+openssl s_client -connect 10.0.1.5:2379 \
+  -CAfile /etc/calico/certs/ca.pem \
+  -verify_return_error </dev/null
 
-# Check certificate expiration
+# Check client certificate expiration
 openssl x509 -in /etc/calico/certs/cert.pem -noout -dates
 
 # Ensure the CA cert file contains the correct CA
@@ -135,7 +137,7 @@ Unable to auto-detect IPv4 address: no valid host interfaces found
 ip addr show
 
 # Specify the correct interface explicitly
-sudo calicoctl node run --ip-autodetection-method=interface=eth0
+sudo calicoctl node run --ip=autodetect --ip-autodetection-method=interface=eth0
 
 # Or set a static IP
 sudo calicoctl node run --ip=10.0.1.10
@@ -196,8 +198,8 @@ Felix is not ready: Failed to connect to datastore
 # Check if the datastore configuration inside the container is correct
 docker exec calico-node env | grep -E "(DATASTORE|ETCD|KUBE)"
 
-# Verify from inside the container
-docker exec calico-node calicoctl get nodes
+# Verify with the configured calicoctl client
+sudo calicoctl get nodes
 ```
 
 ### Error: Felix iptables Errors
