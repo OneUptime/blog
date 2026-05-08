@@ -15,8 +15,6 @@ CockroachDB is a distributed SQL database compatible with PostgreSQL. It provide
 ```yaml
 # docker-compose.yml - CockroachDB 3-node cluster
 
-version: "3.8"
-
 networks:
   cockroach_net:
     driver: bridge
@@ -32,7 +30,7 @@ volumes:
 services:
   # CockroachDB Node 1
   crdb1:
-    image: cockroachdb/cockroach:v23.2.0
+    image: cockroachdb/cockroach:v25.2.18
     container_name: crdb1
     restart: unless-stopped
     hostname: crdb1
@@ -47,12 +45,16 @@ services:
     command: >
       start
       --insecure
-      --advertise-addr=crdb1
-      --join=crdb1:26257,crdb2:26257,crdb3:26257
+      --advertise-addr=crdb1:26357
+      --listen-addr=crdb1:26357
+      --sql-addr=crdb1:26257
+      --http-addr=crdb1:8080
+      --join=crdb1:26357,crdb2:26357,crdb3:26357
+      --locality=region=us-east1,zone=us-east1-a
       --cache=256MiB
       --max-sql-memory=256MiB
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health?ready=1"]
+      test: ["CMD", "curl", "-f", "http://crdb1:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -60,7 +62,7 @@ services:
 
   # CockroachDB Node 2
   crdb2:
-    image: cockroachdb/cockroach:v23.2.0
+    image: cockroachdb/cockroach:v25.2.18
     container_name: crdb2
     restart: unless-stopped
     hostname: crdb2
@@ -68,21 +70,25 @@ services:
       cockroach_net:
         ipv4_address: 172.32.0.11
     ports:
-      - "26258:26257"
-      - "8081:8080"
+      - "26258:26258"
+      - "8081:8081"
     volumes:
       - crdb2_data:/cockroach/cockroach-data
     command: >
       start
       --insecure
-      --advertise-addr=crdb2
-      --join=crdb1:26257,crdb2:26257,crdb3:26257
+      --advertise-addr=crdb2:26357
+      --listen-addr=crdb2:26357
+      --sql-addr=crdb2:26258
+      --http-addr=crdb2:8081
+      --join=crdb1:26357,crdb2:26357,crdb3:26357
+      --locality=region=us-west1,zone=us-west1-a
       --cache=256MiB
       --max-sql-memory=256MiB
 
   # CockroachDB Node 3
   crdb3:
-    image: cockroachdb/cockroach:v23.2.0
+    image: cockroachdb/cockroach:v25.2.18
     container_name: crdb3
     restart: unless-stopped
     hostname: crdb3
@@ -90,21 +96,25 @@ services:
       cockroach_net:
         ipv4_address: 172.32.0.12
     ports:
-      - "26259:26257"
-      - "8082:8080"
+      - "26259:26259"
+      - "8082:8082"
     volumes:
       - crdb3_data:/cockroach/cockroach-data
     command: >
       start
       --insecure
-      --advertise-addr=crdb3
-      --join=crdb1:26257,crdb2:26257,crdb3:26257
+      --advertise-addr=crdb3:26357
+      --listen-addr=crdb3:26357
+      --sql-addr=crdb3:26259
+      --http-addr=crdb3:8082
+      --join=crdb1:26357,crdb2:26357,crdb3:26357
+      --locality=region=europe-west1,zone=europe-west1-a
       --cache=256MiB
       --max-sql-memory=256MiB
 
   # CockroachDB cluster initializer
   crdb_init:
-    image: cockroachdb/cockroach:v23.2.0
+    image: cockroachdb/cockroach:v25.2.18
     container_name: crdb_init
     restart: "no"
     networks:
@@ -112,7 +122,7 @@ services:
     command: >
       init
       --insecure
-      --host=crdb1:26257
+      --host=crdb1:26357
     depends_on:
       crdb1:
         condition: service_healthy
@@ -122,20 +132,23 @@ services:
 
 ```bash
 # After stack deployment, check cluster status
-docker exec crdb1 ./cockroach node status --insecure
+docker exec crdb1 ./cockroach node status --host=crdb1:26257 --insecure
 
 # Create application database and user
-docker exec crdb1 ./cockroach sql --insecure --execute="
+docker exec crdb1 ./cockroach sql --host=crdb1:26257 --insecure --execute="
 CREATE DATABASE myapp;
-CREATE USER appuser WITH PASSWORD 'app_secure_password';
+ALTER DATABASE myapp SET PRIMARY REGION \"us-east1\";
+ALTER DATABASE myapp ADD REGION \"us-west1\";
+ALTER DATABASE myapp ADD REGION \"europe-west1\";
+CREATE USER appuser;
 GRANT ALL ON DATABASE myapp TO appuser;
 "
 
 # Set cluster-wide settings
-docker exec crdb1 ./cockroach sql --insecure --execute="
+docker exec crdb1 ./cockroach sql --host=crdb1:26257 --insecure --execute="
 SET CLUSTER SETTING sql.telemetry.query_sampling.enabled = false;
 SET CLUSTER SETTING cluster.organization = 'My Company';
-SET CLUSTER SETTING enterprise.license = '';
+-- Set enterprise.license only if you have a CockroachDB license key.
 "
 ```
 
@@ -144,7 +157,6 @@ SET CLUSTER SETTING enterprise.license = '';
 ```python
 # Python - CockroachDB is PostgreSQL-compatible
 import psycopg2
-from urllib.parse import urlparse
 
 # Connect to any node (all are equal in CockroachDB)
 conn = psycopg2.connect(
@@ -152,9 +164,8 @@ conn = psycopg2.connect(
     port=26257,
     database="myapp",
     user="appuser",
-    password="app_secure_password",
     # Enable SSL for production
-    sslmode="disable"  # Use "require" in production with certs
+    sslmode="disable"  # Use "verify-full" and sslrootcert in production
 )
 
 cursor = conn.cursor()
@@ -192,34 +203,34 @@ CREATE TABLE locations (
 
 INSERT INTO locations (name, coords) VALUES (
     'New York',
-    ST_MakePoint(-74.0060, 40.7128)
+    ST_SetSRID(ST_MakePoint(-74.0060, 40.7128), 4326)::GEOGRAPHY
 );
 
 -- Find locations within 100km of a point
 SELECT name FROM locations
-WHERE ST_DWithin(coords, ST_MakePoint(-74.0060, 40.7128)::geography, 100000);
+WHERE ST_DWithin(coords, ST_SetSRID(ST_MakePoint(-74.0060, 40.7128), 4326)::GEOGRAPHY, 100000);
 
 -- Multi-region table configuration
 ALTER TABLE users SET LOCALITY GLOBAL;
 
 -- Table partitioned across regions
-ALTER TABLE orders SET LOCALITY REGIONAL BY ROW;
+ALTER TABLE locations SET LOCALITY REGIONAL BY ROW;
 ```
 
 ## Step 5: Monitor CockroachDB
 
 ```bash
 # Check cluster health
-docker exec crdb1 ./cockroach node status --insecure
+docker exec crdb1 ./cockroach node status --host=crdb1:26257 --insecure
 
-# View database metrics
-curl http://localhost:8080/_status/nodes | jq '.nodes[].desc.nodeId'
+# View Prometheus-format SQL metrics
+curl -s http://localhost:8080/_status/vars | grep '^sql_query_count'
 
 # Check for range issues
-docker exec crdb1 ./cockroach debug zip /tmp/debug.zip --insecure
+docker exec crdb1 ./cockroach node status --host=crdb1:26257 --ranges --insecure
 
-# View SQL statistics
-docker exec crdb1 ./cockroach sql --insecure --execute="
+# View active queries
+docker exec crdb1 ./cockroach sql --host=crdb1:26257 --insecure --execute="
 SELECT * FROM crdb_internal.cluster_queries
 ORDER BY start DESC LIMIT 10;
 "
@@ -234,10 +245,11 @@ services:
     command: >
       start
       --certs-dir=/cockroach/certs
-      --advertise-addr=crdb1
-      --join=crdb1:26257,crdb2:26257,crdb3:26257
-      --listen-addr=0.0.0.0
-      --http-addr=0.0.0.0:8080
+      --advertise-addr=crdb1:26357
+      --listen-addr=crdb1:26357
+      --sql-addr=crdb1:26257
+      --http-addr=crdb1:8080
+      --join=crdb1:26357,crdb2:26357,crdb3:26357
     volumes:
       - crdb1_data:/cockroach/cockroach-data
       - /opt/certs:/cockroach/certs:ro
@@ -245,11 +257,14 @@ services:
 
 ```bash
 # Generate TLS certificates
-docker run --rm -v /opt/certs:/certs cockroachdb/cockroach cert create-ca \
+docker run --rm -v /opt/certs:/certs cockroachdb/cockroach:v25.2.18 cert create-ca \
   --certs-dir=/certs --ca-key=/certs/ca.key
 
-docker run --rm -v /opt/certs:/certs cockroachdb/cockroach cert create-node \
+docker run --rm -v /opt/certs:/certs cockroachdb/cockroach:v25.2.18 cert create-node \
   crdb1 crdb2 crdb3 localhost 127.0.0.1 \
+  --certs-dir=/certs --ca-key=/certs/ca.key
+
+docker run --rm -v /opt/certs:/certs cockroachdb/cockroach:v25.2.18 cert create-client root \
   --certs-dir=/certs --ca-key=/certs/ca.key
 ```
 
