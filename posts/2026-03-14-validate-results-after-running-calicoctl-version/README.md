@@ -30,6 +30,7 @@ A complete `calicoctl version` output contains several fields:
 ```bash
 $ calicoctl version
 Client Version:    v3.27.0
+Build date:        2024-02-05T16:27:45+0000
 Git commit:        8f57412ae
 Cluster Version:   v3.27.0
 Cluster Type:      typha,kdd,k8s,operator,bgp,kubeadm
@@ -38,6 +39,7 @@ Cluster Type:      typha,kdd,k8s,operator,bgp,kubeadm
 Each field provides specific information:
 
 - **Client Version**: The calicoctl binary version on your machine
+- **Build date**: The time and date the calicoctl binary was built
 - **Git commit**: The exact commit the binary was built from
 - **Cluster Version**: The Calico version running in the cluster (from ClusterInformation resource)
 - **Cluster Type**: A comma-separated list describing the deployment characteristics
@@ -54,19 +56,12 @@ OUTPUT=$(calicoctl version 2>&1)
 CLIENT=$(echo "$OUTPUT" | grep "Client Version:" | awk '{print $3}')
 CLUSTER=$(echo "$OUTPUT" | grep "Cluster Version:" | awk '{print $3}')
 
-# Extract major.minor for compatibility check
-
-CLIENT_MM=$(echo "$CLIENT" | cut -d. -f1,2)
-CLUSTER_MM=$(echo "$CLUSTER" | cut -d. -f1,2)
-
 if [ "$CLIENT" = "$CLUSTER" ]; then
   echo "PASS: Exact version match ($CLIENT)"
-elif [ "$CLIENT_MM" = "$CLUSTER_MM" ]; then
-  echo "WARN: Patch version differs (client=$CLIENT, cluster=$CLUSTER)"
-  echo "  This is usually acceptable but consider aligning versions."
 else
-  echo "FAIL: Major/minor version mismatch (client=$CLIENT, cluster=$CLUSTER)"
+  echo "FAIL: Version mismatch (client=$CLIENT, cluster=$CLUSTER)"
   echo "  Update calicoctl to match your cluster version."
+  echo "  If you must run a mismatched client temporarily, use --allow-version-mismatch."
   exit 1
 fi
 ```
@@ -92,13 +87,13 @@ spec:
   datastoreReady: true
 ```
 
-Confirm that `datastoreReady` is `true` and the version matches what `calicoctl version` reports.
+Confirm that `datastoreReady` is `true` and the version matches what `calicoctl version` reports. The `datastoreReady` field is used during datastore migrations to signal whether components such as Felix should wait before accessing the datastore.
 
 ### Step 3: Validate Cluster Type Components
 
 ```bash
 # Parse and validate the cluster type
-CLUSTER_TYPE=$(calicoctl version | grep "Cluster Type:" | sed 's/Cluster Type:\s*//')
+CLUSTER_TYPE=$(calicoctl version | grep "Cluster Type:" | sed 's/^Cluster Type:[[:space:]]*//')
 
 echo "Cluster type components:"
 IFS=',' read -ra COMPONENTS <<< "$CLUSTER_TYPE"
@@ -108,7 +103,7 @@ done
 
 # Check for expected components
 check_component() {
-  if echo "$CLUSTER_TYPE" | grep -q "$1"; then
+  if echo ",$CLUSTER_TYPE," | grep -q ",$1,"; then
     echo "PASS: $1 is present"
   else
     echo "WARN: $1 is not listed in cluster type"
@@ -122,7 +117,7 @@ check_component "operator"  # Installed via Tigera operator
 
 ## Validating Component Versions Match
 
-The Calico version reported by `calicoctl version` should match the container images running in your cluster:
+The Calico version reported by `calicoctl version` should match the container images running in your cluster. These examples use the `calico-system` namespace used by operator-based installs; if you installed Calico with manifests, check the namespace used by your deployment, such as `kube-system`.
 
 ```bash
 # Check calico-node image version
@@ -163,7 +158,7 @@ CLIENT_VER=$(calicoctl version | grep "Client Version:" | awk '{print $3}')
 CLUSTER_VER=$(calicoctl version | grep "Cluster Version:" | awk '{print $3}')
 
 if [ "$CLIENT_VER" != "$CLUSTER_VER" ]; then
-  echo "WARN: Version mismatch - client=$CLIENT_VER cluster=$CLUSTER_VER"
+  echo "FAIL: Version mismatch - client=$CLIENT_VER cluster=$CLUSTER_VER"
   ERRORS=$((ERRORS + 1))
 else
   echo "PASS: Versions aligned at $CLIENT_VER"
@@ -216,7 +211,7 @@ Validation complete. Issues found: 0
 
 ## Troubleshooting
 
-- **Cluster version shows empty**: The ClusterInformation resource may not exist yet. Wait for Calico to fully initialize after installation.
+- **Cluster version shows empty**: The ClusterInformation resource may not exist yet, or calicoctl may not be configured to connect to the datastore. Wait for Calico to fully initialize after installation and verify your calicoctl configuration.
 - **Cluster type is missing components**: This may be normal depending on your installation method. Operator-based installs include "operator" while manifest-based installs do not.
 - **Image versions do not match cluster version**: This can happen during a rolling upgrade. Wait for the upgrade to complete and recheck.
 
