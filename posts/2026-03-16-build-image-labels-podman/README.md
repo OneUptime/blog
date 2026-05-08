@@ -30,7 +30,7 @@ LABEL maintainer="dev@example.com"
 LABEL version="1.0.0"
 LABEL description="Custom Nginx web server"
 
-# Multiple labels in one instruction (recommended for fewer layers)
+# Multiple labels in one instruction
 LABEL org.opencontainers.image.title="My Web App" \
       org.opencontainers.image.description="Production web server" \
       org.opencontainers.image.version="1.0.0" \
@@ -107,7 +107,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
 
 WORKDIR /app
 COPY . .
-RUN npm ci --production
+RUN npm ci --omit=dev
 CMD ["node", "server.js"]
 EOF
 
