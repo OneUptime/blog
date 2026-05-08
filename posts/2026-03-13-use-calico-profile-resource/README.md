@@ -10,7 +10,7 @@ Description: Practical usage patterns for Calico Profile resources, including na
 
 ## Introduction
 
-Calico Profile resources are most powerful in two scenarios: as a mechanism for namespace-level label inheritance in Kubernetes (enabling namespace-scoped policy selectors), and as reusable policy templates for non-Kubernetes workloads where the same security rules apply to multiple endpoints. In Kubernetes, profiles operate mostly invisibly - but understanding their patterns enables advanced policy designs like default egress policies applied at the namespace level rather than per-workload.
+Calico Profile resources are most useful as a mechanism for shared endpoint labels, including namespace-level label inheritance in Kubernetes (enabling namespace-scoped policy selectors). Profiles can also contain policy rules for endpoints that reference them, but Profile `ingress` and `egress` rules are deprecated in favor of NetworkPolicy and GlobalNetworkPolicy. In Kubernetes, profiles operate mostly invisibly - but understanding their patterns helps you recognize how namespace labels are made available to policy selectors.
 
 ## Usage Pattern 1: Inspect Namespace Label Inheritance
 
@@ -28,20 +28,20 @@ for k, v in labels.items():
     print(f'  {k} = {v}')
 "
 
-# Verify an endpoint has those labels
+# Verify an endpoint is assigned the namespace profile
 calicoctl get workloadendpoint -n production -o json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 ep = data['items'][0]
-print('Endpoint labels:')
-for k, v in ep['metadata'].get('labels', {}).items():
-    print(f'  {k} = {v}')
+print('Endpoint profiles:')
+for profile in ep['spec'].get('profiles', []):
+    print(f'  {profile}')
 "
 ```
 
-## Usage Pattern 2: Namespace-Level Default Egress via Profile
+## Usage Pattern 2: Legacy Namespace-Level Default Egress via Profile
 
-In Kubernetes, add a default egress allow to a namespace profile for all pods in that namespace:
+In Kubernetes, existing clusters may use a namespace profile to add a default egress allow for all pods in that namespace. Profile rules are deprecated, so prefer NetworkPolicy or GlobalNetworkPolicy for new policy design:
 
 ```bash
 # Add default allow-all egress to the production namespace profile
@@ -55,9 +55,9 @@ calicoctl patch profile kns.production --patch='{
 }'
 ```
 
-Note: This is useful when migrating to a default-deny model incrementally - allow egress at the namespace profile level while implementing ingress restrictions via NetworkPolicy first.
+Note: This can be useful when maintaining older deployments during a migration to a default-deny model, but new policy should use NetworkPolicy or GlobalNetworkPolicy instead.
 
-## Usage Pattern 3: Reusable Profile for Non-Kubernetes Workloads
+## Usage Pattern 3: Legacy Reusable Profile for Non-Kubernetes Workloads
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -70,19 +70,28 @@ spec:
     tier: frontend
   ingress:
     - action: Allow
+      protocol: TCP
       destination:
         ports: [80, 443]
     - action: Allow
+      protocol: TCP
       source:
         nets: [10.0.0.0/8]  # Management network
+      destination:
         ports: [22]
     - action: Deny
   egress:
     - action: Allow
+      protocol: TCP
       destination:
         selector: "role == 'database'"
         ports: [5432]
     - action: Allow
+      protocol: UDP
+      destination:
+        ports: [53]
+    - action: Allow
+      protocol: TCP
       destination:
         ports: [53]
     - action: Deny
@@ -100,7 +109,7 @@ graph LR
 ## Usage Pattern 4: Apply Profile to New WorkloadEndpoint
 
 ```bash
-# When adding a new bare-metal server to Calico management
+# When adding a new VM workload endpoint to Calico management
 calicoctl apply -f - <<EOF
 apiVersion: projectcalico.org/v3
 kind: WorkloadEndpoint
@@ -108,9 +117,10 @@ metadata:
   name: new-web-server-eth0
   namespace: default
 spec:
-  node: bare-metal-host-1
+  node: vm-host-1
   orchestrator: bare
   endpoint: eth0
+  interfaceName: tap-web-server
   profiles:
     - web-servers
   ipNetworks:
@@ -134,4 +144,4 @@ for ep in data['items']:
 
 ## Conclusion
 
-Profiles provide policy inheritance that NetworkPolicies alone cannot - they attach labels and rules directly to endpoints regardless of how those endpoints are selected. For Kubernetes workloads, the primary value is namespace label propagation enabling `namespaceSelector` in cross-namespace policies. For non-Kubernetes workloads, profiles are the primary mechanism for applying consistent security baselines across groups of servers with identical security requirements.
+Profiles provide label inheritance that NetworkPolicies alone cannot - they attach labels directly to endpoints regardless of how those endpoints are selected. For Kubernetes workloads, the primary value is namespace label propagation enabling `namespaceSelector` in cross-namespace policies. For non-Kubernetes workloads, profiles can group endpoints under shared labels and legacy rules, but Profile policy rules are deprecated in favor of NetworkPolicy and GlobalNetworkPolicy.
