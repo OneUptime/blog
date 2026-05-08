@@ -52,13 +52,13 @@ Once you have the digest, use it in place of the tag.
 
 ```bash
 # Pull nginx by its digest
-podman pull docker.io/library/nginx@sha256:6db391d1c0cfb30588ba0bf72ea999404f2764deaf1c7ecf0ce05364afc0597e
+podman pull docker.io/library/nginx@sha256:a484819eb60211f5299034ac80f6a681b06f89e65866ce91f356ed7c72af059c
 
 # Pull alpine by digest
 podman pull docker.io/library/alpine@sha256:c5b1261d6d3e43071626931fc004f70149baeba2c8ec672bd4f27761f8e1ad6b
 
 # Pull from Quay.io by digest
-podman pull quay.io/prometheus/prometheus@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab
+podman pull quay.io/prometheus/prometheus@sha256:c0b857aead0d5793aa566adb8f49a9983d6f6031652098759d521a330cfa050f
 ```
 
 ## Verifying the Digest After Pull
@@ -67,12 +67,12 @@ Always verify that the pulled image matches the expected digest.
 
 ```bash
 # Pull by digest
-podman pull docker.io/library/nginx@sha256:6db391d1c0cfb30588ba0bf72ea999404f2764deaf1c7ecf0ce05364afc0597e
+podman pull docker.io/library/nginx@sha256:a484819eb60211f5299034ac80f6a681b06f89e65866ce91f356ed7c72af059c
 
 # Verify the digest matches
-podman inspect docker.io/library/nginx@sha256:6db391d1c0cfb30588ba0bf72ea999404f2764deaf1c7ecf0ce05364afc0597e \
-  --format '{{.Digest}}'
-# Output should match: sha256:6db391d1c0cfb30588ba0bf72ea999404f2764deaf1c7ecf0ce05364afc0597e
+podman inspect docker.io/library/nginx@sha256:a484819eb60211f5299034ac80f6a681b06f89e65866ce91f356ed7c72af059c \
+  --format '{{range .RepoDigests}}{{println .}}{{end}}' | \
+  grep 'docker.io/library/nginx@sha256:a484819eb60211f5299034ac80f6a681b06f89e65866ce91f356ed7c72af059c'
 ```
 
 ## Comparing Tag and Digest Pulls
@@ -85,11 +85,11 @@ podman pull nginx:1.25
 # This might give you a different image tomorrow if the tag is updated
 
 # Digest-based pull: immutable, always the same image
-podman pull nginx@sha256:6db391d1c0cfb30588ba0bf72ea999404f2764deaf1c7ecf0ce05364afc0597e
+podman pull docker.io/library/nginx@sha256:a484819eb60211f5299034ac80f6a681b06f89e65866ce91f356ed7c72af059c
 # This will always give you the exact same image
 
 # You can also combine tag and digest for readability
-podman pull nginx:1.25@sha256:6db391d1c0cfb30588ba0bf72ea999404f2764deaf1c7ecf0ce05364afc0597e
+podman pull docker.io/library/nginx:1.25@sha256:a484819eb60211f5299034ac80f6a681b06f89e65866ce91f356ed7c72af059c
 ```
 
 ## Using Digests in Containerfiles
@@ -99,7 +99,7 @@ Pin your base images to digests in Containerfiles for reproducible builds.
 ```bash
 # Create a Containerfile with a digest-pinned base image
 cat > Containerfile << 'EOF'
-FROM docker.io/library/nginx@sha256:6db391d1c0cfb30588ba0bf72ea999404f2764deaf1c7ecf0ce05364afc0597e
+FROM docker.io/library/nginx@sha256:a484819eb60211f5299034ac80f6a681b06f89e65866ce91f356ed7c72af059c
 
 COPY ./html /usr/share/nginx/html
 EXPOSE 80
