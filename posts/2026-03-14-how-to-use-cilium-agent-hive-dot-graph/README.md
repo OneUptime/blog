@@ -94,8 +94,8 @@ INPUT="/tmp/cilium-hive.dot"
 OUTPUT="/tmp/cilium-hive-styled.dot"
 
 # Add styling directives after the opening brace
-sed '1,/^{/ {
-  /^{/a\
+sed '1,/[{]/ {
+  /[{]/a\
     bgcolor="white";\
     node [fontname="Helvetica", fontsize=10, shape=box, style="filled,rounded"];\
     edge [color="gray40", arrowsize=0.7];\
@@ -122,17 +122,17 @@ COMPONENTS=$(grep -c '\[label=' /tmp/cilium-hive.dot)
 echo "Total components: $COMPONENTS"
 
 # Count dependency edges
-EDGES=$(grep -c '\->' /tmp/cilium-hive.dot)
+EDGES=$(grep -c ' -> ' /tmp/cilium-hive.dot)
 echo "Total dependencies: $EDGES"
 
 # Find the most-depended-on components (highest in-degree)
 echo "Most depended-on components:"
-grep -oP '-> "\K[^"]+' /tmp/cilium-hive.dot | \
+awk -F'"' '/ -> / {print $4}' /tmp/cilium-hive.dot | \
   sort | uniq -c | sort -rn | head -10
 
 # Find components with the most dependencies (highest out-degree)
 echo "Components with most dependencies:"
-grep -oP '^  "\K[^"]+(?=" ->)' /tmp/cilium-hive.dot | \
+awk -F'"' '/ -> / {print $2}' /tmp/cilium-hive.dot | \
   sort | uniq -c | sort -rn | head -10
 ```
 
@@ -149,8 +149,8 @@ GRAPH_A="${1:-/tmp/hive-v1.15.dot}"
 GRAPH_B="${2:-/tmp/hive-v1.16.dot}"
 
 # Extract and compare nodes
-NODES_A=$(grep '\[label=' "$GRAPH_A" | grep -oP 'label="\K[^"]+' | sort)
-NODES_B=$(grep '\[label=' "$GRAPH_B" | grep -oP 'label="\K[^"]+' | sort)
+NODES_A=$(sed -n 's/.*label="\([^"]*\)".*/\1/p' "$GRAPH_A" | sort)
+NODES_B=$(sed -n 's/.*label="\([^"]*\)".*/\1/p' "$GRAPH_B" | sort)
 
 echo "=== Components only in $GRAPH_A ==="
 comm -23 <(echo "$NODES_A") <(echo "$NODES_B")
@@ -159,8 +159,8 @@ echo "=== Components only in $GRAPH_B ==="
 comm -13 <(echo "$NODES_A") <(echo "$NODES_B")
 
 echo "=== Edge count comparison ==="
-echo "$GRAPH_A: $(grep -c '\->' "$GRAPH_A") edges"
-echo "$GRAPH_B: $(grep -c '\->' "$GRAPH_B") edges"
+echo "$GRAPH_A: $(grep -c ' -> ' "$GRAPH_A") edges"
+echo "$GRAPH_B: $(grep -c ' -> ' "$GRAPH_B") edges"
 ```
 
 ## Verification
