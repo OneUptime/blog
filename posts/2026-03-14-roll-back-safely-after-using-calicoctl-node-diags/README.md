@@ -45,14 +45,14 @@ echo "=== Changes Detected ==="
 
 # Compare iptables
 echo "--- iptables Changes ---"
-BEFORE_CHAINS=$(grep -c "^:" $(find "$BEFORE_DIR" -name iptables) 2>/dev/null || echo 0)
-AFTER_CHAINS=$(grep -c "^:" $(find "$AFTER_DIR" -name iptables) 2>/dev/null || echo 0)
+BEFORE_CHAINS=$(find "$BEFORE_DIR" -type f -name "iptables*" -exec grep -h "^:" {} + 2>/dev/null | wc -l)
+AFTER_CHAINS=$(find "$AFTER_DIR" -type f -name "iptables*" -exec grep -h "^:" {} + 2>/dev/null | wc -l)
 echo "Chains: $BEFORE_CHAINS -> $AFTER_CHAINS"
 
 # Compare routes
 echo "--- Route Changes ---"
-diff <(sort $(find "$BEFORE_DIR" -name ip-route) 2>/dev/null) \
-     <(sort $(find "$AFTER_DIR" -name ip-route) 2>/dev/null) | head -20
+diff <(find "$BEFORE_DIR" -type f -name "ip-route*" -exec cat {} + 2>/dev/null | sort) \
+     <(find "$AFTER_DIR" -type f -name "ip-route*" -exec cat {} + 2>/dev/null | sort) | head -20
 
 # Compare error rates in logs
 echo "--- Error Rate Changes ---"
@@ -112,12 +112,13 @@ mkdir -p "$DIAG_DIR"
 
 echo "Collecting pre-change diagnostics for change: $CHANGE_ID"
 
-sudo calicoctl node diags
-mv /tmp/calico-diags-*.tar.gz "$DIAG_DIR/before.tar.gz"
+DIAG_BUNDLE=$(sudo calicoctl node diags | tee /dev/stderr | awk '/Diags saved to/ {print $4}')
+mv "$DIAG_BUNDLE" "$DIAG_DIR/before.tar.gz"
 
 echo "Pre-change diagnostics saved to $DIAG_DIR/before.tar.gz"
 echo "After making changes, run:"
-echo "  sudo calicoctl node diags && mv /tmp/calico-diags-*.tar.gz $DIAG_DIR/after.tar.gz"
+echo "  DIAG_BUNDLE=\$(sudo calicoctl node diags | tee /dev/stderr | awk '/Diags saved to/ {print \$4}')"
+echo "  mv \"\$DIAG_BUNDLE\" \"$DIAG_DIR/after.tar.gz\""
 ```
 
 ## Verification
@@ -126,10 +127,10 @@ After rollback, verify the system matches the pre-change state:
 
 ```bash
 # Collect post-rollback diagnostics
-sudo calicoctl node diags
+DIAG_BUNDLE=$(sudo calicoctl node diags | tee /dev/stderr | awk '/Diags saved to/ {print $4}')
 
 # Compare with pre-change baseline
-./analyze-for-rollback.sh change-diags/before.tar.gz /tmp/calico-diags-*.tar.gz
+./analyze-for-rollback.sh change-diags/before.tar.gz "$DIAG_BUNDLE"
 ```
 
 ## Troubleshooting
