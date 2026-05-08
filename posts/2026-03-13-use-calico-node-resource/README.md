@@ -24,7 +24,7 @@ Get a quick overview of BGP configuration across all nodes:
 calicoctl get nodes -o json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-print(f'{'Node':<30} {'IPv4':<20} {'AS':<10} {'Tunnel IP':<15}')
+print('{:<30} {:<20} {:<10} {:<15}'.format('Node', 'IPv4', 'AS', 'Tunnel IP'))
 print('-' * 75)
 for n in data['items']:
     name = n['metadata']['name']
@@ -64,7 +64,7 @@ graph LR
 
 ## Usage Pattern 3: Configure Multi-Homed Nodes
 
-For nodes with multiple network interfaces, specify which IP to use for BGP and tunneling:
+For nodes with multiple network interfaces, specify which IP and subnet to use for BGP:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -74,7 +74,6 @@ metadata:
 spec:
   bgp:
     ipv4Address: 10.0.1.15/24    # Use storage network interface for BGP
-  ipv4VXLANTunnelAddr: 10.0.1.15
 ```
 
 ## Usage Pattern 4: Export Node State for Capacity Planning
