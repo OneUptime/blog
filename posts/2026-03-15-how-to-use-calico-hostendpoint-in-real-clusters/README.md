@@ -61,10 +61,14 @@ metadata:
   name: control-plane-ingress
 spec:
   order: 50
-  selector: node-role.kubernetes.io/control-plane == ''
+  selector: has(node-role.kubernetes.io/control-plane)
   types:
     - Ingress
   ingress:
+    - action: Allow
+      destination:
+        nets:
+          - 127.0.0.0/8
     - action: Allow
       protocol: TCP
       source:
@@ -76,18 +80,19 @@ spec:
     - action: Allow
       protocol: TCP
       source:
-        selector: node-role == 'worker'
+        selector: has(node-role.kubernetes.io/control-plane)
       destination:
         ports:
-          - 6443
           - 2379
           - 2380
+          - 10250
     - action: Deny
       destination:
         ports:
           - 6443
           - 2379
           - 2380
+          - 10250
   applyOnForward: false
   preDNAT: false
 ```
@@ -100,6 +105,10 @@ calicoctl apply -f control-plane-ingress.yaml
 
 Allow SSH only from jump hosts and block it from all other sources:
 
+```bash
+kubectl label nodes <worker-node-name> kubernetes-worker=
+```
+
 ```yaml
 apiVersion: projectcalico.org/v3
 kind: GlobalNetworkPolicy
@@ -107,7 +116,7 @@ metadata:
   name: restrict-ssh-workers
 spec:
   order: 100
-  selector: node-role == 'worker'
+  selector: has(kubernetes-worker)
   types:
     - Ingress
   ingress:
@@ -166,7 +175,7 @@ calicoctl apply -f allow-monitoring-scrape.yaml
 
 ## Controlling Node Egress
 
-Restrict what nodes themselves can reach on the network:
+Restrict what nodes themselves can reach on the network while preserving Kubernetes and Calico control traffic:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -185,11 +194,22 @@ spec:
         ports:
           - 443
           - 80
+          - 6443
+          - 2379
+          - 2380
+          - 10250
+          - 179
+          - 5473
     - action: Allow
       protocol: UDP
       destination:
         ports:
           - 53
+          - 4789
+          - 51820
+          - 51821
+    - action: Allow
+      protocol: 4
     - action: Deny
   applyOnForward: false
   preDNAT: false
@@ -204,7 +224,7 @@ calicoctl apply -f node-egress-controls.yaml
 Verify all nodes have HostEndpoints:
 
 ```bash
-calicoctl get hostendpoint -o wide | wc -l
+calicoctl get hostendpoint -o go-template='{{range .}}{{range .Items}}{{.ObjectMeta.Name}}{{"\n"}}{{end}}{{end}}' | wc -l
 kubectl get nodes --no-headers | wc -l
 ```
 
