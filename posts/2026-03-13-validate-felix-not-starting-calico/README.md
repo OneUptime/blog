@@ -26,17 +26,16 @@ Validating Felix recovery requires checking not just that the readiness probe pa
 
 ```bash
 kubectl get pod $NODE_POD -n kube-system
-kubectl exec $NODE_POD -n kube-system -- wget -qO- http://localhost:9099/readiness 2>/dev/null
+kubectl exec $NODE_POD -n kube-system -- /bin/calico-node -felix-ready
 ```
 
 ## Solution
 
-**Validation Step 1: Felix readiness probe returns 200**
+**Validation Step 1: Felix readiness check passes**
 
 ```bash
-kubectl exec $NODE_POD -n kube-system -- \
-  wget -qO- http://localhost:9099/readiness 2>/dev/null
-# Expected: returns 200 OK
+kubectl exec $NODE_POD -n kube-system -- /bin/calico-node -felix-ready
+# Expected: command exits successfully
 
 ```
 
@@ -68,16 +67,16 @@ spec:
 EOF
 
 # Deploy a pod with that label
-kubectl run felix-test --image=busybox --labels="app=felix-test-blocked" \
-  --restart=Never -- sleep 60
+kubectl run felix-test --image=nginx:alpine --labels="app=felix-test-blocked" \
+  --restart=Never
 
 kubectl wait pod/felix-test --for=condition=Ready --timeout=30s
 
-# Ping should FAIL (blocked by policy)
+# TCP connection should FAIL (blocked by policy)
 POD_IP=$(kubectl get pod felix-test -o jsonpath='{.status.podIP}')
-kubectl run tester --image=busybox --restart=Never -- \
-  ping -c 1 -W 2 $POD_IP
-# Expected: ping fails (policy is being enforced)
+kubectl run tester --image=busybox --restart=Never --rm -i -- \
+  wget -T 2 -qO- http://$POD_IP
+# Expected: wget fails (policy is being enforced)
 
 # Cleanup
 kubectl delete pod felix-test tester --ignore-not-found
@@ -89,7 +88,7 @@ kubectl delete networkpolicy test-felix-enforcement --ignore-not-found
 ```bash
 kubectl exec $NODE_POD -n kube-system -- \
   wget -qO- http://localhost:9091/metrics 2>/dev/null \
-  | grep "felix_iptables_restore_errors_total"
+  | grep "felix_iptables_restore_errors"
 # Expected: counter is 0 or not increasing
 ```
 
