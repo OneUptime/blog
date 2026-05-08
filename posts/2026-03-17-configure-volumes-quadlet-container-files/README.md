@@ -119,7 +119,7 @@ systemctl --user daemon-reload
 systemctl --user start webapp.service
 
 # Verify the mount is active
-podman inspect webapp --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
+podman inspect systemd-webapp --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}'
 ```
 
 ## Summary
