@@ -33,7 +33,7 @@ kubectl get nodes -o wide
 kubectl get pods -n kube-system
 
 # Check Cilium status
-kubectl exec -n kube-system ds/cilium -- cilium status --brief
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status --brief
 
 # Check available resources
 kubectl top nodes
@@ -56,7 +56,7 @@ kubectl get events -n cilium-test | grep "Failed to pull"
 # Fix: Ensure images are pushed to the registry or loaded into Kind
 
 # Issue: Cilium not ready
-kubectl exec -n kube-system ds/cilium -- cilium status
+kubectl exec -n kube-system ds/cilium -- cilium-dbg status
 # Look for: "Controller Manager: Failing" or unhealthy components
 # Fix: Restart Cilium pods or check for CRD issues
 ```
@@ -107,7 +107,7 @@ func waitForPolicyEnforcement(kubectl *helpers.Kubectl, namespace, podPrefix str
     deadline := time.Now().Add(timeout)
     for time.Now().Before(deadline) {
         // Check proxy redirect is active
-        output, err := kubectl.ExecInCilium("cilium bpf proxy list")
+        output, err := kubectl.ExecInCilium("cilium-dbg status --all-redirects")
         if err == nil && strings.Contains(output, "9000") {
             return nil
         }
