@@ -14,11 +14,13 @@ Validating Calico FIPS mode is not just about checking a configuration flag - it
 
 A complete FIPS validation covers four dimensions: OS-level FIPS enforcement, Calico image FIPS compliance, TLS certificate algorithm validation, and runtime cipher suite verification. Each dimension catches different categories of FIPS violations, and all four must pass for your deployment to be genuinely FIPS 140-2 compliant.
 
+Note that Calico FIPS mode is deprecated in current Calico documentation and will be removed in a future release.
+
 ## Prerequisites
 
 - Calico deployed with `fipsMode: Enabled` in the Installation resource
 - `kubectl` with cluster-admin access
-- `openssl` and `ssldump` or `nmap` for TLS inspection
+- `openssl`, `jq`, and `nmap` for TLS inspection
 - Node-level debugging access
 
 ## Validation 1: OS FIPS Status
@@ -58,6 +60,10 @@ kubectl get tigerastatus calico -o jsonpath='{.status.conditions}' | jq '.'
 
 # Check operator logs for FIPS handling
 kubectl logs -n tigera-operator deploy/tigera-operator | grep -i fips
+
+# Check that rendered Calico images use FIPS tags
+kubectl get pods -n calico-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.initContainers[*]}{.image}{"\n"}{end}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | \
+  grep -E 'calico/(calico|node):.*-fips'
 ```
 
 ## Validation 3: TLS Certificate Algorithm Verification
@@ -67,19 +73,29 @@ kubectl logs -n tigera-operator deploy/tigera-operator | grep -i fips
 # validate-calico-certs-fips.sh
 echo "=== Calico TLS Certificate FIPS Validation ==="
 
-SECRETS=(
-  "calico-typha-tls"
-  "calico-node-tls"
-  "calico-apiserver-certs"
+CERT_SECRETS=(
+  "tigera-operator/typha-certs"
+  "tigera-operator/node-certs"
+  "calico-system/calico-apiserver-certs"
 )
 
-FIPS_APPROVED_ALGOS=("sha256WithRSAEncryption" "ecdsa-with-SHA256" "ecdsa-with-SHA384")
+FIPS_APPROVED_ALGOS=(
+  "sha256WithRSAEncryption"
+  "sha384WithRSAEncryption"
+  "sha512WithRSAEncryption"
+  "ecdsa-with-SHA256"
+  "ecdsa-with-SHA384"
+  "ecdsa-with-SHA512"
+)
 
-for secret in "${SECRETS[@]}"; do
+for cert_secret in "${CERT_SECRETS[@]}"; do
+  namespace="${cert_secret%%/*}"
+  secret="${cert_secret##*/}"
+
   echo ""
-  echo "Checking secret: ${secret}"
+  echo "Checking secret: ${namespace}/${secret}"
 
-  cert=$(kubectl get secret -n calico-system "${secret}" \
+  cert=$(kubectl get secret -n "${namespace}" "${secret}" \
     -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d)
 
   if [[ -z "${cert}" ]]; then
@@ -109,19 +125,22 @@ done
 ## Validation 4: Runtime TLS Cipher Suite Check
 
 ```bash
-# Test what cipher suites are offered by Felix's health endpoint
-kubectl exec -n calico-system ds/calico-node -c calico-node -- \
-  nmap --script ssl-enum-ciphers -p 9091 localhost 2>/dev/null | \
+# Test what cipher suites are offered by Typha's TLS endpoint
+kubectl run fips-tls-check --rm -i --restart=Never \
+  --image=instrumentisto/nmap -- \
+  nmap --script ssl-enum-ciphers -p 5473 calico-typha.calico-system.svc 2>/dev/null | \
   grep -E "TLS_|cipher"
 
-# FIPS-approved cipher suites:
+# Common FIPS-approved cipher suites:
 # TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
 # TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 # TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
 # TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+# TLS_AES_128_GCM_SHA256
+# TLS_AES_256_GCM_SHA384
 
 # Non-FIPS cipher suites that should NOT appear:
-# RC4, DES, 3DES, MD5, SHA1 in TLS 1.0/1.1
+# RC4, DES, 3DES, MD5, or TLS 1.0/1.1 cipher suites
 ```
 
 ## Validation Checklist
@@ -157,6 +176,11 @@ REPORT_FILE="fips-compliance-report-$(date +%Y%m%d).txt"
   echo ""
   echo "--- Calico Installation FIPS Setting ---"
   kubectl get installation default -o jsonpath='{.spec.fipsMode}'
+
+  echo ""
+  echo "--- Calico FIPS Images ---"
+  kubectl get pods -n calico-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.initContainers[*]}{.image}{"\n"}{end}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' | \
+    grep -E 'calico/(calico|node):.*-fips'
 
   echo ""
   echo "--- TLS Certificate Algorithms ---"
