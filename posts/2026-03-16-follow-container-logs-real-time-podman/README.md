@@ -101,13 +101,10 @@ When working with Podman pods, follow logs from containers within the pod.
 
 ```bash
 # Follow logs from a specific container in a pod
-podman logs -f my-pod-web
+podman pod logs -f -c web my-pod
 
 # Follow all containers in a pod
-for c in $(podman pod inspect my-pod --format '{{range .Containers}}{{.Name}} {{end}}'); do
-  podman logs -f "$c" 2>&1 | sed "s/^/[$c] /" &
-done
-wait
+podman pod logs -f my-pod
 ```
 
 ## Real-Time Log Analysis
