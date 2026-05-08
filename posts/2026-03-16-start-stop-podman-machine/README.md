@@ -29,8 +29,8 @@ Before starting or stopping, check the current state:
 podman machine list
 
 # Example output:
-# NAME        VM TYPE     CREATED      LAST UP      CPUS  MEMORY  DISK SIZE
-# podman-*    qemu        2 days ago   Currently    4     8GiB    100GiB
+# NAME                    VM TYPE     CREATED      LAST UP      CPUS  MEMORY   DISK SIZE
+# podman-machine-default  qemu        2 days ago   1 hour ago   4     8.59GB   107GB
 
 # Get detailed information about a machine
 podman machine inspect
@@ -84,7 +84,7 @@ podman run --rm docker.io/library/alpine:latest echo "Machine is running"
 podman machine stop
 
 # This allows containers to shut down cleanly
-# and saves the machine state
+# and shuts down the VM
 ```
 
 ### Stop a Named Machine
@@ -102,8 +102,8 @@ If the machine is unresponsive, you may need to stop it and then remove and recr
 # Attempt to stop the machine
 podman machine stop
 
-# If the machine does not respond, on macOS you can kill the VM process
-pkill -f "applehv\|qemu" 2>/dev/null
+# If you need to remove an unresponsive machine, force removal stops and deletes it
+podman machine rm -f podman-machine-default
 ```
 
 ### What Happens During Stop
@@ -148,7 +148,7 @@ podman machine list
 
 ### Switch Between Machines
 
-Only one machine can be the active default at a time:
+Only one Podman-managed machine can be running at a time:
 
 ```bash
 # Start the testing machine
@@ -205,10 +205,10 @@ EOF
 launchctl load ~/Library/LaunchAgents/com.podman.machine.plist
 ```
 
-### Stop Machine Before Sleep (macOS)
+### Create a Stop Script for Sleep Automation (macOS)
 
 ```bash
-# Create a script to stop the machine before system sleep
+# Create a script you can call from a sleep-management tool
 cat > ~/podman-sleep-hook.sh <<'EOF'
 #!/bin/bash
 podman machine stop 2>/dev/null
