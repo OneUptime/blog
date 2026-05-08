@@ -10,7 +10,7 @@ Description: Systematically validate that masquerading behavior for traffic dest
 
 ## Introduction
 
-Validating masquerade traffic to remote nodes in cilium ensures that your Cilium configuration is not only applied but actually working correctly under real traffic conditions. When pods communicate with pods on remote nodes, Cilium can be configured to masquerade or not masquerade this inter-node traffic. The behavior depends on whether the pod CIDR is natively routable between nodes. In overlay (VXLAN/Geneve) mode, masquerading for inter-node traffic is typically not needed because the overlay handles encapsulation.
+Validating masquerade traffic to remote nodes in cilium ensures that your Cilium configuration is not only applied but actually working correctly under real traffic conditions. When pods communicate with remote node IP addresses, Cilium can be configured to masquerade or not masquerade this traffic. This is separate from pod-to-pod traffic on different nodes, which is not affected by the remote-node masquerade option. The behavior depends on whether the destination is natively routable and whether BPF masquerading is enabled. In overlay (VXLAN/Geneve) mode, masquerading for pod-to-pod traffic is typically not needed because the overlay handles encapsulation.
 
 Validation goes beyond checking pod status. It requires testing actual traffic flows, verifying configuration values, and confirming that the feature behaves as documented. A validation failure caught early prevents production incidents caused by misconfigured networking.
 
@@ -33,7 +33,7 @@ Verify the intended configuration is active:
 cilium config view | head -40
 
 # Specifically check settings related to masquerade traffic to remote nodes in cilium
-cilium config view | grep -E "masq|routing-cidr|tunnel"
+cilium config view | grep -E "enable-remote-node-masquerade|enable-bpf-masquerade|enable-ipv[46]-masquerade|ipv[46]-native-routing-cidr|tunnel"
 
 # Compare with expected Helm values
 helm get values cilium -n kube-system -o yaml
@@ -50,7 +50,7 @@ cilium connectivity test
 # Run specific test categories
 cilium connectivity test --test pod-to-pod
 cilium connectivity test --test pod-to-service
-cilium connectivity test --test dns-resolution
+cilium connectivity test --test client-egress-to-coredns
 
 # Check Cilium status for any warnings
 cilium status --verbose
@@ -125,6 +125,13 @@ for IP in $(kubectl get pods -l app=validate-server -o jsonpath='{.items[*].stat
   kubectl exec validate-client -- wget -qO- --timeout=5 http://$IP >/dev/null 2>&1 && echo "  OK" || echo "  FAIL"
 done
 
+# Test traffic from the client pod to remote node InternalIP addresses
+CLIENT_NODE=$(kubectl get pod validate-client -o jsonpath='{.spec.nodeName}')
+for IP in $(kubectl get nodes -o jsonpath="{range .items[?(@.metadata.name!=\"$CLIENT_NODE\")]}{.status.addresses[?(@.type==\"InternalIP\")].address}{\"\\n\"}{end}"); do
+  echo "Testing remote node $IP..."
+  kubectl exec validate-client -- wget -qO- --timeout=5 http://$IP:10250/ >/dev/null 2>&1 && echo "  CONNECTED" || echo "  NO HTTP RESPONSE"
+done
+
 # Cleanup
 kubectl delete pod validate-client
 kubectl delete -f validation-workload.yaml
@@ -135,16 +142,19 @@ kubectl delete -f validation-workload.yaml
 Check that all endpoints managed by Cilium are healthy:
 
 ```bash
-# List all Cilium endpoints and their health
-cilium endpoint list
+# List all Cilium endpoints known to Kubernetes
+kubectl get ciliumendpoints -A
 
 # Check for endpoints in a non-ready state
-kubectl exec -n kube-system ds/cilium -- cilium endpoint list | grep -v "ready"
+kubectl get ciliumendpoints -A -o json | python3 -c "import sys,json; print('\\n'.join(f\"{i['metadata']['namespace']}/{i['metadata']['name']} {i.get('status', {}).get('state', 'unknown')}\" for i in json.load(sys.stdin)['items'] if i.get('status', {}).get('state') != 'ready'))"
 
-# Verify endpoint count matches pod count
-ENDPOINT_COUNT=$(kubectl exec -n kube-system ds/cilium -- cilium endpoint list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
-POD_COUNT=$(kubectl get pods --all-namespaces --no-headers | grep Running | wc -l)
-echo "Cilium endpoints: $ENDPOINT_COUNT, Running pods: $POD_COUNT"
+# Inspect local endpoints on one Cilium agent
+kubectl exec -n kube-system ds/cilium -- cilium-dbg endpoint list
+
+# Verify CiliumEndpoint objects are present for managed, non-host-network pods
+ENDPOINT_COUNT=$(kubectl get ciliumendpoints -A --no-headers | wc -l)
+POD_COUNT=$(kubectl get pods --all-namespaces --field-selector=status.phase=Running -o json | python3 -c "import sys,json; print(sum(1 for p in json.load(sys.stdin)['items'] if not p.get('spec', {}).get('hostNetwork', False)))")
+echo "Cilium endpoints: $ENDPOINT_COUNT, non-host-network Running pods: $POD_COUNT"
 ```
 
 ## Validating Metrics and Observability
@@ -153,13 +163,13 @@ Confirm metrics are being collected for masquerade traffic to remote nodes in ci
 
 ```bash
 # Check Cilium agent metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep -i "forward"
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep -i "forward"
 
 # Verify Hubble is observing flows
 kubectl exec -n kube-system ds/cilium -- hubble observe --last 5
 
 # Check for any drop metrics
-kubectl exec -n kube-system ds/cilium -- cilium metrics list | grep drop
+kubectl exec -n kube-system ds/cilium -- cilium-dbg metrics list | grep drop
 ```
 
 ## Verification
@@ -171,7 +181,7 @@ echo "=== Masquerade Traffic to Remote Nodes in Cilium Validation Summary ==="
 
 # 1. Configuration correct
 echo "1. Configuration:"
-cilium config view | grep -E "masq|routing-cidr|tunnel" 2>/dev/null | head -5
+cilium config view | grep -E "enable-remote-node-masquerade|enable-bpf-masquerade|enable-ipv[46]-masquerade|ipv[46]-native-routing-cidr|tunnel" 2>/dev/null | head -5
 
 # 2. Cilium healthy
 echo "2. Cilium Status:"
@@ -190,7 +200,7 @@ kubectl logs -n kube-system -l k8s-app=cilium --tail=20 --since=10m | grep -c "e
 
 - **Connectivity test fails on specific tests**: Not all tests apply to every configuration. Some tests require specific features (like encryption or L7 policy) to be enabled.
 - **Endpoints show as not-ready**: The endpoint may still be initializing. Wait 30 seconds and check again. If persistent, check the Cilium agent logs for the node where the endpoint is running.
-- **Metrics show high drop count**: Check the drop reason with `cilium metrics list | grep drop`. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
+- **Metrics show high drop count**: Check the drop reason with `cilium-dbg metrics list | grep drop` from a Cilium agent pod. Common reasons include policy deny (expected if policies are configured) and conntrack table full (increase BPF map sizes).
 - **Validation passes but production traffic fails**: The validation tests may not cover your specific traffic pattern. Create custom test workloads that mirror your production traffic patterns.
 
 ## Conclusion
