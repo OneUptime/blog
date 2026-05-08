@@ -22,7 +22,7 @@ Secrets should be removed when they are no longer needed, when credentials have 
 podman secret rm db_password
 
 # Remove a secret by ID
-podman secret rm a1b2c3d4e5f6g7h8i9j0
+podman secret rm a1b2c3d4e5f6a7b8c9d0
 
 # Verify the secret was removed
 podman secret ls
@@ -35,35 +35,32 @@ podman secret ls
 podman secret rm db_password api_key tls_cert
 
 # Remove secrets matching a pattern
-podman secret ls --format "{{.Name}}" | grep "^old_" | xargs podman secret rm
+podman secret ls --format "{{.Name}}" | grep "^old_" | xargs -r podman secret rm
 ```
 
 ## Handling Secrets in Use
 
 ```bash
-# If a secret is currently used by a running container, removal will fail
+# If a secret is currently used by a container, removal is still allowed
 podman secret rm db_password
-# Error: secret is in use
+# The existing container keeps the secret data it received when it was created
 
-# Stop and remove the container first
+# Recreate the container if it should no longer have access to that secret
 podman stop my-app
 podman rm my-app
-
-# Now remove the secret
-podman secret rm db_password
 ```
 
 ## Removing All Secrets
 
 ```bash
 # Remove all secrets (use with caution)
-podman secret ls --format "{{.Name}}" | xargs -r podman secret rm
+podman secret rm --all
 
 # Or remove all secrets with a confirmation check
 echo "This will remove all secrets. Continue? (y/n)"
 read -r confirm
 if [ "$confirm" = "y" ]; then
-  podman secret ls --format "{{.Name}}" | xargs -r podman secret rm
+  podman secret rm --all
   echo "All secrets removed"
 fi
 ```
@@ -104,10 +101,12 @@ remove_secret_safely "api_key"
 podman secret rm db_password
 echo -n "new-rotated-password" | podman secret create db_password -
 
-# Restart containers to pick up the new secret
-podman restart my-app
+# Recreate containers to pick up the new secret
+podman stop my-app
+podman rm my-app
+podman run --name my-app --secret db_password your-image
 ```
 
 ## Summary
 
-Use `podman secret rm` to remove secrets by name or ID. Secrets that are in use by running containers cannot be removed until those containers are stopped. For bulk removal, combine `podman secret ls` with `xargs`. Regular cleanup of unused secrets is good security practice and should be part of your secret rotation process.
+Use `podman secret rm` to remove secrets by name or ID. Secrets that are in use by existing containers can be removed, but those containers keep the secret data they received when they were created. For bulk removal, use `podman secret rm --all` or combine `podman secret ls` with `xargs`. Regular cleanup of unused secrets is good security practice and should be part of your secret rotation process.
