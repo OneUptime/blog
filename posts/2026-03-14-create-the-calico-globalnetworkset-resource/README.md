@@ -20,6 +20,7 @@ By the end of this post you will have a working GlobalNetworkSet resource applie
 
 - A running Kubernetes cluster (v1.24 or later)
 - Calico installed (v3.26 or later recommended)
+- Calico API server installed, or native `projectcalico.org/v3` CRDs enabled, if you want to manage this resource with `kubectl`
 - `kubectl` configured with cluster-admin privileges
 - `calicoctl` installed (optional but recommended for validation)
 
@@ -48,7 +49,7 @@ spec:
     - 2001:db8::/32
 ```
 
-Each field is intentionally set to a sensible default. Adjust the values to match your environment before applying.
+Each field is intentionally set to a sensible example value. Adjust the values to match your environment before applying.
 
 ## Applying the Resource
 
@@ -58,15 +59,17 @@ Apply the manifest using `kubectl`:
 kubectl apply -f globalnetworkset.yaml
 ```
 
-Alternatively, use `calicoctl` which provides better validation for Calico resources:
+Alternatively, validate and apply the file with `calicoctl`:
 
 ```bash
-# Apply with calicoctl for enhanced validation
+# Validate the resource before applying it
+calicoctl validate -f globalnetworkset.yaml
 
+# Apply with calicoctl
 calicoctl apply -f globalnetworkset.yaml
 ```
 
-`calicoctl` checks field values against the Calico API schema before submitting, which can catch errors that `kubectl` would miss.
+`calicoctl validate` checks resource structure, syntax, and Calico-specific rules before you submit changes to the cluster.
 
 ## Verification
 
@@ -77,13 +80,13 @@ Confirm that the resource was created successfully:
 kubectl get globalnetworkset.projectcalico.org -o wide
 
 # Describe the specific resource for full details
-kubectl describe globalnetworkset.projectcalico.org
+kubectl describe globalnetworkset.projectcalico.org trusted-external-networks
 
 # Verify with calicoctl
 calicoctl get globalnetworkset -o yaml
 ```
 
-Check the Calico component logs for any warnings or errors related to the new resource:
+Check the Calico component logs for any warnings or errors related to the new resource. The namespace is `calico-system` for operator installs; use the namespace from your installation if it differs:
 
 ```bash
 # Check calico-node logs
@@ -94,7 +97,7 @@ kubectl logs -n calico-system -l k8s-app=calico-node --tail=50
 
 **Resource not appearing after apply:**
 - Verify the `apiVersion` is `projectcalico.org/v3` and the `kind` is exactly `GlobalNetworkSet`.
-- Check that the Calico API server is running: `kubectl get pods -n calico-system`.
+- Check that the Calico API is available to `kubectl`: `kubectl api-resources | grep '\sprojectcalico.org'`.
 
 **Validation errors:**
 - Use `calicoctl apply` instead of `kubectl apply` to get detailed validation messages.
@@ -111,15 +114,14 @@ Beyond the basic manifest shown above, there are several advanced configuration 
 
 ### Using Labels for Targeted Configuration
 
-Labels on Calico resources enable you to build flexible configurations that apply differently across your cluster. For example, you can use node labels to control which nodes are affected by specific resources:
+Labels on Calico resources enable you to build flexible configurations that can be selected by policy. For example, you can update labels on a GlobalNetworkSet and reference those labels from a GlobalNetworkPolicy selector:
 
 ```bash
-# Label nodes for targeted configuration
-kubectl label node worker-1 calico-config=high-performance
-kubectl label node worker-2 calico-config=standard
+# Label the GlobalNetworkSet for targeted policy selection
+kubectl label globalnetworkset.projectcalico.org trusted-external-networks environment=production
 
 # Verify labels are applied
-kubectl get nodes --show-labels | grep calico-config
+kubectl get globalnetworkset.projectcalico.org trusted-external-networks --show-labels
 ```
 
 ### Version Control and GitOps Integration
