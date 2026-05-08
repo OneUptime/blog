@@ -19,7 +19,7 @@ The `podman manifest annotate` command lets you modify the metadata of individua
 ```bash
 # General syntax
 
-podman manifest annotate <manifest-list> <digest> [options]
+podman manifest annotate [options] <manifest-list> <digest-or-image>
 ```
 
 You need the digest of the specific entry you want to annotate. Get it from `podman manifest inspect`.
@@ -166,7 +166,7 @@ Annotations are preserved when pushing to a registry.
 podman manifest push --all myapp:latest docker://registry.example.com/myapp:latest
 
 # Inspect remotely to verify annotations
-podman manifest inspect docker://registry.example.com/myapp:latest | \
+podman manifest inspect registry.example.com/myapp:latest | \
   jq '.manifests[] | {arch: .platform.architecture, annotations}'
 
 # Or use skopeo
@@ -218,4 +218,4 @@ podman manifest push --all "${MANIFEST}" "docker://${MANIFEST}"
 
 ## Summary
 
-Use `podman manifest annotate` to add metadata to individual manifest list entries. You can set or correct platform information (architecture, OS, variant), add OCI standard annotations, and attach custom build metadata. Get the entry digest from `podman manifest inspect`, then apply annotations before pushing to a registry. Annotations are preserved through push and pull operations, making them useful for tracking build provenance and platform details.
+Use `podman manifest annotate` to add metadata to individual manifest list entries. You can set or correct platform information (architecture, OS, variant), add OCI standard annotations, and attach custom build metadata. Get the entry digest from `podman manifest inspect`, then apply annotations before pushing to a registry. Annotations are preserved when the manifest list or image index is pushed and inspected remotely, making them useful for tracking build provenance and platform details.
