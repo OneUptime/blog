@@ -10,9 +10,9 @@ Description: A guide to safely upgrading Calico on Windows Server nodes in a Kub
 
 ## Introduction
 
-Upgrading Calico on Windows nodes is more manual than on Linux nodes because the Tigera Operator does not manage Windows node upgrades automatically. The operator manages Linux `calico-node` DaemonSet pods, but Windows nodes run calico-node as a Windows service that must be upgraded by downloading and installing a new binary package.
+Upgrading manually installed Calico on Windows nodes is more manual than on Linux nodes because Windows nodes run calico-node as a Windows service that must be upgraded by downloading and installing a new binary package. Calico v3.27 and later also support operator-managed Windows HostProcess containers; use the operator workflow for clusters installed that way, and use this guide only for the older manual Windows service installation.
 
-This means Windows node Calico upgrades must be coordinated manually with Linux node upgrades. The recommended approach is to upgrade Linux nodes first (let the operator handle those), then upgrade Windows nodes one at a time using the Windows installation script.
+This means manually installed Windows node Calico upgrades must be coordinated with Linux node upgrades. The recommended approach is to upgrade Linux nodes first (let the operator handle those), then upgrade Windows service installations one at a time using the Windows installation script.
 
 ## Prerequisites
 
@@ -26,7 +26,10 @@ This means Windows node Calico upgrades must be coordinated manually with Linux 
 Let the Tigera Operator upgrade Linux nodes.
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+curl -O https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/v1_crd_projectcalico_org.yaml
+curl -O https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/tigera-operator.yaml
+kubectl apply --server-side --force-conflicts -f v1_crd_projectcalico_org.yaml
+kubectl apply --server-side --force-conflicts -f tigera-operator.yaml
 kubectl rollout status daemonset/calico-node -n calico-system
 ```
 
@@ -58,7 +61,7 @@ Stop-Service CalicoNode -Force
 Rename-Item C:\CalicoWindows C:\CalicoWindows.bak
 
 # Extract new package
-Expand-Archive -Path C:\calico-windows-new.zip -DestinationPath C:\CalicoWindows
+Expand-Archive -Path C:\calico-windows-new.zip -DestinationPath C:\
 
 # Copy configuration from backup
 Copy-Item C:\CalicoWindows.bak\config.ps1 C:\CalicoWindows\config.ps1
@@ -88,4 +91,4 @@ Repeat Steps 3-6 for each Windows node.
 
 ## Conclusion
 
-Upgrading Calico on Windows nodes requires manual binary replacement because the Tigera Operator only manages Linux nodes. The process - cordon, stop services, extract new binaries, reinstall, uncordon - should be applied to one Windows node at a time, with connectivity verification after each node to ensure the upgrade is proceeding correctly.
+Upgrading manually installed Calico on Windows nodes requires manual binary replacement. The process - cordon, stop services, extract new binaries, reinstall, uncordon - should be applied to one Windows node at a time, with connectivity verification after each node to ensure the upgrade is proceeding correctly.
