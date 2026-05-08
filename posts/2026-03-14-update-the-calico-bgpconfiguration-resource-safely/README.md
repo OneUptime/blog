@@ -30,7 +30,7 @@ Before making any changes, export the current state as your baseline:
 ```bash
 # Export current resource to YAML
 
-calicoctl get bgpconfiguration -o yaml > bgpconfiguration-backup.yaml
+calicoctl get bgpconfiguration default -o yaml --export > bgpconfiguration-backup.yaml
 
 # Store the backup safely
 cp bgpconfiguration-backup.yaml bgpconfiguration-backup-$(date +%Y%m%d%H%M%S).yaml
@@ -44,7 +44,7 @@ Open your BGPConfiguration manifest and make the desired changes. Use `diff` to 
 
 ```bash
 # Compare current live state with your updated manifest
-diff <(calicoctl get bgpconfiguration -o yaml) bgpconfiguration.yaml
+diff <(calicoctl get bgpconfiguration default -o yaml --export) bgpconfiguration.yaml
 ```
 
 Review each changed field and consider its impact:
@@ -58,8 +58,9 @@ Review each changed field and consider its impact:
 Apply the updated manifest:
 
 ```bash
-# Apply with calicoctl for validation
-calicoctl apply -f bgpconfiguration.yaml
+# Validate, then replace the existing resource with the complete updated spec
+calicoctl validate -f bgpconfiguration.yaml
+calicoctl replace -f bgpconfiguration.yaml
 ```
 
 For critical changes, consider applying during a maintenance window and monitoring immediately after.
@@ -70,7 +71,7 @@ Watch for issues in the Calico component logs:
 
 ```bash
 # Watch calico-node logs for errors
-kubectl logs -n calico-system -l k8s-app=calico-node -f --tail=100
+kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node -f --tail=100
 
 # Check Felix for configuration reload
 kubectl logs -n calico-system -l k8s-app=calico-node -c calico-node --tail=50 | grep -i "config"
@@ -92,7 +93,7 @@ Confirm the resource reflects your changes:
 
 ```bash
 # Verify the updated resource
-calicoctl get bgpconfiguration -o yaml
+calicoctl get bgpconfiguration default -o yaml
 
 # Check that calico-node pods are healthy
 kubectl get pods -n calico-system -l k8s-app=calico-node
@@ -100,22 +101,24 @@ kubectl get pods -n calico-system -l k8s-app=calico-node
 
 Ensure all calico-node pods show `Running` status and have not restarted unexpectedly.
 
+If your cluster was installed with manifests rather than the Tigera operator, replace `calico-system` with the namespace where your `calico-node` DaemonSet runs, often `kube-system`.
+
 ## Rolling Back
 
 If the update causes problems, immediately revert to your backup:
 
 ```bash
 # Rollback to the previous configuration
-calicoctl apply -f bgpconfiguration-backup.yaml
+calicoctl replace -f bgpconfiguration-backup.yaml
 
 # Verify rollback was successful
-calicoctl get bgpconfiguration -o yaml
+calicoctl get bgpconfiguration default -o yaml
 ```
 
 ## Troubleshooting
 
 **Pods losing connectivity after update:**
-- Immediately apply the backup manifest.
+- Immediately replace the resource with the backup manifest.
 - Check if Felix is crashlooping: `kubectl get pods -n calico-system`.
 - Review Felix logs for configuration errors.
 
@@ -125,7 +128,7 @@ calicoctl get bgpconfiguration -o yaml
 
 **Update appears to have no effect:**
 - Ensure the resource name matches the existing resource (updates require the same metadata.name).
-- Check for typos in field names; unknown fields are silently ignored by kubectl.
+- Check for typos in field names. Use `calicoctl validate -f bgpconfiguration.yaml`, or `kubectl apply --validate=strict` if you manage Calico resources through the Kubernetes API server.
 
 
 ## Additional Considerations
@@ -151,7 +154,7 @@ Before upgrading Calico, always check the release notes for breaking changes to 
 calicoctl version
 
 # Review installed CRD versions
-kubectl get crds | grep projectcalico | awk '{print $1, $2}'
+kubectl get crds -o custom-columns=NAME:.metadata.name,VERSIONS:.spec.versions[*].name | grep projectcalico
 ```
 
 ### Security Hardening
@@ -159,10 +162,13 @@ kubectl get crds | grep projectcalico | awk '{print $1, $2}'
 Apply the principle of least privilege to Calico configurations. Limit who can modify Calico resources using Kubernetes RBAC, and audit changes using the Kubernetes audit log. Consider using admission webhooks to validate Calico resource changes before they are applied.
 
 ```bash
-# Check who has permissions to modify Calico resources
-kubectl auth can-i create globalnetworkpolicies.crd.projectcalico.org --all-namespaces --list
+# Check whether your current identity can update BGPConfiguration resources
+kubectl auth can-i update bgpconfigurations.crd.projectcalico.org
 
-# Review recent changes to Calico resources (if audit logging is enabled)
+# List allowed actions for your current identity
+kubectl auth can-i --list
+
+# Review recent Calico events
 kubectl get events -n calico-system --sort-by='.lastTimestamp' | tail -20
 ```
 
