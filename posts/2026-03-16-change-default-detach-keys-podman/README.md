@@ -82,20 +82,20 @@ To change the default detach keys for all Podman commands, edit the Podman confi
 ```bash
 # Create the config directory if it does not exist
 mkdir -p ~/.config/containers
+```
 
-# Edit or create the containers.conf file
-cat >> ~/.config/containers/containers.conf << 'EOF'
+Edit or create `~/.config/containers/containers.conf` and add this under `[engine]`:
 
+```toml
 [engine]
 detach_keys = "ctrl-]"
-EOF
 ```
 
 Now all `podman attach` and `podman run` commands will use `Ctrl+]` by default:
 
 ```bash
 # Verify the configuration
-podman info --format '{{.Host.OCIRuntime.Path}}' 2>/dev/null
+podman info >/dev/null && echo "Configuration file is valid"
 
 # Test it - attach will now use ctrl-] by default
 podman attach my-app
@@ -172,7 +172,7 @@ podman run -d --name test-detach alpine /bin/sh -c "while true; do echo tick; sl
 # Attach and test your detach keys
 podman attach test-detach
 # Try your configured detach key sequence
-# If successful, you will see "Read escape sequence" and return to your host shell
+# If successful, you will return to your host shell
 
 # Verify the container is still running
 podman ps --filter name=test-detach
