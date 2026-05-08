@@ -25,12 +25,15 @@ Hubble flows contain rich metadata: source and destination pod names, namespaces
 ```bash
 # Download the latest release
 
-HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)
-curl -L --remote-name-all \
-  https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-amd64.tar.gz
+HUBBLE_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/hubble/main/stable.txt)
+HUBBLE_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then HUBBLE_ARCH=arm64; fi
+curl -L --fail --remote-name-all \
+  https://github.com/cilium/hubble/releases/download/${HUBBLE_VERSION}/hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
 
-tar xzvf hubble-linux-amd64.tar.gz
-sudo mv hubble /usr/local/bin/
+sha256sum --check hubble-linux-${HUBBLE_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC hubble-linux-${HUBBLE_ARCH}.tar.gz /usr/local/bin
+rm hubble-linux-${HUBBLE_ARCH}.tar.gz{,.sha256sum}
 ```
 
 ## Connect to Hubble Relay
@@ -118,7 +121,7 @@ hubble observe --namespace default \
 
 ```bash
 # HTTP errors
-hubble observe --http-status-code 500
+hubble observe --http-status 500
 
 # Specific HTTP method
 hubble observe --http-method POST
