@@ -34,8 +34,8 @@ hubble:
   enabled: true
 
   # Event buffer capacity per Cilium agent
-  # Default is 4096; increase for high-traffic clusters
-  eventBufferCapacity: "4096"
+  # Default is 4095; increase for high-traffic clusters
+  eventBufferCapacity: "4095"
 
   # Metrics configuration
   metrics:
@@ -63,10 +63,16 @@ hubble:
   ui:
     enabled: true
     replicas: 1
-    resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
+    backend:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+    frontend:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
 ```
 
 ```bash
@@ -117,11 +123,10 @@ hubble:
 
   # Event buffer capacity (number of flows to keep in memory)
   # Larger = more history, more memory usage
-  # Formula: ~100 bytes per flow * capacity
-  eventBufferCapacity: "4096"
+  # Supported values include 4095, 8191, 16383, 32767, and 65535
+  eventBufferCapacity: "4095"
 
-  # Preferred datapath for flow events
-  # Options: "any", "veth", "netkit"
+  # Prefer IPv6 addresses when both IPv4 and IPv6 are available
   preferIpv6: false
 ```
 
@@ -135,9 +140,6 @@ hubble:
   relay:
     enabled: true
     replicas: 1
-
-    # Dial timeout when connecting to Cilium agents
-    dialTimeout: 5s
 
     # Retry timeout for failed connections
     retryTimeout: 5s
@@ -154,7 +156,8 @@ hubble:
 
 ```bash
 # Verify relay is connected to all agents
-kubectl -n kube-system exec deploy/hubble-relay -- hubble-relay status
+hubble status -P
+hubble list nodes -P
 
 # Check relay logs for connection issues
 kubectl -n kube-system logs deploy/hubble-relay --tail=20
@@ -199,7 +202,7 @@ Verify metrics are flowing:
 
 ```bash
 # Port-forward to check metrics directly
-kubectl -n kube-system port-forward ds/cilium 9965:9965 &
+kubectl -n kube-system port-forward svc/hubble-metrics 9965:9965 &
 
 # Check available metrics
 curl -s http://localhost:9965/metrics | grep "^hubble_" | head -20
