@@ -30,7 +30,7 @@ Before checking Hubble, ensure the underlying Cilium deployment is healthy:
 ```bash
 # Check Cilium overall status
 
-cilium status --brief
+cilium status
 
 # Verify all Cilium agent pods are running
 kubectl -n kube-system get pods -l k8s-app=cilium -o wide
@@ -61,7 +61,7 @@ Check that the Hubble observer is running on each agent:
 # Check Hubble status on each node
 for pod in $(kubectl get pods -n kube-system -l k8s-app=cilium -o name); do
   node=$(kubectl -n kube-system get $pod -o jsonpath='{.spec.nodeName}')
-  status=$(kubectl -n kube-system exec $pod -- cilium status 2>/dev/null | grep "Hubble" | head -1)
+  status=$(kubectl -n kube-system exec $pod -- cilium-dbg status 2>/dev/null | grep "Hubble" | head -1)
   echo "$node: $status"
 done
 
@@ -170,6 +170,7 @@ Generate traffic and verify complete flow capture:
 kubectl create namespace hubble-test 2>/dev/null || true
 
 kubectl -n hubble-test run server --image=nginx --port=80 --labels="app=server"
+kubectl -n hubble-test wait --for=condition=Ready pod/server --timeout=120s
 kubectl -n hubble-test expose pod server --port=80
 
 kubectl -n hubble-test run client --image=curlimages/curl --rm -it --restart=Never -- \
@@ -215,12 +216,12 @@ echo ""
 
 # Agent
 echo "1. Cilium Agent:"
-cilium status --brief 2>/dev/null | head -3
+cilium status 2>/dev/null | head -3
 
 # Observer
 echo ""
 echo "2. Hubble Observer:"
-kubectl -n kube-system exec ds/cilium -- cilium status 2>/dev/null | grep Hubble
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status 2>/dev/null | grep Hubble
 
 # Relay
 echo ""
@@ -253,7 +254,7 @@ echo "Hubble metric series: $METRIC_COUNT"
 
 - **Relay not connecting**: Check TLS configuration if enabled, or verify the peer service exists: `kubectl -n kube-system get svc hubble-peer`.
 
-- **No flows captured after generating traffic**: The Hubble observer may need a BPF program regeneration. Run `kubectl -n kube-system exec ds/cilium -- cilium endpoint regenerate --all`.
+- **No flows captured after generating traffic**: The Hubble observer may need a BPF program regeneration. Run `kubectl -n kube-system exec ds/cilium -- cilium-dbg endpoint regenerate --all`.
 
 - **Metrics endpoint returns 404**: Hubble metrics server may be on a different port. Check with `kubectl -n kube-system exec ds/cilium -- ss -tlnp | grep 996`.
 
