@@ -53,9 +53,10 @@ sudo systemctl stop k3s
 
 # Clean up existing CNI configuration
 sudo rm -rf /var/lib/cni/
-sudo rm -rf /etc/cni/net.d/*
+sudo rm -rf /var/lib/rancher/k3s/agent/etc/cni/net.d/*
 
-# Reinstall K3s with Flannel disabled
+# Reinstall K3s with Flannel disabled. If Cilium is configured with
+# kubeProxyReplacement=true, add --disable-kube-proxy as well.
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="\
   --flannel-backend=none \
   --disable-network-policy \
@@ -68,24 +69,30 @@ When pods cannot communicate through Cilium:
 
 ```bash
 # Check Cilium endpoint status for affected pods
-cilium endpoint list
+kubectl get ciliumendpoints --all-namespaces
+
+# Check Cilium endpoint status from an agent
+kubectl exec -n kube-system $(kubectl get pod -n kube-system \
+  -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}') -- \
+  cilium-dbg endpoint list
 
 # Check BPF maps for routing information
 kubectl exec -n kube-system $(kubectl get pod -n kube-system \
   -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}') -- \
-  cilium bpf tunnel list
+  cilium-dbg bpf ipcache list
 
 # Monitor dropped packets in real time
 kubectl exec -n kube-system $(kubectl get pod -n kube-system \
   -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}') -- \
-  cilium monitor --type drop
+  cilium-dbg monitor --type drop
 
 # Check Cilium health status
 cilium status --verbose
 
 # Verify routing mode
-cilium config view | grep tunnel
-# Should show: tunnel=vxlan (or geneve/disabled depending on config)
+cilium config view | grep -E 'routing-mode|tunnel-protocol'
+# Should show routing-mode=tunnel with tunnel-protocol=vxlan/geneve,
+# or routing-mode=native depending on config.
 ```
 
 ## Resolving K3s Component Conflicts
@@ -99,10 +106,8 @@ kubectl get pods -n kube-system | grep kube-proxy
 # If kube-proxy is running alongside Cilium with kubeProxyReplacement=true:
 # Remove the kube-proxy DaemonSet
 kubectl -n kube-system delete ds kube-proxy 2>/dev/null
-# Clean up kube-proxy iptables rules
-kubectl exec -n kube-system $(kubectl get pod -n kube-system \
-  -l k8s-app=cilium -o jsonpath='{.items[0].metadata.name}') -- \
-  cilium cleanup-kube-proxy
+# Clean up kube-proxy iptables rules on each node
+sudo iptables-save | grep -v KUBE | sudo iptables-restore
 
 # Check for leftover Flannel interfaces
 ip link show type vxlan | grep flannel
@@ -111,7 +116,7 @@ ip link show type vxlan | grep flannel
 # sudo ip link delete cni0 2>/dev/null
 
 # Verify no conflicting CNI configurations exist
-ls -la /etc/cni/net.d/
+ls -la /var/lib/rancher/k3s/agent/etc/cni/net.d/
 # Should only contain 05-cilium.conflist (or similar Cilium config)
 ```
 
@@ -144,22 +149,22 @@ After resolving issues, validate the fix:
 cilium status
 
 # Verify connectivity
-cilium connectivity test --test pod-to-pod,pod-to-service,dns-resolution
+cilium connectivity test
 
 # Verify all nodes have Cilium agents running
 kubectl get pods -n kube-system -l k8s-app=cilium -o wide
 
 # Check that all endpoints are in a ready state
-cilium endpoint list | grep -v "ready"
+kubectl get ciliumendpoints --all-namespaces
 ```
 
 ## Troubleshooting
 
-- **Cilium agent logs show "context deadline exceeded" connecting to K8s API**: The `k8sServiceHost` in the Helm values does not resolve or is not reachable from the node. Update to the correct node IP with `helm upgrade cilium cilium/cilium --set k8sServiceHost=CORRECT_IP`.
+- **Cilium agent logs show "context deadline exceeded" connecting to K8s API**: The `k8sServiceHost` in the Helm values does not resolve or is not reachable from the node. Update it to a reachable Kubernetes API address and port with `helm upgrade cilium cilium/cilium -n kube-system --reuse-values --set k8sServiceHost=CORRECT_IP --set k8sServicePort=6443`.
 - **Pods stuck in ContainerCreating after Cilium install**: Cilium may still be initializing. Wait for `cilium status` to show all components as OK. If it persists, check BPF filesystem mount with `mount | grep bpf`.
-- **eBPF programs fail to load**: The kernel may be too old. Check with `uname -r`. Cilium requires kernel 4.19.57+ (as of Cilium 1.13+) and recommends kernel 5.10+ for the latest versions with full feature support. Consider upgrading the host OS.
+- **eBPF programs fail to load**: The kernel may be too old. Check with `uname -r`. Current Cilium releases require Linux kernel 5.10+ or an equivalent distribution kernel such as RHEL 8.10's 4.18 kernel, and newer kernels are needed for some advanced features. Consider upgrading the host OS.
 - **Hubble not showing flows**: Verify Hubble is enabled with `cilium config view | grep hubble`. If enabled but not working, restart the Hubble relay with `kubectl rollout restart deployment hubble-relay -n kube-system`.
 
 ## Conclusion
 
-Troubleshooting Cilium on K3s centers on three main areas: agent startup failures (usually caused by Flannel not being disabled or incorrect API server configuration), pod connectivity problems (typically routing or BPF issues), and K3s component conflicts (kube-proxy or leftover Flannel state). The Cilium CLI and `cilium monitor` command are your primary diagnostic tools for identifying the specific failure point.
+Troubleshooting Cilium on K3s centers on three main areas: agent startup failures (usually caused by Flannel not being disabled or incorrect API server configuration), pod connectivity problems (typically routing or BPF issues), and K3s component conflicts (kube-proxy or leftover Flannel state). The Cilium CLI and in-agent `cilium-dbg monitor` command are your primary diagnostic tools for identifying the specific failure point.
