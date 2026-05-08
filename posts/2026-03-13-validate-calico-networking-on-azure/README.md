@@ -10,7 +10,7 @@ Description: How to validate Calico networking on Azure self-managed Kubernetes 
 
 ## Introduction
 
-Validating Calico networking on Azure has Azure-specific steps that go beyond standard Calico validation. Azure VNet constraints require explicit IP Forwarding settings on VM NICs, and NSG rules must allow VXLAN traffic between nodes. Without validating these Azure-level settings, pod communication failures may be incorrectly attributed to Calico misconfigurations when the root cause is Azure platform settings.
+Validating Calico networking on Azure has Azure-specific steps that go beyond standard Calico validation. Azure VNet constraints require explicit IP Forwarding settings on VM NICs when using routed pod traffic or Azure user-defined routes, and NSG rules must not block VXLAN traffic between nodes when using Calico VXLAN. Without validating these Azure-level settings, pod communication failures may be incorrectly attributed to Calico misconfigurations when the root cause is Azure platform settings.
 
 A complete validation covers: Azure VM NIC settings, NSG rules, Calico component health, IPAM allocation, and end-to-end pod connectivity across different subnets.
 
@@ -23,7 +23,8 @@ A complete validation covers: Azure VM NIC settings, NSG rules, Calico component
 ## Step 1: Verify Azure IP Forwarding
 
 ```bash
-# Check IP Forwarding status on all worker VM NICs
+# Check IP Forwarding status on all worker VM NICs.
+# This should be true for Calico deployments that use Azure UDR or routed pod traffic.
 
 for vm in $(kubectl get nodes -o name | cut -d/ -f2); do
   NIC_ID=$(az vm show -g k8s-rg -n $vm \
@@ -33,7 +34,6 @@ for vm in $(kubectl get nodes -o name | cut -d/ -f2); do
     IP_FWD=$(az network nic show --ids $NIC_ID \
       --query "enableIPForwarding" -o tsv)
     echo "$vm: IP Forwarding = $IP_FWD"
-    # Should be: true
   fi
 done
 ```
@@ -45,11 +45,12 @@ done
 az network nsg rule list \
   --resource-group k8s-rg \
   --nsg-name k8s-workers-nsg \
-  --query "[?destinationPortRange=='4789' || contains(destinationPortRanges, '4789')]" \
+  --include-default \
+  --query "[?access=='Allow' && direction=='Inbound' && (protocol=='Udp' || protocol=='*') && (destinationPortRange=='4789' || destinationPortRange=='*' || destinationPortRange=='0-65535' || contains(destinationPortRanges || \`[]\`, '4789') || contains(destinationPortRanges || \`[]\`, '*') || contains(destinationPortRanges || \`[]\`, '0-65535'))]" \
   --output table
 ```
 
-Expected output should show an Allow rule for UDP 4789.
+Expected output should show an inbound Allow rule for UDP 4789, or a broader allow rule such as Azure's default VirtualNetwork-to-VirtualNetwork rule. If your cluster uses custom deny rules, make sure a higher-priority allow rule permits VXLAN between node IPs.
 
 ## Step 3: Verify Calico Component Health
 
@@ -65,7 +66,8 @@ kubectl describe pods -n calico-system | grep -A5 "State:"
 
 ```bash
 calicoctl ipam show --show-blocks
-# Each node should have at least one /24 block assigned
+# Each active node should have one or more blocks assigned.
+# By default, Calico uses /26 IPv4 blocks unless the IP pool block size was changed.
 ```
 
 ## Step 5: Test Pod-to-Pod Connectivity
@@ -73,11 +75,12 @@ calicoctl ipam show --show-blocks
 ```bash
 # Deploy test pods on different nodes
 kubectl run test-pod-1 --image=busybox \
-  --overrides='{"spec":{"nodeName":"worker-1"}}' -- sleep 3600 &
+  --overrides='{"apiVersion":"v1","spec":{"nodeName":"worker-1"}}' -- sleep 3600
 kubectl run test-pod-2 --image=busybox \
-  --overrides='{"spec":{"nodeName":"worker-2"}}' -- sleep 3600 &
+  --overrides='{"apiVersion":"v1","spec":{"nodeName":"worker-2"}}' -- sleep 3600
 
-sleep 10
+kubectl wait --for=condition=Ready pod/test-pod-1 --timeout=60s
+kubectl wait --for=condition=Ready pod/test-pod-2 --timeout=60s
 
 POD_2_IP=$(kubectl get pod test-pod-2 -o jsonpath='{.status.podIP}')
 
@@ -99,6 +102,7 @@ graph LR
 # Deploy a service and test access from a pod
 kubectl create deployment nginx --image=nginx
 kubectl expose deployment nginx --port=80
+kubectl rollout status deployment/nginx --timeout=60s
 
 kubectl exec test-pod-1 -- wget -qO- nginx.default.svc.cluster.local
 # Should return nginx HTML
@@ -108,7 +112,7 @@ kubectl exec test-pod-1 -- wget -qO- nginx.default.svc.cluster.local
 
 ```bash
 # Test outbound internet access from a pod
-kubectl exec test-pod-1 -- wget -qO- https://ifconfig.me
+kubectl exec test-pod-1 -- wget -qO- http://ifconfig.me
 # Should return the external IP of the NAT gateway / load balancer
 ```
 
@@ -122,4 +126,4 @@ kubectl delete service nginx
 
 ## Conclusion
 
-Validating Calico on Azure is a multi-layer process: verify Azure-level settings (IP Forwarding, NSG rules), confirm Calico components are healthy, check IPAM block assignments, and run end-to-end connectivity tests across nodes. Azure-specific validation is critical because IP Forwarding is disabled by default and VXLAN traffic is not allowed in default NSG configurations - both of which silently break Calico pod networking.
+Validating Calico on Azure is a multi-layer process: verify Azure-level settings (IP Forwarding, NSG rules), confirm Calico components are healthy, check IPAM block assignments, and run end-to-end connectivity tests across nodes. Azure-specific validation is critical because IP Forwarding is disabled by default for routed designs and custom NSG deny rules can block VXLAN traffic, both of which can silently break Calico pod networking.
