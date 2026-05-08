@@ -38,7 +38,7 @@ spec:
   asNumber: 64512
 ```
 
-The `name: default` configuration is special. Calico automatically applies it cluster-wide. Any other name requires explicit reference from BGPPeer or node configurations.
+The `name: default` configuration is special. Calico automatically applies it cluster-wide. Node-specific overrides use the name `node.<nodename>`, and only `prefixAdvertisements`, `listenPort`, and `logSeverityScreen` can be overridden that way.
 
 ## Creating a Basic BGPConfiguration
 
@@ -73,7 +73,7 @@ kubectl apply -f bgp-config.yaml
 
 ## Configuring Route Advertisement
 
-To advertise pod and service CIDRs to external BGP peers, configure the `serviceClusterIPs` and `serviceExternalIPs` fields:
+To advertise service CIDRs to external BGP peers, configure the `serviceClusterIPs`, `serviceExternalIPs`, and `serviceLoadBalancerIPs` fields:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -91,7 +91,7 @@ spec:
     - cidr: 198.51.100.0/24
 ```
 
-Setting `nodeToNodeMeshEnabled: false` disables the full mesh between nodes, which is required when you use dedicated BGP route reflectors instead.
+Setting `nodeToNodeMeshEnabled: false` disables the full mesh between nodes, which is commonly used when you move to dedicated BGP route reflectors instead.
 
 ## Configuring Communities
 
@@ -146,10 +146,10 @@ Check the BGP status on each node:
 calicoctl node status
 ```
 
-You should see the AS number reflected in the output and the node-to-node mesh status matching your configuration.
+You should see the expected BGP sessions and peer state matching your configuration.
 
 ```bash
-kubectl get bgpconfigurations.crd.projectcalico.org default -o yaml
+kubectl get bgpconfigurations.projectcalico.org default -o yaml
 ```
 
 ## Troubleshooting
@@ -157,7 +157,7 @@ kubectl get bgpconfigurations.crd.projectcalico.org default -o yaml
 If the BGPConfiguration does not take effect, check the following:
 
 - Verify the resource name is `default` for cluster-wide application
-- Ensure the AS number is within the private range (64512-65534) for internal use
+- Ensure the AS number is within a private range (64512-65534 or 4200000000-4294967294) for internal use
 - Check calico-node pod logs for BGP errors: `kubectl logs -n calico-system -l k8s-app=calico-node | grep BGP`
 - Confirm the Calico API server is running if using kubectl: `kubectl get pods -n calico-apiserver`
 - Validate the YAML with calicoctl: `calicoctl create -f bgp-config.yaml --skip-exists` or review with `calicoctl get bgpconfiguration default -o yaml`
