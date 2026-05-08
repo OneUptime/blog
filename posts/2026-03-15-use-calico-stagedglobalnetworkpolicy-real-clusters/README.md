@@ -49,11 +49,11 @@ spec:
 calicoctl apply -f default-deny-staged.yaml
 ```
 
-After staging, review the flow logs in Calico Enterprise Manager to see which active connections would be denied by this policy. This impact preview prevents blind enforcement.
+After staging, review the policy preview in Calico Enterprise Manager, or inspect the staged policy fields in flow logs, to see how active connections would be handled if the policy were enforced. This impact preview prevents blind enforcement.
 
 ## Multi-Namespace Egress Control
 
-In real clusters, you often need to restrict egress across all namespaces while allowing specific external services. Stage this policy to validate before enforcement:
+In real clusters, you often need to restrict egress across all namespaces while allowing required internal networks and DNS. Stage this policy to validate before enforcement:
 
 ```yaml
 apiVersion: projectcalico.org/v3
@@ -79,7 +79,7 @@ spec:
     - action: Deny
 ```
 
-This allows all cluster-internal traffic and DNS, while denying external access. The staged mode lets you discover workloads that depend on external APIs before the deny takes effect.
+This allows traffic to the `10.0.0.0/8` network and UDP DNS, while denying other egress. Adjust the CIDR to match your cluster's Pod, Service, or private network ranges. The staged mode lets you discover workloads that depend on external APIs before the deny takes effect.
 
 ## Integrating with CI/CD Pipelines
 
@@ -93,7 +93,7 @@ calicoctl apply -f "$POLICY_FILE"
 
 POLICY_NAME=$(grep "name:" "$POLICY_FILE" | head -1 | awk '{print $2}')
 echo "Staged policy applied: $POLICY_NAME"
-echo "Review in Calico Enterprise Manager before committing."
+echo "Review in Calico Enterprise Manager before enforcing."
 ```
 
 ## Verification
@@ -126,7 +126,7 @@ If flow log analysis shows no matched flows, verify that flow logging is enabled
 calicoctl get felixconfiguration default -o yaml | grep flowLogs
 ```
 
-If a staged policy was accidentally committed, delete the StagedGlobalNetworkPolicy resource and create a corrective GlobalNetworkPolicy to override it.
+If a staged policy was accidentally enforced, update or delete the resulting GlobalNetworkPolicy, or create a corrective GlobalNetworkPolicy at the appropriate tier and order.
 
 ## Conclusion
 
