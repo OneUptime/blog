@@ -89,7 +89,7 @@ done
 # Watch for container kill events
 podman events --filter event=kill
 
-# Check if a container was killed due to health check failure
+# Check status and exit code after a health-check-triggered kill
 podman inspect --format='{{.State.Status}} {{.State.ExitCode}}' kill-on-fail
 ```
 
