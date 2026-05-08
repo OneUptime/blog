@@ -82,6 +82,8 @@ echo "All volumes backed up to $BACKUP_DIR"
 
 ```bash
 # Create a backup script
+mkdir -p /home/user/scripts
+
 cat > /home/user/scripts/backup-volumes.sh << 'EOF'
 #!/bin/bash
 BACKUP_DIR="/home/user/backups/$(date +%Y%m%d)"
@@ -93,7 +95,7 @@ for vol in $(podman volume ls --format '{{ .Name }}'); do
 done
 
 # Remove backups older than retention period
-find /home/user/backups -type d -mtime +$RETENTION_DAYS -exec rm -rf {} +
+find /home/user/backups -mindepth 1 -maxdepth 1 -type d -mtime +$RETENTION_DAYS -exec rm -rf {} +
 EOF
 
 chmod +x /home/user/scripts/backup-volumes.sh
