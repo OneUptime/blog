@@ -15,7 +15,7 @@ After collecting cluster diagnostics, validating the bundle ensures you have com
 ## Prerequisites
 
 - A diagnostic bundle from `calicoctl cluster diags`
-- Python 3 for analysis scripts
+- Python 3 and PyYAML for the YAML validation one-liner
 - Understanding of Calico resource types
 
 ## Validating Bundle Completeness
@@ -32,9 +32,12 @@ fi
 
 echo "=== Cluster Diagnostics Validation ==="
 echo "Bundle: $BUNDLE"
-echo "Size: $(du -h $BUNDLE | cut -f1)"
+echo "Size: $(du -h "$BUNDLE" | cut -f1)"
 
-CONTENTS=$(tar tzf "$BUNDLE")
+if ! CONTENTS=$(tar tzf "$BUNDLE"); then
+  echo "Validation: FAIL - bundle could not be read as a gzip-compressed tar archive"
+  exit 1
+fi
 
 # Check for expected resource types
 
@@ -72,30 +75,30 @@ echo "=== Cluster Health Analysis ==="
 
 # Count resources
 echo "--- Resource Counts ---"
-for f in $(find "$WORK" -name "*.yaml" -o -name "*.json"); do
+while IFS= read -r f; do
   RESOURCE=$(basename "$f" | sed 's/\.\(yaml\|json\)//')
-  COUNT=$(grep -c "^  name:" "$f" 2>/dev/null || echo "?")
+  COUNT=$(grep -Ec "^[[:space:]]+name:" "$f" 2>/dev/null || echo "?")
   echo "  $RESOURCE: $COUNT"
-done
+done < <(find "$WORK" -type f \( -name "*.yaml" -o -name "*.json" \))
 
 # Check for common issues
 echo ""
 echo "--- Configuration Checks ---"
 
 # Check IP pool utilization hints
-POOL_FILES=$(find "$WORK" -name "*ippool*")
-if [ -n "$POOL_FILES" ]; then
+mapfile -t POOL_FILES < <(find "$WORK" -type f -name "*ippool*")
+if [ ${#POOL_FILES[@]} -gt 0 ]; then
   echo "IP Pools configured:"
-  grep "cidr:" $POOL_FILES 2>/dev/null | sed 's/^/  /'
+  grep -h "cidr:" "${POOL_FILES[@]}" 2>/dev/null | sed 's/^/  /'
 fi
 
-# Check for default-deny policies
-GNP_FILES=$(find "$WORK" -name "*globalnetworkpolic*")
-if [ -n "$GNP_FILES" ]; then
-  if grep -q "action: Deny" $GNP_FILES 2>/dev/null; then
-    echo "Default deny policies: FOUND"
+# Check for explicit deny rules in global policies
+mapfile -t GNP_FILES < <(find "$WORK" -type f -name "*globalnetworkpolic*")
+if [ ${#GNP_FILES[@]} -gt 0 ]; then
+  if grep -q "action: Deny" "${GNP_FILES[@]}" 2>/dev/null; then
+    echo "GlobalNetworkPolicy deny rules: FOUND"
   else
-    echo "Default deny policies: NOT FOUND (consider adding)"
+    echo "GlobalNetworkPolicy deny rules: NOT FOUND"
   fi
 fi
 
@@ -112,8 +115,8 @@ rm -rf "$WORK"
 ## Troubleshooting
 
 - **Bundle too small**: May indicate RBAC issues prevented collection of some resources. Check the collection logs.
-- **YAML parsing errors**: Some resources may have special characters. Use `python3 -c "import yaml; yaml.safe_load(open('file.yaml'))"` to validate.
-- **Missing network policies**: If no policies exist, the file will be empty. This is normal for clusters without Calico network policies.
+- **YAML parsing errors**: Install PyYAML and use `python3 -c "import yaml; yaml.safe_load(open('file.yaml'))"` to validate a YAML file.
+- **Missing network policies**: If no policies exist, the corresponding file may be empty or absent. This is normal for clusters without Calico network policies.
 
 ## Conclusion
 
