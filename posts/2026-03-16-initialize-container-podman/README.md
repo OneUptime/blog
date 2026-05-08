@@ -10,7 +10,7 @@ Description: Learn how to use podman init to initialize a created container, set
 
 > Initializing a container prepares its runtime environment without executing the main process, giving you a window to inspect and configure it.
 
-The `podman init` command initializes a container that has been created but not yet started. It sets up the container's runtime environment, including namespaces and cgroups, without actually running the container's command. This guide explains when and how to use container initialization.
+The `podman init` command initializes a container that has been created but not yet started. It performs the setup needed to start the container, including mounting filesystems, creating the OCI spec, and initializing the container network, without actually running the container's command. This guide explains when and how to use container initialization.
 
 ---
 
@@ -37,7 +37,7 @@ podman ps -a --filter name=my-container --format "{{.Names}} {{.Status}}"
 # Initialize the container
 podman init my-container
 
-# Check the status again (should be "Init")
+# Check the status again (should be "Initialized")
 podman ps -a --filter name=my-container --format "{{.Names}} {{.Status}}"
 
 # Now start it
@@ -110,7 +110,7 @@ podman create --name inspect-target \
 # Initialize it
 podman init inspect-target
 
-# Inspect the initialized container's cgroup settings
+# Inspect the initialized container's state
 podman inspect inspect-target --format '{{.State.Status}}'
 
 # Start only if everything looks correct
@@ -233,4 +233,4 @@ for svc in "${CONTAINERS[@]}"; do podman rm -f "$svc" 2>/dev/null; done
 
 ## Summary
 
-The `podman init` command bridges the gap between container creation and execution by setting up the runtime environment without starting the main process. Use it for pre-start inspection, coordinated multi-container startup, and debugging container configuration issues. While optional in most workflows (since `podman start` handles initialization automatically), it provides valuable control for advanced container management scenarios.
+The `podman init` command bridges the gap between container creation and execution by performing the setup needed to start the container without starting the main process. Use it for pre-start inspection, coordinated multi-container startup, and debugging container configuration issues. While optional in most workflows (since `podman start` handles initialization automatically), it provides valuable control for advanced container management scenarios.
