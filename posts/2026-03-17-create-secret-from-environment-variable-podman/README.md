@@ -32,7 +32,7 @@ podman secret ls
 
 ```bash
 # Use printf to avoid issues with special characters
-export API_KEY="sk-abc123!@#$%"
+export API_KEY='sk-abc123!@#$%'
 
 printf '%s' "$API_KEY" | podman secret create api_key -
 ```
