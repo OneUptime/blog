@@ -12,7 +12,7 @@ Description: Step-by-step instructions for safely upgrading Calico to a newer ve
 
 Upgrading Calico on Minikube is a useful practice for testing upgrade procedures before applying them to production. The manifest-based upgrade process replaces Calico components through a rolling update, which on a single-node Minikube cluster happens sequentially without load balancing across nodes.
 
-Understanding the upgrade path is important. Calico supports upgrading one minor version at a time for major version upgrades. For patch version upgrades within the same minor version (e.g., v3.27.0 to v3.27.2), the process is straightforward. This guide focuses on upgrading from v3.26.x to v3.27.0.
+Understanding the upgrade path is important. Follow the official Calico upgrade documentation for your installation method and check the release notes for version-specific caveats. For patch version upgrades within the same minor version (e.g., v3.27.0 to v3.27.2), the process is straightforward. This guide focuses on upgrading from v3.26.x to v3.27.0.
 
 Before upgrading, back up your Calico configuration resources. Although the upgrade process does not delete custom resources, having a backup provides a safety net if the upgrade needs to be rolled back.
 
@@ -38,6 +38,7 @@ kubectl get daemonset calico-node -n kube-system \
 calicoctl get ippool -o yaml > ippool-backup.yaml
 calicoctl get felixconfiguration -o yaml > felix-backup.yaml
 calicoctl get networkpolicy --all-namespaces -o yaml > netpol-backup.yaml
+calicoctl get globalnetworkpolicy -o yaml > globalnetpol-backup.yaml
 ```
 
 ## Step 3: Pre-Upgrade Health Check
@@ -53,8 +54,12 @@ calicoctl node status
 ## Step 4: Apply the New Calico Manifest
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+curl -L https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml \
+  -o upgrade.yaml
+kubectl apply --server-side --force-conflicts -f upgrade.yaml
 ```
+
+If you manually changed your existing Calico manifest, apply the same changes to `upgrade.yaml` before running `kubectl apply`.
 
 This updates CRDs, the calico-node DaemonSet, and calico-kube-controllers.
 
@@ -76,7 +81,7 @@ calicoctl node status
 ## Step 7: Run Connectivity Tests
 
 ```bash
-kubectl run post-upgrade-test --image=busybox --restart=Never -- ping -c 4 8.8.8.8
+kubectl run post-upgrade-test --image=busybox --restart=Never --command -- ping -c 4 8.8.8.8
 kubectl logs post-upgrade-test
 kubectl delete pod post-upgrade-test
 ```
@@ -84,9 +89,9 @@ kubectl delete pod post-upgrade-test
 ## Step 8: Update calicoctl
 
 ```bash
-curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
+sudo curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 \
   -o /usr/local/bin/calicoctl
-chmod +x /usr/local/bin/calicoctl
+sudo chmod +x /usr/local/bin/calicoctl
 calicoctl version
 ```
 
