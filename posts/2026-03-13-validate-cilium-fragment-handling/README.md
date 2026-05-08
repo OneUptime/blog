@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Kubernetes, Networking, Fragmentation, eBPF
 
-Description: A guide to validating how Cilium handles IP packet fragmentation, including testing fragment tracking, diagnosing MTU-related fragmentation issues, and confirming correct fragment reassembly behavior.
+Description: A guide to validating how Cilium handles IP packet fragmentation, including testing fragment tracking, diagnosing MTU-related fragmentation issues, and confirming correct fragmented packet handling.
 
 ---
 
@@ -12,7 +12,7 @@ Description: A guide to validating how Cilium handles IP packet fragmentation, i
 
 IP packet fragmentation occurs when packets exceed the MTU (Maximum Transmission Unit) of the network path and must be split into smaller fragments. In Kubernetes environments with overlay networking, fragmentation is a common source of subtle connectivity issues because overlays add header overhead that reduces the effective MTU for pod traffic.
 
-Cilium handles IP fragments using eBPF-based fragment tracking, which is necessary for correct connection tracking and policy enforcement when packets are split across multiple fragments. If fragment handling is not working correctly, you may see intermittent connection failures, especially for protocols that use large packets like NFS, iSCSI, or applications that transmit large data payloads.
+Cilium handles IP fragments using eBPF-based fragment tracking, which is necessary for correct Layer 4 lookups, connection tracking, and policy enforcement when packets are split across multiple fragments. If fragment handling is not working correctly, you may see intermittent connection failures, especially for protocols that use large packets like NFS, iSCSI, or applications that transmit large data payloads.
 
 This guide covers how to validate Cilium's fragment handling configuration, test fragmentation behavior, and diagnose MTU-related issues.
 
@@ -20,12 +20,12 @@ This guide covers how to validate Cilium's fragment handling configuration, test
 
 - Kubernetes cluster with Cilium CNI
 - `kubectl` cluster-admin access
-- `cilium` CLI installed
+- `cilium-dbg` available in the Cilium agent pods
 - Basic networking tools available in test pods (ping, iperf3)
 
 ## Step 1: Check Fragment Tracking Configuration
 
-Verify that Cilium has fragment tracking enabled.
+Verify that Cilium has fragment tracking enabled. IPv4 and IPv6 fragment tracking are enabled by default in current Cilium releases, so the ConfigMap key may be absent if you are using the default.
 
 ```bash
 # Check if fragment tracking is enabled in the ConfigMap
@@ -36,7 +36,7 @@ kubectl -n kube-system get configmap cilium-config \
 # Check the eBPF fragment map
 kubectl -n kube-system exec -it \
   $(kubectl -n kube-system get pods -l k8s-app=cilium -o name | head -1) -- \
-  cilium bpf maps list | grep fragment
+  cilium-dbg bpf frag list
 ```
 
 ## Step 2: Verify MTU Configuration
@@ -65,30 +65,28 @@ Send oversized ICMP packets to force fragmentation and test handling.
 # Deploy a test pod
 kubectl run frag-test --image=nicolaka/netshoot -- sleep 3600
 
-# Send a large ping that requires fragmentation (size > MTU - headers)
-# For a 1450 MTU, use ping size of 1500 to force fragmentation
-kubectl exec frag-test -- ping -c 5 -s 1500 -M dont <destination-pod-ip>
+# Send a large ping with DF set to confirm the packet exceeds the path MTU
+# For a 1450 MTU, a ping payload of 1500 should fail with "Message too long"
+kubectl exec frag-test -- ping -c 5 -s 1500 -M do <destination-pod-ip>
 
-# If the above fails with "Message too long", fragmentation is required
-# Send without DF bit to allow fragmentation
+# Send without DF set to allow fragmentation
 kubectl exec frag-test -- ping -c 5 -s 1500 <destination-pod-ip>
 ```
 
-## Step 4: Monitor Fragment Drops in eBPF
+## Step 4: Monitor Fragment Metrics and Drops
 
-Check Cilium's eBPF counters for fragment-related drops.
+Check Cilium's monitor output and metrics for fragment-related or MTU-related signals.
 
 ```bash
-# Check Cilium drop statistics - look for fragment-related drop reasons
+# Check Cilium drop statistics - look for fragment-related or MTU-related drop reasons
 kubectl -n kube-system exec -it \
   $(kubectl -n kube-system get pods -l k8s-app=cilium -o name | head -1) -- \
-  cilium monitor --type drop 2>&1 | head -50
+  cilium-dbg monitor --type drop 2>&1 | head -50
 
-# Check Prometheus metrics for drop counts
-# cilium_drop_count_total{reason="Fragmented packet"} indicates fragment issues
+# Check Prometheus metrics for fragment map pressure and MTU error messages
 kubectl -n kube-system exec -it \
   $(kubectl -n kube-system get pods -l k8s-app=cilium -o name | head -1) -- \
-  cilium metrics list | grep frag
+  cilium-dbg metrics list -p 'cilium_bpf_map_pressure|cilium_mtu_error_message_total'
 ```
 
 ## Step 5: Test Large Payload Application Connectivity
@@ -98,19 +96,19 @@ Validate that applications sending large payloads work correctly.
 ```bash
 # Install iperf3 test
 kubectl run iperf-server --image=networkstatic/iperf3 -- -s
-kubectl run iperf-client --image=networkstatic/iperf3 -- sleep 3600
+kubectl run iperf-client --image=networkstatic/iperf3 --command -- sleep 3600
 
 SERVER_IP=$(kubectl get pod iperf-server -o jsonpath='{.status.podIP}')
 
-# Run iperf3 test with large buffer sizes to exercise fragmentation handling
-kubectl exec iperf-client -- iperf3 -c $SERVER_IP -n 100M -l 65507
+# Run a UDP iperf3 test with datagrams larger than the pod MTU to exercise fragmentation handling
+kubectl exec iperf-client -- iperf3 -c $SERVER_IP -u -b 10M -t 30 -l 2000
 ```
 
 ## Best Practices
 
 - Set Cilium MTU to at least 50 bytes below the physical network MTU when using VXLAN/Geneve
 - Enable fragment tracking (`enable-ipv4-fragment-tracking: "true"`) when using overlays
-- Monitor `cilium_drop_count_total` Prometheus metrics for fragment-related drops
+- Monitor `cilium_bpf_map_pressure` for the fragment maps and `cilium_mtu_error_message_total` for path MTU discovery signals
 - Test large payload connectivity after MTU changes
 - Prefer path MTU discovery (PMTUD) over fixed fragmentation when possible
 
