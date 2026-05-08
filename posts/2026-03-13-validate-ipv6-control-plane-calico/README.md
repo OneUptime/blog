@@ -64,12 +64,13 @@ Check that BGP sessions are established over IPv6 when using IPv6 control plane.
 # Check BGP peer status including IPv6 sessions
 calicoctl node status
 
-# Verify BGP peers are configured with IPv6 peer addresses
+# Verify explicit BGPPeer resources, if used, are configured with IPv6 peer addresses
 calicoctl get bgppeer -o yaml | grep "peerIP:" | grep ":"
 
-# Check that IPv6 routes are being advertised
-kubectl -n kube-system exec -it \
-  $(kubectl -n kube-system get pods -l k8s-app=calico-node -o name | head -1) -- \
+# Check that IPv6 routes are being advertised by BIRD
+CALICO_NS=calico-system   # use kube-system for manifest-based installs
+kubectl -n "$CALICO_NS" exec -it \
+  $(kubectl -n "$CALICO_NS" get pods -l k8s-app=calico-node -o name | head -1) -- \
   birdcl6 show protocols
 ```
 
@@ -87,7 +88,8 @@ kubectl wait --for=condition=Ready pod/ipv6-server pod/ipv6-client
 
 # Get the server's IPv6 address
 SERVER_IPV6=$(kubectl get pod ipv6-server \
-  -o jsonpath='{.status.podIPs[?(@.ip contains ":")].ip}')
+  -o go-template='{{range .status.podIPs}}{{printf "%s\n" .ip}}{{end}}' | \
+  grep ':' | head -1)
 echo "Server IPv6: $SERVER_IPV6"
 
 # Test connectivity from client using IPv6
