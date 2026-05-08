@@ -19,7 +19,7 @@ By mastering these troubleshooting techniques, you will be able to quickly resto
 ## Prerequisites
 
 - Kubernetes cluster with Cilium (v1.14+) installed
-- `cilium` CLI and Hubble CLI available
+- `cilium` CLI and Hubble CLI available, plus access to `cilium-dbg` inside Cilium agent pods
 - `kubectl` access to the cluster
 - DNS egress policies deployed
 - Basic understanding of DNS resolution flow in Cilium
@@ -34,8 +34,9 @@ When pods cannot resolve DNS names, start by identifying where in the resolution
 kubectl -n production exec deploy/api-service -- \
   nslookup kubernetes.default.svc.cluster.local
 
-# Step 2: Check Cilium DNS proxy status
-cilium status --verbose | grep -A 10 "DNS"
+# Step 2: Check Cilium proxy status on an agent
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg status --verbose | grep -i "proxy\|dns"
 
 # Step 3: Verify the DNS proxy is intercepting queries
 hubble observe --protocol dns --namespace production --last 50 --output compact
@@ -58,11 +59,11 @@ cilium config view | grep -i dns
 
 # Check that the DNS proxy listener is active
 kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
-  cilium status --verbose | grep "proxy"
+  cilium-dbg status --verbose | grep -i "proxy"
 
 # View DNS proxy statistics
 kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
-  cilium metrics list | grep dns
+  cilium-dbg metrics list | grep dns
 ```
 
 ## Resolving FQDN Cache Issues
@@ -71,23 +72,26 @@ The FQDN cache maps domain names to IP addresses. If this cache is stale or empt
 
 ```bash
 # List all entries in the FQDN cache
-cilium fqdn cache list
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg fqdn cache list
 
 # Check cache for a specific domain
-cilium fqdn cache list | grep "api.external-service.com"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg fqdn cache list | grep "api.external-service.com"
 
 # Force a DNS lookup to refresh the cache
 kubectl -n production exec deploy/api-service -- \
   nslookup api.external-service.com
 
 # Verify the cache was updated
-cilium fqdn cache list | grep "api.external-service.com"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg fqdn cache list | grep "api.external-service.com"
 ```
 
 ```yaml
-# Common mistake: DNS rule and FQDN rule in separate policies
-# They MUST be in the same policy for FQDN resolution to work
-# CORRECT approach - single policy with both rules:
+# Common mistake: toFQDNs rule without a DNS L7 rule for the same endpoints
+# DNS interception must be specified separately for Cilium to learn DNS responses.
+# Simple approach - single policy with both rules:
 apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
@@ -100,8 +104,8 @@ spec:
   egress:
     - toEndpoints:
         - matchLabels:
-            io.kubernetes.pod.namespace: kube-system
-            k8s-app: kube-dns
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
       toPorts:
         - ports:
             - port: "53"
@@ -124,7 +128,8 @@ spec:
 kubectl -n production get pods --show-labels
 
 # Check which policies apply to a specific endpoint
-cilium endpoint list -o json | \
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg endpoint list -o json | \
   jq '.[] | select(.status.labels.id | any(contains("app=api-service"))) | {
     id: .id,
     policy_ingress: .status.policy.realized."l4-ingress",
@@ -163,7 +168,8 @@ hubble observe --protocol dns --output json | \
 kubectl -n production exec deploy/api-service -- nslookup api.external-service.com
 
 # 2. FQDN cache is populated
-cilium fqdn cache list | grep "api.external-service.com"
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
+  cilium-dbg fqdn cache list | grep "api.external-service.com"
 
 # 3. Egress to the FQDN-resolved IP works
 kubectl -n production exec deploy/api-service -- \
@@ -182,4 +188,4 @@ hubble observe --namespace production --verdict DROPPED --last 20
 
 ## Conclusion
 
-DNS egress troubleshooting in Cilium requires understanding the interaction between the DNS proxy, FQDN cache, and egress policy rules. The most common issues stem from split DNS/FQDN policies, stale caches, or misconfigured endpoint selectors. By using Hubble for flow analysis and the Cilium CLI for cache inspection, you can quickly isolate and resolve DNS egress policy problems.
+DNS egress troubleshooting in Cilium requires understanding the interaction between the DNS proxy, FQDN cache, and egress policy rules. The most common issues stem from missing DNS proxy rules, stale caches, or misconfigured endpoint selectors. By using Hubble for flow analysis and `cilium-dbg` for cache inspection, you can quickly isolate and resolve DNS egress policy problems.
