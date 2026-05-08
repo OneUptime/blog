@@ -67,7 +67,7 @@ calicoctl get bgppeers -o yaml
 
 ```bash
 # Update IPPool to use VXLAN instead of IPIP
-calicoctl patch ippool default-ipv4-pool -p '{"spec": {"ipipMode": "Never", "vxlanMode": "Always"}}'
+calicoctl patch ippool default-ipv4-ippool -p '{"spec": {"ipipMode": "Never", "vxlanMode": "Always"}}'
 kubectl rollout restart daemonset -n calico-system calico-node
 ```
 
@@ -146,13 +146,13 @@ After applying any fix, systematically verify each layer of the Calico stack:
 kubectl get pods -n calico-system -o wide
 
 # Layer 2: IPAM consistency
-calicoctl ipam check
+calicoctl ipam show --show-blocks
 
 # Layer 3: Node-to-node connectivity
 calicoctl node status
 
 # Layer 4: Pod-to-pod connectivity
-kubectl run fix-test --image=busybox --rm -it --restart=Never -- wget -qO- --timeout=5 http://kubernetes.default.svc/healthz
+kubectl run fix-test --image=busybox --rm -it --restart=Never -- ping -c 3 <test-pod-ip>
 
 # Layer 5: Application-level connectivity
 kubectl get endpoints -A | grep "<none>" | head -10
