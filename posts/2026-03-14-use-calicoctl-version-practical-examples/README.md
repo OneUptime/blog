@@ -25,18 +25,15 @@ This guide covers practical uses of `calicoctl version` beyond basic version che
 ## Basic Version Check
 
 ```bash
-# Check calicoctl client version (works without cluster access)
-
+# Check calicoctl version information.
+# The client version prints even without cluster access.
 calicoctl version
 
-# Example output:
+# Example output when connected to a Calico cluster:
 # Client Version:    v3.27.0
 # Git commit:        abc1234
 # Cluster Version:   v3.27.0
 # Cluster Type:      typha,kdd,k8s,operator,bgp,kubeadm
-
-# Check only the client version (no cluster needed)
-calicoctl version --client
 ```
 
 ## Checking Version with Different Datastores
@@ -69,11 +66,23 @@ set -euo pipefail
 export DATASTORE_TYPE=kubernetes
 
 # Get version information
-VERSION_OUTPUT=$(calicoctl version 2>/dev/null)
+VERSION_OUTPUT=$(calicoctl version 2>&1)
 
-CLIENT_VERSION=$(echo "$VERSION_OUTPUT" | grep "Client Version" | awk '{print $NF}')
-CLUSTER_VERSION=$(echo "$VERSION_OUTPUT" | grep "Cluster Version" | awk '{print $NF}')
-CLUSTER_TYPE=$(echo "$VERSION_OUTPUT" | grep "Cluster Type" | cut -d: -f2 | tr -d ' ')
+CLIENT_VERSION=$(echo "$VERSION_OUTPUT" | grep "Client Version" | awk '{print $NF}' || true)
+CLUSTER_VERSION=$(echo "$VERSION_OUTPUT" | grep "Cluster Version" | awk '{print $NF}' || true)
+CLUSTER_TYPE=$(echo "$VERSION_OUTPUT" | grep "Cluster Type" | cut -d: -f2 | tr -d ' ' || true)
+
+if [ -z "$CLIENT_VERSION" ]; then
+  echo "ERROR: Unable to read calicoctl client version"
+  echo "$VERSION_OUTPUT"
+  exit 1
+fi
+
+if [ -z "$CLUSTER_VERSION" ]; then
+  echo "ERROR: Unable to detect installed Calico cluster version"
+  echo "$VERSION_OUTPUT"
+  exit 1
+fi
 
 echo "Client Version:  $CLIENT_VERSION"
 echo "Cluster Version: $CLUSTER_VERSION"
@@ -124,10 +133,16 @@ jobs:
         env:
           DATASTORE_TYPE: kubernetes
         run: |
-          calicoctl version
+          VERSION_OUTPUT=$(calicoctl version 2>&1)
+          echo "$VERSION_OUTPUT"
 
-          CLIENT=$(calicoctl version --client 2>/dev/null | grep "Client Version" | awk '{print $NF}')
-          CLUSTER=$(calicoctl version 2>/dev/null | grep "Cluster Version" | awk '{print $NF}')
+          CLIENT=$(echo "$VERSION_OUTPUT" | grep "Client Version" | awk '{print $NF}' || true)
+          CLUSTER=$(echo "$VERSION_OUTPUT" | grep "Cluster Version" | awk '{print $NF}' || true)
+
+          if [ -z "$CLUSTER" ]; then
+            echo "::error::calicoctl could not detect the installed Calico cluster version"
+            exit 1
+          fi
 
           if [ "$CLIENT" != "$CLUSTER" ]; then
             echo "::warning::calicoctl version ($CLIENT) does not match cluster ($CLUSTER)"
@@ -148,13 +163,15 @@ set -euo pipefail
 export DATASTORE_TYPE=kubernetes
 PUSHGATEWAY="${PUSHGATEWAY:-http://prometheus-pushgateway:9091}"
 
-VERSION_OUTPUT=$(calicoctl version 2>/dev/null || echo "")
+VERSION_OUTPUT=$(calicoctl version 2>&1 || echo "")
 
-CLIENT_VERSION=$(echo "$VERSION_OUTPUT" | grep "Client Version" | awk '{print $NF}' || echo "unknown")
-CLUSTER_VERSION=$(echo "$VERSION_OUTPUT" | grep "Cluster Version" | awk '{print $NF}' || echo "unknown")
+CLIENT_VERSION=$(echo "$VERSION_OUTPUT" | grep "Client Version" | awk '{print $NF}' || true)
+CLUSTER_VERSION=$(echo "$VERSION_OUTPUT" | grep "Cluster Version" | awk '{print $NF}' || true)
+CLIENT_VERSION=${CLIENT_VERSION:-unknown}
+CLUSTER_VERSION=${CLUSTER_VERSION:-unknown}
 
 # Version match: 1 if matching, 0 if not
-if [ "$CLIENT_VERSION" = "$CLUSTER_VERSION" ]; then
+if [ "$CLIENT_VERSION" != "unknown" ] && [ "$CLUSTER_VERSION" != "unknown" ] && [ "$CLIENT_VERSION" = "$CLUSTER_VERSION" ]; then
   MATCH=1
 else
   MATCH=0
@@ -190,7 +207,7 @@ for cluster in "${CLUSTERS[@]}"; do
   CLIENT=$(echo "$VERSION_OUTPUT" | grep "Client Version" | awk '{print $NF}' 2>/dev/null || echo "N/A")
   CLUSTER_VER=$(echo "$VERSION_OUTPUT" | grep "Cluster Version" | awk '{print $NF}' 2>/dev/null || echo "N/A")
 
-  if [ "$CLIENT" = "$CLUSTER_VER" ]; then
+  if [ "$CLIENT" != "N/A" ] && [ "$CLUSTER_VER" != "N/A" ] && [ "$CLIENT" = "$CLUSTER_VER" ]; then
     MATCH="YES"
   else
     MATCH="NO"
@@ -208,7 +225,7 @@ echo "=== Calico Support Information ==="
 calicoctl version
 echo ""
 echo "Kubernetes version:"
-kubectl version --short 2>/dev/null || kubectl version
+kubectl version
 echo ""
 echo "Node OS:"
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: {.status.nodeInfo.osImage}{"\n"}{end}'
