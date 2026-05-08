@@ -10,7 +10,7 @@ Description: Learn how to configure the maximum number of health check log entri
 
 > The max log count setting limits how many health check results Podman retains, preventing unbounded log growth for long-running containers.
 
-Long-running containers can accumulate thousands of health check log entries over time. By configuring the maximum log count, you control how many recent entries Podman keeps, balancing between having enough history for debugging and keeping disk usage manageable.
+Long-running containers can accumulate health check log entries over time. By configuring the maximum log count, you control how many recent entries Podman keeps, balancing between having enough history for debugging and keeping disk usage manageable.
 
 ---
 
@@ -29,7 +29,7 @@ podman run -d \
 
 ## Default Behavior
 
-By default, Podman keeps a limited number of health check log entries. You can increase or decrease this:
+By default, Podman keeps 5 health check log entries. You can increase or decrease this:
 
 ```bash
 # Keep more history for debugging (50 entries)
@@ -100,4 +100,4 @@ podman inspect --format='{{len .State.Health.Log}}' limited-logs
 
 ## Summary
 
-The `--health-max-log-count` flag controls how many health check results Podman retains per container. Older entries are automatically removed when the limit is reached. Use higher counts during development for debugging visibility, and lower counts in production or constrained environments to manage disk usage. Combine this with `--health-max-log-size` to also limit the size of each individual log entry.
+The `--health-max-log-count` flag controls how many health check results Podman retains per container. Older entries are automatically removed when the limit is reached. Use higher counts during development for debugging visibility, and lower counts in production or constrained environments to manage disk usage. Combine this with `--health-max-log-size` to also limit the length of each individual log entry in characters.
