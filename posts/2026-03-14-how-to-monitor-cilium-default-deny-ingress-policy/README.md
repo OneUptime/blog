@@ -34,15 +34,15 @@ hubble:
 ```promql
 # Traffic dropped by policy
 
-rate(hubble_drop_total{reason="POLICY_DENIED"}[5m])
+rate(hubble_drop_total{reason="Policy denied"}[5m])
 
 # Policy verdict breakdown
 rate(hubble_flows_processed_total{verdict="DROPPED"}[5m])
 rate(hubble_flows_processed_total{verdict="FORWARDED"}[5m])
 
 # Denied-to-allowed ratio
-hubble_flows_processed_total{verdict="DROPPED"} /
-  hubble_flows_processed_total{verdict="FORWARDED"}
+sum(rate(hubble_flows_processed_total{verdict="DROPPED"}[5m])) /
+  sum(rate(hubble_flows_processed_total{verdict="FORWARDED"}[5m]))
 ```
 
 ## Hubble Flow Analysis
@@ -81,14 +81,14 @@ spec:
     - name: default-deny
       rules:
         - alert: HighPolicyDropRate
-          expr: rate(hubble_drop_total{reason="POLICY_DENIED"}[5m]) > 100
+          expr: rate(hubble_drop_total{reason="Policy denied"}[5m]) > 100
           for: 10m
           labels:
             severity: warning
           annotations:
             summary: "High policy drop rate - possible missing allow policy"
         - alert: PolicyNotEnforcing
-          expr: sum(cilium_endpoint_state{endpoint_state="ready"}) > 0 and sum(cilium_policy_count) == 0
+          expr: sum(cilium_endpoint_state{state="ready"}) > 0 and sum(cilium_policy) == 0
           for: 10m
           labels:
             severity: critical
