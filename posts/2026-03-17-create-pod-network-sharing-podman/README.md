@@ -50,13 +50,14 @@ echo "nginx: $NGINX_IP, sidecar: $SIDECAR_IP"
 podman pod create --name conflict-pod
 podman run -d --pod conflict-pod --name web1 docker.io/library/nginx:alpine
 
-# This will fail because port 80 is already taken by web1
+# This container will exit because port 80 is already taken by web1
 podman run -d --pod conflict-pod --name web2 docker.io/library/nginx:alpine
-# Error: port 80 is already in use
+podman logs web2
+# nginx reports that bind() to port 80 failed because the address is already in use
 
 # Use different ports for each service
 podman run -d --pod conflict-pod --name api docker.io/library/alpine \
-  sh -c "while true; do echo 'HTTP/1.1 200 OK\n\nAPI' | nc -l -p 3000; done"
+  sh -c "while true; do printf 'HTTP/1.1 200 OK\r\n\r\nAPI\n' | nc -l -p 3000; done"
 ```
 
 ## Placing a Pod on a Specific Network
