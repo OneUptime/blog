@@ -12,7 +12,7 @@ Description: How to configure Cilium network policies to lock down external traf
 
 External lock-down policies control which pods can access external services outside the cluster. Without these policies, any pod can reach any external IP address, creating a large attack surface. A compromised pod could exfiltrate data to any external endpoint.
 
-Cilium provides powerful egress policies that can restrict external access by CIDR, DNS name, or even AWS/Azure security groups. This guide covers implementing external lock-down policies that follow the principle of least privilege.
+Cilium provides powerful egress policies that can restrict external access by CIDR, DNS name, or even AWS security groups. This guide covers implementing external lock-down policies that follow the principle of least privilege.
 
 ## Prerequisites
 
@@ -34,7 +34,8 @@ metadata:
   namespace: default
 spec:
   endpointSelector: {}
-  egress: []
+  egress:
+    - {}
 ```
 
 Then add specific allow policies:
@@ -56,9 +57,10 @@ spec:
       toPorts:
         - ports:
             - port: "53"
-              protocol: UDP
-            - port: "53"
-              protocol: TCP
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
 ```
 
 ## Allowing Specific External Access
@@ -125,14 +127,9 @@ metadata:
 spec:
   endpointSelector: {}
   egress:
-    - toEndpoints:
-        - {}
     - toEntities:
+        - cluster
         - kube-apiserver
-    - toCIDR:
-        - "10.0.0.0/8"
-        - "172.16.0.0/12"
-        - "192.168.0.0/16"
 ```
 
 This allows all internal cluster traffic but blocks external access unless explicitly permitted.
