@@ -135,13 +135,13 @@ var commandRegistry = map[byte]commandHandler{
 }
 
 // AUDIT: Is the default case secure?
-func dispatchCommand(command byte, ...) {
+func dispatchCommand(command byte, payload []byte) (proxylib.OpType, int) {
     handler, exists := commandRegistry[command]
     if !exists {
         // AUDIT FINDING: PASS - unknown commands are dropped
         return proxylib.DROP, 0
     }
-    // ...
+    return handler(payload)
 }
 ```
 
