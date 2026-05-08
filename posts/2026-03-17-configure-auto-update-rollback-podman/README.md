@@ -34,6 +34,7 @@ Description=Web app with auto-update rollback
 
 [Container]
 Image=docker.io/myorg/webapp:latest
+ContainerName=webapp
 PublishPort=8080:80
 
 # Enable auto-update
