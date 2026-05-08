@@ -62,6 +62,8 @@ openstack security group rule create --project calico-net-test \
   --protocol tcp --dst-port 443 --remote-ip 0.0.0.0/0 web-tier
 openstack security group rule create --project calico-net-test \
   --protocol tcp --dst-port 22 --remote-ip 10.0.0.0/8 web-tier
+openstack security group rule create --project calico-net-test \
+  --protocol icmp --remote-group web-tier web-tier
 
 # Create a database-tier security group
 openstack security group create --project calico-net-test db-tier
@@ -85,8 +87,10 @@ graph TD
 Deploy test VMs and validate connectivity across different scenarios.
 
 ```bash
+# Run these server creation commands with credentials scoped to calico-net-test.
+
 # Launch web-tier VMs on network 1
-openstack server create --project calico-net-test \
+openstack server create \
   --flavor m1.small \
   --image ubuntu-22.04 \
   --network test-network-1 \
@@ -95,7 +99,7 @@ openstack server create --project calico-net-test \
   web-vm
 
 # Launch database VM on network 2
-openstack server create --project calico-net-test \
+openstack server create \
   --flavor m1.medium \
   --image ubuntu-22.04 \
   --network test-network-2 \
@@ -103,15 +107,21 @@ openstack server create --project calico-net-test \
   db-vm-1
 
 # Wait for VMs to become active
-openstack server list --project calico-net-test
+openstack server list
+
+# Capture fixed IP addresses for the test commands
+WEB_VM1_IP=$(openstack server show web-vm-1 -f value -c addresses | grep -oP '10\.0\.1\.\d+')
+WEB_VM2_IP=$(openstack server show web-vm-2 -f value -c addresses | grep -oP '10\.0\.1\.\d+')
+DB_VM_IP=$(openstack server show db-vm-1 -f value -c addresses | grep -oP '10\.0\.2\.\d+')
 
 # Test intra-network connectivity (web VM to web VM)
 # SSH into web-vm-1 and ping web-vm-2
-WEB_VM2_IP=$(openstack server show web-vm-2 -f value -c addresses | grep -oP '10\.0\.1\.\d+')
 ssh ubuntu@web-vm-1 "ping -c 5 ${WEB_VM2_IP}"
 
 # Test cross-network connectivity (web to database)
-DB_VM_IP=$(openstack server show db-vm-1 -f value -c addresses | grep -oP '10\.0\.2\.\d+')
+ssh ubuntu@web-vm-1 "sudo apt-get update && sudo apt-get install -y netcat-openbsd"
+ssh ubuntu@db-vm-1 "sudo apt-get update && sudo apt-get install -y netcat-openbsd"
+ssh ubuntu@db-vm-1 "nohup nc -lk -p 5432 >/tmp/db-listener.log 2>&1 &"
 ssh ubuntu@web-vm-1 "nc -zv ${DB_VM_IP} 5432"
 ```
 
@@ -125,6 +135,15 @@ Verify that Calico correctly enforces OpenStack security groups.
 # Validate security group enforcement with Calico
 
 echo "=== Security Group Tests ==="
+
+WEB_VM1_IP=$(openstack server show web-vm-1 -f value -c addresses | grep -oP '10\.0\.1\.\d+')
+DB_VM_IP=$(openstack server show db-vm-1 -f value -c addresses | grep -oP '10\.0\.2\.\d+')
+
+# Start simple listeners so the tests validate security group reachability, not missing services.
+ssh ubuntu@web-vm-1 "sudo apt-get update && sudo apt-get install -y netcat-openbsd"
+ssh ubuntu@db-vm-1 "sudo apt-get update && sudo apt-get install -y netcat-openbsd"
+ssh ubuntu@web-vm-1 "sudo nohup python3 -m http.server 80 >/tmp/http-server.log 2>&1 &"
+ssh ubuntu@db-vm-1 "nohup nc -lk -p 5432 >/tmp/db-listener.log 2>&1 &"
 
 # Test 1: Web tier should accept HTTP traffic
 echo -n "Web HTTP access: "
@@ -140,7 +159,7 @@ nc -zv -w 3 ${DB_VM_IP} 5432 2>&1 | grep -q "refused\|timed out" && echo "PASS" 
 
 # Test 4: Web tier SSH restricted to internal network
 echo -n "Web SSH from internal: "
-ssh -o ConnectTimeout=5 ubuntu@${WEB_VM1_IP} "echo ok" 2>/dev/null && echo "PASS" || echo "FAIL"
+ssh ubuntu@web-vm-2 "ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ubuntu@${WEB_VM1_IP} 'echo ok'" 2>/dev/null && echo "PASS" || echo "FAIL"
 ```
 
 ## Performance Benchmarking
