@@ -19,7 +19,7 @@ This guide covers how to use `calicoctl get` safely and effectively as part of y
 ## Prerequisites
 
 - A running Kubernetes cluster with Calico installed
-- calicoctl v3.27 or later
+- A `calicoctl` version that matches the Calico version running on your cluster
 - kubectl access to the cluster
 - Basic understanding of Calico resource types
 
@@ -31,7 +31,7 @@ The primary rollback-related use of `calicoctl get` is capturing the current sta
 #!/bin/bash
 # snapshot-current-state.sh
 
-# Uses calicoctl get to create a comprehensive snapshot
+# Uses calicoctl get to create a rollback snapshot
 
 set -euo pipefail
 
@@ -49,6 +49,7 @@ RESOURCES=(
   "bgpconfigurations"
   "bgppeers"
   "felixconfigurations"
+  "tiers"
   "hostendpoints"
   "profiles"
 )
@@ -72,17 +73,17 @@ Avoid common mistakes when using `calicoctl get` output:
 export DATASTORE_TYPE=kubernetes
 
 # CORRECT: Save to file first, then review before acting on it
-calicoctl get globalnetworkpolicy my-policy -o yaml > /tmp/policy-backup.yaml
+calicoctl get globalnetworkpolicy my-policy -o yaml --export > /tmp/policy-backup.yaml
 cat /tmp/policy-backup.yaml  # Review the content
 
 # WRONG: Piping get directly into apply/delete without review
 # calicoctl get globalnetworkpolicies -o yaml | calicoctl delete -f -   # DANGEROUS!
 
 # CORRECT: Use specific resource names instead of bulk operations
-calicoctl get globalnetworkpolicy my-policy -o yaml > backup.yaml
+calicoctl get globalnetworkpolicy my-policy -o yaml --export > backup.yaml
 
-# CORRECT: Verify the output is valid YAML before using it
-python3 -c "import yaml; yaml.safe_load(open('/tmp/policy-backup.yaml'))" && echo "Valid YAML"
+# CORRECT: Validate Calico resource syntax before using it
+calicoctl validate -f /tmp/policy-backup.yaml && echo "Valid Calico resource"
 ```
 
 ## Comparing State Before and After Changes
@@ -105,12 +106,12 @@ AFTER_FILE="/tmp/calico-after-${RESOURCE_TYPE}.yaml"
 
 if [ -n "$RESOURCE_NAME" ]; then
   # Capture before state
-  calicoctl get "$RESOURCE_TYPE" "$RESOURCE_NAME" -o yaml > "$BEFORE_FILE"
+  calicoctl get "$RESOURCE_TYPE" "$RESOURCE_NAME" -o yaml --export > "$BEFORE_FILE"
   echo "Before state captured. Make your changes, then press Enter to compare."
   read -r
 
   # Capture after state
-  calicoctl get "$RESOURCE_TYPE" "$RESOURCE_NAME" -o yaml > "$AFTER_FILE"
+  calicoctl get "$RESOURCE_TYPE" "$RESOURCE_NAME" -o yaml --export > "$AFTER_FILE"
 else
   calicoctl get "$RESOURCE_TYPE" --all-namespaces -o yaml > "$BEFORE_FILE"
   echo "Before state captured. Make your changes, then press Enter to compare."
@@ -147,8 +148,11 @@ RESTORE_ORDER=(
   "felixconfigurations"
   "bgpconfigurations"
   "bgppeers"
+  "tiers"
+  "profiles"
   "globalnetworksets"
   "networksets"
+  "hostendpoints"
   "globalnetworkpolicies"
   "networkpolicies"
 )
@@ -207,8 +211,11 @@ export DATASTORE_TYPE=kubernetes
 SNAPSHOT_DIR=$(cat /tmp/last-calico-snapshot)
 echo "Snapshot contents:"
 for f in "$SNAPSHOT_DIR"/*.yaml; do
-  count=$(python3 -c "import yaml; docs=list(yaml.safe_load_all(open('$f'))); print(len([d for d in docs if d and 'items' in d and d['items']]))" 2>/dev/null || echo "0")
-  echo "  $(basename "$f"): present"
+  if calicoctl validate -f "$f" >/dev/null 2>&1; then
+    echo "  $(basename "$f"): valid"
+  else
+    echo "  $(basename "$f"): invalid or empty"
+  fi
 done
 
 # Verify a specific resource matches the snapshot
@@ -219,7 +226,7 @@ diff "$SNAPSHOT_DIR/globalnetworkpolicies.yaml" /tmp/current.yaml && echo "State
 ## Troubleshooting
 
 - **Empty output from calicoctl get**: Verify `DATASTORE_TYPE` is set correctly. Check RBAC permissions with `kubectl auth can-i list globalnetworkpolicies.projectcalico.org`.
-- **YAML output contains resourceVersion**: This is normal for Kubernetes API datastore. The resourceVersion is ignored on apply, so backups remain valid.
+- **YAML output contains resourceVersion**: For named resources, add `--export` when creating backups so cluster-specific metadata is stripped. For bulk snapshots, avoid relying on exact metadata matches when checking functional equivalence.
 - **Snapshot does not match after restore**: Some fields like `creationTimestamp` and `uid` change on re-creation. Focus on comparing the `spec` section for functional equivalence.
 - **Cannot restore from JSON output**: Ensure you use `calicoctl apply -f` with the JSON file. Both YAML and JSON formats are accepted.
 
