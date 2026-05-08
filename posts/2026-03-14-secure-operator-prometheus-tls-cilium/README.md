@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Cilium, Observability, Prometheus, TLS, Security, mTLS
 
-Description: Harden the TLS configuration for Cilium Operator Prometheus metrics with mutual TLS, certificate rotation, cipher suite restrictions, and access controls to protect sensitive cluster metrics.
+Description: Harden the TLS configuration for Cilium Operator Prometheus metrics with mutual TLS, certificate rotation, and access controls to protect sensitive cluster metrics.
 
 ---
 
 ## Introduction
 
-Basic TLS encryption for Prometheus metrics is a starting point, but production security requires additional hardening: mutual TLS (mTLS) to authenticate Prometheus scrapers, restricted cipher suites to prevent downgrade attacks, automated certificate rotation to limit exposure from compromised keys, and network-level access controls as defense in depth.
+Basic TLS encryption for Prometheus metrics is a starting point, but production security requires additional hardening: mutual TLS (mTLS) to authenticate Prometheus scrapers, automated certificate and key rotation to limit exposure from compromised keys, and network-level access controls as defense in depth.
 
 This guide covers advanced TLS security measures for the Cilium Operator's Prometheus metrics endpoint, ensuring metrics data is protected to the standard required by security-conscious environments.
 
@@ -44,6 +44,8 @@ spec:
   commonName: prometheus
   usages:
     - client auth
+  privateKey:
+    rotationPolicy: Always
 ```
 
 ```bash
@@ -54,6 +56,29 @@ kubectl apply -f prometheus-client-cert.yaml
 kubectl get certificate -n monitoring prometheus-client-cert
 ```
 
+Enable mTLS verification on the Cilium Operator Prometheus endpoint. Cilium uses the `ca.crt` key in the configured server TLS secret to verify Prometheus client certificates:
+
+```bash
+helm upgrade cilium cilium/cilium \
+    --namespace kube-system \
+    --reuse-values \
+    --set operator.prometheus.tls.enabled=true \
+    --set operator.prometheus.tls.server.existingSecret=cilium-operator-metrics-tls \
+    --set operator.prometheus.tls.server.mtls.enabled=true
+```
+
+Make the operator metrics CA available in the Prometheus namespace so the ServiceMonitor can reference it:
+
+```bash
+kubectl get secret -n kube-system cilium-operator-metrics-tls -o jsonpath='{.data.ca\.crt}' | \
+    base64 -d > cilium-operator-ca.crt
+
+kubectl create secret generic cilium-operator-metrics-ca \
+    -n monitoring \
+    --from-file=ca.crt=cilium-operator-ca.crt \
+    --dry-run=client -o yaml | kubectl apply -f -
+```
+
 Update the ServiceMonitor for mTLS:
 
 ```yaml
@@ -62,8 +87,11 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: cilium-operator-mtls
-  namespace: kube-system
+  namespace: monitoring
 spec:
+  namespaceSelector:
+    matchNames:
+      - kube-system
   selector:
     matchLabels:
       name: cilium-operator
@@ -73,7 +101,7 @@ spec:
       tlsConfig:
         ca:
           secret:
-            name: cilium-operator-metrics-tls
+            name: cilium-operator-metrics-ca
             key: ca.crt
         cert:
           secret:
@@ -123,6 +151,7 @@ spec:
   privateKey:
     algorithm: ECDSA
     size: 256
+    rotationPolicy: Always
 ```
 
 Handle certificate rotation in the operator:
@@ -131,10 +160,8 @@ Handle certificate rotation in the operator:
 # Option 1: Use a sidecar that watches for certificate changes
 # The sidecar signals the operator to reload TLS config
 
-# Option 2: Restart the operator on certificate renewal
-# cert-manager can trigger this with a deployment annotation
-kubectl annotate deployment -n kube-system cilium-operator \
-    "cert-manager.io/inject-ca-from=kube-system/cilium-operator-metrics-tls"
+# Option 2: Restart the operator after certificate renewal
+kubectl rollout restart deployment -n kube-system cilium-operator
 ```
 
 ## Restricting Network Access
@@ -156,6 +183,7 @@ spec:
     # Only allow Prometheus to access the metrics port
     - fromEndpoints:
         - matchLabels:
+            k8s:io.kubernetes.pod.namespace: monitoring
             app.kubernetes.io/name: prometheus
             app.kubernetes.io/instance: monitoring
       toPorts:
@@ -258,4 +286,4 @@ The alert may use a different metric source than the actual certificate check. V
 
 ## Conclusion
 
-Securing the Cilium Operator Prometheus TLS configuration requires defense in depth: mTLS for mutual authentication, short-lived certificates with automated rotation, network policies restricting access to authorized scrapers only, and monitoring alerts for certificate and connectivity issues. Each layer addresses a different threat vector, creating a robust security posture for metrics collection that meets enterprise compliance requirements.
+Securing the Cilium Operator Prometheus TLS configuration requires defense in depth: mTLS for mutual authentication, short-lived certificates with automated key rotation, network policies restricting access to authorized scrapers only, and monitoring alerts for certificate and connectivity issues. Each layer addresses a different threat vector, creating a robust security posture for metrics collection that meets enterprise compliance requirements.
