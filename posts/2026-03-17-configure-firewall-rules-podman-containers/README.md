@@ -16,7 +16,7 @@ Podman containers bind to host ports when you publish them. Without firewall rul
 
 ## Understanding Podman and firewalld
 
-On systems using `firewalld`, Podman container traffic passes through firewall zones. You can use `firewall-cmd` to create rules that apply to container traffic.
+On systems using `firewalld`, rootful Podman bridge traffic passes through firewall zones. Rootless Podman uses `pasta` by default and does not create the same host bridge interface. You can use `firewall-cmd` to create rules that apply to container traffic.
 
 ```bash
 # Check if firewalld is running
@@ -31,7 +31,7 @@ sudo firewall-cmd --get-active-zones
 
 ```bash
 # Run a container with a published port
-podman run -d --name webserver -p 8080:80 docker.io/library/nginx:alpine
+sudo podman run -d --name webserver -p 8080:80 docker.io/library/nginx:alpine
 
 # Allow port 8080 through the firewall
 sudo firewall-cmd --zone=public --add-port=8080/tcp --permanent
@@ -64,8 +64,8 @@ sudo firewall-cmd --permanent --new-zone=containers
 sudo firewall-cmd --reload
 
 # Add the container bridge interface to the zone
-BRIDGE=$(podman network inspect podman --format '{{.NetworkInterface}}')
-sudo firewall-cmd --zone=containers --add-interface="$BRIDGE" --permanent
+BRIDGE=$(sudo podman network inspect podman --format '{{.NetworkInterface}}')
+sudo firewall-cmd --zone=containers --change-interface="$BRIDGE" --permanent
 
 # Allow only specific ports in the container zone
 sudo firewall-cmd --zone=containers --add-port=80/tcp --permanent
@@ -76,11 +76,11 @@ sudo firewall-cmd --reload
 ## Blocking Outbound Traffic from Containers
 
 ```bash
-# Block all outbound traffic from the container zone
-sudo firewall-cmd --zone=containers --add-rich-rule='
-  rule family="ipv4"
-  destination not address="10.88.0.0/16"
-  drop' --permanent
+# Block outbound traffic from the container zone to other zones
+sudo firewall-cmd --permanent --new-policy containersToAny
+sudo firewall-cmd --permanent --policy containersToAny --add-ingress-zone containers
+sudo firewall-cmd --permanent --policy containersToAny --add-egress-zone ANY
+sudo firewall-cmd --permanent --policy containersToAny --set-target DROP
 
 sudo firewall-cmd --reload
 ```
@@ -90,12 +90,13 @@ sudo firewall-cmd --reload
 ```bash
 # List all rules in the container zone
 sudo firewall-cmd --zone=containers --list-all
+sudo firewall-cmd --info-policy containersToAny
 
 # Test from inside a container
-podman exec webserver curl -s --max-time 5 http://example.com
+sudo podman run --rm --network podman docker.io/curlimages/curl:latest -s --max-time 5 http://example.com
 # Should fail if outbound is blocked
 ```
 
 ## Summary
 
-Firewall rules complement Podman network isolation by controlling traffic at the host level. Use `firewalld` zones and rich rules to restrict which sources can reach published ports and whether containers can make outbound connections. A dedicated firewall zone for container interfaces keeps rules organized and auditable.
+Firewall rules complement Podman network isolation by controlling traffic at the host level. Use `firewalld` zones, policies, and rich rules to restrict which sources can reach published ports and whether containers can make outbound connections. A dedicated firewall zone for container interfaces keeps rules organized and auditable.
