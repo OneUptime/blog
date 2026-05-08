@@ -51,8 +51,11 @@ echo "/run/podman/podman.sock"
 # Verify the socket exists
 ls -la /run/user/$(id -u)/podman/podman.sock
 
-# Enable the socket if not running
+# Enable the rootless socket if not running
 systemctl --user enable --now podman.socket
+
+# For a rootful socket, enable the system socket instead
+sudo systemctl enable --now podman.socket
 ```
 
 ## Listing System Connections
@@ -62,9 +65,9 @@ systemctl --user enable --now podman.socket
 podman system connection list
 
 # Example output:
-# Name            URI                                                     Identity                  Default
-# amd64-builder   ssh://builder@amd64.example.com/run/user/1000/...      ~/.ssh/podman_farm        false
-# arm64-builder   ssh://builder@arm64.example.com/run/user/1000/...      ~/.ssh/podman_farm        false
+# Name            URI                                                     Identity                  Default  ReadWrite
+# amd64-builder   ssh://builder@amd64.example.com/run/user/1000/...      ~/.ssh/podman_farm        false    true
+# arm64-builder   ssh://builder@arm64.example.com/run/user/1000/...      ~/.ssh/podman_farm        false    true
 ```
 
 ## Testing a Connection
@@ -142,7 +145,7 @@ podman --remote info
 #!/bin/bash
 # setup-connections.sh - Add system connections for all farm nodes
 
-SSH_KEY="~/.ssh/podman_farm"
+SSH_KEY="$HOME/.ssh/podman_farm"
 SOCKET_PATH="/run/user/1000/podman/podman.sock"
 
 # Define nodes: name user@host
@@ -203,4 +206,4 @@ ssh builder@amd64.example.com "podman version"
 
 ## Summary
 
-System connections link your local Podman to remote instances over SSH. Each connection needs a name, SSH URI with the Podman socket path, and an SSH identity file. Ensure the remote machines have Podman installed, the socket enabled, and SSH access configured. Test each connection with `podman --connection <name> info` before adding it to a farm.
+System connections link your local Podman to remote instances over SSH. Each connection needs a name, SSH URI with the Podman socket path, and optionally an SSH identity file. Ensure the remote machines have Podman installed, the socket enabled, and SSH access configured. Test each connection with `podman --connection <name> info` before adding it to a farm.
