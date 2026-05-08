@@ -10,9 +10,9 @@ Description: A step-by-step guide to upgrading Cilium on Alibaba Cloud Kubernete
 
 ## Introduction
 
-Alibaba Cloud Container Service for Kubernetes (ACK) supports Cilium as a CNI through its Elastic Network Interface (ENI) mode, which directly attaches VPC ENIs to pods for high-performance networking. Upgrading Cilium in ENI mode on Alibaba Cloud requires understanding how the ENI allocation lifecycle interacts with the Cilium upgrade process.
+Alibaba Cloud Container Service for Kubernetes (ACK) supports Cilium as a CNI through its AlibabaCloud ENI mode, which attaches VPC ENIs to ECS nodes and assigns VPC IPs to pods for high-performance networking. Upgrading Cilium in ENI mode on Alibaba Cloud requires understanding how the ENI allocation lifecycle interacts with the Cilium upgrade process.
 
-Cilium's ENI mode on Alibaba Cloud allocates ENI network interfaces from the VPC and attaches them to pods. During a Cilium upgrade, the ENI allocator must be handled carefully to avoid stranding ENIs or causing pod connectivity gaps. The upgrade procedure ensures that ENI configurations are preserved and that the new Cilium version properly re-inherits all existing ENI allocations.
+Cilium's ENI mode on Alibaba Cloud allocates ENI network interfaces from the VPC, attaches them to nodes, and publishes available pod IPs through CiliumNode resources. During a Cilium upgrade, the ENI allocator must be handled carefully to avoid stranding ENIs or causing pod connectivity gaps. The upgrade procedure ensures that ENI configurations are preserved and that the new Cilium version properly re-inherits all existing ENI allocations.
 
 This guide covers the specific steps for upgrading Cilium in Alibaba Cloud ENI mode, including ACK-specific pre-upgrade checks and post-upgrade ENI validation.
 
@@ -22,6 +22,7 @@ This guide covers the specific steps for upgrading Cilium in Alibaba Cloud ENI m
 - `aliyun` CLI configured with appropriate RAM permissions
 - `kubectl` with cluster-admin access
 - `cilium` CLI installed
+- Helm installed, with the `helm diff` plugin if you want to preview upgrade changes
 - Alibaba Cloud VPC with available ENI capacity
 
 ## Step 1: Pre-Upgrade Health Check
@@ -42,7 +43,7 @@ kubectl get pods -n kube-system -l k8s-app=cilium
 # Check ENI allocations are healthy
 kubectl get ciliumnodes -o wide
 
-# View current ENI mode configuration
+# View current AlibabaCloud IPAM mode configuration
 kubectl get configmap -n kube-system cilium-config \
   -o jsonpath='{.data.ipam}'
 ```
@@ -86,25 +87,33 @@ echo "Backup complete: $BACKUP_DATE"
 
 ## Step 4: Perform the Cilium Upgrade
 
-Upgrade Cilium using the cilium CLI.
+Upgrade Cilium using Helm.
 
 ```bash
-# Download and upgrade Cilium to the new version
+# Choose the target version from the official Cilium upgrade guide.
+# Upgrade one minor version at a time, and use the latest patch release
+# for your current version before starting a minor upgrade.
+TARGET_VERSION="1.19.3"
+
 # Using Helm for upgrade (recommended for ACK clusters)
 helm repo add cilium https://helm.cilium.io/
 helm repo update
 
+# Save existing values and review them against the target version's
+# version-specific upgrade notes before reusing them.
+helm get values cilium --namespace kube-system -o yaml > old-values.yaml
+
 # Preview upgrade changes
 helm diff upgrade cilium cilium/cilium \
   --namespace kube-system \
-  --version 1.15.0 \
-  --reuse-values
+  --version "$TARGET_VERSION" \
+  -f old-values.yaml
 
 # Execute upgrade with ENI mode preserved
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
-  --version 1.15.0 \
-  --reuse-values \
+  --version "$TARGET_VERSION" \
+  -f old-values.yaml \
   --atomic \
   --timeout 10m
 
@@ -125,7 +134,8 @@ kubectl get configmap -n kube-system cilium-config \
   -o jsonpath='{.data.ipam}'
 
 # Verify ENI allocations are healthy on all nodes
-cilium status --verbose | grep -i eni
+kubectl get ciliumnodes -o json | \
+  jq '.items[] | {name: .metadata.name, availableIPs: (.spec.ipam.available // {} | length), usedIPs: (.status.ipam.used // {} | length), enis: (.status["alibaba-cloud"].enis // {} | length)}'
 
 # Run connectivity test
 cilium connectivity test
