@@ -18,10 +18,11 @@ This guide takes you from a fresh Kubernetes cluster to a working Cilium install
 
 ## Prerequisites
 
-- Kubernetes cluster (v1.25+) without an existing CNI or with the ability to replace one
+- Kubernetes cluster running a Kubernetes version supported by your Cilium release (for example, Cilium 1.19 supports Kubernetes 1.32 through 1.35) without an existing CNI or with the ability to replace one
 - Linux kernel 5.10+ on all nodes (5.15+ recommended)
 - Helm v3 installed
 - kubectl configured with cluster access
+- Hubble CLI installed locally if you plan to run `hubble observe`
 
 ## Installing Cilium
 
@@ -46,9 +47,13 @@ helm install cilium cilium/cilium \
 ```bash
 # Install the Cilium CLI
 CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-curl -L --fail \
-  https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz | \
-  sudo tar xzvf - -C /usr/local/bin
+CLI_ARCH=amd64
+if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
+curl -L --fail --remote-name-all \
+  https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
+sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
+sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
+rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
 
 # Install Cilium
 cilium install
@@ -59,11 +64,12 @@ cilium install
 ### Choosing a Network Mode
 
 ```yaml
-# Option 1: VXLAN overlay (works everywhere)
-tunnel: vxlan
+# Option 1: VXLAN overlay (works in most environments)
+routingMode: tunnel
+tunnelProtocol: vxlan
 
 # Option 2: Native routing (better performance, requires routing setup)
-tunnel: disabled
+routingMode: native
 autoDirectNodeRoutes: true
 ipv4NativeRoutingCIDR: "10.0.0.0/8"
 ```
