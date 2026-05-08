@@ -61,12 +61,12 @@ The `--mount` flag provides a more explicit syntax:
 ```bash
 # Bind mount with --mount and readonly option
 podman run -d --name app \
-  --mount type=bind,source=/home/user/config,target=/app/config,readonly \
+  --mount type=bind,source=/home/user/config,target=/app/config,readonly=true \
   docker.io/library/alpine:latest tail -f /dev/null
 
 # Named volume with --mount and readonly option
 podman run -d --name app2 \
-  --mount type=volume,source=config-data,target=/app/config,readonly \
+  --mount type=volume,source=config-data,target=/app/config,readonly=true \
   docker.io/library/alpine:latest tail -f /dev/null
 ```
 
@@ -116,4 +116,4 @@ podman run -d --name locked-app \
 
 ## Summary
 
-Mounting volumes as read-only in Podman is straightforward using the `:ro` suffix or the `readonly` option with `--mount`. Use read-only mounts for configuration files, secrets, and any data the container should not modify. Combine read-only mounts with writable volumes and a read-only root filesystem for a strong security posture.
+Mounting volumes as read-only in Podman is straightforward using the `:ro` suffix or the `readonly=true` option with `--mount`. Use read-only mounts for configuration files, secrets, and any data the container should not modify. Combine read-only mounts with writable volumes and a read-only root filesystem for a strong security posture.
