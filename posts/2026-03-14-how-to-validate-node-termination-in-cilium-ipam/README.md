@@ -12,7 +12,7 @@ Description: How to validate that Cilium IPAM properly handles node termination 
 
 Validating node termination handling ensures that when nodes leave your cluster, their IP resources are properly reclaimed. This validation should be part of your regular operational checks, especially in environments with autoscaling where nodes are added and removed frequently.
 
-The key validations are: CiliumNode count matches Kubernetes node count, no orphaned CiliumNode resources exist, CIDR pool has expected free space, and cleanup happens within expected timeframes.
+The key validations are: CiliumNode count matches Kubernetes node count, no orphaned CiliumNode resources exist, allocated CIDRs remain unique, and cleanup happens within expected timeframes.
 
 ## Prerequisites
 
@@ -58,7 +58,7 @@ kubectl get ciliumnodes -o json | jq -r '.items[] | {
   cidrs: .spec.ipam.podCIDRs
 }'
 
-# Check for CIDR overlaps
+# Check for duplicate CIDR allocations
 kubectl get ciliumnodes -o json | jq -r '
   [.items[].spec.ipam.podCIDRs[]?] | sort |
   . as $all | range(length - 1) |
@@ -79,19 +79,29 @@ graph TD
 ## Testing Termination Handling
 
 ```bash
-# Simulate node termination by cordoning and draining
+# Prepare a test node for termination by cordoning and draining
 kubectl cordon <test-node>
 kubectl drain <test-node> --ignore-daemonsets --delete-emptydir-data
 
 # Wait for pods to reschedule
 sleep 30
 
-# Verify endpoints moved
-kubectl get ciliumendpoints --all-namespaces \
+# Verify workload pods moved
+kubectl get pods --all-namespaces \
   --field-selector spec.nodeName=<test-node> --no-headers | wc -l
 
-# Uncordon to restore
-kubectl uncordon <test-node>
+# In a disposable test cluster, delete the Node object or terminate the backing instance
+kubectl delete node <test-node>
+
+# Verify the CiliumNode is cleaned up
+if kubectl get ciliumnodes <test-node> >/dev/null 2>&1; then
+  echo "FAIL: CiliumNode still exists"
+else
+  echo "PASS: CiliumNode removed"
+fi
+
+# If you drained only and did not delete the node, uncordon to restore
+# kubectl uncordon <test-node>
 ```
 
 ## Verification
@@ -106,7 +116,7 @@ echo "CiliumNodes: $(kubectl get ciliumnodes --no-headers | wc -l)"
 
 - **Parity check fails**: Run the orphan cleanup script from the configuration guide.
 - **CIDR duplicates found**: Serious issue. Delete the orphaned CiliumNode and restart operator.
-- **Finalizers blocking deletion**: Patch to remove finalizers.
+- **Finalizers blocking deletion**: Investigate the controller managing the finalizer; remove finalizers manually only as a last resort.
 - **Drain test fails**: Check PodDisruptionBudgets that may prevent pod eviction.
 
 ## Conclusion
