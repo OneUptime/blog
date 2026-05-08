@@ -10,7 +10,7 @@ Description: Learn how to safely roll back Calico resource changes made with cal
 
 ## Introduction
 
-The `calicoctl patch` command modifies specific fields of an existing Calico resource. Rolling back a patch means restoring the original values of those specific fields. This is different from rolling back an `apply` (which replaces the entire resource) because you only need to revert the changed fields, not the whole resource.
+The `calicoctl patch` command modifies specific fields of an existing Calico resource. Rolling back a patch means restoring the original values of those specific fields. This is different from rolling back an `apply` update (which replaces the resource spec) because you only need to revert the changed fields, not the whole spec.
 
 The challenge with patch rollbacks is that `calicoctl patch` does not record what the previous values were. You must capture the pre-patch state yourself to create a reverse patch or restore the original resource.
 
@@ -21,7 +21,7 @@ This guide covers practical rollback strategies for calicoctl patch operations, 
 - A running Kubernetes cluster with Calico installed
 - calicoctl v3.27 or later
 - kubectl access to the cluster
-- python3 for JSON processing
+- python3 with PyYAML for JSON and YAML processing
 
 ## Capturing Pre-Patch State
 
@@ -45,8 +45,8 @@ mkdir -p "$BACKUP_DIR"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_FILE="${BACKUP_DIR}/${RESOURCE_KIND}-${RESOURCE_NAME}-${TIMESTAMP}.yaml"
 
-# Capture pre-patch state
-calicoctl get "$RESOURCE_KIND" "$RESOURCE_NAME" -o yaml > "$BACKUP_FILE"
+# Capture pre-patch state without cluster-specific metadata
+calicoctl get "$RESOURCE_KIND" "$RESOURCE_NAME" -o yaml --export > "$BACKUP_FILE"
 echo "Pre-patch backup: $BACKUP_FILE"
 
 # Apply the patch
@@ -70,7 +70,7 @@ set -euo pipefail
 export DATASTORE_TYPE=kubernetes
 RESOURCE_KIND="${1:?Usage: $0 <kind> <name>}"
 RESOURCE_NAME="${2:?}"
-BACKUP_FILE=$(cat /tmp/last-calico-patch-backup 2>/dev/null)
+BACKUP_FILE=$(cat /tmp/last-calico-patch-backup 2>/dev/null || true)
 
 if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
   echo "ERROR: No pre-patch backup found"
@@ -78,31 +78,44 @@ if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
 fi
 
 # Get current state
-calicoctl get "$RESOURCE_KIND" "$RESOURCE_NAME" -o json > /tmp/current-state.json
+calicoctl get "$RESOURCE_KIND" "$RESOURCE_NAME" -o json --export > /tmp/current-state.json
 
 # Generate reverse patch
-python3 -c "
-import yaml, json
+BACKUP_FILE="$BACKUP_FILE" RESOURCE_KIND="$RESOURCE_KIND" RESOURCE_NAME="$RESOURCE_NAME" python3 -c "
+import json, os, shlex, sys, yaml
 
 # Load pre-patch state
-with open('$BACKUP_FILE') as f:
+with open(os.environ['BACKUP_FILE']) as f:
     before = yaml.safe_load(f)
 
 # Load current state
 with open('/tmp/current-state.json') as f:
     after = json.load(f)
 
-def find_differences(before, after, path=''):
+def unwrap_single_resource(value):
+    if isinstance(value, list) and len(value) == 1:
+        return value[0]
+    return value
+
+before = unwrap_single_resource(before)
+after = unwrap_single_resource(after)
+
+if not isinstance(before, dict) or not isinstance(after, dict):
+    print('ERROR: Expected exactly one resource in backup and current state.', file=sys.stderr)
+    sys.exit(1)
+
+def find_differences(before, after):
     diffs = {}
     if isinstance(before, dict) and isinstance(after, dict):
         for key in set(list(before.keys()) + list(after.keys())):
-            bp = f'{path}.{key}' if path else key
             if key in before and key in after:
-                sub_diff = find_differences(before[key], after[key], bp)
-                if sub_diff:
-                    diffs[key] = sub_diff if isinstance(sub_diff, dict) and key not in ('spec',) else before[key]
+                sub_diff = find_differences(before[key], after[key])
+                if sub_diff is not None:
+                    diffs[key] = sub_diff if isinstance(sub_diff, dict) else before[key]
             elif key in before:
                 diffs[key] = before[key]
+            else:
+                diffs[key] = None
     elif before != after:
         return before
     return diffs if diffs else None
@@ -113,9 +126,9 @@ if diff:
     print(json.dumps(reverse_patch, indent=2))
     print('', file=__import__('sys').stderr)
     print('Reverse patch generated. Apply with:', file=__import__('sys').stderr)
-    print(f\"  calicoctl patch $RESOURCE_KIND $RESOURCE_NAME -p '{json.dumps(reverse_patch)}'\", file=__import__('sys').stderr)
+    print(f\"  calicoctl patch {shlex.quote(os.environ['RESOURCE_KIND'])} {shlex.quote(os.environ['RESOURCE_NAME'])} -p {shlex.quote(json.dumps(reverse_patch))}\", file=sys.stderr)
 else:
-    print('No differences found.', file=__import__('sys').stderr)
+    print('No differences found.', file=sys.stderr)
 " 2>&1
 ```
 
@@ -131,7 +144,7 @@ The simplest and most reliable rollback is to restore the entire pre-patch resou
 set -euo pipefail
 
 export DATASTORE_TYPE=kubernetes
-BACKUP_FILE=$(cat /tmp/last-calico-patch-backup 2>/dev/null)
+BACKUP_FILE=$(cat /tmp/last-calico-patch-backup 2>/dev/null || true)
 
 if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
   echo "ERROR: No pre-patch backup found."
@@ -179,7 +192,7 @@ VERIFY_CMD="${4:-echo ok}"
 BACKUP_FILE="/tmp/calico-guard-backup-$(date +%s).yaml"
 
 # Backup
-calicoctl get "$RESOURCE_KIND" "$RESOURCE_NAME" -o yaml > "$BACKUP_FILE"
+calicoctl get "$RESOURCE_KIND" "$RESOURCE_NAME" -o yaml --export > "$BACKUP_FILE"
 
 # Patch
 echo "Applying patch..."
@@ -219,8 +232,8 @@ kubectl exec deploy/test-app -- curl -s --max-time 5 http://backend:8080/health
 
 ## Troubleshooting
 
-- **Backup file has resourceVersion that causes conflict**: Remove the `resourceVersion` field from the backup before applying: `sed -i '/resourceVersion/d' backup.yaml`.
-- **Reverse patch does not restore array fields**: JSON merge patch replaces arrays entirely. The reverse patch must contain the complete original array, not just the changed elements.
+- **Backup file has resourceVersion that causes conflict**: Prefer creating backups with `calicoctl get --export` so cluster-specific fields are stripped. If an older backup contains `resourceVersion`, remove it before applying: `sed -i '/resourceVersion/d' backup.yaml`.
+- **Reverse patch does not restore array fields**: Calico's `calicoctl patch` uses strategic merge patch by default, and list fields may be merged or replaced depending on their patch strategy. For array changes, include the complete original array in the reverse patch or use the full backup restore.
 - **Rollback succeeds but behavior unchanged**: Felix may be caching the previous policy. Wait 30 seconds and retest, or restart the calico-node pod on the affected node.
 - **Multiple patches applied, need to rollback to specific point**: Keep all backup files organized by timestamp. Restore the backup from the desired point in time.
 
