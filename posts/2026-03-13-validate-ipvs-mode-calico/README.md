@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Calico, Kubernetes, IPVS, Kube-proxy, Networking
 
-Description: Validate that IPVS mode is correctly configured with Calico by verifying IPVS rules, service connectivity, and load distribution.
+Description: Validate that IPVS mode is correctly configured with Calico by verifying IPVS rules and service connectivity.
 
 ---
 
@@ -28,7 +28,9 @@ Calico works with IPVS mode kube-proxy without conflict. Calico handles pod rout
 lsmod | grep -E "ip_vs|nf_conntrack"
 
 # Load IPVS modules
-modprobe ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh
+for module in ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack; do
+  modprobe "$module"
+done
 
 # Configure kube-proxy for IPVS
 kubectl edit configmap -n kube-system kube-proxy
@@ -36,6 +38,9 @@ kubectl edit configmap -n kube-system kube-proxy
 
 # Restart kube-proxy
 kubectl rollout restart daemonset -n kube-system kube-proxy
+
+# Restart Calico so it detects the kube-proxy mode change
+kubectl rollout restart daemonset -n kube-system calico-node
 ```
 
 ## Verify IPVS Rules
@@ -47,8 +52,9 @@ ipvsadm -ln
 # Count IPVS entries
 ipvsadm -ln | grep -c "TCP\|UDP"
 
-# Compare with number of services
-kubectl get svc -A | wc -l
+# Compare roughly with non-headless services
+# Services with multiple ports create multiple IPVS virtual services.
+kubectl get svc -A --no-headers | awk '$4 != "None"' | wc -l
 ```
 
 ## Test Service Connectivity
@@ -67,13 +73,13 @@ kubectl run test-client --image=busybox -- wget -O- http://${SVC_IP}/
 ```mermaid
 graph LR
     subgraph Data Plane
-        POD[Pod] -->|Service IP| IPVS[kube-proxy IPVS\nO1 lookup]
+        POD[Pod] -->|Service IP| IPVS[kube-proxy IPVS\nO(1) lookup]
         IPVS -->|Backend selection| BACKEND[Backend Pod]
-        POD -->|Pod IP routing| CALICO[Calico eBPF/iptables]
+        POD -->|Pod IP routing| CALICO[Calico routing/network policy]
         CALICO -->|Route| BACKEND
     end
 ```
 
 ## Conclusion
 
-IPVS mode provides superior service routing performance compared to iptables mode, especially at scale with many services. Calico and IPVS mode work together effectively - Calico handles pod connectivity and network policy while IPVS handles service load balancing. After migrating to IPVS mode, validate that all services are represented in the IPVS table and that service connectivity functions correctly.
+IPVS mode provides superior service routing performance compared to iptables mode, especially at scale with many services. Calico and IPVS mode work together effectively - Calico handles pod connectivity and network policy while IPVS handles service load balancing. After migrating to IPVS mode, validate that kube-proxy-managed services are represented in the IPVS table and that service connectivity functions correctly.
