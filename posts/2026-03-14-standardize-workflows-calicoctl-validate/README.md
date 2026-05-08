@@ -21,7 +21,7 @@ This guide covers how to build a team-wide validation standard around calicoctl 
 - A team managing Calico resources
 - Git repository for Calico configurations
 - CI/CD platform
-- calicoctl v3.27 or later
+- calicoctl v3.31 or later
 
 ## Mandatory Pre-Commit Validation
 
@@ -37,7 +37,7 @@ repos:
         name: Validate Calico Resources
         entry: bash -c 'for f in "$@"; do calicoctl validate -f "$f" || exit 1; done' --
         language: system
-        files: 'calico.*\.yaml$'
+        files: '^calico-resources/.*\.ya?ml$'
         types: [yaml]
 ```
 
@@ -71,13 +71,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install calicoctl
         run: |
-          curl -L https://github.com/projectcalico/calico/releases/download/v3.27.0/calicoctl-linux-amd64 -o calicoctl
+          curl -L https://github.com/projectcalico/calico/releases/download/v3.31.0/calicoctl-linux-amd64 -o calicoctl
           chmod +x calicoctl && sudo mv calicoctl /usr/local/bin/
 
       - name: Validate all Calico resources
         run: |
           PASS=0; FAIL=0
-          for file in $(find calico-resources -name "*.yaml" -not -name "kustomization.yaml"); do
+          while IFS= read -r file; do
             if calicoctl validate -f "$file" > /dev/null 2>&1; then
               PASS=$((PASS + 1))
             else
@@ -85,7 +85,7 @@ jobs:
               calicoctl validate -f "$file" 2>&1
               FAIL=$((FAIL + 1))
             fi
-          done
+          done < <(find calico-resources -name "*.yaml" -not -name "kustomization.yaml" -print)
           echo "Validated: $PASS passed, $FAIL failed"
           [ "$FAIL" -eq 0 ] || exit 1
 ```
@@ -104,6 +104,7 @@ Create reusable validation scripts that go beyond basic calicoctl validate:
 set -euo pipefail
 
 RESOURCE_FILE="${1:?Usage: $0 <resource-file.yaml>}"
+export RESOURCE_FILE
 ERRORS=0
 
 # Check 1: Basic calicoctl validation
@@ -114,7 +115,7 @@ fi
 
 # Check 2: Naming convention
 echo "Check 2: Naming convention..."
-NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('$RESOURCE_FILE'))['metadata']['name'])")
+NAME=$(python3 -c "import os, yaml; print(yaml.safe_load(open(os.environ['RESOURCE_FILE']))['metadata']['name'])")
 if ! echo "$NAME" | grep -qE '^[a-z][a-z0-9-]*[a-z0-9]$'; then
   echo "  FAIL: Name '$NAME' does not follow convention (lowercase, hyphens only)"
   ERRORS=$((ERRORS + 1))
@@ -123,8 +124,8 @@ fi
 # Check 3: Required labels/annotations
 echo "Check 3: Metadata standards..."
 python3 -c "
-import yaml, sys
-doc = yaml.safe_load(open('$RESOURCE_FILE'))
+import os, yaml, sys
+doc = yaml.safe_load(open(os.environ['RESOURCE_FILE']))
 kind = doc['kind']
 metadata = doc.get('metadata', {})
 
@@ -137,8 +138,8 @@ if 'team' not in annotations:
 # Check 4: Policy order ranges
 echo "Check 4: Policy order range..."
 python3 -c "
-import yaml, sys
-doc = yaml.safe_load(open('$RESOURCE_FILE'))
+import os, yaml, sys
+doc = yaml.safe_load(open(os.environ['RESOURCE_FILE']))
 if doc['kind'] in ('GlobalNetworkPolicy', 'NetworkPolicy'):
     order = doc.get('spec', {}).get('order')
     if order is not None:
@@ -176,23 +177,28 @@ VALID=0
 INVALID=0
 ERRORS_BY_TYPE="{}"
 
-find "$RESOURCE_DIR" -name "*.yaml" -not -name "kustomization.yaml" | while read file; do
+while IFS= read -r file; do
   TOTAL=$((TOTAL + 1))
-  output=$(calicoctl validate -f "$file" 2>&1)
-  if [ $? -eq 0 ]; then
+  if output=$(calicoctl validate -f "$file" 2>&1); then
     VALID=$((VALID + 1))
   else
     INVALID=$((INVALID + 1))
     echo "INVALID: $file - $output"
   fi
-done
+done < <(find "$RESOURCE_DIR" -name "*.yaml" -not -name "kustomization.yaml" -print)
+
+if [ "$TOTAL" -gt 0 ]; then
+  PASS_RATE=$(echo "scale=2; $VALID * 100 / $TOTAL" | bc 2>/dev/null || echo "0")
+else
+  PASS_RATE=0
+fi
 
 echo "{
   \"date\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
   \"total_files\": $TOTAL,
   \"valid\": $VALID,
   \"invalid\": $INVALID,
-  \"pass_rate\": $(echo "scale=2; $VALID * 100 / $TOTAL" | bc 2>/dev/null || echo "0")
+  \"pass_rate\": $PASS_RATE
 }" > "$METRICS_FILE"
 
 cat "$METRICS_FILE"
@@ -226,7 +232,7 @@ pre-commit run --all-files
 gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks
 
 # Run the extended validation on all resources
-find calico-resources -name "*.yaml" | while read f; do
+find calico-resources -name "*.yaml" | while IFS= read -r f; do
   bash validate-extended.sh "$f" || true
 done
 ```
